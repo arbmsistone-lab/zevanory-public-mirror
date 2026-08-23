@@ -1,5 +1,6 @@
 # GATES DE VALIDACAO
 
+EG Evidence Gate: minimo 3 evidencias validas antes de qualquer implementacao.
 G0 Mercado: problema, comprador e demanda observavel.
 G1 Oferta: proposta de valor e unidade economica plausivel.
 G2 Venda manual: pagamentos reais sem depender da IA.
@@ -14,4 +15,5 @@ G10 Generalizacao: segunda oferta, segmento ou canal.
 G11 Escala: crescimento sem destruir CAC, margem ou qualidade.
 G12 Autonomia: apenas acoes comprovadas, reversiveis e limitadas.
 
-Nenhum gate usa numero magico de vendas. O criterio estatistico e economico e definido antes do teste.
+O Evidence Gate antecede cada mudanca de produto, arquitetura, canal ou autonomia.
+Nenhum gate usa numero magico de vendas. Criterios estatisticos e economicos sao definidos antes do teste.
