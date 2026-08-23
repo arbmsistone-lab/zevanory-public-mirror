@@ -1,0 +1,380 @@
+{
+  "policy": "minimum 3 approved operations per audited code/definition unit",
+  "scope": "Projeto Zero only",
+  "units": [
+    {
+      "id": "CODE-CONFIG",
+      "label": "src/config.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax config",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "config tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "canonical frozen definitions",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-TELEMETRY",
+      "label": "src/telemetry.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax telemetry",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "telemetry tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "financial boundary declared",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-SERVER",
+      "label": "src/server-v2.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax server",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "server integration tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "fail-closed boundaries present",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-LANDING",
+      "label": "public/index.html",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "landing tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "CTA disabled by default",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "telemetry before redirect",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-AUDIT",
+      "label": "scripts/audit-3x.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "no external absolute reads",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three-operation fail-closed rule present",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-EVIDENCE-VERIFIER",
+      "label": "scripts/verify_evidence_gate.ps1",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "verifier exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "approved gate passes",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "template without approval blocks",
+          "status": "APPROVED",
+          "detail": "exit=2"
+        }
+      ]
+    },
+    {
+      "id": "RUNTIME-PACKAGE",
+      "label": "package.json",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "package JSON parses",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "start targets only server-v2",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "test and audit commands declared",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-OFFER",
+      "label": "specs/OFFER-0001-ia-vendas-whatsapp.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "offer evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "full test suite",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "no unproven result promise",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PRICING",
+      "label": "specs/PRICING-0001-preco-experimental.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "pricing evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "full test suite",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "price explicitly experimental",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-EXPERIMENT",
+      "label": "experiments/EXP-0001-oferta-piloto.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "experiment evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "full test suite",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "payment integrity defined",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-EVIDENCE-POLICY",
+      "label": "specs/EVIDENCE_POLICY.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "requires three independent evidences",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "base evidence gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "operational 3x gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-GATES",
+      "label": "specs/GATES.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "market and offer gates defined",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "commercial proof gate defined",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "autonomy remains final gated stage",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-WHATSAPP",
+      "label": "evidence/WHATSAPP-ORIGIN-0001.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "owner-confirmed canonical number documented",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "canonical definition matches normalizer",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "official matcher rejects divergence",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-SCOPE",
+      "label": "specs/SCOPE_BOUNDARY.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "project root is explicit",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "external systems explicitly out of scope",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "external absolute paths forbidden",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "ASSURANCE-TESTS",
+      "label": "test harness",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "all test files exist",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "all test files syntax-valid",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "full test suite",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "PROJECT-HYGIENE",
+      "label": "project-only hygiene",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "legacy server absent",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "old WhatsApp absent from active files",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "audit has no external absolute reads",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "units": 16,
+    "approved": 16,
+    "failed": 0
+  },
+  "verdict": "APPROVED"
+}
