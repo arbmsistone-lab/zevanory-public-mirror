@@ -26,6 +26,29 @@
       ]
     },
     {
+      "id": "CODE-SALES-GATE",
+      "label": "src/salesGate.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "sales gate syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "sales gate tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "two-key fail-closed global gate",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "CODE-TELEMETRY",
       "label": "src/telemetry.mjs",
       "approved_operations": 3,
@@ -502,7 +525,7 @@
           "detail": "exit=0"
         },
         {
-          "name": "production config remains fail-closed",
+          "name": "production config remains globally fail-closed",
           "status": "APPROVED",
           "detail": "true"
         }
@@ -687,6 +710,75 @@
         },
         {
           "name": "DONE-only cumulative reconciliation documented",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-ORDER-FINANCIAL-STATE",
+      "label": "evidence/EG-0017-estado-transacional-pedido.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "order financial state gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "order financial state tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "webhook transition is atomic",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-ORDER-FINANCIAL-MIGRATION",
+      "label": "db/migrations/005_order_financial_states.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "partial refund order state is allowed",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "orders status constraint is recreated",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "migration 005 is ledgered",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-SALES-GATE-EVIDENCE",
+      "label": "evidence/EG-0018-bloqueio-global-pre-venda.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "global sales gate evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "global sales gate tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "global gate is fail closed",
           "status": "APPROVED",
           "detail": "true"
         }
@@ -924,8 +1016,8 @@
     }
   ],
   "totals": {
-    "units": 40,
-    "approved": 40,
+    "units": 44,
+    "approved": 44,
     "failed": 0
   },
   "verdict": "APPROVED"

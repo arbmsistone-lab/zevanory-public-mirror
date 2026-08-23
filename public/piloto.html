@@ -59,7 +59,7 @@ async function event(name) {
     try { await event('page_view'); } catch {}
     if (!config.whatsapp_enabled) {
       button.disabled = true;
-      status.textContent = 'Projeto publicado em modo seguro. Ativação comercial aguardando telemetria persistente.';
+      status.textContent = 'Vendas bloqueadas. Ativação comercial somente após aprovação de todos os gates pré-venda.';
       return;
     }
     button.disabled = false;

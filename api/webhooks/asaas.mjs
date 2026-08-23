@@ -20,6 +20,11 @@ export async function fetchAsaasPayment(paymentId, env, apiKey, fetchImpl = fetc
   return response.json();
 }
 
+function json(res,status,body) {
+  res.statusCode=status;
+  return res.end(JSON.stringify(body));
+}
+
 export default async function handler(req, res) {
   res.setHeader('content-type', 'application/json; charset=utf-8');
   res.setHeader('cache-control', 'no-store');
@@ -59,14 +64,38 @@ export default async function handler(req, res) {
     const refundedTotal = normalized === 'refund_confirmed' ? refundTotalForWebhook(webhook,payment) : null;
     const sql = neon(process.env.DATABASE_URL);
     const rows = await sql.query(`
-      INSERT INTO financial_events
-        (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount,order_id,refunded_total)
-      VALUES ($1,'asaas',$2,$3,$4,$5,$6,$7,$8,$9)
-      ON CONFLICT DO NOTHING
-      RETURNING provider_event_id
+      WITH target AS (
+        SELECT order_id, amount, status FROM orders
+        WHERE order_id=$8 AND (
+          ($3='payment_confirmed' AND status IN ('checkout_ready','checkout_uncertain','paid')) OR
+          ($3='refund_confirmed' AND status IN ('paid','partially_refunded','refunded'))
+        )
+      ), inserted AS (
+        INSERT INTO financial_events
+          (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount,order_id,refunded_total)
+        SELECT $1,'asaas',$2,$3,$4,$5,$6,$7,order_id,$9 FROM target
+        ON CONFLICT DO NOTHING
+        RETURNING order_id,normalized_event,refunded_total
+      ), updated AS (
+        UPDATE orders o SET status=CASE
+          WHEN i.normalized_event='payment_confirmed' THEN 'paid'
+          WHEN i.refunded_total >= o.amount THEN 'refunded'
+          ELSE 'partially_refunded'
+        END, updated_at=now()
+        FROM inserted i WHERE o.order_id=i.order_id
+        RETURNING o.order_id,o.status
+      )
+      SELECT
+        (SELECT count(*)::int FROM target) AS target_count,
+        (SELECT count(*)::int FROM inserted) AS inserted_count,
+        (SELECT status FROM updated LIMIT 1) AS order_status,
+        (SELECT status FROM orders WHERE order_id=$8) AS current_status
     `, [webhook.providerEventId,webhook.paymentId,normalized,webhook.eventName,String(payment.status),externalReference,Number(payment.value),orderId,refundedTotal]);
+    const outcome=rows[0]||{};
+    if(Number(outcome.target_count)!==1) return json(res,409,{error:'order_state_invalid',accepted:false});
+    if(Number(outcome.inserted_count)===1 && !outcome.order_status) return json(res,503,{error:'order_state_update_failed',accepted:false});
     res.statusCode = 202;
-    return res.end(JSON.stringify({ accepted: true, duplicate: rows.length === 0, event: normalized, order_id: orderId, refunded_total: refundedTotal }));
+    return res.end(JSON.stringify({ accepted: true, duplicate: Number(outcome.inserted_count)===0, event: normalized, order_id: orderId, order_status: outcome.order_status||outcome.current_status, refunded_total: refundedTotal }));
   } catch {
     res.statusCode = 503;
     return res.end(JSON.stringify({ error: 'financial_reconciliation_unavailable', accepted: false }));

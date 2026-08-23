@@ -37,3 +37,10 @@ test('infrastructure assembly requires three independent audits', () => {
   assert.match(agents, /Toda montagem ou alteracao de infraestrutura deve registrar 3 auditorias independentes/);
   assert.match(agents, /As 3 auditorias devem estar APROVADAS/);
 });
+test('sales cannot start before all pre-sale gates are approved', () => {
+  assert.match(master, /Nenhum processo de venda pode iniciar/);
+  assert.match(master, /SALE_GLOBALLY_ENABLED/);
+  assert.match(master, /PRE_SALE_GATES_APPROVED/);
+  assert.match(agents, /Nao inicie venda, CTA comercial, checkout, outbound/);
+  assert.match(agents, /gate especifico do canal nao estiver aprovado/);
+});

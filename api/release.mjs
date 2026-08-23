@@ -11,6 +11,7 @@ export default function handler(req,res){
   res.statusCode=200;
   return res.end(JSON.stringify({
     release_id:RELEASE.id,
+    sales_mode:RELEASE.salesMode,
     checkout_mode:RELEASE.checkoutMode,
     financial_mode:RELEASE.financialMode,
     required_routes:RELEASE.requiredRoutes,

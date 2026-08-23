@@ -12,6 +12,7 @@ Nao pule gates.
 Nao trate hipotese como fato.
 Nao trate clique, lead ou checkout como venda.
 Nao habilite autonomia antes dos gates correspondentes.
+Nao inicie venda, CTA comercial, checkout, outbound, atendimento comercial ativo, experimento de venda ou midia paga enquanto SALE_GLOBALLY_ENABLED e PRE_SALE_GATES_APPROVED nao estiverem explicitamente true e o gate especifico do canal nao estiver aprovado.
 Qualquer divergencia bloqueia a acao e exige nova evidencia/aprovacao.
 Nunca encerre uma etapa com erro ou pendencia tecnica.
 Antes de declarar conclusao, execute 3 auditorias finais independentes: testes/sintaxe, auditoria 3X estrutural e prova operacional em producao.

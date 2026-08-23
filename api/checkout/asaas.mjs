@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { PROJECT } from '../../src/config.mjs';
 import { asaasBaseUrl } from '../../src/asaas.mjs';
+import { salesGate } from '../../src/salesGate.mjs';
 import {
   normalizeCheckoutRequest,
   externalReferenceForOrder,
@@ -31,6 +32,8 @@ export default async function handler(req,res) {
   res.setHeader('cache-control','no-store');
   res.setHeader('x-content-type-options','nosniff');
   if(req.method!=='POST') return json(res,405,{error:'method_not_allowed'});
+  const gate=salesGate();
+  if(!gate.enabled) return json(res,503,{error:'sales_globally_blocked',blockers:gate.blockers});
   if(process.env.CHECKOUT_ENABLED!=='true') return json(res,503,{error:'checkout_disabled'});
   if(String(process.env.ASAAS_ENV||'').toLowerCase()!=='sandbox') return json(res,503,{error:'checkout_sandbox_only'});
   const publicBase=safePublicBaseUrl(process.env.PUBLIC_BASE_URL);

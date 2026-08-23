@@ -27,6 +27,7 @@ Experimentos: hipotese, baseline/controle, metrica principal, diagnosticos, guar
 9. Todo fechamento exige 3 auditorias finais independentes: local/testes, auditoria 3X estrutural e prova operacional em producao.
 10. Se qualquer uma das 3 auditorias falhar, a etapa permanece BLOQUEADA e nao pode ser declarada concluida.
 11. Toda montagem ou alteracao de infraestrutura exige, antes de promocao ou fechamento, 3 auditorias independentes e registradas: Auditoria 1 estrutural/configuracao; Auditoria 2 funcional/seguranca/integridade; Auditoria 3 integracao/regressao/prova operacional. As 3 devem estar APROVADAS; qualquer falha, divergencia ou erro conhecido bloqueia a infraestrutura.
+12. Nenhum processo de venda pode iniciar enquanto houver qualquer etapa pre-venda obrigatoria aberta ou auditoria pendente/reprovada. SALE_GLOBALLY_ENABLED e PRE_SALE_GATES_APPROVED devem ser explicitamente true, alem do gate especifico do canal; ausencia ou divergencia equivale a vendas BLOQUEADAS.
 ## GATES
 EG: 3 evidencias -> G0 Mercado -> G1 Oferta -> G2 Venda manual -> G3 Telemetria -> G4 Baseline -> G5 IA offline -> G6 IA assistida -> G7 Experimento causal -> G8 Rentabilidade -> G9 Repeticao -> G10 Generalizacao -> G11 Escala -> G12 Autonomia.
 
@@ -38,13 +39,13 @@ G1-C: preco experimental R$297–R$797; hipotese central R$497; nao validado com
 WhatsApp oficial: +55 88 99234-0423 / E.164 5588992340423.
 Infraestrutura G2: homepage institucional em /, piloto comercial em /piloto, telemetria persistente Neon e runtime auditado.
 Deploy Vercel: projeto zevanory-site em producao READY.
-Auditoria atual: 57/57 testes e 40/40 unidades 3X aprovadas no estado atual; tres auditorias finais do saneamento apos migration 004 aprovadas. Release fingerprint em producao: ZEVANORY-EG0014-RC1. Deploy de producao exige promocao serializada e verificacao do alias antes do fechamento.
+Auditoria atual: 66/66 testes e 44/44 unidades 3X aprovadas no estado atual. Migration 005 aplicada e verificada no Neon. Release candidata: ZEVANORY-EG0018-RC2, com vendas globalmente bloqueadas. Deploy de producao exige promocao serializada e verificacao do alias antes do fechamento.
 
 ## ESTADO ATUAL
 EXP-0001: PRONTO TECNICAMENTE / NAO INICIADO COMERCIALMENTE.
 G2 comercial: ABERTO. Nao existe pagamento real reconciliado.
 Telemetria publica em producao: ATIVA e persistente no Neon; idempotencia comprovada por event_id.
-Eventos financeiros: BLOQUEADOS para venda real. Camada Asaas implementada com authToken, reconciliacao por GET /payments/{id}, idempotencia financeira, migrations 002, 003 e 004 aplicadas no Neon. Estorno parcial usa reconciliacao cumulativa apenas de refunds DONE; ledger, coluna refunded_total e indices de deduplicacao da migration 004 foram verificados no banco. Pedido interno e checkout Sandbox existem, com CHECKOUT_ENABLED desativado por padrao. Ainda faltam credenciais Asaas proprias e primeiro checkout Sandbox real.
+Eventos financeiros: BLOQUEADOS para venda real. Camada Asaas implementada com authToken, reconciliacao por GET /payments/{id}, idempotencia financeira, migrations 002, 003, 004 e 005 aplicadas no Neon. Estorno parcial usa reconciliacao cumulativa apenas de refunds DONE; transicao orders.status ocorre atomicamente com financial_events. SALE_GLOBALLY_ENABLED e PRE_SALE_GATES_APPROVED permanecem OFF por padrao; WhatsApp e checkout nao podem iniciar venda enquanto o gate global estiver bloqueado. Ainda faltam credenciais Asaas proprias e primeiro checkout Sandbox real, somente apos aprovacao integral pre-venda.
 Dominio zevanory.api.br: NAO associado ao projeto Vercel neste estado; tentativa de associacao retorna 403 domain_not_owned.
 TXT de verificacao anteriormente registrado: deve ser reconfirmado somente depois que a Vercel reconhecer a posse do dominio; nao tratar o valor anterior como prova atual.
 DNS publico atual: nome existe sem endereco A/AAAA funcional; TXT _vercel ainda ausente.

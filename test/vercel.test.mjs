@@ -8,14 +8,18 @@ function mock(method='GET') {
   return {req:{method},res:{statusCode:200,body:'',setHeader(k,v){headers[k.toLowerCase()]=v;},end(v=''){this.body=v;return this;},headers}};
 }
 
-test('production config enables WhatsApp only after telemetry proof',()=>{
+test('production config blocks all sales while pre-sale gates are open',()=>{
+  const old={sale:process.env.SALE_GLOBALLY_ENABLED,pre:process.env.PRE_SALE_GATES_APPROVED,wa:process.env.WHATSAPP_SALES_ENABLED};
+  delete process.env.SALE_GLOBALLY_ENABLED; delete process.env.PRE_SALE_GATES_APPROVED; delete process.env.WHATSAPP_SALES_ENABLED;
   const {req,res}=mock('GET');
   configHandler(req,res);
   const body=JSON.parse(res.body);
   assert.equal(res.statusCode,200);
-  assert.equal(body.whatsapp_enabled,true);
-  assert.equal(body.whatsapp_number,'5588992340423');
-  assert.equal(body.production_mode,'telemetry-active-payment-pending');
+  assert.equal(body.commercial_enabled,false);
+  assert.equal(body.whatsapp_enabled,false);
+  assert.equal(body.whatsapp_number,null);
+  assert.equal(body.production_mode,'pre-sale-blocked');
+  for(const [k,v] of Object.entries({SALE_GLOBALLY_ENABLED:old.sale,PRE_SALE_GATES_APPROVED:old.pre,WHATSAPP_SALES_ENABLED:old.wa})) { if(v===undefined) delete process.env[k]; else process.env[k]=v; }
 });
 
 test('event function uses Neon with idempotent insert',async()=>{
