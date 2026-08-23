@@ -27,3 +27,13 @@ test('governance scope and agent entrypoint fail closed', () => {
   assert.match(agents, /Nao pule gates/);
   assert.match(agents, /Qualquer divergencia bloqueia a acao/);
 });
+
+test('infrastructure assembly requires three independent audits', () => {
+  assert.match(master, /Toda montagem ou alteracao de infraestrutura exige/);
+  assert.match(master, /Auditoria 1 estrutural\/configuracao/);
+  assert.match(master, /Auditoria 2 funcional\/seguranca\/integridade/);
+  assert.match(master, /Auditoria 3 integracao\/regressao\/prova operacional/);
+  assert.match(master, /qualquer falha, divergencia ou erro conhecido bloqueia a infraestrutura/);
+  assert.match(agents, /Toda montagem ou alteracao de infraestrutura deve registrar 3 auditorias independentes/);
+  assert.match(agents, /As 3 auditorias devem estar APROVADAS/);
+});

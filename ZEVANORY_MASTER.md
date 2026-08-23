@@ -26,6 +26,7 @@ Experimentos: hipotese, baseline/controle, metrica principal, diagnosticos, guar
 8. Nenhuma etapa pode ser encerrada com erro conhecido, pendencia tecnica aberta ou validacao parcial.
 9. Todo fechamento exige 3 auditorias finais independentes: local/testes, auditoria 3X estrutural e prova operacional em producao.
 10. Se qualquer uma das 3 auditorias falhar, a etapa permanece BLOQUEADA e nao pode ser declarada concluida.
+11. Toda montagem ou alteracao de infraestrutura exige, antes de promocao ou fechamento, 3 auditorias independentes e registradas: Auditoria 1 estrutural/configuracao; Auditoria 2 funcional/seguranca/integridade; Auditoria 3 integracao/regressao/prova operacional. As 3 devem estar APROVADAS; qualquer falha, divergencia ou erro conhecido bloqueia a infraestrutura.
 ## GATES
 EG: 3 evidencias -> G0 Mercado -> G1 Oferta -> G2 Venda manual -> G3 Telemetria -> G4 Baseline -> G5 IA offline -> G6 IA assistida -> G7 Experimento causal -> G8 Rentabilidade -> G9 Repeticao -> G10 Generalizacao -> G11 Escala -> G12 Autonomia.
 

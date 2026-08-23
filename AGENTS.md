@@ -15,7 +15,8 @@ Nao habilite autonomia antes dos gates correspondentes.
 Qualquer divergencia bloqueia a acao e exige nova evidencia/aprovacao.
 Nunca encerre uma etapa com erro ou pendencia tecnica.
 Antes de declarar conclusao, execute 3 auditorias finais independentes: testes/sintaxe, auditoria 3X estrutural e prova operacional em producao.
-Falha em qualquer auditoria mantem a etapa BLOQUEADA.
+Toda montagem ou alteracao de infraestrutura deve registrar 3 auditorias independentes: (1) estrutural/configuracao, (2) funcional/seguranca/integridade e (3) integracao/regressao/prova operacional.
+As 3 auditorias devem estar APROVADAS. Falha, divergencia, erro conhecido ou validacao parcial em qualquer uma mantem a infraestrutura e a etapa BLOQUEADAS.
 ## Coordenacao concorrente
 Antes de editar identidade publica, dominio, landing ou seus testes, leia WORKSTREAMS.md.
 Os arquivos reservados dessa frente nao podem ser sobrescritos por outro chat/agente durante trabalho concorrente.
