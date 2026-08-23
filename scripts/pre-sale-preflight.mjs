@@ -3,6 +3,7 @@ import { evaluatePreSaleReadiness, REQUIRED_DNS_RESOLVERS } from '../src/preSale
 
 const domain='zevanory.api.br';
 const DNS_TIMEOUT_MS=2500;
+const envTrue=(name)=>String(process.env[name]||'').trim().toLowerCase()==='true';
 async function withTimeout(promise,ms=DNS_TIMEOUT_MS) {
   let timer;
   try {
@@ -24,7 +25,6 @@ async function hasAddress(server) {
     return aaaa.length>0;
   } catch { return false; }
 }
-
 async function hasVercelTxt() {
   const resolver=new Resolver();
   resolver.setServers(['1.1.1.1']);
@@ -49,8 +49,7 @@ async function probeCustomDomain() {
   }
   return {https,routes:true};
 }
-const customDomain=await probeCustomDomain();
-const result=evaluatePreSaleReadiness({
+const customDomain=await probeCustomDomain();const result=evaluatePreSaleReadiness({
   dns,
   vercel_txt:await hasVercelTxt(),
   vercel_claim_not_required:false,
@@ -58,8 +57,14 @@ const result=evaluatePreSaleReadiness({
   routes_ready:customDomain.routes,
   asaas_key:Boolean(process.env.ASAAS_API_KEY),
   asaas_webhook:Boolean(process.env.ASAAS_WEBHOOK_TOKEN),
-  asaas_env_sandbox:String(process.env.ASAAS_ENV||'').toLowerCase()==='sandbox',
-  public_base:Boolean(process.env.PUBLIC_BASE_URL),
+  asaas_env_sandbox:String(process.env.ASAAS_ENV||'').trim().toLowerCase()==='sandbox',
+  database_url:Boolean(process.env.DATABASE_URL),
+  public_base_https:/^https:\/\/[^/]/i.test(String(process.env.PUBLIC_BASE_URL||'')),
+  sale_globally_enabled:envTrue('SALE_GLOBALLY_ENABLED'),
+  pre_sale_gates_approved:envTrue('PRE_SALE_GATES_APPROVED'),
+  checkout_enabled:envTrue('CHECKOUT_ENABLED'),
+  whatsapp_sales_enabled:envTrue('WHATSAPP_SALES_ENABLED'),
+  financial_events_enabled:envTrue('FINANCIAL_EVENTS_ENABLED'),
 });
 console.log(JSON.stringify({
   ready:result.ready,
@@ -68,6 +73,7 @@ console.log(JSON.stringify({
   https:result.https_ready,
   routes:result.routes_ready,
   asaas:result.asaas_ready,
+  commercial_flags_safe:result.commercial_flags_safe,
   blockers:result.blockers,
 }));
 process.exit(result.ready?0:2);

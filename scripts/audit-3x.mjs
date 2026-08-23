@@ -55,12 +55,15 @@ unit('CODE-PRE-SALE-APPROVAL','src/preSaleApproval.mjs',[
 unit('CODE-PRE-SALE-READINESS','src/preSaleReadiness.mjs + scripts/pre-sale-preflight.mjs',[
   command('pre-sale readiness syntax',process.execPath,['--check','src/preSaleReadiness.mjs']),
   command('pre-sale readiness tests',process.execPath,['--test','test/pre-sale-readiness.test.mjs']),
-  op('three resolver and masked prerequisite checks',()=>{
+  op('three resolver, sandbox dependency and kill-switch checks',()=>{
     const readiness=t('src/preSaleReadiness.mjs');
     const preflight=t('scripts/pre-sale-preflight.mjs');
     return readiness.includes('1.1.1.1') && readiness.includes('8.8.8.8') &&
       readiness.includes('9.9.9.9') && readiness.includes('https_ready') &&
-      readiness.includes('routes_ready') && !preflight.includes('console.log(process.env)');
+      readiness.includes('routes_ready') && readiness.includes('database_url') &&
+      readiness.includes('public_base_https') && readiness.includes('financial_events_enabled') &&
+      readiness.includes('commercial_flags_safe') && preflight.includes('DATABASE_URL') &&
+      preflight.includes('FINANCIAL_EVENTS_ENABLED') && !preflight.includes('console.log(process.env)');
   }),
 ]);
 unit('CODE-TELEMETRY', 'src/telemetry.mjs', [
@@ -81,7 +84,7 @@ unit('CODE-SERVER', 'src/server-v2.mjs', [
 unit('CODE-LANDING', 'public/index.html', [
   command('landing tests', process.execPath, ['--test','test/landing.test.mjs']),
   op('institutional identity only', () => t('public/index.html').includes('<title>ZEVANORY</title>') && !t('public/index.html').includes('cta_whatsapp')),
-  op('public domain identity', () => t('public/index.html').includes('zevanory.api.br') && !t('public/index.html').includes('Preço experimental')),
+  op('public domain identity', () => t('public/index.html').includes('zevanory.api.br') && !t('public/index.html').includes('PreÃ§o experimental')),
 ]);
 unit('CODE-PILOT', 'public/piloto.html', [
   command('pilot tests', process.execPath, ['--test','test/piloto.test.mjs']),
