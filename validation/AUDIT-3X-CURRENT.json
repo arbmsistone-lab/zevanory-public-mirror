@@ -387,7 +387,76 @@
           "detail": "exit=0"
         },
         {
-          "name": "production telemetry rejects without persistence",
+          "name": "Neon persistence is idempotent and fail-closed",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PUBLIC-EVENT",
+      "label": "src/publicEvent.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax public event",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "public event tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "public boundary rejects financial event",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-NEON-PERSISTENCE",
+      "label": "evidence/EG-0011-g3-neon-persistencia.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "Neon gate exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "Supabase explicitly forbidden",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "Neon-related tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-DB-MIGRATION",
+      "label": "db/migrations/001_telemetry_events.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "primary key idempotency defined",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "financial event names constrained",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "migration ledger defined",
           "status": "APPROVED",
           "detail": "true"
         }
@@ -533,8 +602,8 @@
     }
   ],
   "totals": {
-    "units": 23,
-    "approved": 23,
+    "units": 26,
+    "approved": 26,
     "failed": 0
   },
   "verdict": "APPROVED"

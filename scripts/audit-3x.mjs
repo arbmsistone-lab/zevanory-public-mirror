@@ -35,7 +35,7 @@ function unit(id, label, operations) {
 
 const fullTests = command('full test suite', process.execPath, ['--test',
   'test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs',
-  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs']);
+  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs']);
 
 unit('CODE-CONFIG', 'src/config.mjs', [
   command('syntax config', process.execPath, ['--check','src/config.mjs']),
@@ -119,7 +119,7 @@ unit('DEF-SCOPE', 'specs/SCOPE_BOUNDARY.md', [
   op('external absolute paths forbidden', () => t('specs/SCOPE_BOUNDARY.md').includes('caminho absoluto para outro sistema')),
 ]);
 
-const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs'];
+const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs'];
 unit('ASSURANCE-TESTS','test harness',[
   op('all test files exist',()=>testFiles.every((f)=>existsSync(join(root,f)))),
   op('all test files syntax-valid',()=>testFiles.every((f)=>spawnSync(process.execPath,['--check',f],{cwd:root,encoding:'utf8'}).status===0)),
@@ -134,7 +134,22 @@ unit('CODE-VERCEL-API-CONFIG','api/config.mjs',[
 unit('CODE-VERCEL-API-EVENT','api/events-public.mjs',[
   command('syntax vercel event api',process.execPath,['--check','api/events-public.mjs']),
   command('vercel event tests',process.execPath,['--test','test/vercel.test.mjs']),
-  op('production telemetry rejects without persistence',()=>t('api/events-public.mjs').includes('statusCode = 503')&&t('api/events-public.mjs').includes('persistent_telemetry_not_configured')),
+  op('Neon persistence is idempotent and fail-closed',()=>t('api/events-public.mjs').includes('ON CONFLICT (event_id) DO NOTHING')&&t('api/events-public.mjs').includes('telemetry_storage_unavailable')),
+]);
+unit('CODE-PUBLIC-EVENT','src/publicEvent.mjs',[
+  command('syntax public event',process.execPath,['--check','src/publicEvent.mjs']),
+  command('public event tests',process.execPath,['--test','test/publicEvent.test.mjs']),
+  op('public boundary rejects financial event',()=>t('src/publicEvent.mjs').includes('PUBLIC_EVENTS')&&t('test/publicEvent.test.mjs').includes('payment_confirmed')),
+]);
+unit('DEF-NEON-PERSISTENCE','evidence/EG-0011-g3-neon-persistencia.md',[
+  op('Neon gate exists',()=>t('evidence/EG-0011-g3-neon-persistencia.md').includes('Neon Serverless Postgres')),
+  op('Supabase explicitly forbidden',()=>t('evidence/EG-0011-g3-neon-persistencia.md').includes('Supabase: PROIBIDO')),
+  command('Neon-related tests',process.execPath,['--test','test/publicEvent.test.mjs','test/vercel.test.mjs']),
+]);
+unit('DEF-DB-MIGRATION','db/migrations/001_telemetry_events.sql',[
+  op('primary key idempotency defined',()=>t('db/migrations/001_telemetry_events.sql').includes('event_id uuid PRIMARY KEY')),
+  op('financial event names constrained',()=>t('db/migrations/001_telemetry_events.sql').includes('payment_confirmed')&&t('db/migrations/001_telemetry_events.sql').includes('refund_confirmed')),
+  op('migration ledger defined',()=>t('db/migrations/001_telemetry_events.sql').includes('schema_migrations')&&t('db/migrations/001_telemetry_events.sql').includes('001_telemetry_events')),
 ]);
 unit('DEF-VERCEL-CONFIG','vercel.json',[
   op('vercel json parses',()=>Boolean(JSON.parse(t('vercel.json')).rewrites)),

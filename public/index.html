@@ -42,7 +42,7 @@ async function event(name) {
   const response = await fetch('/api/events/public', {
     method: 'POST',
     headers: {'content-type':'application/json'},
-    body: JSON.stringify({name, session_id: sessionId, channel: 'landing'})
+    body: JSON.stringify({event_id: crypto.randomUUID(), name, session_id: sessionId, channel: 'landing'})
   });
   if (!response.ok) throw new Error('telemetry_rejected_' + response.status);
   return true;
