@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/api/events/public", "destination": "/api/events-public.mjs" },
+    { "source": "/api/events/public", "destination": "/api/events-public" },
     { "source": "/", "destination": "/public/index.html" }
   ],
   "headers": [

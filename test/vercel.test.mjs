@@ -35,10 +35,10 @@ test('production telemetry rejects until persistence exists', () => {
   assert.equal(body.error, 'persistent_telemetry_not_configured');
 });
 
-test('vercel routing publishes landing and event endpoint', async () => {
+test('vercel routing publishes landing and exact event endpoint', async () => {
   const raw = await readFile(new URL('../vercel.json', import.meta.url), 'utf8');
   const cfg = JSON.parse(raw);
   assert.ok(cfg.rewrites.some(x => x.source === '/' && x.destination === '/public/index.html'));
-  assert.ok(cfg.rewrites.some(x => x.source === '/api/events/public'));
+  assert.ok(cfg.rewrites.some(x => x.source === '/api/events/public' && x.destination === '/api/events-public'));
   assert.equal(cfg.cleanUrls, true);
 });
