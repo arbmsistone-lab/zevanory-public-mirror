@@ -32,3 +32,11 @@ test('landing includes all approved aggregate operational metrics', () => {
     assert.match(html, new RegExp(`data-kpi="${key}"`));
   }
 });
+
+test('landing exposes audited release and global sales safety state', () => {
+  assert.match(html, /fetch\('\/api\/release'/);
+  assert.match(html, /fetch\('\/api\/config'/);
+  assert.match(html, /id="release-id"/);
+  assert.match(html, /id="sales-mode"/);
+  assert.match(html, /BLOQUEADO GLOBALMENTE/);
+});
