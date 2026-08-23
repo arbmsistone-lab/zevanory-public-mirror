@@ -21,3 +21,6 @@ Antes de editar identidade publica, dominio, landing ou seus testes, leia WORKST
 Os arquivos reservados dessa frente nao podem ser sobrescritos por outro chat/agente durante trabalho concorrente.
 Sempre execute `node scripts/identity-guard.mjs` antes de testes finais e deploy.
 Falha do identity guard e blocker absoluto de publicacao.
+Antes de qualquer deploy, releia WORKSTREAMS.md e trate producao como operacao serializada.
+Deploy deve sair da raiz C:\Sistemas\ZEVANORY com pacote completo; deployment parcial e proibido.
+A release so fecha se o alias publico continuar apontando para o deployment exato promovido durante a Auditoria 3.

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import handler,{asaasBaseUrl,fetchAsaasPayment} from '../api/webhooks/asaas.mjs';
+import handler,{fetchAsaasPayment} from '../api/webhooks/asaas.mjs';
+import { asaasBaseUrl } from '../src/asaas.mjs';
 
 function mockReq(headers={},body={},method='POST') { return {headers,body,method}; }
 function mockRes() {

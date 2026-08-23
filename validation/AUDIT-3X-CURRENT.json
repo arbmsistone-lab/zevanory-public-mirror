@@ -187,6 +187,52 @@
       ]
     },
     {
+      "id": "CODE-ORDER",
+      "label": "src/order.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax order",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "order tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "order contract is canonical and sandbox-safe",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-ASAAS-CHECKOUT",
+      "label": "api/checkout/asaas.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax asaas checkout",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "asaas checkout tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "checkout kill switches and uncertain state are present",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "CODE-EVIDENCE-VERIFIER",
       "label": "scripts/verify_evidence_gate.ps1",
       "approved_operations": 3,
@@ -578,6 +624,52 @@
       ]
     },
     {
+      "id": "DEF-ORDERS-MIGRATION",
+      "label": "db/migrations/003_orders_checkout.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "request id uniqueness defined",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "financial events link to internal order",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "migration ledger 003 exists",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-CHECKOUT-GATE",
+      "label": "evidence/EG-0014-pedido-checkout.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "checkout evidence gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "checkout gate tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "checkout never proves payment",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "DEF-VERCEL-CONFIG",
       "label": "vercel.json",
       "approved_operations": 3,
@@ -595,6 +687,29 @@
         },
         {
           "name": "root and events rewrites defined",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-DEPLOY-SERIALIZATION",
+      "label": "evidence/EG-0015-deploy-serializado.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "deploy serialization gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "workstreams requires full serialized deploy",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "agent requires alias identity verification",
           "status": "APPROVED",
           "detail": "true"
         }
@@ -717,8 +832,8 @@
     }
   ],
   "totals": {
-    "units": 31,
-    "approved": 31,
+    "units": 36,
+    "approved": 36,
     "failed": 0
   },
   "verdict": "APPROVED"

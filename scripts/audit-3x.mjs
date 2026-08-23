@@ -35,7 +35,7 @@ function unit(id, label, operations) {
 
 const fullTests = command('full test suite', process.execPath, ['--test',
   'test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs',
-  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs']);
+  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs']);
 
 unit('CODE-CONFIG', 'src/config.mjs', [
   command('syntax config', process.execPath, ['--check','src/config.mjs']),
@@ -82,6 +82,16 @@ unit('CODE-ASAAS-WEBHOOK','api/webhooks/asaas.mjs',[
   command('syntax asaas webhook',process.execPath,['--check','api/webhooks/asaas.mjs']),
   command('asaas webhook tests',process.execPath,['--test','test/asaas-webhook.test.mjs']),
   op('webhook auth and API lookup fail closed',()=>t('api/webhooks/asaas.mjs').includes('asaas-access-token')&&t('api/webhooks/asaas.mjs').includes('fetchAsaasPayment')&&t('api/webhooks/asaas.mjs').includes('payment_reconciliation_failed')),
+]);
+unit('CODE-ORDER','src/order.mjs',[
+  command('syntax order',process.execPath,['--check','src/order.mjs']),
+  command('order tests',process.execPath,['--test','test/order.test.mjs']),
+  op('order contract is canonical and sandbox-safe',()=>t('src/order.mjs').includes('ZEVANORY:${PROJECT.experimentId}')&&t('src/order.mjs').includes('sandbox\\.asaas\\.com\\/checkoutSession')),
+]);
+unit('CODE-ASAAS-CHECKOUT','api/checkout/asaas.mjs',[
+  command('syntax asaas checkout',process.execPath,['--check','api/checkout/asaas.mjs']),
+  command('asaas checkout tests',process.execPath,['--test','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs']),
+  op('checkout kill switches and uncertain state are present',()=>t('api/checkout/asaas.mjs').includes('checkout_disabled')&&t('api/checkout/asaas.mjs').includes('checkout_sandbox_only')&&t('api/checkout/asaas.mjs').includes('checkout_uncertain')),
 ]);
 unit('CODE-EVIDENCE-VERIFIER', 'scripts/verify_evidence_gate.ps1', [
   op('verifier exists', () => existsSync(join(root,'scripts','verify_evidence_gate.ps1'))),
@@ -134,7 +144,7 @@ unit('DEF-SCOPE', 'specs/SCOPE_BOUNDARY.md', [
   op('external absolute paths forbidden', () => t('specs/SCOPE_BOUNDARY.md').includes('caminho absoluto para outro sistema')),
 ]);
 
-const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs'];
+const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs'];
 unit('ASSURANCE-TESTS','test harness',[
   op('all test files exist',()=>testFiles.every((f)=>existsSync(join(root,f)))),
   op('all test files syntax-valid',()=>testFiles.every((f)=>spawnSync(process.execPath,['--check',f],{cwd:root,encoding:'utf8'}).status===0)),
@@ -176,10 +186,25 @@ unit('DEF-PAYMENT-PROVIDER','evidence/EG-0013-provedor-pagamento-asaas.md',[
   command('payment provider tests',process.execPath,['--test','test/asaas.test.mjs','test/asaas-webhook.test.mjs']),
   op('browser callback never becomes financial truth',()=>t('evidence/EG-0013-provedor-pagamento-asaas.md').includes('nunca confirma sozinho')&&t('evidence/EG-0013-provedor-pagamento-asaas.md').includes('reconciliar pela API')),
 ]);
+unit('DEF-ORDERS-MIGRATION','db/migrations/003_orders_checkout.sql',[
+  op('request id uniqueness defined',()=>t('db/migrations/003_orders_checkout.sql').includes('request_id uuid NOT NULL UNIQUE')),
+  op('financial events link to internal order',()=>t('db/migrations/003_orders_checkout.sql').includes('order_id uuid REFERENCES orders(order_id)')),
+  op('migration ledger 003 exists',()=>t('db/migrations/003_orders_checkout.sql').includes('003_orders_checkout')&&t('db/migrations/003_orders_checkout.sql').includes('COMMIT;')),
+]);
+unit('DEF-CHECKOUT-GATE','evidence/EG-0014-pedido-checkout.md',[
+  op('checkout evidence gate approved',()=>t('evidence/EG-0014-pedido-checkout.md').includes('Veredito: APROVADO')),
+  command('checkout gate tests',process.execPath,['--test','test/order.test.mjs','test/checkout-asaas.test.mjs']),
+  op('checkout never proves payment',()=>t('evidence/EG-0014-pedido-checkout.md').includes('Nenhuma fonte autoriza tratar redirect/sucesso de checkout como pagamento confirmado')),
+]);
 unit('DEF-VERCEL-CONFIG','vercel.json',[
   op('vercel json parses',()=>Boolean(JSON.parse(t('vercel.json')).rewrites)),
   command('vercel tests validate routing',process.execPath,['--test','test/vercel.test.mjs']),
   op('root and events rewrites defined',()=>t('vercel.json').includes('/public/index.html')&&t('vercel.json').includes('/api/events/public')),
+]);
+unit('DEF-DEPLOY-SERIALIZATION','evidence/EG-0015-deploy-serializado.md',[
+  op('deploy serialization gate approved',()=>t('evidence/EG-0015-deploy-serializado.md').includes('Veredito: APROVADO')),
+  op('workstreams requires full serialized deploy',()=>t('WORKSTREAMS.md').includes('Deploy de producao e operacao serializada')&&t('WORKSTREAMS.md').includes('pacote completo')),
+  op('agent requires alias identity verification',()=>t('AGENTS.md').includes('alias publico continuar apontando para o deployment exato promovido')),
 ]);
 unit('DEF-DEPLOY-SAFETY','evidence/EG-0008-deploy-zevanory-vercel.md',[
   op('deploy evidence gate approved',()=>t('evidence/EG-0008-deploy-zevanory-vercel.md').includes('Veredito: APROVADO')),

@@ -24,3 +24,10 @@ Nao devem introduzir GIRO, GIRO LOCAL, girolocal.api.br ou CTA/piloto comercial 
 Antes de editar arquivo reservado, releia este documento e ZEVANORY_MASTER.md.
 Se houver trabalho concorrente, nao sobrescreva o arquivo: registre a necessidade e siga em arquivo/frente diferente.
 Qualquer regressao de identidade bloqueia teste, auditoria e deploy.
+
+## Regra de deploy concorrente
+Deploy de producao e operacao serializada: somente um chat/agente publica por vez.
+Todo deploy deve partir da raiz C:\Sistemas\ZEVANORY e incluir o pacote completo do estado auditado.
+E proibido publicar pacote parcial que omita rotas ou arquivos de outra frente ativa.
+Antes e depois do deploy, conferir manifest de funcoes/rotas e repetir a prova operacional no alias publico.
+Se o alias mudar para outro deployment durante as auditorias, a release fica BLOQUEADA e deve ser refeita.

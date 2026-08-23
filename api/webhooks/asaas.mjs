@@ -5,16 +5,8 @@ import {
   normalizeFinancialEvent,
   paymentMatchesWebhook,
   parseExternalReference,
+  asaasBaseUrl,
 } from '../../src/asaas.mjs';
-
-const API_BASES = Object.freeze({
-  sandbox: 'https://api-sandbox.asaas.com/v3',
-  production: 'https://api.asaas.com/v3',
-});
-
-export function asaasBaseUrl(env) {
-  return API_BASES[String(env || '').toLowerCase()] || '';
-}
 
 export async function fetchAsaasPayment(paymentId, env, apiKey, fetchImpl = fetch) {
   const base = asaasBaseUrl(env);
@@ -66,11 +58,11 @@ export default async function handler(req, res) {
     const sql = neon(process.env.DATABASE_URL);
     const rows = await sql.query(`
       INSERT INTO financial_events
-        (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount)
-      VALUES ($1,'asaas',$2,$3,$4,$5,$6,$7)
+        (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount,order_id)
+      VALUES ($1,'asaas',$2,$3,$4,$5,$6,$7,$8)
       ON CONFLICT DO NOTHING
       RETURNING provider_event_id
-    `, [webhook.providerEventId,webhook.paymentId,normalized,webhook.eventName,String(payment.status),externalReference,Number(payment.value)]);
+    `, [webhook.providerEventId,webhook.paymentId,normalized,webhook.eventName,String(payment.status),externalReference,Number(payment.value),orderId]);
     res.statusCode = 202;
     return res.end(JSON.stringify({ accepted: true, duplicate: rows.length === 0, event: normalized, order_id: orderId }));
   } catch {

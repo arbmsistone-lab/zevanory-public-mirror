@@ -1,6 +1,15 @@
 import crypto from 'node:crypto';
 import { PROJECT, isUuid } from './config.mjs';
 
+export const ASAAS_API_BASES = Object.freeze({
+  sandbox: 'https://api-sandbox.asaas.com/v3',
+  production: 'https://api.asaas.com/v3',
+});
+
+export function asaasBaseUrl(env) {
+  return ASAAS_API_BASES[String(env || '').toLowerCase()] || '';
+}
+
 export const ASAAS_EVENTS = new Set([
   'PAYMENT_CONFIRMED',
   'PAYMENT_RECEIVED',
