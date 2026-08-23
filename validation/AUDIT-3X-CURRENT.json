@@ -141,6 +141,52 @@
       ]
     },
     {
+      "id": "CODE-ASAAS",
+      "label": "src/asaas.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax asaas",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "asaas tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "provider truth reconciliation required",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-ASAAS-WEBHOOK",
+      "label": "api/webhooks/asaas.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax asaas webhook",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "asaas webhook tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "webhook auth and API lookup fail closed",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "CODE-EVIDENCE-VERIFIER",
       "label": "scripts/verify_evidence_gate.ps1",
       "approved_operations": 3,
@@ -486,6 +532,52 @@
       ]
     },
     {
+      "id": "DEF-FINANCIAL-MIGRATION",
+      "label": "db/migrations/002_financial_events.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "provider event id is primary key",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "payment state dedup index exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "migration ledger 002 exists",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PAYMENT-PROVIDER",
+      "label": "evidence/EG-0013-provedor-pagamento-asaas.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "payment provider evidence gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "payment provider tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "browser callback never becomes financial truth",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "DEF-VERCEL-CONFIG",
       "label": "vercel.json",
       "approved_operations": 3,
@@ -625,8 +717,8 @@
     }
   ],
   "totals": {
-    "units": 27,
-    "approved": 27,
+    "units": 31,
+    "approved": 31,
     "failed": 0
   },
   "verdict": "APPROVED"

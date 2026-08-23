@@ -35,7 +35,7 @@ function unit(id, label, operations) {
 
 const fullTests = command('full test suite', process.execPath, ['--test',
   'test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs',
-  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs']);
+  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs']);
 
 unit('CODE-CONFIG', 'src/config.mjs', [
   command('syntax config', process.execPath, ['--check','src/config.mjs']),
@@ -73,6 +73,16 @@ unit('CODE-AUDIT', 'scripts/audit-3x.mjs', [
   op('three-operation fail-closed rule present', () => t('scripts/audit-3x.mjs').includes('approved >= 3') && t('scripts/audit-3x.mjs').includes("status !== 'APPROVED'")),
 ]);
 
+unit('CODE-ASAAS','src/asaas.mjs',[
+  command('syntax asaas',process.execPath,['--check','src/asaas.mjs']),
+  command('asaas tests',process.execPath,['--test','test/asaas.test.mjs']),
+  op('provider truth reconciliation required',()=>t('src/asaas.mjs').includes('paymentMatchesWebhook')&&t('src/asaas.mjs').includes('parseExternalReference')),
+]);
+unit('CODE-ASAAS-WEBHOOK','api/webhooks/asaas.mjs',[
+  command('syntax asaas webhook',process.execPath,['--check','api/webhooks/asaas.mjs']),
+  command('asaas webhook tests',process.execPath,['--test','test/asaas-webhook.test.mjs']),
+  op('webhook auth and API lookup fail closed',()=>t('api/webhooks/asaas.mjs').includes('asaas-access-token')&&t('api/webhooks/asaas.mjs').includes('fetchAsaasPayment')&&t('api/webhooks/asaas.mjs').includes('payment_reconciliation_failed')),
+]);
 unit('CODE-EVIDENCE-VERIFIER', 'scripts/verify_evidence_gate.ps1', [
   op('verifier exists', () => existsSync(join(root,'scripts','verify_evidence_gate.ps1'))),
   command('approved gate passes', 'powershell.exe', ['-NoProfile','-ExecutionPolicy','Bypass','-File','scripts/verify_evidence_gate.ps1','-GateFile','evidence/EG-0007-validacao-operacional-3x.md'], 0),
@@ -124,7 +134,7 @@ unit('DEF-SCOPE', 'specs/SCOPE_BOUNDARY.md', [
   op('external absolute paths forbidden', () => t('specs/SCOPE_BOUNDARY.md').includes('caminho absoluto para outro sistema')),
 ]);
 
-const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs'];
+const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs'];
 unit('ASSURANCE-TESTS','test harness',[
   op('all test files exist',()=>testFiles.every((f)=>existsSync(join(root,f)))),
   op('all test files syntax-valid',()=>testFiles.every((f)=>spawnSync(process.execPath,['--check',f],{cwd:root,encoding:'utf8'}).status===0)),
@@ -155,6 +165,16 @@ unit('DEF-DB-MIGRATION','db/migrations/001_telemetry_events.sql',[
   op('primary key idempotency defined',()=>t('db/migrations/001_telemetry_events.sql').includes('event_id uuid PRIMARY KEY')),
   op('financial event names constrained',()=>t('db/migrations/001_telemetry_events.sql').includes('payment_confirmed')&&t('db/migrations/001_telemetry_events.sql').includes('refund_confirmed')),
   op('migration ledger defined',()=>t('db/migrations/001_telemetry_events.sql').includes('schema_migrations')&&t('db/migrations/001_telemetry_events.sql').includes('001_telemetry_events')),
+]);
+unit('DEF-FINANCIAL-MIGRATION','db/migrations/002_financial_events.sql',[
+  op('provider event id is primary key',()=>t('db/migrations/002_financial_events.sql').includes('provider_event_id text PRIMARY KEY')),
+  op('payment state dedup index exists',()=>t('db/migrations/002_financial_events.sql').includes('financial_events_payment_state_idx')),
+  op('migration ledger 002 exists',()=>t('db/migrations/002_financial_events.sql').includes('schema_migrations')&&t('db/migrations/002_financial_events.sql').includes('002_financial_events')&&t('db/migrations/002_financial_events.sql').includes('COMMIT;')),
+]);
+unit('DEF-PAYMENT-PROVIDER','evidence/EG-0013-provedor-pagamento-asaas.md',[
+  op('payment provider evidence gate approved',()=>t('evidence/EG-0013-provedor-pagamento-asaas.md').includes('Veredito: APROVADO')),
+  command('payment provider tests',process.execPath,['--test','test/asaas.test.mjs','test/asaas-webhook.test.mjs']),
+  op('browser callback never becomes financial truth',()=>t('evidence/EG-0013-provedor-pagamento-asaas.md').includes('nunca confirma sozinho')&&t('evidence/EG-0013-provedor-pagamento-asaas.md').includes('reconciliar pela API')),
 ]);
 unit('DEF-VERCEL-CONFIG','vercel.json',[
   op('vercel json parses',()=>Boolean(JSON.parse(t('vercel.json')).rewrites)),
