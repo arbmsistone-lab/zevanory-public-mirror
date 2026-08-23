@@ -38,13 +38,13 @@ G1-C: preco experimental R$297–R$797; hipotese central R$497; nao validado com
 WhatsApp oficial: +55 88 99234-0423 / E.164 5588992340423.
 Infraestrutura G2: homepage institucional em /, piloto comercial em /piloto, telemetria persistente Neon e runtime auditado.
 Deploy Vercel: projeto zevanory-site em producao READY.
-Auditoria atual: 54/54 testes e 39/39 unidades 3X no desenvolvimento atual. Release candidate imutavel anterior: f447d3f / ZEVANORY-EG0014-RC1. Deploy de producao exige promocao serializada e verificacao do alias antes do fechamento.
+Auditoria atual: 57/57 testes e 40/40 unidades 3X aprovadas no estado atual; tres auditorias finais do saneamento apos migration 004 aprovadas. Release fingerprint em producao: ZEVANORY-EG0014-RC1. Deploy de producao exige promocao serializada e verificacao do alias antes do fechamento.
 
 ## ESTADO ATUAL
 EXP-0001: PRONTO TECNICAMENTE / NAO INICIADO COMERCIALMENTE.
 G2 comercial: ABERTO. Nao existe pagamento real reconciliado.
 Telemetria publica em producao: ATIVA e persistente no Neon; idempotencia comprovada por event_id.
-Eventos financeiros: BLOQUEADOS para venda real. Camada Asaas implementada com authToken, reconciliacao por GET /payments/{id}, idempotencia financeira, migration 002 e migration 003 aplicadas. Estorno parcial foi corrigido no codigo com reconciliacao cumulativa de refunds DONE e migration 004 preparada, mas AINDA NAO aplicada ao Neon. Pedido interno e checkout Sandbox existem, com CHECKOUT_ENABLED desativado por padrao. Ainda faltam credenciais Asaas proprias e primeiro checkout Sandbox real.
+Eventos financeiros: BLOQUEADOS para venda real. Camada Asaas implementada com authToken, reconciliacao por GET /payments/{id}, idempotencia financeira, migrations 002, 003 e 004 aplicadas no Neon. Estorno parcial usa reconciliacao cumulativa apenas de refunds DONE; ledger, coluna refunded_total e indices de deduplicacao da migration 004 foram verificados no banco. Pedido interno e checkout Sandbox existem, com CHECKOUT_ENABLED desativado por padrao. Ainda faltam credenciais Asaas proprias e primeiro checkout Sandbox real.
 Dominio zevanory.api.br: NAO associado ao projeto Vercel neste estado; tentativa de associacao retorna 403 domain_not_owned.
 TXT de verificacao anteriormente registrado: deve ser reconfirmado somente depois que a Vercel reconhecer a posse do dominio; nao tratar o valor anterior como prova atual.
 DNS publico atual: nome existe sem endereco A/AAAA funcional; TXT _vercel ainda ausente.
