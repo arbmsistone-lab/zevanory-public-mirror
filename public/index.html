@@ -51,13 +51,17 @@ async function event(name) {
   const button = document.getElementById('cta');
   const status = document.getElementById('status');
   try {
-    await event('page_view');
     const response = await fetch('/api/config', {cache:'no-store'});
     if (!response.ok) throw new Error('config_rejected_' + response.status);
     const config = await response.json();
     document.getElementById('offer').textContent = config.offer_id;
     document.getElementById('price').textContent = 'R$ ' + Number(config.experimental_price_brl).toLocaleString('pt-BR');
-    if (!config.whatsapp_enabled) throw new Error('whatsapp_not_configured');
+    try { await event('page_view'); } catch {}
+    if (!config.whatsapp_enabled) {
+      button.disabled = true;
+      status.textContent = 'Projeto publicado em modo seguro. Ativação comercial aguardando telemetria persistente.';
+      return;
+    }
     button.disabled = false;
     status.textContent = 'Canal oficial configurado e telemetria ativa.';
     button.onclick = async () => {
@@ -74,7 +78,6 @@ async function event(name) {
   } catch (error) {
     button.disabled = true;
     status.textContent = 'CTA bloqueado por validação de segurança.';
-    console.error(error);
   }
 })();
 </script>

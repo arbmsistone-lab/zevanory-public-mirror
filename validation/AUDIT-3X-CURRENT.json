@@ -348,6 +348,98 @@
       ]
     },
     {
+      "id": "CODE-VERCEL-API-CONFIG",
+      "label": "api/config.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax vercel config api",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "vercel tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "production config remains fail-closed",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-VERCEL-API-EVENT",
+      "label": "api/events-public.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax vercel event api",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "vercel event tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "production telemetry rejects without persistence",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-VERCEL-CONFIG",
+      "label": "vercel.json",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "vercel json parses",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "vercel tests validate routing",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "root and events rewrites defined",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-DEPLOY-SAFETY",
+      "label": "evidence/EG-0008-deploy-zevanory-vercel.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "deploy evidence gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "full test suite",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "production kill-switch documented",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -372,8 +464,8 @@
     }
   ],
   "totals": {
-    "units": 16,
-    "approved": 16,
+    "units": 20,
+    "approved": 20,
     "failed": 0
   },
   "verdict": "APPROVED"

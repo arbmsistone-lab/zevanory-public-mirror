@@ -35,7 +35,7 @@ function unit(id, label, operations) {
 
 const fullTests = command('full test suite', process.execPath, ['--test',
   'test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs',
-  'test/landing.test.mjs','test/server-v2.integration.test.mjs']);
+  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs']);
 
 unit('CODE-CONFIG', 'src/config.mjs', [
   command('syntax config', process.execPath, ['--check','src/config.mjs']),
@@ -119,13 +119,33 @@ unit('DEF-SCOPE', 'specs/SCOPE_BOUNDARY.md', [
   op('external absolute paths forbidden', () => t('specs/SCOPE_BOUNDARY.md').includes('caminho absoluto para outro sistema')),
 ]);
 
-const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs'];
+const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs'];
 unit('ASSURANCE-TESTS','test harness',[
   op('all test files exist',()=>testFiles.every((f)=>existsSync(join(root,f)))),
   op('all test files syntax-valid',()=>testFiles.every((f)=>spawnSync(process.execPath,['--check',f],{cwd:root,encoding:'utf8'}).status===0)),
   fullTests,
 ]);
 
+unit('CODE-VERCEL-API-CONFIG','api/config.mjs',[
+  command('syntax vercel config api',process.execPath,['--check','api/config.mjs']),
+  command('vercel tests',process.execPath,['--test','test/vercel.test.mjs']),
+  op('production config remains fail-closed',()=>t('api/config.mjs').includes('whatsapp_enabled: false')&&t('api/config.mjs').includes('safe-published-telemetry-pending')),
+]);
+unit('CODE-VERCEL-API-EVENT','api/events-public.mjs',[
+  command('syntax vercel event api',process.execPath,['--check','api/events-public.mjs']),
+  command('vercel event tests',process.execPath,['--test','test/vercel.test.mjs']),
+  op('production telemetry rejects without persistence',()=>t('api/events-public.mjs').includes('statusCode = 503')&&t('api/events-public.mjs').includes('persistent_telemetry_not_configured')),
+]);
+unit('DEF-VERCEL-CONFIG','vercel.json',[
+  op('vercel json parses',()=>Boolean(JSON.parse(t('vercel.json')).rewrites)),
+  command('vercel tests validate routing',process.execPath,['--test','test/vercel.test.mjs']),
+  op('root and events rewrites defined',()=>t('vercel.json').includes('/public/index.html')&&t('vercel.json').includes('/api/events/public')),
+]);
+unit('DEF-DEPLOY-SAFETY','evidence/EG-0008-deploy-zevanory-vercel.md',[
+  op('deploy evidence gate approved',()=>t('evidence/EG-0008-deploy-zevanory-vercel.md').includes('Veredito: APROVADO')),
+  fullTests,
+  op('production kill-switch documented',()=>t('evidence/EG-0008-deploy-zevanory-vercel.md').includes('manter CTA comercial bloqueado')),
+]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),
