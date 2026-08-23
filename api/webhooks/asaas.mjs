@@ -94,7 +94,7 @@ export default async function handler(req, res) {
     const outcome=rows[0]||{};
     if(Number(outcome.target_count)!==1) return json(res,409,{error:'order_state_invalid',accepted:false});
     if(Number(outcome.inserted_count)===1 && !outcome.order_status) return json(res,503,{error:'order_state_update_failed',accepted:false});
-    res.statusCode = 202;
+    res.statusCode = 200;
     return res.end(JSON.stringify({ accepted: true, duplicate: Number(outcome.inserted_count)===0, event: normalized, order_id: orderId, order_status: outcome.order_status||outcome.current_status, refunded_total: refundedTotal }));
   } catch {
     res.statusCode = 503;

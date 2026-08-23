@@ -70,3 +70,10 @@ test('webhook persists provider-reconciled cumulative refund total',async()=>{
   assert.match(source,/normalized === 'refund_confirmed'/);
   assert.match(source,/ON CONFLICT DO NOTHING/);
 });
+
+
+test('webhook successful acknowledgement uses provider-required HTTP 200',async()=>{
+  const source=await (await import('node:fs/promises')).readFile(new URL('../api/webhooks/asaas.mjs',import.meta.url),'utf8');
+  assert.match(source,/res\.statusCode = 200;\s*return res\.end\(JSON\.stringify\(\{ accepted: true/);
+  assert.doesNotMatch(source,/res\.statusCode = 202;\s*return res\.end\(JSON\.stringify\(\{ accepted: true/);
+});
