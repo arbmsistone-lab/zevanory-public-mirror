@@ -3,83 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>IA aplicada a Vendas no WhatsApp</title>
+  <title>ZEVANORY</title>
+  <meta name="description" content="ZEVANORY — plataforma digital em desenvolvimento." />
   <style>
-    body{font-family:Arial,sans-serif;margin:0;background:#0b0d10;color:#f5f7fa}
-    main{max-width:760px;margin:0 auto;padding:64px 24px}
-    .tag{display:inline-block;padding:6px 10px;border:1px solid #3b4552;border-radius:999px;color:#bac5d3;font-size:14px}
-    h1{font-size:44px;line-height:1.05;margin:20px 0 16px}
-    p{font-size:19px;line-height:1.6;color:#c8d0da}
-    .card{margin-top:28px;padding:24px;border:1px solid #28313c;border-radius:18px;background:#12161b}
-    ul{line-height:1.8;color:#c8d0da}
-    button{font-size:17px;padding:14px 20px;border:0;border-radius:12px;cursor:pointer}
-    button:disabled{cursor:not-allowed;opacity:.45}
-    small{display:block;margin-top:14px;color:#8793a2;line-height:1.5}
+    :root{color-scheme:dark;--bg:#050607;--panel:#0d0f12;--line:#20242a;--text:#f3f5f7;--muted:#8f98a3;--accent:#d7ff4a}
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}body{min-height:100vh;overflow:hidden}
+    .shell{min-height:100vh;display:grid;grid-template-rows:auto 1fr auto;padding:28px 38px}header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:22px}.brand{font-size:18px;font-weight:800;letter-spacing:.34em}.status{font-size:12px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+    main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,.65fr);gap:48px;align-items:center;max-width:1440px;width:100%;margin:0 auto}.eyebrow{font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.2em;font-weight:700;margin-bottom:18px}h1{font-size:clamp(56px,8vw,118px);line-height:.9;letter-spacing:-.055em;margin:0;max-width:880px}.lead{font-size:clamp(18px,2vw,25px);line-height:1.45;color:#b7bec7;max-width:720px;margin:30px 0 0}
+    .panel{border:1px solid var(--line);background:linear-gradient(180deg,#101318 0%,#090b0e 100%);border-radius:26px;padding:30px;min-height:330px;display:flex;flex-direction:column;justify-content:space-between}.panel h2{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:#aab2bd;margin:0}.metric{margin-top:34px}.metric strong{display:block;font-size:38px;letter-spacing:-.04em}.metric span{display:block;color:var(--muted);font-size:14px;margin-top:7px}.rule{height:1px;background:var(--line);margin:26px 0}.note{font-size:15px;line-height:1.55;color:#aab2bd}
+    footer{display:flex;justify-content:space-between;gap:24px;border-top:1px solid var(--line);padding-top:20px;color:#707986;font-size:12px;letter-spacing:.08em;text-transform:uppercase}@media(max-width:900px){body{overflow:auto}.shell{padding:22px}.brand{letter-spacing:.2em}main{grid-template-columns:1fr;gap:30px;padding:52px 0}.panel{min-height:0}footer{flex-direction:column}}
   </style>
 </head>
-<body><main>
-  <span class="tag">Piloto comercial — <span id="offer">carregando</span></span>
-  <h1>Organize vendas e atendimento no WhatsApp com apoio de IA.</h1>
-  <p>Um piloto prático para pequenos negócios que recebem leads pelo WhatsApp e ainda dependem de processos manuais para qualificar, acompanhar e fazer follow-up.</p>
-  <div class="card">
-    <strong>O piloto inclui</strong>
-    <ul>
-      <li>diagnóstico do fluxo atual;</li>
-      <li>critérios de qualificação de leads;</li>
-      <li>prompts e rotinas assistidas por IA;</li>
-      <li>follow-up e handoff humano;</li>
-      <li>instrumentação dos eventos comerciais essenciais.</li>
-    </ul>
-    <p><strong>Preço experimental:</strong> <span id="price">carregando...</span></p>
-    <button id="cta" disabled>Falar sobre o piloto no WhatsApp</button>
-    <small id="status">Carregando configuração segura...</small>
-    <small>Este piloto não promete aumento de faturamento, lucro ou conversão. O objetivo inicial é implantar e medir um processo comercial mais estruturado.</small>
-  </div>
-</main>
-<script>
-const sessionId = crypto.randomUUID();
-async function event(name) {
-  const response = await fetch('/api/events/public', {
-    method: 'POST',
-    headers: {'content-type':'application/json'},
-    body: JSON.stringify({event_id: crypto.randomUUID(), name, session_id: sessionId, channel: 'landing'})
-  });
-  if (!response.ok) throw new Error('telemetry_rejected_' + response.status);
-  return true;
-}
-(async () => {
-  const button = document.getElementById('cta');
-  const status = document.getElementById('status');
-  try {
-    const response = await fetch('/api/config', {cache:'no-store'});
-    if (!response.ok) throw new Error('config_rejected_' + response.status);
-    const config = await response.json();
-    document.getElementById('offer').textContent = config.offer_id;
-    document.getElementById('price').textContent = 'R$ ' + Number(config.experimental_price_brl).toLocaleString('pt-BR');
-    try { await event('page_view'); } catch {}
-    if (!config.whatsapp_enabled) {
-      button.disabled = true;
-      status.textContent = 'Projeto publicado em modo seguro. Ativação comercial aguardando telemetria persistente.';
-      return;
-    }
-    button.disabled = false;
-    status.textContent = 'Canal oficial configurado e telemetria ativa.';
-    button.onclick = async () => {
-      button.disabled = true;
-      try {
-        await event('cta_whatsapp');
-        const text = encodeURIComponent('Olá, quero entender o piloto de IA aplicada a Vendas e Atendimento no WhatsApp.');
-        location.href = 'https://wa.me/' + config.whatsapp_number + '?text=' + text;
-      } catch {
-        status.textContent = 'Não foi possível registrar o contato com segurança. Tente novamente.';
-        button.disabled = false;
-      }
-    };
-  } catch (error) {
-    button.disabled = true;
-    status.textContent = 'CTA bloqueado por validação de segurança.';
-  }
-})();
-</script>
+<body>
+  <div class="shell"><header><div class="brand">ZEVANORY</div><div class="status">Novo projeto · estrutura independente</div></header>
+  <main><section><div class="eyebrow">Digital Intelligence Company</div><h1>NOVO.<br>SEM HERANÇA.</h1><p class="lead">A ZEVANORY nasce como uma operação digital própria, construída do zero para validar tecnologia, automação e vendas com evidência real — com identidade, painel e arquitetura visual próprios.</p></section>
+  <aside class="panel"><div><h2>Estado atual</h2><div class="metric"><strong>ZEVANORY</strong><span>Identidade oficial do projeto</span></div><div class="rule"></div><div class="metric"><strong>G0</strong><span>Fundação e validação antes da expansão</span></div></div><p class="note">Nenhum resultado comercial é simulado. Cada avanço precisa ser comprovado antes de entrar em produção.</p></aside></main>
+  <footer><span>© 2026 ZEVANORY</span><span>zevanory.api.br</span></footer></div>
 </body>
 </html>

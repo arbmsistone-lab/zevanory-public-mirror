@@ -83,6 +83,29 @@
           "detail": "exit=0"
         },
         {
+          "name": "institutional identity only",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "public domain identity",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PILOT",
+      "label": "public/piloto.html",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "pilot tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
           "name": "CTA disabled by default",
           "status": "APPROVED",
           "detail": "true"
@@ -602,8 +625,8 @@
     }
   ],
   "totals": {
-    "units": 26,
-    "approved": 26,
+    "units": 27,
+    "approved": 27,
     "failed": 0
   },
   "verdict": "APPROVED"

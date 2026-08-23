@@ -4,21 +4,21 @@ import { readFile } from 'node:fs/promises';
 
 const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
 
-test('CTA starts fail-closed', () => {
-  assert.match(html, /<button id="cta" disabled>/);
-  assert.match(html, /CTA bloqueado por valida/);
+test('landing identifies ZEVANORY as the only public brand', () => {
+  assert.match(html, /<title>ZEVANORY<\/title>/);
+  assert.match(html, /class="brand">ZEVANORY</);
+  assert.doesNotMatch(html, /GIRO LOCAL/i);
 });
 
-test('WhatsApp redirect depends on accepted telemetry', () => {
-  const eventCall = html.indexOf("await event('cta_whatsapp')");
-  const redirect = html.indexOf("location.href = 'https://wa.me/'");
-  assert.ok(eventCall > 0);
-  assert.ok(redirect > eventCall);
-  assert.match(html, /if \(!response\.ok\) throw new Error/);
+test('landing is structurally independent from the previous commercial pilot', () => {
+  assert.match(html, /NOVO\.<br>SEM HERANÇA\./);
+  assert.match(html, /estrutura independente/i);
+  assert.doesNotMatch(html, /Preço experimental/i);
+  assert.doesNotMatch(html, /Falar sobre o piloto no WhatsApp/i);
 });
 
-test('landing receives commercial definitions from runtime config', () => {
-  assert.match(html, /config\.offer_id/);
-  assert.match(html, /config\.experimental_price_brl/);
-  assert.doesNotMatch(html, /5588992340423/);
+test('landing exposes the approved public domain identity', () => {
+  assert.match(html, /zevanory\.api\.br/);
+  assert.match(html, /Nenhum resultado comercial é simulado/);
+  assert.doesNotMatch(html, /girolocal\.api\.br/i);
 });

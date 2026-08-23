@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IA aplicada a Vendas no WhatsApp</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;background:#0b0d10;color:#f5f7fa}
+    main{max-width:760px;margin:0 auto;padding:64px 24px}
+    .tag{display:inline-block;padding:6px 10px;border:1px solid #3b4552;border-radius:999px;color:#bac5d3;font-size:14px}
+    h1{font-size:44px;line-height:1.05;margin:20px 0 16px}
+    p{font-size:19px;line-height:1.6;color:#c8d0da}
+    .card{margin-top:28px;padding:24px;border:1px solid #28313c;border-radius:18px;background:#12161b}
+    ul{line-height:1.8;color:#c8d0da}
+    button{font-size:17px;padding:14px 20px;border:0;border-radius:12px;cursor:pointer}
+    button:disabled{cursor:not-allowed;opacity:.45}
+    small{display:block;margin-top:14px;color:#8793a2;line-height:1.5}
+  </style>
+</head>
+<body><main>
+  <span class="tag">Piloto comercial — <span id="offer">carregando</span></span>
+  <h1>Organize vendas e atendimento no WhatsApp com apoio de IA.</h1>
+  <p>Um piloto prático para pequenos negócios que recebem leads pelo WhatsApp e ainda dependem de processos manuais para qualificar, acompanhar e fazer follow-up.</p>
+  <div class="card">
+    <strong>O piloto inclui</strong>
+    <ul>
+      <li>diagnóstico do fluxo atual;</li>
+      <li>critérios de qualificação de leads;</li>
+      <li>prompts e rotinas assistidas por IA;</li>
+      <li>follow-up e handoff humano;</li>
+      <li>instrumentação dos eventos comerciais essenciais.</li>
+    </ul>
+    <p><strong>Preço experimental:</strong> <span id="price">carregando...</span></p>
+    <button id="cta" disabled>Falar sobre o piloto no WhatsApp</button>
+    <small id="status">Carregando configuração segura...</small>
+    <small>Este piloto não promete aumento de faturamento, lucro ou conversão. O objetivo inicial é implantar e medir um processo comercial mais estruturado.</small>
+  </div>
+</main>
+<script>
+const sessionId = crypto.randomUUID();
+async function event(name) {
+  const response = await fetch('/api/events/public', {
+    method: 'POST',
+    headers: {'content-type':'application/json'},
+    body: JSON.stringify({event_id: crypto.randomUUID(), name, session_id: sessionId, channel: 'landing'})
+  });
+  if (!response.ok) throw new Error('telemetry_rejected_' + response.status);
+  return true;
+}
+(async () => {
+  const button = document.getElementById('cta');
+  const status = document.getElementById('status');
+  try {
+    const response = await fetch('/api/config', {cache:'no-store'});
+    if (!response.ok) throw new Error('config_rejected_' + response.status);
+    const config = await response.json();
+    document.getElementById('offer').textContent = config.offer_id;
+    document.getElementById('price').textContent = 'R$ ' + Number(config.experimental_price_brl).toLocaleString('pt-BR');
+    try { await event('page_view'); } catch {}
+    if (!config.whatsapp_enabled) {
+      button.disabled = true;
+      status.textContent = 'Projeto publicado em modo seguro. Ativação comercial aguardando telemetria persistente.';
+      return;
+    }
+    button.disabled = false;
+    status.textContent = 'Canal oficial configurado e telemetria ativa.';
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        await event('cta_whatsapp');
+        const text = encodeURIComponent('Olá, quero entender o piloto de IA aplicada a Vendas e Atendimento no WhatsApp.');
+        location.href = 'https://wa.me/' + config.whatsapp_number + '?text=' + text;
+      } catch {
+        status.textContent = 'Não foi possível registrar o contato com segurança. Tente novamente.';
+        button.disabled = false;
+      }
+    };
+  } catch (error) {
+    button.disabled = true;
+    status.textContent = 'CTA bloqueado por validação de segurança.';
+  }
+})();
+</script>
+</body>
+</html>

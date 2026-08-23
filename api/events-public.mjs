@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   }
   try {
     const sql = neon(process.env.DATABASE_URL);
-    const rows = await sql(`
+    const rows = await sql.query(`
       INSERT INTO telemetry_events
         (event_id,event_name,session_id,experiment_id,offer_id,channel,source)
       VALUES ($1,$2,$3,$4,$5,$6,$7)

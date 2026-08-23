@@ -23,6 +23,9 @@ Experimentos: hipotese, baseline/controle, metrica principal, diagnosticos, guar
 5. Single-agent primeiro; multi-agent somente se evals comprovarem ganho.
 6. Autonomia so depois de prova comercial, telemetria, baseline e experimento.
 7. Nenhum dashboard pode simular trabalho, venda ou resultado.
+8. Nenhuma etapa pode ser encerrada com erro conhecido, pendencia tecnica aberta ou validacao parcial.
+9. Todo fechamento exige 3 auditorias finais independentes: local/testes, auditoria 3X estrutural e prova operacional em producao.
+10. Se qualquer uma das 3 auditorias falhar, a etapa permanece BLOQUEADA e nao pode ser declarada concluida.
 ## GATES
 EG: 3 evidencias -> G0 Mercado -> G1 Oferta -> G2 Venda manual -> G3 Telemetria -> G4 Baseline -> G5 IA offline -> G6 IA assistida -> G7 Experimento causal -> G8 Rentabilidade -> G9 Repeticao -> G10 Generalizacao -> G11 Escala -> G12 Autonomia.
 
@@ -32,23 +35,23 @@ G1-A: primeiro subnicho de investigacao: educacao profissional/cursos.
 G1-B: OFFER-0001 — IA aplicada a Vendas e Atendimento no WhatsApp, como hipotese para teste.
 G1-C: preco experimental R$297–R$797; hipotese central R$497; nao validado comercialmente.
 WhatsApp oficial: +55 88 99234-0423 / E.164 5588992340423.
-Infraestrutura G2: landing, telemetria fail-closed, separacao de eventos e runtime auditado.
+Infraestrutura G2: homepage institucional em /, piloto comercial em /piloto, telemetria persistente Neon e runtime auditado.
 Deploy Vercel: projeto zevanory-site em producao READY.
-Auditoria atual: 20/20 unidades, 3 operacoes por unidade; 22/22 testes antes das mudancas de governanca atuais.
+Auditoria atual: 32/32 testes e 27/27 unidades 3X antes das auditorias finais deste estado.
 
 ## ESTADO ATUAL
 EXP-0001: PRONTO TECNICAMENTE / NAO INICIADO COMERCIALMENTE.
 G2 comercial: ABERTO. Nao existe pagamento real reconciliado.
-Telemetria publica em producao: bloqueada intencionalmente ate persistencia confiavel.
+Telemetria publica em producao: ATIVA e persistente no Neon; idempotencia comprovada por event_id.
 Eventos financeiros: bloqueados ate provedor de pagamento autenticado.
 Dominio zevanory.api.br: associado ao projeto Vercel correto, mas verified=false.
 TXT exigido pela Vercel: _vercel.zevanory.api.br = vc-domain-verify=zevanory.api.br,a32ddbb728c60849ecbe.
-DNS publico atual: NXDOMAIN para o host ate a configuracao ser concluida.
+DNS publico atual: nome existe sem endereco A/AAAA funcional; TXT _vercel ainda ausente.
 
 ## PROXIMOS PASSOS AUTORIZADOS
 1. Concluir verificacao DNS e associacao funcional de zevanory.api.br.
 2. Revalidar dominio em pelo menos 3 resolvedores + HTTPS + rotas publicas.
-3. Escolher e integrar persistencia de telemetria somente apos Evidence Gate proprio.
+3. Persistencia Neon aprovada; manter monitoramento, idempotencia e reconciliacao.
 4. Escolher e integrar provedor de pagamento somente apos Evidence Gate proprio.
 5. Iniciar EXP-0001 e buscar comportamento economico real.
 6. Nao avancar para IA autonoma antes dos gates G2–G7 correspondentes.

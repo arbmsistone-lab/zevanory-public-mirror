@@ -59,8 +59,13 @@ unit('CODE-SERVER', 'src/server-v2.mjs', [
 
 unit('CODE-LANDING', 'public/index.html', [
   command('landing tests', process.execPath, ['--test','test/landing.test.mjs']),
-  op('CTA disabled by default', () => t('public/index.html').includes('<button id="cta" disabled>')),
-  op('telemetry before redirect', () => t('public/index.html').indexOf("await event('cta_whatsapp')") < t('public/index.html').indexOf("location.href = 'https://wa.me/'")),
+  op('institutional identity only', () => t('public/index.html').includes('<title>ZEVANORY</title>') && !t('public/index.html').includes('cta_whatsapp')),
+  op('public domain identity', () => t('public/index.html').includes('zevanory.api.br') && !t('public/index.html').includes('Preço experimental')),
+]);
+unit('CODE-PILOT', 'public/piloto.html', [
+  command('pilot tests', process.execPath, ['--test','test/piloto.test.mjs']),
+  op('CTA disabled by default', () => t('public/piloto.html').includes('<button id="cta" disabled>')),
+  op('telemetry before redirect', () => t('public/piloto.html').indexOf("await event('cta_whatsapp')") < t('public/piloto.html').indexOf("location.href = 'https://wa.me/'")),
 ]);
 unit('CODE-AUDIT', 'scripts/audit-3x.mjs', [
   command('syntax audit', process.execPath, ['--check','scripts/audit-3x.mjs']),
@@ -129,7 +134,7 @@ unit('ASSURANCE-TESTS','test harness',[
 unit('CODE-VERCEL-API-CONFIG','api/config.mjs',[
   command('syntax vercel config api',process.execPath,['--check','api/config.mjs']),
   command('vercel tests',process.execPath,['--test','test/vercel.test.mjs']),
-  op('production config remains fail-closed',()=>t('api/config.mjs').includes('whatsapp_enabled: false')&&t('api/config.mjs').includes('safe-published-telemetry-pending')),
+  op('production config remains fail-closed',()=>t('api/config.mjs').includes('whatsapp_enabled: true')&&t('api/config.mjs').includes('telemetry-active-payment-pending')),
 ]);
 unit('CODE-VERCEL-API-EVENT','api/events-public.mjs',[
   command('syntax vercel event api',process.execPath,['--check','api/events-public.mjs']),

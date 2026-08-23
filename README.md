@@ -15,4 +15,4 @@ Objetivo: construir um motor digital de vendas com automação e IA somente a pa
 10. Falha crítica interrompe avanço.
 
 ## Estado inicial
-Projeto novo e isolado. Nenhum código ou arquitetura da CENTRAL GIRO é herdado por padrão.
+Projeto novo e isolado. Nenhum código ou arquitetura do projeto anterior é herdado por padrão.

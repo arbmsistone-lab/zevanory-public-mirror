@@ -2,7 +2,7 @@
 
 Status: APROVADO
 
-Decisao: iniciar um projeto novo, separado da CENTRAL GIRO, sem herdar codigo, banco, painel ou agentes por padrao.
+Decisao: iniciar um projeto novo, separado do projeto anterior, sem herdar codigo, banco, painel ou agentes por padrao.
 
 Motivo: o projeto anterior nao demonstrou capacidade comercial suficiente. Reuso somente sera permitido quando houver justificativa tecnica e evidencia de que o componente atende ao novo contrato.
 

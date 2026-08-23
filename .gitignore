@@ -2,6 +2,5 @@ data/
 .env
 .env.*
 !.env.example
-
 .vercel
-.env*
+node_modules/
