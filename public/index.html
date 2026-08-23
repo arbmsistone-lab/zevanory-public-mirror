@@ -4,20 +4,73 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>ZEVANORY</title>
-  <meta name="description" content="ZEVANORY — plataforma digital em desenvolvimento." />
+  <meta name="description" content="ZEVANORY — inteligência digital com validação por evidência real." />
   <style>
-    :root{color-scheme:dark;--bg:#050607;--panel:#0d0f12;--line:#20242a;--text:#f3f5f7;--muted:#8f98a3;--accent:#d7ff4a}
-    *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}body{min-height:100vh;min-height:100dvh;overflow-x:hidden}.shell{min-height:100vh;min-height:100dvh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;padding:clamp(20px,3vh,28px) clamp(22px,3vw,38px)}
-    header{display:flex;align-items:center;justify-content:space-between;gap:28px;min-width:0;border-bottom:1px solid var(--line);padding-bottom:22px}.brand{font-size:18px;font-weight:800;letter-spacing:.34em;white-space:nowrap}.status{min-width:0;font-size:12px;line-height:1.35;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;text-align:right}
-    main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,.65fr);gap:clamp(36px,4.5vw,64px);align-self:start;align-items:start;max-width:1440px;width:100%;min-width:0;margin:0 auto;padding:clamp(58px,7vh,84px) 0 clamp(34px,4vh,52px)}main>section,.panel{min-width:0}.eyebrow{font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.2em;font-weight:700;margin-bottom:16px}h1{font-size:clamp(56px,7.1vw,108px);line-height:.9;letter-spacing:-.055em;margin:0;max-width:850px}.lead{font-size:clamp(18px,1.85vw,24px);line-height:1.45;color:#b7bec7;max-width:700px;margin:26px 0 0}
-    .panel{border:1px solid var(--line);background:linear-gradient(180deg,#101318 0%,#090b0e 100%);border-radius:26px;padding:30px;min-height:330px;display:flex;flex-direction:column;justify-content:space-between}.panel h2{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:#aab2bd;margin:0}.metric{margin-top:34px}.metric strong{display:block;font-size:38px;letter-spacing:-.04em}.metric span{display:block;color:var(--muted);font-size:14px;margin-top:7px}.rule{height:1px;background:var(--line);margin:26px 0}.note{font-size:15px;line-height:1.55;color:#aab2bd}
-    footer{display:flex;justify-content:space-between;gap:24px;border-top:1px solid var(--line);padding-top:20px;color:#707986;font-size:12px;letter-spacing:.08em;text-transform:uppercase}@media(max-width:1100px) and (min-width:901px){main{grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr);gap:32px;padding-top:48px}h1{font-size:clamp(52px,7vw,86px)}.lead{max-width:620px}.panel{padding:26px}}@media(max-height:760px) and (min-width:901px){.shell{padding:18px 30px}header{padding-bottom:15px}main{gap:34px;padding:34px 0 22px}.eyebrow{margin-bottom:12px}h1{font-size:clamp(48px,6.7vw,88px)}.lead{font-size:clamp(16px,1.5vw,20px);margin-top:20px}.panel{min-height:270px;padding:24px}.metric{margin-top:22px}.metric strong{font-size:32px}.rule{margin:18px 0}.note{font-size:14px}footer{padding-top:14px}}@media(max-width:900px){.shell{padding:22px}header{gap:20px}.brand{letter-spacing:.2em}main{grid-template-columns:1fr;gap:30px;padding:44px 0}.panel{min-height:0}footer{flex-direction:column;gap:10px}}@media(max-width:600px){.shell{padding:18px}header{align-items:flex-start}.brand{font-size:16px}.status{max-width:190px;font-size:10px}main{padding:36px 0}h1{font-size:clamp(46px,14vw,70px)}.lead{font-size:18px;margin-top:24px}.panel{border-radius:22px;padding:24px}.metric strong{font-size:32px}footer{font-size:11px}}@media(max-width:420px){header{flex-direction:column;gap:12px}.status{max-width:none;text-align:left}h1{font-size:clamp(44px,14vw,60px)}}
+    :root{color-scheme:dark;--bg:#050607;--panel:#0d1014;--panel2:#10141a;--line:#20262e;--text:#f4f6f8;--muted:#8f9aa6;--soft:#bac2cb;--accent:#d7ff4a;--ok:#77e6a5;--warn:#ffc766}
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}body{min-height:100vh;min-height:100dvh;overflow-x:hidden}.shell{min-height:100vh;min-height:100dvh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;padding:18px 30px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:24px;border-bottom:1px solid var(--line);padding-bottom:15px}.brand{font-size:18px;font-weight:800;letter-spacing:.34em;white-space:nowrap}.header-state{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:11px;letter-spacing:.11em;text-transform:uppercase}.dot{width:8px;height:8px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 4px rgba(255,199,102,.08)}
+    main{width:100%;max-width:1500px;margin:0 auto;padding:28px 0 20px;display:grid;grid-template-rows:auto minmax(0,1fr);gap:22px;min-width:0}.hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(360px,.75fr);gap:26px;align-items:stretch}.eyebrow{font-size:11px;color:var(--accent);letter-spacing:.2em;text-transform:uppercase;font-weight:800;margin-bottom:12px}.intro h1{font-size:clamp(46px,5.8vw,86px);line-height:.88;letter-spacing:-.055em;margin:0;max-width:820px}.lead{font-size:clamp(16px,1.35vw,20px);line-height:1.48;color:var(--soft);max-width:760px;margin:18px 0 0}.summary{border:1px solid var(--line);background:linear-gradient(180deg,var(--panel2),#090b0e);border-radius:22px;padding:21px 23px;display:grid;grid-template-rows:auto 1fr auto;gap:14px}.summary-head{display:flex;justify-content:space-between;gap:18px;align-items:center}.summary h2{margin:0;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#aeb7c1}.live{font-size:10px;color:var(--ok);letter-spacing:.12em;text-transform:uppercase}.state-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.state{border-top:1px solid var(--line);padding-top:11px;min-width:0}.state span{display:block;font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px}.state strong{display:block;font-size:18px;line-height:1.1;letter-spacing:-.025em}.state strong.ok{color:var(--ok)}.state strong.warn{color:var(--warn)}.summary-note{margin:0;color:var(--muted);font-size:12px;line-height:1.45}
+    .ops{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;align-self:start}.kpi{min-width:0;border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:15px 14px}.kpi span{display:block;color:var(--muted);font-size:9px;line-height:1.25;letter-spacing:.09em;text-transform:uppercase;min-height:23px}.kpi strong{display:block;font-size:28px;letter-spacing:-.04em;margin-top:8px}.kpi small{display:block;color:#717c87;font-size:10px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ops-meta{grid-column:1/-1;display:flex;justify-content:space-between;gap:16px;align-items:center;padding:0 3px;color:#717c87;font-size:10px;letter-spacing:.06em;text-transform:uppercase}.ops-meta b{color:#9aa5b1;font-weight:600}
+    footer{display:flex;justify-content:space-between;gap:22px;border-top:1px solid var(--line);padding-top:14px;color:#6f7984;font-size:10px;letter-spacing:.08em;text-transform:uppercase}.pending{color:#9c8558}
+    @media(max-width:1180px){.ops{grid-template-columns:repeat(4,minmax(0,1fr))}.hero{grid-template-columns:minmax(0,1.05fr) minmax(340px,.95fr)}.intro h1{font-size:clamp(44px,6.6vw,74px)}}
+    @media(max-width:900px){.shell{padding:20px 22px}.hero{grid-template-columns:1fr}.ops{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding:30px 0}.intro h1{font-size:clamp(50px,12vw,78px)}}
+    @media(max-width:560px){html,body,.shell,main,.hero,.intro,.summary,.ops{width:100%;max-width:100%;min-width:0}.shell{padding:17px;overflow-x:hidden}header{width:100%;max-width:100%;align-items:flex-start;flex-direction:column;gap:11px}.brand{font-size:16px;letter-spacing:.22em}.header-state{font-size:9px;max-width:100%;white-space:normal}.eyebrow{overflow-wrap:anywhere;letter-spacing:.15em}.intro h1{font-size:clamp(34px,10.5vw,42px);max-width:100%;letter-spacing:-.04em;overflow-wrap:anywhere}.lead{font-size:16px;overflow-wrap:anywhere}.summary{padding:20px;overflow:hidden}.summary-head{flex-wrap:wrap;min-width:0}.live{white-space:normal;overflow-wrap:anywhere}.state-grid{grid-template-columns:1fr}.ops{grid-template-columns:1fr 1fr}.kpi{padding:13px 12px}.kpi strong{font-size:25px}.ops-meta,footer{flex-direction:column;align-items:flex-start}}
   </style>
-</head>
-<body>
-  <div class="shell"><header><div class="brand">ZEVANORY</div><div class="status">Novo projeto · estrutura independente</div></header>
-  <main><section><div class="eyebrow">Digital Intelligence Company</div><h1>NOVO.<br>SEM HERANÇA.</h1><p class="lead">A ZEVANORY nasce como uma operação digital própria, construída do zero para validar tecnologia, automação e vendas com evidência real — com identidade, painel e arquitetura visual próprios.</p></section>
-  <aside class="panel"><div><h2>Estado atual</h2><div class="metric"><strong>ZEVANORY</strong><span>Identidade oficial do projeto</span></div><div class="rule"></div><div class="metric"><strong>G0</strong><span>Fundação e validação antes da expansão</span></div></div><p class="note">Nenhum resultado comercial é simulado. Cada avanço precisa ser comprovado antes de entrar em produção.</p></aside></main>
-  <footer><span>© 2026 ZEVANORY</span><span>zevanory.api.br</span></footer></div>
+</head><body>
+  <div class="shell">
+    <header><div class="brand">ZEVANORY</div><div class="header-state"><i class="dot" id="health-dot"></i><span id="health-label">Conectando estado real</span></div></header>
+    <main>
+      <section class="hero">
+        <div class="intro"><div class="eyebrow">Digital Intelligence Company · infraestrutura em construção</div><h1>NOVO.<br>SEM HERANÇA.</h1><p class="lead">A estrutura evolui junto com o projeto. Cada módulo visível abaixo representa apenas estado técnico ou evidência operacional comprovada — sem simular trabalho, venda ou resultado.</p></div>
+        <aside class="summary">
+          <div class="summary-head"><h2>Motor &amp; gate atual</h2><span class="live">● estado real</span></div>
+          <div class="state-grid">
+            <div class="state"><span>Gate atual</span><strong id="gate">—</strong></div>
+            <div class="state"><span>Experimento</span><strong id="experiment">—</strong></div>
+            <div class="state"><span>Motor técnico</span><strong class="ok" id="engine-tech">—</strong></div>
+            <div class="state"><span>Autonomia comercial</span><strong class="warn" id="engine-auto">—</strong></div>
+            <div class="state"><span>Telemetria</span><strong id="telemetry">—</strong></div>
+            <div class="state"><span>Financeiro</span><strong id="financial">—</strong></div>
+          </div>
+          <p class="summary-note">Infraestrutura aprovada não significa motor comercial aprovado. Venda só existe após pagamento reconciliado.</p>
+        </aside>
+      </section>
+      <section class="ops" aria-label="Métricas operacionais reais">
+        <article class="kpi"><span>Visualizações</span><strong data-kpi="page_views">—</strong><small>telemetria persistida</small></article>
+        <article class="kpi"><span>Leads qualificados</span><strong data-kpi="leads_qualified">—</strong><small>não confundir com clique</small></article>
+        <article class="kpi"><span>Ofertas enviadas</span><strong data-kpi="offers_sent">—</strong><small>evento comprovado</small></article>
+        <article class="kpi"><span>Checkouts iniciados</span><strong data-kpi="checkouts_started">—</strong><small>não conta como venda</small></article>
+        <article class="kpi"><span>Pedidos</span><strong data-kpi="orders">—</strong><small>ordens internas</small></article>
+        <article class="kpi"><span>Pagamentos confirmados</span><strong data-kpi="payments_confirmed">—</strong><small>fonte transacional</small></article>
+        <article class="kpi"><span>Reembolsos</span><strong data-kpi="refunds_confirmed">—</strong><small>reduzem resultado</small></article>
+        <div class="ops-meta"><span>Último evento: <b id="last-event">aguardando</b></span><span>Checkout: <b id="checkout">—</b></span></div>
+      </section>
+    </main>
+    <footer><span>© 2026 ZEVANORY · observabilidade operacional</span><span class="pending">zevanory.api.br · associação pendente</span></footer>
+  </div>  <script>
+    const label=(v)=>({approved:'APROVADO',not_approved:'NÃO APROVADA',active:'ATIVA',disabled:'DESATIVADO','sandbox-disabled':'SANDBOX DESATIVADO','technical_ready_commercial_not_started':'PRONTO TÉCNICO'})[v]||String(v??'—').replaceAll('_',' ').toUpperCase();
+    async function refreshStatus(){
+      const health=document.getElementById('health-label');
+      try{
+        const r=await fetch('/api/status',{cache:'no-store'}); if(!r.ok) throw new Error('status_'+r.status);
+        const s=await r.json();
+        document.getElementById('gate').textContent=s.gate||'—';
+        document.getElementById('experiment').textContent=s.experiment?.id||'—';
+        document.getElementById('engine-tech').textContent=label(s.engine?.technical_infrastructure);
+        document.getElementById('engine-auto').textContent=label(s.engine?.commercial_autonomy);
+        document.getElementById('telemetry').textContent=label(s.runtime?.telemetry);
+        document.getElementById('financial').textContent=label(s.runtime?.financial);
+        document.getElementById('checkout').textContent=label(s.runtime?.checkout);
+        document.querySelectorAll('[data-kpi]').forEach(el=>el.textContent=Number(s.metrics?.[el.dataset.kpi]||0).toLocaleString('pt-BR'));
+        document.getElementById('last-event').textContent=s.last_event_at?new Date(s.last_event_at).toLocaleString('pt-BR'):'sem evento';
+        health.textContent='Estado operacional conectado';
+        document.getElementById('health-dot').style.background='var(--ok)';
+      }catch(e){
+        health.textContent='Estado operacional indisponível';
+        document.getElementById('health-dot').style.background='var(--warn)';
+      }
+    }
+    refreshStatus(); setInterval(refreshStatus,30000);
+  </script>
 </body>
 </html>
