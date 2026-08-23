@@ -5,6 +5,7 @@ import {
   normalizeFinancialEvent,
   paymentMatchesWebhook,
   parseExternalReference,
+  refundTotalForWebhook,
   asaasBaseUrl,
 } from '../../src/asaas.mjs';
 
@@ -55,16 +56,17 @@ export default async function handler(req, res) {
     const normalized = normalizeFinancialEvent(webhook.eventName);
     const externalReference = String(payment.externalReference);
     const orderId = parseExternalReference(externalReference);
+    const refundedTotal = normalized === 'refund_confirmed' ? refundTotalForWebhook(webhook,payment) : null;
     const sql = neon(process.env.DATABASE_URL);
     const rows = await sql.query(`
       INSERT INTO financial_events
-        (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount,order_id)
-      VALUES ($1,'asaas',$2,$3,$4,$5,$6,$7,$8)
+        (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount,order_id,refunded_total)
+      VALUES ($1,'asaas',$2,$3,$4,$5,$6,$7,$8,$9)
       ON CONFLICT DO NOTHING
       RETURNING provider_event_id
-    `, [webhook.providerEventId,webhook.paymentId,normalized,webhook.eventName,String(payment.status),externalReference,Number(payment.value),orderId]);
+    `, [webhook.providerEventId,webhook.paymentId,normalized,webhook.eventName,String(payment.status),externalReference,Number(payment.value),orderId,refundedTotal]);
     res.statusCode = 202;
-    return res.end(JSON.stringify({ accepted: true, duplicate: rows.length === 0, event: normalized, order_id: orderId }));
+    return res.end(JSON.stringify({ accepted: true, duplicate: rows.length === 0, event: normalized, order_id: orderId, refunded_total: refundedTotal }));
   } catch {
     res.statusCode = 503;
     return res.end(JSON.stringify({ error: 'financial_reconciliation_unavailable', accepted: false }));

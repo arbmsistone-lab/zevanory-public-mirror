@@ -37,13 +37,13 @@ G1-C: preco experimental R$297–R$797; hipotese central R$497; nao validado com
 WhatsApp oficial: +55 88 99234-0423 / E.164 5588992340423.
 Infraestrutura G2: homepage institucional em /, piloto comercial em /piloto, telemetria persistente Neon e runtime auditado.
 Deploy Vercel: projeto zevanory-site em producao READY.
-Auditoria atual: 50/50 testes e 37/37 unidades 3X no estado atual; deploy de producao exige promocao serializada, fingerprint ZEVANORY-EG0014-RC1 e verificacao do alias antes do fechamento.
+Auditoria atual: 54/54 testes e 39/39 unidades 3X no desenvolvimento atual. Release candidate imutavel anterior: f447d3f / ZEVANORY-EG0014-RC1. Deploy de producao exige promocao serializada e verificacao do alias antes do fechamento.
 
 ## ESTADO ATUAL
 EXP-0001: PRONTO TECNICAMENTE / NAO INICIADO COMERCIALMENTE.
 G2 comercial: ABERTO. Nao existe pagamento real reconciliado.
 Telemetria publica em producao: ATIVA e persistente no Neon; idempotencia comprovada por event_id.
-Eventos financeiros: BLOQUEADOS para venda real. Camada Asaas implementada com authToken, reconciliacao por GET /payments/{id}, idempotencia financeira, migration 002 e migration 003 aplicadas; pedido interno e checkout Sandbox existem, mas CHECKOUT_ENABLED permanece desativado por padrao. Ainda faltam credenciais Asaas proprias, primeiro checkout Sandbox real e cobertura de estorno parcial antes de producao financeira.
+Eventos financeiros: BLOQUEADOS para venda real. Camada Asaas implementada com authToken, reconciliacao por GET /payments/{id}, idempotencia financeira, migration 002 e migration 003 aplicadas. Estorno parcial foi corrigido no codigo com reconciliacao cumulativa de refunds DONE e migration 004 preparada, mas AINDA NAO aplicada ao Neon. Pedido interno e checkout Sandbox existem, com CHECKOUT_ENABLED desativado por padrao. Ainda faltam credenciais Asaas proprias e primeiro checkout Sandbox real.
 Dominio zevanory.api.br: NAO associado ao projeto Vercel neste estado; tentativa de associacao retorna 403 domain_not_owned.
 TXT de verificacao anteriormente registrado: deve ser reconfirmado somente depois que a Vercel reconhecer a posse do dominio; nao tratar o valor anterior como prova atual.
 DNS publico atual: nome existe sem endereco A/AAAA funcional; TXT _vercel ainda ausente.

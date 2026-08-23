@@ -624,6 +624,52 @@
       ]
     },
     {
+      "id": "DEF-PARTIAL-REFUND-MIGRATION",
+      "label": "db/migrations/004_partial_refund_snapshots.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "refund cumulative column exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "payment and refund dedup indexes are separated",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "migration 004 is ledgered and transactional",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PARTIAL-REFUND-GATE",
+      "label": "evidence/EG-0016-estorno-parcial.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "partial refund evidence gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "partial refund tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "DONE-only cumulative reconciliation documented",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "DEF-ORDERS-MIGRATION",
       "label": "db/migrations/003_orders_checkout.sql",
       "approved_operations": 3,
@@ -855,8 +901,8 @@
     }
   ],
   "totals": {
-    "units": 37,
-    "approved": 37,
+    "units": 39,
+    "approved": 39,
     "failed": 0
   },
   "verdict": "APPROVED"

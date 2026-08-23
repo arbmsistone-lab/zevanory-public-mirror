@@ -14,6 +14,7 @@ export const ASAAS_EVENTS = new Set([
   'PAYMENT_CONFIRMED',
   'PAYMENT_RECEIVED',
   'PAYMENT_REFUNDED',
+  'PAYMENT_PARTIALLY_REFUNDED',
 ]);
 
 export function secureTokenEqual(expected, provided) {
@@ -40,15 +41,44 @@ export function parseExternalReference(value) {
 }
 
 export function normalizeFinancialEvent(eventName) {
-  if (eventName === 'PAYMENT_REFUNDED') return 'refund_confirmed';
+  if (eventName === 'PAYMENT_REFUNDED' || eventName === 'PAYMENT_PARTIALLY_REFUNDED') return 'refund_confirmed';
   if (eventName === 'PAYMENT_CONFIRMED' || eventName === 'PAYMENT_RECEIVED') return 'payment_confirmed';
   return '';
+}
+
+function moneyCents(value) {
+  const number=Number(value);
+  return Number.isFinite(number) ? Math.round(number*100) : NaN;
+}
+
+export function completedRefundTotal(payment) {
+  if (!Array.isArray(payment?.refunds)) return 0;
+  let cents=0;
+  for (const refund of payment.refunds) {
+    if (String(refund?.status||'') !== 'DONE') continue;
+    const value=moneyCents(refund?.value);
+    if (!Number.isFinite(value) || value <= 0) return NaN;
+    cents += value;
+  }
+  return cents/100;
+}
+
+export function refundTotalForWebhook(webhook,payment) {
+  if (!webhook || !payment) return null;
+  if (!['PAYMENT_REFUNDED','PAYMENT_PARTIALLY_REFUNDED'].includes(webhook.eventName)) return null;
+  const gross=moneyCents(payment.value);
+  const refunded=moneyCents(completedRefundTotal(payment));
+  if (!Number.isFinite(gross) || !Number.isFinite(refunded) || refunded <= 0 || refunded > gross) return null;
+  if (webhook.eventName === 'PAYMENT_PARTIALLY_REFUNDED' && refunded >= gross) return null;
+  if (webhook.eventName === 'PAYMENT_REFUNDED' && (refunded !== gross || String(payment.status||'') !== 'REFUNDED')) return null;
+  return refunded/100;
 }
 
 export function paymentMatchesWebhook(webhook, payment) {
   if (!webhook || !payment || String(payment.id) !== webhook.paymentId) return false;
   if (!parseExternalReference(payment.externalReference)) return false;
-  if (Number(payment.value) !== Number(PROJECT.experimentalPriceBrl)) return false;
-  const expectedStatus={PAYMENT_CONFIRMED:'CONFIRMED',PAYMENT_RECEIVED:'RECEIVED',PAYMENT_REFUNDED:'REFUNDED'}[webhook.eventName];
-  return String(payment.status||'') === expectedStatus;
+  if (moneyCents(payment.value) !== moneyCents(PROJECT.experimentalPriceBrl)) return false;
+  if (webhook.eventName === 'PAYMENT_CONFIRMED') return String(payment.status||'') === 'CONFIRMED';
+  if (webhook.eventName === 'PAYMENT_RECEIVED') return String(payment.status||'') === 'RECEIVED';
+  return refundTotalForWebhook(webhook,payment) !== null;
 }

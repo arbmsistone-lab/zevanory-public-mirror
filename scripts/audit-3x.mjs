@@ -76,12 +76,12 @@ unit('CODE-AUDIT', 'scripts/audit-3x.mjs', [
 unit('CODE-ASAAS','src/asaas.mjs',[
   command('syntax asaas',process.execPath,['--check','src/asaas.mjs']),
   command('asaas tests',process.execPath,['--test','test/asaas.test.mjs']),
-  op('provider truth reconciliation required',()=>t('src/asaas.mjs').includes('paymentMatchesWebhook')&&t('src/asaas.mjs').includes('parseExternalReference')),
+  op('provider truth reconciliation required',()=>t('src/asaas.mjs').includes('paymentMatchesWebhook')&&t('src/asaas.mjs').includes('parseExternalReference')&&t('src/asaas.mjs').includes('PAYMENT_PARTIALLY_REFUNDED')&&t('src/asaas.mjs').includes('refundTotalForWebhook')),
 ]);
 unit('CODE-ASAAS-WEBHOOK','api/webhooks/asaas.mjs',[
   command('syntax asaas webhook',process.execPath,['--check','api/webhooks/asaas.mjs']),
   command('asaas webhook tests',process.execPath,['--test','test/asaas-webhook.test.mjs']),
-  op('webhook auth and API lookup fail closed',()=>t('api/webhooks/asaas.mjs').includes('asaas-access-token')&&t('api/webhooks/asaas.mjs').includes('fetchAsaasPayment')&&t('api/webhooks/asaas.mjs').includes('payment_reconciliation_failed')),
+  op('webhook auth and API lookup fail closed',()=>t('api/webhooks/asaas.mjs').includes('asaas-access-token')&&t('api/webhooks/asaas.mjs').includes('fetchAsaasPayment')&&t('api/webhooks/asaas.mjs').includes('payment_reconciliation_failed')&&t('api/webhooks/asaas.mjs').includes('refunded_total')),
 ]);
 unit('CODE-ORDER','src/order.mjs',[
   command('syntax order',process.execPath,['--check','src/order.mjs']),
@@ -185,6 +185,16 @@ unit('DEF-PAYMENT-PROVIDER','evidence/EG-0013-provedor-pagamento-asaas.md',[
   op('payment provider evidence gate approved',()=>t('evidence/EG-0013-provedor-pagamento-asaas.md').includes('Veredito: APROVADO')),
   command('payment provider tests',process.execPath,['--test','test/asaas.test.mjs','test/asaas-webhook.test.mjs']),
   op('browser callback never becomes financial truth',()=>t('evidence/EG-0013-provedor-pagamento-asaas.md').includes('nunca confirma sozinho')&&t('evidence/EG-0013-provedor-pagamento-asaas.md').includes('reconciliar pela API')),
+]);
+unit('DEF-PARTIAL-REFUND-MIGRATION','db/migrations/004_partial_refund_snapshots.sql',[
+  op('refund cumulative column exists',()=>t('db/migrations/004_partial_refund_snapshots.sql').includes('refunded_total numeric(12,2)')),
+  op('payment and refund dedup indexes are separated',()=>t('db/migrations/004_partial_refund_snapshots.sql').includes('financial_events_payment_confirmed_idx')&&t('db/migrations/004_partial_refund_snapshots.sql').includes('financial_events_refund_snapshot_idx')),
+  op('migration 004 is ledgered and transactional',()=>t('db/migrations/004_partial_refund_snapshots.sql').includes('004_partial_refund_snapshots')&&t('db/migrations/004_partial_refund_snapshots.sql').includes('COMMIT;')),
+]);
+unit('DEF-PARTIAL-REFUND-GATE','evidence/EG-0016-estorno-parcial.md',[
+  op('partial refund evidence gate approved',()=>t('evidence/EG-0016-estorno-parcial.md').includes('Veredito: APROVADO')),
+  command('partial refund tests',process.execPath,['--test','test/asaas.test.mjs','test/asaas-webhook.test.mjs']),
+  op('DONE-only cumulative reconciliation documented',()=>t('evidence/EG-0016-estorno-parcial.md').includes('snapshots cumulativos')&&t('evidence/EG-0016-estorno-parcial.md').includes('DONE')),
 ]);
 unit('DEF-ORDERS-MIGRATION','db/migrations/003_orders_checkout.sql',[
   op('request id uniqueness defined',()=>t('db/migrations/003_orders_checkout.sql').includes('request_id uuid NOT NULL UNIQUE')),

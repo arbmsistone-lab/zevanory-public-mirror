@@ -61,3 +61,12 @@ test('webhook is disabled by default even with valid token',async()=>{
   assert.match(res.body,/financial_events_disabled/);
   if(old===undefined) delete process.env.ASAAS_WEBHOOK_TOKEN; else process.env.ASAAS_WEBHOOK_TOKEN=old;
 });
+
+test('webhook persists provider-reconciled cumulative refund total',async()=>{
+  const { readFile } = await import('node:fs/promises');
+  const source=await readFile(new URL('../api/webhooks/asaas.mjs',import.meta.url),'utf8');
+  assert.match(source,/refundTotalForWebhook/);
+  assert.match(source,/refunded_total/);
+  assert.match(source,/normalized === 'refund_confirmed'/);
+  assert.match(source,/ON CONFLICT DO NOTHING/);
+});
