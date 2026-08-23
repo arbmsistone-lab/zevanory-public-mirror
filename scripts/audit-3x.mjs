@@ -35,7 +35,7 @@ function unit(id, label, operations) {
 
 const fullTests = command('full test suite', process.execPath, ['--test',
   'test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs',
-  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs','test/release.test.mjs']);
+  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs','test/release.test.mjs','test/status.test.mjs']);
 
 unit('CODE-CONFIG', 'src/config.mjs', [
   command('syntax config', process.execPath, ['--check','src/config.mjs']),
@@ -144,13 +144,18 @@ unit('DEF-SCOPE', 'specs/SCOPE_BOUNDARY.md', [
   op('external absolute paths forbidden', () => t('specs/SCOPE_BOUNDARY.md').includes('caminho absoluto para outro sistema')),
 ]);
 
-const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs','test/release.test.mjs'];
+const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs','test/release.test.mjs','test/status.test.mjs'];
 unit('ASSURANCE-TESTS','test harness',[
   op('all test files exist',()=>testFiles.every((f)=>existsSync(join(root,f)))),
   op('all test files syntax-valid',()=>testFiles.every((f)=>spawnSync(process.execPath,['--check',f],{cwd:root,encoding:'utf8'}).status===0)),
   fullTests,
 ]);
 
+unit('CODE-OPERATIONAL-STATUS','src/operationalStatus.mjs + api/status.mjs',[
+  command('operational status syntax',process.execPath,['--check','src/operationalStatus.mjs']),
+  command('operational status tests',process.execPath,['--test','test/status.test.mjs']),
+  op('status exposes aggregates without PII',()=>t('api/status.mjs').includes('count(*)::int as count')&&!t('api/status.mjs').includes('session_id')&&!t('api/status.mjs').includes('provider_payment_id')),
+]);
 unit('CODE-VERCEL-API-CONFIG','api/config.mjs',[
   command('syntax vercel config api',process.execPath,['--check','api/config.mjs']),
   command('vercel tests',process.execPath,['--test','test/vercel.test.mjs']),

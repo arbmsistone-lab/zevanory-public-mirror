@@ -463,6 +463,29 @@
       ]
     },
     {
+      "id": "CODE-OPERATIONAL-STATUS",
+      "label": "src/operationalStatus.mjs + api/status.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "operational status syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "operational status tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "status exposes aggregates without PII",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "CODE-VERCEL-API-CONFIG",
       "label": "api/config.mjs",
       "approved_operations": 3,
@@ -901,8 +924,8 @@
     }
   ],
   "totals": {
-    "units": 39,
-    "approved": 39,
+    "units": 40,
+    "approved": 40,
     "failed": 0
   },
   "verdict": "APPROVED"
