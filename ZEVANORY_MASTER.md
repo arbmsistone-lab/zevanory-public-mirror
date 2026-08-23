@@ -39,7 +39,7 @@ G1-C: preco experimental R$297–R$797; hipotese central R$497; nao validado com
 WhatsApp oficial: +55 88 99234-0423 / E.164 5588992340423.
 Infraestrutura G2: homepage institucional em /, piloto comercial em /piloto, telemetria persistente Neon e runtime auditado.
 Deploy Vercel: projeto zevanory-site em producao READY.
-Auditoria atual: 67/67 testes e 45/45 unidades 3X aprovadas no desenvolvimento atual. Migration 005 aplicada e verificada no Neon. Auditoria operacional da release ativa RC2 segue aprovada: checkout bloqueado globalmente, webhook autenticado e fraude financeira rejeitada. Release ativa: ZEVANORY-EG0018-RC2. Endurecimento adicional com manifesto canonico pre-venda esta aprovado localmente, mas ainda exige Auditoria 3 apos promocao exata antes de ser tratado como producao.
+Auditoria atual: 69/69 testes e 46/46 unidades 3X aprovadas no desenvolvimento atual. Migration 005 aplicada e verificada no Neon. Auditoria operacional da release ativa RC2 segue aprovada: checkout bloqueado globalmente, webhook autenticado e fraude financeira rejeitada. Release ativa: ZEVANORY-EG0018-RC2. EG-0019 de dominio/DNS pre-venda aprovado; preflight operacional fail-closed confirma DNS, posse Vercel e Asaas Sandbox ainda bloqueados. Endurecimentos locais ainda exigem Auditoria 3 apos promocao exata antes de serem tratados como producao.
 
 ## ESTADO ATUAL
 EXP-0001: PRONTO TECNICAMENTE / NAO INICIADO COMERCIALMENTE.
@@ -56,5 +56,5 @@ Git ZEVANORY: sem remote/origin configurado; commits atuais ainda nao possuem si
 2. Revalidar dominio em pelo menos 3 resolvedores + HTTPS + rotas publicas.
 3. Persistencia Neon aprovada; manter monitoramento, idempotencia e reconciliacao.
 4. Asaas selecionado pelo EG-0013; obter credenciais Sandbox proprias e validar pedido -> checkout -> webhook -> reconciliacao antes de qualquer pagamento real.
-5. Iniciar EXP-0001 e buscar comportamento economico real.
+5. Nao iniciar EXP-0001 comercialmente enquanto qualquer requisito pre-venda, dominio, Asaas Sandbox ou auditoria obrigatoria estiver aberto; somente depois da aprovacao integral, iniciar a prova economica real conforme os gates.
 6. Nao avancar para IA autonoma antes dos gates G2–G7 correspondentes.

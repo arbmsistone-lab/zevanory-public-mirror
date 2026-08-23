@@ -35,7 +35,7 @@ function unit(id, label, operations) {
 
 const fullTests = command('full test suite', process.execPath, ['--test',
   'test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs',
-  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs','test/release.test.mjs','test/status.test.mjs','test/sales-gate.test.mjs','test/order-financial-state.test.mjs']);
+  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs','test/release.test.mjs','test/status.test.mjs','test/sales-gate.test.mjs','test/order-financial-state.test.mjs','test/pre-sale-readiness.test.mjs']);
 
 unit('CODE-CONFIG', 'src/config.mjs', [
   command('syntax config', process.execPath, ['--check','src/config.mjs']),
@@ -51,6 +51,16 @@ unit('CODE-PRE-SALE-APPROVAL','src/preSaleApproval.mjs',[
   command('pre-sale approval syntax',process.execPath,['--check','src/preSaleApproval.mjs']),
   op('manifest is explicitly blocked',()=>t('src/preSaleApproval.mjs').includes('approved: false')&&t('src/preSaleApproval.mjs').includes('custom_domain_unverified')),
   op('sandbox blocker is canonical',()=>t('src/preSaleApproval.mjs').includes('asaas_sandbox_unconfigured')&&t('src/preSaleApproval.mjs').includes("global_sales_gate: 'EG-0018'")),
+]);
+unit('CODE-PRE-SALE-READINESS','src/preSaleReadiness.mjs + scripts/pre-sale-preflight.mjs',[
+  command('pre-sale readiness syntax',process.execPath,['--check','src/preSaleReadiness.mjs']),
+  command('pre-sale readiness tests',process.execPath,['--test','test/pre-sale-readiness.test.mjs']),
+  op('three resolver and masked prerequisite checks',()=>{
+    const readiness=t('src/preSaleReadiness.mjs');
+    const preflight=t('scripts/pre-sale-preflight.mjs');
+    return readiness.includes('1.1.1.1') && readiness.includes('8.8.8.8') &&
+      readiness.includes('9.9.9.9') && !preflight.includes('console.log(process.env)');
+  }),
 ]);
 unit('CODE-TELEMETRY', 'src/telemetry.mjs', [
   command('syntax telemetry', process.execPath, ['--check','src/telemetry.mjs']),
@@ -154,7 +164,7 @@ unit('DEF-SCOPE', 'specs/SCOPE_BOUNDARY.md', [
   op('external absolute paths forbidden', () => t('specs/SCOPE_BOUNDARY.md').includes('caminho absoluto para outro sistema')),
 ]);
 
-const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs','test/release.test.mjs','test/status.test.mjs','test/sales-gate.test.mjs','test/order-financial-state.test.mjs'];
+const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs','test/release.test.mjs','test/status.test.mjs','test/sales-gate.test.mjs','test/order-financial-state.test.mjs','test/pre-sale-readiness.test.mjs'];
 unit('ASSURANCE-TESTS','test harness',[
   op('all test files exist',()=>testFiles.every((f)=>existsSync(join(root,f)))),
   op('all test files syntax-valid',()=>testFiles.every((f)=>spawnSync(process.execPath,['--check',f],{cwd:root,encoding:'utf8'}).status===0)),

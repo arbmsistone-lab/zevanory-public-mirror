@@ -72,6 +72,29 @@
       ]
     },
     {
+      "id": "CODE-PRE-SALE-READINESS",
+      "label": "src/preSaleReadiness.mjs + scripts/pre-sale-preflight.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "pre-sale readiness syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "pre-sale readiness tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "three resolver and masked prerequisite checks",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "CODE-TELEMETRY",
       "label": "src/telemetry.mjs",
       "approved_operations": 3,
@@ -1039,8 +1062,8 @@
     }
   ],
   "totals": {
-    "units": 45,
-    "approved": 45,
+    "units": 46,
+    "approved": 46,
     "failed": 0
   },
   "verdict": "APPROVED"
