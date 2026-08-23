@@ -1,4 +1,4 @@
-# ZEVANORY ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â DOCUMENTO MESTRE CANONICO
+# ZEVANORY ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â DOCUMENTO MESTRE CANONICO
 
 Status: FONTE DE VERDADE PARA CONTINUIDADE.
 Regra: ler este arquivo antes de qualquer pesquisa, decisao, codigo, deploy ou mudanca de escopo.
@@ -7,7 +7,7 @@ Regra: ler este arquivo antes de qualquer pesquisa, decisao, codigo, deploy ou m
 Construir um motor digital de vendas por IA que prove venda real, atribuicao confiavel e margem antes de ganhar autonomia.
 Nao construir um painel que apenas aparenta atividade.
 
-## TRAJETO APROVADO ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â NAO PULAR
+## TRAJETO APROVADO ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â NAO PULAR
 Mercado real -> Oferta -> Aquisicao -> Origem -> Intencao -> Conversa/carrinho -> Checkout -> Pagamento confirmado -> Entrega/refund -> Custos -> Margem de contribuicao -> Experimento -> Aprendizado -> Proxima acao.
 
 ## CAMADAS
@@ -34,12 +34,12 @@ EG: 3 evidencias -> G0 Mercado -> G1 Oferta -> G2 Venda manual -> G3 Telemetria 
 ## JA APROVADO
 G0: PMEs brasileiras com venda/atendimento digital e forte componente manual.
 G1-A: primeiro subnicho de investigacao: educacao profissional/cursos.
-G1-B: OFFER-0001 ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â IA aplicada a Vendas e Atendimento no WhatsApp, como hipotese para teste.
-G1-C: preco experimental R$297ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“R$797; hipotese central R$497; nao validado comercialmente.
+G1-B: OFFER-0001 ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â IA aplicada a Vendas e Atendimento no WhatsApp, como hipotese para teste.
+G1-C: preco experimental R$297ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œR$797; hipotese central R$497; nao validado comercialmente.
 WhatsApp oficial: +55 88 99234-0423 / E.164 5588992340423.
 Infraestrutura G2: homepage institucional em /, piloto comercial em /piloto, telemetria persistente Neon e runtime auditado.
 Deploy Vercel: projeto zevanory-site em producao READY.
-Auditoria atual: 74/74 testes e 46/46 unidades 3X aprovadas no desenvolvimento atual. Endurecimento pre-venda consolidado no commit local imediatamente anterior, intitulado security: harden pre-sale sandbox readiness: Asaas Sandbox exige DATABASE_URL, PUBLIC_BASE_URL HTTPS e todos os cinco interruptores comerciais/financeiros desligados. EG-0020 validado formalmente. Migration 005 aplicada e verificada no Neon. EG-0022 aprovado: politica deterministica de replay de checkout centralizada e fail-closed, sem alterar gates comerciais. Auditoria operacional da release ativa RC2 segue aprovada: checkout bloqueado globalmente, webhook autenticado e fraude financeira rejeitada. Release ativa: ZEVANORY-EG0018-RC2. EG-0019 de dominio/DNS pre-venda aprovado; preflight oficial fail-closed cobre DNS em 3 resolvedores, posse Vercel, HTTPS, rotas publicas e Asaas Sandbox. Producao atual: deployment dpl_Ak2NjwQjo9MDzEyz1BF1YqNXPGQM no commit a3f8fbe, estado READY e alias publico https://zevanory-site.vercel.app.
+Auditoria atual: 75/75 testes e 46/46 unidades 3X aprovadas no desenvolvimento atual. Endurecimento pre-venda consolidado no commit local imediatamente anterior, intitulado security: harden pre-sale sandbox readiness: Asaas Sandbox exige DATABASE_URL, PUBLIC_BASE_URL HTTPS e todos os cinco interruptores comerciais/financeiros desligados. EG-0020 validado formalmente. Migration 005 aplicada e verificada no Neon. EG-0022 aprovado: politica deterministica de replay de checkout centralizada e fail-closed, sem alterar gates comerciais. EG-0023 aprovado: webhook Asaas reconhece sucesso/duplicata com HTTP 200 e preserva falhas explicitas. EG-0024 aprovado: protocolo G3/G4 de EXP-0001 pre-registrado; baseline segue NAO APROVADO ate coleta real e auditoria. Auditoria operacional da release ativa RC2 segue aprovada: checkout bloqueado globalmente, webhook autenticado e fraude financeira rejeitada. Release ativa: ZEVANORY-EG0018-RC2. EG-0019 de dominio/DNS pre-venda aprovado; preflight oficial fail-closed cobre DNS em 3 resolvedores, posse Vercel, HTTPS, rotas publicas e Asaas Sandbox. Producao atual: deployment dpl_9oMH4KMd6aMaSQQLiJLfiem2wMxr no commit c1a7558, estado READY e alias publico https://zevanory-site.vercel.app.
 
 ## ESTADO ATUAL
 EXP-0001: PRONTO TECNICAMENTE / NAO INICIADO COMERCIALMENTE.
@@ -57,4 +57,4 @@ Git ZEVANORY: sem remote/origin configurado; commits atuais ainda nao possuem si
 3. Persistencia Neon aprovada; manter monitoramento, idempotencia e reconciliacao.
 4. Asaas selecionado pelo EG-0013; obter credenciais Sandbox proprias e validar pedido -> checkout -> webhook -> reconciliacao antes de qualquer pagamento real.
 5. Nao iniciar EXP-0001 comercialmente enquanto qualquer requisito pre-venda, dominio, Asaas Sandbox ou auditoria obrigatoria estiver aberto; somente depois da aprovacao integral, iniciar a prova economica real conforme os gates.
-6. Nao avancar para IA autonoma antes dos gates G2ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“G7 correspondentes.
+6. Nao avancar para IA autonoma antes dos gates G2ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œG7 correspondentes.
