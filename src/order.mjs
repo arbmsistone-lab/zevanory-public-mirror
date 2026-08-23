@@ -9,6 +9,20 @@ export function normalizeCheckoutRequest(body) {
   });
 }
 
+export function checkoutReplayDecision(order, sessionId) {
+  if (!order || typeof order !== 'object') return Object.freeze({ action:'lookup_failed' });
+  if (String(order.session_id||'').toLowerCase() !== String(sessionId||'').toLowerCase()) {
+    return Object.freeze({ action:'conflict' });
+  }
+  const status=String(order.status||'');
+  if (status==='checkout_ready' && order.checkout_url) {
+    return Object.freeze({ action:'reuse', checkoutUrl:String(order.checkout_url) });
+  }
+  if (status==='created') return Object.freeze({ action:'create' });
+  if (status==='checkout_creating') return Object.freeze({ action:'in_progress' });
+  return Object.freeze({ action:'blocked', status });
+}
+
 export function externalReferenceForOrder(orderId) {
   return isUuid(orderId) ? `ZEVANORY:${PROJECT.experimentId}:${String(orderId).toLowerCase()}` : '';
 }

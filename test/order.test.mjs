@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeCheckoutRequest,
+  checkoutReplayDecision,
   externalReferenceForOrder,
   safePublicBaseUrl,
   buildAsaasCheckoutPayload,
@@ -32,4 +33,19 @@ test('checkout payload is fixed to approved offer and Sandbox response',()=>{
   const response={id,externalReference:payload.externalReference,link:`https://sandbox.asaas.com/checkoutSession/show/${id}`};
   assert.equal(validAsaasCheckoutResponse(response,payload.externalReference),true);
   assert.equal(validAsaasCheckoutResponse({...response,link:`https://asaas.com/checkoutSession/show/${id}`},payload.externalReference),false);
+});
+
+
+test('checkout replay policy is deterministic and fail-closed',()=>{
+  const base={session_id:sid,status:'created',checkout_url:null};
+  assert.deepEqual(checkoutReplayDecision(base,sid),{action:'create'});
+  assert.deepEqual(checkoutReplayDecision({...base,session_id:id},sid),{action:'conflict'});
+  assert.deepEqual(checkoutReplayDecision({...base,status:'checkout_creating'},sid),{action:'in_progress'});
+  assert.deepEqual(checkoutReplayDecision({...base,status:'checkout_ready',checkout_url:'https://sandbox.asaas.com/checkoutSession/show/test'},sid),{
+    action:'reuse',
+    checkoutUrl:'https://sandbox.asaas.com/checkoutSession/show/test',
+  });
+  for(const status of ['checkout_uncertain','paid','partially_refunded','refunded','canceled','expired']) {
+    assert.deepEqual(checkoutReplayDecision({...base,status},sid),{action:'blocked',status});
+  }
 });

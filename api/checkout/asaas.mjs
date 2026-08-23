@@ -5,6 +5,7 @@ import { asaasBaseUrl } from '../../src/asaas.mjs';
 import { salesGate } from '../../src/salesGate.mjs';
 import {
   normalizeCheckoutRequest,
+  checkoutReplayDecision,
   externalReferenceForOrder,
   safePublicBaseUrl,
   buildAsaasCheckoutPayload,
@@ -63,12 +64,14 @@ export default async function handler(req,res) {
       `,[input.requestId]);
       if(existing.length!==1) return json(res,503,{error:'order_lookup_failed'});
       order=existing[0];
-      if(String(order.session_id)!==input.sessionId) return json(res,409,{error:'request_id_conflict'});
-      if(order.status==='checkout_ready' && order.checkout_url) {
-        return json(res,200,{accepted:true,duplicate:true,order_id:order.order_id,checkout_url:order.checkout_url});
+      const replay=checkoutReplayDecision(order,input.sessionId);
+      if(replay.action==='conflict') return json(res,409,{error:'request_id_conflict'});
+      if(replay.action==='reuse') {
+        return json(res,200,{accepted:true,duplicate:true,order_id:order.order_id,checkout_url:replay.checkoutUrl});
       }
-      if(order.status!=='created') {
-        return json(res,409,{error:'checkout_not_retryable',status:order.status});
+      if(replay.action==='in_progress') return json(res,409,{error:'checkout_in_progress'});
+      if(replay.action!=='create') {
+        return json(res,409,{error:'checkout_not_retryable',status:replay.status||order.status});
       }
     }
     const claimed=await sql.query(`
