@@ -1,4 +1,4 @@
-# ZEVANORY — DOCUMENTO MESTRE CANONICO
+# ZEVANORY â€” DOCUMENTO MESTRE CANONICO
 
 Status: FONTE DE VERDADE PARA CONTINUIDADE.
 Regra: ler este arquivo antes de qualquer pesquisa, decisao, codigo, deploy ou mudanca de escopo.
@@ -7,7 +7,7 @@ Regra: ler este arquivo antes de qualquer pesquisa, decisao, codigo, deploy ou m
 Construir um motor digital de vendas por IA que prove venda real, atribuicao confiavel e margem antes de ganhar autonomia.
 Nao construir um painel que apenas aparenta atividade.
 
-## TRAJETO APROVADO — NAO PULAR
+## TRAJETO APROVADO â€” NAO PULAR
 Mercado real -> Oferta -> Aquisicao -> Origem -> Intencao -> Conversa/carrinho -> Checkout -> Pagamento confirmado -> Entrega/refund -> Custos -> Margem de contribuicao -> Experimento -> Aprendizado -> Proxima acao.
 
 ## CAMADAS
@@ -34,19 +34,19 @@ EG: 3 evidencias -> G0 Mercado -> G1 Oferta -> G2 Venda manual -> G3 Telemetria 
 ## JA APROVADO
 G0: PMEs brasileiras com venda/atendimento digital e forte componente manual.
 G1-A: primeiro subnicho de investigacao: educacao profissional/cursos.
-G1-B: OFFER-0001 — IA aplicada a Vendas e Atendimento no WhatsApp, como hipotese para teste.
-G1-C: preco experimental R$297–R$797; hipotese central R$497; nao validado comercialmente.
+G1-B: OFFER-0001 â€” IA aplicada a Vendas e Atendimento no WhatsApp, como hipotese para teste.
+G1-C: preco experimental R$297â€“R$797; hipotese central R$497; nao validado comercialmente.
 WhatsApp oficial: +55 88 99234-0423 / E.164 5588992340423.
 Infraestrutura G2: homepage institucional em /, piloto comercial em /piloto, telemetria persistente Neon e runtime auditado.
 Deploy Vercel: projeto zevanory-site em producao READY.
-Auditoria atual: 70/70 testes e 46/46 unidades 3X aprovadas no desenvolvimento atual. Migration 005 aplicada e verificada no Neon. Auditoria operacional da release ativa RC2 segue aprovada: checkout bloqueado globalmente, webhook autenticado e fraude financeira rejeitada. Release ativa: ZEVANORY-EG0018-RC2. EG-0019 de dominio/DNS pre-venda aprovado; preflight oficial fail-closed cobre DNS em 3 resolvedores, posse Vercel, HTTPS, rotas publicas e Asaas Sandbox. Producao atual: deployment dpl_2KhJyTDSHzMf4Zjd8ree7mrVM6GM no commit e5ed817; todo estado local posterior a e5ed817 permanece a frente da producao e exige promocao exata + Auditoria 3 antes de ser tratado como producao.
+Auditoria atual: 72/72 testes e 46/46 unidades 3X aprovadas no desenvolvimento atual. Endurecimento pre-venda consolidado no commit local cc1b89b: Asaas Sandbox exige DATABASE_URL, PUBLIC_BASE_URL HTTPS e todos os cinco interruptores comerciais/financeiros desligados. EG-0020 validado formalmente. Migration 005 aplicada e verificada no Neon. Auditoria operacional da release ativa RC2 segue aprovada: checkout bloqueado globalmente, webhook autenticado e fraude financeira rejeitada. Release ativa: ZEVANORY-EG0018-RC2. EG-0019 de dominio/DNS pre-venda aprovado; preflight oficial fail-closed cobre DNS em 3 resolvedores, posse Vercel, HTTPS, rotas publicas e Asaas Sandbox. Producao atual: deployment dpl_2KhJyTDSHzMf4Zjd8ree7mrVM6GM no commit e5ed817; todo estado local posterior a e5ed817 permanece a frente da producao e exige promocao exata + Auditoria 3 antes de ser tratado como producao.
 
 ## ESTADO ATUAL
 EXP-0001: PRONTO TECNICAMENTE / NAO INICIADO COMERCIALMENTE.
 G2 comercial: ABERTO. Nao existe pagamento real reconciliado.
 Telemetria publica em producao: ATIVA e persistente no Neon; idempotencia comprovada por event_id.
 Eventos financeiros: BLOQUEADOS para venda real. Camada Asaas implementada com authToken, reconciliacao por GET /payments/{id}, idempotencia financeira, migrations 002, 003, 004 e 005 aplicadas no Neon. Estorno parcial usa reconciliacao cumulativa apenas de refunds DONE; transicao orders.status ocorre atomicamente com financial_events. SALE_GLOBALLY_ENABLED e PRE_SALE_GATES_APPROVED permanecem OFF por padrao; WhatsApp e checkout nao podem iniciar venda enquanto o gate global estiver bloqueado. Ainda faltam credenciais Asaas proprias e primeiro checkout Sandbox real, somente apos aprovacao integral pre-venda.
-Dominio zevanory.api.br: NAO associado ao projeto Vercel neste estado; tentativa de associacao retorna 403 domain_not_owned.
+Dominio zevanory.api.br: NAO associado ao projeto Vercel neste estado; tentativa de associacao retorna 403 domain_not_owned. Registro.br autenticado chegou somente a etapa de IDENTIFICACAO (CPF/CNPJ) e informa que o dominio escolhido segue Processo de Liberacao; nenhuma identificacao sensivel foi preenchida e nenhuma compra foi executada. O deployment tecnico *.vercel.app esta protegido por Vercel Authentication/SSO (302 para vercel.com/sso-api), portanto nao deve ser tratado como superficie publica anonima.
 TXT de verificacao anteriormente registrado: deve ser reconfirmado somente depois que a Vercel reconhecer a posse do dominio; nao tratar o valor anterior como prova atual.
 DNS publico atual: nome existe sem endereco A/AAAA funcional; TXT _vercel ainda ausente.
 Git ZEVANORY: sem remote/origin configurado; commits atuais ainda nao possuem sincronizacao Git remota comprovada.
@@ -57,4 +57,4 @@ Git ZEVANORY: sem remote/origin configurado; commits atuais ainda nao possuem si
 3. Persistencia Neon aprovada; manter monitoramento, idempotencia e reconciliacao.
 4. Asaas selecionado pelo EG-0013; obter credenciais Sandbox proprias e validar pedido -> checkout -> webhook -> reconciliacao antes de qualquer pagamento real.
 5. Nao iniciar EXP-0001 comercialmente enquanto qualquer requisito pre-venda, dominio, Asaas Sandbox ou auditoria obrigatoria estiver aberto; somente depois da aprovacao integral, iniciar a prova economica real conforme os gates.
-6. Nao avancar para IA autonoma antes dos gates G2–G7 correspondentes.
+6. Nao avancar para IA autonoma antes dos gates G2â€“G7 correspondentes.
