@@ -716,6 +716,29 @@
       ]
     },
     {
+      "id": "CODE-RELEASE-FINGERPRINT",
+      "label": "src/release.mjs + api/release.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "release tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "release endpoint syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "release manifest is immutable and complete",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "DEF-DEPLOY-SAFETY",
       "label": "evidence/EG-0008-deploy-zevanory-vercel.md",
       "approved_operations": 3,
@@ -832,8 +855,8 @@
     }
   ],
   "totals": {
-    "units": 36,
-    "approved": 36,
+    "units": 37,
+    "approved": 37,
     "failed": 0
   },
   "verdict": "APPROVED"

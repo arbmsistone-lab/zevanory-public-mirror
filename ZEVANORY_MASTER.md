@@ -37,7 +37,7 @@ G1-C: preco experimental R$297–R$797; hipotese central R$497; nao validado com
 WhatsApp oficial: +55 88 99234-0423 / E.164 5588992340423.
 Infraestrutura G2: homepage institucional em /, piloto comercial em /piloto, telemetria persistente Neon e runtime auditado.
 Deploy Vercel: projeto zevanory-site em producao READY.
-Auditoria atual: 47/47 testes e 36/36 unidades 3X previstas no estado atual; deploy de producao exige promocao serializada e verificacao do alias antes do fechamento.
+Auditoria atual: 50/50 testes e 37/37 unidades 3X no estado atual; deploy de producao exige promocao serializada, fingerprint ZEVANORY-EG0014-RC1 e verificacao do alias antes do fechamento.
 
 ## ESTADO ATUAL
 EXP-0001: PRONTO TECNICAMENTE / NAO INICIADO COMERCIALMENTE.
