@@ -45,7 +45,12 @@ unit('CODE-CONFIG', 'src/config.mjs', [
 unit('CODE-SALES-GATE','src/salesGate.mjs',[
   command('sales gate syntax',process.execPath,['--check','src/salesGate.mjs']),
   command('sales gate tests',process.execPath,['--test','test/sales-gate.test.mjs']),
-  op('two-key fail-closed global gate',()=>t('src/salesGate.mjs').includes('SALE_GLOBALLY_ENABLED')&&t('src/salesGate.mjs').includes('PRE_SALE_GATES_APPROVED')&&t('src/salesGate.mjs').includes('globalEnabled && preSaleApproved')),
+  op('three-layer fail-closed global gate',()=>t('src/salesGate.mjs').includes('SALE_GLOBALLY_ENABLED')&&t('src/salesGate.mjs').includes('PRE_SALE_GATES_APPROVED')&&t('src/salesGate.mjs').includes('globalEnabled && preSaleApproved && manifest.approved')),
+]);
+unit('CODE-PRE-SALE-APPROVAL','src/preSaleApproval.mjs',[
+  command('pre-sale approval syntax',process.execPath,['--check','src/preSaleApproval.mjs']),
+  op('manifest is explicitly blocked',()=>t('src/preSaleApproval.mjs').includes('approved: false')&&t('src/preSaleApproval.mjs').includes('custom_domain_unverified')),
+  op('sandbox blocker is canonical',()=>t('src/preSaleApproval.mjs').includes('asaas_sandbox_unconfigured')&&t('src/preSaleApproval.mjs').includes("global_sales_gate: 'EG-0018'")),
 ]);
 unit('CODE-TELEMETRY', 'src/telemetry.mjs', [
   command('syntax telemetry', process.execPath, ['--check','src/telemetry.mjs']),

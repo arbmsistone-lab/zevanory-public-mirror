@@ -42,7 +42,30 @@
           "detail": "exit=0"
         },
         {
-          "name": "two-key fail-closed global gate",
+          "name": "three-layer fail-closed global gate",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PRE-SALE-APPROVAL",
+      "label": "src/preSaleApproval.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "pre-sale approval syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "manifest is explicitly blocked",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "sandbox blocker is canonical",
           "status": "APPROVED",
           "detail": "true"
         }
@@ -1016,8 +1039,8 @@
     }
   ],
   "totals": {
-    "units": 44,
-    "approved": 44,
+    "units": 45,
+    "approved": 45,
     "failed": 0
   },
   "verdict": "APPROVED"

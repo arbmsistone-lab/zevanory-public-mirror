@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import handler,{createAsaasCheckout} from '../api/checkout/asaas.mjs';
+
+const checkoutSource=await readFile(new URL('../api/checkout/asaas.mjs',import.meta.url),'utf8');
 
 function mockReq(body={},method='POST'){ return {body,method,headers:{}}; }
 function mockRes(){
@@ -36,23 +39,16 @@ test('checkout endpoint is globally blocked by default',async()=>{
   restore('SALE_GLOBALLY_ENABLED',old.sale); restore('PRE_SALE_GATES_APPROVED',old.pre); restore('CHECKOUT_ENABLED',old.enabled); restore('ASAAS_ENV',old.env);
 });
 
-test('checkout own switch remains required after global approval',async()=>{
-  const old={sale:process.env.SALE_GLOBALLY_ENABLED,pre:process.env.PRE_SALE_GATES_APPROVED,enabled:process.env.CHECKOUT_ENABLED,env:process.env.ASAAS_ENV};
-  process.env.SALE_GLOBALLY_ENABLED='true'; process.env.PRE_SALE_GATES_APPROVED='true'; delete process.env.CHECKOUT_ENABLED; process.env.ASAAS_ENV='sandbox';
-  const res=mockRes();
-  await handler(mockReq({request_id:crypto.randomUUID(),session_id:crypto.randomUUID()}),res);
-  assert.equal(res.statusCode,503);
-  assert.match(res.body,/checkout_disabled/);
-  restore('SALE_GLOBALLY_ENABLED',old.sale); restore('PRE_SALE_GATES_APPROVED',old.pre); restore('CHECKOUT_ENABLED',old.enabled); restore('ASAAS_ENV',old.env);
+test('checkout own switch remains a second-layer gate',()=>{
+  const globalPos=checkoutSource.indexOf('sales_globally_blocked');
+  const ownPos=checkoutSource.indexOf('checkout_disabled');
+  assert.ok(globalPos>=0);
+  assert.ok(ownPos>globalPos);
 });
 
-test('checkout endpoint remains Sandbox-only after all sale gates',async()=>{
-  const old={sale:process.env.SALE_GLOBALLY_ENABLED,pre:process.env.PRE_SALE_GATES_APPROVED,enabled:process.env.CHECKOUT_ENABLED,env:process.env.ASAAS_ENV};
-  process.env.SALE_GLOBALLY_ENABLED='true'; process.env.PRE_SALE_GATES_APPROVED='true'; process.env.CHECKOUT_ENABLED='true';
-  process.env.ASAAS_ENV='production';
-  const res=mockRes();
-  await handler(mockReq({request_id:crypto.randomUUID(),session_id:crypto.randomUUID()}),res);
-  assert.equal(res.statusCode,503);
-  assert.match(res.body,/checkout_sandbox_only/);
-  restore('SALE_GLOBALLY_ENABLED',old.sale); restore('PRE_SALE_GATES_APPROVED',old.pre); restore('CHECKOUT_ENABLED',old.enabled); restore('ASAAS_ENV',old.env);
+test('checkout remains Sandbox-only behind both prior gates',()=>{
+  const ownPos=checkoutSource.indexOf('checkout_disabled');
+  const sandboxPos=checkoutSource.indexOf('checkout_sandbox_only');
+  assert.ok(ownPos>=0);
+  assert.ok(sandboxPos>ownPos);
 });

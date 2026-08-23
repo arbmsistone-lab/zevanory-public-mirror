@@ -14,11 +14,14 @@ test('global sales gate is fail-closed by default',()=>{
   assert.equal(salesGate({PRE_SALE_GATES_APPROVED:'true'}).enabled,false);
 });
 
-test('channel requires global gate plus its own explicit flag',()=>{
+test('canonical pre-sale manifest blocks environment-only activation',()=>{
   const base={SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'};
-  assert.equal(salesGate(base).enabled,true);
-  assert.equal(channelEnabled('WHATSAPP_SALES_ENABLED',base),false);
-  assert.equal(channelEnabled('WHATSAPP_SALES_ENABLED',{...base,WHATSAPP_SALES_ENABLED:'true'}),true);
+  const gate=salesGate(base);
+  assert.equal(gate.enabled,false);
+  assert.equal(gate.manifest_approved,false);
+  assert.equal(gate.blockers.includes('custom_domain_unverified'),true);
+  assert.equal(gate.blockers.includes('asaas_sandbox_unconfigured'),true);
+  assert.equal(channelEnabled('WHATSAPP_SALES_ENABLED',{...base,WHATSAPP_SALES_ENABLED:'true'}),false);
 });
 
 test('public config exposes no commercial channel while gates are open',()=>{
