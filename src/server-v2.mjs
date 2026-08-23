@@ -141,7 +141,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, "127.0.0.1", () => {
-  console.log(`Projeto Zero G2 em http://127.0.0.1:${port}`);
+  console.log(`ZEVANORY G2 em http://127.0.0.1:${port}`);
   console.log(whatsappNumber ? "WhatsApp configurado" : "WhatsApp NAO configurado; CTA bloqueado");
   console.log("Eventos financeiros bloqueados ate integracao autenticada com provedor");
 });

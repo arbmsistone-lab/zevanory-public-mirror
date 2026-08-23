@@ -1,7 +1,7 @@
 # EVIDENCE GATE
 
 ID da implementacao: EG-0008 / Deploy Zevanory na Vercel
-Decisao proposta: publicar o Projeto Zero no projeto Vercel zevanory-site e preparar vinculo com zevanory.api.br em modo fail-closed.
+Decisao proposta: publicar o ZEVANORY no projeto Vercel zevanory-site e preparar vinculo com zevanory.api.br em modo fail-closed.
 Problema que resolve: tornar o projeto acessivel em dominio proprio sem reduzir as garantias de telemetria, autenticacao e integridade financeira.
 
 ## Evidencia 1
@@ -11,7 +11,7 @@ Constatacao: a Vercel suporta aliases/custom domains, variaveis de ambiente e fu
 Limites: documentacao de plataforma; nao prova que o dominio ja esteja configurado no DNS.
 
 ## Evidencia 2
-Fonte: Auditoria interna Projeto Zero - validation/AUDIT-3X-CURRENT.json
+Fonte: Auditoria interna ZEVANORY - validation/AUDIT-3X-CURRENT.json
 Classe: A
 Constatacao: o estado atual passou 16/16 unidades com 3 operacoes aprovadas por unidade e 19/19 testes automatizados.
 Limites: garante o estado local auditado, nao o comportamento apos deploy.

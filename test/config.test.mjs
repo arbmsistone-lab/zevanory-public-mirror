@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { PROJECT, normalizeWhatsappNumber, isOfficialWhatsapp, isUuid } from '../src/config.mjs';
 
 test('project definitions have one canonical identity', () => {
+  assert.equal(PROJECT.name, 'ZEVANORY');
   assert.equal(PROJECT.offerId, 'OFFER-0001');
   assert.equal(PROJECT.experimentId, 'EXP-0001');
   assert.equal(PROJECT.experimentalPriceBrl, 497);

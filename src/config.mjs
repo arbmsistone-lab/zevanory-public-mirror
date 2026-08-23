@@ -1,4 +1,5 @@
 export const PROJECT = Object.freeze({
+  name: "ZEVANORY",
   offerId: "OFFER-0001",
   experimentId: "EXP-0001",
   experimentalPriceBrl: 497,

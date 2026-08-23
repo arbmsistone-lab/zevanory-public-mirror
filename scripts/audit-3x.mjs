@@ -35,12 +35,12 @@ function unit(id, label, operations) {
 
 const fullTests = command('full test suite', process.execPath, ['--test',
   'test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs',
-  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs']);
+  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs']);
 
 unit('CODE-CONFIG', 'src/config.mjs', [
   command('syntax config', process.execPath, ['--check','src/config.mjs']),
   command('config tests', process.execPath, ['--test','test/config.test.mjs']),
-  op('canonical frozen definitions', () => Object.isFrozen(PROJECT) && PROJECT.officialWhatsappE164 === '5588992340423'),
+  op('canonical frozen definitions', () => Object.isFrozen(PROJECT) && PROJECT.name === 'ZEVANORY' && PROJECT.officialWhatsappE164 === '5588992340423'),
 ]);
 unit('CODE-TELEMETRY', 'src/telemetry.mjs', [
   command('syntax telemetry', process.execPath, ['--check','src/telemetry.mjs']),
@@ -64,7 +64,7 @@ unit('CODE-LANDING', 'public/index.html', [
 ]);
 unit('CODE-AUDIT', 'scripts/audit-3x.mjs', [
   command('syntax audit', process.execPath, ['--check','scripts/audit-3x.mjs']),
-  op('no external absolute reads', () => !/C:\\\\Sistemas\\\\(?!PROJETO-ZERO-MOTOR-VENDAS-IA)/i.test(t('scripts/audit-3x.mjs'))),
+  op('no external absolute reads', () => !/C:\\\\Sistemas\\\\(?!ZEVANORY)/i.test(t('scripts/audit-3x.mjs'))),
   op('three-operation fail-closed rule present', () => t('scripts/audit-3x.mjs').includes('approved >= 3') && t('scripts/audit-3x.mjs').includes("status !== 'APPROVED'")),
 ]);
 
@@ -114,12 +114,12 @@ unit('DEF-WHATSAPP', 'evidence/WHATSAPP-ORIGIN-0001.md', [
   op('official matcher rejects divergence', () => isOfficialWhatsapp('5588992340423') && !isOfficialWhatsapp('5588999999999')),
 ]);
 unit('DEF-SCOPE', 'specs/SCOPE_BOUNDARY.md', [
-  op('project root is explicit', () => t('specs/SCOPE_BOUNDARY.md').includes('C:\\Sistemas\\PROJETO-ZERO-MOTOR-VENDAS-IA')),
+  op('project root is explicit', () => t('specs/SCOPE_BOUNDARY.md').includes('C:\\Sistemas\\ZEVANORY')),
   op('external systems explicitly out of scope', () => t('specs/SCOPE_BOUNDARY.md').includes('fora de escopo')),
   op('external absolute paths forbidden', () => t('specs/SCOPE_BOUNDARY.md').includes('caminho absoluto para outro sistema')),
 ]);
 
-const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs'];
+const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs'];
 unit('ASSURANCE-TESTS','test harness',[
   op('all test files exist',()=>testFiles.every((f)=>existsSync(join(root,f)))),
   op('all test files syntax-valid',()=>testFiles.every((f)=>spawnSync(process.execPath,['--check',f],{cwd:root,encoding:'utf8'}).status===0)),
@@ -146,13 +146,28 @@ unit('DEF-DEPLOY-SAFETY','evidence/EG-0008-deploy-zevanory-vercel.md',[
   fullTests,
   op('production kill-switch documented',()=>t('evidence/EG-0008-deploy-zevanory-vercel.md').includes('manter CTA comercial bloqueado')),
 ]);
+unit('DEF-CANONICAL-MASTER','ZEVANORY_MASTER.md',[
+  op('master exists',()=>existsSync(join(root,'ZEVANORY_MASTER.md'))),
+  command('governance tests',process.execPath,['--test','test/governance.test.mjs']),
+  op('master has trajectory and current state',()=>t('ZEVANORY_MASTER.md').includes('TRAJETO APROVADO')&&t('ZEVANORY_MASTER.md').includes('ESTADO ATUAL')&&t('ZEVANORY_MASTER.md').includes('PROXIMOS PASSOS AUTORIZADOS')),
+]);
+unit('DEF-GOVERNANCE','evidence/EG-0009-governanca-trajeto-zevanory.md',[
+  op('governance evidence approved',()=>t('evidence/EG-0009-governanca-trajeto-zevanory.md').includes('Veredito: APROVADO')),
+  command('governance test suite',process.execPath,['--test','test/governance.test.mjs']),
+  op('fail-closed continuation declared',()=>t('evidence/EG-0009-governanca-trajeto-zevanory.md').includes('fica BLOQUEADA')),
+]);
+unit('DEF-AGENT-ENTRYPOINT','AGENTS.md',[
+  op('agent entrypoint exists',()=>existsSync(join(root,'AGENTS.md'))),
+  command('governance tests include entrypoint',process.execPath,['--test','test/governance.test.mjs']),
+  op('entrypoint requires master and gates',()=>t('AGENTS.md').includes('Leia ZEVANORY_MASTER.md inteiro')&&t('AGENTS.md').includes('Nao pule gates')&&t('AGENTS.md').includes('Qualquer divergencia bloqueia a acao')),
+]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),
   op('audit has no external absolute reads',()=>!t('scripts/audit-3x.mjs').includes('readFileSync(' + String.fromCharCode(39) + 'C:')) ,
 ]);
 
-const report={policy:'minimum 3 approved operations per audited code/definition unit',scope:'Projeto Zero only',units,totals:{units:units.length,approved:units.filter(x=>x.status==='APPROVED').length,failed:units.filter(x=>x.status!=='APPROVED').length},verdict:blocked?'BLOCKED':'APPROVED'};
+const report={policy:'minimum 3 approved operations per audited code/definition unit',scope:'ZEVANORY only',units,totals:{units:units.length,approved:units.filter(x=>x.status==='APPROVED').length,failed:units.filter(x=>x.status!=='APPROVED').length},verdict:blocked?'BLOCKED':'APPROVED'};
 writeFileSync(join(root,'validation','AUDIT-3X-CURRENT.json'),JSON.stringify(report,null,2)+'\n','utf8');
 for(const item of units) console.log(`${item.status} ${item.id} operations=${item.approved_operations}`);
 console.log(`AUDIT_3X_${report.verdict} units=${report.totals.units} approved=${report.totals.approved} failed=${report.totals.failed}`);

@@ -1,6 +1,6 @@
 # WHATSAPP-ORIGIN-0001
 
-Definicao: canal oficial do Projeto Zero.
+Definicao: canal oficial do ZEVANORY.
 Numero canonico E.164: 5588992340423.
 Exibicao humana: +55 88 99234-0423.
 
@@ -16,5 +16,5 @@ Status: APROVADA quando config.test.mjs passar.
 Constatacao: o runtime somente habilita WhatsApp quando a configuracao normaliza e corresponde exatamente ao numero canonico; divergencia deve manter CTA bloqueado.
 Status: APROVADA quando server-v2.integration.test.mjs passar.
 
-Nenhum arquivo ou sistema externo ao Projeto Zero pode ser consultado para validar esta definicao.
+Nenhum arquivo ou sistema externo ao ZEVANORY pode ser consultado para validar esta definicao.
 Token de operador e segredo local e nunca deve ser versionado.

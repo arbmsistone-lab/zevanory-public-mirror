@@ -1,4 +1,4 @@
-# PROJETO ZERO — MOTOR DE VENDAS POR IA
+# ZEVANORY — MOTOR DE VENDAS POR IA
 
 Objetivo: construir um motor digital de vendas com automação e IA somente a partir de evidências verificáveis.
 

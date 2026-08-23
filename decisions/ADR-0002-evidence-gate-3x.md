@@ -3,7 +3,7 @@
 Status: ACEITA
 
 ## Decisao
-Toda implementacao do Projeto Zero exige Evidence Gate aprovado antes do codigo.
+Toda implementacao do ZEVANORY exige Evidence Gate aprovado antes do codigo.
 
 ## Regras
 - Minimo de 3 evidencias independentes.

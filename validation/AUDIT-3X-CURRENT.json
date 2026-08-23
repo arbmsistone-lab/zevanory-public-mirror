@@ -1,6 +1,6 @@
 {
   "policy": "minimum 3 approved operations per audited code/definition unit",
-  "scope": "Projeto Zero only",
+  "scope": "ZEVANORY only",
   "units": [
     {
       "id": "CODE-CONFIG",
@@ -440,6 +440,75 @@
       ]
     },
     {
+      "id": "DEF-CANONICAL-MASTER",
+      "label": "ZEVANORY_MASTER.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "master exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "governance tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "master has trajectory and current state",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-GOVERNANCE",
+      "label": "evidence/EG-0009-governanca-trajeto-zevanory.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "governance evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "governance test suite",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "fail-closed continuation declared",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-AGENT-ENTRYPOINT",
+      "label": "AGENTS.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "agent entrypoint exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "governance tests include entrypoint",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "entrypoint requires master and gates",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -464,8 +533,8 @@
     }
   ],
   "totals": {
-    "units": 20,
-    "approved": 20,
+    "units": 23,
+    "approved": 23,
     "failed": 0
   },
   "verdict": "APPROVED"
