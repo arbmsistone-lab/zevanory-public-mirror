@@ -59,7 +59,8 @@ unit('CODE-PRE-SALE-READINESS','src/preSaleReadiness.mjs + scripts/pre-sale-pref
     const readiness=t('src/preSaleReadiness.mjs');
     const preflight=t('scripts/pre-sale-preflight.mjs');
     return readiness.includes('1.1.1.1') && readiness.includes('8.8.8.8') &&
-      readiness.includes('9.9.9.9') && !preflight.includes('console.log(process.env)');
+      readiness.includes('9.9.9.9') && readiness.includes('https_ready') &&
+      readiness.includes('routes_ready') && !preflight.includes('console.log(process.env)');
   }),
 ]);
 unit('CODE-TELEMETRY', 'src/telemetry.mjs', [
@@ -122,7 +123,10 @@ unit('CODE-EVIDENCE-VERIFIER', 'scripts/verify_evidence_gate.ps1', [
 unit('RUNTIME-PACKAGE', 'package.json', [
   op('package JSON parses', () => Boolean(JSON.parse(t('package.json')).name)),
   op('start targets only server-v2', () => JSON.parse(t('package.json')).scripts.start.includes('server-v2.mjs') && !JSON.parse(t('package.json')).scripts.start.includes('src/server.mjs')),
-  op('test and audit commands declared', () => Boolean(JSON.parse(t('package.json')).scripts.test) && Boolean(JSON.parse(t('package.json')).scripts['audit:3x'])),
+  op('test audit and pre-sale preflight commands declared', () => {
+    const scripts=JSON.parse(t('package.json')).scripts;
+    return Boolean(scripts.test) && Boolean(scripts['audit:3x']) && Boolean(scripts['preflight:pre-sale']);
+  }),
 ]);
 unit('DEF-OFFER', 'specs/OFFER-0001-ia-vendas-whatsapp.md', [
   op('offer evidence approved', () => t('evidence/EG-0004-g1b-oferta-ia-vendas-whatsapp.md').includes('Veredito: APROVADO')),

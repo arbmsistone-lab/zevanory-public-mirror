@@ -35,10 +35,27 @@ async function hasVercelTxt() {
 }
 const dns=[];
 for(const server of REQUIRED_DNS_RESOLVERS) dns.push({server,address:await hasAddress(server)});
+const dnsReady=dns.every((item)=>item.address===true);
+async function probeCustomDomain() {
+  if(!dnsReady) return {https:false,routes:false};
+  const paths=['/','/piloto','/api/release','/api/config'];
+  let https=false;
+  for(const path of paths) {
+    try {
+      const response=await fetch(`https://${domain}${path}`,{signal:AbortSignal.timeout(3000)});
+      if(path==='/') https=response.status===200;
+      if(response.status!==200) return {https,routes:false};
+    } catch { return {https:false,routes:false}; }
+  }
+  return {https,routes:true};
+}
+const customDomain=await probeCustomDomain();
 const result=evaluatePreSaleReadiness({
   dns,
   vercel_txt:await hasVercelTxt(),
   vercel_claim_not_required:false,
+  https_ready:customDomain.https,
+  routes_ready:customDomain.routes,
   asaas_key:Boolean(process.env.ASAAS_API_KEY),
   asaas_webhook:Boolean(process.env.ASAAS_WEBHOOK_TOKEN),
   asaas_env_sandbox:String(process.env.ASAAS_ENV||'').toLowerCase()==='sandbox',
@@ -48,6 +65,8 @@ console.log(JSON.stringify({
   ready:result.ready,
   dns:result.dns_ready,
   ownership:result.ownership_ready,
+  https:result.https_ready,
+  routes:result.routes_ready,
   asaas:result.asaas_ready,
   blockers:result.blockers,
 }));

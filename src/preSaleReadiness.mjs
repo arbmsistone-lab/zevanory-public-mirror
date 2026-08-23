@@ -6,16 +6,22 @@ export function evaluatePreSaleReadiness(input={}) {
     dns.some((item)=>item.server===server && item.address===true)
   );
   const ownershipReady=input.vercel_txt===true || input.vercel_claim_not_required===true;
+  const httpsReady=input.https_ready===true;
+  const routesReady=input.routes_ready===true;
   const asaasReady=input.asaas_key===true && input.asaas_webhook===true &&
     input.asaas_env_sandbox===true && input.public_base===true;
   const blockers=[];
   if(!dnsReady) blockers.push('custom_domain_dns_unready');
   if(!ownershipReady) blockers.push('vercel_ownership_unverified');
+  if(!httpsReady) blockers.push('custom_domain_https_unready');
+  if(!routesReady) blockers.push('custom_domain_routes_unready');
   if(!asaasReady) blockers.push('asaas_sandbox_unconfigured');
   return Object.freeze({
     ready:blockers.length===0,
     dns_ready:dnsReady,
     ownership_ready:ownershipReady,
+    https_ready:httpsReady,
+    routes_ready:routesReady,
     asaas_ready:asaasReady,
     blockers:Object.freeze(blockers),
   });
