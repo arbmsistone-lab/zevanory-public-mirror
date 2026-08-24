@@ -49,7 +49,7 @@ unit('CODE-SALES-GATE','src/salesGate.mjs',[
 ]);
 unit('CODE-PRE-SALE-APPROVAL','src/preSaleApproval.mjs',[
   command('pre-sale approval syntax',process.execPath,['--check','src/preSaleApproval.mjs']),
-  op('manifest is explicitly blocked',()=>t('src/preSaleApproval.mjs').includes('approved: false')&&t('src/preSaleApproval.mjs').includes('custom_domain_unverified')),
+  op('manifest remains blocked with verified domain evidence',()=>t('src/preSaleApproval.mjs').includes('approved: false')&&t('src/preSaleApproval.mjs').includes("custom_domain: 'EG-0021'")),
   op('sandbox blocker is canonical',()=>t('src/preSaleApproval.mjs').includes('asaas_sandbox_unconfigured')&&t('src/preSaleApproval.mjs').includes("global_sales_gate: 'EG-0018'")),
 ]);
 unit('CODE-PRE-SALE-READINESS','src/preSaleReadiness.mjs + scripts/pre-sale-preflight.mjs',[

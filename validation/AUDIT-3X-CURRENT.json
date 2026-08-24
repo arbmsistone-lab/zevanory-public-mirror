@@ -60,7 +60,7 @@
           "detail": "exit=0"
         },
         {
-          "name": "manifest is explicitly blocked",
+          "name": "manifest remains blocked with verified domain evidence",
           "status": "APPROVED",
           "detail": "true"
         },

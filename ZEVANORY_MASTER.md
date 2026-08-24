@@ -46,14 +46,14 @@ EXP-0001: PRONTO TECNICAMENTE / NAO INICIADO COMERCIALMENTE.
 G2 comercial: ABERTO. Nao existe pagamento real reconciliado.
 Telemetria publica em producao: ATIVA e persistente no Neon; idempotencia comprovada por event_id.
 Eventos financeiros: BLOQUEADOS para venda real. Camada Asaas implementada com authToken, reconciliacao por GET /payments/{id}, idempotencia financeira, migrations 002, 003, 004 e 005 aplicadas no Neon. Estorno parcial usa reconciliacao cumulativa apenas de refunds DONE; transicao orders.status ocorre atomicamente com financial_events. SALE_GLOBALLY_ENABLED e PRE_SALE_GATES_APPROVED permanecem OFF por padrao; WhatsApp e checkout nao podem iniciar venda enquanto o gate global estiver bloqueado. Ainda faltam credenciais Asaas proprias e primeiro checkout Sandbox real, somente apos aprovacao integral pre-venda.
-Dominio zevanory.api.br: PUBLICADO no Registro.br conforme comprovante apresentado pelo usuario. DNS autoritativo atual em a.auto.dns.br / b.auto.dns.br. No projeto Vercel zevanory-site o dominio aparece como Verification Required; CLI ainda retorna 403 enquanto a prova de ownership nao for concluida. O URL tecnico/team do deployment esta protegido por Vercel Authentication/SSO (302 para vercel.com/sso-api), mas o alias canonico https://zevanory-site.vercel.app esta publico e responde 200 em /, /piloto, /api/config e /api/release. /api/config confirma commercial_enabled=false, whatsapp_enabled=false e production_mode=pre-sale-blocked; /api/release confirma sales_mode=globally-blocked, checkout_mode=globally-blocked e financial_mode=disabled.
-EG-0021 registra o dominio publicado e o estado de verificacao Vercel. O TXT oficial de ownership ainda precisa ser obtido/publicado; _vercel.zevanory.api.br permanece ausente neste checkpoint.
+Dominio zevanory.api.br: APROVADO tecnicamente. Registro.br publicado; DNS A 216.198.79.1 e TXT _vercel validados em 1.1.1.1, 8.8.8.8 e 9.9.9.9; Vercel mostra Configuracao valida em Producao; HTTPS e certificado validos; /, /piloto, /api/config, /api/release e /api/status respondem HTTP 200. Gates comerciais permanecem bloqueados.
+EG-0021 APROVADO em 2026-08-24: ownership Vercel, DNS 3 resolvedores, HTTPS e rotas publicas comprovados. custom_domain_unverified removido do manifest; Asaas Sandbox continua blocker canonico.
 DNS publico atual: nome existe sem endereco A/AAAA funcional; TXT _vercel ainda ausente.
 Git ZEVANORY: sem remote/origin configurado; commits atuais ainda nao possuem sincronizacao Git remota comprovada.
 
 ## PROXIMOS PASSOS AUTORIZADOS
 1. Concluir verificacao DNS e associacao funcional de zevanory.api.br.
-2. Revalidar dominio em pelo menos 3 resolvedores + HTTPS + rotas publicas.
+2. Manter monitoramento de regressao do dominio; gate EG-0021 aprovado e revalidado em 3 resolvedores + HTTPS + rotas publicas.
 3. Persistencia Neon aprovada; manter monitoramento, idempotencia e reconciliacao.
 4. Asaas selecionado pelo EG-0013; obter credenciais Sandbox proprias e validar pedido -> checkout -> webhook -> reconciliacao antes de qualquer pagamento real.
 5. Nao iniciar EXP-0001 comercialmente enquanto qualquer requisito pre-venda, dominio, Asaas Sandbox ou auditoria obrigatoria estiver aberto; somente depois da aprovacao integral, iniciar a prova economica real conforme os gates.

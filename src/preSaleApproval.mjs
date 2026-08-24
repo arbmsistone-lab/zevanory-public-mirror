@@ -1,7 +1,6 @@
 export const PRE_SALE_APPROVAL = Object.freeze({
   approved: false,
   blockers: Object.freeze([
-    'custom_domain_unverified',
     'asaas_sandbox_unconfigured',
   ]),
   evidence: Object.freeze({
@@ -9,6 +8,7 @@ export const PRE_SALE_APPROVAL = Object.freeze({
     payment_provider: 'EG-0013',
     checkout_order: 'EG-0014',
     financial_state: 'EG-0017',
+    custom_domain: 'EG-0021',
   }),
 });
 
