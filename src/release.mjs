@@ -1,3 +1,4 @@
+// Final sales-machine release; CI quality gate is part of promotion evidence.
 export const RELEASE = Object.freeze({
   id: 'ZEVANORY-EG0032-FINAL',
   salesMode: 'globally-blocked',
