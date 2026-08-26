@@ -95,3 +95,12 @@ Health e status passam a emitir correlação por `x-request-id` e logs JSON estr
 O probe operacional valida `/api/live`, `/api/health`, `/api/release` e `/api/status` com timeout fail-closed.
 Release candidata: ZEVANORY-EG0030-RC1.
 Aprovação exige suíte completa, 3X, DR 10X, observabilidade 10X, 30X e prova de produção.
+
+
+## FASE ESTRUTURAL EG-0031 — HARDENING DE SEGURANÇA
+CSP estrito com scripts e estilos somente da própria origem; assets inline removidos.
+API pública exige JSON, limita payload, valida Origin oficial e limita abuso por sessão.
+Autenticação de operador usa comparação em tempo constante.
+Dependências auditadas sem vulnerabilidades conhecidas no fechamento desta etapa.
+Release candidata: ZEVANORY-EG0031-RC1.
+Vendas e eventos financeiros reais continuam bloqueados.

@@ -923,6 +923,29 @@
       ]
     },
     {
+      "id": "CODE-SECURITY",
+      "label": "src/security.mjs + vercel.json",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "security syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "security tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "security boundaries are fail-closed",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "CODE-RELEASE-FINGERPRINT",
       "label": "src/release.mjs + api/release.mjs",
       "approved_operations": 3,
@@ -1062,8 +1085,8 @@
     }
   ],
   "totals": {
-    "units": 46,
-    "approved": 46,
+    "units": 47,
+    "approved": 47,
     "failed": 0
   },
   "verdict": "APPROVED"

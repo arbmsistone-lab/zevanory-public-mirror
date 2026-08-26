@@ -89,7 +89,7 @@ unit('CODE-LANDING', 'public/index.html', [
 unit('CODE-PILOT', 'public/piloto.html', [
   command('pilot tests', process.execPath, ['--test','test/piloto.test.mjs']),
   op('CTA disabled by default', () => t('public/piloto.html').includes('<button id="cta" disabled>')),
-  op('telemetry before redirect', () => t('public/piloto.html').indexOf("await event('cta_whatsapp')") < t('public/piloto.html').indexOf("location.href = 'https://wa.me/'")),
+  op('telemetry before redirect', () => t('public/piloto.js').indexOf("await event('cta_whatsapp')") < t('public/piloto.js').indexOf("location.href = 'https://wa.me/'")),
 ]);
 unit('CODE-AUDIT', 'scripts/audit-3x.mjs', [
   command('syntax audit', process.execPath, ['--check','scripts/audit-3x.mjs']),
@@ -263,10 +263,15 @@ unit('DEF-DEPLOY-SERIALIZATION','evidence/EG-0015-deploy-serializado.md',[
   op('workstreams requires full serialized deploy',()=>t('WORKSTREAMS.md').includes('Deploy de producao e operacao serializada')&&t('WORKSTREAMS.md').includes('pacote completo')),
   op('agent requires alias identity verification',()=>t('AGENTS.md').includes('alias publico continuar apontando para o deployment exato promovido')),
 ]);
+unit('CODE-SECURITY','src/security.mjs + vercel.json',[
+  command('security syntax',process.execPath,['--check','src/security.mjs']),
+  command('security tests',process.execPath,['--test','test/security.test.mjs','test/vercel.test.mjs','test/landing.test.mjs','test/piloto.test.mjs']),
+  op('security boundaries are fail-closed',()=>t('src/security.mjs').includes('timingSafeEqual')&&t('src/security.mjs').includes('origin_not_allowed')&&t('api/events-public.mjs').includes('rate_limited')&&t('vercel.json').includes('Content-Security-Policy'))
+]);
 unit('CODE-RELEASE-FINGERPRINT','src/release.mjs + api/release.mjs',[
   command('release tests',process.execPath,['--test','test/release.test.mjs']),
   command('release endpoint syntax',process.execPath,['--check','api/release.mjs']),
-  op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0030-RC1')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
+  op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0031-RC1')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
 ]);
 unit('DEF-DEPLOY-SAFETY','evidence/EG-0008-deploy-zevanory-vercel.md',[
   op('deploy evidence gate approved',()=>t('evidence/EG-0008-deploy-zevanory-vercel.md').includes('Veredito: APROVADO')),

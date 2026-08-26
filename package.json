@@ -12,6 +12,7 @@
     "audit:3x": "node scripts/audit-3x.mjs",
     "audit:10x": "node scripts/audit-10x.mjs",
     "audit:obs:10x": "node scripts/audit-observability-10x.mjs",
+    "audit:security:10x": "node scripts/audit-security-10x.mjs",
     "audit:30x": "node scripts/audit-30x.mjs",
     "probe:production": "node scripts/operational-probe.mjs",
     "dr:rehearsal": "node --env-file-if-exists=.env.dr scripts/dr-rehearsal.mjs",

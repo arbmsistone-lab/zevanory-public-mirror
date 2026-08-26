@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RELEASE } from '../src/release.mjs';
 import handler from '../api/release.mjs';
@@ -9,14 +9,14 @@ function mock(method='GET'){
 }
 
 test('release fingerprint is canonical and immutable',()=>{
-  assert.equal(RELEASE.id,'ZEVANORY-EG0030-RC1');
+  assert.equal(RELEASE.id,'ZEVANORY-EG0031-RC1');
   assert.equal(Object.isFrozen(RELEASE),true);
   assert.equal(RELEASE.salesMode,'globally-blocked');
   assert.equal(RELEASE.checkoutMode,'globally-blocked');
 });
 
 test('release manifest requires all production surfaces',()=>{
-  for(const route of ['/','/piloto','/api/config','/api/events/public','/api/checkout/asaas','/api/webhooks/asaas','/api/release']) {
+  for(const route of ['/','/piloto','/api/config','/api/health','/api/live','/api/events/public','/api/checkout/asaas','/api/webhooks/asaas','/api/release']) {
     assert.equal(RELEASE.requiredRoutes.includes(route),true);
   }
 });
@@ -26,7 +26,7 @@ test('release endpoint exposes exact fingerprint and rejects writes',()=>{
   handler(ok.req,ok.res);
   assert.equal(ok.res.statusCode,200);
   const body=JSON.parse(ok.res.body);
-  assert.equal(body.release_id,'ZEVANORY-EG0030-RC1');
+  assert.equal(body.release_id,'ZEVANORY-EG0031-RC1');
   assert.equal(body.sales_mode,'globally-blocked');
   assert.equal(body.checkout_mode,'globally-blocked');
   const blocked=mock('POST');

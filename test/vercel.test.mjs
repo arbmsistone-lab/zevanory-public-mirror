@@ -56,3 +56,11 @@ test('vercel global headers harden browser attack surface',async()=>{
   assert.equal(headers['Permissions-Policy'],'camera=(), microphone=(), geolocation=()');
   assert.equal(headers['Cross-Origin-Opener-Policy'],'same-origin');
 });
+test('vercel enforces strict CSP and cross-origin isolation headers',async()=>{
+  const raw=await readFile(new URL('../vercel.json',import.meta.url),'utf8');
+  const cfg=JSON.parse(raw);
+  const headers=Object.fromEntries(cfg.headers[0].headers.map(({key,value})=>[key,value]));
+  assert.equal(headers['Content-Security-Policy'],"default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'");
+  assert.equal(headers['Cross-Origin-Resource-Policy'],'same-origin');
+  assert.equal(headers['X-DNS-Prefetch-Control'],'off');
+});

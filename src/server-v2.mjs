@@ -11,6 +11,7 @@ import {
   sanitizeText,
 } from "./telemetry.mjs";
 import { PROJECT, normalizeWhatsappNumber, isOfficialWhatsapp, isUuid } from "./config.mjs";
+import { safeBearerEqual } from "./security.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -74,7 +75,7 @@ function buildEvent(name, payload = {}, source = "public") {
 }
 
 function authorizedOperator(req) {
-  return Boolean(operatorToken) && req.headers.authorization === `Bearer ${operatorToken}`;
+  return safeBearerEqual(operatorToken, String(req.headers.authorization || "").replace(/^Bearer\s+/i, ""));
 }
 const server = http.createServer(async (req, res) => {
   try {

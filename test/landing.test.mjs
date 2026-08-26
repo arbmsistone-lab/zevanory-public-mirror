@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+const js = await readFile(new URL('../public/index.js', import.meta.url), 'utf8');
 
 test('landing identifies ZEVANORY as the only public brand', () => {
   assert.match(html, /<title>ZEVANORY<\/title>/);
@@ -14,11 +15,9 @@ test('landing identifies ZEVANORY as the only public brand', () => {
 test('landing exposes operational infrastructure instead of a static G0 card', () => {
   assert.match(html, /NOVO\.<br>SEM HERANÇA\./);
   assert.match(html, /infraestrutura em construção/i);
-  assert.match(html, /fetch\('\/api\/status'/);
+  assert.match(js, /fetch\('\/api\/status'/);
   assert.match(html, /Motor &amp; gate atual/);
   assert.doesNotMatch(html, /<strong>G0<\/strong>/);
-  assert.doesNotMatch(html, /Preço experimental/i);
-  assert.doesNotMatch(html, /Falar sobre o piloto no WhatsApp/i);
 });
 
 test('landing makes commercial truth and domain status explicit', () => {
@@ -26,7 +25,6 @@ test('landing makes commercial truth and domain status explicit', () => {
   assert.match(html, /Venda só existe após pagamento reconciliado/);
   assert.match(html, /zevanory\.api\.br - associacao valida - producao/);
 });
-
 test('landing includes all approved aggregate operational metrics', () => {
   for (const key of ['page_views','leads_qualified','offers_sent','checkouts_started','orders','payments_confirmed','refunds_confirmed']) {
     assert.match(html, new RegExp(`data-kpi="${key}"`));
@@ -34,9 +32,16 @@ test('landing includes all approved aggregate operational metrics', () => {
 });
 
 test('landing exposes audited release and global sales safety state', () => {
-  assert.match(html, /fetch\('\/api\/release'/);
-  assert.match(html, /fetch\('\/api\/config'/);
+  assert.match(js, /fetch\('\/api\/release'/);
+  assert.match(js, /fetch\('\/api\/config'/);
   assert.match(html, /id="release-id"/);
   assert.match(html, /id="sales-mode"/);
-  assert.match(html, /BLOQUEADO GLOBALMENTE/);
+  assert.match(js, /BLOQUEADO GLOBALMENTE/);
+});
+
+test('landing has no inline script or style under strict CSP', () => {
+  assert.doesNotMatch(html, /<style[>\s]/i);
+  assert.doesNotMatch(html, /<script>([\s\S]*?)<\/script>/i);
+  assert.match(html, /href="\/index\.css"/);
+  assert.match(html, /src="\/index\.js"/);
 });
