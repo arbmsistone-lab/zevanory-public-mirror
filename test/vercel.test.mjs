@@ -46,3 +46,13 @@ test('vercel routing publishes landing and exact event endpoint',async()=>{
   assert.ok(cfg.rewrites.some(x=>x.source==='/api/events/public'&&x.destination==='/api/events-public'));
   assert.equal(cfg.cleanUrls,true);
 });
+
+test('vercel global headers harden browser attack surface',async()=>{
+  const raw=await readFile(new URL('../vercel.json',import.meta.url),'utf8');
+  const cfg=JSON.parse(raw);
+  const headers=Object.fromEntries(cfg.headers[0].headers.map(({key,value})=>[key,value]));
+  assert.equal(headers['X-Content-Type-Options'],'nosniff');
+  assert.equal(headers['X-Frame-Options'],'DENY');
+  assert.equal(headers['Permissions-Policy'],'camera=(), microphone=(), geolocation=()');
+  assert.equal(headers['Cross-Origin-Opener-Policy'],'same-origin');
+});

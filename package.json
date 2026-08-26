@@ -1,1 +1,16 @@
-{"name":"zevanory","private":true,"type":"module","dependencies":{"@neondatabase/serverless":"1.1.0"},"scripts":{"start":"node --env-file-if-exists=.env src/server-v2.mjs","pretest":"node scripts/identity-guard.mjs","test":"node --test test/*.test.mjs","audit:3x":"node scripts/audit-3x.mjs","preflight:pre-sale":"node --env-file-if-exists=.env.local scripts/pre-sale-preflight.mjs"}}
+{
+  "name": "zevanory",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@neondatabase/serverless": "1.1.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server-v2.mjs",
+    "pretest": "node scripts/identity-guard.mjs",
+    "test": "node --test test/*.test.mjs",
+    "audit:3x": "node scripts/audit-3x.mjs",
+    "audit:30x": "node scripts/audit-30x.mjs",
+    "preflight:pre-sale": "node --env-file-if-exists=.env.local scripts/pre-sale-preflight.mjs"
+  }
+}

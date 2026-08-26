@@ -60,3 +60,14 @@ Homologacao Asaas Sandbox EG-0026 APROVADA em 2026-08-25: Checkout hospedado de 
 4. Asaas selecionado pelo EG-0013 e homologado no Sandbox pelo EG-0026; manter monitoramento e nao usar producao financeira antes da aprovacao integral pre-venda.
 5. Nao iniciar EXP-0001 comercialmente enquanto qualquer requisito pre-venda, dominio, Asaas Sandbox ou auditoria obrigatoria estiver aberto; somente depois da aprovacao integral, iniciar a prova economica real conforme os gates.
 6. Nao avancar para IA autonoma antes dos gates G2ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œG7 correspondentes.
+
+## FASE ESTRUTURAL ATUAL — 2026-08-26
+Diretriz do proprietário: vendas ficam fora de escopo até a estrutura técnica estar concluída.
+EG-0027: hardening e saúde estrutural aprovados para validação final.
+Release candidata: `ZEVANORY-EG0027-RC1`.
+Fonte canônica local: `C:\Sistemas\ZEVANORY`, reconciliada com a release oficial anterior antes desta evolução.
+Endpoint estrutural: `GET /api/health`, separado de métricas e gates comerciais.
+Readiness exige banco acessível, `PUBLIC_BASE_URL=https://zevanory.api.br` e os cinco kill-switches comerciais/financeiros desligados.
+Runbook operacional cobre incidente, recuperação e rollback.
+Auditoria final desta fase exige, cumulativamente: suíte completa, auditoria 3X, auditoria 30X e prova operacional em produção.
+Nenhuma aprovação da EG-0027 autoriza venda, checkout comercial, WhatsApp comercial, evento financeiro real ou autonomia.
