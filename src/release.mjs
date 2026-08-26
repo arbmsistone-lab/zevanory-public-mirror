@@ -1,5 +1,5 @@
 export const RELEASE = Object.freeze({
-  id: 'ZEVANORY-EG0018-RC2',
+  id: 'ZEVANORY-EG0026-RC1',
   salesMode: 'globally-blocked',
   checkoutMode: 'globally-blocked',
   financialMode: 'disabled',

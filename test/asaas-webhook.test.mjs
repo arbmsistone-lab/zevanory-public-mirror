@@ -69,6 +69,7 @@ test('webhook persists provider-reconciled cumulative refund total',async()=>{
   assert.match(source,/refunded_total/);
   assert.match(source,/normalized === 'refund_confirmed'/);
   assert.match(source,/ON CONFLICT DO NOTHING/);
+  assert.match(source,/unlinked_payment/);
 });
 
 

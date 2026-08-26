@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { salesGate, channelEnabled } from '../src/salesGate.mjs';
+import { preSaleApproval } from '../src/preSaleApproval.mjs';
 import configHandler from '../api/config.mjs';
 
 function mock(){
@@ -20,7 +21,8 @@ test('canonical pre-sale manifest blocks environment-only activation',()=>{
   assert.equal(gate.enabled,false);
   assert.equal(gate.manifest_approved,false);
   assert.equal(gate.blockers.includes('custom_domain_unverified'),false);
-  assert.equal(gate.blockers.includes('asaas_sandbox_unconfigured'),true);
+  assert.equal(gate.blockers.includes('asaas_sandbox_unconfigured'),false);
+  assert.equal(preSaleApproval().evidence.asaas_sandbox_e2e,'EG-0026');
   assert.equal(channelEnabled('WHATSAPP_SALES_ENABLED',{...base,WHATSAPP_SALES_ENABLED:'true'}),false);
 });
 

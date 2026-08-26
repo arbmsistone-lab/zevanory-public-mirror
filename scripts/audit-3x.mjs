@@ -50,7 +50,7 @@ unit('CODE-SALES-GATE','src/salesGate.mjs',[
 unit('CODE-PRE-SALE-APPROVAL','src/preSaleApproval.mjs',[
   command('pre-sale approval syntax',process.execPath,['--check','src/preSaleApproval.mjs']),
   op('manifest remains blocked with verified domain evidence',()=>t('src/preSaleApproval.mjs').includes('approved: false')&&t('src/preSaleApproval.mjs').includes("custom_domain: 'EG-0021'")),
-  op('sandbox blocker is canonical',()=>t('src/preSaleApproval.mjs').includes('asaas_sandbox_unconfigured')&&t('src/preSaleApproval.mjs').includes("global_sales_gate: 'EG-0018'")),
+  op('sandbox homologation is evidenced without approving sales',()=>!t('src/preSaleApproval.mjs').includes('asaas_sandbox_unconfigured')&&t('src/preSaleApproval.mjs').includes("asaas_sandbox_e2e: 'EG-0026'")&&t('src/preSaleApproval.mjs').includes("global_sales_gate: 'EG-0018'")),
 ]);
 unit('CODE-PRE-SALE-READINESS','src/preSaleReadiness.mjs + scripts/pre-sale-preflight.mjs',[
   command('pre-sale readiness syntax',process.execPath,['--check','src/preSaleReadiness.mjs']),
@@ -266,7 +266,7 @@ unit('DEF-DEPLOY-SERIALIZATION','evidence/EG-0015-deploy-serializado.md',[
 unit('CODE-RELEASE-FINGERPRINT','src/release.mjs + api/release.mjs',[
   command('release tests',process.execPath,['--test','test/release.test.mjs']),
   command('release endpoint syntax',process.execPath,['--check','api/release.mjs']),
-  op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0018-RC2')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
+  op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0026-RC1')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
 ]);
 unit('DEF-DEPLOY-SAFETY','evidence/EG-0008-deploy-zevanory-vercel.md',[
   op('deploy evidence gate approved',()=>t('evidence/EG-0008-deploy-zevanory-vercel.md').includes('Veredito: APROVADO')),

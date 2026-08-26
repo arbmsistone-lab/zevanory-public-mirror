@@ -24,7 +24,7 @@ test('landing exposes operational infrastructure instead of a static G0 card', (
 test('landing makes commercial truth and domain status explicit', () => {
   assert.match(html, /Infraestrutura aprovada não significa motor comercial aprovado/);
   assert.match(html, /Venda só existe após pagamento reconciliado/);
-  assert.match(html, /zevanory\.api\.br · associação pendente/);
+  assert.match(html, /zevanory\.api\.br - associacao valida - producao/);
 });
 
 test('landing includes all approved aggregate operational metrics', () => {

@@ -82,3 +82,34 @@ export function paymentMatchesWebhook(webhook, payment) {
   if (webhook.eventName === 'PAYMENT_RECEIVED') return String(payment.status||'') === 'RECEIVED';
   return refundTotalForWebhook(webhook,payment) !== null;
 }
+
+export function paymentMatchesOrderIdentity(payment, order) {
+  if (!payment || !order) return false;
+  const orderId=String(order.order_id||'').toLowerCase();
+  const externalReference=String(order.external_reference||'');
+  const providerCheckoutId=String(order.provider_checkout_id||'');
+  if (!isUuid(orderId) || parseExternalReference(externalReference) !== orderId) return false;
+  const paymentReference=String(payment.externalReference||'');
+  const paymentCheckout=String(payment.checkoutSession||'');
+  const hasReference=paymentReference !== '';
+  const hasCheckout=paymentCheckout !== '';
+  const linkedByReference=hasReference && parseExternalReference(paymentReference) === orderId && paymentReference === externalReference;
+  const linkedByCheckout=hasCheckout && isUuid(paymentCheckout) && paymentCheckout.toLowerCase() === providerCheckoutId.toLowerCase();
+  if ((hasReference && !linkedByReference) || (hasCheckout && !linkedByCheckout)) return false;
+  if (!linkedByReference && !linkedByCheckout) return false;
+  if (moneyCents(payment.value) !== moneyCents(order.amount) || moneyCents(order.amount) !== moneyCents(PROJECT.experimentalPriceBrl)) return false;
+  return true;
+}
+
+export function paymentMatchesOrderWebhook(webhook, payment, order) {
+  if (!webhook || String(payment?.id) !== webhook.paymentId || !paymentMatchesOrderIdentity(payment,order)) return false;
+  if (webhook.eventName === 'PAYMENT_CONFIRMED') return String(payment.status||'') === 'CONFIRMED';
+  if (webhook.eventName === 'PAYMENT_RECEIVED') return String(payment.status||'') === 'RECEIVED';
+  return refundTotalForWebhook(webhook,payment) !== null;
+}
+
+export function supersededPartialRefund(webhook,payment,order) {
+  if (webhook?.eventName !== 'PAYMENT_PARTIALLY_REFUNDED' || String(payment?.status||'') !== 'REFUNDED') return false;
+  if (!paymentMatchesOrderIdentity(payment,order)) return false;
+  return moneyCents(completedRefundTotal(payment)) === moneyCents(order.amount);
+}

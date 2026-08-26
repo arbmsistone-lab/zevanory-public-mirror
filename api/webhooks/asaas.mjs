@@ -3,7 +3,8 @@ import {
   secureTokenEqual,
   normalizeAsaasWebhook,
   normalizeFinancialEvent,
-  paymentMatchesWebhook,
+  paymentMatchesOrderWebhook,
+  supersededPartialRefund,
   parseExternalReference,
   refundTotalForWebhook,
   asaasBaseUrl,
@@ -54,19 +55,27 @@ export default async function handler(req, res) {
   }
   try {
     const payment = await fetchAsaasPayment(webhook.paymentId, process.env.ASAAS_ENV, process.env.ASAAS_API_KEY);
-    if (!paymentMatchesWebhook(webhook, payment)) {
+    const parsedOrderId=parseExternalReference(payment.externalReference);
+    const checkoutSession=String(payment.checkoutSession||'');
+    const sql = neon(process.env.DATABASE_URL);
+    const orders=await sql.query(`
+      SELECT order_id,amount,status,external_reference,provider_checkout_id FROM orders
+      WHERE ($1<>'' AND order_id::text=$1) OR ($2<>'' AND provider_checkout_id=$2)
+    `,[parsedOrderId||'',checkoutSession]);
+    if (orders.length === 0) return json(res,200,{accepted:true,ignored:true,reason:'unlinked_payment'});
+    if (orders.length === 1 && supersededPartialRefund(webhook,payment,orders[0])) return json(res,200,{accepted:true,ignored:true,reason:'superseded_partial_refund'});
+    if (orders.length !== 1 || !paymentMatchesOrderWebhook(webhook,payment,orders[0])) {
       res.statusCode = 409;
       return res.end(JSON.stringify({ error: 'payment_reconciliation_failed', accepted: false }));
     }
     const normalized = normalizeFinancialEvent(webhook.eventName);
-    const externalReference = String(payment.externalReference);
-    const orderId = parseExternalReference(externalReference);
+    const externalReference = String(orders[0].external_reference);
+    const orderId = String(orders[0].order_id);
     const refundedTotal = normalized === 'refund_confirmed' ? refundTotalForWebhook(webhook,payment) : null;
-    const sql = neon(process.env.DATABASE_URL);
     const rows = await sql.query(`
       WITH target AS (
         SELECT order_id, amount, status FROM orders
-        WHERE order_id=$8 AND (
+        WHERE order_id=$8 AND external_reference=$6 AND provider_checkout_id=$10 AND amount=$7 AND (
           ($3='payment_confirmed' AND status IN ('checkout_ready','checkout_uncertain','paid')) OR
           ($3='refund_confirmed' AND status IN ('paid','partially_refunded','refunded'))
         )
@@ -90,7 +99,7 @@ export default async function handler(req, res) {
         (SELECT count(*)::int FROM inserted) AS inserted_count,
         (SELECT status FROM updated LIMIT 1) AS order_status,
         (SELECT status FROM orders WHERE order_id=$8) AS current_status
-    `, [webhook.providerEventId,webhook.paymentId,normalized,webhook.eventName,String(payment.status),externalReference,Number(payment.value),orderId,refundedTotal]);
+    `, [webhook.providerEventId,webhook.paymentId,normalized,webhook.eventName,String(payment.status),externalReference,Number(payment.value),orderId,refundedTotal,String(orders[0].provider_checkout_id)]);
     const outcome=rows[0]||{};
     if(Number(outcome.target_count)!==1) return json(res,409,{error:'order_state_invalid',accepted:false});
     if(Number(outcome.inserted_count)===1 && !outcome.order_status) return json(res,503,{error:'order_state_update_failed',accepted:false});

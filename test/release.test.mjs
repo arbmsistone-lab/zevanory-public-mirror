@@ -9,7 +9,7 @@ function mock(method='GET'){
 }
 
 test('release fingerprint is canonical and immutable',()=>{
-  assert.equal(RELEASE.id,'ZEVANORY-EG0018-RC2');
+  assert.equal(RELEASE.id,'ZEVANORY-EG0026-RC1');
   assert.equal(Object.isFrozen(RELEASE),true);
   assert.equal(RELEASE.salesMode,'globally-blocked');
   assert.equal(RELEASE.checkoutMode,'globally-blocked');
@@ -26,7 +26,7 @@ test('release endpoint exposes exact fingerprint and rejects writes',()=>{
   handler(ok.req,ok.res);
   assert.equal(ok.res.statusCode,200);
   const body=JSON.parse(ok.res.body);
-  assert.equal(body.release_id,'ZEVANORY-EG0018-RC2');
+  assert.equal(body.release_id,'ZEVANORY-EG0026-RC1');
   assert.equal(body.sales_mode,'globally-blocked');
   assert.equal(body.checkout_mode,'globally-blocked');
   const blocked=mock('POST');

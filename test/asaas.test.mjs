@@ -6,6 +6,8 @@ import {
   parseExternalReference,
   normalizeFinancialEvent,
   paymentMatchesWebhook,
+  paymentMatchesOrderWebhook,
+  supersededPartialRefund,
   completedRefundTotal,
   refundTotalForWebhook,
 } from '../src/asaas.mjs';
@@ -32,6 +34,27 @@ test('Asaas payment reconciliation requires exact provider truth',()=>{
   assert.equal(paymentMatchesWebhook(webhook,payment),true);
   assert.equal(paymentMatchesWebhook(webhook,{...payment,value:496}),false);
   assert.equal(paymentMatchesWebhook(webhook,{...payment,status:'PENDING'}),false);
+});
+
+test('hosted Checkout payment reconciles through its exact checkout session',()=>{
+  const checkoutId='92af3092-92a6-43a6-b24d-ebeaee8b2390';
+  const webhook=normalizeAsaasWebhook({event:'PAYMENT_CONFIRMED',id:'evt_checkout1',payment:{id:'pay_checkout1'}});
+  const order={order_id:orderId,external_reference:`ZEVANORY:EXP-0001:${orderId}`,provider_checkout_id:checkoutId,amount:497};
+  const payment={id:'pay_checkout1',externalReference:null,checkoutSession:checkoutId,value:497,status:'CONFIRMED'};
+  assert.equal(paymentMatchesOrderWebhook(webhook,payment,order),true);
+  assert.equal(paymentMatchesOrderWebhook(webhook,{...payment,checkoutSession:'6ba7b810-9dad-11d1-80b4-00c04fd430c8'},order),false);
+  assert.equal(paymentMatchesOrderWebhook(webhook,{...payment,externalReference:`ZEVANORY:EXP-0001:6ba7b810-9dad-11d1-80b4-00c04fd430c8`},order),false);
+  assert.equal(paymentMatchesOrderWebhook(webhook,{...payment,value:496},order),false);
+});
+
+test('stale partial refund is acknowledged only after provider reached exact full refund',()=>{
+  const checkoutId='92af3092-92a6-43a6-b24d-ebeaee8b2390';
+  const webhook=normalizeAsaasWebhook({event:'PAYMENT_PARTIALLY_REFUNDED',id:'evt_stale001',payment:{id:'pay_stale001'}});
+  const order={order_id:orderId,external_reference:`ZEVANORY:EXP-0001:${orderId}`,provider_checkout_id:checkoutId,amount:497};
+  const payment={id:'pay_stale001',externalReference:null,checkoutSession:checkoutId,value:497,status:'REFUNDED',refunds:[{status:'DONE',value:100},{status:'DONE',value:397}]};
+  assert.equal(supersededPartialRefund(webhook,payment,order),true);
+  assert.equal(supersededPartialRefund(webhook,{...payment,status:'RECEIVED'},order),false);
+  assert.equal(supersededPartialRefund(webhook,{...payment,refunds:[{status:'DONE',value:100}]},order),false);
 });
 
 test('partial refund uses only DONE items and stays below gross amount',()=>{
