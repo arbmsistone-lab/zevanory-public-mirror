@@ -1,0 +1,26 @@
+import { readFile, access } from 'node:fs/promises';
+const root = new URL('../', import.meta.url);
+const text = (p) => readFile(new URL(p, root), 'utf8');
+const exists = async (p) => { try { await access(new URL(p, root)); return true; } catch { return false; } };
+const checks = [];
+const add = (name, ok) => checks.push({ name, ok: Boolean(ok) });
+const env = await text('.env.example');
+const runbook = await text('RUNBOOK-OPERACIONAL.md');
+const dr = await text('scripts/dr-rehearsal.mjs');
+const proof = await text('evidence/EG-0029-dr-rehearsal.md');
+const pkg = JSON.parse(await text('package.json'));
+
+add('01 dr script exists', await exists('scripts/dr-rehearsal.mjs'));
+add('02 dr tests exist', await exists('test/dr-rehearsal.test.mjs'));
+add('03 explicit authorization', dr.includes("DR_REHEARSAL_ALLOWED !== 'true'"));
+add('04 database required', dr.includes('database_url_required'));
+add('05 isolated schema', dr.includes('SET LOCAL search_path'));
+add('06 rollback enforced', dr.includes("client.query('ROLLBACK')"));
+add('07 five migrations replayed', ['001_telemetry_events','002_financial_events','003_orders_checkout','004_partial_refund_snapshots','005_order_financial_states'].every((x)=>dr.includes(`${x}.sql`)));
+add('08 recovery proof recorded', proof.includes('persistent_changes=false') && runbook.includes('PITR/Branch Restore'));
+add('09 commercial switches remain off', !env.includes('SALE_GLOBALLY_ENABLED=true') && !env.includes('CHECKOUT_ENABLED=true') && !env.includes('FINANCIAL_EVENTS_ENABLED=true'));
+add('10 npm audit10 command', pkg.scripts?.['audit:10x']==='node scripts/audit-10x.mjs');
+for (const check of checks) console.log(`${check.ok ? 'APPROVED' : 'FAILED'} ${check.name}`);
+const failed = checks.filter((check) => !check.ok);
+console.log(`AUDIT_10X_${failed.length ? 'BLOCKED' : 'APPROVED'} units=${checks.length} approved=${checks.length-failed.length} failed=${failed.length}`);
+if (failed.length) process.exit(1);

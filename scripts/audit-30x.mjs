@@ -20,7 +20,7 @@ add('06 pre-sale switch off',env.includes('PRE_SALE_GATES_APPROVED=false'));
 add('07 checkout switch off',env.includes('CHECKOUT_ENABLED=false'));
 add('08 whatsapp switch off',env.includes('WHATSAPP_SALES_ENABLED=false'));
 add('09 financial switch off',env.includes('FINANCIAL_EVENTS_ENABLED=false'));
-add('10 release EG0028',RELEASE.id==='ZEVANORY-EG0028-RC1');
+add('10 release EG0029',RELEASE.id==='ZEVANORY-EG0029-RC1');
 add('11 health required route',RELEASE.requiredRoutes.includes('/api/health'));
 add('12 health api exists',await exists('api/health.mjs'));
 add('13 health core exists',await exists('src/systemHealth.mjs'));
@@ -35,7 +35,7 @@ add('20 referrer policy',headers['Referrer-Policy']==='strict-origin-when-cross-
 add('21 root route',vercel.rewrites.some(x=>x.source==='/'&&x.destination==='/public/index.html'));
 add('22 pilot route',vercel.rewrites.some(x=>x.source==='/piloto'));
 add('23 events route',vercel.rewrites.some(x=>x.source==='/api/events/public'));
-add('24 evidence EG0028',await exists('evidence/EG-0028-schema-integrity-health.md')); 
+add('24 evidence EG0029',await exists('evidence/EG-0029-dr-rehearsal.md')); 
 add('25 audit3x record',audit3x.includes('AUDIT_3X_APPROVED')||audit3x.includes('"failed": 0'));
 add('26 master canonical',master.includes('DOCUMENTO MESTRE CANONICO'));
 add('27 scope root',scope.includes('C:\\Sistemas\\ZEVANORY'));

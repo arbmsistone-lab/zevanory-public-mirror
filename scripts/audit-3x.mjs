@@ -1,4 +1,4 @@
-﻿import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { PROJECT, normalizeWhatsappNumber, isOfficialWhatsapp } from '../src/config.mjs';
@@ -266,7 +266,7 @@ unit('DEF-DEPLOY-SERIALIZATION','evidence/EG-0015-deploy-serializado.md',[
 unit('CODE-RELEASE-FINGERPRINT','src/release.mjs + api/release.mjs',[
   command('release tests',process.execPath,['--test','test/release.test.mjs']),
   command('release endpoint syntax',process.execPath,['--check','api/release.mjs']),
-  op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0028-RC1')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
+  op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0029-RC1')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
 ]);
 unit('DEF-DEPLOY-SAFETY','evidence/EG-0008-deploy-zevanory-vercel.md',[
   op('deploy evidence gate approved',()=>t('evidence/EG-0008-deploy-zevanory-vercel.md').includes('Veredito: APROVADO')),

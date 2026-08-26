@@ -10,7 +10,9 @@
     "pretest": "node scripts/identity-guard.mjs",
     "test": "node --test test/*.test.mjs",
     "audit:3x": "node scripts/audit-3x.mjs",
+    "audit:10x": "node scripts/audit-10x.mjs",
     "audit:30x": "node scripts/audit-30x.mjs",
+    "dr:rehearsal": "node --env-file-if-exists=.env.dr scripts/dr-rehearsal.mjs",
     "preflight:pre-sale": "node --env-file-if-exists=.env.local scripts/pre-sale-preflight.mjs"
   }
 }

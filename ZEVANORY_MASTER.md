@@ -78,3 +78,12 @@ EG-0028 adiciona validacao fail-closed de schema no `/api/health`.
 Readiness estrutural exige banco alcancavel, quatro tabelas obrigatorias e ledger de migrations 001-005 completo.
 A checagem e somente leitura e nao aplica migration automaticamente.
 Release candidata: ZEVANORY-EG0028-RC1.
+
+## FASE ESTRUTURAL EG-0029 — DISASTER RECOVERY
+Vendas permanecem fora de escopo.
+EG-0029 implementa ensaio real de recuperação não destrutivo.
+O ensaio usa schema isolado, migrations 001–005 e ROLLBACK obrigatório.
+Prova Neon: 4/4 tabelas, 5/5 migrations, nenhuma ausência e persistent_changes=false.
+Credencial temporária local removida após a prova.
+Rota de desastre: Neon PITR/Branch Restore dentro da retenção configurada.
+Release candidata: ZEVANORY-EG0029-RC1.
