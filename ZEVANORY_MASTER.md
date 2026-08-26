@@ -71,3 +71,10 @@ Readiness exige banco acessível, `PUBLIC_BASE_URL=https://zevanory.api.br` e os
 Runbook operacional cobre incidente, recuperação e rollback.
 Auditoria final desta fase exige, cumulativamente: suíte completa, auditoria 3X, auditoria 30X e prova operacional em produção.
 Nenhuma aprovação da EG-0027 autoriza venda, checkout comercial, WhatsApp comercial, evento financeiro real ou autonomia.
+
+## FASE ESTRUTURAL EG-0028 — INTEGRIDADE DE DADOS
+Diretriz vigente: vendas permanecem fora de escopo; foco exclusivo na completude estrutural.
+EG-0028 adiciona validacao fail-closed de schema no `/api/health`.
+Readiness estrutural exige banco alcancavel, quatro tabelas obrigatorias e ledger de migrations 001-005 completo.
+A checagem e somente leitura e nao aplica migration automaticamente.
+Release candidata: ZEVANORY-EG0028-RC1.

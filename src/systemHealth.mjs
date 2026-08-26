@@ -10,13 +10,13 @@ const SWITCHES = Object.freeze([
 
 const enabled = (value) => String(value || '').toLowerCase() === 'true';
 
-export function buildSystemHealth({ env = process.env, databaseReachable = false } = {}) {
+export function buildSystemHealth({ env = process.env, databaseReachable = false, schemaReady = false } = {}) {
   const publicBaseUrl = String(env.PUBLIC_BASE_URL || '').trim();
   const publicBaseUrlValid = /^https:\/\/zevanory\.api\.br\/?$/i.test(publicBaseUrl);
   const switches = Object.fromEntries(SWITCHES.map((key) => [key, enabled(env[key])]));
   const commercialSafetyLocked = Object.values(switches).every((value) => value === false);
   const storageConfigured = Boolean(String(env.DATABASE_URL || '').trim());
-  const ready = storageConfigured && databaseReachable && publicBaseUrlValid && commercialSafetyLocked;
+  const ready = storageConfigured && databaseReachable && schemaReady && publicBaseUrlValid && commercialSafetyLocked;
 
   return Object.freeze({
     service: 'ZEVANORY',
@@ -24,7 +24,13 @@ export function buildSystemHealth({ env = process.env, databaseReachable = false
     release_id: RELEASE.id,
     live: true,
     ready,
-    checks: Object.freeze({ storage_configured: storageConfigured, database_reachable: databaseReachable, public_base_url_valid: publicBaseUrlValid, commercial_safety_locked: commercialSafetyLocked }),
+    checks: Object.freeze({
+      storage_configured: storageConfigured,
+      database_reachable: databaseReachable,
+      schema_ready: schemaReady,
+      public_base_url_valid: publicBaseUrlValid,
+      commercial_safety_locked: commercialSafetyLocked,
+    }),
     commercial_switches: Object.freeze(switches),
   });
 }

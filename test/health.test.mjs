@@ -14,6 +14,7 @@ test('structure health is ready only with storage, official URL and all commerci
       FINANCIAL_EVENTS_ENABLED: 'false',
     },
     databaseReachable: true,
+    schemaReady: true,
   });
   assert.equal(health.mode, 'structure-only');
   assert.equal(health.ready, true);
