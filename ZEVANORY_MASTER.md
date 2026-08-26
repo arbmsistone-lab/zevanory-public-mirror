@@ -87,3 +87,11 @@ Prova Neon: 4/4 tabelas, 5/5 migrations, nenhuma ausência e persistent_changes=
 Credencial temporária local removida após a prova.
 Rota de desastre: Neon PITR/Branch Restore dentro da retenção configurada.
 Release candidata: ZEVANORY-EG0029-RC1.
+
+## FASE ESTRUTURAL EG-0030 — OBSERVABILIDADE
+Vendas permanecem fora de escopo e todos os kill-switches seguem bloqueados.
+EG-0030 separa liveness (`/api/live`) de readiness (`/api/health`).
+Health e status passam a emitir correlação por `x-request-id` e logs JSON estruturados.
+O probe operacional valida `/api/live`, `/api/health`, `/api/release` e `/api/status` com timeout fail-closed.
+Release candidata: ZEVANORY-EG0030-RC1.
+Aprovação exige suíte completa, 3X, DR 10X, observabilidade 10X, 30X e prova de produção.
