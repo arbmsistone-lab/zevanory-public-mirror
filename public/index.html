@@ -4,39 +4,45 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>ZEVANORY</title>
-  <meta name="description" content="ZEVANORY — inteligência digital com validação por evidência real." />
+  <meta name="description" content="ZEVANORY — central operacional da máquina de vendas." />
   <link rel="stylesheet" href="/index.css" />
-</head><body>
-  <div class="shell">
-    <header><div class="brand">ZEVANORY</div><div class="header-state"><i class="dot" id="health-dot"></i><span id="health-label">Conectando estado real</span></div></header>
-    <main>
-      <section class="hero">
-        <div class="intro"><div class="eyebrow">Digital Intelligence Company · infraestrutura em construção</div><h1>NOVO.<br>SEM HERANÇA.</h1><p class="lead">A estrutura evolui junto com o projeto. Cada módulo visível abaixo representa apenas estado técnico ou evidência operacional comprovada — sem simular trabalho, venda ou resultado.</p></div>
-        <aside class="summary">
-          <div class="summary-head"><h2>Motor &amp; gate atual</h2><span class="live">● estado real</span></div>
-          <div class="state-grid">
-            <div class="state"><span>Gate atual</span><strong id="gate">—</strong></div>
-            <div class="state"><span>Experimento</span><strong id="experiment">—</strong></div>
-            <div class="state"><span>Motor técnico</span><strong class="ok" id="engine-tech">—</strong></div>
-            <div class="state"><span>Autonomia comercial</span><strong class="warn" id="engine-auto">—</strong></div>
-            <div class="state"><span>Telemetria</span><strong id="telemetry">—</strong></div>
-            <div class="state"><span>Financeiro</span><strong id="financial">—</strong></div>
-          </div>
-          <p class="summary-note">Infraestrutura aprovada não significa motor comercial aprovado. Venda só existe após pagamento reconciliado.</p>
-        </aside>
-      </section>
-      <section class="ops" aria-label="Métricas operacionais reais">
-        <article class="kpi"><span>Visualizações</span><strong data-kpi="page_views">—</strong><small>telemetria persistida</small></article>
-        <article class="kpi"><span>Leads qualificados</span><strong data-kpi="leads_qualified">—</strong><small>não confundir com clique</small></article>
-        <article class="kpi"><span>Ofertas enviadas</span><strong data-kpi="offers_sent">—</strong><small>evento comprovado</small></article>
-        <article class="kpi"><span>Checkouts iniciados</span><strong data-kpi="checkouts_started">—</strong><small>não conta como venda</small></article>
-        <article class="kpi"><span>Pedidos</span><strong data-kpi="orders">—</strong><small>ordens internas</small></article>
-        <article class="kpi"><span>Pagamentos confirmados</span><strong data-kpi="payments_confirmed">—</strong><small>fonte transacional</small></article>
-        <article class="kpi"><span>Reembolsos</span><strong data-kpi="refunds_confirmed">—</strong><small>reduzem resultado</small></article>
-        <div class="ops-meta"><span>Último evento: <b id="last-event">aguardando</b></span><span>Release: <b id="release-id">—</b></span><span>Vendas: <b id="sales-mode">—</b></span><span>Checkout: <b id="checkout">—</b></span></div>
-      </section>
-    </main>
-    <footer><span>© 2026 ZEVANORY · observabilidade operacional</span><span class="live">zevanory.api.br - associacao valida - producao</span></footer>
-  </div>  <script src="/index.js" defer></script>
+</head>
+<body>
+<div class="shell">
+<header><div><div class="brand">ZEVANORY</div><div class="subtitle">CENTRAL OPERACIONAL · ESTADO REAL</div></div><div class="header-state"><i class="dot" id="health-dot"></i><span id="health-label">Conectando</span></div></header>
+<main>
+<section class="topline">
+  <div class="headline"><span class="eyebrow">Sales Machine Control</span><h1>INFRAESTRUTURA<br>SEM HERANÇA</h1><p>Dados reais, gates explícitos e nenhuma venda simulada.</p></div>
+  <div class="gate-card"><span>Gate atual</span><strong id="gate">—</strong><small id="experiment">—</small><div class="gate-state" id="sales-mode">—</div></div>
+</section>
+<section class="kpis" aria-label="Métricas operacionais">
+  <article><span>Visualizações</span><strong data-kpi="page_views">—</strong></article><article><span>Leads qualificados</span><strong data-kpi="leads_qualified">—</strong></article>
+  <article><span>Pipeline aberto</span><strong data-kpi="pipeline_open">—</strong></article><article><span>Ações agendadas</span><strong data-kpi="actions_scheduled">—</strong></article>
+  <article><span>Ofertas</span><strong data-kpi="offers_sent">—</strong></article><article><span>Checkouts</span><strong data-kpi="checkouts_started">—</strong></article>
+  <article><span>Pagamentos</span><strong data-kpi="payments_confirmed">—</strong></article><article><span>Reembolsos</span><strong data-kpi="refunds_confirmed">—</strong></article>
+</section>
+<section class="dashboard"><article class="panel"><div class="panel-head"><h2>Motor de vendas</h2><span class="badge" id="structure-ready">—</span></div><div class="rows">
+  <div><span>CRM / pipeline</span><b id="crm">—</b></div><div><span>Follow-up</span><b id="follow-up">—</b></div><div><span>Unit economics</span><b id="unit-economics">—</b></div>
+  <div><span>Learning</span><b id="learning">—</b></div><div><span>Outbound</span><b id="outbound">—</b></div><div><span>Autonomia comercial</span><b id="engine-auto">—</b></div>
+</div></article>
+<article class="panel"><div class="panel-head"><h2>Infraestrutura</h2><span class="badge" id="health-ready">—</span></div><div class="rows">
+  <div><span>Banco</span><b id="db-state">—</b></div><div><span>Schema</span><b id="schema-state">—</b></div><div><span>Tabelas</span><b id="schema-tables">—</b></div>
+  <div><span>Migrations</span><b id="schema-migrations">—</b></div><div><span>Telemetria</span><b id="telemetry">—</b></div><div><span>Domínio</span><b id="domain-state">—</b></div>
+</div></article>
+<article class="panel"><div class="panel-head"><h2>Economia real</h2><span class="badge neutral" id="economics-state">—</span></div><div class="rows economics">
+  <div><span>Receita bruta</span><b id="gross-revenue">—</b></div><div><span>Reembolsos</span><b id="refunds-value">—</b></div><div><span>Pedidos pagos</span><b id="paid-orders">—</b></div>
+  <div><span>Checkout</span><b id="checkout">—</b></div><div><span>Financeiro</span><b id="financial">—</b></div><div><span>WhatsApp vendas</span><b id="whatsapp">—</b></div>
+</div></article>
+<article class="panel assurance"><div class="panel-head"><h2>Garantias da release</h2><span class="badge" id="quality-gate">—</span></div><div class="audit-grid" id="audit-grid"></div></article>
+<article class="panel deploy"><div class="panel-head"><h2>Deploy &amp; recuperação</h2><span class="live">● produção</span></div><div class="rows">
+  <div><span>Release</span><b id="release-id">—</b></div><div><span>Branch</span><b id="branch">—</b></div><div><span>Commit</span><b id="commit">—</b></div>
+  <div><span>Ambiente</span><b id="environment">—</b></div><div><span>DR</span><b id="dr-mode">—</b></div><div><span>Rollback persistente</span><b id="dr-persistent">—</b></div>
+</div></article><article class="panel safety"><div class="panel-head"><h2>Segurança comercial</h2><span class="badge warn">FAIL-CLOSED</span></div><div class="switches" id="switches"></div></article>
+</section>
+<div class="statusbar"><span>Último evento: <b id="last-event">—</b></span><span>Atualização: <b id="updated-at">—</b></span><span>zevanory.api.br · produção</span></div>
+</main>
+<footer><span>© 2026 ZEVANORY</span><span>Central operacional · dados agregados · sem PII</span></footer>
+</div>
+<script src="/index.js" defer></script>
 </body>
 </html>
