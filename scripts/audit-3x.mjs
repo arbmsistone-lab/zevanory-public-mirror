@@ -119,8 +119,8 @@ unit('CODE-ASAAS-CHECKOUT','api/checkout/asaas.mjs',[
 ]);
 unit('CODE-EVIDENCE-VERIFIER', 'scripts/verify_evidence_gate.ps1', [
   op('verifier exists', () => existsSync(join(root,'scripts','verify_evidence_gate.ps1'))),
-  command('approved gate passes', 'powershell.exe', ['-NoProfile','-ExecutionPolicy','Bypass','-File','scripts/verify_evidence_gate.ps1','-GateFile','evidence/EG-0007-validacao-operacional-3x.md'], 0),
-  command('template without approval blocks', 'powershell.exe', ['-NoProfile','-ExecutionPolicy','Bypass','-File','scripts/verify_evidence_gate.ps1','-GateFile','evidence/EVIDENCE_GATE_TEMPLATE.md'], 2),
+  command('approved gate passes', process.execPath, ['scripts/verify-evidence-gate.mjs','evidence/EG-0007-validacao-operacional-3x.md'], 0),
+  command('template without approval blocks', process.execPath, ['scripts/verify-evidence-gate.mjs','evidence/EVIDENCE_GATE_TEMPLATE.md'], 2),
 ]);
 
 unit('RUNTIME-PACKAGE', 'package.json', [
