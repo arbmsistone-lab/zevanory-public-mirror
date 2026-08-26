@@ -44,3 +44,13 @@ Escopo: infraestrutura, saúde, deploy, incidente e recuperação. Vendas perman
 6. Executar `npm run probe:production` para validar live, health, release e status.
 7. Qualquer alvo com timeout, HTTP não-2xx ou contrato inválido bloqueia promoção.
 8. Alertas externos devem consumir esse sinal; nunca considerar ausência de log como saúde.
+
+## Fechamento estrutural da máquina de vendas
+- Release alvo: `ZEVANORY-EG0032-FINAL`.
+- CRM, follow-up, unit economics e learning devem aparecer `ready` em `/api/status`.
+- `outbound_execution` deve permanecer `blocked` até autorização comercial explícita.
+- Schema obrigatório: 7 tabelas e 6 migrations, incluindo `006_sales_machine`.
+- Gate local obrigatório: testes, 3X, Security10X, Observability10X, DR10X, SalesMachine20X, Final, 30X e resilience smoke.
+- Gate CI replica a bateria no GitHub.
+- Escala só pode ser considerada após pagamento real reconciliado e margem de contribuição positiva.
+- Conversão, CAC e ROAS nunca recebem meta fabricada: baseline real precede otimização.

@@ -104,3 +104,12 @@ Autenticação de operador usa comparação em tempo constante.
 Dependências auditadas sem vulnerabilidades conhecidas no fechamento desta etapa.
 Release candidata: ZEVANORY-EG0031-RC1.
 Vendas e eventos financeiros reais continuam bloqueados.
+
+## FASE FINAL EG-0032 — SALES MACHINE READY
+Release estrutural final: `ZEVANORY-EG0032-FINAL`.
+A máquina inclui CRM/pipeline, follow-up, checkout/pagamento reconciliado, unit economics e learning baseado em evidência real.
+Schema canônico passa a exigir 7 tabelas e migrations 001–006.
+Parâmetros de desenho são confrontados com matriz de benchmarks globais em `specs/MARKET_PARAMETERS.md`.
+CI codifica a bateria integral de qualidade e resiliência.
+Prontidão técnica para vender não equivale a venda comprovada: performance comercial só é declarada após baseline real.
+Todos os cinco kill-switches comerciais/financeiros permanecem `false` até mudança explícita de fase.

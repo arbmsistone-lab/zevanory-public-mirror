@@ -3,13 +3,14 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { REQUIRED_TABLES, REQUIRED_MIGRATIONS, assessSchemaIntegrity } from '../src/schemaHealth.mjs';
 
-if (process.env.DR_REHEARSAL_ALLOWED !== 'true') {
-  throw new Error('dr_rehearsal_not_authorized');
-}
+if (process.env.DR_REHEARSAL_ALLOWED !== 'true') throw new Error('dr_rehearsal_not_authorized');
 if (!process.env.DATABASE_URL) throw new Error('database_url_required');
 
 const root = new URL('../', import.meta.url);
-const files = ['001_telemetry_events.sql','002_financial_events.sql','003_orders_checkout.sql','004_partial_refund_snapshots.sql','005_order_financial_states.sql'];
+const files = [
+  '001_telemetry_events.sql','002_financial_events.sql','003_orders_checkout.sql',
+  '004_partial_refund_snapshots.sql','005_order_financial_states.sql','006_sales_machine.sql',
+];
 const stripTxn = (sql) => sql.replace(/^\s*BEGIN;\s*/i, '').replace(/\s*COMMIT;\s*$/i, '');
 const schema = `dr_rehearsal_${randomUUID().replaceAll('-', '').slice(0,16)}`;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });

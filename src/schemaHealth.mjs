@@ -3,6 +3,9 @@ export const REQUIRED_TABLES = Object.freeze([
   'telemetry_events',
   'financial_events',
   'orders',
+  'sales_leads',
+  'sales_actions',
+  'unit_economics_snapshots',
 ]);
 
 export const REQUIRED_MIGRATIONS = Object.freeze([
@@ -11,6 +14,7 @@ export const REQUIRED_MIGRATIONS = Object.freeze([
   '003_orders_checkout',
   '004_partial_refund_snapshots',
   '005_order_financial_states',
+  '006_sales_machine',
 ]);
 
 export function assessSchemaIntegrity({ tableNames = [], migrationIds = [] } = {}) {

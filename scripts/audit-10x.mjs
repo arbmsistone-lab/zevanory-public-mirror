@@ -16,7 +16,7 @@ add('03 explicit authorization', dr.includes("DR_REHEARSAL_ALLOWED !== 'true'"))
 add('04 database required', dr.includes('database_url_required'));
 add('05 isolated schema', dr.includes('SET LOCAL search_path'));
 add('06 rollback enforced', dr.includes("client.query('ROLLBACK')"));
-add('07 five migrations replayed', ['001_telemetry_events','002_financial_events','003_orders_checkout','004_partial_refund_snapshots','005_order_financial_states'].every((x)=>dr.includes(`${x}.sql`)));
+add('07 six migrations replayed', ['001_telemetry_events','002_financial_events','003_orders_checkout','004_partial_refund_snapshots','005_order_financial_states','006_sales_machine'].every((x)=>dr.includes(`${x}.sql`)));
 add('08 recovery proof recorded', proof.includes('persistent_changes=false') && runbook.includes('PITR/Branch Restore'));
 add('09 commercial switches remain off', !env.includes('SALE_GLOBALLY_ENABLED=true') && !env.includes('CHECKOUT_ENABLED=true') && !env.includes('FINANCIAL_EVENTS_ENABLED=true'));
 add('10 npm audit10 command', pkg.scripts?.['audit:10x']==='node scripts/audit-10x.mjs');
