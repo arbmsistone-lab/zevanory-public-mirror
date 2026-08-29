@@ -6,7 +6,7 @@ Escopo: infraestrutura, saude, deploy, incidente, recuperacao e garantia operaci
 ## Fonte de verdade
 - Raiz canonica: `C:\Sistemas\ZEVANORY`.
 - Producao oficial: `https://zevanory.api.br`.
-- Release estrutural corrente: `ZEVANORY-EG0037-FINAL` apos promocao auditada.
+- Release estrutural corrente: `ZEVANORY-EG0038-FINAL` apos promocao auditada.
 - Schema corrente: 15 tabelas e migrations 001-009.
 - Deploy somente de snapshot auditado e commitado.
 - Divergencia entre Git, release, schema e dominio bloqueia promocao.
@@ -59,3 +59,20 @@ Escopo: infraestrutura, saude, deploy, incidente, recuperacao e garantia operaci
 - Ausencia ou falha do provider deve degradar para fallback deterministico seguro.
 - Acoes comerciais e financeiras continuam subordinadas aos gates existentes.
 - Falhas, bloqueios e fallback devem ser observaveis; nenhuma metrica de IA prova ganho comercial sem baseline real.
+
+## Ativacao comercial controlada
+1. Executar `npm run activation:check` e revisar `/api/activation/readiness`.
+2. Nao prosseguir enquanto `inputs_ready=false` ou houver blocker legal, fiscal, de fornecedor, pagamento ou afiliacao.
+3. Preencher somente dados reais e verificaveis; nunca usar placeholder para obter PASS.
+4. Quando `inputs_ready=true`, manter `SALE_GLOBALLY_ENABLED=false` durante toda a pre-validacao.
+5. Liberar `PRE_SALE_GATES_APPROVED=true` e apenas os canais realmente necessarios ao tipo de oferta.
+6. Confirmar novamente health, assurance, checkout fail-closed, autenticacao do worker e conciliacao do provedor.
+7. `SALE_GLOBALLY_ENABLED=true` e o ultimo passo de cutover.
+8. A primeira transacao real deve ser piloto, reconciliada pelo provedor e auditada antes de qualquer escala.
+
+## Rollback comercial imediato
+1. Definir `SALE_GLOBALLY_ENABLED=false` primeiro.
+2. Definir `CHECKOUT_ENABLED=false`, `WHATSAPP_SALES_ENABLED=false` e `FINANCIAL_EVENTS_ENABLED=false`.
+3. Definir `PRE_SALE_GATES_APPROVED=false`.
+4. Validar `/api/config`, `/api/activation/readiness`, checkout 503 fail-closed e ausencia de execucao comercial do agente.
+5. Preservar telemetria e evidencias para diagnostico; nao apagar eventos para esconder falha.

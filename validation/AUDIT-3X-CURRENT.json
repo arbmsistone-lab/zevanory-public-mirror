@@ -1176,6 +1176,52 @@
       ]
     },
     {
+      "id": "CODE-ACTIVATION-PLAN",
+      "label": "src/activationPlan.mjs + api/activation-readiness.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "activation plan syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "activation readiness tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "cutover and rollback remain fail closed",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-ACTIVATION-READINESS",
+      "label": "evidence/EG-0038-commercial-activation-readiness.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "activation evidence exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "activation 20x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "external inputs are never fabricated",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1200,8 +1246,8 @@
     }
   ],
   "totals": {
-    "units": 52,
-    "approved": 52,
+    "units": 54,
+    "approved": 54,
     "failed": 0
   },
   "verdict": "APPROVED"

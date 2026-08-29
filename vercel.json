@@ -2,30 +2,91 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/api/events/public", "destination": "/api/events-public" },
-    { "source": "/api/events/operator", "destination": "/api/events-operator" },
-    { "source": "/api/agent/run", "destination": "/api/agent-run" },
-    { "source": "/api/agent/status", "destination": "/api/agent-status" },
-    { "source": "/piloto", "destination": "/public/piloto.html" },
-    { "source": "/termos", "destination": "/public/termos.html" },
-    { "source": "/privacidade", "destination": "/public/privacidade.html" },
-    { "source": "/reembolso", "destination": "/public/reembolso.html" },
-    { "source": "/afiliados", "destination": "/public/afiliados.html" },
-    { "source": "/legal.css", "destination": "/public/legal.css" },
-    { "source": "/", "destination": "/public/index.html" }
+    {
+      "source": "/api/events/public",
+      "destination": "/api/events-public"
+    },
+    {
+      "source": "/api/events/operator",
+      "destination": "/api/events-operator"
+    },
+    {
+      "source": "/api/agent/run",
+      "destination": "/api/agent-run"
+    },
+    {
+      "source": "/api/agent/status",
+      "destination": "/api/agent-status"
+    },
+    {
+      "source": "/api/activation/readiness",
+      "destination": "/api/activation-readiness"
+    },
+    {
+      "source": "/piloto",
+      "destination": "/public/piloto.html"
+    },
+    {
+      "source": "/termos",
+      "destination": "/public/termos.html"
+    },
+    {
+      "source": "/privacidade",
+      "destination": "/public/privacidade.html"
+    },
+    {
+      "source": "/reembolso",
+      "destination": "/public/reembolso.html"
+    },
+    {
+      "source": "/afiliados",
+      "destination": "/public/afiliados.html"
+    },
+    {
+      "source": "/legal.css",
+      "destination": "/public/legal.css"
+    },
+    {
+      "source": "/",
+      "destination": "/public/index.html"
+    }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" },
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
-        { "key": "Cross-Origin-Resource-Policy", "value": "same-origin" },
-        { "key": "X-DNS-Prefetch-Control", "value": "off" }
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "Cross-Origin-Resource-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "X-DNS-Prefetch-Control",
+          "value": "off"
+        }
       ]
     }
   ]

@@ -48,7 +48,7 @@ Telemetria publica: ativa e persistente.
 Eventos financeiros reais: BLOQUEADOS.
 SALE_GLOBALLY_ENABLED=false, PRE_SALE_GATES_APPROVED=false, CHECKOUT_ENABLED=false, WHATSAPP_SALES_ENABLED=false e FINANCIAL_EVENTS_ENABLED=false permanecem fail-closed.
 Schema canonico atual: 15 tabelas, migrations 001-009.
-Release estrutural atual: ZEVANORY-EG0037-FINAL.
+Release estrutural atual: ZEVANORY-EG0038-FINAL.
 
 ## PROXIMOS PASSOS AUTORIZADOS
 1. Manter monitoramento de DNS, HTTPS, banco, observabilidade e rollback.
@@ -90,3 +90,13 @@ Formaliza SLOs sem declarar historico inexistente, health de outbox e IA, contra
 Runbook canonico passa a exigir schema 15x9, /api/assurance e verificacao de dead-letter/idade de backlog.
 Git remoto e origin estao configurados e a release so e promovida apos commit, push, deploy e prova operacional no dominio oficial.
 Nenhuma melhoria da EG-0037 habilita venda, checkout comercial, WhatsApp comercial, evento financeiro real ou autonomia comercial.
+
+## FASE EG-0038 - COMMERCIAL ACTIVATION READY
+Release estrutural: ZEVANORY-EG0038-FINAL.
+A infraestrutura passa a expor readiness comercial sem valores secretos e sem habilitar vendas automaticamente.
+`GET /api/activation/readiness` informa fase, quantidade de inputs externos restantes, categorias de blocker, ordem de cutover e rollback.
+O cutover exige primeiro inputs externos validados, depois pre-sale/channel gates, e somente por ultimo `SALE_GLOBALLY_ENABLED=true`.
+O rollback desliga vendas globais primeiro e restaura checkout, WhatsApp, eventos financeiros e pre-sale para `false`.
+Razao social, identificacao fiscal, endereco, credenciais e afiliacoes nunca podem ser fabricados para obter PASS.
+A ausencia de Gemini continua degradando de forma segura para fallback deterministico.
+Esta fase deixa a engenharia pronta para ativacao, mas nao declara prontidao legal/comercial enquanto houver blockers externos reais.
