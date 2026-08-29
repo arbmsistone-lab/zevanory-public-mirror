@@ -15,4 +15,6 @@
 .viewport{grid-template-rows:88px minmax(0,1fr) 48px}.executive-center{grid-template-rows:58px 82px 56px minmax(0,1fr)}
 @media(max-height:760px){.viewport{grid-template-rows:78px minmax(0,1fr) 46px}.executive-center{grid-template-rows:54px 70px 54px minmax(0,1fr)}}/* EG-0045.3 — production commercial-bar content-box fit without shrinking workspace */
 .viewport{grid-template-rows:88px minmax(0,1fr) 54px;gap:5px}
-@media(max-height:760px){.viewport{grid-template-rows:78px minmax(0,1fr) 48px;gap:4px}}
+@media(max-height:760px){.viewport{grid-template-rows:78px minmax(0,1fr) 48px;gap:4px}}/* EG-0045.4 — production dynamic-data final 2px fit */
+.viewport{grid-template-rows:88px minmax(0,1fr) 56px;gap:4px}
+@media(max-height:760px){.viewport{grid-template-rows:78px minmax(0,1fr) 50px;gap:3px}}
