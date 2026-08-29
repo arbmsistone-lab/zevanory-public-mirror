@@ -1,6 +1,6 @@
 ﻿import http from "node:http";
 import { readFile, appendFile, mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import {
@@ -12,6 +12,13 @@ import {
 } from "./telemetry.mjs";
 import { PROJECT, normalizeWhatsappNumber, isOfficialWhatsapp, isUuid } from "./config.mjs";
 import { safeBearerEqual } from "./security.mjs";
+import configApi from "../api/config.mjs";
+import statusApi from "../api/status.mjs";
+import healthApi from "../api/health.mjs";
+import releaseApi from "../api/release.mjs";
+import agentStatusApi from "../api/agent-status.mjs";
+import assuranceApi from "../api/assurance.mjs";
+import liveApi from "../api/live.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -23,6 +30,27 @@ const configuredWhatsappNumber = normalizeWhatsappNumber(process.env.WHATSAPP_NU
 const whatsappNumber = isOfficialWhatsapp(configuredWhatsappNumber) ? configuredWhatsappNumber : "";
 const operatorToken = String(process.env.OPERATOR_TOKEN || "").trim();
 await mkdir(dataDir, { recursive: true });
+const STATIC_ROUTES = new Map([
+  ["/", "index.html"], ["/index.html", "index.html"], ["/arbm-sist", "arbm-sist.html"], ["/piloto", "piloto.html"],
+  ["/termos", "termos.html"], ["/privacidade", "privacidade.html"], ["/reembolso", "reembolso.html"], ["/afiliados", "afiliados.html"],
+]);
+const STATIC_TYPES = Object.freeze({'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml; charset=utf-8'});
+function staticAsset(pathname) {
+  let relative=STATIC_ROUTES.get(pathname);
+  if(!relative && /^\/(?:brand\/)?[A-Za-z0-9._/-]+\.(?:css|js|svg|html)$/.test(pathname)) relative=pathname.slice(1);
+  if(!relative) return null;
+  const clean=normalize(relative).replace(/^[/\\]+/,'');
+  const absolute=resolve(publicDir,clean); const base=resolve(publicDir)+sep;
+  if(!absolute.startsWith(base)) return null;
+  const contentType=STATIC_TYPES[extname(absolute).toLowerCase()];
+  return contentType?{absolute,contentType}:null;
+}
+async function serveStatic(req,res,pathname) {
+  const asset=staticAsset(pathname); if(!asset) return false;
+  let data; try { data=await readFile(asset.absolute); } catch(error) { if(error?.code==='ENOENT') return false; throw error; }
+  res.writeHead(200,{'content-type':asset.contentType,'cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'strict-origin-when-cross-origin','content-security-policy':"default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'"});
+  if(req.method==='HEAD') return res.end(); res.end(data); return true;
+}
 function json(res, status, body) {
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
@@ -77,18 +105,17 @@ function buildEvent(name, payload = {}, source = "public") {
 function authorizedOperator(req) {
   return safeBearerEqual(operatorToken, String(req.headers.authorization || "").replace(/^Bearer\s+/i, ""));
 }
+const READ_API_HANDLERS = new Map([
+  ['/api/config',configApi], ['/api/status',statusApi], ['/api/health',healthApi], ['/api/release',releaseApi],
+  ['/api/agent/status',agentStatusApi], ['/api/assurance',assuranceApi], ['/api/live',liveApi], ['/api/activation/readiness',configApi],
+]);
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
-    if (req.method === "GET" && url.pathname === "/api/config") {
-      return json(res, 200, {
-        whatsapp_enabled: Boolean(whatsappNumber),
-        whatsapp_number: whatsappNumber,
-        offer_id: PROJECT.offerId,
-        experiment_id: PROJECT.experimentId,
-        experimental_price_brl: PROJECT.experimentalPriceBrl,
-      });
+    if (req.method === "GET" && READ_API_HANDLERS.has(url.pathname)) {
+      if(url.pathname==='/api/activation/readiness') req.url='/api/config?view=activation';
+      return READ_API_HANDLERS.get(url.pathname)(req,res);
     }
 
     if (req.method === "POST" && url.pathname === "/api/events/public") {
@@ -122,16 +149,7 @@ const server = http.createServer(async (req, res) => {
       }
       return json(res, 503, { error: "payment_provider_not_configured" });
     }
-    if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-      const html = await readFile(join(publicDir, "index.html"));
-      res.writeHead(200, {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-store",
-        "x-content-type-options": "nosniff",
-        "referrer-policy": "strict-origin-when-cross-origin",
-      });
-      return res.end(html);
-    }
+    if ((req.method === "GET" || req.method === "HEAD") && await serveStatic(req,res,url.pathname)) return;
 
     return json(res, 404, { error: "not_found" });
   } catch (error) {

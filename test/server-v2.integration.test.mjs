@@ -43,14 +43,17 @@ test.after(() => {
   child?.kill();
 });
 
-test('runtime config exposes canonical definitions and official WhatsApp', async () => {
+test('runtime config mirrors canonical fail-closed production semantics', async () => {
   const r = await fetch(`http://127.0.0.1:${port}/api/config`);
   assert.equal(r.status, 200);
   const body = await r.json();
-  assert.equal(body.whatsapp_number, '5588992340423');
+  assert.equal(body.commercial_enabled, false);
+  assert.equal(body.whatsapp_enabled, false);
+  assert.equal(body.whatsapp_number, null);
   assert.equal(body.offer_id, 'OFFER-0001');
   assert.equal(body.experiment_id, 'EXP-0001');
   assert.equal(body.experimental_price_brl, 497);
+  assert.ok(Array.isArray(body.commercial_blockers));
 });
 
 test('public and operator boundaries reject forged financial events', async () => {
@@ -69,6 +72,14 @@ test('input validation is fail-closed for malformed JSON and invalid sessions', 
   const invalidSession = await post('/api/events/public', {name:'page_view', session_id:'fake'});
   assert.equal(invalidSession.status, 400);
   assert.equal((await invalidSession.json()).error, 'invalid_session_id');
+});
+
+test('local server serves official brand and static assets with strict MIME', async () => {
+  const css=await fetch(`http://127.0.0.1:${port}/index.css`); assert.equal(css.status,200); assert.match(css.headers.get('content-type')||'',/^text\/css/);
+  const js=await fetch(`http://127.0.0.1:${port}/index.js`); assert.equal(js.status,200); assert.match(js.headers.get('content-type')||'',/^text\/javascript/);
+  const logo=await fetch(`http://127.0.0.1:${port}/brand/zevanory-logo-dark.svg`); assert.equal(logo.status,200); assert.match(logo.headers.get('content-type')||'',/^image\/svg\+xml/);
+  const offer=await fetch(`http://127.0.0.1:${port}/arbm-sist`); assert.equal(offer.status,200);
+  const traversal=await fetch(`http://127.0.0.1:${port}/brand/%252e%252e/%252e%252e/.env`); assert.equal(traversal.status,404);
 });
 
 test('landing and API responses include basic defensive headers', async () => {

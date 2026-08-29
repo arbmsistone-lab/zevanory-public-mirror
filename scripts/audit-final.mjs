@@ -18,7 +18,7 @@ add('11 secret scan',pkg.scripts['supplychain:scan']==='node scripts/secret-scan
 add('12 contract smoke',pkg.scripts['contract:smoke']==='node scripts/contract-smoke.mjs');
 add('13 load smoke',pkg.scripts['load:smoke']==='node scripts/load-smoke.mjs');
 add('14 SLO policy',await exists('specs/SLO_POLICY.md'));
-add('15 enterprise activation and offer audits in CI',workflow.includes('npm run audit:enterprise:10x')&&workflow.includes('npm run audit:activation:20x')&&workflow.includes('npm run audit:offer:20x'));
+add('15 enterprise activation offer and rules audits in CI',workflow.includes('npm run audit:enterprise:10x')&&workflow.includes('npm run audit:activation:20x')&&workflow.includes('npm run audit:offer:20x')&&workflow.includes('npm run audit:rules:20x'));
 add('16 activation route required',RELEASE.requiredRoutes.includes('/api/activation/readiness')&&await exists('api/config.mjs'));
 add('17 sales globally off',env.includes('SALE_GLOBALLY_ENABLED=false')&&!env.includes('SALE_GLOBALLY_ENABLED=true'));
 add('18 checkout and financial off',env.includes('CHECKOUT_ENABLED=false')&&env.includes('FINANCIAL_EVENTS_ENABLED=false'));

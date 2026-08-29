@@ -22,7 +22,7 @@ add('11 pre-sale blocked',env.includes('PRE_SALE_GATES_APPROVED=false'));
 add('12 checkout blocked',env.includes('CHECKOUT_ENABLED=false'));
 add('13 whatsapp blocked',env.includes('WHATSAPP_SALES_ENABLED=false'));
 add('14 financial blocked',env.includes('FINANCIAL_EVENTS_ENABLED=false'));
-add('15 enterprise activation and offer audits',run('scripts/audit-enterprise-10x.mjs')&&run('scripts/audit-activation-20x.mjs')&&run('scripts/audit-offer-launch-20x.mjs'));
+add('15 enterprise activation offer and rules audits',run('scripts/audit-enterprise-10x.mjs')&&run('scripts/audit-activation-20x.mjs')&&run('scripts/audit-offer-launch-20x.mjs')&&run('scripts/audit-rules-20x.mjs'));
 add('16 security 10x audit',run('scripts/audit-security-10x.mjs'));
 add('17 observability 10x audit',run('scripts/audit-observability-10x.mjs'));
 add('18 composable 10x audit',run('scripts/audit-composable-10x.mjs'));

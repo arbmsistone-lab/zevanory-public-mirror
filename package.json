@@ -37,6 +37,7 @@
     "preflight:pre-sale": "node --env-file-if-exists=.env.local scripts/pre-sale-preflight.mjs",
     "audit:activation:20x": "node scripts/audit-activation-20x.mjs",
     "activation:check": "node scripts/activation-check.mjs",
-    "audit:offer:20x": "node scripts/audit-offer-launch-20x.mjs"
+    "audit:offer:20x": "node scripts/audit-offer-launch-20x.mjs",
+    "audit:rules:20x": "node scripts/audit-rules-20x.mjs"
   }
 }

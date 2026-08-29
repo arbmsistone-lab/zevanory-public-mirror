@@ -8,3 +8,6 @@ ul{line-height:1.8;color:#c8d0da}
 button{font-size:17px;padding:14px 20px;border:0;border-radius:12px;cursor:pointer}
 button:disabled{cursor:not-allowed;opacity:.45}
 small{display:block;margin-top:14px;color:#8793a2;line-height:1.5}
+
+.pilot-brand{display:inline-flex;align-items:center;margin-bottom:28px;text-decoration:none}.pilot-brand img{display:block;width:230px;height:54px;object-fit:contain;object-position:left center}
+@media(max-width:560px){.pilot-brand img{width:190px;height:46px}}

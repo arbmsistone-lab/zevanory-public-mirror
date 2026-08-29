@@ -327,6 +327,21 @@ unit('DEF-ACTIVATION-READINESS','evidence/EG-0038-commercial-activation-readines
   command('activation 20x audit',process.execPath,['scripts/audit-activation-20x.mjs']),
   op('external inputs are never fabricated',()=>t('evidence/EG-0038-commercial-activation-readiness.md').includes('nao fabricar')),
 ]);
+unit('CODE-OFFICIAL-BRAND','public/brand + public surfaces',[
+  command('brand identity tests',process.execPath,['--test','test/brand-identity.test.mjs','test/landing.test.mjs']),
+  command('identity guard',process.execPath,['scripts/identity-guard.mjs']),
+  op('official brand is self hosted and required',()=>t('public/index.html').includes('/brand/zevanory-logo-dark.svg')&&t('public/index.html').includes('/brand/favicon.svg')&&t('src/release.mjs').includes("official_brand:'approved'")),
+]);
+unit('CODE-LOCAL-STATIC-PARITY','src/server-v2.mjs',[
+  command('local server syntax',process.execPath,['--check','src/server-v2.mjs']),
+  command('local static integration tests',process.execPath,['--test','test/server-v2.integration.test.mjs']),
+  op('local server restricts public root with MIME and nosniff',()=>t('src/server-v2.mjs').includes('resolve(publicDir')&&t('src/server-v2.mjs').includes("'x-content-type-options':'nosniff'")&&t('src/server-v2.mjs').includes("'.svg':'image/svg+xml; charset=utf-8'")),
+]);
+unit('DEF-OFFICIAL-BRAND-EVIDENCE','evidence/EG-0040-official-brand-local-parity.md',[
+  op('brand evidence gate approved',()=>t('evidence/EG-0040-official-brand-local-parity.md').includes('Status: APROVADO')),
+  command('rules 20x audit',process.execPath,['scripts/audit-rules-20x.mjs']),
+  op('evidence records OWASP MDN and Vercel',()=>['OWASP','MDN','Vercel'].every(x=>t('evidence/EG-0040-official-brand-local-parity.md').includes(x))),
+]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),

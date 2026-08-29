@@ -108,3 +108,10 @@ Canais primarios: ZEVANORY, YouTube, Instagram e WhatsApp. Metricool existe, mas
 Entrega exige pedido paid, payment_confirmed reconciliado e referencia segura do artefato; download publico e proibido.
 Artefato aprovado: ARBM-SIST-v8.1.0.zip, SHA-256 0124C388CA2ACA68BC555AE2D3BE050919D26302AC1C17238D617F10BFD78EDC.
 Todos os kill-switches comerciais e financeiros permanecem fail-closed ate meio de pagamento PF valido e cutover explicito.
+
+## FASE EG-0040 - IDENTIDADE OFICIAL + PARIDADE LOCAL
+Marca oficial ZEVANORY versionada em `brand/official/` e publicada por cópia controlada em `public/brand/`.
+Logo e favicon são self-hosted e exigidos pelo identity guard; CDN externo para identidade é proibido.
+Servidor local passa a servir HTML, CSS, JavaScript e SVG de `public/` com MIME explícito, `nosniff`, CSP e bloqueio de path traversal.
+A identidade oficial deve permanecer consistente em `/`, `/arbm-sist`, `/piloto`, `/termos`, `/privacidade`, `/reembolso` e `/afiliados`.
+Nenhuma mudança desta fase altera gates comerciais, financeiros, jurídicos ou de autonomia.

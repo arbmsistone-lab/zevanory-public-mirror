@@ -1222,6 +1222,75 @@
       ]
     },
     {
+      "id": "CODE-OFFICIAL-BRAND",
+      "label": "public/brand + public surfaces",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "brand identity tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "identity guard",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "official brand is self hosted and required",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-LOCAL-STATIC-PARITY",
+      "label": "src/server-v2.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "local server syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "local static integration tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "local server restricts public root with MIME and nosniff",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-OFFICIAL-BRAND-EVIDENCE",
+      "label": "evidence/EG-0040-official-brand-local-parity.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "brand evidence gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "rules 20x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "evidence records OWASP MDN and Vercel",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1246,8 +1315,8 @@
     }
   ],
   "totals": {
-    "units": 54,
-    "approved": 54,
+    "units": 57,
+    "approved": 57,
     "failed": 0
   },
   "verdict": "APPROVED"
