@@ -5,14 +5,14 @@ const get=async(path,opts={})=>{const r=await fetch(`${base}${path}`,{redirect:'
 const json=async(path)=>{const x=await get(path);return {r:x.r,body:JSON.parse(x.text),text:x.text}};
 const head=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
 const root=await get('/'); const js=await get('/index.js'); const css=await get('/index.css');
-add('01 root command center 200',root.r.status===200&&root.text.includes('Motor autÃ´nomo'),root.r.status);
+add('01 root command center 200',root.r.status===200&&root.text.includes('ZEVANORY')&&root.text.includes('CENTRAL OPERACIONAL'),root.r.status);
 add('02 frontend assets 200',js.r.status===200&&css.r.status===200,`${js.r.status}/${css.r.status}`);
 let legal=true; for(const p of ['/arbm-sist','/termos','/privacidade','/reembolso','/afiliados']) legal=legal&&(await get(p)).r.status===200; add('03 product and legal surfaces 200',legal);
 const live=await json('/api/live'); const health=await json('/api/health'); const status=await json('/api/status'); const assurance=await json('/api/assurance'); const activation=await json('/api/activation/readiness'); const agent=await json('/api/agent/status'); const release=await json('/api/release'); const config=await json('/api/config');
 add('04 liveness 200',live.r.status===200); add('05 health ready',health.r.status===200&&health.body.ready===true);
 add('06 command center status',status.r.status===200&&Boolean(status.body.command_center));
 add('07 autonomous agent status',agent.r.status===200&&agent.body.engine==='autonomous-revenue-engine');
-add('08 release EG0038',release.r.status===200&&release.body.release_id==='ZEVANORY-EG0039-FINAL'&&assurance.r.status===200&&activation.r.status===200,release.body.release_id);
+add('08 release EG0039',release.r.status===200&&release.body.release_id==='ZEVANORY-EG0039-FINAL'&&assurance.r.status===200&&activation.r.status===200,release.body.release_id);
 add('09 deployed commit matches HEAD',release.body.deployment?.commit_sha===head,release.body.deployment?.commit_sha);
 add('10 recovery contract 15x9',release.body.recovery?.tables===15&&release.body.recovery?.migrations===9);
 add('11 pipeline pressure contract',typeof status.body.command_center?.work_queue?.pressure==='number');
