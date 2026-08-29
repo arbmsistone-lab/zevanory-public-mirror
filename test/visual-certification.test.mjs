@@ -1,29 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
+const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
 const css=await readFile(new URL('../public/index.css',import.meta.url),'utf8');
 const js=await readFile(new URL('../public/index.js',import.meta.url),'utf8');
 
-test('EG0045 gives operational rail enough real width',()=>{
-  assert.match(css,/minmax\(420px,1\.08fr\)/);assert.match(css,/minmax\(405px,1\.09fr\)/);
+test('EG0046 uses progressive disclosure instead of technical compression',()=>{
+  assert.match(css,/EG-0046 — progressive executive disclosure/);
+  assert.match(html,/id="details-dialog"/);assert.match(js,/showModal\(\)/);assert.match(js,/details\.close\(\)/);
 });
 
-test('operational rail fields are never hidden to make layout fit',()=>{
-  assert.match(css,/grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
-  assert.equal(css.includes('.engine-rail .rail-grid div{display:none}'),false);
-  assert.equal(css.includes('.infra-rail .rail-grid div{display:none}'),false);
-  assert.equal(css.includes('.agent-line{display:none}'),false);
+test('primary surface exposes five executive KPIs and preserves secondary evidence',()=>{
+  assert.equal((html.match(/<article><span>[^<]+<\/span><strong data-kpi=/g)||[]).length,5);
+  for(const k of ['actions_scheduled','refunds_confirmed','offers_sent']) assert.match(html,new RegExp(`data-kpi="${k}"`));
 });
 
-test('assurance remains compact but visible',()=>{
-  assert.ok(css.includes('.audit-grid>div:not(.assurance-summary)'));
-  assert.ok(css.includes('grid-template-columns:minmax(0,1fr) auto'));
+test('technical evidence remains complete in the dialog',()=>{
+  for(const id of ['crm','follow-up','unit-economics','learning','outbound','schema-tables','schema-migrations','audit-grid','checkout','financial','whatsapp']) assert.match(html,new RegExp(`id="${id}"`));
 });
 
-test('secondary evidence remains available as tooltip truth',()=>{
-  assert.ok(js.includes('engineRail.title='));assert.ok(js.includes('infraRail.title='));
-});
-
-test('commercial facts are never ellipsized',()=>{
-  assert.match(css,/commercial-facts b\{[^}]*text-overflow:clip/);
+test('commercial switches remain runtime driven and fail closed visually',()=>{
+  assert.match(js,/switchEntries/);assert.match(js,/b\.textContent=v\?'ON':'OFF'/);
+  assert.match(css,/data-enabled="false"[^}]*amber/s);assert.match(css,/data-enabled="true"[^}]*red/s);
 });

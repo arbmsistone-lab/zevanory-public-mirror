@@ -139,3 +139,11 @@ O layout permanece single-screen, sem rolagem, sem truncamento e sem esconder ca
 Piso tipografico homologado: 9 px em 1280x720 e 10 px em 1600x900.
 A coluna de decisao ocupa menos area, o centro executivo domina a leitura e a coluna operacional recebe largura suficiente para os dados reais.
 Nenhuma mudanca desta fase altera backend, schema, checkout, vendas, WhatsApp comercial, eventos financeiros ou autonomia; todos os kill-switches permanecem fail-closed.
+## EG-0046 — Progressive Executive Disclosure
+- Status: APPROVED.
+- Superficie primaria: 5 KPIs executivos, decisao, funil, prontidao, risco e governanca.
+- Evidencia tecnica completa permanece acessivel pelo dialogo `Detalhes operacionais`.
+- 1280x720 homologado com fonte primaria minima de 11 px, zero scroll, zero truncamento e zero overflow interno.
+- 1600x900 homologado com fonte primaria minima de 12 px, zero scroll, zero truncamento e zero overflow interno.
+- Scroll interno permitido exclusivamente no dialogo tecnico explicitamente aberto pelo usuario.
+- Nenhum gate comercial ou financeiro foi alterado; todos permanecem fail-closed.

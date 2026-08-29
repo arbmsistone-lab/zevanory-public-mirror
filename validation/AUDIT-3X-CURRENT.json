@@ -1307,7 +1307,7 @@
           "detail": "exit=0"
         },
         {
-          "name": "single screen and fail-closed visual semantics",
+          "name": "single screen plus progressive detail semantics",
           "status": "APPROVED",
           "detail": "true"
         }
@@ -1353,7 +1353,7 @@
           "detail": "exit=0"
         },
         {
-          "name": "canonical visual system preserves visible fields at readable density",
+          "name": "progressive visual system preserves evidence at readable density",
           "status": "APPROVED",
           "detail": "true"
         }
@@ -1361,17 +1361,17 @@
     },
     {
       "id": "DEF-VISUAL-CERTIFICATION-EVIDENCE",
-      "label": "evidence/EG-0045-premium-executive-control-room.md",
+      "label": "evidence/EG-0046-progressive-executive-disclosure.md",
       "approved_operations": 3,
       "status": "APPROVED",
       "operations": [
         {
-          "name": "visual certification evidence approved",
+          "name": "visual certification evidence recorded",
           "status": "APPROVED",
           "detail": "true"
         },
         {
-          "name": "acceptance criteria records canonical readable integrity",
+          "name": "acceptance criteria records progressive readable integrity",
           "status": "APPROVED",
           "detail": "true"
         },
