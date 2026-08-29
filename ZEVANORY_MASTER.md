@@ -125,3 +125,10 @@ Single-screen, identidade oficial, verdade comercial e todos os kill-switches fa
 
 ## EG-0042 — FINAL VISUAL CERTIFICATION
 Dashboard executivo final: zero scroll global, zero truncamento detectado, coluna operacional sem overflow interno em 1280x720 e estados comerciais fail-closed preservados. Gate obrigatorio: `npm run audit:visual:10x`.
+
+## EG-0044 — CANONICAL EXECUTIVE VISUAL SYSTEM
+A pagina principal passa a usar uma unica arquitetura visual canonica, substituindo a pilha acumulada de overrides EG-0041/0042/0043.x.
+O contrato visual exige zero scroll, zero truncamento, zero overflow interno e nenhum campo operacional oculto para fazer caber.
+Piso tipografico homologado: 9 px no viewport efetivo de 1280x720 e 10 px em desktop alto/1600x900.
+O rodape identifica dinamicamente o host acessado e labels visiveis de governanca/assurance sao apresentados em portugues, sem alterar chaves tecnicas internas.
+Nenhuma mudanca EG-0044 altera backend, schema, oferta, pagamentos, canais ou kill-switches; todos permanecem fail-closed.

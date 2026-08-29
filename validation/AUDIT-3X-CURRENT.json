@@ -1353,7 +1353,7 @@
           "detail": "exit=0"
         },
         {
-          "name": "compact rail preserves all visible fields at readable density",
+          "name": "canonical visual system preserves visible fields at readable density",
           "status": "APPROVED",
           "detail": "true"
         }
@@ -1361,7 +1361,7 @@
     },
     {
       "id": "DEF-VISUAL-CERTIFICATION-EVIDENCE",
-      "label": "evidence/EG-0043-final-legibility-integrity.md",
+      "label": "evidence/EG-0044-canonical-executive-visual-system.md",
       "approved_operations": 3,
       "status": "APPROVED",
       "operations": [
@@ -1371,7 +1371,7 @@
           "detail": "true"
         },
         {
-          "name": "acceptance criteria records readable zero-overflow integrity",
+          "name": "acceptance criteria records canonical readable integrity",
           "status": "APPROVED",
           "detail": "true"
         },

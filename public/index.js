@@ -1,7 +1,7 @@
 const fmt=(v)=>Number(v||0).toLocaleString('pt-BR');
 const money=(v)=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const pct=(v)=>v===null||v===undefined?'SEM BASELINE':`${(Number(v)*100).toFixed(1)}%`;
-const labels={approved:'APROVADO',ready:'PRONTO',active:'ATIVA',blocked:'BLOQUEADO',disabled:'DESATIVADO',true:'PRONTO',false:'BLOQUEADO','not_approved':'NÃO APROVADA','globally-blocked':'BLOQUEADO GLOBALMENTE','technical_ready_commercial_not_started':'PRONTO TÉCNICO','transactional-rollback':'ROLLBACK TESTADO','baseline_required':'BASELINE NECESSÁRIO','rules_based':'REGRAS SEGURAS'};
+const labels={approved:'APROVADO',ready:'PRONTO',active:'ATIVA',blocked:'BLOQUEADO',disabled:'DESATIVADO',true:'PRONTO',false:'BLOQUEADO','not_approved':'NÃO APROVADA','globally-blocked':'BLOQUEADO GLOBALMENTE','technical_ready_commercial_not_started':'PRONTO TÉCNICO','transactional-rollback':'ROLLBACK TESTADO','baseline_required':'BASELINE NECESSÁRIO','rules_based':'REGRAS SEGURAS',production:'PRODUÇÃO','deterministic-fallback':'FALLBACK DETERMINÍSTICO'};
 const label=(v)=>labels[String(v)]||String(v??'—').replaceAll('_',' ').toUpperCase();
 const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value;};
 const setState=(id,value)=>{set(id,label(value));const el=document.getElementById(id);if(el)el.dataset.state=String(value);};
@@ -30,8 +30,8 @@ function renderAssurance(release){
   setState('quality-gate',release.assurance?.quality_gate);
   const grid=document.getElementById('audit-grid'); grid.replaceChildren();
   const assurance=release.assurance||{};
-  const preferred=['security_10x','observability_10x','architecture_20x','official_brand'];
-  for(const k of preferred){ if(!(k in assurance)) continue; const x=document.createElement('div'); const s=document.createElement('span'); const b=document.createElement('b'); s.textContent=k.replaceAll('_',' '); b.textContent=label(assurance[k]); x.append(s,b); grid.appendChild(x); }
+  const preferred=['security_10x','observability_10x','architecture_20x','official_brand']; const assuranceLabels={security_10x:'Segurança 10X',observability_10x:'Observabilidade 10X',architecture_20x:'Arquitetura 20X',official_brand:'Marca oficial'};
+  for(const k of preferred){ if(!(k in assurance)) continue; const x=document.createElement('div'); const s=document.createElement('span'); const b=document.createElement('b'); s.textContent=assuranceLabels[k]||k.replaceAll('_',' '); b.textContent=label(assurance[k]); x.append(s,b); grid.appendChild(x); }
   const entries=Object.entries(assurance).filter(([k])=>k!=='quality_gate'); const approved=entries.filter(([,v])=>String(v).toLowerCase()==='approved').length;
   const summary=document.createElement('div'); summary.className='assurance-summary'; const s=document.createElement('span'); const b=document.createElement('b'); s.textContent='GARANTIAS'; b.textContent=approved+'/'+entries.length+' APROVADAS'; summary.append(s,b); grid.appendChild(summary);
   const rail=grid.closest('.risk-rail'); if(rail) rail.title=entries.map(([k,v])=>k.replaceAll('_',' ')+': '+label(v)).join(' | ');
@@ -57,11 +57,11 @@ async function refresh(){
     set('release-id',release.release_id||'—'); set('branch',release.deployment?.branch||'—'); set('commit',release.deployment?.commit_sha?release.deployment.commit_sha.slice(0,10):'—'); set('environment',label(release.deployment?.environment));
     set('dr-mode',label(release.recovery?.mode)); set('dr-persistent',release.recovery?.persistent_changes===false?'NÃO':'—'); set('agent-provider',label(agent.ai_provider)); set('agent-queued',fmt(agent.queued)); set('agent-running',fmt(agent.running)); set('agent-blocked',fmt(agent.blocked)); set('agent-failed',fmt(agent.failed)); set('agent-runs',fmt(agent.runs_24h)); setState('agent-commercial',agent.commercial_execution); renderAssurance(release);
     const switches=document.getElementById('switches'); switches.replaceChildren();
-    Object.entries(health.commercial_switches||{}).forEach(([k,v])=>{const x=document.createElement('div');const s=document.createElement('span');const b=document.createElement('b');s.textContent=k.replaceAll('_',' ');b.textContent=v?'ON':'OFF';x.dataset.enabled=String(v);x.append(s,b);switches.appendChild(x);});
+    const switchLabels={SALE_GLOBALLY_ENABLED:'Vendas globais',PRE_SALE_GATES_APPROVED:'Gates pré-venda',CHECKOUT_ENABLED:'Checkout',WHATSAPP_SALES_ENABLED:'Vendas WhatsApp',FINANCIAL_EVENTS_ENABLED:'Eventos financeiros'}; Object.entries(health.commercial_switches||{}).forEach(([k,v])=>{const x=document.createElement('div');const s=document.createElement('span');const b=document.createElement('b');s.textContent=switchLabels[k]||k.replaceAll('_',' ');b.textContent=v?'ON':'OFF';x.dataset.enabled=String(v);x.append(s,b);switches.appendChild(x);});
     const engineRail=document.querySelector('.engine-rail'); if(engineRail) engineRail.title='Outbound: '+label(status.sales_machine?.outbound_execution)+' | Autonomia: '+label(status.engine?.commercial_autonomy)+' | Fila: '+fmt(agent.queued)+' | Bloqueados: '+fmt(agent.blocked)+' | Falhas: '+fmt(agent.failed)+' | Runs 24h: '+fmt(agent.runs_24h);
     const infraRail=document.querySelector('.infra-rail'); if(infraRail) infraRail.title='Telemetria: '+label(status.runtime?.telemetry)+' | Domínio: '+label(health.checks?.public_base_url_valid)+' | Branch: '+(release.deployment?.branch||'—')+' | DR: '+label(release.recovery?.mode)+' | Persistência rollback: '+(release.recovery?.persistent_changes===false?'NÃO':'—');
     set('last-event',status.last_event_at?new Date(status.last_event_at).toLocaleString('pt-BR'):'sem evento'); set('updated-at',new Date().toLocaleTimeString('pt-BR'));
-    healthLabel.textContent='Operação conectada'; document.getElementById('health-dot').classList.add('healthy');
+    set('surface-host',location.host+' · produção'); healthLabel.textContent='Operação conectada'; document.getElementById('health-dot').classList.add('healthy');
   }catch{
     healthLabel.textContent='Estado indisponível'; document.getElementById('health-dot').classList.remove('healthy');
   }
