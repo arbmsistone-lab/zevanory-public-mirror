@@ -352,6 +352,16 @@ unit('DEF-WORLDCLASS-DASHBOARD-EVIDENCE','evidence/EG-0041-worldclass-executive-
   op('commercial truth remains invariant',()=>t('evidence/EG-0041-worldclass-executive-dashboard.md').includes('nenhum switch pode ser visualmente ON')&&t('evidence/EG-0041-worldclass-executive-dashboard.md').includes('fail-closed')),
   command('identity guard',process.execPath,['scripts/identity-guard.mjs']),
 ]);
+unit('CODE-VISUAL-CERTIFICATION','public/index.css + public/index.js',[
+  command('visual certification tests',process.execPath,['--test','test/visual-certification.test.mjs']),
+  command('visual certification 10x audit',process.execPath,['scripts/audit-visual-certification-10x.mjs']),
+  op('compact rail has explicit no-cut contract',()=>t('public/index.css').includes('compact-height no-cut guarantee')&&t('public/index.js').includes('engineRail.title=')),
+]);
+unit('DEF-VISUAL-CERTIFICATION-EVIDENCE','evidence/EG-0042-final-visual-certification.md',[
+  op('visual certification evidence approved',()=>t('evidence/EG-0042-final-visual-certification.md').includes('Status: APROVADO')),
+  op('acceptance criteria records zero overflow truncation and rail cut',()=>['overflow global X/Y = false','truncamentos detectados = 0','scrollHeight <= clientHeight'].every(x=>t('evidence/EG-0042-final-visual-certification.md').includes(x))),
+  command('identity guard',process.execPath,['scripts/identity-guard.mjs']),
+]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),

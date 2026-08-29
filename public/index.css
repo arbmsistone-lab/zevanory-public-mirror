@@ -13,3 +13,48 @@
 /* EG-0041 — world-class executive hierarchy */
 :root{--accent:#20e6a4;--cyan2:#27d5ff;--panel:#0a131e;--panel-hi:#0d1925} .topbar{grid-template-columns:230px 1fr 230px}.brand-link img{width:186px;height:auto}.mission{justify-self:center}.viewport{grid-template-rows:82px minmax(0,1fr) 44px}.executive-strip{grid-template-columns:minmax(0,1fr) 132px 238px}.kpi-cluster{grid-template-columns:repeat(7,minmax(0,1fr));border-color:#24405a;background:linear-gradient(180deg,#0b1622,#08111a)}.kpi-cluster article{padding:11px 12px}.kpi-cluster span{font-size:6.8px;letter-spacing:.09em}.kpi-cluster strong{font-size:23px;margin-top:7px}.workspace{grid-template-columns:minmax(330px,.78fr) minmax(0,1.32fr) minmax(300px,.84fr);gap:8px}.decision-center{padding:21px 24px 16px;border-color:#167052;background:radial-gradient(circle at 74% 57%,rgba(32,230,164,.09),transparent 36%),linear-gradient(145deg,#091821,#08131c)}.decision-copy h1{font-size:clamp(28px,2.3vw,37px);margin:19px 0 9px;max-width:520px}.decision-copy p{max-width:500px;font-size:10px;line-height:1.6;color:#b9c8d6}.decision-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:16px}.decision-meta span{padding:7px 8px;border:1px solid #173548;border-radius:7px;color:#71869a;font-size:6px;letter-spacing:.08em}.decision-meta b{display:block;color:#cbd7e2;font-size:7px;margin-top:2px}.priority-callout{margin-bottom:12px;border-color:#17835b;background:linear-gradient(110deg,rgba(11,72,50,.6),rgba(8,37,31,.48));box-shadow:inset 0 1px rgba(255,255,255,.02)}.executive-center{grid-template-rows:68px 84px 45px minmax(0,1fr);gap:7px}.executive-summary,.signal-grid article,.operational-details,.rail-card{border-color:#1d3346;background:linear-gradient(180deg,#0c1723,#08121c)}.executive-summary{padding:11px 14px}.executive-summary p{margin-top:8px;padding:7px 10px;border-left-color:var(--accent)}.signal-grid article{padding:10px 11px}.signal-grid strong{font-size:21px}.signal-grid article:after{background:linear-gradient(90deg,var(--accent),transparent 72%)}.pipeline-strip{border-color:#1e374c;background:#08121b}.pipeline-strip:before{content:'FUNIL OPERACIONAL';position:absolute;transform:translateY(-17px);font-size:5.8px;letter-spacing:.11em;color:#6f8396}.pipeline-strip{position:relative;margin-top:1px}.operational-details{padding:9px 12px}.details-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.details-grid div{padding:5px 0}.operations-rail{grid-template-rows:.86fr .95fr 1.08fr;gap:7px}.rail-card{padding:9px 11px}.rail-head h2{font-size:13px}.rail-grid b{font-size:8px}.agent-mini{margin-top:5px}.audit-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}.audit-grid div{padding:4px 0}.audit-grid span{font-size:6.2px}.audit-grid b{font-size:7.2px}.audit-grid .assurance-summary{grid-column:1/-1;margin-top:4px;padding:6px 8px;border:1px solid #1a6047;border-radius:6px;background:rgba(32,230,164,.035);display:flex;justify-content:space-between}.audit-grid .assurance-summary b{font-size:7.5px}.commercial-bar{grid-template-columns:188px 340px minmax(0,1fr);border-color:#263849;background:linear-gradient(180deg,#0a131d,#070e15)}.switches div{border-color:#4a3818;background:#16130c}.switches div[data-enabled="false"] b{color:var(--amber)!important}.switches div[data-enabled="true"]{border-color:#6c2026;background:#201014}.switches div[data-enabled="true"] b{color:var(--red)!important}.gate-card{box-shadow:inset 0 0 25px rgba(82,237,153,.025)}.mode-card{box-shadow:inset 0 0 25px rgba(255,194,71,.025)}
 @media(max-height:760px){.viewport{grid-template-rows:74px minmax(0,1fr) 38px}.decision-center{padding:16px 19px 12px}.decision-copy h1{font-size:25px;margin:13px 0 7px}.decision-copy p{font-size:8.8px}.decision-meta{margin-top:10px}.decision-meta span{padding:5px 6px}.priority-callout{padding:8px 11px;margin-bottom:8px}.executive-center{grid-template-rows:58px 74px 39px minmax(0,1fr)}.operational-details{padding:6px 9px}.rail-card{padding:6px 8px}.audit-grid div{padding:2.5px 0}.audit-grid .assurance-summary{padding:4px 6px}.kpi-cluster article{padding:8px 9px}.kpi-cluster strong{font-size:20px}}
+
+/* EG-0042 — final visual certification */
+.workspace{grid-template-columns:minmax(300px,.70fr) minmax(0,1.22fr) minmax(355px,1.02fr);gap:9px}
+.decision-center{padding-left:22px;padding-right:22px}
+.decision-copy h1{max-width:460px}
+.operations-rail{grid-template-rows:.92fr 1fr 1.04fr;gap:8px}
+.rail-card{padding:10px 12px}
+.rail-grid span{font-size:6.8px}.rail-grid b{font-size:8.3px}
+.rail-head>span{font-size:6.8px}.rail-head h2{font-size:13.5px}.rail-head>b{font-size:7.4px}
+.audit-grid span{font-size:6.5px}.audit-grid b{font-size:7.5px}
+.commercial-bar{grid-template-columns:205px 355px minmax(0,1fr);gap:9px;padding:6px 11px}
+.commercial-label span,.commercial-facts span,.switches span{font-size:6.7px}
+.commercial-label strong,.commercial-facts b{font-size:7.3px}
+.commercial-facts b{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.15}
+.switches div{padding:5px 8px}.switches span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.switches b{font-size:6.8px;flex:0 0 auto}
+.details-grid span,.pipeline-strip span{font-size:6.8px}.details-grid b{font-size:8.2px}
+.executive-summary p{font-size:8.8px}.signal-grid span{font-size:6.8px}.signal-grid small{font-size:6.7px}
+@media(max-height:760px){
+  .viewport{grid-template-rows:74px minmax(0,1fr) 42px}
+  .workspace{grid-template-columns:minmax(285px,.68fr) minmax(0,1.20fr) minmax(340px,1.04fr);gap:6px}
+  .decision-center{padding:15px 17px 11px}.decision-copy h1{font-size:24px}.decision-copy p{font-size:8.9px}
+  .operations-rail{grid-template-rows:.94fr 1fr 1.02fr;gap:5px}.rail-card{padding:6px 8px}
+  .rail-head h2{font-size:12.5px}.rail-grid span{font-size:6.4px}.rail-grid b{font-size:7.7px}
+  .audit-grid span{font-size:6.1px}.audit-grid b{font-size:7px}
+  .commercial-bar{grid-template-columns:180px 325px minmax(0,1fr);padding:4px 8px;gap:6px}
+  .commercial-facts div{padding:0 6px}.commercial-label strong,.commercial-facts b{font-size:6.9px}
+  .switches div{padding:4px 6px}.switches span{font-size:6.1px}.switches b{font-size:6.4px}
+}
+@media(min-width:1500px){
+  .workspace{grid-template-columns:minmax(350px,.72fr) minmax(0,1.25fr) minmax(390px,1.03fr)}
+  .rail-grid span{font-size:7.2px}.rail-grid b{font-size:8.7px}.audit-grid span{font-size:6.8px}.audit-grid b{font-size:7.8px}
+  .commercial-facts span,.commercial-label span,.switches span{font-size:7px}.commercial-facts b,.commercial-label strong{font-size:7.6px}
+}
+
+/* EG-0042 — compact secondary rail details without information loss */
+.engine-rail .rail-grid div:nth-child(n+5),.infra-rail .rail-grid div:nth-child(n+5),.engine-rail .agent-mini,.infra-rail .recovery-line{display:none}
+.engine-rail .agent-line,.infra-rail .release-line{margin-top:5px;border-top:1px solid var(--line);padding-top:6px}
+.engine-rail,.infra-rail{display:grid;grid-template-rows:auto auto auto;align-content:start}
+.engine-rail .rail-grid,.infra-rail .rail-grid{align-self:start}
+
+/* EG-0042 — compact-height no-cut guarantee */
+@media(max-height:760px){
+  .engine-rail .agent-line,.infra-rail .release-line{display:none}
+  .rail-head{padding-bottom:5px}.rail-grid div{padding:3px 0}
+}

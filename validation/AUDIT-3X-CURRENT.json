@@ -1337,6 +1337,52 @@
       ]
     },
     {
+      "id": "CODE-VISUAL-CERTIFICATION",
+      "label": "public/index.css + public/index.js",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "visual certification tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "visual certification 10x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "compact rail has explicit no-cut contract",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-VISUAL-CERTIFICATION-EVIDENCE",
+      "label": "evidence/EG-0042-final-visual-certification.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "visual certification evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "acceptance criteria records zero overflow truncation and rail cut",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "identity guard",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1361,8 +1407,8 @@
     }
   ],
   "totals": {
-    "units": 59,
-    "approved": 59,
+    "units": 61,
+    "approved": 61,
     "failed": 0
   },
   "verdict": "APPROVED"

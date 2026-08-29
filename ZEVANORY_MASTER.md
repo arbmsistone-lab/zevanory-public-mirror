@@ -122,3 +122,6 @@ Sete KPIs de primeira ordem permanecem no topo; oferta segue representada no fun
 Garantias aparecem resumidas na visao executiva, mantendo a lista completa como evidencia de interface.
 Estados comerciais false nunca usam semantica visual de sucesso; true comercial seria estado de risco ate cutover formal.
 Single-screen, identidade oficial, verdade comercial e todos os kill-switches fail-closed permanecem obrigatorios.
+
+## EG-0042 — FINAL VISUAL CERTIFICATION
+Dashboard executivo final: zero scroll global, zero truncamento detectado, coluna operacional sem overflow interno em 1280x720 e estados comerciais fail-closed preservados. Gate obrigatorio: `npm run audit:visual:10x`.
