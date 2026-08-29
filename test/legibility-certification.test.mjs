@@ -21,3 +21,8 @@ test('headline font box is protected from glyph clipping',()=>{
   assert.match(css,/decision-copy h1\{padding-bottom:3px\}/);
   assert.equal(css.includes('overflow:auto'),false);
 });
+
+test('dynamic operational values wrap instead of truncating',()=>{
+  assert.match(css,/details-grid b\{white-space:normal;overflow:visible;text-overflow:clip/);
+  assert.match(css,/risk-rail \.audit-grid \.assurance-summary\{margin-top:2px\}/);
+});

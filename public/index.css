@@ -74,3 +74,7 @@
 /* EG-0043.3 — final readable floor */
 .decision-copy h1{padding-bottom:3px}
 @media(max-height:760px){.gate-card small,.mode-card small,.signal-grid small,.audit-grid span,.switches span,footer{font-size:8px}}
+
+/* EG-0043.4 — production dynamic-content fit */
+.details-grid b{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.2}
+@media(max-height:760px){.risk-rail .audit-grid .assurance-summary{margin-top:2px}.risk-rail{padding-bottom:4px}}
