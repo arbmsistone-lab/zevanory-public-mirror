@@ -22,7 +22,7 @@ add('10 release FINAL',RELEASE.id==='ZEVANORY-EG0038-FINAL');
 add('11 health required route',RELEASE.requiredRoutes.includes('/api/health'));
 add('12 activation required route',RELEASE.requiredRoutes.includes('/api/activation/readiness'));
 add('13 health api exists',await exists('api/health.mjs'));
-add('14 activation api exists',await exists('api/activation-readiness.mjs'));
+add('14 activation api exists',await exists('api/config.mjs'));
 add('15 runbook current', (await text('RUNBOOK-OPERACIONAL.md')).includes('15 tabelas e migrations 001-009'));
 const headers=Object.fromEntries(vercel.headers[0].headers.map(x=>[x.key,x.value]));
 add('16 strict CSP',Boolean(headers['Content-Security-Policy']));

@@ -30,3 +30,19 @@ test('cutover and rollback preserve fail-closed ordering',()=>{
   assert.equal(ROLLBACK_ORDER[0],'SALE_GLOBALLY_ENABLED=false');
   for(const step of ['CHECKOUT_ENABLED=false','WHATSAPP_SALES_ENABLED=false','FINANCIAL_EVENTS_ENABLED=false','PRE_SALE_GATES_APPROVED=false']) assert.ok(ROLLBACK_ORDER.includes(step));
 });
+
+import configHandler from '../api/config.mjs';
+
+function invokeConfig(url,env={}){
+  const previous={...process.env}; Object.assign(process.env,env);
+  let body=''; const headers={};
+  const res={statusCode:0,setHeader:(k,v)=>{headers[k]=v},end:(v)=>{body=String(v||'')}};
+  try { configHandler({method:'GET',url},res); return {status:res.statusCode,body:JSON.parse(body),headers}; }
+  finally { process.env=previous; }
+}
+
+test('shared config function serves activation readiness without secret values',()=>{
+  const r=invokeConfig('/api/config?view=activation',{SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',ACTIVE_OFFER_TYPE:'service',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',ASAAS_ENV:'production',ASAAS_API_KEY:'top-secret',ASAAS_WEBHOOK_TOKEN:'also-secret'});
+  assert.equal(r.status,200); assert.equal(r.body.inputs_ready,true); assert.equal(r.body.commercial_enabled,false);
+  const text=JSON.stringify(r.body); assert.equal(text.includes('top-secret'),false); assert.equal(text.includes('also-secret'),false);
+});

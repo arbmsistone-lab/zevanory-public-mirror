@@ -16,7 +16,7 @@ add('05 outbox idempotency',migration.includes('idempotency_key text NOT NULL UN
 add('06 outbox concurrency',outbox.includes('for update skip locked'));
 add('07 retry bounded',outbox.includes('attempts>=20')&&outbox.includes('3600000'));
 add('08 dead letter',outbox.includes("'dead_letter'"));
-add('09 activation readiness API',await exists('api/activation-readiness.mjs')&&RELEASE.requiredRoutes.includes('/api/activation/readiness'));
+add('09 activation readiness API',await exists('api/config.mjs')&&RELEASE.requiredRoutes.includes('/api/activation/readiness'));
 add('10 sales globally blocked',env.includes('SALE_GLOBALLY_ENABLED=false'));
 add('11 pre-sale blocked',env.includes('PRE_SALE_GATES_APPROVED=false'));
 add('12 checkout blocked',env.includes('CHECKOUT_ENABLED=false'));

@@ -20,7 +20,7 @@
     },
     {
       "source": "/api/activation/readiness",
-      "destination": "/api/activation-readiness"
+      "destination": "/api/config?view=activation"
     },
     {
       "source": "/piloto",

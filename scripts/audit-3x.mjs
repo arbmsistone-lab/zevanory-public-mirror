@@ -317,7 +317,7 @@ unit('DEF-ENTERPRISE-SLO','specs/SLO_POLICY.md',[
   command('enterprise 10x audit',process.execPath,['scripts/audit-enterprise-10x.mjs']),
   op('commercial gates remain out of scope',()=>t('specs/SLO_POLICY.md').includes('NAO HISTORICO COMPROVADO')),
 ]);
-unit('CODE-ACTIVATION-PLAN','src/activationPlan.mjs + api/activation-readiness.mjs',[
+unit('CODE-ACTIVATION-PLAN','src/activationPlan.mjs + api/config.mjs',[
   command('activation plan syntax',process.execPath,['--check','src/activationPlan.mjs']),
   command('activation readiness tests',process.execPath,['--test','test/activation-ready.test.mjs']),
   op('cutover and rollback remain fail closed',()=>t('src/activationPlan.mjs').includes('SALE_GLOBALLY_ENABLED=false')&&t('src/activationPlan.mjs').includes('verify_fail_closed')),
