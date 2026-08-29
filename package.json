@@ -40,6 +40,7 @@
     "audit:offer:20x": "node scripts/audit-offer-launch-20x.mjs",
     "audit:rules:20x": "node scripts/audit-rules-20x.mjs",
     "audit:worldclass:10x": "node scripts/audit-worldclass-dashboard-10x.mjs",
-    "audit:visual:10x": "node scripts/audit-visual-certification-10x.mjs"
+    "audit:visual:10x": "node scripts/audit-visual-certification-10x.mjs",
+    "audit:channels:20x": "node scripts/audit-multichannel-20x.mjs"
   }
 }
