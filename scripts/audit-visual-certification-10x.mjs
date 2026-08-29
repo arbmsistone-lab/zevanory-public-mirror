@@ -6,7 +6,7 @@ add('evidence gate exists',ev.includes('EG-0043'));
 add('right rail receives compact width share',css.includes('minmax(355px,1.02fr)'));
 add('compact viewport right rail protected',css.includes('minmax(340px,1.04fr)'));
 add('commercial facts never ellipsized',css.includes('text-overflow:clip'));
-add('operational rail fields remain visible',css.includes('visibility:visible')&&css.includes('repeat(3,minmax(0,1fr))'));
+add('operational and assurance fields remain visible',css.includes('visibility:visible')&&css.includes('repeat(3,minmax(0,1fr))')&&css.includes('.risk-rail .audit-grid>div:not(.assurance-summary)'));
 add('secondary details remain in tooltips',js.includes('engineRail.title=')&&js.includes('infraRail.title='));
 add('single-screen overflow remains blocked',css.includes('overflow:hidden')&&css.includes('height:100dvh'));
 add('official identity preserved',html.includes('/brand/zevanory-logo-dark.svg'));

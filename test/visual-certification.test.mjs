@@ -25,3 +25,8 @@ test('secondary rail information remains accessible as tooltip truth',()=>{
 test('commercial facts are never ellipsized in final certification',()=>{
   assert.ok(css.includes('.commercial-facts b{white-space:normal;overflow:visible;text-overflow:clip'));
 });
+
+test('production assurance card keeps critical guarantees visible',()=>{
+  assert.ok(css.includes('.risk-rail .audit-grid>div:not(.assurance-summary)'));
+  assert.ok(css.includes('grid-template-columns:minmax(0,1fr) auto'));
+});
