@@ -30,7 +30,7 @@ function renderAssurance(release){
   setState('quality-gate',release.assurance?.quality_gate);
   const grid=document.getElementById('audit-grid'); grid.replaceChildren();
   const assurance=release.assurance||{};
-  const preferred=['security_10x','observability_10x','dr_10x','architecture_20x','official_brand','rules_audit_20x'];
+  const preferred=['security_10x','observability_10x','architecture_20x','official_brand'];
   for(const k of preferred){ if(!(k in assurance)) continue; const x=document.createElement('div'); const s=document.createElement('span'); const b=document.createElement('b'); s.textContent=k.replaceAll('_',' '); b.textContent=label(assurance[k]); x.append(s,b); grid.appendChild(x); }
   const entries=Object.entries(assurance).filter(([k])=>k!=='quality_gate'); const approved=entries.filter(([,v])=>String(v).toLowerCase()==='approved').length;
   const summary=document.createElement('div'); summary.className='assurance-summary'; const s=document.createElement('span'); const b=document.createElement('b'); s.textContent='GARANTIAS'; b.textContent=approved+'/'+entries.length+' APROVADAS'; summary.append(s,b); grid.appendChild(summary);

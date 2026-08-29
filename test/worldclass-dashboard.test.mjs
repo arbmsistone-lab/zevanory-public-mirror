@@ -13,8 +13,9 @@ test('executive hierarchy reduces visual competition without losing truth',()=>{
 });
 
 test('assurance view is executive while complete evidence remains available',()=>{
-  for(const key of ['security_10x','observability_10x','dr_10x','architecture_20x','official_brand','rules_audit_20x']) assert.match(js,new RegExp(key));
+  for(const key of ['security_10x','observability_10x','architecture_20x','official_brand']) assert.match(js,new RegExp(key));
   assert.match(js,/assurance-summary/);
+  assert.match(js,/Object\.entries\(assurance\)/);
   assert.match(js,/rail\.title=entries/);
 });
 
