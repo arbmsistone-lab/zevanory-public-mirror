@@ -1,4 +1,4 @@
-import { readFile, access } from 'node:fs/promises';
+﻿import { readFile, access } from 'node:fs/promises';
 import { RELEASE } from '../src/release.mjs';
 const root=new URL('../',import.meta.url);
 const text=async p=>readFile(new URL(p,root),'utf8');
@@ -18,7 +18,7 @@ add('06 pre-sale switch off',env.includes('PRE_SALE_GATES_APPROVED=false'));
 add('07 checkout switch off',env.includes('CHECKOUT_ENABLED=false'));
 add('08 whatsapp switch off',env.includes('WHATSAPP_SALES_ENABLED=false'));
 add('09 financial switch off',env.includes('FINANCIAL_EVENTS_ENABLED=false'));
-add('10 release FINAL',RELEASE.id==='ZEVANORY-EG0033-FINAL');
+add('10 release FINAL',RELEASE.id==='ZEVANORY-EG0034-FINAL');
 add('11 health required route',RELEASE.requiredRoutes.includes('/api/health'));
 add('12 liveness required route',RELEASE.requiredRoutes.includes('/api/live'));
 add('13 health api exists',await exists('api/health.mjs'));
@@ -33,7 +33,7 @@ add('20 referrer and dns policy',headers['Referrer-Policy']==='strict-origin-whe
 add('21 root route',vercel.rewrites.some(x=>x.source==='/'&&x.destination==='/public/index.html'));
 add('22 pilot route',vercel.rewrites.some(x=>x.source==='/piloto'));
 add('23 events route',vercel.rewrites.some(x=>x.source==='/api/events/public'));
-add('24 final no-inventory evidence',await exists('evidence/EG-0033-no-inventory-commerce-final.md'));
+add('24 final no-inventory evidence',await exists('evidence/EG-0034-command-center-world-benchmark.md'));
 add('25 audit3x record',audit3x.includes('AUDIT_3X_APPROVED')||audit3x.includes('"failed": 0'));
 add('26 master canonical',master.includes('DOCUMENTO MESTRE CANONICO'));
 add('27 complete quality gates',pkg.scripts?.['audit:sales:20x']==='node scripts/audit-sales-machine-20x.mjs'&&pkg.scripts?.['audit:final']==='node scripts/audit-final.mjs'&&pkg.scripts?.['resilience:smoke']==='node scripts/resilience-smoke.mjs');

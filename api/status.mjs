@@ -19,16 +19,21 @@ export default async function handler(req, res) {
   }
   try {
     const sql = neon(process.env.DATABASE_URL);
-    const [telemetry, orders, financial, leads, actions, economics, last] = await Promise.all([
+    const [telemetry, orders, financial, leads, actions, dueBuckets, riskBuckets, economics, last] = await Promise.all([
       sql.query('select event_name, count(*)::int as count from telemetry_events group by event_name'),
       sql.query('select status, count(*)::int as count from orders group by status'),
       sql.query('select normalized_event, count(*)::int as count from financial_events group by normalized_event'),
       sql.query('select stage, count(*)::int as count from sales_leads group by stage'),
       sql.query('select status, count(*)::int as count from sales_actions group by status'),
+      sql.query("select case when due_at < now() and status='scheduled' then 'overdue' when due_at >= now() and due_at < now() + interval '24 hours' and status='scheduled' then 'due_24h' else 'later' end as bucket, count(*)::int as count from sales_actions where status='scheduled' group by 1"),
+      sql.query("select bucket, count(*)::int as count from (select case when next_action_at is null then 'missing_next_action' when updated_at < now() - interval '72 hours' then 'stale' else 'healthy' end as bucket from sales_leads where stage not in ('paid','delivered','refunded','unqualified','lost')) x group by bucket"),
       sql.query('select gross_revenue_brl, refunds_brl, paid_orders from unit_economics_snapshots order by period_end desc limit 1'),
       sql.query('select max(occurred_at) as last_event_at from telemetry_events'),
     ]);
-    const body = { ...buildOperationalStatus({ telemetry, orders, financial, leads, actions, economics, lastEventAt: last[0]?.last_event_at || null }), request_id: context.requestId };
+    const body = {
+      ...buildOperationalStatus({ telemetry, orders, financial, leads, actions, dueBuckets, riskBuckets, economics, lastEventAt: last[0]?.last_event_at || null }),
+      request_id: context.requestId,
+    };
     res.statusCode = 200;
     operationalLog(context, 200, 'operational_status_ok');
     return res.end(JSON.stringify(body));

@@ -1,11 +1,11 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RELEASE } from '../src/release.mjs';
 
 test('release fingerprint is canonical and immutable',()=>{
-  assert.equal(RELEASE.id,'ZEVANORY-EG0033-FINAL');
+  assert.equal(RELEASE.id,'ZEVANORY-EG0034-FINAL');
   assert.equal(Object.isFrozen(RELEASE),true);
-  assert.equal(RELEASE.structuralCompletion,'precommerce-no-inventory-ready');
+  assert.equal(RELEASE.structuralCompletion,'command-center-ready');
   assert.equal(RELEASE.commercialModel,'no-inventory');
   assert.equal(RELEASE.assurance.audit_30x,'approved');
   assert.equal(RELEASE.recovery.tables,9);

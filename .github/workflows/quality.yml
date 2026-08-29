@@ -21,6 +21,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run audit:command:20x
+      - run: npm run audit:architecture:20x
       - run: npm run audit:3x
       - run: npm run audit:security:10x
       - run: npm run audit:obs:10x

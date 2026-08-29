@@ -1,4 +1,4 @@
-import { readFile, access } from 'node:fs/promises';
+﻿import { readFile, access } from 'node:fs/promises';
 import { RELEASE } from '../src/release.mjs';
 import { REQUIRED_TABLES, REQUIRED_MIGRATIONS } from '../src/schemaHealth.mjs';
 const root=new URL('../',import.meta.url); const checks=[];
@@ -7,7 +7,7 @@ const exists=async p=>{try{await access(new URL(p,root));return true}catch{retur
 const add=(name,ok)=>checks.push({name,ok:Boolean(ok)});
 const env=await text('.env.example'); const pkg=JSON.parse(await text('package.json'));
 const market=await text('specs/MARKET_PARAMETERS.md'); const workflow=await text('.github/workflows/quality.yml');
-add('01 final release',RELEASE.id==='ZEVANORY-EG0033-FINAL');
+add('01 final release',RELEASE.id==='ZEVANORY-EG0034-FINAL');
 add('02 nine required tables',REQUIRED_TABLES.length===9&&REQUIRED_TABLES.includes('affiliate_commissions')&&REQUIRED_TABLES.includes('service_fulfillment'));
 add('03 seven migrations',REQUIRED_MIGRATIONS.length===7&&REQUIRED_MIGRATIONS.includes('007_no_inventory_commerce'));
 add('04 CRM engine',await exists('src/salesPipeline.mjs'));
@@ -19,7 +19,7 @@ add('09 resilience gate',pkg.scripts['resilience:smoke']==='node scripts/resilie
 add('10 sales audit gate',pkg.scripts['audit:sales:20x']==='node scripts/audit-sales-machine-20x.mjs');
 add('11 migration 007 gate',pkg.scripts['migration:007']==='node --env-file-if-exists=.env.production.local scripts/apply-migration-007.mjs');
 add('12 CI quality gate',workflow.includes('npm run audit:final')&&workflow.includes('npm run audit:sales:20x'));
-add('13 no-inventory evidence',await exists('evidence/EG-0033-no-inventory-commerce-final.md'));
+add('13 no-inventory evidence',await exists('evidence/EG-0034-command-center-world-benchmark.md'));
 add('14 sales globally off',env.includes('SALE_GLOBALLY_ENABLED=false')&&!env.includes('SALE_GLOBALLY_ENABLED=true'));
 add('15 checkout and financial off',env.includes('CHECKOUT_ENABLED=false')&&env.includes('FINANCIAL_EVENTS_ENABLED=false'));
 add('16 WhatsApp sales off',env.includes('WHATSAPP_SALES_ENABLED=false'));

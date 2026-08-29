@@ -24,3 +24,10 @@ test('central has no inline executable code under strict CSP',()=>{
   assert.doesNotMatch(html,/<style[>\s]/i); assert.doesNotMatch(html,/<script>([\s\S]*?)<\/script>/i);
   assert.match(html,/href="\/index\.css"/); assert.match(html,/src="\/index\.js"/);
 });
+
+test('central command center exposes priorities, pipeline health and clean UTF-8',()=>{
+  for(const id of ['queue-pressure','overdue-actions','due-24h','blocked-actions','missing-next-action','stale-leads','nba-mode','forecast-mode','readiness-state','blocker-count','predictive-forecast','action-completion']) assert.match(html,new RegExp(`id="${id}"`));
+  assert.match(html,/SEM HERANÇA\.\s*<br>DECIDIR\. EXECUTAR\. MEDIR\./i);
+  assert.match(html,/Prontidão comercial/); assert.match(js,/BASELINE NECESSÁRIO/);
+  for(const bad of ['Ã©','Ã§','Ã£','Ãµ','â€”','Â·','�']) assert.equal((html+js).includes(bad),false);
+});

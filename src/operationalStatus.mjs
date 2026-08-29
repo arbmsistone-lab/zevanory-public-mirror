@@ -1,9 +1,10 @@
-import { PROJECT } from './config.mjs';
+﻿import { PROJECT } from './config.mjs';
 import { RELEASE } from './release.mjs';
+import { buildCommandCenter } from './commandCenter.mjs';
 
 const countOf = (rows, key, value) => Number(rows.find((row) => row[key] === value)?.count || 0);
 
-export function buildOperationalStatus({ telemetry = [], orders = [], financial = [], leads = [], actions = [], economics = [], lastEventAt = null } = {}) {
+export function buildOperationalStatus({ telemetry = [], orders = [], financial = [], leads = [], actions = [], dueBuckets = [], riskBuckets = [], economics = [], lastEventAt = null } = {}) {
   const pageViews = countOf(telemetry, 'event_name', 'page_view');
   const qualified = countOf(telemetry, 'event_name', 'lead_qualified');
   const offers = countOf(telemetry, 'event_name', 'offer_sent');
@@ -14,6 +15,7 @@ export function buildOperationalStatus({ telemetry = [], orders = [], financial 
   const openLeadTotal = leads.filter((row)=>!['paid','delivered','refunded','unqualified','lost'].includes(row.stage)).reduce((sum,row)=>sum+Number(row.count||0),0);
   const scheduledActions = countOf(actions,'status','scheduled');
   const latestEconomics = economics[0] || null;
+  const commandCenter = buildCommandCenter({ leads, actions, dueBuckets, riskBuckets });
 
   return Object.freeze({
     project: PROJECT.name,
@@ -21,6 +23,7 @@ export function buildOperationalStatus({ telemetry = [], orders = [], financial 
     experiment: Object.freeze({ id: PROJECT.experimentId, status: 'technical_ready_commercial_not_started' }),
     engine: Object.freeze({ technical_infrastructure: 'approved', commercial_autonomy: 'not_approved' }),
     sales_machine: Object.freeze({ structure_ready:true, crm:'ready', follow_up:'ready', unit_economics:'ready', learning:'ready', outbound_execution:'blocked' }),
+    command_center: commandCenter,
     runtime: Object.freeze({ telemetry: 'active', checkout: RELEASE.checkoutMode, financial: RELEASE.financialMode }),
     metrics: Object.freeze({
       page_views: pageViews,
