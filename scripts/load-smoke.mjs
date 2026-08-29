@@ -1,6 +1,6 @@
 import { assessServiceLevel } from '../src/enterpriseAssurance.mjs';
 const base=process.env.PRODUCTION_BASE_URL||'https://zevanory.api.br';
-const paths=['/api/live','/api/health','/api/release','/api/status','/api/assurance'];
+const paths=['/api/live','/api/health','/api/release','/api/status','/api/assurance','/api/activation/readiness'];
 const concurrency=Math.max(1,Math.min(20,Number(process.env.LOAD_CONCURRENCY)||10));
 const rounds=Math.max(1,Math.min(20,Number(process.env.LOAD_ROUNDS)||5));
 const samples=[];

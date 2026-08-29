@@ -91,8 +91,11 @@ Runbook canonico passa a exigir schema 15x9, /api/assurance e verificacao de dea
 Git remoto e origin estao configurados e a release so e promovida apos commit, push, deploy e prova operacional no dominio oficial.
 Nenhuma melhoria da EG-0037 habilita venda, checkout comercial, WhatsApp comercial, evento financeiro real ou autonomia comercial.
 
-## FASE EG-0038 - SINGLE-SCREEN CONTROL ROOM
+## FASE EG-0038 - COMMERCIAL ACTIVATION + PREMIUM SINGLE-SCREEN
 Release estrutural: ZEVANORY-EG0038-FINAL.
-A pagina principal foi reorganizada em cinco dominios operacionais simultaneamente visiveis: Acao, Receita, Motor/IA, Infra/Release e Garantias/Risco.
-Contrato desktop: uma unica pagina sem rolagem vertical ou horizontal, preservando todos os dados e IDs operacionais existentes.
-Nenhuma mudanca desta fase altera backend, banco, pagamentos, gates comerciais ou autonomia.
+A infraestrutura expoe readiness comercial sem valores secretos e sem habilitar vendas automaticamente.
+GET /api/activation/readiness informa fase, blockers, ordem de cutover e rollback; inputs externos nunca podem ser fabricados para obter PASS.
+A pagina principal e um control room premium de tela unica, sem rolagem vertical ou horizontal no desktop homologado, preservando dados e IDs operacionais reais.
+O cutover comercial permanece fail-closed: inputs externos validados, depois pre-sale/channel gates e somente por ultimo SALE_GLOBALLY_ENABLED=true.
+Nenhuma regra visual habilita vendas, checkout, WhatsApp, eventos financeiros ou autonomia.
+

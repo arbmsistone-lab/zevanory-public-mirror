@@ -271,7 +271,7 @@ unit('CODE-SECURITY','src/security.mjs + vercel.json',[
 unit('CODE-RELEASE-FINGERPRINT','src/release.mjs + api/release.mjs',[
   command('release tests',process.execPath,['--test','test/release.test.mjs']),
   command('release endpoint syntax',process.execPath,['--check','api/release.mjs']),
-  op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0037-FINAL')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
+  op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0038-FINAL')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
 ]);
 unit('DEF-DEPLOY-SAFETY','evidence/EG-0008-deploy-zevanory-vercel.md',[
   op('deploy evidence gate approved',()=>t('evidence/EG-0008-deploy-zevanory-vercel.md').includes('Veredito: APROVADO')),
@@ -316,6 +316,16 @@ unit('DEF-ENTERPRISE-SLO','specs/SLO_POLICY.md',[
   op('SLO policy exists',()=>existsSync(join(root,'specs','SLO_POLICY.md'))),
   command('enterprise 10x audit',process.execPath,['scripts/audit-enterprise-10x.mjs']),
   op('commercial gates remain out of scope',()=>t('specs/SLO_POLICY.md').includes('NAO HISTORICO COMPROVADO')),
+]);
+unit('CODE-ACTIVATION-PLAN','src/activationPlan.mjs + api/config.mjs',[
+  command('activation plan syntax',process.execPath,['--check','src/activationPlan.mjs']),
+  command('activation readiness tests',process.execPath,['--test','test/activation-ready.test.mjs']),
+  op('cutover and rollback remain fail closed',()=>t('src/activationPlan.mjs').includes('SALE_GLOBALLY_ENABLED=false')&&t('src/activationPlan.mjs').includes('verify_fail_closed')),
+]);
+unit('DEF-ACTIVATION-READINESS','evidence/EG-0038-commercial-activation-readiness.md',[
+  op('activation evidence exists',()=>existsSync(join(root,'evidence','EG-0038-commercial-activation-readiness.md'))),
+  command('activation 20x audit',process.execPath,['scripts/audit-activation-20x.mjs']),
+  op('external inputs are never fabricated',()=>t('evidence/EG-0038-commercial-activation-readiness.md').includes('nao fabricar')),
 ]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),

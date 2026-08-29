@@ -1,0 +1,68 @@
+import { evaluateActivationReadiness } from './activationReadiness.mjs';
+import { salesGate } from './salesGate.mjs';
+
+const requirement=(category,envKeys,inputClass='external')=>Object.freeze({
+  category, env_keys:Object.freeze(envKeys), input_class:inputClass,
+});
+
+export const ACTIVATION_REQUIREMENTS=Object.freeze({
+  supplier_legal_name_missing:requirement('legal',['SUPPLIER_LEGAL_NAME']),
+  supplier_tax_id_missing:requirement('legal',['SUPPLIER_TAX_ID']),
+  supplier_address_missing:requirement('legal',['SUPPLIER_ADDRESS']),
+  support_channel_missing:requirement('operations',['SUPPORT_CHANNEL']),
+  offer_selection_not_approved:requirement('commercial',['OFFER_SELECTION_APPROVED'],'decision'),
+  active_offer_type_invalid:requirement('commercial',['ACTIVE_OFFER_TYPE'],'decision'),
+  service_delivery_mode_missing:requirement('commercial',['SERVICE_DELIVERY_MODE'],'decision'),
+  asaas_production_not_configured:requirement('payments',['ASAAS_ENV'],'configuration'),
+  asaas_credentials_missing:requirement('payments',['ASAAS_API_KEY','ASAAS_WEBHOOK_TOKEN'],'secret'),
+  affiliate_provider_missing:requirement('affiliate',['AFFILIATE_PROVIDER'],'external'),
+  affiliate_tracking_unready:requirement('affiliate',['AFFILIATE_TRACKING_READY'],'external'),
+  affiliate_terms_unreviewed:requirement('affiliate',['AFFILIATE_TERMS_REVIEWED'],'decision'),
+});
+
+const enabled=(value)=>String(value||'').toLowerCase()==='true';
+export const CUTOVER_ORDER=Object.freeze([
+  'verify_external_inputs',
+  'PRE_SALE_GATES_APPROVED=true',
+  'enable_required_channel_flags',
+  'verify_fail_closed_before_global_unlock',
+  'SALE_GLOBALLY_ENABLED=true',
+  'verify_live_transaction_and_reconciliation',
+]);
+
+export const ROLLBACK_ORDER=Object.freeze([
+  'SALE_GLOBALLY_ENABLED=false',
+  'CHECKOUT_ENABLED=false',
+  'WHATSAPP_SALES_ENABLED=false',
+  'FINANCIAL_EVENTS_ENABLED=false',
+  'PRE_SALE_GATES_APPROVED=false',
+  'verify_fail_closed',
+]);
+
+export function buildActivationPlan(env=process.env){
+  const readiness=evaluateActivationReadiness(env);
+  const gate=salesGate(env);
+  const missing=readiness.blockers.map((code)=>Object.freeze({
+    code,
+    ...(ACTIVATION_REQUIREMENTS[code]||requirement('unknown',[])),
+  }));
+  const phase=gate.enabled?'live':readiness.ready?'ready_to_unlock':'waiting_external_inputs';
+  return Object.freeze({
+    phase,
+    inputs_ready:readiness.ready,
+    commercial_enabled:gate.enabled,
+    offer_type:readiness.offer_type,
+    inventory_required:false,
+    missing:Object.freeze(missing),
+    external_inputs_remaining:missing.length,
+    gates:Object.freeze({
+      global_sales:enabled(env.SALE_GLOBALLY_ENABLED),
+      pre_sale:enabled(env.PRE_SALE_GATES_APPROVED),
+      checkout:enabled(env.CHECKOUT_ENABLED),
+      whatsapp:enabled(env.WHATSAPP_SALES_ENABLED),
+      financial:enabled(env.FINANCIAL_EVENTS_ENABLED),
+    }),
+    cutover_order:CUTOVER_ORDER,
+    rollback_order:ROLLBACK_ORDER,
+  });
+}

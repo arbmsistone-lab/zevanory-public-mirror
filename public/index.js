@@ -19,6 +19,7 @@ function renderPipeline(center){
   const f=center.pipeline?.observed_funnel||{};
   set('stage-new',fmt(f.new)); set('stage-contacted',fmt(f.contacted)); set('stage-qualified',fmt(f.qualified));
   set('stage-offer',fmt(f.offer_sent)); set('stage-checkout',fmt(f.checkout_started)); set('stage-paid',fmt(f.paid));
+  const open=['new','contacted','qualified','offer_sent','checkout_started'].reduce((sum,key)=>sum+Number(f[key]||0),0); set('pipeline-signal',fmt(open));
   setState('forecast-mode',center.execution?.forecast_mode);
   set('predictive-forecast',center.execution?.predictive_forecast_available?'ATIVO':'BLOQUEADO SEM BASELINE');
   set('baseline-state',center.execution?.action_completion_rate===null?'INSUFICIENTE':'EM FORMAÇÃO');

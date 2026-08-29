@@ -1,4 +1,4 @@
-import { readFile, access } from 'node:fs/promises';
+﻿import { readFile, access } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { RELEASE } from '../src/release.mjs';
 import { REQUIRED_TABLES, REQUIRED_MIGRATIONS } from '../src/schemaHealth.mjs';
@@ -16,13 +16,13 @@ add('05 outbox idempotency',migration.includes('idempotency_key text NOT NULL UN
 add('06 outbox concurrency',outbox.includes('for update skip locked'));
 add('07 retry bounded',outbox.includes('attempts>=20')&&outbox.includes('3600000'));
 add('08 dead letter',outbox.includes("'dead_letter'"));
-add('09 enterprise assurance API',await exists('api/assurance.mjs'));
+add('09 activation readiness API',await exists('api/config.mjs')&&RELEASE.requiredRoutes.includes('/api/activation/readiness'));
 add('10 sales globally blocked',env.includes('SALE_GLOBALLY_ENABLED=false'));
 add('11 pre-sale blocked',env.includes('PRE_SALE_GATES_APPROVED=false'));
 add('12 checkout blocked',env.includes('CHECKOUT_ENABLED=false'));
 add('13 whatsapp blocked',env.includes('WHATSAPP_SALES_ENABLED=false'));
 add('14 financial blocked',env.includes('FINANCIAL_EVENTS_ENABLED=false'));
-add('15 enterprise 10x audit',run('scripts/audit-enterprise-10x.mjs'));
+add('15 enterprise and activation audits',run('scripts/audit-enterprise-10x.mjs')&&run('scripts/audit-activation-20x.mjs'));
 add('16 security 10x audit',run('scripts/audit-security-10x.mjs'));
 add('17 observability 10x audit',run('scripts/audit-observability-10x.mjs'));
 add('18 composable 10x audit',run('scripts/audit-composable-10x.mjs'));

@@ -7,6 +7,7 @@ const targets=Object.freeze([
   ['/api/release',body=>!expectedRelease||body.release_id===expectedRelease],
   ['/api/status',body=>body.engine?.technical_infrastructure==='approved'],
   ['/api/assurance',body=>body.provider_contracts?.valid===true&&body.historical_slo_proven===false],
+  ['/api/activation/readiness',body=>['waiting_external_inputs','ready_to_unlock','live'].includes(body.activation_phase)&&typeof body.external_inputs_remaining==='number'],
 ]);
 
 async function probe(path,validate){

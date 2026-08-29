@@ -10,93 +10,93 @@
 <body>
 <div class="app-shell">
 <header class="topbar">
-  <div class="identity"><div class="brand">ZEVANORY</div><div class="subtitle">CENTRAL OPERACIONAL · REVENUE OPERATIONS</div></div>
-  <div class="mission"><span>Estado real</span><strong>DECIDIR · EXECUTAR · MEDIR</strong></div>
+  <div class="identity"><div class="brand">ZEVANORY</div><div class="subtitle">CENTRAL OPERACIONAL</div></div>
+  <div class="mission"><strong>DECIDIR <i></i> EXECUTAR <i></i> MEDIR</strong></div>
   <div class="header-state"><i class="dot" id="health-dot"></i><span id="health-label">Conectando</span></div>
 </header>
 <main class="viewport">
-<section class="command-strip">
-  <div class="command-copy"><span class="eyebrow">Command Center</span><h1>SEM HERANÇA.<br>DECIDIR. EXECUTAR. MEDIR.</h1><p>Prioridades, receita, IA, infraestrutura e risco — nenhuma venda simulada e nenhuma previsão inventada.</p></div>
-  <div class="gate-block"><span>Gate atual</span><strong id="gate">—</strong><small id="experiment">—</small></div>
-  <div class="mode-block"><span>Modo comercial</span><strong id="sales-mode">—</strong><small>fail-closed por governança</small></div>
+<section class="executive-strip" aria-label="Resumo operacional">
+  <div class="kpi-cluster">
+    <article><span>Visualizações</span><strong data-kpi="page_views">—</strong></article>
+    <article><span>Leads qualificados</span><strong data-kpi="leads_qualified">—</strong></article>
+    <article><span>Pipeline aberto</span><strong data-kpi="pipeline_open">—</strong></article>
+    <article><span>Ações agendadas</span><strong data-kpi="actions_scheduled">—</strong></article>
+    <article><span>Ofertas</span><strong data-kpi="offers_sent">—</strong></article>
+    <article><span>Checkouts</span><strong data-kpi="checkouts_started">—</strong></article>
+    <article><span>Pagamentos</span><strong data-kpi="payments_confirmed">—</strong></article>
+    <article><span>Reembolsos</span><strong data-kpi="refunds_confirmed">—</strong></article>
+  </div>  <article class="gate-card"><span>Gate atual</span><strong id="gate">—</strong><small id="experiment">—</small></article>
+  <article class="mode-card"><span>Modo comercial</span><strong id="sales-mode">—</strong><small>fail-closed por governança</small></article>
 </section>
-<section class="kpi-strip" aria-label="Métricas operacionais">
-  <article><span>Visualizações</span><strong data-kpi="page_views">—</strong></article>
-  <article><span>Leads qualificados</span><strong data-kpi="leads_qualified">—</strong></article>
-  <article><span>Pipeline aberto</span><strong data-kpi="pipeline_open">—</strong></article>
-  <article><span>Ações agendadas</span><strong data-kpi="actions_scheduled">—</strong></article>
-  <article><span>Ofertas</span><strong data-kpi="offers_sent">—</strong></article>
-  <article><span>Checkouts</span><strong data-kpi="checkouts_started">—</strong></article>
-  <article><span>Pagamentos</span><strong data-kpi="payments_confirmed">—</strong></article>
-  <article><span>Reembolsos</span><strong data-kpi="refunds_confirmed">—</strong></article>
+<section class="workspace">
+  <article class="decision-center">
+    <div class="decision-copy"><span class="eyebrow">Command Center</span><h1>SEM HERANÇA.<br>DECIDIR. EXECUTAR. MEDIR.</h1><p>Centro executivo para decisão informada e ação imediata, com nenhuma venda simulada e nenhuma previsão inventada.</p></div>
+    <div class="priority-callout"><div class="priority-icon">↯</div><div><span>Ação prioritária</span><h2>Ação agora</h2><p>Desbloqueie, valide e avance.</p></div><b>→</b></div>
+    <div class="operation-status"><span>Status da operação</span><strong>ONLINE</strong><small id="updated-at">—</small></div>
+  </article>
+  <section class="executive-center">
+    <article class="executive-summary">
+      <div class="summary-head"><span>Resumo executivo</span><strong id="readiness-state">—</strong></div>
+      <p>Sistema operacional conectado. Use os sinais abaixo para priorizar a próxima decisão segura.</p>
+    </article>
+    <div class="signal-grid">
+      <article><span>Saúde do pipeline</span><strong id="pipeline-signal">—</strong><small id="forecast-mode">—</small></article>
+      <article><span>Prontidão comercial</span><strong id="blocker-count">—</strong><small>bloqueios ativos</small></article>
+      <article><span>Pressão da fila</span><strong id="queue-pressure-value">—</strong><small id="queue-pressure">—</small></article>
+      <article><span>Ações em execução</span><strong id="agent-running">—</strong><small>motor autônomo</small></article>
+    </div>
+    <div class="pipeline-strip">
+      <div><span>Novos</span><b id="stage-new">—</b></div><div><span>Contatados</span><b id="stage-contacted">—</b></div>
+      <div><span>Qualificados</span><b id="stage-qualified">—</b></div><div><span>Oferta</span><b id="stage-offer">—</b></div>
+      <div><span>Checkout</span><b id="stage-checkout">—</b></div><div><span>Pagos</span><b id="stage-paid">—</b></div>
+    </div>
+    <article class="operational-details">      <div class="details-head"><span>Destaques operacionais</span><span id="economics-state">—</span></div>
+      <div class="details-grid">
+        <div><span>Ações vencidas</span><b id="overdue-actions">—</b></div><div><span>Próximas 24h</span><b id="due-24h">—</b></div>
+        <div><span>Bloqueadas</span><b id="blocked-actions">—</b></div><div><span>Sem próxima ação</span><b id="missing-next-action">—</b></div>
+        <div><span>Leads estagnados</span><b id="stale-leads">—</b></div><div><span>Next-best-action</span><b id="nba-mode">—</b></div>
+        <div><span>Conclusão de ações</span><b id="action-completion">—</b></div><div><span>Forecast</span><b id="predictive-forecast">—</b></div>
+        <div><span>Receita bruta</span><b id="gross-revenue">—</b></div><div><span>Reembolsos</span><b id="refunds-value">—</b></div>
+        <div><span>Pedidos pagos</span><b id="paid-orders">—</b></div><div><span>Último evento</span><b id="last-event">—</b></div>
+      </div>
+    </article>
+  </section>
+  <aside class="operations-rail">
+    <article class="rail-card engine-rail">
+      <div class="rail-head"><span>03 · Inteligência</span><h2>Motor &amp; IA</h2><b id="structure-ready">—</b></div>
+      <div class="rail-grid">
+        <div><span>CRM / pipeline</span><b id="crm">—</b></div><div><span>Follow-up</span><b id="follow-up">—</b></div>
+        <div><span>Unit economics</span><b id="unit-economics">—</b></div><div><span>Learning</span><b id="learning">—</b></div>
+        <div><span>Outbound</span><b id="outbound">—</b></div><div><span>Autonomia</span><b id="engine-auto">—</b></div>
+      </div>
+      <div class="agent-mini"><div><span>Fila</span><b id="agent-queued">—</b></div><div><span>Bloqueados</span><b id="agent-blocked">—</b></div><div><span>Falhas</span><b id="agent-failed">—</b></div><div><span>Runs 24h</span><b id="agent-runs">—</b></div></div>
+      <div class="agent-line"><span>Motor autônomo</span><b id="agent-provider">—</b><i id="agent-commercial">—</i></div>
+    </article>    <article class="rail-card infra-rail">
+      <div class="rail-head"><span>04 · Plataforma</span><h2>Infra &amp; release</h2><b id="health-ready">—</b></div>
+      <div class="rail-grid">
+        <div><span>Banco</span><b id="db-state">—</b></div><div><span>Schema</span><b id="schema-state">—</b></div>
+        <div><span>Tabelas</span><b id="schema-tables">—</b></div><div><span>Migrations</span><b id="schema-migrations">—</b></div>
+        <div><span>Telemetria</span><b id="telemetry">—</b></div><div><span>Domínio</span><b id="domain-state">—</b></div>
+      </div>
+      <div class="release-line"><span id="release-id">—</span><b id="commit">—</b><i id="environment">—</i></div>
+      <div class="recovery-line"><span id="branch">—</span><b id="dr-mode">—</b><i id="dr-persistent">—</i></div>
+    </article>
+    <article class="rail-card risk-rail">
+      <div class="rail-head"><span>05 · Risco</span><h2>Garantias &amp; segurança</h2><b id="quality-gate">—</b></div>
+      <div class="audit-grid" id="audit-grid"></div>
+    </article>
+  </aside>
 </section>
-<section class="control-grid">
-<article class="domain-card action-card">
-  <div class="card-head"><div><span class="card-kicker">01 · EXECUÇÃO</span><h2>Ação agora</h2></div><span class="badge warn" id="queue-pressure">—</span></div>
-  <div class="metric-grid priority-grid">
-    <div><span>Ações vencidas</span><b id="overdue-actions">—</b></div><div><span>Próximas 24h</span><b id="due-24h">—</b></div>
-    <div><span>Bloqueadas</span><b id="blocked-actions">—</b></div><div><span>Sem próxima ação</span><b id="missing-next-action">—</b></div>
-    <div><span>Leads estagnados</span><b id="stale-leads">—</b></div><div><span>Next-best-action</span><b id="nba-mode">—</b></div>
+<section class="commercial-bar">
+  <div class="commercial-label"><span>Prontidão comercial</span><strong>GOVERNANÇA FAIL-CLOSED</strong></div>
+  <div class="commercial-facts">
+    <div><span>Checkout</span><b id="checkout">—</b></div><div><span>Financeiro</span><b id="financial">—</b></div>
+    <div><span>WhatsApp vendas</span><b id="whatsapp">—</b></div><div><span>Baseline real</span><b id="baseline-state">—</b></div>
   </div>
-  <div class="section-label">Saúde do pipeline <span id="forecast-mode">—</span></div>
-  <div class="metric-grid funnel-grid">
-    <div><span>Novos</span><b id="stage-new">—</b></div><div><span>Contatados</span><b id="stage-contacted">—</b></div>
-    <div><span>Qualificados</span><b id="stage-qualified">—</b></div><div><span>Oferta</span><b id="stage-offer">—</b></div>
-    <div><span>Checkout</span><b id="stage-checkout">—</b></div><div><span>Pagos</span><b id="stage-paid">—</b></div>
-  </div>
-</article>
-<article class="domain-card revenue-card">
-  <div class="card-head"><div><span class="card-kicker">02 · RECEITA</span><h2>Prontidão comercial &amp; economia</h2></div><span class="badge warn" id="readiness-state">—</span></div>
-  <div class="metric-grid">
-    <div><span>Bloqueios ativos</span><b id="blocker-count">—</b></div><div><span>Checkout</span><b id="checkout">—</b></div>
-    <div><span>Financeiro</span><b id="financial">—</b></div><div><span>WhatsApp vendas</span><b id="whatsapp">—</b></div>
-    <div><span>Forecast</span><b id="predictive-forecast">—</b></div><div><span>Baseline</span><b id="baseline-state">—</b></div>
-  </div>
-  <div class="section-label">Economia real <span id="economics-state">—</span></div>
-  <div class="metric-grid">
-    <div><span>Receita bruta</span><b id="gross-revenue">—</b></div><div><span>Reembolsos</span><b id="refunds-value">—</b></div>
-    <div><span>Pedidos pagos</span><b id="paid-orders">—</b></div><div><span>Conclusão</span><b id="action-completion">—</b></div>
-    <div><span>Pressão da fila</span><b id="queue-pressure-value">—</b></div><div><span>Último evento</span><b id="last-event">—</b></div>
-  </div>
-</article>
-<article class="domain-card engine-card">
-  <div class="card-head"><div><span class="card-kicker">03 · INTELIGÊNCIA</span><h2>Motor &amp; IA</h2></div><span class="badge" id="structure-ready">—</span></div>
-  <div class="metric-grid">
-    <div><span>CRM / pipeline</span><b id="crm">—</b></div><div><span>Follow-up</span><b id="follow-up">—</b></div>
-    <div><span>Unit economics</span><b id="unit-economics">—</b></div><div><span>Learning</span><b id="learning">—</b></div>
-    <div><span>Outbound</span><b id="outbound">—</b></div><div><span>Autonomia</span><b id="engine-auto">—</b></div>
-  </div>
-  <div class="section-label">Motor autônomo <span id="agent-provider">—</span></div>
-  <div class="metric-grid">
-    <div><span>Fila</span><b id="agent-queued">—</b></div><div><span>Executando</span><b id="agent-running">—</b></div>
-    <div><span>Bloqueados</span><b id="agent-blocked">—</b></div><div><span>Falhas</span><b id="agent-failed">—</b></div>
-    <div><span>Runs 24h</span><b id="agent-runs">—</b></div><div><span>Execução comercial</span><b id="agent-commercial">—</b></div>
-  </div>
-</article>
-<article class="domain-card infra-card">
-  <div class="card-head"><div><span class="card-kicker">04 · PLATAFORMA</span><h2>Infra &amp; release</h2></div><span class="badge" id="health-ready">—</span></div>
-  <div class="metric-grid">
-    <div><span>Banco</span><b id="db-state">—</b></div><div><span>Schema</span><b id="schema-state">—</b></div>
-    <div><span>Tabelas</span><b id="schema-tables">—</b></div><div><span>Migrations</span><b id="schema-migrations">—</b></div>
-    <div><span>Telemetria</span><b id="telemetry">—</b></div><div><span>Domínio</span><b id="domain-state">—</b></div>
-  </div>
-  <div class="section-label">Deploy &amp; recuperação <span class="live">● produção</span></div>
-  <div class="metric-grid">
-    <div><span>Release</span><b id="release-id">—</b></div><div><span>Branch</span><b id="branch">—</b></div>
-    <div><span>Commit</span><b id="commit">—</b></div><div><span>Ambiente</span><b id="environment">—</b></div>
-    <div><span>DR</span><b id="dr-mode">—</b></div><div><span>Rollback persistente</span><b id="dr-persistent">—</b></div>
-  </div>
-</article>
-<article class="domain-card assurance-card">
-  <div class="card-head"><div><span class="card-kicker">05 · RISCO</span><h2>Garantias &amp; segurança</h2></div><span class="badge" id="quality-gate">—</span></div>
-  <div class="audit-grid" id="audit-grid"></div>
-  <div class="section-label">Segurança comercial <span class="badge warn">FAIL-CLOSED</span></div>
   <div class="switches" id="switches"></div>
-</article>
 </section>
-<div class="statusbar"><span>Atualização <b id="updated-at">—</b></span><span>Dados agregados · sem PII</span><span>zevanory.api.br · produção</span></div>
 </main>
-<footer><span>© 2026 ZEVANORY</span><span>Evidence first · automation second</span></footer>
+<footer><span>© 2026 ZEVANORY</span><span>Dados agregados · sem PII</span><span>zevanory.api.br · produção</span></footer>
 </div>
 <script src="/index.js" defer></script>
 </body>
