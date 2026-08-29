@@ -47,16 +47,17 @@
   .commercial-facts span,.commercial-label span,.switches span{font-size:7px}.commercial-facts b,.commercial-label strong{font-size:7.6px}
 }
 
-/* EG-0042 — compact secondary rail details without information loss */
-.engine-rail .rail-grid div:nth-child(n+5),.infra-rail .rail-grid div:nth-child(n+5),.engine-rail .agent-mini,.infra-rail .recovery-line{display:none}
-.engine-rail .agent-line,.infra-rail .release-line{margin-top:5px;border-top:1px solid var(--line);padding-top:6px}
-.engine-rail,.infra-rail{display:grid;grid-template-rows:auto auto auto;align-content:start}
+/* EG-0043 — visible information integrity: no operational truth hidden to make the rail fit */
+.engine-rail .agent-line,.infra-rail .release-line,.infra-rail .recovery-line{margin-top:4px;border-top:1px solid var(--line);padding-top:5px}
+.engine-rail,.infra-rail{display:grid;grid-template-rows:auto auto auto auto;align-content:start}
 .engine-rail .rail-grid,.infra-rail .rail-grid{align-self:start}
-
-/* EG-0042 — compact-height no-cut guarantee */
+.operations-rail{grid-template-rows:1.12fr 1.12fr .76fr}
+.agent-mini{margin-top:4px;gap:4px}.agent-mini div{padding:3px 4px}
 @media(max-height:760px){
-  .engine-rail .agent-line,.infra-rail .release-line{display:none}
-  .rail-head{padding-bottom:5px}.rail-grid div{padding:3px 0}
+  .operations-rail{grid-template-rows:1.13fr 1.13fr .74fr}
+  .rail-head{padding-bottom:4px}.rail-grid div{padding:2px 0}
+  .engine-rail .agent-line,.infra-rail .release-line,.infra-rail .recovery-line{margin-top:3px;padding-top:4px}
+  .agent-mini{margin-top:3px}.agent-mini div{padding:2px 4px}
 }
 
 /* EG-0043 — legibility floor and zero-cut compact viewport */
@@ -81,3 +82,48 @@
 
 /* EG-0043.5 — desktop readable floor */
 @media(min-height:761px){.gate-card small,.mode-card small{font-size:8px}.operation-status span,.operation-status strong,.operation-status small{font-size:8px}.agent-line,.release-line,.recovery-line{font-size:8px}.commercial-label span,.commercial-facts span,.switches span{font-size:8px}.commercial-label strong,.commercial-facts b,.switches b{font-size:8.4px}.audit-grid span{font-size:8px}.audit-grid b{font-size:8.5px}footer{font-size:8px}}
+
+/* EG-0043.6 — no hidden operational fields; rebalance rail by real content */
+.operations-rail{grid-template-rows:1.08fr 1.08fr .84fr}
+.engine-rail .rail-grid div,.infra-rail .rail-grid div,.engine-rail .agent-mini,.engine-rail .agent-line,.infra-rail .release-line,.infra-rail .recovery-line{visibility:visible}
+@media(max-height:760px){
+  .operations-rail{grid-template-rows:1.12fr 1.12fr .76fr}
+  .engine-rail .rail-grid div,.infra-rail .rail-grid div{padding:2px 0}
+  .engine-rail .agent-mini{margin-top:2px;gap:3px}
+  .engine-rail .agent-mini div{padding:2px 3px}
+  .engine-rail .agent-line,.infra-rail .release-line,.infra-rail .recovery-line{margin-top:2px;padding-top:3px}
+}
+
+/* EG-0043.7 — full-information compact rail: all fields visible, no microtext */
+.engine-rail .rail-grid,.infra-rail .rail-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:0 8px}
+.engine-rail .rail-grid div,.infra-rail .rail-grid div{padding:3px 0}
+.engine-rail .rail-grid span,.infra-rail .rail-grid span,.agent-mini span,.agent-line,.release-line,.recovery-line{font-size:8px}
+.engine-rail .rail-grid b,.infra-rail .rail-grid b,.agent-mini b{font-size:8.6px}
+.agent-mini{grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;margin-top:3px}
+.agent-mini div{padding:2px 3px}
+.engine-rail .agent-line,.infra-rail .release-line,.infra-rail .recovery-line{margin-top:2px;padding-top:3px;line-height:1.15}
+.operations-rail{grid-template-rows:1.10fr 1.10fr .80fr}
+@media(max-height:760px){
+  .operations-rail{grid-template-rows:1.10fr 1.10fr .80fr}
+  .engine-rail .rail-grid,.infra-rail .rail-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:0 6px}
+  .engine-rail .rail-grid div,.infra-rail .rail-grid div{padding:2px 0}
+  .engine-rail .rail-grid span,.infra-rail .rail-grid span,.agent-mini span,.agent-line,.release-line,.recovery-line{font-size:8px}
+  .engine-rail .rail-grid b,.infra-rail .rail-grid b,.agent-mini b{font-size:8.4px}
+  .agent-mini{margin-top:2px;gap:2px}.agent-mini div{padding:1px 2px}
+  .engine-rail .agent-line,.infra-rail .release-line,.infra-rail .recovery-line{margin-top:1px;padding-top:2px}
+}
+/* EG-0043.8 — horizontal state cells: preserve labels and values without vertical waste */
+.engine-rail .rail-grid div,.infra-rail .rail-grid div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px;min-height:22px}
+.engine-rail .rail-grid span,.infra-rail .rail-grid span{display:block;white-space:nowrap;overflow:hidden;text-overflow:clip;line-height:1.1}
+.engine-rail .rail-grid b,.infra-rail .rail-grid b{display:block;margin-top:0;white-space:nowrap;line-height:1.1;text-align:right}
+.agent-mini{align-items:center}.agent-mini div{min-height:22px;display:grid;grid-template-columns:1fr;align-content:center}
+.agent-mini span,.agent-mini b{line-height:1.05;margin-top:0}
+@media(max-height:760px){
+  .engine-rail .rail-grid div,.infra-rail .rail-grid div{min-height:20px;padding:1px 0}
+  .agent-mini div{min-height:20px}
+}
+/* EG-0043.9 — universal desktop legibility floor */
+@media(min-height:761px){
+  .kpi-cluster span,.gate-card span,.mode-card span,.decision-meta span,.signal-grid span,.signal-grid small,.pipeline-strip span,.details-grid span,.rail-head>span{font-size:8px}
+  .summary-head span,.details-head span,.summary-head strong{font-size:8px}
+}

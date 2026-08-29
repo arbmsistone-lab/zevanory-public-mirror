@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 const root=new URL('../',import.meta.url);const read=p=>fs.readFileSync(new URL(p,root),'utf8');
-const css=read('public/index.css'),js=read('public/index.js'),html=read('public/index.html'),ev=read('evidence/EG-0042-final-visual-certification.md');
+const css=read('public/index.css'),js=read('public/index.js'),html=read('public/index.html'),ev=read('evidence/EG-0043-final-legibility-integrity.md');
 const checks=[];const add=(name,ok)=>{checks.push({name,ok:Boolean(ok)});console.log(`${ok?'APPROVED':'FAILED'} ${String(checks.length).padStart(2,'0')} ${name}`)};
-add('evidence gate exists',ev.includes('EG-0042'));
-add('right rail receives more compact width share',css.includes('minmax(355px,1.02fr)'));
+add('evidence gate exists',ev.includes('EG-0043'));
+add('right rail receives compact width share',css.includes('minmax(355px,1.02fr)'));
 add('compact viewport right rail protected',css.includes('minmax(340px,1.04fr)'));
 add('commercial facts never ellipsized',css.includes('text-overflow:clip'));
-add('compact secondary lines are hidden',css.includes('.engine-rail .agent-line,.infra-rail .release-line{display:none}'));
+add('operational rail fields remain visible',css.includes('visibility:visible')&&css.includes('repeat(3,minmax(0,1fr))'));
 add('secondary details remain in tooltips',js.includes('engineRail.title=')&&js.includes('infraRail.title='));
 add('single-screen overflow remains blocked',css.includes('overflow:hidden')&&css.includes('height:100dvh'));
 add('official identity preserved',html.includes('/brand/zevanory-logo-dark.svg'));

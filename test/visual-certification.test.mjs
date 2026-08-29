@@ -4,14 +4,15 @@ import {readFile} from 'node:fs/promises';
 const css=await readFile(new URL('../public/index.css',import.meta.url),'utf8');
 const js=await readFile(new URL('../public/index.js',import.meta.url),'utf8');
 
-test('EG0042 redistributes width toward operational rail',()=>{
+test('EG0043 redistributes width toward operational rail',()=>{
   assert.match(css,/minmax\(300px,\.70fr\).*minmax\(355px,1\.02fr\)/s);
   assert.match(css,/minmax\(285px,\.68fr\).*minmax\(340px,1\.04fr\)/s);
 });
 
-test('EG0042 removes compact-height rail overflow sources',()=>{
-  assert.ok(css.includes('.engine-rail .agent-line,.infra-rail .release-line{display:none}'));
-  assert.ok(css.includes('.engine-rail .agent-mini,.infra-rail .recovery-line{display:none}'));
+test('EG0043 keeps all operational rail fields visible',()=>{
+  assert.ok(css.includes('no operational truth hidden'));
+  assert.ok(css.includes('visibility:visible'));
+  assert.ok(css.includes('grid-template-columns:repeat(3,minmax(0,1fr))'));
 });
 
 test('secondary rail information remains accessible as tooltip truth',()=>{

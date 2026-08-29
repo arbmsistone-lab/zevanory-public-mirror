@@ -355,11 +355,11 @@ unit('DEF-WORLDCLASS-DASHBOARD-EVIDENCE','evidence/EG-0041-worldclass-executive-
 unit('CODE-VISUAL-CERTIFICATION','public/index.css + public/index.js',[
   command('visual certification tests',process.execPath,['--test','test/visual-certification.test.mjs']),
   command('visual certification 10x audit',process.execPath,['scripts/audit-visual-certification-10x.mjs']),
-  op('compact rail has explicit no-cut contract',()=>t('public/index.css').includes('compact-height no-cut guarantee')&&t('public/index.js').includes('engineRail.title=')),
+  op('compact rail preserves all visible fields at readable density',()=>t('public/index.css').includes('full-information compact rail')&&t('public/index.css').includes('repeat(3,minmax(0,1fr))')&&t('public/index.js').includes('engineRail.title=')),
 ]);
-unit('DEF-VISUAL-CERTIFICATION-EVIDENCE','evidence/EG-0042-final-visual-certification.md',[
-  op('visual certification evidence approved',()=>t('evidence/EG-0042-final-visual-certification.md').includes('Status: APROVADO')),
-  op('acceptance criteria records zero overflow truncation and rail cut',()=>['overflow global X/Y = false','truncamentos detectados = 0','scrollHeight <= clientHeight'].every(x=>t('evidence/EG-0042-final-visual-certification.md').includes(x))),
+unit('DEF-VISUAL-CERTIFICATION-EVIDENCE','evidence/EG-0043-final-legibility-integrity.md',[
+  op('visual certification evidence approved',()=>t('evidence/EG-0043-final-legibility-integrity.md').includes('Status: APPROVED')),
+  op('acceptance criteria records readable zero-overflow integrity',()=>['overflowX=false','overflowY=false','minFont=8','hidden=0'].every(x=>t('evidence/EG-0043-final-legibility-integrity.md').includes(x))),
   command('identity guard',process.execPath,['scripts/identity-guard.mjs']),
 ]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
