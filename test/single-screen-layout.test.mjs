@@ -10,8 +10,9 @@ test('single-screen architecture keeps executive domains visible',()=>{
 });
 
 test('desktop viewport remains structurally scroll-free',()=>{
-  assert.ok(css.includes('height:100dvh'));
   assert.ok(css.includes('overflow:hidden'));
-  assert.match(css,/grid-template-columns:minmax\(285px,\.66fr\) minmax\(500px,1\.30fr\) minmax\(410px,1\.04fr\)/);
+  assert.ok(css.includes('height:100dvh'));
+  assert.match(css,/grid-template-columns:minmax\(270px,\.58fr\) minmax\(520px,1\.34fr\) minmax\(420px,1\.08fr\)/);
+  assert.match(css,/grid-template-columns:minmax\(250px,\.55fr\) minmax\(500px,1\.36fr\) minmax\(405px,1\.09fr\)/);
   assert.equal(css.includes('overflow:auto'),false);
 });

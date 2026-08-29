@@ -345,7 +345,7 @@ unit('DEF-OFFICIAL-BRAND-EVIDENCE','evidence/EG-0040-official-brand-local-parity
 unit('CODE-WORLDCLASS-DASHBOARD','public/index.html + public/index.css + public/index.js',[
   command('worldclass dashboard tests',process.execPath,['--test','test/worldclass-dashboard.test.mjs']),
   command('worldclass dashboard 10x audit',process.execPath,['scripts/audit-worldclass-dashboard-10x.mjs']),
-  op('single screen and fail-closed visual semantics',()=>t('public/index.css').includes('EG-0044 — canonical executive visual system')&&t('public/index.css').includes('data-enabled="false"] b{color:var(--amber)')&&!t('public/index.css').includes('overflow:auto')),
+  op('single screen and fail-closed visual semantics',()=>t('public/index.css').includes('EG-0045 — premium executive control room')&&t('public/index.css').includes('data-enabled="false"] b{color:var(--amber)')&&!t('public/index.css').includes('overflow:auto')),
 ]);
 unit('DEF-WORLDCLASS-DASHBOARD-EVIDENCE','evidence/EG-0041-worldclass-executive-dashboard.md',[
   op('three independent design references recorded',()=>['AWS Cloudscape','IBM Carbon','Atlassian Design System'].every(x=>t('evidence/EG-0041-worldclass-executive-dashboard.md').includes(x))),
@@ -355,11 +355,11 @@ unit('DEF-WORLDCLASS-DASHBOARD-EVIDENCE','evidence/EG-0041-worldclass-executive-
 unit('CODE-VISUAL-CERTIFICATION','public/index.css + public/index.js',[
   command('visual certification tests',process.execPath,['--test','test/visual-certification.test.mjs']),
   command('visual certification 10x audit',process.execPath,['scripts/audit-visual-certification-10x.mjs']),
-  op('canonical visual system preserves visible fields at readable density',()=>t('public/index.css').includes('EG-0044 — canonical executive visual system')&&t('public/index.css').includes('repeat(3,minmax(0,1fr))')&&t('public/index.js').includes('surface-host')),
+  op('canonical visual system preserves visible fields at readable density',()=>t('public/index.css').includes('EG-0045 — premium executive control room')&&t('public/index.css').includes('repeat(3,minmax(0,1fr))')&&t('public/index.js').includes('surface-host')),
 ]);
-unit('DEF-VISUAL-CERTIFICATION-EVIDENCE','evidence/EG-0044-canonical-executive-visual-system.md',[
-  op('visual certification evidence approved',()=>t('evidence/EG-0044-canonical-executive-visual-system.md').includes('Status: APPROVED')),
-  op('acceptance criteria records canonical readable integrity',()=>['9 px','10 px','location.host','kill-switches'].every(x=>t('evidence/EG-0044-canonical-executive-visual-system.md').includes(x))),
+unit('DEF-VISUAL-CERTIFICATION-EVIDENCE','evidence/EG-0045-premium-executive-control-room.md',[
+  op('visual certification evidence approved',()=>t('evidence/EG-0045-premium-executive-control-room.md').includes('Status: APROVADO')),
+  op('acceptance criteria records canonical readable integrity',()=>['minFont=9','minFont=10','overflowX=false','overflow interno=0'].every(x=>t('evidence/EG-0045-premium-executive-control-room.md').includes(x))),
   command('identity guard',process.execPath,['scripts/identity-guard.mjs']),
 ]);
 unit('PROJECT-HYGIENE','project-only hygiene',[

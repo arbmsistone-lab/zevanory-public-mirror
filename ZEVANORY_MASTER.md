@@ -132,3 +132,10 @@ O contrato visual exige zero scroll, zero truncamento, zero overflow interno e n
 Piso tipografico homologado: 9 px no viewport efetivo de 1280x720 e 10 px em desktop alto/1600x900.
 O rodape identifica dinamicamente o host acessado e labels visiveis de governanca/assurance sao apresentados em portugues, sem alterar chaves tecnicas internas.
 Nenhuma mudanca EG-0044 altera backend, schema, oferta, pagamentos, canais ou kill-switches; todos permanecem fail-closed.
+
+## FASE EG-0045 - PREMIUM EXECUTIVE CONTROL ROOM
+A pagina principal adota uma arquitetura executiva premium com menos contornos, mais hierarquia por superficie/espacamento e maior area util para leitura.
+O layout permanece single-screen, sem rolagem, sem truncamento e sem esconder campos operacionais para caber.
+Piso tipografico homologado: 9 px em 1280x720 e 10 px em 1600x900.
+A coluna de decisao ocupa menos area, o centro executivo domina a leitura e a coluna operacional recebe largura suficiente para os dados reais.
+Nenhuma mudanca desta fase altera backend, schema, checkout, vendas, WhatsApp comercial, eventos financeiros ou autonomia; todos os kill-switches permanecem fail-closed.
