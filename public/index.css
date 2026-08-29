@@ -45,3 +45,5 @@ footer{display:flex;align-items:center;justify-content:space-between;border-top:
 .viewport{grid-template-rows:86px minmax(0,1fr) 44px}.business-center{grid-template-rows:62px 90px minmax(0,1fr)}.readiness-number{padding-bottom:6px}
 @media(min-height:761px){.priority-callout span,.priority-callout p{font-size:12px}}
 @media(max-height:760px){.viewport{grid-template-rows:84px minmax(0,1fr) 42px}.business-center{grid-template-rows:56px 82px minmax(0,1fr)}}
+/* EG-0046 production 1280 measured fit: preserve 11px signal text. */
+@media(max-height:760px){.business-center{grid-template-rows:56px 96px minmax(0,1fr)}}
