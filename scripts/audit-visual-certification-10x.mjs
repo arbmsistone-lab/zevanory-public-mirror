@@ -2,7 +2,7 @@ import fs from 'node:fs';
 const root=new URL('../',import.meta.url);const read=p=>fs.readFileSync(new URL(p,root),'utf8');
 const css=read('public/index.css'),js=read('public/index.js'),html=read('public/index.html'),ev=read('evidence/EG-0044-canonical-executive-visual-system.md');
 const checks=[];const add=(name,ok)=>{checks.push({name,ok:Boolean(ok)});console.log(`${ok?'APPROVED':'FAILED'} ${String(checks.length).padStart(2,'0')} ${name}`)};
-add('canonical EG0044 evidence exists',ev.includes('EG-0044')&&ev.includes('Status: APPROVED FOR VALIDATION'));
+add('canonical EG0044 evidence exists',ev.includes('EG-0044')&&ev.includes('Status: APPROVED'));
 add('historical visual override stack removed',css.includes('EG-0044 — canonical executive visual system')&&!css.includes('EG-0043.'));
 add('compact viewport has readable nine pixel floor',css.includes('font-size:9px'));
 add('tall desktop promotes critical labels to ten pixels',css.includes('header-state,.eyebrow,.priority-callout span{font-size:10px}'));

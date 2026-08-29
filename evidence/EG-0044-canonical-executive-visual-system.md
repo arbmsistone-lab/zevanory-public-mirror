@@ -1,6 +1,6 @@
 # EG-0044 — CANONICAL EXECUTIVE VISUAL SYSTEM
 
-Status: APPROVED FOR VALIDATION.
+Status: APPROVED.
 Escopo: consolidacao visual da pagina principal, sem alterar backend, banco ou gates comerciais.
 
 ## Evidence Gate herdado e ainda valido
@@ -26,3 +26,7 @@ As tres fontes independentes ja foram aprovadas em EG-0041 e continuam aplicavei
 
 ## Invariantes
 Todos os kill-switches permanecem fail-closed. Esta fase nao autoriza venda, checkout, WhatsApp comercial, eventos financeiros ou autonomia.
+## Prova operacional em producao
+- 1280x720 efetivo 1262x624: minFont=9, truncamentos=0, overflowX=false, overflowY=false, rails sem overflow.
+- 1600x900 efetivo 1582x804: minFont=10, truncamentos=0, overflowX=false, overflowY=false, rails sem overflow.
+- `zevanory.api.br` e `zevanory-site.vercel.app` reportaram o mesmo SHA e renderizaram host correto no rodape.

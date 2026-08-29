@@ -358,7 +358,7 @@ unit('CODE-VISUAL-CERTIFICATION','public/index.css + public/index.js',[
   op('canonical visual system preserves visible fields at readable density',()=>t('public/index.css').includes('EG-0044 — canonical executive visual system')&&t('public/index.css').includes('repeat(3,minmax(0,1fr))')&&t('public/index.js').includes('surface-host')),
 ]);
 unit('DEF-VISUAL-CERTIFICATION-EVIDENCE','evidence/EG-0044-canonical-executive-visual-system.md',[
-  op('visual certification evidence approved',()=>t('evidence/EG-0044-canonical-executive-visual-system.md').includes('Status: APPROVED FOR VALIDATION')),
+  op('visual certification evidence approved',()=>t('evidence/EG-0044-canonical-executive-visual-system.md').includes('Status: APPROVED')),
   op('acceptance criteria records canonical readable integrity',()=>['9 px','10 px','location.host','kill-switches'].every(x=>t('evidence/EG-0044-canonical-executive-visual-system.md').includes(x))),
   command('identity guard',process.execPath,['scripts/identity-guard.mjs']),
 ]);
