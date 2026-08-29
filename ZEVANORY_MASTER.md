@@ -125,3 +125,13 @@ Checkout Asaas suporta ambientes explícitos sandbox/production, preservando fai
 Políticas públicas obrigatórias: termos, privacidade, cancelamento/reembolso e transparência de afiliação.
 Prontidão de ativação é calculada por tipo de oferta e não pode ser obtida apenas por variáveis de ambiente incompletas.
 Venda real continua bloqueada até preenchimento dos requisitos legais/comerciais e autorização de mudança de fase.
+## FASE ESTRUTURAL EG-0036 — COMPOSABLE COMMERCE INFRASTRUCTURE
+Release estrutural: `ZEVANORY-EG0036-FINAL`.
+Benchmark oficial confronta Shopify Hydrogen/Oxygen, commercetools MACH, Salesforce Composable Storefront, Adobe Commerce Cloud e BigCommerce Catalyst.
+A decisao aprovada e monolito modular composable: API-first, headless, cloud-native, portas/adaptadores e migracao incremental por strangler pattern.
+Microservicos distribuidos nao sao obrigatorios nesta escala e nao foram introduzidos sem necessidade comprovada.
+A migration 009 adiciona transactional outbox PostgreSQL/Neon com idempotencia, retry exponencial limitado, concorrencia por SKIP LOCKED e dead-letter.
+Schema canonico passa a exigir 15 tabelas e migrations 001–009.
+A infraestrutura continua sem dependencia obrigatoria de novo provedor pago.
+Todos os cinco kill-switches comerciais/financeiros permanecem `false`; esta fase nao autoriza vendas, checkout comercial, WhatsApp comercial, eventos financeiros reais ou autonomia comercial.
+Fechamento exige cinco execucoes independentes da auditoria composable 10X, auditorias legadas/regressao, auditoria 3X atualizada, DR, prova de producao e auditoria final 20X.

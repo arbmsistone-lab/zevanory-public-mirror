@@ -3,6 +3,9 @@
   "cleanUrls": true,
   "rewrites": [
     { "source": "/api/events/public", "destination": "/api/events-public" },
+    { "source": "/api/events/operator", "destination": "/api/events-operator" },
+    { "source": "/api/agent/run", "destination": "/api/agent-run" },
+    { "source": "/api/agent/status", "destination": "/api/agent-status" },
     { "source": "/piloto", "destination": "/public/piloto.html" },
     { "source": "/termos", "destination": "/public/termos.html" },
     { "source": "/privacidade", "destination": "/public/privacidade.html" },

@@ -1061,6 +1061,75 @@
       ]
     },
     {
+      "id": "CODE-COMPOSABLE-ARCHITECTURE",
+      "label": "src/composableArchitecture.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "composable architecture syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "composable architecture tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "architecture is acyclic modular and cost disciplined",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-INTEGRATION-OUTBOX",
+      "label": "src/integrationOutbox.mjs + db/migrations/009_composable_infrastructure.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "integration outbox syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "integration outbox tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "outbox is idempotent concurrent and dead-lettered",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-COMPOSABLE-EVIDENCE",
+      "label": "evidence/EG-0036-composable-commerce-infrastructure-benchmark.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "five professional benchmarks recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "composable 10x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "sales remain blocked by decision",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1085,8 +1154,8 @@
     }
   ],
   "totals": {
-    "units": 47,
-    "approved": 47,
+    "units": 50,
+    "approved": 50,
     "failed": 0
   },
   "verdict": "APPROVED"

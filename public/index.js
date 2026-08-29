@@ -36,22 +36,23 @@ function renderAssurance(release){
 async function refresh(){
   const healthLabel=document.getElementById('health-label');
   try{
-    const responses=await Promise.all(['/api/status','/api/health','/api/release','/api/config'].map(path=>fetch(path,{cache:'no-store'})));
+    const responses=await Promise.all(['/api/status','/api/health','/api/release','/api/config','/api/agent/status'].map(path=>fetch(path,{cache:'no-store'})));
     if(responses.some(r=>!r.ok)) throw new Error('state_unavailable');
-    const [status,health,release,config]=await Promise.all(responses.map(r=>r.json()));
+    const [status,health,release,config,agent]=await Promise.all(responses.map(r=>r.json()));
     set('gate',status.gate||'—'); set('experiment',status.experiment?.id||'—'); setState('sales-mode',release.sales_mode||config.production_mode);
     document.querySelectorAll('[data-kpi]').forEach(el=>el.textContent=fmt(status.metrics?.[el.dataset.kpi]));
     renderPriorities(status.command_center||{}); renderPipeline(status.command_center||{});
     setState('structure-ready',status.sales_machine?.structure_ready); setState('crm',status.sales_machine?.crm); setState('follow-up',status.sales_machine?.follow_up);
     setState('unit-economics',status.sales_machine?.unit_economics); setState('learning',status.sales_machine?.learning); setState('outbound',status.sales_machine?.outbound_execution); setState('engine-auto',status.engine?.commercial_autonomy);
     setState('health-ready',health.ready); setState('db-state',health.checks?.database_reachable); setState('schema-state',health.schema?.ready);
-    set('schema-tables',`${health.schema?.required_tables||0}/9`); set('schema-migrations',`${health.schema?.required_migrations||0}/7`); setState('telemetry',status.runtime?.telemetry); setState('domain-state',health.checks?.public_base_url_valid);
+    const requiredTables=Number(health.schema?.required_tables)||15; const requiredMigrations=Number(health.schema?.required_migrations)||9; const missingTables=Array.isArray(health.schema?.missing_tables)?health.schema.missing_tables.length:requiredTables; const missingMigrations=Array.isArray(health.schema?.missing_migrations)?health.schema.missing_migrations.length:requiredMigrations;
+    set('schema-tables',`${Math.max(0,requiredTables-missingTables)}/${requiredTables}`); set('schema-migrations',`${Math.max(0,requiredMigrations-missingMigrations)}/${requiredMigrations}`); setState('telemetry',status.runtime?.telemetry); setState('domain-state',health.checks?.public_base_url_valid);
     const economics=status.economics; set('economics-state',economics?'DADOS REAIS':'SEM BASELINE'); set('gross-revenue',economics?money(economics.gross_revenue_brl):'—');
     set('refunds-value',economics?money(economics.refunds_brl):'—'); set('paid-orders',economics?fmt(economics.paid_orders):'—');
     setState('checkout',status.runtime?.checkout); setState('financial',status.runtime?.financial); setState('whatsapp',config.whatsapp_enabled);
     const blockers=Array.isArray(config.commercial_blockers)?config.commercial_blockers:[]; set('blocker-count',fmt(blockers.length)); set('readiness-state',blockers.length?'BLOQUEADA':'PRONTA');
     set('release-id',release.release_id||'—'); set('branch',release.deployment?.branch||'—'); set('commit',release.deployment?.commit_sha?release.deployment.commit_sha.slice(0,10):'—'); set('environment',label(release.deployment?.environment));
-    set('dr-mode',label(release.recovery?.mode)); set('dr-persistent',release.recovery?.persistent_changes===false?'NÃO':'—'); renderAssurance(release);
+    set('dr-mode',label(release.recovery?.mode)); set('dr-persistent',release.recovery?.persistent_changes===false?'NÃO':'—'); set('agent-provider',label(agent.ai_provider)); set('agent-queued',fmt(agent.queued)); set('agent-running',fmt(agent.running)); set('agent-blocked',fmt(agent.blocked)); set('agent-failed',fmt(agent.failed)); set('agent-runs',fmt(agent.runs_24h)); setState('agent-commercial',agent.commercial_execution); renderAssurance(release);
     const switches=document.getElementById('switches'); switches.replaceChildren();
     Object.entries(health.commercial_switches||{}).forEach(([k,v])=>{const x=document.createElement('div');const s=document.createElement('span');const b=document.createElement('b');s.textContent=k.replaceAll('_',' ');b.textContent=v?'ON':'OFF';x.dataset.enabled=String(v);x.append(s,b);switches.appendChild(x);});
     set('last-event',status.last_event_at?new Date(status.last_event_at).toLocaleString('pt-BR'):'sem evento'); set('updated-at',new Date().toLocaleTimeString('pt-BR'));

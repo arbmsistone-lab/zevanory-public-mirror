@@ -1,0 +1,55 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { deterministicDecision } from '../src/aiProvider.mjs';
+import { authorizeTool } from '../src/agentPolicy.mjs';
+import { evaluateAgentDecision } from '../src/agentEvals.mjs';
+import { channelReadiness, assertChannelActionAllowed } from '../src/channelAdapters.mjs';
+import { chooseTool } from '../src/revenueAgent.mjs';
+
+test('AI provider falls back deterministically without external key', async()=>{
+  const decision=deterministicDecision({stage:'qualified'});
+  assert.equal(decision.provider,'deterministic');
+  assert.equal(decision.action,'offer');
+  assert.match(decision.input_hash,/^[a-f0-9]{64}$/);
+});
+
+test('tool policy is deny-by-default for commercial and financial actions',()=>{
+  const env={SALE_GLOBALLY_ENABLED:'false',PRE_SALE_GATES_APPROVED:'false',CHECKOUT_ENABLED:'false',FINANCIAL_EVENTS_ENABLED:'false'};
+  assert.equal(authorizeTool('get_command_center',env).allowed,true);
+  assert.equal(authorizeTool('send_message',env).allowed,false);
+  assert.equal(authorizeTool('start_checkout',env).allowed,false);
+  assert.equal(authorizeTool('not_real',env).allowed,false);
+});
+test('agent eval rejects unsupported commercial claims',()=>{
+  const result=evaluateAgentDecision({decision:{action:'offer',rationale:'Venda garantida amanhã',confidence:.8}});
+  assert.equal(result.pass,false);
+  assert.ok(result.issues.includes('unsupported_commercial_claim'));
+});
+
+test('channel adapters remain provider-agnostic and gated',()=>{
+  const env={SALE_GLOBALLY_ENABLED:'false',PRE_SALE_GATES_APPROVED:'false'};
+  const state=channelReadiness(env);
+  assert.equal(state.whatsapp.provider,'meta-whatsapp-cloud-api');
+  assert.equal(state.email.configured,false);
+  assert.throws(()=>assertChannelActionAllowed('whatsapp',env));
+});
+
+test('agent maps decisions only to registered safe tools',()=>{
+  assert.equal(chooseTool({action:'first_response'}),'schedule_follow_up');
+  assert.equal(chooseTool({action:'qualify'}),'remember_fact');
+  assert.equal(chooseTool({action:'offer'}),'create_offer_draft');
+  assert.equal(chooseTool({action:'unknown'}),'get_command_center');
+});
+test('agent worker uses benchmarked follow-up scheduler instead of fixed delay', async()=>{
+  const { readFile }=await import('node:fs/promises');
+  const worker=await readFile(new URL('../src/agentWorker.mjs',import.meta.url),'utf8');
+  assert.match(worker,/buildFollowUpPlan/);
+  assert.doesNotMatch(worker,/60\*60\*1000/);
+});
+
+test('operator bridge prevents pipeline regression', async()=>{
+  const { readFile }=await import('node:fs/promises');
+  const source=await readFile(new URL('../api/events-operator.mjs',import.meta.url),'utf8');
+  assert.match(source,/salesStageRank/);
+  assert.match(source,/invalid_sales_transition/);
+});

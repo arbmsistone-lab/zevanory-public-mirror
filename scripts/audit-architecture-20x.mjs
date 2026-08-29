@@ -20,14 +20,13 @@ add('09 origin isolation enabled',headers['Cross-Origin-Opener-Policy']==='same-
 add('10 checkout fail closed',checkout.includes('sales_globally_blocked')&&checkout.includes('checkout_environment_invalid'));
 add('11 webhook remains provider-truth based',webhook.includes('fetchAsaasPayment')&&webhook.includes('payment_reconciliation_failed'));
 add('12 status endpoint exposes aggregates only',!status.includes('select *')&&!status.includes('contact_ref')&&!status.includes('session_id'));
-add('13 schema remains no-inventory 9x7',(await text('src/schemaHealth.mjs')).includes("'affiliate_commissions'")&&(await text('src/schemaHealth.mjs')).includes("'service_fulfillment'"));
+add('13 schema is composable 15x9',(await text('src/schemaHealth.mjs')).includes("'integration_outbox'")&&(await text('src/schemaHealth.mjs')).includes("'009_composable_infrastructure'"));
 add('14 DR script exists',await exists('scripts/dr-rehearsal.mjs'));
 add('15 DR rollback enforced',(await text('scripts/dr-rehearsal.mjs')).includes("client.query('ROLLBACK')"));
 add('16 release stays globally blocked',(await text('src/release.mjs')).includes("salesMode: 'globally-blocked'"));
 add('17 dependency audit clean',runShell('npm audit --omit=dev --audit-level=high'));
 add('18 security audit 10x',run(process.execPath,['scripts/audit-security-10x.mjs']));
 add('19 observability audit 10x',run(process.execPath,['scripts/audit-observability-10x.mjs']));
-add('20 resilience smoke',run(process.execPath,['scripts/resilience-smoke.mjs']));
+add('20 composable audit 10x',run(process.execPath,['scripts/audit-composable-10x.mjs']));
 for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.name}`);
-const failed=checks.filter(c=>!c.ok); console.log(`AUDIT_ARCHITECTURE_20X_${failed.length?'BLOCKED':'APPROVED'} units=20 approved=${20-failed.length} failed=${failed.length}`);
-if(failed.length) process.exit(1);
+const failed=checks.filter(c=>!c.ok); console.log(`AUDIT_ARCHITECTURE_20X_${failed.length?'BLOCKED':'APPROVED'} units=20 approved=${20-failed.length} failed=${failed.length}`); if(failed.length) process.exit(1);

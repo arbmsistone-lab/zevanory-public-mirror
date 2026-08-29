@@ -1,23 +1,15 @@
 export const REQUIRED_TABLES = Object.freeze([
-  'schema_migrations',
-  'telemetry_events',
-  'financial_events',
-  'orders',
-  'sales_leads',
-  'sales_actions',
-  'unit_economics_snapshots',
-  'affiliate_commissions',
-  'service_fulfillment',
+  'schema_migrations','telemetry_events','financial_events','orders',
+  'sales_leads','sales_actions','unit_economics_snapshots',
+  'affiliate_commissions','service_fulfillment',
+  'agent_jobs','agent_runs','knowledge_documents','agent_memory','agent_tool_audit',
+  'integration_outbox',
 ]);
 
 export const REQUIRED_MIGRATIONS = Object.freeze([
-  '001_telemetry_events',
-  '002_financial_events',
-  '003_orders_checkout',
-  '004_partial_refund_snapshots',
-  '005_order_financial_states',
-  '006_sales_machine',
-  '007_no_inventory_commerce',
+  '001_telemetry_events','002_financial_events','003_orders_checkout',
+  '004_partial_refund_snapshots','005_order_financial_states','006_sales_machine',
+  '007_no_inventory_commerce','008_autonomous_revenue_engine','009_composable_infrastructure',
 ]);
 
 export function assessSchemaIntegrity({ tableNames = [], migrationIds = [] } = {}) {

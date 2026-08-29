@@ -10,7 +10,7 @@ const root = new URL('../', import.meta.url);
 const files = [
   '001_telemetry_events.sql','002_financial_events.sql','003_orders_checkout.sql',
   '004_partial_refund_snapshots.sql','005_order_financial_states.sql','006_sales_machine.sql',
-  '007_no_inventory_commerce.sql',
+  '007_no_inventory_commerce.sql','008_autonomous_revenue_engine.sql','009_composable_infrastructure.sql',
 ];
 const stripTxn = (sql) => sql.replace(/^\s*BEGIN;\s*/i, '').replace(/\s*COMMIT;\s*$/i, '');
 const schema = `dr_rehearsal_${randomUUID().replaceAll('-', '').slice(0,16)}`;
@@ -32,18 +32,10 @@ try {
     migrationIds: migrations.rows.map((row) => row.migration_id),
   });
   if (!result.ready) throw new Error(`dr_schema_incomplete:${JSON.stringify(result)}`);
-  if (result.required_tables !== REQUIRED_TABLES.length || result.required_migrations !== REQUIRED_MIGRATIONS.length) {
-    throw new Error('dr_requirement_mismatch');
-  }
+  if (result.required_tables !== REQUIRED_TABLES.length || result.required_migrations !== REQUIRED_MIGRATIONS.length) throw new Error('dr_requirement_mismatch');
 } finally {
   try { await client.query('ROLLBACK'); } catch {}
   client.release();
   await pool.end();
 }
-
-console.log(JSON.stringify({
-  ok: true,
-  mode: 'transactional-rollback',
-  schema_rebuild: result,
-  persistent_changes: false,
-}));
+console.log(JSON.stringify({ ok:true, mode:'transactional-rollback', schema_rebuild:result, persistent_changes: false }));

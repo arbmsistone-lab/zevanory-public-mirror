@@ -1,4 +1,4 @@
-﻿import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { PROJECT, normalizeWhatsappNumber, isOfficialWhatsapp } from '../src/config.mjs';
@@ -271,7 +271,7 @@ unit('CODE-SECURITY','src/security.mjs + vercel.json',[
 unit('CODE-RELEASE-FINGERPRINT','src/release.mjs + api/release.mjs',[
   command('release tests',process.execPath,['--test','test/release.test.mjs']),
   command('release endpoint syntax',process.execPath,['--check','api/release.mjs']),
-  op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0034-FINAL')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
+  op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0036-FINAL')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
 ]);
 unit('DEF-DEPLOY-SAFETY','evidence/EG-0008-deploy-zevanory-vercel.md',[
   op('deploy evidence gate approved',()=>t('evidence/EG-0008-deploy-zevanory-vercel.md').includes('Veredito: APROVADO')),
@@ -293,7 +293,21 @@ unit('DEF-AGENT-ENTRYPOINT','AGENTS.md',[
   command('governance tests include entrypoint',process.execPath,['--test','test/governance.test.mjs']),
   op('entrypoint requires master and gates',()=>t('AGENTS.md').includes('Leia ZEVANORY_MASTER.md inteiro')&&t('AGENTS.md').includes('Nao pule gates')&&t('AGENTS.md').includes('Qualquer divergencia bloqueia a acao')),
 ]);
-unit('PROJECT-HYGIENE','project-only hygiene',[
+unit('CODE-COMPOSABLE-ARCHITECTURE','src/composableArchitecture.mjs',[
+  command('composable architecture syntax',process.execPath,['--check','src/composableArchitecture.mjs']),
+  command('composable architecture tests',process.execPath,['--test','test/composable-infrastructure.test.mjs']),
+  op('architecture is acyclic modular and cost disciplined',()=>t('src/composableArchitecture.mjs').includes('modular-monolith-ports-adapters-transactional-outbox')&&t('src/composableArchitecture.mjs').includes('distributedMicroservicesRequired: false')&&t('src/composableArchitecture.mjs').includes('paidInfrastructureRequired: false')),
+]);
+unit('CODE-INTEGRATION-OUTBOX','src/integrationOutbox.mjs + db/migrations/009_composable_infrastructure.sql',[
+  command('integration outbox syntax',process.execPath,['--check','src/integrationOutbox.mjs']),
+  command('integration outbox tests',process.execPath,['--test','test/composable-infrastructure.test.mjs']),
+  op('outbox is idempotent concurrent and dead-lettered',()=>t('db/migrations/009_composable_infrastructure.sql').includes('idempotency_key text NOT NULL UNIQUE')&&t('src/integrationOutbox.mjs').includes('for update skip locked')&&t('src/integrationOutbox.mjs').includes("'dead_letter'")),
+]);
+unit('DEF-COMPOSABLE-EVIDENCE','evidence/EG-0036-composable-commerce-infrastructure-benchmark.md',[
+  op('five professional benchmarks recorded',()=>['Shopify','commercetools','Salesforce','Adobe','BigCommerce'].every(x=>t('evidence/EG-0036-composable-commerce-infrastructure-benchmark.md').includes(x))),
+  command('composable 10x audit',process.execPath,['scripts/audit-composable-10x.mjs']),
+  op('sales remain blocked by decision',()=>t('evidence/EG-0036-composable-commerce-infrastructure-benchmark.md').includes('nao autoriza vendas')),
+]);unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),
   op('audit has no external absolute reads',()=>!t('scripts/audit-3x.mjs').includes('readFileSync(' + String.fromCharCode(39) + 'C:')) ,
