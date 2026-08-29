@@ -24,7 +24,7 @@ add('15 checkout fail closed',checkout.r.status===503&&checkout.text.includes('s
 const agentRun=await get('/api/agent/run',{method:'POST'}); add('16 agent worker auth required',agentRun.r.status===401,agentRun.r.status);
 const operator=await get('/api/events/operator',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}); add('17 operator auth required',operator.r.status===401,operator.r.status);
 const csp=root.r.headers.get('content-security-policy')||''; add('18 production security headers',csp.includes("script-src 'self'")&&root.r.headers.get('x-frame-options')==='DENY'&&root.r.headers.get('x-content-type-options')==='nosniff');
-add('19 live UTF8 clean',!/(Ã¡|Ã©|Ã£|Ã§|â€”|Â·|�)/.test(root.text+js.text));
+const badUtf8=['\u00c3\u00a1','\u00c3\u00a9','\u00c3\u00a3','\u00c3\u00a7','\u00e2\u20ac\u201d','\u00c2\u00b7','\ufffd']; add('19 live UTF8 clean',!badUtf8.some(x=>(root.text+js.text).includes(x)));
 add('20 AI mode explicit and safe',['google-gemini','deterministic-fallback'].includes(agent.body.ai_provider)&&agent.body.failed>=0&&agent.body.queued>=0);
 for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.name}${c.detail!==''?` ${c.detail}`:''}`);
 const failed=checks.filter(c=>!c.ok); console.log(`AUDIT_PRODUCTION_20X_${failed.length?'BLOCKED':'APPROVED'} units=20 approved=${20-failed.length} failed=${failed.length}`); if(failed.length) process.exit(1);

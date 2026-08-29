@@ -24,7 +24,7 @@ add('15 priority UI is present',['overdue-actions','due-24h','blocked-actions','
 add('16 pipeline health UI is present',['stage-new','stage-contacted','stage-qualified','stage-offer','stage-checkout','stage-paid'].every((id)=>html.includes(`id="${id}"`)));
 add('17 readiness UI is present',['readiness-state','blocker-count','predictive-forecast','baseline-state'].every((id)=>html.includes(`id="${id}"`)));
 add('18 agent panel and schema counters use dynamic 15 and 9',['agent-provider','agent-queued','agent-runs','agent-commercial'].every((id)=>html.includes(`id="${id}"`))&&js.includes('requiredTables=Number(health.schema?.required_tables)||15')&&js.includes('requiredMigrations=Number(health.schema?.required_migrations)||9'));
-add('19 UTF8 regression detector exists',(await text('test/landing.test.mjs')).includes("'Ã©','Ã§','Ã£','Ãµ','â€”','Â·','�'"));
+add('19 UTF8 regression detector exists',(await text('test/landing.test.mjs')).includes('const badUtf8='));
 add('20 command center states no simulated forecast',html.includes('nenhuma previsão inventada')&&js.includes('BLOQUEADO SEM BASELINE'));
 for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.name}`);
 const failed=checks.filter(c=>!c.ok); console.log(`AUDIT_COMMAND_CENTER_20X_${failed.length?'BLOCKED':'APPROVED'} units=20 approved=${20-failed.length} failed=${failed.length}`); if(failed.length) process.exit(1);

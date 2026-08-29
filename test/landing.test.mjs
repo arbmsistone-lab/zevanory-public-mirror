@@ -29,5 +29,6 @@ test('central command center exposes priorities, pipeline health and clean UTF-8
   for(const id of ['queue-pressure','overdue-actions','due-24h','blocked-actions','missing-next-action','stale-leads','nba-mode','forecast-mode','readiness-state','blocker-count','predictive-forecast','action-completion']) assert.match(html,new RegExp(`id="${id}"`));
   assert.match(html,/SEM HERANÇA\.\s*<br>DECIDIR\. EXECUTAR\. MEDIR\./i);
   assert.match(html,/Prontidão comercial/); assert.match(js,/BASELINE NECESSÁRIO/);
-  for(const bad of ['Ã©','Ã§','Ã£','Ãµ','â€”','Â·','�']) assert.equal((html+js).includes(bad),false);
+  const badUtf8=['\u00c3\u00a9','\u00c3\u00a7','\u00c3\u00a3','\u00c3\u00b5','\u00e2\u20ac\u201d','\u00e2\u20ac\u201c','\u00c2\u00b7','\ufffd'];
+  for(const bad of badUtf8) assert.equal((html+js).includes(bad),false);
 });
