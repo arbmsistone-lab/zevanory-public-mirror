@@ -342,6 +342,16 @@ unit('DEF-OFFICIAL-BRAND-EVIDENCE','evidence/EG-0040-official-brand-local-parity
   command('rules 20x audit',process.execPath,['scripts/audit-rules-20x.mjs']),
   op('evidence records OWASP MDN and Vercel',()=>['OWASP','MDN','Vercel'].every(x=>t('evidence/EG-0040-official-brand-local-parity.md').includes(x))),
 ]);
+unit('CODE-WORLDCLASS-DASHBOARD','public/index.html + public/index.css + public/index.js',[
+  command('worldclass dashboard tests',process.execPath,['--test','test/worldclass-dashboard.test.mjs']),
+  command('worldclass dashboard 10x audit',process.execPath,['scripts/audit-worldclass-dashboard-10x.mjs']),
+  op('single screen and fail-closed visual semantics',()=>t('public/index.css').includes('EG-0041')&&t('public/index.css').includes('data-enabled="false"] b{color:var(--amber)')&&!t('public/index.css').includes('overflow:auto')),
+]);
+unit('DEF-WORLDCLASS-DASHBOARD-EVIDENCE','evidence/EG-0041-worldclass-executive-dashboard.md',[
+  op('three independent design references recorded',()=>['AWS Cloudscape','IBM Carbon','Atlassian Design System'].every(x=>t('evidence/EG-0041-worldclass-executive-dashboard.md').includes(x))),
+  op('commercial truth remains invariant',()=>t('evidence/EG-0041-worldclass-executive-dashboard.md').includes('nenhum switch pode ser visualmente ON')&&t('evidence/EG-0041-worldclass-executive-dashboard.md').includes('fail-closed')),
+  command('identity guard',process.execPath,['scripts/identity-guard.mjs']),
+]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),

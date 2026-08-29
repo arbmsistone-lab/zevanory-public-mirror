@@ -115,3 +115,10 @@ Logo e favicon são self-hosted e exigidos pelo identity guard; CDN externo para
 Servidor local passa a servir HTML, CSS, JavaScript e SVG de `public/` com MIME explícito, `nosniff`, CSP e bloqueio de path traversal.
 A identidade oficial deve permanecer consistente em `/`, `/arbm-sist`, `/piloto`, `/termos`, `/privacidade`, `/reembolso` e `/afiliados`.
 Nenhuma mudança desta fase altera gates comerciais, financeiros, jurídicos ou de autonomia.
+
+## FASE EG-0041 - WORLD-CLASS EXECUTIVE DASHBOARD
+A pagina principal prioriza leitura em relance, hierarquia executiva e densidade controlada com Evidence Gate baseado em AWS Cloudscape, IBM Carbon e Atlassian Design System.
+Sete KPIs de primeira ordem permanecem no topo; oferta segue representada no funil e runtime sem competir como KPI primario.
+Garantias aparecem resumidas na visao executiva, mantendo a lista completa como evidencia de interface.
+Estados comerciais false nunca usam semantica visual de sucesso; true comercial seria estado de risco ate cutover formal.
+Single-screen, identidade oficial, verdade comercial e todos os kill-switches fail-closed permanecem obrigatorios.

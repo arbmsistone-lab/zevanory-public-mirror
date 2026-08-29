@@ -1291,6 +1291,52 @@
       ]
     },
     {
+      "id": "CODE-WORLDCLASS-DASHBOARD",
+      "label": "public/index.html + public/index.css + public/index.js",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "worldclass dashboard tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "worldclass dashboard 10x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "single screen and fail-closed visual semantics",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-WORLDCLASS-DASHBOARD-EVIDENCE",
+      "label": "evidence/EG-0041-worldclass-executive-dashboard.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "three independent design references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "commercial truth remains invariant",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "identity guard",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1315,8 +1361,8 @@
     }
   ],
   "totals": {
-    "units": 57,
-    "approved": 57,
+    "units": 59,
+    "approved": 59,
     "failed": 0
   },
   "verdict": "APPROVED"
