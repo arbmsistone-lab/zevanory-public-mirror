@@ -1,6 +1,6 @@
 # EG-0045 — PREMIUM EXECUTIVE CONTROL ROOM
 
-Status: APROVADO PARA VALIDACAO FINAL.
+Status: APROVADO.
 Escopo: pagina principal ZEVANORY; somente camada visual/apresentacao.
 
 ## Objetivo
@@ -21,3 +21,5 @@ Auditoria profunda de todos os containers visiveis: nenhum scrollHeight maior qu
 
 ## Limites
 Nenhuma mudanca desta fase habilita vendas, checkout, WhatsApp comercial, eventos financeiros ou autonomia.
+## Fechamento de layout
+Auditoria profunda inclui commercial-bar content-box e todos os containers visiveis; nenhum scrollHeight excede clientHeight nos viewports homologados.
