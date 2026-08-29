@@ -8,7 +8,7 @@ const text=(p)=>readFile(new URL(p,root),'utf8'); const add=(name,ok)=>checks.pu
 const exists=async p=>{try{await access(new URL(p,root));return true}catch{return false}};
 const run=(script)=>spawnSync(process.execPath,[script],{cwd:root,encoding:'utf8',shell:false}).status===0;
 const env=await text('.env.example'); const outbox=await text('src/integrationOutbox.mjs'); const migration=await text('db/migrations/009_composable_infrastructure.sql');
-add('01 final release id',RELEASE.id==='ZEVANORY-EG0037-FINAL');
+add('01 final release id',RELEASE.id==='ZEVANORY-EG0038-FINAL');
 add('02 architecture contract',validateArchitectureContract().valid);
 add('03 schema tables 15',REQUIRED_TABLES.length===15&&REQUIRED_TABLES.includes('integration_outbox'));
 add('04 migrations 9',REQUIRED_MIGRATIONS.length===9&&REQUIRED_MIGRATIONS.includes('009_composable_infrastructure'));

@@ -4,3 +4,4 @@ data/
 !.env.example
 .vercel
 node_modules/
+.chrome-audit/

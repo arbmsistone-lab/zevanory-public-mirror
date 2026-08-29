@@ -48,7 +48,7 @@ Telemetria publica: ativa e persistente.
 Eventos financeiros reais: BLOQUEADOS.
 SALE_GLOBALLY_ENABLED=false, PRE_SALE_GATES_APPROVED=false, CHECKOUT_ENABLED=false, WHATSAPP_SALES_ENABLED=false e FINANCIAL_EVENTS_ENABLED=false permanecem fail-closed.
 Schema canonico atual: 15 tabelas, migrations 001-009.
-Release estrutural atual: ZEVANORY-EG0037-FINAL.
+Release estrutural atual: ZEVANORY-EG0038-FINAL.
 
 ## PROXIMOS PASSOS AUTORIZADOS
 1. Manter monitoramento de DNS, HTTPS, banco, observabilidade e rollback.
@@ -90,3 +90,9 @@ Formaliza SLOs sem declarar historico inexistente, health de outbox e IA, contra
 Runbook canonico passa a exigir schema 15x9, /api/assurance e verificacao de dead-letter/idade de backlog.
 Git remoto e origin estao configurados e a release so e promovida apos commit, push, deploy e prova operacional no dominio oficial.
 Nenhuma melhoria da EG-0037 habilita venda, checkout comercial, WhatsApp comercial, evento financeiro real ou autonomia comercial.
+
+## FASE EG-0038 - SINGLE-SCREEN CONTROL ROOM
+Release estrutural: ZEVANORY-EG0038-FINAL.
+A pagina principal foi reorganizada em cinco dominios operacionais simultaneamente visiveis: Acao, Receita, Motor/IA, Infra/Release e Garantias/Risco.
+Contrato desktop: uma unica pagina sem rolagem vertical ou horizontal, preservando todos os dados e IDs operacionais existentes.
+Nenhuma mudanca desta fase altera backend, banco, pagamentos, gates comerciais ou autonomia.

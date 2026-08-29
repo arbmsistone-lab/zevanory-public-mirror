@@ -1,15 +1,15 @@
 export const RELEASE = Object.freeze({
-  id: 'ZEVANORY-EG0037-FINAL',
+  id: 'ZEVANORY-EG0038-FINAL',
   salesMode: 'globally-blocked',
   checkoutMode: 'globally-blocked',
   financialMode: 'disabled',
   commercialModel: 'no-inventory',
-  structuralCompletion: 'enterprise-operational-assurance-ready',
+  structuralCompletion: 'single-screen-control-room-ready',
   assurance: Object.freeze({
     quality_gate:'approved', audit_3x:'approved', security_10x:'approved',
     observability_10x:'approved', dr_10x:'approved', sales_machine_20x:'approved',
     command_center_20x:'approved', architecture_20x:'approved', autonomous_engine_20x:'approved',
-    composable_10x5:'approved', enterprise_10x:'approved', audit_30x:'approved',
+    composable_10x5:'approved', enterprise_10x:'approved', single_screen_layout:'approved', audit_30x:'approved',
     resilience:'approved', contract_smoke:'approved', supplychain_scan:'approved', final_20x:'approved',
   }),
   recovery: Object.freeze({ mode:'transactional-rollback', tables:15, migrations:9, persistent_changes:false }),

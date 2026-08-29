@@ -6,7 +6,7 @@ const text=async p=>readFile(new URL(p,root),'utf8');
 const exists=async p=>{try{await access(new URL(p,root));return true}catch{return false}};
 const add=(name,ok)=>checks.push({name,ok:Boolean(ok)});
 const env=await text('.env.example'); const pkg=JSON.parse(await text('package.json')); const workflow=await text('.github/workflows/quality.yml');
-add('01 final release',RELEASE.id==='ZEVANORY-EG0037-FINAL');
+add('01 final release',RELEASE.id==='ZEVANORY-EG0038-FINAL');
 add('02 fifteen required tables',REQUIRED_TABLES.length===15&&REQUIRED_TABLES.includes('integration_outbox'));
 add('03 nine migrations',REQUIRED_MIGRATIONS.length===9&&REQUIRED_MIGRATIONS.includes('009_composable_infrastructure'));
 add('04 CRM engine',await exists('src/salesPipeline.mjs')); add('05 follow-up engine',(await text('src/salesPipeline.mjs')).includes('buildFollowUpPlan'));

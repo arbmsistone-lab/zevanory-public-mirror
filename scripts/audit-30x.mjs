@@ -18,7 +18,7 @@ add('06 pre-sale switch off',env.includes('PRE_SALE_GATES_APPROVED=false'));
 add('07 checkout switch off',env.includes('CHECKOUT_ENABLED=false'));
 add('08 whatsapp switch off',env.includes('WHATSAPP_SALES_ENABLED=false'));
 add('09 financial switch off',env.includes('FINANCIAL_EVENTS_ENABLED=false'));
-add('10 release FINAL',RELEASE.id==='ZEVANORY-EG0037-FINAL');
+add('10 release FINAL',RELEASE.id==='ZEVANORY-EG0038-FINAL');
 add('11 health required route',RELEASE.requiredRoutes.includes('/api/health'));
 add('12 assurance required route',RELEASE.requiredRoutes.includes('/api/assurance'));
 add('13 health api exists',await exists('api/health.mjs'));

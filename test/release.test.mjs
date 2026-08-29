@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import { RELEASE } from '../src/release.mjs';
 
 test('release fingerprint is canonical and immutable',()=>{
-  assert.equal(RELEASE.id,'ZEVANORY-EG0037-FINAL');
+  assert.equal(RELEASE.id,'ZEVANORY-EG0038-FINAL');
   assert.equal(Object.isFrozen(RELEASE),true);
-  assert.equal(RELEASE.structuralCompletion,'enterprise-operational-assurance-ready');
+  assert.equal(RELEASE.structuralCompletion,'single-screen-control-room-ready');
   assert.equal(RELEASE.commercialModel,'no-inventory');
   assert.equal(RELEASE.assurance.autonomous_engine_20x,'approved');
   assert.equal(RELEASE.assurance.composable_10x5,'approved');
   assert.equal(RELEASE.assurance.enterprise_10x,'approved');
+  assert.equal(RELEASE.assurance.single_screen_layout,'approved');
   assert.equal(RELEASE.recovery.tables,15);
   assert.equal(RELEASE.recovery.migrations,9);
   assert.equal(RELEASE.salesMode,'globally-blocked');
