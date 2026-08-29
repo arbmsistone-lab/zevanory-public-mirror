@@ -37,6 +37,7 @@ jobs:
       - run: npm run audit:rules:20x
       - run: npm run audit:engine:20x
       - run: npm run audit:command:20x
+      - run: npm run audit:worldclass:10x
       - run: npm run audit:composable:10x
       - run: npm run audit:architecture:20x
       - run: npm run audit:3x

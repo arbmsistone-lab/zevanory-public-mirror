@@ -13,6 +13,7 @@ test('release fingerprint is canonical and immutable',()=>{
   assert.equal(RELEASE.assurance.enterprise_10x,'approved');
   assert.equal(RELEASE.assurance.activation_20x,'approved');
   assert.equal(RELEASE.assurance.single_screen_layout,'approved');
+  assert.equal(RELEASE.assurance.worldclass_dashboard,'approved');
   assert.equal(RELEASE.assurance.offer_launch_20x,'approved');
   assert.equal(RELEASE.assurance.official_brand,'approved');
   assert.equal(RELEASE.assurance.rules_audit_20x,'approved');
