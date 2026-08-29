@@ -78,3 +78,6 @@
 /* EG-0043.4 — production dynamic-content fit */
 .details-grid b{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.2}
 @media(max-height:760px){.risk-rail .audit-grid .assurance-summary{margin-top:2px}.risk-rail{padding-bottom:4px}}
+
+/* EG-0043.5 — desktop readable floor */
+@media(min-height:761px){.gate-card small,.mode-card small{font-size:8px}.operation-status span,.operation-status strong,.operation-status small{font-size:8px}.agent-line,.release-line,.recovery-line{font-size:8px}.commercial-label span,.commercial-facts span,.switches span{font-size:8px}.commercial-label strong,.commercial-facts b,.switches b{font-size:8.4px}.audit-grid span{font-size:8px}.audit-grid b{font-size:8.5px}footer{font-size:8px}}

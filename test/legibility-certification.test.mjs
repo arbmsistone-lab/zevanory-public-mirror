@@ -26,3 +26,9 @@ test('dynamic operational values wrap instead of truncating',()=>{
   assert.match(css,/details-grid b\{white-space:normal;overflow:visible;text-overflow:clip/);
   assert.match(css,/risk-rail \.audit-grid \.assurance-summary\{margin-top:2px\}/);
 });
+
+test('tall desktop also keeps an eight pixel readable floor',()=>{
+  assert.match(css,/EG-0043\.5/);
+  assert.match(css,/agent-line,.release-line,.recovery-line\{font-size:8px\}/);
+  assert.match(css,/commercial-label span,.commercial-facts span,.switches span\{font-size:8px\}/);
+});
