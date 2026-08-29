@@ -1,21 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+const script=await readFile(new URL('../scripts/dr-rehearsal.mjs',import.meta.url),'utf8');
 
-const script = await readFile(new URL('../scripts/dr-rehearsal.mjs', import.meta.url), 'utf8');
-
-test('DR rehearsal is explicitly authorized and fail closed', () => {
+test('DR rehearsal is explicitly authorized and fail closed',()=>{
   assert.ok(script.includes("DR_REHEARSAL_ALLOWED !== 'true'"));
   assert.ok(script.includes('database_url_required'));
 });
 
-test('DR rehearsal is isolated and always rolled back', () => {
+test('DR rehearsal is isolated rolled back and measures rehearsal RTO',()=>{
   assert.ok(script.includes('CREATE SCHEMA'));
   assert.ok(script.includes('SET LOCAL search_path'));
   assert.ok(script.includes("client.query('ROLLBACK')"));
-  assert.ok(script.includes('persistent_changes: false'));
+  assert.ok(script.includes('persistent_changes:false'));
+  assert.ok(script.includes('rehearsal_rto_ms'));
+  assert.ok(script.includes('not-production-contract'));
 });
 
-test('DR rehearsal replays every canonical migration', () => {
-  for (const id of ['001_telemetry_events','002_financial_events','003_orders_checkout','004_partial_refund_snapshots','005_order_financial_states','006_sales_machine','007_no_inventory_commerce','008_autonomous_revenue_engine','009_composable_infrastructure']) assert.ok(script.includes(`${id}.sql`));
+test('DR rehearsal replays every canonical migration',()=>{
+  for(const id of ['001_telemetry_events','002_financial_events','003_orders_checkout','004_partial_refund_snapshots','005_order_financial_states','006_sales_machine','007_no_inventory_commerce','008_autonomous_revenue_engine','009_composable_infrastructure']) assert.ok(script.includes(`${id}.sql`));
 });

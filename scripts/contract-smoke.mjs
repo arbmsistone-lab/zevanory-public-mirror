@@ -1,0 +1,12 @@
+import { validateProviderContracts, PROVIDER_CONTRACTS } from '../src/providerContracts.mjs';
+import { readFile } from 'node:fs/promises';
+const root=new URL('../',import.meta.url); const text=(p)=>readFile(new URL(p,root),'utf8');
+const checks=[]; const add=(name,ok)=>checks.push({name,ok:Boolean(ok)});
+const checkout=await text('api/checkout/asaas.mjs'); const webhook=await text('api/webhooks/asaas.mjs'); const ai=await text('src/aiProvider.mjs');
+add('provider contract registry valid',validateProviderContracts().valid);
+add('asaas auth contract',checkout.includes(PROVIDER_CONTRACTS.asaas.auth_header)&&webhook.includes(PROVIDER_CONTRACTS.asaas.auth_header));
+add('asaas lookup contract',webhook.includes("method: 'GET'")&&PROVIDER_CONTRACTS.asaas.payment_lookup_method==='GET');
+add('provider truth reconciliation enforced',webhook.includes('payment_reconciliation_failed'));
+add('gemini optional with deterministic fallback',PROVIDER_CONTRACTS.gemini.optional&&ai.includes('deterministic'));
+for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.name}`);
+const failed=checks.filter(x=>!x.ok); console.log(`CONTRACT_SMOKE_${failed.length?'BLOCKED':'APPROVED'} units=${checks.length} approved=${checks.length-failed.length} failed=${failed.length}`); if(failed.length) process.exit(1);

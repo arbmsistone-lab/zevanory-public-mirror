@@ -12,15 +12,26 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
+      - uses: actions/dependency-review-action@v4
+        if: github.event_name == 'pull_request'
       - run: npm ci
       - run: npm test
+      - run: npm run supplychain:scan
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm sbom --sbom-format cyclonedx > sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-sbom
+          path: sbom.cdx.json
+      - run: npm run contract:smoke
+      - run: npm run audit:enterprise:10x
       - run: npm run audit:engine:20x
       - run: npm run audit:command:20x
       - run: npm run audit:composable:10x

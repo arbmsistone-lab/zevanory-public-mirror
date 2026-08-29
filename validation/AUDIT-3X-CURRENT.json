@@ -1130,6 +1130,52 @@
       ]
     },
     {
+      "id": "CODE-ENTERPRISE-ASSURANCE",
+      "label": "src/enterpriseAssurance.mjs + api/assurance.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "enterprise assurance syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "enterprise assurance tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "SLO truth and outbox health are explicit",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-ENTERPRISE-SLO",
+      "label": "specs/SLO_POLICY.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "SLO policy exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "enterprise 10x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "commercial gates remain out of scope",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1154,8 +1200,8 @@
     }
   ],
   "totals": {
-    "units": 50,
-    "approved": 50,
+    "units": 52,
+    "approved": 52,
     "failed": 0
   },
   "verdict": "APPROVED"

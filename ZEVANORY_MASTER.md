@@ -1,4 +1,4 @@
-# ZEVANORY ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â DOCUMENTO MESTRE CANONICO
+# ZEVANORY - DOCUMENTO MESTRE CANONICO
 
 Status: FONTE DE VERDADE PARA CONTINUIDADE.
 Regra: ler este arquivo antes de qualquer pesquisa, decisao, codigo, deploy ou mudanca de escopo.
@@ -7,131 +7,86 @@ Regra: ler este arquivo antes de qualquer pesquisa, decisao, codigo, deploy ou m
 Construir um motor digital de vendas por IA que prove venda real, atribuicao confiavel e margem antes de ganhar autonomia.
 Nao construir um painel que apenas aparenta atividade.
 
-## TRAJETO APROVADO ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â NAO PULAR
+## TRAJETO APROVADO - NAO PULAR
 Mercado real -> Oferta -> Aquisicao -> Origem -> Intencao -> Conversa/carrinho -> Checkout -> Pagamento confirmado -> Entrega/refund -> Custos -> Margem de contribuicao -> Experimento -> Aprendizado -> Proxima acao.
 
 ## CAMADAS
-Deterministica: pagamento, estoque, preco, custos, permissoes, limites, atribuicao, deduplicacao e reconciliacao.
-IA: pesquisa, priorizacao, personalizacao, criacao, recomendacao e depois execucao reversivel dentro de limites.
+Deterministica: pagamento, preco, custos, permissoes, limites, atribuicao, deduplicacao, reconciliacao e compliance.
+IA: pesquisa, priorizacao, personalizacao, criacao, recomendacao e execucao reversivel dentro de limites.
 Experimentos: hipotese, baseline/controle, metrica principal, diagnosticos, guardrails e criterio de parada.
 
 ## REGRAS INVIOLAVEIS
-1. Minimo 3 evidencias independentes antes de qualquer implementacao.
-2. Minimo 3 operacoes aprovadas depois de cada codigo/definicao.
+1. Minimo 3 evidencias independentes antes de qualquer implementacao relevante.
+2. Minimo 3 operacoes aprovadas depois de cada codigo ou definicao critica.
 3. Falha critica bloqueia avanco; nao existe maioria para ignorar blocker.
 4. IA nao declara pagamento, margem ou venda sem fonte transacional autenticada.
 5. Single-agent primeiro; multi-agent somente se evals comprovarem ganho.
 6. Autonomia so depois de prova comercial, telemetria, baseline e experimento.
 7. Nenhum dashboard pode simular trabalho, venda ou resultado.
 8. Nenhuma etapa pode ser encerrada com erro conhecido, pendencia tecnica aberta ou validacao parcial.
-9. Todo fechamento exige 3 auditorias finais independentes: local/testes, auditoria 3X estrutural e prova operacional em producao.
-10. Se qualquer uma das 3 auditorias falhar, a etapa permanece BLOQUEADA e nao pode ser declarada concluida.
+9. Todo fechamento exige auditorias finais independentes e prova operacional em producao.
+10. Se qualquer auditoria falhar, a etapa permanece BLOQUEADA.
 11. Toda montagem ou alteracao de infraestrutura exige, antes de promocao ou fechamento, 3 auditorias independentes e registradas: Auditoria 1 estrutural/configuracao; Auditoria 2 funcional/seguranca/integridade; Auditoria 3 integracao/regressao/prova operacional. As 3 devem estar APROVADAS; qualquer falha, divergencia ou erro conhecido bloqueia a infraestrutura.
 12. Nenhum processo de venda pode iniciar enquanto houver qualquer etapa pre-venda obrigatoria aberta ou auditoria pendente/reprovada. SALE_GLOBALLY_ENABLED e PRE_SALE_GATES_APPROVED devem ser explicitamente true, alem do gate especifico do canal; ausencia ou divergencia equivale a vendas BLOQUEADAS.
+
 ## GATES
 EG: 3 evidencias -> G0 Mercado -> G1 Oferta -> G2 Venda manual -> G3 Telemetria -> G4 Baseline -> G5 IA offline -> G6 IA assistida -> G7 Experimento causal -> G8 Rentabilidade -> G9 Repeticao -> G10 Generalizacao -> G11 Escala -> G12 Autonomia.
 
 ## JA APROVADO
 G0: PMEs brasileiras com venda/atendimento digital e forte componente manual.
 G1-A: primeiro subnicho de investigacao: educacao profissional/cursos.
-G1-B: OFFER-0001 ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â IA aplicada a Vendas e Atendimento no WhatsApp, como hipotese para teste.
-G1-C: preco experimental R$297ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œR$797; hipotese central R$497; nao validado comercialmente.
+G1-B: OFFER-0001 - IA aplicada a Vendas e Atendimento no WhatsApp, como hipotese para teste.
+G1-C: preco experimental com hipotese central de R$ 497; nao validado comercialmente.
 WhatsApp oficial: +55 88 99234-0423 / E.164 5588992340423.
-Infraestrutura G2: homepage institucional em /, piloto comercial em /piloto, telemetria persistente Neon e runtime auditado.
-Deploy Vercel: projeto zevanory-site em producao READY.
-Auditoria de referencia: 79/79 testes e 46/46 unidades 3X aprovadas antes da EG-0026. Endurecimento pre-venda consolidado no commit local imediatamente anterior, intitulado security: harden pre-sale sandbox readiness: Asaas Sandbox exige DATABASE_URL, PUBLIC_BASE_URL HTTPS e todos os cinco interruptores comerciais/financeiros desligados. EG-0020 validado formalmente. Migration 005 aplicada e verificada no Neon. EG-0022 aprovado: politica deterministica de replay de checkout centralizada e fail-closed, sem alterar gates comerciais. EG-0023 aprovado: webhook Asaas reconhece sucesso/duplicata com HTTP 200 e preserva falhas explicitas. EG-0024 aprovado: protocolo G3/G4 de EXP-0001 pre-registrado; baseline segue NAO APROVADO ate coleta real e auditoria. EG-0025 aprovado: diagnostico read-only de checkout_uncertain preparado para Asaas Sandbox, sem mutacao automatica de pedido ou evento financeiro. Auditoria operacional da release ativa RC2 segue aprovada: checkout bloqueado globalmente, webhook autenticado e fraude financeira rejeitada. Release de referencia anterior: ZEVANORY-EG0018-RC2; apos promocao auditada da EG-0026, a release oficial passa a ZEVANORY-EG0026-RC1. EG-0019 de dominio/DNS pre-venda aprovado; preflight oficial fail-closed cobre DNS em 3 resolvedores, posse Vercel, HTTPS, rotas publicas e Asaas Sandbox. O deployment final da EG-0026 deve substituir esta referencia somente apos as tres auditorias finais.
+Dominio zevanory.api.br: aprovado tecnicamente com HTTPS e rotas publicas.
+Persistencia Neon, telemetria, checkout sandbox Asaas, reconciliacao financeira, idempotencia, DR, observabilidade e hardening de seguranca aprovados nas etapas anteriores.
 
 ## ESTADO ATUAL
 EXP-0001: PRONTO TECNICAMENTE / NAO INICIADO COMERCIALMENTE.
-G2 comercial: ABERTO. Nao existe pagamento real reconciliado.
-Telemetria publica em producao: ATIVA e persistente no Neon; idempotencia comprovada por event_id.
-Eventos financeiros: BLOQUEADOS para venda real. Camada Asaas implementada com authToken, reconciliacao por GET /payments/{id}, idempotencia financeira, migrations 002, 003, 004 e 005 aplicadas no Neon. Estorno parcial usa reconciliacao cumulativa apenas de refunds DONE; transicao orders.status ocorre atomicamente com financial_events. SALE_GLOBALLY_ENABLED e PRE_SALE_GATES_APPROVED permanecem OFF por padrao; WhatsApp e checkout nao podem iniciar venda enquanto o gate global estiver bloqueado. Credenciais proprias e o primeiro Checkout Sandbox foram homologados pela EG-0026; isto nao autoriza producao financeira.
-Dominio zevanory.api.br: APROVADO tecnicamente. Registro.br publicado; DNS A 216.198.79.1 e TXT _vercel validados em 1.1.1.1, 8.8.8.8 e 9.9.9.9; Vercel mostra Configuracao valida em Producao; HTTPS e certificado validos; /, /piloto, /api/config, /api/release e /api/status respondem HTTP 200. Gates comerciais permanecem bloqueados.
-EG-0021 APROVADO em 2026-08-24: ownership Vercel, DNS 3 resolvedores, HTTPS e rotas publicas comprovados. custom_domain_unverified removido do manifest; Asaas Sandbox homologado pela EG-0026 e removido do manifest de blockers.
-DNS publico atual: APROVADO e funcional; A 216.198.79.1 e TXT _vercel validados em 1.1.1.1, 8.8.8.8 e 9.9.9.9; Vercel associado a Producao e HTTPS valido.
-Git ZEVANORY: sem remote/origin configurado; commits atuais ainda nao possuem sincronizacao Git remota comprovada.
-
-Homologacao Asaas Sandbox EG-0026 APROVADA em 2026-08-25: Checkout hospedado de R$ 497 confirmado, Webhook real capturado no runtime Vercel, reconciliacao por payment.id/checkoutSession endurecida, replay e recovery idempotentes e reembolso integral de R$ 497 confirmado. Harness, Webhook, schema e deployments Preview temporarios removidos ao fechamento. O blocker asaas_sandbox_unconfigured foi removido, mas PRE_SALE_APPROVAL permanece false; os quatro kill-switches comerciais continuam false e venda real/autonomia permanecem bloqueadas.
+G2 comercial: ABERTO. Nao existe pagamento real de producao reconciliado.
+Telemetria publica: ativa e persistente.
+Eventos financeiros reais: BLOQUEADOS.
+SALE_GLOBALLY_ENABLED=false, PRE_SALE_GATES_APPROVED=false, CHECKOUT_ENABLED=false, WHATSAPP_SALES_ENABLED=false e FINANCIAL_EVENTS_ENABLED=false permanecem fail-closed.
+Schema canonico atual: 15 tabelas, migrations 001-009.
+Release estrutural atual: ZEVANORY-EG0037-FINAL.
 
 ## PROXIMOS PASSOS AUTORIZADOS
-1. Manter verificacao continua de DNS, HTTPS e associacao funcional de zevanory.api.br; EG-0021 permanece APROVADO.
-2. Manter monitoramento de regressao do dominio; gate EG-0021 aprovado e revalidado em 3 resolvedores + HTTPS + rotas publicas.
-3. Persistencia Neon aprovada; manter monitoramento, idempotencia e reconciliacao.
-4. Asaas selecionado pelo EG-0013 e homologado no Sandbox pelo EG-0026; manter monitoramento e nao usar producao financeira antes da aprovacao integral pre-venda.
-5. Nao iniciar EXP-0001 comercialmente enquanto qualquer requisito pre-venda, dominio, Asaas Sandbox ou auditoria obrigatoria estiver aberto; somente depois da aprovacao integral, iniciar a prova economica real conforme os gates.
-6. Nao avancar para IA autonoma antes dos gates G2ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œG7 correspondentes.
+1. Manter monitoramento de DNS, HTTPS, banco, observabilidade e rollback.
+2. Nao ativar venda, checkout comercial, WhatsApp comercial ou eventos financeiros reais sem aprovacao integral pre-venda.
+3. Nao declarar forecast ou scoring preditivo sem baseline real suficiente.
+4. Manter Gemini opcional e fail-closed; ausencia de chave deve degradar para modo deterministico seguro.
+5. Manter adapters e infraestrutura provider-agnostic e composable.
+6. Promover somente releases que passem testes, auditorias, build, CI, producao, observabilidade e rollback.
 
-## FASE ESTRUTURAL ATUAL — 2026-08-26
-Diretriz do proprietário: vendas ficam fora de escopo até a estrutura técnica estar concluída.
-EG-0027: hardening e saúde estrutural aprovados para validação final.
-Release candidata: `ZEVANORY-EG0027-RC1`.
-Fonte canônica local: `C:\Sistemas\ZEVANORY`, reconciliada com a release oficial anterior antes desta evolução.
-Endpoint estrutural: `GET /api/health`, separado de métricas e gates comerciais.
-Readiness exige banco acessível, `PUBLIC_BASE_URL=https://zevanory.api.br` e os cinco kill-switches comerciais/financeiros desligados.
-Runbook operacional cobre incidente, recuperação e rollback.
-Auditoria final desta fase exige, cumulativamente: suíte completa, auditoria 3X, auditoria 30X e prova operacional em produção.
-Nenhuma aprovação da EG-0027 autoriza venda, checkout comercial, WhatsApp comercial, evento financeiro real ou autonomia.
+## FASE EG-0033 - NO-INVENTORY COMMERCE READY
+Release: ZEVANORY-EG0033-FINAL.
+Modelo comercial sem estoque proprio: servicos proprios digitais/remotos e produtos fisicos apenas como afiliados.
+Receita afiliada somente apos comissao confirmada pela rede/plataforma.
+Schema de referencia da fase: 9 tabelas e migrations 001-007.
 
-## FASE ESTRUTURAL EG-0028 — INTEGRIDADE DE DADOS
-Diretriz vigente: vendas permanecem fora de escopo; foco exclusivo na completude estrutural.
-EG-0028 adiciona validacao fail-closed de schema no `/api/health`.
-Readiness estrutural exige banco alcancavel, quatro tabelas obrigatorias e ledger de migrations 001-005 completo.
-A checagem e somente leitura e nao aplica migration automaticamente.
-Release candidata: ZEVANORY-EG0028-RC1.
+## FASE EG-0034 - COMMAND CENTER READY
+Release: ZEVANORY-EG0034-FINAL.
+Central operacional com prioridades, pipeline health, next-best-action por regras, readiness e ausencia explicita de forecast inventado.
 
-## FASE ESTRUTURAL EG-0029 — DISASTER RECOVERY
-Vendas permanecem fora de escopo.
-EG-0029 implementa ensaio real de recuperação não destrutivo.
-O ensaio usa schema isolado, migrations 001–005 e ROLLBACK obrigatório.
-Prova Neon: 4/4 tabelas, 5/5 migrations, nenhuma ausência e persistent_changes=false.
-Credencial temporária local removida após a prova.
-Rota de desastre: Neon PITR/Branch Restore dentro da retenção configurada.
-Release candidata: ZEVANORY-EG0029-RC1.
+## FASE EG-0035 - AUTONOMOUS REVENUE ENGINE READY
+Motor central single-agent com provider de IA desacoplado, fallback deterministico, tool registry, policy por risco, eval gate, memoria, knowledge base, fila transacional, auditoria de runs e adapters de canais.
+Migration 008 adiciona agent_jobs, agent_runs, knowledge_documents, agent_memory e agent_tool_audit.
+Execucao comercial permanece bloqueada; Gemini e opcional e nunca e requisito para manter o motor seguro.
 
-## FASE ESTRUTURAL EG-0030 — OBSERVABILIDADE
-Vendas permanecem fora de escopo e todos os kill-switches seguem bloqueados.
-EG-0030 separa liveness (`/api/live`) de readiness (`/api/health`).
-Health e status passam a emitir correlação por `x-request-id` e logs JSON estruturados.
-O probe operacional valida `/api/live`, `/api/health`, `/api/release` e `/api/status` com timeout fail-closed.
-Release candidata: ZEVANORY-EG0030-RC1.
-Aprovação exige suíte completa, 3X, DR 10X, observabilidade 10X, 30X e prova de produção.
-
-
-## FASE ESTRUTURAL EG-0031 — HARDENING DE SEGURANÇA
-CSP estrito com scripts e estilos somente da própria origem; assets inline removidos.
-API pública exige JSON, limita payload, valida Origin oficial e limita abuso por sessão.
-Autenticação de operador usa comparação em tempo constante.
-Dependências auditadas sem vulnerabilidades conhecidas no fechamento desta etapa.
-Release candidata: ZEVANORY-EG0031-RC1.
-Vendas e eventos financeiros reais continuam bloqueados.
-
-## FASE FINAL EG-0032 — SALES MACHINE READY
-Release estrutural final: `ZEVANORY-EG0032-FINAL`.
-A máquina inclui CRM/pipeline, follow-up, checkout/pagamento reconciliado, unit economics e learning baseado em evidência real.
-Schema canônico passa a exigir 7 tabelas e migrations 001–006.
-Parâmetros de desenho são confrontados com matriz de benchmarks globais em `specs/MARKET_PARAMETERS.md`.
-CI codifica a bateria integral de qualidade e resiliência.
-Prontidão técnica para vender não equivale a venda comprovada: performance comercial só é declarada após baseline real.
-Todos os cinco kill-switches comerciais/financeiros permanecem `false` até mudança explícita de fase.
-## FASE EG-0033 — NO-INVENTORY COMMERCE READY
-Release estrutural: `ZEVANORY-EG0033-FINAL`.
-O modelo comercial passa a ser explicitamente sem estoque próprio.
-Serviços próprios só podem ser digitais ou remotos.
-Produtos físicos só podem ser promovidos como afiliados de terceiros.
-Receita afiliada só é reconhecida após comissão confirmada pela rede/plataforma.
-Schema canônico passa a exigir 9 tabelas e migrations 001–007.
-A migration 007 adiciona `affiliate_commissions` e `service_fulfillment`.
-Checkout Asaas suporta ambientes explícitos sandbox/production, preservando fail-closed e kill-switches.
-Políticas públicas obrigatórias: termos, privacidade, cancelamento/reembolso e transparência de afiliação.
-Prontidão de ativação é calculada por tipo de oferta e não pode ser obtida apenas por variáveis de ambiente incompletas.
-Venda real continua bloqueada até preenchimento dos requisitos legais/comerciais e autorização de mudança de fase.
-## FASE ESTRUTURAL EG-0036 — COMPOSABLE COMMERCE INFRASTRUCTURE
-Release estrutural: `ZEVANORY-EG0036-FINAL`.
-Benchmark oficial confronta Shopify Hydrogen/Oxygen, commercetools MACH, Salesforce Composable Storefront, Adobe Commerce Cloud e BigCommerce Catalyst.
-A decisao aprovada e monolito modular composable: API-first, headless, cloud-native, portas/adaptadores e migracao incremental por strangler pattern.
+## FASE EG-0036 - COMPOSABLE COMMERCE INFRASTRUCTURE
+Release estrutural: ZEVANORY-EG0036-FINAL.
+Benchmark confronta Shopify Hydrogen/Oxygen, commercetools MACH, Salesforce Composable Storefront, Adobe Commerce Cloud e BigCommerce Catalyst.
+Decisao aprovada: monolito modular composable, API-first, headless-ready, cloud-native, portas/adaptadores e migracao incremental por strangler pattern.
 Microservicos distribuidos nao sao obrigatorios nesta escala e nao foram introduzidos sem necessidade comprovada.
-A migration 009 adiciona transactional outbox PostgreSQL/Neon com idempotencia, retry exponencial limitado, concorrencia por SKIP LOCKED e dead-letter.
-Schema canonico passa a exigir 15 tabelas e migrations 001–009.
-A infraestrutura continua sem dependencia obrigatoria de novo provedor pago.
-Todos os cinco kill-switches comerciais/financeiros permanecem `false`; esta fase nao autoriza vendas, checkout comercial, WhatsApp comercial, eventos financeiros reais ou autonomia comercial.
-Fechamento exige cinco execucoes independentes da auditoria composable 10X, auditorias legadas/regressao, auditoria 3X atualizada, DR, prova de producao e auditoria final 20X.
+Migration 009 adiciona transactional outbox PostgreSQL/Neon com idempotencia, retry exponencial limitado, concorrencia por SKIP LOCKED e dead-letter.
+Schema canonico: 15 tabelas e migrations 001-009.
+Infraestrutura sem dependencia obrigatoria de novo provedor pago.
+Todos os kill-switches comerciais/financeiros permanecem false; esta fase nao autoriza vendas, checkout comercial, WhatsApp comercial, eventos financeiros reais ou autonomia comercial.
+Fechamento exige auditorias legadas, engine 20X, composable 10X repetido, auditoria 3X, DR, prova de producao e auditoria final 20X.
+
+## FASE EG-0037 - ENTERPRISE OPERATIONAL ASSURANCE
+Release estrutural: ZEVANORY-EG0037-FINAL.
+Formaliza SLOs sem declarar historico inexistente, health de outbox e IA, contratos de fornecedores, carga read-only, secret scan e monitor recorrente de producao.
+Runbook canonico passa a exigir schema 15x9, /api/assurance e verificacao de dead-letter/idade de backlog.
+Git remoto e origin estao configurados e a release so e promovida apos commit, push, deploy e prova operacional no dominio oficial.
+Nenhuma melhoria da EG-0037 habilita venda, checkout comercial, WhatsApp comercial, evento financeiro real ou autonomia comercial.

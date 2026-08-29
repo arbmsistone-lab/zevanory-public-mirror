@@ -8,7 +8,7 @@ const text=(p)=>readFile(new URL(p,root),'utf8'); const add=(name,ok)=>checks.pu
 const exists=async p=>{try{await access(new URL(p,root));return true}catch{return false}};
 const run=(script)=>spawnSync(process.execPath,[script],{cwd:root,encoding:'utf8',shell:false}).status===0;
 const env=await text('.env.example'); const outbox=await text('src/integrationOutbox.mjs'); const migration=await text('db/migrations/009_composable_infrastructure.sql');
-add('01 final release id',RELEASE.id==='ZEVANORY-EG0036-FINAL');
+add('01 final release id',RELEASE.id==='ZEVANORY-EG0037-FINAL');
 add('02 architecture contract',validateArchitectureContract().valid);
 add('03 schema tables 15',REQUIRED_TABLES.length===15&&REQUIRED_TABLES.includes('integration_outbox'));
 add('04 migrations 9',REQUIRED_MIGRATIONS.length===9&&REQUIRED_MIGRATIONS.includes('009_composable_infrastructure'));
@@ -16,13 +16,13 @@ add('05 outbox idempotency',migration.includes('idempotency_key text NOT NULL UN
 add('06 outbox concurrency',outbox.includes('for update skip locked'));
 add('07 retry bounded',outbox.includes('attempts>=20')&&outbox.includes('3600000'));
 add('08 dead letter',outbox.includes("'dead_letter'"));
-add('09 benchmark evidence',await exists('evidence/EG-0036-composable-commerce-infrastructure-benchmark.md'));
+add('09 enterprise assurance API',await exists('api/assurance.mjs'));
 add('10 sales globally blocked',env.includes('SALE_GLOBALLY_ENABLED=false'));
 add('11 pre-sale blocked',env.includes('PRE_SALE_GATES_APPROVED=false'));
 add('12 checkout blocked',env.includes('CHECKOUT_ENABLED=false'));
 add('13 whatsapp blocked',env.includes('WHATSAPP_SALES_ENABLED=false'));
 add('14 financial blocked',env.includes('FINANCIAL_EVENTS_ENABLED=false'));
-add('15 base 10x audit',run('scripts/audit-10x.mjs'));
+add('15 enterprise 10x audit',run('scripts/audit-enterprise-10x.mjs'));
 add('16 security 10x audit',run('scripts/audit-security-10x.mjs'));
 add('17 observability 10x audit',run('scripts/audit-observability-10x.mjs'));
 add('18 composable 10x audit',run('scripts/audit-composable-10x.mjs'));

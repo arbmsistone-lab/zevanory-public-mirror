@@ -1,4 +1,4 @@
-﻿import { execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 const base=process.env.PRODUCTION_BASE_URL||'https://zevanory.api.br'; const checks=[];
 const add=(name,ok,detail='')=>checks.push({name,ok:Boolean(ok),detail});
 const get=async(path,opts={})=>{const r=await fetch(`${base}${path}`,{redirect:'follow',cache:'no-store',...opts});return {r,text:await r.text()}};
@@ -8,11 +8,11 @@ const root=await get('/'); const js=await get('/index.js'); const css=await get(
 add('01 root command center 200',root.r.status===200&&root.text.includes('Motor autônomo'),root.r.status);
 add('02 frontend assets 200',js.r.status===200&&css.r.status===200,`${js.r.status}/${css.r.status}`);
 let legal=true; for(const p of ['/termos','/privacidade','/reembolso','/afiliados']) legal=legal&&(await get(p)).r.status===200; add('03 legal surfaces 200',legal);
-const live=await json('/api/live'); const health=await json('/api/health'); const status=await json('/api/status'); const agent=await json('/api/agent/status'); const release=await json('/api/release'); const config=await json('/api/config');
+const live=await json('/api/live'); const health=await json('/api/health'); const status=await json('/api/status'); const assurance=await json('/api/assurance'); const agent=await json('/api/agent/status'); const release=await json('/api/release'); const config=await json('/api/config');
 add('04 liveness 200',live.r.status===200); add('05 health ready',health.r.status===200&&health.body.ready===true);
 add('06 command center status',status.r.status===200&&Boolean(status.body.command_center));
 add('07 autonomous agent status',agent.r.status===200&&agent.body.engine==='autonomous-revenue-engine');
-add('08 release EG0036',release.r.status===200&&release.body.release_id==='ZEVANORY-EG0036-FINAL',release.body.release_id);
+add('08 release EG0037',release.r.status===200&&release.body.release_id==='ZEVANORY-EG0037-FINAL'&&assurance.r.status===200,release.body.release_id);
 add('09 deployed commit matches HEAD',release.body.deployment?.commit_sha===head,release.body.deployment?.commit_sha);
 add('10 recovery contract 15x9',release.body.recovery?.tables===15&&release.body.recovery?.migrations===9);
 add('11 pipeline pressure contract',typeof status.body.command_center?.work_queue?.pressure==='number');
@@ -24,7 +24,7 @@ add('15 checkout fail closed',checkout.r.status===503&&checkout.text.includes('s
 const agentRun=await get('/api/agent/run',{method:'POST'}); add('16 agent worker auth required',agentRun.r.status===401,agentRun.r.status);
 const operator=await get('/api/events/operator',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}); add('17 operator auth required',operator.r.status===401,operator.r.status);
 const csp=root.r.headers.get('content-security-policy')||''; add('18 production security headers',csp.includes("script-src 'self'")&&root.r.headers.get('x-frame-options')==='DENY'&&root.r.headers.get('x-content-type-options')==='nosniff');
-add('19 live UTF8 clean',!/(Ã¡|Ã©|Ã£|Ã§|â€”|Â·|�)/.test(root.text+js.text));
+const badUtf8=['\u00c3\u00a1','\u00c3\u00a9','\u00c3\u00a3','\u00c3\u00a7','\u00e2\u20ac\u201d','\u00c2\u00b7','\ufffd']; add('19 live UTF8 clean',!badUtf8.some(x=>(root.text+js.text).includes(x)));
 add('20 AI mode explicit and safe',['google-gemini','deterministic-fallback'].includes(agent.body.ai_provider)&&agent.body.failed>=0&&agent.body.queued>=0);
 for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.name}${c.detail!==''?` ${c.detail}`:''}`);
 const failed=checks.filter(c=>!c.ok); console.log(`AUDIT_PRODUCTION_20X_${failed.length?'BLOCKED':'APPROVED'} units=20 approved=${20-failed.length} failed=${failed.length}`); if(failed.length) process.exit(1);
