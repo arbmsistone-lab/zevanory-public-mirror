@@ -16,7 +16,7 @@ export function evaluateActivationReadiness(env=process.env) {
   });
   const blockers=[...compliance.blockers];
   if(!yes(env.OFFER_SELECTION_APPROVED)) blockers.push('offer_selection_not_approved');
-  if(!offerType) blockers.push('active_offer_type_invalid');  if(offerType==='service') {
+  if(!offerType) blockers.push('active_offer_type_invalid');  if(['service','digital_product'].includes(offerType)) {
     if(!['digital','remote'].includes(String(env.SERVICE_DELIVERY_MODE||'').toLowerCase())) blockers.push('service_delivery_mode_missing');
     if(String(env.ASAAS_ENV||'').toLowerCase()!=='production') blockers.push('asaas_production_not_configured');
     if(!present(env.ASAAS_API_KEY)||!present(env.ASAAS_WEBHOOK_TOKEN)) blockers.push('asaas_credentials_missing');

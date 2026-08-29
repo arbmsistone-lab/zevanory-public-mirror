@@ -48,7 +48,7 @@ Telemetria publica: ativa e persistente.
 Eventos financeiros reais: BLOQUEADOS.
 SALE_GLOBALLY_ENABLED=false, PRE_SALE_GATES_APPROVED=false, CHECKOUT_ENABLED=false, WHATSAPP_SALES_ENABLED=false e FINANCIAL_EVENTS_ENABLED=false permanecem fail-closed.
 Schema canonico atual: 15 tabelas, migrations 001-009.
-Release estrutural atual: ZEVANORY-EG0038-FINAL.
+Release estrutural atual: ZEVANORY-EG0039-FINAL.
 
 ## PROXIMOS PASSOS AUTORIZADOS
 1. Manter monitoramento de DNS, HTTPS, banco, observabilidade e rollback.
@@ -99,3 +99,12 @@ A pagina principal e um control room premium de tela unica, sem rolagem vertical
 O cutover comercial permanece fail-closed: inputs externos validados, depois pre-sale/channel gates e somente por ultimo SALE_GLOBALLY_ENABLED=true.
 Nenhuma regra visual habilita vendas, checkout, WhatsApp, eventos financeiros ou autonomia.
 
+
+## FASE EG-0039 - ARBM SIST OFFER LAUNCH READY
+Release: ZEVANORY-EG0039-FINAL.
+OFFER-0001 passa a ser ARBM SIST 8.1.0, produto digital proprio sem estoque, com preco piloto de R$ 497 ainda nao validado comercialmente.
+Landing /arbm-sist rastreia origem por canal e opera em pre-lancamento enquanto vendas estiverem bloqueadas.
+Canais primarios: ZEVANORY, YouTube, Instagram e WhatsApp. Metricool existe, mas redes ainda precisam estar conectadas antes de publicacao automatica.
+Entrega exige pedido paid, payment_confirmed reconciliado e referencia segura do artefato; download publico e proibido.
+Artefato aprovado: ARBM-SIST-v8.1.0.zip, SHA-256 0124C388CA2ACA68BC555AE2D3BE050919D26302AC1C17238D617F10BFD78EDC.
+Todos os kill-switches comerciais e financeiros permanecem fail-closed ate meio de pagamento PF valido e cutover explicito.

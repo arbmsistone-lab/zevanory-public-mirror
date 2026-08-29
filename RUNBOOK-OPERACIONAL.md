@@ -6,7 +6,7 @@ Escopo: infraestrutura, saude, deploy, incidente, recuperacao e garantia operaci
 ## Fonte de verdade
 - Raiz canonica: `C:\Sistemas\ZEVANORY`.
 - Producao oficial: `https://zevanory.api.br`.
-- Release estrutural corrente: `ZEVANORY-EG0038-FINAL` apos promocao auditada.
+- Release estrutural corrente: `ZEVANORY-EG0039-FINAL` apos promocao auditada.
 - Schema corrente: 15 tabelas e migrations 001-009.
 - Deploy somente de snapshot auditado e commitado.
 - Divergencia entre Git, release, schema e dominio bloqueia promocao.

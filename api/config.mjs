@@ -2,6 +2,7 @@ import { PROJECT } from '../src/config.mjs';
 import { salesGate, channelEnabled } from '../src/salesGate.mjs';
 import { buildActivationPlan } from '../src/activationPlan.mjs';
 import { RELEASE } from '../src/release.mjs';
+import { publicOffer } from '../src/offerCatalog.mjs';
 
 export default function handler(req, res) {
   if (req.method !== 'GET') {
@@ -31,6 +32,8 @@ export default function handler(req, res) {
     offer_id: PROJECT.offerId,
     experiment_id: PROJECT.experimentId,
     experimental_price_brl: PROJECT.experimentalPriceBrl,
+    offer: publicOffer(),
+    support_whatsapp_number: PROJECT.officialWhatsappE164,
     production_mode: gate.enabled ? 'commercial-gated' : 'pre-sale-blocked'
   }));
 }

@@ -4,15 +4,16 @@ import { RELEASE } from '../src/release.mjs';
 import releaseHandler from '../api/release.mjs';
 
 test('release fingerprint is canonical and immutable',()=>{
-  assert.equal(RELEASE.id,'ZEVANORY-EG0038-FINAL');
+  assert.equal(RELEASE.id,'ZEVANORY-EG0039-FINAL');
   assert.equal(Object.isFrozen(RELEASE),true);
-  assert.equal(RELEASE.structuralCompletion,'commercial-activation-and-premium-single-screen-ready');
+  assert.equal(RELEASE.structuralCompletion,'arbm-sist-offer-launch-ready');
   assert.equal(RELEASE.commercialModel,'no-inventory');
   assert.equal(RELEASE.assurance.autonomous_engine_20x,'approved');
   assert.equal(RELEASE.assurance.composable_10x5,'approved');
   assert.equal(RELEASE.assurance.enterprise_10x,'approved');
   assert.equal(RELEASE.assurance.activation_20x,'approved');
   assert.equal(RELEASE.assurance.single_screen_layout,'approved');
+  assert.equal(RELEASE.assurance.offer_launch_20x,'approved');
   assert.equal(RELEASE.recovery.tables,15);
   assert.equal(RELEASE.recovery.migrations,9);
   assert.equal(RELEASE.salesMode,'globally-blocked');
@@ -20,7 +21,7 @@ test('release fingerprint is canonical and immutable',()=>{
 });
 
 test('release manifest requires all production surfaces',()=>{
-  for(const route of ['/','/piloto','/termos','/privacidade','/reembolso','/afiliados','/api/config','/api/health','/api/live','/api/status','/api/assurance','/api/activation/readiness','/api/events/public','/api/events/operator','/api/agent/status','/api/agent/run','/api/checkout/asaas','/api/webhooks/asaas','/api/release']) assert.equal(RELEASE.requiredRoutes.includes(route),true);
+  for(const route of ['/','/arbm-sist','/piloto','/termos','/privacidade','/reembolso','/afiliados','/api/config','/api/health','/api/live','/api/status','/api/assurance','/api/activation/readiness','/api/events/public','/api/events/operator','/api/agent/status','/api/agent/run','/api/checkout/asaas','/api/webhooks/asaas','/api/release']) assert.equal(RELEASE.requiredRoutes.includes(route),true);
 });
 function invokeRelease(env={}){
   const previous={...process.env}; Object.assign(process.env,env);

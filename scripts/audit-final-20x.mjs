@@ -1,4 +1,4 @@
-﻿import { readFile, access } from 'node:fs/promises';
+import { readFile, access } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { RELEASE } from '../src/release.mjs';
 import { REQUIRED_TABLES, REQUIRED_MIGRATIONS } from '../src/schemaHealth.mjs';
@@ -8,7 +8,7 @@ const text=(p)=>readFile(new URL(p,root),'utf8'); const add=(name,ok)=>checks.pu
 const exists=async p=>{try{await access(new URL(p,root));return true}catch{return false}};
 const run=(script)=>spawnSync(process.execPath,[script],{cwd:root,encoding:'utf8',shell:false}).status===0;
 const env=await text('.env.example'); const outbox=await text('src/integrationOutbox.mjs'); const migration=await text('db/migrations/009_composable_infrastructure.sql');
-add('01 final release id',RELEASE.id==='ZEVANORY-EG0038-FINAL');
+add('01 final release id',RELEASE.id==='ZEVANORY-EG0039-FINAL');
 add('02 architecture contract',validateArchitectureContract().valid);
 add('03 schema tables 15',REQUIRED_TABLES.length===15&&REQUIRED_TABLES.includes('integration_outbox'));
 add('04 migrations 9',REQUIRED_MIGRATIONS.length===9&&REQUIRED_MIGRATIONS.includes('009_composable_infrastructure'));
@@ -22,7 +22,7 @@ add('11 pre-sale blocked',env.includes('PRE_SALE_GATES_APPROVED=false'));
 add('12 checkout blocked',env.includes('CHECKOUT_ENABLED=false'));
 add('13 whatsapp blocked',env.includes('WHATSAPP_SALES_ENABLED=false'));
 add('14 financial blocked',env.includes('FINANCIAL_EVENTS_ENABLED=false'));
-add('15 enterprise and activation audits',run('scripts/audit-enterprise-10x.mjs')&&run('scripts/audit-activation-20x.mjs'));
+add('15 enterprise activation and offer audits',run('scripts/audit-enterprise-10x.mjs')&&run('scripts/audit-activation-20x.mjs')&&run('scripts/audit-offer-launch-20x.mjs'));
 add('16 security 10x audit',run('scripts/audit-security-10x.mjs'));
 add('17 observability 10x audit',run('scripts/audit-observability-10x.mjs'));
 add('18 composable 10x audit',run('scripts/audit-composable-10x.mjs'));

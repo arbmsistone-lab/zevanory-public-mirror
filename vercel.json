@@ -3,6 +3,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/arbm-sist",
+      "destination": "/public/arbm-sist.html"
+    },
+    {
       "source": "/api/events/public",
       "destination": "/api/events-public"
     },

@@ -1,6 +1,6 @@
 export const COMMERCIAL_MODEL = Object.freeze({
   inventory: 'none',
-  own_offer_types: Object.freeze(['service']),
+  own_offer_types: Object.freeze(['service','digital_product']),
   third_party_offer_types: Object.freeze(['affiliate_product']),
   service_fulfillment: 'digital_or_remote',
   affiliate_checkout: 'external_merchant',
@@ -15,7 +15,7 @@ export function classifyOfferType(value) {
 
 export function revenueRecognitionRule(offerType) {
   const type=classifyOfferType(offerType);
-  if(type==='service') return Object.freeze({source:'authenticated_payment',provider:'asaas'});
+  if(['service','digital_product'].includes(type)) return Object.freeze({source:'authenticated_payment',provider:'asaas'});
   if(type==='affiliate_product') return Object.freeze({source:'confirmed_commission',provider:'affiliate_network'});
   return Object.freeze({source:'none',provider:'none'});
 }

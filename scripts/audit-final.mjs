@@ -6,7 +6,7 @@ const text=async p=>readFile(new URL(p,root),'utf8');
 const exists=async p=>{try{await access(new URL(p,root));return true}catch{return false}};
 const add=(name,ok)=>checks.push({name,ok:Boolean(ok)});
 const env=await text('.env.example'); const pkg=JSON.parse(await text('package.json')); const workflow=await text('.github/workflows/quality.yml');
-add('01 final release',RELEASE.id==='ZEVANORY-EG0038-FINAL');
+add('01 final release',RELEASE.id==='ZEVANORY-EG0039-FINAL');
 add('02 fifteen required tables',REQUIRED_TABLES.length===15&&REQUIRED_TABLES.includes('integration_outbox'));
 add('03 nine migrations',REQUIRED_MIGRATIONS.length===9&&REQUIRED_MIGRATIONS.includes('009_composable_infrastructure'));
 add('04 CRM engine',await exists('src/salesPipeline.mjs')); add('05 follow-up engine',(await text('src/salesPipeline.mjs')).includes('buildFollowUpPlan'));
@@ -18,7 +18,7 @@ add('11 secret scan',pkg.scripts['supplychain:scan']==='node scripts/secret-scan
 add('12 contract smoke',pkg.scripts['contract:smoke']==='node scripts/contract-smoke.mjs');
 add('13 load smoke',pkg.scripts['load:smoke']==='node scripts/load-smoke.mjs');
 add('14 SLO policy',await exists('specs/SLO_POLICY.md'));
-add('15 enterprise and activation audits in CI',workflow.includes('npm run audit:enterprise:10x')&&workflow.includes('npm run audit:activation:20x'));
+add('15 enterprise activation and offer audits in CI',workflow.includes('npm run audit:enterprise:10x')&&workflow.includes('npm run audit:activation:20x')&&workflow.includes('npm run audit:offer:20x'));
 add('16 activation route required',RELEASE.requiredRoutes.includes('/api/activation/readiness')&&await exists('api/config.mjs'));
 add('17 sales globally off',env.includes('SALE_GLOBALLY_ENABLED=false')&&!env.includes('SALE_GLOBALLY_ENABLED=true'));
 add('18 checkout and financial off',env.includes('CHECKOUT_ENABLED=false')&&env.includes('FINANCIAL_EVENTS_ENABLED=false'));

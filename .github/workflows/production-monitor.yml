@@ -22,4 +22,5 @@ jobs:
       - run: npm run probe:production
       - run: npm run contract:smoke
       - run: npm run activation:check
+      - run: npm run audit:offer:20x
       - run: npm run supplychain:scan
