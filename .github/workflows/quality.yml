@@ -33,7 +33,7 @@ jobs:
       - run: npm run contract:smoke
       - run: npm run audit:enterprise:10x
       - run: npm run audit:activation:20x
-      - run: npm run audit:offer:20x
+      - run: npm run audit:channels:20x
       - run: npm run audit:rules:20x
       - run: npm run audit:engine:20x
       - run: npm run audit:command:20x
