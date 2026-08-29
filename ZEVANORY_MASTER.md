@@ -113,3 +113,15 @@ Parâmetros de desenho são confrontados com matriz de benchmarks globais em `sp
 CI codifica a bateria integral de qualidade e resiliência.
 Prontidão técnica para vender não equivale a venda comprovada: performance comercial só é declarada após baseline real.
 Todos os cinco kill-switches comerciais/financeiros permanecem `false` até mudança explícita de fase.
+## FASE EG-0033 — NO-INVENTORY COMMERCE READY
+Release estrutural: `ZEVANORY-EG0033-FINAL`.
+O modelo comercial passa a ser explicitamente sem estoque próprio.
+Serviços próprios só podem ser digitais ou remotos.
+Produtos físicos só podem ser promovidos como afiliados de terceiros.
+Receita afiliada só é reconhecida após comissão confirmada pela rede/plataforma.
+Schema canônico passa a exigir 9 tabelas e migrations 001–007.
+A migration 007 adiciona `affiliate_commissions` e `service_fulfillment`.
+Checkout Asaas suporta ambientes explícitos sandbox/production, preservando fail-closed e kill-switches.
+Políticas públicas obrigatórias: termos, privacidade, cancelamento/reembolso e transparência de afiliação.
+Prontidão de ativação é calculada por tipo de oferta e não pode ser obtida apenas por variáveis de ambiente incompletas.
+Venda real continua bloqueada até preenchimento dos requisitos legais/comerciais e autorização de mudança de fase.

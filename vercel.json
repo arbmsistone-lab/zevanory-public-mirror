@@ -4,6 +4,11 @@
   "rewrites": [
     { "source": "/api/events/public", "destination": "/api/events-public" },
     { "source": "/piloto", "destination": "/public/piloto.html" },
+    { "source": "/termos", "destination": "/public/termos.html" },
+    { "source": "/privacidade", "destination": "/public/privacidade.html" },
+    { "source": "/reembolso", "destination": "/public/reembolso.html" },
+    { "source": "/afiliados", "destination": "/public/afiliados.html" },
+    { "source": "/legal.css", "destination": "/public/legal.css" },
     { "source": "/", "destination": "/public/index.html" }
   ],
   "headers": [

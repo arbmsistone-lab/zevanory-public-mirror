@@ -46,9 +46,10 @@ test('checkout own switch remains a second-layer gate',()=>{
   assert.ok(ownPos>globalPos);
 });
 
-test('checkout remains Sandbox-only behind both prior gates',()=>{
+test('checkout accepts only explicit Sandbox or Production behind both prior gates',()=>{
   const ownPos=checkoutSource.indexOf('checkout_disabled');
-  const sandboxPos=checkoutSource.indexOf('checkout_sandbox_only');
+  const envPos=checkoutSource.indexOf('checkout_environment_invalid');
   assert.ok(ownPos>=0);
-  assert.ok(sandboxPos>ownPos);
+  assert.ok(envPos>ownPos);
+  assert.match(checkoutSource,/\['sandbox','production'\]\.includes\(asaasEnv\)/);
 });

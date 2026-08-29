@@ -2,9 +2,7 @@
   "name": "zevanory",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "@neondatabase/serverless": "1.1.0"
-  },
+  "dependencies": { "@neondatabase/serverless": "1.1.0" },
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server-v2.mjs",
     "pretest": "node scripts/identity-guard.mjs",
@@ -20,6 +18,7 @@
     "probe:production": "node scripts/operational-probe.mjs",
     "dr:rehearsal": "node --env-file-if-exists=.env.dr scripts/dr-rehearsal.mjs",
     "migration:006": "node --env-file-if-exists=.env.production.local scripts/apply-migration-006.mjs",
+    "migration:007": "node --env-file-if-exists=.env.production.local scripts/apply-migration-007.mjs",
     "preflight:pre-sale": "node --env-file-if-exists=.env.local scripts/pre-sale-preflight.mjs"
   }
 }

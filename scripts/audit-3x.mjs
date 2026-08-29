@@ -35,7 +35,7 @@ function unit(id, label, operations) {
 
 const fullTests = command('full test suite', process.execPath, ['--test',
   'test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs',
-  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs','test/release.test.mjs','test/status.test.mjs','test/sales-gate.test.mjs','test/order-financial-state.test.mjs','test/pre-sale-readiness.test.mjs']);
+  'test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs','test/release.test.mjs','test/status.test.mjs','test/sales-gate.test.mjs','test/order-financial-state.test.mjs','test/pre-sale-readiness.test.mjs','test/precommerce.test.mjs','test/checkout-production.test.mjs']);
 
 unit('CODE-CONFIG', 'src/config.mjs', [
   command('syntax config', process.execPath, ['--check','src/config.mjs']),
@@ -49,8 +49,8 @@ unit('CODE-SALES-GATE','src/salesGate.mjs',[
 ]);
 unit('CODE-PRE-SALE-APPROVAL','src/preSaleApproval.mjs',[
   command('pre-sale approval syntax',process.execPath,['--check','src/preSaleApproval.mjs']),
-  op('manifest remains blocked with verified domain evidence',()=>t('src/preSaleApproval.mjs').includes('approved: false')&&t('src/preSaleApproval.mjs').includes("custom_domain: 'EG-0021'")),
-  op('sandbox homologation is evidenced without approving sales',()=>!t('src/preSaleApproval.mjs').includes('asaas_sandbox_unconfigured')&&t('src/preSaleApproval.mjs').includes("asaas_sandbox_e2e: 'EG-0026'")&&t('src/preSaleApproval.mjs').includes("global_sales_gate: 'EG-0018'")),
+  op('manifest derives approval from activation readiness',()=>t('src/preSaleApproval.mjs').includes('evaluateActivationReadiness')&&t('src/preSaleApproval.mjs').includes("custom_domain:'EG-0021'")),
+  op('sandbox homologation is evidenced without approving sales',()=>!t('src/preSaleApproval.mjs').includes('asaas_sandbox_unconfigured')&&t('src/preSaleApproval.mjs').includes("asaas_sandbox_e2e:'EG-0026'")&&t('src/preSaleApproval.mjs').includes("global_sales_gate:'EG-0018'")),
 ]);
 unit('CODE-PRE-SALE-READINESS','src/preSaleReadiness.mjs + scripts/pre-sale-preflight.mjs',[
   command('pre-sale readiness syntax',process.execPath,['--check','src/preSaleReadiness.mjs']),
@@ -110,12 +110,12 @@ unit('CODE-ASAAS-WEBHOOK','api/webhooks/asaas.mjs',[
 unit('CODE-ORDER','src/order.mjs',[
   command('syntax order',process.execPath,['--check','src/order.mjs']),
   command('order tests',process.execPath,['--test','test/order.test.mjs']),
-  op('order contract is canonical and sandbox-safe',()=>t('src/order.mjs').includes('ZEVANORY:${PROJECT.experimentId}')&&t('src/order.mjs').includes('sandbox\\.asaas\\.com\\/checkoutSession')),
+  op('order contract supports explicit Asaas environments safely',()=>t('src/order.mjs').includes('ZEVANORY:${PROJECT.experimentId}')&&t('src/order.mjs').includes('checkoutUrlForId')&&t('src/order.mjs').includes('normalizeAsaasCheckoutResponse')&&t('src/order.mjs').includes('https://asaas.com/checkoutSession/show?id=')),
 ]);
 unit('CODE-ASAAS-CHECKOUT','api/checkout/asaas.mjs',[
   command('syntax asaas checkout',process.execPath,['--check','api/checkout/asaas.mjs']),
   command('asaas checkout tests',process.execPath,['--test','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs']),
-  op('checkout kill switches and uncertain state are present',()=>t('api/checkout/asaas.mjs').includes('sales_globally_blocked')&&t('api/checkout/asaas.mjs').includes('checkout_disabled')&&t('api/checkout/asaas.mjs').includes('checkout_sandbox_only')&&t('api/checkout/asaas.mjs').includes('checkout_uncertain')),
+  op('checkout kill switches and uncertain state are present',()=>t('api/checkout/asaas.mjs').includes('sales_globally_blocked')&&t('api/checkout/asaas.mjs').includes('checkout_disabled')&&t('api/checkout/asaas.mjs').includes('checkout_environment_invalid')&&t('api/checkout/asaas.mjs').includes("['sandbox','production']")&&t('api/checkout/asaas.mjs').includes('checkout_uncertain')),
 ]);
 unit('CODE-EVIDENCE-VERIFIER', 'scripts/verify_evidence_gate.ps1', [
   op('verifier exists', () => existsSync(join(root,'scripts','verify_evidence_gate.ps1'))),
@@ -171,7 +171,7 @@ unit('DEF-SCOPE', 'specs/SCOPE_BOUNDARY.md', [
   op('external absolute paths forbidden', () => t('specs/SCOPE_BOUNDARY.md').includes('caminho absoluto para outro sistema')),
 ]);
 
-const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs','test/release.test.mjs','test/status.test.mjs','test/sales-gate.test.mjs','test/order-financial-state.test.mjs','test/pre-sale-readiness.test.mjs'];
+const testFiles=['test/telemetry.test.mjs','test/config.test.mjs','test/definitions.test.mjs','test/landing.test.mjs','test/server-v2.integration.test.mjs','test/vercel.test.mjs','test/governance.test.mjs','test/publicEvent.test.mjs','test/asaas.test.mjs','test/asaas-webhook.test.mjs','test/order.test.mjs','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs','test/release.test.mjs','test/status.test.mjs','test/sales-gate.test.mjs','test/order-financial-state.test.mjs','test/pre-sale-readiness.test.mjs','test/precommerce.test.mjs','test/checkout-production.test.mjs'];
 unit('ASSURANCE-TESTS','test harness',[
   op('all test files exist',()=>testFiles.every((f)=>existsSync(join(root,f)))),
   op('all test files syntax-valid',()=>testFiles.every((f)=>spawnSync(process.execPath,['--check',f],{cwd:root,encoding:'utf8'}).status===0)),
@@ -271,7 +271,7 @@ unit('CODE-SECURITY','src/security.mjs + vercel.json',[
 unit('CODE-RELEASE-FINGERPRINT','src/release.mjs + api/release.mjs',[
   command('release tests',process.execPath,['--test','test/release.test.mjs']),
   command('release endpoint syntax',process.execPath,['--check','api/release.mjs']),
-  op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0032-FINAL')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
+  op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0033-FINAL')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
 ]);
 unit('DEF-DEPLOY-SAFETY','evidence/EG-0008-deploy-zevanory-vercel.md',[
   op('deploy evidence gate approved',()=>t('evidence/EG-0008-deploy-zevanory-vercel.md').includes('Veredito: APROVADO')),

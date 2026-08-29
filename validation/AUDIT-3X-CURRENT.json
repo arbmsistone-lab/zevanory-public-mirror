@@ -60,7 +60,7 @@
           "detail": "exit=0"
         },
         {
-          "name": "manifest remains blocked with verified domain evidence",
+          "name": "manifest derives approval from activation readiness",
           "status": "APPROVED",
           "detail": "true"
         },
@@ -272,7 +272,7 @@
           "detail": "exit=0"
         },
         {
-          "name": "order contract is canonical and sandbox-safe",
+          "name": "order contract supports explicit Asaas environments safely",
           "status": "APPROVED",
           "detail": "true"
         }

@@ -54,3 +54,14 @@ Escopo: infraestrutura, saúde, deploy, incidente e recuperação. Vendas perman
 - Gate CI replica a bateria no GitHub.
 - Escala só pode ser considerada após pagamento real reconciliado e margem de contribuição positiva.
 - Conversão, CAC e ROAS nunca recebem meta fabricada: baseline real precede otimização.
+## Evolução EG-0033 — comércio sem estoque
+- Release alvo: `ZEVANORY-EG0033-FINAL`.
+- Modelo comercial permitido: serviços próprios digitais/remotos e produtos de terceiros por afiliação.
+- Estoque próprio permanece fora do modelo.
+- Schema obrigatório: 9 tabelas e 7 migrations, incluindo `007_no_inventory_commerce`.
+- `affiliate_commissions` reconhece somente comissão confirmada; GMV externo não é receita própria.
+- `service_fulfillment` rastreia a entrega de serviços próprios.
+- Checkout Asaas aceita somente `sandbox` ou `production`; outros ambientes falham fechado.
+- `/termos`, `/privacidade`, `/reembolso` e `/afiliados` são superfícies públicas obrigatórias.
+- Ativação comercial exige identidade legal, suporte, oferta aprovada e requisitos específicos do tipo de oferta.
+- Kill-switches permanecem desligados até autorização da fase comercial.

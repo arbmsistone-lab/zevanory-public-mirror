@@ -8,7 +8,7 @@ export const SALES_GATE_KEYS = Object.freeze([
 export function salesGate(env=process.env) {
   const globalEnabled=String(env.SALE_GLOBALLY_ENABLED||'').toLowerCase()==='true';
   const preSaleApproved=String(env.PRE_SALE_GATES_APPROVED||'').toLowerCase()==='true';
-  const manifest=preSaleApproval();
+  const manifest=preSaleApproval(env);
   const enabled=globalEnabled && preSaleApproved && manifest.approved;
   const blockers=[];
   if(!globalEnabled) blockers.push('global_sale_disabled');
@@ -19,7 +19,7 @@ export function salesGate(env=process.env) {
     global_enabled:globalEnabled,
     pre_sale_gates_approved:preSaleApproved,
     manifest_approved:manifest.approved,
-    blockers:Object.freeze(blockers),
+    blockers:Object.freeze([...new Set(blockers)]),
   });
 }
 
