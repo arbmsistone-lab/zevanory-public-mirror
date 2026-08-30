@@ -22,7 +22,7 @@ test('compliance gate blocks missing supplier identity',()=>{
   assert.ok(r.blockers.includes('support_channel_missing'));
 });
 test('service activation requires production payment and real operator identity',()=>{
-  const base={ACTIVE_OFFER_TYPE:'service',OFFER_SELECTION_APPROVED:'true',SUPPLIER_LEGAL_NAME:'Empresa X',SUPPLIER_TAX_ID:'00.000.000/0000-00',SUPPLIER_ADDRESS:'Endereco',SUPPORT_CHANNEL:'support@example.com',SERVICE_DELIVERY_MODE:'digital',PAYMENT_PROVIDER:'asaas',ASAAS_API_KEY:'key',ASAAS_WEBHOOK_TOKEN:'token'};
+  const base={ACTIVE_OFFER_TYPE:'service',OFFER_SELECTION_APPROVED:'true',SUPPLIER_LEGAL_NAME:'Empresa X',SUPPLIER_TAX_ID:'00.000.000/0000-00',SUPPLIER_ADDRESS:'Endereco',SUPPORT_CHANNEL:'support@example.com',SERVICE_DELIVERY_MODE:'digital',PAYMENT_PROVIDER:'asaas',PAYMENT_MERCHANT_IDENTITY_VERIFIED:'true',ASAAS_API_KEY:'key',ASAAS_WEBHOOK_TOKEN:'token'};
   assert.equal(evaluateActivationReadiness({...base,ASAAS_ENV:'sandbox'}).ready,false);
   assert.equal(evaluateActivationReadiness({...base,ASAAS_ENV:'production'}).ready,true);
 });

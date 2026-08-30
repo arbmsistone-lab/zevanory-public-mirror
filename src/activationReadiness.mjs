@@ -20,6 +20,7 @@ export function evaluateActivationReadiness(env=process.env) {
   if(!offerType) blockers.push('active_offer_type_invalid');
   if(['service','digital_product'].includes(offerType)) {
     if(!['digital','remote'].includes(String(env.SERVICE_DELIVERY_MODE||'').toLowerCase())) blockers.push('service_delivery_mode_missing');
+    if(!yes(env.PAYMENT_MERCHANT_IDENTITY_VERIFIED)) blockers.push('payment_merchant_identity_unverified');
     blockers.push(...paymentProviderReadiness(env,{production:true}).blockers);
   }
   if(offerType==='affiliate_product') {

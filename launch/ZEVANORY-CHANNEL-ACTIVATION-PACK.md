@@ -32,3 +32,10 @@ YouTube:
 - Canal: ZEVANORY
 - Handle: @zevanory
 - Descricao: Canal oficial da ZEVANORY para produtos, servicos, demonstracoes e conteudo tecnico.
+
+Pagamentos / identidade do merchant:
+- Credenciais de gateway nao autorizam ativacao sozinhas.
+- PAYMENT_MERCHANT_IDENTITY_VERIFIED deve permanecer false ate a conta do provedor ser conferida para a operacao ZEVANORY.
+- Nao reutilizar automaticamente conta identificada como GIRO LOCAL.
+- Somente apos verificacao documental/operacional do titular, definir PAYMENT_MERCHANT_IDENTITY_VERIFIED=true.
+- Depois disso ainda permanecem obrigatorios credenciais, reconciliacao real e gates de pre-venda.
