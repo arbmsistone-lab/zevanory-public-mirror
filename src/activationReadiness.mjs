@@ -1,5 +1,6 @@
 import { classifyOfferType } from './commercialModel.mjs';
 import { evaluateCommercialCompliance } from './complianceReadiness.mjs';
+import { paymentProviderReadiness } from './paymentProviders.mjs';
 
 const yes=(v)=>String(v||'').toLowerCase()==='true';
 const present=(v)=>Boolean(String(v||'').trim());
@@ -11,26 +12,20 @@ export function evaluateActivationReadiness(env=process.env) {
     supplier_tax_id:env.SUPPLIER_TAX_ID,
     supplier_address:env.SUPPLIER_ADDRESS,
     support_channel:env.SUPPORT_CHANNEL,
-    terms_published:true, privacy_published:true, refund_policy_published:true,
-    service_delivery_policy_published:true, affiliate_disclosure_published:true,
+    terms_published:true,privacy_published:true,refund_policy_published:true,
+    service_delivery_policy_published:true,affiliate_disclosure_published:true,
   });
   const blockers=[...compliance.blockers];
   if(!yes(env.OFFER_SELECTION_APPROVED)) blockers.push('offer_selection_not_approved');
-  if(!offerType) blockers.push('active_offer_type_invalid');  if(['service','digital_product'].includes(offerType)) {
+  if(!offerType) blockers.push('active_offer_type_invalid');
+  if(['service','digital_product'].includes(offerType)) {
     if(!['digital','remote'].includes(String(env.SERVICE_DELIVERY_MODE||'').toLowerCase())) blockers.push('service_delivery_mode_missing');
-    if(String(env.ASAAS_ENV||'').toLowerCase()!=='production') blockers.push('asaas_production_not_configured');
-    if(!present(env.ASAAS_API_KEY)||!present(env.ASAAS_WEBHOOK_TOKEN)) blockers.push('asaas_credentials_missing');
+    blockers.push(...paymentProviderReadiness(env,{production:true}).blockers);
   }
   if(offerType==='affiliate_product') {
     if(!present(env.AFFILIATE_PROVIDER)) blockers.push('affiliate_provider_missing');
     if(!yes(env.AFFILIATE_TRACKING_READY)) blockers.push('affiliate_tracking_unready');
     if(!yes(env.AFFILIATE_TERMS_REVIEWED)) blockers.push('affiliate_terms_unreviewed');
   }
-  return Object.freeze({
-    ready:blockers.length===0,
-    offer_type:offerType||null,
-    inventory_required:false,
-    compliance_ready:compliance.ready,
-    blockers:Object.freeze([...new Set(blockers)]),
-  });
+  return Object.freeze({ready:blockers.length===0,offer_type:offerType||null,inventory_required:false,compliance_ready:compliance.ready,blockers:Object.freeze([...new Set(blockers)])});
 }

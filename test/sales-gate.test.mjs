@@ -22,7 +22,7 @@ test('canonical pre-sale manifest blocks environment-only activation',()=>{
   assert.equal(gate.manifest_approved,false);
   assert.equal(gate.blockers.includes('custom_domain_unverified'),false);
   assert.equal(gate.blockers.includes('asaas_sandbox_unconfigured'),false);
-  assert.equal(preSaleApproval().evidence.asaas_sandbox_e2e,'EG-0026');
+  assert.equal(preSaleApproval().evidence.provider_sandbox_e2e,'EG-0026');
   assert.equal(channelEnabled('WHATSAPP_SALES_ENABLED',{...base,WHATSAPP_SALES_ENABLED:'true'}),false);
 });
 

@@ -154,3 +154,11 @@ ARBM SIST e apenas um produto do portfolio ZEVANORY, assim como futuras ofertas 
 Contas sociais, WhatsApp, e-mail, CRM, Metricool, canais e identidade publica devem representar ZEVANORY, nunca um produto isolado.
 Produtos podem ter landing pages, campanhas, criativos, UTMs e metricas proprias sem substituir a identidade institucional da ZEVANORY.
 Esta separacao e estrutural e nao altera gates comerciais, financeiros ou de autonomia.
+## EG-0047 — PAYMENT PROVIDER ABSTRACTION
+- Status tecnico: IMPLEMENTADO / vendas continuam fail-closed.
+- ZEVANORY deixa de depender estruturalmente de um unico provedor de pagamento.
+- Provedores suportados: Asaas e Mercado Pago, selecionados explicitamente por PAYMENT_PROVIDER.
+- Mercado Pago usa checkout hospedado, external_reference, webhook autenticado e reconciliacao server-side antes de reconhecer receita.
+- Migration 010 amplia orders e financial_events para `asaas` e `mercadopago` sem reescrever migrations historicas.
+- Schema canonico: 15 tabelas / 10 migrations.
+- Nenhuma conta, token, KYC ou credencial externa e fabricada; ausencia de configuracao mantem vendas bloqueadas.
