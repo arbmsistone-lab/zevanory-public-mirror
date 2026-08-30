@@ -1,7 +1,7 @@
 export const CHANNELS = Object.freeze({
   zevanory: Object.freeze({ provider:'owned-web', env:[], commercial:true, role:'conversion_hub' }),
   whatsapp: Object.freeze({ provider:'meta-whatsapp-cloud-api', env:['WHATSAPP_ACCESS_TOKEN','WHATSAPP_PHONE_NUMBER_ID'], commercial:true, role:'conversation_support' }),
-  email: Object.freeze({ provider:'professional-domain-email', env:['EMAIL_PROVIDER','EMAIL_API_KEY'], commercial:true, role:'crm_nurture' }),
+  email: Object.freeze({ provider:'resend', env:['RESEND_API_KEY'], commercial:true, role:'crm_nurture' }),
   instagram: Object.freeze({ provider:'meta-graph-api', env:['META_ACCESS_TOKEN'], commercial:true, role:'proof_reach' }),
   facebook: Object.freeze({ provider:'meta-graph-api', env:['META_ACCESS_TOKEN'], commercial:true, role:'proof_retargeting' }),
   tiktok: Object.freeze({ provider:'tiktok-business-api', env:['TIKTOK_ACCESS_TOKEN'], commercial:true, role:'short_form_discovery' }),

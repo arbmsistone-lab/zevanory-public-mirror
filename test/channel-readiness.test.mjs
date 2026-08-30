@@ -15,6 +15,11 @@ test('external channels fail closed without credentials',()=>{
   const r=channelReadiness({});  for(const name of ['whatsapp','email','instagram','facebook','tiktok','youtube','linkedin','affiliate']) assert.equal(r[name].configured,false);
 });
 
+test('email readiness uses the canonical Resend credential',()=>{
+  const missing=channelReadiness({}).email; assert.equal(missing.provider,'resend'); assert.deepEqual([...missing.missing],['RESEND_API_KEY']);
+  const ready=channelReadiness({RESEND_API_KEY:'re_test'}).email; assert.equal(ready.configured,true);
+});
+
 test('commercial action remains blocked while global gates are closed',()=>{
   assert.throws(()=>assertChannelActionAllowed('zevanory',{}),/commercial_gates_closed/);
 });
