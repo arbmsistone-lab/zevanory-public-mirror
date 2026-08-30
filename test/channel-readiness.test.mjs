@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CHANNELS, channelReadiness, assertChannelActionAllowed } from '../src/channelAdapters.mjs';
 import { CHANNEL_PROFILES, PROFESSIONAL_EMAIL } from '../src/channelProfiles.mjs';
@@ -27,6 +27,11 @@ test('commercial action remains blocked while global gates are closed',()=>{
 test('professional email uses domain and requires authentication records',()=>{
   assert.equal(PROFESSIONAL_EMAIL.primary,'contato@zevanory.api.br');
   assert.deepEqual([...PROFESSIONAL_EMAIL.requiredDns],['MX','SPF','DKIM','DMARC']);
+});
+
+test('confirmed social profiles keep canonical public URLs',()=>{
+  assert.equal(CHANNEL_PROFILES.instagram.profileUrl,'https://instagram.com/zevanory');
+  assert.equal(CHANNEL_PROFILES.youtube.profileUrl,'https://youtube.com/@zevanory');
 });
 
 test('institutional profiles represent ZEVANORY rather than one product',()=>{
