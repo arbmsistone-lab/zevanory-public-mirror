@@ -1,7 +1,7 @@
 # ZEVANORY - E-mail profissional
 
 Dominio: zevanory.api.br
-Status: arquitetura pronta; caixa real depende de provedor e DNS autenticado.
+Status: Resend selecionado; envio autenticado verificado; MX inbound publicado; backend em producao fail-closed; ativacao final depende de API key, webhook secret e Receiving verificado.
 
 ## Enderecos oficiais
 Principal: contato@zevanory.api.br
@@ -16,10 +16,10 @@ Reply-To vendas: vendas@zevanory.api.br
 Financeiro nunca envia marketing.
 
 ## Gates obrigatorios antes de ativar
-MX publicado e validado.
-SPF com politica alinhada ao provedor.
-DKIM ativo e validado pelo provedor.
-DMARC publicado inicialmente com monitoramento seguro.
+MX publicado no Registro.br e confirmado nos servidores autoritativos.
+SPF/return-path do Resend verificado.
+DKIM ativo e verificado pelo Resend.
+DMARC publicado com p=none para monitoramento inicial seguro.
 TLS exigido no transporte quando suportado.
 Provider API/SMTP armazenado somente como Secret.
 

@@ -8,6 +8,8 @@ Status: identidade oficial definida para cadastros externos.
 - WhatsApp E.164: 5588992340423
 - Site institucional: https://zevanory.api.br
 - Handle preferencial: @zevanory
+- Instagram oficial: https://instagram.com/zevanory
+- YouTube oficial: https://youtube.com/@zevanory
 
 Contas-alvo: Meta Business, Facebook, Instagram, WhatsApp Business, TikTok Business, YouTube, LinkedIn e Metricool.
 
