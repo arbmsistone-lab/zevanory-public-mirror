@@ -102,20 +102,20 @@ unit('CODE-ASAAS','src/asaas.mjs',[
   command('asaas tests',process.execPath,['--test','test/asaas.test.mjs']),
   op('provider truth reconciliation required',()=>t('src/asaas.mjs').includes('paymentMatchesWebhook')&&t('src/asaas.mjs').includes('parseExternalReference')&&t('src/asaas.mjs').includes('PAYMENT_PARTIALLY_REFUNDED')&&t('src/asaas.mjs').includes('refundTotalForWebhook')),
 ]);
-unit('CODE-ASAAS-WEBHOOK','api/webhooks/asaas.mjs',[
-  command('syntax asaas webhook',process.execPath,['--check','api/webhooks/asaas.mjs']),
+unit('CODE-ASAAS-WEBHOOK','src/http/webhookAsaas.mjs',[
+  command('syntax asaas webhook',process.execPath,['--check','src/http/webhookAsaas.mjs']),
   command('asaas webhook tests',process.execPath,['--test','test/asaas-webhook.test.mjs']),
-  op('webhook auth and API lookup fail closed',()=>t('api/webhooks/asaas.mjs').includes('asaas-access-token')&&t('api/webhooks/asaas.mjs').includes('fetchAsaasPayment')&&t('api/webhooks/asaas.mjs').includes('payment_reconciliation_failed')&&t('api/webhooks/asaas.mjs').includes('refunded_total')),
+  op('webhook auth and API lookup fail closed',()=>t('src/http/webhookAsaas.mjs').includes('asaas-access-token')&&t('src/http/webhookAsaas.mjs').includes('fetchAsaasPayment')&&t('src/http/webhookAsaas.mjs').includes('payment_reconciliation_failed')&&t('src/http/webhookAsaas.mjs').includes('refunded_total')),
 ]);
 unit('CODE-ORDER','src/order.mjs',[
   command('syntax order',process.execPath,['--check','src/order.mjs']),
   command('order tests',process.execPath,['--test','test/order.test.mjs']),
   op('order contract supports explicit Asaas environments safely',()=>t('src/order.mjs').includes('ZEVANORY:${PROJECT.experimentId}')&&t('src/order.mjs').includes('checkoutUrlForId')&&t('src/order.mjs').includes('normalizeAsaasCheckoutResponse')&&t('src/order.mjs').includes('https://asaas.com/checkoutSession/show?id=')),
 ]);
-unit('CODE-ASAAS-CHECKOUT','api/checkout/asaas.mjs',[
-  command('syntax asaas checkout',process.execPath,['--check','api/checkout/asaas.mjs']),
+unit('CODE-ASAAS-CHECKOUT','src/http/checkoutAsaas.mjs',[
+  command('syntax asaas checkout',process.execPath,['--check','src/http/checkoutAsaas.mjs']),
   command('asaas checkout tests',process.execPath,['--test','test/checkout-asaas.test.mjs','test/checkout-persist-safety.test.mjs']),
-  op('checkout kill switches and uncertain state are present',()=>t('api/checkout/asaas.mjs').includes('sales_globally_blocked')&&t('api/checkout/asaas.mjs').includes('checkout_disabled')&&t('api/checkout/asaas.mjs').includes('checkout_environment_invalid')&&t('api/checkout/asaas.mjs').includes("['sandbox','production']")&&t('api/checkout/asaas.mjs').includes('checkout_uncertain')),
+  op('checkout kill switches and uncertain state are present',()=>t('src/http/checkoutAsaas.mjs').includes('sales_globally_blocked')&&t('src/http/checkoutAsaas.mjs').includes('checkout_disabled')&&t('src/http/checkoutAsaas.mjs').includes('checkout_environment_invalid')&&t('src/http/checkoutAsaas.mjs').includes("['sandbox','production']")&&t('src/http/checkoutAsaas.mjs').includes('checkout_uncertain')),
 ]);
 unit('CODE-EVIDENCE-VERIFIER', 'scripts/verify_evidence_gate.ps1', [
   op('verifier exists', () => existsSync(join(root,'scripts','verify_evidence_gate.ps1'))),
@@ -231,7 +231,7 @@ unit('DEF-PARTIAL-REFUND-GATE','evidence/EG-0016-estorno-parcial.md',[
 unit('DEF-ORDER-FINANCIAL-STATE','evidence/EG-0017-estado-transacional-pedido.md',[
   op('order financial state gate approved',()=>t('evidence/EG-0017-estado-transacional-pedido.md').includes('Veredito: APROVADO')),
   command('order financial state tests',process.execPath,['--test','test/order-financial-state.test.mjs']),
-  op('webhook transition is atomic',()=>t('api/webhooks/asaas.mjs').includes('WITH target AS')&&t('api/webhooks/asaas.mjs').includes('inserted AS')&&t('api/webhooks/asaas.mjs').includes('updated AS')),
+  op('webhook transition is atomic',()=>t('src/http/webhookAsaas.mjs').includes('WITH target AS')&&t('src/http/webhookAsaas.mjs').includes('inserted AS')&&t('src/http/webhookAsaas.mjs').includes('updated AS')),
 ]);
 unit('DEF-ORDER-FINANCIAL-MIGRATION','db/migrations/005_order_financial_states.sql',[
   op('partial refund order state is allowed',()=>t('db/migrations/005_order_financial_states.sql').includes("'partially_refunded'")),

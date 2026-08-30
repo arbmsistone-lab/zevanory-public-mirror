@@ -1,6 +1,6 @@
 import {readFile,access} from 'node:fs/promises';
 const root=new URL('../',import.meta.url); const checks=[]; const add=(n,ok)=>checks.push({n,ok:Boolean(ok)}); const txt=(p)=>readFile(new URL(p,root),'utf8');
-const [env,gate,policy,fulfillment,checkout,webhook,vercel,home,offer,master,release]=await Promise.all(['.env.example','src/salesGate.mjs','src/agentPolicy.mjs','src/digitalFulfillment.mjs','api/checkout/asaas.mjs','api/webhooks/asaas.mjs','vercel.json','public/index.html','public/arbm-sist.html','ZEVANORY_MASTER.md','src/release.mjs'].map(txt));
+const [env,gate,policy,fulfillment,checkout,webhook,vercel,home,offer,master,release]=await Promise.all(['.env.example','src/salesGate.mjs','src/agentPolicy.mjs','src/digitalFulfillment.mjs','src/http/checkoutAsaas.mjs','src/http/webhookAsaas.mjs','vercel.json','public/index.html','public/arbm-sist.html','ZEVANORY_MASTER.md','src/release.mjs'].map(txt));
 add('01 global sales default false',env.includes('SALE_GLOBALLY_ENABLED=false'));
 add('02 pre-sale default false',env.includes('PRE_SALE_GATES_APPROVED=false'));
 add('03 checkout default false',env.includes('CHECKOUT_ENABLED=false'));

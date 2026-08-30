@@ -2,7 +2,7 @@ import { validateProviderContracts, PROVIDER_CONTRACTS } from '../src/providerCo
 import { readFile } from 'node:fs/promises';
 const root=new URL('../',import.meta.url); const text=(p)=>readFile(new URL(p,root),'utf8');
 const checks=[]; const add=(name,ok)=>checks.push({name,ok:Boolean(ok)});
-const checkout=await text('api/checkout/asaas.mjs'); const webhook=await text('api/webhooks/asaas.mjs'); const ai=await text('src/aiProvider.mjs');
+const checkout=await text('src/http/checkoutAsaas.mjs'); const webhook=await text('src/http/webhookAsaas.mjs'); const ai=await text('src/aiProvider.mjs');
 add('provider contract registry valid',validateProviderContracts().valid);
 add('asaas auth contract',checkout.includes(PROVIDER_CONTRACTS.asaas.auth_header)&&webhook.includes(PROVIDER_CONTRACTS.asaas.auth_header));
 add('asaas lookup contract',webhook.includes("method: 'GET'")&&PROVIDER_CONTRACTS.asaas.payment_lookup_method==='GET');

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const webhook=await readFile(new URL('../api/webhooks/asaas.mjs',import.meta.url),'utf8');
+const webhook=await readFile(new URL('../src/http/webhookAsaas.mjs',import.meta.url),'utf8');
 const migration=await readFile(new URL('../db/migrations/005_order_financial_states.sql',import.meta.url),'utf8');
 
 test('financial event and order transition share one SQL statement',()=>{

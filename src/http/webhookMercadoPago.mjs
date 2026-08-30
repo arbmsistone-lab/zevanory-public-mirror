@@ -1,6 +1,6 @@
 import { neon } from '@neondatabase/serverless';
-import { MERCADOPAGO_API_BASE,normalizeMercadoPagoWebhook,verifyMercadoPagoSignature,normalizeMercadoPagoFinancialEvent } from '../../src/mercadopago.mjs';
-import { parseExternalReference } from '../../src/asaas.mjs';
+import { MERCADOPAGO_API_BASE,normalizeMercadoPagoWebhook,verifyMercadoPagoSignature,normalizeMercadoPagoFinancialEvent } from '../mercadopago.mjs';
+import { parseExternalReference } from '../asaas.mjs';
 
 export async function fetchMercadoPagoPayment(paymentId,accessToken,fetchImpl=fetch){
   const response=await fetchImpl(`${MERCADOPAGO_API_BASE}/v1/payments/${encodeURIComponent(paymentId)}`,{method:'GET',headers:{accept:'application/json',authorization:`Bearer ${accessToken}`}});

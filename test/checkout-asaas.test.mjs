@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import handler,{createAsaasCheckout} from '../api/checkout/asaas.mjs';
+import handler,{createAsaasCheckout} from '../src/http/checkoutAsaas.mjs';
 
-const checkoutSource=await readFile(new URL('../api/checkout/asaas.mjs',import.meta.url),'utf8');
+const checkoutSource=await readFile(new URL('../src/http/checkoutAsaas.mjs',import.meta.url),'utf8');
 
 function mockReq(body={},method='POST'){ return {body,method,headers:{}}; }
 function mockRes(){

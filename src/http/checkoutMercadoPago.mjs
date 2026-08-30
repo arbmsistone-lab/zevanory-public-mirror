@@ -1,9 +1,9 @@
 import crypto from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
-import { PROJECT } from '../../src/config.mjs';
-import { salesGate } from '../../src/salesGate.mjs';
-import { normalizeCheckoutRequest,checkoutReplayDecision,externalReferenceForOrder,safePublicBaseUrl } from '../../src/order.mjs';
-import { buildMercadoPagoPreference,normalizeMercadoPagoPreference,MERCADOPAGO_API_BASE } from '../../src/mercadopago.mjs';
+import { PROJECT } from '../config.mjs';
+import { salesGate } from '../salesGate.mjs';
+import { normalizeCheckoutRequest,checkoutReplayDecision,externalReferenceForOrder,safePublicBaseUrl } from '../order.mjs';
+import { buildMercadoPagoPreference,normalizeMercadoPagoPreference,MERCADOPAGO_API_BASE } from '../mercadopago.mjs';
 
 export async function createMercadoPagoPreference(payload,accessToken,fetchImpl=fetch){
   const response=await fetchImpl(`${MERCADOPAGO_API_BASE}/checkout/preferences`,{
