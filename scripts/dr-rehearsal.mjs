@@ -12,6 +12,7 @@ const files = [
   '001_telemetry_events.sql','002_financial_events.sql','003_orders_checkout.sql',
   '004_partial_refund_snapshots.sql','005_order_financial_states.sql','006_sales_machine.sql',
   '007_no_inventory_commerce.sql','008_autonomous_revenue_engine.sql','009_composable_infrastructure.sql',
+  '010_payment_provider_abstraction.sql',
 ];
 const stripTxn = (sql) => sql.replace(/^\s*BEGIN;\s*/i, '').replace(/\s*COMMIT;\s*$/i, '');
 const schema = `dr_rehearsal_${randomUUID().replaceAll('-', '').slice(0,16)}`;

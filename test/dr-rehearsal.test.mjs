@@ -18,5 +18,5 @@ test('DR rehearsal is isolated rolled back and measures rehearsal RTO',()=>{
 });
 
 test('DR rehearsal replays every canonical migration',()=>{
-  for(const id of ['001_telemetry_events','002_financial_events','003_orders_checkout','004_partial_refund_snapshots','005_order_financial_states','006_sales_machine','007_no_inventory_commerce','008_autonomous_revenue_engine','009_composable_infrastructure']) assert.ok(script.includes(`${id}.sql`));
+  for(const id of ['001_telemetry_events','002_financial_events','003_orders_checkout','004_partial_refund_snapshots','005_order_financial_states','006_sales_machine','007_no_inventory_commerce','008_autonomous_revenue_engine','009_composable_infrastructure','010_payment_provider_abstraction']) assert.ok(script.includes(`${id}.sql`));
 });

@@ -47,7 +47,7 @@ G2 comercial: ABERTO. Nao existe pagamento real de producao reconciliado.
 Telemetria publica: ativa e persistente.
 Eventos financeiros reais: BLOQUEADOS.
 SALE_GLOBALLY_ENABLED=false, PRE_SALE_GATES_APPROVED=false, CHECKOUT_ENABLED=false, WHATSAPP_SALES_ENABLED=false e FINANCIAL_EVENTS_ENABLED=false permanecem fail-closed.
-Schema canonico atual: 15 tabelas, migrations 001-009.
+Schema canonico atual: 15 tabelas, migrations 001-010.
 Release estrutural atual: ZEVANORY-EG0039-FINAL.
 
 ## PROXIMOS PASSOS AUTORIZADOS
@@ -79,7 +79,7 @@ Benchmark confronta Shopify Hydrogen/Oxygen, commercetools MACH, Salesforce Comp
 Decisao aprovada: monolito modular composable, API-first, headless-ready, cloud-native, portas/adaptadores e migracao incremental por strangler pattern.
 Microservicos distribuidos nao sao obrigatorios nesta escala e nao foram introduzidos sem necessidade comprovada.
 Migration 009 adiciona transactional outbox PostgreSQL/Neon com idempotencia, retry exponencial limitado, concorrencia por SKIP LOCKED e dead-letter.
-Schema canonico: 15 tabelas e migrations 001-009.
+Schema canonico: 15 tabelas e migrations 001-010.
 Infraestrutura sem dependencia obrigatoria de novo provedor pago.
 Todos os kill-switches comerciais/financeiros permanecem false; esta fase nao autoriza vendas, checkout comercial, WhatsApp comercial, eventos financeiros reais ou autonomia comercial.
 Fechamento exige auditorias legadas, engine 20X, composable 10X repetido, auditoria 3X, DR, prova de producao e auditoria final 20X.
@@ -87,7 +87,7 @@ Fechamento exige auditorias legadas, engine 20X, composable 10X repetido, audito
 ## FASE EG-0037 - ENTERPRISE OPERATIONAL ASSURANCE
 Release estrutural: ZEVANORY-EG0037-FINAL.
 Formaliza SLOs sem declarar historico inexistente, health de outbox e IA, contratos de fornecedores, carga read-only, secret scan e monitor recorrente de producao.
-Runbook canonico passa a exigir schema 15x9, /api/assurance e verificacao de dead-letter/idade de backlog.
+Runbook canonico passa a exigir schema 15x10, /api/assurance e verificacao de dead-letter/idade de backlog.
 Git remoto e origin estao configurados e a release so e promovida apos commit, push, deploy e prova operacional no dominio oficial.
 Nenhuma melhoria da EG-0037 habilita venda, checkout comercial, WhatsApp comercial, evento financeiro real ou autonomia comercial.
 
