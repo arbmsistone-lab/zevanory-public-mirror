@@ -11,8 +11,15 @@ test('activation plan exposes external blockers without secrets',()=>{
   assert.ok(plan.missing.every(x=>!('value' in x)));
 });
 
+test('payment credentials cannot bypass merchant identity verification',()=>{
+  const env={ACTIVE_OFFER_TYPE:'digital_product',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',PAYMENT_PROVIDER:'mercadopago',MERCADOPAGO_ENV:'production',MERCADOPAGO_ACCESS_TOKEN:'secret',MERCADOPAGO_WEBHOOK_SECRET:'secret'};
+  const plan=buildActivationPlan(env);
+  assert.equal(plan.inputs_ready,false);
+  assert.ok(plan.missing.some(x=>x.code==='payment_merchant_identity_unverified'));
+});
+
 test('service can become ready without enabling sales',()=>{
-  const env={ACTIVE_OFFER_TYPE:'service',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',PAYMENT_PROVIDER:'asaas',ASAAS_ENV:'production',ASAAS_API_KEY:'secret',ASAAS_WEBHOOK_TOKEN:'secret',SALE_GLOBALLY_ENABLED:'false',PRE_SALE_GATES_APPROVED:'false'};
+  const env={ACTIVE_OFFER_TYPE:'service',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',PAYMENT_PROVIDER:'asaas',PAYMENT_MERCHANT_IDENTITY_VERIFIED:'true',ASAAS_ENV:'production',ASAAS_API_KEY:'secret',ASAAS_WEBHOOK_TOKEN:'secret',SALE_GLOBALLY_ENABLED:'false',PRE_SALE_GATES_APPROVED:'false'};
   const plan=buildActivationPlan(env);
   assert.equal(plan.inputs_ready,true);
   assert.equal(plan.phase,'ready_to_unlock');
@@ -42,7 +49,7 @@ function invokeConfig(url,env={}){
 }
 
 test('shared config function serves activation readiness without secret values',()=>{
-  const r=invokeConfig('/api/config?view=activation',{SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',ACTIVE_OFFER_TYPE:'service',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',PAYMENT_PROVIDER:'asaas',ASAAS_ENV:'production',ASAAS_API_KEY:'top-secret',ASAAS_WEBHOOK_TOKEN:'also-secret'});
+  const r=invokeConfig('/api/config?view=activation',{SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',ACTIVE_OFFER_TYPE:'service',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',PAYMENT_PROVIDER:'asaas',PAYMENT_MERCHANT_IDENTITY_VERIFIED:'true',ASAAS_ENV:'production',ASAAS_API_KEY:'top-secret',ASAAS_WEBHOOK_TOKEN:'also-secret'});
   assert.equal(r.status,200); assert.equal(r.body.inputs_ready,true); assert.equal(r.body.commercial_enabled,false);
   const text=JSON.stringify(r.body); assert.equal(text.includes('top-secret'),false); assert.equal(text.includes('also-secret'),false);
 });

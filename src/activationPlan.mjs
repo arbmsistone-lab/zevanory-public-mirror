@@ -11,6 +11,7 @@ export const ACTIVATION_REQUIREMENTS=Object.freeze({
   active_offer_type_invalid:requirement('commercial',['ACTIVE_OFFER_TYPE'],'decision'),
   service_delivery_mode_missing:requirement('commercial',['SERVICE_DELIVERY_MODE'],'decision'),
   payment_provider_not_selected:requirement('payments',['PAYMENT_PROVIDER'],'decision'),
+  payment_merchant_identity_unverified:requirement('payments',['PAYMENT_MERCHANT_IDENTITY_VERIFIED'],'external'),
   asaas_production_not_configured:requirement('payments',['ASAAS_ENV'],'configuration'),
   asaas_credentials_missing:requirement('payments',['ASAAS_API_KEY','ASAAS_WEBHOOK_TOKEN'],'secret'),
   mercadopago_production_not_configured:requirement('payments',['MERCADOPAGO_ENV'],'configuration'),
