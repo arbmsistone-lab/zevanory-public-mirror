@@ -2,10 +2,26 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
   "rewrites": [
-    {"source":"/api/checkout/asaas","destination":"/api/checkout?provider=asaas"},
-    {"source":"/api/checkout/mercadopago","destination":"/api/checkout?provider=mercadopago"},
-    {"source":"/api/webhooks/asaas","destination":"/api/webhooks?provider=asaas"},
-    {"source":"/api/webhooks/mercadopago","destination":"/api/webhooks?provider=mercadopago"},
+    {
+      "source": "/api/checkout/asaas",
+      "destination": "/api/checkout?provider=asaas"
+    },
+    {
+      "source": "/api/checkout/mercadopago",
+      "destination": "/api/checkout?provider=mercadopago"
+    },
+    {
+      "source": "/api/webhooks/asaas",
+      "destination": "/api/webhooks?provider=asaas"
+    },
+    {
+      "source": "/api/webhooks/mercadopago",
+      "destination": "/api/webhooks?provider=mercadopago"
+    },
+    {
+      "source": "/api/webhooks/resend",
+      "destination": "/api/webhooks?provider=resend"
+    },
     {
       "source": "/arbm-sist",
       "destination": "/public/arbm-sist.html"
