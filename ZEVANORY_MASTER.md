@@ -147,3 +147,10 @@ Nenhuma mudanca desta fase altera backend, schema, checkout, vendas, WhatsApp co
 - 1600x900 homologado com fonte primaria minima de 12 px, zero scroll, zero truncamento e zero overflow interno.
 - Scroll interno permitido exclusivamente no dialogo tecnico explicitamente aberto pelo usuario.
 - Nenhum gate comercial ou financeiro foi alterado; todos permanecem fail-closed.
+
+## REGRA INSTITUCIONAL - MARCA-MAE E PORTFOLIO
+ZEVANORY e a marca-mae, operacao comercial e infraestrutura institucional.
+ARBM SIST e apenas um produto do portfolio ZEVANORY, assim como futuras ofertas proprias, afiliadas ou de parceiros.
+Contas sociais, WhatsApp, e-mail, CRM, Metricool, canais e identidade publica devem representar ZEVANORY, nunca um produto isolado.
+Produtos podem ter landing pages, campanhas, criativos, UTMs e metricas proprias sem substituir a identidade institucional da ZEVANORY.
+Esta separacao e estrutural e nao altera gates comerciais, financeiros ou de autonomia.

@@ -5,15 +5,15 @@
   requiredDns:Object.freeze(['MX','SPF','DKIM','DMARC']),
 });
 
-const link=(source)=>`https://zevanory.api.br/arbm-sist?utm_source=${source}&utm_medium=organic&utm_campaign=arbm_sist_launch`;
+const brandLink=(source)=>`https://zevanory.api.br/?utm_source=${source}&utm_medium=organic&utm_campaign=zevanory_brand`;
 
 export const CHANNEL_PROFILES = Object.freeze({
-  instagram:Object.freeze({handle:'@zevanory',url:link('instagram'),bio:'ARBM SIST | IA local-first para desenvolvimento com controle, testes e rollback. Demonstracoes reais e lancamento oficial.'}),
-  facebook:Object.freeze({handle:'ZEVANORY',url:link('facebook'),bio:'Tecnologia aplicada com prova real. ARBM SIST: desenvolvimento assistido por IA, local-first, com testes, diff e rollback.'}),
-  tiktok:Object.freeze({handle:'@zevanory',url:link('tiktok'),bio:'IA para desenvolvimento, com controle de engenharia. ARBM SIST, demos reais, local-first.'}),
-  youtube:Object.freeze({handle:'ZEVANORY',url:link('youtube'),bio:'Demonstracoes tecnicas do ARBM SIST: IA local-first, worktrees, testes, diff, rollback e fluxos seguros.'}),
-  linkedin:Object.freeze({handle:'ZEVANORY',url:link('linkedin'),bio:'Solucoes de software e automacao com foco em seguranca, controle operacional e evidencia tecnica.'}),
-  google:Object.freeze({handle:'ZEVANORY',url:link('google'),bio:'ARBM SIST - agente de desenvolvimento com IA local-first, testes, worktrees, diff e rollback.'}),
-  whatsapp:Object.freeze({handle:'ZEVANORY',url:link('whatsapp'),bio:'Atendimento e suporte oficial do ARBM SIST.'}),
-  email:Object.freeze({handle:PROFESSIONAL_EMAIL.primary,url:link('email'),bio:'Canal oficial de contato, suporte e relacionamento da ZEVANORY.'}),
+  instagram:Object.freeze({handle:'@zevanory',url:brandLink('instagram'),bio:'ZEVANORY | Tecnologia, automacao e solucoes digitais com operacao orientada por evidencia.'}),
+  facebook:Object.freeze({handle:'ZEVANORY',url:brandLink('facebook'),bio:'Tecnologia, automacao, produtos e servicos digitais com foco em execucao segura e resultados reais.'}),
+  tiktok:Object.freeze({handle:'@zevanory',url:brandLink('tiktok'),bio:'Tecnologia, automacao, produtos digitais e bastidores reais da ZEVANORY.'}),
+  youtube:Object.freeze({handle:'ZEVANORY',url:brandLink('youtube'),bio:'Canal oficial da ZEVANORY para produtos, servicos, demonstracoes e conteudo tecnico.'}),
+  linkedin:Object.freeze({handle:'ZEVANORY',url:brandLink('linkedin'),bio:'Solucoes de software, automacao e operacoes digitais com foco em seguranca, controle e evidencia.'}),
+  google:Object.freeze({handle:'ZEVANORY',url:brandLink('google'),bio:'ZEVANORY - tecnologia, automacao, produtos e servicos digitais.'}),
+  whatsapp:Object.freeze({handle:'ZEVANORY',url:brandLink('whatsapp'),bio:'Atendimento oficial da ZEVANORY para produtos, servicos, vendas e suporte.'}),
+  email:Object.freeze({handle:PROFESSIONAL_EMAIL.primary,url:brandLink('email'),bio:'Canal oficial de contato, suporte e relacionamento da ZEVANORY.'}),
 });
