@@ -50,7 +50,7 @@ unit('CODE-SALES-GATE','src/salesGate.mjs',[
 unit('CODE-PRE-SALE-APPROVAL','src/preSaleApproval.mjs',[
   command('pre-sale approval syntax',process.execPath,['--check','src/preSaleApproval.mjs']),
   op('manifest derives approval from activation readiness',()=>t('src/preSaleApproval.mjs').includes('evaluateActivationReadiness')&&t('src/preSaleApproval.mjs').includes("custom_domain:'EG-0021'")),
-  op('sandbox homologation is evidenced without approving sales',()=>!t('src/preSaleApproval.mjs').includes('asaas_sandbox_unconfigured')&&t('src/preSaleApproval.mjs').includes("asaas_sandbox_e2e:'EG-0026'")&&t('src/preSaleApproval.mjs').includes("global_sales_gate:'EG-0018'")),
+  op('sandbox homologation is evidenced without approving sales',()=>!t('src/preSaleApproval.mjs').includes('asaas_sandbox_unconfigured')&&t('src/preSaleApproval.mjs').includes("provider_sandbox_e2e:'EG-0026'")&&t('src/preSaleApproval.mjs').includes("global_sales_gate:'EG-0018'")),
 ]);
 unit('CODE-PRE-SALE-READINESS','src/preSaleReadiness.mjs + scripts/pre-sale-preflight.mjs',[
   command('pre-sale readiness syntax',process.execPath,['--check','src/preSaleReadiness.mjs']),
