@@ -28,7 +28,7 @@ Atualizacao operacional 2026-08-30:
 - zevanory@gmail.com nao esta associado a nenhum perfil Chrome local detectado.
 - Chrome atual nao possui remote-debugging habilitado; automacao DOM invisivel da sessao existente nao esta disponivel.
 - Facebook: formulario oculto preservado, nome ZEVANORY, categoria digitada Software e bio institucional corrigida; Meta ainda exige confirmacao valida da categoria para habilitar criacao.
-- Google/YouTube: fluxo headless bloqueado pela protecao anti-automacao antes da autenticacao.
+- Google/YouTube: conta Google oficial autenticada e canal ZEVANORY criado; automacao de credenciais permanece proibida.
 - Nenhum conector/plugin disponivel cria contas Meta/TikTok/YouTube/LinkedIn/Mercado Pago/Asaas diretamente.
 - Pagamentos em producao: arquitetura Asaas + Mercado Pago implantada; PAYMENT_PROVIDER=mercadopago persistido; vendas seguem bloqueadas ate credenciais e gates reais.
 - Resend: conta criada; dominio zevanory.api.br verificado para envio; DKIM/SPF/DMARC publicados; MX inbound publicado no Registro.br; backend inbound/forward em producao fail-closed; RESEND_FORWARD_TO, RESEND_FROM_ADDRESS e EMAIL_INBOUND_ENABLED=false persistidos na Vercel; faltam RESEND_API_KEY, RESEND_WEBHOOK_SECRET e conclusao do Receiving no painel.

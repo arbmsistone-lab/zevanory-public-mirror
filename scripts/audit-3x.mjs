@@ -218,6 +218,11 @@ unit('DEF-PAYMENT-PROVIDER','evidence/EG-0013-provedor-pagamento-asaas.md',[
   command('payment provider tests',process.execPath,['--test','test/asaas.test.mjs','test/asaas-webhook.test.mjs']),
   op('browser callback never becomes financial truth',()=>t('evidence/EG-0013-provedor-pagamento-asaas.md').includes('nunca confirma sozinho')&&t('evidence/EG-0013-provedor-pagamento-asaas.md').includes('reconciliar pela API')),
 ]);
+unit('CODE-PAYMENT-PROVIDER-ABSTRACTION','src/paymentProviders.mjs + db/migrations/010_payment_provider_abstraction.sql',[
+  command('payment abstraction tests',process.execPath,['--test','test/mercadopago.test.mjs','test/pre-sale-readiness.test.mjs']),
+  op('migration 010 permits both providers',()=>{const m=t('db/migrations/010_payment_provider_abstraction.sql');return m.includes("'asaas'")&&m.includes("'mercadopago'")&&m.includes('010_payment_provider_abstraction');}),
+  op('provider selector remains fail closed',()=>{const p=t('src/paymentProviders.mjs');return p.includes('payment_provider_not_selected')&&p.includes('asaas_credentials_missing')&&p.includes('mercadopago_credentials_missing');}),
+]);
 unit('DEF-PARTIAL-REFUND-MIGRATION','db/migrations/004_partial_refund_snapshots.sql',[
   op('refund cumulative column exists',()=>t('db/migrations/004_partial_refund_snapshots.sql').includes('refunded_total numeric(12,2)')),
   op('payment and refund dedup indexes are separated',()=>t('db/migrations/004_partial_refund_snapshots.sql').includes('financial_events_payment_confirmed_idx')&&t('db/migrations/004_partial_refund_snapshots.sql').includes('financial_events_refund_snapshot_idx')),

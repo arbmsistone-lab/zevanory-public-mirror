@@ -234,7 +234,7 @@
     },
     {
       "id": "CODE-ASAAS-WEBHOOK",
-      "label": "api/webhooks/asaas.mjs",
+      "label": "src/http/webhookAsaas.mjs",
       "approved_operations": 3,
       "status": "APPROVED",
       "operations": [
@@ -280,7 +280,7 @@
     },
     {
       "id": "CODE-ASAAS-CHECKOUT",
-      "label": "api/checkout/asaas.mjs",
+      "label": "src/http/checkoutAsaas.mjs",
       "approved_operations": 3,
       "status": "APPROVED",
       "operations": [
@@ -710,6 +710,29 @@
         },
         {
           "name": "browser callback never becomes financial truth",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PAYMENT-PROVIDER-ABSTRACTION",
+      "label": "src/paymentProviders.mjs + db/migrations/010_payment_provider_abstraction.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "payment abstraction tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "migration 010 permits both providers",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "provider selector remains fail closed",
           "status": "APPROVED",
           "detail": "true"
         }
@@ -1407,8 +1430,8 @@
     }
   ],
   "totals": {
-    "units": 61,
-    "approved": 61,
+    "units": 62,
+    "approved": 62,
     "failed": 0
   },
   "verdict": "APPROVED"
