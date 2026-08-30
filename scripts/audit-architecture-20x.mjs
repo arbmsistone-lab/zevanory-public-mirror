@@ -6,7 +6,7 @@ const exists=async(p)=>{try{await access(new URL(p,root));return true}catch{retu
 const add=(name,ok)=>checks.push({name,ok:Boolean(ok)});
 const run=(cmd,args)=>spawnSync(cmd,args,{cwd:root,encoding:'utf8',shell:false}).status===0;
 const runShell=(cmd)=>spawnSync(cmd,{cwd:root,encoding:'utf8',shell:true}).status===0;
-const env=await text('.env.example'); const vercel=JSON.parse(await text('vercel.json')); const checkout=await text('api/checkout/asaas.mjs'); const webhook=await text('api/webhooks/asaas.mjs'); const status=await text('api/status.mjs');
+const env=await text('.env.example'); const vercel=JSON.parse(await text('vercel.json')); const checkout=await text('src/http/checkoutAsaas.mjs'); const webhook=await text('src/http/webhookAsaas.mjs'); const status=await text('api/status.mjs');
 const headers=Object.fromEntries(vercel.headers[0].headers.map(x=>[x.key,x.value]));
 add('01 sales global switch off',env.includes('SALE_GLOBALLY_ENABLED=false'));
 add('02 pre-sale switch off',env.includes('PRE_SALE_GATES_APPROVED=false'));

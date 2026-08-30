@@ -8,7 +8,7 @@ import {
   parseExternalReference,
   refundTotalForWebhook,
   asaasBaseUrl,
-} from '../../src/asaas.mjs';
+} from '../asaas.mjs';
 
 export async function fetchAsaasPayment(paymentId, env, apiKey, fetchImpl = fetch) {
   const base = asaasBaseUrl(env);

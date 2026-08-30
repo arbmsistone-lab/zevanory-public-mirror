@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { buildMercadoPagoPreference,normalizeMercadoPagoPreference,normalizeMercadoPagoWebhook,verifyMercadoPagoSignature,normalizeMercadoPagoFinancialEvent } from '../src/mercadopago.mjs';
-import { createMercadoPagoPreference } from '../api/checkout/mercadopago.mjs';
-import { fetchMercadoPagoPayment } from '../api/webhooks/mercadopago.mjs';
+import { createMercadoPagoPreference } from '../src/http/checkoutMercadoPago.mjs';
+import { fetchMercadoPagoPayment } from '../src/http/webhookMercadoPago.mjs';
 
 const orderId='550e8400-e29b-41d4-a716-446655440000';
 const ref=`ZEVANORY:EXP-0001:${orderId}`;

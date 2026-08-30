@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
-import { PROJECT } from '../../src/config.mjs';
-import { asaasBaseUrl } from '../../src/asaas.mjs';
-import { salesGate } from '../../src/salesGate.mjs';
+import { PROJECT } from '../config.mjs';
+import { asaasBaseUrl } from '../asaas.mjs';
+import { salesGate } from '../salesGate.mjs';
 import {
   normalizeCheckoutRequest,
   checkoutReplayDecision,
@@ -10,7 +10,7 @@ import {
   safePublicBaseUrl,
   buildAsaasCheckoutPayload,
   normalizeAsaasCheckoutResponse,
-} from '../../src/order.mjs';
+} from '../order.mjs';
 
 export async function createAsaasCheckout(payload, apiKey, env='sandbox', fetchImpl=fetch) {
   if (typeof env === 'function') { fetchImpl=env; env='sandbox'; }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import handler,{fetchAsaasPayment} from '../api/webhooks/asaas.mjs';
+import handler,{fetchAsaasPayment} from '../src/http/webhookAsaas.mjs';
 import { asaasBaseUrl } from '../src/asaas.mjs';
 
 function mockReq(headers={},body={},method='POST') { return {headers,body,method}; }
@@ -64,7 +64,7 @@ test('webhook is disabled by default even with valid token',async()=>{
 
 test('webhook persists provider-reconciled cumulative refund total',async()=>{
   const { readFile } = await import('node:fs/promises');
-  const source=await readFile(new URL('../api/webhooks/asaas.mjs',import.meta.url),'utf8');
+  const source=await readFile(new URL('../src/http/webhookAsaas.mjs',import.meta.url),'utf8');
   assert.match(source,/refundTotalForWebhook/);
   assert.match(source,/refunded_total/);
   assert.match(source,/normalized === 'refund_confirmed'/);
@@ -74,7 +74,7 @@ test('webhook persists provider-reconciled cumulative refund total',async()=>{
 
 
 test('webhook successful acknowledgement uses provider-required HTTP 200',async()=>{
-  const source=await (await import('node:fs/promises')).readFile(new URL('../api/webhooks/asaas.mjs',import.meta.url),'utf8');
+  const source=await (await import('node:fs/promises')).readFile(new URL('../src/http/webhookAsaas.mjs',import.meta.url),'utf8');
   assert.match(source,/res\.statusCode = 200;\s*return res\.end\(JSON\.stringify\(\{ accepted: true/);
   assert.doesNotMatch(source,/res\.statusCode = 202;\s*return res\.end\(JSON\.stringify\(\{ accepted: true/);
 });
