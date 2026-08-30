@@ -8,7 +8,7 @@ const add=(name,ok)=>checks.push({name,ok:Boolean(ok)});
 const env=await text('.env.example'); const pkg=JSON.parse(await text('package.json')); const workflow=await text('.github/workflows/quality.yml');
 add('01 final release',RELEASE.id==='ZEVANORY-EG0039-FINAL');
 add('02 fifteen required tables',REQUIRED_TABLES.length===15&&REQUIRED_TABLES.includes('integration_outbox'));
-add('03 nine migrations',REQUIRED_MIGRATIONS.length===9&&REQUIRED_MIGRATIONS.includes('009_composable_infrastructure'));
+add('03 ten migrations',REQUIRED_MIGRATIONS.length===10&&REQUIRED_MIGRATIONS.includes('010_payment_provider_abstraction'));
 add('04 CRM engine',await exists('src/salesPipeline.mjs')); add('05 follow-up engine',(await text('src/salesPipeline.mjs')).includes('buildFollowUpPlan'));
 add('06 unit economics',await exists('src/unitEconomics.mjs')); add('07 learning engine',await exists('src/learningEngine.mjs'));
 add('08 autonomous revenue agent',await exists('src/revenueAgent.mjs')&&await exists('src/agentWorker.mjs'));

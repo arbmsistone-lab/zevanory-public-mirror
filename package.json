@@ -34,6 +34,7 @@
     "migration:007": "node --env-file-if-exists=.env.production.local scripts/apply-migration-007.mjs",
     "migration:008": "node --env-file-if-exists=.env.production.local scripts/apply-migration-008.mjs",
     "migration:009": "node --env-file-if-exists=.env.production.local scripts/apply-migration-009.mjs",
+    "migration:010": "node --env-file-if-exists=.env.production.local scripts/apply-migration-010.mjs",
     "preflight:pre-sale": "node --env-file-if-exists=.env.local scripts/pre-sale-preflight.mjs",
     "audit:activation:20x": "node scripts/audit-activation-20x.mjs",
     "activation:check": "node scripts/activation-check.mjs",
