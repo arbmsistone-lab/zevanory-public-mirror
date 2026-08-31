@@ -1,12 +1,22 @@
 import { RELEASE } from '../src/release.mjs';
 
+const validSha = (value) => /^[0-9a-f]{40}$/i.test(String(value||'').trim());
+const validRef = (value) => /^[A-Za-z0-9._/-]{1,120}$/.test(String(value||'').trim());
 const explicitReleaseSha = () => {
   const value=String(process.env.ZEVANORY_RELEASE_SHA||'').trim();
-  return /^[0-9a-f]{40}$/i.test(value) ? value.toLowerCase() : null;
+  return validSha(value) ? value.toLowerCase() : null;
 };
 const explicitReleaseRef = () => {
   const value=String(process.env.ZEVANORY_RELEASE_REF||'').trim();
-  return /^[A-Za-z0-9._/-]{1,120}$/.test(value) ? value : null;
+  return validRef(value) ? value : null;
+};
+const nativeReleaseSha = () => {
+  const value=String(process.env.VERCEL_GIT_COMMIT_SHA||'').trim();
+  return validSha(value) ? value.toLowerCase() : null;
+};
+const nativeReleaseRef = () => {
+  const value=String(process.env.VERCEL_GIT_COMMIT_REF||'').trim();
+  return validRef(value) ? value : null;
 };
 
 export default function handler(req,res){
@@ -18,9 +28,8 @@ export default function handler(req,res){
     return res.end(JSON.stringify({error:'method_not_allowed'}));
   }
   const deployment=Object.freeze({
-    environment:process.env.VERCEL_ENV || 'local',
-    branch:explicitReleaseRef() || process.env.VERCEL_GIT_COMMIT_REF || null,
-    commit_sha:explicitReleaseSha() || process.env.VERCEL_GIT_COMMIT_SHA || null,
+    environment:process.env.VERCEL_ENV || 'local',    branch:nativeReleaseRef() || explicitReleaseRef(),
+    commit_sha:nativeReleaseSha() || explicitReleaseSha(),
     region:process.env.VERCEL_REGION || null,
   });
   res.statusCode=200;

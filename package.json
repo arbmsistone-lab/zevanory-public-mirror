@@ -43,6 +43,7 @@
     "audit:worldclass:10x": "node scripts/audit-worldclass-dashboard-10x.mjs",
     "audit:visual:10x": "node scripts/audit-visual-certification-10x.mjs",
     "audit:channels:20x": "node scripts/audit-multichannel-20x.mjs",
-    "email:readiness": "node scripts/email-readiness.mjs"
+    "email:readiness": "node scripts/email-readiness.mjs",
+    "deploy:production": "node scripts/deploy-production.mjs"
   }
 }
