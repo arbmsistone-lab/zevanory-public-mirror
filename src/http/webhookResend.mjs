@@ -4,7 +4,7 @@ const API='https://api.resend.com';
 const ALIASES=new Set(['contato','vendas','suporte','financeiro']);
 const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringify(body));};
 const headers=(req)=>({id:String(req.headers?.['svix-id']||''),timestamp:String(req.headers?.['svix-timestamp']||''),signature:String(req.headers?.['svix-signature']||'')});
-const bodyText=(req)=>Buffer.isBuffer(req.body)?req.body.toString('utf8'):typeof req.body==='string'?req.body:JSON.stringify(req.body||{});
+const bodyText=(req)=>Buffer.isBuffer(req.rawBody)?req.rawBody.toString('utf8'):typeof req.rawBody==='string'?req.rawBody:Buffer.isBuffer(req.body)?req.body.toString('utf8'):typeof req.body==='string'?req.body:JSON.stringify(req.body||{});
 
 export function verifyResendSignature({payload,id,timestamp,signature,secret,now=Date.now()}){
   if(!payload||!id||!timestamp||!signature||!secret?.startsWith('whsec_')) return false;

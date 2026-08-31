@@ -12,7 +12,7 @@ const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringi
 export default async function handler(req,res){
   res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');
   if(req.method!=='POST') return json(res,405,{error:'method_not_allowed'});
-  const webhook=normalizeMercadoPagoWebhook(req.body,req.url); if(!webhook)return json(res,400,{error:'unsupported_webhook',accepted:false});
+  const webhook=normalizeMercadoPagoWebhook(req.parsedBody??req.body,req.url); if(!webhook)return json(res,400,{error:'unsupported_webhook',accepted:false});
   const requestId=String(req.headers?.['x-request-id']||''); const signature=String(req.headers?.['x-signature']||'');
   if(!verifyMercadoPagoSignature({signature,requestId,dataId:webhook.paymentId,secret:process.env.MERCADOPAGO_WEBHOOK_SECRET})) return json(res,401,{error:'webhook_auth_failed',accepted:false});
   if(process.env.FINANCIAL_EVENTS_ENABLED!=='true') return json(res,503,{error:'financial_events_disabled',accepted:false});
