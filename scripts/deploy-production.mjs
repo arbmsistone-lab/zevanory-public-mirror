@@ -16,25 +16,29 @@ export function validateReleaseMetadata({sha,ref,status}){
   return {sha:cleanSha,ref:cleanRef};
 }
 
-function run(command,args,{capture=false}={}){
+export function vercelRunnerConfig(platform=process.platform){
+  return {command:'npx',shell:platform==='win32'};
+}
+
+function run(command,args,{capture=false,shell=false}={}){
   const result=spawnSync(command,args,{
-    encoding:'utf8', shell:false,
+    encoding:'utf8', shell,
     stdio:capture?['ignore','pipe','pipe']:'inherit',
   });
   if(result.error) throw result.error;
   if(result.status!==0) throw new Error(`command_failed:${command}:${result.status}`);
   return capture ? String(result.stdout||'').trim() : '';
 }
-
 export function main(){
-  const sha=run('git',['rev-parse','HEAD'],{capture:true});  const ref=run('git',['branch','--show-current'],{capture:true});
+  const sha=run('git',['rev-parse','HEAD'],{capture:true});
+  const ref=run('git',['branch','--show-current'],{capture:true});
   const status=run('git',['status','--porcelain'],{capture:true});
   const meta=validateReleaseMetadata({sha,ref,status});
-  const npx=process.platform==='win32'?'npx.cmd':'npx';
+  const runner=vercelRunnerConfig();
   const common=['--no-sensitive','--force','--yes','--scope',SCOPE];
-  run(npx,['vercel','env','add','ZEVANORY_RELEASE_SHA','production','--value',meta.sha,...common]);
-  run(npx,['vercel','env','add','ZEVANORY_RELEASE_REF','production','--value',meta.ref,...common]);
-  run(npx,['vercel','deploy','--prod','--yes','--scope',SCOPE]);
+  run(runner.command,['vercel','env','add','ZEVANORY_RELEASE_SHA','production','--value',meta.sha,...common],{shell:runner.shell});
+  run(runner.command,['vercel','env','add','ZEVANORY_RELEASE_REF','production','--value',meta.ref,...common],{shell:runner.shell});
+  run(runner.command,['vercel','deploy','--prod','--yes','--scope',SCOPE],{shell:runner.shell});
   console.log(`DEPLOY_PRODUCTION_COMPLETE sha=${meta.sha} ref=${meta.ref}`);
 }
 
