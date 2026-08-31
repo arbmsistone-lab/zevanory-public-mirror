@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     res.statusCode = 503;
     return res.end(JSON.stringify({ error: 'financial_provider_unavailable', accepted: false }));
   }
-  const webhook = normalizeAsaasWebhook(req.body);
+  const webhook = normalizeAsaasWebhook(req.parsedBody??req.body);
   if (!webhook) {
     res.statusCode = 400;
     return res.end(JSON.stringify({ error: 'unsupported_webhook', accepted: false }));
