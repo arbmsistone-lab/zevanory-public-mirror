@@ -7,8 +7,10 @@ const sitemap=await readFile(new URL('../public/sitemap.xml',import.meta.url),'u
 test('ARBM SIST targets competitive search intent without false superiority claims',()=>{
   assert.match(html,/alternativa ao Codex/i);
   for(const term of ['Codex','Claude Code','Cursor','agentes de programação']) assert.match(html,new RegExp(term,'i'));
+  assert.match(html,/agente de IA local para Windows/i);
   assert.match(html,/Não existe um vencedor universal/i);
   assert.match(html,/Não necessariamente/i);
+  assert.match(html,/processo auditável/i);
 });
 
 test('ARBM SIST preserves indexability and canonical discovery',()=>{
