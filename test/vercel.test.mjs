@@ -45,6 +45,7 @@ test('vercel routing publishes landing and exact event endpoint',async()=>{
   assert.ok(cfg.rewrites.some(x=>x.source==='/piloto'&&x.destination==='/public/piloto.html'));
   assert.ok(cfg.rewrites.some(x=>x.source==='/termos'&&x.destination==='/public/termos.html'));
   assert.ok(cfg.rewrites.some(x=>x.source==='/privacidade'&&x.destination==='/public/privacidade.html'));
+  assert.ok(cfg.rewrites.some(x=>x.source==='/exclusao-dados'&&x.destination==='/public/exclusao-dados.html'));
   assert.ok(cfg.rewrites.some(x=>x.source==='/reembolso'&&x.destination==='/public/reembolso.html'));
   assert.ok(cfg.rewrites.some(x=>x.source==='/afiliados'&&x.destination==='/public/afiliados.html'));
   assert.ok(cfg.rewrites.some(x=>x.source==='/legal.css'&&x.destination==='/public/legal.css'));
