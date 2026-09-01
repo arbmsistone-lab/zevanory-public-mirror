@@ -40,7 +40,7 @@ const fullTests = command('full test suite', process.execPath, ['--test',
 unit('CODE-CONFIG', 'src/config.mjs', [
   command('syntax config', process.execPath, ['--check','src/config.mjs']),
   command('config tests', process.execPath, ['--test','test/config.test.mjs']),
-  op('canonical frozen definitions', () => Object.isFrozen(PROJECT) && PROJECT.name === 'ZEVANORY' && PROJECT.officialWhatsappE164 === '5588992340423'),
+  op('canonical frozen definitions', () => Object.isFrozen(PROJECT) && PROJECT.name === 'ZEVANORY' && PROJECT.officialWhatsappE164 === '558892340423'),
 ]);
 unit('CODE-SALES-GATE','src/salesGate.mjs',[
   command('sales gate syntax',process.execPath,['--check','src/salesGate.mjs']),
@@ -161,9 +161,9 @@ unit('DEF-GATES', 'specs/GATES.md', [
 ]);
 
 unit('DEF-WHATSAPP', 'evidence/WHATSAPP-ORIGIN-0001.md', [
-  op('owner-confirmed canonical number documented', () => t('evidence/WHATSAPP-ORIGIN-0001.md').includes('5588992340423') && t('evidence/WHATSAPP-ORIGIN-0001.md').includes('confirmou explicitamente')),
-  op('canonical definition matches normalizer', () => PROJECT.officialWhatsappE164 === '5588992340423' && normalizeWhatsappNumber('+55 88 99234-0423') === '5588992340423'),
-  op('official matcher rejects divergence', () => isOfficialWhatsapp('5588992340423') && !isOfficialWhatsapp('5588999999999')),
+  op('owner-confirmed canonical number documented', () => t('evidence/WHATSAPP-ORIGIN-0001.md').includes('558892340423') && t('evidence/WHATSAPP-ORIGIN-0001.md').includes('confirmou explicitamente')),
+  op('canonical definition matches normalizer', () => PROJECT.officialWhatsappE164 === '558892340423' && normalizeWhatsappNumber('+55 88 9234-0423') === '558892340423'),
+  op('official matcher rejects divergence', () => isOfficialWhatsapp('558892340423') && !isOfficialWhatsapp('5588999999999')),
 ]);
 unit('DEF-SCOPE', 'specs/SCOPE_BOUNDARY.md', [
   op('project root is explicit', () => t('specs/SCOPE_BOUNDARY.md').includes('C:\\Sistemas\\ZEVANORY')),

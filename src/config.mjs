@@ -6,12 +6,12 @@ export const PROJECT = Object.freeze({
   offerName: "ARBM SIST",
   offerVersion: "10.0.0",
   offerType: "digital_product",
-  officialWhatsappE164: "5588992340423",
+  officialWhatsappE164: "558892340423",
 });
 
 export function normalizeWhatsappNumber(value) {
   const digits = String(value || "").replace(/\D/g, "");
-  if (!/^55[1-9][0-9]{10}$/.test(digits)) return "";
+  if (!/^55[1-9][0-9]{9,10}$/.test(digits)) return "";
   return digits;
 }
 

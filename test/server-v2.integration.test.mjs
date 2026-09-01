@@ -31,7 +31,7 @@ test.before(async () => {
     env: {
       ...process.env,
       PORT: String(port),
-      WHATSAPP_NUMBER: '5588992340423',
+      WHATSAPP_NUMBER: '558892340423',
       OPERATOR_TOKEN: token,
     },
     stdio: 'ignore',

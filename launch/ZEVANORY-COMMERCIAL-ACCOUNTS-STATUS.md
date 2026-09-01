@@ -4,7 +4,7 @@ Identidade institucional:
 - Marca: ZEVANORY
 - Cadastro/ownership: zevanory@gmail.com
 - Site: https://zevanory.api.br
-- WhatsApp: +55 88 99234-0423
+- WhatsApp: +55 88 9234-0423
 - Handle preferencial: @zevanory
 
 Status por frente:
