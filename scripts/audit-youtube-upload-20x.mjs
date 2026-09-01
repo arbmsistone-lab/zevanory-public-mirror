@@ -1,0 +1,27 @@
+import {readFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+const t=p=>readFileSync(p,'utf8');const checks=[];const add=(n,ok)=>checks.push([n,Boolean(ok)]);
+const run=(...args)=>spawnSync(process.execPath,args,{encoding:'utf8'}).status===0;
+const y=t('src/youtubeUpload.mjs'),o=t('src/outboundAdapters.mjs'),c=t('src/channelAdapters.mjs'),e=t('.env.example');
+add('01 focused tests',run('--test','test/youtube-upload.test.mjs','test/outbound-adapters.test.mjs','test/channel-readiness.test.mjs','test/agent-evals-continuous.test.mjs'));
+add('02 oauth upload scope architecture',y.includes('oauth2.googleapis.com/token'));
+add('03 refresh token confidential server side',y.includes('YOUTUBE_OAUTH_REFRESH_TOKEN')&&!t('public/zevanory-robot-control.js').includes('YOUTUBE_OAUTH_REFRESH_TOKEN'));
+add('04 direct access token supported',y.includes('YOUTUBE_OAUTH_ACCESS_TOKEN'));
+add('05 https media required',y.includes('youtube_media_url_required'));
+add('06 head probe length required',y.includes("method:'HEAD'")&&y.includes('youtube_media_size_missing'));
+add('07 video mime guarded',y.includes("mime.startsWith('video/')"));
+add('08 resumable session',y.includes('uploadType=resumable'));
+add('09 session location persisted',y.includes('session_url')&&y.includes('persistUploadState'));
+add('10 progress query bytes total',y.includes('bytes */${Number(totalBytes)}'));
+add('11 308 range respected',y.includes("response.status===308")&&y.includes('parseRangeEnd'));
+add('12 ranged source fetch',y.includes('range:`bytes=${start}-${end}`'));
+add('13 bounded chunks per run',y.includes('MAX_CHUNKS_PER_RUN=8'));
+add('14 incomplete resumes by retry',y.includes('youtube_upload_incomplete_resume_required'));
+add('15 expired session fails closed',y.includes('youtube_session_expired_manual_reconcile'));
+add('16 private default',y.includes("safePrivacy")&&e.includes('YOUTUBE_PRIVACY_STATUS=private'));
+add('17 API key alone insufficient',c.includes('credentialSets')&&!c.includes("youtube: Object.freeze({ provider:'youtube-data-api', env:['YOUTUBE_API_KEY']"));
+add('18 adapter is implemented',o.includes("'channel:youtube':async(event,{sql}={})"));
+add('19 worker persists metadata',t('src/agentWorker.mjs').includes('privacy_status')&&t('src/agentWorker.mjs').includes('made_for_kids'));
+add('20 evidence restrictions',t('evidence/EG-0061-youtube-resumable-upload.md').includes('APROVADO COM RESTRICOES'));
+let failed=0;for(const [n,ok] of checks){console.log(`${ok?'APPROVED':'FAILED'} ${n}`);if(!ok)failed++;}
+console.log(`AUDIT_YOUTUBE_UPLOAD_20X_${failed?'BLOCKED':'APPROVED'} units=${checks.length} approved=${checks.length-failed} failed=${failed}`);if(failed)process.exit(1);

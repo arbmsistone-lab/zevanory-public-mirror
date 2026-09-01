@@ -23,6 +23,8 @@ export function evaluateAgentDecision({ decision = {}, context = {}, authorizati
   if(expectedTool==='publish_content'&&!content(decision)) issues.push('publish_content_missing');
   if(expectedTool==='publish_content'&&!String(decision.channel||context?.lead?.channel||'').trim()) issues.push('publish_channel_missing');
   if(expectedTool==='publish_content'&&String(decision.channel||context?.lead?.channel||'').toLowerCase()==='instagram'&&!/^https:\/\//i.test(String(decision.media_url||''))) issues.push('instagram_media_missing');
+  if(expectedTool==='publish_content'&&String(decision.channel||context?.lead?.channel||'').toLowerCase()==='youtube'&&!/^https:\/\//i.test(String(decision.media_url||''))) issues.push('youtube_media_missing');
+  if(expectedTool==='publish_content'&&String(decision.channel||context?.lead?.channel||'').toLowerCase()==='youtube'&&!String(decision.title||'').trim()) issues.push('youtube_title_missing');
   if(expectedTool==='start_checkout'&&!String(context?.lead?.session_id||'').trim()) issues.push('checkout_session_missing');
   if(expectedTool==='refund_payment'&&!String(decision.order_id||'').trim()) issues.push('refund_order_missing');
   if(expectedTool==='refresh_outcome_learning'&&String(context?.job_type||'')!=='learning_review') issues.push('learning_job_required');
