@@ -1636,6 +1636,52 @@
       ]
     },
     {
+      "id": "CODE-YOUTUBE-RESUMABLE",
+      "label": "src/youtubeUpload.mjs + outbound adapter",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "youtube upload syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "youtube focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "youtube 20x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-YOUTUBE-EVIDENCE",
+      "label": "evidence/EG-0061-youtube-resumable-upload.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "youtube evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three independent organizations recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "secrets and commercial gates remain protected",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1660,8 +1706,8 @@
     }
   ],
   "totals": {
-    "units": 72,
-    "approved": 72,
+    "units": 74,
+    "approved": 74,
     "failed": 0
   },
   "verdict": "APPROVED"

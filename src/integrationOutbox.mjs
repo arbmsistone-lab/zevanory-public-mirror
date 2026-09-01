@@ -53,7 +53,7 @@ async function dispatchClaimedEvent(sql,event,adapters={}){
     return Object.freeze({ok:false,processed:true,event_id:event.event_id,status:'dead_letter',reason:'adapter_missing',...meta});
   }
   try{
-    const result=await adapter(Object.freeze({...event,payload:event.payload||{},headers:event.headers||{}}));
+    const result=await adapter(Object.freeze({...event,payload:event.payload||{},headers:event.headers||{}}),{sql});
     const persisted=await attachProviderAcceptance(sql,{eventId:event.event_id,result});
     if(!persisted){await sql.query("update integration_outbox set status='dead_letter',last_error='provider_acceptance_persistence_uncertain' where event_id=$1",[event.event_id]);return Object.freeze({ok:false,processed:true,event_id:event.event_id,status:'dead_letter',reason:'provider_acceptance_persistence_uncertain',result,...meta});}
     return Object.freeze({ok:true,processed:true,event_id:event.event_id,status:'delivered',result,...meta});

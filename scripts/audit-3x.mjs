@@ -417,6 +417,16 @@ unit('DEF-PROVIDER-CONFIRMATION-EVIDENCE','evidence/EG-0060-provider-delivery-co
   op('three independent webhook references recorded',()=>['Meta','Resend','Stripe'].every(x=>t('evidence/EG-0060-provider-delivery-confirmation.md').includes(x))),
   op('commercial truth remains explicitly separate',()=>t('evidence/EG-0060-provider-delivery-confirmation.md').includes('nao conversao')&&t('evidence/EG-0060-provider-delivery-confirmation.md').includes('nao resultado comercial')),
 ]);
+unit('CODE-YOUTUBE-RESUMABLE','src/youtubeUpload.mjs + outbound adapter',[
+  command('youtube upload syntax',process.execPath,['--check','src/youtubeUpload.mjs']),
+  command('youtube focused tests',process.execPath,['--test','test/youtube-upload.test.mjs','test/outbound-adapters.test.mjs']),
+  command('youtube 20x audit',process.execPath,['scripts/audit-youtube-upload-20x.mjs']),
+]);
+unit('DEF-YOUTUBE-EVIDENCE','evidence/EG-0061-youtube-resumable-upload.md',[
+  op('youtube evidence approved with restrictions',()=>t('evidence/EG-0061-youtube-resumable-upload.md').includes('APROVADO COM RESTRICOES')),
+  op('three independent organizations recorded',()=>['Google','Vercel','IETF'].every(x=>t('evidence/EG-0061-youtube-resumable-upload.md').includes(x))),
+  op('secrets and commercial gates remain protected',()=>t('evidence/EG-0061-youtube-resumable-upload.md').includes('nunca podem ser enviados')&&t('.env.example').includes('SALE_GLOBALLY_ENABLED=false')),
+]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),

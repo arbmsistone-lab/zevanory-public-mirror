@@ -1,3 +1,4 @@
+import { uploadYouTubeFromRemote } from './youtubeUpload.mjs';
 const jsonBody=async(response)=>{try{return await response.json();}catch{return {};}};
 const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new Error(code);return v;};
 const ensureGlobalGates=(env)=>{if(env.SALE_GLOBALLY_ENABLED!=='true'||env.PRE_SALE_GATES_APPROVED!=='true')throw new Error('commercial_gates_closed');};
@@ -43,9 +44,9 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       const id=String(published?.id||'');if(!id)throw new Error('instagram_media_id_missing');
       return Object.freeze({provider:'meta_instagram',accepted:true,provider_media_id:id,container_id:creationId,confirmation:'provider_lookup_required'});
     },
-    'channel:youtube':async()=>{
-      ensureGlobalGates(env);required(env.YOUTUBE_OAUTH_ACCESS_TOKEN,'youtube_oauth_access_token_missing');
-      throw new Error('youtube_upload_media_pipeline_not_configured');
+    'channel:youtube':async(event,{sql}={})=>{
+      ensureGlobalGates(env);
+      return uploadYouTubeFromRemote({event,sql,env,fetchImpl});
     },
   });
 }

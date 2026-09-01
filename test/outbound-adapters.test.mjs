@@ -29,10 +29,10 @@ test('Instagram requires HTTPS media and publishes through container',async()=>{
   await assert.rejects(()=>adapters['channel:instagram']({payload:{content:'x',media_url:'http://unsafe.test/x.jpg'}}),/instagram_media_url_required/);
 });
 
-test('YouTube is not publish-ready with API key or OAuth token until upload pipeline exists',()=>{
+test('YouTube requires OAuth credentials and never accepts API key alone',()=>{
   const apiKeyOnly=channelReadiness({YOUTUBE_API_KEY:'key'}).youtube;
   const oauth=channelReadiness({YOUTUBE_OAUTH_ACCESS_TOKEN:'oauth'}).youtube;
-  assert.equal(apiKeyOnly.configured,false);assert.equal(oauth.configured,false);assert.equal(oauth.implemented,false);
+  assert.equal(apiKeyOnly.configured,false);assert.equal(oauth.configured,true);assert.equal(oauth.implemented,true);
 });
 
 test('channel dispatcher cannot claim payment destinations',async()=>{
