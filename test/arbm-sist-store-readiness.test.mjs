@@ -15,6 +15,6 @@ test('ARBM SIST exposes a dedicated privacy policy for Store distribution',()=>{
 });
 
 test('ARBM SIST Store privacy route is public and linked from the offer',()=>{
-  assert.ok(vercel.rewrites.some(x=>x.source==='/arbm-sist/privacidade'&&x.destination==='/public/arbm-sist-privacidade.html'));
+  assert.ok(vercel.rewrites.some(x=>x.source==='/arbm-sist/privacidade'&&x.destination==='/arbm-sist-privacidade'));
   assert.match(offer,/href="\/arbm-sist\/privacidade">Privacidade ARBM SIST/);
 });
