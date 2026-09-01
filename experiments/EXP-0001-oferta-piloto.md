@@ -1,7 +1,7 @@
 # EXP-0001 - ARBM SIST / OFFER-0001
 
 Status: PRONTO TECNICAMENTE / PRE-LANCAMENTO.
-Produto: ARBM SIST 8.1.0 - produto digital proprio, sem estoque.
+Produto: ARBM SIST 10.0.0 - produto digital proprio, sem estoque.
 Preco piloto: R$ 497 - hipotese comercial, ainda nao validada.
 
 ## Hipotese

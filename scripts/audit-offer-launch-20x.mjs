@@ -10,7 +10,7 @@ const add=(name,ok)=>checks.push({name,ok:Boolean(ok)});
 const run=(...args)=>spawnSync(process.execPath,args,{cwd:root,encoding:'utf8'}).status===0;
 const html=await text('public/arbm-sist.html'); const js=await text('public/arbm-sist.js'); const vercel=await text('vercel.json');
 add('01 canonical ARBM SIST offer',ARBM_SIST_OFFER.id==='OFFER-0001'&&ARBM_SIST_OFFER.product==='ARBM SIST');
-add('02 version and artifact pinned',ARBM_SIST_OFFER.version==='8.1.0'&&/^[A-F0-9]{64}$/.test(ARBM_SIST_OFFER.artifact_sha256));
+add('02 version and artifact pinned',ARBM_SIST_OFFER.version==='10.0.0'&&ARBM_SIST_OFFER.artifact_sha256==='70F233FA2AD84B66468CCB4789E3628A171ABA97A6C5C188C01A1EF56659B4E0'&&ARBM_SIST_OFFER.release_state==='technically_certified_unsigned_not_public');
 add('03 digital product no inventory',ARBM_SIST_OFFER.offer_type==='digital_product'&&ARBM_SIST_OFFER.inventory_required===false);
 add('04 pilot price explicit',ARBM_SIST_OFFER.price_brl===497&&ARBM_SIST_OFFER.price_status==='pilot_hypothesis_not_validated');
 add('05 offer landing exists',await exists('public/arbm-sist.html')&&await exists('public/arbm-sist.css')&&await exists('public/arbm-sist.js'));

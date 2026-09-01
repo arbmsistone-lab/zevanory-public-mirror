@@ -18,6 +18,10 @@ export function evaluateActivationReadiness(env=process.env) {
   const blockers=[...compliance.blockers];
   if(!yes(env.OFFER_SELECTION_APPROVED)) blockers.push('offer_selection_not_approved');
   if(!offerType) blockers.push('active_offer_type_invalid');
+  if(offerType==='digital_product') {
+    if(!yes(env.ARBM_SIST_CODE_SIGNING_READY)) blockers.push('arbm_sist_code_signing_not_ready');
+    if(!yes(env.ARBM_SIST_PUBLIC_RELEASE_APPROVED)) blockers.push('arbm_sist_public_release_not_approved');
+  }
   if(['service','digital_product'].includes(offerType)) {
     if(!['digital','remote'].includes(String(env.SERVICE_DELIVERY_MODE||'').toLowerCase())) blockers.push('service_delivery_mode_missing');
     if(!yes(env.PAYMENT_MERCHANT_IDENTITY_VERIFIED)) blockers.push('payment_merchant_identity_unverified');

@@ -1,5 +1,5 @@
 const BRAND='ZEVANORY';
-const PRODUCT='ARBM SIST 8.1.0';
+const PRODUCT='ARBM SIST 10.0.0';
 const SITE='https://zevanory.api.br/arbm-sist?utm_source=email';
 export const EMAIL_IDENTITIES=Object.freeze({
   from:'ZEVANORY <contato@zevanory.api.br>',

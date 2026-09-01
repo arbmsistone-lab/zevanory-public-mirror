@@ -102,11 +102,11 @@ Nenhuma regra visual habilita vendas, checkout, WhatsApp, eventos financeiros ou
 
 ## FASE EG-0039 - ARBM SIST OFFER LAUNCH READY
 Release: ZEVANORY-EG0039-FINAL.
-OFFER-0001 passa a ser ARBM SIST 8.1.0, produto digital proprio sem estoque, com preco piloto de R$ 497 ainda nao validado comercialmente.
+OFFER-0001 passa a usar ARBM SIST 10.0.0 como artefato canonico de pre-lancamento, produto digital proprio sem estoque, com preco piloto de R$ 497 ainda nao validado comercialmente.
 Landing /arbm-sist rastreia origem por canal e opera em pre-lancamento enquanto vendas estiverem bloqueadas.
 Canais primarios: ZEVANORY, YouTube, Instagram e WhatsApp. Metricool existe, mas redes ainda precisam estar conectadas antes de publicacao automatica.
 Entrega exige pedido paid, payment_confirmed reconciliado e referencia segura do artefato; download publico e proibido.
-Artefato aprovado: ARBM-SIST-v8.1.0.zip, SHA-256 0124C388CA2ACA68BC555AE2D3BE050919D26302AC1C17238D617F10BFD78EDC.
+Artefato tecnico canonico: ARBM-SIST-v10.0.0.zip, SHA-256 70F233FA2AD84B66468CCB4789E3628A171ABA97A6C5C188C01A1EF56659B4E0. V10 permanece unsigned/not public e exige gates EG-0063 antes de liberacao comercial.
 Todos os kill-switches comerciais e financeiros permanecem fail-closed ate meio de pagamento PF valido e cutover explicito.
 
 ## FASE EG-0040 - IDENTIDADE OFICIAL + PARIDADE LOCAL
@@ -162,3 +162,5 @@ Esta separacao e estrutural e nao altera gates comerciais, financeiros ou de aut
 - Migration 010 amplia orders e financial_events para `asaas` e `mercadopago` sem reescrever migrations historicas.
 - Schema canonico: 15 tabelas / 10 migrations.
 - Nenhuma conta, token, KYC ou credencial externa e fabricada; ausencia de configuracao mantem vendas bloqueadas.
+## EG-0063 — ARBM SIST V10 OFFER RECONCILIATION
+ARBM SIST 10.0.0 substitui 8.1.0 como artefato canonico de pre-lancamento da OFFER-0001. O ZIP V10 foi verificado contra manifest e VERIFY-RELEASE-V10_PASS, mas publicCommercialRelease=false e code signing confiavel permanecem bloqueantes. Nenhum gate comercial foi aberto.
