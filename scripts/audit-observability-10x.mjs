@@ -3,13 +3,13 @@ const root=new URL('../',import.meta.url); const text=(p)=>readFile(new URL(p,ro
 const exists=async p=>{try{await access(new URL(p,root));return true}catch{return false}};
 const checks=[]; const add=(name,ok)=>checks.push({name,ok:Boolean(ok)});
 const pkg=JSON.parse(await text('package.json')); const release=await text('src/release.mjs');
-const health=await text('api/health.mjs'); const status=await text('api/status.mjs'); const assurance=await text('api/assurance.mjs'); const probe=await text('scripts/operational-probe.mjs');
+const probes=await text('src/statusProbes.mjs'); const status=await text('api/status.mjs'); const assurance=await text('api/assurance.mjs'); const probe=await text('scripts/operational-probe.mjs'); const vercel=JSON.parse(await text('vercel.json'));
 add('01 observability core exists',await exists('src/observability.mjs'));
-add('02 liveness endpoint exists',await exists('api/live.mjs'));
+add('02 liveness route consolidated',vercel.rewrites.some(x=>x.source==='/api/live'&&x.destination.includes('probe=live'))&&probes.includes('liveProbe'));
 add('03 assurance in release',release.includes("'/api/assurance'"));
-add('04 health request correlation',health.includes('attachRequestContext'));
+add('04 health request correlation',probes.includes("'/api/health'")&&probes.includes('attachRequestContext'));
 add('05 status and assurance correlation',status.includes('attachRequestContext')&&assurance.includes('attachRequestContext'));
-add('06 structured operational logging',health.includes('operationalLog')&&status.includes('operationalLog')&&assurance.includes('operationalLog'));
+add('06 structured operational logging',probes.includes('operationalLog')&&status.includes('operationalLog')&&assurance.includes('operationalLog'));
 add('07 production probe exists',await exists('scripts/operational-probe.mjs'));
 add('08 probe timeout fail closed',probe.includes('AbortController')&&probe.includes('process.exit(1)'));
 add('09 probe checks core plus assurance',['/api/live','/api/health','/api/release','/api/status','/api/assurance'].every(p=>probe.includes(p)));

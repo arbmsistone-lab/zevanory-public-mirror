@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { attachRequestContext } from '../src/observability.mjs';
-import liveHandler from '../api/live.mjs';
+import { liveProbe } from '../src/statusProbes.mjs';
 
 function mock(method='GET', headers={}) {
   const out={};
@@ -20,10 +20,7 @@ test('request context preserves only safe request ids',()=>{
 
 test('liveness endpoint is dependency independent and correlated',()=>{
   const {req,res}=mock('GET',{'x-request-id':'live-12345678'});
-  liveHandler(req,res);
+  liveProbe(req,res);
   const body=JSON.parse(res.body);
-  assert.equal(res.statusCode,200);
-  assert.equal(body.live,true);
-  assert.equal(body.request_id,'live-12345678');
-  assert.equal(res.headers['x-request-id'],'live-12345678');
+  assert.equal(res.statusCode,200);assert.equal(body.live,true);assert.equal(body.request_id,'live-12345678');assert.equal(res.headers['x-request-id'],'live-12345678');
 });

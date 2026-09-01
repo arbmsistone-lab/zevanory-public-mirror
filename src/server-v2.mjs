@@ -1,4 +1,4 @@
-﻿import http from "node:http";
+import http from "node:http";
 import { readFile, appendFile, mkdir } from "node:fs/promises";
 import { dirname, extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,11 +14,9 @@ import { PROJECT, normalizeWhatsappNumber, isOfficialWhatsapp, isUuid } from "./
 import { safeBearerEqual } from "./security.mjs";
 import configApi from "../api/config.mjs";
 import statusApi from "../api/status.mjs";
-import healthApi from "../api/health.mjs";
 import releaseApi from "../api/release.mjs";
 import agentStatusApi from "../api/agent-status.mjs";
 import assuranceApi from "../api/assurance.mjs";
-import liveApi from "../api/live.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -106,8 +104,8 @@ function authorizedOperator(req) {
   return safeBearerEqual(operatorToken, String(req.headers.authorization || "").replace(/^Bearer\s+/i, ""));
 }
 const READ_API_HANDLERS = new Map([
-  ['/api/config',configApi], ['/api/status',statusApi], ['/api/health',healthApi], ['/api/release',releaseApi],
-  ['/api/agent/status',agentStatusApi], ['/api/assurance',assuranceApi], ['/api/live',liveApi], ['/api/activation/readiness',configApi],
+  ['/api/config',configApi], ['/api/status',statusApi], ['/api/health',statusApi], ['/api/release',releaseApi],
+  ['/api/agent/status',agentStatusApi], ['/api/assurance',assuranceApi], ['/api/live',statusApi], ['/api/activation/readiness',configApi],
 ]);
 const server = http.createServer(async (req, res) => {
   try {
@@ -115,6 +113,8 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && READ_API_HANDLERS.has(url.pathname)) {
       if(url.pathname==='/api/activation/readiness') req.url='/api/config?view=activation';
+      if(url.pathname==='/api/live') req.url='/api/status?probe=live';
+      if(url.pathname==='/api/health') req.url='/api/status?probe=health';
       return READ_API_HANDLERS.get(url.pathname)(req,res);
     }
 

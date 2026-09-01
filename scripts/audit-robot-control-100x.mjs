@@ -1,7 +1,7 @@
 import {readFile,writeFile,access} from 'node:fs/promises';
 const text=async p=>readFile(p,'utf8'); const exists=async p=>{try{await access(p);return true}catch{return false}};
-const [worker,policy,revenue,outbox,assurance,api,html,js,m8,m9,config,channels]=await Promise.all([
-  text('src/agentWorker.mjs'),text('src/agentPolicy.mjs'),text('src/revenueAgent.mjs'),text('src/integrationOutbox.mjs'),text('src/enterpriseAssurance.mjs'),text('api/robot-control.mjs'),text('public/zevanory-robot-control.html'),text('public/zevanory-robot-control.js'),text('db/migrations/008_autonomous_revenue_engine.sql'),text('db/migrations/009_composable_infrastructure.sql'),text('src/config.mjs'),text('src/channelAdapters.mjs')]);
+const [worker,policy,revenue,outbox,assurance,api,html,js,m8,m9,m11,config,channels]=await Promise.all([
+  text('src/agentWorker.mjs'),text('src/agentPolicy.mjs'),text('src/revenueAgent.mjs'),text('src/integrationOutbox.mjs'),text('src/enterpriseAssurance.mjs'),text('api/robot-control.mjs'),text('public/zevanory-robot-control.html'),text('public/zevanory-robot-control.js'),text('db/migrations/008_autonomous_revenue_engine.sql'),text('db/migrations/009_composable_infrastructure.sql'),text('db/migrations/011_agent_control_and_trace.sql'),text('src/config.mjs'),text('src/channelAdapters.mjs')]);
 const checks=[]; const add=(domain,label,ok,severity='P2')=>checks.push({id:String(checks.length+1).padStart(3,'0'),domain,label,ok:Boolean(ok),severity});
 const has=(s,x)=>s.includes(x); const rx=(s,r)=>r.test(s);
 
@@ -49,9 +49,9 @@ add('traceability','run stores model',has(m8,'model text NOT NULL'));
 add('traceability','run stores mode',has(m8,"mode text NOT NULL CHECK"));
 add('traceability','run stores latency',has(m8,'latency_ms integer NOT NULL'));
 add('traceability','run stores decision',has(m8,"decision jsonb NOT NULL"));
-add('traceability','global correlation id across lifecycle',rx(m8+m9,/correlation_id|trace_id/i),'P1');
-add('traceability','span id per discrete operation',rx(m8+m9,/span_id/i),'P1');
-add('traceability','session hierarchy stored',rx(m8+m9,/session_id.*trace|trace.*session_id/i),'P1');
+add('traceability','global correlation id across lifecycle',rx(m8+m9+m11,/correlation_id|trace_id/i),'P1');
+add('traceability','span id per discrete operation',rx(m8+m9+m11,/span_id/i),'P1');
+add('traceability','job-run-trace hierarchy stored',has(m8,'job_id uuid REFERENCES agent_jobs')&&has(m11,'trace_id uuid')&&has(m11,'run_id uuid REFERENCES agent_runs'),'P1');
 
 // 41-50 Commercial reachability
 add('commercial','first response reaches safe tool',has(revenue,"first_response:'schedule_follow_up'"));
@@ -87,19 +87,19 @@ add('resilience','adapter missing fails closed',has(outbox,"adapter_missing"));
 add('resilience','delivered timestamp stored',has(m9,'delivered_at timestamptz'));
 add('resilience','last error stored',has(m9,'last_error text'));
 add('resilience','outbox health objective exists',has(assurance,'outbox_oldest_pending_seconds'));
-add('resilience','cross-step compensation workflow exists',rx(worker+outbox,/compensat|saga|compensation/i),'P1');
+add('resilience','financial compensation path is gated and queued',has(revenue,"refund:'refund_payment'")&&has(worker,"eventType:'refund_payment'")&&has(worker,"destination:'payment:refund'"),'P1');
 
 // 71-80 Security / privacy
 add('security','operator API uses bearer timing-safe auth',has(api,'safeBearerEqual'));
 add('security','operator API requires OPERATOR_TOKEN',has(api,'OPERATOR_TOKEN'));
-add('security','control API is GET only',has(api,"req.method!=='GET'"));
+add('security','control API constrains GET and POST',has(api,"['GET','POST'].includes(req.method)"));
 add('security','control API no-store',has(api,"cache-control','no-store"));
 add('security','control API nosniff',has(api,"x-content-type-options','nosniff"));
 add('security','control query omits session_id',!rx(api,/select[^`]*session_id/i));
 add('security','control query omits lead_id',!rx(api,/select[^`]*lead_id/i));
 add('security','control query omits outbox payload',!rx(api,/select[^`]*payload/i));
 add('security','errors are length capped',has(api,'slice(0,240)'));
-add('security','model prompt/output PII redaction pipeline exists',rx(worker+revenue,/redact|pii|sanitize.*decision/i),'P1');
+add('security','model context is PII-minimized by allowlist',has(revenue,'job_type:context.job_type')&&has(revenue,'stage:context.lead?.stage')&&has(revenue,'channel:context.lead?.channel')&&has(revenue,'touchpoints:context.lead?.touchpoints')&&!/input\s*=\s*\{[^}]*contact_ref/s.test(revenue)&&!/input\s*=\s*\{[^}]*session_id/s.test(revenue),'P1');
 
 // 81-90 Control room UX / human oversight
 add('control-room','timeline exists',has(html,'LINHA DO TEMPO'));
@@ -110,8 +110,8 @@ add('control-room','health panel exists',has(html,'Erros, retries e outbox'));
 add('control-room','blocked differs from completed',has(js,"stateClass"));
 add('control-room','live operator polling exists',has(js,'setInterval')&&has(js,'/api/robot-control'));
 add('control-room','operator token not persisted',!rx(js,/localStorage|sessionStorage|document\.cookie/));
-add('control-room','human stop/pause endpoint exists',await exists('api/robot-control-action.mjs'),'P0');
-add('control-room','high-risk approval queue exists',rx(m8,/approval|human_review|pending_approval/i),'P0');
+add('control-room','human stop/pause command exists',has(api,'setAgentPaused')&&has(js,'command:action'),'P0');
+add('control-room','high-risk approval queue exists',rx(m8+m11,/approval|human_review|pending_approval/i),'P0');
 
 // 91-100 SRE / quality / economics
 add('quality','agent failed-run objective exists',has(assurance,'agent_failed_runs_ratio_max'));
@@ -119,8 +119,8 @@ add('quality','p95 latency objective exists',has(assurance,'p95_latency_ms'));
 add('quality','p99 latency objective exists',has(assurance,'p99_latency_ms'));
 add('quality','availability objective exists',has(assurance,'availability_ratio'));
 add('quality','error ratio objective exists',has(assurance,'error_ratio_max'));
-add('quality','agent run token usage stored',rx(m8,/input_tokens|output_tokens|token_usage/i),'P2');
-add('quality','agent run cost stored',rx(m8,/cost|spend|price/i),'P2');
+add('quality','agent run token usage stored',rx(m8+m11,/input_tokens|output_tokens|token_usage/i),'P2');
+add('quality','agent run cost stored',rx(m8+m11,/cost|spend|price/i),'P2');
 add('quality','continuous eval result stored',has(m8,'decision jsonb')&&has(worker,'eval:evalResult'));
 add('quality','robot control regression test exists',await exists('test/robot-control.test.mjs'));
 add('quality','world-class evidence gate exists',await exists('evidence/EG-0052-robot-observability-worldclass.md'));

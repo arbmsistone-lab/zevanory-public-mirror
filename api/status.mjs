@@ -1,8 +1,12 @@
 import { neon } from '@neondatabase/serverless';
 import { buildOperationalStatus } from '../src/operationalStatus.mjs';
 import { attachRequestContext, operationalLog } from '../src/observability.mjs';
+import { healthProbe, liveProbe } from '../src/statusProbes.mjs';
 
 export default async function handler(req, res) {
+  const probe=String(req.query?.probe||new URL(req.url||'/api/status','https://zevanory.api.br').searchParams.get('probe')||'').toLowerCase();
+  if(probe==='live') return liveProbe(req,res);
+  if(probe==='health') return healthProbe(req,res);
   const context = attachRequestContext(req, res, '/api/status');
   res.setHeader('content-type', 'application/json; charset=utf-8');
   res.setHeader('cache-control', 'no-store');

@@ -1,4 +1,4 @@
-import { readFile, access } from 'node:fs/promises';
+﻿import { readFile, access } from 'node:fs/promises';
 import { SERVICE_OBJECTIVES } from '../src/enterpriseAssurance.mjs';
 import { validateProviderContracts } from '../src/providerContracts.mjs';
 const root=new URL('../',import.meta.url); const text=(p)=>readFile(new URL(p,root),'utf8');
@@ -14,7 +14,7 @@ add('05 provider contracts valid',validateProviderContracts().valid);
 add('06 production monitor workflow',await exists('.github/workflows/production-monitor.yml'));
 add('07 supply-chain scan wired',pkg.scripts?.['supplychain:scan']==='node scripts/secret-scan.mjs');
 add('08 load smoke wired',pkg.scripts?.['load:smoke']==='node scripts/load-smoke.mjs');
-add('09 runbook current schema',runbook.includes('15 tabelas')&&runbook.includes('migrations 001-010'));
+add('09 runbook current schema',runbook.includes('17 tabelas')&&runbook.includes('migrations 001-011'));
 add('10 commercial gates remain off',!env.includes('SALE_GLOBALLY_ENABLED=true')&&!env.includes('CHECKOUT_ENABLED=true')&&!env.includes('FINANCIAL_EVENTS_ENABLED=true'));
 for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.name}`);
 const failed=checks.filter(c=>!c.ok); console.log(`AUDIT_ENTERPRISE_10X_${failed.length?'BLOCKED':'APPROVED'} units=10 approved=${10-failed.length} failed=${failed.length}`); if(failed.length) process.exit(1);
