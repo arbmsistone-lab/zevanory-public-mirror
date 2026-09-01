@@ -19,3 +19,10 @@ A ZEVANORY deve operar com trilha auditavel por acao, nunca apenas agregados. Ca
 - Dados sensiveis/PII nao entram em painel publico.
 - Controles destrutivos exigem autenticacao e confirmacao dedicada.
 - Nenhum gate comercial/financeiro sera aberto por esta frente.
+
+## Fechamento vigente
+- Auditoria canônica desta frente: 3X, não 100X.
+- Auditoria 1: estrutura/configuração — PASS.
+- Auditoria 2: função/segurança/integridade — PASS.
+- Auditoria 3: integração/regressão — PASS.
+- Migration 011 está pronta para promoção serializada, mas não foi aplicada por esta branch.
