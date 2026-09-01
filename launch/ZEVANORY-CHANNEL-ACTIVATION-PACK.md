@@ -23,10 +23,15 @@ Resend:
 - From: ZEVANORY <contato@zevanory.api.br>
 - Ativar EMAIL_INBOUND_ENABLED somente apos DNS + API key + webhook secret validados.
 
-Meta / Instagram:
+Meta / Facebook / Instagram / WhatsApp:
 - Categoria preferida: Software / Tecnologia
 - Bio: Tecnologia, automacao, produtos e servicos digitais com foco em execucao segura e resultados reais.
-- Conectar Instagram a uma Pagina ZEVANORY antes de habilitar Graph API/Metricool.
+- Facebook Page ZEVANORY: `1249902628211703`, identidade confirmada via Graph API.
+- WABA oficial: `1765777697944833`; Phone Number ID: `1207377742466921`; numero `+55 88 9234-0423`; qualidade GREEN.
+- `META_ACCESS_TOKEN` e `WHATSAPP_ACCESS_TOKEN` instalados como Secrets de producao; `META_VERIFY_TOKEN` presente.
+- Instagram ainda nao esta vinculado a Pagina: provider retorna `instagram_business_account=null`; nao chamar de conectado antes do login/OAuth e prova do username `zevanory`.
+- `META_APP_SECRET` ainda e necessario para certificar assinatura HMAC do webhook inbound.
+- Meta ainda retorna `verified_name=Giro Local`; concluir a identidade publica do WhatsApp como ZEVANORY antes do cutover.
 
 YouTube:
 - Canal: ZEVANORY
