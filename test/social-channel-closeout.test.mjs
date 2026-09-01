@@ -6,7 +6,7 @@ const base={SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'};
 const response=(status,body={},headers={})=>({status,json:async()=>body,headers:{get:k=>headers[String(k).toLowerCase()]||null}});
 
 test('TikTok remains fail closed without verified content source and user consent',async()=>{
-  const ready=channelReadiness({TIKTOK_ACCESS_TOKEN:'t',TIKTOK_CONTENT_SOURCE_VERIFIED:'true'}).tiktok;
+  const ready=channelReadiness({TIKTOK_ACCESS_TOKEN:'t',TIKTOK_EXPECTED_USERNAME:'zevanory',TIKTOK_CONTENT_SOURCE_VERIFIED:'true',TIKTOK_IDENTITY_VERIFIED:'true'}).tiktok;
   assert.equal(ready.implemented,true);assert.equal(ready.configured,true);
   const a=buildOutboundAdapters({env:{...base,TIKTOK_ACCESS_TOKEN:'t',TIKTOK_CONTENT_SOURCE_VERIFIED:'false'},fetchImpl:async()=>response(200,{})});
   await assert.rejects(()=>a['channel:tiktok']({payload:{user_consent:true,media_url:'https://cdn.example/video.mp4'}}),/tiktok_content_source_unverified/);

@@ -31,7 +31,7 @@ test('Instagram requires HTTPS media and publishes through container',async()=>{
 
 test('YouTube requires OAuth credentials and never accepts API key alone',()=>{
   const apiKeyOnly=channelReadiness({YOUTUBE_API_KEY:'key'}).youtube;
-  const oauth=channelReadiness({YOUTUBE_OAUTH_ACCESS_TOKEN:'oauth'}).youtube;
+  const oauth=channelReadiness({YOUTUBE_OAUTH_ACCESS_TOKEN:'oauth',YOUTUBE_IDENTITY_VERIFIED:'true'}).youtube;
   assert.equal(apiKeyOnly.configured,false);assert.equal(oauth.configured,true);assert.equal(oauth.implemented,true);
 });
 

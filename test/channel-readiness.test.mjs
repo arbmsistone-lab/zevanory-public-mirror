@@ -41,3 +41,20 @@ test('institutional profiles represent ZEVANORY rather than one product',()=>{
     assert.equal(p.bio.includes('ARBM SIST'),false);
   }
 });
+
+test('external credentials alone never satisfy provider identity readiness',()=>{
+  const meta={META_ACCESS_TOKEN:'m',META_PAGE_ID:'p',INSTAGRAM_BUSINESS_ACCOUNT_ID:'i',META_GRAPH_VERSION:'v26.0'};
+  assert.equal(channelReadiness(meta).facebook.configured,false);
+  assert.equal(channelReadiness(meta).instagram.configured,false);
+  const wa={WHATSAPP_ACCESS_TOKEN:'w',WHATSAPP_PHONE_NUMBER_ID:'n',META_APP_SECRET:'a',META_VERIFY_TOKEN:'v',META_GRAPH_VERSION:'v26.0'};
+  assert.equal(channelReadiness(wa).whatsapp.configured,false);
+  assert.equal(channelReadiness({YOUTUBE_OAUTH_ACCESS_TOKEN:'y'}).youtube.configured,false);
+});
+
+test('verified identity flags unlock technical readiness but not commercial gates',()=>{
+  const fb={META_ACCESS_TOKEN:'m',META_PAGE_ID:'p',META_GRAPH_VERSION:'v26.0',META_FACEBOOK_IDENTITY_VERIFIED:'true'};
+  assert.equal(channelReadiness(fb).facebook.configured,true);assert.throws(()=>assertChannelActionAllowed('facebook',fb),/commercial_gates_closed/);
+  const wa={WHATSAPP_ACCESS_TOKEN:'w',WHATSAPP_PHONE_NUMBER_ID:'n',META_APP_SECRET:'a',META_VERIFY_TOKEN:'v',META_GRAPH_VERSION:'v26.0',META_WHATSAPP_IDENTITY_VERIFIED:'true'};
+  assert.equal(channelReadiness(wa).whatsapp.configured,true);assert.throws(()=>assertChannelActionAllowed('whatsapp',wa),/commercial_gates_closed/);
+  assert.equal(channelReadiness({YOUTUBE_OAUTH_ACCESS_TOKEN:'y',YOUTUBE_IDENTITY_VERIFIED:'true'}).youtube.configured,true);
+});

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { normalizeWhatsappStatusPayload,applyProviderConfirmation } from '../providerConfirmation.mjs';
+import { resolveMetaVerifyToken } from '../channelIdentityPreflight.mjs';
 
 const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringify(body));};
 const rawText=(req)=>Buffer.isBuffer(req.rawBody)?req.rawBody.toString('utf8'):String(req.rawBody||'');
@@ -16,7 +17,7 @@ export default async function handler(req,res){
   res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');
   if(req.method==='GET'){
     const mode=String(req.query?.['hub.mode']||''),token=String(req.query?.['hub.verify_token']||''),challenge=String(req.query?.['hub.challenge']||'');
-    if(mode==='subscribe'&&token&&token===String(process.env.META_WEBHOOK_VERIFY_TOKEN||'')){res.statusCode=200;return res.end(challenge);}
+    if(mode==='subscribe'&&token&&token===resolveMetaVerifyToken(process.env)){res.statusCode=200;return res.end(challenge);}
     return json(res,403,{error:'webhook_verification_failed'});
   }
   if(req.method!=='POST')return json(res,405,{error:'method_not_allowed'});
