@@ -2,34 +2,27 @@
 
 Identidade institucional:
 - Marca: ZEVANORY
-- Cadastro/ownership: zevanory@gmail.com
+- Cadastro/ownership operacional: zevanory@gmail.com
+- E-mail profissional: contato@zevanory.api.br
 - Site: https://zevanory.api.br
-- WhatsApp: +55 88 9234-0423
+- WhatsApp oficial: +55 88 9234-0423
 - Handle preferencial: @zevanory
 
-Status por frente:
-- Site proprio: ATIVO / dominio oficial
-- Google organico: ATIVO / sem credencial de publicacao
-- Facebook Page: cadastro iniciado; autenticacao Meta e conclusao externa pendentes
-- Meta Business: autenticacao externa pendente
-- Instagram: conta ZEVANORY criada em https://instagram.com/zevanory; conversao/conexao Business Meta ainda pendente
-- WhatsApp Business Platform: verificacao Meta/token/phone number id pendentes
-- TikTok Business: autenticacao externa pendente
-- YouTube: canal ZEVANORY criado na conta Google oficial em https://youtube.com/@zevanory
-- LinkedIn Company Page: autenticacao por perfil administrador pendente
-- Metricool: marca id 6742761 existente; networksData vazio, sem redes ZEVANORY conectadas
-- Mercado Pago: provedor principal selecionado e integracao tecnica pronta; conta/credenciais produtivas pendentes
-- Asaas: integracao tecnica pronta; conta/credenciais produtivas pendentes
+Estado verificado em 2026-09-01:
+- Site proprio: ATIVO em producao no dominio oficial.
+- E-mail/Resend: OPERACIONAL; MX, SPF, DKIM e DMARC publicados; aliases profissionais ativos.
+- Mercado Pago: credenciais PROD instaladas como secrets; webhook PROD configurado; merchant identity verificada; readiness sem blocker de pagamento.
+- Facebook: Pagina oficial NOVA ZEVANORY criada no portfolio empresarial Zevanory com full access; pagina legada Central Giro de Ofertas permanece separada.
+- Instagram: conta ZEVANORY existente; ainda nao adicionada ao portfolio Meta nesta verificacao; OAuth/login/2FA externo pendente.
+- WhatsApp: numero legado existente foi definido pelo proprietario como numero oficial ZEVANORY; perfil comercial migrado; pedido de display name ZEVANORY enviado e em analise na Meta; Cloud API ainda sem token/phone-number-id em producao.
+- YouTube: canal ZEVANORY existente e conectado ao Metricool; analytics reais retornados pelo conector. OAuth direto da ZEVANORY continua ausente.
+- Metricool: marca id 6742761 ativa; YouTube conectado com channel id UCMl8-SxMVv77S2tz2H63P3A.
+- TikTok: adapter tecnico implementado; token externo ausente; readiness exige content source verified=true e consentimento.
+- LinkedIn: adapter tecnico implementado; token/author URN externos ausentes.
+- Afiliados: adapter HTTPS/idempotente implementado; provider/webhook/token externos ausentes.
 
-Regra: ARBM SIST e produto do portfolio, nunca identidade proprietaria das contas.
-Nenhuma senha, CAPTCHA, SMS, e-mail de verificacao, MFA ou KYC sera contornado.
-Atualizacao operacional 2026-08-30:
-- Pesquisa publica: nenhuma colisao inequÃ­voca indexada para ZEVANORY/@zevanory nas principais redes; disponibilidade nao e garantida sem login.
-- zevanory@gmail.com nao esta associado a nenhum perfil Chrome local detectado.
-- Chrome atual nao possui remote-debugging habilitado; automacao DOM invisivel da sessao existente nao esta disponivel.
-- Facebook: formulario oculto preservado, nome ZEVANORY, categoria digitada Software e bio institucional corrigida; Meta ainda exige confirmacao valida da categoria para habilitar criacao.
-- Google/YouTube: conta Google oficial autenticada e canal ZEVANORY criado; automacao de credenciais permanece proibida.
-- Nenhum conector/plugin disponivel cria contas Meta/TikTok/YouTube/LinkedIn/Mercado Pago/Asaas diretamente.
-- Pagamentos em producao: arquitetura Asaas + Mercado Pago implantada; PAYMENT_PROVIDER=mercadopago persistido; vendas seguem bloqueadas ate credenciais e gates reais.
-- Resend: OPERACIONAL E2E em producao. Dominio zevanory.api.br verificado; DKIM/SPF/DMARC e MX inbound publicados; RESEND_API_KEY e RESEND_WEBHOOK_SECRET ativos como secrets na Vercel; EMAIL_INBOUND_ENABLED=true; Receiving recebe email.received com HTTP 200; aliases contato@, vendas@, suporte@ e financeiro@ encaminham para zevanory@gmail.com; entregas confirmadas como Delivered no Resend.
-- Zoho Mail: conta criada, mas plano gratuito indisponivel no painel/regiao; nenhuma compra realizada.
+Governanca:
+- ARBM SIST e produto do portfolio, nunca identidade proprietaria das contas.
+- Nenhuma senha, CAPTCHA, SMS, e-mail de verificacao, MFA, KYC ou aceite juridico sera contornado.
+- Canais externos so podem ser chamados de conectados quando houver evidencia do provedor; adapter implementado nao equivale a canal ativo.
+- Gates comerciais globais permanecem OFF ate fechamento do release publico e cutover controlado.
