@@ -4,11 +4,11 @@ export const CHANNELS = Object.freeze({
   email: Object.freeze({ provider:'resend', env:['RESEND_API_KEY'], commercial:true, role:'crm_nurture' }),
   instagram: Object.freeze({ provider:'meta-graph-api', env:['META_ACCESS_TOKEN','INSTAGRAM_BUSINESS_ACCOUNT_ID','META_GRAPH_VERSION'], commercial:true, role:'proof_reach' }),
   facebook: Object.freeze({ provider:'meta-graph-api', env:['META_ACCESS_TOKEN','META_PAGE_ID','META_GRAPH_VERSION'], commercial:true, role:'proof_retargeting' }),
-  tiktok: Object.freeze({ provider:'tiktok-business-api', env:['TIKTOK_ACCESS_TOKEN'], commercial:true, role:'short_form_discovery', implemented:false }),
+  tiktok: Object.freeze({ provider:'tiktok-content-posting-api', env:['TIKTOK_ACCESS_TOKEN','TIKTOK_CONTENT_SOURCE_VERIFIED'], commercial:true, role:'short_form_discovery' }),
   youtube: Object.freeze({ provider:'youtube-data-api', env:[], credentialSets:[['YOUTUBE_OAUTH_ACCESS_TOKEN'],['YOUTUBE_OAUTH_CLIENT_ID','YOUTUBE_OAUTH_CLIENT_SECRET','YOUTUBE_OAUTH_REFRESH_TOKEN']], commercial:true, role:'demo_authority' }),
-  linkedin: Object.freeze({ provider:'linkedin-api', env:['LINKEDIN_ACCESS_TOKEN'], commercial:true, role:'b2b_authority', implemented:false }),
+  linkedin: Object.freeze({ provider:'linkedin-posts-api', env:['LINKEDIN_ACCESS_TOKEN','LINKEDIN_AUTHOR_URN','LINKEDIN_VERSION'], commercial:true, role:'b2b_authority' }),
   google: Object.freeze({ provider:'organic-search', env:[], commercial:false, role:'seo_discovery' }),
-  affiliate: Object.freeze({ provider:'network-adapter', env:['AFFILIATE_PROVIDER'], commercial:true, role:'partner_distribution', implemented:false }),
+  affiliate: Object.freeze({ provider:'network-webhook-adapter', env:['AFFILIATE_PROVIDER','AFFILIATE_WEBHOOK_URL','AFFILIATE_WEBHOOK_TOKEN'], commercial:true, role:'partner_distribution' }),
 });
 
 export function channelReadiness(env = process.env) {
