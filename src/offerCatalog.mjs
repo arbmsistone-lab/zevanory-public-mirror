@@ -16,7 +16,7 @@ export const ARBM_SIST_OFFER = Object.freeze({
   release_state: 'technically_certified_unsigned_not_public',
   public_distribution_channel: 'microsoft_store_msix',
   store_package_name: 'ARBM-SIST-v10.0.0-STORE-UNSIGNED.msix',
-  store_package_sha256: 'A314D184B29E73FBC3C57361899716468434E0E2831BCD385CE810BA0303D20E',
+  store_package_sha256: 'AD4B7BB91DA10FDA3233019506AC611F7840DFAD89578C9013A48EEAF5A80BB0',
   store_package_state: 'verified_unsigned_pending_partner_center_identity',
   store_identity_status: 'pending_partner_center',
   store_submission_ready: false,

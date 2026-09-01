@@ -14,7 +14,7 @@ test('OFFER-0001 is ARBM SIST digital product with verified artifact',()=>{
   assert.equal(ARBM_SIST_OFFER.release_state,'technically_certified_unsigned_not_public');
   assert.equal(ARBM_SIST_OFFER.code_signing_required,true);
   assert.equal(ARBM_SIST_OFFER.public_distribution_channel,'microsoft_store_msix');
-  assert.equal(ARBM_SIST_OFFER.store_package_sha256,'A314D184B29E73FBC3C57361899716468434E0E2831BCD385CE810BA0303D20E');
+  assert.equal(ARBM_SIST_OFFER.store_package_sha256,'AD4B7BB91DA10FDA3233019506AC611F7840DFAD89578C9013A48EEAF5A80BB0');
   assert.equal(ARBM_SIST_OFFER.store_submission_ready,false);
   assert.equal(ARBM_SIST_OFFER.code_signing_provider,'microsoft_store_re_signing_after_certification');
   assert.equal(ARBM_SIST_OFFER.direct_unsigned_distribution_allowed,false);

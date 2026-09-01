@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { ARBM_SIST_OFFER, publicOffer } from '../src/offerCatalog.mjs';
 const evidence=readFileSync(new URL('../evidence/EG-0065-microsoft-store-v10-distribution.md',import.meta.url),'utf8');
-const expectedStoreHash='A314D184B29E73FBC3C57361899716468434E0E2831BCD385CE810BA0303D20E';
+const expectedStoreHash='AD4B7BB91DA10FDA3233019506AC611F7840DFAD89578C9013A48EEAF5A80BB0';
 let pass=0;
 for(let i=1;i<=20;i++){
   const blocked=publicOffer({ARBM_SIST_CODE_SIGNING_READY:'false',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'false'});
