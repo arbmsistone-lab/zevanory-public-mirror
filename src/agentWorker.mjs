@@ -8,6 +8,7 @@ import { assertChannelActionAllowed } from './channelAdapters.mjs';
 import { getAgentControlState, requiresHumanApproval, findApprovedAction, requestApproval, consumeApproval } from './agentControl.mjs';
 import { refreshOutcomeLearning } from './outcomeLearning.mjs';
 import { evaluateProgressiveAutonomy } from './autonomyPolicy.mjs';
+import { evaluateContentNovelty } from './contentDedup.mjs';
 
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
@@ -64,7 +65,9 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
     const channel=String(decision.channel||lead?.channel||'').toLowerCase();
     assertChannelActionAllowed(channel,env);
     const content=String(decision.content||decision.message||'').trim(); if(!content) throw new Error('publish_content_required');
-    return enqueueOutbox(sql,{aggregateType:'content',aggregateId:runId,eventType:'publish_content',destination:`channel:${channel}`,payload:{content:content.slice(0,8000),title:String(decision.title||'').slice(0,240),description:String(decision.description||content).slice(0,5000),media_url:String(decision.media_url||'').slice(0,2000),privacy_status:String(decision.privacy_status||'private').slice(0,20),made_for_kids:decision.made_for_kids===true},idempotencyKey:`agent:${runId}:publish_content`,traceId,runId});
+    const novelty=await evaluateContentNovelty(sql,{content,channel});
+    if(!novelty.allowed) throw new Error(novelty.reason);
+    return enqueueOutbox(sql,{aggregateType:'content',aggregateId:runId,eventType:'publish_content',destination:`channel:${channel}`,payload:{content:content.slice(0,8000),title:String(decision.title||'').slice(0,240),description:String(decision.description||content).slice(0,5000),media_url:String(decision.media_url||'').slice(0,2000),privacy_status:String(decision.privacy_status||'private').slice(0,20),made_for_kids:decision.made_for_kids===true,dedup_fingerprint:novelty.fingerprint,dedup_policy:novelty.policy},idempotencyKey:`agent:${runId}:publish_content`,traceId,runId});
   }
   if(tool==='start_checkout'){
     if(!lead?.session_id) throw new Error('checkout_session_unavailable');
@@ -101,7 +104,14 @@ export async function runAgentOnce(sql,options={}){
     tool=chooseTool(decision);
     const auth=authorizeTool(tool,env);
     evalResult=evaluateAgentDecision({decision,context,authorization:auth,tool});
-    const finalAuth=evalResult.pass?auth:Object.freeze({allowed:false,risk_level:auth.risk_level,reason:'agent_eval_failed'});
+    let contentNovelty=null;
+    if(evalResult.pass&&tool==='publish_content'){
+      const dedupChannel=String(decision.channel||context.lead?.channel||'').toLowerCase();
+      const dedupContent=String(decision.content||decision.message||'').trim();
+      contentNovelty=await evaluateContentNovelty(sql,{content:dedupContent,channel:dedupChannel});
+      if(!contentNovelty.allowed)evalResult=Object.freeze({...evalResult,pass:false,score:Math.max(0,Number(evalResult.score)-0.5),issues:Object.freeze([...evalResult.issues,contentNovelty.reason])});
+    }
+    const finalAuth=evalResult.pass?auth:Object.freeze({allowed:false,risk_level:auth.risk_level,reason:evalResult.issues?.find(x=>String(x).startsWith('content_duplicate_'))||'agent_eval_failed'});
     const saveRun=async(outcome,result)=>{await persistRun(sql,{runId,job,traceId,spanId,decision,context,tool,outcome,result,evalResult,latencyMs:Date.now()-started});runPersisted=true;};
     if(!finalAuth.allowed){
       const result={blocked:true,reason:finalAuth.reason};

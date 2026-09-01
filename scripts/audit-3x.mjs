@@ -427,6 +427,16 @@ unit('DEF-YOUTUBE-EVIDENCE','evidence/EG-0061-youtube-resumable-upload.md',[
   op('three independent organizations recorded',()=>['Google','Vercel','IETF'].every(x=>t('evidence/EG-0061-youtube-resumable-upload.md').includes(x))),
   op('secrets and commercial gates remain protected',()=>t('evidence/EG-0061-youtube-resumable-upload.md').includes('nunca podem ser enviados')&&t('.env.example').includes('SALE_GLOBALLY_ENABLED=false')),
 ]);
+unit('CODE-CONTENT-DEDUP','src/contentDedup.mjs + src/agentWorker.mjs',[
+  command('content dedup syntax',process.execPath,['--check','src/contentDedup.mjs']),
+  command('content dedup focused tests',process.execPath,['--test','test/content-dedup.test.mjs']),
+  command('content dedup 20x',process.execPath,['scripts/audit-content-dedup-20x.mjs']),
+]);
+unit('DEF-CONTENT-DEDUP-EVIDENCE','evidence/EG-0062-content-deduplication.md',[
+  op('content dedup evidence approved with restrictions',()=>t('evidence/EG-0062-content-deduplication.md').includes('APROVADO COM RESTRICOES')),
+  op('three independent dedup references recorded',()=>['Unicode','Stanford','Google'].every(x=>t('evidence/EG-0062-content-deduplication.md').includes(x))),
+  op('lexical similarity not overstated as semantic',()=>t('evidence/EG-0062-content-deduplication.md').includes('nao e compreensao semantica')),
+]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),
