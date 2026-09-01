@@ -1,16 +1,14 @@
 <!doctype html>
 <html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow,noarchive">
-<meta name="theme-color" content="#070b12">
+<meta name="robots" content="noindex,nofollow,noarchive"><meta name="theme-color" content="#070b12">
 <title>ZEVANORY Robot Control Room</title>
-<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/zevanory-robot-control.css">
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/zevanory-robot-control.css">
 </head><body>
 <header class="topbar">
 <a class="brand" href="/" aria-label="ZEVANORY"><img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY" width="168" height="36"></a>
 <div><b>ROBOT CONTROL ROOM</b><span id="mode-label">MODO DEMONSTRAÇÃO</span></div>
-<div class="top-actions"><span class="pulse"></span><span id="connection">SIMULAÇÃO LOCAL</span><button id="emergency-stop" disabled title="P0: controle de pausa ainda não implementado">PAUSA SEGURA — PENDENTE</button><button id="connect">Conectar operador</button></div>
+<div class="top-actions"><span class="pulse"></span><span id="connection">SIMULAÇÃO LOCAL</span><button id="approval-queue" disabled>APROVAÇÕES <b id="approval-count">0</b></button><button id="emergency-stop" disabled>PAUSA SEGURA</button><button id="connect">Conectar operador</button></div>
 </header>
 <main>
 <section class="hero-grid">
@@ -26,10 +24,9 @@
 <div class="panel"><div class="panel-head"><div><span>GOVERNANÇA</span><h2>Gates e guardrails</h2></div></div><div id="gates" class="gate-list"></div></div>
 <div class="panel span-2"><div class="panel-head"><div><span>FUNIL OPERACIONAL</span><h2>Da descoberta ao pós-venda</h2></div></div><div id="journey" class="journey"></div></div>
 <div class="panel"><div class="panel-head"><div><span>SAÚDE</span><h2>Erros, retries e outbox</h2></div></div><div id="health" class="health"></div></div>
-
-</section>
-</main>
-<dialog id="auth-dialog"><form method="dialog"><h2>Conectar modo operador</h2><p>O token é usado apenas nesta sessão para consultar a API protegida. Ele não é persistido.</p><label>Bearer token<input id="operator-token" type="password" autocomplete="off"></label><div><button value="cancel">Cancelar</button><button id="auth-submit" value="default">Conectar</button></div><small id="auth-error"></small></form></dialog>
+</section></main>
+<dialog id="auth-dialog"><form method="dialog"><h2>Conectar modo operador</h2><p>O token é usado apenas nesta sessão. Ele não é persistido.</p><label>Bearer token<input id="operator-token" type="password" autocomplete="off"></label><div><button value="cancel">Cancelar</button><button id="auth-submit" value="default">Conectar</button></div><small id="auth-error"></small></form></dialog>
+<dialog id="approval-dialog"><div class="approval-dialog-body"><div class="panel-head"><div><span>CONTROLE HUMANO</span><h2>Aprovações pendentes</h2></div><button id="close-approvals">Fechar</button></div><div id="approval-list" class="approval-list"></div></div></dialog>
 <footer><span>ZEVANORY · Observabilidade do robô</span><span id="updated">—</span><b>SEM PII · SEM ATIVIDADE INVENTADA</b></footer>
 <script src="/zevanory-robot-control.js" defer></script>
 </body></html>

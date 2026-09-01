@@ -53,3 +53,10 @@ test('operator bridge prevents pipeline regression', async()=>{
   assert.match(source,/salesStageRank/);
   assert.match(source,/invalid_sales_transition/);
 });
+
+test('commercial and financial decisions map to gated tools',()=>{
+  assert.equal(chooseTool({action:'send_message'}),'send_message');
+  assert.equal(chooseTool({action:'publish_content'}),'publish_content');
+  assert.equal(chooseTool({action:'start_checkout'}),'start_checkout');
+  assert.equal(chooseTool({action:'refund_payment'}),'refund_payment');
+});
