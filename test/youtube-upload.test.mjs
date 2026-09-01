@@ -6,8 +6,8 @@ import {channelReadiness} from '../src/channelAdapters.mjs';
 const response=(status,{body={},headers={}}={})=>({status,ok:status>=200&&status<300,headers:new Headers(headers),json:async()=>body,arrayBuffer:async()=>Buffer.from(body)});
 
 test('YouTube readiness accepts access token or complete refresh credentials only',()=>{
-  assert.equal(channelReadiness({YOUTUBE_OAUTH_ACCESS_TOKEN:'a'}).youtube.configured,true);
-  assert.equal(channelReadiness({YOUTUBE_OAUTH_CLIENT_ID:'i',YOUTUBE_OAUTH_CLIENT_SECRET:'s',YOUTUBE_OAUTH_REFRESH_TOKEN:'r'}).youtube.configured,true);
+  assert.equal(channelReadiness({YOUTUBE_OAUTH_ACCESS_TOKEN:'a',YOUTUBE_IDENTITY_VERIFIED:'true'}).youtube.configured,true);
+  assert.equal(channelReadiness({YOUTUBE_OAUTH_CLIENT_ID:'i',YOUTUBE_OAUTH_CLIENT_SECRET:'s',YOUTUBE_OAUTH_REFRESH_TOKEN:'r',YOUTUBE_IDENTITY_VERIFIED:'true'}).youtube.configured,true);
   assert.equal(channelReadiness({YOUTUBE_OAUTH_CLIENT_ID:'i'}).youtube.configured,false);
   assert.equal(channelReadiness({YOUTUBE_API_KEY:'key'}).youtube.configured,false);
 });

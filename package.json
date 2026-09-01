@@ -54,6 +54,8 @@
     "audit:offer-v10:20x": "node scripts/audit-v10-offer-reconciliation-20x.mjs",
     "audit:social-channels:20x": "node scripts/audit-social-channel-closeout-20x.mjs",
     "brand:social": "node scripts/build-social-assets.mjs",
-    "audit:store-distribution:20x": "node scripts/audit-store-distribution-20x.mjs"
+    "audit:store-distribution:20x": "node scripts/audit-store-distribution-20x.mjs",
+    "preflight:channel-identities": "node scripts/channel-identity-preflight.mjs",
+    "audit:channel-identity:20x": "node scripts/audit-channel-identity-20x.mjs"
   }
 }
