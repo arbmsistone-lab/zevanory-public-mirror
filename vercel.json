@@ -31,6 +31,10 @@
       "destination": "/api/webhooks?provider=resend"
     },
     {
+      "source": "/api/webhooks/meta",
+      "destination": "/api/webhooks?provider=meta"
+    },
+    {
       "source": "/arbm-sist",
       "destination": "/public/arbm-sist.html"
     },

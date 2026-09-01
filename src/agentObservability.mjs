@@ -25,7 +25,10 @@ export function deriveExecutionState(run={},outboxEvent=null){
   if(run.outcome==='blocked') return result.state==='awaiting_approval'?'awaiting_approval':'blocked';
   if(!EXTERNAL_TOOLS.has(String(run.tool||''))) return 'internal_completed';
   if(!outboxEvent) return 'external_request_unobserved';
-  if(outboxEvent.status==='delivered') return 'external_request_delivered';
+  const confirmation=asObject(outboxEvent.provider_confirmation);
+  if(confirmation.outcome==='confirmed') return 'external_effect_confirmed';
+  if(confirmation.outcome==='failed') return 'external_effect_failed';
+  if(outboxEvent.status==='delivered') return 'external_request_accepted';
   if(outboxEvent.status==='retry') return 'external_request_retry';
   if(outboxEvent.status==='dead_letter') return 'external_request_failed';
   return 'external_request_pending';
@@ -35,10 +38,11 @@ export function buildAgentObservability({runs=[],outbox=[],approvals=[]}={}){
   const enriched=runs.map((run)=>Object.freeze({...run,execution_state:deriveExecutionState(run,byRun.get(String(run.run_id||''))||null)}));
   const total=enriched.length;
   const traced=enriched.filter((x)=>x.trace_id&&x.span_id).length;
-  const failed=enriched.filter((x)=>x.execution_state==='failed'||x.execution_state==='external_request_failed').length;
+  const failed=enriched.filter((x)=>['failed','external_request_failed','external_effect_failed'].includes(x.execution_state)).length;
   const blocked=enriched.filter((x)=>['blocked','awaiting_approval'].includes(x.execution_state)).length;
-  const externalPending=enriched.filter((x)=>['external_request_pending','external_request_retry','external_request_unobserved'].includes(x.execution_state)).length;
-  const externalDelivered=enriched.filter((x)=>x.execution_state==='external_request_delivered').length;
+  const externalPending=enriched.filter((x)=>['external_request_pending','external_request_retry','external_request_unobserved','external_request_accepted'].includes(x.execution_state)).length;
+  const externalAccepted=enriched.filter((x)=>x.execution_state==='external_request_accepted').length;
+  const externalConfirmed=enriched.filter((x)=>x.execution_state==='external_effect_confirmed').length;
   const pendingApprovals=approvals.filter((x)=>x.status==='pending').length;
   const evals=enriched.map((x)=>asObject(x.eval)).filter((x)=>typeof x.pass==='boolean');
   const evalPassed=evals.filter((x)=>x.pass===true).length;
@@ -52,7 +56,8 @@ export function buildAgentObservability({runs=[],outbox=[],approvals=[]}={}){
       blocked_runs:blocked,
       pending_approvals:pendingApprovals,
       external_requests_pending:externalPending,
-      external_requests_delivered:externalDelivered,
+      external_requests_accepted:externalAccepted,
+      external_effects_confirmed:externalConfirmed,
       eval_coverage:total?evals.length/total:null,
       eval_pass_rate:evals.length?evalPassed/evals.length:null,
       latency_p50_ms:percentile(latencies,50),

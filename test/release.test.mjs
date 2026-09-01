@@ -25,7 +25,7 @@ test('release fingerprint is canonical and immutable',()=>{
 });
 
 test('release manifest requires all production surfaces',()=>{
-  for(const route of ['/','/arbm-sist','/piloto','/termos','/privacidade','/reembolso','/afiliados','/api/config','/api/health','/api/live','/api/status','/api/assurance','/api/activation/readiness','/api/events/public','/api/events/operator','/api/agent/status','/api/agent/run','/api/checkout/asaas','/api/webhooks/asaas','/api/release']) assert.equal(RELEASE.requiredRoutes.includes(route),true);
+  for(const route of ['/','/arbm-sist','/piloto','/termos','/privacidade','/reembolso','/afiliados','/api/config','/api/health','/api/live','/api/status','/api/assurance','/api/activation/readiness','/api/events/public','/api/events/operator','/api/agent/status','/api/agent/run','/api/checkout/asaas','/api/webhooks/asaas','/api/webhooks/resend','/api/webhooks/meta','/api/release']) assert.equal(RELEASE.requiredRoutes.includes(route),true);
 });
 function invokeRelease(env={}){  const previous={...process.env}; Object.assign(process.env,env);
   let body=''; const headers={};

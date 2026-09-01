@@ -407,6 +407,16 @@ unit('DEF-PROGRESSIVE-AUTONOMY-EVIDENCE','evidence/EG-0059-progressive-autonomy-
   op('three independent trust references recorded',()=>['OpenAI','Microsoft','Salesforce'].every(x=>t('evidence/EG-0059-progressive-autonomy-policy.md').includes(x))),
   op('guarded remains production default',()=>t('evidence/EG-0059-progressive-autonomy-policy.md').includes('AGENT_AUTONOMY_MODE=guarded')),
 ]);
+unit('CODE-PROVIDER-CONFIRMATION','src/providerConfirmation.mjs + provider webhooks',[
+  command('provider confirmation syntax',process.execPath,['--check','src/providerConfirmation.mjs']),
+  command('provider confirmation focused tests',process.execPath,['--test','test/provider-confirmation.test.mjs','test/meta-webhook.test.mjs','test/resend.test.mjs','test/agent-observability.test.mjs']),
+  command('provider confirmation 20x',process.execPath,['scripts/audit-provider-confirmation-20x.mjs']),
+]);
+unit('DEF-PROVIDER-CONFIRMATION-EVIDENCE','evidence/EG-0060-provider-delivery-confirmation.md',[
+  op('provider confirmation evidence approved with restrictions',()=>t('evidence/EG-0060-provider-delivery-confirmation.md').includes('APROVADO COM RESTRICOES')),
+  op('three independent webhook references recorded',()=>['Meta','Resend','Stripe'].every(x=>t('evidence/EG-0060-provider-delivery-confirmation.md').includes(x))),
+  op('commercial truth remains explicitly separate',()=>t('evidence/EG-0060-provider-delivery-confirmation.md').includes('nao conversao')&&t('evidence/EG-0060-provider-delivery-confirmation.md').includes('nao resultado comercial')),
+]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),

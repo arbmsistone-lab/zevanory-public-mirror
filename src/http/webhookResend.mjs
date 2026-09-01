@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { neon } from '@neondatabase/serverless';
+import { normalizeResendDeliveryEvent,applyProviderConfirmation } from '../providerConfirmation.mjs';
 
 const API='https://api.resend.com';
 const ALIASES=new Set(['contato','vendas','suporte','financeiro']);
@@ -23,10 +25,16 @@ export default async function handler(req,res){
   if(req.method!=='POST') return json(res,405,{error:'method_not_allowed'});
   const raw=bodyText(req); const h=headers(req);
   if(!verifyResendSignature({payload:raw,...h,secret:process.env.RESEND_WEBHOOK_SECRET})) return json(res,401,{error:'webhook_auth_failed',accepted:false});
+  let event; try{event=JSON.parse(raw);}catch{return json(res,400,{error:'invalid_json',accepted:false});}
+  const delivery=normalizeResendDeliveryEvent(event);
+  if(delivery){
+    if(!process.env.DATABASE_URL)return json(res,503,{error:'confirmation_storage_unavailable',accepted:false});
+    try{const result=await applyProviderConfirmation(neon(process.env.DATABASE_URL),delivery);return json(res,200,{accepted:true,updated:result.updated,status:delivery.status});}
+    catch{return json(res,503,{error:'confirmation_reconciliation_unavailable',accepted:false});}
+  }
+  if(event?.type!=='email.received') return json(res,200,{accepted:true,ignored:true,reason:'event_not_supported'});
   if(process.env.EMAIL_INBOUND_ENABLED!=='true') return json(res,503,{error:'email_inbound_disabled',accepted:false});
   if(!process.env.RESEND_API_KEY||!process.env.RESEND_FORWARD_TO) return json(res,503,{error:'email_provider_unavailable',accepted:false});
-  let event; try{event=JSON.parse(raw);}catch{return json(res,400,{error:'invalid_json',accepted:false});}
-  if(event?.type!=='email.received') return json(res,200,{accepted:true,ignored:true,reason:'event_not_supported'});
   const emailId=String(event?.data?.email_id||''); if(!emailId)return json(res,400,{error:'email_id_missing',accepted:false});
   try{
     const email=await api(`/emails/receiving/${encodeURIComponent(emailId)}`,{apiKey:process.env.RESEND_API_KEY});
