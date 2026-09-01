@@ -1,4 +1,5 @@
 import { uploadYouTubeFromRemote } from './youtubeUpload.mjs';
+import { publishTikTok, publishLinkedIn } from './socialPosting.mjs';
 const jsonBody=async(response)=>{try{return await response.json();}catch{return {};}};
 const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new Error(code);return v;};
 const ensureGlobalGates=(env)=>{if(env.SALE_GLOBALLY_ENABLED!=='true'||env.PRE_SALE_GATES_APPROVED!=='true')throw new Error('commercial_gates_closed');};
@@ -47,6 +48,15 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
     'channel:youtube':async(event,{sql}={})=>{
       ensureGlobalGates(env);
       return uploadYouTubeFromRemote({event,sql,env,fetchImpl});
+    },
+    'channel:tiktok':async(event)=>{ ensureGlobalGates(env); return publishTikTok({event,env,fetchImpl}); },
+    'channel:linkedin':async(event)=>{ ensureGlobalGates(env); return publishLinkedIn({event,env,fetchImpl}); },
+    'channel:affiliate':async(event)=>{
+      ensureGlobalGates(env);const provider=required(env.AFFILIATE_PROVIDER,'affiliate_provider_missing');
+      const url=ensureHttps(env.AFFILIATE_WEBHOOK_URL,'affiliate_webhook_url_missing');const token=required(env.AFFILIATE_WEBHOOK_TOKEN,'affiliate_webhook_token_missing');
+      const body=await requestJson(fetchImpl,url,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json','idempotency-key':String(event.idempotency_key||event.event_id)},body:JSON.stringify({provider,event_id:event.event_id,aggregate_id:event.aggregate_id,payload:event.payload||{}})},[200,201,202]);
+      const id=String(body?.id||body?.tracking_id||body?.event_id||'');if(!id)throw new Error('affiliate_provider_id_missing');
+      return Object.freeze({provider:`affiliate:${provider}`,accepted:true,provider_message_id:id,confirmation:'provider_lookup_or_webhook_required'});
     },
   });
 }
