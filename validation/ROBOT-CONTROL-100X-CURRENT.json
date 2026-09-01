@@ -1,0 +1,711 @@
+{
+  "timestamp": "2026-09-01T00:10:48.105Z",
+  "audit": "ZEVANORY_ROBOT_CONTROL_100X",
+  "total": 100,
+  "passed": 84,
+  "failed": 16,
+  "critical": 8,
+  "status": "BLOCKED",
+  "checks": [
+    {
+      "id": "001",
+      "domain": "governance",
+      "label": "global sale gate exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "002",
+      "domain": "governance",
+      "label": "pre-sale gate exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "003",
+      "domain": "governance",
+      "label": "financial gate exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "004",
+      "domain": "governance",
+      "label": "checkout gate exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "005",
+      "domain": "governance",
+      "label": "deny by default exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "006",
+      "domain": "governance",
+      "label": "unsupported claims eval exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "007",
+      "domain": "governance",
+      "label": "public control room noindex",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "008",
+      "domain": "governance",
+      "label": "demo explicitly labeled",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "009",
+      "domain": "governance",
+      "label": "no invented activity statement",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "010",
+      "domain": "governance",
+      "label": "operator mode explicitly labeled",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "011",
+      "domain": "runtime",
+      "label": "job claiming uses skip locked",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "012",
+      "domain": "runtime",
+      "label": "run id is unique UUID",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "013",
+      "domain": "runtime",
+      "label": "agent run persisted",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "014",
+      "domain": "runtime",
+      "label": "tool audit persisted",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "015",
+      "domain": "runtime",
+      "label": "run inserted before tool audit",
+      "ok": true,
+      "severity": "P0"
+    },
+    {
+      "id": "016",
+      "domain": "runtime",
+      "label": "tool execution failure recorded",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "017",
+      "domain": "runtime",
+      "label": "job failure captures error",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "018",
+      "domain": "runtime",
+      "label": "AI fallback exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "019",
+      "domain": "runtime",
+      "label": "AI hourly cap exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "020",
+      "domain": "runtime",
+      "label": "worker integrity regression test exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "021",
+      "domain": "tools",
+      "label": "read tools classified",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "022",
+      "domain": "tools",
+      "label": "write tools classified",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "023",
+      "domain": "tools",
+      "label": "commercial tools classified",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "024",
+      "domain": "tools",
+      "label": "financial tools classified",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "025",
+      "domain": "tools",
+      "label": "send message policy exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "026",
+      "domain": "tools",
+      "label": "publish content policy exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "027",
+      "domain": "tools",
+      "label": "refund policy exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "028",
+      "domain": "tools",
+      "label": "commercial tool requires gates",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "029",
+      "domain": "tools",
+      "label": "financial tool requires gates",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "030",
+      "domain": "tools",
+      "label": "tool audit stores authorization reason",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "031",
+      "domain": "traceability",
+      "label": "job id links run to job",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "032",
+      "domain": "traceability",
+      "label": "tool audit links run",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "033",
+      "domain": "traceability",
+      "label": "run stores provider",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "034",
+      "domain": "traceability",
+      "label": "run stores model",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "035",
+      "domain": "traceability",
+      "label": "run stores mode",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "036",
+      "domain": "traceability",
+      "label": "run stores latency",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "037",
+      "domain": "traceability",
+      "label": "run stores decision",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "038",
+      "domain": "traceability",
+      "label": "global correlation id across lifecycle",
+      "ok": false,
+      "severity": "P1"
+    },
+    {
+      "id": "039",
+      "domain": "traceability",
+      "label": "span id per discrete operation",
+      "ok": false,
+      "severity": "P1"
+    },
+    {
+      "id": "040",
+      "domain": "traceability",
+      "label": "session hierarchy stored",
+      "ok": false,
+      "severity": "P1"
+    },
+    {
+      "id": "041",
+      "domain": "commercial",
+      "label": "first response reaches safe tool",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "042",
+      "domain": "commercial",
+      "label": "qualification reaches memory tool",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "043",
+      "domain": "commercial",
+      "label": "offer reaches draft tool",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "044",
+      "domain": "commercial",
+      "label": "follow-up reaches scheduler",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "045",
+      "domain": "commercial",
+      "label": "send_message reachable from chooseTool",
+      "ok": false,
+      "severity": "P0"
+    },
+    {
+      "id": "046",
+      "domain": "commercial",
+      "label": "publish_content reachable from chooseTool",
+      "ok": false,
+      "severity": "P0"
+    },
+    {
+      "id": "047",
+      "domain": "commercial",
+      "label": "start_checkout reachable from chooseTool",
+      "ok": false,
+      "severity": "P0"
+    },
+    {
+      "id": "048",
+      "domain": "commercial",
+      "label": "refund_payment reachable from chooseTool",
+      "ok": false,
+      "severity": "P0"
+    },
+    {
+      "id": "049",
+      "domain": "commercial",
+      "label": "commercial executor implemented",
+      "ok": false,
+      "severity": "P0"
+    },
+    {
+      "id": "050",
+      "domain": "commercial",
+      "label": "financial executor implemented",
+      "ok": false,
+      "severity": "P0"
+    },
+    {
+      "id": "051",
+      "domain": "channels",
+      "label": "owned web modeled",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "052",
+      "domain": "channels",
+      "label": "whatsapp modeled",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "053",
+      "domain": "channels",
+      "label": "email modeled",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "054",
+      "domain": "channels",
+      "label": "instagram modeled",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "055",
+      "domain": "channels",
+      "label": "facebook modeled",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "056",
+      "domain": "channels",
+      "label": "tiktok modeled",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "057",
+      "domain": "channels",
+      "label": "youtube modeled",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "058",
+      "domain": "channels",
+      "label": "linkedin modeled",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "059",
+      "domain": "channels",
+      "label": "channel readiness fail closed",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "060",
+      "domain": "channels",
+      "label": "external delivery confirmation linked to agent run",
+      "ok": false,
+      "severity": "P1"
+    },
+    {
+      "id": "061",
+      "domain": "resilience",
+      "label": "transactional outbox exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "062",
+      "domain": "resilience",
+      "label": "idempotency key unique",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "063",
+      "domain": "resilience",
+      "label": "outbox skip locked",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "064",
+      "domain": "resilience",
+      "label": "bounded retry exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "065",
+      "domain": "resilience",
+      "label": "dead letter exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "066",
+      "domain": "resilience",
+      "label": "adapter missing fails closed",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "067",
+      "domain": "resilience",
+      "label": "delivered timestamp stored",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "068",
+      "domain": "resilience",
+      "label": "last error stored",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "069",
+      "domain": "resilience",
+      "label": "outbox health objective exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "070",
+      "domain": "resilience",
+      "label": "cross-step compensation workflow exists",
+      "ok": false,
+      "severity": "P1"
+    },
+    {
+      "id": "071",
+      "domain": "security",
+      "label": "operator API uses bearer timing-safe auth",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "072",
+      "domain": "security",
+      "label": "operator API requires OPERATOR_TOKEN",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "073",
+      "domain": "security",
+      "label": "control API is GET only",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "074",
+      "domain": "security",
+      "label": "control API no-store",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "075",
+      "domain": "security",
+      "label": "control API nosniff",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "076",
+      "domain": "security",
+      "label": "control query omits session_id",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "077",
+      "domain": "security",
+      "label": "control query omits lead_id",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "078",
+      "domain": "security",
+      "label": "control query omits outbox payload",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "079",
+      "domain": "security",
+      "label": "errors are length capped",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "080",
+      "domain": "security",
+      "label": "model prompt/output PII redaction pipeline exists",
+      "ok": false,
+      "severity": "P1"
+    },
+    {
+      "id": "081",
+      "domain": "control-room",
+      "label": "timeline exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "082",
+      "domain": "control-room",
+      "label": "capability matrix exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "083",
+      "domain": "control-room",
+      "label": "gates panel exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "084",
+      "domain": "control-room",
+      "label": "journey view exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "085",
+      "domain": "control-room",
+      "label": "health panel exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "086",
+      "domain": "control-room",
+      "label": "blocked differs from completed",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "087",
+      "domain": "control-room",
+      "label": "live operator polling exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "088",
+      "domain": "control-room",
+      "label": "operator token not persisted",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "089",
+      "domain": "control-room",
+      "label": "human stop/pause endpoint exists",
+      "ok": false,
+      "severity": "P0"
+    },
+    {
+      "id": "090",
+      "domain": "control-room",
+      "label": "high-risk approval queue exists",
+      "ok": false,
+      "severity": "P0"
+    },
+    {
+      "id": "091",
+      "domain": "quality",
+      "label": "agent failed-run objective exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "092",
+      "domain": "quality",
+      "label": "p95 latency objective exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "093",
+      "domain": "quality",
+      "label": "p99 latency objective exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "094",
+      "domain": "quality",
+      "label": "availability objective exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "095",
+      "domain": "quality",
+      "label": "error ratio objective exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "096",
+      "domain": "quality",
+      "label": "agent run token usage stored",
+      "ok": false,
+      "severity": "P2"
+    },
+    {
+      "id": "097",
+      "domain": "quality",
+      "label": "agent run cost stored",
+      "ok": false,
+      "severity": "P2"
+    },
+    {
+      "id": "098",
+      "domain": "quality",
+      "label": "continuous eval result stored",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "099",
+      "domain": "quality",
+      "label": "robot control regression test exists",
+      "ok": true,
+      "severity": "P2"
+    },
+    {
+      "id": "100",
+      "domain": "quality",
+      "label": "world-class evidence gate exists",
+      "ok": true,
+      "severity": "P2"
+    }
+  ]
+}
