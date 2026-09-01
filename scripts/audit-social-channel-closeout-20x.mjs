@@ -6,7 +6,7 @@ const channels=readFileSync('src/channelAdapters.mjs','utf8');
 const outbound=readFileSync('src/outboundAdapters.mjs','utf8');
 let pass=0;
 for(let i=1;i<=20;i++){
-  const ok=run('test/social-channel-closeout.test.mjs','test/outbound-adapters.test.mjs')&&
+  const ok=run('test/social-channel-closeout.test.mjs','test/outbound-adapters.test.mjs','test/public-channel-status.test.mjs','test/social-assets.test.mjs')&&
     social.includes('creator_info/query')&&social.includes('SELF_ONLY')&&social.includes('x-restli-id')&&
     channels.includes("provider:'tiktok-content-posting-api'")&&channels.includes("provider:'linkedin-posts-api'")&&
     outbound.includes("'channel:tiktok'")&&outbound.includes("'channel:linkedin'")&&outbound.includes("'channel:affiliate'")&&
