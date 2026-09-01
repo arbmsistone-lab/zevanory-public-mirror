@@ -48,24 +48,27 @@ export async function runAgentOnce(sql, options = {}) {
   const job=await claimAgentJob(sql);
   if(!job) return Object.freeze({ok:true,processed:false,reason:'queue_empty'});
   const runId=randomUUID(); const started=Date.now();
+  let tool='get_command_center'; let finalAuth={allowed:false,risk_level:'read',reason:'not_evaluated'}; let decision={}; let evalResult={pass:false,score:0,issues:['not_evaluated']};
   try{
     const context=await buildAgentContext(sql,job);
     const env=options.env || process.env; let apiKey=options.apiKey ?? env.GEMINI_API_KEY ?? null;
     if(env.AGENT_AI_ENABLED!=='true') apiKey=null;
     if(apiKey){ const cap=Math.max(1,Math.min(10000,Number(env.AGENT_AI_MAX_RUNS_PER_HOUR)||100)); const recent=await sql.query("select count(*)::int as count from agent_runs where mode='ai_assisted' and created_at>now()-interval '1 hour'"); if(Number(recent[0]?.count||0)>=cap) apiKey=null; }
-    const decision=await decideRevenueAction(context,{...options,apiKey});
-    const tool=chooseTool(decision); const auth=authorizeTool(tool,options.env || process.env);
-    const evalResult=evaluateAgentDecision({decision,context,authorization:auth});
-    const finalAuth=evalResult.pass?auth:Object.freeze({allowed:false,risk_level:auth.risk_level,reason:'agent_eval_failed'});
-    await auditTool(sql,runId,tool,finalAuth,{job_id:job.job_id,decision,eval:evalResult});
-    const result=finalAuth.allowed ? await executeSafeTool(sql,tool,context,decision) : {blocked:true,reason:finalAuth.reason};
-    const outcome=finalAuth.allowed?'completed':'blocked';
+    decision=await decideRevenueAction(context,{...options,apiKey});
+    tool=chooseTool(decision); const auth=authorizeTool(tool,env);
+    evalResult=evaluateAgentDecision({decision,context,authorization:auth});
+    finalAuth=evalResult.pass?auth:Object.freeze({allowed:false,risk_level:auth.risk_level,reason:'agent_eval_failed'});
+    let result; let outcome;
+    try { result=finalAuth.allowed ? await executeSafeTool(sql,tool,context,decision) : {blocked:true,reason:finalAuth.reason}; outcome=finalAuth.allowed?'completed':'blocked'; }
+    catch(error){ result={failed:true,reason:String(error?.message||'tool_execution_failed').slice(0,500)}; outcome='failed'; }
     await sql.query(`insert into agent_runs(run_id,job_id,provider,model,mode,outcome,input_hash,tool_calls,latency_ms,decision)
       values($1,$2,$3,$4,$5,$6,$7,1,$8,$9::jsonb)`,[runId,job.job_id,decision.provider||'deterministic',decision.model||'rules-v1',decision.mode||'deterministic',outcome,decision.input_hash||digest(context),Date.now()-started,JSON.stringify({...decision,tool,result,eval:evalResult})]);
-    await sql.query('update agent_jobs set status=$2,completed_at=now(),last_error=null where job_id=$1',[job.job_id,outcome==='completed'?'completed':'blocked']);
-    return Object.freeze({ok:true,processed:true,job_id:job.job_id,run_id:runId,outcome,tool,result,eval:evalResult});
+    await auditTool(sql,runId,tool,finalAuth,{job_id:job.job_id,decision,eval:evalResult,result});
+    const jobStatus=outcome==='completed'?'completed':outcome==='blocked'?'blocked':'failed';
+    await sql.query('update agent_jobs set status=$2,completed_at=now(),last_error=$3 where job_id=$1',[job.job_id,jobStatus,outcome==='failed'?String(result.reason||'tool_execution_failed'):null]);
+    return Object.freeze({ok:outcome!=='failed',processed:true,job_id:job.job_id,run_id:runId,outcome,tool,result,eval:evalResult});
   }catch(error){
     await sql.query("update agent_jobs set status='failed',completed_at=now(),last_error=$2 where job_id=$1",[job.job_id,String(error?.message||'agent_failed').slice(0,500)]);
-    return Object.freeze({ok:false,processed:true,job_id:job.job_id,error:String(error?.message||'agent_failed')});
+    return Object.freeze({ok:false,processed:true,job_id:job.job_id,run_id:runId,error:String(error?.message||'agent_failed')});
   }
 }

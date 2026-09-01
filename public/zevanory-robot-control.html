@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="theme-color" content="#070b12">
+<title>ZEVANORY Robot Control Room</title>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/zevanory-robot-control.css">
+</head><body>
+<header class="topbar">
+<a class="brand" href="/" aria-label="ZEVANORY"><img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY" width="168" height="36"></a>
+<div><b>ROBOT CONTROL ROOM</b><span id="mode-label">MODO DEMONSTRAÇÃO</span></div>
+<div class="top-actions"><span class="pulse"></span><span id="connection">SIMULAÇÃO LOCAL</span><button id="emergency-stop" disabled title="P0: controle de pausa ainda não implementado">PAUSA SEGURA — PENDENTE</button><button id="connect">Conectar operador</button></div>
+</header>
+<main>
+<section class="hero-grid">
+<article class="status-card primary"><span>ESTADO DO ROBÔ</span><strong id="robot-state">OBSERVÁVEL</strong><small id="robot-substate">Nenhuma ação externa é fingida nesta demonstração.</small></article>
+<article class="status-card"><span>EXECUÇÕES 24H</span><strong id="runs-count">12</strong><small>Runs auditáveis</small></article>
+<article class="status-card"><span>EM EXECUÇÃO</span><strong id="running-count">1</strong><small>Trabalho ativo agora</small></article>
+<article class="status-card"><span>BLOQUEADAS</span><strong id="blocked-count">2</strong><small>Guardrails / gates</small></article>
+<article class="status-card"><span>FALHAS</span><strong id="failed-count">0</strong><small>Exigem investigação</small></article>
+</section>
+<section class="control-grid">
+<div class="panel span-2"><div class="panel-head"><div><span>LINHA DO TEMPO</span><h1>O que a ZEVANORY está fazendo agora</h1></div><div class="legend"><i data-state="completed"></i>Concluído <i data-state="running"></i>Executando <i data-state="blocked"></i>Bloqueado <i data-state="failed"></i>Falhou</div></div><div id="timeline" class="timeline"></div></div>
+<div class="panel"><div class="panel-head"><div><span>CAPACIDADES</span><h2>Fluxo ponta a ponta</h2></div></div><div id="capabilities" class="capabilities"></div></div>
+<div class="panel"><div class="panel-head"><div><span>GOVERNANÇA</span><h2>Gates e guardrails</h2></div></div><div id="gates" class="gate-list"></div></div>
+<div class="panel span-2"><div class="panel-head"><div><span>FUNIL OPERACIONAL</span><h2>Da descoberta ao pós-venda</h2></div></div><div id="journey" class="journey"></div></div>
+<div class="panel"><div class="panel-head"><div><span>SAÚDE</span><h2>Erros, retries e outbox</h2></div></div><div id="health" class="health"></div></div>
+
+</section>
+</main>
+<dialog id="auth-dialog"><form method="dialog"><h2>Conectar modo operador</h2><p>O token é usado apenas nesta sessão para consultar a API protegida. Ele não é persistido.</p><label>Bearer token<input id="operator-token" type="password" autocomplete="off"></label><div><button value="cancel">Cancelar</button><button id="auth-submit" value="default">Conectar</button></div><small id="auth-error"></small></form></dialog>
+<footer><span>ZEVANORY · Observabilidade do robô</span><span id="updated">—</span><b>SEM PII · SEM ATIVIDADE INVENTADA</b></footer>
+<script src="/zevanory-robot-control.js" defer></script>
+</body></html>
