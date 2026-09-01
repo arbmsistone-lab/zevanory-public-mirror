@@ -5,7 +5,7 @@ Identidade canonica:
 - Site: https://zevanory.api.br
 - Cadastro: zevanory@gmail.com
 - Handle preferencial: @zevanory
-- WhatsApp: +55 88 99234-0423
+- WhatsApp: +55 88 9234-0423
 
 Canais confirmados:
 - Instagram: https://instagram.com/zevanory

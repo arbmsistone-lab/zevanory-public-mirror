@@ -20,7 +20,7 @@ test('pilot redirects only after accepted telemetry', () => {
 test('pilot receives offer and price from runtime config', () => {
   assert.match(js, /config\.offer_id/);
   assert.match(js, /config\.experimental_price_brl/);
-  assert.doesNotMatch(html + js, /5588992340423/);
+  assert.doesNotMatch(html + js, /558892340423/);
 });
 
 test('pilot has no inline script or style under strict CSP', () => {

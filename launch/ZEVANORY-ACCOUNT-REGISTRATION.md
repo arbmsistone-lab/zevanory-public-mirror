@@ -4,8 +4,8 @@ Status: identidade oficial definida para cadastros externos.
 
 - Marca-mae: ZEVANORY
 - E-mail de cadastro: zevanory@gmail.com
-- WhatsApp oficial: +55 88 99234-0423
-- WhatsApp E.164: 5588992340423
+- WhatsApp oficial: +55 88 9234-0423
+- WhatsApp E.164: 558892340423
 - Site institucional: https://zevanory.api.br
 - Handle preferencial: @zevanory
 - Instagram oficial: https://instagram.com/zevanory
