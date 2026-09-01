@@ -24,12 +24,12 @@ Status por frente:
 Regra: ARBM SIST e produto do portfolio, nunca identidade proprietaria das contas.
 Nenhuma senha, CAPTCHA, SMS, e-mail de verificacao, MFA ou KYC sera contornado.
 Atualizacao operacional 2026-08-30:
-- Pesquisa publica: nenhuma colisao inequívoca indexada para ZEVANORY/@zevanory nas principais redes; disponibilidade nao e garantida sem login.
+- Pesquisa publica: nenhuma colisao inequÃ­voca indexada para ZEVANORY/@zevanory nas principais redes; disponibilidade nao e garantida sem login.
 - zevanory@gmail.com nao esta associado a nenhum perfil Chrome local detectado.
 - Chrome atual nao possui remote-debugging habilitado; automacao DOM invisivel da sessao existente nao esta disponivel.
 - Facebook: formulario oculto preservado, nome ZEVANORY, categoria digitada Software e bio institucional corrigida; Meta ainda exige confirmacao valida da categoria para habilitar criacao.
 - Google/YouTube: conta Google oficial autenticada e canal ZEVANORY criado; automacao de credenciais permanece proibida.
 - Nenhum conector/plugin disponivel cria contas Meta/TikTok/YouTube/LinkedIn/Mercado Pago/Asaas diretamente.
 - Pagamentos em producao: arquitetura Asaas + Mercado Pago implantada; PAYMENT_PROVIDER=mercadopago persistido; vendas seguem bloqueadas ate credenciais e gates reais.
-- Resend: conta criada; dominio zevanory.api.br verificado para envio; DKIM/SPF/DMARC publicados; MX inbound publicado no Registro.br; backend inbound/forward em producao fail-closed; RESEND_FORWARD_TO, RESEND_FROM_ADDRESS e EMAIL_INBOUND_ENABLED=false persistidos na Vercel; faltam RESEND_API_KEY, RESEND_WEBHOOK_SECRET e conclusao do Receiving no painel.
+- Resend: OPERACIONAL E2E em producao. Dominio zevanory.api.br verificado; DKIM/SPF/DMARC e MX inbound publicados; RESEND_API_KEY e RESEND_WEBHOOK_SECRET ativos como secrets na Vercel; EMAIL_INBOUND_ENABLED=true; Receiving recebe email.received com HTTP 200; aliases contato@, vendas@, suporte@ e financeiro@ encaminham para zevanory@gmail.com; entregas confirmadas como Delivered no Resend.
 - Zoho Mail: conta criada, mas plano gratuito indisponivel no painel/regiao; nenhuma compra realizada.
