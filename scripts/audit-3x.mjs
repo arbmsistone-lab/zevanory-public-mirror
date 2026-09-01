@@ -437,6 +437,16 @@ unit('DEF-CONTENT-DEDUP-EVIDENCE','evidence/EG-0062-content-deduplication.md',[
   op('three independent dedup references recorded',()=>['Unicode','Stanford','Google'].every(x=>t('evidence/EG-0062-content-deduplication.md').includes(x))),
   op('lexical similarity not overstated as semantic',()=>t('evidence/EG-0062-content-deduplication.md').includes('nao e compreensao semantica')),
 ]);
+unit('CODE-V10-OFFER-RECONCILIATION','offer catalog + activation artifact gates',[
+  command('V10 offer focused tests',process.execPath,['--test','test/arbm-sist-offer.test.mjs','test/activation-ready.test.mjs']),
+  command('V10 offer reconciliation 20x',process.execPath,['scripts/audit-v10-offer-reconciliation-20x.mjs']),
+  command('offer launch 20x',process.execPath,['scripts/audit-offer-launch-20x.mjs']),
+]);
+unit('DEF-V10-OFFER-EVIDENCE','evidence/EG-0063-arbm-sist-v10-offer-reconciliation.md',[
+  op('V10 evidence approved with restrictions',()=>t('evidence/EG-0063-arbm-sist-v10-offer-reconciliation.md').includes('APROVADO COM RESTRICOES')),
+  op('V10 verified hash recorded',()=>t('evidence/EG-0063-arbm-sist-v10-offer-reconciliation.md').includes('70F233FA2AD84B66468CCB4789E3628A171ABA97A6C5C188C01A1EF56659B4E0')),
+  op('signing and public release remain blockers',()=>t('src/activationReadiness.mjs').includes('arbm_sist_code_signing_not_ready')&&t('src/activationReadiness.mjs').includes('arbm_sist_public_release_not_approved')),
+]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),

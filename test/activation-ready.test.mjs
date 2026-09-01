@@ -53,3 +53,15 @@ test('shared config function serves activation readiness without secret values',
   assert.equal(r.status,200); assert.equal(r.body.inputs_ready,true); assert.equal(r.body.commercial_enabled,false);
   const text=JSON.stringify(r.body); assert.equal(text.includes('top-secret'),false); assert.equal(text.includes('also-secret'),false);
 });
+
+test('ARBM SIST V10 digital offer remains blocked until signing and public release approval',()=>{
+  const env={ACTIVE_OFFER_TYPE:'digital_product',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',PAYMENT_PROVIDER:'mercadopago',PAYMENT_MERCHANT_IDENTITY_VERIFIED:'true',MERCADOPAGO_ENV:'production',MERCADOPAGO_ACCESS_TOKEN:'secret',MERCADOPAGO_WEBHOOK_SECRET:'secret'};
+  const plan=buildActivationPlan(env);assert.equal(plan.inputs_ready,false);
+  assert.ok(plan.missing.some(x=>x.code==='arbm_sist_code_signing_not_ready'));
+  assert.ok(plan.missing.some(x=>x.code==='arbm_sist_public_release_not_approved'));
+});
+
+test('V10 artifact gates can pass without opening global sales',()=>{
+  const env={ACTIVE_OFFER_TYPE:'digital_product',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',PAYMENT_PROVIDER:'mercadopago',PAYMENT_MERCHANT_IDENTITY_VERIFIED:'true',MERCADOPAGO_ENV:'production',MERCADOPAGO_ACCESS_TOKEN:'secret',MERCADOPAGO_WEBHOOK_SECRET:'secret',ARBM_SIST_CODE_SIGNING_READY:'true',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'true',SALE_GLOBALLY_ENABLED:'false'};
+  const plan=buildActivationPlan(env);assert.equal(plan.inputs_ready,true);assert.equal(plan.commercial_enabled,false);assert.equal(plan.phase,'ready_to_unlock');
+});

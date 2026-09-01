@@ -23,7 +23,7 @@ function money(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',c
     }
     cta.onclick=async()=>{
       cta.disabled=true; try{await track('cta_whatsapp')}catch{}
-      const intent=config.commercial_enabled?'Quero comprar o ARBM SIST 8.1.0.':'Quero entrar na lista de lançamento do ARBM SIST 8.1.0.';
+      const intent=config.commercial_enabled?'Quero comprar o ARBM SIST 10.0.0.':'Quero entrar na lista de lançamento do ARBM SIST 10.0.0.';
       location.href=`https://wa.me/${number}?text=${encodeURIComponent(intent+' Origem: '+source)}`;
     };
   }catch{cta.textContent='Validação indisponível';status.textContent='Ação bloqueada porque a configuração segura não pôde ser validada.';}

@@ -2,7 +2,7 @@
 
 Status: PRE-PUBLICACAO / SEM ACAO COMERCIAL
 Marca-mae: ZEVANORY
-Produto: ARBM SIST 8.1.0
+Produto: ARBM SIST 10.0.0
 
 ## Tese central
 ARBM SIST e um agente de desenvolvimento com IA local-first para Windows, orientado a controle de engenharia: isolamento por worktree, revisao por diff, testes, promocao controlada e rollback.

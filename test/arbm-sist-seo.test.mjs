@@ -21,7 +21,7 @@ test('ARBM SIST preserves indexability and canonical discovery',()=>{
 
 test('ARBM SIST exposes truthful SoftwareApplication structured data',()=>{
   assert.match(html,/"@type":"SoftwareApplication"/);
-  assert.match(html,/"softwareVersion":"8\.1\.0"/);
+  assert.match(html,/"softwareVersion":"10\.0\.0"/);
   assert.match(html,/"operatingSystem":"Windows 10, Windows 11"/);
   assert.match(html,/"availability":"https:\/\/schema\.org\/PreOrder"/);
   assert.match(html,/"dateModified":"2026-08-31"/);

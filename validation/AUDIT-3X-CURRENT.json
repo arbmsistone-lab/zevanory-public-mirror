@@ -1728,6 +1728,52 @@
       ]
     },
     {
+      "id": "CODE-V10-OFFER-RECONCILIATION",
+      "label": "offer catalog + activation artifact gates",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "V10 offer focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "V10 offer reconciliation 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "offer launch 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-V10-OFFER-EVIDENCE",
+      "label": "evidence/EG-0063-arbm-sist-v10-offer-reconciliation.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "V10 evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "V10 verified hash recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "signing and public release remain blockers",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1752,8 +1798,8 @@
     }
   ],
   "totals": {
-    "units": 76,
-    "approved": 76,
+    "units": 78,
+    "approved": 78,
     "failed": 0
   },
   "verdict": "APPROVED"

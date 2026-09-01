@@ -10,6 +10,8 @@ export const ACTIVATION_REQUIREMENTS=Object.freeze({
   offer_selection_not_approved:requirement('commercial',['OFFER_SELECTION_APPROVED'],'decision'),
   active_offer_type_invalid:requirement('commercial',['ACTIVE_OFFER_TYPE'],'decision'),
   service_delivery_mode_missing:requirement('commercial',['SERVICE_DELIVERY_MODE'],'decision'),
+  arbm_sist_code_signing_not_ready:requirement('artifact',['ARBM_SIST_CODE_SIGNING_READY'],'external'),
+  arbm_sist_public_release_not_approved:requirement('artifact',['ARBM_SIST_PUBLIC_RELEASE_APPROVED'],'decision'),
   payment_provider_not_selected:requirement('payments',['PAYMENT_PROVIDER'],'decision'),
   payment_merchant_identity_unverified:requirement('payments',['PAYMENT_MERCHANT_IDENTITY_VERIFIED'],'external'),
   asaas_production_not_configured:requirement('payments',['ASAAS_ENV'],'configuration'),

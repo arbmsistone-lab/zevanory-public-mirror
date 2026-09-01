@@ -1,7 +1,7 @@
 # ARBM SIST — Plano operacional de lançamento
 
 Status: PRE-LAUNCH READY / comercial e financeiro ainda fail-closed.
-Oferta: OFFER-0001 — ARBM SIST 8.1.0 — produto digital próprio.
+Oferta: OFFER-0001 — ARBM SIST 10.0.0 — produto digital próprio.
 Preço piloto: R$ 497 (hipótese, não validada comercialmente).
 
 ## Canais primários

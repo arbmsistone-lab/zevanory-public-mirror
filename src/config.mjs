@@ -4,7 +4,7 @@ export const PROJECT = Object.freeze({
   experimentId: "EXP-0001",
   experimentalPriceBrl: 497,
   offerName: "ARBM SIST",
-  offerVersion: "8.1.0",
+  offerVersion: "10.0.0",
   offerType: "digital_product",
   officialWhatsappE164: "5588992340423",
 });
