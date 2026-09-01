@@ -1,0 +1,28 @@
+import {readFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+const t=(p)=>readFileSync(p,'utf8');
+const run=(args)=>spawnSync(process.execPath,args,{encoding:'utf8'}).status===0;
+const cases=[];const add=(name,ok)=>cases.push([name,Boolean(ok)]);
+const src=t('src/contentDedup.mjs'),worker=t('src/agentWorker.mjs'),evidence=t('evidence/EG-0062-content-deduplication.md');
+add('01 focused tests',run(['--test','test/content-dedup.test.mjs']));
+add('02 unicode NFKC',src.includes("normalize('NFKC')"));
+add('03 sha256 exact fingerprint',src.includes("createHash('sha256')"));
+add('04 URLs normalized',src.includes('https?:'));
+add('05 token shingles',src.includes('shingle_size:3'));
+add('06 jaccard deterministic',src.includes('intersection/(left.size+right.size-intersection)'));
+add('07 90 day history',src.includes("interval '90 days'"));
+add('08 bounded history',src.includes('limit 250'));
+add('09 dead-letter excluded',src.includes("status<>'dead_letter'"));
+add('10 exact duplicate blocked',src.includes('content_duplicate_exact'));
+add('11 near duplicate blocked',src.includes('content_duplicate_near'));
+add('12 same-channel threshold',src.includes('same_channel_threshold:0.82'));
+add('13 cross-channel threshold',src.includes('cross_channel_threshold:0.92'));
+add('14 short-text guard',src.includes('min_tokens_for_near_duplicate:8'));
+add('15 preapproval dedup',worker.indexOf('contentNovelty=await evaluateContentNovelty')<worker.indexOf('requiresHumanApproval(tool'));
+add('16 pre-enqueue dedup',worker.indexOf('const novelty=await evaluateContentNovelty')<worker.indexOf("return enqueueOutbox(sql,{aggregateType:'content'"));
+add('17 fingerprint persisted',worker.includes('dedup_fingerprint:novelty.fingerprint'));
+add('18 no new schema',!src.includes('create table')&&!src.includes('alter table'));
+add('19 evidence three sources',['Unicode','Stanford','Google'].every(x=>evidence.includes(x)));
+add('20 evidence no semantic overclaim',evidence.includes('nao e compreensao semantica'));
+let failed=0;for(const [name,ok] of cases){console.log(`${ok?'APPROVED':'FAILED'} ${name}`);if(!ok)failed++;}
+console.log(`AUDIT_CONTENT_DEDUP_20X_${failed?'BLOCKED':'APPROVED'} units=${cases.length} approved=${cases.length-failed} failed=${failed}`);process.exit(failed?1:0);

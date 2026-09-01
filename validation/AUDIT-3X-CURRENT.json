@@ -1682,6 +1682,52 @@
       ]
     },
     {
+      "id": "CODE-CONTENT-DEDUP",
+      "label": "src/contentDedup.mjs + src/agentWorker.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "content dedup syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "content dedup focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "content dedup 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-CONTENT-DEDUP-EVIDENCE",
+      "label": "evidence/EG-0062-content-deduplication.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "content dedup evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three independent dedup references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "lexical similarity not overstated as semantic",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1706,8 +1752,8 @@
     }
   ],
   "totals": {
-    "units": 74,
-    "approved": 74,
+    "units": 76,
+    "approved": 76,
     "failed": 0
   },
   "verdict": "APPROVED"
