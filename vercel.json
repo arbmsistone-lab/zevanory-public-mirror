@@ -75,6 +75,10 @@
       "destination": "/arbm-sist-privacidade"
     },
     {
+      "source": "/exclusao-dados",
+      "destination": "/public/exclusao-dados.html"
+    },
+    {
       "source": "/reembolso",
       "destination": "/public/reembolso.html"
     },
