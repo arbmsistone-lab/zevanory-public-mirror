@@ -1,24 +1,44 @@
 import {neon} from '@neondatabase/serverless';
 import {safeBearerEqual} from '../src/security.mjs';
 import {channelReadiness} from '../src/channelAdapters.mjs';
-import {getAgentControlState} from '../src/agentControl.mjs';
+import {decideApproval,getAgentControlState,setAgentPaused} from '../src/agentControl.mjs';
 
 const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringify(body));};
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,Number(v)||min));
 const cleanError=(v)=>String(v||'').slice(0,240);
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function mutate(sql,body={}){
+  const command=String(body.command||'').toLowerCase();
+  if(['pause','resume'].includes(command)){
+    const control=await setAgentPaused(sql,{paused:command==='pause',reason:body.reason||`operator_${command}`,operator:'operator'});
+    return {accepted:true,command,control};
+  }
+  if(command==='approval'){
+    const approvalId=String(body.approval_id||'');
+    const decision=String(body.decision||'').toLowerCase();
+    if(!uuid.test(approvalId)||!['approved','rejected'].includes(decision)) throw Object.assign(new Error('approval_request_invalid'),{statusCode:400});
+    const approval=await decideApproval(sql,{approvalId,decision,reason:body.reason||'operator_decision',operator:'operator'});
+    return {accepted:true,command,approval};
+  }
+  throw Object.assign(new Error('control_command_invalid'),{statusCode:400});
+}
 
 export default async function handler(req,res){
   res.setHeader('content-type','application/json; charset=utf-8');
   res.setHeader('cache-control','no-store');
   res.setHeader('x-content-type-options','nosniff');
-  if(req.method!=='GET') return json(res,405,{error:'method_not_allowed'});
+  if(!['GET','POST'].includes(req.method)) return json(res,405,{error:'method_not_allowed'});
   const expected=String(process.env.OPERATOR_TOKEN||'');
   const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'');
   if(!safeBearerEqual(expected,provided)) return json(res,401,{error:'operator_auth_required'});
   if(!process.env.DATABASE_URL) return json(res,503,{error:'robot_control_storage_unavailable'});
-  const limit=clamp(req.query?.limit||30,10,100);
-  try{
-    const sql=neon(process.env.DATABASE_URL);
+  const sql=neon(process.env.DATABASE_URL);
+  if(req.method==='POST'){
+    try{return json(res,200,await mutate(sql,req.body||{}));}
+    catch(error){return json(res,error?.statusCode||409,{error:String(error?.message||'robot_control_action_failed').slice(0,120)});}
+  }
+  const limit=clamp(req.query?.limit||30,10,100);  try{
     const [runs,tools,jobs,outbox,actions,approvals,control]=await Promise.all([
       sql.query(`select r.run_id,r.job_id,r.trace_id,r.span_id,j.job_type,r.provider,r.model,r.mode,r.outcome,r.latency_ms,r.input_tokens,r.output_tokens,r.estimated_cost_usd,r.created_at,
         r.decision->>'action' action,r.decision->>'rationale' rationale,r.decision->>'confidence' confidence,r.decision->>'tool' tool,r.decision->'result' result,r.decision->'eval' eval

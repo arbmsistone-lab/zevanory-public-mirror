@@ -3,6 +3,14 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/live",
+      "destination": "/api/status?probe=live"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/status?probe=health"
+    },
+    {
       "source": "/api/checkout/asaas",
       "destination": "/api/checkout?provider=asaas"
     },

@@ -1,4 +1,4 @@
-import { readFile, access } from 'node:fs/promises';
+﻿import { readFile, access } from 'node:fs/promises';
 import { RELEASE } from '../src/release.mjs';
 const root=new URL('../',import.meta.url);
 const text=async p=>readFile(new URL(p,root),'utf8');
@@ -21,9 +21,9 @@ add('09 financial switch off',env.includes('FINANCIAL_EVENTS_ENABLED=false'));
 add('10 release FINAL',RELEASE.id==='ZEVANORY-EG0039-FINAL');
 add('11 health required route',RELEASE.requiredRoutes.includes('/api/health'));
 add('12 activation required route',RELEASE.requiredRoutes.includes('/api/activation/readiness'));
-add('13 health api exists',await exists('api/health.mjs'));
+add('13 health route consolidated',vercel.rewrites.some(x=>x.source==='/api/health'&&x.destination.includes('probe=health'))&&await exists('src/statusProbes.mjs'));
 add('14 activation api exists',await exists('api/config.mjs'));
-add('15 runbook current', (await text('RUNBOOK-OPERACIONAL.md')).includes('15 tabelas e migrations 001-010'));
+add('15 runbook current', (await text('RUNBOOK-OPERACIONAL.md')).includes('17 tabelas e migrations 001-011'));
 const headers=Object.fromEntries(vercel.headers[0].headers.map(x=>[x.key,x.value]));
 add('16 strict CSP',Boolean(headers['Content-Security-Policy']));
 add('17 browser hardening',headers['X-Content-Type-Options']==='nosniff'&&headers['X-Frame-Options']==='DENY');

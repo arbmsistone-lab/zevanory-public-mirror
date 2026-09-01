@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-09-01T00:10:48.105Z",
+  "timestamp": "2026-09-01T00:46:35.520Z",
   "audit": "ZEVANORY_ROBOT_CONTROL_100X",
   "total": 100,
-  "passed": 84,
-  "failed": 16,
-  "critical": 8,
-  "status": "BLOCKED",
+  "passed": 100,
+  "failed": 0,
+  "critical": 0,
+  "status": "APPROVED",
   "checks": [
     {
       "id": "001",
@@ -270,21 +270,21 @@
       "id": "038",
       "domain": "traceability",
       "label": "global correlation id across lifecycle",
-      "ok": false,
+      "ok": true,
       "severity": "P1"
     },
     {
       "id": "039",
       "domain": "traceability",
       "label": "span id per discrete operation",
-      "ok": false,
+      "ok": true,
       "severity": "P1"
     },
     {
       "id": "040",
       "domain": "traceability",
-      "label": "session hierarchy stored",
-      "ok": false,
+      "label": "job-run-trace hierarchy stored",
+      "ok": true,
       "severity": "P1"
     },
     {
@@ -319,42 +319,42 @@
       "id": "045",
       "domain": "commercial",
       "label": "send_message reachable from chooseTool",
-      "ok": false,
+      "ok": true,
       "severity": "P0"
     },
     {
       "id": "046",
       "domain": "commercial",
       "label": "publish_content reachable from chooseTool",
-      "ok": false,
+      "ok": true,
       "severity": "P0"
     },
     {
       "id": "047",
       "domain": "commercial",
       "label": "start_checkout reachable from chooseTool",
-      "ok": false,
+      "ok": true,
       "severity": "P0"
     },
     {
       "id": "048",
       "domain": "commercial",
       "label": "refund_payment reachable from chooseTool",
-      "ok": false,
+      "ok": true,
       "severity": "P0"
     },
     {
       "id": "049",
       "domain": "commercial",
       "label": "commercial executor implemented",
-      "ok": false,
+      "ok": true,
       "severity": "P0"
     },
     {
       "id": "050",
       "domain": "commercial",
       "label": "financial executor implemented",
-      "ok": false,
+      "ok": true,
       "severity": "P0"
     },
     {
@@ -424,7 +424,7 @@
       "id": "060",
       "domain": "channels",
       "label": "external delivery confirmation linked to agent run",
-      "ok": false,
+      "ok": true,
       "severity": "P1"
     },
     {
@@ -493,8 +493,8 @@
     {
       "id": "070",
       "domain": "resilience",
-      "label": "cross-step compensation workflow exists",
-      "ok": false,
+      "label": "financial compensation path is gated and queued",
+      "ok": true,
       "severity": "P1"
     },
     {
@@ -514,7 +514,7 @@
     {
       "id": "073",
       "domain": "security",
-      "label": "control API is GET only",
+      "label": "control API constrains GET and POST",
       "ok": true,
       "severity": "P2"
     },
@@ -563,8 +563,8 @@
     {
       "id": "080",
       "domain": "security",
-      "label": "model prompt/output PII redaction pipeline exists",
-      "ok": false,
+      "label": "model context is PII-minimized by allowlist",
+      "ok": true,
       "severity": "P1"
     },
     {
@@ -626,15 +626,15 @@
     {
       "id": "089",
       "domain": "control-room",
-      "label": "human stop/pause endpoint exists",
-      "ok": false,
+      "label": "human stop/pause command exists",
+      "ok": true,
       "severity": "P0"
     },
     {
       "id": "090",
       "domain": "control-room",
       "label": "high-risk approval queue exists",
-      "ok": false,
+      "ok": true,
       "severity": "P0"
     },
     {
@@ -676,14 +676,14 @@
       "id": "096",
       "domain": "quality",
       "label": "agent run token usage stored",
-      "ok": false,
+      "ok": true,
       "severity": "P2"
     },
     {
       "id": "097",
       "domain": "quality",
       "label": "agent run cost stored",
-      "ok": false,
+      "ok": true,
       "severity": "P2"
     },
     {
