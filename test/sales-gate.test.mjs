@@ -34,6 +34,9 @@ test('public config exposes no commercial channel while gates are open',()=>{
   assert.equal(body.whatsapp_enabled,false);
   assert.equal(body.whatsapp_number,null);
   assert.equal(body.production_mode,'pre-sale-blocked');
+  assert.equal(body.channels.zevanory.configured,true);
+  assert.equal(body.channels.whatsapp.configured,false);
+  assert.equal(JSON.stringify(body.channels).includes('ACCESS_TOKEN'),false);
   for(const [k,v] of Object.entries({SALE_GLOBALLY_ENABLED:old.sale,PRE_SALE_GATES_APPROVED:old.pre,WHATSAPP_SALES_ENABLED:old.wa})) {
     if(v===undefined) delete process.env[k]; else process.env[k]=v;
   }

@@ -52,6 +52,7 @@
     "deploy:production": "node scripts/deploy-production.mjs",
     "audit:content-dedup:20x": "node scripts/audit-content-dedup-20x.mjs",
     "audit:offer-v10:20x": "node scripts/audit-v10-offer-reconciliation-20x.mjs",
-    "audit:social-channels:20x": "node scripts/audit-social-channel-closeout-20x.mjs"
+    "audit:social-channels:20x": "node scripts/audit-social-channel-closeout-20x.mjs",
+    "brand:social": "node scripts/build-social-assets.mjs"
   }
 }
