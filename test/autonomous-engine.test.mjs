@@ -31,6 +31,8 @@ test('channel adapters remain provider-agnostic and gated',()=>{
   const state=channelReadiness(env);
   assert.equal(state.whatsapp.provider,'meta-whatsapp-cloud-api');
   assert.equal(state.email.configured,false);
+  assert.equal(channelReadiness({TIKTOK_ACCESS_TOKEN:'token',TIKTOK_CONTENT_SOURCE_VERIFIED:'false'}).tiktok.configured,false);
+  assert.equal(channelReadiness({TIKTOK_ACCESS_TOKEN:'token',TIKTOK_CONTENT_SOURCE_VERIFIED:'true'}).tiktok.configured,true);
   assert.throws(()=>assertChannelActionAllowed('whatsapp',env));
 });
 
