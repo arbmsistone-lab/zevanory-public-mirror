@@ -47,7 +47,7 @@ export default async function handler(req,res){
         from agent_runs r left join agent_jobs j on j.job_id=r.job_id order by r.created_at desc limit $1`,[limit]),
       sql.query(`select run_id,tool_name,risk_level,allowed,reason,created_at from agent_tool_audit order by created_at desc limit $1`,[limit]),
       sql.query(`select job_id,job_type,status,priority,attempts,available_at,locked_at,completed_at,last_error,created_at from agent_jobs order by created_at desc limit $1`,[limit]),
-      sql.query(`select event_id,headers->>'run_id' run_id,headers->>'trace_id' trace_id,aggregate_type,event_type,destination,status,attempts,available_at,locked_at,delivered_at,last_error,created_at from integration_outbox order by created_at desc limit $1`,[limit]),
+      sql.query(`select event_id,headers->>'run_id' run_id,headers->>'trace_id' trace_id,headers->'provider_acceptance' provider_acceptance,headers->'provider_confirmation' provider_confirmation,aggregate_type,event_type,destination,status,attempts,available_at,locked_at,delivered_at,last_error,created_at from integration_outbox order by created_at desc limit $1`,[limit]),
       sql.query(`select action_type,channel,status,count(*)::int count from sales_actions group by action_type,channel,status order by count desc`),
       sql.query(`select job_id,payload->'approval'->>'approval_id' approval_id,payload->'approval'->>'run_id' run_id,payload->'approval'->>'trace_id' trace_id,
         payload->'approval'->>'tool_name' tool_name,payload->'approval'->>'risk_level' risk_level,payload->'approval'->>'status' status,

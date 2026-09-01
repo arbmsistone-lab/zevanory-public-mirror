@@ -18,6 +18,6 @@ export const RELEASE = Object.freeze({
     '/', '/arbm-sist', '/piloto', '/termos', '/privacidade', '/reembolso', '/afiliados',
     '/api/config', '/api/health', '/api/live', '/api/status', '/api/assurance', '/api/activation/readiness',
     '/api/events/public', '/api/events/operator', '/api/agent/status', '/api/agent/run',
-    '/api/checkout/asaas', '/api/webhooks/asaas', '/api/checkout/mercadopago', '/api/webhooks/mercadopago', '/api/release',
+    '/api/checkout/asaas', '/api/webhooks/asaas', '/api/checkout/mercadopago', '/api/webhooks/mercadopago', '/api/webhooks/resend', '/api/webhooks/meta', '/api/release',
   ]),
 });

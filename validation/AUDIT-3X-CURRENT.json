@@ -1590,6 +1590,52 @@
       ]
     },
     {
+      "id": "CODE-PROVIDER-CONFIRMATION",
+      "label": "src/providerConfirmation.mjs + provider webhooks",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "provider confirmation syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "provider confirmation focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "provider confirmation 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PROVIDER-CONFIRMATION-EVIDENCE",
+      "label": "evidence/EG-0060-provider-delivery-confirmation.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "provider confirmation evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three independent webhook references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "commercial truth remains explicitly separate",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1614,8 +1660,8 @@
     }
   ],
   "totals": {
-    "units": 70,
-    "approved": 70,
+    "units": 72,
+    "approved": 72,
     "failed": 0
   },
   "verdict": "APPROVED"

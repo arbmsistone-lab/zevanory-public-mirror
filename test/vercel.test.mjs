@@ -49,6 +49,8 @@ test('vercel routing publishes landing and exact event endpoint',async()=>{
   assert.ok(cfg.rewrites.some(x=>x.source==='/afiliados'&&x.destination==='/public/afiliados.html'));
   assert.ok(cfg.rewrites.some(x=>x.source==='/legal.css'&&x.destination==='/public/legal.css'));
   assert.ok(cfg.rewrites.some(x=>x.source==='/api/events/public'&&x.destination==='/api/events-public'));
+  assert.ok(cfg.rewrites.some(x=>x.source==='/api/webhooks/meta'&&x.destination==='/api/webhooks?provider=meta'));
+  assert.ok(cfg.rewrites.some(x=>x.source==='/api/webhooks/resend'&&x.destination==='/api/webhooks?provider=resend'));
   assert.equal(cfg.cleanUrls,true);
 });
 

@@ -6,7 +6,9 @@ test('external tool completion is not confused with business truth',()=>{
   const run={run_id:'r1',tool:'publish_content',outcome:'completed',result:{event_id:'e1'},trace_id:'t1',span_id:'s1',latency_ms:120};
   assert.equal(deriveExecutionState(run,null),'external_request_unobserved');
   assert.equal(deriveExecutionState(run,{status:'pending'}),'external_request_pending');
-  assert.equal(deriveExecutionState(run,{status:'delivered'}),'external_request_delivered');
+  assert.equal(deriveExecutionState(run,{status:'delivered'}),'external_request_accepted');
+  assert.equal(deriveExecutionState(run,{status:'delivered',provider_confirmation:{outcome:'confirmed'}}),'external_effect_confirmed');
+  assert.equal(deriveExecutionState(run,{status:'delivered',provider_confirmation:{outcome:'failed'}}),'external_effect_failed');
 });
 
 test('observability reports trace coverage latency approvals and external state',()=>{
@@ -21,7 +23,8 @@ test('observability reports trace coverage latency approvals and external state'
   assert.equal(data.metrics.total_runs,3);
   assert.equal(data.metrics.trace_coverage,2/3);
   assert.equal(data.metrics.pending_approvals,1);
-  assert.equal(data.metrics.external_requests_delivered,1);
+  assert.equal(data.metrics.external_requests_accepted,1);
+  assert.equal(data.metrics.external_effects_confirmed,0);
   assert.equal(data.metrics.eval_coverage,1);
   assert.equal(data.metrics.eval_pass_rate,2/3);
   assert.equal(data.metrics.latency_p50_ms,300);

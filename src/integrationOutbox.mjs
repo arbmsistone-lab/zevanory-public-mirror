@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
+import { attachProviderAcceptance } from './providerConfirmation.mjs';
 
 const digest=(value)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const metadata=(headers={})=>({run_id:headers?.run_id||null,trace_id:headers?.trace_id||null});
@@ -53,7 +54,8 @@ async function dispatchClaimedEvent(sql,event,adapters={}){
   }
   try{
     const result=await adapter(Object.freeze({...event,payload:event.payload||{},headers:event.headers||{}}));
-    await sql.query("update integration_outbox set status='delivered',delivered_at=now(),last_error=null where event_id=$1",[event.event_id]);
+    const persisted=await attachProviderAcceptance(sql,{eventId:event.event_id,result});
+    if(!persisted){await sql.query("update integration_outbox set status='dead_letter',last_error='provider_acceptance_persistence_uncertain' where event_id=$1",[event.event_id]);return Object.freeze({ok:false,processed:true,event_id:event.event_id,status:'dead_letter',reason:'provider_acceptance_persistence_uncertain',result,...meta});}
     return Object.freeze({ok:true,processed:true,event_id:event.event_id,status:'delivered',result,...meta});
   }catch(error){
     const attempts=Number(event.attempts)||1;const terminal=attempts>=20;const delay=nextRetryDelayMs(attempts);
