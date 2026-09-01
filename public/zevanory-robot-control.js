@@ -5,13 +5,13 @@ const demo={mode:'demo',generated_at:new Date().toISOString(),control:{paused:tr
 {created_at:new Date(Date.now()-210e3).toISOString(),outcome:'completed',job_type:'follow_up_plan',action:'follow_up',tool:'schedule_follow_up',rationale:'Agendou próxima ação reversível no CRM.',latency_ms:133,mode:'deterministic'}],tools:[],jobs:[],outbox:[],actions:[]};
 let operatorToken=''; let lastData=demo;
 const $=(id)=>document.getElementById(id);
-const stateClass=(s)=>s==='completed'?'completed':s==='failed'?'failed':s==='running'?'running':'blocked';
+const stateClass=(s)=>['completed','internal_completed','external_request_delivered'].includes(s)?'completed':['failed','external_request_failed'].includes(s)?'failed':['running','external_request_pending','external_request_retry','external_request_unobserved'].includes(s)?'running':'blocked';
 const fmtTime=(iso)=>new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 
 function renderTimeline(data){
   const root=$('timeline'); root.replaceChildren();
   for(const r of data.runs||[]){
-    const row=document.createElement('div'); row.className='event'; row.dataset.state=stateClass(r.outcome);
+    const row=document.createElement('div'); row.className='event'; row.dataset.state=stateClass(r.execution_state||r.outcome);
     const t=document.createElement('time'); t.textContent=fmtTime(r.created_at);
     const dot=document.createElement('i'); dot.className='dot';
     const body=document.createElement('div'); const b=document.createElement('b'); const p=document.createElement('p');

@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { MERCADOPAGO_API_BASE,normalizeMercadoPagoWebhook,verifyMercadoPagoSignature,normalizeMercadoPagoFinancialEvent } from '../mercadopago.mjs';
 import { parseExternalReference } from '../asaas.mjs';
+import { queueOutcomeLearningReview } from '../outcomeLearning.mjs';
 
 export async function fetchMercadoPagoPayment(paymentId,accessToken,fetchImpl=fetch){
   const response=await fetchImpl(`${MERCADOPAGO_API_BASE}/v1/payments/${encodeURIComponent(paymentId)}`,{method:'GET',headers:{accept:'application/json',authorization:`Bearer ${accessToken}`}});
@@ -26,6 +27,7 @@ export default async function handler(req,res){
     const externalReference=String(orders[0].external_reference); const providerEventId=`mp:${webhook.paymentId}:${String(payment.status||'')}:${String(payment.transaction_amount_refunded||0)}`;
     const rows=await sql.query(`WITH target AS (SELECT order_id,amount,status FROM orders WHERE order_id=$8 AND provider='mercadopago' AND external_reference=$6 AND amount=$7 AND (($3='payment_confirmed' AND status IN ('checkout_ready','checkout_uncertain','paid')) OR ($3='refund_confirmed' AND status IN ('paid','partially_refunded','refunded')))), inserted AS (INSERT INTO financial_events (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount,order_id,refunded_total) SELECT $1,'mercadopago',$2,$3,$4,$5,$6,$7,order_id,$9 FROM target ON CONFLICT DO NOTHING RETURNING order_id,normalized_event,refunded_total), updated AS (UPDATE orders o SET status=CASE WHEN i.normalized_event='payment_confirmed' THEN 'paid' WHEN i.refunded_total>=o.amount THEN 'refunded' ELSE 'partially_refunded' END,updated_at=now() FROM inserted i WHERE o.order_id=i.order_id RETURNING o.order_id,o.status) SELECT (SELECT count(*)::int FROM target) target_count,(SELECT count(*)::int FROM inserted) inserted_count,(SELECT status FROM updated LIMIT 1) order_status,(SELECT status FROM orders WHERE order_id=$8) current_status`,[providerEventId,webhook.paymentId,event.normalized,'payment.updated',String(payment.status||''),externalReference,Number(payment.transaction_amount),String(orders[0].order_id),event.refundedTotal]);
     const outcome=rows[0]||{}; if(Number(outcome.target_count)!==1)return json(res,409,{error:'order_state_invalid',accepted:false}); if(Number(outcome.inserted_count)===1&&!outcome.order_status)return json(res,503,{error:'order_state_update_failed',accepted:false});
+    if(Number(outcome.inserted_count)===1){try{await queueOutcomeLearningReview(sql,{idempotencyKey:`learning:financial:${providerEventId}`,source:`financial:${event.normalized}`});}catch{}}
     return json(res,200,{accepted:true,duplicate:Number(outcome.inserted_count)===0,event:event.normalized,order_id:String(orders[0].order_id),order_status:outcome.order_status||outcome.current_status,refunded_total:event.refundedTotal});
   }catch{return json(res,503,{error:'financial_reconciliation_unavailable',accepted:false});}
 }

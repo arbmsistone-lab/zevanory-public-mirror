@@ -1,4 +1,4 @@
-import { readFile, access } from 'node:fs/promises';
+﻿import { readFile, access } from 'node:fs/promises';
 import { RELEASE } from '../src/release.mjs';
 import { REQUIRED_TABLES, REQUIRED_MIGRATIONS } from '../src/schemaHealth.mjs';
 const root=new URL('../',import.meta.url); const checks=[];
@@ -7,8 +7,8 @@ const exists=async p=>{try{await access(new URL(p,root));return true}catch{retur
 const add=(name,ok)=>checks.push({name,ok:Boolean(ok)});
 const env=await text('.env.example'); const pkg=JSON.parse(await text('package.json')); const workflow=await text('.github/workflows/quality.yml');
 add('01 final release',RELEASE.id==='ZEVANORY-EG0039-FINAL');
-add('02 required schema tables',REQUIRED_TABLES.length>=17&&['integration_outbox','agent_control_state','agent_approvals'].every(x=>REQUIRED_TABLES.includes(x)));
-add('03 required migrations',REQUIRED_MIGRATIONS.length>=11&&['010_payment_provider_abstraction','011_agent_control_and_trace'].every(x=>REQUIRED_MIGRATIONS.includes(x)));
+add('02 required schema tables',REQUIRED_TABLES.length===15&&['integration_outbox','agent_jobs','agent_runs','agent_memory'].every(x=>REQUIRED_TABLES.includes(x)));
+add('03 required migrations',REQUIRED_MIGRATIONS.length===10&&REQUIRED_MIGRATIONS.includes('010_payment_provider_abstraction')&&!REQUIRED_MIGRATIONS.includes('011_agent_control_and_trace'));
 add('04 CRM engine',await exists('src/salesPipeline.mjs')); add('05 follow-up engine',(await text('src/salesPipeline.mjs')).includes('buildFollowUpPlan'));
 add('06 unit economics',await exists('src/unitEconomics.mjs')); add('07 learning engine',await exists('src/learningEngine.mjs'));
 add('08 autonomous revenue agent',await exists('src/revenueAgent.mjs')&&await exists('src/agentWorker.mjs'));

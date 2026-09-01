@@ -1406,6 +1406,190 @@
       ]
     },
     {
+      "id": "CODE-OUTBOUND-ADAPTERS",
+      "label": "src/outboundAdapters.mjs + src/integrationOutbox.mjs + api/agent-run.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "outbound adapters syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "outbound adapters tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "channel dispatcher excludes payment destinations",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-OUTBOUND-ADAPTERS-EVIDENCE",
+      "label": "evidence/EG-0056-real-outbound-adapters.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "outbound evidence is approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "evidence records Meta Resend and Google",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "business truth remains separate from provider acceptance",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-CONTINUOUS-AGENT-EVALS",
+      "label": "src/agentEvals.mjs + scripts/audit-agent-evals-20x.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "agent eval syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "agent eval focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "agent eval adversarial 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-CONTINUOUS-AGENT-EVALS-EVIDENCE",
+      "label": "evidence/EG-0057-continuous-agent-evaluation.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "continuous eval evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three independent agent eval references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "offline eval does not claim commercial proof",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-OUTCOME-LEARNING",
+      "label": "src/outcomeLearning.mjs + src/revenueAgent.mjs + src/agentWorker.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "outcome learning syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "outcome learning focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "outcome learning 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-OUTCOME-LEARNING-EVIDENCE",
+      "label": "evidence/EG-0058-outcome-learning-memory.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "outcome learning evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "learning uses reconciled observed truth",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "learning explicitly avoids causal overclaim",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PROGRESSIVE-AUTONOMY",
+      "label": "src/autonomyPolicy.mjs + src/agentControl.mjs + src/agentWorker.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "autonomy policy syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "autonomy policy focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "autonomy policy 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PROGRESSIVE-AUTONOMY-EVIDENCE",
+      "label": "evidence/EG-0059-progressive-autonomy-policy.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "progressive autonomy evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three independent trust references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "guarded remains production default",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1430,8 +1614,8 @@
     }
   ],
   "totals": {
-    "units": 62,
-    "approved": 62,
+    "units": 70,
+    "approved": 70,
     "failed": 0
   },
   "verdict": "APPROVED"

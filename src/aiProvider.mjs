@@ -11,9 +11,10 @@ export function deterministicDecision(input = {}) {
     new: 'first_response', contacted: 'qualify', qualified: 'offer',
     offer_sent: 'follow_up', checkout_started: 'follow_up',
   };
+  const action=String(input.job_type||'')==='learning_review'?'learn_outcomes':(map[stage]||'review');
   return Object.freeze({
     provider: 'deterministic', model: 'rules-v1', mode: 'deterministic',
-    action: map[stage] || 'review', confidence: 1,
+    action, confidence: 1,
     rationale: 'Fail-safe deterministic policy used because AI is unavailable or not required.',
     input_hash: hash(input),
   });

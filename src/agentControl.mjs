@@ -38,8 +38,7 @@ export async function setAgentPaused(sql,{paused,reason,operator='operator'}={})
   return controlFromRow(rows[0]);
 }
 
-export function requiresHumanApproval(toolName,riskLevel,env=process.env){
-  if(env.AGENT_HUMAN_APPROVAL_REQUIRED==='false'&&riskLevel!=='financial') return false;
+export function requiresHumanApproval(toolName,riskLevel){
   return APPROVAL_TOOLS.has(String(toolName))||['financial','destructive'].includes(String(riskLevel));
 }
 

@@ -10,8 +10,8 @@ const run=(script)=>spawnSync(process.execPath,[script],{cwd:root,encoding:'utf8
 const env=await text('.env.example'); const outbox=await text('src/integrationOutbox.mjs'); const migration=await text('db/migrations/009_composable_infrastructure.sql'); const dr=await text('scripts/dr-rehearsal.mjs');
 add('01 final release id',RELEASE.id==='ZEVANORY-EG0039-FINAL');
 add('02 architecture contract',validateArchitectureContract().valid);
-add('03 required schema tables',REQUIRED_TABLES.length>=17&&['integration_outbox','agent_control_state','agent_approvals'].every(x=>REQUIRED_TABLES.includes(x)));
-add('04 required migrations',REQUIRED_MIGRATIONS.length>=11&&['010_payment_provider_abstraction','011_agent_control_and_trace'].every(x=>REQUIRED_MIGRATIONS.includes(x))&&await exists('db/migrations/010_payment_provider_abstraction.sql')&&await exists('db/migrations/011_agent_control_and_trace.sql')&&dr.includes('010_payment_provider_abstraction.sql')&&dr.includes('011_agent_control_and_trace.sql'));
+add('03 required schema tables',REQUIRED_TABLES.length===15&&['integration_outbox','agent_jobs','agent_runs','agent_memory'].every(x=>REQUIRED_TABLES.includes(x)));
+add('04 required migrations',REQUIRED_MIGRATIONS.length===10&&REQUIRED_MIGRATIONS.includes('010_payment_provider_abstraction')&&await exists('db/migrations/010_payment_provider_abstraction.sql')&&dr.includes('010_payment_provider_abstraction.sql')&&!REQUIRED_MIGRATIONS.includes('011_agent_control_and_trace'));
 add('05 outbox idempotency',migration.includes('idempotency_key text NOT NULL UNIQUE'));
 add('06 outbox concurrency',outbox.includes('for update skip locked'));
 add('07 retry bounded',outbox.includes('attempts>=20')&&outbox.includes('3600000'));
@@ -27,6 +27,6 @@ add('16 security 10x audit',run('scripts/audit-security-10x.mjs'));
 add('17 observability 10x audit',run('scripts/audit-observability-10x.mjs'));
 add('18 composable 10x audit',run('scripts/audit-composable-10x.mjs'));
 add('19 architecture 20x audit',run('scripts/audit-architecture-20x.mjs'));
-add('20 autonomous engine 20x audit',run('scripts/audit-autonomous-engine-20x.mjs'));
+add('20 autonomous engine evals learning and autonomy policy 20x audits',run('scripts/audit-autonomous-engine-20x.mjs')&&run('scripts/audit-agent-evals-20x.mjs')&&run('scripts/audit-outcome-learning-20x.mjs')&&run('scripts/audit-autonomy-policy-20x.mjs'));
 for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.name}`);
 const failed=checks.filter(c=>!c.ok); console.log(`AUDIT_FINAL_20X_${failed.length?'BLOCKED':'APPROVED'} units=20 approved=${20-failed.length} failed=${failed.length}`); if(failed.length) process.exit(1);

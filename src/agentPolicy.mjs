@@ -5,6 +5,7 @@ export const TOOL_RISK = Object.freeze({
   remember_fact: 'write',
   schedule_follow_up: 'write',
   create_offer_draft: 'write',
+  refresh_outcome_learning: 'write',
   send_message: 'commercial',
   publish_content: 'commercial',
   start_checkout: 'financial',

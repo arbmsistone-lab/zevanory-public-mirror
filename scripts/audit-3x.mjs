@@ -367,6 +367,46 @@ unit('DEF-VISUAL-CERTIFICATION-EVIDENCE','evidence/EG-0046-progressive-executive
   op('acceptance criteria records progressive readable integrity',()=>['1280x720','11 px','1600x900','12 px','Dialog'].every(x=>t('evidence/EG-0046-progressive-executive-disclosure.md').includes(x))),
   command('identity guard',process.execPath,['scripts/identity-guard.mjs']),
 ]);
+unit('CODE-OUTBOUND-ADAPTERS','src/outboundAdapters.mjs + src/integrationOutbox.mjs + api/agent-run.mjs',[
+  command('outbound adapters syntax',process.execPath,['--check','src/outboundAdapters.mjs']),
+  command('outbound adapters tests',process.execPath,['--test','test/outbound-adapters.test.mjs']),
+  op('channel dispatcher excludes payment destinations',()=>t('src/integrationOutbox.mjs').includes("destination like 'channel:%'")&&t('api/agent-run.mjs').includes('dispatchChannelOutboxOnce')),
+]);
+unit('DEF-OUTBOUND-ADAPTERS-EVIDENCE','evidence/EG-0056-real-outbound-adapters.md',[
+  op('outbound evidence is approved with restrictions',()=>t('evidence/EG-0056-real-outbound-adapters.md').includes('APROVADO COM RESTRICOES')),
+  op('evidence records Meta Resend and Google',()=>['Meta','Resend','Google'].every(x=>t('evidence/EG-0056-real-outbound-adapters.md').includes(x))),
+  op('business truth remains separate from provider acceptance',()=>t('evidence/EG-0056-real-outbound-adapters.md').includes('Resultado HTTP aceito')&&t('evidence/EG-0056-real-outbound-adapters.md').includes('webhook/reconciliacao')),
+]);
+unit('CODE-CONTINUOUS-AGENT-EVALS','src/agentEvals.mjs + scripts/audit-agent-evals-20x.mjs',[
+  command('agent eval syntax',process.execPath,['--check','src/agentEvals.mjs']),
+  command('agent eval focused tests',process.execPath,['--test','test/agent-evals-continuous.test.mjs']),
+  command('agent eval adversarial 20x',process.execPath,['scripts/audit-agent-evals-20x.mjs']),
+]);
+unit('DEF-CONTINUOUS-AGENT-EVALS-EVIDENCE','evidence/EG-0057-continuous-agent-evaluation.md',[
+  op('continuous eval evidence approved with restrictions',()=>t('evidence/EG-0057-continuous-agent-evaluation.md').includes('APROVADO COM RESTRICOES')),
+  op('three independent agent eval references recorded',()=>['OpenAI','Microsoft','Google'].every(x=>t('evidence/EG-0057-continuous-agent-evaluation.md').includes(x))),
+  op('offline eval does not claim commercial proof',()=>t('evidence/EG-0057-continuous-agent-evaluation.md').includes('não prova conversão')||t('evidence/EG-0057-continuous-agent-evaluation.md').includes('nao prova conversao')),
+]);
+unit('CODE-OUTCOME-LEARNING','src/outcomeLearning.mjs + src/revenueAgent.mjs + src/agentWorker.mjs',[
+  command('outcome learning syntax',process.execPath,['--check','src/outcomeLearning.mjs']),
+  command('outcome learning focused tests',process.execPath,['--test','test/outcome-learning.test.mjs']),
+  command('outcome learning 20x',process.execPath,['scripts/audit-outcome-learning-20x.mjs']),
+]);
+unit('DEF-OUTCOME-LEARNING-EVIDENCE','evidence/EG-0058-outcome-learning-memory.md',[
+  op('outcome learning evidence approved with restrictions',()=>t('evidence/EG-0058-outcome-learning-memory.md').includes('APROVADO COM RESTRICOES')),
+  op('learning uses reconciled observed truth',()=>t('evidence/EG-0058-outcome-learning-memory.md').includes('telemetria persistida')&&t('evidence/EG-0058-outcome-learning-memory.md').includes('eventos financeiros reconciliados')),
+  op('learning explicitly avoids causal overclaim',()=>t('evidence/EG-0058-outcome-learning-memory.md').includes('Nao significa causalidade')||t('evidence/EG-0058-outcome-learning-memory.md').includes('Não significa causalidade')),
+]);
+unit('CODE-PROGRESSIVE-AUTONOMY','src/autonomyPolicy.mjs + src/agentControl.mjs + src/agentWorker.mjs',[
+  command('autonomy policy syntax',process.execPath,['--check','src/autonomyPolicy.mjs']),
+  command('autonomy policy focused tests',process.execPath,['--test','test/autonomy-policy.test.mjs']),
+  command('autonomy policy 20x',process.execPath,['scripts/audit-autonomy-policy-20x.mjs']),
+]);
+unit('DEF-PROGRESSIVE-AUTONOMY-EVIDENCE','evidence/EG-0059-progressive-autonomy-policy.md',[
+  op('progressive autonomy evidence approved with restrictions',()=>t('evidence/EG-0059-progressive-autonomy-policy.md').includes('APROVADO COM RESTRICOES')),
+  op('three independent trust references recorded',()=>['OpenAI','Microsoft','Salesforce'].every(x=>t('evidence/EG-0059-progressive-autonomy-policy.md').includes(x))),
+  op('guarded remains production default',()=>t('evidence/EG-0059-progressive-autonomy-policy.md').includes('AGENT_AUTONOMY_MODE=guarded')),
+]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),

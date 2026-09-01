@@ -6,6 +6,8 @@ import { buildFollowUpPlan } from './salesPipeline.mjs';
 import { enqueueOutbox } from './integrationOutbox.mjs';
 import { assertChannelActionAllowed } from './channelAdapters.mjs';
 import { getAgentControlState, requiresHumanApproval, findApprovedAction, requestApproval, consumeApproval } from './agentControl.mjs';
+import { refreshOutcomeLearning } from './outcomeLearning.mjs';
+import { evaluateProgressiveAutonomy } from './autonomyPolicy.mjs';
 
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
@@ -47,6 +49,10 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
       [randomUUID(),String(leadId),JSON.stringify({action:decision.action,rationale:decision.rationale||null}),Math.max(0,Math.min(1,Number(decision.confidence)||0.5))]);
     return {remembered:true};
   }
+  if(tool==='refresh_outcome_learning'){
+    const learning=await refreshOutcomeLearning(sql);
+    return {refreshed:true,learning_ready:Boolean(learning?.decision?.ready),reason:learning?.decision?.reason||'unknown',total_matured:Number(learning?.decision?.total_matured)||0};
+  }
   if(tool==='create_offer_draft') return {draft_only:true,commercial_action:false};
   if(tool==='send_message'){
     if(!lead?.contact_ref) throw new Error('recipient_unavailable');
@@ -58,7 +64,7 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
     const channel=String(decision.channel||lead?.channel||'').toLowerCase();
     assertChannelActionAllowed(channel,env);
     const content=String(decision.content||decision.message||'').trim(); if(!content) throw new Error('publish_content_required');
-    return enqueueOutbox(sql,{aggregateType:'content',aggregateId:runId,eventType:'publish_content',destination:`channel:${channel}`,payload:{content:content.slice(0,8000),title:String(decision.title||'').slice(0,240)},idempotencyKey:`agent:${runId}:publish_content`,traceId,runId});
+    return enqueueOutbox(sql,{aggregateType:'content',aggregateId:runId,eventType:'publish_content',destination:`channel:${channel}`,payload:{content:content.slice(0,8000),title:String(decision.title||'').slice(0,240),media_url:String(decision.media_url||'').slice(0,2000)},idempotencyKey:`agent:${runId}:publish_content`,traceId,runId});
   }
   if(tool==='start_checkout'){
     if(!lead?.session_id) throw new Error('checkout_session_unavailable');
@@ -94,7 +100,7 @@ export async function runAgentOnce(sql,options={}){
     decision=await decideRevenueAction(context,{...options,apiKey});
     tool=chooseTool(decision);
     const auth=authorizeTool(tool,env);
-    evalResult=evaluateAgentDecision({decision,context,authorization:auth});
+    evalResult=evaluateAgentDecision({decision,context,authorization:auth,tool});
     const finalAuth=evalResult.pass?auth:Object.freeze({allowed:false,risk_level:auth.risk_level,reason:'agent_eval_failed'});
     const saveRun=async(outcome,result)=>{await persistRun(sql,{runId,job,traceId,spanId,decision,context,tool,outcome,result,evalResult,latencyMs:Date.now()-started});runPersisted=true;};
     if(!finalAuth.allowed){
@@ -104,24 +110,28 @@ export async function runAgentOnce(sql,options={}){
       await sql.query("update agent_jobs set status='blocked',completed_at=now(),last_error=$2 where job_id=$1",[job.job_id,finalAuth.reason]);
       return Object.freeze({ok:true,processed:true,job_id:job.job_id,run_id:runId,trace_id:traceId,outcome:'blocked',tool,result,eval:evalResult});
     }
-    let approval=null;
-    if(requiresHumanApproval(tool,finalAuth.risk_level,env)){
-      approval=await findApprovedAction(sql,job.job_id,tool);
-      if(!approval){
-        approval=await requestApproval(sql,{jobId:job.job_id,runId,traceId,toolName:tool,riskLevel:finalAuth.risk_level,reason:decision.rationale||'high_risk_action'});
-        const result={blocked:true,reason:'human_approval_required',state:'awaiting_approval',approval_id:approval.approval_id};
-        await saveRun('blocked',result);
-        await auditTool(sql,runId,tool,{...finalAuth,allowed:false,reason:'human_approval_required'},{job_id:job.job_id,decision,eval:evalResult,result});
-        await sql.query("update agent_jobs set status='blocked',completed_at=now(),last_error='human_approval_required' where job_id=$1",[job.job_id]);
-        return Object.freeze({ok:true,processed:true,job_id:job.job_id,run_id:runId,trace_id:traceId,outcome:'awaiting_approval',tool,result,eval:evalResult});
+    let approval=null;let autonomy=Object.freeze({eligible:false,reason:'approval_not_applicable',mode:String(env.AGENT_AUTONOMY_MODE||'guarded')});
+    if(requiresHumanApproval(tool,finalAuth.risk_level)){
+      autonomy=await evaluateProgressiveAutonomy(sql,{tool,riskLevel:finalAuth.risk_level,env,evalResult,context});
+      if(!autonomy.eligible){
+        approval=await findApprovedAction(sql,job.job_id,tool);
+        if(!approval){
+          approval=await requestApproval(sql,{jobId:job.job_id,runId,traceId,toolName:tool,riskLevel:finalAuth.risk_level,reason:decision.rationale||'high_risk_action'});
+          const result={blocked:true,reason:'human_approval_required',state:'awaiting_approval',approval_id:approval.approval_id,autonomy_reason:autonomy.reason};
+          await saveRun('blocked',result);
+          await auditTool(sql,runId,tool,{...finalAuth,allowed:false,reason:'human_approval_required'},{job_id:job.job_id,decision,eval:evalResult,autonomy,result});
+          await sql.query("update agent_jobs set status='blocked',completed_at=now(),last_error='human_approval_required' where job_id=$1",[job.job_id]);
+          return Object.freeze({ok:true,processed:true,job_id:job.job_id,run_id:runId,trace_id:traceId,outcome:'awaiting_approval',tool,result,eval:evalResult,autonomy});
+        }
       }
     }
     let result,outcome='completed';
     try{result=await executeTool(sql,tool,context,decision,{runId,traceId,env});}
     catch(error){result={failed:true,reason:String(error?.message||'tool_execution_failed').slice(0,500)};outcome='failed';}
+    if(autonomy.eligible)result={...result,autonomy_mode:autonomy.mode,autonomy_reason:autonomy.reason};
     if(approval?.approval_id)await consumeApproval(sql,approval.approval_id);
     await saveRun(outcome,result);
-    await auditTool(sql,runId,tool,finalAuth,{job_id:job.job_id,decision,eval:evalResult,result});
+    await auditTool(sql,runId,tool,finalAuth,{job_id:job.job_id,decision,eval:evalResult,autonomy,result});
     const jobStatus=outcome==='completed'?'completed':'failed';
     await sql.query('update agent_jobs set status=$2,completed_at=now(),last_error=$3 where job_id=$1',[job.job_id,jobStatus,outcome==='failed'?String(result.reason||'tool_execution_failed'):null]);
     return Object.freeze({ok:outcome==='completed',processed:true,job_id:job.job_id,run_id:runId,trace_id:traceId,outcome,tool,result,eval:evalResult});
