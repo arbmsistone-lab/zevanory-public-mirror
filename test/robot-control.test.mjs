@@ -9,8 +9,8 @@ test('robot control surface is private-by-indexing and truth-labeled',()=>{
   assert.match(html,/noindex,nofollow,noarchive/);assert.match(html,/id="mode-label"/);assert.match(html,/SEM PII/);assert.match(html,/ATIVIDADE INVENTADA/);assert.match(js,/MODO OPERADOR AUTENTICADO/);
 });
 
-test('robot control API is operator authenticated and excludes payload bodies',()=>{
-  assert.match(api,/safeBearerEqual/);assert.match(api,/operator_auth_required/);assert.doesNotMatch(api,/select .*payload/i);assert.doesNotMatch(api,/select .*session_id/i);assert.doesNotMatch(api,/select .*lead_id/i);
+test('robot control API is authenticated and exposes only operational approval fields',()=>{
+  assert.match(api,/safeBearerEqual/);assert.match(api,/operator_auth_required/);assert.match(api,/payload->'approval'/);assert.doesNotMatch(api,/select .*session_id/i);assert.doesNotMatch(api,/select .*lead_id/i);assert.doesNotMatch(api,/contact_ref|email|phone|cpf/i);
 });
 
 test('safe pause and approval commands share one authenticated function',()=>{
