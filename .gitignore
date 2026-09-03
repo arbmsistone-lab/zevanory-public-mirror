@@ -3,6 +3,7 @@ data/
 .env.*
 !.env.example
 .vercel
+.netlify/
 node_modules/
 .chrome-audit/
 .env*
