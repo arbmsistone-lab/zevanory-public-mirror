@@ -24,3 +24,18 @@ export async function persistLifecycleCertificationArtifact(sql,artifact={}){
     [randomUUID(),artifact.artifact_sha256,artifact.evidence_root_sha256,artifact.lifecycle_version,artifact.deployed_commit_sha,artifact.required_score,artifact.total_dimensions,artifact.proven_dimensions,JSON.stringify(artifact)]);
   return Object.freeze({inserted:rows.length===1,artifact_id:rows[0]?.artifact_id||null,status:rows[0]?.status||'pending'});
 }
+
+export async function approveLifecycleCertificationArtifact(sql,{artifactSha256,deployedCommitSha,approvedBy}={}){
+  const hash=String(artifactSha256||'').toLowerCase();
+  const commit=String(deployedCommitSha||'').toLowerCase(); const approver=String(approvedBy||'').trim();
+  if(!/^[0-9a-f]{64}$/.test(hash)) throw new Error('artifact_sha256_invalid');
+  if(!/^[0-9a-f]{40}$/.test(commit)) throw new Error('deployed_commit_sha_invalid');
+  if(!approver) throw new Error('lifecycle_release_approver_required');
+  const rows=await sql.query(`update lifecycle_certification_artifacts set status='approved',approved_at=now(),approved_by=$2 where artifact_sha256=$1 and deployed_commit_sha=$3 and certification_approved=true and required_score=10 and total_dimensions=39 and proven_dimensions=39 and status='pending' returning artifact_id,artifact_sha256,status,approved_at,approved_by`,[hash,approver,commit]);
+  if(rows.length===1) return Object.freeze({...rows[0],approved:true});
+  const existing=await sql.query(`select artifact_id,artifact_sha256,status,approved_at,approved_by,deployed_commit_sha,certification_approved,required_score,total_dimensions,proven_dimensions from lifecycle_certification_artifacts where artifact_sha256=$1 limit 1`,[hash]);
+  const row=existing[0]; if(!row) throw new Error('lifecycle_certification_artifact_not_found');
+  if(row.deployed_commit_sha!==commit) throw new Error('lifecycle_certification_commit_mismatch');
+  if(row.status==='approved') return Object.freeze({...row,approved:true,idempotent:true});
+  throw new Error(`lifecycle_certification_not_approvable:${row.status}`);
+}
