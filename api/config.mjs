@@ -17,7 +17,7 @@ export default function handler(req, res) {
     res.setHeader('cache-control','no-store');
     res.setHeader('x-content-type-options','nosniff');
     res.statusCode=200;
-    return res.end(JSON.stringify({service:'ZEVANORY',release_id:RELEASE.id,activation_phase:plan.phase,inputs_ready:plan.inputs_ready,commercial_enabled:plan.commercial_enabled,offer_type:plan.offer_type,external_inputs_remaining:plan.external_inputs_remaining,missing:plan.missing,gates:plan.gates,cutover_order:plan.cutover_order,rollback_order:plan.rollback_order}));
+    return res.end(JSON.stringify({service:'ZEVANORY',release_id:RELEASE.id,activation_phase:plan.phase,inputs_ready:plan.inputs_ready,commercial_enabled:plan.commercial_enabled,offer_type:plan.offer_type,external_inputs_remaining:plan.external_inputs_remaining,missing:plan.missing,lifecycle:plan.lifecycle,gates:plan.gates,cutover_order:plan.cutover_order,rollback_order:plan.rollback_order}));
   }
   const gate=salesGate();
   const whatsappEnabled=channelEnabled('WHATSAPP_SALES_ENABLED');
@@ -28,6 +28,7 @@ export default function handler(req, res) {
   return res.end(JSON.stringify({
     commercial_enabled: gate.enabled,
     commercial_blockers: gate.blockers,
+    sales_lifecycle: { version:gate.lifecycle.version, approved:gate.lifecycle.approved, required_score:gate.lifecycle.required_score, passed_dimensions:gate.lifecycle.passed_dimensions, total_dimensions:gate.lifecycle.total_dimensions, blockers:gate.lifecycle.blockers },
     whatsapp_enabled: whatsappEnabled,
     whatsapp_number: whatsappEnabled ? PROJECT.officialWhatsappE164 : null,
     offer_id: PROJECT.offerId,

@@ -3,6 +3,7 @@ import {safeBearerEqual} from '../src/security.mjs';
 import {channelReadiness} from '../src/channelAdapters.mjs';
 import {decideApproval,getAgentControlState,setAgentPaused} from '../src/agentControl.mjs';
 import {buildAgentObservability} from '../src/agentObservability.mjs';
+import {salesGate} from '../src/salesGate.mjs';
 
 const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringify(body));};
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,Number(v)||min));
@@ -56,7 +57,8 @@ export default async function handler(req,res){
         from agent_jobs where payload ? 'approval' order by created_at desc limit $1`,[limit]),
       getAgentControlState(sql),
     ]);
-    const gates={sale:process.env.SALE_GLOBALLY_ENABLED==='true',pre_sale:process.env.PRE_SALE_GATES_APPROVED==='true',checkout:process.env.CHECKOUT_ENABLED==='true',financial:process.env.FINANCIAL_EVENTS_ENABLED==='true',whatsapp:process.env.WHATSAPP_SALES_ENABLED==='true'};
+    const canonicalGate=salesGate();
+    const gates={sale:canonicalGate.enabled,pre_sale:canonicalGate.pre_sale_gates_approved,lifecycle:canonicalGate.lifecycle_approved,checkout:canonicalGate.enabled&&process.env.CHECKOUT_ENABLED==='true',financial:canonicalGate.enabled&&process.env.FINANCIAL_EVENTS_ENABLED==='true',whatsapp:canonicalGate.enabled&&process.env.WHATSAPP_SALES_ENABLED==='true'};
     const channels=Object.fromEntries(Object.entries(channelReadiness()).map(([k,v])=>[k,{configured:v.configured,role:v.role,commercial:v.commercial}]));
     const safeRuns=runs.map(x=>({...x,rationale:String(x.rationale||'').slice(0,500)}));
     const safeOutbox=outbox.map(x=>({...x,last_error:cleanError(x.last_error)}));

@@ -1,4 +1,4 @@
-﻿# ZEVANORY - RUNBOOK OPERACIONAL
+# ZEVANORY - RUNBOOK OPERACIONAL
 
 Status: obrigatorio para operacao estrutural.
 Escopo: infraestrutura, saude, deploy, incidente, recuperacao e garantia operacional. Vendas permanecem fora de escopo.
@@ -7,7 +7,7 @@ Escopo: infraestrutura, saude, deploy, incidente, recuperacao e garantia operaci
 - Raiz canonica: `C:\Sistemas\ZEVANORY`.
 - Producao oficial: `https://zevanory.api.br`.
 - Release estrutural corrente: `ZEVANORY-EG0039-FINAL` apos promocao auditada.
-- Schema corrente: 17 tabelas e migrations 001-011.
+- Schema candidato Lifecycle v2: 20 tabelas e migrations 001-012; producao permanece no schema anterior ate promocao auditada.
 - Deploy somente de snapshot auditado e commitado.
 - Divergencia entre Git, release, schema e dominio bloqueia promocao.
 - Os cinco kill-switches comerciais/financeiros permanecem `false`.
@@ -15,7 +15,7 @@ Escopo: infraestrutura, saude, deploy, incidente, recuperacao e garantia operaci
 ## Verificacoes de saude
 1. `/api/live` deve responder HTTP 200.
 2. `/api/health` deve responder HTTP 200 e `ready=true`.
-3. Banco, URL oficial, schema 17x11 e commercial safety devem estar validos.
+3. Banco, URL oficial, schema 20x12 e commercial safety devem estar validos.
 4. `/api/release` deve corresponder ao commit promovido.
 5. `/api/status` deve expor apenas agregados sem PII.
 6. `/api/assurance` deve expor SLO objectives, outbox, agent health e contratos.
@@ -32,10 +32,10 @@ Escopo: infraestrutura, saude, deploy, incidente, recuperacao e garantia operaci
 ## Recuperacao e rollback
 1. Preferir rollback para deployment previamente `READY` e auditado.
 2. Apos rollback, validar `/`, `/api/live`, `/api/health`, `/api/release`, `/api/status` e `/api/assurance`.
-3. Confirmar schema 17x11 e kill-switches bloqueados.
+3. Confirmar schema 20x12 e kill-switches bloqueados.
 4. Para desastre de dados, usar Neon PITR/Branch Restore dentro da retencao contratada.
 5. Validar o ponto de recuperacao em branch/time-travel isolado antes de restaurar producao.
-6. `scripts/dr-rehearsal.mjs` reconstrui migrations 001-011 em schema isolado e exige `ROLLBACK`.
+6. `scripts/dr-rehearsal.mjs` reconstrui migrations 001-012 em schema isolado e exige `ROLLBACK`.
 7. Medir duracao do rehearsal como evidencia de RTO tecnico; nao confundir rehearsal com RTO contratual de producao.
 8. Registrar causa, recovery point, duracao, resultado e prova operacional.
 
@@ -65,10 +65,12 @@ Escopo: infraestrutura, saude, deploy, incidente, recuperacao e garantia operaci
 2. Nao prosseguir enquanto `inputs_ready=false` ou houver blocker legal, fiscal, de fornecedor, pagamento ou afiliacao.
 3. Preencher somente dados reais e verificaveis; nunca usar placeholder para obter PASS.
 4. Quando `inputs_ready=true`, manter `SALE_GLOBALLY_ENABLED=false` durante toda a pre-validacao.
-5. Liberar `PRE_SALE_GATES_APPROVED=true` e apenas os canais realmente necessarios ao tipo de oferta.
-6. Confirmar novamente health, assurance, checkout fail-closed, autenticacao do worker e conciliacao do provedor.
-7. `SALE_GLOBALLY_ENABLED=true` e o ultimo passo de cutover.
-8. A primeira transacao real deve ser piloto, reconciliada pelo provedor e auditada antes de qualquer escala.
+5. Certificar as 39 dimensoes do Sales Lifecycle Canonical v2 com nota exatamente 10/10, sem media compensatoria.
+6. Exigir `npm run audit:lifecycle:10x` aprovado, paridade producao-commit comprovada e release Lifecycle explicitamente aprovada.
+7. Somente depois liberar `PRE_SALE_GATES_APPROVED=true` e apenas os canais realmente necessarios ao tipo de oferta.
+8. Confirmar novamente health, assurance, checkout fail-closed, autenticacao do worker e conciliacao do provedor.
+9. `SALE_GLOBALLY_ENABLED=true` e o ultimo passo de cutover e nao funciona se o Lifecycle 39x10 estiver incompleto.
+10. A primeira transacao real deve ser piloto, reconciliada pelo provedor e auditada antes de qualquer escala.
 
 ## Rollback comercial imediato
 1. Definir `SALE_GLOBALLY_ENABLED=false` primeiro.

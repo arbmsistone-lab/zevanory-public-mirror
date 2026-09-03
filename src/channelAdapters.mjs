@@ -1,3 +1,5 @@
+import { salesGate } from './salesGate.mjs';
+
 export const CHANNELS = Object.freeze({
   zevanory: Object.freeze({ provider:'owned-web', env:[], commercial:true, role:'conversion_hub' }),
   whatsapp: Object.freeze({ provider:'meta-whatsapp-cloud-api', env:['WHATSAPP_ACCESS_TOKEN','WHATSAPP_PHONE_NUMBER_ID','META_APP_SECRET','META_GRAPH_VERSION'], anyEnv:[['META_VERIFY_TOKEN','META_WEBHOOK_VERIFY_TOKEN']], trueEnv:['META_WHATSAPP_IDENTITY_VERIFIED'], commercial:true, role:'conversation_support' }),
@@ -21,11 +23,11 @@ export function channelReadiness(env = process.env) {
     return [name,Object.freeze({ provider:def.provider, configured:implemented&&missing.length===0, implemented, missing:Object.freeze(missing), commercial:def.commercial, role:def.role })];
   }));
 }
-
 export function assertChannelActionAllowed(channel, env = process.env) {
   const readiness=channelReadiness(env)[channel];
   if(!readiness) throw new Error('unknown_channel');
   if(!readiness.configured) throw new Error('channel_not_configured');
-  if(env.SALE_GLOBALLY_ENABLED!=='true' || env.PRE_SALE_GATES_APPROVED!=='true') throw new Error('commercial_gates_closed');
+  const gate=salesGate(env);
+  if(!gate.enabled) throw new Error('commercial_gates_closed');
   return true;
 }

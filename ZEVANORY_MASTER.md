@@ -164,3 +164,16 @@ Esta separacao e estrutural e nao altera gates comerciais, financeiros ou de aut
 - Nenhuma conta, token, KYC ou credencial externa e fabricada; ausencia de configuracao mantem vendas bloqueadas.
 ## EG-0063 — ARBM SIST V10 OFFER RECONCILIATION
 ARBM SIST 10.0.0 substitui 8.1.0 como artefato canonico de pre-lancamento da OFFER-0001. O ZIP V10 foi verificado contra manifest e VERIFY-RELEASE-V10_PASS, mas publicCommercialRelease=false e code signing confiavel permanecem bloqueantes. Nenhum gate comercial foi aberto.
+
+## SALES LIFECYCLE CANONICAL V2 — LOCK 39x10
+Status: CANONICO / NO-GO COMERCIAL ATE CERTIFICACAO INTEGRAL.
+
+Ciclo obrigatorio: Mercado → ICP → aquisicao → captura → identidade → enriquecimento → scoring → priorizacao → primeira resposta → descoberta → qualificacao → nurturing → objecao → oferta → negociacao → checkout → recuperacao de abandono → pagamento → reconciliacao → fulfillment → onboarding → suporte → adocao → satisfacao → retencao → recompra → upsell → cross-sell → referral → win-back → churn → LTV → atribuicao → unit economics → experimento → aprendizado → previsao → proxima melhor acao → escala.
+
+Regra absoluta de desbloqueio: cada uma das 39 dimensoes deve possuir nota tecnica exatamente 10/10, sem media compensatoria. Alem disso, `audit:lifecycle:10x` deve passar, a paridade producao↔commit auditado deve estar comprovada e a release do lifecycle deve estar explicitamente aprovada.
+
+`SALE_GLOBALLY_ENABLED=true` e `PRE_SALE_GATES_APPROVED=true` isoladamente nunca autorizam venda. O `salesGate` canonico exige a certificacao Lifecycle v2 e todos os gates historicos simultaneamente. Agente, canais, outbound, checkout e autonomia devem convergir para esse mesmo gate, sem bypass por variavel de ambiente.
+A certificacao inicial e deliberadamente 0/39: codigo existente nao recebe nota 10 por presuncao. Cada nota deve ser promovida somente por evidencia, testes e auditoria independente.
+Customer Lifecycle Engine, Revenue Intelligence e Attribution Engine passam a existir como camadas estruturais; migration 012 adiciona persistencia de lifecycle e atribuicao sem novos campos diretos de PII.
+Metricas que dependem de comportamento comercial real permanecem baseline-gated e nunca podem ser inventadas para completar nota.
+Enquanto qualquer dimensao estiver abaixo de 10, o estado obrigatorio e NO-GO e os kill-switches permanecem fechados.

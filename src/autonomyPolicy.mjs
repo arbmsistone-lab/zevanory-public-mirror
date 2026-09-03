@@ -1,3 +1,5 @@
+import { salesGate } from './salesGate.mjs';
+
 export const AUTONOMY_POLICY=Object.freeze({
   version:'progressive-autonomy-v1',
   min_runs_24h:50,
@@ -14,14 +16,14 @@ export const AUTONOMY_POLICY=Object.freeze({
 const num=(v)=>Math.max(0,Number(v)||0);
 const ratio=(a,b)=>b>0?num(a)/num(b):null;
 
-export function assessAutonomy({tool,riskLevel,env={},evalResult={},context={},health={}}={}){
+export function assessAutonomy({tool,riskLevel,env={},evalResult={},context={},health={},gateEvaluator=salesGate}={}){
   const mode=String(env.AGENT_AUTONOMY_MODE||'guarded').toLowerCase();
   if(['read','write'].includes(String(riskLevel)))return Object.freeze({eligible:true,reason:'internal_reversible',mode});
   if(mode!=='progressive')return Object.freeze({eligible:false,reason:'guarded_mode',mode});
   if(env.AGENT_HUMAN_APPROVAL_REQUIRED!=='false')return Object.freeze({eligible:false,reason:'human_approval_policy_enabled',mode});
   if(AUTONOMY_POLICY.never_autonomous.includes(String(tool))||riskLevel==='destructive')return Object.freeze({eligible:false,reason:'never_autonomous_tool',mode});
-  const commercial=env.SALE_GLOBALLY_ENABLED==='true'&&env.PRE_SALE_GATES_APPROVED==='true';
-  if(!commercial)return Object.freeze({eligible:false,reason:'commercial_gates_closed',mode});
+  const commercial=gateEvaluator(env);
+  if(!commercial.enabled)return Object.freeze({eligible:false,reason:'commercial_gates_closed',mode});
   if(riskLevel==='financial'&&tool!=='start_checkout')return Object.freeze({eligible:false,reason:'financial_not_whitelisted',mode});
   if(riskLevel==='financial'&&(env.CHECKOUT_ENABLED!=='true'||env.FINANCIAL_EVENTS_ENABLED!=='true'||env.PAYMENT_MERCHANT_IDENTITY_VERIFIED!=='true'))return Object.freeze({eligible:false,reason:'financial_preconditions_closed',mode});
   if(evalResult.pass!==true||num(evalResult.score)<0.95)return Object.freeze({eligible:false,reason:'eval_quality_insufficient',mode});
