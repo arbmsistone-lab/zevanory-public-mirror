@@ -13,7 +13,7 @@ export async function buildLifecycleEvidenceSnapshot(sql,{deployedCommitSha="",r
     sql.query("select event_type,count(*)::int count from customer_lifecycle_events group by event_type"),
     sql.query("select count(*)::int count from customer_lifecycle_profiles"),
     sql.query("select count(*)::int count from attribution_touchpoints"),
-    sql.query("select count(*)::int count,count(distinct date_trunc('month',period_end))::int months,coalesce(sum(paid_orders),0)::int paid_orders,coalesce(sum(case when (gross_revenue_brl-refunds_brl-payment_fees_brl-variable_costs_brl-acquisition_spend_brl)>0 then paid_orders else 0 end),0)::int profitable_paid_orders from unit_economics_snapshots"),
+    sql.query("select count(*)::int count,count(distinct date_trunc('month',period_end))::int months,coalesce(max(case when (gross_revenue_brl-refunds_brl-payment_fees_brl-variable_costs_brl-acquisition_spend_brl)>0 then paid_orders else 0 end),0)::int profitable_paid_orders from unit_economics_snapshots"),
     sql.query("select dimension,count(*)::int count,array_agg(evidence_sha256 order by evidence_sha256) evidence_hashes from lifecycle_evidence_events where proof_kind='observed_production' and verification_status='verified' and source_class in ('canonical_database','provider_webhook','operator_validation') group by dimension"),
   ]);
   const leadMap=rowsToMap(leads,'stage');
@@ -22,7 +22,7 @@ export async function buildLifecycleEvidenceSnapshot(sql,{deployedCommitSha="",r
   const lifecycleMap=rowsToMap(lifecycle,'event_type');
   const financialMap=rowsToMap(financial,'normalized_event');
   const directEvidence=rowsToMap(evidence,'dimension');
-  const paidOrders=Math.max(orderMap.paid||0,scalar(economics,'paid_orders'));
+  const paidOrders=orderMap.paid||0;
   const observed={
     page_views:telemetry.filter(x=>x.event_name==='page_view').reduce((a,x)=>a+Number(x.count||0),0),
     leads:Object.values(leadMap).reduce((a,b)=>a+Number(b||0),0),
@@ -41,7 +41,7 @@ export async function buildLifecycleEvidenceSnapshot(sql,{deployedCommitSha="",r
   };
   const certification=certifyLifecycleEvidence(observed);
   const evidenceHashes=evidence.flatMap(row=>Array.isArray(row.evidence_hashes)?row.evidence_hashes:[]).filter(Boolean);
-  const provenance=buildLifecycleCertificationArtifact({certification,evidenceHashes,deployedCommitSha,releaseId});
+  const provenance=buildLifecycleCertificationArtifact({certification,evidenceHashes,evidenceFacts:observed,deployedCommitSha,releaseId});
   return Object.freeze({commercial_unlock:false,artifact_eligible:certification.approved===true,provenance,certification,evidence_summary:Object.freeze({
     paid_orders:paidOrders,total_leads:observed.leads,page_views:observed.page_views,
     lifecycle_events:Object.values(lifecycleMap).reduce((a,b)=>a+Number(b||0),0),

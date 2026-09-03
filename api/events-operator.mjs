@@ -36,6 +36,7 @@ export default async function handler(req,res){
     const existing=await sql.query('select stage from sales_leads where session_id=$1 limit 1',[sessionId]);
     const current=existing[0]?.stage||null;
     if(evidenceOnly&&current===null){res.statusCode=404;return res.end(JSON.stringify({error:'lead_not_found'}));}
+    if(evidenceOnly&&name==='fulfillment_confirmed'){const paid=await sql.query("select o.order_id from orders o where o.session_id=$1 and o.status='paid' and exists(select 1 from financial_events f where f.order_id=o.order_id and f.normalized_event='payment_confirmed') order by o.created_at desc limit 1",[sessionId]);if(paid.length!==1){res.statusCode=409;return res.end(JSON.stringify({error:'paid_reconciled_order_required'}));}}
     if(evidenceOnly){const proof=await recordVerifiedLifecycleEvidence(sql,{dimension:dimensionFor[name],source_class:'operator_validation',source:'events-operator',subject_ref:sessionId,idempotency_key:`operator-evidence:${name}:${eventId}`,metadata:{event_name:name,channel}});res.statusCode=202;return res.end(JSON.stringify({accepted:true,evidence_recorded:proof.inserted===true,agent_job_queued:false}));}
     if(current!==null && salesStageRank(stage)<salesStageRank(current)){res.statusCode=409;return res.end(JSON.stringify({error:'invalid_sales_transition'}));}
     const rows=await sql.query(`

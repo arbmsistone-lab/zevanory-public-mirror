@@ -19,7 +19,9 @@ const gate=salesGate({SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true
 check('environment switches alone cannot unlock the static sales gate',gate.enabled===false&&gate.lifecycle_approved===false);
 
 const provenance=read('db/migrations/015_lifecycle_certification_provenance.sql');
-check('certification artifact is deployment-bound and immutable',/deployed_commit_sha/.test(provenance)&&/artifact_immutable/.test(provenance)&&/total_dimensions = 39/.test(provenance));
+const provenanceRuntime=read('src/lifecycleCertificationProvenance.mjs');
+const evidenceSnapshot=read('src/lifecycleEvidenceSnapshot.mjs');
+check('certification artifact binds deploy immutable event evidence and aggregate facts',/deployed_commit_sha/.test(provenance)&&/artifact_immutable/.test(provenance)&&/total_dimensions = 39/.test(provenance)&&/event_evidence_root_sha256/.test(provenanceRuntime)&&/evidence_facts_sha256/.test(provenanceRuntime)&&/evidenceFacts:observed/.test(evidenceSnapshot));
 
 const operator=read('api/events-operator.mjs');
 check('human certification approval is authenticated exact-candidate and non-unlocking',/safeBearerEqual/.test(operator)&&/lifecycle_certification_approve/.test(operator)&&/artifact_candidate_mismatch/.test(operator)&&/lifecycle_39x10_required/.test(operator)&&/commercial_unlock:false/.test(operator));
