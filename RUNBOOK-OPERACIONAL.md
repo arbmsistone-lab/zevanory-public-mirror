@@ -7,7 +7,7 @@ Escopo: infraestrutura, saude, deploy, incidente, recuperacao e garantia operaci
 - Raiz canonica: `C:\Sistemas\ZEVANORY`.
 - Producao oficial: `https://zevanory.api.br`.
 - Release estrutural corrente: `ZEVANORY-EG0039-FINAL` apos promocao auditada.
-- Schema candidato Lifecycle v2: 20 tabelas e migrations 001-012; producao permanece no schema anterior ate promocao auditada.
+- Schema candidato Lifecycle v2: 21 tabelas e migrations 001-013; producao permanece no schema anterior ate promocao auditada.
 - Deploy somente de snapshot auditado e commitado.
 - Divergencia entre Git, release, schema e dominio bloqueia promocao.
 - Os cinco kill-switches comerciais/financeiros permanecem `false`.
@@ -15,7 +15,7 @@ Escopo: infraestrutura, saude, deploy, incidente, recuperacao e garantia operaci
 ## Verificacoes de saude
 1. `/api/live` deve responder HTTP 200.
 2. `/api/health` deve responder HTTP 200 e `ready=true`.
-3. Banco, URL oficial, schema 20x12 e commercial safety devem estar validos.
+3. Banco, URL oficial, schema 21x13 e commercial safety devem estar validos.
 4. `/api/release` deve corresponder ao commit promovido.
 5. `/api/status` deve expor apenas agregados sem PII.
 6. `/api/assurance` deve expor SLO objectives, outbox, agent health e contratos.
@@ -32,10 +32,10 @@ Escopo: infraestrutura, saude, deploy, incidente, recuperacao e garantia operaci
 ## Recuperacao e rollback
 1. Preferir rollback para deployment previamente `READY` e auditado.
 2. Apos rollback, validar `/`, `/api/live`, `/api/health`, `/api/release`, `/api/status` e `/api/assurance`.
-3. Confirmar schema 20x12 e kill-switches bloqueados.
+3. Confirmar schema 21x13 e kill-switches bloqueados.
 4. Para desastre de dados, usar Neon PITR/Branch Restore dentro da retencao contratada.
 5. Validar o ponto de recuperacao em branch/time-travel isolado antes de restaurar producao.
-6. `scripts/dr-rehearsal.mjs` reconstrui migrations 001-012 em schema isolado e exige `ROLLBACK`.
+6. `scripts/dr-rehearsal.mjs` reconstrui migrations 001-013 em schema isolado e exige `ROLLBACK`.
 7. Medir duracao do rehearsal como evidencia de RTO tecnico; nao confundir rehearsal com RTO contratual de producao.
 8. Registrar causa, recovery point, duracao, resultado e prova operacional.
 
