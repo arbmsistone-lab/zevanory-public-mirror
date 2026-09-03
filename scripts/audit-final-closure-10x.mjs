@@ -26,7 +26,7 @@ check('human certification approval is authenticated exact-candidate and non-unl
 
 const quality=read('.github/workflows/quality.yml');
 const control=read('.github/workflows/quality-control-plane.yml');
-const required=['audit:lifecycle:10x','audit:lifecycle:evidence:10x','audit:closure:10x'];
+const required=['audit:lifecycle:10x','audit:lifecycle:evidence:10x','audit:distribution:10x','audit:closure:10x'];
 check('both quality planes enforce lifecycle and closure audits',required.every(x=>quality.includes(x)&&control.includes(x)));
 
 check('commercial release remains fail-closed until observed 39x10',/commercial_unlock:false/.test(operator)&&empty.approved===false);

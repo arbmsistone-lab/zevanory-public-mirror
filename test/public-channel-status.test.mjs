@@ -13,7 +13,7 @@ test('public channel status exposes readiness without secret inventory',()=>{
   assert.equal(state.email.configured,true);
   assert.equal(state.whatsapp.configured,false);
   assert.equal(state.tiktok.configured,false);
-  assert.equal(state.instagram.profile_url,'https://instagram.com/zevanory');
+  assert.equal(state.instagram.profile_url,'https://instagram.com/zevanory_');
   assert.equal(state.youtube.profile_url,'https://youtube.com/@zevanory');
   const serialized=JSON.stringify(state);
   assert.doesNotMatch(serialized,/secret-email|secret-payment|ACCESS_TOKEN|missing/i);

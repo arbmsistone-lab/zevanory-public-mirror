@@ -11,6 +11,8 @@ export const CHANNELS = Object.freeze({
   linkedin: Object.freeze({ provider:'linkedin-posts-api', env:['LINKEDIN_ACCESS_TOKEN','LINKEDIN_AUTHOR_URN','LINKEDIN_VERSION'], trueEnv:['LINKEDIN_IDENTITY_VERIFIED'], commercial:true, role:'b2b_authority' }),
   google: Object.freeze({ provider:'organic-search', env:[], commercial:false, role:'seo_discovery' }),
   affiliate: Object.freeze({ provider:'network-webhook-adapter', env:['AFFILIATE_PROVIDER','AFFILIATE_WEBHOOK_URL','AFFILIATE_WEBHOOK_TOKEN'], commercial:true, role:'partner_distribution' }),
+  nuvemshop: Object.freeze({ provider:'nuvemshop-api-v1', env:['NUVEMSHOP_ACCESS_TOKEN','NUVEMSHOP_STORE_ID','NUVEMSHOP_APP_ID'], trueEnv:['NUVEMSHOP_IDENTITY_VERIFIED','NUVEMSHOP_WEBHOOKS_VERIFIED'], commercial:true, role:'owned_store_distribution' }),
+  mercado_livre: Object.freeze({ provider:'mercado-livre-api', env:['MERCADOLIVRE_ACCESS_TOKEN','MERCADOLIVRE_APP_ID','MERCADOLIVRE_SELLER_ID'], trueEnv:['MERCADOLIVRE_IDENTITY_VERIFIED','MERCADOLIVRE_NOTIFICATIONS_VERIFIED','MERCADOLIVRE_APP_SEPARATION_VERIFIED'], commercial:true, role:'marketplace_distribution' }),
 });
 
 export function channelReadiness(env = process.env) {

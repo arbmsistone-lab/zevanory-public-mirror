@@ -28,7 +28,7 @@ test('service activation requires production payment and real operator identity'
 });
 
 test('affiliate activation requires provider tracking and reviewed terms',()=>{
-  const base={ACTIVE_OFFER_TYPE:'affiliate_product',OFFER_SELECTION_APPROVED:'true',SUPPLIER_LEGAL_NAME:'Empresa X',SUPPLIER_TAX_ID:'00.000.000/0000-00',SUPPLIER_ADDRESS:'Endereco',SUPPORT_CHANNEL:'support@example.com',AFFILIATE_PROVIDER:'network',AFFILIATE_TERMS_REVIEWED:'true'};
+  const base={ACTIVE_OFFER_TYPE:'affiliate_product',OFFER_SELECTION_APPROVED:'true',SUPPLIER_LEGAL_NAME:'Empresa X',SUPPLIER_TAX_ID:'00.000.000/0000-00',SUPPLIER_ADDRESS:'Endereco',SUPPORT_CHANNEL:'support@example.com',AFFILIATE_PROVIDER:'network',AFFILIATE_WEBHOOK_URL:'https://affiliate.example/webhook',AFFILIATE_WEBHOOK_TOKEN:'token',AFFILIATE_TERMS_REVIEWED:'true',AFFILIATE_TERMS_VERSION:'v1',AFFILIATE_ATTRIBUTION_WINDOW_DAYS:'30',AFFILIATE_COMMISSION_BPS:'1000',AFFILIATE_PAYOUT_DELAY_DAYS:'30',AFFILIATE_SELF_REFERRAL_POLICY:'blocked',AFFILIATE_REFUND_REVERSAL_READY:'true',AFFILIATE_CHARGEBACK_REVERSAL_READY:'true',AFFILIATE_IDEMPOTENCY_READY:'true',AFFILIATE_PROVIDER_CONFIRMATION_READY:'true',AFFILIATE_DISCLOSURE_URL:'https://zevanory.api.br/afiliados',AFFILIATE_PRIVACY_URL:'https://zevanory.api.br/politica-de-privacidade'};
   assert.equal(evaluateActivationReadiness(base).ready,false);
   const ready=evaluateActivationReadiness({...base,AFFILIATE_TRACKING_READY:'true'});
   assert.equal(ready.ready,true);

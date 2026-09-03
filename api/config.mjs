@@ -6,6 +6,7 @@ import { publicOffer } from '../src/offerCatalog.mjs';
 import { publicChannelStatus } from '../src/publicChannelStatus.mjs';
 import { neon } from '@neondatabase/serverless';
 import { buildLifecycleEvidenceSnapshot } from '../src/lifecycleEvidenceSnapshot.mjs';
+import { commercialDistributionReadiness } from '../src/commercialDistribution.mjs';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -42,6 +43,7 @@ export default async function handler(req, res) {
     experimental_price_brl: PROJECT.experimentalPriceBrl,
     offer: publicOffer(),
     channels: publicChannelStatus(),
+    distribution: commercialDistributionReadiness(),
     support_whatsapp_number: PROJECT.officialWhatsappE164,
     production_mode: gate.enabled ? 'commercial-gated' : 'pre-sale-blocked'
   }));

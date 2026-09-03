@@ -32,7 +32,7 @@ export async function verifyInstagramIdentity({env=process.env,fetchImpl=globalT
   if(!token||!id||!version)return result(false,false,'credentials_missing');
   const x=await getJson(fetchImpl,`https://graph.facebook.com/${version}/${encodeURIComponent(id)}?fields=id,username`,token);
   if(!x.ok)return result(true,false,`provider_http_${x.status}`);
-  const ok=clean(x.body?.id)===id&&clean(x.body?.username).toLowerCase()==='zevanory';
+  const ok=clean(x.body?.id)===id&&clean(x.body?.username).toLowerCase()==='zevanory_';
   return result(true,ok,ok?'identity_match':'identity_mismatch',{provider_id:clean(x.body?.id),username:clean(x.body?.username)});
 }
 
@@ -73,5 +73,5 @@ export async function verifyExternalChannelIdentities({env=process.env,fetchImpl
 }
 
 export const CANONICAL_EXTERNAL_IDENTITIES=Object.freeze({
-  facebook_name:'ZEVANORY',instagram_username:'zevanory',whatsapp_e164:PROJECT.officialWhatsappE164,youtube_channel_id:EXPECTED_YOUTUBE_CHANNEL_ID,
+  facebook_name:'ZEVANORY',instagram_username:'zevanory_',whatsapp_e164:PROJECT.officialWhatsappE164,youtube_channel_id:EXPECTED_YOUTUBE_CHANNEL_ID,
 });

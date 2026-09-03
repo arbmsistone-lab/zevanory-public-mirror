@@ -4,7 +4,7 @@ import { CHANNELS, channelReadiness, assertChannelActionAllowed } from '../src/c
 import { CHANNEL_PROFILES, PROFESSIONAL_EMAIL } from '../src/channelProfiles.mjs';
 
 test('multichannel catalog includes owned social search email and partner channels',()=>{
-  for(const name of ['zevanory','whatsapp','email','instagram','facebook','tiktok','youtube','linkedin','google','affiliate']) assert.ok(CHANNELS[name]);
+  for(const name of ['zevanory','whatsapp','email','instagram','facebook','tiktok','youtube','linkedin','google','affiliate','nuvemshop','mercado_livre']) assert.ok(CHANNELS[name]);
 });
 
 test('owned web and organic search are configured without credentials',()=>{
@@ -12,7 +12,7 @@ test('owned web and organic search are configured without credentials',()=>{
 });
 
 test('external channels fail closed without credentials',()=>{
-  const r=channelReadiness({});  for(const name of ['whatsapp','email','instagram','facebook','tiktok','youtube','linkedin','affiliate']) assert.equal(r[name].configured,false);
+  const r=channelReadiness({});  for(const name of ['whatsapp','email','instagram','facebook','tiktok','youtube','linkedin','affiliate','nuvemshop','mercado_livre']) assert.equal(r[name].configured,false);
 });
 
 test('email readiness uses the canonical Resend credential',()=>{
@@ -30,7 +30,7 @@ test('professional email uses domain and requires authentication records',()=>{
 });
 
 test('confirmed social profiles keep canonical public URLs',()=>{
-  assert.equal(CHANNEL_PROFILES.instagram.profileUrl,'https://instagram.com/zevanory');
+  assert.equal(CHANNEL_PROFILES.instagram.profileUrl,'https://instagram.com/zevanory_');
   assert.equal(CHANNEL_PROFILES.youtube.profileUrl,'https://youtube.com/@zevanory');
 });
 

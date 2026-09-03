@@ -1,0 +1,23 @@
+import fs from 'node:fs';
+import { COMMERCIAL_DISTRIBUTION_CANONICAL, REQUIRED_DISTRIBUTION_FRONTS, commercialDistributionReadiness } from '../src/commercialDistribution.mjs';
+import { evaluateAffiliateProgramReadiness, AFFILIATE_COMMISSION_STATES, AFFILIATE_REVENUE_TRUTH } from '../src/affiliateProgram.mjs';
+import { CHANNEL_PROFILES } from '../src/channelProfiles.mjs';
+import { PROVIDER_CONTRACTS, validateProviderContracts } from '../src/providerContracts.mjs';
+import { salesGate } from '../src/salesGate.mjs';
+
+const checks=[];const add=(name,pass)=>checks.push([name,Boolean(pass)]);const src=(p)=>fs.readFileSync(p,'utf8');
+const empty=commercialDistributionReadiness({});
+add('canonical covers 12 intended owned social search partner store and marketplace fronts',REQUIRED_DISTRIBUTION_FRONTS.length===12&&['affiliate','nuvemshop','mercado_livre'].every(x=>REQUIRED_DISTRIBUTION_FRONTS.includes(x)));
+add('every front has attribution provider confirmation revenue truth and global gate policy',Object.values(COMMERCIAL_DISTRIBUTION_CANONICAL).every(x=>x.attribution&&x.provider_confirmation&&x.revenue_truth&&x.global_gate_required&&x.policy_complete));
+add('all 12 fronts are technically implemented but external configuration remains fail closed',empty.technical_ready===true&&empty.operational_ready===false&&empty.total_fronts===12);
+add('official Instagram canonical identity is zevanory underscore',CHANNEL_PROFILES.instagram.handle==='@zevanory_'&&CHANNEL_PROFILES.instagram.profileUrl==='https://instagram.com/zevanory_');
+const af=evaluateAffiliateProgramReadiness({});
+add('affiliate requires attribution commission payout self referral reversals idempotency terms privacy and provider confirmation',af.ready===false&&['affiliate_attribution_window_invalid','affiliate_commission_bps_invalid','affiliate_payout_delay_invalid','affiliate_self_referral_policy_invalid','affiliate_refund_reversal_unready','affiliate_chargeback_reversal_unready','affiliate_idempotency_unready','affiliate_provider_confirmation_unready','affiliate_terms_version_missing','affiliate_disclosure_url_invalid','affiliate_privacy_url_invalid'].every(x=>af.blockers.includes(x)));
+add('affiliate recognizes only confirmed commission and explicit reversible lifecycle',AFFILIATE_REVENUE_TRUTH==='confirmed_commission_only'&&AFFILIATE_COMMISSION_STATES.join(',')==='pending,confirmed,reversed,paid'&&PROVIDER_CONTRACTS.affiliate.reversal_required===true);
+add('Nuvemshop contract uses OAuth2 v1 product API and requires webhooks/provider truth',PROVIDER_CONTRACTS.nuvemshop.auth==='oauth2_authorization_code'&&PROVIDER_CONTRACTS.nuvemshop.product_create==='POST /products'&&PROVIDER_CONTRACTS.nuvemshop.webhooks_required===true&&src('src/outboundAdapters.mjs').includes('api.nuvemshop.com/v1/'));
+add('Mercado Livre contract uses OAuth2 bearer notifications resource lookup and separated app requirement',PROVIDER_CONTRACTS.mercado_livre.auth==='oauth2_authorization_code'&&PROVIDER_CONTRACTS.mercado_livre.notifications_required===true&&PROVIDER_CONTRACTS.mercado_livre.resource_lookup_after_notification===true&&PROVIDER_CONTRACTS.mercado_livre.separate_ml_mp_app_required_since==='2026-08-30');
+add('provider contracts validate and external credentials cannot bypass sales lifecycle gate',validateProviderContracts().valid===true&&salesGate({SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'}).enabled===false);
+const quality=src('.github/workflows/quality.yml');const control=src('.github/workflows/quality-control-plane.yml');
+add('both quality planes enforce commercial distribution audit',quality.includes('audit:distribution:10x')&&control.includes('audit:distribution:10x'));
+for(const [i,[name,pass]] of checks.entries()) console.log(`${pass?'APPROVED':'FAILED'} ${String(i+1).padStart(2,'0')} ${name}`);
+const failed=checks.filter(([,p])=>!p);if(checks.length!==10||failed.length)process.exitCode=1;else console.log('AUDIT_COMMERCIAL_DISTRIBUTION_10X_APPROVED units=10 approved=10 failed=0');
