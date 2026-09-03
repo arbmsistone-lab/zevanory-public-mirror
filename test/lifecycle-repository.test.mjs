@@ -37,5 +37,5 @@ test('attribution touchpoints are idempotent and load in deterministic order',as
   const saved=await recordAttributionTouchpoint(db,{session_id:customer,lead_id:lead,order_id:order,channel:'Instagram',idempotency_key:'touch:0001'});
   assert.equal(saved.inserted,true);assert.equal(calls[0].args[4],'instagram');
   const rows=await loadAttributionTouchpoints(db,{order_id:order});
-  assert.equal(rows[0].channel,'instagram');assert.match(calls[1].q,/order by occurred_at asc,touchpoint_id asc/i);
+  assert.equal(rows[0].channel,'instagram');assert.match(calls.at(-1).q,/order by occurred_at asc,touchpoint_id asc/i);
 });

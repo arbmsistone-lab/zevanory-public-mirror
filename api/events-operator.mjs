@@ -4,8 +4,10 @@ import { OPERATOR_EVENTS, sanitizeText } from '../src/telemetry.mjs';
 import { PROJECT, isUuid } from '../src/config.mjs';
 import { safeBearerEqual } from '../src/security.mjs';
 import { salesStageRank } from '../src/salesPipeline.mjs';
+import { recordVerifiedLifecycleEvidence } from '../src/lifecycleEvidenceRepository.mjs';
 
 const stageFor=Object.freeze({lead_qualified:'qualified',offer_sent:'offer_sent',checkout_started:'checkout_started'});
+const dimensionFor=Object.freeze({lead_qualified:'qualification',offer_sent:'offer',checkout_started:'checkout'});
 
 export default async function handler(req,res){
   res.setHeader('content-type','application/json; charset=utf-8'); res.setHeader('cache-control','no-store'); res.setHeader('x-content-type-options','nosniff');
@@ -35,6 +37,7 @@ export default async function handler(req,res){
       select $9,'lead_review','queued',90,lead_id,$10,$11::jsonb,now() from lead_upsert
       on conflict(idempotency_key) do nothing returning job_id
     `,[eventId,name,sessionId,PROJECT.experimentId,PROJECT.offerId,channel,randomUUID(),stage,randomUUID(),`operator-event:${eventId}`,JSON.stringify({source:'operator_event',event_name:name})]);
+    if(rows.length>0){try{await recordVerifiedLifecycleEvidence(sql,{dimension:dimensionFor[name],source_class:'operator_validation',source:'events-operator',subject_ref:sessionId,idempotency_key:`operator-evidence:${name}:${eventId}`,metadata:{event_name:name,channel}});}catch{}}
     res.statusCode=202; return res.end(JSON.stringify({accepted:true,agent_job_queued:rows.length>0}));
   }catch{res.statusCode=503;return res.end(JSON.stringify({error:'operator_event_storage_error'}));}
 }
