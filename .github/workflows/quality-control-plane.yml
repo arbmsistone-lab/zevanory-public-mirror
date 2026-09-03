@@ -1,0 +1,80 @@
+name: ZEVANORY Quality Control Plane
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zevanory-qcp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Core tests
+        run: npm test
+      - name: Supply-chain scan
+        run: npm run supplychain:scan
+      - name: Observability audit
+        run: npm run audit:obs:10x
+      - name: Security audit
+        run: npm run audit:security:10x
+      - name: NPM audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Install Trivy 0.74.0 with checksum verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLO https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_Linux-64bit.tar.gz
+          echo "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a  trivy_0.74.0_Linux-64bit.tar.gz" | sha256sum -c -
+          tar -xzf trivy_0.74.0_Linux-64bit.tar.gz trivy
+          sudo install -m 0755 trivy /usr/local/bin/trivy
+      - name: Trivy security gate
+        run: trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --skip-dirs node_modules .
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Start commit-local server
+        shell: bash
+        run: |
+          npm start > zevanory-server.log 2>&1 &
+          echo $! > zevanory-server.pid
+          for i in {1..30}; do curl -fsS http://127.0.0.1:4173/api/live && exit 0; sleep 1; done
+          cat zevanory-server.log
+          exit 1
+      - name: Visual and E2E gate
+        run: npm run test:e2e
+        env:
+          ZEVANORY_BASE_URL: http://127.0.0.1:4173
+      - name: Generate SBOM
+        shell: bash
+        run: |
+          mkdir -p quality-evidence
+          npm sbom --sbom-format cyclonedx > quality-evidence/sbom.cdx.json
+      - name: Upload quality evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: zevanory-quality-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+            quality-evidence/
+            zevanory-server.log
+          if-no-files-found: ignore
+          retention-days: 30

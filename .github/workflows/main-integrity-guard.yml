@@ -1,0 +1,27 @@
+name: Main Integrity Guard
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  verify-pr-origin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require pull request provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq 'length')
+          if [ "$count" -lt 1 ]; then
+            echo "MAIN_INTEGRITY=FAIL direct push without associated PR" >&2
+            exit 1
+          fi
+          echo "MAIN_INTEGRITY=PASS associated_pr_count=$count"
