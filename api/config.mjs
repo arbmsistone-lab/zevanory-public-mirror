@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   const url=new URL(req.url||'/api/config','https://zevanory.api.br');
   if(url.searchParams.get('view')==='lifecycle'){
     if(!process.env.DATABASE_URL){res.statusCode=503;return res.end(JSON.stringify({error:'database_required'}));}
-    try{const snapshot=await buildLifecycleEvidenceSnapshot(neon(process.env.DATABASE_URL));res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;return res.end(JSON.stringify(snapshot));}catch{res.statusCode=503;return res.end(JSON.stringify({error:'lifecycle_certification_unavailable'}));}
+    try{const snapshot=await buildLifecycleEvidenceSnapshot(neon(process.env.DATABASE_URL),{deployedCommitSha:String(process.env.VERCEL_GIT_COMMIT_SHA||process.env.ZEVANORY_RELEASE_SHA||""),releaseId:RELEASE.id});res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;return res.end(JSON.stringify(snapshot));}catch{res.statusCode=503;return res.end(JSON.stringify({error:'lifecycle_certification_unavailable'}));}
   }
   if(url.searchParams.get('view')==='activation'){
     const plan=buildActivationPlan(process.env);

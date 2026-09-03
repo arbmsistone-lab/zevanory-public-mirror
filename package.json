@@ -62,6 +62,7 @@
     "migration:012": "node --env-file-if-exists=.env.production.local scripts/apply-migration-012.mjs",
     "migration:013": "node --env-file-if-exists=.env.production.local scripts/apply-migration-013.mjs",
     "migration:014": "node --env-file-if-exists=.env.production.local scripts/apply-migration-014.mjs",
+    "migration:015": "node --env-file-if-exists=.env.production.local scripts/apply-migration-015.mjs",
     "audit:lifecycle:evidence:10x": "node scripts/audit-lifecycle-evidence-10x.mjs"
   },
   "devDependencies": {
