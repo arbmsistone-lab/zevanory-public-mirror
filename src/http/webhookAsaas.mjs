@@ -10,6 +10,7 @@ import {
   asaasBaseUrl,
 } from '../asaas.mjs';
 import { queueOutcomeLearningReview } from '../outcomeLearning.mjs';
+import { recordVerifiedLifecycleEvidence } from '../lifecycleEvidenceRepository.mjs';
 
 export async function fetchAsaasPayment(paymentId, env, apiKey, fetchImpl = fetch) {
   const base = asaasBaseUrl(env);
@@ -104,7 +105,13 @@ export default async function handler(req, res) {
     const outcome=rows[0]||{};
     if(Number(outcome.target_count)!==1) return json(res,409,{error:'order_state_invalid',accepted:false});
     if(Number(outcome.inserted_count)===1 && !outcome.order_status) return json(res,503,{error:'order_state_update_failed',accepted:false});
-    if(Number(outcome.inserted_count)===1){try{await queueOutcomeLearningReview(sql,{idempotencyKey:`learning:financial:${webhook.providerEventId}`,source:`financial:${normalized}`});}catch{}}
+    if(Number(outcome.inserted_count)===1){
+      try{await queueOutcomeLearningReview(sql,{idempotencyKey:`learning:financial:${webhook.providerEventId}`,source:`financial:${normalized}`});}catch{}
+      if(normalized==='payment_confirmed'){
+        try{await recordVerifiedLifecycleEvidence(sql,{dimension:'payment',source_class:'provider_webhook',source:'asaas',subject_ref:orderId,idempotency_key:`payment-evidence:asaas:${webhook.providerEventId}`,metadata:{provider:'asaas'}});}catch{}
+        try{await recordVerifiedLifecycleEvidence(sql,{dimension:'reconciliation',source_class:'provider_webhook',source:'asaas',subject_ref:orderId,idempotency_key:`reconciliation-evidence:asaas:${webhook.providerEventId}`,metadata:{provider:'asaas'}});}catch{}
+      }
+    }
     res.statusCode = 200;
     return res.end(JSON.stringify({ accepted: true, duplicate: Number(outcome.inserted_count)===0, event: normalized, order_id: orderId, order_status: outcome.order_status||outcome.current_status, refunded_total: refundedTotal }));
   } catch {

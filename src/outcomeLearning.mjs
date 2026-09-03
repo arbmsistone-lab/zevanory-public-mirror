@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { recordVerifiedLifecycleEvidence } from './lifecycleEvidenceRepository.mjs';
 
 export const OUTCOME_LEARNING_POLICY=Object.freeze({
   version:'outcome-policy-v1',
@@ -85,6 +86,10 @@ export async function refreshOutcomeLearning(sql,{now=new Date(),policy=OUTCOME_
     values($1,'global','revenue','outcome_learning_v1',$2::jsonb,$3,$4)
     on conflict(scope_type,scope_ref,memory_key) do update set memory_value=excluded.memory_value,confidence=excluded.confidence,expires_at=excluded.expires_at,updated_at=now()`,
     [randomUUID(),JSON.stringify(value),decision.ready?Math.min(0.99,0.5+Math.min(0.49,decision.total_matured/1000)):0,expiresAt]);
+  if(decision.ready){
+    try{await recordVerifiedLifecycleEvidence(sql,{dimension:'experiment',source_class:'canonical_database',source:'outcome_learning',subject_ref:decision.winner?.key||'revenue',idempotency_key:`experiment-evidence:${learnedAt}`,metadata:{policy_version:policy.version,total_matured:decision.total_matured}});}catch{}
+    try{await recordVerifiedLifecycleEvidence(sql,{dimension:'learning',source_class:'canonical_database',source:'outcome_learning',subject_ref:decision.winner?.key||'revenue',idempotency_key:`learning-evidence:${learnedAt}`,metadata:{policy_version:policy.version,total_matured:decision.total_matured}});}catch{}
+  }
   return Object.freeze(value);
 }
 export async function loadOutcomeLearningMemory(sql){

@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { CUSTOMER_LIFECYCLE_STAGES } from './customerLifecycleEngine.mjs';
+import { recordVerifiedLifecycleEvidence } from './lifecycleEvidenceRepository.mjs';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const eventDimension=Object.freeze({onboarding_completed:'onboarding',support_opened:'support',support_resolved:'support',adoption_updated:'adoption',satisfaction_recorded:'satisfaction',retention_intervention:'retention',repurchase:'repurchase',upsell:'upsell',cross_sell:'cross_sell',referral:'referral',win_back:'win_back',churn:'churn'});
 const eventStage=Object.freeze({
   onboarding_started:'onboarding',onboarding_completed:'adoption',support_opened:'support',support_resolved:'adoption',
   adoption_updated:'adoption',satisfaction_recorded:'satisfaction',retention_intervention:'retention',repurchase:'repurchase',
@@ -42,7 +44,9 @@ export async function recordCustomerLifecycleEvent(sql,input={}){
     where p.customer_id=$2 and exists(select 1 from ins)
     returning p.customer_id,p.stage,p.purchase_count,p.last_activity_at,p.churned_at`,
     [eventId,input.customer_id,input.order_id||null,eventType,source,key,JSON.stringify(input.metadata||{}),input.occurred_at||null,stage]);
-  return Object.freeze({inserted:rows.length===1,profile:rows[0]||null,event_id:eventId,event_type:eventType});
+  const inserted=rows.length===1;
+  if(inserted&&eventDimension[eventType]){try{await recordVerifiedLifecycleEvidence(sql,{dimension:eventDimension[eventType],source_class:'canonical_database',source:'customer_lifecycle_events',subject_ref:input.customer_id,idempotency_key:`lifecycle-evidence:${eventType}:${eventId}`,metadata:{event_type:eventType}});}catch{}}
+  return Object.freeze({inserted,profile:rows[0]||null,event_id:eventId,event_type:eventType});
 }
 export async function recordAttributionTouchpoint(sql,input={}){
   if(input.session_id && !validUuid(input.session_id)) throw new Error('session_id_invalid');
@@ -56,7 +60,9 @@ export async function recordAttributionTouchpoint(sql,input={}){
     values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,coalesce($10::timestamptz,now()))
     on conflict(idempotency_key) do nothing returning touchpoint_id,channel,occurred_at`,
     [id,input.session_id||null,input.lead_id||null,input.order_id||null,channel,String(input.source_ref||'').slice(0,240)||null,String(input.campaign_ref||'').slice(0,240)||null,key,JSON.stringify(input.metadata||{}),input.occurred_at||null]);
-  return Object.freeze({inserted:rows.length===1,touchpoint:rows[0]||null,touchpoint_id:id});
+  const inserted=rows.length===1;
+  if(inserted){try{await recordVerifiedLifecycleEvidence(sql,{dimension:'attribution',source_class:'canonical_database',source:'attribution_touchpoints',subject_ref:input.order_id||input.session_id||id,idempotency_key:`attribution-evidence:${id}`,metadata:{channel}});}catch{}}
+  return Object.freeze({inserted,touchpoint:rows[0]||null,touchpoint_id:id});
 }
 
 export async function loadAttributionTouchpoints(sql,{order_id=null,session_id=null}={}){
