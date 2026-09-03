@@ -49,8 +49,18 @@ jobs:
         run: trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --skip-dirs node_modules .
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
+      - name: Start commit-local server
+        shell: bash
+        run: |
+          npm start > zevanory-server.log 2>&1 &
+          echo $! > zevanory-server.pid
+          for i in {1..30}; do curl -fsS http://127.0.0.1:4173/api/live && exit 0; sleep 1; done
+          cat zevanory-server.log
+          exit 1
       - name: Visual and E2E gate
         run: npm run test:e2e
+        env:
+          ZEVANORY_BASE_URL: http://127.0.0.1:4173
       - name: Generate SBOM
         shell: bash
         run: |
@@ -65,5 +75,6 @@ jobs:
             playwright-report/
             test-results/
             quality-evidence/
+            zevanory-server.log
           if-no-files-found: ignore
           retention-days: 30
