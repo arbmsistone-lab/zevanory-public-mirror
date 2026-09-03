@@ -6,3 +6,5 @@ data/
 node_modules/
 .chrome-audit/
 .env*
+playwright-report/
+test-results/

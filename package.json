@@ -56,6 +56,10 @@
     "brand:social": "node scripts/build-social-assets.mjs",
     "audit:store-distribution:20x": "node scripts/audit-store-distribution-20x.mjs",
     "preflight:channel-identities": "node scripts/channel-identity-preflight.mjs",
-    "audit:channel-identity:20x": "node scripts/audit-channel-identity-20x.mjs"
+    "audit:channel-identity:20x": "node scripts/audit-channel-identity-20x.mjs",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
   }
 }
