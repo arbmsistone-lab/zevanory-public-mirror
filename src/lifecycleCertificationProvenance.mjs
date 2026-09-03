@@ -1,16 +1,26 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-const stable=(value)=>JSON.stringify(value,Object.keys(value||{}).sort());
-const sha=(value)=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
+const canonicalize=(value)=>{
+  if(Array.isArray(value)) return value.map(canonicalize);
+  if(value&&typeof value==='object') return Object.fromEntries(Object.keys(value).sort().map((key)=>[key,canonicalize(value[key])]));
+  return value;
+};
+const stable=(value)=>JSON.stringify(canonicalize(value));
+const sha=(value)=>createHash('sha256').update(typeof value==='string'?value:stable(value)).digest('hex');
 
-export function buildLifecycleCertificationArtifact({certification,evidenceHashes=[],deployedCommitSha,releaseId}={}){
+export function buildLifecycleCertificationArtifact({certification,evidenceHashes=[],evidenceFacts={},deployedCommitSha,releaseId}={}){
   const hashes=[...new Set((evidenceHashes||[]).map(String).filter(x=>/^[0-9a-f]{64}$/.test(x)))].sort();
-  const evidenceRootSha256=sha(hashes.join('\n'));
+  const canonicalFacts=canonicalize(evidenceFacts||{});
+  const eventEvidenceRootSha256=sha(hashes.join('\n'));
+  const evidenceFactsSha256=sha(stable(canonicalFacts));
+  const evidenceRootSha256=sha(eventEvidenceRootSha256+'\n'+evidenceFactsSha256);
   const payload={
     release_id:String(releaseId||''),deployed_commit_sha:String(deployedCommitSha||''),
     lifecycle_version:String(certification?.version||''),required_score:Number(certification?.required_score)||10,
     total_dimensions:Number(certification?.total_dimensions)||0,proven_dimensions:Number(certification?.proven_dimensions)||0,
-    certification_approved:certification?.approved===true,evidence_root_sha256:evidenceRootSha256,evidence_hashes:hashes,
+    certification_approved:certification?.approved===true,evidence_root_sha256:evidenceRootSha256,
+    event_evidence_root_sha256:eventEvidenceRootSha256,evidence_facts_sha256:evidenceFactsSha256,evidence_hash_count:hashes.length,
+    evidence_facts:canonicalFacts,evidence_hashes:hashes,
   };
   return Object.freeze({...payload,artifact_sha256:sha(JSON.stringify(payload))});
 }

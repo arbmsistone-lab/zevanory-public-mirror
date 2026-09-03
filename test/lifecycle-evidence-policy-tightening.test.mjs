@@ -14,3 +14,18 @@ test('scale counts only paid orders from positive contribution snapshots',()=>{
   assert.match(snapshot,/profitable_paid_orders/);
   assert.doesNotMatch(snapshot,/profitable_paid_orders:0/);
 });
+
+test('paid-order certification cannot be inflated by overlapping economics snapshots',()=>{
+  assert.match(snapshot,/const paidOrders=orderMap\.paid\|\|0/);
+  assert.doesNotMatch(snapshot,/Math\.max\(orderMap\.paid/);
+  assert.doesNotMatch(snapshot,/sum\(paid_orders\)/i);
+  assert.match(snapshot,/max\(case when \(gross_revenue_brl-refunds_brl-payment_fees_brl-variable_costs_brl-acquisition_spend_brl\)>0 then paid_orders else 0 end\)/i);
+});
+
+test('fulfillment operator proof requires a paid provider-reconciled order',()=>{
+  const operator=fs.readFileSync('api/events-operator.mjs','utf8');
+  assert.match(operator,/name==='fulfillment_confirmed'/);
+  assert.match(operator,/o\.status='paid'/);
+  assert.match(operator,/f\.normalized_event='payment_confirmed'/);
+  assert.match(operator,/paid_reconciled_order_required/);
+});
