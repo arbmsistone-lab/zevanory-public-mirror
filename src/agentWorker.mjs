@@ -7,10 +7,22 @@ import { enqueueOutbox } from './integrationOutbox.mjs';
 import { assertChannelActionAllowed } from './channelAdapters.mjs';
 import { getAgentControlState, requiresHumanApproval, findApprovedAction, requestApproval, consumeApproval } from './agentControl.mjs';
 import { refreshOutcomeLearning } from './outcomeLearning.mjs';
+import { recordVerifiedLifecycleEvidence } from './lifecycleEvidenceRepository.mjs';
 import { evaluateProgressiveAutonomy } from './autonomyPolicy.mjs';
 import { evaluateContentNovelty } from './contentDedup.mjs';
 
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const nbaExecutableTools=new Set(['schedule_follow_up','send_message','start_checkout']);
+export function nbaExecutionConfirmed(tool,result={}){
+  if(tool==='schedule_follow_up') return result?.scheduled===true;
+  if(tool==='send_message'||tool==='start_checkout') return Boolean(result?.event_id)&&['pending','processing','delivered'].includes(String(result?.status||'pending'));
+  return false;
+}
+export async function recordNextBestActionEvidence(sql,{runId,context,tool,result,decision}){
+  const learning=context?.outcome_learning; const lead=context?.lead;
+  if(!lead?.lead_id||!learning||!nbaExecutableTools.has(tool)||!nbaExecutionConfirmed(tool,result)) return null;
+  return recordVerifiedLifecycleEvidence(sql,{dimension:'next_best_action',source_class:'canonical_database',source:'revenue_agent',subject_ref:String(lead.lead_id),idempotency_key:`next-best-action:${runId}`,metadata:{run_id:runId,tool,decision_action:String(decision?.action||''),learning_policy_version:String(learning?.policy_version||''),learning_total_matured:Number(learning?.total_matured)||0,learning_winner_key:String(learning?.winner?.key||'')}});
+}
 
 export async function claimAgentJob(sql) {
   const rows = await sql.query(`update agent_jobs set status='running',locked_at=now(),attempts=attempts+1
@@ -141,6 +153,9 @@ export async function runAgentOnce(sql,options={}){
     if(autonomy.eligible)result={...result,autonomy_mode:autonomy.mode,autonomy_reason:autonomy.reason};
     if(approval?.approval_id)await consumeApproval(sql,approval.approval_id);
     await saveRun(outcome,result);
+    if(outcome==='completed'){
+      try{await recordNextBestActionEvidence(sql,{runId,context,tool,result,decision});}catch{}
+    }
     await auditTool(sql,runId,tool,finalAuth,{job_id:job.job_id,decision,eval:evalResult,autonomy,result});
     const jobStatus=outcome==='completed'?'completed':'failed';
     await sql.query('update agent_jobs set status=$2,completed_at=now(),last_error=$3 where job_id=$1',[job.job_id,jobStatus,outcome==='failed'?String(result.reason||'tool_execution_failed'):null]);
