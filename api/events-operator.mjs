@@ -8,6 +8,7 @@ import { recordVerifiedLifecycleEvidence } from '../src/lifecycleEvidenceReposit
 import { buildLifecycleEvidenceSnapshot } from '../src/lifecycleEvidenceSnapshot.mjs';
 import { persistLifecycleCertificationArtifact, approveLifecycleCertificationArtifact } from '../src/lifecycleCertificationProvenance.mjs';
 import { RELEASE } from '../src/release.mjs';
+import { createCertificationPilotInvite, revokeCertificationPilotInvite } from '../src/certificationPilot.mjs';
 
 const stageFor=Object.freeze({lead_qualified:'qualified',offer_sent:'offer_sent',checkout_started:'checkout_started'});
 const dimensionFor=Object.freeze({lead_qualified:'qualification',offer_sent:'offer',checkout_started:'checkout',identity_verified:'identity',enrichment_verified:'enrichment',scoring_completed:'scoring',prioritization_completed:'prioritization',first_response_confirmed:'first_response',discovery_completed:'discovery',nurturing_touch_confirmed:'nurturing',objection_handled:'objection',negotiation_completed:'negotiation',abandonment_recovered:'abandonment_recovery',fulfillment_confirmed:'fulfillment'});
@@ -20,7 +21,16 @@ export default async function handler(req,res){
   if(!process.env.DATABASE_URL){res.statusCode=503;return res.end(JSON.stringify({error:'operational_storage_unavailable'}));}
   const body=req.body && typeof req.body==='object'?req.body:{};
   const name=sanitizeText(body.name,60);
-  if(name==='lifecycle_certification_approve'){
+  if(name==='certification_pilot_invite_create'){
+    const approver=sanitizeText(process.env.CERTIFICATION_PILOT_APPROVER,120);
+    if(!approver){res.statusCode=503;return res.end(JSON.stringify({error:'certification_pilot_approver_not_configured'}));}
+    try{const sql=neon(process.env.DATABASE_URL);const invite=await createCertificationPilotInvite(sql,{createdBy:approver,ttlHours:body.ttl_hours});res.statusCode=201;return res.end(JSON.stringify({created:true,invite_id:invite.invite_id,token:invite.token,expires_at:invite.expires_at,max_orders:invite.max_orders,commercial_unlock:false}));}catch(error){res.statusCode=409;return res.end(JSON.stringify({error:String(error?.message||'certification_pilot_invite_failed')}));}
+  }
+  if(name==='certification_pilot_invite_revoke'){
+    const approver=sanitizeText(process.env.CERTIFICATION_PILOT_APPROVER,120);
+    if(!approver){res.statusCode=503;return res.end(JSON.stringify({error:'certification_pilot_approver_not_configured'}));}
+    try{const sql=neon(process.env.DATABASE_URL);const result=await revokeCertificationPilotInvite(sql,{inviteId:String(body.invite_id||''),revokedBy:approver});res.statusCode=200;return res.end(JSON.stringify({...result,commercial_unlock:false}));}catch(error){res.statusCode=409;return res.end(JSON.stringify({error:String(error?.message||'certification_pilot_revoke_failed')}));}
+  }  if(name==='lifecycle_certification_approve'){
     const approver=sanitizeText(process.env.LIFECYCLE_RELEASE_APPROVER,120);
     const deployedCommitSha=String(process.env.VERCEL_GIT_COMMIT_SHA||process.env.ZEVANORY_RELEASE_SHA||'').toLowerCase();
     const requestedHash=String(body.artifact_sha256||'').toLowerCase();

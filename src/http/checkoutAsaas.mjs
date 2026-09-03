@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { PROJECT } from '../config.mjs';
 import { asaasBaseUrl } from '../asaas.mjs';
 import { salesGate } from '../salesGate.mjs';
+import { authorizeCertificationPilotCheckout, recordCertificationPilotCheckoutEvidence } from '../certificationPilot.mjs';
 import {
   normalizeCheckoutRequest,
   checkoutReplayDecision,
@@ -35,26 +36,32 @@ export default async function handler(req,res) {  res.setHeader('content-type','
   res.setHeader('cache-control','no-store');
   res.setHeader('x-content-type-options','nosniff');
   if(req.method!=='POST') return json(res,405,{error:'method_not_allowed'});
+  const input=normalizeCheckoutRequest(req.body);
+  if(!input) return json(res,400,{error:'invalid_checkout_request'});
   const gate=salesGate();
-  if(!gate.enabled) return json(res,503,{error:'sales_globally_blocked',blockers:gate.blockers});
+  const pilotToken=String(req.headers?.['x-certification-pilot-token']||'').trim();
+  if(!gate.enabled&&!pilotToken) return json(res,503,{error:'sales_globally_blocked',blockers:gate.blockers});
   if(process.env.CHECKOUT_ENABLED!=='true') return json(res,503,{error:'checkout_disabled'});
   const asaasEnv=String(process.env.ASAAS_ENV||'').toLowerCase();
   if(!['sandbox','production'].includes(asaasEnv)) return json(res,503,{error:'checkout_environment_invalid'});
   const publicBase=safePublicBaseUrl(process.env.PUBLIC_BASE_URL);
   if(!process.env.DATABASE_URL||!process.env.ASAAS_API_KEY||!publicBase) return json(res,503,{error:'checkout_provider_unavailable'});
-  const input=normalizeCheckoutRequest(req.body);
-  if(!input) return json(res,400,{error:'invalid_checkout_request'});
   const sql=neon(process.env.DATABASE_URL);
+  let pilot=null;
+  if(!gate.enabled){
+    pilot=await authorizeCertificationPilotCheckout(sql,{token:pilotToken,sessionId:input.sessionId,requestId:input.requestId});
+    if(!pilot.authorized) return json(res,503,{error:'sales_globally_blocked',blockers:gate.blockers,pilot_reason:pilot.reason});
+  }
   const orderId=crypto.randomUUID();
   const externalReference=externalReferenceForOrder(orderId);
   try {
     const inserted=await sql.query(`
       INSERT INTO orders
-        (order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status)
-      VALUES ($1,$2,$3,$4,$5,$6,'BRL','asaas',$7,'created')
+        (order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status,certification_pilot,certification_pilot_invite_id)
+      VALUES ($1,$2,$3,$4,$5,$6,'BRL','asaas',$7,'created',$8,$9)
       ON CONFLICT (request_id) DO NOTHING
       RETURNING order_id
-    `,[orderId,input.requestId,input.sessionId,PROJECT.experimentId,PROJECT.offerId,PROJECT.experimentalPriceBrl,externalReference]);
+    `,[orderId,input.requestId,input.sessionId,PROJECT.experimentId,PROJECT.offerId,PROJECT.experimentalPriceBrl,externalReference,Boolean(pilot?.authorized),pilot?.invite_id||null]);
     let order;
     if(inserted.length) {
       order={order_id:orderId,external_reference:externalReference,status:'created'};
@@ -95,6 +102,7 @@ export default async function handler(req,res) {  res.setHeader('content-type','
       RETURNING order_id
     `,[order.order_id,checkoutResponse.id,checkoutResponse.link]);
     if(persisted.length!==1) return json(res,503,{error:'checkout_persist_failed',accepted:false});
+    if(pilot?.authorized){try{await recordCertificationPilotCheckoutEvidence(sql,{orderId:order.order_id,sessionId:input.sessionId,provider:'asaas'});}catch{}}
     return json(res,201,{accepted:true,duplicate:false,order_id:order.order_id,checkout_url:checkoutResponse.link});
   } catch {
     return json(res,503,{error:'checkout_storage_error',accepted:false});

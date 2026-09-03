@@ -37,6 +37,7 @@ jobs:
       - run: npm run audit:offer:20x
       - run: npm run audit:channels:20x
       - run: npm run audit:distribution:10x
+      - run: npm run audit:pilot:10x
       - run: npm run audit:rules:20x
       - run: npm run audit:engine:20x
       - run: npm run audit:command:20x

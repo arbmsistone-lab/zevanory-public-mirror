@@ -7,8 +7,8 @@ const exists=async p=>{try{await access(new URL(p,root));return true}catch{retur
 const add=(name,ok)=>checks.push({name,ok:Boolean(ok)});
 const env=await text('.env.example'); const pkg=JSON.parse(await text('package.json')); const workflow=await text('.github/workflows/quality.yml');
 add('01 final release',RELEASE.id==='ZEVANORY-EG0039-FINAL');
-add('02 required schema tables',REQUIRED_TABLES.length===22&&['integration_outbox','agent_jobs','agent_runs','agent_memory','agent_control_state','agent_approvals','customer_lifecycle_profiles','customer_lifecycle_events','attribution_touchpoints','lifecycle_evidence_events','lifecycle_certification_artifacts'].every(x=>REQUIRED_TABLES.includes(x)));
-add('03 required migrations',REQUIRED_MIGRATIONS.length===15&&REQUIRED_MIGRATIONS.includes('010_payment_provider_abstraction')&&REQUIRED_MIGRATIONS.includes('011_agent_control_and_trace')&&REQUIRED_MIGRATIONS.includes('012_sales_lifecycle_v2')&&REQUIRED_MIGRATIONS.includes('015_lifecycle_certification_provenance'));
+add('02 required schema tables',REQUIRED_TABLES.length===23&&['integration_outbox','agent_jobs','agent_runs','agent_memory','agent_control_state','agent_approvals','customer_lifecycle_profiles','customer_lifecycle_events','attribution_touchpoints','lifecycle_evidence_events','lifecycle_certification_artifacts','certification_pilot_invites'].every(x=>REQUIRED_TABLES.includes(x)));
+add('03 required migrations',REQUIRED_MIGRATIONS.length===16&&REQUIRED_MIGRATIONS.includes('010_payment_provider_abstraction')&&REQUIRED_MIGRATIONS.includes('011_agent_control_and_trace')&&REQUIRED_MIGRATIONS.includes('012_sales_lifecycle_v2')&&REQUIRED_MIGRATIONS.includes('015_lifecycle_certification_provenance')&&REQUIRED_MIGRATIONS.includes('016_certification_pilot'));
 add('04 CRM engine',await exists('src/salesPipeline.mjs')); add('05 follow-up engine',(await text('src/salesPipeline.mjs')).includes('buildFollowUpPlan'));
 add('06 unit economics',await exists('src/unitEconomics.mjs')); add('07 learning engine',await exists('src/learningEngine.mjs'));
 add('08 autonomous revenue agent',await exists('src/revenueAgent.mjs')&&await exists('src/agentWorker.mjs'));

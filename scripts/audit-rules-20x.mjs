@@ -13,7 +13,7 @@ add('09 unknown tools deny by default',policy.includes("reason:'unknown_tool'")&
 add('10 financial tools require commercial plus financial gates',policy.includes("env.FINANCIAL_EVENTS_ENABLED === 'true'")&&policy.includes("env.CHECKOUT_ENABLED === 'true'"));
 add('11 digital delivery requires paid and reconciled',fulfillment.includes("order_status||'').toLowerCase()==='paid'")&&fulfillment.includes('payment_confirmed===true'));
 add('12 public product download forbidden',fulfillment.includes('public_download:false'));
-add('13 checkout fails closed before provider call',checkout.includes("if(!gate.enabled) return json(res,503,{error:'sales_globally_blocked'"));
+add('13 checkout fails closed before provider call',checkout.includes("if(!gate.enabled&&!pilotToken) return json(res,503,{error:'sales_globally_blocked'")&&checkout.includes('authorizeCertificationPilotCheckout')&&checkout.indexOf('pilot=await authorizeCertificationPilotCheckout')<checkout.indexOf('checkout=await createAsaasCheckout'));
 add('14 checkout requires provider credentials and DB',checkout.includes('!process.env.DATABASE_URL||!process.env.ASAAS_API_KEY||!publicBase'));
 add('15 webhook requires authenticated token',webhook.includes("error: 'webhook_auth_failed'"));
 add('16 webhook uses provider truth reconciliation',webhook.includes('fetchAsaasPayment')&&webhook.includes('paymentMatchesOrderWebhook'));

@@ -180,7 +180,7 @@
           "detail": "true"
         },
         {
-          "name": "telemetry before redirect",
+          "name": "invite checkout before provider redirect",
           "status": "APPROVED",
           "detail": "true"
         }
