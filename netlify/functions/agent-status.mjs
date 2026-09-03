@@ -1,0 +1,1 @@
+import handler from '../../api/agent-status.mjs'; import { invokeLegacy } from '../lib/legacy-adapter.mjs'; export default req=>invokeLegacy(handler,req); export const config={path:'/api/agent/status'};

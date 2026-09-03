@@ -1,0 +1,57 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/piloto"
+  to = "/piloto.html"
+  status = 200
+
+[[redirects]]
+  from = "/arbm-sist"
+  to = "/arbm-sist.html"
+  status = 200
+
+[[redirects]]
+  from = "/termos"
+  to = "/termos.html"
+  status = 200
+
+[[redirects]]
+  from = "/privacidade"
+  to = "/privacidade.html"
+  status = 200
+
+[[redirects]]
+  from = "/exclusao-dados"
+  to = "/exclusao-dados.html"
+  status = 200
+[[redirects]]
+  from = "/reembolso"
+  to = "/reembolso.html"
+  status = 200
+
+[[redirects]]
+  from = "/afiliados"
+  to = "/afiliados.html"
+  status = 200
+
+[[redirects]]
+  from = "/arbm-sist/privacidade"
+  to = "/arbm-sist-privacidade.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    X-Frame-Options = "DENY"
+    Cross-Origin-Opener-Policy = "same-origin"
+    Cross-Origin-Resource-Policy = "same-origin"
+    X-DNS-Prefetch-Control = "off"
