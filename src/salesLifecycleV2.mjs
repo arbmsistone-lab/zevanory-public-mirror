@@ -7,13 +7,13 @@ export const SALES_LIFECYCLE_CANONICAL_V2 = Object.freeze([
 ]);
 
 export const SALES_LIFECYCLE_LABELS = Object.freeze({
-  market:'Mercado',icp:'ICP',acquisition:'Aquisição',capture:'Captura',identity:'Identidade',enrichment:'Enriquecimento',
-  scoring:'Scoring',prioritization:'Priorização',first_response:'Primeira resposta',discovery:'Descoberta',qualification:'Qualificação',
-  nurturing:'Nurturing',objection:'Objeção',offer:'Oferta',negotiation:'Negociação',checkout:'Checkout',
-  abandonment_recovery:'Recuperação de abandono',payment:'Pagamento',reconciliation:'Reconciliação',fulfillment:'Fulfillment',
-  onboarding:'Onboarding',support:'Suporte',adoption:'Adoção',satisfaction:'Satisfação',retention:'Retenção',repurchase:'Recompra',
-  upsell:'Upsell',cross_sell:'Cross-sell',referral:'Referral',win_back:'Win-back',churn:'Churn',ltv:'LTV',attribution:'Atribuição',
-  unit_economics:'Unit economics',experiment:'Experimento',learning:'Aprendizado',forecast:'Previsão',next_best_action:'Próxima melhor ação',scale:'Escala',
+  market:'Mercado',icp:'ICP',acquisition:'Aquisi\u00e7\u00e3o',capture:'Captura',identity:'Identidade',enrichment:'Enriquecimento',
+  scoring:'Scoring',prioritization:'Prioriza\u00e7\u00e3o',first_response:'Primeira resposta',discovery:'Descoberta',qualification:'Qualifica\u00e7\u00e3o',
+  nurturing:'Nurturing',objection:'Obje\u00e7\u00e3o',offer:'Oferta',negotiation:'Negocia\u00e7\u00e3o',checkout:'Checkout',
+  abandonment_recovery:'Recupera\u00e7\u00e3o de abandono',payment:'Pagamento',reconciliation:'Reconcilia\u00e7\u00e3o',fulfillment:'Fulfillment',
+  onboarding:'Onboarding',support:'Suporte',adoption:'Ado\u00e7\u00e3o',satisfaction:'Satisfa\u00e7\u00e3o',retention:'Reten\u00e7\u00e3o',repurchase:'Recompra',
+  upsell:'Upsell',cross_sell:'Cross-sell',referral:'Referral',win_back:'Win-back',churn:'Churn',ltv:'LTV',attribution:'Atribui\u00e7\u00e3o',
+  unit_economics:'Unit economics',experiment:'Experimento',learning:'Aprendizado',forecast:'Previs\u00e3o',next_best_action:'Pr\u00f3xima melhor a\u00e7\u00e3o',scale:'Escala',
 });
 
 export const CURRENT_LIFECYCLE_CERTIFICATION = Object.freeze({
