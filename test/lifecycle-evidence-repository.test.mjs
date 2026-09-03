@@ -14,5 +14,5 @@ test('verified lifecycle evidence is hashed and idempotent',async()=>{
   assert.equal(result.inserted,true);
   assert.match(result.evidence_hash,/^[0-9a-f]{64}$/);
   assert.match(calls[0].q,/on conflict\(idempotency_key\) do nothing/i);
-  assert.match(calls[0].q,/verification_status,evidence_hash,verified_at/i);
+  assert.match(calls[0].q,/verification_status,evidence_sha256,verified_at/i);
 });

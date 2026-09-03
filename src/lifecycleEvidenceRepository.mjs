@@ -25,12 +25,12 @@ export async function recordVerifiedLifecycleEvidence(sql,input={}){
   const evidenceHash=digest({dimension,source_class:sourceClass,source,subject_ref:subjectRef,idempotency_key:key,metadata,occurred_at:occurredAt});
   const evidenceId=clean(input.evidence_id,36)||randomUUID();
   const rows=await sql.query(`insert into lifecycle_evidence_events
-    (evidence_id,dimension,proof_kind,source,subject_ref,idempotency_key,metadata,occurred_at,source_class,verification_status,evidence_hash,verified_at)
+    (evidence_id,dimension,proof_kind,source,subject_ref,idempotency_key,metadata,occurred_at,source_class,verification_status,evidence_sha256,verified_at)
     values($1,$2,'observed_production',$3,$4,$5,$6::jsonb,coalesce($7::timestamptz,now()),$8,'verified',$9,now())
     on conflict(idempotency_key) do nothing
-    returning evidence_id,dimension,source_class,verification_status,evidence_hash,occurred_at`,
+    returning evidence_id,dimension,source_class,verification_status,evidence_sha256,occurred_at`,
     [evidenceId,dimension,source,subjectRef,key,JSON.stringify(metadata),occurredAt,sourceClass,evidenceHash]);
-  return Object.freeze({inserted:rows.length===1,evidence:rows[0]||null,evidence_id:evidenceId,evidence_hash:evidenceHash});
+  return Object.freeze({inserted:rows.length===1,evidence:rows[0]||null,evidence_id:evidenceId,evidence_sha256:evidenceHash,evidence_hash:evidenceHash});
 }
 
 export const LIFECYCLE_EVIDENCE_TRUST=Object.freeze({

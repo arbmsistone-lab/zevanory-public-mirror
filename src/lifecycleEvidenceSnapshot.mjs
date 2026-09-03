@@ -1,8 +1,9 @@
 import { certifyLifecycleEvidence } from './lifecycleCertificationEngine.mjs';
+import { buildLifecycleCertificationArtifact } from './lifecycleCertificationProvenance.mjs';
 const rowsToMap=(rows,key)=>Object.fromEntries(rows.map(row=>[String(row[key]),Number(row.count)||0]));
 const scalar=(rows,key)=>Number(rows?.[0]?.[key])||0;
 
-export async function buildLifecycleEvidenceSnapshot(sql){
+export async function buildLifecycleEvidenceSnapshot(sql,{deployedCommitSha="",releaseId=""}={}){
   const [telemetry,leads,actions,orders,financial,lifecycle,customers,touchpoints,economics,evidence]=await Promise.all([
     sql.query("select event_name,count(*)::int count from telemetry_events group by event_name"),
     sql.query("select stage,count(*)::int count from sales_leads group by stage"),
@@ -13,7 +14,7 @@ export async function buildLifecycleEvidenceSnapshot(sql){
     sql.query("select count(*)::int count from customer_lifecycle_profiles"),
     sql.query("select count(*)::int count from attribution_touchpoints"),
     sql.query("select count(*)::int count,count(distinct date_trunc('month',period_end))::int months,coalesce(sum(paid_orders),0)::int paid_orders from unit_economics_snapshots"),
-    sql.query("select dimension,count(*)::int count from lifecycle_evidence_events where proof_kind='observed_production' and verification_status='verified' and source_class in ('canonical_database','provider_webhook','operator_validation') group by dimension"),
+    sql.query("select dimension,count(*)::int count,array_agg(evidence_sha256 order by evidence_sha256) evidence_hashes from lifecycle_evidence_events where proof_kind='observed_production' and verification_status='verified' and source_class in ('canonical_database','provider_webhook','operator_validation') group by dimension"),
   ]);
   const leadMap=rowsToMap(leads,'stage');
   const orderMap=rowsToMap(orders,'status');
@@ -39,7 +40,9 @@ export async function buildLifecycleEvidenceSnapshot(sql){
     profitable_paid_orders:0,verified_evidence:directEvidence,
   };
   const certification=certifyLifecycleEvidence(observed);
-  return Object.freeze({commercial_unlock:false,certification,evidence_summary:Object.freeze({
+  const evidenceHashes=evidence.flatMap(row=>Array.isArray(row.evidence_hashes)?row.evidence_hashes:[]).filter(Boolean);
+  const provenance=buildLifecycleCertificationArtifact({certification,evidenceHashes,deployedCommitSha,releaseId});
+  return Object.freeze({commercial_unlock:false,artifact_eligible:certification.approved===true,provenance,certification,evidence_summary:Object.freeze({
     paid_orders:paidOrders,total_leads:observed.leads,page_views:observed.page_views,
     lifecycle_events:Object.values(lifecycleMap).reduce((a,b)=>a+Number(b||0),0),
     attribution_touchpoints:observed.attribution_touchpoints,economics_snapshots:observed.economics_snapshots,

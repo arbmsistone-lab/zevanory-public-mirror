@@ -14,7 +14,7 @@ add('06 command center status',status.r.status===200&&Boolean(status.body.comman
 add('07 autonomous agent status',agent.r.status===200&&agent.body.engine==='autonomous-revenue-engine');
 add('08 release EG0039',release.r.status===200&&release.body.release_id==='ZEVANORY-EG0039-FINAL'&&assurance.r.status===200&&activation.r.status===200,release.body.release_id);
 add('09 deployed commit matches HEAD',release.body.deployment?.commit_sha===head,release.body.deployment?.commit_sha);
-add('10 recovery contract 21x14',release.body.recovery?.tables===21&&release.body.recovery?.migrations===14);
+add('10 recovery contract 22x15',release.body.recovery?.tables===22&&release.body.recovery?.migrations===15);
 add('11 pipeline pressure contract',typeof status.body.command_center?.work_queue?.pressure==='number');
 add('12 forecast remains baseline gated',status.body.command_center?.execution?.forecast_mode==='baseline_required'&&status.body.command_center?.execution?.predictive_forecast_available===false);
 add('13 public status has no PII keys',![status.text,agent.text,activation.text].some(x=>/contact_ref|session_id|phone|email/i.test(x)));
