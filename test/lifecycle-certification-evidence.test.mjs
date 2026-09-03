@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SALES_LIFECYCLE_CANONICAL_V2 } from '../src/salesLifecycleV2.mjs';
 import { certifyLifecycleEvidence } from '../src/lifecycleCertificationEngine.mjs';
 
 test('technical readiness alone never earns score 10',()=>{
@@ -12,10 +11,15 @@ test('technical readiness alone never earns score 10',()=>{
   assert.ok(result.dimensions.every(x=>x.score===9));
 });
 
-test('three observed production proofs can certify a dimension',()=>{
-  const result=certifyLifecycleEvidence({verified_evidence:{discovery:3}});
-  const discovery=result.dimensions.find(x=>x.key==='discovery');
-  assert.equal(discovery.score,10);
-  assert.equal(discovery.pass,true);
-  assert.equal(result.approved,false);
+test('generic evidence counts cannot bypass dimension policy',()=>{
+  const result=certifyLifecycleEvidence({verified_evidence:{market:999,discovery:999}});
+  assert.equal(result.dimensions.find(x=>x.key==='market').score,9);
+  assert.equal(result.dimensions.find(x=>x.key==='discovery').score,9);
+});
+
+test('canonical observed metrics can certify only their dimension',()=>{
+  const result=certifyLifecycleEvidence({paid_orders:5});
+  assert.equal(result.dimensions.find(x=>x.key==='market').score,10);
+  assert.equal(result.dimensions.find(x=>x.key==='payment').score,10);
+  assert.equal(result.dimensions.find(x=>x.key==='icp').score,9);
 });

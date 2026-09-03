@@ -12,7 +12,7 @@ export async function buildLifecycleEvidenceSnapshot(sql){
     sql.query("select event_type,count(*)::int count from customer_lifecycle_events group by event_type"),
     sql.query("select count(*)::int count from attribution_touchpoints"),
     sql.query("select count(*)::int count,count(distinct date_trunc('month',period_end))::int months,coalesce(sum(paid_orders),0)::int paid_orders from unit_economics_snapshots"),
-    sql.query("select dimension,count(*)::int count from lifecycle_evidence_events where proof_kind='observed_production' group by dimension"),
+    sql.query("select dimension,count(*)::int count from lifecycle_evidence_events where proof_kind='observed_production' and verification_status='verified' and source_class in ('canonical_database','provider_webhook','operator_validation') group by dimension"),
   ]);
   const leadMap=rowsToMap(leads,'stage');
   const orderMap=rowsToMap(orders,'status');
@@ -24,7 +24,7 @@ export async function buildLifecycleEvidenceSnapshot(sql){
   const observed={
     page_views:telemetry.filter(x=>x.event_name==='page_view').reduce((a,x)=>a+Number(x.count||0),0),
     leads:Object.values(leadMap).reduce((a,b)=>a+Number(b||0),0),
-    identified_leads:0,enriched_leads:0,scored_leads:0,prioritized_leads:0,
+    identified_leads:leadMap.identified||0,enriched_leads:directEvidence.enrichment||0,scored_leads:directEvidence.scoring||0,prioritized_leads:directEvidence.prioritization||0,
     contacted_leads:leadMap.contacted||0,qualified_leads:leadMap.qualified||0,
     discovery_completed:directEvidence.discovery||0,nurture_actions:actionCompleted.follow_up||0,
     objections_handled:directEvidence.objection||0,offer_sent:leadMap.offer_sent||0,

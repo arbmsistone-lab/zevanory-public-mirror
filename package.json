@@ -61,6 +61,7 @@
     "audit:lifecycle:10x": "node scripts/audit-sales-lifecycle-v2-10x.mjs",
     "migration:012": "node --env-file-if-exists=.env.production.local scripts/apply-migration-012.mjs",
     "migration:013": "node --env-file-if-exists=.env.production.local scripts/apply-migration-013.mjs",
+    "migration:014": "node --env-file-if-exists=.env.production.local scripts/apply-migration-014.mjs",
     "audit:lifecycle:evidence:10x": "node scripts/audit-lifecycle-evidence-10x.mjs"
   },
   "devDependencies": {
