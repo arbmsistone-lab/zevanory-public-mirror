@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
-import { OPERATOR_EVENTS, sanitizeText } from '../src/telemetry.mjs';
+import { OPERATOR_EVENTS, OPERATOR_EVIDENCE_EVENTS, sanitizeText } from '../src/telemetry.mjs';
 import { PROJECT, isUuid } from '../src/config.mjs';
 import { safeBearerEqual } from '../src/security.mjs';
 import { salesStageRank } from '../src/salesPipeline.mjs';
 import { recordVerifiedLifecycleEvidence } from '../src/lifecycleEvidenceRepository.mjs';
 
 const stageFor=Object.freeze({lead_qualified:'qualified',offer_sent:'offer_sent',checkout_started:'checkout_started'});
-const dimensionFor=Object.freeze({lead_qualified:'qualification',offer_sent:'offer',checkout_started:'checkout'});
+const dimensionFor=Object.freeze({lead_qualified:'qualification',offer_sent:'offer',checkout_started:'checkout',identity_verified:'identity',enrichment_verified:'enrichment',scoring_completed:'scoring',prioritization_completed:'prioritization',first_response_confirmed:'first_response',discovery_completed:'discovery',nurturing_touch_confirmed:'nurturing',objection_handled:'objection',negotiation_completed:'negotiation',abandonment_recovered:'abandonment_recovery',fulfillment_confirmed:'fulfillment'});
 
 export default async function handler(req,res){
   res.setHeader('content-type','application/json; charset=utf-8'); res.setHeader('cache-control','no-store'); res.setHeader('x-content-type-options','nosniff');
@@ -17,11 +17,14 @@ export default async function handler(req,res){
   if(!process.env.DATABASE_URL){res.statusCode=503;return res.end(JSON.stringify({error:'operational_storage_unavailable'}));}
   const body=req.body && typeof req.body==='object'?req.body:{};
   const name=sanitizeText(body.name,60); const eventId=String(body.event_id||'').toLowerCase(); const sessionId=String(body.session_id||'').toLowerCase(); const channel=sanitizeText(body.channel,40);
-  if(!OPERATOR_EVENTS.has(name)||!isUuid(eventId)||!isUuid(sessionId)||!channel){res.statusCode=400;return res.end(JSON.stringify({error:'invalid_event'}));}
+  const stageEvent=OPERATOR_EVENTS.has(name); const evidenceOnly=OPERATOR_EVIDENCE_EVENTS.has(name);
+  if((!stageEvent&&!evidenceOnly)||!isUuid(eventId)||!isUuid(sessionId)||!channel){res.statusCode=400;return res.end(JSON.stringify({error:'invalid_event'}));}
   try{
-    const sql=neon(process.env.DATABASE_URL); const stage=stageFor[name];
+    const sql=neon(process.env.DATABASE_URL); const stage=stageFor[name]||null;
     const existing=await sql.query('select stage from sales_leads where session_id=$1 limit 1',[sessionId]);
     const current=existing[0]?.stage||null;
+    if(evidenceOnly&&current===null){res.statusCode=404;return res.end(JSON.stringify({error:'lead_not_found'}));}
+    if(evidenceOnly){const proof=await recordVerifiedLifecycleEvidence(sql,{dimension:dimensionFor[name],source_class:'operator_validation',source:'events-operator',subject_ref:sessionId,idempotency_key:`operator-evidence:${name}:${eventId}`,metadata:{event_name:name,channel}});res.statusCode=202;return res.end(JSON.stringify({accepted:true,evidence_recorded:proof.inserted===true,agent_job_queued:false}));}
     if(current!==null && salesStageRank(stage)<salesStageRank(current)){res.statusCode=409;return res.end(JSON.stringify({error:'invalid_sales_transition'}));}
     const rows=await sql.query(`
       with inserted_event as (
