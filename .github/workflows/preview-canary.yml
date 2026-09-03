@@ -1,0 +1,37 @@
+name: Preview Canary
+
+on:
+  deployment_status:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-canary-${{ github.event.deployment.id }}
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Preview'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PREVIEW_URL: ${{ github.event.deployment_status.environment_url }}
+    steps:
+      - name: Validate preview URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PREVIEW_URL"
+          case "$PREVIEW_URL" in https://*) ;; *) echo "Invalid preview URL" >&2; exit 1;; esac
+      - name: Probe preview and liveness
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=${PREVIEW_URL%/}
+          code=$(curl --silent --show-error --location --output /tmp/canary.html --write-out "%{http_code}" --max-time 15 "$base/")
+          test "$code" -lt 500
+          test -s /tmp/canary.html
+          live=$(curl --silent --show-error --location --output /tmp/live.json --write-out "%{http_code}" --max-time 15 "$base/api/live")
+          test "$live" = "200"
+          grep -q '"status"' /tmp/live.json

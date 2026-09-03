@@ -1,0 +1,77 @@
+name: ZEVANORY Schema Recovery Drill
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '31 7 * * 4'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zevanory-schema-recovery-drill
+  cancel-in-progress: true
+
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PGUSER: postgres
+      PGPASSWORD: recovery-only-ephemeral
+      PGDATABASE: postgres
+      PGPORT: '55433'
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Start isolated Postgres
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name zevanory-recovery-db -e POSTGRES_PASSWORD="$PGPASSWORD" -p "$PGPORT:5432" supabase/postgres:17.6.1.166@sha256:d5424e9f4d0c21d63991c3f3dd77881f23f722c3a212452a61bc91924b79e8c8
+          for i in $(seq 1 45); do
+            docker exec zevanory-recovery-db pg_isready -U postgres >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          docker logs zevanory-recovery-db >&2 || true
+          exit 1
+      - name: Replay canonical migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=$(find db/migrations -maxdepth 1 -type f -name '*.sql' | wc -l)
+          test "$expected" -gt 0
+          for migration in $(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            docker exec -i -e PGPASSWORD="$PGPASSWORD" zevanory-recovery-db psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
+          done
+          applied=$(docker exec -e PGPASSWORD="$PGPASSWORD" zevanory-recovery-db psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d postgres -c 'select count(*) from schema_migrations')
+          test "$applied" -eq "$expected"
+          echo "RECOVERY_MIGRATIONS=$applied" >> "$GITHUB_ENV"
+      - name: Validate recovered schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          q() { docker exec -e PGPASSWORD="$PGPASSWORD" zevanory-recovery-db psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d postgres -c "$1"; }
+          tables=$(q "select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'")
+          required=$(q "select count(*) from information_schema.tables where table_schema='public' and table_name in ('telemetry_events','financial_events','orders','schema_migrations')")
+          test "$tables" -ge 4
+          test "$required" -eq 4
+          echo "RECOVERY_TABLES=$tables" >> "$GITHUB_ENV"
+      - name: Publish recovery evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovery-evidence
+          printf '{"status":"PASS","commit":"%s","migrations":%s,"tables":%s,"isolated":true}\n' "$GITHUB_SHA" "$RECOVERY_MIGRATIONS" "$RECOVERY_TABLES" > recovery-evidence/schema-recovery.json
+      - name: Upload recovery evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: zevanory-schema-recovery-${{ github.run_id }}
+          path: recovery-evidence/schema-recovery.json
+          retention-days: 30
+          if-no-files-found: error
+      - name: Destroy ephemeral database
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f zevanory-recovery-db >/dev/null 2>&1 || true
