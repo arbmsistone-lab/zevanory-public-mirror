@@ -57,7 +57,9 @@
     "audit:store-distribution:20x": "node scripts/audit-store-distribution-20x.mjs",
     "preflight:channel-identities": "node scripts/channel-identity-preflight.mjs",
     "audit:channel-identity:20x": "node scripts/audit-channel-identity-20x.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "audit:lifecycle:10x": "node scripts/audit-sales-lifecycle-v2-10x.mjs",
+    "migration:012": "node --env-file-if-exists=.env.production.local scripts/apply-migration-012.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1"

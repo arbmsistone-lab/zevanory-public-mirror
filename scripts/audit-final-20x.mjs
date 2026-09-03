@@ -1,4 +1,4 @@
-﻿import { readFile, access } from 'node:fs/promises';
+import { readFile, access } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { RELEASE } from '../src/release.mjs';
 import { REQUIRED_TABLES, REQUIRED_MIGRATIONS } from '../src/schemaHealth.mjs';
@@ -10,8 +10,8 @@ const run=(script)=>spawnSync(process.execPath,[script],{cwd:root,encoding:'utf8
 const env=await text('.env.example'); const outbox=await text('src/integrationOutbox.mjs'); const migration=await text('db/migrations/009_composable_infrastructure.sql'); const dr=await text('scripts/dr-rehearsal.mjs');
 add('01 final release id',RELEASE.id==='ZEVANORY-EG0039-FINAL');
 add('02 architecture contract',validateArchitectureContract().valid);
-add('03 required schema tables',REQUIRED_TABLES.length===15&&['integration_outbox','agent_jobs','agent_runs','agent_memory'].every(x=>REQUIRED_TABLES.includes(x)));
-add('04 required migrations',REQUIRED_MIGRATIONS.length===10&&REQUIRED_MIGRATIONS.includes('010_payment_provider_abstraction')&&await exists('db/migrations/010_payment_provider_abstraction.sql')&&dr.includes('010_payment_provider_abstraction.sql')&&!REQUIRED_MIGRATIONS.includes('011_agent_control_and_trace'));
+add('03 required schema tables',REQUIRED_TABLES.length===20&&['integration_outbox','agent_jobs','agent_runs','agent_memory','agent_control_state','agent_approvals','customer_lifecycle_profiles','customer_lifecycle_events','attribution_touchpoints'].every(x=>REQUIRED_TABLES.includes(x)));
+add('04 required migrations',REQUIRED_MIGRATIONS.length===12&&REQUIRED_MIGRATIONS.includes('011_agent_control_and_trace')&&REQUIRED_MIGRATIONS.includes('012_sales_lifecycle_v2')&&await exists('db/migrations/012_sales_lifecycle_v2.sql')&&dr.includes('012_sales_lifecycle_v2.sql'));
 add('05 outbox idempotency',migration.includes('idempotency_key text NOT NULL UNIQUE'));
 add('06 outbox concurrency',outbox.includes('for update skip locked'));
 add('07 retry bounded',outbox.includes('attempts>=20')&&outbox.includes('3600000'));

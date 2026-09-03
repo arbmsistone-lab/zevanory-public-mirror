@@ -23,11 +23,11 @@ export const ACTIVATION_REQUIREMENTS=Object.freeze({
   affiliate_terms_unreviewed:requirement('affiliate',['AFFILIATE_TERMS_REVIEWED'],'decision'),
 });
 const enabled=(value)=>String(value||'').toLowerCase()==='true';
-export const CUTOVER_ORDER=Object.freeze(['verify_external_inputs','PRE_SALE_GATES_APPROVED=true','enable_required_channel_flags','verify_fail_closed_before_global_unlock','SALE_GLOBALLY_ENABLED=true','verify_live_transaction_and_reconciliation']);
+export const CUTOVER_ORDER=Object.freeze(['verify_external_inputs','certify_sales_lifecycle_39x10','verify_lifecycle_audit_10x','verify_production_parity','approve_lifecycle_release','PRE_SALE_GATES_APPROVED=true','enable_required_channel_flags','verify_fail_closed_before_global_unlock','SALE_GLOBALLY_ENABLED=true','verify_live_transaction_and_reconciliation']);
 export const ROLLBACK_ORDER=Object.freeze(['SALE_GLOBALLY_ENABLED=false','CHECKOUT_ENABLED=false','WHATSAPP_SALES_ENABLED=false','FINANCIAL_EVENTS_ENABLED=false','PRE_SALE_GATES_APPROVED=false','verify_fail_closed']);
 export function buildActivationPlan(env=process.env){
   const readiness=evaluateActivationReadiness(env); const gate=salesGate(env);
   const missing=readiness.blockers.map(code=>Object.freeze({code,...(ACTIVATION_REQUIREMENTS[code]||requirement('unknown',[]))}));
-  const phase=gate.enabled?'live':readiness.ready?'ready_to_unlock':'waiting_external_inputs';
-  return Object.freeze({phase,inputs_ready:readiness.ready,commercial_enabled:gate.enabled,offer_type:readiness.offer_type,inventory_required:false,missing:Object.freeze(missing),external_inputs_remaining:missing.length,gates:Object.freeze({global_sales:enabled(env.SALE_GLOBALLY_ENABLED),pre_sale:enabled(env.PRE_SALE_GATES_APPROVED),checkout:enabled(env.CHECKOUT_ENABLED),whatsapp:enabled(env.WHATSAPP_SALES_ENABLED),financial:enabled(env.FINANCIAL_EVENTS_ENABLED)}),cutover_order:CUTOVER_ORDER,rollback_order:ROLLBACK_ORDER});
+  const phase=gate.enabled?'live':!readiness.ready?'waiting_external_inputs':!gate.lifecycle_approved?'lifecycle_certification_blocked':'ready_to_unlock';
+  return Object.freeze({phase,inputs_ready:readiness.ready,commercial_enabled:gate.enabled,offer_type:readiness.offer_type,inventory_required:false,missing:Object.freeze(missing),external_inputs_remaining:missing.length,lifecycle:gate.lifecycle,gates:Object.freeze({global_sales:enabled(env.SALE_GLOBALLY_ENABLED),pre_sale:enabled(env.PRE_SALE_GATES_APPROVED),checkout:enabled(env.CHECKOUT_ENABLED),whatsapp:enabled(env.WHATSAPP_SALES_ENABLED),financial:enabled(env.FINANCIAL_EVENTS_ENABLED)}),cutover_order:CUTOVER_ORDER,rollback_order:ROLLBACK_ORDER});
 }
