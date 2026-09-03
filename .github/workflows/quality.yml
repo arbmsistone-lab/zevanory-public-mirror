@@ -1,4 +1,4 @@
-﻿name: ZEVANORY Quality Gate
+name: ZEVANORY Quality Gate
 on:
   push:
     branches: [main]
@@ -50,4 +50,7 @@ jobs:
       - run: npm run audit:30x
       - run: npm run audit:sales:20x
       - run: npm run audit:final
+      - run: npm run audit:lifecycle:10x
+      - run: npm run audit:lifecycle:evidence:10x
+      - run: npm run audit:closure:10x
       - run: npm run audit:final20x

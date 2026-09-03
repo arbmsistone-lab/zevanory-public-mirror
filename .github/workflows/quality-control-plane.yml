@@ -61,6 +61,12 @@ jobs:
         run: npm run test:e2e
         env:
           ZEVANORY_BASE_URL: http://127.0.0.1:4173
+      - name: Lifecycle canonical audit
+        run: npm run audit:lifecycle:10x
+      - name: Lifecycle evidence audit
+        run: npm run audit:lifecycle:evidence:10x
+      - name: Final closure audit
+        run: npm run audit:closure:10x
       - name: Generate SBOM
         shell: bash
         run: |
