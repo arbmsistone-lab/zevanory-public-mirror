@@ -4,13 +4,19 @@ import { buildActivationPlan } from '../src/activationPlan.mjs';
 import { RELEASE } from '../src/release.mjs';
 import { publicOffer } from '../src/offerCatalog.mjs';
 import { publicChannelStatus } from '../src/publicChannelStatus.mjs';
+import { neon } from '@neondatabase/serverless';
+import { buildLifecycleEvidenceSnapshot } from '../src/lifecycleEvidenceSnapshot.mjs';
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.statusCode = 405;
     return res.end(JSON.stringify({ error: 'method_not_allowed' }));
   }
   const url=new URL(req.url||'/api/config','https://zevanory.api.br');
+  if(url.searchParams.get('view')==='lifecycle'){
+    if(!process.env.DATABASE_URL){res.statusCode=503;return res.end(JSON.stringify({error:'database_required'}));}
+    try{const snapshot=await buildLifecycleEvidenceSnapshot(neon(process.env.DATABASE_URL));res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;return res.end(JSON.stringify(snapshot));}catch{res.statusCode=503;return res.end(JSON.stringify({error:'lifecycle_certification_unavailable'}));}
+  }
   if(url.searchParams.get('view')==='activation'){
     const plan=buildActivationPlan(process.env);
     res.setHeader('content-type','application/json; charset=utf-8');

@@ -19,8 +19,8 @@ test('release fingerprint is canonical and immutable',()=>{
   assert.equal(RELEASE.assurance.official_brand,'approved');
   assert.equal(RELEASE.assurance.rules_audit_20x,'approved');
   assert.equal(RELEASE.assurance.sales_lifecycle_v2,'blocked_pending_39x10');
-  assert.equal(RELEASE.recovery.tables,20);
-  assert.equal(RELEASE.recovery.migrations,12);
+  assert.equal(RELEASE.recovery.tables,21);
+  assert.equal(RELEASE.recovery.migrations,13);
   assert.equal(RELEASE.salesMode,'globally-blocked');
   assert.equal(RELEASE.checkoutMode,'globally-blocked');
 });
