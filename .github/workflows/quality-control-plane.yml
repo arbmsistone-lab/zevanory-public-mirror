@@ -61,6 +61,8 @@ jobs:
         run: npm run test:e2e
         env:
           ZEVANORY_BASE_URL: http://127.0.0.1:4173
+      - name: Commercial distribution audit
+        run: npm run audit:distribution:10x
       - name: Lifecycle canonical audit
         run: npm run audit:lifecycle:10x
       - name: Lifecycle evidence audit

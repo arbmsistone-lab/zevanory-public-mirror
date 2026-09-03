@@ -8,7 +8,7 @@ export const PROFESSIONAL_EMAIL = Object.freeze({
 const brandLink=(source)=>`https://zevanory.api.br/?utm_source=${source}&utm_medium=organic&utm_campaign=zevanory_brand`;
 
 export const CHANNEL_PROFILES = Object.freeze({
-  instagram:Object.freeze({handle:'@zevanory',profileUrl:'https://instagram.com/zevanory',url:brandLink('instagram'),bio:'ZEVANORY | Tecnologia, automacao e solucoes digitais com operacao orientada por evidencia.'}),
+  instagram:Object.freeze({handle:'@zevanory_',profileUrl:'https://instagram.com/zevanory_',url:brandLink('instagram'),bio:'ZEVANORY | Tecnologia, automacao e solucoes digitais com operacao orientada por evidencia.'}),
   facebook:Object.freeze({handle:'ZEVANORY',url:brandLink('facebook'),bio:'Tecnologia, automacao, produtos e servicos digitais com foco em execucao segura e resultados reais.'}),
   tiktok:Object.freeze({handle:'@zevanory',url:brandLink('tiktok'),bio:'Tecnologia, automacao, produtos digitais e bastidores reais da ZEVANORY.'}),
   youtube:Object.freeze({handle:'@zevanory',profileUrl:'https://youtube.com/@zevanory',url:brandLink('youtube'),bio:'Canal oficial da ZEVANORY para produtos, servicos, demonstracoes e conteudo tecnico.'}),

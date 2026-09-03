@@ -17,9 +17,9 @@ test('Facebook preflight rejects legacy page identity',async()=>{
   assert.equal(good.verified,true);assert.equal(old.verified,false);assert.equal(JSON.stringify(good).includes('secret'),false);
 });
 
-test('Instagram preflight requires canonical zevanory username',async()=>{
+test('Instagram preflight requires canonical zevanory underscore username',async()=>{
   const env={META_ACCESS_TOKEN:'secret',INSTAGRAM_BUSINESS_ACCOUNT_ID:'ig1',META_GRAPH_VERSION:'v26.0'};
-  const good=await verifyInstagramIdentity({env,fetchImpl:async()=>response(200,{id:'ig1',username:'zevanory'})});
+  const good=await verifyInstagramIdentity({env,fetchImpl:async()=>response(200,{id:'ig1',username:'zevanory_'})});
   const wrong=await verifyInstagramIdentity({env,fetchImpl:async()=>response(200,{id:'ig1',username:'other'})});
   assert.equal(good.verified,true);assert.equal(wrong.verified,false);
 });

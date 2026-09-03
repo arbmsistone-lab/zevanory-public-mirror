@@ -21,6 +21,19 @@ export const ACTIVATION_REQUIREMENTS=Object.freeze({
   affiliate_provider_missing:requirement('affiliate',['AFFILIATE_PROVIDER'],'external'),
   affiliate_tracking_unready:requirement('affiliate',['AFFILIATE_TRACKING_READY'],'external'),
   affiliate_terms_unreviewed:requirement('affiliate',['AFFILIATE_TERMS_REVIEWED'],'decision'),
+  affiliate_webhook_url_invalid:requirement('affiliate',['AFFILIATE_WEBHOOK_URL'],'configuration'),
+  affiliate_webhook_token_missing:requirement('affiliate',['AFFILIATE_WEBHOOK_TOKEN'],'secret'),
+  affiliate_terms_version_missing:requirement('affiliate',['AFFILIATE_TERMS_VERSION'],'decision'),
+  affiliate_attribution_window_invalid:requirement('affiliate',['AFFILIATE_ATTRIBUTION_WINDOW_DAYS'],'decision'),
+  affiliate_commission_bps_invalid:requirement('affiliate',['AFFILIATE_COMMISSION_BPS'],'decision'),
+  affiliate_payout_delay_invalid:requirement('affiliate',['AFFILIATE_PAYOUT_DELAY_DAYS'],'decision'),
+  affiliate_self_referral_policy_invalid:requirement('affiliate',['AFFILIATE_SELF_REFERRAL_POLICY'],'decision'),
+  affiliate_refund_reversal_unready:requirement('affiliate',['AFFILIATE_REFUND_REVERSAL_READY'],'external'),
+  affiliate_chargeback_reversal_unready:requirement('affiliate',['AFFILIATE_CHARGEBACK_REVERSAL_READY'],'external'),
+  affiliate_idempotency_unready:requirement('affiliate',['AFFILIATE_IDEMPOTENCY_READY'],'external'),
+  affiliate_provider_confirmation_unready:requirement('affiliate',['AFFILIATE_PROVIDER_CONFIRMATION_READY'],'external'),
+  affiliate_disclosure_url_invalid:requirement('affiliate',['AFFILIATE_DISCLOSURE_URL'],'decision'),
+  affiliate_privacy_url_invalid:requirement('affiliate',['AFFILIATE_PRIVACY_URL'],'decision'),
 });
 const enabled=(value)=>String(value||'').toLowerCase()==='true';
 export const CUTOVER_ORDER=Object.freeze(['verify_external_inputs','certify_sales_lifecycle_39x10','verify_lifecycle_audit_10x','verify_production_parity','approve_lifecycle_release','PRE_SALE_GATES_APPROVED=true','enable_required_channel_flags','verify_fail_closed_before_global_unlock','SALE_GLOBALLY_ENABLED=true','verify_live_transaction_and_reconciliation']);

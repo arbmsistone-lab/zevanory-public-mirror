@@ -27,7 +27,7 @@ test('service inputs can become ready while lifecycle certification still blocks
   assert.equal(plan.lifecycle.approved,false);
 });
 test('affiliate readiness remains inventory-free and requires provider evidence',()=>{
-  const env={ACTIVE_OFFER_TYPE:'affiliate_product',OFFER_SELECTION_APPROVED:'true',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',AFFILIATE_PROVIDER:'network',AFFILIATE_TRACKING_READY:'true',AFFILIATE_TERMS_REVIEWED:'true'};
+  const env={ACTIVE_OFFER_TYPE:'affiliate_product',OFFER_SELECTION_APPROVED:'true',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',AFFILIATE_PROVIDER:'network',AFFILIATE_WEBHOOK_URL:'https://affiliate.example/webhook',AFFILIATE_WEBHOOK_TOKEN:'token',AFFILIATE_TRACKING_READY:'true',AFFILIATE_TERMS_REVIEWED:'true',AFFILIATE_TERMS_VERSION:'v1',AFFILIATE_ATTRIBUTION_WINDOW_DAYS:'30',AFFILIATE_COMMISSION_BPS:'1000',AFFILIATE_PAYOUT_DELAY_DAYS:'30',AFFILIATE_SELF_REFERRAL_POLICY:'blocked',AFFILIATE_REFUND_REVERSAL_READY:'true',AFFILIATE_CHARGEBACK_REVERSAL_READY:'true',AFFILIATE_IDEMPOTENCY_READY:'true',AFFILIATE_PROVIDER_CONFIRMATION_READY:'true',AFFILIATE_DISCLOSURE_URL:'https://zevanory.api.br/afiliados',AFFILIATE_PRIVACY_URL:'https://zevanory.api.br/politica-de-privacidade'};
   const plan=buildActivationPlan(env);
   assert.equal(plan.inputs_ready,true);
   assert.equal(plan.inventory_required,false);

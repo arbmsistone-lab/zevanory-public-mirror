@@ -5,7 +5,7 @@ const html=fs.readFileSync('public/arbm-sist.html','utf8');
 const robots=fs.readFileSync('public/robots.txt','utf8');
 const sitemap=fs.readFileSync('public/sitemap.xml','utf8');
 const checks=[
- ['10 channels cataloged',Object.keys(CHANNELS).length===10],
+ ['12 distribution channels cataloged',Object.keys(CHANNELS).length===12],
  ['owned web present',!!CHANNELS.zevanory],
  ['whatsapp present',!!CHANNELS.whatsapp],
  ['email present',!!CHANNELS.email],

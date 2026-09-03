@@ -59,5 +59,21 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       const id=String(body?.id||body?.tracking_id||body?.event_id||'');if(!id)throw new Error('affiliate_provider_id_missing');
       return Object.freeze({provider:`affiliate:${provider}`,accepted:true,provider_message_id:id,confirmation:'provider_lookup_or_webhook_required'});
     },
+    'channel:nuvemshop':async(event)=>{
+      ensureGlobalGates(env,commercialGate);
+      const token=required(env.NUVEMSHOP_ACCESS_TOKEN,'nuvemshop_access_token_missing');const storeId=required(env.NUVEMSHOP_STORE_ID,'nuvemshop_store_id_missing');const appId=required(env.NUVEMSHOP_APP_ID,'nuvemshop_app_id_missing');
+      const product=event.payload?.product;if(!product||typeof product!=='object'||Array.isArray(product))throw new Error('nuvemshop_product_missing');
+      const body=await requestJson(fetchImpl,`https://api.nuvemshop.com/v1/${encodeURIComponent(storeId)}/products`,{method:'POST',headers:{authorization:`Bearer ${token}`,'user-agent':`ZEVANORY (${appId})`,'content-type':'application/json','idempotency-key':String(event.idempotency_key||event.event_id)},body:JSON.stringify(product)},[200,201]);
+      const id=String(body?.id||'');if(!id)throw new Error('nuvemshop_product_id_missing');
+      return Object.freeze({provider:'nuvemshop',accepted:true,provider_product_id:id,confirmation:'provider_api_and_webhook'});
+    },
+    'channel:mercado_livre':async(event)=>{
+      ensureGlobalGates(env,commercialGate);
+      const token=required(env.MERCADOLIVRE_ACCESS_TOKEN,'mercadolivre_access_token_missing');
+      const item=event.payload?.item;if(!item||typeof item!=='object'||Array.isArray(item))throw new Error('mercadolivre_item_missing');
+      const body=await requestJson(fetchImpl,'https://api.mercadolibre.com/items',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(item)},[200,201]);
+      const id=String(body?.id||'');if(!id)throw new Error('mercadolivre_item_id_missing');
+      return Object.freeze({provider:'mercado_livre',accepted:true,provider_item_id:id,confirmation:'provider_api_after_notification'});
+    },
   });
 }

@@ -1,9 +1,9 @@
 import { classifyOfferType } from './commercialModel.mjs';
 import { evaluateCommercialCompliance } from './complianceReadiness.mjs';
 import { paymentProviderReadiness } from './paymentProviders.mjs';
+import { evaluateAffiliateProgramReadiness } from './affiliateProgram.mjs';
 
 const yes=(v)=>String(v||'').toLowerCase()==='true';
-const present=(v)=>Boolean(String(v||'').trim());
 
 export function evaluateActivationReadiness(env=process.env) {
   const offerType=classifyOfferType(env.ACTIVE_OFFER_TYPE);
@@ -27,10 +27,6 @@ export function evaluateActivationReadiness(env=process.env) {
     if(!yes(env.PAYMENT_MERCHANT_IDENTITY_VERIFIED)) blockers.push('payment_merchant_identity_unverified');
     blockers.push(...paymentProviderReadiness(env,{production:true}).blockers);
   }
-  if(offerType==='affiliate_product') {
-    if(!present(env.AFFILIATE_PROVIDER)) blockers.push('affiliate_provider_missing');
-    if(!yes(env.AFFILIATE_TRACKING_READY)) blockers.push('affiliate_tracking_unready');
-    if(!yes(env.AFFILIATE_TERMS_REVIEWED)) blockers.push('affiliate_terms_unreviewed');
-  }
+  if(offerType==='affiliate_product') blockers.push(...evaluateAffiliateProgramReadiness(env).blockers);
   return Object.freeze({ready:blockers.length===0,offer_type:offerType||null,inventory_required:false,compliance_ready:compliance.ready,blockers:Object.freeze([...new Set(blockers)])});
 }
