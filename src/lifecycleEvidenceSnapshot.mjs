@@ -13,7 +13,7 @@ export async function buildLifecycleEvidenceSnapshot(sql,{deployedCommitSha="",r
     sql.query("select event_type,count(*)::int count from customer_lifecycle_events group by event_type"),
     sql.query("select count(*)::int count from customer_lifecycle_profiles"),
     sql.query("select count(*)::int count from attribution_touchpoints"),
-    sql.query("select count(*)::int count,count(distinct date_trunc('month',period_end))::int months,coalesce(sum(paid_orders),0)::int paid_orders from unit_economics_snapshots"),
+    sql.query("select count(*)::int count,count(distinct date_trunc('month',period_end))::int months,coalesce(sum(paid_orders),0)::int paid_orders,coalesce(sum(case when (gross_revenue_brl-refunds_brl-payment_fees_brl-variable_costs_brl-acquisition_spend_brl)>0 then paid_orders else 0 end),0)::int profitable_paid_orders from unit_economics_snapshots"),
     sql.query("select dimension,count(*)::int count,array_agg(evidence_sha256 order by evidence_sha256) evidence_hashes from lifecycle_evidence_events where proof_kind='observed_production' and verification_status='verified' and source_class in ('canonical_database','provider_webhook','operator_validation') group by dimension"),
   ]);
   const leadMap=rowsToMap(leads,'stage');
@@ -32,12 +32,12 @@ export async function buildLifecycleEvidenceSnapshot(sql,{deployedCommitSha="",r
     objections_handled:directEvidence.objection||0,offer_sent:leadMap.offer_sent||0,
     negotiations:directEvidence.negotiation||0,checkout_started:leadMap.checkout_started||0,
     abandonment_recoveries:directEvidence.abandonment_recovery||0,paid_orders:paidOrders,
-    reconciled_payments:Object.values(financialMap).reduce((a,b)=>a+Number(b||0),0),
+    reconciled_payments:Math.max(financialMap.payment_confirmed||0,directEvidence.reconciliation||0),
     delivered_orders:Math.max(orderMap.delivered||0,directEvidence.fulfillment||0),lifecycle_events:lifecycleMap,customers:scalar(customers,'count'),
     attribution_touchpoints:scalar(touchpoints,'count'),economics_snapshots:scalar(economics,'count'),
     monthly_revenue_periods:scalar(economics,'months'),experiment_outcomes:directEvidence.experiment||0,
     learning_cycles:directEvidence.learning||0,next_best_actions_executed:directEvidence.next_best_action||0,
-    profitable_paid_orders:0,verified_evidence:directEvidence,
+    profitable_paid_orders:scalar(economics,'profitable_paid_orders'),verified_evidence:directEvidence,
   };
   const certification=certifyLifecycleEvidence(observed);
   const evidenceHashes=evidence.flatMap(row=>Array.isArray(row.evidence_hashes)?row.evidence_hashes:[]).filter(Boolean);
