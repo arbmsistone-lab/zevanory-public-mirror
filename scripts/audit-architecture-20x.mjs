@@ -20,7 +20,7 @@ add('09 origin isolation enabled',headers['Cross-Origin-Opener-Policy']==='same-
 add('10 checkout fail closed',checkout.includes('sales_globally_blocked')&&checkout.includes('checkout_environment_invalid'));
 add('11 webhook remains provider-truth based',webhook.includes('fetchAsaasPayment')&&webhook.includes('payment_reconciliation_failed'));
 add('12 status endpoint exposes aggregates only',!status.includes('select *')&&!status.includes('contact_ref')&&!status.includes('session_id'));
-add('13 schema is composable 15x10',(await text('src/schemaHealth.mjs')).includes("'integration_outbox'")&&(await text('src/schemaHealth.mjs')).includes("'010_payment_provider_abstraction'"));
+add('13 schema is composable 20x12',(await text('src/schemaHealth.mjs')).includes("'integration_outbox'")&&(await text('src/schemaHealth.mjs')).includes("'012_sales_lifecycle_v2'"));
 add('14 DR script exists',await exists('scripts/dr-rehearsal.mjs'));
 add('15 DR rollback enforced',(await text('scripts/dr-rehearsal.mjs')).includes("client.query('ROLLBACK')"));
 add('16 release stays globally blocked',(await text('src/release.mjs')).includes("salesMode: 'globally-blocked'"));
