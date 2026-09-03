@@ -33,8 +33,14 @@ jobs:
         run: |
           set -euo pipefail
           docker run -d --name zevanory-recovery-db -e POSTGRES_PASSWORD="$PGPASSWORD" -p "$PGPORT:5432" supabase/postgres:17.6.1.166@sha256:d5424e9f4d0c21d63991c3f3dd77881f23f722c3a212452a61bc91924b79e8c8 postgres -c config_file=/etc/postgresql/postgresql.conf
-          for i in $(seq 1 45); do
-            docker exec zevanory-recovery-db pg_isready -U postgres >/dev/null 2>&1 && exit 0
+          stable=0
+          for i in $(seq 1 60); do
+            if docker exec -e PGPASSWORD="$PGPASSWORD" zevanory-recovery-db psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d postgres -c 'select 1' >/dev/null 2>&1; then
+              stable=$((stable + 1))
+              if [ "$stable" -ge 3 ]; then exit 0; fi
+            else
+              stable=0
+            fi
             sleep 2
           done
           docker logs zevanory-recovery-db >&2 || true
