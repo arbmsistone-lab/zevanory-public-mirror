@@ -63,9 +63,11 @@
     "migration:013": "node --env-file-if-exists=.env.production.local scripts/apply-migration-013.mjs",
     "migration:014": "node --env-file-if-exists=.env.production.local scripts/apply-migration-014.mjs",
     "migration:015": "node --env-file-if-exists=.env.production.local scripts/apply-migration-015.mjs",
+    "migration:016": "node --env-file-if-exists=.env.production.local scripts/apply-migration-016.mjs",
     "audit:lifecycle:evidence:10x": "node scripts/audit-lifecycle-evidence-10x.mjs",
     "audit:closure:10x": "node scripts/audit-final-closure-10x.mjs",
-    "audit:distribution:10x": "node scripts/audit-commercial-distribution-10x.mjs"
+    "audit:distribution:10x": "node scripts/audit-commercial-distribution-10x.mjs",
+    "audit:pilot:10x": "node scripts/audit-certification-pilot-10x.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1"

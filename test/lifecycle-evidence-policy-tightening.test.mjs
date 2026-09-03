@@ -29,3 +29,8 @@ test('fulfillment operator proof requires a paid provider-reconciled order',()=>
   assert.match(operator,/f\.normalized_event='payment_confirmed'/);
   assert.match(operator,/paid_reconciled_order_required/);
 });
+test('historical qualification offer and checkout evidence survives pipeline advancement',()=>{
+  assert.match(snapshot,/qualified_leads:Math\.max\(leadMap\.qualified\|\|0,directEvidence\.qualification\|\|0\)/);
+  assert.match(snapshot,/offer_sent:Math\.max\(leadMap\.offer_sent\|\|0,directEvidence\.offer\|\|0\)/);
+  assert.match(snapshot,/checkout_started:Math\.max\(leadMap\.checkout_started\|\|0,directEvidence\.checkout\|\|0\)/);
+});

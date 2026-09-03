@@ -7,6 +7,7 @@ import { publicChannelStatus } from '../src/publicChannelStatus.mjs';
 import { neon } from '@neondatabase/serverless';
 import { buildLifecycleEvidenceSnapshot } from '../src/lifecycleEvidenceSnapshot.mjs';
 import { commercialDistributionReadiness } from '../src/commercialDistribution.mjs';
+import { certificationPilotStatus } from '../src/certificationPilot.mjs';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -44,6 +45,7 @@ export default async function handler(req, res) {
     offer: publicOffer(),
     channels: publicChannelStatus(),
     distribution: commercialDistributionReadiness(),
+    certification_pilot: certificationPilotStatus(),
     support_whatsapp_number: PROJECT.officialWhatsappE164,
     production_mode: gate.enabled ? 'commercial-gated' : 'pre-sale-blocked'
   }));

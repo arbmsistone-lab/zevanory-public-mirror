@@ -89,7 +89,7 @@ unit('CODE-LANDING', 'public/index.html', [
 unit('CODE-PILOT', 'public/piloto.html', [
   command('pilot tests', process.execPath, ['--test','test/piloto.test.mjs']),
   op('CTA disabled by default', () => t('public/piloto.html').includes('<button id="cta" disabled>')),
-  op('telemetry before redirect', () => t('public/piloto.js').indexOf("await event('cta_whatsapp')") < t('public/piloto.js').indexOf("location.href = 'https://wa.me/'")),
+  op('invite checkout before provider redirect', () => t('public/piloto.js').includes("'x-certification-pilot-token':pilotToken") && t('public/piloto.js').indexOf('startPilotCheckout()') < t('public/piloto.js').indexOf('location.href = data.checkout_url')),
 ]);
 unit('CODE-AUDIT', 'scripts/audit-3x.mjs', [
   command('syntax audit', process.execPath, ['--check','scripts/audit-3x.mjs']),
