@@ -11,7 +11,7 @@ const env=await text('.env.example'); const outbox=await text('src/integrationOu
 add('01 final release id',RELEASE.id==='ZEVANORY-EG0039-FINAL');
 add('02 architecture contract',validateArchitectureContract().valid);
 add('03 required schema tables',REQUIRED_TABLES.length===21&&['integration_outbox','agent_jobs','agent_runs','agent_memory','agent_control_state','agent_approvals','customer_lifecycle_profiles','customer_lifecycle_events','attribution_touchpoints','lifecycle_evidence_events'].every(x=>REQUIRED_TABLES.includes(x)));
-add('04 required migrations',REQUIRED_MIGRATIONS.length===13&&REQUIRED_MIGRATIONS.includes('011_agent_control_and_trace')&&REQUIRED_MIGRATIONS.includes('012_sales_lifecycle_v2')&&REQUIRED_MIGRATIONS.includes('013_lifecycle_evidence_certification')&&await exists('db/migrations/013_lifecycle_evidence_certification.sql')&&dr.includes('013_lifecycle_evidence_certification.sql'));
+add('04 required migrations',REQUIRED_MIGRATIONS.length===14&&REQUIRED_MIGRATIONS.includes('011_agent_control_and_trace')&&REQUIRED_MIGRATIONS.includes('012_sales_lifecycle_v2')&&REQUIRED_MIGRATIONS.includes('014_lifecycle_evidence_trust')&&await exists('db/migrations/014_lifecycle_evidence_trust.sql')&&dr.includes('014_lifecycle_evidence_trust.sql'));
 add('05 outbox idempotency',migration.includes('idempotency_key text NOT NULL UNIQUE'));
 add('06 outbox concurrency',outbox.includes('for update skip locked'));
 add('07 retry bounded',outbox.includes('attempts>=20')&&outbox.includes('3600000'));

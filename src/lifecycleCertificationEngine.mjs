@@ -50,8 +50,7 @@ export function certifyLifecycleEvidence(evidence={}){
   const coverage=assessLifecycleCapabilityCoverage();
   const dimensions=SALES_LIFECYCLE_CANONICAL_V2.map((key)=>{
     const technical_ready=coverage.complete===true;
-    const directObserved=n(evidence?.verified_evidence?.[key])>=3;
-    const production_proven=technical_ready&&Boolean(LIFECYCLE_PROOF_POLICY[key]?.(evidence)||directObserved);
+    const production_proven=technical_ready&&Boolean(LIFECYCLE_PROOF_POLICY[key]?.(evidence));
     return Object.freeze({
       key,label:SALES_LIFECYCLE_LABELS[key],technical_ready,production_proven,
       score:production_proven?10:(technical_ready?9:0),
