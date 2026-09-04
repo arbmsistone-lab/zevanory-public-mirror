@@ -4,6 +4,7 @@ import resendHandler from '../src/http/webhookResend.mjs';
 import metaHandler from '../src/http/webhookMeta.mjs';
 import mercadoLivreHandler from '../src/http/webhookMercadoLivre.mjs';
 import mercadoLivreOAuthHandler from '../src/http/oauthMercadoLivre.mjs';
+import {consumeAdaptiveWebhookRate} from '../src/security/adaptiveRateLimit.mjs';
 
 export const config={api:{bodyParser:false}};
 const WEBHOOK_MAX_BYTES=256*1024;
@@ -14,6 +15,8 @@ const providerFrom=(req)=>{
   try{return String(new URL(req.url||'', 'https://zevanory.api.br').searchParams.get('provider')||'').toLowerCase();}catch{return '';}
 };
 
+const requestIp=(req)=>String(req.headers?.['x-forwarded-for']||req.headers?.['x-real-ip']||'unknown').split(',')[0].trim().slice(0,120);
+
 const readRawBody=async(req)=>{
   const declared=Number(req.headers?.['content-length']||0);
   if(Number.isFinite(declared)&&declared>WEBHOOK_MAX_BYTES) throw new Error('payload_too_large');
@@ -21,13 +24,20 @@ const readRawBody=async(req)=>{
   for await(const chunk of req){const b=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=b.length;if(total>WEBHOOK_MAX_BYTES)throw new Error('payload_too_large');chunks.push(b);}
   return Buffer.concat(chunks,total);
 };
-
 export default async function handler(req,res){
   const provider=providerFrom(req);
   if(!['asaas','mercadopago','resend','meta','mercadolivre','mercadolivre_oauth'].includes(provider)){
     res.setHeader('content-type','application/json; charset=utf-8');
     res.statusCode=400;
     return res.end(JSON.stringify({error:'webhook_provider_invalid',accepted:false}));
+  }
+  const rate=consumeAdaptiveWebhookRate({key:`${requestIp(req)}:${provider}`,provider});
+  if(!rate.ok){
+    res.setHeader('content-type','application/json; charset=utf-8');
+    res.setHeader('retry-after',String(rate.retryAfter));
+    res.setHeader('cache-control','no-store');
+    res.statusCode=429;
+    return res.end(JSON.stringify({error:'rate_limited',accepted:false}));
   }
   let raw;
   try{raw=await readRawBody(req);}catch(error){
@@ -51,4 +61,3 @@ export default async function handler(req,res){
   if(provider==='mercadolivre_oauth') return mercadoLivreOAuthHandler(req,res);
   return resendHandler(req,res);
 }
-
