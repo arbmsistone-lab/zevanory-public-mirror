@@ -55,6 +55,25 @@ export async function fetchMercadoLivreMe(accessToken,fetchImpl=globalThis.fetch
   return {id,body};
 }
 
+export async function loadMercadoLivreCredential(sql,env=process.env){
+  if(!sql?.query)throw new Error('mercadolivre_sql_required');
+  const rows=await sql.query("select account_id,access_token_enc,refresh_token_enc,token_type,scope,expires_at from provider_oauth_credentials where provider='mercado_livre' limit 1");
+  const row=rows[0];if(!row)throw new Error('mercadolivre_oauth_credential_missing');
+  return {...row,access_token:decryptSecret(row.access_token_enc,env),refresh_token:decryptSecret(row.refresh_token_enc,env)};
+}
+
+export async function refreshMercadoLivreCredential(sql,credential,{env=process.env,fetchImpl=globalThis.fetch}={}){
+  const clientId=clean(env.MERCADOLIVRE_APP_ID,40),clientSecret=clean(env.MERCADOLIVRE_CLIENT_SECRET,500);
+  if(!/^\d+$/.test(clientId)||!clientSecret)throw new Error('mercadolivre_oauth_refresh_config_missing');
+  const body=new URLSearchParams({grant_type:'refresh_token',client_id:clientId,client_secret:clientSecret,refresh_token:clean(credential.refresh_token,4000)});
+  const response=await fetchImpl(TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded','accept':'application/json'},body});
+  const token=await response.json().catch(()=>({}));if(!response.ok)throw new Error(`mercadolivre_refresh_http_${response.status}`);
+  if(!clean(token.access_token))throw new Error('mercadolivre_refresh_token_invalid');
+  token.refresh_token=clean(token.refresh_token)||credential.refresh_token;
+  await persistMercadoLivreTokens(sql,{sellerId:String(credential.account_id),token,env});
+  return loadMercadoLivreCredential(sql,env);
+}
+
 export async function persistMercadoLivreTokens(sql,{sellerId,token,env=process.env}){
   const expires=Math.max(60,Number(token.expires_in)||21600);
   const rows=await sql.query(`insert into provider_oauth_credentials(provider,account_id,access_token_enc,refresh_token_enc,token_type,scope,expires_at,updated_at)

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { COMMERCIAL_DISTRIBUTION_CANONICAL, REQUIRED_DISTRIBUTION_FRONTS, commercialDistributionReadiness } from '../src/commercialDistribution.mjs';
 import { evaluateAffiliateProgramReadiness, AFFILIATE_COMMISSION_STATES, AFFILIATE_REVENUE_TRUTH } from '../src/affiliateProgram.mjs';
 import { buildOutboundAdapters } from '../src/outboundAdapters.mjs';
+import { encryptSecret } from '../src/mercadoLivreOAuth.mjs';
 
 const certifiedGate=()=>({enabled:true});
 const response=(status,body={})=>({status,json:async()=>body,headers:{get:()=>null}});
@@ -43,11 +44,12 @@ test('Nuvemshop outbound uses official v1 products API and remains globally gate
   await assert.rejects(()=>closed['channel:nuvemshop']({payload:{product:{name:'x'}}}),/commercial_gates_closed/);
 });
 
-test('Mercado Livre outbound creates item with bearer token and requires provider id',async()=>{
-  const calls=[];const env={MERCADOLIVRE_ACCESS_TOKEN:'token'};
+test('Mercado Livre outbound uses persisted OAuth credential and requires provider id',async()=>{
+  const calls=[];const env={MERCADOLIVRE_TOKEN_ENCRYPTION_KEY:Buffer.alloc(32,9).toString('base64')};
+  const sql={query:async()=>[{account_id:'999',access_token_enc:encryptSecret('token',env),refresh_token_enc:encryptSecret('refresh',env),expires_at:new Date(Date.now()+3600000)}]};
   const a=buildOutboundAdapters({env,commercialGate:certifiedGate,fetchImpl:async(url,opt)=>{calls.push({url,opt});return response(201,{id:'MLB1'});}});
-  const out=await a['channel:mercado_livre']({payload:{item:{title:'ARBM SIST'}}});
-  assert.equal(out.provider_item_id,'MLB1');assert.equal(calls[0].url,'https://api.mercadolibre.com/items');assert.equal(calls[0].opt.headers.authorization,'Bearer token');
+  const out=await a['channel:mercado_livre']({payload:{item:{title:'ARBM SIST'}}},{sql});
+  assert.equal(out.provider_item_id,'MLB1');assert.equal(out.seller_id,'999');assert.equal(calls[0].url,'https://api.mercadolibre.com/items');assert.equal(calls[0].opt.headers.authorization,'Bearer token');
 });
 
 test('marketplace identities and webhook verification are mandatory for readiness',()=>{

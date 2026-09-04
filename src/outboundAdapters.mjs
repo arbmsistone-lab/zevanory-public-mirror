@@ -1,6 +1,7 @@
 import { uploadYouTubeFromRemote } from './youtubeUpload.mjs';
 import { publishTikTok, publishLinkedIn } from './socialPosting.mjs';
 import { salesGate } from './salesGate.mjs';
+import { loadMercadoLivreCredential, refreshMercadoLivreCredential } from './mercadoLivreOAuth.mjs';
 const jsonBody=async(response)=>{try{return await response.json();}catch{return {};}};
 const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new Error(code);return v;};
 const ensureGlobalGates=(env,gateEvaluator=salesGate)=>{if(!gateEvaluator(env).enabled)throw new Error('commercial_gates_closed');};
@@ -67,13 +68,14 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       const id=String(body?.id||'');if(!id)throw new Error('nuvemshop_product_id_missing');
       return Object.freeze({provider:'nuvemshop',accepted:true,provider_product_id:id,confirmation:'provider_api_and_webhook'});
     },
-    'channel:mercado_livre':async(event)=>{
-      ensureGlobalGates(env,commercialGate);
-      const token=required(env.MERCADOLIVRE_ACCESS_TOKEN,'mercadolivre_access_token_missing');
+    'channel:mercado_livre':async(event,{sql}={})=>{
+      ensureGlobalGates(env,commercialGate);if(!sql?.query)throw new Error('mercadolivre_sql_required');
       const item=event.payload?.item;if(!item||typeof item!=='object'||Array.isArray(item))throw new Error('mercadolivre_item_missing');
-      const body=await requestJson(fetchImpl,'https://api.mercadolibre.com/items',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(item)},[200,201]);
+      let credential=await loadMercadoLivreCredential(sql,env);
+      if(new Date(credential.expires_at).getTime()<=Date.now()+120000) credential=await refreshMercadoLivreCredential(sql,credential,{env,fetchImpl});
+      const body=await requestJson(fetchImpl,'https://api.mercadolibre.com/items',{method:'POST',headers:{authorization:`Bearer ${credential.access_token}`,'content-type':'application/json'},body:JSON.stringify(item)},[200,201]);
       const id=String(body?.id||'');if(!id)throw new Error('mercadolivre_item_id_missing');
-      return Object.freeze({provider:'mercado_livre',accepted:true,provider_item_id:id,confirmation:'provider_api_after_notification'});
+      return Object.freeze({provider:'mercado_livre',accepted:true,provider_item_id:id,seller_id:String(credential.account_id),confirmation:'provider_api_after_notification'});
     },
   });
 }
