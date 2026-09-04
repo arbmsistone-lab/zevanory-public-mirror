@@ -35,6 +35,10 @@
       "destination": "/api/webhooks?provider=meta"
     },
     {
+      "source": "/api/oauth/mercadolivre/start",
+      "destination": "/api/webhooks?provider=mercadolivre_oauth&action=start"
+    },
+    {
       "source": "/api/oauth/mercadolivre/callback",
       "destination": "/api/webhooks?provider=mercadolivre_oauth"
     },
