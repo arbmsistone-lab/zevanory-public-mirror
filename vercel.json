@@ -83,6 +83,10 @@
       "destination": "/public/piloto.html"
     },
     {
+      "source": "/tiktok-review",
+      "destination": "/public/tiktok-review.html"
+    },
+    {
       "source": "/termos",
       "destination": "/public/termos.html"
     },

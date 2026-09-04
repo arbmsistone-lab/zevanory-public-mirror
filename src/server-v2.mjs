@@ -30,7 +30,7 @@ const operatorToken = String(process.env.OPERATOR_TOKEN || "").trim();
 await mkdir(dataDir, { recursive: true });
 const STATIC_ROUTES = new Map([
   ["/", "index.html"], ["/index.html", "index.html"], ["/arbm-sist", "arbm-sist.html"], ["/piloto", "piloto.html"],
-  ["/termos", "termos.html"], ["/privacidade", "privacidade.html"], ["/reembolso", "reembolso.html"], ["/afiliados", "afiliados.html"],
+  ["/termos", "termos.html"], ["/privacidade", "privacidade.html"], ["/reembolso", "reembolso.html"], ["/afiliados", "afiliados.html"], ["/tiktok-review", "tiktok-review.html"],
 ]);
 const STATIC_TYPES = Object.freeze({'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml; charset=utf-8'});
 function staticAsset(pathname) {
@@ -164,4 +164,3 @@ server.listen(port, "127.0.0.1", () => {
   console.log(whatsappNumber ? "WhatsApp configurado" : "WhatsApp NAO configurado; CTA bloqueado");
   console.log("Eventos financeiros bloqueados ate integracao autenticada com provedor");
 });
-

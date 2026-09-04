@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>ZEVANORY | TikTok Integration Review</title>
+  <link rel="stylesheet" href="/tiktok-review.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <img src="/brand/zevanory-mark.svg" alt="ZEVANORY" class="brand">
+      <div><p class="eyebrow">Ambiente de revisão</p><h1>Integração TikTok</h1>
+      <p>Fluxo web controlado para Login Kit e Content Posting API.</p></div>
+    </header>
+    <section class="notice" aria-live="polite"><strong>Fail-closed:</strong> nenhuma publicação ocorre sem OAuth válido, consentimento explícito e gates aprovados.</section>
+    <section class="grid">
+      <article class="card"><span class="step">1</span><h2>Conectar conta</h2><p>Autorize a ZEVANORY no TikTok usando OAuth.</p><a class="primary" href="/api/oauth/tiktok/start">Conectar com TikTok</a></article>
+      <article class="card"><span class="step">2</span><h2>Verificar conexão</h2><p id="status">Consultando conexão segura...</p><button id="refresh" type="button">Atualizar status</button></article>
+      <article class="card"><span class="step">3</span><h2>Consentimento</h2><label class="check"><input id="consent" type="checkbox"> Autorizo esta publicação específica.</label><p class="hint">O consentimento não é persistido para publicações futuras.</p></article>
+      <article class="card"><span class="step">4</span><h2>Preparar publicação</h2><label>URL HTTPS do vídeo<input id="media" type="url" placeholder="https://zevanory.api.br/...mp4"></label><label>Legenda<textarea id="caption" maxlength="2200" placeholder="Conteúdo demonstrativo"></textarea></label><label>Privacidade<select id="privacy"><option value="SELF_ONLY">Somente eu</option><option value="PUBLIC_TO_EVERYONE">Público, quando aprovado pelo TikTok</option></select></label><button id="prepare" class="primary" type="button">Validar publicação</button><p id="result" class="result"></p></article>
+    </section>
+    <footer>Domínio verificado: <strong>https://zevanory.api.br/</strong> · callback: <code>/api/oauth/tiktok/callback</code></footer>
+  </main>
+  <script src="/tiktok-review.js" defer></script>
+</body>
+</html>
