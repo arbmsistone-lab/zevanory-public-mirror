@@ -30,6 +30,10 @@ jobs:
         run: npm audit --audit-level=high
       - name: Existing secret scan
         run: npm run supplychain:scan
+      - name: Secret lifecycle gate
+        run: npm run security:lifecycle
+      - name: Adaptive rate-limit regression
+        run: node --test test/adaptive-rate-limit.test.mjs test/secret-lifecycle.test.mjs
       - name: Install Trivy 0.74.0 with checksum verification
         shell: bash
         run: |

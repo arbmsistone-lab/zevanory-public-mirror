@@ -67,7 +67,10 @@
     "audit:lifecycle:evidence:10x": "node scripts/audit-lifecycle-evidence-10x.mjs",
     "audit:closure:10x": "node scripts/audit-final-closure-10x.mjs",
     "audit:distribution:10x": "node scripts/audit-commercial-distribution-10x.mjs",
-    "audit:pilot:10x": "node scripts/audit-certification-pilot-10x.mjs"
+    "audit:pilot:10x": "node scripts/audit-certification-pilot-10x.mjs",
+    "migration:017": "node --env-file-if-exists=.env.production.local scripts/apply-migration-017.mjs",
+    "security:lifecycle": "node scripts/secret-lifecycle-audit.mjs",
+    "dast:safe": "node scripts/safe-dast.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1"

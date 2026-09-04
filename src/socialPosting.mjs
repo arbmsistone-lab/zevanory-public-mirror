@@ -3,8 +3,8 @@ const required=(v,code,max=500)=>{const x=clean(v,max);if(!x)throw new Error(cod
 const httpsUrl=(v,code)=>{const x=required(v,code,2048);let u;try{u=new URL(x);}catch{throw new Error(code);}if(u.protocol!=='https:')throw new Error(code);return x;};
 const json=async r=>{try{return await r.json();}catch{return {};}};
 
-export async function publishTikTok({event,env=process.env,fetchImpl=globalThis.fetch}={}){
-  const token=required(env.TIKTOK_ACCESS_TOKEN,'tiktok_access_token_missing');
+export async function publishTikTok({event,env=process.env,fetchImpl=globalThis.fetch,accessToken}={}){
+  const token=required(accessToken||env.TIKTOK_ACCESS_TOKEN,'tiktok_access_token_missing');
   if(env.TIKTOK_CONTENT_SOURCE_VERIFIED!=='true')throw new Error('tiktok_content_source_unverified');
   if(event?.payload?.user_consent!==true)throw new Error('tiktok_user_consent_required');
   const mediaUrl=httpsUrl(event?.payload?.media_url,'tiktok_media_url_required');

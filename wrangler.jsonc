@@ -3,6 +3,9 @@
   "name": "zevanory",
   "main": "src/cloudflare-worker.mjs",
   "compatibility_date": "2026-09-04",
+  "secrets": {
+    "required": ["DATABASE_URL", "PUBLIC_BASE_URL"]
+  },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
