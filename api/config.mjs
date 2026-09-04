@@ -8,6 +8,7 @@ import { neon } from '@neondatabase/serverless';
 import { buildLifecycleEvidenceSnapshot } from '../src/lifecycleEvidenceSnapshot.mjs';
 import { commercialDistributionReadiness } from '../src/commercialDistribution.mjs';
 import { certificationPilotStatus } from '../src/certificationPilot.mjs';
+import { verifyMercadoLivreLive } from '../src/mercadoLivreVerification.mjs';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -15,6 +16,10 @@ export default async function handler(req, res) {
     return res.end(JSON.stringify({ error: 'method_not_allowed' }));
   }
   const url=new URL(req.url||'/api/config','https://zevanory.api.br');
+  if(url.searchParams.get('view')==='mercadolivre-audit'){
+    if(!process.env.DATABASE_URL){res.statusCode=503;return res.end(JSON.stringify({error:'database_required'}));}
+    try{const result=await verifyMercadoLivreLive(neon(process.env.DATABASE_URL));res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=result.all_verified?200:503;return res.end(JSON.stringify(result));}catch(error){res.statusCode=503;return res.end(JSON.stringify({provider:'mercado_livre',all_verified:false,error:String(error?.message||'verification_failed').slice(0,120)}));}
+  }
   if(url.searchParams.get('view')==='lifecycle'){
     if(!process.env.DATABASE_URL){res.statusCode=503;return res.end(JSON.stringify({error:'database_required'}));}
     try{const snapshot=await buildLifecycleEvidenceSnapshot(neon(process.env.DATABASE_URL),{deployedCommitSha:String(process.env.VERCEL_GIT_COMMIT_SHA||process.env.ZEVANORY_RELEASE_SHA||""),releaseId:RELEASE.id});res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;return res.end(JSON.stringify(snapshot));}catch{res.statusCode=503;return res.end(JSON.stringify({error:'lifecycle_certification_unavailable'}));}
