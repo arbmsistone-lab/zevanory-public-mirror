@@ -19,3 +19,11 @@ test('webhook ingress is bounded and provider-authenticated',()=>{
   assert.match(asaas,/webhook/i);
   assert.match(asaas,/401/);
 });
+
+test('webhook ingress applies adaptive provider rate limiting before body parsing',()=>{
+  const ingress=read('api/webhooks.mjs');
+  assert.match(ingress,/consumeAdaptiveWebhookRate/);
+  assert.match(ingress,/statusCode=429/);
+  assert.match(ingress,/retry-after/);
+  assert.match(ingress,/requestIp/);
+});

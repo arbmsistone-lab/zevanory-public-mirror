@@ -24,3 +24,5 @@ jobs:
       - run: npm run activation:check
       - run: npm run audit:offer:20x
       - run: npm run supplychain:scan
+      - run: npm run security:lifecycle
+      - run: npm run dast:safe
