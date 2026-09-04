@@ -1,0 +1,55 @@
+name: ZEVANORY International Security Gate
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "37 6 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: zevanory-security-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Setup Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Dependency vulnerability gate
+        run: npm audit --audit-level=high
+      - name: Existing secret scan
+        run: npm run supplychain:scan
+      - name: Install Trivy 0.74.0 with checksum verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLO https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_Linux-64bit.tar.gz
+          echo "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a  trivy_0.74.0_Linux-64bit.tar.gz" | sha256sum -c -
+          tar -xzf trivy_0.74.0_Linux-64bit.tar.gz trivy
+          sudo install -m 0755 trivy /usr/local/bin/trivy
+      - name: Trivy HIGH/CRITICAL gate
+        run: trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --skip-dirs node_modules .
+      - name: Generate CycloneDX SBOM
+        shell: bash
+        run: |
+          mkdir -p security-evidence
+          npm sbom --sbom-format cyclonedx > security-evidence/sbom.cdx.json
+      - name: Upload security evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: zevanory-security-${{ github.run_id }}
+          path: security-evidence/
+          if-no-files-found: ignore
+          retention-days: 30
