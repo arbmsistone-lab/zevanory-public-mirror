@@ -11,7 +11,7 @@ export const REQUIRED_MIGRATIONS = Object.freeze([
   '001_telemetry_events','002_financial_events','003_orders_checkout',
   '004_partial_refund_snapshots','005_order_financial_states','006_sales_machine',
   '007_no_inventory_commerce','008_autonomous_revenue_engine','009_composable_infrastructure',
-  '010_payment_provider_abstraction','011_agent_control_and_trace','012_sales_lifecycle_v2','013_lifecycle_evidence_certification','014_lifecycle_evidence_trust','015_lifecycle_certification_provenance','016_certification_pilot','017_mercadolivre_oauth',
+  '010_payment_provider_abstraction','011_agent_control_and_trace','012_sales_lifecycle_v2','013_lifecycle_evidence_certification','014_lifecycle_evidence_trust','015_lifecycle_certification_provenance','016_certification_pilot','017_mercadolivre_oauth','018_tiktok_oauth',
 ]);
 
 export function assessSchemaIntegrity({ tableNames = [], migrationIds = [] } = {}) {

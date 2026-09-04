@@ -6,7 +6,7 @@ export const CHANNELS = Object.freeze({
   email: Object.freeze({ provider:'resend', env:['RESEND_API_KEY'], commercial:true, role:'crm_nurture' }),
   instagram: Object.freeze({ provider:'meta-graph-api', env:['META_ACCESS_TOKEN','INSTAGRAM_BUSINESS_ACCOUNT_ID','META_GRAPH_VERSION'], trueEnv:['META_INSTAGRAM_IDENTITY_VERIFIED'], commercial:true, role:'proof_reach' }),
   facebook: Object.freeze({ provider:'meta-graph-api', env:['META_ACCESS_TOKEN','META_PAGE_ID','META_GRAPH_VERSION'], trueEnv:['META_FACEBOOK_IDENTITY_VERIFIED'], commercial:true, role:'proof_retargeting' }),
-  tiktok: Object.freeze({ provider:'tiktok-content-posting-api', env:['TIKTOK_ACCESS_TOKEN','TIKTOK_EXPECTED_USERNAME'], trueEnv:['TIKTOK_CONTENT_SOURCE_VERIFIED','TIKTOK_IDENTITY_VERIFIED'], commercial:true, role:'short_form_discovery' }),
+  tiktok: Object.freeze({ provider:'tiktok-content-posting-api', env:['TIKTOK_CLIENT_KEY','TIKTOK_CLIENT_SECRET','TIKTOK_TOKEN_ENCRYPTION_KEY','TIKTOK_EXPECTED_USERNAME'], trueEnv:['TIKTOK_CONTENT_SOURCE_VERIFIED','TIKTOK_IDENTITY_VERIFIED','TIKTOK_CLIENT_AUDITED'], commercial:true, role:'short_form_discovery' }),
   youtube: Object.freeze({ provider:'youtube-data-api', env:[], trueEnv:['YOUTUBE_IDENTITY_VERIFIED'], credentialSets:[['YOUTUBE_OAUTH_ACCESS_TOKEN'],['YOUTUBE_OAUTH_CLIENT_ID','YOUTUBE_OAUTH_CLIENT_SECRET','YOUTUBE_OAUTH_REFRESH_TOKEN']], commercial:true, role:'demo_authority' }),
   linkedin: Object.freeze({ provider:'linkedin-posts-api', env:['LINKEDIN_ACCESS_TOKEN','LINKEDIN_AUTHOR_URN','LINKEDIN_VERSION'], trueEnv:['LINKEDIN_IDENTITY_VERIFIED'], commercial:true, role:'b2b_authority' }),
   google: Object.freeze({ provider:'organic-search', env:[], commercial:false, role:'seo_discovery' }),

@@ -4,6 +4,7 @@ import resendHandler from '../src/http/webhookResend.mjs';
 import metaHandler from '../src/http/webhookMeta.mjs';
 import mercadoLivreHandler from '../src/http/webhookMercadoLivre.mjs';
 import mercadoLivreOAuthHandler from '../src/http/oauthMercadoLivre.mjs';
+import tiktokOAuthHandler from '../src/http/oauthTikTok.mjs';
 import {consumeAdaptiveWebhookRate} from '../src/security/adaptiveRateLimit.mjs';
 
 export const config={api:{bodyParser:false}};
@@ -26,7 +27,7 @@ const readRawBody=async(req)=>{
 };
 export default async function handler(req,res){
   const provider=providerFrom(req);
-  if(!['asaas','mercadopago','resend','meta','mercadolivre','mercadolivre_oauth'].includes(provider)){
+  if(!['asaas','mercadopago','resend','meta','mercadolivre','mercadolivre_oauth','tiktok_oauth'].includes(provider)){
     res.setHeader('content-type','application/json; charset=utf-8');
     res.statusCode=400;
     return res.end(JSON.stringify({error:'webhook_provider_invalid',accepted:false}));
@@ -59,5 +60,6 @@ export default async function handler(req,res){
   if(provider==='meta') return metaHandler(req,res);
   if(provider==='mercadolivre') return mercadoLivreHandler(req,res);
   if(provider==='mercadolivre_oauth') return mercadoLivreOAuthHandler(req,res);
+  if(provider==='tiktok_oauth') return tiktokOAuthHandler(req,res);
   return resendHandler(req,res);
 }

@@ -31,8 +31,8 @@ test('channel adapters remain provider-agnostic and gated',()=>{
   const state=channelReadiness(env);
   assert.equal(state.whatsapp.provider,'meta-whatsapp-cloud-api');
   assert.equal(state.email.configured,false);
-  assert.equal(channelReadiness({TIKTOK_ACCESS_TOKEN:'token',TIKTOK_CONTENT_SOURCE_VERIFIED:'false'}).tiktok.configured,false);
-  assert.equal(channelReadiness({TIKTOK_ACCESS_TOKEN:'token',TIKTOK_EXPECTED_USERNAME:'zevanory',TIKTOK_CONTENT_SOURCE_VERIFIED:'true',TIKTOK_IDENTITY_VERIFIED:'true'}).tiktok.configured,true);
+  assert.equal(channelReadiness({TIKTOK_CLIENT_KEY:'k',TIKTOK_CLIENT_SECRET:'s',TIKTOK_TOKEN_ENCRYPTION_KEY:'x',TIKTOK_EXPECTED_USERNAME:'zevanory',TIKTOK_CONTENT_SOURCE_VERIFIED:'false',TIKTOK_IDENTITY_VERIFIED:'true',TIKTOK_CLIENT_AUDITED:'true'}).tiktok.configured,false);
+  assert.equal(channelReadiness({TIKTOK_CLIENT_KEY:'k',TIKTOK_CLIENT_SECRET:'s',TIKTOK_TOKEN_ENCRYPTION_KEY:'x',TIKTOK_EXPECTED_USERNAME:'zevanory',TIKTOK_CONTENT_SOURCE_VERIFIED:'true',TIKTOK_IDENTITY_VERIFIED:'true',TIKTOK_CLIENT_AUDITED:'true'}).tiktok.configured,true);
   assert.throws(()=>assertChannelActionAllowed('whatsapp',env));
 });
 

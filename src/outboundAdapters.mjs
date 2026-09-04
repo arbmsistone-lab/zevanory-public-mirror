@@ -2,6 +2,7 @@ import { uploadYouTubeFromRemote } from './youtubeUpload.mjs';
 import { publishTikTok, publishLinkedIn } from './socialPosting.mjs';
 import { salesGate } from './salesGate.mjs';
 import { loadMercadoLivreCredential, refreshMercadoLivreCredential } from './mercadoLivreOAuth.mjs';
+import { loadTikTokCredential, refreshTikTokCredential } from './tiktokOAuth.mjs';
 const jsonBody=async(response)=>{try{return await response.json();}catch{return {};}};
 const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new Error(code);return v;};
 const ensureGlobalGates=(env,gateEvaluator=salesGate)=>{if(!gateEvaluator(env).enabled)throw new Error('commercial_gates_closed');};
@@ -51,7 +52,12 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       ensureGlobalGates(env,commercialGate);
       return uploadYouTubeFromRemote({event,sql,env,fetchImpl});
     },
-    'channel:tiktok':async(event)=>{ ensureGlobalGates(env,commercialGate); return publishTikTok({event,env,fetchImpl}); },
+    'channel:tiktok':async(event,{sql}={})=>{
+      ensureGlobalGates(env,commercialGate);if(!sql?.query)throw new Error('tiktok_sql_required');
+      let credential=await loadTikTokCredential(sql,env);
+      if(new Date(credential.expires_at).getTime()<=Date.now()+30*60*1000) credential=await refreshTikTokCredential(sql,credential,{env,fetchImpl});
+      return publishTikTok({event,env,fetchImpl,accessToken:credential.access_token});
+    },
     'channel:linkedin':async(event)=>{ ensureGlobalGates(env,commercialGate); return publishLinkedIn({event,env,fetchImpl}); },
     'channel:affiliate':async(event)=>{
       ensureGlobalGates(env,commercialGate);const provider=required(env.AFFILIATE_PROVIDER,'affiliate_provider_missing');
