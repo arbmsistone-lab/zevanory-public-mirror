@@ -1,6 +1,8 @@
 import { uploadYouTubeFromRemote } from './youtubeUpload.mjs';
 import { publishTikTok, publishLinkedIn } from './socialPosting.mjs';
 import { salesGate } from './salesGate.mjs';
+import { loadMercadoLivreCredential, refreshMercadoLivreCredential } from './mercadoLivreOAuth.mjs';
+import { loadTikTokCredential, refreshTikTokCredential } from './tiktokOAuth.mjs';
 const jsonBody=async(response)=>{try{return await response.json();}catch{return {};}};
 const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new Error(code);return v;};
 const ensureGlobalGates=(env,gateEvaluator=salesGate)=>{if(!gateEvaluator(env).enabled)throw new Error('commercial_gates_closed');};
@@ -50,10 +52,19 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       ensureGlobalGates(env,commercialGate);
       return uploadYouTubeFromRemote({event,sql,env,fetchImpl});
     },
-    'channel:tiktok':async(event)=>{ ensureGlobalGates(env,commercialGate); return publishTikTok({event,env,fetchImpl}); },
+    'channel:tiktok':async(event,{sql}={})=>{
+      ensureGlobalGates(env,commercialGate);if(!sql?.query)throw new Error('tiktok_sql_required');
+      let credential=await loadTikTokCredential(sql,env);
+      if(new Date(credential.expires_at).getTime()<=Date.now()+30*60*1000) credential=await refreshTikTokCredential(sql,credential,{env,fetchImpl});
+      return publishTikTok({event,env,fetchImpl,accessToken:credential.access_token});
+    },
     'channel:linkedin':async(event)=>{ ensureGlobalGates(env,commercialGate); return publishLinkedIn({event,env,fetchImpl}); },
     'channel:affiliate':async(event)=>{
       ensureGlobalGates(env,commercialGate);const provider=required(env.AFFILIATE_PROVIDER,'affiliate_provider_missing');
+      if(provider==='zevanory-first-party'){
+        const id=String(event.idempotency_key||event.event_id||'');if(!id)throw new Error('affiliate_event_id_missing');
+        return Object.freeze({provider:'affiliate:zevanory-first-party',accepted:true,provider_message_id:id,confirmation:'first_party_ledger'});
+      }
       const url=ensureHttps(env.AFFILIATE_WEBHOOK_URL,'affiliate_webhook_url_missing');const token=required(env.AFFILIATE_WEBHOOK_TOKEN,'affiliate_webhook_token_missing');
       const body=await requestJson(fetchImpl,url,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json','idempotency-key':String(event.idempotency_key||event.event_id)},body:JSON.stringify({provider,event_id:event.event_id,aggregate_id:event.aggregate_id,payload:event.payload||{}})},[200,201,202]);
       const id=String(body?.id||body?.tracking_id||body?.event_id||'');if(!id)throw new Error('affiliate_provider_id_missing');
@@ -67,13 +78,14 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       const id=String(body?.id||'');if(!id)throw new Error('nuvemshop_product_id_missing');
       return Object.freeze({provider:'nuvemshop',accepted:true,provider_product_id:id,confirmation:'provider_api_and_webhook'});
     },
-    'channel:mercado_livre':async(event)=>{
-      ensureGlobalGates(env,commercialGate);
-      const token=required(env.MERCADOLIVRE_ACCESS_TOKEN,'mercadolivre_access_token_missing');
+    'channel:mercado_livre':async(event,{sql}={})=>{
+      ensureGlobalGates(env,commercialGate);if(!sql?.query)throw new Error('mercadolivre_sql_required');
       const item=event.payload?.item;if(!item||typeof item!=='object'||Array.isArray(item))throw new Error('mercadolivre_item_missing');
-      const body=await requestJson(fetchImpl,'https://api.mercadolibre.com/items',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(item)},[200,201]);
+      let credential=await loadMercadoLivreCredential(sql,env);
+      if(new Date(credential.expires_at).getTime()<=Date.now()+120000) credential=await refreshMercadoLivreCredential(sql,credential,{env,fetchImpl});
+      const body=await requestJson(fetchImpl,'https://api.mercadolibre.com/items',{method:'POST',headers:{authorization:`Bearer ${credential.access_token}`,'content-type':'application/json'},body:JSON.stringify(item)},[200,201]);
       const id=String(body?.id||'');if(!id)throw new Error('mercadolivre_item_id_missing');
-      return Object.freeze({provider:'mercado_livre',accepted:true,provider_item_id:id,confirmation:'provider_api_after_notification'});
+      return Object.freeze({provider:'mercado_livre',accepted:true,provider_item_id:id,seller_id:String(credential.account_id),confirmation:'provider_api_after_notification'});
     },
   });
 }
