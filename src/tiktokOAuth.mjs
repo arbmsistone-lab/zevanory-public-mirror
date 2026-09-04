@@ -4,7 +4,9 @@ export const TIKTOK_REDIRECT_URI='https://zevanory.api.br/api/oauth/tiktok/callb
 const AUTH_URL='https://www.tiktok.com/v2/auth/authorize/';
 const TOKEN_URL='https://open.tiktokapis.com/v2/oauth/token/';
 const CREATOR_URL='https://open.tiktokapis.com/v2/post/publish/creator_info/query/';
-const SCOPES='user.info.basic,video.publish';
+const USER_INFO_URL='https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name';
+const PRODUCTION_SCOPES='user.info.basic,video.publish';
+const SANDBOX_SCOPES='user.info.basic';
 const clean=(v,max=4000)=>String(v??'').trim().slice(0,max);
 const b64u=(buf)=>Buffer.from(buf).toString('base64url');
 const keyFrom=(env)=>{const raw=Buffer.from(clean(env.TIKTOK_TOKEN_ENCRYPTION_KEY,200),'base64');if(raw.length!==32)throw new Error('tiktok_encryption_key_invalid');return raw;};
@@ -27,7 +29,8 @@ export function createTikTokOAuthStart(env=process.env,{mode='production'}={}){
   const cfg=oauthClient(env,mode);if(!cfg.clientKey)throw new Error(cfg.mode==='sandbox'?'tiktok_sandbox_client_key_missing':'tiktok_client_key_missing');
   const state=b64u(randomBytes(24));
   const cookie=encryptTikTokSecret(JSON.stringify({state,iat:Date.now(),mode:cfg.mode}),env);
-  const url=new URL(AUTH_URL);url.searchParams.set('client_key',cfg.clientKey);url.searchParams.set('scope',SCOPES);
+  const scopes=cfg.mode==='sandbox'?SANDBOX_SCOPES:PRODUCTION_SCOPES;
+  const url=new URL(AUTH_URL);url.searchParams.set('client_key',cfg.clientKey);url.searchParams.set('scope',scopes);
   url.searchParams.set('response_type','code');url.searchParams.set('redirect_uri',TIKTOK_REDIRECT_URI);url.searchParams.set('state',state);
   return {url:url.toString(),cookie,mode:cfg.mode};
 }
@@ -45,8 +48,14 @@ export async function exchangeTikTokCode({code,env=process.env,fetchImpl=globalT
   const response=await fetchImpl(TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded','cache-control':'no-cache'},body});
   const token=await response.json().catch(()=>({}));if(!response.ok)throw new Error(`tiktok_token_http_${response.status}`);
   if(!clean(token.access_token)||!clean(token.refresh_token)||!clean(token.open_id))throw new Error('tiktok_token_invalid');
-  if(!String(token.scope||'').split(',').map(x=>x.trim()).includes('video.publish'))throw new Error('tiktok_video_publish_scope_missing');
+  if(cfg.mode==='production'&&!String(token.scope||'').split(',').map(x=>x.trim()).includes('video.publish'))throw new Error('tiktok_video_publish_scope_missing');
   return token;
+}
+export async function fetchTikTokBasicUser(accessToken,fetchImpl=globalThis.fetch){
+  const response=await fetchImpl(USER_INFO_URL,{headers:{authorization:`Bearer ${clean(accessToken)}`}});
+  const body=await response.json().catch(()=>({}));if(!response.ok||body?.error?.code!=='ok')throw new Error(`tiktok_user_info_http_${response.status}`);
+  const user=body?.data?.user||{};if(!clean(user.open_id))throw new Error('tiktok_user_open_id_missing');
+  return {openId:clean(user.open_id,300),displayName:clean(user.display_name,200)};
 }
 export async function fetchTikTokCreator(accessToken,fetchImpl=globalThis.fetch){
   const response=await fetchImpl(CREATOR_URL,{method:'POST',headers:{authorization:`Bearer ${clean(accessToken)}`,'content-type':'application/json; charset=UTF-8'}});

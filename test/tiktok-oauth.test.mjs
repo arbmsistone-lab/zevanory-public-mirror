@@ -5,7 +5,7 @@ import { createTikTokOAuthStart, exchangeTikTokCode, loadTikTokCredential, persi
 const env={TIKTOK_CLIENT_KEY:'client-key',TIKTOK_CLIENT_SECRET:'client-secret',TIKTOK_TOKEN_ENCRYPTION_KEY:Buffer.alloc(32,5).toString('base64')};
 const response=(status,body)=>({ok:status>=200&&status<300,status,json:async()=>body});
 
-test('TikTok OAuth start is state protected and requests only required scopes',()=>{
+test('TikTok production OAuth requests publishing scope and protects state',()=>{
   const start=createTikTokOAuthStart(env);const u=new URL(start.url);
   assert.equal(u.origin,'https://www.tiktok.com');assert.equal(u.pathname,'/v2/auth/authorize/');
   assert.equal(u.searchParams.get('redirect_uri'),TIKTOK_REDIRECT_URI);
@@ -15,18 +15,18 @@ test('TikTok OAuth start is state protected and requests only required scopes',(
   assert.throws(()=>readTikTokOAuthCookie(start.cookie,'wrong-state',env),/tiktok_oauth_state_invalid/);
 });
 
-test('TikTok authorization code exchange is server-side and requires video.publish',async()=>{
+test('TikTok production code exchange requires video.publish',async()=>{
   const calls=[];const token={access_token:'access',refresh_token:'refresh',open_id:'open-1',scope:'user.info.basic,video.publish',token_type:'Bearer',expires_in:86400};
   const out=await exchangeTikTokCode({code:'code-1',env,fetchImpl:async(url,opt)=>{calls.push({url,opt});return response(200,token);}});
   assert.equal(out.open_id,'open-1');assert.equal(calls[0].url,'https://open.tiktokapis.com/v2/oauth/token/');
   assert.match(String(calls[0].opt.body),/grant_type=authorization_code/);assert.equal(JSON.stringify(out).includes('client-secret'),false);
 });
+
 test('TikTok credentials are encrypted at rest and decrypted only server-side',async()=>{
   let stored;const sql={query:async(text,args)=>{
     if(text.startsWith('insert')){stored=args;return [{account_id:args[0],expires_at:new Date()}];}
     return [{account_id:'open-1',access_token_enc:stored[1],refresh_token_enc:stored[2],token_type:'Bearer',scope:'user.info.basic,video.publish',expires_at:new Date(Date.now()+3600000)}];
-  }};
-  await persistTikTokTokens(sql,{token:{access_token:'access-secret',refresh_token:'refresh-secret',open_id:'open-1',scope:'user.info.basic,video.publish',token_type:'Bearer',expires_in:3600},env});
+  }};  await persistTikTokTokens(sql,{token:{access_token:'access-secret',refresh_token:'refresh-secret',open_id:'open-1',scope:'user.info.basic,video.publish',token_type:'Bearer',expires_in:3600},env});
   assert.notEqual(stored[1],'access-secret');assert.notEqual(stored[2],'refresh-secret');
   const loaded=await loadTikTokCredential(sql,env);assert.equal(loaded.access_token,'access-secret');assert.equal(loaded.refresh_token,'refresh-secret');
 });
@@ -41,18 +41,21 @@ test('TikTok refresh rotates both tokens and persists the new pair',async()=>{
   assert.equal(out.access_token,'new-access');assert.equal(out.refresh_token,'new-refresh');
 });
 
-
-test('TikTok sandbox OAuth uses isolated client key and preserves sandbox mode in state cookie',()=>{
+test('TikTok sandbox OAuth is isolated and requests Login Kit scope only',()=>{
   const sandboxEnv={...env,TIKTOK_SANDBOX_CLIENT_KEY:'sandbox-key',TIKTOK_SANDBOX_CLIENT_SECRET:'sandbox-secret'};
   const start=createTikTokOAuthStart(sandboxEnv,{mode:'sandbox'});const u=new URL(start.url);
-  assert.equal(u.searchParams.get('client_key'),'sandbox-key');assert.equal(start.mode,'sandbox');
-  const parsed=readTikTokOAuthCookie(start.cookie,u.searchParams.get('state'),sandboxEnv);
-  assert.equal(parsed.mode,'sandbox');
+  assert.equal(u.searchParams.get('client_key'),'sandbox-key');assert.equal(u.searchParams.get('scope'),'user.info.basic');assert.equal(start.mode,'sandbox');
+  const parsed=readTikTokOAuthCookie(start.cookie,u.searchParams.get('state'),sandboxEnv);assert.equal(parsed.mode,'sandbox');
+});
+
+test('TikTok sandbox token exchange does not require video.publish',async()=>{
+  const sandboxEnv={...env,TIKTOK_SANDBOX_CLIENT_KEY:'sandbox-key',TIKTOK_SANDBOX_CLIENT_SECRET:'sandbox-secret'};
+  const token={access_token:'sandbox-access',refresh_token:'sandbox-refresh',open_id:'sandbox-open',scope:'user.info.basic',token_type:'Bearer',expires_in:86400};
+  const out=await exchangeTikTokCode({code:'code-1',env:sandboxEnv,mode:'sandbox',fetchImpl:async()=>response(200,token)});assert.equal(out.scope,'user.info.basic');
 });
 
 test('TikTok sandbox tokens persist under isolated provider and do not overwrite production row',async()=>{
   const queries=[];const sql={query:async(text,args)=>{queries.push({text,args});return [{account_id:'sandbox-open',expires_at:new Date()}];}};
-  await persistTikTokTokens(sql,{token:{access_token:'sandbox-access',refresh_token:'sandbox-refresh',open_id:'sandbox-open',scope:'user.info.basic,video.publish',token_type:'Bearer',expires_in:3600},env,mode:'sandbox'});
-  assert.match(queries[0].text,/values\('tiktok_sandbox'/);
-  assert.doesNotMatch(queries[0].text,/values\('tiktok',/);
+  await persistTikTokTokens(sql,{token:{access_token:'sandbox-access',refresh_token:'sandbox-refresh',open_id:'sandbox-open',scope:'user.info.basic',token_type:'Bearer',expires_in:3600},env,mode:'sandbox'});
+  assert.match(queries[0].text,/values\('tiktok_sandbox'/);assert.doesNotMatch(queries[0].text,/values\('tiktok',/);
 });
