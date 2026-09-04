@@ -35,6 +35,10 @@
       "destination": "/api/webhooks?provider=meta"
     },
     {
+      "source": "/api/webhooks/mercadolivre",
+      "destination": "/api/webhooks?provider=mercadolivre"
+    },
+    {
       "source": "/arbm-sist",
       "destination": "/public/arbm-sist.html"
     },

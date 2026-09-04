@@ -1,7 +1,8 @@
-import asaasHandler from '../src/http/webhookAsaas.mjs';
+﻿import asaasHandler from '../src/http/webhookAsaas.mjs';
 import mercadoPagoHandler from '../src/http/webhookMercadoPago.mjs';
 import resendHandler from '../src/http/webhookResend.mjs';
 import metaHandler from '../src/http/webhookMeta.mjs';
+import mercadoLivreHandler from '../src/http/webhookMercadoLivre.mjs';
 
 export const config={api:{bodyParser:false}};
 
@@ -19,7 +20,7 @@ const readRawBody=async(req)=>{
 
 export default async function handler(req,res){
   const provider=providerFrom(req);
-  if(!['asaas','mercadopago','resend','meta'].includes(provider)){
+  if(!['asaas','mercadopago','resend','meta','mercadolivre'].includes(provider)){
     res.setHeader('content-type','application/json; charset=utf-8');
     res.statusCode=400;
     return res.end(JSON.stringify({error:'webhook_provider_invalid',accepted:false}));
@@ -41,5 +42,7 @@ export default async function handler(req,res){
   if(provider==='asaas') return asaasHandler(req,res);
   if(provider==='mercadopago') return mercadoPagoHandler(req,res);
   if(provider==='meta') return metaHandler(req,res);
+  if(provider==='mercadolivre') return mercadoLivreHandler(req,res);
   return resendHandler(req,res);
 }
+
