@@ -1,13 +1,13 @@
-import { uploadYouTubeFromRemote } from './youtubeUpload.mjs';
+﻿import { uploadYouTubeFromRemote } from './youtubeUpload.mjs';
 import { publishTikTok, publishLinkedIn } from './socialPosting.mjs';
 import { salesGate } from './salesGate.mjs';
 import { loadMercadoLivreCredential, refreshMercadoLivreCredential } from './mercadoLivreOAuth.mjs';
 import { loadTikTokCredential, refreshTikTokCredential } from './tiktokOAuth.mjs';
-const jsonBody=async(response)=>{try{return await response.json();}catch{return {};}};
+import { requestProviderJson, providerAcceptanceMissing } from './providerDelivery.mjs';
 const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new Error(code);return v;};
 const ensureGlobalGates=(env,gateEvaluator=salesGate)=>{if(!gateEvaluator(env).enabled)throw new Error('commercial_gates_closed');};
 const ensureHttps=(value,code)=>{const v=required(value,code);let u;try{u=new URL(v);}catch{throw new Error(code);}if(u.protocol!=='https:')throw new Error(code);return v;};
-const requestJson=async(fetchImpl,url,options,success=[200])=>{const response=await fetchImpl(url,options);const body=await jsonBody(response);if(!success.includes(response.status)){const e=new Error(`provider_http_${response.status}`);e.status=response.status;e.body=body;throw e;}return body;};
+const requestJson=(fetchImpl,url,options,success=[200])=>requestProviderJson(fetchImpl,url,options,success,{timeoutMs:15000});
 
 export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetch,commercialGate=salesGate}={}){
   if(typeof fetchImpl!=='function')throw new Error('fetch_required');
@@ -20,7 +20,7 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       const to=required(event.payload?.contact_ref,'whatsapp_recipient_missing');
       const text=required(event.payload?.text,'whatsapp_text_missing');
       const body=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(phoneId)}/messages`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({messaging_product:'whatsapp',recipient_type:'individual',to,type:'text',text:{preview_url:false,body:text}})},[200]);
-      const messageId=String(body?.messages?.[0]?.id||'');if(!messageId)throw new Error('whatsapp_message_id_missing');
+      const messageId=String(body?.messages?.[0]?.id||'');if(!messageId)throw providerAcceptanceMissing('whatsapp_message_id_missing');
       return Object.freeze({provider:'meta_whatsapp',accepted:true,provider_message_id:messageId,confirmation:'webhook_required'});
     },
     'channel:email':async(event)=>{
@@ -28,14 +28,14 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       const from=required(env.RESEND_FROM_ADDRESS,'resend_from_missing');const to=required(event.payload?.contact_ref,'email_recipient_missing');
       const text=required(event.payload?.text,'email_text_missing');
       const body=await requestJson(fetchImpl,'https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json','idempotency-key':String(event.idempotency_key||event.event_id)},body:JSON.stringify({from,to:[to],subject:String(event.payload?.subject||'ZEVANORY').slice(0,240),text})},[200]);
-      const id=String(body?.id||'');if(!id)throw new Error('resend_email_id_missing');
+      const id=String(body?.id||'');if(!id)throw providerAcceptanceMissing('resend_email_id_missing');
       return Object.freeze({provider:'resend',accepted:true,provider_message_id:id,confirmation:'webhook_required'});
     },
     'channel:facebook':async(event)=>{
       ensureGlobalGates(env,commercialGate);const token=required(env.META_ACCESS_TOKEN,'meta_access_token_missing');
       const pageId=required(env.META_PAGE_ID,'meta_page_id_missing');const message=required(event.payload?.content,'facebook_content_missing');
       const body=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(pageId)}/feed`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({message})},[200]);
-      const id=String(body?.id||'');if(!id)throw new Error('facebook_post_id_missing');
+      const id=String(body?.id||'');if(!id)throw providerAcceptanceMissing('facebook_post_id_missing');
       return Object.freeze({provider:'meta_facebook',accepted:true,provider_post_id:id,confirmation:'provider_lookup_or_webhook_required'});
     },
     'channel:instagram':async(event)=>{
@@ -43,9 +43,9 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       const igId=required(env.INSTAGRAM_BUSINESS_ACCOUNT_ID,'instagram_business_account_id_missing');
       const imageUrl=ensureHttps(event.payload?.media_url,'instagram_media_url_required');const caption=String(event.payload?.content||'').slice(0,2200);
       const container=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(igId)}/media`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({image_url:imageUrl,caption})},[200]);
-      const creationId=String(container?.id||'');if(!creationId)throw new Error('instagram_container_id_missing');
+      const creationId=String(container?.id||'');if(!creationId)throw providerAcceptanceMissing('instagram_container_id_missing');
       const published=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(igId)}/media_publish`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({creation_id:creationId})},[200]);
-      const id=String(published?.id||'');if(!id)throw new Error('instagram_media_id_missing');
+      const id=String(published?.id||'');if(!id)throw providerAcceptanceMissing('instagram_media_id_missing');
       return Object.freeze({provider:'meta_instagram',accepted:true,provider_media_id:id,container_id:creationId,confirmation:'provider_lookup_required'});
     },
     'channel:youtube':async(event,{sql}={})=>{
@@ -67,7 +67,7 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       }
       const url=ensureHttps(env.AFFILIATE_WEBHOOK_URL,'affiliate_webhook_url_missing');const token=required(env.AFFILIATE_WEBHOOK_TOKEN,'affiliate_webhook_token_missing');
       const body=await requestJson(fetchImpl,url,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json','idempotency-key':String(event.idempotency_key||event.event_id)},body:JSON.stringify({provider,event_id:event.event_id,aggregate_id:event.aggregate_id,payload:event.payload||{}})},[200,201,202]);
-      const id=String(body?.id||body?.tracking_id||body?.event_id||'');if(!id)throw new Error('affiliate_provider_id_missing');
+      const id=String(body?.id||body?.tracking_id||body?.event_id||'');if(!id)throw providerAcceptanceMissing('affiliate_provider_id_missing');
       return Object.freeze({provider:`affiliate:${provider}`,accepted:true,provider_message_id:id,confirmation:'provider_lookup_or_webhook_required'});
     },
     'channel:nuvemshop':async(event)=>{
@@ -75,7 +75,7 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       const token=required(env.NUVEMSHOP_ACCESS_TOKEN,'nuvemshop_access_token_missing');const storeId=required(env.NUVEMSHOP_STORE_ID,'nuvemshop_store_id_missing');const appId=required(env.NUVEMSHOP_APP_ID,'nuvemshop_app_id_missing');
       const product=event.payload?.product;if(!product||typeof product!=='object'||Array.isArray(product))throw new Error('nuvemshop_product_missing');
       const body=await requestJson(fetchImpl,`https://api.nuvemshop.com/v1/${encodeURIComponent(storeId)}/products`,{method:'POST',headers:{authorization:`Bearer ${token}`,'user-agent':`ZEVANORY (${appId})`,'content-type':'application/json','idempotency-key':String(event.idempotency_key||event.event_id)},body:JSON.stringify(product)},[200,201]);
-      const id=String(body?.id||'');if(!id)throw new Error('nuvemshop_product_id_missing');
+      const id=String(body?.id||'');if(!id)throw providerAcceptanceMissing('nuvemshop_product_id_missing');
       return Object.freeze({provider:'nuvemshop',accepted:true,provider_product_id:id,confirmation:'provider_api_and_webhook'});
     },
     'channel:mercado_livre':async(event,{sql}={})=>{
@@ -84,7 +84,7 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       let credential=await loadMercadoLivreCredential(sql,env);
       if(new Date(credential.expires_at).getTime()<=Date.now()+120000) credential=await refreshMercadoLivreCredential(sql,credential,{env,fetchImpl});
       const body=await requestJson(fetchImpl,'https://api.mercadolibre.com/items',{method:'POST',headers:{authorization:`Bearer ${credential.access_token}`,'content-type':'application/json'},body:JSON.stringify(item)},[200,201]);
-      const id=String(body?.id||'');if(!id)throw new Error('mercadolivre_item_id_missing');
+      const id=String(body?.id||'');if(!id)throw providerAcceptanceMissing('mercadolivre_item_id_missing');
       return Object.freeze({provider:'mercado_livre',accepted:true,provider_item_id:id,seller_id:String(credential.account_id),confirmation:'provider_api_after_notification'});
     },
   });
