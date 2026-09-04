@@ -58,3 +58,8 @@ test('marketplace identities and webhook verification are mandatory for readines
   const m={MERCADOLIVRE_ACCESS_TOKEN:'t',MERCADOLIVRE_APP_ID:'a',MERCADOLIVRE_SELLER_ID:'s'};
   assert.equal(commercialDistributionReadiness(m).fronts.mercado_livre.operational_ready,false);
 });
+test('first-party affiliate readiness does not require an external webhook provider',()=>{
+  const env={AFFILIATE_PROVIDER:'zevanory-first-party',AFFILIATE_TRACKING_READY:'true',AFFILIATE_TERMS_REVIEWED:'true',AFFILIATE_TERMS_VERSION:'2026-09',AFFILIATE_ATTRIBUTION_WINDOW_DAYS:'30',AFFILIATE_COMMISSION_BPS:'1000',AFFILIATE_PAYOUT_DELAY_DAYS:'30',AFFILIATE_SELF_REFERRAL_POLICY:'blocked',AFFILIATE_REFUND_REVERSAL_READY:'true',AFFILIATE_CHARGEBACK_REVERSAL_READY:'true',AFFILIATE_IDEMPOTENCY_READY:'true',AFFILIATE_PROVIDER_CONFIRMATION_READY:'true',AFFILIATE_DISCLOSURE_URL:'https://zevanory.api.br/afiliados',AFFILIATE_PRIVACY_URL:'https://zevanory.api.br/privacidade'};
+  assert.equal(evaluateAffiliateProgramReadiness(env).ready,true);
+  assert.equal(commercialDistributionReadiness(env).fronts.affiliate.operational_ready,true);
+});
