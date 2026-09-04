@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { attachProviderAcceptance } from './providerConfirmation.mjs';
+import { classifyDeliveryFailure } from './providerDelivery.mjs';
 
 const digest=(value)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const metadata=(headers={})=>({run_id:headers?.run_id||null,trace_id:headers?.trace_id||null});
@@ -59,10 +60,13 @@ async function dispatchClaimedEvent(sql,event,adapters={}){
     return Object.freeze({ok:true,processed:true,event_id:event.event_id,status:'delivered',result,...meta});
   }catch(error){
     const attempts=Number(event.attempts)||1;const terminal=attempts>=20;const delay=nextRetryDelayMs(attempts);
+    const classification=classifyDeliveryFailure(error,event.destination);
+    const status=terminal||classification.status==='dead_letter'?'dead_letter':'retry';
+    const reason=String(classification.reason||'delivery_failed').slice(0,500);
     await sql.query(`update integration_outbox set status=$2,last_error=$3,
       available_at=case when $2='retry' then now()+($4::text||' milliseconds')::interval else available_at end where event_id=$1`,
-      [event.event_id,terminal?'dead_letter':'retry',String(error?.message||'delivery_failed').slice(0,500),delay]);
-    return Object.freeze({ok:false,processed:true,event_id:event.event_id,status:terminal?'dead_letter':'retry',retry_in_ms:terminal?null:delay,...meta});
+      [event.event_id,status,reason,delay]);
+    return Object.freeze({ok:false,processed:true,event_id:event.event_id,status,retry_in_ms:status==='retry'?delay:null,reason,...meta});
   }
 }
 
