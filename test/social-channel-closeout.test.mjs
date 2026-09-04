@@ -37,3 +37,10 @@ test('new commercial channels remain globally gated',async()=>{
   const a=buildOutboundAdapters({env:{TIKTOK_ACCESS_TOKEN:'t',TIKTOK_CONTENT_SOURCE_VERIFIED:'true'},fetchImpl:async()=>response(200,{})});
   await assert.rejects(()=>a['channel:tiktok']({payload:{user_consent:true,media_url:'https://cdn.example/video.mp4'}}),/commercial_gates_closed/);
 });
+
+test('first-party affiliate channel uses internal idempotent ledger without external webhook',async()=>{
+  const env={...base,AFFILIATE_PROVIDER:'zevanory-first-party'};
+  const a=buildOutboundAdapters({env,commercialGate:certifiedGate,fetchImpl:async()=>{throw new Error('external_fetch_forbidden');}});
+  const out=await a['channel:affiliate']({event_id:'e-first',idempotency_key:'aff-1',aggregate_id:'lead1',payload:{click_ref:'c1'}});
+  assert.equal(out.provider_message_id,'aff-1');assert.equal(out.confirmation,'first_party_ledger');
+});

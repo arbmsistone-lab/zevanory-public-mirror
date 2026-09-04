@@ -55,6 +55,10 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
     'channel:linkedin':async(event)=>{ ensureGlobalGates(env,commercialGate); return publishLinkedIn({event,env,fetchImpl}); },
     'channel:affiliate':async(event)=>{
       ensureGlobalGates(env,commercialGate);const provider=required(env.AFFILIATE_PROVIDER,'affiliate_provider_missing');
+      if(provider==='zevanory-first-party'){
+        const id=String(event.idempotency_key||event.event_id||'');if(!id)throw new Error('affiliate_event_id_missing');
+        return Object.freeze({provider:'affiliate:zevanory-first-party',accepted:true,provider_message_id:id,confirmation:'first_party_ledger'});
+      }
       const url=ensureHttps(env.AFFILIATE_WEBHOOK_URL,'affiliate_webhook_url_missing');const token=required(env.AFFILIATE_WEBHOOK_TOKEN,'affiliate_webhook_token_missing');
       const body=await requestJson(fetchImpl,url,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json','idempotency-key':String(event.idempotency_key||event.event_id)},body:JSON.stringify({provider,event_id:event.event_id,aggregate_id:event.aggregate_id,payload:event.payload||{}})},[200,201,202]);
       const id=String(body?.id||body?.tracking_id||body?.event_id||'');if(!id)throw new Error('affiliate_provider_id_missing');

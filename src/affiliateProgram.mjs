@@ -17,9 +17,10 @@ export const AFFILIATE_REVENUE_TRUTH='confirmed_commission_only';
 
 export function evaluateAffiliateProgramReadiness(env=process.env){
   const blockers=[];
+  const firstParty=String(env.AFFILIATE_PROVIDER||'').trim()==='zevanory-first-party';
   if(!present(env.AFFILIATE_PROVIDER)) blockers.push('affiliate_provider_missing');
-  if(!https(env.AFFILIATE_WEBHOOK_URL)) blockers.push('affiliate_webhook_url_invalid');
-  if(!present(env.AFFILIATE_WEBHOOK_TOKEN)) blockers.push('affiliate_webhook_token_missing');
+  if(!firstParty&&!https(env.AFFILIATE_WEBHOOK_URL)) blockers.push('affiliate_webhook_url_invalid');
+  if(!firstParty&&!present(env.AFFILIATE_WEBHOOK_TOKEN)) blockers.push('affiliate_webhook_token_missing');
   if(!yes(env.AFFILIATE_TRACKING_READY)) blockers.push('affiliate_tracking_unready');
   if(!yes(env.AFFILIATE_TERMS_REVIEWED)) blockers.push('affiliate_terms_unreviewed');
   if(!present(env.AFFILIATE_TERMS_VERSION)) blockers.push('affiliate_terms_version_missing');
