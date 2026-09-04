@@ -40,3 +40,19 @@ test('TikTok refresh rotates both tokens and persists the new pair',async()=>{
   const out=await refreshTikTokCredential(sql,initial,{env,fetchImpl:async()=>response(200,{access_token:'new-access',refresh_token:'new-refresh',open_id:'open-1',scope:'user.info.basic,video.publish',token_type:'Bearer',expires_in:86400})});
   assert.equal(out.access_token,'new-access');assert.equal(out.refresh_token,'new-refresh');
 });
+
+
+test('TikTok sandbox OAuth uses isolated client key and preserves sandbox mode in state cookie',()=>{
+  const sandboxEnv={...env,TIKTOK_SANDBOX_CLIENT_KEY:'sandbox-key',TIKTOK_SANDBOX_CLIENT_SECRET:'sandbox-secret'};
+  const start=createTikTokOAuthStart(sandboxEnv,{mode:'sandbox'});const u=new URL(start.url);
+  assert.equal(u.searchParams.get('client_key'),'sandbox-key');assert.equal(start.mode,'sandbox');
+  const parsed=readTikTokOAuthCookie(start.cookie,u.searchParams.get('state'),sandboxEnv);
+  assert.equal(parsed.mode,'sandbox');
+});
+
+test('TikTok sandbox tokens persist under isolated provider and do not overwrite production row',async()=>{
+  const queries=[];const sql={query:async(text,args)=>{queries.push({text,args});return [{account_id:'sandbox-open',expires_at:new Date()}];}};
+  await persistTikTokTokens(sql,{token:{access_token:'sandbox-access',refresh_token:'sandbox-refresh',open_id:'sandbox-open',scope:'user.info.basic,video.publish',token_type:'Bearer',expires_in:3600},env,mode:'sandbox'});
+  assert.match(queries[0].text,/values\('tiktok_sandbox'/);
+  assert.doesNotMatch(queries[0].text,/values\('tiktok',/);
+});
