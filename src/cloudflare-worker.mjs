@@ -11,6 +11,7 @@ import agentStatusHandler from '../api/agent-status.mjs';
 import checkoutHandler from '../api/checkout.mjs';
 import webhooksHandler from '../api/webhooks.mjs';
 import robotControlHandler from '../api/robot-control.mjs';
+import { handleArtifactIssue, handleArtifactDownload } from './cloudflareArtifactRoutes.mjs';
 
 const PORT = 8788;
 
@@ -83,6 +84,8 @@ function withSecurityHeaders(response) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === '/private/artifacts/issue') return handleArtifactIssue(request, env);
+    if (url.pathname === '/private/artifacts/download') return handleArtifactDownload(request, env);
     if (url.pathname.startsWith('/api/')) {
       return handleAsNodeRequest(PORT, request);
     }
