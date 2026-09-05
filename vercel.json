@@ -51,6 +51,22 @@
       "destination": "/api/webhooks?provider=tiktok_oauth"
     },
     {
+      "source": "/api/oauth/nuvemshop/callback",
+      "destination": "/api/webhooks?provider=nuvemshop_oauth"
+    },
+    {
+      "source": "/api/oauth/nuvemshop/start",
+      "destination": "/api/webhooks?provider=nuvemshop_oauth&action=start"
+    },
+    {
+      "source": "/api/oauth/linkedin/callback",
+      "destination": "/api/webhooks?provider=linkedin_oauth"
+    },
+    {
+      "source": "/api/oauth/linkedin/start",
+      "destination": "/api/webhooks?provider=linkedin_oauth&action=start"
+    },
+    {
       "source": "/api/webhooks/mercadolivre",
       "destination": "/api/webhooks?provider=mercadolivre"
     },

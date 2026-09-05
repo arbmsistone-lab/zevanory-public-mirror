@@ -4,6 +4,7 @@ import { COMMERCIAL_DISTRIBUTION_CANONICAL, REQUIRED_DISTRIBUTION_FRONTS, commer
 import { evaluateAffiliateProgramReadiness, AFFILIATE_COMMISSION_STATES, AFFILIATE_REVENUE_TRUTH } from '../src/affiliateProgram.mjs';
 import { buildOutboundAdapters } from '../src/outboundAdapters.mjs';
 import { encryptSecret } from '../src/mercadoLivreOAuth.mjs';
+import { encryptCommercialSecret } from '../src/commercialOAuthCrypto.mjs';
 
 const certifiedGate=()=>({enabled:true});
 const response=(status,body={})=>({status,json:async()=>body,headers:{get:()=>null}});
@@ -36,9 +37,10 @@ test('affiliate program requires professional policy, anti-fraud and provider tr
 });
 
 test('Nuvemshop outbound uses official v1 products API and remains globally gated',async()=>{
-  const calls=[];const env={NUVEMSHOP_ACCESS_TOKEN:'token',NUVEMSHOP_STORE_ID:'123',NUVEMSHOP_APP_ID:'app'};
+  const calls=[];const env={NUVEMSHOP_APP_ID:'app',COMMERCIAL_OAUTH_ENCRYPTION_KEY:Buffer.alloc(32,6).toString('base64')};
+  const sql={query:async()=>[{account_id:'123',access_token_enc:encryptCommercialSecret('token',env),scope:'write_products',expires_at:new Date(Date.now()+86400000)}]};
   const a=buildOutboundAdapters({env,commercialGate:certifiedGate,fetchImpl:async(url,opt)=>{calls.push({url,opt});return response(201,{id:99});}});
-  const out=await a['channel:nuvemshop']({event_id:'e1',idempotency_key:'i1',payload:{product:{name:'ARBM SIST'}}});
+  const out=await a['channel:nuvemshop']({event_id:'e1',idempotency_key:'i1',payload:{product:{name:'ARBM SIST'}}},{sql});
   assert.equal(out.provider_product_id,'99');assert.equal(calls[0].url,'https://api.nuvemshop.com/v1/123/products');assert.equal(calls[0].opt.headers.authorization,'Bearer token');assert.match(calls[0].opt.headers['user-agent'],/ZEVANORY/);
   const closed=buildOutboundAdapters({env,fetchImpl:async()=>response(201,{id:1})});
   await assert.rejects(()=>closed['channel:nuvemshop']({payload:{product:{name:'x'}}}),/commercial_gates_closed/);

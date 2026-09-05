@@ -8,10 +8,10 @@ export const CHANNELS = Object.freeze({
   facebook: Object.freeze({ provider:'meta-graph-api', env:['META_ACCESS_TOKEN','META_PAGE_ID','META_GRAPH_VERSION'], trueEnv:['META_FACEBOOK_IDENTITY_VERIFIED'], commercial:true, role:'proof_retargeting' }),
   tiktok: Object.freeze({ provider:'tiktok-content-posting-api', env:['TIKTOK_CLIENT_KEY','TIKTOK_CLIENT_SECRET','TIKTOK_TOKEN_ENCRYPTION_KEY','TIKTOK_EXPECTED_USERNAME'], trueEnv:['TIKTOK_CONTENT_SOURCE_VERIFIED','TIKTOK_IDENTITY_VERIFIED','TIKTOK_CLIENT_AUDITED'], commercial:true, role:'short_form_discovery' }),
   youtube: Object.freeze({ provider:'youtube-data-api', env:[], trueEnv:['YOUTUBE_IDENTITY_VERIFIED'], credentialSets:[['YOUTUBE_OAUTH_ACCESS_TOKEN'],['YOUTUBE_OAUTH_CLIENT_ID','YOUTUBE_OAUTH_CLIENT_SECRET','YOUTUBE_OAUTH_REFRESH_TOKEN']], commercial:true, role:'demo_authority' }),
-  linkedin: Object.freeze({ provider:'linkedin-posts-api', env:['LINKEDIN_ACCESS_TOKEN','LINKEDIN_AUTHOR_URN','LINKEDIN_VERSION'], trueEnv:['LINKEDIN_IDENTITY_VERIFIED'], commercial:true, role:'b2b_authority' }),
+  linkedin: Object.freeze({ provider:'linkedin-posts-api', env:['LINKEDIN_CLIENT_ID','LINKEDIN_CLIENT_SECRET','COMMERCIAL_OAUTH_ENCRYPTION_KEY','LINKEDIN_VERSION'], trueEnv:['LINKEDIN_IDENTITY_VERIFIED'], commercial:true, role:'b2b_authority' }),
   google: Object.freeze({ provider:'organic-search', env:[], commercial:false, role:'seo_discovery' }),
   affiliate: Object.freeze({ provider:'affiliate-program', env:['AFFILIATE_PROVIDER'], commercial:true, role:'partner_distribution' }),
-  nuvemshop: Object.freeze({ provider:'nuvemshop-api-v1', env:['NUVEMSHOP_ACCESS_TOKEN','NUVEMSHOP_STORE_ID','NUVEMSHOP_APP_ID'], trueEnv:['NUVEMSHOP_IDENTITY_VERIFIED','NUVEMSHOP_WEBHOOKS_VERIFIED'], commercial:true, role:'owned_store_distribution' }),
+  nuvemshop: Object.freeze({ provider:'nuvemshop-api-v1', env:['NUVEMSHOP_APP_ID','NUVEMSHOP_CLIENT_SECRET','COMMERCIAL_OAUTH_ENCRYPTION_KEY'], trueEnv:['NUVEMSHOP_IDENTITY_VERIFIED','NUVEMSHOP_WEBHOOKS_VERIFIED'], commercial:true, role:'owned_store_distribution' }),
   mercado_livre: Object.freeze({ provider:'mercado-livre-api', env:['MERCADOLIVRE_APP_ID','MERCADOLIVRE_CLIENT_SECRET','MERCADOLIVRE_TOKEN_ENCRYPTION_KEY'], trueEnv:['MERCADOLIVRE_IDENTITY_VERIFIED','MERCADOLIVRE_NOTIFICATIONS_VERIFIED','MERCADOLIVRE_APP_SEPARATION_VERIFIED'], commercial:true, role:'marketplace_distribution' }),
 });
 

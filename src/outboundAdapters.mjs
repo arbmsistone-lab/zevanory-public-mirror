@@ -1,8 +1,10 @@
-﻿import { uploadYouTubeFromRemote } from './youtubeUpload.mjs';
+import { uploadYouTubeFromRemote } from './youtubeUpload.mjs';
 import { publishTikTok, publishLinkedIn } from './socialPosting.mjs';
 import { salesGate } from './salesGate.mjs';
 import { loadMercadoLivreCredential, refreshMercadoLivreCredential } from './mercadoLivreOAuth.mjs';
 import { loadTikTokCredential, refreshTikTokCredential } from './tiktokOAuth.mjs';
+import { loadLinkedInCredential } from './linkedinOAuth.mjs';
+import { loadNuvemshopCredential } from './nuvemshopOAuth.mjs';
 import { requestProviderJson, providerAcceptanceMissing } from './providerDelivery.mjs';
 const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new Error(code);return v;};
 const ensureGlobalGates=(env,gateEvaluator=salesGate)=>{if(!gateEvaluator(env).enabled)throw new Error('commercial_gates_closed');};
@@ -58,7 +60,7 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       if(new Date(credential.expires_at).getTime()<=Date.now()+30*60*1000) credential=await refreshTikTokCredential(sql,credential,{env,fetchImpl});
       return publishTikTok({event,env,fetchImpl,accessToken:credential.access_token});
     },
-    'channel:linkedin':async(event)=>{ ensureGlobalGates(env,commercialGate); return publishLinkedIn({event,env,fetchImpl}); },
+    'channel:linkedin':async(event,{sql}={})=>{ ensureGlobalGates(env,commercialGate);if(!sql?.query)throw new Error('linkedin_sql_required');const credential=await loadLinkedInCredential(sql,env);return publishLinkedIn({event,env,fetchImpl,accessToken:credential.access_token,authorUrn:credential.author_urn}); },
     'channel:affiliate':async(event)=>{
       ensureGlobalGates(env,commercialGate);const provider=required(env.AFFILIATE_PROVIDER,'affiliate_provider_missing');
       if(provider==='zevanory-first-party'){
@@ -70,9 +72,9 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       const id=String(body?.id||body?.tracking_id||body?.event_id||'');if(!id)throw providerAcceptanceMissing('affiliate_provider_id_missing');
       return Object.freeze({provider:`affiliate:${provider}`,accepted:true,provider_message_id:id,confirmation:'provider_lookup_or_webhook_required'});
     },
-    'channel:nuvemshop':async(event)=>{
+    'channel:nuvemshop':async(event,{sql}={})=>{
       ensureGlobalGates(env,commercialGate);
-      const token=required(env.NUVEMSHOP_ACCESS_TOKEN,'nuvemshop_access_token_missing');const storeId=required(env.NUVEMSHOP_STORE_ID,'nuvemshop_store_id_missing');const appId=required(env.NUVEMSHOP_APP_ID,'nuvemshop_app_id_missing');
+      if(!sql?.query)throw new Error('nuvemshop_sql_required');const credential=await loadNuvemshopCredential(sql,env);const token=credential.access_token;const storeId=credential.store_id;const appId=required(env.NUVEMSHOP_APP_ID,'nuvemshop_app_id_missing');
       const product=event.payload?.product;if(!product||typeof product!=='object'||Array.isArray(product))throw new Error('nuvemshop_product_missing');
       const body=await requestJson(fetchImpl,`https://api.nuvemshop.com/v1/${encodeURIComponent(storeId)}/products`,{method:'POST',headers:{authorization:`Bearer ${token}`,'user-agent':`ZEVANORY (${appId})`,'content-type':'application/json','idempotency-key':String(event.idempotency_key||event.event_id)},body:JSON.stringify(product)},[200,201]);
       const id=String(body?.id||'');if(!id)throw providerAcceptanceMissing('nuvemshop_product_id_missing');

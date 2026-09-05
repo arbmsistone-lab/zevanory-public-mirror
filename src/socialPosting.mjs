@@ -22,9 +22,9 @@ export async function publishTikTok({event,env=process.env,fetchImpl=globalThis.
   return Object.freeze({provider:'tiktok',accepted:true,provider_post_id:publishId,privacy_level:privacy,confirmation:'provider_lookup_required'});
 }
 
-export async function publishLinkedIn({event,env=process.env,fetchImpl=globalThis.fetch}={}){
-  const token=required(env.LINKEDIN_ACCESS_TOKEN,'linkedin_access_token_missing');
-  const author=required(env.LINKEDIN_AUTHOR_URN,'linkedin_author_urn_missing');
+export async function publishLinkedIn({event,env=process.env,fetchImpl=globalThis.fetch,accessToken,authorUrn}={}){
+  const token=required(accessToken||env.LINKEDIN_ACCESS_TOKEN,'linkedin_access_token_missing');
+  const author=required(authorUrn||env.LINKEDIN_AUTHOR_URN,'linkedin_author_urn_missing');
   if(!/^urn:li:(organization|person):/.test(author))throw new Error('linkedin_author_urn_invalid');
   const version=required(env.LINKEDIN_VERSION,'linkedin_version_missing',16);if(!/^20\d{4}$/.test(version))throw new Error('linkedin_version_invalid');
   const commentary=required(event?.payload?.content,'linkedin_content_missing',3000);

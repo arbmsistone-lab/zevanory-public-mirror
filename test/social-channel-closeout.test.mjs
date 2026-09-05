@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {buildOutboundAdapters} from '../src/outboundAdapters.mjs';
 import {channelReadiness} from '../src/channelAdapters.mjs';
 import {encryptTikTokSecret} from '../src/tiktokOAuth.mjs';
+import {encryptCommercialSecret} from '../src/commercialOAuthCrypto.mjs';
 const base={SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'};
 const response=(status,body={},headers={})=>({status,json:async()=>body,headers:{get:k=>headers[String(k).toLowerCase()]||null}});
 const certifiedGate=()=>({enabled:true});
@@ -24,9 +25,10 @@ test('TikTok queries creator and forces SELF_ONLY for unaudited client',async()=
   assert.equal(out.provider_post_id,'pub-1');assert.equal(out.privacy_level,'SELF_ONLY');assert.match(calls[0].url,/creator_info\/query/);assert.match(calls[1].url,/video\/init/);
 });
 test('LinkedIn posts through official REST Posts API and requires provider id',async()=>{
-  const calls=[];const env={...base,LINKEDIN_ACCESS_TOKEN:'li',LINKEDIN_AUTHOR_URN:'urn:li:organization:123',LINKEDIN_VERSION:'202608'};
+  const calls=[];const env={...base,COMMERCIAL_OAUTH_ENCRYPTION_KEY:Buffer.alloc(32,5).toString('base64'),LINKEDIN_VERSION:'202608'};
+  const sql={query:async()=>[{account_id:'person123',access_token_enc:encryptCommercialSecret('li',env),scope:'w_member_social',expires_at:new Date(Date.now()+3600000)}]};
   const a=buildOutboundAdapters({env,commercialGate:certifiedGate,fetchImpl:async(url,opt)=>{calls.push({url,opt});return response(201,{}, {'x-restli-id':'urn:li:share:1'});}});
-  const out=await a['channel:linkedin']({payload:{content:'Atualização ZEVANORY'}});
+  const out=await a['channel:linkedin']({payload:{content:'Atualizacao ZEVANORY'}},{sql});
   assert.equal(out.provider_post_id,'urn:li:share:1');assert.equal(calls[0].url,'https://api.linkedin.com/rest/posts');assert.equal(calls[0].opt.headers['linkedin-version'],'202608');
 });
 
