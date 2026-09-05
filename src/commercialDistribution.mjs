@@ -1,37 +1,29 @@
 import { channelReadiness } from './channelAdapters.mjs';
 import { evaluateAffiliateProgramReadiness } from './affiliateProgram.mjs';
+import { assistedFallbackReadiness } from './assistedChannelFallbacks.mjs';
 
 const front=(category,role,truth,attribution,confirmation)=>Object.freeze({category,role,revenue_truth:truth,attribution,provider_confirmation:confirmation,global_gate_required:true,policy_complete:true});
 export const COMMERCIAL_DISTRIBUTION_CANONICAL=Object.freeze({
   zevanory:front('owned','conversion_hub','authenticated_payment','first_party_utm_session','first_party_checkout'),
-  whatsapp:front('messaging','conversation_support','authenticated_payment','lead_session_touchpoint','provider_webhook'),
-  email:front('messaging','crm_nurture','authenticated_payment','utm_and_lead_touchpoint','provider_webhook'),
-  instagram:front('social','proof_reach','authenticated_payment','utm_and_platform_touchpoint','provider_lookup'),
-  facebook:front('social','proof_retargeting','authenticated_payment','utm_and_platform_touchpoint','provider_lookup_or_webhook'),
-  tiktok:front('social','short_form_discovery','authenticated_payment','utm_and_platform_touchpoint','provider_status'),
-  youtube:front('social','demo_authority','authenticated_payment','utm_and_platform_touchpoint','provider_status'),
-  linkedin:front('social','b2b_authority','authenticated_payment','utm_and_platform_touchpoint','provider_id'),
-  google:front('search','seo_discovery','authenticated_payment','utm_and_first_party_session','first_party_checkout'),
+  whatsapp:front('messaging','conversation_support','authenticated_payment','lead_session_touchpoint','provider_webhook'), email:front('messaging','crm_nurture','authenticated_payment','utm_and_lead_touchpoint','provider_webhook'),
+  instagram:front('social','proof_reach','authenticated_payment','utm_and_platform_touchpoint','provider_lookup'), facebook:front('social','proof_retargeting','authenticated_payment','utm_and_platform_touchpoint','provider_lookup_or_webhook'),
+  tiktok:front('social','short_form_discovery','authenticated_payment','utm_and_platform_touchpoint','provider_status'), youtube:front('social','demo_authority','authenticated_payment','utm_and_platform_touchpoint','provider_status'),
+  linkedin:front('social','b2b_authority','authenticated_payment','utm_and_platform_touchpoint','provider_id'), google:front('search','seo_discovery','authenticated_payment','utm_and_first_party_session','first_party_checkout'),
   affiliate:front('partner','partner_distribution','confirmed_commission_only','partner_click_to_commission','provider_lookup_or_webhook'),
   nuvemshop:front('commerce','owned_store_distribution','authenticated_payment_or_store_order','provider_order_and_utm','provider_api_and_webhook'),
   mercado_livre:front('marketplace','marketplace_distribution','provider_confirmed_order','provider_order_resource','provider_api_after_notification'),
 });
-
 export const REQUIRED_DISTRIBUTION_FRONTS=Object.freeze(Object.keys(COMMERCIAL_DISTRIBUTION_CANONICAL));
 
 export function commercialDistributionReadiness(env=process.env){
-  const channels=channelReadiness(env);
-  const affiliate=evaluateAffiliateProgramReadiness(env);
+  const channels=channelReadiness(env), affiliate=evaluateAffiliateProgramReadiness(env);
   const fronts=Object.fromEntries(REQUIRED_DISTRIBUTION_FRONTS.map((key)=>{
-    const policy=COMMERCIAL_DISTRIBUTION_CANONICAL[key];
-    const state=channels[key]||{configured:false,implemented:false,missing:['channel_contract_missing']};
-    const blockers=[...state.missing];
-    if(key==='affiliate') blockers.push(...affiliate.blockers);
-    return [key,Object.freeze({...policy,implemented:state.implemented,configured:state.configured,operational_ready:state.configured&&(key!=='affiliate'||affiliate.ready),blockers:Object.freeze([...new Set(blockers)])})];
+    const policy=COMMERCIAL_DISTRIBUTION_CANONICAL[key], state=channels[key]||{configured:false,implemented:false,missing:['channel_contract_missing']};
+    const fallback=assistedFallbackReadiness(key,env), blockers=[...state.missing]; if(key==='affiliate')blockers.push(...affiliate.blockers);
+    const automationReady=state.configured&&(key!=='affiliate'||affiliate.ready), operationalReady=automationReady||fallback.ready;
+    return [key,Object.freeze({...policy,implemented:state.implemented,configured:state.configured,automation_ready:automationReady,operational_ready:operationalReady,operational_mode:automationReady?'provider_api':fallback.ready?fallback.mode:'blocked',assisted_fallback_ready:fallback.ready,blockers:Object.freeze(operationalReady?[]:[...new Set([...blockers,...fallback.blockers])])})];
   }));
-  const values=Object.values(fronts);
-  const technicalReady=values.every(x=>x.policy_complete&&x.implemented);
-  const operationalReady=values.every(x=>x.operational_ready);
+  const values=Object.values(fronts), technicalReady=values.every(x=>x.policy_complete&&x.implemented), operationalReady=values.every(x=>x.operational_ready);
   const blockers=Object.freeze(Object.entries(fronts).flatMap(([key,state])=>state.blockers.map(code=>`${key}:${code}`)));
-  return Object.freeze({version:'commercial-distribution-canonical-v1',technical_ready:technicalReady,operational_ready:operationalReady,total_fronts:values.length,configured_fronts:values.filter(x=>x.operational_ready).length,fronts:Object.freeze(fronts),blockers});
+  return Object.freeze({version:'commercial-distribution-canonical-v2',technical_ready:technicalReady,operational_ready:operationalReady,total_fronts:values.length,implemented_fronts:values.filter(x=>x.implemented).length,configured_fronts:values.filter(x=>x.operational_ready).length,automation_ready_fronts:values.filter(x=>x.automation_ready).length,fronts:Object.freeze(fronts),blockers});
 }
