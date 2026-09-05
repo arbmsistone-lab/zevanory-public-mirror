@@ -1,4 +1,4 @@
-import { evaluateActivationReadiness } from './activationReadiness.mjs';
+﻿import { evaluateActivationReadiness } from './activationReadiness.mjs';
 import { salesGate } from './salesGate.mjs';
 
 const requirement=(category,envKeys,inputClass='external')=>Object.freeze({category,env_keys:Object.freeze(envKeys),input_class:inputClass});
@@ -12,6 +12,8 @@ export const ACTIVATION_REQUIREMENTS=Object.freeze({
   service_delivery_mode_missing:requirement('commercial',['SERVICE_DELIVERY_MODE'],'decision'),
   arbm_sist_code_signing_not_ready:requirement('artifact',['ARBM_SIST_CODE_SIGNING_READY'],'external'),
   arbm_sist_public_release_not_approved:requirement('artifact',['ARBM_SIST_PUBLIC_RELEASE_APPROVED'],'decision'),
+  arbm_sist_private_pilot_delivery_not_approved:requirement('artifact',['ARBM_SIST_PRIVATE_PILOT_DELIVERY_APPROVED'],'decision'),
+  arbm_sist_secure_artifact_not_ready:requirement('artifact',['ARBM_SIST_SECURE_ARTIFACT_READY'],'external'),
   payment_provider_not_selected:requirement('payments',['PAYMENT_PROVIDER'],'decision'),
   payment_merchant_identity_unverified:requirement('payments',['PAYMENT_MERCHANT_IDENTITY_VERIFIED'],'external'),
   asaas_production_not_configured:requirement('payments',['ASAAS_ENV'],'configuration'),

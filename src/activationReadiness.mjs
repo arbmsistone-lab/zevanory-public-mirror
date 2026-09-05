@@ -19,8 +19,14 @@ export function evaluateActivationReadiness(env=process.env) {
   if(!yes(env.OFFER_SELECTION_APPROVED)) blockers.push('offer_selection_not_approved');
   if(!offerType) blockers.push('active_offer_type_invalid');
   if(offerType==='digital_product') {
-    if(!yes(env.ARBM_SIST_CODE_SIGNING_READY)) blockers.push('arbm_sist_code_signing_not_ready');
-    if(!yes(env.ARBM_SIST_PUBLIC_RELEASE_APPROVED)) blockers.push('arbm_sist_public_release_not_approved');
+    const publicDistributionReady=yes(env.ARBM_SIST_CODE_SIGNING_READY)&&yes(env.ARBM_SIST_PUBLIC_RELEASE_APPROVED);
+    const privatePilotReady=yes(env.ARBM_SIST_PRIVATE_PILOT_DELIVERY_APPROVED)&&yes(env.ARBM_SIST_SECURE_ARTIFACT_READY);
+    if(!publicDistributionReady&&!privatePilotReady){
+      if(!yes(env.ARBM_SIST_CODE_SIGNING_READY)) blockers.push('arbm_sist_code_signing_not_ready');
+      if(!yes(env.ARBM_SIST_PUBLIC_RELEASE_APPROVED)) blockers.push('arbm_sist_public_release_not_approved');
+      if(!yes(env.ARBM_SIST_PRIVATE_PILOT_DELIVERY_APPROVED)) blockers.push('arbm_sist_private_pilot_delivery_not_approved');
+      if(!yes(env.ARBM_SIST_SECURE_ARTIFACT_READY)) blockers.push('arbm_sist_secure_artifact_not_ready');
+    }
   }
   if(['service','digital_product'].includes(offerType)) {
     if(!['digital','remote'].includes(String(env.SERVICE_DELIVERY_MODE||'').toLowerCase())) blockers.push('service_delivery_mode_missing');

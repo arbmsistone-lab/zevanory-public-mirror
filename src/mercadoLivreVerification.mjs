@@ -1,4 +1,4 @@
-import { loadMercadoLivreCredential, fetchMercadoLivreMe } from './mercadoLivreOAuth.mjs';
+import { loadMercadoLivreCredential, refreshMercadoLivreCredential, fetchMercadoLivreMe } from './mercadoLivreOAuth.mjs';
 const clean=(v,max=500)=>String(v??'').trim().slice(0,max);
 const numeric=(v)=>/^\d+$/.test(clean(v,40));
 const EXPECTED_NOTIFICATION_URL='https://zevanory.api.br/api/webhooks/mercadolivre';
@@ -13,8 +13,15 @@ export function mercadoPagoClientIdFromAccessToken(token){
 }
 export async function verifyMercadoLivreLive(sql,{env=process.env,fetchImpl=globalThis.fetch}={}){
   const appId=clean(env.MERCADOLIVRE_APP_ID,40);if(!numeric(appId))throw new Error('mercadolivre_app_id_missing');
-  const credential=await loadMercadoLivreCredential(sql,env);
-  const me=await fetchMercadoLivreMe(credential.access_token,fetchImpl);
+  let credential=await loadMercadoLivreCredential(sql,env);
+  if(new Date(credential.expires_at).getTime()<=Date.now()+120000) credential=await refreshMercadoLivreCredential(sql,credential,{env,fetchImpl});
+  let me;
+  try{me=await fetchMercadoLivreMe(credential.access_token,fetchImpl);}
+  catch(error){
+    if(!String(error?.message||'').includes('mercadolivre_me_http_401')) throw error;
+    credential=await refreshMercadoLivreCredential(sql,credential,{env,fetchImpl});
+    me=await fetchMercadoLivreMe(credential.access_token,fetchImpl);
+  }
   const identityVerified=String(me.id)===String(credential.account_id);
   const appRes=await fetchImpl(`https://api.mercadolibre.com/applications/${encodeURIComponent(appId)}`,{headers:{authorization:`Bearer ${credential.access_token}`,accept:'application/json'}});
   const app=await appRes.json().catch(()=>({}));

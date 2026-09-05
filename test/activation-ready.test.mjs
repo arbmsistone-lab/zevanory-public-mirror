@@ -66,3 +66,20 @@ test('V10 artifact gates can pass while lifecycle certification still blocks glo
   const env={ACTIVE_OFFER_TYPE:'digital_product',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',PAYMENT_PROVIDER:'mercadopago',PAYMENT_MERCHANT_IDENTITY_VERIFIED:'true',MERCADOPAGO_ENV:'production',MERCADOPAGO_ACCESS_TOKEN:'secret',MERCADOPAGO_WEBHOOK_SECRET:'secret',ARBM_SIST_CODE_SIGNING_READY:'true',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'true',SALE_GLOBALLY_ENABLED:'false'};
   const plan=buildActivationPlan(env);assert.equal(plan.inputs_ready,true);assert.equal(plan.commercial_enabled,false);assert.equal(plan.phase,'lifecycle_certification_blocked');assert.equal(plan.lifecycle.approved,false);
 });
+
+test('private secure pilot can satisfy artifact readiness without public Microsoft distribution',()=>{
+  const env={ACTIVE_OFFER_TYPE:'digital_product',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',PAYMENT_PROVIDER:'mercadopago',PAYMENT_MERCHANT_IDENTITY_VERIFIED:'true',MERCADOPAGO_ENV:'production',MERCADOPAGO_ACCESS_TOKEN:'secret',MERCADOPAGO_WEBHOOK_SECRET:'secret',ARBM_SIST_CODE_SIGNING_READY:'false',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'false',ARBM_SIST_PRIVATE_PILOT_DELIVERY_APPROVED:'true',ARBM_SIST_SECURE_ARTIFACT_READY:'true',SALE_GLOBALLY_ENABLED:'false'};
+  const plan=buildActivationPlan(env);
+  assert.equal(plan.inputs_ready,true);
+  assert.equal(plan.commercial_enabled,false);
+  assert.equal(plan.phase,'lifecycle_certification_blocked');
+  assert.equal(plan.missing.some(x=>x.code==='arbm_sist_code_signing_not_ready'),false);
+  assert.equal(plan.missing.some(x=>x.code==='arbm_sist_public_release_not_approved'),false);
+});
+
+test('private pilot never bypasses secure artifact requirement',()=>{
+  const env={ACTIVE_OFFER_TYPE:'digital_product',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',PAYMENT_PROVIDER:'mercadopago',PAYMENT_MERCHANT_IDENTITY_VERIFIED:'true',MERCADOPAGO_ENV:'production',MERCADOPAGO_ACCESS_TOKEN:'secret',MERCADOPAGO_WEBHOOK_SECRET:'secret',ARBM_SIST_PRIVATE_PILOT_DELIVERY_APPROVED:'true'};
+  const plan=buildActivationPlan(env);
+  assert.equal(plan.inputs_ready,false);
+  assert.ok(plan.missing.some(x=>x.code==='arbm_sist_secure_artifact_not_ready'));
+});
