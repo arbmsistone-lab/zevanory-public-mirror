@@ -9,6 +9,7 @@ import { buildLifecycleEvidenceSnapshot } from '../src/lifecycleEvidenceSnapshot
 import { commercialDistributionReadiness } from '../src/commercialDistribution.mjs';
 import { certificationPilotStatus } from '../src/certificationPilot.mjs';
 import { verifyMercadoLivreLive } from '../src/mercadoLivreVerification.mjs';
+import { brandIdentityReadiness } from '../src/brandIdentityReadiness.mjs';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -51,6 +52,7 @@ export default async function handler(req, res) {
     offer: publicOffer(),
     channels: publicChannelStatus(),
     distribution: commercialDistributionReadiness(),
+    brand_identity: brandIdentityReadiness(),
     certification_pilot: certificationPilotStatus(),
     support_whatsapp_number: PROJECT.officialWhatsappE164,
     production_mode: gate.enabled ? 'commercial-gated' : 'pre-sale-blocked'
