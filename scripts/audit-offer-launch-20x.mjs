@@ -12,11 +12,11 @@ const html=await text('public/arbm-sist.html'); const js=await text('public/arbm
 add('01 canonical ARBM SIST offer',ARBM_SIST_OFFER.id==='OFFER-0001'&&ARBM_SIST_OFFER.product==='ARBM SIST');
 add('02 version and artifact pinned',ARBM_SIST_OFFER.version==='10.0.0'&&ARBM_SIST_OFFER.artifact_sha256==='70F233FA2AD84B66468CCB4789E3628A171ABA97A6C5C188C01A1EF56659B4E0'&&ARBM_SIST_OFFER.release_state==='technically_certified_unsigned_not_public');
 add('03 digital product no inventory',ARBM_SIST_OFFER.offer_type==='digital_product'&&ARBM_SIST_OFFER.inventory_required===false);
-add('04 pilot price explicit',ARBM_SIST_OFFER.price_brl===497&&ARBM_SIST_OFFER.price_status==='pilot_hypothesis_not_validated');
+add('04 canonical commercial model explicit',ARBM_SIST_OFFER.price_brl===1197&&ARBM_SIST_OFFER.price_status==='commercial_model_defined_release_gated'&&ARBM_SIST_OFFER.commercial_model?.zero?.price_brl===0&&ARBM_SIST_OFFER.commercial_model?.continuity?.price_brl===79.90&&ARBM_SIST_OFFER.commercial_model?.boost?.price_brl===19.90);
 add('05 offer landing exists',await exists('public/arbm-sist.html')&&await exists('public/arbm-sist.css')&&await exists('public/arbm-sist.js'));
 add('06 landing route published',vercel.includes('/arbm-sist')&&RELEASE.requiredRoutes.includes('/arbm-sist'));
 add('07 no invented results',html.includes('SEM PROMESSA DE RESULTADO INVENTADO'));
-add('08 tracking by source',js.includes("utm_source")&&js.includes("cta_whatsapp")&&js.includes("page_view"));
+add('08 tracking by source',js.includes('utm_source')&&js.includes('cta_whatsapp')&&js.includes('page_view'));
 add('09 prelaunch and active states',js.includes('PRÉ-LANÇAMENTO')&&js.includes('OFERTA ATIVA'));
 add('10 support separated from sales gate',js.includes('support_whatsapp_number')&&js.includes('config.whatsapp_enabled'));
 const blocked=digitalFulfillmentReadiness({order_status:'created',payment_confirmed:false});

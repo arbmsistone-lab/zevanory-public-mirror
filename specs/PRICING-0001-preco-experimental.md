@@ -1,27 +1,11 @@
-# PRICING-0001 - Preco experimental
+# PRICING-0001 — modelo comercial canônico ARBM SIST
 
-Status: HIPOTESE PARA TESTE, NAO PRECO DEFINITIVO.
-Evidence Gate: EG-0005.
+Status: DEFINIDO em 2026-09-05. Substitui integralmente a hipótese anterior de R$ 497.
 
-## Faixa autorizada para descoberta
-R$ 297 a R$ 797.
+- ARBM ZERO: R$ 0.
+- ARBM PRO: R$ 1.197, licença Stable permanente + 12 meses de Continuity & Intelligence.
+- Continuity & Intelligence: R$ 79,90/mês a partir do 13º mês.
+- ARBM BOOST: + R$ 19,90/mês, opcional, sujeito ao Zero Cost Firewall e teto interno de custo.
+- BYOK: orçamento adicional controlado pelo cliente.
 
-## Hipotese central inicial
-R$ 497 para a oferta minima de implementacao guiada.
-
-## Regra de validacao
-O preco so pode ser promovido a "validado" apos existir comportamento economico real: pagamento, sinal ou aceite comercial verificavel.
-
-## Dados obrigatorios por tentativa
-- preco apresentado
-- origem do lead
-- perfil do negocio
-- resposta ao preco
-- motivo de rejeicao, quando informado
-- pagamento/sinal confirmado
-- custo de aquisicao da tentativa
-
-## Guardrails
-Nao usar desconto ficticio, urgencia falsa ou promessa de aumento de vendas.
-Nao alterar simultaneamente preco, escopo e publico em um teste que pretenda medir efeito de preco.
-Nao chamar interesse verbal de disposicao comprovada a pagar.
+A venda pública permanece condicionada aos gates de produção. O modelo econômico estar definido não autoriza publicação, cobrança ou fallback pago automático.

@@ -1,4 +1,4 @@
-import { PROJECT } from '../src/config.mjs';
+import { PROJECT, ARBM_COMMERCIAL_MODEL } from '../src/config.mjs';
 import { salesGate, channelEnabled } from '../src/salesGate.mjs';
 import { buildActivationPlan } from '../src/activationPlan.mjs';
 import { RELEASE } from '../src/release.mjs';
@@ -47,6 +47,7 @@ export default async function handler(req, res) {
     offer_id: PROJECT.offerId,
     experiment_id: PROJECT.experimentId,
     experimental_price_brl: PROJECT.experimentalPriceBrl,
+    commercial_model: ARBM_COMMERCIAL_MODEL,
     offer: publicOffer(),
     channels: publicChannelStatus(),
     distribution: commercialDistributionReadiness(),
@@ -55,3 +56,4 @@ export default async function handler(req, res) {
     production_mode: gate.enabled ? 'commercial-gated' : 'pre-sale-blocked'
   }));
 }
+

@@ -28,7 +28,7 @@ test('checkout payload is fixed to approved offer and Sandbox response',()=>{
   const payload=buildAsaasCheckoutPayload(id,'https://zevanory-site.vercel.app');
   assert.deepEqual(payload.billingTypes,['PIX','CREDIT_CARD']);
   assert.deepEqual(payload.chargeTypes,['DETACHED']);
-  assert.equal(payload.items[0].value,497);
+  assert.equal(payload.items[0].value,1197);
   assert.equal(payload.externalReference,`ZEVANORY:EXP-0001:${id}`);
   const response={id,externalReference:payload.externalReference,link:`https://sandbox.asaas.com/checkoutSession/show/${id}`};
   assert.equal(validAsaasCheckoutResponse(response,payload.externalReference),true);
@@ -49,3 +49,4 @@ test('checkout replay policy is deterministic and fail-closed',()=>{
     assert.deepEqual(checkoutReplayDecision({...base,status},sid),{action:'blocked',status});
   }
 });
+

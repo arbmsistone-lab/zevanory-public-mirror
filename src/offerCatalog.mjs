@@ -1,3 +1,5 @@
+import { ARBM_COMMERCIAL_MODEL } from './config.mjs';
+
 export const ARBM_SIST_OFFER = Object.freeze({
   id: 'OFFER-0001',
   experiment_id: 'EXP-0001',
@@ -8,9 +10,10 @@ export const ARBM_SIST_OFFER = Object.freeze({
   fulfillment_channel: 'secure_download_after_payment',
   artifact_name: 'ARBM-SIST-v10.0.0.zip',
   artifact_sha256: '70F233FA2AD84B66468CCB4789E3628A171ABA97A6C5C188C01A1EF56659B4E0',
-  price_brl: 497,
-  price_status: 'pilot_hypothesis_not_validated',
-  license: 'single_customer_offer_terms',
+  price_brl: ARBM_COMMERCIAL_MODEL.pro.price_brl,
+  price_status: 'commercial_model_defined_release_gated',
+  commercial_model: ARBM_COMMERCIAL_MODEL,
+  license: 'pro_perpetual_stable_license_with_12_months_continuity',
   inventory_required: false,
   signed_executable_included: false,
   release_state: 'technically_certified_unsigned_not_public',
@@ -26,9 +29,9 @@ export const ARBM_SIST_OFFER = Object.freeze({
   code_signing_required: true,
   code_signing_gate: 'ARBM_SIST_CODE_SIGNING_READY',
   public_release_gate: 'ARBM_SIST_PUBLIC_RELEASE_APPROVED',
-  positioning: 'Agente de desenvolvimento com IA local-first, worktrees, diff, rollback, testes e cloud opcional.',
+  positioning: 'Agente de desenvolvimento com IA local-first, provider-independent, Zero Cost Firewall, rollback e cloud opcional.',
   primary_channels: Object.freeze(['youtube','instagram','whatsapp','zevanory']),
-  secondary_channels: Object.freeze(['tiktok','facebook','email','google','linkedin']),
+  secondary_channels: Object.freeze(['tiktok','facebook','email','google','linkedin','nuvemshop','mercado_livre']),
 });
 
 export function publicOffer(env=process.env) {

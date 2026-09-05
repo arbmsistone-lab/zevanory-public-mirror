@@ -140,7 +140,7 @@ unit('DEF-OFFER', 'specs/OFFER-0001-ia-vendas-whatsapp.md', [
 unit('DEF-PRICING', 'specs/PRICING-0001-preco-experimental.md', [
   op('pricing evidence approved', () => t('evidence/EG-0005-g1c-preco-disposicao-pagar.md').includes('Veredito: APROVADO')),
   fullTests,
-  op('price explicitly experimental', () => t('specs/PRICING-0001-preco-experimental.md').includes('HIPOTESE PARA TESTE, NAO PRECO DEFINITIVO')),
+  op('commercial model canonical and release gated', () => { const x=t('specs/PRICING-0001-preco-experimental.md'); return x.includes('ARBM PRO: R$ 1.197') && x.includes('ARBM ZERO: R$ 0') && x.includes('venda pública permanece condicionada aos gates de produção'); }),
 ]);
 
 unit('DEF-EXPERIMENT', 'experiments/EXP-0001-oferta-piloto.md', [

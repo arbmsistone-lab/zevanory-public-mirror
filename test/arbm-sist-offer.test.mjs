@@ -36,8 +36,8 @@ test('digital fulfillment is impossible before reconciled payment and secure art
 
 test('launch channels prioritize proof and owned conversion',()=>{
   assert.deepEqual([...ARBM_SIST_OFFER.primary_channels],['youtube','instagram','whatsapp','zevanory']);
-  assert.equal(ARBM_SIST_OFFER.price_brl,497);
-  assert.equal(ARBM_SIST_OFFER.price_status,'pilot_hypothesis_not_validated');
+  assert.equal(ARBM_SIST_OFFER.price_brl,1197);
+  assert.equal(ARBM_SIST_OFFER.price_status,'commercial_model_defined_release_gated');
 });
 
 test('V10 public offer exposes release gates without pretending commercial readiness',()=>{
@@ -45,3 +45,4 @@ test('V10 public offer exposes release gates without pretending commercial readi
   assert.equal(blocked.version,'10.0.0');assert.equal(blocked.code_signing_ready,false);assert.equal(blocked.public_release_approved,false);assert.equal(blocked.artifact_commercially_releasable,false);
   const ready=publicOffer({ARBM_SIST_CODE_SIGNING_READY:'true',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'true'});assert.equal(ready.artifact_commercially_releasable,true);
 });
+

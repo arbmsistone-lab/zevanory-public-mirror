@@ -1,17 +1,11 @@
 # ARBM SIST — Plano operacional de lançamento
 
-Status: PRE-LAUNCH READY / comercial e financeiro ainda fail-closed.
-Oferta: OFFER-0001 — ARBM SIST 10.0.0 — produto digital próprio.
-Preço piloto: R$ 497 (hipótese, não validada comercialmente).
+Oferta canônica: ARBM ZERO R$ 0 + ARBM PRO R$ 1.197.
+Continuity: R$ 79,90/mês a partir do 13º mês do PRO.
+BOOST: + R$ 19,90/mês opcional.
+BYOK disponível com orçamento do cliente.
 
-## Canais primários
-1. ZEVANORY: landing, tracking, oferta, checkout e entrega pós-pagamento.
-2. YouTube: demonstrações reais do produto em tarefas de engenharia.
-3. Instagram: Reels/carrosséis com prova visual e educação.
-4. WhatsApp: lista de lançamento, dúvidas, conversão e suporte.
+A publicação comercial segue fail-closed. Nenhum canal pode anunciar o antigo R$ 497. Checkout pago, quando autorizado pelos gates, referencia apenas ARBM PRO R$ 1.197.
 
-## Canais secundários
-TikTok, Facebook, e-mail, Google/SEO e LinkedIn entram após evidência dos canais primários.
-
-## Regra de escala
-Nenhuma mídia paga relevante antes de vendas orgânicas observadas. Primeiros marcos: 5 vendas para leitura inicial; 10 vendas para comparação de canais e criativos.
+Canais primários: ZEVANORY, YouTube, Instagram e WhatsApp.
+Canais secundários: TikTok, Facebook, e-mail, Google, LinkedIn, Nuvemshop e Mercado Livre.

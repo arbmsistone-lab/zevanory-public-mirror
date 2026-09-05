@@ -15,9 +15,9 @@ test('offer and experiment IDs match canonical runtime definitions', () => {
   assert.match(experiment, new RegExp(PROJECT.offerId));
 });
 
-test('experimental price matches canonical runtime and remains explicitly hypothetical', () => {
-  assert.match(pricing, new RegExp(`R\\$ ${PROJECT.experimentalPriceBrl}`));
-  assert.match(pricing, /HIPOTESE PARA TESTE, NAO PRECO DEFINITIVO/);
+test('commercial model matches canonical runtime and old pilot price is retired', () => {
+  assert.match(pricing, /R\$ 1\.197/);
+  assert.equal(PROJECT.experimentalPriceBrl, 1197);
   assert.doesNotMatch(landing, /R\$\s*497/);
 });
 

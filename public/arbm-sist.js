@@ -11,7 +11,7 @@ function money(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',c
   const cta=document.getElementById('cta'); const status=document.getElementById('status'); const state=document.getElementById('state');
   try{
     const r=await fetch('/api/config',{cache:'no-store'}); if(!r.ok) throw new Error('config'); const config=await r.json();
-    const offer=config.offer||{}; document.getElementById('price').textContent=money(offer.price_brl||config.experimental_price_brl);
+    const offer=config.offer||{}; const model=config.commercial_model||offer.commercial_model||{}; const pro=model.pro||{}; document.getElementById('price').textContent=money(pro.price_brl||offer.price_brl||config.experimental_price_brl);
     document.getElementById('hash').textContent=`SHA-256: ${offer.artifact_sha256||'indisponível'}`; try{await track('page_view')}catch{}
     const number=config.whatsapp_enabled?config.whatsapp_number:config.support_whatsapp_number;
     if(!number){cta.textContent='Contato temporariamente indisponível';status.textContent='Nenhum canal de contato público validado.';return;}
@@ -23,7 +23,7 @@ function money(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',c
     }
     cta.onclick=async()=>{
       cta.disabled=true; try{await track('cta_whatsapp')}catch{}
-      const intent=config.commercial_enabled?'Quero comprar o ARBM SIST 10.0.0.':'Quero entrar na lista de lançamento do ARBM SIST 10.0.0.';
+      const intent=config.commercial_enabled?'Quero comprar o ARBM PRO e conhecer ZERO, Continuity, BOOST e BYOK.':'Quero entrar na lista de lançamento do ARBM SIST e conhecer ZERO, PRO, Continuity, BOOST e BYOK.';
       location.href=`https://wa.me/${number}?text=${encodeURIComponent(intent+' Origem: '+source)}`;
     };
   }catch{cta.textContent='Validação indisponível';status.textContent='Ação bloqueada porque a configuração segura não pôde ser validada.';}

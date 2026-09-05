@@ -2,10 +2,10 @@
 
 Status: PRONTO TECNICAMENTE / PRE-LANCAMENTO.
 Produto: ARBM SIST 10.0.0 - produto digital proprio, sem estoque.
-Preco piloto: R$ 497 - hipotese comercial, ainda nao validada.
+Oferta paga de certificacao: ARBM PRO por R$ 1.197. O ARBM ZERO permanece R$ 0 e nao usa checkout pago.
 
 ## Hipotese
-Desenvolvedores, freelancers, agencias e pequenos times podem demonstrar disposicao a pagar por um agente de desenvolvimento local-first com worktrees, diff, rollback, testes, seguranca e cloud opcional.
+Desenvolvedores, freelancers, agencias e pequenos times podem demonstrar disposicao a pagar pelo ARBM PRO, preservando uma rota ARBM ZERO real e gratuita.
 
 ## Canais primarios
 ZEVANORY -> YouTube -> Instagram -> WhatsApp.

@@ -177,3 +177,7 @@ A certificacao inicial e deliberadamente 0/39: codigo existente nao recebe nota 
 Customer Lifecycle Engine, Revenue Intelligence e Attribution Engine passam a existir como camadas estruturais; migration 012 adiciona persistencia de lifecycle e atribuicao sem novos campos diretos de PII.
 Metricas que dependem de comportamento comercial real permanecem baseline-gated e nunca podem ser inventadas para completar nota.
 Enquanto qualquer dimensao estiver abaixo de 10, o estado obrigatorio e NO-GO e os kill-switches permanecem fechados.
+
+## 2026-09-05 — ARBM SIST modelo comercial canônico
+O modelo anterior de R$ 497 foi superado. Novo modelo: ZERO R$ 0; PRO R$ 1.197 com licença Stable permanente + 12 meses Continuity; Continuity R$ 79,90/mês a partir do 13º mês; BOOST +R$ 19,90/mês opcional; BYOK; V10 Sovereign Fallback; Zero Cost Firewall e Provider Independence. Nenhuma venda pública é aberta por esta decisão; gates continuam fail-closed.
+

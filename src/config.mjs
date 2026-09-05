@@ -1,8 +1,19 @@
+export const ARBM_COMMERCIAL_MODEL = Object.freeze({
+  zero: Object.freeze({ id:'ARBM_ZERO', price_brl:0, billing:'free', label:'ARBM ZERO', includes:'free_engine' }),
+  pro: Object.freeze({ id:'ARBM_PRO', price_brl:1197, billing:'perpetual_license', label:'ARBM PRO', continuity_included_months:12 }),
+  continuity: Object.freeze({ id:'ARBM_CONTINUITY', price_brl:79.90, billing:'monthly_from_month_13', label:'Continuity & Intelligence' }),
+  boost: Object.freeze({ id:'ARBM_BOOST', price_brl:19.90, billing:'monthly_optional', label:'ARBM BOOST', optional:true }),
+  byok: Object.freeze({ id:'BYOK', customer_managed_budget:true, optional:true }),
+  zero_cost_firewall:true,
+  provider_independence:true,
+  sovereign_fallback:'V10',
+});
+
 export const PROJECT = Object.freeze({
   name: "ZEVANORY",
   offerId: "OFFER-0001",
   experimentId: "EXP-0001",
-  experimentalPriceBrl: 497,
+  experimentalPriceBrl: ARBM_COMMERCIAL_MODEL.pro.price_brl,
   offerName: "ARBM SIST",
   offerVersion: "10.0.0",
   offerType: "digital_product",

@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -52,7 +52,7 @@ test('runtime config mirrors canonical fail-closed production semantics', async 
   assert.equal(body.whatsapp_number, null);
   assert.equal(body.offer_id, 'OFFER-0001');
   assert.equal(body.experiment_id, 'EXP-0001');
-  assert.equal(body.experimental_price_brl, 497);
+  assert.equal(body.experimental_price_brl, 1197);
   assert.ok(Array.isArray(body.commercial_blockers));
 });
 
@@ -91,4 +91,5 @@ test('landing and API responses include basic defensive headers', async () => {
   assert.equal(api.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(api.headers.get('cache-control'), 'no-store');
 });
+
 
