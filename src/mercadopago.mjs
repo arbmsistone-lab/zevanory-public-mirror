@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { PROJECT, isUuid } from './config.mjs';
 import { externalReferenceForOrder, safePublicBaseUrl } from './order.mjs';
+import { resolveCheckoutOffer } from './offerCatalog.mjs';
 
 export const MERCADOPAGO_API_BASE='https://api.mercadopago.com';
 
@@ -9,18 +10,18 @@ const safeText=(value,min=1,max=160)=>{
   return text.length>=min&&text.length<=max&&!/[\u0000-\u001f\u007f]/.test(text)?text:'';
 };
 
-export function buildMercadoPagoPreference(orderId,publicBaseUrl){
+export function buildMercadoPagoPreference(orderId,publicBaseUrl,offer=resolveCheckoutOffer(PROJECT.offerId)){
   const externalReference=externalReferenceForOrder(orderId);
   const base=safePublicBaseUrl(publicBaseUrl);
-  if(!externalReference||!base||!isUuid(orderId)) return null;
+  if(!externalReference||!base||!isUuid(orderId)||!offer) return null;
   return Object.freeze({
-    items:[{id:PROJECT.offerId,title:`${PROJECT.offerName} ${PROJECT.offerVersion}`,description:'Produto digital ZEVANORY',quantity:1,currency_id:'BRL',unit_price:PROJECT.experimentalPriceBrl}],
+    items:[{id:offer.id,title:`${offer.product} ${offer.version}`,description:'Produto digital ZEVANORY',quantity:1,currency_id:'BRL',unit_price:offer.price_brl}],
     back_urls:{success:`${base}/piloto?checkout=success`,pending:`${base}/piloto?checkout=pending`,failure:`${base}/piloto?checkout=failure`},
     auto_return:'approved',
     external_reference:externalReference,
     notification_url:`${base}/api/webhooks/mercadopago`,
     statement_descriptor:'ZEVANORY',
-    metadata:{zevanory_order_id:String(orderId).toLowerCase(),offer_id:PROJECT.offerId},
+    metadata:{zevanory_order_id:String(orderId).toLowerCase(),offer_id:offer.id},
   });
 }
 
@@ -66,7 +67,7 @@ export function verifyMercadoPagoSignature({signature,requestId,dataId,secret,no
 export function normalizeMercadoPagoFinancialEvent(payment,order){
   if(!payment||!order||String(payment.external_reference||'')!==String(order.external_reference||'')) return null;
   const amount=Math.round(Number(payment.transaction_amount)*100); const expected=Math.round(Number(order.amount)*100);
-  if(!Number.isFinite(amount)||amount!==expected||expected!==Math.round(PROJECT.experimentalPriceBrl*100)) return null;
+  if(!Number.isFinite(amount)||amount!==expected||expected<=0) return null;
   const status=String(payment.status||'').toLowerCase();
   if(status==='approved') return Object.freeze({normalized:'payment_confirmed',refundedTotal:null});
   const refunded=Math.round(Number(payment.transaction_amount_refunded||0)*100);

@@ -2,7 +2,7 @@ import { PROJECT, ARBM_COMMERCIAL_MODEL } from '../src/config.mjs';
 import { salesGate, channelEnabled } from '../src/salesGate.mjs';
 import { buildActivationPlan } from '../src/activationPlan.mjs';
 import { RELEASE } from '../src/release.mjs';
-import { publicOffer } from '../src/offerCatalog.mjs';
+import { publicOffer, publicProductCatalog } from '../src/offerCatalog.mjs';
 import { publicChannelStatus } from '../src/publicChannelStatus.mjs';
 import { neon } from '@neondatabase/serverless';
 import { buildLifecycleEvidenceSnapshot } from '../src/lifecycleEvidenceSnapshot.mjs';
@@ -50,6 +50,7 @@ export default async function handler(req, res) {
     experimental_price_brl: PROJECT.experimentalPriceBrl,
     commercial_model: ARBM_COMMERCIAL_MODEL,
     offer: publicOffer(),
+    products: publicProductCatalog(),
     channels: publicChannelStatus(),
     distribution: commercialDistributionReadiness(),
     brand_identity: brandIdentityReadiness(),
