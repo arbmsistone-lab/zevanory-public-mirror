@@ -26,7 +26,7 @@ add('12 action queue migration',migration.includes('CREATE TABLE IF NOT EXISTS s
 add('13 economics snapshot migration',migration.includes('CREATE TABLE IF NOT EXISTS unit_economics_snapshots'));
 add('14 migration ledger',migration.includes("'006_sales_machine'"));
 add('15 schema requires CRM tables',schema.includes("'sales_leads'")&&schema.includes("'sales_actions'")&&schema.includes("'unit_economics_snapshots'"));
-add('16 status exposes machine readiness',status.includes("crm:'ready'")&&status.includes("outbound_execution:'blocked'"));
+add('16 status exposes machine readiness',status.includes("crm:'ready'")&&status.includes("outbound_execution:salesLive?'enabled_guarded':'blocked'"));
 add('17 migration apply guarded',await exists('scripts/apply-migration-006.mjs')&&(await text('scripts/apply-migration-006.mjs')).includes('MIGRATION_APPLY_ALLOWED'));
 add('18 sales machine tests',await exists('test/sales-machine.test.mjs'));
 add('19 commercial kill switches off',!env.includes('SALE_GLOBALLY_ENABLED=true')&&!env.includes('CHECKOUT_ENABLED=true')&&!env.includes('WHATSAPP_SALES_ENABLED=true'));
