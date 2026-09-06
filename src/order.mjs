@@ -1,14 +1,18 @@
 import { PROJECT, isUuid } from './config.mjs';
+import { resolveCheckoutOffer } from './offerCatalog.mjs';
 
 export function normalizeCheckoutRequest(body) {
   if (!body || typeof body !== 'object') return null;
   if (!isUuid(body.request_id) || !isUuid(body.session_id)) return null;
-  return Object.freeze({requestId:String(body.request_id).toLowerCase(),sessionId:String(body.session_id).toLowerCase()});
+  const offer=resolveCheckoutOffer(body.offer_id||body.sku||PROJECT.offerId);
+  if(!offer) return null;
+  return Object.freeze({requestId:String(body.request_id).toLowerCase(),sessionId:String(body.session_id).toLowerCase(),offer});
 }
 
-export function checkoutReplayDecision(order, sessionId) {
+export function checkoutReplayDecision(order, sessionId, offerId='') {
   if (!order || typeof order !== 'object') return Object.freeze({ action:'lookup_failed' });
   if (String(order.session_id||'').toLowerCase() !== String(sessionId||'').toLowerCase()) return Object.freeze({ action:'conflict' });
+  if (offerId && String(order.offer_id||'').toUpperCase() !== String(offerId).toUpperCase()) return Object.freeze({ action:'offer_conflict' });
   const status=String(order.status||'');
   if (status==='checkout_ready' && order.checkout_url) return Object.freeze({ action:'reuse', checkoutUrl:String(order.checkout_url) });
   if (status==='created') return Object.freeze({ action:'create' });
@@ -28,10 +32,11 @@ export function safePublicBaseUrl(value) {
   } catch { return ''; }
 }
 
-export function buildAsaasCheckoutPayload(orderId, publicBaseUrl) {
+export function buildAsaasCheckoutPayload(orderId, publicBaseUrl, offer=resolveCheckoutOffer(PROJECT.offerId)) {
   const externalReference=externalReferenceForOrder(orderId);
   const base=safePublicBaseUrl(publicBaseUrl);
-  if (!externalReference || !base) return null;  return Object.freeze({
+  if (!externalReference || !base || !offer) return null;
+  return Object.freeze({
     billingTypes:['PIX','CREDIT_CARD'],
     chargeTypes:['DETACHED'],
     minutesToExpire:60,
@@ -42,10 +47,10 @@ export function buildAsaasCheckoutPayload(orderId, publicBaseUrl) {
       expiredUrl:`${base}/piloto?checkout=expired`,
     },
     items:[{
-      name:'Piloto IA aplicada a Vendas e Atendimento no WhatsApp',
-      description:PROJECT.offerId,
+      name:`${offer.product} ${offer.version}`,
+      description:offer.id,
       quantity:1,
-      value:PROJECT.experimentalPriceBrl,
+      value:offer.price_brl,
     }],
   });
 }

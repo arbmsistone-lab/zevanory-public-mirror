@@ -61,18 +61,19 @@ export default async function handler(req,res) {  res.setHeader('content-type','
       VALUES ($1,$2,$3,$4,$5,$6,'BRL','asaas',$7,'created',$8,$9)
       ON CONFLICT (request_id) DO NOTHING
       RETURNING order_id
-    `,[orderId,input.requestId,input.sessionId,PROJECT.experimentId,PROJECT.offerId,PROJECT.experimentalPriceBrl,externalReference,Boolean(pilot?.authorized),pilot?.invite_id||null]);
+    `,[orderId,input.requestId,input.sessionId,PROJECT.experimentId,input.offer.id,input.offer.price_brl,externalReference,Boolean(pilot?.authorized),pilot?.invite_id||null]);
     let order;
     if(inserted.length) {
       order={order_id:orderId,external_reference:externalReference,status:'created'};
     } else {      const existing=await sql.query(`
-        SELECT order_id,session_id,external_reference,status,checkout_url
+        SELECT order_id,session_id,offer_id,external_reference,status,checkout_url
         FROM orders WHERE request_id=$1
       `,[input.requestId]);
       if(existing.length!==1) return json(res,503,{error:'order_lookup_failed'});
       order=existing[0];
-      const replay=checkoutReplayDecision(order,input.sessionId);
+      const replay=checkoutReplayDecision(order,input.sessionId,input.offer.id);
       if(replay.action==='conflict') return json(res,409,{error:'request_id_conflict'});
+      if(replay.action==='offer_conflict') return json(res,409,{error:'request_id_offer_conflict'});
       if(replay.action==='reuse') return json(res,200,{accepted:true,duplicate:true,order_id:order.order_id,checkout_url:replay.checkoutUrl});
       if(replay.action==='in_progress') return json(res,409,{error:'checkout_in_progress'});
       if(replay.action!=='create') return json(res,409,{error:'checkout_not_retryable',status:replay.status||order.status});
@@ -83,7 +84,7 @@ export default async function handler(req,res) {  res.setHeader('content-type','
       RETURNING order_id,external_reference
     `,[order.order_id]);
     if(claimed.length!==1) return json(res,409,{error:'checkout_in_progress'});
-    const payload=buildAsaasCheckoutPayload(order.order_id,publicBase);
+    const payload=buildAsaasCheckoutPayload(order.order_id,publicBase,input.offer);
     if(!payload) return json(res,503,{error:'checkout_payload_unavailable'});
     let checkout;
     try {

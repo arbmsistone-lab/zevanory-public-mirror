@@ -33,10 +33,30 @@ export const ARBM_SIST_OFFER = Object.freeze({
   primary_channels: Object.freeze(['youtube','instagram','whatsapp','zevanory']),
   secondary_channels: Object.freeze(['tiktok','facebook','email','google','linkedin','nuvemshop','mercado_livre']),
 });
+export const ZEVANORY_PRODUCTS = Object.freeze([
+  Object.freeze({sku:'ZEV-IA-011',product:'ZEVANORY IA na Prática',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_IA_na_Pratica_v1.1.zip',artifact_sha256:'afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae',table_price_brl:197,pilot_price_brl:147,price_status:'pilot_hypothesis_not_validated',primary:false,status:'ready_for_pilot_not_published'}),
+  Object.freeze({sku:'ZEV-VEN-011',product:'ZEVANORY Vendas na Prática',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_Vendas_na_Pratica_v1.1.zip',artifact_sha256:'97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070',table_price_brl:197,pilot_price_brl:147,price_status:'pilot_hypothesis_not_validated',primary:false,status:'ready_for_pilot_not_published'}),
+  Object.freeze({sku:'ZEV-CMB-011',product:'ZEVANORY Combo IA + Vendas',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_Combo_IA_e_Vendas_v1.1.zip',artifact_sha256:'99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea',table_price_brl:297,pilot_price_brl:247,price_status:'pilot_hypothesis_not_validated',primary:true,status:'primary_offer_ready_for_pilot_not_published'}),
+]);
+
+export function getZevanoryProduct(sku) {
+  return ZEVANORY_PRODUCTS.find(item=>item.sku===String(sku||'').trim().toUpperCase())||null;
+}
+
+export function publicProductCatalog() {
+  return Object.freeze(ZEVANORY_PRODUCTS.map(({artifact_sha256,...item})=>Object.freeze({...item,artifact_sha256})));
+}
 
 export function publicOffer(env=process.env) {
   const {artifact_sha256,...safe}=ARBM_SIST_OFFER;
   const codeSigningReady=String(env.ARBM_SIST_CODE_SIGNING_READY||'').toLowerCase()==='true';
   const publicReleaseApproved=String(env.ARBM_SIST_PUBLIC_RELEASE_APPROVED||'').toLowerCase()==='true';
   return Object.freeze({...safe,artifact_sha256,code_signing_ready:codeSigningReady,public_release_approved:publicReleaseApproved,artifact_commercially_releasable:codeSigningReady&&publicReleaseApproved});
+}
+export function resolveCheckoutOffer(id) {
+  const key=String(id||'').trim().toUpperCase();
+  if(!key||key===ARBM_SIST_OFFER.id) return Object.freeze({id:ARBM_SIST_OFFER.id,product:ARBM_SIST_OFFER.product,version:ARBM_SIST_OFFER.version,price_brl:ARBM_SIST_OFFER.price_brl,artifact_name:ARBM_SIST_OFFER.artifact_name,artifact_sha256:ARBM_SIST_OFFER.artifact_sha256});
+  const product=getZevanoryProduct(key);
+  if(!product) return null;
+  return Object.freeze({id:product.sku,product:product.product,version:product.version,price_brl:product.pilot_price_brl,artifact_name:product.artifact_name,artifact_sha256:product.artifact_sha256});
 }
