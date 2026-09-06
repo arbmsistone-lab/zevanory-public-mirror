@@ -1,4 +1,4 @@
-# ZEVANORY - Cadastro de contas comerciais
+﻿# ZEVANORY - Cadastro de contas comerciais
 
 Status: identidade oficial definida para cadastros externos.
 
@@ -7,8 +7,8 @@ Status: identidade oficial definida para cadastros externos.
 - WhatsApp oficial: +55 88 9234-0423
 - WhatsApp E.164: 558892340423
 - Site institucional: https://zevanory.api.br
-- Handle preferencial: @zevanory
-- Instagram oficial: https://instagram.com/zevanory
+- Handle preferencial quando disponível: @zevanory`r`n- Instagram atualmente confirmado: @zevanory_`r`n- TikTok atualmente registrado: @zevanory3
+- Instagram oficial: https://instagram.com/zevanory_
 - YouTube oficial: https://youtube.com/@zevanory
 
 Contas-alvo: Meta Business, Facebook, Instagram, WhatsApp Business, TikTok Business, YouTube, LinkedIn e Metricool.
