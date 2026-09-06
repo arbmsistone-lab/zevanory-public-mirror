@@ -2,9 +2,11 @@ const present=(v)=>Boolean(String(v||'').trim());
 
 export function evaluateCommercialCompliance(input={}) {
   const blockers=[];
-  if(!present(input.supplier_legal_name)) blockers.push('supplier_legal_name_missing');
-  if(!present(input.supplier_tax_id)) blockers.push('supplier_tax_id_missing');
-  if(!present(input.supplier_address)) blockers.push('supplier_address_missing');
+  if(input.supplier_identity_verified!==true){
+    if(!present(input.supplier_legal_name)) blockers.push('supplier_legal_name_missing');
+    if(!present(input.supplier_tax_id)) blockers.push('supplier_tax_id_missing');
+    if(!present(input.supplier_address)) blockers.push('supplier_address_missing');
+  }
   if(!present(input.support_channel)) blockers.push('support_channel_missing');
   if(input.terms_published!==true) blockers.push('terms_unpublished');
   if(input.privacy_published!==true) blockers.push('privacy_unpublished');

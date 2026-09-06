@@ -6,6 +6,7 @@ export const ACTIVATION_REQUIREMENTS=Object.freeze({
   supplier_legal_name_missing:requirement('legal',['SUPPLIER_LEGAL_NAME']),
   supplier_tax_id_missing:requirement('legal',['SUPPLIER_TAX_ID']),
   supplier_address_missing:requirement('legal',['SUPPLIER_ADDRESS']),
+  compliance_runtime_origin_unverified:requirement('legal',['COMPLIANCE_RUNTIME_MODE','COMPLIANCE_RUNTIME_ORIGIN','COMPLIANCE_RUNTIME_ORIGIN_VERIFIED','COMPLIANCE_RUNTIME_ORIGIN_RELEASE_ID'],'configuration'),
   support_channel_missing:requirement('operations',['SUPPORT_CHANNEL']),
   offer_selection_not_approved:requirement('commercial',['OFFER_SELECTION_APPROVED'],'decision'),
   active_offer_type_invalid:requirement('commercial',['ACTIVE_OFFER_TYPE'],'decision'),

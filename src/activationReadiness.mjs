@@ -8,7 +8,16 @@ const yes=(v)=>String(v||'').toLowerCase()==='true';
 
 export function evaluateActivationReadiness(env=process.env) {
   const offerType=classifyOfferType(env.ACTIVE_OFFER_TYPE);
+  const delegatedCompliance=String(env.COMPLIANCE_RUNTIME_MODE||'').trim().toLowerCase()==='delegated';
+  let supplierIdentityVerified=false;
+  if(delegatedCompliance){
+    try{
+      const origin=new URL(String(env.COMPLIANCE_RUNTIME_ORIGIN||''));
+      supplierIdentityVerified=origin.protocol==='https:'&&origin.hostname==='zevanory.api.br'&&yes(env.COMPLIANCE_RUNTIME_ORIGIN_VERIFIED)&&String(env.COMPLIANCE_RUNTIME_ORIGIN_RELEASE_ID||'')==='ZEVANORY-EG0039-FINAL';
+    }catch{}
+  }
   const compliance=evaluateCommercialCompliance({
+    supplier_identity_verified:supplierIdentityVerified,
     supplier_legal_name:env.SUPPLIER_LEGAL_NAME,
     supplier_tax_id:env.SUPPLIER_TAX_ID,
     supplier_address:env.SUPPLIER_ADDRESS,
@@ -17,6 +26,7 @@ export function evaluateActivationReadiness(env=process.env) {
     service_delivery_policy_published:true,affiliate_disclosure_published:true,
   });
   const blockers=[...compliance.blockers];
+  if(delegatedCompliance&&!supplierIdentityVerified) blockers.push('compliance_runtime_origin_unverified');
   if(!yes(env.OFFER_SELECTION_APPROVED)) blockers.push('offer_selection_not_approved');
   if(!offerType) blockers.push('active_offer_type_invalid');
   if(offerType==='digital_product') {
