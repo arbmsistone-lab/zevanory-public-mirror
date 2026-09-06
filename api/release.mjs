@@ -29,9 +29,10 @@ export default function handler(req,res){
   }
   const runtimeModes=runtimeReleaseModes(process.env);
   const deployment=Object.freeze({
-    environment:process.env.VERCEL_ENV || 'local',    branch:nativeReleaseRef() || explicitReleaseRef(),
+    environment:process.env.VERCEL_ENV || process.env.ZEVANORY_DEPLOYMENT_ENV || 'local',
+    branch:nativeReleaseRef() || explicitReleaseRef(),
     commit_sha:nativeReleaseSha() || explicitReleaseSha(),
-    region:process.env.VERCEL_REGION || null,
+    region:process.env.VERCEL_REGION || process.env.ZEVANORY_DEPLOYMENT_REGION || null,
   });
   res.statusCode=200;
   return res.end(JSON.stringify({
