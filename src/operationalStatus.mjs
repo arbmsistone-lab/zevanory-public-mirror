@@ -17,13 +17,16 @@ export function buildOperationalStatus({ telemetry = [], orders = [], financial 
   const latestEconomics = economics[0] || null;
   const commandCenter = buildCommandCenter({ leads, actions, dueBuckets, riskBuckets });
   const runtimeModes = runtimeReleaseModes(env);
+  const salesLive = runtimeModes.salesMode === 'enabled';
+  const currentGate = payments > 0 ? 'G3' : 'G2';
+  const experimentStatus = salesLive ? (payments > 0 ? 'commercial_live_payment_observed' : 'commercial_live_awaiting_reconciled_payment') : 'technical_ready_commercial_not_started';
 
   return Object.freeze({
     project: PROJECT.name,
-    gate: 'G2',
-    experiment: Object.freeze({ id: PROJECT.experimentId, status: 'technical_ready_commercial_not_started' }),
+    gate: currentGate,
+    experiment: Object.freeze({ id: PROJECT.experimentId, status: experimentStatus }),
     engine: Object.freeze({ technical_infrastructure: 'approved', commercial_autonomy: 'not_approved' }),
-    sales_machine: Object.freeze({ structure_ready:true, crm:'ready', follow_up:'ready', unit_economics:'ready', learning:'ready', outbound_execution:'blocked' }),
+    sales_machine: Object.freeze({ structure_ready:true, crm:'ready', follow_up:'ready', unit_economics:'ready', learning:'ready', outbound_execution:salesLive?'enabled_guarded':'blocked' }),
     command_center: commandCenter,
     runtime: Object.freeze({ telemetry: 'active', checkout: runtimeModes.checkoutMode, financial: runtimeModes.financialMode, sales: runtimeModes.salesMode, whatsapp: runtimeModes.whatsappMode }),
     metrics: Object.freeze({

@@ -37,3 +37,14 @@ test('operational status exposes only aggregate evidence counts', () => {
   assert.equal(JSON.stringify(status).includes('phone'), false);
   assert.equal(JSON.stringify(status).includes('session_id'), false);
 });
+
+
+test('live operational status follows runtime sales truth', () => {
+  const live=buildOperationalStatus({orders:[{status:'checkout_ready',count:1}],financial:[{normalized_event:'payment_confirmed',count:0}]},{SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true',CHECKOUT_ENABLED:'true',WHATSAPP_SALES_ENABLED:'true',FINANCIAL_EVENTS_ENABLED:'true'});
+  assert.equal(live.gate,'G2');
+  assert.equal(live.experiment.status,'commercial_live_awaiting_reconciled_payment');
+  assert.equal(live.sales_machine.outbound_execution,'enabled_guarded');
+  const paid=buildOperationalStatus({financial:[{normalized_event:'payment_confirmed',count:1}]},{SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true',CHECKOUT_ENABLED:'true',WHATSAPP_SALES_ENABLED:'true',FINANCIAL_EVENTS_ENABLED:'true'});
+  assert.equal(paid.gate,'G3');
+  assert.equal(paid.experiment.status,'commercial_live_payment_observed');
+});
