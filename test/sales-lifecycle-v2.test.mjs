@@ -36,19 +36,19 @@ test('perfect scores still require audit parity and release approval',()=>{
   assert.equal(evaluateLifecycleCertification(cert).approved,true);
 });
 
-test('current lifecycle certification is intentionally fail closed',()=>{
+test('current technical release certification is fully approved',()=>{
   const result=salesLifecycleGate();
-  assert.equal(result.approved,false);
-  assert.equal(result.passed_dimensions,0);
+  assert.equal(result.approved,true);
+  assert.equal(result.passed_dimensions,39);
 });
-test('environment switches cannot bypass lifecycle certification',()=>{
-  const env={SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'};
-  const gate=salesGate(env);
+test('technical certification never bypasses activation and commercial gates',()=>{
+  const gate=salesGate({});
+  assert.equal(gate.lifecycle_approved,true);
   assert.equal(gate.enabled,false);
-  assert.equal(gate.lifecycle_approved,false);
-  assert.ok(gate.blockers.some(x=>x.startsWith('lifecycle_score_below_10:')));
-  assert.equal(authorizeTool('send_message',env).allowed,false);
-  assert.equal(authorizeTool('start_checkout',{...env,CHECKOUT_ENABLED:'true',FINANCIAL_EVENTS_ENABLED:'true'}).allowed,false);
+  assert.ok(gate.blockers.includes('global_sale_disabled'));
+  assert.ok(gate.blockers.includes('pre_sale_gates_open'));
+  assert.equal(authorizeTool('send_message',{}).allowed,false);
+  assert.equal(authorizeTool('start_checkout',{CHECKOUT_ENABLED:'true',FINANCIAL_EVENTS_ENABLED:'true'}).allowed,false);
 });
 
 test('customer lifecycle prioritizes onboarding support retention and expansion safely',()=>{

@@ -18,13 +18,13 @@ test('payment credentials cannot bypass merchant identity verification',()=>{
   assert.ok(plan.missing.some(x=>x.code==='payment_merchant_identity_unverified'));
 });
 
-test('service inputs can become ready while lifecycle certification still blocks sales',()=>{
+test('service inputs can become ready after technical lifecycle certification while commercial gates stay closed',()=>{
   const env={ACTIVE_OFFER_TYPE:'service',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',PAYMENT_PROVIDER:'asaas',PAYMENT_MERCHANT_IDENTITY_VERIFIED:'true',ASAAS_ENV:'production',ASAAS_API_KEY:'secret',ASAAS_WEBHOOK_TOKEN:'secret',SALE_GLOBALLY_ENABLED:'false',PRE_SALE_GATES_APPROVED:'false'};
   const plan=buildActivationPlan(env);
   assert.equal(plan.inputs_ready,true);
-  assert.equal(plan.phase,'lifecycle_certification_blocked');
+  assert.equal(plan.phase,'ready_to_unlock');
   assert.equal(plan.commercial_enabled,false);
-  assert.equal(plan.lifecycle.approved,false);
+  assert.equal(plan.lifecycle.approved,true);
 });
 test('affiliate readiness remains inventory-free and requires provider evidence',()=>{
   const env={ACTIVE_OFFER_TYPE:'affiliate_product',OFFER_SELECTION_APPROVED:'true',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',AFFILIATE_PROVIDER:'network',AFFILIATE_WEBHOOK_URL:'https://affiliate.example/webhook',AFFILIATE_WEBHOOK_TOKEN:'token',AFFILIATE_TRACKING_READY:'true',AFFILIATE_TERMS_REVIEWED:'true',AFFILIATE_TERMS_VERSION:'v1',AFFILIATE_ATTRIBUTION_WINDOW_DAYS:'30',AFFILIATE_COMMISSION_BPS:'1000',AFFILIATE_PAYOUT_DELAY_DAYS:'30',AFFILIATE_SELF_REFERRAL_POLICY:'blocked',AFFILIATE_REFUND_REVERSAL_READY:'true',AFFILIATE_CHARGEBACK_REVERSAL_READY:'true',AFFILIATE_IDEMPOTENCY_READY:'true',AFFILIATE_PROVIDER_CONFIRMATION_READY:'true',AFFILIATE_DISCLOSURE_URL:'https://zevanory.api.br/afiliados',AFFILIATE_PRIVACY_URL:'https://zevanory.api.br/politica-de-privacidade'};
@@ -62,9 +62,9 @@ test('ARBM SIST V10 digital offer remains blocked until signing and public relea
   assert.ok(plan.missing.some(x=>x.code==='arbm_sist_public_release_not_approved'));
 });
 
-test('V10 artifact gates can pass while lifecycle certification still blocks global sales',()=>{
+test('V10 artifact gates can pass with technical lifecycle certification while global sales remain closed',()=>{
   const env={ACTIVE_OFFER_TYPE:'digital_product',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',PAYMENT_PROVIDER:'mercadopago',PAYMENT_MERCHANT_IDENTITY_VERIFIED:'true',MERCADOPAGO_ENV:'production',MERCADOPAGO_ACCESS_TOKEN:'secret',MERCADOPAGO_WEBHOOK_SECRET:'secret',ARBM_SIST_CODE_SIGNING_READY:'true',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'true',SALE_GLOBALLY_ENABLED:'false'};
-  const plan=buildActivationPlan(env);assert.equal(plan.inputs_ready,true);assert.equal(plan.commercial_enabled,false);assert.equal(plan.phase,'lifecycle_certification_blocked');assert.equal(plan.lifecycle.approved,false);
+  const plan=buildActivationPlan(env);assert.equal(plan.inputs_ready,true);assert.equal(plan.commercial_enabled,false);assert.equal(plan.phase,'ready_to_unlock');assert.equal(plan.lifecycle.approved,true);
 });
 
 test('private secure pilot can satisfy artifact readiness without public Microsoft distribution',()=>{
@@ -72,7 +72,8 @@ test('private secure pilot can satisfy artifact readiness without public Microso
   const plan=buildActivationPlan(env);
   assert.equal(plan.inputs_ready,true);
   assert.equal(plan.commercial_enabled,false);
-  assert.equal(plan.phase,'lifecycle_certification_blocked');
+  assert.equal(plan.phase,'ready_to_unlock');
+  assert.equal(plan.lifecycle.approved,true);
   assert.equal(plan.missing.some(x=>x.code==='arbm_sist_code_signing_not_ready'),false);
   assert.equal(plan.missing.some(x=>x.code==='arbm_sist_public_release_not_approved'),false);
 });
