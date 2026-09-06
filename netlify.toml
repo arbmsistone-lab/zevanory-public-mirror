@@ -5,6 +5,67 @@
 [functions]
   node_bundler = "esbuild"
 
+# Failover split: latest read/core runtime on Cloudflare; secret-backed writes stay on the stable production origin.
+[[redirects]]
+  from = "/private/artifacts/*"
+  to = "https://zevanory.girolocal-rb.workers.dev/private/artifacts/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/checkout"
+  to = "https://zevanory.api.br/api/checkout"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/checkout/*"
+  to = "https://zevanory.api.br/api/checkout/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/webhooks"
+  to = "https://zevanory.api.br/api/webhooks"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/webhooks/*"
+  to = "https://zevanory.api.br/api/webhooks/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/oauth/*"
+  to = "https://zevanory.api.br/api/oauth/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/agent/run"
+  to = "https://zevanory.api.br/api/agent/run"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/events/operator"
+  to = "https://zevanory.api.br/api/events/operator"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/robot-control"
+  to = "https://zevanory.api.br/api/robot-control"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://zevanory.girolocal-rb.workers.dev/api/:splat"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/piloto"
   to = "/piloto.html"
