@@ -47,3 +47,13 @@ test('idempotent replay rejects request reuse across different products',()=>{
   const order={session_id:'123e4567-e89b-42d3-a456-426614174001',offer_id:'ZEV-IA-011',status:'checkout_ready',checkout_url:'https://example.invalid'};
   assert.equal(checkoutReplayDecision(order,order.session_id,'ZEV-CMB-011').action,'offer_conflict');
 });
+
+
+test('all ZEVANORY products are endorsed by ARBM without changing the commercial brand',()=>{
+  for(const item of ZEVANORY_PRODUCTS){
+    assert.equal(item.brand,'ZEVANORY');
+    assert.equal(item.endorsed_by,'ARBM');
+    assert.equal(item.brand_signature,'by ARBM');
+    assert.match(item.commercial_name,/ - by ARBM$/);
+  }
+});

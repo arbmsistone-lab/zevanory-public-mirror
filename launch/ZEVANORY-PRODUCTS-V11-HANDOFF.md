@@ -19,3 +19,13 @@ Data: 2026-09-05.
 - Preços piloto continuam hipótese comercial até comportamento econômico real.
 - Nenhum produto pode ser vendido só porque está presente no catálogo.
 - Download público é proibido; entrega exige pagamento autenticado e reconciliado.
+
+
+## Arquitetura de marca
+- Marca comercial: ZEVANORY.
+- Chancela institucional: ARBM.
+- Assinatura oficial: by ARBM.
+- ZEVANORY IA na Prática - by ARBM.
+- ZEVANORY Vendas na Prática - by ARBM.
+- ZEVANORY Combo IA + Vendas - by ARBM.
+- O arquivo gráfico localizado como logo oficial no ARBM ONE contém a submarca ARBM BEBIDAS; ele não é aplicado aos produtos digitais para evitar identidade incorreta.
