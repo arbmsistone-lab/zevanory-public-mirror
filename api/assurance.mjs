@@ -4,6 +4,7 @@ import { validateProviderContracts } from '../src/providerContracts.mjs';
 import { attachRequestContext, operationalLog } from '../src/observability.mjs';
 import { verifyExternalChannelIdentities } from '../src/channelIdentityPreflight.mjs';
 import { channelReadiness } from '../src/channelAdapters.mjs';
+import { verifyMercadoLivreLive } from '../src/mercadoLivreVerification.mjs';
 
 const DIAG_PROBE='provider-closeout-6e9f2c';
 const boolSummary=(x)=>({attempted:Boolean(x?.attempted),verified:Boolean(x?.verified),reason:String(x?.reason||'unknown')});
@@ -16,6 +17,11 @@ export default async function handler(req,res){
   try{
     const sql=neon(process.env.DATABASE_URL);
     const probe=String(req.query?.probe||new URL(req.url||'/api/assurance','https://zevanory.api.br').searchParams.get('probe')||'');
+    if(probe==='mercadolivre-refresh-7c1a9f'){
+      const result=await verifyMercadoLivreLive(sql,{env:process.env});
+      const body={temporary_probe:true,commercial_unlock:false,mercado_livre:{identity_verified:Boolean(result.identity_verified),notifications_verified:Boolean(result.notifications_verified),app_separation_verified:Boolean(result.app_separation_verified),all_verified:Boolean(result.all_verified),application_lookup_http:Number(result.application_lookup_http||0)},request_id:context.requestId};
+      res.statusCode=200; operationalLog(context,200,'mercadolivre_refresh_probe'); return res.end(JSON.stringify(body));
+    }
     if(probe===DIAG_PROBE){
       const [identities,oauthRows]=await Promise.all([
         verifyExternalChannelIdentities({env:process.env}),
