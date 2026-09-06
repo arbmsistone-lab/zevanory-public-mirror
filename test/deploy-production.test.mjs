@@ -1,6 +1,6 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateReleaseMetadata, verifyProductionRelease, vercelRunnerConfig } from '../scripts/deploy-production.mjs';
+import { validateReleaseMetadata, verifyProductionRelease, vercelRunnerConfig, buildDeployArgs } from '../scripts/deploy-production.mjs';
 
 const sha='a'.repeat(40);
 
@@ -39,4 +39,14 @@ test('production deploy uses Windows shell for npx command shims',()=>{
 
 test('production deploy avoids shell on POSIX',()=>{
   assert.deepEqual(vercelRunnerConfig('linux'),{command:'npx',shell:false});
+});
+
+
+test('production deploy passes release provenance in the single deploy command',()=>{
+  const args=buildDeployArgs({sha,ref:'main'});
+  assert.equal(args[0],'vercel');
+  assert.equal(args[1],'deploy');
+  assert.equal(args.includes('env'),false);
+  assert.equal(args.includes('ZEVANORY_RELEASE_SHA='+sha),true);
+  assert.equal(args.includes('ZEVANORY_RELEASE_REF=main'),true);
 });

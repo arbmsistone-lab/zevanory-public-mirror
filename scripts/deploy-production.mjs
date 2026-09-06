@@ -24,10 +24,16 @@ export function verifyProductionRelease(body,expectedSha){
   if(actual!==String(expectedSha||'').trim().toLowerCase()) throw new Error('deploy_public_sha_mismatch');
   return true;
 }
-
 export function vercelRunnerConfig(platform=process.platform){
   return {command:'npx',shell:platform==='win32'};
 }
+
+export function buildDeployArgs(meta){
+  return ['vercel','deploy','--prod','--yes','--scope',SCOPE,
+    '--env',`ZEVANORY_RELEASE_SHA=${meta.sha}`,
+    '--env',`ZEVANORY_RELEASE_REF=${meta.ref}`];
+}
+
 function run(command,args,{capture=false,shell=false}={}){
   const result=spawnSync(command,args,{encoding:'utf8',shell,stdio:capture?['ignore','pipe','pipe']:'inherit'});
   if(result.error) throw result.error;
@@ -43,10 +49,10 @@ export async function main(){
   const remoteSha=run('git',['rev-parse','origin/main'],{capture:true});
   const meta=validateReleaseMetadata({sha,ref,status,remoteSha});
   const runner=vercelRunnerConfig();
-  const common=['--no-sensitive','--force','--yes','--scope',SCOPE];
-  run(runner.command,['vercel','env','add','ZEVANORY_RELEASE_SHA','production','--value',meta.sha,...common],{shell:runner.shell});
-  run(runner.command,['vercel','env','add','ZEVANORY_RELEASE_REF','production','--value',meta.ref,...common],{shell:runner.shell});
-  run(runner.command,['vercel','deploy','--prod','--yes','--scope',SCOPE],{shell:runner.shell});
+  run(runner.command,buildDeployArgs(meta),{shell:runner.shell});
+  run('git',['fetch','origin','main']);
+  const latestRemote=run('git',['rev-parse','origin/main'],{capture:true});
+  if(latestRemote!==meta.sha) throw new Error('deploy_origin_main_advanced_during_deploy');
   const response=await fetch('https://zevanory.api.br/api/release',{cache:'no-store'});
   if(!response.ok) throw new Error(`deploy_public_release_unavailable:${response.status}`);
   verifyProductionRelease(await response.json(),meta.sha);
