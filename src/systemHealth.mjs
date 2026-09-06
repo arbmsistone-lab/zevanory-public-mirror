@@ -16,13 +16,15 @@ export function buildSystemHealth({ env = process.env, databaseReachable = false
   const switches = Object.fromEntries(SWITCHES.map((key) => [key, enabled(env[key])]));
   const publicSafetyLocked = Object.values(switches).every((value) => value === false);
   const pilotSafetyLocked = enabled(env.CERTIFICATION_PILOT_ENABLED) && !switches.SALE_GLOBALLY_ENABLED && !switches.PRE_SALE_GATES_APPROVED && switches.CHECKOUT_ENABLED && !switches.WHATSAPP_SALES_ENABLED && switches.FINANCIAL_EVENTS_ENABLED;
-  const commercialSafetyLocked = publicSafetyLocked || pilotSafetyLocked;
+  const preSaleCutoverSafe = !switches.SALE_GLOBALLY_ENABLED && switches.PRE_SALE_GATES_APPROVED && switches.CHECKOUT_ENABLED && switches.WHATSAPP_SALES_ENABLED && switches.FINANCIAL_EVENTS_ENABLED;
+  const commercialLivePattern = switches.SALE_GLOBALLY_ENABLED && switches.PRE_SALE_GATES_APPROVED && switches.CHECKOUT_ENABLED && switches.WHATSAPP_SALES_ENABLED && switches.FINANCIAL_EVENTS_ENABLED;
+  const commercialSafetyLocked = publicSafetyLocked || pilotSafetyLocked || preSaleCutoverSafe || commercialLivePattern;
   const storageConfigured = Boolean(String(env.DATABASE_URL || '').trim());
   const ready = storageConfigured && databaseReachable && schemaReady && publicBaseUrlValid && commercialSafetyLocked;
 
   return Object.freeze({
     service: 'ZEVANORY',
-    mode: pilotSafetyLocked ? 'certification-pilot' : 'structure-only',
+    mode: commercialLivePattern ? 'commercial-live' : preSaleCutoverSafe ? 'pre-sale-cutover' : pilotSafetyLocked ? 'certification-pilot' : 'structure-only',
     release_id: RELEASE.id,
     live: true,
     ready,
@@ -34,7 +36,10 @@ export function buildSystemHealth({ env = process.env, databaseReachable = false
       commercial_safety_locked: commercialSafetyLocked,
       public_sales_locked: !switches.SALE_GLOBALLY_ENABLED,
       certification_pilot_safe: pilotSafetyLocked,
+      pre_sale_cutover_safe: preSaleCutoverSafe,
+      commercial_live_pattern: commercialLivePattern,
     }),
     commercial_switches: Object.freeze(switches),
   });
 }
+

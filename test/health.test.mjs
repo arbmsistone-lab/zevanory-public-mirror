@@ -40,3 +40,30 @@ test('health recognizes only the bounded certification-pilot switch pattern', ()
   assert.equal(unsafe.ready,false);
   assert.equal(unsafe.checks.certification_pilot_safe,false);
 });
+
+
+test('health recognizes bounded pre-sale cutover while global sales remain fail closed', () => {
+  const env={DATABASE_URL:'x',PUBLIC_BASE_URL:'https://zevanory.api.br',SALE_GLOBALLY_ENABLED:'false',PRE_SALE_GATES_APPROVED:'true',CHECKOUT_ENABLED:'true',WHATSAPP_SALES_ENABLED:'true',FINANCIAL_EVENTS_ENABLED:'true'};
+  const health=buildSystemHealth({env,databaseReachable:true,schemaReady:true});
+  assert.equal(health.ready,true);
+  assert.equal(health.mode,'pre-sale-cutover');
+  assert.equal(health.checks.public_sales_locked,true);
+  assert.equal(health.checks.pre_sale_cutover_safe,true);
+  const live=buildSystemHealth({env:{...env,SALE_GLOBALLY_ENABLED:'true'},databaseReachable:true,schemaReady:true});
+  assert.equal(live.ready,true);
+  assert.equal(live.mode,'commercial-live');
+  assert.equal(live.checks.pre_sale_cutover_safe,false);
+});
+
+
+test('health recognizes only the exact complete commercial live switch pattern', () => {
+  const env={DATABASE_URL:'x',PUBLIC_BASE_URL:'https://zevanory.api.br',SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true',CHECKOUT_ENABLED:'true',WHATSAPP_SALES_ENABLED:'true',FINANCIAL_EVENTS_ENABLED:'true'};
+  const health=buildSystemHealth({env,databaseReachable:true,schemaReady:true});
+  assert.equal(health.ready,true);
+  assert.equal(health.mode,'commercial-live');
+  assert.equal(health.checks.public_sales_locked,false);
+  assert.equal(health.checks.commercial_live_pattern,true);
+  const unsafe=buildSystemHealth({env:{...env,FINANCIAL_EVENTS_ENABLED:'false'},databaseReachable:true,schemaReady:true});
+  assert.equal(unsafe.ready,false);
+  assert.equal(unsafe.checks.commercial_live_pattern,false);
+});
