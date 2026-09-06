@@ -1,3 +1,4 @@
+// Production provenance checkpoint: forces canonical Git deployment without changing release behavior.
 export const RELEASE = Object.freeze({
   id: 'ZEVANORY-EG0039-FINAL',
   salesMode: 'globally-blocked',
