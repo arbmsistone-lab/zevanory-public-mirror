@@ -10,7 +10,11 @@ export function normalizePaymentProvider(value){
 export function paymentProviderReadiness(env=process.env,{production=true}={}){
   const provider=normalizePaymentProvider(env.PAYMENT_PROVIDER);
   const blockers=[];
+  const delegated=String(env.PAYMENT_RUNTIME_MODE||'').trim().toLowerCase()==='delegated';
+  const delegatedReady=delegated&&String(env.PAYMENT_RUNTIME_ORIGIN_VERIFIED||'').toLowerCase()==='true';
   if(!provider) blockers.push('payment_provider_not_selected');
+  if(delegated&&!delegatedReady) blockers.push('payment_runtime_origin_unverified');
+  if(delegatedReady) return Object.freeze({provider:provider||null,ready:Boolean(provider),delegated:true,blockers:Object.freeze(blockers)});
   if(provider==='asaas'){
     const mode=String(env.ASAAS_ENV||'').trim().toLowerCase();
     if(mode!==(production?'production':'sandbox')) blockers.push(production?'asaas_production_not_configured':'asaas_sandbox_unconfigured');

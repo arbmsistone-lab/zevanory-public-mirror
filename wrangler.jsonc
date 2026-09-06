@@ -12,7 +12,10 @@
     "ZEVANORY_SECURE_ARTIFACT_DELIVERY_READY": "true",
     "SERVICE_DELIVERY_MODE": "digital",
     "PAYMENT_PROVIDER": "mercadopago",
-    "MERCADOPAGO_ENV": "production"
+    "MERCADOPAGO_ENV": "production",
+    "PAYMENT_MERCHANT_IDENTITY_VERIFIED": "true",
+    "PAYMENT_RUNTIME_MODE": "delegated",
+    "PAYMENT_RUNTIME_ORIGIN_VERIFIED": "true"
   },
   "secrets": {
     "required": ["DATABASE_URL", "PUBLIC_BASE_URL", "FULFILLMENT_OPERATOR_TOKEN"]
