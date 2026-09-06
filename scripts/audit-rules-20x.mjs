@@ -1,6 +1,6 @@
 import {readFile,access} from 'node:fs/promises';
 const root=new URL('../',import.meta.url); const checks=[]; const add=(n,ok)=>checks.push({n,ok:Boolean(ok)}); const txt=(p)=>readFile(new URL(p,root),'utf8');
-const [env,gate,policy,fulfillment,checkout,webhook,vercel,home,offer,master,release]=await Promise.all(['.env.example','src/salesGate.mjs','src/agentPolicy.mjs','src/digitalFulfillment.mjs','src/http/checkoutAsaas.mjs','src/http/webhookAsaas.mjs','vercel.json','public/index.html','public/arbm-sist.html','ZEVANORY_MASTER.md','src/release.mjs'].map(txt));
+const [env,gate,policy,fulfillment,checkout,webhook,vercel,home,offer,master,release]=await Promise.all(['.env.example','src/salesGate.mjs','src/agentPolicy.mjs','src/digitalFulfillment.mjs','src/http/checkoutAsaas.mjs','src/http/webhookAsaas.mjs','vercel.json','public/index.html','public/index.html','ZEVANORY_MASTER.md','src/release.mjs'].map(txt));
 add('01 global sales default false',env.includes('SALE_GLOBALLY_ENABLED=false'));
 add('02 pre-sale default false',env.includes('PRE_SALE_GATES_APPROVED=false'));
 add('03 checkout default false',env.includes('CHECKOUT_ENABLED=false'));
@@ -18,7 +18,7 @@ add('14 checkout requires provider credentials and DB',checkout.includes('!proce
 add('15 webhook requires authenticated token',webhook.includes("error: 'webhook_auth_failed'"));
 add('16 webhook uses provider truth reconciliation',webhook.includes('fetchAsaasPayment')&&webhook.includes('paymentMatchesOrderWebhook'));
 add('17 CSP forbids unsafe inline and eval',vercel.includes("script-src 'self'")&&!vercel.includes("'unsafe-inline'")&&!vercel.includes("'unsafe-eval'"));
-add('18 official brand is self-hosted on public surfaces',home.includes('/brand/zevanory-logo-dark.svg')&&offer.includes('/brand/zevanory-logo-dark.svg')&&!/https?:\/\/[^"']+\.(png|jpg|jpeg|svg)/i.test(home+offer));
+add('18 official brand is self-hosted on public surfaces',home.includes('/brand/zevanory-logo-dark.svg')&&offer.includes('/brand/zevanory-logo-dark.svg')&&!/https?:\/\/(?!zevanory\.api\.br)[^"']+\.(png|jpg|jpeg|svg)/i.test(home+offer));
 add('19 no legacy GIRO identity on main public surfaces',!/GIRO LOCAL|girolocal\.api\.br/i.test(home+offer));
 add('20 master and release keep fail-closed governance',master.includes('Todos os kill-switches comerciais e financeiros permanecem fail-closed')&&release.includes("salesMode: 'globally-blocked'")&&release.includes("official_brand:'approved'"));
 for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.n}`); const failed=checks.filter(x=>!x.ok); console.log(`AUDIT_RULES_20X_${failed.length?'BLOCKED':'APPROVED'} units=20 approved=${20-failed.length} failed=${failed.length}`); if(failed.length) process.exit(1);

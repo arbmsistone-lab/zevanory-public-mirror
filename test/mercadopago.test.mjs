@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { PROJECT } from '../src/config.mjs';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { buildMercadoPagoPreference,normalizeMercadoPagoPreference,normalizeMercadoPagoWebhook,verifyMercadoPagoSignature,normalizeMercadoPagoFinancialEvent } from '../src/mercadopago.mjs';
@@ -10,7 +11,7 @@ const ref=`ZEVANORY:EXP-0001:${orderId}`;
 
 test('Mercado Pago preference is first-party tracked and hosted',()=>{
   const p=buildMercadoPagoPreference(orderId,'https://zevanory.api.br');
-  assert.equal(p.external_reference,ref); assert.equal(p.items[0].currency_id,'BRL'); assert.equal(p.items[0].unit_price,1197);
+  assert.equal(p.external_reference,ref); assert.equal(p.items[0].currency_id,'BRL'); assert.equal(p.items[0].unit_price,PROJECT.experimentalPriceBrl);
   assert.equal(p.notification_url,'https://zevanory.api.br/api/webhooks/mercadopago');
 });
 
@@ -38,8 +39,8 @@ test('Mercado Pago webhook and server lookup require payment id',async()=>{
 });
 
 test('Mercado Pago financial truth requires exact reference amount and final status',()=>{
-  const order={external_reference:ref,amount:1197};
-  assert.equal(normalizeMercadoPagoFinancialEvent({external_reference:ref,transaction_amount:1197,status:'approved'},order).normalized,'payment_confirmed');
+  const order={external_reference:ref,amount:PROJECT.experimentalPriceBrl};
+  assert.equal(normalizeMercadoPagoFinancialEvent({external_reference:ref,transaction_amount:PROJECT.experimentalPriceBrl,status:'approved'},order).normalized,'payment_confirmed');
   assert.equal(normalizeMercadoPagoFinancialEvent({external_reference:ref,transaction_amount:498,status:'approved'},order),null);
-  assert.equal(normalizeMercadoPagoFinancialEvent({external_reference:ref,transaction_amount:1197,status:'pending'},order),null);
+  assert.equal(normalizeMercadoPagoFinancialEvent({external_reference:ref,transaction_amount:PROJECT.experimentalPriceBrl,status:'pending'},order),null);
 });
