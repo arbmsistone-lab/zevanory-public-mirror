@@ -6,6 +6,8 @@ import { loadTikTokCredential, refreshTikTokCredential } from './tiktokOAuth.mjs
 import { loadLinkedInCredential } from './linkedinOAuth.mjs';
 import { loadNuvemshopCredential } from './nuvemshopOAuth.mjs';
 import { requestProviderJson, providerAcceptanceMissing } from './providerDelivery.mjs';
+import { alternateAutomationReadiness } from './alternateChannelAutomation.mjs';
+import { publishViaBuffer } from './bufferSocial.mjs';
 const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new Error(code);return v;};
 const ensureGlobalGates=(env,gateEvaluator=salesGate)=>{if(!gateEvaluator(env).enabled)throw new Error('commercial_gates_closed');};
 const ensureHttps=(value,code)=>{const v=required(value,code);let u;try{u=new URL(v);}catch{throw new Error(code);}if(u.protocol!=='https:')throw new Error(code);return v;};
@@ -55,12 +57,13 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       return uploadYouTubeFromRemote({event,sql,env,fetchImpl});
     },
     'channel:tiktok':async(event,{sql}={})=>{
-      ensureGlobalGates(env,commercialGate);if(!sql?.query)throw new Error('tiktok_sql_required');
-      let credential=await loadTikTokCredential(sql,env);
+      ensureGlobalGates(env,commercialGate);const alternate=alternateAutomationReadiness('tiktok',env);
+      if(!sql?.query){if(alternate.ready)return publishViaBuffer({channel:'tiktok',event,env,fetchImpl});throw new Error('tiktok_sql_required');}
+      let credential;try{credential=await loadTikTokCredential(sql,env);}catch(error){if(alternate.ready&&error?.message==='tiktok_oauth_credential_missing')return publishViaBuffer({channel:'tiktok',event,env,fetchImpl});throw error;}
       if(new Date(credential.expires_at).getTime()<=Date.now()+30*60*1000) credential=await refreshTikTokCredential(sql,credential,{env,fetchImpl});
       return publishTikTok({event,env,fetchImpl,accessToken:credential.access_token});
     },
-    'channel:linkedin':async(event,{sql}={})=>{ ensureGlobalGates(env,commercialGate);if(!sql?.query)throw new Error('linkedin_sql_required');const credential=await loadLinkedInCredential(sql,env);return publishLinkedIn({event,env,fetchImpl,accessToken:credential.access_token,authorUrn:credential.author_urn}); },
+    'channel:linkedin':async(event,{sql}={})=>{ ensureGlobalGates(env,commercialGate);const alternate=alternateAutomationReadiness('linkedin',env);if(!sql?.query){if(alternate.ready)return publishViaBuffer({channel:'linkedin',event,env,fetchImpl});throw new Error('linkedin_sql_required');}let credential;try{credential=await loadLinkedInCredential(sql,env);}catch(error){if(alternate.ready&&['linkedin_oauth_credential_missing','linkedin_oauth_reauthorization_required'].includes(error?.message))return publishViaBuffer({channel:'linkedin',event,env,fetchImpl});throw error;}return publishLinkedIn({event,env,fetchImpl,accessToken:credential.access_token,authorUrn:credential.author_urn}); },
     'channel:affiliate':async(event)=>{
       ensureGlobalGates(env,commercialGate);const provider=required(env.AFFILIATE_PROVIDER,'affiliate_provider_missing');
       if(provider==='zevanory-first-party'){
