@@ -1,9 +1,9 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 export const PRIVATE_ARTIFACT = Object.freeze({
-  key:'arbm-sist/v10/ARBM-SIST-v10.0.0.zip',
-  filename:'ARBM-SIST-v10.0.0.zip',
-  sha256:'70F233FA2AD84B66468CCB4789E3628A171ABA97A6C5C188C01A1EF56659B4E0',
+  key:'zevanory/v1.1/ZEVANORY_Negocio_Completo_v1.1.zip',
+  filename:'ZEVANORY_Negocio_Completo_v1.1.zip',
+  sha256:'8A0D44D43662367149E84F11817485799FA361ACDC65DDEA319CA3FA79C2571E',
   contentType:'application/zip',
 });
 const sha256=(value)=>createHash('sha256').update(String(value)).digest('hex');

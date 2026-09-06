@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { issueArtifactDownload, consumeArtifactDownload, hashArtifactToken, PRIVATE_ARTIFACT } from '../src/artifactDelivery.mjs';
 
-test('private artifact is pinned to canonical ARBM SIST V10 hash',()=>{
-  assert.equal(PRIVATE_ARTIFACT.filename,'ARBM-SIST-v10.0.0.zip');
-  assert.equal(PRIVATE_ARTIFACT.sha256,'70F233FA2AD84B66468CCB4789E3628A171ABA97A6C5C188C01A1EF56659B4E0');
+test('private artifact is pinned to canonical ZEVANORY Negocio Completo v1.1 hash',()=>{
+  assert.equal(PRIVATE_ARTIFACT.key,'zevanory/v1.1/ZEVANORY_Negocio_Completo_v1.1.zip');
+  assert.equal(PRIVATE_ARTIFACT.filename,'ZEVANORY_Negocio_Completo_v1.1.zip');
+  assert.equal(PRIVATE_ARTIFACT.sha256,'8A0D44D43662367149E84F11817485799FA361ACDC65DDEA319CA3FA79C2571E');
 });
 
 test('download token is random, hashed at rest and requires paid reconciled order',async()=>{
