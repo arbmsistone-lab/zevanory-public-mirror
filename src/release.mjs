@@ -1,3 +1,15 @@
+
+const yes = (value) => String(value || '').toLowerCase() === 'true';
+
+export function runtimeReleaseModes(env = process.env) {
+  return Object.freeze({
+    salesMode: yes(env.SALE_GLOBALLY_ENABLED) && yes(env.PRE_SALE_GATES_APPROVED) ? 'enabled' : 'globally-blocked',
+    checkoutMode: yes(env.CHECKOUT_ENABLED) ? 'enabled' : 'globally-blocked',
+    financialMode: yes(env.FINANCIAL_EVENTS_ENABLED) ? 'enabled' : 'disabled',
+    whatsappMode: yes(env.WHATSAPP_SALES_ENABLED) ? 'enabled' : 'disabled',
+  });
+}
+
 // Production provenance checkpoint: forces canonical Git deployment without changing release behavior.
 export const RELEASE = Object.freeze({
   id: 'ZEVANORY-EG0039-FINAL',

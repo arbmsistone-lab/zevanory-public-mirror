@@ -1,7 +1,7 @@
-import fs from 'node:fs';
+﻿import fs from 'node:fs';
 import { CHANNELS, channelReadiness } from '../src/channelAdapters.mjs';
 import { CHANNEL_PROFILES, PROFESSIONAL_EMAIL } from '../src/channelProfiles.mjs';
-const html=fs.readFileSync('public/arbm-sist.html','utf8');
+const html=fs.readFileSync('public/index.html','utf8');
 const robots=fs.readFileSync('public/robots.txt','utf8');
 const sitemap=fs.readFileSync('public/sitemap.xml','utf8');
 const checks=[
@@ -19,11 +19,11 @@ const checks=[
  ['email aliases defined',PROFESSIONAL_EMAIL.aliases.length===3],
  ['email auth DNS required',PROFESSIONAL_EMAIL.requiredDns.join(',')==='MX,SPF,DKIM,DMARC'],
  ['institutional profiles tracked',Object.values(CHANNEL_PROFILES).every(x=>x.url.includes('utm_campaign=zevanory_brand'))],
- ['canonical present',html.includes('rel="canonical" href="https://zevanory.api.br/arbm-sist"')],
+ ['canonical present',html.includes('rel="canonical" href="https://zevanory.api.br/"')],
  ['open graph present',html.includes('property="og:title"')&&html.includes('property="og:url"')],
  ['twitter card present',html.includes('name="twitter:card"')],
- ['schema.org software present',html.includes('SoftwareApplication')],
- ['robots and sitemap present',robots.includes('Sitemap: https://zevanory.api.br/sitemap.xml')&&sitemap.includes('https://zevanory.api.br/arbm-sist')],
+ ['schema.org organization present',html.includes('schema.org')&&html.includes('Organization')],
+ ['robots and sitemap present',robots.includes('Sitemap: https://zevanory.api.br/sitemap.xml')&&sitemap.includes('https://zevanory.api.br/')],
 ];
 let ok=0;
 for(const [name,pass] of checks){console.log(`${pass?'APPROVED':'FAILED'} ${name}`); if(pass) ok++;}

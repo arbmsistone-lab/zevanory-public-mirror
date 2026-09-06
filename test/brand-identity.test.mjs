@@ -10,5 +10,5 @@ test('all public surfaces use official favicon and brand',async()=>{
   for(const p of pages){const html=await readFile(new URL(p,root),'utf8');assert.match(html,/href="\/brand\/favicon\.svg"/);assert.match(html,/src="\/brand\/zevanory-logo-dark\.svg"/);}
 });
 test('brand is self-hosted and legacy identity absent',async()=>{
-  for(const p of pages){const html=await readFile(new URL(p,root),'utf8');assert.doesNotMatch(html,/GIRO LOCAL|girolocal\.api\.br/i);assert.doesNotMatch(html,/https?:\/\/[^"']+\.(?:png|jpg|jpeg|svg)/i);}
+  for(const p of pages){const html=await readFile(new URL(p,root),'utf8');assert.doesNotMatch(html,/GIRO LOCAL|girolocal\.api\.br/i);assert.doesNotMatch(html,/https?:\/\/(?!zevanory\.api\.br)[^"']+\.(?:png|jpg|jpeg|svg)/i);}
 });

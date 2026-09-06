@@ -5,6 +5,13 @@ const labels={approved:'APROVADO',ready:'PRONTO',active:'ATIVA',blocked:'BLOQUEA
 const label=(v)=>labels[String(v)]||String(v??'—').replaceAll('_',' ').toUpperCase();
 const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value;};
 const setState=(id,value)=>{set(id,label(value));const el=document.getElementById(id);if(el)el.dataset.state=String(value);};
+const sessionKey='zevanory_session_id';
+const getSessionId=()=>{let id=localStorage.getItem(sessionKey);if(!/^[0-9a-f-]{36}$/i.test(id||'')){id=crypto.randomUUID();localStorage.setItem(sessionKey,id);}return id;};
+async function trackPageView(){
+  try{
+    await fetch('/api/events/public',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'page_view',session_id:getSessionId(),path:location.pathname,source:new URLSearchParams(location.search).get('utm_source')||'direct'}),keepalive:true});
+  }catch{}
+}
 
 function renderPriorities(center){
   set('overdue-actions',fmt(center.work_queue?.overdue));
@@ -66,4 +73,4 @@ async function refresh(){
     healthLabel.textContent='Estado indisponível'; document.getElementById('health-dot').classList.remove('healthy');
   }
 }
-const details=document.getElementById('details-dialog'); document.getElementById('open-details')?.addEventListener('click',()=>details?.showModal()); document.getElementById('close-details')?.addEventListener('click',()=>details?.close()); details?.addEventListener('click',(e)=>{if(e.target===details)details.close();}); refresh(); setInterval(refresh,30000);
+const details=document.getElementById('details-dialog'); document.getElementById('open-details')?.addEventListener('click',()=>details?.showModal()); document.getElementById('close-details')?.addEventListener('click',()=>details?.close()); details?.addEventListener('click',(e)=>{if(e.target===details)details.close();}); trackPageView(); refresh(); setInterval(refresh,30000);
