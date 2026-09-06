@@ -1,7 +1,12 @@
-import { neon } from '@neondatabase/serverless';
+﻿import { neon } from '@neondatabase/serverless';
 import { assessOutboxHealth, assessAgentHealth, SERVICE_OBJECTIVES } from '../src/enterpriseAssurance.mjs';
 import { validateProviderContracts } from '../src/providerContracts.mjs';
 import { attachRequestContext, operationalLog } from '../src/observability.mjs';
+import { verifyExternalChannelIdentities } from '../src/channelIdentityPreflight.mjs';
+import { channelReadiness } from '../src/channelAdapters.mjs';
+
+const DIAG_PROBE='provider-closeout-6e9f2c';
+const boolSummary=(x)=>({attempted:Boolean(x?.attempted),verified:Boolean(x?.verified),reason:String(x?.reason||'unknown')});
 
 export default async function handler(req,res){
   const context=attachRequestContext(req,res,'/api/assurance');
@@ -10,6 +15,18 @@ export default async function handler(req,res){
   if(!process.env.DATABASE_URL){res.statusCode=503;return res.end(JSON.stringify({error:'assurance_storage_unavailable',request_id:context.requestId}));}
   try{
     const sql=neon(process.env.DATABASE_URL);
+    const probe=String(req.query?.probe||new URL(req.url||'/api/assurance','https://zevanory.api.br').searchParams.get('probe')||'');
+    if(probe===DIAG_PROBE){
+      const [identities,oauthRows]=await Promise.all([
+        verifyExternalChannelIdentities({env:process.env}),
+        sql.query(`select provider,expires_at from provider_oauth_credentials where provider in ('tiktok','tiktok_sandbox','linkedin','nuvemshop','mercado_livre') order by provider`),
+      ]);
+      const readiness=channelReadiness(process.env);
+      const providers=Object.fromEntries(Object.entries(readiness).map(([k,v])=>[k,{configured:Boolean(v.configured),missing_count:v.missing.length}]));
+      const oauth=Object.fromEntries(['tiktok','tiktok_sandbox','linkedin','nuvemshop','mercado_livre'].map(name=>{const row=oauthRows.find(x=>x.provider===name);return [name,{present:Boolean(row),expired:row?new Date(row.expires_at).getTime()<=Date.now():null}]}));
+      const body={temporary_probe:true,commercial_unlock:false,identities:Object.fromEntries(Object.entries(identities).map(([k,v])=>[k,boolSummary(v)])),providers,oauth,request_id:context.requestId};
+      res.statusCode=200; operationalLog(context,200,'provider_closeout_probe'); return res.end(JSON.stringify(body));
+    }
     const [outbox,runs]=await Promise.all([
       sql.query(`select count(*) filter(where status='pending')::int pending,count(*) filter(where status='retry')::int retry,
         count(*) filter(where status='dead_letter')::int dead_letter,
