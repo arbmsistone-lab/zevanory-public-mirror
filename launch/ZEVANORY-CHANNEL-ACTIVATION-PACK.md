@@ -1,14 +1,14 @@
-# ZEVANORY - Pacote de ativacao de canais
+﻿# ZEVANORY - Pacote de ativacao de canais
 
 Identidade canonica:
 - Marca: ZEVANORY
 - Site: https://zevanory.api.br
 - Cadastro: zevanory@gmail.com
-- Handle preferencial: @zevanory
+- Handle preferencial quando disponível: @zevanory`r`n- Instagram real confirmado: @zevanory_`r`n- TikTok real registrado: @zevanory3
 - WhatsApp: +55 88 9234-0423
 
 Canais confirmados:
-- Instagram: https://instagram.com/zevanory
+- Instagram: https://instagram.com/zevanory_
 - YouTube: https://youtube.com/@zevanory
 - E-mail principal: contato@zevanory.api.br
 - Suporte: suporte@zevanory.api.br
