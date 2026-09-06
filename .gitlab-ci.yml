@@ -1,0 +1,113 @@
+stages:
+  - quality
+  - security
+  - integration
+
+variables:
+  NODE_VERSION: "24"
+  NPM_CONFIG_AUDIT: "false"
+  NPM_CONFIG_FUND: "false"
+
+.default_node:
+  image: node:24-bookworm
+  before_script:
+    - node --version
+    - npm --version
+    - npm ci
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm/
+  interruptible: true
+
+quality_core:
+  extends: .default_node
+  stage: quality
+  timeout: 20m
+  script:
+    - npm test
+    - npm run supplychain:scan
+    - npm audit --omit=dev --audit-level=high
+    - npm run contract:smoke
+    - npm run audit:enterprise:10x
+    - npm run audit:activation:20x
+    - npm run audit:offer:20x
+    - npm run audit:channels:20x
+    - npm run audit:distribution:10x
+    - npm run audit:pilot:10x
+    - npm run audit:rules:20x
+    - npm run audit:engine:20x
+    - npm run audit:command:20x
+    - npm run audit:worldclass:10x
+    - npm run audit:composable:10x
+    - npm run audit:architecture:20x
+    - npm run audit:3x
+    - npm run audit:obs:10x
+    - npm run audit:10x
+    - npm run resilience:smoke
+    - npm run audit:30x
+    - npm run audit:sales:20x
+    - npm run audit:final
+    - npm run audit:lifecycle:10x
+    - npm run audit:lifecycle:evidence:10x
+    - npm run audit:closure:10x
+    - npm run audit:final20x
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - validation/
+security_node:
+  extends: .default_node
+  stage: security
+  timeout: 12m
+  script:
+    - npm audit --audit-level=high
+    - npm run supplychain:scan
+    - npm run security:lifecycle
+    - npm run audit:security:10x
+    - node --test test/adaptive-rate-limit.test.mjs test/secret-lifecycle.test.mjs
+    - mkdir -p security-evidence
+    - npm sbom --sbom-format cyclonedx > security-evidence/sbom.cdx.json
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - security-evidence/
+
+security_trivy:
+  image:
+    name: aquasec/trivy:0.74.0
+    entrypoint: [""]
+  stage: security
+  timeout: 8m
+  script:
+    - trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --skip-dirs node_modules .
+integration_e2e:
+  image: mcr.microsoft.com/playwright:v1.62.1-noble
+  stage: integration
+  timeout: 20m
+  before_script:
+    - node --version
+    - npm --version
+    - npm ci
+  script:
+    - npm start > zevanory-server.log 2>&1 &
+    - echo $! > zevanory-server.pid
+    - for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/api/live && break; sleep 1; done
+    - curl -fsS http://127.0.0.1:4173/api/live
+    - ZEVANORY_BASE_URL=http://127.0.0.1:4173 npm run test:e2e
+    - npm run audit:distribution:10x
+    - npm run audit:pilot:10x
+    - npm run audit:lifecycle:10x
+    - npm run audit:lifecycle:evidence:10x
+    - npm run audit:closure:10x
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - playwright-report/
+      - test-results/
+      - zevanory-server.log
