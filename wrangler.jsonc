@@ -1,4 +1,4 @@
-{
+﻿{
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "zevanory",
   "main": "src/cloudflare-worker.mjs",
@@ -25,7 +25,7 @@
     "CHECKOUT_ENABLED": "false",
     "WHATSAPP_SALES_ENABLED": "false",
     "FINANCIAL_EVENTS_ENABLED": "false",
-    "YOUTUBE_BRAND_IDENTITY_VERIFIED": "true"
+    "YOUTUBE_BRAND_IDENTITY_VERIFIED": "true",`r`n    "WHATSAPP_BRAND_IDENTITY_VERIFIED": "true",`r`n    "INSTAGRAM_BRAND_IDENTITY_VERIFIED": "true",`r`n    "FACEBOOK_BRAND_IDENTITY_VERIFIED": "true"
   },
   "secrets": {
     "required": ["DATABASE_URL", "PUBLIC_BASE_URL", "FULFILLMENT_OPERATOR_TOKEN"]
@@ -46,3 +46,4 @@
     "enabled": true
   }
 }
+
