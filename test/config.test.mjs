@@ -4,9 +4,9 @@ import { PROJECT, normalizeWhatsappNumber, isOfficialWhatsapp, isUuid } from '..
 
 test('project definitions have one canonical identity', () => {
   assert.equal(PROJECT.name, 'ZEVANORY');
-  assert.equal(PROJECT.offerId, 'OFFER-0001');
+  assert.equal(PROJECT.offerId, 'ZEV-NGC-011');
   assert.equal(PROJECT.experimentId, 'EXP-0001');
-  assert.equal(PROJECT.experimentalPriceBrl, 1197);
+  assert.equal(PROJECT.experimentalPriceBrl, 347);
   assert.equal(PROJECT.officialWhatsappE164, '558892340423');
   assert.equal(Object.isFrozen(PROJECT), true);
 });

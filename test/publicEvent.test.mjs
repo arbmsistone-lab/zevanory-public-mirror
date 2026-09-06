@@ -12,7 +12,7 @@ const valid = {
 test('accepts only canonical public events', () => {
   const e = normalizePublicEvent(valid);
   assert.equal(e.event_name, 'page_view');
-  assert.equal(e.offer_id, 'OFFER-0001');
+  assert.equal(e.offer_id, 'ZEV-NGC-011');
   assert.equal(e.experiment_id, 'EXP-0001');
 });
 

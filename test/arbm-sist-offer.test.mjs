@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ARBM_SIST_OFFER, publicOffer } from '../src/offerCatalog.mjs';
+import { ARBM_SIST_OFFER, publicOffer, resolveCheckoutOffer } from '../src/offerCatalog.mjs';
 import { digitalFulfillmentReadiness } from '../src/digitalFulfillment.mjs';
 import { COMMERCIAL_MODEL, classifyOfferType, revenueRecognitionRule } from '../src/commercialModel.mjs';
 
@@ -40,9 +40,14 @@ test('launch channels prioritize proof and owned conversion',()=>{
   assert.equal(ARBM_SIST_OFFER.price_status,'commercial_model_defined_release_gated');
 });
 
-test('V10 public offer exposes release gates without pretending commercial readiness',()=>{
-  const blocked=publicOffer({ARBM_SIST_CODE_SIGNING_READY:'false',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'false'});
-  assert.equal(blocked.version,'10.0.0');assert.equal(blocked.code_signing_ready,false);assert.equal(blocked.public_release_approved,false);assert.equal(blocked.artifact_commercially_releasable,false);
-  const ready=publicOffer({ARBM_SIST_CODE_SIGNING_READY:'true',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'true'});assert.equal(ready.artifact_commercially_releasable,true);
+test('ARBM SIST remains explicit-only and is never the ZEVANORY default offer',()=>{
+  const active=publicOffer({ZEVANORY_PRODUCT_HANDOFF_V21_VERIFIED:'true',ZEVANORY_SECURE_ARTIFACT_DELIVERY_READY:'true'});
+  assert.equal(active.id,'ZEV-NGC-011');
+  assert.equal(active.product,'ZEVANORY Negócio Completo');
+  assert.equal(active.price_brl,347);
+  assert.equal(active.artifact_commercially_releasable,true);
+  const arbm=resolveCheckoutOffer('OFFER-0001');
+  assert.equal(arbm.product,'ARBM SIST');
+  assert.equal(arbm.price_brl,1197);
 });
 

@@ -1,6 +1,7 @@
 import { classifyOfferType } from './commercialModel.mjs';
 import { evaluateCommercialCompliance } from './complianceReadiness.mjs';
 import { paymentProviderReadiness } from './paymentProviders.mjs';
+import { PROJECT } from './config.mjs';
 import { evaluateAffiliateProgramReadiness } from './affiliateProgram.mjs';
 
 const yes=(v)=>String(v||'').toLowerCase()==='true';
@@ -19,13 +20,18 @@ export function evaluateActivationReadiness(env=process.env) {
   if(!yes(env.OFFER_SELECTION_APPROVED)) blockers.push('offer_selection_not_approved');
   if(!offerType) blockers.push('active_offer_type_invalid');
   if(offerType==='digital_product') {
-    const publicDistributionReady=yes(env.ARBM_SIST_CODE_SIGNING_READY)&&yes(env.ARBM_SIST_PUBLIC_RELEASE_APPROVED);
-    const privatePilotReady=yes(env.ARBM_SIST_PRIVATE_PILOT_DELIVERY_APPROVED)&&yes(env.ARBM_SIST_SECURE_ARTIFACT_READY);
-    if(!publicDistributionReady&&!privatePilotReady){
-      if(!yes(env.ARBM_SIST_CODE_SIGNING_READY)) blockers.push('arbm_sist_code_signing_not_ready');
-      if(!yes(env.ARBM_SIST_PUBLIC_RELEASE_APPROVED)) blockers.push('arbm_sist_public_release_not_approved');
-      if(!yes(env.ARBM_SIST_PRIVATE_PILOT_DELIVERY_APPROVED)) blockers.push('arbm_sist_private_pilot_delivery_not_approved');
-      if(!yes(env.ARBM_SIST_SECURE_ARTIFACT_READY)) blockers.push('arbm_sist_secure_artifact_not_ready');
+    if(PROJECT.offerId==='OFFER-0001'){
+      const publicDistributionReady=yes(env.ARBM_SIST_CODE_SIGNING_READY)&&yes(env.ARBM_SIST_PUBLIC_RELEASE_APPROVED);
+      const privatePilotReady=yes(env.ARBM_SIST_PRIVATE_PILOT_DELIVERY_APPROVED)&&yes(env.ARBM_SIST_SECURE_ARTIFACT_READY);
+      if(!publicDistributionReady&&!privatePilotReady){
+        if(!yes(env.ARBM_SIST_CODE_SIGNING_READY)) blockers.push('arbm_sist_code_signing_not_ready');
+        if(!yes(env.ARBM_SIST_PUBLIC_RELEASE_APPROVED)) blockers.push('arbm_sist_public_release_not_approved');
+        if(!yes(env.ARBM_SIST_PRIVATE_PILOT_DELIVERY_APPROVED)) blockers.push('arbm_sist_private_pilot_delivery_not_approved');
+        if(!yes(env.ARBM_SIST_SECURE_ARTIFACT_READY)) blockers.push('arbm_sist_secure_artifact_not_ready');
+      }
+    } else {
+      if(!yes(env.ZEVANORY_PRODUCT_HANDOFF_V21_VERIFIED)) blockers.push('zevanory_product_handoff_v21_not_verified');
+      if(!yes(env.ZEVANORY_SECURE_ARTIFACT_DELIVERY_READY)) blockers.push('zevanory_secure_artifact_delivery_not_ready');
     }
   }
   if(['service','digital_product'].includes(offerType)) {

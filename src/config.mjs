@@ -11,11 +11,11 @@ export const ARBM_COMMERCIAL_MODEL = Object.freeze({
 
 export const PROJECT = Object.freeze({
   name: "ZEVANORY",
-  offerId: "OFFER-0001",
+  offerId: "ZEV-NGC-011",
   experimentId: "EXP-0001",
-  experimentalPriceBrl: ARBM_COMMERCIAL_MODEL.pro.price_brl,
-  offerName: "ARBM SIST",
-  offerVersion: "10.0.0",
+  experimentalPriceBrl: 347,
+  offerName: "ZEVANORY Negócio Completo",
+  offerVersion: "1.1",
   offerType: "digital_product",
   officialWhatsappE164: "558892340423",
 });

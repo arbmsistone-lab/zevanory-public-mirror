@@ -1,4 +1,4 @@
-import { ARBM_COMMERCIAL_MODEL } from './config.mjs';
+import { ARBM_COMMERCIAL_MODEL, PROJECT } from './config.mjs';
 
 export const ARBM_SIST_OFFER = Object.freeze({
   id: 'OFFER-0001',
@@ -50,14 +50,21 @@ export function publicProductCatalog() {
 }
 
 export function publicOffer(env=process.env) {
+  const product=getZevanoryProduct(PROJECT.offerId);
+  if(product){
+    const {artifact_sha256,...safe}=product;
+    const integrityVerified=String(env.ZEVANORY_PRODUCT_HANDOFF_V21_VERIFIED||'').toLowerCase()==='true';
+    const deliveryReady=String(env.ZEVANORY_SECURE_ARTIFACT_DELIVERY_READY||'').toLowerCase()==='true';
+    return Object.freeze({...safe,id:product.sku,price_brl:product.pilot_price_brl,artifact_sha256,integrity_verified:integrityVerified,secure_delivery_ready:deliveryReady,artifact_commercially_releasable:integrityVerified&&deliveryReady});
+  }
   const {artifact_sha256,...safe}=ARBM_SIST_OFFER;
   const codeSigningReady=String(env.ARBM_SIST_CODE_SIGNING_READY||'').toLowerCase()==='true';
   const publicReleaseApproved=String(env.ARBM_SIST_PUBLIC_RELEASE_APPROVED||'').toLowerCase()==='true';
   return Object.freeze({...safe,artifact_sha256,code_signing_ready:codeSigningReady,public_release_approved:publicReleaseApproved,artifact_commercially_releasable:codeSigningReady&&publicReleaseApproved});
 }
 export function resolveCheckoutOffer(id) {
-  const key=String(id||'').trim().toUpperCase();
-  if(!key||key===ARBM_SIST_OFFER.id) return Object.freeze({id:ARBM_SIST_OFFER.id,product:ARBM_SIST_OFFER.product,version:ARBM_SIST_OFFER.version,price_brl:ARBM_SIST_OFFER.price_brl,artifact_name:ARBM_SIST_OFFER.artifact_name,artifact_sha256:ARBM_SIST_OFFER.artifact_sha256});
+  const key=String(id||PROJECT.offerId).trim().toUpperCase();
+  if(key===ARBM_SIST_OFFER.id) return Object.freeze({id:ARBM_SIST_OFFER.id,product:ARBM_SIST_OFFER.product,version:ARBM_SIST_OFFER.version,price_brl:ARBM_SIST_OFFER.price_brl,artifact_name:ARBM_SIST_OFFER.artifact_name,artifact_sha256:ARBM_SIST_OFFER.artifact_sha256});
   const product=getZevanoryProduct(key);
   if(!product) return null;
   return Object.freeze({id:product.sku,product:product.product,commercial_name:product.commercial_name,brand:product.brand,endorsed_by:product.endorsed_by,brand_signature:product.brand_signature,version:product.version,price_brl:product.pilot_price_brl,artifact_name:product.artifact_name,artifact_sha256:product.artifact_sha256});

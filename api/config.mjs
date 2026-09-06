@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     offer_id: PROJECT.offerId,
     experiment_id: PROJECT.experimentId,
     experimental_price_brl: PROJECT.experimentalPriceBrl,
-    commercial_model: ARBM_COMMERCIAL_MODEL,
+    commercial_model: {brand:'ZEVANORY',model:'digital_products',primary_offer:PROJECT.offerId,pilot_pricing:true},
     offer: publicOffer(),
     products: publicProductCatalog(),
     channels: publicChannelStatus(),
