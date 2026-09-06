@@ -1,5 +1,5 @@
 const clean=(v,max=5000)=>String(v??'').trim().slice(0,max);
-const yesNo=(v)=>v===true||String(v).toUpperCase()==='SIM'?'SIM':v===false||String(v).toUpperCase()==='NAO'||String(v).toUpperCase()==='NÃO'?'NÃO':null;
+const yesNo=(v)=>v===true||String(v).toUpperCase()==='SIM'?'SIM':v===false||['NAO','NÃO'].includes(String(v).toUpperCase())?'NÃO':null;
 const money=(v)=>{const n=Number(v);if(!Number.isFinite(n)||n<0)throw new Error('nuvemshop_price_invalid');return n.toFixed(2);};
 const esc=(v)=>{const s=String(v??'');return /[",\n\r]/.test(s)?`"${s.replaceAll('"','""')}"`:s;};
 export const NUVEMSHOP_CSV_MAX_ROWS=20000;

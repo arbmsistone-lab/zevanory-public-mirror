@@ -32,3 +32,13 @@ test('contingency readiness is explicit and does not become API automation',()=>
   assert.equal(status.contingency_ready,true);
   assert.equal(status.api_configured,false);
 });
+
+test('CSV keeps Portuguese headers and content without mojibake',()=>{
+  const csv=buildNuvemshopCsv([{name:'ZEVANORY Negócio Completo',price:347,sku:'ZEV-NGC-011',description:'Descrição versão prática'}]);
+  assert.equal(csv.includes('\uFFFD'),false);
+  assert.equal(csv.includes('Ã'),false);
+  assert.match(csv,/Preço promocional/);
+  assert.match(csv,/Descrição/);
+  assert.match(csv,/Negócio Completo/);
+  assert.match(csv,/versão prática/);
+});
