@@ -9,6 +9,21 @@ export function safeBearerEqual(expected, provided) {
   return timingSafeEqual(a, b);
 }
 
+export async function readJsonRequestBody(req, maxBytes = MAX_PUBLIC_EVENT_BYTES) {
+  const body=req?.body;
+  if(body && typeof body==='object' && !Buffer.isBuffer(body) && !(body instanceof Uint8Array)) return body;
+  let raw='';
+  if(typeof body==='string') raw=body;
+  else if(Buffer.isBuffer(body) || body instanceof Uint8Array) raw=Buffer.from(body).toString('utf8');
+  else if(req && typeof req[Symbol.asyncIterator]==='function'){
+    const chunks=[]; let total=0;
+    try{for await(const chunk of req){const b=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);total+=b.length;if(total>maxBytes)return null;chunks.push(b);}}catch{return null;}
+    raw=Buffer.concat(chunks).toString('utf8');
+  }
+  if(!raw || Buffer.byteLength(raw,'utf8')>maxBytes) return null;
+  try{const parsed=JSON.parse(raw);return parsed && typeof parsed==='object'?parsed:null;}catch{return null;}
+}
+
 export function validatePublicApiRequest(req, env = process.env) {
   const contentType = String(req?.headers?.['content-type'] || '').toLowerCase();
   if (!contentType.startsWith('application/json')) return Object.freeze({ ok: false, status: 415, error: 'json_required' });
@@ -22,3 +37,5 @@ export function validatePublicApiRequest(req, env = process.env) {
   }
   return Object.freeze({ ok: true });
 }
+
+export function isPublicDeploymentRequest(req){const h=req?.headers||{};const raw=String(h['x-forwarded-host']||h.host||'').split(',')[0].trim().toLowerCase();const host=raw.split(':')[0];return host==='zevanory.api.br'||host.endsWith('.vercel.app');}

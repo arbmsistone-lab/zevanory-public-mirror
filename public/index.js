@@ -1,4 +1,4 @@
-const fmt=(v)=>Number(v||0).toLocaleString('pt-BR');
+const fmt=(v)=>v===null||v===undefined?'—':Number(v||0).toLocaleString('pt-BR');
 const money=(v)=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const pct=(v)=>v===null||v===undefined?'SEM BASELINE':`${(Number(v)*100).toFixed(1)}%`;
 const labels={approved:'APROVADO',ready:'PRONTO',active:'ATIVA',blocked:'BLOQUEADO',disabled:'DESATIVADO',true:'PRONTO',false:'BLOQUEADO','not_approved':'NÃO APROVADA','globally-blocked':'BLOQUEADO GLOBALMENTE','technical_ready_commercial_not_started':'PRONTO TÉCNICO','transactional-rollback':'ROLLBACK TESTADO','baseline_required':'BASELINE NECESSÁRIO','rules_based':'REGRAS SEGURAS',production:'PRODUÇÃO','deterministic-fallback':'FALLBACK DETERMINÍSTICO'};
@@ -9,7 +9,7 @@ const sessionKey='zevanory_session_id';
 const getSessionId=()=>{let id=localStorage.getItem(sessionKey);if(!/^[0-9a-f-]{36}$/i.test(id||'')){id=crypto.randomUUID();localStorage.setItem(sessionKey,id);}return id;};
 async function trackPageView(){
   try{
-    await fetch('/api/events/public',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'page_view',session_id:getSessionId(),path:location.pathname,source:new URLSearchParams(location.search).get('utm_source')||'direct'}),keepalive:true});
+    await fetch('/api/events/public',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({event_id:crypto.randomUUID(),name:'page_view',session_id:getSessionId(),channel:'central'}),keepalive:true});
   }catch{}
 }
 
@@ -20,7 +20,7 @@ function renderPriorities(center){
   set('missing-next-action',fmt(center.risk?.missing_next_action));
   set('stale-leads',fmt(center.risk?.stale_open_leads));
   setState('nba-mode',center.execution?.next_best_action_mode);
-  const pressure=Number(center.work_queue?.pressure||0); set('queue-pressure',pressure?`${pressure} ATENÇÕES`:'FILA SAUDÁVEL'); set('queue-pressure-value',fmt(pressure));
+  const hasQueue=Boolean(center.work_queue); const pressure=Number(center.work_queue?.pressure||0); set('queue-pressure',hasQueue?(pressure?`${pressure} ATENÇÕES`:'FILA SAUDÁVEL'):'PRIVADO'); set('queue-pressure-value',hasQueue?fmt(pressure):'—');
 }
 function renderPipeline(center){
   const f=center.pipeline?.observed_funnel||{};
@@ -29,7 +29,7 @@ function renderPipeline(center){
   const open=['new','contacted','qualified','offer_sent','checkout_started'].reduce((sum,key)=>sum+Number(f[key]||0),0); set('pipeline-signal',fmt(open));
   setState('forecast-mode',center.execution?.forecast_mode);
   set('predictive-forecast',center.execution?.predictive_forecast_available?'ATIVO':'BLOQUEADO SEM BASELINE');
-  set('baseline-state',center.execution?.action_completion_rate===null?'INSUFICIENTE':'EM FORMAÇÃO');
+  set('baseline-state',center.execution?.action_completion_rate===undefined?'PRIVADO':center.execution?.action_completion_rate===null?'INSUFICIENTE':'EM FORMAÇÃO');
   set('action-completion',pct(center.execution?.action_completion_rate));
 }
 
@@ -55,19 +55,19 @@ async function refresh(){
     setState('structure-ready',status.sales_machine?.structure_ready); setState('crm',status.sales_machine?.crm); setState('follow-up',status.sales_machine?.follow_up);
     setState('unit-economics',status.sales_machine?.unit_economics); setState('learning',status.sales_machine?.learning); setState('outbound',status.sales_machine?.outbound_execution); setState('engine-auto',status.engine?.commercial_autonomy);
     setState('health-ready',health.ready); setState('db-state',health.checks?.database_reachable); setState('schema-state',health.schema?.ready);
-    const requiredTables=Number(health.schema?.required_tables)||15; const requiredMigrations=Number(health.schema?.required_migrations)||9; const missingTables=Array.isArray(health.schema?.missing_tables)?health.schema.missing_tables.length:requiredTables; const missingMigrations=Array.isArray(health.schema?.missing_migrations)?health.schema.missing_migrations.length:requiredMigrations;
+    const requiredTables=Number(health.schema?.required_tables)||15; const requiredMigrations=Number(health.schema?.required_migrations)||9; const missingTables=Array.isArray(health.schema?.missing_tables)?health.schema.missing_tables.length:Number.isFinite(Number(health.schema?.missing_tables_count))?Number(health.schema.missing_tables_count):requiredTables; const missingMigrations=Array.isArray(health.schema?.missing_migrations)?health.schema.missing_migrations.length:Number.isFinite(Number(health.schema?.missing_migrations_count))?Number(health.schema.missing_migrations_count):requiredMigrations;
     set('schema-tables',`${Math.max(0,requiredTables-missingTables)}/${requiredTables}`); set('schema-migrations',`${Math.max(0,requiredMigrations-missingMigrations)}/${requiredMigrations}`); setState('telemetry',status.runtime?.telemetry); setState('domain-state',health.checks?.public_base_url_valid);
-    const economics=status.economics; set('economics-state',economics?'DADOS REAIS':'SEM BASELINE'); set('gross-revenue',economics?money(economics.gross_revenue_brl):'—');
-    set('refunds-value',economics?money(economics.refunds_brl):'—'); set('paid-orders',economics?fmt(economics.paid_orders):'—');
+    const economics=status.economics; set('economics-state',economics===undefined?'PRIVADO':economics?'DADOS REAIS':'SEM BASELINE'); set('gross-revenue',economics===undefined?'PRIVADO':economics?money(economics.gross_revenue_brl):'—');
+    set('refunds-value',economics===undefined?'PRIVADO':economics?money(economics.refunds_brl):'—'); set('paid-orders',economics===undefined?'PRIVADO':economics?fmt(economics.paid_orders):'—');
     setState('checkout',status.runtime?.checkout); setState('financial',status.runtime?.financial); setState('whatsapp',config.whatsapp_enabled);
     const blockers=Array.isArray(config.commercial_blockers)?config.commercial_blockers:[]; set('blocker-count',fmt(blockers.length)); set('readiness-state',blockers.length?'BLOQUEADA':'PRONTA'); set('commercial-summary',blockers.length?'BLOQUEADA':'PRONTA');
-    set('release-id',release.release_id||'—'); set('branch',release.deployment?.branch||'—'); set('commit',release.deployment?.commit_sha?release.deployment.commit_sha.slice(0,10):'—'); set('environment',label(release.deployment?.environment));
-    set('dr-mode',label(release.recovery?.mode)); set('dr-persistent',release.recovery?.persistent_changes===false?'NÃO':'—'); set('agent-provider',label(agent.ai_provider)); set('agent-queued',fmt(agent.queued)); set('agent-running',fmt(agent.running)); set('agent-blocked',fmt(agent.blocked)); set('agent-failed',fmt(agent.failed)); set('agent-runs',fmt(agent.runs_24h)); setState('agent-commercial',agent.commercial_execution); renderAssurance(release);
+    set('release-id',release.release_id||'—'); set('branch',release.deployment?.branch||'PRIVADO'); set('commit',release.deployment?.commit_sha?release.deployment.commit_sha.slice(0,10):'PRIVADO'); set('environment',release.deployment?.environment?label(release.deployment.environment):'PRIVADO');
+    set('dr-mode',release.recovery?.mode?label(release.recovery.mode):'PRIVADO'); set('dr-persistent',release.recovery?.persistent_changes===false?'NÃO':'PRIVADO'); set('agent-provider',agent.ai_provider?label(agent.ai_provider):'PRIVADO'); set('agent-queued',fmt(agent.queued)); set('agent-running',fmt(agent.running)); set('agent-blocked',fmt(agent.blocked)); set('agent-failed',fmt(agent.failed)); set('agent-runs',fmt(agent.runs_24h)); setState('agent-commercial',agent.commercial_execution); renderAssurance(release);
     const switches=document.getElementById('switches'); switches.replaceChildren();
-    const switchLabels={SALE_GLOBALLY_ENABLED:'Vendas globais',PRE_SALE_GATES_APPROVED:'Gates pré-venda',CHECKOUT_ENABLED:'Checkout',WHATSAPP_SALES_ENABLED:'Vendas WhatsApp',FINANCIAL_EVENTS_ENABLED:'Eventos financeiros'}; const switchEntries=Object.entries(health.commercial_switches||{}); set('commercial-score',switchEntries.filter(([,v])=>v===true).length+'/'+switchEntries.length); switchEntries.forEach(([k,v])=>{const x=document.createElement('div');const s=document.createElement('span');const b=document.createElement('b');s.textContent=switchLabels[k]||k.replaceAll('_',' ');b.textContent=v?'ON':'OFF';x.dataset.enabled=String(v);x.append(s,b);switches.appendChild(x);});
+    const switchLabels={SALE_GLOBALLY_ENABLED:'Vendas globais',PRE_SALE_GATES_APPROVED:'Gates pré-venda',CHECKOUT_ENABLED:'Checkout',WHATSAPP_SALES_ENABLED:'Vendas WhatsApp',FINANCIAL_EVENTS_ENABLED:'Eventos financeiros'}; const switchEntries=Object.entries(health.commercial_switches||{}); const controls=health.commercial_controls; set('commercial-score',switchEntries.length?switchEntries.filter(([,v])=>v===true).length+'/'+switchEntries.length:controls?controls.enabled+'/'+controls.total:'—'); if(!switchEntries.length&&controls){const x=document.createElement('div');const a=document.createElement('span');const b=document.createElement('b');a.textContent='Controles públicos';b.textContent='PROTEGIDOS';x.append(a,b);switches.appendChild(x);} switchEntries.forEach(([k,v])=>{const x=document.createElement('div');const s=document.createElement('span');const b=document.createElement('b');s.textContent=switchLabels[k]||k.replaceAll('_',' ');b.textContent=v?'ON':'OFF';x.dataset.enabled=String(v);x.append(s,b);switches.appendChild(x);});
     const engineRail=document.querySelector('.engine-rail'); if(engineRail) engineRail.title='Outbound: '+label(status.sales_machine?.outbound_execution)+' | Autonomia: '+label(status.engine?.commercial_autonomy)+' | Fila: '+fmt(agent.queued)+' | Bloqueados: '+fmt(agent.blocked)+' | Falhas: '+fmt(agent.failed)+' | Runs 24h: '+fmt(agent.runs_24h);
     const infraRail=document.querySelector('.infra-rail'); if(infraRail) infraRail.title='Telemetria: '+label(status.runtime?.telemetry)+' | Domínio: '+label(health.checks?.public_base_url_valid)+' | Branch: '+(release.deployment?.branch||'—')+' | DR: '+label(release.recovery?.mode)+' | Persistência rollback: '+(release.recovery?.persistent_changes===false?'NÃO':'—');
-    set('last-event',status.last_event_at?new Date(status.last_event_at).toLocaleString('pt-BR'):'sem evento'); set('updated-at',new Date().toLocaleTimeString('pt-BR'));
+    set('last-event',status.last_event_at===undefined?'PRIVADO':status.last_event_at?new Date(status.last_event_at).toLocaleString('pt-BR'):'sem evento'); set('updated-at',new Date().toLocaleTimeString('pt-BR'));
     set('surface-host',location.host+' · produção'); healthLabel.textContent='Operação conectada'; document.getElementById('health-dot').classList.add('healthy');
   }catch{
     healthLabel.textContent='Estado indisponível'; document.getElementById('health-dot').classList.remove('healthy');

@@ -1,4 +1,5 @@
 import { RELEASE, runtimeReleaseModes } from '../src/release.mjs';
+import { isPublicDeploymentRequest } from '../src/security.mjs';
 
 const validSha = (value) => /^[0-9a-f]{40}$/i.test(String(value||'').trim());
 const validRef = (value) => /^[A-Za-z0-9._/-]{1,120}$/.test(String(value||'').trim());
@@ -35,10 +36,8 @@ export default function handler(req,res){
     region:process.env.VERCEL_REGION || process.env.ZEVANORY_DEPLOYMENT_REGION || null,
   });
   res.statusCode=200;
-  return res.end(JSON.stringify({
-    release_id:RELEASE.id, structural_completion:RELEASE.structuralCompletion,
-    sales_mode:runtimeModes.salesMode, checkout_mode:runtimeModes.checkoutMode,
-    financial_mode:runtimeModes.financialMode, whatsapp_mode:runtimeModes.whatsappMode, required_routes:RELEASE.requiredRoutes,
-    assurance:RELEASE.assurance, recovery:RELEASE.recovery, deployment,
-  }));
+  const full={release_id:RELEASE.id,structural_completion:RELEASE.structuralCompletion,sales_mode:runtimeModes.salesMode,checkout_mode:runtimeModes.checkoutMode,financial_mode:runtimeModes.financialMode,whatsapp_mode:runtimeModes.whatsappMode,required_routes:RELEASE.requiredRoutes,assurance:RELEASE.assurance,recovery:RELEASE.recovery,deployment};
+  if(!isPublicDeploymentRequest(req)) return res.end(JSON.stringify(full));
+  const a=RELEASE.assurance||{};
+  return res.end(JSON.stringify({release_id:full.release_id,structural_completion:full.structural_completion,sales_mode:full.sales_mode,checkout_mode:full.checkout_mode,financial_mode:full.financial_mode,whatsapp_mode:full.whatsapp_mode,assurance:{quality_gate:a.quality_gate,security_10x:a.security_10x,observability_10x:a.observability_10x,architecture_20x:a.architecture_20x,official_brand:a.official_brand}}));
 }

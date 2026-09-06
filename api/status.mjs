@@ -2,6 +2,7 @@ import { neon } from '@neondatabase/serverless';
 import { buildOperationalStatus } from '../src/operationalStatus.mjs';
 import { attachRequestContext, operationalLog } from '../src/observability.mjs';
 import { healthProbe, liveProbe } from '../src/statusProbes.mjs';
+import { isPublicDeploymentRequest } from '../src/security.mjs';
 
 export default async function handler(req, res) {
   const probe=String(req.query?.probe||new URL(req.url||'/api/status','https://zevanory.api.br').searchParams.get('probe')||'').toLowerCase();
@@ -34,10 +35,8 @@ export default async function handler(req, res) {
       sql.query('select gross_revenue_brl, refunds_brl, paid_orders from unit_economics_snapshots order by period_end desc limit 1'),
       sql.query('select max(occurred_at) as last_event_at from telemetry_events'),
     ]);
-    const body = {
-      ...buildOperationalStatus({ telemetry, orders, financial, leads, actions, dueBuckets, riskBuckets, economics, lastEventAt: last[0]?.last_event_at || null }),
-      request_id: context.requestId,
-    };
+    const full=buildOperationalStatus({ telemetry, orders, financial, leads, actions, dueBuckets, riskBuckets, economics, lastEventAt: last[0]?.last_event_at || null });
+    const body=isPublicDeploymentRequest(req)?{project:full.project,gate:full.gate,experiment:full.experiment,engine:full.engine,sales_machine:full.sales_machine,runtime:full.runtime,metrics:full.metrics,request_id:context.requestId}:{...full,request_id:context.requestId};
     res.statusCode = 200;
     operationalLog(context, 200, 'operational_status_ok');
     return res.end(JSON.stringify(body));

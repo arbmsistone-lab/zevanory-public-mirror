@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { safeBearerEqual, validatePublicApiRequest } from '../src/security.mjs';
+import { Readable } from 'node:stream';
+import { readJsonRequestBody, safeBearerEqual, validatePublicApiRequest } from '../src/security.mjs';
 
 const env = { PUBLIC_BASE_URL: 'https://zevanory.api.br' };
 const req = (headers={}) => ({ headers });
@@ -21,4 +22,19 @@ test('public event API rejects foreign origins but permits same-origin or absent
   assert.equal(validatePublicApiRequest(req({'content-type':'application/json','origin':'https://evil.example'}),env).status,403);
   assert.equal(validatePublicApiRequest(req({'content-type':'application/json','origin':'https://zevanory.api.br'}),env).ok,true);
   assert.equal(validatePublicApiRequest(req({'content-type':'application/json'}),env).ok,true);
+});
+
+
+test('public JSON body parser is provider-neutral', async () => {
+  const body={event_id:'11111111-1111-4111-8111-111111111111',name:'page_view',session_id:'22222222-2222-4222-8222-222222222222',channel:'central'};
+  assert.deepEqual(await readJsonRequestBody({body}),body);
+  assert.deepEqual(await readJsonRequestBody({body:JSON.stringify(body)}),body);
+  const stream=Readable.from([Buffer.from(JSON.stringify(body))]);
+  assert.deepEqual(await readJsonRequestBody(stream),body);
+});
+
+test('public JSON body parser fails closed on invalid or oversized streams', async () => {
+  assert.equal(await readJsonRequestBody({body:'not-json'}),null);
+  const stream=Readable.from([Buffer.alloc(5000,120)]);
+  assert.equal(await readJsonRequestBody(stream),null);
 });
