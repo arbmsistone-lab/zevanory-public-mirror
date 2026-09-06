@@ -1,3 +1,4 @@
+# MR pipeline refresh after GitLab import verification 2026-09-05
 stages:
   - quality
   - security
