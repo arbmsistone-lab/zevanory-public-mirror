@@ -1,6 +1,7 @@
 import { channelReadiness } from './channelAdapters.mjs';
 import { evaluateAffiliateProgramReadiness } from './affiliateProgram.mjs';
 import { assistedFallbackReadiness } from './assistedChannelFallbacks.mjs';
+import { alternateAutomationReadiness } from './alternateChannelAutomation.mjs';
 
 const front=(category,role,truth,attribution,confirmation)=>Object.freeze({category,role,revenue_truth:truth,attribution,provider_confirmation:confirmation,global_gate_required:true,policy_complete:true});
 export const COMMERCIAL_DISTRIBUTION_CANONICAL=Object.freeze({
@@ -19,9 +20,10 @@ export function commercialDistributionReadiness(env=process.env){
   const channels=channelReadiness(env), affiliate=evaluateAffiliateProgramReadiness(env);
   const fronts=Object.fromEntries(REQUIRED_DISTRIBUTION_FRONTS.map((key)=>{
     const policy=COMMERCIAL_DISTRIBUTION_CANONICAL[key], state=channels[key]||{configured:false,implemented:false,missing:['channel_contract_missing']};
-    const fallback=assistedFallbackReadiness(key,env), blockers=[...state.missing]; if(key==='affiliate')blockers.push(...affiliate.blockers);
-    const automationReady=state.configured&&(key!=='affiliate'||affiliate.ready), operationalReady=automationReady||fallback.ready;
-    return [key,Object.freeze({...policy,implemented:state.implemented,configured:state.configured,automation_ready:automationReady,operational_ready:operationalReady,operational_mode:automationReady?'provider_api':fallback.ready?fallback.mode:'blocked',assisted_fallback_ready:fallback.ready,blockers:Object.freeze(operationalReady?[]:[...new Set([...blockers,...fallback.blockers])])})];
+    const fallback=assistedFallbackReadiness(key,env), alternate=alternateAutomationReadiness(key,env), blockers=[...state.missing]; if(key==='affiliate')blockers.push(...affiliate.blockers);
+    const automationReady=(state.configured||alternate.ready)&&(key!=='affiliate'||affiliate.ready), operationalReady=automationReady||fallback.ready;
+    const operationalMode=state.configured?'provider_api':alternate.ready?alternate.mode:fallback.ready?fallback.mode:'blocked';
+    return [key,Object.freeze({...policy,implemented:state.implemented,configured:state.configured,automation_ready:automationReady,alternate_api_ready:alternate.ready,alternate_provider:alternate.provider,operational_ready:operationalReady,operational_mode:operationalMode,assisted_fallback_ready:fallback.ready,blockers:Object.freeze(operationalReady?[]:[...new Set([...blockers,...alternate.blockers,...fallback.blockers])])})];
   }));
   const values=Object.values(fronts), technicalReady=values.every(x=>x.policy_complete&&x.implemented), operationalReady=values.every(x=>x.operational_ready);
   const blockers=Object.freeze(Object.entries(fronts).flatMap(([key,state])=>state.blockers.map(code=>`${key}:${code}`)));
