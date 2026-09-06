@@ -72,11 +72,6 @@
   status = 200
 
 [[redirects]]
-  from = "/arbm-sist"
-  to = "/arbm-sist.html"
-  status = 200
-
-[[redirects]]
   from = "/termos"
   to = "/termos.html"
   status = 200
@@ -98,11 +93,6 @@
 [[redirects]]
   from = "/afiliados"
   to = "/afiliados.html"
-  status = 200
-
-[[redirects]]
-  from = "/arbm-sist/privacidade"
-  to = "/arbm-sist-privacidade.html"
   status = 200
 
 [[headers]]

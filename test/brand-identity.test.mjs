@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,access} from 'node:fs/promises';
 const root=new URL('../',import.meta.url);
-const pages=['public/index.html','public/arbm-sist.html','public/piloto.html','public/termos.html','public/privacidade.html','public/reembolso.html','public/afiliados.html'];
+const pages=['public/index.html','public/piloto.html','public/termos.html','public/privacidade.html','public/reembolso.html','public/afiliados.html'];
 test('official brand assets exist locally',async()=>{
   for(const p of ['public/brand/zevanory-logo-dark.svg','public/brand/zevanory-logo-light.svg','public/brand/zevanory-mark.svg','public/brand/favicon.svg']) await access(new URL(p,root));
 });

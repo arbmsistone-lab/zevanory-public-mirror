@@ -71,10 +71,6 @@
       "destination": "/api/webhooks?provider=mercadolivre"
     },
     {
-      "source": "/arbm-sist",
-      "destination": "/public/arbm-sist.html"
-    },
-    {
       "source": "/api/events/public",
       "destination": "/api/events-public"
     },
@@ -109,10 +105,6 @@
     {
       "source": "/privacidade",
       "destination": "/public/privacidade.html"
-    },
-    {
-      "source": "/arbm-sist/privacidade",
-      "destination": "/arbm-sist-privacidade"
     },
     {
       "source": "/exclusao-dados",

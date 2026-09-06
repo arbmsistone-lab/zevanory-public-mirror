@@ -4,7 +4,7 @@ export const RELEASE = Object.freeze({
   checkoutMode: 'globally-blocked',
   financialMode: 'disabled',
   commercialModel: 'no-inventory',
-  structuralCompletion: 'arbm-sist-offer-launch-ready',
+  structuralCompletion: 'zevanory-digital-products-release-ready',
   assurance: Object.freeze({
     quality_gate:'approved', audit_3x:'approved', security_10x:'approved',
     observability_10x:'approved', dr_10x:'approved', sales_machine_20x:'approved',
@@ -15,7 +15,7 @@ export const RELEASE = Object.freeze({
   }),
   recovery: Object.freeze({ mode:'transactional-rollback', tables:23, migrations:16, persistent_changes:false }),
   requiredRoutes: Object.freeze([
-    '/', '/arbm-sist', '/piloto', '/termos', '/privacidade', '/reembolso', '/afiliados',
+    '/', '/piloto', '/termos', '/privacidade', '/reembolso', '/afiliados',
     '/api/config', '/api/health', '/api/live', '/api/status', '/api/assurance', '/api/activation/readiness',
     '/api/events/public', '/api/events/operator', '/api/agent/status', '/api/agent/run',
     '/api/checkout/asaas', '/api/webhooks/asaas', '/api/checkout/mercadopago', '/api/webhooks/mercadopago', '/api/webhooks/resend', '/api/webhooks/meta', '/api/webhooks/mercadolivre', '/api/release',

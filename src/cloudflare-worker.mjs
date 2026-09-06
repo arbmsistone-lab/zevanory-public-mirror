@@ -68,7 +68,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT);
 
 const staticAliases = new Map([
-  ['/', '/index.html'], ['/arbm-sist', '/arbm-sist.html'], ['/piloto', '/piloto.html'],
+  ['/', '/index.html'], ['/piloto', '/piloto.html'],
   ['/termos', '/termos.html'], ['/privacidade', '/privacidade.html'], ['/exclusao-dados', '/exclusao-dados.html'],
   ['/reembolso', '/reembolso.html'], ['/afiliados', '/afiliados.html'],
 ]);

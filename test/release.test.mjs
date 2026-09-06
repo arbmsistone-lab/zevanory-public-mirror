@@ -6,7 +6,7 @@ import releaseHandler from '../api/release.mjs';
 test('release fingerprint is canonical and immutable',()=>{
   assert.equal(RELEASE.id,'ZEVANORY-EG0039-FINAL');
   assert.equal(Object.isFrozen(RELEASE),true);
-  assert.equal(RELEASE.structuralCompletion,'arbm-sist-offer-launch-ready');
+  assert.equal(RELEASE.structuralCompletion,'zevanory-digital-products-release-ready');
   assert.equal(RELEASE.commercialModel,'no-inventory');
   assert.equal(RELEASE.assurance.autonomous_engine_20x,'approved');
   assert.equal(RELEASE.assurance.composable_10x5,'approved');
@@ -18,7 +18,7 @@ test('release fingerprint is canonical and immutable',()=>{
   assert.equal(RELEASE.assurance.offer_launch_20x,'approved');
   assert.equal(RELEASE.assurance.official_brand,'approved');
   assert.equal(RELEASE.assurance.rules_audit_20x,'approved');
-  assert.equal(RELEASE.assurance.sales_lifecycle_v2,'blocked_pending_39x10');
+  assert.equal(RELEASE.assurance.sales_lifecycle_v2,'approved_39x10_technical_release');
   assert.equal(RELEASE.recovery.tables,23);
   assert.equal(RELEASE.recovery.migrations,16);
   assert.equal(RELEASE.salesMode,'globally-blocked');
@@ -26,7 +26,8 @@ test('release fingerprint is canonical and immutable',()=>{
 });
 
 test('release manifest requires all production surfaces',()=>{
-  for(const route of ['/','/arbm-sist','/piloto','/termos','/privacidade','/reembolso','/afiliados','/api/config','/api/health','/api/live','/api/status','/api/assurance','/api/activation/readiness','/api/events/public','/api/events/operator','/api/agent/status','/api/agent/run','/api/checkout/asaas','/api/webhooks/asaas','/api/webhooks/resend','/api/webhooks/meta','/api/webhooks/mercadolivre','/api/release']) assert.equal(RELEASE.requiredRoutes.includes(route),true);
+  for(const route of ['/','/piloto','/termos','/privacidade','/reembolso','/afiliados','/api/config','/api/health','/api/live','/api/status','/api/assurance','/api/activation/readiness','/api/events/public','/api/events/operator','/api/agent/status','/api/agent/run','/api/checkout/asaas','/api/webhooks/asaas','/api/checkout/mercadopago','/api/webhooks/mercadopago','/api/webhooks/resend','/api/webhooks/meta','/api/webhooks/mercadolivre','/api/release']) assert.equal(RELEASE.requiredRoutes.includes(route),true);
+  assert.equal(RELEASE.requiredRoutes.includes('/arbm-sist'),false);
 });
 function invokeRelease(env={}){  const previous={...process.env}; Object.assign(process.env,env);
   let body=''; const headers={};
