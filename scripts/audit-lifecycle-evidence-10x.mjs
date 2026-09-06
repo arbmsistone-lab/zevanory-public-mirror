@@ -1,7 +1,8 @@
-import { readFile, access } from 'node:fs/promises';
+﻿import { readFile, access } from 'node:fs/promises';
 import { certifyLifecycleEvidence, LIFECYCLE_PROOF_POLICY } from '../src/lifecycleCertificationEngine.mjs';
 import { SALES_LIFECYCLE_CANONICAL_V2 } from '../src/salesLifecycleV2.mjs';
 import { REQUIRED_TABLES, REQUIRED_MIGRATIONS } from '../src/schemaHealth.mjs';
+import { salesGate } from '../src/salesGate.mjs';
 const root=new URL('../',import.meta.url); const checks=[];
 const text=p=>readFile(new URL(p,root),'utf8');
 const exists=async p=>{try{await access(new URL(p,root));return true}catch{return false}};
@@ -17,6 +18,6 @@ add('06 trusted migration file exists',await exists('db/migrations/014_lifecycle
 add('07 snapshot counts only verified trusted evidence',(await text('src/lifecycleEvidenceSnapshot.mjs')).includes("verification_status='verified'")&&(await text('src/lifecycleEvidenceSnapshot.mjs')).includes('source_class in'));
 add('08 evidence schema requires hash on verified proof',(await text('db/migrations/014_lifecycle_evidence_trust.sql')).includes('evidence_sha256')&&(await text('db/migrations/014_lifecycle_evidence_trust.sql')).includes('verified_consistency'));
 add('09 certification view remains non-unlocking',(await text('src/lifecycleEvidenceSnapshot.mjs')).includes('commercial_unlock:false'));
-add('10 sales static gate remains fail closed',(await text('src/salesLifecycleV2.mjs')).includes('audit_10x_pass:false'));
+add('10 sales static gate remains fail closed',salesGate({}).enabled===false&&salesGate({SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'}).enabled===false);
 for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.name}`);
 const failed=checks.filter(x=>!x.ok); console.log(`AUDIT_LIFECYCLE_EVIDENCE_10X_${failed.length?'BLOCKED':'APPROVED'} units=10 approved=${10-failed.length} failed=${failed.length}`); if(failed.length) process.exit(1);
