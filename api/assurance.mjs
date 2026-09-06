@@ -2,9 +2,11 @@ import { neon } from '@neondatabase/serverless';
 import { assessOutboxHealth, assessAgentHealth, SERVICE_OBJECTIVES } from '../src/enterpriseAssurance.mjs';
 import { validateProviderContracts } from '../src/providerContracts.mjs';
 import { attachRequestContext, operationalLog } from '../src/observability.mjs';
+import { isPublicDeploymentRequest, safeBearerEqual } from '../src/security.mjs';
 
 export default async function handler(req,res){
   const context=attachRequestContext(req,res,'/api/assurance');
+  if(isPublicDeploymentRequest(req)){const expected=String(process.env.OPERATOR_TOKEN||process.env.FULFILLMENT_OPERATOR_TOKEN||'');const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'');if(!safeBearerEqual(expected,provided)){res.statusCode=401;return res.end(JSON.stringify({error:'operator_auth_required'}));}}
   res.setHeader('content-type','application/json; charset=utf-8'); res.setHeader('cache-control','no-store'); res.setHeader('x-content-type-options','nosniff');
   if(req.method!=='GET'){res.statusCode=405;operationalLog(context,405,'method_not_allowed');return res.end(JSON.stringify({error:'method_not_allowed',request_id:context.requestId}));}
   if(!process.env.DATABASE_URL){res.statusCode=503;return res.end(JSON.stringify({error:'assurance_storage_unavailable',request_id:context.requestId}));}

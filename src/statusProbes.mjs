@@ -3,6 +3,7 @@ import { RELEASE } from './release.mjs';
 import { buildSystemHealth } from './systemHealth.mjs';
 import { assessSchemaIntegrity } from './schemaHealth.mjs';
 import { attachRequestContext, operationalLog } from './observability.mjs';
+import { isPublicDeploymentRequest } from './security.mjs';
 
 export function liveProbe(req,res){
   const context=attachRequestContext(req,res,'/api/live');
@@ -27,5 +28,8 @@ export async function healthProbe(req,res){
   }  const health=buildSystemHealth({databaseReachable,schemaReady:schema.ready});
   res.statusCode=health.ready?200:503;
   operationalLog(context,res.statusCode,health.ready?'readiness_ok':'readiness_degraded',{database_reachable:databaseReachable,schema_ready:schema.ready,schema_check_error:schemaCheckError});
-  return res.end(JSON.stringify({...health,schema,schema_check_error:schemaCheckError,request_id:context.requestId}));
+  const full={...health,schema,schema_check_error:schemaCheckError,request_id:context.requestId};
+  if(!isPublicDeploymentRequest(req)) return res.end(JSON.stringify(full));
+  const publicHealth={service:health.service,live:health.live,ready:health.ready,checks:{database_reachable:health.checks.database_reachable,schema_ready:health.checks.schema_ready,public_base_url_valid:health.checks.public_base_url_valid,commercial_safety_locked:health.checks.commercial_safety_locked},schema:{ready:schema.ready,required_tables:schema.required_tables,required_migrations:schema.required_migrations,missing_tables_count:Array.isArray(schema.missing_tables)?schema.missing_tables.length:null,missing_migrations_count:Array.isArray(schema.missing_migrations)?schema.missing_migrations.length:null},commercial_controls:{enabled:Object.values(health.commercial_switches||{}).filter(Boolean).length,total:Object.keys(health.commercial_switches||{}).length},request_id:context.requestId};
+  return res.end(JSON.stringify(publicHealth));
 }

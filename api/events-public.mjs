@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { normalizePublicEvent } from '../src/publicEvent.mjs';
-import { validatePublicApiRequest } from '../src/security.mjs';
+import { readJsonRequestBody, validatePublicApiRequest } from '../src/security.mjs';
 
 export default async function handler(req, res) {
   res.setHeader('content-type', 'application/json; charset=utf-8');
@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   const requestSafety = validatePublicApiRequest(req);
   if (!requestSafety.ok) { res.statusCode=requestSafety.status; return res.end(JSON.stringify({ error:requestSafety.error, accepted:false })); }
   if (!process.env.DATABASE_URL) { res.statusCode=503; return res.end(JSON.stringify({ error:'telemetry_storage_unavailable', accepted:false })); }
-  const event=normalizePublicEvent(req.body);
+  const event=normalizePublicEvent(await readJsonRequestBody(req));
   if(!event){ res.statusCode=400; return res.end(JSON.stringify({ error:'invalid_event', accepted:false })); }
   try {
     const sql=neon(process.env.DATABASE_URL);
@@ -33,7 +33,7 @@ export default async function handler(req, res) {
       select $9,'lead_review','queued',80,lead_id,$10,$11::jsonb,now() from lead_upsert
       on conflict(idempotency_key) do nothing
       returning job_id
-    `,[event.event_id,event.event_name,event.session_id,event.experiment_id,event.offer_id,event.channel,event.source,randomUUID(),randomUUID(),`public-event:${event.event_id}`,JSON.stringify({source:'public_event',event_name:event.event_name})]);
+    `,[event.event_id,event.event_name,event.session_id,event.experiment_id,event.offer_id,event.channel,event.source,randomUUID(),randomUUID(),`public-cta:${event.session_id}`,JSON.stringify({source:'public_event',event_name:event.event_name})]);
     const duplicate=rows.length===0 && event.event_name==='cta_whatsapp';
     res.statusCode=202;
     return res.end(JSON.stringify({accepted:true,duplicate,agent_job_queued:rows.length>0}));

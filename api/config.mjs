@@ -10,6 +10,7 @@ import { commercialDistributionReadiness } from '../src/commercialDistribution.m
 import { certificationPilotStatus } from '../src/certificationPilot.mjs';
 import { verifyMercadoLivreLive } from '../src/mercadoLivreVerification.mjs';
 import { brandIdentityReadiness } from '../src/brandIdentityReadiness.mjs';
+import { isPublicDeploymentRequest, safeBearerEqual } from '../src/security.mjs';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -17,6 +18,8 @@ export default async function handler(req, res) {
     return res.end(JSON.stringify({ error: 'method_not_allowed' }));
   }
   const url=new URL(req.url||'/api/config','https://zevanory.api.br');
+  const view=String(url.searchParams.get('view')||'');
+  if(isPublicDeploymentRequest(req)&&['mercadolivre-audit','lifecycle','activation'].includes(view)){const expected=String(process.env.OPERATOR_TOKEN||process.env.FULFILLMENT_OPERATOR_TOKEN||'');const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'');if(!safeBearerEqual(expected,provided)){res.statusCode=401;return res.end(JSON.stringify({error:'operator_auth_required'}));}}
   if(url.searchParams.get('view')==='mercadolivre-audit'){
     if(!process.env.DATABASE_URL){res.statusCode=503;return res.end(JSON.stringify({error:'database_required'}));}
     try{const result=await verifyMercadoLivreLive(neon(process.env.DATABASE_URL));res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=result.all_verified?200:503;return res.end(JSON.stringify(result));}catch(error){res.statusCode=503;return res.end(JSON.stringify({provider:'mercado_livre',all_verified:false,error:String(error?.message||'verification_failed').slice(0,120)}));}
@@ -39,7 +42,7 @@ export default async function handler(req, res) {
   res.setHeader('cache-control', 'no-store');
   res.setHeader('x-content-type-options', 'nosniff');
   res.statusCode = 200;
-  return res.end(JSON.stringify({
+  const payload={
     commercial_enabled: gate.enabled,
     commercial_blockers: gate.blockers,
     sales_lifecycle: { version:gate.lifecycle.version, approved:gate.lifecycle.approved, required_score:gate.lifecycle.required_score, passed_dimensions:gate.lifecycle.passed_dimensions, total_dimensions:gate.lifecycle.total_dimensions, blockers:gate.lifecycle.blockers },
@@ -57,6 +60,9 @@ export default async function handler(req, res) {
     certification_pilot: certificationPilotStatus(),
     support_whatsapp_number: PROJECT.officialWhatsappE164,
     production_mode: gate.enabled ? 'commercial-gated' : 'pre-sale-blocked'
-  }));
+  };
+  const o=payload.offer||{}; const safeOffer={sku:o.sku,product:o.product,commercial_name:o.commercial_name,brand:o.brand,endorsed_by:o.endorsed_by,brand_signature:o.brand_signature,version:o.version,offer_type:o.offer_type,delivery_mode:o.delivery_mode,table_price_brl:o.table_price_brl,pilot_price_brl:o.pilot_price_brl,price_brl:o.price_brl,price_status:o.price_status,primary:o.primary};
+  const body=isPublicDeploymentRequest(req)?{commercial_enabled:payload.commercial_enabled,commercial_blockers:payload.commercial_blockers,whatsapp_enabled:payload.whatsapp_enabled,whatsapp_number:payload.whatsapp_number,offer_id:payload.offer_id,experiment_id:payload.experiment_id,experimental_price_brl:payload.experimental_price_brl,offer:safeOffer,support_whatsapp_number:payload.support_whatsapp_number,production_mode:payload.production_mode}:payload;
+  return res.end(JSON.stringify(body));
 }
 

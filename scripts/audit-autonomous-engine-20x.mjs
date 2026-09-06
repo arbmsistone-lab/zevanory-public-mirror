@@ -22,7 +22,7 @@ add('10 queue is priority ordered',worker.includes('priority desc'));
 add('11 migration creates agent jobs',migration.includes('CREATE TABLE IF NOT EXISTS agent_jobs'));
 add('12 migration creates run audit and memory',migration.includes('agent_runs')&&migration.includes('agent_memory')&&migration.includes('agent_tool_audit'));
 add('13 knowledge uses PostgreSQL full text search',migration.includes('tsvector')&&migration.toLowerCase().includes('using gin'));
-add('14 public CTA queues agent job',publicApi.includes("'lead_review','queued'")&&publicApi.includes('public-event:'));
+add('14 public CTA queues one idempotent agent job per session',publicApi.includes("'lead_review','queued'")&&publicApi.includes('public-cta:${event.session_id}'));
 add('15 operator events are authenticated and queue work',operatorApi.includes('operator_auth_required')&&operatorApi.includes('operator-event:'));
 add('16 worker endpoint requires bearer auth',runApi.includes('agent_auth_required')&&runApi.includes('safeBearerEqual'));
 add('17 status endpoint exposes aggregates only',statusApi.includes('count(*)::int')&&!statusApi.includes('session_id')&&!statusApi.includes('contact_ref'));
