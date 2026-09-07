@@ -7,6 +7,7 @@ import {
   authorizeCertificationPilotCheckout,
   recordCertificationPilotCheckoutEvidence,
   hashCertificationPilotToken,
+  certificationPilotAmountBrl,
 } from '../src/certificationPilot.mjs';
 
 const readyEnv={
@@ -19,6 +20,12 @@ const readyEnv={
   ZEVANORY_PRODUCT_HANDOFF_V21_VERIFIED:'true',ZEVANORY_SECURE_ARTIFACT_DELIVERY_READY:'true',
 };
 
+test('certification pilot amount is isolated, bounded and defaults to R$ 5',()=>{
+  assert.equal(certificationPilotAmountBrl({}),5);
+  assert.equal(certificationPilotAmountBrl({CERTIFICATION_PILOT_AMOUNT_BRL:'5.50'}),5.5);
+  assert.throws(()=>certificationPilotAmountBrl({CERTIFICATION_PILOT_AMOUNT_BRL:'4.99'}),/certification_pilot_amount_invalid/);
+  assert.throws(()=>certificationPilotAmountBrl({CERTIFICATION_PILOT_AMOUNT_BRL:'50.01'}),/certification_pilot_amount_invalid/);
+});
 test('certification pilot is closed by default and never opens global sales',()=>{
   assert.equal(certificationPilotPolicy({}).ready,false);
   const ready=certificationPilotPolicy(readyEnv);

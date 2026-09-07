@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { PROJECT } from '../config.mjs';
 import { asaasBaseUrl } from '../asaas.mjs';
 import { salesGate } from '../salesGate.mjs';
-import { authorizeCertificationPilotCheckout, recordCertificationPilotCheckoutEvidence } from '../certificationPilot.mjs';
+import { authorizeCertificationPilotCheckout, recordCertificationPilotCheckoutEvidence, certificationPilotAmountBrl } from '../certificationPilot.mjs';
 import {
   normalizeCheckoutRequest,
   checkoutReplayDecision,
@@ -52,6 +52,7 @@ export default async function handler(req,res) {  res.setHeader('content-type','
     pilot=await authorizeCertificationPilotCheckout(sql,{token:pilotToken,sessionId:input.sessionId,requestId:input.requestId});
     if(!pilot.authorized) return json(res,503,{error:'sales_globally_blocked',blockers:gate.blockers,pilot_reason:pilot.reason});
   }
+  const effectiveOffer=pilot?.authorized?Object.freeze({...input.offer,price_brl:certificationPilotAmountBrl(process.env)}):input.offer;
   const orderId=crypto.randomUUID();
   const externalReference=externalReferenceForOrder(orderId);
   try {
@@ -61,7 +62,7 @@ export default async function handler(req,res) {  res.setHeader('content-type','
       VALUES ($1,$2,$3,$4,$5,$6,'BRL','asaas',$7,'created',$8,$9)
       ON CONFLICT (request_id) DO NOTHING
       RETURNING order_id
-    `,[orderId,input.requestId,input.sessionId,PROJECT.experimentId,input.offer.id,input.offer.price_brl,externalReference,Boolean(pilot?.authorized),pilot?.invite_id||null]);
+    `,[orderId,input.requestId,input.sessionId,PROJECT.experimentId,input.offer.id,effectiveOffer.price_brl,externalReference,Boolean(pilot?.authorized),pilot?.invite_id||null]);
     let order;
     if(inserted.length) {
       order={order_id:orderId,external_reference:externalReference,status:'created'};
@@ -84,7 +85,7 @@ export default async function handler(req,res) {  res.setHeader('content-type','
       RETURNING order_id,external_reference
     `,[order.order_id]);
     if(claimed.length!==1) return json(res,409,{error:'checkout_in_progress'});
-    const payload=buildAsaasCheckoutPayload(order.order_id,publicBase,input.offer);
+    const payload=buildAsaasCheckoutPayload(order.order_id,publicBase,effectiveOffer);
     if(!payload) return json(res,503,{error:'checkout_payload_unavailable'});
     let checkout;
     try {

@@ -23,6 +23,11 @@ export function certificationPilotPolicy(env=process.env){
 }
 
 export const hashCertificationPilotToken=(token)=>crypto.createHash('sha256').update(String(token||'')).digest('hex');
+export function certificationPilotAmountBrl(env=process.env){
+  const raw=Number(String(env.CERTIFICATION_PILOT_AMOUNT_BRL||'5').replace(',','.'));
+  if(!Number.isFinite(raw)||raw<5||raw>50) throw new Error('certification_pilot_amount_invalid');
+  return Math.round(raw*100)/100;
+}
 export async function createCertificationPilotInvite(sql,{createdBy,env=process.env,ttlHours}={}){
   const policy=certificationPilotPolicy(env);
   if(!policy.ready) throw new Error(`certification_pilot_not_ready:${policy.blockers.join(',')}`);
