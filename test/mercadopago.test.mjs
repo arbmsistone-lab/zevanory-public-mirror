@@ -15,6 +15,12 @@ test('Mercado Pago preference is first-party tracked and hosted',()=>{
   assert.equal(p.notification_url,'https://zevanory.api.br/api/webhooks/mercadopago');
 });
 
+test('Mercado Pago certification preference isolates sandbox webhook',()=>{
+  const p=buildMercadoPagoPreference(orderId,'https://zevanory.api.br',undefined,{notificationPath:'/api/webhooks?provider=mercadopago_test'});
+  assert.equal(p.notification_url,'https://zevanory.api.br/api/webhooks?provider=mercadopago_test');
+  assert.equal(p.items[0].unit_price,PROJECT.experimentalPriceBrl);
+});
+
 test('Mercado Pago checkout creation uses bearer token',async()=>{
   let seen; const result=await createMercadoPagoPreference({external_reference:ref},'token',async(url,opts)=>{seen={url,opts};return {ok:true,json:async()=>({id:'pref-1'})};});
   assert.match(seen.url,/api\.mercadopago\.com\/checkout\/preferences$/); assert.equal(seen.opts.headers.authorization,'Bearer token'); assert.equal(result.id,'pref-1');

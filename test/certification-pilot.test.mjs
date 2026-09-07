@@ -63,6 +63,12 @@ test('checkout and operator surfaces wire the pilot without a public bypass',()=
     assert.match(source,/authorizeCertificationPilotCheckout/);
     assert.match(source,/certification_pilot_invite_id/);
   }
+  assert.match(mp,/MERCADOPAGO_TEST_ACCESS_TOKEN/);
+  assert.match(mp,/CERTIFICATION_PILOT_PAYMENT_MODE/);
+  assert.match(mp,/mercadopago_test/);
+  const webhooks=fs.readFileSync('api/webhooks.mjs','utf8');
+  assert.match(webhooks,/MERCADOPAGO_TEST_WEBHOOK_SECRET/);
+  assert.match(webhooks,/certificationOnly:true/);
   assert.match(operator,/certification_pilot_invite_create/);
   assert.match(operator,/CERTIFICATION_PILOT_APPROVER/);
   assert.match(operator,/commercial_unlock:false/);

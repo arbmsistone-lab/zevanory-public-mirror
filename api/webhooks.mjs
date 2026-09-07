@@ -1,5 +1,5 @@
 import asaasHandler from '../src/http/webhookAsaas.mjs';
-import mercadoPagoHandler from '../src/http/webhookMercadoPago.mjs';
+import mercadoPagoHandler,{handleMercadoPagoWebhook} from '../src/http/webhookMercadoPago.mjs';
 import resendHandler from '../src/http/webhookResend.mjs';
 import metaHandler from '../src/http/webhookMeta.mjs';
 import mercadoLivreHandler from '../src/http/webhookMercadoLivre.mjs';
@@ -29,7 +29,7 @@ const readRawBody=async(req)=>{
 };
 export default async function handler(req,res){
   const provider=providerFrom(req);
-  if(!['asaas','mercadopago','resend','meta','mercadolivre','mercadolivre_oauth','tiktok_oauth','linkedin_oauth','nuvemshop_oauth'].includes(provider)){
+  if(!['asaas','mercadopago','mercadopago_test','resend','meta','mercadolivre','mercadolivre_oauth','tiktok_oauth','linkedin_oauth','nuvemshop_oauth'].includes(provider)){
     res.setHeader('content-type','application/json; charset=utf-8');
     res.statusCode=400;
     return res.end(JSON.stringify({error:'webhook_provider_invalid',accepted:false}));
@@ -59,6 +59,7 @@ export default async function handler(req,res){
   }
   if(provider==='asaas') return asaasHandler(req,res);
   if(provider==='mercadopago') return mercadoPagoHandler(req,res);
+  if(provider==='mercadopago_test') return handleMercadoPagoWebhook(req,res,{accessToken:process.env.MERCADOPAGO_TEST_ACCESS_TOKEN,webhookSecret:process.env.MERCADOPAGO_TEST_WEBHOOK_SECRET,certificationOnly:true,source:'mercadopago-test'});
   if(provider==='meta') return metaHandler(req,res);
   if(provider==='mercadolivre') return mercadoLivreHandler(req,res);
   if(provider==='mercadolivre_oauth') return mercadoLivreOAuthHandler(req,res);

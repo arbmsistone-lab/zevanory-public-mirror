@@ -10,16 +10,18 @@ const safeText=(value,min=1,max=160)=>{
   return text.length>=min&&text.length<=max&&!/[\u0000-\u001f\u007f]/.test(text)?text:'';
 };
 
-export function buildMercadoPagoPreference(orderId,publicBaseUrl,offer=resolveCheckoutOffer(PROJECT.offerId)){
+export function buildMercadoPagoPreference(orderId,publicBaseUrl,offer=resolveCheckoutOffer(PROJECT.offerId),options={}){
   const externalReference=externalReferenceForOrder(orderId);
   const base=safePublicBaseUrl(publicBaseUrl);
   if(!externalReference||!base||!isUuid(orderId)||!offer) return null;
+  const notificationPath=String(options.notificationPath||'/api/webhooks/mercadopago');
+  if(!notificationPath.startsWith('/api/')) return null;
   return Object.freeze({
     items:[{id:offer.id,title:`${offer.product} ${offer.version}`,description:'Produto digital ZEVANORY',quantity:1,currency_id:'BRL',unit_price:offer.price_brl}],
     back_urls:{success:`${base}/piloto?checkout=success`,pending:`${base}/piloto?checkout=pending`,failure:`${base}/piloto?checkout=failure`},
     auto_return:'approved',
     external_reference:externalReference,
-    notification_url:`${base}/api/webhooks/mercadopago`,
+    notification_url:`${base}${notificationPath}`,
     statement_descriptor:'ZEVANORY',
     metadata:{zevanory_order_id:String(orderId).toLowerCase(),offer_id:offer.id},
   });
