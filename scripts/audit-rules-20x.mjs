@@ -6,7 +6,7 @@ add('02 pre-sale default false',env.includes('PRE_SALE_GATES_APPROVED=false'));
 add('03 checkout default false',env.includes('CHECKOUT_ENABLED=false'));
 add('04 whatsapp sales default false',env.includes('WHATSAPP_SALES_ENABLED=false'));
 add('05 financial events default false',env.includes('FINANCIAL_EVENTS_ENABLED=false'));
-add('06 global gate requires manifest',gate.includes('globalEnabled && preSaleApproved && manifest.approved'));
+add('06 global gate requires manifest and absolute release seal',gate.includes('globalEnabled && preSaleApproved && absoluteReleaseApproved && manifest.approved')&&env.includes('ABSOLUTE_RELEASE_APPROVED=false'));
 add('07 channel gate depends on global gate',gate.includes('return salesGate(env).enabled'));
 add('08 AI never invents commercial truth',policy.includes('Never invent sales, revenue, conversion, customer identity, legal status, prices, inventory, payment status or performance'));
 add('09 unknown tools deny by default',policy.includes("reason:'unknown_tool'")&&policy.includes("reason:'deny_by_default'"));
