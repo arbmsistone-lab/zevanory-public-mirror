@@ -15,6 +15,13 @@ test('global sales gate is fail-closed by default',()=>{
   assert.equal(salesGate({PRE_SALE_GATES_APPROVED:'true'}).enabled,false);
 });
 
+test('absolute release seal blocks accidental commercial unlock',()=>{
+  const gate=salesGate({SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'});
+  assert.equal(gate.enabled,false);
+  assert.equal(gate.absolute_release_approved,false);
+  assert.ok(gate.blockers.includes('absolute_release_not_approved'));
+});
+
 test('canonical pre-sale manifest blocks environment-only activation',()=>{
   const base={SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'};
   const gate=salesGate(base);
