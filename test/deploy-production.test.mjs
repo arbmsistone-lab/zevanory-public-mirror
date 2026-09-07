@@ -1,6 +1,6 @@
 ﻿import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateReleaseMetadata, verifyDeploymentInspection, verifyPromotedDeployment, extractDeploymentUrl, vercelRunnerConfig, buildDeployArgs, buildInspectArgs, buildPromoteArgs } from '../scripts/deploy-production.mjs';
+import { validateReleaseMetadata, verifyDeploymentInspection, verifyPromotedDeployment, extractDeploymentUrl, vercelRunnerConfig, buildDeployArgs, buildInspectArgs, buildApiArgs, buildPromoteArgs } from '../scripts/deploy-production.mjs';
 
 const sha='a'.repeat(40);
 
@@ -34,10 +34,11 @@ test('isolated deployment verification requires READY and exact authenticated SH
   assert.throws(()=>verifyDeploymentInspection({readyState:'READY',meta:{gitCommitSha:'b'.repeat(40)}},sha),/inspection_sha_mismatch/);
 });
 
-test('promotion verification requires same deployment id and SHA',()=>{
-  const body={id:'dpl_ok',readyState:'READY',meta:{gitCommitSha:sha}};
-  assert.equal(verifyPromotedDeployment(body,'dpl_ok',sha),true);
-  assert.throws(()=>verifyPromotedDeployment(body,'dpl_other',sha),/promoted_id_mismatch/);
+test('promotion verification requires same READY deployment id',()=>{
+  const body={id:'dpl_ok',readyState:'READY'};
+  assert.equal(verifyPromotedDeployment(body,'dpl_ok'),true);
+  assert.throws(()=>verifyPromotedDeployment(body,'dpl_other'),/promoted_id_mismatch/);
+  assert.throws(()=>verifyPromotedDeployment({id:'dpl_ok',readyState:'BUILDING'},'dpl_ok'),/promoted_not_ready/);
 });
 
 test('deployment URL extraction fails closed',()=>{
@@ -65,7 +66,8 @@ test('production deploy is isolated, archived and carries provenance',()=>{
   assert.equal(args.includes('ZEVANORY_RELEASE_REF=main'),true);
 });
 
-test('production deploy verifies before explicit promotion',()=>{
+test('production deploy verifies via authenticated API before explicit promotion',()=>{
   assert.deepEqual(buildInspectArgs('https://sample.vercel.app'),['vercel','inspect','https://sample.vercel.app','--scope','arbmsistone-labs-projects','--wait','--timeout','3m','--json']);
+  assert.deepEqual(buildApiArgs('dpl_sample'),['vercel','api','/v13/deployments/dpl_sample','--scope','arbmsistone-labs-projects']);
   assert.deepEqual(buildPromoteArgs('https://sample.vercel.app'),['vercel','promote','https://sample.vercel.app','--scope','arbmsistone-labs-projects','--yes']);
 });

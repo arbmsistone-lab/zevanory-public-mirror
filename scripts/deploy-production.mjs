@@ -26,9 +26,10 @@ export function verifyDeploymentInspection(body,expectedSha){
   if(actual!==String(expectedSha||'').trim().toLowerCase()) throw new Error('deploy_inspection_sha_mismatch');
   return true;
 }
-export function verifyPromotedDeployment(body,expectedId,expectedSha){
+export function verifyPromotedDeployment(body,expectedId){
   if(String(body?.id||'')!==String(expectedId||'')) throw new Error('deploy_promoted_id_mismatch');
-  return verifyDeploymentInspection(body,expectedSha);
+  if(String(body?.readyState||'').toUpperCase()!=='READY') throw new Error('deploy_promoted_not_ready');
+  return true;
 }
 export function extractDeploymentUrl(output){
   const matches=String(output||'').match(/https:\/\/[A-Za-z0-9.-]+\.vercel\.app/g)||[];
@@ -47,6 +48,9 @@ export function buildDeployArgs(meta){
 }
 export function buildInspectArgs(target){
   return ['vercel','inspect',target,'--scope',SCOPE,'--wait','--timeout','3m','--json'];
+}
+export function buildApiArgs(deploymentId){
+  return ['vercel','api',`/v13/deployments/${deploymentId}`,'--scope',SCOPE];
 }
 export function buildPromoteArgs(target){
   return ['vercel','promote',target,'--scope',SCOPE,'--yes'];
@@ -70,13 +74,14 @@ export async function main(){
   const deployOutput=run(runner.command,buildDeployArgs(meta),{capture:true,shell:runner.shell});
   const deploymentUrl=extractDeploymentUrl(deployOutput);
   const inspected=JSON.parse(run(runner.command,buildInspectArgs(deploymentUrl),{capture:true,shell:runner.shell}));
-  verifyDeploymentInspection(inspected,meta.sha);
+  const deployment=JSON.parse(run(runner.command,buildApiArgs(inspected.id),{capture:true,shell:runner.shell}));
+  verifyDeploymentInspection(deployment,meta.sha);
   run('git',['fetch','origin','main']);
   const latestRemote=run('git',['rev-parse','origin/main'],{capture:true});
   if(latestRemote!==meta.sha) throw new Error('deploy_origin_main_advanced_during_deploy');
   run(runner.command,buildPromoteArgs(deploymentUrl),{shell:runner.shell});
   const promoted=JSON.parse(run(runner.command,buildInspectArgs('zevanory.api.br'),{capture:true,shell:runner.shell}));
-  verifyPromotedDeployment(promoted,inspected.id,meta.sha);
+  verifyPromotedDeployment(promoted,inspected.id);
   console.log(`DEPLOY_PRODUCTION_COMPLETE sha=${meta.sha} ref=${meta.ref} deployment=${inspected.id}`);
 }
 
