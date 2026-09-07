@@ -19,19 +19,37 @@ export function validateReleaseMetadata({sha,ref,status,remoteSha}){
   return {sha:cleanSha,ref:cleanRef};
 }
 
-export function verifyProductionRelease(body,expectedSha){
-  const actual=String(body?.deployment?.commit_sha||'').trim().toLowerCase();
-  if(actual!==String(expectedSha||'').trim().toLowerCase()) throw new Error('deploy_public_sha_mismatch');
+export function verifyDeploymentInspection(body,expectedSha){
+  if(String(body?.readyState||'').toUpperCase()!=='READY') throw new Error('deploy_not_ready');
+  const meta=body?.meta||{};
+  const actual=String(meta.gitCommitSha||meta.githubCommitSha||'').trim().toLowerCase();
+  if(actual!==String(expectedSha||'').trim().toLowerCase()) throw new Error('deploy_inspection_sha_mismatch');
   return true;
+}
+export function verifyPromotedDeployment(body,expectedId,expectedSha){
+  if(String(body?.id||'')!==String(expectedId||'')) throw new Error('deploy_promoted_id_mismatch');
+  return verifyDeploymentInspection(body,expectedSha);
+}
+export function extractDeploymentUrl(output){
+  const matches=String(output||'').match(/https:\/\/[A-Za-z0-9.-]+\.vercel\.app/g)||[];
+  const url=matches.at(-1)||'';
+  if(!url) throw new Error('deploy_url_missing');
+  return url;
 }
 export function vercelRunnerConfig(platform=process.platform){
   return {command:'npx',shell:platform==='win32'};
 }
 
 export function buildDeployArgs(meta){
-  return ['vercel','deploy','--prod','--yes','--scope',SCOPE,
+  return ['vercel','deploy','--prod','--yes','--scope',SCOPE,'--skip-domain','--archive=tgz','--no-wait',
     '--env',`ZEVANORY_RELEASE_SHA=${meta.sha}`,
     '--env',`ZEVANORY_RELEASE_REF=${meta.ref}`];
+}
+export function buildInspectArgs(target){
+  return ['vercel','inspect',target,'--scope',SCOPE,'--wait','--timeout','3m','--json'];
+}
+export function buildPromoteArgs(target){
+  return ['vercel','promote',target,'--scope',SCOPE,'--yes'];
 }
 
 function run(command,args,{capture=false,shell=false}={}){
@@ -49,14 +67,17 @@ export async function main(){
   const remoteSha=run('git',['rev-parse','origin/main'],{capture:true});
   const meta=validateReleaseMetadata({sha,ref,status,remoteSha});
   const runner=vercelRunnerConfig();
-  run(runner.command,buildDeployArgs(meta),{shell:runner.shell});
+  const deployOutput=run(runner.command,buildDeployArgs(meta),{capture:true,shell:runner.shell});
+  const deploymentUrl=extractDeploymentUrl(deployOutput);
+  const inspected=JSON.parse(run(runner.command,buildInspectArgs(deploymentUrl),{capture:true,shell:runner.shell}));
+  verifyDeploymentInspection(inspected,meta.sha);
   run('git',['fetch','origin','main']);
   const latestRemote=run('git',['rev-parse','origin/main'],{capture:true});
   if(latestRemote!==meta.sha) throw new Error('deploy_origin_main_advanced_during_deploy');
-  const response=await fetch('https://zevanory.api.br/api/release',{cache:'no-store'});
-  if(!response.ok) throw new Error(`deploy_public_release_unavailable:${response.status}`);
-  verifyProductionRelease(await response.json(),meta.sha);
-  console.log(`DEPLOY_PRODUCTION_COMPLETE sha=${meta.sha} ref=${meta.ref}`);
+  run(runner.command,buildPromoteArgs(deploymentUrl),{shell:runner.shell});
+  const promoted=JSON.parse(run(runner.command,buildInspectArgs('zevanory.api.br'),{capture:true,shell:runner.shell}));
+  verifyPromotedDeployment(promoted,inspected.id,meta.sha);
+  console.log(`DEPLOY_PRODUCTION_COMPLETE sha=${meta.sha} ref=${meta.ref} deployment=${inspected.id}`);
 }
 
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href){
