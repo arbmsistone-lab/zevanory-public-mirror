@@ -45,7 +45,7 @@ unit('CODE-CONFIG', 'src/config.mjs', [
 unit('CODE-SALES-GATE','src/salesGate.mjs',[
   command('sales gate syntax',process.execPath,['--check','src/salesGate.mjs']),
   command('sales gate tests',process.execPath,['--test','test/sales-gate.test.mjs']),
-  op('three-layer fail-closed global gate',()=>t('src/salesGate.mjs').includes('SALE_GLOBALLY_ENABLED')&&t('src/salesGate.mjs').includes('PRE_SALE_GATES_APPROVED')&&t('src/salesGate.mjs').includes('globalEnabled && preSaleApproved && manifest.approved')),
+  op('absolute fail-closed global gate',()=>t('src/salesGate.mjs').includes('SALE_GLOBALLY_ENABLED')&&t('src/salesGate.mjs').includes('PRE_SALE_GATES_APPROVED')&&t('src/salesGate.mjs').includes('ABSOLUTE_RELEASE_APPROVED')&&t('src/salesGate.mjs').includes('globalEnabled && preSaleApproved && absoluteReleaseApproved && manifest.approved && lifecycle.approved')),
 ]);
 unit('CODE-PRE-SALE-APPROVAL','src/preSaleApproval.mjs',[
   command('pre-sale approval syntax',process.execPath,['--check','src/preSaleApproval.mjs']),
