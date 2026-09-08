@@ -28,3 +28,12 @@ Heavy local execution is forbidden; local machine remains control plane/light va
 
 ## Commercial boundary
 This architecture changes execution resilience only. It does not enable SALE_GLOBALLY_ENABLED, PRE_SALE_GATES_APPROVED, checkout, financial events, outbound commercial activation or production cutover.
+
+## Expansion — payments + AI
+- Payment provider selection is capability/readiness based; `PAYMENT_PROVIDER` is optional preference only.
+- Checkout resolves a ready provider before any financial side effect; explicit unavailable providers fail closed.
+- Agent checkout enqueue records the selected provider and reason, without requiring a named provider globally.
+- AI decisions now route through a neutral `ai:decision` provider pool.
+- Gemini remains an adapter, not a core dependency; independent adapters can be injected without changing revenue-agent logic.
+- If every AI provider fails, deterministic policy remains available and preserves safe operation.
+- Financial ambiguity still forbids blind failover after provider side effects.

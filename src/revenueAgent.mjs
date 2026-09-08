@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { askGemini, deterministicDecision } from './aiProvider.mjs';
+import { decideWithAiProviders, deterministicDecision } from './aiProvider.mjs';
 import { AGENT_SYSTEM_POLICY } from './agentPolicy.mjs';
 import { searchKnowledge, knowledgeContext } from './knowledgeEngine.mjs';
 import { loadOutcomeLearningMemory } from './outcomeLearning.mjs';
@@ -41,7 +41,7 @@ export async function decideRevenueAction(context, options = {}) {
     outcome_learning:context.outcome_learning||null,
   };
   if (terminalStages.has(String(input.stage))) return deterministicDecision({ ...input, stage:'terminal' });
-  try { return await askGemini({ input, systemInstruction:AGENT_SYSTEM_POLICY, ...options }); }
+  try { return await decideWithAiProviders({ input, systemInstruction:AGENT_SYSTEM_POLICY, providers:options.aiProviders||[], apiKey:options.apiKey, model:options.model }); }
   catch (error) { return Object.freeze({ ...deterministicDecision(input), fallback_reason:String(error?.message || 'ai_unavailable') }); }
 }
 

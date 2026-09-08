@@ -33,7 +33,8 @@ test('AI provider outage degrades to deterministic policy',async()=>{
   globalThis.fetch=async()=>({ok:false,status:503}); process.env.AGENT_AI_ENABLED='true';
   try{
     const r=await decideRevenueAction({job_type:'lead_review',lead:{stage:'new',touchpoints:0},knowledge:''},{apiKey:'test-key',model:'test-model'});
-    assert.equal(r.provider,'deterministic'); assert.equal(r.mode,'deterministic'); assert.match(r.fallback_reason,/gemini_http_503/);
+    assert.equal(r.provider,'deterministic'); assert.equal(r.mode,'deterministic'); assert.equal(r.fallback_reason,'all_qualified_providers_failed');
+    assert.equal(Array.isArray(r.provider_attempts),true); assert.match(r.provider_attempts[0]?.reason||'',/gemini_http_503/);
   }finally{globalThis.fetch=previousFetch; if(previousEnabled===undefined) delete process.env.AGENT_AI_ENABLED; else process.env.AGENT_AI_ENABLED=previousEnabled;}
 });
 

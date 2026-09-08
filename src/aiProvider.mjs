@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { defineExecutionProvider, executeUniversallySafely } from './universalExecutionFabric.mjs';
 
 export const DEFAULT_AI_MODEL = 'gemini-3.7-flash';
 export const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001';
@@ -36,4 +37,25 @@ export async function askGemini({ input, systemInstruction, apiKey = process.env
   let decision;
   try { decision = JSON.parse(text); } catch { throw new Error('gemini_invalid_json'); }
   return Object.freeze({ provider: 'google', model, mode: 'ai_assisted', latency_ms: Date.now() - started, input_hash: hash(input), ...decision });
+}
+export function buildGeminiExecutionProvider({apiKey=process.env.GEMINI_API_KEY,model=process.env.GEMINI_MODEL||DEFAULT_AI_MODEL}={}){
+  if(!apiKey||process.env.AGENT_AI_ENABLED!=='true') return null;
+  return defineExecutionProvider({
+    id:'ai-gemini-adapter',capabilities:['ai:decision'],independenceDomain:'google-ai',cost:0,
+    health:async()=>({state:'available'}),
+    execute:async({input,systemInstruction})=>askGemini({input,systemInstruction,apiKey,model}),
+  });
+}
+
+export async function decideWithAiProviders({input,systemInstruction,providers=[],apiKey,model}={}){
+  const dynamic=[...providers];
+  const gemini=buildGeminiExecutionProvider({apiKey,model});
+  if(gemini) dynamic.push(gemini);
+  if(!dynamic.length) return deterministicDecision(input);
+  const routed=await executeUniversallySafely({
+    operation:{input,systemInstruction},providers:dynamic,
+    requirements:{capabilities:['ai:decision'],zeroCost:true},
+  });
+  if(!routed.ok) return Object.freeze({...deterministicDecision(input),fallback_reason:routed.reason,provider_attempts:routed.attempts});
+  return Object.freeze({...routed.result,routed_provider:routed.provider,routed_domain:routed.independence_domain});
 }

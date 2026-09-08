@@ -11,6 +11,7 @@ import { recordVerifiedLifecycleEvidence } from './lifecycleEvidenceRepository.m
 import { evaluateProgressiveAutonomy } from './autonomyPolicy.mjs';
 import { evaluateContentNovelty } from './contentDedup.mjs';
 import { buildLiveActionPlan, persistLiveActionPlan, transitionLiveActionPlan } from './liveActionPlan.mjs';
+import { selectPaymentProvider } from './paymentProviders.mjs';
 
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const nbaExecutableTools=new Set(['schedule_follow_up','send_message','start_checkout']);
@@ -84,8 +85,10 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
   }
   if(tool==='start_checkout'){
     if(!lead?.session_id) throw new Error('checkout_session_unavailable');
-    const provider=String(env.PAYMENT_PROVIDER||'').toLowerCase(); if(!['asaas','mercadopago'].includes(provider)) throw new Error('payment_provider_invalid');
-    return enqueueOutbox(sql,{aggregateType:'lead',aggregateId:leadId,eventType:'start_checkout',destination:'payment:checkout',payload:{provider,session_id:lead.session_id,request_id:randomUUID()},idempotencyKey:`agent:${runId}:start_checkout`,traceId,runId});
+    const requestId=randomUUID();
+    const selected=selectPaymentProvider(env,{operationKey:requestId});
+    if(!selected.ready) throw new Error('payment_capacity_unavailable');
+    return enqueueOutbox(sql,{aggregateType:'lead',aggregateId:leadId,eventType:'start_checkout',destination:'payment:checkout',payload:{provider:selected.provider,selection_reason:selected.reason,session_id:lead.session_id,request_id:requestId},idempotencyKey:`agent:${runId}:start_checkout`,traceId,runId});
   }
   if(tool==='refund_payment'){
     const orderRef=String(decision.order_id||'').trim(); if(!orderRef) throw new Error('refund_order_required');

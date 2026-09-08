@@ -24,7 +24,6 @@ export default async function handler(req,res){
   const pilotToken=String(req.headers?.['x-certification-pilot-token']||'').trim();
   if(!gate.enabled&&!pilotToken) return json(res,503,{error:'sales_globally_blocked',blockers:gate.blockers});
   if(process.env.CHECKOUT_ENABLED!=='true') return json(res,503,{error:'checkout_disabled'});
-  if(String(process.env.PAYMENT_PROVIDER||'').toLowerCase()!=='mercadopago') return json(res,503,{error:'checkout_provider_not_selected'});
   const env=String(process.env.MERCADOPAGO_ENV||'').toLowerCase(); if(!['sandbox','production'].includes(env)) return json(res,503,{error:'checkout_environment_invalid'});
   const publicBase=safePublicBaseUrl(process.env.PUBLIC_BASE_URL);
   if(!process.env.DATABASE_URL||!process.env.MERCADOPAGO_ACCESS_TOKEN||!publicBase) return json(res,503,{error:'checkout_provider_unavailable'});
