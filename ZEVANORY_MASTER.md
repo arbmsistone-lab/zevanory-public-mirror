@@ -181,3 +181,15 @@ Enquanto qualquer dimensao estiver abaixo de 10, o estado obrigatorio e NO-GO e 
 ## 2026-09-05 — ARBM SIST modelo comercial canônico
 O modelo anterior de R$ 497 foi superado. Novo modelo: ZERO R$ 0; PRO R$ 1.197 com licença Stable permanente + 12 meses Continuity; Continuity R$ 79,90/mês a partir do 13º mês; BOOST +R$ 19,90/mês opcional; BYOK; V10 Sovereign Fallback; Zero Cost Firewall e Provider Independence. Nenhuma venda pública é aberta por esta decisão; gates continuam fail-closed.
 
+
+## REGRA INSTITUCIONAL — UNIVERSAL EXECUTION FABRIC
+Status: CANONICA / INVIOLAVEL.
+Nenhum fornecedor, cloud, runner, CI, modelo de IA, canal, meio de pagamento, observabilidade ou SaaS pode ser dependencia nominal obrigatoria do nucleo.
+O nucleo solicita capacidades e provas; adapters isolam detalhes de fornecedores substituiveis.
+Falha ou indisponibilidade de um fornecedor deve rerotear para outro provedor qualificado quando o efeito externo anterior for comprovadamente inexistente.
+Se nenhum provedor estiver disponivel, a operacao valida deve permanecer preservada em fila duravel, com idempotencia, evidencia e retry; dependencia externa isolada nao pode causar perda da operacao.
+Efeito externo ambiguo exige reconciliacao antes de rerotear para impedir duplicidade.
+Gates criticos exigem quorum por dominios de independencia, nunca o nome de um fornecedor especifico.
+Provedores pagos nao podem ser requisito quando a politica vigente exigir custo obrigatorio zero.
+Workloads pesados permanecem remotos; computador local e apenas control plane e validacao leve.
+Novos provedores podem entrar no pool apos qualificacao por capacidade, health, seguranca, custo e evidencia sem reescrever o nucleo.

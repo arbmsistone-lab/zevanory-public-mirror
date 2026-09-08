@@ -26,3 +26,10 @@ Falha do identity guard e blocker absoluto de publicacao.
 Antes de qualquer deploy, releia WORKSTREAMS.md e trate producao como operacao serializada.
 Deploy deve sair da raiz C:\Sistemas\ZEVANORY com pacote completo; deployment parcial e proibido.
 A release so fecha se o alias publico continuar apontando para o deployment exato promovido durante a Auditoria 3.
+
+## Regra universal multiprovedor
+Nunca introduza dependencia nominal obrigatoria de fornecedor no nucleo ou em gate critico.
+Selecione por capacidade, health, custo e evidencia; reroteie entre provedores independentes quando for seguro.
+Se nenhum provedor estiver disponivel, preserve a operacao duravelmente para retry; nao descarte por dependencia externa.
+Se houver efeito externo ambiguo, bloqueie reroteamento ate reconciliacao para evitar duplicidade.
+Nenhum workload pesado deve usar a maquina local; use apenas execucao remota qualificada.
