@@ -48,6 +48,7 @@ quality_core:
     - npm run audit:architecture:20x
     - npm run audit:3x
     - npm run audit:obs:10x
+    - npm run audit:live-plan:3x
     - npm run audit:10x
     - npm run resilience:smoke
     - npm run audit:30x

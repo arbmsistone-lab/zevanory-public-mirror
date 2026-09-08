@@ -33,6 +33,8 @@ jobs:
         run: npm run supplychain:scan
       - name: Observability audit
         run: npm run audit:obs:10x
+      - name: Live action plan audit
+        run: npm run audit:live-plan:3x
       - name: Security audit
         run: npm run audit:security:10x
       - name: NPM audit

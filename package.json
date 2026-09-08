@@ -13,6 +13,7 @@
     "audit:3x": "node scripts/audit-3x.mjs",
     "audit:10x": "node scripts/audit-10x.mjs",
     "audit:obs:10x": "node scripts/audit-observability-10x.mjs",
+    "audit:live-plan:3x": "node scripts/audit-live-action-plan-3x.mjs",
     "audit:security:10x": "node scripts/audit-security-10x.mjs",
     "audit:composable:10x": "node scripts/audit-composable-10x.mjs",
     "audit:enterprise:10x": "node scripts/audit-enterprise-10x.mjs",

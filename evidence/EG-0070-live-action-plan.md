@@ -44,3 +44,15 @@ Após o desfecho, atualizar o mesmo `manifest_id`, sem apagar o plano original, 
 APROVADO COM RESTRIÇÕES.
 Critério pós-implementação: testes focados + suíte integral + auditoria 3X + prova de que `persistLiveActionPlan` ocorre antes de `executeTool`.
 Rollback: remover integração do worker/API/UI; nenhum schema novo é necessário.
+
+## Validação da implementação — 2026-09-08
+- Testes focados da cadeia: 16/16 PASS, incluindo manifesto pré-execução, aprovação, estados, Control Room e confirmação WhatsApp/Resend.
+- Auditoria 1 — estrutura/configuração: APPROVED 8/8.
+- Auditoria 2 — função/segurança/integridade: APPROVED 7/7.
+- Auditoria 3 — integração/regressão: APPROVED 6/6.
+- Gate automatizado: `npm run audit:live-plan:3x`; obrigatório em GitHub Quality Gate, GitHub Quality Control Plane e GitLab quality_core.
+- Identity Guard: PASS. Nenhum gate comercial/financeiro foi alterado.
+- Vercel Preview: deployment check PASS; conteúdo protegido por Vercel Authentication, portanto fetch anônimo não é prova visual.
+- GitHub Actions: infraestrutura indisponível para os runs observados (`runner_id=0`, `steps=[]`); isso não constitui falha de teste, mas impede certificação integral remota enquanto não houver execução real das etapas.
+
+Status desta frente: IMPLEMENTAÇÃO E 3X LOCAL APROVADOS / PROMOÇÃO AINDA FAIL-CLOSED ATÉ CI REMOTO EXECUTAR E PASSAR.
