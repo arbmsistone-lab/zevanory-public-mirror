@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server-v2.mjs",
     "pretest": "node scripts/identity-guard.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
     "audit:3x": "node scripts/audit-3x.mjs",
     "audit:10x": "node scripts/audit-10x.mjs",
     "audit:obs:10x": "node scripts/audit-observability-10x.mjs",
