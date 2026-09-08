@@ -76,7 +76,8 @@
     "migration:018": "node --env-file-if-exists=.env.production.local scripts/apply-migration-018.mjs",
     "migration:019": "node --env-file-if-exists=.env.production.local scripts/apply-migration-019.mjs",
     "migration:020": "node --env-file-if-exists=.env.production.local scripts/apply-migration-020.mjs",
-    "migration:021": "node --env-file-if-exists=.env.production.local scripts/apply-migration-021.mjs"
+    "migration:021": "node --env-file-if-exists=.env.production.local scripts/apply-migration-021.mjs",
+    "migration:022": "node --env-file-if-exists=.env.production.local scripts/apply-migration-022.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
