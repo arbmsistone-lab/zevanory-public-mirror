@@ -96,9 +96,17 @@ if (chromiumResult.error || chromiumResult.status !== 0) {
   console.error('VERCEL_REMOTE_CERT_BLOCKED check=35 serverless Chromium resolution failed');
   process.exit(1);
 }
-const chromiumPath = String(chromiumResult.stdout || '').trim().split(/\r?\n/).at(-1);
-if (!chromiumPath) {
-  console.error('VERCEL_REMOTE_CERT_BLOCKED check=35 empty Chromium path');
+let chromiumInfo;
+try {
+  chromiumInfo = JSON.parse(String(chromiumResult.stdout || '').trim().split(/\r?\n/).at(-1));
+} catch {
+  console.error('VERCEL_REMOTE_CERT_BLOCKED check=35 invalid Chromium metadata');
+  process.exit(1);
+}
+const chromiumPath = String(chromiumInfo?.executablePath || '');
+const chromiumLibraryPath = String(chromiumInfo?.libraryPath || '');
+if (!chromiumPath || !chromiumLibraryPath) {
+  console.error('VERCEL_REMOTE_CERT_BLOCKED check=35 incomplete Chromium metadata');
   process.exit(1);
 }
 
@@ -128,6 +136,7 @@ try {
         ...process.env,
         ZEVANORY_BASE_URL: 'http://127.0.0.1:4173',
         PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: chromiumPath,
+        LD_LIBRARY_PATH: `${chromiumLibraryPath}:${process.env.LD_LIBRARY_PATH || ''}`,
       },
       stdio: 'inherit',
       shell: false,
