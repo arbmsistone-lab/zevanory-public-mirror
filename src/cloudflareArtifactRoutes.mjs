@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Pool } from '@neondatabase/serverless';
 import { safeBearerEqual } from './security.mjs';
 import { consumeArtifactDownload, issueArtifactDownload, PRIVATE_ARTIFACT } from './artifactDelivery.mjs';
+import { preserveStorageOperation, storageOperation } from './storageFabric.mjs';
 
 const json=(status,body)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
 const bearer=(request)=>String(request.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');
@@ -16,6 +17,12 @@ export async function handleArtifactIssue(request,env){
   if(!safeBearerEqual(String(env.FULFILLMENT_OPERATOR_TOKEN||''),bearer(request)))return json(401,{error:'operator_auth_required'});
   const text=await request.text();if(text.length>4096)return json(413,{error:'payload_too_large'});
   let body;try{body=JSON.parse(text||'{}')}catch{return json(400,{error:'invalid_json'});}
+  const orderId=String(body.order_id||'').trim();if(!orderId)return json(400,{error:'order_id_required'});
+  if(!env.DATABASE_URL){
+    const operation=storageOperation({operationId:`fulfillment-issue:${orderId}`,operationType:'fulfillment.issue_intent',subjectRef:orderId,payload:{order_id:orderId,ttl_minutes:Number(body.ttl_minutes||0),requires_canonical_payment_reconciliation:true}});
+    const preserved=await preserveStorageOperation(operation,{env,fetchImpl:globalThis.fetch,requiredCopies:1});
+    return json(preserved.preserved?202:503,{issued:false,preserved:preserved.preserved,pending_validation:preserved.preserved,download_url:null,error:preserved.preserved?undefined:'fulfillment_storage_unavailable'});
+  }
   const db=dbFor(env);
   try{
     const issued=await issueArtifactDownload(db,{orderId:body.order_id,issuedBy:'fulfillment-operator',ttlMinutes:body.ttl_minutes});
@@ -28,6 +35,7 @@ export async function handleArtifactIssue(request,env){
 export async function handleArtifactDownload(request,env){
   if(request.method!=='GET')return json(405,{error:'method_not_allowed'});
   const token=new URL(request.url).searchParams.get('token')||'';
+  if(!env.DATABASE_URL)return json(503,{error:'download_validation_unavailable'});
   const db=dbFor(env);let claimed;
   try{claimed=await consumeArtifactDownload(db,{token});}
   catch{return json(404,{error:'download_unavailable'});}

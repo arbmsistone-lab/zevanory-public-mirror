@@ -93,3 +93,13 @@ This architecture changes execution resilience only. It does not enable SALE_GLO
 - Decision: operational/reporting reads may reroute only to explicitly verified read-only routes for the same canonical dataset. Strong-current-state decisions such as payment confirmation remain on canonical transactional truth.
 - Alternate read route requires explicit verification metadata; absence of verification excludes it from the pool.
 - Gate: APPROVED FOR IMPLEMENTATION / no production cutover implied.
+
+## 2026-09-08 — Financial reconciliation expansion
+Evidence Gate: APPROVED WITH SAFETY RESTRICTIONS.
+- AWS Prescriptive Guidance: transactional outbox + idempotent consumers avoid dual-write inconsistency.
+- PostgreSQL transactions: atomic all-or-nothing state transitions remain canonical for order + financial event mutation.
+- Asaas webhook documentation: delivery may repeat; event IDs must be persisted/deduplicated before business effects.
+- Mercado Pago payment/webhook documentation: provider state must be queried/authenticated and reconciled server-side.
+Decision: journals preserve evidence/intention only. They never prove payment, unlock fulfillment, or authorize financial replay after an ambiguous effect.
+Implementation: checkout prewrite preservation; post-provider reconciliation evidence; financial webhook preservation; canonical-only fulfillment authority.
+Validation target: focused financial tests + Universal Fabric 3x + remote exact-SHA checks. Production cutover remains blocked.

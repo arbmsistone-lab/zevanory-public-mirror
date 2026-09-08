@@ -216,3 +216,12 @@ Novos provedores podem entrar no pool apos qualificacao por capacidade, health, 
 - Replication lag e tratado como risco real; replica de leitura nao pode virar fonte de verdade para pagamento, reconciliacao financeira ou aprovacao dependente de estado atual.
 - `/api/status`, `/api/assurance` e `/api/agent/status` usam o Read Fabric; detalhes de rota nao sao expostos publicamente.
 - Ausencia de rota verificada continua fail-closed; nenhum endpoint alternativo e presumido por nome de fornecedor.
+
+## 2026-09-08 — Financial Reconciliation Fabric
+- Checkout sem banco canônico não chama provedor; a intenção idempotente pode ser preservada e fica `pending_storage`.
+- Resposta de checkout aceita pelo provedor mas não persistida no banco gera evidência criptografada de reconciliação; nunca há segunda criação automática.
+- Webhook financeiro autenticado pode ser preservado quando o banco está indisponível, porém journal/snapshot nunca constitui verdade de pagamento.
+- Webhooks Asaas/Mercado Pago reconciliam pelo provider do pedido; não existe dependência nominal de `PAYMENT_PROVIDER` para aceitar Mercado Pago.
+- Escrita financeira nunca usa read replica; falha após tentativa de mutação exige reconciliação canônica.
+- Fulfillment preservado no journal é somente intenção pendente de validação; nunca gera token/link/download.
+- Download continua exigindo pedido `paid` + `payment_confirmed` reconciliado no banco canônico e claim transacional de uso único.

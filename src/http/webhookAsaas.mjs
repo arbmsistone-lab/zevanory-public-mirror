@@ -11,6 +11,7 @@ import {
 } from '../asaas.mjs';
 import { queueOutcomeLearningReview } from '../outcomeLearning.mjs';
 import { recordVerifiedLifecycleEvidence } from '../lifecycleEvidenceRepository.mjs';
+import { preserveFinancialReconciliation } from '../financialReconciliationFabric.mjs';
 
 export async function fetchAsaasPayment(paymentId, env, apiKey, fetchImpl = fetch) {
   const base = asaasBaseUrl(env);
@@ -46,7 +47,7 @@ export default async function handler(req, res) {
     res.statusCode = 503;
     return res.end(JSON.stringify({ error: 'financial_events_disabled', accepted: false }));
   }
-  if (!process.env.DATABASE_URL || !process.env.ASAAS_API_KEY || !asaasBaseUrl(process.env.ASAAS_ENV)) {
+  if (!process.env.ASAAS_API_KEY || !asaasBaseUrl(process.env.ASAAS_ENV)) {
     res.statusCode = 503;
     return res.end(JSON.stringify({ error: 'financial_provider_unavailable', accepted: false }));
   }
@@ -59,6 +60,11 @@ export default async function handler(req, res) {
     const payment = await fetchAsaasPayment(webhook.paymentId, process.env.ASAAS_ENV, process.env.ASAAS_API_KEY);
     const parsedOrderId=parseExternalReference(payment.externalReference);
     const checkoutSession=String(payment.checkoutSession||'');
+    const snapshot={provider_event_id:webhook.providerEventId,payment_id:webhook.paymentId,event_name:webhook.eventName,status:String(payment.status||''),external_reference:String(payment.externalReference||''),checkout_session:checkoutSession,value:Number(payment.value||0)};
+    if(!process.env.DATABASE_URL){
+      const recovery=await preserveFinancialReconciliation({provider:'asaas',eventId:webhook.providerEventId,kind:'webhook_pending_canonical_reconciliation',orderId:parsedOrderId||null,payload:snapshot});
+      return json(res,recovery.preserved?202:503,{accepted:recovery.preserved,preserved:recovery.preserved,reconciliation_pending:recovery.preserved,financial_truth:false,error:recovery.preserved?undefined:'financial_reconciliation_unavailable'});
+    }
     const sql = neon(process.env.DATABASE_URL);
     const orders=await sql.query(`
       SELECT order_id,amount,status,external_reference,provider_checkout_id FROM orders
@@ -74,7 +80,8 @@ export default async function handler(req, res) {
     const externalReference = String(orders[0].external_reference);
     const orderId = String(orders[0].order_id);
     const refundedTotal = normalized === 'refund_confirmed' ? refundTotalForWebhook(webhook,payment) : null;
-    const rows = await sql.query(`
+    let rows;
+    try{rows = await sql.query(`
       WITH target AS (
         SELECT order_id, amount, status FROM orders
         WHERE order_id=$8 AND external_reference=$6 AND provider_checkout_id=$10 AND amount=$7 AND (
@@ -101,7 +108,10 @@ export default async function handler(req, res) {
         (SELECT count(*)::int FROM inserted) AS inserted_count,
         (SELECT status FROM updated LIMIT 1) AS order_status,
         (SELECT status FROM orders WHERE order_id=$8) AS current_status
-    `, [webhook.providerEventId,webhook.paymentId,normalized,webhook.eventName,String(payment.status),externalReference,Number(payment.value),orderId,refundedTotal,String(orders[0].provider_checkout_id)]);
+    `, [webhook.providerEventId,webhook.paymentId,normalized,webhook.eventName,String(payment.status),externalReference,Number(payment.value),orderId,refundedTotal,String(orders[0].provider_checkout_id)]);}catch{
+      const recovery=await preserveFinancialReconciliation({provider:'asaas',eventId:webhook.providerEventId,kind:'webhook_database_effect_uncertain',orderId,payload:{...snapshot,normalized_event:normalized,refunded_total:refundedTotal}});
+      return json(res,503,{error:'financial_reconciliation_unavailable',accepted:false,preserved:recovery.preserved,reconciliation_required:true,financial_truth:false});
+    }
     const outcome=rows[0]||{};
     if(Number(outcome.target_count)!==1) return json(res,409,{error:'order_state_invalid',accepted:false});
     if(Number(outcome.inserted_count)===1 && !outcome.order_status) return json(res,503,{error:'order_state_update_failed',accepted:false});
