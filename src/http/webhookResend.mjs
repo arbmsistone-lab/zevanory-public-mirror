@@ -18,7 +18,7 @@ export function verifyResendSignature({payload,id,timestamp,signature,secret,now
 
 async function api(path,{method='GET',body,apiKey,fetchImpl=fetch,idempotencyKey}={}){
   const response=await fetchImpl(`${API}${path}`,{method,headers:{accept:'application/json','content-type':'application/json',authorization:`Bearer ${apiKey}`,'user-agent':'ZEVANORY/1.0',...(idempotencyKey?{'idempotency-key':idempotencyKey}:{})},body:body?JSON.stringify(body):undefined});
-  if(!response.ok) throw new Error(`resend_api_${response.status}`); return response.json();
+  const result=await response.json();if(!response.ok||result?.error||result?.name?.endsWith('_error'))throw new Error(`resend_api_${response.status}`);return result;
 }
 export default async function handler(req,res){
   res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');
@@ -38,7 +38,7 @@ export default async function handler(req,res){
   const emailId=String(event?.data?.email_id||''); if(!emailId)return json(res,400,{error:'email_id_missing',accepted:false});
   try{
     const email=await api(`/emails/receiving/${encodeURIComponent(emailId)}`,{apiKey:process.env.RESEND_API_KEY});
-    const recipients=Array.isArray(email.to)?email.to:[]; const local=recipients.map(v=>String(v).toLowerCase().split('@')[0]).find(v=>ALIASES.has(v));
+    const recipients=Array.isArray(email.to)?email.to:[]; const local=recipients.map(v=>String(v).trim().toLowerCase()).filter(v=>/^[^@]+@zevanory\.api\.br$/.test(v)).map(v=>v.split('@')[0]).find(v=>ALIASES.has(v));
     if(!local)return json(res,200,{accepted:true,ignored:true,reason:'recipient_not_allowed'});
     let attachments=[]; if(Array.isArray(email.attachments)&&email.attachments.length){
       const listed=await api(`/emails/receiving/${encodeURIComponent(emailId)}/attachments`,{apiKey:process.env.RESEND_API_KEY});
@@ -46,7 +46,8 @@ export default async function handler(req,res){
     }
     const subject=`[${local.toUpperCase()}] ${String(email.subject||'(sem assunto)')}`;
     const forward={from:process.env.RESEND_FROM_ADDRESS||'ZEVANORY <contato@zevanory.api.br>',to:[process.env.RESEND_FORWARD_TO],subject,reply_to:String(email.from||''),text:email.text||undefined,html:email.html||undefined,attachments};
-    await api('/emails',{method:'POST',body:forward,apiKey:process.env.RESEND_API_KEY,idempotencyKey:`inbound-${emailId}`});
-    return json(res,200,{accepted:true,forwarded:true,alias:local});
+    const sent=await api('/emails',{method:'POST',body:forward,apiKey:process.env.RESEND_API_KEY,idempotencyKey:`inbound-${emailId}`});
+    if(typeof sent?.id!=='string'||!sent.id.trim())throw new Error('resend_send_id_missing');
+    return json(res,200,{accepted:true,forwarded:true,alias:local,source_email_id:emailId,forward_email_id:sent.id,delivery_proven:false});
   }catch{return json(res,503,{error:'email_forwarding_unavailable',accepted:false});}
 }
