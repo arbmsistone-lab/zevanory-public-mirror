@@ -165,5 +165,6 @@
         }
       ]
     }
-  ]
+  ],
+  "buildCommand": "node scripts/vercel-preview-cert.mjs"
 }
