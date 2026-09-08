@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { dispatchOperationalRecord } from './observabilityFabric.mjs';
 
 const SAFE_REQUEST_ID = /^[A-Za-z0-9._:-]{8,128}$/;
 
@@ -24,5 +25,6 @@ export function operationalLog(context, status, event = 'request_completed', det
   if (record.level === 'error') console.error(line);
   else if (record.level === 'warn') console.warn(line);
   else console.log(line);
+  void dispatchOperationalRecord(record).catch((error)=>console.warn(JSON.stringify({event:'observability_sink_failed',reason:String(error?.message||'dispatch_failed').slice(0,240)})));
   return record;
 }

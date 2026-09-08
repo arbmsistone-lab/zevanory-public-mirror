@@ -12,6 +12,7 @@ import checkoutHandler from '../api/checkout.mjs';
 import webhooksHandler from '../api/webhooks.mjs';
 import robotControlHandler from '../api/robot-control.mjs';
 import { handleArtifactIssue, handleArtifactDownload } from './cloudflareArtifactRoutes.mjs';
+import { handleCloudflareJournalAppend } from './durableOperationJournal.mjs';
 
 const PORT = 8788;
 
@@ -90,6 +91,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/private/artifacts/issue') return handleArtifactIssue(request, env);
     if (url.pathname === '/private/artifacts/download') return handleArtifactDownload(request, env);
+    if (url.pathname === '/private/journal/append') return handleCloudflareJournalAppend(request, env);
     if (url.pathname.startsWith('/api/')) {
       return handleAsNodeRequest(PORT, request);
     }

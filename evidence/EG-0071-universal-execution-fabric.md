@@ -58,3 +58,22 @@ This architecture changes execution resilience only. It does not enable SALE_GLO
 - Multiple WhatsApp BSPs do not automatically satisfy infrastructure-independence quorum when they depend on the same Meta WhatsApp platform.
 - WhatsApp continuity may use multiple access paths, but certification independence must account for the shared Meta failure domain.
 - True communication continuity therefore also requires independent channels such as email/web rather than pretending two BSPs are two independent platforms.
+
+## Expansao 2026-09-08 — Durable Operation Journal
+- Criado journal provider-neutral para preservar operacoes quando storage transacional estiver indisponivel.
+- Payload selado com AES-256-GCM; integridade SHA-256; operation_id idempotente.
+- Quorum de journal conta apenas dominios de falha independentes e exclui providers pagos sob politica zero-cost.
+- Cloudflare KV privado existente foi integrado como um adapter de journal, nunca como dependencia principal.
+- Rota `/private/journal/append` exige bearer forte e grava somente envelope criptografado.
+- Regra: journal preserva intencao; reconciliacao decide aplicacao posterior. Nunca replica cegamente efeitos financeiros ou publicacoes ambiguas.
+- Validacao focada: 4/4 PASS + IDENTITY_GUARD_PASS.
+
+## Expansao 2026-09-08 — Observabilidade e Deploy/Certificacao
+- Observabilidade deixou de depender somente do console do runtime: sinks HTTP provider-neutral podem operar em paralelo.
+- Falha de sink de telemetria nunca derruba a operacao de negocio; copias minimas podem exigir dominios independentes.
+- Deploy/certificacao ganhou capability `deploy:preview` + `deploy:verify`, sem fornecedor nominal no contrato.
+- Prova de deploy com SHA divergente e rejeitada.
+- Release critica exige quorum configuravel de provas PASS com mesmo artifact/operation SHA e dominios de falha independentes.
+- O script Vercel legado permanece como mecanismo especifico existente, mas nao e mais o modelo arquitetural obrigatorio do core.
+- Auditoria `audit:universal-fabric:3x`: 9/9 invariantes PASS.
+- Validacao focada journal + observabilidade + deploy: 10/10 PASS + IDENTITY_GUARD_PASS.
