@@ -51,6 +51,14 @@
       "destination": "/api/webhooks?provider=tiktok_oauth"
     },
     {
+      "source": "/api/oauth/youtube/callback",
+      "destination": "/api/webhooks?provider=youtube_identity_oauth"
+    },
+    {
+      "source": "/api/oauth/youtube/start",
+      "destination": "/api/webhooks?provider=youtube_identity_oauth&action=start"
+    },
+    {
       "source": "/api/oauth/nuvemshop/callback",
       "destination": "/api/webhooks?provider=nuvemshop_oauth"
     },
