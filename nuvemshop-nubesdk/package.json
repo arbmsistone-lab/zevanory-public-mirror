@@ -1,0 +1,13 @@
+{
+  "name": "zevanory-nubesdk",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup src/main.ts --format esm --target esnext --minify --out-dir dist"
+  },
+  "devDependencies": {
+    "@tiendanube/nube-sdk-types": "latest",
+    "tsup": "latest",
+    "typescript": "latest"
+  }
+}
