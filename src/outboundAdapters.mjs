@@ -9,6 +9,7 @@ import { requestProviderJson, providerAcceptanceMissing } from './providerDelive
 import { alternateAutomationReadiness } from './alternateChannelAutomation.mjs';
 import { publishViaBuffer } from './bufferSocial.mjs';
 import { defineChannelProvider, buildChannelProviderPool, buildUniversalChannelAdapter, externalChannelProviders } from './channelProviderRegistry.mjs';
+import { buildBrevoEmailProvider } from './emailProviders.mjs';
 const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new Error(code);return v;};
 const ensureGlobalGates=(env,gateEvaluator=salesGate)=>{if(!gateEvaluator(env).enabled)throw new Error('commercial_gates_closed');};
 const ensureHttps=(value,code)=>{const v=required(value,code);let u;try{u=new URL(v);}catch{throw new Error(code);}if(u.protocol!=='https:')throw new Error(code);return v;};
@@ -58,13 +59,18 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       return uploadYouTubeFromRemote({event,sql,env,fetchImpl});
     },
     'channel:tiktok':async(event,{sql}={})=>{
-      ensureGlobalGates(env,commercialGate);const alternate=alternateAutomationReadiness('tiktok',env);
-      if(!sql?.query){if(alternate.ready)return publishViaBuffer({channel:'tiktok',event,env,fetchImpl});throw new Error('tiktok_sql_required');}
-      let credential;try{credential=await loadTikTokCredential(sql,env);}catch(error){if(alternate.ready&&error?.message==='tiktok_oauth_credential_missing')return publishViaBuffer({channel:'tiktok',event,env,fetchImpl});throw error;}
+      ensureGlobalGates(env,commercialGate);
+      if(!sql?.query)throw new Error('tiktok_sql_required');
+      let credential=await loadTikTokCredential(sql,env);
       if(new Date(credential.expires_at).getTime()<=Date.now()+30*60*1000) credential=await refreshTikTokCredential(sql,credential,{env,fetchImpl});
       return publishTikTok({event,env,fetchImpl,accessToken:credential.access_token});
     },
-    'channel:linkedin':async(event,{sql}={})=>{ ensureGlobalGates(env,commercialGate);const alternate=alternateAutomationReadiness('linkedin',env);if(!sql?.query){if(alternate.ready)return publishViaBuffer({channel:'linkedin',event,env,fetchImpl});throw new Error('linkedin_sql_required');}let credential;try{credential=await loadLinkedInCredential(sql,env);}catch(error){if(alternate.ready&&['linkedin_oauth_credential_missing','linkedin_oauth_reauthorization_required'].includes(error?.message))return publishViaBuffer({channel:'linkedin',event,env,fetchImpl});throw error;}return publishLinkedIn({event,env,fetchImpl,accessToken:credential.access_token,authorUrn:credential.author_urn}); },
+    'channel:linkedin':async(event,{sql}={})=>{
+      ensureGlobalGates(env,commercialGate);
+      if(!sql?.query)throw new Error('linkedin_sql_required');
+      const credential=await loadLinkedInCredential(sql,env);
+      return publishLinkedIn({event,env,fetchImpl,accessToken:credential.access_token,authorUrn:credential.author_urn});
+    },
     'channel:affiliate':async(event)=>{
       ensureGlobalGates(env,commercialGate);const provider=required(env.AFFILIATE_PROVIDER,'affiliate_provider_missing');
       if(provider==='zevanory-first-party'){
@@ -97,7 +103,13 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
   const universal={};
   for(const [destination,direct] of Object.entries(directAdapters)){
     const channel=destination.replace(/^channel:/,'');
-    const builtIn=[defineChannelProvider({id:`builtin:${channel}`,channel,independenceDomain:`builtin:${channel}`,execute:({event,context})=>direct(event,context)})];
+    const builtIn=[defineChannelProvider({id:`direct:${channel}`,channel,independenceDomain:`direct:${channel}`,execute:({event,context})=>direct(event,context)})];
+    if(channel==='email') builtIn.push(buildBrevoEmailProvider({env,fetchImpl}));
+    if(channel==='linkedin'||channel==='tiktok') builtIn.push(defineChannelProvider({
+      id:`buffer:${channel}`,channel,independenceDomain:'buffer.com',cost:0,
+      ready:()=>alternateAutomationReadiness(channel,env).ready,
+      execute:({event})=>publishViaBuffer({channel,event,env,fetchImpl}),
+    }));
     const pool=buildChannelProviderPool(channel,{builtIn,external:externalChannelProviders(channel,channelProviders)});
     universal[destination]=buildUniversalChannelAdapter(channel,pool);
   }

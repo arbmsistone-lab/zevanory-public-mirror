@@ -45,3 +45,16 @@ This architecture changes execution resilience only. It does not enable SALE_GLO
 - Ambiguous provider effects halt cross-provider rerouting and require reconciliation before another provider may execute.
 - Existing Buffer fallback behavior for LinkedIn/TikTok remains compatible while the generic provider registry supports broader alternatives.
 - Focused validation: 20/20 PASS + IDENTITY_GUARD_PASS.
+
+## 2026-09-08 — real provider expansion: email
+- Resend remains one email execution member; it is not a mandatory core dependency.
+- Brevo is added as an independent `channel:email` provider adapter using the official transactional API.
+- Brevo Free evidence: 300 transactional emails/day, no time limit and no card required at qualification time.
+- Resend Free evidence: 3,000 emails/month and 100/day at qualification time.
+- Both providers remain zero-cost eligible only while their free-plan constraints remain satisfied.
+- Provider network/5xx ambiguity on mutating delivery blocks blind cross-provider replay and requires reconciliation.
+
+## Correlated-provider rule: WhatsApp
+- Multiple WhatsApp BSPs do not automatically satisfy infrastructure-independence quorum when they depend on the same Meta WhatsApp platform.
+- WhatsApp continuity may use multiple access paths, but certification independence must account for the shared Meta failure domain.
+- True communication continuity therefore also requires independent channels such as email/web rather than pretending two BSPs are two independent platforms.

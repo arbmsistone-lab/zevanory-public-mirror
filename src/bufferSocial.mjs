@@ -1,4 +1,5 @@
-﻿const clean=(v,max=8000)=>String(v??'').trim().slice(0,max);
+﻿import { ProviderDeliveryError } from './providerDelivery.mjs';
+const clean=(v,max=8000)=>String(v??'').trim().slice(0,max);
 const httpsUrl=(value)=>{try{const u=new URL(clean(value,3000));return u.protocol==='https:'?u.toString():'';}catch{return '';}};
 const channelKey=(channel)=>channel==='tiktok'?'BUFFER_TIKTOK_CHANNEL_ID':channel==='linkedin'?'BUFFER_LINKEDIN_CHANNEL_ID':'';
 const inferAsset=(url,explicit='')=>{
@@ -20,8 +21,11 @@ export async function publishViaBuffer({channel,event,env=process.env,fetchImpl=
   const input={text,channelId,schedulingType:'automatic',mode:'addToQueue'};
   if(media){const kind=inferAsset(media,event?.payload?.media_type);if(!kind)throw new Error('buffer_media_type_required');input.assets=[{[kind]:{url:media}}];}
   const query='mutation CreatePost($input: CreatePostInput!){createPost(input:$input){... on PostActionSuccess{post{id status dueAt}} ... on MutationError{message}}}';
-  const response=await fetchImpl('https://api.buffer.com',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({query,variables:{input}})});
-  const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(`buffer_http_${response.status}`);
+  let response;
+  try{response=await fetchImpl('https://api.buffer.com',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({query,variables:{input}})});}
+  catch{throw new ProviderDeliveryError('buffer_network_uncertain',{ambiguous:true,retryable:false});}
+  const body=await response.json().catch(()=>({}));
+  if(!response.ok){if(response.status>=500)throw new ProviderDeliveryError(`buffer_http_${response.status}`,{ambiguous:true,retryable:false,status:response.status});throw new Error(`buffer_http_${response.status}`);}
   const post=body?.data?.createPost?.post;if(!post?.id){const msg=clean(body?.data?.createPost?.message||body?.errors?.[0]?.message,300);throw new Error(msg?`buffer_create_post_failed:${msg}`:'buffer_post_id_missing');}
   return Object.freeze({provider:'buffer',accepted:true,provider_post_id:String(post.id),target_channel:channel,confirmation:'buffer_post_lifecycle',status:String(post.status||'scheduled')});
 }
