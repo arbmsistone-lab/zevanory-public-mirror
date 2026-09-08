@@ -11,7 +11,8 @@ const asObject=(value)=>{
 
 function inferWhere(tool,context,decision,env){
   const channel=safeText(decision?.channel||context?.lead?.channel||'',60).toLowerCase()||null;
-  if(tool==='start_checkout'||tool==='refund_payment') return `payment:${safeText(env?.PAYMENT_PROVIDER||'unconfigured',40).toLowerCase()}`;
+  const paymentProvider=safeText(decision?.provider||decision?.payment_provider||context?.payment_provider||'',40).toLowerCase();
+  if(tool==='start_checkout'||tool==='refund_payment') return paymentProvider?`payment:${paymentProvider}`:'capability:payment';
   if(tool==='send_message'||tool==='publish_content') return channel?`channel:${channel}`:'channel:unresolved';
   if(tool==='schedule_follow_up'||tool==='remember_fact'||tool==='create_offer_draft') return 'zevanory:internal';
   if(tool==='refresh_outcome_learning') return 'zevanory:learning';
@@ -31,7 +32,8 @@ function inferContent(tool,decision){
 export function buildLiveActionPlan({job,runId,traceId,tool,auth,decision={},context={},env={}}={}){
   const existing=asObject(job?.payload)?.live_action_plan;
   const channel=safeText(decision?.channel||context?.lead?.channel||'',60).toLowerCase()||null;
-  const accountRef=FINANCIAL_TOOLS.has(tool)?`merchant:${safeText(env.PAYMENT_PROVIDER||'unconfigured',40).toLowerCase()}`:(channel?`channel_account:${channel}`:'zevanory:internal');
+  const paymentProvider=safeText(decision?.provider||decision?.payment_provider||context?.payment_provider||'',40).toLowerCase();
+  const accountRef=FINANCIAL_TOOLS.has(tool)?(paymentProvider?`merchant:${paymentProvider}`:'merchant:unresolved'):(channel?`channel_account:${channel}`:'zevanory:internal');
   const external=EXTERNAL_TOOLS.has(tool);
   const estimatedCostUsd=decision?.estimated_cost_usd==null?null:Math.max(0,Number(decision.estimated_cost_usd)||0);
   const now=new Date().toISOString();

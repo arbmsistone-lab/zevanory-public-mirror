@@ -25,12 +25,11 @@ test('Meta webhook signature is HMAC-SHA256 over exact raw payload',()=>{
   assert.equal(verifyMetaSignature({payload,signature,appSecret:secret}),true);
   assert.equal(verifyMetaSignature({payload,signature:'sha256=00',appSecret:secret}),false);
 });
-test('confirmation persistence is monotonic and updates the same live action plan',async()=>{
+test('confirmation persistence is atomic, monotonic and updates the same live action plan',async()=>{
   const calls=[];
-  const sql={query:async(q,a)=>{calls.push({q:String(q),a});return calls.length===1?[{event_id:'evt1',run_id:'run1',headers:{}}]:[{job_id:'job1'}];}};
+  const sql={query:async(q,a)=>{calls.push({q:String(q),a});return [{event_id:'evt1',run_id:'run1',headers:{},updated_jobs:1}];}};
   const result=await applyProviderConfirmation(sql,{provider:'meta_whatsapp',destination:'channel:whatsapp',provider_message_id:'wamid.1',status:'read',rank:30,occurred_at_ms:1788260000000,provider_event_id:'meta:1'});
-  assert.equal(result.updated,true);assert.match(calls[0].q,/provider_acceptance/);assert.match(calls[0].q,/occurred_at_ms/);assert.match(calls[0].q,/rank/);assert.equal(calls[0].a[1],'wamid.1');
-  assert.equal(calls.length,2);assert.match(calls[1].q,/live_action_plan/);assert.equal(calls[1].a[0],'run1');assert.match(calls[1].a[1],/provider_confirmation/);
+  assert.equal(result.updated,true);assert.equal(calls.length,1);assert.match(calls[0].q,/provider_acceptance/);assert.match(calls[0].q,/occurred_at_ms/);assert.match(calls[0].q,/rank/);assert.match(calls[0].q,/updated_job/);assert.match(calls[0].q,/live_action_plan/);assert.equal(calls[0].a[1],'wamid.1');assert.match(calls[0].a[5],/provider_confirmation/);
 });
 
 test('Resend received event is not misclassified as outbound delivery',()=>{

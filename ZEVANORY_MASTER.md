@@ -232,3 +232,11 @@ Novos provedores podem entrar no pool apos qualificacao por capacidade, health, 
 - `robot-control` valida e preserva comandos autenticados antes da escrita canônica quando o banco está indisponível.
 - Falha de comando após tentativa de escrita gera `reconciliation_required`; aprovação/estado nunca é presumido pelo journal.
 - Leituras do Robot Control passam pelo Verified Read Fabric; escrita de controle continua canônica.
+
+## 2026-09-08 — OAuth + Confirmation + Provider-Neutral Pre-Sale
+- Authorization code OAuth e de uso unico: a troca acontece uma vez; falha de persistencia posterior preserva a credencial somente no journal criptografado e exige reconciliacao.
+- Journal OAuth nunca declara conta `connected`; somente persistencia canonica confirmada pode marcar conexao.
+- Callback cookie e invalidado depois de troca de codigo mesmo em recuperacao, evitando tentativa de resgate duplicado.
+- Confirmacao de provider e atualizacao do Live Action Plan ocorrem em uma unica mutacao SQL atomica; confirmacao journalizada nunca equivale a confirmacao canonica.
+- Gate pre-sale exige prova de dominio, HTTPS/rotas e capacidade sandbox de pagamento, nunca Vercel ou um `PAYMENT_PROVIDER` nominal.
+- Diagnosticos podem citar adapters especificos, mas blocker critico e sempre por capacidade (`payment_provider_pool_unavailable` / `payment_sandbox_capacity_unavailable`).

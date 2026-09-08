@@ -1,5 +1,6 @@
 import { Resolver } from 'node:dns/promises';
 import { evaluatePreSaleReadiness, REQUIRED_DNS_RESOLVERS } from '../src/preSaleReadiness.mjs';
+import { paymentProviderReadiness } from '../src/paymentProviders.mjs';
 
 const domain='zevanory.api.br';
 const DNS_TIMEOUT_MS=2500;
@@ -49,13 +50,16 @@ async function probeCustomDomain() {
   }
   return {https,routes:true};
 }
-const customDomain=await probeCustomDomain();const result=evaluatePreSaleReadiness({
+const customDomain=await probeCustomDomain();
+const currentProviderClaim=await hasVercelTxt();
+const payment=paymentProviderReadiness(process.env,{production:false});
+const result=evaluatePreSaleReadiness({
   dns,
-  vercel_txt:await hasVercelTxt(),
-  vercel_claim_not_required:false,
+  domain_ownership_verified:envTrue('DOMAIN_OWNERSHIP_VERIFIED')||currentProviderClaim,
+  legacy_domain_claim_verified:currentProviderClaim,
   https_ready:customDomain.https,
   routes_ready:customDomain.routes,
-  payment_provider:String(process.env.PAYMENT_PROVIDER||'').trim().toLowerCase(),
+  payment_capacity_ready:payment.ready,
   asaas_key:Boolean(process.env.ASAAS_API_KEY),
   asaas_webhook:Boolean(process.env.ASAAS_WEBHOOK_TOKEN),
   asaas_env_sandbox:String(process.env.ASAAS_ENV||'').trim().toLowerCase()==='sandbox',
@@ -76,8 +80,9 @@ console.log(JSON.stringify({
   ownership:result.ownership_ready,
   https:result.https_ready,
   routes:result.routes_ready,
-  payment_provider:result.payment_provider,
   payment:result.payment_ready,
+  payment_capacity:result.payment_capacity_ready,
+  payment_candidates:payment.diagnostics,
   asaas:result.asaas_ready,
   mercadopago:result.mercadopago_ready,
   commercial_flags_safe:result.commercial_flags_safe,

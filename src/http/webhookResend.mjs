@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { normalizeResendDeliveryEvent,applyProviderConfirmation } from '../providerConfirmation.mjs';
+import { preserveProviderConfirmations } from '../providerConfirmationFabric.mjs';
 
 const API='https://api.resend.com';
 const ALIASES=new Set(['contato','vendas','suporte','financeiro']);
@@ -28,9 +29,12 @@ export default async function handler(req,res){
   let event; try{event=JSON.parse(raw);}catch{return json(res,400,{error:'invalid_json',accepted:false});}
   const delivery=normalizeResendDeliveryEvent(event);
   if(delivery){
-    if(!process.env.DATABASE_URL)return json(res,503,{error:'confirmation_storage_unavailable',accepted:false});
+    if(!process.env.DATABASE_URL){
+      const recovery=await preserveProviderConfirmations([delivery]);
+      return json(res,recovery.preserved?202:503,{accepted:recovery.preserved,preserved:recovery.preserved,reconciliation_pending:recovery.preserved,updated:false,status:delivery.status,error:recovery.preserved?undefined:'confirmation_storage_unavailable'});
+    }
     try{const result=await applyProviderConfirmation(neon(process.env.DATABASE_URL),delivery);return json(res,200,{accepted:true,updated:result.updated,status:delivery.status});}
-    catch{return json(res,503,{error:'confirmation_reconciliation_unavailable',accepted:false});}
+    catch{const recovery=await preserveProviderConfirmations([delivery]);return json(res,503,{error:'confirmation_reconciliation_unavailable',accepted:false,preserved:recovery.preserved,reconciliation_required:true});}
   }
   if(event?.type!=='email.received') return json(res,200,{accepted:true,ignored:true,reason:'event_not_supported'});
   if(process.env.EMAIL_INBOUND_ENABLED!=='true') return json(res,503,{error:'email_inbound_disabled',accepted:false});

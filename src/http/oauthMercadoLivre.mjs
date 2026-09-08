@@ -1,5 +1,6 @@
 ﻿import { Pool } from '@neondatabase/serverless';
 import { createOAuthStart, exchangeAuthorizationCode, fetchMercadoLivreMe, persistMercadoLivreTokens, readOAuthCookie } from '../mercadoLivreOAuth.mjs';
+import { preserveOAuthCredential } from '../oauthPersistenceFabric.mjs';
 
 const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringify(body));};
 const cookieValue=(req,name)=>String(req.headers?.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(`${name}=`))?.slice(name.length+1)||'';
@@ -25,12 +26,19 @@ export default async function handler(req,res){
   if(providerError) return json(res,400,{provider:'mercado_livre',ready:false,error:'oauth_provider_denied'});
   let pool;
   try{
-    if(!process.env.DATABASE_URL)throw new Error('database_url_required');
     const cookie=readOAuthCookie(cookieValue(req,COOKIE),state,process.env);
     const token=await exchangeAuthorizationCode({code,verifier:cookie.verifier,env:process.env});
     const me=await fetchMercadoLivreMe(token.access_token);
+    const sellerId=String(me.id||'').trim();
+    if(!process.env.DATABASE_URL){
+      const recovery=await preserveOAuthCredential({provider:'mercado_livre',subjectRef:sellerId||'authorized',token,identity:{seller_id:sellerId}});
+      res.setHeader('set-cookie',`${COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/oauth/mercadolivre; Max-Age=0`);
+      return json(res,recovery.preserved?202:503,{provider:'mercado_livre',connected:false,credential_preserved:recovery.preserved,reconciliation_required:true,seller_id:sellerId||null,commercial_enabled:false});
+    }
     pool=new Pool({connectionString:process.env.DATABASE_URL});const client=await pool.connect();
-    try{await persistMercadoLivreTokens({query:(text,args)=>client.query(text,args).then(r=>r.rows)},{sellerId:me.id,token,env:process.env});}finally{client.release();}
+    try{await persistMercadoLivreTokens({query:(text,args)=>client.query(text,args).then(r=>r.rows)},{sellerId:me.id,token,env:process.env});}
+    catch{const recovery=await preserveOAuthCredential({provider:'mercado_livre',subjectRef:sellerId||'authorized',token,identity:{seller_id:sellerId}});res.setHeader('set-cookie',`${COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/oauth/mercadolivre; Max-Age=0`);return json(res,recovery.preserved?202:503,{provider:'mercado_livre',connected:false,credential_preserved:recovery.preserved,reconciliation_required:true,error:recovery.preserved?undefined:'oauth_persistence_failed'});}
+    finally{client.release();}
     res.setHeader('set-cookie',`${COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/oauth/mercadolivre; Max-Age=0`);
     return json(res,200,{provider:'mercado_livre',connected:true,seller_id:me.id,tokens_stored_encrypted:true,commercial_enabled:false});
   }catch(error){return json(res,503,{provider:'mercado_livre',connected:false,error:String(error.message||'oauth_callback_failed')});}

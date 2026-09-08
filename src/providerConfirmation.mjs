@@ -49,15 +49,18 @@ export async function applyProviderConfirmation(sql,confirmation={}){
   const rank=Number(confirmation.rank)||0,occurredAtMs=Number(confirmation.occurred_at_ms)||0,eventId=clean(confirmation.provider_event_id,300);
   if(!messageId||!destination||!status||!provider||!rank||!occurredAtMs||!eventId)throw new Error('provider_confirmation_invalid');
   const confirmationRecord={provider,provider_event_id:eventId,provider_message_id:messageId,status,rank,occurred_at_ms:occurredAtMs,outcome:confirmationOutcome(status),confirmed_at:new Date().toISOString()};
-  const rows=await sql.query(`update integration_outbox set headers=jsonb_set(coalesce(headers,'{}'::jsonb),'{provider_confirmation}',$4::jsonb,true)
-    where event_id=(select event_id from integration_outbox where destination=$1 and headers->'provider_acceptance'->>'provider_message_id'=$2 order by created_at desc limit 1)
-      and (coalesce((headers->'provider_confirmation'->>'occurred_at_ms')::bigint,0)<$3 or (coalesce((headers->'provider_confirmation'->>'occurred_at_ms')::bigint,0)=$3 and coalesce((headers->'provider_confirmation'->>'rank')::int,0)<$5))
-    returning event_id,run_id,headers`,[destination,messageId,occurredAtMs,JSON.stringify(confirmationRecord),rank]);
+  const state=confirmationRecord.outcome==='confirmed'?'executed':confirmationRecord.outcome==='failed'?'failed':'executed';
+  const actionUpdate={state,updated_at:new Date().toISOString(),evidence:{provider_confirmation:confirmationRecord}};
+  const rows=await sql.query(`with updated_outbox as (
+      update integration_outbox set headers=jsonb_set(coalesce(headers,'{}'::jsonb),'{provider_confirmation}',$4::jsonb,true)
+      where event_id=(select event_id from integration_outbox where destination=$1 and headers->'provider_acceptance'->>'provider_message_id'=$2 order by created_at desc limit 1)
+        and (coalesce((headers->'provider_confirmation'->>'occurred_at_ms')::bigint,0)<$3 or (coalesce((headers->'provider_confirmation'->>'occurred_at_ms')::bigint,0)=$3 and coalesce((headers->'provider_confirmation'->>'rank')::int,0)<$5))
+      returning event_id,run_id,headers
+    ), updated_job as (
+      update agent_jobs j set payload=jsonb_set(j.payload,'{live_action_plan}',(j.payload->'live_action_plan') || ($6::jsonb || jsonb_build_object('evidence',coalesce(j.payload->'live_action_plan'->'evidence','{}'::jsonb) || jsonb_build_object('event_id',u.event_id))),true)
+      from updated_outbox u where u.run_id is not null and j.payload->'live_action_plan'->>'run_id'=u.run_id::text returning j.job_id
+    )
+    select u.event_id,u.run_id,u.headers,(select count(*)::int from updated_job) updated_jobs from updated_outbox u`,[destination,messageId,occurredAtMs,JSON.stringify(confirmationRecord),rank,JSON.stringify(actionUpdate)]);
   const event=rows[0]||null;
-  if(event?.run_id){
-    const state=confirmationRecord.outcome==='confirmed'?'executed':confirmationRecord.outcome==='failed'?'failed':'executed';
-    await sql.query(`update agent_jobs set payload=jsonb_set(payload,'{live_action_plan}',(payload->'live_action_plan') || $2::jsonb,true)
-      where payload->'live_action_plan'->>'run_id'=$1`,[String(event.run_id),JSON.stringify({state,updated_at:new Date().toISOString(),evidence:{event_id:event.event_id,provider_confirmation:confirmationRecord}})]);
-  }
   return Object.freeze({updated:rows.length===1,event});
 }

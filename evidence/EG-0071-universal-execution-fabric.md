@@ -103,3 +103,15 @@ Evidence Gate: APPROVED WITH SAFETY RESTRICTIONS.
 Decision: journals preserve evidence/intention only. They never prove payment, unlock fulfillment, or authorize financial replay after an ambiguous effect.
 Implementation: checkout prewrite preservation; post-provider reconciliation evidence; financial webhook preservation; canonical-only fulfillment authority.
 Validation target: focused financial tests + Universal Fabric 3x + remote exact-SHA checks. Production cutover remains blocked.
+
+## 2026-09-08 — OAuth persistence + provider-neutral pre-sale gates
+Evidence Gate: APPROVED FOR IMPLEMENTATION / NO COMMERCIAL CUTOVER.
+- IETF RFC 6749 + RFC 7636: authorization codes/PKCE are security-bound protocol artifacts; redeemed codes must not become retryable persistence tokens.
+- Microsoft OAuth authorization-code guidance: authorization code redemption is single-use; persistence failure after redemption therefore requires token recovery, not code replay.
+- Google OAuth token-management guidance + OWASP cryptographic storage guidance: tokens require secure storage and encryption at rest.
+
+Implementation decision:
+- OAuth code is exchanged once; if canonical persistence is unavailable afterward, the credential is preserved only inside the encrypted Durable Operation Journal and remains `connected:false` until reconciliation.
+- OAuth callback cookie is cleared after a redeemed-code recovery path.
+- Provider confirmation and live-action-plan transition are one atomic canonical SQL mutation; authenticated confirmations can be journaled when canonical storage is unavailable, without being treated as canonical confirmation.
+- Pre-sale domain and payment gates are capability/proof based: no Vercel ownership requirement and no mandatory selected payment-provider name.

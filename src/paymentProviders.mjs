@@ -48,8 +48,10 @@ export function selectPaymentProvider(env=process.env,{production=true,operation
 
 export function paymentProviderReadiness(env=process.env,{production=true}={}){
   const selected=selectPaymentProvider(env,{production});
-  const blockers=selected.ready?[]:['payment_provider_pool_unavailable',...selected.candidates.flatMap(x=>x.blockers.map(b=>`${x.provider}:${b}`))];
-  return Object.freeze({provider:selected.provider,ready:selected.ready,delegated:Boolean(selected.delegated),selection_reason:selected.reason,candidates:selected.candidates||paymentProviderCandidates(env,{production}),blockers:Object.freeze(blockers)});
+  const candidates=selected.candidates||paymentProviderCandidates(env,{production});
+  const blockers=selected.ready?[]:['payment_provider_pool_unavailable'];
+  const diagnostics=candidates.map(x=>Object.freeze({provider:x.provider,ready:x.ready,delegated:Boolean(x.delegated),blockers:x.blockers}));
+  return Object.freeze({provider:selected.provider,ready:selected.ready,delegated:Boolean(selected.delegated),selection_reason:selected.reason,candidates,diagnostics:Object.freeze(diagnostics),blockers:Object.freeze(blockers)});
 }
 export function resolveCheckoutProviderRequest(req={},env=process.env,{production=true}={}){
   const direct=normalizePaymentProvider(req.query?.provider);
