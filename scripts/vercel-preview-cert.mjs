@@ -110,6 +110,14 @@ if (!chromiumPath || !chromiumLibraryPath) {
   process.exit(1);
 }
 
+const ffmpeg = spawnSync('npx', ['playwright', 'install', 'ffmpeg'], {
+  cwd: process.cwd(), env: process.env, stdio: 'inherit', shell: false,
+});
+if (ffmpeg.error || ffmpeg.status !== 0) {
+  console.error(`VERCEL_REMOTE_CERT_BLOCKED check=35 ffmpeg status=${ffmpeg.status ?? 'error'}`);
+  process.exit(1);
+}
+
 const server = spawn(npm, ['start'], {
   cwd: process.cwd(),
   env: { ...process.env, HOST: '127.0.0.1', PORT: '4173' },
