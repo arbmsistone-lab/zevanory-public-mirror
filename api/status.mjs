@@ -3,6 +3,7 @@ import { buildOperationalStatus } from '../src/operationalStatus.mjs';
 import { attachRequestContext, operationalLog } from '../src/observability.mjs';
 import { healthProbe, liveProbe } from '../src/statusProbes.mjs';
 import { isPublicDeploymentRequest } from '../src/security.mjs';
+import { executeVerifiedRead } from '../src/databaseReadFabric.mjs';
 
 export default async function handler(req, res) {
   const probe=String(req.query?.probe||new URL(req.url||'/api/status','https://zevanory.api.br').searchParams.get('probe')||'').toLowerCase();
@@ -17,14 +18,8 @@ export default async function handler(req, res) {
     operationalLog(context, 405, 'method_not_allowed');
     return res.end(JSON.stringify({ error: 'method_not_allowed', request_id: context.requestId }));
   }
-  if (!process.env.DATABASE_URL) {
-    res.statusCode = 503;
-    operationalLog(context, 503, 'operational_storage_unavailable');
-    return res.end(JSON.stringify({ error: 'operational_storage_unavailable', request_id: context.requestId }));
-  }
-  try {
-    const sql = neon(process.env.DATABASE_URL);
-    const [telemetry, orders, financial, leads, actions, dueBuckets, riskBuckets, economics, last] = await Promise.all([
+  const readOutcome=await executeVerifiedRead({env:process.env,connect:neon,read:async(sql)=>{
+    const [telemetry,orders,financial,leads,actions,dueBuckets,riskBuckets,economics,last]=await Promise.all([
       sql.query('select event_name, count(*)::int as count from telemetry_events group by event_name'),
       sql.query('select status, count(*)::int as count from orders group by status'),
       sql.query('select normalized_event, count(*)::int as count from financial_events group by normalized_event'),
@@ -35,14 +30,11 @@ export default async function handler(req, res) {
       sql.query('select gross_revenue_brl, refunds_brl, paid_orders from unit_economics_snapshots order by period_end desc limit 1'),
       sql.query('select max(occurred_at) as last_event_at from telemetry_events'),
     ]);
-    const full=buildOperationalStatus({ telemetry, orders, financial, leads, actions, dueBuckets, riskBuckets, economics, lastEventAt: last[0]?.last_event_at || null });
-    const body=isPublicDeploymentRequest(req)?{project:full.project,gate:full.gate,experiment:full.experiment,engine:full.engine,sales_machine:full.sales_machine,runtime:full.runtime,metrics:full.metrics,request_id:context.requestId}:{...full,request_id:context.requestId};
-    res.statusCode = 200;
-    operationalLog(context, 200, 'operational_status_ok');
-    return res.end(JSON.stringify(body));
-  } catch {
-    res.statusCode = 503;
-    operationalLog(context, 503, 'operational_status_unavailable');
-    return res.end(JSON.stringify({ error: 'operational_status_unavailable', request_id: context.requestId }));
-  }
+    return buildOperationalStatus({telemetry,orders,financial,leads,actions,dueBuckets,riskBuckets,economics,lastEventAt:last[0]?.last_event_at||null});
+  }});
+  if(!readOutcome.ok){res.statusCode=503;operationalLog(context,503,'operational_status_unavailable',{read_attempts:readOutcome.attempts.length});return res.end(JSON.stringify({error:'operational_status_unavailable',request_id:context.requestId}));}
+  const full=readOutcome.result;
+  const body=isPublicDeploymentRequest(req)?{project:full.project,gate:full.gate,experiment:full.experiment,engine:full.engine,sales_machine:full.sales_machine,runtime:full.runtime,metrics:full.metrics,request_id:context.requestId}:{...full,request_id:context.requestId};
+  res.statusCode=200;operationalLog(context,200,'operational_status_ok',{read_route:readOutcome.route,canonical_read:readOutcome.canonical});
+  return res.end(JSON.stringify(body));
 }

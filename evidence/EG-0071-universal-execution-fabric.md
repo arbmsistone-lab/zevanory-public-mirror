@@ -85,3 +85,11 @@ This architecture changes execution resilience only. It does not enable SALE_GLO
 - Cloudflare Queues delivery guarantees: at-least-once delivery may duplicate messages; unique IDs/idempotency keys are required for safe deduplication.
 - Decision: database failover cannot be implemented as blind multi-master replay. Pre-write unavailability may be journaled as replayable; any failure after a write attempt is treated as ambiguous until reconciled.
 - Gate: APPROVED FOR IMPLEMENTATION / production cutover remains blocked pending remote proof.
+
+## Verified Read Fabric evidence extension — 2026-09-08
+- PostgreSQL Hot Standby: standby connections are read-only and can be eventually consistent with measurable replication delay.
+- Neon Read Replicas: a branch may expose multiple read-only compute endpoints for the same data source.
+- Supabase Read Replicas: dedicated read endpoints are asynchronously synchronized and may have replication lag.
+- Decision: operational/reporting reads may reroute only to explicitly verified read-only routes for the same canonical dataset. Strong-current-state decisions such as payment confirmation remain on canonical transactional truth.
+- Alternate read route requires explicit verification metadata; absence of verification excludes it from the pool.
+- Gate: APPROVED FOR IMPLEMENTATION / no production cutover implied.

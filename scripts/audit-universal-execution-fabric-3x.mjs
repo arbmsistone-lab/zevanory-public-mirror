@@ -12,8 +12,8 @@ const add=(audit,name,pass)=>checks.push({audit,name,pass:Boolean(pass)});
 const sha='a'.repeat(40);
 
 async function structural(){
-  const [fabric,journal,obs,deploy,channels,storage]=await Promise.all([
-    text('src/universalExecutionFabric.mjs'),text('src/durableOperationJournal.mjs'),text('src/observabilityFabric.mjs'),text('src/deploymentFabric.mjs'),text('src/channelProviderRegistry.mjs'),text('src/storageFabric.mjs')
+  const [fabric,journal,obs,deploy,channels,storage,readFabric]=await Promise.all([
+    text('src/universalExecutionFabric.mjs'),text('src/durableOperationJournal.mjs'),text('src/observabilityFabric.mjs'),text('src/deploymentFabric.mjs'),text('src/channelProviderRegistry.mjs'),text('src/storageFabric.mjs'),text('src/databaseReadFabric.mjs')
   ]);
   add('structural','provider named core dependency forbidden',fabric.includes('provider_named_core_dependency_forbidden:true'));
   add('structural','durable journal capability',journal.includes("capabilities:['durable:journal']"));
@@ -22,6 +22,7 @@ async function structural(){
   add('structural','channel capability registry',channels.includes('buildUniversalChannelAdapter'));
   add('structural','storage fabric forbids blind failover',storage.includes('no_blind_database_failover:true'));
   add('structural','storage fabric requires reconciliation after attempted mutation',storage.includes('postattempt_failure_requires_reconciliation:true'));
+  add('structural','read fabric excludes unverified replicas',readFabric.includes('VERIFIED')&&readFabric.includes('READ_ONLY')&&readFabric.includes('DATASET_ID'));
 }
 async function functional(){
   const entry=buildJournalEntry({operationId:'audit-op',operationType:'audit',payload:{ok:true}});
@@ -42,10 +43,11 @@ async function integration(){
   const {proofs}=await collectDeploymentProofs({sha,providers:[make('d1','domain-a'),make('d2','domain-b')]});
   const cert=certifyDeploymentEvidence(proofs,{required:2});
   add('integration','critical deploy exact-SHA independent quorum',cert.pass&&cert.independent_domains===2);
-  const [master,publicEvents,operatorEvents]=await Promise.all([text('ZEVANORY_MASTER.md'),text('api/events-public.mjs'),text('api/events-operator.mjs')]);
+  const [master,publicEvents,operatorEvents,statusApi,assuranceApi,agentStatusApi]=await Promise.all([text('ZEVANORY_MASTER.md'),text('api/events-public.mjs'),text('api/events-operator.mjs'),text('api/status.mjs'),text('api/assurance.mjs'),text('api/agent-status.mjs')]);
   add('integration','canonical universal rule present',master.includes('UNIVERSAL EXECUTION FABRIC'));
   add('integration','public telemetry uses storage fabric',publicEvents.includes('executeStorageMutation')&&publicEvents.includes('replayable:true'));
   add('integration','operator events preserve intent but sensitive approvals stay database gated',operatorEvents.includes('pending_validation:true')&&operatorEvents.includes("name==='lifecycle_certification_approve'")&&operatorEvents.includes('operational_storage_unavailable'));
+  add('integration','operational read surfaces use verified read fabric',[statusApi,assuranceApi,agentStatusApi].every(value=>value.includes('executeVerifiedRead')));
 }
 
 export async function main(){

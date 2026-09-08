@@ -209,3 +209,10 @@ Novos provedores podem entrar no pool apos qualificacao por capacidade, health, 
 - Aprovar lifecycle, criar/revogar convite de piloto, reconciliar pagamento e demais efeitos dependentes do estado atual continuam fail-closed quando o banco canonico nao pode ser consultado.
 - Journal deve ser criptografado, idempotente e provider-neutral; quorum critico conta apenas dominios independentes.
 - Esta regra melhora continuidade sem criar multi-master inseguro, sem alterar gates comerciais e sem autorizar vendas.
+
+## 2026-09-08 — Verified Read Fabric
+- Leituras operacionais podem rerotear por endpoints Postgres read-only verificados para o mesmo dataset canonico.
+- Replica alternativa so entra no pool com `VERIFIED=true`, `READ_ONLY=true` e `DATASET_ID` igual ao dataset canonico.
+- Replication lag e tratado como risco real; replica de leitura nao pode virar fonte de verdade para pagamento, reconciliacao financeira ou aprovacao dependente de estado atual.
+- `/api/status`, `/api/assurance` e `/api/agent/status` usam o Read Fabric; detalhes de rota nao sao expostos publicamente.
+- Ausencia de rota verificada continua fail-closed; nenhum endpoint alternativo e presumido por nome de fornecedor.
