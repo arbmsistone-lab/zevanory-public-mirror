@@ -77,3 +77,11 @@ This architecture changes execution resilience only. It does not enable SALE_GLO
 - O script Vercel legado permanece como mecanismo especifico existente, mas nao e mais o modelo arquitetural obrigatorio do core.
 - Auditoria `audit:universal-fabric:3x`: 9/9 invariantes PASS.
 - Validacao focada journal + observabilidade + deploy: 10/10 PASS + IDENTITY_GUARD_PASS.
+
+## Storage Fabric evidence extension — 2026-09-08
+- AWS Prescriptive Guidance, Transactional Outbox: dual writes can produce inconsistent state; persist state/event atomically and make downstream consumers idempotent.
+- Microsoft Azure Architecture Center, Compensating Transaction: eventual-consistency workflows must durably record progress and use idempotent commands; manual reconciliation can be required.
+- PostgreSQL documentation, Transactions: grouped writes are all-or-nothing; COMMIT makes the transaction durable and ROLLBACK discards the updates.
+- Cloudflare Queues delivery guarantees: at-least-once delivery may duplicate messages; unique IDs/idempotency keys are required for safe deduplication.
+- Decision: database failover cannot be implemented as blind multi-master replay. Pre-write unavailability may be journaled as replayable; any failure after a write attempt is treated as ambiguous until reconciled.
+- Gate: APPROVED FOR IMPLEMENTATION / production cutover remains blocked pending remote proof.

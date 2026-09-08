@@ -200,3 +200,12 @@ Novos provedores podem entrar no pool apos qualificacao por capacidade, health, 
 - Adapters independentes adicionais podem entrar por registro de providers sem alterar o nucleo do agente ou do outbox.
 - Falha comprovadamente anterior ao efeito externo permite reroteamento; efeito ambiguo exige reconciliacao antes de qualquer segundo provider.
 - Gates comerciais, identidade, consentimento e compliance continuam fail-closed e nao podem ser contornados pela redundancia.
+
+## 2026-09-08 — Universal Storage Fabric
+- Persistencia transacional deixa de ser tratada como simples URL substituivel; failover cego entre bancos e proibido.
+- Operacao idempotente cuja indisponibilidade e conhecida antes da primeira tentativa pode ser preservada em Durable Operation Journal e marcada para replay posterior.
+- Qualquer falha depois de iniciar tentativa de mutacao e estado ambiguo e exige reconciliacao antes de replay.
+- Telemetria publica e intents autenticadas do operador usam `storageOperation` + `executeStorageMutation`; preservacao nao equivale a efeito de negocio executado.
+- Aprovar lifecycle, criar/revogar convite de piloto, reconciliar pagamento e demais efeitos dependentes do estado atual continuam fail-closed quando o banco canonico nao pode ser consultado.
+- Journal deve ser criptografado, idempotente e provider-neutral; quorum critico conta apenas dominios independentes.
+- Esta regra melhora continuidade sem criar multi-master inseguro, sem alterar gates comerciais e sem autorizar vendas.
