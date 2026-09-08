@@ -17,5 +17,7 @@ fs.writeFileSync(profileSvg,profile,'utf8'); fs.writeFileSync(coverSvg,cover,'ut
 const candidates=[process.env.CHROME_PATH,process.platform==='win32'?path.join(process.env.ProgramFiles||'','Google','Chrome','Application','chrome.exe'):null,'google-chrome','chromium','chromium-browser'].filter(Boolean);
 const chrome=candidates.find((c)=>c.includes(path.sep)?fs.existsSync(c):spawnSync(c,['--version'],{encoding:'utf8'}).status===0); if(!chrome)throw new Error('chrome_not_found');
 function shot(svg,out,w,h){const r=spawnSync(chrome,['--headless=new','--disable-gpu','--hide-scrollbars','--no-first-run','--force-device-scale-factor=1',`--window-size=${w},${h}`,`--screenshot=${out}`,pathToFileURL(svg).href],{encoding:'utf8'});if(r.status!==0)throw new Error(r.stderr||'chrome_screenshot_failed');}
-shot(profileSvg,path.join(publicDir,'zevanory-social-profile-1080.png'),1080,1080); shot(coverSvg,path.join(publicDir,'zevanory-facebook-cover-1640x624.png'),1640,624);
+const profilePng=path.join(publicDir,'zevanory-social-profile-1080.png');
+shot(profileSvg,profilePng,1080,1080); shot(coverSvg,path.join(publicDir,'zevanory-facebook-cover-1640x624.png'),1640,624);
+fs.copyFileSync(profilePng,path.join(root,'public','brand','zevanory-avatar.png'));
 console.log('SOCIAL_ASSETS_BUILD_PASS');

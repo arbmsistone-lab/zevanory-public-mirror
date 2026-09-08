@@ -12,6 +12,12 @@ test('official social profile asset is production-sized',()=>{
   assert.deepEqual(pngSize('../public/brand/social/zevanory-social-profile-1080.png'),[1080,1080]);
 });
 
+test('canonical avatar is exactly the approved social profile asset',()=>{
+  const profile=fs.readFileSync(new URL('../public/brand/social/zevanory-social-profile-1080.png',import.meta.url));
+  const avatar=fs.readFileSync(new URL('../public/brand/zevanory-avatar.png',import.meta.url));
+  assert.deepEqual(avatar,profile);
+});
+
 test('official Facebook cover asset is production-sized',()=>{
   assert.deepEqual(pngSize('../public/brand/social/zevanory-facebook-cover-1640x624.png'),[1640,624]);
 });
