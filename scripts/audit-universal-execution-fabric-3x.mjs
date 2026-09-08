@@ -47,7 +47,7 @@ async function integration(){
   const {proofs}=await collectDeploymentProofs({sha,providers:[make('d1','domain-a'),make('d2','domain-b')]});
   const cert=certifyDeploymentEvidence(proofs,{required:2});
   add('integration','critical deploy exact-SHA independent quorum',cert.pass&&cert.independent_domains===2);
-  const [master,publicEvents,operatorEvents,statusApi,assuranceApi,agentStatusApi,checkoutAsaas,checkoutMp,webhookAsaas,webhookMp,fulfillment]=await Promise.all([text('ZEVANORY_MASTER.md'),text('api/events-public.mjs'),text('api/events-operator.mjs'),text('api/status.mjs'),text('api/assurance.mjs'),text('api/agent-status.mjs'),text('src/http/checkoutAsaas.mjs'),text('src/http/checkoutMercadoPago.mjs'),text('src/http/webhookAsaas.mjs'),text('src/http/webhookMercadoPago.mjs'),text('src/cloudflareArtifactRoutes.mjs')]);
+  const [master,publicEvents,operatorEvents,statusApi,assuranceApi,agentStatusApi,checkoutAsaas,checkoutMp,webhookAsaas,webhookMp,fulfillment,agentRun,robotControl]=await Promise.all([text('ZEVANORY_MASTER.md'),text('api/events-public.mjs'),text('api/events-operator.mjs'),text('api/status.mjs'),text('api/assurance.mjs'),text('api/agent-status.mjs'),text('src/http/checkoutAsaas.mjs'),text('src/http/checkoutMercadoPago.mjs'),text('src/http/webhookAsaas.mjs'),text('src/http/webhookMercadoPago.mjs'),text('src/cloudflareArtifactRoutes.mjs'),text('api/agent-run.mjs'),text('api/robot-control.mjs')]);
   add('integration','canonical universal rule present',master.includes('UNIVERSAL EXECUTION FABRIC'));
   add('integration','public telemetry uses storage fabric',publicEvents.includes('executeStorageMutation')&&publicEvents.includes('replayable:true'));
   add('integration','operator events preserve intent but sensitive approvals stay database gated',operatorEvents.includes('pending_validation:true')&&operatorEvents.includes("name==='lifecycle_certification_approve'")&&operatorEvents.includes('operational_storage_unavailable'));
@@ -56,6 +56,8 @@ async function integration(){
   add('integration','financial webhooks preserve provider truth for later canonical reconciliation',[webhookAsaas,webhookMp].every(value=>value.includes('webhook_pending_canonical_reconciliation')&&value.includes('financial_truth:false')));
   add('integration','mercadopago webhook is not tied to nominal selected provider',!webhookMp.includes('financial_provider_not_selected'));
   add('integration','fulfillment never treats journal as delivery authority',fulfillment.includes('issued:false')&&fulfillment.includes('pending_validation')&&fulfillment.includes('download_validation_unavailable'));
+  add('integration','agent trigger preserves before execution and reconciles ambiguous execution',agentRun.includes('agent.run_request')&&agentRun.includes('agent.run_reconciliation')&&agentRun.includes('reconciliation_required:true'));
+  add('integration','robot control writes preserve intent while reads use verified fabric',robotControl.includes('pending_storage')&&robotControl.includes('agent.control_reconciliation')&&robotControl.includes('executeVerifiedRead'));
 }
 
 export async function main(){

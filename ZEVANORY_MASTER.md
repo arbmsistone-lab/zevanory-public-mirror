@@ -225,3 +225,10 @@ Novos provedores podem entrar no pool apos qualificacao por capacidade, health, 
 - Escrita financeira nunca usa read replica; falha após tentativa de mutação exige reconciliação canônica.
 - Fulfillment preservado no journal é somente intenção pendente de validação; nunca gera token/link/download.
 - Download continua exigindo pedido `paid` + `payment_confirmed` reconciliado no banco canônico e claim transacional de uso único.
+
+## 2026-09-08 — Operational Continuity Fabric
+- `agent-run` autenticado preserva o trigger quando o banco está indisponível antes da execução; nenhum trabalho é marcado como executado.
+- Falha depois que o agente começou gera registro de reconciliação e proíbe replay cego de efeitos externos.
+- `robot-control` valida e preserva comandos autenticados antes da escrita canônica quando o banco está indisponível.
+- Falha de comando após tentativa de escrita gera `reconciliation_required`; aprovação/estado nunca é presumido pelo journal.
+- Leituras do Robot Control passam pelo Verified Read Fabric; escrita de controle continua canônica.
