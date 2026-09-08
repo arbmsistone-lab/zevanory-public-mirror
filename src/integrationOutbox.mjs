@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { attachProviderAcceptance } from './providerConfirmation.mjs';
 import { classifyDeliveryFailure } from './providerDelivery.mjs';
+import { executeUniversallySafely } from './universalExecutionFabric.mjs';
 
 const digest=(value)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const metadata=(headers={})=>({run_id:headers?.run_id||null,trace_id:headers?.trace_id||null});
@@ -27,16 +28,16 @@ export async function enqueueOutbox(sql,event){
   return Object.freeze({...row,...metadata(row.headers)});
 }
 export async function claimOutboxEvent(sql){
-  const rows=await sql.query(`update integration_outbox set status='processing',locked_at=now(),attempts=attempts+1
+  const rows = await sql.query(`update integration_outbox set status='processing',locked_at=now(),attempts=attempts+1
     where event_id=(select event_id from integration_outbox where status in ('pending','retry') and available_at<=now()
-    order by available_at asc,created_at asc for update skip locked limit 1) returning *`);
+      order by available_at asc,created_at asc for update skip locked limit 1) returning *`);
   return rows[0]||null;
 }
 
 export async function claimChannelOutboxEvent(sql){
-  const rows=await sql.query(`update integration_outbox set status='processing',locked_at=now(),attempts=attempts+1
+  const rows = await sql.query(`update integration_outbox set status='processing',locked_at=now(),attempts=attempts+1
     where event_id=(select event_id from integration_outbox where status in ('pending','retry') and available_at<=now() and destination like 'channel:%'
-    order by available_at asc,created_at asc for update skip locked limit 1) returning *`);
+      order by available_at asc,created_at asc for update skip locked limit 1) returning *`);
   return rows[0]||null;
 }
 
@@ -45,28 +46,49 @@ export function nextRetryDelayMs(attempts){
   return Math.min(3600000,1000*(2**Math.min(n-1,12)));
 }
 
+async function preserveForRetry(sql,event,reason,delay=nextRetryDelayMs(event?.attempts)){
+  await sql.query(`update integration_outbox set status='retry',last_error=$2,
+    available_at=now()+($3::text||' milliseconds')::interval where event_id=$1`,
+    [event.event_id,String(reason||'provider_unavailable').slice(0,500),delay]);
+  return Object.freeze({ok:false,processed:true,preserved:true,event_id:event.event_id,status:'retry',retry_in_ms:delay,reason:String(reason||'provider_unavailable').slice(0,500),...metadata(event.headers||{})});
+}
+
+async function executeAdapter(event,adapter,sql){
+  const frozen=Object.freeze({...event,payload:event.payload||{},headers:event.headers||{}});
+  if(typeof adapter==='function') return adapter(frozen,{sql});
+  if(Array.isArray(adapter)){
+    const routed=await executeUniversallySafely({operation:frozen,providers:adapter,requirements:{capabilities:[String(event.destination)],zeroCost:true}});
+    if(!routed.ok){const error=new Error(routed.reason);error.routed=routed;error.ambiguous=Boolean(routed.reconciliation_required);throw error;}
+    return Object.freeze({...routed.result,execution_provider:routed.provider,execution_attempts:routed.attempts});
+  }
+  throw new Error('adapter_missing');
+}
 async function dispatchClaimedEvent(sql,event,adapters={}){
   if(!event) return Object.freeze({ok:true,processed:false,reason:'outbox_empty'});
   const adapter=adapters[event.destination];
   const meta=metadata(event.headers||{});
-  if(typeof adapter!=='function'){
-    await sql.query("update integration_outbox set status='dead_letter',last_error='adapter_missing' where event_id=$1",[event.event_id]);
-    return Object.freeze({ok:false,processed:true,event_id:event.event_id,status:'dead_letter',reason:'adapter_missing',...meta});
-  }
+  if(!adapter) return preserveForRetry(sql,event,'adapter_unavailable');
   try{
-    const result=await adapter(Object.freeze({...event,payload:event.payload||{},headers:event.headers||{}}),{sql});
+    const result=await executeAdapter(event,adapter,sql);
     const persisted=await attachProviderAcceptance(sql,{eventId:event.event_id,result});
-    if(!persisted){await sql.query("update integration_outbox set status='dead_letter',last_error='provider_acceptance_persistence_uncertain' where event_id=$1",[event.event_id]);return Object.freeze({ok:false,processed:true,event_id:event.event_id,status:'dead_letter',reason:'provider_acceptance_persistence_uncertain',result,...meta});}
+    if(!persisted){
+      await sql.query("update integration_outbox set status='dead_letter',last_error='provider_acceptance_persistence_uncertain' where event_id=$1",[event.event_id]);
+      return Object.freeze({ok:false,processed:true,event_id:event.event_id,status:'dead_letter',reason:'provider_acceptance_persistence_uncertain',result,...meta});
+    }
     return Object.freeze({ok:true,processed:true,event_id:event.event_id,status:'delivered',result,...meta});
   }catch(error){
-    const attempts=Number(event.attempts)||1;const terminal=attempts>=20;const delay=nextRetryDelayMs(attempts);
+    if(error?.routed?.reason==='no_qualified_provider_available'||error?.routed?.reason==='all_qualified_providers_failed'){
+      return preserveForRetry(sql,event,error.routed.reason);
+    }
+    if(error?.ambiguous||error?.routed?.reconciliation_required){
+      await sql.query("update integration_outbox set status='dead_letter',last_error='provider_delivery_uncertain_manual_reconciliation' where event_id=$1",[event.event_id]);
+      return Object.freeze({ok:false,processed:true,preserved:true,event_id:event.event_id,status:'dead_letter',reason:'provider_delivery_uncertain_manual_reconciliation',...meta});
+    }
+    const attempts=Number(event.attempts)||1;const delay=nextRetryDelayMs(attempts);
     const classification=classifyDeliveryFailure(error,event.destination);
-    const status=terminal||classification.status==='dead_letter'?'dead_letter':'retry';
-    const reason=String(classification.reason||'delivery_failed').slice(0,500);
-    await sql.query(`update integration_outbox set status=$2,last_error=$3,
-      available_at=case when $2='retry' then now()+($4::text||' milliseconds')::interval else available_at end where event_id=$1`,
-      [event.event_id,status,reason,delay]);
-    return Object.freeze({ok:false,processed:true,event_id:event.event_id,status,retry_in_ms:status==='retry'?delay:null,reason,...meta});
+    if(classification.status==='retry') return preserveForRetry(sql,event,classification.reason,delay);
+    await sql.query("update integration_outbox set status='dead_letter',last_error=$2 where event_id=$1",[event.event_id,String(classification.reason||'delivery_failed').slice(0,500)]);
+    return Object.freeze({ok:false,processed:true,preserved:true,event_id:event.event_id,status:'dead_letter',reason:classification.reason,...meta});
   }
 }
 

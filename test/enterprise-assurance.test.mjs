@@ -28,7 +28,6 @@ test('provider contracts preserve core boundaries',()=>{
 
 import { decideRevenueAction } from '../src/revenueAgent.mjs';
 import { dispatchOutboxOnce } from '../src/integrationOutbox.mjs';
-
 test('AI provider outage degrades to deterministic policy',async()=>{
   const previousFetch=globalThis.fetch; const previousEnabled=process.env.AGENT_AI_ENABLED;
   globalThis.fetch=async()=>({ok:false,status:503}); process.env.AGENT_AI_ENABLED='true';
@@ -38,9 +37,9 @@ test('AI provider outage degrades to deterministic policy',async()=>{
   }finally{globalThis.fetch=previousFetch; if(previousEnabled===undefined) delete process.env.AGENT_AI_ENABLED; else process.env.AGENT_AI_ENABLED=previousEnabled;}
 });
 
-test('missing outbox adapter is dead-lettered fail closed',async()=>{
+test('missing outbox adapter preserves operation for universal retry',async()=>{
   const calls=[]; const sql={query:async(q,args)=>{calls.push({q,args}); if(q.includes('returning *')) return [{event_id:'evt-1',destination:'missing',payload:{},headers:{},attempts:1}]; return [];}};
   const r=await dispatchOutboxOnce(sql,{});
-  assert.equal(r.status,'dead_letter'); assert.equal(r.ok,false);
-  assert.equal(calls.some(x=>x.q.includes("status='dead_letter'")),true);
+  assert.equal(r.status,'retry'); assert.equal(r.ok,false); assert.equal(r.preserved,true);
+  assert.equal(calls.some(x=>x.q.includes("status='retry'")),true);
 });
