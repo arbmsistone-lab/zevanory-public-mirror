@@ -108,6 +108,10 @@ integration_e2e:
     - npm run audit:lifecycle:10x
     - npm run audit:lifecycle:evidence:10x
     - npm run audit:closure:10x
+    - git config user.name "ZEVANORY CI Evidence"
+    - git config user.email "ci-evidence@zevanory.api.br"
+    - git tag -f "e2e-proof-${CI_COMMIT_SHA}" "${CI_COMMIT_SHA}"
+    - git push "${CI_REPOSITORY_URL}" "refs/tags/e2e-proof-${CI_COMMIT_SHA}" || echo "E2E_PROOF_PUSH_UNAVAILABLE"
   artifacts:
     when: always
     expire_in: 30 days
