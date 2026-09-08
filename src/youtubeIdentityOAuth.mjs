@@ -1,5 +1,6 @@
 import {newOAuthState,sealOAuthSession,openOAuthSession,assertOAuthState,encryptCommercialSecret,decryptCommercialSecret} from './commercialOAuthCrypto.mjs';
 export const YOUTUBE_IDENTITY_REDIRECT_URI='https://zevanory.api.br/api/oauth/youtube/callback';
+export const YOUTUBE_IDENTITY_LOOPBACK_URI='http://127.0.0.1:53682';
 const AUTH='https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN='https://oauth2.googleapis.com/token';
 const SCOPE='https://www.googleapis.com/auth/youtube.force-ssl';
@@ -13,8 +14,14 @@ export function createYouTubeIdentityOAuthStart(env=process.env){
  return {url:u.toString(),cookie,state};
 }
 export function readYouTubeIdentityOAuthCookie(value,state,env=process.env){const p=openOAuthSession(value,env);if(p.provider!=='youtube_identity')throw new Error('youtube_oauth_session_invalid');assertOAuthState(p.state,state);return p;}
-export async function exchangeYouTubeIdentityCode({code,env=process.env,fetchImpl=globalThis.fetch}={}){
- const body=new URLSearchParams({client_id:clean(env.YOUTUBE_OAUTH_CLIENT_ID,500),client_secret:clean(env.YOUTUBE_OAUTH_CLIENT_SECRET,1000),code:clean(code,1000),grant_type:'authorization_code',redirect_uri:YOUTUBE_IDENTITY_REDIRECT_URI});
+export function createYouTubeIdentityLoopbackStart(env=process.env){
+ const id=clean(env.YOUTUBE_OAUTH_CLIENT_ID,500);if(!id)throw new Error('youtube_oauth_client_id_missing');
+ const state=sealOAuthSession({provider:'youtube_identity_loopback',nonce:newOAuthState()},env);const u=new URL(AUTH);
+ u.searchParams.set('client_id',id);u.searchParams.set('redirect_uri',YOUTUBE_IDENTITY_LOOPBACK_URI);u.searchParams.set('response_type','code');u.searchParams.set('scope',SCOPE);u.searchParams.set('access_type','offline');u.searchParams.set('prompt','consent');u.searchParams.set('include_granted_scopes','true');u.searchParams.set('state',state);return {url:u.toString(),state};
+}
+export function readYouTubeIdentityLoopbackState(value,env=process.env){const p=openOAuthSession(value,env);if(p.provider!=='youtube_identity_loopback')throw new Error('youtube_loopback_state_invalid');return p;}
+export async function exchangeYouTubeIdentityCode({code,env=process.env,fetchImpl=globalThis.fetch,redirectUri=YOUTUBE_IDENTITY_REDIRECT_URI}={}){
+ const body=new URLSearchParams({client_id:clean(env.YOUTUBE_OAUTH_CLIENT_ID,500),client_secret:clean(env.YOUTUBE_OAUTH_CLIENT_SECRET,1000),code:clean(code,1000),grant_type:'authorization_code',redirect_uri:clean(redirectUri,500)});
  const r=await fetchImpl(TOKEN,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});const b=await json(r);if(!r.ok)throw new Error(`youtube_identity_token_http_${r.status}`);
  if(!clean(b.access_token)||!clean(b.refresh_token))throw new Error('youtube_identity_refresh_token_missing');
  const scopes=clean(b.scope,2000).split(' ').filter(Boolean);if(!scopes.includes(SCOPE))throw new Error('youtube_identity_scope_missing');return b;

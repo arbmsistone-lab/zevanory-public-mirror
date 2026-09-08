@@ -55,6 +55,10 @@
       "destination": "/api/webhooks?provider=youtube_identity_oauth"
     },
     {
+      "source": "/api/oauth/youtube/loopback-exchange",
+      "destination": "/api/webhooks?provider=youtube_identity_oauth&action=loopback_exchange"
+    },
+    {
       "source": "/api/oauth/youtube/start",
       "destination": "/api/webhooks?provider=youtube_identity_oauth&action=start"
     },
