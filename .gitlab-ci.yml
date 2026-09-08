@@ -36,6 +36,8 @@ quality_core:
     - npm run audit:activation:20x
     - npm run audit:offer:20x
     - npm run audit:channels:20x
+    - npm run audit:social-channels:20x
+    - npm run audit:channel-identity:20x
     - npm run audit:distribution:10x
     - npm run audit:pilot:10x
     - npm run audit:rules:20x
