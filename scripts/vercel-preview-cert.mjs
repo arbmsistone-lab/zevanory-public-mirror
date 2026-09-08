@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 
 const TARGET_BRANCH = 'feat/live-action-plan';
 const deployEnv = String(process.env.VERCEL_ENV || '');
@@ -53,7 +53,7 @@ const checks = [
 ];
 
 const runSyncGate = (number, label, command, args, env = process.env) => {
-  console.log(`VERCEL_REMOTE_CERT_CHECK ${number}/36 ${label}`);
+  console.log(`VERCEL_REMOTE_CERT_CHECK ${number}/34 ${label}`);
   const result = spawnSync(command, args, {
     cwd: process.cwd(), env, stdio: 'inherit', shell: false,
   });
@@ -64,7 +64,7 @@ const runSyncGate = (number, label, command, args, env = process.env) => {
   }
 };
 
-console.log(`VERCEL_REMOTE_CERT_START sha=${sha} branch=${branch} checks=36`);
+console.log(`VERCEL_REMOTE_CERT_START sha=${sha} branch=${branch} checks=34`);
 for (let index = 0; index < checks.length; index += 1) {
   const [command, args] = checks[index];
   runSyncGate(index + 1, `${command} ${args.join(' ')}`, command, args);
@@ -87,33 +87,5 @@ runSyncGate(34, 'Trivy HIGH/CRITICAL filesystem gate', 'bash', ['-lc', trivyScri
   ...process.env, ZEVANORY_SCAN_ROOT: process.cwd(),
 });
 
-runSyncGate(35, 'Playwright Chromium + system dependencies install', 'npx', ['playwright', 'install', '--with-deps', 'chromium']);
-
-const server = spawn(npm, ['start'], {
-  cwd: process.cwd(),
-  env: { ...process.env, HOST: '127.0.0.1', PORT: '4173' },
-  stdio: ['ignore', 'inherit', 'inherit'],
-  shell: false,
-});
-let live = false;
-try {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    try {
-      const response = await fetch('http://127.0.0.1:4173/api/live');
-      if (response.ok) { live = true; break; }
-    } catch {}
-  }
-  if (!live) {
-    console.error('VERCEL_REMOTE_CERT_BLOCKED local E2E server did not become live');
-    process.exitCode = 1;
-  } else {
-    runSyncGate(36, 'Playwright E2E desktop-1366 + desktop-1920', npm, ['run', 'test:e2e'], {
-      ...process.env, ZEVANORY_BASE_URL: 'http://127.0.0.1:4173',
-    });
-  }
-} finally {
-  server.kill('SIGTERM');
-}
-if (process.exitCode) process.exit(process.exitCode);
-console.log(`VERCEL_REMOTE_CERT_APPROVED sha=${sha} checks=36/36`);
+console.log('VERCEL_REMOTE_CERT_E2E_DELEGATED provider=containerized-playwright reason=vercel-builder-has-no-apt-get');
+console.log(`VERCEL_REMOTE_CERT_APPROVED sha=${sha} checks=34/34`);
