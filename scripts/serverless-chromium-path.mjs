@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import chromium, { inflate } from '@sparticuz/chromium';
 
 const entry = fileURLToPath(import.meta.resolve('@sparticuz/chromium'));
-const packageRoot = resolve(dirname(entry), '..', '..');
+const packageRoot = resolve(dirname(entry), '..');
 const binDir = join(packageRoot, 'bin');
 const al2023Archive = join(binDir, 'al2023.tar.br');
 
