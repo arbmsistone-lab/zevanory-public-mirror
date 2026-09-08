@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   }
   const url=new URL(req.url||'/api/config','https://zevanory.api.br');
   const view=String(url.searchParams.get('view')||'');
-  if(isPublicDeploymentRequest(req)&&['mercadolivre-audit','lifecycle','activation'].includes(view)){const expected=String(process.env.OPERATOR_TOKEN||process.env.FULFILLMENT_OPERATOR_TOKEN||'');const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'');if(!safeBearerEqual(expected,provided)){res.statusCode=401;return res.end(JSON.stringify({error:'operator_auth_required'}));}}
+  if(isPublicDeploymentRequest(req)&&['mercadolivre-audit','lifecycle','activation'].includes(view)){const scoped=view==='mercadolivre-audit'?String(process.env.MERCADOLIVRE_AUDIT_TOKEN||''):'';const expected=String(scoped||process.env.OPERATOR_TOKEN||process.env.FULFILLMENT_OPERATOR_TOKEN||'');const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'');if(!safeBearerEqual(expected,provided)){res.statusCode=401;return res.end(JSON.stringify({error:'operator_auth_required'}));}}
   if(url.searchParams.get('view')==='mercadolivre-audit'){
     if(!process.env.DATABASE_URL){res.statusCode=503;return res.end(JSON.stringify({error:'database_required'}));}
     try{const result=await verifyMercadoLivreLive(neon(process.env.DATABASE_URL));res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=result.all_verified?200:503;return res.end(JSON.stringify(result));}catch(error){res.statusCode=503;return res.end(JSON.stringify({provider:'mercado_livre',all_verified:false,error:String(error?.message||'verification_failed').slice(0,120)}));}
