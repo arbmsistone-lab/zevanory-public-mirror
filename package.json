@@ -78,6 +78,7 @@
     "migration:021": "node --env-file-if-exists=.env.production.local scripts/apply-migration-021.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.62.1"
+    "@playwright/test": "1.62.1",
+    "@sparticuz/chromium": "^152.0.0"
   }
 }

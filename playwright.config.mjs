@@ -1,5 +1,7 @@
 ﻿import { defineConfig, devices } from "@playwright/test";
 
+const serverlessExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined;
+
 export default defineConfig({
   testDir: "./test/e2e",
   timeout: 30000,
@@ -11,6 +13,10 @@ export default defineConfig({
   ],
   use: {
     baseURL: process.env.ZEVANORY_BASE_URL || "https://zevanory.api.br",
+    launchOptions: serverlessExecutablePath ? {
+      executablePath: serverlessExecutablePath,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    } : undefined,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
