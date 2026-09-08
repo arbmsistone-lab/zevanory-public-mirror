@@ -8,15 +8,16 @@ import { loadNuvemshopCredential } from './nuvemshopOAuth.mjs';
 import { requestProviderJson, providerAcceptanceMissing } from './providerDelivery.mjs';
 import { alternateAutomationReadiness } from './alternateChannelAutomation.mjs';
 import { publishViaBuffer } from './bufferSocial.mjs';
+import { defineChannelProvider, buildChannelProviderPool, buildUniversalChannelAdapter, externalChannelProviders } from './channelProviderRegistry.mjs';
 const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new Error(code);return v;};
 const ensureGlobalGates=(env,gateEvaluator=salesGate)=>{if(!gateEvaluator(env).enabled)throw new Error('commercial_gates_closed');};
 const ensureHttps=(value,code)=>{const v=required(value,code);let u;try{u=new URL(v);}catch{throw new Error(code);}if(u.protocol!=='https:')throw new Error(code);return v;};
 const requestJson=(fetchImpl,url,options,success=[200])=>requestProviderJson(fetchImpl,url,options,success,{timeoutMs:15000});
 
-export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetch,commercialGate=salesGate}={}){
+export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetch,commercialGate=salesGate,channelProviders={}}={}){
   if(typeof fetchImpl!=='function')throw new Error('fetch_required');
   const metaBase=()=>`https://graph.facebook.com/${required(env.META_GRAPH_VERSION,'meta_graph_version_missing')}`;
-  return Object.freeze({
+  const directAdapters=Object.freeze({
     'channel:whatsapp':async(event)=>{
       ensureGlobalGates(env,commercialGate);if(env.WHATSAPP_SALES_ENABLED!=='true')throw new Error('whatsapp_sales_disabled');
       const token=required(env.WHATSAPP_ACCESS_TOKEN,'whatsapp_access_token_missing');
@@ -93,4 +94,12 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       return Object.freeze({provider:'mercado_livre',accepted:true,provider_item_id:id,seller_id:String(credential.account_id),confirmation:'provider_api_after_notification'});
     },
   });
+  const universal={};
+  for(const [destination,direct] of Object.entries(directAdapters)){
+    const channel=destination.replace(/^channel:/,'');
+    const builtIn=[defineChannelProvider({id:`builtin:${channel}`,channel,independenceDomain:`builtin:${channel}`,execute:({event,context})=>direct(event,context)})];
+    const pool=buildChannelProviderPool(channel,{builtIn,external:externalChannelProviders(channel,channelProviders)});
+    universal[destination]=buildUniversalChannelAdapter(channel,pool);
+  }
+  return Object.freeze(universal);
 }

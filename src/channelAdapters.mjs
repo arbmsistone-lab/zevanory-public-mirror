@@ -25,11 +25,10 @@ export function channelReadiness(env = process.env) {
     return [name,Object.freeze({ provider:def.provider, configured:implemented&&missing.length===0, implemented, missing:Object.freeze(missing), commercial:def.commercial, role:def.role })];
   }));
 }
-export function assertChannelActionAllowed(channel, env = process.env) {
+export function assertChannelActionAllowed(channel, env = process.env, gateEvaluator=salesGate) {
   const readiness=channelReadiness(env)[channel];
   if(!readiness) throw new Error('unknown_channel');
-  if(!readiness.configured) throw new Error('channel_not_configured');
-  const gate=salesGate(env);
+  const gate=gateEvaluator(env);
   if(!gate.enabled) throw new Error('commercial_gates_closed');
-  return true;
+  return Object.freeze({allowed:true,configured:readiness.configured,provider:readiness.provider});
 }

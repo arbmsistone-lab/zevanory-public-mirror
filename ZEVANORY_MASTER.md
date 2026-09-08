@@ -193,3 +193,10 @@ Gates criticos exigem quorum por dominios de independencia, nunca o nome de um f
 Provedores pagos nao podem ser requisito quando a politica vigente exigir custo obrigatorio zero.
 Workloads pesados permanecem remotos; computador local e apenas control plane e validacao leve.
 Novos provedores podem entrar no pool apos qualificacao por capacidade, health, seguranca, custo e evidencia sem reescrever o nucleo.
+
+## 2026-09-08 — Universal Channel Fabric
+- Canais outbound passam a ser capacidades substituiveis (`channel:<nome>`), nunca dependencias nominais de um unico fornecedor.
+- Um canal conhecido pode preservar/enfileirar operacao mesmo quando o provider nominal estiver indisponivel; disponibilidade de infraestrutura e responsabilidade do Universal Execution Fabric.
+- Adapters independentes adicionais podem entrar por registro de providers sem alterar o nucleo do agente ou do outbox.
+- Falha comprovadamente anterior ao efeito externo permite reroteamento; efeito ambiguo exige reconciliacao antes de qualquer segundo provider.
+- Gates comerciais, identidade, consentimento e compliance continuam fail-closed e nao podem ser contornados pela redundancia.

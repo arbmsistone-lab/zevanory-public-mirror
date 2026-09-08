@@ -37,3 +37,11 @@ This architecture changes execution resilience only. It does not enable SALE_GLO
 - Gemini remains an adapter, not a core dependency; independent adapters can be injected without changing revenue-agent logic.
 - If every AI provider fails, deterministic policy remains available and preserves safe operation.
 - Financial ambiguity still forbids blind failover after provider side effects.
+
+## 2026-09-08 — Channel fabric expansion
+- Every current outbound channel is now exposed as a capability (`channel:<name>`) through the universal fabric.
+- Built-in adapters remain compatible, but future independent adapters can be injected without changing core dispatch logic.
+- Channel authorization no longer blocks solely because the nominal provider is unconfigured; the outbox preserves the operation for later routing.
+- Ambiguous provider effects halt cross-provider rerouting and require reconciliation before another provider may execute.
+- Existing Buffer fallback behavior for LinkedIn/TikTok remains compatible while the generic provider registry supports broader alternatives.
+- Focused validation: 20/20 PASS + IDENTITY_GUARD_PASS.
