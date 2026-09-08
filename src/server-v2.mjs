@@ -24,6 +24,7 @@ const publicDir = join(root, "public");
 const dataDir = join(root, "data");
 const eventFile = join(dataDir, "events.ndjson");
 const port = Number(process.env.PORT || 4173);
+const host = String(process.env.HOST || "127.0.0.1").trim() || "127.0.0.1";
 const configuredWhatsappNumber = normalizeWhatsappNumber(process.env.WHATSAPP_NUMBER);
 const whatsappNumber = isOfficialWhatsapp(configuredWhatsappNumber) ? configuredWhatsappNumber : "";
 const operatorToken = String(process.env.OPERATOR_TOKEN || "").trim();
@@ -159,8 +160,8 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`ZEVANORY G2 em http://127.0.0.1:${port}`);
+server.listen(port, host, () => {
+  console.log(`ZEVANORY G2 em http://${host}:${port}`);
   console.log(whatsappNumber ? "WhatsApp configurado" : "WhatsApp NAO configurado; CTA bloqueado");
   console.log("Eventos financeiros bloqueados ate integracao autenticada com provedor");
 });
