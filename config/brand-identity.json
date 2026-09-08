@@ -1,0 +1,23 @@
+{
+  "brand": "ZEVANORY",
+  "displayName": "ZEVANORY",
+  "preferredHandle": "@zevanory",
+  "website": "https://zevanory.api.br",
+  "email": "contato@zevanory.api.br",
+  "whatsappDisplay": "+55 88 9234-0423",
+  "whatsappE164": "558892340423",
+  "category": "Tecnologia / Software / Automação / IA",
+  "avatar": "/brand/zevanory-avatar.png",
+  "logoDark": "/brand/zevanory-logo-dark.svg",
+  "logoLight": "/brand/zevanory-logo-light.svg",
+  "shortBio": "IA, automação e tecnologia com execução segura e resultados reais.",
+  "standardBio": "Tecnologia, automação e IA aplicada para produtos e operações digitais. Execução segura, evidências reais e resultados mensuráveis.",
+  "longDescription": "A ZEVANORY é uma empresa de tecnologia, automação e IA aplicada. Criamos e operamos produtos e serviços digitais com foco em execução segura, evidências reais, eficiência e resultados mensuráveis.",
+  "handles": {
+    "instagram": "@zevanory_",
+    "tiktok": "@zevanory3",
+    "youtube": "@zevanory",
+    "facebook": null,
+    "linkedin": null
+  }
+}

@@ -4,7 +4,9 @@ Identidade canonica:
 - Marca: ZEVANORY
 - Site: https://zevanory.api.br
 - Cadastro: zevanory@gmail.com
-- Handle preferencial quando disponível: @zevanory`r`n- Instagram real confirmado: @zevanory_`r`n- TikTok real registrado: @zevanory3
+- Handle preferencial quando disponível: @zevanory
+- Instagram real confirmado: @zevanory_
+- TikTok real registrado: @zevanory3
 - WhatsApp: +55 88 9234-0423
 
 Canais confirmados:
@@ -25,18 +27,18 @@ Resend:
 
 Meta / Facebook / Instagram / WhatsApp:
 - Categoria preferida: Software / Tecnologia
-- Bio: Tecnologia, automacao, produtos e servicos digitais com foco em execucao segura e resultados reais.
+- Bio: Tecnologia, automacao e IA aplicada para produtos e operacoes digitais. Execucao segura, evidencias reais e resultados mensuraveis.
 - Facebook Page ZEVANORY: `1249902628211703`, identidade confirmada via Graph API.
 - WABA oficial: `1765777697944833`; Phone Number ID: `1207377742466921`; numero `+55 88 9234-0423`; qualidade GREEN.
 - `META_ACCESS_TOKEN` e `WHATSAPP_ACCESS_TOKEN` instalados como Secrets de producao; `META_VERIFY_TOKEN` presente.
-- Instagram ainda nao esta vinculado a Pagina: provider retorna `instagram_business_account=null`; nao chamar de conectado antes do login/OAuth e prova do username `zevanory`.
+- Instagram Business conectado e legivel pela Graph API: username `zevanory_`, nome `ZEVANORY`, website e foto presentes. Bio/link ainda devem seguir a identidade omnicanal canonica.
 - `META_APP_SECRET` ainda e necessario para certificar assinatura HMAC do webhook inbound.
 - Meta ainda retorna `verified_name=Giro Local`; concluir a identidade publica do WhatsApp como ZEVANORY antes do cutover.
 
 YouTube:
 - Canal: ZEVANORY
 - Handle: @zevanory
-- Descricao: Canal oficial da ZEVANORY para produtos, servicos, demonstracoes e conteudo tecnico.
+- Descricao: A ZEVANORY e uma empresa de tecnologia, automacao e IA aplicada. Criamos e operamos produtos e servicos digitais com foco em execucao segura, evidencias reais, eficiencia e resultados mensuraveis.
 
 Pagamentos / identidade do merchant:
 - Credenciais de gateway nao autorizam ativacao sozinhas.

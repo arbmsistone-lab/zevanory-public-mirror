@@ -37,7 +37,7 @@ G0: PMEs brasileiras com venda/atendimento digital e forte componente manual.
 G1-A: primeiro subnicho de investigacao: educacao profissional/cursos.
 G1-B: OFFER-0001 - IA aplicada a Vendas e Atendimento no WhatsApp, como hipotese para teste.
 G1-C: preco experimental com hipotese central de R$ 497; nao validado comercialmente.
-WhatsApp oficial: +55 88 99234-0423 / E.164 5588992340423.
+WhatsApp oficial: +55 88 9234-0423 / E.164 558892340423.
 Dominio zevanory.api.br: aprovado tecnicamente com HTTPS e rotas publicas.
 Persistencia Neon, telemetria, checkout sandbox Asaas, reconciliacao financeira, idempotencia, DR, observabilidade e hardening de seguranca aprovados nas etapas anteriores.
 
