@@ -11,7 +11,7 @@ export const CHANNELS = Object.freeze({
   linkedin: Object.freeze({ provider:'linkedin-posts-api', env:['LINKEDIN_CLIENT_ID','LINKEDIN_CLIENT_SECRET','COMMERCIAL_OAUTH_ENCRYPTION_KEY','LINKEDIN_VERSION'], trueEnv:['LINKEDIN_IDENTITY_VERIFIED'], commercial:true, role:'b2b_authority' }),
   google: Object.freeze({ provider:'organic-search', env:[], commercial:false, role:'seo_discovery' }),
   affiliate: Object.freeze({ provider:'affiliate-program', env:['AFFILIATE_PROVIDER'], commercial:true, role:'partner_distribution' }),
-  nuvemshop: Object.freeze({ provider:'nuvemshop-api-v1', env:['NUVEMSHOP_APP_ID','NUVEMSHOP_CLIENT_SECRET','COMMERCIAL_OAUTH_ENCRYPTION_KEY'], trueEnv:['NUVEMSHOP_IDENTITY_VERIFIED','NUVEMSHOP_WEBHOOKS_VERIFIED'], commercial:true, role:'owned_store_distribution' }),
+  nuvemshop: Object.freeze({ provider:'nuvemshop-api-v1', env:['NUVEMSHOP_APP_ID','NUVEMSHOP_CLIENT_SECRET','COMMERCIAL_OAUTH_ENCRYPTION_KEY'], trueEnv:['NUVEMSHOP_IDENTITY_VERIFIED','NUVEMSHOP_WEBHOOKS_VERIFIED','NUVEMSHOP_NUBESDK_VERIFIED'], commercial:true, role:'owned_store_distribution' }),
   mercado_livre: Object.freeze({ provider:'mercado-livre-api', env:['MERCADOLIVRE_APP_ID','MERCADOLIVRE_CLIENT_SECRET','MERCADOLIVRE_TOKEN_ENCRYPTION_KEY'], trueEnv:['MERCADOLIVRE_IDENTITY_VERIFIED','MERCADOLIVRE_NOTIFICATIONS_VERIFIED','MERCADOLIVRE_APP_SEPARATION_VERIFIED'], commercial:true, role:'marketplace_distribution' }),
 });
 

@@ -62,3 +62,17 @@ test('commercial and financial decisions map to gated tools',()=>{
   assert.equal(chooseTool({action:'start_checkout'}),'start_checkout');
   assert.equal(chooseTool({action:'refund_payment'}),'refund_payment');
 });
+
+
+test('Nuvemshop readiness requires current NubeSDK verification',()=>{
+  const base={
+    NUVEMSHOP_APP_ID:'app',
+    NUVEMSHOP_CLIENT_SECRET:'secret',
+    COMMERCIAL_OAUTH_ENCRYPTION_KEY:'key',
+    NUVEMSHOP_IDENTITY_VERIFIED:'true',
+    NUVEMSHOP_WEBHOOKS_VERIFIED:'true'
+  };
+  assert.equal(channelReadiness(base).nuvemshop.configured,false);
+  assert.ok(channelReadiness(base).nuvemshop.missing.includes('NUVEMSHOP_NUBESDK_VERIFIED'));
+  assert.equal(channelReadiness({...base,NUVEMSHOP_NUBESDK_VERIFIED:'true'}).nuvemshop.configured,true);
+});
