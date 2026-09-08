@@ -22,3 +22,26 @@ export function buildBrevoEmailProvider({env=process.env,fetchImpl=globalThis.fe
     },
   });
 }
+
+export function buildMailjetEmailProvider({env=process.env,fetchImpl=globalThis.fetch}={}){
+  const publicKey=clean(env.MJ_APIKEY_PUBLIC,4000);
+  const privateKey=clean(env.MJ_APIKEY_PRIVATE,4000);
+  const fromEmail=clean(env.MAILJET_FROM_ADDRESS,320);
+  const fromName=clean(env.MAILJET_FROM_NAME||'ZEVANORY',120);
+  return defineChannelProvider({
+    id:'mailjet-email',channel:'email',independenceDomain:'mailjet.com',cost:0,
+    ready:()=>Boolean(publicKey&&privateKey&&fromEmail),
+    execute:async({event})=>{
+      if(!publicKey||!privateKey||!fromEmail)throw new Error('mailjet_not_configured');
+      const to=clean(event?.payload?.contact_ref,320);if(!to)throw new Error('email_recipient_missing');
+      const text=clean(event?.payload?.text,5000);if(!text)throw new Error('email_text_missing');
+      const subject=clean(event?.payload?.subject||'ZEVANORY',240);
+      const auth=Buffer.from(`${publicKey}:${privateKey}`).toString('base64');
+      const body=await requestJson(fetchImpl,'https://api.mailjet.com/v3.1/send',{method:'POST',headers:{authorization:`Basic ${auth}`,'content-type':'application/json'},body:JSON.stringify({Messages:[{From:{Email:fromEmail,Name:fromName},To:[{Email:to}],Subject:subject,TextPart:text,CustomID:clean(event?.event_id,200)}]})},[200]);
+      const message=body?.Messages?.[0];
+      const id=clean(message?.To?.[0]?.MessageID||message?.To?.[0]?.MessageUUID,300);
+      if(String(message?.Status||'').toLowerCase()!=='success'||!id)throw providerAcceptanceMissing('mailjet_message_id_missing');
+      return Object.freeze({provider:'mailjet',accepted:true,provider_message_id:id,confirmation:'event_callback_required'});
+    },
+  });
+}

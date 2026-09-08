@@ -23,3 +23,14 @@ test('Buffer network uncertainty is reconciliation-required, never blind failove
     assert.equal(error.ambiguous,true);return true;
   });
 });
+
+test('email can route through independent Mailjet provider',async()=>{
+  const calls=[];
+  const env={MJ_APIKEY_PUBLIC:'public',MJ_APIKEY_PRIVATE:'private',MAILJET_FROM_ADDRESS:'sender@example.test'};
+  const adapters=buildOutboundAdapters({env,commercialGate:gate,fetchImpl:async(url,opt)=>{calls.push({url,opt});return response({Messages:[{Status:'success',To:[{MessageID:12345}]}]},200);}});
+  const result=await adapters['channel:email']({event_id:'evt-email-2',payload:{contact_ref:'to@example.test',text:'hello'}});
+  assert.equal(result.provider,'mailjet');
+  assert.equal(result.execution_provider,'mailjet-email');
+  assert.equal(calls[0].url,'https://api.mailjet.com/v3.1/send');
+  assert.match(calls[0].opt.headers.authorization,/^Basic /);
+});

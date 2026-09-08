@@ -9,7 +9,7 @@ import { requestProviderJson, providerAcceptanceMissing } from './providerDelive
 import { alternateAutomationReadiness } from './alternateChannelAutomation.mjs';
 import { publishViaBuffer } from './bufferSocial.mjs';
 import { defineChannelProvider, buildChannelProviderPool, buildUniversalChannelAdapter, externalChannelProviders } from './channelProviderRegistry.mjs';
-import { buildBrevoEmailProvider } from './emailProviders.mjs';
+import { buildBrevoEmailProvider, buildMailjetEmailProvider } from './emailProviders.mjs';
 const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new Error(code);return v;};
 const ensureGlobalGates=(env,gateEvaluator=salesGate)=>{if(!gateEvaluator(env).enabled)throw new Error('commercial_gates_closed');};
 const ensureHttps=(value,code)=>{const v=required(value,code);let u;try{u=new URL(v);}catch{throw new Error(code);}if(u.protocol!=='https:')throw new Error(code);return v;};
@@ -104,7 +104,7 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
   for(const [destination,direct] of Object.entries(directAdapters)){
     const channel=destination.replace(/^channel:/,'');
     const builtIn=[defineChannelProvider({id:`direct:${channel}`,channel,independenceDomain:`direct:${channel}`,execute:({event,context})=>direct(event,context)})];
-    if(channel==='email') builtIn.push(buildBrevoEmailProvider({env,fetchImpl}));
+    if(channel==='email') builtIn.push(buildBrevoEmailProvider({env,fetchImpl}),buildMailjetEmailProvider({env,fetchImpl}));
     if(channel==='linkedin'||channel==='tiktok') builtIn.push(defineChannelProvider({
       id:`buffer:${channel}`,channel,independenceDomain:'buffer.com',cost:0,
       ready:()=>alternateAutomationReadiness(channel,env).ready,
