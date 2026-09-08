@@ -87,7 +87,7 @@ runSyncGate(34, 'Trivy HIGH/CRITICAL filesystem gate', 'bash', ['-lc', trivyScri
   ...process.env, ZEVANORY_SCAN_ROOT: process.cwd(),
 });
 
-runSyncGate(35, 'Playwright Chromium install', 'npx', ['playwright', 'install', 'chromium']);
+runSyncGate(35, 'Playwright Chromium + system dependencies install', 'npx', ['playwright', 'install', '--with-deps', 'chromium']);
 
 const server = spawn(npm, ['start'], {
   cwd: process.cwd(),
