@@ -108,7 +108,7 @@ integration_e2e:
     - npm run audit:lifecycle:10x
     - npm run audit:lifecycle:evidence:10x
     - npm run audit:closure:10x
-    - printf 'ZEVANORY_E2E_PASS\nsha=%s\nref=%s\npipeline=%s\njob=%s\n' "$CI_COMMIT_SHA" "$CI_COMMIT_REF_NAME" "$CI_PIPELINE_ID" "$CI_JOB_ID" > e2e-proof.txt
+    - printf 'ZEVANORY_E2E_PASS\nsha=%s\nref=%s\n' "$CI_COMMIT_SHA" "$CI_COMMIT_REF_NAME" > e2e-proof.txt
     - sha256sum e2e-proof.txt
   artifacts:
     when: always
