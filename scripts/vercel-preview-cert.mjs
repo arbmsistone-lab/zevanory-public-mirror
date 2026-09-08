@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 const TARGET_BRANCH = 'feat/live-action-plan';
 const deployEnv = String(process.env.VERCEL_ENV || '');
@@ -52,20 +52,68 @@ const checks = [
   [process.execPath, ['--test', 'test/adaptive-rate-limit.test.mjs', 'test/secret-lifecycle.test.mjs']],
 ];
 
-console.log(`VERCEL_REMOTE_CERT_START sha=${sha} branch=${branch} checks=${checks.length}`);
-for (let index = 0; index < checks.length; index += 1) {
-  const [command, args] = checks[index];
-  console.log(`VERCEL_REMOTE_CERT_CHECK ${index + 1}/${checks.length} ${command} ${args.join(' ')}`);
+const runSyncGate = (number, label, command, args, env = process.env) => {
+  console.log(`VERCEL_REMOTE_CERT_CHECK ${number}/36 ${label}`);
   const result = spawnSync(command, args, {
-    cwd: process.cwd(),
-    env: process.env,
-    stdio: 'inherit',
-    shell: false,
+    cwd: process.cwd(), env, stdio: 'inherit', shell: false,
   });
   if (result.error || result.status !== 0) {
-    console.error(`VERCEL_REMOTE_CERT_BLOCKED check=${index + 1} status=${result.status ?? 'error'}`);
+    console.error(`VERCEL_REMOTE_CERT_BLOCKED check=${number} status=${result.status ?? 'error'}`);
     if (result.error) console.error(result.error.message);
     process.exit(1);
   }
+};
+
+console.log(`VERCEL_REMOTE_CERT_START sha=${sha} branch=${branch} checks=36`);
+for (let index = 0; index < checks.length; index += 1) {
+  const [command, args] = checks[index];
+  runSyncGate(index + 1, `${command} ${args.join(' ')}`, command, args);
 }
-console.log(`VERCEL_REMOTE_CERT_APPROVED sha=${sha} checks=${checks.length}/${checks.length}`);
+
+if (process.platform !== 'linux') {
+  console.error('VERCEL_REMOTE_CERT_BLOCKED heavy gates require Linux preview builder');
+  process.exit(1);
+}
+
+const trivyScript = `set -euo pipefail
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+cd "$tmp"
+curl -fsSLO https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_Linux-64bit.tar.gz
+echo "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a  trivy_0.74.0_Linux-64bit.tar.gz" | sha256sum -c -
+tar -xzf trivy_0.74.0_Linux-64bit.tar.gz trivy
+./trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --skip-dirs node_modules "$ZEVANORY_SCAN_ROOT"`;
+runSyncGate(34, 'Trivy HIGH/CRITICAL filesystem gate', 'bash', ['-lc', trivyScript], {
+  ...process.env, ZEVANORY_SCAN_ROOT: process.cwd(),
+});
+
+runSyncGate(35, 'Playwright Chromium install', 'npx', ['playwright', 'install', 'chromium']);
+
+const server = spawn(npm, ['start'], {
+  cwd: process.cwd(),
+  env: { ...process.env, HOST: '127.0.0.1', PORT: '4173' },
+  stdio: ['ignore', 'inherit', 'inherit'],
+  shell: false,
+});
+let live = false;
+try {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const response = await fetch('http://127.0.0.1:4173/api/live');
+      if (response.ok) { live = true; break; }
+    } catch {}
+  }
+  if (!live) {
+    console.error('VERCEL_REMOTE_CERT_BLOCKED local E2E server did not become live');
+    process.exitCode = 1;
+  } else {
+    runSyncGate(36, 'Playwright E2E desktop-1366 + desktop-1920', npm, ['run', 'test:e2e'], {
+      ...process.env, ZEVANORY_BASE_URL: 'http://127.0.0.1:4173',
+    });
+  }
+} finally {
+  server.kill('SIGTERM');
+}
+if (process.exitCode) process.exit(process.exitCode);
+console.log(`VERCEL_REMOTE_CERT_APPROVED sha=${sha} checks=36/36`);
