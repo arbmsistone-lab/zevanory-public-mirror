@@ -10,6 +10,7 @@ import { refreshOutcomeLearning } from './outcomeLearning.mjs';
 import { recordVerifiedLifecycleEvidence } from './lifecycleEvidenceRepository.mjs';
 import { evaluateProgressiveAutonomy } from './autonomyPolicy.mjs';
 import { evaluateContentNovelty } from './contentDedup.mjs';
+import { buildLiveActionPlan, persistLiveActionPlan, transitionLiveActionPlan } from './liveActionPlan.mjs';
 
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const nbaExecutableTools=new Set(['schedule_follow_up','send_message','start_checkout']);
@@ -124,11 +125,14 @@ export async function runAgentOnce(sql,options={}){
       if(!contentNovelty.allowed)evalResult=Object.freeze({...evalResult,pass:false,score:Math.max(0,Number(evalResult.score)-0.5),issues:Object.freeze([...evalResult.issues,contentNovelty.reason])});
     }
     const finalAuth=evalResult.pass?auth:Object.freeze({allowed:false,risk_level:auth.risk_level,reason:evalResult.issues?.find(x=>String(x).startsWith('content_duplicate_'))||'agent_eval_failed'});
+    const livePlan=buildLiveActionPlan({job,runId,traceId,tool,auth:finalAuth,decision,context,env});
+    await persistLiveActionPlan(sql,job.job_id,livePlan);
     const saveRun=async(outcome,result)=>{await persistRun(sql,{runId,job,traceId,spanId,decision,context,tool,outcome,result,evalResult,latencyMs:Date.now()-started});runPersisted=true;};
     if(!finalAuth.allowed){
       const result={blocked:true,reason:finalAuth.reason};
       await saveRun('blocked',result);
       await auditTool(sql,runId,tool,finalAuth,{job_id:job.job_id,decision,eval:evalResult,result});
+      await transitionLiveActionPlan(sql,job.job_id,{state:'blocked',result,evidence:{run_id:runId,trace_id:traceId,authorization_reason:finalAuth.reason}});
       await sql.query("update agent_jobs set status='blocked',completed_at=now(),last_error=$2 where job_id=$1",[job.job_id,finalAuth.reason]);
       return Object.freeze({ok:true,processed:true,job_id:job.job_id,run_id:runId,trace_id:traceId,outcome:'blocked',tool,result,eval:evalResult});
     }
@@ -142,6 +146,7 @@ export async function runAgentOnce(sql,options={}){
           const result={blocked:true,reason:'human_approval_required',state:'awaiting_approval',approval_id:approval.approval_id,autonomy_reason:autonomy.reason};
           await saveRun('blocked',result);
           await auditTool(sql,runId,tool,{...finalAuth,allowed:false,reason:'human_approval_required'},{job_id:job.job_id,decision,eval:evalResult,autonomy,result});
+          await transitionLiveActionPlan(sql,job.job_id,{state:'awaiting_approval',result,evidence:{run_id:runId,trace_id:traceId,approval_id:approval.approval_id},approvalStatus:'pending'});
           await sql.query("update agent_jobs set status='blocked',completed_at=now(),last_error='human_approval_required' where job_id=$1",[job.job_id]);
           return Object.freeze({ok:true,processed:true,job_id:job.job_id,run_id:runId,trace_id:traceId,outcome:'awaiting_approval',tool,result,eval:evalResult,autonomy});
         }
@@ -153,6 +158,7 @@ export async function runAgentOnce(sql,options={}){
     if(autonomy.eligible)result={...result,autonomy_mode:autonomy.mode,autonomy_reason:autonomy.reason};
     if(approval?.approval_id)await consumeApproval(sql,approval.approval_id);
     await saveRun(outcome,result);
+    await transitionLiveActionPlan(sql,job.job_id,{state:outcome==='completed'?'executed':'failed',result,evidence:{run_id:runId,trace_id:traceId,event_id:result?.event_id||null,status:result?.status||null},approvalStatus:approval?.approval_id?'consumed':undefined});
     if(outcome==='completed'){
       try{await recordNextBestActionEvidence(sql,{runId,context,tool,result,decision});}catch{}
     }
@@ -163,6 +169,7 @@ export async function runAgentOnce(sql,options={}){
   }catch(error){
     const message=String(error?.message||'agent_failed').slice(0,500);
     try{if(!runPersisted){await persistRun(sql,{runId,job,traceId,spanId,decision,context,tool,outcome:'failed',result:{failed:true,reason:message},evalResult,latencyMs:Date.now()-started});runPersisted=true;}}catch{}
+    try{await transitionLiveActionPlan(sql,job.job_id,{state:'failed',result:{failed:true,reason:message},evidence:{run_id:runId,trace_id:traceId}});}catch{}
     await sql.query("update agent_jobs set status='failed',completed_at=now(),last_error=$2 where job_id=$1",[job.job_id,message]);
     return Object.freeze({ok:false,processed:true,job_id:job.job_id,run_id:runId,trace_id:traceId,error:message});
   }

@@ -1,0 +1,46 @@
+# EG-0070 — Plano de Ação Vivo / Transparência Pré-Execução
+
+Status: APROVADO COM RESTRIÇÕES
+Data: 2026-09-08
+Decisão proposta: persistir um manifesto inspecionável antes de cada ferramenta do agente e atualizar o mesmo manifesto após o desfecho.
+Problema: a observabilidade atual registra decisão/efeito, mas não garante uma superfície universal de intenção antes da execução.
+
+## Evidência 1 — HashiCorp Terraform
+Fonte: https://developer.hashicorp.com/terraform/cli/commands/plan
+Classe: A — documentação técnica oficial.
+Constatação: `terraform plan` cria um plano de execução, mostra as mudanças propostas e não as aplica; o fluxo permite revisar antes de `apply`.
+Limite: padrão de infraestrutura, não de agente comercial.
+
+## Evidência 2 — Kubernetes
+Fonte: https://kubernetes.io/docs/reference/using-api/api-concepts/#dry-run
+Classe: A — documentação técnica oficial.
+Constatação: dry-run permite validar/observar uma requisição sem persistir o efeito pretendido.
+Limite: não define conteúdo de um manifesto operacional para agentes.
+
+## Evidência 3 — OpenAI Agents SDK
+Fonte: https://openai.github.io/openai-agents-js/guides/human-in-the-loop/
+Classe: A — documentação técnica oficial.
+Constatação: chamadas sensíveis podem pausar antes da execução, expor a interrupção e somente continuar após aprovação/rejeição; argumentos malformados falham fechados.
+Limite: a ZEVANORY não depende do SDK e deve manter sua própria trilha persistente.
+
+## Convergência e contradições
+As três fontes convergem em separar intenção/validação da aplicação do efeito e em tornar ações sensíveis revisáveis antes da execução.
+Não há exigência universal de um formato único; portanto o contrato ZEVANORY é próprio, PII-minimizado e fail-closed.
+
+## Contrato aprovado
+Antes de executar qualquer ferramenta escolhida, persistir: o que, onde, por quê, objetivo, canal, conta/referência não sensível, conteúdo/oferta resumido, risco, custo estimado, necessidade de aprovação e resultado esperado.
+O manifesto deve existir antes de `executeTool` e possuir `manifest_id`, `job_id`, `run_id`, `trace_id`, `created_at`, `updated_at` e `state`.
+Estados canônicos: `planned`, `awaiting_approval`, `executed`, `failed`, `blocked`, `canceled`.
+Após o desfecho, atualizar o mesmo `manifest_id`, sem apagar o plano original, adicionando resultado/prova e horário.
+
+## Restrições
+- Nenhuma credencial, PII, `contact_ref`, `session_id`, corpo integral sensível ou token entra na superfície do operador.
+- Esta frente não abre vendas, checkout, canais ou autonomia.
+- Aprovação humana existente permanece soberana.
+- Se a persistência prévia do manifesto falhar, a ferramenta não executa.
+- Ações externas continuam sem ser tratadas como efeito confirmado até reconciliação do provedor.
+
+## Veredito
+APROVADO COM RESTRIÇÕES.
+Critério pós-implementação: testes focados + suíte integral + auditoria 3X + prova de que `persistLiveActionPlan` ocorre antes de `executeTool`.
+Rollback: remover integração do worker/API/UI; nenhum schema novo é necessário.

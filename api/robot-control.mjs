@@ -4,6 +4,7 @@ import {channelReadiness} from '../src/channelAdapters.mjs';
 import {decideApproval,getAgentControlState,setAgentPaused} from '../src/agentControl.mjs';
 import {buildAgentObservability} from '../src/agentObservability.mjs';
 import {salesGate} from '../src/salesGate.mjs';
+import {summarizeLiveActionPlan} from '../src/liveActionPlan.mjs';
 
 const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringify(body));};
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,Number(v)||min));
@@ -47,7 +48,7 @@ export default async function handler(req,res){
         r.decision->>'action' action,r.decision->>'rationale' rationale,r.decision->>'confidence' confidence,r.decision->>'tool' tool,r.decision->'result' result,r.decision->'eval' eval
         from agent_runs r left join agent_jobs j on j.job_id=r.job_id order by r.created_at desc limit $1`,[limit]),
       sql.query(`select run_id,tool_name,risk_level,allowed,reason,created_at from agent_tool_audit order by created_at desc limit $1`,[limit]),
-      sql.query(`select job_id,job_type,status,priority,attempts,available_at,locked_at,completed_at,last_error,created_at from agent_jobs order by created_at desc limit $1`,[limit]),
+      sql.query(`select job_id,job_type,status,priority,attempts,available_at,locked_at,completed_at,last_error,created_at,payload->'live_action_plan' live_action_plan from agent_jobs order by created_at desc limit $1`,[limit]),
       sql.query(`select event_id,headers->>'run_id' run_id,headers->>'trace_id' trace_id,headers->'provider_acceptance' provider_acceptance,headers->'provider_confirmation' provider_confirmation,aggregate_type,event_type,destination,status,attempts,available_at,locked_at,delivered_at,last_error,created_at from integration_outbox order by created_at desc limit $1`,[limit]),
       sql.query(`select action_type,channel,status,count(*)::int count from sales_actions group by action_type,channel,status order by count desc`),
       sql.query(`select job_id,payload->'approval'->>'approval_id' approval_id,payload->'approval'->>'run_id' run_id,payload->'approval'->>'trace_id' trace_id,
@@ -65,7 +66,8 @@ export default async function handler(req,res){
     const observability=buildAgentObservability({runs:safeRuns,outbox:safeOutbox,approvals});
     return json(res,200,{mode:'operator',generated_at:new Date().toISOString(),control,gates,channels,
       runs:observability.runs,metrics:observability.metrics,tools,
-      jobs:jobs.map(x=>({...x,last_error:cleanError(x.last_error)})),
+      jobs:jobs.map(x=>({...x,last_error:cleanError(x.last_error),live_action_plan:x.live_action_plan?summarizeLiveActionPlan(x.live_action_plan):null})),
+      live_action_plans:jobs.filter(x=>x.live_action_plan).map(x=>summarizeLiveActionPlan(x.live_action_plan)),
       outbox:safeOutbox,actions,approvals});
   }catch(error){return json(res,503,{error:'robot_control_unavailable',detail:cleanError(error?.message)});}
 }

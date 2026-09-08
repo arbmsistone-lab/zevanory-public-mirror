@@ -73,7 +73,10 @@ export async function decideApproval(sql,{approvalId,decision,reason,operator='o
     where payload->'approval'->>'approval_id'=$1 and payload->'approval'->>'status'='pending'
     returning job_id,payload->'approval' approval`,[approvalId,decision,decisionReason,decidedBy]);
   if(rows.length!==1) throw new Error('approval_not_pending');
-  return approvalFromRow(rows[0]);
+  const approval=approvalFromRow(rows[0]);
+  await sql.query(`update agent_jobs set payload=jsonb_set(payload,'{live_action_plan}',(payload->'live_action_plan') || $2::jsonb,true)
+    where job_id=$1 and payload ? 'live_action_plan'`,[approval.job_id,JSON.stringify({state:decision==='approved'?'planned':'canceled',updated_at:new Date().toISOString(),approval:{required:true,status:decision,decided_by:decidedBy,decision_reason:decisionReason}})]);
+  return approval;
 }
 
 export async function consumeApproval(sql,approvalId){
