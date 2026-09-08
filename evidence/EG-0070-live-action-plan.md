@@ -56,3 +56,13 @@ Rollback: remover integração do worker/API/UI; nenhum schema novo é necessár
 - GitHub Actions: infraestrutura indisponível para os runs observados (`runner_id=0`, `steps=[]`); isso não constitui falha de teste, mas impede certificação integral remota enquanto não houver execução real das etapas.
 
 Status desta frente: IMPLEMENTAÇÃO E 3X LOCAL APROVADOS / PROMOÇÃO AINDA FAIL-CLOSED ATÉ CI REMOTO EXECUTAR E PASSAR.
+
+## Certificação remota — diagnóstico de 2026-09-08
+- SHA avaliado: `d47b81f45172f6ee631b59f6b57d6c1642d7e8ac`.
+- GitHub Actions: jobs encerram antes de qualquer step, com `runner_id=0`, `runner_name=""` e `steps=[]`.
+- A anotação oficial do check-run informa: o job não iniciou porque houve falha recente de pagamento ou porque o spending limit precisa ser aumentado.
+- Decisão ZEVANORY: **não aumentar spending limit e não autorizar cobrança**. A exigência de custo zero prevalece.
+- Vercel Preview: deployment do SHA concluiu com PASS, porém isso prova deploy/preview, não substitui a suíte integral de CI.
+- Netlify backup: deployment atual foi acionado por upload/API, com `commit_ref=null` e `branch=null`; portanto não é evidência válida do SHA desta frente.
+- GitLab: branch foi enviada com sucesso, mas a API de pipelines não está acessível pela credencial disponível nesta sessão; nenhuma conclusão de pipeline é inventada.
+- Resultado: implementação + testes focados + auditoria 3X permanecem PASS; promoção/merge continua fail-closed até uma suíte remota integral executar de fato.
