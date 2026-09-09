@@ -457,6 +457,16 @@ unit('DEF-MARKET-PRODUCT-INTELLIGENCE-EVIDENCE','evidence/EG-0070-market-product
   op('four independent references recorded',()=>['Mozilla','Google Ads','Shopify','Statsig'].every(x=>t('evidence/EG-0070-market-product-investment-intelligence.md').includes(x))),
   op('three source fail-closed policy explicit',()=>t('evidence/EG-0070-market-product-investment-intelligence.md').includes('3 fontes verificadas')&&t('evidence/EG-0070-market-product-investment-intelligence.md').includes('EVIDENCIA_INSUFICIENTE')),
 ]);
+unit('CODE-PRELAUNCH-INVESTMENT-INTELLIGENCE','prelaunch investment + portfolio research',[
+  command('prelaunch intelligence syntax',process.execPath,['--check','src/prelaunchInvestment.mjs']),
+  command('prelaunch investment tests',process.execPath,['--test','test/prelaunch-investment.test.mjs']),
+  command('30-role 10x investment audit',process.execPath,['scripts/audit-investment-intelligence-10x.mjs']),
+]);
+unit('DEF-PRELAUNCH-INVESTMENT-EVIDENCE','evidence/EG-0071-prelaunch-investment-decision.md',[
+  op('EG-0071 has three independent sources',()=>['Shopify','Google Ads','U.S. Small Business Administration'].every(x=>t('evidence/EG-0071-prelaunch-investment-decision.md').includes(x))),
+  op('EG-0071 forbids invented economics',()=>t('evidence/EG-0071-prelaunch-investment-decision.md').includes('Nenhum valor econômico específico da ZEVANORY foi inventado')),
+  op('EG-0071 keeps sales gate mandatory',()=>t('evidence/EG-0071-prelaunch-investment-decision.md').includes('salesGate')&&t('src/prelaunchInvestment.mjs').includes('commercial_authorized:false')),
+]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),

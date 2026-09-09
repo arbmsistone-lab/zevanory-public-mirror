@@ -1820,6 +1820,52 @@
       ]
     },
     {
+      "id": "CODE-PRELAUNCH-INVESTMENT-INTELLIGENCE",
+      "label": "prelaunch investment + portfolio research",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "prelaunch intelligence syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "prelaunch investment tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "30-role 10x investment audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PRELAUNCH-INVESTMENT-EVIDENCE",
+      "label": "evidence/EG-0071-prelaunch-investment-decision.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "EG-0071 has three independent sources",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "EG-0071 forbids invented economics",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "EG-0071 keeps sales gate mandatory",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1844,8 +1890,8 @@
     }
   ],
   "totals": {
-    "units": 80,
-    "approved": 80,
+    "units": 82,
+    "approved": 82,
     "failed": 0
   },
   "verdict": "APPROVED"
