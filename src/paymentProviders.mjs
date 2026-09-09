@@ -22,19 +22,21 @@ function readinessFor(provider,env,{production=true}={}){
   }
   const pool=csv(env.PAYMENT_PROVIDER_POOL);
   const legacy=normalizePaymentProvider(env.PAYMENT_PROVIDER);
-  if(delegatedReady && (pool.includes(provider)||legacy===provider)) return Object.freeze({provider,ready:true,delegated:true,blockers:Object.freeze([])});
-  if(delegated&&!delegatedReady) blockers.push('payment_runtime_origin_unverified');
+  const local=[];
   if(provider==='asaas'){
     const mode=String(env.ASAAS_ENV||'').trim().toLowerCase();
-    if(mode!==(production?'production':'sandbox')) blockers.push(production?'asaas_production_not_configured':'asaas_sandbox_unconfigured');
-    if(!present(env.ASAAS_API_KEY)||!present(env.ASAAS_WEBHOOK_TOKEN)) blockers.push('asaas_credentials_missing');
+    if(mode!==(production?'production':'sandbox')) local.push(production?'asaas_production_not_configured':'asaas_sandbox_unconfigured');
+    if(!present(env.ASAAS_API_KEY)||!present(env.ASAAS_WEBHOOK_TOKEN)) local.push('asaas_credentials_missing');
   }
   if(provider==='mercadopago'){
     const mode=String(env.MERCADOPAGO_ENV||'').trim().toLowerCase();
-    if(mode!==(production?'production':'sandbox')) blockers.push(production?'mercadopago_production_not_configured':'mercadopago_sandbox_unconfigured');
-    if(!present(env.MERCADOPAGO_ACCESS_TOKEN)||!present(env.MERCADOPAGO_WEBHOOK_SECRET)) blockers.push('mercadopago_credentials_missing');
+    if(mode!==(production?'production':'sandbox')) local.push(production?'mercadopago_production_not_configured':'mercadopago_sandbox_unconfigured');
+    if(!present(env.MERCADOPAGO_ACCESS_TOKEN)||!present(env.MERCADOPAGO_WEBHOOK_SECRET)) local.push('mercadopago_credentials_missing');
   }
-  return Object.freeze({provider,ready:blockers.length===0,delegated:false,blockers:Object.freeze(blockers)});
+  if(local.length===0) return Object.freeze({provider,ready:true,delegated:false,blockers:Object.freeze([])});
+  if(delegatedReady && (pool.includes(provider)||legacy===provider)) return Object.freeze({provider,ready:true,delegated:true,blockers:Object.freeze([])});
+  blockers.push(...local); if(delegated&&!delegatedReady) blockers.push('payment_runtime_origin_unverified');
+  return Object.freeze({provider,ready:false,delegated:false,blockers:Object.freeze(blockers)});
 }
 export function paymentProviderCandidates(env=process.env,{production=true}={}){
   const preferred=normalizePaymentProvider(env.PAYMENT_PROVIDER);
