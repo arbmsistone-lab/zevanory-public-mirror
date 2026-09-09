@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { marketResearchFeeds, marketResearchReadiness, collectMarketSignals, aggregateMarketSignals } from '../src/marketResearchFabric.mjs';
 
@@ -16,9 +16,10 @@ test('research fabric requires three independent configured feeds',()=>{
 
 test('research fabric aggregates only verified provider signals',async()=>{
   const fetchImpl=async()=>({ok:true,status:200,json:async()=>({verified:true,signal:.8,metrics:{demand:.9,trend:.8,competition:.2,margin:.9,strategic_fit:.9,execution_fit:.9}})});
-  const rows=await collectMarketSignals('Produto X',{env,fetchImpl});
+  const rows=await collectMarketSignals('Produto X',{env,fetchImpl,includeNative:false});
   assert.equal(rows.length,3);
   const aggregate=aggregateMarketSignals('Produto X',rows);
   assert.equal(aggregate.verified,3);
   assert.equal(aggregate.decision.decision,'INVESTIR');
 });
+

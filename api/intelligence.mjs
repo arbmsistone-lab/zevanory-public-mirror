@@ -7,10 +7,25 @@ import { ZEVANORY_PRODUCTS } from '../src/offerCatalog.mjs';
 
 const json=(res,status,body)=>{res.statusCode=status;res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');return res.end(JSON.stringify(body));};
 const bearer=(req)=>String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'');
+const clean=(v,max=180)=>String(v??'').trim().slice(0,max);
 
 async function readLatest(sql,limit=30){
   return sql.query(`select snapshot_id,snapshot_type,subject_ref,payload,evidence_count,organization_count,decision,score,observed_at,created_at
     from intelligence_snapshots order by created_at desc limit $1`,[Math.max(1,Math.min(100,Number(limit)||30))]);
+}
+async function cachedResearch(sql,subject,ttlMinutes){
+  const ttl=Math.max(5,Math.min(1440,Number(ttlMinutes)||60));
+  const rows=await sql.query(`select payload,created_at from intelligence_snapshots where snapshot_type='market_research' and lower(subject_ref)=lower($1)
+    and created_at>now()-($2::text||' minutes')::interval order by created_at desc limit 1`,[subject,String(ttl)]);
+  return rows[0]||null;
+}
+function authorized(req,env=process.env){
+  const token=bearer(req);if(!token)return false;
+  return [env.AGENT_WORKER_TOKEN,env.OPERATOR_TOKEN].some(x=>String(x||'')&&safeBearerEqual(String(x),token));
+}
+async function persistResearch(sql,subject,aggregate){
+  await sql.query(`insert into intelligence_snapshots(snapshot_id,snapshot_type,subject_ref,payload,evidence_count,organization_count,decision,score,observed_at)
+    values($1,'market_research',$2,$3::jsonb,$4,$5,$6,$7,now())`,[randomUUID(),subject,JSON.stringify(aggregate),aggregate.decision.readiness.verified_sources,aggregate.decision.readiness.independent_organizations,aggregate.decision.decision,aggregate.decision.opportunity.score]);
 }
 
 export default async function handler(req,res){
@@ -27,25 +42,24 @@ export default async function handler(req,res){
     catch{return json(res,503,{error:'intelligence_read_unavailable'});}
   }
   if(req.method!=='POST')return json(res,405,{error:'method_not_allowed'});
-  const expected=String(process.env.AGENT_WORKER_TOKEN||'');
-  if(!safeBearerEqual(expected,bearer(req)))return json(res,401,{error:'intelligence_auth_required'});
+  if(!authorized(req))return json(res,401,{error:'intelligence_auth_required'});
   let body={};try{body=typeof req.body==='object'&&req.body?req.body:JSON.parse(String(req.body||'{}'));}catch{return json(res,400,{error:'invalid_json'});}
   try{
     if(body.type==='market_research_run'){
-      const subject=String(body.subject||'').trim().slice(0,180);if(!subject)return json(res,400,{error:'research_subject_required'});
-      const collected=await collectMarketSignals(subject,{env:process.env});const aggregate=aggregateMarketSignals(subject,collected);
-      await sql.query(`insert into intelligence_snapshots(snapshot_id,snapshot_type,subject_ref,payload,evidence_count,organization_count,decision,score,observed_at)
-        values($1,'market_research',$2,$3::jsonb,$4,$5,$6,$7,now())`,[randomUUID(),subject,JSON.stringify(aggregate),aggregate.decision.readiness.verified_sources,aggregate.decision.readiness.independent_organizations,aggregate.decision.decision,aggregate.decision.opportunity.score]);
-      return json(res,201,{ok:true,research:aggregate});
+      const subject=clean(body.subject);if(!subject)return json(res,400,{error:'research_subject_required'});
+      if(body.force!==true){const cached=await cachedResearch(sql,subject,process.env.MARKET_RESEARCH_TTL_MINUTES);if(cached)return json(res,200,{ok:true,cached:true,research:cached.payload,created_at:cached.created_at});}
+      const collected=await collectMarketSignals(subject,{sql,env:process.env});const aggregate=aggregateMarketSignals(subject,collected);await persistResearch(sql,subject,aggregate);
+      return json(res,201,{ok:true,cached:false,research:aggregate});
     }
     if(body.type==='product_candidate'){
-      const evaluated=evaluateProductCandidate(body.candidate||{});
-      const ref=evaluated.product.product_id||randomUUID();
+      let candidate=body.candidate||{};const subject=clean(candidate.market_query||candidate.name||candidate.product_id);
+      if(subject&&!Array.isArray(candidate.evidence)){
+        const collected=await collectMarketSignals(subject,{sql,env:process.env}),aggregate=aggregateMarketSignals(subject,collected);
+        candidate={...aggregate.input,...candidate,evidence:aggregate.input.evidence};
+      }
+      const evaluated=evaluateProductCandidate(candidate),ref=evaluated.product.product_id||randomUUID();
       await sql.query(`insert into intelligence_snapshots(snapshot_id,snapshot_type,subject_ref,payload,evidence_count,organization_count,decision,score,observed_at)
-        values($1,'market_research',$2,$3::jsonb,$4,$5,$6,$7,now())`,[
-        randomUUID(),ref,JSON.stringify(evaluated),evaluated.market.readiness.verified_sources,evaluated.market.readiness.independent_organizations,
-        evaluated.market.decision,evaluated.market.opportunity.score,
-      ]);
+        values($1,'investment_decision',$2,$3::jsonb,$4,$5,$6,$7,now())`,[randomUUID(),ref,JSON.stringify(evaluated),evaluated.market.readiness.verified_sources,evaluated.market.readiness.independent_organizations,evaluated.market.decision,evaluated.market.opportunity.score]);
       return json(res,201,{ok:true,evaluation:evaluated});
     }
     if(body.type==='product_ranking'){

@@ -1,5 +1,5 @@
-const clamp=(value,min=0,max=1)=>Math.max(min,Math.min(max,Number(value)||0));
-const finiteOrNull=(v)=>Number.isFinite(Number(v))?Number(v):null;
+﻿const clamp=(value,min=0,max=1)=>Math.max(min,Math.min(max,Number(value)||0));
+const finiteOrNull=(v)=>v===null||v===undefined||String(v).trim()===''?null:(Number.isFinite(Number(v))?Number(v):null);
 const normalizeOrg=(v)=>String(v||'').trim().toLowerCase();
 
 export const MARKET_INTELLIGENCE_POLICY=Object.freeze({
@@ -69,3 +69,4 @@ export function sanitizeEvidence(evidence=[]){
     signal:finiteOrNull(x?.signal),kind:String(x?.kind||'market_signal'),
   })));
 }
+
