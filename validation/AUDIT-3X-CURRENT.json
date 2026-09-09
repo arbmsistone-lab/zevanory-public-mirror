@@ -1774,6 +1774,52 @@
       ]
     },
     {
+      "id": "CODE-MARKET-PRODUCT-INTELLIGENCE",
+      "label": "market/product intelligence + live stream",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "intelligence syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "intelligence focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "fail-closed evidence and sales separation",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-MARKET-PRODUCT-INTELLIGENCE-EVIDENCE",
+      "label": "evidence/EG-0070-market-product-investment-intelligence.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "evidence gate approved before implementation",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "four independent references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three source fail-closed policy explicit",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
       "id": "PROJECT-HYGIENE",
       "label": "project-only hygiene",
       "approved_operations": 3,
@@ -1798,8 +1844,8 @@
     }
   ],
   "totals": {
-    "units": 78,
-    "approved": 78,
+    "units": 80,
+    "approved": 80,
     "failed": 0
   },
   "verdict": "APPROVED"

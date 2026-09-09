@@ -71,3 +71,25 @@ async function connectOperator(){const token=$('operator-token').value.trim();if
 async function togglePause(){if(!operatorToken)return;const action=lastData.control?.paused?'resume':'pause';const r=await fetch('/api/robot-control',{method:'POST',headers:{authorization:`Bearer ${operatorToken}`,'content-type':'application/json'},body:JSON.stringify({command:action,reason:`robot_control_${action}`})});if(!r.ok)return;render(await fetchOperatorState());}
 async function decidePendingApproval(approvalId,decision){if(!operatorToken)return;const r=await fetch('/api/robot-control',{method:'POST',headers:{authorization:`Bearer ${operatorToken}`,'content-type':'application/json'},body:JSON.stringify({command:'approval',approval_id:approvalId,decision,reason:`robot_control_${decision}`})});if(!r.ok)return;render(await fetchOperatorState());renderApprovals(lastData);}
 $('connect').addEventListener('click',()=>{$('auth-error').textContent='';$('auth-dialog').showModal();});$('auth-submit').addEventListener('click',async e=>{e.preventDefault();if(await connectOperator())$('auth-dialog').close();});$('emergency-stop').addEventListener('click',togglePause);$('approval-queue').addEventListener('click',()=>{$('approval-dialog').showModal();renderApprovals(lastData);});$('close-approvals').addEventListener('click',()=>{$('approval-dialog').close();});render(demo);setInterval(async()=>{if(!operatorToken)return;try{render(await fetchOperatorState());}catch{}},15000);
+
+function renderIntelligenceSnapshots(data={}){
+  const snapshots=Array.isArray(data.snapshots)?data.snapshots:[];
+  const market=snapshots.filter(x=>x.snapshot_type==='market_research').slice(0,8);
+  const ranking=snapshots.filter(x=>x.snapshot_type==='product_ranking').slice(0,4);
+  const decisions=snapshots.filter(x=>['market_research','investment_decision'].includes(x.snapshot_type)).slice(0,8);
+  const fill=(id,rows,kind)=>{const root=$(id);if(!root)return;root.replaceChildren();if(!rows.length&&kind==='Produtos'&&Array.isArray(data.catalog)){for(const item of data.catalog){const card=document.createElement('article');card.className='intelligence-item';const title=document.createElement('b');const score=document.createElement('span');const meta=document.createElement('small');title.textContent=item.name||item.product_id;score.textContent='—';meta.textContent='PESQUISA PENDENTE · EVIDÊNCIA INSUFICIENTE';card.append(title,score,meta);root.appendChild(card);}return;}if(!rows.length){root.textContent='Nenhuma evidência auditável registrada ainda.';return;}for(const row of rows){const card=document.createElement('article');card.className='intelligence-item';const title=document.createElement('b');const meta=document.createElement('small');const score=document.createElement('span');const payload=row.payload||{};const product=payload.product||payload.top_candidate?.product||{};title.textContent=product.name||row.subject_ref||kind;const n=Number(row.score);score.textContent=Number.isFinite(n)?`${Math.round(n*100)}/100`:'—';meta.textContent=`${String(row.decision||payload.market?.decision||'EVIDENCIA_INSUFICIENTE').replaceAll('_',' ')} · ${Number(row.evidence_count||0)} fontes · ${Number(row.organization_count||0)} orgs`;card.append(title,score,meta);root.appendChild(card);}};
+  fill('market-intelligence-list',market,'Mercado');fill('product-intelligence-list',ranking,'Produtos');fill('investment-intelligence-list',decisions,'Decisão');
+  const state=$('intelligence-live-state');if(state)state.textContent=`Ao vivo · ${new Date(data.generated_at||Date.now()).toLocaleTimeString('pt-BR')}`;
+}
+async function refreshIntelligenceFallback(){try{const r=await fetch('/api/intelligence?limit=30',{cache:'no-store'});if(r.ok)renderIntelligenceSnapshots(await r.json());}catch{const state=$('intelligence-live-state');if(state)state.textContent='Telemetria indisponível';}}
+function connectIntelligenceStream(){
+  if(!('EventSource'in window)){refreshIntelligenceFallback();return setInterval(refreshIntelligenceFallback,10000);}
+  const source=new EventSource('/api/intelligence?stream=1');
+  source.addEventListener('intelligence',e=>{try{renderIntelligenceSnapshots(JSON.parse(e.data));}catch{}});
+  source.addEventListener('unavailable',()=>{const state=$('intelligence-live-state');if(state)state.textContent='Telemetria indisponível · tentando novamente';});
+  source.onerror=()=>{const state=$('intelligence-live-state');if(state)state.textContent='Reconectando inteligência...';};
+  return source;
+}
+$('intelligence-view')?.addEventListener('click',()=>{$('intelligence-dialog')?.showModal();refreshIntelligenceFallback();});
+$('close-intelligence')?.addEventListener('click',()=>{$('intelligence-dialog')?.close();});
+connectIntelligenceStream();
