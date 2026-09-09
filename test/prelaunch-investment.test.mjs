@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {evaluatePrelaunchInvestment,rankPrelaunchPortfolio} from '../src/prelaunchInvestment.mjs';
+import {evaluatePrelaunchInvestment,rankPrelaunchPortfolio,economicHypothesis,canonicalExecutionFit} from '../src/prelaunchInvestment.mjs';
 
 const evidence=['a','b','c'].map((x,i)=>({source:x,organization:`org-${i}`,source_url:`https://example${i}.com/e`,observed_at:new Date().toISOString(),verified:true,conflict:false}));
 const product={sku:'P1',product:'IA para Vendas',offer_type:'digital_product',delivery_mode:'digital',artifact_sha256:'a'.repeat(64),status:'ready_for_pilot_not_published',pilot_price_brl:197};
@@ -22,4 +22,15 @@ test('portfolio ranking is deterministic',()=>{
   const a=evaluatePrelaunchInvestment({product:{...product,sku:'A',product:'A'},marketInput:strong});
   const b=evaluatePrelaunchInvestment({product:{...product,sku:'B',product:'B'},marketInput:{...strong,demand:.3,trend:.2}});
   const ranking=rankPrelaunchPortfolio([b,a]);assert.equal(ranking[0].product_id,'A');assert.deepEqual(ranking.map(x=>x.rank),[1,2]);
+});
+test('null or empty economics never becomes zero-cost proof',()=>{
+  const product={sku:'P4',product:'Produto',offer_type:'digital_product',delivery_mode:'digital',artifact_sha256:'a'.repeat(64),status:'ready'};
+  assert.equal(economicHypothesis(product,{expected_price_brl:100,expected_cost_brl:null}).complete,false);
+  assert.equal(economicHypothesis(product,{expected_price_brl:100,expected_cost_brl:''}).complete,false);
+});
+
+test('invalid economics and deceptive readiness stay fail closed',()=>{
+  const base={sku:'P5',product:'Produto',offer_type:'digital_product',delivery_mode:'digital'};
+  assert.equal(economicHypothesis(base,{expected_price_brl:100,expected_cost_brl:-1}).complete,false);
+  assert.ok(canonicalExecutionFit({...base,artifact_sha256:'bad',status:'not_ready'}).score<1);
 });

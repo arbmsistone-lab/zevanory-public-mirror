@@ -1,11 +1,14 @@
 import { opportunityScore, evidenceReadiness } from './marketIntelligence.mjs';
 
 const clamp=v=>Math.max(0,Math.min(1,Number(v)||0));
-const money=v=>Number.isFinite(Number(v))?Number(v):null;
+const money=v=>v===null||v===undefined||String(v).trim()===''?null:(Number.isFinite(Number(v))?Number(v):null);
 const clean=(v,max=180)=>String(v||'').trim().slice(0,max);
 
 export function canonicalExecutionFit(product={}){
-  const checks=[product.offer_type==='digital_product',product.delivery_mode==='digital',Boolean(product.artifact_sha256),String(product.status||'').includes('ready')];
+  const status=String(product.status||'').trim().toLowerCase();
+  const artifact=/^[0-9a-f]{64}$/i.test(String(product.artifact_sha256||''));
+  const ready=/(^|_)ready(_|$)/.test(status)&&!/(not_ready|unready|blocked|failed)/.test(status);
+  const checks=[product.offer_type==='digital_product',product.delivery_mode==='digital',artifact,ready];
   return Object.freeze({score:checks.filter(Boolean).length/checks.length,basis:'canonical_product_facts',checks:Object.freeze(checks)});
 }
 export function canonicalStrategicFit(product={}){
@@ -17,7 +20,8 @@ export function economicHypothesis(product={},input={}){
   const price=money(input.expected_price_brl??product.pilot_price_brl??product.table_price_brl);
   const cost=money(input.expected_cost_brl);
   if(price===null||cost===null)return Object.freeze({complete:false,price_brl:price,cost_brl:cost,margin:null,reason:'explicit_cost_required'});
-  const margin=price>0?clamp((price-cost)/price):0;
+  if(!(price>0)||cost<0)return Object.freeze({complete:false,price_brl:price,cost_brl:cost,margin:null,reason:'invalid_explicit_economics'});
+  const margin=clamp((price-cost)/price);
   return Object.freeze({complete:true,price_brl:price,cost_brl:cost,margin,reason:'explicit_price_and_cost'});
 }
 export function evaluatePrelaunchInvestment({product={},marketInput={},economics={}}={}){
