@@ -3,7 +3,7 @@ import { salesGate, channelEnabled } from '../src/salesGate.mjs';
 import { buildActivationPlan } from '../src/activationPlan.mjs';
 import { RELEASE } from '../src/release.mjs';
 import { publicOffer, publicProductCatalog } from '../src/offerCatalog.mjs';
-import { publicChannelStatus } from '../src/publicChannelStatus.mjs';
+import { publicChannelStatus, publicChannelReadinessSummary } from '../src/publicChannelStatus.mjs';
 import { neon } from '@neondatabase/serverless';
 import { buildLifecycleEvidenceSnapshot } from '../src/lifecycleEvidenceSnapshot.mjs';
 import { commercialDistributionReadiness } from '../src/commercialDistribution.mjs';
@@ -30,6 +30,13 @@ export default async function handler(req, res) {
     if(!token){res.statusCode=403;res.setHeader('cache-control','no-store');return res.end('invalid_creative_token');}
     const etag=creativeAssetEtag(token.spec,token.format);if(String(req.headers?.['if-none-match']||'')===etag){res.statusCode=304;res.setHeader('etag',etag);res.setHeader('cache-control','public, max-age=31536000, s-maxage=31536000, immutable');return res.end();}
     try{const body=await renderCreativeAsset(token.spec,token.format);const mime=token.format==='webm'?'video/webm':'image/png';const range=String(req.headers?.range||'');let status=200,payload=body;res.setHeader('accept-ranges','bytes');if(req.method==='GET'&&range){const m=/^bytes=(\d+)-(\d*)$/.exec(range);if(!m){res.statusCode=416;res.setHeader('content-range',`bytes */${body.length}`);return res.end();}const start=Number(m[1]),end=m[2]?Math.min(Number(m[2]),body.length-1):body.length-1;if(start>=body.length||end<start){res.statusCode=416;res.setHeader('content-range',`bytes */${body.length}`);return res.end();}status=206;payload=body.subarray(start,end+1);res.setHeader('content-range',`bytes ${start}-${end}/${body.length}`);}res.statusCode=status;res.setHeader('content-type',mime);res.setHeader('content-length',String(req.method==='HEAD'?body.length:payload.length));res.setHeader('cache-control','public, max-age=31536000, s-maxage=31536000, immutable');res.setHeader('etag',etag);res.setHeader('x-content-type-options','nosniff');res.setHeader('x-creative-id',token.spec.creative_id);return req.method==='HEAD'?res.end():res.end(payload);}catch(error){console.error('creative_render_failed',{creative_id:token.spec.creative_id,message:String(error?.message||'render_failed')});res.statusCode=503;res.setHeader('cache-control','no-store');return res.end('creative_render_unavailable');}
+  }
+  if(view==='closure_status'){
+    const gate=salesGate(),channels=publicChannelReadinessSummary(),distribution=commercialDistributionReadiness(),brand=brandIdentityReadiness(),pilot=certificationPilotStatus();
+    const channelSummary=Object.fromEntries(Object.entries(channels).map(([name,state])=>[name,{operational_ready:state.operational_ready,operational_mode:state.operational_mode,api_configured:state.api_configured,alternate_api_configured:state.alternate_api_configured,contingency_ready:state.contingency_ready}]));
+    const frontSummary=Object.fromEntries(Object.entries(distribution.fronts).map(([name,state])=>[name,{operational_ready:state.operational_ready,operational_mode:state.operational_mode,automation_ready:state.automation_ready,contingency_ready:state.contingency_ready}]));
+    res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');res.statusCode=200;
+    return res.end(JSON.stringify({service:'ZEVANORY',release_id:RELEASE.id,commercial_enabled:gate.enabled,lifecycle_approved:gate.lifecycle_approved,channels:channelSummary,distribution:{technical_ready:distribution.technical_ready,operational_ready:distribution.operational_ready,total_fronts:distribution.total_fronts,configured_fronts:distribution.configured_fronts,automation_ready_fronts:distribution.automation_ready_fronts,fronts:frontSummary},brand_identity:{ready:brand.ready,verified_fronts:brand.verified_fronts,total_fronts:brand.total_fronts},certification_pilot:{enabled:pilot.enabled,ready:pilot.ready},production_mode:gate.enabled?'commercial-gated':'pre-sale-blocked'}));
   }
   if(view==='creative_sample'){
     const origin=`${String(req.headers?.['x-forwarded-proto']||'https').split(',')[0]}://${String(req.headers?.['x-forwarded-host']||req.headers?.host||'zevanory.api.br').split(',')[0]}`;
