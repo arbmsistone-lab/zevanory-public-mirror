@@ -29,24 +29,31 @@ export async function collectYouTubeMarketSignal(subject,{env=process.env,fetchI
 }export async function collectMercadoLivreMarketSignal(subject,{sql,env=process.env,fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
   if(!sql?.query)throw new Error('mercadolivre_market_sql_required');let credential=await loadMercadoLivreCredential(sql,env);
   if(Date.parse(credential.expires_at||0)-Date.now()<120000)credential=await refreshMercadoLivreCredential(sql,credential,{env,fetchImpl});
-  const u=new URL('https://api.mercadolibre.com/sites/MLB/search');u.searchParams.set('q',clean(subject,180));u.searchParams.set('limit','50');
-  const r=await fetchImpl(u,{headers:{authorization:`Bearer ${clean(credential.access_token,4000)}`,accept:'application/json'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error(`mercadolivre_market_search_http_${r.status}`);
-  const items=Array.isArray(body.results)?body.results:[],total=num(body?.paging?.total),sold=items.reduce((s,x)=>s+num(x?.sold_quantity),0),prices=items.map(x=>num(x?.price)).filter(x=>x>0).sort((a,b)=>a-b);
-  const median=prices.length?prices[Math.floor(prices.length/2)]:null;
-  return Object.freeze({organization:'mercado-livre',ok:true,status:200,evidence:{source:'Mercado Livre Search API',organization:'mercado-livre',source_url:u.origin+u.pathname,observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'marketplace_demand'},metrics:{demand:clamp((logNorm(sold,25000)*0.65)+(logNorm(total,250000)*0.35)),competition:logNorm(total,250000)},sample:{listings:items.length,total_results:total,sold_quantity_sample:sold,median_price_brl:median}});
+  const u=new URL('https://api.mercadolibre.com/trends/MLB');
+  const r=await fetchImpl(u,{headers:{authorization:`Bearer ${clean(credential.access_token,4000)}`,accept:'application/json'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error(`mercadolivre_market_trends_http_${r.status}`);
+  const rows=Array.isArray(body)?body:[],tokens=clean(subject,180).toLowerCase().split(/\s+/).filter(x=>x.length>2);
+  const matches=rows.filter(x=>{const k=clean(x?.keyword,240).toLowerCase();return tokens.length&&tokens.every(t=>k.includes(t));});
+  const rank=matches.length?rows.indexOf(matches[0])+1:null;const demand=rank?clamp(1-((rank-1)/Math.max(1,rows.length))):0;
+  return Object.freeze({organization:'mercado-livre',ok:true,status:200,evidence:{source:'Mercado Livre Trends API',organization:'mercado-livre',source_url:'https://api.mercadolibre.com/trends/MLB',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'marketplace_search_trend'},metrics:{demand,trend:demand,competition:clamp(matches.length/Math.max(1,rows.length))},sample:{trend_rows:rows.length,matching_trends:matches.length,best_rank:rank}});
 }
 
 export async function collectGdeltMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=6500}={}){
-  const u=new URL('https://api.gdeltproject.org/api/v2/doc/doc');u.searchParams.set('query',`"${clean(subject,120).replaceAll('"','')}"`);u.searchParams.set('mode','timelinevolraw');u.searchParams.set('format','json');u.searchParams.set('timespan','30d');
-  const r=await fetchImpl(u,{headers:{accept:'application/json','user-agent':'ZEVANORY-Market-Intelligence/1.0'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error(`gdelt_market_http_${r.status}`);
-  const data=Array.isArray(body?.timeline?.[0]?.data)?body.timeline[0].data:[];if(!data.length)throw new Error('gdelt_market_no_results');
-  const values=data.map(x=>num(x?.value)),total=values.reduce((a,b)=>a+b,0),cut=Math.max(1,Math.floor(values.length/2)),oldAvg=values.slice(0,cut).reduce((a,b)=>a+b,0)/cut,newPart=values.slice(cut),newAvg=newPart.reduce((a,b)=>a+b,0)/Math.max(1,newPart.length);
-  const trend=oldAvg<=0?(newAvg>0?1:0.5):clamp(0.5+((newAvg-oldAvg)/(Math.abs(oldAvg)*2)));
-  return Object.freeze({organization:'gdelt-project',ok:true,status:200,evidence:{source:'GDELT DOC 2.0 API',organization:'gdelt-project',source_url:'https://api.gdeltproject.org/api/v2/doc/doc',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'media_attention'},metrics:{demand:logNorm(total,5000),trend},sample:{timeline_points:values.length,article_mentions:total}});
+  const u=new URL('https://api.gdeltproject.org/api/v2/doc/doc');u.searchParams.set('query',`"${clean(subject,120).replaceAll('"','')}"`);u.searchParams.set('mode','artlist');u.searchParams.set('format','json');u.searchParams.set('timespan','7d');u.searchParams.set('maxrecords','75');
+  const r=await fetchImpl(u,{headers:{accept:'application/json','user-agent':'ZEVANORY-Market-Intelligence/1.0'},signal:timeoutSignal(Math.max(timeoutMs,9000))});const body=await json(r);if(!r.ok)throw new Error(`gdelt_market_http_${r.status}`);
+  const articles=Array.isArray(body?.articles)?body.articles:[];const ages=articles.map(x=>Date.parse(x?.seendate||x?.date||0)).filter(Number.isFinite).map(t=>(Date.now()-t)/86400000);
+  const recent=ages.filter(d=>d<=2).length;const demand=clamp(articles.length/75);const trend=articles.length?clamp(recent/articles.length):0;
+  return Object.freeze({organization:'gdelt-project',ok:true,status:200,evidence:{source:'GDELT DOC 2.0 API',organization:'gdelt-project',source_url:'https://api.gdeltproject.org/api/v2/doc/doc',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'media_attention'},metrics:{demand,trend},sample:{articles:articles.length,recent_48h:recent}});
+}
+
+export async function collectWikimediaMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
+  const u=new URL('https://pt.wikipedia.org/w/api.php');Object.entries({action:'query',list:'search',srsearch:clean(subject,180),format:'json',utf8:'1',srlimit:'10',origin:'*'}).forEach(([k,v])=>u.searchParams.set(k,v));
+  const r=await fetchImpl(u,{headers:{accept:'application/json','user-agent':'ZEVANORY-Market-Intelligence/1.0'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error(`wikimedia_market_http_${r.status}`);
+  const rows=Array.isArray(body?.query?.search)?body.query.search:[],total=num(body?.query?.searchinfo?.totalhits),top=rows[0]||null;
+  return Object.freeze({organization:'wikimedia-foundation',ok:true,status:200,evidence:{source:'Wikimedia Search API',organization:'wikimedia-foundation',source_url:'https://pt.wikipedia.org/w/api.php',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'information_interest'},metrics:{demand:logNorm(total,100000),trend:rows.length?0.5:0,competition:clamp(rows.length/10)},sample:{total_hits:total,returned:rows.length,top_title:clean(top?.title,160)||null}});
 }
 
 export async function collectNativeMarketSignals(subject,options={}){
-  const tasks=[collectMercadoLivreMarketSignal(subject,options),collectYouTubeMarketSignal(subject,options),collectGdeltMarketSignal(subject,options)];
-  const settled=await Promise.allSettled(tasks);const names=['mercado-livre','google-youtube','gdelt-project'];
+  const tasks=[collectMercadoLivreMarketSignal(subject,options),collectYouTubeMarketSignal(subject,options),collectWikimediaMarketSignal(subject,options),collectGdeltMarketSignal(subject,options)];
+  const settled=await Promise.allSettled(tasks);const names=['mercado-livre','google-youtube','wikimedia-foundation','gdelt-project'];
   return Object.freeze(settled.map((x,i)=>x.status==='fulfilled'?x.value:{organization:names[i],ok:false,status:0,error:clean(x.reason?.message,160)}));
 }
