@@ -121,19 +121,25 @@ integration_e2e:
 
 e2e_attest:
   stage: integration
-  image:
-    name: ghcr.io/sigstore/cosign/cosign:v3.0.2
-    entrypoint: [""]
+  image: node:24-bookworm
   needs:
     - job: integration_e2e
       artifacts: true
   id_tokens:
     SIGSTORE_ID_TOKEN:
       aud: sigstore
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl ca-certificates
+    - curl -fsSL -o /usr/local/bin/cosign https://github.com/sigstore/cosign/releases/download/v3.0.2/cosign-linux-amd64
+    - chmod +x /usr/local/bin/cosign
+    - cosign version
   script:
     - test -s e2e-proof.txt
-    - cosign sign-blob e2e-proof.txt --bundle e2e-proof.sigstore.json --yes
-    - cosign verify-blob e2e-proof.txt --bundle e2e-proof.sigstore.json --certificate-oidc-issuer https://gitlab.com --certificate-identity https://gitlab.com/arbm-sistone/ZEVANORY//.gitlab-ci.yml@refs/heads/feat/live-action-plan
+    - test -n "$SIGSTORE_ID_TOKEN"
+    - if [ -n "$CI_COMMIT_TAG" ]; then REF_KIND=tags; else REF_KIND=heads; fi
+    - CERT_ID="${CI_PROJECT_URL}//.gitlab-ci.yml@refs/${REF_KIND}/${CI_COMMIT_REF_NAME}"
+    - cosign sign-blob e2e-proof.txt --bundle e2e-proof.sigstore.json --identity-token "$SIGSTORE_ID_TOKEN" --yes
+    - cosign verify-blob e2e-proof.txt --bundle e2e-proof.sigstore.json --certificate-oidc-issuer https://gitlab.com --certificate-identity "$CERT_ID"
     - sha256sum e2e-proof.txt
   artifacts:
     expire_in: 30 days
