@@ -14,7 +14,7 @@ add('08 resumable session',y.includes('uploadType=resumable'));
 add('09 session location persisted',y.includes('session_url')&&y.includes('persistUploadState'));
 add('10 progress query bytes total',y.includes('bytes */${Number(totalBytes)}'));
 add('11 308 range respected',y.includes("response.status===308")&&y.includes('parseRangeEnd'));
-add('12 ranged source fetch',y.includes('range:`bytes=${start}-${end}`'));
+add('12 stable source fingerprint',y.includes('materializeRemoteVideo')&&y.includes('source_sha256')&&y.includes('youtube_media_changed_manual_reconcile')&&y.includes("createHash('sha256')"));
 add('13 bounded chunks per run',y.includes('MAX_CHUNKS_PER_RUN=8'));
 add('14 incomplete resumes by retry',y.includes('youtube_upload_incomplete_resume_required'));
 add('15 expired session fails closed',y.includes('youtube_session_expired_manual_reconcile'));
