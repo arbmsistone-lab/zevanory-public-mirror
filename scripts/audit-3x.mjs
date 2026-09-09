@@ -447,6 +447,16 @@ unit('DEF-V10-OFFER-EVIDENCE','evidence/EG-0063-arbm-sist-v10-offer-reconciliati
   op('V10 verified hash recorded',()=>t('evidence/EG-0063-arbm-sist-v10-offer-reconciliation.md').includes('70F233FA2AD84B66468CCB4789E3628A171ABA97A6C5C188C01A1EF56659B4E0')),
   op('signing and public release remain blockers',()=>t('src/activationReadiness.mjs').includes('arbm_sist_code_signing_not_ready')&&t('src/activationReadiness.mjs').includes('arbm_sist_public_release_not_approved')),
 ]);
+unit('CODE-MARKET-PRODUCT-INTELLIGENCE','market/product intelligence + live stream',[
+  command('intelligence syntax',process.execPath,['--check','src/marketIntelligence.mjs']),
+  command('intelligence focused tests',process.execPath,['--test','test/market-product-intelligence.test.mjs','test/market-research-fabric.test.mjs']),
+  op('fail-closed evidence and sales separation',()=>t('src/marketIntelligence.mjs').includes('EVIDENCIA_INSUFICIENTE')&&t('src/productIntelligence.mjs').includes('salesGate')&&t('api/intelligence.mjs').includes('text/event-stream')),
+]);
+unit('DEF-MARKET-PRODUCT-INTELLIGENCE-EVIDENCE','evidence/EG-0070-market-product-investment-intelligence.md',[
+  op('evidence gate approved before implementation',()=>t('evidence/EG-0070-market-product-investment-intelligence.md').includes('APROVADO PARA IMPLEMENTACAO TECNICA')),
+  op('four independent references recorded',()=>['Mozilla','Google Ads','Shopify','Statsig'].every(x=>t('evidence/EG-0070-market-product-investment-intelligence.md').includes(x))),
+  op('three source fail-closed policy explicit',()=>t('evidence/EG-0070-market-product-investment-intelligence.md').includes('3 fontes verificadas')&&t('evidence/EG-0070-market-product-investment-intelligence.md').includes('EVIDENCIA_INSUFICIENTE')),
+]);
 unit('PROJECT-HYGIENE','project-only hygiene',[
   op('legacy server absent',()=>!existsSync(join(root,'src','server.mjs'))),
   op('old WhatsApp absent from active files',()=>!['src/config.mjs','src/server-v2.mjs','public/index.html','test/config.test.mjs','test/server-v2.integration.test.mjs','evidence/WHATSAPP-ORIGIN-0001.md'].some((f)=>t(f).includes('5588921928688'))),

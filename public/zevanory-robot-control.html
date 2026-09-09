@@ -8,7 +8,7 @@
 <header class="topbar">
 <a class="brand" href="/" aria-label="ZEVANORY"><img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY" width="168" height="36"></a>
 <div><b>ROBOT CONTROL ROOM</b><span id="mode-label">MODO DEMONSTRAÇÃO</span></div>
-<div class="top-actions"><span class="pulse"></span><span id="connection">SIMULAÇÃO LOCAL</span><button id="approval-queue" disabled>APROVAÇÕES <b id="approval-count">0</b></button><button id="emergency-stop" disabled>PAUSA SEGURA</button><button id="connect">Conectar operador</button></div>
+<div class="top-actions"><span class="pulse"></span><span id="connection">SIMULAÇÃO LOCAL</span><button id="intelligence-view">INTELIGÊNCIA</button><button id="approval-queue" disabled>APROVAÇÕES <b id="approval-count">0</b></button><button id="emergency-stop" disabled>PAUSA SEGURA</button><button id="connect">Conectar operador</button></div>
 </header>
 <main>
 <section class="hero-grid">
@@ -27,6 +27,7 @@
 </section></main>
 <dialog id="auth-dialog"><form method="dialog"><h2>Conectar modo operador</h2><p>O token é usado apenas nesta sessão. Ele não é persistido.</p><label>Bearer token<input id="operator-token" type="password" autocomplete="off"></label><div><button value="cancel">Cancelar</button><button id="auth-submit" value="default">Conectar</button></div><small id="auth-error"></small></form></dialog>
 <dialog id="approval-dialog"><div class="approval-dialog-body"><div class="panel-head"><div><span>CONTROLE HUMANO</span><h2>Aprovações pendentes</h2></div><button id="close-approvals">Fechar</button></div><div id="approval-list" class="approval-list"></div></div></dialog>
+<dialog id="intelligence-dialog" class="intelligence-dialog"><div class="intelligence-shell"><div class="panel-head"><div><span>INTELIGÊNCIA COM EVIDÊNCIA</span><h2>Mercado · Criativos · Canais · Produtos · Decisão</h2><small id="intelligence-live-state">Conectando telemetria...</small></div><button id="close-intelligence">Fechar</button></div><div class="research-command"><input id="research-subject" maxlength="180" placeholder="Produto, nicho ou oportunidade para pesquisar"><button id="research-now" disabled>Pesquisar agora</button><small id="research-feedback">Modo operador necessário para iniciar pesquisa.</small></div><div class="intelligence-grid"><section><h3>Canais comerciais</h3><div id="channel-intelligence-list" class="intelligence-list"></div></section><section><h3>Creative Intelligence</h3><div id="creative-intelligence-list" class="intelligence-list"></div></section><section><h3>Pesquisa de mercado</h3><div id="market-intelligence-list" class="intelligence-list"></div></section><section><h3>Ranking de produtos</h3><div id="product-intelligence-list" class="intelligence-list"></div></section><section><h3>Vale investir?</h3><div id="investment-intelligence-list" class="intelligence-list"></div></section></div><p class="intelligence-rule">Sem 3 fontes verificadas e 3 organizações independentes: EVIDÊNCIA INSUFICIENTE. Nenhum score libera venda, checkout ou mídia paga.</p></div></dialog>
 <footer><span>ZEVANORY · Observabilidade do robô</span><span id="updated">—</span><b>SEM PII · SEM ATIVIDADE INVENTADA</b></footer>
 <script src="/zevanory-robot-control.js" defer></script>
 </body></html>

@@ -240,3 +240,13 @@ Novos provedores podem entrar no pool apos qualificacao por capacidade, health, 
 - Confirmacao de provider e atualizacao do Live Action Plan ocorrem em uma unica mutacao SQL atomica; confirmacao journalizada nunca equivale a confirmacao canonica.
 - Gate pre-sale exige prova de dominio, HTTPS/rotas e capacidade sandbox de pagamento, nunca Vercel ou um `PAYMENT_PROVIDER` nominal.
 - Diagnosticos podem citar adapters especificos, mas blocker critico e sempre por capacidade (`payment_provider_pool_unavailable` / `payment_sandbox_capacity_unavailable`).
+
+## EG-0070 — MARKET + PRODUCT + INVESTMENT INTELLIGENCE
+- Status tecnico: IMPLEMENTADO / vendas continuam fail-closed.
+- Nova camada separa evidencia de mercado, score de oportunidade, ranking de produtos e decisao `INVESTIR | TESTAR | AGUARDAR | DESCARTAR | EVIDENCIA_INSUFICIENTE`.
+- Regra fail-closed: minimo 3 fontes verificadas de 3 organizacoes independentes antes de qualquer conclusao de oportunidade.
+- Sinais ausentes nunca recebem valor sintetico; dimensoes incompletas mantem `EVIDENCIA_INSUFICIENTE`.
+- `MARKET_RESEARCH_FEEDS` permite malha multi-provedor HTTPS sem dependencia obrigatoria de um fornecedor; menos de 3 provedores independentes mantem pesquisa nao pronta.
+- `intelligence_snapshots` persiste pesquisa, ranking e decisoes auditaveis sem PII; migration 024.
+- Robot Control Room recebe painel Mercado / Produtos / Vale investir? e telemetria via SSE com reconexao e fallback de leitura.
+- Nenhum score de inteligencia substitui o `salesGate`, abre checkout, ativa midia paga ou autoriza publicacao comercial.

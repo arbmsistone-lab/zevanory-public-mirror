@@ -78,5 +78,5 @@ test('vercel Hobby serverless function budget stays within 12',async()=>{
   const {readdir}=await import('node:fs/promises');
   const apiFiles=(await readdir(new URL('../api/',import.meta.url),{withFileTypes:true})).filter(x=>x.isFile()&&x.name.endsWith('.mjs'));
   assert.ok(apiFiles.length<=12,`serverless function budget exceeded: ${apiFiles.length}/12`);
-  assert.equal(apiFiles.length,11);
+  assert.equal(apiFiles.length,12);
 });
