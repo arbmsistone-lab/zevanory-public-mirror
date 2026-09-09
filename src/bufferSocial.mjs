@@ -1,7 +1,8 @@
 import { ProviderDeliveryError } from './providerDelivery.mjs';
 const clean=(v,max=8000)=>String(v??'').trim().slice(0,max);
 const httpsUrl=(value)=>{try{const u=new URL(clean(value,3000));return u.protocol==='https:'?u.toString():'';}catch{return '';}};
-const channelKey=(channel)=>channel==='tiktok'?'BUFFER_TIKTOK_CHANNEL_ID':channel==='linkedin'?'BUFFER_LINKEDIN_CHANNEL_ID':'';
+const BUFFER_CHANNEL_KEYS=Object.freeze({facebook:'BUFFER_FACEBOOK_CHANNEL_ID',instagram:'BUFFER_INSTAGRAM_CHANNEL_ID',tiktok:'BUFFER_TIKTOK_CHANNEL_ID',youtube:'BUFFER_YOUTUBE_CHANNEL_ID',linkedin:'BUFFER_LINKEDIN_CHANNEL_ID'});
+const channelKey=(channel)=>BUFFER_CHANNEL_KEYS[channel]||'';
 const withLanding=(text,landing,max=5000)=>{const base=clean(text,max),url=httpsUrl(landing);return clean(url&&!base.includes(url)?`${base}\n\n${url}`:base,max);};
 const inferAsset=(url,explicit='')=>{
   const kind=clean(explicit,20).toLowerCase();
@@ -18,7 +19,7 @@ export async function publishViaBuffer({channel,event,env=process.env,fetchImpl=
   const channelId=clean(env[key],300);if(!channelId)throw new Error(`buffer_${channel}_channel_id_missing`);
   const text=withLanding(event?.payload?.content||event?.payload?.text,event?.payload?.landing_url,5000);
   const media=httpsUrl(event?.payload?.media_url);
-  if(channel==='tiktok'&&!media)throw new Error('buffer_tiktok_media_required');
+  if(['instagram','tiktok','youtube'].includes(channel)&&!media)throw new Error(`buffer_${channel}_media_required`);
   const input={text,channelId,schedulingType:'automatic',mode:'addToQueue'};
   if(media){const kind=inferAsset(media,event?.payload?.media_type);if(!kind)throw new Error('buffer_media_type_required');input.assets=[{[kind]:{url:media}}];}
   const query='mutation CreatePost($input: CreatePostInput!){createPost(input:$input){... on PostActionSuccess{post{id status dueAt}} ... on MutationError{message}}}';

@@ -108,7 +108,7 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
     const channel=destination.replace(/^channel:/,'');
     const builtIn=[defineChannelProvider({id:`direct:${channel}`,channel,independenceDomain:`direct:${channel}`,execute:({event,context})=>direct(event,context)})];
     if(channel==='email') builtIn.push(buildBrevoEmailProvider({env,fetchImpl}),buildMailjetEmailProvider({env,fetchImpl}));
-    if(channel==='linkedin'||channel==='tiktok') builtIn.push(defineChannelProvider({
+    if(['facebook','instagram','linkedin','tiktok','youtube'].includes(channel)) builtIn.push(defineChannelProvider({
       id:`buffer:${channel}`,channel,independenceDomain:'buffer.com',cost:0,
       ready:()=>alternateAutomationReadiness(channel,env).ready,
       execute:({event})=>publishViaBuffer({channel,event,env,fetchImpl}),

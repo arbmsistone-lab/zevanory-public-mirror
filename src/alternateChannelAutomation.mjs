@@ -1,7 +1,10 @@
-﻿const clean=(v,max=4000)=>String(v??'').trim().slice(0,max);
+const clean=(v,max=4000)=>String(v??'').trim().slice(0,max);
 
 const BUFFER_CHANNELS=Object.freeze({
+  facebook:'BUFFER_FACEBOOK_CHANNEL_ID',
+  instagram:'BUFFER_INSTAGRAM_CHANNEL_ID',
   tiktok:'BUFFER_TIKTOK_CHANNEL_ID',
+  youtube:'BUFFER_YOUTUBE_CHANNEL_ID',
   linkedin:'BUFFER_LINKEDIN_CHANNEL_ID',
 });
 
