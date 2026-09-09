@@ -1,4 +1,4 @@
-﻿export const PROFESSIONAL_EMAIL = Object.freeze({
+export const PROFESSIONAL_EMAIL = Object.freeze({
   primary:'contato@zevanory.api.br',
   aliases:Object.freeze(['suporte@zevanory.api.br','vendas@zevanory.api.br','financeiro@zevanory.api.br']),
   domain:'zevanory.api.br',
@@ -18,7 +18,7 @@ const brandLink=(source)=>`https://zevanory.api.br/?utm_source=${source}&utm_med
 const profile=(handle,source,bio=BRAND_PROFILE.coreBio,extra={})=>Object.freeze({name:BRAND_PROFILE.name,handle,url:brandLink(source),bio,category:BRAND_PROFILE.category,profileImage:BRAND_PROFILE.profileImage,...extra});
 
 export const CHANNEL_PROFILES = Object.freeze({
-  instagram:profile('@zevanory_','instagram',BRAND_PROFILE.coreBio,{profileUrl:'https://instagram.com/zevanory_',identityState:'provider_name_bio_site_confirmed_binding_pending'}),
+  instagram:profile('@zevanory_','instagram',BRAND_PROFILE.coreBio,{profileUrl:'https://www.instagram.com/zevanory_/',identityState:'provider_name_bio_site_confirmed_binding_pending'}),
   facebook:profile('ZEVANORY','facebook',BRAND_PROFILE.coreBio,{coverImage:BRAND_PROFILE.facebookCover,identityState:'provider_name_confirmed_profile_image_pending'}),
   tiktok:profile('@zevanory3','tiktok','Tecnologia, automacao, produtos digitais e bastidores reais da ZEVANORY.',{profileUrl:'https://www.tiktok.com/@zevanory3',identityState:'public_profile_known_provider_verification_pending'}),
   youtube:profile('@zevanory','youtube','Canal oficial da ZEVANORY para produtos, servicos, demonstracoes e conteudo tecnico.',{profileUrl:'https://youtube.com/@zevanory',identityState:'provider_identity_confirmed'}),

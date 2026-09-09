@@ -30,8 +30,13 @@ test('professional email uses domain and requires authentication records',()=>{
 });
 
 test('confirmed social profiles keep canonical public URLs',()=>{
-  assert.equal(CHANNEL_PROFILES.instagram.profileUrl,'https://instagram.com/zevanory_');
+  assert.equal(CHANNEL_PROFILES.instagram.profileUrl,'https://www.instagram.com/zevanory_/');
   assert.equal(CHANNEL_PROFILES.youtube.profileUrl,'https://youtube.com/@zevanory');
+  const instagramUrl=new URL(CHANNEL_PROFILES.instagram.profileUrl);
+  assert.equal(instagramUrl.protocol,'https:');
+  assert.equal(instagramUrl.hostname,'www.instagram.com');
+  assert.equal(instagramUrl.pathname,'/zevanory_/');
+  assert.equal('@'+instagramUrl.pathname.replaceAll('/',''),CHANNEL_PROFILES.instagram.handle);
 });
 
 test('institutional profiles represent ZEVANORY rather than one product',()=>{

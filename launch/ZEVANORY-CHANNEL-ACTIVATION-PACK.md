@@ -1,4 +1,4 @@
-﻿# ZEVANORY - Pacote de ativacao de canais
+# ZEVANORY - Pacote de ativacao de canais
 
 Identidade canonica:
 - Marca: ZEVANORY
@@ -10,7 +10,7 @@ Identidade canonica:
 - WhatsApp: +55 88 9234-0423
 
 Canais confirmados:
-- Instagram: https://instagram.com/zevanory_
+- Instagram: https://www.instagram.com/zevanory_/
 - YouTube: https://youtube.com/@zevanory
 - E-mail principal: contato@zevanory.api.br
 - Suporte: suporte@zevanory.api.br

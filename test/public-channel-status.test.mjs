@@ -6,7 +6,7 @@ test('public channel status exposes readiness without secret inventory',()=>{
   const state=publicChannelStatus({RESEND_API_KEY:'secret-email',MERCADOPAGO_ACCESS_TOKEN:'secret-payment',TIKTOK_CONTENT_SOURCE_VERIFIED:'false'});
   assert.equal(state.zevanory.configured,true); assert.equal(state.google.configured,true); assert.equal(state.email.configured,true);
   assert.equal(state.whatsapp.configured,false); assert.equal(state.tiktok.configured,false); assert.equal(state.tiktok.api_configured,false);
-  assert.equal(state.instagram.profile_url,'https://instagram.com/zevanory_'); assert.equal(state.youtube.profile_url,'https://youtube.com/@zevanory');
+  assert.equal(state.instagram.profile_url,'https://www.instagram.com/zevanory_/'); assert.equal(state.youtube.profile_url,'https://youtube.com/@zevanory');
   const serialized=JSON.stringify(state); assert.doesNotMatch(serialized,/secret-email|secret-payment|ACCESS_TOKEN|missing/i);
 });
 
