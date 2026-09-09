@@ -13,7 +13,7 @@ import { evaluateContentNovelty } from './contentDedup.mjs';
 import { buildLiveActionPlan, persistLiveActionPlan, transitionLiveActionPlan } from './liveActionPlan.mjs';
 import { selectPaymentProvider } from './paymentProviders.mjs';
 import { creativeAssetUrl } from './creativeEngine.mjs';
-import { selectCreativeVariantWithEvidence, chooseCreativeForOperation, CREATIVE_INTELLIGENCE_POLICY } from './creativeIntelligence.mjs';
+import { selectCreativeVariantWithEvidence, selectCreativeVariantWithVisualEvidence, chooseCreativeForOperation, CREATIVE_INTELLIGENCE_POLICY } from './creativeIntelligence.mjs';
 
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const nbaExecutableTools=new Set(['schedule_follow_up','send_message','start_checkout']);
@@ -81,7 +81,9 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
     if(!lead?.contact_ref) throw new Error('recipient_unavailable');
     assertChannelActionAllowed(lead.channel,env);
     const text=String(decision.message||decision.content||'').trim(); if(!text) throw new Error('message_content_required');
-    return enqueueOutbox(sql,{aggregateType:'lead',aggregateId:leadId,eventType:'send_message',destination:`channel:${lead.channel}`,payload:{contact_ref:lead.contact_ref,text:text.slice(0,4000)},idempotencyKey:`agent:${runId}:send_message`,traceId,runId});
+    const payload={contact_ref:lead.contact_ref,text:text.slice(0,4000),subject:String(decision.subject||decision.title||'ZEVANORY').slice(0,240)};
+    if(decision.auto_creative===true&&['whatsapp','email'].includes(String(lead.channel).toLowerCase())){const intelligence=await selectCreativeVariantWithVisualEvidence(sql,{offerId:decision.offer_id||'OFFER-0001',channel:String(lead.channel).toLowerCase(),hook:decision.hook||decision.title||text,body:decision.body||text,cta:decision.cta||'Saiba mais',objective:decision.objective||'conversion',placement:decision.placement||'',campaignId:decision.campaign_id||''});const choice=chooseCreativeForOperation(intelligence,runId),spec=choice.selected.spec;if(choice.selected.quality_score<CREATIVE_INTELLIGENCE_POLICY.min_quality_score||choice.selected.perceptual_score<CREATIVE_INTELLIGENCE_POLICY.min_perceptual_score)throw new Error('creative_quality_below_threshold');payload.media_url=creativeAssetUrl(spec,'png',env);payload.creative_id=spec.creative_id;payload.campaign_id=spec.campaign_id;payload.variant_id=spec.variant_id;payload.creative_quality_score=choice.selected.quality_score;payload.creative_perceptual_score=choice.selected.perceptual_score;}
+    return enqueueOutbox(sql,{aggregateType:'lead',aggregateId:leadId,eventType:'send_message',destination:`channel:${lead.channel}`,payload,idempotencyKey:`agent:${runId}:send_message`,traceId,runId});
   }
   if(tool==='publish_content'){
     const channel=String(decision.channel||lead?.channel||'').toLowerCase();
@@ -89,16 +91,16 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
     const content=String(decision.content||decision.message||'').trim(); if(!content) throw new Error('publish_content_required');
     const novelty=await evaluateContentNovelty(sql,{content,channel});
     if(!novelty.allowed) throw new Error(novelty.reason);
-    let mediaUrl=String(decision.media_url||'').trim(),creativeId=null,campaignId=null,variantId=null,selectionBasis=null,qualityScore=null,landingUrl=null;
+    let mediaUrl=String(decision.media_url||'').trim(),creativeId=null,campaignId=null,variantId=null,selectionBasis=null,qualityScore=null,perceptualScore=null,landingUrl=null;
     if(!mediaUrl&&decision.auto_creative===true){
-      const intelligence=await selectCreativeVariantWithEvidence(sql,{offerId:decision.offer_id||'OFFER-0001',channel,hook:decision.hook||decision.title||content,body:decision.body||content,cta:decision.cta||'Saiba mais',objective:decision.objective||'conversion',campaignId:decision.campaign_id||''});
-      const choice=chooseCreativeForOperation(intelligence,runId),spec=choice.selected.spec; if(choice.selected.quality_score<CREATIVE_INTELLIGENCE_POLICY.min_quality_score)throw new Error('creative_quality_below_threshold');
-      creativeId=spec.creative_id;campaignId=spec.campaign_id;variantId=spec.variant_id;selectionBasis=choice.basis;qualityScore=choice.selected.quality_score;
+      const intelligence=await selectCreativeVariantWithVisualEvidence(sql,{offerId:decision.offer_id||'OFFER-0001',channel,hook:decision.hook||decision.title||content,body:decision.body||content,cta:decision.cta||'Saiba mais',objective:decision.objective||'conversion',placement:decision.placement||'',campaignId:decision.campaign_id||''});
+      const choice=chooseCreativeForOperation(intelligence,runId),spec=choice.selected.spec; if(choice.selected.quality_score<CREATIVE_INTELLIGENCE_POLICY.min_quality_score||choice.selected.perceptual_score<CREATIVE_INTELLIGENCE_POLICY.min_perceptual_score)throw new Error('creative_quality_below_threshold');
+      creativeId=spec.creative_id;campaignId=spec.campaign_id;variantId=spec.variant_id;selectionBasis=choice.basis;qualityScore=choice.selected.quality_score;perceptualScore=choice.selected.perceptual_score;
       mediaUrl=creativeAssetUrl(spec,['youtube','tiktok'].includes(channel)?'webm':'png',env);
       const base=String(env.PUBLIC_BASE_URL||'https://zevanory.api.br').replace(/\/$/,''); landingUrl=`${base}/?zc=${encodeURIComponent(campaignId)}&zv=${encodeURIComponent(variantId)}&zi=${encodeURIComponent(creativeId)}`;
     }
     const title=String(decision.title||decision.hook||content).slice(0,240);
-    return enqueueOutbox(sql,{aggregateType:'content',aggregateId:runId,eventType:'publish_content',destination:`channel:${channel}`,payload:{content:content.slice(0,8000),title,description:(landingUrl?`${String(decision.description||content).slice(0,4700)}\n\n${landingUrl}`:String(decision.description||content)).slice(0,5000),media_url:mediaUrl.slice(0,4000),creative_id:creativeId,campaign_id:campaignId,variant_id:variantId,landing_url:landingUrl,creative_selection_basis:selectionBasis,creative_quality_score:qualityScore,privacy_status:String(decision.privacy_status||'private').slice(0,20),made_for_kids:decision.made_for_kids===true,dedup_fingerprint:novelty.fingerprint,dedup_policy:novelty.policy},idempotencyKey:`agent:${runId}:publish_content`,traceId,runId});
+    return enqueueOutbox(sql,{aggregateType:'content',aggregateId:runId,eventType:'publish_content',destination:`channel:${channel}`,payload:{content:content.slice(0,8000),title,description:(landingUrl?`${String(decision.description||content).slice(0,4700)}\n\n${landingUrl}`:String(decision.description||content)).slice(0,5000),media_url:mediaUrl.slice(0,4000),creative_id:creativeId,campaign_id:campaignId,variant_id:variantId,landing_url:landingUrl,creative_selection_basis:selectionBasis,creative_quality_score:qualityScore,creative_perceptual_score:perceptualScore,privacy_status:String(decision.privacy_status||'private').slice(0,20),made_for_kids:decision.made_for_kids===true,dedup_fingerprint:novelty.fingerprint,dedup_policy:novelty.policy},idempotencyKey:`agent:${runId}:publish_content`,traceId,runId});
   }
   if(tool==='start_checkout'){
     if(!lead?.session_id) throw new Error('checkout_session_unavailable');
