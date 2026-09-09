@@ -23,8 +23,8 @@ add('11 activation protected',activation.r.status===401&&activation.body.error==
 add('12 runtime checkout enabled',status.body.runtime?.checkout==='enabled'&&release.body.checkout_mode==='enabled');
 add('13 runtime financial enabled',status.body.runtime?.financial==='enabled'&&release.body.financial_mode==='enabled');
 add('14 activation remains fail closed',config.body.commercial_enabled===false&&config.body.whatsapp_enabled===false&&agent.body.commercial_execution==='blocked'&&release.body.sales_mode==='globally-blocked');
-const checkout=await get('/api/checkout/asaas',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({request_id:'550e8400-e29b-41d4-a716-446655440000',session_id:'550e8400-e29b-41d4-a716-446655440001'})});
-add('15 checkout fail closed',checkout.r.status===503&&checkout.text.includes('sales_globally_blocked'),checkout.r.status);
+const checkout=await get('/api/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({request_id:'550e8400-e29b-41d4-a716-446655440000',session_id:'550e8400-e29b-41d4-a716-446655440001',offer_id:'OFFER-0001'})});
+add('15 provider-neutral checkout reaches only commercial sales gate',checkout.r.status===503&&checkout.text.includes('sales_globally_blocked')&&!checkout.text.includes('payment_capacity_unavailable'),checkout.r.status);
 const agentRun=await get('/api/agent/run',{method:'POST'}); add('16 agent worker auth required',agentRun.r.status===401,agentRun.r.status);
 const operator=await get('/api/events/operator',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}); add('17 operator auth required',operator.r.status===401,operator.r.status);
 const csp=root.r.headers.get('content-security-policy')||''; add('18 production security headers',csp.includes("script-src 'self'")&&root.r.headers.get('x-frame-options')==='DENY'&&root.r.headers.get('x-content-type-options')==='nosniff');

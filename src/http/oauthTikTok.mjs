@@ -6,7 +6,7 @@ const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringi
 const cookieValue=(req,name)=>String(req.headers?.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(`${name}=`))?.slice(name.length+1)||'';
 const queryFrom=(req)=>{try{return new URL(req.url||'','https://zevanory.api.br').searchParams;}catch{return new URLSearchParams();}};
 const COOKIE='zevanory_tiktok_oauth';
-const oauthMode=(value)=>String(value||'').toLowerCase()==='production'?'production':'sandbox';
+const oauthMode=(value)=>String(value||'').toLowerCase()==='sandbox'?'sandbox':'production';
 
 export default async function handler(req,res){
   res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');

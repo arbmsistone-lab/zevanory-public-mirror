@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTikTokOAuthStart, exchangeTikTokCode, loadTikTokCredential, persistTikTokTokens, readTikTokOAuthCookie, refreshTikTokCredential, TIKTOK_REDIRECT_URI } from '../src/tiktokOAuth.mjs';
+import oauthTikTokHandler from '../src/http/oauthTikTok.mjs';
 
 const env={TIKTOK_CLIENT_KEY:'client-key',TIKTOK_CLIENT_SECRET:'client-secret',TIKTOK_TOKEN_ENCRYPTION_KEY:Buffer.alloc(32,5).toString('base64')};
 const response=(status,body)=>({ok:status>=200&&status<300,status,json:async()=>body});
@@ -58,4 +59,12 @@ test('TikTok sandbox tokens persist under isolated provider and do not overwrite
   const queries=[];const sql={query:async(text,args)=>{queries.push({text,args});return [{account_id:'sandbox-open',expires_at:new Date()}];}};
   await persistTikTokTokens(sql,{token:{access_token:'sandbox-access',refresh_token:'sandbox-refresh',open_id:'sandbox-open',scope:'user.info.basic',token_type:'Bearer',expires_in:3600},env,mode:'sandbox'});
   assert.match(queries[0].text,/values\('tiktok_sandbox'/);assert.doesNotMatch(queries[0].text,/values\('tiktok',/);
+});
+
+test('TikTok canonical OAuth start defaults to production publishing scope',async()=>{
+  const old={key:process.env.TIKTOK_CLIENT_KEY,secret:process.env.TIKTOK_CLIENT_SECRET,enc:process.env.TIKTOK_TOKEN_ENCRYPTION_KEY,skey:process.env.TIKTOK_SANDBOX_CLIENT_KEY,ssecret:process.env.TIKTOK_SANDBOX_CLIENT_SECRET};
+  Object.assign(process.env,{TIKTOK_CLIENT_KEY:'client-key',TIKTOK_CLIENT_SECRET:'client-secret',TIKTOK_TOKEN_ENCRYPTION_KEY:Buffer.alloc(32,5).toString('base64'),TIKTOK_SANDBOX_CLIENT_KEY:'sandbox-key',TIKTOK_SANDBOX_CLIENT_SECRET:'sandbox-secret'});
+  const req={method:'GET',url:'/api/oauth/tiktok/start?action=start',query:{action:'start'},headers:{}}; const headers={}; const res={statusCode:0,setHeader:(k,v)=>{headers[String(k).toLowerCase()]=v;},end:()=>{}};
+  try{await oauthTikTokHandler(req,res);assert.equal(res.statusCode,302);const u=new URL(headers.location);assert.equal(u.searchParams.get('client_key'),'client-key');assert.equal(u.searchParams.get('scope'),'user.info.basic,video.publish');}
+  finally{for(const [k,v] of Object.entries({TIKTOK_CLIENT_KEY:old.key,TIKTOK_CLIENT_SECRET:old.secret,TIKTOK_TOKEN_ENCRYPTION_KEY:old.enc,TIKTOK_SANDBOX_CLIENT_KEY:old.skey,TIKTOK_SANDBOX_CLIENT_SECRET:old.ssecret})){if(v===undefined)delete process.env[k];else process.env[k]=v;}}
 });
