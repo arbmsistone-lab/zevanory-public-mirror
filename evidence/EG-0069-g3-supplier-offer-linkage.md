@@ -6,12 +6,13 @@ Status: G3 LINKAGE CERTIFIED / NO COMMERCIAL UNLOCK
 ## Canonical linkage
 The protected Production supplier identity configured by EG-0039 is the legal supplier identity for every SKU in the certified ZEVANORY v2.1 handoff.
 
-Covered SKUs:
-- ZEV-IA-011 — ZEVANORY IA na Prática v1.1
-- ZEV-VEN-011 — ZEVANORY Vendas na Prática v1.1
-- ZEV-LCX-011 — ZEVANORY Lucro & Caixa v1.1
-- ZEV-CMB-011 — ZEVANORY Combo IA + Vendas v1.1
-- ZEV-NGC-011 — ZEVANORY Negócio Completo v1.1
+Covered offers/SKUs:
+- OFFER-0001 — ARBM SIST 10.0.0 — canonical primary ZEVANORY paid offer.
+- ZEV-IA-011 — ZEVANORY IA na Prática v1.1 — legacy/catalogued secondary offer.
+- ZEV-VEN-011 — ZEVANORY Vendas na Prática v1.1 — legacy/catalogued secondary offer.
+- ZEV-LCX-011 — ZEVANORY Lucro & Caixa v1.1 — legacy/catalogued secondary offer.
+- ZEV-CMB-011 — ZEVANORY Combo IA + Vendas v1.1 — legacy/catalogued secondary offer.
+- ZEV-NGC-011 — ZEVANORY Negócio Completo v1.1 — legacy/catalogued secondary offer.
 
 ## Evidence chain
 - `evidence/EG-0039-pf-identity-configured.md` proves the real PF supplier identity is stored only in protected Production secrets.

@@ -40,13 +40,15 @@ test('launch channels prioritize proof and owned conversion',()=>{
   assert.equal(ARBM_SIST_OFFER.price_status,'commercial_model_defined_release_gated');
 });
 
-test('ARBM SIST remains explicit-only and is never the ZEVANORY default offer',()=>{
-  const active=publicOffer({ZEVANORY_PRODUCT_HANDOFF_V21_VERIFIED:'true',ZEVANORY_SECURE_ARTIFACT_DELIVERY_READY:'true'});
-  assert.equal(active.id,'ZEV-NGC-011');
-  assert.equal(active.product,'ZEVANORY Negócio Completo');
-  assert.equal(active.price_brl,347);
+test('ARBM SIST is the canonical ZEVANORY default paid offer',()=>{
+  const active=publicOffer({ARBM_SIST_CODE_SIGNING_READY:'true',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'true'});
+  assert.equal(active.id,'OFFER-0001');
+  assert.equal(active.product,'ARBM SIST');
+  assert.equal(active.version,'10.0.0');
+  assert.equal(active.price_brl,1197);
   assert.equal(active.artifact_commercially_releasable,true);
-  const arbm=resolveCheckoutOffer('OFFER-0001');
+  const arbm=resolveCheckoutOffer();
+  assert.equal(arbm.id,'OFFER-0001');
   assert.equal(arbm.product,'ARBM SIST');
   assert.equal(arbm.price_brl,1197);
 });
