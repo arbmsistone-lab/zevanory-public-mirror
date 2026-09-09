@@ -30,3 +30,10 @@ test('Cloudflare delegated payment is real and loop-safe',()=>{
   assert.match(worker,/payment_delegation_loop_blocked/);
   assert.match(worker,/PAYMENT_RUNTIME_ALLOWED_ORIGINS/);
 });
+
+test('Cloudflare exposes an independent production custom domain',()=>{
+  assert.match(wrangler,/"pattern"\s*:\s*"edge\.zevanory\.api\.br"/);
+  assert.match(wrangler,/"custom_domain"\s*:\s*true/);
+  assert.match(wrangler,/"PAYMENT_RUNTIME_ORIGIN"\s*:\s*"https:\/\/zevanory-site\.vercel\.app"/);
+  assert.doesNotMatch(wrangler,/"PAYMENT_RUNTIME_ORIGIN"\s*:\s*"https:\/\/zevanory\.api\.br"/);
+});

@@ -8,6 +8,7 @@
   },
   "compatibility_date": "2026-09-04",
   "workers_dev": true,
+  "routes": [{ "pattern": "edge.zevanory.api.br", "custom_domain": true }],
   "vars": {
     "SUPPORT_CHANNEL": "WhatsApp +55 88 9234-0423",
     "OFFER_SELECTION_APPROVED": "true",
@@ -19,8 +20,8 @@
     "MERCADOPAGO_ENV": "production",
     "PAYMENT_MERCHANT_IDENTITY_VERIFIED": "true",
     "PAYMENT_RUNTIME_MODE": "delegated",
-    "PAYMENT_RUNTIME_ORIGIN": "https://zevanory.api.br",
-    "PAYMENT_RUNTIME_ALLOWED_ORIGINS": "https://zevanory.api.br",
+    "PAYMENT_RUNTIME_ORIGIN": "https://zevanory-site.vercel.app",
+    "PAYMENT_RUNTIME_ALLOWED_ORIGINS": "https://zevanory-site.vercel.app",
     "PAYMENT_RUNTIME_ORIGIN_VERIFIED": "true",
     "PAYMENT_RUNTIME_ORIGIN_RELEASE_ID": "ZEVANORY-EG0039-FINAL",
     "COMPLIANCE_RUNTIME_MODE": "delegated",
