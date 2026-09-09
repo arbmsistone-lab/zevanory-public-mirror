@@ -25,25 +25,27 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       const token=required(env.WHATSAPP_ACCESS_TOKEN,'whatsapp_access_token_missing');
       const phoneId=required(env.WHATSAPP_PHONE_NUMBER_ID,'whatsapp_phone_number_id_missing');
       const to=required(event.payload?.contact_ref,'whatsapp_recipient_missing');
-      const text=required(event.payload?.text,'whatsapp_text_missing');
-      const body=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(phoneId)}/messages`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({messaging_product:'whatsapp',recipient_type:'individual',to,type:'text',text:{preview_url:false,body:text}})},[200]);
+      const text=required(event.payload?.text,'whatsapp_text_missing');const media=String(event.payload?.media_url||'').trim();
+      const message=media?{messaging_product:'whatsapp',recipient_type:'individual',to,type:'image',image:{link:ensureHttps(media,'whatsapp_media_url_invalid'),caption:text.slice(0,1024)}}:{messaging_product:'whatsapp',recipient_type:'individual',to,type:'text',text:{preview_url:false,body:text}};
+      const body=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(phoneId)}/messages`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(message)},[200]);
       const messageId=String(body?.messages?.[0]?.id||'');if(!messageId)throw providerAcceptanceMissing('whatsapp_message_id_missing');
       return Object.freeze({provider:'meta_whatsapp',accepted:true,provider_message_id:messageId,confirmation:'webhook_required'});
     },
     'channel:email':async(event)=>{
       ensureGlobalGates(env,commercialGate);const token=required(env.RESEND_API_KEY,'resend_api_key_missing');
       const from=required(env.RESEND_FROM_ADDRESS,'resend_from_missing');const to=required(event.payload?.contact_ref,'email_recipient_missing');
-      const text=required(event.payload?.text,'email_text_missing');
-      const body=await requestJson(fetchImpl,'https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json','idempotency-key':String(event.idempotency_key||event.event_id)},body:JSON.stringify({from,to:[to],subject:String(event.payload?.subject||'ZEVANORY').slice(0,240),text})},[200]);
+      const text=required(event.payload?.text,'email_text_missing');const media=String(event.payload?.media_url||'').trim();const email={from,to:[to],subject:String(event.payload?.subject||'ZEVANORY').slice(0,240),text};if(media)email.attachments=[{path:ensureHttps(media,'email_media_url_invalid'),filename:'zevanory-creative.png'}];
+      const body=await requestJson(fetchImpl,'https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json','idempotency-key':String(event.idempotency_key||event.event_id)},body:JSON.stringify(email)},[200]);
       const id=String(body?.id||'');if(!id)throw providerAcceptanceMissing('resend_email_id_missing');
       return Object.freeze({provider:'resend',accepted:true,provider_message_id:id,confirmation:'webhook_required'});
     },
     'channel:facebook':async(event)=>{
       ensureGlobalGates(env,commercialGate);const token=required(env.META_ACCESS_TOKEN,'meta_access_token_missing');
-      const pageId=required(env.META_PAGE_ID,'meta_page_id_missing');const message=required(contentWithLanding(event.payload?.content,event.payload?.landing_url,60000),'facebook_content_missing',60000);
-      const body=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(pageId)}/feed`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({message})},[200]);
-      const id=String(body?.id||'');if(!id)throw providerAcceptanceMissing('facebook_post_id_missing');
-      return Object.freeze({provider:'meta_facebook',accepted:true,provider_post_id:id,confirmation:'provider_lookup_or_webhook_required'});
+      const pageId=required(env.META_PAGE_ID,'meta_page_id_missing');const message=required(contentWithLanding(event.payload?.content,event.payload?.landing_url,60000),'facebook_content_missing',60000);const media=String(event.payload?.media_url||'').trim();
+      const endpoint=media?`${metaBase()}/${encodeURIComponent(pageId)}/photos`:`${metaBase()}/${encodeURIComponent(pageId)}/feed`;const payload=media?{url:ensureHttps(media,'facebook_media_url_invalid'),caption:message,published:true}:{message};
+      const body=await requestJson(fetchImpl,endpoint,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(payload)},[200]);
+      const id=String(body?.id||body?.post_id||'');if(!id)throw providerAcceptanceMissing('facebook_post_id_missing');
+      return Object.freeze({provider:'meta_facebook',accepted:true,provider_post_id:id,media_attached:Boolean(media),confirmation:'provider_lookup_or_webhook_required'});
     },
     'channel:instagram':async(event)=>{
       ensureGlobalGates(env,commercialGate);const token=required(env.META_ACCESS_TOKEN,'meta_access_token_missing');

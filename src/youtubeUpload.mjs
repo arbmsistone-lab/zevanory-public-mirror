@@ -23,11 +23,16 @@ export async function resolveYouTubeAccessToken({env=process.env,fetchImpl=globa
 
 export async function inspectRemoteVideo({url,fetchImpl=globalThis.fetch}={}){
   const mediaUrl=httpsUrl(url,'youtube_media_url_required');
-  const response=await fetchImpl(mediaUrl,{method:'HEAD',redirect:'follow'});
-  if(!response.ok)throw new Error(`youtube_media_probe_${response.status}`);
-  const size=Number(response.headers.get('content-length'));if(!Number.isFinite(size)||size<=0)throw new Error('youtube_media_size_missing');
-  const mime=clean(response.headers.get('content-type'),120).split(';')[0].toLowerCase();
-  if(!(mime.startsWith('video/')||mime==='application/octet-stream'))throw new Error('youtube_media_type_invalid');
+  let response=await fetchImpl(mediaUrl,{method:'HEAD',redirect:'follow'});
+  let size=Number(response.headers.get('content-length'));let mime=clean(response.headers.get('content-type'),120).split(';')[0].toLowerCase();
+  if(!response.ok||!Number.isFinite(size)||size<=0||!(mime.startsWith('video/')||mime==='application/octet-stream')){
+    response=await fetchImpl(mediaUrl,{method:'GET',headers:{range:'bytes=0-0'},redirect:'follow'});
+    if(!response.ok)throw new Error(`youtube_media_probe_${response.status}`);
+    mime=clean(response.headers.get('content-type'),120).split(';')[0].toLowerCase();if(!(mime.startsWith('video/')||mime==='application/octet-stream'))throw new Error('youtube_media_type_invalid');
+    const contentRange=String(response.headers.get('content-range')||'');const match=/\/(\d+)$/.exec(contentRange);
+    if(match)size=Number(match[1]);else{const bytes=Buffer.from(await response.arrayBuffer());size=bytes.length;}
+  }
+  if(!Number.isFinite(size)||size<=0)throw new Error('youtube_media_size_missing');
   return Object.freeze({url:mediaUrl,size,mime});
 }
 export async function createYouTubeUploadSession({accessToken,video,title,description='',privacyStatus='private',madeForKids=false,fetchImpl=globalThis.fetch}={}){

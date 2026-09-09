@@ -45,3 +45,8 @@ test('progress query follows 308 Range rather than guessing transferred bytes',a
   const p=await queryYouTubeUploadProgress({sessionUrl:'https://upload.example/session',totalBytes:900,accessToken:'a',fetchImpl:async()=>response(308,{headers:{range:'bytes=0-511'}})});
   assert.equal(p.complete,false);assert.equal(p.uploaded_bytes,512);
 });
+
+test('remote media probe falls back to GET when HEAD is rejected',async()=>{
+  const calls=[];const video=await inspectRemoteVideo({url:'https://zevanory.api.br/creative.webm',fetchImpl:async(url,opt={})=>{calls.push(opt.method||'GET');if(opt.method==='HEAD')return response(405);return response(200,{body:'12345',headers:{'content-type':'video/webm'}});}});
+  assert.equal(video.size,5);assert.equal(video.mime,'video/webm');assert.deepEqual(calls,['HEAD','GET']);
+});

@@ -12,33 +12,34 @@ import { verifyMercadoLivreLive } from '../src/mercadoLivreVerification.mjs';
 import { brandIdentityReadiness } from '../src/brandIdentityReadiness.mjs';
 import { isPublicDeploymentRequest, safeBearerEqual } from '../src/security.mjs';
 import { verifyCreativeToken, creativeAssetUrl, creativeAssetEtag } from '../src/creativeEngine.mjs';
-import { selectCreativeVariant } from '../src/creativeIntelligence.mjs';
+import { selectCreativeVariantWithVisualEvidence } from '../src/creativeIntelligence.mjs';
 import { renderCreativeAsset } from '../src/creativeRenderer.mjs';
 
 export const config={maxDuration:30};
 
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
+  const url=new URL(req.url||'/api/config','https://zevanory.api.br');
+  const view=String(url.searchParams.get('view')||'');
+  const creativeAssetRequest=view==='creative_asset'&&(req.method==='GET'||req.method==='HEAD');
+  if (req.method !== 'GET' && !creativeAssetRequest) {
     res.statusCode = 405;
     return res.end(JSON.stringify({ error: 'method_not_allowed' }));
   }
-  const url=new URL(req.url||'/api/config','https://zevanory.api.br');
-  const view=String(url.searchParams.get('view')||'');
   if(view==='creative_asset'){
     const token=verifyCreativeToken(url.searchParams.get('p'),url.searchParams.get('s'),process.env);
     if(!token){res.statusCode=403;res.setHeader('cache-control','no-store');return res.end('invalid_creative_token');}
     const etag=creativeAssetEtag(token.spec,token.format);if(String(req.headers?.['if-none-match']||'')===etag){res.statusCode=304;res.setHeader('etag',etag);res.setHeader('cache-control','public, max-age=31536000, s-maxage=31536000, immutable');return res.end();}
-    try{const body=await renderCreativeAsset(token.spec,token.format);res.statusCode=200;res.setHeader('content-type',token.format==='webm'?'video/webm':'image/png');res.setHeader('content-length',String(body.length));res.setHeader('cache-control','public, max-age=31536000, s-maxage=31536000, immutable');res.setHeader('etag',etag);res.setHeader('x-content-type-options','nosniff');res.setHeader('x-creative-id',token.spec.creative_id);return res.end(body);}catch(error){console.error('creative_render_failed',{creative_id:token.spec.creative_id,message:String(error?.message||'render_failed')});res.statusCode=503;res.setHeader('cache-control','no-store');return res.end('creative_render_unavailable');}
+    try{const body=await renderCreativeAsset(token.spec,token.format);const mime=token.format==='webm'?'video/webm':'image/png';const range=String(req.headers?.range||'');let status=200,payload=body;res.setHeader('accept-ranges','bytes');if(req.method==='GET'&&range){const m=/^bytes=(\d+)-(\d*)$/.exec(range);if(!m){res.statusCode=416;res.setHeader('content-range',`bytes */${body.length}`);return res.end();}const start=Number(m[1]),end=m[2]?Math.min(Number(m[2]),body.length-1):body.length-1;if(start>=body.length||end<start){res.statusCode=416;res.setHeader('content-range',`bytes */${body.length}`);return res.end();}status=206;payload=body.subarray(start,end+1);res.setHeader('content-range',`bytes ${start}-${end}/${body.length}`);}res.statusCode=status;res.setHeader('content-type',mime);res.setHeader('content-length',String(req.method==='HEAD'?body.length:payload.length));res.setHeader('cache-control','public, max-age=31536000, s-maxage=31536000, immutable');res.setHeader('etag',etag);res.setHeader('x-content-type-options','nosniff');res.setHeader('x-creative-id',token.spec.creative_id);return req.method==='HEAD'?res.end():res.end(payload);}catch(error){console.error('creative_render_failed',{creative_id:token.spec.creative_id,message:String(error?.message||'render_failed')});res.statusCode=503;res.setHeader('cache-control','no-store');return res.end('creative_render_unavailable');}
   }
   if(view==='creative_sample'){
     const origin=`${String(req.headers?.['x-forwarded-proto']||'https').split(',')[0]}://${String(req.headers?.['x-forwarded-host']||req.headers?.host||'zevanory.api.br').split(',')[0]}`;
     const sampleEnv={...process.env,PUBLIC_BASE_URL:origin};
     const common={offerId:'OFFER-0001',hook:'Automacao com controle',body:'IA, execucao segura e evidencia real.',cta:'Conheca a ZEVANORY'};
-    const image=selectCreativeVariant({...common,channel:'instagram'}),video=selectCreativeVariant({...common,channel:'youtube'});
+    const image=await selectCreativeVariantWithVisualEvidence(null,{...common,channel:'instagram'}),video=await selectCreativeVariantWithVisualEvidence(null,{...common,channel:'youtube'});
     const imageSpec=image.winner.spec,videoSpec=video.winner.spec;
-    const summary=x=>x.ranking.map(v=>({creative_id:v.spec.creative_id,variant_id:v.variant_id,layout:v.spec.layout,quality_score:v.quality_score,selection_score:v.selection_score,observed_ready:v.observed_ready}));
+    const summary=x=>x.ranking.map(v=>({creative_id:v.spec.creative_id,variant_id:v.variant_id,layout:v.spec.layout,quality_score:v.quality_score,perceptual_score:v.perceptual_score,visual_min_frame_score:v.visual_min_frame_score,visual_frames:(v.visual_frames||[]).map(f=>({mode:f.mode,score:f.score,dynamic_range:Number(f.dynamic_range?.toFixed?.(2)||f.dynamic_range||0),luminance_std:Number(f.luminance_std?.toFixed?.(2)||f.luminance_std||0),occupied_fraction:Number(f.occupied_fraction?.toFixed?.(4)||f.occupied_fraction||0),edge_density:Number(f.edge_density?.toFixed?.(4)||f.edge_density||0),overflow:f.overflow===true,lines:Number(f.lines||f.hook_lines||f.body_lines||0)})),selection_score:v.selection_score,observed_ready:v.observed_ready}));
     res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;
-    return res.end(JSON.stringify({service:'ZEVANORY',engine:'creative-intelligence-v1',image_selection_basis:image.selection_basis,video_selection_basis:video.selection_basis,image_variants:summary(image),video_variants:summary(video),image_creative_id:imageSpec.creative_id,video_creative_id:videoSpec.creative_id,png_url:creativeAssetUrl(imageSpec,'png',sampleEnv),webm_url:creativeAssetUrl(videoSpec,'webm',sampleEnv)}));
+    return res.end(JSON.stringify({service:'ZEVANORY',engine:'creative-intelligence-v2',image_selection_basis:image.selection_basis,video_selection_basis:video.selection_basis,image_variants:summary(image),video_variants:summary(video),image_creative_id:imageSpec.creative_id,video_creative_id:videoSpec.creative_id,png_url:creativeAssetUrl(imageSpec,'png',sampleEnv),webm_url:creativeAssetUrl(videoSpec,'webm',sampleEnv)}));
   }
 
   if(isPublicDeploymentRequest(req)&&['mercadolivre-audit','lifecycle','activation'].includes(view)){const expected=String(process.env.OPERATOR_TOKEN||process.env.FULFILLMENT_OPERATOR_TOKEN||'');const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'');if(!safeBearerEqual(expected,provided)){res.statusCode=401;return res.end(JSON.stringify({error:'operator_auth_required'}));}}

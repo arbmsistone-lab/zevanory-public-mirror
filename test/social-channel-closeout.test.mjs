@@ -5,7 +5,7 @@ import {channelReadiness} from '../src/channelAdapters.mjs';
 import {encryptTikTokSecret} from '../src/tiktokOAuth.mjs';
 import {encryptCommercialSecret} from '../src/commercialOAuthCrypto.mjs';
 const base={SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'};
-const response=(status,body={},headers={})=>({status,json:async()=>body,headers:{get:k=>headers[String(k).toLowerCase()]||null}});
+const response=(status,body={},headers={})=>({status,ok:status>=200&&status<300,json:async()=>body,arrayBuffer:async()=>Buffer.isBuffer(body)?body:Buffer.from(typeof body==='string'?body:JSON.stringify(body)),headers:{get:k=>headers[String(k).toLowerCase()]||null}});
 const certifiedGate=()=>({enabled:true});
 const tiktokKey=Buffer.alloc(32,7).toString('base64');
 const tiktokSql=(env)=>({query:async()=>[{account_id:'open-1',access_token_enc:encryptTikTokSecret('t',env),refresh_token_enc:encryptTikTokSecret('r',env),token_type:'Bearer',scope:'user.info.basic,video.publish',expires_at:new Date(Date.now()+3600000)}]});
@@ -49,4 +49,20 @@ test('first-party affiliate channel uses internal idempotent ledger without exte
   const a=buildOutboundAdapters({env,commercialGate:certifiedGate,fetchImpl:async()=>{throw new Error('external_fetch_forbidden');}});
   const out=await a['channel:affiliate']({event_id:'e-first',idempotency_key:'aff-1',aggregate_id:'lead1',payload:{click_ref:'c1'}});
   assert.equal(out.provider_message_id,'aff-1');assert.equal(out.confirmation,'first_party_ledger');
+});
+
+test('LinkedIn uploads generated image before creating rich post',async()=>{
+  const calls=[];const env={...base,COMMERCIAL_OAUTH_ENCRYPTION_KEY:Buffer.alloc(32,5).toString('base64'),LINKEDIN_VERSION:'202608'};
+  const sql={query:async()=>[{account_id:'person123',access_token_enc:encryptCommercialSecret('li',env),scope:'w_member_social',expires_at:new Date(Date.now()+3600000)}]};
+  const fetchImpl=async(url,opt={})=>{calls.push({url,opt});
+    if(String(url).includes('images?action=initializeUpload'))return response(200,{value:{uploadUrl:'https://upload.linkedin.example/image',image:'urn:li:image:123'}});
+    if(url==='https://zevanory.api.br/creative.png')return response(200,Buffer.from('png'),{'content-type':'image/png','content-length':'3'});
+    if(url==='https://upload.linkedin.example/image')return response(201,{});
+    if(url==='https://api.linkedin.com/rest/posts')return response(201,{}, {'x-restli-id':'urn:li:share:rich'});
+    throw new Error(`unexpected:${url}`);
+  };
+  const adapters=buildOutboundAdapters({env,commercialGate:certifiedGate,fetchImpl});
+  const out=await adapters['channel:linkedin']({payload:{content:'Atualizacao visual',media_url:'https://zevanory.api.br/creative.png',title:'ZEVANORY'}},{sql});
+  const post=JSON.parse(calls.find(x=>x.url==='https://api.linkedin.com/rest/posts').opt.body);
+  assert.equal(post.content.media.id,'urn:li:image:123');assert.equal(out.provider_post_id,'urn:li:share:rich');assert.ok(calls.some(x=>x.url==='https://upload.linkedin.example/image'&&x.opt.method==='PUT'));
 });

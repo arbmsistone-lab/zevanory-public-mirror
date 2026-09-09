@@ -1,3 +1,4 @@
+import { fetchRemoteMedia } from './remoteMedia.mjs';
 const clean=(v,max=500)=>String(v||'').trim().slice(0,max);
 const required=(v,code,max=500)=>{const x=clean(v,max);if(!x)throw new Error(code);return x;};
 const httpsUrl=(v,code)=>{const x=required(v,code,2048);let u;try{u=new URL(x);}catch{throw new Error(code);}if(u.protocol!=='https:')throw new Error(code);return x;};
@@ -29,7 +30,9 @@ export async function publishLinkedIn({event,env=process.env,fetchImpl=globalThi
   if(!/^urn:li:(organization|person):/.test(author))throw new Error('linkedin_author_urn_invalid');
   const version=required(env.LINKEDIN_VERSION,'linkedin_version_missing',16);if(!/^20\d{4}$/.test(version))throw new Error('linkedin_version_invalid');
   const commentary=required(withLanding(event?.payload?.content,event?.payload?.landing_url,3000),'linkedin_content_missing',3000);
-  const body={author,commentary,visibility:'PUBLIC',distribution:{feedDistribution:'MAIN_FEED',targetEntities:[],thirdPartyDistributionChannels:[]},lifecycleState:'PUBLISHED',isReshareDisabledByAuthor:false};
+  let content;const mediaUrl=clean(event?.payload?.media_url,3000);
+  if(mediaUrl){const init=await fetchImpl('https://api.linkedin.com/rest/images?action=initializeUpload',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json','x-restli-protocol-version':'2.0.0','linkedin-version':version},body:JSON.stringify({initializeUploadRequest:{owner:author}})});const initBody=await json(init);if(init.status!==200)throw new Error(`linkedin_image_init_http_${init.status}`);const uploadUrl=httpsUrl(initBody?.value?.uploadUrl,'linkedin_image_upload_url_missing');const imageUrn=required(initBody?.value?.image,'linkedin_image_urn_missing',500);const media=await fetchRemoteMedia({url:mediaUrl,fetchImpl,acceptedTypes:['image/']});const uploaded=await fetchImpl(uploadUrl,{method:'PUT',headers:{authorization:`Bearer ${token}`,'content-type':media.type},body:media.bytes});if(![200,201].includes(uploaded.status))throw new Error(`linkedin_image_upload_http_${uploaded.status}`);content={media:{id:imageUrn,altText:clean(event?.payload?.title||'ZEVANORY',200)}};}
+  const body={author,commentary,visibility:'PUBLIC',distribution:{feedDistribution:'MAIN_FEED',targetEntities:[],thirdPartyDistributionChannels:[]},lifecycleState:'PUBLISHED',isReshareDisabledByAuthor:false,...(content?{content}:{})};
   const response=await fetchImpl('https://api.linkedin.com/rest/posts',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json','x-restli-protocol-version':'2.0.0','linkedin-version':version},body:JSON.stringify(body)});
   if(response.status!==201){await json(response);throw new Error(`linkedin_post_http_${response.status}`);}
   const id=clean(response.headers?.get?.('x-restli-id'),300);if(!id)throw new Error('linkedin_post_id_missing');
