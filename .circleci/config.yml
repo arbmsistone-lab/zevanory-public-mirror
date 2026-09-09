@@ -36,7 +36,7 @@ jobs:
       - run: npm run audit:30x
       - run: npm run audit:architecture:20x
       - run: npm run audit:obs:10x
-      - run: npm run audit:production:20x
+      - run: npm run audit:universal-fabric:3x
 
 workflows:
   ci:
