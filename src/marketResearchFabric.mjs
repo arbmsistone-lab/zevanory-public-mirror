@@ -19,7 +19,7 @@ export function marketResearchFeeds(env=process.env){
 
 export function marketResearchReadiness(env=process.env){
   const feeds=marketResearchFeeds(env);
-  const native={gdelt:true,youtube:Boolean(env.YOUTUBE_OAUTH_CLIENT_ID&&env.YOUTUBE_OAUTH_CLIENT_SECRET&&env.YOUTUBE_OAUTH_REFRESH_TOKEN),mercado_livre:Boolean(env.MERCADOLIVRE_APP_ID&&env.MERCADOLIVRE_CLIENT_SECRET&&env.MERCADOLIVRE_TOKEN_ENCRYPTION_KEY)};
+  const native={gdelt:true,wikimedia:true,youtube:Boolean(env.YOUTUBE_OAUTH_CLIENT_ID&&env.YOUTUBE_OAUTH_CLIENT_SECRET&&env.YOUTUBE_OAUTH_REFRESH_TOKEN),mercado_livre:Boolean(env.MERCADOLIVRE_APP_ID&&env.MERCADOLIVRE_CLIENT_SECRET&&env.MERCADOLIVRE_TOKEN_ENCRYPTION_KEY)};
   const configured=feeds.length+Object.values(native).filter(Boolean).length;
   return Object.freeze({configured,ready:configured>=3,native:Object.freeze(native),organizations:Object.freeze([...feeds.map(x=>x.organization),...Object.entries(native).filter(([,v])=>v).map(([k])=>k)])});
 }
