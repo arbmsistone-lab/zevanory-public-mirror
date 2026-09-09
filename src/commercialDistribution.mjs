@@ -22,8 +22,8 @@ export function commercialDistributionReadiness(env=process.env){
   const fronts=Object.fromEntries(REQUIRED_DISTRIBUTION_FRONTS.map((key)=>{
     const policy=COMMERCIAL_DISTRIBUTION_CANONICAL[key], state=channels[key]||{configured:false,implemented:false,missing:['channel_contract_missing']};
     const fallback=assistedFallbackReadiness(key,env), alternate=alternateAutomationReadiness(key,env), contingency=key==='nuvemshop'?nuvemshopCsvFallbackReadiness(env):{ready:false,mode:null,provider:null}, blockers=[...state.missing]; if(key==='affiliate')blockers.push(...affiliate.blockers);
-    const automationReady=(state.configured||alternate.ready)&&(key!=='affiliate'||affiliate.ready), operationalReady=automationReady||fallback.ready;
-    const operationalMode=state.configured?'provider_api':alternate.ready?alternate.mode:fallback.ready?fallback.mode:'blocked';
+    const automationReady=(state.configured||alternate.ready)&&(key!=='affiliate'||affiliate.ready), operationalReady=automationReady||fallback.ready||contingency.ready;
+    const operationalMode=state.configured?'provider_api':alternate.ready?alternate.mode:fallback.ready?fallback.mode:contingency.ready?contingency.mode:'blocked';
     return [key,Object.freeze({...policy,implemented:state.implemented,configured:state.configured,automation_ready:automationReady,alternate_api_ready:alternate.ready,alternate_provider:alternate.provider,contingency_ready:contingency.ready,contingency_mode:contingency.mode,contingency_provider:contingency.provider,operational_ready:operationalReady,operational_mode:operationalMode,assisted_fallback_ready:fallback.ready,blockers:Object.freeze(operationalReady?[]:[...new Set([...blockers,...alternate.blockers,...fallback.blockers])])})];
   }));
   const values=Object.values(fronts), technicalReady=values.every(x=>x.policy_complete&&x.implemented), operationalReady=values.every(x=>x.operational_ready);

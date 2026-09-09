@@ -11,7 +11,7 @@ export function publicChannelStatus(env = process.env) {
     const fallback = assistedFallbackReadiness(name, env);
     const alternate = alternateAutomationReadiness(name, env);
     const contingency = name==='nuvemshop' ? nuvemshopCsvFallbackReadiness(env) : {ready:false,mode:null,provider:null};
-    const operationalReady = state.configured || alternate.ready || fallback.ready;
+    const operationalReady = state.configured || alternate.ready || fallback.ready || contingency.ready;
     return [name, Object.freeze({
       provider: state.provider,
       configured: operationalReady,
@@ -20,9 +20,9 @@ export function publicChannelStatus(env = process.env) {
       contingency_ready: contingency.ready,
       contingency_mode: contingency.mode,
       contingency_provider: contingency.provider,
-      active_provider: state.configured ? state.provider : alternate.ready ? alternate.provider : null,
+      active_provider: state.configured ? state.provider : alternate.ready ? alternate.provider : contingency.ready ? contingency.provider : null,
       operational_ready: operationalReady,
-      operational_mode: state.configured ? 'provider_api' : alternate.ready ? alternate.mode : fallback.ready ? fallback.mode : 'blocked',
+      operational_mode: state.configured ? 'provider_api' : alternate.ready ? alternate.mode : fallback.ready ? fallback.mode : contingency.ready ? contingency.mode : 'blocked',
       implemented: state.implemented,
       commercial: state.commercial,
       role: state.role,
