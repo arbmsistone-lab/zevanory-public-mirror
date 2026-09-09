@@ -13,7 +13,8 @@ export function evaluateActivationReadiness(env=process.env) {
   if(delegatedCompliance){
     try{
       const origin=new URL(String(env.COMPLIANCE_RUNTIME_ORIGIN||''));
-      supplierIdentityVerified=origin.protocol==='https:'&&origin.hostname==='zevanory.api.br'&&yes(env.COMPLIANCE_RUNTIME_ORIGIN_VERIFIED)&&String(env.COMPLIANCE_RUNTIME_ORIGIN_RELEASE_ID||'')==='ZEVANORY-EG0039-FINAL';
+      const allowed=String(env.COMPLIANCE_RUNTIME_ALLOWED_ORIGINS||'').split(',').map(x=>x.trim()).filter(Boolean);
+      supplierIdentityVerified=origin.protocol==='https:'&&allowed.includes(origin.origin)&&yes(env.COMPLIANCE_RUNTIME_ORIGIN_VERIFIED)&&String(env.COMPLIANCE_RUNTIME_ORIGIN_RELEASE_ID||'')==='ZEVANORY-EG0039-FINAL';
     }catch{}
   }
   const compliance=evaluateCommercialCompliance({

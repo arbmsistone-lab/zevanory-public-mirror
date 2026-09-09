@@ -73,6 +73,29 @@ const staticAliases = new Map([
   ['/termos', '/termos.html'], ['/privacidade', '/privacidade.html'], ['/exclusao-dados', '/exclusao-dados.html'],
   ['/reembolso', '/reembolso.html'], ['/afiliados', '/afiliados.html'],
 ]);
+function delegatedPaymentOrigin(env,requestUrl){
+  if(String(env.PAYMENT_RUNTIME_MODE||'').toLowerCase()!=='delegated')return null;
+  try{
+    const origin=new URL(String(env.PAYMENT_RUNTIME_ORIGIN||''));
+    const allowed=String(env.PAYMENT_RUNTIME_ALLOWED_ORIGINS||'').split(',').map(x=>x.trim()).filter(Boolean);
+    const requestOrigin=new URL(requestUrl).origin;
+    if(origin.protocol!=='https:'||origin.origin===requestOrigin||!allowed.includes(origin.origin))return null;
+    if(String(env.PAYMENT_RUNTIME_ORIGIN_VERIFIED||'').toLowerCase()!=='true')return null;
+    if(String(env.PAYMENT_RUNTIME_ORIGIN_RELEASE_ID||'')!=='ZEVANORY-EG0039-FINAL')return null;
+    return origin.origin;
+  }catch{return null;}
+}
+function isPaymentMutation(pathname){
+  return pathname.startsWith('/api/checkout')||/^\/api\/webhooks\/(asaas|mercadopago)$/.test(pathname);
+}
+async function delegatePaymentRequest(request,env){
+  const url=new URL(request.url),origin=delegatedPaymentOrigin(env,request.url);
+  if(!origin||!isPaymentMutation(url.pathname))return null;
+  if(request.headers.get('x-zevanory-payment-delegated')==='1')return new Response(JSON.stringify({error:'payment_delegation_loop_blocked'}),{status:508,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+  const target=new URL(url.pathname+url.search,origin),headers=new Headers(request.headers);headers.set('x-zevanory-payment-delegated','1');
+  const init={method:request.method,headers,redirect:'manual'};if(!['GET','HEAD'].includes(request.method))init.body=request.body;
+  try{return await fetch(new Request(target,init));}catch{return new Response(JSON.stringify({error:'payment_runtime_unavailable',preserved:true}),{status:503,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
+}
 function withSecurityHeaders(response) {
   const headers = new Headers(response.headers);
   headers.set('content-security-policy', "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'");
@@ -89,6 +112,7 @@ function withSecurityHeaders(response) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const delegatedPayment=await delegatePaymentRequest(request,env);if(delegatedPayment)return delegatedPayment;
     if (url.pathname === '/private/artifacts/issue') return handleArtifactIssue(request, env);
     if (url.pathname === '/private/artifacts/download') return handleArtifactDownload(request, env);
     if (url.pathname === '/private/journal/append') return handleCloudflareJournalAppend(request, env);

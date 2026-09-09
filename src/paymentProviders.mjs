@@ -12,7 +12,14 @@ export function normalizePaymentProvider(value){
 function readinessFor(provider,env,{production=true}={}){
   const blockers=[];
   const delegated=String(env.PAYMENT_RUNTIME_MODE||'').trim().toLowerCase()==='delegated';
-  const delegatedReady=delegated&&String(env.PAYMENT_RUNTIME_ORIGIN_VERIFIED||'').toLowerCase()==='true';
+  let delegatedReady=false;
+  if(delegated){
+    try{
+      const origin=new URL(String(env.PAYMENT_RUNTIME_ORIGIN||''));
+      const allowed=String(env.PAYMENT_RUNTIME_ALLOWED_ORIGINS||'').split(',').map(x=>x.trim()).filter(Boolean);
+      delegatedReady=origin.protocol==='https:'&&allowed.includes(origin.origin)&&String(env.PAYMENT_RUNTIME_ORIGIN_VERIFIED||'').toLowerCase()==='true'&&String(env.PAYMENT_RUNTIME_ORIGIN_RELEASE_ID||'')==='ZEVANORY-EG0039-FINAL';
+    }catch{}
+  }
   const pool=csv(env.PAYMENT_PROVIDER_POOL);
   const legacy=normalizePaymentProvider(env.PAYMENT_PROVIDER);
   if(delegatedReady && (pool.includes(provider)||legacy===provider)) return Object.freeze({provider,ready:true,delegated:true,blockers:Object.freeze([])});

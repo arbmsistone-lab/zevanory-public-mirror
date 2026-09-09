@@ -5,11 +5,14 @@ import { buildActivationPlan } from '../src/activationPlan.mjs';
 const base={
   ACTIVE_OFFER_TYPE:'digital_product',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',
   SUPPORT_CHANNEL:'support@example.com',PAYMENT_PROVIDER:'mercadopago',PAYMENT_MERCHANT_IDENTITY_VERIFIED:'true',
-  PAYMENT_RUNTIME_MODE:'delegated',PAYMENT_RUNTIME_ORIGIN_VERIFIED:'true',
+  PAYMENT_RUNTIME_MODE:'delegated',PAYMENT_RUNTIME_ORIGIN:'https://zevanory.api.br',
+  PAYMENT_RUNTIME_ALLOWED_ORIGINS:'https://zevanory.api.br',PAYMENT_RUNTIME_ORIGIN_VERIFIED:'true',
+  PAYMENT_RUNTIME_ORIGIN_RELEASE_ID:'ZEVANORY-EG0039-FINAL',
   ZEVANORY_PRODUCT_HANDOFF_V21_VERIFIED:'true',ZEVANORY_SECURE_ARTIFACT_DELIVERY_READY:'true',
   ARBM_SIST_PRIVATE_PILOT_DELIVERY_APPROVED:'true',ARBM_SIST_SECURE_ARTIFACT_READY:'true',
   COMPLIANCE_RUNTIME_MODE:'delegated',COMPLIANCE_RUNTIME_ORIGIN_VERIFIED:'true',
-  COMPLIANCE_RUNTIME_ORIGIN_RELEASE_ID:'ZEVANORY-EG0039-FINAL'
+  COMPLIANCE_RUNTIME_ORIGIN_RELEASE_ID:'ZEVANORY-EG0039-FINAL',
+  COMPLIANCE_RUNTIME_ALLOWED_ORIGINS:'https://zevanory.api.br,https://zevanory.zevanory.workers.dev'
 };
 
 test('delegated compliance fails closed for an untrusted origin',()=>{
@@ -23,5 +26,11 @@ test('verified official compliance origin avoids duplicating supplier PII',()=>{
   const plan=buildActivationPlan({...base,COMPLIANCE_RUNTIME_ORIGIN:'https://zevanory.api.br'});
   assert.equal(plan.inputs_ready,true);
   assert.equal(plan.phase,'ready_to_unlock');
+  assert.equal(plan.missing.length,0);
+});
+
+test('verified provider-neutral Cloudflare compliance origin is accepted',()=>{
+  const plan=buildActivationPlan({...base,COMPLIANCE_RUNTIME_ORIGIN:'https://zevanory.zevanory.workers.dev'});
+  assert.equal(plan.inputs_ready,true);
   assert.equal(plan.missing.length,0);
 });
