@@ -47,3 +47,5 @@ footer{display:flex;align-items:center;justify-content:space-between;border-top:
 @media(max-height:760px){.viewport{grid-template-rows:84px minmax(0,1fr) 42px}.business-center{grid-template-rows:56px 82px minmax(0,1fr)}}
 /* EG-0046 production 1280 measured fit: preserve 11px signal text. */
 @media(max-height:760px){.business-center{grid-template-rows:56px 96px minmax(0,1fr)}}
+
+footer .legal-links{display:flex;align-items:center;gap:12px}footer .legal-links a{color:#91a6b8;text-decoration:underline;text-underline-offset:2px}footer .legal-links a:hover,footer .legal-links a:focus-visible{color:#d8e6f2;outline:2px solid #91a6b8;outline-offset:2px;border-radius:2px}@media(max-height:760px){footer .legal-links{gap:8px}}
