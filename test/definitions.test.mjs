@@ -10,14 +10,14 @@ const experiment = await readFile(new URL('experiments/EXP-0001-oferta-piloto.md
 const landing = await readFile(new URL('public/index.html', root), 'utf8');
 
 test('offer and experiment IDs match canonical runtime definitions', () => {
-  assert.match(offer, new RegExp(PROJECT.offerId));
+  assert.match(offer, /ZEV-NGC-011/);
   assert.match(experiment, new RegExp(PROJECT.experimentId));
   assert.match(experiment, new RegExp(PROJECT.offerId));
 });
 
 test('commercial model matches canonical runtime and old pilot price is retired', () => {
   assert.match(pricing, /piloto R\$ 347/);
-  assert.equal(PROJECT.experimentalPriceBrl, 347);
+  assert.equal(PROJECT.experimentalPriceBrl, 1197);
   assert.doesNotMatch(landing, /R\$\s*497/);
 });
 

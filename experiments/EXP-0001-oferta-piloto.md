@@ -1,11 +1,11 @@
-# EXP-0001 - ZEVANORY Neg?cio Completo / ZEV-NGC-011
+# EXP-0001 - ARBM SIST / OFFER-0001
 
 Status: PRONTO TECNICAMENTE / PR?-LAN?AMENTO / VENDAS BLOQUEADAS AT? APROVA??O GLOBAL.
-Produto: ZEVANORY Neg?cio Completo v1.1 - produto digital pr?prio, sem estoque.
-Oferta piloto: R$ 347. Pre?o de tabela: R$ 397.
+Produto: ARBM SIST 10.0.0 - produto digital proprio do portfolio ZEVANORY, sem estoque.
+Preco comercial definido: R$ 1.197 para ARBM PRO; valor ainda nao validado por comportamento comercial real.
 
 ## Hip?tese
-Pequenos neg?cios brasileiros de servi?os/com?rcio podem demonstrar disposi??o a pagar por uma solu??o pr?tica que re?na IA, vendas, lucro e caixa, com opera??o mensur?vel e entrega digital segura.
+PMEs brasileiras com venda e atendimento digital podem demonstrar disposicao a pagar pelo ARBM SIST quando a operacao provar ganho real, entrega segura e resultado mensuravel.
 
 ## Canais prim?rios
 ZEVANORY -> YouTube -> Instagram -> WhatsApp.

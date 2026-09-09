@@ -52,9 +52,9 @@ export function providerAcceptanceMissing(code='provider_acceptance_missing'){
 }
 
 export function classifyDeliveryFailure(error,destination){
-  if(error instanceof ProviderDeliveryError){
-    if(error.retryable)return Object.freeze({status:'retry',reason:error.code});
-    return Object.freeze({status:'dead_letter',reason:error.ambiguous?'provider_delivery_uncertain_manual_reconciliation':error.code});
+  if(error instanceof ProviderDeliveryError||String(error?.code||'').startsWith('provider_')){
+    if(error.retryable)return Object.freeze({status:'retry',reason:String(error.code||error.message||'provider_retryable')});
+    return Object.freeze({status:'dead_letter',reason:error.ambiguous?'provider_delivery_uncertain_manual_reconciliation':String(error.code||error.message||'provider_failed')});
   }
   if(!destinationAllowsAutomaticReplay(destination)){
     return Object.freeze({status:'dead_letter',reason:'provider_delivery_uncertain_manual_reconciliation'});

@@ -16,7 +16,7 @@ add('05 activation tests pass',run('--test','test/activation-ready.test.mjs'));
 add('06 legal identity requirements mapped',['supplier_legal_name_missing','supplier_tax_id_missing','supplier_address_missing'].every(x=>ACTIVATION_REQUIREMENTS[x]));
 add('07 support requirement mapped',Boolean(ACTIVATION_REQUIREMENTS.support_channel_missing));
 add('08 offer decision requirements mapped',Boolean(ACTIVATION_REQUIREMENTS.offer_selection_not_approved)&&Boolean(ACTIVATION_REQUIREMENTS.active_offer_type_invalid));
-add('09 service payment requirements mapped',Boolean(ACTIVATION_REQUIREMENTS.payment_provider_not_selected)&&Boolean(ACTIVATION_REQUIREMENTS.payment_merchant_identity_unverified)&&Boolean(ACTIVATION_REQUIREMENTS.asaas_production_not_configured)&&Boolean(ACTIVATION_REQUIREMENTS.mercadopago_production_not_configured)&&Boolean(ACTIVATION_REQUIREMENTS.asaas_credentials_missing)&&Boolean(ACTIVATION_REQUIREMENTS.mercadopago_credentials_missing));
+add('09 service payment requirements mapped',Boolean(ACTIVATION_REQUIREMENTS.payment_provider_pool_unavailable)&&Boolean(ACTIVATION_REQUIREMENTS.payment_merchant_identity_unverified)&&plan.includes('payment_provider_pool_unavailable'));
 add('10 affiliate requirements mapped',['affiliate_provider_missing','affiliate_tracking_unready','affiliate_terms_unreviewed'].every(x=>ACTIVATION_REQUIREMENTS[x]));
 add('11 pre-sale unlock precedes global sale',CUTOVER_ORDER.indexOf('PRE_SALE_GATES_APPROVED=true')<CUTOVER_ORDER.indexOf('SALE_GLOBALLY_ENABLED=true'));
 add('12 global sale unlock is last mutating gate',CUTOVER_ORDER[CUTOVER_ORDER.length-2]==='SALE_GLOBALLY_ENABLED=true');

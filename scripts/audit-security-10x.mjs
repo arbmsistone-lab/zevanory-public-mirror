@@ -21,7 +21,7 @@ add('04 strict CSP no unsafe inline eval',headers['Content-Security-Policy']?.in
 add('05 no inline script style',!/<style[>\s]/i.test(index+pilot)&&!/<script>([\s\S]*?)<\/script>/i.test(index+pilot));
 add('06 origin validation',security.includes('origin_not_allowed')&&security.includes('PUBLIC_BASE_URL'));
 add('07 payload limit',security.includes('MAX_PUBLIC_EVENT_BYTES = 4096'));
-add('08 telemetry rate limit',events.includes('>= 60')&&events.includes("error: 'rate_limited'"));
+add('08 telemetry rate limit',/count\(\*\)::int as count/.test(events)&&/>=\s*60/.test(events)&&events.includes("error:'rate_limited'"));
 add('09 constant time operator auth',security.includes('timingSafeEqual')&&server.includes('safeBearerEqual'));
 add('10 no public admin and example secrets empty',!(await exists('api/admin-migrate.mjs'))&&env.includes('OPERATOR_TOKEN=')&&!/OPERATOR_TOKEN=\S+/.test(env));
 for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.name}`);

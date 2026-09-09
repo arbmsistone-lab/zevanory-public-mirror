@@ -96,8 +96,12 @@ export async function executeUniversallySafely({operation,providers=[],requireme
       return Object.freeze({ok:true,provider:provider.id,independence_domain:provider.independence_domain,result,attempts:Object.freeze(attempts)});
     }catch(error){
       const ambiguous=Boolean(error?.ambiguous);
-      attempts.push(Object.freeze({provider:provider.id,independence_domain:provider.independence_domain,status:ambiguous?'reconciliation_required':'failed',reason:String(error?.message||'provider_failed').slice(0,240)}));
-      if(ambiguous)return Object.freeze({ok:false,preserved:true,reconciliation_required:true,reason:'provider_effect_uncertain',attempts:Object.freeze(attempts)});
+      const retryable=Boolean(error?.retryable);
+      attempts.push(Object.freeze({provider:provider.id,independence_domain:provider.independence_domain,status:ambiguous&&!retryable?'reconciliation_required':'failed',retryable,reason:String(error?.message||'provider_failed').slice(0,240)}));
+      if(ambiguous){
+        if(retryable)return Object.freeze({ok:false,preserved:true,reconciliation_required:false,retryable:true,retry_provider:provider.id,reason:String(error?.message||'provider_retryable').slice(0,240),attempts:Object.freeze(attempts)});
+        return Object.freeze({ok:false,preserved:true,reconciliation_required:true,retryable:false,reason:'provider_effect_uncertain',attempts:Object.freeze(attempts)});
+      }
     }
   }
   return Object.freeze({ok:false,preserved:true,reconciliation_required:false,reason:ranked.length?'all_qualified_providers_failed':'no_qualified_provider_available',attempts:Object.freeze(attempts)});

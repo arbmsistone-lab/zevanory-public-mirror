@@ -35,7 +35,10 @@ export function buildUniversalChannelAdapter(channel,providers=[]){
       requirements:{capabilities:[capability],zeroCost:true},
     });
     if(routed.ok) return Object.freeze({...routed.result,execution_provider:routed.provider,execution_attempts:routed.attempts});
-    const error=new Error(routed.reason);
+    const deterministicReason=(!routed.reconciliation_required&&routed.attempts?.length===1)?routed.attempts[0]?.reason:null;
+    const error=new Error(deterministicReason||routed.reason);
+    error.code=deterministicReason||routed.reason;
+    error.retryable=Boolean(routed.retryable||routed.attempts?.[0]?.retryable);
     error.routed=routed;
     error.ambiguous=Boolean(routed.reconciliation_required);
     throw error;

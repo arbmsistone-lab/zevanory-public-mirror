@@ -47,6 +47,13 @@ export function nextRetryDelayMs(attempts){
 }
 
 async function preserveForRetry(sql,event,reason,delay=nextRetryDelayMs(event?.attempts)){
+  const attempts=Number(event?.attempts)||1;
+  if(attempts>=20){
+    const terminalReason='retry_limit_exhausted';
+    const detail=terminalReason+':'+String(reason||'provider_unavailable').slice(0,460);
+    await sql.query("update integration_outbox set status='dead_letter',last_error=$2 where event_id=$1",[event.event_id,detail]);
+    return Object.freeze({ok:false,processed:true,preserved:true,event_id:event.event_id,status:'dead_letter',retry_in_ms:null,reason:terminalReason,...metadata(event.headers||{})});
+  }
   await sql.query(`update integration_outbox set status='retry',last_error=$2,
     available_at=now()+($3::text||' milliseconds')::interval where event_id=$1`,
     [event.event_id,String(reason||'provider_unavailable').slice(0,500),delay]);
@@ -77,14 +84,13 @@ async function dispatchClaimedEvent(sql,event,adapters={}){
     }
     return Object.freeze({ok:true,processed:true,event_id:event.event_id,status:'delivered',result,...meta});
   }catch(error){
-    if(error?.routed?.reason==='no_qualified_provider_available'||error?.routed?.reason==='all_qualified_providers_failed'){
-      return preserveForRetry(sql,event,error.routed.reason);
-    }
     if(error?.ambiguous||error?.routed?.reconciliation_required){
       await sql.query("update integration_outbox set status='dead_letter',last_error='provider_delivery_uncertain_manual_reconciliation' where event_id=$1",[event.event_id]);
-      return Object.freeze({ok:false,processed:true,preserved:true,event_id:event.event_id,status:'dead_letter',reason:'provider_delivery_uncertain_manual_reconciliation',...meta});
+      return Object.freeze({ok:false,processed:true,preserved:true,event_id:event.event_id,status:'dead_letter',retry_in_ms:null,reason:'provider_delivery_uncertain_manual_reconciliation',...meta});
     }
     const attempts=Number(event.attempts)||1;const delay=nextRetryDelayMs(attempts);
+    if(error?.retryable||error?.routed?.retryable) return preserveForRetry(sql,event,error.code||error.routed?.reason||error.message,delay);
+    if(error?.routed?.reason==='no_qualified_provider_available') return preserveForRetry(sql,event,error.routed.reason,delay);
     const classification=classifyDeliveryFailure(error,event.destination);
     if(classification.status==='retry') return preserveForRetry(sql,event,classification.reason,delay);
     await sql.query("update integration_outbox set status='dead_letter',last_error=$2 where event_id=$1",[event.event_id,String(classification.reason||'delivery_failed').slice(0,500)]);

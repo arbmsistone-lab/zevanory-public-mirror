@@ -42,7 +42,7 @@
           "detail": "exit=0"
         },
         {
-          "name": "three-layer fail-closed global gate",
+          "name": "absolute fail-closed global gate",
           "status": "APPROVED",
           "detail": "true"
         }
@@ -387,7 +387,7 @@
           "detail": "exit=0"
         },
         {
-          "name": "price explicitly experimental",
+          "name": "commercial model canonical and release gated",
           "status": "APPROVED",
           "detail": "true"
         }

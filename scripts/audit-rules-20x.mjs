@@ -1,6 +1,6 @@
 import {readFile,access} from 'node:fs/promises';
 const root=new URL('../',import.meta.url); const checks=[]; const add=(n,ok)=>checks.push({n,ok:Boolean(ok)}); const txt=(p)=>readFile(new URL(p,root),'utf8');
-const [env,gate,policy,fulfillment,checkout,webhook,vercel,home,offer,master,release]=await Promise.all(['.env.example','src/salesGate.mjs','src/agentPolicy.mjs','src/digitalFulfillment.mjs','src/http/checkoutAsaas.mjs','src/http/webhookAsaas.mjs','vercel.json','public/index.html','public/index.html','ZEVANORY_MASTER.md','src/release.mjs'].map(txt));
+const [env,gate,policy,fulfillment,checkout,checkoutMp,webhook,vercel,home,offer,master,release]=await Promise.all(['.env.example','src/salesGate.mjs','src/agentPolicy.mjs','src/digitalFulfillment.mjs','src/http/checkoutAsaas.mjs','src/http/checkoutMercadoPago.mjs','src/http/webhookAsaas.mjs','vercel.json','public/index.html','public/index.html','ZEVANORY_MASTER.md','src/release.mjs'].map(txt));
 add('01 global sales default false',env.includes('SALE_GLOBALLY_ENABLED=false'));
 add('02 pre-sale default false',env.includes('PRE_SALE_GATES_APPROVED=false'));
 add('03 checkout default false',env.includes('CHECKOUT_ENABLED=false'));
@@ -14,7 +14,7 @@ add('10 financial tools require commercial plus financial gates',policy.includes
 add('11 digital delivery requires paid and reconciled',fulfillment.includes("order_status||'').toLowerCase()==='paid'")&&fulfillment.includes('payment_confirmed===true'));
 add('12 public product download forbidden',fulfillment.includes('public_download:false'));
 add('13 checkout fails closed before provider call',checkout.includes("if(!gate.enabled&&!pilotToken) return json(res,503,{error:'sales_globally_blocked'")&&checkout.includes('authorizeCertificationPilotCheckout')&&checkout.indexOf('pilot=await authorizeCertificationPilotCheckout')<checkout.indexOf('checkout=await createAsaasCheckout'));
-add('14 checkout requires provider credentials and DB',checkout.includes('!process.env.DATABASE_URL||!process.env.ASAAS_API_KEY||!publicBase'));
+add('14 checkout requires provider credentials and DB',checkout.includes('!process.env.ASAAS_API_KEY||!publicBase')&&checkout.includes('if(!process.env.DATABASE_URL)')&&checkout.includes('preserveCheckoutIntent')&&checkout.includes('provider_called:false')&&checkoutMp.includes('!process.env.MERCADOPAGO_ACCESS_TOKEN||!publicBase')&&checkoutMp.includes('if(!process.env.DATABASE_URL)')&&checkoutMp.includes('preserveCheckoutIntent')&&checkoutMp.includes('provider_called:false'));
 add('15 webhook requires authenticated token',webhook.includes("error: 'webhook_auth_failed'"));
 add('16 webhook uses provider truth reconciliation',webhook.includes('fetchAsaasPayment')&&webhook.includes('paymentMatchesOrderWebhook'));
 add('17 CSP forbids unsafe inline and eval',vercel.includes("script-src 'self'")&&!vercel.includes("'unsafe-inline'")&&!vercel.includes("'unsafe-eval'"));
