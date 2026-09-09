@@ -4,6 +4,7 @@ import { safeBearerEqual } from '../src/security.mjs';
 import { evaluateProductCandidate, investmentSummary } from '../src/productIntelligence.mjs';
 import { collectMarketSignals, aggregateMarketSignals, marketResearchReadiness } from '../src/marketResearchFabric.mjs';
 import { ZEVANORY_PRODUCTS } from '../src/offerCatalog.mjs';
+import { researchPortfolio } from '../src/portfolioResearch.mjs';
 
 const json=(res,status,body)=>{res.statusCode=status;res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');return res.end(JSON.stringify(body));};
 const bearer=(req)=>String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'');
@@ -50,6 +51,12 @@ export default async function handler(req,res){
       if(body.force!==true){const cached=await cachedResearch(sql,subject,process.env.MARKET_RESEARCH_TTL_MINUTES);if(cached)return json(res,200,{ok:true,cached:true,research:cached.payload,created_at:cached.created_at});}
       const collected=await collectMarketSignals(subject,{sql,env:process.env});const aggregate=aggregateMarketSignals(subject,collected);await persistResearch(sql,subject,aggregate);
       return json(res,201,{ok:true,cached:false,research:aggregate});
+    }
+    if(body.type==='portfolio_research_run'){
+      const result=await researchPortfolio(ZEVANORY_PRODUCTS,{sql,env:process.env,concurrency:2});
+      const top=result.ranking[0]||null;
+      await sql.query(`insert into intelligence_snapshots(snapshot_id,snapshot_type,subject_ref,payload,evidence_count,organization_count,decision,score,observed_at) values($1,'product_ranking','portfolio',$2::jsonb,$3,$4,$5,$6,now())`,[randomUUID(),JSON.stringify(result),Number(top?.evidence?.verified_sources||0),Number(top?.evidence?.independent_organizations||0),top?.decision||null,top?.market_score??null]);
+      return json(res,201,{ok:true,portfolio:result});
     }
     if(body.type==='product_candidate'){
       let candidate=body.candidate||{};const subject=clean(candidate.market_query||candidate.name||candidate.product_id);
