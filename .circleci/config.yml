@@ -1,0 +1,50 @@
+version: 2.1
+
+jobs:
+  core:
+    docker:
+      - image: cimg/node:24.19
+    resource_class: small
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-npm-{{ checksum "package-lock.json" }}
+            - v1-npm-
+      - run: npm ci --no-audit --no-fund
+      - save_cache:
+          key: v1-npm-{{ checksum "package-lock.json" }}
+          paths:
+            - ~/.npm
+      - run: npm test
+      - run: npm run audit:3x
+      - run: npm run audit:security:10x
+      - run: npm run audit:final20x
+      - run: npm run supplychain:scan
+
+  deep:
+    docker:
+      - image: cimg/node:24.19
+    resource_class: medium
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-npm-{{ checksum "package-lock.json" }}
+      - run: npm ci --no-audit --no-fund
+      - run: npm run audit:10x
+      - run: npm run audit:30x
+      - run: npm run audit:architecture:20x
+      - run: npm run audit:obs:10x
+      - run: npm run audit:universal-fabric:3x
+
+workflows:
+  ci:
+    jobs:
+      - core
+      - deep:
+          requires:
+            - core
+          filters:
+            branches:
+              only: main
