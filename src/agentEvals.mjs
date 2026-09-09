@@ -3,6 +3,7 @@ const forbiddenClaims = [
 ];
 const toolByAction=Object.freeze({
   first_response:'schedule_follow_up',follow_up:'schedule_follow_up',qualify:'remember_fact',offer:'create_offer_draft',
+  creative:'create_creative',create_creative:'create_creative',
   message:'send_message',send_message:'send_message',respond:'send_message',publish:'publish_content',publish_content:'publish_content',
   checkout:'start_checkout',start_checkout:'start_checkout',refund:'refund_payment',refund_payment:'refund_payment',learn_outcomes:'refresh_outcome_learning',review:'get_command_center',
 });
@@ -22,9 +23,9 @@ export function evaluateAgentDecision({ decision = {}, context = {}, authorizati
   if(expectedTool==='send_message'&&!String(context?.lead?.contact_ref||'').trim()) issues.push('message_recipient_missing');
   if(expectedTool==='publish_content'&&!content(decision)) issues.push('publish_content_missing');
   if(expectedTool==='publish_content'&&!String(decision.channel||context?.lead?.channel||'').trim()) issues.push('publish_channel_missing');
-  if(expectedTool==='publish_content'&&String(decision.channel||context?.lead?.channel||'').toLowerCase()==='instagram'&&!/^https:\/\//i.test(String(decision.media_url||''))) issues.push('instagram_media_missing');
-  if(expectedTool==='publish_content'&&String(decision.channel||context?.lead?.channel||'').toLowerCase()==='youtube'&&!/^https:\/\//i.test(String(decision.media_url||''))) issues.push('youtube_media_missing');
-  if(expectedTool==='publish_content'&&String(decision.channel||context?.lead?.channel||'').toLowerCase()==='youtube'&&!String(decision.title||'').trim()) issues.push('youtube_title_missing');
+  if(expectedTool==='publish_content'&&decision.auto_creative!==true&&String(decision.channel||context?.lead?.channel||'').toLowerCase()==='instagram'&&!/^https:\/\//i.test(String(decision.media_url||''))) issues.push('instagram_media_missing');
+  if(expectedTool==='publish_content'&&decision.auto_creative!==true&&String(decision.channel||context?.lead?.channel||'').toLowerCase()==='youtube'&&!/^https:\/\//i.test(String(decision.media_url||''))) issues.push('youtube_media_missing');
+  if(expectedTool==='publish_content'&&decision.auto_creative!==true&&String(decision.channel||context?.lead?.channel||'').toLowerCase()==='youtube'&&!String(decision.title||'').trim()) issues.push('youtube_title_missing');
   if(expectedTool==='start_checkout'&&!String(context?.lead?.session_id||'').trim()) issues.push('checkout_session_missing');
   if(expectedTool==='refund_payment'&&!String(decision.order_id||'').trim()) issues.push('refund_order_missing');
   if(expectedTool==='refresh_outcome_learning'&&String(context?.job_type||'')!=='learning_review') issues.push('learning_job_required');

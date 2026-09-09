@@ -12,6 +12,7 @@ import { evaluateProgressiveAutonomy } from './autonomyPolicy.mjs';
 import { evaluateContentNovelty } from './contentDedup.mjs';
 import { buildLiveActionPlan, persistLiveActionPlan, transitionLiveActionPlan } from './liveActionPlan.mjs';
 import { selectPaymentProvider } from './paymentProviders.mjs';
+import { createCreativeSpec, creativeAssetUrl } from './creativeEngine.mjs';
 
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const nbaExecutableTools=new Set(['schedule_follow_up','send_message','start_checkout']);
@@ -68,6 +69,12 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
     const learning=await refreshOutcomeLearning(sql);
     return {refreshed:true,learning_ready:Boolean(learning?.decision?.ready),reason:learning?.decision?.reason||'unknown',total_matured:Number(learning?.decision?.total_matured)||0};
   }
+  if(tool==='create_creative'){
+    const channel=String(decision.channel||lead?.channel||'instagram').toLowerCase();
+    const spec=createCreativeSpec({offerId:decision.offer_id||'OFFER-0001',channel,hook:decision.hook||decision.title||decision.content||decision.message,body:decision.body||decision.content||decision.message,cta:decision.cta||'Saiba mais',objective:decision.objective||'awareness'});
+    const video=['youtube','tiktok'].includes(channel);
+    return {creative_id:spec.creative_id,spec,image_url:creativeAssetUrl(spec,'png',env),video_url:video?creativeAssetUrl(spec,'webm',env):null,publishable:false};
+  }
   if(tool==='create_offer_draft') return {draft_only:true,commercial_action:false};
   if(tool==='send_message'){
     if(!lead?.contact_ref) throw new Error('recipient_unavailable');
@@ -81,7 +88,10 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
     const content=String(decision.content||decision.message||'').trim(); if(!content) throw new Error('publish_content_required');
     const novelty=await evaluateContentNovelty(sql,{content,channel});
     if(!novelty.allowed) throw new Error(novelty.reason);
-    return enqueueOutbox(sql,{aggregateType:'content',aggregateId:runId,eventType:'publish_content',destination:`channel:${channel}`,payload:{content:content.slice(0,8000),title:String(decision.title||'').slice(0,240),description:String(decision.description||content).slice(0,5000),media_url:String(decision.media_url||'').slice(0,2000),privacy_status:String(decision.privacy_status||'private').slice(0,20),made_for_kids:decision.made_for_kids===true,dedup_fingerprint:novelty.fingerprint,dedup_policy:novelty.policy},idempotencyKey:`agent:${runId}:publish_content`,traceId,runId});
+    let mediaUrl=String(decision.media_url||'').trim(),creativeId=null;
+    if(!mediaUrl&&decision.auto_creative===true){const spec=createCreativeSpec({offerId:decision.offer_id||'OFFER-0001',channel,hook:decision.hook||decision.title||content,body:decision.body||content,cta:decision.cta||'Saiba mais',objective:decision.objective||'conversion'});creativeId=spec.creative_id;mediaUrl=creativeAssetUrl(spec,['youtube','tiktok'].includes(channel)?'webm':'png',env);}
+    const title=String(decision.title||decision.hook||content).slice(0,240);
+    return enqueueOutbox(sql,{aggregateType:'content',aggregateId:runId,eventType:'publish_content',destination:`channel:${channel}`,payload:{content:content.slice(0,8000),title,description:String(decision.description||content).slice(0,5000),media_url:mediaUrl.slice(0,4000),creative_id:creativeId,privacy_status:String(decision.privacy_status||'private').slice(0,20),made_for_kids:decision.made_for_kids===true,dedup_fingerprint:novelty.fingerprint,dedup_policy:novelty.policy},idempotencyKey:`agent:${runId}:publish_content`,traceId,runId});
   }
   if(tool==='start_checkout'){
     if(!lead?.session_id) throw new Error('checkout_session_unavailable');

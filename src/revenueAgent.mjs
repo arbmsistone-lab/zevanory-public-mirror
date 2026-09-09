@@ -12,6 +12,7 @@ export function chooseTool(decision = {}) {
   return ({
     first_response:'schedule_follow_up', follow_up:'schedule_follow_up', qualify:'remember_fact', offer:'create_offer_draft',
     message:'send_message', send_message:'send_message', respond:'send_message',
+    creative:'create_creative', create_creative:'create_creative',
     publish:'publish_content', publish_content:'publish_content',
     checkout:'start_checkout', start_checkout:'start_checkout',
     refund:'refund_payment', refund_payment:'refund_payment',

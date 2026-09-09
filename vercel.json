@@ -3,6 +3,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/creative-asset",
+      "destination": "/api/config?view=creative_asset"
+    },
+    {
       "source": "/api/live",
       "destination": "/api/status?probe=live"
     },

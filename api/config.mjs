@@ -11,6 +11,10 @@ import { certificationPilotStatus } from '../src/certificationPilot.mjs';
 import { verifyMercadoLivreLive } from '../src/mercadoLivreVerification.mjs';
 import { brandIdentityReadiness } from '../src/brandIdentityReadiness.mjs';
 import { isPublicDeploymentRequest, safeBearerEqual } from '../src/security.mjs';
+import { verifyCreativeToken, createCreativeSpec, creativeAssetUrl } from '../src/creativeEngine.mjs';
+import { renderCreativePng, renderCreativeWebm } from '../src/creativeRenderer.mjs';
+
+export const config={maxDuration:30};
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -19,6 +23,12 @@ export default async function handler(req, res) {
   }
   const url=new URL(req.url||'/api/config','https://zevanory.api.br');
   const view=String(url.searchParams.get('view')||'');
+  if(view==='creative_asset'){
+    const token=verifyCreativeToken(url.searchParams.get('p'),url.searchParams.get('s'),process.env);
+    if(!token){res.statusCode=403;res.setHeader('cache-control','no-store');return res.end('invalid_creative_token');}
+    try{const body=token.format==='webm'?await renderCreativeWebm(token.spec):await renderCreativePng(token.spec);res.statusCode=200;res.setHeader('content-type',token.format==='webm'?'video/webm':'image/png');res.setHeader('content-length',String(body.length));res.setHeader('cache-control','public, max-age=31536000, immutable');res.setHeader('x-content-type-options','nosniff');res.setHeader('x-creative-id',token.spec.creative_id);return res.end(body);}catch(error){console.error('creative_render_failed',{creative_id:token.spec.creative_id,message:String(error?.message||'render_failed')});res.statusCode=503;res.setHeader('cache-control','no-store');return res.end('creative_render_unavailable');}
+  }
+  if(view==='creative_sample'){const spec=createCreativeSpec({offerId:'OFFER-0001',channel:'instagram',hook:'Automacao com controle',body:'IA, execucao segura e evidencia real.',cta:'Conheca a ZEVANORY'});res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;return res.end(JSON.stringify({service:'ZEVANORY',creative_id:spec.creative_id,png_url:creativeAssetUrl(spec,'png',process.env),webm_url:creativeAssetUrl({...spec,channel:'youtube',width:1080,height:1920},'webm',process.env)}));}
   if(isPublicDeploymentRequest(req)&&['mercadolivre-audit','lifecycle','activation'].includes(view)){const expected=String(process.env.OPERATOR_TOKEN||process.env.FULFILLMENT_OPERATOR_TOKEN||'');const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'');if(!safeBearerEqual(expected,provided)){res.statusCode=401;return res.end(JSON.stringify({error:'operator_auth_required'}));}}
   if(url.searchParams.get('view')==='mercadolivre-audit'){
     if(!process.env.DATABASE_URL){res.statusCode=503;return res.end(JSON.stringify({error:'database_required'}));}
