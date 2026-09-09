@@ -9,7 +9,9 @@ const sessionKey='zevanory_session_id';
 const getSessionId=()=>{let id=localStorage.getItem(sessionKey);if(!/^[0-9a-f-]{36}$/i.test(id||'')){id=crypto.randomUUID();localStorage.setItem(sessionKey,id);}return id;};
 async function trackPageView(){
   try{
-    await fetch('/api/events/public',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({event_id:crypto.randomUUID(),name:'page_view',session_id:getSessionId(),channel:'central'}),keepalive:true});
+    const q=new URLSearchParams(location.search);
+    const attribution={campaign_id:(q.get('zc')||'').slice(0,32),variant_id:(q.get('zv')||'').slice(0,40),creative_id:(q.get('zi')||'').slice(0,40)};
+    await fetch('/api/events/public',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({event_id:crypto.randomUUID(),name:'page_view',session_id:getSessionId(),channel:'central',...attribution}),keepalive:true});
   }catch{}
 }
 

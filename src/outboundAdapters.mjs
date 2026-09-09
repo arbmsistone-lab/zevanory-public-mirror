@@ -14,6 +14,7 @@ const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new E
 const ensureGlobalGates=(env,gateEvaluator=salesGate)=>{if(!gateEvaluator(env).enabled)throw new Error('commercial_gates_closed');};
 const ensureHttps=(value,code)=>{const v=required(value,code);let u;try{u=new URL(v);}catch{throw new Error(code);}if(u.protocol!=='https:')throw new Error(code);return v;};
 const requestJson=(fetchImpl,url,options,success=[200])=>requestProviderJson(fetchImpl,url,options,success,{timeoutMs:15000});
+const contentWithLanding=(text,landing,max)=>{const base=String(text||'').trim(),url=String(landing||'').trim();let valid='';try{const u=new URL(url);if(u.protocol==='https:')valid=u.toString();}catch{}const joined=valid&&!base.includes(valid)?`${base}\n\n${valid}`:base;return joined.slice(0,max);};
 
 export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetch,commercialGate=salesGate,channelProviders={}}={}){
   if(typeof fetchImpl!=='function')throw new Error('fetch_required');
@@ -39,7 +40,7 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
     },
     'channel:facebook':async(event)=>{
       ensureGlobalGates(env,commercialGate);const token=required(env.META_ACCESS_TOKEN,'meta_access_token_missing');
-      const pageId=required(env.META_PAGE_ID,'meta_page_id_missing');const message=required(event.payload?.content,'facebook_content_missing');
+      const pageId=required(env.META_PAGE_ID,'meta_page_id_missing');const message=required(contentWithLanding(event.payload?.content,event.payload?.landing_url,60000),'facebook_content_missing',60000);
       const body=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(pageId)}/feed`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({message})},[200]);
       const id=String(body?.id||'');if(!id)throw providerAcceptanceMissing('facebook_post_id_missing');
       return Object.freeze({provider:'meta_facebook',accepted:true,provider_post_id:id,confirmation:'provider_lookup_or_webhook_required'});
@@ -47,7 +48,7 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
     'channel:instagram':async(event)=>{
       ensureGlobalGates(env,commercialGate);const token=required(env.META_ACCESS_TOKEN,'meta_access_token_missing');
       const igId=required(env.INSTAGRAM_BUSINESS_ACCOUNT_ID,'instagram_business_account_id_missing');
-      const imageUrl=ensureHttps(event.payload?.media_url,'instagram_media_url_required');const caption=String(event.payload?.content||'').slice(0,2200);
+      const imageUrl=ensureHttps(event.payload?.media_url,'instagram_media_url_required');const caption=contentWithLanding(event.payload?.content,event.payload?.landing_url,2200);
       const container=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(igId)}/media`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({image_url:imageUrl,caption})},[200]);
       const creationId=String(container?.id||'');if(!creationId)throw providerAcceptanceMissing('instagram_container_id_missing');
       const published=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(igId)}/media_publish`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({creation_id:creationId})},[200]);

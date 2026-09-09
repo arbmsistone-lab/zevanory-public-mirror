@@ -11,8 +11,9 @@ import { certificationPilotStatus } from '../src/certificationPilot.mjs';
 import { verifyMercadoLivreLive } from '../src/mercadoLivreVerification.mjs';
 import { brandIdentityReadiness } from '../src/brandIdentityReadiness.mjs';
 import { isPublicDeploymentRequest, safeBearerEqual } from '../src/security.mjs';
-import { verifyCreativeToken, createCreativeSpec, creativeAssetUrl } from '../src/creativeEngine.mjs';
-import { renderCreativePng, renderCreativeWebm } from '../src/creativeRenderer.mjs';
+import { verifyCreativeToken, creativeAssetUrl, creativeAssetEtag } from '../src/creativeEngine.mjs';
+import { selectCreativeVariant } from '../src/creativeIntelligence.mjs';
+import { renderCreativeAsset } from '../src/creativeRenderer.mjs';
 
 export const config={maxDuration:30};
 
@@ -26,9 +27,20 @@ export default async function handler(req, res) {
   if(view==='creative_asset'){
     const token=verifyCreativeToken(url.searchParams.get('p'),url.searchParams.get('s'),process.env);
     if(!token){res.statusCode=403;res.setHeader('cache-control','no-store');return res.end('invalid_creative_token');}
-    try{const body=token.format==='webm'?await renderCreativeWebm(token.spec):await renderCreativePng(token.spec);res.statusCode=200;res.setHeader('content-type',token.format==='webm'?'video/webm':'image/png');res.setHeader('content-length',String(body.length));res.setHeader('cache-control','public, max-age=31536000, immutable');res.setHeader('x-content-type-options','nosniff');res.setHeader('x-creative-id',token.spec.creative_id);return res.end(body);}catch(error){console.error('creative_render_failed',{creative_id:token.spec.creative_id,message:String(error?.message||'render_failed')});res.statusCode=503;res.setHeader('cache-control','no-store');return res.end('creative_render_unavailable');}
+    const etag=creativeAssetEtag(token.spec,token.format);if(String(req.headers?.['if-none-match']||'')===etag){res.statusCode=304;res.setHeader('etag',etag);res.setHeader('cache-control','public, max-age=31536000, s-maxage=31536000, immutable');return res.end();}
+    try{const body=await renderCreativeAsset(token.spec,token.format);res.statusCode=200;res.setHeader('content-type',token.format==='webm'?'video/webm':'image/png');res.setHeader('content-length',String(body.length));res.setHeader('cache-control','public, max-age=31536000, s-maxage=31536000, immutable');res.setHeader('etag',etag);res.setHeader('x-content-type-options','nosniff');res.setHeader('x-creative-id',token.spec.creative_id);return res.end(body);}catch(error){console.error('creative_render_failed',{creative_id:token.spec.creative_id,message:String(error?.message||'render_failed')});res.statusCode=503;res.setHeader('cache-control','no-store');return res.end('creative_render_unavailable');}
   }
-  if(view==='creative_sample'){const origin=`${String(req.headers?.['x-forwarded-proto']||'https').split(',')[0]}://${String(req.headers?.['x-forwarded-host']||req.headers?.host||'zevanory.api.br').split(',')[0]}`;const sampleEnv={...process.env,PUBLIC_BASE_URL:origin};const imageSpec=createCreativeSpec({offerId:'OFFER-0001',channel:'instagram',hook:'Automacao com controle',body:'IA, execucao segura e evidencia real.',cta:'Conheca a ZEVANORY'});const videoSpec=createCreativeSpec({offerId:'OFFER-0001',channel:'youtube',hook:'Automacao com controle',body:'IA, execucao segura e evidencia real.',cta:'Conheca a ZEVANORY'});res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;return res.end(JSON.stringify({service:'ZEVANORY',image_creative_id:imageSpec.creative_id,video_creative_id:videoSpec.creative_id,png_url:creativeAssetUrl(imageSpec,'png',sampleEnv),webm_url:creativeAssetUrl(videoSpec,'webm',sampleEnv)}));}
+  if(view==='creative_sample'){
+    const origin=`${String(req.headers?.['x-forwarded-proto']||'https').split(',')[0]}://${String(req.headers?.['x-forwarded-host']||req.headers?.host||'zevanory.api.br').split(',')[0]}`;
+    const sampleEnv={...process.env,PUBLIC_BASE_URL:origin};
+    const common={offerId:'OFFER-0001',hook:'Automacao com controle',body:'IA, execucao segura e evidencia real.',cta:'Conheca a ZEVANORY'};
+    const image=selectCreativeVariant({...common,channel:'instagram'}),video=selectCreativeVariant({...common,channel:'youtube'});
+    const imageSpec=image.winner.spec,videoSpec=video.winner.spec;
+    const summary=x=>x.ranking.map(v=>({creative_id:v.spec.creative_id,variant_id:v.variant_id,layout:v.spec.layout,quality_score:v.quality_score,selection_score:v.selection_score,observed_ready:v.observed_ready}));
+    res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;
+    return res.end(JSON.stringify({service:'ZEVANORY',engine:'creative-intelligence-v1',image_selection_basis:image.selection_basis,video_selection_basis:video.selection_basis,image_variants:summary(image),video_variants:summary(video),image_creative_id:imageSpec.creative_id,video_creative_id:videoSpec.creative_id,png_url:creativeAssetUrl(imageSpec,'png',sampleEnv),webm_url:creativeAssetUrl(videoSpec,'webm',sampleEnv)}));
+  }
+
   if(isPublicDeploymentRequest(req)&&['mercadolivre-audit','lifecycle','activation'].includes(view)){const expected=String(process.env.OPERATOR_TOKEN||process.env.FULFILLMENT_OPERATOR_TOKEN||'');const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'');if(!safeBearerEqual(expected,provided)){res.statusCode=401;return res.end(JSON.stringify({error:'operator_auth_required'}));}}
   if(url.searchParams.get('view')==='mercadolivre-audit'){
     if(!process.env.DATABASE_URL){res.statusCode=503;return res.end(JSON.stringify({error:'database_required'}));}

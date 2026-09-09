@@ -1,7 +1,8 @@
-﻿import { ProviderDeliveryError } from './providerDelivery.mjs';
+import { ProviderDeliveryError } from './providerDelivery.mjs';
 const clean=(v,max=8000)=>String(v??'').trim().slice(0,max);
 const httpsUrl=(value)=>{try{const u=new URL(clean(value,3000));return u.protocol==='https:'?u.toString():'';}catch{return '';}};
 const channelKey=(channel)=>channel==='tiktok'?'BUFFER_TIKTOK_CHANNEL_ID':channel==='linkedin'?'BUFFER_LINKEDIN_CHANNEL_ID':'';
+const withLanding=(text,landing,max=5000)=>{const base=clean(text,max),url=httpsUrl(landing);return clean(url&&!base.includes(url)?`${base}\n\n${url}`:base,max);};
 const inferAsset=(url,explicit='')=>{
   const kind=clean(explicit,20).toLowerCase();
   if(kind==='video'||kind==='image')return kind;
@@ -15,7 +16,7 @@ export async function publishViaBuffer({channel,event,env=process.env,fetchImpl=
   const key=channelKey(channel);if(!key)throw new Error('buffer_channel_unsupported');
   const token=clean(env.BUFFER_API_KEY,4000);if(!token)throw new Error('buffer_api_key_missing');
   const channelId=clean(env[key],300);if(!channelId)throw new Error(`buffer_${channel}_channel_id_missing`);
-  const text=clean(event?.payload?.content||event?.payload?.text,5000);
+  const text=withLanding(event?.payload?.content||event?.payload?.text,event?.payload?.landing_url,5000);
   const media=httpsUrl(event?.payload?.media_url);
   if(channel==='tiktok'&&!media)throw new Error('buffer_tiktok_media_required');
   const input={text,channelId,schedulingType:'automatic',mode:'addToQueue'};

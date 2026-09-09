@@ -14,6 +14,11 @@ export function normalizePublicEvent(body) {
     experiment_id: PROJECT.experimentId,
     offer_id: PROJECT.offerId,
     channel,
-    source: 'web'
+    source: 'web',
+    payload:Object.freeze({
+      campaign_id:sanitizeText(body.campaign_id,32),
+      variant_id:sanitizeText(body.variant_id,40),
+      creative_id:sanitizeText(body.creative_id,40)
+    })
   });
 }
