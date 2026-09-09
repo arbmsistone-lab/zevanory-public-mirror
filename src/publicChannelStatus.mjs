@@ -30,3 +30,13 @@ export function publicChannelStatus(env = process.env) {
     })];
   })));
 }
+
+export function publicChannelReadinessSummary(env = process.env) {
+  const state = publicChannelStatus(env);
+  return Object.freeze(Object.fromEntries(Object.entries(state).map(([name, item]) => [name, Object.freeze({
+    configured: Boolean(item.configured), api_configured: Boolean(item.api_configured),
+    alternate_api_configured: Boolean(item.alternate_api_configured), contingency_ready: Boolean(item.contingency_ready),
+    operational_ready: Boolean(item.operational_ready), operational_mode: item.operational_mode,
+    commercial: Boolean(item.commercial),
+  })])));
+}
