@@ -1,4 +1,4 @@
-import http from 'node:http';
+﻿import http from 'node:http';
 import { handleAsNodeRequest } from 'cloudflare:node';
 import configHandler from '../api/config.mjs';
 import statusHandler from '../api/status.mjs';
@@ -96,6 +96,20 @@ async function delegatePaymentRequest(request,env){
   const init={method:request.method,headers,redirect:'manual'};if(!['GET','HEAD'].includes(request.method))init.body=request.body;
   try{return await fetch(new Request(target,init));}catch{return new Response(JSON.stringify({error:'payment_runtime_unavailable',preserved:true}),{status:503,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
 }
+function hydrateRuntimeConfig(env) {
+  const raw = env?.ZEVANORY_RUNTIME_CONFIG;
+  if (!raw) return;
+  let config = raw;
+  if (typeof raw === 'string') {
+    try { config = JSON.parse(raw); } catch { return; }
+  }
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return;
+  for (const [key, value] of Object.entries(config)) {
+    if (value === undefined || value === null) continue;
+    if (process.env[key] === undefined) process.env[key] = String(value);
+  }
+  if (process.env.META_APP_SECRET === undefined && process.env.META_APP_SECRET01) process.env.META_APP_SECRET = process.env.META_APP_SECRET01;
+}
 function withSecurityHeaders(response) {
   const headers = new Headers(response.headers);
   headers.set('content-security-policy', "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'");
@@ -111,6 +125,7 @@ function withSecurityHeaders(response) {
 
 export default {
   async fetch(request, env) {
+    hydrateRuntimeConfig(env);
     const url = new URL(request.url);
     const delegatedPayment=await delegatePaymentRequest(request,env);if(delegatedPayment)return delegatedPayment;
     if (url.pathname === '/private/artifacts/issue') return handleArtifactIssue(request, env);
@@ -126,3 +141,5 @@ export default {
     return withSecurityHeaders(response);
   },
 };
+
+
