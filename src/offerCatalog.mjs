@@ -4,6 +4,13 @@ export const ARBM_SIST_OFFER = Object.freeze({
   id: 'OFFER-0001',
   experiment_id: 'EXP-0001',
   product: 'ARBM SIST',
+  commercial_name: 'ARBM SIST - by ZEVANORY',
+  brand: 'ZEVANORY',
+  portfolio_role: 'primary_product',
+  primary: true,
+  sellable: true,
+  artifact_materialized: true,
+  status: 'ready_secure_delivery_release_gated_not_published',
   version: '10.0.0',
   offer_type: 'digital_product',
   delivery_mode: 'digital',
@@ -34,19 +41,21 @@ export const ARBM_SIST_OFFER = Object.freeze({
   secondary_channels: Object.freeze(['tiktok','facebook','email','google','linkedin','nuvemshop','mercado_livre']),
 });
 export const ZEVANORY_PRODUCTS = Object.freeze([
-  Object.freeze({sku:'ZEV-IA-011',product:'ZEVANORY IA na Prática',commercial_name:'ZEVANORY IA na Prática - by ARBM',brand:'ZEVANORY',endorsed_by:'ARBM',brand_signature:'by ARBM',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_IA_na_Pratica_v1.1.zip',artifact_sha256:'afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae',table_price_brl:197,pilot_price_brl:147,price_status:'pilot_hypothesis_not_validated',primary:false,status:'ready_for_pilot_not_published'}),
-  Object.freeze({sku:'ZEV-VEN-011',product:'ZEVANORY Vendas na Prática',commercial_name:'ZEVANORY Vendas na Prática - by ARBM',brand:'ZEVANORY',endorsed_by:'ARBM',brand_signature:'by ARBM',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_Vendas_na_Pratica_v1.1.zip',artifact_sha256:'97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070',table_price_brl:197,pilot_price_brl:147,price_status:'pilot_hypothesis_not_validated',primary:false,status:'ready_for_pilot_not_published'}),
-  Object.freeze({sku:'ZEV-LCX-011',product:'ZEVANORY Lucro & Caixa',commercial_name:'ZEVANORY Lucro & Caixa - by ARBM',brand:'ZEVANORY',endorsed_by:'ARBM',brand_signature:'by ARBM',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_Lucro_e_Caixa_v1.1.zip',artifact_sha256:'48c95a9423a05cb7776301e91d0a9c82051b2bb67f68d7d06464ccd80fdd7b8f',table_price_brl:247,pilot_price_brl:197,price_status:'pilot_hypothesis_not_validated',primary:false,status:'ready_for_pilot_not_published'}),
-  Object.freeze({sku:'ZEV-CMB-011',product:'ZEVANORY Combo IA + Vendas',commercial_name:'ZEVANORY Combo IA + Vendas - by ARBM',brand:'ZEVANORY',endorsed_by:'ARBM',brand_signature:'by ARBM',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_Combo_IA_e_Vendas_v1.1.zip',artifact_sha256:'99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea',table_price_brl:297,pilot_price_brl:247,price_status:'pilot_hypothesis_not_validated',primary:false,status:'ready_for_pilot_not_published'}),
-  Object.freeze({sku:'ZEV-NGC-011',product:'ZEVANORY Negócio Completo',commercial_name:'ZEVANORY Negócio Completo - by ARBM',brand:'ZEVANORY',endorsed_by:'ARBM',brand_signature:'by ARBM',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_Negocio_Completo_v1.1.zip',artifact_sha256:'8a0d44d43662367149e84f11817485799fa361acdc65ddea319ca3fa79c2571e',table_price_brl:397,pilot_price_brl:347,price_status:'pilot_hypothesis_not_validated',primary:true,status:'primary_offer_ready_for_pilot_not_published'}),
+  Object.freeze({sku:'ZEV-IA-011',product:'ZEVANORY IA na Prática',commercial_name:'ZEVANORY IA na Prática - by ARBM',brand:'ZEVANORY',endorsed_by:'ARBM',brand_signature:'by ARBM',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_IA_na_Pratica_v1.1.zip',artifact_sha256:'8c40bdbb0b3e94a6383456645c8106f7a9c8045c97ef901a049bd70ea7bbe8ee',table_price_brl:197,pilot_price_brl:147,price_status:'pilot_hypothesis_not_validated',primary:false,sellable:true,artifact_materialized:true,status:'catalogued_artifact_pending_not_sellable_not_published'}),
+  Object.freeze({sku:'ZEV-VEN-011',product:'ZEVANORY Vendas na Prática',commercial_name:'ZEVANORY Vendas na Prática - by ARBM',brand:'ZEVANORY',endorsed_by:'ARBM',brand_signature:'by ARBM',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_Vendas_na_Pratica_v1.1.zip',artifact_sha256:'6b56d06b102a9a0e14ff34ff1efdef30c188158f605a71517283e99e82205db3',table_price_brl:197,pilot_price_brl:147,price_status:'pilot_hypothesis_not_validated',primary:false,sellable:true,artifact_materialized:true,status:'catalogued_artifact_pending_not_sellable_not_published'}),
+  Object.freeze({sku:'ZEV-LCX-011',product:'ZEVANORY Lucro & Caixa',commercial_name:'ZEVANORY Lucro & Caixa - by ARBM',brand:'ZEVANORY',endorsed_by:'ARBM',brand_signature:'by ARBM',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_Lucro_e_Caixa_v1.1.zip',artifact_sha256:'f96b274edfe01708f01b64391e2910dbf31e0249e6465451766532f341982d30',table_price_brl:247,pilot_price_brl:197,price_status:'pilot_hypothesis_not_validated',primary:false,sellable:true,artifact_materialized:true,status:'catalogued_artifact_pending_not_sellable_not_published'}),
+  Object.freeze({sku:'ZEV-CMB-011',product:'ZEVANORY Combo IA + Vendas',commercial_name:'ZEVANORY Combo IA + Vendas - by ARBM',brand:'ZEVANORY',endorsed_by:'ARBM',brand_signature:'by ARBM',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_Combo_IA_e_Vendas_v1.1.zip',artifact_sha256:'882fce01080ef7608dc0bf6ac8688cee6a380d315e214995c7357c1842447d60',table_price_brl:297,pilot_price_brl:247,price_status:'pilot_hypothesis_not_validated',primary:false,sellable:true,artifact_materialized:true,status:'catalogued_artifact_pending_not_sellable_not_published'}),
+  Object.freeze({sku:'ZEV-NGC-011',product:'ZEVANORY Negócio Completo',commercial_name:'ZEVANORY Negócio Completo - by ARBM',brand:'ZEVANORY',endorsed_by:'ARBM',brand_signature:'by ARBM',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_Negocio_Completo_v1.1.zip',artifact_sha256:'730c32ab1546c0333a44dfabd1c80228506e14ffc4bc19372c78d48a0083e1e4',table_price_brl:397,pilot_price_brl:347,price_status:'pilot_hypothesis_not_validated',primary:false,portfolio_role:'content_bundle',sellable:true,artifact_materialized:true,status:'catalogued_artifact_pending_not_sellable_not_published'}),
 ]);
+
+export const ZEVANORY_PORTFOLIO = Object.freeze([ARBM_SIST_OFFER, ...ZEVANORY_PRODUCTS]);
 
 export function getZevanoryProduct(sku) {
   return ZEVANORY_PRODUCTS.find(item=>item.sku===String(sku||'').trim().toUpperCase())||null;
 }
 
 export function publicProductCatalog() {
-  return Object.freeze(ZEVANORY_PRODUCTS.map(({artifact_sha256,...item})=>Object.freeze({...item,artifact_sha256})));
+  return Object.freeze(ZEVANORY_PORTFOLIO.map(({artifact_sha256,...item})=>Object.freeze({...item,artifact_sha256})));
 }
 
 export function publicOffer(env=process.env) {
@@ -66,6 +75,6 @@ export function resolveCheckoutOffer(id) {
   const key=String(id||PROJECT.offerId).trim().toUpperCase();
   if(key===ARBM_SIST_OFFER.id) return Object.freeze({id:ARBM_SIST_OFFER.id,product:ARBM_SIST_OFFER.product,version:ARBM_SIST_OFFER.version,price_brl:ARBM_SIST_OFFER.price_brl,artifact_name:ARBM_SIST_OFFER.artifact_name,artifact_sha256:ARBM_SIST_OFFER.artifact_sha256});
   const product=getZevanoryProduct(key);
-  if(!product) return null;
+  if(!product||product.sellable!==true||product.artifact_materialized!==true) return null;
   return Object.freeze({id:product.sku,product:product.product,commercial_name:product.commercial_name,brand:product.brand,endorsed_by:product.endorsed_by,brand_signature:product.brand_signature,version:product.version,price_brl:product.pilot_price_brl,artifact_name:product.artifact_name,artifact_sha256:product.artifact_sha256});
 }

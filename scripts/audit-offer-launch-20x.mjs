@@ -1,6 +1,6 @@
 import { readFile, access } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
-import { ZEVANORY_PRODUCTS, getZevanoryProduct, publicOffer } from '../src/offerCatalog.mjs';
+import { ARBM_SIST_OFFER, ZEVANORY_PRODUCTS, ZEVANORY_PORTFOLIO, publicOffer } from '../src/offerCatalog.mjs';
 import { digitalFulfillmentReadiness } from '../src/digitalFulfillment.mjs';
 import { RELEASE } from '../src/release.mjs';
 const root=new URL('../',import.meta.url); const checks=[];
@@ -9,12 +9,12 @@ const exists=async p=>{try{await access(new URL(p,root));return true}catch{retur
 const add=(name,ok)=>checks.push({name,ok:Boolean(ok)});
 const run=(...args)=>spawnSync(process.execPath,args,{cwd:root,encoding:'utf8'}).status===0;
 const html=await text('public/index.html'); const js=await text('public/index.js'); const vercel=await text('vercel.json'); const experiment=await text('experiments/EXP-0001-oferta-piloto.md');
-const primary=getZevanoryProduct('ZEV-NGC-011');
+const primary=ARBM_SIST_OFFER;
 const blockedRuntime=publicOffer({ARBM_SIST_CODE_SIGNING_READY:'false',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'false'});
 const releasableRuntime=publicOffer({ARBM_SIST_CODE_SIGNING_READY:'true',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'true'});
-add('01 five certified ZEVANORY products',ZEVANORY_PRODUCTS.length===5);
-add('02 canonical primary offer',primary?.primary===true&&primary?.sku==='ZEV-NGC-011');
-add('03 primary version and prices',primary?.version==='1.1'&&primary?.table_price_brl===397&&primary?.pilot_price_brl===347);
+add('01 five certified content products plus ARBM SIST portfolio',ZEVANORY_PRODUCTS.length===5&&ZEVANORY_PORTFOLIO.length===6);
+add('02 canonical primary offer',primary?.primary===true&&primary?.id==='OFFER-0001'&&primary?.brand==='ZEVANORY');
+add('03 primary version and price',primary?.version==='10.0.0'&&primary?.price_brl===1197);
 add('04 certified handoff hash pinned',/^[0-9a-f]{64}$/i.test(primary?.artifact_sha256||''));
 add('05 digital product no inventory',primary?.offer_type==='digital_product'&&primary?.delivery_mode==='digital');
 add('06 secure artifact commercially releasable only with both proofs',blockedRuntime.id==='OFFER-0001'&&blockedRuntime.artifact_commercially_releasable===false&&releasableRuntime.id==='OFFER-0001'&&releasableRuntime.code_signing_ready===true&&releasableRuntime.public_release_approved===true&&releasableRuntime.artifact_commercially_releasable===true);
