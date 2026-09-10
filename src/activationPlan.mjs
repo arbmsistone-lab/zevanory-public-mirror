@@ -1,4 +1,4 @@
-﻿import { evaluateActivationReadiness } from './activationReadiness.mjs';
+import { evaluateActivationReadiness } from './activationReadiness.mjs';
 import { salesGate } from './salesGate.mjs';
 
 const requirement=(category,envKeys,inputClass='external')=>Object.freeze({category,env_keys:Object.freeze(envKeys),input_class:inputClass});
@@ -35,11 +35,12 @@ export const ACTIVATION_REQUIREMENTS=Object.freeze({
   affiliate_privacy_url_invalid:requirement('affiliate',['AFFILIATE_PRIVACY_URL'],'decision'),
 });
 const enabled=(value)=>String(value||'').toLowerCase()==='true';
-export const CUTOVER_ORDER=Object.freeze(['verify_external_inputs','certify_sales_lifecycle_39x10','verify_lifecycle_audit_10x','verify_production_parity','approve_lifecycle_release','PRE_SALE_GATES_APPROVED=true','ABSOLUTE_RELEASE_APPROVED=true','enable_required_channel_flags','verify_fail_closed_before_global_unlock','SALE_GLOBALLY_ENABLED=true','verify_live_transaction_and_reconciliation']);
+export const CUTOVER_ORDER=Object.freeze(['verify_external_inputs','certify_sales_lifecycle_39x10','verify_lifecycle_audit_10x','verify_production_parity','approve_lifecycle_release','PRE_SALE_GATES_APPROVED=true','ABSOLUTE_RELEASE_APPROVED=true','enable_required_channel_flags','verify_fail_closed_before_global_unlock','SALE_GLOBALLY_ENABLED=true']);
+export const POST_GO_OBSERVABILITY=Object.freeze(['verify_live_transaction_and_reconciliation','monitor_real_unit_economics','monitor_channel_learning']);
 export const ROLLBACK_ORDER=Object.freeze(['SALE_GLOBALLY_ENABLED=false','CHECKOUT_ENABLED=false','WHATSAPP_SALES_ENABLED=false','FINANCIAL_EVENTS_ENABLED=false','PRE_SALE_GATES_APPROVED=false','ABSOLUTE_RELEASE_APPROVED=false','verify_fail_closed']);
 export function buildActivationPlan(env=process.env){
   const readiness=evaluateActivationReadiness(env); const gate=salesGate(env);
   const missing=readiness.blockers.map(code=>Object.freeze({code,...(ACTIVATION_REQUIREMENTS[code]||requirement('unknown',[]))}));
   const phase=gate.enabled?'live':!readiness.ready?'waiting_external_inputs':!gate.lifecycle_approved?'lifecycle_certification_blocked':'ready_to_unlock';
-  return Object.freeze({phase,inputs_ready:readiness.ready,commercial_enabled:gate.enabled,offer_type:readiness.offer_type,inventory_required:false,missing:Object.freeze(missing),external_inputs_remaining:missing.length,lifecycle:gate.lifecycle,gates:Object.freeze({global_sales:enabled(env.SALE_GLOBALLY_ENABLED),pre_sale:enabled(env.PRE_SALE_GATES_APPROVED),checkout:enabled(env.CHECKOUT_ENABLED),whatsapp:enabled(env.WHATSAPP_SALES_ENABLED),financial:enabled(env.FINANCIAL_EVENTS_ENABLED)}),cutover_order:CUTOVER_ORDER,rollback_order:ROLLBACK_ORDER});
+  return Object.freeze({phase,inputs_ready:readiness.ready,commercial_enabled:gate.enabled,offer_type:readiness.offer_type,inventory_required:false,missing:Object.freeze(missing),external_inputs_remaining:missing.length,lifecycle:gate.lifecycle,gates:Object.freeze({global_sales:enabled(env.SALE_GLOBALLY_ENABLED),pre_sale:enabled(env.PRE_SALE_GATES_APPROVED),checkout:enabled(env.CHECKOUT_ENABLED),whatsapp:enabled(env.WHATSAPP_SALES_ENABLED),financial:enabled(env.FINANCIAL_EVENTS_ENABLED)}),cutover_order:CUTOVER_ORDER,post_go_observability:POST_GO_OBSERVABILITY,rollback_order:ROLLBACK_ORDER});
 }

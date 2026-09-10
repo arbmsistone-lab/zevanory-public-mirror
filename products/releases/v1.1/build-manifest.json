@@ -1,0 +1,30 @@
+{
+  "version": "1.1",
+  "products": {
+    "ZEV-IA-011": {
+      "path": "C:\\Users\\airto\\Desktop\\ARBM_ECOSYSTEM\\03_ZEVANORY\\code\\repository\\products\\releases\\v1.1\\ZEVANORY_IA_na_Pratica_v1.1.zip",
+      "sha256": "8c40bdbb0b3e94a6383456645c8106f7a9c8045c97ef901a049bd70ea7bbe8ee",
+      "bytes": 5631
+    },
+    "ZEV-VEN-011": {
+      "path": "C:\\Users\\airto\\Desktop\\ARBM_ECOSYSTEM\\03_ZEVANORY\\code\\repository\\products\\releases\\v1.1\\ZEVANORY_Vendas_na_Pratica_v1.1.zip",
+      "sha256": "6b56d06b102a9a0e14ff34ff1efdef30c188158f605a71517283e99e82205db3",
+      "bytes": 5495
+    },
+    "ZEV-LCX-011": {
+      "path": "C:\\Users\\airto\\Desktop\\ARBM_ECOSYSTEM\\03_ZEVANORY\\code\\repository\\products\\releases\\v1.1\\ZEVANORY_Lucro_e_Caixa_v1.1.zip",
+      "sha256": "f96b274edfe01708f01b64391e2910dbf31e0249e6465451766532f341982d30",
+      "bytes": 5590
+    },
+    "ZEV-CMB-011": {
+      "path": "C:\\Users\\airto\\Desktop\\ARBM_ECOSYSTEM\\03_ZEVANORY\\code\\repository\\products\\releases\\v1.1\\ZEVANORY_Combo_IA_e_Vendas_v1.1.zip",
+      "sha256": "882fce01080ef7608dc0bf6ac8688cee6a380d315e214995c7357c1842447d60",
+      "bytes": 12928
+    },
+    "ZEV-NGC-011": {
+      "path": "C:\\Users\\airto\\Desktop\\ARBM_ECOSYSTEM\\03_ZEVANORY\\code\\repository\\products\\releases\\v1.1\\ZEVANORY_Negocio_Completo_v1.1.zip",
+      "sha256": "730c32ab1546c0333a44dfabd1c80228506e14ffc4bc19372c78d48a0083e1e4",
+      "bytes": 18987
+    }
+  }
+}

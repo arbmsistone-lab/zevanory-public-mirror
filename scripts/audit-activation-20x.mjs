@@ -19,7 +19,7 @@ add('08 offer decision requirements mapped',Boolean(ACTIVATION_REQUIREMENTS.offe
 add('09 service payment requirements mapped',Boolean(ACTIVATION_REQUIREMENTS.payment_provider_pool_unavailable)&&Boolean(ACTIVATION_REQUIREMENTS.payment_merchant_identity_unverified)&&plan.includes('payment_provider_pool_unavailable'));
 add('10 affiliate requirements mapped',['affiliate_provider_missing','affiliate_tracking_unready','affiliate_terms_unreviewed'].every(x=>ACTIVATION_REQUIREMENTS[x]));
 add('11 pre-sale unlock precedes global sale',CUTOVER_ORDER.indexOf('PRE_SALE_GATES_APPROVED=true')<CUTOVER_ORDER.indexOf('SALE_GLOBALLY_ENABLED=true'));
-add('12 global sale unlock is last mutating gate',CUTOVER_ORDER[CUTOVER_ORDER.length-2]==='SALE_GLOBALLY_ENABLED=true');
+add('12 global sale unlock is last mutating gate',CUTOVER_ORDER[CUTOVER_ORDER.length-1]==='SALE_GLOBALLY_ENABLED=true');
 add('13 rollback disables global sale first',ROLLBACK_ORDER[0]==='SALE_GLOBALLY_ENABLED=false');
 add('14 rollback disables every commercial gate',['CHECKOUT_ENABLED=false','WHATSAPP_SALES_ENABLED=false','FINANCIAL_EVENTS_ENABLED=false','PRE_SALE_GATES_APPROVED=false'].every(x=>ROLLBACK_ORDER.includes(x)));
 add('15 API is read only',(api.includes("req.method!=='GET'")||api.includes("req.method !== 'GET'"))&&!api.includes('sql.query')&&!api.includes('fetch(')&&!api.includes('execFile')&&!api.includes('spawn'));

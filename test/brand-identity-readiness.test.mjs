@@ -9,7 +9,13 @@ test('brand identity gate covers all 12 commercial fronts',()=>{
   assert.equal(r.ready,false);
   assert.equal(r.verified_fronts,4);
   assert.ok(r.blockers.includes('WHATSAPP_BRAND_IDENTITY_NOT_VERIFIED'));
-  assert.ok(r.blockers.includes('LINKEDIN_BRAND_IDENTITY_NOT_VERIFIED'));
+  assert.ok(r.blockers.includes('LINKEDIN_IDENTITY_ROUTE_NOT_VERIFIED'));
+});
+
+test('verified founder route is accepted without claiming a corporate LinkedIn page',()=>{
+  const r=brandIdentityReadiness({LINKEDIN_FOUNDER_PROFILE_VERIFIED:'true',LINKEDIN_OPERATOR_ASSISTED_PUBLISHING:'true'});
+  assert.equal(r.fronts.linkedin.verified,true);
+  assert.equal(r.fronts.linkedin.source,'verified_founder_profile');
 });
 
 test('brand identity becomes ready only with all provider visual proofs',()=>{

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Pool } from '@neondatabase/serverless';
 import { safeBearerEqual } from './security.mjs';
-import { consumeArtifactDownload, issueArtifactDownload, PRIVATE_ARTIFACT } from './artifactDelivery.mjs';
+import { consumeArtifactDownload, issueArtifactDownload, privateArtifactForClaim } from './artifactDelivery.mjs';
 import { preserveStorageOperation, storageOperation } from './storageFabric.mjs';
 
 const json=(status,body)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
@@ -43,11 +43,13 @@ export async function handleArtifactDownload(request,env){
   if(!env.ZEVANORY_PRIVATE_ARTIFACTS)return json(503,{error:'artifact_storage_unavailable'});
   const bytes=await env.ZEVANORY_PRIVATE_ARTIFACTS.get(claimed.artifact_key,'arrayBuffer');
   if(!bytes)return json(503,{error:'artifact_missing'});
+  const registered=privateArtifactForClaim(claimed);
+  if(!registered)return json(503,{error:'artifact_registry_mismatch'});
   const digest=createHash('sha256').update(Buffer.from(bytes)).digest('hex').toUpperCase();
-  if(digest!==String(claimed.artifact_sha256).toUpperCase()||digest!==PRIVATE_ARTIFACT.sha256)return json(503,{error:'artifact_integrity_failed'});
+  if(digest!==registered.sha256)return json(503,{error:'artifact_integrity_failed'});
   return new Response(bytes,{status:200,headers:{
-    'content-type':PRIVATE_ARTIFACT.contentType,
-    'content-disposition':`attachment; filename="${PRIVATE_ARTIFACT.filename}"`,
+    'content-type':registered.contentType,
+    'content-disposition':`attachment; filename="${registered.filename}"`,
     'content-length':String(bytes.byteLength),
     'cache-control':'private, no-store, max-age=0',
     'x-content-type-options':'nosniff',

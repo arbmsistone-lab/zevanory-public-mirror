@@ -1,18 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { issueArtifactDownload, consumeArtifactDownload, hashArtifactToken, PRIVATE_ARTIFACT } from '../src/artifactDelivery.mjs';
+import { issueArtifactDownload, consumeArtifactDownload, hashArtifactToken, PRIVATE_ARTIFACT, PRIVATE_ARTIFACTS, privateArtifactForOffer } from '../src/artifactDelivery.mjs';
 
-test('private artifact is pinned to canonical ZEVANORY Negocio Completo v1.1 hash',()=>{
-  assert.equal(PRIVATE_ARTIFACT.key,'zevanory/v1.1/ZEVANORY_Negocio_Completo_v1.1.zip');
-  assert.equal(PRIVATE_ARTIFACT.filename,'ZEVANORY_Negocio_Completo_v1.1.zip');
-  assert.equal(PRIVATE_ARTIFACT.sha256,'8A0D44D43662367149E84F11817485799FA361ACDC65DDEA319CA3FA79C2571E');
+test('private artifact registry pins ARBM SIST as primary and all six ZEVANORY products',()=>{
+  assert.equal(PRIVATE_ARTIFACTS.length,6);
+  assert.equal(PRIVATE_ARTIFACT.offerId,'OFFER-0001');
+  assert.equal(PRIVATE_ARTIFACT.key,'zevanory/arbm-sist/v10.0.0/ARBM-SIST-v10.0.0.zip');
+  assert.equal(PRIVATE_ARTIFACT.sha256,'70F233FA2AD84B66468CCB4789E3628A171ABA97A6C5C188C01A1EF56659B4E0');
+  assert.equal(privateArtifactForOffer('ZEV-NGC-011').offerId,'ZEV-NGC-011');
+  assert.equal(privateArtifactForOffer(''),null);
+  assert.equal(privateArtifactForOffer('UNKNOWN'),null);
 });
 
 test('download token is random, hashed at rest and requires paid reconciled order',async()=>{
   const calls=[];const order='550e8400-e29b-41d4-a716-446655440000';
   const sql={query:async(text,args)=>{calls.push({text,args});
-    if(text.startsWith('select o.order_id'))return [{order_id:order}];
+    if(text.startsWith('select o.order_id'))return [{order_id:order,offer_id:'OFFER-0001'}];
     if(text.startsWith('insert into artifact_download_tokens'))return [{token_id:'t',order_id:order,expires_at:new Date(Date.now()+60000)}];
     return [];
   }};
@@ -22,6 +26,17 @@ test('download token is random, hashed at rest and requires paid reconciled orde
   assert.notEqual(calls[1].args[2],issued.token);
   assert.match(calls[0].text,/status='paid'/);
   assert.match(calls[0].text,/payment_confirmed/);
+});
+
+
+test('artifact issuance is offer-bound and refuses unregistered order offers',async()=>{
+  const order='550e8400-e29b-41d4-a716-446655440001';
+  const calls=[]; const sql={query:async(text,args)=>{calls.push({text,args}); if(text.startsWith('select o.order_id'))return [{order_id:order,offer_id:'OFFER-0001'}]; if(text.startsWith('insert into artifact_download_tokens'))return [{token_id:'t2',order_id:order,expires_at:new Date()}]; return [];}};
+  const issued=await issueArtifactDownload(sql,{orderId:order});
+  assert.equal(issued.artifact.offerId,'OFFER-0001');
+  assert.equal(calls[1].args[3],'zevanory/arbm-sist/v10.0.0/ARBM-SIST-v10.0.0.zip');
+  const bad={query:async(text)=>text.startsWith('select o.order_id')?[{order_id:order,offer_id:'UNKNOWN'}]:[]};
+  await assert.rejects(()=>issueArtifactDownload(bad,{orderId:order}),/artifact_offer_not_registered/);
 });
 
 test('download claim is atomic single-use and revalidates payment truth',async()=>{

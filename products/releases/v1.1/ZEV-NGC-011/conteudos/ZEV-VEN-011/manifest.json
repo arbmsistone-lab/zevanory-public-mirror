@@ -1,0 +1,20 @@
+{
+  "brand": "ZEVANORY",
+  "sku": "ZEV-VEN-011",
+  "product": "ZEVANORY Vendas na Prática",
+  "version": "1.1",
+  "files": [
+    "CHECKLIST-30-DIAS.md",
+    "README.md",
+    "TERMOS.txt",
+    "modulos/01-icp-e-segmentação.md",
+    "modulos/02-oferta-e-proposta-de-valor.md",
+    "modulos/03-prospecção-e-abordagem.md",
+    "modulos/04-descoberta-objeções-e-fechamento.md",
+    "modulos/05-follow-up-e-métricas-comerciais.md",
+    "planilhas/plano-acao.csv",
+    "planilhas/registro-aprendizado.csv"
+  ],
+  "generated_from": "canonical_product_spec",
+  "placeholder": false
+}
