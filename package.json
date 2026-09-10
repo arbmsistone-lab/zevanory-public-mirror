@@ -81,6 +81,8 @@
     "migration:021": "node --env-file-if-exists=.env.production.local scripts/apply-migration-021.mjs",
     "migration:022": "node --env-file-if-exists=.env.production.local scripts/apply-migration-022.mjs",
     "migration:023": "node --env-file-if-exists=.env.production.local scripts/apply-migration-023.mjs",
-    "migration:024": "node --env-file-if-exists=.env.production.local scripts/apply-migration-024.mjs"
+    "migration:024": "node --env-file-if-exists=.env.production.local scripts/apply-migration-024.mjs",
+    "migration:025": "node --env-file-if-exists=.env.production.local scripts/apply-migration-025.mjs",
+    "audit:commercial-engine-v2:10x": "node scripts/audit-commercial-engine-v2-10x.mjs"
   }
 }

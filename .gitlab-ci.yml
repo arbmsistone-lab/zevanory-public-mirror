@@ -39,6 +39,7 @@ quality_core:
     - npm run audit:social-channels:20x
     - npm run audit:channel-identity:20x
     - npm run audit:distribution:10x
+    - npm run audit:commercial-engine-v2:10x
     - npm run audit:pilot:10x
     - npm run audit:rules:20x
     - npm run audit:engine:20x
@@ -104,6 +105,7 @@ integration_e2e:
     - curl -fsS http://127.0.0.1:4173/api/live
     - ZEVANORY_BASE_URL=http://127.0.0.1:4173 npm run test:e2e
     - npm run audit:distribution:10x
+    - npm run audit:commercial-engine-v2:10x
     - npm run audit:pilot:10x
     - npm run audit:lifecycle:10x
     - npm run audit:lifecycle:evidence:10x
@@ -146,3 +148,30 @@ e2e_attest:
     paths:
       - e2e-proof.txt
       - e2e-proof.sigstore.json
+
+recovery_schema:
+  stage: integration
+  image: node:24-bookworm
+  services:
+    - name: supabase/postgres:17.6.1.166@sha256:d5424e9f4d0c21d63991c3f3dd77881f23f722c3a212452a61bc91924b79e8c8
+      alias: recovery-db
+  variables:
+    POSTGRES_PASSWORD: "recovery-only-ephemeral"
+    PGUSER: postgres
+    PGDATABASE: postgres
+    PGPASSWORD: "recovery-only-ephemeral"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq postgresql-client
+  script:
+    - for i in $(seq 1 60); do pg_isready -h recovery-db -p 5432 -U postgres && break; sleep 2; done
+    - pg_isready -h recovery-db -p 5432 -U postgres
+    - expected=$(find db/migrations -maxdepth 1 -type f -name '*.sql' | wc -l); test "$expected" -gt 0
+    - for migration in $(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort); do psql -h recovery-db -p 5432 -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"; done
+    - applied=$(psql -h recovery-db -p 5432 -X -A -t -v ON_ERROR_STOP=1 -U postgres -d postgres -c 'select count(*) from schema_migrations'); test "$applied" -eq "$expected"
+    - required=$(psql -h recovery-db -p 5432 -X -A -t -v ON_ERROR_STOP=1 -U postgres -d postgres -c "select count(*) from information_schema.tables where table_schema='public' and table_name in ('telemetry_events','financial_events','orders','schema_migrations','tenants','customer_identities','decision_experiments','journey_instances')"); test "$required" -eq 8
+    - printf 'SCHEMA_RECOVERY_PASS sha=%s migrations=%s required_tables=%s\n' "$CI_COMMIT_SHA" "$applied" "$required" > schema-recovery-proof.txt
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - schema-recovery-proof.txt

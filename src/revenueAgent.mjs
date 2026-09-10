@@ -3,6 +3,7 @@ import { decideWithAiProviders, deterministicDecision } from './aiProvider.mjs';
 import { AGENT_SYSTEM_POLICY } from './agentPolicy.mjs';
 import { searchKnowledge, knowledgeContext } from './knowledgeEngine.mjs';
 import { loadOutcomeLearningMemory } from './outcomeLearning.mjs';
+import { buildCommercialEngineContext } from './commercialEngineV2.mjs';
 
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const terminalStages = new Set(['paid','delivered','refunded','unqualified','lost']);
@@ -26,26 +27,29 @@ export async function buildAgentContext(sql, job) {
     const rows = await sql.query('select lead_id,session_id,channel,stage,contact_ref,touchpoints,last_contact_at,next_action_at,updated_at from sales_leads where lead_id=$1 limit 1',[job.lead_id]);
     lead = rows[0] || null;
   }
-  const [knowledge, outcomeLearning] = await Promise.all([
-    searchKnowledge(sql, `${job.job_type} ${lead?.stage || ''}`, 5),
+  const [knowledge,outcomeLearning,customerRows]=await Promise.all([
+    searchKnowledge(sql,`${job.job_type} ${lead?.stage||''}`,5),
     loadOutcomeLearningMemory(sql),
+    lead?.lead_id?sql.query('select customer_id,purchase_count,adoption_score,satisfaction_score,support_risk,last_activity_at from customer_lifecycle_profiles where lead_id=$1 limit 1',[lead.lead_id]):Promise.resolve([]),
   ]);
-  return Object.freeze({ job_type:job.job_type, lead, knowledge:knowledgeContext(knowledge), outcome_learning:outcomeLearning });
+  const commercialEngineV2=buildCommercialEngineContext({job,lead,customer:customerRows[0]||null,outcome_learning:outcomeLearning});
+  return Object.freeze({job_type:job.job_type,lead,knowledge:knowledgeContext(knowledge),outcome_learning:outcomeLearning,commercial_engine_v2:commercialEngineV2});
 }
-export async function decideRevenueAction(context, options = {}) {
-  const input = {
+export async function decideRevenueAction(context,options={}){
+  const input={
     job_type:context.job_type,
-    stage:context.lead?.stage || null,
-    channel:context.lead?.channel || null,
-    touchpoints:context.lead?.touchpoints || 0,
+    stage:context.lead?.stage||null,
+    channel:context.lead?.channel||null,
+    touchpoints:context.lead?.touchpoints||0,
     knowledge:context.knowledge,
     outcome_learning:context.outcome_learning||null,
+    commercial_engine_v2:context.commercial_engine_v2||null,
   };
-  if (terminalStages.has(String(input.stage))) return deterministicDecision({ ...input, stage:'terminal' });
-  try { return await decideWithAiProviders({ input, systemInstruction:AGENT_SYSTEM_POLICY, providers:options.aiProviders||[], apiKey:options.apiKey, model:options.model }); }
-  catch (error) { return Object.freeze({ ...deterministicDecision(input), fallback_reason:String(error?.message || 'ai_unavailable') }); }
+  if(terminalStages.has(String(input.stage)))return deterministicDecision({...input,stage:'terminal'});
+  try{return await decideWithAiProviders({input,systemInstruction:AGENT_SYSTEM_POLICY,providers:options.aiProviders||[],apiKey:options.apiKey,model:options.model});}
+  catch(error){return Object.freeze({...deterministicDecision(input),fallback_reason:String(error?.message||'ai_unavailable')});}
 }
 
 export function decisionInputHash(context){
-  return digest({job_type:context.job_type,stage:context.lead?.stage||null,channel:context.lead?.channel||null,touchpoints:context.lead?.touchpoints||0,knowledge:context.knowledge,outcome_learning:context.outcome_learning||null});
+  return digest({job_type:context.job_type,stage:context.lead?.stage||null,channel:context.lead?.channel||null,touchpoints:context.lead?.touchpoints||0,knowledge:context.knowledge,outcome_learning:context.outcome_learning||null,commercial_engine_v2:context.commercial_engine_v2||null});
 }

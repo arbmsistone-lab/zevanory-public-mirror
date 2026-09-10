@@ -17,6 +17,7 @@ jobs:
           paths:
             - ~/.npm
       - run: npm test
+      - run: npm run audit:commercial-engine-v2:10x
       - run: npm run audit:3x
       - run: npm run audit:security:10x
       - run: npm run audit:final20x
@@ -38,10 +39,153 @@ jobs:
       - run: npm run audit:obs:10x
       - run: npm run audit:universal-fabric:3x
 
+  arbm_cloud_quality:
+    docker:
+      - image: cimg/node:24.19
+    resource_class: small
+    steps:
+      - checkout
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run supplychain:scan
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run contract:smoke
+      - run: npm run audit:enterprise:10x
+      - run: npm run audit:activation:20x
+      - run: npm run audit:offer:20x
+      - run: npm run audit:channels:20x
+      - run: npm run audit:distribution:10x
+      - run: npm run audit:commercial-engine-v2:10x
+      - run: npm run audit:pilot:10x
+      - run: npm run audit:rules:20x
+      - run: npm run audit:engine:20x
+      - run: npm run audit:command:20x
+      - run: npm run audit:worldclass:10x
+      - run: npm run audit:composable:10x
+      - run: npm run audit:architecture:20x
+      - run: npm run audit:3x
+      - run: npm run audit:security:10x
+      - run: npm run audit:obs:10x
+      - run: npm run audit:live-plan:3x
+      - run: npm run audit:10x
+      - run: npm run resilience:smoke
+      - run: npm run audit:30x
+      - run: npm run audit:sales:20x
+      - run: npm run audit:final
+      - run: npm run audit:lifecycle:10x
+      - run: npm run audit:lifecycle:evidence:10x
+      - run: npm run audit:closure:10x
+      - run: npm run audit:final20x
+      - run: mkdir -p quality-evidence && npm sbom --sbom-format cyclonedx > quality-evidence/sbom.cdx.json
+      - store_artifacts:
+          path: quality-evidence
+
+  arbm_cloud_security:
+    docker:
+      - image: cimg/node:24.19
+    resource_class: small
+    steps:
+      - checkout
+      - run: npm ci --no-audit --no-fund
+      - run: npm audit --audit-level=high
+      - run: npm run supplychain:scan
+      - run: npm run security:lifecycle
+      - run: node --test test/adaptive-rate-limit.test.mjs test/secret-lifecycle.test.mjs
+      - run:
+          name: Install Trivy 0.74.0
+          command: |
+            curl -fsSLO https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_Linux-64bit.tar.gz
+            echo "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a  trivy_0.74.0_Linux-64bit.tar.gz" | sha256sum -c -
+            tar -xzf trivy_0.74.0_Linux-64bit.tar.gz trivy
+            sudo install -m 0755 trivy /usr/local/bin/trivy
+      - run: trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --skip-dirs node_modules .
+      - run: mkdir -p security-evidence && npm sbom --sbom-format cyclonedx > security-evidence/sbom.cdx.json
+      - store_artifacts:
+          path: security-evidence
+
+  arbm_cloud_qcp:
+    docker:
+      - image: cimg/node:24.19
+    resource_class: medium
+    steps:
+      - checkout
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run supplychain:scan
+      - run: npm run audit:obs:10x
+      - run: npm run audit:live-plan:3x
+      - run: npm run audit:security:10x
+      - run: npm audit --omit=dev --audit-level=high
+      - run:
+          name: Install Playwright Chromium
+          command: npx playwright install --with-deps chromium
+      - run:
+          name: Start server and run Visual and E2E gate
+          command: |
+            npm start > zevanory-server.log 2>&1 &
+            server_pid=$!
+            ready=0
+            for i in $(seq 1 30); do if curl -fsS http://127.0.0.1:4173/api/live >/dev/null; then ready=1; break; fi; sleep 1; done
+            if [ "$ready" -ne 1 ]; then cat zevanory-server.log; kill "$server_pid" || true; exit 1; fi
+            ZEVANORY_BASE_URL=http://127.0.0.1:4173 npm run test:e2e
+            rc=$?
+            kill "$server_pid" || true
+            exit "$rc"
+      - run: npm run audit:distribution:10x
+      - run: npm run audit:commercial-engine-v2:10x
+      - run: npm run audit:pilot:10x
+      - run: npm run audit:lifecycle:10x
+      - run: npm run audit:lifecycle:evidence:10x
+      - run: npm run audit:closure:10x
+      - run: mkdir -p quality-evidence && npm sbom --sbom-format cyclonedx > quality-evidence/sbom.cdx.json
+      - store_artifacts:
+          path: quality-evidence
+
+  arbm_cloud_recovery:
+    docker:
+      - image: cimg/node:24.19
+      - image: postgres:17.6-bookworm
+        environment:
+          POSTGRES_PASSWORD: recovery-only-ephemeral
+    resource_class: small
+    environment:
+      PGUSER: postgres
+      PGPASSWORD: recovery-only-ephemeral
+      PGDATABASE: postgres
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+    steps:
+      - checkout
+      - run:
+          name: Install PostgreSQL client
+          command: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+      - run:
+          name: Wait for isolated Postgres
+          command: |
+            for i in $(seq 1 60); do pg_isready -h 127.0.0.1 -p 5432 -U postgres && exit 0; sleep 2; done
+            exit 1
+      - run:
+          name: Replay canonical migrations
+          command: |
+            expected=$(find db/migrations -maxdepth 1 -type f -name '*.sql' | wc -l)
+            test "$expected" -gt 0
+            for migration in $(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort); do psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"; done
+            applied=$(psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d postgres -c 'select count(*) from schema_migrations')
+            test "$applied" -eq "$expected"
+            required=$(psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d postgres -c "select count(*) from information_schema.tables where table_schema='public' and table_name in ('telemetry_events','financial_events','orders','schema_migrations','tenants','customer_identities','decision_experiments','journey_instances')")
+            test "$required" -eq 8
+            printf 'SCHEMA_RECOVERY_PASS sha=%s migrations=%s required_tables=%s\n' "$CIRCLE_SHA1" "$applied" "$required" > schema-recovery-proof.txt
+      - store_artifacts:
+          path: schema-recovery-proof.txt
+
 workflows:
   ci:
     jobs:
       - core
+      - arbm_cloud_quality
+      - arbm_cloud_security
+      - arbm_cloud_qcp
+      - arbm_cloud_recovery
       - deep:
           requires:
             - core
