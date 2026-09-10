@@ -58,7 +58,12 @@
       "MERCADOLIVRE_APP_ID": "1001029646655206",
       "MERCADOLIVRE_IDENTITY_VERIFIED": "true",
       "MERCADOLIVRE_NOTIFICATIONS_VERIFIED": "true",
-      "MERCADOLIVRE_APP_SEPARATION_VERIFIED": "true"
+      "MERCADOLIVRE_APP_SEPARATION_VERIFIED": "true",
+      "FACEBOOK_OPERATOR_ASSISTED_PUBLISHING": "true",
+      "FACEBOOK_PROFILE_URL": "https://www.facebook.com/profile.php?id=1249902628211703",
+      "LINKEDIN_FOUNDER_PROFILE_VERIFIED": "true",
+      "LINKEDIN_OPERATOR_ASSISTED_PUBLISHING": "true",
+      "LINKEDIN_FOUNDER_PROFILE_URL": "https://www.linkedin.com/in/airton-renan-alves-moreira-bitu-1501b6304/"
     },
     "NUVEMSHOP_STOREFRONT_VERIFIED": "true",
     "NUVEMSHOP_STOREFRONT_URL": "https://zevanory.lojavirtualnuvem.com.br/",

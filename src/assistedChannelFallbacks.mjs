@@ -2,6 +2,12 @@ const truthy=(v)=>String(v||'').toLowerCase()==='true';
 const https=(v)=>{try{return new URL(String(v||'')).protocol==='https:'}catch{return false}};
 
 const FALLBACKS=Object.freeze({
+  facebook:Object.freeze({
+    mode:'operator_assisted',
+    flags:['FACEBOOK_BRAND_IDENTITY_VERIFIED','FACEBOOK_OPERATOR_ASSISTED_PUBLISHING'],
+    urlKey:'FACEBOOK_PROFILE_URL',
+    evidence:'verified_profile_plus_operator_publication',
+  }),
   instagram:Object.freeze({
     mode:'operator_assisted',
     flags:['INSTAGRAM_BRAND_IDENTITY_VERIFIED','INSTAGRAM_OPERATOR_ASSISTED_PUBLISHING'],
