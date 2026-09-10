@@ -51,7 +51,14 @@
       "INSTAGRAM_OPERATOR_ASSISTED_PUBLISHING": "true",
       "INSTAGRAM_PROFILE_URL": "https://www.instagram.com/zevanory_/",
       "YOUTUBE_OPERATOR_ASSISTED_PUBLISHING": "true",
-      "YOUTUBE_PROFILE_URL": "https://www.youtube.com/@zevanory"
+      "YOUTUBE_PROFILE_URL": "https://www.youtube.com/@zevanory",
+      "WHATSAPP_PHONE_NUMBER_ID": "1207377742466921",
+      "META_GRAPH_VERSION": "v26.0",
+      "META_WHATSAPP_IDENTITY_VERIFIED": "true",
+      "MERCADOLIVRE_APP_ID": "1001029646655206",
+      "MERCADOLIVRE_IDENTITY_VERIFIED": "true",
+      "MERCADOLIVRE_NOTIFICATIONS_VERIFIED": "true",
+      "MERCADOLIVRE_APP_SEPARATION_VERIFIED": "true"
     },
     "NUVEMSHOP_STOREFRONT_VERIFIED": "true",
     "NUVEMSHOP_STOREFRONT_URL": "https://zevanory.lojavirtualnuvem.com.br/",
