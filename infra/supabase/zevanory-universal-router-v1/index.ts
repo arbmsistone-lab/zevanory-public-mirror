@@ -41,7 +41,11 @@ Deno.serve(async(req:Request)=>{
     return Response.json({service:"ZEVANORY",router:"supabase-universal-router-v2",ready:states.some(x=>x.healthy),policy:{reads:"fast-primary-then-safe-failover",mutations:"cloudflare-only-no-blind-retry"},origins:states},{headers:{"cache-control":"no-store"}});
   }
   if(!READ_METHODS.has(req.method)){
-    try{return await proxy(req,ORIGINS[0],path,7000);}catch{return Response.json({error:"mutation_origin_unavailable",preserved:true,retried:false},{status:503,headers:{"cache-control":"no-store"}});}
+    try{
+      return await proxy(req,ORIGINS[0],path,7000);
+    }catch{
+      return Response.json({error:"mutation_origin_unavailable",preserved:true,retried:false},{status:503,headers:{"cache-control":"no-store"}});
+    }
   }
   try{
     const primary=await proxy(req,ORIGINS[0],path,3500);
