@@ -1,4 +1,4 @@
-﻿import http from 'node:http';
+import http from 'node:http';
 import { handleAsNodeRequest } from 'cloudflare:node';
 import configHandler from '../api/config.mjs';
 import statusHandler from '../api/status.mjs';
@@ -97,6 +97,12 @@ async function delegatePaymentRequest(request,env){
   try{return await fetch(new Request(target,init));}catch{return new Response(JSON.stringify({error:'payment_runtime_unavailable',preserved:true}),{status:503,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
 }
 function hydrateRuntimeConfig(env) {
+  if (env && typeof env === 'object') {
+    for (const [key, value] of Object.entries(env)) {
+      if (process.env[key] !== undefined) continue;
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') process.env[key] = String(value);
+    }
+  }
   const raw = env?.ZEVANORY_RUNTIME_CONFIG;
   if (!raw) return;
   let config = raw;
