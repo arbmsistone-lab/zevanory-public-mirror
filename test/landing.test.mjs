@@ -29,3 +29,13 @@ test('central prioritizes decision, pipeline and clean UTF-8',()=>{
   assert.match(html,/Decisão segura\.\s*<br>Execução com verdade\./i);assert.match(html,/Prontidão comercial/);assert.match(js,/BASELINE NECESSÁRIO/);
   for(const bad of ['\u00c3\u00a9','\u00c3\u00a7','\u00c3\u00a3','\ufffd']) assert.equal((html+js).includes(bad),false);
 });
+
+test('central exposes resilient live-company observability without inventing sales',()=>{
+  for(const id of ['coverage-state','coverage-score','coverage-copy','source-health','channel-grid','live-operations','live-connection-state']) assert.match(html,new RegExp(`id="${id}"`));
+  for(const path of ['/api/status','/api/health','/api/release','/api/config','/api/agent/status']) assert.match(js,new RegExp(path.replaceAll('/','\\/')));
+  assert.match(js,/Promise\.allSettled/);
+  assert.match(js,/renderPublicOperations/);
+  assert.match(js,/renderCoverage/);
+  assert.match(html,/Dados agregados · sem PII/i);
+  assert.match(html,/Venda continua bloqueada/i);
+});
