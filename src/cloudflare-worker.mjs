@@ -13,7 +13,7 @@ import webhooksHandler from '../api/webhooks.mjs';
 import robotControlHandler from '../api/robot-control.mjs';
 import { handleArtifactIssue, handleArtifactDownload } from './cloudflareArtifactRoutes.mjs';
 import { handleCloudflareJournalAppend } from './durableOperationJournal.mjs';
-import { publicCommercialChannelSummary } from './publicChannelStatus.mjs';
+import { publicCommercialChannelReadinessSummary } from './publicChannelStatus.mjs';
 import { runtimeReleaseModes } from './release.mjs';
 
 const PORT = 8788;
@@ -148,7 +148,7 @@ export default {
         const body = await response.clone().json();
         const modes = runtimeReleaseModes(env);
         body.runtime = { telemetry:body.runtime?.telemetry||'active', checkout:modes.checkoutMode, financial:modes.financialMode, sales:modes.salesMode, whatsapp:modes.whatsappMode };
-        body.channel_readiness = publicCommercialChannelSummary(env);
+        body.channel_readiness = publicCommercialChannelReadinessSummary(env);
         const headers = new Headers(response.headers);
         headers.set('content-type','application/json; charset=utf-8');
         return new Response(JSON.stringify(body),{status:response.status,statusText:response.statusText,headers});
