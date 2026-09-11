@@ -1,32 +1,24 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { ARBM_SIST_OFFER, ZEVANORY_PRODUCTS, resolveCheckoutOffer } from './offerCatalog.mjs';
+import { ARBM_SIST_OFFER } from './offerCatalog.mjs';
+import { ZEVANORY_ARTIFACTS, resolveZevanoryArtifact } from './zevanoryArtifactRegistry.mjs';
 
-const artifact=(offerId,version,filename,sha256)=>Object.freeze({
-  offerId,
-  key:offerId==='OFFER-0001'?`zevanory/arbm-sist/v${version}/${filename}`:`zevanory/v${version}/${filename}`,
-  filename,
-  sha256:String(sha256).toUpperCase(),
-  contentType:'application/zip',
+const legacyArtifact=(offerId,version,filename,sha256)=>Object.freeze({
+  offerId,key:`zevanory/arbm-sist/v${version}/${filename}`,filename,
+  sha256:String(sha256).toUpperCase(),contentType:'application/zip',
 });
-
-export const PRIVATE_ARTIFACTS=Object.freeze([
-  artifact(ARBM_SIST_OFFER.id,ARBM_SIST_OFFER.version,ARBM_SIST_OFFER.artifact_name,ARBM_SIST_OFFER.artifact_sha256),
-  ...ZEVANORY_PRODUCTS.filter(p=>p.sellable===true&&p.artifact_materialized===true).map(p=>artifact(p.sku,p.version,p.artifact_name,p.artifact_sha256)),
-]);
-export const PRIVATE_ARTIFACT=PRIVATE_ARTIFACTS.find(x=>x.offerId==='OFFER-0001');
+const LEGACY_ARBM_ARTIFACT=legacyArtifact(ARBM_SIST_OFFER.id,ARBM_SIST_OFFER.version,ARBM_SIST_OFFER.artifact_name,ARBM_SIST_OFFER.artifact_sha256);
+export const PRIVATE_ARTIFACTS=Object.freeze([LEGACY_ARBM_ARTIFACT,...Object.values(ZEVANORY_ARTIFACTS)]);
+export const PRIVATE_ARTIFACT=LEGACY_ARBM_ARTIFACT;
 
 export function privateArtifactForOffer(offerId){
-  if(!String(offerId||'').trim()) return null;
-  const offer=resolveCheckoutOffer(offerId);
-  if(!offer) return null;
-  return PRIVATE_ARTIFACTS.find(x=>x.offerId===offer.id)||null;
+  const zevanory=resolveZevanoryArtifact(offerId);
+  if(zevanory)return zevanory;
+  return String(offerId||'').trim().toUpperCase()===ARBM_SIST_OFFER.id?LEGACY_ARBM_ARTIFACT:null;
 }
-
 export function privateArtifactForClaim({artifact_key,artifact_sha256}={}){
-  const key=String(artifact_key||''), sha=String(artifact_sha256||'').toUpperCase();
+  const key=String(artifact_key||''),sha=String(artifact_sha256||'').toUpperCase();
   return PRIVATE_ARTIFACTS.find(x=>x.key===key&&x.sha256===sha)||null;
 }
-
 const sha256=(value)=>createHash('sha256').update(String(value)).digest('hex');
 const uuid=(value)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value||''));
 export async function issueArtifactDownload(sql,{orderId,issuedBy='operator',ttlMinutes=30}={}){
