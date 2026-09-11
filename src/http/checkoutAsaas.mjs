@@ -45,7 +45,7 @@ export default async function handler(req,res) {  res.setHeader('content-type','
   if(process.env.CHECKOUT_ENABLED!=='true') return json(res,503,{error:'checkout_disabled'});
   const asaasEnv=String(process.env.ASAAS_ENV||'').toLowerCase();
   if(!['sandbox','production'].includes(asaasEnv)) return json(res,503,{error:'checkout_environment_invalid'});
-  const publicBase=safePublicBaseUrl(process.env.PUBLIC_BASE_URL);
+  const publicBase=safePublicBaseUrl(process.env.PAYMENT_PUBLIC_BASE_URL||process.env.PUBLIC_BASE_URL);
   if(!process.env.ASAAS_API_KEY||!publicBase) return json(res,503,{error:'checkout_provider_unavailable'});
   if(!process.env.DATABASE_URL){
     if(!gate.enabled)return json(res,503,{error:'checkout_storage_unavailable'});
