@@ -7,6 +7,8 @@ import {salesGate} from '../src/salesGate.mjs';
 import {summarizeLiveActionPlan} from '../src/liveActionPlan.mjs';
 import {executeVerifiedRead} from '../src/databaseReadFabric.mjs';
 import {preserveStorageOperation,storageOperation} from '../src/storageFabric.mjs';
+import {queueOutcomeLearningReview} from '../src/outcomeLearning.mjs';
+import {runAgentOnce} from '../src/agentWorker.mjs';
 
 const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringify(body));};
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,Number(v)||min));
@@ -15,7 +17,12 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 
 function controlOperation(body={}){
   const command=String(body.command||'').toLowerCase();
-  if(!['pause','resume','approval'].includes(command))throw Object.assign(new Error('control_command_invalid'),{statusCode:400});
+  if(!['pause','resume','approval','certification_probe'].includes(command))throw Object.assign(new Error('control_command_invalid'),{statusCode:400});
+  if(command==='certification_probe'){
+    const requestId=String(body.request_id||'');
+    if(!uuid.test(requestId))throw Object.assign(new Error('certification_probe_request_invalid'),{statusCode:400});
+    return storageOperation({operationId:`robot-control:certification-probe:${requestId}`,operationType:'agent.control_certification_probe',subjectRef:requestId,payload:{command,request_id:requestId,executed:false}});
+  }
   if(command==='approval'){
     const approvalId=String(body.approval_id||'');const decision=String(body.decision||'').toLowerCase();
     if(!uuid.test(approvalId)||!['approved','rejected'].includes(decision))throw Object.assign(new Error('approval_request_invalid'),{statusCode:400});
@@ -26,6 +33,14 @@ function controlOperation(body={}){
 
 async function mutate(sql,body={}){
   const command=String(body.command||'').toLowerCase();
+  if(command==='certification_probe'){
+    const requestId=String(body.request_id||'');
+    if(!uuid.test(requestId))throw Object.assign(new Error('certification_probe_request_invalid'),{statusCode:400});
+    const queued=await queueOutcomeLearningReview(sql,{idempotencyKey:`certification-probe:${requestId}`,priority:100,source:'operator_certification_probe'});
+    if(!queued.job_id)return {accepted:true,command,duplicate:true,request_id:requestId,commercial_unlock:false};
+    const agent=await runAgentOnce(sql,{jobId:queued.job_id,env:{...process.env,AGENT_AI_ENABLED:'false'}});
+    return {accepted:true,command,request_id:requestId,job_id:queued.job_id,run_id:agent.run_id||null,outcome:agent.outcome||agent.reason||null,processed:agent.processed===true,commercial_unlock:false};
+  }
   if(['pause','resume'].includes(command)){
     const control=await setAgentPaused(sql,{paused:command==='pause',reason:body.reason||`operator_${command}`,operator:'operator'});
     return {accepted:true,command,control};
@@ -45,8 +60,10 @@ export default async function handler(req,res){
   res.setHeader('x-content-type-options','nosniff');
   if(!['GET','POST'].includes(req.method)) return json(res,405,{error:'method_not_allowed'});
   const expected=String(process.env.OPERATOR_TOKEN||'');
+  const secondary=String(process.env.OPERATOR_TOKEN_SECONDARY||'');
   const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'');
-  if(!safeBearerEqual(expected,provided)) return json(res,401,{error:'operator_auth_required'});
+  const authorized=safeBearerEqual(expected,provided)||(secondary&&safeBearerEqual(secondary,provided));
+  if(!authorized) return json(res,401,{error:'operator_auth_required'});
   if(req.method==='POST'){
     let operation;try{operation=controlOperation(req.body||{});}catch(error){return json(res,error?.statusCode||400,{error:String(error?.message||'robot_control_action_invalid').slice(0,120)});}
     if(!process.env.DATABASE_URL){

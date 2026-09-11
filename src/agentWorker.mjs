@@ -28,7 +28,11 @@ export async function recordNextBestActionEvidence(sql,{runId,context,tool,resul
   return recordVerifiedLifecycleEvidence(sql,{dimension:'next_best_action',source_class:'canonical_database',source:'revenue_agent',subject_ref:String(lead.lead_id),idempotency_key:`next-best-action:${runId}`,metadata:{run_id:runId,tool,decision_action:String(decision?.action||''),learning_policy_version:String(learning?.policy_version||''),learning_total_matured:Number(learning?.total_matured)||0,learning_winner_key:String(learning?.winner?.key||'')}});
 }
 
-export async function claimAgentJob(sql) {
+export async function claimAgentJob(sql, jobId=null) {
+  if(jobId){
+    const rows=await sql.query(`update agent_jobs set status='running',locked_at=now(),attempts=attempts+1 where job_id=$1 and status='queued' and available_at<=now() returning *`,[jobId]);
+    return rows[0]||null;
+  }
   const rows = await sql.query(`update agent_jobs set status='running',locked_at=now(),attempts=attempts+1
     where job_id=(select job_id from agent_jobs where status='queued' and available_at<=now()
       order by priority desc,available_at asc,created_at asc for update skip locked limit 1) returning *`);
@@ -120,7 +124,7 @@ export async function runAgentOnce(sql,options={}){
   const env=options.env||process.env;
   const control=await getAgentControlState(sql);
   if(control.paused)return Object.freeze({ok:true,processed:false,reason:'agent_paused',control});
-  const job=await claimAgentJob(sql);
+  const job=await claimAgentJob(sql,options.jobId||null);
   if(!job)return Object.freeze({ok:true,processed:false,reason:'queue_empty'});
   const runId=randomUUID(),traceId=randomUUID(),spanId=randomUUID(),started=Date.now();
   let tool='get_command_center',decision={},evalResult={pass:false,score:0,issues:['not_evaluated']};

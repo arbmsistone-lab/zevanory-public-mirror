@@ -10,7 +10,7 @@ test('robot control surface is private-by-indexing and truth-labeled',()=>{
 });
 
 test('robot control API is authenticated and exposes only operational approval fields',()=>{
-  assert.match(api,/safeBearerEqual/);assert.match(api,/operator_auth_required/);assert.match(api,/payload->'approval'/);assert.doesNotMatch(api,/select .*session_id/i);assert.doesNotMatch(api,/select .*lead_id/i);assert.doesNotMatch(api,/contact_ref|email|phone|cpf/i);
+  assert.match(api,/safeBearerEqual/);assert.match(api,/OPERATOR_TOKEN_SECONDARY/);assert.match(api,/secondary&&safeBearerEqual/);assert.match(api,/operator_auth_required/);assert.match(api,/payload->'approval'/);assert.doesNotMatch(api,/select .*session_id/i);assert.doesNotMatch(api,/select .*lead_id/i);assert.doesNotMatch(api,/contact_ref|email|phone|cpf/i);
 });
 
 test('safe pause and approval commands share one authenticated function',()=>{
@@ -23,3 +23,8 @@ test('control room exposes real pause and human approval controls',()=>{
 });
 
 test('robot control assets exist',async()=>{for(const p of ['../public/zevanory-robot-control.css','../public/zevanory-robot-control.js'])assert.ok((await stat(new URL(p,import.meta.url))).size>100);});
+
+test('certification probe is isolated, deterministic and cannot unlock commerce',()=>{
+  assert.match(api,/certification_probe/);assert.match(api,/queueOutcomeLearningReview/);assert.match(api,/operator_certification_probe/);
+  assert.ok(api.includes('runAgentOnce(sql,{jobId:queued.job_id')); assert.match(api,/AGENT_AI_ENABLED:'false'/);assert.match(api,/commercial_unlock:false/);
+});
