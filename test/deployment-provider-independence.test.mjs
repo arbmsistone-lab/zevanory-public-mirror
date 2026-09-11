@@ -37,3 +37,9 @@ test('Cloudflare exposes an independent production custom domain',()=>{
   assert.match(wrangler,/"PAYMENT_RUNTIME_ORIGIN"\s*:\s*"https:\/\/zevanory-site\.vercel\.app"/);
   assert.doesNotMatch(wrangler,/"PAYMENT_RUNTIME_ORIGIN"\s*:\s*"https:\/\/zevanory\.api\.br"/);
 });
+test('Cloudflare failover owns critical main-domain APIs but not OAuth',()=>{
+  for(const route of ['health','live','status','release','config','assurance','activation/','events/','agent/','checkout/','webhooks/','robot-control']) {
+    assert.ok(wrangler.includes(`zevanory.api.br/api/${route}`));
+  }
+  assert.doesNotMatch(wrangler,/zevanory\.api\.br\/api\/oauth/i);
+});

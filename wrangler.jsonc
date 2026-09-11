@@ -8,7 +8,21 @@
   },
   "compatibility_date": "2026-09-04",
   "workers_dev": true,
-  "routes": [{ "pattern": "edge.zevanory.api.br", "custom_domain": true }],
+  "routes": [
+    { "pattern": "edge.zevanory.api.br", "custom_domain": true },
+    "zevanory.api.br/api/health*",
+    "zevanory.api.br/api/live*",
+    "zevanory.api.br/api/status*",
+    "zevanory.api.br/api/release*",
+    "zevanory.api.br/api/config*",
+    "zevanory.api.br/api/assurance*",
+    "zevanory.api.br/api/activation/*",
+    "zevanory.api.br/api/events/*",
+    "zevanory.api.br/api/agent/*",
+    "zevanory.api.br/api/checkout/*",
+    "zevanory.api.br/api/webhooks/*",
+    "zevanory.api.br/api/robot-control*"
+  ],
   "vars": {
     "SUPPORT_CHANNEL": "WhatsApp +55 88 9234-0423",
     "OFFER_SELECTION_APPROVED": "true",
