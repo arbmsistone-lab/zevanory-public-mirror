@@ -30,6 +30,7 @@ const directHandlers = new Map([
   ['/api/checkout', checkoutHandler],
   ['/api/webhooks', webhooksHandler],
   ['/api/robot/control', robotControlHandler],
+  ['/api/robot-control', robotControlHandler],
 ]);
 function resolveHandler(req) {
   const url = new URL(req.url || '/', 'https://zevanory.api.br');
