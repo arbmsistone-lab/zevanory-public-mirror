@@ -19,3 +19,13 @@ test('TikTok canonical migration and repair migration allow isolated sandbox cre
     assert.match(sql,/'tiktok_sandbox'/);
   }
 });
+
+test('Cloudflare Worker preserves Mercado Livre OAuth failover routes', async()=>{
+  const worker=await readFile(new URL('../src/cloudflare-worker.mjs',import.meta.url),'utf8');
+  const oauth=await readFile(new URL('../src/mercadoLivreOAuth.mjs',import.meta.url),'utf8');
+  assert.match(worker,/\/api\/oauth\/mercadolivre\/start/);
+  assert.match(worker,/\/api\/oauth\/mercadolivre\/callback/);
+  assert.match(worker,/provider', 'mercadolivre_oauth'/);
+  assert.match(oauth,/MERCADOLIVRE_REDIRECT_URI/);
+  assert.match(oauth,/DEFAULT_REDIRECT_URI/);
+});

@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
-const REDIRECT_URI='https://zevanory.api.br/api/oauth/mercadolivre/callback';
+const DEFAULT_REDIRECT_URI='https://zevanory.api.br/api/oauth/mercadolivre/callback';
+const redirectUri=(env=process.env)=>clean(env.MERCADOLIVRE_REDIRECT_URI,500)||DEFAULT_REDIRECT_URI;
 const AUTH_URL='https://auth.mercadolivre.com.br/authorization';
 const TOKEN_URL='https://api.mercadolibre.com/oauth/token';
 const ME_URL='https://api.mercadolibre.com/users/me';
@@ -26,7 +27,7 @@ export function createOAuthStart(env=process.env){
   const state=b64u(randomBytes(24)),verifier=b64u(randomBytes(48));
   const challenge=b64u(createHash('sha256').update(verifier).digest());
   const payload=encryptSecret(JSON.stringify({state,verifier,iat:Date.now()}),env);
-  const url=new URL(AUTH_URL);url.searchParams.set('response_type','code');url.searchParams.set('client_id',clientId);url.searchParams.set('redirect_uri',REDIRECT_URI);url.searchParams.set('state',state);url.searchParams.set('code_challenge',challenge);url.searchParams.set('code_challenge_method','S256');
+  const url=new URL(AUTH_URL);url.searchParams.set('response_type','code');url.searchParams.set('client_id',clientId);url.searchParams.set('redirect_uri',redirectUri(env));url.searchParams.set('state',state);url.searchParams.set('code_challenge',challenge);url.searchParams.set('code_challenge_method','S256');
   return {url:url.toString(),cookie:payload};
 }
 
@@ -40,7 +41,7 @@ export function readOAuthCookie(value,expectedState,env=process.env){
 }
 
 export async function exchangeAuthorizationCode({code,verifier,env=process.env,fetchImpl=globalThis.fetch}={}){
-  const body=new URLSearchParams({grant_type:'authorization_code',client_id:clean(env.MERCADOLIVRE_APP_ID,40),client_secret:clean(env.MERCADOLIVRE_CLIENT_SECRET,500),code:clean(code,2000),redirect_uri:REDIRECT_URI,code_verifier:clean(verifier,200)});
+  const body=new URLSearchParams({grant_type:'authorization_code',client_id:clean(env.MERCADOLIVRE_APP_ID,40),client_secret:clean(env.MERCADOLIVRE_CLIENT_SECRET,500),code:clean(code,2000),redirect_uri:redirectUri(env),code_verifier:clean(verifier,200)});
   if(!body.get('client_secret'))throw new Error('mercadolivre_client_secret_missing');
   const response=await fetchImpl(TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded','accept':'application/json'},body});
   const token=await response.json().catch(()=>({}));if(!response.ok)throw new Error(`mercadolivre_token_http_${response.status}`);
