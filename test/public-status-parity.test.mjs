@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { publicCommercialChannelReadinessSummary } from '../src/publicChannelStatus.mjs';
 import { runtimeReleaseModes } from '../src/release.mjs';
 
@@ -15,4 +16,10 @@ test('whatsapp is effectively disabled while global sales gate is closed',()=>{
   const modes=runtimeReleaseModes({...closed,WHATSAPP_SALES_ENABLED:'true'});
   assert.equal(modes.salesMode,'globally-blocked');
   assert.equal(modes.whatsappMode,'disabled');
+});
+
+test('cloudflare worker imports the canonical public commercial summary',()=>{
+  const worker=readFileSync(new URL('../src/cloudflare-worker.mjs',import.meta.url),'utf8');
+  assert.match(worker,/publicCommercialChannelReadinessSummary/);
+  assert.doesNotMatch(worker,/publicCommercialChannelSummary/);
 });
