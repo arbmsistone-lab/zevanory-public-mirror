@@ -19,8 +19,11 @@ test('tall desktop promotes primary labels to twelve pixels',()=>{
   assert.match(css,/priority-callout span,.priority-callout p\{font-size:12px\}/);
 });
 
-test('primary values wrap without ellipsis and detail scroll is explicit',()=>{
-  assert.equal(css.includes('text-overflow:ellipsis'),false);
+test('primary values wrap while live telemetry may truncate and detail scroll is explicit',()=>{
+  for(const selector of ['.business-highlights b','.signal-grid small','.switches span']){
+    const block=css.match(new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\{([^}]*)\\}'))?.[1]||'';
+    assert.doesNotMatch(block,/text-overflow:ellipsis/);
+  }
   assert.match(css,/\.dialog-shell\{[^}]*overflow:auto/);
   assert.match(css,/html,body\{[^}]*overflow:hidden/);
 });
