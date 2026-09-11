@@ -12,9 +12,9 @@ test('Netlify standby has no Vercel runtime dependency',()=>{
   assert.match(netlify,/https:\/\/zevanory\.zevanory\.workers\.dev\/api\//i);
 });
 
-test('Cloudflare runtime keeps pilot-safe commercial controls',()=>{
-  assert.match(wrangler,/"CHECKOUT_ENABLED"\s*:\s*"true"/);
-  assert.match(wrangler,/"FINANCIAL_EVENTS_ENABLED"\s*:\s*"true"/);
+test('Cloudflare runtime keeps canonical fail-closed commercial controls',()=>{
+  assert.match(wrangler,/"CHECKOUT_ENABLED"\s*:\s*"false"/);
+  assert.match(wrangler,/"FINANCIAL_EVENTS_ENABLED"\s*:\s*"false"/);
   assert.match(wrangler,/"SALE_GLOBALLY_ENABLED"\s*:\s*"false"/);
   assert.match(wrangler,/"PRE_SALE_GATES_APPROVED"\s*:\s*"false"/);
 });
