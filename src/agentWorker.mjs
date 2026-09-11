@@ -123,7 +123,8 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
 export async function runAgentOnce(sql,options={}){
   const env=options.env||process.env;
   const control=await getAgentControlState(sql);
-  if(control.paused)return Object.freeze({ok:true,processed:false,reason:'agent_paused',control});
+  const targetedPauseBypass=control.paused&&options.ignorePause===true&&Boolean(options.jobId);
+  if(control.paused&&!targetedPauseBypass)return Object.freeze({ok:true,processed:false,reason:'agent_paused',control});
   const job=await claimAgentJob(sql,options.jobId||null);
   if(!job)return Object.freeze({ok:true,processed:false,reason:'queue_empty'});
   const runId=randomUUID(),traceId=randomUUID(),spanId=randomUUID(),started=Date.now();

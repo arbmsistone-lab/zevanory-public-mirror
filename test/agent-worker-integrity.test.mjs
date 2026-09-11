@@ -29,3 +29,11 @@ test('agent persists run before FK-backed tool audit without migration 011',asyn
 test('safe pause blocks the worker before claiming a job',async()=>{
   const sql=fakeSql({paused:true});const result=await runAgentOnce(sql,{env:{AGENT_AI_ENABLED:'false'}});assert.equal(result.processed,false);assert.equal(result.reason,'agent_paused');assert.equal(sql.state.queries.some(q=>q.includes("update agent_jobs set status='running'")),false);
 });
+
+
+test('targeted certification path may bypass pause only with explicit job id',async()=>{
+  const sql=fakeSql({paused:true});
+  const result=await runAgentOnce(sql,{jobId:'11111111-1111-4111-8111-111111111111',ignorePause:true,env:{AGENT_AI_ENABLED:'false'}});
+  assert.equal(result.processed,true);
+  assert.equal(sql.state.queries.some(q=>q.includes("where job_id=$1 and status='queued'")),true);
+});

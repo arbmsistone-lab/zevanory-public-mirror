@@ -38,7 +38,7 @@ async function mutate(sql,body={}){
     if(!uuid.test(requestId))throw Object.assign(new Error('certification_probe_request_invalid'),{statusCode:400});
     const queued=await queueOutcomeLearningReview(sql,{idempotencyKey:`certification-probe:${requestId}`,priority:100,source:'operator_certification_probe'});
     if(!queued.job_id)return {accepted:true,command,duplicate:true,request_id:requestId,commercial_unlock:false};
-    const agent=await runAgentOnce(sql,{jobId:queued.job_id,env:{...process.env,AGENT_AI_ENABLED:'false'}});
+    const agent=await runAgentOnce(sql,{jobId:queued.job_id,ignorePause:true,env:{...process.env,AGENT_AI_ENABLED:'false'}});
     return {accepted:true,command,request_id:requestId,job_id:queued.job_id,run_id:agent.run_id||null,outcome:agent.outcome||agent.reason||null,processed:agent.processed===true,commercial_unlock:false};
   }
   if(['pause','resume'].includes(command)){
