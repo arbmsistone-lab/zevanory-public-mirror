@@ -8,11 +8,11 @@ function mock(method='GET') {
   return {req:{method},res:{statusCode:200,body:'',setHeader(k,v){headers[k.toLowerCase()]=v;},end(v=''){this.body=v;return this;},headers}};
 }
 
-test('production config blocks all sales while pre-sale gates are open',()=>{
+test('production config blocks all sales while pre-sale gates are open',async()=>{
   const old={sale:process.env.SALE_GLOBALLY_ENABLED,pre:process.env.PRE_SALE_GATES_APPROVED,wa:process.env.WHATSAPP_SALES_ENABLED};
   delete process.env.SALE_GLOBALLY_ENABLED; delete process.env.PRE_SALE_GATES_APPROVED; delete process.env.WHATSAPP_SALES_ENABLED;
   const {req,res}=mock('GET');
-  configHandler(req,res);
+  await configHandler(req,res);
   const body=JSON.parse(res.body);
   assert.equal(res.statusCode,200);
   assert.equal(body.commercial_enabled,false);
