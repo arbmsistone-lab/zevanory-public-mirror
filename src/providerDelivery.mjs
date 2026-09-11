@@ -1,5 +1,5 @@
 const TRANSIENT_STATUS=new Set([408,425,429,500,502,503,504]);
-const IDEMPOTENT_DESTINATIONS=new Set(['channel:email','channel:affiliate','channel:nuvemshop']);
+const IDEMPOTENT_DESTINATIONS=new Set(['channel:email','channel:affiliate']);
 
 export class ProviderDeliveryError extends Error{
   constructor(code,{ambiguous=false,retryable=false,status=null}={}){

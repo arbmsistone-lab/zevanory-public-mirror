@@ -89,7 +89,7 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       ensureGlobalGates(env,commercialGate);
       if(!sql?.query)throw new Error('nuvemshop_sql_required');const credential=await loadNuvemshopCredential(sql,env);const token=credential.access_token;const storeId=credential.store_id;const appId=required(env.NUVEMSHOP_APP_ID,'nuvemshop_app_id_missing');
       const product=event.payload?.product;if(!product||typeof product!=='object'||Array.isArray(product))throw new Error('nuvemshop_product_missing');
-      const body=await requestJson(fetchImpl,`https://api.nuvemshop.com/v1/${encodeURIComponent(storeId)}/products`,{method:'POST',headers:{authorization:`Bearer ${token}`,'user-agent':`ZEVANORY (${appId})`,'content-type':'application/json','idempotency-key':String(event.idempotency_key||event.event_id)},body:JSON.stringify(product)},[200,201]);
+      const body=await requestJson(fetchImpl,`https://api.nuvemshop.com.br/v1/${encodeURIComponent(storeId)}/products`,{method:'POST',headers:{authorization:`Bearer ${token}`,'user-agent':`ZEVANORY https://zevanory.api.br (${appId})`,'content-type':'application/json'},body:JSON.stringify(product)},[200,201]);
       const id=String(body?.id||'');if(!id)throw providerAcceptanceMissing('nuvemshop_product_id_missing');
       return Object.freeze({provider:'nuvemshop',accepted:true,provider_product_id:id,confirmation:'provider_api_and_webhook'});
     },
@@ -114,7 +114,12 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       execute:({event})=>publishViaBuffer({channel,event,env,fetchImpl}),
     }));
     const pool=buildChannelProviderPool(channel,{builtIn,external:externalChannelProviders(channel,channelProviders)});
-    universal[destination]=buildUniversalChannelAdapter(channel,pool);
+    const routed=buildUniversalChannelAdapter(channel,pool);
+    universal[destination]=async(event,context)=>{
+      // Authorization applies to the operation, including every alternate provider.
+      ensureGlobalGates(env,commercialGate);
+      return routed(event,context);
+    };
   }
   return Object.freeze(universal);
 }

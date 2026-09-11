@@ -41,7 +41,7 @@ test('Nuvemshop outbound uses official v1 products API and remains globally gate
   const sql={query:async()=>[{account_id:'123',access_token_enc:encryptCommercialSecret('token',env),scope:'write_products',expires_at:new Date(Date.now()+86400000)}]};
   const a=buildOutboundAdapters({env,commercialGate:certifiedGate,fetchImpl:async(url,opt)=>{calls.push({url,opt});return response(201,{id:99});}});
   const out=await a['channel:nuvemshop']({event_id:'e1',idempotency_key:'i1',payload:{product:{name:'ARBM SIST'}}},{sql});
-  assert.equal(out.provider_product_id,'99');assert.equal(calls[0].url,'https://api.nuvemshop.com/v1/123/products');assert.equal(calls[0].opt.headers.authorization,'Bearer token');assert.match(calls[0].opt.headers['user-agent'],/ZEVANORY/);
+  assert.equal(out.provider_product_id,'99');assert.equal(calls[0].url,'https://api.nuvemshop.com.br/v1/123/products');assert.equal(calls[0].opt.headers.authorization,'Bearer token');assert.match(calls[0].opt.headers['user-agent'],/https:\/\/zevanory\.api\.br/);assert.equal(calls[0].opt.headers['idempotency-key'],undefined);
   const closed=buildOutboundAdapters({env,fetchImpl:async()=>response(201,{id:1})});
   await assert.rejects(()=>closed['channel:nuvemshop']({payload:{product:{name:'x'}}}),/commercial_gates_closed/);
 });
