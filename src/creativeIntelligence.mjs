@@ -1,5 +1,6 @@
-import { createHash } from 'node:crypto';
+﻿import { createHash } from 'node:crypto';
 import { createCreativeSpec, creativePlacements, creativeStoryboard } from './creativeEngine.mjs';
+import { commercialMessageFor } from './commercialMessaging.mjs';
 
 const clamp=(v,min=0,max=1)=>Math.max(min,Math.min(max,Number(v)||0));
 const hash=(v)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -42,9 +43,10 @@ export function creativeQualityScore(spec={}){
   return Number((hook*.20+body*.18+cta*.12+brand*.17+dimensions*.12+layout*.11+placement*.10).toFixed(4));
 }
 export function buildCreativeVariants({offerId='OFFER-0001',channel='instagram',hook='',body='',cta='',objective='awareness',placement='',campaignId=''}={}){
-  const base=String(hook||'Automacao com controle').trim();
-  const value=String(body||'IA, execucao segura e evidencia real.').trim();
-  const action=String(cta||'Conheca a ZEVANORY').trim();
+  const canonical=commercialMessageFor(channel,{salesEnabled:false});
+  const base=String(hook||canonical.headline).trim();
+  const value=String(body||canonical.body).trim();
+  const action=String(cta||canonical.cta).trim();
   const campaign=String(campaignId||hash({offerId,channel,base,value,objective,placement}).slice(0,16));
   const hooks=[base,`${base}: menos atrito, mais controle`,`${base} com evidencia antes de escala`];
   return Object.freeze(hooks.map((h,index)=>{
