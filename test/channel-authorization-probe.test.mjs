@@ -17,7 +17,7 @@ test('configuration and sandbox cannot become authorization proof',async()=>{
 });
 
 test('database outage fails closed without disclosing provider errors or attempting publication',async()=>{
-  const proof=await probeChannelAuthorizations({query:async()=>{throw new Error('postgres://private:secret@internal');}},{env,fetchImpl:async()=>{throw new Error('unexpected');}});
+  const proof=await probeChannelAuthorizations({query:async()=>{throw new Error('private database connection details');}},{env,fetchImpl:async()=>{throw new Error('unexpected');}});
   assert.doesNotMatch(JSON.stringify(proof),/postgres|secret@/);
   for(const row of Object.values(proof.fronts))assert.deepEqual(row.blockers,['authorization_probe_unavailable','real_execution_not_proven']);
 });
