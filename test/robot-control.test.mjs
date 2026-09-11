@@ -26,5 +26,5 @@ test('robot control assets exist',async()=>{for(const p of ['../public/zevanory-
 
 test('certification probe is isolated, deterministic and cannot unlock commerce',()=>{
   assert.match(api,/certification_probe/);assert.match(api,/queueOutcomeLearningReview/);assert.match(api,/operator_certification_probe/);
-  assert.ok(api.includes('runAgentOnce(sql,{jobId:queued.job_id')); assert.match(api,/AGENT_AI_ENABLED:'false'/);assert.match(api,/commercial_unlock:false/);
+  assert.ok(api.includes('runAgentOnce(sql,{jobId:queued.job_id,ignorePause:true')); assert.match(api,/AGENT_AI_ENABLED:'false'/);assert.match(api,/commercial_unlock:false/);
 });
