@@ -75,4 +75,39 @@ async function refresh(){
     healthLabel.textContent='Estado indisponível'; document.getElementById('health-dot').classList.remove('healthy');
   }
 }
+
+let liveOperatorToken='';
+const liveStateLabel=(state)=>({planned:'PLANEJADO',awaiting_approval:'AGUARDANDO',executed:'EXECUTADO',failed:'FALHOU',blocked:'BLOQUEADO',canceled:'CANCELADO',running:'EXECUTANDO'}[String(state)]||String(state||'—').replaceAll('_',' ').toUpperCase());
+const liveStateClass=(state)=>['executed','completed','internal_completed','external_effect_confirmed'].includes(String(state))?'done':['failed'].includes(String(state))?'failed':['blocked','canceled'].includes(String(state))?'blocked':['awaiting_approval','planned'].includes(String(state))?'waiting':'running';
+const liveTime=(iso)=>{try{return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch{return '—';}};
+function renderLiveOperations(data={}){
+  const root=document.getElementById('live-operations'); if(!root)return; root.replaceChildren();
+  const plans=(data.live_action_plans||[]).slice().sort((a,b)=>new Date(b.updated_at||b.created_at||0)-new Date(a.updated_at||a.created_at||0)).slice(0,4);
+  const rows=plans.length?plans:(data.runs||[]).slice(0,4).map(r=>({state:r.outcome,updated_at:r.created_at,what:r.action||r.job_type,where:r.tool||'interno',channel:null,objective:r.rationale,result:r.result}));
+  if(!rows.length){const e=document.createElement('div');e.className='live-empty';e.textContent='Nenhuma execução registrada neste momento.';root.appendChild(e);}
+  for(const p of rows){
+    const row=document.createElement('article'); row.className='live-op-row'; row.dataset.liveState=liveStateClass(p.state);
+    const time=document.createElement('time');time.textContent=liveTime(p.updated_at||p.created_at);
+    const body=document.createElement('div');const title=document.createElement('b');const sub=document.createElement('small');
+    title.textContent=`${String(p.what||'ação').replaceAll('_',' ')} · ${String(p.channel||p.where||'interno').replace('channel:','')}`;
+    sub.textContent=String(p.objective||p.why||'Execução registrada sem descrição adicional.').slice(0,120);body.append(title,sub);
+    const state=document.createElement('span');state.className='live-state';state.textContent=liveStateLabel(p.state);row.append(time,body,state);root.appendChild(row);
+  }
+  const jobs=data.jobs||[];const running=jobs.filter(x=>x.status==='running').length;const awaiting=(data.live_action_plans||[]).filter(x=>x.state==='awaiting_approval').length;
+  set('live-running',fmt(running));set('live-awaiting',fmt(awaiting));
+  const latest=rows[0];set('live-last-result',latest?liveStateLabel(latest.state):'SEM EXECUÇÃO');
+  set('live-connection-state','AO VIVO');const state=document.getElementById('live-connection-state');if(state)state.dataset.state='ready';
+  const button=document.getElementById('connect-live');if(button)button.textContent='Reconectar';
+}
+async function fetchLiveOperations(token=liveOperatorToken){
+  const r=await fetch('/api/robot-control?limit=24',{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
+  if(!r.ok)throw new Error(r.status===401?'Token inválido ou ausente.':'Telemetria operacional indisponível.');
+  return r.json();
+}
+async function refreshLiveOperations(){if(!liveOperatorToken)return;try{renderLiveOperations(await fetchLiveOperations());}catch{set('live-connection-state','RECONEXÃO');}}
+const liveAuth=document.getElementById('live-auth-dialog');
+document.getElementById('connect-live')?.addEventListener('click',()=>{set('live-auth-error','');liveAuth?.showModal();});
+document.getElementById('live-auth-submit')?.addEventListener('click',async e=>{e.preventDefault();const input=document.getElementById('live-operator-token');const token=String(input?.value||'').trim();if(!token){set('live-auth-error','Informe o token do operador.');return;}try{const data=await fetchLiveOperations(token);liveOperatorToken=token;if(input)input.value='';renderLiveOperations(data);liveAuth?.close();}catch(error){set('live-auth-error',String(error?.message||'Falha de autenticação.'));}});
+setInterval(refreshLiveOperations,5000);
+
 const details=document.getElementById('details-dialog'); document.getElementById('open-details')?.addEventListener('click',()=>details?.showModal()); document.getElementById('close-details')?.addEventListener('click',()=>details?.close()); details?.addEventListener('click',(e)=>{if(e.target===details)details.close();}); trackPageView(); refresh(); setInterval(refresh,30000);
