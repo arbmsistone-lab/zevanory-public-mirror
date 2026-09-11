@@ -11,7 +11,7 @@ test('router uses Cloudflare fast path with Vercel read fallback',()=>{
 });
 
 test('router never blindly retries mutations',()=>{
-  const block=src.match(/if\(!READ_METHODS\.has\(req\.method\)\)\{([\s\S]*?)\n  \}\n  try\{/i)?.[1]||'';
+  const block=src.match(/if\(!READ_METHODS\.has\(req\.method\)\)\{([\s\S]*?)\r?\n  \}\r?\n  try\{/i)?.[1]||'';
   assert.match(block,/mutation_origin_unavailable/);
   assert.match(block,/preserved:true,retried:false/);
   assert.match(block,/ORIGINS\[0\]/);
