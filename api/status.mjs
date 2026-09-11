@@ -4,7 +4,7 @@ import { attachRequestContext, operationalLog } from '../src/observability.mjs';
 import { healthProbe, liveProbe } from '../src/statusProbes.mjs';
 import { isPublicDeploymentRequest } from '../src/security.mjs';
 import { executeVerifiedRead } from '../src/databaseReadFabric.mjs';
-import { publicChannelReadinessSummary } from '../src/publicChannelStatus.mjs';
+import { publicChannelReadinessSummary, publicCommercialChannelReadinessSummary } from '../src/publicChannelStatus.mjs';
 
 export default async function handler(req, res) {
   const probe=String(req.query?.probe||new URL(req.url||'/api/status','https://zevanory.api.br').searchParams.get('probe')||'').toLowerCase();
@@ -35,8 +35,9 @@ export default async function handler(req, res) {
   }});
   if(!readOutcome.ok){res.statusCode=503;operationalLog(context,503,'operational_status_unavailable',{read_attempts:readOutcome.attempts.length});return res.end(JSON.stringify({error:'operational_status_unavailable',request_id:context.requestId}));}
   const full=readOutcome.result;
-  const channel_readiness=publicChannelReadinessSummary(process.env);
-  const body=isPublicDeploymentRequest(req)?{project:full.project,gate:full.gate,experiment:full.experiment,engine:full.engine,sales_machine:full.sales_machine,runtime:full.runtime,metrics:full.metrics,channel_readiness,request_id:context.requestId}:{...full,channel_readiness,request_id:context.requestId};
+  const publicRequest=isPublicDeploymentRequest(req);
+  const channel_readiness=publicRequest?publicCommercialChannelReadinessSummary(process.env):publicChannelReadinessSummary(process.env);
+  const body=publicRequest?{project:full.project,gate:full.gate,experiment:full.experiment,engine:full.engine,sales_machine:full.sales_machine,runtime:full.runtime,metrics:full.metrics,channel_readiness,request_id:context.requestId}:{...full,channel_readiness,request_id:context.requestId};
   res.statusCode=200;operationalLog(context,200,'operational_status_ok',{read_route:readOutcome.route,canonical_read:readOutcome.canonical});
   return res.end(JSON.stringify(body));
 }

@@ -1,8 +1,9 @@
-import { channelReadiness } from './channelAdapters.mjs';
+import { CHANNELS, channelReadiness } from './channelAdapters.mjs';
 import { CHANNEL_PROFILES } from './channelProfiles.mjs';
 import { assistedFallbackReadiness } from './assistedChannelFallbacks.mjs';
 import { alternateAutomationReadiness } from './alternateChannelAutomation.mjs';
 import { nuvemshopCsvFallbackReadiness } from './nuvemshopCsvFallback.mjs';
+import { runtimeReleaseModes } from './release.mjs';
 
 export function publicChannelStatus(env = process.env) {
   const readiness = channelReadiness(env);
@@ -30,7 +31,6 @@ export function publicChannelStatus(env = process.env) {
     })];
   })));
 }
-
 export function publicChannelReadinessSummary(env = process.env) {
   const state = publicChannelStatus(env);
   return Object.freeze(Object.fromEntries(Object.entries(state).map(([name, item]) => [name, Object.freeze({
@@ -38,5 +38,16 @@ export function publicChannelReadinessSummary(env = process.env) {
     alternate_api_configured: Boolean(item.alternate_api_configured), contingency_ready: Boolean(item.contingency_ready),
     operational_ready: Boolean(item.operational_ready), operational_mode: item.operational_mode,
     commercial: Boolean(item.commercial),
+  })])));
+}
+
+export function publicCommercialChannelReadinessSummary(env = process.env) {
+  const salesMode = runtimeReleaseModes(env).salesMode;
+  const globallyEnabled = salesMode === 'enabled';
+  return Object.freeze(Object.fromEntries(Object.entries(CHANNELS).map(([name, def]) => [name, Object.freeze({
+    commercial: Boolean(def.commercial),
+    commercial_execution: def.commercial ? (globallyEnabled ? 'enabled' : 'blocked') : 'not_applicable',
+    release_gate: salesMode,
+    role: def.role,
   })])));
 }
