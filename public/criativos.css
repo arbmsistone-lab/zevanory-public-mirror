@@ -60,3 +60,12 @@ footer{height:auto;min-height:0;align-items:center;padding:0 2px}
 main{grid-template-rows:64px minmax(0,1fr) 78px 62px}
 .review-board{overflow:hidden}.board-vote{min-height:0}#board-state{font-size:7px;line-height:1.05;margin-top:3px}
 @media(max-height:760px) and (min-width:761px){main{grid-template-rows:54px minmax(0,1fr) 66px 56px}.timeline .card-head{margin-bottom:2px}.flow-steps div{padding:2px 4px}.flow-steps div>span{width:17px;height:17px}.investment{padding-top:3px;padding-bottom:3px}}
+
+/* EG-0077 final fit: preserve every desktop datum without internal scroll */
+@media(min-width:1181px){.workspace{grid-template-columns:295px minmax(360px,1fr) 300px}}
+.production-grid,.production-item,.front-statuses,.front-statuses span{min-width:0;max-width:100%}
+.front-statuses{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2px 4px}.front-statuses span{gap:3px}.front-statuses em{font-size:6px;letter-spacing:.02em}.front-statuses b{font-size:6px}
+.investment{padding:4px 9px}.investment .card-head{margin-bottom:2px}.advisor-grid>div{padding:3px 6px}.advisor-safety{margin:2px 2px 0;line-height:1}
+@media(max-height:760px) and (min-width:761px){.investment{padding:2px 7px}.investment .card-head{margin-bottom:1px}.advisor-grid>div{padding:2px 5px}.advisor-safety{margin-top:1px;line-height:1}}
+@media(min-width:1181px){.workspace{grid-template-columns:300px minmax(355px,1fr) 300px}}
+@media(min-width:1181px){.workspace{grid-template-columns:302px minmax(353px,1fr) 300px}}
