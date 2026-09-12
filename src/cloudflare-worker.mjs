@@ -44,6 +44,7 @@ function resolveHandler(req) {
   if (url.pathname === '/api/oauth/mercadolivre/callback') { url.searchParams.set('provider', 'mercadolivre_oauth'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
   if (url.pathname === '/api/oauth/tiktok/start') { url.searchParams.set('provider', 'tiktok_oauth'); url.searchParams.set('action', 'start'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
   if (url.pathname === '/api/oauth/tiktok/callback') { url.searchParams.set('provider', 'tiktok_oauth'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
+  if (url.pathname === '/api/tiktok-review') { url.searchParams.set('provider', 'tiktok_review'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
   if (url.pathname === '/api/oauth/linkedin/start') { url.searchParams.set('provider', 'linkedin_oauth'); url.searchParams.set('action', 'start'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
   if (url.pathname === '/api/oauth/linkedin/callback') { url.searchParams.set('provider', 'linkedin_oauth'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
   if (url.pathname === '/api/oauth/nuvemshop/start') { url.searchParams.set('provider', 'nuvemshop_oauth'); url.searchParams.set('action', 'start'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }

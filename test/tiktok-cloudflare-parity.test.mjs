@@ -8,6 +8,8 @@ test('Cloudflare Worker preserves TikTok OAuth start and callback routes', async
   assert.match(worker,/\/api\/oauth\/tiktok\/callback/);
   assert.match(worker,/provider', 'tiktok_oauth'/);
   assert.match(worker,/action', 'start'/);
+  assert.match(worker,/\/api\/tiktok-review/);
+  assert.match(worker,/provider', 'tiktok_review'/);
 });
 
 test('TikTok canonical migration and repair migration allow isolated sandbox credentials', async()=>{
