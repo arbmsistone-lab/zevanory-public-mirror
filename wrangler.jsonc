@@ -46,6 +46,8 @@
   ],
   "vars": {
     "SUPPORT_CHANNEL": "WhatsApp +55 88 9234-0423",
+    "CLOUDFLARE_AI_FREE_ONLY": "true",
+    "CLOUDFLARE_AI_DAILY_CALL_LIMIT": "20",
     "REMOTE_CHANNEL_STATUS_URL": "https://zevanory-site.vercel.app/api/config?view=closure_status",
     "OFFER_SELECTION_APPROVED": "true",
     "ACTIVE_OFFER_TYPE": "digital_product",
@@ -123,6 +125,7 @@
   "secrets": {
     "required": ["DATABASE_URL", "PUBLIC_BASE_URL", "FULFILLMENT_OPERATOR_TOKEN"]
   },
+  "ai": { "binding": "AI" },
   "kv_namespaces": [
     {
       "binding": "ZEVANORY_PRIVATE_ARTIFACTS",

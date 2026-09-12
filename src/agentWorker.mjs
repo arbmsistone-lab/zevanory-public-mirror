@@ -3,6 +3,7 @@ import { buildAgentContext, decideRevenueAction, chooseTool, decisionInputHash }
 import { authorizeTool } from './agentPolicy.mjs';
 import { evaluateAgentDecision } from './agentEvals.mjs';
 import { evaluateConversationQuality } from './conversationQuality.mjs';
+import { buildCloudflareAiExecutionProvider } from './cloudflareAiProvider.mjs';
 import { buildFollowUpPlan } from './salesPipeline.mjs';
 import { enqueueOutbox } from './integrationOutbox.mjs';
 import { assertChannelActionAllowed } from './channelAdapters.mjs';
@@ -141,7 +142,10 @@ export async function runAgentOnce(sql,options={}){
       const recent=await sql.query("select count(*)::int as count from agent_runs where mode='ai_assisted' and created_at>now()-interval '1 hour'");
       if(Number(recent[0]?.count||0)>=cap)apiKey=null;
     }
-    decision=await decideRevenueAction(context,{...options,apiKey});
+    const aiProviders=[...(options.aiProviders||[])];
+    const cloudflareAi=buildCloudflareAiExecutionProvider({sql,env});
+    if(cloudflareAi)aiProviders.push(cloudflareAi);
+    decision=await decideRevenueAction(context,{...options,apiKey,aiProviders});
     tool=chooseTool(decision);
     const auth=authorizeTool(tool,env);
     evalResult=evaluateAgentDecision({decision,context,authorization:auth,tool});

@@ -139,6 +139,7 @@ function withSecurityHeaders(response) {
 
 export default {
   async fetch(request, env) {
+    globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
     hydrateRuntimeConfig(env);
     const url = new URL(request.url);
     const delegatedPayment=await delegatePaymentRequest(request,env);if(delegatedPayment)return delegatedPayment;
