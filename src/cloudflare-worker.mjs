@@ -11,7 +11,6 @@ import agentStatusHandler from '../api/agent-status.mjs';
 import checkoutHandler from '../api/checkout.mjs';
 import webhooksHandler from '../api/webhooks.mjs';
 import robotControlHandler from '../api/robot-control.mjs';
-import operatorSessionHandler from '../api/operator-session.mjs';
 import { handleArtifactIssue, handleArtifactDownload } from './cloudflareArtifactRoutes.mjs';
 import { handleCloudflareJournalAppend } from './durableOperationJournal.mjs';
 import { publicCommercialChannelReadinessSummary } from './publicChannelStatus.mjs';
