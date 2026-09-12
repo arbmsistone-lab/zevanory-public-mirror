@@ -55,3 +55,9 @@ test('creative center desktop layout is explicitly single-screen and scroll-free
   assert.match(css,/\.workspace\{min-height:0;height:auto;overflow:hidden/);
   assert.match(css,/@media\(max-width:760px\)\{html,body\{height:auto;min-height:100%;overflow:auto\}/);
 });
+
+test('creative center exposes elite media investment advisor without automatic spend',()=>{
+  assert.match(html,/Media Investment Advisor/);assert.match(html,/Gasto automÃ¡tico permanece bloqueado/);
+  assert.match(js,/advisor-action/);assert.match(js,/recommended_daily_budget_brl/);assert.match(config,/adviseMediaInvestment/);
+});
+});

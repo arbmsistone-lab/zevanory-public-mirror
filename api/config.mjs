@@ -16,6 +16,7 @@ import { brandIdentityReadiness } from '../src/brandIdentityReadiness.mjs';
 import { isPublicDeploymentRequest, safeBearerEqual } from '../src/security.mjs';
 import { verifyCreativeToken, creativeAssetEtag } from '../src/creativeEngine.mjs';
 import { selectCreativeVariantWithVisualEvidence } from '../src/creativeIntelligence.mjs';
+import { adviseMediaInvestment } from '../src/mediaInvestmentAdvisor.mjs';
 
 export const config={maxDuration:30};
 async function channelStatusWithOAuth(summary=false){
@@ -53,9 +54,16 @@ export default async function handler(req, res) {
   if(view==='creative_sample'){
     const origin=`${String(req.headers?.['x-forwarded-proto']||'https').split(',')[0]}://${String(req.headers?.['x-forwarded-host']||req.headers?.host||'zevanory.api.br').split(',')[0]}`;
     const common={offerId:'OFFER-0001',hook:'Automacao com controle',body:'IA, execucao segura e evidencia real.',cta:'Conheca a ZEVANORY'};
-    const image=await selectCreativeVariantWithVisualEvidence(null,{...common,channel:'instagram'}),video=await selectCreativeVariantWithVisualEvidence(null,{...common,channel:'youtube'});
+    const sql=process.env.DATABASE_URL?neon(process.env.DATABASE_URL):null;
+    const image=await selectCreativeVariantWithVisualEvidence(sql,{...common,channel:'instagram'}),video=await selectCreativeVariantWithVisualEvidence(sql,{...common,channel:'youtube'});
     const imageSpec=image.winner.spec,videoSpec=video.winner.spec;
-    const summary=x=>x.ranking.map(v=>({creative_id:v.spec.creative_id,variant_id:v.variant_id,layout:v.spec.layout,quality_score:v.quality_score,perceptual_score:v.perceptual_score,visual_min_frame_score:v.visual_min_frame_score,visual_frames:(v.visual_frames||[]).map(f=>({mode:f.mode,score:f.score,dynamic_range:Number(f.dynamic_range?.toFixed?.(2)||f.dynamic_range||0),luminance_std:Number(f.luminance_std?.toFixed?.(2)||f.luminance_std||0),occupied_fraction:Number(f.occupied_fraction?.toFixed?.(4)||f.occupied_fraction||0),edge_density:Number(f.edge_density?.toFixed?.(4)||f.edge_density||0),overflow:f.overflow===true,lines:Number(f.lines||f.hook_lines||f.body_lines||0)})),selection_score:v.selection_score,observed_ready:v.observed_ready,review_board:v.review_board}));
+    const spendRows=sql?await sql.query(`select campaign_id,variant_id,sum(spend_brl)::numeric spend_brl,max(occurred_at) last_spend_at from media_spend_events where campaign_id in ($1,$2) group by campaign_id,variant_id`,[imageSpec.campaign_id,videoSpec.campaign_id]).catch(()=>[]):[];
+    const spendMap=new Map(spendRows.map(r=>[`${r.campaign_id}:${r.variant_id}`,r]));
+    const summary=x=>x.ranking.map(v=>{
+      const spend=spendMap.get(`${v.spec.campaign_id}:${v.variant_id}`)||{};
+      const advisor=adviseMediaInvestment({creative:v,economics:{...v,acquisition_spend_brl:Number(spend.spend_brl||0)},current_daily_budget_brl:0});
+      return {creative_id:v.spec.creative_id,variant_id:v.variant_id,layout:v.spec.layout,quality_score:v.quality_score,perceptual_score:v.perceptual_score,visual_min_frame_score:v.visual_min_frame_score,visual_frames:(v.visual_frames||[]).map(f=>({mode:f.mode,score:f.score,dynamic_range:Number(f.dynamic_range?.toFixed?.(2)||f.dynamic_range||0),luminance_std:Number(f.luminance_std?.toFixed?.(2)||f.luminance_std||0),occupied_fraction:Number(f.occupied_fraction?.toFixed?.(4)||f.occupied_fraction||0),edge_density:Number(f.edge_density?.toFixed?.(4)||f.edge_density||0),overflow:f.overflow===true,lines:Number(f.lines||f.hook_lines||f.body_lines||0)})),selection_score:v.selection_score,observed_ready:v.observed_ready,review_board:v.review_board,sessions:v.sessions||0,paid:v.paid||0,net_revenue_brl:v.net_revenue_brl||0,media_spend_brl:Number(spend.spend_brl||0),advisor};
+    });
     res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;
     return res.end(JSON.stringify({service:'ZEVANORY',engine:'creative-intelligence-v2',review_policy:{board:'senior-creative-review-v1',analysts:5,required:5,unanimous_required:true},image_selection_basis:image.selection_basis,video_selection_basis:video.selection_basis,image_review_board:image.review_board,video_review_board:video.review_board,image_technical_release_ready:image.technical_release_ready,video_technical_release_ready:video.technical_release_ready,image_variants:summary(image),video_variants:summary(video),image_creative_id:imageSpec.creative_id,video_creative_id:videoSpec.creative_id,png_url:`${origin}/brand/creative-sample.png`,webm_url:`${origin}/brand/creative-sample.webm`}));
   }
