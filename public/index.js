@@ -67,7 +67,7 @@ function renderCoverage(config,ok,total){
   set('source-health',ok+'/'+total+' fontes de telemetria online');
 }
 function renderPublicOperations(status={},config={},agent={}){
-  if(liveOperatorToken)return; const root=document.getElementById('live-operations'); if(!root)return; root.replaceChildren();
+  const root=document.getElementById('live-operations'); if(!root)return; root.replaceChildren();
   const rows=[]; const when=status.last_event_at||new Date().toISOString(); const metrics=status.metrics||{}; const pipe=status.command_center?.pipeline?.open??metrics.pipeline_open??0;
   rows.push({time:when,title:'Último evento confirmado',sub:status.last_event_at?'Telemetria operacional registrada':'Sem evento operacional recente',state:status.last_event_at?'done':'waiting'});
   rows.push({time:new Date().toISOString(),title:'Pipeline monitorado',sub:fmt(pipe)+' oportunidade(s) aberta(s) · '+fmt(metrics.checkouts_started)+' checkout(s)',state:Number(pipe)>0?'running':'done'});
@@ -121,7 +121,7 @@ async function fetchLiveOperations(token=liveOperatorToken){
   if(!r.ok)throw new Error(r.status===401?'Token inválido ou ausente.':'Telemetria operacional indisponível.');
   return r.json();
 }
-async function refreshLiveOperations(){if(!liveOperatorToken)return;try{renderLiveOperations(await fetchLiveOperations());}catch{set('live-connection-state','RECONEXÃO');}}
+async function refreshLiveOperations(){try{renderLiveOperations(await fetchLiveOperations(liveOperatorToken||''));}catch{if(liveOperatorToken)set('live-connection-state','RECONEXÃO');}}
 const liveAuth=document.getElementById('live-auth-dialog');
 document.getElementById('connect-live')?.addEventListener('click',async()=>{set('live-auth-error','');try{renderLiveOperations(await fetchLiveOperations(''));return;}catch{}liveAuth?.showModal();});
 document.getElementById('live-auth-submit')?.addEventListener('click',async e=>{e.preventDefault();const input=document.getElementById('live-operator-token');const token=String(input?.value||'').trim();if(!token){set('live-auth-error','Informe o token do operador.');return;}try{const data=await fetchLiveOperations(token);liveOperatorToken=token;if(input)input.value='';renderLiveOperations(data);liveAuth?.close();}catch(error){set('live-auth-error',String(error?.message||'Falha de autenticação.'));}});
