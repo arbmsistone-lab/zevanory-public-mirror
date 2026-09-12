@@ -134,6 +134,7 @@ function withSecurityHeaders(response) {
   headers.set('cross-origin-opener-policy', 'same-origin');
   headers.set('cross-origin-resource-policy', 'same-origin');
   headers.set('x-dns-prefetch-control', 'off');
+  headers.set('strict-transport-security', 'max-age=63072000; includeSubDomains; preload');
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
