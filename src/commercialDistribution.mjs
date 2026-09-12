@@ -17,8 +17,8 @@ export const COMMERCIAL_DISTRIBUTION_CANONICAL=Object.freeze({
 });
 export const REQUIRED_DISTRIBUTION_FRONTS=Object.freeze(Object.keys(COMMERCIAL_DISTRIBUTION_CANONICAL));
 
-export function commercialDistributionReadiness(env=process.env){
-  const channels=channelReadiness(env), affiliate=evaluateAffiliateProgramReadiness(env);
+export function commercialDistributionReadiness(env=process.env,runtimeOAuth={}){
+  const baseChannels=channelReadiness(env), channels=Object.fromEntries(Object.entries(baseChannels).map(([k,v])=>[k,runtimeOAuth[k]?.ready?{...v,configured:true,missing:[]}:v])), affiliate=evaluateAffiliateProgramReadiness(env);
   const fronts=Object.fromEntries(REQUIRED_DISTRIBUTION_FRONTS.map((key)=>{
     const policy=COMMERCIAL_DISTRIBUTION_CANONICAL[key], state=channels[key]||{configured:false,implemented:false,missing:['channel_contract_missing']};
     const fallback=assistedFallbackReadiness(key,env), alternate=alternateAutomationReadiness(key,env), contingency=key==='nuvemshop'?nuvemshopCsvFallbackReadiness(env):{ready:false,mode:null,provider:null}, blockers=[...state.missing]; if(key==='affiliate')blockers.push(...affiliate.blockers);
