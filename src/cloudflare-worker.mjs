@@ -40,6 +40,8 @@ function resolveHandler(req) {
   if (url.pathname === '/api/creative-asset') { req.url = `/api/config?view=creative_asset&${url.searchParams.toString()}`; return configHandler; }
   if (url.pathname === '/api/checkout/asaas') { req.url = '/api/checkout?provider=asaas'; return checkoutHandler; }
   if (url.pathname === '/api/checkout/mercadopago') { req.url = '/api/checkout?provider=mercadopago'; return checkoutHandler; }
+  if (url.pathname === '/api/oauth/meta/start') { url.searchParams.set('provider', 'meta_oauth'); url.searchParams.set('action', 'start'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
+  if (url.pathname === '/api/oauth/meta/callback') { url.searchParams.set('provider', 'meta_oauth'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
   if (url.pathname === '/api/oauth/mercadolivre/start') { url.searchParams.set('provider', 'mercadolivre_oauth'); url.searchParams.set('action', 'start'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
   if (url.pathname === '/api/oauth/mercadolivre/callback') { url.searchParams.set('provider', 'mercadolivre_oauth'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
   if (url.pathname === '/api/oauth/tiktok/start') { url.searchParams.set('provider', 'tiktok_oauth'); url.searchParams.set('action', 'start'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }

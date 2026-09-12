@@ -5,6 +5,7 @@ import { loadMercadoLivreCredential, refreshMercadoLivreCredential } from './mer
 import { loadTikTokCredential, refreshTikTokCredential } from './tiktokOAuth.mjs';
 import { loadLinkedInCredential } from './linkedinOAuth.mjs';
 import { loadNuvemshopCredential } from './nuvemshopOAuth.mjs';
+import { loadMetaCredential } from './metaOAuth.mjs';
 import { requestProviderJson, providerAcceptanceMissing } from './providerDelivery.mjs';
 import { alternateAutomationReadiness } from './alternateChannelAutomation.mjs';
 import { publishViaBuffer } from './bufferSocial.mjs';
@@ -40,21 +41,21 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       const id=String(body?.id||'');if(!id)throw providerAcceptanceMissing('resend_email_id_missing');
       return Object.freeze({provider:'resend',accepted:true,provider_message_id:id,confirmation:'webhook_required'});
     },
-    'channel:facebook':async(event)=>{
-      ensureGlobalGates(env,commercialGate);const token=required(env.META_ACCESS_TOKEN,'meta_access_token_missing');
-      const pageId=required(env.META_PAGE_ID,'meta_page_id_missing');const message=required(contentWithLanding(event.payload?.content,event.payload?.landing_url,60000),'facebook_content_missing',60000);const media=String(event.payload?.media_url||'').trim();
-      const endpoint=media?`${metaBase()}/${encodeURIComponent(pageId)}/photos`:`${metaBase()}/${encodeURIComponent(pageId)}/feed`;const payload=media?{url:ensureHttps(media,'facebook_media_url_invalid'),caption:message,published:true}:{message};
+    'channel:facebook':async(event,{sql}={})=>{
+      ensureGlobalGates(env,commercialGate);let token='',pageId='';if(sql?.query){try{const c=await loadMetaCredential(sql,env);token=c.access_token;pageId=c.page_id;}catch{}}if(!token||!pageId){token=String(env.META_ACCESS_TOKEN||'').trim();pageId=String(env.META_PAGE_ID||'').trim();}token=required(token,'meta_access_token_missing');
+      const pageIdSafe=required(pageId,'meta_page_id_missing');const message=required(contentWithLanding(event.payload?.content,event.payload?.landing_url,60000),'facebook_content_missing',60000);const media=String(event.payload?.media_url||'').trim();
+      const endpoint=media?`${metaBase()}/${encodeURIComponent(pageIdSafe)}/photos`:`${metaBase()}/${encodeURIComponent(pageIdSafe)}/feed`;const payload=media?{url:ensureHttps(media,'facebook_media_url_invalid'),caption:message,published:true}:{message};
       const body=await requestJson(fetchImpl,endpoint,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(payload)},[200]);
       const id=String(body?.id||body?.post_id||'');if(!id)throw providerAcceptanceMissing('facebook_post_id_missing');
       return Object.freeze({provider:'meta_facebook',accepted:true,provider_post_id:id,media_attached:Boolean(media),confirmation:'provider_lookup_or_webhook_required'});
     },
-    'channel:instagram':async(event)=>{
-      ensureGlobalGates(env,commercialGate);const token=required(env.META_ACCESS_TOKEN,'meta_access_token_missing');
-      const igId=required(env.INSTAGRAM_BUSINESS_ACCOUNT_ID,'instagram_business_account_id_missing');
+    'channel:instagram':async(event,{sql}={})=>{
+      ensureGlobalGates(env,commercialGate);let token='',igId='';if(sql?.query){try{const c=await loadMetaCredential(sql,env);token=c.access_token;igId=c.instagram_id;}catch{}}if(!token||!igId){token=String(env.META_ACCESS_TOKEN||'').trim();igId=String(env.INSTAGRAM_BUSINESS_ACCOUNT_ID||'').trim();}token=required(token,'meta_access_token_missing');
+      const igIdSafe=required(igId,'instagram_business_account_id_missing');
       const imageUrl=ensureHttps(event.payload?.media_url,'instagram_media_url_required');const caption=contentWithLanding(event.payload?.content,event.payload?.landing_url,2200);
-      const container=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(igId)}/media`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({image_url:imageUrl,caption})},[200]);
+      const container=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(igIdSafe)}/media`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({image_url:imageUrl,caption})},[200]);
       const creationId=String(container?.id||'');if(!creationId)throw providerAcceptanceMissing('instagram_container_id_missing');
-      const published=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(igId)}/media_publish`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({creation_id:creationId})},[200]);
+      const published=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(igIdSafe)}/media_publish`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({creation_id:creationId})},[200]);
       const id=String(published?.id||'');if(!id)throw providerAcceptanceMissing('instagram_media_id_missing');
       return Object.freeze({provider:'meta_instagram',accepted:true,provider_media_id:id,container_id:creationId,confirmation:'provider_lookup_required'});
     },

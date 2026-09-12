@@ -10,6 +10,7 @@ import linkedinOAuthHandler from '../src/http/oauthLinkedIn.mjs';
 import nuvemshopOAuthHandler from '../src/http/oauthNuvemshop.mjs';
 import nuvemshopWebhookHandler from '../src/http/webhookNuvemshop.mjs';
 import youtubeIdentityOAuthHandler from '../src/http/oauthYouTubeIdentity.mjs';
+import metaOAuthHandler from '../src/http/oauthMeta.mjs';
 import {consumeAdaptiveWebhookRate} from '../src/security/adaptiveRateLimit.mjs';
 
 export const config={api:{bodyParser:false}};
@@ -32,7 +33,7 @@ const readRawBody=async(req)=>{
 };
 export default async function handler(req,res){
   const provider=providerFrom(req);
-  if(!['asaas','mercadopago','mercadopago_test','resend','meta','mercadolivre','mercadolivre_oauth','tiktok_oauth','tiktok_review','linkedin_oauth','nuvemshop_oauth','nuvemshop','youtube_identity_oauth'].includes(provider)){
+  if(!['asaas','mercadopago','mercadopago_test','resend','meta','mercadolivre','mercadolivre_oauth','tiktok_oauth','tiktok_review','linkedin_oauth','nuvemshop_oauth','nuvemshop','youtube_identity_oauth','meta_oauth'].includes(provider)){
     res.setHeader('content-type','application/json; charset=utf-8');
     res.statusCode=400;
     return res.end(JSON.stringify({error:'webhook_provider_invalid',accepted:false}));
@@ -72,5 +73,6 @@ export default async function handler(req,res){
   if(provider==='nuvemshop_oauth') return nuvemshopOAuthHandler(req,res);
   if(provider==='nuvemshop') return nuvemshopWebhookHandler(req,res);
   if(provider==='youtube_identity_oauth') return youtubeIdentityOAuthHandler(req,res);
+  if(provider==='meta_oauth') return metaOAuthHandler(req,res);
   return resendHandler(req,res);
 }

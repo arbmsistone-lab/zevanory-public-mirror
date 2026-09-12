@@ -18,9 +18,10 @@ test('persisted OAuth readiness requires provider-specific scopes and overlays A
     {provider:'youtube_identity',scope:'https://www.googleapis.com/auth/youtube.force-ssl',has_access:true,has_refresh:true},
     {provider:'tiktok',scope:'user.info.basic',has_access:true,has_refresh:true},
     {provider:'nuvemshop',scope:'',has_access:true,has_refresh:false},
+    {provider:'meta',scope:'pages_show_list pages_manage_posts instagram_content_publish',has_access:true,has_refresh:false},
   ]};
   const ready=await persistedOAuthReadiness(sql);
-  assert.deepEqual(ready,{youtube:true,tiktok:false,nuvemshop:true});
+  assert.deepEqual(ready,{youtube:true,tiktok:false,nuvemshop:true,facebook:true,instagram:true});
   const out=overlayPersistedOAuth({youtube:{api_configured:false,operational_ready:true,operational_mode:'operator_assisted',provider:'youtube-data-api'}},ready);
   assert.equal(out.youtube.api_configured,true);assert.equal(out.youtube.operational_mode,'provider_api_oauth');assert.equal(out.youtube.oauth_persisted,true);
 });

@@ -2,10 +2,12 @@ const PROVIDER_TO_CHANNEL=Object.freeze({youtube_identity:'youtube',tiktok:'tikt
 const scopeHas=(scope,value)=>String(scope||'').split(/[ ,]+/).includes(value);
 export async function persistedOAuthReadiness(sql){
   if(!sql?.query)return Object.freeze({});
-  const rows=await sql.query("select provider,scope,(access_token_enc is not null and length(access_token_enc)>0) as has_access,(refresh_token_enc is not null and length(refresh_token_enc)>0) as has_refresh from provider_oauth_credentials where provider in ('youtube_identity','tiktok','linkedin','nuvemshop')");
+  const rows=await sql.query("select provider,scope,(access_token_enc is not null and length(access_token_enc)>0) as has_access,(refresh_token_enc is not null and length(refresh_token_enc)>0) as has_refresh from provider_oauth_credentials where provider in ('youtube_identity','tiktok','linkedin','nuvemshop','meta')");
   const out={};
   for(const r of rows||[]){
-    const channel=PROVIDER_TO_CHANNEL[String(r.provider||'')];if(!channel)continue;
+    const provider=String(r.provider||'');
+    if(provider==='meta'){const ready=Boolean(r.has_access&&scopeHas(r.scope,'pages_manage_posts')&&scopeHas(r.scope,'instagram_content_publish'));out.facebook=ready;out.instagram=ready;continue;}
+    const channel=PROVIDER_TO_CHANNEL[provider];if(!channel)continue;
     const ready=channel==='youtube'?Boolean(r.has_access&&r.has_refresh&&scopeHas(r.scope,'https://www.googleapis.com/auth/youtube.force-ssl')):
       channel==='tiktok'?Boolean(r.has_access&&scopeHas(r.scope,'video.publish')):
       channel==='linkedin'?Boolean(r.has_access&&scopeHas(r.scope,'w_member_social')):
