@@ -73,6 +73,7 @@ jobs:
       - run: npm run dr:public-artifact
       - run: npm run audit:dns-recovery
       - run: npm run dr:chaos:providers
+      - run: npm run audit:critical-continuity
       - run: npm run audit:30x
       - run: npm run audit:sales:20x
       - run: npm run audit:final
