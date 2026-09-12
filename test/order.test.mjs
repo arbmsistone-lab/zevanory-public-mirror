@@ -20,12 +20,12 @@ test('checkout request accepts only UUID request and session ids',()=>{
 
 test('order reference and public origin are canonical',()=>{
   assert.equal(externalReferenceForOrder(id),`ZEVANORY:EXP-0001:${id}`);
-  assert.equal(safePublicBaseUrl('https://zevanory-site.vercel.app'),'https://zevanory-site.vercel.app');
+  assert.equal(safePublicBaseUrl('https://zevanory-production-backup.netlify.app'),'https://zevanory-production-backup.netlify.app');
   assert.equal(safePublicBaseUrl('https://evil.example'),'');
 });
 
 test('checkout payload is fixed to approved offer and Sandbox response',()=>{
-  const payload=buildAsaasCheckoutPayload(id,'https://zevanory-site.vercel.app');
+  const payload=buildAsaasCheckoutPayload(id,'https://zevanory-production-backup.netlify.app');
   assert.deepEqual(payload.billingTypes,['PIX','CREDIT_CARD']);
   assert.deepEqual(payload.chargeTypes,['DETACHED']);
   assert.equal(payload.items[0].value,1197);

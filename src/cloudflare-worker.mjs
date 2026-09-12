@@ -80,7 +80,7 @@ const staticAliases = new Map([
   ['/ia-na-pratica', '/ia-na-pratica.html'], ['/vendas-na-pratica', '/vendas-na-pratica.html'],
   ['/lucro-e-caixa', '/lucro-e-caixa.html'], ['/combo-ia-vendas', '/combo-ia-vendas.html'], ['/negocio-completo', '/negocio-completo.html'],
   ['/piloto', '/piloto.html'], ['/termos', '/termos.html'], ['/privacidade', '/privacidade.html'], ['/exclusao-dados', '/exclusao-dados.html'],
-  ['/reembolso', '/reembolso.html'], ['/afiliados', '/afiliados.html'], ['/criativos', '/criativos.html'],
+  ['/reembolso', '/reembolso.html'], ['/afiliados', '/afiliados.html'], ['/criativos', '/criativos.html'], ['/tiktok-review', '/tiktok-review.html'],
 ]);
 function delegatedPaymentOrigin(env,requestUrl){
   if(String(env.PAYMENT_RUNTIME_MODE||'').toLowerCase()!=='delegated')return null;
@@ -96,14 +96,6 @@ function delegatedPaymentOrigin(env,requestUrl){
 }
 function isPaymentMutation(pathname){
   return pathname.startsWith('/api/checkout')||/^\/api\/webhooks\/(asaas|mercadopago)$/.test(pathname);
-}
-function isTikTokOAuthPath(pathname){return pathname==='/api/oauth/tiktok/start'||pathname==='/api/oauth/tiktok/callback';}
-async function delegateTikTokOAuthRequest(request){
-  const url=new URL(request.url);if(!isTikTokOAuthPath(url.pathname))return null;
-  if(request.headers.get('x-zevanory-tiktok-delegated')==='1')return new Response(JSON.stringify({error:'tiktok_oauth_delegation_loop'}),{status:508,headers:{'content-type':'application/json; charset=utf-8'}});
-  const target=new URL(url.pathname+url.search,'https://zevanory-site.vercel.app'),headers=new Headers(request.headers);headers.set('x-zevanory-tiktok-delegated','1');
-  const init={method:request.method,headers,redirect:'manual'};if(!['GET','HEAD'].includes(request.method))init.body=request.body;
-  try{return await fetch(new Request(target,init));}catch{return new Response(JSON.stringify({error:'tiktok_oauth_runtime_unavailable'}),{status:503,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
 }
 async function delegatePaymentRequest(request,env){
   const url=new URL(request.url),origin=delegatedPaymentOrigin(env,request.url);
@@ -151,9 +143,7 @@ export default {
   async fetch(request, env) {
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
     hydrateRuntimeConfig(env);
-    const url = new URL(request.url);
-    const delegatedTikTok=await delegateTikTokOAuthRequest(request);if(delegatedTikTok)return delegatedTikTok;
-    const delegatedPayment=await delegatePaymentRequest(request,env);if(delegatedPayment)return delegatedPayment;
+    const url = new URL(request.url);    const delegatedPayment=await delegatePaymentRequest(request,env);if(delegatedPayment)return delegatedPayment;
     if (url.pathname === '/private/artifacts/issue') return handleArtifactIssue(request, env);
     if (url.pathname === '/private/artifacts/download') return handleArtifactDownload(request, env);
     if (url.pathname === '/private/journal/append') return handleCloudflareJournalAppend(request, env);

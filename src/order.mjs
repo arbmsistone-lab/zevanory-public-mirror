@@ -27,7 +27,7 @@ export function externalReferenceForOrder(orderId) {
 export function safePublicBaseUrl(value) {
   try {
     const url=new URL(String(value||''));
-    const allowed=new Set(['https://zevanory-site.vercel.app','https://zevanory.api.br']);
+    const allowed=new Set(['https://zevanory.api.br','https://edge.zevanory.api.br','https://zevanory-production-backup.netlify.app']);
     return allowed.has(url.origin) && url.pathname==='/' ? url.origin : '';
   } catch { return ''; }
 }
