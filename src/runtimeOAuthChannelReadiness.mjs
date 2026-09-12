@@ -3,10 +3,15 @@ const PROVIDER_TO_CHANNEL=Object.freeze({youtube_identity:'youtube',tiktok:'tikt
 const scopeHas=(scope,value)=>String(scope||'').split(/[ ,]+/).includes(value);
 export async function persistedOAuthReadiness(sql){
   if(!sql?.query)return Object.freeze({});
-  const rows=await sql.query("select c.provider,c.scope,(access_token_enc is not null and length(access_token_enc)>0) as has_access,(refresh_token_enc is not null and length(refresh_token_enc)>0) as has_refresh  ,exists(select 1 from nuvemshop_connections n where n.store_id=c.account_id and n.status='connected' and n.read_only_api_verified_at is not null and n.webhooks_registered_at is not null and length(n.merchant_email_enc)>0) as integration_verified from provider_oauth_credentials c where c.provider in ('youtube_identity','tiktok','linkedin','nuvemshop')");
+  const rows=await sql.query("select c.provider,c.scope,(access_token_enc is not null and length(access_token_enc)>0) as has_access,(refresh_token_enc is not null and length(refresh_token_enc)>0) as has_refresh,exists(select 1 from nuvemshop_connections n where n.store_id=c.account_id and n.status='connected' and n.read_only_api_verified_at is not null and n.webhooks_registered_at is not null and length(n.merchant_email_enc)>0) as integration_verified from provider_oauth_credentials c where c.provider in ('youtube_identity','tiktok','linkedin','nuvemshop','meta')");
   const out={};
   for(const r of rows||[]){
-    const channel=PROVIDER_TO_CHANNEL[String(r.provider||'')];if(!channel)continue;
+    const provider=String(r.provider||'');
+    if(provider==='meta'){
+      const ready=Boolean(r.has_access&&scopeHas(r.scope,'pages_manage_posts')&&scopeHas(r.scope,'instagram_content_publish'));
+      out.facebook=ready;out.instagram=ready;continue;
+    }
+    const channel=PROVIDER_TO_CHANNEL[provider];if(!channel)continue;
     const ready=channel==='youtube'?Boolean(r.has_access&&r.has_refresh&&scopeHas(r.scope,'https://www.googleapis.com/auth/youtube.force-ssl')):
       channel==='tiktok'?Boolean(r.has_access&&scopeHas(r.scope,'video.publish')):
       channel==='linkedin'?Boolean(r.has_access&&scopeHas(r.scope,'w_member_social')):
