@@ -1,5 +1,5 @@
 import { Pool } from '@neondatabase/serverless';
-import { createNuvemshopOAuthStart, readNuvemshopOAuthCookie, exchangeNuvemshopCode, persistNuvemshopCredential } from '../nuvemshopOAuth.mjs';
+import { createNuvemshopOAuthStart, readNuvemshopOAuthCookie, exchangeNuvemshopCode, persistNuvemshopCredential, ensureNuvemshopWebhooks } from '../nuvemshopOAuth.mjs';
 import { preserveOAuthCredential } from '../oauthPersistenceFabric.mjs';
 const COOKIE='zevanory_nuvemshop_oauth';
 const json=(res,status,body)=>{res.statusCode=status;res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');return res.end(JSON.stringify(body));};
@@ -20,6 +20,12 @@ let pool;try{
   try{await persistNuvemshopCredential({query:(t,a)=>client.query(t,a).then(r=>r.rows)},{token,env:process.env});}
   catch{const recovery=await preserveOAuthCredential({provider:'nuvemshop',subjectRef:storeId||'authorized',token,identity:{store_id:storeId}});res.setHeader('set-cookie',`${COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/oauth/nuvemshop; Max-Age=0`);return json(res,recovery.preserved?202:503,{provider:'nuvemshop',connected:false,credential_preserved:recovery.preserved,reconciliation_required:true,error:recovery.preserved?undefined:'oauth_persistence_failed'});}
   finally{client.release();}
-  res.setHeader('set-cookie',`${COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/oauth/nuvemshop; Max-Age=0`);
-  return json(res,200,{provider:'nuvemshop',connected:true,store_id:storeId,tokens_stored_encrypted:true,commercial_enabled:false});
+  try{
+    const webhooks=await ensureNuvemshopWebhooks({token,env:process.env});
+    res.setHeader('set-cookie',`${COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/oauth/nuvemshop; Max-Age=0`);
+    return json(res,200,{provider:'nuvemshop',connected:true,store_id:storeId,tokens_stored_encrypted:true,webhooks_ready:webhooks.ready,required_webhooks:webhooks.required.length,commercial_enabled:false});
+  }catch(error){
+    res.setHeader('set-cookie',`${COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/oauth/nuvemshop; Max-Age=0`);
+    return json(res,202,{provider:'nuvemshop',connected:true,store_id:storeId,tokens_stored_encrypted:true,webhooks_ready:false,reconciliation_required:true,error:String(error?.message||'nuvemshop_webhook_setup_failed').slice(0,120),commercial_enabled:false});
+  }
 }catch(e){return json(res,503,{provider:'nuvemshop',connected:false,error:String(e.message||'oauth_callback_failed')});}finally{if(pool)await pool.end().catch(()=>{});}}
