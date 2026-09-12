@@ -48,3 +48,10 @@ footer{height:auto;min-height:0;align-items:center;padding:0 2px}
 @media(max-width:1180px){.advisor-grid{grid-template-columns:repeat(5,1fr)}}
 @media(max-height:760px) and (min-width:761px){.investment{padding:4px 7px}.advisor-grid{gap:4px}.advisor-grid>div{padding:3px 5px}.advisor-safety{margin-top:2px;font-size:6px}}
 @media(max-width:760px){.investment{overflow:visible;margin-top:8px}.advisor-grid{grid-template-columns:1fr 1fr}.advisor-safety{font-size:8px}}
+
+/* Estados separados por frente: criacao, divulgacao, atendimento e venda */
+.production-grid .production-item{min-height:72px}
+.front-statuses{display:grid;grid-template-columns:1fr 1fr;gap:3px 6px;margin-top:5px}
+.front-statuses span{min-width:0;display:flex;align-items:center;justify-content:space-between;gap:5px;border-top:1px solid rgba(32,52,70,.55);padding-top:3px}
+.front-statuses em{font-size:7px;font-style:normal;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.front-statuses b{font-size:7px;color:var(--ok);white-space:nowrap}.front-statuses .sales-state b{color:var(--warn)}

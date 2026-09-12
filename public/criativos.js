@@ -4,6 +4,7 @@ const safeNumber=(value)=>Number.isFinite(Number(value))?Number(value):null;
 const scoreLabel=(value)=>{const n=safeNumber(value);if(n===null)return '—';return n<=1?(n*100).toFixed(1):n.toFixed(1);};
 const variantLetter=(index)=>String.fromCharCode(65+index);
 const FRONT_LABELS={zevanory:'ZEVANORY',whatsapp:'WhatsApp',email:'Email',instagram:'Instagram',facebook:'Facebook',youtube:'YouTube',google:'Google',affiliate:'Afiliados',mercado_livre:'Mercado Livre'};
+const SERVICE_FRONTS=new Set(['zevanory','whatsapp','email','instagram','facebook']);
 let sample=null;
 let closure=null;
 let mode='image';
@@ -86,7 +87,11 @@ function renderFronts(){
   entries.forEach(([name,state])=>{
     const item=document.createElement('button');item.type='button';item.className='production-item';
     const previewMode=name==='youtube'?'video':name==='instagram'?'image':'';if(previewMode)item.dataset.mode=previewMode;
-    item.innerHTML=`<span class="channel">${FRONT_LABELS[name]||name}</span><strong>${state.operational_ready?'CRIAÇÃO ATIVA':'AGUARDANDO'}</strong><small>${state.automation_ready?'automação pronta':'operação assistida'}</small><i>${previewMode?'PREVIEW DISPONÍVEL':'PRONTA PARA CRIAÇÃO'}</i>`;
+    const creation=state.operational_ready?'ATIVA':'AGUARDANDO';
+    const distribution=state.automation_ready||state.api_configured?'PRONTA':'ASSISTIDA';
+    const service=SERVICE_FRONTS.has(name)?(state.operational_ready?'SUPORTADO':'AGUARDANDO'):'N/A';
+    const sales=closure?.commercial_enabled?'LIBERADA':'BLOQUEADA';
+    item.innerHTML=`<span class="channel">${FRONT_LABELS[name]||name}</span><div class="front-statuses"><span><em>Criação</em><b>${creation}</b></span><span><em>Divulgação</em><b>${distribution}</b></span><span><em>Atendimento</em><b>${service}</b></span><span class="sales-state"><em>Venda</em><b>${sales}</b></span></div><i>${previewMode?'PREVIEW DISPONÍVEL':'FRENTE PREPARADA'}</i>`;
     if(previewMode)item.addEventListener('click',()=>selectMode(previewMode));else item.disabled=true;
     root.append(item);
   });

@@ -60,4 +60,11 @@ test('creative center exposes elite media investment advisor without automatic s
   assert.match(html,/Media Investment Advisor/);assert.match(html,/Gasto automÃ¡tico permanece bloqueado/);
   assert.match(js,/advisor-action/);assert.match(js,/recommended_daily_budget_brl/);assert.match(config,/adviseMediaInvestment/);
 });
+
+test('creative center separates operational readiness from commercial sales state',()=>{
+  assert.match(js,/Criação/);
+  assert.match(js,/Divulgação/);
+  assert.match(js,/Atendimento/);
+  assert.match(js,/Venda/);
+  assert.match(js,/commercial_enabled\?'LIBERADA':'BLOQUEADA'/);
 });
