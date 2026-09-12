@@ -27,10 +27,19 @@ test('creative center consumes real creative intelligence and asset previews',()
   assert.ok(previewPng.length>10000);
   assert.ok(previewWebm.length>10000);
 });
-test('creative center keeps commercial truth explicit and sales closed by runtime truth',()=>{
-  assert.match(html,/Nenhum resultado comercial será inventado/);
-  assert.match(html,/bloqueada até autorização/);
+test('creative center keeps only sales blocked while preparation stays active',()=>{
+  assert.match(html,/VENDAS BLOQUEADAS/);
+  assert.match(html,/Pesquisa, cria/);
   assert.match(js,/commercial_enabled/);
+  assert.match(js,/distribution\?\.fronts/);
+  assert.match(js,/FRONT_LABELS/);
+});
+
+test('creative center exposes mandatory unanimous senior board',()=>{
+  assert.match(html,/Banca 5\/5/);
+  assert.match(html,/unanimidade obrigat/);
+  assert.match(config,/review_policy/);
+  assert.match(config,/unanimous_required:true/);
 });
 
 test('Cloudflare serves signed creative assets through config handler',()=>{

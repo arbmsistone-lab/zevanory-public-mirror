@@ -473,6 +473,16 @@ unit('PROJECT-HYGIENE','project-only hygiene',[
   op('audit has no external absolute reads',()=>!t('scripts/audit-3x.mjs').includes('readFileSync(' + String.fromCharCode(39) + 'C:')) ,
 ]);
 
+unit('CODE-CREATIVE-REVIEW-BOARD','creative intelligence + central de criativos',[
+  command('creative source syntax',process.execPath,['--check','src/creativeIntelligence.mjs']),
+  command('creative focused tests',process.execPath,['--test','test/creative-intelligence.test.mjs','test/creative-center.test.mjs']),
+  op('5of5 board and runtime sales separation',()=>t('src/creativeIntelligence.mjs').includes('review_board_required:5')&&t('public/criativos.js').includes('closure?.distribution?.fronts')&&t('public/criativos.js').includes('VENDAS BLOQUEADAS')),
+]);
+unit('DEF-CREATIVE-REVIEW-EVIDENCE','evidence/EG-0076-creative-review-board-5of5.md',[
+  op('creative review evidence approved',()=>existsSync(join(root,'evidence','EG-0076-creative-review-board-5of5.md'))&&t('evidence/EG-0076-creative-review-board-5of5.md').includes('APPROVED WITH COMMERCIAL FAIL-CLOSED')),
+  op('three independent platform references recorded',()=>['Google Ads Policy','TikTok for Business','Meta for Business'].every(x=>t('evidence/EG-0076-creative-review-board-5of5.md').includes(x))),
+  command('creative center integration tests',process.execPath,['--test','test/creative-center.test.mjs']),
+]);
 const report={policy:'minimum 3 approved operations per audited code/definition unit',scope:'ZEVANORY only',units,totals:{units:units.length,approved:units.filter(x=>x.status==='APPROVED').length,failed:units.filter(x=>x.status!=='APPROVED').length},verdict:blocked?'BLOCKED':'APPROVED'};
 writeFileSync(join(root,'validation','AUDIT-3X-CURRENT.json'),JSON.stringify(report,null,2)+'\n','utf8');
 for(const item of units) console.log(`${item.status} ${item.id} operations=${item.approved_operations}`);

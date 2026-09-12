@@ -1,4 +1,4 @@
-﻿import { createHash } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { createCreativeSpec, creativePlacements, creativeStoryboard } from './creativeEngine.mjs';
 import { commercialMessageFor } from './commercialMessaging.mjs';
 
@@ -28,8 +28,24 @@ export function deterministicPerceptualScore(spec={},options={}){
 export const CREATIVE_INTELLIGENCE_POLICY=Object.freeze({
   version:'creative-intelligence-v2',variants:3,min_quality_score:0.72,min_perceptual_score:0.70,
   min_observed_sessions:30,min_observed_paid:3,exploration_rate:0.10,cold_start_exploration_rate:0.20,
-  structural_weight:0.40,perceptual_weight:0.60,
+  structural_weight:0.40,perceptual_weight:0.60,review_board_size:5,review_board_required:5,
 });
+
+export function evaluateCreativeApprovalBoard(variant={}){
+  const spec=variant.spec||{};
+  const structural=Number(variant.structural_score??variant.quality_score)||0,perceptual=Number(variant.perceptual_score)||0,frame=Number(variant.visual_min_frame_score??perceptual)||0;
+  const checks=[
+    ['strategy_message',structural>=CREATIVE_INTELLIGENCE_POLICY.min_quality_score],
+    ['visual_quality',perceptual>=CREATIVE_INTELLIGENCE_POLICY.min_perceptual_score&&frame>=CREATIVE_INTELLIGENCE_POLICY.min_perceptual_score],
+    ['truth_compliance',spec.brand==='ZEVANORY'&&spec.site==='zevanory.api.br'],
+    ['channel_fit',creativePlacements(spec.channel).includes(String(spec.placement))],
+    ['conversion_clarity',words(spec.hook).length>=3&&words(spec.body).length>=5&&words(spec.cta).length>=1&&words(spec.cta).length<=7],
+  ];
+  const votes=checks.map(([lens,approved],index)=>Object.freeze({analyst:index+1,lens,approved:Boolean(approved)}));
+  const approvedCount=votes.filter(v=>v.approved).length,required=CREATIVE_INTELLIGENCE_POLICY.review_board_required;
+  return Object.freeze({board:'senior-creative-review-v1',analysts:CREATIVE_INTELLIGENCE_POLICY.review_board_size,required,approved_count:approvedCount,unanimous:approvedCount===required,status:approvedCount===required?'approved':'revision_required',votes:Object.freeze(votes)});
+}
+
 
 export function creativeQualityScore(spec={}){
   const hookWords=words(spec.hook).length,bodyWords=words(spec.body).length,ctaWords=words(spec.cta).length;
@@ -89,10 +105,11 @@ export function rankCreativeVariants(variants=[],observed=[],policy=CREATIVE_INT
 }
 
 const selectionFromRanking=(ranking,policy=CREATIVE_INTELLIGENCE_POLICY)=>{
-  const winner=ranking[0],observedWinner=winner?.observed_ready===true,visual=Number.isFinite(Number(winner?.perceptual_score));
+  const reviewed=ranking.map(item=>Object.freeze({...item,review_board:evaluateCreativeApprovalBoard(item)}));
+  const winner=reviewed[0],observedWinner=winner?.observed_ready===true,visual=Number.isFinite(Number(winner?.perceptual_score));
   const basis=observedWinner?(visual?'observed_economics_plus_perceptual_quality':'observed_economics_plus_structural_quality'):(visual?'perceptual_quality_no_observed_winner':'structural_quality_no_observed_winner');
-  return Object.freeze({policy_version:policy.version,winner,ranking,selection_basis:basis,
-    performance_claim_allowed:observedWinner,exploration_rate:observedWinner?policy.exploration_rate:0});
+  return Object.freeze({policy_version:policy.version,winner,ranking:Object.freeze(reviewed),selection_basis:basis,
+    review_board:winner?.review_board||null,technical_release_ready:winner?.review_board?.unanimous===true,performance_claim_allowed:observedWinner,exploration_rate:observedWinner?policy.exploration_rate:0});
 };
 
 export function selectCreativeVariant(input={},observed=[],policy=CREATIVE_INTELLIGENCE_POLICY){

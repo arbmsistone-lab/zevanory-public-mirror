@@ -19,18 +19,13 @@
     <article><span>Motor</span><strong id="kpi-engine">—</strong><small>creative-intelligence</small></article>
     <article><span>Variantes</span><strong id="kpi-variants">—</strong><small>imagem + vídeo</small></article>
     <article><span>Melhor score</span><strong id="kpi-score">—</strong><small>seleção atual</small></article>
-    <article><span>Publicação</span><strong id="kpi-publish">—</strong><small>governança comercial</small></article>
+    <article><span>Vendas</span><strong id="kpi-publish">—</strong><small>governança comercial</small></article>
   </section>
   <section class="workspace">
     <aside class="production-panel card">
-      <div class="card-head"><span>Produção atual</span><b id="production-count">2 linhas</b></div>
-      <button class="production-item active" data-mode="image" type="button">
-        <span class="channel">INSTAGRAM</span><strong>Imagem comercial</strong><small id="image-id">carregando…</small><i>VARIANTES A/B/C</i>
-      </button>
-      <button class="production-item" data-mode="video" type="button">
-        <span class="channel">YOUTUBE</span><strong>Vídeo curto</strong><small id="video-id">carregando…</small><i>VARIANTES A/B/C</i>
-      </button>
-      <div class="truth-box"><span>Estado real</span><b id="truth-state">SEM PUBLICAÇÃO</b><p id="truth-copy">Nenhum resultado comercial será inventado.</p></div>
+      <div class="card-head"><span>Frentes operacionais</span><b id="production-count">— frentes</b></div>
+      <div id="production-list" class="production-grid" aria-label="Frentes operacionais"><div class="empty">Carregando frentes aprovadas…</div></div>
+      <div class="truth-box"><span>Estado real</span><b id="truth-state">VENDAS BLOQUEADAS</b><p id="truth-copy">Pesquisa, criação, avaliação e preparação seguem ativas.</p></div>
     </aside>
     <section class="preview-panel card">
       <div class="card-head"><span>Preview vencedor</span><b id="preview-badge">—</b></div>
@@ -48,16 +43,22 @@
     <aside class="variants-panel card">
       <div class="card-head"><span>Variantes avaliadas</span><b id="variant-count">—</b></div>
       <div id="variants" class="variant-list"><div class="empty">Carregando inteligência criativa…</div></div>
+      <section class="review-board" aria-label="Banca sênior de aprovação">
+        <div class="review-board-head"><span>Banca sênior</span><b id="board-score">—/5</b></div>
+        <div id="board-votes" class="board-votes"></div>
+        <small id="board-state">Aguardando avaliação.</small>
+      </section>
     </aside>
   </section>
   <section class="timeline card">
     <div class="card-head"><span>Fluxo criativo</span><b id="flow-state">MOTOR ATIVO</b></div>
     <div class="flow-steps">
-      <div data-state="done"><span>1</span><b>Briefing</b><small>oferta + canal</small></div>
-      <div data-state="done"><span>2</span><b>Geração</b><small>3 variantes</small></div>
-      <div data-state="done"><span>3</span><b>Avaliação</b><small>qualidade visual</small></div>
-      <div data-state="done"><span>4</span><b>Seleção</b><small>vencedor técnico</small></div>
-      <div id="publish-step" data-state="blocked"><span>5</span><b>Publicação</b><small>bloqueada até autorização</small></div>
+      <div data-state="done"><span>1</span><b>Pesquisa</b><small>produtos + mercado</small></div>
+      <div data-state="done"><span>2</span><b>Briefing</b><small>oferta + canal</small></div>
+      <div data-state="done"><span>3</span><b>Geração</b><small>variantes ativas</small></div>
+      <div data-state="done"><span>4</span><b>Avaliação</b><small>qualidade + compliance</small></div>
+      <div id="review-step" data-state="blocked"><span>5</span><b>Banca 5/5</b><small>unanimidade obrigatória</small></div>
+      <div id="publish-step" data-state="blocked"><span>6</span><b>Venda/publicação comercial</b><small>bloqueada pelos gates</small></div>
     </div>
   </section>
 </main>

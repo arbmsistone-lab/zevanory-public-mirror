@@ -250,3 +250,14 @@ Novos provedores podem entrar no pool apos qualificacao por capacidade, health, 
 - `intelligence_snapshots` persiste pesquisa, ranking e decisoes auditaveis sem PII; migration 024.
 - Robot Control Room recebe painel Mercado / Produtos / Vale investir? e telemetria via SSE com reconexao e fallback de leitura.
 - Nenhum score de inteligencia substitui o `salesGate`, abre checkout, ativa midia paga ou autoriza publicacao comercial.
+
+## EG-0076 — CENTRAL DE CRIATIVOS + BANCA 5/5
+- Status tecnico: IMPLEMENTADO / vendas continuam fail-closed.
+- A Central de Criativos passa a consumir a verdade de runtime de `closure_status` e exibir todas as 9 frentes operacionais ativas, sem inventar readiness.
+- Pesquisa, preparacao, geracao e avaliacao permanecem ativas mesmo com `commercial_enabled=false`; o bloqueio se aplica somente a venda/publicacao comercial, checkout, outbound comercial e midia paga.
+- Todo criativo avaliado recebe uma banca tecnica interna de 5 lentes: estrategia/mensagem, qualidade visual, verdade/compliance, adequacao ao canal e clareza de conversao.
+- Aprovacao tecnica exige unanimidade 5/5; qualquer 4/5 ou menos gera `revision_required`.
+- A banca 5/5 e um gate interno deterministico/IA e nao representa cinco funcionarios humanos externos.
+- `salesGate` permanece a unica autoridade para liberar acao comercial e nenhum 5/5 tecnico pode contornar os kill-switches.
+- Previews concretos continuam limitados aos artefatos reais presentes em `creative_sample`; as demais frentes aparecem como prontas para criacao/avaliacao, nunca como artefatos ficticios.
+- Evidencia canonica: `evidence/EG-0076-creative-review-board-5of5.md`.

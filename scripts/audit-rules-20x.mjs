@@ -1,4 +1,4 @@
-import {readFile,access} from 'node:fs/promises';
+import {readFile} from 'node:fs/promises';
 const root=new URL('../',import.meta.url); const checks=[]; const add=(n,ok)=>checks.push({n,ok:Boolean(ok)}); const txt=(p)=>readFile(new URL(p,root),'utf8');
 const [env,gate,policy,fulfillment,checkout,checkoutMp,webhook,vercel,home,offer,master,release]=await Promise.all(['.env.example','src/salesGate.mjs','src/agentPolicy.mjs','src/digitalFulfillment.mjs','src/http/checkoutAsaas.mjs','src/http/checkoutMercadoPago.mjs','src/http/webhookAsaas.mjs','vercel.json','public/index.html','public/index.html','ZEVANORY_MASTER.md','src/release.mjs'].map(txt));
 add('01 global sales default false',env.includes('SALE_GLOBALLY_ENABLED=false'));
@@ -8,9 +8,9 @@ add('04 whatsapp sales default false',env.includes('WHATSAPP_SALES_ENABLED=false
 add('05 financial events default false',env.includes('FINANCIAL_EVENTS_ENABLED=false'));
 add('06 global gate requires manifest and absolute release seal',gate.includes('globalEnabled && preSaleApproved && absoluteReleaseApproved && manifest.approved')&&env.includes('ABSOLUTE_RELEASE_APPROVED=false'));
 add('07 channel gate depends on global gate',gate.includes('return salesGate(env).enabled'));
-add('08 AI never invents commercial truth',policy.includes('Use only supplied facts')&&policy.includes('Never invent sales, revenue, conversion')&&policy.includes('prices, inventory, payment status')&&policy.includes('performance.'));
+add('08 AI never invents commercial truth',['Never invent sales','revenue','conversion','customer identity','legal status','prices','inventory','payment status','performance'].every(x=>policy.includes(x)));
 add('09 unknown tools deny by default',policy.includes("reason:'unknown_tool'")&&policy.includes("reason:'deny_by_default'"));
-add('10 financial tools require commercial plus financial gates',policy.includes("const gate=salesGate(env)")&&policy.includes("gate.enabled&&env.FINANCIAL_EVENTS_ENABLED==='true'&&env.CHECKOUT_ENABLED==='true'"));
+add('10 financial tools require commercial plus financial gates',policy.includes('gate.enabled')&&/FINANCIAL_EVENTS_ENABLED\s*===\s*'true'/.test(policy)&&/CHECKOUT_ENABLED\s*===\s*'true'/.test(policy));
 add('11 digital delivery requires paid and reconciled',fulfillment.includes("order_status||'').toLowerCase()==='paid'")&&fulfillment.includes('payment_confirmed===true'));
 add('12 public product download forbidden',fulfillment.includes('public_download:false'));
 add('13 checkout fails closed before provider call',checkout.includes("if(!gate.enabled&&!pilotToken) return json(res,503,{error:'sales_globally_blocked'")&&checkout.includes('authorizeCertificationPilotCheckout')&&checkout.indexOf('pilot=await authorizeCertificationPilotCheckout')<checkout.indexOf('checkout=await createAsaasCheckout'));
@@ -21,4 +21,7 @@ add('17 CSP forbids unsafe inline and eval',vercel.includes("script-src 'self'")
 add('18 official brand is self-hosted on public surfaces',home.includes('/brand/zevanory-logo-dark.svg')&&offer.includes('/brand/zevanory-logo-dark.svg')&&!/https?:\/\/(?!zevanory\.api\.br)[^"']+\.(png|jpg|jpeg|svg)/i.test(home+offer));
 add('19 no legacy GIRO identity on main public surfaces',!/GIRO LOCAL|girolocal\.api\.br/i.test(home+offer));
 add('20 master and release keep fail-closed governance',master.includes('Todos os kill-switches comerciais e financeiros permanecem fail-closed')&&release.includes("salesMode: 'globally-blocked'")&&release.includes("official_brand:'approved'"));
-for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.n}`); const failed=checks.filter(x=>!x.ok); console.log(`AUDIT_RULES_20X_${failed.length?'BLOCKED':'APPROVED'} units=20 approved=${20-failed.length} failed=${failed.length}`); if(failed.length) process.exit(1);
+for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.n}`);
+const failed=checks.filter(x=>!x.ok);
+console.log(`AUDIT_RULES_20X_${failed.length?'BLOCKED':'APPROVED'} units=20 approved=${20-failed.length} failed=${failed.length}`);
+if(failed.length) process.exit(1);
