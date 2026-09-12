@@ -22,6 +22,7 @@
     "zevanory.api.br/api/checkout/*",
     "zevanory.api.br/api/webhooks/*",
     "zevanory.api.br/api/robot-control*",
+    "zevanory.api.br/api/operator-session/*",
     "zevanory.api.br/",
     "zevanory.api.br/index.html",
     "zevanory.api.br/index.js",
