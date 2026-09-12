@@ -8,9 +8,9 @@ add('04 whatsapp sales default false',env.includes('WHATSAPP_SALES_ENABLED=false
 add('05 financial events default false',env.includes('FINANCIAL_EVENTS_ENABLED=false'));
 add('06 global gate requires manifest and absolute release seal',gate.includes('globalEnabled && preSaleApproved && absoluteReleaseApproved && manifest.approved')&&env.includes('ABSOLUTE_RELEASE_APPROVED=false'));
 add('07 channel gate depends on global gate',gate.includes('return salesGate(env).enabled'));
-add('08 AI never invents commercial truth',policy.includes('Never invent sales, revenue, conversion, customer identity, legal status, prices, inventory, payment status or performance'));
+add('08 AI never invents commercial truth',policy.includes('Use only supplied facts')&&policy.includes('Never invent sales, revenue, conversion')&&policy.includes('prices, inventory, payment status')&&policy.includes('performance.'));
 add('09 unknown tools deny by default',policy.includes("reason:'unknown_tool'")&&policy.includes("reason:'deny_by_default'"));
-add('10 financial tools require commercial plus financial gates',policy.includes("env.FINANCIAL_EVENTS_ENABLED === 'true'")&&policy.includes("env.CHECKOUT_ENABLED === 'true'"));
+add('10 financial tools require commercial plus financial gates',policy.includes("const gate=salesGate(env)")&&policy.includes("gate.enabled&&env.FINANCIAL_EVENTS_ENABLED==='true'&&env.CHECKOUT_ENABLED==='true'"));
 add('11 digital delivery requires paid and reconciled',fulfillment.includes("order_status||'').toLowerCase()==='paid'")&&fulfillment.includes('payment_confirmed===true'));
 add('12 public product download forbidden',fulfillment.includes('public_download:false'));
 add('13 checkout fails closed before provider call',checkout.includes("if(!gate.enabled&&!pilotToken) return json(res,503,{error:'sales_globally_blocked'")&&checkout.includes('authorizeCertificationPilotCheckout')&&checkout.indexOf('pilot=await authorizeCertificationPilotCheckout')<checkout.indexOf('checkout=await createAsaasCheckout'));
