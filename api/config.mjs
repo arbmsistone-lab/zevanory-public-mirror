@@ -17,6 +17,7 @@ import { isPublicDeploymentRequest, safeBearerEqual } from '../src/security.mjs'
 import { verifyCreativeToken, creativeAssetEtag } from '../src/creativeEngine.mjs';
 import { selectCreativeVariantWithVisualEvidence } from '../src/creativeIntelligence.mjs';
 import { adviseMediaInvestment } from '../src/mediaInvestmentAdvisor.mjs';
+import { verifyFacebookIdentity, verifyInstagramIdentity, verifyYouTubeIdentity } from '../src/channelIdentityPreflight.mjs';
 
 export const config={maxDuration:30};
 async function channelStatusWithOAuth(summary=false){
@@ -32,6 +33,12 @@ export default async function handler(req, res) {
   if (req.method !== 'GET' && !creativeAssetRequest) {
     res.statusCode = 405;
     return res.end(JSON.stringify({ error: 'method_not_allowed' }));
+  }
+  if(view==='channel_identity_health'){
+    const [facebook,instagram,youtube]=await Promise.all([verifyFacebookIdentity(),verifyInstagramIdentity(),verifyYouTubeIdentity()]);
+    const safe=(x)=>({attempted:Boolean(x.attempted),verified:Boolean(x.verified),reason:String(x.reason||'unknown')});
+    res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;
+    return res.end(JSON.stringify({service:'ZEVANORY',facebook:safe(facebook),instagram:safe(instagram),youtube:safe(youtube)}));
   }
   if(view==='creative_asset'){
     const token=verifyCreativeToken(url.searchParams.get('p'),url.searchParams.get('s'),process.env);
