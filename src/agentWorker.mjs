@@ -2,6 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { buildAgentContext, decideRevenueAction, chooseTool, decisionInputHash } from './revenueAgent.mjs';
 import { authorizeTool } from './agentPolicy.mjs';
 import { evaluateAgentDecision } from './agentEvals.mjs';
+import { evaluateConversationQuality } from './conversationQuality.mjs';
 import { buildFollowUpPlan } from './salesPipeline.mjs';
 import { enqueueOutbox } from './integrationOutbox.mjs';
 import { assertChannelActionAllowed } from './channelAdapters.mjs';
@@ -144,6 +145,11 @@ export async function runAgentOnce(sql,options={}){
     tool=chooseTool(decision);
     const auth=authorizeTool(tool,env);
     evalResult=evaluateAgentDecision({decision,context,authorization:auth,tool});
+    if(evalResult.pass&&tool==='send_message'){
+      const cq=evaluateConversationQuality({message:decision.message||decision.content||'',channel:context.lead?.channel||'',recentMessages:context.recent_conversation||[],decision});
+      if(!cq.pass)evalResult=Object.freeze({...evalResult,pass:false,score:Math.min(Number(evalResult.score)||0,cq.score),issues:Object.freeze([...evalResult.issues,...cq.issues]),conversation_quality:cq});
+      else evalResult=Object.freeze({...evalResult,conversation_quality:cq});
+    }
     let contentNovelty=null;
     if(evalResult.pass&&tool==='publish_content'){
       const dedupChannel=String(decision.channel||context.lead?.channel||'').toLowerCase();

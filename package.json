@@ -87,6 +87,8 @@
     "audit:no-single-provider": "node scripts/audit-no-single-provider.mjs",
     "dr:public-artifact": "node scripts/public-artifact-recovery.mjs",
     "audit:dns-recovery": "node scripts/build-dns-recovery-snapshot.mjs",
-    "dr:chaos:providers": "node scripts/chaos-provider-drill.mjs"
+    "dr:chaos:providers": "node scripts/chaos-provider-drill.mjs",
+    "audit:elite-conversation:20x": "node scripts/audit-elite-conversation-20x.mjs",
+    "audit:ai-mesh:20x": "node scripts/audit-ai-mesh-20x.mjs"
   }
 }
