@@ -54,6 +54,8 @@ quality_core:
     - npm run resilience:smoke
     - npm run audit:no-single-provider
     - npm run dr:public-artifact
+    - npm run audit:dns-recovery
+    - npm run dr:chaos:providers
     - npm run audit:30x
     - npm run audit:sales:20x
     - npm run audit:final

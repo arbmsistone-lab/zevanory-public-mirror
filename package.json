@@ -85,6 +85,8 @@
     "migration:025": "node --env-file-if-exists=.env.production.local scripts/apply-migration-025.mjs",
     "audit:commercial-engine-v2:10x": "node scripts/audit-commercial-engine-v2-10x.mjs",
     "audit:no-single-provider": "node scripts/audit-no-single-provider.mjs",
-    "dr:public-artifact": "node scripts/public-artifact-recovery.mjs"
+    "dr:public-artifact": "node scripts/public-artifact-recovery.mjs",
+    "audit:dns-recovery": "node scripts/build-dns-recovery-snapshot.mjs",
+    "dr:chaos:providers": "node scripts/chaos-provider-drill.mjs"
   }
 }
