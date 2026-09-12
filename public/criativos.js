@@ -52,9 +52,9 @@ function renderAdvisor(){
   const variants=currentVariants(),winner=currentWinnerId();const selected=variants.find(v=>v.creative_id===winner)||variants[0]||{};const a=selected.advisor||{};
   set('advisor-policy',a.policy_version||'media-investment-advisor-v1');set('advisor-action',a.action||'AGUARDAR');
   set('advisor-budget',`R$ ${Number(a.recommended_daily_budget_brl||0).toFixed(2).replace('.',',')}`);
-  set('advisor-roas',Number.isFinite(Number(a.evidence?.roas))?Number(a.evidence.roas).toFixed(2):'â€”');
-  set('advisor-confidence',Number.isFinite(Number(a.confidence))?`${(Number(a.confidence)*100).toFixed(0)}%`:'â€”');set('advisor-reason',a.reason||'evidÃªncia insuficiente');
-  set('kpi-invest',a.action||'AGUARDAR');set('kpi-invest-copy',a.auto_spend===false?'recomendaÃ§Ã£o Â· sem gasto automÃ¡tico':'governanÃ§a indisponÃ­vel');
+  set('advisor-roas',Number.isFinite(Number(a.evidence?.roas))?Number(a.evidence.roas).toFixed(2):'—');
+  set('advisor-confidence',Number.isFinite(Number(a.confidence))?`${(Number(a.confidence)*100).toFixed(0)}%`:'—');set('advisor-reason',a.reason||'evidência insuficiente');
+  set('kpi-invest',a.action||'AGUARDAR');set('kpi-invest-copy',a.auto_spend===false?'recomendação · sem gasto automático':'governança indisponível');
 }
 
 function renderPreview(){
