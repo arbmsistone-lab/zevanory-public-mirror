@@ -46,3 +46,12 @@ test('Cloudflare serves signed creative assets through config handler',()=>{
   assert.match(worker,/\/api\/creative-asset/);
   assert.match(worker,/view=creative_asset/);
 });
+
+test('creative center desktop layout is explicitly single-screen and scroll-free',async()=>{
+  const css=await readFile(new URL('../public/criativos.css',import.meta.url),'utf8');
+  assert.match(css,/html,body\{height:100%;min-height:0;overflow:hidden\}/);
+  assert.match(css,/body\{height:100dvh/);
+  assert.match(css,/main\{min-height:0;overflow:hidden/);
+  assert.match(css,/\.workspace\{min-height:0;height:auto;overflow:hidden/);
+  assert.match(css,/@media\(max-width:760px\)\{html,body\{height:auto;min-height:100%;overflow:auto\}/);
+});
