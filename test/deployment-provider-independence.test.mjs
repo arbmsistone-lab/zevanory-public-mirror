@@ -43,3 +43,7 @@ test('Cloudflare failover owns critical main-domain APIs but not OAuth',()=>{
   }
   assert.doesNotMatch(wrangler,/zevanory\.api\.br\/api\/oauth/i);
 });
+test('Cloudflare owns canonical main-domain static assets while OAuth remains outside',()=>{
+  for(const route of ['zevanory.api.br/','zevanory.api.br/index.html','zevanory.api.br/index.js','zevanory.api.br/index.css','zevanory.api.br/brand/*']) assert.ok(wrangler.includes(route));
+  assert.doesNotMatch(wrangler,/zevanory\.api\.br\/api\/oauth/i);
+});
