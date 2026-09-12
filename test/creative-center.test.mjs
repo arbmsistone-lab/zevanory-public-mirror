@@ -57,7 +57,7 @@ test('creative center desktop layout is explicitly single-screen and scroll-free
 });
 
 test('creative center exposes elite media investment advisor without automatic spend',()=>{
-  assert.match(html,/Media Investment Advisor/);assert.match(html,/Gasto automÃ¡tico permanece bloqueado/);
+  assert.match(html,/Media Investment Advisor/);assert.match(html,/Gasto automático permanece bloqueado/);
   assert.match(js,/advisor-action/);assert.match(js,/recommended_daily_budget_brl/);assert.match(config,/adviseMediaInvestment/);
 });
 

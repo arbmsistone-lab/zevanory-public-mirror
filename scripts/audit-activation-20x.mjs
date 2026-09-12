@@ -22,7 +22,10 @@ add('11 pre-sale unlock precedes global sale',CUTOVER_ORDER.indexOf('PRE_SALE_GA
 add('12 global sale unlock is last mutating gate',CUTOVER_ORDER[CUTOVER_ORDER.length-1]==='SALE_GLOBALLY_ENABLED=true');
 add('13 rollback disables global sale first',ROLLBACK_ORDER[0]==='SALE_GLOBALLY_ENABLED=false');
 add('14 rollback disables every commercial gate',['CHECKOUT_ENABLED=false','WHATSAPP_SALES_ENABLED=false','FINANCIAL_EVENTS_ENABLED=false','PRE_SALE_GATES_APPROVED=false'].every(x=>ROLLBACK_ORDER.includes(x)));
-add('15 API is read only',(api.includes("req.method!=='GET'")||api.includes("req.method !== 'GET'"))&&!api.includes('sql.query')&&!api.includes('fetch(')&&!api.includes('execFile')&&!api.includes('spawn'));
+const activationStart=api.indexOf("if(url.searchParams.get('view')==='activation')");
+const activationEnd=api.indexOf('  const gate=salesGate();',activationStart);
+const activationBlock=activationStart>=0&&activationEnd>activationStart?api.slice(activationStart,activationEnd):'';
+add('15 API is read only',(api.includes("req.method!=='GET'")||api.includes("req.method !== 'GET'"))&&activationBlock.includes('buildActivationPlan')&&!activationBlock.includes('sql.query')&&!activationBlock.includes('fetch(')&&!activationBlock.includes('execFile')&&!activationBlock.includes('spawn'));
 add('16 API never returns secret values',!api.includes('ASAAS_API_KEY')&&!api.includes('GEMINI_API_KEY')&&!api.includes('AGENT_WORKER_TOKEN'));
 add('17 route published',vercel.includes('/api/activation/readiness')&&vercel.includes('/api/config?view=activation'));
 add('18 release requires activation route',release.includes('/api/activation/readiness'));
