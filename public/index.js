@@ -123,8 +123,8 @@ async function fetchLiveOperations(token=liveOperatorToken){
 }
 async function refreshLiveOperations(){if(!liveOperatorToken)return;try{renderLiveOperations(await fetchLiveOperations());}catch{set('live-connection-state','RECONEXÃO');}}
 const liveAuth=document.getElementById('live-auth-dialog');
-document.getElementById('connect-live')?.addEventListener('click',()=>{set('live-auth-error','');liveAuth?.showModal();});
+document.getElementById('connect-live')?.addEventListener('click',async()=>{set('live-auth-error','');try{renderLiveOperations(await fetchLiveOperations(''));return;}catch{}liveAuth?.showModal();});
 document.getElementById('live-auth-submit')?.addEventListener('click',async e=>{e.preventDefault();const input=document.getElementById('live-operator-token');const token=String(input?.value||'').trim();if(!token){set('live-auth-error','Informe o token do operador.');return;}try{const data=await fetchLiveOperations(token);liveOperatorToken=token;if(input)input.value='';renderLiveOperations(data);liveAuth?.close();}catch(error){set('live-auth-error',String(error?.message||'Falha de autenticação.'));}});
-setInterval(refreshLiveOperations,5000);
+refreshLiveOperations();setInterval(refreshLiveOperations,5000);
 
 const details=document.getElementById('details-dialog'); document.getElementById('open-details')?.addEventListener('click',()=>details?.showModal()); document.getElementById('close-details')?.addEventListener('click',()=>details?.close()); details?.addEventListener('click',(e)=>{if(e.target===details)details.close();}); trackPageView(); refresh(); setInterval(refresh,30000);

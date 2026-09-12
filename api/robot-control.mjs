@@ -1,5 +1,6 @@
 import {neon} from '@neondatabase/serverless';
 import {safeBearerEqual} from '../src/security.mjs';
+import {createOperatorSessionCookie,hasValidOperatorSession} from '../src/operatorSession.mjs';
 import {channelReadiness} from '../src/channelAdapters.mjs';
 import {decideApproval,getAgentControlState,setAgentPaused} from '../src/agentControl.mjs';
 import {buildAgentObservability} from '../src/agentObservability.mjs';
