@@ -1,0 +1,39 @@
+{
+  "baseline_sha": "78972099a934120fa95abc69faa98909af23ac32",
+  "source_fingerprint": "98df840c8e96696b7baec9d01d5040d7d399aee375b143f9823dd525bd3440bf",
+  "source_unchanged_during_validation": true,
+  "steps": [
+    {
+      "name": "global_tests",
+      "exit_code": 0,
+      "totals": {
+        "tests": 701,
+        "pass": 701,
+        "fail": 0,
+        "skipped": 0,
+        "duration_ms": 19764.5887
+      }
+    },
+    {
+      "name": "audit_3x",
+      "exit_code": 0,
+      "totals": {},
+      "audit": {
+        "verdict": "APPROVED",
+        "totals": {
+          "units": 88,
+          "approved": 88,
+          "failed": 0
+        },
+        "failed_units": []
+      }
+    },
+    {
+      "name": "supplychain",
+      "exit_code": 0,
+      "totals": {}
+    }
+  ],
+  "sales_enabled": false,
+  "production_oauth_proven": false
+}

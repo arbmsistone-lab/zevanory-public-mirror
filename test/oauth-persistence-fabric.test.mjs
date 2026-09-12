@@ -42,6 +42,6 @@ test('redeemed OAuth code recovery clears callback cookie',async()=>{
     const recoveryIndex=source.indexOf('credential_preserved');
     assert.ok(recoveryIndex>0);
     const nearby=source.slice(Math.max(0,recoveryIndex-700),recoveryIndex+500);
-    assert.match(nearby,/Max-Age=0/);
+    assert.ok(/Max-Age=0/.test(nearby)||(/clearCookie\(res\)/.test(nearby)&&/const clearCookie[^\n]+Max-Age=0/.test(source)));
   }
 });

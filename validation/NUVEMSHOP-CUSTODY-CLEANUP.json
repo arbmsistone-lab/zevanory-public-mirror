@@ -1,0 +1,12 @@
+{
+  "verified_at": "2026-09-12T22:52:23.532Z",
+  "project_id": "prj_phU0b7cWKwwH1IqJnQv0JjZ1Ehdm",
+  "deleted_deployments": [
+    "dpl_2q65z7ux3yF6EUVy16byVpGwi5sA",
+    "dpl_7oNS5m8QYLbDqoN1RRgvMQY6rV7u"
+  ],
+  "temporary_token_retention_removed": true,
+  "all_existing_aliases_unchanged": true,
+  "alias_count": 100,
+  "sales_enabled": false
+}

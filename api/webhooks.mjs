@@ -53,7 +53,7 @@ export default async function handler(req,res){
     return res.end(JSON.stringify({error:tooLarge?'payload_too_large':'invalid_body',accepted:false}));
   }
   req.rawBody=raw;
-  if(provider!=='resend'){
+  if(!['resend','nuvemshop'].includes(provider)){
     try{req.parsedBody=raw.length?JSON.parse(raw.toString('utf8')):{};}catch{
       res.setHeader('content-type','application/json; charset=utf-8');
       res.statusCode=400;

@@ -21,6 +21,7 @@
     "zevanory.api.br/api/events/*",
     "zevanory.api.br/api/agent/*",
     "zevanory.api.br/api/checkout/*",
+    "zevanory.api.br/api/webhooks",
     "zevanory.api.br/api/webhooks/*",
     "zevanory.api.br/api/oauth/*",
     "zevanory.api.br/api/tiktok-review*",
@@ -73,6 +74,9 @@
     "WHATSAPP_SALES_ENABLED": "false",
     "FINANCIAL_EVENTS_ENABLED": "false",
     "ZEVANORY_RUNTIME_CONFIG": {
+      "NUVEMSHOP_STOREFRONT_VERIFIED": "true",
+      "NUVEMSHOP_STOREFRONT_URL": "https://zevanory.lojavirtualnuvem.com.br/",
+      "NUVEMSHOP_CSV_FALLBACK_VERIFIED": "true",
       "YOUTUBE_BRAND_IDENTITY_VERIFIED": "true",
       "WHATSAPP_BRAND_IDENTITY_VERIFIED": "true",
       "INSTAGRAM_BRAND_IDENTITY_VERIFIED": "true",
@@ -100,9 +104,6 @@
       "LINKEDIN_OPERATOR_ASSISTED_PUBLISHING": "true",
       "LINKEDIN_FOUNDER_PROFILE_URL": "https://www.linkedin.com/in/airton-renan-alves-moreira-bitu-1501b6304/"
     },
-    "NUVEMSHOP_STOREFRONT_VERIFIED": "true",
-    "NUVEMSHOP_STOREFRONT_URL": "https://zevanory.lojavirtualnuvem.com.br/",
-    "NUVEMSHOP_CSV_FALLBACK_VERIFIED": "true",
     "AFFILIATE_PROVIDER": "zevanory-first-party",
     "AFFILIATE_TRACKING_READY": "true",
     "AFFILIATE_TERMS_REVIEWED": "true",
@@ -119,7 +120,7 @@
     "AFFILIATE_PRIVACY_URL": "https://edge.zevanory.api.br/privacidade"
   },
   "secrets": {
-    "required": ["DATABASE_URL", "PUBLIC_BASE_URL", "FULFILLMENT_OPERATOR_TOKEN"]
+    "required": ["DATABASE_URL", "PUBLIC_BASE_URL", "FULFILLMENT_OPERATOR_TOKEN", "NUVEMSHOP_APP_ID", "NUVEMSHOP_CLIENT_SECRET", "COMMERCIAL_OAUTH_ENCRYPTION_KEY"]
   },
   "ai": { "binding": "AI" },
   "kv_namespaces": [

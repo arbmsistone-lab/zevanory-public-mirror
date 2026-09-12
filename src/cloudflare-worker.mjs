@@ -49,6 +49,10 @@ function resolveHandler(req) {
   if (url.pathname === '/api/oauth/linkedin/callback') { url.searchParams.set('provider', 'linkedin_oauth'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
   if (url.pathname === '/api/oauth/nuvemshop/start') { url.searchParams.set('provider', 'nuvemshop_oauth'); url.searchParams.set('action', 'start'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
   if (url.pathname === '/api/oauth/nuvemshop/callback') { url.searchParams.set('provider', 'nuvemshop_oauth'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
+  if (['/api/oauth/nuvemshop/status','/api/oauth/nuvemshop/reconcile'].includes(url.pathname)) { url.searchParams.set('provider','nuvemshop_oauth'); url.searchParams.set('action',url.pathname.split('/').pop()); req.url='/api/webhooks?'+url.searchParams.toString(); return webhooksHandler; }
+  const privacyEvents={'store-redact':'app/store_redact','customer-redact':'customer/redact','data-request':'customers/data_request'};
+  const privacyMatch=url.pathname.match(/^\/api\/webhooks\/nuvemshop\/privacy\/([a-z-]+)$/);
+  if(privacyMatch&&privacyEvents[privacyMatch[1]]){req.url='/api/webhooks?provider=nuvemshop&privacy_event='+encodeURIComponent(privacyEvents[privacyMatch[1]]);return webhooksHandler;}
   if (url.pathname.startsWith('/api/webhooks/')) {
     const provider = url.pathname.split('/').pop();
     req.url = `/api/webhooks?provider=${encodeURIComponent(provider)}`;

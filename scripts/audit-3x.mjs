@@ -483,6 +483,26 @@ unit('DEF-CREATIVE-REVIEW-EVIDENCE','evidence/EG-0076-creative-review-board-5of5
   op('three independent platform references recorded',()=>['Google Ads Policy','TikTok for Business','Meta for Business'].every(x=>t('evidence/EG-0076-creative-review-board-5of5.md').includes(x))),
   command('creative center integration tests',process.execPath,['--test','test/creative-center.test.mjs']),
 ]);
+unit('CODE-NUVEMSHOP-SESSION-AND-IDENTITY','native OAuth + encrypted canonical reconciliation',[
+ command('integration syntax',process.execPath,['--check','src/nuvemshopIntegrationSecurity.mjs']),
+ command('callback and durable session adversarial tests',process.execPath,['--test','--test-name-pattern=OAuth|reconciliation|API|operator','test/nuvemshop-integration-security.test.mjs']),
+ command('signed event and privacy fail-closed tests',process.execPath,['--test','--test-name-pattern=HMAC|webhook|privacy|redaction|LGPD|lifecycle','test/nuvemshop-integration-security.test.mjs']),
+]);
+unit('CODE-NUVEMSHOP-CUSTODY','pinned existing-secret transfer',[
+ command('custody syntax',process.execPath,['--check','scripts/nuvemshop-custody-transfer.mjs']),
+ command('exact secret custody transfer tests',process.execPath,['--test','--test-name-pattern=custody transfers','test/nuvemshop-custody.test.mjs']),
+ command('identity, sales and provider failure custody tests',process.execPath,['--test','--test-name-pattern=custody refuses|custody does not','test/nuvemshop-custody.test.mjs']),
+]);
+unit('CODE-NUVEMSHOP-PRIVACY','verified merchant report with no retained customer payload',[
+ command('privacy syntax',process.execPath,['--check','src/nuvemshopPrivacy.mjs']),
+ command('merchant report identity and minimization tests',process.execPath,['--test','--test-name-pattern=privacy report is sent|LGPD payloads|store redaction','test/nuvemshop-integration-security.test.mjs']),
+ command('privacy transport and malformed request failures',process.execPath,['--test','--test-name-pattern=privacy delivery failures|privacy report rejects|privacy endpoint rejects|missing operational event','test/nuvemshop-integration-security.test.mjs']),
+]);
+unit('DEF-NUVEMSHOP-CLOSEOUT','EG-0077 corrective implementation with production unproven',[
+ op('primary independent protocol and runtime sources',()=>['Nuvemshop','IETF','Cloudflare','Vercel','Resend'].every(name=>t('evidence/EG-0077-nuvemshop-cloudflare-closeout.md').includes(name))),
+ op('evidence retains explicit production restriction',()=>t('evidence/EG-0077-nuvemshop-cloudflare-closeout.md').includes('UNPROVEN')),
+ command('commercial scope exclusion and sales guards',process.execPath,['--test','test/brand-identity-readiness.test.mjs','test/runtime-oauth-readiness.test.mjs']),
+]);
 const report={policy:'minimum 3 approved operations per audited code/definition unit',scope:'ZEVANORY only',units,totals:{units:units.length,approved:units.filter(x=>x.status==='APPROVED').length,failed:units.filter(x=>x.status!=='APPROVED').length},verdict:blocked?'BLOCKED':'APPROVED'};
 writeFileSync(join(root,'validation','AUDIT-3X-CURRENT.json'),JSON.stringify(report,null,2)+'\n','utf8');
 for(const item of units) console.log(`${item.status} ${item.id} operations=${item.approved_operations}`);
