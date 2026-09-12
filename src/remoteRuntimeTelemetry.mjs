@@ -1,4 +1,4 @@
-const ACTIVE_REMOTE_PROVIDERS=Object.freeze(['facebook','instagram']);
+const ACTIVE_REMOTE_PROVIDERS=Object.freeze(['facebook','instagram','youtube']);
 export async function remoteRuntimeChannelTruth(env=process.env,fetchImpl=globalThis.fetch){
   const url=String(env.REMOTE_CHANNEL_STATUS_URL||'').trim();
   if(!url||typeof fetchImpl!=='function')return Object.freeze({});
