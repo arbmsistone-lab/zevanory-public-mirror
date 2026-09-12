@@ -36,6 +36,7 @@ const portfolioSchema=JSON.stringify({'@context':'https://schema.org','@type':'C
 const portfolioBody=`<main><section class="hero"><p class="eyebrow">Portfólio oficial</p><h1>Soluções ZEVANORY</h1><p class="lead">IA, automação, software e produtos digitais para organizar, executar e evoluir com mais controle.</p></section><section class="catalog">${cards}</section></main>`;
 writeFileSync(join(root,'solucoes.html'),shell('Soluções ZEVANORY | IA, automação e software','Conheça o portfólio oficial ZEVANORY: ARBM SIST, IA na Prática, Vendas na Prática, Lucro & Caixa e soluções integradas.',`${base}/solucoes`,portfolioBody,portfolioSchema),'utf8');
 const staticUrls=[['/',1.0,'weekly'],['/solucoes',0.95,'weekly'],...products.map(p=>[`/${p.slug}`,0.9,'weekly']),['/termos',0.4,'monthly'],['/privacidade',0.4,'monthly'],['/reembolso',0.4,'monthly'],['/afiliados',0.4,'monthly']];
-const sitemap=`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${staticUrls.map(([path,priority,freq])=>`  <url><loc>${base}${path}</loc><changefreq>${freq}</changefreq><priority>${priority}</priority></url>`).join('\n')}\n</urlset>\n`;
+const lastmod=new Date().toISOString().slice(0,10);
+const sitemap=`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${staticUrls.map(([path,priority,freq])=>`  <url><loc>${base}${path}</loc><lastmod>${lastmod}</lastmod><changefreq>${freq}</changefreq><priority>${priority}</priority></url>`).join('\n')}\n</urlset>\n`;
 writeFileSync(join(root,'sitemap.xml'),sitemap,'utf8');
 console.log(`SEO_PAGES_BUILT products=${products.length} sitemap_urls=${staticUrls.length}`);
