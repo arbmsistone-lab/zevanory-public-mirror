@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Central de Criativos · ZEVANORY</title>
+  <link rel="icon" href="/brand/favicon.svg">
+  <link rel="stylesheet" href="/criativos.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/" aria-label="Voltar ao Command Center"><img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY"></a>
+  <div><span>COMMAND CENTER</span><h1>Central de Criativos</h1></div>
+  <div class="top-actions"><b id="engine-state">CARREGANDO</b><a href="/">Voltar ao painel</a></div>
+</header>
+<main>
+  <section class="kpis" aria-label="Resumo criativo">
+    <article><span>Motor</span><strong id="kpi-engine">—</strong><small>creative-intelligence</small></article>
+    <article><span>Variantes</span><strong id="kpi-variants">—</strong><small>imagem + vídeo</small></article>
+    <article><span>Melhor score</span><strong id="kpi-score">—</strong><small>seleção atual</small></article>
+    <article><span>Publicação</span><strong id="kpi-publish">—</strong><small>governança comercial</small></article>
+  </section>
+  <section class="workspace">
+    <aside class="production-panel card">
+      <div class="card-head"><span>Produção atual</span><b id="production-count">2 linhas</b></div>
+      <button class="production-item active" data-mode="image" type="button">
+        <span class="channel">INSTAGRAM</span><strong>Imagem comercial</strong><small id="image-id">carregando…</small><i>VARIANTES A/B/C</i>
+      </button>
+      <button class="production-item" data-mode="video" type="button">
+        <span class="channel">YOUTUBE</span><strong>Vídeo curto</strong><small id="video-id">carregando…</small><i>VARIANTES A/B/C</i>
+      </button>
+      <div class="truth-box"><span>Estado real</span><b id="truth-state">SEM PUBLICAÇÃO</b><p id="truth-copy">Nenhum resultado comercial será inventado.</p></div>
+    </aside>
+    <section class="preview-panel card">
+      <div class="card-head"><span>Preview vencedor</span><b id="preview-badge">—</b></div>
+      <div class="preview-stage" id="preview-stage">
+        <img id="image-preview" alt="Preview do criativo vencedor">
+        <video id="video-preview" controls muted playsinline></video>
+        <div class="preview-loading" id="preview-loading">Gerando preview real…</div>
+      </div>
+      <div class="preview-meta">
+        <div><span>Creative ID</span><b id="creative-id">—</b></div>
+        <div><span>Base de seleção</span><b id="selection-basis">—</b></div>
+        <div><span>Atualizado</span><b id="updated-at">—</b></div>
+      </div>
+    </section>
+    <aside class="variants-panel card">
+      <div class="card-head"><span>Variantes avaliadas</span><b id="variant-count">—</b></div>
+      <div id="variants" class="variant-list"><div class="empty">Carregando inteligência criativa…</div></div>
+    </aside>
+  </section>
+  <section class="timeline card">
+    <div class="card-head"><span>Fluxo criativo</span><b id="flow-state">MOTOR ATIVO</b></div>
+    <div class="flow-steps">
+      <div data-state="done"><span>1</span><b>Briefing</b><small>oferta + canal</small></div>
+      <div data-state="done"><span>2</span><b>Geração</b><small>3 variantes</small></div>
+      <div data-state="done"><span>3</span><b>Avaliação</b><small>qualidade visual</small></div>
+      <div data-state="done"><span>4</span><b>Seleção</b><small>vencedor técnico</small></div>
+      <div id="publish-step" data-state="blocked"><span>5</span><b>Publicação</b><small>bloqueada até autorização</small></div>
+    </div>
+  </section>
+</main>
+<footer><span>ZEVANORY · Central de Criativos</span><span id="source-state">fonte: /api/config?view=creative_sample</span><span>sem PII</span></footer>
+<script src="/criativos.js" defer></script>
+</body>
+</html>

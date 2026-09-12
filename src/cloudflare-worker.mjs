@@ -37,6 +37,7 @@ function resolveHandler(req) {
   if (url.pathname === '/api/live') { req.url = '/api/status?probe=live'; return statusHandler; }
   if (url.pathname === '/api/health') { req.url = '/api/status?probe=health'; return statusHandler; }
   if (url.pathname === '/api/activation/readiness') { req.url = '/api/config?view=activation'; return configHandler; }
+  if (url.pathname === '/api/creative-asset') { req.url = `/api/config?view=creative_asset&${url.searchParams.toString()}`; return configHandler; }
   if (url.pathname === '/api/checkout/asaas') { req.url = '/api/checkout?provider=asaas'; return checkoutHandler; }
   if (url.pathname === '/api/checkout/mercadopago') { req.url = '/api/checkout?provider=mercadopago'; return checkoutHandler; }
   if (url.pathname === '/api/oauth/mercadolivre/start') { url.searchParams.set('provider', 'mercadolivre_oauth'); url.searchParams.set('action', 'start'); req.url = `/api/webhooks?${url.searchParams.toString()}`; return webhooksHandler; }
@@ -76,7 +77,7 @@ server.listen(PORT);
 const staticAliases = new Map([
   ['/', '/index.html'], ['/piloto', '/piloto.html'],
   ['/termos', '/termos.html'], ['/privacidade', '/privacidade.html'], ['/exclusao-dados', '/exclusao-dados.html'],
-  ['/reembolso', '/reembolso.html'], ['/afiliados', '/afiliados.html'],
+  ['/reembolso', '/reembolso.html'], ['/afiliados', '/afiliados.html'], ['/criativos', '/criativos.html'],
 ]);
 function delegatedPaymentOrigin(env,requestUrl){
   if(String(env.PAYMENT_RUNTIME_MODE||'').toLowerCase()!=='delegated')return null;

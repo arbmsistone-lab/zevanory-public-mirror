@@ -37,8 +37,16 @@ export function creativeStoryboard(spec){
   ]);
 }
 
+const creativeSigningKey=(env=process.env)=>{
+  const dedicated=String(env.CREATIVE_ASSET_SIGNING_KEY||'');
+  if(dedicated.length>=32)return Buffer.from(dedicated);
+  const base=String(env.OPERATOR_TOKEN_SECONDARY||env.FULFILLMENT_OPERATOR_TOKEN||'');
+  if(base.length<32)throw new Error('creative_signing_key_missing');
+  return createHmac('sha256',base).update('zevanory-creative-assets-v1').digest();
+};
+
 export function signCreativeSpec(spec,format='png',env=process.env){
-  const key=String(env.CREATIVE_ASSET_SIGNING_KEY||''); if(key.length<32) throw new Error('creative_signing_key_missing');
+  const key=creativeSigningKey(env);
   const normalizedFormat=String(format).toLowerCase(); if(!['png','webm'].includes(normalizedFormat)) throw new Error('creative_format_unsupported');
   const payload=Buffer.from(JSON.stringify({spec,format:normalizedFormat})).toString('base64url');
   const sig=createHmac('sha256',key).update(payload).digest('base64url');
@@ -46,7 +54,7 @@ export function signCreativeSpec(spec,format='png',env=process.env){
 }
 
 export function verifyCreativeToken(payload,sig,env=process.env){
-  const key=String(env.CREATIVE_ASSET_SIGNING_KEY||''); if(key.length<32) throw new Error('creative_signing_key_missing');
+  const key=creativeSigningKey(env);
   const expected=createHmac('sha256',key).update(String(payload||'')).digest();
   let actual; try{actual=Buffer.from(String(sig||''),'base64url')}catch{return null}
   if(actual.length!==expected.length||!timingSafeEqual(actual,expected)) return null;
