@@ -139,6 +139,38 @@
       "destination": "/public/legal.css"
     },
     {
+      "source": "/solucoes",
+      "destination": "/public/solucoes.html"
+    },
+    {
+      "source": "/arbm-sist",
+      "destination": "/public/arbm-sist.html"
+    },
+    {
+      "source": "/ia-na-pratica",
+      "destination": "/public/ia-na-pratica.html"
+    },
+    {
+      "source": "/vendas-na-pratica",
+      "destination": "/public/vendas-na-pratica.html"
+    },
+    {
+      "source": "/lucro-e-caixa",
+      "destination": "/public/lucro-e-caixa.html"
+    },
+    {
+      "source": "/combo-ia-vendas",
+      "destination": "/public/combo-ia-vendas.html"
+    },
+    {
+      "source": "/negocio-completo",
+      "destination": "/public/negocio-completo.html"
+    },
+    {
+      "source": "/product.css",
+      "destination": "/public/product.css"
+    },
+    {
       "source": "/",
       "destination": "/public/index.html"
     }
