@@ -4,17 +4,17 @@ import { evaluateAffiliateProgramReadiness, AFFILIATE_COMMISSION_STATES, AFFILIA
 import { CHANNEL_PROFILES } from '../src/channelProfiles.mjs';
 import { PROVIDER_CONTRACTS, validateProviderContracts } from '../src/providerContracts.mjs';
 import { salesGate } from '../src/salesGate.mjs';
-
+import { EXCLUDED_COMMERCIAL_FRONTS } from '../src/activeCommercialScope.mjs';
 const checks=[];const add=(name,pass)=>checks.push([name,Boolean(pass)]);const src=(p)=>fs.readFileSync(p,'utf8');
 const empty=commercialDistributionReadiness({});
-add('canonical covers 12 intended owned social search partner store and marketplace fronts',REQUIRED_DISTRIBUTION_FRONTS.length===12&&['affiliate','nuvemshop','mercado_livre'].every(x=>REQUIRED_DISTRIBUTION_FRONTS.includes(x)));
+add('canonical covers exactly 9 active fronts and explicitly excludes TikTok LinkedIn and Nuvemshop',REQUIRED_DISTRIBUTION_FRONTS.length===9&&['affiliate','mercado_livre','youtube'].every(x=>REQUIRED_DISTRIBUTION_FRONTS.includes(x))&&['tiktok','linkedin','nuvemshop'].every(x=>!REQUIRED_DISTRIBUTION_FRONTS.includes(x))&&['tiktok','linkedin','nuvemshop'].every(x=>EXCLUDED_COMMERCIAL_FRONTS[x].state==='backlog_excluded'));
 add('every front has attribution provider confirmation revenue truth and global gate policy',Object.values(COMMERCIAL_DISTRIBUTION_CANONICAL).every(x=>x.attribution&&x.provider_confirmation&&x.revenue_truth&&x.global_gate_required&&x.policy_complete));
-add('all 12 fronts are technically implemented but external configuration remains fail closed',empty.technical_ready===true&&empty.operational_ready===false&&empty.total_fronts===12);
+add('all 9 active fronts are technically implemented while external configuration remains fail closed',empty.technical_ready===true&&empty.operational_ready===false&&empty.total_fronts===9&&empty.implemented_fronts===9);
 add('official Instagram canonical identity is zevanory underscore',CHANNEL_PROFILES.instagram.handle==='@zevanory_'&&CHANNEL_PROFILES.instagram.profileUrl==='https://www.instagram.com/zevanory_/');
 const af=evaluateAffiliateProgramReadiness({});
 add('affiliate requires attribution commission payout self referral reversals idempotency terms privacy and provider confirmation',af.ready===false&&['affiliate_attribution_window_invalid','affiliate_commission_bps_invalid','affiliate_payout_delay_invalid','affiliate_self_referral_policy_invalid','affiliate_refund_reversal_unready','affiliate_chargeback_reversal_unready','affiliate_idempotency_unready','affiliate_provider_confirmation_unready','affiliate_terms_version_missing','affiliate_disclosure_url_invalid','affiliate_privacy_url_invalid'].every(x=>af.blockers.includes(x)));
 add('affiliate recognizes only confirmed commission and explicit reversible lifecycle',AFFILIATE_REVENUE_TRUTH==='confirmed_commission_only'&&AFFILIATE_COMMISSION_STATES.join(',')==='pending,confirmed,reversed,paid'&&PROVIDER_CONTRACTS.affiliate.reversal_required===true);
-add('Nuvemshop contract uses official OAuth2 v1 product API and requires webhooks/provider truth',PROVIDER_CONTRACTS.nuvemshop.auth==='oauth2_authorization_code'&&PROVIDER_CONTRACTS.nuvemshop.product_create==='POST /products'&&PROVIDER_CONTRACTS.nuvemshop.webhooks_required===true&&src('src/outboundAdapters.mjs').includes('api.nuvemshop.com.br/v1/'));
+add('Nuvemshop backlog contract remains preserved but excluded from active distribution',PROVIDER_CONTRACTS.nuvemshop.auth==='oauth2_authorization_code'&&PROVIDER_CONTRACTS.nuvemshop.product_create==='POST /products'&&src('src/outboundAdapters.mjs').includes('api.nuvemshop.com.br/v1/'));
 add('Mercado Livre contract uses OAuth2 bearer notifications resource lookup and separated app requirement',PROVIDER_CONTRACTS.mercado_livre.auth==='oauth2_authorization_code'&&PROVIDER_CONTRACTS.mercado_livre.notifications_required===true&&PROVIDER_CONTRACTS.mercado_livre.resource_lookup_after_notification===true&&PROVIDER_CONTRACTS.mercado_livre.separate_ml_mp_app_required_since==='2026-08-30');
 add('provider contracts validate and external credentials cannot bypass sales lifecycle gate',validateProviderContracts().valid===true&&salesGate({SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'}).enabled===false);
 const quality=src('.github/workflows/quality.yml');const control=src('.github/workflows/quality-control-plane.yml');

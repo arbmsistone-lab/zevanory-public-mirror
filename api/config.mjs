@@ -8,6 +8,7 @@ import { persistedOAuthReadiness, overlayPersistedOAuth } from '../src/runtimeOA
 import { neon } from '@neondatabase/serverless';
 import { buildLifecycleEvidenceSnapshot } from '../src/lifecycleEvidenceSnapshot.mjs';
 import { commercialDistributionReadiness } from '../src/commercialDistribution.mjs';
+import { EXCLUDED_COMMERCIAL_FRONTS } from '../src/activeCommercialScope.mjs';
 import { certificationPilotStatus } from '../src/certificationPilot.mjs';
 import { verifyMercadoLivreLive } from '../src/mercadoLivreVerification.mjs';
 import { brandIdentityReadiness } from '../src/brandIdentityReadiness.mjs';
@@ -42,7 +43,7 @@ export default async function handler(req, res) {
     const channelSummary=Object.fromEntries(Object.entries(channels).map(([name,state])=>[name,{operational_ready:state.operational_ready,operational_mode:state.operational_mode,api_configured:state.api_configured,alternate_api_configured:state.alternate_api_configured,contingency_ready:state.contingency_ready}]));
     const frontSummary=Object.fromEntries(Object.entries(distribution.fronts).map(([name,state])=>[name,{operational_ready:state.operational_ready,operational_mode:state.operational_mode,automation_ready:state.automation_ready,contingency_ready:state.contingency_ready}]));
     res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');res.statusCode=200;
-    return res.end(JSON.stringify({service:'ZEVANORY',release_id:RELEASE.id,commercial_enabled:gate.enabled,lifecycle_approved:gate.lifecycle_approved,channels:channelSummary,distribution:{technical_ready:distribution.technical_ready,operational_ready:distribution.operational_ready,total_fronts:distribution.total_fronts,configured_fronts:distribution.configured_fronts,automation_ready_fronts:distribution.automation_ready_fronts,fronts:frontSummary},brand_identity:{ready:brand.ready,verified_fronts:brand.verified_fronts,total_fronts:brand.total_fronts},certification_pilot:{enabled:pilot.enabled,ready:pilot.ready},production_mode:gate.enabled?'commercial-gated':'pre-sale-blocked'}));
+    return res.end(JSON.stringify({service:'ZEVANORY',release_id:RELEASE.id,commercial_enabled:gate.enabled,lifecycle_approved:gate.lifecycle_approved,channels:channelSummary,distribution:{technical_ready:distribution.technical_ready,operational_ready:distribution.operational_ready,total_fronts:distribution.total_fronts,configured_fronts:distribution.configured_fronts,automation_ready_fronts:distribution.automation_ready_fronts,fronts:frontSummary},brand_identity:{ready:brand.ready,verified_fronts:brand.verified_fronts,total_fronts:brand.total_fronts},certification_pilot:{enabled:pilot.enabled,ready:pilot.ready},excluded_fronts:EXCLUDED_COMMERCIAL_FRONTS,production_mode:gate.enabled?'commercial-gated':'pre-sale-blocked'}));
   }
   if(view==='creative_sample'){
     const origin=`${String(req.headers?.['x-forwarded-proto']||'https').split(',')[0]}://${String(req.headers?.['x-forwarded-host']||req.headers?.host||'zevanory.api.br').split(',')[0]}`;

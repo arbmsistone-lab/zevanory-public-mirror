@@ -1,28 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { brandIdentityReadiness, BRAND_IDENTITY_FRONTS } from '../src/brandIdentityReadiness.mjs';
+import { EXCLUDED_COMMERCIAL_FRONTS } from '../src/activeCommercialScope.mjs';
 
-test('brand identity gate covers all 12 commercial fronts',()=>{
-  assert.equal(BRAND_IDENTITY_FRONTS.length,12);
+test('brand identity gate covers the 9 active commercial fronts',()=>{
+  assert.equal(BRAND_IDENTITY_FRONTS.length,9);
+  assert.equal(BRAND_IDENTITY_FRONTS.includes('tiktok'),false);
+  assert.equal(BRAND_IDENTITY_FRONTS.includes('linkedin'),false);
+  assert.equal(BRAND_IDENTITY_FRONTS.includes('nuvemshop'),false);
   const r=brandIdentityReadiness({});
-  assert.equal(r.total_fronts,12);
+  assert.equal(r.total_fronts,9);
   assert.equal(r.ready,false);
   assert.equal(r.verified_fronts,4);
   assert.ok(r.blockers.includes('WHATSAPP_BRAND_IDENTITY_NOT_VERIFIED'));
-  assert.ok(r.blockers.includes('LINKEDIN_IDENTITY_ROUTE_NOT_VERIFIED'));
 });
 
-test('verified founder route is accepted without claiming a corporate LinkedIn page',()=>{
-  const r=brandIdentityReadiness({LINKEDIN_FOUNDER_PROFILE_VERIFIED:'true',LINKEDIN_OPERATOR_ASSISTED_PUBLISHING:'true'});
-  assert.equal(r.fronts.linkedin.verified,true);
-  assert.equal(r.fronts.linkedin.source,'verified_founder_profile');
+test('TikTok LinkedIn and Nuvemshop are explicit backlog exclusions',()=>{
+  assert.equal(EXCLUDED_COMMERCIAL_FRONTS.tiktok.state,'backlog_excluded');
+  assert.equal(EXCLUDED_COMMERCIAL_FRONTS.linkedin.state,'backlog_excluded');
+  assert.equal(EXCLUDED_COMMERCIAL_FRONTS.nuvemshop.state,'backlog_excluded');
 });
 
-test('brand identity becomes ready only with all provider visual proofs',()=>{
+test('brand identity becomes ready only with all active provider visual proofs',()=>{
   const env={};
-  for(const key of ['WHATSAPP','INSTAGRAM','FACEBOOK','TIKTOK','YOUTUBE','LINKEDIN','NUVEMSHOP','MERCADOLIVRE']) env[`${key}_BRAND_IDENTITY_VERIFIED`]='true';
+  for(const key of ['WHATSAPP','INSTAGRAM','FACEBOOK','YOUTUBE','MERCADOLIVRE']) env[`${key}_BRAND_IDENTITY_VERIFIED`]='true';
   const r=brandIdentityReadiness(env);
   assert.equal(r.ready,true);
-  assert.equal(r.verified_fronts,12);
+  assert.equal(r.verified_fronts,9);
   assert.deepEqual(r.blockers,[]);
 });

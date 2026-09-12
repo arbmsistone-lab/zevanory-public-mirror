@@ -1,3 +1,4 @@
+import { isActiveCommercialFront } from './activeCommercialScope.mjs';
 import { salesGate } from './salesGate.mjs';
 
 export const CHANNELS = Object.freeze({
