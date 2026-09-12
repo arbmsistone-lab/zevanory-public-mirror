@@ -7,6 +7,8 @@ const js=await readFile(new URL('../public/criativos.js',import.meta.url),'utf8'
 const worker=await readFile(new URL('../src/cloudflare-worker.mjs',import.meta.url),'utf8');
 const config=await readFile(new URL('../api/config.mjs',import.meta.url),'utf8');
 const index=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
+const previewPng=await readFile(new URL('../public/brand/creative-sample.png',import.meta.url));
+const previewWebm=await readFile(new URL('../public/brand/creative-sample.webm',import.meta.url));
 
 test('creative center is reachable from command center and Cloudflare alias',()=>{
   assert.match(index,/href="\/criativos"/);
@@ -20,6 +22,10 @@ test('creative center consumes real creative intelligence and asset previews',()
   assert.match(js,/png_url/);
   assert.match(js,/webm_url/);
   assert.match(config,/creative-intelligence-v2/);
+  assert.match(config,/\/brand\/creative-sample\.png/);
+  assert.match(config,/\/brand\/creative-sample\.webm/);
+  assert.ok(previewPng.length>10000);
+  assert.ok(previewWebm.length>10000);
 });
 test('creative center keeps commercial truth explicit and sales closed by runtime truth',()=>{
   assert.match(html,/Nenhum resultado comercial será inventado/);

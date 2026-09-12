@@ -14,7 +14,7 @@ import { certificationPilotStatus } from '../src/certificationPilot.mjs';
 import { verifyMercadoLivreLive } from '../src/mercadoLivreVerification.mjs';
 import { brandIdentityReadiness } from '../src/brandIdentityReadiness.mjs';
 import { isPublicDeploymentRequest, safeBearerEqual } from '../src/security.mjs';
-import { verifyCreativeToken, creativeAssetUrl, creativeAssetEtag } from '../src/creativeEngine.mjs';
+import { verifyCreativeToken, creativeAssetEtag } from '../src/creativeEngine.mjs';
 import { selectCreativeVariantWithVisualEvidence } from '../src/creativeIntelligence.mjs';
 
 export const config={maxDuration:30};
@@ -52,13 +52,12 @@ export default async function handler(req, res) {
   }
   if(view==='creative_sample'){
     const origin=`${String(req.headers?.['x-forwarded-proto']||'https').split(',')[0]}://${String(req.headers?.['x-forwarded-host']||req.headers?.host||'zevanory.api.br').split(',')[0]}`;
-    const sampleEnv={...process.env,PUBLIC_BASE_URL:origin};
     const common={offerId:'OFFER-0001',hook:'Automacao com controle',body:'IA, execucao segura e evidencia real.',cta:'Conheca a ZEVANORY'};
     const image=await selectCreativeVariantWithVisualEvidence(null,{...common,channel:'instagram'}),video=await selectCreativeVariantWithVisualEvidence(null,{...common,channel:'youtube'});
     const imageSpec=image.winner.spec,videoSpec=video.winner.spec;
     const summary=x=>x.ranking.map(v=>({creative_id:v.spec.creative_id,variant_id:v.variant_id,layout:v.spec.layout,quality_score:v.quality_score,perceptual_score:v.perceptual_score,visual_min_frame_score:v.visual_min_frame_score,visual_frames:(v.visual_frames||[]).map(f=>({mode:f.mode,score:f.score,dynamic_range:Number(f.dynamic_range?.toFixed?.(2)||f.dynamic_range||0),luminance_std:Number(f.luminance_std?.toFixed?.(2)||f.luminance_std||0),occupied_fraction:Number(f.occupied_fraction?.toFixed?.(4)||f.occupied_fraction||0),edge_density:Number(f.edge_density?.toFixed?.(4)||f.edge_density||0),overflow:f.overflow===true,lines:Number(f.lines||f.hook_lines||f.body_lines||0)})),selection_score:v.selection_score,observed_ready:v.observed_ready}));
     res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;
-    return res.end(JSON.stringify({service:'ZEVANORY',engine:'creative-intelligence-v2',image_selection_basis:image.selection_basis,video_selection_basis:video.selection_basis,image_variants:summary(image),video_variants:summary(video),image_creative_id:imageSpec.creative_id,video_creative_id:videoSpec.creative_id,png_url:creativeAssetUrl(imageSpec,'png',sampleEnv),webm_url:creativeAssetUrl(videoSpec,'webm',sampleEnv)}));
+    return res.end(JSON.stringify({service:'ZEVANORY',engine:'creative-intelligence-v2',image_selection_basis:image.selection_basis,video_selection_basis:video.selection_basis,image_variants:summary(image),video_variants:summary(video),image_creative_id:imageSpec.creative_id,video_creative_id:videoSpec.creative_id,png_url:`${origin}/brand/creative-sample.png`,webm_url:`${origin}/brand/creative-sample.webm`}));
   }
 
   if(isPublicDeploymentRequest(req)&&['mercadolivre-audit','lifecycle','activation'].includes(view)){const expected=String(process.env.OPERATOR_TOKEN||process.env.FULFILLMENT_OPERATOR_TOKEN||'');const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'');if(!safeBearerEqual(expected,provided)){res.statusCode=401;return res.end(JSON.stringify({error:'operator_auth_required'}));}}
