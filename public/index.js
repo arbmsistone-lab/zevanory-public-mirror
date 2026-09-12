@@ -45,7 +45,7 @@ function renderAssurance(release){
   const summary=document.createElement('div'); summary.className='assurance-summary'; const s=document.createElement('span'); const b=document.createElement('b'); s.textContent='GARANTIAS'; b.textContent=approved+'/'+entries.length+' APROVADAS'; summary.append(s,b); grid.appendChild(summary); set('assurance-score',approved+'/'+entries.length);
   const rail=grid.closest('.risk-rail'); if(rail) rail.title=entries.map(([k,v])=>k.replaceAll('_',' ')+': '+label(v)).join(' | ');
 }
-const sourcePaths={status:'/api/status',health:'/api/health',release:'/api/release',config:'/api/config',agent:'/api/agent/status'};
+const sourcePaths={status:'/api/status',health:'/api/health',release:'/api/release',config:'/api/config?view=closure_status',agent:'/api/agent/status'};
 async function fetchSource(path){
   const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),7000);
   try{const r=await fetch(path,{cache:'no-store',signal:controller.signal});if(!r.ok)throw new Error(String(r.status));return await r.json();}finally{clearTimeout(timer);}

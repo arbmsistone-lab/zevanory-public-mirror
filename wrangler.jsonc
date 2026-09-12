@@ -25,6 +25,7 @@
   ],
   "vars": {
     "SUPPORT_CHANNEL": "WhatsApp +55 88 9234-0423",
+    "REMOTE_CHANNEL_STATUS_URL": "https://zevanory-site.vercel.app/api/config?view=closure_status",
     "OFFER_SELECTION_APPROVED": "true",
     "ACTIVE_OFFER_TYPE": "digital_product",
     "ZEVANORY_PRODUCT_HANDOFF_V21_VERIFIED": "true",
