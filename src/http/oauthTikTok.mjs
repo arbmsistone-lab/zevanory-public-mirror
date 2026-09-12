@@ -1,12 +1,12 @@
 import { Pool } from '@neondatabase/serverless';
-import { createTikTokOAuthStart, exchangeTikTokCode, fetchTikTokBasicUser, fetchTikTokCreator, persistTikTokTokens, readTikTokOAuthCookie } from '../tiktokOAuth.mjs';
+import { createTikTokOAuthStart, createTikTokReviewSession, exchangeTikTokCode, fetchTikTokBasicUser, fetchTikTokCreator, persistTikTokTokens, readTikTokOAuthCookie } from '../tiktokOAuth.mjs';
 import { preserveOAuthCredential } from '../oauthPersistenceFabric.mjs';
 
 const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringify(body));};
 const cookieValue=(req,name)=>String(req.headers?.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(`${name}=`))?.slice(name.length+1)||'';
 const queryFrom=(req)=>{try{return new URL(req.url||'','https://zevanory.api.br').searchParams;}catch{return new URLSearchParams();}};
 const COOKIE='zevanory_tiktok_oauth';
-const oauthMode=(value)=>String(value||'').toLowerCase()==='sandbox'?'sandbox':'production';
+const oauthMode=(value)=>{const v=String(value||'').toLowerCase();return v==='sandbox'?'sandbox':v==='review'?'review':'production';};
 
 export default async function handler(req,res){
   res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');
@@ -45,6 +45,7 @@ export default async function handler(req,res){
     try{await persistTikTokTokens({query:(text,args)=>client.query(text,args).then(r=>r.rows)},{token,env:process.env,mode});}
     catch(error){const recovery=await preserveOAuthCredential({provider:'tiktok',subjectRef:identity.username||identity.nickname||'authorized',token,identity,mode});res.setHeader('set-cookie',`${COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/oauth/tiktok; Max-Age=0`);return json(res,recovery.preserved?202:503,{provider:'tiktok',mode,connected:false,credential_preserved:recovery.preserved,reconciliation_required:true,error:recovery.preserved?undefined:'oauth_persistence_failed'});}
     finally{client.release();}
+    if(mode==='review'){const reviewCookie=createTikTokReviewSession(token.open_id,process.env);res.setHeader('set-cookie',[`${COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/oauth/tiktok; Max-Age=0`,`zevanory_tiktok_review_session=${reviewCookie}; HttpOnly; Secure; SameSite=Lax; Path=/api/tiktok-review; Max-Age=1800`]);res.statusCode=302;res.setHeader('location','/tiktok-review?authorized=1');return res.end();}
     res.setHeader('set-cookie',`${COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/oauth/tiktok; Max-Age=0`);
     return json(res,200,{provider:'tiktok',mode,connected:true,username:identity.username,nickname:identity.nickname,video_publish_authorized:identity.videoPublishAuthorized,tokens_stored_encrypted:true,identity_match:identity.identityMatch,commercial_enabled:false});
   }catch(error){return json(res,503,{provider:'tiktok',connected:false,error:String(error.message||'oauth_callback_failed')});}

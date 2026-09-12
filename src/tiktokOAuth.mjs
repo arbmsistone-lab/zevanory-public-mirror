@@ -7,12 +7,14 @@ const CREATOR_URL='https://open.tiktokapis.com/v2/post/publish/creator_info/quer
 const USER_INFO_URL='https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name';
 const PRODUCTION_SCOPES='user.info.basic,video.publish';
 const SANDBOX_SCOPES='user.info.basic';
+const REVIEW_SCOPES=PRODUCTION_SCOPES;
 const clean=(v,max=4000)=>String(v??'').trim().slice(0,max);
 const b64u=(buf)=>Buffer.from(buf).toString('base64url');
 const keyFrom=(env)=>{const raw=Buffer.from(clean(env.TIKTOK_TOKEN_ENCRYPTION_KEY,200),'base64');if(raw.length!==32)throw new Error('tiktok_encryption_key_invalid');return raw;};
-const oauthMode=(value)=>String(value||'').toLowerCase()==='sandbox'?'sandbox':'production';
-const credentialProvider=(mode)=>oauthMode(mode)==='sandbox'?'tiktok_sandbox':'tiktok';
-const oauthClient=(env,mode)=>{const sandbox=oauthMode(mode)==='sandbox';return {mode:sandbox?'sandbox':'production',clientKey:clean(sandbox?env.TIKTOK_SANDBOX_CLIENT_KEY:env.TIKTOK_CLIENT_KEY,200),clientSecret:clean(sandbox?env.TIKTOK_SANDBOX_CLIENT_SECRET:env.TIKTOK_CLIENT_SECRET,1000)};};
+const oauthMode=(value)=>{const v=String(value||'').toLowerCase();return v==='sandbox'?'sandbox':v==='review'?'review':'production';};
+const usesSandboxCredentials=(mode)=>['sandbox','review'].includes(oauthMode(mode));
+const credentialProvider=(mode)=>usesSandboxCredentials(mode)?'tiktok_sandbox':'tiktok';
+const oauthClient=(env,mode)=>{const resolved=oauthMode(mode),sandbox=usesSandboxCredentials(resolved);return {mode:resolved,clientKey:clean(sandbox?env.TIKTOK_SANDBOX_CLIENT_KEY:env.TIKTOK_CLIENT_KEY,200),clientSecret:clean(sandbox?env.TIKTOK_SANDBOX_CLIENT_SECRET:env.TIKTOK_CLIENT_SECRET,1000)};};
 
 export function encryptTikTokSecret(value,env=process.env){
   const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',keyFrom(env),iv);
@@ -26,10 +28,10 @@ export function decryptTikTokSecret(value,env=process.env){
   return Buffer.concat([decipher.update(data),decipher.final()]).toString('utf8');
 }
 export function createTikTokOAuthStart(env=process.env,{mode='production'}={}){
-  const cfg=oauthClient(env,mode);if(!cfg.clientKey)throw new Error(cfg.mode==='sandbox'?'tiktok_sandbox_client_key_missing':'tiktok_client_key_missing');
+  const cfg=oauthClient(env,mode);if(!cfg.clientKey)throw new Error(usesSandboxCredentials(cfg.mode)?'tiktok_sandbox_client_key_missing':'tiktok_client_key_missing');
   const state=b64u(randomBytes(24));
   const cookie=encryptTikTokSecret(JSON.stringify({state,iat:Date.now(),mode:cfg.mode}),env);
-  const scopes=cfg.mode==='sandbox'?SANDBOX_SCOPES:PRODUCTION_SCOPES;
+  const scopes=cfg.mode==='sandbox'?SANDBOX_SCOPES:cfg.mode==='review'?REVIEW_SCOPES:PRODUCTION_SCOPES;
   const url=new URL(AUTH_URL);url.searchParams.set('client_key',cfg.clientKey);url.searchParams.set('scope',scopes);
   url.searchParams.set('response_type','code');url.searchParams.set('redirect_uri',TIKTOK_REDIRECT_URI);url.searchParams.set('state',state);
   return {url:url.toString(),cookie,mode:cfg.mode};
@@ -43,12 +45,12 @@ export function readTikTokOAuthCookie(value,expectedState,env=process.env){
 }
 export async function exchangeTikTokCode({code,env=process.env,fetchImpl=globalThis.fetch,mode='production'}={}){
   const cfg=oauthClient(env,mode),clientKey=cfg.clientKey,clientSecret=cfg.clientSecret;
-  if(!clientKey||!clientSecret)throw new Error(cfg.mode==='sandbox'?'tiktok_sandbox_oauth_config_missing':'tiktok_oauth_config_missing');
+  if(!clientKey||!clientSecret)throw new Error(usesSandboxCredentials(cfg.mode)?'tiktok_sandbox_oauth_config_missing':'tiktok_oauth_config_missing');
   const body=new URLSearchParams({client_key:clientKey,client_secret:clientSecret,code:clean(code),grant_type:'authorization_code',redirect_uri:TIKTOK_REDIRECT_URI});
   const response=await fetchImpl(TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded','cache-control':'no-cache'},body});
   const token=await response.json().catch(()=>({}));if(!response.ok)throw new Error(`tiktok_token_http_${response.status}`);
   if(!clean(token.access_token)||!clean(token.refresh_token)||!clean(token.open_id))throw new Error('tiktok_token_invalid');
-  if(cfg.mode==='production'&&!String(token.scope||'').split(',').map(x=>x.trim()).includes('video.publish'))throw new Error('tiktok_video_publish_scope_missing');
+  if(cfg.mode!=='sandbox'&&!String(token.scope||'').split(',').map(x=>x.trim()).includes('video.publish'))throw new Error('tiktok_video_publish_scope_missing');
   return token;
 }
 export async function fetchTikTokBasicUser(accessToken,fetchImpl=globalThis.fetch){
@@ -61,7 +63,7 @@ export async function fetchTikTokCreator(accessToken,fetchImpl=globalThis.fetch)
   const response=await fetchImpl(CREATOR_URL,{method:'POST',headers:{authorization:`Bearer ${clean(accessToken)}`,'content-type':'application/json; charset=UTF-8'}});
   const body=await response.json().catch(()=>({}));if(!response.ok||body?.error?.code!=='ok')throw new Error(`tiktok_creator_http_${response.status}`);
   const username=clean(body?.data?.creator_username,200).replace(/^@/,'');if(!username)throw new Error('tiktok_creator_username_missing');
-  return {username,nickname:clean(body?.data?.creator_nickname,200)};
+  return {username,nickname:clean(body?.data?.creator_nickname,200),avatarUrl:clean(body?.data?.creator_avatar_url,2000),privacyLevelOptions:Array.isArray(body?.data?.privacy_level_options)?body.data.privacy_level_options.map(x=>clean(x,60)).filter(Boolean):[],commentDisabled:Boolean(body?.data?.comment_disabled),duetDisabled:Boolean(body?.data?.duet_disabled),stitchDisabled:Boolean(body?.data?.stitch_disabled),maxVideoPostDurationSec:Number(body?.data?.max_video_post_duration_sec)||0};
 }
 export async function persistTikTokTokens(sql,{token,env=process.env,mode='production'}){
   if(!sql?.query)throw new Error('tiktok_sql_required');
@@ -76,12 +78,24 @@ export async function loadTikTokCredential(sql,env=process.env,{mode='production
   if(!sql?.query)throw new Error('tiktok_sql_required');
   const provider=credentialProvider(mode);
   const rows=await sql.query(`select account_id,access_token_enc,refresh_token_enc,token_type,scope,expires_at from provider_oauth_credentials where provider='${provider}' limit 1`);
-  const row=rows[0];if(!row)throw new Error(mode==='sandbox'?'tiktok_sandbox_oauth_credential_missing':'tiktok_oauth_credential_missing');
+  const row=rows[0];if(!row)throw new Error(usesSandboxCredentials(mode)?'tiktok_sandbox_oauth_credential_missing':'tiktok_oauth_credential_missing');
   return {...row,access_token:decryptTikTokSecret(row.access_token_enc,env),refresh_token:decryptTikTokSecret(row.refresh_token_enc,env)};
 }
+
+export function createTikTokReviewSession(openId,env=process.env){
+  const subject=clean(openId,300);if(!subject)throw new Error('tiktok_review_subject_missing');
+  return encryptTikTokSecret(JSON.stringify({subject,iat:Date.now(),mode:'review'}),env);
+}
+export function readTikTokReviewSession(value,env=process.env){
+  const parsed=JSON.parse(decryptTikTokSecret(value,env));
+  if(parsed?.mode!=='review'||!clean(parsed?.subject,300))throw new Error('tiktok_review_session_invalid');
+  if(Date.now()-Number(parsed.iat)>30*60*1000)throw new Error('tiktok_review_session_expired');
+  return {subject:clean(parsed.subject,300),mode:'review'};
+}
+
 export async function refreshTikTokCredential(sql,credential,{env=process.env,fetchImpl=globalThis.fetch,mode='production'}={}){
   const cfg=oauthClient(env,mode),clientKey=cfg.clientKey,clientSecret=cfg.clientSecret;
-  if(!clientKey||!clientSecret)throw new Error(cfg.mode==='sandbox'?'tiktok_sandbox_oauth_refresh_config_missing':'tiktok_oauth_refresh_config_missing');
+  if(!clientKey||!clientSecret)throw new Error(usesSandboxCredentials(cfg.mode)?'tiktok_sandbox_oauth_refresh_config_missing':'tiktok_oauth_refresh_config_missing');
   const body=new URLSearchParams({client_key:clientKey,client_secret:clientSecret,grant_type:'refresh_token',refresh_token:clean(credential.refresh_token)});
   const response=await fetchImpl(TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded','cache-control':'no-cache'},body});
   const token=await response.json().catch(()=>({}));if(!response.ok)throw new Error(`tiktok_refresh_http_${response.status}`);

@@ -16,20 +16,38 @@ const publishRequest=async(fetchImpl,url,options)=>{
 export async function publishTikTok({event,env=process.env,fetchImpl=globalThis.fetch,accessToken}={}){
   const token=required(accessToken||env.TIKTOK_ACCESS_TOKEN,'tiktok_access_token_missing');
   if(env.TIKTOK_CONTENT_SOURCE_VERIFIED!=='true')throw new Error('tiktok_content_source_unverified');
-  if(event?.payload?.user_consent!==true)throw new Error('tiktok_user_consent_required');
-  const mediaUrl=httpsUrl(event?.payload?.media_url,'tiktok_media_url_required');
+  const payload=event?.payload||{};
+  if(payload.user_consent!==true)throw new Error('tiktok_user_consent_required');
+  if(payload.music_usage_confirmation!==true)throw new Error('tiktok_music_usage_confirmation_required');
+  const mediaUrl=httpsUrl(payload.media_url,'tiktok_media_url_required');
   const creator=await fetchImpl('https://open.tiktokapis.com/v2/post/publish/creator_info/query/',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json; charset=UTF-8'}});
   const creatorBody=await json(creator);if(creator.status!==200||creatorBody?.error?.code!=='ok')throw new Error(`tiktok_creator_http_${creator.status}`);
-  const options=creatorBody?.data?.privacy_level_options||[];
-  const audited=env.TIKTOK_CLIENT_AUDITED==='true';
-  const requested=clean(event?.payload?.privacy_level,40)||'SELF_ONLY';
-  const privacy=audited&&options.includes(requested)?requested:'SELF_ONLY';
-  if(!options.includes(privacy))throw new Error('tiktok_privacy_unavailable');
-  const body={post_info:{title:withLanding(event?.payload?.content||event?.payload?.title,event?.payload?.landing_url,2200),privacy_level:privacy,disable_duet:true,disable_comment:false,disable_stitch:true},source_info:{source:'PULL_FROM_URL',video_url:mediaUrl}};
+  const data=creatorBody?.data||{},options=Array.isArray(data.privacy_level_options)?data.privacy_level_options:[];
+  const requested=required(payload.privacy_level,'tiktok_privacy_required',40);if(!options.includes(requested))throw new Error('tiktok_privacy_unavailable');
+  const audited=env.TIKTOK_CLIENT_AUDITED==='true';if(!audited&&requested!=='SELF_ONLY')throw new Error('tiktok_unaudited_privacy_must_be_self_only');
+  const duration=Number(payload.video_duration_sec);if(!Number.isFinite(duration)||duration<=0)throw new Error('tiktok_video_duration_required');
+  const maxDuration=Number(data.max_video_post_duration_sec)||0;if(maxDuration>0&&duration>maxDuration)throw new Error('tiktok_video_duration_exceeds_creator_limit');
+  const allowComment=payload.allow_comment===true,allowDuet=payload.allow_duet===true,allowStitch=payload.allow_stitch===true;
+  if(allowComment&&data.comment_disabled)throw new Error('tiktok_comments_disabled_by_creator');
+  if(allowDuet&&data.duet_disabled)throw new Error('tiktok_duet_disabled_by_creator');
+  if(allowStitch&&data.stitch_disabled)throw new Error('tiktok_stitch_disabled_by_creator');
+  const disclosure=payload.commercial_disclosure===true,brandOrganic=payload.brand_organic_toggle===true,brandContent=payload.brand_content_toggle===true;
+  if(disclosure&&!brandOrganic&&!brandContent)throw new Error('tiktok_commercial_disclosure_choice_required');
+  if(!disclosure&&(brandOrganic||brandContent))throw new Error('tiktok_commercial_disclosure_toggle_required');
+  if(brandContent&&requested==='SELF_ONLY')throw new Error('tiktok_branded_content_private_forbidden');
+  const postInfo={title:withLanding(payload.content||payload.title,payload.landing_url,2200),privacy_level:requested,disable_duet:!allowDuet,disable_comment:!allowComment,disable_stitch:!allowStitch,brand_content_toggle:brandContent,brand_organic_toggle:brandOrganic,is_aigc:payload.is_aigc===true};
+  const body={post_info:postInfo,source_info:{source:'PULL_FROM_URL',video_url:mediaUrl}};
   const init=await publishRequest(fetchImpl,'https://open.tiktokapis.com/v2/post/publish/video/init/',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json; charset=UTF-8'},body:JSON.stringify(body)});
   const initBody=await json(init);if(init.status!==200||initBody?.error?.code!=='ok')throw new Error(`tiktok_publish_http_${init.status}`);
   const publishId=clean(initBody?.data?.publish_id,300);if(!publishId)throw providerAcceptanceMissing('tiktok_publish_id_missing');
-  return Object.freeze({provider:'tiktok',accepted:true,provider_post_id:publishId,privacy_level:privacy,confirmation:'provider_lookup_required'});
+  return Object.freeze({provider:'tiktok',accepted:true,provider_post_id:publishId,privacy_level:requested,confirmation:'provider_lookup_required'});
+}
+
+export async function fetchTikTokPostStatus({publishId,accessToken,fetchImpl=globalThis.fetch}={}){
+  const token=required(accessToken,'tiktok_access_token_missing'),id=required(publishId,'tiktok_publish_id_missing',300);
+  const response=await fetchImpl('https://open.tiktokapis.com/v2/post/publish/status/fetch/',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json; charset=UTF-8'},body:JSON.stringify({publish_id:id}),signal:AbortSignal.timeout(15000)});
+  const body=await json(response);if(response.status!==200||body?.error?.code!=='ok')throw new Error(`tiktok_status_http_${response.status}`);
+  return Object.freeze({status:clean(body?.data?.status,80),fail_reason:clean(body?.data?.fail_reason,300)||null,post_ids:Array.isArray(body?.data?.publicaly_available_post_id)?body.data.publicaly_available_post_id.map(String):[]});
 }
 
 export async function publishLinkedIn({event,env=process.env,fetchImpl=globalThis.fetch,accessToken,authorUrn}={}){

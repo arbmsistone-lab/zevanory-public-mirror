@@ -1,20 +1,18 @@
 const $=(id)=>document.getElementById(id);
-async function refreshStatus(){
-  $('status').textContent='Consultando conexão segura...';
-  try{
-    const r=await fetch('/api/oauth/tiktok/callback',{cache:'no-store'});
-    const j=await r.json();
-    $('status').textContent=j.authorization_enabled?'OAuth configurado no servidor.':'OAuth ainda sem credenciais de produção.';
-  }catch{$('status').textContent='Não foi possível consultar o status agora.';}
-}
-$('refresh').addEventListener('click',refreshStatus);
-$('prepare').addEventListener('click',()=>{
-  const consent=$('consent').checked;
-  const media=$('media').value.trim();
-  let valid=false;
-  try{const u=new URL(media);valid=u.protocol==='https:';}catch{}
-  if(!consent){$('result').textContent='Bloqueado: consentimento explícito é obrigatório.';return;}
-  if(!valid){$('result').textContent='Bloqueado: informe uma URL HTTPS válida do vídeo.';return;}
-  $('result').textContent='Validação local concluída. A publicação real permanece sujeita ao OAuth e aos gates do servidor.';
-});
-refreshStatus();
+let creator=null,publishId=null,pollTimer=null;
+const privacyLabels={PUBLIC_TO_EVERYONE:'Todos',MUTUAL_FOLLOW_FRIENDS:'Amigos',FOLLOWER_OF_CREATOR:'Seguidores',SELF_ONLY:'Somente eu'};
+const setText=(id,text)=>{$(id).textContent=text;};
+const validHttps=(value)=>{try{return new URL(value).protocol==='https:';}catch{return false;}};
+
+function updatePreview(){const url=$('media').value.trim();const preview=$('preview');if(validHttps(url)){preview.src=url;preview.hidden=false;}else{preview.removeAttribute('src');preview.hidden=true;preview.load();}updateReady();}
+function updateCommercial(){const enabled=$('commercial').checked;$('commercial-options').hidden=!enabled;if(!enabled){$('own-brand').checked=false;$('branded').checked=false;}const privateMode=$('privacy').value==='SELF_ONLY';$('branded').disabled=privateMode;if(privateMode&&$('branded').checked)$('branded').checked=false;const branded=$('branded').checked,own=$('own-brand').checked;if(enabled&&!own&&!branded)setText('commercial-hint','Selecione Sua marca, Conteúdo de marca, ou ambos.');else if(branded)setText('commercial-hint',"A publicação será rotulada como 'Paid partnership'.");else if(own)setText('commercial-hint',"A publicação será rotulada como 'Promotional content'.");else setText('commercial-hint','');setText('policy',branded?"By posting, you agree to TikTok's Branded Content Policy and Music Usage Confirmation.":"By posting, you agree to TikTok's Music Usage Confirmation.");updateReady();}
+function updateReady(){const duration=Number($('duration').value),commercial=$('commercial').checked,commercialChoice=!commercial||$('own-brand').checked||$('branded').checked;const ok=Boolean(creator)&&validHttps($('media').value.trim())&&duration>0&&(!creator.maxVideoPostDurationSec||duration<=creator.maxVideoPostDurationSec)&&Boolean($('privacy').value)&&$('consent').checked&&$('music').checked&&commercialChoice; $('publish').disabled=!ok;}
+async function refreshCreator(){setText('status','Consultando TikTok...');creator=null;updateReady();try{const r=await fetch('/api/tiktok-review?action=creator',{cache:'no-store'}),j=await r.json();if(!r.ok)throw new Error(j.error||'review_not_connected');creator=j.creator;setText('status',`Conta: @${creator.username} · ${creator.nickname||'sem apelido'} · limite de vídeo: ${creator.maxVideoPostDurationSec||'não informado'}s`);const privacy=$('privacy');privacy.replaceChildren(new Option('Selecione manualmente',''));for(const value of creator.privacyLevelOptions||[]){const option=new Option(`${privacyLabels[value]||value}${value!=='SELF_ONLY'?' · após auditoria':''}`,value);if(value!=='SELF_ONLY')option.disabled=true;privacy.append(option);}privacy.disabled=false;for(const [id,blocked] of [['allow-comment',creator.commentDisabled],['allow-duet',creator.duetDisabled],['allow-stitch',creator.stitchDisabled]]){const el=$(id);el.checked=false;el.disabled=Boolean(blocked);el.parentElement.classList.toggle('disabled',Boolean(blocked));}updateCommercial();}catch(error){setText('status',error.message==='tiktok_review_session_invalid'||error.message==='tiktok_review_session_expired'||error.message==='tiktok_sandbox_oauth_credential_missing'?'Autorize a conta Sandbox de revisão antes de continuar.':'Não foi possível carregar os dados reais do criador.');$('privacy').disabled=true;}}
+
+async function pollStatus(){if(!publishId)return;try{const r=await fetch('/api/tiktok-review',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'status',publish_id:publishId})}),j=await r.json();if(!r.ok)throw new Error(j.error||'status_failed');$('publish-status').hidden=false;$('publish-status').textContent=`Status TikTok: ${j.status||'desconhecido'}${j.fail_reason?` · ${j.fail_reason}`:''}`;if(!['PUBLISH_COMPLETE','FAILED'].includes(j.status))pollTimer=setTimeout(pollStatus,3000);}catch(error){$('publish-status').hidden=false;$('publish-status').textContent=`Falha ao consultar status: ${error.message}`;}}
+
+async function publishReview(){updateReady();if($('publish').disabled)return;clearTimeout(pollTimer);setText('result','Enviando somente após seu consentimento explícito...');$('publish').disabled=true;const payload={action:'publish',media_url:$('media').value.trim(),video_duration_sec:Number($('duration').value),content:$('caption').value,privacy_level:$('privacy').value,allow_comment:$('allow-comment').checked,allow_duet:$('allow-duet').checked,allow_stitch:$('allow-stitch').checked,commercial_disclosure:$('commercial').checked,brand_organic_toggle:$('own-brand').checked,brand_content_toggle:$('branded').checked,is_aigc:$('aigc').checked,user_consent:$('consent').checked,music_usage_confirmation:$('music').checked};try{const r=await fetch('/api/tiktok-review',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}),j=await r.json();if(!r.ok)throw new Error(j.error||'publish_failed');publishId=j.provider_post_id;setText('result',`TikTok aceitou o teste privado. Publish ID: ${publishId}. O processamento pode levar alguns minutos.`);$('publish-status').hidden=false;$('publish-status').textContent='Status TikTok: processamento iniciado';pollTimer=setTimeout(pollStatus,2500);}catch(error){setText('result',`Bloqueado: ${error.message}`);}finally{updateReady();}}
+$('refresh').addEventListener('click',refreshCreator);$('publish').addEventListener('click',publishReview);$('media').addEventListener('input',updatePreview);$('duration').addEventListener('input',updateReady);$('privacy').addEventListener('change',updateCommercial);$('consent').addEventListener('change',updateReady);$('music').addEventListener('change',updateReady);$('commercial').addEventListener('change',updateCommercial);$('own-brand').addEventListener('change',updateCommercial);$('branded').addEventListener('change',updateCommercial);$('aigc').addEventListener('change',updateReady);$('allow-comment').addEventListener('change',updateReady);$('allow-duet').addEventListener('change',updateReady);$('allow-stitch').addEventListener('change',updateReady);
+updateCommercial();
+if(new URLSearchParams(location.search).get('authorized')==='1')history.replaceState(null,'','/tiktok-review');
+refreshCreator();

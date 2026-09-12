@@ -51,6 +51,10 @@
       "destination": "/api/webhooks?provider=tiktok_oauth&action=start"
     },
     {
+      "source": "/api/tiktok-review",
+      "destination": "/api/webhooks?provider=tiktok_review"
+    },
+    {
       "source": "/api/oauth/tiktok/callback",
       "destination": "/api/webhooks?provider=tiktok_oauth"
     },
