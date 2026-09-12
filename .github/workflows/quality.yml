@@ -52,6 +52,7 @@ jobs:
       - run: npm run audit:10x
       - run: npm run resilience:smoke
       - run: npm run audit:no-single-provider
+      - run: npm run audit:infrastructure:50x
       - run: npm run dr:public-artifact
       - run: npm run audit:dns-recovery
       - run: npm run dr:chaos:providers

@@ -91,6 +91,7 @@
     "audit:elite-conversation:20x": "node scripts/audit-elite-conversation-20x.mjs",
     "audit:ai-mesh:20x": "node scripts/audit-ai-mesh-20x.mjs",
     "audit:critical-continuity": "node scripts/audit-critical-continuity.mjs",
-    "migration:026": "node --env-file-if-exists=.env.production.local scripts/apply-migration-026.mjs"
+    "migration:026": "node --env-file-if-exists=.env.production.local scripts/apply-migration-026.mjs",
+    "audit:infrastructure:50x": "node scripts/audit-infrastructure-50x.mjs"
   }
 }
