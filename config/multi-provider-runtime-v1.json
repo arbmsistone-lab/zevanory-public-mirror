@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "policy": "no-single-provider-dependency",
+  "minimum_independent_providers": 3,
+  "automatic_failover_required": true,
+  "quota_exhaustion_must_failover": true,
+  "transient_failures": [408, 409, 425, 429, 500, 502, 503, 504],
+  "critical_runtime_domains": ["ai", "deployment", "channels"],
+  "ai_providers": ["google-gemini", "cloudflare-ai", "mistral", "groq"],
+  "sales_gate_unchanged": "blocked",
+  "prohibit_green_when_redundancy_below_minimum": true
+}

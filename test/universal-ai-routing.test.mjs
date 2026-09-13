@@ -24,3 +24,9 @@ test('AI pool degrades to deterministic decision when every provider is unavaila
   assert.equal(out.action,'first_response');
   assert.equal(out.fallback_reason,'all_qualified_providers_failed');
 });
+
+
+test('built-in AI adapters expose three independent external domains when configured',async()=>{
+  const source=await import('node:fs').then(fs=>fs.readFileSync(new URL('../src/aiProvider.mjs',import.meta.url),'utf8'));
+  for(const marker of ["independenceDomain:'google-ai'","domain:'mistral-ai'","domain:'groqcloud'"]) assert.match(source,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+});

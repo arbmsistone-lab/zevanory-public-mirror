@@ -19,6 +19,8 @@ add('strict JSON parser enforced',ai.includes('cloudflare_ai_invalid_json'));
 add('independent Cloudflare AI domain',ai.includes("independenceDomain:'cloudflare-workers-ai'"));
 add('Cloudflare provider cost zero',ai.includes('cost:0'));
 add('Gemini provider retained',provider.includes("independenceDomain:'google-ai'"));
+add('Mistral independent provider retained',provider.includes("domain:'mistral-ai'"));
+add('Groq independent provider retained',provider.includes("domain:'groqcloud'"));
 add('deterministic fallback retained',provider.includes("provider: 'deterministic'"));
 add('agent injects Cloudflare provider',worker.includes('buildCloudflareAiExecutionProvider'));
 add('edge exposes AI binding internally',edge.includes('__ZEVANORY_EDGE_AI__'));
