@@ -146,3 +146,19 @@ async function load(){
 }
 
 load();setInterval(load,60000);
+
+// Surgical accessibility/state sync for channel selection.
+function syncCreativeFrontA11y(){
+  document.querySelectorAll('.production-item[data-front]').forEach(el=>{
+    const active=el.classList.contains('active');
+    el.setAttribute('aria-pressed',active?'true':'false');
+    const channel=el.querySelector('.channel')?.textContent?.trim()||el.dataset.front||'Canal';
+    el.setAttribute('aria-label',`${channel}: ${active?'selecionado':'não selecionado'}`);
+  });
+}
+document.addEventListener('click',event=>{
+  if(event.target.closest('.production-item[data-front]')) queueMicrotask(syncCreativeFrontA11y);
+});
+const creativeFrontObserver=new MutationObserver(syncCreativeFrontA11y);
+creativeFrontObserver.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+queueMicrotask(syncCreativeFrontA11y);

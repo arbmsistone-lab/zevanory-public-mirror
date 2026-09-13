@@ -41,12 +41,6 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:12px;co
   .front-statuses em,.front-statuses b{font-size:10px}
   .production-item .channel{font-size:11px}
 }
-@media(max-height:820px) and (min-width:901px){
-  html,body{height:auto;min-height:100%;overflow:auto}body{height:auto}
-  main{grid-template-rows:72px auto 92px 76px;overflow:visible}
-  .workspace{min-height:540px;overflow:visible}
-  .production-panel,.preview-panel,.variants-panel{overflow:hidden}
-}
 @media(min-width:1500px){
   .production-grid{grid-auto-rows:minmax(68px,1fr)}
   .production-item{min-height:68px}
@@ -69,4 +63,20 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:12px;co
   .investment,.timeline{padding:5px 8px}.investment .card-head,.timeline .card-head{margin-bottom:3px}.advisor-grid{gap:4px}.advisor-grid>div{padding:3px 5px}.advisor-grid span{font-size:8px}.advisor-grid strong{font-size:9px}.advisor-safety{font-size:8px;margin-top:2px;line-height:1}
   .flow-steps{gap:4px}.flow-steps div{grid-template-columns:18px 1fr;column-gap:5px;padding:3px 5px}.flow-steps div>span{width:18px;height:18px;font-size:8px}.flow-steps b,.flow-steps small{font-size:8px}
   footer{height:14px;min-height:0;padding:0 2px;font-size:8px}
+}
+/* Surgical short-desktop closeout: canonical zero-scroll override */
+@media(min-width:901px) and (max-height:820px){
+  html,body{height:100%;min-height:0;overflow:hidden}
+  body{height:100dvh;padding:6px 10px 5px;display:grid;grid-template-rows:46px minmax(0,1fr) 14px;gap:4px}
+  main{min-height:0;overflow:hidden;grid-template-rows:56px minmax(0,1fr) 70px 56px;gap:5px}
+  .workspace{min-height:0;overflow:hidden;grid-template-columns:minmax(330px,32vw) minmax(0,1fr) minmax(330px,31vw);gap:7px}
+  .production-panel,.preview-panel,.variants-panel{min-height:0;overflow:hidden}
+  .production-grid{grid-template-rows:repeat(6,minmax(0,1fr));grid-auto-rows:unset;gap:4px;overflow:hidden}
+  .production-item{min-height:0;height:100%;padding:4px 7px;overflow:hidden}
+  .front-statuses em,.front-statuses b,.production-item i,.truth-box p{font-size:9px}
+}
+@media(min-width:901px) and (max-height:820px){
+  .kpis small,.preview-meta span,.preview-meta b,.variant small,.score-row span,.board-vote span,.board-vote b,.board-vote i,#board-state,.advisor-grid span,.advisor-safety,.flow-steps b,.flow-steps small,footer{font-size:9px}
+  .truth-box span{font-size:9px}
+  .front-statuses em,.front-statuses b,.production-item i,.truth-box p{font-size:9px}
 }
