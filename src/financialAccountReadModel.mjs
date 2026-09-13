@@ -27,6 +27,14 @@ async function fetchJson(fetchImpl, url, options) {
   }
   return body;
 }
+async function fetchJsonOptional404(fetchImpl,url,options) {
+  const response=await fetchImpl(url,options);
+  const text=await response.text();
+  let body=null;try{body=text?JSON.parse(text):null;}catch{body={raw:text.slice(0,400)};}
+  if(response.status===404)return null;
+  if(!response.ok){const error=new Error(`provider_http_${response.status}`);error.statusCode=response.status;error.providerBody=body;throw error;}
+  return body;
+}
 export function financialReadiness(env = process.env) {
   return Object.freeze({
     mode: 'read_only',
@@ -61,7 +69,7 @@ export async function readMercadoPagoAccount({ env = process.env, fetchImpl = fe
   if (!token) return { provider: 'mercadopago', configured: false, available: false };
   const headers = { authorization: `Bearer ${token}`, accept: 'application/json' };
   const [config, reports] = await Promise.all([
-    fetchJson(fetchImpl, `${MP_API}/v1/account/settlement_report/config`, { method: 'GET', headers }),
+    fetchJsonOptional404(fetchImpl, `${MP_API}/v1/account/settlement_report/config`, { method: 'GET', headers }),
     fetchJson(fetchImpl, `${MP_API}/v1/account/settlement_report/list`, { method: 'GET', headers }),
   ]);
   const normalizedReports = Array.isArray(reports) ? reports.slice(0, 25).map((report) => ({
