@@ -1,7 +1,7 @@
 import { salesGate } from './salesGate.mjs';
 
 export const TOOL_RISK = Object.freeze({
-  get_command_center:'read', search_knowledge:'read', read_lead_context:'read',
+  get_command_center:'read', search_knowledge:'read', read_lead_context:'read', send_support_message:'support',
   remember_fact:'write', schedule_follow_up:'write', create_offer_draft:'write', create_creative:'write', refresh_outcome_learning:'write',
   send_message:'commercial', publish_content:'publication', start_checkout:'financial', refund_payment:'financial',
 });
@@ -12,6 +12,7 @@ export function authorizeTool(toolName,env=process.env,decision={}){
   const risk=TOOL_RISK[toolName];
   if(!risk)return Object.freeze({allowed:false,risk_level:'destructive',reason:'unknown_tool'});
   if(risk==='read')return Object.freeze({allowed:true,risk_level:risk,reason:'read_only'});
+  if(risk==='support')return Object.freeze({allowed:env.SUPPORT_MESSAGING_ENABLED!=='false',risk_level:'support',reason:env.SUPPORT_MESSAGING_ENABLED==='false'?'support_messaging_disabled':'support_independent_of_sales'});
   if(risk==='write')return Object.freeze({allowed:true,risk_level:risk,reason:'internal_reversible_write'});
   const gate=salesGate(env);
   if(risk==='publication'){if(gate.enabled)return Object.freeze({allowed:true,risk_level:'commercial',reason:'commercial_gates_open'});const organic=env.ORGANIC_PUBLISHING_ENABLED==='true'&&organicPublicationAllowed(decision);return Object.freeze({allowed:organic,risk_level:'external',reason:organic?'organic_publication_only':'organic_publication_not_authorized'});}

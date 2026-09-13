@@ -16,7 +16,8 @@ const required=(value,code)=>{const v=String(value||'').trim();if(!v)throw new E
 const ensureGlobalGates=(env,gateEvaluator=salesGate)=>{if(!gateEvaluator(env).enabled)throw new Error('commercial_gates_closed');};
 const ORGANIC_DESTINATIONS=new Set(['channel:facebook','channel:instagram','channel:youtube','channel:tiktok','channel:linkedin']);
 const organicEventAllowed=(event,env,gateEvaluator=salesGate)=>!gateEvaluator(env).enabled&&ORGANIC_DESTINATIONS.has(String(event?.destination||''))&&env.ORGANIC_PUBLISHING_ENABLED==='true'&&event?.event_type==='publish_content'&&event?.payload?.organic_only===true&&event?.payload?.commercial_intent!==true&&!event?.payload?.landing_url;
-const ensureOutboundAllowed=(event,env,gateEvaluator=salesGate)=>{if(gateEvaluator(env).enabled)return;if(organicEventAllowed(event,env,gateEvaluator))return;throw new Error('commercial_gates_closed');};
+const supportEventAllowed=(event)=>event?.event_type==='send_support_message'&&event?.payload?.support_only===true&&!event?.payload?.commercial_intent&&!event?.payload?.checkout_url&&!event?.payload?.payment_link;
+const ensureOutboundAllowed=(event,env,gateEvaluator=salesGate)=>{if(gateEvaluator(env).enabled)return;if(supportEventAllowed(event))return;if(organicEventAllowed(event,env,gateEvaluator))return;throw new Error('commercial_gates_closed');};
 const ensureHttps=(value,code)=>{const v=required(value,code);let u;try{u=new URL(v);}catch{throw new Error(code);}if(u.protocol!=='https:')throw new Error(code);return v;};
 const requestJson=(fetchImpl,url,options,success=[200])=>requestProviderJson(fetchImpl,url,options,success,{timeoutMs:15000});
 const contentWithLanding=(text,landing,max)=>{const base=String(text||'').trim(),url=String(landing||'').trim();let valid='';try{const u=new URL(url);if(u.protocol==='https:')valid=u.toString();}catch{}const joined=valid&&!base.includes(valid)?`${base}\n\n${valid}`:base;return joined.slice(0,max);};
@@ -26,7 +27,7 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
   const metaBase=()=>`https://graph.facebook.com/${required(env.META_GRAPH_VERSION,'meta_graph_version_missing')}`;
   const directAdapters=Object.freeze({
     'channel:whatsapp':async(event)=>{
-      ensureOutboundAllowed(event,env,commercialGate);if(env.WHATSAPP_SALES_ENABLED!=='true')throw new Error('whatsapp_sales_disabled');
+      ensureOutboundAllowed(event,env,commercialGate);if(!supportEventAllowed(event)&&env.WHATSAPP_SALES_ENABLED!=='true')throw new Error('whatsapp_sales_disabled');
       const token=required(env.WHATSAPP_ACCESS_TOKEN,'whatsapp_access_token_missing');
       const phoneId=required(env.WHATSAPP_PHONE_NUMBER_ID,'whatsapp_phone_number_id_missing');
       const to=required(event.payload?.contact_ref,'whatsapp_recipient_missing');

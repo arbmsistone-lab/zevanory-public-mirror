@@ -37,3 +37,5 @@ export function assertChannelActionAllowed(channel, env = process.env, gateEvalu
   if(!gate.enabled) throw new Error('commercial_gates_closed');
   return Object.freeze({allowed:true,configured:readiness.configured,provider:readiness.provider});
 }
+
+export function assertSupportChannelAllowed(channel,env=process.env){const readiness=channelReadiness(env)[channel];if(!readiness)throw new Error('unknown_channel');if(!['whatsapp','email'].includes(String(channel)))throw new Error('support_channel_not_allowed');if(!readiness.configured)throw new Error('support_channel_not_configured');return Object.freeze({allowed:true,configured:true,provider:readiness.provider,mode:'support_only'});}

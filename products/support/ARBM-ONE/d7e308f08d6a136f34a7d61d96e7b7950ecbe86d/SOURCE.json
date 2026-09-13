@@ -1,0 +1,16 @@
+{
+  "product": "ARBM ONE",
+  "source_repo": "arbmsistone-lab/ARBM-one",
+  "source_sha": "d7e308f08d6a136f34a7d61d96e7b7950ecbe86d",
+  "files": [
+    "docs/COMERCIAL-ZEVANORY.md",
+    "docs/DEMONSTRACAO-CLIENTE.md",
+    "docs/recovery-runbook-v1.md",
+    "docs/recovery-posture.md",
+    "docs/ARBM_CENTRAL_V10_FREEZE.md",
+    "src/lib/core-modulos.ts",
+    "src/lib/integrations.ts",
+    "src/lib/commercial-config.ts",
+    "src/lib/produtos-venda.ts"
+  ]
+}

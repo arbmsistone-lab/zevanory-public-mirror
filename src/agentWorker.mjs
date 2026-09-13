@@ -6,7 +6,7 @@ import { evaluateConversationQuality } from './conversationQuality.mjs';
 import { buildCloudflareAiExecutionProvider } from './cloudflareAiProvider.mjs';
 import { buildFollowUpPlan } from './salesPipeline.mjs';
 import { enqueueOutbox } from './integrationOutbox.mjs';
-import { assertChannelActionAllowed, assertChannelPublicationAllowed } from './channelAdapters.mjs';
+import { assertChannelActionAllowed, assertChannelPublicationAllowed, assertSupportChannelAllowed } from './channelAdapters.mjs';
 import { getAgentControlState, requiresHumanApproval, findApprovedAction, requestApproval, consumeApproval } from './agentControl.mjs';
 import { refreshOutcomeLearning } from './outcomeLearning.mjs';
 import { recordVerifiedLifecycleEvidence } from './lifecycleEvidenceRepository.mjs';
@@ -83,6 +83,14 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
     return {creative_id:spec.creative_id,campaign_id:spec.campaign_id,variant_id:spec.variant_id,spec,image_url:creativeAssetUrl(spec,'png',env),video_url:video?creativeAssetUrl(spec,'webm',env):null,publishable:false,selection_basis:intelligence.selection_basis,quality_score:intelligence.winner.quality_score,variants:intelligence.ranking.map(x=>({creative_id:x.spec.creative_id,variant_id:x.variant_id,quality_score:x.quality_score,selection_score:x.selection_score,observed_ready:x.observed_ready}))};
   }
   if(tool==='create_offer_draft') return {draft_only:true,commercial_action:false};
+  if(tool==='send_support_message'){
+    if(!lead?.contact_ref) throw new Error('recipient_unavailable');
+    assertSupportChannelAllowed(lead.channel,env);
+    const text=String(decision.message||decision.content||'').trim(); if(!text) throw new Error('support_message_content_required');
+    const refs=Array.isArray(decision.source_refs)?decision.source_refs.map(String).filter(Boolean).slice(0,8):[];
+    const payload={contact_ref:lead.contact_ref,text:text.slice(0,4000),subject:String(decision.subject||decision.title||'Suporte ZEVANORY').slice(0,240),support_only:true,commercial_intent:false,source_refs:refs,product_code:String(context.job_payload?.product_code||context.job_payload?.product||'').slice(0,120),product_version:String(context.job_payload?.product_version||context.job_payload?.version||'').slice(0,80)};
+    return enqueueOutbox(sql,{aggregateType:'lead',aggregateId:leadId,eventType:'send_support_message',destination:`channel:${lead.channel}`,payload,idempotencyKey:`agent:${runId}:send_support_message`,traceId,runId});
+  }
   if(tool==='send_message'){
     if(!lead?.contact_ref) throw new Error('recipient_unavailable');
     assertChannelActionAllowed(lead.channel,env);
@@ -149,7 +157,7 @@ export async function runAgentOnce(sql,options={}){
     tool=chooseTool(decision);
     const auth=authorizeTool(tool,env,decision);
     evalResult=evaluateAgentDecision({decision,context,authorization:auth,tool});
-    if(evalResult.pass&&tool==='send_message'){
+    if(evalResult.pass&&['send_message','send_support_message'].includes(tool)){
       const cq=evaluateConversationQuality({message:decision.message||decision.content||'',channel:context.lead?.channel||'',recentMessages:context.recent_conversation||[],decision});
       if(!cq.pass)evalResult=Object.freeze({...evalResult,pass:false,score:Math.min(Number(evalResult.score)||0,cq.score),issues:Object.freeze([...evalResult.issues,...cq.issues]),conversation_quality:cq});
       else evalResult=Object.freeze({...evalResult,conversation_quality:cq});

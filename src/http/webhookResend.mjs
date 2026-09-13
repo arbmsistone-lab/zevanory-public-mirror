@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { normalizeResendDeliveryEvent,applyProviderConfirmation } from '../providerConfirmation.mjs';
 import { preserveProviderConfirmations } from '../providerConfirmationFabric.mjs';
+import { queueProductSupport } from '../supportIntake.mjs';
 
 const API='https://api.resend.com';
 const ALIASES=new Set(['contato','vendas','suporte','financeiro']);
@@ -48,6 +49,7 @@ export default async function handler(req,res){
       const listed=await api(`/emails/receiving/${encodeURIComponent(emailId)}/attachments`,{apiKey:process.env.RESEND_API_KEY});
       attachments=(listed?.data||[]).filter(a=>a.download_url&&a.filename).map(a=>({path:a.download_url,filename:a.filename}));
     }
+    if(local==='suporte'&&process.env.DATABASE_URL){await queueProductSupport(neon(process.env.DATABASE_URL),{channel:'email',contactRef:String(email.from||''),text:String(email.text||email.html||''),subject:String(email.subject||''),source:'resend_inbound'});}
     const subject=`[${local.toUpperCase()}] ${String(email.subject||'(sem assunto)')}`;
     const forward={from:process.env.RESEND_FROM_ADDRESS||'ZEVANORY <contato@zevanory.api.br>',to:[process.env.RESEND_FORWARD_TO],subject,reply_to:String(email.from||''),text:email.text||undefined,html:email.html||undefined,attachments};
     const sent=await api('/emails',{method:'POST',body:forward,apiKey:process.env.RESEND_API_KEY,idempotencyKey:`inbound-${emailId}`});

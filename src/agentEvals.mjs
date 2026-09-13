@@ -5,7 +5,7 @@ const toolByAction=Object.freeze({
   first_response:'schedule_follow_up',follow_up:'schedule_follow_up',qualify:'remember_fact',offer:'create_offer_draft',
   creative:'create_creative',create_creative:'create_creative',
   message:'send_message',send_message:'send_message',respond:'send_message',publish:'publish_content',publish_content:'publish_content',
-  checkout:'start_checkout',start_checkout:'start_checkout',refund:'refund_payment',refund_payment:'refund_payment',learn_outcomes:'refresh_outcome_learning',review:'get_command_center',
+  checkout:'start_checkout',start_checkout:'start_checkout',refund:'refund_payment',refund_payment:'refund_payment',learn_outcomes:'refresh_outcome_learning',support_reply:'send_support_message',support_escalate:'send_support_message',support_request_context:'send_support_message',review:'get_command_center',
 });
 const content=(decision)=>String(decision.message||decision.content||'').trim();
 
@@ -19,8 +19,10 @@ export function evaluateAgentDecision({ decision = {}, context = {}, authorizati
   if(tool&&String(tool)!==expectedTool) issues.push('tool_selection_mismatch');
   if(authorization && !authorization.allowed && decision.execute===true) issues.push('blocked_tool_requested_execution');
   if(context?.lead?.stage && ['paid','delivered','refunded','unqualified','lost'].includes(context.lead.stage) && action!=='review') issues.push('terminal_stage_action');
-  if(expectedTool==='send_message'&&!content(decision)) issues.push('message_content_missing');
-  if(expectedTool==='send_message'&&!String(context?.lead?.contact_ref||'').trim()) issues.push('message_recipient_missing');
+  if(['send_message','send_support_message'].includes(expectedTool)&&!content(decision)) issues.push('message_content_missing');
+  if(['send_message','send_support_message'].includes(expectedTool)&&!String(context?.lead?.contact_ref||'').trim()) issues.push('message_recipient_missing');
+  if(expectedTool==='send_support_message'&&String(context?.job_type||'')!=='product_support') issues.push('support_job_required');
+  if(String(context?.job_type||'')==='product_support'&&expectedTool!=='send_support_message') issues.push('support_action_required');
   if(expectedTool==='publish_content'&&!content(decision)) issues.push('publish_content_missing');
   if(expectedTool==='publish_content'&&!String(decision.channel||context?.lead?.channel||'').trim()) issues.push('publish_channel_missing');
   if(expectedTool==='publish_content'&&decision.auto_creative!==true&&String(decision.channel||context?.lead?.channel||'').toLowerCase()==='instagram'&&!/^https:\/\//i.test(String(decision.media_url||''))) issues.push('instagram_media_missing');

@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { normalizeWhatsappStatusPayload,applyProviderConfirmation } from '../providerConfirmation.mjs';
 import { preserveProviderConfirmations } from '../providerConfirmationFabric.mjs';
 import { resolveMetaVerifyToken } from '../channelIdentityPreflight.mjs';
+import { extractWhatsappSupportMessages, queueProductSupport } from '../supportIntake.mjs';
 
 const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringify(body));};
 const rawText=(req)=>Buffer.isBuffer(req.rawBody)?req.rawBody.toString('utf8'):String(req.rawBody||'');
@@ -24,6 +25,8 @@ export default async function handler(req,res){
   if(req.method!=='POST')return json(res,405,{error:'method_not_allowed'});
   const raw=rawText(req);if(!verifyMetaSignature({payload:raw,signature:req.headers?.['x-hub-signature-256'],appSecret:process.env.META_APP_SECRET}))return json(res,401,{error:'webhook_auth_failed',accepted:false});
   let payload;try{payload=raw?JSON.parse(raw):{};}catch{return json(res,400,{error:'invalid_json',accepted:false});}
+  const inbound=extractWhatsappSupportMessages(payload);
+  if(inbound.length&&process.env.DATABASE_URL){const sql=neon(process.env.DATABASE_URL);let queued=0;for(const item of inbound){const r=await queueProductSupport(sql,{channel:'whatsapp',contactRef:item.from,text:item.text,source:'meta_whatsapp'});if(r.queued)queued++;}if(queued)return json(res,200,{accepted:true,support_jobs_queued:queued});}
   const confirmations=normalizeWhatsappStatusPayload(payload);if(!confirmations.length)return json(res,200,{accepted:true,ignored:true,reason:'status_not_supported'});
   if(!process.env.DATABASE_URL){
     const recovery=await preserveProviderConfirmations(confirmations);
