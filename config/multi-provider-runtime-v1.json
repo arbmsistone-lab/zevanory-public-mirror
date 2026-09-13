@@ -1,12 +1,52 @@
 {
   "version": 1,
   "policy": "no-single-provider-dependency",
-  "minimum_independent_providers": 3,
+  "minimum_independent_providers": 10,
   "automatic_failover_required": true,
   "quota_exhaustion_must_failover": true,
-  "transient_failures": [408, 409, 425, 429, 500, 502, 503, 504],
-  "critical_runtime_domains": ["ai", "deployment", "channels"],
-  "ai_providers": ["google-gemini", "cloudflare-ai", "mistral", "groq"],
+  "transient_failures": [
+    408,
+    409,
+    425,
+    429,
+    500,
+    502,
+    503,
+    504
+  ],
+  "critical_runtime_domains": [
+    "ai",
+    "deployment",
+    "channels"
+  ],
+  "ai_providers": [
+    "google-gemini",
+    "cloudflare-ai",
+    "mistral",
+    "groq"
+  ],
   "sales_gate_unchanged": "blocked",
-  "prohibit_green_when_redundancy_below_minimum": true
+  "prohibit_green_when_redundancy_below_minimum": true,
+  "minimum_qualified_free_routes": 10,
+  "qualification_requires": [
+    "configured",
+    "healthy",
+    "zero-cost",
+    "quota-available",
+    "independent-domain"
+  ],
+  "supported_ai_free_routes": [
+    "google-gemini",
+    "mistral",
+    "groq",
+    "openrouter-free",
+    "cloudflare-workers-ai",
+    "huggingface-inference",
+    "cerebras-free",
+    "sambanova-cloud",
+    "nvidia-nim-free",
+    "custom-free-route"
+  ],
+  "quota_exhaustion_action": "immediate-rotate-with-cooldown",
+  "zero_spend_hard": true
 }
