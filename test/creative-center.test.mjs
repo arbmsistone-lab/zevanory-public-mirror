@@ -85,3 +85,5 @@ test('creative center fails closed when status source or contract is invalid',()
   assert.match(js,/Nenhuma frente será apresentada como pronta sem prova real/);
   assert.match(js,/criação \${operational\?'ativa':'aguardando'\}/);
 });
+
+test('non visual fronts clear stale review and advisor state',()=>{ assert.match(js,/votes\.replaceChildren/); assert.match(js,/delete step\.dataset\.state/); assert.match(js,/advisor-action','N\/A'/); assert.match(js,/tiktok:'TikTok'/); assert.match(js,/linkedin:'LinkedIn'/); assert.match(js,/nuvemshop:'Nuvemshop'/); });

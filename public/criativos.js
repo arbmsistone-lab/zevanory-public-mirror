@@ -3,7 +3,7 @@ const set=(id,value)=>{const el=$(id);if(el)el.textContent=String(value??'—');
 const safeNumber=(value)=>Number.isFinite(Number(value))?Number(value):null;
 const scoreLabel=(value)=>{const n=safeNumber(value);if(n===null)return '—';return n<=1?(n*100).toFixed(1):n.toFixed(1);};
 const variantLetter=(index)=>String.fromCharCode(65+index);
-const FRONT_LABELS={zevanory:'ZEVANORY',whatsapp:'WhatsApp',email:'Email',instagram:'Instagram',facebook:'Facebook',youtube:'YouTube',google:'Google',affiliate:'Afiliados',mercado_livre:'Mercado Livre'};
+const FRONT_LABELS={zevanory:'ZEVANORY',whatsapp:'WhatsApp',email:'Email',instagram:'Instagram',facebook:'Facebook',youtube:'YouTube',tiktok:'TikTok',linkedin:'LinkedIn',google:'Google',affiliate:'Afiliados',mercado_livre:'Mercado Livre',nuvemshop:'Nuvemshop'};
 const SERVICE_FRONTS=new Set(['zevanory','whatsapp','email','instagram','facebook']);
 let sample=null;
 let closure=null;
@@ -85,7 +85,9 @@ function renderFrontStatus(name,state){
   const distribution=Boolean(state?.automation_ready||state?.api_configured);
   const loading=$('preview-loading');if(loading){loading.hidden=false;loading.textContent=`${FRONT_LABELS[name]||name} selecionado · criação ${operational?'ativa':'aguardando'} · divulgação ${distribution?'pronta':'assistida'}; preview visual específico ainda não gerado.`;}
   const root=$('variants');if(root){root.replaceChildren();const empty=document.createElement('div');empty.className='empty';empty.textContent='Selecione Instagram ou YouTube para revisar variantes visuais e banca 5/5.';root.append(empty);}
-  set('variant-count','status da frente');set('board-score','—/5');set('board-state','A banca 5/5 é exibida quando há variante visual concreta para revisão.');
+  const votes=$('board-votes');if(votes)votes.replaceChildren();const step=$('review-step');if(step)delete step.dataset.state;
+  set('variant-count','status da frente');set('board-score','N/A');set('board-state','Banca 5/5 não se aplica sem variante visual concreta.');
+  set('advisor-policy','media-investment-advisor-v1');set('advisor-action','N/A');set('advisor-budget','—');set('advisor-roas','—');set('advisor-confidence','—');set('advisor-reason','Disponível somente para variante visual avaliada.');
 }
 function selectFront(name,state,previewMode){
   selectedFront=name;
