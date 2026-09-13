@@ -4,6 +4,9 @@ import { defineExecutionProvider, executeUniversallySafely } from './universalEx
 export const DEFAULT_AI_MODEL = 'gemini-3.7-flash';
 export const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001';
 
+const aiCooldownUntil=new Map();
+const providerHealth=(id)=>async()=>Number(aiCooldownUntil.get(id)||0)>Date.now()?({state:'quota_limited',quotaRemainingPct:0}):({state:'available',quotaRemainingPct:100});
+const markProviderFailure=(id,error)=>{ const m=String(error?.message||error||''); if(/_http_(429|5\d\d)|quota|rate/i.test(m)) aiCooldownUntil.set(id,Date.now()+60000); };
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 export function deterministicDecision(input = {}) {
@@ -50,16 +53,26 @@ async function askOpenAiCompatible({input,systemInstruction,apiKey,model,endpoin
   return Object.freeze({provider,model,mode:'ai_assisted',latency_ms:Date.now()-started,input_hash:hash(input),...decision});
 }
 
+function buildConfiguredFreeProviders(){
+  const raw=String(process.env.ARBM_AI_FREE_ROUTES_JSON||'').trim();
+  if(!raw||process.env.AGENT_AI_ENABLED!=='true') return [];
+  try{
+    const rows=JSON.parse(raw);
+    if(!Array.isArray(rows)) return [];
+    return rows.map((x)=>buildCompatProvider({id:String(x?.id||'').trim(),domain:String(x?.domain||'').trim(),key:process.env[String(x?.keyEnv||'').trim()],model:String(x?.model||'').trim(),endpoint:String(x?.endpoint||'').trim()})).filter(Boolean);
+  }catch{return [];}
+}
+
 function buildCompatProvider({id,domain,key,model,endpoint}){
   if(!key||process.env.AGENT_AI_ENABLED!=='true') return null;
-  return defineExecutionProvider({id,capabilities:['ai:decision'],independenceDomain:domain,cost:0,health:async()=>({state:'available'}),execute:async({input,systemInstruction})=>askOpenAiCompatible({input,systemInstruction,apiKey:key,model,endpoint,provider:id})});
+  return defineExecutionProvider({id,capabilities:['ai:decision'],independenceDomain:domain,cost:0,health:providerHealth(id),execute:async({input,systemInstruction})=>{try{return await askOpenAiCompatible({input,systemInstruction,apiKey:key,model,endpoint,provider:id});}catch(e){markProviderFailure(id,e);throw e;}}});
 }
 export function buildGeminiExecutionProvider({apiKey=process.env.GEMINI_API_KEY,model=process.env.GEMINI_MODEL||DEFAULT_AI_MODEL}={}){
   if(!apiKey||process.env.AGENT_AI_ENABLED!=='true') return null;
   return defineExecutionProvider({
     id:'ai-gemini-adapter',capabilities:['ai:decision'],independenceDomain:'google-ai',cost:0,
-    health:async()=>({state:'available'}),
-    execute:async({input,systemInstruction})=>askGemini({input,systemInstruction,apiKey,model}),
+    health:providerHealth('ai-gemini-adapter'),
+    execute:async({input,systemInstruction})=>{try{return await askGemini({input,systemInstruction,apiKey,model});}catch(e){markProviderFailure('ai-gemini-adapter',e);throw e;}},
   });
 }
 
@@ -71,8 +84,9 @@ export async function decideWithAiProviders({input,systemInstruction,providers=[
   const groq=buildCompatProvider({id:'ai-groq-adapter',domain:'groqcloud',key:process.env.GROQ_API_KEY,model:process.env.GROQ_MODEL||'llama-3.3-70b-versatile',endpoint:'https://api.groq.com/openai/v1/chat/completions'});
   if(mistral) dynamic.push(mistral);
   if(groq) dynamic.push(groq);
+  dynamic.push(...buildConfiguredFreeProviders());
   const domains=new Set(dynamic.map((p)=>String(p?.independence_domain||'')).filter(Boolean));
-  if(domains.size<3) return Object.freeze({...deterministicDecision(input),fallback_reason:'ai_mesh_redundancy_below_minimum',configured_independent_domains:domains.size,minimum_independent_domains:3});
+  if(domains.size<10) return Object.freeze({...deterministicDecision(input),fallback_reason:'ai_mesh_free_redundancy_below_10',configured_independent_domains:domains.size,minimum_independent_domains:10});
   const routed=await executeUniversallySafely({
     operation:{input,systemInstruction},providers:dynamic,
     requirements:{capabilities:['ai:decision'],zeroCost:true},
