@@ -94,3 +94,10 @@ test('cards make operation state primary and sales blocking secondary',()=>{ ass
 
 test('advisor presents human-readable commercial evidence reasons',()=>{ assert.match(js,/Evidência comercial ainda insuficiente/); assert.match(js,/advisorReasonLabels/); });
 test('senior board titles remain fully readable without ellipsis',async()=>{ const css=await readFile(new URL('../public/criativos.css',import.meta.url),'utf8'); assert.match(css,/\.board-vote b\{[^}]*white-space:normal;[^}]*text-overflow:clip/); });
+
+test('wide short desktop keeps channel statuses readable instead of compressing four columns',async()=>{
+  const css=await readFile(new URL('../public/criativos.css',import.meta.url),'utf8');
+  assert.match(css,/regression guard: wide\/short desktop/);
+  assert.match(css,/\.front-statuses\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(css,/\.production-item \.channel\{font-size:11px/);
+});
