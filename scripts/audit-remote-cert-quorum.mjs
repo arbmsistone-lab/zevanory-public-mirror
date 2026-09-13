@@ -1,18 +1,18 @@
 import { execFileSync } from 'node:child_process';
-const expected=(process.env.CERT_SHA||execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'})).trim();
-const probes=[
-  ['github','https://api.github.com/repos/arbmsistone-lab/ZEVANORY/commits/main',j=>j.sha],
-  ['gitlab','https://gitlab.com/api/v4/projects/arbm-sistone%2FZEVANORY/repository/commits/main',j=>j.id],
-  ['cloudflare','https://zevanory-remote-cert-v1.zevanory.workers.dev/',j=>j.exact_sha],
-  ['supabase','https://fxjytqscrnttcqovigpp.supabase.co/functions/v1/zevanory-remote-cert-v1',j=>j.exact_sha],
-];
+const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
+const expected=(process.env.CERT_SHA||git('rev-parse','HEAD')).trim();
+const remoteSha=(remote)=>git('ls-remote',remote,'refs/heads/main').split(/\s+/)[0]||'';
 const results=[];
-for(const [domain,url,pick] of probes){
-  try{
-    const r=await fetch(url,{headers:{'user-agent':'zevanory-cert/1'}});
-    const j=await r.json(); const sha=pick(j);
-    results.push({domain,ok:r.ok&&sha===expected,sha,status:r.status});
-  }catch(error){results.push({domain,ok:false,error:String(error?.message||error)});}
+for(const [domain,remote] of [['github','origin'],['gitlab','gitlab']]){
+  try { const sha=remoteSha(remote); results.push({domain,ok:sha===expected,sha,status:sha?200:404}); }
+  catch(error){ results.push({domain,ok:false,error:String(error?.message||error)}); }
+}
+for(const [domain,url] of [
+  ['cloudflare','https://zevanory-remote-certifier.zevanory.workers.dev/'],
+  ['supabase','https://fxjytqscrnttcqovigpp.supabase.co/functions/v1/zevanory-remote-cert-v1'],
+]){
+  try { const r=await fetch(url,{headers:{'user-agent':'zevanory-cert/1'}}); const j=await r.json(); const sha=j.exact_sha; results.push({domain,ok:r.ok&&sha===expected,sha,status:r.status}); }
+  catch(error){ results.push({domain,ok:false,error:String(error?.message||error)}); }
 }
 const passed=results.filter(x=>x.ok).length;
 const out={schema:'zevanory-remote-cert-quorum-v1',expected,required:3,passed,state:passed>=3?'GREEN':'BLOCKED',results};
