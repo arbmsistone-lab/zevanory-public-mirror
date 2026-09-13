@@ -46,3 +46,12 @@ Data: 2026-09-05.
 - Nomes de artefato e SHA-256 usam os ZIPs canônicos certificados do handoff.
 - Cadastro comercial não altera os kill-switches: venda pública, checkout real e fulfillment continuam bloqueados até os gates operacionais.
 - O arquivo gráfico localizado como logo oficial no ARBM ONE contém a submarca ARBM BEBIDAS; ele não é aplicado aos produtos digitais para evitar identidade incorreta.
+
+## ARBM ONE
+- Produto SaaS empresarial incorporado ao portfólio ZEVANORY.
+- Standard: R$ 697/mês + R$ 1.490 de implantação.
+- Anual: R$ 6.970/ano + R$ 1.490 de implantação.
+- Enterprise: a partir de R$ 1.197/mês + implantação a partir de R$ 2.490.
+- Programa Fundador interno: 5 clientes, R$ 497/mês + R$ 990 de implantação, preço protegido por 12 meses.
+- SHA canônico ARBM ONE: 8496cf93cf6aa738d08433d54f5f5cf3c64a16c3.
+- Venda e checkout permanecem bloqueados até liberação comercial explícita.

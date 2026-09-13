@@ -1,4 +1,5 @@
 import { ARBM_COMMERCIAL_MODEL, PROJECT } from './config.mjs';
+import { ARBM_ONE_OFFER } from './arbmOneOffer.mjs';
 
 export const ARBM_SIST_OFFER = Object.freeze({
   id: 'OFFER-0001',
@@ -48,14 +49,14 @@ export const ZEVANORY_PRODUCTS = Object.freeze([
   Object.freeze({sku:'ZEV-NGC-011',product:'ZEVANORY Negócio Completo',commercial_name:'ZEVANORY Negócio Completo - by ARBM',brand:'ZEVANORY',endorsed_by:'ARBM',brand_signature:'by ARBM',version:'1.1',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_Negocio_Completo_v1.1.zip',artifact_sha256:'730c32ab1546c0333a44dfabd1c80228506e14ffc4bc19372c78d48a0083e1e4',table_price_brl:397,pilot_price_brl:347,price_status:'pilot_hypothesis_not_validated',primary:false,portfolio_role:'content_bundle',sellable:true,artifact_materialized:true,status:'catalogued_artifact_pending_not_sellable_not_published'}),
 ]);
 
-export const ZEVANORY_PORTFOLIO = Object.freeze([ARBM_SIST_OFFER, ...ZEVANORY_PRODUCTS]);
+export const ZEVANORY_PORTFOLIO = Object.freeze([ARBM_SIST_OFFER, ARBM_ONE_OFFER, ...ZEVANORY_PRODUCTS]);
 
 export function getZevanoryProduct(sku) {
   return ZEVANORY_PRODUCTS.find(item=>item.sku===String(sku||'').trim().toUpperCase())||null;
 }
 
 export function publicProductCatalog() {
-  return Object.freeze(ZEVANORY_PORTFOLIO.map(({artifact_sha256,...item})=>Object.freeze({...item,artifact_sha256})));
+  return Object.freeze(ZEVANORY_PORTFOLIO.map(({artifact_sha256,founder_program,...item})=>Object.freeze({...item,artifact_sha256})));
 }
 
 export function publicOffer(env=process.env) {

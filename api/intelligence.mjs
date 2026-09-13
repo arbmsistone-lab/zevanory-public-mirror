@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { safeBearerEqual } from '../src/security.mjs';
 import { evaluateProductCandidate, investmentSummary } from '../src/productIntelligence.mjs';
 import { collectMarketSignals, aggregateMarketSignals, marketResearchReadiness } from '../src/marketResearchFabric.mjs';
-import { ZEVANORY_PRODUCTS } from '../src/offerCatalog.mjs';
+import { ZEVANORY_PRODUCTS, ZEVANORY_PORTFOLIO } from '../src/offerCatalog.mjs';
 import { researchPortfolio } from '../src/portfolioResearch.mjs';
 
 const json=(res,status,body)=>{res.statusCode=status;res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');return res.end(JSON.stringify(body));};
@@ -39,7 +39,7 @@ export default async function handler(req,res){
       try{const snapshots=await readLatest(sql,20);res.write(`event: intelligence\ndata: ${JSON.stringify({generated_at:new Date().toISOString(),snapshots})}\n\n`);return res.end();}
       catch{res.write(`event: unavailable\ndata: ${JSON.stringify({error:'intelligence_stream_unavailable'})}\n\n`);return res.end();}
     }
-    try{return json(res,200,{generated_at:new Date().toISOString(),research_readiness:marketResearchReadiness(process.env),catalog:ZEVANORY_PRODUCTS.map(x=>({product_id:x.sku,name:x.product,category:x.offer_type,status:x.status,price_status:x.price_status})),snapshots:await readLatest(sql,req.query?.limit)});}
+    try{return json(res,200,{generated_at:new Date().toISOString(),research_readiness:marketResearchReadiness(process.env),catalog:ZEVANORY_PORTFOLIO.map(x=>({product_id:x.sku||x.id,name:x.product,category:x.offer_type,status:x.status,price_status:x.price_status||null})),snapshots:await readLatest(sql,req.query?.limit)});}
     catch{return json(res,503,{error:'intelligence_read_unavailable'});}
   }
   if(req.method!=='POST')return json(res,405,{error:'method_not_allowed'});
@@ -53,7 +53,7 @@ export default async function handler(req,res){
       return json(res,201,{ok:true,cached:false,research:aggregate});
     }
     if(body.type==='portfolio_research_run'){
-      const result=await researchPortfolio(ZEVANORY_PRODUCTS,{sql,env:process.env,concurrency:2});
+      const result=await researchPortfolio(ZEVANORY_PORTFOLIO,{sql,env:process.env,concurrency:2});
       const top=result.ranking[0]||null;
       await sql.query(`insert into intelligence_snapshots(snapshot_id,snapshot_type,subject_ref,payload,evidence_count,organization_count,decision,score,observed_at) values($1,'product_ranking','portfolio',$2::jsonb,$3,$4,$5,$6,now())`,[randomUUID(),JSON.stringify(result),Number(top?.evidence?.verified_sources||0),Number(top?.evidence?.independent_organizations||0),top?.decision||null,top?.market_score??null]);
       return json(res,201,{ok:true,portfolio:result});
