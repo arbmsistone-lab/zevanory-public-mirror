@@ -120,6 +120,10 @@ async function delegatePaymentRequest(request,env){
   try{return await fetch(new Request(target,init));}catch{return new Response(JSON.stringify({error:'payment_runtime_unavailable',preserved:true}),{status:503,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
 }
 function hydrateRuntimeConfig(env) {
+  for (const key of ['OPERATOR_TOKEN','OPERATOR_TOKEN_SECONDARY','ASAAS_API_KEY','MERCADOPAGO_ACCESS_TOKEN']) {
+    const value=env?.[key];
+    if (value !== undefined && value !== null) process.env[key]=String(value);
+  }
   if (env && typeof env === 'object') {
     for (const [key, value] of Object.entries(env)) {
       if (process.env[key] !== undefined) continue;
