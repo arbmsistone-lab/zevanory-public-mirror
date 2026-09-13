@@ -5,7 +5,7 @@ const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8'
 const js=await readFile(new URL('../public/index.js',import.meta.url),'utf8');
 
 test('central identifies ZEVANORY and connects real operational APIs',()=>{
-  assert.match(html,/<title>ZEVANORY<\/title>/);assert.match(html,/CENTRAL OPERACIONAL/);
+  assert.match(html,/<title>ZEVANORY \| IA, automação, software e produtos digitais<\/title>/);assert.match(html,/CENTRAL OPERACIONAL/);
   for(const path of ['/api/status','/api/health','/api/release','/api/config']) assert.match(js,new RegExp(path.replaceAll('/','\\/')));
   assert.doesNotMatch(html,/GIRO LOCAL/i);
 });

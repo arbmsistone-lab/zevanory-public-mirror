@@ -26,7 +26,7 @@ function clearPreview(){
 function renderBoard(){
   const board=currentBoard()||{};const root=$('board-votes');if(root)root.replaceChildren();
   const votes=Array.isArray(board.votes)?board.votes:[];set('board-score',`${board.approved_count??0}/${board.required??5}`);
-  votes.forEach(v=>{const row=document.createElement('div');row.className=`board-vote ${v.approved?'approved':'rejected'}`;row.innerHTML=`<span>SR-${v.analyst}</span><b>${String(v.lens||'review').replaceAll('_',' ')}</b><i>${v.approved?'APROVA':'REVISA'}</i>`;root?.append(row);});
+  const lensLabels={strategy_message:'ESTRATÉGIA',visual_quality:'QUALIDADE',truth_compliance:'VERACIDADE',channel_fit:'CANAL',conversion_clarity:'CONVERSÃO'}; votes.forEach(v=>{const row=document.createElement('div');row.className=`board-vote ${v.approved?'approved':'rejected'}`;const lens=lensLabels[String(v.lens||'')]||String(v.lens||'REVISÃO').replaceAll('_',' ').toUpperCase();row.innerHTML=`<span>SR-${v.analyst}</span><b title="${lens}">${lens}</b><i>${v.approved?'APROVA':'REVISA'}</i>`;root?.append(row);});
   set('board-state',board.unanimous?'APROVADO 5/5 · liberação técnica permitida':'REVISÃO OBRIGATÓRIA · exige 5/5');
   const step=$('review-step');if(step)step.dataset.state=board.unanimous?'done':'blocked';
 }

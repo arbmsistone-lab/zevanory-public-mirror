@@ -24,7 +24,7 @@ export function createCreativeSpec({offerId='OFFER-0001',channel='instagram',hoo
     layout:cap(layout||'editorial',32),format_name:cap(formatName||'default',32),placement:cap(resolved.placement,32),
     campaign_id:cap(campaignId,32),variant_id:cap(variantId,40),
     offer_id:offer.id,product:cap(offer.product||offer.commercial_name,100),price_brl:Number(offer.price_brl),
-    hook:cap(hook||`Conheca ${offer.product}`,110),body:cap(body||'Tecnologia, automacao e IA aplicada com execucao segura.',260),
+    hook:cap(hook||`Conheça ${offer.product}`,110),body:cap(body||'Tecnologia, automação e IA aplicada com execução segura.',260),
     cta:cap(cta||'Saiba mais',50),site:'zevanory.api.br'};
   return Object.freeze({...spec,creative_id:digest(spec).slice(0,24)});
 }
