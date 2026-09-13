@@ -100,3 +100,16 @@ export async function readFinancialAccounts(options = {}) {
     : { provider: index === 0 ? 'asaas' : 'mercadopago', configured: true, available: false, error: result.reason?.message || 'provider_unavailable' });
   return { mode: 'read_only', movement_enabled: false, providers, observed_at: new Date().toISOString() };
 }
+
+export async function ensureMercadoPagoReport({env=process.env,fetchImpl=fetch,beginDate,endDate}={}) {
+  const token=String(env.MERCADOPAGO_ACCESS_TOKEN||'').trim();
+  if(!token) return {provider:'mercadopago',configured:false,generated:false};
+  const headers={authorization:`Bearer ${token}`,accept:'application/json','content-type':'application/json'};
+  let config=await fetchJsonOptional404(fetchImpl,`${MP_API}/v1/account/settlement_report/config`,{method:'GET',headers});
+  if(!config){
+    const body={file_name_prefix:'zevanory-account-money',show_fee_prevision:false,show_chargeback_cancel:true,coupon_detailed:true,include_withdraw:true,shipping_detail:true,refund_detailed:true,display_timezone:'GMT-03',header_language:'pt',frequency:{hour:0,type:'monthly',value:1},columns:['TRANSACTION_DATE','SOURCE_ID','EXTERNAL_REFERENCE','TRANSACTION_TYPE','TRANSACTION_AMOUNT','TRANSACTION_CURRENCY','FEE_AMOUNT','SETTLEMENT_NET_AMOUNT','SETTLEMENT_CURRENCY','SETTLEMENT_DATE','REAL_AMOUNT','PAYMENT_METHOD_TYPE'].map(key=>({key}))};
+    config=await fetchJson(fetchImpl,`${MP_API}/v1/account/settlement_report/config`,{method:'POST',headers,body:JSON.stringify(body)});
+  }
+  const report=await fetchJson(fetchImpl,`${MP_API}/v1/account/settlement_report`,{method:'POST',headers,body:JSON.stringify({begin_date:beginDate,end_date:endDate})});
+  return {provider:'mercadopago',configured:true,generated:true,task_id:report?.task_id??report?.id??null,begin_date:beginDate,end_date:endDate};
+}
