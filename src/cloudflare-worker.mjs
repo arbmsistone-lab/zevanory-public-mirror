@@ -4,6 +4,7 @@ import configHandler from '../api/config.mjs';
 import statusHandler from '../api/status.mjs';
 import releaseHandler from '../api/release.mjs';
 import assuranceHandler from '../api/assurance.mjs';
+import financeHandler from '../api/finance.mjs';
 import eventsPublicHandler from '../api/events-public.mjs';
 import eventsOperatorHandler from '../api/events-operator.mjs';
 import agentRunHandler from '../api/agent-run.mjs';
@@ -24,6 +25,7 @@ const directHandlers = new Map([
   ['/api/status', statusHandler],
   ['/api/release', releaseHandler],
   ['/api/assurance', assuranceHandler],
+  ['/api/finance', financeHandler],
   ['/api/events/public', eventsPublicHandler],
   ['/api/events/operator', eventsOperatorHandler],
   ['/api/agent/run', agentRunHandler],
