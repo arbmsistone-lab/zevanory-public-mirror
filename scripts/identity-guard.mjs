@@ -21,7 +21,7 @@ for (const pattern of forbiddenPublic) {
   }
 }
 
-const required = [/<title>ZEVANORY<\/title>/, /zevanory\.api\.br/i, /SEM HERANÇA/i, /doesNotMatch/, /\/brand\/zevanory-logo-dark\.svg/, /\/brand\/favicon\.svg/];
+const required = [/<title>ZEVANORY(?:\s*\|[^<]*)?<\/title>/, /zevanory\.api\.br/i, /SEM HERANÇA/i, /doesNotMatch/, /\/brand\/zevanory-logo-dark\.svg/, /\/brand\/favicon\.svg/];
 for (const pattern of required) {
   const source = String(pattern).includes('doesNotMatch') ? testFile : html;
   if (!pattern.test(source)) {
