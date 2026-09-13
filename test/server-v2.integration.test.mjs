@@ -79,6 +79,8 @@ test('local server serves official brand and static assets with strict MIME', as
   const js=await fetch(`http://127.0.0.1:${port}/index.js`); assert.equal(js.status,200); assert.match(js.headers.get('content-type')||'',/^text\/javascript/);
   const logo=await fetch(`http://127.0.0.1:${port}/brand/zevanory-logo-dark.svg`); assert.equal(logo.status,200); assert.match(logo.headers.get('content-type')||'',/^image\/svg\+xml/);
   const publicOffer=await fetch(`http://127.0.0.1:${port}/arbm-sist`); assert.equal(publicOffer.status,200); assert.match(publicOffer.headers.get('content-type')||'',/^text\/html/);
+  const creatives=await fetch(`http://127.0.0.1:${port}/criativos`); assert.equal(creatives.status,200); assert.match(creatives.headers.get('content-type')||'',/^text\/html/);
+  const robot=await fetch(`http://127.0.0.1:${port}/zevanory-robot-control`); assert.equal(robot.status,200); assert.match(robot.headers.get('content-type')||'',/^text\/html/);
   const traversal=await fetch(`http://127.0.0.1:${port}/brand/%252e%252e/%252e%252e/.env`); assert.equal(traversal.status,404);
 });
 

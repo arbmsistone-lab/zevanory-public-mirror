@@ -33,6 +33,7 @@ await mkdir(dataDir, { recursive: true });
 const STATIC_ROUTES = new Map([
   ["/", "index.html"], ["/index.html", "index.html"], ["/arbm-sist", "arbm-sist.html"], ["/piloto", "piloto.html"],
   ["/termos", "termos.html"], ["/privacidade", "privacidade.html"], ["/reembolso", "reembolso.html"], ["/afiliados", "afiliados.html"], ["/tiktok-review", "tiktok-review.html"],
+  ["/criativos", "criativos.html"], ["/zevanory-robot-control", "zevanory-robot-control.html"],
 ]);
 const STATIC_TYPES = Object.freeze({'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml; charset=utf-8'});
 function staticAsset(pathname) {
