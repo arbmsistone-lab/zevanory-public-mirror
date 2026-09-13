@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "zevanory",
   "main": "src/cloudflare-worker.mjs",
@@ -120,7 +120,7 @@
     "AFFILIATE_PRIVACY_URL": "https://edge.zevanory.api.br/privacidade"
   },
   "secrets": {
-    "required": ["DATABASE_URL", "PUBLIC_BASE_URL", "FULFILLMENT_OPERATOR_TOKEN", "NUVEMSHOP_APP_ID", "NUVEMSHOP_CLIENT_SECRET", "COMMERCIAL_OAUTH_ENCRYPTION_KEY"]
+    "required": ["DATABASE_URL", "PUBLIC_BASE_URL", "FULFILLMENT_OPERATOR_TOKEN", "NUVEMSHOP_APP_ID"]
   },
   "ai": { "binding": "AI" },
   "kv_namespaces": [
