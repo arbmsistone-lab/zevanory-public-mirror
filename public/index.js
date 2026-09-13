@@ -55,7 +55,7 @@ function renderChannels(config={}){
   let operational=0,automated=0,assisted=0;
   for(const [name,data] of entries){
     const ready=data.operational_ready!==false; if(ready)operational++; if(data.automation_ready||data.api_configured)automated++; if(String(data.operational_mode||'').includes('assisted')||data.assisted_fallback_ready)assisted++;
-    if(grid){const row=document.createElement('div');const n=document.createElement('span');const b=document.createElement('b');n.textContent=name.replaceAll('_',' ');b.textContent=!ready?'BLOQUEADO':data.automation_ready||data.api_configured?'API':'ASSISTIDO';b.dataset.state=ready?'ready':'blocked';row.append(n,b);grid.appendChild(row);}
+    if(grid){const row=document.createElement('div');const n=document.createElement('span');const b=document.createElement('b');const direct=Boolean(data.automation_ready||data.api_configured);n.textContent=name.replaceAll('_',' ');b.textContent=!ready?'OPERAÇÃO INDISPONÍVEL':direct?'OPERAÇÃO ATIVA · DIRETA':'OPERAÇÃO ATIVA · ASSISTIDA';b.dataset.state=ready?'ready':'blocked';row.title=ready?(direct?'Operacional com automação direta de provider/API.':'Operacional por rota assistida/contingência; não representa bloqueio da frente.'):'Frente operacional indisponível.';row.append(n,b);grid.appendChild(row);}
   }
   return {total:entries.length,operational,automated,assisted};
 }
@@ -63,7 +63,7 @@ function renderCoverage(config,ok,total){
   const c=renderChannels(config||{}); const complete=c.total>0&&c.operational===c.total;
   set('coverage-score',c.total?c.operational+'/'+c.total:'—'); set('coverage-state',complete?'TOTAL':'PARCIAL');
   const state=document.getElementById('coverage-state');if(state)state.dataset.state=complete?'ready':'blocked';
-  set('coverage-copy',c.total?c.operational+'/'+c.total+' frentes operacionais · '+c.automated+' automáticas · '+c.assisted+' assistidas':'Cobertura ainda não carregada.');
+  set('coverage-copy',c.total?c.operational+'/'+c.total+' frentes operacionais · '+c.automated+' diretas · '+c.assisted+' assistidas':'Cobertura ainda não carregada.');
   set('source-health',ok+'/'+total+' fontes de telemetria online');
 }
 function renderPublicOperations(status={},config={},agent={}){
