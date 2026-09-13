@@ -13,6 +13,7 @@
     { "pattern": "edge.zevanory.api.br", "custom_domain": true },
     "zevanory.api.br/*"
   ],
+  "triggers": { "crons": ["0 * * * *"] },
   "vars": {
     "SUPPORT_CHANNEL": "WhatsApp +55 88 9234-0423",
     "CLOUDFLARE_AI_FREE_ONLY": "true",

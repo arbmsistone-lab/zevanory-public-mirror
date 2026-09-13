@@ -13,10 +13,12 @@ import checkoutHandler from '../api/checkout.mjs';
 import webhooksHandler from '../api/webhooks.mjs';
 import robotControlHandler from '../api/robot-control.mjs';
 import intelligenceHandler from '../api/intelligence.mjs';
+import autopilotHandler from '../api/autopilot.mjs';
 import { handleArtifactIssue, handleArtifactDownload } from './cloudflareArtifactRoutes.mjs';
 import { handleCloudflareJournalAppend } from './durableOperationJournal.mjs';
 import { publicCommercialChannelReadinessSummary } from './publicChannelStatus.mjs';
 import { runtimeReleaseModes } from './release.mjs';
+import { runNonCommercialAutopilot } from './nonCommercialAutopilot.mjs';
 
 const PORT = 8788;
 
@@ -36,6 +38,7 @@ const directHandlers = new Map([
   ['/api/robot/control', robotControlHandler],
   ['/api/robot-control', robotControlHandler],
   ['/api/intelligence', intelligenceHandler],
+  ['/api/autopilot/run', autopilotHandler],
 ]);
 function resolveHandler(req) {
   const url = new URL(req.url || '/', 'https://zevanory.api.br');
@@ -151,6 +154,11 @@ function withSecurityHeaders(response) {
 }
 
 export default {
+  async scheduled(controller, env, ctx) {
+    hydrateRuntimeConfig(env);
+    globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
+    ctx.waitUntil(runNonCommercialAutopilot({env,scheduledTime:controller.scheduledTime}).catch(error=>console.error('noncommercial_autopilot_failed',String(error?.message||error))));
+  },
   async fetch(request, env) {
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
     hydrateRuntimeConfig(env);

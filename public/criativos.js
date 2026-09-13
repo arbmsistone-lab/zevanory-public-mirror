@@ -128,15 +128,16 @@ function renderSummary(){
 
 async function load(){
   try{
-    const [sampleRes,closureRes]=await Promise.all([
+    const [sampleRes,closureRes,agentRes]=await Promise.all([
       fetch('/api/config?view=creative_sample',{cache:'no-store'}),
-      fetch('/api/config?view=closure_status',{cache:'no-store'})
+      fetch('/api/config?view=closure_status',{cache:'no-store'}),
+      fetch('/api/agent/status',{cache:'no-store'})
     ]);
     if(!sampleRes.ok)throw new Error(`creative_sample_http_${sampleRes.status}`);
     if(!closureRes.ok)throw new Error(`closure_status_http_${closureRes.status}`);
-    sample=await sampleRes.json();closure=await closureRes.json();
+    sample=await sampleRes.json();closure=await closureRes.json();const agent=agentRes.ok?await agentRes.json():{};
     if(!sample?.engine||!closure?.distribution?.fronts)throw new Error('creative_contract_invalid');
-    renderSummary();renderPreview();set('source-state','fontes reais · creative_sample + closure_status');
+    renderSummary();renderPreview();const auto=agent.autopilot||{};set('truth-copy',`Pesquisa, criação e avaliação seguem ativas · ${auto.cycles_24h||0} ciclo(s) autônomo(s) 24h · ${auto.program_drafts||0} programa(s) em rascunho · vendas bloqueadas.`);set('source-state','fontes reais · creative_sample + closure_status + autopilot');
   }catch(error){
     set('engine-state','ERRO');set('kpi-engine','INDISPONÍVEL');set('production-count','0 frentes');set('variant-count','0 avaliadas');set('board-score','0/5');set('source-state',String(error?.message||'falha de carregamento'));
     const list=$('production-list');if(list){list.replaceChildren();const empty=document.createElement('div');empty.className='empty';empty.textContent='Status operacional indisponível. Nenhuma frente será apresentada como pronta sem prova real.';list.append(empty);}
