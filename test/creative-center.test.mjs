@@ -78,3 +78,10 @@ test('creative center separates operational readiness from commercial sales stat
   assert.match(js,/Venda/);
   assert.match(js,/commercial_enabled\?'LIBERADA':'BLOQUEADA'/);
 });
+
+test('creative center fails closed when status source or contract is invalid',()=>{
+  assert.match(js,/closure_status_http_/);
+  assert.match(js,/creative_contract_invalid/);
+  assert.match(js,/Nenhuma frente será apresentada como pronta sem prova real/);
+  assert.match(js,/criação \${operational\?'ativa':'aguardando'\}/);
+});

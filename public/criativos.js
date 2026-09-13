@@ -81,7 +81,9 @@ function renderFrontStatus(name,state){
   clearPreview();
   set('preview-badge',`${FRONT_LABELS[name]||name} · STATUS`);
   set('creative-id','—');set('selection-basis','frente operacional');set('updated-at',new Date().toLocaleTimeString('pt-BR'));
-  const loading=$('preview-loading');if(loading){loading.hidden=false;loading.textContent=`${FRONT_LABELS[name]||name} selecionado · criação/preparação disponíveis; preview visual específico ainda não gerado.`;}
+  const operational=Boolean(state?.operational_ready);
+  const distribution=Boolean(state?.automation_ready||state?.api_configured);
+  const loading=$('preview-loading');if(loading){loading.hidden=false;loading.textContent=`${FRONT_LABELS[name]||name} selecionado · criação ${operational?'ativa':'aguardando'} · divulgação ${distribution?'pronta':'assistida'}; preview visual específico ainda não gerado.`;}
   const root=$('variants');if(root){root.replaceChildren();const empty=document.createElement('div');empty.className='empty';empty.textContent='Selecione Instagram ou YouTube para revisar variantes visuais e banca 5/5.';root.append(empty);}
   set('variant-count','status da frente');set('board-score','—/5');set('board-state','A banca 5/5 é exibida quando há variante visual concreta para revisão.');
 }
@@ -129,10 +131,13 @@ async function load(){
       fetch('/api/config?view=closure_status',{cache:'no-store'})
     ]);
     if(!sampleRes.ok)throw new Error(`creative_sample_http_${sampleRes.status}`);
-    sample=await sampleRes.json();closure=closureRes.ok?await closureRes.json():{};
+    if(!closureRes.ok)throw new Error(`closure_status_http_${closureRes.status}`);
+    sample=await sampleRes.json();closure=await closureRes.json();
+    if(!sample?.engine||!closure?.distribution?.fronts)throw new Error('creative_contract_invalid');
     renderSummary();renderPreview();set('source-state','fontes reais · creative_sample + closure_status');
   }catch(error){
-    set('engine-state','ERRO');set('kpi-engine','INDISPONÍVEL');set('source-state',String(error?.message||'falha de carregamento'));
+    set('engine-state','ERRO');set('kpi-engine','INDISPONÍVEL');set('production-count','0 frentes');set('variant-count','0 avaliadas');set('board-score','0/5');set('source-state',String(error?.message||'falha de carregamento'));
+    const list=$('production-list');if(list){list.replaceChildren();const empty=document.createElement('div');empty.className='empty';empty.textContent='Status operacional indisponível. Nenhuma frente será apresentada como pronta sem prova real.';list.append(empty);}
     const loading=$('preview-loading');if(loading){loading.hidden=false;loading.textContent='Motor criativo indisponível.';}
   }
 }
