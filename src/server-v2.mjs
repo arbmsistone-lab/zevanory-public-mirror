@@ -17,6 +17,7 @@ import statusApi from "../api/status.mjs";
 import releaseApi from "../api/release.mjs";
 import agentStatusApi from "../api/agent-status.mjs";
 import assuranceApi from "../api/assurance.mjs";
+import financeApi from "../api/finance.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -106,7 +107,7 @@ function authorizedOperator(req) {
 }
 const READ_API_HANDLERS = new Map([
   ['/api/config',configApi], ['/api/status',statusApi], ['/api/health',statusApi], ['/api/release',releaseApi],
-  ['/api/agent/status',agentStatusApi], ['/api/assurance',assuranceApi], ['/api/live',statusApi], ['/api/activation/readiness',configApi],
+  ['/api/agent/status',agentStatusApi], ['/api/assurance',assuranceApi], ['/api/finance',financeApi], ['/api/live',statusApi], ['/api/activation/readiness',configApi],
 ]);
 const server = http.createServer(async (req, res) => {
   try {
