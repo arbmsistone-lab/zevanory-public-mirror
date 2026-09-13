@@ -11,7 +11,8 @@ const provider=(id,domain,execute)=>defineExecutionProvider({
 test('AI decision reroutes across independent zero-cost providers',async()=>{
   const first=provider('a','cloud-a',async()=>{throw new Error('temporary');});
   const second=provider('b','cloud-b',async()=>({provider:'vendor-b',model:'m2',mode:'ai_assisted',action:'qualify',confidence:0.9}));
-  const out=await decideWithAiProviders({input:{stage:'contacted'},systemInstruction:'policy',providers:[first,second]});
+  const third=provider('c','cloud-c',async()=>({provider:'vendor-c',model:'m3',mode:'ai_assisted',action:'offer',confidence:0.8}));
+  const out=await decideWithAiProviders({input:{stage:'contacted'},systemInstruction:'policy',providers:[first,second,third]});
   assert.equal(out.action,'qualify');
   assert.equal(out.routed_provider,'b');
   assert.equal(out.routed_domain,'cloud-b');
@@ -22,7 +23,8 @@ test('AI pool degrades to deterministic decision when every provider is unavaila
   const out=await decideWithAiProviders({input:{stage:'new'},providers:[bad]});
   assert.equal(out.provider,'deterministic');
   assert.equal(out.action,'first_response');
-  assert.equal(out.fallback_reason,'all_qualified_providers_failed');
+  assert.equal(out.fallback_reason,'ai_mesh_redundancy_below_minimum');
+  assert.equal(out.minimum_independent_domains,3);
 });
 
 

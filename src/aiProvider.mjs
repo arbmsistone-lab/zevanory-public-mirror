@@ -71,7 +71,8 @@ export async function decideWithAiProviders({input,systemInstruction,providers=[
   const groq=buildCompatProvider({id:'ai-groq-adapter',domain:'groqcloud',key:process.env.GROQ_API_KEY,model:process.env.GROQ_MODEL||'llama-3.3-70b-versatile',endpoint:'https://api.groq.com/openai/v1/chat/completions'});
   if(mistral) dynamic.push(mistral);
   if(groq) dynamic.push(groq);
-  if(!dynamic.length) return deterministicDecision(input);
+  const domains=new Set(dynamic.map((p)=>String(p?.independence_domain||'')).filter(Boolean));
+  if(domains.size<3) return Object.freeze({...deterministicDecision(input),fallback_reason:'ai_mesh_redundancy_below_minimum',configured_independent_domains:domains.size,minimum_independent_domains:3});
   const routed=await executeUniversallySafely({
     operation:{input,systemInstruction},providers:dynamic,
     requirements:{capabilities:['ai:decision'],zeroCost:true},
