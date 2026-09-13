@@ -54,7 +54,7 @@ function renderAdvisor(){
   set('advisor-policy',a.policy_version||'media-investment-advisor-v1');set('advisor-action',a.action||'AGUARDAR');
   set('advisor-budget',`R$ ${Number(a.recommended_daily_budget_brl||0).toFixed(2).replace('.',',')}`);
   set('advisor-roas',Number.isFinite(Number(a.evidence?.roas))?Number(a.evidence.roas).toFixed(2):'—');
-  set('advisor-confidence',Number.isFinite(Number(a.confidence))?`${(Number(a.confidence)*100).toFixed(0)}%`:'—');set('advisor-reason',a.reason||'evidência insuficiente');
+  const advisorReasonLabels={evidence_gate_not_met:'Evidência comercial ainda insuficiente',negative_economics:'Economia negativa observada',refund_rate_too_high:'Taxa de reembolso acima do limite',contribution_margin_too_low:'Margem de contribuição abaixo do limite'};set('advisor-confidence',Number.isFinite(Number(a.confidence))?`${(Number(a.confidence)*100).toFixed(0)}%`:'—');set('advisor-reason',advisorReasonLabels[a.reason]||a.reason||'Evidência ainda insuficiente');
   set('kpi-invest',a.action||'AGUARDAR');set('kpi-invest-copy',a.auto_spend===false?'recomendação · sem gasto automático':'governança indisponível');
 }
 
