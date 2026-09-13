@@ -29,7 +29,7 @@ add('11 Cloudflare observability enabled',/"observability"\s*:\s*\{\s*"enabled"\
 add('12 Cloudflare AI binding configured',/"ai"\s*:\s*\{\s*"binding"\s*:\s*"AI"/.test(wrangler));
 add('13 Cloudflare KV binding configured',/ZEVANORY_PRIVATE_ARTIFACTS/.test(wrangler));
 add('14 Cloudflare static assets binding configured',/"binding"\s*:\s*"ASSETS"/.test(wrangler));
-add('15 canonical creative route owned by Cloudflare',/zevanory\.api\.br\/criativos/.test(wrangler));
+add('15 canonical creative route owned by Cloudflare',/zevanory\.api\.br\/\*/.test(wrangler));
 add('16 Vercel strict CSP configured',/Content-Security-Policy/.test(vercel)&&!/unsafe-inline|unsafe-eval/.test(vercel));
 add('17 Vercel HSTS configured',/Strict-Transport-Security/.test(vercel));
 add('18 Netlify standby is independently configured',netlify.length>0&&!/zevanory-site\.vercel\.app/.test(netlify));
@@ -75,8 +75,8 @@ add('43 runtime checkout globally blocked',runtime.checkout==='globally-blocked'
 add('44 runtime WhatsApp disabled',runtime.whatsapp==='disabled',runtime.whatsapp);
 add('45 runtime financial disabled',runtime.financial==='disabled',runtime.financial);
 add('46 closure commercial flag false',closureJson.commercial_enabled===false,closureJson.commercial_enabled);
-add('47 distribution has exactly 9 active fronts',closureJson.distribution?.total_fronts===9,closureJson.distribution?.total_fronts);
-add('48 all 9 fronts configured',closureJson.distribution?.configured_fronts===9,closureJson.distribution?.configured_fronts);
+add('47 distribution has exactly 12 active fronts',closureJson.distribution?.total_fronts===12,closureJson.distribution?.total_fronts);
+add('48 all 12 fronts configured',closureJson.distribution?.configured_fronts===12,closureJson.distribution?.configured_fronts);
 add('49 all 9 fronts automation-ready',closureJson.distribution?.automation_ready_fronts===9,closureJson.distribution?.automation_ready_fronts);
 const exposed=/access[_-]?token|client[_-]?secret|api[_-]?key|password/i.test(closure.text);
 add('50 closure surface exposes no credential fields',!exposed);
