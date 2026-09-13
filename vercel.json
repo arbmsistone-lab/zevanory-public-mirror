@@ -175,6 +175,10 @@
       "destination": "/public/product.css"
     },
     {
+      "source": "/financeiro",
+      "destination": "/public/financeiro.html"
+    },
+    {
       "source": "/",
       "destination": "/public/index.html"
     }

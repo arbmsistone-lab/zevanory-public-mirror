@@ -72,3 +72,5 @@ footer .legal-links{display:flex;align-items:center;gap:12px}footer .legal-links
 .channel-grid>div{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 8px;border:1px solid rgba(132,218,255,.08);border-radius:8px;background:rgba(5,14,21,.38)}
 .channel-grid span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:10px;text-transform:capitalize}.channel-grid b{font-size:9px;letter-spacing:.03em}
 @media(max-height:760px){.source-health{font-size:9px;margin-top:4px}.channel-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 8px}.channel-grid>div{padding:5px 6px}}
+
+.finance-access-link{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:9px;padding:9px 10px;border:1px solid #35517a;border-radius:10px;background:#12213a;color:#dce9ff;text-decoration:none;font-size:10px;font-weight:800}.finance-access-link span{font-size:14px}.finance-access-link:hover{border-color:#4e74aa;background:#162947}

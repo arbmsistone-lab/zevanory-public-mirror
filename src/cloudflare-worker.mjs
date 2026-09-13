@@ -94,7 +94,7 @@ const staticAliases = new Map([
   ['/ia-na-pratica', '/ia-na-pratica.html'], ['/vendas-na-pratica', '/vendas-na-pratica.html'],
   ['/lucro-e-caixa', '/lucro-e-caixa.html'], ['/combo-ia-vendas', '/combo-ia-vendas.html'], ['/negocio-completo', '/negocio-completo.html'],
   ['/piloto', '/piloto.html'], ['/termos', '/termos.html'], ['/privacidade', '/privacidade.html'], ['/exclusao-dados', '/exclusao-dados.html'],
-  ['/reembolso', '/reembolso.html'], ['/afiliados', '/afiliados.html'], ['/criativos', '/criativos.html'], ['/tiktok-review', '/tiktok-review.html'],
+  ['/reembolso', '/reembolso.html'], ['/afiliados', '/afiliados.html'], ['/criativos', '/criativos.html'], ['/financeiro', '/financeiro.html'], ['/tiktok-review', '/tiktok-review.html'],
 ]);
 function delegatedPaymentOrigin(env,requestUrl){
   if(String(env.PAYMENT_RUNTIME_MODE||'').toLowerCase()!=='delegated')return null;
