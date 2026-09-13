@@ -36,9 +36,11 @@ export default async function handler(req, res) {
   }
   if(view==='channel_identity_health'){
     const [facebook,instagram,youtube]=await Promise.all([verifyFacebookIdentity(),verifyInstagramIdentity(),verifyYouTubeIdentity()]);
-    const safe=(x)=>({attempted:Boolean(x.attempted),verified:Boolean(x.verified),reason:String(x.reason||'unknown')});
+    let persisted={};if(process.env.DATABASE_URL){try{persisted=await persistedOAuthReadiness(neon(process.env.DATABASE_URL));}catch{persisted={};}}
+    const brand=brandIdentityReadiness().fronts||{};
+    const safe=(channel,x)=>{const direct=Boolean(x.verified);const fallback=!direct&&persisted[channel]===true&&brand[channel]?.verified===true;return {attempted:Boolean(x.attempted),verified:direct||fallback,reason:direct?String(x.reason||'verified'):fallback?'persisted_oauth_and_brand_identity':String(x.reason||'unknown'),verification_source:direct?'provider_live':fallback?'persisted_oauth_plus_brand_identity':'none'};};
     res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;
-    return res.end(JSON.stringify({service:'ZEVANORY',facebook:safe(facebook),instagram:safe(instagram),youtube:safe(youtube)}));
+    return res.end(JSON.stringify({service:'ZEVANORY',facebook:safe('facebook',facebook),instagram:safe('instagram',instagram),youtube:safe('youtube',youtube)}));
   }
   if(view==='creative_asset'){
     const token=verifyCreativeToken(url.searchParams.get('p'),url.searchParams.get('s'),process.env);
