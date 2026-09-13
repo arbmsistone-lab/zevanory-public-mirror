@@ -28,6 +28,7 @@ const directHandlers = new Map([
   ['/api/events/operator', eventsOperatorHandler],
   ['/api/agent/run', agentRunHandler],
   ['/api/agent/status', agentStatusHandler],
+  ['/api/agent-status', agentStatusHandler],
   ['/api/checkout', checkoutHandler],
   ['/api/webhooks', webhooksHandler],
   ['/api/robot/control', robotControlHandler],
@@ -151,7 +152,8 @@ export default {
   async fetch(request, env) {
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
     hydrateRuntimeConfig(env);
-    const url = new URL(request.url);    const delegatedPayment=await delegatePaymentRequest(request,env);if(delegatedPayment)return delegatedPayment;
+    const url = new URL(request.url);
+    const delegatedPayment=await delegatePaymentRequest(request,env);if(delegatedPayment)return delegatedPayment;
     if (url.pathname === '/private/artifacts/issue') return handleArtifactIssue(request, env);
     if (url.pathname === '/private/artifacts/download') return handleArtifactDownload(request, env);
     if (url.pathname === '/private/journal/append') return handleCloudflareJournalAppend(request, env);
