@@ -50,12 +50,14 @@ async function fetchSource(path){
   const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),7000);
   try{const r=await fetch(path,{cache:'no-store',signal:controller.signal});if(!r.ok)throw new Error(String(r.status));return await r.json();}finally{clearTimeout(timer);}
 }
+const channelLabels={whatsapp:'WhatsApp',tik_tok:'TikTok',tiktok:'TikTok',youtube:'YouTube',linked_in:'LinkedIn',linkedin:'LinkedIn'};
+function channelLabel(name){const key=String(name||'').toLowerCase();return channelLabels[key]||String(name||'').replaceAll('_',' ');}
 function renderChannels(config={}){
   const fronts=config.distribution?.fronts||config.channels||{}; const entries=Object.entries(fronts); const grid=document.getElementById('channel-grid'); if(grid)grid.replaceChildren();
   let operational=0,automated=0,assisted=0;
   for(const [name,data] of entries){
     const ready=data.operational_ready!==false; if(ready)operational++; const direct=Boolean(data.automation_ready||data.api_configured); if(ready&&direct)automated++; else if(ready)assisted++;
-    if(grid){const row=document.createElement('div');const n=document.createElement('span');const b=document.createElement('b');const direct=Boolean(data.automation_ready||data.api_configured);n.textContent=name.replaceAll('_',' ');b.textContent=!ready?'OPERAÇÃO INDISPONÍVEL':direct?'OPERAÇÃO ATIVA · DIRETA':'OPERAÇÃO ATIVA · ASSISTIDA';b.dataset.state=ready?'ready':'blocked';row.title=ready?(direct?'Operacional com automação direta de provider/API.':'Operacional por rota assistida/contingência; não representa bloqueio da frente.'):'Frente operacional indisponível.';row.append(n,b);grid.appendChild(row);}
+    if(grid){const row=document.createElement('div');const n=document.createElement('span');const b=document.createElement('b');const direct=Boolean(data.automation_ready||data.api_configured);n.textContent=channelLabel(name);b.textContent=!ready?'OPERAÇÃO INDISPONÍVEL':direct?'OPERAÇÃO ATIVA · DIRETA':'OPERAÇÃO ATIVA · ASSISTIDA';b.dataset.state=ready?'ready':'blocked';row.title=ready?(direct?'Operacional com automação direta de provider/API.':'Operacional por rota assistida/contingência; não representa bloqueio da frente.'):'Frente operacional indisponível.';row.append(n,b);grid.appendChild(row);}
   }
   return {total:entries.length,operational,automated,assisted};
 }

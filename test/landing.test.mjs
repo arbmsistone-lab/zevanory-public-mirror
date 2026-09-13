@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
 const js=await readFile(new URL('../public/index.js',import.meta.url),'utf8');
+const css=await readFile(new URL('../public/index.css',import.meta.url),'utf8');
 
 test('central identifies ZEVANORY and connects real operational APIs',()=>{
   assert.match(html,/<title>ZEVANORY \| IA, automação, software e produtos digitais<\/title>/);assert.match(html,/CENTRAL OPERACIONAL/);
@@ -38,4 +39,13 @@ test('central exposes resilient live-company observability without inventing sal
   assert.match(js,/renderCoverage/);
   assert.match(html,/Dados agregados · sem PII/i);
   assert.match(html,/Venda continua bloqueada/i);
+});
+
+test('detail dialog keeps regression-safe geometry and channel branding',()=>{
+  assert.match(css,/grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(css,/\.channel-section,\.controls-section\{grid-column:1\/-1\}/);
+  assert.match(css,/\.quality-inline\{display:flex;align-items:center;justify-content:space-between/);
+  assert.match(html,/class="detail-section controls-section"/);
+  for(const brand of ['WhatsApp','TikTok','YouTube','LinkedIn']) assert.match(js,new RegExp(brand));
+  assert.match(js,/channelLabel\(name\)/);
 });
