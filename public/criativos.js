@@ -102,11 +102,11 @@ function renderFronts(){
   entries.forEach(([name,state])=>{
     const item=document.createElement('button');item.type='button';item.className='production-item';item.dataset.front=name;
     const previewMode=name==='youtube'?'video':name==='instagram'?'image':'';if(previewMode)item.dataset.mode=previewMode;
-    const creation=state.operational_ready?'ATIVA':'AGUARDANDO';
-    const distribution=state.automation_ready||state.api_configured?'PRONTA':'ASSISTIDA';
+    const operation=state.operational_ready?'ATIVA':'AGUARDANDO';
+    const executionMode=state.automation_ready||state.api_configured?'DIRETA':'ASSISTIDA';
     const service=SERVICE_FRONTS.has(name)?(state.operational_ready?'SUPORTADO':'AGUARDANDO'):'N/A';
     const sales=closure?.commercial_enabled?'LIBERADA':'BLOQUEADA';
-    item.innerHTML=`<span class="channel">${FRONT_LABELS[name]||name}</span><div class="front-statuses"><span><em>Criação</em><b>${creation}</b></span><span><em>Divulgação</em><b>${distribution}</b></span><span><em>Atendimento</em><b>${service}</b></span><span class="sales-state"><em>Venda</em><b>${sales}</b></span></div><i>${previewMode?'PREVIEW DISPONÍVEL':'ABRIR STATUS DA FRENTE'}</i>`;
+    item.innerHTML=`<span class="channel">${FRONT_LABELS[name]||name}</span><div class="front-statuses"><span class="operation-state"><em>Operação</em><b>${operation}</b></span><span><em>Modo</em><b>${executionMode}</b></span><span><em>Atendimento</em><b>${service}</b></span><span class="sales-state"><em>Venda</em><b>${sales}</b></span></div><i>${previewMode?'PREVIEW DISPONÍVEL':'ABRIR STATUS DA FRENTE'}</i>`;
     item.addEventListener('click',()=>selectFront(name,state,previewMode));
     root.append(item);
   });

@@ -72,8 +72,8 @@ test('creative center exposes elite media investment advisor without automatic s
 });
 
 test('creative center separates operational readiness from commercial sales state',()=>{
-  assert.match(js,/Criação/);
-  assert.match(js,/Divulgação/);
+  assert.match(js,/Operação/);
+  assert.match(js,/Modo/);
   assert.match(js,/Atendimento/);
   assert.match(js,/Venda/);
   assert.match(js,/commercial_enabled\?'LIBERADA':'BLOQUEADA'/);
@@ -89,3 +89,5 @@ test('creative center fails closed when status source or contract is invalid',()
 test('non visual fronts clear stale review and advisor state',()=>{ assert.match(js,/votes\.replaceChildren/); assert.match(js,/delete step\.dataset\.state/); assert.match(js,/advisor-action','N\/A'/); assert.match(js,/tiktok:'TikTok'/); assert.match(js,/linkedin:'LinkedIn'/); assert.match(js,/nuvemshop:'Nuvemshop'/); });
 
 test('wide short desktop fits all twelve fronts without cut or overlap',async()=>{ const css=await readFile(new URL('../public/criativos.css',import.meta.url),'utf8'); assert.match(css,/grid-template-rows:repeat\(6,minmax\(0,1fr\)\)/); assert.match(css,/production-item\{min-height:0;height:100%/); });
+
+test('cards make operation state primary and sales blocking secondary',()=>{ assert.match(js,/operation-state/); assert.match(js,/executionMode/); assert.match(js,/DIRETA/); assert.match(js,/ASSISTIDA/); });
