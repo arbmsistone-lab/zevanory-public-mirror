@@ -40,6 +40,7 @@
     "KNOWLEDGE_SEED_ALLOWED": "true",
     "AGENT_AUTONOMY_MODE": "progressive",
     "AGENT_HUMAN_APPROVAL_REQUIRED": "false",
+    "ORGANIC_PUBLISHING_ENABLED": "true",
     "PRE_SALE_GATES_APPROVED": "false",
     "SALE_GLOBALLY_ENABLED": "false",
     "CHECKOUT_ENABLED": "false",

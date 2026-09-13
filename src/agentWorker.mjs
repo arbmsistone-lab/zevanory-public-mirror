@@ -6,7 +6,7 @@ import { evaluateConversationQuality } from './conversationQuality.mjs';
 import { buildCloudflareAiExecutionProvider } from './cloudflareAiProvider.mjs';
 import { buildFollowUpPlan } from './salesPipeline.mjs';
 import { enqueueOutbox } from './integrationOutbox.mjs';
-import { assertChannelActionAllowed } from './channelAdapters.mjs';
+import { assertChannelActionAllowed, assertChannelPublicationAllowed } from './channelAdapters.mjs';
 import { getAgentControlState, requiresHumanApproval, findApprovedAction, requestApproval, consumeApproval } from './agentControl.mjs';
 import { refreshOutcomeLearning } from './outcomeLearning.mjs';
 import { recordVerifiedLifecycleEvidence } from './lifecycleEvidenceRepository.mjs';
@@ -93,7 +93,7 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
   }
   if(tool==='publish_content'){
     const channel=String(decision.channel||lead?.channel||'').toLowerCase();
-    assertChannelActionAllowed(channel,env);
+    assertChannelPublicationAllowed(channel,decision,env);
     const content=String(decision.content||decision.message||'').trim(); if(!content) throw new Error('publish_content_required');
     const novelty=await evaluateContentNovelty(sql,{content,channel});
     if(!novelty.allowed) throw new Error(novelty.reason);
@@ -106,7 +106,7 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
       const base=String(env.PUBLIC_BASE_URL||'https://zevanory.api.br').replace(/\/$/,''); landingUrl=`${base}/?zc=${encodeURIComponent(campaignId)}&zv=${encodeURIComponent(variantId)}&zi=${encodeURIComponent(creativeId)}`;
     }
     const title=String(decision.title||decision.hook||content).slice(0,240);
-    return enqueueOutbox(sql,{aggregateType:'content',aggregateId:runId,eventType:'publish_content',destination:`channel:${channel}`,payload:{content:content.slice(0,8000),title,description:(landingUrl?`${String(decision.description||content).slice(0,4700)}\n\n${landingUrl}`:String(decision.description||content)).slice(0,5000),media_url:mediaUrl.slice(0,4000),creative_id:creativeId,campaign_id:campaignId,variant_id:variantId,landing_url:landingUrl,creative_selection_basis:selectionBasis,creative_quality_score:qualityScore,creative_perceptual_score:perceptualScore,privacy_status:String(decision.privacy_status||'private').slice(0,20),made_for_kids:decision.made_for_kids===true,dedup_fingerprint:novelty.fingerprint,dedup_policy:novelty.policy},idempotencyKey:`agent:${runId}:publish_content`,traceId,runId});
+    return enqueueOutbox(sql,{aggregateType:'content',aggregateId:runId,eventType:'publish_content',destination:`channel:${channel}`,payload:{content:content.slice(0,8000),title,description:(landingUrl?`${String(decision.description||content).slice(0,4700)}\n\n${landingUrl}`:String(decision.description||content)).slice(0,5000),media_url:mediaUrl.slice(0,4000),creative_id:creativeId,campaign_id:campaignId,variant_id:variantId,landing_url:landingUrl,creative_selection_basis:selectionBasis,creative_quality_score:qualityScore,creative_perceptual_score:perceptualScore,privacy_status:String(decision.privacy_status||'private').slice(0,20),made_for_kids:decision.made_for_kids===true,organic_only:decision.organic_only===true,commercial_intent:decision.commercial_intent===true,dedup_fingerprint:novelty.fingerprint,dedup_policy:novelty.policy},idempotencyKey:`agent:${runId}:publish_content`,traceId,runId});
   }
   if(tool==='start_checkout'){
     if(!lead?.session_id) throw new Error('checkout_session_unavailable');
@@ -147,7 +147,7 @@ export async function runAgentOnce(sql,options={}){
     if(cloudflareAi)aiProviders.push(cloudflareAi);
     decision=await decideRevenueAction(context,{...options,apiKey,aiProviders});
     tool=chooseTool(decision);
-    const auth=authorizeTool(tool,env);
+    const auth=authorizeTool(tool,env,decision);
     evalResult=evaluateAgentDecision({decision,context,authorization:auth,tool});
     if(evalResult.pass&&tool==='send_message'){
       const cq=evaluateConversationQuality({message:decision.message||decision.content||'',channel:context.lead?.channel||'',recentMessages:context.recent_conversation||[],decision});

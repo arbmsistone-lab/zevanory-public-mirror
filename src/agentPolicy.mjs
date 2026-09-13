@@ -3,15 +3,18 @@ import { salesGate } from './salesGate.mjs';
 export const TOOL_RISK = Object.freeze({
   get_command_center:'read', search_knowledge:'read', read_lead_context:'read',
   remember_fact:'write', schedule_follow_up:'write', create_offer_draft:'write', create_creative:'write', refresh_outcome_learning:'write',
-  send_message:'commercial', publish_content:'commercial', start_checkout:'financial', refund_payment:'financial',
+  send_message:'commercial', publish_content:'publication', start_checkout:'financial', refund_payment:'financial',
 });
 
-export function authorizeTool(toolName,env=process.env){
+const ORGANIC_OBJECTIVES=new Set(['awareness','education','educational','brand','institutional','authority','community','discovery','engagement']);
+export function organicPublicationAllowed(decision={}){const text=[decision.content,decision.message,decision.title,decision.description,decision.cta].filter(Boolean).join(' ').toLowerCase();const forbidden=/\b(compre|comprar|checkout|pagamento|pague|cupom|desconto|promo[cç][aã]o|oferta|pix)\b|r\$\s*\d/i;return decision.organic_only===true&&decision.commercial_intent!==true&&ORGANIC_OBJECTIVES.has(String(decision.objective||'').toLowerCase())&&!decision.checkout_url&&!decision.payment_link&&!forbidden.test(text);}
+export function authorizeTool(toolName,env=process.env,decision={}){
   const risk=TOOL_RISK[toolName];
   if(!risk)return Object.freeze({allowed:false,risk_level:'destructive',reason:'unknown_tool'});
   if(risk==='read')return Object.freeze({allowed:true,risk_level:risk,reason:'read_only'});
   if(risk==='write')return Object.freeze({allowed:true,risk_level:risk,reason:'internal_reversible_write'});
   const gate=salesGate(env);
+  if(risk==='publication'){if(gate.enabled)return Object.freeze({allowed:true,risk_level:'commercial',reason:'commercial_gates_open'});const organic=env.ORGANIC_PUBLISHING_ENABLED==='true'&&organicPublicationAllowed(decision);return Object.freeze({allowed:organic,risk_level:'external',reason:organic?'organic_publication_only':'organic_publication_not_authorized'});}
   if(risk==='commercial')return Object.freeze({allowed:gate.enabled,risk_level:risk,reason:gate.enabled?'commercial_gates_open':'commercial_gates_closed'});
   const financial=gate.enabled&&env.FINANCIAL_EVENTS_ENABLED==='true'&&env.CHECKOUT_ENABLED==='true';
   if(risk==='financial')return Object.freeze({allowed:financial,risk_level:risk,reason:financial?'financial_gates_open':'financial_gates_closed'});
