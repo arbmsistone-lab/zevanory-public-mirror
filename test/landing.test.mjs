@@ -49,3 +49,15 @@ test('detail dialog keeps regression-safe geometry and channel branding',()=>{
   for(const brand of ['WhatsApp','TikTok','YouTube','LinkedIn']) assert.match(js,new RegExp(brand));
   assert.match(js,/channelLabel\(name\)/);
 });
+
+
+test('portfolio exposes ARBM ONE as a first-class solution',async()=>{
+  const solutions=await readFile(new URL('../public/solucoes.html',import.meta.url),'utf8');
+  const one=await readFile(new URL('../public/arbm-one.html',import.meta.url),'utf8');
+  const sitemap=await readFile(new URL('../public/sitemap.xml',import.meta.url),'utf8');
+  assert.match(html,/class=\"portfolio-link\" href=\"\/solucoes\">Nossas Solu\u00e7\u00f5es/);
+  assert.match(solutions,/href=\"\/arbm-one\">ARBM ONE/);
+  assert.match(one,/<title>ARBM ONE \| ZEVANORY<\/title>/);
+  assert.match(one,/PDV, atendimento, delivery, fidelidade/i);
+  assert.match(sitemap,/https:\/\/zevanory\.api\.br\/arbm-one/);
+});

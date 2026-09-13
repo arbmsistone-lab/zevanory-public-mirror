@@ -4,7 +4,7 @@ import {join} from 'node:path';
 const root=new URL('..',import.meta.url);
 const src=new URL('../public/',import.meta.url);
 const out=new URL('../.pages-dist/',import.meta.url);
-const routes=['criativos','solucoes','arbm-sist','ia-na-pratica','vendas-na-pratica','lucro-e-caixa','combo-ia-vendas','negocio-completo','piloto','termos','privacidade','exclusao-dados','reembolso','afiliados'];
+const routes=['criativos','solucoes','arbm-sist','arbm-one','ia-na-pratica','vendas-na-pratica','lucro-e-caixa','combo-ia-vendas','negocio-completo','piloto','termos','privacidade','exclusao-dados','reembolso','afiliados'];
 
 await rm(out,{recursive:true,force:true});
 await mkdir(out,{recursive:true});
