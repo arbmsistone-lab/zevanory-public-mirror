@@ -22,3 +22,36 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:12px;co
 @media(max-height:760px) and (min-width:901px){body{grid-template-rows:50px minmax(0,1fr) 16px;padding-top:7px;gap:5px}.topbar div>span{font-size:10px}h1{font-size:18px}.top-actions b,.top-actions a{font-size:10px;padding:5px 8px}main{grid-template-rows:60px minmax(0,1fr) 78px 62px;gap:6px}.kpis article{padding:7px 10px}.kpis strong{font-size:18px}.workspace{gap:6px}.card{padding:7px}.production-grid{gap:4px;grid-auto-rows:minmax(58px,1fr)}.production-item{padding:5px 6px}.production-item .channel{font-size:9px}.front-statuses{gap:2px 4px;margin-top:3px}.front-statuses em,.front-statuses b{font-size:8px}.production-item i{font-size:8px;margin-top:3px}.truth-box{margin-top:4px;padding-top:4px}.truth-box p{font-size:9px}.variant-list{gap:4px}.variant{padding:5px 6px}.variant-head strong,.variant-head b{font-size:10px}.review-board{margin-top:4px;padding-top:4px}.board-vote{padding:3px}.board-vote span{font-size:8px}.board-vote b,.board-vote i{font-size:7.5px}.advisor-grid>div{padding:4px 6px}.advisor-grid span,.advisor-safety{font-size:8px}.flow-steps{gap:4px}.flow-steps div{padding:4px 5px}.flow-steps small,.flow-steps b{font-size:8px}footer{font-size:8px}}
 @media(max-width:900px){html,body{height:auto;min-height:100%;overflow:auto}body{display:block;padding:10px}.topbar{min-height:58px;grid-template-columns:130px 1fr;gap:8px;margin-bottom:8px}.top-actions{grid-column:1/3;justify-content:flex-end}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}main{display:grid;grid-template-rows:auto;overflow:visible}.workspace{grid-template-columns:1fr;overflow:visible}.production-panel,.preview-panel,.variants-panel{overflow:visible}.production-grid{grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:auto}.preview-stage{min-height:360px}.variant-list{grid-template-rows:auto;overflow:visible}.board-votes{grid-template-columns:repeat(5,minmax(0,1fr))}.advisor-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.advisor-reason{grid-column:1/3}.flow-steps{grid-template-columns:repeat(2,minmax(0,1fr))}.investment,.timeline{margin-top:8px}footer{height:28px;margin-top:8px}}
 @media(max-width:620px){.topbar{grid-template-columns:110px 1fr}.brand img{width:105px}h1{font-size:18px}.kpis{grid-template-columns:1fr 1fr}.production-grid{grid-template-columns:1fr 1fr}.preview-meta{grid-template-columns:1fr}.board-votes{grid-template-columns:1fr 1fr}.advisor-grid{grid-template-columns:1fr}.advisor-reason{grid-column:auto}.flow-steps{grid-template-columns:1fr}.top-actions{flex-wrap:wrap}.top-actions b,.top-actions a{font-size:10px}}
+
+/* Elite visibility closeout: preserve truth, remove compression and clipping */
+@media(min-width:901px){
+  .workspace{grid-template-columns:360px minmax(0,1fr) 380px;gap:10px}
+  .production-grid{grid-auto-rows:minmax(78px,1fr);gap:6px}
+  .production-item{min-height:78px;padding:7px 8px}
+  .production-item .channel{font-size:10px;line-height:1.15}
+  .front-statuses{gap:4px 7px;margin-top:5px}
+  .front-statuses span{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px}
+  .front-statuses em,.front-statuses b{font-size:9px;line-height:1.15;overflow:hidden;text-overflow:ellipsis}
+  .production-item i{font-size:9px;line-height:1.15;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .truth-box p{font-size:9px;line-height:1.25}
+  .board-vote b,.board-vote i{font-size:8px}
+}
+@media(min-width:1500px){
+  .workspace{grid-template-columns:500px minmax(0,1fr) 420px}
+  .front-statuses em,.front-statuses b{font-size:10px}
+  .production-item .channel{font-size:11px}
+}
+@media(max-height:820px) and (min-width:901px){
+  html,body{height:auto;min-height:100%;overflow:auto}body{height:auto}
+  main{grid-template-rows:72px auto 92px 76px;overflow:visible}
+  .workspace{min-height:540px;overflow:visible}
+  .production-panel,.preview-panel,.variants-panel{overflow:hidden}
+}
+@media(min-width:1500px){
+  .production-grid{grid-auto-rows:minmax(68px,1fr)}
+  .production-item{min-height:68px}
+  .front-statuses{grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+  .front-statuses span{display:block;min-width:0}
+  .front-statuses em,.front-statuses b{display:block;overflow:visible;text-overflow:clip;white-space:nowrap;text-align:left}
+  .front-statuses b{margin-top:3px}
+}@media(min-width:1500px){.front-statuses em,.front-statuses b{font-size:9px;letter-spacing:0}}
