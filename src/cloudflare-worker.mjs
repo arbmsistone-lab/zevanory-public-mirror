@@ -11,6 +11,7 @@ import agentStatusHandler from '../api/agent-status.mjs';
 import checkoutHandler from '../api/checkout.mjs';
 import webhooksHandler from '../api/webhooks.mjs';
 import robotControlHandler from '../api/robot-control.mjs';
+import intelligenceHandler from '../api/intelligence.mjs';
 import { handleArtifactIssue, handleArtifactDownload } from './cloudflareArtifactRoutes.mjs';
 import { handleCloudflareJournalAppend } from './durableOperationJournal.mjs';
 import { publicCommercialChannelReadinessSummary } from './publicChannelStatus.mjs';
@@ -31,6 +32,7 @@ const directHandlers = new Map([
   ['/api/webhooks', webhooksHandler],
   ['/api/robot/control', robotControlHandler],
   ['/api/robot-control', robotControlHandler],
+  ['/api/intelligence', intelligenceHandler],
 ]);
 function resolveHandler(req) {
   const url = new URL(req.url || '/', 'https://zevanory.api.br');
