@@ -48,5 +48,110 @@
     "custom-free-route"
   ],
   "quota_exhaustion_action": "immediate-rotate-with-cooldown",
-  "zero_spend_hard": true
+  "zero_spend_hard": true,
+  "minimum_qualified_free_control_planes": 10,
+  "minimum_independent_routes_per_critical_domain": 3,
+  "free_control_plane_policy": "maximize-provider-allowed-free-capacity-with-zero-spend-hard-stop",
+  "free_control_planes": [
+    {
+      "id": "google-gemini-free",
+      "domains": [
+        "ai"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "mistral-free-mode",
+      "domains": [
+        "ai"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "groq-free",
+      "domains": [
+        "ai"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "sambanova-free",
+      "domains": [
+        "ai"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "cloudflare-workers-ai-free",
+      "domains": [
+        "ai",
+        "deploy"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "openrouter-free",
+      "domains": [
+        "ai"
+      ],
+      "class": "restricted-free"
+    },
+    {
+      "id": "circleci-free",
+      "domains": [
+        "ci"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "buildkite-free",
+      "domains": [
+        "ci"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "gitlab-free",
+      "domains": [
+        "ci"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "github-actions-free",
+      "domains": [
+        "ci"
+      ],
+      "class": "conditional-free"
+    },
+    {
+      "id": "deno-deploy-free",
+      "domains": [
+        "deploy"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "netlify-free",
+      "domains": [
+        "deploy"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "supabase-free",
+      "domains": [
+        "backend"
+      ],
+      "class": "production-free"
+    }
+  ],
+  "excluded_from_production_quorum": [
+    "github-models-retired",
+    "cerebras-one-time-trial",
+    "nvidia-nim-prototyping-only",
+    "huggingface-tiny-credit",
+    "cohere-evaluation-key"
+  ],
+  "quota_guard": "never-overrun-free-allocation; rotate-before-or-on-provider-limit"
 }
