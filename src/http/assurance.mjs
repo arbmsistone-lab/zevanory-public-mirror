@@ -1,9 +1,9 @@
 import { neon } from '@neondatabase/serverless';
-import { assessOutboxHealth, assessAgentHealth, SERVICE_OBJECTIVES } from '../src/enterpriseAssurance.mjs';
-import { validateProviderContracts } from '../src/providerContracts.mjs';
-import { attachRequestContext, operationalLog } from '../src/observability.mjs';
-import { isPublicDeploymentRequest, safeBearerEqual } from '../src/security.mjs';
-import { executeVerifiedRead } from '../src/databaseReadFabric.mjs';
+import { assessOutboxHealth, assessAgentHealth, SERVICE_OBJECTIVES } from '../enterpriseAssurance.mjs';
+import { validateProviderContracts } from '../providerContracts.mjs';
+import { attachRequestContext, operationalLog } from '../observability.mjs';
+import { isPublicDeploymentRequest, safeBearerEqual } from '../security.mjs';
+import { executeVerifiedRead } from '../databaseReadFabric.mjs';
 
 export default async function handler(req,res){
   const context=attachRequestContext(req,res,'/api/assurance');

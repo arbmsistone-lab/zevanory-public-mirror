@@ -12,7 +12,7 @@ add('03 required migrations',REQUIRED_MIGRATIONS.length>=16&&REQUIRED_MIGRATIONS
 add('04 CRM engine',await exists('src/salesPipeline.mjs')); add('05 follow-up engine',(await text('src/salesPipeline.mjs')).includes('buildFollowUpPlan'));
 add('06 unit economics',await exists('src/unitEconomics.mjs')); add('07 learning engine',await exists('src/learningEngine.mjs'));
 add('08 autonomous revenue agent',await exists('src/revenueAgent.mjs')&&await exists('src/agentWorker.mjs'));
-add('09 enterprise assurance',await exists('src/enterpriseAssurance.mjs')&&await exists('api/assurance.mjs'));
+add('09 enterprise assurance',await exists('src/enterpriseAssurance.mjs')&&await exists('src/http/assurance.mjs'));
 add('10 provider contract registry',await exists('src/providerContracts.mjs'));
 add('11 secret scan',pkg.scripts['supplychain:scan']==='node scripts/secret-scan.mjs');
 add('12 contract smoke',pkg.scripts['contract:smoke']==='node scripts/contract-smoke.mjs');

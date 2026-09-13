@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import handler from '../api/release.mjs';
+import handler from '../src/http/release.mjs';
 
 const invoke=(env)=>{const old={...process.env};Object.assign(process.env,env);let body='';const res={statusCode:0,headers:{},setHeader(k,v){this.headers[k]=v;},end(v=''){body=v;}};try{handler({method:'GET'},res);return JSON.parse(body);}finally{for(const k of Object.keys(process.env))if(!(k in old))delete process.env[k];Object.assign(process.env,old);}};
 

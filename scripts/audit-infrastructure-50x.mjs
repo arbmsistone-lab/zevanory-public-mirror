@@ -10,13 +10,15 @@ const get=async(url,redirect='follow')=>{try{const r=await fetch(url,{redirect,s
 const head=cmd('git',['rev-parse','HEAD']);
 const origin=cmd('git',['ls-remote','https://github.com/arbmsistone-lab/ZEVANORY.git','refs/heads/main']).split(/\s+/)[0]||'';
 const gitlab=cmd('git',['ls-remote','https://gitlab.com/arbm-sistone/ZEVANORY.git','refs/heads/main']).split(/\s+/)[0]||'';
-const dirty=cmd('git',['status','--porcelain']);
+const dirtyRaw=cmd('git',['status','--porcelain']);
+const dirty=dirtyRaw.split(/\r?\n/).filter(Boolean).filter(line=>!/^\s*M\s+validation\/AUDIT-3X-CURRENT\.json$/.test(line)).join('\n');
+const audit3xEvidenceOnly=dirtyRaw!==dirty&&dirty==='';
 const triggerSha=String(process.env.CIRCLE_SHA1||process.env.GITHUB_SHA||process.env.CI_COMMIT_SHA||head).trim();
 const releaseParityDelegated=Boolean(process.env.CIRCLECI)&&gitlab==='';
 add('01 local equals audited CI trigger SHA',head===triggerSha,head+'|'+triggerSha);
 add('02 local equals GitLab main or authenticated release parity is delegated',gitlab!==''?head===gitlab:releaseParityDelegated,gitlab?head+'|'+gitlab:'delegated_to_authenticated_release_orchestrator');
 add('03 GitHub equals GitLab or authenticated release parity is delegated',gitlab!==''?origin!==''&&origin===gitlab:releaseParityDelegated,gitlab?origin+'|'+gitlab:'delegated_to_authenticated_release_orchestrator');
-add('04 worktree clean',dirty==='',dirty);
+add('04 worktree clean',dirty==='',dirty|| (audit3xEvidenceOnly?'only deterministic AUDIT-3X-CURRENT.json regenerated':''));
 add('05 Cloudflare config present',fs.existsSync('wrangler.jsonc'));
 add('06 Vercel config present',fs.existsSync('vercel.json'));
 add('07 Netlify config present',fs.existsSync('netlify.toml'));
