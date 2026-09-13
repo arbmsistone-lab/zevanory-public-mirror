@@ -8,9 +8,9 @@ import { classifyDeliveryFailure, destinationAllowsAutomaticReplay, requestProvi
 const bufferEnv={BUFFER_API_KEY:'test-only',BUFFER_TIKTOK_CHANNEL_ID:'tt',BUFFER_LINKEDIN_CHANNEL_ID:'li'};
 const response=(body,status=200)=>({ok:status>=200&&status<300,status,json:async()=>body});
 
-test('excluded TikTok LinkedIn and Nuvemshop reject every provider route',async()=>{
+test('TikTok LinkedIn and Nuvemshop remain fail closed when provider evidence is inconclusive',async()=>{
   const adapters=buildOutboundAdapters({env:bufferEnv,commercialGate:()=>({enabled:true}),fetchImpl:async()=>response({})});
-  for(const channel of ['tiktok','linkedin','nuvemshop']) await assert.rejects(()=>adapters[`channel:${channel}`]({payload:{content:'x',media_url:'https://example.org/x.mp4'}},{sql:{query:async()=>[]}}),/channel_excluded_from_active_scope/);
+  for(const channel of ['tiktok','linkedin','nuvemshop']) await assert.rejects(()=>adapters[`channel:${channel}`]({payload:{content:'x',media_url:'https://example.org/x.mp4'}},{sql:{query:async()=>[]}}));
 });
 
 

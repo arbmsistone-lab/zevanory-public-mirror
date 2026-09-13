@@ -37,14 +37,14 @@ test('Buffer media-first networks fail before provider effect and Facebook accep
   assert.equal(out.provider_post_id,'fb-post');
 });
 
-test('excluded TikTok and LinkedIn are blocked while Buffer helpers remain backlog code',async()=>{
+test('TikTok and LinkedIn active alternates remain uncertainty-safe',async()=>{
   const adapters=buildOutboundAdapters({env,fetchImpl:async()=>response({}),commercialGate:gate});
-  await assert.rejects(()=>adapters['channel:tiktok']({payload:{content:'x',media_url:'https://cdn.example/a.mp4'}},{sql:{query:async()=>[]}}),/channel_excluded_from_active_scope/);
-  await assert.rejects(()=>adapters['channel:linkedin']({payload:{content:'x'}},{sql:{query:async()=>[]}}),/channel_excluded_from_active_scope/);
+  await assert.rejects(()=>adapters['channel:tiktok']({payload:{content:'x',media_url:'https://cdn.example/a.mp4'}},{sql:{query:async()=>[]}}),/provider_effect_uncertain/);
+  await assert.rejects(()=>adapters['channel:linkedin']({payload:{content:'x'}},{sql:{query:async()=>[]}}),/provider_effect_uncertain/);
 });
 
-test('distribution excludes TikTok LinkedIn and Nuvemshop from active fronts',()=>{
+test('distribution includes TikTok LinkedIn and Nuvemshop as active non-sales fronts',()=>{
   const distribution=commercialDistributionReadiness(env);
-  assert.equal(distribution.fronts.tiktok,undefined); assert.equal(distribution.fronts.linkedin,undefined); assert.equal(distribution.fronts.nuvemshop,undefined);
-  const publicState=publicChannelStatus(env); assert.equal(publicState.tiktok,undefined); assert.equal(publicState.linkedin,undefined); assert.equal(publicState.nuvemshop,undefined);
+  for(const c of ['tiktok','linkedin','nuvemshop'])assert.ok(distribution.fronts[c]);
+  const publicState=publicChannelStatus(env); for(const c of ['tiktok','linkedin','nuvemshop'])assert.ok(publicState[c]);
 });

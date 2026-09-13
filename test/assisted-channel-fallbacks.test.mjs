@@ -20,9 +20,10 @@ test('fallbacks fail closed when evidence is missing',()=>{
   assert.throws(()=>buildAssistedPublicationTask('linkedin',{text:'x'},{}),/assisted_channel_not_ready/);
 });
 
-test('active distribution excludes backlog fronts without lying about automation',()=>{
+test('all 12 fronts stay active while assisted fallbacks never claim API automation',()=>{
   const env={...fallbackEnv,AFFILIATE_PROVIDER:'first_party'};
   const out=commercialDistributionReadiness(env);
-  assert.equal(out.total_fronts,9); assert.equal(out.implemented_fronts,9);
-  assert.equal(out.fronts.tiktok,undefined); assert.equal(out.fronts.linkedin,undefined); assert.equal(out.fronts.nuvemshop,undefined);
+  assert.equal(out.total_fronts,12); assert.equal(out.implemented_fronts,12);
+  for(const c of ['tiktok','linkedin','nuvemshop']){ assert.ok(out.fronts[c]); assert.equal(out.fronts[c].operational_ready,true); }
+  assert.equal(out.fronts.tiktok.automation_ready,false); assert.equal(out.fronts.linkedin.automation_ready,false);
 });

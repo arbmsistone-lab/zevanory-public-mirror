@@ -19,9 +19,9 @@ test('CSV fallback rejects duplicate SKUs and oversized batches',()=>{
   assert.throws(()=>buildNuvemshopCsv(Array.from({length:20001},(_,i)=>({name:`P${i}`,price:1,sku:`S${i}`}))),/row_limit_exceeded/);
 });
 
-test('Nuvemshop fallback remains technical backlog and absent from active runtime',()=>{
+test('Nuvemshop fallback keeps the active front operational without inventing API readiness',()=>{
   const env={NUVEMSHOP_CSV_FALLBACK_VERIFIED:'true',NUVEMSHOP_STOREFRONT_VERIFIED:'true',NUVEMSHOP_STOREFRONT_URL:'https://zevanory.lojavirtualnuvem.com.br/'};
   assert.equal(nuvemshopCsvFallbackReadiness(env).ready,true);
-  assert.equal(commercialDistributionReadiness(env).fronts.nuvemshop,undefined);
-  assert.equal(publicChannelStatus(env).nuvemshop,undefined);
+  const front=commercialDistributionReadiness(env).fronts.nuvemshop; assert.ok(front); assert.equal(front.operational_ready,true); assert.equal(front.automation_ready,false);
+  const state=publicChannelStatus(env).nuvemshop; assert.ok(state); assert.equal(state.operational_ready,true);
 });

@@ -28,8 +28,8 @@ test('persisted OAuth readiness requires provider-specific scopes and overlays A
   assert.equal(out.youtube.oauth_persisted,true);
 });
 
-test('Nuvemshop encrypted token and API evidence do not override backlog exclusion',async()=>{
+test('Nuvemshop encrypted token and verified API evidence can activate its operational route without opening sales',async()=>{
   const ready=await persistedOAuthReadiness({query:async()=>[{provider:'nuvemshop',scope:'read_products read_orders',has_access:true,integration_verified:true}]});
-  assert.equal(ready.nuvemshop,false);
-  assert.equal(overlayPersistedOAuth({nuvemshop:{configured:false,operational_ready:false}},ready).nuvemshop.operational_ready,false);
+  assert.equal(ready.nuvemshop,true);
+  const out=overlayPersistedOAuth({nuvemshop:{configured:false,operational_ready:false}},ready).nuvemshop; assert.equal(out.operational_ready,true); assert.equal(out.oauth_persisted,true);
 });

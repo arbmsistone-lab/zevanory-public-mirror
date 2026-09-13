@@ -5,9 +5,9 @@ const base={SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'};
 const response=(status,body={},headers={})=>({status,ok:status>=200&&status<300,json:async()=>body,arrayBuffer:async()=>Buffer.isBuffer(body)?body:Buffer.from(typeof body==='string'?body:JSON.stringify(body)),headers:{get:k=>headers[String(k).toLowerCase()]||null}});
 const certifiedGate=()=>({enabled:true});
 
-test('TikTok runtime is excluded from active commercial scope',async()=>{
+test('TikTok active runtime fails closed without persisted provider credential',async()=>{
   const a=buildOutboundAdapters({env:base,commercialGate:certifiedGate,fetchImpl:async()=>response(200,{})});
-  await assert.rejects(()=>a['channel:tiktok']({payload:{content:'x',media_url:'https://cdn.example/x.mp4'}},{sql:{query:async()=>[]}}),/channel_excluded_from_active_scope/);
+  await assert.rejects(()=>a['channel:tiktok']({payload:{content:'x',media_url:'https://cdn.example/x.mp4'}},{sql:{query:async()=>[]}}),/tiktok_oauth_credential_missing/);
 });
 
 test('affiliate adapter is generic, HTTPS-only and idempotent',async()=>{
@@ -17,9 +17,9 @@ test('affiliate adapter is generic, HTTPS-only and idempotent',async()=>{
   assert.equal(out.provider_message_id,'trk-1');assert.equal(calls[0].opt.headers['idempotency-key'],'idem1');
 });
 
-test('excluded TikTok remains blocked regardless of global gate state',async()=>{
+test('TikTok remains fail closed without SQL credential context regardless of commercial gate',async()=>{
   const a=buildOutboundAdapters({env:{},commercialGate:certifiedGate,fetchImpl:async()=>response(200,{})});
-  await assert.rejects(()=>a['channel:tiktok']({payload:{media_url:'https://cdn.example/video.mp4'}}),/channel_excluded_from_active_scope/);
+  await assert.rejects(()=>a['channel:tiktok']({payload:{media_url:'https://cdn.example/video.mp4'}}),/tiktok_sql_required/);
 });
 
 test('first-party affiliate channel uses internal idempotent ledger without external webhook',async()=>{
@@ -29,7 +29,7 @@ test('first-party affiliate channel uses internal idempotent ledger without exte
   assert.equal(out.provider_message_id,'aff-1');assert.equal(out.confirmation,'first_party_ledger');
 });
 
-test('LinkedIn rich media runtime remains excluded from active scope',async()=>{
+test('LinkedIn active runtime fails closed without persisted provider credential',async()=>{
   const adapters=buildOutboundAdapters({env:base,commercialGate:certifiedGate,fetchImpl:async()=>response(200,{})});
-  await assert.rejects(()=>adapters['channel:linkedin']({payload:{content:'x',media_url:'https://zevanory.api.br/creative.png'}},{sql:{query:async()=>[]}}),/channel_excluded_from_active_scope/);
+  await assert.rejects(()=>adapters['channel:linkedin']({payload:{content:'x',media_url:'https://zevanory.api.br/creative.png'}},{sql:{query:async()=>[]}}),/linkedin_oauth_credential_missing/);
 });
