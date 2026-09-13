@@ -70,7 +70,7 @@
       <article><span>Execuções IA</span><strong id="agent-running">—</strong><small id="agent-activity-label">ciclos autônomos 24h</small></article>
     </div>
     <article class="funnel-card live-operations-card">
-      <div class="card-head live-card-head"><span>Operação ao vivo</span><div class="live-head-actions"><b id="live-connection-state">AO VIVO · AGREGADO</b></div></div>
+      <div class="card-head live-card-head"><span>Operação ao vivo</span><div class="live-head-actions"><b id="live-connection-state">AO VIVO · PROVA REAL</b><button id="open-live-proof" type="button">Mesa / Prova</button></div></div>
       <div id="live-operations" class="live-operations"><div class="live-empty">Carregando atividade operacional real…</div></div>
       <div class="business-highlights live-highlights">
         <div><span>Próxima ação</span><b id="nba-mode">—</b></div>
@@ -136,6 +136,11 @@
           <span>Execuções 24h <b id="agent-runs">—</b></span><span>Provider <b id="agent-provider">—</b></span>
           <span>Execução comercial <b id="agent-commercial">—</b></span>
         </div>
+      </section>
+      <section class="detail-section live-proof-section"><h3>Mesa de operações · prova real</h3>
+        <div class="live-proof-summary"><span>Rotina <b id="live-proof-routine">—</b></span><span>Último ciclo <b id="live-proof-cycle">—</b></span><span>Trace <b id="live-proof-trace">—</b></span><span>Próximo ciclo <b id="live-proof-next">—</b></span></div>
+        <div id="routine-24h" class="routine-24h" aria-label="Rotina autônoma das últimas 24 horas"></div>
+        <div id="proof-timeline" class="proof-timeline"><div class="live-empty">SEM PROVA CARREGADA</div></div>
       </section>
       <section class="detail-section"><h3>Infraestrutura &amp; release</h3>
         <div class="detail-list">
