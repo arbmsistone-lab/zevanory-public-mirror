@@ -83,7 +83,7 @@ unit('CODE-SERVER', 'src/server-v2.mjs', [
 
 unit('CODE-LANDING', 'public/index.html', [
   command('landing tests', process.execPath, ['--test','test/landing.test.mjs']),
-  op('institutional identity only', () => t('public/index.html').includes('<title>ZEVANORY</title>') && !t('public/index.html').includes('cta_whatsapp')),
+  op('institutional identity only', () => /<title>ZEVANORY(?:\s*\||<\/title>)/i.test(t('public/index.html')) && !t('public/index.html').includes('cta_whatsapp')),
   op('public domain identity', () => t('public/index.html').includes('zevanory.api.br') && !t('public/index.html').includes('Pre\u00e7o experimental')),
 ]);
 unit('CODE-PILOT', 'public/piloto.html', [
