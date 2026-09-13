@@ -273,9 +273,9 @@ unit('CODE-SECURITY','src/security.mjs + vercel.json',[
   command('security tests',process.execPath,['--test','test/security.test.mjs','test/vercel.test.mjs','test/landing.test.mjs','test/piloto.test.mjs']),
   op('security boundaries are fail-closed',()=>t('src/security.mjs').includes('timingSafeEqual')&&t('src/security.mjs').includes('origin_not_allowed')&&t('api/events-public.mjs').includes('rate_limited')&&t('vercel.json').includes('Content-Security-Policy'))
 ]);
-unit('CODE-RELEASE-FINGERPRINT','src/release.mjs + api/release.mjs',[
+unit('CODE-RELEASE-FINGERPRINT','src/release.mjs + src/http/release.mjs',[
   command('release tests',process.execPath,['--test','test/release.test.mjs']),
-  command('release endpoint syntax',process.execPath,['--check','api/release.mjs']),
+  command('release endpoint syntax',process.execPath,['--check','src/http/release.mjs']),
   op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0039-FINAL')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
 ]);
 unit('DEF-DEPLOY-SAFETY','evidence/EG-0008-deploy-zevanory-vercel.md',[
@@ -312,7 +312,7 @@ unit('DEF-COMPOSABLE-EVIDENCE','evidence/EG-0036-composable-commerce-infrastruct
   op('five professional benchmarks recorded',()=>['Shopify','commercetools','Salesforce','Adobe','BigCommerce'].every(x=>t('evidence/EG-0036-composable-commerce-infrastructure-benchmark.md').includes(x))),
   command('composable 10x audit',process.execPath,['scripts/audit-composable-10x.mjs']),
   op('sales remain blocked by decision',()=>t('evidence/EG-0036-composable-commerce-infrastructure-benchmark.md').includes('nao autoriza vendas')),
-]);unit('CODE-ENTERPRISE-ASSURANCE','src/enterpriseAssurance.mjs + api/assurance.mjs',[
+]);unit('CODE-ENTERPRISE-ASSURANCE','src/enterpriseAssurance.mjs + src/http/assurance.mjs',[
   command('enterprise assurance syntax',process.execPath,['--check','src/enterpriseAssurance.mjs']),
   command('enterprise assurance tests',process.execPath,['--test','test/enterprise-assurance.test.mjs']),
   op('SLO truth and outbox health are explicit',()=>t('src/enterpriseAssurance.mjs').includes('historical_slo_proven:false')&&t('src/enterpriseAssurance.mjs').includes('assessOutboxHealth')),

@@ -3,6 +3,18 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/release",
+      "destination": "/api/platform?surface=release"
+    },
+    {
+      "source": "/api/assurance",
+      "destination": "/api/platform?surface=assurance"
+    },
+    {
+      "source": "/api/finance",
+      "destination": "/api/platform?surface=finance"
+    },
+    {
       "source": "/api/creative-asset",
       "destination": "/api/config?view=creative_asset"
     },

@@ -14,10 +14,10 @@ import { PROJECT, normalizeWhatsappNumber, isOfficialWhatsapp, isUuid } from "./
 import { safeBearerEqual } from "./security.mjs";
 import configApi from "../api/config.mjs";
 import statusApi from "../api/status.mjs";
-import releaseApi from "../api/release.mjs";
+import releaseApi from "./http/release.mjs";
 import agentStatusApi from "../api/agent-status.mjs";
-import assuranceApi from "../api/assurance.mjs";
-import financeApi from "../api/finance.mjs";
+import assuranceApi from "./http/assurance.mjs";
+import financeApi from "./http/finance.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");

@@ -1,5 +1,5 @@
-import { RELEASE, runtimeReleaseModes } from '../src/release.mjs';
-import { isPublicDeploymentRequest } from '../src/security.mjs';
+import { RELEASE, runtimeReleaseModes } from '../release.mjs';
+import { isPublicDeploymentRequest } from '../security.mjs';
 
 const validSha = (value) => /^[0-9a-f]{40}$/i.test(String(value||'').trim());
 const validRef = (value) => /^[A-Za-z0-9._/-]{1,120}$/.test(String(value||'').trim());

@@ -8,7 +8,7 @@ const env=await text('.env.example'); const pkg=JSON.parse(await text('package.j
 const runbook=await text('RUNBOOK-OPERACIONAL.md'); const slo=await text('specs/SLO_POLICY.md');
 add('01 SLO policy explicit',slo.includes('99,9%')&&SERVICE_OBJECTIVES.p95_latency_ms===1500);
 add('02 no false historical SLO',slo.includes('NAO HISTORICO COMPROVADO'));
-add('03 assurance API exists',await exists('api/assurance.mjs'));
+add('03 assurance API exists',await exists('src/http/assurance.mjs'));
 add('04 outbox health implemented',(await text('src/enterpriseAssurance.mjs')).includes('assessOutboxHealth'));
 add('05 provider contracts valid',validateProviderContracts().valid);
 add('06 production monitor workflow',await exists('.github/workflows/production-monitor.yml'));
