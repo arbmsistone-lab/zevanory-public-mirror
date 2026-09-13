@@ -37,11 +37,13 @@ test('Cloudflare exposes an independent production custom domain',()=>{
 });
 
 test('Cloudflare owns canonical APIs including OAuth',()=>{
-  for(const route of ['health','live','status','release','config','assurance','activation/','events/','agent/','checkout/','webhooks/','oauth/','robot-control']) assert.ok(wrangler.includes(`zevanory.api.br/api/${route}`));
+  const canonicalWildcard=wrangler.includes('zevanory.api.br/*');
+  for(const route of ['health','live','status','release','config','assurance','activation/','events/','agent/','checkout/','webhooks/','oauth/','robot-control']) assert.ok(canonicalWildcard||wrangler.includes(`zevanory.api.br/api/${route}`));
   assert.doesNotMatch(worker,/delegateTikTokOAuthRequest/);
 });
 
 test('Cloudflare owns canonical static assets and TikTok review surface',()=>{
-  for(const route of ['zevanory.api.br/','zevanory.api.br/index.html','zevanory.api.br/index.js','zevanory.api.br/index.css','zevanory.api.br/brand/*','zevanory.api.br/api/tiktok-review*']) assert.ok(wrangler.includes(route));
+  const canonicalWildcard=wrangler.includes('zevanory.api.br/*');
+  for(const route of ['zevanory.api.br/','zevanory.api.br/index.html','zevanory.api.br/index.js','zevanory.api.br/index.css','zevanory.api.br/brand/*','zevanory.api.br/api/tiktok-review*']) assert.ok(canonicalWildcard||wrangler.includes(route));
   assert.match(worker,/\['\/tiktok-review', '\/tiktok-review\.html'\]/);
 });
