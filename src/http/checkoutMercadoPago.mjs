@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { PROJECT } from '../config.mjs';
 import { salesGate } from '../salesGate.mjs';
+import { readJsonRequestBody } from '../security.mjs';
 import { authorizeCertificationPilotCheckout, recordCertificationPilotCheckoutEvidence, certificationPilotAmountBrl } from '../certificationPilot.mjs';
 import { preserveFinancialReconciliation, preserveCheckoutIntent } from '../financialReconciliationFabric.mjs';
 import { normalizeCheckoutRequest,checkoutReplayDecision,externalReferenceForOrder,safePublicBaseUrl } from '../order.mjs';
@@ -20,7 +21,7 @@ const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringi
 export default async function handler(req,res){
   res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');
   if(req.method!=='POST') return json(res,405,{error:'method_not_allowed'});
-  const input=normalizeCheckoutRequest(req.body); if(!input) return json(res,400,{error:'invalid_checkout_request'});
+  const input=normalizeCheckoutRequest(await readJsonRequestBody(req)); if(!input) return json(res,400,{error:'invalid_checkout_request'});
   const gate=salesGate();
   const pilotToken=String(req.headers?.['x-certification-pilot-token']||'').trim();
   if(!gate.enabled&&!pilotToken) return json(res,503,{error:'sales_globally_blocked',blockers:gate.blockers});
