@@ -47,13 +47,23 @@ test('Cloudflare serves signed creative assets through config handler',()=>{
   assert.match(worker,/view=creative_asset/);
 });
 
-test('creative center desktop layout is explicitly single-screen and scroll-free',async()=>{
+test('creative center desktop layout is single-screen without microtype compression',async()=>{
   const css=await readFile(new URL('../public/criativos.css',import.meta.url),'utf8');
-  assert.match(css,/html,body\{height:100%;min-height:0;overflow:hidden\}/);
+  assert.match(css,/html,body\{height:100%;overflow:hidden\}/);
   assert.match(css,/body\{height:100dvh/);
-  assert.match(css,/main\{min-height:0;overflow:hidden/);
-  assert.match(css,/\.workspace\{min-height:0;height:auto;overflow:hidden/);
-  assert.match(css,/@media\(max-width:760px\)\{html,body\{height:auto;min-height:100%;overflow:auto\}/);
+  assert.match(css,/main\{min-height:0;display:grid;.*overflow:hidden/);
+  assert.match(css,/\.workspace\{min-height:0;display:grid;.*overflow:hidden/);
+  assert.match(css,/\.kpis\{display:grid;grid-template-columns:repeat\(4,/);
+  assert.doesNotMatch(css,/font-size:6px/);
+  assert.doesNotMatch(css,/font-size:7px/);
+  assert.match(css,/@media\(max-width:900px\)\{html,body\{height:auto;min-height:100%;overflow:auto\}/);
+});
+
+test('all operational fronts are selectable while commercial sales remain separately gated',()=>{
+  assert.match(js,/item\.dataset\.front=name/);
+  assert.match(js,/item\.addEventListener\('click',\(\)=>selectFront/);
+  assert.doesNotMatch(js,/item\.disabled=true/);
+  assert.match(js,/commercial_enabled\?'LIBERADA':'BLOQUEADA'/);
 });
 
 test('creative center exposes elite media investment advisor without automatic spend',()=>{

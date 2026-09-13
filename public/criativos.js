@@ -8,6 +8,7 @@ const SERVICE_FRONTS=new Set(['zevanory','whatsapp','email','instagram','faceboo
 let sample=null;
 let closure=null;
 let mode='image';
+let selectedFront='instagram';
 
 function currentVariants(){return mode==='image'?(sample?.image_variants||[]):(sample?.video_variants||[]);}
 function currentWinnerId(){return mode==='image'?sample?.image_creative_id:sample?.video_creative_id;}
@@ -76,8 +77,18 @@ function renderPreview(){
   renderVariants();renderAdvisor();set('updated-at',new Date().toLocaleTimeString('pt-BR'));
 }
 
-function selectMode(next){
-  mode=next;document.querySelectorAll('.production-item[data-mode]').forEach(el=>el.classList.toggle('active',el.dataset.mode===mode));renderPreview();
+function renderFrontStatus(name,state){
+  clearPreview();
+  set('preview-badge',`${FRONT_LABELS[name]||name} · STATUS`);
+  set('creative-id','—');set('selection-basis','frente operacional');set('updated-at',new Date().toLocaleTimeString('pt-BR'));
+  const loading=$('preview-loading');if(loading){loading.hidden=false;loading.textContent=`${FRONT_LABELS[name]||name} selecionado · criação/preparação disponíveis; preview visual específico ainda não gerado.`;}
+  const root=$('variants');if(root){root.replaceChildren();const empty=document.createElement('div');empty.className='empty';empty.textContent='Selecione Instagram ou YouTube para revisar variantes visuais e banca 5/5.';root.append(empty);}
+  set('variant-count','status da frente');set('board-score','—/5');set('board-state','A banca 5/5 é exibida quando há variante visual concreta para revisão.');
+}
+function selectFront(name,state,previewMode){
+  selectedFront=name;
+  document.querySelectorAll('.production-item[data-front]').forEach(el=>el.classList.toggle('active',el.dataset.front===selectedFront));
+  if(previewMode){mode=previewMode;renderPreview();}else renderFrontStatus(name,state);
 }
 
 function renderFronts(){
@@ -85,18 +96,19 @@ function renderFronts(){
   const fronts=closure?.distribution?.fronts||{};const entries=Object.entries(fronts);
   set('production-count',`${entries.length} frentes`);
   entries.forEach(([name,state])=>{
-    const item=document.createElement('button');item.type='button';item.className='production-item';
+    const item=document.createElement('button');item.type='button';item.className='production-item';item.dataset.front=name;
     const previewMode=name==='youtube'?'video':name==='instagram'?'image':'';if(previewMode)item.dataset.mode=previewMode;
     const creation=state.operational_ready?'ATIVA':'AGUARDANDO';
     const distribution=state.automation_ready||state.api_configured?'PRONTA':'ASSISTIDA';
     const service=SERVICE_FRONTS.has(name)?(state.operational_ready?'SUPORTADO':'AGUARDANDO'):'N/A';
     const sales=closure?.commercial_enabled?'LIBERADA':'BLOQUEADA';
-    item.innerHTML=`<span class="channel">${FRONT_LABELS[name]||name}</span><div class="front-statuses"><span><em>Criação</em><b>${creation}</b></span><span><em>Divulgação</em><b>${distribution}</b></span><span><em>Atendimento</em><b>${service}</b></span><span class="sales-state"><em>Venda</em><b>${sales}</b></span></div><i>${previewMode?'PREVIEW DISPONÍVEL':'FRENTE PREPARADA'}</i>`;
-    if(previewMode)item.addEventListener('click',()=>selectMode(previewMode));else item.disabled=true;
+    item.innerHTML=`<span class="channel">${FRONT_LABELS[name]||name}</span><div class="front-statuses"><span><em>Criação</em><b>${creation}</b></span><span><em>Divulgação</em><b>${distribution}</b></span><span><em>Atendimento</em><b>${service}</b></span><span class="sales-state"><em>Venda</em><b>${sales}</b></span></div><i>${previewMode?'PREVIEW DISPONÍVEL':'ABRIR STATUS DA FRENTE'}</i>`;
+    item.addEventListener('click',()=>selectFront(name,state,previewMode));
     root.append(item);
   });
-  if(!entries.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='Nenhuma frente operacional retornada.';root.append(empty);}
-  document.querySelector('.production-item[data-mode="image"]')?.classList.add('active');
+  if(!entries.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='Nenhuma frente operacional retornada.';root.append(empty);return;}
+  const initial=fronts[selectedFront]?selectedFront:(fronts.instagram?'instagram':entries[0][0]);selectedFront=initial;
+  document.querySelector(`.production-item[data-front="${initial}"]`)?.classList.add('active');
 }
 function renderSummary(){
   const all=[...(sample?.image_variants||[]),...(sample?.video_variants||[])];
