@@ -4,7 +4,7 @@ import { collectMarketSignals, aggregateMarketSignals } from './marketResearchFa
 import { selectCreativeVariantWithVisualEvidence } from './creativeIntelligence.mjs';
 import { creativeAssetUrl } from './creativeEngine.mjs';
 
-export const AUTOPILOT_POLICY=Object.freeze({version:'noncommercial-autopilot-v2',commercial_unlock:false,paid_media:false,sales:false,checkout:false,financial:false,min_creative_quality:0.90,min_creative_perceptual:0.85,watchdog_minutes:95});
+export const AUTOPILOT_POLICY=Object.freeze({version:'noncommercial-autopilot-v3-elite',commercial_unlock:false,paid_media:false,sales:false,checkout:false,financial:false,min_creative_quality:0.96,min_creative_perceptual:0.93,min_verified_sources:5,min_independent_organizations:4,max_revision_rounds:3,watchdog_minutes:95});
 export const AUTOPILOT_SUBJECTS=Object.freeze([
   'IA aplicada a pequenos negócios',
   'automação de atendimento omnichannel',
@@ -115,12 +115,22 @@ export async function runNonCommercialAutopilot({env=process.env,scheduledTime=D
   }
   const candidate=buildProgramCandidate(subject,aggregate,cycleId);
   await traceAutopilot(sql,{traceId,cycleId,stage:'program_candidate_created',started,details:{candidate_id:candidate.candidate_id,market_decision:candidate.market_decision,market_score:candidate.market_score}});
-  const selections=await Promise.all(CREATIVE_CHANNELS.map(channel=>selectCreative(sql,{offerId:'OFFER-0001',channel,hook:candidate.name,body:`Pesquisa e automação com evidência para ${subject}.`,cta:'Conheça a ZEVANORY',objective:'awareness',campaignId:`${cycleId}-${channel}`})));
-  const candidates=selections.map((selection,index)=>({channel:CREATIVE_CHANNELS[index],selection,winner:selection?.winner||{}})).sort((a,b)=>Number(b.winner?.quality_score||0)-Number(a.winner?.quality_score||0)||Number(b.winner?.perceptual_score||0)-Number(a.winner?.perceptual_score||0));
-  const best=candidates[0]||{},winner=best.winner||{},selection=best.selection||{},spec=winner.spec||{};
-  await traceAutopilot(sql,{traceId,cycleId,stage:'creatives_evaluated',started,details:{channels:candidates.map(x=>x.channel),candidate_count:candidates.length,best_channel:best.channel||null,quality_score:Number(winner.quality_score||0),perceptual_score:Number(winner.perceptual_score||0)}});
-  const elite=Number(winner.quality_score||0)>=AUTOPILOT_POLICY.min_creative_quality&&Number(winner.perceptual_score||0)>=AUTOPILOT_POLICY.min_creative_perceptual&&winner.review_board?.unanimous===true;
-  const creative=Object.freeze({channel:best.channel||null,creative_id:spec.creative_id||null,variant_id:spec.variant_id||null,campaign_id:spec.campaign_id||cycleId,quality_score:Number(winner.quality_score||0),perceptual_score:Number(winner.perceptual_score||0),review_board:winner.review_board||selection?.review_board||null,selection_basis:selection?.selection_basis||null,image_url:elite&&spec.creative_id?creativeAssetUrl(spec,['youtube','tiktok'].includes(best.channel)?'webm':'png',env):null,publishable:false,elite_accepted:elite,revision_required:!elite,channel_candidates:candidates.map(x=>({channel:x.channel,quality_score:Number(x.winner?.quality_score||0),perceptual_score:Number(x.winner?.perceptual_score||0),unanimous:x.winner?.review_board?.unanimous===true})),commercial_unlock:false});
+  const evidenceReady=candidate.verified_sources>=AUTOPILOT_POLICY.min_verified_sources&&candidate.independent_organizations>=AUTOPILOT_POLICY.min_independent_organizations;
+  const channelCreatives=[];
+  for(const channel of CREATIVE_CHANNELS){
+    let accepted=null,last=null;
+    for(let round=1;round<=AUTOPILOT_POLICY.max_revision_rounds;round++){
+      const brief={offerId:'OFFER-0001',channel,hook:round===1?candidate.name:`${candidate.name} · prova ${round}`,body:round===1?`Pesquisa e automação com evidência para ${subject}.`:`${subject}: evidência, clareza e aplicação prática sem promessa inflada.`,cta:'Conheça a ZEVANORY',objective:'awareness',campaignId:`${cycleId}-${channel}-r${round}`};
+      const selection=await selectCreative(sql,brief),winner=selection?.winner||{},spec=winner.spec||{};
+      const elite=evidenceReady&&Number(winner.quality_score||0)>=AUTOPILOT_POLICY.min_creative_quality&&Number(winner.perceptual_score||0)>=AUTOPILOT_POLICY.min_creative_perceptual&&winner.review_board?.unanimous===true;
+      last={channel,round,selection,winner,spec,elite};if(elite){accepted=last;break;}
+    }
+    const item=accepted||last||{channel,round:0,selection:{},winner:{},spec:{},elite:false};
+    channelCreatives.push(Object.freeze({channel,revision_round:item.round,creative_id:item.spec.creative_id||null,variant_id:item.spec.variant_id||null,campaign_id:item.spec.campaign_id||`${cycleId}-${channel}`,quality_score:Number(item.winner.quality_score||0),perceptual_score:Number(item.winner.perceptual_score||0),review_board:item.winner.review_board||item.selection?.review_board||null,selection_basis:item.selection?.selection_basis||null,asset_url:item.elite&&item.spec.creative_id?creativeAssetUrl(item.spec,['youtube','tiktok'].includes(channel)?'webm':'png',env):null,elite_accepted:item.elite,revision_required:!item.elite,central_ready:item.elite,commercial_unlock:false}));
+  }
+  const accepted=channelCreatives.filter(x=>x.elite_accepted),elite=accepted.length===CREATIVE_CHANNELS.length,best=[...accepted].sort((a,b)=>b.quality_score-a.quality_score||b.perceptual_score-a.perceptual_score)[0]||channelCreatives[0]||{};
+  await traceAutopilot(sql,{traceId,cycleId,stage:'creatives_evaluated',started,details:{channels:CREATIVE_CHANNELS,candidate_count:channelCreatives.length,accepted_channels:accepted.length,rejected_channels:channelCreatives.length-accepted.length,best_channel:best.channel||null,quality_score:best.quality_score||0,perceptual_score:best.perceptual_score||0,elite_accepted:elite}});
+  const creative=Object.freeze({channel:best.channel||null,creative_id:best.creative_id||null,variant_id:best.variant_id||null,campaign_id:best.campaign_id||cycleId,quality_score:best.quality_score||0,perceptual_score:best.perceptual_score||0,asset_url:best.asset_url||null,image_url:best.asset_url||null,review_board:best.review_board||null,selection_basis:best.selection_basis||null,publishable:false,elite_accepted:elite,revision_required:!elite,central_ready:elite,accepted_channels:accepted.length,total_channels:CREATIVE_CHANNELS.length,channel_creatives:Object.freeze(channelCreatives),commercial_unlock:false});
   await persistAutopilotCycle(sql,{cycleId,subject,aggregate,candidate,creative,started});
   await traceAutopilot(sql,{traceId,cycleId,stage:'cycle_completed',started,details:{candidate_id:candidate.candidate_id,creative_id:creative.creative_id,elite_accepted:creative.elite_accepted}});
   return Object.freeze({ok:true,processed:true,cycle_id:cycleId,trace_id:traceId,subject,candidate,creative,commercial_unlock:false,sales:false,checkout:false,financial:false});
