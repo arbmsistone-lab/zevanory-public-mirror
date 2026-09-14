@@ -8,7 +8,7 @@ const root=new URL('../',import.meta.url);
 const docs=[
   ['company','ZEVANORY identidade e posicionamento','config/brand-identity.json','official'],
   ['company','ZEVANORY mensagem comercial por canal','src/commercialMessaging.mjs','official'],
-  ['company','ZEVANORY portfolio e contas comerciais','launch/ZEVANORY-PRODUCTS-V11-HANDOFF.md','official'],
+  ['company','ZEVANORY portfolio e contas comerciais','launch/ZEVANORY-PRODUCTS-V21-HANDOFF.md','official'],
   ['company','ZEVANORY identidade omnichannel','launch/ZEVANORY-OMNICHANNEL-IDENTITY.md','official'],
   ['commercial','Oferta canonica ZEVANORY','specs/OFFER-0001-ia-vendas-whatsapp.md','internal'],
   ['product:ARBM-SIST','ARBM SIST plano de canais','launch/ARBM-SIST-CHANNEL-PLAN.md','official'],
@@ -17,13 +17,14 @@ const docs=[
   ['benchmarks','Parametros de mercado','specs/MARKET_PARAMETERS.md','verified'],
   ['architecture','Autonomous Revenue Engine EG-0035','evidence/EG-0035-autonomous-revenue-engine-world-benchmark.md','verified'],
 ];
-const productRoot=new URL('../products/releases/v1.1/',import.meta.url);
+const productRelease='v2.1';
+const productRoot=new URL(`../products/releases/${productRelease}/`,import.meta.url);
 for(const entry of await readdir(productRoot,{withFileTypes:true})){
   if(!entry.isDirectory()||!/^ZEV-/.test(entry.name))continue;
-  for(const file of ['README.md','CHECKLIST-30-DIAS.md','PLANO-INTEGRADO.md','manifest.json']){
-    try{await readFile(new URL(`${entry.name}/${file}`,productRoot),'utf8');docs.push([`product:${entry.name}`,`${entry.name} ${file}`,`products/releases/v1.1/${entry.name}/${file}`,'official']);}catch{}
+  for(const file of ['README.md','CHECKLIST-IMPLEMENTACAO.md','PLANO-INTEGRADO.md','PROJETO-FINAL.md','AVALIACAO-PRATICA.md','FAQ.md','GLOSSARIO.md','REFERENCIAS.md','SUPORTE-E-TROUBLESHOOTING.md','TERMOS.txt','manifest.json']){
+    try{await readFile(new URL(`${entry.name}/${file}`,productRoot),'utf8');docs.push([`product:${entry.name}`,`${entry.name} ${productRelease} ${file}`,`products/releases/${productRelease}/${entry.name}/${file}`,'official']);}catch{}
   }
-  try{for(const mod of await readdir(new URL(`${entry.name}/modulos/`,productRoot))){if(mod.endsWith('.md'))docs.push([`product:${entry.name}`,`${entry.name} ${mod}`,`products/releases/v1.1/${entry.name}/modulos/${mod}`,'official']);}}catch{}
+  try{for(const mod of await readdir(new URL(`${entry.name}/modulos/`,productRoot))){if(mod.endsWith('.md'))docs.push([`product:${entry.name}`,`${entry.name} ${productRelease} ${mod}`,`products/releases/${productRelease}/${entry.name}/modulos/${mod}`,'official']);}}catch{}
 }
 const supportRoot=new URL('../products/support/',import.meta.url);
 try{
@@ -39,6 +40,12 @@ try{
   }
 }catch{}
 const sql=neon(process.env.DATABASE_URL); let seeded=0;
+// Retire superseded content-product releases before activating the current certified release.
+for(const code of ['ZEV-CMB-011','ZEV-IA-011','ZEV-LCX-011','ZEV-NGC-011','ZEV-VEN-011']){
+  await sql.query("update knowledge_documents set active=false,updated_at=now() where namespace=$1 and source_ref like 'products/releases/v%' and source_ref not like $2",[`product:${code}`,`products/releases/${productRelease}/%`]);
+}
+await sql.query("update knowledge_documents set active=false,updated_at=now() where namespace='company' and source_ref='launch/ZEVANORY-PRODUCTS-V11-HANDOFF.md'");
+
 for(const [namespace,title,path,trust] of docs){
   const content=(await readFile(new URL(path,root),'utf8')).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,' ').slice(0,50000);
   await sql.query('update knowledge_documents set active=false,updated_at=now() where namespace=$1 and source_ref=$2 and title<>$3',[namespace,path,title]);

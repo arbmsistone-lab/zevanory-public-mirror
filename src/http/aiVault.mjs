@@ -1,4 +1,4 @@
-import { aiVaultStatus, constantTimeEqual, deriveAiVaultIngestToken, storeAiVaultSecret } from '../src/aiSecretVault.mjs';
+import { aiVaultStatus, constantTimeEqual, deriveAiVaultIngestToken, storeAiVaultSecret } from '../aiSecretVault.mjs';
 
 async function readJson(req){
   let raw='';

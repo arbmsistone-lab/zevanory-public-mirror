@@ -24,3 +24,5 @@ test('AI vault status exposes names only and derived token is deterministic',asy
   assert.equal(status.encrypted,true);
   assert.equal(await deriveAiVaultIngestToken(master),await deriveAiVaultIngestToken(master));
 });
+
+test('AI vault HTTP module resolves its canonical implementation',async()=>{const mod=await import('../src/http/aiVault.mjs');assert.equal(typeof mod.default,'function');});
