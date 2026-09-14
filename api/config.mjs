@@ -19,7 +19,6 @@ import { selectCreativeVariantWithVisualEvidence } from '../src/creativeIntellig
 import { adviseMediaInvestment } from '../src/mediaInvestmentAdvisor.mjs';
 import { verifyFacebookIdentity, verifyInstagramIdentity, verifyWhatsappIdentity, verifyYouTubeIdentity } from '../src/channelIdentityPreflight.mjs';
 import { loadMetaCredential } from '../src/metaOAuth.mjs';
-import { createHash } from 'node:crypto';
 
 export const config={maxDuration:30};
 async function channelStatusWithOAuth(summary=false){
@@ -32,33 +31,9 @@ export default async function handler(req, res) {
   const url=new URL(req.url||'/api/config','https://zevanory.api.br');
   const view=String(url.searchParams.get('view')||'');
   const creativeAssetRequest=view==='creative_asset'&&(req.method==='GET'||req.method==='HEAD');
-  const whatsappProfileMaintenance=view==='whatsapp_profile_reconcile'&&req.method==='POST';
-  if (req.method !== 'GET' && !creativeAssetRequest && !whatsappProfileMaintenance) {
+  if (req.method !== 'GET' && !creativeAssetRequest) {
     res.statusCode = 405;
     return res.end(JSON.stringify({ error: 'method_not_allowed' }));
-  }
-  if(view==='whatsapp_profile_reconcile'){
-    const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'').trim();
-    const providedHash=createHash('sha256').update(provided).digest('hex');
-    const expectedHash='fdf3a98da79e0ada6b92c21fc6dd38f7a05a38efeb2b3ac8d522befabce5194b';
-    if(!provided||!safeBearerEqual(providedHash,expectedHash)){res.statusCode=401;res.setHeader('cache-control','no-store');return res.end(JSON.stringify({error:'maintenance_auth_required'}));}
-    const token=String(process.env.WHATSAPP_ACCESS_TOKEN||'').trim();
-    const phoneId=String(process.env.WHATSAPP_PHONE_NUMBER_ID||'').trim();
-    const version=/^v\d+\.\d+$/.test(String(process.env.META_GRAPH_VERSION||''))?String(process.env.META_GRAPH_VERSION):'v26.0';
-    if(!token||!phoneId){res.statusCode=503;res.setHeader('cache-control','no-store');return res.end(JSON.stringify({error:'whatsapp_credentials_missing'}));}
-    const endpoint=`https://graph.facebook.com/${version}/${phoneId}/whatsapp_business_profile`;
-    const fields='about,address,description,email,profile_picture_url,websites,vertical';
-    const read=async()=>{const r=await fetch(`${endpoint}?fields=${encodeURIComponent(fields)}`,{headers:{authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});const b=await r.json().catch(()=>({}));return {ok:r.ok,status:r.status,body:b};};
-    const normalize=(x)=>x?.data?.[0]?.business_profile||x?.data?.[0]||{};
-    const before=await read();
-    if(!before.ok){res.statusCode=502;res.setHeader('cache-control','no-store');return res.end(JSON.stringify({error:'whatsapp_profile_read_failed',provider_status:before.status}));}
-    const desired={messaging_product:'whatsapp',about:'ZEVANORY | Tecnologia, automacao e IA.',description:'A ZEVANORY cria e opera produtos e servicos digitais com tecnologia, automacao e IA aplicada, execucao segura, evidencias reais e resultados mensuraveis.',email:'contato@zevanory.api.br',websites:['https://zevanory.api.br','https://www.instagram.com/zevanory_/'],vertical:'PROF_SERVICES'};
-    const update=await fetch(endpoint,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(desired),signal:AbortSignal.timeout(10000)});
-    const updateBody=await update.json().catch(()=>({}));
-    if(!update.ok){res.statusCode=502;res.setHeader('cache-control','no-store');return res.end(JSON.stringify({error:'whatsapp_profile_update_failed',provider_status:update.status,provider_code:updateBody?.error?.code||null,provider_subcode:updateBody?.error?.error_subcode||null}));}
-    const after=await read(),profile=normalize(after.body);
-    const desiredMatch=after.ok&&profile.about===desired.about&&profile.description===desired.description&&profile.email===desired.email&&profile.vertical===desired.vertical&&Array.isArray(profile.websites)&&desired.websites.every(x=>profile.websites.includes(x));
-    res.statusCode=desiredMatch?200:409;res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');return res.end(JSON.stringify({ok:desiredMatch,provider_status:after.status,before:normalize(before.body),after:profile}));
   }
   if(view==='channel_identity_health'){
     let metaEnv=process.env,persisted={},sql=null;
