@@ -12,7 +12,7 @@ function run(command,args,{capture=false}={}){
 }
 export function buildPilotRuntimeConfig(baseText,meta){
   const cfg=JSON.parse(baseText); const vars={...(cfg.vars||{})}; delete vars.AFFILIATE_TERMS_VERSION;
-  vars.CERTIFICATION_PILOT_ENABLED='true'; vars.CHECKOUT_ENABLED='true'; vars.FINANCIAL_EVENTS_ENABLED='true';
+  vars.CERTIFICATION_PILOT_ENABLED='true'; vars.CHECKOUT_ENABLED='false'; vars.FINANCIAL_EVENTS_ENABLED='false';
   vars.SALE_GLOBALLY_ENABLED='false'; vars.PRE_SALE_GATES_APPROVED='false'; vars.WHATSAPP_SALES_ENABLED='false';
   vars.ZEVANORY_RELEASE_SHA=meta.sha; vars.ZEVANORY_RELEASE_REF=meta.ref; vars.ZEVANORY_DEPLOYMENT_ENV='production';
   cfg.vars=vars; return JSON.stringify(cfg,null,2);
@@ -20,6 +20,8 @@ export function buildPilotRuntimeConfig(baseText,meta){
 export function verifyPilotState({release,health,provider},meta){
   if(release?.deployment?.commit_sha!==meta.sha||release?.deployment?.branch!==meta.ref) throw new Error('pilot_release_provenance_mismatch');
   if(release?.sales_mode!=='globally-blocked') throw new Error('pilot_sales_must_remain_blocked');
+  if(release?.checkout_mode!=='globally-blocked') throw new Error('pilot_checkout_must_remain_blocked');
+  if(release?.financial_mode!=='disabled') throw new Error('pilot_financial_events_must_remain_disabled');
   if(health?.ready!==true) throw new Error('pilot_health_not_ready');
   if(provider?.authenticated!==true||provider?.pre_sale_ready!==true) throw new Error('pilot_provider_not_ready');
   return true;
