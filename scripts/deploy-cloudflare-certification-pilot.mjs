@@ -11,7 +11,7 @@ function run(command,args,{capture=false}={}){
   return capture?String(r.stdout||'').trim():'';
 }
 export function buildPilotRuntimeConfig(baseText,meta){
-  const cfg=JSON.parse(baseText); const vars={...(cfg.vars||{})};
+  const cfg=JSON.parse(baseText); const vars={...(cfg.vars||{})}; delete vars.AFFILIATE_TERMS_VERSION;
   vars.CERTIFICATION_PILOT_ENABLED='true'; vars.CHECKOUT_ENABLED='true'; vars.FINANCIAL_EVENTS_ENABLED='true';
   vars.SALE_GLOBALLY_ENABLED='false'; vars.PRE_SALE_GATES_APPROVED='false'; vars.WHATSAPP_SALES_ENABLED='false';
   vars.ZEVANORY_RELEASE_SHA=meta.sha; vars.ZEVANORY_RELEASE_REF=meta.ref; vars.ZEVANORY_DEPLOYMENT_ENV='production';
