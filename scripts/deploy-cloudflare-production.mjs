@@ -20,7 +20,7 @@ export function validateCloudflareReleaseMetadata({sha,ref,status,githubSha,gitl
 }
 
 export function buildWranglerArgs(meta){
-  return ['wrangler','deploy','--config',TEMP_CONFIG,'--keep-vars','--strict','--tag',meta.sha,'--message',`ZEVANORY production ${meta.sha}`];
+  return ['wrangler','deploy','--config',TEMP_CONFIG,'--keep-vars','--strict',`--tag=${meta.sha}`,`--message=ZEVANORY production ${meta.sha}`];
 }
 function run(command,args,{capture=false,shell=false}={}){
   const result=spawnSync(command,args,{encoding:'utf8',shell,stdio:capture?['ignore','pipe','pipe']:'inherit'});
