@@ -1,4 +1,7 @@
+const FAIL_CLOSED_RUNTIME_FLAGS=Object.freeze(['CERTIFICATION_PILOT_ENABLED','SALE_GLOBALLY_ENABLED','PRE_SALE_GATES_APPROVED','CHECKOUT_ENABLED','WHATSAPP_SALES_ENABLED','FINANCIAL_EVENTS_ENABLED']);
+
 export function hydrateRuntimeConfig(env=process.env,target=process.env) {
+  for(const key of FAIL_CLOSED_RUNTIME_FLAGS) target[key]=String(env?.[key]??'false');
   if (env && typeof env === 'object') {
     for (const [key,value] of Object.entries(env)) {
       if (value === undefined || value === null) continue;

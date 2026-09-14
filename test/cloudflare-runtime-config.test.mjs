@@ -21,3 +21,12 @@ test('canonical Cloudflare vars produce affiliate automation readiness after hyd
   hydrateRuntimeConfig(cfg.vars||{},target);const out=commercialDistributionReadiness(target);
   assert.equal(out.fronts.affiliate.operational_ready,true);assert.equal(out.fronts.affiliate.automation_ready,true);assert.deepEqual(out.fronts.affiliate.blockers,[]);
 });
+
+
+test('removed critical binding fails closed instead of inheriting stale truth',()=>{
+  const target={CERTIFICATION_PILOT_ENABLED:'true',CHECKOUT_ENABLED:'true',FINANCIAL_EVENTS_ENABLED:'true'};
+  hydrateRuntimeConfig({},target);
+  assert.equal(target.CERTIFICATION_PILOT_ENABLED,'false');
+  assert.equal(target.CHECKOUT_ENABLED,'false');
+  assert.equal(target.FINANCIAL_EVENTS_ENABLED,'false');
+});
