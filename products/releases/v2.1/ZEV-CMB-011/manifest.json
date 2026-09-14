@@ -1,0 +1,14 @@
+{
+  "brand": "ZEVANORY",
+  "sku": "ZEV-CMB-011",
+  "product": "ZEVANORY Combo IA + Vendas",
+  "version": "2.1",
+  "includes": [
+    "ZEV-IA-011",
+    "ZEV-VEN-011"
+  ],
+  "quality_profile": "master_senior_content_v21",
+  "placeholder": false,
+  "master_gate": "100_of_100",
+  "content_quality_certified": true
+}
