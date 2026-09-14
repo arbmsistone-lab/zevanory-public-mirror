@@ -1,24 +1,22 @@
-# ARBM Contador para Salões — Handoff Comercial ZEVANORY
+﻿# ARBM Contador para SalÃµes â€” Handoff Comercial ZEVANORY
 
-Status: INTEGRAÇÃO COMERCIAL PREPARADA / VENDA BLOQUEADA.
+Status: PRODUTO CERTIFICADO PARA INTEGRAÃ‡ÃƒO COMERCIAL / VENDAS GLOBAIS BLOQUEADAS.
 SKU: `ARBM-CONTADOR-SALOES`.
 Marca comercial: ZEVANORY. Endosso: ARBM.
 
-## O que já está materializado
-- Registro oficial no portfólio ZEVANORY.
-- Landing pública e metadados SEO/SoftwareApplication.
-- Rotas estáticas para Cloudflare, Netlify e Vercel.
-- Contrato de suporte, privacidade, cancelamento e provisionamento fail-closed.
-- Bloqueio explícito de checkout e cobrança.
-- Testes de integração e de impossibilidade de venda prematura.
+## Identidade tÃ©cnica certificada
+- Fonte: `arbmsistone-lab/arbm-mei`.
+- Release: `COMMERCIAL_RELEASE_1_0`; package `0.1.0`.
+- SHA canÃ´nico: `20705d1620f640cee1b2a0aac97986d312c3e808`.
+- Worker de produÃ§Ã£o: `https://arbm-mei-api.zevanory.workers.dev`.
+- Cloudflare Version ID: `6fa21b6b-d636-4726-a6fb-dd9d74605f6f`.
+- PÃ³s-deploy: `/ready` = `sales:false`; cinco rotas comerciais reservadas = HTTP 423.
+- E2E gestÃ£o e ciclo comercial: PASS.
 
-## O que o gate técnico ainda precisa provar
-1. Repositório/fonte técnica canônica do aplicativo.
-2. Versão comercial canônica.
-3. Artefato de entrega/provisionamento e SHA-256.
-4. Funcionalidades efetivamente certificadas para o nicho.
-5. Fluxo E2E de criação de tenant/onboarding/ativação.
-6. Runbook de suporte, backup, recuperação e atualização.
-7. Política de preço específica aprovada por evidência comercial.
+## Oferta aprovada no nÃ­vel do produto
+- R$ 59,90/mÃªs; R$ 599,00/ano; implantaÃ§Ã£o R$ 0,00.
+- Escopo: agenda, clientes, financeiro, ledger imutÃ¡vel, radar MEI, obrigaÃ§Ãµes/relatÃ³rio mensal, IA com guardrails, recuperaÃ§Ã£o/exportaÃ§Ã£o/encerramento e aceite versionado.
+- Fora do v1: comissÃµes, estoque, NFS-e automÃ¡tica, Open Finance/Pix, WhatsApp e representaÃ§Ã£o contÃ¡bil/jurÃ­dica.
+- Runbook: `products/support/ARBM-CONTADOR-SALOES/RUNBOOK.md`.
 
-Nenhum desses itens pode ser presumido. Enquanto qualquer um estiver aberto, `sellable=false`, `checkout_enabled=false` e `artifact_materialized=false` permanecem obrigatórios.
+Todos os requisitos especÃ­ficos do produto estÃ£o materializados. `sellable=false` e `checkout_enabled=false` permanecem por desenho enquanto `ZEVANORY_COMMERCIAL_SALES_LOCKED` estiver ativo.
