@@ -95,6 +95,7 @@
     "audit:infrastructure:50x": "node scripts/audit-infrastructure-50x.mjs",
     "build:pages:static": "node scripts/build-cloudflare-pages-static.mjs",
     "deploy:pages:static": "npm run build:pages:static && npx wrangler pages deploy .pages-dist --project-name zevanory-static --branch main",
-    "audit:remote-quorum": "node scripts/audit-remote-cert-quorum.mjs"
+    "audit:remote-quorum": "node scripts/audit-remote-cert-quorum.mjs",
+    "deploy:pilot": "node scripts/deploy-cloudflare-certification-pilot.mjs"
   }
 }
