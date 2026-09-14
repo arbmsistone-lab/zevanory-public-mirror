@@ -11,6 +11,7 @@ import eventsOperatorHandler from '../api/events-operator.mjs';
 import agentRunHandler from '../api/agent-run.mjs';
 import agentStatusHandler from '../api/agent-status.mjs';
 import checkoutHandler from '../api/checkout.mjs';
+import arbmContadorSubscriptionHandler from './http/arbmContadorSubscription.mjs';
 import webhooksHandler from '../api/webhooks.mjs';
 import robotControlHandler from '../api/robot-control.mjs';
 import intelligenceHandler from '../api/intelligence.mjs';
@@ -38,6 +39,7 @@ const directHandlers = new Map([
   ['/api/agent/status', agentStatusHandler],
   ['/api/agent-status', agentStatusHandler],
   ['/api/checkout', checkoutHandler],
+  ['/api/subscriptions/arbm-contador', arbmContadorSubscriptionHandler],
   ['/api/webhooks', webhooksHandler],
   ['/api/robot/control', robotControlHandler],
   ['/api/robot-control', robotControlHandler],
