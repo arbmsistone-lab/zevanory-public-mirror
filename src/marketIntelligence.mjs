@@ -51,7 +51,8 @@ export function opportunityScore(input={}){
 export function decideMarketOpportunity(input={},policy=MARKET_INTELLIGENCE_POLICY){
   const readiness=evidenceReadiness(input.evidence,policy);
   const opportunity=opportunityScore(input);
-  if(!readiness.ready||!opportunity.complete)return Object.freeze({decision:'EVIDENCIA_INSUFICIENTE',reason:'minimum_verified_evidence_not_met',readiness,opportunity});
+  if(!readiness.ready)return Object.freeze({decision:'EVIDENCIA_INSUFICIENTE',reason:'minimum_verified_evidence_not_met',readiness,opportunity});
+  if(!opportunity.complete)return Object.freeze({decision:'EVIDENCIA_INSUFICIENTE',reason:'opportunity_dimensions_incomplete',readiness,opportunity});
   if(readiness.conflict_ratio>policy.max_conflict_ratio_for_invest&&opportunity.score>=policy.invest_score){
     return Object.freeze({decision:'TESTAR',reason:'conflicting_evidence_requires_controlled_test',readiness,opportunity});
   }
