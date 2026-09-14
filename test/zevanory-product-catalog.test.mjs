@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARBM_SIST_OFFER, ZEVANORY_PRODUCTS, ZEVANORY_PORTFOLIO, getZevanoryProduct, publicProductCatalog, resolveCheckoutOffer } from '../src/offerCatalog.mjs';
 
-test('ZEVANORY catalog contains the five v2 quality-certified products',()=>{
+test('ZEVANORY catalog contains the five v2.1 Master/Senior content-certified products',()=>{
   assert.equal(ZEVANORY_PRODUCTS.length,5);
   assert.deepEqual(ZEVANORY_PRODUCTS.map(x=>x.sku),['ZEV-IA-011','ZEV-VEN-011','ZEV-LCX-011','ZEV-CMB-011','ZEV-NGC-011']);
   for(const item of ZEVANORY_PRODUCTS){
-    assert.equal(item.version,'2.0');
+    assert.equal(item.version,'2.1');
     assert.equal(item.content_quality_certified,true);
     assert.equal(item.quality_certified,false);
     assert.equal(item.sellable,false);

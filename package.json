@@ -99,6 +99,9 @@
     "deploy:pilot": "node scripts/deploy-cloudflare-certification-pilot.mjs",
     "build:content:v2": "python scripts/build-content-products-v2.py",
     "audit:content:v2": "python scripts/audit-content-products-v2.py",
-    "audit:content:repro:v2": "python scripts/audit-content-repro-v2.py"
+    "audit:content:repro:v2": "python scripts/audit-content-repro-v2.py",
+    "build:content:v21": "python scripts/build-content-products-v21.py",
+    "audit:content:v21": "python scripts/audit-content-products-v21.py",
+    "audit:content:repro:v21": "python scripts/audit-content-repro-v21.py"
   }
 }
