@@ -56,3 +56,17 @@ test('pilot propagation retry stays bounded and succeeds only after exact runtim
   let n=0; const read=(path)=>{n++;if(path==='/api/release')return {deployment:{commit_sha:n<5?'b'.repeat(40):meta.sha,branch:'main'},sales_mode:'globally-blocked',checkout_mode:'globally-blocked',financial_mode:'disabled'};if(path==='/api/health')return {ready:true};if(path==='/api/provider-health')return {authenticated:true,pre_sale_ready:true};return {commercial_enabled:false,certification_pilot:{enabled:true},production_mode:'pre-sale-blocked'};};
   assert.equal(await verifyPilotStateEventually({read,meta,attempts:3,delayMs:0,sleep:async()=>{}}),true);
 });
+
+test('pilot propagation retry exhausts and fails closed when runtime never converges',async()=>{
+  const read=(path)=>path==='/api/release'
+    ? {deployment:{commit_sha:'b'.repeat(40),branch:'main'},sales_mode:'globally-blocked',checkout_mode:'globally-blocked',financial_mode:'disabled'}
+    : path==='/api/health'
+      ? {ready:true}
+      : path==='/api/provider-health'
+        ? {authenticated:true,pre_sale_ready:true}
+        : {commercial_enabled:false,certification_pilot:{enabled:true},production_mode:'pre-sale-blocked'};
+  await assert.rejects(
+    verifyPilotStateEventually({read,meta,attempts:2,delayMs:0,sleep:async()=>{}}),
+    /pilot_release_provenance_mismatch/
+  );
+});
