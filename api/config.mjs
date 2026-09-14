@@ -57,8 +57,14 @@ export default async function handler(req, res) {
     res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;return res.end(JSON.stringify(out));
   }
   if(view==='closure_status'){
-    let runtimeOAuth={}; if(process.env.DATABASE_URL){try{runtimeOAuth=await persistedOAuthReadiness(neon(process.env.DATABASE_URL));}catch{runtimeOAuth={};}}
+    let runtimeOAuth={},metaEnv=process.env,sql=null;
+    if(process.env.DATABASE_URL){try{sql=neon(process.env.DATABASE_URL);runtimeOAuth=await persistedOAuthReadiness(sql);const c=await loadMetaCredential(sql,process.env);metaEnv={...process.env,META_ACCESS_TOKEN:c.access_token,META_PAGE_ID:c.page_id,INSTAGRAM_BUSINESS_ACCOUNT_ID:c.instagram_id};}catch{runtimeOAuth=runtimeOAuth||{};}}
     const gate=salesGate(),localChannels=overlayPersistedOAuth(publicChannelReadinessSummary(),runtimeOAuth),distribution=commercialDistributionReadiness(process.env,runtimeOAuth),brand=brandIdentityReadiness(),pilot=certificationPilotStatus();
+    const [facebookIdentity,instagramIdentity,whatsappIdentity]=await Promise.all([verifyFacebookIdentity({env:metaEnv}),verifyInstagramIdentity({env:metaEnv}),verifyWhatsappIdentity()]);
+    const identityBlockers=[];
+    for(const [name,state] of Object.entries({facebook:facebookIdentity,instagram:instagramIdentity,whatsapp:whatsappIdentity}))if(state.attempted&&!state.verified)identityBlockers.push(`${name}_provider_identity_unverified`);
+    const whatsappPresenceBlockers=[]; if(instagramIdentity.attempted&&instagramIdentity.verified&&!instagramIdentity.whatsapp_contact_visible)whatsappPresenceBlockers.push('instagram_whatsapp_contact_not_visible');
+    const freshBrandReady=brand.ready&&identityBlockers.length===0;
     const remoteTruth=await remoteRuntimeChannelTruth(process.env);
     const channels=overlayRemoteChannelTruth(localChannels,remoteTruth);
     const channelSummary=Object.fromEntries(Object.entries(channels).map(([name,state])=>[name,{operational_ready:state.operational_ready,operational_mode:state.operational_mode,api_configured:state.api_configured,alternate_api_configured:state.alternate_api_configured,contingency_ready:state.contingency_ready}]));
@@ -66,7 +72,7 @@ export default async function handler(req, res) {
     const frontSummary=overlayRemoteChannelTruth(rawFrontSummary,remoteTruth);
     const frontValues=Object.values(frontSummary);
     res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');res.statusCode=200;
-    return res.end(JSON.stringify({service:'ZEVANORY',release_id:RELEASE.id,commercial_enabled:gate.enabled,lifecycle_approved:gate.lifecycle_approved,channels:channelSummary,distribution:{technical_ready:distribution.technical_ready,operational_ready:frontValues.every(x=>x.operational_ready),total_fronts:frontValues.length,configured_fronts:frontValues.filter(x=>x.operational_ready).length,automation_ready_fronts:frontValues.filter(x=>x.automation_ready).length,fronts:frontSummary},brand_identity:{ready:brand.ready,verified_fronts:brand.verified_fronts,total_fronts:brand.total_fronts},certification_pilot:{enabled:pilot.enabled,ready:pilot.ready},excluded_fronts:EXCLUDED_COMMERCIAL_FRONTS,production_mode:gate.enabled?'commercial-gated':'pre-sale-blocked'}));
+    return res.end(JSON.stringify({service:'ZEVANORY',release_id:RELEASE.id,commercial_enabled:gate.enabled,lifecycle_approved:gate.lifecycle_approved,channels:channelSummary,distribution:{technical_ready:distribution.technical_ready,operational_ready:frontValues.every(x=>x.operational_ready),total_fronts:frontValues.length,configured_fronts:frontValues.filter(x=>x.operational_ready).length,automation_ready_fronts:frontValues.filter(x=>x.automation_ready).length,fronts:frontSummary},brand_identity:{ready:freshBrandReady,configured_ready:brand.ready,verified_fronts:brand.verified_fronts,total_fronts:brand.total_fronts,fresh_provider_blockers:identityBlockers},whatsapp_presence:{ready:whatsappPresenceBlockers.length===0,blockers:whatsappPresenceBlockers},certification_pilot:{enabled:pilot.enabled,ready:pilot.ready},excluded_fronts:EXCLUDED_COMMERCIAL_FRONTS,production_mode:gate.enabled?'commercial-gated':'pre-sale-blocked'}));
   }
   if(view==='creative_sample'){
     const origin=`${String(req.headers?.['x-forwarded-proto']||'https').split(',')[0]}://${String(req.headers?.['x-forwarded-host']||req.headers?.host||'zevanory.api.br').split(',')[0]}`;
