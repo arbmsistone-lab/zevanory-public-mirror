@@ -16,9 +16,11 @@ export const BRAND_PROFILE = Object.freeze({
   coreBio:COMMERCIAL_MESSAGES.zevanory.bio,
 });
 
+export const OFFICIAL_WHATSAPP=Object.freeze({display:'+55 88 9234-0423',e164:'558892340423',url:'https://wa.me/558892340423'});
 const brandLink=(source)=>`https://zevanory.api.br/?utm_source=${source}&utm_medium=organic&utm_campaign=zevanory_brand`;
+const whatsappLink=(source)=>`${OFFICIAL_WHATSAPP.url}?text=${encodeURIComponent(`Ola, vim pelo ${source} da ZEVANORY e quero atendimento.`)}`;
 const profile=(handle,source,extra={})=>Object.freeze({
-  name:BRAND_PROFILE.name,handle,url:brandLink(source),category:BRAND_PROFILE.category,
+  name:BRAND_PROFILE.name,handle,url:brandLink(source),whatsapp:OFFICIAL_WHATSAPP.display,whatsappUrl:whatsappLink(source),category:BRAND_PROFILE.category,
   profileImage:BRAND_PROFILE.profileImage,...COMMERCIAL_MESSAGES[source],...extra,
 });
 

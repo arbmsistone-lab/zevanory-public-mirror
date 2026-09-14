@@ -32,10 +32,14 @@ export function buildOutboundAdapters({env=process.env,fetchImpl=globalThis.fetc
       const phoneId=required(env.WHATSAPP_PHONE_NUMBER_ID,'whatsapp_phone_number_id_missing');
       const to=required(event.payload?.contact_ref,'whatsapp_recipient_missing');
       const text=required(event.payload?.text,'whatsapp_text_missing');const media=String(event.payload?.media_url||'').trim();
-      const message=media?{messaging_product:'whatsapp',recipient_type:'individual',to,type:'image',image:{link:ensureHttps(media,'whatsapp_media_url_invalid'),caption:text.slice(0,1024)}}:{messaging_product:'whatsapp',recipient_type:'individual',to,type:'text',text:{preview_url:false,body:text}};
+      const requestedType=String(event.payload?.media_type||'').toLowerCase();
+      const inferredType=/\.(mp3|ogg|opus|m4a|aac)(?:\?|$)/i.test(media)?'audio':/\.(mp4|3gp|mov|webm)(?:\?|$)/i.test(media)?'video':/\.(pdf|docx?|xlsx?|pptx?|csv|txt)(?:\?|$)/i.test(media)?'document':'image';
+      const mediaType=['image','video','audio','document'].includes(requestedType)?requestedType:inferredType;
+      let message={messaging_product:'whatsapp',recipient_type:'individual',to,type:'text',text:{preview_url:false,body:text}};
+      if(media){const link=ensureHttps(media,'whatsapp_media_url_invalid');if(mediaType==='audio')message={messaging_product:'whatsapp',recipient_type:'individual',to,type:'audio',audio:{link}};else if(mediaType==='video')message={messaging_product:'whatsapp',recipient_type:'individual',to,type:'video',video:{link,caption:text.slice(0,1024)}};else if(mediaType==='document')message={messaging_product:'whatsapp',recipient_type:'individual',to,type:'document',document:{link,caption:text.slice(0,1024),filename:String(event.payload?.filename||'ZEVANORY').slice(0,240)}};else message={messaging_product:'whatsapp',recipient_type:'individual',to,type:'image',image:{link,caption:text.slice(0,1024)}};}
       const body=await requestJson(fetchImpl,`${metaBase()}/${encodeURIComponent(phoneId)}/messages`,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(message)},[200]);
       const messageId=String(body?.messages?.[0]?.id||'');if(!messageId)throw providerAcceptanceMissing('whatsapp_message_id_missing');
-      return Object.freeze({provider:'meta_whatsapp',accepted:true,provider_message_id:messageId,confirmation:'webhook_required'});
+      return Object.freeze({provider:'meta_whatsapp',accepted:true,provider_message_id:messageId,media_type:media?mediaType:'text',confirmation:'webhook_required'});
     },
     'channel:email':async(event)=>{
       ensureOutboundAllowed(event,env,commercialGate);const token=required(env.RESEND_API_KEY,'resend_api_key_missing');

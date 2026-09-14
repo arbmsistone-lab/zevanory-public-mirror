@@ -20,6 +20,7 @@ export function evaluateAgentDecision({ decision = {}, context = {}, authorizati
   if(authorization && !authorization.allowed && decision.execute===true) issues.push('blocked_tool_requested_execution');
   if(context?.lead?.stage && ['paid','delivered','refunded','unqualified','lost'].includes(context.lead.stage) && action!=='review') issues.push('terminal_stage_action');
   if(['send_message','send_support_message'].includes(expectedTool)&&!content(decision)) issues.push('message_content_missing');
+  if(['send_message','send_support_message'].includes(expectedTool)&&Number.isFinite(confidence)&&confidence<.99) issues.push('customer_message_confidence_below_99pct');
   if(['send_message','send_support_message'].includes(expectedTool)&&!String(context?.lead?.contact_ref||'').trim()) issues.push('message_recipient_missing');
   if(expectedTool==='send_support_message'&&String(context?.job_type||'')!=='product_support') issues.push('support_job_required');
   if(String(context?.job_type||'')==='product_support'&&expectedTool!=='send_support_message') issues.push('support_action_required');
