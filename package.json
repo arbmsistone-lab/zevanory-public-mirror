@@ -96,6 +96,9 @@
     "build:pages:static": "node scripts/build-cloudflare-pages-static.mjs",
     "deploy:pages:static": "npm run build:pages:static && npx wrangler pages deploy .pages-dist --project-name zevanory-static --branch main",
     "audit:remote-quorum": "node scripts/audit-remote-cert-quorum.mjs",
-    "deploy:pilot": "node scripts/deploy-cloudflare-certification-pilot.mjs"
+    "deploy:pilot": "node scripts/deploy-cloudflare-certification-pilot.mjs",
+    "build:content:v2": "python scripts/build-content-products-v2.py",
+    "audit:content:v2": "python scripts/audit-content-products-v2.py",
+    "audit:content:repro:v2": "python scripts/audit-content-repro-v2.py"
   }
 }
