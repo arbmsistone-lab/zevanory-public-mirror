@@ -31,7 +31,7 @@ function run(command,args,{capture=false,shell=false}={}){
 
 export function buildRuntimeConfig(baseText,meta){
   const cfg=JSON.parse(baseText);
-  cfg.vars={...(cfg.vars||{}),ZEVANORY_RELEASE_SHA:meta.sha,ZEVANORY_RELEASE_REF:meta.ref,ZEVANORY_DEPLOYMENT_ENV:'production',ZEVANORY_DEPLOYMENT_REGION:'cloudflare'};
+  cfg.vars={...(cfg.vars||{}),ZEVANORY_RELEASE_SHA:meta.sha,ZEVANORY_RELEASE_REF:meta.ref,ZEVANORY_DEPLOYMENT_ENV:'production'};
   return JSON.stringify(cfg,null,2);
 }
 
