@@ -12,10 +12,10 @@ test('cloudflare production requires clean GitHub GitLab HEAD parity',()=>{
 
 test('cloudflare deploy carries strict immutable provenance',()=>{
   const args=buildWranglerArgs(meta);
-  for(const value of ['wrangler','deploy','--keep-vars','--strict',`--tag=${sha}`]) assert.equal(args.includes(value),true);
+  for(const value of ['wrangler','deploy','--strict',`--tag=${sha}`]) assert.equal(args.includes(value),true); assert.equal(args.includes('--keep-vars'),false);
   const cfg=JSON.parse(buildRuntimeConfig('{"vars":{"SALE_GLOBALLY_ENABLED":"false"}}',meta));
   assert.equal(cfg.vars.ZEVANORY_RELEASE_SHA,sha); assert.equal(cfg.vars.ZEVANORY_RELEASE_REF,'main');
-  assert.equal(cfg.vars.SALE_GLOBALLY_ENABLED,'false'); assert.equal(cfg.vars.ZEVANORY_DEPLOYMENT_ENV,'production');
+  assert.equal(cfg.vars.SALE_GLOBALLY_ENABLED,'false'); assert.equal(cfg.vars.ZEVANORY_DEPLOYMENT_ENV,'production'); assert.equal(cfg.vars.CERTIFICATION_PILOT_ENABLED,undefined); assert.equal(cfg.vars.CERTIFICATION_PILOT_MAX_ORDERS,undefined);
 });
 
 test('post deploy proof requires exact SHA and sales still locked',()=>{

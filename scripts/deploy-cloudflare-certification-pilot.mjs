@@ -14,6 +14,7 @@ export function buildPilotRuntimeConfig(baseText,meta){
   const cfg=JSON.parse(baseText); const vars={...(cfg.vars||{})}; delete vars.AFFILIATE_TERMS_VERSION;
   vars.CERTIFICATION_PILOT_ENABLED='true'; vars.CHECKOUT_ENABLED='false'; vars.FINANCIAL_EVENTS_ENABLED='false';
   vars.SALE_GLOBALLY_ENABLED='false'; vars.PRE_SALE_GATES_APPROVED='false'; vars.WHATSAPP_SALES_ENABLED='false';
+  delete vars.CERTIFICATION_PILOT_MAX_ORDERS;
   vars.ZEVANORY_RELEASE_SHA=meta.sha; vars.ZEVANORY_RELEASE_REF=meta.ref; vars.ZEVANORY_DEPLOYMENT_ENV='production';
   cfg.vars=vars; return JSON.stringify(cfg,null,2);
 }
@@ -48,7 +49,7 @@ export async function main(){
   });
   writeFileSync(TEMP_CONFIG,buildPilotRuntimeConfig(readFileSync('wrangler.jsonc','utf8'),meta),'utf8');
   try{
-    const args=['wrangler','deploy','--config',TEMP_CONFIG,'--keep-vars','--strict',`--tag=${meta.sha}`,`--message=ZEVANORY-certification-pilot-${meta.sha}`];
+    const args=['wrangler','deploy','--config',TEMP_CONFIG,'--strict',`--tag=${meta.sha}`,`--message=ZEVANORY-certification-pilot-${meta.sha}`];
     if(process.platform==='win32') run(process.env.ComSpec||'cmd.exe',['/d','/s','/c',`npx ${args.join(' ')}`]); else run('npx',args);
     const read=(path)=>JSON.parse(run('curl',['-fsS',`https://zevanory.api.br${path}`],{capture:true}));
     await verifyPilotStateEventually({read,meta});

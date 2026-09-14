@@ -16,6 +16,9 @@ test('pilot config is read-only and preserves all commercial mutation switches c
   assert.equal(cfg.vars.PRE_SALE_GATES_APPROVED,'false');
   assert.equal(cfg.vars.WHATSAPP_SALES_ENABLED,'false');
   assert.equal(cfg.vars.ZEVANORY_RELEASE_SHA,meta.sha);
+  assert.equal(cfg.vars.ZEVANORY_RELEASE_REF,'main');
+  assert.equal(cfg.vars.ZEVANORY_DEPLOYMENT_ENV,'production');
+  assert.equal(cfg.vars.CERTIFICATION_PILOT_MAX_ORDERS,undefined);
 });
 test('pilot verification requires exact provenance healthy runtime authenticated provider and blocked sales',()=>{
   assert.equal(verifyPilotState({
