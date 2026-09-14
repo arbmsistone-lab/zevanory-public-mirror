@@ -45,7 +45,7 @@ export async function main(){
   run('git',['fetch','origin','main']); run('git',['fetch','gitlab','main']);
   const sha=run('git',['rev-parse','HEAD'],{capture:true});
   const ref=run('git',['branch','--show-current'],{capture:true});
-  const status=run('git',['status','--porcelain'],{capture:true});
+  const status=run('git',['status','--porcelain','--untracked-files=no'],{capture:true});
   const githubSha=run('git',['rev-parse','origin/main'],{capture:true});
   const gitlabSha=run('git',['rev-parse','gitlab/main'],{capture:true});
   const meta=validateCloudflareReleaseMetadata({sha,ref,status,githubSha,gitlabSha});

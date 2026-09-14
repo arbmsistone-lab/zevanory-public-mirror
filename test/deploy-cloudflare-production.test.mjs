@@ -23,3 +23,9 @@ test('post deploy proof requires exact SHA and sales still locked',()=>{
   assert.throws(()=>verifyLiveRelease({deployment:{commit_sha:'b'.repeat(40),branch:'main'},sales_mode:'globally-blocked'},meta),/sha_mismatch/);
   assert.throws(()=>verifyLiveRelease({deployment:{commit_sha:sha,branch:'main'},sales_mode:'enabled'},meta),/sales_must_remain_blocked/);
 });
+
+
+test('cloudflare deploy ignores unrelated untracked artifacts but not tracked dirtiness',async()=>{
+  const source=await import('node:fs/promises').then(fs=>fs.readFile(new URL('../scripts/deploy-cloudflare-production.mjs',import.meta.url),'utf8'));
+  assert.match(source,/status','--porcelain','--untracked-files=no/);
+});
