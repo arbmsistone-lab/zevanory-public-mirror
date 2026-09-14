@@ -45,8 +45,13 @@ export async function verifyWhatsappIdentity({env=process.env,fetchImpl=globalTh
   const fields='id,display_phone_number,verified_name,name_status,quality_rating';
   const x=await getJson(fetchImpl,`https://graph.facebook.com/${version}/${encodeURIComponent(id)}?fields=${fields}`,token);
   if(!x.ok)return result(true,false,`provider_http_${x.status}`);
-  const ok=clean(x.body?.id)===id&&digits(x.body?.display_phone_number)===PROJECT.officialWhatsappE164;
-  return result(true,ok,ok?'identity_match':'identity_mismatch',{provider_id:clean(x.body?.id),display_phone_number:digits(x.body?.display_phone_number),verified_name:clean(x.body?.verified_name),name_status:clean(x.body?.name_status),quality_rating:clean(x.body?.quality_rating)});
+  const numberMatch=clean(x.body?.id)===id&&digits(x.body?.display_phone_number)===PROJECT.officialWhatsappE164;
+  const verifiedName=clean(x.body?.verified_name),nameStatus=clean(x.body?.name_status).toUpperCase();
+  const brandMatch=verifiedName.toUpperCase()==='ZEVANORY';
+  const nameUsable=['APPROVED','AVAILABLE_WITHOUT_REVIEW'].includes(nameStatus);
+  const ok=numberMatch&&brandMatch&&nameUsable;
+  const reason=!numberMatch?'number_identity_mismatch':!brandMatch?'brand_display_name_mismatch':!nameUsable?'brand_display_name_not_ready':'identity_match';
+  return result(true,ok,reason,{provider_id:clean(x.body?.id),display_phone_number:digits(x.body?.display_phone_number),number_verified:numberMatch,verified_name:verifiedName,brand_name_verified:brandMatch,name_status:nameStatus,quality_rating:clean(x.body?.quality_rating)});
 }
 
 export async function verifyYouTubeIdentity({env=process.env,fetchImpl=globalThis.fetch}={}){

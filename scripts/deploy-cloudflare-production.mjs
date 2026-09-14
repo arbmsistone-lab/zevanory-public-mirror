@@ -20,7 +20,7 @@ export function validateCloudflareReleaseMetadata({sha,ref,status,githubSha,gitl
 }
 
 export function buildWranglerArgs(meta){
-  return ['wrangler','deploy','--config',TEMP_CONFIG,'--keep-vars','--strict',`--tag=${meta.sha}`,`--message=ZEVANORY-production-${meta.sha}`];
+  return ['wrangler','deploy','--config',TEMP_CONFIG,'--strict',`--tag=${meta.sha}`,`--message=ZEVANORY-production-${meta.sha}`];
 }
 function run(command,args,{capture=false,shell=false}={}){
   const result=spawnSync(command,args,{encoding:'utf8',shell,stdio:capture?['ignore','pipe','pipe']:'inherit'});
@@ -32,6 +32,7 @@ function run(command,args,{capture=false,shell=false}={}){
 export function buildRuntimeConfig(baseText,meta){
   const cfg=JSON.parse(baseText);
   cfg.vars={...(cfg.vars||{}),ZEVANORY_RELEASE_SHA:meta.sha,ZEVANORY_RELEASE_REF:meta.ref,ZEVANORY_DEPLOYMENT_ENV:'production'};
+  delete cfg.vars.CERTIFICATION_PILOT_ENABLED; delete cfg.vars.CERTIFICATION_PILOT_MAX_ORDERS;
   return JSON.stringify(cfg,null,2);
 }
 
