@@ -970,7 +970,7 @@
     },
     {
       "id": "CODE-RELEASE-FINGERPRINT",
-      "label": "src/release.mjs + api/release.mjs",
+      "label": "src/release.mjs + src/http/release.mjs",
       "approved_operations": 3,
       "status": "APPROVED",
       "operations": [
@@ -1154,7 +1154,7 @@
     },
     {
       "id": "CODE-ENTERPRISE-ASSURANCE",
-      "label": "src/enterpriseAssurance.mjs + api/assurance.mjs",
+      "label": "src/enterpriseAssurance.mjs + src/http/assurance.mjs",
       "approved_operations": 3,
       "status": "APPROVED",
       "operations": [
