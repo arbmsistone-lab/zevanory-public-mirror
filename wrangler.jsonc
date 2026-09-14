@@ -75,22 +75,22 @@
       "FACEBOOK_PROFILE_URL": "https://www.facebook.com/profile.php?id=1249902628211703",
       "LINKEDIN_FOUNDER_PROFILE_VERIFIED": "true",
       "LINKEDIN_OPERATOR_ASSISTED_PUBLISHING": "true",
-      "LINKEDIN_FOUNDER_PROFILE_URL": "https://www.linkedin.com/in/airton-renan-alves-moreira-bitu-1501b6304/"
-    },
-    "AFFILIATE_PROVIDER": "zevanory-first-party",
-    "AFFILIATE_TRACKING_READY": "true",
-    "AFFILIATE_TERMS_REVIEWED": "true",
-    "AFFILIATE_TERMS_VERSION": "2026-09",
-    "AFFILIATE_ATTRIBUTION_WINDOW_DAYS": "30",
-    "AFFILIATE_COMMISSION_BPS": "1000",
-    "AFFILIATE_PAYOUT_DELAY_DAYS": "30",
-    "AFFILIATE_SELF_REFERRAL_POLICY": "blocked",
-    "AFFILIATE_REFUND_REVERSAL_READY": "true",
-    "AFFILIATE_CHARGEBACK_REVERSAL_READY": "true",
-    "AFFILIATE_IDEMPOTENCY_READY": "true",
-    "AFFILIATE_PROVIDER_CONFIRMATION_READY": "true",
-    "AFFILIATE_DISCLOSURE_URL": "https://edge.zevanory.api.br/afiliados",
-    "AFFILIATE_PRIVACY_URL": "https://edge.zevanory.api.br/privacidade"
+      "LINKEDIN_FOUNDER_PROFILE_URL": "https://www.linkedin.com/in/airton-renan-alves-moreira-bitu-1501b6304/",
+      "AFFILIATE_PROVIDER": "zevanory-first-party",
+      "AFFILIATE_TRACKING_READY": "true",
+      "AFFILIATE_TERMS_REVIEWED": "true",
+      "AFFILIATE_TERMS_VERSION": "2026-09",
+      "AFFILIATE_ATTRIBUTION_WINDOW_DAYS": "30",
+      "AFFILIATE_COMMISSION_BPS": "1000",
+      "AFFILIATE_PAYOUT_DELAY_DAYS": "30",
+      "AFFILIATE_SELF_REFERRAL_POLICY": "blocked",
+      "AFFILIATE_REFUND_REVERSAL_READY": "true",
+      "AFFILIATE_CHARGEBACK_REVERSAL_READY": "true",
+      "AFFILIATE_IDEMPOTENCY_READY": "true",
+      "AFFILIATE_PROVIDER_CONFIRMATION_READY": "true",
+      "AFFILIATE_DISCLOSURE_URL": "https://edge.zevanory.api.br/afiliados",
+      "AFFILIATE_PRIVACY_URL": "https://edge.zevanory.api.br/privacidade"
+    }
   },
   "secrets": {
     "required": ["DATABASE_URL", "PUBLIC_BASE_URL", "FULFILLMENT_OPERATOR_TOKEN", "NUVEMSHOP_APP_ID"]
