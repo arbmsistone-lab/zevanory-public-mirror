@@ -15,7 +15,7 @@ import webhooksHandler from '../api/webhooks.mjs';
 import robotControlHandler from '../api/robot-control.mjs';
 import intelligenceHandler from '../api/intelligence.mjs';
 import autopilotHandler from '../api/autopilot.mjs';
-import aiVaultHandler from '../api/ai-vault.mjs';
+import aiVaultHandler from './http/aiVault.mjs';
 import { handleArtifactIssue, handleArtifactDownload } from './cloudflareArtifactRoutes.mjs';
 import { handleCloudflareJournalAppend } from './durableOperationJournal.mjs';
 import { publicCommercialChannelReadinessSummary } from './publicChannelStatus.mjs';
@@ -174,6 +174,7 @@ export default {
     return withSecurityHeaders(response);
   },
 };
+
 
 
 
