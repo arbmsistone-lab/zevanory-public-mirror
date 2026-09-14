@@ -12,7 +12,7 @@ test('cloudflare production requires clean GitHub GitLab HEAD parity',()=>{
 
 test('cloudflare deploy carries strict immutable provenance',()=>{
   const args=buildWranglerArgs(meta);
-  for(const value of ['wrangler','deploy','--keep-vars','--strict','--tag',sha]) assert.equal(args.includes(value),true);
+  for(const value of ['wrangler','deploy','--keep-vars','--strict',`--tag=${sha}`]) assert.equal(args.includes(value),true);
   const cfg=JSON.parse(buildRuntimeConfig('{"vars":{"SALE_GLOBALLY_ENABLED":"false"}}',meta));
   assert.equal(cfg.vars.ZEVANORY_RELEASE_SHA,sha); assert.equal(cfg.vars.ZEVANORY_RELEASE_REF,'main');
   assert.equal(cfg.vars.SALE_GLOBALLY_ENABLED,'false'); assert.equal(cfg.vars.ZEVANORY_DEPLOYMENT_ENV,'production');
