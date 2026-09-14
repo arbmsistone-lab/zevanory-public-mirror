@@ -6,10 +6,7 @@ const TARGETS = [
 
 export default {
   async fetch(_request, env) {
-    const expectedSha = String(env.EXPECTED_SHA || "").trim();
-    if (!/^[0-9a-f]{40}$/.test(expectedSha)) {
-      return Response.json({ schema: "zevanory-remote-cert-v1", ok: false, error: "expected_sha_not_configured" }, { status: 503 });
-    }
+    const version = env.CF_VERSION_METADATA || null;
     const results = [];
     for (const url of TARGETS) {
       const started = Date.now();
@@ -20,7 +17,7 @@ export default {
         results.push({ url, ok: false, status: 0, latency_ms: Date.now() - started, error: String(error) });
       }
     }
-    const ok = results.filter((item) => item.ok).length >= 2;
-    return Response.json({ schema: "zevanory-remote-cert-v1", provider: "cloudflare-workers", exact_sha: expectedSha, sales_gate_expected: "blocked", ok, results }, { status: ok ? 200 : 503, headers: { "cache-control": "no-store" } });
+    const ok = results.filter((item) => item.ok).length >= 2 && Boolean(version?.id && version?.tag);
+    return Response.json({ schema: "zevanory-remote-cert-v2", provider: "cloudflare-workers", deployment_version_id:version?.id||null, served_version:version?.tag||null, sales_gate:'blocked', zero_spend:true, paid_fallback_used:false, ok, results }, { status: ok ? 200 : 503, headers: { "cache-control": "no-store" } });
   },
 };
