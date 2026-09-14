@@ -22,7 +22,7 @@ export async function buildAgentContext(sql,job){
     lead=rows[0]||null;
   }
   const [knowledge,outcomeLearning,customerRows,recentRows,memoryRows]=await Promise.all([
-    searchKnowledge(sql,job.job_type==='product_support'?buildSupportKnowledgeQuery(job.payload||{}):`${job.job_type} ${lead?.stage||''}`,job.job_type==='product_support'?12:5),
+    searchKnowledge(sql,job.job_type==='product_support'?buildSupportKnowledgeQuery(job.payload||{}):`${job.job_type} ${lead?.stage||''} ${String(job.payload?.inbound_message||'').slice(0,350)}`,job.job_type==='product_support'?12:10),
     loadOutcomeLearningMemory(sql),
     lead?.lead_id?sql.query('select customer_id,purchase_count,adoption_score,satisfaction_score,support_risk,last_activity_at from customer_lifecycle_profiles where lead_id=$1 limit 1',[lead.lead_id]):Promise.resolve([]),
     lead?.lead_id?sql.query("select payload->>'text' text,created_at from integration_outbox where aggregate_type='lead' and aggregate_id=$1 and event_type='send_message' order by created_at desc limit 8",[String(lead.lead_id)]):Promise.resolve([]),
@@ -35,6 +35,8 @@ export async function decideRevenueAction(context,options={}){
   if(context.job_type==='product_support')return decideEliteProductSupport({request:{...(context.job_payload||{}),channel:context.lead?.channel||context.job_payload?.channel,recent_conversation:context.recent_conversation},knowledge:context.knowledge,providers:options.aiProviders||[],apiKey:options.apiKey,model:options.model});
   const input={
     job_type:context.job_type,
+    inbound_message:String(context.job_payload?.inbound_message||'').slice(0,5000),
+    inbound_media_type:String(context.job_payload?.media_type||'text'),
     stage:context.lead?.stage||null,
     channel:context.lead?.channel||null,
     touchpoints:context.lead?.touchpoints||0,
@@ -50,5 +52,5 @@ export async function decideRevenueAction(context,options={}){
 }
 
 export function decisionInputHash(context){
-  return digest({job_type:context.job_type,stage:context.lead?.stage||null,channel:context.lead?.channel||null,touchpoints:context.lead?.touchpoints||0,knowledge:context.knowledge,recent_conversation:context.recent_conversation||[],lead_memory:context.lead_memory||[],outcome_learning:context.outcome_learning||null,commercial_engine_v2:context.commercial_engine_v2||null});
+  return digest({job_type:context.job_type,inbound_message:String(context.job_payload?.inbound_message||''),stage:context.lead?.stage||null,channel:context.lead?.channel||null,touchpoints:context.lead?.touchpoints||0,knowledge:context.knowledge,recent_conversation:context.recent_conversation||[],lead_memory:context.lead_memory||[],outcome_learning:context.outcome_learning||null,commercial_engine_v2:context.commercial_engine_v2||null});
 }

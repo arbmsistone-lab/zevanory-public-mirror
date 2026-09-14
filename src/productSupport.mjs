@@ -7,8 +7,8 @@ const commercialRx=/\b(compre|comprar|checkout|pagamento|pague|pix|cupom|descont
 const riskyRx=/\b(produ[cç][aã]o|banco de dados|database|migra[cç][aã]o|token|credencial|senha|criptograf|permiss[aã]o|dns|deploy|webhook|backup|restore|restaur|excluir|apagar|reset|formatar)\b/i;
 
 export const ELITE_PRODUCT_SUPPORT_POLICY=Object.freeze({
-  version:'elite-senior-product-support-v1',
-  minimum_confidence:.82,
+  version:'elite-senior-product-support-v2-99pct',
+  minimum_confidence:.99,
   standard_min_sources:1,
   high_risk_min_sources:2,
   accepted_trust:Object.freeze(['official','verified','internal']),

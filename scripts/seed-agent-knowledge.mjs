@@ -6,8 +6,15 @@ if(process.env.KNOWLEDGE_SEED_ALLOWED!=='true') throw new Error('knowledge_seed_
 if(!process.env.DATABASE_URL) throw new Error('database_url_required');
 const root=new URL('../',import.meta.url);
 const docs=[
-  ['commercial','Oferta canônica ZEVANORY','specs/OFFER-0001-ia-vendas-whatsapp.md','internal'],
-  ['benchmarks','Parâmetros de mercado','specs/MARKET_PARAMETERS.md','verified'],
+  ['company','ZEVANORY identidade e posicionamento','config/brand-identity.json','official'],
+  ['company','ZEVANORY mensagem comercial por canal','src/commercialMessaging.mjs','official'],
+  ['company','ZEVANORY portfolio e contas comerciais','launch/ZEVANORY-PRODUCTS-V11-HANDOFF.md','official'],
+  ['company','ZEVANORY identidade omnichannel','launch/ZEVANORY-OMNICHANNEL-IDENTITY.md','official'],
+  ['commercial','Oferta canonica ZEVANORY','specs/OFFER-0001-ia-vendas-whatsapp.md','internal'],
+  ['product:ARBM-SIST','ARBM SIST plano de canais','launch/ARBM-SIST-CHANNEL-PLAN.md','official'],
+  ['product:ARBM-SIST','ARBM SIST demonstracoes comerciais','launch/ARBM-SIST-DEMO-SCRIPTS-20260831.md','official'],
+  ['product:ARBM-SIST','ARBM SIST perfis e posicionamento','launch/ARBM-SIST-SOCIAL-PROFILES.md','official'],
+  ['benchmarks','Parametros de mercado','specs/MARKET_PARAMETERS.md','verified'],
   ['architecture','Autonomous Revenue Engine EG-0035','evidence/EG-0035-autonomous-revenue-engine-world-benchmark.md','verified'],
 ];
 const productRoot=new URL('../products/releases/v1.1/',import.meta.url);
@@ -34,6 +41,7 @@ try{
 const sql=neon(process.env.DATABASE_URL); let seeded=0;
 for(const [namespace,title,path,trust] of docs){
   const content=(await readFile(new URL(path,root),'utf8')).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,' ').slice(0,50000);
+  await sql.query('update knowledge_documents set active=false,updated_at=now() where namespace=$1 and source_ref=$2 and title<>$3',[namespace,path,title]);
   await sql.query(`insert into knowledge_documents(document_id,namespace,title,content,source_ref,trust_level,active)
     values($1,$2,$3,$4,$5,$6,true)
     on conflict(namespace,title) do update set content=excluded.content,source_ref=excluded.source_ref,trust_level=excluded.trust_level,active=true,updated_at=now()`,
