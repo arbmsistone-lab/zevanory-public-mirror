@@ -38,7 +38,7 @@ export async function decryptAiVaultSecret(record,master){
   return decoder.decode(plain);
 }
 
-export async function storeAiVaultSecret(provider,secret,{kv=globalThis.__ZEVANORY_PRIVATE_KV__,master=process.env.AI_VAULT_ENCRYPTION_KEY}={}){
+export async function storeAiVaultSecret(provider,secret,{kv=globalThis.__ZEVANORY_PRIVATE_KV__,master=(process.env.AI_VAULT_ENCRYPTION_KEY||process.env.ELITE_INTERNAL_TOKEN)}={}){
   provider=String(provider||'').toLowerCase();
   if(!PROVIDERS.has(provider))throw new Error('ai_vault_provider_forbidden');
   if(!kv?.put)throw new Error('ai_vault_kv_unavailable');
@@ -46,7 +46,7 @@ export async function storeAiVaultSecret(provider,secret,{kv=globalThis.__ZEVANO
   await kv.put(`ai-vault:${provider}`,JSON.stringify({...encrypted,provider,updated_at:new Date().toISOString()}));
   return Object.freeze({ok:true,provider,encrypted:true});
 }
-export async function loadAiVaultSecret(provider,{kv=globalThis.__ZEVANORY_PRIVATE_KV__,master=process.env.AI_VAULT_ENCRYPTION_KEY}={}){
+export async function loadAiVaultSecret(provider,{kv=globalThis.__ZEVANORY_PRIVATE_KV__,master=(process.env.AI_VAULT_ENCRYPTION_KEY||process.env.ELITE_INTERNAL_TOKEN)}={}){
   provider=String(provider||'').toLowerCase();
   if(!PROVIDERS.has(provider)||!kv?.get||!master)return null;
   const raw=await kv.get(`ai-vault:${provider}`);
