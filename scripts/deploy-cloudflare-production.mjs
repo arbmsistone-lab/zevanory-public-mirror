@@ -52,8 +52,9 @@ export async function main(){
   const base=readFileSync('wrangler.jsonc','utf8');
   writeFileSync(TEMP_CONFIG,buildRuntimeConfig(base,meta),'utf8');
   try{
-    const runner={command:process.platform==='win32'?'npx.cmd':'npx',shell:false};
-    run(runner.command,buildWranglerArgs(meta),{shell:runner.shell});
+    const args=buildWranglerArgs(meta);
+    if(process.platform==='win32') run(process.env.ComSpec||'cmd.exe',['/d','/s','/c',args.join(' ')],{shell:false});
+    else run('npx',args,{shell:false});
     const body=JSON.parse(run('curl',['-fsS','https://zevanory.api.br/api/release'],{capture:true}));
     verifyLiveRelease(body,meta);
     console.log(`CLOUDFLARE_PRODUCTION_COMPLETE sha=${meta.sha} ref=${meta.ref}`);
