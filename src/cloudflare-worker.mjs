@@ -22,6 +22,7 @@ import { handleCloudflareJournalAppend } from './durableOperationJournal.mjs';
 import { publicCommercialChannelReadinessSummary } from './publicChannelStatus.mjs';
 import { runtimeReleaseModes } from './release.mjs';
 import { runNonCommercialAutopilot } from './nonCommercialAutopilot.mjs';
+import { handleInternalAuthMailer } from './internalAuthMailer.mjs';
 import { hydrateRuntimeConfig } from './runtimeConfigHydration.mjs';
 
 const PORT = 8788;
@@ -151,6 +152,7 @@ export default {
     globalThis.__ZEVANORY_PRIVATE_KV__ = env.ZEVANORY_PRIVATE_ARTIFACTS || null;
     hydrateRuntimeConfig(env);
     const url = new URL(request.url);
+    if (url.hostname === 'zevanory.internal') return handleInternalAuthMailer(request, env);
     const delegatedPayment=await delegatePaymentRequest(request,env);if(delegatedPayment)return delegatedPayment;
     if (url.pathname === '/private/artifacts/issue') return handleArtifactIssue(request, env);
     if (url.pathname === '/private/artifacts/download') return handleArtifactDownload(request, env);
