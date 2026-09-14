@@ -78,6 +78,11 @@
   status = 200
 
 [[redirects]]
+  from = "/arbm-contador-saloes"
+  to = "/arbm-contador-saloes.html"
+  status = 200
+
+[[redirects]]
   from = "/arbm-one"
   to = "/arbm-one.html"
   status = 200

@@ -1,5 +1,6 @@
 import { ARBM_COMMERCIAL_MODEL, PROJECT } from './config.mjs';
 import { ARBM_ONE_OFFER } from './arbmOneOffer.mjs';
+import { ARBM_CONTADOR_SALOES_OFFER } from './arbmContadorSaloesOffer.mjs';
 
 export const ARBM_SIST_OFFER = Object.freeze({
   id: 'OFFER-0001',
@@ -49,7 +50,7 @@ export const ZEVANORY_PRODUCTS = Object.freeze([
   Object.freeze({sku:'ZEV-NGC-011',product:'ZEVANORY Negócio Completo',commercial_name:'ZEVANORY Negócio Completo - by ARBM',brand:'ZEVANORY',endorsed_by:'ARBM',brand_signature:'by ARBM',version:'2.0',offer_type:'digital_product',delivery_mode:'digital',fulfillment_channel:'secure_download_after_payment',artifact_name:'ZEVANORY_Negocio_Completo_v2.0.zip',artifact_sha256:'484c4ed7848f8f3d57b739a4c5dab8fce77901d0fbc638c87d1c76e233fa342a',table_price_brl:397,pilot_price_brl:347,price_status:'pilot_hypothesis_not_validated',primary:false,portfolio_role:'content_bundle',sellable:false,artifact_materialized:true,content_quality_certified:true,quality_certified:false,quality_standard:'excellence_100_confidence_99_evidence_required',status:'content_quality_certified_global_sales_gate_blocked_not_published'}),
 ]);
 
-export const ZEVANORY_PORTFOLIO = Object.freeze([ARBM_SIST_OFFER, ARBM_ONE_OFFER, ...ZEVANORY_PRODUCTS]);
+export const ZEVANORY_PORTFOLIO = Object.freeze([ARBM_SIST_OFFER, ARBM_ONE_OFFER, ARBM_CONTADOR_SALOES_OFFER, ...ZEVANORY_PRODUCTS]);
 
 export function getZevanoryProduct(sku) {
   return ZEVANORY_PRODUCTS.find(item=>item.sku===String(sku||'').trim().toUpperCase())||null;

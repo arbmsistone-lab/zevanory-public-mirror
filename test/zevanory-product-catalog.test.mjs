@@ -33,7 +33,7 @@ test('content products retain registered prices and immutable v2 artifact hashes
 });
 test('public catalog stays non-published and exposes no supplier CPF',()=>{
   const catalog=publicProductCatalog();
-  assert.equal(catalog.length,7);
+  assert.equal(catalog.length,8);
   assert.equal(catalog.filter(x=>x.primary).length,1);
   assert.equal(catalog.find(x=>x.primary).id,'OFFER-0001');
   assert.ok(catalog.every(x=>x.status.includes('not_published')));
