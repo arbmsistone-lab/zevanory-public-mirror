@@ -24,6 +24,9 @@ export function verifyPilotState({release,health,provider,closure},meta){
   if(release?.financial_mode!=='disabled') throw new Error('pilot_financial_events_must_remain_disabled');
   if(health?.ready!==true) throw new Error('pilot_health_not_ready');
   if(provider?.authenticated!==true||provider?.pre_sale_ready!==true) throw new Error('pilot_provider_not_ready');
+  if(closure?.commercial_enabled!==false) throw new Error('pilot_commercial_execution_must_remain_blocked');
+  if(closure?.certification_pilot?.enabled!==true) throw new Error('pilot_runtime_flag_not_enabled');
+  if(closure?.production_mode!=='pre-sale-blocked') throw new Error('pilot_production_mode_must_remain_pre_sale_blocked');
   return true;
 }
 export async function verifyPilotStateEventually({read,meta,attempts=8,delayMs=1000,sleep=(ms)=>new Promise(r=>setTimeout(r,ms))}){
