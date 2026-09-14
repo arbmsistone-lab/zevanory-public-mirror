@@ -20,6 +20,22 @@ test('opportunity score refuses incomplete dimensions',()=>{
   assert.equal(score.complete,false);
   assert.ok(score.missing.includes('margin'));
 });
+
+test('decision reason distinguishes sufficient evidence from incomplete opportunity dimensions',()=>{
+  const incomplete={...strong,margin:null,strategic_fit:null,execution_fit:null};
+  const decision=decideMarketOpportunity(incomplete);
+  assert.equal(decision.readiness.ready,true);
+  assert.equal(decision.opportunity.complete,false);
+  assert.equal(decision.decision,'EVIDENCIA_INSUFICIENTE');
+  assert.equal(decision.reason,'opportunity_dimensions_incomplete');
+});
+
+test('decision reason still reports minimum evidence when evidence quorum is not met',()=>{
+  const decision=decideMarketOpportunity({...strong,evidence:evidence.slice(0,2)});
+  assert.equal(decision.readiness.ready,false);
+  assert.equal(decision.reason,'minimum_verified_evidence_not_met');
+});
+
 test('strong evidence-weighted candidate can recommend invest without authorizing sales',()=>{
   const decision=decideMarketOpportunity(strong);
   assert.equal(decision.decision,'INVESTIR');
