@@ -53,7 +53,7 @@ export async function main(){
   writeFileSync(TEMP_CONFIG,buildRuntimeConfig(base,meta),'utf8');
   try{
     const args=buildWranglerArgs(meta);
-    if(process.platform==='win32') run(process.env.ComSpec||'cmd.exe',['/d','/s','/c',args.join(' ')],{shell:false});
+    if(process.platform==='win32') run(process.env.ComSpec||'cmd.exe',['/d','/s','/c',`npx ${args.join(' ')}`],{shell:false});
     else run('npx',args,{shell:false});
     const body=JSON.parse(run('curl',['-fsS','https://zevanory.api.br/api/release'],{capture:true}));
     verifyLiveRelease(body,meta);
