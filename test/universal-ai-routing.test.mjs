@@ -24,12 +24,12 @@ test('AI pool degrades to deterministic decision when every provider is unavaila
   const out=await decideWithAiProviders({input:{stage:'new'},providers:[bad]});
   assert.equal(out.provider,'deterministic');
   assert.equal(out.action,'first_response');
-  assert.equal(out.fallback_reason,'ai_mesh_free_redundancy_below_10');
-  assert.equal(out.minimum_independent_domains,10);
+  assert.equal(out.fallback_reason,'ai_mesh_free_redundancy_below_3');
+  assert.equal(out.minimum_independent_domains,3);
 });
 
 
-test('AI routing supports ten independent zero-cost domains when configured',async()=>{
+test('AI routing supports three independent zero-cost domains when configured',async()=>{
   const source=await import('node:fs').then(fs=>fs.readFileSync(new URL('../src/aiProvider.mjs',import.meta.url),'utf8'));
-  for(const marker of ["independenceDomain:'google-ai'","domain:'mistral-ai'","domain:'groqcloud'","ARBM_AI_FREE_ROUTES_JSON","domains.size<10"]) assert.match(source,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+  for(const marker of ["independenceDomain:'google-ai'","domain:'mistral-ai'","domain:'groqcloud'","ARBM_AI_FREE_ROUTES_JSON","domains.size<3"]) assert.match(source,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
 });
