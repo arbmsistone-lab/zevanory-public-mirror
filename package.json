@@ -97,11 +97,14 @@
     "deploy:pages:static": "npm run build:pages:static && npx wrangler pages deploy .pages-dist --project-name zevanory-static --branch main",
     "audit:remote-quorum": "node scripts/audit-remote-cert-quorum.mjs",
     "deploy:pilot": "node scripts/deploy-cloudflare-certification-pilot.mjs",
-    "build:content:v2": "python scripts/build-content-products-v2.py",
-    "audit:content:v2": "python scripts/audit-content-products-v2.py",
-    "audit:content:repro:v2": "python scripts/audit-content-repro-v2.py",
-    "build:content:v21": "python scripts/build-content-products-v21.py",
-    "audit:content:v21": "python scripts/audit-content-products-v21.py",
-    "audit:content:repro:v21": "python scripts/audit-content-repro-v21.py"
+    "build:content:v2": "node scripts/run-python.mjs scripts/build-content-products-v2.py",
+    "audit:content:v2": "node scripts/run-python.mjs scripts/audit-content-products-v2.py",
+    "audit:content:repro:v2": "node scripts/run-python.mjs scripts/audit-content-repro-v2.py",
+    "build:content:v21": "node scripts/run-python.mjs scripts/build-content-products-v21.py",
+    "audit:content:v21": "node scripts/run-python.mjs scripts/audit-content-products-v21.py",
+    "audit:content:repro:v21": "node scripts/run-python.mjs scripts/audit-content-repro-v21.py",
+    "audit:content:evolution": "node scripts/run-python.mjs scripts/audit-content-evolution-readiness.py",
+    "content:evolution:dry-run": "node scripts/run-python.mjs scripts/scaffold-content-evolution.py --from-version 2.1 --to-version 2.2 --dry-run",
+    "audit:content:evolution:adversarial": "node scripts/run-python.mjs scripts/audit-content-evolution-adversarial.py"
   }
 }
