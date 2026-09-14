@@ -52,7 +52,7 @@ export async function main(){
   const base=readFileSync('wrangler.jsonc','utf8');
   writeFileSync(TEMP_CONFIG,buildRuntimeConfig(base,meta),'utf8');
   try{
-    const runner={command:'npx',shell:process.platform==='win32'};
+    const runner={command:process.platform==='win32'?'npx.cmd':'npx',shell:false};
     run(runner.command,buildWranglerArgs(meta),{shell:runner.shell});
     const body=JSON.parse(run('curl',['-fsS','https://zevanory.api.br/api/release'],{capture:true}));
     verifyLiveRelease(body,meta);
