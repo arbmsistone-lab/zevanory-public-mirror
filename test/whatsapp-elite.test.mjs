@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {extractWhatsappInboundMessages,queueWhatsappConversation} from '../src/supportIntake.mjs';
+import {extractWhatsappInboundMessages,queueWhatsappConversation,inferSupportProduct} from '../src/supportIntake.mjs';
 import {understandWhatsappInbound} from '../src/whatsappMedia.mjs';
 import {buildOutboundAdapters} from '../src/outboundAdapters.mjs';
 import {evaluateAgentDecision} from '../src/agentEvals.mjs';
@@ -20,6 +20,8 @@ test('WhatsApp inbound extracts text audio image video and document safely',()=>
   assert.deepEqual(rows.map(x=>x.type),['text','audio','image','video','document']);
   assert.equal(rows[2].text,'Veja este erro');assert.equal(rows[4].filename,'erro.pdf');
 });
+
+test('ARBM Contador para Saloes is identified as a first-class support product',()=>{assert.equal(inferSupportProduct('Meu ARBM Contador para Saloes nao abre o financeiro'),'ARBM-CONTADOR-SALOES');});
 
 test('ordinary WhatsApp sales inbound creates lead review instead of being ignored',async()=>{
   const seen=[];const sql={query:async(q,args=[])=>{seen.push([String(q),args]);if(String(q).includes("select lead_id,session_id,stage"))return [];if(String(q).includes("insert into agent_jobs"))return [{job_id:'job-1'}];return [];}};
@@ -50,6 +52,18 @@ test('video fails closed when visual understanding cannot be proven',async()=>{
   const r=await understandWhatsappInbound({type:'video',media_id:'v1',text:''},{env:{WHATSAPP_ACCESS_TOKEN:'x',META_GRAPH_VERSION:'v26.0'},fetchImpl});
   assert.equal(r.understanding_mode,'video_requires_visual_review');assert.equal(r.understanding_confidence,0);
   delete globalThis.__ZEVANORY_EDGE_AI__;
+});
+
+test('video multimodal understanding requires visual plus audio evidence for 99pct confidence',async()=>{
+  globalThis.__ZEVANORY_EDGE_AI__={AI:{run:async()=>({text:'audio isolado'})}};
+  let n=0;const fetchImpl=async(url,options={})=>{n++;if(n===1)return {ok:true,json:async()=>({url:'https://media.test/v',mime_type:'video/mp4'})};if(n===2)return {ok:true,arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer,headers:{get:()=> 'video/mp4'}};assert.match(String(url),/generativelanguage\.googleapis\.com/);const body=JSON.parse(options.body);assert.equal(body.contents[0].parts[0].inlineData.mimeType,'video/mp4');return {ok:true,json:async()=>({candidates:[{content:{parts:[{text:'Cliente mostra a tela do ARBM ONE com erro no cadastro e explica a falha.'}]}}]})};};
+  const r=await understandWhatsappInbound({type:'video',media_id:'v1',text:''},{env:{WHATSAPP_ACCESS_TOKEN:'x',META_GRAPH_VERSION:'v26.0',GEMINI_API_KEY:'free-key',GEMINI_VIDEO_MODEL:'gemini-test'},fetchImpl});
+  assert.equal(r.understanding_confidence,.99);assert.equal(r.understanding_mode,'gemini_video_multimodal');assert.match(r.understanding,/erro no cadastro/);delete globalThis.__ZEVANORY_EDGE_AI__;
+});
+
+test('video audio-only route never receives 99pct auto-response confidence',async()=>{
+  globalThis.__ZEVANORY_EDGE_AI__={AI:{run:async()=>({text:'O cliente diz que o sistema travou.'})}};let n=0;const fetchImpl=async()=>{n++;if(n===1)return {ok:true,json:async()=>({url:'https://media.test/v',mime_type:'video/mp4'})};return {ok:true,arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer,headers:{get:()=> 'video/mp4'}};};
+  const r=await understandWhatsappInbound({type:'video',media_id:'v1',text:''},{env:{WHATSAPP_ACCESS_TOKEN:'x',META_GRAPH_VERSION:'v26.0'},fetchImpl});assert.equal(r.understanding_mode,'video_audio_only_review_required');assert.ok(r.understanding_confidence<.99);delete globalThis.__ZEVANORY_EDGE_AI__;
 });
 
 test('outbound WhatsApp sends audio video document and image with native message types',async()=>{

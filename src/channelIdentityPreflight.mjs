@@ -30,10 +30,13 @@ export async function verifyFacebookIdentity({env=process.env,fetchImpl=globalTh
 export async function verifyInstagramIdentity({env=process.env,fetchImpl=globalThis.fetch}={}){
   const token=clean(env.META_ACCESS_TOKEN,4000),id=clean(env.INSTAGRAM_BUSINESS_ACCOUNT_ID),version=clean(env.META_GRAPH_VERSION,20);
   if(!token||!id||!version)return result(false,false,'credentials_missing');
-  const x=await getJson(fetchImpl,`https://graph.facebook.com/${version}/${encodeURIComponent(id)}?fields=id,username`,token);
+  const fields='id,username,biography,website';
+  const x=await getJson(fetchImpl,`https://graph.facebook.com/${version}/${encodeURIComponent(id)}?fields=${fields}`,token);
   if(!x.ok)return result(true,false,`provider_http_${x.status}`);
+  const biography=clean(x.body?.biography,500),website=clean(x.body?.website,1000);
+  const whatsappVisible=digits(biography).includes(PROJECT.officialWhatsappE164)||website.replace(/\D/g,'').includes(PROJECT.officialWhatsappE164);
   const ok=clean(x.body?.id)===id&&clean(x.body?.username).toLowerCase()==='zevanory_';
-  return result(true,ok,ok?'identity_match':'identity_mismatch',{provider_id:clean(x.body?.id),username:clean(x.body?.username)});
+  return result(true,ok,ok?'identity_match':'identity_mismatch',{provider_id:clean(x.body?.id),username:clean(x.body?.username),biography,website,whatsapp_contact_visible:whatsappVisible});
 }
 
 export async function verifyWhatsappIdentity({env=process.env,fetchImpl=globalThis.fetch}={}){

@@ -20,6 +20,18 @@ async function fetchWhatsappMedia(item,env,fetchImpl=globalThis.fetch){
   return {bytes,mime:mime||String(res.headers?.get?.('content-type')||''),sha256:info?.sha256||null};
 }
 
+async function understandVideoWithGemini(bytes,mime,env,fetchImpl){
+  const key=clean(env.GEMINI_API_KEY,5000);if(!key)return null;
+  const model=clean(env.GEMINI_VIDEO_MODEL||env.GEMINI_MODEL||'gemini-3.7-flash',120);
+  const endpoint=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const prompt='Analise integralmente este video enviado por um cliente da ZEVANORY. Considere imagens, telas, texto visivel, sequencia temporal e fala/audio. Responda em portugues brasileiro com uma descricao factual e objetiva do que o cliente mostra, do problema ou intencao e dos detalhes uteis para venda ou suporte. Nao invente o que nao estiver observavel.';
+  const body={contents:[{parts:[{inlineData:{mimeType:mime,data:base64(bytes)}},{text:prompt}]}],generationConfig:{temperature:.1,maxOutputTokens:900}};
+  const r=await fetchImpl(endpoint,{method:'POST',headers:{'x-goog-api-key':key,'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});
+  if(!r.ok)throw new Error(`gemini_video_http_${r.status}`);const data=await r.json();
+  const text=clean((data?.candidates?.[0]?.content?.parts||[]).map(x=>x?.text||'').join(' '),7000);
+  if(!text)throw new Error('gemini_video_understanding_empty');return text;
+}
+
 export async function understandWhatsappInbound(item,{env=process.env,fetchImpl=globalThis.fetch}={}){
   const type=String(item?.type||'text').toLowerCase(),caption=clean(item?.text||item?.caption,1800);
   if(!item?.media_id)return Object.freeze({...item,understanding:caption,understanding_mode:'text',understanding_confidence:1});
@@ -46,12 +58,9 @@ export async function understandWhatsappInbound(item,{env=process.env,fetchImpl=
     return Object.freeze({...item,understanding:[caption,`Descri??o da imagem: ${data}`].filter(Boolean).join(' | '),understanding_mode:'cloudflare_vision',understanding_confidence:.99,mime_type:mime});
   }
   if(type==='video'||String(mime).startsWith('video/')){
-    try{
-      const result=await ai.run('@cf/openai/whisper',{audio:[...bytes],task:'transcribe',language:'pt'});
-      const transcript=clean(result?.text||result?.transcription_info?.text,5000);
-      if(transcript)return Object.freeze({...item,understanding:[caption,`?udio do v?deo: ${transcript}`].filter(Boolean).join(' | '),understanding_mode:'video_audio_transcription',understanding_confidence:.99,mime_type:mime});
-    }catch{}
-    return Object.freeze({...item,understanding:caption||'Cliente enviou um v?deo que requer revis?o visual antes de responder.',understanding_mode:'video_requires_visual_review',understanding_confidence:caption?.length?0.7:0,mime_type:mime});
+    try{const visual=await understandVideoWithGemini(bytes,mime,env,fetchImpl);if(visual)return Object.freeze({...item,understanding:[caption,`Analise visual e sonora do video: ${visual}`].filter(Boolean).join(' | '),understanding_mode:'gemini_video_multimodal',understanding_confidence:.99,mime_type:mime});}catch{}
+    try{const result=await ai.run('@cf/openai/whisper',{audio:[...bytes],task:'transcribe',language:'pt'});const transcript=clean(result?.text||result?.transcription_info?.text,5000);if(transcript)return Object.freeze({...item,understanding:[caption,`Audio do video (sem prova visual): ${transcript}`].filter(Boolean).join(' | '),understanding_mode:'video_audio_only_review_required',understanding_confidence:.8,mime_type:mime});}catch{}
+    return Object.freeze({...item,understanding:caption||'Cliente enviou um video que requer revisao visual antes de responder.',understanding_mode:'video_requires_visual_review',understanding_confidence:caption?.length?0.7:0,mime_type:mime});
   }
   return Object.freeze({...item,understanding:caption||`Cliente enviou ${type}.`,understanding_mode:'media_metadata_only',understanding_confidence:caption?0.7:0,mime_type:mime});
 }

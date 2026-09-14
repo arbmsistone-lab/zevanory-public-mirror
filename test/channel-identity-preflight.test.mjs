@@ -19,9 +19,10 @@ test('Facebook preflight rejects legacy page identity',async()=>{
 
 test('Instagram preflight requires canonical zevanory underscore username',async()=>{
   const env={META_ACCESS_TOKEN:'secret',INSTAGRAM_BUSINESS_ACCOUNT_ID:'ig1',META_GRAPH_VERSION:'v26.0'};
-  const good=await verifyInstagramIdentity({env,fetchImpl:async()=>response(200,{id:'ig1',username:'zevanory_'})});
+  const good=await verifyInstagramIdentity({env,fetchImpl:async()=>response(200,{id:'ig1',username:'zevanory_',biography:'Atendimento WhatsApp +55 88 9234-0423',website:'https://zevanory.api.br'})});
+  const missingContact=await verifyInstagramIdentity({env,fetchImpl:async()=>response(200,{id:'ig1',username:'zevanory_',biography:'IA e automacao',website:'https://zevanory.api.br'})});
   const wrong=await verifyInstagramIdentity({env,fetchImpl:async()=>response(200,{id:'ig1',username:'other'})});
-  assert.equal(good.verified,true);assert.equal(wrong.verified,false);
+  assert.equal(good.verified,true);assert.equal(good.whatsapp_contact_visible,true);assert.equal(missingContact.verified,true);assert.equal(missingContact.whatsapp_contact_visible,false);assert.equal(wrong.verified,false);
 });
 
 test('WhatsApp preflight binds token and phone id to canonical commercial number',async()=>{

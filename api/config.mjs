@@ -17,7 +17,7 @@ import { isPublicDeploymentRequest, safeBearerEqual } from '../src/security.mjs'
 import { verifyCreativeToken, creativeAssetEtag } from '../src/creativeEngine.mjs';
 import { selectCreativeVariantWithVisualEvidence } from '../src/creativeIntelligence.mjs';
 import { adviseMediaInvestment } from '../src/mediaInvestmentAdvisor.mjs';
-import { verifyFacebookIdentity, verifyInstagramIdentity, verifyYouTubeIdentity } from '../src/channelIdentityPreflight.mjs';
+import { verifyFacebookIdentity, verifyInstagramIdentity, verifyWhatsappIdentity, verifyYouTubeIdentity } from '../src/channelIdentityPreflight.mjs';
 
 export const config={maxDuration:30};
 async function channelStatusWithOAuth(summary=false){
@@ -35,12 +35,12 @@ export default async function handler(req, res) {
     return res.end(JSON.stringify({ error: 'method_not_allowed' }));
   }
   if(view==='channel_identity_health'){
-    const [facebook,instagram,youtube]=await Promise.all([verifyFacebookIdentity(),verifyInstagramIdentity(),verifyYouTubeIdentity()]);
+    const [facebook,instagram,whatsapp,youtube]=await Promise.all([verifyFacebookIdentity(),verifyInstagramIdentity(),verifyWhatsappIdentity(),verifyYouTubeIdentity()]);
     let persisted={};if(process.env.DATABASE_URL){try{persisted=await persistedOAuthReadiness(neon(process.env.DATABASE_URL));}catch{persisted={};}}
     const brand=brandIdentityReadiness().fronts||{};
-    const safe=(channel,x)=>{const direct=Boolean(x.verified);const fallback=!direct&&persisted[channel]===true&&brand[channel]?.verified===true;return {attempted:Boolean(x.attempted),verified:direct||fallback,reason:direct?String(x.reason||'verified'):fallback?'persisted_oauth_and_brand_identity':String(x.reason||'unknown'),verification_source:direct?'provider_live':fallback?'persisted_oauth_plus_brand_identity':'none'};};
+    const safe=(channel,x)=>({attempted:Boolean(x.attempted),verified:Boolean(x.verified),reason:String(x.reason||'unknown'),verification_source:x.verified?'provider_live':'none',stored_configuration:Boolean(persisted[channel]===true&&brand[channel]?.verified===true),...(channel==='instagram'?{whatsapp_contact_visible:x.whatsapp_contact_visible===true,biography:x.biography||'',website:x.website||''}:{}),...(channel==='whatsapp'?{verified_name:x.verified_name||'',name_status:x.name_status||'',quality_rating:x.quality_rating||'',display_phone_number:x.display_phone_number||''}:{})});
     res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;
-    return res.end(JSON.stringify({service:'ZEVANORY',facebook:safe('facebook',facebook),instagram:safe('instagram',instagram),youtube:safe('youtube',youtube)}));
+    return res.end(JSON.stringify({service:'ZEVANORY',fresh_provider_truth_required:true,facebook:safe('facebook',facebook),instagram:safe('instagram',instagram),whatsapp:safe('whatsapp',whatsapp),youtube:safe('youtube',youtube)}));
   }
   if(view==='creative_asset'){
     const token=verifyCreativeToken(url.searchParams.get('p'),url.searchParams.get('s'),process.env);
