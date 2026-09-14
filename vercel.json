@@ -163,6 +163,10 @@
       "destination": "/public/arbm-sist.html"
     },
     {
+      "source": "/arbm-contador-saloes",
+      "destination": "/public/arbm-contador-saloes.html"
+    },
+    {
       "source": "/ia-na-pratica",
       "destination": "/public/ia-na-pratica.html"
     },
