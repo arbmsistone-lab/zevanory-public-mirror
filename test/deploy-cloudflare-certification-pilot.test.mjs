@@ -53,6 +53,6 @@ test('pilot verification rejects runtime closure that can mutate commerce',()=>{
 });
 
 test('pilot propagation retry stays bounded and succeeds only after exact runtime state',async()=>{
-  let n=0; const read=(path)=>{n++;if(path==='/api/release')return {deployment:{commit_sha:n<5?'b'.repeat(40):meta.sha,branch:'main'},sales_mode:'globally-blocked',checkout_mode:'globally-blocked',financial_mode:'disabled'};if(path==='/api/health')return {ready:true};if(path==='/api/provider-health')return {authenticated:true,pre_sale_ready:true};return {commercial_enabled:false,certification_pilot:{enabled:true}};};
+  let n=0; const read=(path)=>{n++;if(path==='/api/release')return {deployment:{commit_sha:n<5?'b'.repeat(40):meta.sha,branch:'main'},sales_mode:'globally-blocked',checkout_mode:'globally-blocked',financial_mode:'disabled'};if(path==='/api/health')return {ready:true};if(path==='/api/provider-health')return {authenticated:true,pre_sale_ready:true};return {commercial_enabled:false,certification_pilot:{enabled:true},production_mode:'pre-sale-blocked'};};
   assert.equal(await verifyPilotStateEventually({read,meta,attempts:3,delayMs:0,sleep:async()=>{}}),true);
 });
