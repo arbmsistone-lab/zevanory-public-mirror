@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { validateAttestation, validateCloudflareRuntimeAttestation } from './remote-attestation.mjs';
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const expected=(process.env.CERT_SHA||git('rev-parse','HEAD')).trim().toLowerCase();
@@ -19,9 +22,13 @@ async function circleCiProof(){
     if(!job) return {domain:'circleci',ok:false,error:'remote_attestation_job_not_successful',run_id:run.id};
     const artifacts=JSON.parse(execFileSync('circleci',['artifact',job.id,'--json'],{encoding:'utf8'}));
     const artifact=artifacts.find(x=>x.path==='remote-attestation/circleci.json');
-    if(!artifact?.url) return {domain:'circleci',ok:false,error:'attestation_artifact_missing',run_id:run.id,job_id:job.id};
-    const response=await fetch(artifact.url,{headers:{'user-agent':'zevanory-cert/2'}}); const attestation=await response.json();
-    return {domain:'circleci',ok:response.ok&&validateAttestation(attestation,expected),sha:attestation?.commit_sha||null,status:response.status,run_id:run.id,job_id:job.id,artifact_hash:attestation?.artifact_hash||null};
+    if(!artifact) return {domain:'circleci',ok:false,error:'attestation_artifact_missing',run_id:run.id,job_id:job.id};
+    const temp=mkdtempSync(join(tmpdir(),'zevanory-circleci-'));
+    try{
+      execFileSync('circleci',['artifact',job.id,'--output',temp],{encoding:'utf8'});
+      const attestation=JSON.parse(readFileSync(join(temp,'remote-attestation','circleci.json'),'utf8'));
+      return {domain:'circleci',ok:validateAttestation(attestation,expected),sha:attestation?.commit_sha||null,status:200,run_id:run.id,job_id:job.id,artifact_hash:attestation?.artifact_hash||null};
+    } finally { rmSync(temp,{recursive:true,force:true}); }
   }catch(error){ return {domain:'circleci',ok:false,error:String(error?.message||error)}; }
 }
 results.push(await circleCiProof());
