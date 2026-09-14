@@ -15,11 +15,11 @@ test('ARBM SIST has an active first-party discovery surface',async()=>{
   assert.match(worker,/\['\/arbm-sist', '\/arbm-sist\.html'\]/);
 });
 
-test('ARBM SIST SEO surface is metadata-complete and sales-safe',()=>{
+test('ARBM SIST SEO surface is metadata-complete, price-transparent and sales-safe',()=>{
   assert.match(html,/<title>ARBM SIST \| ZEVANORY<\/title>/);
   assert.match(html,/rel="canonical" href="https:\/\/zevanory\.api\.br\/arbm-sist"/);
-  assert.match(html,/application\/ld\+json/);
-  assert.match(html,/SoftwareApplication/);
+  assert.match(html,/application\/ld\+json/); assert.match(html,/SoftwareApplication/);
   assert.match(html,/Disponibilidade comercial sujeita aos gates oficiais/);
-  assert.doesNotMatch(html,/Comprar|checkout|R\$\s*1\.197/i);
+  assert.match(html,/ARBM PRO[\s\S]*R\$\s*1\.197/i);
+  assert.doesNotMatch(html,/Comprar|href="[^\"]*checkout/i);
 });
