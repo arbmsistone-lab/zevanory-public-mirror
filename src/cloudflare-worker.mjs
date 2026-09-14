@@ -1,4 +1,4 @@
-import http from 'node:http';
+﻿import http from 'node:http';
 import { handleAsNodeRequest } from 'cloudflare:node';
 import configHandler from '../api/config.mjs';
 import statusHandler from '../api/status.mjs';
@@ -15,6 +15,7 @@ import webhooksHandler from '../api/webhooks.mjs';
 import robotControlHandler from '../api/robot-control.mjs';
 import intelligenceHandler from '../api/intelligence.mjs';
 import autopilotHandler from '../api/autopilot.mjs';
+import aiVaultHandler from './http/aiVault.mjs';
 import { handleArtifactIssue, handleArtifactDownload } from './cloudflareArtifactRoutes.mjs';
 import { handleCloudflareJournalAppend } from './durableOperationJournal.mjs';
 import { publicCommercialChannelReadinessSummary } from './publicChannelStatus.mjs';
@@ -42,6 +43,7 @@ const directHandlers = new Map([
   ['/api/robot-control', robotControlHandler],
   ['/api/intelligence', intelligenceHandler],
   ['/api/autopilot/run', autopilotHandler],
+  ['/api/internal/ai-vault', aiVaultHandler],
 ]);
 function resolveHandler(req) {
   const url = new URL(req.url || '/', 'https://zevanory.api.br');
@@ -144,6 +146,7 @@ export default {
   },
   async fetch(request, env) {
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
+    globalThis.__ZEVANORY_PRIVATE_KV__ = env.ZEVANORY_PRIVATE_ARTIFACTS || null;
     hydrateRuntimeConfig(env);
     const url = new URL(request.url);
     const delegatedPayment=await delegatePaymentRequest(request,env);if(delegatedPayment)return delegatedPayment;
@@ -171,5 +174,7 @@ export default {
     return withSecurityHeaders(response);
   },
 };
+
+
 
 
