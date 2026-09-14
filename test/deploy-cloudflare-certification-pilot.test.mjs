@@ -9,6 +9,7 @@ const meta={sha:'a'.repeat(40),ref:'main'};
 test('pilot config enables only bounded pilot switches and preserves global sales closed',()=>{
   const cfg=JSON.parse(buildPilotRuntimeConfig(base,meta));
   assert.equal(cfg.vars.CERTIFICATION_PILOT_ENABLED,'true');
+  assert.equal(cfg.vars.AFFILIATE_TERMS_VERSION,undefined);
   assert.equal(cfg.vars.CHECKOUT_ENABLED,'true');
   assert.equal(cfg.vars.FINANCIAL_EVENTS_ENABLED,'true');
   assert.equal(cfg.vars.SALE_GLOBALLY_ENABLED,'false');
@@ -30,6 +31,7 @@ test('pilot verification requires exact provenance healthy runtime authenticated
 test('canonical wrangler remains fully fail closed',()=>{
   const cfg=JSON.parse(base);
   assert.equal(cfg.vars.CERTIFICATION_PILOT_ENABLED,undefined);
+  assert.equal(cfg.vars.AFFILIATE_TERMS_VERSION,'2026-09');
   assert.equal(cfg.vars.CHECKOUT_ENABLED,'false');
   assert.equal(cfg.vars.FINANCIAL_EVENTS_ENABLED,'false');
   assert.equal(cfg.vars.SALE_GLOBALLY_ENABLED,'false');
