@@ -40,6 +40,6 @@ test('canonical wrangler remains fully fail closed',()=>{
 
 test('pilot refuses checkout or financial enablement',()=>{
   const baseState={deployment:{commit_sha:meta.sha,branch:'main'},sales_mode:'globally-blocked',checkout_mode:'globally-blocked',financial_mode:'disabled'};
-  assert.throws(()=>verifyPilotState({release:{...baseState,checkout_mode:'enabled'},health:{ready:true},provider:{authenticated:true,pre_sale_ready:true}},meta),/checkout_must_remain_blocked/);
-  assert.throws(()=>verifyPilotState({release:{...baseState,financial_mode:'enabled'},health:{ready:true},provider:{authenticated:true,pre_sale_ready:true}},meta),/financial_events_must_remain_disabled/);
+  assert.throws(()=>verifyPilotState({release:{...baseState,checkout_mode:'enabled'},health:{ready:true},provider:{authenticated:true,pre_sale_ready:true},closure:{commercial_enabled:false,certification_pilot:{enabled:true}}},meta),/checkout_must_remain_blocked/);
+  assert.throws(()=>verifyPilotState({release:{...baseState,financial_mode:'enabled'},health:{ready:true},provider:{authenticated:true,pre_sale_ready:true},closure:{commercial_enabled:false,certification_pilot:{enabled:true}}},meta),/financial_events_must_remain_disabled/);
 });

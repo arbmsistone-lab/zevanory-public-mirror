@@ -17,7 +17,7 @@ export function buildPilotRuntimeConfig(baseText,meta){
   vars.ZEVANORY_RELEASE_SHA=meta.sha; vars.ZEVANORY_RELEASE_REF=meta.ref; vars.ZEVANORY_DEPLOYMENT_ENV='production';
   cfg.vars=vars; return JSON.stringify(cfg,null,2);
 }
-export function verifyPilotState({release,health,provider},meta){
+export function verifyPilotState({release,health,provider,closure},meta){
   if(release?.deployment?.commit_sha!==meta.sha||release?.deployment?.branch!==meta.ref) throw new Error('pilot_release_provenance_mismatch');
   if(release?.sales_mode!=='globally-blocked') throw new Error('pilot_sales_must_remain_blocked');
   if(release?.checkout_mode!=='globally-blocked') throw new Error('pilot_checkout_must_remain_blocked');
@@ -40,7 +40,7 @@ export async function main(){
     const args=['wrangler','deploy','--config',TEMP_CONFIG,'--keep-vars','--strict',`--tag=${meta.sha}`,`--message=ZEVANORY-certification-pilot-${meta.sha}`];
     if(process.platform==='win32') run(process.env.ComSpec||'cmd.exe',['/d','/s','/c',`npx ${args.join(' ')}`]); else run('npx',args);
     const read=(path)=>JSON.parse(run('curl',['-fsS',`https://zevanory.api.br${path}`],{capture:true}));
-    verifyPilotState({release:read('/api/release'),health:read('/api/health'),provider:read('/api/provider-health')},meta);
+    verifyPilotState({release:read('/api/release'),health:read('/api/health'),provider:read('/api/provider-health'),closure:read('/api/config?view=closure_status')},meta);
     console.log(`CLOUDFLARE_PILOT_COMPLETE sha=${meta.sha} ref=${meta.ref}`);
   } finally { rmSync(TEMP_CONFIG,{force:true}); }
 }
