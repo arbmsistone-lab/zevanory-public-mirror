@@ -1,0 +1,24 @@
+{
+  "brand": "ZEVANORY",
+  "sku": "ZEV-IA-011",
+  "product": "ZEVANORY IA na Prática",
+  "version": "2.0",
+  "files": [
+    "CHECKLIST-IMPLEMENTACAO.md",
+    "INICIAR-AQUI.html",
+    "README.md",
+    "REFERENCIAS.md",
+    "TERMOS.txt",
+    "ferramentas/controle-decisoes.csv",
+    "ferramentas/plano-acao.csv",
+    "ferramentas/registro-experimentos.csv",
+    "ferramentas/scorecard-semanal.csv",
+    "modulos/01-diagnostico-casos-de-uso-e-priorizacao.md",
+    "modulos/02-prompts-contexto-e-criterios-de-aceitacao.md",
+    "modulos/03-fluxos-seguros-de-automacao-com-ia.md",
+    "modulos/04-governanca-privacidade-e-revisao-humana.md",
+    "modulos/05-implantacao-medicao-e-melhoria-em-30-dias.md"
+  ],
+  "quality_profile": "elite_content_v2",
+  "placeholder": false
+}

@@ -1,0 +1,35 @@
+{
+  "version": "2.0",
+  "products": {
+    "ZEV-IA-011": {
+      "path": "C:\\Users\\airto\\Desktop\\ZEVANORY_PRODUCT_AUDIT_V20\\products\\releases\\v2.0\\ZEVANORY_IA_na_Pratica_v2.0.zip",
+      "sha256": "67293badc24f0ebbbabfa8912e2149873ee3a22dc1c60ea90cade381a5f4dd19",
+      "bytes": 9682,
+      "file_count": 15
+    },
+    "ZEV-VEN-011": {
+      "path": "C:\\Users\\airto\\Desktop\\ZEVANORY_PRODUCT_AUDIT_V20\\products\\releases\\v2.0\\ZEVANORY_Vendas_na_Pratica_v2.0.zip",
+      "sha256": "640740406382ec4fd92ff14039707eac830d2b685ffc45b98b8af606b9467a31",
+      "bytes": 9137,
+      "file_count": 15
+    },
+    "ZEV-LCX-011": {
+      "path": "C:\\Users\\airto\\Desktop\\ZEVANORY_PRODUCT_AUDIT_V20\\products\\releases\\v2.0\\ZEVANORY_Lucro_e_Caixa_v2.0.zip",
+      "sha256": "46cdbbdc201050c895c79e542dedb95d5e934171132136cbf177556c6daaefa5",
+      "bytes": 9065,
+      "file_count": 15
+    },
+    "ZEV-CMB-011": {
+      "path": "C:\\Users\\airto\\Desktop\\ZEVANORY_PRODUCT_AUDIT_V20\\products\\releases\\v2.0\\ZEVANORY_Combo_IA_e_Vendas_v2.0.zip",
+      "sha256": "3e1ebf1f615e6876e20d1b3b42d89c20aeb0357d3546bce1af395b31211a8d35",
+      "bytes": 22708,
+      "file_count": 35
+    },
+    "ZEV-NGC-011": {
+      "path": "C:\\Users\\airto\\Desktop\\ZEVANORY_PRODUCT_AUDIT_V20\\products\\releases\\v2.0\\ZEVANORY_Negocio_Completo_v2.0.zip",
+      "sha256": "484c4ed7848f8f3d57b739a4c5dab8fce77901d0fbc638c87d1c76e233fa342a",
+      "bytes": 32424,
+      "file_count": 50
+    }
+  }
+}
