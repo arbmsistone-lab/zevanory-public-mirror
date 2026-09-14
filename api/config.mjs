@@ -18,6 +18,7 @@ import { verifyCreativeToken, creativeAssetEtag } from '../src/creativeEngine.mj
 import { selectCreativeVariantWithVisualEvidence } from '../src/creativeIntelligence.mjs';
 import { adviseMediaInvestment } from '../src/mediaInvestmentAdvisor.mjs';
 import { verifyFacebookIdentity, verifyInstagramIdentity, verifyWhatsappIdentity, verifyYouTubeIdentity } from '../src/channelIdentityPreflight.mjs';
+import { loadMetaCredential } from '../src/metaOAuth.mjs';
 
 export const config={maxDuration:30};
 async function channelStatusWithOAuth(summary=false){
@@ -35,8 +36,9 @@ export default async function handler(req, res) {
     return res.end(JSON.stringify({ error: 'method_not_allowed' }));
   }
   if(view==='channel_identity_health'){
-    const [facebook,instagram,whatsapp,youtube]=await Promise.all([verifyFacebookIdentity(),verifyInstagramIdentity(),verifyWhatsappIdentity(),verifyYouTubeIdentity()]);
-    let persisted={};if(process.env.DATABASE_URL){try{persisted=await persistedOAuthReadiness(neon(process.env.DATABASE_URL));}catch{persisted={};}}
+    let metaEnv=process.env,persisted={},sql=null;
+    if(process.env.DATABASE_URL){try{sql=neon(process.env.DATABASE_URL);persisted=await persistedOAuthReadiness(sql);const c=await loadMetaCredential(sql,process.env);metaEnv={...process.env,META_ACCESS_TOKEN:c.access_token,META_PAGE_ID:c.page_id,INSTAGRAM_BUSINESS_ACCOUNT_ID:c.instagram_id};}catch{}}
+    const [facebook,instagram,whatsapp,youtube]=await Promise.all([verifyFacebookIdentity({env:metaEnv}),verifyInstagramIdentity({env:metaEnv}),verifyWhatsappIdentity(),verifyYouTubeIdentity()]);
     const brand=brandIdentityReadiness().fronts||{};
     const safe=(channel,x)=>({attempted:Boolean(x.attempted),verified:Boolean(x.verified),reason:String(x.reason||'unknown'),verification_source:x.verified?'provider_live':'none',stored_configuration:Boolean(persisted[channel]===true&&brand[channel]?.verified===true),...(channel==='instagram'?{whatsapp_contact_visible:x.whatsapp_contact_visible===true,biography:x.biography||'',website:x.website||''}:{}),...(channel==='whatsapp'?{verified_name:x.verified_name||'',name_status:x.name_status||'',quality_rating:x.quality_rating||'',display_phone_number:x.display_phone_number||''}:{})});
     res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');res.statusCode=200;
