@@ -22,7 +22,6 @@
     "ACTIVE_OFFER_TYPE": "digital_product",
     "ZEVANORY_PRODUCT_HANDOFF_V21_VERIFIED": "true",
     "ZEVANORY_SECURE_ARTIFACT_DELIVERY_READY": "true",
-    "SERVICE_DELIVERY_MODE": "digital",
     "PAYMENT_PROVIDER": "mercadopago",
     "MERCADOPAGO_ENV": "production",
     "PAYMENT_MERCHANT_IDENTITY_VERIFIED": "true",
