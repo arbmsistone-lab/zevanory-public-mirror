@@ -1,6 +1,7 @@
 const ASAAS_PROD = 'https://api.asaas.com/v3';
 const ASAAS_SANDBOX = 'https://api-sandbox.asaas.com/v3';
 const MP_API = 'https://api.mercadopago.com';
+const MP_IDENTITY_API = 'https://api.mercadolibre.com/users/me';
 
 function integer(value, fallback, min, max) {
   const number = Number.parseInt(String(value ?? ''), 10);
@@ -43,6 +44,17 @@ export function financialReadiness(env = process.env) {
     asaas: Boolean(String(env.ASAAS_API_KEY || '').trim()),
     mercadopago: Boolean(String(env.MERCADOPAGO_ACCESS_TOKEN || '').trim()),
   });
+}
+
+export async function probeMercadoPagoCredential({ env = process.env, fetchImpl = fetch } = {}) {
+  const token=String(env.MERCADOPAGO_ACCESS_TOKEN||'').trim();
+  if(!token) return {provider:'mercadopago',configured:false,authenticated:false,status:null};
+  try{
+    const response=await fetchImpl(MP_IDENTITY_API,{method:'GET',headers:{authorization:`Bearer ${token}`,accept:'application/json'}});
+    return {provider:'mercadopago',configured:true,authenticated:response.ok,status:response.status};
+  }catch{
+    return {provider:'mercadopago',configured:true,authenticated:false,status:null};
+  }
 }
 
 export async function readAsaasAccount({ env = process.env, fetchImpl = fetch, limit = 25, offset = 0 } = {}) {

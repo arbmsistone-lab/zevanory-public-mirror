@@ -5,6 +5,7 @@ import statusHandler from '../api/status.mjs';
 import releaseHandler from './http/release.mjs';
 import assuranceHandler from './http/assurance.mjs';
 import financeHandler from './http/finance.mjs';
+import providerHealthHandler from './http/providerHealth.mjs';
 import eventsPublicHandler from '../api/events-public.mjs';
 import eventsOperatorHandler from '../api/events-operator.mjs';
 import agentRunHandler from '../api/agent-run.mjs';
@@ -28,6 +29,7 @@ const directHandlers = new Map([
   ['/api/release', releaseHandler],
   ['/api/assurance', assuranceHandler],
   ['/api/finance', financeHandler],
+  ['/api/provider-health', providerHealthHandler],
   ['/api/events/public', eventsPublicHandler],
   ['/api/events/operator', eventsOperatorHandler],
   ['/api/agent/run', agentRunHandler],
@@ -142,6 +144,7 @@ function hydrateRuntimeConfig(env) {
     if (process.env[key] === undefined) process.env[key] = String(value);
   }
   if (process.env.META_APP_SECRET === undefined && process.env.META_APP_SECRET01) process.env.META_APP_SECRET = process.env.META_APP_SECRET01;
+  if (process.env.OPERATOR_TOKEN === undefined && process.env.ELITE_INTERNAL_TOKEN) process.env.OPERATOR_TOKEN = process.env.ELITE_INTERNAL_TOKEN;
 }
 function withSecurityHeaders(response) {
   const headers = new Headers(response.headers);
