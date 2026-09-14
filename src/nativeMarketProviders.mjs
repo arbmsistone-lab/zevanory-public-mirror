@@ -80,8 +80,15 @@ export async function collectWorldBankMarketSignal(subject,{fetchImpl=globalThis
   return Object.freeze({organization:'world-bank',ok:true,status:200,evidence:{source:'World Bank Indicators API',organization:'world-bank',source_url:'https://api.worldbank.org/v2/indicator',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'economic_context'},metrics:{demand:clamp(matches.length/Math.max(1,rows.length)),trend:matches.length?0.5:0,competition:clamp(matches.length/25)},sample:{indicators_scanned:rows.length,matching_indicators:matches.length}});
 }
 
+export async function collectOpenAlexMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
+  const u=new URL('https://api.openalex.org/works');u.searchParams.set('search',clean(subject,180));u.searchParams.set('per-page','50');u.searchParams.set('mailto','zevanory@gmail.com');
+  const r=await fetchImpl(u,{headers:{accept:'application/json','user-agent':'ZEVANORY-Market-Intelligence/1.0'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error('openalex_market_http_'+r.status);
+  const rows=Array.isArray(body?.results)?body.results:[],recent=rows.filter(x=>{const y=num(x?.publication_year);return y>=new Date().getUTCFullYear()-1;}).length,total=num(body?.meta?.count)||rows.length,citations=rows.reduce((a,x)=>a+num(x?.cited_by_count),0);
+  return Object.freeze({organization:'openalex',ok:true,status:200,evidence:{source:'OpenAlex API',organization:'openalex',source_url:'https://api.openalex.org/works',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'research_attention'},metrics:{demand:logNorm(total+citations,100000),trend:clamp(recent/Math.max(1,rows.length)),competition:clamp(rows.length/50)},sample:{total,returned:rows.length,recent_publications:recent,citations}});
+}
+
 export async function collectNativeMarketSignals(subject,options={}){
-  const tasks=[collectMercadoLivreMarketSignal(subject,options),collectYouTubeMarketSignal(subject,options),collectWikimediaMarketSignal(subject,options),collectGdeltMarketSignal(subject,options),collectCrossrefMarketSignal(subject,options),collectDataCiteMarketSignal(subject,options),collectStackExchangeMarketSignal(subject,options),collectWorldBankMarketSignal(subject,options)];
-  const settled=await Promise.allSettled(tasks);const names=['mercado-livre','google-youtube','wikimedia-foundation','gdelt-project','crossref','datacite','stack-exchange','world-bank'];
+  const tasks=[collectMercadoLivreMarketSignal(subject,options),collectYouTubeMarketSignal(subject,options),collectWikimediaMarketSignal(subject,options),collectGdeltMarketSignal(subject,options),collectCrossrefMarketSignal(subject,options),collectDataCiteMarketSignal(subject,options),collectStackExchangeMarketSignal(subject,options),collectWorldBankMarketSignal(subject,options),collectOpenAlexMarketSignal(subject,options)];
+  const settled=await Promise.allSettled(tasks);const names=['mercado-livre','google-youtube','wikimedia-foundation','gdelt-project','crossref','datacite','stack-exchange','world-bank','openalex'];
   return Object.freeze(settled.map((x,i)=>x.status==='fulfilled'?x.value:{organization:names[i],ok:false,status:0,error:clean(x.reason?.message,160)}));
 }
