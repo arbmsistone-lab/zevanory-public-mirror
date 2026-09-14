@@ -49,3 +49,11 @@ export async function approveLifecycleCertificationArtifact(sql,{artifactSha256,
   if(row.status==='approved') return Object.freeze({...row,approved:true,idempotent:true});
   throw new Error(`lifecycle_certification_not_approvable:${row.status}`);
 }
+
+export async function loadApprovedObservedLifecycleCertification(sql,{deployedCommitSha}={}){
+  const commit=String(deployedCommitSha||'').toLowerCase();
+  if(!/^[0-9a-f]{40}$/.test(commit)) return null;
+  const rows=await sql.query(`select artifact_sha256,deployed_commit_sha,required_score,total_dimensions,proven_dimensions,status from lifecycle_certification_artifacts where deployed_commit_sha=$1 and status='approved' and certification_approved=true and required_score=10 and total_dimensions=39 and proven_dimensions=39 order by approved_at desc limit 1`,[commit]);
+  if(rows.length!==1) return null;
+  return Object.freeze({version:'sales-lifecycle-canonical-v2-observed-production',certification_track:'observed_production',scores:Object.freeze(Object.fromEntries((await import('./salesLifecycleV2.mjs')).SALES_LIFECYCLE_CANONICAL_V2.map(key=>[key,10]))),audit_10x_pass:true,production_parity_verified:rows[0].deployed_commit_sha===commit,release_approved:true,artifact_sha256:rows[0].artifact_sha256});
+}

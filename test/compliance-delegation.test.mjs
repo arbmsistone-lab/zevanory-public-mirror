@@ -25,7 +25,7 @@ test('delegated compliance fails closed for an untrusted origin',()=>{
 test('verified official compliance origin avoids duplicating supplier PII',()=>{
   const plan=buildActivationPlan({...base,COMPLIANCE_RUNTIME_ORIGIN:'https://zevanory.api.br'});
   assert.equal(plan.inputs_ready,true);
-  assert.equal(plan.phase,'ready_to_unlock');
+  assert.equal(plan.phase,'lifecycle_certification_blocked');
   assert.equal(plan.missing.length,0);
 });
 

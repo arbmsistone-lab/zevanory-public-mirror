@@ -22,9 +22,9 @@ test('service inputs can become ready after technical lifecycle certification wh
   const env={ACTIVE_OFFER_TYPE:'service',OFFER_SELECTION_APPROVED:'true',SERVICE_DELIVERY_MODE:'digital',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',PAYMENT_PROVIDER:'asaas',PAYMENT_MERCHANT_IDENTITY_VERIFIED:'true',ASAAS_ENV:'production',ASAAS_API_KEY:'secret',ASAAS_WEBHOOK_TOKEN:'secret',SALE_GLOBALLY_ENABLED:'false',PRE_SALE_GATES_APPROVED:'false'};
   const plan=buildActivationPlan(env);
   assert.equal(plan.inputs_ready,true);
-  assert.equal(plan.phase,'ready_to_unlock');
+  assert.equal(plan.phase,'lifecycle_certification_blocked');
   assert.equal(plan.commercial_enabled,false);
-  assert.equal(plan.lifecycle.approved,true);
+  assert.equal(plan.lifecycle.approved,false);
 });
 test('affiliate readiness remains inventory-free and requires provider evidence',()=>{
   const env={ACTIVE_OFFER_TYPE:'affiliate_product',OFFER_SELECTION_APPROVED:'true',SUPPLIER_LEGAL_NAME:'Empresa Real',SUPPLIER_TAX_ID:'12345678000199',SUPPLIER_ADDRESS:'Endereco Real',SUPPORT_CHANNEL:'support@example.com',AFFILIATE_PROVIDER:'network',AFFILIATE_WEBHOOK_URL:'https://affiliate.example/webhook',AFFILIATE_WEBHOOK_TOKEN:'token',AFFILIATE_TRACKING_READY:'true',AFFILIATE_TERMS_REVIEWED:'true',AFFILIATE_TERMS_VERSION:'v1',AFFILIATE_ATTRIBUTION_WINDOW_DAYS:'30',AFFILIATE_COMMISSION_BPS:'1000',AFFILIATE_PAYOUT_DELAY_DAYS:'30',AFFILIATE_SELF_REFERRAL_POLICY:'blocked',AFFILIATE_REFUND_REVERSAL_READY:'true',AFFILIATE_CHARGEBACK_REVERSAL_READY:'true',AFFILIATE_IDEMPOTENCY_READY:'true',AFFILIATE_PROVIDER_CONFIRMATION_READY:'true',AFFILIATE_DISCLOSURE_URL:'https://zevanory.api.br/afiliados',AFFILIATE_PRIVACY_URL:'https://zevanory.api.br/politica-de-privacidade'};
@@ -66,8 +66,8 @@ test('ARBM SIST digital product requires signing and explicit public release app
   const ready=buildActivationPlan({...base,ARBM_SIST_CODE_SIGNING_READY:'true',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'true',SALE_GLOBALLY_ENABLED:'false',PRE_SALE_GATES_APPROVED:'false'});
   assert.equal(ready.inputs_ready,true);
   assert.equal(ready.commercial_enabled,false);
-  assert.equal(ready.phase,'ready_to_unlock');
-  assert.equal(ready.lifecycle.approved,true);
+  assert.equal(ready.phase,'lifecycle_certification_blocked');
+  assert.equal(ready.lifecycle.approved,false);
 });
 
 test('ARBM SIST signing alone never bypasses explicit public release approval',()=>{

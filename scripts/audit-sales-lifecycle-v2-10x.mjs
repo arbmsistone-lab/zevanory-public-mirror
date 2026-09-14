@@ -13,7 +13,7 @@ const [gate,agent,autonomy,channels,outbound,customer,revenue,attribution,reposi
 
 add('01 canonical lifecycle has exactly 39 dimensions',SALES_LIFECYCLE_CANONICAL_V2.length===39);
 add('02 canonical sales gate requires lifecycle certification',gate.includes('lifecycle.approved')&&gate.includes('salesLifecycleGate'));
-add('03 technical release certification is 39x10 and commercial gates remain independent',salesLifecycleGate().approved===true&&salesLifecycleGate().passed_dimensions===39);
+add('03 technical release cannot impersonate observed 39x10 commercial proof',salesLifecycleGate().approved===false&&salesLifecycleGate().blockers.includes('observed_lifecycle_certification_required')); 
 add('04 all 39 dimensions have ownership and customer lifecycle persistence',assessLifecycleCapabilityCoverage().complete&&assessLifecycleCapabilityCoverage().total===39&&['retention','upsell','cross_sell','win_back','churnState'].every(x=>customer.includes(x))&&repository.includes('recordCustomerLifecycleEvent')&&migration.includes('customer_lifecycle_profiles'));
 add('05 revenue intelligence covers retention churn repeat LTV and baseline forecast',['retention_rate','churn_rate','repeat_purchase_rate','estimated_ltv_brl','forecastRevenue'].every(x=>revenue.includes(x)));
 add('06 attribution is deterministic and persisted',['first_touch','last_touch','position_based','linear'].every(x=>attribution.includes(x))&&repository.includes('recordAttributionTouchpoint')&&migration.includes('attribution_touchpoints'));

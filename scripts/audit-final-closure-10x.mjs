@@ -16,7 +16,7 @@ check('technical readiness alone caps every dimension at score 9',empty.dimensio
 check('39x10 certification cannot be synthesized from empty evidence',empty.approved===false&&empty.proven_dimensions===0&&empty.blockers.length===39);
 
 const gate=salesGate({SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'});
-check('environment switches alone cannot unlock the static sales gate',gate.enabled===false&&gate.manifest_approved===false&&gate.lifecycle_approved===true);
+check('environment switches alone cannot unlock the static sales gate',gate.enabled===false&&gate.manifest_approved===false&&gate.lifecycle_approved===false&&gate.blockers.includes('observed_lifecycle_certification_required'));
 
 const provenance=read('db/migrations/015_lifecycle_certification_provenance.sql');
 const provenanceRuntime=read('src/lifecycleCertificationProvenance.mjs');

@@ -22,6 +22,7 @@ test('every declared capability owner resolves to an existing source module',()=
 test('capability coverage is separate from the explicit technical certification artifact',async()=>{
   const {salesLifecycleGate}=await import('../src/salesLifecycleV2.mjs');
   assert.equal(assessLifecycleCapabilityCoverage().complete,true);
-  assert.equal(salesLifecycleGate().approved,true);
-  assert.equal(salesLifecycleGate().passed_dimensions,39);
+  assert.equal(salesLifecycleGate().approved,false);
+  assert.equal(salesLifecycleGate().passed_dimensions,0);
+  assert.ok(salesLifecycleGate().blockers.includes('observed_lifecycle_certification_required'));
 });

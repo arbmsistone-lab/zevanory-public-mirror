@@ -1,5 +1,6 @@
 import { preSaleApproval } from './preSaleApproval.mjs';
 import { salesLifecycleGate } from './salesLifecycleV2.mjs';
+import { loadApprovedObservedLifecycleCertification } from './lifecycleCertificationProvenance.mjs';
 
 export const SALES_GATE_KEYS = Object.freeze([
   'SALE_GLOBALLY_ENABLED',
@@ -7,12 +8,12 @@ export const SALES_GATE_KEYS = Object.freeze([
   'ABSOLUTE_RELEASE_APPROVED',
 ]);
 
-export function salesGate(env=process.env) {
+export function salesGate(env=process.env,lifecycleCertification=null) {
   const globalEnabled=String(env.SALE_GLOBALLY_ENABLED||'').toLowerCase()==='true';
   const preSaleApproved=String(env.PRE_SALE_GATES_APPROVED||'').toLowerCase()==='true';
   const absoluteReleaseApproved=String(env.ABSOLUTE_RELEASE_APPROVED||'').toLowerCase()==='true';
   const manifest=preSaleApproval(env);
-  const lifecycle=salesLifecycleGate();
+  const lifecycle=salesLifecycleGate(lifecycleCertification);
   const enabled=globalEnabled && preSaleApproved && absoluteReleaseApproved && manifest.approved && lifecycle.approved;
   const blockers=[];
   if(!globalEnabled) blockers.push('global_sale_disabled');
@@ -33,4 +34,9 @@ export function salesGate(env=process.env) {
 }
 export function channelEnabled(envKey,env=process.env) {
   return salesGate(env).enabled && String(env[envKey]||'').toLowerCase()==='true';
+}
+
+export async function salesGateFromObservedEvidence(sql,env=process.env,{deployedCommitSha}={}){
+  const certification=await loadApprovedObservedLifecycleCertification(sql,{deployedCommitSha});
+  return salesGate(env,certification);
 }
