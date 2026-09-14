@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { buildPilotRuntimeConfig, verifyPilotState } from '../scripts/deploy-cloudflare-certification-pilot.mjs';
+import { buildPilotRuntimeConfig, verifyPilotState, verifyPilotStateEventually } from '../scripts/deploy-cloudflare-certification-pilot.mjs';
 
 const base=await readFile(new URL('../wrangler.jsonc',import.meta.url),'utf8');
 const meta={sha:'a'.repeat(40),ref:'main'};
@@ -42,4 +42,9 @@ test('pilot refuses checkout or financial enablement',()=>{
   const baseState={deployment:{commit_sha:meta.sha,branch:'main'},sales_mode:'globally-blocked',checkout_mode:'globally-blocked',financial_mode:'disabled'};
   assert.throws(()=>verifyPilotState({release:{...baseState,checkout_mode:'enabled'},health:{ready:true},provider:{authenticated:true,pre_sale_ready:true},closure:{commercial_enabled:false,certification_pilot:{enabled:true}}},meta),/checkout_must_remain_blocked/);
   assert.throws(()=>verifyPilotState({release:{...baseState,financial_mode:'enabled'},health:{ready:true},provider:{authenticated:true,pre_sale_ready:true},closure:{commercial_enabled:false,certification_pilot:{enabled:true}}},meta),/financial_events_must_remain_disabled/);
+});
+
+test('pilot propagation retry stays bounded and succeeds only after exact runtime state',async()=>{
+  let n=0; const read=(path)=>{n++;if(path==='/api/release')return {deployment:{commit_sha:n<5?'b'.repeat(40):meta.sha,branch:'main'},sales_mode:'globally-blocked',checkout_mode:'globally-blocked',financial_mode:'disabled'};if(path==='/api/health')return {ready:true};if(path==='/api/provider-health')return {authenticated:true,pre_sale_ready:true};return {commercial_enabled:false,certification_pilot:{enabled:true}};};
+  assert.equal(await verifyPilotStateEventually({read,meta,attempts:3,delayMs:0,sleep:async()=>{}}),true);
 });

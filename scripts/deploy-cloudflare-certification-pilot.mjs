@@ -26,6 +26,14 @@ export function verifyPilotState({release,health,provider,closure},meta){
   if(provider?.authenticated!==true||provider?.pre_sale_ready!==true) throw new Error('pilot_provider_not_ready');
   return true;
 }
+export async function verifyPilotStateEventually({read,meta,attempts=8,delayMs=1000,sleep=(ms)=>new Promise(r=>setTimeout(r,ms))}){
+  let lastError;
+  for(let attempt=1;attempt<=attempts;attempt++){
+    try{return verifyPilotState({release:read('/api/release'),health:read('/api/health'),provider:read('/api/provider-health'),closure:read('/api/config?view=closure_status')},meta);}
+    catch(error){lastError=error;if(attempt<attempts)await sleep(delayMs);}
+  }
+  throw lastError;
+}
 export async function main(){
   run('git',['fetch','origin','main']); run('git',['fetch','gitlab','main']);
   const meta=validateCloudflareReleaseMetadata({
@@ -40,7 +48,7 @@ export async function main(){
     const args=['wrangler','deploy','--config',TEMP_CONFIG,'--keep-vars','--strict',`--tag=${meta.sha}`,`--message=ZEVANORY-certification-pilot-${meta.sha}`];
     if(process.platform==='win32') run(process.env.ComSpec||'cmd.exe',['/d','/s','/c',`npx ${args.join(' ')}`]); else run('npx',args);
     const read=(path)=>JSON.parse(run('curl',['-fsS',`https://zevanory.api.br${path}`],{capture:true}));
-    verifyPilotState({release:read('/api/release'),health:read('/api/health'),provider:read('/api/provider-health'),closure:read('/api/config?view=closure_status')},meta);
+    await verifyPilotStateEventually({read,meta});
     console.log(`CLOUDFLARE_PILOT_COMPLETE sha=${meta.sha} ref=${meta.ref}`);
   } finally { rmSync(TEMP_CONFIG,{force:true}); }
 }
