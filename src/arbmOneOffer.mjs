@@ -12,7 +12,7 @@ export const ARBM_ONE_OFFER = Object.freeze({
   status: 'commercial_model_defined_sales_locked_not_published',
   offer_type: 'saas_subscription',
   delivery_mode: 'managed_service_activation',
-  canonical_sha: '8496cf93cf6aa738d08433d54f5f5cf3c64a16c3',
+  canonical_sha: 'a223603bdb7d060e99fcb9297476216afbd4c9c8',
   pricing: Object.freeze({
     standard_monthly_brl: 697,
     standard_implementation_brl: 1490,
