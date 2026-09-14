@@ -12,7 +12,7 @@ export const ARBM_ONE_OFFER = Object.freeze({
   status: 'commercial_model_defined_sales_locked_not_published',
   offer_type: 'saas_subscription',
   delivery_mode: 'managed_service_activation',
-  canonical_sha: '8496cf93cf6aa738d08433d54f5f5cf3c64a16c3',
+  canonical_sha: 'a223603bdb7d060e99fcb9297476216afbd4c9c8',
   pricing: Object.freeze({
     standard_monthly_brl: 697,
     standard_implementation_brl: 1490,
@@ -36,6 +36,18 @@ export const ARBM_ONE_OFFER = Object.freeze({
     complex_migration_separately_quoted: true,
     custom_development_separately_quoted: true,
   }),
+  commercial_contract: Object.freeze({
+    license: 'subscription_per_company_tenant_non_transferable',
+    provisioning: 'dedicated_instance_after_payment_and_onboarding_inputs',
+    standard_provisioning_target_business_days: 5,
+    support_channel: 'suporte@zevanory.api.br',
+    critical_incident_initial_response_target_business_hours: 4,
+    standard_incident_initial_response_target_business_day: 1,
+    availability_target_monthly_pct: 99.9,
+    customer_data_export_window_days_after_cancellation: 30,
+    third_party_and_scheduled_maintenance_exclusions_apply: true,
+  }),
+  commercial_release_gate: 'ARBM_ONE_COMMERCIAL_RELEASE_APPROVED',
   sales_gate: 'ZEVANORY_COMMERCIAL_SALES_LOCKED',
   positioning: 'Sistema operacional empresarial integrado para centralizar gestao, PDV, atendimento, delivery, equipe, automacoes e inteligencia.',
 });
