@@ -67,10 +67,10 @@ export async function collectDataCiteMarketSignal(subject,{fetchImpl=globalThis.
 }
 
 export async function collectStackExchangeMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
-  const u=new URL('https://api.stackexchange.com/2.3/search/advanced');u.searchParams.set('site','stackoverflow');u.searchParams.set('q',clean(subject,180));u.searchParams.set('pagesize','50');u.searchParams.set('sort','activity');u.searchParams.set('order','desc');
+  const u=new URL('https://api.stackexchange.com/2.3/search/advanced');u.searchParams.set('site','stackoverflow');u.searchParams.set('q',clean(subject,180));u.searchParams.set('pagesize','20');u.searchParams.set('sort','activity');u.searchParams.set('order','desc');
   const r=await fetchImpl(u,{headers:{accept:'application/json','user-agent':'ZEVANORY-Market-Intelligence/1.0'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error(`stackexchange_market_http_${r.status}`);if(num(body?.backoff)>0)throw new Error('stackexchange_market_backoff');
   const rows=Array.isArray(body?.items)?body.items:[],recent=rows.filter(x=>Date.now()-num(x?.creation_date)*1000<=90*86400000).length,score=rows.reduce((a,x)=>a+Math.max(0,num(x?.score))+Math.max(0,num(x?.answer_count)),0);
-  return Object.freeze({organization:'stack-exchange',ok:true,status:200,evidence:{source:'Stack Exchange API',organization:'stack-exchange',source_url:'https://api.stackexchange.com/2.3/search/advanced',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'developer_problem_attention'},metrics:{demand:logNorm(score+rows.length,5000),trend:clamp(recent/Math.max(1,rows.length)),competition:clamp(rows.length/50)},sample:{questions:rows.length,recent_90d:recent,engagement_score:score,quota_remaining:num(body?.quota_remaining)}});
+  return Object.freeze({organization:'stack-exchange',ok:true,status:200,evidence:{source:'Stack Exchange API',organization:'stack-exchange',source_url:'https://api.stackexchange.com/2.3/search/advanced',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'developer_problem_attention'},metrics:{demand:logNorm(score+rows.length,5000),trend:clamp(recent/Math.max(1,rows.length)),competition:clamp(rows.length/20)},sample:{questions:rows.length,recent_90d:recent,engagement_score:score,quota_remaining:num(body?.quota_remaining)}});
 }
 
 export async function collectWorldBankMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
@@ -87,8 +87,22 @@ export async function collectOpenAlexMarketSignal(subject,{fetchImpl=globalThis.
   return Object.freeze({organization:'openalex',ok:true,status:200,evidence:{source:'OpenAlex API',organization:'openalex',source_url:'https://api.openalex.org/works',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'research_attention'},metrics:{demand:logNorm(total+citations,100000),trend:clamp(recent/Math.max(1,rows.length)),competition:clamp(rows.length/50)},sample:{total,returned:rows.length,recent_publications:recent,citations}});
 }
 
+export async function collectHackerNewsMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
+  const u=new URL('https://hn.algolia.com/api/v1/search');u.searchParams.set('query',clean(subject,180));u.searchParams.set('hitsPerPage','25');
+  const r=await fetchImpl(u,{headers:{accept:'application/json','user-agent':'ZEVANORY-Market-Intelligence/1.0'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error('hackernews_market_http_'+r.status);
+  const rows=Array.isArray(body?.hits)?body.hits:[],points=rows.reduce((a,x)=>a+num(x?.points)+num(x?.num_comments),0),recent=rows.filter(x=>Date.now()-Date.parse(x?.created_at||0)<=90*86400000).length;
+  return Object.freeze({organization:'hacker-news',ok:true,status:200,evidence:{source:'Hacker News Algolia API',organization:'hacker-news',source_url:'https://hn.algolia.com/api/v1/search',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'technology_discussion_attention'},metrics:{demand:logNorm(points+rows.length,5000),trend:clamp(recent/Math.max(1,rows.length)),competition:clamp(rows.length/25)},sample:{hits:rows.length,engagement:points,recent_90d:recent}});
+}
+
+export async function collectGitHubMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
+  const u=new URL('https://api.github.com/search/repositories');u.searchParams.set('q',clean(subject,180));u.searchParams.set('per_page','25');u.searchParams.set('sort','updated');u.searchParams.set('order','desc');
+  const r=await fetchImpl(u,{headers:{accept:'application/vnd.github+json','user-agent':'ZEVANORY-Market-Intelligence/1.0','x-github-api-version':'2022-11-28'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error('github_market_http_'+r.status);
+  const rows=Array.isArray(body?.items)?body.items:[],stars=rows.reduce((a,x)=>a+num(x?.stargazers_count),0),recent=rows.filter(x=>Date.now()-Date.parse(x?.updated_at||0)<=90*86400000).length,total=num(body?.total_count)||rows.length;
+  return Object.freeze({organization:'github',ok:true,status:200,evidence:{source:'GitHub Repository Search API',organization:'github',source_url:'https://api.github.com/search/repositories',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'software_ecosystem_attention'},metrics:{demand:logNorm(total+stars,100000),trend:clamp(recent/Math.max(1,rows.length)),competition:clamp(rows.length/25)},sample:{total,returned:rows.length,stars,recent_90d:recent}});
+}
+
 export async function collectNativeMarketSignals(subject,options={}){
-  const tasks=[collectMercadoLivreMarketSignal(subject,options),collectYouTubeMarketSignal(subject,options),collectWikimediaMarketSignal(subject,options),collectGdeltMarketSignal(subject,options),collectCrossrefMarketSignal(subject,options),collectDataCiteMarketSignal(subject,options),collectStackExchangeMarketSignal(subject,options),collectWorldBankMarketSignal(subject,options),collectOpenAlexMarketSignal(subject,options)];
-  const settled=await Promise.allSettled(tasks);const names=['mercado-livre','google-youtube','wikimedia-foundation','gdelt-project','crossref','datacite','stack-exchange','world-bank','openalex'];
+  const tasks=[collectMercadoLivreMarketSignal(subject,options),collectYouTubeMarketSignal(subject,options),collectWikimediaMarketSignal(subject,options),collectGdeltMarketSignal(subject,options),collectCrossrefMarketSignal(subject,options),collectDataCiteMarketSignal(subject,options),collectStackExchangeMarketSignal(subject,options),collectWorldBankMarketSignal(subject,options),collectOpenAlexMarketSignal(subject,options),collectHackerNewsMarketSignal(subject,options),collectGitHubMarketSignal(subject,options)];
+  const settled=await Promise.allSettled(tasks);const names=['mercado-livre','google-youtube','wikimedia-foundation','gdelt-project','crossref','datacite','stack-exchange','world-bank','openalex','hacker-news','github'];
   return Object.freeze(settled.map((x,i)=>x.status==='fulfilled'?x.value:{organization:names[i],ok:false,status:0,error:clean(x.reason?.message,160)}));
 }
