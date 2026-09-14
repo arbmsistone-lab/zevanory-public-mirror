@@ -5,7 +5,7 @@ const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8'
 const css=await readFile(new URL('../public/index.css',import.meta.url),'utf8');
 
 test('single-screen primary surface keeps current executive domains visible',()=>{
-  for(const name of ['Centro de decisão','Resumo executivo','Operação ao vivo','Prontidão comercial','Saúde da plataforma','Garantias']) assert.ok(html.includes(name));
+  for(const name of ['Centro de decisão','Resumo executivo','Operação ao vivo','Prontidão comercial','Confiabilidade &amp; excelência','Garantias']) assert.ok(html.includes(name));
   for(const klass of ['decision-center','business-center','readiness-rail','governance-bar']) assert.ok(html.includes(`class="${klass}`));
 });
 

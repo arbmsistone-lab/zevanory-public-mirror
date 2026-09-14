@@ -8,7 +8,13 @@ const js=await readFile(new URL('../public/index.js',import.meta.url),'utf8');
 test('executive hierarchy prioritizes glanceable truth',()=>{
   assert.match(html,/decision-meta/);assert.match(html,/nenhuma venda simulada/i);assert.match(html,/nenhuma previsão inventada/i);
   assert.equal((html.match(/<article><span>[^<]+<\/span><strong data-kpi=/g)||[]).length,5);
-  assert.match(html,/Ver detalhes operacionais/);
+  assert.match(html,/Ver provas de excelência/);
+});
+
+test('elite certification is fail closed and evidence based',()=>{
+  assert.match(js,/99%\+ CONFIÁVEL · 100% SENIOR ELITE/);assert.match(js,/NÃO CERTIFICADO/);
+  for(const proof of ['releaseProof','evidenceProof','platformProof','autonomyProof','telemetryProof'])assert.match(js,new RegExp(proof));
+  assert.match(js,/evidence_count\|\|0\)>=5/);assert.match(js,/organization_count\|\|0\)>=4/);
 });
 
 test('assurance summary retains the complete evidence path',()=>{

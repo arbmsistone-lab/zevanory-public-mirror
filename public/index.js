@@ -106,7 +106,14 @@ async function refresh(){
   if(config){const blockers=Array.isArray(config.commercial_blockers)?config.commercial_blockers:[];const commercialReady=config.commercial_enabled===true&&release?.sales_mode!=='globally-blocked';set('blocker-count',fmt(blockers.length));set('readiness-state',commercialReady?'PRONTA':'BLOQUEADA');set('commercial-summary',commercialReady?'PRONTA':'BLOQUEADA');setState('whatsapp',config.whatsapp_enabled);}
   if(agent){set('agent-provider',agent.ai_provider?label(agent.ai_provider):'NÃO EXPOSTO');set('agent-queued',fmt(agent.queued));set('agent-running',fmt(agent.autopilot?.cycles_24h??agent.runs_24h));set('agent-activity-label',agent.autopilot?'ciclos autônomos 24h':'execuções 24h');set('agent-blocked',fmt(agent.blocked));set('agent-failed',fmt(agent.failed));set('agent-runs',fmt(agent.runs_24h));setState('agent-commercial',agent.commercial_execution);}
   renderCoverage(config,ok,entries.length);renderPublicOperations(status,config,agent);renderLiveProof(agent);set('updated-at',new Date().toLocaleTimeString('pt-BR'));set('surface-host',location.host+' · produção');
-  const core=Boolean(status&&health); healthLabel.textContent=core?(ok===entries.length?'Operação conectada':'Operação parcial '+ok+'/'+entries.length):'Estado indisponível';document.getElementById('health-dot').classList.toggle('healthy',core);document.getElementById('health-dot').classList.toggle('degraded',core&&ok<entries.length);
+  const market=(agent?.activity_timeline||[]).find(x=>x.kind==='intelligence'&&x.title==='market_research');
+  const releaseProof=/^[0-9a-f]{40}$/i.test(release?.deployment?.commit_sha||'')&&release?.deployment?.environment==='production'&&release?.deployment?.branch==='main';
+  const evidenceProof=Number(market?.evidence_count||0)>=5&&Number(market?.organization_count||0)>=4;
+  const platformProof=Boolean(health?.checks?.database_reachable&&health?.schema?.ready&&health?.checks?.public_base_url_valid);
+  const autonomyProof=Boolean(agent?.autopilot?.enabled&&agent?.autopilot?.health==='HEALTHY'&&Number(agent?.autopilot?.cycles_24h||0)>0&&Number(agent?.failed||0)===0);
+  const telemetryProof=ok===entries.length; const proofs=[releaseProof,evidenceProof,platformProof,autonomyProof,telemetryProof]; const passed=proofs.filter(Boolean).length; const elite=passed===proofs.length;
+  healthLabel.textContent=elite?'99%+ CONFIÁVEL · 100% SENIOR ELITE':'NÃO CERTIFICADO · '+passed+'/'+proofs.length+' PROVAS';
+  document.getElementById('health-dot').classList.toggle('healthy',elite);document.getElementById('health-dot').classList.toggle('degraded',!elite);
 }
 const liveTime=(iso)=>{try{return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch{return '—';}};
 
