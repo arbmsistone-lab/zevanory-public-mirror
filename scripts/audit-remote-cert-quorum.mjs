@@ -1,20 +1,44 @@
 import { execFileSync } from 'node:child_process';
+import { validateAttestation, validateCloudflareRuntimeAttestation } from './remote-attestation.mjs';
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
-const expected=(process.env.CERT_SHA||git('rev-parse','HEAD')).trim();
+const expected=(process.env.CERT_SHA||git('rev-parse','HEAD')).trim().toLowerCase();
 const remoteSha=(remote)=>git('ls-remote',remote,'refs/heads/main').split(/\s+/)[0]||'';
 const results=[];
 for(const [domain,remote] of [['github','origin'],['gitlab','gitlab']]){
-  try { const sha=remoteSha(remote); results.push({domain,ok:sha===expected,sha,status:sha?200:404}); }
+  try { const sha=remoteSha(remote); results.push({domain,ok:false,sha,status:sha?200:404,error:'commit_presence_is_not_remote_certification'}); }
   catch(error){ results.push({domain,ok:false,error:String(error?.message||error)}); }
 }
-for(const [domain,url] of [
-  ['cloudflare','https://zevanory-remote-certifier.zevanory.workers.dev/'],
-  ['supabase','https://fxjytqscrnttcqovigpp.supabase.co/functions/v1/zevanory-remote-cert-v1'],
-]){
-  try { const r=await fetch(url,{headers:{'user-agent':'zevanory-cert/1'}}); const j=await r.json(); const sha=j.exact_sha; results.push({domain,ok:r.ok&&sha===expected,sha,status:r.status}); }
-  catch(error){ results.push({domain,ok:false,error:String(error?.message||error)}); }
+async function circleCiProof(){
+  try{
+    const runs=JSON.parse(execFileSync('circleci',['run','list','--project','gh/arbmsistone-lab/ZEVANORY','--branch','main','--limit','25','--json'],{encoding:'utf8'}));
+    const run=runs.find(x=>String(x?.commit?.url||'').toLowerCase().endsWith('/'+expected));
+    if(!run) return {domain:'circleci',ok:false,error:'matching_run_not_found'};
+    const detail=JSON.parse(execFileSync('circleci',['run','get',run.id,'--json'],{encoding:'utf8'}));
+    if(detail?.current_outcome!=='succeeded') return {domain:'circleci',ok:false,error:'matching_run_not_successful',run_id:run.id};
+    const job=detail?.workflows?.flatMap(x=>x.jobs||[]).find(x=>x.name==='remote_attestation'&&x.outcome==='succeeded');
+    if(!job) return {domain:'circleci',ok:false,error:'remote_attestation_job_not_successful',run_id:run.id};
+    const artifacts=JSON.parse(execFileSync('circleci',['artifact',job.id,'--json'],{encoding:'utf8'}));
+    const artifact=artifacts.find(x=>x.path==='remote-attestation/circleci.json');
+    if(!artifact?.url) return {domain:'circleci',ok:false,error:'attestation_artifact_missing',run_id:run.id,job_id:job.id};
+    const response=await fetch(artifact.url,{headers:{'user-agent':'zevanory-cert/2'}}); const attestation=await response.json();
+    return {domain:'circleci',ok:response.ok&&validateAttestation(attestation,expected),sha:attestation?.commit_sha||null,status:response.status,run_id:run.id,job_id:job.id,artifact_hash:attestation?.artifact_hash||null};
+  }catch(error){ return {domain:'circleci',ok:false,error:String(error?.message||error)}; }
+}
+results.push(await circleCiProof());
+const endpoints=[
+  ['cloudflare','https://zevanory-remote-certifier.zevanory.workers.dev/','runtime'],
+  ['supabase','https://fxjytqscrnttcqovigpp.supabase.co/functions/v1/zevanory-remote-cert-v1','immutable'],
+];
+for(const [domain,url,kind] of endpoints){
+  try{
+    const response=await fetch(url,{headers:{'user-agent':'zevanory-cert/2'}});
+    const body=await response.json();
+    const sha=String(body?.commit_sha||'').toLowerCase();
+    const valid=kind==='runtime'?validateCloudflareRuntimeAttestation(body,expected):validateAttestation(body,expected);
+    results.push({domain,ok:response.ok&&valid,sha,status:response.status,kind});
+  }catch(error){ results.push({domain,ok:false,error:String(error?.message||error),kind}); }
 }
 const passed=results.filter(x=>x.ok).length;
-const out={schema:'zevanory-remote-cert-quorum-v1',expected,required:3,passed,state:passed>=3?'GREEN':'BLOCKED',results};
+const out={schema:'zevanory-remote-cert-quorum-v2',expected,required:3,passed,state:passed>=3?'GREEN':'BLOCKED',results};
 console.log(JSON.stringify(out,null,2));
 if(passed<3) process.exit(1);

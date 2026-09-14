@@ -181,3 +181,15 @@ recovery_schema:
     expire_in: 30 days
     paths:
       - schema-recovery-proof.txt
+
+remote_attestation:
+  extends: .default_node
+  stage: integration
+  needs: [quality_core]
+  script:
+    - REMOTE_ATTESTATION_OUTPUT=remote-attestation/gitlab.json node scripts/write-remote-attestation.mjs
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - remote-attestation/gitlab.json
