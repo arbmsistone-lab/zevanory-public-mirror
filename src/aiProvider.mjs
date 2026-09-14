@@ -1,5 +1,6 @@
-import { createHash } from 'node:crypto';
+﻿import { createHash } from 'node:crypto';
 import { defineExecutionProvider, executeUniversallySafely } from './universalExecutionFabric.mjs';
+import { loadAiVaultSecret } from './aiSecretVault.mjs';
 
 export const DEFAULT_AI_MODEL = 'gemini-3.7-flash';
 export const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001';
@@ -80,10 +81,13 @@ export async function decideWithAiProviders({input,systemInstruction,providers=[
   const dynamic=[...providers];
   const gemini=buildGeminiExecutionProvider({apiKey,model});
   if(gemini) dynamic.push(gemini);
+  const [vaultGroq,vaultOpenRouter]=await Promise.all([loadAiVaultSecret('groq'),loadAiVaultSecret('openrouter')]);
   const mistral=buildCompatProvider({id:'ai-mistral-adapter',domain:'mistral-ai',key:process.env.MISTRAL_API_KEY,model:process.env.MISTRAL_MODEL||'mistral-small-latest',endpoint:'https://api.mistral.ai/v1/chat/completions'});
-  const groq=buildCompatProvider({id:'ai-groq-adapter',domain:'groqcloud',key:process.env.GROQ_API_KEY,model:process.env.GROQ_MODEL||'llama-3.3-70b-versatile',endpoint:'https://api.groq.com/openai/v1/chat/completions'});
+  const groq=buildCompatProvider({id:'ai-groq-adapter',domain:'groqcloud',key:process.env.GROQ_API_KEY||vaultGroq,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b',endpoint:'https://api.groq.com/openai/v1/chat/completions'});
+  const openrouter=buildCompatProvider({id:'ai-openrouter-free-adapter',domain:'openrouter-free',key:vaultOpenRouter,model:'openrouter/free',endpoint:'https://openrouter.ai/api/v1/chat/completions'});
   if(mistral) dynamic.push(mistral);
   if(groq) dynamic.push(groq);
+  if(openrouter) dynamic.push(openrouter);
   dynamic.push(...buildConfiguredFreeProviders());
   const domains=new Set(dynamic.map((p)=>String(p?.independence_domain||'')).filter(Boolean));
   if(domains.size<3) return Object.freeze({...deterministicDecision(input),fallback_reason:'ai_mesh_free_redundancy_below_3',configured_independent_domains:domains.size,minimum_independent_domains:3});
@@ -94,3 +98,4 @@ export async function decideWithAiProviders({input,systemInstruction,providers=[
   if(!routed.ok) return Object.freeze({...deterministicDecision(input),fallback_reason:routed.reason,provider_attempts:routed.attempts});
   return Object.freeze({...routed.result,routed_provider:routed.provider,routed_domain:routed.independence_domain});
 }
+
