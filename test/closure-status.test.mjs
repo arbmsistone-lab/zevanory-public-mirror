@@ -16,6 +16,10 @@ test('closure status is aggregate, complete and secret-safe for active scope',as
   for(const c of ['tiktok','linkedin','nuvemshop'])assert.ok(body.channels[c]);
   assert.equal(Object.keys(body.excluded_fronts||{}).length,0);
   assert.equal(typeof body.brand_identity.ready,'boolean');
+  assert.equal(typeof body.brand_identity.configured_ready,'boolean');
+  assert.ok(Array.isArray(body.brand_identity.fresh_provider_blockers));
+  assert.equal(typeof body.whatsapp_presence.ready,'boolean');
+  assert.ok(Array.isArray(body.whatsapp_presence.blockers));
   assert.equal(typeof body.certification_pilot.enabled,'boolean');
   const raw=JSON.stringify(body).toLowerCase();
   for(const forbidden of ['access_token','client_secret','api_key','channel_id','profile_url','target_url'])assert.equal(raw.includes(forbidden),false);
