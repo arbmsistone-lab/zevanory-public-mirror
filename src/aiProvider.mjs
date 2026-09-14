@@ -86,7 +86,7 @@ export async function decideWithAiProviders({input,systemInstruction,providers=[
   if(groq) dynamic.push(groq);
   dynamic.push(...buildConfiguredFreeProviders());
   const domains=new Set(dynamic.map((p)=>String(p?.independence_domain||'')).filter(Boolean));
-  if(domains.size<10) return Object.freeze({...deterministicDecision(input),fallback_reason:'ai_mesh_free_redundancy_below_10',configured_independent_domains:domains.size,minimum_independent_domains:10});
+  if(domains.size<3) return Object.freeze({...deterministicDecision(input),fallback_reason:'ai_mesh_free_redundancy_below_3',configured_independent_domains:domains.size,minimum_independent_domains:3});
   const routed=await executeUniversallySafely({
     operation:{input,systemInstruction},providers:dynamic,
     requirements:{capabilities:['ai:decision'],zeroCost:true},
