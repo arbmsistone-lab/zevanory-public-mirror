@@ -30,11 +30,13 @@ const supportRoot=new URL('../products/support/',import.meta.url);
 try{
   for(const product of await readdir(supportRoot,{withFileTypes:true})){
     if(!product.isDirectory())continue;
-    for(const version of await readdir(new URL(`${product.name}/`,supportRoot),{withFileTypes:true})){
-      if(!version.isDirectory())continue;
-      for(const file of await readdir(new URL(`${product.name}/${version.name}/`,supportRoot))){
+    const entries=await readdir(new URL(`${product.name}/`,supportRoot),{withFileTypes:true});
+    for(const entry of entries){
+      if(entry.isFile()&&/\.(md|json|ts|txt)$/i.test(entry.name))docs.push([`product:${product.name.toUpperCase()}`,`${product.name} ${entry.name}`,`products/support/${product.name}/${entry.name}`,'official']);
+      if(!entry.isDirectory())continue;
+      for(const file of await readdir(new URL(`${product.name}/${entry.name}/`,supportRoot))){
         if(!/\.(md|json|ts|txt)$/i.test(file))continue;
-        docs.push([`product:${product.name.toUpperCase()}`,`${product.name} ${version.name} ${file}`,`products/support/${product.name}/${version.name}/${file}`,'official']);
+        docs.push([`product:${product.name.toUpperCase()}`,`${product.name} ${entry.name} ${file}`,`products/support/${product.name}/${entry.name}/${file}`,'official']);
       }
     }
   }

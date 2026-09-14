@@ -7,6 +7,7 @@ export function inferSupportProduct(text=''){
   const value=clean(text,5000);
   if(/\barbm[\s-]*one\b/i.test(value))return 'ARBM-ONE';
   if(/\barbm[\s-]*sist\b/i.test(value))return 'ARBM-SIST';
+  if(/\barbm[\s-]*contador(?:[\s-]*(?:para[\s-]*)?sal[o?]es)?\b/i.test(value))return 'ARBM-CONTADOR-SALOES';
   if(/\bia na pr[a\u00e1]tica\b/i.test(value))return 'ZEV-IA-011';
   if(/\bvendas na pr[a\u00e1]tica\b/i.test(value))return 'ZEV-VEN-011';
   if(/\blucro e caixa\b/i.test(value))return 'ZEV-LCX-011';
