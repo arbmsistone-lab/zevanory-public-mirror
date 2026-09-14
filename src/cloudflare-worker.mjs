@@ -20,6 +20,7 @@ import { handleCloudflareJournalAppend } from './durableOperationJournal.mjs';
 import { publicCommercialChannelReadinessSummary } from './publicChannelStatus.mjs';
 import { runtimeReleaseModes } from './release.mjs';
 import { runNonCommercialAutopilot } from './nonCommercialAutopilot.mjs';
+import { hydrateRuntimeConfig } from './runtimeConfigHydration.mjs';
 
 const PORT = 8788;
 
@@ -120,31 +121,6 @@ async function delegatePaymentRequest(request,env){
   const target=new URL(url.pathname+url.search,origin),headers=new Headers(request.headers);headers.set('x-zevanory-payment-delegated','1');
   const init={method:request.method,headers,redirect:'manual'};if(!['GET','HEAD'].includes(request.method))init.body=request.body;
   try{return await fetch(new Request(target,init));}catch{return new Response(JSON.stringify({error:'payment_runtime_unavailable',preserved:true}),{status:503,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
-}
-function hydrateRuntimeConfig(env) {
-  for (const key of ['OPERATOR_TOKEN','OPERATOR_TOKEN_SECONDARY','ASAAS_API_KEY','MERCADOPAGO_ACCESS_TOKEN']) {
-    const value=env?.[key];
-    if (value !== undefined && value !== null) process.env[key]=String(value);
-  }
-  if (env && typeof env === 'object') {
-    for (const [key, value] of Object.entries(env)) {
-      if (process.env[key] !== undefined) continue;
-      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') process.env[key] = String(value);
-    }
-  }
-  const raw = env?.ZEVANORY_RUNTIME_CONFIG;
-  if (!raw) return;
-  let config = raw;
-  if (typeof raw === 'string') {
-    try { config = JSON.parse(raw); } catch { return; }
-  }
-  if (!config || typeof config !== 'object' || Array.isArray(config)) return;
-  for (const [key, value] of Object.entries(config)) {
-    if (value === undefined || value === null) continue;
-    if (process.env[key] === undefined) process.env[key] = String(value);
-  }
-  if (process.env.META_APP_SECRET === undefined && process.env.META_APP_SECRET01) process.env.META_APP_SECRET = process.env.META_APP_SECRET01;
-  if (process.env.OPERATOR_TOKEN === undefined && process.env.ELITE_INTERNAL_TOKEN) process.env.OPERATOR_TOKEN = process.env.ELITE_INTERNAL_TOKEN;
 }
 function withSecurityHeaders(response) {
   const headers = new Headers(response.headers);
