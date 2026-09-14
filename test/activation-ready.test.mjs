@@ -34,6 +34,8 @@ test('affiliate readiness remains inventory-free and requires provider evidence'
 });
 
 test('cutover and rollback preserve fail-closed ordering',()=>{
+  assert.ok(CUTOVER_ORDER.indexOf('prepare_controlled_certification_pilot_with_global_sales_false')<CUTOVER_ORDER.indexOf('certify_sales_lifecycle_39x10'));
+  assert.ok(CUTOVER_ORDER.indexOf('certify_sales_lifecycle_39x10')<CUTOVER_ORDER.indexOf('PRE_SALE_GATES_APPROVED=true'));
   assert.ok(CUTOVER_ORDER.indexOf('PRE_SALE_GATES_APPROVED=true')<CUTOVER_ORDER.indexOf('SALE_GLOBALLY_ENABLED=true'));
   assert.equal(ROLLBACK_ORDER[0],'SALE_GLOBALLY_ENABLED=false');
   for(const step of ['CHECKOUT_ENABLED=false','WHATSAPP_SALES_ENABLED=false','FINANCIAL_EVENTS_ENABLED=false','PRE_SALE_GATES_APPROVED=false']) assert.ok(ROLLBACK_ORDER.includes(step));
