@@ -21,6 +21,7 @@ export const autopilotCycleId=(scheduledTime=Date.now())=>`autopilot-${hourSlot(
 const titleCase=(v)=>String(v||'').replace(/(^|\s)\S/g,x=>x.toUpperCase());
 const CREATIVE_CHANNELS=Object.freeze(['instagram','youtube','tiktok','facebook','linkedin']);
 const cleanTopic=(v)=>String(v||'').replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim().slice(0,140);
+const eliteSubjectLabel=(v)=>cleanTopic(v).split(/\s+/).filter(Boolean).slice(0,4).join(' ')||'inteligencia aplicada';
 async function traceAutopilot(sql,{traceId,cycleId,stage,started,details={}}){
   try{await sql.query(`insert into agent_runs(run_id,job_id,provider,model,mode,outcome,input_hash,tool_calls,latency_ms,decision,trace_id,span_id) values($1,null,'noncommercial-autopilot-trace',$2,'deterministic','completed',$3,0,$4,$5::jsonb,$6,$7)`,[randomUUID(),AUTOPILOT_POLICY.version,hash(`${cycleId}:${stage}`),Math.max(0,Date.now()-started),JSON.stringify({action:'autopilot_trace',cycle_id:cycleId,stage,...details,commercial_unlock:false,sales:false}),traceId,randomUUID()]);}catch{}
 }
@@ -120,7 +121,7 @@ export async function runNonCommercialAutopilot({env=process.env,scheduledTime=D
   for(const channel of CREATIVE_CHANNELS){
     let accepted=null,last=null;
     for(let round=1;round<=AUTOPILOT_POLICY.max_revision_rounds;round++){
-      const brief={offerId:'OFFER-0001',channel,hook:round===1?candidate.name:`${candidate.name} · prova ${round}`,body:round===1?`Pesquisa e automação com evidência para ${subject}.`:`${subject}: evidência, clareza e aplicação prática sem promessa inflada.`,cta:'Conheça a ZEVANORY',objective:'awareness',campaignId:`${cycleId}-${channel}-r${round}`};
+      const focus=eliteSubjectLabel(subject);const brief={offerId:'OFFER-0001',channel,hook:round===1?candidate.name:`Decisão com evidência`,body:round===1?`Pesquisa e automação com evidência para ${subject}.`:`Pesquisa validada, automação prática e decisões com evidência.`,cta:'Conheça a ZEVANORY',objective:'awareness',campaignId:`${cycleId}-${channel}-r${round}`};
       const selection=await selectCreative(sql,brief),winner=selection?.winner||{},spec=winner.spec||{};
       const elite=evidenceReady&&Number(winner.quality_score||0)>=AUTOPILOT_POLICY.min_creative_quality&&Number(winner.perceptual_score||0)>=AUTOPILOT_POLICY.min_creative_perceptual&&winner.review_board?.unanimous===true;
       last={channel,round,selection,winner,spec,elite};if(elite){accepted=last;break;}
