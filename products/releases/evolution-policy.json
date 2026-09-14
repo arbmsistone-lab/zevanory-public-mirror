@@ -1,0 +1,40 @@
+{
+  "schema_version": 2,
+  "current_version": "2.1",
+  "immutable_versions": ["1.1", "2.0", "2.1"],
+  "product_skus": [
+    "ZEV-IA-011",
+    "ZEV-VEN-011",
+    "ZEV-LCX-011",
+    "ZEV-CMB-011",
+    "ZEV-NGC-011"
+  ],
+  "release_rules": {
+    "never_overwrite_certified_release": true,
+    "new_release_must_use_new_directory": true,
+    "evolution_must_start_from_current_version": true,
+    "workspace_creation_must_be_atomic": true,
+    "catalog_switch_requires_exact_hash_match": true,
+    "rollback_target_required": true,
+    "backward_compatibility_review_required": true,
+    "migration_plan_required": true,
+    "deprecation_plan_required_for_breaking_change": true,
+    "dry_run_required_before_materialization": true,
+    "certified_release_audit_must_be_non_destructive": true,
+    "promotion_requires_evidence_bundle": true,
+    "sales_gate_must_remain_fail_closed": true
+  },
+  "quality_gate": {
+    "excellence_percent": 100,
+    "confidence_min_percent": 99,
+    "level": "MASTER_SENIOR"
+  },
+  "promotion_evidence": [
+    "compatibility-report.json",
+    "migration-plan.md",
+    "rollback-plan.md",
+    "deprecation-plan.md",
+    "regression-report.json",
+    "artifact-manifest.json"
+  ]
+}

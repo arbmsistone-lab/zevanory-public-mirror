@@ -17,6 +17,8 @@ jobs:
           paths:
             - ~/.npm
       - run: npm test
+      - run: npm run audit:content:evolution
+      - run: npm run audit:content:evolution:adversarial
       - run: npm run audit:commercial-engine-v2:10x
       - run: npm run audit:3x
       - run: npm run audit:security:10x
@@ -47,6 +49,8 @@ jobs:
       - checkout
       - run: npm ci --no-audit --no-fund
       - run: npm test
+      - run: npm run audit:content:evolution
+      - run: npm run audit:content:evolution:adversarial
       - run: npm run supplychain:scan
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run contract:smoke
@@ -128,6 +132,8 @@ jobs:
       - checkout
       - run: npm ci --no-audit --no-fund
       - run: npm test
+      - run: npm run audit:content:evolution
+      - run: npm run audit:content:evolution:adversarial
       - run: npm run supplychain:scan
       - run: npm run audit:obs:10x
       - run: npm run audit:live-plan:3x
