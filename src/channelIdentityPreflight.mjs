@@ -58,14 +58,15 @@ export async function verifyWhatsappIdentity({env=process.env,fetchImpl=globalTh
 
 export async function verifyYouTubeIdentity({env=process.env,fetchImpl=globalThis.fetch}={}){
   const hasDirect=clean(env.YOUTUBE_OAUTH_ACCESS_TOKEN,4000);const hasRefresh=clean(env.YOUTUBE_OAUTH_CLIENT_ID)&&clean(env.YOUTUBE_OAUTH_CLIENT_SECRET,4000)&&clean(env.YOUTUBE_OAUTH_REFRESH_TOKEN,4000);
-  if(!hasDirect&&!hasRefresh)return result(false,false,'credentials_missing');
+  if(!hasDirect&&!hasRefresh){
+    try{const r=await fetchImpl(`https://www.youtube.com/feeds/videos.xml?channel_id=${EXPECTED_YOUTUBE_CHANNEL_ID}`,{signal:AbortSignal.timeout(10000)});const body=r.ok?await r.text():'';const channelOk=r.ok&&body.includes(`<yt:channelId>${EXPECTED_YOUTUBE_CHANNEL_ID}</yt:channelId>`);const title=(body.match(/<author>\s*<name>([^<]+)<\/name>/i)||[])[1]||'';const ok=channelOk&&clean(title).toUpperCase()==='ZEVANORY';return result(true,ok,ok?'identity_match_public_feed':r.ok?'identity_mismatch':'provider_http_'+r.status,{channel_id:channelOk?EXPECTED_YOUTUBE_CHANNEL_ID:'',title:clean(title),verification_mode:'public_provider_feed'});}catch{return result(true,false,'public_feed_unavailable',{verification_mode:'public_provider_feed'});}
+  }
   let token;try{token=await resolveYouTubeAccessToken({env,fetchImpl});}catch(e){return result(true,false,clean(e?.message)||'oauth_failed');}
   const x=await getJson(fetchImpl,'https://www.googleapis.com/youtube/v3/channels?part=id,snippet&mine=true',token);
   if(!x.ok)return result(true,false,`provider_http_${x.status}`);
   const channels=Array.isArray(x.body?.items)?x.body.items:[];const match=channels.find((item)=>clean(item?.id)===EXPECTED_YOUTUBE_CHANNEL_ID);
-  return result(true,Boolean(match),match?'identity_match':'identity_mismatch',{channel_id:clean(match?.id),title:clean(match?.snippet?.title)});
+  return result(true,Boolean(match),match?'identity_match':'identity_mismatch',{channel_id:clean(match?.id),title:clean(match?.snippet?.title),verification_mode:'oauth_provider_api'});
 }
-
 export async function verifyTikTokIdentity({env=process.env,fetchImpl=globalThis.fetch}={}){
   const token=clean(env.TIKTOK_ACCESS_TOKEN,4000),expected=clean(env.TIKTOK_EXPECTED_USERNAME,200).replace(/^@/,'').toLowerCase();
   if(!token)return result(false,false,'credentials_missing');if(!expected)return result(false,false,'expected_username_missing');
