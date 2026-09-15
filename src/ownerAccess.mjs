@@ -27,22 +27,31 @@ async function hmac(secret,value){
   const key=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
   return new Uint8Array(await crypto.subtle.sign('HMAC',key,enc.encode(value)));
 }
-async function derivePassword(password,salt,iterations){
+async function deriveLegacyPassword(password,salt,iterations){
   const key=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveBits']);
   return new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt,iterations},key,256));
 }
-export async function setOwnerCredential(kv,password){
+async function credentialMac(env,password,salt){
+  const secret=sessionSecret(env); if(secret.length<24)throw new Error('owner_secret_unavailable');
+  return hmac(secret,`owner-password-v2:${salt}:${String(password||'')}`);
+}
+export async function setOwnerCredential(env,kv,password){
   const value=String(password||'');
   if(!kv||value.length<8)throw new Error('owner_password_invalid');
-  const salt=crypto.getRandomValues(new Uint8Array(16)),iterations=210000;
-  const hash=await derivePassword(value,salt,iterations);
-  await kv.put(CREDENTIAL_KEY,JSON.stringify({v:1,iterations,salt:toBase64Url(salt),hash:toBase64Url(hash)}));
+  const salt=toBase64Url(crypto.getRandomValues(new Uint8Array(16)));
+  const hash=await credentialMac(env,value,salt);
+  await kv.put(CREDENTIAL_KEY,JSON.stringify({v:2,salt,hash:toBase64Url(hash)}));
 }
 export async function verifyOwnerCredential(env,provided,kv){
   const value=String(provided||''); if(value.length<8)return false;
   if(kv){
     const raw=await kv.get(CREDENTIAL_KEY);
-    if(raw){try{const r=JSON.parse(raw);const actual=await derivePassword(value,fromBase64Url(r.salt),Number(r.iterations));return sameBytes(actual,fromBase64Url(r.hash));}catch{return false;}}
+    if(raw){try{
+      const r=JSON.parse(raw);
+      if(Number(r.v)===2){const actual=await credentialMac(env,value,String(r.salt||''));return sameBytes(actual,fromBase64Url(r.hash));}
+      if(Number(r.v)===1){const actual=await deriveLegacyPassword(value,fromBase64Url(r.salt),Number(r.iterations));return sameBytes(actual,fromBase64Url(r.hash));}
+      return false;
+    }catch{return false;}}
   }
   const legacy=sessionSecret(env); if(legacy.length<24||value.length<24)return false;
   return sameBytes(await digest(legacy),await digest(value));

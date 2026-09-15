@@ -177,7 +177,7 @@ export default {
       let body={};try{body=await request.json();}catch{return new Response(JSON.stringify({error:'invalid_json'}),{status:400,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
       const token=String(body?.token||''),password=String(body?.password||'');if(token.length<32||password.length<8)return new Response(JSON.stringify({error:'invalid_setup'}),{status:400,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
       const key=await ownerSetupKey(token),allowed=await kv.get(key);if(allowed!=='1')return new Response(JSON.stringify({error:'setup_token_invalid'}),{status:403,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
-      await setOwnerCredential(kv,password);await kv.delete(key);const session=await createOwnerSession(env);return new Response(JSON.stringify({configured:true}),{status:200,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','set-cookie':ownerCookie(session)}});
+      await setOwnerCredential(env,kv,password);await kv.delete(key);const session=await createOwnerSession(env);return new Response(JSON.stringify({configured:true}),{status:200,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','set-cookie':ownerCookie(session)}});
     }
     if(url.pathname==='/auth/owner/logout'&&request.method==='POST')return new Response(null,{status:204,headers:{'cache-control':'no-store','set-cookie':clearOwnerCookie()}});
     const owner=await verifyOwnerSession(env,readOwnerCookie(request));
