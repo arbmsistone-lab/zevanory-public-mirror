@@ -1,4 +1,4 @@
-import http from 'node:http';
+﻿import http from 'node:http';
 import { handleAsNodeRequest } from 'cloudflare:node';
 import configHandler from '../api/config.mjs';
 import statusHandler from '../api/status.mjs';
@@ -18,6 +18,7 @@ import intelligenceHandler from '../api/intelligence.mjs';
 import autopilotHandler from '../api/autopilot.mjs';
 import aiVaultHandler from './http/aiVault.mjs';
 import aiServiceIdentityHandler from './http/aiServiceIdentity.mjs';
+import aiGatewaySelftestHandler from './http/aiGatewaySelftest.mjs';
 import { handleArtifactIssue, handleArtifactDownload } from './cloudflareArtifactRoutes.mjs';
 import { handleCloudflareJournalAppend } from './durableOperationJournal.mjs';
 import { publicCommercialChannelReadinessSummary } from './publicChannelStatus.mjs';
@@ -49,6 +50,7 @@ const directHandlers = new Map([
   ['/api/autopilot/run', autopilotHandler],
   ['/api/internal/ai-vault', aiVaultHandler],
   ['/api/internal/ai-service-identity', aiServiceIdentityHandler],
+  ['/api/internal/ai-gateway-selftest', aiGatewaySelftestHandler],
 ]);
 function resolveHandler(req) {
   const url = new URL(req.url || '/', 'https://zevanory.api.br');
@@ -180,6 +182,7 @@ export default {
     return withSecurityHeaders(response);
   },
 };
+
 
 
 

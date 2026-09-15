@@ -1,6 +1,7 @@
 ﻿import { createHash } from 'node:crypto';
 import { defineExecutionProvider, executeUniversallySafely } from './universalExecutionFabric.mjs';
 import { loadAiVaultSecret } from './aiSecretVault.mjs';
+import { AI_GATEWAY_PATH, signAiGatewayRequest } from './aiServiceIdentity.mjs';
 
 export const DEFAULT_AI_MODEL = 'gemini-3.7-flash';
 export const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001';
@@ -54,6 +55,22 @@ async function askOpenAiCompatible({input,systemInstruction,apiKey,model,endpoin
   return Object.freeze({provider,model,mode:'ai_assisted',latency_ms:Date.now()-started,input_hash:hash(input),...decision});
 }
 
+export async function askSignedFreeGateway({input,systemInstruction,providerHint,providerId}){
+  if(process.env.AGENT_AI_ENABLED!=="true"||!process.env.ELITE_INTERNAL_TOKEN)throw new Error(`${providerId}_not_configured`);
+  const body={input:input||{},systemInstruction:String(systemInstruction||''),provider_hint:providerHint,zero_spend:true};
+  const signed=signAiGatewayRequest({secret:process.env.ELITE_INTERNAL_TOKEN,body,path:AI_GATEWAY_PATH});
+  const endpoint=`https://pvkpkqwdnnpkgvllwqbc.supabase.co${AI_GATEWAY_PATH}`;
+  const started=Date.now();
+  const response=await fetch(endpoint,{method:'POST',headers:signed.headers,body:signed.body,signal:AbortSignal.timeout(15000)});
+  const json=await response.json().catch(()=>({}));
+  if(!response.ok||json?.ok!==true||json?.zero_spend!==true||json?.paid_fallback_used!==false)throw new Error(`${providerId}_gateway_http_${response.status}`);
+  if(!json?.decision||typeof json.decision!=='object')throw new Error(`${providerId}_invalid_json`);
+  return Object.freeze({provider:String(json.provider||providerId),model:String(json.model||providerHint),mode:'ai_assisted',free_only:true,latency_ms:Date.now()-started,input_hash:hash(input),...json.decision});
+}
+function buildSignedFreeGatewayProvider({id,domain,hint}){
+  if(process.env.AGENT_AI_ENABLED!=="true"||!process.env.ELITE_INTERNAL_TOKEN)return null;
+  return defineExecutionProvider({id,capabilities:['ai:decision'],independenceDomain:domain,cost:0,health:providerHealth(id),execute:async({input,systemInstruction})=>{try{return await askSignedFreeGateway({input,systemInstruction,providerHint:hint,providerId:id});}catch(e){markProviderFailure(id,e);throw e;}}});
+}
 function buildConfiguredFreeProviders(){
   const raw=String(process.env.ARBM_AI_FREE_ROUTES_JSON||'').trim();
   if(!raw||process.env.AGENT_AI_ENABLED!=='true') return [];
@@ -82,6 +99,10 @@ export async function decideWithAiProviders({input,systemInstruction,providers=[
   const gemini=buildGeminiExecutionProvider({apiKey,model});
   if(gemini) dynamic.push(gemini);
   const [vaultGroq,vaultOpenRouter]=await Promise.all([loadAiVaultSecret('groq'),loadAiVaultSecret('openrouter')]);
+  const signedMistral=buildSignedFreeGatewayProvider({id:'ai-mistral-signed-free-adapter',domain:'mistral-ai',hint:'mistral'});
+  const signedLightning=buildSignedFreeGatewayProvider({id:'ai-lightning-signed-free-adapter',domain:'lightning-ai',hint:'lightning'});
+  if(signedMistral) dynamic.push(signedMistral);
+  if(signedLightning) dynamic.push(signedLightning);
   const mistral=buildCompatProvider({id:'ai-mistral-adapter',domain:'mistral-ai',key:process.env.MISTRAL_API_KEY,model:process.env.MISTRAL_MODEL||'mistral-small-latest',endpoint:'https://api.mistral.ai/v1/chat/completions'});
   const groq=buildCompatProvider({id:'ai-groq-adapter',domain:'groqcloud',key:process.env.GROQ_API_KEY||vaultGroq,model:process.env.GROQ_MODEL||'qwen/qwen3.8-27b',endpoint:'https://api.groq.com/openai/v1/chat/completions'});
   const openrouter=buildCompatProvider({id:'ai-openrouter-free-adapter',domain:'openrouter-free',key:vaultOpenRouter,model:'openrouter/free',endpoint:'https://openrouter.ai/api/v1/chat/completions'});
@@ -98,4 +119,6 @@ export async function decideWithAiProviders({input,systemInstruction,providers=[
   if(!routed.ok) return Object.freeze({...deterministicDecision(input),fallback_reason:routed.reason,provider_attempts:routed.attempts});
   return Object.freeze({...routed.result,routed_provider:routed.provider,routed_domain:routed.independence_domain});
 }
+
+
 

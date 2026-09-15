@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { decideWithAiProviders } from '../src/aiProvider.mjs';
 import { defineExecutionProvider } from '../src/universalExecutionFabric.mjs';
@@ -31,5 +31,6 @@ test('AI pool degrades to deterministic decision when every provider is unavaila
 
 test('AI routing supports three independent zero-cost domains when configured',async()=>{
   const source=await import('node:fs').then(fs=>fs.readFileSync(new URL('../src/aiProvider.mjs',import.meta.url),'utf8'));
-  for(const marker of ["independenceDomain:'google-ai'","domain:'mistral-ai'","domain:'groqcloud'","ARBM_AI_FREE_ROUTES_JSON","domains.size<3"]) assert.match(source,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+  for(const marker of ["independenceDomain:'google-ai'","domain:'mistral-ai'","domain:'lightning-ai'","domain:'groqcloud'","buildSignedFreeGatewayProvider","ARBM_AI_FREE_ROUTES_JSON","domains.size<3"]) assert.match(source,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
 });
+

@@ -1,7 +1,7 @@
-import { createHash, createPrivateKey, createPublicKey, randomBytes, sign } from 'node:crypto';
+﻿import { createHash, createPrivateKey, createPublicKey, randomBytes, sign } from 'node:crypto';
 
 const PKCS8_ED25519_PREFIX=Buffer.from('302e020100300506032b657004220420','hex');
-const PATH='/functions/v1/zevanory-ai-free-gateway';
+const PATH='/functions/v1/arbm-ai-three-provider-probe-20260908';
 const CONTEXT='zevanory-ai-gateway-ed25519-v1';
 const b64url=(value)=>Buffer.from(value).toString('base64url');
 const sha256=(value)=>createHash('sha256').update(value).digest();
@@ -29,3 +29,4 @@ export function signAiGatewayRequest({secret,body,path=PATH,timestamp=Math.floor
 }
 
 export const AI_GATEWAY_PATH=PATH;
+

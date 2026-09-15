@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPublicKey, verify } from 'node:crypto';
 import { aiServicePublicIdentity, signAiGatewayRequest, AI_GATEWAY_PATH } from '../src/aiServiceIdentity.mjs';
@@ -17,3 +17,10 @@ test('gateway signature verifies against derived public key and exact body',()=>
   const publicKey=createPublicKey({key:Buffer.from(id.public_key_spki,'base64url'),format:'der',type:'spki'});
   assert.equal(verify(null,Buffer.from(canonical),publicKey,Buffer.from(signed.headers['x-zevanory-signature'],'base64url')),true);
 });
+
+
+test('signed gateway path is pinned to reused FREE Supabase slot',async()=>{
+  const mod=await import('../src/aiServiceIdentity.mjs');
+  assert.equal(mod.AI_GATEWAY_PATH,'/functions/v1/arbm-ai-three-provider-probe-20260908');
+});
+
