@@ -12,7 +12,8 @@ test('executive hierarchy prioritizes glanceable truth',()=>{
 });
 
 test('elite certification is fail closed and evidence based',()=>{
-  assert.match(js,/99%\+ CONFIÁVEL · 100% SENIOR ELITE/);assert.match(js,/NÃO CERTIFICADO/);
+  assert.match(js,/100% SENIOR ELITE/);assert.match(js,/Não certificado/);assert.match(js,/PROVAS/);
+  assert.match(js,/dataset\.certified/);assert.match(js,/aria-label/);
   for(const proof of ['releaseProof','evidenceProof','platformProof','autonomyProof','telemetryProof'])assert.match(js,new RegExp(proof));
   assert.match(js,/evidence_count\|\|0\)>=5/);assert.match(js,/organization_count\|\|0\)>=4/);
 });
