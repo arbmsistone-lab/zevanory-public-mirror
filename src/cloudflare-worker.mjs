@@ -103,7 +103,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT);
 
 const staticAliases = new Map([
-  ['/', '/solucoes.html'], ['/acesso', '/owner-login.html'], ['/configurar-acesso', '/owner-setup.html'], ['/central', '/index.html'], ['/solucoes', '/solucoes.html'], ['/arbm-sist', '/arbm-sist.html'], ['/arbm-one', '/arbm-one.html'], ['/arbm-contador-saloes', '/arbm-contador-saloes.html'],
+  ['/', '/solucoes.html'], ['/favicon.ico', '/brand/favicon.svg'], ['/acesso', '/owner-login.html'], ['/configurar-acesso', '/owner-setup.html'], ['/central', '/index.html'], ['/solucoes', '/solucoes.html'], ['/arbm-sist', '/arbm-sist.html'], ['/arbm-one', '/arbm-one.html'], ['/arbm-contador-saloes', '/arbm-contador-saloes.html'],
   ['/ia-na-pratica', '/ia-na-pratica.html'], ['/vendas-na-pratica', '/vendas-na-pratica.html'],
   ['/lucro-e-caixa', '/lucro-e-caixa.html'], ['/combo-ia-vendas', '/combo-ia-vendas.html'], ['/negocio-completo', '/negocio-completo.html'],
   ['/piloto', '/piloto.html'], ['/termos', '/termos.html'], ['/privacidade', '/privacidade.html'], ['/exclusao-dados', '/exclusao-dados.html'],
