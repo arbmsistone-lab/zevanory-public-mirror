@@ -87,3 +87,28 @@ footer .legal-links{display:flex;align-items:center;gap:12px}footer .legal-links
 .portfolio-link{display:inline-flex;align-items:center;height:28px;padding:0 10px;margin-right:4px;border:1px solid rgba(90,216,255,.24);border-radius:9px;background:rgba(17,48,64,.58);color:var(--text);font-size:10px;font-weight:800;letter-spacing:.04em;text-decoration:none;text-transform:none;white-space:nowrap}.portfolio-link:hover,.portfolio-link:focus-visible{border-color:rgba(90,216,255,.5);background:rgba(22,66,87,.82);outline:none}@media(max-height:760px){.portfolio-link{height:26px;padding:0 8px;font-size:9px}}
 
 .whatsapp-header-cta,.whatsapp-footer-link{font-weight:800;text-decoration:none}.whatsapp-header-cta{display:inline-flex;align-items:center;padding:.56rem .82rem;border:1px solid currentColor;border-radius:999px}.whatsapp-footer-contact{display:inline-flex;gap:.35rem;align-items:center;white-space:nowrap}.whatsapp-hero-cta{white-space:nowrap}
+
+/* Senior layout hardening — header collision guard, executive hierarchy and 1280x720 fit. */
+.topbar{grid-template-columns:minmax(190px,220px) minmax(300px,1fr) minmax(430px,auto);column-gap:18px;padding-inline:4px}
+.brand-link img{width:min(192px,100%)}
+.header-state{min-width:0;gap:9px;white-space:nowrap;text-transform:none;letter-spacing:.035em}
+.header-state #health-label{max-width:132px;white-space:normal;text-align:right;line-height:1.08;font-weight:700}
+.header-state .dot{flex:0 0 auto}
+.portfolio-link,.whatsapp-header-cta{min-height:30px;padding:0 12px;border-radius:9px;font-size:10px;line-height:1;font-weight:800}
+.whatsapp-header-cta{color:#7cf0b2;border-color:rgba(88,238,162,.34);background:linear-gradient(135deg,rgba(13,76,52,.62),rgba(8,31,27,.86));letter-spacing:.04em;text-transform:uppercase}
+.whatsapp-header-cta:hover,.whatsapp-header-cta:focus-visible{border-color:rgba(88,238,162,.68);background:linear-gradient(135deg,rgba(17,94,64,.78),rgba(9,40,34,.96));outline:none}
+.workspace{grid-template-columns:minmax(300px,.9fr) minmax(500px,1.35fr) minmax(320px,.95fr);gap:10px}
+.decision-center{padding:22px 22px 15px}.decision-copy h1{max-width:390px}.decision-copy p{max-width:390px}
+.decision-meta{gap:8px}.decision-meta span{border:1px solid rgba(132,218,255,.07);background:rgba(5,14,21,.54)}
+.priority-callout{box-shadow:inset 0 1px 0 rgba(255,255,255,.025),0 12px 28px rgba(0,0,0,.16)}
+.executive-summary,.signal-grid article,.funnel-card,.readiness-card{box-shadow:inset 0 1px 0 rgba(255,255,255,.018),0 10px 24px rgba(0,0,0,.16)}
+.card-head span,.summary-head span,.kpi-cluster span,.gate-card span,.mode-card span{font-weight:650}
+.readiness-card p,.executive-summary p,.decision-copy p{letter-spacing:.002em}
+footer{min-width:0;gap:14px}.whatsapp-footer-contact{margin-left:auto}.whatsapp-footer-link{color:#7cf0b2}
+@media(max-width:1450px){.topbar{grid-template-columns:190px minmax(260px,1fr) minmax(390px,auto);column-gap:12px}.mission strong{font-size:10px;letter-spacing:.19em}.mission i{margin-inline:8px}.header-state #health-label{max-width:108px}.workspace{grid-template-columns:minmax(285px,.86fr) minmax(455px,1.3fr) minmax(300px,.92fr);gap:7px}.decision-center{padding:18px 18px 12px}}
+@media(max-width:1280px){.app-shell{padding-inline:10px}.topbar{grid-template-columns:176px minmax(235px,1fr) minmax(370px,auto);column-gap:8px}.brand-link img{width:168px}.mission strong{font-size:9px;letter-spacing:.16em}.header-state{gap:6px;font-size:9px}.header-state #health-label{max-width:90px}.portfolio-link,.whatsapp-header-cta{padding-inline:9px;font-size:9px}.workspace{grid-template-columns:minmax(276px,.82fr) minmax(440px,1.28fr) minmax(286px,.9fr);gap:6px}.decision-center{padding:15px 15px 10px}.decision-copy h1{font-size:29px}.decision-meta span{padding:6px 7px}.priority-callout{padding:8px 9px}.readiness-card{padding:9px 10px}footer{font-size:8.5px;gap:8px}}
+@media(max-height:760px){.topbar{grid-template-columns:176px minmax(235px,1fr) minmax(370px,auto)}.header-state #health-label{max-width:90px}.decision-copy h1{font-size:28px}.priority-callout{margin-bottom:5px}.readiness-rail{grid-template-rows:1fr .9fr .82fr 38px 38px}.details-button{border-radius:10px}.whatsapp-header-cta,.portfolio-link{min-height:26px}}
+
+/* Senior QA pass 2 — keep the reliability proof readable instead of stacking into four micro-lines. */
+@media(max-width:1450px){.header-state #health-label{max-width:none;white-space:nowrap;text-align:center;line-height:1;font-size:8.5px;letter-spacing:.035em}.topbar{grid-template-columns:190px minmax(245px,1fr) minmax(390px,auto)}}
+@media(max-width:1280px){.topbar{grid-template-columns:176px minmax(225px,1fr) minmax(390px,auto)}.header-state #health-label{max-width:none;white-space:nowrap;font-size:8px}}
