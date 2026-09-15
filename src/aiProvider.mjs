@@ -55,7 +55,7 @@ async function askOpenAiCompatible({input,systemInstruction,apiKey,model,endpoin
   return Object.freeze({provider,model,mode:'ai_assisted',latency_ms:Date.now()-started,input_hash:hash(input),...decision});
 }
 
-async function askSignedFreeGateway({input,systemInstruction,providerHint,providerId}){
+export async function askSignedFreeGateway({input,systemInstruction,providerHint,providerId}){
   if(process.env.AGENT_AI_ENABLED!=="true"||!process.env.ELITE_INTERNAL_TOKEN)throw new Error(`${providerId}_not_configured`);
   const body={input:input||{},systemInstruction:String(systemInstruction||''),provider_hint:providerHint,zero_spend:true};
   const signed=signAiGatewayRequest({secret:process.env.ELITE_INTERNAL_TOKEN,body,path:AI_GATEWAY_PATH});
@@ -119,5 +119,6 @@ export async function decideWithAiProviders({input,systemInstruction,providers=[
   if(!routed.ok) return Object.freeze({...deterministicDecision(input),fallback_reason:routed.reason,provider_attempts:routed.attempts});
   return Object.freeze({...routed.result,routed_provider:routed.provider,routed_domain:routed.independence_domain});
 }
+
 
 
