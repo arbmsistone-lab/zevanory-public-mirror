@@ -35,8 +35,10 @@ export async function verifyInstagramIdentity({env=process.env,fetchImpl=globalT
   if(!x.ok)return result(true,false,`provider_http_${x.status}`);
   const biography=clean(x.body?.biography,500),website=clean(x.body?.website,1000);
   const whatsappVisible=digits(biography).includes(PROJECT.officialWhatsappE164)||website.replace(/\D/g,'').includes(PROJECT.officialWhatsappE164);
+  let whatsappRouteReady=false,whatsappRouteMode='none';
+  if(!whatsappVisible){try{const u=new URL(website);if(u.protocol==='https:'&&u.hostname==='zevanory.api.br'){const page=await fetchImpl(u.toString(),{signal:AbortSignal.timeout(10000)});const html=page.ok?await page.text():'';const direct=html.includes(PROJECT.officialWhatsappE164)&&/wa\.me/i.test(html);let script=false;if(page.ok&&/whatsapp-contact\.js/i.test(html)){const sr=await fetchImpl(new URL('/whatsapp-contact.js',u.origin).toString(),{signal:AbortSignal.timeout(10000)});const body=sr.ok?await sr.text():'';script=sr.ok&&body.includes(PROJECT.officialWhatsappE164)&&/wa\.me/i.test(body);}whatsappRouteReady=page.ok&&(direct||script);if(whatsappRouteReady)whatsappRouteMode=direct?'canonical_site_direct':'canonical_site_script';}}catch{}}
   const ok=clean(x.body?.id)===id&&clean(x.body?.username).toLowerCase()==='zevanory_';
-  return result(true,ok,ok?'identity_match':'identity_mismatch',{provider_id:clean(x.body?.id),username:clean(x.body?.username),biography,website,whatsapp_contact_visible:whatsappVisible});
+  return result(true,ok,ok?'identity_match':'identity_mismatch',{provider_id:clean(x.body?.id),username:clean(x.body?.username),biography,website,whatsapp_contact_visible:whatsappVisible,whatsapp_route_ready:whatsappVisible||whatsappRouteReady,whatsapp_route_mode:whatsappVisible?'native_profile':whatsappRouteMode});
 }
 
 export async function verifyWhatsappIdentity({env=process.env,fetchImpl=globalThis.fetch}={}){
