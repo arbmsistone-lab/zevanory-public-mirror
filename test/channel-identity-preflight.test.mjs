@@ -27,11 +27,11 @@ test('Instagram preflight requires canonical zevanory underscore username',async
 
 test('WhatsApp preflight binds token and phone id to canonical commercial number',async()=>{
   const env={WHATSAPP_ACCESS_TOKEN:'secret',WHATSAPP_PHONE_NUMBER_ID:'wa1',META_GRAPH_VERSION:'v26.0'};
-  const good=await verifyWhatsappIdentity({env,fetchImpl:async()=>response(200,{id:'wa1',display_phone_number:'+55 88 9234-0423',verified_name:'ZEVANORY',name_status:'AVAILABLE_WITHOUT_REVIEW',quality_rating:'GREEN'})});
+  const good=await verifyWhatsappIdentity({env,fetchImpl:async()=>response(200,{id:'wa1',display_phone_number:'+55 88 9234-0423',verified_name:'ZEVANORY',name_status:'AVAILABLE_WITHOUT_REVIEW',new_name_status:'APPROVED',quality_rating:'GREEN',code_verification_status:'VERIFIED'})});
   const legacy=await verifyWhatsappIdentity({env,fetchImpl:async()=>response(200,{id:'wa1',display_phone_number:'+55 88 9234-0423',verified_name:'Giro Local',name_status:'AVAILABLE_WITHOUT_REVIEW',quality_rating:'GREEN'})});
   const pending=await verifyWhatsappIdentity({env,fetchImpl:async()=>response(200,{id:'wa1',display_phone_number:'+55 88 9234-0423',verified_name:'ZEVANORY',name_status:'PENDING_REVIEW',quality_rating:'GREEN'})});
   const wrong=await verifyWhatsappIdentity({env,fetchImpl:async()=>response(200,{id:'wa1',display_phone_number:'+55 88 99999-9999',verified_name:'ZEVANORY',name_status:'APPROVED'})});
-  assert.equal(good.verified,true);assert.equal(good.brand_name_verified,true);assert.equal(good.display_phone_number,CANONICAL_EXTERNAL_IDENTITIES.whatsapp_e164);assert.equal(legacy.verified,false);assert.equal(legacy.reason,'brand_display_name_mismatch');assert.equal(pending.verified,false);assert.equal(pending.reason,'brand_display_name_not_ready');assert.equal(wrong.verified,false);
+  assert.equal(good.verified,true);assert.equal(good.brand_name_verified,true);assert.equal(good.display_phone_number,CANONICAL_EXTERNAL_IDENTITIES.whatsapp_e164);assert.equal(good.new_name_status,'APPROVED');assert.equal(good.code_verification_status,'VERIFIED');assert.equal(legacy.verified,false);assert.equal(legacy.reason,'brand_display_name_mismatch');assert.equal(pending.verified,false);assert.equal(pending.reason,'brand_display_name_not_ready');assert.equal(wrong.verified,false);
 });
 
 test('YouTube preflight requires authenticated canonical channel id',async()=>{

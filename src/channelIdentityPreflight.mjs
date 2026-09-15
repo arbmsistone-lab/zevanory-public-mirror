@@ -44,7 +44,7 @@ export async function verifyInstagramIdentity({env=process.env,fetchImpl=globalT
 export async function verifyWhatsappIdentity({env=process.env,fetchImpl=globalThis.fetch}={}){
   const token=clean(env.WHATSAPP_ACCESS_TOKEN,4000),id=clean(env.WHATSAPP_PHONE_NUMBER_ID),version=clean(env.META_GRAPH_VERSION,20);
   if(!token||!id||!version)return result(false,false,'credentials_missing');
-  const fields='id,display_phone_number,verified_name,name_status,quality_rating';
+  const fields='id,display_phone_number,verified_name,name_status,new_name_status,quality_rating,code_verification_status';
   const x=await getJson(fetchImpl,`https://graph.facebook.com/${version}/${encodeURIComponent(id)}?fields=${fields}`,token);
   if(!x.ok)return result(true,false,`provider_http_${x.status}`);
   const numberMatch=clean(x.body?.id)===id&&digits(x.body?.display_phone_number)===PROJECT.officialWhatsappE164;
@@ -53,7 +53,7 @@ export async function verifyWhatsappIdentity({env=process.env,fetchImpl=globalTh
   const nameUsable=['APPROVED','AVAILABLE_WITHOUT_REVIEW'].includes(nameStatus);
   const ok=numberMatch&&brandMatch&&nameUsable;
   const reason=!numberMatch?'number_identity_mismatch':!brandMatch?'brand_display_name_mismatch':!nameUsable?'brand_display_name_not_ready':'identity_match';
-  return result(true,ok,reason,{provider_id:clean(x.body?.id),display_phone_number:digits(x.body?.display_phone_number),number_verified:numberMatch,verified_name:verifiedName,brand_name_verified:brandMatch,name_status:nameStatus,quality_rating:clean(x.body?.quality_rating)});
+  return result(true,ok,reason,{provider_id:clean(x.body?.id),display_phone_number:digits(x.body?.display_phone_number),number_verified:numberMatch,verified_name:verifiedName,brand_name_verified:brandMatch,name_status:nameStatus,new_name_status:clean(x.body?.new_name_status).toUpperCase(),quality_rating:clean(x.body?.quality_rating),code_verification_status:clean(x.body?.code_verification_status).toUpperCase()});
 }
 
 export async function verifyYouTubeIdentity({env=process.env,fetchImpl=globalThis.fetch}={}){
