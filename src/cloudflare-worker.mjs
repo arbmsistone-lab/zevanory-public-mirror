@@ -154,6 +154,7 @@ export default {
   async fetch(request, env) {
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
     globalThis.__ZEVANORY_PRIVATE_KV__ = env.ZEVANORY_PRIVATE_ARTIFACTS || null;
+    globalThis.__ZEVANORY_MAINTENANCE_TOKEN__ = typeof env.WHATSAPP_MAINTENANCE_TOKEN === 'string' ? env.WHATSAPP_MAINTENANCE_TOKEN : null;
     hydrateRuntimeConfig(env);
     const url = new URL(request.url);
     if (url.hostname === 'zevanory.internal') return handleInternalAuthMailer(request, env);
