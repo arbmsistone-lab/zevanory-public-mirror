@@ -120,4 +120,28 @@ async function refresh(){
 }
 const liveTime=(iso)=>{try{return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch{return '—';}};
 
+async function resilientPrivateNavigation(anchor){
+  if(!anchor)return;
+  const target=anchor.getAttribute('href')||'/criativos',original=anchor.innerHTML;
+  anchor.addEventListener('click',async(event)=>{
+    if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+    event.preventDefault();
+    if(anchor.dataset.navBusy==='true')return;
+    anchor.dataset.navBusy='true';anchor.setAttribute('aria-busy','true');anchor.innerHTML='Conectando… <span>→</span>';
+    let response=null;
+    for(let attempt=0;attempt<3;attempt++){
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),2500);
+      try{response=await fetch(target,{method:'GET',credentials:'same-origin',cache:'no-store',signal:controller.signal});if(response.ok||response.redirected)break;}catch{}
+      finally{clearTimeout(timer);}
+      if(attempt<2)await new Promise(resolve=>setTimeout(resolve,350*(attempt+1)));
+    }
+    if(response?.redirected&&new URL(response.url).pathname==='/acesso'){location.assign('/acesso');return;}
+    if(response?.ok){location.assign(target);return;}
+    anchor.dataset.navBusy='false';anchor.removeAttribute('aria-busy');anchor.innerHTML=original;
+    anchor.title='Conexão instável detectada. O painel foi preservado; tente novamente.';
+    anchor.focus();
+  });
+}
+
+resilientPrivateNavigation(document.getElementById('open-creative-center'));
 const details=document.getElementById('details-dialog'); document.getElementById('open-details')?.addEventListener('click',()=>details?.showModal()); document.getElementById('open-live-proof')?.addEventListener('click',()=>details?.showModal()); document.getElementById('connect-live')?.addEventListener('click',()=>details?.showModal()); document.getElementById('close-details')?.addEventListener('click',()=>details?.close()); details?.addEventListener('click',(e)=>{if(e.target===details)details.close();}); trackPageView(); refresh(); setInterval(refresh,30000);

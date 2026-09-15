@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 
 const html=await readFile(new URL('../public/criativos.html',import.meta.url),'utf8');
 const js=await readFile(new URL('../public/criativos.js',import.meta.url),'utf8');
+const commandCenterJs=await readFile(new URL('../public/index.js',import.meta.url),'utf8');
 const worker=await readFile(new URL('../src/cloudflare-worker.mjs',import.meta.url),'utf8');
 const config=await readFile(new URL('../api/config.mjs',import.meta.url),'utf8');
 const index=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
@@ -100,4 +101,12 @@ test('wide short desktop keeps channel statuses readable instead of compressing 
   assert.match(css,/regression guard: wide\/short desktop/);
   assert.match(css,/\.front-statuses\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(css,/\.production-item \.channel\{font-size:11px/);
+});
+
+test('command center protects private navigation against transient DNS or route failure',()=>{
+  assert.match(index,/id="open-creative-center"/);
+  assert.match(commandCenterJs,/resilientPrivateNavigation/);
+  assert.match(commandCenterJs,/for\(let attempt=0;attempt<3;attempt\+\+\)/);
+  assert.match(commandCenterJs,/cache:'no-store'/);
+  assert.match(commandCenterJs,/O painel foi preservado/);
 });
