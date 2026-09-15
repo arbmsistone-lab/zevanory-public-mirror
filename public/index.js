@@ -45,7 +45,7 @@ function renderAssurance(release){
   const summary=document.createElement('div'); summary.className='assurance-summary'; const s=document.createElement('span'); const b=document.createElement('b'); s.textContent='GARANTIAS'; b.textContent=approved+'/'+entries.length+' APROVADAS'; summary.append(s,b); grid.appendChild(summary); set('assurance-score',approved+'/'+entries.length);
   const rail=grid.closest('.risk-rail'); if(rail) rail.title=entries.map(([k,v])=>k.replaceAll('_',' ')+': '+label(v)).join(' | ');
 }
-const sourcePaths={status:'/api/status',health:'/api/health',release:'/api/release',config:'/api/config?view=closure_status',agent:'/api/agent/status'};
+const sourcePaths={status:'/private-api/status',health:'/private-api/health',release:'/private-api/release',config:'/private-api/config?view=closure_status',agent:'/private-api/agent/status'};
 async function fetchSource(path){
   const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),7000);
   try{const r=await fetch(path,{cache:'no-store',signal:controller.signal});if(!r.ok)throw new Error(String(r.status));return await r.json();}finally{clearTimeout(timer);}
@@ -112,7 +112,10 @@ async function refresh(){
   const platformProof=Boolean(health?.checks?.database_reachable&&health?.schema?.ready&&health?.checks?.public_base_url_valid);
   const autonomyProof=Boolean(agent?.autopilot?.enabled&&agent?.autopilot?.health==='HEALTHY'&&Number(agent?.autopilot?.cycles_24h||0)>0&&Number(agent?.failed||0)===0);
   const telemetryProof=ok===entries.length; const proofs=[releaseProof,evidenceProof,platformProof,autonomyProof,telemetryProof]; const passed=proofs.filter(Boolean).length; const elite=passed===proofs.length;
-  healthLabel.textContent=elite?'99%+ CONFIÁVEL · 100% SENIOR ELITE':'NÃO CERTIFICADO · '+passed+'/'+proofs.length+' PROVAS';
+  healthLabel.textContent=elite?'100% SENIOR ELITE':passed+'/'+proofs.length+' PROVAS';
+  healthLabel.dataset.certified=elite?'true':'false';
+  healthLabel.setAttribute('aria-label',elite?'99%+ confiável, 100% Senior Elite':`Não certificado, ${passed} de ${proofs.length} provas`);
+  healthLabel.title=elite?'99%+ confiável · 100% Senior Elite':`Não certificado · ${passed}/${proofs.length} provas`;
   document.getElementById('health-dot').classList.toggle('healthy',elite);document.getElementById('health-dot').classList.toggle('degraded',!elite);
 }
 const liveTime=(iso)=>{try{return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch{return '—';}};

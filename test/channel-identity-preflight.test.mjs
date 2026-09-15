@@ -42,7 +42,7 @@ test('YouTube preflight requires authenticated canonical channel id',async()=>{
 });
 
 test('YouTube preflight verifies canonical public feed when OAuth is unavailable',async()=>{
-  const xml=`<?xml version="1.0"?><feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"><yt:channelId>${CANONICAL_EXTERNAL_IDENTITIES.youtube_channel_id}</yt:channelId><author><name>ZEVANORY</name></author></feed>`;
+  const xml=`<?xml version="1.0"?><feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"><yt:channelId>${CANONICAL_EXTERNAL_IDENTITIES.youtube_channel_id.replace(/^UC/,'')}</yt:channelId><link rel="alternate" href="https://www.youtube.com/channel/${CANONICAL_EXTERNAL_IDENTITIES.youtube_channel_id}"/><author><name>ZEVANORY</name></author></feed>`;
   const good=await verifyYouTubeIdentity({env:{},fetchImpl:async()=>({status:200,ok:true,text:async()=>xml})});
   assert.equal(good.verified,true);assert.equal(good.reason,'identity_match_public_feed');assert.equal(good.verification_mode,'public_provider_feed');
 });

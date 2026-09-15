@@ -38,4 +38,4 @@ export function validatePublicApiRequest(req, env = process.env) {
   return Object.freeze({ ok: true });
 }
 
-export function isPublicDeploymentRequest(req){const h=req?.headers||{};const raw=String(h['x-forwarded-host']||h.host||'').split(',')[0].trim().toLowerCase();const host=raw.split(':')[0];return host==='zevanory.api.br'||host.endsWith('.vercel.app');}
+export function isPublicDeploymentRequest(req){const h=req?.headers||{};if(String(h['x-zevanory-owner-authenticated']||'')==='1')return false;const raw=String(h['x-forwarded-host']||h.host||'').split(',')[0].trim().toLowerCase();const host=raw.split(':')[0];return host==='zevanory.api.br'||host.endsWith('.vercel.app');}

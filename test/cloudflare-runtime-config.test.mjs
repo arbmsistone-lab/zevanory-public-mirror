@@ -30,3 +30,10 @@ test('removed critical binding fails closed instead of inheriting stale truth',(
   assert.equal(target.CHECKOUT_ENABLED,'false');
   assert.equal(target.FINANCIAL_EVENTS_ENABLED,'false');
 });
+
+
+test('Cloudflare does not expose a persistent WhatsApp display-name maintenance bridge',async()=>{
+  const [workerSource,configSource]=await Promise.all([readFile(new URL('../src/cloudflare-worker.mjs',import.meta.url),'utf8'),readFile(new URL('../api/config.mjs',import.meta.url),'utf8')]);
+  assert.doesNotMatch(workerSource,/__ZEVANORY_MAINTENANCE_TOKEN__|WHATSAPP_MAINTENANCE_TOKEN/);
+  assert.doesNotMatch(configSource,/whatsapp_display_name_(?:update|migrate_legacy)|WHATSAPP_MAINTENANCE_TOKEN/);
+});

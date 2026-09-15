@@ -93,7 +93,7 @@
     }
   },
   "secrets": {
-    "required": ["DATABASE_URL", "PUBLIC_BASE_URL", "FULFILLMENT_OPERATOR_TOKEN", "NUVEMSHOP_APP_ID"]
+    "required": ["DATABASE_URL", "PUBLIC_BASE_URL", "FULFILLMENT_OPERATOR_TOKEN", "NUVEMSHOP_APP_ID", "OWNER_DASHBOARD_SECRET"]
   },
   "ai": { "binding": "AI" },
   "kv_namespaces": [
