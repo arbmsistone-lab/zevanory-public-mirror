@@ -48,3 +48,20 @@ test('TikTok preflight cannot verify without expected username',async()=>{
   const good=await verifyTikTokIdentity({env,fetchImpl:async()=>response(200,{data:{creator_username:'zevanory',creator_nickname:'ZEVANORY'},error:{code:'ok'}})});
   assert.equal(good.verified,true);assert.equal(JSON.stringify(good).includes('secret'),false);
 });
+
+
+test('Instagram preflight accepts verified canonical site route to official WhatsApp',async()=>{
+  const env={META_ACCESS_TOKEN:'secret',INSTAGRAM_BUSINESS_ACCOUNT_ID:'ig1',META_GRAPH_VERSION:'v26.0'};
+  const fetchImpl=async(url)=>{
+    const u=String(url);
+    if(u.includes('graph.facebook.com'))return response(200,{id:'ig1',username:'zevanory_',biography:'Tecnologia e IA',website:'https://zevanory.api.br/arbm-sist?utm_source=instagram'});
+    if(u.includes('/whatsapp-contact.js'))return {status:200,ok:true,text:async()=>"const NUMBER='558892340423'; const href='https://wa.me/'+NUMBER;"};
+    if(u.startsWith('https://zevanory.api.br/'))return {status:200,ok:true,text:async()=>'<script src="/whatsapp-contact.js" defer></script>'};
+    return {status:404,ok:false,text:async()=>''};
+  };
+  const result=await verifyInstagramIdentity({env,fetchImpl});
+  assert.equal(result.verified,true);
+  assert.equal(result.whatsapp_contact_visible,false);
+  assert.equal(result.whatsapp_route_ready,true);
+  assert.equal(result.whatsapp_route_mode,'canonical_site_script');
+});
