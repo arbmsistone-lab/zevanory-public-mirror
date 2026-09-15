@@ -5,7 +5,7 @@ const get=async(path,opts={})=>{const r=await fetch(`${base}${path}`,{redirect:'
 const json=async(path,opts={})=>{const x=await get(path,opts);let body={};try{body=JSON.parse(x.text)}catch{}return {r:x.r,body,text:x.text}};
 const head=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
 const root=await get('/'); const js=await get('/index.js'); const css=await get('/index.css');
-add('01 root command center 200',root.r.status===200&&root.text.includes('ZEVANORY')&&root.text.includes('CENTRAL OPERACIONAL'),root.r.status);
+add('01 root public commercial 200',root.r.status===200&&root.text.includes('ZEVANORY')&&root.text.includes('/solucoes')&&!root.text.includes('CENTRAL OPERACIONAL'),root.r.status);
 add('02 frontend assets 200',js.r.status===200&&css.r.status===200,`${js.r.status}/${css.r.status}`);
 let legal=true; for(const p of ['/termos','/privacidade','/reembolso','/afiliados']) legal=legal&&(await get(p)).r.status===200; add('03 legal surfaces 200',legal);
 const live=await json('/api/live'); const health=await json('/api/health'); const status=await json('/api/status'); const agent=await json('/api/agent/status'); const release=await json('/api/release'); const config=await json('/api/config');
