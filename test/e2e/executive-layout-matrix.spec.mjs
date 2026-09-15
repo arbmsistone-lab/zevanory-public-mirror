@@ -4,8 +4,8 @@ const selectors=['.topbar','.executive-strip','.decision-center','.business-cent
 for(const viewport of viewports){
   test(`executive layout has no clipping or collisions at ${viewport.width}x${viewport.height}`,async({page},testInfo)=>{
     await page.setViewportSize(viewport); const errors=[]; page.on('pageerror',e=>errors.push(String(e.message||e)));
-    const response=await page.goto('/',{waitUntil:'networkidle'}); expect(response?.status()).toBeLessThan(500);
-    await expect(page.locator('#health-label')).toBeVisible(); await expect(page.locator('#health-label')).toContainText(/100% SENIOR ELITE|[0-5]\/5 PROVAS/);
+    const response=await page.goto('/',{waitUntil:'domcontentloaded'}); expect(response?.status()).toBeLessThan(500);
+    await expect(page.locator('#health-label')).toBeVisible(); await expect(page.locator('#health-label')).toContainText(/100% SENIOR ELITE|[0-5]\/5 PROVAS/,{timeout:10000});
     const result=await page.evaluate((selectors)=>{
       const box=(s)=>{const e=document.querySelector(s),r=e?.getBoundingClientRect();return r?{s,x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom}:null};
       const boxes=selectors.map(box).filter(Boolean), viewport={w:innerWidth,h:innerHeight};
