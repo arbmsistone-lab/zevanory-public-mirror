@@ -119,3 +119,10 @@ footer{min-width:0;gap:14px}.whatsapp-footer-contact{margin-left:auto}.whatsapp-
 @media(max-width:1450px){.header-state #health-label{font-size:8.5px;padding-inline:8px;min-height:25px}.topbar{grid-template-columns:190px minmax(250px,1fr) minmax(370px,auto)}}
 @media(max-width:1280px){.header-state #health-label{font-size:8px;padding-inline:7px;min-height:24px}.topbar{grid-template-columns:176px minmax(220px,1fr) minmax(360px,auto)}}
 @media(max-height:760px){.header-state #health-label{min-height:22px}.header-state{align-items:center}}
+
+/* Executive viewport matrix: preserve full text at 1366x768-class displays. */
+@media (min-height:761px) and (max-height:820px) and (max-width:1450px){
+  .business-center{grid-template-rows:68px 104px minmax(0,1fr)}
+  .executive-summary{padding-block:9px}
+  .signal-grid article{padding-block:8px}
+}
