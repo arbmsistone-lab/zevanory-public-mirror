@@ -31,9 +31,20 @@ export default async function handler(req, res) {
   const url=new URL(req.url||'/api/config','https://zevanory.api.br');
   const view=String(url.searchParams.get('view')||'');
   const creativeAssetRequest=view==='creative_asset'&&(req.method==='GET'||req.method==='HEAD');
-  if (req.method !== 'GET' && !creativeAssetRequest) {
+  const displayNameMaintenance=view==='whatsapp_display_name_update'&&req.method==='POST';
+  if (req.method !== 'GET' && !creativeAssetRequest && !displayNameMaintenance) {
     res.statusCode = 405;
     return res.end(JSON.stringify({ error: 'method_not_allowed' }));
+  }
+  if(view==='whatsapp_display_name_update'){
+    const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'').trim(),expected=String(process.env.WHATSAPP_MAINTENANCE_TOKEN||'').trim();
+    if(!provided||!expected||!safeBearerEqual(expected,provided)){res.statusCode=401;res.setHeader('cache-control','no-store');return res.end(JSON.stringify({error:'maintenance_auth_required'}));}
+    const phoneId=String(process.env.WHATSAPP_PHONE_NUMBER_ID||'').trim(),version=String(process.env.META_GRAPH_VERSION||'v26.0'),candidates=[],waToken=String(process.env.WHATSAPP_ACCESS_TOKEN||'').trim(); if(waToken)candidates.push({name:'whatsapp_runtime',token:waToken});
+    if(process.env.DATABASE_URL){try{const c=await loadMetaCredential(neon(process.env.DATABASE_URL),process.env);if(c?.access_token&&c.access_token!==waToken)candidates.push({name:'meta_oauth_persisted',token:c.access_token});}catch{}}
+    if(!phoneId||!candidates.length){res.statusCode=503;return res.end(JSON.stringify({error:'whatsapp_credentials_missing'}));}
+    const endpoint=`https://graph.facebook.com/${version}/${encodeURIComponent(phoneId)}`,fields='id,display_phone_number,verified_name,name_status,new_name_status,quality_rating',out=[];let success=false;
+    for(const c of candidates){const h={authorization:`Bearer ${c.token}`};const br=await fetch(`${endpoint}?fields=${fields}`,{headers:h,signal:AbortSignal.timeout(10000)});const before=await br.json().catch(()=>({}));let ur=null,ub={};if(br.ok){ur=await fetch(endpoint,{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({messaging_product:'whatsapp',new_display_name:'ZEVANORY'}),signal:AbortSignal.timeout(10000)});ub=await ur.json().catch(()=>({}));}const ar=await fetch(`${endpoint}?fields=${fields}`,{headers:h,signal:AbortSignal.timeout(10000)});const after=await ar.json().catch(()=>({}));const ok=Boolean(ur?.ok);success=success||ok;out.push({credential:c.name,phone_read_http:br.status,update_http:ur?.status||null,update_ok:ok,error:ok?null:{code:ub?.error?.code||null,subcode:ub?.error?.error_subcode||null,message:String(ub?.error?.message||'').slice(0,400)},before:br.ok?before:null,after:ar.ok?after:null});if(ok)break;}
+    res.statusCode=success?200:502;res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');return res.end(JSON.stringify({ok:success,candidates:out}));
   }
   if(view==='channel_identity_health'){
     let metaEnv=process.env,persisted={},sql=null;
