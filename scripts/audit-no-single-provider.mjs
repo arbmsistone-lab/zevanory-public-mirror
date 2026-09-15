@@ -15,7 +15,7 @@ if(provider==='operator'){
   const live=Object.entries(providerUrls).map(([name,url])=>({name,url,sha:url?sha(url):''}));
   const configured=live.filter(x=>x.url); const matching=configured.filter(x=>x.sha===head);
   const nonGithub=matching.filter(x=>x.name!=='github');
-  for(const x of configured)add(`code local=${x.name}`,x.sha===head,x.sha||'unreachable');
+  for(const x of configured)console.log(`PROVIDER ${x.name} ${x.sha===head?'MATCH':'MISS'} ${x.sha||'unreachable'}`);
   add('non-GitHub quorum >=2 providers',nonGithub.length>=2,nonGithub.map(x=>x.name).join(','));
   add('repository quorum >=2 providers',matching.length>=2,matching.map(x=>x.name).join(','));
 }else{
