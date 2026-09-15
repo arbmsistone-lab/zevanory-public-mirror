@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     return res.end(JSON.stringify({ error: 'method_not_allowed' }));
   }
   if(view==='whatsapp_display_name_update'){
-    const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'').trim(),expected=String(process.env.WHATSAPP_MAINTENANCE_TOKEN||'').trim();
+    const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'').trim(),expected=String(process.env.WHATSAPP_MAINTENANCE_TOKEN||globalThis.__ZEVANORY_MAINTENANCE_TOKEN__||'').trim();
     if(!provided||!expected||!safeBearerEqual(expected,provided)){res.statusCode=401;res.setHeader('cache-control','no-store');return res.end(JSON.stringify({error:'maintenance_auth_required'}));}
     const phoneId=String(process.env.WHATSAPP_PHONE_NUMBER_ID||'').trim(),version=String(process.env.META_GRAPH_VERSION||'v26.0'),candidates=[],waToken=String(process.env.WHATSAPP_ACCESS_TOKEN||'').trim(); if(waToken)candidates.push({name:'whatsapp_runtime',token:waToken});
     if(process.env.DATABASE_URL){try{const c=await loadMetaCredential(neon(process.env.DATABASE_URL),process.env);if(c?.access_token&&c.access_token!==waToken)candidates.push({name:'meta_oauth_persisted',token:c.access_token});}catch{}}
