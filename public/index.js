@@ -112,7 +112,10 @@ async function refresh(){
   const platformProof=Boolean(health?.checks?.database_reachable&&health?.schema?.ready&&health?.checks?.public_base_url_valid);
   const autonomyProof=Boolean(agent?.autopilot?.enabled&&agent?.autopilot?.health==='HEALTHY'&&Number(agent?.autopilot?.cycles_24h||0)>0&&Number(agent?.failed||0)===0);
   const telemetryProof=ok===entries.length; const proofs=[releaseProof,evidenceProof,platformProof,autonomyProof,telemetryProof]; const passed=proofs.filter(Boolean).length; const elite=passed===proofs.length;
-  healthLabel.textContent=elite?'99%+ CONFIÁVEL · 100% SENIOR ELITE':'NÃO CERTIFICADO · '+passed+'/'+proofs.length+' PROVAS';
+  healthLabel.textContent=elite?'100% SENIOR ELITE':passed+'/'+proofs.length+' PROVAS';
+  healthLabel.dataset.certified=elite?'true':'false';
+  healthLabel.setAttribute('aria-label',elite?'99%+ confiável, 100% Senior Elite':`Não certificado, ${passed} de ${proofs.length} provas`);
+  healthLabel.title=elite?'99%+ confiável · 100% Senior Elite':`Não certificado · ${passed}/${proofs.length} provas`;
   document.getElementById('health-dot').classList.toggle('healthy',elite);document.getElementById('health-dot').classList.toggle('degraded',!elite);
 }
 const liveTime=(iso)=>{try{return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch{return '—';}};
