@@ -89,6 +89,6 @@ test('all canonical sales fronts expose official WhatsApp route',()=>{
 });
 
 test('all public commercial pages load the official WhatsApp contact injector',()=>{
-  const dir=new URL('../public/',import.meta.url);const skip=new Set(['zevanory-robot-control.html','financeiro.html','owner-login.html']);
+  const dir=new URL('../public/',import.meta.url);const skip=new Set(['zevanory-robot-control.html','financeiro.html','owner-login.html','owner-setup.html']);
   for(const name of fs.readdirSync(dir).filter(x=>x.endsWith('.html')&&!skip.has(x))){const html=fs.readFileSync(new URL(name,dir),'utf8');assert.match(html,/\/whatsapp-contact\.js/,name);}
 });
