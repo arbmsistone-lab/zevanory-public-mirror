@@ -1,0 +1,22 @@
+trigger:
+  branches:
+    include:
+      - main
+pr:
+  branches:
+    include:
+      - main
+pool:
+  vmImage: ubuntu-latest
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '24.x'
+  - script: npm ci
+    displayName: Install locked dependencies
+  - script: npm test
+    displayName: Canonical tests
+  - script: npm run supplychain:scan
+    displayName: Supply-chain scan
+  - script: npm run audit:no-single-provider
+    displayName: Multi-provider authority audit
