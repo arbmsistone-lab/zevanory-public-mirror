@@ -41,6 +41,12 @@ test('YouTube preflight requires authenticated canonical channel id',async()=>{
   assert.equal(good.verified,true);assert.equal(wrong.verified,false);assert.equal(JSON.stringify(good).includes('secret'),false);
 });
 
+test('YouTube preflight verifies canonical public feed when OAuth is unavailable',async()=>{
+  const xml=`<?xml version="1.0"?><feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"><yt:channelId>${CANONICAL_EXTERNAL_IDENTITIES.youtube_channel_id}</yt:channelId><author><name>ZEVANORY</name></author></feed>`;
+  const good=await verifyYouTubeIdentity({env:{},fetchImpl:async()=>({status:200,ok:true,text:async()=>xml})});
+  assert.equal(good.verified,true);assert.equal(good.reason,'identity_match_public_feed');assert.equal(good.verification_mode,'public_provider_feed');
+});
+
 test('TikTok preflight cannot verify without expected username',async()=>{
   const missing=await verifyTikTokIdentity({env:{TIKTOK_ACCESS_TOKEN:'secret'},fetchImpl:async()=>response(200)});
   assert.equal(missing.verified,false);assert.equal(missing.reason,'expected_username_missing');
