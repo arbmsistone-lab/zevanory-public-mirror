@@ -134,6 +134,10 @@ async function delegatePaymentRequest(request,env){
 }
 function withSecurityHeaders(response) {
   const headers = new Headers(response.headers);
+  const contentType=String(headers.get('content-type')||'').toLowerCase();
+  if(contentType.startsWith('text/html'))headers.set('content-type','text/html; charset=utf-8');
+  else if(contentType.startsWith('text/javascript')||contentType.startsWith('application/javascript'))headers.set('content-type','text/javascript; charset=utf-8');
+  else if(contentType.startsWith('text/css'))headers.set('content-type','text/css; charset=utf-8');
   headers.set('content-security-policy', "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'");
   headers.set('x-content-type-options', 'nosniff');
   headers.set('referrer-policy', 'strict-origin-when-cross-origin');
