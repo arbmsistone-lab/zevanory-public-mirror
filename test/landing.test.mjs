@@ -5,9 +5,9 @@ const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8'
 const js=await readFile(new URL('../public/index.js',import.meta.url),'utf8');
 const css=await readFile(new URL('../public/index.css',import.meta.url),'utf8');
 
-test('central identifies ZEVANORY and connects real operational APIs',()=>{
+test('central identifies ZEVANORY and connects authenticated operational APIs',()=>{
   assert.match(html,/<title>ZEVANORY \| IA, automação, software e produtos digitais<\/title>/);assert.match(html,/CENTRAL OPERACIONAL/);
-  for(const path of ['/api/status','/api/health','/api/release','/api/config']) assert.match(js,new RegExp(path.replaceAll('/','\\/')));
+  for(const path of ['/private-api/status','/private-api/health','/private-api/release','/private-api/config']) assert.match(js,new RegExp(path.replaceAll('/','\\/')));
   assert.doesNotMatch(html,/GIRO LOCAL/i);
 });
 
@@ -31,9 +31,9 @@ test('central prioritizes decision, pipeline and clean UTF-8',()=>{
   for(const bad of ['\u00c3\u00a9','\u00c3\u00a7','\u00c3\u00a3','\ufffd']) assert.equal((html+js).includes(bad),false);
 });
 
-test('central exposes resilient live-company observability without inventing sales',()=>{
+test('central exposes authenticated live-company observability without inventing sales',()=>{
   for(const id of ['coverage-state','coverage-score','coverage-copy','source-health','channel-grid','live-operations','live-connection-state']) assert.match(html,new RegExp(`id="${id}"`));
-  for(const path of ['/api/status','/api/health','/api/release','/api/config','/api/agent/status']) assert.match(js,new RegExp(path.replaceAll('/','\\/')));
+  for(const path of ['/private-api/status','/private-api/health','/private-api/release','/private-api/config','/private-api/agent/status']) assert.match(js,new RegExp(path.replaceAll('/','\\/')));
   assert.match(js,/Promise\.allSettled/);
   assert.match(js,/renderPublicOperations/);
   assert.match(js,/renderCoverage/);

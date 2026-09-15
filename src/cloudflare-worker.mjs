@@ -26,6 +26,7 @@ import { runtimeReleaseModes } from './release.mjs';
 import { runNonCommercialAutopilot } from './nonCommercialAutopilot.mjs';
 import { handleInternalAuthMailer } from './internalAuthMailer.mjs';
 import { hydrateRuntimeConfig } from './runtimeConfigHydration.mjs';
+import { verifyOwnerCredential, createOwnerSession, verifyOwnerSession, ownerCookie, clearOwnerCookie, readOwnerCookie } from './ownerAccess.mjs';
 
 const PORT = 8788;
 
@@ -102,7 +103,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT);
 
 const staticAliases = new Map([
-  ['/', '/index.html'], ['/solucoes', '/solucoes.html'], ['/arbm-sist', '/arbm-sist.html'], ['/arbm-one', '/arbm-one.html'], ['/arbm-contador-saloes', '/arbm-contador-saloes.html'],
+  ['/', '/solucoes.html'], ['/acesso', '/owner-login.html'], ['/central', '/index.html'], ['/solucoes', '/solucoes.html'], ['/arbm-sist', '/arbm-sist.html'], ['/arbm-one', '/arbm-one.html'], ['/arbm-contador-saloes', '/arbm-contador-saloes.html'],
   ['/ia-na-pratica', '/ia-na-pratica.html'], ['/vendas-na-pratica', '/vendas-na-pratica.html'],
   ['/lucro-e-caixa', '/lucro-e-caixa.html'], ['/combo-ia-vendas', '/combo-ia-vendas.html'], ['/negocio-completo', '/negocio-completo.html'],
   ['/piloto', '/piloto.html'], ['/termos', '/termos.html'], ['/privacidade', '/privacidade.html'], ['/exclusao-dados', '/exclusao-dados.html'],
@@ -157,6 +158,25 @@ export default {
     globalThis.__ZEVANORY_MAINTENANCE_TOKEN__ = typeof env.WHATSAPP_MAINTENANCE_TOKEN === 'string' ? env.WHATSAPP_MAINTENANCE_TOKEN : null;
     hydrateRuntimeConfig(env);
     const url = new URL(request.url);
+    if(request.headers.get('x-zevanory-owner-authenticated')){const h=new Headers(request.headers);h.delete('x-zevanory-owner-authenticated');request=new Request(request,{headers:h});}
+    if(url.pathname==='/auth/owner/session'&&request.method==='POST'){
+      const origin=String(request.headers.get('origin')||'');if(origin&&origin!==url.origin)return new Response(JSON.stringify({error:'origin_not_allowed'}),{status:403,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+      const ip=String(request.headers.get('cf-connecting-ip')||'unknown').slice(0,80),rateKey='owner-auth-fail:'+ip,kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
+      const failures=kv?Number(await kv.get(rateKey)||0):0;if(failures>=8)return new Response(JSON.stringify({error:'temporarily_locked'}),{status:429,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','retry-after':'900'}});
+      let body={};try{body=await request.json();}catch{return new Response(JSON.stringify({error:'invalid_json'}),{status:400,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
+      if(!await verifyOwnerCredential(env,body?.password)){if(kv)await kv.put(rateKey,String(failures+1),{expirationTtl:900});return new Response(JSON.stringify({error:'invalid_credentials'}),{status:401,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
+      if(kv)await kv.delete(rateKey);
+      const token=await createOwnerSession(env);return new Response(JSON.stringify({authenticated:true}),{status:200,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','set-cookie':ownerCookie(token)}});
+    }
+    if(url.pathname==='/auth/owner/logout'&&request.method==='POST')return new Response(null,{status:204,headers:{'cache-control':'no-store','set-cookie':clearOwnerCookie()}});
+    const owner=await verifyOwnerSession(env,readOwnerCookie(request));
+    const privatePage=new Set(['/central','/index.html','/index.js','/index.css','/criativos','/criativos.html','/criativos.js','/criativos.css','/zevanory-robot-control','/zevanory-robot-control.html','/zevanory-robot-control.js','/zevanory-robot-control.css','/financeiro','/financeiro.html','/financeiro.css']).has(url.pathname);
+    if(privatePage&&!owner)return Response.redirect(new URL('/acesso',url),302);
+    if(url.pathname.startsWith('/private-api/')){
+      if(!owner)return new Response(JSON.stringify({error:'owner_auth_required'}),{status:401,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+      const mapped='/api/'+url.pathname.slice('/private-api/'.length);const target=new URL(mapped+url.search,url);const headers=new Headers(request.headers);headers.delete('x-zevanory-owner-authenticated');headers.set('x-zevanory-owner-authenticated','1');
+      return handleAsNodeRequest(PORT,new Request(target,{method:request.method,headers,body:['GET','HEAD'].includes(request.method)?undefined:request.body,redirect:'manual'}));
+    }
     if (url.hostname === 'zevanory.internal') return handleInternalAuthMailer(request, env);
     const delegatedPayment=await delegatePaymentRequest(request,env);if(delegatedPayment)return delegatedPayment;
     if (url.pathname === '/private/artifacts/issue') return handleArtifactIssue(request, env);
