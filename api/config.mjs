@@ -19,7 +19,6 @@ import { selectCreativeVariantWithVisualEvidence } from '../src/creativeIntellig
 import { adviseMediaInvestment } from '../src/mediaInvestmentAdvisor.mjs';
 import { verifyFacebookIdentity, verifyInstagramIdentity, verifyWhatsappIdentity, verifyYouTubeIdentity } from '../src/channelIdentityPreflight.mjs';
 import { loadMetaCredential } from '../src/metaOAuth.mjs';
-import { createHash } from 'node:crypto';
 
 export const config={maxDuration:30};
 async function channelStatusWithOAuth(summary=false){
@@ -32,34 +31,9 @@ export default async function handler(req, res) {
   const url=new URL(req.url||'/api/config','https://zevanory.api.br');
   const view=String(url.searchParams.get('view')||'');
   const creativeAssetRequest=view==='creative_asset'&&(req.method==='GET'||req.method==='HEAD');
-  const displayNameMaintenance=view==='whatsapp_display_name_update'&&req.method==='POST';
-  if (req.method !== 'GET' && !creativeAssetRequest && !displayNameMaintenance) {
+  if (req.method !== 'GET' && !creativeAssetRequest) {
     res.statusCode = 405;
     return res.end(JSON.stringify({ error: 'method_not_allowed' }));
-  }
-  if(view==='whatsapp_display_name_update'){
-    const provided=String(req.headers?.authorization||'').replace(/^Bearer\s+/i,'').trim();
-    const providedHash=createHash('sha256').update(provided).digest('hex');
-    if(!provided||!safeBearerEqual(providedHash,'675cbdb48110f3461dfcd6ffd985ee0264268153eca62cff5f548d66542bb1f9')){res.statusCode=401;res.setHeader('cache-control','no-store');return res.end(JSON.stringify({error:'maintenance_auth_required'}));}
-    const phoneId=String(process.env.WHATSAPP_PHONE_NUMBER_ID||'').trim(),version=String(process.env.META_GRAPH_VERSION||'v26.0'),wabaId='1765777697944833';
-    const candidates=[];const waToken=String(process.env.WHATSAPP_ACCESS_TOKEN||'').trim();if(waToken)candidates.push({name:'whatsapp_runtime',token:waToken});
-    if(process.env.DATABASE_URL){try{const c=await loadMetaCredential(neon(process.env.DATABASE_URL),process.env);if(c?.access_token&&c.access_token!==waToken)candidates.push({name:'meta_oauth_persisted',token:c.access_token});}catch{}}
-    if(!phoneId||candidates.length===0){res.statusCode=503;return res.end(JSON.stringify({error:'whatsapp_credentials_missing'}));}
-    const endpoint=`https://graph.facebook.com/${version}/${encodeURIComponent(phoneId)}`,fields='id,display_phone_number,verified_name,name_status,new_name_status,quality_rating';
-    const safeError=b=>({code:b?.error?.code||null,subcode:b?.error?.error_subcode||null,type:String(b?.error?.type||''),message:String(b?.error?.message||'').slice(0,500),user_title:String(b?.error?.error_user_title||'').slice(0,300),user_msg:String(b?.error?.error_user_msg||'').slice(0,500),details:String(b?.error?.error_data?.details||'').slice(0,500)});
-    const out=[];let success=false;
-    for(const c of candidates){
-      const h={authorization:`Bearer ${c.token}`};
-      const pr=await fetch(`https://graph.facebook.com/${version}/me/permissions`,{headers:h,signal:AbortSignal.timeout(10000)});const pb=await pr.json().catch(()=>({}));
-      const permissions=Array.isArray(pb?.data)?pb.data.filter(x=>x?.status==='granted').map(x=>String(x.permission)).sort():[];
-      const wr=await fetch(`https://graph.facebook.com/${version}/${wabaId}?fields=id,name,business_verification_status,status`,{headers:h,signal:AbortSignal.timeout(10000)});const wb=await wr.json().catch(()=>({}));
-      const br=await fetch(`${endpoint}?fields=${fields}`,{headers:h,signal:AbortSignal.timeout(10000)});const bb=await br.json().catch(()=>({}));
-      let ur=null,ub={};if(br.ok){ur=await fetch(endpoint,{method:'POST',headers:{...h,'content-type':'application/json'},body:JSON.stringify({messaging_product:'whatsapp',new_display_name:'ZEVANORY'}),signal:AbortSignal.timeout(10000)});ub=await ur.json().catch(()=>({}));}
-      const ar=await fetch(`${endpoint}?fields=${fields}`,{headers:h,signal:AbortSignal.timeout(10000)});const ab=await ar.json().catch(()=>({}));
-      const ok=Boolean(ur?.ok);success=success||ok;out.push({credential:c.name,permissions_http:pr.status,permissions,waba_http:wr.status,waba_accessible:wr.ok,phone_read_http:br.status,phone_accessible:br.ok,update_http:ur?.status||null,update_ok:ok,error:ok?null:safeError(ub),before:br.ok?bb:null,after:ar.ok?ab:null});
-      if(ok)break;
-    }
-    res.statusCode=success?200:502;res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');return res.end(JSON.stringify({ok:success,candidates:out}));
   }
   if(view==='channel_identity_health'){
     let metaEnv=process.env,persisted={},sql=null;
