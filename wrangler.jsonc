@@ -9,11 +9,21 @@
   "compatibility_date": "2026-09-04",
   "workers_dev": true,
   "routes": [
-    { "pattern": "backup.zevanory.api.br", "custom_domain": true },
-    { "pattern": "edge.zevanory.api.br", "custom_domain": true },
+    {
+      "pattern": "backup.zevanory.api.br",
+      "custom_domain": true
+    },
+    {
+      "pattern": "edge.zevanory.api.br",
+      "custom_domain": true
+    },
     "zevanory.api.br/*"
   ],
-  "triggers": { "crons": ["0 * * * *"] },
+  "triggers": {
+    "crons": [
+      "0 * * * *"
+    ]
+  },
   "vars": {
     "SUPPORT_CHANNEL": "WhatsApp +55 88 9234-0423",
     "CLOUDFLARE_AI_FREE_ONLY": "true",
@@ -93,9 +103,17 @@
     }
   },
   "secrets": {
-    "required": ["DATABASE_URL", "PUBLIC_BASE_URL", "FULFILLMENT_OPERATOR_TOKEN", "NUVEMSHOP_APP_ID"]
+    "required": [
+      "DATABASE_URL",
+      "PUBLIC_BASE_URL",
+      "FULFILLMENT_OPERATOR_TOKEN",
+      "NUVEMSHOP_APP_ID",
+      "OWNER_DASHBOARD_SECRET"
+    ]
   },
-  "ai": { "binding": "AI" },
+  "ai": {
+    "binding": "AI"
+  },
   "kv_namespaces": [
     {
       "binding": "ZEVANORY_PRIVATE_ARTIFACTS",
@@ -112,4 +130,3 @@
     "enabled": true
   }
 }
-
