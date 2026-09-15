@@ -1,4 +1,4 @@
-﻿import http from 'node:http';
+import http from 'node:http';
 import { handleAsNodeRequest } from 'cloudflare:node';
 import configHandler from '../api/config.mjs';
 import statusHandler from '../api/status.mjs';
@@ -26,7 +26,7 @@ import { runtimeReleaseModes } from './release.mjs';
 import { runNonCommercialAutopilot } from './nonCommercialAutopilot.mjs';
 import { handleInternalAuthMailer } from './internalAuthMailer.mjs';
 import { hydrateRuntimeConfig } from './runtimeConfigHydration.mjs';
-import { verifyOwnerCredential, createOwnerSession, verifyOwnerSession, ownerCookie, clearOwnerCookie, readOwnerCookie } from './ownerAccess.mjs';
+import { verifyOwnerCredential, setOwnerCredential, ownerSetupKey, createOwnerSession, verifyOwnerSession, ownerCookie, clearOwnerCookie, readOwnerCookie } from './ownerAccess.mjs';
 
 const PORT = 8788;
 
@@ -103,7 +103,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT);
 
 const staticAliases = new Map([
-  ['/', '/solucoes.html'], ['/acesso', '/owner-login.html'], ['/central', '/index.html'], ['/solucoes', '/solucoes.html'], ['/arbm-sist', '/arbm-sist.html'], ['/arbm-one', '/arbm-one.html'], ['/arbm-contador-saloes', '/arbm-contador-saloes.html'],
+  ['/', '/solucoes.html'], ['/acesso', '/owner-login.html'], ['/configurar-acesso', '/owner-setup.html'], ['/central', '/index.html'], ['/solucoes', '/solucoes.html'], ['/arbm-sist', '/arbm-sist.html'], ['/arbm-one', '/arbm-one.html'], ['/arbm-contador-saloes', '/arbm-contador-saloes.html'],
   ['/ia-na-pratica', '/ia-na-pratica.html'], ['/vendas-na-pratica', '/vendas-na-pratica.html'],
   ['/lucro-e-caixa', '/lucro-e-caixa.html'], ['/combo-ia-vendas', '/combo-ia-vendas.html'], ['/negocio-completo', '/negocio-completo.html'],
   ['/piloto', '/piloto.html'], ['/termos', '/termos.html'], ['/privacidade', '/privacidade.html'], ['/exclusao-dados', '/exclusao-dados.html'],
@@ -163,9 +163,17 @@ export default {
       const ip=String(request.headers.get('cf-connecting-ip')||'unknown').slice(0,80),rateKey='owner-auth-fail:'+ip,kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
       const failures=kv?Number(await kv.get(rateKey)||0):0;if(failures>=8)return new Response(JSON.stringify({error:'temporarily_locked'}),{status:429,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','retry-after':'900'}});
       let body={};try{body=await request.json();}catch{return new Response(JSON.stringify({error:'invalid_json'}),{status:400,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
-      if(!await verifyOwnerCredential(env,body?.password)){if(kv)await kv.put(rateKey,String(failures+1),{expirationTtl:900});return new Response(JSON.stringify({error:'invalid_credentials'}),{status:401,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
+      if(!await verifyOwnerCredential(env,body?.password,kv)){if(kv)await kv.put(rateKey,String(failures+1),{expirationTtl:900});return new Response(JSON.stringify({error:'invalid_credentials'}),{status:401,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
       if(kv)await kv.delete(rateKey);
       const token=await createOwnerSession(env);return new Response(JSON.stringify({authenticated:true}),{status:200,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','set-cookie':ownerCookie(token)}});
+    }
+    if(url.pathname==='/auth/owner/setup'&&request.method==='POST'){
+      const origin=String(request.headers.get('origin')||'');if(origin&&origin!==url.origin)return new Response(JSON.stringify({error:'origin_not_allowed'}),{status:403,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+      const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;if(!kv)return new Response(JSON.stringify({error:'setup_unavailable'}),{status:503,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+      let body={};try{body=await request.json();}catch{return new Response(JSON.stringify({error:'invalid_json'}),{status:400,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
+      const token=String(body?.token||''),password=String(body?.password||'');if(token.length<32||password.length<16)return new Response(JSON.stringify({error:'invalid_setup'}),{status:400,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+      const key=await ownerSetupKey(token),allowed=await kv.get(key);if(allowed!=='1')return new Response(JSON.stringify({error:'setup_token_invalid'}),{status:403,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+      await setOwnerCredential(kv,password);await kv.delete(key);const session=await createOwnerSession(env);return new Response(JSON.stringify({configured:true}),{status:200,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','set-cookie':ownerCookie(session)}});
     }
     if(url.pathname==='/auth/owner/logout'&&request.method==='POST')return new Response(null,{status:204,headers:{'cache-control':'no-store','set-cookie':clearOwnerCookie()}});
     const owner=await verifyOwnerSession(env,readOwnerCookie(request));

@@ -1,8 +1,9 @@
 const COOKIE_NAME='__Host-zevanory_owner';
 const SESSION_SECONDS=8*60*60;
+const CREDENTIAL_KEY='owner:credential:v1';
 const enc=new TextEncoder();
 
-function authSecret(env={}){
+function sessionSecret(env={}){
   return String(env.OWNER_DASHBOARD_SECRET||env.OPERATOR_TOKEN||'').trim();
 }
 function toBase64Url(bytes){
@@ -26,19 +27,34 @@ async function hmac(secret,value){
   const key=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
   return new Uint8Array(await crypto.subtle.sign('HMAC',key,enc.encode(value)));
 }
-export async function verifyOwnerCredential(env,provided){
-  const expected=authSecret(env);
-  if(expected.length<24||String(provided||'').length<24)return false;
-  return sameBytes(await digest(expected),await digest(provided));
+async function derivePassword(password,salt,iterations){
+  const key=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt,iterations},key,256));
+}
+export async function setOwnerCredential(kv,password){
+  const value=String(password||'');
+  if(!kv||value.length<16)throw new Error('owner_password_invalid');
+  const salt=crypto.getRandomValues(new Uint8Array(16)),iterations=210000;
+  const hash=await derivePassword(value,salt,iterations);
+  await kv.put(CREDENTIAL_KEY,JSON.stringify({v:1,iterations,salt:toBase64Url(salt),hash:toBase64Url(hash)}));
+}
+export async function verifyOwnerCredential(env,provided,kv){
+  const value=String(provided||''); if(value.length<16)return false;
+  if(kv){
+    const raw=await kv.get(CREDENTIAL_KEY);
+    if(raw){try{const r=JSON.parse(raw);const actual=await derivePassword(value,fromBase64Url(r.salt),Number(r.iterations));return sameBytes(actual,fromBase64Url(r.hash));}catch{return false;}}
+  }
+  const legacy=sessionSecret(env); if(legacy.length<24||value.length<24)return false;
+  return sameBytes(await digest(legacy),await digest(value));
 }
 export async function createOwnerSession(env){
-  const secret=authSecret(env); if(secret.length<24)throw new Error('owner_secret_unavailable');
+  const secret=sessionSecret(env); if(secret.length<24)throw new Error('owner_secret_unavailable');
   const now=Math.floor(Date.now()/1000),nonce=toBase64Url(crypto.getRandomValues(new Uint8Array(16))),payload=`v1.${now}.${now+SESSION_SECONDS}.${nonce}`;
   const sig=toBase64Url(await hmac(secret,payload));
   return `${payload}.${sig}`;
 }
 export async function verifyOwnerSession(env,token){
-  const secret=authSecret(env); if(secret.length<24)return false;
+  const secret=sessionSecret(env); if(secret.length<24)return false;
   const parts=String(token||'').split('.'); if(parts.length!==5||parts[0]!=='v1')return false;
   const issued=Number(parts[1]),expires=Number(parts[2]);
   if(!Number.isInteger(issued)||!Number.isInteger(expires)||expires<=Math.floor(Date.now()/1000)||expires-issued!==SESSION_SECONDS)return false;
@@ -54,3 +70,4 @@ export function readOwnerCookie(request){
   const hit=raw.split(';').map(x=>x.trim()).find(x=>x.startsWith(`${COOKIE_NAME}=`));
   return hit?hit.slice(COOKIE_NAME.length+1):'';
 }
+export async function ownerSetupKey(token){return 'owner:setup:'+toBase64Url(await digest(token));}
