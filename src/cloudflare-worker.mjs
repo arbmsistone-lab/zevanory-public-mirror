@@ -19,7 +19,6 @@ import autopilotHandler from '../api/autopilot.mjs';
 import aiVaultHandler from './http/aiVault.mjs';
 import aiServiceIdentityHandler from './http/aiServiceIdentity.mjs';
 import aiGatewaySelftestHandler from './http/aiGatewaySelftest.mjs';
-import whatsappBrandMigrationHandler from './http/whatsappBrandMigration.mjs';
 import { handleArtifactIssue, handleArtifactDownload } from './cloudflareArtifactRoutes.mjs';
 import { handleCloudflareJournalAppend } from './durableOperationJournal.mjs';
 import { publicCommercialChannelReadinessSummary } from './publicChannelStatus.mjs';
@@ -53,7 +52,6 @@ const directHandlers = new Map([
   ['/api/internal/ai-vault', aiVaultHandler],
   ['/api/internal/ai-service-identity', aiServiceIdentityHandler],
   ['/api/internal/ai-gateway-selftest', aiGatewaySelftestHandler],
-  ['/api/internal/whatsapp-brand-migration', whatsappBrandMigrationHandler],
 ]);
 function resolveHandler(req) {
   const url = new URL(req.url || '/', 'https://zevanory.api.br');
