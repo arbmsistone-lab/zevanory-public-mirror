@@ -32,8 +32,8 @@ test('removed critical binding fails closed instead of inheriting stale truth',(
 });
 
 
-test('Cloudflare explicitly bridges the ephemeral WhatsApp maintenance secret',async()=>{
+test('Cloudflare does not expose a persistent WhatsApp display-name maintenance bridge',async()=>{
   const [workerSource,configSource]=await Promise.all([readFile(new URL('../src/cloudflare-worker.mjs',import.meta.url),'utf8'),readFile(new URL('../api/config.mjs',import.meta.url),'utf8')]);
-  assert.match(workerSource,/__ZEVANORY_MAINTENANCE_TOKEN__.*WHATSAPP_MAINTENANCE_TOKEN/);
-  assert.match(configSource,/WHATSAPP_MAINTENANCE_TOKEN\|\|globalThis\.__ZEVANORY_MAINTENANCE_TOKEN__/);
+  assert.doesNotMatch(workerSource,/__ZEVANORY_MAINTENANCE_TOKEN__|WHATSAPP_MAINTENANCE_TOKEN/);
+  assert.doesNotMatch(configSource,/whatsapp_display_name_(?:update|migrate_legacy)|WHATSAPP_MAINTENANCE_TOKEN/);
 });
