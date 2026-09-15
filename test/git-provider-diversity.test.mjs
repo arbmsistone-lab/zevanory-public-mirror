@@ -32,11 +32,11 @@ test('migration evidence records three independent primary sources and preserves
   assert.match(evidence, /Do not enable sales, checkout or financial events/i);
 });
 
-test('repository authority is provider-neutral and GitHub is not mandatory', async()=>{
+test('repository authority requires two non-GitHub providers', async()=>{
   const audit=readFileSync(new URL('../scripts/audit-no-single-provider.mjs', import.meta.url),'utf8');
   assert.match(audit,/ZEVANORY_AZURE_REPO_URL/);
   assert.match(audit,/ZEVANORY_BITBUCKET_URL/);
-  assert.match(audit,/non-GitHub authority available/);
+  assert.match(audit,/non-GitHub quorum >=2 providers/);
+  assert.match(audit,/nonGithub\.length>=2/);
   assert.match(audit,/repository quorum >=2 providers/);
-  assert.doesNotMatch(audit,/code local=GitHub.*&&/);
 });

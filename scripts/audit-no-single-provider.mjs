@@ -16,7 +16,7 @@ if(provider==='operator'){
   const configured=live.filter(x=>x.url); const matching=configured.filter(x=>x.sha===head);
   const nonGithub=matching.filter(x=>x.name!=='github');
   for(const x of configured)add(`code local=${x.name}`,x.sha===head,x.sha||'unreachable');
-  add('non-GitHub authority available',nonGithub.length>=1,nonGithub.map(x=>x.name).join(','));
+  add('non-GitHub quorum >=2 providers',nonGithub.length>=2,nonGithub.map(x=>x.name).join(','));
   add('repository quorum >=2 providers',matching.length>=2,matching.map(x=>x.name).join(','));
 }else{
   add(`${provider} event SHA=checkout`,eventSha===head,`${eventSha}|${head}`);
