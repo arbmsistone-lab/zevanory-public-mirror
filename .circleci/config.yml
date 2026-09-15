@@ -209,21 +209,6 @@ jobs:
       - store_artifacts:
           path: remote-attestation/circleci.json
 
-
-  cloudflare_production_deploy:
-    docker:
-      - image: cimg/node:24.19
-    resource_class: small
-    steps:
-      - checkout
-      - run: npm ci --no-audit --no-fund
-      - run:
-          name: Deploy canonical SHA to Cloudflare production
-          command: |
-            if ! git remote get-url gitlab >/dev/null 2>&1; then
-              git remote add gitlab https://gitlab.com/arbm-sistone/ZEVANORY.git
-            fi
-            node scripts/deploy-cloudflare-production.mjs
 workflows:
   ci:
     jobs:
@@ -233,18 +218,6 @@ workflows:
       - arbm_cloud_qcp
       - arbm_cloud_recovery
       - remote_attestation
-      - cloudflare_production_deploy:
-          requires:
-            - core
-            - arbm_cloud_quality
-            - arbm_cloud_security
-            - arbm_cloud_qcp
-            - arbm_cloud_recovery
-            - remote_attestation
-            - deep
-          filters:
-            branches:
-              only: main
       - deep:
           requires:
             - core
