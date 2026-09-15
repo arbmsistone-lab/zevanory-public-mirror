@@ -122,7 +122,7 @@ footer{min-width:0;gap:14px}.whatsapp-footer-contact{margin-left:auto}.whatsapp-
 
 /* Executive viewport matrix: preserve full text at 1366x768-class displays. */
 @media (min-height:761px) and (max-height:820px) and (max-width:1450px){
-  .business-center{grid-template-rows:68px 96px minmax(0,1fr)}
+  .business-center{grid-template-rows:68px 104px minmax(0,1fr)}
   .executive-summary{padding-block:9px}
   .signal-grid article{padding-block:8px}
 }
