@@ -1,0 +1,13 @@
+{
+  "provider": "supabase-edge-functions",
+  "project_id": "pvkpkqwdnnpkgvllwqbc",
+  "deployed_slug": "arbm-ai-three-provider-probe-20260908",
+  "purpose": "ZEVANORY signed FREE AI gateway",
+  "zero_spend_hard": true,
+  "commercial": false,
+  "allowed_ai_providers": ["mistral", "lightning"],
+  "auth": "Ed25519 + timestamp + body hash + nonce",
+  "public_key_fingerprint": "VFJqId57a0drMaaTLvv-gTI0Q1772UiEnh6bTEOC2i4",
+  "deployed_edge_function_version": 38,
+  "deployed_ezbr_sha256": "e20081a50e021aa04625cf3e73fcdca1518582227af65db7799f994434a21fdd"
+}
