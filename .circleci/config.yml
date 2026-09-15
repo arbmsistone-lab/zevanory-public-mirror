@@ -219,7 +219,11 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run:
           name: Deploy canonical SHA to Cloudflare production
-          command: node scripts/deploy-cloudflare-production.mjs
+          command: |
+            if ! git remote get-url gitlab >/dev/null 2>&1; then
+              git remote add gitlab https://gitlab.com/arbm-sistone/ZEVANORY.git
+            fi
+            node scripts/deploy-cloudflare-production.mjs
 workflows:
   ci:
     jobs:
