@@ -33,13 +33,13 @@ async function derivePassword(password,salt,iterations){
 }
 export async function setOwnerCredential(kv,password){
   const value=String(password||'');
-  if(!kv||value.length<16)throw new Error('owner_password_invalid');
+  if(!kv||value.length<8)throw new Error('owner_password_invalid');
   const salt=crypto.getRandomValues(new Uint8Array(16)),iterations=210000;
   const hash=await derivePassword(value,salt,iterations);
   await kv.put(CREDENTIAL_KEY,JSON.stringify({v:1,iterations,salt:toBase64Url(salt),hash:toBase64Url(hash)}));
 }
 export async function verifyOwnerCredential(env,provided,kv){
-  const value=String(provided||''); if(value.length<16)return false;
+  const value=String(provided||''); if(value.length<8)return false;
   if(kv){
     const raw=await kv.get(CREDENTIAL_KEY);
     if(raw){try{const r=JSON.parse(raw);const actual=await derivePassword(value,fromBase64Url(r.salt),Number(r.iterations));return sameBytes(actual,fromBase64Url(r.hash));}catch{return false;}}
