@@ -129,13 +129,13 @@ function renderSummary(){
 async function load(){
   try{
     const [sampleRes,closureRes,agentRes]=await Promise.all([
-      fetch('/private-api/config?view=creative_sample',{cache:'no-store'}),
-      fetch('/private-api/config?view=closure_status',{cache:'no-store'}),
-      fetch('/private-api/agent/status',{cache:'no-store'})
+      fetch('/api/config?view=creative_sample',{cache:'no-store'}),
+      fetch('/api/config?view=closure_status',{cache:'no-store'}),
+      fetch('/api/agent/status?summary=1',{cache:'no-store'})
     ]);
     if(!sampleRes.ok)throw new Error(`creative_sample_http_${sampleRes.status}`);
     if(!closureRes.ok)throw new Error(`closure_status_http_${closureRes.status}`);
-    sample=await sampleRes.json();closure=await closureRes.json();const agent=agentRes.ok?await agentRes.json():{};window.__zevanoryAgentEvidence=agent;
+    sample=await sampleRes.json();closure=await closureRes.json();const agent=agentRes.ok?await agentRes.json():{};
     if(!sample?.engine||!closure?.distribution?.fronts)throw new Error('creative_contract_invalid');
     renderSummary();renderPreview();const auto=agent.autopilot||{};set('truth-copy',`Pesquisa, criação e avaliação seguem ativas · ${auto.cycles_24h||0} ciclo(s) autônomo(s) 24h · ${auto.program_drafts||0} programa(s) em rascunho · vendas bloqueadas.`);set('source-state','fontes reais · creative_sample + closure_status + autopilot');
   }catch(error){
@@ -161,7 +161,15 @@ function renderEvidence(agent={}){
   const mr=$('evidence-media'); if(mr){mr.replaceChildren(); for(const m of media.slice(0,10)){const card=document.createElement('article');card.className='media-proof';const accepted=m.elite_accepted===true&&m.asset_url;const visual=accepted?(String(m.channel).match(/youtube|tiktok/)?`<video src="${escText(m.asset_url)}" controls preload="metadata"></video><audio src="${escText(m.asset_url)}" controls preload="none"></audio>`:`<img src="${escText(m.asset_url)}" loading="lazy" alt="Criativo ${escText(m.creative_id||'')}">`):'<div class="media-rejected">ARTEFATO NÃO LIBERADO · gate de qualidade não atingido</div>';card.innerHTML=`${visual}<div><b>${escText(m.channel||'canal')} · ${escText(m.creative_id||'sem creative id')}</b><small>Q ${Number(m.quality_score||0).toFixed(3)} · P ${Number(m.perceptual_score||0).toFixed(3)} · rodada ${m.revision_round||0} · ${m.elite_accepted?'ELITE APROVADO':'REVISÃO'}</small><small>Ciclo ${escText(m.cycle_id||'—')} · ${escText(m.subject||'')}</small></div>`;mr.append(card);} if(!media.length)mr.innerHTML='<div class="empty">Nenhuma mídia do autopilot persistida neste recorte.</div>';}
   const er=$('evidence-runs'); if(er){er.replaceChildren();for(const r of runs){const card=document.createElement('article');card.innerHTML=`<b>${escText(r.title||r.provider||'execução')}</b><small>${escText(r.provider||'')} · ${escText(r.model||'')} · ${r.latency_ms||0} ms · ${escText(r.state||'')}</small><small>${new Date(r.created_at).toLocaleString('pt-BR')} · trace ${escText((r.trace_id||r.id||'').slice(0,12))}</small>`;er.append(card);}if(!runs.length)er.innerHTML='<div class="empty">Nenhuma execução recente.</div>';}
 }
-const evidenceDialog=$('evidence-dialog');$('open-evidence')?.addEventListener('click',()=>{evidenceDialog?.showModal();renderEvidence(window.__zevanoryAgentEvidence||{});});$('close-evidence')?.addEventListener('click',()=>evidenceDialog?.close());evidenceDialog?.addEventListener('click',e=>{if(e.target===evidenceDialog)evidenceDialog.close();});
+const evidenceDialog=$('evidence-dialog');let evidenceCache=null,evidenceCacheAt=0,evidenceLoading=false;
+async function loadOwnerEvidence(){
+  if(evidenceLoading)return;if(evidenceCache&&Date.now()-evidenceCacheAt<30000){renderEvidence(evidenceCache);return;}
+  evidenceLoading=true;set('evidence-cycles','CARREGANDO');
+  try{const r=await fetch('/private-api/agent/status',{cache:'no-store'});if(!r.ok)throw new Error(`owner_evidence_http_${r.status}`);evidenceCache=await r.json();evidenceCacheAt=Date.now();renderEvidence(evidenceCache);}
+  catch(error){set('evidence-cycles','PRIVADO');set('evidence-sources','—');set('evidence-orgs','—');set('evidence-media-count','—');const msg='Procedência detalhada disponível somente na sessão autenticada do Edge.';for(const id of ['evidence-research','evidence-media','evidence-runs']){const el=$(id);if(el){el.replaceChildren();const box=document.createElement('div');box.className='empty';box.textContent=msg;el.append(box);}}}
+  finally{evidenceLoading=false;}
+}
+$('open-evidence')?.addEventListener('click',()=>{evidenceDialog?.showModal();requestAnimationFrame(()=>loadOwnerEvidence());});$('close-evidence')?.addEventListener('click',()=>evidenceDialog?.close());evidenceDialog?.addEventListener('click',e=>{if(e.target===evidenceDialog)evidenceDialog.close();});
 
 load();setInterval(load,60000);
 

@@ -115,8 +115,8 @@ test('command center protects private navigation against transient DNS or route 
 
 test('owner evidence center exposes provenance and real media without opening commerce',()=>{
   for(const id of ['open-evidence','evidence-dialog','evidence-research','evidence-media','evidence-runs'])assert.match(html,new RegExp(`id="${id}"`));
-  assert.match(js,/\/private-api\/config\?view=creative_sample/);assert.match(js,/\/private-api\/agent\/status/);
-  assert.match(js,/safeHttps/);assert.match(js,/source_url/);assert.match(js,/channel_creatives/);assert.match(js,/<video/);assert.match(js,/<audio/);
+  assert.match(js,/\/api\/config\?view=creative_sample/);assert.match(js,/\/api\/config\?view=closure_status/);assert.match(js,/\/api\/agent\/status\?summary=1/);assert.match(js,/\/private-api\/agent\/status/);
+  assert.match(js,/safeHttps/);assert.match(js,/source_url/);assert.match(js,/channel_creatives/);assert.match(js,/<video/);assert.match(js,/<audio/);assert.match(js,/async function loadOwnerEvidence/);assert.match(js,/requestAnimationFrame\(\(\)=>loadOwnerEvidence\(\)\)/);
   assert.match(html,/vendas e publicação comercial permanecem bloqueadas/i);
 });
 
