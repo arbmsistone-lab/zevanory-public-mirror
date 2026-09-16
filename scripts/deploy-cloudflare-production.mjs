@@ -6,16 +6,15 @@ const SHA=/^[0-9a-f]{40}$/i;
 const REF=/^[A-Za-z0-9._/-]{1,120}$/;
 const TEMP_CONFIG='wrangler.release.runtime.jsonc';
 
-export function validateCloudflareReleaseMetadata({sha,ref,status,githubSha,gitlabSha}){
+export function validateCloudflareReleaseMetadata({sha,ref,status,canonicalSha}){
   const cleanSha=String(sha||'').trim().toLowerCase();
   const cleanRef=String(ref||'').trim();
-  const gh=String(githubSha||'').trim().toLowerCase();
-  const gl=String(gitlabSha||'').trim().toLowerCase();
+  const canonical=String(canonicalSha||'').trim().toLowerCase();
   if(!SHA.test(cleanSha)) throw new Error('deploy_release_sha_invalid');
   if(!REF.test(cleanRef)||cleanRef!=='main') throw new Error('deploy_requires_main_branch');
   if(String(status||'').trim()) throw new Error('deploy_requires_clean_worktree');
-  if(!SHA.test(gh)||!SHA.test(gl)) throw new Error('deploy_remote_main_sha_invalid');
-  if(cleanSha!==gh||cleanSha!==gl) throw new Error('deploy_requires_github_gitlab_head_parity');
+  if(!SHA.test(canonical)) throw new Error('deploy_canonical_main_sha_invalid');
+  if(cleanSha!==canonical) throw new Error('deploy_requires_canonical_main_parity');
   return Object.freeze({sha:cleanSha,ref:cleanRef});
 }
 
@@ -43,13 +42,12 @@ export function verifyLiveRelease(body,meta){
   return true;
 }
 export async function main(){
-  run('git',['fetch','origin','main']); run('git',['fetch','gitlab','main']);
+  run('git',['fetch','origin','main']);
   const sha=run('git',['rev-parse','HEAD'],{capture:true});
   const ref=run('git',['branch','--show-current'],{capture:true});
   const status=run('git',['status','--porcelain','--untracked-files=no'],{capture:true});
-  const githubSha=run('git',['rev-parse','origin/main'],{capture:true});
-  const gitlabSha=run('git',['rev-parse','gitlab/main'],{capture:true});
-  const meta=validateCloudflareReleaseMetadata({sha,ref,status,githubSha,gitlabSha});
+  const canonicalSha=run('git',['rev-parse','origin/main'],{capture:true});
+  const meta=validateCloudflareReleaseMetadata({sha,ref,status,canonicalSha});
   const base=readFileSync('wrangler.jsonc','utf8');
   writeFileSync(TEMP_CONFIG,buildRuntimeConfig(base,meta),'utf8');
   try{
