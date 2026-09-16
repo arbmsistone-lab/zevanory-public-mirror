@@ -1,18 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-const ci = readFileSync(new URL('../.gitlab-ci.yml', import.meta.url), 'utf8');
+const gitlab = readFileSync(new URL('../.gitlab-ci.yml', import.meta.url), 'utf8');
+const circle = readFileSync(new URL('../.circleci/config.yml', import.meta.url), 'utf8');
+const policy = readFileSync(new URL('../docs/CI_EXECUTION_POLICY.md', import.meta.url), 'utf8');
 const evidence = readFileSync(new URL('../evidence/EG-0055-GIT-PROVIDER-DIVERSITY.md', import.meta.url), 'utf8');
 
-test('GitLab CI reproduces canonical fail-closed quality gates', () => {
+test('CircleCI is the canonical remote executor and GitLab is passive', () => {
+  assert.match(policy, /CircleCI is the canonical remote execution plane/);
+  assert.match(gitlab, /workflow:\s*\n\s*rules:\s*\n\s*- when: never/);
   for (const command of ['npm test','npm run supplychain:scan','npm audit --omit=dev --audit-level=high','npm run audit:3x','npm run audit:security:10x','npm run audit:lifecycle:10x','npm run audit:lifecycle:evidence:10x','npm run audit:closure:10x'])
-    assert.match(ci, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(circle, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
-test('GitLab CI keeps heavy work on cloud container runners', () => {
-  assert.match(ci, /image: node:24-bookworm/);
-  assert.match(ci, /aquasec\/trivy:0\.74\.0/);
-  assert.match(ci, /mcr\.microsoft\.com\/playwright:v1\.62\.1-noble/);
-  assert.doesNotMatch(ci, /shell\s*runner|localhost runner|windows runner/i);
+test('heavy CI stays on remote cloud executors only', () => {
+  assert.match(circle, /cimg\/node:24\.19/);
+  assert.match(circle, /playwright install --with-deps chromium/);
+  assert.match(circle, /arbm_cloud_recovery/);
+  assert.doesNotMatch(circle, /shell\s*runner|localhost runner|windows runner/i);
 });
 test('migration evidence preserves commercial NO-GO', () => {
   assert.match(evidence, /docs\.gitlab\.com/);

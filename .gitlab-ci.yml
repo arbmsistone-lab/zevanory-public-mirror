@@ -1,4 +1,9 @@
 # MR pipeline refresh after GitLab import verification 2026-09-05
+# Passive mirror: canonical remote execution is CircleCI (docs/CI_EXECUTION_POLICY.md).
+workflow:
+  rules:
+    - when: never
+
 stages:
   - quality
   - security

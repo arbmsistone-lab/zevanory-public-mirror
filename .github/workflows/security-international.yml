@@ -1,12 +1,7 @@
 name: ZEVANORY International Security Gate
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: "37 6 * * 1"
   workflow_dispatch:
+
 permissions:
   contents: read
 concurrency:
