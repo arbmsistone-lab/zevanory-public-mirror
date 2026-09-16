@@ -42,7 +42,7 @@ export async function main(){
   run('git',['fetch','origin','main']);
   const meta=validateCloudflareReleaseMetadata({
     sha:run('git',['rev-parse','HEAD'],{capture:true}),
-    ref:run('git',['branch','--show-current'],{capture:true}),
+    ref:'main',
     status:run('git',['status','--porcelain'],{capture:true}),
     canonicalSha:run('git',['rev-parse','origin/main'],{capture:true}),
   });
