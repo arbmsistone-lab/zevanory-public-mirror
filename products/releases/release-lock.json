@@ -1,0 +1,21 @@
+{
+  "schema_version": 3,
+  "fingerprint_mode": "git_tree_oid_primary_portable_sha256_fallback",
+  "releases": {
+    "1.1": {
+      "git_tree_oid": "49a46646836494963b4610011825010e853e5dea",
+      "portable_sha256": "ec80d5d31e498c7130f117f82dfd998df8f0d73002601bb7caa9dc7eb0cb9da0",
+      "file_count": 100
+    },
+    "2.0": {
+      "git_tree_oid": "e4d83533c14b00e83f0f018849af8c2f264930b1",
+      "portable_sha256": "676c27c30e5064613e8864d6a380d31daf02d13588472bf0bb4e8d8c89e29577",
+      "file_count": 136
+    },
+    "2.1": {
+      "git_tree_oid": "dab9cf45631df38dbcb4f2b8a1999847dbdd3c08",
+      "portable_sha256": "a38a5bc4f2db8361de501539456444b7476518a14f6202f43cbe39787ff57c9d",
+      "file_count": 228
+    }
+  }
+}

@@ -17,6 +17,8 @@ jobs:
           paths:
             - ~/.npm
       - run: npm test
+      - run: npm run audit:content:evolution
+      - run: npm run audit:content:evolution:adversarial
       - run: npm run audit:commercial-engine-v2:10x
       - run: npm run audit:3x
       - run: npm run audit:security:10x
@@ -47,6 +49,8 @@ jobs:
       - checkout
       - run: npm ci --no-audit --no-fund
       - run: npm test
+      - run: npm run audit:content:evolution
+      - run: npm run audit:content:evolution:adversarial
       - run: npm run supplychain:scan
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run contract:smoke
@@ -69,6 +73,12 @@ jobs:
       - run: npm run audit:live-plan:3x
       - run: npm run audit:10x
       - run: npm run resilience:smoke
+      - run: npm run audit:no-single-provider
+      - run: npm run audit:infrastructure:50x
+      - run: npm run dr:public-artifact
+      - run: npm run audit:dns-recovery
+      - run: npm run dr:chaos:providers
+      - run: npm run audit:critical-continuity
       - run: npm run audit:30x
       - run: npm run audit:sales:20x
       - run: npm run audit:final
@@ -92,12 +102,23 @@ jobs:
       - run: npm run security:lifecycle
       - run: node --test test/adaptive-rate-limit.test.mjs test/secret-lifecycle.test.mjs
       - run:
-          name: Install Trivy 0.74.0
+          name: Install Trivy 0.74.0 with verified fallback
           command: |
-            curl -fsSLO https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_Linux-64bit.tar.gz
-            echo "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a  trivy_0.74.0_Linux-64bit.tar.gz" | sha256sum -c -
-            tar -xzf trivy_0.74.0_Linux-64bit.tar.gz trivy
-            sudo install -m 0755 trivy /usr/local/bin/trivy
+            set -euo pipefail
+            asset=trivy_0.74.0_Linux-64bit.tar.gz
+            if curl --retry 4 --retry-all-errors --retry-delay 2 -fsSLO https://github.com/aquasecurity/trivy/releases/download/v0.74.0/$asset; then
+              echo "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a  $asset" | sha256sum -c -
+              tar -xzf "$asset" trivy
+              sudo install -m 0755 trivy /usr/local/bin/trivy
+            else
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq wget gnupg
+              wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg >/dev/null
+              echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list >/dev/null
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq trivy=0.74.0
+            fi
+            trivy --version
       - run: trivy fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --skip-dirs node_modules .
       - run: mkdir -p security-evidence && npm sbom --sbom-format cyclonedx > security-evidence/sbom.cdx.json
       - store_artifacts:
@@ -111,6 +132,8 @@ jobs:
       - checkout
       - run: npm ci --no-audit --no-fund
       - run: npm test
+      - run: npm run audit:content:evolution
+      - run: npm run audit:content:evolution:adversarial
       - run: npm run supplychain:scan
       - run: npm run audit:obs:10x
       - run: npm run audit:live-plan:3x
@@ -143,7 +166,7 @@ jobs:
 
   arbm_cloud_recovery:
     docker:
-      - image: cimg/node:24.19
+      - image: cimg/postgres:17.11
       - image: postgres:17.6-bookworm
         environment:
           POSTGRES_PASSWORD: recovery-only-ephemeral
@@ -156,9 +179,6 @@ jobs:
       PGPORT: "5432"
     steps:
       - checkout
-      - run:
-          name: Install PostgreSQL client
-          command: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
       - run:
           name: Wait for isolated Postgres
           command: |
@@ -178,6 +198,17 @@ jobs:
       - store_artifacts:
           path: schema-recovery-proof.txt
 
+  remote_attestation:
+    docker:
+      - image: cimg/node:24.19
+    resource_class: small
+    steps:
+      - checkout
+      - run: npm ci --no-audit --no-fund
+      - run: REMOTE_ATTESTATION_OUTPUT=remote-attestation/circleci.json node scripts/write-remote-attestation.mjs
+      - store_artifacts:
+          path: remote-attestation/circleci.json
+
 workflows:
   ci:
     jobs:
@@ -186,6 +217,7 @@ workflows:
       - arbm_cloud_security
       - arbm_cloud_qcp
       - arbm_cloud_recovery
+      - remote_attestation
       - deep:
           requires:
             - core

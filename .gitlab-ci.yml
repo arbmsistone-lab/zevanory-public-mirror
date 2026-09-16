@@ -52,6 +52,12 @@ quality_core:
     - npm run audit:live-plan:3x
     - npm run audit:10x
     - npm run resilience:smoke
+    - npm run audit:no-single-provider
+    - npm run audit:infrastructure:50x
+    - npm run dr:public-artifact
+    - npm run audit:dns-recovery
+    - npm run dr:chaos:providers
+    - npm run audit:critical-continuity
     - npm run audit:30x
     - npm run audit:sales:20x
     - npm run audit:final
@@ -175,3 +181,15 @@ recovery_schema:
     expire_in: 30 days
     paths:
       - schema-recovery-proof.txt
+
+remote_attestation:
+  extends: .default_node
+  stage: integration
+  needs: [quality_core]
+  script:
+    - REMOTE_ATTESTATION_OUTPUT=remote-attestation/gitlab.json node scripts/write-remote-attestation.mjs
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - remote-attestation/gitlab.json

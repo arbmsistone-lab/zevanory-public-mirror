@@ -52,8 +52,57 @@ export async function collectWikimediaMarketSignal(subject,{fetchImpl=globalThis
   return Object.freeze({organization:'wikimedia-foundation',ok:true,status:200,evidence:{source:'Wikimedia Search API',organization:'wikimedia-foundation',source_url:'https://pt.wikipedia.org/w/api.php',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'information_interest'},metrics:{demand:logNorm(total,100000),trend:rows.length?0.5:0,competition:clamp(rows.length/10)},sample:{total_hits:total,returned:rows.length,top_title:clean(top?.title,160)||null}});
 }
 
+export async function collectCrossrefMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
+  const u=new URL('https://api.crossref.org/works');u.searchParams.set('query.bibliographic',clean(subject,180));u.searchParams.set('rows','50');u.searchParams.set('select','DOI,title,published,created,is-referenced-by-count');
+  const r=await fetchImpl(u,{headers:{accept:'application/json','user-agent':'ZEVANORY-Market-Intelligence/1.0 (mailto:zevanory@gmail.com)'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error(`crossref_market_http_${r.status}`);
+  const rows=Array.isArray(body?.message?.items)?body.message.items:[],recent=rows.filter(x=>{const t=Date.parse(x?.created?.['date-time']||0);return Number.isFinite(t)&&Date.now()-t<=180*86400000;}).length,citations=rows.reduce((a,x)=>a+num(x?.['is-referenced-by-count']),0);
+  return Object.freeze({organization:'crossref',ok:true,status:200,evidence:{source:'Crossref REST API',organization:'crossref',source_url:'https://api.crossref.org/works',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'research_attention'},metrics:{demand:logNorm(citations+rows.length,10000),trend:clamp(recent/Math.max(1,rows.length)),competition:clamp(rows.length/50)},sample:{works:rows.length,recent_180d:recent,citations}});
+}
+
+export async function collectDataCiteMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
+  const u=new URL('https://api.datacite.org/dois');u.searchParams.set('query',clean(subject,180));u.searchParams.set('page[size]','50');
+  const r=await fetchImpl(u,{headers:{accept:'application/vnd.api+json','user-agent':'ZEVANORY-Market-Intelligence/1.0 (mailto:zevanory@gmail.com)'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error(`datacite_market_http_${r.status}`);
+  const rows=Array.isArray(body?.data)?body.data:[],recent=rows.filter(x=>{const y=num(x?.attributes?.publicationYear);return y>=new Date().getUTCFullYear()-1;}).length,total=num(body?.meta?.total)||rows.length;
+  return Object.freeze({organization:'datacite',ok:true,status:200,evidence:{source:'DataCite REST API',organization:'datacite',source_url:'https://api.datacite.org/dois',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'dataset_research_attention'},metrics:{demand:logNorm(total,100000),trend:clamp(recent/Math.max(1,rows.length)),competition:clamp(rows.length/50)},sample:{total,returned:rows.length,recent_publications:recent}});
+}
+
+export async function collectStackExchangeMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
+  const u=new URL('https://api.stackexchange.com/2.3/search/advanced');u.searchParams.set('site','stackoverflow');u.searchParams.set('q',clean(subject,180));u.searchParams.set('pagesize','20');u.searchParams.set('sort','activity');u.searchParams.set('order','desc');
+  const r=await fetchImpl(u,{headers:{accept:'application/json','user-agent':'ZEVANORY-Market-Intelligence/1.0'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error(`stackexchange_market_http_${r.status}`);if(num(body?.backoff)>0)throw new Error('stackexchange_market_backoff');
+  const rows=Array.isArray(body?.items)?body.items:[],recent=rows.filter(x=>Date.now()-num(x?.creation_date)*1000<=90*86400000).length,score=rows.reduce((a,x)=>a+Math.max(0,num(x?.score))+Math.max(0,num(x?.answer_count)),0);
+  return Object.freeze({organization:'stack-exchange',ok:true,status:200,evidence:{source:'Stack Exchange API',organization:'stack-exchange',source_url:'https://api.stackexchange.com/2.3/search/advanced',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'developer_problem_attention'},metrics:{demand:logNorm(score+rows.length,5000),trend:clamp(recent/Math.max(1,rows.length)),competition:clamp(rows.length/20)},sample:{questions:rows.length,recent_90d:recent,engagement_score:score,quota_remaining:num(body?.quota_remaining)}});
+}
+
+export async function collectWorldBankMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
+  const u=new URL('https://api.worldbank.org/v2/indicator');u.searchParams.set('format','json');u.searchParams.set('per_page','100');
+  const r=await fetchImpl(u,{headers:{accept:'application/json','user-agent':'ZEVANORY-Market-Intelligence/1.0'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error('worldbank_market_http_'+r.status);
+  const rows=Array.isArray(body?.[1])?body[1]:[],tokens=clean(subject,180).toLowerCase().split(/\s+/).filter(x=>x.length>2);const matches=rows.filter(x=>{const text=(String(x?.name||'')+' '+String(x?.sourceNote||'')+' '+String(x?.sourceOrganization||'')).toLowerCase();return tokens.some(t=>text.includes(t));});
+  return Object.freeze({organization:'world-bank',ok:true,status:200,evidence:{source:'World Bank Indicators API',organization:'world-bank',source_url:'https://api.worldbank.org/v2/indicator',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'economic_context'},metrics:{demand:clamp(matches.length/Math.max(1,rows.length)),trend:matches.length?0.5:0,competition:clamp(matches.length/25)},sample:{indicators_scanned:rows.length,matching_indicators:matches.length}});
+}
+
+export async function collectOpenAlexMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
+  const u=new URL('https://api.openalex.org/works');u.searchParams.set('search',clean(subject,180));u.searchParams.set('per-page','50');u.searchParams.set('mailto','zevanory@gmail.com');
+  const r=await fetchImpl(u,{headers:{accept:'application/json','user-agent':'ZEVANORY-Market-Intelligence/1.0'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error('openalex_market_http_'+r.status);
+  const rows=Array.isArray(body?.results)?body.results:[],recent=rows.filter(x=>{const y=num(x?.publication_year);return y>=new Date().getUTCFullYear()-1;}).length,total=num(body?.meta?.count)||rows.length,citations=rows.reduce((a,x)=>a+num(x?.cited_by_count),0);
+  return Object.freeze({organization:'openalex',ok:true,status:200,evidence:{source:'OpenAlex API',organization:'openalex',source_url:'https://api.openalex.org/works',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'research_attention'},metrics:{demand:logNorm(total+citations,100000),trend:clamp(recent/Math.max(1,rows.length)),competition:clamp(rows.length/50)},sample:{total,returned:rows.length,recent_publications:recent,citations}});
+}
+
+export async function collectHackerNewsMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
+  const u=new URL('https://hn.algolia.com/api/v1/search');u.searchParams.set('query',clean(subject,180));u.searchParams.set('hitsPerPage','25');
+  const r=await fetchImpl(u,{headers:{accept:'application/json','user-agent':'ZEVANORY-Market-Intelligence/1.0'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error('hackernews_market_http_'+r.status);
+  const rows=Array.isArray(body?.hits)?body.hits:[],points=rows.reduce((a,x)=>a+num(x?.points)+num(x?.num_comments),0),recent=rows.filter(x=>Date.now()-Date.parse(x?.created_at||0)<=90*86400000).length;
+  return Object.freeze({organization:'hacker-news',ok:true,status:200,evidence:{source:'Hacker News Algolia API',organization:'hacker-news',source_url:'https://hn.algolia.com/api/v1/search',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'technology_discussion_attention'},metrics:{demand:logNorm(points+rows.length,5000),trend:clamp(recent/Math.max(1,rows.length)),competition:clamp(rows.length/25)},sample:{hits:rows.length,engagement:points,recent_90d:recent}});
+}
+
+export async function collectGitHubMarketSignal(subject,{fetchImpl=globalThis.fetch,timeoutMs=5000}={}){
+  const u=new URL('https://api.github.com/search/repositories');u.searchParams.set('q',clean(subject,180));u.searchParams.set('per_page','25');u.searchParams.set('sort','updated');u.searchParams.set('order','desc');
+  const r=await fetchImpl(u,{headers:{accept:'application/vnd.github+json','user-agent':'ZEVANORY-Market-Intelligence/1.0','x-github-api-version':'2022-11-28'},signal:timeoutSignal(timeoutMs)});const body=await json(r);if(!r.ok)throw new Error('github_market_http_'+r.status);
+  const rows=Array.isArray(body?.items)?body.items:[],stars=rows.reduce((a,x)=>a+num(x?.stargazers_count),0),recent=rows.filter(x=>Date.now()-Date.parse(x?.updated_at||0)<=90*86400000).length,total=num(body?.total_count)||rows.length;
+  return Object.freeze({organization:'github',ok:true,status:200,evidence:{source:'GitHub Repository Search API',organization:'github',source_url:'https://api.github.com/search/repositories',observed_at:new Date().toISOString(),verified:true,conflict:false,kind:'software_ecosystem_attention'},metrics:{demand:logNorm(total+stars,100000),trend:clamp(recent/Math.max(1,rows.length)),competition:clamp(rows.length/25)},sample:{total,returned:rows.length,stars,recent_90d:recent}});
+}
+
 export async function collectNativeMarketSignals(subject,options={}){
-  const tasks=[collectMercadoLivreMarketSignal(subject,options),collectYouTubeMarketSignal(subject,options),collectWikimediaMarketSignal(subject,options),collectGdeltMarketSignal(subject,options)];
-  const settled=await Promise.allSettled(tasks);const names=['mercado-livre','google-youtube','wikimedia-foundation','gdelt-project'];
+  const tasks=[collectMercadoLivreMarketSignal(subject,options),collectYouTubeMarketSignal(subject,options),collectWikimediaMarketSignal(subject,options),collectGdeltMarketSignal(subject,options),collectCrossrefMarketSignal(subject,options),collectDataCiteMarketSignal(subject,options),collectStackExchangeMarketSignal(subject,options),collectWorldBankMarketSignal(subject,options),collectOpenAlexMarketSignal(subject,options),collectHackerNewsMarketSignal(subject,options),collectGitHubMarketSignal(subject,options)];
+  const settled=await Promise.allSettled(tasks);const names=['mercado-livre','google-youtube','wikimedia-foundation','gdelt-project','crossref','datacite','stack-exchange','world-bank','openalex','hacker-news','github'];
   return Object.freeze(settled.map((x,i)=>x.status==='fulfilled'?x.value:{organization:names[i],ok:false,status:0,error:clean(x.reason?.message,160)}));
 }

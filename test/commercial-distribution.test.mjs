@@ -22,7 +22,6 @@ test('technical distribution is complete while external configuration remains fa
   assert.equal(r.operational_ready,false);
   assert.equal(r.total_fronts,12);
   assert.ok(r.blockers.some(x=>x.startsWith('affiliate:')));
-  assert.ok(r.blockers.some(x=>x.startsWith('nuvemshop:')));
   assert.ok(r.blockers.some(x=>x.startsWith('mercado_livre:')));
 });
 
@@ -36,14 +35,9 @@ test('affiliate program requires professional policy, anti-fraud and provider tr
   assert.deepEqual([...AFFILIATE_COMMISSION_STATES],['pending','confirmed','reversed','paid']);
 });
 
-test('Nuvemshop outbound uses official v1 products API and remains globally gated',async()=>{
-  const calls=[];const env={NUVEMSHOP_APP_ID:'app',COMMERCIAL_OAUTH_ENCRYPTION_KEY:Buffer.alloc(32,6).toString('base64')};
-  const sql={query:async()=>[{account_id:'123',access_token_enc:encryptCommercialSecret('token',env),scope:'write_products',expires_at:new Date(Date.now()+86400000)}]};
-  const a=buildOutboundAdapters({env,commercialGate:certifiedGate,fetchImpl:async(url,opt)=>{calls.push({url,opt});return response(201,{id:99});}});
-  const out=await a['channel:nuvemshop']({event_id:'e1',idempotency_key:'i1',payload:{product:{name:'ARBM SIST'}}},{sql});
-  assert.equal(out.provider_product_id,'99');assert.equal(calls[0].url,'https://api.nuvemshop.com/v1/123/products');assert.equal(calls[0].opt.headers.authorization,'Bearer token');assert.match(calls[0].opt.headers['user-agent'],/ZEVANORY/);
-  const closed=buildOutboundAdapters({env,fetchImpl:async()=>response(201,{id:1})});
-  await assert.rejects(()=>closed['channel:nuvemshop']({payload:{product:{name:'x'}}}),/commercial_gates_closed/);
+test('TikTok LinkedIn and Nuvemshop are active but fail closed without provider evidence',async()=>{
+  const a=buildOutboundAdapters({env:{},commercialGate:certifiedGate,fetchImpl:async()=>response(200,{})});
+  for(const c of ['tiktok','nuvemshop','linkedin']) await assert.rejects(()=>a['channel:'+c]({payload:{}},{sql:{query:async()=>[]}}));
 });
 
 test('Mercado Livre outbound uses persisted OAuth credential and requires provider id',async()=>{
@@ -54,11 +48,11 @@ test('Mercado Livre outbound uses persisted OAuth credential and requires provid
   assert.equal(out.provider_item_id,'MLB1');assert.equal(out.seller_id,'999');assert.equal(calls[0].url,'https://api.mercadolibre.com/items');assert.equal(calls[0].opt.headers.authorization,'Bearer token');
 });
 
-test('marketplace identities and webhook verification are mandatory for readiness',()=>{
-  const n={NUVEMSHOP_ACCESS_TOKEN:'t',NUVEMSHOP_STORE_ID:'s',NUVEMSHOP_APP_ID:'a'};
-  assert.equal(commercialDistributionReadiness(n).fronts.nuvemshop.operational_ready,false);
-  const m={MERCADOLIVRE_ACCESS_TOKEN:'t',MERCADOLIVRE_APP_ID:'a',MERCADOLIVRE_SELLER_ID:'s'};
-  assert.equal(commercialDistributionReadiness(m).fronts.mercado_livre.operational_ready,false);
+test('active marketplace identity and webhook verification remain mandatory',()=>{
+  const r=commercialDistributionReadiness({MERCADOLIVRE_ACCESS_TOKEN:'t',MERCADOLIVRE_APP_ID:'a',MERCADOLIVRE_SELLER_ID:'s'});
+  assert.ok(r.fronts.linkedin); assert.equal(r.fronts.linkedin.operational_ready,false);
+  assert.ok(r.fronts.nuvemshop); assert.equal(r.fronts.nuvemshop.operational_ready,false);
+  assert.equal(r.fronts.mercado_livre.operational_ready,false);
 });
 test('first-party affiliate readiness does not require an external webhook provider',()=>{
   const env={AFFILIATE_PROVIDER:'zevanory-first-party',AFFILIATE_TRACKING_READY:'true',AFFILIATE_TERMS_REVIEWED:'true',AFFILIATE_TERMS_VERSION:'2026-09',AFFILIATE_ATTRIBUTION_WINDOW_DAYS:'30',AFFILIATE_COMMISSION_BPS:'1000',AFFILIATE_PAYOUT_DELAY_DAYS:'30',AFFILIATE_SELF_REFERRAL_POLICY:'blocked',AFFILIATE_REFUND_REVERSAL_READY:'true',AFFILIATE_CHARGEBACK_REVERSAL_READY:'true',AFFILIATE_IDEMPOTENCY_READY:'true',AFFILIATE_PROVIDER_CONFIRMATION_READY:'true',AFFILIATE_DISCLOSURE_URL:'https://zevanory.api.br/afiliados',AFFILIATE_PRIVACY_URL:'https://zevanory.api.br/privacidade'};

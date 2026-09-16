@@ -13,7 +13,7 @@ add('04 journey policy has consent-safe frequency controls',JOURNEY_V2_POLICY.ma
 add('05 tenant RBAC is denyable and owner-bounded',Array.isArray(TENANT_ROLES.owner)&&Array.isArray(TENANT_ROLES.analyst));
 add('06 migration creates tenant and customer identity boundaries',/CREATE TABLE IF NOT EXISTS tenants/.test(migration)&&/customer_identities/.test(migration));
 add('07 migration persists experiments and journeys',/decision_experiments/.test(migration)&&/decision_assignments/.test(migration)&&/journey_instances/.test(migration));
-add('08 schema health requires commercial engine v2','025_commercial_engine_v2'===REQUIRED_MIGRATIONS.at(-1));
+add('08 schema health requires commercial engine v2',REQUIRED_MIGRATIONS.includes('025_commercial_engine_v2'));
 add('09 all v2 tables are schema-gated',['tenants','tenant_memberships','customer_identities','customer_feature_snapshots','decision_experiments','decision_assignments','journey_instances'].every(x=>REQUIRED_TABLES.includes(x)));
 add('10 revenue agent consumes v2 facade and v2 never unlocks sales',fs.readFileSync('src/revenueAgent.mjs','utf8').includes('buildCommercialEngineContext')&&fs.existsSync('src/commercialEngineV2.mjs')&&!fs.readFileSync('src/commercialEngineV2.mjs','utf8').includes('SALE_GLOBALLY_ENABLED=true'));
 for(const [i,c] of checks.entries())console.log(`${c.ok?'APPROVED':'FAILED'} ${String(i+1).padStart(2,'0')} ${c.name}`); const failed=checks.filter(x=>!x.ok); if(failed.length)process.exit(1); console.log('AUDIT_COMMERCIAL_ENGINE_V2_10X_APPROVED units=10 approved=10 failed=0');

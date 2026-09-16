@@ -1,0 +1,22 @@
+image: node:24-bookworm
+pipelines:
+  branches:
+    main:
+      - step:
+          name: ZEVANORY provider-independent gate
+          caches:
+            - node
+          script:
+            - npm ci
+            - node --test test/git-provider-diversity.test.mjs
+            - npm run supplychain:scan
+            - npm run audit:no-single-provider
+  pull-requests:
+    '**':
+      - step:
+          name: ZEVANORY PR provider gate
+          caches:
+            - node
+          script:
+            - npm ci
+            - node --test test/git-provider-diversity.test.mjs

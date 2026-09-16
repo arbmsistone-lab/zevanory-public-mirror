@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import {evaluateAgentDecision} from '../src/agentEvals.mjs';
 
@@ -12,7 +12,7 @@ test('tool selection mismatch is blocked',()=>{
 
 test('message requires content and recipient',()=>{
   const r=evalOne({action:'send_message'},{lead:{contact_ref:null}},null,'send_message');
-  assert.deepEqual([...r.issues].sort(),['message_content_missing','message_recipient_missing'].sort());
+  assert.deepEqual([...r.issues].sort(),['customer_message_confidence_below_99pct','message_content_missing','message_recipient_missing'].sort());
 });
 
 test('Instagram publishing requires HTTPS media',()=>{

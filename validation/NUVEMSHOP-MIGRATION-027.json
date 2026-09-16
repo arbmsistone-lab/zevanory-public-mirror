@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "migration": "027_nuvemshop_integration_security",
+  "tables": 4,
+  "verified_at": "2026-09-12T22:49:00.709Z",
+  "source_sha": "78972099a934120fa95abc69faa98909af23ac32",
+  "sales_enabled": false,
+  "provider_credential_created": false
+}

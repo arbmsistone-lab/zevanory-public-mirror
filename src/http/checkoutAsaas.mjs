@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import { PROJECT } from '../config.mjs';
 import { asaasBaseUrl } from '../asaas.mjs';
 import { salesGate } from '../salesGate.mjs';
+import { readJsonRequestBody } from '../security.mjs';
 import { authorizeCertificationPilotCheckout, recordCertificationPilotCheckoutEvidence, certificationPilotAmountBrl } from '../certificationPilot.mjs';
 import { preserveFinancialReconciliation, preserveCheckoutIntent } from '../financialReconciliationFabric.mjs';
 import {
@@ -37,7 +38,7 @@ export default async function handler(req,res) {  res.setHeader('content-type','
   res.setHeader('cache-control','no-store');
   res.setHeader('x-content-type-options','nosniff');
   if(req.method!=='POST') return json(res,405,{error:'method_not_allowed'});
-  const input=normalizeCheckoutRequest(req.body);
+  const input=normalizeCheckoutRequest(await readJsonRequestBody(req));
   if(!input) return json(res,400,{error:'invalid_checkout_request'});
   const gate=salesGate();
   const pilotToken=String(req.headers?.['x-certification-pilot-token']||'').trim();
@@ -45,7 +46,7 @@ export default async function handler(req,res) {  res.setHeader('content-type','
   if(process.env.CHECKOUT_ENABLED!=='true') return json(res,503,{error:'checkout_disabled'});
   const asaasEnv=String(process.env.ASAAS_ENV||'').toLowerCase();
   if(!['sandbox','production'].includes(asaasEnv)) return json(res,503,{error:'checkout_environment_invalid'});
-  const publicBase=safePublicBaseUrl(process.env.PUBLIC_BASE_URL);
+  const publicBase=safePublicBaseUrl(process.env.PAYMENT_PUBLIC_BASE_URL||process.env.PUBLIC_BASE_URL);
   if(!process.env.ASAAS_API_KEY||!publicBase) return json(res,503,{error:'checkout_provider_unavailable'});
   if(!process.env.DATABASE_URL){
     if(!gate.enabled)return json(res,503,{error:'checkout_storage_unavailable'});

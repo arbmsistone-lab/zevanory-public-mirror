@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCreativeVariants, buildChannelPlacementSet, creativeQualityScore, selectCreativeVariant, selectCreativeVariantWithVisualEvidence, loadCreativeOutcomeEvidence, CREATIVE_INTELLIGENCE_POLICY, deterministicPerceptualScore } from '../src/creativeIntelligence.mjs';
+import { buildCreativeVariants, buildChannelPlacementSet, creativeQualityScore, selectCreativeVariant, selectCreativeVariantWithVisualEvidence, loadCreativeOutcomeEvidence, CREATIVE_INTELLIGENCE_POLICY, deterministicPerceptualScore, evaluateCreativeApprovalBoard } from '../src/creativeIntelligence.mjs';
 import { createCreativeSpec } from '../src/creativeEngine.mjs';
 import { creativeHtml } from '../src/creativeRenderer.mjs';
 import { normalizePublicEvent } from '../src/publicEvent.mjs';
@@ -83,4 +83,16 @@ test('deterministic perceptual scorer is stable and does not saturate all varian
   const a=variants.map(x=>deterministicPerceptualScore(x.spec).perceptual_score);
   const b=variants.map(x=>deterministicPerceptualScore(x.spec).perceptual_score);
   assert.deepEqual(a,b);assert.equal(new Set(a).size,3);assert.ok(a.every(x=>x>=CREATIVE_INTELLIGENCE_POLICY.min_perceptual_score&&x<1));
+});
+
+
+test('senior board requires unanimous 5 of 5 for technical release',async()=>{
+  const selected=await selectCreativeVariantWithVisualEvidence(null,input);
+  assert.equal(selected.review_board.required,5);assert.equal(selected.review_board.approved_count,5);assert.equal(selected.review_board.unanimous,true);assert.equal(selected.technical_release_ready,true);
+});
+
+test('senior board blocks technical release on any single rejection',()=>{
+  const spec=createCreativeSpec({...input,cta:'chamado para acao excessivamente longo que viola clareza de conversao'});
+  const board=evaluateCreativeApprovalBoard({spec,structural_score:1,quality_score:1,perceptual_score:1,visual_min_frame_score:1});
+  assert.equal(board.required,5);assert.equal(board.approved_count,4);assert.equal(board.unanimous,false);assert.equal(board.status,'revision_required');
 });

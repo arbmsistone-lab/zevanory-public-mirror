@@ -1,0 +1,24 @@
+{
+  "brand": "ZEVANORY",
+  "sku": "ZEV-LCX-011",
+  "product": "ZEVANORY Lucro & Caixa",
+  "version": "2.0",
+  "files": [
+    "CHECKLIST-IMPLEMENTACAO.md",
+    "INICIAR-AQUI.html",
+    "README.md",
+    "REFERENCIAS.md",
+    "TERMOS.txt",
+    "ferramentas/controle-decisoes.csv",
+    "ferramentas/plano-acao.csv",
+    "ferramentas/registro-experimentos.csv",
+    "ferramentas/scorecard-semanal.csv",
+    "modulos/01-fluxo-de-caixa-e-calendario-financeiro.md",
+    "modulos/02-margem-de-contribuicao-e-ponto-de-equilibrio.md",
+    "modulos/03-precificacao-e-descontos.md",
+    "modulos/04-capital-de-giro-e-reserva.md",
+    "modulos/05-cenarios-e-rotina-de-gestao.md"
+  ],
+  "quality_profile": "elite_content_v2",
+  "placeholder": false
+}

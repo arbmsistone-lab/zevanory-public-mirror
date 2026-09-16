@@ -33,10 +33,10 @@ test('canonical pre-sale manifest blocks environment-only activation',()=>{
   assert.equal(channelEnabled('WHATSAPP_SALES_ENABLED',{...base,WHATSAPP_SALES_ENABLED:'true'}),false);
 });
 
-test('public config exposes no commercial channel while gates are open',()=>{
+test('public config exposes no commercial channel while gates are open',async()=>{
   const old={sale:process.env.SALE_GLOBALLY_ENABLED,pre:process.env.PRE_SALE_GATES_APPROVED,wa:process.env.WHATSAPP_SALES_ENABLED};
   delete process.env.SALE_GLOBALLY_ENABLED; delete process.env.PRE_SALE_GATES_APPROVED; delete process.env.WHATSAPP_SALES_ENABLED;
-  const {req,res}=mock(); configHandler(req,res); const body=JSON.parse(res.body);
+  const {req,res}=mock(); await await configHandler(req,res); const body=JSON.parse(res.body);
   assert.equal(body.commercial_enabled,false);
   assert.equal(body.whatsapp_enabled,false);
   assert.equal(body.whatsapp_number,null);

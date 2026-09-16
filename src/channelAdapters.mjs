@@ -1,4 +1,6 @@
+import { isActiveCommercialFront } from './activeCommercialScope.mjs';
 import { salesGate } from './salesGate.mjs';
+import { organicPublicationAllowed } from './agentPolicy.mjs';
 
 export const CHANNELS = Object.freeze({
   zevanory: Object.freeze({ provider:'owned-web', env:[], commercial:true, role:'conversion_hub' }),
@@ -25,6 +27,9 @@ export function channelReadiness(env = process.env) {
     return [name,Object.freeze({ provider:def.provider, configured:implemented&&missing.length===0, implemented, missing:Object.freeze(missing), commercial:def.commercial, role:def.role })];
   }));
 }
+const ORGANIC_PUBLICATION_CHANNELS=new Set(['facebook','instagram','youtube','tiktok','linkedin']);
+export function assertChannelPublicationAllowed(channel,decision={},env=process.env,gateEvaluator=salesGate){const readiness=channelReadiness(env)[channel];if(!readiness)throw new Error('unknown_channel');const gate=gateEvaluator(env);if(gate.enabled)return Object.freeze({allowed:true,configured:readiness.configured,provider:readiness.provider,mode:'commercial'});if(!ORGANIC_PUBLICATION_CHANNELS.has(String(channel))||env.ORGANIC_PUBLISHING_ENABLED!=='true'||!organicPublicationAllowed(decision))throw new Error('organic_publication_not_authorized');return Object.freeze({allowed:true,configured:readiness.configured,provider:readiness.provider,mode:'organic_only'});}
+
 export function assertChannelActionAllowed(channel, env = process.env, gateEvaluator=salesGate) {
   const readiness=channelReadiness(env)[channel];
   if(!readiness) throw new Error('unknown_channel');
@@ -32,3 +37,5 @@ export function assertChannelActionAllowed(channel, env = process.env, gateEvalu
   if(!gate.enabled) throw new Error('commercial_gates_closed');
   return Object.freeze({allowed:true,configured:readiness.configured,provider:readiness.provider});
 }
+
+export function assertSupportChannelAllowed(channel,env=process.env){const readiness=channelReadiness(env)[channel];if(!readiness)throw new Error('unknown_channel');if(!['whatsapp','email'].includes(String(channel)))throw new Error('support_channel_not_allowed');if(!readiness.configured)throw new Error('support_channel_not_configured');return Object.freeze({allowed:true,configured:true,provider:readiness.provider,mode:'support_only'});}

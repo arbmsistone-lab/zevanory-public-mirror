@@ -1,0 +1,5 @@
+
+> zevanory@0.38.0 supplychain:scan
+> node scripts/secret-scan.mjs
+
+{"ok":true,"files_scanned":784,"findings":0}

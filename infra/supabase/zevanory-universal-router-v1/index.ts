@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const ORIGINS=Object.freeze([
   {name:"cloudflare",base:"https://edge.zevanory.api.br"},
-  {name:"vercel",base:"https://zevanory-site.vercel.app"},
+  {name:"netlify",base:"https://zevanory-production-backup.netlify.app"},
 ]);
 const SLUG="/zevanory-universal-router-v1";
 const READ_METHODS=new Set(["GET","HEAD"]);

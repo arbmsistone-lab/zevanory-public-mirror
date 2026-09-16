@@ -18,11 +18,14 @@ add('07 support requirement mapped',Boolean(ACTIVATION_REQUIREMENTS.support_chan
 add('08 offer decision requirements mapped',Boolean(ACTIVATION_REQUIREMENTS.offer_selection_not_approved)&&Boolean(ACTIVATION_REQUIREMENTS.active_offer_type_invalid));
 add('09 service payment requirements mapped',Boolean(ACTIVATION_REQUIREMENTS.payment_provider_pool_unavailable)&&Boolean(ACTIVATION_REQUIREMENTS.payment_merchant_identity_unverified)&&plan.includes('payment_provider_pool_unavailable'));
 add('10 affiliate requirements mapped',['affiliate_provider_missing','affiliate_tracking_unready','affiliate_terms_unreviewed'].every(x=>ACTIVATION_REQUIREMENTS[x]));
-add('11 pre-sale unlock precedes global sale',CUTOVER_ORDER.indexOf('PRE_SALE_GATES_APPROVED=true')<CUTOVER_ORDER.indexOf('SALE_GLOBALLY_ENABLED=true'));
+add('11 controlled pilot precedes lifecycle certification while global sale stays last',CUTOVER_ORDER.indexOf('prepare_controlled_certification_pilot_with_global_sales_false')<CUTOVER_ORDER.indexOf('certify_sales_lifecycle_39x10')&&CUTOVER_ORDER.indexOf('certify_sales_lifecycle_39x10')<CUTOVER_ORDER.indexOf('PRE_SALE_GATES_APPROVED=true')&&CUTOVER_ORDER.indexOf('PRE_SALE_GATES_APPROVED=true')<CUTOVER_ORDER.indexOf('SALE_GLOBALLY_ENABLED=true'));
 add('12 global sale unlock is last mutating gate',CUTOVER_ORDER[CUTOVER_ORDER.length-1]==='SALE_GLOBALLY_ENABLED=true');
 add('13 rollback disables global sale first',ROLLBACK_ORDER[0]==='SALE_GLOBALLY_ENABLED=false');
 add('14 rollback disables every commercial gate',['CHECKOUT_ENABLED=false','WHATSAPP_SALES_ENABLED=false','FINANCIAL_EVENTS_ENABLED=false','PRE_SALE_GATES_APPROVED=false'].every(x=>ROLLBACK_ORDER.includes(x)));
-add('15 API is read only',(api.includes("req.method!=='GET'")||api.includes("req.method !== 'GET'"))&&!api.includes('sql.query')&&!api.includes('fetch(')&&!api.includes('execFile')&&!api.includes('spawn'));
+const activationStart=api.indexOf("if(url.searchParams.get('view')==='activation')");
+const activationEnd=api.indexOf('  const gate=salesGate();',activationStart);
+const activationBlock=activationStart>=0&&activationEnd>activationStart?api.slice(activationStart,activationEnd):'';
+add('15 API is read only',(api.includes("req.method!=='GET'")||api.includes("req.method !== 'GET'"))&&activationBlock.includes('buildActivationPlan')&&!activationBlock.includes('sql.query')&&!activationBlock.includes('fetch(')&&!activationBlock.includes('execFile')&&!activationBlock.includes('spawn'));
 add('16 API never returns secret values',!api.includes('ASAAS_API_KEY')&&!api.includes('GEMINI_API_KEY')&&!api.includes('AGENT_WORKER_TOKEN'));
 add('17 route published',vercel.includes('/api/activation/readiness')&&vercel.includes('/api/config?view=activation'));
 add('18 release requires activation route',release.includes('/api/activation/readiness'));

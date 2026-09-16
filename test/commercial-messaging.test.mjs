@@ -31,3 +31,15 @@ test('channel profiles consume canonical commercial messaging',()=>{
   }
   assert.match(COMMERCIAL_POSITIONING.proof_standard,/evidencia/i);
 });
+
+import { buildCreativeVariants } from '../src/creativeIntelligence.mjs';
+
+test('creative engine defaults to canonical channel pre-sale message',()=>{
+  for(const key of ['instagram','facebook','tiktok','youtube','linkedin']){
+    const variants=buildCreativeVariants({channel:key});
+    assert.equal(variants[0].spec.hook,COMMERCIAL_MESSAGES[key].headline);
+    assert.equal(variants[0].spec.body,COMMERCIAL_MESSAGES[key].body);
+    assert.equal(variants[0].spec.cta,COMMERCIAL_MESSAGES[key].cta_pre_sale);
+    assert.notEqual(variants[0].spec.cta,COMMERCIAL_MESSAGES[key].cta_live);
+  }
+});

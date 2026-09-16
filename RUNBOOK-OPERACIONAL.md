@@ -65,12 +65,14 @@ Escopo: infraestrutura, saude, deploy, incidente, recuperacao e garantia operaci
 2. Nao prosseguir enquanto `inputs_ready=false` ou houver blocker legal, fiscal, de fornecedor, pagamento ou afiliacao.
 3. Preencher somente dados reais e verificaveis; nunca usar placeholder para obter PASS.
 4. Quando `inputs_ready=true`, manter `SALE_GLOBALLY_ENABLED=false` durante toda a pre-validacao.
-5. Certificar as 39 dimensoes do Sales Lifecycle Canonical v2 com nota exatamente 10/10, sem media compensatoria.
-6. Exigir `npm run audit:lifecycle:10x` aprovado, paridade producao-commit comprovada e release Lifecycle explicitamente aprovada.
-7. Somente depois liberar `PRE_SALE_GATES_APPROVED=true` e apenas os canais realmente necessarios ao tipo de oferta.
-8. Confirmar novamente health, assurance, checkout fail-closed, autenticacao do worker e conciliacao do provedor.
-9. `SALE_GLOBALLY_ENABLED=true` e o ultimo passo de cutover e nao funciona se o Lifecycle 39x10 estiver incompleto.
-10. A primeira transacao real deve ser piloto, reconciliada pelo provedor e auditada antes de qualquer escala.
+5. Com `SALE_GLOBALLY_ENABLED=false`, usar somente piloto controlado e autenticado para gerar evidencia real observada; nunca usar sandbox, placeholder ou evento sintetico como prova de producao.
+6. Reconciliar pelo provedor cada pagamento piloto e comprovar fulfillment/onboarding antes de contabilizar evidencia para o Lifecycle.
+7. Certificar as 39 dimensoes do Sales Lifecycle Canonical v2 com nota exatamente 10/10, sem media compensatoria.
+8. Exigir `npm run audit:lifecycle:10x` aprovado, paridade producao-commit comprovada e release Lifecycle explicitamente aprovada.
+9. Somente depois liberar `PRE_SALE_GATES_APPROVED=true` e apenas os canais realmente necessarios ao tipo de oferta.
+10. Confirmar novamente health, assurance, checkout fail-closed, autenticacao do worker e conciliacao do provedor.
+11. `SALE_GLOBALLY_ENABLED=true` e o ultimo passo de cutover e nao funciona se o Lifecycle 39x10 estiver incompleto.
+12. Nenhuma escala comercial pode ocorrer antes de toda evidencia piloto exigida estar reconciliada e auditada.
 
 ## Rollback comercial imediato
 1. Definir `SALE_GLOBALLY_ENABLED=false` primeiro.

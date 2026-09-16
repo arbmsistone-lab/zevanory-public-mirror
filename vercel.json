@@ -3,6 +3,18 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/release",
+      "destination": "/api/platform?surface=release"
+    },
+    {
+      "source": "/api/assurance",
+      "destination": "/api/platform?surface=assurance"
+    },
+    {
+      "source": "/api/finance",
+      "destination": "/api/platform?surface=finance"
+    },
+    {
       "source": "/api/creative-asset",
       "destination": "/api/config?view=creative_asset"
     },
@@ -49,6 +61,10 @@
     {
       "source": "/api/oauth/tiktok/start",
       "destination": "/api/webhooks?provider=tiktok_oauth&action=start"
+    },
+    {
+      "source": "/api/tiktok-review",
+      "destination": "/api/webhooks?provider=tiktok_review"
     },
     {
       "source": "/api/oauth/tiktok/callback",
@@ -137,6 +153,46 @@
     {
       "source": "/legal.css",
       "destination": "/public/legal.css"
+    },
+    {
+      "source": "/solucoes",
+      "destination": "/public/solucoes.html"
+    },
+    {
+      "source": "/arbm-sist",
+      "destination": "/public/arbm-sist.html"
+    },
+    {
+      "source": "/arbm-contador-saloes",
+      "destination": "/public/arbm-contador-saloes.html"
+    },
+    {
+      "source": "/ia-na-pratica",
+      "destination": "/public/ia-na-pratica.html"
+    },
+    {
+      "source": "/vendas-na-pratica",
+      "destination": "/public/vendas-na-pratica.html"
+    },
+    {
+      "source": "/lucro-e-caixa",
+      "destination": "/public/lucro-e-caixa.html"
+    },
+    {
+      "source": "/combo-ia-vendas",
+      "destination": "/public/combo-ia-vendas.html"
+    },
+    {
+      "source": "/negocio-completo",
+      "destination": "/public/negocio-completo.html"
+    },
+    {
+      "source": "/product.css",
+      "destination": "/public/product.css"
+    },
+    {
+      "source": "/financeiro",
+      "destination": "/public/financeiro.html"
     },
     {
       "source": "/",

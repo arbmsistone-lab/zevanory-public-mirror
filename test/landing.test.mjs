@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
 const js=await readFile(new URL('../public/index.js',import.meta.url),'utf8');
+const css=await readFile(new URL('../public/index.css',import.meta.url),'utf8');
 
-test('central identifies ZEVANORY and connects real operational APIs',()=>{
-  assert.match(html,/<title>ZEVANORY<\/title>/);assert.match(html,/CENTRAL OPERACIONAL/);
-  for(const path of ['/api/status','/api/health','/api/release','/api/config']) assert.match(js,new RegExp(path.replaceAll('/','\\/')));
+test('central identifies ZEVANORY and connects authenticated operational APIs',()=>{
+  assert.match(html,/<title>ZEVANORY \| IA, automação, software e produtos digitais<\/title>/);assert.match(html,/CENTRAL OPERACIONAL/);
+  for(const path of ['/private-api/status','/private-api/health','/private-api/release','/private-api/config']) assert.match(js,new RegExp(path.replaceAll('/','\\/')));
   assert.doesNotMatch(html,/GIRO LOCAL/i);
 });
 
@@ -28,4 +29,35 @@ test('central prioritizes decision, pipeline and clean UTF-8',()=>{
   for(const id of ['queue-pressure','nba-mode','forecast-mode','readiness-state','blocker-count','predictive-forecast','commercial-score']) assert.match(html,new RegExp(`id="${id}"`));
   assert.match(html,/Decisão segura\.\s*<br>Execução com verdade\./i);assert.match(html,/Prontidão comercial/);assert.match(js,/BASELINE NECESSÁRIO/);
   for(const bad of ['\u00c3\u00a9','\u00c3\u00a7','\u00c3\u00a3','\ufffd']) assert.equal((html+js).includes(bad),false);
+});
+
+test('central exposes authenticated live-company observability without inventing sales',()=>{
+  for(const id of ['coverage-state','coverage-score','coverage-copy','source-health','channel-grid','live-operations','live-connection-state']) assert.match(html,new RegExp(`id="${id}"`));
+  for(const path of ['/private-api/status','/private-api/health','/private-api/release','/private-api/config','/private-api/agent/status']) assert.match(js,new RegExp(path.replaceAll('/','\\/')));
+  assert.match(js,/Promise\.allSettled/);
+  assert.match(js,/renderPublicOperations/);
+  assert.match(js,/renderCoverage/);
+  assert.match(html,/Dados agregados · sem PII/i);
+  assert.match(html,/Venda continua bloqueada/i);
+});
+
+test('detail dialog keeps regression-safe geometry and channel branding',()=>{
+  assert.match(css,/grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(css,/\.channel-section,\.controls-section\{grid-column:1\/-1\}/);
+  assert.match(css,/\.quality-inline\{display:flex;align-items:center;justify-content:space-between/);
+  assert.match(html,/class="detail-section controls-section"/);
+  for(const brand of ['WhatsApp','TikTok','YouTube','LinkedIn']) assert.match(js,new RegExp(brand));
+  assert.match(js,/channelLabel\(name\)/);
+});
+
+
+test('portfolio exposes ARBM ONE as a first-class solution',async()=>{
+  const solutions=await readFile(new URL('../public/solucoes.html',import.meta.url),'utf8');
+  const one=await readFile(new URL('../public/arbm-one.html',import.meta.url),'utf8');
+  const sitemap=await readFile(new URL('../public/sitemap.xml',import.meta.url),'utf8');
+  assert.match(html,/class=\"portfolio-link\" href=\"\/solucoes\">Nossas Solu\u00e7\u00f5es/);
+  assert.match(solutions,/href=\"\/arbm-one\">ARBM ONE/);
+  assert.match(one,/<title>ARBM ONE \| ZEVANORY<\/title>/);
+  assert.match(one,/PDV, atendimento, delivery, fidelidade/i);
+  assert.match(sitemap,/https:\/\/zevanory\.api\.br\/arbm-one/);
 });

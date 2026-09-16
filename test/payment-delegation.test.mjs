@@ -37,7 +37,7 @@ test('delegated payment fails closed when origin is not allowlisted',()=>{
 test('local payment credentials automatically override delegated fallback',()=>{
   const ready=paymentProviderReadiness({
     PAYMENT_PROVIDER:'mercadopago',PAYMENT_RUNTIME_MODE:'delegated',
-    PAYMENT_RUNTIME_ORIGIN:'https://zevanory-site.vercel.app',PAYMENT_RUNTIME_ALLOWED_ORIGINS:'https://zevanory-site.vercel.app',
+    PAYMENT_RUNTIME_ORIGIN:'https://payments.example.net',PAYMENT_RUNTIME_ALLOWED_ORIGINS:'https://payments.example.net',
     PAYMENT_RUNTIME_ORIGIN_VERIFIED:'true',PAYMENT_RUNTIME_ORIGIN_RELEASE_ID:'ZEVANORY-EG0039-FINAL',
     MERCADOPAGO_ENV:'production',MERCADOPAGO_ACCESS_TOKEN:'local-token',MERCADOPAGO_WEBHOOK_SECRET:'local-webhook'
   });

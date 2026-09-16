@@ -1,0 +1,13 @@
+{
+  "public_configuration_grouped": true,
+  "moved": [
+    "NUVEMSHOP_STOREFRONT_VERIFIED",
+    "NUVEMSHOP_STOREFRONT_URL",
+    "NUVEMSHOP_CSV_FALLBACK_VERIFIED"
+  ],
+  "binding_count_before": 67,
+  "binding_count_after": 64,
+  "existing_secret_bindings_preserved": 20,
+  "app_id_established": true,
+  "sales_enabled": false
+}

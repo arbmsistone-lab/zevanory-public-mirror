@@ -1,7 +1,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 
 const digest=(value)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const EXTERNAL_TOOLS=new Set(['send_message','publish_content','start_checkout','refund_payment']);
+const EXTERNAL_TOOLS=new Set(['send_message','send_support_message','publish_content','start_checkout','refund_payment']);
 const FINANCIAL_TOOLS=new Set(['start_checkout','refund_payment']);
 const safeText=(value,max=500)=>String(value||'').trim().slice(0,max);
 const asObject=(value)=>{
@@ -13,14 +13,14 @@ function inferWhere(tool,context,decision,env){
   const channel=safeText(decision?.channel||context?.lead?.channel||'',60).toLowerCase()||null;
   const paymentProvider=safeText(decision?.provider||decision?.payment_provider||context?.payment_provider||'',40).toLowerCase();
   if(tool==='start_checkout'||tool==='refund_payment') return paymentProvider?`payment:${paymentProvider}`:'capability:payment';
-  if(tool==='send_message'||tool==='publish_content') return channel?`channel:${channel}`:'channel:unresolved';
+  if(['send_message','send_support_message','publish_content'].includes(tool)) return channel?`channel:${channel}`:'channel:unresolved';
   if(tool==='schedule_follow_up'||tool==='remember_fact'||tool==='create_offer_draft') return 'zevanory:internal';
   if(tool==='refresh_outcome_learning') return 'zevanory:learning';
   return 'zevanory:control';
 }
 
 function inferContent(tool,decision){
-  if(tool==='send_message'||tool==='publish_content'){
+  if(['send_message','send_support_message','publish_content'].includes(tool)){
     const raw=safeText(decision?.message||decision?.content||'',280);
     return raw?{kind:'content_preview',preview:raw,sha256:digest(raw)}:{kind:'content_preview',preview:null,sha256:null};
   }
@@ -44,7 +44,7 @@ export function buildLiveActionPlan({job,runId,traceId,tool,auth,decision={},con
     why:safeText(decision?.rationale||auth?.reason||'agent_decision',500),objective:safeText(decision?.objective||decision?.action||job?.job_type||'execute_authorized_action',240),
     channel,account_ref:accountRef,content_or_offer:inferContent(tool,decision),risk:safeText(auth?.risk_level||'destructive',40),
     cost:Object.freeze({currency:'USD',estimated_amount:estimatedCostUsd,mode:estimatedCostUsd==null?'not_estimated':'decision_estimate'}),
-    approval:Object.freeze({required:external||['financial','destructive'].includes(String(auth?.risk_level||'')),status:existing?.approval?.status||'not_requested'}),
+    approval:Object.freeze({required:(external&&tool!=='send_support_message')||['financial','destructive'].includes(String(auth?.risk_level||'')),status:existing?.approval?.status||'not_requested'}),
     expected_result:safeText(decision?.expected_result||`${tool||'tool'} completes without bypassing gates`,500),
     external_effect_possible:external,result:null,evidence:null,
   });

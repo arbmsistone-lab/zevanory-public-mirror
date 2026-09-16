@@ -68,8 +68,6 @@ function render(data){
 }
 async function fetchOperatorState(token=operatorToken){const r=await fetch('/api/robot-control?limit=40',{headers:{authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)throw new Error(r.status===401?'Token inválido ou ausente.':'Estado do robô indisponível.');return r.json();}
 async function connectOperator(){const token=$('operator-token').value.trim();if(!token){$('auth-error').textContent='Informe o token de operador.';return false;}try{const data=await fetchOperatorState(token);operatorToken=token;$('operator-token').value='';$('mode-label').textContent='MODO OPERADOR AUTENTICADO';$('connection').textContent='TELEMETRIA REAL';$('robot-substate').textContent='Dados operacionais reais sem PII.';$('research-now').disabled=false;$('research-feedback').textContent='Pesquisa autenticada pronta.';render(data);return true;}catch(e){$('auth-error').textContent=String(e.message||'Falha de autenticação.');return false;}}
-async function togglePause(){if(!operatorToken)return;const action=lastData.control?.paused?'resume':'pause';const r=await fetch('/api/robot-control',{method:'POST',headers:{authorization:`Bearer ${operatorToken}`,'content-type':'application/json'},body:JSON.stringify({command:action,reason:`robot_control_${action}`})});if(!r.ok)return;render(await fetchOperatorState());}
-async function decidePendingApproval(approvalId,decision){if(!operatorToken)return;const r=await fetch('/api/robot-control',{method:'POST',headers:{authorization:`Bearer ${operatorToken}`,'content-type':'application/json'},body:JSON.stringify({command:'approval',approval_id:approvalId,decision,reason:`robot_control_${decision}`})});if(!r.ok)return;render(await fetchOperatorState());renderApprovals(lastData);}
 $('connect').addEventListener('click',()=>{$('auth-error').textContent='';$('auth-dialog').showModal();});$('auth-submit').addEventListener('click',async e=>{e.preventDefault();if(await connectOperator())$('auth-dialog').close();});$('emergency-stop').addEventListener('click',togglePause);$('approval-queue').addEventListener('click',()=>{$('approval-dialog').showModal();renderApprovals(lastData);});$('close-approvals').addEventListener('click',()=>{$('approval-dialog').close();});render(demo);setInterval(async()=>{if(!operatorToken)return;try{render(await fetchOperatorState());}catch{}},15000);
 
 function renderIntelligenceSnapshots(data={}){
@@ -110,3 +108,32 @@ async function runMarketResearch(){
 }
 $('research-now')?.addEventListener('click',runMarketResearch);
 $('research-subject')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();runMarketResearch();}});
+
+// Surgical critical-action confirmation gate.
+let pendingCriticalAction=null;
+function ensureCriticalDialog(){
+  if($('critical-dialog'))return;
+  const dialog=document.createElement('dialog');dialog.id='critical-dialog';
+  dialog.innerHTML='<form id="critical-form"><h2 id="critical-title">Confirmar ação crítica</h2><p id="critical-summary"></p><label>Motivo da decisão<input id="critical-reason" maxlength="180" autocomplete="off" placeholder="Descreva o motivo para auditoria"></label><small id="critical-error"></small><div><button type="button" id="critical-cancel">Cancelar</button><button type="submit" id="critical-confirm">Confirmar</button></div></form>';
+  document.body.appendChild(dialog);
+  $('critical-form').addEventListener('submit',e=>{e.preventDefault();executeCriticalAction();});
+  $('critical-cancel').addEventListener('click',()=>{dialog.close();pendingCriticalAction=null;});
+}
+function askCriticalConfirmation({title,summary,confirmLabel,kind='normal',run}){
+  ensureCriticalDialog();pendingCriticalAction=run;$('critical-title').textContent=title;$('critical-summary').textContent=summary;$('critical-reason').value='';$('critical-error').textContent='';$('critical-confirm').textContent=confirmLabel;$('critical-confirm').dataset.kind=kind;$('critical-dialog').showModal();$('critical-reason').focus();
+}
+async function executeCriticalAction(){
+  if(!pendingCriticalAction)return;const reason=$('critical-reason').value.trim();if(reason.length<8){$('critical-error').textContent='Informe um motivo auditável com pelo menos 8 caracteres.';return;}
+  const run=pendingCriticalAction;$('critical-confirm').disabled=true;$('critical-error').textContent='Executando e aguardando confirmação do backend...';
+  try{await run(reason);$('critical-dialog').close();pendingCriticalAction=null;}catch(error){$('critical-error').textContent=String(error?.message||'Ação não confirmada pelo backend.');}finally{$('critical-confirm').disabled=false;}
+}
+
+function togglePause(){
+  if(!operatorToken)return;const action=lastData.control?.paused?'resume':'pause';const paused=action==='pause';
+  askCriticalConfirmation({title:paused?'Confirmar pausa segura':'Confirmar retomada do robô',summary:paused?'A execução automática será pausada. Nenhuma venda será liberada por esta ação.':'A execução interna será retomada respeitando todos os gates atuais. Vendas permanecem bloqueadas enquanto o gate comercial estiver fechado.',confirmLabel:paused?'Pausar com segurança':'Retomar robô',kind:paused?'danger':'normal',run:async reason=>{const r=await fetch('/api/robot-control',{method:'POST',headers:{authorization:`Bearer ${operatorToken}`,'content-type':'application/json'},body:JSON.stringify({command:action,reason})});if(!r.ok)throw new Error(`Backend recusou a ação (HTTP ${r.status}).`);render(await fetchOperatorState());}});
+}
+function decidePendingApproval(approvalId,decision){
+  if(!operatorToken)return;const approve=decision==='approved';
+  askCriticalConfirmation({title:approve?'Confirmar aprovação':'Confirmar rejeição',summary:approve?'Esta decisão autoriza somente a ação descrita na fila e continua sujeita aos gates globais.':'Esta decisão rejeita a ação pendente e será registrada para auditoria.',confirmLabel:approve?'Aprovar ação':'Rejeitar ação',kind:approve?'normal':'danger',run:async reason=>{const r=await fetch('/api/robot-control',{method:'POST',headers:{authorization:`Bearer ${operatorToken}`,'content-type':'application/json'},body:JSON.stringify({command:'approval',approval_id:approvalId,decision,reason})});if(!r.ok)throw new Error(`Backend recusou a decisão (HTTP ${r.status}).`);render(await fetchOperatorState());renderApprovals(lastData);}});
+}
+ensureCriticalDialog();

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { deterministicDecision } from '../src/aiProvider.mjs';
 import { authorizeTool } from '../src/agentPolicy.mjs';
 import { evaluateAgentDecision } from '../src/agentEvals.mjs';
-import { channelReadiness, assertChannelActionAllowed } from '../src/channelAdapters.mjs';
+import { channelReadiness, assertChannelActionAllowed, assertChannelPublicationAllowed } from '../src/channelAdapters.mjs';
 import { chooseTool } from '../src/revenueAgent.mjs';
 
 test('AI provider falls back deterministically without external key', async()=>{
@@ -75,4 +75,21 @@ test('Nuvemshop readiness requires current NubeSDK verification',()=>{
   assert.equal(channelReadiness(base).nuvemshop.configured,false);
   assert.ok(channelReadiness(base).nuvemshop.missing.includes('NUVEMSHOP_NUBESDK_VERIFIED'));
   assert.equal(channelReadiness({...base,NUVEMSHOP_NUBESDK_VERIFIED:'true'}).nuvemshop.configured,true);
+});
+
+test('organic publishing is allowed while sales stay blocked',()=>{
+  const env={SALE_GLOBALLY_ENABLED:'false',PRE_SALE_GATES_APPROVED:'false',CHECKOUT_ENABLED:'false',FINANCIAL_EVENTS_ENABLED:'false',ORGANIC_PUBLISHING_ENABLED:'true'};
+  const organic={organic_only:true,commercial_intent:false,objective:'awareness',content:'Conteudo institucional da ZEVANORY'};
+  assert.equal(authorizeTool('publish_content',env,organic).allowed,true);
+  assert.equal(authorizeTool('send_message',env).allowed,false);
+  assert.equal(authorizeTool('start_checkout',env).allowed,false);
+  assert.equal(authorizeTool('refund_payment',env).allowed,false);
+  assert.equal(authorizeTool('publish_content',env,{...organic,content:'Compre agora por R$ 99'}).allowed,false);
+});
+
+
+test('organic publishing cannot bypass commerce channels',()=>{
+ const env={SALE_GLOBALLY_ENABLED:'false',PRE_SALE_GATES_APPROVED:'false',ORGANIC_PUBLISHING_ENABLED:'true'};const organic={organic_only:true,commercial_intent:false,objective:'awareness',content:'Conteudo institucional'};
+ assert.equal(assertChannelPublicationAllowed('instagram',organic,env).allowed,true);
+ for(const channel of ['whatsapp','email','affiliate','nuvemshop','mercado_livre'])assert.throws(()=>assertChannelPublicationAllowed(channel,organic,env),/organic_publication_not_authorized/);
 });

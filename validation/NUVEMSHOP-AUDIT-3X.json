@@ -1,0 +1,2036 @@
+{
+  "policy": "minimum 3 approved operations per audited code/definition unit",
+  "scope": "ZEVANORY only",
+  "units": [
+    {
+      "id": "CODE-CONFIG",
+      "label": "src/config.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax config",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "config tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "canonical frozen definitions",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-SALES-GATE",
+      "label": "src/salesGate.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "sales gate syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "sales gate tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "absolute fail-closed global gate",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PRE-SALE-APPROVAL",
+      "label": "src/preSaleApproval.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "pre-sale approval syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "manifest derives approval from activation readiness",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "sandbox homologation is evidenced without approving sales",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PRE-SALE-READINESS",
+      "label": "src/preSaleReadiness.mjs + scripts/pre-sale-preflight.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "pre-sale readiness syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "pre-sale readiness tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "three resolver, sandbox dependency and kill-switch checks",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-TELEMETRY",
+      "label": "src/telemetry.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax telemetry",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "telemetry tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "financial boundary declared",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-SERVER",
+      "label": "src/server-v2.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax server",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "server integration tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "fail-closed boundaries present",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-LANDING",
+      "label": "public/index.html",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "landing tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "institutional identity only",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "public domain identity",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PILOT",
+      "label": "public/piloto.html",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "pilot tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "CTA disabled by default",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "invite checkout before provider redirect",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-AUDIT",
+      "label": "scripts/audit-3x.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "no external absolute reads",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three-operation fail-closed rule present",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-ASAAS",
+      "label": "src/asaas.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax asaas",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "asaas tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "provider truth reconciliation required",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-ASAAS-WEBHOOK",
+      "label": "src/http/webhookAsaas.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax asaas webhook",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "asaas webhook tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "webhook auth and API lookup fail closed",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-ORDER",
+      "label": "src/order.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax order",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "order tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "order contract supports explicit Asaas environments safely",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-ASAAS-CHECKOUT",
+      "label": "src/http/checkoutAsaas.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax asaas checkout",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "asaas checkout tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "checkout kill switches and uncertain state are present",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-EVIDENCE-VERIFIER",
+      "label": "scripts/verify_evidence_gate.ps1",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "verifier exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "approved gate passes",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "template without approval blocks",
+          "status": "APPROVED",
+          "detail": "exit=2"
+        }
+      ]
+    },
+    {
+      "id": "RUNTIME-PACKAGE",
+      "label": "package.json",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "package JSON parses",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "start targets only server-v2",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "test audit and pre-sale preflight commands declared",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-OFFER",
+      "label": "specs/OFFER-0001-ia-vendas-whatsapp.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "offer evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "full test suite",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "no unproven result promise",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PRICING",
+      "label": "specs/PRICING-0001-preco-experimental.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "pricing evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "full test suite",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "commercial model canonical and release gated",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-EXPERIMENT",
+      "label": "experiments/EXP-0001-oferta-piloto.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "experiment evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "full test suite",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "payment integrity defined",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-EVIDENCE-POLICY",
+      "label": "specs/EVIDENCE_POLICY.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "requires three independent evidences",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "base evidence gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "operational 3x gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-GATES",
+      "label": "specs/GATES.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "market and offer gates defined",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "commercial proof gate defined",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "autonomy remains final gated stage",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-WHATSAPP",
+      "label": "evidence/WHATSAPP-ORIGIN-0001.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "owner-confirmed canonical number documented",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "canonical definition matches normalizer",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "official matcher rejects divergence",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-SCOPE",
+      "label": "specs/SCOPE_BOUNDARY.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "project root is explicit",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "external systems explicitly out of scope",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "external absolute paths forbidden",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "ASSURANCE-TESTS",
+      "label": "test harness",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "all test files exist",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "all test files syntax-valid",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "full test suite",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "CODE-OPERATIONAL-STATUS",
+      "label": "src/operationalStatus.mjs + api/status.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "operational status syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "operational status tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "status exposes aggregates without PII",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-VERCEL-API-CONFIG",
+      "label": "api/config.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax vercel config api",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "vercel tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "production config remains globally fail-closed",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-VERCEL-API-EVENT",
+      "label": "api/events-public.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax vercel event api",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "vercel event tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "Neon persistence is idempotent and fail-closed",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PUBLIC-EVENT",
+      "label": "src/publicEvent.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "syntax public event",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "public event tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "public boundary rejects financial event",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-NEON-PERSISTENCE",
+      "label": "evidence/EG-0011-g3-neon-persistencia.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "Neon gate exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "Supabase explicitly forbidden",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "Neon-related tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-DB-MIGRATION",
+      "label": "db/migrations/001_telemetry_events.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "primary key idempotency defined",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "financial event names constrained",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "migration ledger defined",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-FINANCIAL-MIGRATION",
+      "label": "db/migrations/002_financial_events.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "provider event id is primary key",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "payment state dedup index exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "migration ledger 002 exists",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PAYMENT-PROVIDER",
+      "label": "evidence/EG-0013-provedor-pagamento-asaas.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "payment provider evidence gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "payment provider tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "browser callback never becomes financial truth",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PAYMENT-PROVIDER-ABSTRACTION",
+      "label": "src/paymentProviders.mjs + db/migrations/010_payment_provider_abstraction.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "payment abstraction tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "migration 010 permits both providers",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "provider selector remains fail closed",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PARTIAL-REFUND-MIGRATION",
+      "label": "db/migrations/004_partial_refund_snapshots.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "refund cumulative column exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "payment and refund dedup indexes are separated",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "migration 004 is ledgered and transactional",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PARTIAL-REFUND-GATE",
+      "label": "evidence/EG-0016-estorno-parcial.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "partial refund evidence gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "partial refund tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "DONE-only cumulative reconciliation documented",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-ORDER-FINANCIAL-STATE",
+      "label": "evidence/EG-0017-estado-transacional-pedido.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "order financial state gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "order financial state tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "webhook transition is atomic",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-ORDER-FINANCIAL-MIGRATION",
+      "label": "db/migrations/005_order_financial_states.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "partial refund order state is allowed",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "orders status constraint is recreated",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "migration 005 is ledgered",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-SALES-GATE-EVIDENCE",
+      "label": "evidence/EG-0018-bloqueio-global-pre-venda.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "global sales gate evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "global sales gate tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "global gate is fail closed",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-ORDERS-MIGRATION",
+      "label": "db/migrations/003_orders_checkout.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "request id uniqueness defined",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "financial events link to internal order",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "migration ledger 003 exists",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-CHECKOUT-GATE",
+      "label": "evidence/EG-0014-pedido-checkout.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "checkout evidence gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "checkout gate tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "checkout never proves payment",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-VERCEL-CONFIG",
+      "label": "vercel.json",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "vercel json parses",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "vercel tests validate routing",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "root and events rewrites defined",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-DEPLOY-SERIALIZATION",
+      "label": "evidence/EG-0015-deploy-serializado.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "deploy serialization gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "workstreams requires full serialized deploy",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "agent requires alias identity verification",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-SECURITY",
+      "label": "src/security.mjs + vercel.json",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "security syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "security tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "security boundaries are fail-closed",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-RELEASE-FINGERPRINT",
+      "label": "src/release.mjs + api/release.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "release tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "release endpoint syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "release manifest is immutable and complete",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-DEPLOY-SAFETY",
+      "label": "evidence/EG-0008-deploy-zevanory-vercel.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "deploy evidence gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "full test suite",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "production kill-switch documented",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-CANONICAL-MASTER",
+      "label": "ZEVANORY_MASTER.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "master exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "governance tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "master has trajectory and current state",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-GOVERNANCE",
+      "label": "evidence/EG-0009-governanca-trajeto-zevanory.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "governance evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "governance test suite",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "fail-closed continuation declared",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-AGENT-ENTRYPOINT",
+      "label": "AGENTS.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "agent entrypoint exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "governance tests include entrypoint",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "entrypoint requires master and gates",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-COMPOSABLE-ARCHITECTURE",
+      "label": "src/composableArchitecture.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "composable architecture syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "composable architecture tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "architecture is acyclic modular and cost disciplined",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-INTEGRATION-OUTBOX",
+      "label": "src/integrationOutbox.mjs + db/migrations/009_composable_infrastructure.sql",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "integration outbox syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "integration outbox tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "outbox is idempotent concurrent and dead-lettered",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-COMPOSABLE-EVIDENCE",
+      "label": "evidence/EG-0036-composable-commerce-infrastructure-benchmark.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "five professional benchmarks recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "composable 10x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "sales remain blocked by decision",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-ENTERPRISE-ASSURANCE",
+      "label": "src/enterpriseAssurance.mjs + api/assurance.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "enterprise assurance syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "enterprise assurance tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "SLO truth and outbox health are explicit",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-ENTERPRISE-SLO",
+      "label": "specs/SLO_POLICY.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "SLO policy exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "enterprise 10x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "commercial gates remain out of scope",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-ACTIVATION-PLAN",
+      "label": "src/activationPlan.mjs + api/config.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "activation plan syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "activation readiness tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "cutover and rollback remain fail closed",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-ACTIVATION-READINESS",
+      "label": "evidence/EG-0038-commercial-activation-readiness.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "activation evidence exists",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "activation 20x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "external inputs are never fabricated",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-OFFICIAL-BRAND",
+      "label": "public/brand + public surfaces",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "brand identity tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "identity guard",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "official brand is self hosted and required",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-LOCAL-STATIC-PARITY",
+      "label": "src/server-v2.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "local server syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "local static integration tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "local server restricts public root with MIME and nosniff",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-OFFICIAL-BRAND-EVIDENCE",
+      "label": "evidence/EG-0040-official-brand-local-parity.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "brand evidence gate approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "rules 20x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "evidence records OWASP MDN and Vercel",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-WORLDCLASS-DASHBOARD",
+      "label": "public/index.html + public/index.css + public/index.js",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "worldclass dashboard tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "worldclass dashboard 10x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "single screen plus progressive detail semantics",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-WORLDCLASS-DASHBOARD-EVIDENCE",
+      "label": "evidence/EG-0041-worldclass-executive-dashboard.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "three independent design references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "commercial truth remains invariant",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "identity guard",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "CODE-VISUAL-CERTIFICATION",
+      "label": "public/index.css + public/index.js",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "visual certification tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "visual certification 10x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "progressive visual system preserves evidence at readable density",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-VISUAL-CERTIFICATION-EVIDENCE",
+      "label": "evidence/EG-0046-progressive-executive-disclosure.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "visual certification evidence recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "acceptance criteria records progressive readable integrity",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "identity guard",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "CODE-OUTBOUND-ADAPTERS",
+      "label": "src/outboundAdapters.mjs + src/integrationOutbox.mjs + api/agent-run.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "outbound adapters syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "outbound adapters tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "channel dispatcher excludes payment destinations",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-OUTBOUND-ADAPTERS-EVIDENCE",
+      "label": "evidence/EG-0056-real-outbound-adapters.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "outbound evidence is approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "evidence records Meta Resend and Google",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "business truth remains separate from provider acceptance",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-CONTINUOUS-AGENT-EVALS",
+      "label": "src/agentEvals.mjs + scripts/audit-agent-evals-20x.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "agent eval syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "agent eval focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "agent eval adversarial 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-CONTINUOUS-AGENT-EVALS-EVIDENCE",
+      "label": "evidence/EG-0057-continuous-agent-evaluation.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "continuous eval evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three independent agent eval references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "offline eval does not claim commercial proof",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-OUTCOME-LEARNING",
+      "label": "src/outcomeLearning.mjs + src/revenueAgent.mjs + src/agentWorker.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "outcome learning syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "outcome learning focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "outcome learning 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-OUTCOME-LEARNING-EVIDENCE",
+      "label": "evidence/EG-0058-outcome-learning-memory.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "outcome learning evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "learning uses reconciled observed truth",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "learning explicitly avoids causal overclaim",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PROGRESSIVE-AUTONOMY",
+      "label": "src/autonomyPolicy.mjs + src/agentControl.mjs + src/agentWorker.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "autonomy policy syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "autonomy policy focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "autonomy policy 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PROGRESSIVE-AUTONOMY-EVIDENCE",
+      "label": "evidence/EG-0059-progressive-autonomy-policy.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "progressive autonomy evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three independent trust references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "guarded remains production default",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PROVIDER-CONFIRMATION",
+      "label": "src/providerConfirmation.mjs + provider webhooks",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "provider confirmation syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "provider confirmation focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "provider confirmation 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PROVIDER-CONFIRMATION-EVIDENCE",
+      "label": "evidence/EG-0060-provider-delivery-confirmation.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "provider confirmation evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three independent webhook references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "commercial truth remains explicitly separate",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-YOUTUBE-RESUMABLE",
+      "label": "src/youtubeUpload.mjs + outbound adapter",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "youtube upload syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "youtube focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "youtube 20x audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-YOUTUBE-EVIDENCE",
+      "label": "evidence/EG-0061-youtube-resumable-upload.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "youtube evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three independent organizations recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "secrets and commercial gates remain protected",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-CONTENT-DEDUP",
+      "label": "src/contentDedup.mjs + src/agentWorker.mjs",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "content dedup syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "content dedup focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "content dedup 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-CONTENT-DEDUP-EVIDENCE",
+      "label": "evidence/EG-0062-content-deduplication.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "content dedup evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three independent dedup references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "lexical similarity not overstated as semantic",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-V10-OFFER-RECONCILIATION",
+      "label": "offer catalog + activation artifact gates",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "V10 offer focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "V10 offer reconciliation 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "offer launch 20x",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-V10-OFFER-EVIDENCE",
+      "label": "evidence/EG-0063-arbm-sist-v10-offer-reconciliation.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "V10 evidence approved with restrictions",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "V10 verified hash recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "signing and public release remain blockers",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-MARKET-PRODUCT-INTELLIGENCE",
+      "label": "market/product intelligence + live stream",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "intelligence syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "intelligence focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "fail-closed evidence and sales separation",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-MARKET-PRODUCT-INTELLIGENCE-EVIDENCE",
+      "label": "evidence/EG-0070-market-product-investment-intelligence.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "evidence gate approved before implementation",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "four independent references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three source fail-closed policy explicit",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-PRELAUNCH-INVESTMENT-INTELLIGENCE",
+      "label": "prelaunch investment + portfolio research",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "prelaunch intelligence syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "prelaunch investment tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "30-role 10x investment audit",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-PRELAUNCH-INVESTMENT-EVIDENCE",
+      "label": "evidence/EG-0071-prelaunch-investment-decision.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "EG-0071 has three independent sources",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "EG-0071 forbids invented economics",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "EG-0071 keeps sales gate mandatory",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "PROJECT-HYGIENE",
+      "label": "project-only hygiene",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "legacy server absent",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "old WhatsApp absent from active files",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "audit has no external absolute reads",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "CODE-CREATIVE-REVIEW-BOARD",
+      "label": "creative intelligence + central de criativos",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "creative source syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "creative focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "5of5 board and runtime sales separation",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-CREATIVE-REVIEW-EVIDENCE",
+      "label": "evidence/EG-0076-creative-review-board-5of5.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "creative review evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three independent platform references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "creative center integration tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "CODE-NUVEMSHOP-SESSION-AND-IDENTITY",
+      "label": "native OAuth + encrypted canonical reconciliation",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "integration syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "callback and durable session adversarial tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "signed event and privacy fail-closed tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "CODE-NUVEMSHOP-CUSTODY",
+      "label": "pinned existing-secret transfer",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "custody syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "exact secret custody transfer tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "identity, sales and provider failure custody tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "CODE-NUVEMSHOP-PRIVACY",
+      "label": "verified merchant report with no retained customer payload",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "privacy syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "merchant report identity and minimization tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "privacy transport and malformed request failures",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-NUVEMSHOP-CLOSEOUT",
+      "label": "EG-0077 corrective implementation with production unproven",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "primary independent protocol and runtime sources",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "evidence retains explicit production restriction",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "commercial scope exclusion and sales guards",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "units": 88,
+    "approved": 88,
+    "failed": 0
+  },
+  "verdict": "APPROVED"
+}

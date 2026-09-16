@@ -1,0 +1,24 @@
+{
+  "brand": "ZEVANORY",
+  "sku": "ZEV-VEN-011",
+  "product": "ZEVANORY Vendas na Prática",
+  "version": "2.0",
+  "files": [
+    "CHECKLIST-IMPLEMENTACAO.md",
+    "INICIAR-AQUI.html",
+    "README.md",
+    "REFERENCIAS.md",
+    "TERMOS.txt",
+    "ferramentas/controle-decisoes.csv",
+    "ferramentas/plano-acao.csv",
+    "ferramentas/registro-experimentos.csv",
+    "ferramentas/scorecard-semanal.csv",
+    "modulos/01-icp-e-segmentacao-com-evidencia.md",
+    "modulos/02-oferta-e-proposta-de-valor.md",
+    "modulos/03-prospeccao-e-abordagem.md",
+    "modulos/04-descoberta-objecoes-e-fechamento.md",
+    "modulos/05-follow-up-pipeline-e-metricas.md"
+  ],
+  "quality_profile": "elite_content_v2",
+  "placeholder": false
+}

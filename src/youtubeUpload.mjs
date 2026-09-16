@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { decryptCommercialSecret, encryptCommercialSecret } from './commercialOAuthCrypto.mjs';
 const GOOGLE_UPLOAD='https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
 const GOOGLE_TOKEN='https://oauth2.googleapis.com/token';
 const CHUNK_BYTES=4*1024*1024;
@@ -12,17 +13,24 @@ const okStatus=(s,list)=>list.includes(Number(s));
 const parseRangeEnd=(value)=>{const m=/bytes=0-(\d+)/i.exec(String(value||''));return m?Number(m[1]):null;};
 const safePrivacy=(v)=>['private','unlisted','public'].includes(String(v||'').toLowerCase())?String(v).toLowerCase():'private';
 
-export async function resolveYouTubeAccessToken({env=process.env,fetchImpl=globalThis.fetch}={}){
+export async function resolveYouTubeAccessToken({env=process.env,fetchImpl=globalThis.fetch,sql=null}={}){
   const direct=clean(env.YOUTUBE_OAUTH_ACCESS_TOKEN,4000);if(direct)return direct;
+  let refreshToken=clean(env.YOUTUBE_OAUTH_REFRESH_TOKEN,4000);
+  if(sql?.query){
+    const rows=await sql.query("select access_token_enc,refresh_token_enc,expires_at from provider_oauth_credentials where provider='youtube_identity' limit 1");
+    const row=rows?.[0];
+    if(row){const access=decryptCommercialSecret(row.access_token_enc,env);const expires=new Date(row.expires_at||0).getTime();if(access&&Number.isFinite(expires)&&expires>Date.now()+60000)return access;refreshToken=decryptCommercialSecret(row.refresh_token_enc,env)||refreshToken;}
+  }
   const clientId=required(env.YOUTUBE_OAUTH_CLIENT_ID,'youtube_oauth_client_id_missing');
   const clientSecret=required(env.YOUTUBE_OAUTH_CLIENT_SECRET,'youtube_oauth_client_secret_missing');
-  const refreshToken=required(env.YOUTUBE_OAUTH_REFRESH_TOKEN,'youtube_oauth_refresh_token_missing');
+  refreshToken=required(refreshToken,'youtube_oauth_refresh_token_missing');
   const body=new URLSearchParams({client_id:clientId,client_secret:clientSecret,refresh_token:refreshToken,grant_type:'refresh_token'});
   const response=await fetchImpl(GOOGLE_TOKEN,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
   const data=await json(response);if(!response.ok)throw new Error(`youtube_oauth_refresh_${response.status}`);
-  return required(data.access_token,'youtube_access_token_missing');
+  const access=required(data.access_token,'youtube_access_token_missing');
+  if(sql?.query){const ttl=Math.max(60,Number(data.expires_in)||3600);await sql.query("update provider_oauth_credentials set access_token_enc=$1,expires_at=now()+($2::text||' seconds')::interval,updated_at=now() where provider='youtube_identity'",[encryptCommercialSecret(access,env),String(ttl)]);}
+  return access;
 }
-
 export async function inspectRemoteVideo({url,fetchImpl=globalThis.fetch}={}){
   const mediaUrl=httpsUrl(url,'youtube_media_url_required');
   let response=await fetchImpl(mediaUrl,{method:'HEAD',redirect:'follow'});
@@ -73,7 +81,7 @@ async function persistUploadState(sql,eventId,state){
   await sql.query("update integration_outbox set headers=coalesce(headers,'{}'::jsonb)||$2::jsonb where event_id=$1",[eventId,payload]);
 }
 export async function uploadYouTubeFromRemote({event,sql,env=process.env,fetchImpl=globalThis.fetch}={}){
-  const accessToken=await resolveYouTubeAccessToken({env,fetchImpl});
+  const accessToken=await resolveYouTubeAccessToken({env,fetchImpl,sql});
   let state=event?.headers?.youtube_upload||null;
   let media=null;
   if(!state){

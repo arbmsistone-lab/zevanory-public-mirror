@@ -3,6 +3,8 @@ import { neon } from '@neondatabase/serverless';
 import { normalizeWhatsappStatusPayload,applyProviderConfirmation } from '../providerConfirmation.mjs';
 import { preserveProviderConfirmations } from '../providerConfirmationFabric.mjs';
 import { resolveMetaVerifyToken } from '../channelIdentityPreflight.mjs';
+import { extractWhatsappInboundMessages, queueWhatsappConversation } from '../supportIntake.mjs';
+import { understandWhatsappInbound } from '../whatsappMedia.mjs';
 
 const json=(res,status,body)=>{res.statusCode=status;return res.end(JSON.stringify(body));};
 const rawText=(req)=>Buffer.isBuffer(req.rawBody)?req.rawBody.toString('utf8'):String(req.rawBody||'');
@@ -24,6 +26,8 @@ export default async function handler(req,res){
   if(req.method!=='POST')return json(res,405,{error:'method_not_allowed'});
   const raw=rawText(req);if(!verifyMetaSignature({payload:raw,signature:req.headers?.['x-hub-signature-256'],appSecret:process.env.META_APP_SECRET}))return json(res,401,{error:'webhook_auth_failed',accepted:false});
   let payload;try{payload=raw?JSON.parse(raw):{};}catch{return json(res,400,{error:'invalid_json',accepted:false});}
+  const inbound=extractWhatsappInboundMessages(payload);
+  if(inbound.length&&process.env.DATABASE_URL){const sql=neon(process.env.DATABASE_URL);let queued=0,support=0,commercial=0,media_review=0;for(const item of inbound){let enriched=item;try{enriched=await understandWhatsappInbound(item,{env:process.env});}catch{enriched={...item,understanding:item.text||item.caption||`Cliente enviou ${item.type}; midia requer revisao.`,understanding_mode:'media_review_required',understanding_confidence:0};}const text=String(enriched.understanding||enriched.text||'').trim();const r=await queueWhatsappConversation(sql,{contactRef:item.from,text,messageId:item.message_id,mediaType:item.type,mediaId:item.media_id,source:'meta_whatsapp'});if(r.queued){queued++;if(r.kind==='support')support++;else commercial++;}if(Number(enriched.understanding_confidence||0)<.99&&item.media_id)media_review++;}return json(res,200,{accepted:true,inbound_jobs_queued:queued,support_jobs_queued:support,commercial_jobs_queued:commercial,media_review_required:media_review});}
   const confirmations=normalizeWhatsappStatusPayload(payload);if(!confirmations.length)return json(res,200,{accepted:true,ignored:true,reason:'status_not_supported'});
   if(!process.env.DATABASE_URL){
     const recovery=await preserveProviderConfirmations(confirmations);

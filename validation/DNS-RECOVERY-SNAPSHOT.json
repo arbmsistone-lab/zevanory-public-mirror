@@ -1,0 +1,59 @@
+{
+  "format": "zevanory-dns-recovery-v1",
+  "generated_at": "2026-09-12T16:19:38.525Z",
+  "records": {
+    "zevanory.api.br": {
+      "A": [
+        "172.67.156.193",
+        "104.21.13.160"
+      ],
+      "AAAA": [
+        "2606:4700:3034::ac43:9cc1",
+        "2606:4700:3033::6815:da0"
+      ],
+      "CNAME": [],
+      "MX": [
+        {
+          "exchange": "inbound-smtp.sa-east-1.amazonaws.com",
+          "priority": 10,
+          "type": "MX"
+        }
+      ],
+      "NS": [
+        "valentin.ns.cloudflare.com",
+        "jocelyn.ns.cloudflare.com"
+      ],
+      "TXT": [],
+      "CAA": []
+    },
+    "edge.zevanory.api.br": {
+      "A": [
+        "172.67.156.193",
+        "104.21.13.160"
+      ],
+      "AAAA": [
+        "2606:4700:3034::ac43:9cc1",
+        "2606:4700:3033::6815:da0"
+      ],
+      "CNAME": [],
+      "MX": [],
+      "NS": [],
+      "TXT": [],
+      "CAA": []
+    },
+    "_dmarc.zevanory.api.br": {
+      "A": [],
+      "AAAA": [],
+      "CNAME": [],
+      "MX": [],
+      "NS": [],
+      "TXT": [
+        [
+          "v=DMARC1; p=none;"
+        ]
+      ],
+      "CAA": []
+    }
+  },
+  "emergency_url": "https://arbmsistone-lab.github.io/zevanory-public-mirror/"
+}

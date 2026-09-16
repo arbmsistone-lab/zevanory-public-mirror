@@ -1,0 +1,7 @@
+import test from 'node:test'; import assert from 'node:assert/strict';
+import {buildCiAttestation,validateAttestation,validateCloudflareRuntimeAttestation} from '../scripts/remote-attestation.mjs';
+const sha='a'.repeat(40), gates=[{name:'npm test',status:'passed'}];
+test('GitLab attestation is bound to CI_COMMIT_SHA and hashed',()=>{const a=buildCiAttestation({GITLAB_CI:'true',CI_COMMIT_SHA:sha,CI_JOB_ID:'7',CI_PIPELINE_ID:'9'},{gateResults:gates});assert.equal(validateAttestation(a,sha),true);assert.equal(validateAttestation({...a,commit_sha:'b'.repeat(40)},sha),false)});
+test('manual SHA and failed gates are rejected',()=>{assert.throws(()=>buildCiAttestation({CI_COMMIT_SHA:sha},{gateResults:gates}),/exactly_one_ci_provider/);assert.throws(()=>buildCiAttestation({CIRCLECI:'true',CIRCLE_SHA1:sha,CIRCLE_WORKFLOW_ID:'x'},{gateResults:[{status:'failed'}]}),/passed_gates/)});
+
+test('Cloudflare runtime proof requires served version and two matching blocked targets',()=>{const proof={provider:'cloudflare-workers',commit_sha:sha,deployment_version_id:'ver-1',served_version:sha,gate_results:[{name:'production_release_match',status:'passed'}],sales_gate:'blocked',zero_spend:true,paid_fallback_used:false,results:[{ok:true,commit_sha:sha,sales_blocked:true},{ok:true,commit_sha:sha,sales_blocked:true},{ok:false,commit_sha:sha,sales_blocked:true}]};assert.equal(validateCloudflareRuntimeAttestation(proof,sha),true);assert.equal(validateCloudflareRuntimeAttestation({...proof,served_version:'b'.repeat(40)},sha),false)});

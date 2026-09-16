@@ -8,10 +8,10 @@ const env={MARKET_RESEARCH_FEEDS:JSON.stringify([
   {name:'C',organization:'org-c',url:'https://c.example/feed'},
 ])};
 
-test('research fabric requires three independent configured feeds',()=>{
+test('research fabric requires five independent configured sources',()=>{
   assert.equal(marketResearchFeeds(env).length,3);
   assert.equal(marketResearchReadiness(env).ready,true);
-  assert.equal(marketResearchReadiness({MARKET_RESEARCH_FEEDS:'[]'}).ready,false);
+  const base=marketResearchReadiness({MARKET_RESEARCH_FEEDS:'[]'}); assert.equal(base.ready,true); assert.ok(base.configured>=5);
 });
 
 test('research fabric aggregates only verified provider signals',async()=>{

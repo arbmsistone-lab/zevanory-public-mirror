@@ -68,6 +68,51 @@
   force = true
 
 [[redirects]]
+  from = "/solucoes"
+  to = "/solucoes.html"
+  status = 200
+
+[[redirects]]
+  from = "/arbm-sist"
+  to = "/arbm-sist.html"
+  status = 200
+
+[[redirects]]
+  from = "/arbm-contador-saloes"
+  to = "/arbm-contador-saloes.html"
+  status = 200
+
+[[redirects]]
+  from = "/arbm-one"
+  to = "/arbm-one.html"
+  status = 200
+
+[[redirects]]
+  from = "/ia-na-pratica"
+  to = "/ia-na-pratica.html"
+  status = 200
+
+[[redirects]]
+  from = "/vendas-na-pratica"
+  to = "/vendas-na-pratica.html"
+  status = 200
+
+[[redirects]]
+  from = "/lucro-e-caixa"
+  to = "/lucro-e-caixa.html"
+  status = 200
+
+[[redirects]]
+  from = "/combo-ia-vendas"
+  to = "/combo-ia-vendas.html"
+  status = 200
+
+[[redirects]]
+  from = "/negocio-completo"
+  to = "/negocio-completo.html"
+  status = 200
+
+[[redirects]]
   from = "/piloto"
   to = "/piloto.html"
   status = 200

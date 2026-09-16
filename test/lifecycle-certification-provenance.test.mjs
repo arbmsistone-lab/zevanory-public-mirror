@@ -25,3 +25,12 @@ test('trusted evidence repository writes the real migration column',()=>{
   const source=fs.readFileSync('src/lifecycleEvidenceRepository.mjs','utf8');
   assert.match(source,/evidence_sha256/);assert.doesNotMatch(source,/evidence_hash[,)]/);
 });
+
+import { loadApprovedObservedLifecycleCertification } from '../src/lifecycleCertificationProvenance.mjs';
+test('approved observed lifecycle resolver is commit-bound and fail-closed',async()=>{
+  const commit='a'.repeat(40);
+  const sql={query:async(q,args)=> q.includes("status='approved'")&&args?.[0]===commit?[{artifact_sha256:'b'.repeat(64),deployed_commit_sha:commit,required_score:10,total_dimensions:39,proven_dimensions:39,status:'approved'}]:[]};
+  const cert=await loadApprovedObservedLifecycleCertification(sql,{deployedCommitSha:commit});
+  assert.equal(cert.certification_track,'observed_production'); assert.equal(cert.release_approved,true);
+  assert.equal(await loadApprovedObservedLifecycleCertification(sql,{deployedCommitSha:'bad'}),null);
+});

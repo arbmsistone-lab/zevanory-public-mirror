@@ -5,7 +5,7 @@ const get=async(path,opts={})=>{const r=await fetch(`${base}${path}`,{redirect:'
 const json=async(path,opts={})=>{const x=await get(path,opts);let body={};try{body=JSON.parse(x.text)}catch{}return {r:x.r,body,text:x.text}};
 const head=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
 const root=await get('/'); const js=await get('/index.js'); const css=await get('/index.css');
-add('01 root command center 200',root.r.status===200&&root.text.includes('ZEVANORY')&&root.text.includes('CENTRAL OPERACIONAL'),root.r.status);
+add('01 root public commercial 200',root.r.status===200&&root.text.includes('ZEVANORY')&&root.text.includes('/solucoes')&&!root.text.includes('CENTRAL OPERACIONAL'),root.r.status);
 add('02 frontend assets 200',js.r.status===200&&css.r.status===200,`${js.r.status}/${css.r.status}`);
 let legal=true; for(const p of ['/termos','/privacidade','/reembolso','/afiliados']) legal=legal&&(await get(p)).r.status===200; add('03 legal surfaces 200',legal);
 const live=await json('/api/live'); const health=await json('/api/health'); const status=await json('/api/status'); const agent=await json('/api/agent/status'); const release=await json('/api/release'); const config=await json('/api/config');
@@ -20,8 +20,8 @@ const gitlabSha=remoteSha('https://gitlab.com/arbm-sistone/ZEVANORY.git');
 add('09 git mirrors converge',/^[0-9a-f]{40}$/.test(head)&&githubSha===head&&gitlabSha===head,JSON.stringify({head,githubSha,gitlabSha}));
 add('10 assurance protected',assurance.r.status===401&&assurance.body.error==='operator_auth_required',assurance.r.status);
 add('11 activation protected',activation.r.status===401&&activation.body.error==='operator_auth_required',activation.r.status);
-add('12 runtime checkout enabled',status.body.runtime?.checkout==='enabled'&&release.body.checkout_mode==='enabled');
-add('13 runtime financial enabled',status.body.runtime?.financial==='enabled'&&release.body.financial_mode==='enabled');
+add('12 runtime checkout fail closed',status.body.runtime?.checkout==='globally-blocked'&&release.body.checkout_mode==='globally-blocked');
+add('13 runtime financial fail closed',status.body.runtime?.financial==='disabled'&&release.body.financial_mode==='disabled');
 add('14 activation remains fail closed',config.body.commercial_enabled===false&&config.body.whatsapp_enabled===false&&agent.body.commercial_execution==='blocked'&&release.body.sales_mode==='globally-blocked');
 const checkout=await get('/api/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({request_id:'550e8400-e29b-41d4-a716-446655440000',session_id:'550e8400-e29b-41d4-a716-446655440001',offer_id:'OFFER-0001'})});
 add('15 provider-neutral checkout reaches only commercial sales gate',checkout.r.status===503&&checkout.text.includes('sales_globally_blocked')&&!checkout.text.includes('payment_capacity_unavailable'),checkout.r.status);
@@ -29,6 +29,6 @@ const agentRun=await get('/api/agent/run',{method:'POST'}); add('16 agent worker
 const operator=await get('/api/events/operator',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}); add('17 operator auth required',operator.r.status===401,operator.r.status);
 const csp=root.r.headers.get('content-security-policy')||''; add('18 production security headers',csp.includes("script-src 'self'")&&root.r.headers.get('x-frame-options')==='DENY'&&root.r.headers.get('x-content-type-options')==='nosniff');
 const badUtf8=['\u00c3\u00a1','\u00c3\u00a9','\u00c3\u00a3','\u00c3\u00a7','\u00e2\u20ac\u201d','\u00c2\u00b7','\ufffd']; add('19 live UTF8 clean',!badUtf8.some(x=>(root.text+js.text).includes(x)));
-add('20 lifecycle/commercial safety explicit',agent.body.lifecycle_certified===true&&agent.body.commercial_execution==='blocked'&&status.body.engine?.commercial_autonomy==='not_approved');
+add('20 lifecycle/commercial safety explicit',agent.body.lifecycle_certified===false&&agent.body.commercial_execution==='blocked'&&status.body.engine?.commercial_autonomy==='not_approved'&&release.body.sales_mode==='globally-blocked');
 for(const c of checks) console.log(`${c.ok?'APPROVED':'FAILED'} ${c.name}${c.detail!==''?` ${c.detail}`:''}`);
 const failed=checks.filter(c=>!c.ok); console.log(`AUDIT_PRODUCTION_20X_${failed.length?'BLOCKED':'APPROVED'} units=20 approved=${20-failed.length} failed=${failed.length}`); if(failed.length) process.exit(1);

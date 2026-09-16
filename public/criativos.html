@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Central de Criativos · ZEVANORY</title>
+  <link rel="icon" href="/brand/favicon.svg">
+  <link rel="stylesheet" href="/criativos.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/" aria-label="Voltar ao Command Center"><img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY"></a>
+  <div><span>COMMAND CENTER</span><h1>Central de Criativos</h1></div>
+  <div class="top-actions"><b id="engine-state">CARREGANDO</b><a href="/">Voltar ao painel</a></div>
+</header>
+<main>
+  <section class="kpis" aria-label="Resumo criativo">
+    <article><span>Motor</span><strong id="kpi-engine">—</strong><small>creative-intelligence</small></article>
+    <article><span>Variantes</span><strong id="kpi-variants">—</strong><small>imagem + vídeo</small></article>
+    <article><span>Melhor score</span><strong id="kpi-score">—</strong><small>seleção atual</small></article>
+    <article><span>Vendas</span><strong id="kpi-publish">—</strong><small>governança comercial</small></article>
+  </section>
+  <section class="workspace">
+    <aside class="production-panel card">
+      <div class="card-head"><span>Frentes operacionais</span><b id="production-count">— frentes</b></div>
+      <div id="production-list" class="production-grid" aria-label="Frentes operacionais"><div class="empty">Carregando frentes aprovadas…</div></div>
+      <div class="truth-box"><span>Estado real</span><b id="truth-state">VENDAS BLOQUEADAS</b><p id="truth-copy">Pesquisa, criação, avaliação e preparação seguem ativas.</p></div>
+    </aside>
+    <section class="preview-panel card">
+      <div class="card-head"><span>Preview vencedor</span><b id="preview-badge">—</b></div>
+      <div class="preview-stage" id="preview-stage">
+        <img id="image-preview" alt="Preview do criativo vencedor">
+        <video id="video-preview" controls muted playsinline></video>
+        <div class="preview-loading" id="preview-loading">Gerando preview real…</div>
+      </div>
+      <div class="preview-meta">
+        <div><span>Creative ID</span><b id="creative-id">—</b></div>
+        <div><span>Base de seleção</span><b id="selection-basis">—</b></div>
+        <div><span>Atualizado</span><b id="updated-at">—</b></div>
+      </div>
+    </section>
+    <aside class="variants-panel card">
+      <div class="card-head"><span>Variantes avaliadas</span><b id="variant-count">—</b></div>
+      <div id="variants" class="variant-list"><div class="empty">Carregando inteligência criativa…</div></div>
+      <section class="review-board" aria-label="Banca sênior de aprovação">
+        <div class="review-board-head"><span>Banca sênior</span><b id="board-score">—/5</b></div>
+        <div id="board-votes" class="board-votes"></div>
+        <small id="board-state">Aguardando avaliação.</small>
+      </section>
+    </aside>
+  </section>
+  <section class="investment card" aria-label="Advisor de mídia"><div class="card-head"><span>Media Investment Advisor</span><b id="advisor-policy">—</b></div><div class="advisor-grid"><div><span>Ação</span><strong id="advisor-action">AGUARDAR</strong></div><div><span>Orçamento recomendado</span><strong id="advisor-budget">R$ 0,00</strong></div><div><span>ROAS observado</span><strong id="advisor-roas">—</strong></div><div><span>Confiança</span><strong id="advisor-confidence">—</strong></div><div class="advisor-reason"><span>Justificativa</span><strong id="advisor-reason">evidência insuficiente</strong></div></div><p class="advisor-safety">Recomendação somente. Gasto automático permanece bloqueado e exige aprovação humana.</p></section>
+  <section class="timeline card">
+    <div class="card-head"><span>Fluxo criativo</span><b id="flow-state">MOTOR ATIVO</b></div>
+    <div class="flow-steps">
+      <div data-state="done"><span>1</span><b>Pesquisa</b><small>produtos + mercado</small></div>
+      <div data-state="done"><span>2</span><b>Briefing</b><small>oferta + canal</small></div>
+      <div data-state="done"><span>3</span><b>Geração</b><small>variantes ativas</small></div>
+      <div data-state="done"><span>4</span><b>Avaliação</b><small>qualidade + compliance</small></div>
+      <div id="review-step" data-state="blocked"><span>5</span><b>Banca 5/5</b><small>unanimidade obrigatória</small></div>
+      <div id="publish-step" data-state="blocked"><span>6</span><b>Venda/publicação comercial</b><small>bloqueada pelos gates</small></div>
+    </div>
+  </section>
+</main>
+<footer><span>ZEVANORY · Central de Criativos</span><span id="source-state">fonte: /api/config?view=creative_sample</span><span>sem PII</span></footer>
+<script src="/criativos.js" defer></script>
+<script src="/whatsapp-contact.js" defer></script></body>
+</html>

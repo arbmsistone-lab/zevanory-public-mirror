@@ -83,7 +83,7 @@ unit('CODE-SERVER', 'src/server-v2.mjs', [
 
 unit('CODE-LANDING', 'public/index.html', [
   command('landing tests', process.execPath, ['--test','test/landing.test.mjs']),
-  op('institutional identity only', () => t('public/index.html').includes('<title>ZEVANORY</title>') && !t('public/index.html').includes('cta_whatsapp')),
+  op('institutional identity only', () => /<title>ZEVANORY(?:\s*\||<\/title>)/i.test(t('public/index.html')) && !t('public/index.html').includes('cta_whatsapp')),
   op('public domain identity', () => t('public/index.html').includes('zevanory.api.br') && !t('public/index.html').includes('Pre\u00e7o experimental')),
 ]);
 unit('CODE-PILOT', 'public/piloto.html', [
@@ -273,9 +273,9 @@ unit('CODE-SECURITY','src/security.mjs + vercel.json',[
   command('security tests',process.execPath,['--test','test/security.test.mjs','test/vercel.test.mjs','test/landing.test.mjs','test/piloto.test.mjs']),
   op('security boundaries are fail-closed',()=>t('src/security.mjs').includes('timingSafeEqual')&&t('src/security.mjs').includes('origin_not_allowed')&&t('api/events-public.mjs').includes('rate_limited')&&t('vercel.json').includes('Content-Security-Policy'))
 ]);
-unit('CODE-RELEASE-FINGERPRINT','src/release.mjs + api/release.mjs',[
+unit('CODE-RELEASE-FINGERPRINT','src/release.mjs + src/http/release.mjs',[
   command('release tests',process.execPath,['--test','test/release.test.mjs']),
-  command('release endpoint syntax',process.execPath,['--check','api/release.mjs']),
+  command('release endpoint syntax',process.execPath,['--check','src/http/release.mjs']),
   op('release manifest is immutable and complete',()=>t('src/release.mjs').includes('ZEVANORY-EG0039-FINAL')&&t('src/release.mjs').includes("salesMode: 'globally-blocked'")&&t('src/release.mjs').includes('/api/checkout/asaas')&&t('src/release.mjs').includes('/api/webhooks/asaas')&&t('src/release.mjs').includes('/api/release')),
 ]);
 unit('DEF-DEPLOY-SAFETY','evidence/EG-0008-deploy-zevanory-vercel.md',[
@@ -312,7 +312,7 @@ unit('DEF-COMPOSABLE-EVIDENCE','evidence/EG-0036-composable-commerce-infrastruct
   op('five professional benchmarks recorded',()=>['Shopify','commercetools','Salesforce','Adobe','BigCommerce'].every(x=>t('evidence/EG-0036-composable-commerce-infrastructure-benchmark.md').includes(x))),
   command('composable 10x audit',process.execPath,['scripts/audit-composable-10x.mjs']),
   op('sales remain blocked by decision',()=>t('evidence/EG-0036-composable-commerce-infrastructure-benchmark.md').includes('nao autoriza vendas')),
-]);unit('CODE-ENTERPRISE-ASSURANCE','src/enterpriseAssurance.mjs + api/assurance.mjs',[
+]);unit('CODE-ENTERPRISE-ASSURANCE','src/enterpriseAssurance.mjs + src/http/assurance.mjs',[
   command('enterprise assurance syntax',process.execPath,['--check','src/enterpriseAssurance.mjs']),
   command('enterprise assurance tests',process.execPath,['--test','test/enterprise-assurance.test.mjs']),
   op('SLO truth and outbox health are explicit',()=>t('src/enterpriseAssurance.mjs').includes('historical_slo_proven:false')&&t('src/enterpriseAssurance.mjs').includes('assessOutboxHealth')),
@@ -473,6 +473,36 @@ unit('PROJECT-HYGIENE','project-only hygiene',[
   op('audit has no external absolute reads',()=>!t('scripts/audit-3x.mjs').includes('readFileSync(' + String.fromCharCode(39) + 'C:')) ,
 ]);
 
+unit('CODE-CREATIVE-REVIEW-BOARD','creative intelligence + central de criativos',[
+  command('creative source syntax',process.execPath,['--check','src/creativeIntelligence.mjs']),
+  command('creative focused tests',process.execPath,['--test','test/creative-intelligence.test.mjs','test/creative-center.test.mjs']),
+  op('5of5 board and runtime sales separation',()=>t('src/creativeIntelligence.mjs').includes('review_board_required:5')&&t('public/criativos.js').includes('closure?.distribution?.fronts')&&t('public/criativos.js').includes('VENDAS BLOQUEADAS')),
+]);
+unit('DEF-CREATIVE-REVIEW-EVIDENCE','evidence/EG-0076-creative-review-board-5of5.md',[
+  op('creative review evidence approved',()=>existsSync(join(root,'evidence','EG-0076-creative-review-board-5of5.md'))&&t('evidence/EG-0076-creative-review-board-5of5.md').includes('APPROVED WITH COMMERCIAL FAIL-CLOSED')),
+  op('three independent platform references recorded',()=>['Google Ads Policy','TikTok for Business','Meta for Business'].every(x=>t('evidence/EG-0076-creative-review-board-5of5.md').includes(x))),
+  command('creative center integration tests',process.execPath,['--test','test/creative-center.test.mjs']),
+]);
+unit('CODE-NUVEMSHOP-SESSION-AND-IDENTITY','native OAuth + encrypted canonical reconciliation',[
+ command('integration syntax',process.execPath,['--check','src/nuvemshopIntegrationSecurity.mjs']),
+ command('callback and durable session adversarial tests',process.execPath,['--test','--test-name-pattern=OAuth|reconciliation|API|operator','test/nuvemshop-integration-security.test.mjs']),
+ command('signed event and privacy fail-closed tests',process.execPath,['--test','--test-name-pattern=HMAC|webhook|privacy|redaction|LGPD|lifecycle','test/nuvemshop-integration-security.test.mjs']),
+]);
+unit('CODE-NUVEMSHOP-CUSTODY','pinned existing-secret transfer',[
+ command('custody syntax',process.execPath,['--check','scripts/nuvemshop-custody-transfer.mjs']),
+ command('exact secret custody transfer tests',process.execPath,['--test','--test-name-pattern=custody transfers','test/nuvemshop-custody.test.mjs']),
+ command('identity, sales and provider failure custody tests',process.execPath,['--test','--test-name-pattern=custody refuses|custody does not','test/nuvemshop-custody.test.mjs']),
+]);
+unit('CODE-NUVEMSHOP-PRIVACY','verified merchant report with no retained customer payload',[
+ command('privacy syntax',process.execPath,['--check','src/nuvemshopPrivacy.mjs']),
+ command('merchant report identity and minimization tests',process.execPath,['--test','--test-name-pattern=privacy report is sent|LGPD payloads|store redaction','test/nuvemshop-integration-security.test.mjs']),
+ command('privacy transport and malformed request failures',process.execPath,['--test','--test-name-pattern=privacy delivery failures|privacy report rejects|privacy endpoint rejects|missing operational event','test/nuvemshop-integration-security.test.mjs']),
+]);
+unit('DEF-NUVEMSHOP-CLOSEOUT','EG-0077 corrective implementation with production unproven',[
+ op('primary independent protocol and runtime sources',()=>['Nuvemshop','IETF','Cloudflare','Vercel','Resend'].every(name=>t('evidence/EG-0077-nuvemshop-cloudflare-closeout.md').includes(name))),
+ op('evidence retains explicit production restriction',()=>t('evidence/EG-0077-nuvemshop-cloudflare-closeout.md').includes('UNPROVEN')),
+ command('commercial scope exclusion and sales guards',process.execPath,['--test','test/brand-identity-readiness.test.mjs','test/runtime-oauth-readiness.test.mjs']),
+]);
 const report={policy:'minimum 3 approved operations per audited code/definition unit',scope:'ZEVANORY only',units,totals:{units:units.length,approved:units.filter(x=>x.status==='APPROVED').length,failed:units.filter(x=>x.status!=='APPROVED').length},verdict:blocked?'BLOCKED':'APPROVED'};
 writeFileSync(join(root,'validation','AUDIT-3X-CURRENT.json'),JSON.stringify(report,null,2)+'\n','utf8');
 for(const item of units) console.log(`${item.status} ${item.id} operations=${item.approved_operations}`);

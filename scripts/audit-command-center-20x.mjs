@@ -21,9 +21,8 @@ add('12 forecast requires baseline',core.includes("forecast_mode:'baseline_requi
 add('13 predictive forecast stays disabled',core.includes('predictive_forecast_available:false'));
 add('14 next best action is rules based',core.includes("next_best_action_mode:'rules_based'"));
 add('15 priority UI is present',['overdue-actions','due-24h','blocked-actions','missing-next-action','stale-leads'].every((id)=>html.includes(`id="${id}"`)));
-add('16 pipeline health UI is present',['stage-new','stage-contacted','stage-qualified','stage-offer','stage-checkout','stage-paid'].every((id)=>html.includes(`id="${id}"`)));
-add('17 readiness UI is present',['readiness-state','blocker-count','predictive-forecast','baseline-state'].every((id)=>html.includes(`id="${id}"`)));
-add('18 agent panel and schema counters use dynamic 15 and 9',['agent-provider','agent-queued','agent-runs','agent-commercial'].every((id)=>html.includes(`id="${id}"`))&&js.includes('requiredTables=Number(health.schema?.required_tables)||15')&&js.includes('requiredMigrations=Number(health.schema?.required_migrations)||9'));
+add('16 pipeline health UI is present',['pipeline-signal','forecast-mode','nba-mode','predictive-forecast'].every((id)=>html.includes(`id="${id}"`)));
+add('17 readiness UI is present',['readiness-state','blocker-count','commercial-summary','commercial-score'].every((id)=>html.includes(`id="${id}"`)));add('18 agent panel and schema counters are runtime dynamic',['agent-provider','agent-queued','agent-runs','agent-commercial'].every((id)=>html.includes(`id="${id}"`))&&js.includes('health.schema?.required_tables')&&js.includes('health.schema?.required_migrations')&&!js.includes('required_tables)||15')&&!js.includes('required_migrations)||9'));
 const landingTest=await text('test/landing.test.mjs');
 add('19 UTF8 regression detector exists',landingTest.includes('\\ufffd')&&landingTest.includes('(html+js).includes(bad)'));
 add('20 command center states no simulated forecast',html.includes('nenhuma previsão inventada')&&js.includes('BLOQUEADO SEM BASELINE'));

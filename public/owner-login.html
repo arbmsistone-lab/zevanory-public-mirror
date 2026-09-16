@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>Acesso do proprietário | ZEVANORY</title>
+  <link rel="icon" href="/brand/favicon.svg?v=20260915" type="image/svg+xml" sizes="any">
+  <link rel="shortcut icon" href="/favicon.ico?v=20260915">
+  <link rel="stylesheet" href="/owner-login.css">
+</head>
+<body>
+  <main class="auth-shell">
+    <section class="auth-card" aria-labelledby="auth-title">
+      <img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY" class="brand">
+      <p class="eyebrow">Área privada</p>
+      <h1 id="auth-title">Acesso do proprietário</h1>
+      <p class="copy">Entre para acessar a Central Operacional. Esta área não é pública.</p>
+      <form id="owner-login-form" autocomplete="on">
+        <label for="owner-password">Senha</label>
+        <input id="owner-password" name="password" type="password" autocomplete="current-password" minlength="8" required autofocus>
+        <button type="submit">Entrar na Central</button>
+        <p id="owner-login-status" class="status" role="status" aria-live="polite"></p>
+      </form>
+      <a class="back-link" href="/">← Voltar ao site público</a>
+    </section>
+  </main>
+  <script src="/owner-login.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+data,hipotese,mudanca,amostra,metrica_antes,metrica_depois,efeito,risco,decisao
+2026-09-14,Mensagem contextual melhora resposta,Adicionar gatilho real,20 leads,8%,15%,+7pp,Baixo,Repetir com amostra maior

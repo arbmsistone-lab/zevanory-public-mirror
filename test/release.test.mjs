@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RELEASE } from '../src/release.mjs';
-import releaseHandler from '../api/release.mjs';
+import releaseHandler from '../src/http/release.mjs';
 
 test('release fingerprint is canonical and immutable',()=>{
   assert.equal(RELEASE.id,'ZEVANORY-EG0039-FINAL');

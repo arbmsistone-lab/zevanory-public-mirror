@@ -2,9 +2,11 @@ import { randomUUID, createHash } from 'node:crypto';
 import { buildAgentContext, decideRevenueAction, chooseTool, decisionInputHash } from './revenueAgent.mjs';
 import { authorizeTool } from './agentPolicy.mjs';
 import { evaluateAgentDecision } from './agentEvals.mjs';
+import { evaluateConversationQuality } from './conversationQuality.mjs';
+import { buildCloudflareAiExecutionProvider } from './cloudflareAiProvider.mjs';
 import { buildFollowUpPlan } from './salesPipeline.mjs';
 import { enqueueOutbox } from './integrationOutbox.mjs';
-import { assertChannelActionAllowed } from './channelAdapters.mjs';
+import { assertChannelActionAllowed, assertChannelPublicationAllowed, assertSupportChannelAllowed } from './channelAdapters.mjs';
 import { getAgentControlState, requiresHumanApproval, findApprovedAction, requestApproval, consumeApproval } from './agentControl.mjs';
 import { refreshOutcomeLearning } from './outcomeLearning.mjs';
 import { recordVerifiedLifecycleEvidence } from './lifecycleEvidenceRepository.mjs';
@@ -28,7 +30,11 @@ export async function recordNextBestActionEvidence(sql,{runId,context,tool,resul
   return recordVerifiedLifecycleEvidence(sql,{dimension:'next_best_action',source_class:'canonical_database',source:'revenue_agent',subject_ref:String(lead.lead_id),idempotency_key:`next-best-action:${runId}`,metadata:{run_id:runId,tool,decision_action:String(decision?.action||''),learning_policy_version:String(learning?.policy_version||''),learning_total_matured:Number(learning?.total_matured)||0,learning_winner_key:String(learning?.winner?.key||'')}});
 }
 
-export async function claimAgentJob(sql) {
+export async function claimAgentJob(sql, jobId=null) {
+  if(jobId){
+    const rows=await sql.query(`update agent_jobs set status='running',locked_at=now(),attempts=attempts+1 where job_id=$1 and status='queued' and available_at<=now() returning *`,[jobId]);
+    return rows[0]||null;
+  }
   const rows = await sql.query(`update agent_jobs set status='running',locked_at=now(),attempts=attempts+1
     where job_id=(select job_id from agent_jobs where status='queued' and available_at<=now()
       order by priority desc,available_at asc,created_at asc for update skip locked limit 1) returning *`);
@@ -77,17 +83,25 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
     return {creative_id:spec.creative_id,campaign_id:spec.campaign_id,variant_id:spec.variant_id,spec,image_url:creativeAssetUrl(spec,'png',env),video_url:video?creativeAssetUrl(spec,'webm',env):null,publishable:false,selection_basis:intelligence.selection_basis,quality_score:intelligence.winner.quality_score,variants:intelligence.ranking.map(x=>({creative_id:x.spec.creative_id,variant_id:x.variant_id,quality_score:x.quality_score,selection_score:x.selection_score,observed_ready:x.observed_ready}))};
   }
   if(tool==='create_offer_draft') return {draft_only:true,commercial_action:false};
+  if(tool==='send_support_message'){
+    if(!lead?.contact_ref) throw new Error('recipient_unavailable');
+    assertSupportChannelAllowed(lead.channel,env);
+    const text=String(decision.message||decision.content||'').trim(); if(!text) throw new Error('support_message_content_required');
+    const refs=Array.isArray(decision.source_refs)?decision.source_refs.map(String).filter(Boolean).slice(0,8):[];
+    const payload={contact_ref:lead.contact_ref,text:text.slice(0,4000),subject:String(decision.subject||decision.title||'Suporte ZEVANORY').slice(0,240),support_only:true,commercial_intent:false,source_refs:refs,product_code:String(context.job_payload?.product_code||context.job_payload?.product||'').slice(0,120),product_version:String(context.job_payload?.product_version||context.job_payload?.version||'').slice(0,80)}; if(/^https:\/\//i.test(String(decision.media_url||''))){payload.media_url=String(decision.media_url).slice(0,4000);payload.media_type=String(decision.media_type||'').toLowerCase().slice(0,20);payload.filename=String(decision.filename||'').slice(0,240);}
+    return enqueueOutbox(sql,{aggregateType:'lead',aggregateId:leadId,eventType:'send_support_message',destination:`channel:${lead.channel}`,payload,idempotencyKey:`agent:${runId}:send_support_message`,traceId,runId});
+  }
   if(tool==='send_message'){
     if(!lead?.contact_ref) throw new Error('recipient_unavailable');
     assertChannelActionAllowed(lead.channel,env);
     const text=String(decision.message||decision.content||'').trim(); if(!text) throw new Error('message_content_required');
-    const payload={contact_ref:lead.contact_ref,text:text.slice(0,4000),subject:String(decision.subject||decision.title||'ZEVANORY').slice(0,240)};
+    const payload={contact_ref:lead.contact_ref,text:text.slice(0,4000),subject:String(decision.subject||decision.title||'ZEVANORY').slice(0,240)}; if(/^https:\/\//i.test(String(decision.media_url||''))){payload.media_url=String(decision.media_url).slice(0,4000);payload.media_type=String(decision.media_type||'').toLowerCase().slice(0,20);payload.filename=String(decision.filename||'').slice(0,240);}
     if(decision.auto_creative===true&&['whatsapp','email'].includes(String(lead.channel).toLowerCase())){const intelligence=await selectCreativeVariantWithVisualEvidence(sql,{offerId:decision.offer_id||'OFFER-0001',channel:String(lead.channel).toLowerCase(),hook:decision.hook||decision.title||text,body:decision.body||text,cta:decision.cta||'Saiba mais',objective:decision.objective||'conversion',placement:decision.placement||'',campaignId:decision.campaign_id||''});const choice=chooseCreativeForOperation(intelligence,runId),spec=choice.selected.spec;if(choice.selected.quality_score<CREATIVE_INTELLIGENCE_POLICY.min_quality_score||choice.selected.perceptual_score<CREATIVE_INTELLIGENCE_POLICY.min_perceptual_score)throw new Error('creative_quality_below_threshold');payload.media_url=creativeAssetUrl(spec,'png',env);payload.creative_id=spec.creative_id;payload.campaign_id=spec.campaign_id;payload.variant_id=spec.variant_id;payload.creative_quality_score=choice.selected.quality_score;payload.creative_perceptual_score=choice.selected.perceptual_score;}
     return enqueueOutbox(sql,{aggregateType:'lead',aggregateId:leadId,eventType:'send_message',destination:`channel:${lead.channel}`,payload,idempotencyKey:`agent:${runId}:send_message`,traceId,runId});
   }
   if(tool==='publish_content'){
     const channel=String(decision.channel||lead?.channel||'').toLowerCase();
-    assertChannelActionAllowed(channel,env);
+    assertChannelPublicationAllowed(channel,decision,env);
     const content=String(decision.content||decision.message||'').trim(); if(!content) throw new Error('publish_content_required');
     const novelty=await evaluateContentNovelty(sql,{content,channel});
     if(!novelty.allowed) throw new Error(novelty.reason);
@@ -100,7 +114,7 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
       const base=String(env.PUBLIC_BASE_URL||'https://zevanory.api.br').replace(/\/$/,''); landingUrl=`${base}/?zc=${encodeURIComponent(campaignId)}&zv=${encodeURIComponent(variantId)}&zi=${encodeURIComponent(creativeId)}`;
     }
     const title=String(decision.title||decision.hook||content).slice(0,240);
-    return enqueueOutbox(sql,{aggregateType:'content',aggregateId:runId,eventType:'publish_content',destination:`channel:${channel}`,payload:{content:content.slice(0,8000),title,description:(landingUrl?`${String(decision.description||content).slice(0,4700)}\n\n${landingUrl}`:String(decision.description||content)).slice(0,5000),media_url:mediaUrl.slice(0,4000),creative_id:creativeId,campaign_id:campaignId,variant_id:variantId,landing_url:landingUrl,creative_selection_basis:selectionBasis,creative_quality_score:qualityScore,creative_perceptual_score:perceptualScore,privacy_status:String(decision.privacy_status||'private').slice(0,20),made_for_kids:decision.made_for_kids===true,dedup_fingerprint:novelty.fingerprint,dedup_policy:novelty.policy},idempotencyKey:`agent:${runId}:publish_content`,traceId,runId});
+    return enqueueOutbox(sql,{aggregateType:'content',aggregateId:runId,eventType:'publish_content',destination:`channel:${channel}`,payload:{content:content.slice(0,8000),title,description:(landingUrl?`${String(decision.description||content).slice(0,4700)}\n\n${landingUrl}`:String(decision.description||content)).slice(0,5000),media_url:mediaUrl.slice(0,4000),creative_id:creativeId,campaign_id:campaignId,variant_id:variantId,landing_url:landingUrl,creative_selection_basis:selectionBasis,creative_quality_score:qualityScore,creative_perceptual_score:perceptualScore,privacy_status:String(decision.privacy_status||'private').slice(0,20),made_for_kids:decision.made_for_kids===true,organic_only:decision.organic_only===true,commercial_intent:decision.commercial_intent===true,dedup_fingerprint:novelty.fingerprint,dedup_policy:novelty.policy},idempotencyKey:`agent:${runId}:publish_content`,traceId,runId});
   }
   if(tool==='start_checkout'){
     if(!lead?.session_id) throw new Error('checkout_session_unavailable');
@@ -119,8 +133,9 @@ async function executeTool(sql,tool,context,decision,{runId,traceId,env}){
 export async function runAgentOnce(sql,options={}){
   const env=options.env||process.env;
   const control=await getAgentControlState(sql);
-  if(control.paused)return Object.freeze({ok:true,processed:false,reason:'agent_paused',control});
-  const job=await claimAgentJob(sql);
+  const targetedPauseBypass=control.paused&&options.ignorePause===true&&Boolean(options.jobId);
+  if(control.paused&&!targetedPauseBypass)return Object.freeze({ok:true,processed:false,reason:'agent_paused',control});
+  const job=await claimAgentJob(sql,options.jobId||null);
   if(!job)return Object.freeze({ok:true,processed:false,reason:'queue_empty'});
   const runId=randomUUID(),traceId=randomUUID(),spanId=randomUUID(),started=Date.now();
   let tool='get_command_center',decision={},evalResult={pass:false,score:0,issues:['not_evaluated']};
@@ -135,10 +150,18 @@ export async function runAgentOnce(sql,options={}){
       const recent=await sql.query("select count(*)::int as count from agent_runs where mode='ai_assisted' and created_at>now()-interval '1 hour'");
       if(Number(recent[0]?.count||0)>=cap)apiKey=null;
     }
-    decision=await decideRevenueAction(context,{...options,apiKey});
+    const aiProviders=[...(options.aiProviders||[])];
+    const cloudflareAi=buildCloudflareAiExecutionProvider({sql,env});
+    if(cloudflareAi)aiProviders.push(cloudflareAi);
+    decision=await decideRevenueAction(context,{...options,apiKey,aiProviders});
     tool=chooseTool(decision);
-    const auth=authorizeTool(tool,env);
+    const auth=authorizeTool(tool,env,decision);
     evalResult=evaluateAgentDecision({decision,context,authorization:auth,tool});
+    if(evalResult.pass&&['send_message','send_support_message'].includes(tool)){
+      const cq=evaluateConversationQuality({message:decision.message||decision.content||'',channel:context.lead?.channel||'',recentMessages:context.recent_conversation||[],decision});
+      if(!cq.pass)evalResult=Object.freeze({...evalResult,pass:false,score:Math.min(Number(evalResult.score)||0,cq.score),issues:Object.freeze([...evalResult.issues,...cq.issues]),conversation_quality:cq});
+      else evalResult=Object.freeze({...evalResult,conversation_quality:cq});
+    }
     let contentNovelty=null;
     if(evalResult.pass&&tool==='publish_content'){
       const dedupChannel=String(decision.channel||context.lead?.channel||'').toLowerCase();

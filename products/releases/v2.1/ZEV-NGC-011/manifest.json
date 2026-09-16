@@ -1,0 +1,15 @@
+{
+  "brand": "ZEVANORY",
+  "sku": "ZEV-NGC-011",
+  "product": "ZEVANORY Negócio Completo",
+  "version": "2.1",
+  "includes": [
+    "ZEV-IA-011",
+    "ZEV-VEN-011",
+    "ZEV-LCX-011"
+  ],
+  "quality_profile": "master_senior_content_v21",
+  "placeholder": false,
+  "master_gate": "100_of_100",
+  "content_quality_certified": true
+}

@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';
+const migration=await readFile(new URL('../db/migrations/026_media_investment_telemetry.sql',import.meta.url),'utf8');const operator=await readFile(new URL('../api/events-operator.mjs',import.meta.url),'utf8');const schema=await import('../src/schemaHealth.mjs');
+test('media spend is attributable to campaign variant and creative',()=>{assert.match(migration,/campaign_id/);assert.match(migration,/variant_id/);assert.match(migration,/creative_id/);assert.match(operator,/media_spend_recorded/);assert.match(operator,/commercial_unlock:false/);});
+test('media spend schema is mandatory and fail closed',()=>{assert.ok(schema.REQUIRED_TABLES.includes('media_spend_events'));assert.ok(schema.REQUIRED_MIGRATIONS.includes('026_media_investment_telemetry'));});

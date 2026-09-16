@@ -46,6 +46,7 @@ export function evaluateLifecycleCertification(certification=CURRENT_LIFECYCLE_C
   });
 }
 
-export function salesLifecycleGate(){
-  return evaluateLifecycleCertification(CURRENT_LIFECYCLE_CERTIFICATION);
+export function salesLifecycleGate(certification=null){
+  if(!certification||certification.certification_track!=='observed_production') return Object.freeze({approved:false,version:'sales-lifecycle-canonical-v2-observed-required',required_score:10,total_dimensions:SALES_LIFECYCLE_CANONICAL_V2.length,passed_dimensions:0,dimensions:Object.freeze([]),blockers:Object.freeze(['observed_lifecycle_certification_required'])});
+  return evaluateLifecycleCertification(certification);
 }

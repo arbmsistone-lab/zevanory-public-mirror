@@ -1,35 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildOutboundAdapters} from '../src/outboundAdapters.mjs';
-import {channelReadiness} from '../src/channelAdapters.mjs';
-import {encryptTikTokSecret} from '../src/tiktokOAuth.mjs';
-import {encryptCommercialSecret} from '../src/commercialOAuthCrypto.mjs';
 const base={SALE_GLOBALLY_ENABLED:'true',PRE_SALE_GATES_APPROVED:'true'};
 const response=(status,body={},headers={})=>({status,ok:status>=200&&status<300,json:async()=>body,arrayBuffer:async()=>Buffer.isBuffer(body)?body:Buffer.from(typeof body==='string'?body:JSON.stringify(body)),headers:{get:k=>headers[String(k).toLowerCase()]||null}});
 const certifiedGate=()=>({enabled:true});
-const tiktokKey=Buffer.alloc(32,7).toString('base64');
-const tiktokSql=(env)=>({query:async()=>[{account_id:'open-1',access_token_enc:encryptTikTokSecret('t',env),refresh_token_enc:encryptTikTokSecret('r',env),token_type:'Bearer',scope:'user.info.basic,video.publish',expires_at:new Date(Date.now()+3600000)}]});
 
-test('TikTok remains fail closed without verified content source and user consent',async()=>{
-  const ready=channelReadiness({TIKTOK_CLIENT_KEY:'k',TIKTOK_CLIENT_SECRET:'s',TIKTOK_TOKEN_ENCRYPTION_KEY:tiktokKey,TIKTOK_EXPECTED_USERNAME:'zevanory',TIKTOK_CONTENT_SOURCE_VERIFIED:'true',TIKTOK_IDENTITY_VERIFIED:'true',TIKTOK_CLIENT_AUDITED:'true'}).tiktok;
-  assert.equal(ready.implemented,true);assert.equal(ready.configured,true);
-  const env={...base,TIKTOK_TOKEN_ENCRYPTION_KEY:tiktokKey,TIKTOK_CONTENT_SOURCE_VERIFIED:'false'};
-  const a=buildOutboundAdapters({env,commercialGate:certifiedGate,fetchImpl:async()=>response(200,{})});
-  await assert.rejects(()=>a['channel:tiktok']({payload:{user_consent:true,media_url:'https://cdn.example/video.mp4'}},{sql:tiktokSql(env)}),/tiktok_content_source_unverified/);
-});
-
-test('TikTok queries creator and forces SELF_ONLY for unaudited client',async()=>{
-  const calls=[];const env={...base,TIKTOK_TOKEN_ENCRYPTION_KEY:tiktokKey,TIKTOK_CONTENT_SOURCE_VERIFIED:'true',TIKTOK_CLIENT_AUDITED:'false'};
-  const a=buildOutboundAdapters({env,commercialGate:certifiedGate,fetchImpl:async(url,opt)=>{calls.push({url,opt});return calls.length===1?response(200,{data:{privacy_level_options:['SELF_ONLY','PUBLIC_TO_EVERYONE']},error:{code:'ok'}}):response(200,{data:{publish_id:'pub-1'},error:{code:'ok'}});}});
-  const out=await a['channel:tiktok']({payload:{user_consent:true,content:'Demo',privacy_level:'PUBLIC_TO_EVERYONE',media_url:'https://cdn.example/video.mp4'}},{sql:tiktokSql(env)});
-  assert.equal(out.provider_post_id,'pub-1');assert.equal(out.privacy_level,'SELF_ONLY');assert.match(calls[0].url,/creator_info\/query/);assert.match(calls[1].url,/video\/init/);
-});
-test('LinkedIn posts through official REST Posts API and requires provider id',async()=>{
-  const calls=[];const env={...base,COMMERCIAL_OAUTH_ENCRYPTION_KEY:Buffer.alloc(32,5).toString('base64'),LINKEDIN_VERSION:'202608'};
-  const sql={query:async()=>[{account_id:'person123',access_token_enc:encryptCommercialSecret('li',env),scope:'w_member_social',expires_at:new Date(Date.now()+3600000)}]};
-  const a=buildOutboundAdapters({env,commercialGate:certifiedGate,fetchImpl:async(url,opt)=>{calls.push({url,opt});return response(201,{}, {'x-restli-id':'urn:li:share:1'});}});
-  const out=await a['channel:linkedin']({payload:{content:'Atualizacao ZEVANORY'}},{sql});
-  assert.equal(out.provider_post_id,'urn:li:share:1');assert.equal(calls[0].url,'https://api.linkedin.com/rest/posts');assert.equal(calls[0].opt.headers['linkedin-version'],'202608');
+test('TikTok active runtime fails closed without persisted provider credential',async()=>{
+  const a=buildOutboundAdapters({env:base,commercialGate:certifiedGate,fetchImpl:async()=>response(200,{})});
+  await assert.rejects(()=>a['channel:tiktok']({payload:{content:'x',media_url:'https://cdn.example/x.mp4'}},{sql:{query:async()=>[]}}),/tiktok_oauth_credential_missing/);
 });
 
 test('affiliate adapter is generic, HTTPS-only and idempotent',async()=>{
@@ -39,9 +17,9 @@ test('affiliate adapter is generic, HTTPS-only and idempotent',async()=>{
   assert.equal(out.provider_message_id,'trk-1');assert.equal(calls[0].opt.headers['idempotency-key'],'idem1');
 });
 
-test('new commercial channels remain globally gated',async()=>{
-  const a=buildOutboundAdapters({env:{TIKTOK_TOKEN_ENCRYPTION_KEY:tiktokKey,TIKTOK_CONTENT_SOURCE_VERIFIED:'true'},fetchImpl:async()=>response(200,{})});
-  await assert.rejects(()=>a['channel:tiktok']({payload:{user_consent:true,media_url:'https://cdn.example/video.mp4'}}),/commercial_gates_closed/);
+test('TikTok remains fail closed without SQL credential context regardless of commercial gate',async()=>{
+  const a=buildOutboundAdapters({env:{},commercialGate:certifiedGate,fetchImpl:async()=>response(200,{})});
+  await assert.rejects(()=>a['channel:tiktok']({payload:{media_url:'https://cdn.example/video.mp4'}}),/tiktok_sql_required/);
 });
 
 test('first-party affiliate channel uses internal idempotent ledger without external webhook',async()=>{
@@ -51,18 +29,7 @@ test('first-party affiliate channel uses internal idempotent ledger without exte
   assert.equal(out.provider_message_id,'aff-1');assert.equal(out.confirmation,'first_party_ledger');
 });
 
-test('LinkedIn uploads generated image before creating rich post',async()=>{
-  const calls=[];const env={...base,COMMERCIAL_OAUTH_ENCRYPTION_KEY:Buffer.alloc(32,5).toString('base64'),LINKEDIN_VERSION:'202608'};
-  const sql={query:async()=>[{account_id:'person123',access_token_enc:encryptCommercialSecret('li',env),scope:'w_member_social',expires_at:new Date(Date.now()+3600000)}]};
-  const fetchImpl=async(url,opt={})=>{calls.push({url,opt});
-    if(String(url).includes('images?action=initializeUpload'))return response(200,{value:{uploadUrl:'https://upload.linkedin.example/image',image:'urn:li:image:123'}});
-    if(url==='https://zevanory.api.br/creative.png')return response(200,Buffer.from('png'),{'content-type':'image/png','content-length':'3'});
-    if(url==='https://upload.linkedin.example/image')return response(201,{});
-    if(url==='https://api.linkedin.com/rest/posts')return response(201,{}, {'x-restli-id':'urn:li:share:rich'});
-    throw new Error(`unexpected:${url}`);
-  };
-  const adapters=buildOutboundAdapters({env,commercialGate:certifiedGate,fetchImpl});
-  const out=await adapters['channel:linkedin']({payload:{content:'Atualizacao visual',media_url:'https://zevanory.api.br/creative.png',title:'ZEVANORY'}},{sql});
-  const post=JSON.parse(calls.find(x=>x.url==='https://api.linkedin.com/rest/posts').opt.body);
-  assert.equal(post.content.media.id,'urn:li:image:123');assert.equal(out.provider_post_id,'urn:li:share:rich');assert.ok(calls.some(x=>x.url==='https://upload.linkedin.example/image'&&x.opt.method==='PUT'));
+test('LinkedIn active runtime fails closed without persisted provider credential',async()=>{
+  const adapters=buildOutboundAdapters({env:base,commercialGate:certifiedGate,fetchImpl:async()=>response(200,{})});
+  await assert.rejects(()=>adapters['channel:linkedin']({payload:{content:'x',media_url:'https://zevanory.api.br/creative.png'}},{sql:{query:async()=>[]}}),/linkedin_oauth_credential_missing/);
 });

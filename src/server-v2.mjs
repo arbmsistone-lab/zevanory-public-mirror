@@ -14,9 +14,10 @@ import { PROJECT, normalizeWhatsappNumber, isOfficialWhatsapp, isUuid } from "./
 import { safeBearerEqual } from "./security.mjs";
 import configApi from "../api/config.mjs";
 import statusApi from "../api/status.mjs";
-import releaseApi from "../api/release.mjs";
+import releaseApi from "./http/release.mjs";
 import agentStatusApi from "../api/agent-status.mjs";
-import assuranceApi from "../api/assurance.mjs";
+import assuranceApi from "./http/assurance.mjs";
+import financeApi from "./http/finance.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -32,6 +33,7 @@ await mkdir(dataDir, { recursive: true });
 const STATIC_ROUTES = new Map([
   ["/", "index.html"], ["/index.html", "index.html"], ["/arbm-sist", "arbm-sist.html"], ["/piloto", "piloto.html"],
   ["/termos", "termos.html"], ["/privacidade", "privacidade.html"], ["/reembolso", "reembolso.html"], ["/afiliados", "afiliados.html"], ["/tiktok-review", "tiktok-review.html"],
+  ["/criativos", "criativos.html"], ["/zevanory-robot-control", "zevanory-robot-control.html"],
 ]);
 const STATIC_TYPES = Object.freeze({'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml; charset=utf-8'});
 function staticAsset(pathname) {
@@ -106,7 +108,7 @@ function authorizedOperator(req) {
 }
 const READ_API_HANDLERS = new Map([
   ['/api/config',configApi], ['/api/status',statusApi], ['/api/health',statusApi], ['/api/release',releaseApi],
-  ['/api/agent/status',agentStatusApi], ['/api/assurance',assuranceApi], ['/api/live',statusApi], ['/api/activation/readiness',configApi],
+  ['/api/agent/status',agentStatusApi], ['/api/assurance',assuranceApi], ['/api/finance',financeApi], ['/api/live',statusApi], ['/api/activation/readiness',configApi],
 ]);
 const server = http.createServer(async (req, res) => {
   try {

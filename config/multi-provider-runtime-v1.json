@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "policy": "no-single-provider-dependency",
+  "minimum_independent_providers": 10,
+  "automatic_failover_required": true,
+  "quota_exhaustion_must_failover": true,
+  "transient_failures": [
+    408,
+    409,
+    425,
+    429,
+    500,
+    502,
+    503,
+    504
+  ],
+  "critical_runtime_domains": [
+    "ai",
+    "deployment",
+    "channels"
+  ],
+  "ai_providers": [
+    "google-gemini",
+    "cloudflare-ai",
+    "mistral",
+    "groq"
+  ],
+  "sales_gate_unchanged": "blocked",
+  "prohibit_green_when_redundancy_below_minimum": true,
+  "minimum_qualified_free_routes": 10,
+  "qualification_requires": [
+    "configured",
+    "healthy",
+    "zero-cost",
+    "quota-available",
+    "independent-domain"
+  ],
+  "supported_ai_free_routes": [
+    "google-gemini",
+    "mistral",
+    "groq",
+    "openrouter-free",
+    "cloudflare-workers-ai",
+    "huggingface-inference",
+    "cerebras-free",
+    "sambanova-cloud",
+    "nvidia-nim-free",
+    "custom-free-route"
+  ],
+  "quota_exhaustion_action": "immediate-rotate-with-cooldown",
+  "zero_spend_hard": true,
+  "minimum_qualified_free_control_planes": 10,
+  "minimum_independent_routes_per_critical_domain": 3,
+  "free_control_plane_policy": "maximize-provider-allowed-free-capacity-with-zero-spend-hard-stop",
+  "free_control_planes": [
+    {
+      "id": "google-gemini-free",
+      "domains": [
+        "ai"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "mistral-free-mode",
+      "domains": [
+        "ai"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "groq-free",
+      "domains": [
+        "ai"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "sambanova-free",
+      "domains": [
+        "ai"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "cloudflare-workers-ai-free",
+      "domains": [
+        "ai",
+        "deploy"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "openrouter-free",
+      "domains": [
+        "ai"
+      ],
+      "class": "restricted-free"
+    },
+    {
+      "id": "circleci-free",
+      "domains": [
+        "ci"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "buildkite-free",
+      "domains": [
+        "ci"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "gitlab-free",
+      "domains": [
+        "ci"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "github-actions-free",
+      "domains": [
+        "ci"
+      ],
+      "class": "conditional-free"
+    },
+    {
+      "id": "deno-deploy-free",
+      "domains": [
+        "deploy"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "netlify-free",
+      "domains": [
+        "deploy"
+      ],
+      "class": "production-free"
+    },
+    {
+      "id": "supabase-free",
+      "domains": [
+        "backend"
+      ],
+      "class": "production-free"
+    }
+  ],
+  "excluded_from_production_quorum": [
+    "github-models-retired",
+    "cerebras-one-time-trial",
+    "nvidia-nim-prototyping-only",
+    "huggingface-tiny-credit",
+    "cohere-evaluation-key"
+  ],
+  "quota_guard": "never-overrun-free-allocation; rotate-before-or-on-provider-limit"
+}

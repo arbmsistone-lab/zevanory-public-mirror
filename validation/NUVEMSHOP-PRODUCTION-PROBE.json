@@ -1,0 +1,55 @@
+{
+  "verified_at": "2026-09-12T22:50:18.114Z",
+  "production_oauth_proven": false,
+  "http": [
+    {
+      "path": "/api/oauth/nuvemshop/start",
+      "status": 503,
+      "location_origin": null,
+      "self_redirect": false,
+      "error": "commercial_oauth_encryption_key_invalid",
+      "connected": false,
+      "configured": null,
+      "cookie_present": false
+    },
+    {
+      "path": "/api/oauth/nuvemshop/callback",
+      "status": 200,
+      "location_origin": null,
+      "self_redirect": false,
+      "error": null,
+      "connected": false,
+      "configured": null,
+      "cookie_present": false
+    },
+    {
+      "path": "/api/webhooks?provider=nuvemshop",
+      "status": 405,
+      "location_origin": null,
+      "self_redirect": false,
+      "error": "method_not_allowed",
+      "connected": false,
+      "configured": null,
+      "cookie_present": false
+    }
+  ],
+  "cloudflare": {
+    "bindings": 65,
+    "required_secrets_present": {
+      "NUVEMSHOP_APP_ID": true,
+      "NUVEMSHOP_CLIENT_SECRET": false,
+      "COMMERCIAL_OAUTH_ENCRYPTION_KEY": false
+    },
+    "sales_enabled": {
+      "SALE_GLOBALLY_ENABLED": false,
+      "CHECKOUT_ENABLED": false,
+      "FINANCIAL_EVENTS_ENABLED": false
+    },
+    "latest_version_id": "3fecb748-7586-495f-9ae5-5a342000391b"
+  },
+  "database": {
+    "credentials": 0,
+    "connections": 0,
+    "pending_credentials": 0
+  }
+}

@@ -36,14 +36,16 @@ test('perfect scores still require audit parity and release approval',()=>{
   assert.equal(evaluateLifecycleCertification(cert).approved,true);
 });
 
-test('current technical release certification is fully approved',()=>{
+test('technical release cannot satisfy observed production gate',()=>{
   const result=salesLifecycleGate();
-  assert.equal(result.approved,true);
-  assert.equal(result.passed_dimensions,39);
+  assert.equal(result.approved,false);
+  assert.equal(result.passed_dimensions,0);
+  assert.ok(result.blockers.includes('observed_lifecycle_certification_required'));
 });
 test('technical certification never bypasses activation and commercial gates',()=>{
   const gate=salesGate({});
-  assert.equal(gate.lifecycle_approved,true);
+  assert.equal(gate.lifecycle_approved,false);
+  assert.ok(gate.blockers.includes('observed_lifecycle_certification_required')); 
   assert.equal(gate.enabled,false);
   assert.ok(gate.blockers.includes('global_sale_disabled'));
   assert.ok(gate.blockers.includes('pre_sale_gates_open'));

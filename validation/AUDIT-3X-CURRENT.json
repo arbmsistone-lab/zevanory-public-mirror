@@ -970,7 +970,7 @@
     },
     {
       "id": "CODE-RELEASE-FINGERPRINT",
-      "label": "src/release.mjs + api/release.mjs",
+      "label": "src/release.mjs + src/http/release.mjs",
       "approved_operations": 3,
       "status": "APPROVED",
       "operations": [
@@ -1154,7 +1154,7 @@
     },
     {
       "id": "CODE-ENTERPRISE-ASSURANCE",
-      "label": "src/enterpriseAssurance.mjs + api/assurance.mjs",
+      "label": "src/enterpriseAssurance.mjs + src/http/assurance.mjs",
       "approved_operations": 3,
       "status": "APPROVED",
       "operations": [
@@ -1887,11 +1887,149 @@
           "detail": "true"
         }
       ]
+    },
+    {
+      "id": "CODE-CREATIVE-REVIEW-BOARD",
+      "label": "creative intelligence + central de criativos",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "creative source syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "creative focused tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "5of5 board and runtime sales separation",
+          "status": "APPROVED",
+          "detail": "true"
+        }
+      ]
+    },
+    {
+      "id": "DEF-CREATIVE-REVIEW-EVIDENCE",
+      "label": "evidence/EG-0076-creative-review-board-5of5.md",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "creative review evidence approved",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "three independent platform references recorded",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "creative center integration tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "CODE-NUVEMSHOP-SESSION-AND-IDENTITY",
+      "label": "native OAuth + encrypted canonical reconciliation",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "integration syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "callback and durable session adversarial tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "signed event and privacy fail-closed tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "CODE-NUVEMSHOP-CUSTODY",
+      "label": "pinned existing-secret transfer",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "custody syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "exact secret custody transfer tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "identity, sales and provider failure custody tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "CODE-NUVEMSHOP-PRIVACY",
+      "label": "verified merchant report with no retained customer payload",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "privacy syntax",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "merchant report identity and minimization tests",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        },
+        {
+          "name": "privacy transport and malformed request failures",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "id": "DEF-NUVEMSHOP-CLOSEOUT",
+      "label": "EG-0077 corrective implementation with production unproven",
+      "approved_operations": 3,
+      "status": "APPROVED",
+      "operations": [
+        {
+          "name": "primary independent protocol and runtime sources",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "evidence retains explicit production restriction",
+          "status": "APPROVED",
+          "detail": "true"
+        },
+        {
+          "name": "commercial scope exclusion and sales guards",
+          "status": "APPROVED",
+          "detail": "exit=0"
+        }
+      ]
     }
   ],
   "totals": {
-    "units": 82,
-    "approved": 82,
+    "units": 88,
+    "approved": 88,
     "failed": 0
   },
   "verdict": "APPROVED"

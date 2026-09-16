@@ -8,21 +8,19 @@
   <link rel="stylesheet" href="/tiktok-review.css">
 </head>
 <body>
-  <main class="shell">
-    <header class="hero">
-      <img src="/brand/zevanory-mark.svg" alt="ZEVANORY" class="brand">
-      <div><p class="eyebrow">Ambiente de revisão</p><h1>Integração TikTok</h1>
-      <p>Fluxo web controlado para Login Kit e Content Posting API.</p></div>
-    </header>
-    <section class="notice" aria-live="polite"><strong>Fail-closed:</strong> nenhuma publicação ocorre sem OAuth válido, consentimento explícito e gates aprovados.</section>
-    <section class="grid">
-      <article class="card"><span class="step">1</span><h2>Conectar conta</h2><p>Conecte a conta com Login Kit básico. A permissão de publicação só será solicitada após aprovação do TikTok.</p><a class="primary" href="/api/oauth/tiktok/start?mode=sandbox">Conectar com TikTok</a></article>
-      <article class="card"><span class="step">2</span><h2>Verificar conexão</h2><p id="status">Consultando conexão segura...</p><button id="refresh" type="button">Atualizar status</button></article>
-      <article class="card"><span class="step">3</span><h2>Consentimento</h2><label class="check"><input id="consent" type="checkbox"> Autorizo esta publicação específica.</label><p class="hint">O consentimento não é persistido para publicações futuras.</p></article>
-      <article class="card"><span class="step">4</span><h2>Preparar publicação</h2><label>URL HTTPS do vídeo<input id="media" type="url" placeholder="https://zevanory.api.br/...mp4"></label><label>Legenda<textarea id="caption" maxlength="2200" placeholder="Conteúdo demonstrativo"></textarea></label><label>Privacidade<select id="privacy"><option value="SELF_ONLY">Somente eu</option><option value="PUBLIC_TO_EVERYONE">Público, quando aprovado pelo TikTok</option></select></label><button id="prepare" class="primary" type="button">Validar publicação</button><p id="result" class="result"></p></article>
-    </section>
-    <footer>Domínio verificado: <strong>https://zevanory.api.br/</strong> · callback: <code>/api/oauth/tiktok/callback</code></footer>
-  </main>
-  <script src="/tiktok-review.js" defer></script>
-</body>
+<main class="shell">
+  <header class="hero"><img src="/brand/zevanory-mark.svg" alt="ZEVANORY" class="brand"><div><p class="eyebrow">Ambiente de revisão</p><h1>Integração TikTok</h1><p>Login Kit + Content Posting API com revisão privada e fail-closed.</p></div></header>
+  <section class="notice"><strong>Produção continua bloqueada.</strong> Esta tela usa exclusivamente a credencial Sandbox para provar o fluxo antes da aprovação do aplicativo.</section>
+  <section class="grid">
+    <article class="card"><span class="step">1</span><h2>Autorizar conta de revisão</h2><p>O modo de revisão solicita <code>user.info.basic</code> e <code>video.publish</code> usando o Sandbox.</p><a class="primary" href="/api/oauth/tiktok/start?mode=review">Conectar com TikTok</a></article>
+    <article class="card"><span class="step">2</span><h2>Conta e limites</h2><div id="creator" class="creator"><p id="status">Conecte a conta para carregar os dados reais do criador.</p></div><button id="refresh" type="button">Atualizar dados</button></article>
+    <article class="card wide"><span class="step">3</span><h2>Prévia e metadados</h2><label>URL HTTPS verificada do vídeo<input id="media" type="url" placeholder="https://zevanory.api.br/...mp4"></label><video id="preview" controls playsinline hidden></video><label>Duração do vídeo (segundos)<input id="duration" type="number" min="1" step="1" placeholder="30"></label><label>Legenda<textarea id="caption" maxlength="2200" placeholder="Edite livremente antes de publicar"></textarea></label><label>Privacidade<select id="privacy" disabled><option value="">Selecione manualmente</option></select></label></article>
+    <article class="card"><span class="step">4</span><h2>Interações</h2><label class="check"><input id="allow-comment" type="checkbox" disabled> Permitir comentários</label><label class="check"><input id="allow-duet" type="checkbox" disabled> Permitir Duet</label><label class="check"><input id="allow-stitch" type="checkbox" disabled> Permitir Stitch</label><p class="hint">As opções respeitam os bloqueios retornados por <code>creator_info</code> e começam desmarcadas.</p></article>
+    <article class="card"><span class="step">5</span><h2>Divulgação comercial</h2><label class="check"><input id="commercial" type="checkbox"> Este conteúdo promove uma marca, produto ou serviço</label><div id="commercial-options" hidden><label class="check"><input id="own-brand" type="checkbox"> Sua marca / negócio próprio</label><label class="check"><input id="branded" type="checkbox"> Conteúdo de marca / parceria paga</label><p id="commercial-hint" class="hint"></p></div><label class="check"><input id="aigc" type="checkbox"> Conteúdo gerado por IA</label></article>
+    <article class="card wide"><span class="step">6</span><h2>Consentimento e publicação privada</h2><label class="check"><input id="consent" type="checkbox"> Autorizo esta publicação específica na conta exibida acima.</label><label class="check"><input id="music" type="checkbox"> By posting, you agree to TikTok's Music Usage Confirmation</label><p id="policy" class="hint"></p><button id="publish" class="primary" type="button" disabled>Publicar teste privado</button><p id="result" class="result"></p><div id="publish-status" class="status-box" hidden></div></article>
+  </section>
+  <footer>Domínio: <strong>https://zevanory.api.br/</strong> · callback: <code>/api/oauth/tiktok/callback</code> · <a href="/privacidade">Privacidade</a> · <a href="/termos">Termos</a></footer>
+</main>
+<script src="/tiktok-review.js" defer></script>
+<script src="/whatsapp-contact.js" defer></script></body>
 </html>

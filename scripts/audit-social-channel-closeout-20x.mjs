@@ -10,7 +10,7 @@ for(let i=1;i<=20;i++){
     social.includes('creator_info/query')&&social.includes('SELF_ONLY')&&social.includes('x-restli-id')&&
     channels.includes("provider:'tiktok-content-posting-api'")&&channels.includes("provider:'linkedin-posts-api'")&&
     outbound.includes("'channel:tiktok'")&&outbound.includes("'channel:linkedin'")&&outbound.includes("'channel:affiliate'")&&
-    outbound.includes('ensureGlobalGates(env,commercialGate)')&&outbound.includes('commercialGate=salesGate');
+    outbound.includes('ensureOutboundAllowed(event,env,commercialGate)')&&outbound.includes('supportEventAllowed')&&outbound.includes('organicEventAllowed')&&outbound.includes('commercialGate=salesGate');
   if(!ok){console.error(`SOCIAL_CHANNEL_AUDIT_${i}=FAIL`);process.exit(1);}pass++;console.log(`SOCIAL_CHANNEL_AUDIT_${i}=PASS`);
 }
 console.log(`AUDIT_SOCIAL_CHANNEL_CLOSEOUT_20X_PASS=${pass}/20`);

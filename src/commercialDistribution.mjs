@@ -3,6 +3,7 @@ import { evaluateAffiliateProgramReadiness } from './affiliateProgram.mjs';
 import { assistedFallbackReadiness } from './assistedChannelFallbacks.mjs';
 import { alternateAutomationReadiness } from './alternateChannelAutomation.mjs';
 import { nuvemshopCsvFallbackReadiness } from './nuvemshopCsvFallback.mjs';
+import { ACTIVE_COMMERCIAL_FRONTS } from './activeCommercialScope.mjs';
 
 const front=(category,role,truth,attribution,confirmation)=>Object.freeze({category,role,revenue_truth:truth,attribution,provider_confirmation:confirmation,global_gate_required:true,policy_complete:true});
 export const COMMERCIAL_DISTRIBUTION_CANONICAL=Object.freeze({
@@ -15,10 +16,10 @@ export const COMMERCIAL_DISTRIBUTION_CANONICAL=Object.freeze({
   nuvemshop:front('commerce','owned_store_distribution','authenticated_payment_or_store_order','provider_order_and_utm','provider_api_and_webhook'),
   mercado_livre:front('marketplace','marketplace_distribution','provider_confirmed_order','provider_order_resource','provider_api_after_notification'),
 });
-export const REQUIRED_DISTRIBUTION_FRONTS=Object.freeze(Object.keys(COMMERCIAL_DISTRIBUTION_CANONICAL));
+export const REQUIRED_DISTRIBUTION_FRONTS=ACTIVE_COMMERCIAL_FRONTS;
 
-export function commercialDistributionReadiness(env=process.env){
-  const channels=channelReadiness(env), affiliate=evaluateAffiliateProgramReadiness(env);
+export function commercialDistributionReadiness(env=process.env,runtimeOAuth={}){
+  const baseChannels=channelReadiness(env), channels=Object.fromEntries(Object.entries(baseChannels).map(([k,v])=>[k,(runtimeOAuth[k]===true||runtimeOAuth[k]?.ready===true)?{...v,configured:true,missing:[]}:v])), affiliate=evaluateAffiliateProgramReadiness(env);
   const fronts=Object.fromEntries(REQUIRED_DISTRIBUTION_FRONTS.map((key)=>{
     const policy=COMMERCIAL_DISTRIBUTION_CANONICAL[key], state=channels[key]||{configured:false,implemented:false,missing:['channel_contract_missing']};
     const fallback=assistedFallbackReadiness(key,env), alternate=alternateAutomationReadiness(key,env), contingency=key==='nuvemshop'?nuvemshopCsvFallbackReadiness(env):{ready:false,mode:null,provider:null}, blockers=[...state.missing]; if(key==='affiliate')blockers.push(...affiliate.blockers);

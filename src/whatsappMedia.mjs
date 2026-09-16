@@ -1,0 +1,66 @@
+const clean=(v,max=5000)=>String(v??'').normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,max);
+const runtimeAi=()=>globalThis.__ZEVANORY_EDGE_AI__?.AI||null;
+const extFor=(mime='')=>({
+  'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif',
+  'audio/ogg':'ogg','audio/mpeg':'mp3','audio/mp4':'m4a','audio/aac':'aac','video/mp4':'mp4','video/3gpp':'3gp'
+}[String(mime).split(';')[0].toLowerCase()]||'bin');
+const base64=(bytes)=>{let s='';for(let i=0;i<bytes.length;i+=0x8000)s+=String.fromCharCode(...bytes.subarray(i,i+0x8000));return btoa(s);};
+
+async function fetchWhatsappMedia(item,env,fetchImpl=globalThis.fetch){
+  const id=clean(item?.media_id,240),token=clean(env.WHATSAPP_ACCESS_TOKEN,5000),version=clean(env.META_GRAPH_VERSION||'v26.0',20);
+  if(!id||!token)throw new Error('whatsapp_media_credentials_missing');
+  const meta=await fetchImpl(`https://graph.facebook.com/${encodeURIComponent(version)}/${encodeURIComponent(id)}`,{headers:{authorization:`Bearer ${token}`},signal:AbortSignal.timeout(12000)});
+  if(!meta.ok)throw new Error(`whatsapp_media_meta_http_${meta.status}`);
+  const info=await meta.json(),url=clean(info?.url,4000),mime=clean(info?.mime_type||item?.mime_type,120);
+  if(!/^https:\/\//i.test(url))throw new Error('whatsapp_media_url_missing');
+  const res=await fetchImpl(url,{headers:{authorization:`Bearer ${token}`},signal:AbortSignal.timeout(20000)});
+  if(!res.ok)throw new Error(`whatsapp_media_download_http_${res.status}`);
+  const bytes=new Uint8Array(await res.arrayBuffer());
+  if(!bytes.length||bytes.length>16*1024*1024)throw new Error('whatsapp_media_size_unsupported');
+  return {bytes,mime:mime||String(res.headers?.get?.('content-type')||''),sha256:info?.sha256||null};
+}
+
+async function understandVideoWithGemini(bytes,mime,env,fetchImpl){
+  const key=clean(env.GEMINI_API_KEY,5000);if(!key)return null;
+  const model=clean(env.GEMINI_VIDEO_MODEL||env.GEMINI_MODEL||'gemini-3.7-flash',120);
+  const endpoint=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const prompt='Analise integralmente este video enviado por um cliente da ZEVANORY. Considere imagens, telas, texto visivel, sequencia temporal e fala/audio. Responda em portugues brasileiro com uma descricao factual e objetiva do que o cliente mostra, do problema ou intencao e dos detalhes uteis para venda ou suporte. Nao invente o que nao estiver observavel.';
+  const body={contents:[{parts:[{inlineData:{mimeType:mime,data:base64(bytes)}},{text:prompt}]}],generationConfig:{temperature:.1,maxOutputTokens:900}};
+  const r=await fetchImpl(endpoint,{method:'POST',headers:{'x-goog-api-key':key,'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});
+  if(!r.ok)throw new Error(`gemini_video_http_${r.status}`);const data=await r.json();
+  const text=clean((data?.candidates?.[0]?.content?.parts||[]).map(x=>x?.text||'').join(' '),7000);
+  if(!text)throw new Error('gemini_video_understanding_empty');return text;
+}
+
+export async function understandWhatsappInbound(item,{env=process.env,fetchImpl=globalThis.fetch}={}){
+  const type=String(item?.type||'text').toLowerCase(),caption=clean(item?.text||item?.caption,1800);
+  if(!item?.media_id)return Object.freeze({...item,understanding:caption,understanding_mode:'text',understanding_confidence:1});
+  const ai=runtimeAi();
+  if(!ai)return Object.freeze({...item,understanding:caption||`Cliente enviou ${type}; an?lise multim?dia indispon?vel.`,understanding_mode:'media_pending',understanding_confidence:0});
+  const {bytes,mime}=await fetchWhatsappMedia(item,env,fetchImpl);
+  if(type==='audio'||String(mime).startsWith('audio/')){
+    const result=await ai.run('@cf/openai/whisper',{audio:[...bytes],task:'transcribe',language:'pt'});
+    const transcript=clean(result?.text||result?.transcription_info?.text,5000);
+    if(!transcript)throw new Error('whatsapp_audio_transcription_empty');
+    return Object.freeze({...item,understanding:[caption,`Transcri??o do ?udio: ${transcript}`].filter(Boolean).join(' | '),understanding_mode:'cloudflare_whisper',understanding_confidence:.99,mime_type:mime});
+  }
+  if(type==='image'||String(mime).startsWith('image/')){
+    let data='';
+    if(typeof ai.toMarkdown==='function'){
+      const r=await ai.toMarkdown({name:`whatsapp.${extFor(mime)}`,blob:new Blob([bytes],{type:mime})},{conversionOptions:{image:{descriptionLanguage:'pt'},output:{format:'text'}}});
+      data=clean(Array.isArray(r)?r[0]?.data:r?.data,5000);
+    }
+    if(!data){
+      const result=await ai.run('@cf/meta/llama-3.2-11b-vision-instruct',{messages:[{role:'system',content:'Descreva a imagem objetivamente em portugu?s brasileiro, priorizando texto vis?vel, erro, produto, tela e contexto ?til para atendimento.'},{role:'user',content:'Analise esta imagem enviada por um cliente da ZEVANORY.'}],image:`data:${mime};base64,${base64(bytes)}`,max_tokens:500,temperature:.1});
+      data=clean(result?.response,5000);
+    }
+    if(!data)throw new Error('whatsapp_image_understanding_empty');
+    return Object.freeze({...item,understanding:[caption,`Descri??o da imagem: ${data}`].filter(Boolean).join(' | '),understanding_mode:'cloudflare_vision',understanding_confidence:.99,mime_type:mime});
+  }
+  if(type==='video'||String(mime).startsWith('video/')){
+    try{const visual=await understandVideoWithGemini(bytes,mime,env,fetchImpl);if(visual)return Object.freeze({...item,understanding:[caption,`Analise visual e sonora do video: ${visual}`].filter(Boolean).join(' | '),understanding_mode:'gemini_video_multimodal',understanding_confidence:.99,mime_type:mime});}catch{}
+    try{const result=await ai.run('@cf/openai/whisper',{audio:[...bytes],task:'transcribe',language:'pt'});const transcript=clean(result?.text||result?.transcription_info?.text,5000);if(transcript)return Object.freeze({...item,understanding:[caption,`Audio do video (sem prova visual): ${transcript}`].filter(Boolean).join(' | '),understanding_mode:'video_audio_only_review_required',understanding_confidence:.8,mime_type:mime});}catch{}
+    return Object.freeze({...item,understanding:caption||'Cliente enviou um video que requer revisao visual antes de responder.',understanding_mode:'video_requires_visual_review',understanding_confidence:caption?.length?0.7:0,mime_type:mime});
+  }
+  return Object.freeze({...item,understanding:caption||`Cliente enviou ${type}.`,understanding_mode:'media_metadata_only',understanding_confidence:caption?0.7:0,mime_type:mime});
+}
