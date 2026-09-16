@@ -1,0 +1,6 @@
+Contact: mailto:contato@zevanory.api.br
+Preferred-Languages: pt-BR, en
+Canonical: https://zevanory.api.br/.well-known/security.txt
+Policy: https://zevanory.api.br/confianca
+Hiring: https://zevanory.api.br/
+Expires: 2027-09-16T23:59:59Z
