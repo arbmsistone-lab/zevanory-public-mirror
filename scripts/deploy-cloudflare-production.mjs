@@ -44,7 +44,7 @@ export function verifyLiveRelease(body,meta){
 export async function main(){
   run('git',['fetch','origin','main']);
   const sha=run('git',['rev-parse','HEAD'],{capture:true});
-  const ref=run('git',['branch','--show-current'],{capture:true});
+  const ref='main';
   const status=run('git',['status','--porcelain','--untracked-files=no'],{capture:true});
   const canonicalSha=run('git',['rev-parse','origin/main'],{capture:true});
   const meta=validateCloudflareReleaseMetadata({sha,ref,status,canonicalSha});
