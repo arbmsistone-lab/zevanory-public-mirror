@@ -209,7 +209,31 @@ jobs:
       - store_artifacts:
           path: remote-attestation/circleci.json
 
+  production_monitor:
+    docker:
+      - image: cimg/node:24.19
+    resource_class: small
+    steps:
+      - checkout
+      - run: npm ci --no-audit --no-fund
+      - run: npm run probe:production
+      - run: npm run contract:smoke
+      - run: npm run activation:check
+      - run: npm run audit:offer:20x
+      - run: npm run supplychain:scan
+      - run: npm run security:lifecycle
+      - run: npm run dast:safe
+
 workflows:
+  production-watch:
+    triggers:
+      - schedule:
+          cron: "17 * * * *"
+          filters:
+            branches:
+              only: main
+    jobs:
+      - production_monitor
   ci:
     jobs:
       - core
