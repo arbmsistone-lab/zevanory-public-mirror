@@ -180,10 +180,11 @@ export default {
       await setOwnerCredential(env,kv,password);await kv.delete(key);const session=await createOwnerSession(env);return new Response(JSON.stringify({configured:true}),{status:200,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','set-cookie':ownerCookie(session)}});
     }
     if(url.pathname==='/auth/owner/logout'&&request.method==='POST')return new Response(null,{status:204,headers:{'cache-control':'no-store','set-cookie':clearOwnerCookie()}});
-    const owner=await verifyOwnerSession(env,readOwnerCookie(request));
-    const privatePage=new Set(['/central','/index.html','/index.js','/index.css','/criativos','/criativos.html','/criativos.js','/criativos.css','/zevanory-robot-control','/zevanory-robot-control.html','/zevanory-robot-control.js','/zevanory-robot-control.css','/financeiro','/financeiro.html','/financeiro.css']).has(url.pathname);
+    const privatePage=new Set(['/central','/index.html','/criativos','/criativos.html','/zevanory-robot-control','/zevanory-robot-control.html','/financeiro','/financeiro.html']).has(url.pathname);
+    const privateApi=url.pathname.startsWith('/private-api/');
+    const owner=(privatePage||privateApi)?await verifyOwnerSession(env,readOwnerCookie(request)):null;
     if(privatePage&&!owner)return Response.redirect(new URL('/acesso',url),302);
-    if(url.pathname.startsWith('/private-api/')){
+    if(privateApi){
       if(!owner)return new Response(JSON.stringify({error:'owner_auth_required'}),{status:401,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
       const mapped='/api/'+url.pathname.slice('/private-api/'.length);const target=new URL(mapped+url.search,url);const headers=new Headers(request.headers);headers.delete('x-zevanory-owner-authenticated');headers.set('x-zevanory-owner-authenticated','1');
       return handleAsNodeRequest(PORT,new Request(target,{method:request.method,headers,body:['GET','HEAD'].includes(request.method)?undefined:request.body,redirect:'manual'}));
