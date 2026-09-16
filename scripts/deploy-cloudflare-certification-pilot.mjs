@@ -39,13 +39,12 @@ export async function verifyPilotStateEventually({read,meta,attempts=8,delayMs=1
   throw lastError;
 }
 export async function main(){
-  run('git',['fetch','origin','main']); run('git',['fetch','gitlab','main']);
+  run('git',['fetch','origin','main']);
   const meta=validateCloudflareReleaseMetadata({
     sha:run('git',['rev-parse','HEAD'],{capture:true}),
-    ref:run('git',['branch','--show-current'],{capture:true}),
+    ref:'main',
     status:run('git',['status','--porcelain'],{capture:true}),
-    githubSha:run('git',['rev-parse','origin/main'],{capture:true}),
-    gitlabSha:run('git',['rev-parse','gitlab/main'],{capture:true}),
+    canonicalSha:run('git',['rev-parse','origin/main'],{capture:true}),
   });
   writeFileSync(TEMP_CONFIG,buildPilotRuntimeConfig(readFileSync('wrangler.jsonc','utf8'),meta),'utf8');
   try{

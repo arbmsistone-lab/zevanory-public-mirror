@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { validateCloudflareReleaseMetadata, buildWranglerArgs, buildRuntimeConfig, verifyLiveRelease } from '../scripts/deploy-cloudflare-production.mjs';
 const sha='a'.repeat(40),meta={sha,ref:'main'};
 
-test('cloudflare production requires clean GitHub GitLab HEAD parity',()=>{
-  assert.deepEqual(validateCloudflareReleaseMetadata({sha,ref:'main',status:'',githubSha:sha,gitlabSha:sha}),meta);
-  assert.throws(()=>validateCloudflareReleaseMetadata({sha,ref:'main',status:' M x',githubSha:sha,gitlabSha:sha}),/clean_worktree/);
-  assert.throws(()=>validateCloudflareReleaseMetadata({sha,ref:'main',status:'',githubSha:'b'.repeat(40),gitlabSha:sha}),/parity/);
-  assert.throws(()=>validateCloudflareReleaseMetadata({sha,ref:'feature',status:'',githubSha:sha,gitlabSha:sha}),/main_branch/);
+test('cloudflare production requires clean canonical main parity',()=>{
+  assert.deepEqual(validateCloudflareReleaseMetadata({sha,ref:'main',status:'',canonicalSha:sha}),meta);
+  assert.throws(()=>validateCloudflareReleaseMetadata({sha,ref:'main',status:' M x',canonicalSha:sha}),/clean_worktree/);
+  assert.throws(()=>validateCloudflareReleaseMetadata({sha,ref:'main',status:'',canonicalSha:'b'.repeat(40)}),/parity/);
+  assert.throws(()=>validateCloudflareReleaseMetadata({sha,ref:'feature',status:'',canonicalSha:sha}),/main_branch/);
 });
 
 test('cloudflare deploy carries strict immutable provenance',()=>{

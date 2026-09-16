@@ -4,6 +4,8 @@ Fonte técnica: `config/brand-identity.json`.
 
 ## Identidade institucional
 - Nome público: ZEVANORY
+- Razão social: A. RENAN ALVES MOREIRA BITU LTDA
+- CNPJ: 69.077.233/0001-99
 - Handle preferencial: @zevanory
 - Categoria: Tecnologia / Software / Automação / IA
 - Site: https://zevanory.api.br
