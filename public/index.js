@@ -131,6 +131,8 @@ const liveTime=(iso)=>{try{return new Date(iso).toLocaleTimeString('pt-BR',{hour
 async function resilientPrivateNavigation(anchor){
   if(!anchor)return;
   const target=anchor.getAttribute('href')||'/criativos',original=anchor.innerHTML;
+  const resetNavigationState=()=>{anchor.dataset.navBusy='false';anchor.removeAttribute('aria-busy');anchor.innerHTML=original;};
+  window.addEventListener('pageshow',resetNavigationState);
   anchor.addEventListener('click',async(event)=>{
     if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
     event.preventDefault();
@@ -145,7 +147,7 @@ async function resilientPrivateNavigation(anchor){
     }
     if(response?.redirected&&new URL(response.url).pathname==='/acesso'){location.assign('/acesso');return;}
     if(response?.ok){location.assign(target);return;}
-    anchor.dataset.navBusy='false';anchor.removeAttribute('aria-busy');anchor.innerHTML=original;
+    resetNavigationState();
     anchor.title='Conexão instável detectada. O painel foi preservado; tente novamente.';
     anchor.focus();
   });
