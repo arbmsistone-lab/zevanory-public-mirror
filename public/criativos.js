@@ -188,3 +188,10 @@ document.addEventListener('click',event=>{
 const creativeFrontObserver=new MutationObserver(syncCreativeFrontA11y);
 creativeFrontObserver.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
 queueMicrotask(syncCreativeFrontA11y);
+
+const returnDashboard=$("return-dashboard");
+returnDashboard?.addEventListener("click",event=>{
+  event.preventDefault();
+  if(window.history.length>1){window.history.back();return;}
+  window.location.assign("/");
+});

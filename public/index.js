@@ -84,7 +84,15 @@ function renderPublicOperations(status={},config={},agent={}){
 const stageLabels={cycle_started:'Ciclo iniciado',subject_selected:'Tema selecionado',market_collected:'Pesquisa consolidada',program_candidate_created:'Programa candidato criado',creatives_evaluated:'Criativos avaliados',cycle_completed:'Ciclo concluído'};
 function renderLiveProof(agent={}){
   const auto=agent.autopilot||{}, traces=Array.isArray(auto.timeline)?auto.timeline:[], activity=Array.isArray(agent.activity_timeline)?agent.activity_timeline:[], timeline=[...traces.map(x=>({...x,kind:'autopilot_trace'})),...activity].sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at));
-  const latest=timeline[0]||null; set('live-proof-routine',auto.enabled?'ATIVA · '+fmt(auto.cadence_minutes)+' MIN':'SEM PROVA');
+  const latest=timeline[0]||null;
+  const marketEvents=timeline.filter(x=>x.stage==='market_collected'||x.title==='market_research'||x.kind==='intelligence');
+  const creativeEvents=timeline.filter(x=>x.stage==='creatives_evaluated'||x.stage==='program_candidate_created'||String(x.title||'').toLowerCase().includes('creative'));
+  const evidenceTotal=marketEvents.reduce((sum,x)=>sum+Number(x.evidence_count??x.details?.verified_sources??0),0);
+  setState('engine-auto',auto.enabled&&Number(auto.cycles_24h||0)>0?'active':'not_approved');
+  setState('market-monitor',marketEvents.length?'active':'blocked');
+  setState('creative-monitor',creativeEvents.length?'active':'blocked');
+  set('evidence-monitor',marketEvents.length?fmt(evidenceTotal)+' provas':'SEM PROVA');
+  set('live-proof-routine',auto.enabled?'ATIVA · '+fmt(auto.cadence_minutes)+' MIN':'SEM PROVA');
   set('live-proof-cycle',latest?.cycle_id||auto.latest?.cycle_id||'HISTÓRICO REAL'); set('live-proof-trace',latest?.trace_id?String(latest.trace_id).slice(0,13)+'…':latest?.id?String(latest.id).slice(0,13)+'…':'SEM PROVA');
   const next=new Date(); next.setMinutes(0,0,0); next.setHours(next.getHours()+1); set('live-proof-next',next.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
   const routine=document.getElementById('routine-24h'); if(routine){routine.replaceChildren(); const now=new Date(); const completed=new Set(timeline.filter(x=>x.stage==='cycle_completed').map(x=>new Date(x.created_at).getHours())); for(let i=23;i>=0;i--){const d=new Date(now.getTime()-i*3600000), cell=document.createElement('div');cell.className='routine-slot';cell.dataset.done=String(completed.has(d.getHours()));cell.title=(completed.has(d.getHours())?'Ciclo comprovado · ':'Sem ciclo concluído neste recorte · ')+d.toLocaleString('pt-BR');cell.innerHTML='<span>'+String(d.getHours()).padStart(2,'0')+'h</span><b>'+(completed.has(d.getHours())?'✓':'·')+'</b>';routine.appendChild(cell);}}
