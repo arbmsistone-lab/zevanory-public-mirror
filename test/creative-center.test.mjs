@@ -24,7 +24,7 @@ test('creative center consumes real creative intelligence and asset previews',()
   assert.match(js,/png_url/);
   assert.match(js,/webm_url/);
   assert.match(config,/creative-intelligence-v2/);
-  assert.match(config,/\/brand\/creative-sample\.svg/);
+  assert.match(config,/\/brand\/creative-sample\.png/);
   assert.match(config,/\/brand\/creative-sample\.webm/);
   assert.ok(previewPng.length>10000);
   assert.ok(previewWebm.length>10000);
