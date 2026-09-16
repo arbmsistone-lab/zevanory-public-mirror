@@ -45,7 +45,7 @@ function renderAssurance(release){
   const summary=document.createElement('div'); summary.className='assurance-summary'; const s=document.createElement('span'); const b=document.createElement('b'); s.textContent='GARANTIAS'; b.textContent=approved+'/'+entries.length+' APROVADAS'; summary.append(s,b); grid.appendChild(summary); set('assurance-score',approved+'/'+entries.length);
   const rail=grid.closest('.risk-rail'); if(rail) rail.title=entries.map(([k,v])=>k.replaceAll('_',' ')+': '+label(v)).join(' | ');
 }
-const sourcePaths={status:'/private-api/status',health:'/private-api/health',release:'/private-api/release',config:'/private-api/config?view=closure_status',agent:'/private-api/agent/status'};
+const sourcePaths={status:'/private-api/status',health:'/private-api/health',release:'/private-api/release',config:'/private-api/config?view=closure_status',agent:'/private-api/agent/status?summary=1'};
 async function fetchSource(path){
   const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),7000);
   try{const r=await fetch(path,{cache:'no-store',signal:controller.signal});if(!r.ok)throw new Error(String(r.status));return await r.json();}finally{clearTimeout(timer);}
@@ -105,7 +105,7 @@ async function refresh(){
   if(release){setState('sales-mode',release.sales_mode);set('release-id',release.release_id||'NÃO EXPOSTO');set('branch',release.deployment?.branch||'EDGE');set('commit',release.deployment?.commit_sha?release.deployment.commit_sha.slice(0,10):'NÃO EXPOSTO');set('environment',release.deployment?.environment?label(release.deployment.environment):'EDGE');set('dr-mode',release.recovery?.mode?label(release.recovery.mode):'NÃO EXPOSTO');set('dr-persistent',release.recovery?.persistent_changes===false?'NÃO':'NÃO EXPOSTO');renderAssurance(release);}
   if(config){const blockers=Array.isArray(config.commercial_blockers)?config.commercial_blockers:[];const commercialReady=config.commercial_enabled===true&&release?.sales_mode!=='globally-blocked';set('blocker-count',fmt(blockers.length));set('readiness-state',commercialReady?'PRONTA':'BLOQUEADA');set('commercial-summary',commercialReady?'PRONTA':'BLOQUEADA');setState('whatsapp',config.whatsapp_enabled);}
   if(agent){set('agent-provider',agent.ai_provider?label(agent.ai_provider):'NÃO EXPOSTO');set('agent-queued',fmt(agent.queued));set('agent-running',fmt(agent.autopilot?.cycles_24h??agent.runs_24h));set('agent-activity-label',agent.autopilot?'ciclos autônomos 24h':'execuções 24h');set('agent-blocked',fmt(agent.blocked));set('agent-failed',fmt(agent.failed));set('agent-runs',fmt(agent.runs_24h));setState('agent-commercial',agent.commercial_execution);}
-  renderCoverage(config,ok,entries.length);renderPublicOperations(status,config,agent);renderLiveProof(agent);set('updated-at',new Date().toLocaleTimeString('pt-BR'));set('surface-host',location.host+' · produção');
+  renderCoverage(config,ok,entries.length);renderPublicOperations(status,config,agent);set('updated-at',new Date().toLocaleTimeString('pt-BR'));set('surface-host',location.host+' · produção');
   const market=(agent?.activity_timeline||[]).find(x=>x.kind==='intelligence'&&x.title==='market_research');
   const releaseProof=/^[0-9a-f]{40}$/i.test(release?.deployment?.commit_sha||'')&&release?.deployment?.environment==='production'&&release?.deployment?.branch==='main';
   const evidenceProof=Number(market?.evidence_count||0)>=5&&Number(market?.organization_count||0)>=4;
@@ -144,4 +144,12 @@ async function resilientPrivateNavigation(anchor){
 }
 
 resilientPrivateNavigation(document.getElementById('open-creative-center'));
-const details=document.getElementById('details-dialog'); document.getElementById('open-details')?.addEventListener('click',()=>details?.showModal()); document.getElementById('open-live-proof')?.addEventListener('click',()=>details?.showModal()); document.getElementById('connect-live')?.addEventListener('click',()=>details?.showModal()); document.getElementById('close-details')?.addEventListener('click',()=>details?.close()); details?.addEventListener('click',(e)=>{if(e.target===details)details.close();}); trackPageView(); refresh(); setInterval(refresh,30000);
+const details=document.getElementById('details-dialog');
+let proofCache=null,proofCacheAt=0,proofLoading=false;
+async function loadLiveProof(){
+  if(proofLoading)return; if(proofCache&&Date.now()-proofCacheAt<30000){renderLiveProof(proofCache);return;}
+  proofLoading=true;set('live-proof-routine','CARREGANDO');
+  try{proofCache=await fetchSource('/private-api/agent/status');proofCacheAt=Date.now();renderLiveProof(proofCache);}catch{set('live-proof-routine','INDISPONÍVEL');}finally{proofLoading=false;}
+}
+function openProof(){details?.showModal();requestAnimationFrame(()=>loadLiveProof());}
+document.getElementById('open-details')?.addEventListener('click',openProof); document.getElementById('open-live-proof')?.addEventListener('click',openProof); document.getElementById('connect-live')?.addEventListener('click',openProof); document.getElementById('close-details')?.addEventListener('click',()=>details?.close()); details?.addEventListener('click',(e)=>{if(e.target===details)details.close();}); trackPageView(); refresh(); setInterval(refresh,45000);
