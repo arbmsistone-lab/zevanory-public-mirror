@@ -5,6 +5,7 @@ import {readFile} from 'node:fs/promises';
 const html=await readFile(new URL('../public/criativos.html',import.meta.url),'utf8');
 const js=await readFile(new URL('../public/criativos.js',import.meta.url),'utf8');
 const commandCenterJs=await readFile(new URL('../public/index.js',import.meta.url),'utf8');
+const agentStatus=await readFile(new URL('../api/agent-status.mjs',import.meta.url),'utf8');
 const worker=await readFile(new URL('../src/cloudflare-worker.mjs',import.meta.url),'utf8');
 const config=await readFile(new URL('../api/config.mjs',import.meta.url),'utf8');
 const index=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
@@ -109,4 +110,24 @@ test('command center protects private navigation against transient DNS or route 
   assert.match(commandCenterJs,/for\(let attempt=0;attempt<3;attempt\+\+\)/);
   assert.match(commandCenterJs,/cache:'no-store'/);
   assert.match(commandCenterJs,/O painel foi preservado/);
+});
+
+
+test('owner evidence center exposes provenance and real media without opening commerce',()=>{
+  for(const id of ['open-evidence','evidence-dialog','evidence-research','evidence-media','evidence-runs'])assert.match(html,new RegExp(`id="${id}"`));
+  assert.match(js,/\/private-api\/config\?view=creative_sample/);assert.match(js,/\/private-api\/agent\/status/);
+  assert.match(js,/safeHttps/);assert.match(js,/source_url/);assert.match(js,/channel_creatives/);assert.match(js,/<video/);assert.match(js,/<audio/);
+  assert.match(html,/vendas e publicação comercial permanecem bloqueadas/i);
+});
+
+test('command center loads heavyweight proof only on demand',()=>{
+  assert.match(commandCenterJs,/agent:'\/private-api\/agent\/status\?summary=1'/);
+  assert.match(commandCenterJs,/async function loadLiveProof/);assert.match(commandCenterJs,/requestAnimationFrame\(\(\)=>loadLiveProof\(\)\)/);
+  assert.doesNotMatch(commandCenterJs,/renderPublicOperations\(status,config,agent\);renderLiveProof\(agent\)/);
+});
+
+test('agent status keeps detailed provenance owner-only and supports lightweight summaries',()=>{
+  assert.match(agentStatus,/x-zevanory-owner-authenticated/);assert.match(agentStatus,/summaryOnly/);
+  assert.match(agentStatus,/owner\?\{evidence:/);assert.match(agentStatus,/payload\?\.creative/);
+  assert.match(agentStatus,/if\(summaryOnly\)\{body\.autopilot=\{\.\.\.body\.autopilot,timeline:\[\]\};body\.activity_timeline=\[\];\}/);
 });

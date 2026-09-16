@@ -12,7 +12,7 @@
 <header class="topbar">
   <a class="brand" href="/" aria-label="Voltar ao Command Center"><img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY"></a>
   <div><span>COMMAND CENTER</span><h1>Central de Criativos</h1></div>
-  <div class="top-actions"><b id="engine-state">CARREGANDO</b><a href="/">Voltar ao painel</a></div>
+  <div class="top-actions"><b id="engine-state">CARREGANDO</b><button id="open-evidence" type="button">Auditoria de procedência</button><a href="/">Voltar ao painel</a></div>
 </header>
 <main>
   <section class="kpis" aria-label="Resumo criativo">
@@ -64,6 +64,8 @@
   </section>
 </main>
 <footer><span>ZEVANORY · Central de Criativos</span><span id="source-state">fonte: /api/config?view=creative_sample</span><span>sem PII</span></footer>
+
+<dialog class="evidence-dialog" id="evidence-dialog" aria-labelledby="evidence-title"><div class="evidence-shell"><header><div><span>AUDITORIA AUTÔNOMA</span><h2 id="evidence-title">Procedência, qualidade & artefatos</h2></div><button id="close-evidence" type="button" aria-label="Fechar">×</button></header><div class="evidence-kpis"><div><span>Ciclos 24h</span><b id="evidence-cycles">—</b></div><div><span>Fontes verificadas</span><b id="evidence-sources">—</b></div><div><span>Organizações</span><b id="evidence-orgs">—</b></div><div><span>Mídias reais</span><b id="evidence-media-count">—</b></div></div><div class="evidence-grid"><section><h3>Pesquisa de mercado</h3><div id="evidence-research" class="evidence-list"></div></section><section><h3>Imagem · vídeo · áudio</h3><div id="evidence-media" class="evidence-media"></div></section><section><h3>Execução & rastreabilidade</h3><div id="evidence-runs" class="evidence-list"></div></section></div><footer>Somente evidência real persistida · vendas e publicação comercial permanecem bloqueadas.</footer></div></dialog>
 <script src="/criativos.js" defer></script>
 <script src="/whatsapp-contact.js" defer></script></body>
 </html>

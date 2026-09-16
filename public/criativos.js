@@ -129,13 +129,13 @@ function renderSummary(){
 async function load(){
   try{
     const [sampleRes,closureRes,agentRes]=await Promise.all([
-      fetch('/api/config?view=creative_sample',{cache:'no-store'}),
-      fetch('/api/config?view=closure_status',{cache:'no-store'}),
-      fetch('/api/agent/status',{cache:'no-store'})
+      fetch('/private-api/config?view=creative_sample',{cache:'no-store'}),
+      fetch('/private-api/config?view=closure_status',{cache:'no-store'}),
+      fetch('/private-api/agent/status',{cache:'no-store'})
     ]);
     if(!sampleRes.ok)throw new Error(`creative_sample_http_${sampleRes.status}`);
     if(!closureRes.ok)throw new Error(`closure_status_http_${closureRes.status}`);
-    sample=await sampleRes.json();closure=await closureRes.json();const agent=agentRes.ok?await agentRes.json():{};
+    sample=await sampleRes.json();closure=await closureRes.json();const agent=agentRes.ok?await agentRes.json():{};window.__zevanoryAgentEvidence=agent;
     if(!sample?.engine||!closure?.distribution?.fronts)throw new Error('creative_contract_invalid');
     renderSummary();renderPreview();const auto=agent.autopilot||{};set('truth-copy',`Pesquisa, criação e avaliação seguem ativas · ${auto.cycles_24h||0} ciclo(s) autônomo(s) 24h · ${auto.program_drafts||0} programa(s) em rascunho · vendas bloqueadas.`);set('source-state','fontes reais · creative_sample + closure_status + autopilot');
   }catch(error){
@@ -144,6 +144,24 @@ async function load(){
     const loading=$('preview-loading');if(loading){loading.hidden=false;loading.textContent='Motor criativo indisponível.';}
   }
 }
+
+window.__zevanoryAgentEvidence={};
+
+function escText(v){return String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('\"','&quot;').replaceAll("'",'&#39;');}
+function safeHttps(v){try{const u=new URL(String(v||''));return u.protocol==='https:'?u.toString():'';}catch{return '';}}
+function renderEvidence(agent={}){
+  const activity=Array.isArray(agent.activity_timeline)?agent.activity_timeline:[];
+  const research=activity.filter(x=>x.kind==='intelligence'&&x.title==='market_research');
+  const decisions=activity.filter(x=>x.kind==='intelligence'&&x.title==='investment_decision');
+  const runs=activity.filter(x=>x.kind==='agent_run').slice(0,24);
+  const latestResearch=research[0]||{}; set('evidence-cycles',agent.autopilot?.cycles_24h||0); set('evidence-sources',latestResearch.evidence_count||0); set('evidence-orgs',latestResearch.organization_count||0);
+  const rr=$('evidence-research'); if(rr){rr.replaceChildren(); for(const item of research.slice(0,6)){const card=document.createElement('article');const ev=Array.isArray(item.evidence)?item.evidence:[];const links=ev.slice(0,8).map(e=>{const u=safeHttps(e.source_url);return u?`<a href="${escText(u)}" target="_blank" rel="noopener noreferrer">${escText(e.organization||e.source||'fonte')}</a>`:'';}).filter(Boolean).join('');card.innerHTML=`<b>${escText(item.subject||'Pesquisa')}</b><small>${item.evidence_count||0} fontes · ${item.organization_count||0} organizações · score ${item.score==null?'—':Number(item.score).toFixed(3)} · ${escText(item.decision||'')}</small><div class="source-links">${links||'<span>URLs não expostas neste ciclo</span>'}</div>`;rr.append(card);} if(!research.length)rr.innerHTML='<div class="empty">Nenhuma pesquisa persistida nas últimas 24h.</div>';}
+  const media=[]; for(const item of decisions){const c=item.creative||{};for(const m of (Array.isArray(c.channel_creatives)?c.channel_creatives:[])){media.push({...m,cycle_id:item.candidate?.cycle_id||null,subject:item.candidate?.subject||item.subject||null});}}
+  set('evidence-media-count',media.filter(x=>x.asset_url).length);
+  const mr=$('evidence-media'); if(mr){mr.replaceChildren(); for(const m of media.slice(0,10)){const card=document.createElement('article');card.className='media-proof';const accepted=m.elite_accepted===true&&m.asset_url;const visual=accepted?(String(m.channel).match(/youtube|tiktok/)?`<video src="${escText(m.asset_url)}" controls preload="metadata"></video><audio src="${escText(m.asset_url)}" controls preload="none"></audio>`:`<img src="${escText(m.asset_url)}" loading="lazy" alt="Criativo ${escText(m.creative_id||'')}">`):'<div class="media-rejected">ARTEFATO NÃO LIBERADO · gate de qualidade não atingido</div>';card.innerHTML=`${visual}<div><b>${escText(m.channel||'canal')} · ${escText(m.creative_id||'sem creative id')}</b><small>Q ${Number(m.quality_score||0).toFixed(3)} · P ${Number(m.perceptual_score||0).toFixed(3)} · rodada ${m.revision_round||0} · ${m.elite_accepted?'ELITE APROVADO':'REVISÃO'}</small><small>Ciclo ${escText(m.cycle_id||'—')} · ${escText(m.subject||'')}</small></div>`;mr.append(card);} if(!media.length)mr.innerHTML='<div class="empty">Nenhuma mídia do autopilot persistida neste recorte.</div>';}
+  const er=$('evidence-runs'); if(er){er.replaceChildren();for(const r of runs){const card=document.createElement('article');card.innerHTML=`<b>${escText(r.title||r.provider||'execução')}</b><small>${escText(r.provider||'')} · ${escText(r.model||'')} · ${r.latency_ms||0} ms · ${escText(r.state||'')}</small><small>${new Date(r.created_at).toLocaleString('pt-BR')} · trace ${escText((r.trace_id||r.id||'').slice(0,12))}</small>`;er.append(card);}if(!runs.length)er.innerHTML='<div class="empty">Nenhuma execução recente.</div>';}
+}
+const evidenceDialog=$('evidence-dialog');$('open-evidence')?.addEventListener('click',()=>{evidenceDialog?.showModal();renderEvidence(window.__zevanoryAgentEvidence||{});});$('close-evidence')?.addEventListener('click',()=>evidenceDialog?.close());evidenceDialog?.addEventListener('click',e=>{if(e.target===evidenceDialog)evidenceDialog.close();});
 
 load();setInterval(load,60000);
 
