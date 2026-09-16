@@ -115,8 +115,9 @@ async function refresh(){
   if(agent){set('agent-provider',agent.ai_provider?label(agent.ai_provider):'NÃO EXPOSTO');set('agent-queued',fmt(agent.queued));set('agent-running',fmt(agent.autopilot?.cycles_24h??agent.runs_24h));set('agent-activity-label',agent.autopilot?'ciclos autônomos 24h':'execuções 24h');set('agent-blocked',fmt(agent.blocked));set('agent-failed',fmt(agent.failed));set('agent-runs',fmt(agent.runs_24h));setState('agent-commercial',agent.commercial_execution);}
   renderCoverage(config,ok,entries.length);renderPublicOperations(status,config,agent);set('updated-at',new Date().toLocaleTimeString('pt-BR'));set('surface-host',location.host+' · produção');
   const market=(agent?.activity_timeline||[]).find(x=>x.kind==='intelligence'&&x.title==='market_research');
+  const marketSummary=agent?.market_research_summary||market;
   const releaseProof=/^[0-9a-f]{40}$/i.test(release?.deployment?.commit_sha||'')&&release?.deployment?.environment==='production'&&release?.deployment?.branch==='main';
-  const evidenceProof=Number(market?.evidence_count||0)>=5&&Number(market?.organization_count||0)>=4;
+  const evidenceProof=Number(marketSummary?.evidence_count||0)>=5&&Number(marketSummary?.organization_count||0)>=4;
   const platformProof=Boolean(health?.checks?.database_reachable&&health?.schema?.ready&&health?.checks?.public_base_url_valid);
   const autonomyProof=Boolean(agent?.autopilot?.enabled&&agent?.autopilot?.health==='HEALTHY'&&Number(agent?.autopilot?.cycles_24h||0)>0&&Number(agent?.failed||0)===0);
   const telemetryProof=ok===entries.length; const proofs=[releaseProof,evidenceProof,platformProof,autonomyProof,telemetryProof]; const passed=proofs.filter(Boolean).length; const elite=passed===proofs.length;
