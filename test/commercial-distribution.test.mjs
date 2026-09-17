@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { COMMERCIAL_DISTRIBUTION_CANONICAL, REQUIRED_DISTRIBUTION_FRONTS, commercialDistributionReadiness } from '../src/commercialDistribution.mjs';
+import { EXCLUDED_COMMERCIAL_FRONTS } from '../src/activeCommercialScope.mjs';
 import { evaluateAffiliateProgramReadiness, AFFILIATE_COMMISSION_STATES, AFFILIATE_REVENUE_TRUTH } from '../src/affiliateProgram.mjs';
 import { buildOutboundAdapters } from '../src/outboundAdapters.mjs';
 import { encryptSecret } from '../src/mercadoLivreOAuth.mjs';
@@ -10,17 +11,18 @@ const certifiedGate=()=>({enabled:true});
 const response=(status,body={})=>({status,json:async()=>body,headers:{get:()=>null}});
 const affiliateEnv={AFFILIATE_PROVIDER:'network',AFFILIATE_WEBHOOK_URL:'https://affiliate.example/webhook',AFFILIATE_WEBHOOK_TOKEN:'token',AFFILIATE_TRACKING_READY:'true',AFFILIATE_TERMS_REVIEWED:'true',AFFILIATE_TERMS_VERSION:'v1',AFFILIATE_ATTRIBUTION_WINDOW_DAYS:'30',AFFILIATE_COMMISSION_BPS:'1000',AFFILIATE_PAYOUT_DELAY_DAYS:'30',AFFILIATE_SELF_REFERRAL_POLICY:'blocked',AFFILIATE_REFUND_REVERSAL_READY:'true',AFFILIATE_CHARGEBACK_REVERSAL_READY:'true',AFFILIATE_IDEMPOTENCY_READY:'true',AFFILIATE_PROVIDER_CONFIRMATION_READY:'true',AFFILIATE_DISCLOSURE_URL:'https://zevanory.api.br/afiliados',AFFILIATE_PRIVACY_URL:'https://zevanory.api.br/politica-de-privacidade'};
 
-test('canonical distribution covers every intended commercial front',()=>{
-  assert.deepEqual(REQUIRED_DISTRIBUTION_FRONTS,['zevanory','whatsapp','email','instagram','facebook','tiktok','youtube','linkedin','google','affiliate','nuvemshop','mercado_livre']);
+test('canonical distribution covers active commercial scope and records deferred fronts',()=>{
+  assert.deepEqual(REQUIRED_DISTRIBUTION_FRONTS,['zevanory','whatsapp','email','instagram','facebook','youtube','google','affiliate','mercado_livre']);
   assert.equal(Object.keys(COMMERCIAL_DISTRIBUTION_CANONICAL).length,12);
+  assert.deepEqual(Object.keys(EXCLUDED_COMMERCIAL_FRONTS).sort(),['linkedin','nuvemshop','tiktok']);
   assert.ok(Object.values(COMMERCIAL_DISTRIBUTION_CANONICAL).every(x=>x.global_gate_required&&x.policy_complete&&x.attribution&&x.provider_confirmation));
 });
 
-test('technical distribution is complete while external configuration remains fail closed',()=>{
+test('technical distribution is complete for active scope while external configuration remains fail closed',()=>{
   const r=commercialDistributionReadiness({});
   assert.equal(r.technical_ready,true);
   assert.equal(r.operational_ready,false);
-  assert.equal(r.total_fronts,12);
+  assert.equal(r.total_fronts,9);
   assert.ok(r.blockers.some(x=>x.startsWith('affiliate:')));
   assert.ok(r.blockers.some(x=>x.startsWith('mercado_livre:')));
 });
@@ -50,8 +52,8 @@ test('Mercado Livre outbound uses persisted OAuth credential and requires provid
 
 test('active marketplace identity and webhook verification remain mandatory',()=>{
   const r=commercialDistributionReadiness({MERCADOLIVRE_ACCESS_TOKEN:'t',MERCADOLIVRE_APP_ID:'a',MERCADOLIVRE_SELLER_ID:'s'});
-  assert.ok(r.fronts.linkedin); assert.equal(r.fronts.linkedin.operational_ready,false);
-  assert.ok(r.fronts.nuvemshop); assert.equal(r.fronts.nuvemshop.operational_ready,false);
+  assert.equal(r.fronts.linkedin,undefined);
+  assert.equal(r.fronts.nuvemshop,undefined);
   assert.equal(r.fronts.mercado_livre.operational_ready,false);
 });
 test('first-party affiliate readiness does not require an external webhook provider',()=>{

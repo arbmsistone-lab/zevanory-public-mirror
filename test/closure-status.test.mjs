@@ -11,10 +11,14 @@ test('closure status is aggregate, complete and secret-safe for active scope',as
   assert.equal(res.statusCode,200);
   const body=JSON.parse(res.body);
   assert.equal(body.service,'ZEVANORY');
-  assert.equal(Object.keys(body.channels).length,12);
-  assert.equal(body.distribution.total_fronts,12);
-  for(const c of ['tiktok','linkedin','nuvemshop'])assert.ok(body.channels[c]);
-  assert.equal(Object.keys(body.excluded_fronts||{}).length,0);
+  assert.equal(Object.keys(body.channels).length,9);
+  assert.equal(body.distribution.total_fronts,9);
+  for(const c of ['tiktok','linkedin','nuvemshop'])assert.equal(body.channels[c],undefined);
+  assert.deepEqual(Object.keys(body.excluded_fronts||{}).sort(),['linkedin','nuvemshop','tiktok']);
+  for(const c of ['tiktok','linkedin','nuvemshop']){
+    assert.equal(body.excluded_fronts[c].status,'standby');
+    assert.equal(body.excluded_fronts[c].counts_toward_total,false);
+  }
   assert.equal(typeof body.brand_identity.ready,'boolean');
   assert.equal(typeof body.brand_identity.configured_ready,'boolean');
   assert.ok(Array.isArray(body.brand_identity.fresh_provider_blockers));
