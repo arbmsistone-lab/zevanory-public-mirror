@@ -24,12 +24,15 @@ test('CircleCI quarantine records provider failure without claiming test failure
   assert.ok(c.reentry_gate.length>=4);
 });
 
-test('healthy provider evidence is explicit and cannot unlock commerce',()=>{
+test('canonical certifier policy never hardcodes mutable exact-SHA evidence',()=>{
   const v=policy.providers.vercel;
-  assert.equal(v.status,'healthy');
-  assert.equal(v.checks,'36/36');
-  assert.equal(v.e2e,'30/30');
-  assert.equal(v.runtime_exact_sha,true);
-  assert.equal(v.zea10,'10/10');
+  assert.equal(v.static_status,'eligible');
+  assert.equal(v.evidence_source,'build-generated public/control-plane-certification.json');
+  assert.equal(v.sha_binding_source,'VERCEL_GIT_COMMIT_SHA');
+  assert.equal(v.required_checks,36);
+  assert.equal(v.required_e2e_passes,30);
+  assert.equal(v.runtime_exact_sha_required,true);
+  assert.equal(v.zea10_proven_required,10);
+  assert.equal(Object.hasOwn(v,'evidence_sha'),false);
   assert.match(policy.promotion_rule,/cannot unlock commerce/i);
 });
