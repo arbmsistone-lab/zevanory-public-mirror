@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "policy": "remote-ci-provider-governance",
+  "fail_closed": true,
+  "canonical_quality_contract": {
+    "exact_sha_required": true,
+    "remote_checks_required": 36,
+    "e2e_pass_required": 30,
+    "runtime_control_plane_exact_sha_required": true,
+    "zea10_proven_required": 10,
+    "commercial_gate_must_remain_fail_closed": true
+  },
+  "providers": {
+    "vercel": {
+      "role": "canonical_remote_certifier",
+      "status": "healthy",
+      "evidence_sha": "98e63b42b3ed6f0376a338736c5b592222c6484e",
+      "checks": "36/36",
+      "e2e": "30/30",
+      "runtime_exact_sha": true,
+      "zea10": "10/10"
+    },
+    "circleci": {
+      "role": "quarantined_secondary_ci",
+      "status": "quarantined",
+      "reason": "task_information_unavailable_before_executor_start",
+      "evidence_run_id": "e74c723e-5d31-4f73-afed-dfcb38973885",
+      "evidence_core_job_id": "5caaf83a-4f3b-4a71-9d36-6bc3c88c63b7",
+      "evidence_recovery_job_id": "1188e290-b554-4ea0-b68e-fa66c4c2b8b2",
+      "started_at_observed": "0001-01-01T00:00:00Z",
+      "task_error": "Error: Task information unavailable",
+      "tests_executed": false,
+      "reentry_gate": [
+        "executor starts with non-zero real timestamp",
+        "checkout step executes",
+        "exact-SHA core succeeds",
+        "exact-SHA recovery succeeds",
+        "no Task information unavailable"
+      ]
+    }
+  },
+  "promotion_rule": "Never convert a provider-control-plane failure into a code failure or a green code claim. Quarantined provider evidence remains visible and cannot unlock commerce."
+}
