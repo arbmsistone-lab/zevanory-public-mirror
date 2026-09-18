@@ -1,0 +1,54 @@
+name: product-pages-premerge
+
+on:
+  pull_request:
+    branches:
+      - gh-pages
+    paths:
+      - 'arbm-one/**'
+      - 'arbm-sist/**'
+      - 'ia-na-pratica/**'
+      - 'vendas-na-pratica/**'
+      - 'lucro-e-caixa/**'
+      - 'combo-ia-vendas/**'
+      - 'negocio-completo/**'
+      - 'solucoes/**'
+      - 'product.css'
+      - 'sitemap.xml'
+      - 'scripts/premerge_product_audit.py'
+      - '.github/workflows/product-pages-premerge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: product-pages-premerge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: product-pages / static-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact PR commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Show exact revision
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD
+
+      - name: Compile audit script
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/premerge_product_audit.py
+
+      - name: Run fail-closed product audit
+        run: |
+          set -euo pipefail
+          python3 scripts/premerge_product_audit.py

@@ -1,0 +1,7 @@
+---
+---
+{
+  "sha": "{{ site.github.build_revision }}",
+  "source": "github-pages",
+  "repository": "arbmsistone-lab/zevanory-public-mirror"
+}
