@@ -1,11 +1,13 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 
-const TARGET_BRANCH = 'feat/live-action-plan';
 const deployEnv = String(process.env.VERCEL_ENV || '');
 const branch = String(process.env.VERCEL_GIT_COMMIT_REF || '');
 const sha = String(process.env.VERCEL_GIT_COMMIT_SHA || '');
+const certBranch = branch === 'feat/live-action-plan' || branch.startsWith('chatgpt/control-plane-vnext-');
 
-if (deployEnv !== 'preview' || branch !== TARGET_BRANCH) {
+const shouldCertify = deployEnv === 'production' || (deployEnv === 'preview' && certBranch);
+if (!shouldCertify) {
   console.log(`VERCEL_REMOTE_CERT_SKIPPED env=${deployEnv || 'unknown'} branch=${branch || 'unknown'}`);
   process.exit(0);
 }
@@ -158,4 +160,6 @@ if (!live || e2eStatus !== 0) {
   console.error(`VERCEL_REMOTE_CERT_BLOCKED check=36 status=${e2eStatus}`);
   process.exit(1);
 }
-console.log(`VERCEL_REMOTE_CERT_APPROVED sha=${sha} checks=36/36`);
+const certification={framework:'ZEA-10',status:'approved',sha:sha.toLowerCase(),checks:36,provider:'vercel-remote-builder',environment:deployEnv,branch,generated_at:new Date().toISOString()};
+writeFileSync(new URL('../public/control-plane-certification.json',import.meta.url),`${JSON.stringify(certification,null,2)}\n`,'utf8');
+console.log(`VERCEL_REMOTE_CERT_APPROVED sha=${sha} checks=36/36 manifest=public/control-plane-certification.json`);

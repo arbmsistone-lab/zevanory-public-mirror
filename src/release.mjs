@@ -29,7 +29,7 @@ export const RELEASE = Object.freeze({
   recovery: Object.freeze({ mode:'transactional-rollback', tables:23, migrations:16, persistent_changes:false }),
   requiredRoutes: Object.freeze([
     '/', '/piloto', '/termos', '/privacidade', '/reembolso', '/afiliados',
-    '/api/config', '/api/health', '/api/live', '/api/status', '/api/assurance', '/api/activation/readiness',
+    '/api/config', '/api/health', '/api/live', '/api/status', '/api/assurance', '/api/control-plane', '/api/activation/readiness',
     '/api/events/public', '/api/events/operator', '/api/agent/status', '/api/agent/run',
     '/api/checkout/asaas', '/api/webhooks/asaas', '/api/checkout/mercadopago', '/api/webhooks/mercadopago', '/api/webhooks/resend', '/api/webhooks/meta', '/api/webhooks/mercadolivre', '/api/release',
   ]),

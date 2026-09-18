@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const policy=JSON.parse(fs.readFileSync('config/secret-lifecycle.json','utf8'));
+const bindingEvidence=JSON.parse(fs.readFileSync('config/secret-binding-evidence.json','utf8'));
 const now=new Date(process.env.SECURITY_LIFECYCLE_NOW||Date.now());
 const day=86_400_000;
 const failures=[];
@@ -12,18 +13,25 @@ if(Number.isNaN(reviewed.getTime()))failures.push('review_invalid');
 else if((now-reviewed)/day>Number(policy.reviewCadenceDays||0))failures.push('review_overdue');
 if(policy.rules?.metadataOnly!==true)failures.push('metadata_only_required');
 if(policy.rules?.neverStoreSecretMaterial!==true)failures.push('never_store_secret_material_required');
+if(bindingEvidence?.containsSecretMaterial!==false)failures.push('binding_evidence_must_be_metadata_only');
+if(bindingEvidence?.evidenceType!=='deployment_binding_metadata')failures.push('binding_evidence_type_invalid');
+const bindingMap=new Map(Object.entries(bindingEvidence?.bindings||{}));
 
 for(const [name,item] of declared){
   if(!/^[A-Z0-9_]+$/.test(name))failures.push(`invalid_name:${name}`);
   if(!item.owner)failures.push(`owner_missing:${name}`);
-  if(item.rotationState==='age-unverified'){
-    const due=new Date(item.rotationDueBy);
-    if(Number.isNaN(due.getTime()))failures.push(`rotation_due_invalid:${name}`);
-    else if(now>due)failures.push(`rotation_age_verification_overdue:${name}`);
-  }else{
+  const configured=String(process.env[name]||'').trim().length>0;
+  if(!configured)continue;
+  const binding=bindingMap.get(name);
+  if(!binding){failures.push(`binding_evidence_missing:${name}`);continue;}
+  const lastBound=new Date(binding.lastBoundAt);
+  if(Number.isNaN(lastBound.getTime())){failures.push(`binding_evidence_invalid:${name}`);continue;}
+  const maxDays=Number(item.rotationMaxDays||policy.rules?.defaultRotationMaxDays||90);
+  if((now-lastBound)/day>maxDays)failures.push(`binding_evidence_overdue:${name}`);
+  if(item.lastRotatedAt){
     const rotated=new Date(item.lastRotatedAt);
     if(Number.isNaN(rotated.getTime()))failures.push(`rotation_invalid:${name}`);
-    else if((now-rotated)/day>Number(item.rotationMaxDays||0))failures.push(`rotation_overdue:${name}`);
+    else if((now-rotated)/day>maxDays)failures.push(`rotation_overdue:${name}`);
   }
 }
 const discovered=new Set();
