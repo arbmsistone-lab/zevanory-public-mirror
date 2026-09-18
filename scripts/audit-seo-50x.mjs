@@ -43,7 +43,7 @@ add(43,'architecture approved',release.assurance?.architecture_20x==='approved')
 add(44,'official brand approved',release.assurance?.official_brand==='approved');
 const key='f9c014c1ea7ab785ce3fafdca205636b'; const kr=await fetch(base+'/'+key+'.txt');
 add(45,'IndexNow key publicado',kr.status===200 && (await kr.text()).trim()===key);
-add(46,'sitemap tem 12 URLs',(sitemap.match(/<loc>/g)||[]).length===12);
+add(46,'sitemap tem 13 URLs incluindo ARBM Contador',(sitemap.match(/<loc>/g)||[]).length===13&&sitemap.includes(base+'/arbm-contador-saloes'));
 add(47,'solucoes referencia ARBM SIST',pages.solucoes.html.includes('/arbm-sist'));
 add(48,'solucoes referencia 5 produtos',slugs.slice(2).every(s=>pages.solucoes.html.includes('/'+s)));
 add(49,'ARBM SIST schema software',/"@type":"SoftwareApplication"/.test(pages['arbm-sist'].html));

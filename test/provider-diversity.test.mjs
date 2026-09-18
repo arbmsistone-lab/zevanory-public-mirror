@@ -37,14 +37,16 @@ test('Buffer media-first networks fail before provider effect and Facebook accep
   assert.equal(out.provider_post_id,'fb-post');
 });
 
-test('TikTok and LinkedIn active alternates remain uncertainty-safe',async()=>{
+test('TikTok and LinkedIn standby fronts reject automated alternates',async()=>{
   const adapters=buildOutboundAdapters({env,fetchImpl:async()=>response({}),commercialGate:gate});
-  await assert.rejects(()=>adapters['channel:tiktok']({payload:{content:'x',media_url:'https://cdn.example/a.mp4'}},{sql:{query:async()=>[]}}),/provider_effect_uncertain/);
-  await assert.rejects(()=>adapters['channel:linkedin']({payload:{content:'x'}},{sql:{query:async()=>[]}}),/provider_effect_uncertain/);
+  await assert.rejects(()=>adapters['channel:tiktok']({payload:{content:'x',media_url:'https://cdn.example/a.mp4'}},{sql:{query:async()=>[]}}),/channel_excluded_from_active_scope/);
+  await assert.rejects(()=>adapters['channel:linkedin']({payload:{content:'x'}},{sql:{query:async()=>[]}}),/channel_excluded_from_active_scope/);
 });
 
-test('distribution includes TikTok LinkedIn and Nuvemshop as active non-sales fronts',()=>{
+test('distribution keeps standby fronts outside the 9 active execution set',()=>{
   const distribution=commercialDistributionReadiness(env);
-  for(const c of ['tiktok','linkedin','nuvemshop'])assert.ok(distribution.fronts[c]);
-  const publicState=publicChannelStatus(env); for(const c of ['tiktok','linkedin','nuvemshop'])assert.ok(publicState[c]);
+  assert.equal(distribution.total_fronts,9);
+  for(const c of ['tiktok','linkedin','nuvemshop'])assert.equal(distribution.fronts[c],undefined);
+  const publicState=publicChannelStatus(env);
+  for(const c of ['tiktok','linkedin','nuvemshop']){assert.equal(publicState[c].scope_status,'standby');assert.equal(publicState[c].operational_ready,false);}
 });

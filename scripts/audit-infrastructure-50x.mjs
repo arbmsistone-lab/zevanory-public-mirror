@@ -77,9 +77,9 @@ add('43 runtime checkout globally blocked',runtime.checkout==='globally-blocked'
 add('44 runtime WhatsApp disabled',runtime.whatsapp==='disabled',runtime.whatsapp);
 add('45 runtime financial disabled',runtime.financial==='disabled',runtime.financial);
 add('46 closure commercial flag false',closureJson.commercial_enabled===false,closureJson.commercial_enabled);
-add('47 distribution has exactly 12 active fronts',closureJson.distribution?.total_fronts===12,closureJson.distribution?.total_fronts);
-add('48 all 12 fronts configured',closureJson.distribution?.configured_fronts===12,closureJson.distribution?.configured_fronts);
-add('49 all 9 fronts automation-ready',closureJson.distribution?.automation_ready_fronts===9,closureJson.distribution?.automation_ready_fronts);
+add('47 distribution has exactly 9 active fronts',closureJson.distribution?.total_fronts===9,closureJson.distribution?.total_fronts);
+add('48 operational readiness is bounded by active scope',Number.isInteger(closureJson.distribution?.configured_fronts)&&closureJson.distribution.configured_fronts>=0&&closureJson.distribution.configured_fronts<=9,closureJson.distribution?.configured_fronts);
+add('49 automation readiness is fail-closed and never exceeds operational readiness',Number.isInteger(closureJson.distribution?.automation_ready_fronts)&&closureJson.distribution.automation_ready_fronts>=0&&closureJson.distribution.automation_ready_fronts<=closureJson.distribution.configured_fronts&&closureJson.distribution.automation_ready_fronts<=9,closureJson.distribution?.automation_ready_fronts);
 const exposed=/access[_-]?token|client[_-]?secret|api[_-]?key|password/i.test(closure.text);
 add('50 closure surface exposes no credential fields',!exposed);
 

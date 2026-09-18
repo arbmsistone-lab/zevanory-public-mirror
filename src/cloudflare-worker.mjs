@@ -132,7 +132,7 @@ async function delegatePaymentRequest(request,env){
   const init={method:request.method,headers,redirect:'manual'};if(!['GET','HEAD'].includes(request.method))init.body=request.body;
   try{return await fetch(new Request(target,init));}catch{return new Response(JSON.stringify({error:'payment_runtime_unavailable',preserved:true}),{status:503,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});}
 }
-function withSecurityHeaders(response) {
+function withSecurityHeaders(response, env) {
   const headers = new Headers(response.headers);
   const contentType=String(headers.get('content-type')||'').toLowerCase();
   if(contentType.startsWith('text/html'))headers.set('content-type','text/html; charset=utf-8');
@@ -147,6 +147,7 @@ function withSecurityHeaders(response) {
   headers.set('cross-origin-resource-policy', 'same-origin');
   headers.set('x-dns-prefetch-control', 'off');
   headers.set('strict-transport-security', 'max-age=63072000; includeSubDomains; preload');
+  if (env?.PUBLIC_RELEASE_SHA) headers.set('x-deployment-sha', String(env.PUBLIC_RELEASE_SHA));
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -212,7 +213,7 @@ export default {
     const assetUrl = alias ? new URL(alias, url) : url;
     const assetRequest = new Request(assetUrl, request);
     const response = await env.ASSETS.fetch(assetRequest);
-    return withSecurityHeaders(response);
+    return withSecurityHeaders(response, env);
   },
 };
 

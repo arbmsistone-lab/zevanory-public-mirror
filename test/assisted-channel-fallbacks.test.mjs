@@ -9,10 +9,10 @@ const fallbackEnv={
   NUVEMSHOP_STOREFRONT_VERIFIED:'true',NUVEMSHOP_STOREFRONT_URL:'https://zevanory.lojavirtualnuvem.com.br/',
 };
 
-test('assisted fallbacks remain available as technical backlog helpers',()=>{
+test('assisted fallbacks remain available only as standby backlog helpers',()=>{
   for(const c of ['tiktok','linkedin','nuvemshop'])assert.equal(assistedFallbackReadiness(c,fallbackEnv).ready,true);
   const task=buildAssistedPublicationTask('tiktok',{text:'conteudo aprovado'},fallbackEnv);
-  assert.equal(task.requires_operator_action,true); assert.equal(task.provider_api_claimed,false);
+  assert.equal(task.requires_operator_action,true);assert.equal(task.provider_api_claimed,false);
 });
 
 test('fallbacks fail closed when evidence is missing',()=>{
@@ -20,10 +20,9 @@ test('fallbacks fail closed when evidence is missing',()=>{
   assert.throws(()=>buildAssistedPublicationTask('linkedin',{text:'x'},{}),/assisted_channel_not_ready/);
 });
 
-test('all 12 fronts stay active while assisted fallbacks never claim API automation',()=>{
+test('commercial distribution counts only 9 active fronts',()=>{
   const env={...fallbackEnv,AFFILIATE_PROVIDER:'first_party'};
   const out=commercialDistributionReadiness(env);
-  assert.equal(out.total_fronts,12); assert.equal(out.implemented_fronts,12);
-  for(const c of ['tiktok','linkedin','nuvemshop']){ assert.ok(out.fronts[c]); assert.equal(out.fronts[c].operational_ready,true); }
-  assert.equal(out.fronts.tiktok.automation_ready,false); assert.equal(out.fronts.linkedin.automation_ready,false);
+  assert.equal(out.total_fronts,9);assert.equal(out.implemented_fronts,9);
+  for(const c of ['tiktok','linkedin','nuvemshop'])assert.equal(out.fronts[c],undefined);
 });

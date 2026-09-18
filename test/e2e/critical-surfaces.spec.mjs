@@ -10,7 +10,11 @@ for (const viewport of [
     page.on("pageerror",e=>errors.push(String(e.message||e)));
     const response=await page.goto("/criativos",{waitUntil:"domcontentloaded"});
     expect(response?.status()).toBeLessThan(500);
-    await expect(page.locator(".production-item[data-front]")).toHaveCount(12);
+    const activeFronts=page.locator(".production-item[data-front]");
+    await expect(activeFronts).toHaveCount(9);
+    for(const standby of ["tiktok","linkedin","nuvemshop"]) {
+      await expect(page.locator(`.production-item[data-front="${standby}"]`)).toHaveCount(0);
+    }
     const metrics=await page.evaluate(()=>({w:innerWidth,h:innerHeight,sw:document.documentElement.scrollWidth,sh:document.body.scrollHeight}));
     expect(metrics.sw).toBeLessThanOrEqual(metrics.w+2);
     expect(metrics.sh).toBeLessThanOrEqual(metrics.h+8);
@@ -21,8 +25,11 @@ for (const viewport of [
 test("creative channel selection exposes one active front", async ({ page }) => {
   await page.goto("/criativos",{waitUntil:"domcontentloaded"});
   const fronts=page.locator(".production-item[data-front]");
-  await expect(fronts).toHaveCount(12);
-  for(let i=0;i<12;i++){
+  await expect(fronts).toHaveCount(9);
+  for(const standby of ["tiktok","linkedin","nuvemshop"]) {
+    await expect(page.locator(`.production-item[data-front="${standby}"]`)).toHaveCount(0);
+  }
+  for(let i=0;i<9;i++){
     const button=fronts.nth(i);
     await button.click();
     await expect(button).toHaveAttribute("aria-pressed","true");

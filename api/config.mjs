@@ -67,7 +67,7 @@ export default async function handler(req, res) {
     const freshBrandReady=brand.ready&&identityBlockers.length===0;
     const remoteTruth=await remoteRuntimeChannelTruth(process.env);
     const channels=overlayRemoteChannelTruth(localChannels,remoteTruth);
-    const channelSummary=Object.fromEntries(Object.entries(channels).map(([name,state])=>[name,{operational_ready:state.operational_ready,operational_mode:state.operational_mode,api_configured:state.api_configured,alternate_api_configured:state.alternate_api_configured,contingency_ready:state.contingency_ready}]));
+    const channelSummary=Object.fromEntries(Object.entries(channels).map(([name,state])=>[name,{operational_ready:state.operational_ready,operational_mode:state.operational_mode,api_configured:state.api_configured,alternate_api_configured:state.alternate_api_configured,contingency_ready:state.contingency_ready,scope_status:state.scope_status||'active',counts_toward_active_total:state.counts_toward_active_total!==false}]));
     const rawFrontSummary=Object.fromEntries(Object.entries(distribution.fronts).map(([name,state])=>[name,{operational_ready:state.operational_ready,operational_mode:state.operational_mode,automation_ready:state.automation_ready,contingency_ready:state.contingency_ready}]));
     const frontSummary=overlayRemoteChannelTruth(rawFrontSummary,remoteTruth);
     const frontValues=Object.values(frontSummary);

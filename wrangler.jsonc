@@ -16,6 +16,7 @@
   "triggers": { "crons": ["0 * * * *"] },
   "vars": {
     "SUPPORT_CHANNEL": "WhatsApp +55 88 9234-0423",
+    "PUBLIC_RELEASE_SHA": "76db0be5f5ab3897336e5b98797f81cefe04fe80",
     "CLOUDFLARE_AI_FREE_ONLY": "true",
     "CLOUDFLARE_AI_DAILY_CALL_LIMIT": "20",
     "OFFER_SELECTION_APPROVED": "true",
