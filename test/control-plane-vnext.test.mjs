@@ -39,7 +39,10 @@ test('creative evidence dialog uses one deliberate scroll surface', () => {
   assert.match(creativeCss, /\.evidence-list,\.evidence-media\{min-height:auto;overflow:visible/);
 });
 
-test('Vercel remote certification runs for control-plane vNext branches', () => {
+test('Vercel remote certification runs for control-plane branches and production, then emits an exact-SHA manifest', () => {
   assert.match(vercelCert, /branch\.startsWith\('chatgpt\/control-plane-vnext-'\)/);
+  assert.match(vercelCert, /deployEnv === 'production'/);
+  assert.match(vercelCert, /control-plane-certification\.json/);
+  assert.match(vercelCert, /checks:36/);
   assert.match(vercelCert, /VERCEL_REMOTE_CERT_APPROVED/);
 });

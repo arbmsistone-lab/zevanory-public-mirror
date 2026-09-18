@@ -24,14 +24,16 @@ export const ZEA10 = Object.freeze([
   {id:'ZEA10-10',name:'Validação, testes extremos, resiliência e recuperação',reference:'Digital twin / fault simulation',evidence:['resilience','dr_10x','audit_30x']},
 ]);
 
-export function buildZea10PolicySnapshot(env = process.env) {
+export function buildZea10PolicySnapshot(env = process.env, certification = null) {
   const releaseSha = String(env.VERCEL_GIT_COMMIT_SHA || env.ZEVANORY_RELEASE_SHA || '').trim().toLowerCase();
   const releaseEvidence = validSha(releaseSha);
+  const certifiedSha=String(certification?.sha||'').trim().toLowerCase();
+  const remoteCertified=releaseEvidence && certification?.status==='approved' && certifiedSha===releaseSha && Number(certification?.checks||0)>=36;
   const pillars = ZEA10.map((pillar) => {
     const checks = pillar.evidence.map((key) => ({key,ok:approved(key),value:RELEASE.assurance?.[key] || null}));
     const evidenceState = state(checks.map((x) => x.ok));
-    const finalState = releaseEvidence ? evidenceState : (evidenceState === 'blocked' ? 'blocked' : 'partial');
-    return Object.freeze({...pillar,state:finalState,evidence:checks,release_sha_bound:releaseEvidence});
+    const finalState = evidenceState==='blocked'?'blocked':remoteCertified&&evidenceState==='proven'?'proven':'partial';
+    return Object.freeze({...pillar,state:finalState,evidence:checks,release_sha_bound:releaseEvidence,remote_certified:remoteCertified});
   });
   const counts = pillars.reduce((acc,p)=>{acc[p.state]=(acc[p.state]||0)+1;return acc;},{proven:0,partial:0,blocked:0});
   return Object.freeze({
@@ -43,10 +45,10 @@ export function buildZea10PolicySnapshot(env = process.env) {
   });
 }
 
-export function buildControlPlaneSnapshot(env = process.env) {
+export function buildControlPlaneSnapshot(env = process.env, certification = null) {
   const modes=runtimeReleaseModes(env);
   const gate=salesGate(env);
-  const policy=buildZea10PolicySnapshot(env);
+  const policy=buildZea10PolicySnapshot(env, certification);
   const deployment=Object.freeze({
     environment:String(env.VERCEL_ENV || env.ZEVANORY_DEPLOYMENT_ENV || 'local'),
     branch:String(env.VERCEL_GIT_COMMIT_REF || env.ZEVANORY_RELEASE_REF || '') || null,

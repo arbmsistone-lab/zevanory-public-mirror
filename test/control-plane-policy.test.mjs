@@ -16,12 +16,20 @@ test('ZEA-10 never reports proven without a release SHA binding', () => {
   assert.ok(snapshot.counts.partial + snapshot.counts.blocked === 10);
 });
 
-test('ZEA-10 binds all current internal assurance evidence to an exact SHA', () => {
+test('ZEA-10 keeps baseline assurance partial until remote certification matches the exact SHA', () => {
   const snapshot=buildZea10PolicySnapshot({VERCEL_GIT_COMMIT_SHA:SHA});
   assert.equal(snapshot.release_sha, SHA);
   assert.equal(snapshot.pillars.length,10);
-  assert.equal(snapshot.counts.proven + snapshot.counts.partial + snapshot.counts.blocked,10);
+  assert.equal(snapshot.counts.proven,0);
+  assert.equal(snapshot.counts.partial,10);
   assert.equal(snapshot.claim_scope,'internal_engineering_alignment_not_external_certification');
+});
+
+test('ZEA-10 promotes evidence only when the 36-check remote manifest matches the release SHA', () => {
+  const snapshot=buildZea10PolicySnapshot({VERCEL_GIT_COMMIT_SHA:SHA},{status:'approved',sha:SHA,checks:36});
+  assert.equal(snapshot.counts.proven,10);
+  assert.equal(snapshot.counts.partial,0);
+  assert.ok(snapshot.pillars.every(p=>p.remote_certified===true));
 });
 
 test('control plane remains commercially blocked when global sales gates are not enabled', () => {
