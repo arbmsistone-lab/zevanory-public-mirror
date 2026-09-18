@@ -6,6 +6,7 @@ const html = await readFile(new URL('../public/index.html', import.meta.url), 'u
 const css = await readFile(new URL('../public/control-plane-vnext.css', import.meta.url), 'utf8');
 const js = await readFile(new URL('../public/control-plane-vnext.js', import.meta.url), 'utf8');
 const creativeCss = await readFile(new URL('../public/criativos.css', import.meta.url), 'utf8');
+const vercelCert = await readFile(new URL('../scripts/vercel-preview-cert.mjs', import.meta.url), 'utf8');
 
 test('vNext assets are wired without inline executable code', () => {
   assert.match(html, /control-plane-vnext\.css/);
@@ -36,4 +37,9 @@ test('commercial state remains fail-closed in the executive projection', () => {
 test('creative evidence dialog uses one deliberate scroll surface', () => {
   assert.match(creativeCss, /\.evidence-shell\{overflow:auto;scrollbar-gutter:stable/);
   assert.match(creativeCss, /\.evidence-list,\.evidence-media\{min-height:auto;overflow:visible/);
+});
+
+test('Vercel remote certification runs for control-plane vNext branches', () => {
+  assert.match(vercelCert, /branch\.startsWith\('chatgpt\/control-plane-vnext-'\)/);
+  assert.match(vercelCert, /VERCEL_REMOTE_CERT_APPROVED/);
 });

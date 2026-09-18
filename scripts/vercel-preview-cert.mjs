@@ -1,11 +1,11 @@
 import { spawn, spawnSync } from 'node:child_process';
 
-const TARGET_BRANCH = 'feat/live-action-plan';
 const deployEnv = String(process.env.VERCEL_ENV || '');
 const branch = String(process.env.VERCEL_GIT_COMMIT_REF || '');
 const sha = String(process.env.VERCEL_GIT_COMMIT_SHA || '');
+const certBranch = branch === 'feat/live-action-plan' || branch.startsWith('chatgpt/control-plane-vnext-');
 
-if (deployEnv !== 'preview' || branch !== TARGET_BRANCH) {
+if (deployEnv !== 'preview' || !certBranch) {
   console.log(`VERCEL_REMOTE_CERT_SKIPPED env=${deployEnv || 'unknown'} branch=${branch || 'unknown'}`);
   process.exit(0);
 }
