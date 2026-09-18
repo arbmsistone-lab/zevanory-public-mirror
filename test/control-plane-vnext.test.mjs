@@ -19,16 +19,17 @@ test('executive surface exposes exactly six primary domains', () => {
   assert.match(css, /grid-template-columns:repeat\(3/);
 });
 
-test('evidence bar binds release facts instead of fabricated constants', () => {
-  for (const id of ['commit','release-id','db-state','schema-migrations','domain-state','last-event']) assert.match(js, new RegExp(id));
+test('evidence bar binds canonical control-plane facts instead of fabricated constants', () => {
+  for (const id of ['db-state','schema-migrations','domain-state','last-event']) assert.match(js, new RegExp(id));
+  assert.match(js, /\/api\/control-plane/);
+  assert.match(js, /proof_chain/);
   assert.doesNotMatch(js, /8 PROVADOS|1 PARCIAL|1 BLOQUEADO/);
-  assert.match(js, /SEM RESULTADO CONSOLIDADO/);
 });
 
 test('commercial state remains fail-closed in the executive projection', () => {
   assert.match(js, /COMERCIAL BLOQUEADO/);
-  assert.match(js, /validação obrigatória pendente/);
-  assert.match(js, /BLOQ\|OFF\|NO-GO/);
+  assert.match(js, /SEM PROVA CANÔNICA/);
+  assert.match(js, /painel permanece fail-closed/);
 });
 
 

@@ -15,6 +15,10 @@
       "destination": "/api/platform?surface=finance"
     },
     {
+      "source": "/api/control-plane",
+      "destination": "/api/platform?surface=control-plane"
+    },
+    {
       "source": "/api/creative-asset",
       "destination": "/api/config?view=creative_asset"
     },
