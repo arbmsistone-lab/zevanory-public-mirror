@@ -7,6 +7,7 @@ const css = await readFile(new URL('../public/control-plane-vnext.css', import.m
 const js = await readFile(new URL('../public/control-plane-vnext.js', import.meta.url), 'utf8');
 const creativeCss = await readFile(new URL('../public/criativos.css', import.meta.url), 'utf8');
 const vercelCert = await readFile(new URL('../scripts/vercel-preview-cert.mjs', import.meta.url), 'utf8');
+const serverV2 = await readFile(new URL('../src/server-v2.mjs', import.meta.url), 'utf8');
 
 test('vNext assets are wired without inline executable code', () => {
   assert.match(html, /control-plane-vnext\.css/);
@@ -45,4 +46,9 @@ test('Vercel remote certification runs for control-plane branches and production
   assert.match(vercelCert, /control-plane-certification\.json/);
   assert.match(vercelCert, /checks:36/);
   assert.match(vercelCert, /VERCEL_REMOTE_CERT_APPROVED/);
+});
+
+test('certification server exposes the same canonical control-plane route as Vercel', () => {
+  assert.match(serverV2, /import controlPlaneApi from "\.\/http\/control-plane\.mjs"/);
+  assert.match(serverV2, /\['\/api\/control-plane',controlPlaneApi\]/);
 });
