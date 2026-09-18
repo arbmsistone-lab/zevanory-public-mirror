@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
 const css = await readFile(new URL('../public/control-plane-vnext.css', import.meta.url), 'utf8');
 const js = await readFile(new URL('../public/control-plane-vnext.js', import.meta.url), 'utf8');
+const creativeCss = await readFile(new URL('../public/criativos.css', import.meta.url), 'utf8');
 
 test('vNext assets are wired without inline executable code', () => {
   assert.match(html, /control-plane-vnext\.css/);
@@ -28,4 +29,10 @@ test('commercial state remains fail-closed in the executive projection', () => {
   assert.match(js, /COMERCIAL BLOQUEADO/);
   assert.match(js, /validação obrigatória pendente/);
   assert.match(js, /BLOQ\|OFF\|NO-GO/);
+});
+
+
+test('creative evidence dialog uses one deliberate scroll surface', () => {
+  assert.match(creativeCss, /\.evidence-shell\{overflow:auto;scrollbar-gutter:stable/);
+  assert.match(creativeCss, /\.evidence-list,\.evidence-media\{min-height:auto;overflow:visible/);
 });
