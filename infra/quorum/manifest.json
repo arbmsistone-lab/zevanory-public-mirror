@@ -1,0 +1,45 @@
+﻿{
+  "schema": "zevanory-quorum-iac/v2",
+  "release_id": "ZEVANORY-EG0039-FINAL",
+  "artifact_sha": "a908c237b80af2c571edb4947cb15ab25f0f8f77",
+  "evidence_root": "0b6bf68ea30acba0345738ba1e3f38a1860d80bbcd4ccf7d07c4ec13344d3fcf",
+  "policy_version": "ZEVANORY-CROWN-10P@1.0.0",
+  "quorum_required": 3,
+  "signature_algorithm": "RSA-PSS-SHA256",
+  "providers": {
+    "cloudflare": {
+      "endpoint": "https://zevanory-quorum-verifier.zevanory.workers.dev/",
+      "key_id": "fc30af57fd7a368338b83ad345530ccc7b65e381617cdd2564f2367fc9d4fd96",
+      "key_storage": "cloudflare-kv",
+      "worker_version": "ac3fac2a-f9d2-415a-ba77-9003f135f84c"
+    },
+    "render": {
+      "endpoint": "https://zevanory-quorum-render-v2.onrender.com/",
+      "key_id": "e3073e95e67bee8dc55e1e1889b0e88ec4e4f68ae3bea7c333c786a9859a704e",
+      "plan": "free",
+      "source_branch": "render-signed-quorum",
+      "key_generation": "remote-build"
+    },
+    "deno": {
+      "endpoint": "https://pvkpkqwdnnpkgvllwqbc.supabase.co/functions/v1/arbm-flow-publish-once-20260905/release",
+      "quorum_endpoint": "https://pvkpkqwdnnpkgvllwqbc.supabase.co/functions/v1/arbm-flow-publish-once-20260905/quorum",
+      "key_id": "7166e0ed7473a2a19326fc405234a46338356f03f532704251d14cb761c66a91",
+      "function_version": 21,
+      "key_storage": "private-rls-table"
+    }
+  },
+  "revocation": {
+    "green_to_revoked_on_mismatch": true,
+    "fail_closed_on_ledger_failure": true
+  },
+  "ledger": {
+    "append_only": true,
+    "hash_chained": true,
+    "rls": true
+  },
+  "watchdog": {
+    "cadence": "hourly",
+    "notify_only_on_failure": true
+  }
+}
+
