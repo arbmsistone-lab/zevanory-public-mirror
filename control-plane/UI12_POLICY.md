@@ -37,3 +37,12 @@ Any FAIL or UNKNOWN blocks UI-12 eligibility. No averaging is allowed.
 
 ## Release rule
 The Control Plane may be labeled UI-12 PROVEN only when every mandatory gate passes on the exact candidate SHA. Missing remote evidence is UNKNOWN, never inferred PASS.
+
+## Scheduler-independent remote quorum
+If the primary Quality Control Plane scheduler is unavailable before any test step executes, UI-12 remains fail-closed but may use an equivalent independent remote quorum on the exact candidate SHA:
+1. Cloudflare Browser Run remote audit returns PASS for desktop, tablet, mobile, focus, target size, contrast, overflow, clipping, overlap and drilldown geometry.
+2. At least one independent remote build provider reports SUCCESS for the exact SHA.
+3. Two independent data-plane authorities recompute and validate the UI-12 source/invariant contract on the exact SHA.
+4. Provider infrastructure errors that execute zero test steps are degradation telemetry, not functional vetoes. Any executed functional test failure remains a veto.
+
+This fallback does not lower any acceptance criterion and cannot convert missing evidence into PASS.
