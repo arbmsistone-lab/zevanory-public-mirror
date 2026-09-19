@@ -1,0 +1,30 @@
+{
+  "schema": "zees16-proof/v1",
+  "target": "arbm-sist",
+  "pillar": "P06",
+  "status": "PASS",
+  "target_sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
+  "canonical_branch": "master",
+  "run_id": 35459185350,
+  "artifact": {
+    "id": 10589531717,
+    "name": "zees-p06-final-regression",
+    "sha256": "89325dd8cca615c6d480a3b3329b43baf150370c27db04bc9f9ba2d181f0c764"
+  },
+  "reproduce": "Open GitHub Actions run 35459185350; verify checkout exact canonical subject, all regression steps SUCCESS, artifact digest sha256:89325dd8cca615c6d480a3b3329b43baf150370c27db04bc9f9ba2d181f0c764, and public P06 attestation verification SUCCESS.",
+  "claim": "Testes, verificacao e regressao final fecharam no SHA canonico, com regressao Python/Node, fail-closed, continuidade e attestation.",
+  "aggregate_closeout": {
+    "run_id": 35459250572,
+    "artifact": {
+      "id": 10589681750,
+      "name": "zees-priority-pillars-final-closeout",
+      "sha256": "b6ccc1eb222c12a5f1ea0b69e02a71fef9107bc4845ed4f68a3cc2418dd317ee"
+    }
+  },
+  "policy": {
+    "zero_spend_hard": true,
+    "heavy_local": 0,
+    "fail_closed": true,
+    "exact_sha": true
+  }
+}
