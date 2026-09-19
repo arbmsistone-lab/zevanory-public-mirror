@@ -1,0 +1,22 @@
+{
+  "schema": "zees16-proof/v1",
+  "target": "arbm-one-system",
+  "pillar": "P06",
+  "status": "PASS",
+  "target_sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
+  "canonical_branch": "main",
+  "run_id": 35460295310,
+  "artifact": {
+    "id": 10588738309,
+    "name": "zees-arbm-one-p06",
+    "sha256": "c5f87dc9cb59f7b941018f7a30a3cc3279689f07bf6816538ffe52847fec5202"
+  },
+  "reproduce": "Verificar run 35460295310 e artefato sha256 c5f87dc9cb59f7b941018f7a30a3cc3279689f07bf6816538ffe52847fec5202; verificar tambem run 35453485351 exact-provider-proof SUCCESS no mesmo SHA.",
+  "claim": "P06 fechado no SHA 5a919... com exact-provider/typecheck previamente verde, regressao critica, contrato visual 12P, producao no SHA exato e health real.",
+  "policy": {
+    "zero_spend_hard": true,
+    "heavy_local": 0,
+    "fail_closed": true,
+    "exact_sha": true
+  }
+}
