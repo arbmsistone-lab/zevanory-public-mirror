@@ -17,6 +17,7 @@ jobs:
           paths:
             - ~/.npm
       - run: npm test
+      - run: node --test test/ui-12-assurance.test.mjs test/control-plane-vnext.test.mjs
       - run: npm run audit:content:evolution
       - run: npm run audit:content:evolution:adversarial
       - run: npm run audit:commercial-engine-v2:10x
@@ -230,7 +231,8 @@ workflows:
     jobs:
       - production_monitor
   ci:
-    when: false
+    when:
+      equal: [ chatgpt/ui12-engineering-20260919, << pipeline.git.branch >> ]
     jobs:
       - core
       - arbm_cloud_quality
