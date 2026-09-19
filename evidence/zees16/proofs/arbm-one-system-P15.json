@@ -46,5 +46,8 @@
       "github",
       "cloudflare"
     ]
-  }
+  },
+  "run_id": 35458530433,
+  "validation_model": "THREE_PROVIDER_QUORUM",
+  "note": "P15 is a provenance/quorum proof: GitLab and GitHub provide signed OIDC evidence hashes; Cloudflare provides exact-SHA production deployment verification. It is intentionally validated as a multi-provider evidence chain rather than a single artifact."
 }
