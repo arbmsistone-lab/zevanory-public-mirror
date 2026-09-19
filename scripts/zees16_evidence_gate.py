@@ -119,8 +119,17 @@ def main() -> int:
                         if not isinstance(proof.get("run_id"), int) or proof["run_id"] <= 0:
                             errors += fail(f"{tid}/{pillar}: proof run_id invalido")
                         artifact = proof.get("artifact") or {}
-                        if not SHA256.fullmatch(str(artifact.get("sha256", ""))):
-                            errors += fail(f"{tid}/{pillar}: proof artifact digest invalido")
+                        evidence_chain = proof.get("evidence") or []
+                        if artifact:
+                            if not SHA256.fullmatch(str(artifact.get("sha256", ""))):
+                                errors += fail(f"{tid}/{pillar}: proof artifact digest invalido")
+                        elif pillar == "P15":
+                            providers = {str(e.get("provider", "")) for e in evidence_chain if isinstance(e, dict)}
+                            hashes = [str(e.get("evidence_hash", "")) for e in evidence_chain if isinstance(e, dict) and e.get("evidence_hash")]
+                            if len(providers) < 3 or len(hashes) < 2 or any(not SHA256.fullmatch(h) for h in hashes):
+                                errors += fail(f"{tid}/{pillar}: proof quorum/provenance chain invalida")
+                        else:
+                            errors += fail(f"{tid}/{pillar}: proof artifact ausente")
                         if not str(proof.get("reproduce", "")).strip():
                             errors += fail(f"{tid}/{pillar}: proof sem reproducao")
                     except Exception as exc:
@@ -189,8 +198,17 @@ def main() -> int:
                             if not SHA40.fullmatch(str(proof.get("target_sha", ""))):
                                 errors += fail(f"{target_id}/{pillar_id}: proof SHA invalido")
                             artifact = proof.get("artifact") or {}
-                            if not SHA256.fullmatch(str(artifact.get("sha256", ""))):
-                                errors += fail(f"{target_id}/{pillar_id}: proof artifact digest invalido")
+                            evidence_chain = proof.get("evidence") or []
+                            if artifact:
+                                if not SHA256.fullmatch(str(artifact.get("sha256", ""))):
+                                    errors += fail(f"{target_id}/{pillar_id}: proof artifact digest invalido")
+                            elif pillar_id == "P15":
+                                providers = {str(e.get("provider", "")) for e in evidence_chain if isinstance(e, dict)}
+                                hashes = [str(e.get("evidence_hash", "")) for e in evidence_chain if isinstance(e, dict) and e.get("evidence_hash")]
+                                if len(providers) < 3 or len(hashes) < 2 or any(not SHA256.fullmatch(h) for h in hashes):
+                                    errors += fail(f"{target_id}/{pillar_id}: proof quorum/provenance chain invalida")
+                            else:
+                                errors += fail(f"{target_id}/{pillar_id}: proof artifact ausente")
                             if not str(proof.get("reproduce", "")).strip():
                                 errors += fail(f"{target_id}/{pillar_id}: proof sem reproducao")
         except Exception as exc:
