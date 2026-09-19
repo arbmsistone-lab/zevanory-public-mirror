@@ -48,8 +48,10 @@
     {
       "id": "P07",
       "state": "BLOCKED",
-      "evidence": [],
-      "next": "Evidencia reproduzivel ainda nao registrada."
+      "evidence": [
+        "production deep runtime audit 35454951232 pending"
+      ],
+      "next": "Concluir DAST/runtime/performance e depois fechar SAST + SCA/SBOM + ASVS/OWASP no mesmo SHA."
     },
     {
       "id": "P08",
@@ -67,9 +69,11 @@
       "id": "P10",
       "state": "BLOCKED",
       "evidence": [
-        "workflow full restore existe no SHA cb1634a1"
+        "full restore 35454946037 queued",
+        "production recovery 35454948307 queued",
+        "restore self-test 35454953680 queued"
       ],
-      "next": "Executar e preservar restore/DR; configuracao nao e prova."
+      "next": "Aguardar conclusao dos drills no SHA canonico 5a919...; fila nao conta como prova."
     },
     {
       "id": "P11",
@@ -101,9 +105,11 @@
       "id": "P15",
       "state": "BLOCKED",
       "evidence": [
-        "main cb1634a1: Buildkite/CircleCI/Workers Build failure"
+        "main 5a919fbced6efca3133611051cccc25f29b41a8d",
+        "Buildkite/CircleCI/Workers Build failure",
+        "exact-provider-proof 35453485351 queued"
       ],
-      "next": "Todos os provedores obrigatorios verdes no mesmo SHA."
+      "next": "Obter quorum multi-provider verde no mesmo SHA canonico."
     },
     {
       "id": "P16",
