@@ -17,8 +17,11 @@ on:
       - 'sitemap.xml'
       - 'scripts/premerge_product_audit.py'
       - 'scripts/zevanory_10p_excellence_gate.py'
+      - 'scripts/zevanory_crown_gate.py'
+      - 'scripts/test_crown_negative.py'
       - 'compliance/**'
       - 'evidence/approvals/**'
+      - 'evidence/certificates/**'
       - '.github/workflows/product-pages-premerge.yml'
   workflow_dispatch:
 
@@ -51,6 +54,8 @@ jobs:
           set -euo pipefail
           python3 -m py_compile scripts/premerge_product_audit.py
           python3 -m py_compile scripts/zevanory_10p_excellence_gate.py
+          python3 -m py_compile scripts/zevanory_crown_gate.py
+          python3 -m py_compile scripts/test_crown_negative.py
 
       - name: Run fail-closed product audit
         run: |
@@ -61,3 +66,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/zevanory_10p_excellence_gate.py
+
+      - name: Run CROWN negative policy tests
+        run: |
+          set -euo pipefail
+          python3 scripts/test_crown_negative.py
+
+      - name: Run ZEVANORY CROWN gate
+        run: |
+          set -euo pipefail
+          python3 scripts/zevanory_crown_gate.py
