@@ -201,9 +201,19 @@ export default {
         if(manifestResponse.ok) certification=await manifestResponse.json();
       }catch{}
       const snapshot=buildControlPlaneSnapshot(env,certification);
+      let zea10Live={ready:false,fail_closed:true,error:'zea10_service_binding_unavailable'};
+      try{
+        if(env?.ZEA10_ENGINE&&typeof env.ZEA10_ENGINE.report==='function'){
+          const report=await env.ZEA10_ENGINE.report();
+          zea10Live={ready:true,fail_closed:report?.fail_closed===true,report};
+        }
+      }catch(error){
+        zea10Live={ready:false,fail_closed:true,error:String(error?.message||error||'zea10_service_error')};
+      }
+      const controlPlane={...snapshot,zea10_live:zea10Live};
       const headers=new Headers({'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});
       if(env?.ZEVANORY_RELEASE_SHA)headers.set('x-deployment-sha',String(env.ZEVANORY_RELEASE_SHA));
-      return new Response(JSON.stringify(snapshot),{status:200,headers});
+      return new Response(JSON.stringify(controlPlane),{status:200,headers});
     }
     const delegatedPayment=await delegatePaymentRequest(request,env);if(delegatedPayment)return delegatedPayment;
     if (url.pathname === '/private/artifacts/issue') return handleArtifactIssue(request, env);

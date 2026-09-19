@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "arbm-control-senior-proxy",
+  "account_id": "1b26415802588185a86c1d4d3ebf5bdb",
+  "main": "workers/control-plane-proxy.mjs",
+  "compatibility_date": "2026-09-16",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "services": [
+    {
+      "binding": "ZEVANORY_RUNTIME",
+      "service": "zevanory"
+    }
+  ]
+}
