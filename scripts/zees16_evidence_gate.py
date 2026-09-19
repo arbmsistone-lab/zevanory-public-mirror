@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "evidence" / "zees16" / "current.json"
+COVERAGE_DIR = ROOT / "evidence" / "zees16" / "coverage"
 ALLOWED_STATES = {"PROVADO", "PARTIAL", "BLOCKED", "N/A", "EXTERNAL"}
 PILLARS = {f"P{i:02d}" for i in range(1, 17)}
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
@@ -126,6 +127,38 @@ def main() -> int:
         for row in parity:
             if not isinstance(row, list) or len(row) != 2 or not SHA40.fullmatch(str(row[1])):
                 errors += fail(f"blob parity invalido: {row!r}")
+
+    index_path = COVERAGE_DIR / "index.json"
+    if not index_path.exists():
+        errors += fail("coverage/index.json ausente")
+    else:
+        try:
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+            targets = index.get("targets", [])
+            if not isinstance(targets, list) or not targets:
+                errors += fail("coverage index sem targets")
+            for target_id in targets:
+                path = COVERAGE_DIR / f"{target_id}.json"
+                if not path.exists():
+                    errors += fail(f"coverage ausente: {target_id}")
+                    continue
+                doc = json.loads(path.read_text(encoding="utf-8"))
+                pillars = doc.get("pillars", [])
+                ids = [str(item.get("id", "")) for item in pillars if isinstance(item, dict)]
+                if len(pillars) != 16 or set(ids) != PILLARS:
+                    errors += fail(f"{target_id}: deve conter exatamente P01..P16")
+                for item in pillars:
+                    if not isinstance(item, dict):
+                        continue
+                    state = str(item.get("state", ""))
+                    if state not in ALLOWED_STATES:
+                        errors += fail(f"{target_id}/{item.get('id')}: state invalido")
+                    if state == "N/A" and not str(item.get("next", "")).startswith("N/A:"):
+                        errors += fail(f"{target_id}/{item.get('id')}: N/A sem justificativa")
+                    if state == "PROVADO":
+                        errors += fail(f"{target_id}/{item.get('id')}: coverage nao promove PROVADO; use manifest reproduzivel dedicado")
+        except Exception as exc:
+            errors += fail(f"coverage invalida: {exc}")
 
     if errors:
         print(f"\nZEES-16 EVIDENCE GATE: FAIL ({errors} erro(s))")
