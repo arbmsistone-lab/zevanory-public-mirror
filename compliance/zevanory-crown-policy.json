@@ -1,0 +1,24 @@
+{
+  "standard": "ZEVANORY-CROWN-10P",
+  "version": "1.0.0",
+  "mode": "fail-closed",
+  "minimum_confidence": 0.99,
+  "required_excellence": 1.0,
+  "required_independent_proofs": 2,
+  "requirements": {
+    "ten_pillars_proven": true,
+    "artifact_sha256": true,
+    "evidence_merkle_root": true,
+    "second_independent_verifier": true,
+    "sbom_inventory": true,
+    "provenance_record": true,
+    "negative_policy_tests": true,
+    "red_team_record": true,
+    "drift_guard": true,
+    "revalidation_on_change": true,
+    "rollback_contract": true,
+    "closed_loop_revenue_evidence": true,
+    "immutable_certificate": true
+  },
+  "certificate_statuses": ["UNSUBMITTED","BLOCKED","CROWN_APPROVED"]
+}
