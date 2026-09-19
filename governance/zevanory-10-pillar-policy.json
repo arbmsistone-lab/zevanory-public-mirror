@@ -1,0 +1,91 @@
+{
+  "policy_id": "ZEVANORY-10P-APPROVAL",
+  "version": "1.0.0",
+  "mode": "fail_closed",
+  "scope": {
+    "artifact_types": [
+      "creative",
+      "audio",
+      "image",
+      "product",
+      "system"
+    ],
+    "decision": "approval_or_promotion"
+  },
+  "approval_rule": {
+    "strategy": "all_pillars_required",
+    "partial_approval_forbidden": true,
+    "score_compensation_forbidden": true,
+    "minimum_confidence": 0.99,
+    "required_excellence": 100,
+    "required_pillar_status": "PROVEN",
+    "no_manifest_means": "NOT_APPROVED"
+  },
+  "evidence_contract": {
+    "minimum_items_per_pillar": 1,
+    "reproducible_required": true,
+    "pass_result_required": true,
+    "artifact_revision_binding_required": true,
+    "source_required": true,
+    "locator_required": true,
+    "sha256_required": true,
+    "verified_at_required": true,
+    "expired_evidence_forbidden_when_valid_until_present": true
+  },
+  "pillars": [
+    {
+      "id": "P1",
+      "key": "attribution_tracking",
+      "title": "Engenharia de Dados de Atribuicao e Rastreamento"
+    },
+    {
+      "id": "P2",
+      "key": "programmatic_creative",
+      "title": "Automacao e Geracao de Ativos em Escala"
+    },
+    {
+      "id": "P3",
+      "key": "generative_ai_orchestration",
+      "title": "IA Generativa Aplicada e Orquestracao de LLMs/LMMs"
+    },
+    {
+      "id": "P4",
+      "key": "computer_vision_audit",
+      "title": "Visao Computacional e Auditoria Estatica de Criativos"
+    },
+    {
+      "id": "P5",
+      "key": "automated_mvt",
+      "title": "Arquitetura de Testes Multivariaveis Automatizados"
+    },
+    {
+      "id": "P6",
+      "key": "nlp_algorithmic_copy",
+      "title": "NLP e Copywriting Algoritmico"
+    },
+    {
+      "id": "P7",
+      "key": "recommendation_hyperlocal",
+      "title": "Sistemas de Recomendacao e Personalizacao Contextual/Hiperlocal"
+    },
+    {
+      "id": "P8",
+      "key": "cloud_edge_performance",
+      "title": "Arquitetura de Nuvem e Edge Computing"
+    },
+    {
+      "id": "P9",
+      "key": "governance_compliance_integrity",
+      "title": "Governanca, Compliance de Dados e Etica Algoritmica"
+    },
+    {
+      "id": "P10",
+      "key": "mlops_closed_loop",
+      "title": "MLOps e Closed-Loop Analytics"
+    }
+  ],
+  "terminal_states": {
+    "approved": "PROVEN",
+    "not_approved": "BLOCKED"
+  }
+}
