@@ -2,7 +2,7 @@
   "schema": "zees16-evidence-registry/v1",
   "standard": "ZEVANORY ENGINEERING EXCELLENCE STANDARD",
   "version": "ZEES-16/2026.09",
-  "generated_at": "2026-09-19T18:12:00Z",
+  "generated_at": "2026-09-19T18:24:00Z",
   "approval_mode": "fail-closed",
   "promotion_rule": "PROVADO somente com evidencia integral reproduzivel vinculada ao alvo, release/SHA e controle aplicavel. Evidencia parcial nunca promove automaticamente.",
   "targets": [
@@ -30,21 +30,6 @@
           "captured_at": "2026-09-19T16:23:00Z"
         },
         {
-          "pillar": "P15",
-          "state": "BLOCKED",
-          "claim": "Main atual permanece fail-closed por CI multi-provider em falha; exact-provider-proof do mesmo SHA ainda estava queued na captura.",
-          "source": "ARBM CONTROL github_commit_status + run 35453485351",
-          "sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
-          "blockers": [
-            "buildkite/arbm-one=failure",
-            "ci/circleci: portable_core=failure",
-            "ci/circleci: backup_probe_db=failure",
-            "ci/circleci: backup_probe_passphrase=failure",
-            "ci/circleci: backup_probe_service=failure",
-            "Workers Builds: arbm-one-production=failure"
-          ]
-        },
-        {
           "pillar": "P06",
           "state": "PROVADO",
           "claim": "P06 final regression proof PASS no SHA canônico 5a919fb...",
@@ -59,6 +44,14 @@
           "source": "ZEES proof run 35460326439",
           "sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
           "reproduce": "Verify evidence/zees16/proofs/arbm-one-system-P07.json, run 35460326439, target SHA and artifact SHA256 fe0787b9834788b52bbc6abe0680d02f4ae820a3a31c352ac5ea94583bee0e03."
+        },
+        {
+          "pillar": "P15",
+          "state": "PROVADO",
+          "claim": "Quorum multiprovider no mesmo SHA provado por GitLab OIDC, GitHub OIDC e Cloudflare exact-SHA production deploy.",
+          "source": "ci_provider_attestations + GitHub Actions run 35458530433 + production /__arbm/build",
+          "sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
+          "reproduce": "Verify evidence/zees16/proofs/arbm-one-system-P15.json"
         }
       ]
     },
