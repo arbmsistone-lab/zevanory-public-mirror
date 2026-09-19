@@ -37,6 +37,7 @@ test('UI-12 defines responsive hierarchy for desktop tablet and mobile', () => {
   assert.match(css,/@media\(max-width:81\.25rem\)/);
   assert.match(css,/@media\(max-width:56\.25rem\)/);
   assert.match(css,/@media\(max-width:40rem\)/);
+  assert.match(css,/grid-template-rows:none;grid-auto-rows:auto/);
   assert.match(css,/\.cpv2-grid\{grid-template-columns:1fr\}/);
 });
 

@@ -247,7 +247,7 @@ body.cpv2-enabled .detail-section{border-radius:var(--cp-radius-md);background:r
   .cpv2-hero{grid-template-columns:1fr}
   .cpv2-state{align-items:flex-start}
   .cpv2-state-badge{min-width:0}
-  .cpv2-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:auto}
+  .cpv2-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:none;grid-auto-rows:auto}
   .cpv2-proofbar{grid-template-columns:repeat(3,minmax(0,1fr))}
   .cpv2-policy-list{grid-template-columns:1fr}
   .cpv2-policy-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
