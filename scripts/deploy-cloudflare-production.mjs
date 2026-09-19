@@ -31,6 +31,7 @@ function run(command,args,{capture=false,shell=false}={}){
 export function buildRuntimeConfig(baseText,meta){
   const cfg=JSON.parse(baseText);
   cfg.vars={...(cfg.vars||{}),ZEVANORY_RELEASE_SHA:meta.sha,ZEVANORY_RELEASE_REF:meta.ref,ZEVANORY_DEPLOYMENT_ENV:'production'};
+  delete cfg.vars.PUBLIC_RELEASE_SHA;
   delete cfg.vars.CERTIFICATION_PILOT_ENABLED; delete cfg.vars.CERTIFICATION_PILOT_MAX_ORDERS;
   return JSON.stringify(cfg,null,2);
 }
@@ -39,6 +40,16 @@ export function verifyLiveRelease(body,meta){
   if(String(body?.deployment?.commit_sha||'').toLowerCase()!==meta.sha) throw new Error('live_release_sha_mismatch');
   if(String(body?.deployment?.branch||'')!==meta.ref) throw new Error('live_release_ref_mismatch');
   if(String(body?.sales_mode||'')!=='globally-blocked') throw new Error('sales_must_remain_blocked_during_closeout');
+  return true;
+}
+export function verifyLiveControlPlane(body,meta){
+  const sha=String(body?.release?.deployment?.commit_sha||'').toLowerCase();
+  const branch=String(body?.release?.deployment?.branch||'');
+  const counts=body?.policy?.counts||{};
+  if(sha!==meta.sha||String(body?.proof_chain?.sha||'').toLowerCase()!==meta.sha) throw new Error('control_plane_sha_mismatch');
+  if(branch!==meta.ref||String(body?.proof_chain?.branch||'')!==meta.ref) throw new Error('control_plane_ref_mismatch');
+  if(Number(counts.proven)!==10||Number(counts.partial)!==0||Number(counts.blocked)!==0) throw new Error('control_plane_zea10_not_proven');
+  if(String(body?.global_state||'')!=='operational_commercial_blocked') throw new Error('control_plane_commercial_state_invalid');
   return true;
 }
 export async function main(){
@@ -56,6 +67,8 @@ export async function main(){
     else run('npx',args,{shell:false});
     const body=JSON.parse(run('curl',['-fsS','https://zevanory.api.br/api/release'],{capture:true}));
     verifyLiveRelease(body,meta);
+    const controlPlane=JSON.parse(run('curl',['-fsS','https://zevanory.api.br/api/control-plane'],{capture:true}));
+    verifyLiveControlPlane(controlPlane,meta);
     console.log(`CLOUDFLARE_PRODUCTION_COMPLETE sha=${meta.sha} ref=${meta.ref}`);
   } finally { rmSync(TEMP_CONFIG,{force:true}); }
 }

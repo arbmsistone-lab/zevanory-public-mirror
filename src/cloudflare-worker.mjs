@@ -26,6 +26,7 @@ import { runtimeReleaseModes } from './release.mjs';
 import { runNonCommercialAutopilot } from './nonCommercialAutopilot.mjs';
 import { handleInternalAuthMailer } from './internalAuthMailer.mjs';
 import { hydrateRuntimeConfig } from './runtimeConfigHydration.mjs';
+import { buildControlPlaneSnapshot } from './controlPlanePolicy.mjs';
 import { verifyOwnerCredential, setOwnerCredential, ownerSetupKey, createOwnerSession, verifyOwnerSession, ownerCookie, clearOwnerCookie, readOwnerCookie } from './ownerAccess.mjs';
 
 const PORT = 8788;
@@ -147,7 +148,7 @@ function withSecurityHeaders(response, env) {
   headers.set('cross-origin-resource-policy', 'same-origin');
   headers.set('x-dns-prefetch-control', 'off');
   headers.set('strict-transport-security', 'max-age=63072000; includeSubDomains; preload');
-  if (env?.PUBLIC_RELEASE_SHA) headers.set('x-deployment-sha', String(env.PUBLIC_RELEASE_SHA));
+  if (env?.ZEVANORY_RELEASE_SHA) headers.set('x-deployment-sha', String(env.ZEVANORY_RELEASE_SHA));
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -191,6 +192,19 @@ export default {
       return handleAsNodeRequest(PORT,new Request(target,{method:request.method,headers,body:['GET','HEAD'].includes(request.method)?undefined:request.body,redirect:'manual'}));
     }
     if (url.hostname === 'zevanory.internal') return handleInternalAuthMailer(request, env);
+    if(url.pathname==='/api/control-plane'){
+      if(request.method!=='GET') return new Response(JSON.stringify({error:'method_not_allowed'}),{status:405,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+      let certification=null;
+      try{
+        const manifestUrl=new URL('/control-plane-certification.json',url);
+        const manifestResponse=await env.ASSETS.fetch(new Request(manifestUrl,{method:'GET'}));
+        if(manifestResponse.ok) certification=await manifestResponse.json();
+      }catch{}
+      const snapshot=buildControlPlaneSnapshot(env,certification);
+      const headers=new Headers({'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});
+      if(env?.ZEVANORY_RELEASE_SHA)headers.set('x-deployment-sha',String(env.ZEVANORY_RELEASE_SHA));
+      return new Response(JSON.stringify(snapshot),{status:200,headers});
+    }
     const delegatedPayment=await delegatePaymentRequest(request,env);if(delegatedPayment)return delegatedPayment;
     if (url.pathname === '/private/artifacts/issue') return handleArtifactIssue(request, env);
     if (url.pathname === '/private/artifacts/download') return handleArtifactDownload(request, env);
