@@ -1,0 +1,16 @@
+{
+  "schema": "zees16-coverage-index/v1",
+  "version": "ZEES-16/2026.09",
+  "rule": "Cada alvo deve possuir P01..P16; configuracao nao vale como prova; PROVADO exige evidencia integral reproduzivel.",
+  "targets": [
+    "arbm-one-system",
+    "arbm-sist",
+    "zevanory",
+    "zevanory-one",
+    "ia-na-pratica",
+    "vendas-na-pratica",
+    "lucro-e-caixa",
+    "combo-ia-vendas",
+    "negocio-completo"
+  ]
+}
