@@ -1,0 +1,209 @@
+{
+  "schema": "zees16-evidence-registry/v1",
+  "standard": "ZEVANORY ENGINEERING EXCELLENCE STANDARD",
+  "version": "ZEES-16/2026.09",
+  "generated_at": "2026-09-19T15:05:00Z",
+  "approval_mode": "fail-closed",
+  "promotion_rule": "PROVADO somente com evidencia integral reproduzivel vinculada ao alvo, release/SHA e controle aplicavel. Evidencia parcial nunca promove automaticamente.",
+  "targets": [
+    {
+      "id": "arbm-one-system",
+      "name": "ARBM ONE",
+      "kind": "SISTEMA PRIVADO",
+      "canonical_sha": "cb1634a1117d198a65bd677c75fbd959a8d11089",
+      "state": "BLOCKED",
+      "evidence": [
+        {
+          "pillar": "P05",
+          "state": "PARTIAL",
+          "claim": "ci:portable:core executado com sucesso em prova remota exact-SHA do candidato cb1634a1.",
+          "source": "GitHub Actions run 35450150277 / exact-proof",
+          "sha": "cb1634a1117d198a65bd677c75fbd959a8d11089",
+          "note": "O run head da branch de prova e 6e79edd3..., mas o workflow faz checkout e assert do TARGET_SHA cb1634a1."
+        },
+        {
+          "pillar": "P06",
+          "state": "PARTIAL",
+          "claim": "Contrato visual global 12P passou no mesmo exact-SHA cb1634a1.",
+          "source": "GitHub Actions run 35450150277 / step Run global 12P contract",
+          "sha": "cb1634a1117d198a65bd677c75fbd959a8d11089"
+        },
+        {
+          "pillar": "P12",
+          "state": "PARTIAL",
+          "claim": "Producao respondeu HTTP 200 em https://arbmone.api.br/.",
+          "source": "ARBM CONTROL production_probe",
+          "sha": "cb1634a1117d198a65bd677c75fbd959a8d11089",
+          "captured_at": "2026-09-19T15:03:00Z"
+        },
+        {
+          "pillar": "P15",
+          "state": "BLOCKED",
+          "claim": "Main atual permanece fail-closed por CI multi-provider em falha.",
+          "source": "ARBM CONTROL github_commit_status",
+          "sha": "cb1634a1117d198a65bd677c75fbd959a8d11089",
+          "blockers": [
+            "buildkite/arbm-one=failure",
+            "ci/circleci: portable_core=failure",
+            "ci/circleci: backup_probe_db=failure",
+            "ci/circleci: backup_probe_passphrase=failure",
+            "ci/circleci: backup_probe_service=failure",
+            "Workers Builds: arbm-one-production=failure"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "arbm-sist",
+      "name": "ARBM SIST",
+      "kind": "SISTEMA + PRODUTO",
+      "canonical_sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
+      "state": "BLOCKED",
+      "evidence": [
+        {
+          "pillar": "P10",
+          "state": "PARTIAL",
+          "claim": "Sovereign Continuity repetiu SUCCESS no master, validando runner universal, OIDC e execucao de missao segura.",
+          "source": "GitHub Actions run 35449974036 / job 105915310751",
+          "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888"
+        },
+        {
+          "pillar": "P05",
+          "state": "PARTIAL",
+          "claim": "Na focal 091 candidata, proof-tests passou com escopo exato, guards negativos, banca 50x10 e council 100-lane.",
+          "source": "GitHub Actions run 35449699496 / job 105914601346",
+          "sha": "e6a164a959b2e561d653d54601931af692580d16"
+        },
+        {
+          "pillar": "P06",
+          "state": "PARTIAL",
+          "claim": "policy, proof-tests e replay concluíram SUCCESS e preservaram regressões historicas.",
+          "source": "GitHub Actions run 35449699496 / jobs 105914601197, 105914601346, 105914640479",
+          "sha": "e6a164a959b2e561d653d54601931af692580d16"
+        },
+        {
+          "pillar": "P14",
+          "state": "BLOCKED",
+          "claim": "A focal 091 oficial terminou com score 0.0 e falha especialista por ACTION_COUNT; logo IA/LLMOps nao pode ser promovido.",
+          "source": "GitHub Actions run 35449699496 / focal-091 job 105915022088",
+          "sha": "e6a164a959b2e561d653d54601931af692580d16",
+          "fatal": "FATAL_SHIM:TASK091_SPECIALIST_POLICY_REJECTED:ACTION_COUNT",
+          "evaluator": {
+            "score": 0,
+            "section_e": "0.2769/0.3000",
+            "visual_gates": "12/13",
+            "failure": "slide3 rounded_text_containment: bullet 'Burn improvement relies on expansion payback from Q4.' outside threshold"
+          },
+          "artifacts": [
+            {
+              "id": 10586633080,
+              "name": "osworld-v32-focal-091-free",
+              "sha256": "35946a2ffbb22de512448ada8866eef9836ea60d912d017068e7bb8ec53ff1bb",
+              "size_bytes": 10608787
+            },
+            {
+              "id": 10586468955,
+              "name": "arbm-091-local-contract-replay",
+              "sha256": "092bd941aeb4bf34bd7a863d33f11c99372f67cb577049c81c651f6363fdec8f",
+              "size_bytes": 4390
+            },
+            {
+              "id": 10585748688,
+              "name": "arbm091-wps-proof-report",
+              "sha256": "b7cf20a5531f5416e7be7aeb16f8f8fb9744d7aff13b88e51af5eb14946ba8a6",
+              "size_bytes": 610
+            }
+          ]
+        },
+        {
+          "pillar": "P15",
+          "state": "PARTIAL",
+          "claim": "Master possui repeticoes SUCCESS de sovereign-continuity, mas combined_state permanece pending.",
+          "source": "ARBM CONTROL github_commit_status",
+          "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888"
+        }
+      ]
+    },
+    {
+      "id": "zevanory",
+      "name": "ZEVANORY",
+      "kind": "SISTEMA + PRODUTO",
+      "canonical_sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae",
+      "state": "PARTIAL",
+      "evidence": [
+        {
+          "pillar": "P02",
+          "state": "PARTIAL",
+          "claim": "Static audit fail-closed e gate 10P passaram em PR; blobs de paginas/CSS auditados sao identicos aos blobs do SHA de producao.",
+          "source": "run 35442508701 + blob parity against f0db89c4",
+          "sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae"
+        },
+        {
+          "pillar": "P04",
+          "state": "PARTIAL",
+          "claim": "product.css auditado exige :focus e prefers-reduced-motion; isso e evidencia estrutural, nao WCAG integral.",
+          "source": "scripts/premerge_product_audit.py + run 35442508701",
+          "sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae"
+        },
+        {
+          "pillar": "P11",
+          "state": "PARTIAL",
+          "claim": "Audit confirmou content-visibility e ausencia de JS cliente externo no primeiro render nas paginas auditadas.",
+          "source": "run 35442508701",
+          "sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae"
+        },
+        {
+          "pillar": "P12",
+          "state": "PARTIAL",
+          "claim": "Dominio oficial respondeu HTTP 200.",
+          "source": "ARBM CONTROL production_probe",
+          "sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae"
+        },
+        {
+          "pillar": "P15",
+          "state": "PARTIAL",
+          "claim": "GitHub Pages build/deploy/report-build-status concluiram SUCCESS no SHA de producao.",
+          "source": "GitHub Actions run 35442782458",
+          "sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae"
+        },
+        {
+          "pillar": "P16",
+          "state": "PARTIAL",
+          "claim": "Gate estatico confirmou VENDA OFF sem links de checkout/payment nas paginas auditadas; nao prova ciclo comercial completo.",
+          "source": "run 35442508701",
+          "sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae"
+        }
+      ]
+    }
+  ],
+  "product_page_blob_parity": [
+    [
+      "zevanory-one",
+      "86dfeb01fac627de4358e8b7f840e1b89e54e24c"
+    ],
+    [
+      "arbm-sist",
+      "95a19235a0ba77830a83f0e2b47f406502eb57e3"
+    ],
+    [
+      "ia-na-pratica",
+      "7c5b9dac20fc1ff0421e64f52ab7b6d2689d2d22"
+    ],
+    [
+      "vendas-na-pratica",
+      "2a6b9be0bd12a2ffbd9e7a4a8e9941829eab30d3"
+    ],
+    [
+      "lucro-e-caixa",
+      "427e208349bd280128413af2f16e31bca1cb9a43"
+    ],
+    [
+      "combo-ia-vendas",
+      "2d0c53565af6eef646439b1c4f505a331c842705"
+    ],
+    [
+      "negocio-completo",
+      "d4fb45a28616cf714c1f33b93bf39bfcacfbfce3"
+    ]
+  ]
+}
