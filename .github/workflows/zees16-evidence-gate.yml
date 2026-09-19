@@ -4,10 +4,6 @@ on:
   pull_request:
     branches:
       - gh-pages
-    paths:
-      - 'evidence/zees16/**'
-      - 'scripts/zees16_evidence_gate.py'
-      - '.github/workflows/zees16-evidence-gate.yml'
   workflow_dispatch:
 
 permissions:
