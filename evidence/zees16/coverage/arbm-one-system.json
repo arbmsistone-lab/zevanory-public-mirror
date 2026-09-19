@@ -39,19 +39,23 @@
     },
     {
       "id": "P06",
-      "state": "PARTIAL",
+      "state": "PROVADO",
       "evidence": [
-        "run 35450150277 global 12P SUCCESS"
+        "proof manifest evidence/zees16/proofs/arbm-one-system-P06.json",
+        "run 35460295310 SUCCESS",
+        "artifact sha256 c5f87dc9cb59f7b941018f7a30a3cc3279689f07bf6816538ffe52847fec5202"
       ],
-      "next": "Fechar suite combinada no main/release."
+      "next": "N/A: pilar fechado por prova reproduzivel no SHA canonico."
     },
     {
       "id": "P07",
-      "state": "BLOCKED",
+      "state": "PROVADO",
       "evidence": [
-        "production deep runtime audit 35454951232 pending"
+        "proof manifest evidence/zees16/proofs/arbm-one-system-P07.json",
+        "run 35460326439 SUCCESS",
+        "artifact sha256 fe0787b9834788b52bbc6abe0680d02f4ae820a3a31c352ac5ea94583bee0e03"
       ],
-      "next": "Concluir DAST/runtime/performance e depois fechar SAST + SCA/SBOM + ASVS/OWASP no mesmo SHA."
+      "next": "N/A: pilar fechado por prova reproduzivel no SHA canonico."
     },
     {
       "id": "P08",
