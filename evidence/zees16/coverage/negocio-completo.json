@@ -1,0 +1,122 @@
+{
+  "schema": "zees16-target-coverage/v1",
+  "version": "ZEES-16/2026.09",
+  "id": "negocio-completo",
+  "name": "ZEVANORY Negocio Completo",
+  "profile": "DIGITAL_CONTENT",
+  "production_blob": "d4fb45a28616cf714c1f33b93bf39bfcacfbfce3",
+  "pillars": [
+    {
+      "id": "P01",
+      "state": "PARTIAL",
+      "evidence": [
+        "HTTP 200; blob d4fb45a28616cf714c1f33b93bf39bfcacfbfce3"
+      ],
+      "next": "Fechar requisitos/arquitetura."
+    },
+    {
+      "id": "P02",
+      "state": "PARTIAL",
+      "evidence": [
+        "run 35442508701 static audit SUCCESS",
+        "blob parity d4fb45a28616cf714c1f33b93bf39bfcacfbfce3"
+      ],
+      "next": "Fechar regressao visual."
+    },
+    {
+      "id": "P03",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P04",
+      "state": "PARTIAL",
+      "evidence": [
+        "product.css focus + reduced-motion"
+      ],
+      "next": "Fechar WCAG 2.2."
+    },
+    {
+      "id": "P05",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P06",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P07",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P08",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P09",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P10",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P11",
+      "state": "PARTIAL",
+      "evidence": [
+        "static audit first render/content-visibility"
+      ],
+      "next": "Fechar performance de campo/carga."
+    },
+    {
+      "id": "P12",
+      "state": "PARTIAL",
+      "evidence": [
+        "pagina publica HTTP 200"
+      ],
+      "next": "Fechar observabilidade/SLOs."
+    },
+    {
+      "id": "P13",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P14",
+      "state": "N/A",
+      "evidence": [],
+      "next": "N/A: perfil nao declara runtime de IA/agentes."
+    },
+    {
+      "id": "P15",
+      "state": "PARTIAL",
+      "evidence": [
+        "runs 35442508701 + 35442782458",
+        "blob parity d4fb45a28616cf714c1f33b93bf39bfcacfbfce3"
+      ],
+      "next": "Fechar provenance/attestation."
+    },
+    {
+      "id": "P16",
+      "state": "PARTIAL",
+      "evidence": [
+        "VENDA OFF sem checkout/payment"
+      ],
+      "next": "Fechar ciclo comercial ou manter bloqueio."
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schema": "zees16-proof/v1",
+  "target": "arbm-sist",
+  "pillar": "P15",
+  "status": "PASS",
+  "target_sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
+  "run_id": 35455653911,
+  "workflow": "ZEES P15 Final Provenance Proof",
+  "controls": [
+    "canonical default branch master resolved to exact target SHA",
+    "prerequisite exact-SHA runs 35449974036, 35454406051 and 35454408536 verified success",
+    "prerequisite artifact digests verified",
+    "final provenance subject generated",
+    "public GitHub/Sigstore attestation generated",
+    "gh attestation verify passed",
+    "final immutable artifact uploaded"
+  ],
+  "artifact": {
+    "id": 10588291884,
+    "name": "zees-p15-final-provenance",
+    "sha256": "b6291272d0f46f6060db0456bbb5246f4eab7f05babef0d87a645be1f2b0e21d"
+  },
+  "reproduce": "Open GitHub Actions run 35455653911; verify job provenance is SUCCESS; download artifact 10588291884 and verify archive digest sha256:b6291272d0f46f6060db0456bbb5246f4eab7f05babef0d87a645be1f2b0e21d; verify the attested zees-p15-final-provenance.json with gh attestation verify --repo arbmsistone-lab/arbm-sist-external-exec-proof.",
+  "captured_at": "2026-09-19T16:39:40Z"
+}
