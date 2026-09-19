@@ -1,0 +1,36 @@
+name: ZEES-16 Evidence Gate
+
+on:
+  pull_request:
+    branches:
+      - gh-pages
+    paths:
+      - 'evidence/zees16/**'
+      - 'scripts/zees16_evidence_gate.py'
+      - '.github/workflows/zees16-evidence-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zees16-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: zees16-evidence / fail-closed
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Show exact revision
+        run: git rev-parse HEAD
+      - name: Compile validator
+        run: python3 -m py_compile scripts/zees16_evidence_gate.py
+      - name: Validate ZEES-16 registry
+        run: python3 scripts/zees16_evidence_gate.py
