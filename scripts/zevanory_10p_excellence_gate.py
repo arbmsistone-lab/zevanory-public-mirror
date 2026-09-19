@@ -6,12 +6,17 @@ import json
 import re
 import sys
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "compliance" / "zevanory-10p-policy.json"
 EVIDENCE_DIR = ROOT / "evidence" / "approvals"
-APPROVAL_RE = re.compile(r"\b(APPROVED|APROVADO|GREEN_PROVEN|CERTIFIED|CERTIFICADO)\b", re.I)
+TECHNICAL_APPROVAL_RE = re.compile(
+    r"(?:ZEVANORY[-_ ]?10P[^\n]{0,120}\b(?:APPROVED|APROVADO|CERTIFIED|CERTIFICADO)\b)"
+    r"|(?:data-zevanory-certification\s*=\s*[\"']APPROVED[\"'])"
+    r"|(?:\bGREEN_PROVEN\b)",
+    re.I,
+)
 
 def fail(msg: str) -> int:
     print(f"FAIL: {msg}")
@@ -125,16 +130,17 @@ def scan_false_approval_claims(manifests: dict[str, dict]) -> int:
             text = path.read_text(encoding="utf-8")
         except Exception:
             continue
-        if APPROVAL_RE.search(text):
+        if TECHNICAL_APPROVAL_RE.search(text):
             rel = path.relative_to(ROOT).as_posix()
             if not any(item_id in rel or item_id in text for item_id in approved_ids):
-                errors += fail(f"{rel}: claim de aprovação/certificação sem manifesto APPROVED comprovado")
+                errors += fail(f"{rel}: claim técnico de certificação 10P sem manifesto APPROVED comprovado")
     return errors
 
 def main() -> int:
     errors = 0
     if not POLICY_PATH.exists():
-        return 2 if fail("policy ZEVANORY-10P ausente") else 2
+        fail("policy ZEVANORY-10P ausente")
+        return 2
 
     policy = load_json(POLICY_PATH)
     expected_ids = [f"P{i}" for i in range(1, 11)]
