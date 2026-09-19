@@ -16,6 +16,9 @@ on:
       - 'product.css'
       - 'sitemap.xml'
       - 'scripts/premerge_product_audit.py'
+      - 'scripts/zevanory_10p_excellence_gate.py'
+      - 'compliance/**'
+      - 'evidence/approvals/**'
       - '.github/workflows/product-pages-premerge.yml'
   workflow_dispatch:
 
@@ -43,12 +46,18 @@ jobs:
           set -euo pipefail
           git rev-parse HEAD
 
-      - name: Compile audit script
+      - name: Compile audit scripts
         run: |
           set -euo pipefail
           python3 -m py_compile scripts/premerge_product_audit.py
+          python3 -m py_compile scripts/zevanory_10p_excellence_gate.py
 
       - name: Run fail-closed product audit
         run: |
           set -euo pipefail
           python3 scripts/premerge_product_audit.py
+
+      - name: Run ZEVANORY 10P excellence gate
+        run: |
+          set -euo pipefail
+          python3 scripts/zevanory_10p_excellence_gate.py
