@@ -107,14 +107,14 @@
     },
     {
       "id": "P15",
-      "state": "PARTIAL",
+      "state": "PROVADO",
       "evidence": [
-        "run 35454408536 SUCCESS",
-        "SLSA provenance gerada e verificada",
-        "GitHub attestation 48654648 / Rekor 2892892270",
-        "artifact 10587747355 sha256 d5ec4f7ef164f249cecf0ffbcd6758fc8db78fac38b2ffe588bdf5ea3862c78c"
+        "run 35455653911 SUCCESS against canonical SHA cf008c04...",
+        "final public provenance attestation generated and gh attestation verify passed",
+        "artifact 10588291884 sha256 b6291272d0f46f6060db0456bbb5246f4eab7f05babef0d87a645be1f2b0e21d",
+        "proof manifest evidence/zees16/proofs/arbm-sist-P15.json"
       ],
-      "next": "Fechar atestacao final all-families e reconciliar release/proveniencia completa; readiness-only nao vira PROVADO."
+      "next": "Fechado por prova reproduzivel exact-SHA; revalidar se o master canonico mudar."
     },
     {
       "id": "P16",
