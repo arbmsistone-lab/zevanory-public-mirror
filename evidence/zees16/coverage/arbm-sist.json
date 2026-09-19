@@ -69,11 +69,15 @@
     },
     {
       "id": "P10",
-      "state": "PARTIAL",
+      "state": "PROVADO",
       "evidence": [
-        "runs 35449974036 e 35440641357 sovereign-continuity SUCCESS"
+        "run 35458154534 SUCCESS against canonical SHA cf008c04...",
+        "observed N-2 RTO 2.686s <= 20s; error_rate=0; checksums consistent; final_down_cells=0",
+        "Terraform state self-test PASS + mesh resilience PASS",
+        "artifact 10589230675 sha256 4aac912621f1cd8b4696f4460d36c13bd7ac18a0d1bbb7281f1efc9c35bdd609",
+        "proof manifest evidence/zees16/proofs/arbm-sist-P10.json"
       ],
-      "next": "Fechar RTO/RPO/restore integral."
+      "next": "Fechado por prova reproduzivel exact-SHA; revalidar se o master canonico mudar."
     },
     {
       "id": "P11",
