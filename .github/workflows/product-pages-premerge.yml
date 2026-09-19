@@ -4,25 +4,6 @@ on:
   pull_request:
     branches:
       - gh-pages
-    paths:
-      - 'arbm-one/**'
-      - 'arbm-sist/**'
-      - 'ia-na-pratica/**'
-      - 'vendas-na-pratica/**'
-      - 'lucro-e-caixa/**'
-      - 'combo-ia-vendas/**'
-      - 'negocio-completo/**'
-      - 'solucoes/**'
-      - 'product.css'
-      - 'sitemap.xml'
-      - 'scripts/premerge_product_audit.py'
-      - 'scripts/zevanory_10p_excellence_gate.py'
-      - 'scripts/zevanory_crown_gate.py'
-      - 'scripts/test_crown_negative.py'
-      - 'compliance/**'
-      - 'evidence/approvals/**'
-      - 'evidence/certificates/**'
-      - '.github/workflows/product-pages-premerge.yml'
   workflow_dispatch:
 
 permissions:
