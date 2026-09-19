@@ -39,21 +39,23 @@
     },
     {
       "id": "P06",
-      "state": "PARTIAL",
+      "state": "PROVADO",
       "evidence": [
-        "run 35449699496 policy/proof-tests/replay SUCCESS"
+        "proof manifest evidence/zees16/proofs/arbm-sist-P06.json",
+        "run 35459185350 SUCCESS",
+        "artifact sha256 89325dd8cca615c6d480a3b3329b43baf150370c27db04bc9f9ba2d181f0c764"
       ],
-      "next": "Fechar focal e familias aplicaveis."
+      "next": "N/A: pilar fechado por prova reproduzivel no SHA canonico."
     },
     {
       "id": "P07",
-      "state": "PARTIAL",
+      "state": "PROVADO",
       "evidence": [
-        "run 35454406051 SUCCESS no SHA cf008c04...",
-        "isolamento/recovery + signed-cache fault contracts + 10k/100k/1m + chaos N-1/N-2",
-        "artifact 10588160683 sha256 baa1b7234e5a4f4c568ecfb87221962bb8b3d6cbab23aa56dcd1e3086df4e497"
+        "proof manifest evidence/zees16/proofs/arbm-sist-P07.json",
+        "run 35459067904 SUCCESS",
+        "artifact sha256 026cf4bf7824ed11f9bd3f48291188980d0d32fe42e9dfe6daebfd96f2e73f10"
       ],
-      "next": "Fechar SAST, DAST, SCA/SBOM e ASVS/OWASP aplicavel no mesmo release."
+      "next": "N/A: pilar fechado por prova reproduzivel no SHA canonico."
     },
     {
       "id": "P08",
@@ -71,13 +73,11 @@
       "id": "P10",
       "state": "PROVADO",
       "evidence": [
-        "run 35458154534 SUCCESS against canonical SHA cf008c04...",
-        "observed N-2 RTO 2.686s <= 20s; error_rate=0; checksums consistent; final_down_cells=0",
-        "Terraform state self-test PASS + mesh resilience PASS",
-        "artifact 10589230675 sha256 4aac912621f1cd8b4696f4460d36c13bd7ac18a0d1bbb7281f1efc9c35bdd609",
-        "proof manifest evidence/zees16/proofs/arbm-sist-P10.json"
+        "proof manifest evidence/zees16/proofs/arbm-sist-P10.json",
+        "run 35458154534 SUCCESS",
+        "artifact sha256 4aac912621f1cd8b4696f4460d36c13bd7ac18a0d1bbb7281f1efc9c35bdd609"
       ],
-      "next": "Fechado por prova reproduzivel exact-SHA; revalidar se o master canonico mudar."
+      "next": "N/A: pilar fechado por prova reproduzivel no SHA canonico."
     },
     {
       "id": "P11",
@@ -113,12 +113,11 @@
       "id": "P15",
       "state": "PROVADO",
       "evidence": [
-        "run 35455653911 SUCCESS against canonical SHA cf008c04...",
-        "final public provenance attestation generated and gh attestation verify passed",
-        "artifact 10588291884 sha256 b6291272d0f46f6060db0456bbb5246f4eab7f05babef0d87a645be1f2b0e21d",
-        "proof manifest evidence/zees16/proofs/arbm-sist-P15.json"
+        "proof manifest evidence/zees16/proofs/arbm-sist-P15.json",
+        "run 35455653911 SUCCESS",
+        "artifact sha256 b6291272d0f46f6060db0456bbb5246f4eab7f05babef0d87a645be1f2b0e21d"
       ],
-      "next": "Fechado por prova reproduzivel exact-SHA; revalidar se o master canonico mudar."
+      "next": "N/A: pilar fechado por prova reproduzivel no SHA canonico."
     },
     {
       "id": "P16",
