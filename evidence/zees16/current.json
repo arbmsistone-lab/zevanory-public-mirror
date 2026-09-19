@@ -2,7 +2,7 @@
   "schema": "zees16-evidence-registry/v1",
   "standard": "ZEVANORY ENGINEERING EXCELLENCE STANDARD",
   "version": "ZEES-16/2026.09",
-  "generated_at": "2026-09-19T17:58:00Z",
+  "generated_at": "2026-09-19T18:12:00Z",
   "approval_mode": "fail-closed",
   "promotion_rule": "PROVADO somente com evidencia integral reproduzivel vinculada ao alvo, release/SHA e controle aplicavel. Evidencia parcial nunca promove automaticamente.",
   "targets": [
@@ -20,13 +20,6 @@
           "source": "GitHub Actions run 35450150277 / exact-proof",
           "sha": "cb1634a1117d198a65bd677c75fbd959a8d11089",
           "note": "O run head da branch de prova e 6e79edd3..., mas o workflow faz checkout e assert do TARGET_SHA cb1634a1."
-        },
-        {
-          "pillar": "P06",
-          "state": "PARTIAL",
-          "claim": "Contrato visual global 12P passou no mesmo exact-SHA cb1634a1.",
-          "source": "GitHub Actions run 35450150277 / step Run global 12P contract",
-          "sha": "cb1634a1117d198a65bd677c75fbd959a8d11089"
         },
         {
           "pillar": "P12",
@@ -50,6 +43,22 @@
             "ci/circleci: backup_probe_service=failure",
             "Workers Builds: arbm-one-production=failure"
           ]
+        },
+        {
+          "pillar": "P06",
+          "state": "PROVADO",
+          "claim": "P06 final regression proof PASS no SHA canônico 5a919fb...",
+          "source": "ZEES proof run 35460295310",
+          "sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
+          "reproduce": "Verify evidence/zees16/proofs/arbm-one-system-P06.json, run 35460295310, target SHA and artifact SHA256 c5f87dc9cb59f7b941018f7a30a3cc3279689f07bf6816538ffe52847fec5202."
+        },
+        {
+          "pillar": "P07",
+          "state": "PROVADO",
+          "claim": "P07 final security proof PASS no SHA canônico 5a919fb...",
+          "source": "ZEES proof run 35460326439",
+          "sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
+          "reproduce": "Verify evidence/zees16/proofs/arbm-one-system-P07.json, run 35460326439, target SHA and artifact SHA256 fe0787b9834788b52bbc6abe0680d02f4ae820a3a31c352ac5ea94583bee0e03."
         }
       ]
     },
