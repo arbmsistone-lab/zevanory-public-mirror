@@ -1,0 +1,31 @@
+name: ARBM CONTROL OAuth Zero-Spend Proof
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - 'arbm-control-oauth-proof/**'
+      - '.github/workflows/arbm-control-oauth-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oauth-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: arbm-control-oauth-proof
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax proof
+        run: |
+          set -euo pipefail
+          node --check src/worker-oauth.js
+          node --check scripts/validate-oauth-dcr-rotation.mjs
+      - name: OAuth DCR rotation proof
+        run: |
+          set -euo pipefail
+          node scripts/validate-oauth-dcr-rotation.mjs
