@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { ARBM_ONE_OFFER } from '../src/arbmOneOffer.mjs';
 import { publicProductCatalog, resolveCheckoutOffer } from '../src/offerCatalog.mjs';
 
-test('ARBM ONE pricing is synchronized with approved commercial policy',()=>{
+test('ZEVANORY ONE pricing is synchronized with approved commercial policy',()=>{
+  assert.equal(ARBM_ONE_OFFER.product,'ZEVANORY ONE');
+  assert.equal(ARBM_ONE_OFFER.commercial_name,'ZEVANORY ONE');
+  assert.equal(ARBM_ONE_OFFER.brand,'ZEVANORY');
   assert.equal(ARBM_ONE_OFFER.pricing.standard_monthly_brl,697);
   assert.equal(ARBM_ONE_OFFER.pricing.standard_implementation_brl,1490);
   assert.equal(ARBM_ONE_OFFER.pricing.annual_brl,6970);
@@ -15,7 +18,7 @@ test('ARBM ONE pricing is synchronized with approved commercial policy',()=>{
   assert.equal(ARBM_ONE_OFFER.founder_program.price_protection_months,12);
 });
 
-test('ARBM ONE remains sales locked and founder pricing stays private',()=>{
+test('ZEVANORY ONE remains sales locked and founder pricing stays private',()=>{
   assert.equal(ARBM_ONE_OFFER.sellable,false);
   assert.equal(ARBM_ONE_OFFER.checkout_enabled,false);
   assert.equal(resolveCheckoutOffer('ARBM-ONE'),null);
