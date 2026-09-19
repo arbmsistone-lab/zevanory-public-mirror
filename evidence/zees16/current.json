@@ -2,7 +2,7 @@
   "schema": "zees16-evidence-registry/v1",
   "standard": "ZEVANORY ENGINEERING EXCELLENCE STANDARD",
   "version": "ZEES-16/2026.09",
-  "generated_at": "2026-09-19T16:52:00Z",
+  "generated_at": "2026-09-19T17:29:00Z",
   "approval_mode": "fail-closed",
   "promotion_rule": "PROVADO somente com evidencia integral reproduzivel vinculada ao alvo, release/SHA e controle aplicavel. Evidencia parcial nunca promove automaticamente.",
   "targets": [
@@ -62,10 +62,19 @@
       "evidence": [
         {
           "pillar": "P10",
-          "state": "PARTIAL",
-          "claim": "Sovereign Continuity repetiu SUCCESS no master, validando runner universal, OIDC e execucao de missao segura.",
-          "source": "GitHub Actions run 35449974036 / job 105915310751",
-          "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888"
+          "state": "PROVADO",
+          "claim": "Continuidade/DR do SHA canonico fechada por prova final exact-SHA: RTO observado N-2 2.686s <= 20s, RPO zero para operacoes reconhecidas no teste, error rate 0, checksums consistentes, zero celulas finais indisponiveis, Terraform state recovery e mesh resilience PASS.",
+          "source": "GitHub Actions run 35458154534 / job 105937027559",
+          "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
+          "proof_manifest": "evidence/zees16/proofs/arbm-sist-P10.json",
+          "reproduce": "Open GitHub Actions run 35458154534; verify job continuity SUCCESS; verify TARGET_SHA cf008c04e9bf01e87fca80799dfc25b1de68d888; download artifact 10589230675 and verify archive digest sha256:4aac912621f1cd8b4696f4460d36c13bd7ac18a0d1bbb7281f1efc9c35bdd609; inspect zees-p10-final-continuity.json plus terraform-state-selftest.log and mesh-resilience.log.",
+          "artifacts": [
+            {
+              "id": 10589230675,
+              "name": "zees-p10-final-continuity",
+              "sha256": "4aac912621f1cd8b4696f4460d36c13bd7ac18a0d1bbb7281f1efc9c35bdd609"
+            }
+          ]
         },
         {
           "pillar": "P05",
