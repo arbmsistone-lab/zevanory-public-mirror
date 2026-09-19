@@ -26,6 +26,8 @@ jobs:
         run: npm ci
       - name: Core tests
         run: npm test
+      - name: UI-12 design-system assurance
+        run: node --test test/ui-12-assurance.test.mjs test/control-plane-vnext.test.mjs
       - name: Supply-chain scan
         run: npm run supplychain:scan
       - name: Observability audit
