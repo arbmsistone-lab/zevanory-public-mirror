@@ -4,6 +4,8 @@ on:
   pull_request:
     branches:
       - gh-pages
+  schedule:
+    - cron: '31 5 * * *'
   workflow_dispatch:
 
 permissions:
