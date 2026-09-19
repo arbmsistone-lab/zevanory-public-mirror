@@ -47,9 +47,13 @@
     },
     {
       "id": "P07",
-      "state": "BLOCKED",
-      "evidence": [],
-      "next": "Evidencia reproduzivel ainda nao registrada."
+      "state": "PARTIAL",
+      "evidence": [
+        "run 35454406051 SUCCESS no SHA cf008c04...",
+        "isolamento/recovery + signed-cache fault contracts + 10k/100k/1m + chaos N-1/N-2",
+        "artifact 10588160683 sha256 baa1b7234e5a4f4c568ecfb87221962bb8b3d6cbab23aa56dcd1e3086df4e497"
+      ],
+      "next": "Fechar SAST, DAST, SCA/SBOM e ASVS/OWASP aplicavel no mesmo release."
     },
     {
       "id": "P08",
@@ -105,9 +109,12 @@
       "id": "P15",
       "state": "PARTIAL",
       "evidence": [
-        "master cf008c04 sovereign-continuity SUCCESS repetido; combined_state pending"
+        "run 35454408536 SUCCESS",
+        "SLSA provenance gerada e verificada",
+        "GitHub attestation 48654648 / Rekor 2892892270",
+        "artifact 10587747355 sha256 d5ec4f7ef164f249cecf0ffbcd6758fc8db78fac38b2ffe588bdf5ea3862c78c"
       ],
-      "next": "Fechar provenance/attestation."
+      "next": "Fechar atestacao final all-families e reconciliar release/proveniencia completa; readiness-only nao vira PROVADO."
     },
     {
       "id": "P16",
