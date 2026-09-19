@@ -7,10 +7,10 @@ const cookieValue=(req,name)=>String(req.headers?.cookie||'').split(';').map(x=>
 const queryFrom=(req)=>{try{return new URL(req.url||'', 'https://zevanory.api.br').searchParams;}catch{return new URLSearchParams();}};
 const COOKIE='zevanory_ml_oauth';
 
-export function mercadoLivreOAuthCallbackReadiness(query={}){
+export function mercadoLivreOAuthCallbackReadiness(query={},env=process.env){
   const code=String(query.code||'').trim(),error=String(query.error||'').trim();
   if(code||error) return {status:503,body:{provider:'mercado_livre',ready:false,error:'oauth_exchange_not_enabled'}};
-  return {status:200,body:{provider:'mercado_livre',ready:false,callback_registered:true,authorization_enabled:Boolean(process.env.MERCADOLIVRE_CLIENT_SECRET)}};
+  return {status:200,body:{provider:'mercado_livre',ready:false,callback_registered:true,authorization_enabled:Boolean(env?.MERCADOLIVRE_CLIENT_SECRET)}};
 }
 
 export default async function handler(req,res){

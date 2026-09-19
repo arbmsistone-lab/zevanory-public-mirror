@@ -3,10 +3,17 @@ import assert from 'node:assert/strict';
 import {mercadoLivreOAuthCallbackReadiness} from '../src/http/oauthMercadoLivre.mjs';
 
 test('Mercado Livre OAuth callback advertises reserved endpoint without enabling authorization',()=>{
-  const r=mercadoLivreOAuthCallbackReadiness({});
+  const r=mercadoLivreOAuthCallbackReadiness({},{});
   assert.equal(r.status,200);
   assert.equal(r.body.callback_registered,true);
   assert.equal(r.body.authorization_enabled,false);
+});
+
+test('Mercado Livre OAuth readiness reflects explicit injected authorization config',()=>{
+  const r=mercadoLivreOAuthCallbackReadiness({},{MERCADOLIVRE_CLIENT_SECRET:'configured'});
+  assert.equal(r.status,200);
+  assert.equal(r.body.callback_registered,true);
+  assert.equal(r.body.authorization_enabled,true);
 });
 
 test('Mercado Livre OAuth callback fails closed if provider sends a code before exchange is enabled',()=>{
