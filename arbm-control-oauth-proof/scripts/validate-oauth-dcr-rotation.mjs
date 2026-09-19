@@ -42,7 +42,8 @@ function authorizeRequest(clientId, redirectUri = CALLBACK) {
 }
 
 const registration = await register(OLD_ENV, [CALLBACK]);
-assert.equal(registration.status, 201, await registration.text());
+const registrationBody = await registration.clone().text();
+assert.equal(registration.status, 201, registrationBody);
 const client = await registration.json();
 assert.equal(typeof client.client_id, 'string');
 assert.ok(client.client_id.includes('.'));
