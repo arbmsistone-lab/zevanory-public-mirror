@@ -16,6 +16,7 @@ import webhooksHandler from '../api/webhooks.mjs';
 import robotControlHandler from '../api/robot-control.mjs';
 import intelligenceHandler from '../api/intelligence.mjs';
 import autopilotHandler from '../api/autopilot.mjs';
+import pilotInterestHandler from '../api/pilot-interest.mjs';
 import aiVaultHandler from './http/aiVault.mjs';
 import aiServiceIdentityHandler from './http/aiServiceIdentity.mjs';
 import aiGatewaySelftestHandler from './http/aiGatewaySelftest.mjs';
@@ -50,6 +51,7 @@ const directHandlers = new Map([
   ['/api/robot-control', robotControlHandler],
   ['/api/intelligence', intelligenceHandler],
   ['/api/autopilot/run', autopilotHandler],
+  ['/api/pilot-interest', pilotInterestHandler],
   ['/api/internal/ai-vault', aiVaultHandler],
   ['/api/internal/ai-service-identity', aiServiceIdentityHandler],
   ['/api/internal/ai-gateway-selftest', aiGatewaySelftestHandler],
@@ -107,7 +109,7 @@ const staticAliases = new Map([
   ['/', '/solucoes.html'], ['/favicon.ico', '/brand/favicon.svg'], ['/acesso', '/owner-login.html'], ['/configurar-acesso', '/owner-setup.html'], ['/central', '/index.html'], ['/solucoes', '/solucoes.html'], ['/arbm-sist', '/arbm-sist.html'], ['/zevanory-one', '/zevanory-one.html'], ['/arbm-contador-saloes', '/arbm-contador-saloes.html'],
   ['/ia-na-pratica', '/ia-na-pratica.html'], ['/vendas-na-pratica', '/vendas-na-pratica.html'],
   ['/lucro-e-caixa', '/lucro-e-caixa.html'], ['/combo-ia-vendas', '/combo-ia-vendas.html'], ['/negocio-completo', '/negocio-completo.html'],
-  ['/piloto', '/piloto.html'], ['/confianca', '/confianca.html'], ['/termos', '/termos.html'], ['/privacidade', '/privacidade.html'], ['/exclusao-dados', '/exclusao-dados.html'],
+  ['/piloto', '/piloto.html'], ['/piloto-interesse', '/piloto-interesse.html'], ['/confianca', '/confianca.html'], ['/termos', '/termos.html'], ['/privacidade', '/privacidade.html'], ['/exclusao-dados', '/exclusao-dados.html'],
   ['/reembolso', '/reembolso.html'], ['/afiliados', '/afiliados.html'], ['/criativos', '/criativos.html'], ['/zevanory-robot-control', '/zevanory-robot-control.html'], ['/financeiro', '/financeiro.html'], ['/tiktok-review', '/tiktok-review.html'],
 ]);
 function delegatedPaymentOrigin(env,requestUrl){
@@ -245,8 +247,3 @@ export default {
     return withSecurityHeaders(response, env);
   },
 };
-
-
-
-
-

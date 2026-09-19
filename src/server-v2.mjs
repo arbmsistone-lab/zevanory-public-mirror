@@ -19,6 +19,7 @@ import agentStatusApi from "../api/agent-status.mjs";
 import assuranceApi from "./http/assurance.mjs";
 import financeApi from "./http/finance.mjs";
 import controlPlaneApi from "./http/control-plane.mjs";
+import pilotInterestApi from "../api/pilot-interest.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -32,7 +33,7 @@ const whatsappNumber = isOfficialWhatsapp(configuredWhatsappNumber) ? configured
 const operatorToken = String(process.env.OPERATOR_TOKEN || "").trim();
 await mkdir(dataDir, { recursive: true });
 const STATIC_ROUTES = new Map([
-  ["/", "index.html"], ["/index.html", "index.html"], ["/arbm-sist", "arbm-sist.html"], ["/piloto", "piloto.html"],
+  ["/", "index.html"], ["/index.html", "index.html"], ["/arbm-sist", "arbm-sist.html"], ["/piloto", "piloto.html"], ["/piloto-interesse", "piloto-interesse.html"],
   ["/termos", "termos.html"], ["/privacidade", "privacidade.html"], ["/reembolso", "reembolso.html"], ["/afiliados", "afiliados.html"], ["/tiktok-review", "tiktok-review.html"],
   ["/criativos", "criativos.html"], ["/zevanory-robot-control", "zevanory-robot-control.html"],
 ]);
@@ -120,6 +121,10 @@ const server = http.createServer(async (req, res) => {
       if(url.pathname==='/api/live') req.url='/api/status?probe=live';
       if(url.pathname==='/api/health') req.url='/api/status?probe=health';
       return READ_API_HANDLERS.get(url.pathname)(req,res);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/pilot-interest") {
+      return pilotInterestApi(req,res);
     }
 
     if (req.method === "POST" && url.pathname === "/api/events/public") {

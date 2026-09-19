@@ -115,6 +115,10 @@
       "destination": "/api/events-operator"
     },
     {
+      "source": "/api/pilot-interest",
+      "destination": "/api/pilot-interest"
+    },
+    {
       "source": "/api/agent/run",
       "destination": "/api/agent-run"
     },
@@ -129,6 +133,10 @@
     {
       "source": "/piloto",
       "destination": "/public/piloto.html"
+    },
+    {
+      "source": "/piloto-interesse",
+      "destination": "/public/piloto-interesse.html"
     },
     {
       "source": "/tiktok-review",
