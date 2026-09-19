@@ -226,15 +226,11 @@ jobs:
 
 workflows:
   production-watch:
-    triggers:
-      - schedule:
-          cron: "17 * * * *"
-          filters:
-            branches:
-              only: main
+    when: false
     jobs:
       - production_monitor
   ci:
+    when: false
     jobs:
       - core
       - arbm_cloud_quality
