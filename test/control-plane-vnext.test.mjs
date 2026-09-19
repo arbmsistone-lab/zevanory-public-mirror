@@ -42,6 +42,7 @@ test('creative evidence dialog uses one deliberate scroll surface', () => {
 
 test('Vercel remote certification runs for control-plane branches and production, then emits an exact-SHA manifest', () => {
   assert.match(vercelCert, /branch\.startsWith\('chatgpt\/control-plane-vnext-'\)/);
+  assert.match(vercelCert, /branch\.startsWith\('chatgpt\/deno-failover-'\)/);
   assert.match(vercelCert, /deployEnv === 'production'/);
   assert.match(vercelCert, /control-plane-certification\.json/);
   assert.match(vercelCert, /checks:36/);

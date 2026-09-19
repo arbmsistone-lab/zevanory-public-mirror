@@ -1,0 +1,6 @@
+{
+  "tasks": {
+    "start": "deno run --allow-env --allow-net src/deno-failover.mjs"
+  },
+  "nodeModulesDir": "auto"
+}
