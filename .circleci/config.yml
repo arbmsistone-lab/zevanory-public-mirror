@@ -125,6 +125,39 @@ jobs:
       - store_artifacts:
           path: security-evidence
 
+  ui12_qcp:
+    docker:
+      - image: cimg/node:24.19-browsers
+    resource_class: medium
+    steps:
+      - checkout
+      - run: npm ci --no-audit --no-fund
+      - run:
+          name: UI-12 structural assurance
+          command: node --test test/ui-12-assurance.test.mjs test/control-plane-vnext.test.mjs
+      - run:
+          name: Install Playwright Chromium
+          command: npx playwright install chromium
+      - run:
+          name: UI-12 visual E2E
+          command: |
+            npm start > zevanory-server.log 2>&1 &
+            server_pid=$!
+            ready=0
+            for i in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:4173/api/live >/dev/null; then ready=1; break; fi
+              sleep 1
+            done
+            if [ "$ready" -ne 1 ]; then cat zevanory-server.log; kill "$server_pid" || true; exit 1; fi
+            ZEVANORY_BASE_URL=http://127.0.0.1:4173 npx playwright test test/e2e/control-plane-vnext.spec.mjs --project=chromium
+            rc=$?
+            kill "$server_pid" || true
+            exit "$rc"
+      - store_artifacts:
+          path: test-results
+      - store_artifacts:
+          path: playwright-report
+
   arbm_cloud_qcp:
     docker:
       - image: cimg/node:24.19
@@ -230,9 +263,13 @@ workflows:
     when: false
     jobs:
       - production_monitor
-  ci:
+  ui12:
     when:
       equal: [ chatgpt/ui12-engineering-20260919, << pipeline.git.branch >> ]
+    jobs:
+      - ui12_qcp
+  ci:
+    when: false
     jobs:
       - core
       - arbm_cloud_quality
