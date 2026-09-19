@@ -108,6 +108,13 @@
     "run_worker_first": true,
     "html_handling": "none"
   },
+  "services": [
+    {
+      "binding": "ZEA10_ENGINE",
+      "service": "arbm-control",
+      "entrypoint": "Zea10ControlPlaneService"
+    }
+  ],
   "observability": {
     "enabled": true
   }
