@@ -1,0 +1,29 @@
+{
+  "schema": "zees16-proof/v1",
+  "standard": "ZEES-16/2026.09",
+  "target": "arbm-sist",
+  "pillar": "P10",
+  "status": "PASS",
+  "target_sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
+  "run_id": 35458154534,
+  "job_id": 105937027559,
+  "proof_harness_sha": "44f0a6d5d258e4f38e11d2ad3756128b5f10d43a",
+  "contract": {
+    "rto_max_seconds": 20,
+    "observed_n2_rto_seconds": 2.686,
+    "rpo": "ZERO_ACKNOWLEDGED_OPS_LOST_IN_TESTED_N2",
+    "error_rate": 0,
+    "checksums_consistent": true,
+    "final_down_cells": 0,
+    "terraform_state_selftest": "PASS",
+    "mesh_resilience": "PASS",
+    "zero_spend_hard": true,
+    "paid_fallback_used": false
+  },
+  "artifact": {
+    "id": 10589230675,
+    "name": "zees-p10-final-continuity",
+    "sha256": "4aac912621f1cd8b4696f4460d36c13bd7ac18a0d1bbb7281f1efc9c35bdd609"
+  },
+  "reproduce": "Verify run 35458154534/job 105937027559 is SUCCESS; confirm workflow TARGET_SHA equals cf008c04e9bf01e87fca80799dfc25b1de68d888; verify artifact 10589230675 digest; inspect zees-p10-final-continuity.json, terraform-state-selftest.log and mesh-resilience.log."
+}
