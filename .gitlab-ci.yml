@@ -2,8 +2,6 @@
 # Passive mirror: canonical remote execution is CircleCI (docs/CI_EXECUTION_POLICY.md).
 workflow:
   rules:
-    - if: '$CI_COMMIT_BRANCH == "chatgpt/ui12-engineering-20260919"'
-      when: always
     - when: never
 
 stages:
@@ -36,7 +34,6 @@ quality_core:
   timeout: 20m
   script:
     - npm test
-    - node --test test/ui-12-assurance.test.mjs test/control-plane-vnext.test.mjs
     - npm run supplychain:scan
     - npm audit --omit=dev --audit-level=high
     - npm run contract:smoke
@@ -117,7 +114,6 @@ integration_e2e:
     - echo $! > zevanory-server.pid
     - for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/api/live && break; sleep 1; done
     - curl -fsS http://127.0.0.1:4173/api/live
-    - node --test test/ui-12-assurance.test.mjs test/control-plane-vnext.test.mjs
     - ZEVANORY_BASE_URL=http://127.0.0.1:4173 npm run test:e2e
     - npm run audit:distribution:10x
     - npm run audit:commercial-engine-v2:10x
