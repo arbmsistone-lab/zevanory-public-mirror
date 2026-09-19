@@ -4,6 +4,8 @@ on:
   pull_request:
     branches:
       - gh-pages
+  schedule:
+    - cron: '17 5 * * *'
   workflow_dispatch:
 
 permissions:
@@ -19,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout exact PR commit
+      - name: Checkout exact revision
         uses: actions/checkout@v4
         with:
           persist-credentials: false
