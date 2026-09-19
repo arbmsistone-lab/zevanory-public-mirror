@@ -107,13 +107,14 @@
     },
     {
       "id": "P15",
-      "state": "BLOCKED",
+      "state": "PROVADO",
       "evidence": [
-        "main 5a919fbced6efca3133611051cccc25f29b41a8d",
-        "Buildkite/CircleCI/Workers Build failure",
-        "exact-provider-proof 35453485351 queued"
+        "proof manifest evidence/zees16/proofs/arbm-one-system-P15.json",
+        "GitLab OIDC success build_ref 16605235655",
+        "GitHub OIDC success build_ref 35454755111",
+        "Cloudflare exact-SHA production run 35458530433"
       ],
-      "next": "Obter quorum multi-provider verde no mesmo SHA canonico."
+      "next": "N/A: pilar fechado por quorum de 3 provedores no mesmo SHA canonico."
     },
     {
       "id": "P16",
