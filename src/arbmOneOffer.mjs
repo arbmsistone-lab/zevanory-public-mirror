@@ -49,5 +49,5 @@ export const ARBM_ONE_OFFER = Object.freeze({
   }),
   commercial_release_gate: 'ARBM_ONE_COMMERCIAL_RELEASE_APPROVED',
   sales_gate: 'ZEVANORY_COMMERCIAL_SALES_LOCKED',
-  positioning: 'Sistema operacional empresarial integrado para centralizar gestao, PDV, atendimento, delivery, equipe, automacoes e inteligencia.',
+  positioning: 'ZEVANORY ONE e a plataforma comercial universal da ZEVANORY para centralizar gestao, PDV, atendimento, delivery, equipe, automacoes e inteligencia.',
 });

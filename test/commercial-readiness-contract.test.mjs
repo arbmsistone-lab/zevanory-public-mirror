@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { ARBM_ONE_OFFER } from '../src/arbmOneOffer.mjs';
 const load=(name)=>readFile(new URL(`../public/${name}`,import.meta.url),'utf8');
 
-test('ARBM ONE commercial contract is machine-auditable while sales remain locked',()=>{
+test('ZEVANORY ONE commercial contract is machine-auditable while sales remain locked',()=>{
   const c=ARBM_ONE_OFFER.commercial_contract;
   assert.equal(ARBM_ONE_OFFER.sellable,false); assert.equal(ARBM_ONE_OFFER.checkout_enabled,false);
   assert.equal(ARBM_ONE_OFFER.commercial_release_gate,'ARBM_ONE_COMMERCIAL_RELEASE_APPROVED');
@@ -13,8 +13,8 @@ test('ARBM ONE commercial contract is machine-auditable while sales remain locke
   assert.equal(c.support_channel,'suporte@zevanory.api.br');
 });
 
-test('public ARBM offers expose price scope support and cancellation before checkout',async()=>{
-  const one=await load('arbm-one.html'), sist=await load('arbm-sist.html');
+test('public software offers expose price scope support and cancellation before checkout',async()=>{
+  const one=await load('zevanory-one.html'), sist=await load('arbm-sist.html');
   for(const value of ['R$ 697/mês','R$ 1.490','99,9%','suporte@zevanory.api.br','Cancelamento']) assert.match(one,new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i'));
   for(const value of ['R$ 0','R$ 1.197','R$ 79,90/mês','R$ 19,90/mês','suporte@zevanory.api.br','cancelamento']) assert.match(sist,new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i'));
 });

@@ -163,6 +163,9 @@ export default {
     globalThis.__ZEVANORY_PRIVATE_KV__ = env.ZEVANORY_PRIVATE_ARTIFACTS || null;
     hydrateRuntimeConfig(env);
     const url = new URL(request.url);
+    if (url.pathname === '/arbm-one' || url.pathname === '/arbm-one.html') {
+      return Response.redirect(new URL('/zevanory-one', url), 301);
+    }
     if(request.headers.get('x-zevanory-owner-authenticated')){const h=new Headers(request.headers);h.delete('x-zevanory-owner-authenticated');request=new Request(request,{headers:h});}
     if(['/arbm-one','/arbm-one/','/arbm-one.html'].includes(url.pathname))return withSecurityHeaders(Response.redirect(new URL('/zevanory-one',url),308),env);
     if(url.pathname==='/zevanory-one/')return withSecurityHeaders(Response.redirect(new URL('/zevanory-one',url),308),env);

@@ -12,7 +12,7 @@ const html=await text('public/index.html'); const js=await text('public/index.js
 const primary=ARBM_SIST_OFFER;
 const blockedRuntime=publicOffer({ARBM_SIST_CODE_SIGNING_READY:'false',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'false'});
 const releasableRuntime=publicOffer({ARBM_SIST_CODE_SIGNING_READY:'true',ARBM_SIST_PUBLIC_RELEASE_APPROVED:'true'});
-add('01 five certified content products plus ARBM SIST ARBM ONE and globally gated ARBM Contador portfolio',ZEVANORY_PRODUCTS.length===5&&ZEVANORY_PORTFOLIO.length===8&&ZEVANORY_PORTFOLIO.some(x=>x.id==='ARBM-CONTADOR-SALOES'&&x.sellable===true&&x.checkout_enabled===true&&x.status.includes('global_sales_locked')));
+add('01 five certified content products plus ARBM SIST ZEVANORY ONE and globally gated ARBM Contador portfolio',ZEVANORY_PRODUCTS.length===5&&ZEVANORY_PORTFOLIO.length===8&&ZEVANORY_PORTFOLIO.some(x=>x.id==='ARBM-CONTADOR-SALOES'&&x.sellable===true&&x.checkout_enabled===true&&x.status.includes('global_sales_locked')));
 add('02 canonical primary offer',primary?.primary===true&&primary?.id==='OFFER-0001'&&primary?.brand==='ZEVANORY');
 add('03 primary version and price',primary?.version==='10.0.0'&&primary?.price_brl===1197);
 add('04 certified handoff hash pinned',/^[0-9a-f]{64}$/i.test(primary?.artifact_sha256||''));

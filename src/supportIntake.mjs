@@ -5,7 +5,7 @@ const supportRx=/\b(erro|falha|bug|problema|ajuda|suporte|nao funciona|n\u00e3o 
 
 export function inferSupportProduct(text=''){
   const value=clean(text,5000);
-  if(/\barbm[\s-]*one\b/i.test(value))return 'ARBM-ONE';
+  if(/\bzevanory[\s-]*one\b/i.test(value)||/\barbm[\s-]*one\b/i.test(value))return 'ARBM-ONE';
   if(/\barbm[\s-]*sist\b/i.test(value))return 'ARBM-SIST';
   if(/\barbm[\s-]*contador(?:[\s-]*(?:para[\s-]*)?sal[o?]es)?\b/i.test(value))return 'ARBM-CONTADOR-SALOES';
   if(/\bia na pr[a\u00e1]tica\b/i.test(value))return 'ZEV-IA-011';

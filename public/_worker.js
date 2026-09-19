@@ -3,6 +3,7 @@ const EDGE_ORIGIN='https://edge.zevanory.api.br';
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
+    if(url.pathname==='/arbm-one'||url.pathname==='/arbm-one.html'){return Response.redirect(new URL('/zevanory-one',url),301);}
     if(url.pathname==='/api'||url.pathname.startsWith('/api/')){
       const target=new URL(url.pathname+url.search,EDGE_ORIGIN);
       const headers=new Headers(request.headers);

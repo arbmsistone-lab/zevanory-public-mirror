@@ -51,13 +51,13 @@ test('detail dialog keeps regression-safe geometry and channel branding',()=>{
 });
 
 
-test('portfolio exposes ARBM ONE as a first-class solution',async()=>{
+test('portfolio exposes ZEVANORY ONE as a first-class solution',async()=>{
   const solutions=await readFile(new URL('../public/solucoes.html',import.meta.url),'utf8');
-  const one=await readFile(new URL('../public/arbm-one.html',import.meta.url),'utf8');
+  const one=await readFile(new URL('../public/zevanory-one.html',import.meta.url),'utf8');
   const sitemap=await readFile(new URL('../public/sitemap.xml',import.meta.url),'utf8');
   assert.match(html,/class=\"portfolio-link\" href=\"\/solucoes\">Nossas Solu\u00e7\u00f5es/);
-  assert.match(solutions,/href=\"\/arbm-one\">ARBM ONE/);
-  assert.match(one,/<title>ARBM ONE \| ZEVANORY<\/title>/);
+  assert.match(solutions,/href=\"\/zevanory-one\">ZEVANORY ONE/);
+  assert.match(one,/<title>ZEVANORY ONE \| ZEVANORY<\/title>/);
   assert.match(one,/PDV, atendimento, delivery, fidelidade/i);
-  assert.match(sitemap,/https:\/\/zevanory\.api\.br\/arbm-one/);
+  assert.match(sitemap,/https:\/\/zevanory\.api\.br\/zevanory-one/);
 });
