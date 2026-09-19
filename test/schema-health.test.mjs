@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assessSchemaIntegrity, REQUIRED_TABLES, REQUIRED_MIGRATIONS } from '../src/schemaHealth.mjs';
 
@@ -29,4 +29,13 @@ test('market intelligence migration and table are mandatory for schema readiness
   assert.equal(r.ready,false);
   assert.deepEqual(r.missing_tables,['intelligence_snapshots']);
   assert.deepEqual(r.missing_migrations,['024_market_product_intelligence']);
+});
+
+test('certification pilot interest storage is mandatory for schema readiness', () => {
+  assert.ok(REQUIRED_TABLES.includes('certification_pilot_interest'));
+  assert.ok(REQUIRED_MIGRATIONS.includes('029_certification_pilot_interest'));
+  const r=assessSchemaIntegrity({tableNames:REQUIRED_TABLES.filter(x=>x!=='certification_pilot_interest'),migrationIds:REQUIRED_MIGRATIONS.filter(x=>x!=='029_certification_pilot_interest')});
+  assert.equal(r.ready,false);
+  assert.deepEqual(r.missing_tables,['certification_pilot_interest']);
+  assert.deepEqual(r.missing_migrations,['029_certification_pilot_interest']);
 });
