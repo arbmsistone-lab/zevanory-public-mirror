@@ -2,7 +2,7 @@
   "schema": "zees16-evidence-registry/v1",
   "standard": "ZEVANORY ENGINEERING EXCELLENCE STANDARD",
   "version": "ZEES-16/2026.09",
-  "generated_at": "2026-09-19T17:29:00Z",
+  "generated_at": "2026-09-19T17:58:00Z",
   "approval_mode": "fail-closed",
   "promotion_rule": "PROVADO somente com evidencia integral reproduzivel vinculada ao alvo, release/SHA e controle aplicavel. Evidencia parcial nunca promove automaticamente.",
   "targets": [
@@ -61,33 +61,10 @@
       "state": "BLOCKED",
       "evidence": [
         {
-          "pillar": "P10",
-          "state": "PROVADO",
-          "claim": "Continuidade/DR do SHA canonico fechada por prova final exact-SHA: RTO observado N-2 2.686s <= 20s, RPO zero para operacoes reconhecidas no teste, error rate 0, checksums consistentes, zero celulas finais indisponiveis, Terraform state recovery e mesh resilience PASS.",
-          "source": "GitHub Actions run 35458154534 / job 105937027559",
-          "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
-          "proof_manifest": "evidence/zees16/proofs/arbm-sist-P10.json",
-          "reproduce": "Open GitHub Actions run 35458154534; verify job continuity SUCCESS; verify TARGET_SHA cf008c04e9bf01e87fca80799dfc25b1de68d888; download artifact 10589230675 and verify archive digest sha256:4aac912621f1cd8b4696f4460d36c13bd7ac18a0d1bbb7281f1efc9c35bdd609; inspect zees-p10-final-continuity.json plus terraform-state-selftest.log and mesh-resilience.log.",
-          "artifacts": [
-            {
-              "id": 10589230675,
-              "name": "zees-p10-final-continuity",
-              "sha256": "4aac912621f1cd8b4696f4460d36c13bd7ac18a0d1bbb7281f1efc9c35bdd609"
-            }
-          ]
-        },
-        {
           "pillar": "P05",
           "state": "PARTIAL",
           "claim": "Na focal 091 candidata, proof-tests passou com escopo exato, guards negativos, banca 50x10 e council 100-lane.",
           "source": "GitHub Actions run 35449699496 / job 105914601346",
-          "sha": "e6a164a959b2e561d653d54601931af692580d16"
-        },
-        {
-          "pillar": "P06",
-          "state": "PARTIAL",
-          "claim": "policy, proof-tests e replay concluíram SUCCESS e preservaram regressões historicas.",
-          "source": "GitHub Actions run 35449699496 / jobs 105914601197, 105914601346, 105914640479",
           "sha": "e6a164a959b2e561d653d54601931af692580d16"
         },
         {
@@ -125,32 +102,36 @@
           ]
         },
         {
-          "pillar": "P07",
-          "state": "PARTIAL",
-          "claim": "Security/load/failure proof concluiu SUCCESS no SHA canonico: isolamento/recovery, fault contracts, 10k, 100k, 1m, chaos N-1 e N-2; artefato imutavel publicado. Ainda nao fecha SAST/DAST/SCA/ASVS integral.",
-          "source": "GitHub Actions run 35454406051 / job 105927036055",
+          "pillar": "P06",
+          "state": "PROVADO",
+          "claim": "Testes, verificacao e regressao final fechados no SHA canonico.",
+          "source": "ZEES final proof run 35459185350",
           "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
-          "artifact": {
-            "id": 10588160683,
-            "name": "top3-security-load-failure-proof",
-            "sha256": "baa1b7234e5a4f4c568ecfb87221962bb8b3d6cbab23aa56dcd1e3086df4e497"
-          }
+          "reproduce": "Verify evidence/zees16/proofs/arbm-sist-P06.json and GitHub Actions run 35459185350; confirm target SHA, PASS status and artifact SHA256 89325dd8cca615c6d480a3b3329b43baf150370c27db04bc9f9ba2d181f0c764."
+        },
+        {
+          "pillar": "P07",
+          "state": "PROVADO",
+          "claim": "Seguranca aplicavel fechada com zero findings e evidencia imutavel.",
+          "source": "ZEES final proof run 35459067904",
+          "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
+          "reproduce": "Verify evidence/zees16/proofs/arbm-sist-P07.json and GitHub Actions run 35459067904; confirm target SHA, PASS status and artifact SHA256 026cf4bf7824ed11f9bd3f48291188980d0d32fe42e9dfe6daebfd96f2e73f10."
+        },
+        {
+          "pillar": "P10",
+          "state": "PROVADO",
+          "claim": "Continuidade e recuperacao fechadas conforme contrato ZEES do perfil.",
+          "source": "ZEES final proof run 35458154534",
+          "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
+          "reproduce": "Verify evidence/zees16/proofs/arbm-sist-P10.json and GitHub Actions run 35458154534; confirm target SHA, PASS status and artifact SHA256 4aac912621f1cd8b4696f4460d36c13bd7ac18a0d1bbb7281f1efc9c35bdd609."
         },
         {
           "pillar": "P15",
           "state": "PROVADO",
-          "claim": "CI/CD, release e proveniencia do SHA canonico foram reconciliados por prova final exact-SHA com atestacao publica gerada e verificada.",
-          "source": "GitHub Actions run 35455653911 / job provenance",
+          "claim": "CI/CD e proveniencia fechados com attestation publica verificada.",
+          "source": "ZEES final proof run 35455653911",
           "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
-          "proof_manifest": "evidence/zees16/proofs/arbm-sist-P15.json",
-          "reproduce": "Open GitHub Actions run 35455653911; verify job provenance is SUCCESS; download artifact 10588291884 and verify archive digest sha256:b6291272d0f46f6060db0456bbb5246f4eab7f05babef0d87a645be1f2b0e21d; verify the attested zees-p15-final-provenance.json with gh attestation verify --repo arbmsistone-lab/arbm-sist-external-exec-proof.",
-          "artifacts": [
-            {
-              "id": 10588291884,
-              "name": "zees-p15-final-provenance",
-              "sha256": "b6291272d0f46f6060db0456bbb5246f4eab7f05babef0d87a645be1f2b0e21d"
-            }
-          ]
+          "reproduce": "Verify evidence/zees16/proofs/arbm-sist-P15.json and GitHub Actions run 35455653911; confirm target SHA, PASS status and artifact SHA256 b6291272d0f46f6060db0456bbb5246f4eab7f05babef0d87a645be1f2b0e21d."
         }
       ]
     },
