@@ -2,7 +2,7 @@
   "schema": "zees16-evidence-registry/v1",
   "standard": "ZEVANORY ENGINEERING EXCELLENCE STANDARD",
   "version": "ZEES-16/2026.09",
-  "generated_at": "2026-09-19T16:31:00Z",
+  "generated_at": "2026-09-19T16:52:00Z",
   "approval_mode": "fail-closed",
   "promotion_rule": "PROVADO somente com evidencia integral reproduzivel vinculada ao alvo, release/SHA e controle aplicavel. Evidencia parcial nunca promove automaticamente.",
   "targets": [
@@ -129,18 +129,19 @@
         },
         {
           "pillar": "P15",
-          "state": "PARTIAL",
-          "claim": "Independent Attestation Readiness concluiu SUCCESS: subject fail-closed validado, SLSA provenance gerada, registrada em Rekor/GitHub e verificada via gh attestation. O proprio contrato declara readiness-only, portanto nao e atestacao final.",
-          "source": "GitHub Actions run 35454408536 / job 105927041867",
+          "state": "PROVADO",
+          "claim": "CI/CD, release e proveniencia do SHA canonico foram reconciliados por prova final exact-SHA com atestacao publica gerada e verificada.",
+          "source": "GitHub Actions run 35455653911 / job provenance",
           "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
-          "attestation_url": "https://github.com/arbmsistone-lab/arbm-sist-external-exec-proof/attestations/48654648",
-          "rekor_log_index": 2892892270,
-          "subject_sha256": "645fe2bb3855f4d1a94445319582372ea09324a769023eacb3871545b74e61e7",
-          "artifact": {
-            "id": 10587747355,
-            "name": "independent-attestation-readiness",
-            "sha256": "d5ec4f7ef164f249cecf0ffbcd6758fc8db78fac38b2ffe588bdf5ea3862c78c"
-          }
+          "proof_manifest": "evidence/zees16/proofs/arbm-sist-P15.json",
+          "reproduce": "Open GitHub Actions run 35455653911; verify job provenance is SUCCESS; download artifact 10588291884 and verify archive digest sha256:b6291272d0f46f6060db0456bbb5246f4eab7f05babef0d87a645be1f2b0e21d; verify the attested zees-p15-final-provenance.json with gh attestation verify --repo arbmsistone-lab/arbm-sist-external-exec-proof.",
+          "artifacts": [
+            {
+              "id": 10588291884,
+              "name": "zees-p15-final-provenance",
+              "sha256": "b6291272d0f46f6060db0456bbb5246f4eab7f05babef0d87a645be1f2b0e21d"
+            }
+          ]
         }
       ]
     },
