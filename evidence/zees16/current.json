@@ -1,0 +1,222 @@
+{
+  "schema": "zees16-evidence-registry/v1",
+  "standard": "ZEVANORY ENGINEERING EXCELLENCE STANDARD",
+  "version": "ZEES-16/2026.09",
+  "generated_at": "2026-09-19T18:24:00Z",
+  "approval_mode": "fail-closed",
+  "promotion_rule": "PROVADO somente com evidencia integral reproduzivel vinculada ao alvo, release/SHA e controle aplicavel. Evidencia parcial nunca promove automaticamente.",
+  "targets": [
+    {
+      "id": "arbm-one-system",
+      "name": "ARBM ONE",
+      "kind": "SISTEMA PRIVADO",
+      "canonical_sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
+      "state": "BLOCKED",
+      "evidence": [
+        {
+          "pillar": "P05",
+          "state": "PARTIAL",
+          "claim": "ci:portable:core executado com sucesso em prova remota exact-SHA do candidato cb1634a1.",
+          "source": "GitHub Actions run 35450150277 / exact-proof",
+          "sha": "cb1634a1117d198a65bd677c75fbd959a8d11089",
+          "note": "O run head da branch de prova e 6e79edd3..., mas o workflow faz checkout e assert do TARGET_SHA cb1634a1."
+        },
+        {
+          "pillar": "P12",
+          "state": "PARTIAL",
+          "claim": "Producao respondeu HTTP 200 em https://arbmone.api.br/ no SHA canonico atual.",
+          "source": "ARBM CONTROL production_probe",
+          "sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
+          "captured_at": "2026-09-19T16:23:00Z"
+        },
+        {
+          "pillar": "P06",
+          "state": "PROVADO",
+          "claim": "P06 final regression proof PASS no SHA canônico 5a919fb...",
+          "source": "ZEES proof run 35460295310",
+          "sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
+          "reproduce": "Verify evidence/zees16/proofs/arbm-one-system-P06.json, run 35460295310, target SHA and artifact SHA256 c5f87dc9cb59f7b941018f7a30a3cc3279689f07bf6816538ffe52847fec5202."
+        },
+        {
+          "pillar": "P07",
+          "state": "PROVADO",
+          "claim": "P07 final security proof PASS no SHA canônico 5a919fb...",
+          "source": "ZEES proof run 35460326439",
+          "sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
+          "reproduce": "Verify evidence/zees16/proofs/arbm-one-system-P07.json, run 35460326439, target SHA and artifact SHA256 fe0787b9834788b52bbc6abe0680d02f4ae820a3a31c352ac5ea94583bee0e03."
+        },
+        {
+          "pillar": "P15",
+          "state": "PROVADO",
+          "claim": "Quorum multiprovider no mesmo SHA provado por GitLab OIDC, GitHub OIDC e Cloudflare exact-SHA production deploy.",
+          "source": "ci_provider_attestations + GitHub Actions run 35458530433 + production /__arbm/build",
+          "sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
+          "reproduce": "Verify evidence/zees16/proofs/arbm-one-system-P15.json"
+        }
+      ]
+    },
+    {
+      "id": "arbm-sist",
+      "name": "ARBM SIST",
+      "kind": "SISTEMA + PRODUTO",
+      "canonical_sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
+      "state": "BLOCKED",
+      "evidence": [
+        {
+          "pillar": "P05",
+          "state": "PARTIAL",
+          "claim": "Na focal 091 candidata, proof-tests passou com escopo exato, guards negativos, banca 50x10 e council 100-lane.",
+          "source": "GitHub Actions run 35449699496 / job 105914601346",
+          "sha": "e6a164a959b2e561d653d54601931af692580d16"
+        },
+        {
+          "pillar": "P14",
+          "state": "BLOCKED",
+          "claim": "A focal 091 oficial terminou com score 0.0 e falha especialista por ACTION_COUNT; logo IA/LLMOps nao pode ser promovido.",
+          "source": "GitHub Actions run 35449699496 / focal-091 job 105915022088",
+          "sha": "e6a164a959b2e561d653d54601931af692580d16",
+          "fatal": "FATAL_SHIM:TASK091_SPECIALIST_POLICY_REJECTED:ACTION_COUNT",
+          "evaluator": {
+            "score": 0,
+            "section_e": "0.2769/0.3000",
+            "visual_gates": "12/13",
+            "failure": "slide3 rounded_text_containment: bullet 'Burn improvement relies on expansion payback from Q4.' outside threshold"
+          },
+          "artifacts": [
+            {
+              "id": 10586633080,
+              "name": "osworld-v32-focal-091-free",
+              "sha256": "35946a2ffbb22de512448ada8866eef9836ea60d912d017068e7bb8ec53ff1bb",
+              "size_bytes": 10608787
+            },
+            {
+              "id": 10586468955,
+              "name": "arbm-091-local-contract-replay",
+              "sha256": "092bd941aeb4bf34bd7a863d33f11c99372f67cb577049c81c651f6363fdec8f",
+              "size_bytes": 4390
+            },
+            {
+              "id": 10585748688,
+              "name": "arbm091-wps-proof-report",
+              "sha256": "b7cf20a5531f5416e7be7aeb16f8f8fb9744d7aff13b88e51af5eb14946ba8a6",
+              "size_bytes": 610
+            }
+          ]
+        },
+        {
+          "pillar": "P06",
+          "state": "PROVADO",
+          "claim": "Testes, verificacao e regressao final fechados no SHA canonico.",
+          "source": "ZEES final proof run 35459185350",
+          "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
+          "reproduce": "Verify evidence/zees16/proofs/arbm-sist-P06.json and GitHub Actions run 35459185350; confirm target SHA, PASS status and artifact SHA256 89325dd8cca615c6d480a3b3329b43baf150370c27db04bc9f9ba2d181f0c764."
+        },
+        {
+          "pillar": "P07",
+          "state": "PROVADO",
+          "claim": "Seguranca aplicavel fechada com zero findings e evidencia imutavel.",
+          "source": "ZEES final proof run 35459067904",
+          "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
+          "reproduce": "Verify evidence/zees16/proofs/arbm-sist-P07.json and GitHub Actions run 35459067904; confirm target SHA, PASS status and artifact SHA256 026cf4bf7824ed11f9bd3f48291188980d0d32fe42e9dfe6daebfd96f2e73f10."
+        },
+        {
+          "pillar": "P10",
+          "state": "PROVADO",
+          "claim": "Continuidade e recuperacao fechadas conforme contrato ZEES do perfil.",
+          "source": "ZEES final proof run 35458154534",
+          "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
+          "reproduce": "Verify evidence/zees16/proofs/arbm-sist-P10.json and GitHub Actions run 35458154534; confirm target SHA, PASS status and artifact SHA256 4aac912621f1cd8b4696f4460d36c13bd7ac18a0d1bbb7281f1efc9c35bdd609."
+        },
+        {
+          "pillar": "P15",
+          "state": "PROVADO",
+          "claim": "CI/CD e proveniencia fechados com attestation publica verificada.",
+          "source": "ZEES final proof run 35455653911",
+          "sha": "cf008c04e9bf01e87fca80799dfc25b1de68d888",
+          "reproduce": "Verify evidence/zees16/proofs/arbm-sist-P15.json and GitHub Actions run 35455653911; confirm target SHA, PASS status and artifact SHA256 b6291272d0f46f6060db0456bbb5246f4eab7f05babef0d87a645be1f2b0e21d."
+        }
+      ]
+    },
+    {
+      "id": "zevanory",
+      "name": "ZEVANORY",
+      "kind": "SISTEMA + PRODUTO",
+      "canonical_sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae",
+      "state": "PARTIAL",
+      "evidence": [
+        {
+          "pillar": "P02",
+          "state": "PARTIAL",
+          "claim": "Static audit fail-closed e gate 10P passaram em PR; blobs de paginas/CSS auditados sao identicos aos blobs do SHA de producao.",
+          "source": "run 35442508701 + blob parity against f0db89c4",
+          "sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae"
+        },
+        {
+          "pillar": "P04",
+          "state": "PARTIAL",
+          "claim": "product.css auditado exige :focus e prefers-reduced-motion; isso e evidencia estrutural, nao WCAG integral.",
+          "source": "scripts/premerge_product_audit.py + run 35442508701",
+          "sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae"
+        },
+        {
+          "pillar": "P11",
+          "state": "PARTIAL",
+          "claim": "Audit confirmou content-visibility e ausencia de JS cliente externo no primeiro render nas paginas auditadas.",
+          "source": "run 35442508701",
+          "sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae"
+        },
+        {
+          "pillar": "P12",
+          "state": "PARTIAL",
+          "claim": "Dominio oficial respondeu HTTP 200.",
+          "source": "ARBM CONTROL production_probe",
+          "sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae"
+        },
+        {
+          "pillar": "P15",
+          "state": "PARTIAL",
+          "claim": "GitHub Pages build/deploy/report-build-status concluiram SUCCESS no SHA de producao.",
+          "source": "GitHub Actions run 35442782458",
+          "sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae"
+        },
+        {
+          "pillar": "P16",
+          "state": "PARTIAL",
+          "claim": "Gate estatico confirmou VENDA OFF sem links de checkout/payment nas paginas auditadas; nao prova ciclo comercial completo.",
+          "source": "run 35442508701",
+          "sha": "f0db89c4830d8e502e7b224a3c790ccab940d1ae"
+        }
+      ]
+    }
+  ],
+  "product_page_blob_parity": [
+    [
+      "zevanory-one",
+      "86dfeb01fac627de4358e8b7f840e1b89e54e24c"
+    ],
+    [
+      "arbm-sist",
+      "95a19235a0ba77830a83f0e2b47f406502eb57e3"
+    ],
+    [
+      "ia-na-pratica",
+      "7c5b9dac20fc1ff0421e64f52ab7b6d2689d2d22"
+    ],
+    [
+      "vendas-na-pratica",
+      "2a6b9be0bd12a2ffbd9e7a4a8e9941829eab30d3"
+    ],
+    [
+      "lucro-e-caixa",
+      "427e208349bd280128413af2f16e31bca1cb9a43"
+    ],
+    [
+      "combo-ia-vendas",
+      "2d0c53565af6eef646439b1c4f505a331c842705"
+    ],
+    [
+      "negocio-completo",
+      "d4fb45a28616cf714c1f33b93bf39bfcacfbfce3"
+    ]
+  ]
+}

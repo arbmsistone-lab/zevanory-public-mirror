@@ -1,0 +1,53 @@
+{
+  "schema": "zees16-proof/v1",
+  "target": "arbm-one-system",
+  "pillar": "P15",
+  "status": "PASS",
+  "target_sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
+  "canonical_branch": "main",
+  "claim": "P15 fechado por quorum independente no mesmo SHA: GitLab OIDC attestation + GitHub OIDC attestation + Cloudflare exact-SHA production deployment, todos sob ARBM_ONE_CLOUD_CRITICAL_V1.",
+  "evidence": [
+    {
+      "provider": "gitlab",
+      "status": "success",
+      "observed_at": "2026-09-19T16:05:12.696Z",
+      "build_ref": "16605235655",
+      "issuer": "https://gitlab.com",
+      "evidence_hash": "47d3ae97ea003d8c7f9fec36b9832b84668c10721e2f1df23b1150ee02e3ee3f"
+    },
+    {
+      "provider": "github",
+      "status": "success",
+      "observed_at": "2026-09-19T16:23:19.588Z",
+      "build_ref": "35454755111",
+      "issuer": "https://token.actions.githubusercontent.com",
+      "evidence_hash": "c7e7ce138dddc34c07cec6d1034645bed3098e54b839e2eb94d7066fe0c07bca"
+    },
+    {
+      "provider": "cloudflare",
+      "status": "success",
+      "run_id": 35458530433,
+      "job_id": 105938046937,
+      "production_build_endpoint": "https://arbmone.api.br/__arbm/build",
+      "build_id": "sha-5a919fbced6e",
+      "release_id": "5a919fbced6e-sha-5a919fbced6e",
+      "gate_contract_version": "ARBM_ONE_CLOUD_CRITICAL_V1"
+    }
+  ],
+  "reproduce": "Query ci_provider_attestations for target SHA and verify GitLab/GitHub success under ARBM_ONE_CLOUD_CRITICAL_V1; inspect run 35458530433 and verify production /__arbm/build returns the same SHA and contract version.",
+  "policy": {
+    "zero_spend_hard": true,
+    "heavy_local": 0,
+    "fail_closed": true,
+    "exact_sha": true,
+    "providers_required": 3,
+    "providers_proved": [
+      "gitlab",
+      "github",
+      "cloudflare"
+    ]
+  },
+  "run_id": 35458530433,
+  "validation_model": "THREE_PROVIDER_QUORUM",
+  "note": "P15 is a provenance/quorum proof: GitLab and GitHub provide signed OIDC evidence hashes; Cloudflare provides exact-SHA production deployment verification. It is intentionally validated as a multi-provider evidence chain rather than a single artifact."
+}

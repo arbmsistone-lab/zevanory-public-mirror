@@ -1,0 +1,129 @@
+{
+  "schema": "zees16-target-coverage/v1",
+  "version": "ZEES-16/2026.09",
+  "id": "arbm-sist",
+  "name": "ARBM SIST",
+  "profile": "AI_AGENTIC_PLATFORM",
+  "pillars": [
+    {
+      "id": "P01",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P02",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P03",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P04",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P05",
+      "state": "PARTIAL",
+      "evidence": [
+        "run 35449699496 proof-tests SUCCESS"
+      ],
+      "next": "Fechar bundle integral no release."
+    },
+    {
+      "id": "P06",
+      "state": "PROVADO",
+      "evidence": [
+        "proof manifest evidence/zees16/proofs/arbm-sist-P06.json",
+        "run 35459185350 SUCCESS",
+        "artifact sha256 89325dd8cca615c6d480a3b3329b43baf150370c27db04bc9f9ba2d181f0c764"
+      ],
+      "next": "N/A: pilar fechado por prova reproduzivel no SHA canonico."
+    },
+    {
+      "id": "P07",
+      "state": "PROVADO",
+      "evidence": [
+        "proof manifest evidence/zees16/proofs/arbm-sist-P07.json",
+        "run 35459067904 SUCCESS",
+        "artifact sha256 026cf4bf7824ed11f9bd3f48291188980d0d32fe42e9dfe6daebfd96f2e73f10"
+      ],
+      "next": "N/A: pilar fechado por prova reproduzivel no SHA canonico."
+    },
+    {
+      "id": "P08",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P09",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P10",
+      "state": "PROVADO",
+      "evidence": [
+        "proof manifest evidence/zees16/proofs/arbm-sist-P10.json",
+        "run 35458154534 SUCCESS",
+        "artifact sha256 4aac912621f1cd8b4696f4460d36c13bd7ac18a0d1bbb7281f1efc9c35bdd609"
+      ],
+      "next": "N/A: pilar fechado por prova reproduzivel no SHA canonico."
+    },
+    {
+      "id": "P11",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P12",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P13",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    },
+    {
+      "id": "P14",
+      "state": "BLOCKED",
+      "evidence": [
+        "run 35449699496 focal-091 FAILURE",
+        "score 0.0",
+        "FATAL_SHIM:TASK091_SPECIALIST_POLICY_REJECTED:ACTION_COUNT",
+        "Section E 0.2769/0.3000",
+        "12/13 visual gates"
+      ],
+      "next": "Corrigir ACTION_COUNT e falha visual residual sem baixar gates."
+    },
+    {
+      "id": "P15",
+      "state": "PROVADO",
+      "evidence": [
+        "proof manifest evidence/zees16/proofs/arbm-sist-P15.json",
+        "run 35455653911 SUCCESS",
+        "artifact sha256 b6291272d0f46f6060db0456bbb5246f4eab7f05babef0d87a645be1f2b0e21d"
+      ],
+      "next": "N/A: pilar fechado por prova reproduzivel no SHA canonico."
+    },
+    {
+      "id": "P16",
+      "state": "BLOCKED",
+      "evidence": [],
+      "next": "Evidencia reproduzivel ainda nao registrada."
+    }
+  ]
+}

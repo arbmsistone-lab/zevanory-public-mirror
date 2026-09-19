@@ -1,0 +1,22 @@
+{
+  "schema": "zees16-proof/v1",
+  "target": "arbm-one-system",
+  "pillar": "P07",
+  "status": "PASS",
+  "target_sha": "5a919fbced6efca3133611051cccc25f29b41a8d",
+  "canonical_branch": "main",
+  "run_id": 35460326439,
+  "artifact": {
+    "id": 10588808222,
+    "name": "zees-arbm-one-p07",
+    "sha256": "fe0787b9834788b52bbc6abe0680d02f4ae820a3a31c352ac5ea94583bee0e03"
+  },
+  "reproduce": "Verificar run 35460326439, todos os passos SUCCESS e artefato sha256 fe0787b9834788b52bbc6abe0680d02f4ae820a3a31c352ac5ea94583bee0e03.",
+  "claim": "P07 fechado no SHA 5a919... com SAST deterministico, contratos de seguranca, SCA lockfile audit, DAST seguro de producao, headers/runtime e secret lifecycle.",
+  "policy": {
+    "zero_spend_hard": true,
+    "heavy_local": 0,
+    "fail_closed": true,
+    "exact_sha": true
+  }
+}
