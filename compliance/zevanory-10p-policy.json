@@ -1,0 +1,31 @@
+{
+  "standard": "ZEVANORY-10P-EXCELLENCE",
+  "version": "1.0.0",
+  "approval_mode": "fail-closed",
+  "minimum_confidence": 0.99,
+  "required_excellence": 1.0,
+  "score_compensation": false,
+  "partial_approval": false,
+  "pillars": [
+    {"id":"P1","name":"Data Attribution & Tracking","required":true},
+    {"id":"P2","name":"Programmatic Creative","required":true},
+    {"id":"P3","name":"Generative AI & LLM/LMM Orchestration","required":true},
+    {"id":"P4","name":"Computer Vision & Static Creative Audit","required":true},
+    {"id":"P5","name":"Automated Multivariate Testing","required":true},
+    {"id":"P6","name":"NLP & Algorithmic Copywriting","required":true},
+    {"id":"P7","name":"Recommendation & Contextual/Hyperlocal Personalization","required":true},
+    {"id":"P8","name":"Cloud/Edge Performance & Resilience","required":true},
+    {"id":"P9","name":"Governance, Privacy, Compliance & Integrity","required":true},
+    {"id":"P10","name":"MLOps & Closed-Loop Analytics","required":true}
+  ],
+  "approval_requirements": {
+    "all_pillars_required": true,
+    "evidence_per_pillar": true,
+    "reproducible_evidence": true,
+    "evidence_hash_required": true,
+    "evidence_timestamp_required": true,
+    "reproduction_command_required": true,
+    "no_unverified_claims": true,
+    "allowed_statuses": ["UNSUBMITTED","BLOCKED","APPROVED"]
+  }
+}
