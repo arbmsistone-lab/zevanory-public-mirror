@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 import hashlib
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.zevanory_crown_gate import merkle_root
 
 a=hashlib.sha256(b"a").hexdigest()
