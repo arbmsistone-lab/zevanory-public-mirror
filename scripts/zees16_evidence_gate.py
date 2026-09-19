@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "evidence" / "zees16" / "current.json"
 COVERAGE_DIR = ROOT / "evidence" / "zees16" / "coverage"
+PROOFS_DIR = ROOT / "evidence" / "zees16" / "proofs"
 ALLOWED_STATES = {"PROVADO", "PARTIAL", "BLOCKED", "N/A", "EXTERNAL"}
 PILLARS = {f"P{i:02d}" for i in range(1, 17)}
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
@@ -101,8 +102,29 @@ def main() -> int:
                     errors += fail(f"{tid}/{pillar}: PROVADO sem SHA exato")
                 if not str(entry.get("reproduce", "")).strip():
                     errors += fail(f"{tid}/{pillar}: PROVADO sem reproduce")
-                if target.get("state") == "BLOCKED":
-                    errors += fail(f"{tid}/{pillar}: target BLOCKED nao pode conter PROVADO final")
+                proof_path = PROOFS_DIR / f"{tid}-{pillar}.json"
+                if not proof_path.exists():
+                    errors += fail(f"{tid}/{pillar}: PROVADO sem proof manifest")
+                else:
+                    try:
+                        proof = json.loads(proof_path.read_text(encoding="utf-8"))
+                        if proof.get("schema") != "zees16-proof/v1":
+                            errors += fail(f"{tid}/{pillar}: proof schema invalido")
+                        if proof.get("target") != tid or proof.get("pillar") != pillar:
+                            errors += fail(f"{tid}/{pillar}: proof identidade divergente")
+                        if proof.get("status") != "PASS":
+                            errors += fail(f"{tid}/{pillar}: proof nao PASS")
+                        if proof.get("target_sha") != canonical_sha:
+                            errors += fail(f"{tid}/{pillar}: proof SHA nao canonico")
+                        if not isinstance(proof.get("run_id"), int) or proof["run_id"] <= 0:
+                            errors += fail(f"{tid}/{pillar}: proof run_id invalido")
+                        artifact = proof.get("artifact") or {}
+                        if not SHA256.fullmatch(str(artifact.get("sha256", ""))):
+                            errors += fail(f"{tid}/{pillar}: proof artifact digest invalido")
+                        if not str(proof.get("reproduce", "")).strip():
+                            errors += fail(f"{tid}/{pillar}: proof sem reproducao")
+                    except Exception as exc:
+                        errors += fail(f"{tid}/{pillar}: proof invalido: {exc}")
 
             for artifact in entry.get("artifacts", []) or []:
                 digest = str(artifact.get("sha256", ""))
@@ -156,7 +178,21 @@ def main() -> int:
                     if state == "N/A" and not str(item.get("next", "")).startswith("N/A:"):
                         errors += fail(f"{target_id}/{item.get('id')}: N/A sem justificativa")
                     if state == "PROVADO":
-                        errors += fail(f"{target_id}/{item.get('id')}: coverage nao promove PROVADO; use manifest reproduzivel dedicado")
+                        pillar_id = str(item.get("id", ""))
+                        proof_path = PROOFS_DIR / f"{target_id}-{pillar_id}.json"
+                        if not proof_path.exists():
+                            errors += fail(f"{target_id}/{pillar_id}: coverage PROVADO sem proof manifest")
+                        else:
+                            proof = json.loads(proof_path.read_text(encoding="utf-8"))
+                            if proof.get("status") != "PASS" or proof.get("target") != target_id or proof.get("pillar") != pillar_id:
+                                errors += fail(f"{target_id}/{pillar_id}: proof manifest nao fecha o coverage")
+                            if not SHA40.fullmatch(str(proof.get("target_sha", ""))):
+                                errors += fail(f"{target_id}/{pillar_id}: proof SHA invalido")
+                            artifact = proof.get("artifact") or {}
+                            if not SHA256.fullmatch(str(artifact.get("sha256", ""))):
+                                errors += fail(f"{target_id}/{pillar_id}: proof artifact digest invalido")
+                            if not str(proof.get("reproduce", "")).strip():
+                                errors += fail(f"{target_id}/{pillar_id}: proof sem reproducao")
         except Exception as exc:
             errors += fail(f"coverage invalida: {exc}")
 
