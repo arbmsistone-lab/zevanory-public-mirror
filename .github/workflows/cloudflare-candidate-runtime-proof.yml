@@ -1,0 +1,77 @@
+name: Cloudflare candidate runtime proof
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/**"
+      - "wrangler.git-repro.jsonc"
+      - "evidence/cloudflare-runtime-contract.json"
+      - ".github/workflows/cloudflare-candidate-runtime-proof.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate observed runtime contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          c=json.loads(Path("evidence/cloudflare-runtime-contract.json").read_text())
+          assert c["rollback_version"]=="52a989a2"
+          assert c["compatibility_date"]=="2026-09-04"
+          assert c["routing"]["api"]=="/api/*"
+          assert "handleAsNodeRequest" in c["routing"]["api_runtime"]
+          assert c["routing"]["assets_runtime"]=="env.ASSETS.fetch(request)"
+          expected={"ASSETS":"assets","IA":"workers_ai","ZEA10_MOTOR":"service","ZEVANORY_ARTEFATOS_PRIVADOS":"kv_namespace"}
+          got={x["name"]:x["type"] for x in c["bindings"] if x["required"]}
+          assert got==expected, (got,expected)
+          assert c["cutover_allowed"] is False
+          assert all(v=="false" for v in c["commercial_lock"].values())
+          PY
+      - name: Validate Git-repro configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F '"compatibility_date": "2026-09-04"' wrangler.git-repro.jsonc
+          grep -F '"binding": "ASSETS"' wrangler.git-repro.jsonc
+          grep -F '"/api/*"' wrangler.git-repro.jsonc
+          for gate in VENDA_GLOBALMENTE_HABILITADA PRE_VENDA_PORTOES_APROVADOS VENDAS_PELO_WHATSAPP_HABILITADAS CHECKOUT_ATIVADO EVENTOS_FINANCEIROS_ATIVADOS LIBERACAO_ABSOLUTA_APROVADA; do
+            grep -F "\"$gate\": \"false\"" wrangler.git-repro.jsonc
+          done
+      - name: Verify no secret values are committed in runtime contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Eqi '(api[_-]?key|access[_-]?token|client[_-]?secret|webhook[_-]?secret|database[_-]?url)"[[:space:]]*:[[:space:]]*"[^"]+' evidence/cloudflare-runtime-contract.json; then
+            echo "Secret-like value found in runtime contract" >&2
+            exit 1
+          fi
+      - name: Wrangler compile dry-run on remote runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@latest deploy --dry-run --config wrangler.git-repro.jsonc --outdir /tmp/zevanory-worker-dry-run
+          test -s /tmp/zevanory-worker-dry-run/index.js
+          sha256sum /tmp/zevanory-worker-dry-run/index.js | tee cloudflare-candidate-bundle.sha256
+      - name: Prove API remains fail-closed before source reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'api_binding_not_cut_over' worker/git-repro.mjs
+          grep -F 'commercial_gate_open_unexpectedly' worker/git-repro.mjs
+          echo "PASS: candidate cannot replace production API until the existing API source is reconciled."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-candidate-runtime-proof
+          path: cloudflare-candidate-bundle.sha256
+          retention-days: 90
