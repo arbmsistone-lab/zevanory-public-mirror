@@ -28,23 +28,29 @@ jobs:
           s=s.replace("Conheça o portfólio ZEVANORY: ARBM ONE, ARBM SIST, IA na Prática, Vendas na Prática, Lucro & Caixa e soluções integradas.","Conheça o portfólio ZEVANORY: ZEVANORY ONE, ARBM Contador para Salões, ARBM SIST, IA na Prática, Vendas na Prática, Lucro & Caixa e soluções integradas.")
           old='<a class="catalog-card" href="/zevanory-public-mirror/arbm-one"><span class="catalog-type">Software comercial</span><h2>ARBM ONE</h2><p>PDV, atendimento, clientes, pedidos e operação comercial em uma experiência integrada, preparada para implantação por cliente.</p><span class="card-link">Ver ARBM ONE →</span></a>'
           new='<a class="catalog-card" href="/zevanory-public-mirror/zevanory-one"><span class="catalog-type">Software comercial</span><h2>ZEVANORY ONE</h2><p>PDV, atendimento, delivery, fidelidade, clientes, pedidos, estoque e operação comercial em uma experiência integrada, preparada para implantação por cliente.</p><span class="card-link">Ver ZEVANORY ONE →</span></a>\n<a class="catalog-card" href="/zevanory-public-mirror/arbm-contador-saloes"><span class="catalog-type">Gestão vertical para beleza</span><h2>ARBM Contador para Salões</h2><p>Software para salões de beleza com foco em organização financeira, rotina operacional e controles próprios do segmento.</p><span class="card-link">Ver ARBM Contador para Salões →</span></a>'
-          if old not in s:
-              raise SystemExit("legacy catalog card not found; refusing non-idempotent rewrite")
-          p.write_text(s.replace(old,new),encoding="utf-8")
+          if old in s:
+              s=s.replace(old,new)
+          elif "/zevanory-public-mirror/zevanory-one" not in s or "/zevanory-public-mirror/arbm-contador-saloes" not in s:
+              raise SystemExit("catalog neither legacy nor reconciled; refusing divergent state")
+          p.write_text(s,encoding="utf-8")
           p=Path("sitemap.xml")
           s=p.read_text(encoding="utf-8")
           old='<url><loc>https://zevanory.api.br/arbm-one</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.95</priority></url>'
           new='<url><loc>https://zevanory.api.br/zevanory-one</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.95</priority></url>\n  <url><loc>https://zevanory.api.br/arbm-contador-saloes</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>'
-          if old not in s:
-              raise SystemExit("legacy sitemap entry not found; refusing non-idempotent rewrite")
-          p.write_text(s.replace(old,new),encoding="utf-8")
+          if old in s:
+              s=s.replace(old,new)
+          elif "https://zevanory.api.br/zevanory-one" not in s or "https://zevanory.api.br/arbm-contador-saloes" not in s:
+              raise SystemExit("sitemap neither legacy nor reconciled; refusing divergent state")
+          p.write_text(s,encoding="utf-8")
           p=Path("scripts/premerge_product_audit.py")
           s=p.read_text(encoding="utf-8")
           old='    ("arbm-one/index.html", "arbm-one", "SoftwareApplication"),'
           new='    ("zevanory-one/index.html", "zevanory-one", "SoftwareApplication"),\n    ("arbm-contador-saloes/index.html", "arbm-contador-saloes", "SoftwareApplication"),'
-          if old not in s:
-              raise SystemExit("legacy audit product not found; refusing non-idempotent rewrite")
-          s=s.replace(old,new).replace('pass_("solucoes/index.html: catálogo 7/7 aprovado")','pass_(f"solucoes/index.html: catálogo {len(PRODUCTS)}/{len(PRODUCTS)} aprovado")').replace('pass_("sitemap.xml: 7 produtos + soluções presentes")','pass_(f"sitemap.xml: {len(PRODUCTS)} produtos + soluções presentes")')
+          if old in s:
+              s=s.replace(old,new)
+          elif '("zevanory-one/index.html", "zevanory-one", "SoftwareApplication")' not in s or '("arbm-contador-saloes/index.html", "arbm-contador-saloes", "SoftwareApplication")' not in s:
+              raise SystemExit("audit neither legacy nor reconciled; refusing divergent state")
+          s=s.replace('pass_("solucoes/index.html: catálogo 7/7 aprovado")','pass_(f"solucoes/index.html: catálogo {len(PRODUCTS)}/{len(PRODUCTS)} aprovado")').replace('pass_("sitemap.xml: 7 produtos + soluções presentes")','pass_(f"sitemap.xml: {len(PRODUCTS)} produtos + soluções presentes")')
           p.write_text(s,encoding="utf-8")
           PY
           python3 -m py_compile scripts/premerge_product_audit.py
@@ -57,5 +63,9 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add solucoes/index.html sitemap.xml scripts/premerge_product_audit.py
           git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "Source already reconciled; no commit required."
+            exit 0
+          fi
           git commit -m "Reconcile catalog sitemap and audit with live products"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
