@@ -17,25 +17,58 @@
     "assets_runtime": "env.ASSETS.fetch(request)"
   },
   "bindings_referenced_by_recovered_bundle": [
-    {"name":"ASSETS","type":"assets","required":true},
-    {"name":"AI","type":"workers_ai","required_for_scheduled_ai":false},
-    {"name":"ZEVANORY_PRIVATE_ARTIFACTS","type":"kv_namespace","required_for_owner_and_private_artifacts":true},
-    {"name":"ZEA10_ENGINE","type":"service_or_rpc","required_for_control_plane_live_report":false}
+    {
+      "name": "ASSETS",
+      "type": "assets",
+      "required": true
+    },
+    {
+      "name": "AI",
+      "type": "workers_ai",
+      "required_for_scheduled_ai": false
+    },
+    {
+      "name": "ZEVANORY_PRIVATE_ARTIFACTS",
+      "type": "kv_namespace",
+      "required_for_owner_and_private_artifacts": true
+    },
+    {
+      "name": "ZEA10_ENGINE",
+      "type": "service_or_rpc",
+      "required_for_control_plane_live_report": false
+    }
   ],
   "dashboard_labels_previously_observed": [
-    {"name":"IA","note":"dashboard label; recovered bundle references env.AI"},
-    {"name":"ZEA10_MOTOR","note":"dashboard label; recovered bundle references env.ZEA10_ENGINE"},
-    {"name":"ZEVANORY_ARTEFATOS_PRIVADOS","note":"dashboard label; recovered bundle references env.ZEVANORY_PRIVATE_ARTIFACTS"}
+    {
+      "name": "IA",
+      "note": "dashboard label; recovered bundle references env.AI"
+    },
+    {
+      "name": "ZEA10_MOTOR",
+      "note": "dashboard label; recovered bundle references env.ZEA10_ENGINE"
+    },
+    {
+      "name": "ZEVANORY_ARTEFATOS_PRIVADOS",
+      "note": "dashboard label; recovered bundle references env.ZEVANORY_PRIVATE_ARTIFACTS"
+    }
   ],
   "commercial_lock": {
-    "VENDA_GLOBALMENTE_HABILITADA":"false",
-    "PRE_VENDA_PORTOES_APROVADOS":"false",
-    "VENDAS_PELO_WHATSAPP_HABILITADAS":"false",
-    "CHECKOUT_ATIVADO":"false",
-    "EVENTOS_FINANCEIROS_ATIVADOS":"false",
-    "LIBERACAO_ABSOLUTA_APROVADA":"false"
+    "VENDA_GLOBALMENTE_HABILITADA": "false",
+    "PRE_VENDA_PORTOES_APROVADOS": "false",
+    "VENDAS_PELO_WHATSAPP_HABILITADAS": "false",
+    "CHECKOUT_ATIVADO": "false",
+    "EVENTOS_FINANCEIROS_ATIVADOS": "false",
+    "LIBERACAO_ABSOLUTA_APROVADA": "false"
   },
   "secrets_policy": "names-only-in-git-values-outside-git",
   "recovered_bundle_completeness": "partial-tail-only",
-  "cutover_allowed": false
+  "cutover_allowed": false,
+  "candidate_proof": {
+    "head_sha": "2c7e7e1a63a0591003a6d0656f6c36f91bb8e833",
+    "workflow_run_id": 35539834517,
+    "artifact_id": 10613833365,
+    "artifact_zip_digest": "sha256:94f2892ffdda9c81458ad03aea6075058577cdbd9c0d664bd516eb9dd86e7fac",
+    "compiled_bundle_sha256": "bbde3832fe7dfa44894797853dcc9db74e9224f7813eaaeb346b20f120f975a3",
+    "result": "success"
+  }
 }
