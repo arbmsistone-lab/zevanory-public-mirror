@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-09-20",
+  "production_worker": "zevanory",
+  "rollback_version": "52a989a2",
+  "release_marker": "83620c680958d726fc4b0fd16e2574cdcc362a6d",
+  "compatibility_date": "2026-09-04",
+  "routing": {
+    "api": "/api/*",
+    "api_runtime": "cloudflare:node handleAsNodeRequest(PORT, request)",
+    "assets_runtime": "env.ASSETS.fetch(request)"
+  },
+  "bindings": [
+    {"name":"ASSETS","type":"assets","required":true},
+    {"name":"IA","type":"workers_ai","required":true},
+    {"name":"ZEA10_MOTOR","type":"service","required":true,"observed_target_label":"controle arbm","observed_entrypoint_label":"Servico de Plano de Controle Zea10","code_reference_observed":false},
+    {"name":"ZEVANORY_ARTEFATOS_PRIVADOS","type":"kv_namespace","required":true}
+  ],
+  "commercial_lock": {
+    "VENDA_GLOBALMENTE_HABILITADA":"false",
+    "PRE_VENDA_PORTOES_APROVADOS":"false",
+    "VENDAS_PELO_WHATSAPP_HABILITADAS":"false",
+    "CHECKOUT_ATIVADO":"false",
+    "EVENTOS_FINANCEIROS_ATIVADOS":"false",
+    "LIBERACAO_ABSOLUTA_APROVADA":"false"
+  },
+  "secrets_policy": "names-only-in-git-values-outside-git",
+  "cutover_allowed": false
+}
