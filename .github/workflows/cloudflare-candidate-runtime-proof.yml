@@ -30,11 +30,15 @@ jobs:
           assert c["rollback_version"]=="52a989a2"
           assert c["compatibility_date"]=="2026-09-04"
           assert c["routing"]["api"]=="/api/*"
-          assert "handleAsNodeRequest" in c["routing"]["api_runtime"]
+          assert c["node_runtime"]["port"]==8788
+          assert c["node_runtime"]["server"]=="http.createServer"
+          assert c["node_runtime"]["listen"]=="server.listen(PORT)"
+          assert "handleAsNodeRequest" in c["node_runtime"]["bridge"]
           assert c["routing"]["assets_runtime"]=="env.ASSETS.fetch(request)"
-          expected={"ASSETS":"assets","IA":"workers_ai","ZEA10_MOTOR":"service","ZEVANORY_ARTEFATOS_PRIVADOS":"kv_namespace"}
-          got={x["name"]:x["type"] for x in c["bindings"] if x["required"]}
+          expected={"ASSETS":"assets","AI":"workers_ai","ZEVANORY_PRIVATE_ARTIFACTS":"kv_namespace","ZEA10_ENGINE":"service_or_rpc"}
+          got={x["name"]:x["type"] for x in c["bindings_referenced_by_recovered_bundle"]}
           assert got==expected, (got,expected)
+          assert c["recovered_bundle_completeness"]=="partial-tail-only"
           assert c["cutover_allowed"] is False
           assert all(v=="false" for v in c["commercial_lock"].values())
           PY
