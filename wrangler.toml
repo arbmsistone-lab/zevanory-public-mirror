@@ -1,11 +1,11 @@
 name = "zevanory-git-reproducible"
-compatibility_date = "2026-09-20"
+compatibility_date = "2026-09-04"
 
-# This repository is the deterministic public-site source.
-# The production API Worker remains independently deployed until its source
-# and bindings are reconciled into Git. This config MUST NOT replace it.
+# Mirrors the current production runtime while the API Worker source is
+# reconciled independently. No compatibility flags are configured.
 [assets]
 directory = "."
+binding = "ATIVOS"
 not_found_handling = "404-page"
 html_handling = "auto-trailing-slash"
 
