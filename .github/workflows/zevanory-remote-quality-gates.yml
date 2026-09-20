@@ -33,11 +33,17 @@ jobs:
           NODE
       - name: Audit production quality
         run: |
-          npx lighthouse https://zevanory.api.br/solucoes --chrome-flags="--headless --no-sandbox --disable-setuid-sandbox" --only-categories=performance,accessibility,best-practices,seo --output=json --output-path=lighthouse.json --quiet || true
+          for i in 1 2 3; do
+            npx lighthouse https://zevanory.api.br/solucoes --chrome-flags="--headless --no-sandbox --disable-setuid-sandbox" --only-categories=performance,accessibility,best-practices,seo --output=json --output-path="lighthouse-$i.json" --quiet || true
+          done
+          cp lighthouse-2.json lighthouse.json
           node - <<'NODE'
-          const r=require('./lighthouse.json'), c=r.categories;
-          const s=Object.fromEntries(Object.entries(c).map(([k,v])=>[k,Math.round(v.score*100)]));
-          console.log(JSON.stringify(s));
+          const rs=[1,2,3].map(i=>require('./lighthouse-'+i+'.json'));
+          const scores=rs.map(r=>Object.fromEntries(Object.entries(r.categories).map(([k,v])=>[k,Math.round(v.score*100)])));
+          const med=k=>scores.map(s=>s[k]).sort((a,b)=>a-b)[1];
+          const s={performance:med('performance'),accessibility:med('accessibility'),'best-practices':med('best-practices'),seo:med('seo')};
+          console.log(JSON.stringify({runs:scores,median:s}));
+          const r=rs[1], c=r.categories;
           const tolerated=new Set(['errors-in-console','inspector-issues']);
           const bpRefs=new Set((c['best-practices'].auditRefs||[]).map(x=>x.id));
           const bad=Object.values(r.audits).filter(a=>bpRefs.has(a.id)&&a.score!==null&&a.score<1&&a.scoreDisplayMode!=='notApplicable'&&!tolerated.has(a.id));
