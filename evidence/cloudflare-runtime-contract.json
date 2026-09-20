@@ -1,20 +1,31 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "observed_at": "2026-09-20",
   "production_worker": "zevanory",
   "rollback_version": "52a989a2",
   "release_marker": "83620c680958d726fc4b0fd16e2574cdcc362a6d",
   "compatibility_date": "2026-09-04",
+  "node_runtime": {
+    "port": 8788,
+    "server": "http.createServer",
+    "listen": "server.listen(PORT)",
+    "bridge": "cloudflare:node handleAsNodeRequest(PORT, request)"
+  },
   "routing": {
     "api": "/api/*",
-    "api_runtime": "cloudflare:node handleAsNodeRequest(PORT, request)",
+    "private_api": "/private-api/* -> /api/* with owner-authenticated header",
     "assets_runtime": "env.ASSETS.fetch(request)"
   },
-  "bindings": [
+  "bindings_referenced_by_recovered_bundle": [
     {"name":"ASSETS","type":"assets","required":true},
-    {"name":"IA","type":"workers_ai","required":true},
-    {"name":"ZEA10_MOTOR","type":"service","required":true,"observed_target_label":"controle arbm","observed_entrypoint_label":"Servico de Plano de Controle Zea10","code_reference_observed":false},
-    {"name":"ZEVANORY_ARTEFATOS_PRIVADOS","type":"kv_namespace","required":true}
+    {"name":"AI","type":"workers_ai","required_for_scheduled_ai":false},
+    {"name":"ZEVANORY_PRIVATE_ARTIFACTS","type":"kv_namespace","required_for_owner_and_private_artifacts":true},
+    {"name":"ZEA10_ENGINE","type":"service_or_rpc","required_for_control_plane_live_report":false}
+  ],
+  "dashboard_labels_previously_observed": [
+    {"name":"IA","note":"dashboard label; recovered bundle references env.AI"},
+    {"name":"ZEA10_MOTOR","note":"dashboard label; recovered bundle references env.ZEA10_ENGINE"},
+    {"name":"ZEVANORY_ARTEFATOS_PRIVADOS","note":"dashboard label; recovered bundle references env.ZEVANORY_PRIVATE_ARTIFACTS"}
   ],
   "commercial_lock": {
     "VENDA_GLOBALMENTE_HABILITADA":"false",
@@ -25,5 +36,6 @@
     "LIBERACAO_ABSOLUTA_APROVADA":"false"
   },
   "secrets_policy": "names-only-in-git-values-outside-git",
+  "recovered_bundle_completeness": "partial-tail-only",
   "cutover_allowed": false
 }
