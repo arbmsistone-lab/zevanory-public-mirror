@@ -1,0 +1,17 @@
+name = "zevanory-git-reproducible"
+compatibility_date = "2026-09-20"
+
+# This repository is the deterministic public-site source.
+# The production API Worker remains independently deployed until its source
+# and bindings are reconciled into Git. This config MUST NOT replace it.
+[assets]
+directory = "."
+not_found_handling = "404-page"
+html_handling = "auto-trailing-slash"
+
+[vars]
+ZEVANORY_PUBLIC_SALES = "false"
+CHECKOUT_ENABLED = "false"
+FINANCIAL_EVENTS_ENABLED = "false"
+PRE_SALE_GATES_APPROVED = "false"
+ABSOLUTE_RELEASE_APPROVED = "false"
