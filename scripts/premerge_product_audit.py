@@ -11,7 +11,8 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "https://zevanory.api.br"
 PRODUCTS = [
-    ("arbm-one/index.html", "arbm-one", "SoftwareApplication"),
+    ("zevanory-one/index.html", "zevanory-one", "SoftwareApplication"),
+    ("arbm-contador-saloes/index.html", "arbm-contador-saloes", "SoftwareApplication"),
     ("arbm-sist/index.html", "arbm-sist", "SoftwareApplication"),
     ("ia-na-pratica/index.html", "ia-na-pratica", "Product"),
     ("vendas-na-pratica/index.html", "vendas-na-pratica", "Product"),
@@ -172,7 +173,7 @@ def check_solutions():
         if not any(slug in href for href in doc.links):
             errors += fail(f"solucoes: link para {slug} ausente")
     if errors == 0:
-        pass_("solucoes/index.html: catálogo 7/7 aprovado")
+        pass_(f"solucoes/index.html: catálogo {len(PRODUCTS)}/{len(PRODUCTS)} aprovado")
     return errors
 
 def check_css():
@@ -197,7 +198,7 @@ def check_sitemap():
     if f"{BASE}/solucoes" not in text:
         errors += fail("sitemap: /solucoes ausente")
     if errors == 0:
-        pass_("sitemap.xml: 7 produtos + soluções presentes")
+        pass_(f"sitemap.xml: {len(PRODUCTS)} produtos + soluções presentes")
     return errors
 
 def main():
