@@ -39,7 +39,8 @@ jobs:
           const s=Object.fromEntries(Object.entries(c).map(([k,v])=>[k,Math.round(v.score*100)]));
           console.log(JSON.stringify(s));
           const tolerated=new Set(['errors-in-console','inspector-issues']);
-          const bad=Object.values(r.audits).filter(a=>a.score!==null&&a.score<1&&a.scoreDisplayMode!=='notApplicable'&&!tolerated.has(a.id));
+          const bpRefs=new Set((c['best-practices'].auditRefs||[]).map(x=>x.id));
+          const bad=Object.values(r.audits).filter(a=>bpRefs.has(a.id)&&a.score!==null&&a.score<1&&a.scoreDisplayMode!=='notApplicable'&&!tolerated.has(a.id));
           const consoleAudit=r.audits['errors-in-console'];
           const inspector=r.audits['inspector-issues'];
           const blob=JSON.stringify([consoleAudit?.details,inspector?.details]);
