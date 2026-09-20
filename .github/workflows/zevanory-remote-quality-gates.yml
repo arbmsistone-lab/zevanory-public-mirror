@@ -1,0 +1,42 @@
+name: zevanory-remote-quality-gates
+on:
+  pull_request:
+    branches: [gh-pages]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  remote-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install remote audit tools
+        run: npm install --no-save lighthouse@12 pa11y@8
+      - name: Audit production accessibility
+        run: npx pa11y https://zevanory.api.br/solucoes --standard WCAG2AA --reporter cli
+      - name: Audit production performance and accessibility
+        run: |
+          npx lighthouse https://zevanory.api.br/solucoes --chrome-flags="--headless --no-sandbox" --only-categories=performance,accessibility,best-practices,seo --output=json --output-path=lighthouse.json --quiet
+          node -e "const r=require('./lighthouse.json'); const c=r.categories; const s=Object.fromEntries(Object.entries(c).map(([k,v])=>[k,Math.round(v.score*100)])); console.log(JSON.stringify(s)); if(s.performance<90||s.accessibility<95||s['best-practices']<95||s.seo<95) process.exit(1)"
+      - name: Verify sales remain fail-closed
+        run: |
+          python3 - <<'PY'
+          import urllib.request
+          body=urllib.request.urlopen('https://zevanory.api.br/solucoes',timeout=20).read().decode('utf-8','replace').lower()
+          forbidden=['mercadopago.com/checkout','checkout.stripe.com','buy.stripe.com']
+          hit=[x for x in forbidden if x in body]
+          if hit: raise SystemExit('commercial checkout exposed: '+','.join(hit))
+          print('PASS: no direct external checkout exposed on audited public catalog')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zevanory-remote-quality-evidence
+          path: lighthouse.json
+          retention-days: 30
