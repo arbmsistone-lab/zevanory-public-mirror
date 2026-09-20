@@ -19,7 +19,18 @@ jobs:
       - name: Install remote audit tools
         run: npm install --no-save lighthouse@12 pa11y@8
       - name: Audit production accessibility
-        run: npx pa11y https://zevanory.api.br/solucoes --standard WCAG2AA --reporter cli --chrome-arg=--no-sandbox --chrome-arg=--disable-setuid-sandbox
+        run: |
+          node - <<'NODE'
+          const pa11y=require('pa11y');
+          (async()=>{
+            const results=await pa11y('https://zevanory.api.br/solucoes',{
+              standard:'WCAG2AA',
+              chromeLaunchConfig:{args:['--no-sandbox','--disable-setuid-sandbox']}
+            });
+            console.log(JSON.stringify(results.issues,null,2));
+            if(results.issues.length) process.exit(1);
+          })().catch(e=>{console.error(e);process.exit(2)});
+          NODE
       - name: Audit production performance and accessibility
         run: |
           npx lighthouse https://zevanory.api.br/solucoes --chrome-flags="--headless --no-sandbox --disable-setuid-sandbox" --only-categories=performance,accessibility,best-practices,seo --output=json --output-path=lighthouse.json --quiet
