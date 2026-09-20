@@ -1,0 +1,49 @@
+name: zevanory-p04-wcag
+on:
+  pull_request:
+    branches: [gh-pages]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  wcag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Pa11y
+        run: npm install --no-save pa11y@9.0.1
+      - name: WCAG 2.2 AA automated gate
+        run: |
+          cat > wcag.mjs <<'JS'
+          import pa11y from 'pa11y';
+          import fs from 'fs';
+          const urls=['https://zevanory.api.br/solucoes'];
+          const evidence=[];
+          let failed=false;
+          for(const url of urls){
+            const result=await pa11y(url,{
+              standard:'WCAG2AA',
+              timeout:30000,
+              wait:1000,
+              chromeLaunchConfig:{args:['--no-sandbox']},
+              includeWarnings:false,
+              includeNotices:false
+            });
+            const errors=result.issues.filter(x=>x.type==='error');
+            evidence.push({url,documentTitle:result.documentTitle,errorCount:errors.length,errors});
+            if(errors.length) failed=true;
+          }
+          fs.writeFileSync('p04-wcag-evidence.json',JSON.stringify({schema:'zevanory.p04.wcag.v1',standard:'WCAG2AA',evidence},null,2));
+          console.log(JSON.stringify(evidence));
+          if(failed) process.exit(1);
+          JS
+          node wcag.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p04-wcag-evidence
+          path: p04-wcag-evidence.json
+          retention-days: 90
