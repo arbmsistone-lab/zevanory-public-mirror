@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import hashlib, json, sys
+import hashlib, json, subprocess, sys
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -23,11 +23,22 @@ def merkle_root(hashes):
     return xs[0].hex()
 
 def repo_inventory():
+    # Inventory only Git-tracked files so the digest is reproducible across
+    # independent clean providers and cannot be polluted by build-tool files.
+    try:
+        out=subprocess.check_output(
+            ["git","-C",str(ROOT),"ls-files","-z"],
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return []
     files=[]
-    for p in ROOT.rglob("*"):
-        if not p.is_file() or ".git" in p.parts: continue
-        rel=p.relative_to(ROOT).as_posix()
+    for raw in out.split(b"\0"):
+        if not raw: continue
+        rel=raw.decode("utf-8")
         if rel.startswith("evidence/runtime/"): continue
+        p=ROOT/rel
+        if not p.is_file(): continue
         files.append({"path":rel,"sha256":sha256_file(p),"size":p.stat().st_size})
     files.sort(key=lambda x:x["path"])
     return files
