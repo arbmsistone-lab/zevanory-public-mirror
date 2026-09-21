@@ -1,0 +1,71 @@
+name: Cloudflare binding alias compatibility
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/cloudflare-worker.recovered.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "evidence/cloudflare-binding-alias-contract.json"
+      - ".github/workflows/cloudflare-binding-alias-compat.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate recovered bundle and binding contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib, re
+          bundle=pathlib.Path("worker/cloudflare-worker.recovered.mjs").read_text(encoding="utf-8")
+          c=json.loads(pathlib.Path("evidence/cloudflare-binding-alias-contract.json").read_text())
+          assert "handleAsNodeRequest(PORT" in bundle
+          assert "env.AI" in bundle
+          assert "env.ASSETS" in bundle
+          assert "env.ZEA10_ENGINE" in bundle
+          assert "env.ZEVANORY_PRIVATE_ARTIFACTS" in bundle
+          assert c["production_binding_contract"]["workers_ai"]["production_name"]=="IA"
+          assert c["production_binding_contract"]["assets"]["production_name"]=="ATIVOS"
+          assert c["production_binding_contract"]["service"]["production_name"]=="ZEA10_MOTOR"
+          assert c["production_binding_contract"]["kv"]["production_name"]=="ZEVANORY_ARTEFATOS_PRIVADOS"
+          assert c["production_mutation_required"] is False
+          assert c["cutover_allowed"] is False
+          PY
+      - name: Unit-test alias adapter with production-shaped env
+        run: |
+          set -euo pipefail
+          cat > /tmp/test-alias.mjs <<'JS'
+          import { normalizeEnv } from "$PWD/worker/cloudflare-worker.compat.mjs";
+          const ai={tag:"ai"}, assets={fetch(){}}, svc={report(){}}, kv={get(){},put(){},delete(){}};
+          const env={IA:ai,ATIVOS:assets,ZEA10_MOTOR:svc,ZEVANORY_ARTEFATOS_PRIVADOS:kv,UNCHANGED:"ok"};
+          const n=normalizeEnv(env);
+          if(n.AI!==ai) throw new Error("AI alias failed");
+          if(n.ASSETS!==assets) throw new Error("ASSETS alias failed");
+          if(n.ZEA10_ENGINE!==svc) throw new Error("service alias failed");
+          if(n.ZEVANORY_PRIVATE_ARTIFACTS!==kv) throw new Error("KV alias failed");
+          if(n.UNCHANGED!=="ok") throw new Error("passthrough failed");
+          console.log("PASS: production-shaped binding aliases resolve without Cloudflare mutation");
+          JS
+          sed -i "s|\$PWD|$PWD|" /tmp/test-alias.mjs
+          node /tmp/test-alias.mjs
+      - name: Compile candidate remotely with Wrangler
+        run: |
+          set -euo pipefail
+          cat > /tmp/wrangler.jsonc <<'JSON'
+          {
+            "$schema": "node_modules/wrangler/config-schema.json",
+            "name": "zevanory-binding-compat-proof",
+            "main": "worker/cloudflare-worker.compat.mjs",
+            "compatibility_date": "2026-09-04",
+            "compatibility_flags": ["nodejs_compat"],
+            "workers_dev": true,
+            "preview_urls": true
+          }
+          JSON
+          npx --yes wrangler@4.135.0 deploy --dry-run --config /tmp/wrangler.jsonc --outdir /tmp/out
+          test -n "$(find /tmp/out -maxdepth 1 -type f \( -name '*.js' -o -name '*.mjs' \) -print -quit)"
+          echo "PASS: complete recovered bundle + binding adapter compiles remotely"
