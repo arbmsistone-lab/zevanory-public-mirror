@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "objective": "semantic-main-edge-parity",
+  "canonical_parent": "281a47b625cbdb3c7af811e29f6687ecfe0dcd92",
+  "required_shared_fields": [
+    "project",
+    "gate",
+    "experiment",
+    "engine",
+    "sales_machine",
+    "runtime",
+    "metrics",
+    "channel_readiness"
+  ],
+  "allowed_edge_only_fields": [
+    "command_center",
+    "economics",
+    "last_event_at"
+  ],
+  "ignored_ephemeral_fields": [
+    "request_id"
+  ],
+  "fail_closed": true
+}
