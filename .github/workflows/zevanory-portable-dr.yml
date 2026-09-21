@@ -68,25 +68,36 @@ jobs:
           JSON
           cp "$BUNDLE" zevanory-portable-worker.js
           rm -f wrangler.dr-proof.jsonc
-      - name: Simulate provider outage without commercial unlock
+      - name: Simulate transport outages and commercial lock independently
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
           import { buildContinuityPlan } from "./worker/continuity-router.mjs";
           const ready={scope_status:"active",release_gate:"ready",commercial_execution:"ready"};
-          const blocked={scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"};
-          const cases=[
-            {name:"whatsapp-down",channels:{zevanory:ready,email:ready,instagram:ready,whatsapp:blocked}},
-            {name:"one-channel-down",channels:{zevanory:ready,email:ready,instagram:ready,facebook:blocked}},
-            {name:"below-quorum",channels:{zevanory:ready,email:blocked,instagram:blocked}}
-          ];
-          for(const c of cases){
-            const plan=buildContinuityPlan({runtime:{sales:"globally-blocked"},channel_readiness:c.channels},{minQuorum:3});
-            if(c.name==="below-quorum" && plan.quorum_ok) throw new Error("fail-closed regression");
-            if(c.name!=="below-quorum" && !plan.quorum_ok) throw new Error("continuity regression: "+c.name);
-            if(plan.sales_state!=="globally-blocked") throw new Error("commercial lock regression");
-          }
-          console.log("PASS: outage simulation preserves continuity and commercial lock");
+          const commercialBlocked={scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"};
+          const transportDown={scope_status:"down",release_gate:"globally-blocked",commercial_execution:"blocked"};
+
+          const commercialLock=buildContinuityPlan({
+            runtime:{sales:"globally-blocked"},
+            channel_readiness:{zevanory:commercialBlocked,email:commercialBlocked,instagram:commercialBlocked,whatsapp:transportDown}
+          },{minQuorum:3});
+          if(!commercialLock.quorum_ok) throw new Error("commercial lock must not break technical continuity");
+          if(commercialLock.commercial_available_channels.length!==0) throw new Error("commercial lock regression");
+
+          const oneTransportDown=buildContinuityPlan({
+            runtime:{sales:"globally-blocked"},
+            channel_readiness:{zevanory:ready,email:ready,instagram:ready,facebook:transportDown}
+          },{minQuorum:3});
+          if(!oneTransportDown.quorum_ok) throw new Error("single transport outage continuity regression");
+
+          const belowQuorum=buildContinuityPlan({
+            runtime:{sales:"globally-blocked"},
+            channel_readiness:{zevanory:ready,email:transportDown,instagram:transportDown}
+          },{minQuorum:3});
+          if(belowQuorum.quorum_ok) throw new Error("below-quorum transport must fail closed");
+          if(belowQuorum.mode!=="degraded_fail_closed") throw new Error("degraded mode mismatch");
+          if(belowQuorum.sales_state!=="globally-blocked") throw new Error("sales lock regression");
+          console.log("PASS: transport outage and commercial lock semantics are independently fail-safe");
           JS
       - name: Package reproducible recovery kit
         run: |

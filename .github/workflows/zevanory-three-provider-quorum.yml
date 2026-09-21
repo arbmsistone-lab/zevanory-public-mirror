@@ -6,6 +6,8 @@ on:
       - "evidence/three-provider-quorum.json"
       - ".github/workflows/zevanory-three-provider-quorum.yml"
   workflow_dispatch:
+  schedule:
+    - cron: "23 * * * *"
 permissions:
   contents: read
 jobs:
@@ -29,7 +31,7 @@ jobs:
           results=[]
           for p in c["providers"]:
               url=p.get("url") or p.get("status_url")
-              req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-3P-Quorum/1.0","Accept":"application/json"})
+              req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-3P-Quorum/1.1","Accept":"application/json"})
               try:
                   with urllib.request.urlopen(req,timeout=25) as r:
                       raw=r.read().decode("utf-8","replace")
