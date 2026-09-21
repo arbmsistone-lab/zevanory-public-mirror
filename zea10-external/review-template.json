@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "pillar_id": "ZEA10-XX",
+  "reviewer_org": "",
+  "reviewer_name_or_id": "",
+  "independence_statement": "",
+  "scope": "",
+  "evaluated_sha": "",
+  "evaluated_production_release_sha": "",
+  "date": "",
+  "method": [],
+  "evidence_checked": [],
+  "findings": [],
+  "result": "fail",
+  "report_id_or_hash": "",
+  "signature_or_verification_url": "",
+  "limitations": []
+}
