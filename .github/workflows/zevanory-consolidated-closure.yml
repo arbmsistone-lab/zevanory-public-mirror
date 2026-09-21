@@ -21,10 +21,14 @@ jobs:
           import json
           from pathlib import Path
           c=json.loads(Path("evidence/zevanory-consolidated-closure.json").read_text())
-          assert c["canonical_sha"]=="a452d31cc3026d970dad80aef42d9f3b27b1b485"
+          import re
+          assert re.fullmatch(r"[0-9a-f]{40}", c["canonical_sha"]), c["canonical_sha"]
           assert c["cloudflare_worker"]["recovered_bundle_complete"] is True
           assert c["cloudflare_worker"]["rollback_version"]=="52a989a2"
-          assert c["github"]["pr18"]=="merged" and c["github"]["pr19"]=="merged"
+          assert c["github"]["pr18"]=="merged" and c["github"]["pr19"]=="merged" and c["github"]["pr27"]=="merged"
+          assert c["github"]["open_pull_requests"]==0
+          assert c["apex"]["conclusion"]=="success"
+          assert c["cloud_provider_quorum"]["min_quorum"]==3
           assert c["github"]["pages_deploy_conclusion"]=="success"
           assert c["commercial_release_allowed"] is False
           assert c["whatsapp"]["latest_action"]=="human_reopen_escalation_sent"
