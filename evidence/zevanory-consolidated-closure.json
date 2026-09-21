@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generated_at": "2026-09-21",
-  "canonical_sha": "a452d31cc3026d970dad80aef42d9f3b27b1b485",
+  "canonical_sha": "77b0b0ebd76605a84850232e72253085127dce0a",
   "repository": "arbmsistone-lab/zevanory-public-mirror",
   "cloudflare_worker": {
     "recovered_bundle_sha256": "e6b6fd6b8730a4791697d0eeb835062a5f0b325c8966b870d2cc8eb5b9dc0935",
@@ -28,8 +28,10 @@
       15,
       16
     ],
-    "pages_deploy_run": 35661011726,
-    "pages_deploy_conclusion": "success"
+    "pages_deploy_run": 35667020593,
+    "pages_deploy_conclusion": "success",
+    "pr27": "merged",
+    "open_pull_requests": 0
   },
   "production_expectations": {
     "status_url": "https://zevanory.api.br/api/status",
@@ -48,5 +50,20 @@
     "external_state": "awaiting_human_meta_server_side_resolution"
   },
   "claim_scope": "technical consolidation and synchronization only; commercial release remains fail-closed until commercial gates and external WhatsApp server-side state are proven",
-  "commercial_release_allowed": false
+  "commercial_release_allowed": false,
+  "apex": {
+    "standard": "ZEVANORY_APEX_ENGINEERING_V1",
+    "run_id": 35666825738,
+    "conclusion": "success",
+    "verified_sha": "fa79545d37aeba9e29e11a24bcf066b4f72cf8aa"
+  },
+  "cloud_provider_quorum": {
+    "providers": [
+      "cloudflare",
+      "netlify",
+      "render"
+    ],
+    "min_quorum": 3,
+    "hourly_revalidation": true
+  }
 }

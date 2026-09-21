@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "objective": "portable-disaster-recovery",
-  "canonical_parent": "a74c33b0af8e52af7f31f0cc5fb078fb2869c7d9",
+  "canonical_parent": "77b0b0ebd76605a84850232e72253085127dce0a",
   "rollback": {
     "cloudflare_version": "52a989a2",
     "preserved": true
@@ -13,9 +13,9 @@
     "worker/continuity-router.mjs"
   ],
   "provider_targets": [
-    "vercel-primary",
     "cloudflare-edge",
-    "netlify-production-backup"
+    "netlify-production-backup",
+    "render-free-quorum"
   ],
   "release_quorum_required": 3,
   "runtime_survival_minimum": 1,

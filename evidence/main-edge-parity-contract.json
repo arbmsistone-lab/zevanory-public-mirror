@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "objective": "semantic-main-edge-parity",
-  "canonical_parent": "281a47b625cbdb3c7af811e29f6687ecfe0dcd92",
+  "canonical_parent": "77b0b0ebd76605a84850232e72253085127dce0a",
   "required_shared_fields": [
     "project",
     "gate",

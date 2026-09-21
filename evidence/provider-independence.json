@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "canonical_parent": "2e2f3d48ed423be48c3ecb421431e5c83150c454",
+  "canonical_parent": "77b0b0ebd76605a84850232e72253085127dce0a",
   "objective": "provider-independence",
   "invariant": "no single external channel may block technical continuity",
   "min_operational_channel_quorum": 3,

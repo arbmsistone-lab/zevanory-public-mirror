@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "standard": "ZEVANORY_APEX_ENGINEERING_V1",
-  "canonical_parent": "973451d9d221fc54545670bbe270416606935553",
+  "canonical_parent": "77b0b0ebd76605a84850232e72253085127dce0a",
   "claim_policy": "fail_closed_evidence_only",
   "pillars": [
     "architecture",
@@ -51,5 +51,8 @@
       "inspector-issues"
     ],
     "required_external_host": "static.cloudflareinsights.com"
-  }
+  },
+  "last_verified_run": 35666825738,
+  "last_verified_sha": "fa79545d37aeba9e29e11a24bcf066b4f72cf8aa",
+  "last_verified_conclusion": "success"
 }
