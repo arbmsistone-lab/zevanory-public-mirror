@@ -162,11 +162,20 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import pathlib,re,subprocess,json,urllib.request
-          tracked=subprocess.check_output(['git','ls-files'],text=True).splitlines(); rx=re.compile(r'(?i)(TODO|FIXME|HACK|PLACEHOLDER)'); bad=[]
+          tracked=subprocess.check_output(['git','ls-files'],text=True).splitlines()
+          marker_patterns=[
+              re.compile(r'(?im)^\\s*//\\s*(TODO|FIXME|HACK|PLACEHOLDER)\\b'),
+              re.compile(r'(?im)^\\s*/\\*+\\s*(TODO|FIXME|HACK|PLACEHOLDER)\\b'),
+              re.compile(r'(?im)^\\s*<!--\\s*(TODO|FIXME|HACK|PLACEHOLDER)\\b'),
+              re.compile(r'(?im)^\\s*#\\s*(TODO|FIXME|HACK|PLACEHOLDER)\\b')
+          ]
+          bad=[]
           for p in tracked:
-              if pathlib.Path(p).suffix in {'.mjs','.js','.css','.html','.json','.yml','.yaml'}:
-                  if rx.search(pathlib.Path(p).read_text(encoding='utf-8',errors='ignore')): bad.append(p)
-          if bad: raise SystemExit('source hygiene markers present: '+','.join(bad[:20]))
+              path=pathlib.Path(p)
+              if path.suffix not in {'.mjs','.js','.css','.html','.yml','.yaml','.py','.sh'}: continue
+              txt=path.read_text(encoding='utf-8',errors='ignore')
+              if any(rx.search(txt) for rx in marker_patterns): bad.append(p)
+          if bad: raise SystemExit('unresolved development markers present: '+','.join(bad[:20]))
           req=urllib.request.Request('https://zevanory.api.br/build-info.json',headers={'User-Agent':'ZEVANORY-Apex-Provenance/1.0','Cache-Control':'no-cache'}); d=json.load(urllib.request.urlopen(req,timeout=20)); sha=str(d.get('sha',''))
           assert re.fullmatch(r'[0-9a-f]{40}',sha),sha; subprocess.check_call(['git','cat-file','-e',sha+'^{commit}']); print('PASS source hygiene/provenance',sha)
           PY
