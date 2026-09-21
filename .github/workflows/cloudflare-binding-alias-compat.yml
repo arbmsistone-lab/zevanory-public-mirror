@@ -54,17 +54,21 @@ jobs:
       - name: Compile candidate remotely with Wrangler
         run: |
           set -euo pipefail
-          cat > /tmp/wrangler.jsonc <<JSON
+          cat > wrangler.binding-proof.jsonc <<'JSON'
           {
             "$schema": "node_modules/wrangler/config-schema.json",
             "name": "zevanory-binding-compat-proof",
-            "main": "$PWD/worker/cloudflare-worker.compat.mjs",
+            "main": "worker/cloudflare-worker.compat.mjs",
             "compatibility_date": "2026-09-04",
             "compatibility_flags": ["nodejs_compat"],
             "workers_dev": true,
             "preview_urls": true
           }
           JSON
-          npx --yes wrangler@4.135.0 deploy --dry-run --config /tmp/wrangler.jsonc --outdir /tmp/out
-          test -n "$(find /tmp/out -maxdepth 1 -type f \( -name '*.js' -o -name '*.mjs' \) -print -quit)"
+          rm -rf /tmp/out
+          npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.binding-proof.jsonc --outdir /tmp/out
+          bundle="$(find /tmp/out -maxdepth 1 -type f \( -name '*.js' -o -name '*.mjs' \) -print -quit)"
+          test -n "$bundle"
+          sha256sum "$bundle"
+          rm -f wrangler.binding-proof.jsonc
           echo "PASS: complete recovered bundle + binding adapter compiles remotely"
