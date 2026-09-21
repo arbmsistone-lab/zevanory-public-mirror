@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "objective": "three-provider-runtime-quorum",
+  "canonical_parent": "cab413944dada0a119ba110491bb628bf37b1cd2",
+  "providers": [
+    {
+      "id": "primary",
+      "provider": "vercel",
+      "url": "https://zevanory.api.br/api/status",
+      "required": true
+    },
+    {
+      "id": "edge",
+      "provider": "cloudflare",
+      "url": "https://edge.zevanory.api.br/api/status",
+      "required": true
+    },
+    {
+      "id": "backup",
+      "provider": "netlify",
+      "site_id": "05e2d28a-233e-43a4-9f9f-d6aab23d4a92",
+      "deploy_id": "6aaec20bfc3fafc10699be60",
+      "deploy_state": "ready",
+      "ssl_url": "https://zevanory-production-backup.netlify.app",
+      "status_url": "https://zevanory-production-backup.netlify.app/api/status",
+      "deployed_functions": 11,
+      "required": true
+    }
+  ],
+  "min_quorum": 3,
+  "zero_spend": true,
+  "commercial_release_allowed": false,
+  "fail_closed": true
+}
