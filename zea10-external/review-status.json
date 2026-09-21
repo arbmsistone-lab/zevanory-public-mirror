@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "canonical_sha": "2a6575dac1a8e8968e29c260219054dda5326b39",
+  "policy": "fail_closed_external_evidence_only",
+  "pillars": {
+    "ZEA10-01": {
+      "independent_reviews": 0,
+      "accepted_reviews": 0,
+      "remote_certified": false
+    },
+    "ZEA10-02": {
+      "independent_reviews": 0,
+      "accepted_reviews": 0,
+      "remote_certified": false
+    },
+    "ZEA10-03": {
+      "independent_reviews": 0,
+      "accepted_reviews": 0,
+      "remote_certified": false
+    },
+    "ZEA10-04": {
+      "independent_reviews": 0,
+      "accepted_reviews": 0,
+      "remote_certified": false
+    },
+    "ZEA10-05": {
+      "independent_reviews": 0,
+      "accepted_reviews": 0,
+      "remote_certified": false
+    },
+    "ZEA10-06": {
+      "independent_reviews": 0,
+      "accepted_reviews": 0,
+      "remote_certified": false
+    },
+    "ZEA10-07": {
+      "independent_reviews": 0,
+      "accepted_reviews": 0,
+      "remote_certified": false
+    },
+    "ZEA10-08": {
+      "independent_reviews": 0,
+      "accepted_reviews": 0,
+      "remote_certified": false
+    },
+    "ZEA10-09": {
+      "independent_reviews": 0,
+      "accepted_reviews": 0,
+      "remote_certified": false
+    },
+    "ZEA10-10": {
+      "independent_reviews": 0,
+      "accepted_reviews": 0,
+      "remote_certified": false
+    }
+  },
+  "counts": {
+    "remote_certified": 0,
+    "pending": 10
+  },
+  "note": "Generated status starts fail-closed. Only validated independent review artifacts can change a pillar."
+}
