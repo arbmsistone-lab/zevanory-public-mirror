@@ -16,39 +16,41 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Unit-test deterministic continuity router
+      - name: Unit-test production-shaped continuity router
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
           import { buildContinuityPlan } from "./worker/continuity-router.mjs";
-          const active = (execution="ready") => ({scope_status:"active",release_gate:"ready",commercial_execution:execution});
-          const blocked = {scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"};
+          const productionBlocked = {scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"};
+          const transportDown = {scope_status:"down",release_gate:"globally-blocked",commercial_execution:"blocked"};
           const status = {
             runtime:{sales:"globally-blocked"},
             channel_readiness:{
-              zevanory:active(),
-              email:active(),
-              instagram:active(),
-              facebook:active(),
-              youtube:active(),
-              mercado_livre:active(),
-              whatsapp:blocked
+              zevanory:productionBlocked,
+              email:productionBlocked,
+              instagram:productionBlocked,
+              facebook:productionBlocked,
+              youtube:productionBlocked,
+              mercado_livre:productionBlocked,
+              whatsapp:transportDown
             }
           };
           const plan=buildContinuityPlan(status,{minQuorum:3});
-          if(!plan.quorum_ok) throw new Error("quorum unexpectedly failed");
+          if(!plan.quorum_ok) throw new Error("technical quorum must survive commercial lock");
+          if(plan.mode!=="provider_independent") throw new Error("wrong technical continuity mode");
+          if(plan.available_channels.length<3) throw new Error("insufficient transport fallbacks");
+          if(plan.commercial_available_channels.length!==0) throw new Error("commercial fail-closed regression");
           if(plan.whatsapp_dependency_required!==false) throw new Error("WhatsApp dependency regression");
-          if(plan.whatsapp_operational!==false) throw new Error("WhatsApp must be unavailable");
-          if(plan.available_channels.length<3) throw new Error("insufficient fallback channels");
-          if(plan.mode!=="provider_independent") throw new Error("wrong continuity mode");
+          if(plan.whatsapp_transport_operational!==false) throw new Error("WhatsApp transport should be down");
+          if(plan.sales_state!=="globally-blocked") throw new Error("sales lock regression");
 
           const degraded=buildContinuityPlan({
             runtime:{sales:"globally-blocked"},
-            channel_readiness:{zevanory:active(),email:blocked,whatsapp:blocked}
+            channel_readiness:{zevanory:productionBlocked,email:transportDown,instagram:transportDown}
           },{minQuorum:3});
-          if(degraded.quorum_ok) throw new Error("degraded quorum must fail closed");
+          if(degraded.quorum_ok) throw new Error("below-quorum transport must fail closed");
           if(degraded.mode!=="degraded_fail_closed") throw new Error("degraded mode mismatch");
-          console.log("PASS: deterministic provider-independent continuity router");
+          console.log("PASS: technical continuity is independent from commercial release and still fail-closed below transport quorum");
           JS
       - name: Verify evidence contract
         run: |
@@ -68,19 +70,26 @@ jobs:
           import json, urllib.request
           req=urllib.request.Request(
               "https://zevanory.api.br/api/status",
-              headers={"User-Agent":"ZEVANORY-Provider-Independence/1.0","Accept":"application/json"}
+              headers={"User-Agent":"ZEVANORY-Provider-Independence/2.0","Accept":"application/json"}
           )
           with urllib.request.urlopen(req,timeout=20) as r:
               assert r.status==200
               body=json.loads(r.read().decode())
           channels=body.get("channel_readiness",{})
-          usable=[
+          technical=[
               name for name,state in channels.items()
               if str(state.get("scope_status","")).lower()=="active" and name!="whatsapp"
           ]
-          assert len(usable)>=3, usable
+          commercial=[
+              name for name,state in channels.items()
+              if str(state.get("scope_status","")).lower()=="active"
+              and str(state.get("release_gate","")).lower() not in ("blocked","globally-blocked","disabled")
+              and str(state.get("commercial_execution","")).lower() not in ("blocked","globally-blocked","disabled")
+          ]
+          assert len(technical)>=3, technical
           assert body["runtime"]["sales"]=="globally-blocked"
-          print("PASS: production exposes at least 3 non-WhatsApp active alternatives")
+          assert len(commercial)==0, commercial
+          print("PASS: production has >=3 technical alternatives while commercial execution remains locked")
           PY
       - name: Remote Wrangler compile
         run: |
