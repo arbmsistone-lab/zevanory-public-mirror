@@ -69,6 +69,7 @@ jobs:
                   low={k.lower():v for k,v in h.items()}
                   assert 'strict-transport-security' in low
                   assert 'content-security-policy' in low
+                  assert "script-src 'self'" in low['content-security-policy']
                   assert low.get('x-content-type-options','').lower()=='nosniff'
                   assert 'IA na Prática' in b
           print('PASS production health/legal/security/parity')
@@ -128,9 +129,31 @@ jobs:
           for i in 1 2 3; do npx lighthouse https://zevanory.api.br/solucoes --chrome-flags="--headless --no-sandbox --disable-setuid-sandbox" --only-categories=performance,accessibility,best-practices,seo --output=json --output-path="apex-lh-$i.json" --quiet; done
           node - <<'NODE'
           const fs=require('fs'),rs=[1,2,3].map(i=>require('./apex-lh-'+i+'.json'));
-          const rows=rs.map(r=>Object.fromEntries(Object.entries(r.categories).map(([k,v])=>[k,Math.round(v.score*100)]))); const med=k=>rows.map(x=>x[k]).sort((a,b)=>a-b)[1];
-          const s={performance:med('performance'),accessibility:med('accessibility'),'best-practices':med('best-practices'),seo:med('seo')}; console.log(JSON.stringify({runs:rows,median:s}));
-          if(s.performance<95||s.accessibility<100||s['best-practices']<95||s.seo<100) process.exit(1); fs.writeFileSync('apex-lighthouse.json',JSON.stringify({runs:rows,median:s},null,2));
+          const rows=rs.map(r=>Object.fromEntries(Object.entries(r.categories).map(([k,v])=>[k,Math.round(v.score*100)])));
+          const med=k=>rows.map(x=>x[k]).sort((a,b)=>a-b)[1];
+          const median={performance:med('performance'),accessibility:med('accessibility'),'best-practices':med('best-practices'),seo:med('seo')};
+          const allowed=new Set(['errors-in-console','inspector-issues']);
+          let applicationDefects=[];
+          let providerNoise=[];
+          for(const r of rs){
+            const bpRefs=new Set((r.categories['best-practices'].auditRefs||[]).map(x=>x.id));
+            for(const a of Object.values(r.audits)){
+              if(!bpRefs.has(a.id)||a.score===null||a.score>=1||a.scoreDisplayMode==='notApplicable') continue;
+              const blob=JSON.stringify(a.details||{});
+              if(allowed.has(a.id) && blob.includes('static.cloudflareinsights.com') && !/(stripe|mercadopago|eval\\(|mixed-content)/i.test(blob)){
+                providerNoise.push({id:a.id,title:a.title});
+              }else{
+                applicationDefects.push({id:a.id,title:a.title,score:a.score});
+              }
+            }
+          }
+          const applicationBestPractices=applicationDefects.length===0?100:0;
+          const result={runs:rows,median,applicationBestPractices,applicationDefects,providerNoise};
+          console.log(JSON.stringify(result));
+          if(median.performance<95||median.accessibility<100||median.seo<100) process.exit(1);
+          if(applicationBestPractices<100) process.exit(1);
+          if(median['best-practices']<100 && providerNoise.length===0) process.exit(1);
+          fs.writeFileSync('apex-lighthouse.json',JSON.stringify(result,null,2));
           NODE
       - name: Verify source hygiene and immutable production provenance
         run: |
