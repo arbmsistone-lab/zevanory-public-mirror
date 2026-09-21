@@ -1,0 +1,49 @@
+name: zevanory-p15-provenance
+on:
+  pull_request:
+    branches: [gh-pages]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Build deterministic tracked-source manifest
+        run: |
+          python3 - <<'PY'
+          import subprocess,hashlib,json
+          files=subprocess.check_output(["git","ls-files","-z"]).split(b"\0")
+          files=[x.decode() for x in files if x]
+          rows=[]
+          for p in sorted(files):
+              with open(p,"rb") as f: h=hashlib.sha256(f.read()).hexdigest()
+              rows.append({"path":p,"sha256":h})
+          tree=hashlib.sha256(json.dumps(rows,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+          sha=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()
+          doc={"schema":"zevanory.p15.provenance.v1","git_sha":sha,"tracked_tree_sha256":tree,"files":rows}
+          open("p15-provenance.json","w").write(json.dumps(doc,sort_keys=True,indent=2))
+          print(json.dumps({"git_sha":sha,"tracked_tree_sha256":tree,"file_count":len(rows)}))
+          PY
+      - name: Verify production release identity is a real Git commit
+        run: |
+          python3 - <<'PY'
+          import urllib.request,json,subprocess,re
+          req=urllib.request.Request("https://zevanory.api.br/build-info.json",headers={"User-Agent":"ZEVANORY-Provenance/1.0","Cache-Control":"no-cache"})
+          d=json.load(urllib.request.urlopen(req,timeout=20))
+          sha=str(d.get("sha","")).strip()
+          if not re.fullmatch(r"[0-9a-fA-F]{40}",sha): raise SystemExit("production build-info sha is not an immutable 40-hex Git SHA")
+          subprocess.check_call(["git","cat-file","-e",sha+"^{commit}"])
+          print("PASS production build-info Git SHA:",sha)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p15-provenance
+          path: p15-provenance.json
+          retention-days: 90

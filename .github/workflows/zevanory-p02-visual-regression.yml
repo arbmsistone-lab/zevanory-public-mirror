@@ -1,0 +1,46 @@
+name: zevanory-p02-visual-regression
+on:
+  pull_request:
+    branches: [gh-pages]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Verify responsive no-horizontal-scroll contract
+        run: |
+          cat > visual.mjs <<'JS'
+          import { chromium } from 'playwright';
+          import fs from 'fs';
+          const targets=[{name:'mobile',width:390,height:844},{name:'tablet',width:768,height:1024},{name:'desktop',width:1440,height:900}];
+          const browser=await chromium.launch({headless:true}); const evidence=[]; let failed=false;
+          for(const v of targets){
+            const page=await browser.newPage({viewport:{width:v.width,height:v.height}});
+            await page.goto('https://zevanory.api.br/solucoes',{waitUntil:'networkidle',timeout:30000});
+            const result=await page.evaluate(()=>{const de=document.documentElement;const bad=[];for(const el of document.querySelectorAll('main *')){const r=el.getBoundingClientRect();if(r.width>0&&r.height>0&&(r.right>de.clientWidth+2||r.left<-2))bad.push({tag:el.tagName,cls:String(el.className),left:r.left,right:r.right});}return {overflowX:de.scrollWidth>de.clientWidth+1,bad:bad.slice(0,20),scrollWidth:de.scrollWidth,clientWidth:de.clientWidth};});
+            await page.screenshot({path:`visual-${v.name}.png`,fullPage:true}); evidence.push({...v,...result}); if(result.overflowX||result.bad.length)failed=true; await page.close();
+          }
+          await browser.close(); fs.writeFileSync('p02-visual-evidence.json',JSON.stringify({schema:'zevanory.p02.visual.v1',evidence},null,2)); console.log(JSON.stringify(evidence)); if(failed)process.exit(1);
+          JS
+          node visual.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p02-visual-evidence
+          path: |
+            p02-visual-evidence.json
+            visual-*.png
+          retention-days: 90
