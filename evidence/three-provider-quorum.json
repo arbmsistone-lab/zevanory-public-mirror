@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "objective": "authenticated-three-provider-runtime-quorum",
-  "canonical_parent": "9f9f939004e36277e9d78e0d450c507a3db6151d",
+  "canonical_parent": "77b0b0ebd76605a84850232e72253085127dce0a",
   "providers": [
     {
       "id": "edge",
