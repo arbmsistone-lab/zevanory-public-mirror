@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "pack": "ZEA-10 External Evidence Pack",
+  "purpose": "independent-review-ready evidence bundle; not an external certification",
+  "canonical_sha": "c7d660a99710ef0a06d2150be55304b189366078",
+  "production_release_sha": "83620c680958d726fc4b0fd16e2574cdcc362a6d",
+  "generated_at": "2026-09-21",
+  "claim_scope": "internal engineering evidence prepared for independent external review",
+  "external_certification_claimed": false,
+  "commercial_release_allowed": false,
+  "rollback_version": "52a989a2",
+  "verified_runs": {
+    "apex": 35667789737,
+    "remote_quality": 35667789792,
+    "visual": 35667789829,
+    "wcag": 35667789743,
+    "slo": 35667789771,
+    "provenance": 35667789819,
+    "dr": 35667789767,
+    "parity": 35667789741,
+    "provider_independence": 35667789727,
+    "provider_quorum": 35667789855,
+    "consolidated_closure": 35667789820,
+    "pages_deploy": 35667935105
+  },
+  "pillars": [
+    {
+      "id": "ZEA10-01",
+      "name": "Operational maturity and readiness",
+      "reference_scope": [
+        "TRL-style readiness",
+        "production operations"
+      ],
+      "evidence": [
+        "evidence/zevanory-consolidated-closure.json",
+        "evidence/zevanory-apex-engineering.json"
+      ],
+      "external_review_needed": true
+    },
+    {
+      "id": "ZEA10-02",
+      "name": "Architecture and systems engineering",
+      "reference_scope": [
+        "systems architecture",
+        "requirements and interfaces"
+      ],
+      "evidence": [
+        "worker/cloudflare-worker.compat.mjs",
+        "worker/continuity-router.mjs",
+        "evidence/provider-independence.json"
+      ],
+      "external_review_needed": true
+    },
+    {
+      "id": "ZEA10-03",
+      "name": "Performance and computational efficiency",
+      "reference_scope": [
+        "performance",
+        "latency",
+        "efficiency"
+      ],
+      "evidence": [
+        "evidence/zevanory-apex-engineering.json"
+      ],
+      "external_review_needed": true
+    },
+    {
+      "id": "ZEA10-04",
+      "name": "Software quality",
+      "reference_scope": [
+        "software quality",
+        "maintainability",
+        "test evidence"
+      ],
+      "evidence": [
+        "evidence/zevanory-apex-engineering.json"
+      ],
+      "external_review_needed": true
+    },
+    {
+      "id": "ZEA10-05",
+      "name": "Safety and functional integrity",
+      "reference_scope": [
+        "fail-safe",
+        "fail-closed",
+        "fault handling"
+      ],
+      "evidence": [
+        "evidence/portable-dr-contract.json",
+        "evidence/zevanory-consolidated-closure.json"
+      ],
+      "external_review_needed": true
+    },
+    {
+      "id": "ZEA10-06",
+      "name": "Cybersecurity",
+      "reference_scope": [
+        "application security",
+        "supply-chain",
+        "hardening"
+      ],
+      "evidence": [
+        "evidence/zevanory-apex-engineering.json",
+        "evidence/cloudflare-binding-alias-contract.json"
+      ],
+      "external_review_needed": true
+    },
+    {
+      "id": "ZEA10-07",
+      "name": "Global product quality",
+      "reference_scope": [
+        "ISO/IEC 25010-aligned quality characteristics"
+      ],
+      "evidence": [
+        "evidence/zevanory-apex-engineering.json"
+      ],
+      "external_review_needed": true
+    },
+    {
+      "id": "ZEA10-08",
+      "name": "Automation and integrations",
+      "reference_scope": [
+        "automation",
+        "API integration",
+        "failover"
+      ],
+      "evidence": [
+        "evidence/provider-independence.json",
+        "evidence/three-provider-quorum.json"
+      ],
+      "external_review_needed": true
+    },
+    {
+      "id": "ZEA10-09",
+      "name": "Information security and governance",
+      "reference_scope": [
+        "ISO 27001-aligned controls",
+        "CIS-aligned controls"
+      ],
+      "evidence": [
+        "evidence/zevanory-apex-engineering.json",
+        "evidence/zevanory-consolidated-closure.json"
+      ],
+      "external_review_needed": true
+    },
+    {
+      "id": "ZEA10-10",
+      "name": "Extreme validation, resilience and recovery",
+      "reference_scope": [
+        "fault simulation",
+        "DR",
+        "rollback",
+        "recovery"
+      ],
+      "evidence": [
+        "evidence/portable-dr-contract.json",
+        "evidence/three-provider-quorum.json",
+        "evidence/main-edge-parity-contract.json"
+      ],
+      "external_review_needed": true
+    }
+  ],
+  "reviewer_requirements": {
+    "independence_required": true,
+    "minimum_artifact_fields": [
+      "reviewer_org",
+      "reviewer_name_or_id",
+      "scope",
+      "evaluated_sha",
+      "date",
+      "method",
+      "findings",
+      "result",
+      "report_id_or_hash"
+    ],
+    "accepted_result_states": [
+      "pass",
+      "pass_with_findings",
+      "fail"
+    ],
+    "remote_certified_transition_rule": "remote_certified may become true only when an independent review artifact is present, bound to the evaluated SHA, and its scope covers the corresponding pillar"
+  }
+}
