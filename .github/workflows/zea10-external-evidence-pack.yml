@@ -1,0 +1,130 @@
+name: ZEA-10 external evidence pack
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "zea10-external/**"
+      - ".github/workflows/zea10-external-evidence-pack.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate manifest structure and frozen evidence references
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib, re, subprocess
+          m=json.load(open("zea10-external/manifest.json"))
+          assert m["pack"]=="ZEA-10 External Evidence Pack"
+          assert m["external_certification_claimed"] is False
+          assert m["commercial_release_allowed"] is False
+          assert m["rollback_version"]=="52a989a2"
+          assert re.fullmatch(r"[0-9a-f]{40}",m["canonical_sha"])
+          assert re.fullmatch(r"[0-9a-f]{40}",m["production_release_sha"])
+          subprocess.check_call(["git","cat-file","-e",m["canonical_sha"]+"^{commit}"])
+          ids=[p["id"] for p in m["pillars"]]
+          assert ids==[f"ZEA10-{i:02d}" for i in range(1,11)],ids
+          for p in m["pillars"]:
+              assert p["external_review_needed"] is True
+              assert p["evidence"],p["id"]
+              for ref in p["evidence"]:
+                  path=pathlib.Path(ref)
+                  assert path.exists() and path.is_file(),(p["id"],ref)
+          t=json.load(open("zea10-external/review-template.json"))
+          required=set(m["reviewer_requirements"]["minimum_artifact_fields"])
+          assert required.issubset(t.keys()),required-set(t.keys())
+          print("PASS: 10-pillar manifest and all frozen evidence references are valid")
+          PY
+      - name: Verify recorded CI runs really succeeded
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.request
+          m=json.load(open("zea10-external/manifest.json"))
+          token=os.environ["GH_TOKEN"]
+          repo=os.environ["GITHUB_REPOSITORY"]
+          out={}
+          for key,run_id in m["verified_runs"].items():
+              req=urllib.request.Request(
+                  f"https://api.github.com/repos/{repo}/actions/runs/{run_id}",
+                  headers={"Authorization":"Bearer "+token,"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}
+              )
+              with urllib.request.urlopen(req,timeout=30) as r:
+                  doc=json.loads(r.read().decode())
+              out[key]={"id":run_id,"status":doc.get("status"),"conclusion":doc.get("conclusion"),"head_sha":doc.get("head_sha")}
+              if doc.get("status")!="completed" or doc.get("conclusion")!="success":
+                  raise SystemExit(f"{key} run {run_id} not successful: {out[key]}")
+          open("zea10-run-verification.json","w").write(json.dumps(out,indent=2,sort_keys=True))
+          print("PASS: all recorded CI runs are completed/success")
+          PY
+      - name: Re-probe current production review surfaces
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request
+          urls={
+            "status":"https://zevanory.api.br/api/status",
+            "health":"https://zevanory.api.br/api/health",
+            "control":"https://zevanory.api.br/api/control-plane",
+            "edge":"https://edge.zevanory.api.br/api/status"
+          }
+          out={}
+          for key,url in urls.items():
+              req=urllib.request.Request(url,headers={"User-Agent":"ZEA10-External-Pack/1.0","Accept":"application/json","Cache-Control":"no-cache"})
+              with urllib.request.urlopen(req,timeout=25) as r:
+                  body=json.loads(r.read().decode())
+                  out[key]={"status":r.status,"body":body}
+                  assert r.status==200,(key,r.status)
+          assert out["status"]["body"]["project"]=="ZEVANORY"
+          assert out["edge"]["body"]["project"]=="ZEVANORY"
+          assert out["health"]["body"]["ready"] is True
+          assert out["health"]["body"]["schema"]["missing_tables_count"]==0
+          assert out["health"]["body"]["schema"]["missing_migrations_count"]==0
+          assert out["status"]["body"]["runtime"]["sales"]=="globally-blocked"
+          assert out["control"]["body"]["policy"]["claim_scope"]=="internal_engineering_alignment_not_external_certification"
+          assert out["control"]["body"]["policy"]["counts"]["proven"]==0
+          assert out["control"]["body"]["policy"]["counts"]["partial"]==10
+          open("zea10-runtime-snapshot.json","w").write(json.dumps(out,indent=2,sort_keys=True))
+          print("PASS: runtime review surfaces healthy and external-certification claim remains fail-closed")
+          PY
+      - name: Build reviewer handoff bundle and checksums
+        run: |
+          set -euo pipefail
+          mkdir -p zea10-review-pack/zea10-external zea10-review-pack/evidence zea10-review-pack/worker
+          cp zea10-external/manifest.json zea10-review-pack/zea10-external/
+          cp zea10-external/README.md zea10-review-pack/zea10-external/
+          cp zea10-external/review-template.json zea10-review-pack/zea10-external/
+          cp evidence/zevanory-consolidated-closure.json zea10-review-pack/evidence/
+          cp evidence/zevanory-apex-engineering.json zea10-review-pack/evidence/
+          cp evidence/portable-dr-contract.json zea10-review-pack/evidence/
+          cp evidence/provider-independence.json zea10-review-pack/evidence/
+          cp evidence/three-provider-quorum.json zea10-review-pack/evidence/
+          cp evidence/main-edge-parity-contract.json zea10-review-pack/evidence/
+          cp evidence/cloudflare-binding-alias-contract.json zea10-review-pack/evidence/
+          cp worker/cloudflare-worker.compat.mjs zea10-review-pack/worker/
+          cp worker/continuity-router.mjs zea10-review-pack/worker/
+          cp zea10-run-verification.json zea10-review-pack/
+          cp zea10-runtime-snapshot.json zea10-review-pack/
+          find zea10-review-pack -type f -print0 | sort -z | xargs -0 sha256sum > zea10-review-pack/SHA256SUMS
+          tar -czf zea10-external-evidence-pack.tgz zea10-review-pack
+          sha256sum zea10-external-evidence-pack.tgz | tee zea10-external-evidence-pack.tgz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zea10-external-evidence-pack
+          path: |
+            zea10-external-evidence-pack.tgz
+            zea10-external-evidence-pack.tgz.sha256
+            zea10-run-verification.json
+            zea10-runtime-snapshot.json
+          retention-days: 90
