@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "objective": "portable-disaster-recovery",
+  "canonical_parent": "a74c33b0af8e52af7f31f0cc5fb078fb2869c7d9",
+  "rollback": {
+    "cloudflare_version": "52a989a2",
+    "preserved": true
+  },
+  "portable_sources": [
+    "worker/cloudflare-worker.recovered.mjs",
+    "worker/cloudflare-worker.compat.mjs",
+    "worker/binding-aliases.mjs",
+    "worker/continuity-router.mjs"
+  ],
+  "provider_targets": [
+    "vercel-primary",
+    "cloudflare-edge",
+    "netlify-production-backup"
+  ],
+  "release_quorum_required": 3,
+  "runtime_survival_minimum": 1,
+  "commercial_fail_closed": true,
+  "recovery_invariants": [
+    "never require a single provider to remain online",
+    "portable source must compile on a clean remote runner",
+    "recovery package must be reproducible from Git",
+    "sales stay blocked during degraded recovery",
+    "rollback reference remains immutable"
+  ]
+}
