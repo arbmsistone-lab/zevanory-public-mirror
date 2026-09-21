@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "observed_source": "Cloudflare bindings screenshot captured 2026-09-20",
+  "production_binding_contract": {
+    "workers_ai": {
+      "production_name": "IA",
+      "bundle_name": "AI",
+      "value": "Catálogo de IA para Trabalhadores"
+    },
+    "assets": {
+      "production_name": "ATIVOS",
+      "bundle_name": "ASSETS",
+      "value": null
+    },
+    "service": {
+      "production_name": "ZEA10_MOTOR",
+      "bundle_name": "ZEA10_ENGINE",
+      "value": "controle arbm",
+      "entrypoint": "Serviço de Plano de Controle Zea10"
+    },
+    "kv": {
+      "production_name": "ZEVANORY_ARTEFATOS_PRIVADOS",
+      "bundle_name": "ZEVANORY_PRIVATE_ARTIFACTS",
+      "value": "ZEVANORY_ARTEFATOS_PRIVADOS"
+    }
+  },
+  "strategy": "runtime alias adapter; preserve existing Cloudflare bindings and avoid binding recreation",
+  "production_mutation_required": false,
+  "rollback_version": "52a989a2",
+  "cutover_allowed": false
+}
