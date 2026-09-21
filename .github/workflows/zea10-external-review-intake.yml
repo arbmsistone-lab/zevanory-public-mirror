@@ -1,0 +1,101 @@
+name: ZEA-10 external review intake
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "zea10-external/external-reviews/**"
+      - "zea10-external/review.schema.json"
+      - "zea10-external/review-status.json"
+      - ".github/workflows/zea10-external-review-intake.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install validator
+        run: pip install --disable-pip-version-check --no-cache-dir jsonschema==4.23.0
+      - name: Validate independent review artifacts and compute fail-closed status
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib, subprocess, sys
+          from jsonschema import Draft202012Validator, FormatChecker
+
+          root=pathlib.Path("zea10-external")
+          schema=json.load(open(root/"review.schema.json"))
+          Draft202012Validator.check_schema(schema)
+          validator=Draft202012Validator(schema,format_checker=FormatChecker())
+
+          manifest=json.load(open(root/"manifest.json"))
+          canonical=manifest["canonical_sha"]
+          valid_pillars={p["id"] for p in manifest["pillars"]}
+          status={
+              "schema_version":1,
+              "canonical_sha":canonical,
+              "policy":"fail_closed_external_evidence_only",
+              "pillars":{p:{"independent_reviews":0,"accepted_reviews":0,"remote_certified":False} for p in sorted(valid_pillars)},
+              "counts":{"remote_certified":0,"pending":10}
+          }
+
+          reviews=sorted((root/"external-reviews").glob("*.json"))
+          accepted_by_pillar={p:[] for p in valid_pillars}
+
+          for path in reviews:
+              if path.name=="README.json":
+                  continue
+              doc=json.load(open(path))
+              errors=sorted(validator.iter_errors(doc),key=lambda e:list(e.path))
+              if errors:
+                  for e in errors:
+                      print(f"{path}: schema error at {list(e.path)}: {e.message}",file=sys.stderr)
+                  raise SystemExit(1)
+
+              for p in doc["pillar_ids"]:
+                  if p not in valid_pillars:
+                      raise SystemExit(f"{path}: unknown pillar {p}")
+
+              sha=doc["evaluated_sha"]
+              subprocess.check_call(["git","cat-file","-e",sha+"^{commit}"])
+
+              # Frozen-review rule: accepted reviews must evaluate the current frozen evidence SHA.
+              if sha!=canonical:
+                  raise SystemExit(f"{path}: evaluated_sha {sha} does not match frozen canonical {canonical}")
+
+              # Independence policy: never accept the repository owner as reviewer organization.
+              if doc["reviewer_org"].strip().lower() in {"zevanory","arbmsistone-lab","arbm sist","arbm one"}:
+                  raise SystemExit(f"{path}: reviewer is not independent")
+
+              # A pass must have a verifiable report identity and no critical finding.
+              critical=any(f["severity"]=="critical" for f in doc["findings"])
+              accepted=doc["result"] in {"pass","pass_with_findings"} and not critical
+              for p in doc["pillar_ids"]:
+                  status["pillars"][p]["independent_reviews"]+=1
+                  if accepted:
+                      status["pillars"][p]["accepted_reviews"]+=1
+                      accepted_by_pillar[p].append(path.name)
+
+          for p,items in accepted_by_pillar.items():
+              # One valid independent review is sufficient for remote_certified=true at the ZEA-10 framework layer.
+              # Formal standards certification remains a separate claim and is never inferred.
+              status["pillars"][p]["remote_certified"]=len(items)>=1
+
+          n=sum(1 for v in status["pillars"].values() if v["remote_certified"])
+          status["counts"]={"remote_certified":n,"pending":10-n}
+          open(root/"review-status.generated.json","w").write(json.dumps(status,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(status,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zea10-external-review-intake-status
+          path: zea10-external/review-status.generated.json
+          retention-days: 90
