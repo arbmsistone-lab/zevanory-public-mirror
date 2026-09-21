@@ -1,0 +1,56 @@
+name: ZEVANORY consolidated closure gate
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "evidence/zevanory-consolidated-closure.json"
+      - ".github/workflows/zevanory-consolidated-closure.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate consolidation manifest
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          c=json.loads(Path("evidence/zevanory-consolidated-closure.json").read_text())
+          assert c["canonical_sha"]=="a452d31cc3026d970dad80aef42d9f3b27b1b485"
+          assert c["cloudflare_worker"]["recovered_bundle_complete"] is True
+          assert c["cloudflare_worker"]["rollback_version"]=="52a989a2"
+          assert c["github"]["pr18"]=="merged" and c["github"]["pr19"]=="merged"
+          assert c["github"]["pages_deploy_conclusion"]=="success"
+          assert c["commercial_release_allowed"] is False
+          assert c["whatsapp"]["latest_action"]=="human_reopen_escalation_sent"
+          PY
+      - name: Probe production and edge fail-closed contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request
+          urls={
+            "main":"https://zevanory.api.br/api/status",
+            "control":"https://zevanory.api.br/api/control-plane",
+            "edge":"https://edge.zevanory.api.br/api/status",
+          }
+          out={}
+          for k,u in urls.items():
+              req=urllib.request.Request(u,headers={"User-Agent":"ZEVANORY-Consolidation-Gate/1.0","Accept":"application/json"})
+              with urllib.request.urlopen(req,timeout=20) as r:
+                  assert r.status==200,(k,r.status)
+                  out[k]=json.loads(r.read().decode())
+          assert out["main"]["project"]=="ZEVANORY"
+          assert out["edge"]["project"]=="ZEVANORY"
+          assert out["main"]["runtime"]["sales"]=="globally-blocked"
+          assert out["edge"]["runtime"]["sales"]=="globally-blocked"
+          assert out["main"]["runtime"]["whatsapp"]=="disabled"
+          assert out["control"]["global_state"]=="operational_commercial_blocked"
+          assert out["control"]["root_blocker"]=="global_sale_disabled"
+          print("PASS: canonical main/control/edge remain synchronized on fail-closed production contract")
+          PY
