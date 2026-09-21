@@ -5,6 +5,7 @@ on:
     paths:
       - "worker/cloudflare-worker.recovered.mjs"
       - "worker/cloudflare-worker.compat.mjs"
+      - "worker/binding-aliases.mjs"
       - "evidence/cloudflare-binding-alias-contract.json"
       - ".github/workflows/cloudflare-binding-alias-compat.yml"
   workflow_dispatch:
@@ -20,14 +21,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, pathlib, re
+          import json, pathlib
           bundle=pathlib.Path("worker/cloudflare-worker.recovered.mjs").read_text(encoding="utf-8")
           c=json.loads(pathlib.Path("evidence/cloudflare-binding-alias-contract.json").read_text())
           assert "handleAsNodeRequest(PORT" in bundle
-          assert "env.AI" in bundle
-          assert "env.ASSETS" in bundle
-          assert "env.ZEA10_ENGINE" in bundle
-          assert "env.ZEVANORY_PRIVATE_ARTIFACTS" in bundle
+          for token in ("env.AI","env.ASSETS","env.ZEA10_ENGINE","env.ZEVANORY_PRIVATE_ARTIFACTS"):
+              assert token in bundle
           assert c["production_binding_contract"]["workers_ai"]["production_name"]=="IA"
           assert c["production_binding_contract"]["assets"]["production_name"]=="ATIVOS"
           assert c["production_binding_contract"]["service"]["production_name"]=="ZEA10_MOTOR"
@@ -38,8 +37,8 @@ jobs:
       - name: Unit-test alias adapter with production-shaped env
         run: |
           set -euo pipefail
-          cat > /tmp/test-alias.mjs <<'JS'
-          import { normalizeEnv } from "$PWD/worker/cloudflare-worker.compat.mjs";
+          cat > /tmp/test-alias.mjs <<JS
+          import { normalizeEnv } from "$PWD/worker/binding-aliases.mjs";
           const ai={tag:"ai"}, assets={fetch(){}}, svc={report(){}}, kv={get(){},put(){},delete(){}};
           const env={IA:ai,ATIVOS:assets,ZEA10_MOTOR:svc,ZEVANORY_ARTEFATOS_PRIVADOS:kv,UNCHANGED:"ok"};
           const n=normalizeEnv(env);
@@ -48,18 +47,18 @@ jobs:
           if(n.ZEA10_ENGINE!==svc) throw new Error("service alias failed");
           if(n.ZEVANORY_PRIVATE_ARTIFACTS!==kv) throw new Error("KV alias failed");
           if(n.UNCHANGED!=="ok") throw new Error("passthrough failed");
+          if(!("AI" in n) || !("ASSETS" in n) || !("ZEA10_ENGINE" in n) || !("ZEVANORY_PRIVATE_ARTIFACTS" in n)) throw new Error("has trap failed");
           console.log("PASS: production-shaped binding aliases resolve without Cloudflare mutation");
           JS
-          sed -i "s|\$PWD|$PWD|" /tmp/test-alias.mjs
           node /tmp/test-alias.mjs
       - name: Compile candidate remotely with Wrangler
         run: |
           set -euo pipefail
-          cat > /tmp/wrangler.jsonc <<'JSON'
+          cat > /tmp/wrangler.jsonc <<JSON
           {
             "$schema": "node_modules/wrangler/config-schema.json",
             "name": "zevanory-binding-compat-proof",
-            "main": "worker/cloudflare-worker.compat.mjs",
+            "main": "$PWD/worker/cloudflare-worker.compat.mjs",
             "compatibility_date": "2026-09-04",
             "compatibility_flags": ["nodejs_compat"],
             "workers_dev": true,
