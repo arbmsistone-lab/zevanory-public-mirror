@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "standard": "ZEVANORY_APEX_ENGINEERING_V1",
+  "canonical_parent": "973451d9d221fc54545670bbe270416606935553",
+  "claim_policy": "fail_closed_evidence_only",
+  "pillars": [
+    "architecture",
+    "source_integrity",
+    "provenance",
+    "security",
+    "privacy",
+    "availability",
+    "resilience",
+    "disaster_recovery",
+    "provider_independence",
+    "performance",
+    "latency",
+    "accessibility",
+    "responsive_layout",
+    "typography",
+    "color_contrast",
+    "interaction_quality",
+    "seo",
+    "legal",
+    "api_health",
+    "main_edge_parity",
+    "observability",
+    "commercial_safety",
+    "channel_continuity",
+    "release_reproducibility"
+  ],
+  "thresholds": {
+    "lighthouse_performance_median": 95,
+    "lighthouse_accessibility_median": 100,
+    "lighthouse_seo_median": 100,
+    "wcag": "AA",
+    "horizontal_overflow_px": 1,
+    "provider_quorum": 3,
+    "required_http_status": 200,
+    "lighthouse_application_best_practices": 100
+  },
+  "commercial_release_allowed": false,
+  "rollback_version": "52a989a2",
+  "external_certification_claimed": false,
+  "provider_injected_resource_policy": {
+    "strict_csp_preserved": true,
+    "automatic_cloudflare_insights_may_be_blocked": true,
+    "raw_lighthouse_best_practices_is_informational": true,
+    "only_allowed_external_noise": [
+      "errors-in-console",
+      "inspector-issues"
+    ],
+    "required_external_host": "static.cloudflareinsights.com"
+  }
+}
