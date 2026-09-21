@@ -1,4 +1,4 @@
-name: ZEVANORY three-provider runtime quorum
+name: ZEVANORY authenticated three-provider runtime quorum
 on:
   pull_request:
     branches: [gh-pages]
@@ -16,39 +16,45 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Verify three independent providers
+      - name: Verify three authenticated independent providers
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json, urllib.request
 
           c=json.load(open("evidence/three-provider-quorum.json"))
+          assert c["schema_version"]==2
           assert c["min_quorum"]==3
           assert c["zero_spend"] is True
           assert c["commercial_release_allowed"] is False
           assert c["fail_closed"] is True
+          assert c["hourly_revalidation"] is True
+          assert c["observed_primary_endpoint"]["origin_provider_asserted"] is False
 
           results=[]
           for p in c["providers"]:
               url=p.get("url") or p.get("status_url")
-              req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-3P-Quorum/1.1","Accept":"application/json"})
+              req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-Authenticated-3P/2.0","Accept":"application/json"})
               try:
-                  with urllib.request.urlopen(req,timeout=25) as r:
+                  with urllib.request.urlopen(req,timeout=30) as r:
                       raw=r.read().decode("utf-8","replace")
                       body=json.loads(raw)
-                      ok=(r.status==200 and body.get("project")=="ZEVANORY")
+                      identity_ok=(body.get(p["identity_field"])==p["identity_value"])
+                      if p["provider"]=="render":
+                          attested=(body.get("provider")==p["expected_provider_attestation"] or body.get("quorum_attestation",{}).get("provider")==p["expected_provider_attestation"])
+                          identity_ok=identity_ok and attested
                       sales=body.get("runtime",{}).get("sales")
-                      if sales is not None:
-                          ok=ok and sales=="globally-blocked"
-                      results.append({"provider":p["provider"],"ok":ok,"status":r.status})
+                      commercial_safe=(sales in (None,"globally-blocked"))
+                      results.append({"provider":p["provider"],"ok":r.status==200 and identity_ok and commercial_safe,"status":r.status})
               except Exception as exc:
                   results.append({"provider":p["provider"],"ok":False,"error":str(exc)})
 
           print(json.dumps(results,sort_keys=True))
           healthy=[x for x in results if x["ok"]]
+          providers={x["provider"] for x in healthy}
           if len(healthy)<c["min_quorum"]:
-              raise SystemExit(f"provider quorum failed: {len(healthy)}/{c['min_quorum']}")
-          if len({x["provider"] for x in healthy})<3:
-              raise SystemExit("providers are not independent")
-          print("PASS: three independent runtime providers are healthy and commercial release remains fail-closed")
+              raise SystemExit(f"authenticated provider quorum failed: {len(healthy)}/{c['min_quorum']}")
+          if providers!={"cloudflare","netlify","render"}:
+              raise SystemExit("authenticated provider identity set mismatch: "+repr(sorted(providers)))
+          print("PASS: Cloudflare + Netlify + Render are independently authenticated, healthy, ZERO_SPEND, and fail-closed")
           PY

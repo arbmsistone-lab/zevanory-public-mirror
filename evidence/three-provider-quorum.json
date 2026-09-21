@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
-  "objective": "three-provider-runtime-quorum",
-  "canonical_parent": "cab413944dada0a119ba110491bb628bf37b1cd2",
+  "schema_version": 2,
+  "objective": "authenticated-three-provider-runtime-quorum",
+  "canonical_parent": "9f9f939004e36277e9d78e0d450c507a3db6151d",
   "providers": [
-    {
-      "id": "primary",
-      "provider": "vercel",
-      "url": "https://zevanory.api.br/api/status",
-      "required": true
-    },
     {
       "id": "edge",
       "provider": "cloudflare",
+      "provider_identity_evidence": "edge.zevanory.api.br returns Cloudflare cf-ray through authorized production probe",
       "url": "https://edge.zevanory.api.br/api/status",
+      "identity_field": "project",
+      "identity_value": "ZEVANORY",
       "required": true
     },
     {
@@ -21,14 +18,34 @@
       "site_id": "05e2d28a-233e-43a4-9f9f-d6aab23d4a92",
       "deploy_id": "6aaec20bfc3fafc10699be60",
       "deploy_state": "ready",
-      "ssl_url": "https://zevanory-production-backup.netlify.app",
       "status_url": "https://zevanory-production-backup.netlify.app/api/status",
+      "identity_field": "project",
+      "identity_value": "ZEVANORY",
       "deployed_functions": 11,
+      "required": true
+    },
+    {
+      "id": "quorum",
+      "provider": "render",
+      "service_id": "srv-danh5vn40ujc73buii7g",
+      "service_name": "zevanory-quorum-render-v2",
+      "service_state": "not_suspended",
+      "status_url": "https://zevanory-quorum-render-v2.onrender.com",
+      "identity_field": "service",
+      "identity_value": "ZEVANORY",
+      "expected_provider_attestation": "render-free",
+      "plan": "free",
       "required": true
     }
   ],
+  "observed_primary_endpoint": {
+    "url": "https://zevanory.api.br/api/status",
+    "origin_provider_asserted": false,
+    "note": "healthy primary endpoint, excluded from independent-provider count until origin provider is authenticated"
+  },
   "min_quorum": 3,
   "zero_spend": true,
   "commercial_release_allowed": false,
-  "fail_closed": true
+  "fail_closed": true,
+  "hourly_revalidation": true
 }
