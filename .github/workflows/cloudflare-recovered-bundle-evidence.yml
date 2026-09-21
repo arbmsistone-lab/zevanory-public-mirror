@@ -1,0 +1,34 @@
+name: Cloudflare recovered bundle evidence gate
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "evidence/cloudflare-full-bundle-recovery.json"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate complete bundle recovery evidence
+        run: |
+          python3 - <<'PY'
+          import json,re
+          c=json.load(open("evidence/cloudflare-full-bundle-recovery.json"))
+          b=c["recovered_bundle"]
+          assert c["rollback_version"]=="52a989a2"
+          assert c["release_marker"]=="83620c680958d726fc4b0fd16e2574cdcc362a6d"
+          assert c["recovered_bundle_completeness"]=="complete"
+          assert b["size_bytes"]==1020433
+          assert b["lines"]==17438
+          assert re.fullmatch(r"[0-9a-f]{64}",b["sha256"])
+          assert b["contains_port_8788"] and b["contains_http_createServer"] and b["contains_handleAsNodeRequest"] and b["contains_default_export"]
+          assert b["source_sections"]>=170
+          assert c["cutover_allowed"] is False
+          assert len(c["cutover_blockers"])==3
+          assert all(v=="false" for v in c["commercial_lock"].values())
+          print("PASS: complete recovered bundle evidence is internally consistent; cutover remains fail-closed.")
+          PY
