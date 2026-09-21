@@ -1,0 +1,50 @@
+{
+  "schema_version": 3,
+  "observed_at": "2026-09-21",
+  "production_worker": "zevanory",
+  "rollback_version": "52a989a2",
+  "release_marker": "83620c680958d726fc4b0fd16e2574cdcc362a6d",
+  "compatibility_date": "2026-09-04",
+  "recovered_bundle": {
+    "source": "ChatGPT Library / Texto colado (20260920-214024).txt",
+    "size_bytes": 1020433,
+    "lines": 17438,
+    "sha256": "e6b6fd6b8730a4791697d0eeb835062a5f0b325c8966b870d2cc8eb5b9dc0935",
+    "starts_with": "var __defProp = Object.defineProperty;",
+    "ends_with": "//# sourceMappingURL=cloudflare-worker.js.map",
+    "source_sections": 173,
+    "contains_port_8788": true,
+    "contains_http_createServer": true,
+    "contains_handleAsNodeRequest": true,
+    "contains_default_export": true,
+    "completeness": "complete-bundle-text"
+  },
+  "node_runtime": {
+    "port": 8788,
+    "server": "http.createServer",
+    "listen": "server.listen(PORT)",
+    "bridge": "cloudflare:node handleAsNodeRequest(PORT, request)"
+  },
+  "bindings_referenced": [
+    "ASSETS",
+    "AI",
+    "ZEVANORY_PRIVATE_ARTIFACTS",
+    "ZEA10_ENGINE"
+  ],
+  "commercial_lock": {
+    "VENDA_GLOBALMENTE_HABILITADA": "false",
+    "PRE_VENDA_PORTOES_APROVADOS": "false",
+    "VENDAS_PELO_WHATSAPP_HABILITADAS": "false",
+    "CHECKOUT_ATIVADO": "false",
+    "EVENTOS_FINANCEIROS_ATIVADOS": "false",
+    "LIBERACAO_ABSOLUTA_APROVADA": "false"
+  },
+  "secrets_policy": "names-only-in-git-values-outside-git",
+  "recovered_bundle_completeness": "complete",
+  "cutover_allowed": false,
+  "cutover_blockers": [
+    "real Cloudflare binding identifiers/targets not yet proven",
+    "isolated candidate functional-equivalence proof not yet proven",
+    "rollback drill not yet proven"
+  ]
+}
