@@ -140,7 +140,9 @@ jobs:
             for(const a of Object.values(r.audits)){
               if(!bpRefs.has(a.id)||a.score===null||a.score>=1||a.scoreDisplayMode==='notApplicable') continue;
               const blob=JSON.stringify(a.details||{});
-              if(allowed.has(a.id) && blob.includes('static.cloudflareinsights.com') && !/(stripe|mercadopago|eval\\(|mixed-content)/i.test(blob)){
+              const lower=blob.toLowerCase();
+              const unexpected=lower.includes('stripe')||lower.includes('mercadopago')||lower.includes('mixed-content')||lower.includes('eval(');
+              if(allowed.has(a.id) && lower.includes('static.cloudflareinsights.com') && !unexpected){
                 providerNoise.push({id:a.id,title:a.title});
               }else{
                 applicationDefects.push({id:a.id,title:a.title,score:a.score});
