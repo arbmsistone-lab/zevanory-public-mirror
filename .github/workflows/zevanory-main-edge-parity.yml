@@ -1,0 +1,52 @@
+name: ZEVANORY main-edge semantic parity
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "evidence/main-edge-parity-contract.json"
+      - ".github/workflows/zevanory-main-edge-parity.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify semantic parity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request
+
+          contract=json.load(open("evidence/main-edge-parity-contract.json"))
+          def get(url):
+              req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-Parity-Gate/1.0","Accept":"application/json"})
+              with urllib.request.urlopen(req,timeout=20) as r:
+                  assert r.status==200,(url,r.status)
+                  return json.loads(r.read().decode())
+
+          main=get("https://zevanory.api.br/api/status")
+          edge=get("https://edge.zevanory.api.br/api/status")
+
+          for key in contract["required_shared_fields"]:
+              if main.get(key)!=edge.get(key):
+                  raise SystemExit(f"shared field mismatch: {key}")
+
+          main_extra=set(main)-set(contract["required_shared_fields"])-set(contract["ignored_ephemeral_fields"])
+          edge_extra=set(edge)-set(contract["required_shared_fields"])-set(contract["ignored_ephemeral_fields"])
+
+          unexpected_main=sorted(main_extra)
+          unexpected_edge=sorted(edge_extra-set(contract["allowed_edge_only_fields"]))
+          if unexpected_main:
+              raise SystemExit("unexpected main-only fields: "+",".join(unexpected_main))
+          if unexpected_edge:
+              raise SystemExit("unexpected edge-only fields: "+",".join(unexpected_edge))
+
+          assert main["runtime"]["sales"]=="globally-blocked"
+          assert edge["runtime"]["sales"]=="globally-blocked"
+          assert main["runtime"]["whatsapp"]=="disabled"
+          assert edge["runtime"]["whatsapp"]=="disabled"
+          print("PASS: main and edge are semantically equivalent on the canonical shared contract")
+          PY
