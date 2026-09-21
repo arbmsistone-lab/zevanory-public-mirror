@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "canonical_parent": "2e2f3d48ed423be48c3ecb421431e5c83150c454",
+  "objective": "provider-independence",
+  "invariant": "no single external channel may block technical continuity",
+  "min_operational_channel_quorum": 3,
+  "whatsapp_dependency_required": false,
+  "commercial_actions_remain_fail_closed": true,
+  "rollback_version": "52a989a2",
+  "required_properties": [
+    "deterministic channel ranking",
+    "minimum 3 operational alternatives",
+    "WhatsApp optional for continuity",
+    "503 fail-closed when quorum is not met",
+    "no provider secret embedded in source"
+  ]
+}

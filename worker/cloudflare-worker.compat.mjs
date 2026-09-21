@@ -1,9 +1,45 @@
 import worker from "./cloudflare-worker.recovered.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
+import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
+
+async function fetchJsonThroughWorker(request, env, ctx) {
+  const response = await worker.fetch(request, env, ctx);
+  if (!response.ok) return { response, body: null };
+  try {
+    return { response, body: await response.clone().json() };
+  } catch {
+    return { response, body: null };
+  }
+}
 
 const wrapped = {
   async fetch(request, env, ctx) {
-    return worker.fetch(request, normalizeEnv(env), ctx);
+    const normalized = normalizeEnv(env);
+    const url = new URL(request.url);
+
+    if (url.pathname === "/api/continuity") {
+      const statusUrl = new URL("/api/status", url);
+      const statusRequest = new Request(statusUrl, request);
+      const { response, body } = await fetchJsonThroughWorker(statusRequest, normalized, ctx);
+      if (!response.ok || !body) return response;
+      return continuityHttpResponse(body, { minQuorum: 3 });
+    }
+
+    if (url.pathname === "/api/status") {
+      const { response, body } = await fetchJsonThroughWorker(request, normalized, ctx);
+      if (!response.ok || !body) return response;
+      body.continuity = buildContinuityPlan(body, { minQuorum: 3 });
+      const headers = new Headers(response.headers);
+      headers.set("content-type", "application/json; charset=utf-8");
+      headers.set("cache-control", "no-store");
+      return new Response(JSON.stringify(body), {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      });
+    }
+
+    return worker.fetch(request, normalized, ctx);
   }
 };
 

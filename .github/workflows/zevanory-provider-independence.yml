@@ -1,0 +1,103 @@
+name: ZEVANORY provider independence gate
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/continuity-router.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "evidence/provider-independence.json"
+      - ".github/workflows/zevanory-provider-independence.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit-test deterministic continuity router
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { buildContinuityPlan } from "./worker/continuity-router.mjs";
+          const active = (execution="ready") => ({scope_status:"active",release_gate:"ready",commercial_execution:execution});
+          const blocked = {scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"};
+          const status = {
+            runtime:{sales:"globally-blocked"},
+            channel_readiness:{
+              zevanory:active(),
+              email:active(),
+              instagram:active(),
+              facebook:active(),
+              youtube:active(),
+              mercado_livre:active(),
+              whatsapp:blocked
+            }
+          };
+          const plan=buildContinuityPlan(status,{minQuorum:3});
+          if(!plan.quorum_ok) throw new Error("quorum unexpectedly failed");
+          if(plan.whatsapp_dependency_required!==false) throw new Error("WhatsApp dependency regression");
+          if(plan.whatsapp_operational!==false) throw new Error("WhatsApp must be unavailable");
+          if(plan.available_channels.length<3) throw new Error("insufficient fallback channels");
+          if(plan.mode!=="provider_independent") throw new Error("wrong continuity mode");
+
+          const degraded=buildContinuityPlan({
+            runtime:{sales:"globally-blocked"},
+            channel_readiness:{zevanory:active(),email:blocked,whatsapp:blocked}
+          },{minQuorum:3});
+          if(degraded.quorum_ok) throw new Error("degraded quorum must fail closed");
+          if(degraded.mode!=="degraded_fail_closed") throw new Error("degraded mode mismatch");
+          console.log("PASS: deterministic provider-independent continuity router");
+          JS
+      - name: Verify evidence contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          c=json.load(open("evidence/provider-independence.json"))
+          assert c["min_operational_channel_quorum"]==3
+          assert c["whatsapp_dependency_required"] is False
+          assert c["commercial_actions_remain_fail_closed"] is True
+          assert c["rollback_version"]=="52a989a2"
+          PY
+      - name: Probe live production alternatives
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request
+          req=urllib.request.Request(
+              "https://zevanory.api.br/api/status",
+              headers={"User-Agent":"ZEVANORY-Provider-Independence/1.0","Accept":"application/json"}
+          )
+          with urllib.request.urlopen(req,timeout=20) as r:
+              assert r.status==200
+              body=json.loads(r.read().decode())
+          channels=body.get("channel_readiness",{})
+          usable=[
+              name for name,state in channels.items()
+              if str(state.get("scope_status","")).lower()=="active" and name!="whatsapp"
+          ]
+          assert len(usable)>=3, usable
+          assert body["runtime"]["sales"]=="globally-blocked"
+          print("PASS: production exposes at least 3 non-WhatsApp active alternatives")
+          PY
+      - name: Remote Wrangler compile
+        run: |
+          set -euo pipefail
+          cat > wrangler.continuity-proof.jsonc <<'JSON'
+          {
+            "$schema": "node_modules/wrangler/config-schema.json",
+            "name": "zevanory-continuity-proof",
+            "main": "worker/cloudflare-worker.compat.mjs",
+            "compatibility_date": "2026-09-04",
+            "compatibility_flags": ["nodejs_compat"],
+            "workers_dev": true,
+            "preview_urls": true
+          }
+          JSON
+          rm -rf /tmp/continuity-out
+          npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.continuity-proof.jsonc --outdir /tmp/continuity-out
+          test -n "$(find /tmp/continuity-out -maxdepth 1 -type f \( -name '*.js' -o -name '*.mjs' \) -print -quit)"
+          rm -f wrangler.continuity-proof.jsonc
+          echo "PASS: provider-independent Worker compiles remotely"
