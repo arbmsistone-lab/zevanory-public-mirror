@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-21",
+  "canonical_sha": "a452d31cc3026d970dad80aef42d9f3b27b1b485",
+  "repository": "arbmsistone-lab/zevanory-public-mirror",
+  "cloudflare_worker": {
+    "recovered_bundle_sha256": "e6b6fd6b8730a4791697d0eeb835062a5f0b325c8966b870d2cc8eb5b9dc0935",
+    "recovered_bundle_complete": true,
+    "live_binding_aliases": {
+      "IA": "AI",
+      "ATIVOS": "ASSETS",
+      "ZEA10_MOTOR": "ZEA10_ENGINE",
+      "ZEVANORY_ARTEFATOS_PRIVADOS": "ZEVANORY_PRIVATE_ARTIFACTS"
+    },
+    "rollback_version": "52a989a2",
+    "production_cutover_performed": false
+  },
+  "github": {
+    "pr18": "merged",
+    "pr19": "merged",
+    "stale_prs_closed": [
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      15,
+      16
+    ],
+    "pages_deploy_run": 35661011726,
+    "pages_deploy_conclusion": "success"
+  },
+  "production_expectations": {
+    "status_url": "https://zevanory.api.br/api/status",
+    "control_plane_url": "https://zevanory.api.br/api/control-plane",
+    "edge_status_url": "https://edge.zevanory.api.br/api/status",
+    "expected_http_status": 200,
+    "sales_state": "globally-blocked",
+    "whatsapp_state": "disabled",
+    "root_blocker": "global_sale_disabled"
+  },
+  "whatsapp": {
+    "case_primary": "1737360133997318",
+    "case_correlated": "1862621238416837",
+    "latest_action": "human_reopen_escalation_sent",
+    "sent_message_id": "1a0c608eacbfd62e",
+    "external_state": "awaiting_human_meta_server_side_resolution"
+  },
+  "claim_scope": "technical consolidation and synchronization only; commercial release remains fail-closed until commercial gates and external WhatsApp server-side state are proven",
+  "commercial_release_allowed": false
+}
