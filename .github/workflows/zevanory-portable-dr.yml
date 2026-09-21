@@ -1,0 +1,113 @@
+name: ZEVANORY portable disaster recovery
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/**"
+      - "evidence/portable-dr-contract.json"
+      - ".github/workflows/zevanory-portable-dr.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify recovery contract and immutable rollback
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib
+          c=json.load(open("evidence/portable-dr-contract.json"))
+          assert c["rollback"]["cloudflare_version"]=="52a989a2"
+          assert c["rollback"]["preserved"] is True
+          assert c["release_quorum_required"]==3
+          assert c["runtime_survival_minimum"]==1
+          assert c["commercial_fail_closed"] is True
+          for path in c["portable_sources"]:
+              p=pathlib.Path(path)
+              assert p.is_file(), path
+              assert p.stat().st_size>0, path
+          bundle=pathlib.Path("worker/cloudflare-worker.recovered.mjs").read_text(encoding="utf-8")
+          for marker in ("handleAsNodeRequest(PORT","env.ASSETS","env.ZEA10_ENGINE","env.ZEVANORY_PRIVATE_ARTIFACTS"):
+              assert marker in bundle, marker
+          PY
+      - name: Build portable recovery bundle on clean runner
+        run: |
+          set -euo pipefail
+          cat > wrangler.dr-proof.jsonc <<'JSON'
+          {
+            "$schema": "node_modules/wrangler/config-schema.json",
+            "name": "zevanory-portable-dr-proof",
+            "main": "worker/cloudflare-worker.compat.mjs",
+            "compatibility_date": "2026-09-04",
+            "compatibility_flags": ["nodejs_compat"],
+            "workers_dev": true,
+            "preview_urls": true
+          }
+          JSON
+          rm -rf /tmp/zevanory-dr-out
+          START="$(date +%s)"
+          npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.dr-proof.jsonc --outdir /tmp/zevanory-dr-out
+          END="$(date +%s)"
+          BUNDLE="$(find /tmp/zevanory-dr-out -maxdepth 1 -type f \( -name '*.js' -o -name '*.mjs' \) -print -quit)"
+          test -n "$BUNDLE"
+          SHA="$(sha256sum "$BUNDLE" | awk '{print $1}')"
+          SIZE="$(wc -c < "$BUNDLE" | tr -d ' ')"
+          cat > recovery-build.json <<JSON
+          {
+            "source_sha": "${GITHUB_SHA}",
+            "compiled_bundle_sha256": "$SHA",
+            "compiled_bundle_bytes": $SIZE,
+            "build_seconds": $((END-START)),
+            "commercial_fail_closed": true,
+            "rollback_version": "52a989a2"
+          }
+          JSON
+          cp "$BUNDLE" zevanory-portable-worker.js
+          rm -f wrangler.dr-proof.jsonc
+      - name: Simulate provider outage without commercial unlock
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { buildContinuityPlan } from "./worker/continuity-router.mjs";
+          const ready={scope_status:"active",release_gate:"ready",commercial_execution:"ready"};
+          const blocked={scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"};
+          const cases=[
+            {name:"whatsapp-down",channels:{zevanory:ready,email:ready,instagram:ready,whatsapp:blocked}},
+            {name:"one-channel-down",channels:{zevanory:ready,email:ready,instagram:ready,facebook:blocked}},
+            {name:"below-quorum",channels:{zevanory:ready,email:blocked,instagram:blocked}}
+          ];
+          for(const c of cases){
+            const plan=buildContinuityPlan({runtime:{sales:"globally-blocked"},channel_readiness:c.channels},{minQuorum:3});
+            if(c.name==="below-quorum" && plan.quorum_ok) throw new Error("fail-closed regression");
+            if(c.name!=="below-quorum" && !plan.quorum_ok) throw new Error("continuity regression: "+c.name);
+            if(plan.sales_state!=="globally-blocked") throw new Error("commercial lock regression");
+          }
+          console.log("PASS: outage simulation preserves continuity and commercial lock");
+          JS
+      - name: Package reproducible recovery kit
+        run: |
+          set -euo pipefail
+          mkdir -p recovery-kit/worker recovery-kit/evidence
+          cp worker/cloudflare-worker.recovered.mjs recovery-kit/worker/
+          cp worker/cloudflare-worker.compat.mjs recovery-kit/worker/
+          cp worker/binding-aliases.mjs recovery-kit/worker/
+          cp worker/continuity-router.mjs recovery-kit/worker/
+          cp evidence/portable-dr-contract.json recovery-kit/evidence/
+          cp evidence/cloudflare-binding-alias-contract.json recovery-kit/evidence/
+          cp evidence/three-provider-quorum.json recovery-kit/evidence/
+          cp recovery-build.json recovery-kit/
+          cp zevanory-portable-worker.js recovery-kit/
+          tar -czf zevanory-portable-recovery-kit.tgz recovery-kit
+          sha256sum zevanory-portable-recovery-kit.tgz | tee zevanory-portable-recovery-kit.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-portable-recovery-kit
+          path: |
+            zevanory-portable-recovery-kit.tgz
+            zevanory-portable-recovery-kit.sha256
+            recovery-build.json
+          retention-days: 90
