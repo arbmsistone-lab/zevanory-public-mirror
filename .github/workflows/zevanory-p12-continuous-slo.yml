@@ -1,0 +1,42 @@
+name: zevanory-p12-continuous-slo
+on:
+  pull_request:
+    branches: [gh-pages]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe independent production endpoints
+        env:
+          URLS: "https://zevanory.api.br/solucoes https://edge.zevanory.api.br/solucoes https://controle.zevanory.api.br/portable-health"
+        run: |
+          python3 - <<'PY'
+          import os,json,time,urllib.request,datetime,hashlib
+          rows=[]
+          for url in os.environ["URLS"].split():
+              t=time.monotonic()
+              try:
+                  req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-SLO-Probe/1.0","Accept":"text/html,application/json"})
+                  with urllib.request.urlopen(req,timeout=20) as r:
+                      body=r.read(65536); code=r.status
+                  ok=200 <= code < 400; err=""
+              except Exception as e:
+                  code=getattr(e,"code",0) or 0; body=b""; ok=False; err=type(e).__name__
+              rows.append({"url":url,"ok":ok,"status":code,"latency_ms":round((time.monotonic()-t)*1000,1),"body_sha256":hashlib.sha256(body).hexdigest(),"error":err})
+          doc={"schema":"zevanory.p12.slo.v1","observed_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),"rows":rows,"all_ok":all(x["ok"] for x in rows)}
+          open("p12-slo-observation.json","w").write(json.dumps(doc,sort_keys=True,indent=2))
+          print(json.dumps(doc))
+          if not doc["all_ok"]: raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p12-slo-observation
+          path: p12-slo-observation.json
+          retention-days: 90
