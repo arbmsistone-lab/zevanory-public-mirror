@@ -1,6 +1,7 @@
 import worker from "./cloudflare-worker.recovered.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
+import { handleAdminRequest } from "./admin-console.mjs";
 
 async function fetchJsonThroughWorker(request, env, ctx) {
   const response = await worker.fetch(request, env, ctx);
@@ -16,6 +17,10 @@ const wrapped = {
   async fetch(request, env, ctx) {
     const normalized = normalizeEnv(env);
     const url = new URL(request.url);
+
+    if (url.pathname === "/admin" || url.pathname === "/api/admin/snapshot") {
+      return handleAdminRequest(request, normalized, ctx, wrapped);
+    }
 
     if (url.pathname === "/api/continuity") {
       const statusUrl = new URL("/api/status", url);
