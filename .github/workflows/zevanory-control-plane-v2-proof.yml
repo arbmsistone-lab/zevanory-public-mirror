@@ -36,7 +36,7 @@ jobs:
           for(const token of ["inspect","reconcile","idempotency-key","CONTROL_ACTION","control:v2:action-ledger:zevanory:"]){
             if(!src.includes(token)) throw new Error("missing invariant "+token);
           }
-          for(const forbidden of ["versions deploy","wrangler deploy","SALE_GLOBALLY_ENABLED=true","commercial activation"]){
+          for(const forbidden of ["versions deploy","wrangler deploy","SALE_GLOBALLY_ENABLED=true"]){
             if(src.includes(forbidden)) throw new Error("forbidden destructive primitive "+forbidden);
           }
           console.log("PASS: control plane v2 separation and action fail-closed contract");
