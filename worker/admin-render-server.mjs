@@ -57,12 +57,12 @@ async function getJson(url){
   } finally { clearTimeout(t); }
 }
 async function snapshot(){
-  const [status,health,control,continuity]=await Promise.all([
+  const [status,health,control]=await Promise.all([
     getJson(new URL("/api/status",PUBLIC_BASE_URL).toString()),
     getJson(new URL("/api/health",PUBLIC_BASE_URL).toString()),
-    getJson(new URL("/api/control-plane",PUBLIC_BASE_URL).toString()),
-    getJson("https://zevanory.api.br/api/continuity")
+    getJson(new URL("/api/control-plane",PUBLIC_BASE_URL).toString())
   ]);
+  const continuity=buildContinuityPlan(status,{minQuorum:3});
   return {status,health,control,continuity,generated_at:new Date().toISOString()};
 }
 function render(x){
