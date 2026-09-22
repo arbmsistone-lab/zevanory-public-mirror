@@ -78,63 +78,16 @@ jobs:
       - name: Authenticate Cloudflare
         if: steps.auth.outputs.available == 'true'
         run: npx --yes wrangler@4.135.0 whoami
-      - name: Reconcile zevanory.api.br custom domain
+      - name: Verify legacy production bridge route
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains?hostname=zevanory.api.br" -o /tmp/domains.json
+          curl -fsS https://zevanory.api.br/api/health -o /tmp/predeploy-health.json
           python3 <<'PY'
-          import json, os, urllib.request
-          p="/tmp/domains.json"
-          d=json.load(open(p))
-          assert d.get("success") is True, d.get("errors")
-          rows=[x for x in d.get("result",[]) if x.get("hostname")=="zevanory.api.br"]
-          assert rows, "zevanory.api.br custom domain not found"
-          cur=rows[0]
-          print("CUSTOM_DOMAIN_CURRENT", cur.get("hostname"), cur.get("service"), cur.get("zone_name"), cur.get("zone_id"), cur.get("id"))
-          if cur.get("service") != "zevanory":
-              body=json.dumps({
-                  "hostname":"zevanory.api.br",
-                  "service":"zevanory",
-                  "zone_id":cur["zone_id"],
-                  "zone_name":cur["zone_name"]
-              }).encode()
-              req=urllib.request.Request(
-                  f"https://api.cloudflare.com/client/v4/accounts/{os.environ['CLOUDFLARE_ACCOUNT_ID']}/workers/domains",
-                  data=body,
-                  method="PUT",
-                  headers={
-                      "Authorization":"Bearer "+os.environ["CLOUDFLARE_API_TOKEN"],
-                      "Content-Type":"application/json"
-                  }
-              )
-              with urllib.request.urlopen(req, timeout=30) as r:
-                  out=json.load(r)
-              assert out.get("success") is True, out.get("errors")
-              print("CUSTOM_DOMAIN_REBOUND", out.get("result",{}).get("hostname"), out.get("result",{}).get("service"))
-          else:
-              print("CUSTOM_DOMAIN_ALREADY_BOUND", cur.get("service"))
-          PY
-          for i in $(seq 1 24); do
-            curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/domain-control.json || true
-            if python3 - <<'PY'
-          import json,os,sys
-          try:
-              x=json.load(open("/tmp/domain-control.json"))
-          except Exception:
-              sys.exit(1)
-          sys.exit(0 if x.get("release",{}).get("deployment",{}).get("commit_sha")==os.environ["GITHUB_SHA"] else 1)
-          PY
-            then
-              echo "CUSTOM_DOMAIN_RELEASE_SHA_PASS"
-              break
-            fi
-            sleep 5
-          done
-          python3 - <<'PY'
-          import json,os
-          x=json.load(open("/tmp/domain-control.json"))
-          assert x["release"]["deployment"]["commit_sha"]==os.environ["GITHUB_SHA"], (x["release"]["deployment"]["commit_sha"],os.environ["GITHUB_SHA"])
+          import json
+          h=json.load(open("/tmp/predeploy-health.json"))
+          assert h.get("live") is True and h.get("ready") is True, h
+          print("LEGACY_PRODUCTION_BRIDGE_ROUTE_REACHABLE")
           PY
       - name: Discover production KV namespaces
         if: steps.auth.outputs.available == 'true'
@@ -210,6 +163,8 @@ jobs:
           assert health["ready"] is True
           assert control["global_state"]=="operational_commercial_blocked"
           assert control["root_blocker"]=="global_sale_disabled"
+          assert control["release"]["deployment"]["commit_sha"]==os.environ["GITHUB_SHA"], (control["release"]["deployment"]["commit_sha"],os.environ["GITHUB_SHA"])
+          print("PRODUCTION_EXACT_SHA_PASS",os.environ["GITHUB_SHA"])
           print("PRODUCTION_CENTRAL_UTF8_AND_SAFETY_PASS")
           PY
       - name: Fail-closed deployment status
