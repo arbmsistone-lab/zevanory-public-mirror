@@ -4,6 +4,7 @@ import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router
 import { handleAdminRequest, isAdminAuthorized } from "./admin-console.mjs";
 import { CONTROL_PLANE_VNEXT_JS } from "./control-plane-vnext-source.mjs";
 import { handleControlPlaneV2Request, reconcileControlPlane } from "./evidence-control-plane.mjs";
+import { handleControlActionRequest } from "./control-action-plane.mjs";
 
 async function fetchJsonThroughWorker(request, env, ctx) {
   const response = await worker.fetch(request, env, ctx);
@@ -80,6 +81,9 @@ const wrapped = {
       if (url.pathname.startsWith("/api/admin/control/v2/")) {
         if (!isAdminAuthorized(request, normalized)) {
           return handleAdminRequest(request, normalized, ctx, wrapped);
+        }
+        if (url.pathname.startsWith("/api/admin/control/v2/actions")) {
+          return handleControlActionRequest(request, normalized, ctx, wrapped);
         }
         return handleControlPlaneV2Request(request, normalized, ctx, wrapped);
       }

@@ -1,0 +1,73 @@
+name: ZEVANORY control plane v2 architecture proof
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/evidence-control-plane.mjs"
+      - "worker/control-action-plane.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "worker/admin-console.mjs"
+      - "evidence/admin-control-center.json"
+      - ".github/workflows/zevanory-control-plane-v2-proof.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Static architecture invariants
+        run: |
+          set -euo pipefail
+          node --check worker/evidence-control-plane.mjs
+          node --check worker/control-action-plane.mjs
+          node --check worker/cloudflare-worker.compat.mjs
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const contract=JSON.parse(fs.readFileSync("evidence/admin-control-center.json","utf8"));
+          if(contract.planes?.action?.destructive_actions!==false) throw new Error("action plane must forbid destructive actions");
+          if(contract.planes?.action?.requires_idempotency_key!==true) throw new Error("idempotency required");
+          const src=fs.readFileSync("worker/control-action-plane.mjs","utf8");
+          for(const token of ["inspect","reconcile","idempotency-key","CONTROL_ACTION","control:v2:action-ledger:zevanory:"]){
+            if(!src.includes(token)) throw new Error("missing invariant "+token);
+          }
+          for(const forbidden of ["versions deploy","wrangler deploy","SALE_GLOBALLY_ENABLED=true"]){
+            if(src.includes(forbidden)) throw new Error("forbidden destructive primitive "+forbidden);
+          }
+          console.log("PASS: control plane v2 separation and action fail-closed contract");
+          NODE
+      - name: Exercise action plane behavior
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { handleControlActionRequest } from "./worker/control-action-plane.mjs";
+          const memory=new Map();
+          const env={ZEVANORY_PRIVATE_ARTIFACTS:{
+            async put(k,v){memory.set(k,v)},
+            async get(k){return memory.get(k)||null}
+          }};
+          const worker={async fetch(req){
+            const p=new URL(req.url).pathname;
+            const bodies={
+              "/api/status":{runtime:{sales:"globally-blocked",telemetry:"active"}},
+              "/api/health":{ready:true,live:true},
+              "/api/control-plane":{release:{deployment:{commit_sha:"0000000000000000000000000000000000000000"}},global_state:"operational_commercial_blocked"},
+              "/api/continuity":{quorum_ok:true}
+            };
+            const b=bodies[p];
+            return b?Response.json(b):new Response("not found",{status:404});
+          }};
+          let r=await handleControlActionRequest(new Request("https://example.test/api/admin/control/v2/actions/reconcile",{method:"POST"}),env,{},worker);
+          if(r.status!==400) throw new Error("missing idempotency key must fail");
+          r=await handleControlActionRequest(new Request("https://example.test/api/admin/control/v2/actions/deploy",{method:"POST",headers:{"idempotency-key":"0123456789abcdef"}}),env,{},worker);
+          if(r.status!==403) throw new Error("deploy must be forbidden");
+          r=await handleControlActionRequest(new Request("https://example.test/api/admin/control/v2/actions",{method:"GET"}),env,{},worker);
+          const body=await r.json();
+          if(body.destructive_actions!==false||!body.available?.some(x=>x.id==="reconcile")) throw new Error("action inventory invalid");
+          console.log("PASS: action plane fail-closed behavior");
+          NODE

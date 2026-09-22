@@ -2,7 +2,7 @@
   "schema_version": 2,
   "control_center": "ZEVANORY Administrative Control Center",
   "architecture": "event-sourced evidence control plane",
-  "mode": "read_only_fail_closed",
+  "mode": "read_only_by_default_fail_closed",
   "admin_surface": {
     "path": "/admin",
     "api_prefix": "/api/admin/control/v2",
@@ -15,7 +15,17 @@
       "continuity"
     ],
     "decision": "ZEES-16 policy engine",
-    "action": "explicitly separated; no destructive action exposed by admin UI"
+    "action": {
+      "module": "worker/control-action-plane.mjs",
+      "api": "/api/admin/control/v2/actions",
+      "allowlist": [
+        "inspect",
+        "reconcile"
+      ],
+      "destructive_actions": false,
+      "requires_idempotency_key": true,
+      "audit_ledger_prefix": "control:v2:action-ledger:zevanory:"
+    }
   },
   "ledger": {
     "store": "ZEVANORY_PRIVATE_ARTIFACTS",
@@ -43,7 +53,9 @@
     "/api/admin/snapshot",
     "/api/admin/control/v2/state",
     "/api/admin/control/v2/events",
-    "/api/admin/control/v2/reconcile"
+    "/api/admin/control/v2/reconcile",
+    "/api/admin/control/v2/actions",
+    "/api/admin/control/v2/actions/:action"
   ],
   "security_headers": [
     "Content-Security-Policy",
@@ -73,6 +85,9 @@
     "state changes are persisted as append-only hashed events",
     "current state is a materialized view, not the source of historical truth",
     "commercial release remains fail-closed",
-    "no external certification claim is inferred from internal evidence"
+    "no external certification claim is inferred from internal evidence",
+    "action plane is physically separated from observation and decision logic",
+    "action plane exposes no deploy, rollback or commercial activation operation",
+    "accepted actions require an idempotency key and append an audit event"
   ]
 }
