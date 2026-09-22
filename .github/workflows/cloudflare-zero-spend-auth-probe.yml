@@ -1,6 +1,10 @@
 name: Cloudflare ZERO_SPEND auth probe
 on:
   workflow_dispatch:
+  push:
+    branches: [gh-pages]
+    paths:
+      - '.github/workflows/cloudflare-zero-spend-auth-probe.yml'
 permissions:
   contents: read
 jobs:
