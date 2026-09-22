@@ -1,0 +1,108 @@
+name: ZEVANORY central production deploy
+on:
+  push:
+    branches: [gh-pages]
+    paths:
+      - "worker/live-recovered/control-plane-vnext.js"
+      - "worker/control-plane-vnext-source.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - ".github/workflows/central-production-deploy.yml"
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Determine authenticated deployment availability
+        id: auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "CLOUDFLARE_AUTH_ROUTE=AVAILABLE"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "CLOUDFLARE_AUTH_ROUTE=ABSENT_FAIL_CLOSED"
+          fi
+      - name: Reconstruct exact production candidate
+        if: steps.auth.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          git fetch origin final-83620c6
+          rm -rf public
+          git archive 83620c680958d726fc4b0fd16e2574cdcc362a6d public | tar -x
+          cp worker/live-recovered/control-plane-vnext.js public/control-plane-vnext.js
+          git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
+          python3 <<'PY'
+          import json,os
+          p="wrangler.central-fix.jsonc"
+          c=json.load(open(p))
+          c["main"]="worker/cloudflare-worker.compat.mjs"
+          c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["GITHUB_SHA"]
+          c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
+          c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
+          c["vars"]["SALE_GLOBALLY_ENABLED"]="false"
+          c["vars"]["PRE_SALE_GATES_APPROVED"]="false"
+          c["vars"]["WHATSAPP_SALES_ENABLED"]="false"
+          open(p,"w").write(json.dumps(c,indent=2)+"\n")
+          PY
+          node --check worker/cloudflare-worker.compat.mjs
+          node --check public/control-plane-vnext.js
+          npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.central-fix.jsonc --outdir /tmp/central-final
+      - name: Authenticate Cloudflare
+        if: steps.auth.outputs.available == 'true'
+        run: npx --yes wrangler@4.135.0 whoami
+      - name: Deploy repaired production worker
+        if: steps.auth.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.central-fix.jsonc --tag="$GITHUB_SHA" --message="ZEVANORY-central-P0-fix-$GITHUB_SHA"
+      - name: Verify live UTF-8 asset and safety
+        if: steps.auth.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            curl -fsS https://zevanory.api.br/control-plane-vnext.js -o /tmp/live.js || true
+            if cmp -s /tmp/live.js worker/live-recovered/control-plane-vnext.js; then break; fi
+            sleep 5
+          done
+          cmp -s /tmp/live.js worker/live-recovered/control-plane-vnext.js
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+          s=Path("/tmp/live.js").read_text(encoding="utf-8")
+          bad=[r"Ã[\x80-\xBF]",r"Â[\x80-\xBF ]",r"â€”",r"â€“",r"â€™",r"â€œ",r"â€",r"â†",r"\ufffd"]
+          assert sum(len(re.findall(p,s)) for p in bad)==0
+          assert "QUORUM & TRUST CHAIN" in s
+          assert "Decisão executiva baseada em evidência." in s
+          PY
+          curl -fsS https://zevanory.api.br/api/status -o /tmp/status.json
+          curl -fsS https://zevanory.api.br/api/health -o /tmp/health.json
+          curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/control.json
+          python3 <<'PY'
+          import json,os
+          status=json.load(open("/tmp/status.json"))
+          health=json.load(open("/tmp/health.json"))
+          control=json.load(open("/tmp/control.json"))
+          assert status["runtime"]["sales"]=="globally-blocked"
+          assert health["ready"] is True
+          assert control["global_state"]=="operational_commercial_blocked"
+          assert control["root_blocker"]=="global_sale_disabled"
+          print("PRODUCTION_CENTRAL_UTF8_AND_SAFETY_PASS")
+          PY
+      - name: Fail-closed deployment status
+        if: steps.auth.outputs.available != 'true'
+        run: |
+          echo "Deployment intentionally not attempted: no Cloudflare credential is connected to GitHub Actions."
+          echo "The repaired candidate remains proven and ready; production is unchanged."
