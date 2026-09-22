@@ -50,6 +50,12 @@ jobs:
           await writeFile("public/control-plane-vnext.js", CONTROL_PLANE_VNEXT_JS, "utf8");
           NODE
           cmp -s worker/live-recovered/control-plane-vnext.js public/control-plane-vnext.js
+          python3 - <<'PY'
+          import json,os
+          with open("public/build-info.json","w",encoding="utf-8") as f:
+              json.dump({"sha":os.environ["GITHUB_SHA"],"source":"github-actions-cloudflare","repository":os.environ["GITHUB_REPOSITORY"]},f,indent=2)
+              f.write("\n")
+          PY
           git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
           python3 <<'PY'
           import json,os
