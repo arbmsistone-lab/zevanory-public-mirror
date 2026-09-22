@@ -1,3 +1,4 @@
+import { readOrReconcileControlState } from "./evidence-control-plane.mjs";
 const encoder=new TextEncoder();
 
 function secureEqual(a,b){
@@ -53,8 +54,14 @@ function pill(value){
 }
 
 function html(snapshot){
-  const s=snapshot.status||{}, h=snapshot.health||{}, c=snapshot.control||{}, continuity=snapshot.continuity||{};
+  const s=snapshot.status||{}, h=snapshot.health||{}, c=snapshot.control||{}, continuity=snapshot.continuity||{}, zees=snapshot.zees16||{};
   const counts=c.policy?.counts||{};
+  const z16=zees.counts||{};
+  const zeesCards=(zees.pillars||[]).map(p=>{
+    const cls=p.state==="PROVADO"?"ok":p.state==="PARTIAL"?"warn":"bad";
+    const title=(p.blockers||[]).length?("Bloqueadores: "+p.blockers.join(", ")):"Prova integral reproduzível";
+    return `<article class="zees-card ${cls}" title="${esc(title)}"><b>${esc(p.id)}</b><span>${esc(p.state)}</span><small>${esc(p.name)}</small></article>`;
+  }).join("");
   const zrows=(c.policy?.pillars||[]).map(p=>`<tr><td>${esc(p.id)}</td><td>${esc(p.name)}</td><td>${pill(p.state)}</td><td>${p.remote_certified?"sim":"não"}</td></tr>`).join("");
   const channels=Object.entries(s.channel_readiness||{}).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${pill(v.scope_status)}</td><td>${pill(v.release_gate)}</td><td>${pill(v.commercial_execution)}</td></tr>`).join("");
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -68,9 +75,11 @@ function html(snapshot){
     <article><span>Vendas</span><strong>${esc(s.runtime?.sales)}</strong><small>checkout ${esc(s.runtime?.checkout)} • financeiro ${esc(s.runtime?.financial)}</small></article>
     <article><span>WhatsApp</span><strong>${esc(s.runtime?.whatsapp)}</strong><small>dependência obrigatória: ${continuity.whatsapp_dependency_required?"sim":"não"}</small></article>
     <article><span>ZEA-10 externo</span><strong>${esc(counts.proven||0)}/10</strong><small>${esc(counts.partial||0)} parciais • meta 10/10 externa</small></article>
+    <article><span>ZEES-16 automático</span><strong>${esc(z16.proven||0)}/16</strong><small>${esc(z16.partial||0)} parciais • ${esc(z16.blocked||0)} bloqueados</small></article>
     <article><span>Quorum técnico</span><strong>${continuity.quorum_ok?"PASS":"FAIL"}</strong><small>${esc((continuity.available_channels||[]).length)} canais técnicos disponíveis</small></article>
     <article><span>Banco</span><strong>${esc(h.schema?.required_tables||0)} tabelas</strong><small>${esc(h.schema?.required_migrations||0)} migrations • faltas ${esc((h.schema?.missing_tables_count||0)+(h.schema?.missing_migrations_count||0))}</small></article>
   </section>
+  <section class="panel"><div class="panel-title"><h2>ZEES-16 · Evidence Control Plane</h2><small>Atualização por evidência, SHA e validade. A UI não promove estados.</small></div><div class="zees-board">${zeesCards||'<p class="empty">Estado ZEES-16 ainda não materializado.</p>'}</div><div class="decision-meta"><span>Policy <b>${esc(zees.policy_version||"—")}</b></span><span>SHA <b>${esc((zees.release_sha||"").slice(0,12)||"—")}</b></span><span>Decisão <b>${esc((zees.decision_hash||"").slice(0,16)||"—")}</b></span><span>Persistência <b>${esc(zees.persistence||"—")}</b></span></div></section>
   <section class="panel"><h2>Canais</h2><div class="table-wrap"><table><thead><tr><th>Canal</th><th>Escopo</th><th>Gate</th><th>Execução comercial</th></tr></thead><tbody>${channels}</tbody></table></div></section>
   <section class="panel"><h2>ZEA-10</h2><div class="table-wrap"><table><thead><tr><th>Pilar</th><th>Nome</th><th>Estado</th><th>Externo</th></tr></thead><tbody>${zrows}</tbody></table></div></section>
   <section class="panel compact"><h2>Políticas críticas</h2><dl><div><dt>Root blocker</dt><dd>${esc(c.root_blocker)}</dd></div><div><dt>Claim scope</dt><dd>${esc(c.policy?.claim_scope)}</dd></div><div><dt>Continuidade</dt><dd>${esc(continuity.mode)}</dd></div><div><dt>Comercial</dt><dd>fail-closed</dd></div></dl></section>
@@ -87,7 +96,9 @@ export async function handleAdminRequest(request,env,ctx,worker){
       jsonThrough(worker,new URL("/api/control-plane",base),request,env,ctx),
       jsonThrough(worker,new URL("/api/continuity",base),request,env,ctx)
     ]);
-    const snapshot={status,health,control,continuity,generated_at:new Date().toISOString()};
+    let zees16=null;
+    try{zees16=await readOrReconcileControlState(worker,env,ctx,base.origin);}catch{}
+    const snapshot={status,health,control,continuity,zees16,generated_at:new Date().toISOString()};
     if(base.pathname==="/api/admin/snapshot"){
       return new Response(JSON.stringify(snapshot),{status:200,headers:{
         "content-type":"application/json; charset=utf-8","cache-control":"no-store",

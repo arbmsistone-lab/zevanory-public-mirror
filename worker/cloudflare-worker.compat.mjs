@@ -1,8 +1,9 @@
 import worker from "./cloudflare-worker.recovered.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
-import { handleAdminRequest } from "./admin-console.mjs";
+import { handleAdminRequest, isAdminAuthorized } from "./admin-console.mjs";
 import { CONTROL_PLANE_VNEXT_JS } from "./control-plane-vnext-source.mjs";
+import { handleControlPlaneV2Request, reconcileControlPlane } from "./evidence-control-plane.mjs";
 
 async function fetchJsonThroughWorker(request, env, ctx) {
   const response = await worker.fetch(request, env, ctx);
@@ -71,7 +72,17 @@ const wrapped = {
       });
     }
 
-    if (url.pathname === "/admin" || url.pathname === "/api/admin/snapshot") {
+    if (
+      url.pathname === "/admin" ||
+      url.pathname === "/api/admin/snapshot" ||
+      url.pathname.startsWith("/api/admin/control/v2/")
+    ) {
+      if (url.pathname.startsWith("/api/admin/control/v2/")) {
+        if (!isAdminAuthorized(request, normalized)) {
+          return handleAdminRequest(request, normalized, ctx, wrapped);
+        }
+        return handleControlPlaneV2Request(request, normalized, ctx, wrapped);
+      }
       return handleAdminRequest(request, normalized, ctx, wrapped);
     }
 
@@ -116,9 +127,12 @@ const wrapped = {
   }
 };
 
-if (typeof worker.scheduled === "function") {
-  wrapped.scheduled = async (controller, env, ctx) => worker.scheduled(controller, normalizeEnv(env), ctx);
-}
+wrapped.scheduled = async (controller, env, ctx) => {
+  const normalized = normalizeEnv(env);
+  const tasks = [reconcileControlPlane(wrapped, normalized, ctx).catch(()=>null)];
+  if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
+  await Promise.all(tasks);
+};
 if (typeof worker.queue === "function") {
   wrapped.queue = async (batch, env, ctx) => worker.queue(batch, normalizeEnv(env), ctx);
 }
