@@ -14,6 +14,47 @@ async function fetchJsonThroughWorker(request, env, ctx) {
   }
 }
 
+function legacyTrustProjection(body) {
+  const counts = body?.policy?.counts || {};
+  const totalProven = Number(counts.proven || 0);
+  const liveReady = body?.zea10_live?.ready === true;
+  const liveFailClosed = body?.zea10_live?.fail_closed !== false;
+  const commercialEnabled = body?.global_state === "operational_commercial_enabled";
+  const green = commercialEnabled && totalProven === 10 && liveReady && !liveFailClosed;
+
+  return {
+    state: green ? "GREEN" : "BLOCKED",
+    artifact_sha: body?.proof_chain?.sha
+      || body?.policy?.release_sha
+      || body?.release?.deployment?.commit_sha
+      || null,
+    evidence_root: null,
+    policy_version: body?.policy?.framework || "ZEA-10",
+    passed: 0,
+    total: 0,
+    required: 0,
+    conflicts: 0,
+    independent_keys: 0,
+    engines: [
+      {
+        id: "zea10-live",
+        state: liveReady ? (liveFailClosed ? "FAIL_CLOSED" : "GREEN") : "UNAVAILABLE"
+      }
+    ],
+    ledger: {
+      checked_at: body?.zea10_live?.report?.generated_at
+        || body?.zea10_live?.report?.checked_at
+        || null
+    },
+    compatibility: {
+      source: "control-plane-vnext",
+      quorum_available: false,
+      claim_scope: body?.policy?.claim_scope || "internal_engineering_alignment_not_external_certification"
+    }
+  };
+}
+
+
 const wrapped = {
   async fetch(request, env, ctx) {
     const normalized = normalizeEnv(env);
@@ -49,6 +90,21 @@ const wrapped = {
       const headers = new Headers(response.headers);
       headers.set("content-type", "application/json; charset=utf-8");
       headers.set("cache-control", "no-store");
+      return new Response(JSON.stringify(body), {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      });
+    }
+
+    if (url.pathname === "/api/control-plane") {
+      const { response, body } = await fetchJsonThroughWorker(request, normalized, ctx);
+      if (!response.ok || !body) return response;
+      if (!body.trust_chain) body.trust_chain = legacyTrustProjection(body);
+      const headers = new Headers(response.headers);
+      headers.set("content-type", "application/json; charset=utf-8");
+      headers.set("cache-control", "no-store");
+      headers.set("x-zevanory-trust-schema", "vnext+legacy-projection");
       return new Response(JSON.stringify(body), {
         status: response.status,
         statusText: response.statusText,
