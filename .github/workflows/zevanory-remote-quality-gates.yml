@@ -34,6 +34,8 @@ jobs:
       - name: Audit production quality
         run: |
           set -euo pipefail
+          pkill -f "chrome|chromium" || true
+          sleep 2
           export CHROME_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
           if [ -z "$CHROME_PATH" ]; then
             echo "Chrome/Chromium executable unavailable" >&2
@@ -43,10 +45,11 @@ jobs:
             rm -f "lighthouse-$i.json"
             ok=0
             for attempt in 1 2 3; do
-              if npx lighthouse https://zevanory.api.br/solucoes --chrome-path="$CHROME_PATH" --chrome-flags="--headless=new --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --remote-debugging-port=0" --only-categories=performance,accessibility,best-practices,seo --output=json --output-path="lighthouse-$i.json" --quiet; then
+              if npx lighthouse https://zevanory.api.br/solucoes --chrome-path="$CHROME_PATH" --chrome-flags="--headless=new --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage" --only-categories=performance,accessibility,best-practices,seo --output=json --output-path="lighthouse-$i.json" --quiet; then
                 test -s "lighthouse-$i.json" && ok=1 && break
               fi
               rm -f "lighthouse-$i.json"
+              pkill -f "chrome|chromium" || true
               sleep $((attempt*2))
             done
             if [ "$ok" != "1" ]; then
