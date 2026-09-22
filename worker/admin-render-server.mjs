@@ -9,6 +9,80 @@ const ADMIN_PASS=String(process.env.ZEVANORY_ADMIN_PASSWORD||"");
 const PUBLIC_BASE_URL=String(process.env.ZEVANORY_PUBLIC_BASE_URL||"https://zevanory.api.br");
 const CSS=fs.readFileSync(new URL("../admin.css",import.meta.url),"utf8");
 
+const AUTH_WINDOW_MS=15*60*1000;
+const AUTH_LOCK_MS=30*60*1000;
+const AUTH_MAX_FAILURES_PER_CLIENT=5;
+const REQUEST_WINDOW_MS=60*1000;
+const REQUEST_MAX_PER_CLIENT=120;
+const STATE_MAX_KEYS=10000;
+const authFailures=new Map();
+const requestHits=new Map();
+let lastPruneAt=0;
+
+function nowMs(){ return Date.now(); }
+function normalizeIp(value){
+  const raw=String(value||"").trim();
+  if(!raw) return "unknown";
+  return raw.replace(/^::ffff:/,"").slice(0,128);
+}
+function clientKey(req){
+  const real=normalizeIp(req.headers["x-real-ip"]);
+  if(real!=="unknown") return real;
+  const cf=normalizeIp(req.headers["cf-connecting-ip"]);
+  if(cf!=="unknown") return cf;
+  const forwarded=String(req.headers["x-forwarded-for"]||"").split(",").map(s=>normalizeIp(s)).filter(v=>v!=="unknown");
+  if(forwarded.length) return forwarded[forwarded.length-1];
+  return normalizeIp(req.socket?.remoteAddress);
+}
+function pruneState(now=nowMs()){
+  if(now-lastPruneAt<60_000) return;
+  lastPruneAt=now;
+  for(const [key,state] of authFailures){
+    state.failures=state.failures.filter(ts=>now-ts<AUTH_WINDOW_MS);
+    if(state.lockedUntil<=now && state.failures.length===0) authFailures.delete(key);
+  }
+  for(const [key,hits] of requestHits){
+    const next=hits.filter(ts=>now-ts<REQUEST_WINDOW_MS);
+    if(next.length) requestHits.set(key,next); else requestHits.delete(key);
+  }
+  if(authFailures.size>STATE_MAX_KEYS){
+    for(const key of authFailures.keys()){authFailures.delete(key); if(authFailures.size<=STATE_MAX_KEYS) break;}
+  }
+  if(requestHits.size>STATE_MAX_KEYS){
+    for(const key of requestHits.keys()){requestHits.delete(key); if(requestHits.size<=STATE_MAX_KEYS) break;}
+  }
+}
+function retryAfterSeconds(until,now=nowMs()){ return Math.max(1,Math.ceil((until-now)/1000)); }
+function requestRateLimit(req){
+  const now=nowMs(); pruneState(now);
+  const key=clientKey(req);
+  const hits=(requestHits.get(key)||[]).filter(ts=>now-ts<REQUEST_WINDOW_MS);
+  if(hits.length>=REQUEST_MAX_PER_CLIENT){
+    const until=hits[0]+REQUEST_WINDOW_MS;
+    requestHits.set(key,hits);
+    return {limited:true,retryAfter:retryAfterSeconds(until,now),key};
+  }
+  hits.push(now); requestHits.set(key,hits);
+  return {limited:false,key};
+}
+function authLockState(req){
+  const now=nowMs(); pruneState(now);
+  const key=clientKey(req);
+  const state=authFailures.get(key);
+  if(state?.lockedUntil>now) return {locked:true,retryAfter:retryAfterSeconds(state.lockedUntil,now),key,scope:"client"};
+  return {locked:false,key};
+}
+function recordAuthFailure(key){
+  const now=nowMs(); pruneState(now);
+  const state=authFailures.get(key)||{failures:[],lockedUntil:0};
+  state.failures=state.failures.filter(ts=>now-ts<AUTH_WINDOW_MS);
+  state.failures.push(now);
+  if(state.failures.length>=AUTH_MAX_FAILURES_PER_CLIENT) state.lockedUntil=now+AUTH_LOCK_MS;
+  authFailures.set(key,state);
+}
+function clearClientAuthFailures(key){ authFailures.delete(key); }
+
+
 function secureEqual(a,b){
   const aa=encoder.encode(String(a??"")),bb=encoder.encode(String(b??""));
   const n=Math.max(aa.length,bb.length);
@@ -75,7 +149,21 @@ function render(x){
 const server=http.createServer(async(req,res)=>{
   const u=new URL(req.url||"/","http://localhost");
   if(u.pathname==="/healthz") return reply(res,200,JSON.stringify({service:"zevanory-admin-control",live:true}),"application/json; charset=utf-8");
-  if(!authorized(req)) return reply(res,401,"Authentication required","text/plain; charset=utf-8",{"www-authenticate":'Basic realm="ZEVANORY Administrative Control Center", charset="UTF-8"'});
+
+  const rate=requestRateLimit(req);
+  if(rate.limited) return reply(res,429,"Too many requests","text/plain; charset=utf-8",{"retry-after":String(rate.retryAfter)});
+
+  const lock=authLockState(req);
+  if(lock.locked) return reply(res,429,"Authentication temporarily locked","text/plain; charset=utf-8",{"retry-after":String(lock.retryAfter)});
+
+  if(!authorized(req)){
+    recordAuthFailure(lock.key);
+    const after=authLockState(req);
+    if(after.locked) return reply(res,429,"Authentication temporarily locked","text/plain; charset=utf-8",{"retry-after":String(after.retryAfter)});
+    return reply(res,401,"Authentication required","text/plain; charset=utf-8",{"www-authenticate":'Basic realm="ZEVANORY Administrative Control Center", charset="UTF-8"'});
+  }
+
+  clearClientAuthFailures(lock.key);
   if(req.method!=="GET"&&req.method!=="HEAD") return reply(res,405,"Method not allowed");
   if(u.pathname==="/admin.css") return reply(res,200,CSS,"text/css; charset=utf-8");
   try{
