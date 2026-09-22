@@ -6,6 +6,7 @@ const encoder=new TextEncoder();
 const PORT=Number(process.env.PORT||10000);
 const ADMIN_USER=String(process.env.ZEVANORY_ADMIN_USERNAME||"");
 const ADMIN_PASS=String(process.env.ZEVANORY_ADMIN_PASSWORD||"");
+const PUBLIC_BASE_URL=String(process.env.ZEVANORY_PUBLIC_BASE_URL||"https://zevanory.api.br");
 const CSS=fs.readFileSync(new URL("../admin.css",import.meta.url),"utf8");
 
 function secureEqual(a,b){
@@ -57,9 +58,9 @@ async function getJson(url){
 }
 async function snapshot(){
   const [status,health,control,continuity]=await Promise.all([
-    getJson("https://zevanory.api.br/api/status"),
-    getJson("https://zevanory.api.br/api/health"),
-    getJson("https://zevanory.api.br/api/control-plane"),
+    getJson(new URL("/api/status",PUBLIC_BASE_URL).toString()),
+    getJson(new URL("/api/health",PUBLIC_BASE_URL).toString()),
+    getJson(new URL("/api/control-plane",PUBLIC_BASE_URL).toString()),
     getJson("https://zevanory.api.br/api/continuity")
   ]);
   return {status,health,control,continuity,generated_at:new Date().toISOString()};
