@@ -31,8 +31,13 @@ jobs:
           assert m["commercial_release_allowed"] is False
           assert m["rollback_version"]=="52a989a2"
           assert re.fullmatch(r"[0-9a-f]{40}",m["canonical_sha"])
+          assert re.fullmatch(r"[0-9a-f]{40}",m["audited_candidate_sha"])
           assert re.fullmatch(r"[0-9a-f]{40}",m["production_release_sha"])
           subprocess.check_call(["git","cat-file","-e",m["canonical_sha"]+"^{commit}"])
+          subprocess.check_call(["git","cat-file","-e",m["audited_candidate_sha"]+"^{commit}"])
+          assert m["freeze"]["status"]=="active"
+          assert m["freeze"]["repository_sha"]==m["canonical_sha"]
+          assert m["runtime_snapshot_expectations"]["zea10_counts"]=={"proven":0,"partial":10,"blocked":0}
           ids=[p["id"] for p in m["pillars"]]
           assert ids==[f"ZEA10-{i:02d}" for i in range(1,11)],ids
           for p in m["pillars"]:
@@ -93,8 +98,14 @@ jobs:
           assert out["health"]["body"]["schema"]["missing_migrations_count"]==0
           assert out["status"]["body"]["runtime"]["sales"]=="globally-blocked"
           assert out["control"]["body"]["policy"]["claim_scope"]=="internal_engineering_alignment_not_external_certification"
-          assert out["control"]["body"]["policy"]["counts"]["proven"]==0
-          assert out["control"]["body"]["policy"]["counts"]["partial"]==10
+          policy=out["control"]["body"]["policy"]
+          expected=json.load(open("zea10-external/manifest.json"))
+          assert policy["counts"]==expected["runtime_snapshot_expectations"]["zea10_counts"]
+          assert policy["release_sha"]==expected["production_release_sha"]
+          manifest_pillars={p["id"]:(p["name"],p["control_plane_reference"]) for p in expected["pillars"]}
+          runtime_pillars={p["id"]:(p["name"],p["reference"]) for p in policy["pillars"]}
+          assert runtime_pillars==manifest_pillars,(runtime_pillars,manifest_pillars)
+          assert all(p["state"]=="partial" and p["remote_certified"] is False and p["release_sha_bound"] is True for p in policy["pillars"])
           open("zea10-runtime-snapshot.json","w").write(json.dumps(out,indent=2,sort_keys=True))
           print("PASS: runtime review surfaces healthy and external-certification claim remains fail-closed")
           PY
@@ -105,6 +116,10 @@ jobs:
           cp zea10-external/manifest.json zea10-review-pack/zea10-external/
           cp zea10-external/README.md zea10-review-pack/zea10-external/
           cp zea10-external/review-template.json zea10-review-pack/zea10-external/
+          cp zea10-external/review.schema.json zea10-review-pack/zea10-external/
+          cp zea10-external/review-status.json zea10-review-pack/zea10-external/
+          cp zea10-external/GOAL.md zea10-review-pack/zea10-external/
+          cp zea10-external/REVIEWER-BRIEF.md zea10-review-pack/zea10-external/
           cp evidence/zevanory-consolidated-closure.json zea10-review-pack/evidence/
           cp evidence/zevanory-apex-engineering.json zea10-review-pack/evidence/
           cp evidence/portable-dr-contract.json zea10-review-pack/evidence/
@@ -116,6 +131,8 @@ jobs:
           cp worker/continuity-router.mjs zea10-review-pack/worker/
           cp zea10-run-verification.json zea10-review-pack/
           cp zea10-runtime-snapshot.json zea10-review-pack/
+          git ls-tree -r --name-only "$(python3 -c 'import json;print(json.load(open("zea10-external/manifest.json"))["canonical_sha"])')" > zea10-review-pack/frozen-tree.txt
+          git show --no-patch --format=fuller "$(python3 -c 'import json;print(json.load(open("zea10-external/manifest.json"))["canonical_sha"])')" > zea10-review-pack/frozen-commit.txt
           find zea10-review-pack -type f -print0 | sort -z | xargs -0 sha256sum > zea10-review-pack/SHA256SUMS
           tar -czf zea10-external-evidence-pack.tgz zea10-review-pack
           sha256sum zea10-external-evidence-pack.tgz | tee zea10-external-evidence-pack.tgz.sha256
