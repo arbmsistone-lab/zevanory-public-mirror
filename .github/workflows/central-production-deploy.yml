@@ -57,6 +57,7 @@ jobs:
           c.pop("services",None)
           c.pop("ai",None)
           c.pop("routes",None)
+          c["workers_dev"]=True
           for ns in c.get("kv_namespaces",[]):
               if ns.get("binding")=="ZEVANORY_PRIVATE_ARTIFACTS":
                   ns["id"]="9eca336262b44186ab3dbec82fc35ab4"
@@ -117,6 +118,10 @@ jobs:
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
+          WORKERS_DEV="https://zevanory.girolocal-rb.workers.dev"
+          curl -fsS "$WORKERS_DEV/control-plane-vnext.js" -o /tmp/workers-dev.js
+          cmp -s /tmp/workers-dev.js worker/live-recovered/control-plane-vnext.js
+          echo "WORKERS_DEV_CANONICAL_PASS"
           for i in $(seq 1 30); do
             curl -fsS https://zevanory.api.br/control-plane-vnext.js -o /tmp/live.js || true
             if cmp -s /tmp/live.js worker/live-recovered/control-plane-vnext.js; then break; fi
