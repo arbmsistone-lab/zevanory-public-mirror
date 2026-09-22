@@ -1,0 +1,81 @@
+name: Independent ZEA-10 review
+description: Submit or propose an independent external review of one or more ZEA-10 pillars.
+title: "[ZEA-10 External Review] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for independent third-party review. It is not an endorsement request.
+  - type: input
+    id: reviewer_org
+    attributes:
+      label: Reviewer organization
+    validations:
+      required: true
+  - type: input
+    id: reviewer_id
+    attributes:
+      label: Reviewer identity or stable ID
+    validations:
+      required: true
+  - type: textarea
+    id: independence
+    attributes:
+      label: Independence statement
+    validations:
+      required: true
+  - type: input
+    id: pillars
+    attributes:
+      label: ZEA-10 pillar IDs covered
+      placeholder: ZEA10-01, ZEA10-04
+    validations:
+      required: true
+  - type: input
+    id: sha
+    attributes:
+      label: Exact evaluated SHA
+      value: 4e16fc48486f8d56f16401adbe34e764528a6a52
+    validations:
+      required: true
+  - type: textarea
+    id: method
+    attributes:
+      label: Review method
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence checked
+    validations:
+      required: true
+  - type: textarea
+    id: findings
+    attributes:
+      label: Findings and severities
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - pass
+        - pass_with_findings
+        - fail
+    validations:
+      required: true
+  - type: input
+    id: report
+    attributes:
+      label: Report identifier or hash
+    validations:
+      required: true
+  - type: input
+    id: verification
+    attributes:
+      label: Signature or verification URL
+    validations:
+      required: true
