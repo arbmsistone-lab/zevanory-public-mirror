@@ -50,6 +50,7 @@ jobs:
           p="wrangler.central-fix.jsonc"
           c=json.load(open(p))
           c["main"]="worker/cloudflare-worker.compat.mjs"
+          c.pop("secrets",None)
           for ns in c.get("kv_namespaces",[]):
               if ns.get("binding")=="ZEVANORY_PRIVATE_ARTIFACTS":
                   ns["id"]="9eca336262b44186ab3dbec82fc35ab4"
