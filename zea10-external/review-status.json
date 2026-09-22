@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "canonical_sha": "2a6575dac1a8e8968e29c260219054dda5326b39",
+  "schema_version": 2,
+  "canonical_sha": "4e16fc48486f8d56f16401adbe34e764528a6a52",
   "policy": "fail_closed_external_evidence_only",
   "pillars": {
     "ZEA10-01": {
@@ -56,7 +56,11 @@
   },
   "counts": {
     "remote_certified": 0,
-    "pending": 10
+    "pending": 10,
+    "independent_reviews": 0,
+    "accepted_reviews": 0
   },
-  "note": "Generated status starts fail-closed. Only validated independent review artifacts can change a pillar."
+  "note": "Generated status starts fail-closed. Only validated independent review artifacts can change a pillar.",
+  "audited_candidate_sha": "bd7e587cec1eb35cb8dcbabbb4d548ad4684e3f5",
+  "last_refresh": "2026-09-22"
 }
