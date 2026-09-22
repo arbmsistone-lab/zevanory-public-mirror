@@ -2,6 +2,7 @@ import worker from "./cloudflare-worker.recovered.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
 import { handleAdminRequest } from "./admin-console.mjs";
+import { CONTROL_PLANE_VNEXT_JS } from "./control-plane-vnext-source.mjs";
 
 async function fetchJsonThroughWorker(request, env, ctx) {
   const response = await worker.fetch(request, env, ctx);
@@ -17,6 +18,17 @@ const wrapped = {
   async fetch(request, env, ctx) {
     const normalized = normalizeEnv(env);
     const url = new URL(request.url);
+
+    if (url.pathname === "/control-plane-vnext.js") {
+      return new Response(CONTROL_PLANE_VNEXT_JS, {
+        status: 200,
+        headers: {
+          "content-type": "text/javascript; charset=utf-8",
+          "cache-control": "no-store, max-age=0",
+          "x-content-type-options": "nosniff"
+        }
+      });
+    }
 
     if (url.pathname === "/admin" || url.pathname === "/api/admin/snapshot") {
       return handleAdminRequest(request, normalized, ctx, wrapped);
