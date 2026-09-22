@@ -1,0 +1,111 @@
+name: ZEVANORY administrative control center gate
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/admin-console.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "admin.css"
+      - "evidence/admin-control-center.json"
+      - ".github/workflows/zevanory-admin-control-center.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  admin-control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify security contract
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          const c=JSON.parse(fs.readFileSync("evidence/admin-control-center.json","utf8"));
+          if(c.auth.required!==true) throw new Error("auth must be required");
+          if(c.auth.default_without_credentials!=="401 deny") throw new Error("missing-credential behavior must fail closed");
+          if(c.destructive_actions!==false) throw new Error("destructive actions forbidden");
+          if(c.public_indexing!==false) throw new Error("admin indexing must be disabled");
+          const src=fs.readFileSync("worker/admin-console.mjs","utf8");
+          for(const token of ["ZEVANORY_ADMIN_USERNAME","ZEVANORY_ADMIN_PASSWORD","cache-control","no-store","frame-ancestors 'none'","noindex,nofollow,noarchive"]){
+            if(!src.includes(token)) throw new Error("missing security invariant: "+token);
+          }
+          if(/password\s*[:=]\s*["'][^"']+["']/i.test(src)) throw new Error("embedded password candidate");
+          console.log("PASS: administrative security contract is fail-closed");
+          JS
+      - name: Exercise authentication and read-only snapshot
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { handleAdminRequest } from "./worker/admin-console.mjs";
+          const status={
+            project:"ZEVANORY",
+            runtime:{sales:"globally-blocked",checkout:"enabled",financial:"enabled",whatsapp:"disabled"},
+            channel_readiness:{zevanory:{scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"}}
+          };
+          const health={ready:true,checks:{database_reachable:true,schema_ready:true},schema:{required_tables:40,required_migrations:29,missing_tables_count:0,missing_migrations_count:0}};
+          const control={global_state:"operational_commercial_blocked",root_blocker:"global_sale_disabled",policy:{claim_scope:"internal_engineering_alignment_not_external_certification",counts:{proven:0,partial:10},pillars:[]}};
+          const continuity={quorum_ok:true,mode:"provider_independent",available_channels:["zevanory","email","instagram"],whatsapp_dependency_required:false};
+          const fake={
+            async fetch(req){
+              const p=new URL(req.url).pathname;
+              const body=p==="/api/status"?status:p==="/api/health"?health:p==="/api/control-plane"?control:p==="/api/continuity"?continuity:null;
+              return body?new Response(JSON.stringify(body),{status:200,headers:{"content-type":"application/json"}}):new Response("not found",{status:404});
+            }
+          };
+          const env={ZEVANORY_ADMIN_USERNAME:"operator",ZEVANORY_ADMIN_PASSWORD:"A-very-strong-test-secret"};
+          let r=await handleAdminRequest(new Request("https://example.test/admin"),env,{},fake);
+          if(r.status!==401) throw new Error("unauthenticated request must be 401");
+          r=await handleAdminRequest(new Request("https://example.test/admin",{headers:{authorization:"Basic "+Buffer.from("operator:wrong").toString("base64")}}),env,{},fake);
+          if(r.status!==401) throw new Error("invalid credentials must be 401");
+          const auth="Basic "+Buffer.from("operator:A-very-strong-test-secret").toString("base64");
+          r=await handleAdminRequest(new Request("https://example.test/admin",{headers:{authorization:auth}}),env,{},fake);
+          if(r.status!==200) throw new Error("valid admin page auth failed");
+          const html=await r.text();
+          if(!html.includes("Central Administrativa")||!html.includes("globally-blocked")) throw new Error("admin render incomplete");
+          if(html.includes("A-very-strong-test-secret")) throw new Error("secret leaked into HTML");
+          if(r.headers.get("cache-control")!=="no-store") throw new Error("admin HTML must not be cached");
+          r=await handleAdminRequest(new Request("https://example.test/api/admin/snapshot",{headers:{authorization:auth}}),env,{},fake);
+          if(r.status!==200) throw new Error("snapshot auth failed");
+          const snap=await r.json();
+          if(snap.health.schema.required_tables!==40||snap.status.runtime.sales!=="globally-blocked") throw new Error("snapshot mismatch");
+          console.log("PASS: authentication, rendering and snapshot behavior verified");
+          JS
+      - name: Remote Wrangler compile
+        run: |
+          set -euo pipefail
+          cat > wrangler.admin-proof.jsonc <<'JSON'
+          {
+            "$schema": "node_modules/wrangler/config-schema.json",
+            "name": "zevanory-admin-proof",
+            "main": "worker/cloudflare-worker.compat.mjs",
+            "compatibility_date": "2026-09-04",
+            "compatibility_flags": ["nodejs_compat"],
+            "workers_dev": true,
+            "preview_urls": true
+          }
+          JSON
+          rm -rf /tmp/zevanory-admin-proof
+          npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.admin-proof.jsonc --outdir /tmp/zevanory-admin-proof
+          test -n "$(find /tmp/zevanory-admin-proof -maxdepth 1 -type f \( -name '*.js' -o -name '*.mjs' \) -print -quit)"
+          rm -f wrangler.admin-proof.jsonc
+          echo "PASS: protected administrative control center compiles on clean remote runner"
+      - name: Verify UI asset hygiene
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          css=Path("admin.css").read_text()
+          assert "@media(max-width:900px)" in css
+          assert "@media(max-width:620px)" in css
+          assert "overflow:auto" in css
+          assert "min-width:720px" in css
+          assert len(css)<15000
+          print("PASS: admin UI is compact, responsive and bounded")
+          PY

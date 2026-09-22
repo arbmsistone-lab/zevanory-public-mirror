@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "control_center": "ZEVANORY Administrative Control Center",
+  "mode": "read_only_fail_closed",
+  "auth": {
+    "required": true,
+    "scheme": "HTTP Basic over HTTPS",
+    "credentials": [
+      "ZEVANORY_ADMIN_USERNAME",
+      "ZEVANORY_ADMIN_PASSWORD"
+    ],
+    "default_without_credentials": "401 deny"
+  },
+  "routes": [
+    "/admin",
+    "/api/admin/snapshot"
+  ],
+  "security_headers": [
+    "Content-Security-Policy",
+    "X-Frame-Options",
+    "X-Content-Type-Options",
+    "Referrer-Policy",
+    "Permissions-Policy",
+    "Cache-Control: no-store"
+  ],
+  "data_sources": [
+    "/api/status",
+    "/api/health",
+    "/api/control-plane",
+    "/api/continuity"
+  ],
+  "destructive_actions": false,
+  "public_indexing": false,
+  "requirements": [
+    "no secret embedded in source",
+    "no admin data cached",
+    "fail closed on missing credentials",
+    "no commercial activation",
+    "read-only until explicit audited action model exists"
+  ]
+}
