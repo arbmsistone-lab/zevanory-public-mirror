@@ -1,0 +1,31 @@
+name: Cloudflare ZERO_SPEND auth probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Fail closed if credentials are absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "CLOUDFLARE_API_TOKEN_MISSING"; exit 23; }
+          echo "CLOUDFLARE_API_TOKEN_PRESENT"
+          if [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then echo "CLOUDFLARE_ACCOUNT_ID_PRESENT"; else echo "CLOUDFLARE_ACCOUNT_ID_NOT_REQUIRED_FOR_WHOAMI"; fi
+      - name: Authenticate without exposing credentials
+        run: npx --yes wrangler@4.135.0 whoami
+      - name: Confirm zero-spend route
+        run: |
+          echo "ZERO_SPEND_REMOTE_ROUTE=github-actions"
+          echo "LOCAL_HEAVY_EXECUTION=0"
+          echo "DEPLOY_PERFORMED=0"
