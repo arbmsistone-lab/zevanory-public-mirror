@@ -83,7 +83,8 @@ const server=http.createServer(async(req,res)=>{
     if(u.pathname==="/api/admin/snapshot") return reply(res,200,JSON.stringify(snap),"application/json; charset=utf-8");
     if(u.pathname==="/"||u.pathname==="/admin") return reply(res,200,render(snap),"text/html; charset=utf-8");
     return reply(res,404,"Not found");
-  }catch{
+  }catch(error){
+    console.error("admin_snapshot_error",error?.message||String(error));
     return reply(res,503,"Administrative snapshot unavailable");
   }
 });
