@@ -1,7 +1,7 @@
 import worker from "./cloudflare-worker.recovered.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
-import { handleAdminRequest } from "./admin-console.mjs";
+import { handleAdminRequest, isAdminAuthorized } from "./admin-console.mjs";
 import { CONTROL_PLANE_VNEXT_JS } from "./control-plane-vnext-source.mjs";
 import { handleControlPlaneV2Request, reconcileControlPlane } from "./evidence-control-plane.mjs";
 
@@ -78,11 +78,9 @@ const wrapped = {
       url.pathname.startsWith("/api/admin/control/v2/")
     ) {
       if (url.pathname.startsWith("/api/admin/control/v2/")) {
-        const authProbe = await handleAdminRequest(new Request(new URL("/api/admin/snapshot", url), {
-          method: "GET",
-          headers: request.headers
-        }), normalized, ctx, wrapped);
-        if (authProbe.status === 401) return authProbe;
+        if (!isAdminAuthorized(request, normalized)) {
+          return handleAdminRequest(request, normalized, ctx, wrapped);
+        }
         return handleControlPlaneV2Request(request, normalized, ctx, wrapped);
       }
       return handleAdminRequest(request, normalized, ctx, wrapped);
