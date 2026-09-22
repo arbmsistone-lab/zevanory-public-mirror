@@ -179,5 +179,24 @@
       "fail"
     ],
     "remote_certified_transition_rule": "remote_certified may become true only when an independent review artifact is present, bound to the evaluated SHA, and its scope covers the corresponding pillar"
+  },
+  "strategic_goal": {
+    "id": "ZEA10-EXTERNAL-10OF10",
+    "title": "Obtain real independent external validation for all 10 ZEA-10 pillars",
+    "target": {
+      "remote_certified_pillars": 10,
+      "total_pillars": 10,
+      "independent_review_required": true,
+      "exact_sha_binding_required": true,
+      "reproducible_evidence_required": true
+    },
+    "execution_policy": {
+      "zero_spend_first": true,
+      "no_self_attestation": true,
+      "no_inferred_certification": true,
+      "fail_closed": true,
+      "formal_accredited_certification_only_where_applicable": true
+    },
+    "completion_definition": "The goal is complete only when all ten ZEA-10 pillars have accepted independent external review artifacts bound to the evaluated SHA; any formal standards certification is claimed only when issued through an applicable recognized process."
   }
 }
