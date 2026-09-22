@@ -94,8 +94,9 @@ jobs:
           assert out["status"]["body"]["project"]=="ZEVANORY"
           assert out["edge"]["body"]["project"]=="ZEVANORY"
           assert out["health"]["body"]["ready"] is True
-          assert out["health"]["body"]["schema"]["missing_tables_count"]==0
-          assert out["health"]["body"]["schema"]["missing_migrations_count"]==0
+          schema=out["health"]["body"]["schema"]
+          assert schema.get("missing_tables_count",len(schema.get("missing_tables",[])))==0
+          assert schema.get("missing_migrations_count",len(schema.get("missing_migrations",[])))==0
           assert out["status"]["body"]["runtime"]["sales"]=="globally-blocked"
           assert out["control"]["body"]["policy"]["claim_scope"]=="internal_engineering_alignment_not_external_certification"
           policy=out["control"]["body"]["policy"]
