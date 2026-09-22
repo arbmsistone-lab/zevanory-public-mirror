@@ -1,0 +1,74 @@
+name: ZEVANORY ZEES-16 control reconciler
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_run:
+    workflows:
+      - "ZEVANORY central production deploy"
+      - "ZEVANORY apex engineering gate"
+      - "zevanory-remote-quality-gates"
+      - "zevanory-p02-visual-regression"
+      - "zevanory-p04-wcag"
+      - "zevanory-p12-continuous-slo"
+      - "zevanory-p15-provenance"
+      - "ZEVANORY portable disaster recovery"
+      - "ZEVANORY provider independence gate"
+      - "ZEVANORY authenticated three-provider runtime quorum"
+      - "ZEES-16 Evidence Gate"
+      - "ZEA-10 external evidence pack"
+    types: [completed]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  reconcile:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+      KV_NAMESPACE_ID: 9eca336262b44186ab3dbec82fc35ab4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Read previous materialized state
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "Cloudflare credential unavailable" >&2
+            exit 2
+          fi
+          npx --yes wrangler@4.135.0 kv key get "control:v2:state:zevanory" \
+            --namespace-id "$KV_NAMESPACE_ID" --remote > previous-state.json 2>/dev/null || echo '{}' > previous-state.json
+      - name: Reconcile exact production evidence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PREVIOUS_STATE_PATH: previous-state.json
+        run: node scripts/reconcile_zees16_control.mjs
+      - name: Persist append-only event and materialized state
+        run: |
+          set -euo pipefail
+          EVENT_HASH=$(node -e "console.log(JSON.parse(require('fs').readFileSync('zees16-event.json','utf8')).event_hash)")
+          OBSERVED=$(node -e "console.log(JSON.parse(require('fs').readFileSync('zees16-event.json','utf8')).observed_at.replace(/[:.]/g,'-'))")
+          EVENT_KEY="control:v2:ledger:zevanory:$OBSERVED:$EVENT_HASH"
+          npx --yes wrangler@4.135.0 kv key put "$EVENT_KEY" --path zees16-event.json --namespace-id "$KV_NAMESPACE_ID" --remote
+          npx --yes wrangler@4.135.0 kv key put "control:v2:state:zevanory" --path zees16-state.json --namespace-id "$KV_NAMESPACE_ID" --remote
+      - name: Fail-closed acceptance
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const s=JSON.parse(fs.readFileSync("zees16-state.json","utf8"));
+          if(s.counts.blocked>0) {
+            console.error("ZEES16_BLOCKED_PILLARS",s.pillars.filter(x=>x.state==="BLOCKED").map(x=>x.id+":"+x.blockers.join(",")));
+          }
+          if(!/^[0-9a-f]{64}$/.test(s.decision_hash)) throw new Error("decision hash invalid");
+          if(!/^[0-9a-f]{40}$/.test(s.release_sha)) throw new Error("release SHA invalid");
+          console.log("ZEES16_STATE",s.counts,"SHA",s.release_sha,"DECISION",s.decision_hash);
+          NODE
