@@ -64,6 +64,17 @@ jobs:
       - name: Authenticate Cloudflare
         if: steps.auth.outputs.available == 'true'
         run: npx --yes wrangler@4.135.0 whoami
+      - name: Discover production KV namespaces
+        if: steps.auth.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces?per_page=100" -o /tmp/kv.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/kv.json"))
+          assert d.get("success") is True, d.get("errors")
+          for x in d.get("result",[]): print("KV_NAMESPACE",x.get("title"),x.get("id"))
+          PY
       - name: Deploy repaired production worker
         if: steps.auth.outputs.available == 'true'
         run: |
