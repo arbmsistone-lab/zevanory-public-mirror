@@ -207,6 +207,97 @@
         "industry",
         "engineering"
       ]
+    },
+    {
+      "org": "Software Engineering R&D Lab / FEUP",
+      "status": "contacted",
+      "scope": [
+        "software_engineering",
+        "quality",
+        "architecture",
+        "maintainability"
+      ],
+      "region": "Portugal"
+    },
+    {
+      "org": "Computing Systems R&D Lab / FEUP",
+      "status": "contacted",
+      "scope": [
+        "distributed_systems",
+        "performance",
+        "fault_tolerance",
+        "cybersecurity"
+      ],
+      "region": "Portugal"
+    },
+    {
+      "org": "INESC-ID / Técnico Lisboa",
+      "status": "contacted",
+      "scope": [
+        "systems",
+        "software",
+        "cybersecurity",
+        "dependability"
+      ],
+      "region": "Portugal"
+    },
+    {
+      "org": "High-Assurance Software Laboratory / INESC TEC & University of Minho",
+      "status": "contacted",
+      "scope": [
+        "high_assurance_software",
+        "formal_methods",
+        "verification"
+      ],
+      "region": "Portugal"
+    },
+    {
+      "org": "PLEIAD / Universidad de Chile",
+      "status": "contacted",
+      "scope": [
+        "program_verification",
+        "software_quality",
+        "privacy",
+        "security"
+      ],
+      "region": "Chile"
+    },
+    {
+      "org": "NIC Chile Research Labs / Universidad de Chile",
+      "status": "contacted",
+      "scope": [
+        "internet_infrastructure",
+        "quality_of_service",
+        "distributed_systems",
+        "security"
+      ],
+      "region": "Chile"
+    },
+    {
+      "org": "Systems and Computing Engineering / Universidad de los Andes",
+      "status": "contacted",
+      "scope": [
+        "software_engineering",
+        "information_security",
+        "it_architecture",
+        "systems"
+      ],
+      "region": "Colombia"
+    },
+    {
+      "org": "Department of Computer Science / University of Porto",
+      "status": "contacted",
+      "scope": [
+        "computer_science",
+        "software",
+        "systems"
+      ],
+      "region": "Portugal"
     }
-  ]
+  ],
+  "stats": {
+    "contacted_total": 29,
+    "external_validated_pillars": 0,
+    "target_pillars": 10
+  }
 }
