@@ -53,9 +53,11 @@ jobs:
           PID=$!
           trap 'kill $PID $UPSTREAM_PID || true' EXIT
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:10000/healthz >/dev/null; then break; fi
+            if curl -fsS http://127.0.0.1:10001/api/status >/dev/null && curl -fsS http://127.0.0.1:10000/healthz >/dev/null; then break; fi
             sleep 1
           done
+          curl -fsS http://127.0.0.1:10001/api/status >/dev/null
+          curl -fsS http://127.0.0.1:10000/healthz >/dev/null
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:10000/admin)" = "401"
           test "$(curl -s -u operator:wrong -o /dev/null -w '%{http_code}' http://127.0.0.1:10000/admin)" = "401"
           CODE="$(curl -s -u operator:test-secret-only -o /tmp/admin.html -w '%{http_code}' http://127.0.0.1:10000/admin)"
