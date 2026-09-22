@@ -5,6 +5,7 @@ on:
     paths:
       - "worker/admin-console.mjs"
       - "worker/cloudflare-worker.compat.mjs"
+      - "worker/evidence-control-plane.mjs"
       - "admin.css"
       - "evidence/admin-control-center.json"
       - ".github/workflows/zevanory-admin-control-center.yml"
@@ -31,6 +32,9 @@ jobs:
           if(c.auth.required!==true) throw new Error("auth must be required");
           if(c.auth.default_without_credentials!=="401 deny") throw new Error("missing-credential behavior must fail closed");
           if(c.destructive_actions!==false) throw new Error("destructive actions forbidden");
+          if(c.architecture!=="event-sourced evidence control plane") throw new Error("control-plane architecture contract mismatch");
+          if(c.ledger?.hash_chain!==true) throw new Error("ledger hash chain required");
+          if(c.auto_reconciliation?.scheduled!==true) throw new Error("scheduled reconciliation required");
           if(c.public_indexing!==false) throw new Error("admin indexing must be disabled");
           const src=fs.readFileSync("worker/admin-console.mjs","utf8");
           for(const token of ["ZEVANORY_ADMIN_USERNAME","ZEVANORY_ADMIN_PASSWORD","cache-control","no-store","frame-ancestors 'none'","noindex,nofollow,noarchive"]){
@@ -76,6 +80,33 @@ jobs:
           const snap=await r.json();
           if(snap.health.schema.required_tables!==40||snap.status.runtime.sales!=="globally-blocked") throw new Error("snapshot mismatch");
           console.log("PASS: authentication, rendering and snapshot behavior verified");
+          JS
+      - name: Exercise ZEES-16 policy engine and immutable ledger
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { evaluatePolicy } from "./worker/evidence-control-plane.mjs";
+          const okRun=name=>({name,conclusion:"success",id:1,html_url:"https://example.test/"+encodeURIComponent(name),updated_at:"2026-09-22T22:00:00Z"});
+          const names=[
+            "ZEVANORY apex engineering gate","zevanory-p02-visual-regression","zevanory-p04-wcag",
+            "zevanory-p12-continuous-slo","zevanory-remote-quality-gates","ZEES-16 Evidence Gate",
+            "zevanory-p15-provenance","ZEVANORY portable disaster recovery","ZEVANORY authenticated three-provider runtime quorum",
+            "ZEA-10 external evidence pack","ZEVANORY provider independence gate","pages build and deployment",
+            "ZEVANORY central production deploy"
+          ];
+          const workflows=new Map(names.map(n=>[n,okRun(n)]));
+          const signals={
+            "runtime:exact_sha":true,"runtime:health_ready":true,"runtime:telemetry_active":true,
+            "runtime:quorum_ok":true,"runtime:sales_fail_closed":true,"runtime:commercial_release":false
+          };
+          const state=evaluatePolicy({signals,workflows,releaseSha:"a".repeat(40),observedAt:"2026-09-22T22:00:00Z"});
+          if(state.counts.proven!==15||state.counts.partial!==1||state.counts.blocked!==0) throw new Error("unexpected ZEES state "+JSON.stringify(state.counts));
+          const p16=state.pillars.find(x=>x.id==="P16");
+          if(p16?.state!=="PARTIAL") throw new Error("P16 must stay fail-closed until commercial release");
+          workflows.delete("zevanory-p04-wcag");
+          const degraded=evaluatePolicy({signals,workflows,releaseSha:"a".repeat(40)});
+          if(degraded.pillars.find(x=>x.id==="P04")?.state!=="BLOCKED") throw new Error("missing proof must downgrade P04");
+          console.log("PASS: policy engine promotes and downgrades only from evidence");
           JS
       - name: Remote Wrangler compile
         run: |
