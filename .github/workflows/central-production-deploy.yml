@@ -1,5 +1,6 @@
 name: ZEVANORY central production deploy
 on:
+  workflow_dispatch:
   push:
     branches: [gh-pages]
     paths:
