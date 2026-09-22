@@ -10,7 +10,8 @@
     "sales_machine",
     "runtime",
     "metrics",
-    "channel_readiness"
+    "channel_readiness",
+    "continuity"
   ],
   "allowed_edge_only_fields": [
     "command_center",
