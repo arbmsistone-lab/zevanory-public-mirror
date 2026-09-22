@@ -2,24 +2,24 @@
   "schema_version": 2,
   "pack": "ZEA-10 External Evidence Pack",
   "purpose": "independent-review-ready evidence bundle; not an external certification",
-  "canonical_sha": "d82590161e86d6feb4b55874fc504a8132d1c106",
-  "production_release_sha": "d82590161e86d6feb4b55874fc504a8132d1c106",
+  "canonical_sha": "26ff662bd7efa12acba406fb976b1b807aac051d",
+  "production_release_sha": "26ff662bd7efa12acba406fb976b1b807aac051d",
   "generated_at": "2026-09-22",
   "claim_scope": "internal engineering evidence prepared for independent external review",
   "external_certification_claimed": false,
   "commercial_release_allowed": false,
   "rollback_version": "52a989a2",
   "verified_runs": {
-    "apex": 35713180761,
-    "remote_quality": 35777141329,
-    "visual": 35777141345,
-    "wcag": 35777141641,
-    "slo": 35777141324,
-    "provenance": 35777141347,
-    "dr": 35713180745,
-    "provider_quorum": 35701424504,
-    "zees16": 35777141409,
-    "pages_deploy": 35783375038
+    "apex": 35788969157,
+    "remote_quality": 35788995980,
+    "visual": 35789030877,
+    "wcag": 35789062377,
+    "slo": 35789016665,
+    "provenance": 35789074940,
+    "dr": 35789182586,
+    "provider_quorum": 35789117492,
+    "zees16": 35789212316,
+    "pages_deploy": 35788460262
   },
   "pillars": [
     {
@@ -237,12 +237,12 @@
     },
     "completion_definition": "The goal is complete only when all ten ZEA-10 pillars have accepted independent external review artifacts bound to the evaluated SHA; any formal standards certification is claimed only when issued through an applicable recognized process."
   },
-  "audited_candidate_sha": "d82590161e86d6feb4b55874fc504a8132d1c106",
+  "audited_candidate_sha": "26ff662bd7efa12acba406fb976b1b807aac051d",
   "freeze": {
     "status": "active",
-    "repository_sha": "d82590161e86d6feb4b55874fc504a8132d1c106",
-    "audited_candidate_sha": "d82590161e86d6feb4b55874fc504a8132d1c106",
-    "production_release_sha": "d82590161e86d6feb4b55874fc504a8132d1c106",
+    "repository_sha": "26ff662bd7efa12acba406fb976b1b807aac051d",
+    "audited_candidate_sha": "26ff662bd7efa12acba406fb976b1b807aac051d",
+    "production_release_sha": "26ff662bd7efa12acba406fb976b1b807aac051d",
     "mutation_policy": "Any material change after freeze requires a new evidence-pack version and reviewer target."
   },
   "runtime_snapshot_expectations": {
