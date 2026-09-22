@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-22",
+  "policy": {
+    "zero_spend_first": true,
+    "no_mass_spam": true,
+    "verified_public_contacts_only": true,
+    "follow_up_requires_meaningful_context": true,
+    "external_review_is_not_formal_certification": true
+  },
+  "target": "ZEA10-EXTERNAL-10OF10",
+  "frozen_snapshot_sha": "4e16fc48486f8d56f16401adbe34e764528a6a52",
+  "evidence_pack": {
+    "run_id": 35715279116,
+    "artifact_id": 10688583703,
+    "sha256": "c60889300b1610b98f9ec3b7bd652d9ab0c0b2d55f0c8bf68f706baa24f15c6b"
+  },
+  "institutions": [
+    {
+      "org": "GREat/UFC",
+      "status": "contacted",
+      "scope": [
+        "software_engineering",
+        "cloud",
+        "governance"
+      ]
+    },
+    {
+      "org": "ATLab/UFC",
+      "status": "contacted",
+      "scope": [
+        "software_engineering",
+        "security",
+        "architecture"
+      ]
+    },
+    {
+      "org": "LARCES/UECE",
+      "status": "contacted",
+      "scope": [
+        "cybersecurity",
+        "privacy",
+        "networks"
+      ]
+    },
+    {
+      "org": "Nuclic/UFC",
+      "status": "contacted",
+      "scope": [
+        "computer_systems",
+        "software"
+      ]
+    },
+    {
+      "org": "LAPIS/IFCE",
+      "status": "contacted",
+      "scope": [
+        "software_engineering",
+        "innovation"
+      ]
+    },
+    {
+      "org": "ALMA Labs/IFCE",
+      "status": "contacted",
+      "scope": [
+        "software",
+        "hardware",
+        "firmware"
+      ]
+    },
+    {
+      "org": "Instituto de Computação/UNICAMP",
+      "status": "contacted",
+      "scope": [
+        "software_engineering",
+        "security",
+        "distributed_systems"
+      ]
+    },
+    {
+      "org": "LASER/UNICAMP",
+      "status": "contacted",
+      "scope": [
+        "software_engineering",
+        "quality",
+        "reliability"
+      ]
+    },
+    {
+      "org": "DCC/UFMG",
+      "status": "contacted",
+      "scope": [
+        "software_engineering",
+        "security",
+        "performance",
+        "systems"
+      ]
+    },
+    {
+      "org": "CIn/UFPE",
+      "status": "contacted",
+      "scope": [
+        "software_engineering",
+        "security",
+        "distributed_systems",
+        "quality"
+      ]
+    },
+    {
+      "org": "CIn/UFPE — Safety-Critical/Software Engineering",
+      "status": "contacted",
+      "scope": [
+        "safety",
+        "information_security",
+        "requirements",
+        "software_engineering"
+      ]
+    },
+    {
+      "org": "Unidade EMBRAPII Metrópole Digital/UFRN",
+      "status": "contacted",
+      "scope": [
+        "applied_computing",
+        "software_engineering",
+        "intelligent_systems"
+      ]
+    },
+    {
+      "org": "LAIS/UFRN",
+      "status": "contacted",
+      "scope": [
+        "systems_reliability",
+        "governance",
+        "operations"
+      ]
+    },
+    {
+      "org": "PCS/Escola Politécnica/USP",
+      "status": "contacted",
+      "scope": [
+        "computer_engineering",
+        "software",
+        "security",
+        "systems"
+      ]
+    },
+    {
+      "org": "LTS/Poli-USP",
+      "status": "contacted",
+      "scope": [
+        "software_technology",
+        "quality",
+        "architecture",
+        "processes"
+      ]
+    },
+    {
+      "org": "Tecnologias Digitais/IPT",
+      "status": "contacted",
+      "scope": [
+        "digital_technologies",
+        "software",
+        "validation"
+      ]
+    },
+    {
+      "org": "RNP",
+      "status": "contacted",
+      "scope": [
+        "distributed_systems",
+        "testbeds",
+        "security",
+        "resilience"
+      ]
+    },
+    {
+      "org": "LabSEC/UFSC",
+      "status": "contacted",
+      "scope": [
+        "computer_security",
+        "digital_certification",
+        "secure_systems"
+      ]
+    },
+    {
+      "org": "DNV",
+      "status": "contacted",
+      "scope": [
+        "independent_review",
+        "formal_certification_route"
+      ]
+    },
+    {
+      "org": "Fundação CERTI",
+      "status": "contacted",
+      "scope": [
+        "technical_review",
+        "testing",
+        "certification_route"
+      ]
+    },
+    {
+      "org": "SENAI Ceará/SFIEC",
+      "status": "contacted",
+      "scope": [
+        "technical_review",
+        "industry",
+        "engineering"
+      ]
+    }
+  ]
+}
