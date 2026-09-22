@@ -1,12 +1,14 @@
 {
   "schema_version": 1,
-  "pillar_id": "ZEA10-XX",
+  "pillar_ids": [
+    "ZEA10-01"
+  ],
   "reviewer_org": "",
   "reviewer_name_or_id": "",
   "independence_statement": "",
   "scope": "",
-  "evaluated_sha": "",
-  "evaluated_production_release_sha": "",
+  "evaluated_sha": "4e16fc48486f8d56f16401adbe34e764528a6a52",
+  "evaluated_production_release_sha": "83620c680958d726fc4b0fd16e2574cdcc362a6d",
   "date": "",
   "method": [],
   "evidence_checked": [],
