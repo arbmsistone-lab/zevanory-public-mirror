@@ -65,5 +65,14 @@
     ],
     "min_quorum": 3,
     "hourly_revalidation": true
+  },
+  "strategic_goals": {
+    "zea10_external": {
+      "id": "ZEA10-EXTERNAL-10OF10",
+      "status": "active",
+      "target_remote_certified": "10/10",
+      "evidence_path": "zea10-external/GOAL.md",
+      "policy": "independent_external_review_only_fail_closed"
+    }
   }
 }
