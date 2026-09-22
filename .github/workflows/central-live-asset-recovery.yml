@@ -1,0 +1,111 @@
+name: Recover and repair live ZEVANORY central assets
+on:
+  push:
+    branches: [fix/central-live-asset-recovery-20260922]
+    paths:
+      - ".github/workflows/central-live-asset-recovery.yml"
+permissions:
+  contents: write
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch exact live assets
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/live worker/live-recovered evidence
+          curl -fsS --retry 3 -D /tmp/live/js.headers https://zevanory.api.br/control-plane-vnext.js -o /tmp/live/control-plane-vnext.js
+          curl -fsS --retry 3 -D /tmp/live/css.headers https://zevanory.api.br/control-plane-vnext.css -o /tmp/live/control-plane-vnext.css
+          grep -Eiq '^content-type:.*(javascript|text/plain).*charset=utf-8' /tmp/live/js.headers || { cat /tmp/live/js.headers; exit 31; }
+          grep -Eiq '^content-type:.*text/css.*charset=utf-8' /tmp/live/css.headers || { cat /tmp/live/css.headers; exit 32; }
+          cp /tmp/live/control-plane-vnext.js worker/live-recovered/control-plane-vnext.live.mojibake.js
+          cp /tmp/live/control-plane-vnext.css worker/live-recovered/control-plane-vnext.css
+      - name: Repair mojibake deterministically
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet ftfy==6.3.1
+          python <<'PY'
+          from pathlib import Path
+          import ftfy, hashlib, json, re
+          src=Path("/tmp/live/control-plane-vnext.js").read_text(encoding="utf-8")
+          fixed=ftfy.fix_text(src, normalization="NFC")
+          bad_patterns=[
+              r"Ã[\x80-\xBF]", r"Â[\x80-\xBF ]", r"â€”", r"â€“", r"â€™",
+              r"â€œ", r"â€", r"â†", r"\ufffd"
+          ]
+          before=sum(len(re.findall(p,src)) for p in bad_patterns)
+          after=sum(len(re.findall(p,fixed)) for p in bad_patterns)
+          if before < 1:
+              raise SystemExit("expected live mojibake not detected; refusing unproven rewrite")
+          if after != 0:
+              raise SystemExit(f"mojibake remains after repair: {after}")
+          required=[
+              "ZEVANORY CONTROL PLANE",
+              "QUORUM & TRUST CHAIN",
+              "ensureTrustDialog",
+              "renderTrust",
+              "/api/control-plane"
+          ]
+          missing=[x for x in required if x not in fixed]
+          if missing:
+              raise SystemExit("recovered asset lost required behavior: "+repr(missing))
+          out=Path("worker/live-recovered/control-plane-vnext.js")
+          out.write_text(fixed,encoding="utf-8",newline="\n")
+          evidence={
+              "schema_version":1,
+              "incident":"P0-central-live-asset-drift-mojibake",
+              "source_url":"https://zevanory.api.br/control-plane-vnext.js",
+              "source_sha256":hashlib.sha256(src.encode()).hexdigest(),
+              "repaired_sha256":hashlib.sha256(fixed.encode()).hexdigest(),
+              "source_bytes":len(src.encode()),
+              "repaired_bytes":len(fixed.encode()),
+              "mojibake_markers_before":before,
+              "mojibake_markers_after":after,
+              "required_behavior_preserved":required,
+              "production_release_reported":"83620c680958d726fc4b0fd16e2574cdcc362a6d",
+              "deployment_performed":False,
+              "commercial_state_must_remain":"globally-blocked"
+          }
+          Path("evidence/central-live-recovery.json").write_text(json.dumps(evidence,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+          print(json.dumps(evidence,indent=2))
+          PY
+      - name: Prove recovered JavaScript syntax and text
+        run: |
+          set -euo pipefail
+          node --check worker/live-recovered/control-plane-vnext.js
+          python <<'PY'
+          from pathlib import Path
+          s=Path("worker/live-recovered/control-plane-vnext.js").read_text(encoding="utf-8")
+          for text in [
+            "Decisão executiva baseada em evidência.",
+            "Operação",
+            "IA & Automação",
+            "Execuções 24h",
+            "Portfólio",
+            "domínio",
+            "certificação externa"
+          ]:
+            if text not in s:
+              raise SystemExit("expected repaired text missing: "+text)
+          print("CENTRAL_UTF8_RECOVERY_PASS")
+          PY
+      - name: Commit recovered source and evidence
+        run: |
+          set -euo pipefail
+          git config user.name "zevanory-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add worker/live-recovered evidence/central-live-recovery.json
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(central): recover live trust-chain asset and repair UTF-8 source"
+          git push origin HEAD:fix/central-live-asset-recovery-20260922
