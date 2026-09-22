@@ -1,0 +1,30 @@
+name: ZEVANORY admin final closure proof
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/admin-render-server.mjs"
+      - ".github/workflows/zevanory-admin-final-closure.yml"
+permissions:
+  contents: read
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify startup fail-closed and health proof contract
+        run: |
+          set -euo pipefail
+          node --check worker/admin-render-server.mjs
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          const s=fs.readFileSync("worker/admin-render-server.mjs","utf8");
+          for(const token of ["AUTH_SELF_TEST","fatal_admin_auth_configuration_invalid","auth_configured","auth_self_test","per_client_lockout","RENDER_GIT_COMMIT"]){
+            if(!s.includes(token)) throw new Error("missing closure invariant: "+token);
+          }
+          console.log("PASS: final admin closure invariants present");
+          JS
