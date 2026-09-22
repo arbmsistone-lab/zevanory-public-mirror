@@ -49,6 +49,7 @@ jobs:
 
           reviews=sorted((root/"external-reviews").glob("*.json"))
           accepted_by_pillar={p:[] for p in valid_pillars}
+          seen_report_ids=set()
 
           for path in reviews:
               if path.name=="README.json":
@@ -71,9 +72,19 @@ jobs:
               if sha!=canonical:
                   raise SystemExit(f"{path}: evaluated_sha {sha} does not match frozen canonical {canonical}")
 
-              # Independence policy: never accept the repository owner as reviewer organization.
-              if doc["reviewer_org"].strip().lower() in {"zevanory","arbmsistone-lab","arbm sist","arbm one"}:
+              # Independence policy: never accept internal/self-review identities.
+              reviewer_org=" ".join(doc["reviewer_org"].strip().lower().split())
+              if any(token in reviewer_org for token in ("zevanory","arbm sist","arbm one","arbmsistone-lab")):
                   raise SystemExit(f"{path}: reviewer is not independent")
+
+              report_id=doc["report_id_or_hash"].strip()
+              if report_id in seen_report_ids:
+                  raise SystemExit(f"{path}: duplicate report_id_or_hash {report_id}")
+              seen_report_ids.add(report_id)
+
+              verification=doc["signature_or_verification_url"].strip()
+              if len(verification)<8:
+                  raise SystemExit(f"{path}: missing usable signature_or_verification_url")
 
               # A pass must have a verifiable report identity and no critical finding.
               critical=any(f["severity"]=="critical" for f in doc["findings"])
