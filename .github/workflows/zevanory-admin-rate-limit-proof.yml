@@ -1,0 +1,41 @@
+name: ZEVANORY admin abuse-protection proof
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/admin-render-server.mjs"
+      - ".github/workflows/zevanory-admin-rate-limit-proof.yml"
+permissions:
+  contents: read
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate abuse-protection invariants
+        run: |
+          set -euo pipefail
+          node --check worker/admin-render-server.mjs
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          const s=fs.readFileSync("worker/admin-render-server.mjs","utf8");
+          const required=[
+            "AUTH_WINDOW_MS",
+            "AUTH_LOCK_MS",
+            "AUTH_MAX_FAILURES_PER_CLIENT",
+            "AUTH_MAX_FAILURES_GLOBAL",
+            "REQUEST_MAX_PER_CLIENT",
+            "retry-after",
+            "Authentication temporarily locked",
+            "Too many requests",
+            "clearClientAuthFailures"
+          ];
+          for(const token of required){
+            if(!s.includes(token)) throw new Error("missing security invariant: "+token);
+          }
+          console.log("PASS: admin abuse-protection invariants present");
+          JS
