@@ -12,14 +12,11 @@ const CSS=fs.readFileSync(new URL("../admin.css",import.meta.url),"utf8");
 const AUTH_WINDOW_MS=15*60*1000;
 const AUTH_LOCK_MS=30*60*1000;
 const AUTH_MAX_FAILURES_PER_CLIENT=5;
-const AUTH_MAX_FAILURES_GLOBAL=10;
 const REQUEST_WINDOW_MS=60*1000;
 const REQUEST_MAX_PER_CLIENT=120;
 const STATE_MAX_KEYS=10000;
 const authFailures=new Map();
 const requestHits=new Map();
-let globalAuthFailures=[];
-let globalLockedUntil=0;
 let lastPruneAt=0;
 
 function nowMs(){ return Date.now(); }
@@ -48,7 +45,6 @@ function pruneState(now=nowMs()){
     const next=hits.filter(ts=>now-ts<REQUEST_WINDOW_MS);
     if(next.length) requestHits.set(key,next); else requestHits.delete(key);
   }
-  globalAuthFailures=globalAuthFailures.filter(ts=>now-ts<AUTH_WINDOW_MS);
   if(authFailures.size>STATE_MAX_KEYS){
     for(const key of authFailures.keys()){authFailures.delete(key); if(authFailures.size<=STATE_MAX_KEYS) break;}
   }
@@ -72,7 +68,6 @@ function requestRateLimit(req){
 function authLockState(req){
   const now=nowMs(); pruneState(now);
   const key=clientKey(req);
-  if(globalLockedUntil>now) return {locked:true,retryAfter:retryAfterSeconds(globalLockedUntil,now),key,scope:"global"};
   const state=authFailures.get(key);
   if(state?.lockedUntil>now) return {locked:true,retryAfter:retryAfterSeconds(state.lockedUntil,now),key,scope:"client"};
   return {locked:false,key};
@@ -84,9 +79,6 @@ function recordAuthFailure(key){
   state.failures.push(now);
   if(state.failures.length>=AUTH_MAX_FAILURES_PER_CLIENT) state.lockedUntil=now+AUTH_LOCK_MS;
   authFailures.set(key,state);
-  globalAuthFailures=globalAuthFailures.filter(ts=>now-ts<AUTH_WINDOW_MS);
-  globalAuthFailures.push(now);
-  if(globalAuthFailures.length>=AUTH_MAX_FAILURES_GLOBAL) globalLockedUntil=now+AUTH_LOCK_MS;
 }
 function clearClientAuthFailures(key){ authFailures.delete(key); }
 
