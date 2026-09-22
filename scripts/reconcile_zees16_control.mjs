@@ -34,20 +34,38 @@ const [build,status,health,control,continuity]=await Promise.all([
 const sha=build.sha;
 if(!/^[0-9a-f]{40}$/.test(sha||"")) throw new Error("invalid production SHA");
 if(control?.release?.deployment?.commit_sha!==sha) throw new Error("control-plane SHA divergence");
-const runsDoc=await jf("https://api.github.com/repos/"+repo+"/actions/runs?head_sha="+sha+"&per_page=100");
+const [runsDoc,manifest,branchDoc,branchRuns]=await Promise.all([
+  jf("https://api.github.com/repos/"+repo+"/actions/runs?head_sha="+sha+"&per_page=100"),
+  jf("https://raw.githubusercontent.com/"+repo+"/gh-pages/zea10-external/manifest.json?cb="+Date.now()),
+  jf("https://api.github.com/repos/"+repo+"/branches/gh-pages"),
+  jf("https://api.github.com/repos/"+repo+"/actions/runs?branch=gh-pages&per_page=50")
+]);
 const workflows=new Map();
 for(const run of runsDoc.workflow_runs||[]){
   if(run.head_sha!==sha||run.status!=="completed") continue;
   const current=workflows.get(run.name);
   if(!current||new Date(run.updated_at||run.created_at)>new Date(current.updated_at||current.created_at)) workflows.set(run.name,run);
 }
+const currentHead=branchDoc?.commit?.sha||null;
+const packRun=(branchRuns.workflow_runs||[]).find(run=>
+  run.name==="ZEA-10 external evidence pack" &&
+  run.status==="completed" &&
+  run.conclusion==="success" &&
+  run.head_sha===currentHead
+);
+const zea10PackBound=Boolean(
+  packRun &&
+  manifest?.production_release_sha===sha &&
+  manifest?.external_certification_claimed===false
+);
 const signals={
   "runtime:exact_sha":true,
   "runtime:health_ready":health.ready===true&&health.live!==false,
   "runtime:telemetry_active":status?.runtime?.telemetry==="active",
   "runtime:quorum_ok":continuity?.quorum_ok===true,
   "runtime:sales_fail_closed":status?.runtime?.sales==="globally-blocked",
-  "runtime:commercial_release":control?.global_state==="operational_commercial_enabled"&&status?.runtime?.sales!=="globally-blocked"
+  "runtime:commercial_release":control?.global_state==="operational_commercial_enabled"&&status?.runtime?.sales!=="globally-blocked",
+  "runtime:zea10_pack_bound":zea10PackBound
 };
 const observedAt=new Date().toISOString();
 const state=evaluatePolicy({signals,workflows,releaseSha:sha,observedAt});
