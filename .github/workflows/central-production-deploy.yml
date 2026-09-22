@@ -79,6 +79,17 @@ jobs:
           assert d.get("success") is True, d.get("errors")
           for x in d.get("result",[]): print("KV_NAMESPACE",x.get("title"),x.get("id"))
           PY
+      - name: Discover Worker service bindings
+        if: steps.auth.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" -o /tmp/scripts.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/scripts.json"))
+          assert d.get("success") is True, d.get("errors")
+          for x in d.get("result",[]): print("WORKER_SCRIPT",x.get("id"))
+          PY
       - name: Deploy repaired production worker
         if: steps.auth.outputs.available == 'true'
         run: |
