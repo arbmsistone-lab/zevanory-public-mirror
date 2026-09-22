@@ -11,8 +11,8 @@ Every review is validated against `../review.schema.json` and must:
 - record findings;
 - return `pass`, `pass_with_findings`, or `fail`;
 - provide a report identifier/hash;
-- include a signature or verification reference when available.
+- include a signature or verification reference (required).
 
-A review does **not** become accepted merely because it is committed. The CI intake gate rejects malformed, self-attested, SHA-mismatched, incomplete, or unverifiable submissions.
+A review does **not** become accepted merely because it is committed. The CI intake gate rejects malformed, self-attested, SHA-mismatched, incomplete, duplicate-report, self-attested, SHA-mismatched, or unverifiable submissions.
 
 The repository remains fail-closed: no pillar is marked `remote_certified=true` until a valid independent artifact exists and passes the intake policy.
