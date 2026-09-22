@@ -1,0 +1,83 @@
+name: ZEVANORY central repair candidate
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/live-recovered/**"
+      - "worker/control-plane-vnext-source.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "evidence/central-live-recovery.json"
+      - ".github/workflows/central-fix-candidate.yml"
+permissions:
+  contents: read
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Reconstruct production assets and config
+        run: |
+          set -euo pipefail
+          git fetch origin final-83620c6
+          rm -rf public
+          git archive 83620c680958d726fc4b0fd16e2574cdcc362a6d public | tar -x
+          cp worker/live-recovered/control-plane-vnext.js public/control-plane-vnext.js
+          git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
+          python3 <<'PY'
+          import json, os
+          p="wrangler.central-fix.jsonc"
+          c=json.load(open(p))
+          c["main"]="worker/cloudflare-worker.compat.mjs"
+          c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["GITHUB_SHA"]
+          c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
+          c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
+          open(p,"w").write(json.dumps(c,indent=2)+"\n")
+          PY
+      - name: Assert commercial safety and binding parity
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json
+          c=json.load(open("wrangler.central-fix.jsonc"))
+          v=c["vars"]
+          assert v["SALE_GLOBALLY_ENABLED"]=="false"
+          assert v["PRE_SALE_GATES_APPROVED"]=="false"
+          assert v["WHATSAPP_SALES_ENABLED"]=="false"
+          assert c["name"]=="zevanory"
+          assert c["main"]=="worker/cloudflare-worker.compat.mjs"
+          assert c["assets"]["binding"]=="ASSETS"
+          assert c["assets"]["directory"]=="./public"
+          assert c["ai"]["binding"]=="AI"
+          assert c["services"][0]["binding"]=="ZEA10_ENGINE"
+          assert c["kv_namespaces"][0]["binding"]=="ZEVANORY_PRIVATE_ARTIFACTS"
+          print("BINDING_AND_COMMERCIAL_SAFETY_PASS")
+          PY
+      - name: Prove UTF-8 and worker behavior
+        run: |
+          set -euo pipefail
+          node --check worker/cloudflare-worker.compat.mjs
+          node --check worker/control-plane-vnext-source.mjs
+          node --check public/control-plane-vnext.js
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+          s=Path("public/control-plane-vnext.js").read_text(encoding="utf-8")
+          bad=[r"Ã[\x80-\xBF]",r"Â[\x80-\xBF ]",r"â€”",r"â€“",r"â€™",r"â€œ",r"â€",r"â†",r"\ufffd"]
+          assert sum(len(re.findall(p,s)) for p in bad)==0
+          for x in ["QUORUM & TRUST CHAIN","ensureTrustDialog","renderTrust","Decisão executiva baseada em evidência.","IA & Automação"]:
+            assert x in s,x
+          print("UTF8_AND_TRUST_CHAIN_PASS")
+          PY
+      - name: Wrangler dry-run compile
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/zevanory-central-fix
+          npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.central-fix.jsonc --outdir /tmp/zevanory-central-fix
+          test -n "$(find /tmp/zevanory-central-fix -maxdepth 1 -type f \( -name '*.js' -o -name '*.mjs' \) -print -quit)"
+          echo "WRANGLER_DRY_RUN_PASS"
