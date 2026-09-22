@@ -112,12 +112,35 @@ export function evaluatePolicy({signals={},workflows=new Map(),releaseSha=null,o
 async function persist(env,state){
   const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
   if(!kv||typeof kv.put!=="function") return {...state,persistence:"unavailable"};
-  const event={type:"ZEES16_RECONCILED",target:"zevanory",policy_version:state.policy_version,release_sha:state.release_sha,counts:state.counts,observed_at:state.observed_at,pillars:state.pillars};
+  let previousDecisionHash=null;
+  if(typeof kv.get==="function"){
+    try{
+      const previousRaw=await kv.get(STATE_KEY);
+      if(previousRaw) previousDecisionHash=JSON.parse(previousRaw)?.decision_hash||null;
+    }catch{}
+  }
+  const event={
+    type:"ZEES16_RECONCILED",
+    target:"zevanory",
+    policy_version:state.policy_version,
+    release_sha:state.release_sha,
+    counts:state.counts,
+    observed_at:state.observed_at,
+    pillars:state.pillars,
+    previous_decision_hash:previousDecisionHash
+  };
   const eventHash=await sha256Hex(stable(event));
   const key=LEDGER_PREFIX+state.observed_at.replace(/[:.]/g,"-")+":"+eventHash;
-  const decision={...state,decision_hash:eventHash,persistence:"kv-append-only"};
-  await kv.put(key,JSON.stringify({...event,event_hash:eventHash}),{metadata:{type:event.type,release_sha:state.release_sha||"",policy_version:state.policy_version}});
-  await kv.put(STATE_KEY,JSON.stringify(decision),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash}});
+  const decision={
+    ...state,
+    decision_hash:eventHash,
+    previous_decision_hash:previousDecisionHash,
+    persistence:"kv-append-only",
+    evaluator:"ZEES16_POLICY_ENGINE",
+    evaluator_version:ZEES16_POLICY.version
+  };
+  await kv.put(key,JSON.stringify({...event,event_hash:eventHash}),{metadata:{type:event.type,release_sha:state.release_sha||"",policy_version:state.policy_version,previous_decision_hash:previousDecisionHash||""}});
+  await kv.put(STATE_KEY,JSON.stringify(decision),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash,previous_decision_hash:previousDecisionHash||""}});
   return decision;
 }
 export async function reconcileControlPlane(worker,env,ctx,baseUrl="https://zevanory.api.br"){
