@@ -43,7 +43,10 @@ jobs:
           git fetch origin final-83620c6
           rm -rf public
           git archive 83620c680958d726fc4b0fd16e2574cdcc362a6d public | tar -x
-          cp worker/live-recovered/control-plane-vnext.js public/control-plane-vnext.js
+          cp worker/control-plane-vnext-source.mjs worker/live-recovered/control-plane-vnext.js
+          cp worker/control-plane-vnext-source.mjs public/control-plane-vnext.js
+          cmp -s worker/live-recovered/control-plane-vnext.js worker/control-plane-vnext-source.mjs
+          cmp -s public/control-plane-vnext.js worker/control-plane-vnext-source.mjs
           git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
           python3 <<'PY'
           import json,os
