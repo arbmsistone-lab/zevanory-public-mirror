@@ -1,0 +1,21 @@
+{
+  "commercial_state_must_remain": "globally-blocked",
+  "deployment_performed": false,
+  "incident": "P0-central-live-asset-drift-mojibake",
+  "mojibake_markers_after": 0,
+  "mojibake_markers_before": 101,
+  "production_release_reported": "83620c680958d726fc4b0fd16e2574cdcc362a6d",
+  "repaired_bytes": 11868,
+  "repaired_sha256": "50ac7a0993fb7b8cbee1ff7f418aca17de3851b1284464ed350850cfed789904",
+  "required_behavior_preserved": [
+    "ZEVANORY CONTROL PLANE",
+    "QUORUM & TRUST CHAIN",
+    "ensureTrustDialog",
+    "renderTrust",
+    "/api/control-plane"
+  ],
+  "schema_version": 1,
+  "source_bytes": 12115,
+  "source_sha256": "6fa0e0c32bd856f381496a80aa1a3879f2e53a72c0ca0bc210d360aece9c3008",
+  "source_url": "https://zevanory.api.br/control-plane-vnext.js"
+}
