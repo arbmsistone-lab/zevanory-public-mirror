@@ -1,0 +1,67 @@
+name: ZEVANORY admin alternate runtime proof
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/admin-render-server.mjs"
+      - "admin.css"
+      - ".github/workflows/zevanory-admin-render-proof.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Static safety checks
+        run: |
+          set -euo pipefail
+          node --check worker/admin-render-server.mjs
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          const s=fs.readFileSync("worker/admin-render-server.mjs","utf8");
+          for(const x of ["ZEVANORY_ADMIN_USERNAME","ZEVANORY_ADMIN_PASSWORD","cache-control","no-store","frame-ancestors 'none'","cross-origin-opener-policy","cross-origin-resource-policy"]){
+            if(!s.includes(x)) throw new Error("missing invariant "+x);
+          }
+          if(/password\s*[:=]\s*["'][^"']+["']/i.test(s)) throw new Error("embedded password candidate");
+          console.log("PASS: alternate admin runtime source safety");
+          JS
+      - name: Launch and prove authentication
+        env:
+          ZEVANORY_ADMIN_USERNAME: operator
+          ZEVANORY_ADMIN_PASSWORD: test-secret-only
+          PORT: "10000"
+          ZEVANORY_PUBLIC_BASE_URL: "http://127.0.0.1:10001"
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS' >/tmp/upstream.log 2>&1 &
+          import http from "node:http";
+          const bodies={
+            "/api/status":{project:"ZEVANORY",runtime:{sales:"globally-blocked",checkout:"enabled",financial:"enabled",whatsapp:"disabled"},channel_readiness:{zevanory:{scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"},email:{scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"},instagram:{scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"}}},
+            "/api/health":{ready:true,checks:{database_reachable:true,schema_ready:true},schema:{required_tables:40,required_migrations:29,missing_tables_count:0,missing_migrations_count:0}},
+            "/api/control-plane":{global_state:"operational_commercial_blocked",root_blocker:"global_sale_disabled",policy:{claim_scope:"internal_engineering_alignment_not_external_certification",counts:{proven:0,partial:10},pillars:[]}}
+          };
+          http.createServer((q,r)=>{const b=bodies[new URL(q.url,"http://x").pathname]; if(!b){r.writeHead(404); return r.end();} r.writeHead(200,{"content-type":"application/json"});r.end(JSON.stringify(b));}).listen(10001,"127.0.0.1");
+          JS
+          UPSTREAM_PID=$!
+          node worker/admin-render-server.mjs >/tmp/admin.log 2>&1 &
+          PID=$!
+          trap 'kill $PID $UPSTREAM_PID || true' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:10001/api/status >/dev/null && curl -fsS http://127.0.0.1:10000/healthz >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:10001/api/status >/dev/null
+          curl -fsS http://127.0.0.1:10000/healthz >/dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:10000/admin)" = "401"
+          test "$(curl -s -u operator:wrong -o /dev/null -w '%{http_code}' http://127.0.0.1:10000/admin)" = "401"
+          CODE="$(curl -s -u operator:test-secret-only -o /tmp/admin.html -w '%{http_code}' http://127.0.0.1:10000/admin)"
+          test "$CODE" = "200" || { cat /tmp/admin.log; exit 1; }
+          grep -q "Central Administrativa" /tmp/admin.html
+          ! grep -q "test-secret-only" /tmp/admin.html
+          echo "PASS: alternate runtime authentication behavior"
