@@ -19,7 +19,7 @@ export const ZEES16_POLICY={
     {id:"P10",name:"Continuidade e recuperação",requires:["workflow:ZEVANORY portable disaster recovery","workflow:ZEVANORY authenticated three-provider runtime quorum","runtime:quorum_ok"]},
     {id:"P11",name:"Frontend e eficiência de entrega",requires:["workflow:zevanory-p02-visual-regression","workflow:zevanory-p12-continuous-slo"]},
     {id:"P12",name:"Produção e SRE",requires:["workflow:ZEVANORY central production deploy","runtime:exact_sha","runtime:health_ready"]},
-    {id:"P13",name:"Governança e evidência",requires:["workflow:ZEA-10 external evidence pack","workflow:zevanory-p15-provenance"]},
+    {id:"P13",name:"Governança e evidência",requires:["runtime:zea10_pack_bound","workflow:zevanory-p15-provenance"]},
     {id:"P14",name:"Automação, IA e provedores",requires:["workflow:ZEVANORY provider independence gate","workflow:ZEVANORY authenticated three-provider runtime quorum"]},
     {id:"P15",name:"CI/CD e proveniência",requires:["workflow:zevanory-p15-provenance","workflow:pages build and deployment","workflow:ZEVANORY central production deploy"]},
     {id:"P16",name:"Prontidão comercial",requires:["runtime:commercial_release"],partial_when:["runtime:sales_fail_closed","runtime:health_ready"]}
@@ -65,15 +65,32 @@ function runtimeSignals(status,health,control,continuity){
   };
 }
 async function githubEvidence(sha){
-  if(!sha) return {runs:[],workflows:new Map()};
-  const doc=await fetchJson(API+"/actions/runs?head_sha="+encodeURIComponent(sha)+"&per_page=100");
+  if(!sha) return {runs:[],workflows:new Map(),zea10_pack_bound:false};
+  const [doc,manifest,branchDoc,branchRuns]=await Promise.all([
+    fetchJson(API+"/actions/runs?head_sha="+encodeURIComponent(sha)+"&per_page=100"),
+    fetchJson("https://raw.githubusercontent.com/"+REPO+"/gh-pages/zea10-external/manifest.json?cb="+Date.now()),
+    fetchJson(API+"/branches/gh-pages"),
+    fetchJson(API+"/actions/runs?branch=gh-pages&per_page=50")
+  ]);
   const runs=(doc.workflow_runs||[]).filter(r=>r.head_sha===sha&&r.status==="completed");
   const workflows=new Map();
   for(const run of runs){
     const current=workflows.get(run.name);
     if(!current||new Date(run.updated_at||run.created_at)>new Date(current.updated_at||current.created_at)) workflows.set(run.name,run);
   }
-  return {runs,workflows};
+  const currentHead=branchDoc?.commit?.sha||null;
+  const packRun=(branchRuns.workflow_runs||[]).find(r=>
+    r.name==="ZEA-10 external evidence pack" &&
+    r.status==="completed" &&
+    r.conclusion==="success" &&
+    r.head_sha===currentHead
+  );
+  const zea10_pack_bound=Boolean(
+    packRun &&
+    manifest?.production_release_sha===sha &&
+    manifest?.external_certification_claimed===false
+  );
+  return {runs,workflows,zea10_pack_bound};
 }
 function requirementResult(req,signals,workflows){
   if(req.startsWith("runtime:")) return {ok:signals[req]===true,source:"runtime",key:req};
@@ -152,8 +169,13 @@ export async function reconcileControlPlane(worker,env,ctx,baseUrl="https://zeva
     readJsonThrough(worker,baseUrl,"/api/continuity",env,ctx)
   ]);
   const runtime=runtimeSignals(status,health,control,continuity);
-  let workflows=new Map(),collector_error=null;
-  try{({workflows}=await githubEvidence(runtime.release_sha));}catch(e){collector_error=String(e?.message||e);}
+  let workflows=new Map(),collector_error=null,zea10_pack_bound=false;
+  try{
+    const collected=await githubEvidence(runtime.release_sha);
+    workflows=collected.workflows;
+    zea10_pack_bound=collected.zea10_pack_bound===true;
+  }catch(e){collector_error=String(e?.message||e);}
+  runtime.signals["runtime:zea10_pack_bound"]=zea10_pack_bound;
   const state=evaluatePolicy({signals:runtime.signals,workflows,releaseSha:runtime.release_sha,observedAt});
   state.collector_error=collector_error;
   state.inputs={health_ready:runtime.signals["runtime:health_ready"],quorum_ok:runtime.signals["runtime:quorum_ok"],sales_fail_closed:runtime.signals["runtime:sales_fail_closed"],commercial_release:runtime.signals["runtime:commercial_release"]};

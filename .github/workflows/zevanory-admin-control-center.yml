@@ -97,7 +97,8 @@ jobs:
           const workflows=new Map(names.map(n=>[n,okRun(n)]));
           const signals={
             "runtime:exact_sha":true,"runtime:health_ready":true,"runtime:telemetry_active":true,
-            "runtime:quorum_ok":true,"runtime:sales_fail_closed":true,"runtime:commercial_release":false
+            "runtime:quorum_ok":true,"runtime:sales_fail_closed":true,"runtime:commercial_release":false,
+            "runtime:zea10_pack_bound":true
           };
           const state=evaluatePolicy({signals,workflows,releaseSha:"a".repeat(40),observedAt:"2026-09-22T22:00:00Z"});
           if(state.counts.proven!==15||state.counts.partial!==1||state.counts.blocked!==0) throw new Error("unexpected ZEES state "+JSON.stringify(state.counts));
