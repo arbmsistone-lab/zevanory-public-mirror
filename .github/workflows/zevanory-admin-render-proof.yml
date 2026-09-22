@@ -36,11 +36,22 @@ jobs:
           ZEVANORY_ADMIN_USERNAME: operator
           ZEVANORY_ADMIN_PASSWORD: test-secret-only
           PORT: "10000"
+          ZEVANORY_PUBLIC_BASE_URL: "http://127.0.0.1:10001"
         run: |
           set -euo pipefail
+          node --input-type=module <<'JS' >/tmp/upstream.log 2>&1 &
+          import http from "node:http";
+          const bodies={
+            "/api/status":{project:"ZEVANORY",runtime:{sales:"globally-blocked",checkout:"enabled",financial:"enabled",whatsapp:"disabled"},channel_readiness:{zevanory:{scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"},email:{scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"},instagram:{scope_status:"active",release_gate:"globally-blocked",commercial_execution:"blocked"}}},
+            "/api/health":{ready:true,checks:{database_reachable:true,schema_ready:true},schema:{required_tables:40,required_migrations:29,missing_tables_count:0,missing_migrations_count:0}},
+            "/api/control-plane":{global_state:"operational_commercial_blocked",root_blocker:"global_sale_disabled",policy:{claim_scope:"internal_engineering_alignment_not_external_certification",counts:{proven:0,partial:10},pillars:[]}}
+          };
+          http.createServer((q,r)=>{const b=bodies[new URL(q.url,"http://x").pathname]; if(!b){r.writeHead(404); return r.end();} r.writeHead(200,{"content-type":"application/json"});r.end(JSON.stringify(b));}).listen(10001,"127.0.0.1");
+          JS
+          UPSTREAM_PID=$!
           node worker/admin-render-server.mjs >/tmp/admin.log 2>&1 &
           PID=$!
-          trap 'kill $PID || true' EXIT
+          trap 'kill $PID $UPSTREAM_PID || true' EXIT
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:10000/healthz >/dev/null; then break; fi
             sleep 1
