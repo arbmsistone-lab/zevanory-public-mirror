@@ -99,6 +99,17 @@ function authorized(req){
   const i=raw.indexOf(":"); if(i<0) return false;
   return secureEqual(raw.slice(0,i),ADMIN_USER)&&secureEqual(raw.slice(i+1),ADMIN_PASS);
 }
+function authSelfTest(){
+  if(!ADMIN_USER||!ADMIN_PASS) return false;
+  const good="Basic "+Buffer.from(ADMIN_USER+":"+ADMIN_PASS).toString("base64");
+  const bad="Basic "+Buffer.from(ADMIN_USER+":__invalid__").toString("base64");
+  return authorized({headers:{authorization:good}})===true && authorized({headers:{authorization:bad}})===false;
+}
+const AUTH_SELF_TEST=authSelfTest();
+if(!AUTH_SELF_TEST){
+  console.error("fatal_admin_auth_configuration_invalid");
+  process.exit(1);
+}
 function headers(type){
   return {
     "content-type":type,
@@ -148,7 +159,21 @@ function render(x){
 
 const server=http.createServer(async(req,res)=>{
   const u=new URL(req.url||"/","http://localhost");
-  if(u.pathname==="/healthz") return reply(res,200,JSON.stringify({service:"zevanory-admin-control",live:true}),"application/json; charset=utf-8");
+  if(u.pathname==="/healthz") return reply(res,200,JSON.stringify({
+    service:"zevanory-admin-control",
+    live:true,
+    auth_configured:Boolean(ADMIN_USER&&ADMIN_PASS),
+    auth_self_test:AUTH_SELF_TEST,
+    abuse_protection:{
+      per_client_lockout:true,
+      max_failures:AUTH_MAX_FAILURES_PER_CLIENT,
+      auth_window_seconds:Math.floor(AUTH_WINDOW_MS/1000),
+      lock_seconds:Math.floor(AUTH_LOCK_MS/1000),
+      request_window_seconds:Math.floor(REQUEST_WINDOW_MS/1000),
+      request_limit:REQUEST_MAX_PER_CLIENT
+    },
+    revision:String(process.env.RENDER_GIT_COMMIT||"unknown")
+  }),"application/json; charset=utf-8");
 
   const rate=requestRateLimit(req);
   if(rate.limited) return reply(res,429,"Too many requests","text/plain; charset=utf-8",{"retry-after":String(rate.retryAfter)});
