@@ -53,6 +53,7 @@ jobs:
           c.pop("secrets",None)
           c.pop("services",None)
           c.pop("ai",None)
+          c.pop("routes",None)
           for ns in c.get("kv_namespaces",[]):
               if ns.get("binding")=="ZEVANORY_PRIVATE_ARTIFACTS":
                   ns["id"]="9eca336262b44186ab3dbec82fc35ab4"
