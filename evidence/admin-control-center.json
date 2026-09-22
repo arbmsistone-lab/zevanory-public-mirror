@@ -1,7 +1,34 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "control_center": "ZEVANORY Administrative Control Center",
+  "architecture": "event-sourced evidence control plane",
   "mode": "read_only_fail_closed",
+  "admin_surface": {
+    "path": "/admin",
+    "api_prefix": "/api/admin/control/v2",
+    "public": false
+  },
+  "planes": {
+    "observation": [
+      "GitHub Actions",
+      "production health/status/control-plane",
+      "continuity"
+    ],
+    "decision": "ZEES-16 policy engine",
+    "action": "explicitly separated; no destructive action exposed by admin UI"
+  },
+  "ledger": {
+    "store": "ZEVANORY_PRIVATE_ARTIFACTS",
+    "append_only_prefix": "control:v2:ledger:zevanory:",
+    "materialized_state_key": "control:v2:state:zevanory",
+    "hash_chain": true,
+    "decision_hash": "SHA-256 canonical event document"
+  },
+  "state_machine": [
+    "BLOCKED",
+    "PARTIAL",
+    "PROVADO"
+  ],
   "auth": {
     "required": true,
     "scheme": "HTTP Basic over HTTPS",
@@ -13,7 +40,10 @@
   },
   "routes": [
     "/admin",
-    "/api/admin/snapshot"
+    "/api/admin/snapshot",
+    "/api/admin/control/v2/state",
+    "/api/admin/control/v2/events",
+    "/api/admin/control/v2/reconcile"
   ],
   "security_headers": [
     "Content-Security-Policy",
@@ -27,15 +57,22 @@
     "/api/status",
     "/api/health",
     "/api/control-plane",
-    "/api/continuity"
+    "/api/continuity",
+    "GitHub Actions exact-SHA runs"
   ],
   "destructive_actions": false,
   "public_indexing": false,
-  "requirements": [
-    "no secret embedded in source",
-    "no admin data cached",
-    "fail closed on missing credentials",
-    "no commercial activation",
-    "read-only until explicit audited action model exists"
+  "auto_reconciliation": {
+    "scheduled": true,
+    "max_state_age_seconds": 600,
+    "manual_authenticated_reconcile": true
+  },
+  "invariants": [
+    "UI never promotes a pillar",
+    "PROVADO requires every declared policy requirement to pass",
+    "state changes are persisted as append-only hashed events",
+    "current state is a materialized view, not the source of historical truth",
+    "commercial release remains fail-closed",
+    "no external certification claim is inferred from internal evidence"
   ]
 }
