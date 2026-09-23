@@ -64,6 +64,19 @@ jobs:
           curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains" -o /tmp/domains.json
           python3 -c "import json; d=json.load(open('/tmp/domains.json')); assert d.get('success') is True, d.get('errors'); hits=[x for x in d.get('result',[]) if x.get('hostname')=='zevanory.api.br']; assert len(hits)==1, hits; x=hits[0]; print('ZEVANORY_CUSTOM_DOMAIN_SERVICE='+str(x.get('service'))); print('ZEVANORY_CUSTOM_DOMAIN_ID='+str(x.get('id')))"
 
+      - name: Compare public workers.dev candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          for host in zevanory.girolocal-rb.workers.dev zevanory-migration-20260904.girolocal-rb.workers.dev zevanory-new-project.girolocal-rb.workers.dev; do
+            echo "CANDIDATE_HOST=$host"
+            if curl -fsS "https://$host/api/control-plane" -o /tmp/candidate.json; then
+              HOST="$host" python3 -c "import json,os; d=json.load(open('/tmp/candidate.json')); print('CANDIDATE_RESULT',os.environ['HOST'],'SHA',d.get('release',{}).get('deployment',{}).get('commit_sha'),'STATE',d.get('global_state'))"
+            else
+              echo "CANDIDATE_RESULT $host UNREACHABLE"
+            fi
+          done
+
       - name: Prove live public and edge routes
         shell: bash
         run: |
