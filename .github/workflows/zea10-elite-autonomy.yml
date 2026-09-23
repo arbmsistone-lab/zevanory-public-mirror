@@ -5,6 +5,7 @@ on:
     paths:
       - "zea10/**"
       - "worker/zea10-autonomy.mjs"
+      - "worker/provider-health-v2.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - ".github/workflows/zea10-elite-autonomy.yml"
   workflow_dispatch:
@@ -23,6 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check worker/zea10-autonomy.mjs
+          node --check worker/provider-health-v2.mjs
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           const c=JSON.parse(fs.readFileSync("zea10/autonomy-contract.json","utf8"));
@@ -54,4 +56,23 @@ jobs:
           if(report.pillars["ZEA10-05"].state!=="BLOCKED") throw new Error("omnichannel must block without whatsapp");
           if(report.pillars["ZEA10-07"].state!=="BLOCKED") throw new Error("conversion must block while commercial gate is closed");
           console.log("PASS: ZEA-10 runtime gate fails closed");
+          NODE
+
+      - name: Prove provider health separates fabric from payment
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { buildProviderHealthV2 } from "./worker/provider-health-v2.mjs";
+          const raw={async fetch(req){
+            const u=new URL(req.url);
+            if(u.pathname==="/api/provider-health") return Response.json({payment_provider:"mercadopago",authenticated:false,pre_sale_ready:false,pre_sale_blockers:["payment_provider_pool_unavailable"]},{status:503});
+            if(u.pathname==="/api/status") return Response.json({continuity:{mode:"provider_independent",quorum_ok:true,min_quorum:3,available_channels:["zevanory","email"]}});
+            if(u.pathname==="/api/config") return Response.json({channels:{zevanory:{operational_ready:true,scope_status:"active"},email:{operational_ready:true,scope_status:"active"}}});
+            return new Response("not found",{status:404});
+          }};
+          const h=await buildProviderHealthV2(new Request("https://example.test/api/provider-health"),{}, {}, raw);
+          if(h.technical_continuity.ready!==true) throw new Error("provider fabric should remain operational");
+          if(h.payment.ready!==false) throw new Error("payment must remain fail-closed");
+          if(h.commercial_release_allowed!==false) throw new Error("commercial release must remain false");
+          console.log("PASS: provider fabric health is independent from payment readiness");
           NODE
