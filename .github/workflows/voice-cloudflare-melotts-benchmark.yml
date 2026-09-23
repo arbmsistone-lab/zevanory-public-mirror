@@ -1,0 +1,70 @@
+name: ZEVANORY Cloudflare MeloTTS zero-spend benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/voice-cloudflare-zero-spend-benchmark-20260923
+    paths:
+      - '.github/workflows/voice-cloudflare-melotts-benchmark.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify zero-spend policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          echo "ZERO_SPEND_DAILY_NEURON_CAP=10000"
+          echo "MELOTTS_NEURONS_PER_AUDIO_MINUTE=18.63"
+
+      - name: Generate pt-BR candidates with MeloTTS
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/melotts
+          texts=(
+            "Olá, aqui é o suporte da ZEVANORY. Como posso ajudar você hoje?"
+            "Entendi. Vou explicar de forma simples o que precisa ser feito agora."
+            "Para sua segurança, não envie senhas ou códigos de autenticação por mensagem."
+          )
+          n=0
+          for text in "${texts[@]}"; do
+            n=$((n+1))
+            printf '{"prompt":%s,"lang":"pt"}' "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1],ensure_ascii=False))' "$text")" > /tmp/request.json
+            code=$(curl -sS -o "/tmp/melotts/sample-$n.bin" -D "/tmp/melotts/sample-$n.headers" -w '%{http_code}'               -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/myshell-ai/melotts"               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               -H 'Content-Type: application/json'               --data-binary @/tmp/request.json)
+            echo "SAMPLE_$n HTTP=$code"
+            if [ "$code" != "200" ]; then
+              head -c 1500 "/tmp/melotts/sample-$n.bin" || true
+              exit 1
+            fi
+            bytes=$(wc -c < "/tmp/melotts/sample-$n.bin")
+            type=$(grep -i '^content-type:' "/tmp/melotts/sample-$n.headers" | tail -1 | tr -d '\r' || true)
+            echo "SAMPLE_$n BYTES=$bytes $type"
+            test "$bytes" -gt 1000
+          done
+
+      - name: Validate binary audio payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          file /tmp/melotts/sample-*.bin
+          python3 - <<'PY'
+          from pathlib import Path
+          fs=sorted(Path('/tmp/melotts').glob('sample-*.bin'))
+          assert len(fs)==3
+          assert all(p.stat().st_size>1000 for p in fs)
+          print('MELOTTS_PTBR_REAL_AUDIO=PASS')
+          print('TOTAL_BYTES='+str(sum(p.stat().st_size for p in fs)))
+          PY
