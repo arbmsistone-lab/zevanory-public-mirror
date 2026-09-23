@@ -88,7 +88,8 @@ jobs:
             "compatibility_flags":["nodejs_compat"],
             "workers_dev":True,
             "d1_databases":[{"binding":"DB","database_id":dbid}],
-            "ai":{"binding":"AI"}
+            "ai":{"binding":"AI"},
+            "version_metadata":{"binding":"CF_VERSION_METADATA"}
           }
           open("wrangler.broker.json","w").write(json.dumps(cfg,indent=2)+"\n")
           print("BROKER_BINDING_RECONSTRUCTION=PASS")
@@ -97,6 +98,26 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes wrangler@4.135.0 deploy             --config wrangler.broker.json             --keep-vars             --tag="$GITHUB_SHA"             --message="ZEVANORY zero-spend WhatsApp credential broker $GITHUB_SHA"
+      - name: Prove deployed runtime identity independently
+        run: |
+          set -euo pipefail
+          curl -fsS https://giro-whatsapp-bridge.girolocal-rb.workers.dev/__zevanory/runtime -o /tmp/runtime-proof.json
+          python3 - <<'PY'
+          import json, os
+          x=json.load(open("/tmp/runtime-proof.json"))
+          assert x.get("ok") is True
+          assert x.get("service")=="giro-whatsapp-bridge"
+          assert x.get("zero_spend") is True
+          assert x.get("runtime_sha")==os.environ["GITHUB_SHA"], (x.get("runtime_sha"),os.environ["GITHUB_SHA"])
+          assert x.get("runtime_version"), x
+          assert x.get("legacy_route_bypass")==0
+          print("BROKER_RUNTIME_SHA=PASS")
+          print("BROKER_RUNTIME_VERSION=PASS")
+          print("BROKER_RUNTIME_SHA_VALUE="+x["runtime_sha"])
+          print("BROKER_RUNTIME_VERSION_VALUE="+x["runtime_version"])
+          print("WHATSAPP_SAFE_RUNTIME_IDENTITY="+json.dumps(x.get("whatsapp",{}),separators=(",",":")))
+          print("ZERO_SPEND=PASS")
+          PY
       - name: Prove legacy public route is retired
         run: |
           set -euo pipefail
