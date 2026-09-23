@@ -45,6 +45,10 @@ jobs:
           import json
           d=json.load(open("/tmp/wa-broker-settings.json"))
           print("BROKER_SETTINGS_API_SUCCESS="+str(d.get("success") is True).lower())
+          result=d.get("result",{})
+          print("BROKER_COMPATIBILITY_DATE="+str(result.get("compatibility_date") or ""))
+          print("BROKER_COMPATIBILITY_FLAGS="+json.dumps(result.get("compatibility_flags") or [],separators=(",",":")))
+          print("BROKER_USAGE_MODEL="+str(result.get("usage_model") or ""))
           for b in d.get("result",{}).get("bindings",[]):
               name=str(b.get("name") or "")
               typ=str(b.get("type") or "unknown")
