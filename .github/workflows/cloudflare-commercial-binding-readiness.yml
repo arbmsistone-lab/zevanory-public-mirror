@@ -58,15 +58,15 @@ jobs:
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/giro-whatsapp-bridge" \
             -o /tmp/wa-broker-script.bin
           python3 - <<'PY'
-import re
-raw=open("/tmp/wa-broker-script.bin","rb").read().decode("utf-8","ignore")
-print("BROKER_SCRIPT_BYTES="+str(len(raw)))
-tokens=["broker/status","broker/send","broker/media","broker/verify-signature","broker/verify-token","graph.facebook.com","request_code","verify_code","/register","558892340423","5588992545413","1241435312391697"]
-for token in tokens:
-    key=re.sub(r"[^A-Za-z0-9]+","_",token).strip("_").upper()
-    print("BROKER_SCRIPT_HAS_"+key+"="+str(token in raw).lower())
-paths=sorted(set(re.findall(r"/broker/[A-Za-z0-9_./-]+",raw)))
-print("BROKER_PATHS="+",".join(paths[:50]))
-PY
+          import re
+          raw=open("/tmp/wa-broker-script.bin","rb").read().decode("utf-8","ignore")
+          print("BROKER_SCRIPT_BYTES="+str(len(raw)))
+          tokens=["broker/status","broker/send","broker/media","broker/verify-signature","broker/verify-token","graph.facebook.com","request_code","verify_code","/register","558892340423","5588992545413","1241435312391697"]
+          for token in tokens:
+              key=re.sub(r"[^A-Za-z0-9]+","_",token).strip("_").upper()
+              print("BROKER_SCRIPT_HAS_"+key+"="+str(token in raw).lower())
+          paths=sorted(set(re.findall(r"/broker/[A-Za-z0-9_./-]+",raw)))
+          print("BROKER_PATHS="+",".join(paths[:50]))
+          PY
 
 # zero-spend WhatsApp readiness probe 2026-09-23
