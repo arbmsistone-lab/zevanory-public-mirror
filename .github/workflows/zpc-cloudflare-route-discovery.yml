@@ -32,28 +32,28 @@ jobs:
           auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN")
           curl -fsS "${auth[@]}" "https://api.cloudflare.com/client/v4/zones?name=zevanory.api.br" -o /tmp/zones.json
           ZONE_ID="$(python3 - <<'PY'
-import json
-d=json.load(open('/tmp/zones.json'))
-assert d.get('success') is True and d.get('result')
-print(d['result'][0]['id'])
-PY
-)"
+          import json
+          d=json.load(open('/tmp/zones.json'))
+          assert d.get('success') is True and d.get('result')
+          print(d['result'][0]['id'])
+          PY
+          )"
           curl -fsS "${auth[@]}" "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/workers/routes" -o /tmp/routes.json
           python3 - <<'PY'
-import json
-d=json.load(open('/tmp/routes.json'))
-assert d.get('success') is True, d.get('errors')
-for r in d.get('result', []):
-    pattern=str(r.get('pattern',''))
-    script=r.get('script')
-    if 'controle.zevanory.api.br' in pattern or 'zevanory.api.br' in pattern:
-        print('CF_ROUTE', pattern, 'SCRIPT', script)
-PY
+          import json
+          d=json.load(open('/tmp/routes.json'))
+          assert d.get('success') is True, d.get('errors')
+          for r in d.get('result', []):
+              pattern=str(r.get('pattern',''))
+              script=r.get('script')
+              if 'controle.zevanory.api.br' in pattern or 'zevanory.api.br' in pattern:
+                  print('CF_ROUTE', pattern, 'SCRIPT', script)
+          PY
           curl -fsS "${auth[@]}" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" -o /tmp/scripts.json
           python3 - <<'PY'
-import json
-d=json.load(open('/tmp/scripts.json'))
-assert d.get('success') is True, d.get('errors')
-for s in d.get('result', []):
-    print('CF_SCRIPT', s.get('id'))
-PY
+          import json
+          d=json.load(open('/tmp/scripts.json'))
+          assert d.get('success') is True, d.get('errors')
+          for s in d.get('result', []):
+              print('CF_SCRIPT', s.get('id'))
+          PY
