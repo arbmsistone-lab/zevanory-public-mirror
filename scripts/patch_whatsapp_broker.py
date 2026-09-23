@@ -79,19 +79,29 @@ ROUTES=r'''
 
 def extract(raw):
     t=raw.decode("utf-8","replace")
+    if "var __defProp" in t and 'name="index.js"' not in t:
+        p=t.find("var __defProp")
+        return t[p:]
     b=t.splitlines()[0].strip()
-    marker='name="index.js"'
-    p=t.find(marker)
-    if p<0: raise SystemExit("index_part_missing")
-    h=t.find("\\r\\n\\r\\n",p)
+    p=t.find('name="index.js"')
+    if p<0:
+        p=t.find("index.js")
+    if p<0:
+        print("MULTIPART_HEAD_REPR="+repr(t[:500]))
+        raise SystemExit("index_part_missing")
+    h=t.find("\r\n\r\n",p)
     sep=4
     if h<0:
-        h=t.find("\\n\\n",p); sep=2
-    if h<0: raise SystemExit("index_header_end_missing")
+        h=t.find("\n\n",p); sep=2
+    if h<0:
+        print("INDEX_HEADER_REPR="+repr(t[p:p+500]))
+        raise SystemExit("index_header_end_missing")
     s=h+sep
-    e=t.find("\\r\\n"+b,s)
-    if e<0: e=t.find("\\n"+b,s)
-    if e<0: raise SystemExit("boundary_missing")
+    e=t.find("\r\n"+b,s)
+    if e<0: e=t.find("\n"+b,s)
+    if e<0:
+        print("MULTIPART_BOUNDARY="+repr(b))
+        raise SystemExit("boundary_missing")
     return t[s:e]
 def patch(src):
     if "/broker/status" in src: raise SystemExit("already_patched")
