@@ -38,7 +38,18 @@ jobs:
               raise SystemExit("missing markers: "+",".join(missing))
           if 'if (yes4(env.SALE_GLOBALLY_ENABLED)) blockers.push("global_sales_must_remain_closed_during_certification_pilot")' not in s:
               raise SystemExit("global sales fail-closed invariant missing")
+          for marker in [
+            "service_fulfillment",
+            "superseded_payment_event",
+            "handlerFinancialE2EStatus",
+            "exactly_one_payment_confirmation",
+            "refunded_entitlement_revoked",
+            "refund-reconciliation-evidence:asaas:"
+          ]:
+            if marker not in s:
+              raise SystemExit("missing financial e2e hardening marker: "+marker)
           print("ASAAS_SANDBOX_CERTIFICATION_POLICY=GREEN")
+          print("FINANCIAL_E2E_HARDENING=GREEN")
           PY
       - name: Verify production remains fail-closed
         shell: bash
