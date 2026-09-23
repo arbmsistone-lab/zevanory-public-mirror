@@ -1,4 +1,5 @@
 import { readOrReconcileControlState, reconcileControlPlane } from "./evidence-control-plane.mjs";
+import { evaluateZea10FromZees16 } from "./zea10-evaluator.mjs";
 
 const CORE_VERSION="ZEVANORY-CONTROL-CORE/1.0";
 const CRITICAL_MUTATIONS=new Set([
@@ -47,7 +48,8 @@ export async function buildCoreSnapshot(worker,env,ctx,baseUrl="https://zevanory
     zees16?.release_sha ||
     null;
 
-  const zeaCounts=control?.policy?.counts||{};
+  const zea10=evaluateZea10FromZees16(zees16);
+  const zeaCounts=zea10?.counts||{};
   const zeesCounts=zees16?.counts||{};
 
   return {
@@ -64,13 +66,24 @@ export async function buildCoreSnapshot(worker,env,ctx,baseUrl="https://zevanory
     control,
     continuity,
     zees16,
+    zea10,
+    architecture:{
+      flow:["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"],
+      zees16_role:"proof",
+      zea10_role:"evaluation",
+      control_core_role:"decision",
+      admin_role:"visualization-command",
+      circular_dependency:false
+    },
     invariants:{
       exact_release_bound:Boolean(releaseSha&&/^[0-9a-f]{40}$/.test(releaseSha)),
       health_ready:health?.ready===true&&health?.live!==false,
       quorum_ok:continuity?.quorum_ok===true,
       sales_fail_closed:status?.runtime?.sales==="globally-blocked",
       zea10_proven:Number(zeaCounts.proven||0),
-      zees16_proven:Number(zeesCounts.proven||0)
+      zea10_blocked:Number(zeaCounts.blocked||0),
+      zees16_proven:Number(zeesCounts.proven||0),
+      evidence_to_evaluation_unidirectional:true
     }
   };
 }
