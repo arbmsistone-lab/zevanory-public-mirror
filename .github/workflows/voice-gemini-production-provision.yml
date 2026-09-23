@@ -1,0 +1,85 @@
+name: ZEVANORY Gemini production provision
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/781761447388/locations/global/workloadIdentityPools/github-actions/providers/zevanory-github
+          service_account: zevanory-github-deployer@zevanory-gemini.iam.gserviceaccount.com
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Fetch Gemini credential from Secret Manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          gcloud secrets versions access latest             --secret=ZEVANORY_GEMINI_API_KEY             --project=zevanory-gemini > /tmp/gemini.key
+          test -s /tmp/gemini.key
+          echo "GEMINI_SECRET_FETCH=PASS"
+
+      - name: Provision production Worker secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          npx --yes wrangler@4.135.0 secret put GEMINI_API_KEY --name zevanory < /tmp/gemini.key
+          printf '%s' 'true' | npx --yes wrangler@4.135.0 secret put VOICE_TTS_FREE_ONLY --name zevanory
+          printf '%s' 'true' | npx --yes wrangler@4.135.0 secret put ZEVANORY_VOICE_SUPPORT_ENABLED --name zevanory
+          rm -f /tmp/gemini.key
+          echo "VOICE_RUNTIME_SECRETS=PROVISIONED"
+
+      - name: Verify live voice runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in $(seq 1 24); do
+            if curl -fsS https://zevanory.api.br/api/voice/status -o /tmp/voice-status.json; then
+              if python3 - <<'PY'
+import json
+s=json.load(open('/tmp/voice-status.json'))
+ok=(
+  s.get('enabled') is True
+  and s.get('zero_spend_guard') is True
+  and s.get('provider') == 'gemini'
+  and s.get('provider_credential_configured') is True
+  and s.get('provider_vault_supported') is True
+)
+raise SystemExit(0 if ok else 1)
+PY
+              then
+                ok=1
+                break
+              fi
+            fi
+            sleep 5
+          done
+          test "$ok" = "1"
+          python3 - <<'PY'
+import json
+s=json.load(open('/tmp/voice-status.json'))
+assert s['enabled'] is True
+assert s['zero_spend_guard'] is True
+assert s['provider']=='gemini'
+assert s['provider_credential_configured'] is True
+assert s['provider_vault_supported'] is True
+print('VOICE_GEMINI_PRODUCTION_RUNTIME=PASS')
+PY
