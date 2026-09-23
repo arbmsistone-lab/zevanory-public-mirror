@@ -122,6 +122,51 @@ jobs:
           if(degraded.pillars.find(x=>x.id==="P04")?.state!=="BLOCKED") throw new Error("missing proof must downgrade P04");
           console.log("PASS: policy engine promotes and downgrades only from evidence");
           JS
+      - name: Verify canonical Control Core authority
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { handleControlCoreRequest } from "./worker/zevanory-control-core.mjs";
+          const coreState={
+            schema:"zevanory-control-core/v1",
+            core:"ZEVANORY-CONTROL-CORE/1.0",
+            authority:"server-side-core-only",
+            fail_closed:true,
+            ui_can_authorize:false,
+            source_of_truth:true,
+            generated_at:"2026-09-23T12:00:00Z",
+            release_sha:"a".repeat(40),
+            status:{runtime:{sales:"globally-blocked"}},
+            health:{ready:true,live:true},
+            control:{global_state:"operational_commercial_blocked",policy:{counts:{proven:0}}},
+            continuity:{quorum_ok:true},
+            zees16:{counts:{proven:15,partial:1,blocked:0}},
+            invariants:{exact_release_bound:true,health_ready:true,quorum_ok:true,sales_fail_closed:true}
+          };
+          const fake={
+            async fetch(req){
+              const p=new URL(req.url).pathname;
+              if(p==="/api/status") return Response.json(coreState.status);
+              if(p==="/api/health") return Response.json(coreState.health);
+              if(p==="/api/control-plane") return Response.json(coreState.control);
+              if(p==="/api/continuity") return Response.json(coreState.continuity);
+              return new Response("not found",{status:404});
+            }
+          };
+          const env={};
+          let r=await handleControlCoreRequest(new Request("https://example.test/api/core/v1/authority"),env,{},fake);
+          if(r.status!==200) throw new Error("authority endpoint failed");
+          const authority=await r.json();
+          if(authority.source_of_truth!==true||authority.ui_can_authorize!==false||authority.fail_closed!==true) throw new Error("authority contract mismatch");
+          r=await handleControlCoreRequest(new Request("https://example.test/api/core/v1/commands/commercial.enable",{method:"POST"}),env,{},fake);
+          if(r.status!==403) throw new Error("critical mutation must fail closed");
+          const denied=await r.json();
+          if(denied.decision!=="DENY"||denied.fail_closed!==true) throw new Error("critical mutation denial contract mismatch");
+          r=await handleControlCoreRequest(new Request("https://example.test/api/core/v1/commands"),env,{},fake);
+          const commands=await r.json();
+          if(commands.direct_ui_mutations!==false) throw new Error("UI mutation authority leaked");
+          console.log("PASS: ZEVANORY Control Core is the sole critical state authority");
+          JS
       - name: Remote Wrangler compile
         run: |
           set -euo pipefail
