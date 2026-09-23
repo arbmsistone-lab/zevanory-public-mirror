@@ -108,6 +108,39 @@ function authorityContract(snapshot){
   };
 }
 
+export function evaluateCoreDecision(snapshot){
+  const zeesCounts=snapshot?.zees16?.counts||{};
+  const zeaCounts=snapshot?.zea10?.counts||{};
+  const checks={
+    exact_release_bound:snapshot?.invariants?.exact_release_bound===true,
+    health_ready:snapshot?.invariants?.health_ready===true,
+    quorum_ok:snapshot?.invariants?.quorum_ok===true,
+    evidence_flow_unidirectional:snapshot?.invariants?.evidence_to_evaluation_unidirectional===true,
+    zees16_complete:Number(zeesCounts.proven||0)===16 &&
+      Number(zeesCounts.partial||0)===0 &&
+      Number(zeesCounts.blocked||0)===0,
+    zea10_complete:Number(zeaCounts.proven||0)===10 &&
+      Number(zeaCounts.partial||0)===0 &&
+      Number(zeaCounts.blocked||0)===0 &&
+      Number(zeaCounts.unknown||0)===0
+  };
+  const blockers=Object.entries(checks).filter(([,ok])=>!ok).map(([key])=>key);
+  const allow=blockers.length===0;
+  return {
+    schema:"zevanory-control-core/decision-v1",
+    authority:"ZEVANORY Control Core",
+    decision:allow?"ALLOW":"DENY",
+    fail_closed:true,
+    eligible_for_critical_promotion:allow,
+    checks,
+    blockers,
+    release_sha:snapshot?.release_sha||null,
+    zees16_decision_hash:snapshot?.zees16?.decision_hash||null,
+    zea10_evaluator:snapshot?.zea10?.evaluator||null,
+    generated_at:snapshot?.generated_at||new Date().toISOString()
+  };
+}
+
 export async function handleControlCoreRequest(request,env,ctx,worker){
   const url=new URL(request.url);
 
@@ -140,6 +173,24 @@ export async function handleControlCoreRequest(request,env,ctx,worker){
         authority:false,
         fail_closed:true,
         state:"UNAVAILABLE",
+        error:String(error?.message||error)
+      },503);
+    }
+  }
+
+  if(url.pathname==="/api/core/v1/decision"){
+    if(request.method!=="GET") return json({error:"method_not_allowed"},405,{allow:"GET"});
+    try{
+      const snapshot=await buildCoreSnapshot(worker,env,ctx,url.origin);
+      return json(evaluateCoreDecision(snapshot));
+    }catch(error){
+      return json({
+        schema:"zevanory-control-core/decision-v1",
+        authority:"ZEVANORY Control Core",
+        decision:"DENY",
+        fail_closed:true,
+        eligible_for_critical_promotion:false,
+        blockers:["core_snapshot_unavailable"],
         error:String(error?.message||error)
       },503);
     }

@@ -191,6 +191,39 @@ jobs:
           if(commands.direct_ui_mutations!==false) throw new Error("UI mutation authority leaked");
           console.log("PASS: ZEVANORY Control Core is the sole critical state authority");
           JS
+      - name: Verify canonical decision policy
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { evaluateCoreDecision } from "./worker/zevanory-control-core.mjs";
+          const base={
+            generated_at:"2026-09-23T13:00:00Z",
+            release_sha:"a".repeat(40),
+            invariants:{
+              exact_release_bound:true,
+              health_ready:true,
+              quorum_ok:true,
+              evidence_to_evaluation_unidirectional:true
+            },
+            zees16:{
+              decision_hash:"deadbeef",
+              counts:{proven:16,partial:0,blocked:0}
+            },
+            zea10:{
+              evaluator:"ZEA-10/2026.09-evaluator-v1",
+              counts:{proven:10,partial:0,blocked:0,unknown:0}
+            }
+          };
+          let d=evaluateCoreDecision(base);
+          if(d.decision!=="ALLOW"||d.eligible_for_critical_promotion!==true||d.blockers.length!==0) throw new Error("fully proven chain must be eligible");
+          d=evaluateCoreDecision({...base,zea10:{...base.zea10,counts:{proven:9,partial:1,blocked:0,unknown:0}}});
+          if(d.decision!=="DENY"||!d.blockers.includes("zea10_complete")) throw new Error("partial ZEA-10 must deny");
+          d=evaluateCoreDecision({...base,zees16:{...base.zees16,counts:{proven:15,partial:1,blocked:0}}});
+          if(d.decision!=="DENY"||!d.blockers.includes("zees16_complete")) throw new Error("partial ZEES-16 must deny");
+          d=evaluateCoreDecision({...base,invariants:{...base.invariants,quorum_ok:false}});
+          if(d.decision!=="DENY"||!d.blockers.includes("quorum_ok")) throw new Error("missing quorum must deny");
+          console.log("PASS: Control Core authorizes only a complete one-way proof/evaluation chain");
+          JS
       - name: Remote Wrangler compile
         run: |
           set -euo pipefail
