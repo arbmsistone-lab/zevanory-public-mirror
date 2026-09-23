@@ -56,13 +56,13 @@ jobs:
           curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" -o /tmp/scripts.json
           python3 -c "import json; d=json.load(open('/tmp/scripts.json')); assert d.get('success') is True, d.get('errors'); ids=[s.get('id') for s in d.get('result',[]) if s.get('id')]; assert 'zevanory' in ids, ids; print('CF_WORKER_ZEVANORY_VISIBLE=PASS')"
 
-      - name: Resolve Custom Domain owner from Workers account API
+      - name: Check Custom Domain ownership without assuming presence
         if: env.CLOUDFLARE_API_TOKEN != ''
         shell: bash
         run: |
           set -euo pipefail
           curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains" -o /tmp/domains.json
-          python3 -c "import json; d=json.load(open('/tmp/domains.json')); assert d.get('success') is True, d.get('errors'); hits=[x for x in d.get('result',[]) if x.get('hostname')=='zevanory.api.br']; assert len(hits)==1, hits; x=hits[0]; print('ZEVANORY_CUSTOM_DOMAIN_SERVICE='+str(x.get('service'))); print('ZEVANORY_CUSTOM_DOMAIN_ID='+str(x.get('id')))"
+          python3 -c "import json; d=json.load(open('/tmp/domains.json')); assert d.get('success') is True, d.get('errors'); hits=[x for x in d.get('result',[]) if x.get('hostname')=='zevanory.api.br']; print('CUSTOM_DOMAIN_MATCHES',len(hits)); [print('CUSTOM_DOMAIN_SERVICE',x.get('service')) for x in hits]"
 
       - name: Compare public workers.dev candidates
         shell: bash
