@@ -1,3 +1,4 @@
+import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import worker from "./cloudflare-worker.recovered.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
@@ -75,6 +76,11 @@ const wrapped = {
     const url = new URL(request.url);
     const canonicalRedirect = canonicalizePublicPath(request, url);
     if (canonicalRedirect) return canonicalRedirect;
+
+    if (url.pathname === "/voice-study" || url.pathname.startsWith("/api/voice-study/")) {
+      const response = await handleVoiceStudy(request, normalized);
+      if (response) return response;
+    }
 
     if (url.pathname === "/control-plane-vnext.js") {
       return new Response(CONTROL_PLANE_VNEXT_JS, {

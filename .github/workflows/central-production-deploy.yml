@@ -135,6 +135,7 @@ jobs:
           open(p,"w").write(json.dumps(c,indent=2)+"\n")
           PY
           node --check worker/cloudflare-worker.compat.mjs
+          node --check worker/voice-naturality-study.mjs
           node --check public/control-plane-vnext.js
           npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.central-fix.jsonc --outdir /tmp/central-final
       - name: Authenticate Cloudflare
