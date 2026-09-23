@@ -1452,6 +1452,7 @@ var CHANNELS = Object.freeze({
 });
 function channelReadiness(env = process.env) {
   const whatsappRuntime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+  const brokerState = globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ || {};
   if (whatsappRuntime.access_token || whatsappRuntime.phone_number_id || whatsappRuntime.app_secret || whatsappRuntime.verify_token) {
     env = {
       ...env,
@@ -1461,6 +1462,16 @@ function channelReadiness(env = process.env) {
       META_GRAPH_VERSION: env.META_GRAPH_VERSION || whatsappRuntime.graph_version || "v26.0",
       META_VERIFY_TOKEN: env.META_VERIFY_TOKEN || whatsappRuntime.verify_token || "",
       META_WHATSAPP_IDENTITY_VERIFIED: env.META_WHATSAPP_IDENTITY_VERIFIED === "true" || whatsappRuntime.identity_verified === true ? "true" : String(env.META_WHATSAPP_IDENTITY_VERIFIED || "")
+    };
+  } else if (brokerState.broker === true && brokerState.identity_verified === true) {
+    env = {
+      ...env,
+      WHATSAPP_ACCESS_TOKEN: env.WHATSAPP_ACCESS_TOKEN || "service-binding-broker",
+      WHATSAPP_PHONE_NUMBER_ID: env.WHATSAPP_PHONE_NUMBER_ID || brokerState.phone_number_id || "broker",
+      META_APP_SECRET: env.META_APP_SECRET || "service-binding-broker",
+      META_GRAPH_VERSION: env.META_GRAPH_VERSION || brokerState.graph_version || "v26.0",
+      META_VERIFY_TOKEN: env.META_VERIFY_TOKEN || "service-binding-broker",
+      META_WHATSAPP_IDENTITY_VERIFIED: "true"
     };
   }
   return Object.fromEntries(Object.entries(CHANNELS).map(([name, def]) => {
@@ -8503,6 +8514,33 @@ async function getJson(fetchImpl, url, token) {
   return { ok: true, status: r.status, body };
 }
 __name(getJson, "getJson");
+async function whatsappBrokerCall(path, { method = "GET", body = null, headers = {} } = {}) {
+  const broker = globalThis.__ZEVANORY_WHATSAPP_BROKER__;
+  if (!broker?.fetch) return { ok: false, status: 503, body: { error: "whatsapp_broker_unavailable" } };
+  const init = { method, headers: { "x-zevanory-internal": "service-binding", ...headers } };
+  if (body !== null) {
+    init.headers["content-type"] = init.headers["content-type"] || "application/json";
+    init.body = typeof body === "string" || body instanceof ArrayBuffer || ArrayBuffer.isView(body) ? body : JSON.stringify(body);
+  }
+  try {
+    const r = await broker.fetch(new Request("https://whatsapp-broker.internal" + path, init));
+    const parsed = await r.clone().json().catch(() => ({}));
+    return { ok: r.ok, status: r.status, body: parsed };
+  } catch {
+    return { ok: false, status: 503, body: { error: "whatsapp_broker_unavailable" } };
+  }
+}
+__name(whatsappBrokerCall, "whatsappBrokerCall");
+async function whatsappBrokerSignatureValid(payload, signature) {
+  const r = await whatsappBrokerCall("/broker/verify-signature", { method: "POST", body: { payload, signature: String(signature || "") } });
+  return r.ok && r.body?.valid === true;
+}
+__name(whatsappBrokerSignatureValid, "whatsappBrokerSignatureValid");
+async function whatsappBrokerVerifyToken(token) {
+  const r = await whatsappBrokerCall("/broker/verify-token", { method: "POST", body: { token: String(token || "") } });
+  return r.ok && r.body?.valid === true;
+}
+__name(whatsappBrokerVerifyToken, "whatsappBrokerVerifyToken");
 function resolveMetaVerifyToken(env = process.env) {
   const runtime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
   return clean7(env.META_VERIFY_TOKEN, 4e3) || clean7(env.META_WEBHOOK_VERIFY_TOKEN, 4e3) || clean7(runtime.verify_token, 4e3);
@@ -8551,7 +8589,22 @@ async function verifyInstagramIdentity({ env = process.env, fetchImpl = globalTh
 __name(verifyInstagramIdentity, "verifyInstagramIdentity");
 async function verifyWhatsappIdentity({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
   const runtime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+  const brokerState = globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ || {};
   const token = clean7(env.WHATSAPP_ACCESS_TOKEN || runtime.access_token, 4e3), id = clean7(env.WHATSAPP_PHONE_NUMBER_ID || runtime.phone_number_id), version = clean7(env.META_GRAPH_VERSION || runtime.graph_version || "v26.0", 20);
+  if ((!token || !id) && brokerState.broker === true) {
+    return result(true, brokerState.identity_verified === true, brokerState.identity_verified === true ? "identity_match_broker" : String(brokerState.reason || "broker_identity_not_ready"), {
+      provider_id: clean7(brokerState.phone_number_id),
+      display_phone_number: digits(brokerState.display_phone_number),
+      number_verified: brokerState.number_verified === true,
+      verified_name: clean7(brokerState.verified_name),
+      brand_name_verified: brokerState.brand_name_verified === true,
+      name_status: clean7(brokerState.name_status).toUpperCase(),
+      new_name_status: clean7(brokerState.new_name_status).toUpperCase(),
+      quality_rating: clean7(brokerState.quality_rating),
+      code_verification_status: clean7(brokerState.code_verification_status).toUpperCase(),
+      verification_mode: "cloudflare_service_binding"
+    });
+  }
   if (!token || !id || !version) return result(false, false, "credentials_missing");
   const fields = "id,display_phone_number,verified_name,name_status,new_name_status,quality_rating,code_verification_status";
   const x2 = await getJson(fetchImpl, `https://graph.facebook.com/${version}/${encodeURIComponent(id)}?fields=${fields}`, token);
@@ -12867,6 +12920,15 @@ __name(stageVoiceTemporarily, "stageVoiceTemporarily");
 async function uploadVoiceToWhatsapp({ audio, phoneId, token, version, env = process.env, fetchImpl = globalThis.fetch } = {}) {
   const staged = await stageVoiceTemporarily(audio, env);
   try {
+    if ((!token || !phoneId) && globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__?.identity_verified === true) {
+      const r = await whatsappBrokerCall("/broker/media", {
+        method: "POST",
+        body: audio.bytes,
+        headers: { "content-type": audio.mime || "audio/mpeg", "x-zevanory-filename": "zevanory-support.mp3" }
+      });
+      if (!r.ok || !r.body?.media_id) throw new Error("whatsapp_voice_broker_upload_failed");
+      return Object.freeze({ media_id: String(r.body.media_id), staged: staged.staged, temp_key: staged.key });
+    }
     const form = new FormData();
     form.append("messaging_product", "whatsapp");
     form.append("file", new Blob([audio.bytes], { type: audio.mime }), "zevanory-support.mp3");
@@ -12888,8 +12950,10 @@ function buildOutboundAdapters({ env = process.env, fetchImpl = globalThis.fetch
       ensureOutboundAllowed(event, env, commercialGate);
       if (!supportEventAllowed(event) && env.WHATSAPP_SALES_ENABLED !== "true") throw new Error("whatsapp_sales_disabled");
       const whatsappRuntime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
-      const token = required3(env.WHATSAPP_ACCESS_TOKEN || whatsappRuntime.access_token, "whatsapp_access_token_missing");
-      const phoneId = required3(env.WHATSAPP_PHONE_NUMBER_ID || whatsappRuntime.phone_number_id, "whatsapp_phone_number_id_missing");
+      const brokerReady = globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__?.identity_verified === true;
+      const token = String(env.WHATSAPP_ACCESS_TOKEN || whatsappRuntime.access_token || "").trim();
+      const phoneId = String(env.WHATSAPP_PHONE_NUMBER_ID || whatsappRuntime.phone_number_id || "").trim();
+      if ((!token || !phoneId) && !brokerReady) throw new Error("whatsapp_transport_not_configured");
       const to = required3(event.payload?.contact_ref, "whatsapp_recipient_missing");
       const text = required3(event.payload?.text, "whatsapp_text_missing");
       const media = String(event.payload?.media_url || "").trim();
@@ -12900,7 +12964,7 @@ function buildOutboundAdapters({ env = process.env, fetchImpl = globalThis.fetch
       let generatedVoice = false;
       if (!media && voiceReplyRequested(event, env)) {
         const audio = await ttsBytesFromRuntime(text, env, fetchImpl);
-        const uploaded = await uploadVoiceToWhatsapp({ audio, phoneId, token, version: required3(env.META_GRAPH_VERSION, "meta_graph_version_missing"), env, fetchImpl });
+        const uploaded = await uploadVoiceToWhatsapp({ audio, phoneId, token, version: String(env.META_GRAPH_VERSION || "v26.0"), env, fetchImpl });
         message2 = { messaging_product: "whatsapp", recipient_type: "individual", to, type: "audio", audio: { id: uploaded.media_id } };
         generatedVoice = true;
       } else if (media) {
@@ -12910,8 +12974,10 @@ function buildOutboundAdapters({ env = process.env, fetchImpl = globalThis.fetch
         else if (mediaType === "document") message2 = { messaging_product: "whatsapp", recipient_type: "individual", to, type: "document", document: { link, caption: text.slice(0, 1024), filename: String(event.payload?.filename || "ZEVANORY").slice(0, 240) } };
         else message2 = { messaging_product: "whatsapp", recipient_type: "individual", to, type: "image", image: { link, caption: text.slice(0, 1024) } };
       }
-      const body = await requestJson2(fetchImpl, `${metaBase()}/${encodeURIComponent(phoneId)}/messages`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(message2) }, [200]);
-      const messageId = String(body?.messages?.[0]?.id || "");
+      const body = token && phoneId
+        ? await requestJson2(fetchImpl, `${metaBase()}/${encodeURIComponent(phoneId)}/messages`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(message2) }, [200])
+        : (await whatsappBrokerCall("/broker/send", { method: "POST", body: { message: message2 } })).body;
+      const messageId = String(body?.messages?.[0]?.id || body?.provider_message_id || "");
       if (!messageId) throw providerAcceptanceMissing("whatsapp_message_id_missing");
       return Object.freeze({ provider: "meta_whatsapp", accepted: true, provider_message_id: messageId, media_type: generatedVoice ? "audio" : media ? mediaType : "text", generated_voice: generatedVoice, confirmation: "webhook_required" });
     }, "channel:whatsapp"),
@@ -14872,7 +14938,9 @@ async function handler18(req, res) {
   res.setHeader("x-content-type-options", "nosniff");
   if (req.method === "GET") {
     const mode = String(req.query?.["hub.mode"] || ""), token = String(req.query?.["hub.verify_token"] || ""), challenge = String(req.query?.["hub.challenge"] || "");
-    if (mode === "subscribe" && token && token === resolveMetaVerifyToken(process.env)) {
+    const directValid = mode === "subscribe" && token && token === resolveMetaVerifyToken(process.env);
+    const brokerValid = !directValid && mode === "subscribe" && token ? await whatsappBrokerVerifyToken(token) : false;
+    if (directValid || brokerValid) {
       res.statusCode = 200;
       return res.end(challenge);
     }
@@ -14882,7 +14950,9 @@ async function handler18(req, res) {
   const raw = rawText(req);
   const whatsappRuntime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
   const metaAppSecret = process.env.META_APP_SECRET || whatsappRuntime.app_secret || "";
-  if (!verifyMetaSignature({ payload: raw, signature: req.headers?.["x-hub-signature-256"], appSecret: metaAppSecret })) return json14(res, 401, { error: "webhook_auth_failed", accepted: false });
+  const localSignatureValid = verifyMetaSignature({ payload: raw, signature: req.headers?.["x-hub-signature-256"], appSecret: metaAppSecret });
+  const brokerSignatureValid = !localSignatureValid ? await whatsappBrokerSignatureValid(raw, req.headers?.["x-hub-signature-256"]) : false;
+  if (!localSignatureValid && !brokerSignatureValid) return json14(res, 401, { error: "webhook_auth_failed", accepted: false });
   let payload;
   try {
     payload = raw ? JSON.parse(raw) : {};
