@@ -5,6 +5,8 @@ import { handleAdminRequest, isAdminAuthorized } from "./admin-console.mjs";
 import { CONTROL_PLANE_VNEXT_JS } from "./control-plane-vnext-source.mjs";
 import { handleControlPlaneV2Request, reconcileControlPlane } from "./evidence-control-plane.mjs";
 import { handleControlActionRequest } from "./control-action-plane.mjs";
+import { handleZea10AutonomyRequest } from "./zea10-autonomy.mjs";
+import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
 
 async function fetchJsonThroughWorker(request, env, ctx) {
   const response = await worker.fetch(request, env, ctx);
@@ -14,6 +16,17 @@ async function fetchJsonThroughWorker(request, env, ctx) {
   } catch {
     return { response, body: null };
   }
+}
+
+function canonicalizePublicPath(request, url) {
+  const method = String(request.method || "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return null;
+  if (url.pathname === "/" || !url.pathname.endsWith("/")) return null;
+  if (url.pathname.startsWith("/api/")) return null;
+
+  const target = new URL(url.toString());
+  target.pathname = url.pathname.replace(/\/+$/, "") || "/";
+  return Response.redirect(target.toString(), 308);
 }
 
 function legacyTrustProjection(body) {
@@ -56,11 +69,12 @@ function legacyTrustProjection(body) {
   };
 }
 
-
 const wrapped = {
   async fetch(request, env, ctx) {
     const normalized = normalizeEnv(env);
     const url = new URL(request.url);
+    const canonicalRedirect = canonicalizePublicPath(request, url);
+    if (canonicalRedirect) return canonicalRedirect;
 
     if (url.pathname === "/control-plane-vnext.js") {
       return new Response(CONTROL_PLANE_VNEXT_JS, {
@@ -71,6 +85,15 @@ const wrapped = {
           "x-content-type-options": "nosniff"
         }
       });
+    }
+
+    if (url.pathname.startsWith("/api/core/v1/")) {
+      if (url.pathname.startsWith("/api/core/v1/commands/")) {
+        if (!isAdminAuthorized(request, normalized)) {
+          return handleAdminRequest(request, normalized, ctx, wrapped);
+        }
+      }
+      return handleControlCoreRequest(request, normalized, ctx, wrapped);
     }
 
     if (
@@ -88,6 +111,10 @@ const wrapped = {
         return handleControlPlaneV2Request(request, normalized, ctx, wrapped);
       }
       return handleAdminRequest(request, normalized, ctx, wrapped);
+    }
+
+    if (url.pathname === "/api/zea10/autonomy") {
+      return handleZea10AutonomyRequest(request, normalized, ctx, wrapped);
     }
 
     if (url.pathname === "/api/continuity") {
@@ -120,6 +147,7 @@ const wrapped = {
       headers.set("content-type", "application/json; charset=utf-8");
       headers.set("cache-control", "no-store");
       headers.set("x-zevanory-trust-schema", "vnext+legacy-projection");
+      headers.set("x-zevanory-state-authority", "ZEVANORY-Control-Core");
       return new Response(JSON.stringify(body), {
         status: response.status,
         statusText: response.statusText,

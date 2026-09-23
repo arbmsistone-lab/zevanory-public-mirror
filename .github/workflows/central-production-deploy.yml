@@ -8,10 +8,12 @@ on:
       - "worker/control-plane-vnext-source.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "worker/evidence-control-plane.mjs"
+      - "worker/zevanory-control-core.mjs"
       - "worker/admin-console.mjs"
       - "admin.css"
       - "evidence/admin-control-center.json"
       - ".github/workflows/central-production-deploy.yml"
+      - ".github/workflows/zpc-cloudflare-route-discovery.yml"
 permissions:
   contents: read
 jobs:
@@ -162,9 +164,37 @@ jobs:
           assert "QUORUM & TRUST CHAIN" in s
           assert "Decisão executiva baseada em evidência." in s
           PY
-          curl -fsS https://zevanory.api.br/api/status -o /tmp/status.json
-          curl -fsS https://zevanory.api.br/api/health -o /tmp/health.json
-          curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/control.json
+          # Cloudflare edge propagation can lag behind the successful Worker upload.
+          # Poll the canonical, non-query API until it serves this exact release SHA.
+          exact_sha=0
+          for i in $(seq 1 30); do
+            curl -fsS https://zevanory.api.br/api/status -o /tmp/status.json || true
+            curl -fsS https://zevanory.api.br/api/health -o /tmp/health.json || true
+            curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/control.json || true
+            if GITHUB_SHA="$GITHUB_SHA" python3 - <<'PY'
+          import json, os, pathlib, sys
+          try:
+              status=json.load(open("/tmp/status.json"))
+              health=json.load(open("/tmp/health.json"))
+              control=json.load(open("/tmp/control.json"))
+          except Exception:
+              raise SystemExit(1)
+          ok=(
+              status.get("runtime",{}).get("sales")=="globally-blocked"
+              and health.get("ready") is True
+              and control.get("global_state")=="operational_commercial_blocked"
+              and control.get("root_blocker")=="global_sale_disabled"
+              and control.get("release",{}).get("deployment",{}).get("commit_sha")==os.environ["GITHUB_SHA"]
+          )
+          raise SystemExit(0 if ok else 1)
+          PY
+            then
+              exact_sha=1
+              break
+            fi
+            sleep 5
+          done
+          test "$exact_sha" = "1"
           python3 <<'PY'
           import json,os
           status=json.load(open("/tmp/status.json"))
