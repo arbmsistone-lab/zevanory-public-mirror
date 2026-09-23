@@ -1,3 +1,4 @@
+import { appendCoreEvent, readCoreState, readIdempotency, writeCoreState, writeIdempotency } from "./control-core-store.mjs";
 const STATE_KEY="control:v3:authority:zevanory";
 const LEDGER_PREFIX="control:v3:command-ledger:zevanory:";
 const IDEMPOTENCY_PREFIX="control:v3:idempotency:zevanory:";
@@ -49,7 +50,64 @@ async function kvPut(kv,key,value,metadata={}){
   if(!kv||typeof kv.put!=="function") throw new Error("command_state_store_unavailable");
   await kv.put(key,JSON.stringify(value),{metadata});
 }
+async function readReplay(env,keyHash){
+  try{
+    const durable=await readIdempotency(env,keyHash);
+    if(durable) return durable;
+  }catch{}
+  return kvGet(env?.ZEVANORY_PRIVATE_ARTIFACTS,IDEMPOTENCY_PREFIX+keyHash);
+}
+async function persistAudit(env,eventHash,event){
+  try{
+    await appendCoreEvent(env,eventHash,event);
+    return "postgres-append-only";
+  }catch(dbError){
+    const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
+    try{
+      await kvPut(kv,LEDGER_PREFIX+(event.requested_at||new Date().toISOString()).replace(/[:.]/g,"-")+":"+eventHash,{...event,event_hash:eventHash},{
+        type:event.type||"CORE_CRITICAL_COMMAND",
+        command:event.command||"",
+        result:event.result||"",
+        release_sha:event.release_sha||"",
+        event_hash:eventHash
+      });
+      return "kv-append-only";
+    }catch{
+      throw new Error("command_audit_store_unavailable:"+String(dbError?.message||dbError));
+    }
+  }
+}
+async function persistAuthorityState(env,state){
+  try{
+    await writeCoreState(env,STATE_KEY,state,{releaseSha:state.release_sha||null,decisionHash:state.event_hash||null});
+    const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
+    if(kv&&typeof kv.put==="function"){
+      try{await kvPut(kv,STATE_KEY,state,{state:state.state||"",command:state.command||"",release_sha:state.release_sha||"",event_hash:state.event_hash||""});}catch{}
+    }
+    return "postgres-state";
+  }catch(dbError){
+    await kvPut(env?.ZEVANORY_PRIVATE_ARTIFACTS,STATE_KEY,state,{state:state.state||"",command:state.command||"",release_sha:state.release_sha||"",event_hash:state.event_hash||""});
+    return "kv-state";
+  }
+}
+async function persistReplay(env,keyHash,result,command,releaseSha){
+  try{
+    await writeIdempotency(env,keyHash,{command,releaseSha,httpStatus:Number(result.http_status||200),payload:result});
+    const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
+    if(kv&&typeof kv.put==="function"){
+      try{await kvPut(kv,IDEMPOTENCY_PREFIX+keyHash,result,{command,release_sha:releaseSha||""});}catch{}
+    }
+    return "postgres-idempotency";
+  }catch{
+    await kvPut(env?.ZEVANORY_PRIVATE_ARTIFACTS,IDEMPOTENCY_PREFIX+keyHash,result,{command,release_sha:releaseSha||""});
+    return "kv-idempotency";
+  }
+}
 export async function readCoreAuthorityState(env){
+  try{
+    const durable=await readCoreState(env,STATE_KEY);
+    if(durable) return durable;
+  }catch{}
   return kvGet(env?.ZEVANORY_PRIVATE_ARTIFACTS,STATE_KEY);
 }
 
@@ -71,13 +129,8 @@ export async function executeCoreCommand({request,env,snapshot,decision,command}
   if(key.length<12||key.length>160){
     return {status:400,body:{ok:false,error:"valid_idempotency_key_required",command}};
   }
-  const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
-  if(!kv||typeof kv.get!=="function"||typeof kv.put!=="function"){
-    return {status:503,body:{ok:false,error:"command_state_store_unavailable",command,fail_closed:true}};
-  }
-
   const keyHash=await sha256Hex(key);
-  const replay=await kvGet(kv,IDEMPOTENCY_PREFIX+keyHash);
+  const replay=await readReplay(env,keyHash);
   if(replay){
     return {status:Number(replay.http_status||200),body:{...replay,idempotent_replay:true}};
   }
@@ -137,9 +190,7 @@ export async function executeCoreCommand({request,env,snapshot,decision,command}
     if(!adapter||typeof adapter.fetch!=="function"){
       const denied={...eventBase,result:"DENY",error:"runtime_command_executor_unavailable",fail_closed:true};
       const eventHash=await sha256Hex(stable(denied));
-      await kvPut(kv,LEDGER_PREFIX+now.replace(/[:.]/g,"-")+":"+eventHash,{...denied,event_hash:eventHash},{
-        type:denied.type,command,result:"DENY",release_sha:snapshot.release_sha,event_hash:eventHash
-      });
+      const audit_persistence=await persistAudit(env,eventHash,{...denied,event_hash:eventHash});
       const result={
         ok:false,command,decision:"DENY",fail_closed:true,
         error:"runtime_command_executor_unavailable",
@@ -148,7 +199,8 @@ export async function executeCoreCommand({request,env,snapshot,decision,command}
         event_hash:eventHash,
         http_status:503
       };
-      await kvPut(kv,IDEMPOTENCY_PREFIX+keyHash,result,{command,release_sha:snapshot.release_sha});
+      result.audit_persistence=audit_persistence;
+      result.idempotency_persistence=await persistReplay(env,keyHash,result,command,snapshot.release_sha);
       return {status:503,body:result};
     }
     const adapterRequest=new Request("https://runtime-command-executor.internal/v1/execute",{
@@ -168,11 +220,10 @@ export async function executeCoreCommand({request,env,snapshot,decision,command}
     if(!adapterResponse.ok||adapterBody?.applied!==true){
       const denied={...eventBase,result:"DENY",error:"runtime_adapter_rejected",adapter_status:adapterResponse.status,fail_closed:true};
       const eventHash=await sha256Hex(stable(denied));
-      await kvPut(kv,LEDGER_PREFIX+now.replace(/[:.]/g,"-")+":"+eventHash,{...denied,event_hash:eventHash},{
-        type:denied.type,command,result:"DENY",release_sha:snapshot.release_sha,event_hash:eventHash
-      });
+      const audit_persistence=await persistAudit(env,eventHash,{...denied,event_hash:eventHash});
       const result={ok:false,command,decision:"DENY",fail_closed:true,error:"runtime_adapter_rejected",adapter_status:adapterResponse.status,event_hash:eventHash,http_status:502};
-      await kvPut(kv,IDEMPOTENCY_PREFIX+keyHash,result,{command,release_sha:snapshot.release_sha});
+      result.audit_persistence=audit_persistence;
+      result.idempotency_persistence=await persistReplay(env,keyHash,result,command,snapshot.release_sha);
       return {status:502,body:result};
     }
     execution={applied:true,state:target,mode:"runtime-adapter",runtime_effect:"applied",adapter:adapterBody};
@@ -193,10 +244,8 @@ export async function executeCoreCommand({request,env,snapshot,decision,command}
   const event={...eventBase,result:"APPLIED",execution,next_state:next};
   const eventHash=await sha256Hex(stable(event));
   next.event_hash=eventHash;
-  await kvPut(kv,LEDGER_PREFIX+now.replace(/[:.]/g,"-")+":"+eventHash,{...event,event_hash:eventHash},{
-    type:event.type,command,result:"APPLIED",release_sha:snapshot.release_sha,event_hash:eventHash
-  });
-  await kvPut(kv,STATE_KEY,next,{state:target,command,release_sha:snapshot.release_sha,event_hash:eventHash});
+  const audit_persistence=await persistAudit(env,eventHash,{...event,event_hash:eventHash});
+  const state_persistence=await persistAuthorityState(env,next);
 
   const result={
     ok:true,
@@ -209,8 +258,10 @@ export async function executeCoreCommand({request,env,snapshot,decision,command}
     release_sha:snapshot.release_sha,
     event_hash:eventHash,
     authority_state:next,
+    audit_persistence,
+    state_persistence,
     http_status:200
   };
-  await kvPut(kv,IDEMPOTENCY_PREFIX+keyHash,result,{command,release_sha:snapshot.release_sha});
+  result.idempotency_persistence=await persistReplay(env,keyHash,result,command,snapshot.release_sha);
   return {status:200,body:result};
 }
