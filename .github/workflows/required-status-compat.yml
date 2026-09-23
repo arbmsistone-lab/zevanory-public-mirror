@@ -1,0 +1,52 @@
+name: required-status-compat
+
+on:
+  pull_request:
+    branches:
+      - gh-pages
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  product-status:
+    name: product-pages / static-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Compile product audits
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/premerge_product_audit.py
+          python3 -m py_compile scripts/zevanory_10p_excellence_gate.py
+          python3 -m py_compile scripts/zevanory_crown_gate.py
+          python3 -m py_compile scripts/test_crown_negative.py
+      - name: Run product fail-closed gates
+        run: |
+          set -euo pipefail
+          python3 scripts/premerge_product_audit.py
+          python3 scripts/zevanory_10p_excellence_gate.py
+          python3 scripts/test_crown_negative.py
+          python3 scripts/zevanory_crown_gate.py
+
+  zees-status:
+    name: zees16-evidence / fail-closed
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Validate ZEES-16 evidence registry
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/zees16_evidence_gate.py
+          python3 scripts/zees16_evidence_gate.py
