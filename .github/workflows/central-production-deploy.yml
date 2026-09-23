@@ -8,6 +8,8 @@ on:
       - "worker/control-plane-vnext-source.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "worker/cloudflare-worker.recovered.mjs"
+      - "worker/whatsapp-onboarding.mjs"
+      - "worker/whatsapp-e2e-evidence.mjs"
       - "worker/evidence-control-plane.mjs"
       - "worker/zevanory-control-core.mjs"
       - "worker/core-command-executor.mjs"
