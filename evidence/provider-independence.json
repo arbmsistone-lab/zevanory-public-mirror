@@ -13,5 +13,9 @@
     "WhatsApp optional for continuity",
     "503 fail-closed when quorum is not met",
     "no provider secret embedded in source"
-  ]
+  ],
+  "revalidation": {
+    "requested_at": "2026-09-23T15:31:00-03:00",
+    "purpose": "trigger P14 provider independence proof on current canonical head c65150cf"
+  }
 }
