@@ -7,6 +7,7 @@ on:
       - "worker/live-recovered/control-plane-vnext.js"
       - "worker/control-plane-vnext-source.mjs"
       - "worker/cloudflare-worker.compat.mjs"
+      - "worker/cloudflare-worker.recovered.mjs"
       - "worker/evidence-control-plane.mjs"
       - "worker/zevanory-control-core.mjs"
       - "worker/zea10-autonomy.mjs"
