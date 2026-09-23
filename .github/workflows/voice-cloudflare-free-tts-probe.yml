@@ -1,0 +1,38 @@
+name: ZEVANORY Cloudflare free TTS probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [gh-pages]
+    paths:
+      - '.github/workflows/voice-cloudflare-free-tts-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate pt-BR audio with Workers AI free allocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          cat >/tmp/tts.json <<'JSON'
+          {"prompt":"Olá, aqui é o suporte da ZEVANORY. Como posso ajudar você hoje?","lang":"pt"}
+          JSON
+          code=$(curl -sS -D /tmp/headers.txt -o /tmp/voice.mp3 -w '%{http_code}'             -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/myshell-ai/melotts"             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             -H "Content-Type: application/json"             --data-binary @/tmp/tts.json)
+          echo "CLOUDFLARE_TTS_HTTP=$code"
+          test "$code" = "200"
+          bytes=$(wc -c < /tmp/voice.mp3)
+          echo "AUDIO_BYTES=$bytes"
+          test "$bytes" -gt 1000
+          file /tmp/voice.mp3
+          echo "CLOUDFLARE_FREE_TTS_AUDIO=PASS"
