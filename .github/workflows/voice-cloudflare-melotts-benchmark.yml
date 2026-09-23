@@ -65,6 +65,7 @@ jobs:
             "name": "zevanory-melotts-benchmark",
             "main": "/tmp/melotts-worker.mjs",
             "compatibility_date": "2026-09-23",
+            "compatibility_flags": ["global_fetch_strictly_public"],
             "workers_dev": true,
             "ai": { "binding": "AI" }
           }
