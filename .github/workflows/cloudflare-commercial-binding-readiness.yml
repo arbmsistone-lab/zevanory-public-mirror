@@ -47,6 +47,13 @@ jobs:
           print("BROKER_SETTINGS_API_SUCCESS="+str(d.get("success") is True).lower())
           for b in d.get("result",{}).get("bindings",[]):
               name=str(b.get("name") or "")
+              typ=str(b.get("type") or "unknown")
+              print(f"BROKER_ALL_BINDING {name} TYPE={typ}")
+              if typ in {"d1","kv_namespace","r2_bucket","service","ai"}:
+                  meta={k:v for k,v in b.items() if k not in {"text","value"} and k!="name"}
+                  print("BROKER_BINDING_META "+name+"="+json.dumps(meta,separators=(",",":")))
+          for b in d.get("result",{}).get("bindings",[]):
+              name=str(b.get("name") or "")
               if name.startswith(("META_","WHATSAPP_","WABA_")) or name in {"PHONE_NUMBER_ID","WABA_ID","APP_ID","GRAPH_VERSION","OFFICIAL_NUMBER"}:
                   typ=str(b.get("type") or "unknown")
                   print(f"BROKER_BINDING {name} TYPE={typ}")
