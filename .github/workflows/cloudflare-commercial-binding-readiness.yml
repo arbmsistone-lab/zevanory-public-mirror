@@ -38,5 +38,21 @@ jobs:
                   print("WHATSAPP_BROKER_SERVICE="+str(b.get("service") or ""))
                   print("WHATSAPP_BROKER_ENVIRONMENT="+str(b.get("environment") or ""))
           PY
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/giro-whatsapp-bridge/settings" \
+            -o /tmp/wa-broker-settings.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/wa-broker-settings.json"))
+          print("BROKER_SETTINGS_API_SUCCESS="+str(d.get("success") is True).lower())
+          for b in d.get("result",{}).get("bindings",[]):
+              name=str(b.get("name") or "")
+              if name.startswith(("META_","WHATSAPP_","WABA_")) or name in {"PHONE_NUMBER_ID","WABA_ID","APP_ID","GRAPH_VERSION","OFFICIAL_NUMBER"}:
+                  typ=str(b.get("type") or "unknown")
+                  print(f"BROKER_BINDING {name} TYPE={typ}")
+                  if typ=="plain_text" and any(k in name for k in ("PHONE","WABA","APP_ID","GRAPH_VERSION","OFFICIAL_NUMBER")):
+                      v=str(b.get("text") or b.get("value") or "")
+                      print(f"BROKER_SAFE_VALUE {name}={v}")
+          PY
 
 # zero-spend WhatsApp readiness probe 2026-09-23
