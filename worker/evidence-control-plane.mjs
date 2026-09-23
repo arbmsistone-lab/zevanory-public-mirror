@@ -1,4 +1,3 @@
-import { appendCoreEvent, readCoreState, writeCoreState } from "./control-core-store.mjs";
 const REPO="arbmsistone-lab/zevanory-public-mirror";
 const API="https://api.github.com/repos/"+REPO;
 const LEDGER_PREFIX="control:v2:ledger:zevanory:";
@@ -111,19 +110,13 @@ export function evaluatePolicy({signals={},workflows=new Map(),releaseSha=null,o
   return {policy_version:ZEES16_POLICY.version,target:"zevanory",release_sha:releaseSha,observed_at:observedAt,counts,pillars};
 }
 async function persist(env,state){
+  const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
   let previousDecisionHash=null;
-  try{
-    const previous=await readCoreState(env,STATE_KEY);
-    previousDecisionHash=previous?.decision_hash||null;
-  }catch{}
-  if(!previousDecisionHash){
-    const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
-    if(kv&&typeof kv.get==="function"){
-      try{
-        const previousRaw=await kv.get(STATE_KEY);
-        if(previousRaw) previousDecisionHash=JSON.parse(previousRaw)?.decision_hash||null;
-      }catch{}
-    }
+  if(kv&&typeof kv.get==="function"){
+    try{
+      const previousRaw=await kv.get(STATE_KEY);
+      if(previousRaw) previousDecisionHash=JSON.parse(previousRaw)?.decision_hash||null;
+    }catch{}
   }
   const event={
     type:"ZEES16_RECONCILED",
@@ -140,35 +133,23 @@ async function persist(env,state){
     ...state,
     decision_hash:eventHash,
     previous_decision_hash:previousDecisionHash,
-    persistence:"database-append-only",
+    persistence:"reproducible-immutable-sources",
     persistence_error:null,
+    evidence_source:"github-actions+production-runtime",
     evaluator:"ZEES16_POLICY_ENGINE",
     evaluator_version:ZEES16_POLICY.version
   };
+  if(!kv||typeof kv.put!=="function") return decision;
   try{
-    await appendCoreEvent(env,eventHash,{...event,event_hash:eventHash});
-    await writeCoreState(env,STATE_KEY,decision,{releaseSha:state.release_sha||null,decisionHash:eventHash});
-    return decision;
-  }catch(dbError){
-    const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
-    if(kv&&typeof kv.put==="function"){
-      try{
-        const key=LEDGER_PREFIX+state.observed_at.replace(/[:.]/g,"-")+":"+eventHash;
-        await kv.put(key,JSON.stringify({...event,event_hash:eventHash}),{metadata:{type:event.type,release_sha:state.release_sha||"",policy_version:state.policy_version,previous_decision_hash:previousDecisionHash||""}});
-        await kv.put(STATE_KEY,JSON.stringify({...decision,persistence:"kv-append-only"}),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash,previous_decision_hash:previousDecisionHash||""}});
-        return {...decision,persistence:"kv-append-only"};
-      }catch(kvError){
-        return {
-          ...decision,
-          persistence:"degraded-readonly",
-          persistence_error:"database:"+String(dbError?.message||dbError)+";kv:"+String(kvError?.message||kvError)
-        };
-      }
-    }
+    const key=LEDGER_PREFIX+state.observed_at.replace(/[:.]/g,"-")+":"+eventHash;
+    await kv.put(key,JSON.stringify({...event,event_hash:eventHash}),{metadata:{type:event.type,release_sha:state.release_sha||"",policy_version:state.policy_version,previous_decision_hash:previousDecisionHash||""}});
+    await kv.put(STATE_KEY,JSON.stringify({...decision,persistence:"kv-append-only"}),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash,previous_decision_hash:previousDecisionHash||""}});
+    return {...decision,persistence:"kv-append-only"};
+  }catch(error){
     return {
       ...decision,
-      persistence:"degraded-readonly",
-      persistence_error:"database:"+String(dbError?.message||dbError)
+      persistence:"reproducible-immutable-sources",
+      persistence_error:String(error?.message||error||"kv_cache_write_failed")
     };
   }
 }
@@ -192,10 +173,6 @@ export async function reconcileControlPlane(worker,env,ctx,baseUrl="https://zeva
   return persist(env,state);
 }
 export async function readControlState(env){
-  try{
-    const dbState=await readCoreState(env,STATE_KEY);
-    if(dbState) return dbState;
-  }catch{}
   const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
   if(!kv||typeof kv.get!=="function") return null;
   const raw=await kv.get(STATE_KEY);
