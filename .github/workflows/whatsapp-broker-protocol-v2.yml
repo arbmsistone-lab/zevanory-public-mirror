@@ -25,19 +25,25 @@ jobs:
         with:
           persist-credentials: false
       - name: Fetch and patch exact live broker
+        id: patch
         shell: bash
         run: |
           set -euo pipefail
           test -n "${CF:-}"
           curl -fsS -H "Authorization: Bearer $CF"             "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/workers/scripts/$SCRIPT"             -o /tmp/broker.multipart
-          python3 scripts/patch_whatsapp_broker.py --multipart /tmp/broker.multipart --out /tmp/broker-v2.mjs
+          python3 scripts/patch_whatsapp_broker.py --multipart /tmp/broker.multipart --out /tmp/broker-v2.mjs | tee /tmp/patch.log
+          if grep -q 'WHATSAPP_BROKER_PROTOCOL_ALREADY_COMPLETE=PASS' /tmp/patch.log; then
+            echo "already_complete=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_complete=false" >> "$GITHUB_OUTPUT"
+          fi
           node --check /tmp/broker-v2.mjs
           for token in '/broker/status' '/broker/send' '/broker/media' '/broker/verify-signature' '/broker/verify-token' '/broker/oauth/callback'; do
             grep -Fq "$token" /tmp/broker-v2.mjs
           done
           echo "BROKER_PROTOCOL_V2_DRY_RUN=PASS"
       - name: Capture rollback version
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.patch.outputs.already_complete != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -54,7 +60,7 @@ jobs:
           print("ROLLBACK_VERSION_CAPTURED=PASS")
           PY
       - name: Upload inherited broker version
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.patch.outputs.already_complete != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -91,7 +97,7 @@ jobs:
           print("BROKER_VERSION_UPLOAD=PASS")
           PY
       - name: Deploy v2 with automatic rollback
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.patch.outputs.already_complete != 'true'
         shell: bash
         run: |
           set -euo pipefail
