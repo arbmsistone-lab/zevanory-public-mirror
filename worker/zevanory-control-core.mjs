@@ -124,6 +124,27 @@ export async function handleControlCoreRequest(request,env,ctx,worker){
     }
   }
 
+  if(url.pathname==="/api/core/v1/evaluation/zea10"){
+    if(request.method!=="GET") return json({error:"method_not_allowed"},405,{allow:"GET"});
+    try{
+      const snapshot=await buildCoreSnapshot(worker,env,ctx,url.origin);
+      return json({
+        ...snapshot.zea10,
+        architecture:snapshot.architecture,
+        release_sha:snapshot.release_sha
+      });
+    }catch(error){
+      return json({
+        framework:"ZEA-10",
+        role:"evaluation",
+        authority:false,
+        fail_closed:true,
+        state:"UNAVAILABLE",
+        error:String(error?.message||error)
+      },503);
+    }
+  }
+
   if(url.pathname==="/api/core/v1/authority"){
     if(request.method!=="GET") return json({error:"method_not_allowed"},405,{allow:"GET"});
     try{
