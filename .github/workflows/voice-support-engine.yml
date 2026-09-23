@@ -16,3 +16,5 @@ jobs:
           python-version: '3.12'
       - name: Validate voice support invariants
         run: python scripts/voice_support_gate.py
+      - name: Prove adversarial provider failover
+        run: node scripts/voice_router_adversarial.mjs
