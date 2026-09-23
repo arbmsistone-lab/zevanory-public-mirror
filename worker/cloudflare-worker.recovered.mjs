@@ -17535,8 +17535,14 @@ var cloudflare_worker_default = {
     return withSecurityHeaders(response2, env);
   }
 };
+async function controlCoreDatabaseQuery(databaseUrl,text,params=[]){
+  const url=String(databaseUrl||"").trim();
+  if(!url) throw new Error("control_core_database_url_missing");
+  return cs(url).query(String(text||""),Array.isArray(params)?params:[]);
+}
 export {
-  cloudflare_worker_default as default
+  cloudflare_worker_default as default,
+  controlCoreDatabaseQuery
 };
 /*! Bundled license information:
 
