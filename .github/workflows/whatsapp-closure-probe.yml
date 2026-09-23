@@ -21,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Probe canonical WhatsApp identity and runtime
         shell: bash
         run: |
