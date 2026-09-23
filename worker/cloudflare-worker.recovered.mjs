@@ -11980,7 +11980,10 @@ async function executeTool(sql, tool, context, decision, { runId, traceId, env }
     const text = String(decision.message || decision.content || "").trim();
     if (!text) throw new Error("support_message_content_required");
     const refs = Array.isArray(decision.source_refs) ? decision.source_refs.map(String).filter(Boolean).slice(0, 8) : [];
-    const payload = { contact_ref: lead.contact_ref, text: text.slice(0, 4e3), subject: String(decision.subject || decision.title || "Suporte ZEVANORY").slice(0, 240), support_only: true, commercial_intent: false, source_refs: refs, product_code: String(context.job_payload?.product_code || context.job_payload?.product || "").slice(0, 120), product_version: String(context.job_payload?.product_version || context.job_payload?.version || "").slice(0, 80) };
+    const inboundMediaType = String(context.job_payload?.media_type || "text").toLowerCase();
+    const requestedModality = String(decision.reply_modality || "").toLowerCase();
+    const replyModality = requestedModality === "text" ? "text" : requestedModality === "audio" || inboundMediaType === "audio" ? "audio" : "text";
+    const payload = { contact_ref: lead.contact_ref, text: text.slice(0, 4e3), subject: String(decision.subject || decision.title || "Suporte ZEVANORY").slice(0, 240), support_only: true, commercial_intent: false, source_refs: refs, product_code: String(context.job_payload?.product_code || context.job_payload?.product || "").slice(0, 120), product_version: String(context.job_payload?.product_version || context.job_payload?.version || "").slice(0, 80), inbound_media_type: inboundMediaType, reply_modality: replyModality, voice_reply: replyModality === "audio" };
     if (/^https:\/\//i.test(String(decision.media_url || ""))) {
       payload.media_url = String(decision.media_url).slice(0, 4e3);
       payload.media_type = String(decision.media_type || "").toLowerCase().slice(0, 20);
@@ -12811,6 +12814,74 @@ var contentWithLanding = /* @__PURE__ */ __name((text, landing, max) => {
 ${valid}` : base;
   return joined.slice(0, max);
 }, "contentWithLanding");
+function cleanVoiceText(value, max = 1800) {
+  return String(value || "").normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/[*_#`>]/g, "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+__name(cleanVoiceText, "cleanVoiceText");
+function voiceReplyRequested(event = {}, env = process.env) {
+  if (env.ZEVANORY_VOICE_SUPPORT_ENABLED !== "true") return false;
+  const payload = event.payload || {};
+  if (payload.voice_reply === true || String(payload.reply_modality || "").toLowerCase() === "audio") return true;
+  return payload.support_only === true && String(payload.inbound_media_type || "").toLowerCase() === "audio";
+}
+__name(voiceReplyRequested, "voiceReplyRequested");
+async function ttsBytesFromRuntime(text, env = process.env) {
+  const ai = globalThis.__ZEVANORY_EDGE_AI__?.AI || env.AI || null;
+  if (!ai || typeof ai.run !== "function") throw new Error("voice_tts_runtime_unavailable");
+  if (env.VOICE_TTS_FREE_ONLY !== "true") throw new Error("voice_tts_zero_spend_guard_required");
+  const model = String(env.VOICE_TTS_MODEL || "").trim();
+  if (!model) throw new Error("voice_tts_model_missing");
+  const safe = cleanVoiceText(text);
+  if (!safe) throw new Error("voice_tts_text_empty");
+  const input = model.includes("melotts")
+    ? { prompt: safe, lang: String(env.VOICE_TTS_LANGUAGE || "pt") }
+    : { text: safe, voice: String(env.VOICE_TTS_VOICE || "alloy"), speed: Number(env.VOICE_TTS_SPEED || 1), response_format: "mp3" };
+  const raw = await ai.run(model, input, { returnRawResponse: true });
+  let bytes;
+  let mime = "audio/mpeg";
+  if (raw instanceof Response) {
+    mime = String(raw.headers.get("content-type") || mime).split(";")[0];
+    bytes = new Uint8Array(await raw.arrayBuffer());
+  } else if (raw instanceof ReadableStream) {
+    bytes = new Uint8Array(await new Response(raw).arrayBuffer());
+  } else if (raw instanceof ArrayBuffer) {
+    bytes = new Uint8Array(raw);
+  } else if (ArrayBuffer.isView(raw)) {
+    bytes = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+  } else if (typeof raw?.audio === "string") {
+    const bin = atob(raw.audio);
+    bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+  } else {
+    throw new Error("voice_tts_output_unsupported");
+  }
+  if (!bytes?.length || bytes.length > 12 * 1024 * 1024) throw new Error("voice_tts_output_size_invalid");
+  return Object.freeze({ bytes, mime, model, chars: safe.length });
+}
+__name(ttsBytesFromRuntime, "ttsBytesFromRuntime");
+async function stageVoiceTemporarily(audio, env = process.env) {
+  const bucket = env.ZEVANORY_VOICE_TEMP || null;
+  if (!bucket?.put) return Object.freeze({ key: null, staged: false });
+  const key = `voice-temp/${Date.now()}-${crypto.randomUUID()}.mp3`;
+  await bucket.put(key, audio.bytes, { httpMetadata: { contentType: audio.mime }, customMetadata: { expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(), purpose: "whatsapp_voice_support" } });
+  return Object.freeze({ key, staged: true });
+}
+__name(stageVoiceTemporarily, "stageVoiceTemporarily");
+async function uploadVoiceToWhatsapp({ audio, phoneId, token, version, env = process.env, fetchImpl = globalThis.fetch } = {}) {
+  const staged = await stageVoiceTemporarily(audio, env);
+  try {
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("file", new Blob([audio.bytes], { type: audio.mime }), "zevanory-support.mp3");
+    const response = await fetchImpl(`https://graph.facebook.com/${encodeURIComponent(version)}/${encodeURIComponent(phoneId)}/media`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: form, signal: AbortSignal.timeout(2e4) });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body?.id) throw new Error(`whatsapp_voice_upload_http_${response.status}`);
+    return Object.freeze({ media_id: String(body.id), staged: staged.staged, temp_key: staged.key });
+  } finally {
+    if (staged.key && env.ZEVANORY_VOICE_TEMP?.delete) await env.ZEVANORY_VOICE_TEMP.delete(staged.key).catch(() => {});
+  }
+}
+__name(uploadVoiceToWhatsapp, "uploadVoiceToWhatsapp");
+
 function buildOutboundAdapters({ env = process.env, fetchImpl = globalThis.fetch, commercialGate = salesGate, channelProviders = {} } = {}) {
   if (typeof fetchImpl !== "function") throw new Error("fetch_required");
   const metaBase = /* @__PURE__ */ __name(() => `https://graph.facebook.com/${required3(env.META_GRAPH_VERSION, "meta_graph_version_missing")}`, "metaBase");
@@ -12827,7 +12898,13 @@ function buildOutboundAdapters({ env = process.env, fetchImpl = globalThis.fetch
       const inferredType = /\.(mp3|ogg|opus|m4a|aac)(?:\?|$)/i.test(media) ? "audio" : /\.(mp4|3gp|mov|webm)(?:\?|$)/i.test(media) ? "video" : /\.(pdf|docx?|xlsx?|pptx?|csv|txt)(?:\?|$)/i.test(media) ? "document" : "image";
       const mediaType = ["image", "video", "audio", "document"].includes(requestedType) ? requestedType : inferredType;
       let message2 = { messaging_product: "whatsapp", recipient_type: "individual", to, type: "text", text: { preview_url: false, body: text } };
-      if (media) {
+      let generatedVoice = false;
+      if (!media && voiceReplyRequested(event, env)) {
+        const audio = await ttsBytesFromRuntime(text, env);
+        const uploaded = await uploadVoiceToWhatsapp({ audio, phoneId, token, version: required3(env.META_GRAPH_VERSION, "meta_graph_version_missing"), env, fetchImpl });
+        message2 = { messaging_product: "whatsapp", recipient_type: "individual", to, type: "audio", audio: { id: uploaded.media_id } };
+        generatedVoice = true;
+      } else if (media) {
         const link = ensureHttps(media, "whatsapp_media_url_invalid");
         if (mediaType === "audio") message2 = { messaging_product: "whatsapp", recipient_type: "individual", to, type: "audio", audio: { link } };
         else if (mediaType === "video") message2 = { messaging_product: "whatsapp", recipient_type: "individual", to, type: "video", video: { link, caption: text.slice(0, 1024) } };
@@ -12837,7 +12914,7 @@ function buildOutboundAdapters({ env = process.env, fetchImpl = globalThis.fetch
       const body = await requestJson2(fetchImpl, `${metaBase()}/${encodeURIComponent(phoneId)}/messages`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(message2) }, [200]);
       const messageId = String(body?.messages?.[0]?.id || "");
       if (!messageId) throw providerAcceptanceMissing("whatsapp_message_id_missing");
-      return Object.freeze({ provider: "meta_whatsapp", accepted: true, provider_message_id: messageId, media_type: media ? mediaType : "text", confirmation: "webhook_required" });
+      return Object.freeze({ provider: "meta_whatsapp", accepted: true, provider_message_id: messageId, media_type: generatedVoice ? "audio" : media ? mediaType : "text", generated_voice: generatedVoice, confirmation: "webhook_required" });
     }, "channel:whatsapp"),
     "channel:email": /* @__PURE__ */ __name(async (event) => {
       ensureOutboundAllowed(event, env, commercialGate);
@@ -14484,7 +14561,7 @@ function looksLikeProductSupport(text = "") {
   return supportRx.test(clean28(text, 5e3));
 }
 __name(looksLikeProductSupport, "looksLikeProductSupport");
-async function queueProductSupport(sql, { channel, contactRef, text, subject = "", productCode = "", productVersion = "", module = "", errorCode = "", source = "inbound" } = {}) {
+async function queueProductSupport(sql, { channel, contactRef, text, subject = "", productCode = "", productVersion = "", module = "", errorCode = "", source = "inbound", mediaType = "text", mediaId = "" } = {}) {
   const message2 = clean28(text, 5e3), contact = clean28(contactRef, 500), ch = clean28(channel, 40).toLowerCase();
   if (!message2 || !contact || !["whatsapp", "email"].includes(ch)) return Object.freeze({ queued: false, reason: "support_intake_invalid" });
   if (!looksLikeProductSupport(`${subject} ${message2}`)) return Object.freeze({ queued: false, reason: "not_support_intent" });
@@ -14496,7 +14573,7 @@ async function queueProductSupport(sql, { channel, contactRef, text, subject = "
     lead = { lead_id: leadId, session_id: sessionId };
   }
   const jobId = randomUUID14(), caseId = randomUUID14(), key = `support:${ch}:${contact}:${Buffer.from(message2).toString("base64url").slice(0, 96)}`;
-  const payload = { case_id: caseId, product_code: product, product_version: clean28(productVersion, 80), module: clean28(module, 120), symptom: message2, error_code: clean28(errorCode, 200), question: message2, channel: ch, source, inbound_message: message2 };
+  const payload = { case_id: caseId, product_code: product, product_version: clean28(productVersion, 80), module: clean28(module, 120), symptom: message2, error_code: clean28(errorCode, 200), question: message2, channel: ch, source, inbound_message: message2, media_type: clean28(mediaType, 40).toLowerCase() || "text", media_id: clean28(mediaId, 240) || null };
   const rows = await sql.query("insert into agent_jobs(job_id,job_type,status,priority,lead_id,idempotency_key,payload,available_at) values($1,'product_support','queued',100,$2,$3,$4::jsonb,now()) on conflict(idempotency_key) do nothing returning job_id", [jobId, lead.lead_id, key, JSON.stringify(payload)]);
   await sql.query("insert into agent_memory(memory_id,scope_type,scope_ref,memory_key,memory_value,confidence) values($1,'lead',$2,'last_inbound_message',$3::jsonb,1) on conflict(scope_type,scope_ref,memory_key) do update set memory_value=excluded.memory_value,confidence=1,updated_at=now()", [randomUUID14(), String(lead.lead_id), JSON.stringify({ text: message2, source, kind: "support" })]);
   if (product && rows.length) {
@@ -14508,7 +14585,7 @@ __name(queueProductSupport, "queueProductSupport");
 async function queueWhatsappConversation(sql, { contactRef, text, messageId = "", mediaType = "text", mediaId = "", source = "meta_whatsapp" } = {}) {
   const contact = clean28(contactRef, 500), message2 = clean28(text, 5e3), id = clean28(messageId, 240), type = clean28(mediaType, 40).toLowerCase();
   if (!contact || !message2) return Object.freeze({ queued: false, reason: "whatsapp_conversation_invalid" });
-  if (looksLikeProductSupport(message2)) return queueProductSupport(sql, { channel: "whatsapp", contactRef: contact, text: message2, source });
+  if (looksLikeProductSupport(message2)) return queueProductSupport(sql, { channel: "whatsapp", contactRef: contact, text: message2, source, mediaType: type, mediaId });
   let lead = (await sql.query("select lead_id,session_id,stage from sales_leads where channel='whatsapp' and contact_ref=$1 order by updated_at desc limit 1", [contact]))[0];
   if (!lead) {
     const leadId = randomUUID14(), sessionId = randomUUID14();
