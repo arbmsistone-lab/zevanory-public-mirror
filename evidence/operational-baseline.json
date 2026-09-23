@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "policy": "ZEVANORY_OPERATIONAL_PRESERVATION_V1",
+  "baseline_sha": "a0a6c5a85befc89cfc6d169962febd36e065cca5",
+  "closed_at": "2026-09-23T18:33:52Z",
+  "status": {
+    "zees16": "16/16_PROVEN",
+    "zea10": "10/10_PROVEN",
+    "p14_provider_independence": "SUCCESS"
+  },
+  "proof_runs": {
+    "p14_run_id": 35903169088,
+    "zea10_run_id": 35903301135,
+    "zees16_run_id": 35903301041,
+    "product_pages_run_id": 35903301023
+  },
+  "merge_prs": [119, 120],
+  "preservation_rule": "Any pull request targeting gh-pages must re-run and pass ZEES-16, ZEA-10 and P14 before merge."
+}
