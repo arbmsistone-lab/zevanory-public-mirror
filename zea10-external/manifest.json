@@ -2,8 +2,8 @@
   "schema_version": 2,
   "pack": "ZEA-10 External Evidence Pack",
   "purpose": "independent-review-ready evidence bundle; not an external certification",
-  "canonical_sha": "39d4e583dd1458bc268722eb7f1de61eb9576b66",
-  "production_release_sha": "39d4e583dd1458bc268722eb7f1de61eb9576b66",
+  "canonical_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa",
+  "production_release_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa",
   "generated_at": "2026-09-23",
   "claim_scope": "internal engineering evidence prepared for independent external review",
   "external_certification_claimed": false,
@@ -19,7 +19,7 @@
     "dr": 35802596481,
     "provider_quorum": 35857029812,
     "zees16": 35847379896,
-    "pages_deploy": 35798613724
+    "pages_deploy": 35859551225
   },
   "pillars": [
     {
@@ -237,12 +237,12 @@
     },
     "completion_definition": "The goal is complete only when all ten ZEA-10 pillars have accepted independent external review artifacts bound to the evaluated SHA; any formal standards certification is claimed only when issued through an applicable recognized process."
   },
-  "audited_candidate_sha": "39d4e583dd1458bc268722eb7f1de61eb9576b66",
+  "audited_candidate_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa",
   "freeze": {
     "status": "active",
-    "repository_sha": "39d4e583dd1458bc268722eb7f1de61eb9576b66",
-    "audited_candidate_sha": "39d4e583dd1458bc268722eb7f1de61eb9576b66",
-    "production_release_sha": "39d4e583dd1458bc268722eb7f1de61eb9576b66",
+    "repository_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa",
+    "audited_candidate_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa",
+    "production_release_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa",
     "mutation_policy": "Any material change after freeze requires a new evidence-pack version and reviewer target."
   },
   "runtime_snapshot_expectations": {
