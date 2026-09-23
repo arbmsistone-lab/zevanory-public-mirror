@@ -34,3 +34,5 @@ jobs:
           for name in sorted(found):
               print(f"BINDING {name} TYPE={found[name]}")
           PY
+
+# zero-spend WhatsApp readiness probe 2026-09-23
