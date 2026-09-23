@@ -39,7 +39,7 @@ var init_config = __esm({
       offerName: "ARBM SIST",
       offerVersion: "10.0.0",
       offerType: "digital_product",
-      officialWhatsappE164: "558892340423"
+      officialWhatsappE164: "5588992545413"
     });
     __name(isUuid, "isUuid");
   }
@@ -1551,7 +1551,7 @@ var BRAND_PROFILE = Object.freeze({
   facebookCover: "/brand/social/zevanory-facebook-cover-1640x624.png",
   coreBio: COMMERCIAL_MESSAGES.zevanory.bio
 });
-var OFFICIAL_WHATSAPP = Object.freeze({ display: "+55 88 9234-0423", e164: "558892340423", url: "https://wa.me/558892340423" });
+var OFFICIAL_WHATSAPP = Object.freeze({ display: "+55 88 99254-5413", e164: "5588992545413", url: "https://wa.me/5588992545413" });
 var brandLink = /* @__PURE__ */ __name((source) => `https://zevanory.api.br/?utm_source=${source}&utm_medium=organic&utm_campaign=zevanory_brand`, "brandLink");
 var whatsappLink = /* @__PURE__ */ __name(() => `${OFFICIAL_WHATSAPP.url}?text=${encodeURIComponent("Ol\xE1! Tenho interesse nas solu\xE7\xF5es da ZEVANORY e gostaria de receber uma orienta\xE7\xE3o personalizada.")}`, "whatsappLink");
 var profile = /* @__PURE__ */ __name((handle, source, extra = {}) => Object.freeze({
