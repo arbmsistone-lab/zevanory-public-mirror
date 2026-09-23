@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "id": "ZEA10-AUTONOMY-V1",
+  "mode": "fail_closed",
+  "zero_spend_core_required": true,
+  "commercial_activation_is_separate_from_capability": true,
+  "human_role": "administration_and_policy_approval",
+  "green_requires_all_pillars": true,
+  "pillars": [
+    {"id":"ZEA10-A01","name":"market_intelligence","required_markers":["aggregateMarketSignals","marketIntelligence","AUTOPILOT_POLICY"]},
+    {"id":"ZEA10-A02","name":"product_offer_knowledge","required_markers":["ZEVANORY_PRODUCTS","resolveCheckoutOffer","offer_id"]},
+    {"id":"ZEA10-A03","name":"customer_360_memory","required_markers":["read_lead_context","remember_fact","lead_memory","recent_conversation"]},
+    {"id":"ZEA10-A04","name":"strategy_campaign_creatives","required_markers":["createCreativeSpec","campaign_id","variant_id","CREATIVE_FORMATS"]},
+    {"id":"ZEA10-A05","name":"omnichannel_orchestration","required_markers":["whatsapp","instagram","facebook","email","youtube","tiktok"]},
+    {"id":"ZEA10-A06","name":"conversation_qualification_objections","required_markers":["nurturing","objection","negotiation","send_support_message"]},
+    {"id":"ZEA10-A07","name":"checkout_payment_lifecycle","required_markers":["checkout","payment","reconciliation","abandonment_recovery"]},
+    {"id":"ZEA10-A08","name":"onboarding_support_success","required_markers":["fulfillment","onboarding","support","satisfaction","retention"]},
+    {"id":"ZEA10-A09","name":"learning_optimization","required_markers":["agent","follow_up","campaign","aggregateMarketSignals"]},
+    {"id":"ZEA10-A10","name":"safety_governance_resilience","required_markers":["fail-closed","commercial_unlock","idempotency","audit-ledgered","provider"]}
+  ],
+  "required_journey_stages": [
+    "lead","nurturing","objection","offer","negotiation","checkout",
+    "abandonment_recovery","payment","reconciliation","fulfillment",
+    "onboarding","support","adoption","satisfaction","retention",
+    "repurchase","upsell","cross_sell","referral","win_back","churn"
+  ],
+  "required_channels": ["whatsapp","instagram","facebook","email"],
+  "human_approval_required_for": [
+    "sensitive_creative",
+    "material_offer_change",
+    "material_price_change",
+    "high_impact_campaign",
+    "policy_exception"
+  ],
+  "human_only": [
+    "legal_dispute",
+    "fraud",
+    "irreversible_financial_exception",
+    "contractual_exception",
+    "low_confidence_high_risk"
+  ]
+}
