@@ -124,8 +124,8 @@ jobs:
           c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
           c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"
           c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"
-          c["vars"]["VOICE_TTS_FREE_ONLY"]="true"
-          c["vars"]["ZEVANORY_VOICE_SUPPORT_ENABLED"]="true"
+          # VOICE_TTS_FREE_ONLY and ZEVANORY_VOICE_SUPPORT_ENABLED are stored as remote secrets.
+          # Do not redeclare them as plain vars; preserve secret type and value across deploys.
           c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"
           c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"
           c["vars"]["GEMINI_FREE_TIER_CONFIRMED"]="false"
