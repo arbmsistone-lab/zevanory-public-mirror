@@ -75,7 +75,7 @@ jobs:
           c=json.load(open(p))
           c["main"]="worker/cloudflare-worker.compat.mjs"
           c.pop("secrets",None)
-          c.pop("services",None)
+          c["services"]=[{"binding":"WHATSAPP_BROKER","service":"giro-whatsapp-bridge"}]
           c.pop("ai",None)
           c.pop("routes",None)
           c["workers_dev"]=True
