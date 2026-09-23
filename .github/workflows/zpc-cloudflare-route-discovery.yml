@@ -64,6 +64,38 @@ jobs:
           curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains" -o /tmp/domains.json
           python3 -c "import json; d=json.load(open('/tmp/domains.json')); assert d.get('success') is True, d.get('errors'); hits=[x for x in d.get('result',[]) if x.get('hostname')=='zevanory.api.br']; print('CUSTOM_DOMAIN_MATCHES',len(hits)); [print('CUSTOM_DOMAIN_SERVICE',x.get('service')) for x in hits]"
 
+      - name: Compare known ZEVANORY Worker settings read-only
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in zevanory zevanory-migration-20260904 zevanory-new-project; do
+            echo "SETTINGS_CANDIDATE=$script"
+            code="$(curl -sS -o "/tmp/$script-settings.json" -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$script/settings" || true)"
+            if [ "$code" != "200" ]; then
+              echo "SETTINGS_RESULT $script HTTP_$code"
+              continue
+            fi
+            SCRIPT="$script" python3 - <<'PY'
+import json, os
+script=os.environ["SCRIPT"]
+d=json.load(open(f"/tmp/{script}-settings.json"))
+if d.get("success") is not True:
+    print("SETTINGS_RESULT",script,"API_ERROR",d.get("errors"))
+    raise SystemExit(0)
+bindings=d.get("result",{}).get("bindings",[])
+vals={}
+for b in bindings:
+    if b.get("type")=="plain_text":
+        vals[b.get("name")]=b.get("text")
+print("SETTINGS_RESULT",script,
+      "RELEASE_SHA",vals.get("ZEVANORY_RELEASE_SHA"),
+      "REF",vals.get("ZEVANORY_RELEASE_REF"),
+      "ENV",vals.get("ZEVANORY_DEPLOYMENT_ENV"),
+      "SALE",vals.get("SALE_GLOBALLY_ENABLED"))
+PY
+          done
+
       - name: Compare public workers.dev candidates
         shell: bash
         run: |
