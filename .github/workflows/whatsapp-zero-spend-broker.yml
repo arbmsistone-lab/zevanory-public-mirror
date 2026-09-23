@@ -90,7 +90,7 @@ jobs:
             "d1_databases":[{"binding":"DB","database_id":dbid}],
             "ai":{"binding":"AI"}
           }
-          open("/tmp/wrangler.broker.json","w").write(json.dumps(cfg,indent=2)+"\n")
+          open("wrangler.broker.json","w").write(json.dumps(cfg,indent=2)+"\n")
           print("BROKER_BINDING_RECONSTRUCTION=PASS")
           PY
       - name: Deploy broker while preserving legacy encrypted secrets and vars
