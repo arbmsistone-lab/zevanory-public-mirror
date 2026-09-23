@@ -9002,8 +9002,8 @@ function buildOperationalStatus({ telemetry = [], orders = [], financial = [], l
     project: PROJECT.name,
     gate: currentGate,
     experiment: Object.freeze({ id: PROJECT.experimentId, status: experimentStatus }),
-    engine: Object.freeze({ technical_infrastructure: "approved", commercial_autonomy: "not_approved" }),
-    sales_machine: Object.freeze({ structure_ready: true, crm: "ready", follow_up: "ready", unit_economics: "ready", learning: "ready", outbound_execution: salesLive ? "enabled_guarded" : "blocked" }),
+    engine: Object.freeze({ technical_infrastructure: "approved", commercial_autonomy: "approved", approval_basis: "ZEA10_AUTONOMY_GREEN_V2" }),
+    sales_machine: Object.freeze({ structure_ready: true, crm: "ready", follow_up: "ready", unit_economics: "ready", learning: "ready", outbound_capability: "ready", outbound_execution: salesLive ? "enabled_guarded" : "blocked" }),
     command_center: commandCenter,
     runtime: Object.freeze({ telemetry: "active", checkout: runtimeModes.checkoutMode, financial: runtimeModes.financialMode, sales: runtimeModes.salesMode, whatsapp: runtimeModes.whatsappMode }),
     metrics: Object.freeze({
