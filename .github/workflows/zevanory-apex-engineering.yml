@@ -177,7 +177,10 @@ jobs:
               if any(rx.search(txt) for rx in marker_patterns): bad.append(p)
           if bad: raise SystemExit('unresolved development markers present: '+','.join(bad[:20]))
           req=urllib.request.Request('https://zevanory.api.br/build-info.json',headers={'User-Agent':'ZEVANORY-Apex-Provenance/1.0','Cache-Control':'no-cache'}); d=json.load(urllib.request.urlopen(req,timeout=20)); sha=str(d.get('sha',''))
-          assert re.fullmatch(r'[0-9a-f]{40}',sha),sha; subprocess.check_call(['git','cat-file','-e',sha+'^{commit}']); print('PASS source hygiene/provenance',sha)
+          assert re.fullmatch(r'[0-9a-f]{40}',sha),sha
+          subprocess.check_call(['git','fetch','--no-tags','--depth=1','origin',sha])
+          subprocess.check_call(['git','cat-file','-e',sha+'^{commit}'])
+          print('PASS source hygiene/provenance',sha)
           PY
       - uses: actions/upload-artifact@v4
         if: always()
