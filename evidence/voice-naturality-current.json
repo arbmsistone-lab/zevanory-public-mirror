@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "engine": "ZEVANORY Voice Support Engine",
+  "provider": "gemini",
+  "model": "gemini-2.5-flash-preview-tts",
+  "language": "pt-BR",
+  "voice": "Achird",
+  "blinded": false,
+  "real_tts_audio": false,
+  "pt_br": true,
+  "clips": 0,
+  "blind_ratings": 0,
+  "natural_acceptance_pct": 0,
+  "intelligibility_pct": 0,
+  "mean_naturalness_5": 0,
+  "certified": false,
+  "policy": {
+    "minimum_clips": 20,
+    "minimum_blind_ratings": 100,
+    "minimum_natural_acceptance_pct": 99,
+    "minimum_intelligibility_pct": 99,
+    "minimum_mean_naturalness_5": 4.8,
+    "human_identity_impersonation_not_required": true
+  }
+}
