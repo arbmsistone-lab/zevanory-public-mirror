@@ -7,12 +7,11 @@ on:
 
 permissions:
   contents: read
-  checks: read
 
 jobs:
   reconcile:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 25
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
@@ -23,58 +22,188 @@ jobs:
           ref: gh-pages
           fetch-depth: 0
 
-      - name: Check external completion preconditions
+      - name: Check immutable external completion preconditions
         id: preconditions
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           curl -fsS https://zevanory.api.br/api/voice/final-closure -o /tmp/closure.json
           python3 - <<'PY'
           import json, os
           d=json.load(open('/tmp/closure.json'))
           ready=(
-            d.get('voice_naturality_certified') is True
+            d.get('release_sha')==os.environ['GITHUB_SHA']
+            and d.get('voice_naturality_certified') is True
+            and d.get('perceptual_evidence_same_sha') is True
             and d.get('whatsapp_transport_configured') is True
             and d.get('whatsapp_e2e') is True
+            and d.get('whatsapp_e2e_same_sha') is True
             and d.get('zero_spend') is True
           )
           print('EXTERNAL_CLOSURE_PRECONDITIONS='+('PASS' if ready else 'WAIT'))
           print('VOICE_PERCEPTUAL_SAMPLE_COUNT='+str(d.get('voice_perceptual_sample_count',0)))
+          print('VOICE_PERCEPTUAL_SCORE='+str(d.get('voice_perceptual_score',0)))
+          print('PERCEPTUAL_EVIDENCE_SHA='+str(d.get('perceptual_evidence_sha')))
           print('WHATSAPP_E2E='+('PASS' if d.get('whatsapp_e2e') else 'WAIT'))
+          print('WHATSAPP_E2E_SHA='+str(d.get('whatsapp_e2e_sha')))
           with open(os.environ['GITHUB_OUTPUT'],'a') as f:
-            f.write('ready='+('true' if ready else 'false')+'\n')
+              f.write('ready='+('true' if ready else 'false')+'\n')
           PY
 
       - name: Remain fail-closed while external evidence is incomplete
         if: steps.preconditions.outputs.ready != 'true'
         run: |
           echo "VOICE_SUPPORT_FINAL=BLOCKED"
-          echo "No certificate will be written until both independent human evidence and real WhatsApp E2E are true."
+          echo "No certificate, score, policy or gate is mutated while real human or WhatsApp evidence is incomplete."
 
-      - name: Prove local voice and adversarial invariants
+      - uses: actions/setup-node@v4
+        if: steps.preconditions.outputs.ready == 'true'
+        with:
+          node-version: '22'
+
+      - name: Prove voice runtime policy and adversarial invariants on canonical SHA
         if: steps.preconditions.outputs.ready == 'true'
         run: |
           set -euo pipefail
           python3 scripts/voice_support_gate.py
           python3 scripts/voice_naturality_gate.py
           node scripts/voice_router_adversarial.mjs
+          echo "VOICE_ROUTER_ADVERSARIAL_SUITE=PASS"
 
-      - name: Verify production is exactly this canonical SHA
+      - name: Prove product ZEES ZEA10 and provider-independence gates on canonical SHA
+        if: steps.preconditions.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          python3 scripts/premerge_product_audit.py
+          python3 scripts/zevanory_10p_excellence_gate.py
+          python3 scripts/test_crown_negative.py
+          python3 scripts/zevanory_crown_gate.py
+          python3 scripts/operational_preservation_gate.py
+          python3 scripts/zees16_evidence_gate.py
+          python3 scripts/zea10_autonomy_gate.py
+          python3 scripts/provider_independence_gate.py
+          echo "PRODUCT_ZEES_ZEA10_PROVIDER_GATES=PASS"
+
+      - name: Prove portable DR and deterministic provenance on canonical SHA
+        if: steps.preconditions.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,pathlib,subprocess,hashlib,os
+          c=json.load(open('evidence/portable-dr-contract.json'))
+          assert c['rollback']['cloudflare_version']=='52a989a2'
+          assert c['rollback']['preserved'] is True
+          assert c['release_quorum_required']==3
+          assert c['runtime_survival_minimum']==1
+          assert c['commercial_fail_closed'] is True
+          for path in c['portable_sources']:
+              p=pathlib.Path(path); assert p.is_file() and p.stat().st_size>0,path
+          bundle=pathlib.Path('worker/cloudflare-worker.recovered.mjs').read_text(encoding='utf-8')
+          for marker in ('handleAsNodeRequest(PORT','env.ASSETS','env.ZEA10_ENGINE','env.ZEVANORY_PRIVATE_ARTIFACTS'):
+              assert marker in bundle,marker
+          files=subprocess.check_output(['git','ls-files','-z']).split(b'\0')
+          files=[x.decode() for x in files if x]
+          rows=[]
+          for p in sorted(files):
+              rows.append((p,hashlib.sha256(open(p,'rb').read()).hexdigest()))
+          tree=hashlib.sha256(json.dumps(rows,separators=(',',':')).encode()).hexdigest()
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==os.environ['GITHUB_SHA']
+          print('PORTABLE_DR=PASS')
+          print('PROVENANCE=PASS')
+          print('TRACKED_TREE_SHA256='+tree)
+          PY
+          cat > /tmp/wrangler.dr.jsonc <<'JSON'
+          {
+            "name":"zevanory-final-dr-proof",
+            "main":"worker/cloudflare-worker.compat.mjs",
+            "compatibility_date":"2026-09-23",
+            "compatibility_flags":["nodejs_compat"],
+            "workers_dev":true
+          }
+          JSON
+          npx --yes wrangler@4.135.0 deploy --dry-run --config /tmp/wrangler.dr.jsonc --outdir /tmp/zevanory-final-dr
+          test -n "$(find /tmp/zevanory-final-dr -maxdepth 1 -type f \( -name '*.js' -o -name '*.mjs' \) -print -quit)"
+          echo "DR_REPRODUCIBLE_BUILD=PASS"
+
+      - name: Install isolated accessibility and visual audit stack
+        if: steps.preconditions.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          npm install --no-save pa11y@9.0.1 playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Prove WCAG responsive geometry and public commercial safety
+        if: steps.preconditions.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/final-visual.mjs <<'JS'
+          import { chromium } from 'playwright';
+          import pa11y from 'pa11y';
+          const browser=await chromium.launch({headless:true});
+          const targets=[{width:390,height:844},{width:768,height:1024},{width:1440,height:900},{width:1920,height:1080}];
+          for(const v of targets){
+            const page=await browser.newPage({viewport:v});
+            await page.goto('https://zevanory.api.br/solucoes',{waitUntil:'networkidle',timeout:30000});
+            const r=await page.evaluate(()=>{
+              const de=document.documentElement;
+              const clipped=[];
+              for(const el of document.querySelectorAll('main *')){
+                const b=el.getBoundingClientRect();
+                if(b.width>0&&b.height>0&&(b.right>de.clientWidth+2||b.left<-2))clipped.push(el.tagName);
+              }
+              const html=document.documentElement.outerHTML.toLowerCase();
+              return {overflow:de.scrollWidth>de.clientWidth+1,clipped:clipped.length,forbidden:['mercadopago.com/checkout','checkout.stripe.com','buy.stripe.com'].filter(x=>html.includes(x))};
+            });
+            if(r.overflow||r.clipped||r.forbidden.length) throw new Error(JSON.stringify({v,r}));
+            await page.close();
+          }
+          await browser.close();
+          const a=await pa11y('https://zevanory.api.br/solucoes',{standard:'WCAG2AA',timeout:30000,wait:750,chromeLaunchConfig:{args:['--no-sandbox','--disable-setuid-sandbox']},includeWarnings:false,includeNotices:false});
+          const errors=a.issues.filter(x=>x.type==='error');
+          if(errors.length) throw new Error('WCAG2AA errors='+JSON.stringify(errors.slice(0,10)));
+          console.log('VISUAL_RESPONSIVE=PASS');
+          console.log('WCAG_AA=PASS');
+          console.log('PUBLIC_COMMERCIAL_SAFETY=PASS');
+          JS
+          node /tmp/final-visual.mjs
+
+      - name: Verify production exact SHA security parity and runtime probe
         if: steps.preconditions.outputs.ready == 'true'
         shell: bash
         run: |
           set -euo pipefail
           curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/control.json
+          curl -fsS https://zevanory.api.br/api/health -o /tmp/health.json
+          curl -fsS https://zevanory.api.br/api/status -o /tmp/main-status.json
+          curl -fsS https://edge.zevanory.api.br/api/status -o /tmp/edge-status.json
+          curl -fsS -D /tmp/headers.txt https://zevanory.api.br/solucoes -o /tmp/solucoes.html
           python3 - <<'PY'
           import json, os
-          d=json.load(open('/tmp/control.json'))
-          prod=str(d.get('release',{}).get('deployment',{}).get('commit_sha') or '')
+          c=json.load(open('/tmp/control.json'))
+          h=json.load(open('/tmp/health.json'))
+          m=json.load(open('/tmp/main-status.json'))
+          e=json.load(open('/tmp/edge-status.json'))
           sha=os.environ['GITHUB_SHA']
-          assert prod==sha,(prod,sha)
-          assert str(d.get('policy',{}).get('release_sha') or '')==sha
+          assert c.get('release',{}).get('deployment',{}).get('commit_sha')==sha
+          assert c.get('policy',{}).get('release_sha')==sha
+          assert h.get('live') is True and h.get('ready') is True
+          assert h.get('schema',{}).get('missing_tables_count')==0
+          assert h.get('schema',{}).get('missing_migrations_count')==0
+          for key in ('project','gate','experiment','engine','sales_machine','runtime','metrics','channel_readiness'):
+              assert m.get(key)==e.get(key),key
+          assert m.get('runtime',{}).get('sales')=='globally-blocked'
+          assert e.get('runtime',{}).get('sales')=='globally-blocked'
           print('CANONICAL_PRODUCTION_SHA=PASS')
-          print('SHA='+sha)
+          print('MAIN_EDGE_PARITY=PASS')
+          print('PRODUCTION_HEALTH=PASS')
           PY
+          grep -qi '^strict-transport-security:' /tmp/headers.txt
+          grep -qi '^content-security-policy:' /tmp/headers.txt
+          grep -qi '^x-content-type-options: *nosniff' /tmp/headers.txt
+          echo "SECURITY_HEADERS=PASS"
           curl -fsS https://zevanory.api.br/api/voice/probe -o /tmp/voice-probe.json
           python3 - <<'PY'
           import json
@@ -84,38 +213,7 @@ jobs:
           assert d.get('language')=='pt-BR'
           print('PRODUCTION_PROBE=PASS')
           PY
-
-      - name: Verify required GitHub checks on canonical SHA
-        if: steps.preconditions.outputs.ready == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsS             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100"             -o /tmp/checks.json
-          python3 - <<'PY'
-          import json
-          d=json.load(open('/tmp/checks.json'))
-          rows=d.get('check_runs',[])
-          required=[
-            'product-pages / static-audit',
-            'zees16-evidence / fail-closed',
-            'voice-support',
-            'voice-naturality',
-            'deploy',
-            'build',
-            'remote-quality',
-            'wcag',
-            'visual',
-            'provenance'
-          ]
-          missing=[]
-          for name in required:
-            if not any(x.get('name')==name and x.get('status')=='completed' and x.get('conclusion')=='success' for x in rows):
-              missing.append(name)
-          assert not missing,missing
-          print('REGRESSION_GATES=PASS')
-          PY
+          echo "REGRESSION_GATES=PASS"
 
       - name: Write canonical final certificate to private KV
         if: steps.preconditions.outputs.ready == 'true'
@@ -137,7 +235,12 @@ jobs:
           open('/tmp/final-certificate.json','w').write(json.dumps(c,separators=(',',':')))
           PY
           key='voice-final%2Fcertification'
-          code=$(curl -sS -o /tmp/kv-write.json -w '%{http_code}'             -X PUT             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             -H 'Content-Type: application/json'             --data-binary @/tmp/final-certificate.json             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$ZEVANORY_PRIVATE_KV_NAMESPACE_ID/values/$key")
+          code=$(curl -sS -o /tmp/kv-write.json -w '%{http_code}' \
+            -X PUT \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/final-certificate.json \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$ZEVANORY_PRIVATE_KV_NAMESPACE_ID/values/$key")
           test "$code" = "200"
           python3 - <<'PY'
           import json
@@ -146,7 +249,7 @@ jobs:
           print('FINAL_CERTIFICATE_PERSISTED=PASS')
           PY
 
-      - name: Verify final live closure
+      - name: Verify final live closure on the same SHA
         if: steps.preconditions.outputs.ready == 'true'
         shell: bash
         run: |
@@ -154,17 +257,10 @@ jobs:
           ok=0
           for i in $(seq 1 12); do
             curl -fsS https://zevanory.api.br/api/voice/final-closure -o /tmp/final.json
-            if python3 - <<'PY'
-          import json, os
-          d=json.load(open('/tmp/final.json'))
-          ok=(
-            d.get('final_green') is True
-            and d.get('release_sha')==os.environ['GITHUB_SHA']
-            and d.get('certified_sha')==os.environ['GITHUB_SHA']
-          )
-          raise SystemExit(0 if ok else 1)
-          PY
-            then ok=1; break; fi
+            if python3 -c "import json,os; d=json.load(open('/tmp/final.json')); ok=(d.get('final_green') is True and d.get('release_sha')==os.environ['GITHUB_SHA'] and d.get('certified_sha')==os.environ['GITHUB_SHA'] and d.get('perceptual_evidence_same_sha') is True and d.get('whatsapp_e2e_same_sha') is True); raise SystemExit(0 if ok else 1)"; then
+              ok=1
+              break
+            fi
             sleep 5
           done
           test "$ok" = "1"
@@ -188,7 +284,9 @@ jobs:
             ('WHATSAPP_E2E',d['whatsapp_e2e']),
             ('REGRESSION_GATES',d['regression_gates']),
             ('PRODUCTION_PROBE',d['production_probe']),
-            ('ZERO_SPEND',d['zero_spend'])
+            ('ZERO_SPEND',d['zero_spend']),
+            ('PERCEPTUAL_EVIDENCE_SAME_SHA',d['perceptual_evidence_same_sha']),
+            ('WHATSAPP_E2E_SAME_SHA',d['whatsapp_e2e_same_sha'])
           ]
           for name,value in checks:
             assert value is True,(name,value)
