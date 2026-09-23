@@ -24,16 +24,13 @@ jobs:
           import json
           d=json.load(open("/tmp/settings.json"))
           assert d.get("success") is True, d.get("errors")
-          wanted={
-            "MERCADOPAGO_ACCESS_TOKEN","MERCADOPAGO_WEBHOOK_SECRET","MERCADOPAGO_TEST_ACCESS_TOKEN",
-            "META_ACCESS_TOKEN","META_APP_SECRET","WHATSAPP_ACCESS_TOKEN","WHATSAPP_PHONE_NUMBER_ID",
-            "RESEND_API_KEY","DATABASE_URL","ZEVANORY_PRIVATE_ARTIFACTS"
-          }
+          prefixes=("META_","WHATSAPP_","MERCADOPAGO_","PAYMENT_","RESEND_","SALE_","PRE_SALE_","ABSOLUTE_","CHECKOUT_","FINANCIAL_","CERTIFICATION_","SUPPORT_")
+          exact={"DATABASE_URL","ZEVANORY_PRIVATE_ARTIFACTS","INSTAGRAM_BUSINESS_ACCOUNT_ID"}
           found={}
           for b in d.get("result",{}).get("bindings",[]):
               name=str(b.get("name") or "")
-              if name in wanted:
+              if name in exact or name.startswith(prefixes):
                   found[name]=str(b.get("type") or "unknown")
-          for name in sorted(wanted):
-              print(f"{name}={'PRESENT:'+found[name] if name in found else 'ABSENT'}")
+          for name in sorted(found):
+              print(f"BINDING {name} TYPE={found[name]}")
           PY
