@@ -14,23 +14,73 @@ permissions:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+      WORKER_NAME: zevanory-melotts-benchmark
+      WORKER_URL: https://zevanory-melotts-benchmark.girolocal-rb.workers.dev
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify zero-spend policy
-        shell: bash
+      - name: Verify zero-spend budget
         run: |
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
-          echo "ZERO_SPEND_DAILY_NEURON_CAP=10000"
+          echo "CLOUDFLARE_FREE_NEURONS_PER_DAY=10000"
           echo "MELOTTS_NEURONS_PER_AUDIO_MINUTE=18.63"
+          python3 - <<'PY'
+          free=10000
+          rate=18.63
+          print(f'THEORETICAL_FREE_AUDIO_MINUTES_PER_DAY={free/rate:.2f}')
+          PY
 
-      - name: Generate pt-BR candidates with MeloTTS
-        shell: bash
+      - name: Build isolated Workers AI TTS benchmark
+        run: |
+          set -euo pipefail
+          cat > /tmp/melotts-worker.mjs <<'JS'
+          export default {
+            async fetch(request, env) {
+              const url = new URL(request.url);
+              if (url.pathname === "/health") {
+                return Response.json({ok:true, provider:"cloudflare-workers-ai", model:"@cf/myshell-ai/melotts", zero_spend_guard:true});
+              }
+              if (url.pathname !== "/tts" || request.method !== "POST") return new Response("not_found",{status:404});
+              const body = await request.json().catch(()=>({}));
+              const text = String(body.text || "").trim().slice(0,800);
+              if (!text) return Response.json({error:"text_required"},{status:400});
+              const out = await env.AI.run("@cf/myshell-ai/melotts", {prompt:text, lang:"pt"});
+              if (out instanceof Response) return out;
+              if (out instanceof ReadableStream) return new Response(out,{headers:{"content-type":"audio/mpeg","cache-control":"no-store"}});
+              if (out?.audio) {
+                const raw = Uint8Array.from(atob(out.audio), c=>c.charCodeAt(0));
+                return new Response(raw,{headers:{"content-type":"audio/mpeg","cache-control":"no-store"}});
+              }
+              return Response.json({error:"unexpected_output",type:typeof out,keys:Object.keys(out||{})},{status:502});
+            }
+          };
+          JS
+          cat > /tmp/wrangler-melotts.jsonc <<'JSON'
+          {
+            "name": "zevanory-melotts-benchmark",
+            "main": "/tmp/melotts-worker.mjs",
+            "compatibility_date": "2026-09-23",
+            "workers_dev": true,
+            "ai": { "binding": "AI" }
+          }
+          JSON
+          npx --yes wrangler@4.135.0 deploy --config /tmp/wrangler-melotts.jsonc
+
+      - name: Wait for benchmark Worker
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            if curl -fsS "$WORKER_URL/health" -o /tmp/health.json; then cat /tmp/health.json; exit 0; fi
+            sleep 3
+          done
+          exit 1
+
+      - name: Generate real pt-BR MeloTTS samples
         run: |
           set -euo pipefail
           mkdir -p /tmp/melotts
@@ -42,23 +92,15 @@ jobs:
           n=0
           for text in "${texts[@]}"; do
             n=$((n+1))
-            printf '{"prompt":%s,"lang":"pt"}' "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1],ensure_ascii=False))' "$text")" > /tmp/request.json
-            code=$(curl -sS -o "/tmp/melotts/sample-$n.bin" -D "/tmp/melotts/sample-$n.headers" -w '%{http_code}'               -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/myshell-ai/melotts"               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               -H 'Content-Type: application/json'               --data-binary @/tmp/request.json)
+            printf '{"text":%s}' "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1],ensure_ascii=False))' "$text")" > /tmp/request.json
+            code=$(curl -sS -o "/tmp/melotts/sample-$n.bin" -D "/tmp/melotts/sample-$n.headers" -w '%{http_code}' -X POST "$WORKER_URL/tts" -H 'Content-Type: application/json' --data-binary @/tmp/request.json)
             echo "SAMPLE_$n HTTP=$code"
-            if [ "$code" != "200" ]; then
-              head -c 1500 "/tmp/melotts/sample-$n.bin" || true
-              exit 1
-            fi
+            if [ "$code" != "200" ]; then head -c 1500 "/tmp/melotts/sample-$n.bin" || true; exit 1; fi
             bytes=$(wc -c < "/tmp/melotts/sample-$n.bin")
-            type=$(grep -i '^content-type:' "/tmp/melotts/sample-$n.headers" | tail -1 | tr -d '\r' || true)
-            echo "SAMPLE_$n BYTES=$bytes $type"
+            ctype=$(grep -i '^content-type:' "/tmp/melotts/sample-$n.headers" | tail -1 | tr -d '\r' || true)
+            echo "SAMPLE_$n BYTES=$bytes $ctype"
             test "$bytes" -gt 1000
           done
-
-      - name: Validate binary audio payloads
-        shell: bash
-        run: |
-          set -euo pipefail
           file /tmp/melotts/sample-*.bin
           python3 - <<'PY'
           from pathlib import Path
@@ -68,3 +110,7 @@ jobs:
           print('MELOTTS_PTBR_REAL_AUDIO=PASS')
           print('TOTAL_BYTES='+str(sum(p.stat().st_size for p in fs)))
           PY
+
+      - name: Cleanup isolated benchmark Worker
+        if: always()
+        run: npx --yes wrangler@4.135.0 delete --name "$WORKER_NAME" --force || true
