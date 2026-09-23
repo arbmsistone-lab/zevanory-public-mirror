@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "engine": "ZEA-10 Elite Autonomy Engine",
+  "zero_spend_first": true,
+  "commercial_policy": "human-governed-autonomous-execution",
+  "green_rule": "all_10_pillars_same_release_and_e2e_journey_proven",
+  "human_approval_required": [
+    "first_campaign_creative",
+    "material_price_or_discount_change",
+    "contract_change",
+    "legal_exception",
+    "fraud_or_financial_dispute",
+    "below_confidence_floor"
+  ],
+  "autonomous_default": [
+    "market_intelligence",
+    "segmentation",
+    "campaign_planning",
+    "creative_generation",
+    "lead_context",
+    "conversation",
+    "qualification",
+    "objection_handling",
+    "follow_up",
+    "abandonment_recovery",
+    "onboarding",
+    "support",
+    "retention",
+    "learning"
+  ],
+  "pillars": [
+    {
+      "id": "ZEA10-01",
+      "name": "Market intelligence",
+      "requires": [
+        "intelligence",
+        "opportunity_selection"
+      ]
+    },
+    {
+      "id": "ZEA10-02",
+      "name": "Product knowledge",
+      "requires": [
+        "catalog",
+        "offer_rules",
+        "approved_price"
+      ]
+    },
+    {
+      "id": "ZEA10-03",
+      "name": "Customer 360",
+      "requires": [
+        "lead_context",
+        "memory",
+        "cross_channel_identity"
+      ]
+    },
+    {
+      "id": "ZEA10-04",
+      "name": "Creative engine",
+      "requires": [
+        "creative_generation",
+        "variant_testing",
+        "human_approval_boundary"
+      ]
+    },
+    {
+      "id": "ZEA10-05",
+      "name": "Omnichannel orchestration",
+      "requires": [
+        "whatsapp",
+        "email",
+        "instagram",
+        "facebook",
+        "channel_continuity"
+      ]
+    },
+    {
+      "id": "ZEA10-06",
+      "name": "Sales conversation",
+      "requires": [
+        "qualification",
+        "objection_handling",
+        "follow_up",
+        "confidence_gate"
+      ]
+    },
+    {
+      "id": "ZEA10-07",
+      "name": "Conversion and payment",
+      "requires": [
+        "checkout",
+        "payment",
+        "reconciliation",
+        "no_fabricated_sale"
+      ]
+    },
+    {
+      "id": "ZEA10-08",
+      "name": "Customer success",
+      "requires": [
+        "fulfillment",
+        "onboarding",
+        "support",
+        "satisfaction"
+      ]
+    },
+    {
+      "id": "ZEA10-09",
+      "name": "Learning loop",
+      "requires": [
+        "outcome_capture",
+        "experimentation",
+        "strategy_update"
+      ]
+    },
+    {
+      "id": "ZEA10-10",
+      "name": "Governance and resilience",
+      "requires": [
+        "fail_closed",
+        "audit_ledger",
+        "rollback",
+        "provider_independence",
+        "human_override"
+      ]
+    }
+  ]
+}
