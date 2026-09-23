@@ -1,3 +1,4 @@
+import { appendCoreEvent, listCoreEvents, readCoreState, writeCoreState } from "./control-core-store.mjs";
 const REPO="arbmsistone-lab/zevanory-public-mirror";
 const API="https://api.github.com/repos/"+REPO;
 const LEDGER_PREFIX="control:v2:ledger:zevanory:";
@@ -110,13 +111,19 @@ export function evaluatePolicy({signals={},workflows=new Map(),releaseSha=null,o
   return {policy_version:ZEES16_POLICY.version,target:"zevanory",release_sha:releaseSha,observed_at:observedAt,counts,pillars};
 }
 async function persist(env,state){
-  const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
   let previousDecisionHash=null;
-  if(kv&&typeof kv.get==="function"){
-    try{
-      const previousRaw=await kv.get(STATE_KEY);
-      if(previousRaw) previousDecisionHash=JSON.parse(previousRaw)?.decision_hash||null;
-    }catch{}
+  try{
+    const previous=await readCoreState(env,STATE_KEY);
+    previousDecisionHash=previous?.decision_hash||null;
+  }catch{}
+  if(!previousDecisionHash){
+    const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
+    if(kv&&typeof kv.get==="function"){
+      try{
+        const previousRaw=await kv.get(STATE_KEY);
+        if(previousRaw) previousDecisionHash=JSON.parse(previousRaw)?.decision_hash||null;
+      }catch{}
+    }
   }
   const event={
     type:"ZEES16_RECONCILED",
@@ -126,31 +133,43 @@ async function persist(env,state){
     counts:state.counts,
     observed_at:state.observed_at,
     pillars:state.pillars,
+    collector_error:state.collector_error||null,
     previous_decision_hash:previousDecisionHash
   };
   const eventHash=await sha256Hex(stable(event));
-  const decision={
+  const baseDecision={
     ...state,
     decision_hash:eventHash,
     previous_decision_hash:previousDecisionHash,
-    persistence:"reproducible-immutable-sources",
-    persistence_error:null,
     evidence_source:"github-actions+production-runtime",
     evaluator:"ZEES16_POLICY_ENGINE",
     evaluator_version:ZEES16_POLICY.version
   };
-  if(!kv||typeof kv.put!=="function") return decision;
+
   try{
-    const key=LEDGER_PREFIX+state.observed_at.replace(/[:.]/g,"-")+":"+eventHash;
-    await kv.put(key,JSON.stringify({...event,event_hash:eventHash}),{metadata:{type:event.type,release_sha:state.release_sha||"",policy_version:state.policy_version,previous_decision_hash:previousDecisionHash||""}});
-    await kv.put(STATE_KEY,JSON.stringify({...decision,persistence:"kv-append-only"}),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash,previous_decision_hash:previousDecisionHash||""}});
-    return {...decision,persistence:"kv-append-only"};
-  }catch(error){
-    return {
-      ...decision,
-      persistence:"reproducible-immutable-sources",
-      persistence_error:String(error?.message||error||"kv_cache_write_failed")
-    };
+    const durable={...baseDecision,persistence:"postgres-append-only",persistence_error:null};
+    await appendCoreEvent(env,eventHash,{...event,event_hash:eventHash});
+    await writeCoreState(env,STATE_KEY,durable,{releaseSha:state.release_sha||null,decisionHash:eventHash});
+    const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
+    if(kv&&typeof kv.put==="function"){
+      try{
+        await kv.put(STATE_KEY,JSON.stringify(durable),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash}});
+      }catch{}
+    }
+    return durable;
+  }catch(dbError){
+    const fallback={...baseDecision,persistence:"reproducible-immutable-sources",persistence_error:String(dbError?.message||dbError||"postgres_persistence_failed")};
+    const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
+    if(kv&&typeof kv.put==="function"){
+      try{
+        const key=LEDGER_PREFIX+state.observed_at.replace(/[:.]/g,"-")+":"+eventHash;
+        await kv.put(key,JSON.stringify({...event,event_hash:eventHash}),{metadata:{type:event.type,release_sha:state.release_sha||"",policy_version:state.policy_version,previous_decision_hash:previousDecisionHash||""}});
+        const cached={...fallback,persistence:"kv-append-only",persistence_error:null};
+        await kv.put(STATE_KEY,JSON.stringify(cached),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash,previous_decision_hash:previousDecisionHash||""}});
+        return cached;
+      }catch{}
+    }
+    return fallback;
   }
 }
 export async function reconcileControlPlane(worker,env,ctx,baseUrl="https://zevanory.api.br"){
@@ -173,6 +192,10 @@ export async function reconcileControlPlane(worker,env,ctx,baseUrl="https://zeva
   return persist(env,state);
 }
 export async function readControlState(env){
+  try{
+    const durable=await readCoreState(env,STATE_KEY);
+    if(durable) return durable;
+  }catch{}
   const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
   if(!kv||typeof kv.get!=="function") return null;
   const raw=await kv.get(STATE_KEY);
@@ -183,10 +206,17 @@ export async function readOrReconcileControlState(worker,env,ctx,baseUrl,expecte
   const current=await readControlState(env);
   const fresh=Boolean(current?.observed_at&&Date.now()-Date.parse(current.observed_at)<10*60*1000);
   const sameRelease=!expectedReleaseSha||current?.release_sha===expectedReleaseSha;
-  if(fresh&&sameRelease) return current;
+  const counts=current?.counts||{};
+  const complete=Number(counts.proven||0)===16&&Number(counts.partial||0)===0&&Number(counts.blocked||0)===0;
+  const durable=["postgres-append-only","kv-append-only"].includes(current?.persistence);
+  if(fresh&&sameRelease&&complete&&durable) return current;
   return reconcileControlPlane(worker,env,ctx,baseUrl);
 }
 export async function listControlEvents(env,limit=30){
+  try{
+    const durable=await listCoreEvents(env,limit);
+    if(durable.length) return durable;
+  }catch{}
   const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
   if(!kv||typeof kv.list!=="function") return [];
   const listed=await kv.list({prefix:LEDGER_PREFIX,limit:Math.max(1,Math.min(Number(limit)||30,100))});
