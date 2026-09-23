@@ -106,5 +106,20 @@ jobs:
           except Exception:
               print("BROKER_PUBLIC_HEALTH=UNPARSEABLE")
           PY
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/settings" \
+            -o /tmp/zevanory-settings.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/zevanory-settings.json"))
+          hit=None
+          for b in d.get("result",{}).get("bindings",[]):
+              if str(b.get("name") or "")=="ZEVANORY_PRIVATE_ARTIFACTS":
+                  hit=b; break
+          print("MAIN_PRIVATE_KV_FOUND="+str(bool(hit)).lower())
+          if hit:
+              print("MAIN_PRIVATE_KV_NAMESPACE_ID="+str(hit.get("namespace_id") or hit.get("id") or ""))
+              print("MAIN_PRIVATE_KV_TYPE="+str(hit.get("type") or ""))
+          PY
 
 # zero-spend WhatsApp readiness probe 2026-09-23
