@@ -125,3 +125,15 @@ export async function writeIdempotency(env,keyHash,{command,releaseSha,httpStatu
   ]);
   return true;
 }
+
+export async function listCoreEvents(env,limit=30){
+  await ensureSchema(env);
+  const n=Math.max(1,Math.min(Number(limit)||30,100));
+  const rows=await query(env,`
+    select payload
+    from zevanory_control_core_events
+    order by observed_at desc
+    limit $1
+  `,[n]);
+  return (rows||[]).map(row=>row.payload).filter(Boolean);
+}
