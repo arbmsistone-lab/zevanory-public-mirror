@@ -1,0 +1,37 @@
+name: ZEVANORY Gemini OAuth TTS probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [gh-pages]
+    paths:
+      - '.github/workflows/voice-gemini-oauth-probe.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Authenticate to Gemini service account
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/781761447388/locations/global/workloadIdentityPools/github-actions/providers/zevanory-github
+          service_account: zevanory-gemini-auth@zevanory-gemini.iam.gserviceaccount.com
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/cloud-platform
+
+      - name: Probe Gemini models with OAuth
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/models.json -w '%{http_code}'             https://generativelanguage.googleapis.com/v1beta/models             -H "Authorization: Bearer $ACCESS_TOKEN"             -H "x-goog-user-project: zevanory-gemini")
+          echo "MODELS_HTTP=$code"
+          python3 -c "import json; d=json.load(open('/tmp/models.json')); d=d[0] if isinstance(d,list) and d else d; print('ERROR='+str(d.get('error',{}).get('message',''))[:300] if isinstance(d,dict) and 'error' in d else 'MODEL_COUNT='+str(len(d.get('models',[]))))"
+          test "$code" = "200"
