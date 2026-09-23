@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          gcloud secrets versions access latest             --secret=ZEVANORY_GEMINI_API_KEY             --project=zevanory-gemini > /tmp/gemini.key
+          gcloud secrets versions access latest --secret=ZEVANORY_GEMINI_API_KEY --project=zevanory-gemini > /tmp/gemini.key
           test -s /tmp/gemini.key
           echo "GEMINI_SECRET_FETCH=PASS"
 
@@ -57,19 +57,7 @@ jobs:
           ok=0
           for i in $(seq 1 24); do
             if curl -fsS https://zevanory.api.br/api/voice/status -o /tmp/voice-status.json; then
-              if python3 - <<'PY'
-import json
-s=json.load(open('/tmp/voice-status.json'))
-ok=(
-  s.get('enabled') is True
-  and s.get('zero_spend_guard') is True
-  and s.get('provider') == 'gemini'
-  and s.get('provider_credential_configured') is True
-  and s.get('provider_vault_supported') is True
-)
-raise SystemExit(0 if ok else 1)
-PY
-              then
+              if python3 -c "import json; s=json.load(open('/tmp/voice-status.json')); ok=(s.get('enabled') is True and s.get('zero_spend_guard') is True and s.get('provider')=='gemini' and s.get('provider_credential_configured') is True and s.get('provider_vault_supported') is True); raise SystemExit(0 if ok else 1)"; then
                 ok=1
                 break
               fi
@@ -77,13 +65,4 @@ PY
             sleep 5
           done
           test "$ok" = "1"
-          python3 - <<'PY'
-import json
-s=json.load(open('/tmp/voice-status.json'))
-assert s['enabled'] is True
-assert s['zero_spend_guard'] is True
-assert s['provider']=='gemini'
-assert s['provider_credential_configured'] is True
-assert s['provider_vault_supported'] is True
-print('VOICE_GEMINI_PRODUCTION_RUNTIME=PASS')
-PY
+          python3 -c "import json; s=json.load(open('/tmp/voice-status.json')); assert s['enabled'] is True; assert s['zero_spend_guard'] is True; assert s['provider']=='gemini'; assert s['provider_credential_configured'] is True; assert s['provider_vault_supported'] is True; print('VOICE_GEMINI_PRODUCTION_RUNTIME=PASS')"
