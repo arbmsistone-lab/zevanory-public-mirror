@@ -80,6 +80,11 @@ const wrapped = {
     const canonicalRedirect = canonicalizePublicPath(request, url);
     if (canonicalRedirect) return canonicalRedirect;
 
+    if (url.pathname === "/api/internal/whatsapp-migrate") {
+      const response = await handleWhatsappOnboarding(request, normalized);
+      if (response) return response;
+    }
+
     if (url.pathname === "/admin/whatsapp-onboard/callback") {
       const response = await handleWhatsappOnboarding(request, normalized);
       if (response) return response;
