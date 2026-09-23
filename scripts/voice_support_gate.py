@@ -60,14 +60,14 @@ print("VOICE_MULTI_PROVIDER_ZERO_SPEND_FAILOVER_GATE=PASS")
 for marker in [
   'c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"',
   'c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"',
-  'c["vars"]["VOICE_TTS_FREE_ONLY"]="true"',
-  'c["vars"]["ZEVANORY_VOICE_SUPPORT_ENABLED"]="true"',
   'c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"',
   'c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"',
   'c["vars"]["GEMINI_FREE_TIER_CONFIRMED"]="false"',
   'c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"',
 ]:
     assert marker in deploy, f"missing production voice var: {marker}"
+assert 'c["vars"]["VOICE_TTS_FREE_ONLY"]' not in deploy
+assert 'c["vars"]["ZEVANORY_VOICE_SUPPORT_ENABLED"]' not in deploy
 print("VOICE_PRODUCTION_FAIL_CLOSED_ZERO_SPEND_CONFIG_GATE=PASS")
 
 assert 'VOICE_NATURALITY_CERTIFIED' in worker
