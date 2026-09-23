@@ -143,6 +143,15 @@ const wrapped = {
       const { response, body } = await fetchJsonThroughWorker(request, normalized, ctx);
       if (!response.ok || !body) return response;
       if (!body.trust_chain) body.trust_chain = legacyTrustProjection(body);
+      if (body.policy && typeof body.policy === "object") {
+        body.policy = {
+          ...body.policy,
+          role: "legacy_projection",
+          authority: false,
+          deprecated_for_decision: true,
+          canonical_evaluation: "/api/core/v1/evaluation/zea10"
+        };
+      }
       const headers = new Headers(response.headers);
       headers.set("content-type", "application/json; charset=utf-8");
       headers.set("cache-control", "no-store");
