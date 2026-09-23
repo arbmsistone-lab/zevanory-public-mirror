@@ -1,3 +1,4 @@
+import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -12830,73 +12831,15 @@ function voiceReplyRequested(event = {}, env = process.env) {
 }
 __name(voiceReplyRequested, "voiceReplyRequested");
 async function ttsBytesFromRuntime(text, env = process.env, fetchImpl = globalThis.fetch) {
-  if (env.VOICE_TTS_FREE_ONLY !== "true") throw new Error("voice_tts_zero_spend_guard_required");
-  const safe = cleanVoiceText(text);
-  if (!safe) throw new Error("voice_tts_text_empty");
-  const provider = String(env.VOICE_TTS_PROVIDER || "piper-relay").trim().toLowerCase();
-  if (provider === "piper-relay") {
-    const relay = String(env.VOICE_TTS_RELAY_URL || "https://tts.167-172-146-60.sslip.io").replace(/\/+$/, "");
-    let relayUrl;
-    try {
-      relayUrl = new URL(relay);
-    } catch {
-      throw new Error("voice_tts_relay_url_invalid");
-    }
-    if (relayUrl.protocol !== "https:") throw new Error("voice_tts_relay_https_required");
-    const response = await fetchImpl(`${relay}/tts`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: safe }),
-      signal: AbortSignal.timeout(2e4)
-    });
-    if (!response.ok) throw new Error(`voice_tts_piper_relay_http_${response.status}`);
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (!bytes?.length || bytes.length > 12 * 1024 * 1024) throw new Error("voice_tts_output_size_invalid");
-    return Object.freeze({
-      bytes,
-      mime: String(response.headers.get("content-type") || "audio/wav").split(";")[0],
-      model: String(env.VOICE_TTS_MODEL || "pt_BR-jeff-medium"),
-      provider: "piper-relay",
-      voice: String(env.VOICE_TTS_VOICE || "jeff"),
-      language: "pt-BR",
-      chars: safe.length
-    });
+  let runtimeEnv = env;
+  if (!String(env.GEMINI_API_KEY || "").trim()) {
+    const vaultGemini = String((await loadAiVaultSecret("gemini", {
+      kv: globalThis.__ZEVANORY_PRIVATE_KV__,
+      master: env.AI_VAULT_ENCRYPTION_KEY || env.ELITE_INTERNAL_TOKEN
+    })) || "").trim();
+    if (vaultGemini) runtimeEnv = Object.freeze({ ...env, GEMINI_API_KEY: vaultGemini });
   }
-  if (provider !== "gemini") throw new Error("voice_tts_provider_not_zero_spend_certified");
-  const apiKey = String((await loadAiVaultSecret("gemini", { kv: globalThis.__ZEVANORY_PRIVATE_KV__, master: env.AI_VAULT_ENCRYPTION_KEY || env.ELITE_INTERNAL_TOKEN })) || env.GEMINI_API_KEY || "").trim();
-  if (!apiKey) throw new Error("voice_tts_gemini_key_missing");
-  const model = String(env.VOICE_TTS_MODEL || "gemini-2.5-flash-preview-tts").trim();
-  if (!["gemini-2.5-flash-preview-tts", "gemini-3.1-flash-tts-preview"].includes(model)) throw new Error("voice_tts_model_not_zero_spend_certified");
-  const voice = String(env.VOICE_TTS_VOICE || "Achird").trim();
-  const style = String(env.VOICE_TTS_STYLE || "Português brasileiro natural, acolhedor, claro e profissional. Ritmo conversacional, pausas discretas, sem teatralidade e sem soar robótico.").trim();
-  const input = `${style} Não leia estas instruções. Pronuncie a mensagem a seguir fielmente, sem acrescentar conteúdo: ${safe}`;
-  const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/interactions", {
-    method: "POST",
-    headers: { "x-goog-api-key": apiKey, "content-type": "application/json" },
-    body: JSON.stringify({
-      model,
-      input,
-      response_format: { type: "audio", mime_type: "audio/mp3", delivery: "inline", bit_rate: 128000 },
-      generation_config: { speech_config: [{ voice }] }
-    }),
-    signal: AbortSignal.timeout(3e4)
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`voice_tts_gemini_http_${response.status}`);
-  const audio = body?.output_audio || body?.interaction?.output_audio || body?.outputAudio || body?.interaction?.outputAudio || null;
-  const encoded = typeof audio === "string" ? audio : audio?.data || audio?.inline_data?.data || audio?.inlineData?.data || null;
-  const uri = typeof audio === "object" ? audio?.uri || null : null;
-  let bytes = null;
-  if (encoded) {
-    const bin = atob(String(encoded));
-    bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
-  } else if (uri && /^https:\/\//i.test(String(uri))) {
-    const audioResponse = await fetchImpl(String(uri), { signal: AbortSignal.timeout(2e4) });
-    if (!audioResponse.ok) throw new Error(`voice_tts_audio_uri_http_${audioResponse.status}`);
-    bytes = new Uint8Array(await audioResponse.arrayBuffer());
-  }
-  if (!bytes?.length || bytes.length > 12 * 1024 * 1024) throw new Error("voice_tts_output_size_invalid");
-  return Object.freeze({ bytes, mime: "audio/mpeg", model, provider: "gemini", voice, language: "pt-BR", chars: safe.length });
+  return ttsBytesWithFailover(text, runtimeEnv, fetchImpl);
 }
 __name(ttsBytesFromRuntime, "ttsBytesFromRuntime");
 async function stageVoiceTemporarily(audio, env = process.env) {
@@ -17534,31 +17477,54 @@ var cloudflare_worker_default = {
     }
     if (url.pathname === "/api/voice/status") {
       if (request.method !== "GET") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
-      const provider = String(env.VOICE_TTS_PROVIDER || "piper-relay").trim().toLowerCase();
+      let statusEnv = env;
+      if (!String(env.GEMINI_API_KEY || "").trim()) {
+        const vaultGemini = String((await loadAiVaultSecret("gemini", {
+          kv: globalThis.__ZEVANORY_PRIVATE_KV__,
+          master: env.AI_VAULT_ENCRYPTION_KEY || env.ELITE_INTERNAL_TOKEN
+        })) || "").trim();
+        if (vaultGemini) statusEnv = Object.freeze({ ...env, GEMINI_API_KEY: vaultGemini });
+      }
+      const routing = voiceProviderStatus(statusEnv);
+      const active = routing.providers.find((item) => item.available) || null;
+      const activeProvider = active?.provider || null;
+      const modelByProvider = {
+        speechify: String(env.SPEECHIFY_MODEL || "simba-3.0"),
+        azure: "azure-neural-tts",
+        "piper-relay": String(env.VOICE_TTS_PIPER_MODEL || env.VOICE_TTS_MODEL || "pt_BR-jeff-medium"),
+        gemini: String(env.GEMINI_TTS_MODEL || "gemini-3.1-flash-tts-preview")
+      };
+      const voiceByProvider = {
+        speechify: String(env.SPEECHIFY_VOICE_ID || ""),
+        azure: String(env.AZURE_SPEECH_VOICE || "pt-BR-FranciscaNeural"),
+        "piper-relay": String(env.VOICE_TTS_PIPER_VOICE || env.VOICE_TTS_VOICE || "jeff"),
+        gemini: String(env.GEMINI_TTS_VOICE || "Achird")
+      };
       const relayUrl = String(env.VOICE_TTS_RELAY_URL || "https://tts.167-172-146-60.sslip.io").trim();
-      const model = String(env.VOICE_TTS_MODEL || (provider === "piper-relay" ? "pt_BR-jeff-medium" : "gemini-2.5-flash-preview-tts"));
-      const voice = String(env.VOICE_TTS_VOICE || (provider === "piper-relay" ? "jeff" : "Achird"));
       const body = {
         engine: "ZEVANORY Voice Support Engine",
         enabled: env.ZEVANORY_VOICE_SUPPORT_ENABLED === "true",
-        zero_spend_guard: env.VOICE_TTS_FREE_ONLY === "true",
-        provider,
-        model,
-        voice,
+        zero_spend_guard: routing.zero_spend_enforced,
+        provider: activeProvider,
+        provider_chain: routing.chain,
+        providers: routing.providers,
+        failover_enabled: routing.failover_enabled,
+        model: activeProvider ? modelByProvider[activeProvider] || null : null,
+        voice: activeProvider ? voiceByProvider[activeProvider] || null : null,
         language: "pt-BR",
-        provider_credential_configured: provider === "piper-relay" ? true : Boolean(String(env.GEMINI_API_KEY || "").trim()),
+        provider_credential_configured: Boolean(active),
         provider_vault_supported: true,
-        provider_secretless_origin_auth: provider === "piper-relay",
-        relay_https_configured: provider === "piper-relay" && /^https:\/\//i.test(relayUrl),
+        provider_secretless_origin_auth: activeProvider === "piper-relay",
+        relay_https_configured: /^https:\/\//i.test(relayUrl),
         whatsapp_transport_configured: Boolean(String(env.WHATSAPP_ACCESS_TOKEN || "").trim() && String(env.WHATSAPP_PHONE_NUMBER_ID || "").trim()),
         sales_independent_support: true,
         naturality_certified: env.VOICE_NATURALITY_CERTIFIED === "true",
         e2e_official_number_certified: env.VOICE_WHATSAPP_E2E_CERTIFIED === "true",
-        ready_for_runtime_probe: env.VOICE_TTS_FREE_ONLY === "true" && (provider === "piper-relay" ? /^https:\/\//i.test(relayUrl) : Boolean(String(env.GEMINI_API_KEY || "").trim()))
+        ready_for_runtime_probe: env.ZEVANORY_VOICE_SUPPORT_ENABLED === "true" && routing.zero_spend_enforced && Boolean(active)
       };
       return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
     }
-    if (url.pathname === "/api/status") {
+        if (url.pathname === "/api/status") {
       const response3 = await handleAsNodeRequest(PORT, request);
       if (!response3.ok) return response3;
       try {
