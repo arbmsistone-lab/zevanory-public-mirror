@@ -9,6 +9,7 @@ on:
       - "worker/zea10-autonomy.mjs"
       - "worker/zevanory-control-core.mjs"
       - "worker/core-command-executor.mjs"
+      - "worker/control-core-store.mjs"
       - "worker/zea10-evaluator.mjs"
       - "admin.css"
       - "evidence/admin-control-center.json"
