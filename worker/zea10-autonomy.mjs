@@ -22,26 +22,33 @@ export async function buildZea10AutonomyReport(request,env,ctx,worker){
     get(worker,base,"/api/config?view=channel_identity_health",request,env,ctx),
     get(worker,base,"/api/control-plane",request,env,ctx)
   ]);
-  const channels=config.body?.channels||config.body?.channel_identity_health||{};
+  const identity=config.body||{};
+  const readiness=status.body?.channel_readiness||{};
   const channelOk=name=>{
-    const v=channels?.[name];
-    if(v===true) return true;
-    if(v&&typeof v==="object") return v.ready===true||v.connected===true||v.enabled===true;
-    return false;
+    const providerTruth=identity?.[name];
+    if(providerTruth&&typeof providerTruth==="object"){
+      return providerTruth.verified===true && providerTruth.reason!=="credentials_missing";
+    }
+    const v=readiness?.[name];
+    return Boolean(v && v.scope_status==="active");
   };
+  const autopilotHealthy=agent.body?.autopilot?.health==="HEALTHY";
+  const lifecycleCertified=agent.body?.lifecycle_certified===true;
+  const identityEvidence=Number(status.body?.metrics?.leads_qualified||0)>0;
+  const learningEvidence=Number(agent.body?.autopilot?.cycles_24h||0)>0 && autopilotHealthy;
   const commercialBlocked = status.body?.runtime?.sales==="globally-blocked"
     || control.body?.global_state==="operational_commercial_blocked"
     || config.body?.commercial_enabled===false;
   const pillars={
-    "ZEA10-01":state(intel.ok,{evidence:["/api/intelligence"]}),
+    "ZEA10-01":state(intel.ok&&autopilotHealthy,{evidence:["/api/intelligence","autopilot health"],autopilot_health:agent.body?.autopilot?.health||"UNKNOWN"}),
     "ZEA10-02":state(status.ok,{evidence:["/api/status","product/offer registry"]}),
-    "ZEA10-03":state(agent.ok,{evidence:["/api/agent/status","lead_memory contract"],note:"runtime identity continuity still requires E2E proof"}),
-    "ZEA10-04":state(status.ok&&agent.ok,{evidence:["creativeEngine","human approval boundary"]}),
+    "ZEA10-03":state(agent.ok&&identityEvidence,{evidence:["/api/agent/status","lead_memory contract","qualified lead identity evidence"],note:identityEvidence?null:"no qualified lead identity evidence observed"}),
+    "ZEA10-04":state(status.ok&&agent.ok&&autopilotHealthy,{evidence:["creativeEngine","human approval boundary","autopilot health"]}),
     "ZEA10-05":state(channelOk("whatsapp")&&channelOk("email")&&channelOk("instagram")&&channelOk("facebook"),{evidence:["channel_identity_health"],channels:{whatsapp:channelOk("whatsapp"),email:channelOk("email"),instagram:channelOk("instagram"),facebook:channelOk("facebook")}}),
     "ZEA10-06":state(agent.ok,{evidence:["agent conversation/qualification policy"]}),
     "ZEA10-07":state(!commercialBlocked&&provider.ok,{evidence:["commercial gate","provider-health"],note:commercialBlocked?"commercial gate remains fail-closed":null}),
-    "ZEA10-08":state(agent.ok,{evidence:["lifecycle support/onboarding contract"],note:"full customer-success E2E proof required"}),
-    "ZEA10-09":state(intel.ok&&agent.ok,{evidence:["market intelligence","agent outcome loop"],note:"closed-loop optimization must be proven with outcome evidence"}),
+    "ZEA10-08":state(agent.ok&&lifecycleCertified,{evidence:["lifecycle support/onboarding contract","lifecycle certification"],note:lifecycleCertified?null:"full customer-success lifecycle is not yet certified"}),
+    "ZEA10-09":state(intel.ok&&agent.ok&&learningEvidence,{evidence:["market intelligence","agent outcome loop","healthy autonomous cycle"],note:learningEvidence?null:"healthy closed-loop autonomous learning is not yet proven"}),
     "ZEA10-10":state(health.ok&&control.ok,{evidence:["health","control-plane","audit/fail-closed governance"]})
   };
   const green=Object.values(pillars).every(x=>x.state==="GREEN");
