@@ -44,9 +44,14 @@ jobs:
           python3 - <<'PY' > /tmp/version_ids
           import json
           d=json.load(open("/tmp/versions.json"))
-          for v in d.get("result",[]):
-              vid=v.get("id")
-              if vid: print(vid)
+          r=d.get("result",[])
+          if isinstance(r,dict):
+              r=r.get("versions",[])
+          for v in r:
+              if isinstance(v,str):
+                  print(v)
+              elif isinstance(v,dict) and v.get("id"):
+                  print(v["id"])
           PY
           found=0
           while read -r vid; do
@@ -54,7 +59,15 @@ jobs:
             if VID="$vid" python3 - <<'PY'
           import json,os
           d=json.load(open("/tmp/version.json"))
-          names={str(b.get("name") or "") for b in d.get("result",{}).get("resources",{}).get("bindings",[]) if str(b.get("type") or "")=="secret_text"}
+          r=d.get("result",{})
+          bindings=[]
+          if isinstance(r,dict):
+              resources=r.get("resources",{})
+              if isinstance(resources,dict):
+                  bindings=resources.get("bindings",[]) or []
+              if not bindings:
+                  bindings=r.get("bindings",[]) or []
+          names={str(b.get("name") or "") for b in bindings if isinstance(b,dict) and str(b.get("type") or "")=="secret_text"}
           hit={"ASAAS_API_KEY","ASAAS_WEBHOOK_TOKEN"} & names
           if hit:
               print("HISTORICAL_ASAAS_SECRET_VERSION",os.environ["VID"],"NAMES",",".join(sorted(hit)))
