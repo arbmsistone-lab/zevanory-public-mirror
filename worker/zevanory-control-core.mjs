@@ -1,12 +1,14 @@
 import { readOrReconcileControlState, reconcileControlPlane } from "./evidence-control-plane.mjs";
 import { evaluateZea10FromZees16 } from "./zea10-evaluator.mjs";
+import { evaluateWhatsAppProvisioning, whatsappProvisioningContract } from "./whatsapp-provisioning-gate.mjs";
 
 const CORE_VERSION="ZEVANORY-CONTROL-CORE/1.0";
 const CRITICAL_MUTATIONS=new Set([
   "commercial.enable",
   "certification.promote",
   "release.promote",
-  "state.transition"
+  "state.transition",
+  "whatsapp.activate"
 ]);
 
 function json(body,status=200,extra={}){
@@ -208,6 +210,20 @@ export async function handleControlCoreRequest(request,env,ctx,worker){
         error:String(error?.message||error)
       },503);
     }
+  }
+
+  if(url.pathname==="/api/core/v1/whatsapp/provisioning-contract"){
+    if(request.method!=="GET") return json({error:"method_not_allowed"},405,{allow:"GET"});
+    return json(whatsappProvisioningContract());
+  }
+
+  if(url.pathname==="/api/core/v1/whatsapp/evaluate"){
+    if(request.method!=="POST") return json({error:"method_not_allowed"},405,{allow:"POST"});
+    let payload={};
+    try{ payload=await request.json(); }
+    catch{ return json({error:"invalid_json",fail_closed:true},400); }
+    const result=evaluateWhatsAppProvisioning(payload);
+    return json(result,result.eligible_for_activation?200:409);
   }
 
   if(url.pathname==="/api/core/v1/commands"){
