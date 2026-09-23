@@ -12825,37 +12825,46 @@ function voiceReplyRequested(event = {}, env = process.env) {
   return payload.support_only === true && String(payload.inbound_media_type || "").toLowerCase() === "audio";
 }
 __name(voiceReplyRequested, "voiceReplyRequested");
-async function ttsBytesFromRuntime(text, env = process.env) {
-  const ai = globalThis.__ZEVANORY_EDGE_AI__?.AI || env.AI || null;
-  if (!ai || typeof ai.run !== "function") throw new Error("voice_tts_runtime_unavailable");
+async function ttsBytesFromRuntime(text, env = process.env, fetchImpl = globalThis.fetch) {
   if (env.VOICE_TTS_FREE_ONLY !== "true") throw new Error("voice_tts_zero_spend_guard_required");
-  const model = String(env.VOICE_TTS_MODEL || "").trim();
-  if (!model) throw new Error("voice_tts_model_missing");
   const safe = cleanVoiceText(text);
   if (!safe) throw new Error("voice_tts_text_empty");
-  const input = model.includes("melotts")
-    ? { prompt: safe, lang: String(env.VOICE_TTS_LANGUAGE || "pt") }
-    : { text: safe, voice: String(env.VOICE_TTS_VOICE || "alloy"), speed: Number(env.VOICE_TTS_SPEED || 1), response_format: "mp3" };
-  const raw = await ai.run(model, input, { returnRawResponse: true });
-  let bytes;
-  let mime = "audio/mpeg";
-  if (raw instanceof Response) {
-    mime = String(raw.headers.get("content-type") || mime).split(";")[0];
-    bytes = new Uint8Array(await raw.arrayBuffer());
-  } else if (raw instanceof ReadableStream) {
-    bytes = new Uint8Array(await new Response(raw).arrayBuffer());
-  } else if (raw instanceof ArrayBuffer) {
-    bytes = new Uint8Array(raw);
-  } else if (ArrayBuffer.isView(raw)) {
-    bytes = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
-  } else if (typeof raw?.audio === "string") {
-    const bin = atob(raw.audio);
+  const provider = String(env.VOICE_TTS_PROVIDER || "gemini").trim().toLowerCase();
+  if (provider !== "gemini") throw new Error("voice_tts_provider_not_zero_spend_certified");
+  const apiKey = String(env.GEMINI_API_KEY || "").trim();
+  if (!apiKey) throw new Error("voice_tts_gemini_key_missing");
+  const model = String(env.VOICE_TTS_MODEL || "gemini-2.5-flash-preview-tts").trim();
+  if (model !== "gemini-2.5-flash-preview-tts") throw new Error("voice_tts_model_not_zero_spend_certified");
+  const voice = String(env.VOICE_TTS_VOICE || "Achird").trim();
+  const style = String(env.VOICE_TTS_STYLE || "Português brasileiro natural, acolhedor, claro e profissional. Ritmo conversacional, pausas discretas, sem teatralidade e sem soar robótico.").trim();
+  const input = `${style} Não leia estas instruções. Pronuncie a mensagem a seguir fielmente, sem acrescentar conteúdo: ${safe}`;
+  const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/interactions", {
+    method: "POST",
+    headers: { "x-goog-api-key": apiKey, "content-type": "application/json" },
+    body: JSON.stringify({
+      model,
+      input,
+      response_format: { type: "audio", mime_type: "audio/mp3", delivery: "inline", bit_rate: 128000 },
+      generation_config: { speech_config: [{ voice }] }
+    }),
+    signal: AbortSignal.timeout(3e4)
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`voice_tts_gemini_http_${response.status}`);
+  const audio = body?.output_audio || body?.interaction?.output_audio || body?.outputAudio || body?.interaction?.outputAudio || null;
+  const encoded = typeof audio === "string" ? audio : audio?.data || audio?.inline_data?.data || audio?.inlineData?.data || null;
+  const uri = typeof audio === "object" ? audio?.uri || null : null;
+  let bytes = null;
+  if (encoded) {
+    const bin = atob(String(encoded));
     bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
-  } else {
-    throw new Error("voice_tts_output_unsupported");
+  } else if (uri && /^https:\/\//i.test(String(uri))) {
+    const audioResponse = await fetchImpl(String(uri), { signal: AbortSignal.timeout(2e4) });
+    if (!audioResponse.ok) throw new Error(`voice_tts_audio_uri_http_${audioResponse.status}`);
+    bytes = new Uint8Array(await audioResponse.arrayBuffer());
   }
   if (!bytes?.length || bytes.length > 12 * 1024 * 1024) throw new Error("voice_tts_output_size_invalid");
-  return Object.freeze({ bytes, mime, model, chars: safe.length });
+  return Object.freeze({ bytes, mime: "audio/mpeg", model, provider: "gemini", voice, language: "pt-BR", chars: safe.length });
 }
 __name(ttsBytesFromRuntime, "ttsBytesFromRuntime");
 async function stageVoiceTemporarily(audio, env = process.env) {
@@ -12900,7 +12909,7 @@ function buildOutboundAdapters({ env = process.env, fetchImpl = globalThis.fetch
       let message2 = { messaging_product: "whatsapp", recipient_type: "individual", to, type: "text", text: { preview_url: false, body: text } };
       let generatedVoice = false;
       if (!media && voiceReplyRequested(event, env)) {
-        const audio = await ttsBytesFromRuntime(text, env);
+        const audio = await ttsBytesFromRuntime(text, env, fetchImpl);
         const uploaded = await uploadVoiceToWhatsapp({ audio, phoneId, token, version: required3(env.META_GRAPH_VERSION, "meta_graph_version_missing"), env, fetchImpl });
         message2 = { messaging_product: "whatsapp", recipient_type: "individual", to, type: "audio", audio: { id: uploaded.media_id } };
         generatedVoice = true;
@@ -17481,6 +17490,27 @@ var cloudflare_worker_default = {
     if (url.pathname === "/private/artifacts/issue") return handleArtifactIssue(request, env);
     if (url.pathname === "/private/artifacts/download") return handleArtifactDownload(request, env);
     if (url.pathname === "/private/journal/append") return handleCloudflareJournalAppend(request, env);
+    if (url.pathname === "/api/voice/status") {
+      if (request.method !== "GET") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+      const model = String(env.VOICE_TTS_MODEL || "gemini-2.5-flash-preview-tts");
+      const provider = String(env.VOICE_TTS_PROVIDER || "gemini");
+      const body = {
+        engine: "ZEVANORY Voice Support Engine",
+        enabled: env.ZEVANORY_VOICE_SUPPORT_ENABLED === "true",
+        zero_spend_guard: env.VOICE_TTS_FREE_ONLY === "true",
+        provider,
+        model,
+        voice: String(env.VOICE_TTS_VOICE || "Achird"),
+        language: "pt-BR",
+        provider_credential_configured: Boolean(String(env.GEMINI_API_KEY || "").trim()),
+        whatsapp_transport_configured: Boolean(String(env.WHATSAPP_ACCESS_TOKEN || "").trim() && String(env.WHATSAPP_PHONE_NUMBER_ID || "").trim()),
+        sales_independent_support: true,
+        naturality_certified: env.VOICE_NATURALITY_CERTIFIED === "true",
+        e2e_official_number_certified: env.VOICE_WHATSAPP_E2E_CERTIFIED === "true",
+        ready_for_runtime_probe: env.VOICE_TTS_FREE_ONLY === "true" && provider === "gemini" && model === "gemini-2.5-flash-preview-tts" && Boolean(String(env.GEMINI_API_KEY || "").trim())
+      };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+    }
     if (url.pathname === "/api/status") {
       const response3 = await handleAsNodeRequest(PORT, request);
       if (!response3.ok) return response3;
