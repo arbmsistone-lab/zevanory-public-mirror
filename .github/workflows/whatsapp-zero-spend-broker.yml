@@ -31,7 +31,7 @@ jobs:
           s=Path("worker/whatsapp-credential-broker.mjs").read_text()
           for marker in [
               'OFFICIAL_E164 = "5588992545413"',
-              'url.hostname==="whatsapp-broker.internal"',
+              'u.hostname==="whatsapp-broker.internal"',
               'old_number_active_route:false',
               'official_number_not_verified',
               '/broker/verify-signature',
