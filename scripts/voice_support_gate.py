@@ -33,3 +33,8 @@ assert 'VOICE_NATURALITY_CERTIFIED' in s
 assert 'VOICE_WHATSAPP_E2E_CERTIFIED' in s
 assert '/api/voice/status' in s
 print("VOICE_GEMINI_PTBR_RUNTIME_GATE=PASS")
+
+assert 'new Set(["groq", "openrouter", "gemini"])' in s
+assert 'loadAiVaultSecret("gemini"' in s
+assert 'provider_vault_supported: true' in s
+print("VOICE_GEMINI_VAULT_GATE=PASS")
