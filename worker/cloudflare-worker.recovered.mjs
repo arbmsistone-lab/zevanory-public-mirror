@@ -986,12 +986,16 @@ function resolveCheckoutProviderRequest(req = {}, env = process.env, { productio
     } catch {
     }
   }
+  const certificationSandbox = String(env.CERTIFICATION_PILOT_ENABLED || "").toLowerCase() === "true"
+    && String(env.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox"
+    && String(env.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true";
+  const effectiveProduction = certificationSandbox ? false : production;
   if (explicit) {
-    const candidate = paymentProviderCandidates(env, { production }).find((x2) => x2.provider === explicit);
+    const candidate = paymentProviderCandidates(env, { production: effectiveProduction }).find((x2) => x2.provider === explicit);
     return Object.freeze({ provider: explicit, ready: Boolean(candidate?.ready), reason: candidate?.ready ? "explicit_ready" : "explicit_unavailable" });
   }
   const key = String(req.body?.request_id || req.body?.requestId || req.body?.session_id || req.body?.sessionId || "");
-  return selectPaymentProvider(env, { production, operationKey: key });
+  return selectPaymentProvider(env, { production: effectiveProduction, operationKey: key });
 }
 __name(resolveCheckoutProviderRequest, "resolveCheckoutProviderRequest");
 
@@ -13765,7 +13769,8 @@ function paymentMatchesOrderIdentity(payment, order) {
   const linkedByCheckout = hasCheckout && isUuid(paymentCheckout) && paymentCheckout.toLowerCase() === providerCheckoutId.toLowerCase();
   if (hasReference && !linkedByReference || hasCheckout && !linkedByCheckout) return false;
   if (!linkedByReference && !linkedByCheckout) return false;
-  if (moneyCents(payment.value) !== moneyCents(order.amount) || moneyCents(order.amount) !== moneyCents(PROJECT.experimentalPriceBrl)) return false;
+  if (moneyCents(payment.value) !== moneyCents(order.amount)) return false;
+  if (order.certification_pilot !== true && moneyCents(order.amount) !== moneyCents(PROJECT.experimentalPriceBrl)) return false;
   return true;
 }
 __name(paymentMatchesOrderIdentity, "paymentMatchesOrderIdentity");
@@ -14367,7 +14372,7 @@ async function handler15(req, res) {
     }
     const sql = cs(process.env.DATABASE_URL);
     const orders = await sql.query(`
-      SELECT order_id,amount,status,external_reference,provider_checkout_id FROM orders
+      SELECT order_id,amount,status,external_reference,provider_checkout_id,certification_pilot FROM orders
       WHERE ($1<>'' AND order_id::text=$1) OR ($2<>'' AND provider_checkout_id=$2)
     `, [parsedOrderId || "", checkoutSession]);
     if (orders.length === 0) return json11(res, 200, { accepted: true, ignored: true, reason: "unlinked_payment" });
