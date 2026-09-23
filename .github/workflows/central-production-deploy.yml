@@ -136,6 +136,7 @@ jobs:
           PY
           node --check worker/cloudflare-worker.compat.mjs
           node --check worker/voice-naturality-study.mjs
+          node --check worker/whatsapp-onboarding.mjs
           node --check public/control-plane-vnext.js
           npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.central-fix.jsonc --outdir /tmp/central-final
       - name: Authenticate Cloudflare
