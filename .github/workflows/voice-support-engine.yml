@@ -15,4 +15,6 @@ jobs:
         with:
           python-version: '3.12'
       - name: Validate voice support invariants
-        run: python scripts/voice_support_gate.py
+        run: |
+          python scripts/voice_support_gate.py
+          python scripts/private_gemini_provisioning_gate.py
