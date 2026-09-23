@@ -111,7 +111,7 @@ export function evaluatePolicy({signals={},workflows=new Map(),releaseSha=null,o
 }
 async function persist(env,state){
   const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
-  if(!kv||typeof kv.put!=="function") return {...state,persistence:"unavailable"};
+  if(!kv||typeof kv.put!=="function") return {...state,persistence:"unavailable",persistence_error:"kv_binding_unavailable"};
   let previousDecisionHash=null;
   if(typeof kv.get==="function"){
     try{
@@ -136,12 +136,21 @@ async function persist(env,state){
     decision_hash:eventHash,
     previous_decision_hash:previousDecisionHash,
     persistence:"kv-append-only",
+    persistence_error:null,
     evaluator:"ZEES16_POLICY_ENGINE",
     evaluator_version:ZEES16_POLICY.version
   };
-  await kv.put(key,JSON.stringify({...event,event_hash:eventHash}),{metadata:{type:event.type,release_sha:state.release_sha||"",policy_version:state.policy_version,previous_decision_hash:previousDecisionHash||""}});
-  await kv.put(STATE_KEY,JSON.stringify(decision),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash,previous_decision_hash:previousDecisionHash||""}});
-  return decision;
+  try{
+    await kv.put(key,JSON.stringify({...event,event_hash:eventHash}),{metadata:{type:event.type,release_sha:state.release_sha||"",policy_version:state.policy_version,previous_decision_hash:previousDecisionHash||""}});
+    await kv.put(STATE_KEY,JSON.stringify(decision),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash,previous_decision_hash:previousDecisionHash||""}});
+    return decision;
+  }catch(error){
+    return {
+      ...decision,
+      persistence:"degraded-readonly",
+      persistence_error:String(error?.message||error||"kv_persistence_failed")
+    };
+  }
 }
 export async function reconcileControlPlane(worker,env,ctx,baseUrl="https://zevanory.api.br"){
   const observedAt=new Date().toISOString();
@@ -169,9 +178,11 @@ export async function readControlState(env){
   if(!raw) return null;
   try{return JSON.parse(raw);}catch{return null;}
 }
-export async function readOrReconcileControlState(worker,env,ctx,baseUrl){
+export async function readOrReconcileControlState(worker,env,ctx,baseUrl,expectedReleaseSha=null){
   const current=await readControlState(env);
-  if(current?.observed_at&&Date.now()-Date.parse(current.observed_at)<10*60*1000) return current;
+  const fresh=Boolean(current?.observed_at&&Date.now()-Date.parse(current.observed_at)<10*60*1000);
+  const sameRelease=!expectedReleaseSha||current?.release_sha===expectedReleaseSha;
+  if(fresh&&sameRelease) return current;
   return reconcileControlPlane(worker,env,ctx,baseUrl);
 }
 export async function listControlEvents(env,limit=30){
