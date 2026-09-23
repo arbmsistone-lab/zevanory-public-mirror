@@ -123,7 +123,7 @@ export function evaluateCoreDecision(snapshot){
     health_ready:snapshot?.invariants?.health_ready===true,
     quorum_ok:snapshot?.invariants?.quorum_ok===true,
     evidence_flow_unidirectional:snapshot?.invariants?.evidence_to_evaluation_unidirectional===true,
-    evidence_persistence_ok:snapshot?.zees16?.persistence==="kv-append-only",
+    evidence_persistence_ok:["kv-append-only","reproducible-immutable-sources"].includes(snapshot?.zees16?.persistence),
     zees16_complete:Number(zeesCounts.proven||0)===16 &&
       Number(zeesCounts.partial||0)===0 &&
       Number(zeesCounts.blocked||0)===0,
