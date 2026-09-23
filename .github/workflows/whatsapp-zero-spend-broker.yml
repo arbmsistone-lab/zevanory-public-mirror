@@ -7,6 +7,9 @@ on:
       - ".github/workflows/whatsapp-zero-spend-broker.yml"
       - "worker/whatsapp-onboarding.mjs"
       - ".github/workflows/whatsapp-closure-probe.yml"
+      - ".github/workflows/financial-e2e-closure.yml"
+      - "scripts/financial_e2e_closure.py"
+      - ".github/workflows/central-production-deploy.yml"
       - "worker/whatsapp-onboarding.mjs"
       - ".github/workflows/whatsapp-closure-probe.yml"
   push:

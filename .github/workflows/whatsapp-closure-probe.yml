@@ -7,6 +7,9 @@ on:
       - "worker/whatsapp-credential-broker.mjs"
       - ".github/workflows/whatsapp-zero-spend-broker.yml"
       - "worker/whatsapp-onboarding.mjs"
+      - ".github/workflows/financial-e2e-closure.yml"
+      - "scripts/financial_e2e_closure.py"
+      - ".github/workflows/central-production-deploy.yml"
   push:
     branches: [gh-pages]
     paths:
