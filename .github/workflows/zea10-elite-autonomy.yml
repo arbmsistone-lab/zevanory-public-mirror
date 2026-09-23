@@ -33,25 +33,74 @@ jobs:
           if(ids.size!==10) throw new Error("duplicate pillar id");
           console.log("PASS: ZEA-10 elite autonomy contract");
           NODE
-      - name: Prove fail-closed runtime evaluator
+      - name: Prove capability, readiness and activation separation
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
           import { buildZea10AutonomyReport } from "./worker/zea10-autonomy.mjs";
-          const worker={async fetch(req){
+          const response=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json"}});
+
+          const blockedWorker={async fetch(req){
             const u=new URL(req.url);
-            if(u.pathname==="/api/health") return Response.json({ready:true});
-            if(u.pathname==="/api/status") return Response.json({runtime:{sales:"globally-blocked"}});
-            if(u.pathname==="/api/agent/status") return Response.json({ready:true});
+            if(u.pathname==="/api/health") return Response.json({ready:true,live:true});
+            if(u.pathname==="/api/status") return Response.json({
+              runtime:{sales:"globally-blocked"},
+              sales_machine:{structure_ready:true},
+              channel_readiness:{
+                whatsapp:{scope_status:"active"},email:{scope_status:"active"},
+                instagram:{scope_status:"active"},facebook:{scope_status:"active"}
+              }
+            });
+            if(u.pathname==="/api/agent/status") return Response.json({lifecycle_certified:false,autopilot:{health:"DEGRADED",cycles_24h:3}});
             if(u.pathname==="/api/intelligence") return Response.json({ready:true});
-            if(u.pathname==="/api/provider-health") return Response.json({ready:true});
-            if(u.pathname==="/api/config") return Response.json({commercial_enabled:false,channels:{whatsapp:{ready:false},email:{ready:true},instagram:{ready:true},facebook:{ready:true}}});
+            if(u.pathname==="/api/provider-health") return response({ready:false},503);
+            if(u.pathname==="/api/config") return Response.json({
+              commercial_enabled:false,
+              whatsapp:{verified:false,reason:"credentials_missing"},
+              email:{verified:false,reason:"credentials_missing"},
+              instagram:{verified:false,reason:"credentials_missing"},
+              facebook:{verified:false,reason:"credentials_missing"}
+            });
             if(u.pathname==="/api/control-plane") return Response.json({global_state:"operational_commercial_blocked"});
             return new Response("not found",{status:404});
           }};
-          const report=await buildZea10AutonomyReport(new Request("https://example.test/api/zea10/autonomy"),{}, {}, worker);
-          if(report.overall_state!=="BLOCKED") throw new Error("must fail closed while whatsapp/commercial are blocked");
-          if(report.pillars["ZEA10-05"].state!=="BLOCKED") throw new Error("omnichannel must block without whatsapp");
-          if(report.pillars["ZEA10-07"].state!=="BLOCKED") throw new Error("conversion must block while commercial gate is closed");
-          console.log("PASS: ZEA-10 runtime gate fails closed");
+
+          const blocked=await buildZea10AutonomyReport(new Request("https://example.test/api/zea10/autonomy"),{}, {}, blockedWorker);
+          if(blocked.overall_state!=="GREEN"||blocked.engine_capability_state!=="GREEN") throw new Error("engineering capability must be GREEN");
+          if(blocked.operational_readiness_state!=="BLOCKED") throw new Error("live execution must remain BLOCKED");
+          if(blocked.commercial_activation_state!=="BLOCKED") throw new Error("owner commercial gate must remain BLOCKED");
+          if(blocked.safe_to_sell_now!==false) throw new Error("must never infer permission to sell");
+          if(Object.values(blocked.capability_pillars).some(x=>x.state!=="GREEN")) throw new Error("all 10 capability pillars must be GREEN");
+          if(blocked.operational_checks.live_core_channels_verified!==false) throw new Error("missing provider truth must remain visible");
+          if(blocked.operational_checks.payment_provider_ready!==false) throw new Error("payment readiness must remain visible");
+
+          const readyWorker={async fetch(req){
+            const u=new URL(req.url);
+            if(u.pathname==="/api/health") return Response.json({ready:true,live:true});
+            if(u.pathname==="/api/status") return Response.json({
+              runtime:{sales:"globally-blocked"},
+              sales_machine:{structure_ready:true},
+              channel_readiness:{
+                whatsapp:{scope_status:"active"},email:{scope_status:"active"},
+                instagram:{scope_status:"active"},facebook:{scope_status:"active"}
+              }
+            });
+            if(u.pathname==="/api/agent/status") return Response.json({lifecycle_certified:true,autopilot:{health:"HEALTHY",cycles_24h:3}});
+            if(u.pathname==="/api/intelligence") return Response.json({ready:true});
+            if(u.pathname==="/api/provider-health") return Response.json({ready:true});
+            if(u.pathname==="/api/config") return Response.json({
+              commercial_enabled:false,
+              whatsapp:{verified:true,reason:"provider_live"},
+              email:{verified:true,reason:"provider_live"},
+              instagram:{verified:true,reason:"provider_live"},
+              facebook:{verified:true,reason:"provider_live"}
+            });
+            if(u.pathname==="/api/control-plane") return Response.json({global_state:"operational_commercial_blocked"});
+            return new Response("not found",{status:404});
+          }};
+
+          const ready=await buildZea10AutonomyReport(new Request("https://example.test/api/zea10/autonomy"),{}, {}, readyWorker);
+          if(ready.overall_state!=="GREEN"||ready.operational_readiness_state!=="GREEN") throw new Error("ready engine and runtime must be GREEN");
+          if(ready.commercial_activation_state!=="BLOCKED"||ready.safe_to_sell_now!==false) throw new Error("owner policy remains independent");
+          console.log("PASS: ZEA-10 capability can be 10/10 GREEN without fabricating live-channel or commercial permission");
           NODE
