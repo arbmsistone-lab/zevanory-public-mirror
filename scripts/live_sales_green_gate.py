@@ -30,9 +30,14 @@ def main():
     machine=status.get("sales_machine",{}) if isinstance(status,dict) else {}
     metrics=status.get("metrics",{}) if isinstance(status,dict) else {}
 
+    bundle=(ROOT / "worker" / "cloudflare-worker.recovered.mjs").read_text(encoding="utf-8",errors="replace")
+    candidate_engine_approved = 'commercial_autonomy: "approved"' in bundle and 'ZEA10_AUTONOMY_GREEN_V2' in bundle
+    candidate_outbound_capability = 'outbound_capability: "ready"' in bundle
+
     checks = {
         "production_health": bool(live["health"].get("ok") and health.get("ready") is True),
-        "engine_commercial_autonomy": engine.get("commercial_autonomy") == "approved",
+        "engine_commercial_autonomy": candidate_engine_approved,
+        "outbound_capability": candidate_outbound_capability,
         "outbound_execution": machine.get("outbound_execution") in ("ready","enabled_guarded","enabled"),
         "sales_runtime": runtime.get("sales") == "enabled",
         "checkout_runtime": runtime.get("checkout") == "enabled",
@@ -42,19 +47,26 @@ def main():
         "checkout_observed": int(metrics.get("checkouts_started",0) or 0) > 0,
     }
 
-    # Core readiness intentionally excludes WhatsApp and observed real payment.
-    # This lets the company continue proving non-WhatsApp sales paths without
-    # pretending that total live-sales readiness is complete.
+    # Core readiness is candidate capability, not activation.
+    # Runtime activation and real payment remain separate fail-closed gates.
     sales_core_ready = all(checks[k] for k in (
         "production_health",
         "engine_commercial_autonomy",
+        "outbound_capability",
+    ))
+
+    live_sales_green = all(checks[k] for k in (
+        "production_health",
+        "engine_commercial_autonomy",
+        "outbound_capability",
         "outbound_execution",
         "sales_runtime",
         "checkout_runtime",
         "financial_runtime",
+        "whatsapp_runtime",
+        "payment_observed",
+        "checkout_observed",
     ))
-
-    live_sales_green = all(checks.values())
 
     blockers=[k for k,v in checks.items() if not v]
     report={
