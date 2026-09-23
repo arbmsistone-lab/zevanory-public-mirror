@@ -1,3 +1,4 @@
+import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "./whatsapp-onboarding.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import worker from "./cloudflare-worker.recovered.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
@@ -74,8 +75,20 @@ const wrapped = {
   async fetch(request, env, ctx) {
     const normalized = normalizeEnv(env);
     const url = new URL(request.url);
+    const whatsappRuntime = await loadWhatsappRuntimeCredentials(normalized).catch(()=>null);
+    globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = whatsappRuntime || {};
     const canonicalRedirect = canonicalizePublicPath(request, url);
     if (canonicalRedirect) return canonicalRedirect;
+
+    if (url.pathname === "/admin/whatsapp-onboard/callback") {
+      const response = await handleWhatsappOnboarding(request, normalized);
+      if (response) return response;
+    }
+    if (url.pathname.startsWith("/admin/whatsapp-onboard") || url.pathname === "/api/admin/whatsapp-onboard/status") {
+      if (!isAdminAuthorized(request, normalized)) return handleAdminRequest(request, normalized, ctx, wrapped);
+      const response = await handleWhatsappOnboarding(request, normalized);
+      if (response) return response;
+    }
 
     if (url.pathname === "/voice-study" || url.pathname.startsWith("/api/voice-study/")) {
       const response = await handleVoiceStudy(request, normalized);
