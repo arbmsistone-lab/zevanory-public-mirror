@@ -6,6 +6,7 @@ import { CONTROL_PLANE_VNEXT_JS } from "./control-plane-vnext-source.mjs";
 import { handleControlPlaneV2Request, reconcileControlPlane } from "./evidence-control-plane.mjs";
 import { handleControlActionRequest } from "./control-action-plane.mjs";
 import { handleZea10AutonomyRequest } from "./zea10-autonomy.mjs";
+import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
 
 async function fetchJsonThroughWorker(request, env, ctx) {
   const response = await worker.fetch(request, env, ctx);
@@ -57,7 +58,6 @@ function legacyTrustProjection(body) {
   };
 }
 
-
 const wrapped = {
   async fetch(request, env, ctx) {
     const normalized = normalizeEnv(env);
@@ -72,6 +72,15 @@ const wrapped = {
           "x-content-type-options": "nosniff"
         }
       });
+    }
+
+    if (url.pathname.startsWith("/api/core/v1/")) {
+      if (url.pathname.startsWith("/api/core/v1/commands/")) {
+        if (!isAdminAuthorized(request, normalized)) {
+          return handleAdminRequest(request, normalized, ctx, wrapped);
+        }
+      }
+      return handleControlCoreRequest(request, normalized, ctx, wrapped);
     }
 
     if (
@@ -125,6 +134,7 @@ const wrapped = {
       headers.set("content-type", "application/json; charset=utf-8");
       headers.set("cache-control", "no-store");
       headers.set("x-zevanory-trust-schema", "vnext+legacy-projection");
+      headers.set("x-zevanory-state-authority", "ZEVANORY-Control-Core");
       return new Response(JSON.stringify(body), {
         status: response.status,
         statusText: response.statusText,
