@@ -10378,7 +10378,7 @@ import { createHash as createHash11 } from "node:crypto";
 // src/aiSecretVault.mjs
 var encoder = new TextEncoder();
 var decoder = new TextDecoder();
-var PROVIDERS = /* @__PURE__ */ new Set(["groq", "openrouter"]);
+var PROVIDERS = /* @__PURE__ */ new Set(["groq", "openrouter", "gemini"]);
 var bytesToB64 = /* @__PURE__ */ __name((bytes) => {
   let s = "";
   for (const b2 of bytes) s += String.fromCharCode(b2);
@@ -12831,7 +12831,7 @@ async function ttsBytesFromRuntime(text, env = process.env, fetchImpl = globalTh
   if (!safe) throw new Error("voice_tts_text_empty");
   const provider = String(env.VOICE_TTS_PROVIDER || "gemini").trim().toLowerCase();
   if (provider !== "gemini") throw new Error("voice_tts_provider_not_zero_spend_certified");
-  const apiKey = String(env.GEMINI_API_KEY || "").trim();
+  const apiKey = String((await loadAiVaultSecret("gemini", { kv: globalThis.__ZEVANORY_PRIVATE_KV__, master: env.AI_VAULT_ENCRYPTION_KEY || env.ELITE_INTERNAL_TOKEN })) || env.GEMINI_API_KEY || "").trim();
   if (!apiKey) throw new Error("voice_tts_gemini_key_missing");
   const model = String(env.VOICE_TTS_MODEL || "gemini-2.5-flash-preview-tts").trim();
   if (model !== "gemini-2.5-flash-preview-tts") throw new Error("voice_tts_model_not_zero_spend_certified");
