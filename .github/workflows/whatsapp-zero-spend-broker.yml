@@ -96,7 +96,7 @@ jobs:
       - name: Deploy broker while preserving legacy encrypted secrets and vars
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.135.0 deploy             --config /tmp/wrangler.broker.json             --keep-vars             --tag="$GITHUB_SHA"             --message="ZEVANORY zero-spend WhatsApp credential broker $GITHUB_SHA"
+          npx --yes wrangler@4.135.0 deploy             --config wrangler.broker.json             --keep-vars             --tag="$GITHUB_SHA"             --message="ZEVANORY zero-spend WhatsApp credential broker $GITHUB_SHA"
       - name: Prove legacy public route is retired
         run: |
           set -euo pipefail
