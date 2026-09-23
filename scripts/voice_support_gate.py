@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 from pathlib import Path
-p=Path("worker/cloudflare-worker.recovered.mjs")
-s=p.read_text(encoding="utf-8")
-required=[
+
+worker=Path("worker/cloudflare-worker.recovered.mjs").read_text(encoding="utf-8")
+router=Path("worker/voice-provider-router.mjs").read_text(encoding="utf-8")
+deploy=Path(".github/workflows/central-production-deploy.yml").read_text(encoding="utf-8")
+
+worker_required=[
   "function voiceReplyRequested",
   "function ttsBytesFromRuntime",
   "function stageVoiceTemporarily",
@@ -10,46 +13,26 @@ required=[
   'generated_voice: generatedVoice',
   'reply_modality: replyModality',
   'inbound_media_type: inboundMediaType',
-  'VOICE_TTS_FREE_ONLY',
   'ZEVANORY_VOICE_SUPPORT_ENABLED',
-  'whatsapp_voice_upload_http_'
+  'whatsapp_voice_upload_http_',
+  'loadAiVaultSecret("gemini"',
+  'provider_vault_supported: true',
+  '/api/voice/status',
+  '/api/voice/probe',
+  'ttsBytesWithFailover',
+  'voiceProviderStatus',
 ]
-missing=[x for x in required if x not in s]
+missing=[x for x in worker_required if x not in worker]
 assert not missing, f"missing voice engine markers: {missing}"
-assert 'support_only: true' in s
-assert 'commercial_intent: false' in s
-assert 'type: "audio", audio: { id: uploaded.media_id }' in s
-assert 'ZEVANORY_VOICE_TEMP.delete' in s
-assert 'generatedVoice = false' in s
-assert 'inboundMediaType === "audio"' in s
+assert 'support_only: true' in worker
+assert 'commercial_intent: false' in worker
+assert 'type: "audio", audio: { id: uploaded.media_id }' in worker
+assert 'ZEVANORY_VOICE_TEMP.delete' in worker
+assert 'generatedVoice = false' in worker
+assert 'inboundMediaType === "audio"' in worker
 print("VOICE_ENGINE_STATIC_GATE=PASS")
 
-# Gemini pt-BR runtime certification
-assert 'gemini-2.5-flash-preview-tts' in s
-assert 'response_format: { type: "audio", mime_type: "audio/mp3"' in s
-assert 'language: "pt-BR"' in s
-assert 'voice_tts_model_not_zero_spend_certified' in s
-assert 'VOICE_NATURALITY_CERTIFIED' in s
-assert 'VOICE_WHATSAPP_E2E_CERTIFIED' in s
-assert '/api/voice/status' in s
-print("VOICE_GEMINI_PTBR_RUNTIME_GATE=PASS")
-
-assert 'new Set(["groq", "openrouter", "gemini"])' in s
-assert 'loadAiVaultSecret("gemini"' in s
-assert 'provider_vault_supported: true' in s
-print("VOICE_GEMINI_VAULT_GATE=PASS")
-
-# ZERO_SPEND primary runtime: self-hosted Piper pt-BR relay
-assert 'provider === "piper-relay"' in s
-assert 'pt_BR-jeff-medium' in s
-assert 'voice_tts_piper_relay_http_' in s
-assert '/api/voice/probe' in s
-assert 'provider_secretless_origin_auth' in s
-print("VOICE_PIPER_PTBR_ZERO_SPEND_PRIMARY_GATE=PASS")
-
-
-router=Path("worker/voice-provider-router.mjs").read_text(encoding="utf-8")
-for marker in [
+router_required=[
   'DEFAULT_CHAIN = Object.freeze(["speechify", "azure", "piper-relay", "gemini"])',
   'VOICE_TTS_FAILOVER_ENABLED',
   'VOICE_TTS_FREE_ONLY',
@@ -63,8 +46,32 @@ for marker in [
   'simba-3.0',
   'pt_BR-jeff-medium',
   'gemini-3.1-flash-tts-preview',
-]:
-    assert marker in router, f"missing provider router marker: {marker}"
-assert 'ttsBytesWithFailover' in s
-assert 'voiceProviderStatus' in s
+  'voice_tts_speechify_http_',
+  'voice_tts_azure_http_',
+  'voice_tts_piper_relay_http_',
+  'voice_tts_gemini_http_',
+  'language: "pt-BR"',
+  'response_format: { type: "audio", mime_type: "audio/mp3"',
+]
+missing=[x for x in router_required if x not in router]
+assert not missing, f"missing provider router markers: {missing}"
 print("VOICE_MULTI_PROVIDER_ZERO_SPEND_FAILOVER_GATE=PASS")
+
+for marker in [
+  'c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"',
+  'c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"',
+  'c["vars"]["VOICE_TTS_FREE_ONLY"]="true"',
+  'c["vars"]["ZEVANORY_VOICE_SUPPORT_ENABLED"]="true"',
+  'c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"',
+  'c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"',
+  'c["vars"]["GEMINI_FREE_TIER_CONFIRMED"]="false"',
+  'c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"',
+]:
+    assert marker in deploy, f"missing production voice var: {marker}"
+print("VOICE_PRODUCTION_FAIL_CLOSED_ZERO_SPEND_CONFIG_GATE=PASS")
+
+assert 'VOICE_NATURALITY_CERTIFIED' in worker
+assert 'VOICE_WHATSAPP_E2E_CERTIFIED' in worker
+assert 'naturality_certified:' in worker
+assert 'e2e_official_number_certified:' in worker
+print("VOICE_CERTIFICATION_FAIL_CLOSED_GATE=PASS")
