@@ -201,6 +201,55 @@ def check_sitemap():
         pass_(f"sitemap.xml: {len(PRODUCTS)} produtos + soluções presentes")
     return errors
 
+
+def check_official_whatsapp():
+    worker_path = ROOT / "worker" / "cloudflare-worker.recovered.mjs"
+    deploy_path = ROOT / ".github" / "workflows" / "central-production-deploy.yml"
+    if not worker_path.exists() or not deploy_path.exists():
+        return fail("WhatsApp oficial: fontes canônicas ausentes")
+
+    worker = worker_path.read_text(encoding="utf-8")
+    deploy = deploy_path.read_text(encoding="utf-8")
+    errors = 0
+
+    for token in ("+55 88 9234-0423", "558892340423"):
+        if token in worker:
+            errors += fail(f"WhatsApp oficial: referência legada presente no worker: {token}")
+
+    for marker in (
+        'display: "+55 88 99254-5413"',
+        'e164: "5588992545413"',
+        'url: "https://wa.me/5588992545413"',
+        "whatsapp: OFFICIAL_WHATSAPP.display",
+        "whatsappUrl: whatsappLink(source)",
+    ):
+        if marker not in worker:
+            errors += fail(f"WhatsApp oficial: marcador canônico ausente no worker: {marker}")
+
+    for front in (
+        "instagram", "facebook", "tiktok", "youtube", "linkedin", "google",
+        "whatsapp", "email", "affiliate", "nuvemshop", "mercado_livre", "zevanory",
+    ):
+        if f"{front}: profile(" not in worker:
+            errors += fail(f"WhatsApp oficial: frente comercial não herdando perfil canônico: {front}")
+
+    for marker in (
+        'c["vars"]["ZEVANORY_WHATSAPP_E164"]="+5588992545413"',
+        'c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"',
+        'c["vars"]["ZEVANORY_WHATSAPP_COUNTRY"]="BR"',
+        '"+55 88 9234-0423": "+55 88 99254-5413"',
+        '"558892340423": "5588992545413"',
+    ):
+        if marker not in deploy:
+            errors += fail(f"WhatsApp oficial: marcador de cutover ausente no deploy: {marker}")
+
+    if 'c["vars"]["WHATSAPP_SALES_ENABLED"]="false"' not in deploy:
+        errors += fail("WhatsApp oficial: fail-closed WHATSAPP_SALES_ENABLED=false ausente")
+
+    if errors == 0:
+        pass_("WhatsApp oficial: novo número propagado a 12 frentes e legado bloqueado")
+    return errors
+
 def main():
     errors = 0
     for item in PRODUCTS:
@@ -208,6 +257,7 @@ def main():
     errors += check_solutions()
     errors += check_css()
     errors += check_sitemap()
+    errors += check_official_whatsapp()
 
     if errors:
         print(f"\nPRE-MERGE GATE: FAIL ({errors} erro(s))")
