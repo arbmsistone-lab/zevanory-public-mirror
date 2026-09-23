@@ -50,6 +50,10 @@ async function ensureSchema(env){
     app_id TEXT,
     updated_at TEXT
   )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS zevanory_whatsapp_broker_oauth_state(
+    state TEXT PRIMARY KEY,
+    created_at INTEGER NOT NULL
+  )`).run();
 }
 async function runtime(env){
   await ensureSchema(env);
@@ -194,6 +198,35 @@ async function phoneIdentity(env,phoneId,token){
   }catch(error){
     return {number_verified:false,identity_verified:false,reason:clean(error?.message,180)};
   }
+}
+function randomState(){
+  const bytes=crypto.getRandomValues(new Uint8Array(24));
+  return bytesToB64(bytes).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+async function createOAuthStart(env){
+  await ensureSchema(env);
+  const state=randomState(), now=Date.now();
+  await env.DB.prepare("DELETE FROM zevanory_whatsapp_broker_oauth_state WHERE created_at < ?").bind(now-15*60*1000).run();
+  await env.DB.prepare("INSERT INTO zevanory_whatsapp_broker_oauth_state(state,created_at) VALUES(?,?)").bind(state,now).run();
+  const u=new URL("https://www.facebook.com/"+GRAPH_VERSION+"/dialog/oauth");
+  u.searchParams.set("client_id",DEFAULT_APP_ID);
+  u.searchParams.set("redirect_uri",OAUTH_REDIRECT);
+  u.searchParams.set("state",state);
+  u.searchParams.set("response_type","code");
+  u.searchParams.set("config_id",DEFAULT_CONFIG_ID);
+  u.searchParams.set("override_default_response_type","true");
+  u.searchParams.set("scope",["business_management","whatsapp_business_management","whatsapp_business_messaging"].join(","));
+  return {authorization_url:u.toString(),state_backend:"broker_d1",expires_in:900,zero_spend:true};
+}
+async function consumeOAuthState(env,state){
+  await ensureSchema(env);
+  const value=clean(state,300);
+  if(!value) throw new Error("oauth_state_missing");
+  const row=await env.DB.prepare("SELECT state,created_at FROM zevanory_whatsapp_broker_oauth_state WHERE state=?").bind(value).first();
+  if(!row) throw new Error("oauth_state_invalid");
+  await env.DB.prepare("DELETE FROM zevanory_whatsapp_broker_oauth_state WHERE state=?").bind(value).run();
+  if(Date.now()-Number(row.created_at||0)>15*60*1000) throw new Error("oauth_state_expired");
+  return {valid:true,consumed:true};
 }
 async function status(env){
   const r=await runtime(env).catch(()=>null);
@@ -368,6 +401,10 @@ export default {
     }
     try{
       if(request.method==="GET"&&url.pathname==="/broker/status") return json(await status(env));
+      if(request.method==="POST"&&url.pathname==="/broker/oauth/start") return json(await createOAuthStart(env));
+      if(request.method==="POST"&&url.pathname==="/broker/oauth/consume-state"){
+        const body=await request.json().catch(()=>({})); return json(await consumeOAuthState(env,body.state));
+      }
       if(request.method==="GET"&&url.pathname==="/broker/permissions"){
         const token=await accessToken(env); return json({permissions:await permissions(env,token)});
       }
