@@ -97,3 +97,29 @@ assert 'handleVoiceStudy' in compat
 assert 'url.pathname === "/voice-study"' in compat
 assert 'url.pathname.startsWith("/api/voice-study/")' in compat
 print("VOICE_HUMAN_BLIND_CERTIFICATION_PORTAL_GATE=PASS")
+
+
+whatsapp=Path("worker/whatsapp-onboarding.mjs").read_text(encoding="utf-8")
+compat=Path("worker/cloudflare-worker.compat.mjs").read_text(encoding="utf-8")
+for marker in [
+  'OFFICIAL_E164 = "5588992545413"',
+  'whatsapp_business_management',
+  'whatsapp_business_messaging',
+  '/owned_whatsapp_business_accounts',
+  '/phone_numbers?fields=',
+  '/subscribed_apps',
+  '/register',
+  'callback_url',
+  'x-hub-signature-256',
+  'AES-GCM',
+  'whatsapp-onboarding/runtime',
+  'identity_verified',
+]:
+    assert marker in whatsapp or marker in worker, f"missing WhatsApp onboarding marker: {marker}"
+assert 'loadWhatsappRuntimeCredentials' in compat
+assert '__ZEVANORY_WHATSAPP_RUNTIME__' in compat
+assert '__ZEVANORY_WHATSAPP_RUNTIME__' in worker
+assert 'META_APP_SECRET || whatsappRuntime.app_secret' in worker
+assert 'WHATSAPP_ACCESS_TOKEN || whatsappRuntime.access_token' in worker
+assert 'WHATSAPP_PHONE_NUMBER_ID || whatsappRuntime.phone_number_id' in worker
+print("WHATSAPP_SECURE_ONBOARDING_RUNTIME_GATE=PASS")
