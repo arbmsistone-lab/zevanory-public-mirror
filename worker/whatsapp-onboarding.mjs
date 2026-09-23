@@ -15,7 +15,7 @@ function fromB64url(value){
   return Uint8Array.from(atob(p),c=>c.charCodeAt(0));
 }
 async function keyFor(env){
-  const material=String(env.ELITE_INTERNAL_TOKEN||env.OPERATOR_TOKEN||env.ZEVANORY_ADMIN_PASSWORD||"");
+  const material=String(env.WHATSAPP_ONBOARDING_MASTER_KEY||env.ELITE_INTERNAL_TOKEN||env.OPERATOR_TOKEN||env.ZEVANORY_ADMIN_PASSWORD||"");
   if(material.length<24) throw new Error("whatsapp_onboarding_master_key_missing");
   return crypto.subtle.importKey("raw",await crypto.subtle.digest("SHA-256",encoder.encode("zevanory:whatsapp:onboarding:v1:"+material)),{name:"AES-GCM"},false,["encrypt","decrypt"]);
 }
@@ -59,6 +59,19 @@ async function takeState(env,id){
 }
 function digits(v){ return String(v||"").replace(/\D/g,""); }
 function safeText(v,max=500){ return String(v??"").trim().slice(0,max); }
+async function digestText(v){ return new Uint8Array(await crypto.subtle.digest("SHA-256",encoder.encode(String(v||"")))); }
+async function secretEqual(a,b){
+  const x=await digestText(a), y=await digestText(b);
+  if(x.length!==y.length) return false;
+  let diff=0; for(let i=0;i<x.length;i++) diff|=x[i]^y[i];
+  return diff===0;
+}
+async function migrationAuthorized(request,env){
+  const expected=String(env.WHATSAPP_MIGRATION_TOKEN||"");
+  const auth=String(request.headers.get("authorization")||"");
+  if(expected.length<24||!auth.startsWith("Bearer ")) return false;
+  return secretEqual(auth.slice(7),expected);
+}
 function htmlEscape(v){ return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 function responseHtml(body,status=200,extra={}){
   return new Response(body,{status,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","referrer-policy":"no-referrer","content-security-policy":"default-src 'self'; style-src 'unsafe-inline'; form-action 'self' https://www.facebook.com; frame-ancestors 'none'",...extra}});
@@ -162,6 +175,96 @@ async function verifyRuntime(record){
     return {verified:number_ok&&brand_ok&&name_ok,number_ok,brand_ok,name_ok,verified_name:safeText(p.verified_name),name_status:safeText(p.name_status),quality_rating:safeText(p.quality_rating),code_verification_status:safeText(p.code_verification_status)};
   } catch(error){ return {verified:false,reason:safeText(error?.message,240)}; }
 }
+
+async function inspectPermissions(token){
+  try {
+    const p=await graphJson("https://graph.facebook.com/"+GRAPH_VERSION+"/me/permissions",{token});
+    const granted=(p.data||[]).filter(x=>String(x.status||"").toLowerCase()==="granted").map(x=>String(x.permission||"")).filter(Boolean);
+    const set=new Set(granted);
+    return {
+      ok:true,
+      granted,
+      business_management:set.has("business_management"),
+      whatsapp_business_management:set.has("whatsapp_business_management"),
+      whatsapp_business_messaging:set.has("whatsapp_business_messaging")
+    };
+  } catch(error){
+    return {ok:false,granted:[],business_management:false,whatsapp_business_management:false,whatsapp_business_messaging:false,reason:safeText(error?.message,180)};
+  }
+}
+async function migrateLegacyCredential(payload,env){
+  const app_secret=safeText(payload?.app_secret,4000);
+  const access_token=safeText(payload?.access_token,6000);
+  const legacy_verify_token=safeText(payload?.verify_token,4000);
+  const legacy_phone_number_id=safeText(payload?.phone_number_id,120);
+  const graph_version=/^v\d+\.\d+$/.test(safeText(payload?.graph_version,20))?safeText(payload.graph_version,20):GRAPH_VERSION;
+  if(app_secret.length<16||access_token.length<20||legacy_verify_token.length<8) throw new Error("legacy_credential_incomplete");
+
+  const permissions=await inspectPermissions(access_token);
+  let app_secret_valid=false;
+  try { app_secret_valid=Boolean(await appAccessToken(DEFAULT_APP_ID,app_secret)); } catch {}
+
+  let found=null, discovery_error=null;
+  try { found=await discoverOfficialNumber(access_token); }
+  catch(error){ discovery_error=safeText(error?.message,180); }
+
+  const now=new Date().toISOString();
+  if(!found){
+    const bootstrap={
+      app_id:DEFAULT_APP_ID,config_id:DEFAULT_CONFIG_ID,app_secret,access_token,
+      verify_token:legacy_verify_token,graph_version,identity_verified:false,
+      migrated_from:"giro-whatsapp-bridge",legacy_phone_number_id,
+      permissions,app_secret_valid,last_error:"official_number_not_found_in_authorized_waba",
+      discovery_error,updated_at:now
+    };
+    await putRecord(env,bootstrap);
+    return {
+      migrated:true,official_number_found:false,identity_verified:false,
+      requires_number_addition:true,permissions:{
+        business_management:permissions.business_management,
+        whatsapp_business_management:permissions.whatsapp_business_management,
+        whatsapp_business_messaging:permissions.whatsapp_business_messaging
+      },
+      app_secret_valid
+    };
+  }
+
+  const verify_token=b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const pin=String(crypto.getRandomValues(new Uint32Array(1))[0]%1000000).padStart(6,"0");
+  let webhook_configured=false,waba_subscribed=false,webhook_error=null,waba_error=null;
+  try { webhook_configured=await configureAppWebhook({app_id:DEFAULT_APP_ID,app_secret,verify_token}); }
+  catch(error){ webhook_error=safeText(error?.message,180); }
+  try { waba_subscribed=await subscribeWaba({waba_id:String(found.waba.id),token:access_token}); }
+  catch(error){ waba_error=safeText(error?.message,180); }
+  const registration=await registerPhone({phone_id:String(found.phone.id),token:access_token,pin});
+
+  let record={
+    app_id:DEFAULT_APP_ID,config_id:DEFAULT_CONFIG_ID,app_secret,access_token,verify_token,
+    graph_version,waba_id:String(found.waba.id),phone_number_id:String(found.phone.id),
+    display_phone_number:digits(found.phone.display_phone_number),verified_name:safeText(found.phone.verified_name),
+    two_step_pin:pin,webhook_configured,waba_subscribed,
+    phone_registration_ok:registration.ok,phone_registration_already:registration.already_registered,
+    phone_registration_error:registration.error||null,identity_verified:false,
+    migrated_from:"giro-whatsapp-bridge",legacy_phone_number_id,permissions,app_secret_valid,
+    webhook_error,waba_error,updated_at:now
+  };
+  const live=await verifyRuntime(record);
+  record={...record,identity_verified:Boolean(live.verified),identity_live:live};
+  await putRecord(env,record);
+  return {
+    migrated:true,official_number_found:true,identity_verified:Boolean(live.verified),
+    webhook_configured,waba_subscribed,phone_registration_ok:Boolean(registration.ok),
+    waba_id:record.waba_id,phone_number_id:record.phone_number_id,
+    permissions:{
+      business_management:permissions.business_management,
+      whatsapp_business_management:permissions.whatsapp_business_management,
+      whatsapp_business_messaging:permissions.whatsapp_business_messaging
+    },
+    app_secret_valid,
+    live
+  };
+}
+
 function dashboard(record,live,message=""){
   const ready=Boolean(record?.app_secret);
   const connected=Boolean(record?.access_token&&record?.phone_number_id&&record?.waba_id);
@@ -207,6 +310,19 @@ export async function loadWhatsappRuntimeCredentials(env={}){
 export async function handleWhatsappOnboarding(request,env={}){
   const url=new URL(request.url);
   let record=await getRecord(env).catch(()=>null);
+  if(url.pathname==="/api/internal/whatsapp-migrate"&&request.method==="POST"){
+    if(!await migrationAuthorized(request,env)) return responseJson({error:"unauthorized"},401);
+    const length=Number(request.headers.get("content-length")||0);
+    if(length>20000) return responseJson({error:"payload_too_large"},413);
+    const payload=await request.json().catch(()=>null);
+    if(!payload||typeof payload!=="object") return responseJson({error:"invalid_json"},400);
+    try {
+      const result=await migrateLegacyCredential(payload,env);
+      return responseJson(result,200);
+    } catch(error) {
+      return responseJson({error:"migration_failed",reason:safeText(error?.message,180)},400);
+    }
+  }
   if(url.pathname==="/admin/whatsapp-onboard"&&request.method==="GET"){
     const live=record?await verifyRuntime(record):{verified:false};
     if(record&&Boolean(record.identity_verified)!==Boolean(live.verified)){record={...record,identity_verified:Boolean(live.verified),updated_at:new Date().toISOString()}; await putRecord(env,record);}
