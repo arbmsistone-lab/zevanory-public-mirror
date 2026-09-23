@@ -221,9 +221,11 @@ jobs:
           if(d.decision!=="DENY"||!d.blockers.includes("zees16_complete")) throw new Error("partial ZEES-16 must deny");
           d=evaluateCoreDecision({...base,invariants:{...base.invariants,quorum_ok:false}});
           if(d.decision!=="DENY"||!d.blockers.includes("quorum_ok")) throw new Error("missing quorum must deny");
+          d=evaluateCoreDecision({...base,zees16:{...base.zees16,persistence:"reproducible-immutable-sources"}});
+          if(d.decision!=="ALLOW"||d.blockers.length!==0) throw new Error("reproducible immutable evidence must remain promotable when KV cache quota is exhausted");
           d=evaluateCoreDecision({...base,zees16:{...base.zees16,persistence:"degraded-readonly"}});
-          if(d.decision!=="DENY"||!d.blockers.includes("evidence_persistence_ok")) throw new Error("degraded evidence persistence must deny critical promotion");
-          console.log("PASS: Control Core authorizes only a complete one-way proof/evaluation chain with durable evidence persistence");
+          if(d.decision!=="DENY"||!d.blockers.includes("evidence_persistence_ok")) throw new Error("non-reproducible degraded persistence must deny critical promotion");
+          console.log("PASS: Control Core accepts immutable reproducible evidence and remains fail-closed for non-reproducible persistence");
           JS
       - name: Verify canonical UI source and critical command executor
         run: |
