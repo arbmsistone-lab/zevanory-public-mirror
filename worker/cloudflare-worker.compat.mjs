@@ -5,6 +5,7 @@ import { handleAdminRequest, isAdminAuthorized } from "./admin-console.mjs";
 import { CONTROL_PLANE_VNEXT_JS } from "./control-plane-vnext-source.mjs";
 import { handleControlPlaneV2Request, reconcileControlPlane } from "./evidence-control-plane.mjs";
 import { handleControlActionRequest } from "./control-action-plane.mjs";
+import { handleZea10AutonomyRequest } from "./zea10-autonomy.mjs";
 
 async function fetchJsonThroughWorker(request, env, ctx) {
   const response = await worker.fetch(request, env, ctx);
@@ -88,6 +89,10 @@ const wrapped = {
         return handleControlPlaneV2Request(request, normalized, ctx, wrapped);
       }
       return handleAdminRequest(request, normalized, ctx, wrapped);
+    }
+
+    if (url.pathname === "/api/zea10/autonomy") {
+      return handleZea10AutonomyRequest(request, normalized, ctx, wrapped);
     }
 
     if (url.pathname === "/api/continuity") {
