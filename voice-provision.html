@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZEVANORY Voice Provision</title>
+<link rel="stylesheet" href="/admin.css">
+<meta name="robots" content="noindex,nofollow">
+</head>
+<body>
+<main style="max-width:760px;margin:40px auto;padding:24px">
+  <h1>Voice Support — Gemini Vault</h1>
+  <p>Área privada do proprietário. A chave é enviada diretamente ao AI Vault criptografado e não é exibida novamente.</p>
+  <section aria-labelledby="status-title">
+    <h2 id="status-title">Status</h2>
+    <p id="vault-status">Verificando…</p>
+  </section>
+  <form id="vault-form" autocomplete="off">
+    <label for="gemini-key">Gemini API key</label>
+    <input id="gemini-key" name="gemini-key" type="password" minlength="12" required autocomplete="new-password" spellcheck="false" style="width:100%;padding:12px;margin:8px 0 16px">
+    <button type="submit">Salvar no cofre criptografado</button>
+  </form>
+  <p id="result" role="status" aria-live="polite"></p>
+</main>
+<script>
+const statusEl=document.getElementById('vault-status');
+const resultEl=document.getElementById('result');
+const keyEl=document.getElementById('gemini-key');
+async function refresh(){
+  try{
+    const r=await fetch('/private-api/internal/ai-vault',{credentials:'same-origin',cache:'no-store'});
+    if(r.status===401){ location.href='/acesso'; return; }
+    const j=await r.json();
+    const has=Array.isArray(j.providers)&&j.providers.includes('gemini');
+    statusEl.textContent=has?'Gemini configurado no AI Vault.':'Gemini ainda não configurado no AI Vault.';
+  }catch{ statusEl.textContent='Não foi possível consultar o AI Vault.'; }
+}
+document.getElementById('vault-form').addEventListener('submit',async(e)=>{
+  e.preventDefault();
+  resultEl.textContent='Salvando…';
+  const secret=keyEl.value.trim();
+  if(secret.length<12){ resultEl.textContent='Chave inválida.'; return; }
+  try{
+    const r=await fetch('/private-api/internal/ai-vault',{
+      method:'POST',
+      credentials:'same-origin',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({provider:'gemini',secret})
+    });
+    keyEl.value='';
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.error||'vault_write_failed');
+    resultEl.textContent='Gemini salvo com criptografia no AI Vault.';
+    await refresh();
+  }catch(e){
+    keyEl.value='';
+    resultEl.textContent='Falha ao salvar no AI Vault. Nenhuma chave foi mantida nesta página.';
+  }
+});
+refresh();
+</script>
+</body>
+</html>
