@@ -97,6 +97,12 @@ jobs:
           c["vars"]["ZEVANORY_WHATSAPP_E164"]="+5588992545413"
           c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
           c["vars"]["ZEVANORY_WHATSAPP_COUNTRY"]="BR"
+          c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
+          c["vars"]["VOICE_TTS_MODEL"]="pt_BR-jeff-medium"
+          c["vars"]["VOICE_TTS_VOICE"]="jeff"
+          c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
+          open(p,"w").write(json.dumps(c,indent=2)+"\n")
+          PY
           # Replace every legacy public contact reference in the reconstructed production snapshot.
           python3 - <<'PY'
           from pathlib import Path
@@ -121,12 +127,6 @@ jobs:
           if not changed:
               raise SystemExit("legacy WhatsApp number not found in reconstructed public snapshot")
           print("WHATSAPP_NUMBER_CUTOVER_FILES", *changed)
-          PY
-          c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
-          c["vars"]["VOICE_TTS_MODEL"]="pt_BR-jeff-medium"
-          c["vars"]["VOICE_TTS_VOICE"]="jeff"
-          c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
-          open(p,"w").write(json.dumps(c,indent=2)+"\n")
           PY
           node --check worker/cloudflare-worker.compat.mjs
           node --check public/control-plane-vnext.js
