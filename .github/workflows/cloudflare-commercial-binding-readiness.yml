@@ -26,7 +26,7 @@ jobs:
           d=json.load(open("/tmp/settings.json"))
           assert d.get("success") is True, d.get("errors")
           prefixes=("META_","WHATSAPP_","MERCADOPAGO_","PAYMENT_","RESEND_","SALE_","PRE_SALE_","ABSOLUTE_","CHECKOUT_","FINANCIAL_","CERTIFICATION_","SUPPORT_")
-          exact={"DATABASE_URL","ZEVANORY_PRIVATE_ARTIFACTS","INSTAGRAM_BUSINESS_ACCOUNT_ID"}
+          exact={"DATABASE_URL","ZEVANORY_PRIVATE_ARTIFACTS","INSTAGRAM_BUSINESS_ACCOUNT_ID","ELITE_INTERNAL_TOKEN","OPERATOR_TOKEN","ZEVANORY_ADMIN_PASSWORD"}
           found={}
           for b in d.get("result",{}).get("bindings",[]):
               name=str(b.get("name") or "")
