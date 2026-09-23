@@ -77,3 +77,36 @@ jobs:
             then found=1; break; fi
           done < /tmp/version_ids
           if [ "$found" = "0" ]; then echo "HISTORICAL_ASAAS_SECRET_VERSION=NOT_FOUND"; fi
+
+      - name: Inspect Cloudflare versions response shape safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory"
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$BASE/versions?per_page=20" -o /tmp/versions-shape.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/versions-shape.json"))
+          r=d.get("result")
+          print("VERSIONS_RESULT_TYPE="+type(r).__name__)
+          if isinstance(r,dict):
+              print("VERSIONS_RESULT_KEYS="+",".join(sorted(r.keys())))
+              for k,v in r.items():
+                  print("KEY",k,"TYPE",type(v).__name__)
+                  if isinstance(v,list):
+                      print("LIST_LEN",len(v))
+                      for item in v[:5]:
+                          if isinstance(item,dict):
+                              print("ITEM_KEYS",",".join(sorted(item.keys())))
+                              print("ITEM_ID",item.get("id"),"NUMBER",item.get("number"),"CREATED",item.get("metadata",{}).get("created_on") if isinstance(item.get("metadata"),dict) else None)
+                          else:
+                              print("ITEM_VALUE_TYPE",type(item).__name__)
+          elif isinstance(r,list):
+              print("VERSIONS_LIST_LEN="+str(len(r)))
+              for item in r[:5]:
+                  if isinstance(item,dict):
+                      print("ITEM_KEYS",",".join(sorted(item.keys())))
+                      print("ITEM_ID",item.get("id"),"NUMBER",item.get("number"))
+                  else:
+                      print("ITEM_VALUE_TYPE",type(item).__name__)
+          PY
