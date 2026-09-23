@@ -1,0 +1,48 @@
+name: ZEVANORY Gemini auth-key probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [gh-pages]
+    paths:
+      - '.github/workflows/voice-gemini-auth-key-probe.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/781761447388/locations/global/workloadIdentityPools/github-actions/providers/zevanory-github
+          service_account: zevanory-gemini-auth@zevanory-gemini.iam.gserviceaccount.com
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve service-account-bound Gemini auth key
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          gcloud services api-keys get-key-string c572db8f-7fbf-4a80-80d8-f59c2597e6e2             --project=zevanory-gemini             --format='value(keyString)' > /tmp/gemini-auth.key
+          test -s /tmp/gemini-auth.key
+          echo "AUTH_KEY_RESOLUTION=PASS"
+
+      - name: Probe Gemini API
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="$(cat /tmp/gemini-auth.key)"
+          code=$(curl -sS -o /tmp/models.json -w '%{http_code}'             https://generativelanguage.googleapis.com/v1beta/models             -H "x-goog-api-key: $key")
+          unset key
+          echo "GEMINI_MODELS_HTTP=$code"
+          python3 -c "import json; d=json.load(open('/tmp/models.json')); d=d[0] if isinstance(d,list) and d else d; print('ERROR='+str(d.get('error',{}).get('message',''))[:300] if isinstance(d,dict) and 'error' in d else 'MODEL_COUNT='+str(len(d.get('models',[]))))"
+          test "$code" = "200"
