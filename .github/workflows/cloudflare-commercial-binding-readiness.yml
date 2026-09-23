@@ -34,6 +34,8 @@ jobs:
                   found[name]=str(b.get("type") or "unknown")
           for name in sorted(found):
               print(f"BINDING {name} TYPE={found[name]}")
+          for key in ("ELITE_INTERNAL_TOKEN","OPERATOR_TOKEN","ZEVANORY_ADMIN_PASSWORD"):
+              print("ONBOARDING_MASTER_BINDING",key,"PRESENT="+str(key in found))
           PY
 
       - name: Discover zero-spend Meta WhatsApp worker routes
