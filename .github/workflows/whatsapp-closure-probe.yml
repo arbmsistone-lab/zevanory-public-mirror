@@ -104,15 +104,37 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS "https://giro-whatsapp-bridge.girolocal-rb.workers.dev/__zevanory/runtime" -o /tmp/runtime.json
+          matched=0
+          for attempt in $(seq 1 24); do
+            curl -fsS "https://giro-whatsapp-bridge.girolocal-rb.workers.dev/__zevanory/runtime" -o /tmp/runtime.json || true
+            if GITHUB_SHA="$GITHUB_SHA" python3 - <<'PY'
+          import json,os
+          try:
+              x=json.load(open("/tmp/runtime.json"))
+          except Exception:
+              raise SystemExit(1)
+          ok=(
+              x.get("ok") is True
+              and x.get("runtime_sha")==os.environ["GITHUB_SHA"]
+              and bool(x.get("runtime_version"))
+              and x.get("zero_spend") is True
+              and x.get("legacy_route_bypass")==0
+          )
+          raise SystemExit(0 if ok else 1)
+          PY
+            then
+              matched=1
+              echo "BROKER_PROVENANCE_ATTEMPT=$attempt PASS"
+              break
+            fi
+            echo "BROKER_PROVENANCE_ATTEMPT=$attempt WAIT"
+            sleep 5
+          done
+          test "$matched" = "1"
           python3 - <<'PY'
           import json,os
           x=json.load(open("/tmp/runtime.json"))
-          assert x.get("ok") is True
-          assert x.get("runtime_sha")==os.environ["GITHUB_SHA"], (x.get("runtime_sha"),os.environ["GITHUB_SHA"])
-          assert x.get("runtime_version")
-          assert x.get("zero_spend") is True
-          assert x.get("legacy_route_bypass")==0
+          assert x.get("runtime_sha")==os.environ["GITHUB_SHA"]
           print("BROKER_RUNTIME_SHA=PASS")
           print("BROKER_RUNTIME_VERSION=PASS")
           print("SHA_CONSISTENCY=PASS")
