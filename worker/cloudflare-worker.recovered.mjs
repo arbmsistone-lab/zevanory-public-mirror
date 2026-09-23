@@ -1,3 +1,4 @@
+import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -12913,6 +12914,7 @@ function buildOutboundAdapters({ env = process.env, fetchImpl = globalThis.fetch
       const body = await requestJson2(fetchImpl, `${metaBase()}/${encodeURIComponent(phoneId)}/messages`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(message2) }, [200]);
       const messageId = String(body?.messages?.[0]?.id || "");
       if (!messageId) throw providerAcceptanceMissing("whatsapp_message_id_missing");
+      if (generatedVoice) await recordWhatsappEvidence("outbound_voice", { provider_message_id: messageId, contact_ref: to, generated_voice: true, event_id: event.event_id || event.idempotency_key || "" }).catch(()=>false);
       return Object.freeze({ provider: "meta_whatsapp", accepted: true, provider_message_id: messageId, media_type: generatedVoice ? "audio" : media ? mediaType : "text", generated_voice: generatedVoice, confirmation: "webhook_required" });
     }, "channel:whatsapp"),
     "channel:email": /* @__PURE__ */ __name(async (event) => {
@@ -14611,7 +14613,7 @@ function extractWhatsappInboundMessages(payload = {}) {
       const text = String(message2?.text?.body || message2?.button?.text || message2?.interactive?.button_reply?.title || message2?.interactive?.list_reply?.title || media?.caption || "").trim();
       const from = String(message2?.from || "").trim();
       const mediaId = String(media?.id || "").trim();
-      if (from && (text || mediaId)) out.push(Object.freeze({ from, type, text, caption: String(media?.caption || "").trim(), media_id: mediaId, mime_type: String(media?.mime_type || "").trim(), filename: String(media?.filename || "").trim(), message_id: String(message2?.id || "") }));
+      if (from && (text || mediaId)) out.push(Object.freeze({ from, type, text, caption: String(media?.caption || "").trim(), media_id: mediaId, mime_type: String(media?.mime_type || "").trim(), filename: String(media?.filename || "").trim(), message_id: String(message2?.id || ""), phone_number_id: String(value?.metadata?.phone_number_id || "") }));
     }
   }
   return Object.freeze(out);
@@ -14862,6 +14864,7 @@ async function handler18(req, res) {
       }
       const text = String(enriched.understanding || enriched.text || "").trim();
       const r = await queueWhatsappConversation(sql, { contactRef: item.from, text, messageId: item.message_id, mediaType: item.type, mediaId: item.media_id, source: "meta_whatsapp" });
+      await recordWhatsappEvidence("inbound_processed", { message_id: item.message_id, contact_ref: item.from, phone_number_id: item.phone_number_id, queued: r.queued, kind: r.kind || "" }).catch(()=>false);
       if (r.queued) {
         queued++;
         if (r.kind === "support") support++;
@@ -14872,6 +14875,7 @@ async function handler18(req, res) {
     return json14(res, 200, { accepted: true, inbound_jobs_queued: queued, support_jobs_queued: support, commercial_jobs_queued: commercial, media_review_required: media_review });
   }
   const confirmations = normalizeWhatsappStatusPayload(payload);
+  for (const confirmation of confirmations) await recordWhatsappEvidence("delivery", { provider_message_id: confirmation.provider_message_id, status: confirmation.status, event_id: confirmation.provider_event_id }).catch(()=>false);
   if (!confirmations.length) return json14(res, 200, { accepted: true, ignored: true, reason: "status_not_supported" });
   if (!process.env.DATABASE_URL) {
     const recovery = await preserveProviderConfirmations(confirmations);
