@@ -4,6 +4,9 @@ on:
     branches: [gh-pages]
     paths:
       - "worker/evidence-control-plane.mjs"
+      - "worker/zea10-autonomy.mjs"
+      - "worker/zevanory-control-core.mjs"
+      - "worker/zea10-evaluator.mjs"
       - "worker/control-action-plane.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "worker/admin-console.mjs"
@@ -25,6 +28,9 @@ jobs:
         run: |
           set -euo pipefail
           node --check worker/evidence-control-plane.mjs
+          node --check worker/zea10-evaluator.mjs
+          node --check worker/zevanory-control-core.mjs
+          node --check worker/zea10-autonomy.mjs
           node --check worker/control-action-plane.mjs
           node --check worker/cloudflare-worker.compat.mjs
           node --input-type=module <<'NODE'
@@ -32,6 +38,14 @@ jobs:
           const contract=JSON.parse(fs.readFileSync("evidence/admin-control-center.json","utf8"));
           if(contract.planes?.action?.destructive_actions!==false) throw new Error("action plane must forbid destructive actions");
           if(contract.planes?.action?.requires_idempotency_key!==true) throw new Error("idempotency required");
+          const evidence=fs.readFileSync("worker/evidence-control-plane.mjs","utf8");
+          if(/zea10/i.test(evidence)) throw new Error("ZEES-16 evidence layer must not depend on ZEA-10");
+          const evaluator=fs.readFileSync("worker/zea10-evaluator.mjs","utf8");
+          if(!evaluator.includes('source_layer:"ZEES-16"')||!evaluator.includes("authority:false")) throw new Error("ZEA-10 evaluator role contract missing");
+          const core=fs.readFileSync("worker/zevanory-control-core.mjs","utf8");
+          for(const token of ['flow:["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]',"circular_dependency:false","evidence_to_evaluation_unidirectional:true"]){
+            if(!core.includes(token)) throw new Error("missing architecture invariant "+token);
+          }
           const src=fs.readFileSync("worker/control-action-plane.mjs","utf8");
           for(const token of ["inspect","reconcile","idempotency-key","CONTROL_ACTION","control:v2:action-ledger:zevanory:"]){
             if(!src.includes(token)) throw new Error("missing invariant "+token);
@@ -40,6 +54,20 @@ jobs:
             if(src.includes(forbidden)) throw new Error("forbidden destructive primitive "+forbidden);
           }
           console.log("PASS: control plane v2 separation and action fail-closed contract");
+          NODE
+      - name: Exercise one-way evidence evaluation pipeline
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { evaluateZea10FromZees16 } from "./worker/zea10-evaluator.mjs";
+          const pillars=Array.from({length:16},(_,i)=>({id:"P"+String(i+1).padStart(2,"0"),state:"PROVADO",release_sha:"b".repeat(40)}));
+          const zea=evaluateZea10FromZees16({release_sha:"b".repeat(40),decision_hash:"cafebabe",pillars});
+          if(zea.counts.proven!==10) throw new Error("expected 10/10 ZEA evaluation from complete ZEES evidence");
+          if(zea.authority!==false||zea.source_layer!=="ZEES-16") throw new Error("evaluation layer authority violation");
+          const degraded=evaluateZea10FromZees16({release_sha:"b".repeat(40),pillars:pillars.map(p=>p.id==="P10"?{...p,state:"BLOCKED"}:p)});
+          const affected=degraded.pillars.filter(p=>p.requires.includes("P10"));
+          if(!affected.length||affected.some(p=>p.state!=="BLOCKED")) throw new Error("blocked evidence did not propagate fail-closed");
+          console.log("PASS: evidence flows ZEES-16 -> ZEA-10 only");
           NODE
       - name: Exercise action plane behavior
         run: |
