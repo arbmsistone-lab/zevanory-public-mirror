@@ -6,12 +6,14 @@ on:
       - ".github/workflows/whatsapp-closure-probe.yml"
       - "worker/whatsapp-credential-broker.mjs"
       - ".github/workflows/whatsapp-zero-spend-broker.yml"
+      - "worker/whatsapp-onboarding.mjs"
   push:
     branches: [gh-pages]
     paths:
       - ".github/workflows/whatsapp-closure-probe.yml"
       - "worker/whatsapp-credential-broker.mjs"
       - ".github/workflows/whatsapp-zero-spend-broker.yml"
+      - "worker/whatsapp-onboarding.mjs"
 permissions:
   contents: read
 jobs:
@@ -19,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Probe canonical WhatsApp identity and runtime
         shell: bash
         run: |
@@ -50,6 +55,37 @@ jobs:
           print("WHATSAPP_OFFICIAL_NUMBER="+("PASS" if safe["display_phone_number"]=="5588992545413" and safe["number_verified"] else "BLOCKED"))
           print("WHATSAPP_IDENTITY="+("PASS" if safe["verified"] else "BLOCKED"))
           print("WHATSAPP_RUNTIME="+("PASS" if safe["operational_ready"] else "BLOCKED"))
+          PY
+      - name: Validate OAuth launcher source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'sealed-v1.' worker/whatsapp-onboarding.mjs
+          grep -Fq 'const stateToken=await putState(env,state);' worker/whatsapp-onboarding.mjs
+          grep -Fq 'u.searchParams.set("state",stateToken);' worker/whatsapp-onboarding.mjs
+          echo "WHATSAPP_OAUTH_STATE_FAILOVER=PASS"
+      - name: Probe public OAuth launcher after canonical deploy
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -D /tmp/oauth.headers -w '%{http_code}' 'https://zevanory.api.br/admin/whatsapp-onboard/start')"
+          test "$code" = "302"
+          location="$(tr -d '\r' </tmp/oauth.headers | awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/^[^:]+:[[:space:]]*/,""); print; exit}')"
+          test -n "$location"
+          python3 - "$location" <<'PY'
+          import sys,urllib.parse
+          u=urllib.parse.urlparse(sys.argv[1])
+          q=urllib.parse.parse_qs(u.query)
+          assert u.scheme=="https" and u.netloc=="www.facebook.com"
+          assert u.path.endswith("/dialog/oauth")
+          assert q.get("client_id")==["1071149631917061"]
+          assert q.get("redirect_uri")==["https://zevanory.api.br/admin/whatsapp-onboard/callback"]
+          assert q.get("state") and q["state"][0].startswith("sealed-v1.")
+          scopes=set((q.get("scope") or [""])[0].split(","))
+          assert {"business_management","whatsapp_business_management","whatsapp_business_messaging"}.issubset(scopes)
+          print("WHATSAPP_OAUTH_LAUNCHER=PASS")
+          print("WHATSAPP_OAUTH_STATE=PASS")
           PY
       - name: Probe broker runtime provenance after canonical deploy
         if: github.event_name == 'push'

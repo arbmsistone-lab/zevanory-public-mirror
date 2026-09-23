@@ -44,12 +44,22 @@ async function putRecord(env,value){
   await kv.put("whatsapp-onboarding/runtime",await seal(value,env));
 }
 async function putState(env,state){
-  const kv=store(env); if(!kv?.put) throw new Error("whatsapp_onboarding_storage_unavailable");
-  await kv.put("whatsapp-onboarding/state/"+state.id,"state-v1:"+JSON.stringify(state),{expirationTtl:900});
+  const kv=store(env);
+  if(kv?.put){
+    await kv.put("whatsapp-onboarding/state/"+state.id,"state-v1:"+JSON.stringify(state),{expirationTtl:900});
+    return state.id;
+  }
+  return "sealed-v1."+await seal({nonce:state.id,created_at:state.created_at},env);
 }
 async function takeState(env,id){
+  const value=String(id||"");
+  if(value.startsWith("sealed-v1.")){
+    const state=await open(value.slice("sealed-v1.".length),env);
+    if(!state?.nonce||Date.now()-Number(state.created_at||0)>15*60*1000) throw new Error("whatsapp_onboarding_state_expired");
+    return state;
+  }
   const kv=store(env); if(!kv?.get) throw new Error("whatsapp_onboarding_storage_unavailable");
-  const key="whatsapp-onboarding/state/"+String(id||"");
+  const key="whatsapp-onboarding/state/"+value;
   const raw=await kv.get(key);
   if(!raw) throw new Error("whatsapp_onboarding_state_missing");
   await kv.delete?.(key).catch(()=>{});
@@ -268,11 +278,11 @@ export async function handleWhatsappOnboarding(request,env={}){
   if(url.pathname==="/admin/whatsapp-onboard/start"&&request.method==="GET"){
     if(!brokerBinding(env)&&!record?.app_secret) return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message=Provedor%20Meta%20indispon%C3%ADvel",303);
     const state={id:b64url(crypto.getRandomValues(new Uint8Array(24))),created_at:Date.now()};
-    await putState(env,state);
+    const stateToken=await putState(env,state);
     const u=new URL("https://www.facebook.com/"+GRAPH_VERSION+"/dialog/oauth");
     u.searchParams.set("client_id",record?.app_id||DEFAULT_APP_ID);
     u.searchParams.set("redirect_uri",REDIRECT_URI);
-    u.searchParams.set("state",state.id);
+    u.searchParams.set("state",stateToken);
     u.searchParams.set("response_type","code");
     u.searchParams.set("config_id",record?.config_id||DEFAULT_CONFIG_ID);
     u.searchParams.set("override_default_response_type","true");
