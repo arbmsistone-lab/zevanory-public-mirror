@@ -51,7 +51,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PREVIOUS_STATE_PATH: previous-state.json
         run: node scripts/reconcile_zees16_control.mjs
-      - name: Persist append-only event and materialized state
+      - name: Persist KV cache when quota is available
+        continue-on-error: true
         run: |
           set -euo pipefail
           EVENT_HASH=$(node -e "console.log(JSON.parse(require('fs').readFileSync('zees16-event.json','utf8')).event_hash)")
@@ -59,6 +60,15 @@ jobs:
           EVENT_KEY="control:v2:ledger:zevanory:$OBSERVED:$EVENT_HASH"
           npx --yes wrangler@4.135.0 kv key put "$EVENT_KEY" --path zees16-event.json --namespace-id "$KV_NAMESPACE_ID" --remote
           npx --yes wrangler@4.135.0 kv key put "control:v2:state:zevanory" --path zees16-state.json --namespace-id "$KV_NAMESPACE_ID" --remote
+      - name: Preserve immutable reconciliation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zees16-reconciliation-${{ github.run_id }}
+          path: |
+            zees16-event.json
+            zees16-state.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Fail-closed acceptance
         run: |
           set -euo pipefail
