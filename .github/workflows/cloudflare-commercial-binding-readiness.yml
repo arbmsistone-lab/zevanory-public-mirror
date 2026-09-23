@@ -34,3 +34,33 @@ jobs:
           for name in sorted(found):
               print(f"BINDING {name} TYPE={found[name]}")
           PY
+
+      - name: Locate historical Asaas secret bindings without reading values
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory"
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$BASE/versions?per_page=100" -o /tmp/versions.json
+          python3 - <<'PY' > /tmp/version_ids
+          import json
+          d=json.load(open("/tmp/versions.json"))
+          for v in d.get("result",[]):
+              vid=v.get("id")
+              if vid: print(vid)
+          PY
+          found=0
+          while read -r vid; do
+            curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$BASE/versions/$vid" -o /tmp/version.json || continue
+            if VID="$vid" python3 - <<'PY'
+          import json,os
+          d=json.load(open("/tmp/version.json"))
+          names={str(b.get("name") or "") for b in d.get("result",{}).get("resources",{}).get("bindings",[]) if str(b.get("type") or "")=="secret_text"}
+          hit={"ASAAS_API_KEY","ASAAS_WEBHOOK_TOKEN"} & names
+          if hit:
+              print("HISTORICAL_ASAAS_SECRET_VERSION",os.environ["VID"],"NAMES",",".join(sorted(hit)))
+              raise SystemExit(0)
+          raise SystemExit(1)
+          PY
+            then found=1; break; fi
+          done < /tmp/version_ids
+          if [ "$found" = "0" ]; then echo "HISTORICAL_ASAAS_SECRET_VERSION=NOT_FOUND"; fi
