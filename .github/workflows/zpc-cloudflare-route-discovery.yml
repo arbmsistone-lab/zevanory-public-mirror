@@ -69,7 +69,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for script in zevanory zevanory-migration-20260904 zevanory-new-project; do
+          for script in zevanory zevanory-migration-20260904 zevanory-new-project giro-new-project-placeholder giro-sales-agent giro-whatsapp-bridge giro-social-publisher-bridge giro-gmail-bridge giro-instagram-bridge giro-kiwify-webhook; do
             echo "SETTINGS_CANDIDATE=$script"
             code="$(curl -sS -o "/tmp/$script-settings.json" -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$script/settings" || true)"
             if [ "$code" != "200" ]; then
@@ -86,7 +86,7 @@ jobs:
           for host in zevanory.girolocal-rb.workers.dev zevanory-migration-20260904.girolocal-rb.workers.dev zevanory-new-project.girolocal-rb.workers.dev; do
             echo "CANDIDATE_HOST=$host"
             if curl -fsS "https://$host/api/control-plane" -o /tmp/candidate.json; then
-              HOST="$host" python3 -c "import json,os; d=json.load(open('/tmp/candidate.json')); print('CANDIDATE_RESULT',os.environ['HOST'],'SHA',d.get('release',{}).get('deployment',{}).get('commit_sha'),'STATE',d.get('global_state'))"
+              HOST="$host" python3 -c "import json,os; p='/tmp/candidate.json'; s=open(p,errors='replace').read(); h=os.environ['HOST'];\ntry:\n d=json.loads(s); print('CANDIDATE_RESULT',h,'SHA',d.get('release',{}).get('deployment',{}).get('commit_sha'),'STATE',d.get('global_state'))\nexcept Exception:\n print('CANDIDATE_RESULT',h,'NON_JSON')"
             else
               echo "CANDIDATE_RESULT $host UNREACHABLE"
             fi
