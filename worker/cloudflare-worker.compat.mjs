@@ -113,6 +113,47 @@ const wrapped = {
       return handleAdminRequest(request, normalized, ctx, wrapped);
     }
 
+    if (url.pathname === "/api/internal/certification/e2e/invite") {
+      if (String(request.method || "GET").toUpperCase() !== "POST") {
+        return new Response(JSON.stringify({ error: "method_not_allowed" }), {
+          status: 405,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
+        });
+      }
+      const expected = String(normalized.CERTIFICATION_E2E_TOKEN || "");
+      const provided = String(request.headers.get("x-certification-e2e-token") || "");
+      const sandbox = String(normalized.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox";
+      const salesClosed = String(normalized.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true";
+      if (!sandbox || !salesClosed) {
+        return new Response(JSON.stringify({ error: "certification_e2e_not_fail_closed" }), {
+          status: 409,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
+        });
+      }
+      if (expected.length < 32 || provided !== expected) {
+        return new Response(JSON.stringify({ error: "certification_e2e_auth_required" }), {
+          status: 401,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
+        });
+      }
+      const operatorToken = String(normalized.OPERATOR_TOKEN || "");
+      if (operatorToken.length < 24) {
+        return new Response(JSON.stringify({ error: "operator_secret_unavailable" }), {
+          status: 503,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
+        });
+      }
+      const internalRequest = new Request(new URL("/api/events/operator", url), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "authorization": `Bearer ${operatorToken}`
+        },
+        body: JSON.stringify({ name: "certification_pilot_invite_create", ttl_hours: 1 })
+      });
+      return worker.fetch(internalRequest, normalized, ctx);
+    }
+
     if (url.pathname === "/api/zea10/autonomy") {
       return handleZea10AutonomyRequest(request, normalized, ctx, wrapped);
     }
