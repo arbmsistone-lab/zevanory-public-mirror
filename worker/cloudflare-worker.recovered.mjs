@@ -16585,6 +16585,7 @@ var json28 = /* @__PURE__ */ __name((res, status, body) => {
   res.end(JSON.stringify(body));
 }, "json");
 async function authorizePost(req, master) {
+  if (String(req.headers["x-zevanory-owner-authenticated"] || "") === "1") return true;
   const expected = await deriveAiVaultIngestToken(master), provided = req.headers["x-zevanory-ai-vault-token"];
   if (constantTimeEqual(provided, expected)) return true;
   const bearer3 = String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i)?.[1] || "";
@@ -16601,8 +16602,9 @@ async function handler31(req, res) {
   const master = process.env.AI_VAULT_ENCRYPTION_KEY || process.env.ELITE_INTERNAL_TOKEN;
   if (!master) return json28(res, 503, { error: "ai_vault_disabled" });
   if (req.method === "GET") {
+    const ownerAuthorized = String(req.headers["x-zevanory-owner-authenticated"] || "") === "1";
     const expected = await deriveAiVaultIngestToken(master), provided = req.headers["x-zevanory-ai-vault-token"];
-    if (!constantTimeEqual(provided, expected)) return json28(res, 401, { error: "unauthorized" });
+    if (!ownerAuthorized && !constantTimeEqual(provided, expected)) return json28(res, 401, { error: "unauthorized" });
     return json28(res, 200, { ok: true, ...await aiVaultStatus() });
   }
   if (req.method !== "POST") return json28(res, 405, { error: "method_not_allowed" });
@@ -17322,6 +17324,7 @@ var staticAliases = /* @__PURE__ */ new Map([
   ["/criativos", "/criativos.html"],
   ["/zevanory-robot-control", "/zevanory-robot-control.html"],
   ["/financeiro", "/financeiro.html"],
+  ["/voice-provision", "/voice-provision.html"],
   ["/tiktok-review", "/tiktok-review.html"]
 ]);
 function delegatedPaymentOrigin(env, requestUrl) {
@@ -17447,7 +17450,7 @@ var cloudflare_worker_default = {
       return new Response(JSON.stringify({ configured: true }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "set-cookie": ownerCookie(session) } });
     }
     if (url.pathname === "/auth/owner/logout" && request.method === "POST") return new Response(null, { status: 204, headers: { "cache-control": "no-store", "set-cookie": clearOwnerCookie() } });
-    const privatePage = (/* @__PURE__ */ new Set(["/central", "/index.html", "/criativos", "/criativos.html", "/zevanory-robot-control", "/zevanory-robot-control.html", "/financeiro", "/financeiro.html"])).has(url.pathname);
+    const privatePage = (/* @__PURE__ */ new Set(["/central", "/index.html", "/criativos", "/criativos.html", "/zevanory-robot-control", "/zevanory-robot-control.html", "/financeiro", "/financeiro.html", "/voice-provision", "/voice-provision.html"])).has(url.pathname);
     const privateApi = url.pathname.startsWith("/private-api/");
     const owner = privatePage || privateApi ? await verifyOwnerSession(env, readOwnerCookie(request)) : null;
     if (privatePage && !owner) return Response.redirect(new URL("/acesso", url), 302);
