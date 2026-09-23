@@ -38,3 +38,11 @@ assert 'new Set(["groq", "openrouter", "gemini"])' in s
 assert 'loadAiVaultSecret("gemini"' in s
 assert 'provider_vault_supported: true' in s
 print("VOICE_GEMINI_VAULT_GATE=PASS")
+
+# ZERO_SPEND primary runtime: self-hosted Piper pt-BR relay
+assert 'provider === "piper-relay"' in s
+assert 'pt_BR-jeff-medium' in s
+assert 'voice_tts_piper_relay_http_' in s
+assert '/api/voice/probe' in s
+assert 'provider_secretless_origin_auth' in s
+print("VOICE_PIPER_PTBR_ZERO_SPEND_PRIMARY_GATE=PASS")
