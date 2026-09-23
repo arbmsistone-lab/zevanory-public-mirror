@@ -78,13 +78,21 @@ ROUTES=r'''
 '''
 
 def extract(raw):
-    t=raw.decode("utf-8","replace"); b=t.splitlines()[0]
-    m=re.search(r'Content-Disposition: form-data; name="index\.js"\r?\n(?:Content-Type:[^\n]*\r?\n)?\r?\n',t)
-    if not m: raise SystemExit("index_part_missing")
-    e=t.find("\r\n"+b,m.end())
-    if e<0:e=t.find("\n"+b,m.end())
-    if e<0:raise SystemExit("boundary_missing")
-    return t[m.end():e]
+    t=raw.decode("utf-8","replace")
+    b=t.splitlines()[0].strip()
+    marker='name="index.js"'
+    p=t.find(marker)
+    if p<0: raise SystemExit("index_part_missing")
+    h=t.find("\\r\\n\\r\\n",p)
+    sep=4
+    if h<0:
+        h=t.find("\\n\\n",p); sep=2
+    if h<0: raise SystemExit("index_header_end_missing")
+    s=h+sep
+    e=t.find("\\r\\n"+b,s)
+    if e<0: e=t.find("\\n"+b,s)
+    if e<0: raise SystemExit("boundary_missing")
+    return t[s:e]
 def patch(src):
     if "/broker/status" in src: raise SystemExit("already_patched")
     if "var index_default = {" not in src or '    const url = new URL(request.url);\n' not in src: raise SystemExit("anchor_missing")
