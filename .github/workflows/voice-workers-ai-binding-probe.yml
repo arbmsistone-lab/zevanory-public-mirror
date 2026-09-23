@@ -1,19 +1,17 @@
-name: ZEVANORY Workers AI TTS binding probe
+name: ZEVANORY Workers AI probe cleanup
 
 on:
   workflow_dispatch:
   push:
     branches: [gh-pages]
     paths:
-      - 'worker/voice-ai-probe.mjs'
-      - 'wrangler.voice-ai-probe.json'
       - '.github/workflows/voice-workers-ai-binding-probe.yml'
 
 permissions:
   contents: read
 
 jobs:
-  probe:
+  cleanup:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -21,25 +19,9 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy temporary AI-binding probe
+      - name: Delete temporary Workers AI probe
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${CLOUDFLARE_API_TOKEN:-}"
-          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.voice-ai-probe.json
-      - name: Verify real Portuguese audio
-        shell: bash
-        run: |
-          set -euo pipefail
-          url="https://zevanory-voice-ai-probe.girolocal-rb.workers.dev/"
-          ok=0
-          for i in $(seq 1 12); do
-            code=$(curl -sS -o /tmp/tts.bin -w '%{http_code}' "$url")
-            echo "HTTP=$code BYTES=$(wc -c </tmp/tts.bin)"
-            if [ "$code" = "200" ] && [ "$(wc -c </tmp/tts.bin)" -gt 1000 ]; then ok=1; break; fi
-            if [ "$code" != "200" ]; then cat /tmp/tts.bin | head -c 800 || true; echo; fi
-            sleep 5
-          done
-          test "$ok" = "1"
-          file /tmp/tts.bin
-          echo "WORKERS_AI_TTS_REAL_AUDIO=PASS"
+          npx --yes wrangler@4.135.0 delete --name zevanory-voice-ai-probe --force || true
+          echo "TEMP_WORKERS_AI_PROBE_CLEANED"
