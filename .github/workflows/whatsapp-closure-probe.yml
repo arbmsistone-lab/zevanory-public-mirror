@@ -1,0 +1,73 @@
+name: ZEVANORY WhatsApp closure probe
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/whatsapp-closure-probe.yml"
+      - "worker/whatsapp-credential-broker.mjs"
+      - ".github/workflows/whatsapp-zero-spend-broker.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/whatsapp-closure-probe.yml"
+      - "worker/whatsapp-credential-broker.mjs"
+      - ".github/workflows/whatsapp-zero-spend-broker.yml"
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Probe canonical WhatsApp identity and runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS "https://zevanory.api.br/api/config?view=channel_identity_health" -o /tmp/identity.json
+          curl -fsS "https://zevanory.api.br/api/config?view=closure_status" -o /tmp/closure.json
+          python3 - <<'PY'
+          import json
+          identity=json.load(open("/tmp/identity.json"))
+          closure=json.load(open("/tmp/closure.json"))
+          wa=identity.get("whatsapp",{})
+          ch=closure.get("channels",{}).get("whatsapp",{})
+          safe={
+            "attempted":bool(wa.get("attempted")),
+            "verified":bool(wa.get("verified")),
+            "reason":str(wa.get("reason") or ""),
+            "provider_id":str(wa.get("provider_id") or ""),
+            "display_phone_number":str(wa.get("display_phone_number") or ""),
+            "number_verified":bool(wa.get("number_verified")),
+            "verified_name":str(wa.get("verified_name") or ""),
+            "brand_name_verified":bool(wa.get("brand_name_verified")),
+            "name_status":str(wa.get("name_status") or ""),
+            "code_verification_status":str(wa.get("code_verification_status") or ""),
+            "verification_mode":str(wa.get("verification_mode") or ""),
+            "operational_ready":bool(ch.get("operational_ready")),
+            "operational_mode":str(ch.get("operational_mode") or "")
+          }
+          print("WHATSAPP_SAFE_IDENTITY="+json.dumps(safe,separators=(",",":")))
+          print("WHATSAPP_OFFICIAL_NUMBER="+("PASS" if safe["display_phone_number"]=="5588992545413" and safe["number_verified"] else "BLOCKED"))
+          print("WHATSAPP_IDENTITY="+("PASS" if safe["verified"] else "BLOCKED"))
+          print("WHATSAPP_RUNTIME="+("PASS" if safe["operational_ready"] else "BLOCKED"))
+          PY
+      - name: Probe broker runtime provenance after canonical deploy
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS "https://giro-whatsapp-bridge.girolocal-rb.workers.dev/__zevanory/runtime" -o /tmp/runtime.json
+          python3 - <<'PY'
+          import json,os
+          x=json.load(open("/tmp/runtime.json"))
+          assert x.get("ok") is True
+          assert x.get("runtime_sha")==os.environ["GITHUB_SHA"], (x.get("runtime_sha"),os.environ["GITHUB_SHA"])
+          assert x.get("runtime_version")
+          assert x.get("zero_spend") is True
+          assert x.get("legacy_route_bypass")==0
+          print("BROKER_RUNTIME_SHA=PASS")
+          print("BROKER_RUNTIME_VERSION=PASS")
+          print("SHA_CONSISTENCY=PASS")
+          print("ZERO_SPEND=PASS")
+          print("WHATSAPP_SAFE_RUNTIME_IDENTITY="+json.dumps(x.get("whatsapp",{}),separators=(",",":")))
+          PY
