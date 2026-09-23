@@ -45,7 +45,8 @@ async function putRecord(env,value){
 }
 async function putState(env,state){
   const kv=store(env); if(!kv?.put) throw new Error("whatsapp_onboarding_storage_unavailable");
-  await kv.put("whatsapp-onboarding/state/"+state.id,await seal(state,env),{expirationTtl:900});
+  const raw="state-v1:"+JSON.stringify(state);
+  await kv.put("whatsapp-onboarding/state/"+state.id,raw,{expirationTtl:900});
 }
 async function takeState(env,id){
   const kv=store(env); if(!kv?.get) throw new Error("whatsapp_onboarding_storage_unavailable");
@@ -53,12 +54,27 @@ async function takeState(env,id){
   const raw=await kv.get(key);
   if(!raw) throw new Error("whatsapp_onboarding_state_missing");
   await kv.delete?.(key).catch(()=>{});
-  const state=await open(raw,env);
+  const state=String(raw).startsWith("state-v1:")?JSON.parse(String(raw).slice(9)):await open(raw,env);
   if(Date.now()-Number(state.created_at||0)>15*60*1000) throw new Error("whatsapp_onboarding_state_expired");
   return state;
 }
 function digits(v){ return String(v||"").replace(/\D/g,""); }
 function safeText(v,max=500){ return String(v??"").trim().slice(0,max); }
+function brokerBinding(env){ return env.WHATSAPP_BROKER || globalThis.__ZEVANORY_WHATSAPP_BROKER__ || null; }
+async function brokerJson(env,path,{method="GET",body=null}={}){
+  const broker=brokerBinding(env);
+  if(!broker?.fetch) throw new Error("whatsapp_broker_unavailable");
+  const init={method,headers:{"x-zevanory-internal":"service-binding","content-type":"application/json"}};
+  if(body!==null) init.body=JSON.stringify(body);
+  const r=await broker.fetch(new Request("https://whatsapp-broker.internal"+path,init));
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error("whatsapp_broker_http_"+r.status+"_"+safeText(j?.error||j?.reason||"provider_error",120));
+  return j;
+}
+async function brokerStatus(env){
+  try { return await brokerJson(env,"/broker/status"); }
+  catch(error){ return {configured:false,identity_verified:false,reason:safeText(error?.message,180)}; }
+}
 function htmlEscape(v){ return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 function responseHtml(body,status=200,extra={}){
   return new Response(body,{status,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","referrer-policy":"no-referrer","content-security-policy":"default-src 'self'; style-src 'unsafe-inline'; form-action 'self' https://www.facebook.com; frame-ancestors 'none'",...extra}});
@@ -207,10 +223,22 @@ export async function loadWhatsappRuntimeCredentials(env={}){
 export async function handleWhatsappOnboarding(request,env={}){
   const url=new URL(request.url);
   let record=await getRecord(env).catch(()=>null);
+  const brokerState=await brokerStatus(env);
   if(url.pathname==="/admin/whatsapp-onboard"&&request.method==="GET"){
-    const live=record?await verifyRuntime(record):{verified:false};
-    if(record&&Boolean(record.identity_verified)!==Boolean(live.verified)){record={...record,identity_verified:Boolean(live.verified),updated_at:new Date().toISOString()}; await putRecord(env,record);}
-    return responseHtml(dashboard(record,live,url.searchParams.get("message")||""));
+    const live=brokerState?.configured?{
+      verified:Boolean(brokerState.identity_verified),
+      verified_name:safeText(brokerState.verified_name),
+      name_status:safeText(brokerState.name_status),
+      code_verification_status:safeText(brokerState.code_verification_status)
+    }:record?await verifyRuntime(record):{verified:false};
+    const viewRecord=brokerState?.configured?{
+      app_secret:true,
+      access_token:true,
+      phone_number_id:brokerState.phone_number_id||"",
+      waba_id:brokerState.waba_id||""
+    }:record;
+    if(record&&!brokerState?.configured&&Boolean(record.identity_verified)!==Boolean(live.verified)){record={...record,identity_verified:Boolean(live.verified),updated_at:new Date().toISOString()}; await putRecord(env,record);}
+    return responseHtml(dashboard(viewRecord,live,url.searchParams.get("message")||""));
   }
   if(url.pathname==="/admin/whatsapp-onboard/bootstrap"&&request.method==="POST"){
     const body=await parseForm(request);
@@ -221,15 +249,15 @@ export async function handleWhatsappOnboarding(request,env={}){
     return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard",303);
   }
   if(url.pathname==="/admin/whatsapp-onboard/start"&&request.method==="GET"){
-    if(!record?.app_secret) return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message=App%20Secret%20necess%C3%A1rio",303);
+    if(!brokerBinding(env)&&!record?.app_secret) return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message=Provedor%20Meta%20indispon%C3%ADvel",303);
     const state={id:b64url(crypto.getRandomValues(new Uint8Array(24))),created_at:Date.now()};
     await putState(env,state);
     const u=new URL("https://www.facebook.com/"+GRAPH_VERSION+"/dialog/oauth");
-    u.searchParams.set("client_id",record.app_id||DEFAULT_APP_ID);
+    u.searchParams.set("client_id",record?.app_id||DEFAULT_APP_ID);
     u.searchParams.set("redirect_uri",REDIRECT_URI);
     u.searchParams.set("state",state.id);
     u.searchParams.set("response_type","code");
-    u.searchParams.set("config_id",record.config_id||DEFAULT_CONFIG_ID);
+    u.searchParams.set("config_id",record?.config_id||DEFAULT_CONFIG_ID);
     u.searchParams.set("override_default_response_type","true");
     u.searchParams.set("scope",["business_management","whatsapp_business_management","whatsapp_business_messaging"].join(","));
     return Response.redirect(u.toString(),302);
@@ -237,8 +265,17 @@ export async function handleWhatsappOnboarding(request,env={}){
   if(url.pathname==="/admin/whatsapp-onboard/callback"&&request.method==="GET"){
     const error=safeText(url.searchParams.get("error"),100), code=safeText(url.searchParams.get("code"),4000), stateId=safeText(url.searchParams.get("state"),200);
     if(error) return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent("Meta recusou a autorização: "+error),303);
-    if(!code||!stateId||!record?.app_secret) return responseJson({error:"meta_callback_invalid"},400);
+    if(!code||!stateId||(!brokerBinding(env)&&!record?.app_secret)) return responseJson({error:"meta_callback_invalid"},400);
     await takeState(env,stateId);
+    if(brokerBinding(env)){
+      const outcome=await brokerJson(env,"/broker/oauth/callback",{method:"POST",body:{code,redirect_uri:REDIRECT_URI,official_e164:OFFICIAL_E164}});
+      const message=outcome.identity_verified
+        ?"Número oficial localizado, registrado e identidade Meta verificada."
+        :outcome.official_number_found
+          ?"Número oficial localizado. A Meta ainda exige conclusão da verificação do número."
+          :"Autorização concluída. A Meta ainda exige adicionar e verificar o número +55 88 99254-5413 na conta WhatsApp Business.";
+      return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent(message),303);
+    }
     const access_token=await exchangeCode({code,app_id:record.app_id||DEFAULT_APP_ID,app_secret:record.app_secret});
     const found=await discoverOfficialNumber(access_token);
     if(!found) {
@@ -260,6 +297,7 @@ export async function handleWhatsappOnboarding(request,env={}){
     return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent(message),303);
   }
   if(url.pathname==="/api/admin/whatsapp-onboard/status"&&request.method==="GET"){
+    if(brokerState?.broker===true) return responseJson({...brokerState,official_number:OFFICIAL_E164});
     const live=record?await verifyRuntime(record):{verified:false,reason:"not_configured"};
     return responseJson({configured:Boolean(record?.access_token&&record?.phone_number_id&&record?.app_secret&&record?.verify_token),identity_verified:Boolean(live.verified),webhook_configured:Boolean(record?.webhook_configured),waba_subscribed:Boolean(record?.waba_subscribed),phone_registration_ok:Boolean(record?.phone_registration_ok),official_number:OFFICIAL_E164,waba_id:record?.waba_id||null,phone_number_id:record?.phone_number_id||null,live});
   }
