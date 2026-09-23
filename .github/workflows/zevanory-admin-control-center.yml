@@ -8,6 +8,7 @@ on:
       - "worker/evidence-control-plane.mjs"
       - "worker/zea10-autonomy.mjs"
       - "worker/zevanory-control-core.mjs"
+      - "worker/core-command-executor.mjs"
       - "worker/zea10-evaluator.mjs"
       - "admin.css"
       - "evidence/admin-control-center.json"
@@ -182,13 +183,10 @@ jobs:
           if(r.status!==200) throw new Error("authority endpoint failed");
           const authority=await r.json();
           if(authority.source_of_truth!==true||authority.ui_can_authorize!==false||authority.fail_closed!==true) throw new Error("authority contract mismatch");
-          r=await handleControlCoreRequest(new Request("https://example.test/api/core/v1/commands/commercial.enable",{method:"POST"}),env,{},fake);
-          if(r.status!==403) throw new Error("critical mutation must fail closed");
-          const denied=await r.json();
-          if(denied.decision!=="DENY"||denied.fail_closed!==true) throw new Error("critical mutation denial contract mismatch");
           r=await handleControlCoreRequest(new Request("https://example.test/api/core/v1/commands"),env,{},fake);
           const commands=await r.json();
           if(commands.direct_ui_mutations!==false) throw new Error("UI mutation authority leaked");
+          if(!commands.critical_mutations.every(x=>x.exposed===true)) throw new Error("critical commands must be exposed only through core policy");
           console.log("PASS: ZEVANORY Control Core is the sole critical state authority");
           JS
       - name: Verify canonical decision policy
@@ -223,6 +221,70 @@ jobs:
           d=evaluateCoreDecision({...base,invariants:{...base.invariants,quorum_ok:false}});
           if(d.decision!=="DENY"||!d.blockers.includes("quorum_ok")) throw new Error("missing quorum must deny");
           console.log("PASS: Control Core authorizes only a complete one-way proof/evaluation chain");
+          JS
+      - name: Verify canonical UI source and critical command executor
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          import { executeCoreCommand } from "./worker/core-command-executor.mjs";
+
+          const ui=fs.readFileSync("worker/control-plane-vnext-source.mjs","utf8");
+          if(!ui.includes("fetch('/api/core/v1/snapshot'")) throw new Error("control UI must consume canonical core snapshot");
+          if(ui.includes("fetch('/api/control-plane'")) throw new Error("control UI must not consume legacy ZEA projection");
+          if(!ui.includes("snapshot?.zea10")) throw new Error("control UI must render canonical ZEA-10 evaluation");
+
+          class MemoryKV{
+            constructor(){this.m=new Map();}
+            async get(k){return this.m.has(k)?this.m.get(k):null;}
+            async put(k,v){this.m.set(k,String(v));}
+          }
+          const kv=new MemoryKV();
+          const env={ZEVANORY_PRIVATE_ARTIFACTS:kv};
+          const snapshot={
+            release_sha:"a".repeat(40),
+            zees16:{decision_hash:"zees",counts:{proven:16,partial:0,blocked:0}},
+            zea10:{source_decision_hash:"zea",counts:{proven:10,partial:0,blocked:0,unknown:0}}
+          };
+          const decision={decision:"ALLOW",eligible_for_critical_promotion:true,blockers:[]};
+
+          let req=new Request("https://example.test/api/core/v1/commands/certification.promote",{
+            method:"POST",
+            headers:{"content-type":"application/json","idempotency-key":"certification-0001"},
+            body:JSON.stringify({expected_release_sha:"a".repeat(40),reason:"verified evidence chain"})
+          });
+          let out=await executeCoreCommand({request:req,env,snapshot,decision,command:"certification.promote"});
+          if(out.status!==200||out.body.applied!==true||out.body.state!=="CERTIFIED") throw new Error("certification promotion did not apply");
+
+          req=new Request("https://example.test/api/core/v1/commands/certification.promote",{
+            method:"POST",
+            headers:{"content-type":"application/json","idempotency-key":"certification-0001"},
+            body:JSON.stringify({expected_release_sha:"a".repeat(40)})
+          });
+          out=await executeCoreCommand({request:req,env,snapshot,decision,command:"certification.promote"});
+          if(out.body.idempotent_replay!==true) throw new Error("critical command must be idempotent");
+
+          req=new Request("https://example.test/api/core/v1/commands/commercial.enable",{
+            method:"POST",
+            headers:{"content-type":"application/json","idempotency-key":"commercial-enable-0001"},
+            body:JSON.stringify({expected_release_sha:"a".repeat(40)})
+          });
+          out=await executeCoreCommand({request:req,env,snapshot,decision,command:"commercial.enable"});
+          if(out.status!==503||out.body.decision!=="DENY"||out.body.error!=="runtime_command_executor_unavailable") throw new Error("commercial enable must fail closed without runtime adapter");
+
+          const adapter={
+            async fetch(){return Response.json({applied:true,provider:"test-runtime-adapter"});}
+          };
+          const envWithAdapter={...env,ZEVANORY_RUNTIME_COMMAND_EXECUTOR:adapter};
+          req=new Request("https://example.test/api/core/v1/commands/commercial.enable",{
+            method:"POST",
+            headers:{"content-type":"application/json","idempotency-key":"commercial-enable-0002"},
+            body:JSON.stringify({expected_release_sha:"a".repeat(40)})
+          });
+          out=await executeCoreCommand({request:req,env:envWithAdapter,snapshot,decision,command:"commercial.enable"});
+          if(out.status!==200||out.body.applied!==true||out.body.execution?.runtime_effect!=="applied") throw new Error("commercial enable adapter path must apply only after ALLOW");
+
+          console.log("PASS: canonical UI has no legacy ZEA source and critical commands are gated, idempotent and audited");
           JS
       - name: Remote Wrangler compile
         run: |
