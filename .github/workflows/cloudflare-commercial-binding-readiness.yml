@@ -1,0 +1,39 @@
+name: ZEVANORY Cloudflare binding readiness
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cloudflare-commercial-binding-readiness.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+    steps:
+      - name: Inspect binding names and types only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/settings"             -o /tmp/settings.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/settings.json"))
+          assert d.get("success") is True, d.get("errors")
+          wanted={
+            "MERCADOPAGO_ACCESS_TOKEN","MERCADOPAGO_WEBHOOK_SECRET","MERCADOPAGO_TEST_ACCESS_TOKEN",
+            "META_ACCESS_TOKEN","META_APP_SECRET","WHATSAPP_ACCESS_TOKEN","WHATSAPP_PHONE_NUMBER_ID",
+            "RESEND_API_KEY","DATABASE_URL","ZEVANORY_PRIVATE_ARTIFACTS"
+          }
+          found={}
+          for b in d.get("result",{}).get("bindings",[]):
+              name=str(b.get("name") or "")
+              if name in wanted:
+                  found[name]=str(b.get("type") or "unknown")
+          for name in sorted(wanted):
+              print(f"{name}={'PRESENT:'+found[name] if name in found else 'ABSENT'}")
+          PY
