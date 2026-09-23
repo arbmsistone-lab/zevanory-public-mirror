@@ -1,0 +1,19 @@
+name: ZEVANORY WhatsApp provisioning gate
+on:
+  pull_request:
+    paths:
+      - "worker/whatsapp-provisioning-gate.mjs"
+      - "worker/zevanory-control-core.mjs"
+      - "scripts/test_whatsapp_provisioning_gate.mjs"
+      - ".github/workflows/whatsapp-provisioning-gate.yml"
+  workflow_dispatch:
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node scripts/test_whatsapp_provisioning_gate.mjs
