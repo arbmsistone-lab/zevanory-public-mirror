@@ -9,6 +9,8 @@ on:
       - "worker/cloudflare-worker.compat.mjs"
       - "worker/evidence-control-plane.mjs"
       - "worker/zevanory-control-core.mjs"
+      - "worker/zea10-autonomy.mjs"
+      - "worker/zea10-evaluator.mjs"
       - "worker/admin-console.mjs"
       - "admin.css"
       - "evidence/admin-control-center.json"
@@ -171,6 +173,8 @@ jobs:
             curl -fsS https://zevanory.api.br/api/status -o /tmp/status.json || true
             curl -fsS https://zevanory.api.br/api/health -o /tmp/health.json || true
             curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/control.json || true
+            curl -fsS https://zevanory.api.br/api/core/v1/snapshot -o /tmp/core.json || true
+            curl -fsS https://zevanory.api.br/api/core/v1/evaluation/zea10 -o /tmp/zea10.json || true
             if GITHUB_SHA="$GITHUB_SHA" python3 - <<'PY'
           import json, os, pathlib, sys
           try:
@@ -179,12 +183,23 @@ jobs:
               control=json.load(open("/tmp/control.json"))
           except Exception:
               raise SystemExit(1)
+          try:
+              core=json.load(open("/tmp/core.json"))
+              zea10=json.load(open("/tmp/zea10.json"))
+          except Exception:
+              raise SystemExit(1)
           ok=(
               status.get("runtime",{}).get("sales")=="globally-blocked"
               and health.get("ready") is True
               and control.get("global_state")=="operational_commercial_blocked"
               and control.get("root_blocker")=="global_sale_disabled"
               and control.get("release",{}).get("deployment",{}).get("commit_sha")==os.environ["GITHUB_SHA"]
+              and core.get("release_sha")==os.environ["GITHUB_SHA"]
+              and core.get("architecture",{}).get("circular_dependency") is False
+              and core.get("architecture",{}).get("flow")==["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]
+              and core.get("invariants",{}).get("evidence_to_evaluation_unidirectional") is True
+              and zea10.get("source_layer")=="ZEES-16"
+              and zea10.get("authority") is False
           )
           raise SystemExit(0 if ok else 1)
           PY
@@ -200,12 +215,20 @@ jobs:
           status=json.load(open("/tmp/status.json"))
           health=json.load(open("/tmp/health.json"))
           control=json.load(open("/tmp/control.json"))
+          core=json.load(open("/tmp/core.json"))
+          zea10=json.load(open("/tmp/zea10.json"))
           assert status["runtime"]["sales"]=="globally-blocked"
           assert health["ready"] is True
           assert control["global_state"]=="operational_commercial_blocked"
           assert control["root_blocker"]=="global_sale_disabled"
           assert control["release"]["deployment"]["commit_sha"]==os.environ["GITHUB_SHA"], (control["release"]["deployment"]["commit_sha"],os.environ["GITHUB_SHA"])
+          assert core["release_sha"]==os.environ["GITHUB_SHA"]
+          assert core["architecture"]["flow"]==["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]
+          assert core["architecture"]["circular_dependency"] is False
+          assert core["invariants"]["evidence_to_evaluation_unidirectional"] is True
+          assert zea10["source_layer"]=="ZEES-16" and zea10["authority"] is False
           print("PRODUCTION_EXACT_SHA_PASS",os.environ["GITHUB_SHA"])
+          print("PRODUCTION_ZEES_ZEA_CORE_ADMIN_ARCHITECTURE_PASS")
           print("PRODUCTION_CENTRAL_UTF8_AND_SAFETY_PASS")
           PY
       - name: Fail-closed deployment status
