@@ -97,6 +97,7 @@ jobs:
           assert d.get("success") is True, d.get("errors")
           for b in d.get("result",{}).get("bindings",[]):
               n=str(b.get("name") or "")
+              print("WA_BINDING_NAME",n,"TYPE="+str(b.get("type") or "unknown"))
               if n=="WHATSAPP_PHONE_NUMBER_ID":
                   v=str(b.get("text") or b.get("value") or "")
                   print("WA_PHONE_ID_PRESENT", bool(v))
