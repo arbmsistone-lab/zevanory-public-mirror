@@ -205,6 +205,7 @@ jobs:
             },
             zees16:{
               decision_hash:"deadbeef",
+              persistence:"kv-append-only",
               counts:{proven:16,partial:0,blocked:0}
             },
             zea10:{
@@ -220,7 +221,9 @@ jobs:
           if(d.decision!=="DENY"||!d.blockers.includes("zees16_complete")) throw new Error("partial ZEES-16 must deny");
           d=evaluateCoreDecision({...base,invariants:{...base.invariants,quorum_ok:false}});
           if(d.decision!=="DENY"||!d.blockers.includes("quorum_ok")) throw new Error("missing quorum must deny");
-          console.log("PASS: Control Core authorizes only a complete one-way proof/evaluation chain");
+          d=evaluateCoreDecision({...base,zees16:{...base.zees16,persistence:"degraded-readonly"}});
+          if(d.decision!=="DENY"||!d.blockers.includes("evidence_persistence_ok")) throw new Error("degraded evidence persistence must deny critical promotion");
+          console.log("PASS: Control Core authorizes only a complete one-way proof/evaluation chain with durable evidence persistence");
           JS
       - name: Verify canonical UI source and critical command executor
         run: |

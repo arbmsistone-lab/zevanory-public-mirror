@@ -35,17 +35,21 @@ async function readJsonThrough(worker,base,path,env,ctx){
 }
 
 export async function buildCoreSnapshot(worker,env,ctx,baseUrl="https://zevanory.api.br"){
-  const [status,health,control,continuity,zees16]=await Promise.all([
+  const [status,health,control,continuity]=await Promise.all([
     readJsonThrough(worker,baseUrl,"/api/status",env,ctx),
     readJsonThrough(worker,baseUrl,"/api/health",env,ctx),
     readJsonThrough(worker,baseUrl,"/api/control-plane",env,ctx),
-    readJsonThrough(worker,baseUrl,"/api/continuity",env,ctx),
-    readOrReconcileControlState(worker,env,ctx,baseUrl).catch(()=>null)
+    readJsonThrough(worker,baseUrl,"/api/continuity",env,ctx)
   ]);
 
-  const releaseSha=
+  const canonicalReleaseSha=
     control?.release?.deployment?.commit_sha ||
     control?.proof_chain?.sha ||
+    null;
+  const zees16=await readOrReconcileControlState(worker,env,ctx,baseUrl,canonicalReleaseSha).catch(()=>null);
+
+  const releaseSha=
+    canonicalReleaseSha ||
     zees16?.release_sha ||
     null;
 
@@ -119,6 +123,7 @@ export function evaluateCoreDecision(snapshot){
     health_ready:snapshot?.invariants?.health_ready===true,
     quorum_ok:snapshot?.invariants?.quorum_ok===true,
     evidence_flow_unidirectional:snapshot?.invariants?.evidence_to_evaluation_unidirectional===true,
+    evidence_persistence_ok:snapshot?.zees16?.persistence==="kv-append-only",
     zees16_complete:Number(zeesCounts.proven||0)===16 &&
       Number(zeesCounts.partial||0)===0 &&
       Number(zeesCounts.blocked||0)===0,
