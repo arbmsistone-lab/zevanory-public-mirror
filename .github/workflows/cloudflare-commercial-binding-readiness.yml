@@ -35,3 +35,53 @@ jobs:
           for name in sorted(found):
               print(f"BINDING {name} TYPE={found[name]}")
           PY
+
+      - name: Discover zero-spend Meta WhatsApp worker routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts"             -o /tmp/scripts.json
+          python3 - <<'PY'
+          import json, re, subprocess
+          d=json.load(open("/tmp/scripts.json"))
+          assert d.get("success") is True, d.get("errors")
+          names=[]
+          for item in d.get("result",[]):
+              name=str(item.get("id") or item.get("script_name") or item.get("name") or "")
+              if name and re.search(r"(whatsapp|meta|zevanory|giro)", name, re.I):
+                  names.append(name)
+          print("MATCHING_WORKERS", len(names))
+          for name in sorted(set(names)):
+              print("WORKER", name)
+          PY
+          python3 - <<'PY'
+          import json, re, subprocess, os, urllib.request
+          token=os.environ["CLOUDFLARE_API_TOKEN"]
+          account=os.environ["CLOUDFLARE_ACCOUNT_ID"]
+          d=json.load(open("/tmp/scripts.json"))
+          names=[]
+          for item in d.get("result",[]):
+              name=str(item.get("id") or item.get("script_name") or item.get("name") or "")
+              if name and re.search(r"(whatsapp|meta|zevanory|giro)", name, re.I):
+                  names.append(name)
+          prefixes=("META_","WHATSAPP_")
+          exact={"DATABASE_URL","INSTAGRAM_BUSINESS_ACCOUNT_ID"}
+          for name in sorted(set(names)):
+              req=urllib.request.Request(
+                  f"https://api.cloudflare.com/client/v4/accounts/{account}/workers/scripts/{name}/settings",
+                  headers={"Authorization":f"Bearer {token}"}
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as r:
+                      data=json.load(r)
+              except Exception as e:
+                  print("WORKER_SETTINGS_UNAVAILABLE", name, type(e).__name__)
+                  continue
+              found=[]
+              for b in data.get("result",{}).get("bindings",[]):
+                  key=str(b.get("name") or "")
+                  if key in exact or key.startswith(prefixes):
+                      found.append((key,str(b.get("type") or "unknown")))
+              for key,typ in sorted(found):
+                  print(f"WORKER_BINDING {name} {key} TYPE={typ}")
+          PY
