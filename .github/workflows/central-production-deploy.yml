@@ -97,6 +97,31 @@ jobs:
           c["vars"]["ZEVANORY_WHATSAPP_E164"]="+5588992545413"
           c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
           c["vars"]["ZEVANORY_WHATSAPP_COUNTRY"]="BR"
+          # Replace every legacy public contact reference in the reconstructed production snapshot.
+          python3 - <<'PY'
+          from pathlib import Path
+          replacements = {
+              "+55 88 9234-0423": "+55 88 99254-5413",
+              "558892340423": "5588992545413",
+          }
+          changed = []
+          for p in Path("public").rglob("*"):
+              if not p.is_file():
+                  continue
+              try:
+                  raw = p.read_text(encoding="utf-8")
+              except (UnicodeDecodeError, OSError):
+                  continue
+              new = raw
+              for old, value in replacements.items():
+                  new = new.replace(old, value)
+              if new != raw:
+                  p.write_text(new, encoding="utf-8")
+                  changed.append(str(p))
+          if not changed:
+              raise SystemExit("legacy WhatsApp number not found in reconstructed public snapshot")
+          print("WHATSAPP_NUMBER_CUTOVER_FILES", *changed)
+          PY
           c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
           c["vars"]["VOICE_TTS_MODEL"]="pt_BR-jeff-medium"
           c["vars"]["VOICE_TTS_VOICE"]="jeff"
