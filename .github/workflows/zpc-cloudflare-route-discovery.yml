@@ -76,24 +76,7 @@ jobs:
               echo "SETTINGS_RESULT $script HTTP_$code"
               continue
             fi
-            SCRIPT="$script" python3 - <<'PY'
-import json, os
-script=os.environ["SCRIPT"]
-d=json.load(open(f"/tmp/{script}-settings.json"))
-if d.get("success") is not True:
-    print("SETTINGS_RESULT",script,"API_ERROR",d.get("errors"))
-    raise SystemExit(0)
-bindings=d.get("result",{}).get("bindings",[])
-vals={}
-for b in bindings:
-    if b.get("type")=="plain_text":
-        vals[b.get("name")]=b.get("text")
-print("SETTINGS_RESULT",script,
-      "RELEASE_SHA",vals.get("ZEVANORY_RELEASE_SHA"),
-      "REF",vals.get("ZEVANORY_RELEASE_REF"),
-      "ENV",vals.get("ZEVANORY_DEPLOYMENT_ENV"),
-      "SALE",vals.get("SALE_GLOBALLY_ENABLED"))
-PY
+            SCRIPT="$script" python3 -c "import json,os; s=os.environ['SCRIPT']; d=json.load(open('/tmp/'+s+'-settings.json')); bs=d.get('result',{}).get('bindings',[]); vals={b.get('name'):b.get('text') for b in bs if b.get('type')=='plain_text'}; print('SETTINGS_RESULT',s,'RELEASE_SHA',vals.get('ZEVANORY_RELEASE_SHA'),'REF',vals.get('ZEVANORY_RELEASE_REF'),'ENV',vals.get('ZEVANORY_DEPLOYMENT_ENV'),'SALE',vals.get('SALE_GLOBALLY_ENABLED'))"
           done
 
       - name: Compare public workers.dev candidates
