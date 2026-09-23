@@ -94,6 +94,10 @@ jobs:
           c["vars"]["SALE_GLOBALLY_ENABLED"]="false"
           c["vars"]["PRE_SALE_GATES_APPROVED"]="false"
           c["vars"]["WHATSAPP_SALES_ENABLED"]="false"
+          c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
+          c["vars"]["VOICE_TTS_MODEL"]="pt_BR-jeff-medium"
+          c["vars"]["VOICE_TTS_VOICE"]="jeff"
+          c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
           open(p,"w").write(json.dumps(c,indent=2)+"\n")
           PY
           node --check worker/cloudflare-worker.compat.mjs
