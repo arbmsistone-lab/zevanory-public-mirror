@@ -56,10 +56,22 @@ jobs:
           const health={ready:true,checks:{database_reachable:true,schema_ready:true},schema:{required_tables:40,required_migrations:29,missing_tables_count:0,missing_migrations_count:0}};
           const control={global_state:"operational_commercial_blocked",root_blocker:"global_sale_disabled",policy:{claim_scope:"internal_engineering_alignment_not_external_certification",counts:{proven:0,partial:10},pillars:[]}};
           const continuity={quorum_ok:true,mode:"provider_independent",available_channels:["zevanory","email","instagram"],whatsapp_dependency_required:false};
+          const core={
+            schema:"zevanory-control-core/v1",
+            authority:"server-side-core-only",
+            fail_closed:true,
+            ui_can_authorize:false,
+            source_of_truth:true,
+            generated_at:"2026-09-23T12:00:00Z",
+            release_sha:"a".repeat(40),
+            status,health,control,continuity,
+            zees16:{counts:{proven:15,partial:1,blocked:0},pillars:[]},
+            invariants:{exact_release_bound:true,health_ready:true,quorum_ok:true,sales_fail_closed:true}
+          };
           const fake={
             async fetch(req){
               const p=new URL(req.url).pathname;
-              const body=p==="/api/status"?status:p==="/api/health"?health:p==="/api/control-plane"?control:p==="/api/continuity"?continuity:null;
+              const body=p==="/api/core/v1/snapshot"?core:p==="/api/status"?status:p==="/api/health"?health:p==="/api/control-plane"?control:p==="/api/continuity"?continuity:null;
               return body?new Response(JSON.stringify(body),{status:200,headers:{"content-type":"application/json"}}):new Response("not found",{status:404});
             }
           };
@@ -79,6 +91,7 @@ jobs:
           if(r.status!==200) throw new Error("snapshot auth failed");
           const snap=await r.json();
           if(snap.health.schema.required_tables!==40||snap.status.runtime.sales!=="globally-blocked") throw new Error("snapshot mismatch");
+          if(snap.core?.authority!=="server-side-core-only"||snap.core?.ui_can_authorize!==false||snap.core?.source_of_truth!==true) throw new Error("core authority contract mismatch");
           console.log("PASS: authentication, rendering and snapshot behavior verified");
           JS
       - name: Exercise ZEES-16 policy engine and immutable ledger
