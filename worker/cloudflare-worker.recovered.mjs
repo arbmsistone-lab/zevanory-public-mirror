@@ -7608,16 +7608,20 @@ var boundedInt = /* @__PURE__ */ __name((value, fallback, min, max) => {
   return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
 }, "boundedInt");
 function certificationPilotPolicy(env = process.env) {
-  const activation = evaluateActivationReadiness(env);
-  const maxOrders = boundedInt(env.CERTIFICATION_PILOT_MAX_ORDERS, 10, 1, 20);
+  const sandbox = String(env.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox";
+  const activation = sandbox ? null : evaluateActivationReadiness(env);
+  const maxOrders = boundedInt(env.CERTIFICATION_PILOT_MAX_ORDERS, sandbox ? 3 : 10, 1, 20);
   const ttlHours = boundedInt(env.CERTIFICATION_PILOT_INVITE_TTL_HOURS, 72, 1, 168);
   const blockers = [];
   if (!yes4(env.CERTIFICATION_PILOT_ENABLED)) blockers.push("certification_pilot_disabled");
   if (yes4(env.SALE_GLOBALLY_ENABLED)) blockers.push("global_sales_must_remain_closed_during_certification_pilot");
   if (!yes4(env.CHECKOUT_ENABLED)) blockers.push("checkout_disabled");
   if (!yes4(env.FINANCIAL_EVENTS_ENABLED)) blockers.push("financial_events_disabled");
-  if (!activation.ready) blockers.push(...activation.blockers);
-  return Object.freeze({ ready: blockers.length === 0, max_orders: maxOrders, invite_ttl_hours: ttlHours, blockers: Object.freeze([...new Set(blockers)]) });
+  if (sandbox) {
+    if (String(env.ASAAS_ENV || "").toLowerCase() !== "sandbox") blockers.push("asaas_sandbox_unconfigured");
+    if (!String(env.ASAAS_API_KEY || "").trim() || !String(env.ASAAS_WEBHOOK_TOKEN || "").trim()) blockers.push("asaas_sandbox_credentials_missing");
+  } else if (!activation.ready) blockers.push(...activation.blockers);
+  return Object.freeze({ ready: blockers.length === 0, environment: sandbox ? "sandbox" : "production", max_orders: maxOrders, invite_ttl_hours: ttlHours, blockers: Object.freeze([...new Set(blockers)]) });
 }
 __name(certificationPilotPolicy, "certificationPilotPolicy");
 var hashCertificationPilotToken = /* @__PURE__ */ __name((token) => crypto2.createHash("sha256").update(String(token || "")).digest("hex"), "hashCertificationPilotToken");
