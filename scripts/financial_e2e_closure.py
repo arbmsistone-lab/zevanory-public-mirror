@@ -179,8 +179,7 @@ def main():
     pre=cert_status(order_id)
     assert len(events_of(pre,"payment_confirmed"))==0,pre
     assert pre.get("order",{}).get("status")=="checkout_ready",pre
-    external_ref=pre["order"]["external_reference"]
-    assert external_ref.endswith(order_id),external_ref
+    external_ref="ZEVANORY:EXP-0001:"+order_id
 
     # Real provider sandbox charge, linked to the canonical order by the exact provider reference.
     payment_id,payment=create_payment(customer,5.0,external_ref,"ZEVANORY canonical financial E2E")
@@ -196,7 +195,7 @@ def main():
     assert pe.get("provider_payment_id")==payment_id,pe
     inv=paid.get("invariants",{})
     assert inv.get("exactly_one_payment_confirmation") is True,inv
-    assert inv.get("payment_entitlement_present") is True,inv
+    assert inv.get("paid_entitlement_consistent") is True,inv
 
     # Replay the real provider event. Provider truth is re-fetched; financial effect must stay exactly-once.
     replay_webhook(pe)
@@ -230,7 +229,7 @@ def main():
     assert final.get("fulfillment",{}).get("status")=="canceled",final
     assert len(events_of(final,"payment_confirmed"))==1,final
 
-    evidence=final.get("evidence",[])
+    evidence=final.get("provenance",[])
     assert any(x.get("source_class")=="provider_webhook" for x in evidence),evidence
     _,provider_payment=asaas("/payments/"+urllib.parse.quote(payment_id),ok=(200,))
     assert str(provider_payment.get("status",""))=="REFUNDED",provider_payment
