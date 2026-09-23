@@ -5,6 +5,10 @@ on:
     paths:
       - "worker/whatsapp-credential-broker.mjs"
       - ".github/workflows/whatsapp-zero-spend-broker.yml"
+      - "worker/whatsapp-onboarding.mjs"
+      - ".github/workflows/whatsapp-closure-probe.yml"
+      - "worker/whatsapp-onboarding.mjs"
+      - ".github/workflows/whatsapp-closure-probe.yml"
   push:
     branches: [gh-pages]
     paths:
