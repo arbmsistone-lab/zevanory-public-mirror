@@ -61,9 +61,14 @@ jobs:
                       v=str(b.get("text") or b.get("value") or "")
                       print(f"BROKER_SAFE_VALUE {name}={v}")
           PY
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+          curl -fsS -D /tmp/wa-broker-headers.txt -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/giro-whatsapp-bridge" \
             -o /tmp/wa-broker-script.bin
+          grep -i "^content-type:" /tmp/wa-broker-headers.txt | sed "s/^/BROKER_RESPONSE_/"
+          python3 - <<'PY'
+          raw=open("/tmp/wa-broker-script.bin","rb").read().decode("utf-8","ignore")
+          print("BROKER_MULTIPART_HEAD="+raw[:1800].replace("\n","\\n"))
+          PY
           python3 - <<'PY'
           import re
           raw=open("/tmp/wa-broker-script.bin","rb").read().decode("utf-8","ignore")
