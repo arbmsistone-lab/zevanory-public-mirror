@@ -1,3 +1,4 @@
+import { handleVoiceFinalClosure } from "./voice-final-closure.mjs";
 import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "./whatsapp-onboarding.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import worker from "./cloudflare-worker.recovered.mjs";
@@ -77,6 +78,7 @@ const wrapped = {
     const url = new URL(request.url);
     const whatsappRuntime = await loadWhatsappRuntimeCredentials(normalized).catch(()=>null);
     globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = whatsappRuntime || {};
+    globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = normalized.ZEVANORY_PRIVATE_ARTIFACTS || null;
     const canonicalRedirect = canonicalizePublicPath(request, url);
     if (canonicalRedirect) return canonicalRedirect;
 
@@ -87,6 +89,11 @@ const wrapped = {
     if (url.pathname.startsWith("/admin/whatsapp-onboard") || url.pathname === "/api/admin/whatsapp-onboard/status") {
       if (!isAdminAuthorized(request, normalized)) return handleAdminRequest(request, normalized, ctx, wrapped);
       const response = await handleWhatsappOnboarding(request, normalized);
+      if (response) return response;
+    }
+
+    if (url.pathname === "/api/voice/final-closure") {
+      const response = await handleVoiceFinalClosure(request, normalized);
       if (response) return response;
     }
 
