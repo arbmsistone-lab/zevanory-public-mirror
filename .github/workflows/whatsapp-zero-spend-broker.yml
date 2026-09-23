@@ -1,0 +1,114 @@
+name: ZEVANORY WhatsApp zero-spend broker
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/whatsapp-credential-broker.mjs"
+      - ".github/workflows/whatsapp-zero-spend-broker.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "worker/whatsapp-credential-broker.mjs"
+      - ".github/workflows/whatsapp-zero-spend-broker.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate broker fail-closed contract
+        run: |
+          set -euo pipefail
+          node --check worker/whatsapp-credential-broker.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path("worker/whatsapp-credential-broker.mjs").read_text()
+          for marker in [
+              'OFFICIAL_E164 = "5588992545413"',
+              'u.hostname==="whatsapp-broker.internal"',
+              'old_number_active_route:false',
+              'official_number_not_verified',
+              '/broker/verify-signature',
+              '/broker/verify-token',
+              '/broker/oauth/callback',
+              '/broker/request-code',
+              '/broker/verify-code',
+              '/broker/send',
+              '/broker/media',
+              'whatsapp_business_management',
+              'whatsapp_business_messaging',
+          ]:
+              assert marker in s, marker
+          assert "console.log" not in s
+          print("WHATSAPP_BROKER_STATIC_GATE=PASS")
+          PY
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Reconstruct non-secret legacy bindings
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/giro-whatsapp-bridge/settings"             -o /tmp/broker-settings.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/broker-settings.json"))
+          assert d.get("success") is True, d.get("errors")
+          bindings=d.get("result",{}).get("bindings",[])
+          db=next((b for b in bindings if b.get("name")=="DB" and b.get("type")=="d1"),None)
+          assert db, "D1 binding DB missing"
+          dbid=db.get("id") or db.get("database_id")
+          assert dbid, "D1 database id missing"
+          names={str(b.get("name") or "") for b in bindings}
+          required={"META_APP_SECRET","WHATSAPP_ACCESS_TOKEN","WHATSAPP_PHONE_NUMBER_ID","WHATSAPP_VERIFY_TOKEN","GRAPH_API_VERSION"}
+          assert required.issubset(names), "legacy credential bindings missing"
+          cfg={
+            "$schema":"node_modules/wrangler/config-schema.json",
+            "name":"giro-whatsapp-bridge",
+            "main":"worker/whatsapp-credential-broker.mjs",
+            "compatibility_date":"2026-09-04",
+            "compatibility_flags":["nodejs_compat"],
+            "workers_dev":True,
+            "d1_databases":[{"binding":"DB","database_id":dbid}],
+            "ai":{"binding":"AI"}
+          }
+          open("/tmp/wrangler.broker.json","w").write(json.dumps(cfg,indent=2)+"\n")
+          print("BROKER_BINDING_RECONSTRUCTION=PASS")
+          PY
+      - name: Deploy broker while preserving legacy encrypted secrets and vars
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.135.0 deploy             --config /tmp/wrangler.broker.json             --keep-vars             --tag="$GITHUB_SHA"             --message="ZEVANORY zero-spend WhatsApp credential broker $GITHUB_SHA"
+      - name: Prove legacy public route is retired
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /tmp/legacy.json -w '%{http_code}' https://giro-whatsapp-bridge.girolocal-rb.workers.dev/health)"
+          test "$code" = "410"
+          python3 - <<'PY'
+          import json
+          x=json.load(open("/tmp/legacy.json"))
+          assert x.get("retired") is True
+          assert x.get("old_number_active_route") is False
+          assert x.get("canonical")=="https://zevanory.api.br"
+          print("OLD_NUMBER_ACTIVE_LEGACY_BRIDGE=0")
+          print("ZERO_SPEND=true")
+          print("PAID_ROUTE_USED=false")
+          PY

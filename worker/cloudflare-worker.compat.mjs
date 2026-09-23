@@ -11,6 +11,20 @@ import { handleControlActionRequest } from "./control-action-plane.mjs";
 import { handleZea10AutonomyRequest } from "./zea10-autonomy.mjs";
 import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
 
+async function loadWhatsappBrokerState(binding) {
+  if (!binding?.fetch) return null;
+  try {
+    const r = await binding.fetch(new Request("https://whatsapp-broker.internal/broker/status", {
+      headers: { "x-zevanory-internal": "service-binding" }
+    }));
+    if (!r.ok) return null;
+    const body = await r.json().catch(() => null);
+    return body && typeof body === "object" ? Object.freeze(body) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchJsonThroughWorker(request, env, ctx) {
   const response = await worker.fetch(request, env, ctx);
   if (!response.ok) return { response, body: null };
@@ -78,6 +92,8 @@ const wrapped = {
     const url = new URL(request.url);
     const whatsappRuntime = await loadWhatsappRuntimeCredentials(normalized).catch(()=>null);
     globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = whatsappRuntime || {};
+    globalThis.__ZEVANORY_WHATSAPP_BROKER__ = normalized.WHATSAPP_BROKER || null;
+    globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = await loadWhatsappBrokerState(normalized.WHATSAPP_BROKER);
     globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = normalized.ZEVANORY_PRIVATE_ARTIFACTS || null;
     const canonicalRedirect = canonicalizePublicPath(request, url);
     if (canonicalRedirect) return canonicalRedirect;
