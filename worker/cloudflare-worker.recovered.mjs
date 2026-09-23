@@ -17477,31 +17477,54 @@ var cloudflare_worker_default = {
     }
     if (url.pathname === "/api/voice/status") {
       if (request.method !== "GET") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
-      const provider = String(env.VOICE_TTS_PROVIDER || "piper-relay").trim().toLowerCase();
+      let statusEnv = env;
+      if (!String(env.GEMINI_API_KEY || "").trim()) {
+        const vaultGemini = String((await loadAiVaultSecret("gemini", {
+          kv: globalThis.__ZEVANORY_PRIVATE_KV__,
+          master: env.AI_VAULT_ENCRYPTION_KEY || env.ELITE_INTERNAL_TOKEN
+        })) || "").trim();
+        if (vaultGemini) statusEnv = Object.freeze({ ...env, GEMINI_API_KEY: vaultGemini });
+      }
+      const routing = voiceProviderStatus(statusEnv);
+      const active = routing.providers.find((item) => item.available) || null;
+      const activeProvider = active?.provider || null;
+      const modelByProvider = {
+        speechify: String(env.SPEECHIFY_MODEL || "simba-3.0"),
+        azure: "azure-neural-tts",
+        "piper-relay": String(env.VOICE_TTS_PIPER_MODEL || env.VOICE_TTS_MODEL || "pt_BR-jeff-medium"),
+        gemini: String(env.GEMINI_TTS_MODEL || "gemini-3.1-flash-tts-preview")
+      };
+      const voiceByProvider = {
+        speechify: String(env.SPEECHIFY_VOICE_ID || ""),
+        azure: String(env.AZURE_SPEECH_VOICE || "pt-BR-FranciscaNeural"),
+        "piper-relay": String(env.VOICE_TTS_PIPER_VOICE || env.VOICE_TTS_VOICE || "jeff"),
+        gemini: String(env.GEMINI_TTS_VOICE || "Achird")
+      };
       const relayUrl = String(env.VOICE_TTS_RELAY_URL || "https://tts.167-172-146-60.sslip.io").trim();
-      const model = String(env.VOICE_TTS_MODEL || (provider === "piper-relay" ? "pt_BR-jeff-medium" : "gemini-2.5-flash-preview-tts"));
-      const voice = String(env.VOICE_TTS_VOICE || (provider === "piper-relay" ? "jeff" : "Achird"));
       const body = {
         engine: "ZEVANORY Voice Support Engine",
         enabled: env.ZEVANORY_VOICE_SUPPORT_ENABLED === "true",
-        zero_spend_guard: env.VOICE_TTS_FREE_ONLY === "true",
-        provider,
-        model,
-        voice,
+        zero_spend_guard: routing.zero_spend_enforced,
+        provider: activeProvider,
+        provider_chain: routing.chain,
+        providers: routing.providers,
+        failover_enabled: routing.failover_enabled,
+        model: activeProvider ? modelByProvider[activeProvider] || null : null,
+        voice: activeProvider ? voiceByProvider[activeProvider] || null : null,
         language: "pt-BR",
-        provider_credential_configured: provider === "piper-relay" ? true : Boolean(String(env.GEMINI_API_KEY || "").trim()),
+        provider_credential_configured: Boolean(active),
         provider_vault_supported: true,
-        provider_secretless_origin_auth: provider === "piper-relay",
-        relay_https_configured: provider === "piper-relay" && /^https:\/\//i.test(relayUrl),
+        provider_secretless_origin_auth: activeProvider === "piper-relay",
+        relay_https_configured: /^https:\/\//i.test(relayUrl),
         whatsapp_transport_configured: Boolean(String(env.WHATSAPP_ACCESS_TOKEN || "").trim() && String(env.WHATSAPP_PHONE_NUMBER_ID || "").trim()),
         sales_independent_support: true,
         naturality_certified: env.VOICE_NATURALITY_CERTIFIED === "true",
         e2e_official_number_certified: env.VOICE_WHATSAPP_E2E_CERTIFIED === "true",
-        ready_for_runtime_probe: env.VOICE_TTS_FREE_ONLY === "true" && (provider === "piper-relay" ? /^https:\/\//i.test(relayUrl) : Boolean(String(env.GEMINI_API_KEY || "").trim()))
+        ready_for_runtime_probe: env.ZEVANORY_VOICE_SUPPORT_ENABLED === "true" && routing.zero_spend_enforced && Boolean(active)
       };
       return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
     }
-    if (url.pathname === "/api/status") {
+        if (url.pathname === "/api/status") {
       const response3 = await handleAsNodeRequest(PORT, request);
       if (!response3.ok) return response3;
       try {
