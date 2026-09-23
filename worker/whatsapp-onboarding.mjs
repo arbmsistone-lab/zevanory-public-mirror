@@ -204,6 +204,22 @@ export async function loadWhatsappRuntimeCredentials(env={}){
     });
   } catch { return null; }
 }
+export async function whatsappOnboardingStatus(env={}) {
+  const record=await getRecord(env).catch(()=>null);
+  const live=record?await verifyRuntime(record):{verified:false,reason:"not_configured"};
+  return Object.freeze({
+    configured:Boolean(record?.access_token&&record?.phone_number_id&&record?.app_secret&&record?.verify_token),
+    identity_verified:Boolean(live.verified),
+    webhook_configured:Boolean(record?.webhook_configured),
+    waba_subscribed:Boolean(record?.waba_subscribed),
+    phone_registration_ok:Boolean(record?.phone_registration_ok),
+    official_number:OFFICIAL_E164,
+    waba_id:record?.waba_id||null,
+    phone_number_id:record?.phone_number_id||null,
+    live
+  });
+}
+
 export async function handleWhatsappOnboarding(request,env={}){
   const url=new URL(request.url);
   let record=await getRecord(env).catch(()=>null);
@@ -260,8 +276,7 @@ export async function handleWhatsappOnboarding(request,env={}){
     return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent(message),303);
   }
   if(url.pathname==="/api/admin/whatsapp-onboard/status"&&request.method==="GET"){
-    const live=record?await verifyRuntime(record):{verified:false,reason:"not_configured"};
-    return responseJson({configured:Boolean(record?.access_token&&record?.phone_number_id&&record?.app_secret&&record?.verify_token),identity_verified:Boolean(live.verified),webhook_configured:Boolean(record?.webhook_configured),waba_subscribed:Boolean(record?.waba_subscribed),phone_registration_ok:Boolean(record?.phone_registration_ok),official_number:OFFICIAL_E164,waba_id:record?.waba_id||null,phone_number_id:record?.phone_number_id||null,live});
+    return responseJson(await whatsappOnboardingStatus(env));
   }
   return null;
 }
