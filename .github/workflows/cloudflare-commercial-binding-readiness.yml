@@ -67,6 +67,11 @@ jobs:
               print("BROKER_SCRIPT_HAS_"+key+"="+str(token in raw).lower())
           paths=sorted(set(re.findall(r"/broker/[A-Za-z0-9_./-]+",raw)))
           print("BROKER_PATHS="+",".join(paths[:50]))
+          for needle in ["graph.facebook.com","pathname","webhook","messages","WHATSAPP_PHONE_NUMBER_ID"]:
+              i=raw.find(needle)
+              if i>=0:
+                  excerpt=raw[max(0,i-500):min(len(raw),i+1600)].replace("\\n"," ")
+                  print("BROKER_EXCERPT_"+needle.upper().replace(".","_")+"="+excerpt[:2100])
           PY
 
 # zero-spend WhatsApp readiness probe 2026-09-23
