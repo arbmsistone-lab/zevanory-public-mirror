@@ -85,3 +85,41 @@ jobs:
               for key,typ in sorted(found):
                   print(f"WORKER_BINDING {name} {key} TYPE={typ}")
           PY
+
+      - name: Audit legacy WhatsApp bridge capability safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/giro-whatsapp-bridge/settings"             -o /tmp/wa-settings.json
+          python3 - <<'PY'
+          import json, hashlib
+          d=json.load(open("/tmp/wa-settings.json"))
+          assert d.get("success") is True, d.get("errors")
+          for b in d.get("result",{}).get("bindings",[]):
+              n=str(b.get("name") or "")
+              if n=="WHATSAPP_PHONE_NUMBER_ID":
+                  v=str(b.get("text") or b.get("value") or "")
+                  print("WA_PHONE_ID_PRESENT", bool(v))
+                  print("WA_PHONE_ID_FINGERPRINT", hashlib.sha256(v.encode()).hexdigest()[:12] if v else "none")
+              elif n in {"META_APP_SECRET","WHATSAPP_ACCESS_TOKEN","WHATSAPP_VERIFY_TOKEN"}:
+                  print(n+"_PRESENT", True)
+          PY
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/giro-whatsapp-bridge/content"             -o /tmp/wa-worker.bin
+          python3 - <<'PY'
+          import re
+          raw=open("/tmp/wa-worker.bin","rb").read().decode("utf-8","ignore")
+          checks={
+            "graph_api": bool(re.search(r"graph\.facebook\.com",raw,re.I)),
+            "messages_api": bool(re.search(r"/messages",raw,re.I)),
+            "webhook_verify": bool(re.search(r"hub\.verify_token|hub\.challenge",raw,re.I)),
+            "signature_validation": bool(re.search(r"x-hub-signature|sha256",raw,re.I)),
+            "phone_number_id": bool(re.search(r"WHATSAPP_PHONE_NUMBER_ID",raw)),
+            "access_token": bool(re.search(r"WHATSAPP_ACCESS_TOKEN",raw)),
+          }
+          for k,v in checks.items():
+              print("WA_BRIDGE_CAPABILITY",k,str(v).lower())
+          routes=sorted(set(re.findall(r'["\'](/[^"\'\s]{1,80})["\']',raw)))
+          for route in routes[:80]:
+              if any(x in route.lower() for x in ("webhook","whatsapp","message","health","status")):
+                  print("WA_BRIDGE_ROUTE",route)
+          PY
