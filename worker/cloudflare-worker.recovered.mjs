@@ -17503,6 +17503,7 @@ var cloudflare_worker_default = {
         voice: String(env.VOICE_TTS_VOICE || "Achird"),
         language: "pt-BR",
         provider_credential_configured: Boolean(String(env.GEMINI_API_KEY || "").trim()),
+        provider_vault_supported: true,
         whatsapp_transport_configured: Boolean(String(env.WHATSAPP_ACCESS_TOKEN || "").trim() && String(env.WHATSAPP_PHONE_NUMBER_ID || "").trim()),
         sales_independent_support: true,
         naturality_certified: env.VOICE_NATURALITY_CERTIFIED === "true",
