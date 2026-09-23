@@ -33,6 +33,10 @@ jobs:
                   found[name]=str(b.get("type") or "unknown")
           for name in sorted(found):
               print(f"BINDING {name} TYPE={found[name]}")
+          for b in d.get("result",{}).get("bindings",[]):
+              if str(b.get("name") or "")=="WHATSAPP_BROKER":
+                  print("WHATSAPP_BROKER_SERVICE="+str(b.get("service") or ""))
+                  print("WHATSAPP_BROKER_ENVIRONMENT="+str(b.get("environment") or ""))
           PY
 
 # zero-spend WhatsApp readiness probe 2026-09-23
