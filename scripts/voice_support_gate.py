@@ -23,3 +23,13 @@ assert 'ZEVANORY_VOICE_TEMP.delete' in s
 assert 'generatedVoice = false' in s
 assert 'inboundMediaType === "audio"' in s
 print("VOICE_ENGINE_STATIC_GATE=PASS")
+
+# Gemini pt-BR runtime certification
+assert 'gemini-2.5-flash-preview-tts' in s
+assert 'response_format: { type: "audio", mime_type: "audio/mp3"' in s
+assert 'language: "pt-BR"' in s
+assert 'voice_tts_model_not_zero_spend_certified' in s
+assert 'VOICE_NATURALITY_CERTIFIED' in s
+assert 'VOICE_WHATSAPP_E2E_CERTIFIED' in s
+assert '/api/voice/status' in s
+print("VOICE_GEMINI_PTBR_RUNTIME_GATE=PASS")
