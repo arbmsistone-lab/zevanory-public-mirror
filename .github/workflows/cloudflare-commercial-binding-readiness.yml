@@ -100,7 +100,7 @@ jobs:
           while read -r script; do
             [ -n "$script" ] || continue
             curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$ROOT/$script/settings" -o /tmp/script-settings.json || continue
-            SCRIPT="$script" python3 - <<'PY'
+            if SCRIPT="$script" python3 - <<'PY'
           import json,os
           d=json.load(open("/tmp/script-settings.json"))
           bindings=d.get("result",{}).get("bindings",[]) if isinstance(d.get("result"),dict) else []
@@ -116,8 +116,7 @@ jobs:
               raise SystemExit(0)
           raise SystemExit(1)
           PY
-            rc=$?
-            if [ "$rc" = "0" ]; then found=1; fi
+            then found=1; fi
           done < /tmp/script_names
           if [ "$found" = "0" ]; then echo "ASAAS_CUSTODY_SCRIPT=NOT_FOUND"; fi
 
