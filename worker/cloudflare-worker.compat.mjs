@@ -18,6 +18,17 @@ async function fetchJsonThroughWorker(request, env, ctx) {
   }
 }
 
+function canonicalizePublicPath(request, url) {
+  const method = String(request.method || "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return null;
+  if (url.pathname === "/" || !url.pathname.endsWith("/")) return null;
+  if (url.pathname.startsWith("/api/")) return null;
+
+  const target = new URL(url.toString());
+  target.pathname = url.pathname.replace(/\/+$/, "") || "/";
+  return Response.redirect(target.toString(), 308);
+}
+
 function legacyTrustProjection(body) {
   const counts = body?.policy?.counts || {};
   const totalProven = Number(counts.proven || 0);
@@ -62,6 +73,8 @@ const wrapped = {
   async fetch(request, env, ctx) {
     const normalized = normalizeEnv(env);
     const url = new URL(request.url);
+    const canonicalRedirect = canonicalizePublicPath(request, url);
+    if (canonicalRedirect) return canonicalRedirect;
 
     if (url.pathname === "/control-plane-vnext.js") {
       return new Response(CONTROL_PLANE_VNEXT_JS, {
