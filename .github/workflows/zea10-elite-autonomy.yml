@@ -1,0 +1,57 @@
+name: ZEA-10 elite autonomy architecture gate
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "zea10/**"
+      - "worker/zea10-autonomy.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - ".github/workflows/zea10-elite-autonomy.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  architecture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate ZEA-10 contract and module
+        run: |
+          set -euo pipefail
+          node --check worker/zea10-autonomy.mjs
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const c=JSON.parse(fs.readFileSync("zea10/autonomy-contract.json","utf8"));
+          if(c.pillars?.length!==10) throw new Error("exactly 10 operational pillars required");
+          if(c.zero_spend_first!==true) throw new Error("ZERO_SPEND_FIRST required");
+          if(!String(c.green_rule).includes("all_10_pillars")) throw new Error("fail-closed 10/10 green rule missing");
+          const ids=new Set(c.pillars.map(x=>x.id));
+          if(ids.size!==10) throw new Error("duplicate pillar id");
+          console.log("PASS: ZEA-10 elite autonomy contract");
+          NODE
+      - name: Prove fail-closed runtime evaluator
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { buildZea10AutonomyReport } from "./worker/zea10-autonomy.mjs";
+          const worker={async fetch(req){
+            const u=new URL(req.url);
+            if(u.pathname==="/api/health") return Response.json({ready:true});
+            if(u.pathname==="/api/status") return Response.json({runtime:{sales:"globally-blocked"}});
+            if(u.pathname==="/api/agent/status") return Response.json({ready:true});
+            if(u.pathname==="/api/intelligence") return Response.json({ready:true});
+            if(u.pathname==="/api/provider-health") return Response.json({ready:true});
+            if(u.pathname==="/api/config") return Response.json({commercial_enabled:false,channels:{whatsapp:{ready:false},email:{ready:true},instagram:{ready:true},facebook:{ready:true}}});
+            if(u.pathname==="/api/control-plane") return Response.json({global_state:"operational_commercial_blocked"});
+            return new Response("not found",{status:404});
+          }};
+          const report=await buildZea10AutonomyReport(new Request("https://example.test/api/zea10/autonomy"),{}, {}, worker);
+          if(report.overall_state!=="BLOCKED") throw new Error("must fail closed while whatsapp/commercial are blocked");
+          if(report.pillars["ZEA10-05"].state!=="BLOCKED") throw new Error("omnichannel must block without whatsapp");
+          if(report.pillars["ZEA10-07"].state!=="BLOCKED") throw new Error("conversion must block while commercial gate is closed");
+          console.log("PASS: ZEA-10 runtime gate fails closed");
+          NODE
