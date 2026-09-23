@@ -14363,6 +14363,15 @@ async function handler15(req, res) {
     `, [parsedOrderId || "", checkoutSession]);
     if (orders.length === 0) return json11(res, 200, { accepted: true, ignored: true, reason: "unlinked_payment" });
     if (orders.length === 1 && supersededPartialRefund(webhook, payment, orders[0])) return json11(res, 200, { accepted: true, ignored: true, reason: "superseded_partial_refund" });
+    if (
+      orders.length === 1 &&
+      ["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"].includes(webhook.eventName) &&
+      String(payment.status || "") === "REFUNDED" &&
+      ["partially_refunded", "refunded"].includes(String(orders[0].status || "")) &&
+      paymentMatchesOrderIdentity(payment, orders[0])
+    ) {
+      return json11(res, 200, { accepted: true, ignored: true, reason: "superseded_payment_event", order_id: String(orders[0].order_id), order_status: String(orders[0].status) });
+    }
     if (orders.length !== 1 || !paymentMatchesOrderWebhook(webhook, payment, orders[0])) {
       res.statusCode = 409;
       return res.end(JSON.stringify({ error: "payment_reconciliation_failed", accepted: false }));
@@ -14371,6 +14380,7 @@ async function handler15(req, res) {
     const externalReference = String(orders[0].external_reference);
     const orderId = String(orders[0].order_id);
     const refundedTotal = normalized === "refund_confirmed" ? refundTotalForWebhook(webhook, payment) : null;
+    const fulfillmentId = crypto4.randomUUID();
     let rows;
     try {
       rows = await sql.query(`
@@ -14394,13 +14404,38 @@ async function handler15(req, res) {
         END, updated_at=now()
         FROM inserted i WHERE o.order_id=i.order_id
         RETURNING o.order_id,o.status
+      ), fulfillment_paid AS (
+        INSERT INTO service_fulfillment
+          (fulfillment_id,order_id,status,delivery_mode,evidence_ref,created_at,updated_at)
+        SELECT $11,i.order_id,'pending','digital','asaas:'||$1,now(),now()
+        FROM inserted i
+        WHERE i.normalized_event='payment_confirmed'
+        ON CONFLICT(order_id) DO UPDATE SET
+          evidence_ref=EXCLUDED.evidence_ref,
+          updated_at=now()
+        RETURNING order_id,status
+      ), fulfillment_refund AS (
+        UPDATE service_fulfillment sf SET
+          status='canceled',
+          evidence_ref='asaas:'||$1,
+          updated_at=now()
+        FROM inserted i,target t
+        WHERE sf.order_id=i.order_id
+          AND i.normalized_event='refund_confirmed'
+          AND i.refunded_total>=t.amount
+        RETURNING sf.order_id,sf.status
       )
       SELECT
         (SELECT count(*)::int FROM target) AS target_count,
         (SELECT count(*)::int FROM inserted) AS inserted_count,
         (SELECT status FROM updated LIMIT 1) AS order_status,
-        (SELECT status FROM orders WHERE order_id=$8) AS current_status
-    `, [webhook.providerEventId, webhook.paymentId, normalized, webhook.eventName, String(payment.status), externalReference, Number(payment.value), orderId, refundedTotal, String(orders[0].provider_checkout_id)]);
+        (SELECT status FROM orders WHERE order_id=$8) AS current_status,
+        coalesce(
+          (SELECT status FROM fulfillment_refund LIMIT 1),
+          (SELECT status FROM fulfillment_paid LIMIT 1),
+          (SELECT status FROM service_fulfillment WHERE order_id=$8 LIMIT 1)
+        ) AS fulfillment_status
+    `, [webhook.providerEventId, webhook.paymentId, normalized, webhook.eventName, String(payment.status), externalReference, Number(payment.value), orderId, refundedTotal, String(orders[0].provider_checkout_id), fulfillmentId]);
     } catch {
       const recovery = await preserveFinancialReconciliation({ provider: "asaas", eventId: webhook.providerEventId, kind: "webhook_database_effect_uncertain", orderId, payload: { ...snapshot, normalized_event: normalized, refunded_total: refundedTotal } });
       return json11(res, 503, { error: "financial_reconciliation_unavailable", accepted: false, preserved: recovery.preserved, reconciliation_required: true, financial_truth: false });
@@ -14422,10 +14457,15 @@ async function handler15(req, res) {
           await recordVerifiedLifecycleEvidence(sql, { dimension: "reconciliation", source_class: "provider_webhook", source: "asaas", subject_ref: orderId, idempotency_key: `reconciliation-evidence:asaas:${webhook.providerEventId}`, metadata: { provider: "asaas" } });
         } catch {
         }
+      } else if (normalized === "refund_confirmed") {
+        try {
+          await recordVerifiedLifecycleEvidence(sql, { dimension: "reconciliation", source_class: "provider_webhook", source: "asaas", subject_ref: orderId, idempotency_key: `refund-reconciliation-evidence:asaas:${webhook.providerEventId}`, metadata: { provider: "asaas", refunded_total: refundedTotal } });
+        } catch {
+        }
       }
     }
     res.statusCode = 200;
-    return res.end(JSON.stringify({ accepted: true, duplicate: Number(outcome.inserted_count) === 0, event: normalized, order_id: orderId, order_status: outcome.order_status || outcome.current_status, refunded_total: refundedTotal }));
+    return res.end(JSON.stringify({ accepted: true, duplicate: Number(outcome.inserted_count) === 0, event: normalized, order_id: orderId, order_status: outcome.order_status || outcome.current_status, fulfillment_status: outcome.fulfillment_status || null, refunded_total: refundedTotal }));
   } catch {
     res.statusCode = 503;
     return res.end(JSON.stringify({ error: "financial_reconciliation_unavailable", accepted: false }));
@@ -17140,6 +17180,71 @@ async function ownerSetupKey(token) {
 }
 __name(ownerSetupKey, "ownerSetupKey");
 
+async function handlerFinancialE2EStatus(req, res) {
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("x-content-type-options", "nosniff");
+  if (req.method !== "GET") {
+    res.statusCode = 405;
+    return res.end(JSON.stringify({ error: "method_not_allowed" }));
+  }
+  const expected = String(process.env.CERTIFICATION_E2E_TOKEN || "");
+  const provided = String(req.headers?.["x-certification-e2e-token"] || "");
+  if (!secureTokenEqual(expected, provided)) {
+    res.statusCode = 401;
+    return res.end(JSON.stringify({ error: "certification_e2e_auth_required" }));
+  }
+  if (String(process.env.CERTIFICATION_PILOT_ENV || "").toLowerCase() !== "sandbox" || String(process.env.SALE_GLOBALLY_ENABLED || "").toLowerCase() === "true") {
+    res.statusCode = 409;
+    return res.end(JSON.stringify({ error: "certification_e2e_not_fail_closed" }));
+  }
+  if (!process.env.DATABASE_URL) {
+    res.statusCode = 503;
+    return res.end(JSON.stringify({ error: "canonical_database_unavailable" }));
+  }
+  const url = new URL(req.url || "/api/internal/certification/e2e/status", "https://zevanory.api.br");
+  const orderId = String(url.searchParams.get("order_id") || "").toLowerCase();
+  if (!isUuid(orderId)) {
+    res.statusCode = 400;
+    return res.end(JSON.stringify({ error: "order_id_invalid" }));
+  }
+  try {
+    const sql = cs(process.env.DATABASE_URL);
+    const [orders, events, fulfillment, evidence] = await Promise.all([
+      sql.query(`select order_id,request_id,session_id,offer_id,amount,currency,provider,status,provider_checkout_id,certification_pilot,created_at,updated_at from orders where order_id=$1 limit 1`, [orderId]),
+      sql.query(`select provider_event_id,provider_payment_id,normalized_event,provider_event_name,provider_status,amount,refunded_total,received_at from financial_events where order_id=$1 order by received_at,provider_event_id`, [orderId]),
+      sql.query(`select status,delivery_mode,evidence_ref,scheduled_at,delivered_at,created_at,updated_at from service_fulfillment where order_id=$1 limit 1`, [orderId]),
+      sql.query(`select dimension,source_class,source,idempotency_key,evidence_sha256,occurred_at from lifecycle_evidence_events where subject_ref=$1 and source_class='provider_webhook' order by occurred_at,idempotency_key`, [orderId])
+    ]);
+    if (orders.length !== 1) {
+      res.statusCode = 404;
+      return res.end(JSON.stringify({ error: "order_not_found" }));
+    }
+    const paymentEvents = events.filter((x2) => x2.normalized_event === "payment_confirmed");
+    const refundEvents = events.filter((x2) => x2.normalized_event === "refund_confirmed");
+    const order = orders[0];
+    const fulfillmentRow = fulfillment[0] || null;
+    res.statusCode = 200;
+    return res.end(JSON.stringify({
+      order,
+      financial_events: events,
+      fulfillment: fulfillmentRow,
+      provenance: evidence,
+      invariants: {
+        exactly_one_payment_confirmation: paymentEvents.length === 1,
+        no_duplicate_provider_event_ids: new Set(events.map((x2) => x2.provider_event_id)).size === events.length,
+        paid_entitlement_consistent: order.status !== "paid" || fulfillmentRow?.status === "pending" || fulfillmentRow?.status === "scheduled" || fulfillmentRow?.status === "in_progress" || fulfillmentRow?.status === "delivered",
+        refunded_entitlement_revoked: order.status !== "refunded" || fulfillmentRow?.status === "canceled",
+        refund_observed: refundEvents.length > 0
+      }
+    }));
+  } catch {
+    res.statusCode = 503;
+    return res.end(JSON.stringify({ error: "certification_e2e_status_unavailable" }));
+  }
+}
+__name(handlerFinancialE2EStatus, "handlerFinancialE2EStatus");
+
 // src/cloudflare-worker.mjs
 var PORT = 8788;
 var directHandlers = /* @__PURE__ */ new Map([
@@ -17164,7 +17269,8 @@ var directHandlers = /* @__PURE__ */ new Map([
   ["/api/pilot-interest", handler30],
   ["/api/internal/ai-vault", handler31],
   ["/api/internal/ai-service-identity", handler32],
-  ["/api/internal/ai-gateway-selftest", handler33]
+  ["/api/internal/ai-gateway-selftest", handler33],
+  ["/api/internal/certification/e2e/status", handlerFinancialE2EStatus]
 ]);
 function resolveHandler(req) {
   const url = new URL(req.url || "/", "https://zevanory.api.br");
