@@ -84,6 +84,10 @@ jobs:
           c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["GITHUB_SHA"]
           c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
           c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
+          c["vars"]["CERTIFICATION_PILOT_ENABLED"]="true"
+          c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"
+          c["vars"]["CHECKOUT_ENABLED"]="true"
+          c["vars"]["FINANCIAL_EVENTS_ENABLED"]="true"
           c["vars"]["SALE_GLOBALLY_ENABLED"]="false"
           c["vars"]["PRE_SALE_GATES_APPROVED"]="false"
           c["vars"]["WHATSAPP_SALES_ENABLED"]="false"
