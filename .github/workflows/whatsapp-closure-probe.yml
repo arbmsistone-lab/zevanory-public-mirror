@@ -60,10 +60,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq 'sealed-v1.' worker/whatsapp-onboarding.mjs
-          grep -Fq 'const stateToken=await putState(env,state);' worker/whatsapp-onboarding.mjs
-          grep -Fq 'u.searchParams.set("state",stateToken);' worker/whatsapp-onboarding.mjs
-          echo "WHATSAPP_OAUTH_STATE_FAILOVER=PASS"
+          grep -Fq 'brokerJson(env,"/broker/oauth/start"' worker/whatsapp-onboarding.mjs
+          grep -Fq 'brokerJson(env,"/broker/oauth/consume-state"' worker/whatsapp-onboarding.mjs
+          grep -Fq 'zevanory_whatsapp_broker_oauth_state' worker/whatsapp-credential-broker.mjs
+          echo "WHATSAPP_OAUTH_STATE_BACKEND=BROKER_D1_PASS"
       - name: Probe public OAuth launcher after canonical deploy
         if: github.event_name == 'push'
         shell: bash
@@ -93,7 +93,7 @@ PY
           assert u.path.endswith("/dialog/oauth")
           assert q.get("client_id")==["1071149631917061"]
           assert q.get("redirect_uri")==["https://zevanory.api.br/admin/whatsapp-onboard/callback"]
-          assert q.get("state") and q["state"][0].startswith("sealed-v1.")
+          assert q.get("state") and len(q["state"][0]) >= 24
           scopes=set((q.get("scope") or [""])[0].split(","))
           assert {"business_management","whatsapp_business_management","whatsapp_business_messaging"}.issubset(scopes)
           print("WHATSAPP_OAUTH_LAUNCHER=PASS")
