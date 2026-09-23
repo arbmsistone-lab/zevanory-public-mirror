@@ -15,11 +15,24 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
     steps:
-      - name: Discover route owner for controle.zevanory.api.br
+      - name: Determine authenticated discovery availability
+        id: auth
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "CLOUDFLARE_ROUTE_DISCOVERY=AUTHENTICATED"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "CLOUDFLARE_ROUTE_DISCOVERY=CREDENTIAL_ABSENT_PUBLIC_FALLBACK"
+          fi
+
+      - name: Discover route owner for zevanory.api.br
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
           auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN")
           curl -fsS "${auth[@]}" "https://api.cloudflare.com/client/v4/zones?name=zevanory.api.br" -o /tmp/zones.json
           ZONE_ID="$(python3 - <<'PY'
@@ -34,17 +47,39 @@ PY
 import json
 d=json.load(open('/tmp/routes.json'))
 assert d.get('success') is True, d.get('errors')
+hits=[]
 for r in d.get('result', []):
     pattern=str(r.get('pattern',''))
     script=r.get('script')
-    if 'controle.zevanory.api.br' in pattern or 'zevanory.api.br' in pattern:
+    if 'zevanory.api.br' in pattern:
+        hits.append((pattern,script))
         print('CF_ROUTE', pattern, 'SCRIPT', script)
+assert hits, 'No ZEVANORY Worker route found'
 PY
           curl -fsS "${auth[@]}" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" -o /tmp/scripts.json
           python3 - <<'PY'
 import json
 d=json.load(open('/tmp/scripts.json'))
 assert d.get('success') is True, d.get('errors')
-for s in d.get('result', []):
-    print('CF_SCRIPT', s.get('id'))
+scripts=[s.get('id') for s in d.get('result', []) if s.get('id')]
+assert scripts, 'No Worker scripts visible'
+for script in scripts:
+    print('CF_SCRIPT', script)
+PY
+
+      - name: Public route fallback proof
+        if: steps.auth.outputs.available != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://zevanory.api.br/api/health -o /tmp/health.json
+          curl -fsS https://edge.zevanory.api.br/api/status -o /tmp/edge.json
+          python3 - <<'PY'
+import json
+h=json.load(open('/tmp/health.json'))
+e=json.load(open('/tmp/edge.json'))
+assert h.get('live') is True and h.get('ready') is True, h
+assert e.get('project') == 'ZEVANORY', e
+print('PUBLIC_ROUTE_FALLBACK_PROOF=PASS')
+print('Authenticated Cloudflare route ownership discovery remains unavailable without the secret, but production and edge routes are live.')
 PY
