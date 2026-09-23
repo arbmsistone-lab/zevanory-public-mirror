@@ -17308,6 +17308,14 @@ var cloudflare_worker_default = {
     }
     if (["/arbm-one", "/arbm-one/", "/arbm-one.html"].includes(url.pathname)) return withSecurityHeaders(Response.redirect(new URL("/zevanory-one", url), 308), env);
     if (url.pathname === "/zevanory-one/") return withSecurityHeaders(Response.redirect(new URL("/zevanory-one", url), 308), env);
+    if (request.method === "GET" || request.method === "HEAD") {
+      const canonicalPublicPath = url.pathname.length > 1 && url.pathname.endsWith("/") && !url.pathname.startsWith("/api/") && !url.pathname.startsWith("/private/") && !url.pathname.startsWith("/auth/") ? url.pathname.slice(0, -1) : null;
+      if (canonicalPublicPath && staticAliases.has(canonicalPublicPath)) {
+        const target = new URL(url);
+        target.pathname = canonicalPublicPath;
+        return withSecurityHeaders(Response.redirect(target, 308), env);
+      }
+    }
     if (url.pathname === "/auth/owner/session" && request.method === "POST") {
       const origin = String(request.headers.get("origin") || "");
       if (origin && origin !== url.origin) return new Response(JSON.stringify({ error: "origin_not_allowed" }), { status: 403, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
