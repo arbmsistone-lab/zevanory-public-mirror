@@ -49,7 +49,12 @@ jobs:
               const body = await request.json().catch(()=>({}));
               const text = String(body.text || "").trim().slice(0,800);
               if (!text) return Response.json({error:"text_required"},{status:400});
-              const out = await env.AI.run("@cf/myshell-ai/melotts", {prompt:text, lang:"pt"});
+              let out;
+              try {
+                out = await env.AI.run("@cf/myshell-ai/melotts", {prompt:text, lang:"pt"});
+              } catch (e) {
+                return Response.json({error:"ai_run_failed",message:String(e?.message||e),name:String(e?.name||"")},{status:502});
+              }
               if (out instanceof Response) return out;
               if (out instanceof ReadableStream) return new Response(out,{headers:{"content-type":"audio/mpeg","cache-control":"no-store"}});
               if (out?.audio) {
