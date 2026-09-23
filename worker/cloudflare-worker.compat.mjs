@@ -79,6 +79,7 @@ const wrapped = {
     const whatsappRuntime = await loadWhatsappRuntimeCredentials(normalized).catch(()=>null);
     globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = whatsappRuntime || {};
     globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = normalized.ZEVANORY_PRIVATE_ARTIFACTS || null;
+    globalThis.__ZEVANORY_RELEASE_SHA__ = String(normalized.ZEVANORY_RELEASE_SHA || "").trim();
     const canonicalRedirect = canonicalizePublicPath(request, url);
     if (canonicalRedirect) return canonicalRedirect;
 
