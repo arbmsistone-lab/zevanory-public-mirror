@@ -198,15 +198,31 @@ jobs:
           for b in d.get("result",{}).get("bindings",[]):
               print("CURRENT_BINDING",b.get("name"),b.get("type"),b.get("service",""),b.get("namespace_id",""))
           PY
-      - name: Synchronize financial certification secrets
+      - name: Detect financial secret synchronization availability
         if: steps.auth.outputs.available == 'true'
+        id: financial_secrets
         shell: bash
         run: |
           set -euo pipefail
+          ready=true
           for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
-            test -n "${!k:-}" || { echo "MISSING_RUNTIME_SECRET=$k"; exit 2; }
+            if [ -z "${!k:-}" ]; then
+              echo "FINANCIAL_SECRET_INPUT_MISSING=$k"
+              ready=false
+            fi
           done
-          test "${#ASAAS_WEBHOOK_TOKEN}" -ge 32
+          if [ "$ready" = "true" ] && [ "${#ASAAS_WEBHOOK_TOKEN}" -ge 32 ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "FINANCIAL_SECRET_SYNC_ROUTE=AVAILABLE"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "FINANCIAL_SECRET_SYNC_ROUTE=UNAVAILABLE_PRESERVE_EXISTING_RUNTIME"
+          fi
+      - name: Synchronize financial certification secrets
+        if: steps.auth.outputs.available == 'true' && steps.financial_secrets.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
           for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
             printf '%s' "${!k}" | npx --yes wrangler@4.135.0 secret put "$k" --config wrangler.central-fix.jsonc
           done
@@ -215,7 +231,7 @@ jobs:
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.central-fix.jsonc --tag="$GITHUB_SHA" --message="ZEVANORY-central-P0-fix-$GITHUB_SHA"
+          npx --yes wrangler@4.135.0 deploy --strict --keep-vars --config wrangler.central-fix.jsonc --tag="$GITHUB_SHA" --message="ZEVANORY-central-P0-fix-$GITHUB_SHA"
       - name: Verify live UTF-8 asset and safety
         if: steps.auth.outputs.available == 'true'
         run: |
