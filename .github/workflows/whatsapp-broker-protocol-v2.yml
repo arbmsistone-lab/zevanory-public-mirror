@@ -1,0 +1,143 @@
+name: ZEVANORY WhatsApp broker protocol v2
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/patch_whatsapp_broker.py"
+      - ".github/workflows/whatsapp-broker-protocol-v2.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "scripts/patch_whatsapp_broker.py"
+      - ".github/workflows/whatsapp-broker-protocol-v2.yml"
+permissions:
+  contents: read
+jobs:
+  broker-protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CF: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+      SCRIPT: giro-whatsapp-bridge
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch and patch exact live broker
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CF:-}"
+          curl -fsS -H "Authorization: Bearer $CF"             "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/workers/scripts/$SCRIPT"             -o /tmp/broker.multipart
+          python3 scripts/patch_whatsapp_broker.py --multipart /tmp/broker.multipart --out /tmp/broker-v2.mjs
+          node --check /tmp/broker-v2.mjs
+          for token in '/broker/status' '/broker/send' '/broker/media' '/broker/verify-signature' '/broker/verify-token' '/broker/oauth/callback'; do
+            grep -Fq "$token" /tmp/broker-v2.mjs
+          done
+          echo "BROKER_PROTOCOL_V2_DRY_RUN=PASS"
+      - name: Capture rollback version
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $CF"             "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/workers/scripts/$SCRIPT/deployments"             -o /tmp/deployments.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/deployments.json"))
+          deps=d.get("result",{}).get("deployments",[])
+          if not deps: raise SystemExit("no current deployment")
+          versions=deps[0].get("versions",[])
+          current=next((x.get("version_id") for x in versions if float(x.get("percentage",0))>0),None)
+          if not current: raise SystemExit("no current deployed version")
+          open("/tmp/rollback-version","w").write(current)
+          print("ROLLBACK_VERSION_CAPTURED=PASS")
+          PY
+      - name: Upload inherited broker version
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/metadata.json <<JSON
+          {
+            "main_module":"index.js",
+            "compatibility_date":"2026-09-04",
+            "compatibility_flags":["nodejs_compat"],
+            "usage_model":"standard",
+            "bindings":[
+              {"type":"inherit","name":"ADMIN_TOKEN","version_id":"latest"},
+              {"type":"inherit","name":"AI","version_id":"latest"},
+              {"type":"inherit","name":"DB","version_id":"latest"},
+              {"type":"inherit","name":"GRAPH_API_VERSION","version_id":"latest"},
+              {"type":"inherit","name":"META_APP_SECRET","version_id":"latest"},
+              {"type":"inherit","name":"WHATSAPP_ACCESS_TOKEN","version_id":"latest"},
+              {"type":"inherit","name":"WHATSAPP_PHONE_NUMBER_ID","version_id":"latest"},
+              {"type":"inherit","name":"WHATSAPP_VERIFY_TOKEN","version_id":"latest"}
+            ],
+            "annotations":{
+              "workers/message":"ZEVANORY WhatsApp broker protocol v2",
+              "workers/commit_sha":"${GITHUB_SHA}"
+            }
+          }
+          JSON
+          curl -fsS -X POST             -H "Authorization: Bearer $CF"             -F "metadata=</tmp/metadata.json;type=application/json"             -F "index.js=@/tmp/broker-v2.mjs;type=application/javascript+module"             "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/workers/scripts/$SCRIPT/versions?bindings_inherit=strict"             -o /tmp/version.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/version.json"))
+          if d.get("success") is not True: raise SystemExit(str(d.get("errors")))
+          vid=d.get("result",{}).get("id")
+          if not vid: raise SystemExit("new version id missing")
+          open("/tmp/new-version","w").write(vid)
+          print("BROKER_VERSION_UPLOAD=PASS")
+          PY
+      - name: Deploy v2 with automatic rollback
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          NEW=$(cat /tmp/new-version)
+          OLD=$(cat /tmp/rollback-version)
+          deploy(){
+            local version="$1" message="$2"
+            python3 - "$version" "$message" <<'PY' >/tmp/deploy.json
+          import json,sys
+          print(json.dumps({"strategy":"percentage","versions":[{"percentage":100,"version_id":sys.argv[1]}],"annotations":{"workers/message":sys.argv[2],"workers/triggered_by":"github-actions"}}))
+          PY
+            curl -fsS -X POST -H "Authorization: Bearer $CF" -H "content-type: application/json"               --data-binary @/tmp/deploy.json               "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/workers/scripts/$SCRIPT/deployments" >/tmp/deploy-result.json
+            python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/deploy-result.json"))
+          if d.get("success") is not True: raise SystemExit(str(d.get("errors")))
+          PY
+          }
+          deploy "$NEW" "ZEVANORY WhatsApp broker protocol v2"
+          sleep 4
+          ok=1
+          code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "https://giro-whatsapp-bridge.girolocal-rb.workers.dev/health") || ok=0
+          [ "$code" = "200" ] || ok=0
+          python3 - <<'PY' || ok=0
+          import json
+          d=json.load(open("/tmp/health.json"))
+          assert d.get("ok") is True and d.get("d1") is True
+          PY
+          if [ "$ok" != "1" ]; then
+            echo "BROKER_V2_HEALTH_FAILED_ROLLING_BACK=1"
+            deploy "$OLD" "automatic rollback after broker v2 health failure"
+            exit 1
+          fi
+          echo "BROKER_V2_DEPLOY=PASS"
+      - name: Verify main runtime service-binding handshake
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sleep 3
+          curl -fsS "https://zevanory.api.br/api/config?view=closure_status" -o /tmp/closure.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/closure.json"))
+          wa=d.get("channels",{}).get("whatsapp",{})
+          print("WHATSAPP_RUNTIME_OPERATIONAL_READY="+str(bool(wa.get("operational_ready"))).lower())
+          print("WHATSAPP_RUNTIME_MODE="+str(wa.get("operational_mode") or ""))
+          print("BROKER_SERVICE_BINDING_HANDSHAKE=PASS")
+          PY
