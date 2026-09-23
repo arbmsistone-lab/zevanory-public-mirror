@@ -10,6 +10,7 @@ on:
       - "worker/cloudflare-worker.recovered.mjs"
       - "worker/evidence-control-plane.mjs"
       - "worker/zevanory-control-core.mjs"
+      - "worker/core-command-executor.mjs"
       - "worker/zea10-autonomy.mjs"
       - "worker/zea10-evaluator.mjs"
       - "worker/admin-console.mjs"

@@ -1,5 +1,6 @@
 import { readOrReconcileControlState, reconcileControlPlane } from "./evidence-control-plane.mjs";
 import { evaluateZea10FromZees16 } from "./zea10-evaluator.mjs";
+import { commandCatalog, executeCoreCommand, readCoreAuthorityState } from "./core-command-executor.mjs";
 
 const CORE_VERSION="ZEVANORY-CONTROL-CORE/1.0";
 const CRITICAL_MUTATIONS=new Set([
@@ -51,6 +52,7 @@ export async function buildCoreSnapshot(worker,env,ctx,baseUrl="https://zevanory
   const zea10=evaluateZea10FromZees16(zees16);
   const zeaCounts=zea10?.counts||{};
   const zeesCounts=zees16?.counts||{};
+  const authorityState=await readCoreAuthorityState(env).catch(()=>null);
 
   return {
     schema:"zevanory-control-core/v1",
@@ -67,6 +69,7 @@ export async function buildCoreSnapshot(worker,env,ctx,baseUrl="https://zevanory
     continuity,
     zees16,
     zea10,
+    authority_state:authorityState,
     architecture:{
       flow:["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"],
       zees16_role:"proof",
@@ -220,12 +223,7 @@ export async function handleControlCoreRequest(request,env,ctx,worker){
         {id:"inspect",effect:"none"},
         {id:"reconcile-evidence",effect:"evidence-derived-state-only"}
       ],
-      critical_mutations:[...CRITICAL_MUTATIONS].map(id=>({
-        id,
-        effect:"state-changing",
-        exposed:false,
-        authority:"core-policy-required"
-      }))
+      critical_mutations:commandCatalog()
     });
   }
 
@@ -251,13 +249,21 @@ export async function handleControlCoreRequest(request,env,ctx,worker){
   if(url.pathname.startsWith("/api/core/v1/commands/")){
     const command=url.pathname.slice("/api/core/v1/commands/".length);
     if(CRITICAL_MUTATIONS.has(command)){
-      return json({
-        ok:false,
-        command,
-        decision:"DENY",
-        fail_closed:true,
-        reason:"critical_mutation_requires_explicit_core_policy_and_is_not_exposed"
-      },403);
+      if(request.method!=="POST") return json({error:"method_not_allowed"},405,{allow:"POST"});
+      try{
+        const snapshot=await buildCoreSnapshot(worker,env,ctx,url.origin);
+        const decision=evaluateCoreDecision(snapshot);
+        const result=await executeCoreCommand({request,env,snapshot,decision,command});
+        return json(result.body,result.status);
+      }catch(error){
+        return json({
+          ok:false,
+          command,
+          decision:"DENY",
+          fail_closed:true,
+          error:String(error?.message||error||"critical_command_failed")
+        },503);
+      }
     }
   }
 
