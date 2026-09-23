@@ -102,6 +102,13 @@ const wrapped = {
       const response = await handleWhatsappOnboarding(request, normalized);
       if (response) return response;
     }
+    // Temporary narrow public launcher: it only creates a short-lived CSRF state
+    // and redirects to Meta's official OAuth/Embedded Signup. No admin data or
+    // credentials are disclosed, and all other onboarding/admin routes remain protected.
+    if (url.pathname === "/admin/whatsapp-onboard/start" && request.method === "GET") {
+      const response = await handleWhatsappOnboarding(request, normalized);
+      if (response) return response;
+    }
     if (url.pathname.startsWith("/admin/whatsapp-onboard") || url.pathname === "/api/admin/whatsapp-onboard/status") {
       if (!isAdminAuthorized(request, normalized)) return handleAdminRequest(request, normalized, ctx, wrapped);
       const response = await handleWhatsappOnboarding(request, normalized);
