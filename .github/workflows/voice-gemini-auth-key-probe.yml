@@ -53,12 +53,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s' '{"model":"gemini-2.5-flash-preview-tts","input":"Fale em português do Brasil, com voz natural, acolhedora e profissional: Olá, aqui é o suporte da ZEVANORY. Como posso ajudar você hoje?","response_format":{"type":"audio"},"generation_config":{"speech_config":[{"voice":"Achird"}]}}' > /tmp/tts-request.json
+          printf '%s' '{"model":"gemini-3.1-flash-tts-preview","input":"Fale em português do Brasil, com voz natural, acolhedora e profissional: Olá, aqui é o suporte da ZEVANORY. Como posso ajudar você hoje?","response_format":{"type":"audio"},"generation_config":{"speech_config":[{"voice":"Achird"}]}}' > /tmp/tts-request.json
           key="$(cat /tmp/gemini-auth.key)"
           code=$(curl -sS -o /tmp/tts-response.json -w '%{http_code}' -X POST https://generativelanguage.googleapis.com/v1beta/interactions -H "x-goog-api-key: $key" -H 'Content-Type: application/json' --data-binary @/tmp/tts-request.json)
           unset key
           echo "GEMINI_TTS_HTTP=$code"
-          test "$code" = "200"
+          if [ "$code" != "200" ]; then
+            python3 -c "import json; d=json.load(open('/tmp/tts-response.json')); d=d[0] if isinstance(d,list) and d else d; print('TTS_ERROR='+str(d.get('error',{}).get('message',''))[:500] if isinstance(d,dict) else 'TTS_ERROR=unknown')"
+            exit 1
+          fi
           python3 -c "import json,base64; d=json.load(open('/tmp/tts-response.json')); d=d[0] if isinstance(d,list) and d else d; a=(d.get('interaction',{}).get('output_audio') if isinstance(d,dict) and isinstance(d.get('interaction'),dict) else None) or (d.get('output_audio') if isinstance(d,dict) else None) or {}; raw=a.get('data') if isinstance(a,dict) else None; assert raw and len(base64.b64decode(raw))>1000; print('GEMINI_REAL_TTS_AUDIO=PASS')"
 
       - name: Provision Gemini auth key to production Worker
