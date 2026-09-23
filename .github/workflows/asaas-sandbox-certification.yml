@@ -1,0 +1,59 @@
+name: Asaas sandbox certification gate
+
+on:
+  pull_request:
+    paths:
+      - "worker/cloudflare-worker.recovered.mjs"
+      - ".github/workflows/asaas-sandbox-certification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certify-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert sandbox certification policy is isolated
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path("worker/cloudflare-worker.recovered.mjs").read_text(encoding="utf-8",errors="replace")
+          required=[
+            'CERTIFICATION_PILOT_ENV',
+            'sandbox ? null : evaluateActivationReadiness(env)',
+            'ASAAS_ENV',
+            'ASAAS_API_KEY',
+            'ASAAS_WEBHOOK_TOKEN',
+            'global_sales_must_remain_closed_during_certification_pilot',
+            'CHECKOUT_ENABLED',
+            'FINANCIAL_EVENTS_ENABLED'
+          ]
+          missing=[x for x in required if x not in s]
+          if missing:
+              raise SystemExit("missing markers: "+",".join(missing))
+          if 'if (yes4(env.SALE_GLOBALLY_ENABLED)) blockers.push("global_sales_must_remain_closed_during_certification_pilot")' not in s:
+              raise SystemExit("global sales fail-closed invariant missing")
+          print("ASAAS_SANDBOX_CERTIFICATION_POLICY=GREEN")
+          PY
+      - name: Verify production remains fail-closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path("worker/cloudflare-worker.recovered.mjs").read_text(encoding="utf-8",errors="replace")
+          for marker in [
+            'sales: false',
+            'checkout: false',
+            'financial: false',
+            'commercial_unlock: false'
+          ]:
+              if marker not in s:
+                  raise SystemExit("missing safe default: "+marker)
+          print("PRODUCTION_SAFE_DEFAULTS=GREEN")
+          PY
