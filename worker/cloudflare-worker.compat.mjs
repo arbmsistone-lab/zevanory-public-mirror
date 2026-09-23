@@ -17,6 +17,20 @@ async function fetchJsonThroughWorker(request, env, ctx) {
   }
 }
 
+function canonicalReleaseSha(env = {}) {
+  const value = String(env.ZEVANORY_RELEASE_SHA || env.VERCEL_GIT_COMMIT_SHA || "").trim().toLowerCase();
+  return /^[0-9a-f]{40}$/.test(value) ? value : null;
+}
+
+function enforceCanonicalReleaseProjection(body, env = {}) {
+  const sha = canonicalReleaseSha(env);
+  if (!body || !sha) return body;
+  if (body.policy && typeof body.policy === "object") body.policy.release_sha = sha;
+  if (body.release?.deployment && typeof body.release.deployment === "object") body.release.deployment.commit_sha = sha;
+  if (body.proof_chain && typeof body.proof_chain === "object") body.proof_chain.sha = sha;
+  return body;
+}
+
 function legacyTrustProjection(body) {
   const counts = body?.policy?.counts || {};
   const totalProven = Number(counts.proven || 0);
@@ -120,6 +134,7 @@ const wrapped = {
     if (url.pathname === "/api/control-plane") {
       const { response, body } = await fetchJsonThroughWorker(request, normalized, ctx);
       if (!response.ok || !body) return response;
+      enforceCanonicalReleaseProjection(body, normalized);
       if (!body.trust_chain) body.trust_chain = legacyTrustProjection(body);
       const headers = new Headers(response.headers);
       headers.set("content-type", "application/json; charset=utf-8");
