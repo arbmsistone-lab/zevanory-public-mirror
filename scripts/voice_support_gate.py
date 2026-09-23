@@ -75,3 +75,25 @@ assert 'VOICE_WHATSAPP_E2E_CERTIFIED' in worker
 assert 'naturality_certified:' in worker
 assert 'e2e_official_number_certified:' in worker
 print("VOICE_CERTIFICATION_FAIL_CLOSED_GATE=PASS")
+
+
+study=Path("worker/voice-naturality-study.mjs").read_text(encoding="utf-8")
+compat=Path("worker/cloudflare-worker.compat.mjs").read_text(encoding="utf-8")
+for marker in [
+  'unique_evaluators>=100',
+  'natural_acceptance>=99',
+  'intelligibility>=99',
+  'mean_naturalness>=4.8',
+  'human_attested===true',
+  'duplicate_evaluator',
+  'clip_assignment_mismatch',
+  'provider_disclosed:false',
+  'x-voice-study-blinded',
+  'voice-study/rating/',
+  'voice-study/fingerprint/',
+]:
+    assert marker in study, f"missing human study marker: {marker}"
+assert 'handleVoiceStudy' in compat
+assert 'url.pathname === "/voice-study"' in compat
+assert 'url.pathname.startsWith("/api/voice-study/")' in compat
+print("VOICE_HUMAN_BLIND_CERTIFICATION_PORTAL_GATE=PASS")
