@@ -69,6 +69,8 @@ jobs:
           print("BROKER_PATHS="+",".join(paths[:50]))
           route_eq=sorted(set(re.findall(r"url\\.pathname\\s*===\\s*[\'\"]([^\'\"]+)[\'\"]",raw)))
           print("BROKER_ROUTE_EQ="+",".join(route_eq))
+          route_lines=[line.strip() for line in raw.splitlines() if "url.pathname" in line or "pathname ===" in line or "pathname==" in line]
+          print("BROKER_ROUTE_LINES="+" || ".join(route_lines[:80]))
           for needle in ["graph.facebook.com","pathname","webhook","messages","WHATSAPP_PHONE_NUMBER_ID"]:
               i=raw.find(needle)
               if i>=0:
