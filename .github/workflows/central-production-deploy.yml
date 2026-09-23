@@ -80,7 +80,8 @@ jobs:
           c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
           c["vars"]["SALE_GLOBALLY_ENABLED"]="false"
           c["vars"]["PRE_SALE_GATES_APPROVED"]="false"
-          c["vars"]["WHATSAPP_SALES_ENABLED"]="false"\n          c["vars"]["AGENT_HUMAN_APPROVAL_REQUIRED"]="true"
+          c["vars"]["WHATSAPP_SALES_ENABLED"]="false"
+          c["vars"]["AGENT_HUMAN_APPROVAL_REQUIRED"]="true"
           open(p,"w").write(json.dumps(c,indent=2)+"\n")
           PY
           node --check worker/cloudflare-worker.compat.mjs
