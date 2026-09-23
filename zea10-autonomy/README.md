@@ -48,3 +48,7 @@ A blocked real-world sales channel does not erase engineering capability, but th
 8. Onboarding, support and customer success
 9. Learning, experimentation and optimization
 10. Safety, governance, resilience and human oversight
+
+## Final revalidation
+
+Final ZEA-10 revalidation requested after P14 provider-independence closure on canonical head e506b8d6364e00b87e4d04886f84ed984b6c633e.
