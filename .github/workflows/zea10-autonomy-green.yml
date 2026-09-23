@@ -1,0 +1,32 @@
+name: ZEA-10 autonomy green
+
+on:
+  pull_request:
+    paths:
+      - "zea10-autonomy/**"
+      - "worker/**"
+      - "scripts/zea10_autonomy_gate.py"
+      - ".github/workflows/zea10-autonomy-green.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  autonomy-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run ZEA-10 autonomy gate
+        run: python scripts/zea10_autonomy_gate.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zea10-autonomy-evidence
+          path: evidence/zea10-autonomy-current.json
+          if-no-files-found: error
