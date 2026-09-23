@@ -12,7 +12,8 @@ on:
       - "worker/admin-console.mjs"
       - "admin.css"
       - "evidence/admin-control-center.json"
-      - ".github/workflows/central-production-deploy.yml"\n      - ".github/workflows/zpc-cloudflare-route-discovery.yml"
+      - ".github/workflows/central-production-deploy.yml"
+      - ".github/workflows/zpc-cloudflare-route-discovery.yml"
 permissions:
   contents: read
 jobs:
