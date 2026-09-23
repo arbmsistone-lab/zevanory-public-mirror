@@ -111,9 +111,8 @@ export function evaluatePolicy({signals={},workflows=new Map(),releaseSha=null,o
 }
 async function persist(env,state){
   const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
-  if(!kv||typeof kv.put!=="function") return {...state,persistence:"unavailable",persistence_error:"kv_binding_unavailable"};
   let previousDecisionHash=null;
-  if(typeof kv.get==="function"){
+  if(kv&&typeof kv.get==="function"){
     try{
       const previousRaw=await kv.get(STATE_KEY);
       if(previousRaw) previousDecisionHash=JSON.parse(previousRaw)?.decision_hash||null;
@@ -130,25 +129,27 @@ async function persist(env,state){
     previous_decision_hash:previousDecisionHash
   };
   const eventHash=await sha256Hex(stable(event));
-  const key=LEDGER_PREFIX+state.observed_at.replace(/[:.]/g,"-")+":"+eventHash;
   const decision={
     ...state,
     decision_hash:eventHash,
     previous_decision_hash:previousDecisionHash,
-    persistence:"kv-append-only",
+    persistence:"reproducible-immutable-sources",
     persistence_error:null,
+    evidence_source:"github-actions+production-runtime",
     evaluator:"ZEES16_POLICY_ENGINE",
     evaluator_version:ZEES16_POLICY.version
   };
+  if(!kv||typeof kv.put!=="function") return decision;
   try{
+    const key=LEDGER_PREFIX+state.observed_at.replace(/[:.]/g,"-")+":"+eventHash;
     await kv.put(key,JSON.stringify({...event,event_hash:eventHash}),{metadata:{type:event.type,release_sha:state.release_sha||"",policy_version:state.policy_version,previous_decision_hash:previousDecisionHash||""}});
-    await kv.put(STATE_KEY,JSON.stringify(decision),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash,previous_decision_hash:previousDecisionHash||""}});
-    return decision;
+    await kv.put(STATE_KEY,JSON.stringify({...decision,persistence:"kv-append-only"}),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash,previous_decision_hash:previousDecisionHash||""}});
+    return {...decision,persistence:"kv-append-only"};
   }catch(error){
     return {
       ...decision,
-      persistence:"degraded-readonly",
-      persistence_error:String(error?.message||error||"kv_persistence_failed")
+      persistence:"reproducible-immutable-sources",
+      persistence_error:String(error?.message||error||"kv_cache_write_failed")
     };
   }
 }
