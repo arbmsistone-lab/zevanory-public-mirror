@@ -6,6 +6,9 @@ on:
       - "worker/admin-console.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "worker/evidence-control-plane.mjs"
+      - "worker/zea10-autonomy.mjs"
+      - "worker/zevanory-control-core.mjs"
+      - "worker/zea10-evaluator.mjs"
       - "admin.css"
       - "evidence/admin-control-center.json"
       - ".github/workflows/zevanory-admin-control-center.yml"
@@ -66,7 +69,9 @@ jobs:
             release_sha:"a".repeat(40),
             status,health,control,continuity,
             zees16:{counts:{proven:15,partial:1,blocked:0},pillars:[]},
-            invariants:{exact_release_bound:true,health_ready:true,quorum_ok:true,sales_fail_closed:true}
+            zea10:{counts:{proven:9,partial:1,blocked:0,unknown:0},pillars:[]},
+            architecture:{flow:["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"],circular_dependency:false},
+            invariants:{exact_release_bound:true,health_ready:true,quorum_ok:true,sales_fail_closed:true,evidence_to_evaluation_unidirectional:true}
           };
           const fake={
             async fetch(req){
@@ -92,6 +97,8 @@ jobs:
           const snap=await r.json();
           if(snap.health.schema.required_tables!==40||snap.status.runtime.sales!=="globally-blocked") throw new Error("snapshot mismatch");
           if(snap.core?.authority!=="server-side-core-only"||snap.core?.ui_can_authorize!==false||snap.core?.source_of_truth!==true) throw new Error("core authority contract mismatch");
+          if(snap.core?.architecture?.circular_dependency!==false) throw new Error("circular dependency detected");
+          if(!html.includes("ZEA-10 · Evaluation Plane")) throw new Error("admin must render canonical ZEA-10 evaluation plane");
           console.log("PASS: authentication, rendering and snapshot behavior verified");
           JS
       - name: Exercise ZEES-16 policy engine and immutable ledger
@@ -104,14 +111,13 @@ jobs:
             "ZEVANORY apex engineering gate","zevanory-p02-visual-regression","zevanory-p04-wcag",
             "zevanory-p12-continuous-slo","zevanory-remote-quality-gates","ZEES-16 Evidence Gate",
             "zevanory-p15-provenance","ZEVANORY portable disaster recovery","ZEVANORY authenticated three-provider runtime quorum",
-            "ZEA-10 external evidence pack","ZEVANORY provider independence gate","pages build and deployment",
+            "ZEVANORY provider independence gate","pages build and deployment",
             "ZEVANORY central production deploy"
           ];
           const workflows=new Map(names.map(n=>[n,okRun(n)]));
           const signals={
             "runtime:exact_sha":true,"runtime:health_ready":true,"runtime:telemetry_active":true,
-            "runtime:quorum_ok":true,"runtime:sales_fail_closed":true,"runtime:commercial_release":false,
-            "runtime:zea10_pack_bound":true
+            "runtime:quorum_ok":true,"runtime:sales_fail_closed":true,"runtime:commercial_release":false
           };
           const state=evaluatePolicy({signals,workflows,releaseSha:"a".repeat(40),observedAt:"2026-09-22T22:00:00Z"});
           if(state.counts.proven!==15||state.counts.partial!==1||state.counts.blocked!==0) throw new Error("unexpected ZEES state "+JSON.stringify(state.counts));
@@ -121,6 +127,24 @@ jobs:
           const degraded=evaluatePolicy({signals,workflows,releaseSha:"a".repeat(40)});
           if(degraded.pillars.find(x=>x.id==="P04")?.state!=="BLOCKED") throw new Error("missing proof must downgrade P04");
           console.log("PASS: policy engine promotes and downgrades only from evidence");
+          JS
+      - name: Verify ZEES-16 to ZEA-10 unidirectional evaluation
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          import { evaluateZea10FromZees16 } from "./worker/zea10-evaluator.mjs";
+          const evidenceSource=fs.readFileSync("worker/evidence-control-plane.mjs","utf8");
+          if(/zea10/i.test(evidenceSource)) throw new Error("ZEES-16 evidence layer must not depend on ZEA-10");
+          const pillars=Array.from({length:16},(_,i)=>({id:"P"+String(i+1).padStart(2,"0"),state:"PROVADO",release_sha:"a".repeat(40)}));
+          const zees={release_sha:"a".repeat(40),decision_hash:"deadbeef",pillars};
+          const zea=evaluateZea10FromZees16(zees);
+          if(zea.counts.proven!==10||zea.counts.partial!==0||zea.counts.blocked!==0||zea.counts.unknown!==0) throw new Error("full ZEES evidence must yield 10/10 ZEA evaluation");
+          if(zea.authority!==false||zea.source_layer!=="ZEES-16") throw new Error("ZEA layer role contract mismatch");
+          const degraded={...zees,pillars:pillars.map(p=>p.id==="P07"?{...p,state:"BLOCKED"}:p)};
+          const degradedZea=evaluateZea10FromZees16(degraded);
+          if(degradedZea.pillars.find(x=>x.id==="ZEA10-06")?.state!=="BLOCKED") throw new Error("blocked ZEES security proof must block ZEA10-06");
+          console.log("PASS: ZEES-16 proof -> ZEA-10 evaluation is one-way and fail-closed");
           JS
       - name: Verify canonical Control Core authority
         run: |
