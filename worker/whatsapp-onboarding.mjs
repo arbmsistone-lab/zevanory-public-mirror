@@ -276,7 +276,13 @@ export async function handleWhatsappOnboarding(request,env={}){
     return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard",303);
   }
   if(url.pathname==="/admin/whatsapp-onboard/start"&&request.method==="GET"){
-    if(!brokerBinding(env)&&!record?.app_secret) return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message=Provedor%20Meta%20indispon%C3%ADvel",303);
+    if(brokerBinding(env)){
+      const started=await brokerJson(env,"/broker/oauth/start",{method:"POST",body:{}});
+      const target=safeText(started.authorization_url,4000);
+      if(!target.startsWith("https://www.facebook.com/")) throw new Error("whatsapp_broker_oauth_start_invalid");
+      return Response.redirect(target,302);
+    }
+    if(!record?.app_secret) return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message=Provedor%20Meta%20indispon%C3%ADvel",303);
     const state={id:b64url(crypto.getRandomValues(new Uint8Array(24))),created_at:Date.now()};
     const stateToken=await putState(env,state);
     const u=new URL("https://www.facebook.com/"+GRAPH_VERSION+"/dialog/oauth");
@@ -293,8 +299,8 @@ export async function handleWhatsappOnboarding(request,env={}){
     const error=safeText(url.searchParams.get("error"),100), code=safeText(url.searchParams.get("code"),4000), stateId=safeText(url.searchParams.get("state"),200);
     if(error) return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent("Meta recusou a autorização: "+error),303);
     if(!code||!stateId||(!brokerBinding(env)&&!record?.app_secret)) return responseJson({error:"meta_callback_invalid"},400);
-    await takeState(env,stateId);
     if(brokerBinding(env)){
+      await brokerJson(env,"/broker/oauth/consume-state",{method:"POST",body:{state:stateId}});
       const outcome=await brokerJson(env,"/broker/oauth/callback",{method:"POST",body:{code,redirect_uri:REDIRECT_URI,official_e164:OFFICIAL_E164}});
       const message=outcome.identity_verified
         ?"Número oficial localizado, registrado e identidade Meta verificada."
@@ -303,6 +309,7 @@ export async function handleWhatsappOnboarding(request,env={}){
           :"Autorização concluída. A Meta ainda exige adicionar e verificar o número +55 88 99254-5413 na conta WhatsApp Business.";
       return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent(message),303);
     }
+    await takeState(env,stateId);
     const access_token=await exchangeCode({code,app_id:record.app_id||DEFAULT_APP_ID,app_secret:record.app_secret});
     const found=await discoverOfficialNumber(access_token);
     if(!found) {
