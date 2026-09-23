@@ -5,6 +5,8 @@ on:
     paths:
       - "zea10/**"
       - "worker/zea10-autonomy.mjs"
+      - "worker/zea10-evaluator.mjs"
+      - "worker/zevanory-control-core.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - ".github/workflows/zea10-elite-autonomy.yml"
   workflow_dispatch:
@@ -33,25 +35,37 @@ jobs:
           if(ids.size!==10) throw new Error("duplicate pillar id");
           console.log("PASS: ZEA-10 elite autonomy contract");
           NODE
-      - name: Prove fail-closed runtime evaluator
+      - name: Prove fail-closed canonical evaluation projection
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
           import { buildZea10AutonomyReport } from "./worker/zea10-autonomy.mjs";
+          const core={
+            generated_at:"2026-09-23T13:00:00Z",
+            release_sha:"a".repeat(40),
+            architecture:{
+              flow:["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"],
+              circular_dependency:false
+            },
+            zea10:{
+              evaluator:"ZEA-10/2026.09-evaluator-v1",
+              source_layer:"ZEES-16",
+              authority:false,
+              counts:{proven:8,partial:1,blocked:1,unknown:0},
+              pillars:[
+                {id:"ZEA10-05",state:"BLOCKED"},
+                {id:"ZEA10-07",state:"PARTIAL"}
+              ]
+            }
+          };
           const worker={async fetch(req){
             const u=new URL(req.url);
-            if(u.pathname==="/api/health") return Response.json({ready:true});
-            if(u.pathname==="/api/status") return Response.json({runtime:{sales:"globally-blocked"}});
-            if(u.pathname==="/api/agent/status") return Response.json({ready:true});
-            if(u.pathname==="/api/intelligence") return Response.json({ready:true});
-            if(u.pathname==="/api/provider-health") return Response.json({ready:true});
-            if(u.pathname==="/api/config") return Response.json({commercial_enabled:false,channels:{whatsapp:{ready:false},email:{ready:true},instagram:{ready:true},facebook:{ready:true}}});
-            if(u.pathname==="/api/control-plane") return Response.json({global_state:"operational_commercial_blocked"});
+            if(u.pathname==="/api/core/v1/snapshot") return Response.json(core);
             return new Response("not found",{status:404});
           }};
           const report=await buildZea10AutonomyReport(new Request("https://example.test/api/zea10/autonomy"),{}, {}, worker);
-          if(report.overall_state!=="BLOCKED") throw new Error("must fail closed while whatsapp/commercial are blocked");
-          if(report.pillars["ZEA10-05"].state!=="BLOCKED") throw new Error("omnichannel must block without whatsapp");
-          if(report.pillars["ZEA10-07"].state!=="BLOCKED") throw new Error("conversion must block while commercial gate is closed");
-          console.log("PASS: ZEA-10 runtime gate fails closed");
+          if(report.overall_state!=="BLOCKED") throw new Error("non-10/10 evaluation must fail closed");
+          if(report.source_layer!=="ZEES-16"||report.authority!==false) throw new Error("compatibility projection role mismatch");
+          if(report.counts.blocked!==1||report.counts.partial!==1) throw new Error("canonical counts not preserved");
+          console.log("PASS: ZEA-10 compatibility route projects canonical evaluation and fails closed");
           NODE
