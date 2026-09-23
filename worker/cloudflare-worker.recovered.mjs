@@ -1451,6 +1451,18 @@ var CHANNELS = Object.freeze({
   mercado_livre: Object.freeze({ provider: "mercado-livre-api", env: ["MERCADOLIVRE_APP_ID", "MERCADOLIVRE_CLIENT_SECRET", "MERCADOLIVRE_TOKEN_ENCRYPTION_KEY"], trueEnv: ["MERCADOLIVRE_IDENTITY_VERIFIED", "MERCADOLIVRE_NOTIFICATIONS_VERIFIED", "MERCADOLIVRE_APP_SEPARATION_VERIFIED"], commercial: true, role: "marketplace_distribution" })
 });
 function channelReadiness(env = process.env) {
+  const whatsappRuntime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+  if (whatsappRuntime.access_token || whatsappRuntime.phone_number_id || whatsappRuntime.app_secret || whatsappRuntime.verify_token) {
+    env = {
+      ...env,
+      WHATSAPP_ACCESS_TOKEN: env.WHATSAPP_ACCESS_TOKEN || whatsappRuntime.access_token || "",
+      WHATSAPP_PHONE_NUMBER_ID: env.WHATSAPP_PHONE_NUMBER_ID || whatsappRuntime.phone_number_id || "",
+      META_APP_SECRET: env.META_APP_SECRET || whatsappRuntime.app_secret || "",
+      META_GRAPH_VERSION: env.META_GRAPH_VERSION || whatsappRuntime.graph_version || "v26.0",
+      META_VERIFY_TOKEN: env.META_VERIFY_TOKEN || whatsappRuntime.verify_token || "",
+      META_WHATSAPP_IDENTITY_VERIFIED: env.META_WHATSAPP_IDENTITY_VERIFIED === "true" || whatsappRuntime.identity_verified === true ? "true" : String(env.META_WHATSAPP_IDENTITY_VERIFIED || "")
+    };
+  }
   return Object.fromEntries(Object.entries(CHANNELS).map(([name, def]) => {
     let missing = def.env.filter((key) => !String(env[key] || "").trim());
     if (Array.isArray(def.trueEnv)) missing.push(...def.trueEnv.filter((key) => env[key] !== "true"));
@@ -8492,7 +8504,8 @@ async function getJson(fetchImpl, url, token) {
 }
 __name(getJson, "getJson");
 function resolveMetaVerifyToken(env = process.env) {
-  return clean7(env.META_VERIFY_TOKEN, 4e3) || clean7(env.META_WEBHOOK_VERIFY_TOKEN, 4e3);
+  const runtime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+  return clean7(env.META_VERIFY_TOKEN, 4e3) || clean7(env.META_WEBHOOK_VERIFY_TOKEN, 4e3) || clean7(runtime.verify_token, 4e3);
 }
 __name(resolveMetaVerifyToken, "resolveMetaVerifyToken");
 async function verifyFacebookIdentity({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
@@ -8537,7 +8550,8 @@ async function verifyInstagramIdentity({ env = process.env, fetchImpl = globalTh
 }
 __name(verifyInstagramIdentity, "verifyInstagramIdentity");
 async function verifyWhatsappIdentity({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
-  const token = clean7(env.WHATSAPP_ACCESS_TOKEN, 4e3), id = clean7(env.WHATSAPP_PHONE_NUMBER_ID), version = clean7(env.META_GRAPH_VERSION, 20);
+  const runtime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+  const token = clean7(env.WHATSAPP_ACCESS_TOKEN || runtime.access_token, 4e3), id = clean7(env.WHATSAPP_PHONE_NUMBER_ID || runtime.phone_number_id), version = clean7(env.META_GRAPH_VERSION || runtime.graph_version || "v26.0", 20);
   if (!token || !id || !version) return result(false, false, "credentials_missing");
   const fields = "id,display_phone_number,verified_name,name_status,new_name_status,quality_rating,code_verification_status";
   const x2 = await getJson(fetchImpl, `https://graph.facebook.com/${version}/${encodeURIComponent(id)}?fields=${fields}`, token);
@@ -12873,8 +12887,9 @@ function buildOutboundAdapters({ env = process.env, fetchImpl = globalThis.fetch
     "channel:whatsapp": /* @__PURE__ */ __name(async (event) => {
       ensureOutboundAllowed(event, env, commercialGate);
       if (!supportEventAllowed(event) && env.WHATSAPP_SALES_ENABLED !== "true") throw new Error("whatsapp_sales_disabled");
-      const token = required3(env.WHATSAPP_ACCESS_TOKEN, "whatsapp_access_token_missing");
-      const phoneId = required3(env.WHATSAPP_PHONE_NUMBER_ID, "whatsapp_phone_number_id_missing");
+      const whatsappRuntime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+      const token = required3(env.WHATSAPP_ACCESS_TOKEN || whatsappRuntime.access_token, "whatsapp_access_token_missing");
+      const phoneId = required3(env.WHATSAPP_PHONE_NUMBER_ID || whatsappRuntime.phone_number_id, "whatsapp_phone_number_id_missing");
       const to = required3(event.payload?.contact_ref, "whatsapp_recipient_missing");
       const text = required3(event.payload?.text, "whatsapp_text_missing");
       const media = String(event.payload?.media_url || "").trim();
@@ -14825,7 +14840,9 @@ async function handler18(req, res) {
   }
   if (req.method !== "POST") return json14(res, 405, { error: "method_not_allowed" });
   const raw = rawText(req);
-  if (!verifyMetaSignature({ payload: raw, signature: req.headers?.["x-hub-signature-256"], appSecret: process.env.META_APP_SECRET })) return json14(res, 401, { error: "webhook_auth_failed", accepted: false });
+  const whatsappRuntime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+  const metaAppSecret = process.env.META_APP_SECRET || whatsappRuntime.app_secret || "";
+  if (!verifyMetaSignature({ payload: raw, signature: req.headers?.["x-hub-signature-256"], appSecret: metaAppSecret })) return json14(res, 401, { error: "webhook_auth_failed", accepted: false });
   let payload;
   try {
     payload = raw ? JSON.parse(raw) : {};
@@ -17516,7 +17533,7 @@ var cloudflare_worker_default = {
         provider_vault_supported: true,
         provider_secretless_origin_auth: activeProvider === "piper-relay",
         relay_https_configured: /^https:\/\//i.test(relayUrl),
-        whatsapp_transport_configured: Boolean(String(env.WHATSAPP_ACCESS_TOKEN || "").trim() && String(env.WHATSAPP_PHONE_NUMBER_ID || "").trim()),
+        whatsapp_transport_configured: Boolean(String(env.WHATSAPP_ACCESS_TOKEN || globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.access_token || "").trim() && String(env.WHATSAPP_PHONE_NUMBER_ID || globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.phone_number_id || "").trim()),
         sales_independent_support: true,
         naturality_certified: env.VOICE_NATURALITY_CERTIFIED === "true",
         e2e_official_number_certified: env.VOICE_WHATSAPP_E2E_CERTIFIED === "true",
