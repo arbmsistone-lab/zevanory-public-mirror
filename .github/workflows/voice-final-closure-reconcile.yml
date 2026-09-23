@@ -1,0 +1,200 @@
+name: ZEVANORY voice final closure reconciler
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 * * * *'
+
+permissions:
+  contents: read
+  checks: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+      ZEVANORY_PRIVATE_KV_NAMESPACE_ID: 9eca336262b44186ab3dbec82fc35ab4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+
+      - name: Check external completion preconditions
+        id: preconditions
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://zevanory.api.br/api/voice/final-closure -o /tmp/closure.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open('/tmp/closure.json'))
+          ready=(
+            d.get('voice_naturality_certified') is True
+            and d.get('whatsapp_transport_configured') is True
+            and d.get('whatsapp_e2e') is True
+            and d.get('zero_spend') is True
+          )
+          print('EXTERNAL_CLOSURE_PRECONDITIONS='+('PASS' if ready else 'WAIT'))
+          print('VOICE_PERCEPTUAL_SAMPLE_COUNT='+str(d.get('voice_perceptual_sample_count',0)))
+          print('WHATSAPP_E2E='+('PASS' if d.get('whatsapp_e2e') else 'WAIT'))
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+            f.write('ready='+('true' if ready else 'false')+'\n')
+          PY
+
+      - name: Remain fail-closed while external evidence is incomplete
+        if: steps.preconditions.outputs.ready != 'true'
+        run: |
+          echo "VOICE_SUPPORT_FINAL=BLOCKED"
+          echo "No certificate will be written until both independent human evidence and real WhatsApp E2E are true."
+
+      - name: Prove local voice and adversarial invariants
+        if: steps.preconditions.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          python3 scripts/voice_support_gate.py
+          python3 scripts/voice_naturality_gate.py
+          node scripts/voice_router_adversarial.mjs
+
+      - name: Verify production is exactly this canonical SHA
+        if: steps.preconditions.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/control.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open('/tmp/control.json'))
+          prod=str(d.get('release',{}).get('deployment',{}).get('commit_sha') or '')
+          sha=os.environ['GITHUB_SHA']
+          assert prod==sha,(prod,sha)
+          assert str(d.get('policy',{}).get('release_sha') or '')==sha
+          print('CANONICAL_PRODUCTION_SHA=PASS')
+          print('SHA='+sha)
+          PY
+          curl -fsS https://zevanory.api.br/api/voice/probe -o /tmp/voice-probe.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/voice-probe.json'))
+          assert d.get('ok') is True
+          assert int(d.get('bytes',0))>1000
+          assert d.get('language')=='pt-BR'
+          print('PRODUCTION_PROBE=PASS')
+          PY
+
+      - name: Verify required GitHub checks on canonical SHA
+        if: steps.preconditions.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100"             -o /tmp/checks.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/checks.json'))
+          rows=d.get('check_runs',[])
+          required=[
+            'product-pages / static-audit',
+            'zees16-evidence / fail-closed',
+            'voice-support',
+            'voice-naturality',
+            'deploy',
+            'build',
+            'remote-quality',
+            'wcag',
+            'visual',
+            'provenance'
+          ]
+          missing=[]
+          for name in required:
+            if not any(x.get('name')==name and x.get('status')=='completed' and x.get('conclusion')=='success' for x in rows):
+              missing.append(name)
+          assert not missing,missing
+          print('REGRESSION_GATES=PASS')
+          PY
+
+      - name: Write canonical final certificate to private KV
+        if: steps.preconditions.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          python3 - <<'PY'
+          import json, os, datetime
+          c={
+            'schema_version':1,
+            'sha':os.environ['GITHUB_SHA'],
+            'regression_gates':True,
+            'production_probe':True,
+            'zero_spend':True,
+            'certified_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'source':'github-actions:voice-final-closure-reconcile'
+          }
+          open('/tmp/final-certificate.json','w').write(json.dumps(c,separators=(',',':')))
+          PY
+          key='voice-final%2Fcertification'
+          code=$(curl -sS -o /tmp/kv-write.json -w '%{http_code}'             -X PUT             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             -H 'Content-Type: application/json'             --data-binary @/tmp/final-certificate.json             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$ZEVANORY_PRIVATE_KV_NAMESPACE_ID/values/$key")
+          test "$code" = "200"
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/kv-write.json'))
+          assert d.get('success') is True,d
+          print('FINAL_CERTIFICATE_PERSISTED=PASS')
+          PY
+
+      - name: Verify final live closure
+        if: steps.preconditions.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in $(seq 1 12); do
+            curl -fsS https://zevanory.api.br/api/voice/final-closure -o /tmp/final.json
+            if python3 - <<'PY'
+          import json, os
+          d=json.load(open('/tmp/final.json'))
+          ok=(
+            d.get('final_green') is True
+            and d.get('release_sha')==os.environ['GITHUB_SHA']
+            and d.get('certified_sha')==os.environ['GITHUB_SHA']
+          )
+          raise SystemExit(0 if ok else 1)
+          PY
+            then ok=1; break; fi
+            sleep 5
+          done
+          test "$ok" = "1"
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/final.json'))
+          checks=[
+            ('VOICE_ROUTER',d['voice_router']),
+            ('VOICE_PROVIDER_FAILOVER',d['voice_provider_failover']),
+            ('VOICE_ZERO_SPEND',d['voice_zero_spend']),
+            ('VOICE_PERCEPTUAL_BLINDING',d['voice_perceptual_blinding']),
+            ('VOICE_NATURALITY_CERTIFIED',d['voice_naturality_certified']),
+            ('WHATSAPP_NUMBER_CONFIGURED',d['whatsapp_number_configured']),
+            ('WHATSAPP_TRANSPORT_CONFIGURED',d['whatsapp_transport_configured']),
+            ('WHATSAPP_WEBHOOK',d['whatsapp_webhook']),
+            ('WHATSAPP_INBOUND',d['whatsapp_inbound']),
+            ('WHATSAPP_RUNTIME_PROCESSING',d['whatsapp_runtime_processing']),
+            ('WHATSAPP_TTS',d['whatsapp_tts']),
+            ('WHATSAPP_OUTBOUND',d['whatsapp_outbound']),
+            ('WHATSAPP_DELIVERY',d['whatsapp_delivery']),
+            ('WHATSAPP_E2E',d['whatsapp_e2e']),
+            ('REGRESSION_GATES',d['regression_gates']),
+            ('PRODUCTION_PROBE',d['production_probe']),
+            ('ZERO_SPEND',d['zero_spend'])
+          ]
+          for name,value in checks:
+            assert value is True,(name,value)
+            print(name+'=PASS')
+          print('VOICE_PERCEPTUAL_SAMPLE_COUNT='+str(d['voice_perceptual_sample_count']))
+          print('VOICE_PERCEPTUAL_SCORE='+str(d['voice_perceptual_score']))
+          print('VOICE_SUPPORT_FINAL=GREEN')
+          print('CANONICAL_SHA='+str(d['release_sha']))
+          PY
