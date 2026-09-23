@@ -1,5 +1,3 @@
-import { controlCoreDatabaseQuery } from "./cloudflare-worker.recovered.mjs";
-
 let schemaReady=false;
 
 function clean(value,max=500){
@@ -11,6 +9,7 @@ function dbUrl(env){
 async function query(env,text,params=[]){
   const url=dbUrl(env);
   if(!url) throw new Error("control_core_database_url_missing");
+  const { controlCoreDatabaseQuery }=await import("./cloudflare-worker.recovered.mjs");
   return controlCoreDatabaseQuery(url,text,params);
 }
 async function ensureSchema(env){
