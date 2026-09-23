@@ -69,7 +69,7 @@ function html(snapshot){
   <title>Central Administrativa ZEVANORY</title><link rel="stylesheet" href="/admin.css"></head><body>
   <a class="skip" href="#main">Ir para o conteúdo</a><header><div><strong>ZEVANORY</strong><span>Central Administrativa</span></div><div class="meta">Atualização automática • 30s</div></header>
   <main id="main">
-  <section class="hero"><div><p class="eyebrow">CONTROL PLANE</p><h1>Visão operacional executiva</h1><p>Superfície administrativa somente leitura, protegida e fail-closed.</p></div><div class="hero-state">${pill(c.global_state)}</div></section>
+  <section class="hero"><div><p class="eyebrow">ZEVANORY CONTROL CORE</p><h1>Visão operacional executiva</h1><p>Superfície administrativa governada pelo core canônico. A UI nunca autoriza mudanças críticas de estado.</p></div><div class="hero-state">${pill(c.global_state)}</div></section>
   <section class="grid">
     <article><span>Saúde</span><strong>${h.ready?"READY":"NOT READY"}</strong><small>DB ${h.checks?.database_reachable?"OK":"FAIL"} • schema ${h.checks?.schema_ready?"OK":"FAIL"}</small></article>
     <article><span>Vendas</span><strong>${esc(s.runtime?.sales)}</strong><small>checkout ${esc(s.runtime?.checkout)} • financeiro ${esc(s.runtime?.financial)}</small></article>
@@ -90,15 +90,21 @@ export async function handleAdminRequest(request,env,ctx,worker){
   if(!isAdminAuthorized(request,env)) return unauthorized();
   const base=new URL(request.url);
   try{
-    const [status,health,control,continuity]=await Promise.all([
-      jsonThrough(worker,new URL("/api/status",base),request,env,ctx),
-      jsonThrough(worker,new URL("/api/health",base),request,env,ctx),
-      jsonThrough(worker,new URL("/api/control-plane",base),request,env,ctx),
-      jsonThrough(worker,new URL("/api/continuity",base),request,env,ctx)
-    ]);
-    let zees16=null;
-    try{zees16=await readOrReconcileControlState(worker,env,ctx,base.origin);}catch{}
-    const snapshot={status,health,control,continuity,zees16,generated_at:new Date().toISOString()};
+    const core=await jsonThrough(worker,new URL("/api/core/v1/snapshot",base),request,env,ctx);
+    const {status,health,control,continuity,zees16}=core;
+    const snapshot={
+      status,health,control,continuity,zees16,
+      core:{
+        schema:core.schema,
+        authority:core.authority,
+        fail_closed:core.fail_closed,
+        ui_can_authorize:core.ui_can_authorize,
+        source_of_truth:core.source_of_truth,
+        release_sha:core.release_sha,
+        invariants:core.invariants
+      },
+      generated_at:core.generated_at||new Date().toISOString()
+    };
     if(base.pathname==="/api/admin/snapshot"){
       return new Response(JSON.stringify(snapshot),{status:200,headers:{
         "content-type":"application/json; charset=utf-8","cache-control":"no-store",

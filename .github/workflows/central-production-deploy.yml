@@ -8,6 +8,7 @@ on:
       - "worker/control-plane-vnext-source.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "worker/evidence-control-plane.mjs"
+      - "worker/zevanory-control-core.mjs"
       - "worker/admin-console.mjs"
       - "admin.css"
       - "evidence/admin-control-center.json"
