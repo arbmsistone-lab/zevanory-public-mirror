@@ -111,13 +111,52 @@ export function evaluatePolicy({signals={},workflows=new Map(),releaseSha=null,o
 }
 async function persist(env,state){
   const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
-  let previousDecisionHash=null;
-  if(kv&&typeof kv.get==="function"){
+  if(!kv||typeof kv.put!=="function") return {
+    ...state,
+    persistence:"recomputed-immutable-sources",
+    persistence_error:"kv_binding_unavailable",
+    evaluator:"ZEES16_POLICY_ENGINE",
+    evaluator_version:ZEES16_POLICY.version
+  };
+
+  let previous=null;
+  if(typeof kv.get==="function"){
     try{
       const previousRaw=await kv.get(STATE_KEY);
-      if(previousRaw) previousDecisionHash=JSON.parse(previousRaw)?.decision_hash||null;
+      if(previousRaw) previous=JSON.parse(previousRaw);
     }catch{}
   }
+
+  const semantic={
+    policy_version:state.policy_version,
+    release_sha:state.release_sha,
+    counts:state.counts,
+    pillars:(state.pillars||[]).map(p=>({
+      id:p.id,
+      state:p.state,
+      release_sha:p.release_sha||null,
+      evidence:(p.evidence||[]).map(e=>({key:e.key,ok:e.ok===true}))
+    })),
+    collector_error:state.collector_error||null,
+    inputs:state.inputs||null
+  };
+  const semanticHash=await sha256Hex(stable(semantic));
+
+  if(previous?.semantic_hash===semanticHash && previous?.release_sha===state.release_sha){
+    return {
+      ...previous,
+      ...state,
+      decision_hash:previous.decision_hash,
+      semantic_hash:semanticHash,
+      persistence:"kv-append-only",
+      persistence_mode:"deduplicated-noop",
+      persistence_error:null,
+      evaluator:"ZEES16_POLICY_ENGINE",
+      evaluator_version:ZEES16_POLICY.version
+    };
+  }
+
+  const previousDecisionHash=previous?.decision_hash||null;
   const event={
     type:"ZEES16_RECONCILED",
     target:"zevanory",
@@ -126,30 +165,32 @@ async function persist(env,state){
     counts:state.counts,
     observed_at:state.observed_at,
     pillars:state.pillars,
+    semantic_hash:semanticHash,
     previous_decision_hash:previousDecisionHash
   };
   const eventHash=await sha256Hex(stable(event));
+  const key=LEDGER_PREFIX+state.observed_at.replace(/[:.]/g,"-")+":"+eventHash;
   const decision={
     ...state,
     decision_hash:eventHash,
+    semantic_hash:semanticHash,
     previous_decision_hash:previousDecisionHash,
-    persistence:"reproducible-immutable-sources",
+    persistence:"kv-append-only",
+    persistence_mode:"append-on-change",
     persistence_error:null,
-    evidence_source:"github-actions+production-runtime",
     evaluator:"ZEES16_POLICY_ENGINE",
     evaluator_version:ZEES16_POLICY.version
   };
-  if(!kv||typeof kv.put!=="function") return decision;
   try{
-    const key=LEDGER_PREFIX+state.observed_at.replace(/[:.]/g,"-")+":"+eventHash;
-    await kv.put(key,JSON.stringify({...event,event_hash:eventHash}),{metadata:{type:event.type,release_sha:state.release_sha||"",policy_version:state.policy_version,previous_decision_hash:previousDecisionHash||""}});
-    await kv.put(STATE_KEY,JSON.stringify({...decision,persistence:"kv-append-only"}),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash,previous_decision_hash:previousDecisionHash||""}});
-    return {...decision,persistence:"kv-append-only"};
+    await kv.put(key,JSON.stringify({...event,event_hash:eventHash}),{metadata:{type:event.type,release_sha:state.release_sha||"",policy_version:state.policy_version,previous_decision_hash:previousDecisionHash||"",semantic_hash:semanticHash}});
+    await kv.put(STATE_KEY,JSON.stringify(decision),{metadata:{release_sha:state.release_sha||"",decision_hash:eventHash,previous_decision_hash:previousDecisionHash||"",semantic_hash:semanticHash}});
+    return decision;
   }catch(error){
     return {
       ...decision,
-      persistence:"reproducible-immutable-sources",
-      persistence_error:String(error?.message||error||"kv_cache_write_failed")
+      persistence:"recomputed-immutable-sources",
+      persistence_mode:"write-quota-fallback",
+      persistence_error:String(error?.message||error||"kv_persistence_failed")
     };
   }
 }
