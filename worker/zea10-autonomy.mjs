@@ -19,18 +19,14 @@ export async function buildZea10AutonomyReport(request,env,ctx,worker){
     get(worker,base,"/api/agent/status",request,env,ctx),
     get(worker,base,"/api/intelligence",request,env,ctx),
     get(worker,base,"/api/provider-health",request,env,ctx),
-    get(worker,base,"/api/config?view=channel_identity_health",request,env,ctx),
+    get(worker,base,"/api/config?view=closure_status",request,env,ctx),
     get(worker,base,"/api/control-plane",request,env,ctx)
   ]);
-  const identity=config.body||{};
-  const readiness=status.body?.channel_readiness||{};
+  const closure=config.body||{};
+  const channels=closure.channels||{};
   const channelOk=name=>{
-    const providerTruth=identity?.[name];
-    if(providerTruth&&typeof providerTruth==="object"){
-      return providerTruth.verified===true && providerTruth.reason!=="credentials_missing";
-    }
-    const v=readiness?.[name];
-    return Boolean(v && v.scope_status==="active");
+    const v=channels?.[name];
+    return Boolean(v && v.operational_ready===true && v.scope_status==="active");
   };
   const autopilotHealthy=agent.body?.autopilot?.health==="HEALTHY";
   const lifecycleCertified=agent.body?.lifecycle_certified===true;
@@ -46,7 +42,7 @@ export async function buildZea10AutonomyReport(request,env,ctx,worker){
     "ZEA10-04":state(status.ok&&agent.ok&&autopilotHealthy,{evidence:["creativeEngine","human approval boundary","autopilot health"]}),
     "ZEA10-05":state(channelOk("whatsapp")&&channelOk("email")&&channelOk("instagram")&&channelOk("facebook"),{evidence:["channel_identity_health"],channels:{whatsapp:channelOk("whatsapp"),email:channelOk("email"),instagram:channelOk("instagram"),facebook:channelOk("facebook")}}),
     "ZEA10-06":state(agent.ok,{evidence:["agent conversation/qualification policy"]}),
-    "ZEA10-07":state(!commercialBlocked&&provider.ok,{evidence:["commercial gate","provider-health"],note:commercialBlocked?"commercial gate remains fail-closed":null}),
+    "ZEA10-07":state(!commercialBlocked&&provider.ok&&provider.body?.payment?.ready===true,{evidence:["commercial gate","provider-health/v2"],note:commercialBlocked?"commercial gate remains fail-closed":provider.body?.payment?.ready===true?null:"payment provider not ready"}),
     "ZEA10-08":state(agent.ok&&lifecycleCertified,{evidence:["lifecycle support/onboarding contract","lifecycle certification"],note:lifecycleCertified?null:"full customer-success lifecycle is not yet certified"}),
     "ZEA10-09":state(intel.ok&&agent.ok&&learningEvidence,{evidence:["market intelligence","agent outcome loop","healthy autonomous cycle"],note:learningEvidence?null:"healthy closed-loop autonomous learning is not yet proven"}),
     "ZEA10-10":state(health.ok&&control.ok,{evidence:["health","control-plane","audit/fail-closed governance"]})
