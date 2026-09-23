@@ -123,3 +123,34 @@ assert 'META_APP_SECRET || whatsappRuntime.app_secret' in worker
 assert 'WHATSAPP_ACCESS_TOKEN || whatsappRuntime.access_token' in worker
 assert 'WHATSAPP_PHONE_NUMBER_ID || whatsappRuntime.phone_number_id' in worker
 print("WHATSAPP_SECURE_ONBOARDING_RUNTIME_GATE=PASS")
+
+
+e2e=Path("worker/whatsapp-e2e-evidence.mjs").read_text(encoding="utf-8")
+closure=Path("worker/voice-final-closure.mjs").read_text(encoding="utf-8")
+compat=Path("worker/cloudflare-worker.compat.mjs").read_text(encoding="utf-8")
+for marker in [
+  'inbound_processed',
+  'outbound_voice',
+  'delivery',
+  'contact_hash',
+  'provider_message_id',
+  'whatsapp-e2e/',
+  'e2e:Boolean(chain)',
+]:
+    assert marker in e2e, f"missing WhatsApp E2E evidence marker: {marker}"
+for marker in [
+  'voice_naturality_certified',
+  'whatsapp_transport_configured',
+  'whatsapp_e2e',
+  'canonical_sha_consistent',
+  'regression_gates',
+  'final_green',
+  'voice-final/certification',
+]:
+    assert marker in closure, f"missing final closure marker: {marker}"
+assert '__ZEVANORY_WHATSAPP_E2E_STORE__' in compat
+assert 'recordWhatsappEvidence("inbound_processed"' in worker
+assert 'recordWhatsappEvidence("outbound_voice"' in worker
+assert 'recordWhatsappEvidence("delivery"' in worker
+print("WHATSAPP_E2E_AUDIT_LEDGER_GATE=PASS")
+print("VOICE_CANONICAL_FINAL_CLOSURE_GATE=PASS")
