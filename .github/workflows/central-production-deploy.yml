@@ -17,6 +17,8 @@ on:
       - "admin.css"
       - "evidence/admin-control-center.json"
       - ".github/workflows/central-production-deploy.yml"
+      - ".github/workflows/financial-e2e-closure.yml"
+      - "scripts/financial_e2e_closure.py"
       - ".github/workflows/zpc-cloudflare-route-discovery.yml"
 permissions:
   contents: read
@@ -27,6 +29,11 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+      ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY || secrets.ASAAS_SANDBOX_API_KEY }}
+      ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -189,6 +196,19 @@ jobs:
           for b in d.get("result",{}).get("bindings",[]):
               print("CURRENT_BINDING",b.get("name"),b.get("type"),b.get("service",""),b.get("namespace_id",""))
           PY
+      - name: Synchronize financial certification secrets
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+            test -n "${!k:-}" || { echo "MISSING_RUNTIME_SECRET=$k"; exit 2; }
+          done
+          test "${#ASAAS_WEBHOOK_TOKEN}" -ge 32
+          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+            printf '%s' "${!k}" | npx --yes wrangler@4.135.0 secret put "$k" --config wrangler.central-fix.jsonc
+          done
+          echo "FINANCIAL_RUNTIME_SECRET_SYNC=PASS"
       - name: Deploy repaired production worker
         if: steps.auth.outputs.available == 'true'
         run: |
