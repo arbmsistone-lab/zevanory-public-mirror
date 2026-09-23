@@ -46,7 +46,7 @@ jobs:
           d=json.load(open("/tmp/versions.json"))
           r=d.get("result",[])
           if isinstance(r,dict):
-              r=r.get("versions",[])
+              r=r.get("items",[]) or r.get("versions",[])
           for v in r:
               if isinstance(v,str):
                   print(v)
