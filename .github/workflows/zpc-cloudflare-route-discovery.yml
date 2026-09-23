@@ -15,37 +15,53 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
     steps:
-      - name: Determine authenticated discovery availability
+      - name: Probe authenticated route-discovery scope
         id: auth
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-            echo "CLOUDFLARE_ROUTE_DISCOVERY=AUTHENTICATED"
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "route_scope=false" >> "$GITHUB_OUTPUT"
+            echo "CLOUDFLARE_ZONE_DISCOVERY=CREDENTIAL_ABSENT"
+            exit 0
+          fi
+          code="$(curl -sS -o /tmp/zones.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/zones?name=zevanory.api.br" || true)"
+          if [ "$code" = "200" ] && python3 -c "import json; d=json.load(open('/tmp/zones.json')); raise SystemExit(0 if d.get('success') is True and d.get('result') else 1)"; then
+            echo "route_scope=true" >> "$GITHUB_OUTPUT"
+            echo "CLOUDFLARE_ZONE_DISCOVERY=AVAILABLE"
           else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "CLOUDFLARE_ROUTE_DISCOVERY=CREDENTIAL_ABSENT_PUBLIC_FALLBACK"
+            echo "route_scope=false" >> "$GITHUB_OUTPUT"
+            echo "CLOUDFLARE_ZONE_DISCOVERY=TOKEN_PRESENT_SCOPE_UNAVAILABLE"
           fi
 
-      - name: Discover Cloudflare route owner
-        if: steps.auth.outputs.available == 'true'
+      - name: Discover Cloudflare route owner when scope permits
+        if: steps.auth.outputs.route_scope == 'true'
         shell: bash
         run: |
           set -euo pipefail
           auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN")
-          curl -fsS "${auth[@]}" "https://api.cloudflare.com/client/v4/zones?name=zevanory.api.br" -o /tmp/zones.json
-          ZONE_ID="$(python3 -c "import json; d=json.load(open('/tmp/zones.json')); assert d.get('success') is True and d.get('result'); print(d['result'][0]['id'])")"
+          ZONE_ID="$(python3 -c "import json; d=json.load(open('/tmp/zones.json')); print(d['result'][0]['id'])")"
           curl -fsS "${auth[@]}" "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/workers/routes" -o /tmp/routes.json
           python3 -c "import json; d=json.load(open('/tmp/routes.json')); assert d.get('success') is True, d.get('errors'); hits=[(str(r.get('pattern','')),r.get('script')) for r in d.get('result',[]) if 'zevanory.api.br' in str(r.get('pattern',''))]; assert hits, 'No ZEVANORY Worker route found'; [print('CF_ROUTE',p,'SCRIPT',s) for p,s in hits]"
-          curl -fsS "${auth[@]}" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" -o /tmp/scripts.json
-          python3 -c "import json; d=json.load(open('/tmp/scripts.json')); assert d.get('success') is True, d.get('errors'); scripts=[s.get('id') for s in d.get('result',[]) if s.get('id')]; assert scripts, 'No Worker scripts visible'; [print('CF_SCRIPT',s) for s in scripts]"
 
-      - name: Public route fallback proof
-        if: steps.auth.outputs.available != 'true'
+      - name: Prove account Worker visibility
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" -o /tmp/scripts.json
+          python3 -c "import json; d=json.load(open('/tmp/scripts.json')); assert d.get('success') is True, d.get('errors'); ids=[s.get('id') for s in d.get('result',[]) if s.get('id')]; assert 'zevanory' in ids, ids; print('CF_WORKER_ZEVANORY_VISIBLE=PASS')"
+
+      - name: Prove live public and edge routes
         shell: bash
         run: |
           set -euo pipefail
           curl -fsS https://zevanory.api.br/api/health -o /tmp/health.json
           curl -fsS https://edge.zevanory.api.br/api/status -o /tmp/edge.json
-          python3 -c "import json; h=json.load(open('/tmp/health.json')); e=json.load(open('/tmp/edge.json')); assert h.get('live') is True and h.get('ready') is True, h; assert e.get('project') == 'ZEVANORY', e; print('PUBLIC_ROUTE_FALLBACK_PROOF=PASS')"
+          python3 -c "import json; h=json.load(open('/tmp/health.json')); e=json.load(open('/tmp/edge.json')); assert h.get('live') is True and h.get('ready') is True, h; assert e.get('project') == 'ZEVANORY', e; print('PUBLIC_AND_EDGE_ROUTE_PROOF=PASS')"
+
+      - name: Record scope limitation without false production failure
+        if: steps.auth.outputs.route_scope != 'true'
+        run: |
+          echo "Cloudflare Zone Read scope is unavailable; no route-owner claim is made."
+          echo "Account Worker visibility and live public/edge route proofs remain authoritative for this diagnostic."
