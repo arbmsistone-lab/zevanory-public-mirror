@@ -1,0 +1,84 @@
+name: ZEVANORY financial E2E closure
+
+on:
+  workflow_run:
+    workflows: ["ZEVANORY central production deploy"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact deployed SHA to certify
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: financial-e2e-closure
+  cancel-in-progress: false
+
+jobs:
+  financial-e2e:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'gh-pages')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY || secrets.ASAAS_SANDBOX_API_KEY }}
+      ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+      ASAAS_WEBHOOK_EMAIL: ${{ secrets.ASAAS_WEBHOOK_EMAIL }}
+      OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || inputs.expected_sha || github.sha }}
+    steps:
+      - name: Checkout exact canonical SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+
+      - name: Validate secret presence and SHA shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${#EXPECTED_SHA}" -eq 40
+          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+            test -n "${!k:-}" || { echo "MISSING_REQUIRED_SECRET=$k"; exit 2; }
+          done
+          test "${#ASAAS_WEBHOOK_TOKEN}" -ge 32
+          echo "FINANCIAL_SECRET_READINESS=PASS"
+          echo "EXPECTED_SHA=$EXPECTED_SHA"
+
+      - name: Run real provider financial lifecycle
+        run: python3 scripts/financial_e2e_closure.py
+
+      - name: Verify evidence is GREEN and exact-SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, re
+          p=json.load(open("evidence/financial-e2e-current.json",encoding="utf-8"))
+          sha=os.environ["EXPECTED_SHA"].lower()
+          assert re.fullmatch(r"[0-9a-f]{40}",sha)
+          assert set(p["sha"].values())=={sha},p["sha"]
+          assert p["checks"]["FINANCIAL_E2E"]=="GREEN"
+          assert all(v in ("PASS","GREEN") for v in p["checks"].values()),p["checks"]
+          assert p["final_order_status"]=="refunded"
+          assert p["final_fulfillment_status"]=="canceled"
+          assert p["payment_confirmation_count"]==1
+          assert p["invariants"]["provider_final_status"]=="REFUNDED"
+          print("FINANCIAL_EXACT_SHA_CERTIFICATION=PASS")
+          PY
+
+      - name: Upload immutable evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: financial-e2e-${{ env.EXPECTED_SHA }}
+          path: evidence/financial-e2e-current.json
+          if-no-files-found: error
+          retention-days: 90
