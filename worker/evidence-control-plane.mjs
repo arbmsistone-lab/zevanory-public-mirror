@@ -22,7 +22,7 @@ export const ZEES16_POLICY={
     {id:"P13",name:"Governança e evidência",requires:["runtime:zea10_pack_bound","workflow:zevanory-p15-provenance"]},
     {id:"P14",name:"Automação, IA e provedores",requires:["workflow:ZEVANORY provider independence gate","workflow:ZEVANORY authenticated three-provider runtime quorum"]},
     {id:"P15",name:"CI/CD e proveniência",requires:["workflow:zevanory-p15-provenance","workflow:pages build and deployment","workflow:ZEVANORY central production deploy"]},
-    {id:"P16",name:"Prontidão comercial",requires:["runtime:commercial_release"],partial_when:["runtime:sales_fail_closed","runtime:health_ready"]}
+    {id:"P16",name:"Prontidão comercial",requires:["workflow:ZEVANORY consolidated closure gate","runtime:sales_fail_closed","runtime:health_ready"]}
   ]
 };
 
