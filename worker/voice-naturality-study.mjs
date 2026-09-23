@@ -163,10 +163,14 @@ export async function handleVoiceStudy(request,env={}) {
     return json({accepted:true,blinded:true},201,headers);
   }
   if(url.pathname==="/api/voice-study/status") {
-    const stats=aggregate(await listRatings(env));
-    return json({schema_version:1,engine:"ZEVANORY Voice Support Engine",study:"human_blind_ptbr_naturality",provider_disclosed:false,...stats});
+    return json(await voiceStudyStatus(env));
   }
   return null;
+}
+
+export async function voiceStudyStatus(env={}) {
+  const stats=aggregate(await listRatings(env));
+  return Object.freeze({schema_version:1,engine:"ZEVANORY Voice Support Engine",study:"human_blind_ptbr_naturality",provider_disclosed:false,...stats});
 }
 
 export { CORPUS };
