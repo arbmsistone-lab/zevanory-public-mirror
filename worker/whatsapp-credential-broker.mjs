@@ -331,6 +331,19 @@ async function uploadMedia(env,request){
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
+    if(request.method==="GET"&&url.pathname==="/__zevanory/runtime"){
+      const meta=env.CF_VERSION_METADATA||{};
+      return json({
+        ok:true,
+        service:"giro-whatsapp-bridge",
+        zero_spend:true,
+        runtime_sha:clean(meta.tag,120)||null,
+        runtime_version:clean(meta.id,120)||null,
+        runtime_created_at:clean(meta.timestamp,120)||null,
+        canonical:"https://zevanory.api.br",
+        legacy_route_bypass:0
+      });
+    }
     if(!internal(request)){
       return json({ok:false,service:"giro-whatsapp-bridge",retired:true,canonical:"https://zevanory.api.br",old_number_active_route:false},410);
     }
