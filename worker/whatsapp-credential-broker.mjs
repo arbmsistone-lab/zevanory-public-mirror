@@ -333,6 +333,7 @@ export default {
     const url=new URL(request.url);
     if(request.method==="GET"&&url.pathname==="/__zevanory/runtime"){
       const meta=env.CF_VERSION_METADATA||{};
+      const wa=await status(env).catch(error=>({broker:true,configured:false,identity_verified:false,reason:clean(error?.message,180)}));
       return json({
         ok:true,
         service:"giro-whatsapp-bridge",
@@ -341,7 +342,25 @@ export default {
         runtime_version:clean(meta.id,120)||null,
         runtime_created_at:clean(meta.timestamp,120)||null,
         canonical:"https://zevanory.api.br",
-        legacy_route_bypass:0
+        legacy_route_bypass:0,
+        whatsapp:{
+          configured:wa.configured===true,
+          official_e164:clean(wa.official_e164,32)||OFFICIAL_E164,
+          official_number_found:wa.official_number_found===true,
+          identity_verified:wa.identity_verified===true,
+          app_secret_valid:wa.app_secret_valid===true,
+          waba_present:Boolean(wa.waba_id),
+          phone_number_id_present:Boolean(wa.phone_number_id),
+          brand_name_verified:wa.brand_name_verified===true,
+          name_status:clean(wa.name_status,80),
+          code_verification_status:clean(wa.code_verification_status,80),
+          permissions:{
+            business_management:wa.permissions?.business_management===true,
+            whatsapp_business_management:wa.permissions?.whatsapp_business_management===true,
+            whatsapp_business_messaging:wa.permissions?.whatsapp_business_messaging===true
+          },
+          reason:clean(wa.reason,180)
+        }
       });
     }
     if(!internal(request)){
