@@ -75,11 +75,8 @@ jobs:
             : > /tmp/oauth.headers
             code="$(curl -sS -o /dev/null -D /tmp/oauth.headers -w '%{http_code}' 'https://zevanory.api.br/admin/whatsapp-onboard/start' || true)"
             location="$(tr -d '\r' </tmp/oauth.headers | awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/^[^:]+:[[:space:]]*/,""); print; exit}')"
-            echo "OAUTH_LAUNCHER_ATTEMPT=$attempt HTTP=$code LOCATION_HOST=$(python3 - "$location" <<'PY'
-import sys,urllib.parse
-print(urllib.parse.urlparse(sys.argv[1]).netloc if len(sys.argv)>1 and sys.argv[1] else "")
-PY
-)"
+            host="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.urlparse(sys.argv[1]).netloc if len(sys.argv)>1 and sys.argv[1] else "")' "$location")"
+            echo "OAUTH_LAUNCHER_ATTEMPT=$attempt HTTP=$code LOCATION_HOST=$host"
             if [ "$code" = "302" ] && [ -n "$location" ]; then break; fi
             sleep 10
           done
