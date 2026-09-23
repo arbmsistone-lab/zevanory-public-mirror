@@ -198,7 +198,7 @@ async function phoneIdentity(env,phoneId,token){
 async function status(env){
   const r=await runtime(env).catch(()=>null);
   const token=await accessToken(env);
-  const phoneId=clean(r?.phone_number_id,120);
+  const phoneId=clean(r?.phone_number_id||env.WHATSAPP_PHONE_NUMBER_ID,120);
   const perms=token?await permissions(env,token):{business_management:false,whatsapp_business_management:false,whatsapp_business_messaging:false};
   const app=token?await appInfo(env,token):{id:"",name:""};
   const identity=phoneId?await phoneIdentity(env,phoneId,token):{number_verified:false,identity_verified:false,reason:"official_number_not_discovered"};
