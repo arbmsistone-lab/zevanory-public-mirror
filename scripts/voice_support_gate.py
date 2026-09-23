@@ -46,3 +46,25 @@ assert 'voice_tts_piper_relay_http_' in s
 assert '/api/voice/probe' in s
 assert 'provider_secretless_origin_auth' in s
 print("VOICE_PIPER_PTBR_ZERO_SPEND_PRIMARY_GATE=PASS")
+
+
+router=Path("worker/voice-provider-router.mjs").read_text(encoding="utf-8")
+for marker in [
+  'DEFAULT_CHAIN = Object.freeze(["speechify", "azure", "piper-relay", "gemini"])',
+  'VOICE_TTS_FAILOVER_ENABLED',
+  'VOICE_TTS_FREE_ONLY',
+  'SPEECHIFY_FREE_TIER_CONFIRMED',
+  'AZURE_SPEECH_FREE_TIER_CONFIRMED',
+  'GEMINI_FREE_TIER_CONFIRMED',
+  'FAILURE_THRESHOLD = 2',
+  'COOLDOWN_MS = 5 * 60 * 1000',
+  'voice_tts_all_providers_failed',
+  'pt-BR-FranciscaNeural',
+  'simba-3.0',
+  'pt_BR-jeff-medium',
+  'gemini-3.1-flash-tts-preview',
+]:
+    assert marker in router, f"missing provider router marker: {marker}"
+assert 'ttsBytesWithFailover' in s
+assert 'voiceProviderStatus' in s
+print("VOICE_MULTI_PROVIDER_ZERO_SPEND_FAILOVER_GATE=PASS")
