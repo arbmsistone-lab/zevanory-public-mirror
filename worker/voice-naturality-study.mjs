@@ -33,6 +33,10 @@ function html(body, status=200, extra={}) {
   return new Response(body,{status,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","content-security-policy":"default-src 'self'; media-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",...extra}});
 }
 function kv(env) { return env.ZEVANORY_PRIVATE_ARTIFACTS || null; }
+function releaseSha(env) {
+  const sha=String(env.ZEVANORY_RELEASE_SHA||"").trim().toLowerCase();
+  return /^[0-9a-f]{40}$/.test(sha)?sha:"";
+}
 function clientIp(request) { return String(request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || "").split(",")[0].trim(); }
 function userAgent(request) { return String(request.headers.get("user-agent") || "").slice(0,320); }
 function cookie(request,name) {
@@ -61,9 +65,10 @@ function safeBool(v){return v===true||v==="true"?true:v===false||v==="false"?fal
 
 async function listRatings(env) {
   const store=kv(env); if(!store?.list) return [];
+  const sha=releaseSha(env); if(!sha) return [];
   const out=[]; let cursor=undefined;
   do {
-    const page=await store.list({prefix:"voice-study/rating/",limit:1000,cursor});
+    const page=await store.list({prefix:`voice-study/rating/${sha}/`,limit:1000,cursor});
     for(const key of page.keys||[]) {
       const item=await store.get(key.name,{type:"json"}).catch(()=>null);
       if(item) out.push(item);
@@ -73,8 +78,8 @@ async function listRatings(env) {
   return out;
 }
 
-function aggregate(ratings) {
-  const valid=ratings.filter(r=>r&&r.schema_version===1&&r.blinded===true&&r.human_attested===true);
+function aggregate(ratings, sha) {
+  const valid=ratings.filter(r=>r&&r.schema_version===1&&r.blinded===true&&r.human_attested===true&&r.release_sha===sha);
   const unique=new Set(valid.map(r=>r.fingerprint_hash));
   const clips=new Set(valid.map(r=>r.clip_id));
   const naturalAccept=valid.filter(r=>r.natural_acceptance===true).length;
@@ -84,6 +89,7 @@ function aggregate(ratings) {
   const intelligPct=valid.length?100*intelligible/valid.length:0;
   const certified=CORPUS.length>=20&&unique.size>=100&&clips.size>=20&&naturalPct>=99&&intelligPct>=99&&mean>=4.8;
   return {
+    release_sha:sha||null,
     clips:CORPUS.length,
     clips_covered:clips.size,
     blind_ratings:valid.length,
@@ -131,14 +137,16 @@ function pageHtml(session) {
 export async function handleVoiceStudy(request,env={}) {
   const url=new URL(request.url);
   const {pid,fingerprint}=await participant(request,env);
+  const sha=releaseSha(env);
+  if(!sha) return json({error:"release_sha_unavailable"},503);
   const headers={"set-cookie":`zev_voice_study=${pid}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=31536000`};
   if(url.pathname==="/voice-study") {
-    const done=await kv(env)?.get?.(`voice-study/fingerprint/${fingerprint}`).catch(()=>null);
+    const done=await kv(env)?.get?.(`voice-study/fingerprint/${sha}/${fingerprint}`).catch(()=>null);
     if(done) return html("<!doctype html><meta charset=utf-8><title>ZEVANORY</title><body style='font-family:system-ui;background:#0b0d10;color:#fff;padding:40px'><h1>Avaliação já registrada</h1><p>Obrigado por participar. Cada pessoa conta uma única vez nesta bateria.</p></body>",200,headers);
     const clip=assignedClip(fingerprint); return html(pageHtml({clip_id:clip,text:CORPUS[clip][1]}),200,headers);
   }
   if(url.pathname==="/api/voice-study/session") {
-    const clip=assignedClip(fingerprint); return json({clip_id:clip,category:CORPUS[clip][0],text:CORPUS[clip][1],blinded:true},200,headers);
+    const clip=assignedClip(fingerprint); return json({release_sha:sha,clip_id:clip,category:CORPUS[clip][0],text:CORPUS[clip][1],blinded:true},200,headers);
   }
   if(url.pathname==="/api/voice-study/sample") {
     const requested=safeInt(url.searchParams.get("id"),0,CORPUS.length-1); const assigned=assignedClip(fingerprint);
@@ -149,7 +157,7 @@ export async function handleVoiceStudy(request,env={}) {
   if(url.pathname==="/api/voice-study/rate") {
     if(request.method!=="POST") return json({error:"method_not_allowed"},405,headers);
     const store=kv(env); if(!store?.put) return json({error:"rating_storage_unavailable"},503,headers);
-    const existing=await store.get(`voice-study/fingerprint/${fingerprint}`).catch(()=>null);
+    const existing=await store.get(`voice-study/fingerprint/${sha}/${fingerprint}`).catch(()=>null);
     if(existing) return json({error:"duplicate_evaluator"},409,headers);
     const body=await request.json().catch(()=>null); if(!body) return json({error:"invalid_json"},400,headers);
     const clip=safeInt(body.clip_id,0,CORPUS.length-1);
@@ -157,9 +165,9 @@ export async function handleVoiceStudy(request,env={}) {
     const naturalness=safeInt(body.naturalness_5,1,5), pronunciation=safeInt(body.pronunciation_5,1,5), pace=safeInt(body.pace_5,1,5);
     const intelligible=safeBool(body.intelligible), accept=safeBool(body.natural_acceptance);
     if([naturalness,pronunciation,pace,intelligible,accept].some(v=>v===null)||body.human_attested!==true) return json({error:"rating_invalid"},400,headers);
-    const record={schema_version:1,blinded:true,human_attested:true,clip_id:clip,category:CORPUS[clip][0],participant_hash:await sha256(pid),fingerprint_hash:fingerprint,naturalness_5:naturalness,pronunciation_5:pronunciation,pace_5:pace,intelligible,natural_acceptance:accept,created_at:new Date().toISOString()};
-    await store.put(`voice-study/rating/${fingerprint}`,JSON.stringify(record));
-    await store.put(`voice-study/fingerprint/${fingerprint}`,record.created_at);
+    const record={schema_version:1,release_sha:sha,blinded:true,human_attested:true,clip_id:clip,category:CORPUS[clip][0],participant_hash:await sha256(pid),fingerprint_hash:fingerprint,naturalness_5:naturalness,pronunciation_5:pronunciation,pace_5:pace,intelligible,natural_acceptance:accept,created_at:new Date().toISOString()};
+    await store.put(`voice-study/rating/${sha}/${fingerprint}`,JSON.stringify(record));
+    await store.put(`voice-study/fingerprint/${sha}/${fingerprint}`,record.created_at);
     return json({accepted:true,blinded:true},201,headers);
   }
   if(url.pathname==="/api/voice-study/status") {
@@ -169,7 +177,8 @@ export async function handleVoiceStudy(request,env={}) {
 }
 
 export async function voiceStudyStatus(env={}) {
-  const stats=aggregate(await listRatings(env));
+  const sha=releaseSha(env);
+  const stats=aggregate(await listRatings(env),sha);
   return Object.freeze({schema_version:1,engine:"ZEVANORY Voice Support Engine",study:"human_blind_ptbr_naturality",provider_disclosed:false,...stats});
 }
 
