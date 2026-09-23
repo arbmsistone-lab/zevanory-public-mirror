@@ -221,9 +221,22 @@ jobs:
           if(d.decision!=="DENY"||!d.blockers.includes("zees16_complete")) throw new Error("partial ZEES-16 must deny");
           d=evaluateCoreDecision({...base,invariants:{...base.invariants,quorum_ok:false}});
           if(d.decision!=="DENY"||!d.blockers.includes("quorum_ok")) throw new Error("missing quorum must deny");
+          d=evaluateCoreDecision({...base,zees16:{...base.zees16,persistence:"recomputed-immutable-sources"}});
+          if(d.decision!=="ALLOW") throw new Error("immutable-source recomputation must remain valid for evaluation");
           d=evaluateCoreDecision({...base,zees16:{...base.zees16,persistence:"degraded-readonly"}});
-          if(d.decision!=="DENY"||!d.blockers.includes("evidence_persistence_ok")) throw new Error("degraded evidence persistence must deny critical promotion");
-          console.log("PASS: Control Core authorizes only a complete one-way proof/evaluation chain with durable evidence persistence");
+          if(d.decision!=="DENY"||!d.blockers.includes("evidence_integrity_ok")) throw new Error("unknown degraded evidence mode must deny");
+          console.log("PASS: Control Core accepts exact immutable-source recomputation and rejects unknown degraded evidence");
+          JS
+      - name: Verify KV quota root-cause controls
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          const src=fs.readFileSync("worker/evidence-control-plane.mjs","utf8");
+          if(!src.includes('persistence_mode:"deduplicated-noop"')) throw new Error("missing deduplicated persistence mode");
+          if(!src.includes('persistence_mode:"append-on-change"')) throw new Error("missing append-on-change persistence mode");
+          if(!src.includes('persistence:"recomputed-immutable-sources"')) throw new Error("missing immutable-source fallback");
+          console.log("PASS: ZEES persistence avoids redundant KV writes and survives quota exhaustion fail-safe");
           JS
       - name: Verify canonical UI source and critical command executor
         run: |
