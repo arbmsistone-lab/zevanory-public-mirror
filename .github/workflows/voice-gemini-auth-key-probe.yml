@@ -1,4 +1,4 @@
-name: ZEVANORY Gemini auth-key probe
+name: ZEVANORY Gemini auth-key runtime
 
 on:
   workflow_dispatch:
@@ -14,7 +14,10 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          gcloud services api-keys get-key-string c572db8f-7fbf-4a80-80d8-f59c2597e6e2             --project=zevanory-gemini             --format='value(keyString)' > /tmp/gemini-auth.key
+          gcloud services api-keys get-key-string c572db8f-7fbf-4a80-80d8-f59c2597e6e2 --project=zevanory-gemini --format='value(keyString)' > /tmp/gemini-auth.key
           test -s /tmp/gemini-auth.key
           echo "AUTH_KEY_RESOLUTION=PASS"
 
@@ -41,8 +44,37 @@ jobs:
         run: |
           set -euo pipefail
           key="$(cat /tmp/gemini-auth.key)"
-          code=$(curl -sS -o /tmp/models.json -w '%{http_code}'             https://generativelanguage.googleapis.com/v1beta/models             -H "x-goog-api-key: $key")
+          code=$(curl -sS -o /tmp/models.json -w '%{http_code}' https://generativelanguage.googleapis.com/v1beta/models -H "x-goog-api-key: $key")
           unset key
           echo "GEMINI_MODELS_HTTP=$code"
-          python3 -c "import json; d=json.load(open('/tmp/models.json')); d=d[0] if isinstance(d,list) and d else d; print('ERROR='+str(d.get('error',{}).get('message',''))[:300] if isinstance(d,dict) and 'error' in d else 'MODEL_COUNT='+str(len(d.get('models',[]))))"
           test "$code" = "200"
+
+      - name: Generate real pt-BR TTS probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"model":"gemini-2.5-flash-preview-tts","input":"Fale em português do Brasil, com voz natural, acolhedora e profissional: Olá, aqui é o suporte da ZEVANORY. Como posso ajudar você hoje?","response_format":{"type":"audio"},"generation_config":{"speech_config":[{"voice":"Achird"}]}}' > /tmp/tts-request.json
+          key="$(cat /tmp/gemini-auth.key)"
+          code=$(curl -sS -o /tmp/tts-response.json -w '%{http_code}' -X POST https://generativelanguage.googleapis.com/v1beta/interactions -H "x-goog-api-key: $key" -H 'Content-Type: application/json' --data-binary @/tmp/tts-request.json)
+          unset key
+          echo "GEMINI_TTS_HTTP=$code"
+          test "$code" = "200"
+          python3 -c "import json,base64; d=json.load(open('/tmp/tts-response.json')); d=d[0] if isinstance(d,list) and d else d; a=(d.get('interaction',{}).get('output_audio') if isinstance(d,dict) and isinstance(d.get('interaction'),dict) else None) or (d.get('output_audio') if isinstance(d,dict) else None) or {}; raw=a.get('data') if isinstance(a,dict) else None; assert raw and len(base64.b64decode(raw))>1000; print('GEMINI_REAL_TTS_AUDIO=PASS')"
+
+      - name: Provision Gemini auth key to production Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          npx --yes wrangler@4.135.0 secret put GEMINI_API_KEY --name zevanory < /tmp/gemini-auth.key
+          printf '%s' 'true' | npx --yes wrangler@4.135.0 secret put VOICE_TTS_FREE_ONLY --name zevanory
+          printf '%s' 'true' | npx --yes wrangler@4.135.0 secret put ZEVANORY_VOICE_SUPPORT_ENABLED --name zevanory
+          rm -f /tmp/gemini-auth.key /tmp/tts-request.json /tmp/tts-response.json
+          echo "VOICE_RUNTIME_AUTH_KEY=PROVISIONED"
+
+      - name: Verify live voice runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://zevanory.api.br/api/voice/status -o /tmp/voice-status.json
+          python3 -c "import json; s=json.load(open('/tmp/voice-status.json')); assert s.get('enabled') is True; assert s.get('zero_spend_guard') is True; assert s.get('provider')=='gemini'; assert s.get('provider_credential_configured') is True; assert s.get('provider_vault_supported') is True; print('VOICE_GEMINI_PRODUCTION_RUNTIME=PASS')"
