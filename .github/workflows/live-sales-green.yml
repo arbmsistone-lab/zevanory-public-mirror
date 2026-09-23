@@ -1,0 +1,31 @@
+name: ZEVANORY live sales green
+
+on:
+  pull_request:
+    paths:
+      - "scripts/live_sales_green_gate.py"
+      - ".github/workflows/live-sales-green.yml"
+      - "worker/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-sales-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Evaluate live sales readiness
+        run: python scripts/live_sales_green_gate.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-sales-green-evidence
+          path: evidence/live-sales-green-current.json
+          if-no-files-found: error
