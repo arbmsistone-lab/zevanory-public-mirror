@@ -104,7 +104,13 @@ def extract(raw):
         raise SystemExit("boundary_missing")
     return t[s:e]
 def patch(src):
-    if "/broker/status" in src: raise SystemExit("already_patched")
+    required=["/broker/status","/broker/send","/broker/media","/broker/verify-signature","/broker/verify-token","/broker/oauth/callback"]
+    present=[x for x in required if x in src]
+    if present:
+        if len(present)!=len(required):
+            raise SystemExit("partial_broker_protocol:"+",".join(present))
+        print("WHATSAPP_BROKER_PROTOCOL_ALREADY_COMPLETE=PASS")
+        return src
     if "var index_default = {" not in src or '    const url = new URL(request.url);\n' not in src: raise SystemExit("anchor_missing")
     src=src.replace("var index_default = {",HELPERS+"\nvar index_default = {",1)
     src=src.replace('    const url = new URL(request.url);\n','    const url = new URL(request.url);\n'+ROUTES+"\n",1)
