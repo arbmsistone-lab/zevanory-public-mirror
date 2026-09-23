@@ -104,7 +104,7 @@ jobs:
               elif n in {"META_APP_SECRET","WHATSAPP_ACCESS_TOKEN","WHATSAPP_VERIFY_TOKEN"}:
                   print(n+"_PRESENT", True)
           PY
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/giro-whatsapp-bridge/content"             -o /tmp/wa-worker.bin
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/giro-whatsapp-bridge"             -o /tmp/wa-worker.bin
           python3 - <<'PY'
           import re
           raw=open("/tmp/wa-worker.bin","rb").read().decode("utf-8","ignore")
