@@ -72,8 +72,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for k in ASAAS_WEBHOOK_TOKEN OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
-            test -n "${!k:-}" || { echo "INTERNAL_SECRET_GENERATION_FAILED=$k"; exit 2; }
+          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+            test -n "${!k:-}" || { echo "FINANCIAL_SECRET_SYNC_INPUT_MISSING=$k"; exit 2; }
             printf '%s' "${!k}" | npx --yes wrangler@4.135.0 secret put "$k" --name zevanory
           done
           echo "FINANCIAL_INTERNAL_SECRET_SYNC=PASS"
