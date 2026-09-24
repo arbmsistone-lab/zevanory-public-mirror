@@ -89,6 +89,30 @@ function responseHtml(body,status=200,extra={}){
   return new Response(body,{status,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","referrer-policy":"no-referrer","content-security-policy":"default-src 'self'; style-src 'unsafe-inline'; form-action 'self' https://www.facebook.com; frame-ancestors 'none'",...extra}});
 }
 function responseJson(body,status=200){ return new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff"}}); }
+function embeddedSignupHtml(state){
+  const nonce=htmlEscape(state);
+  return responseHtml(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZEVANORY · WhatsApp</title><style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#0b0d10;color:#f5f7fa;max-width:760px;margin:auto;padding:32px 18px}main{background:#151a22;border:1px solid #303846;border-radius:18px;padding:26px}.btn{background:#1877f2;color:#fff;border:0;border-radius:10px;padding:13px 20px;font-weight:700;cursor:pointer}.msg{margin-top:16px;color:#ffd27a}</style></head><body><main><h1>Conectar WhatsApp oficial</h1><p>Número alvo: <strong>+55 88 99254-5413</strong></p><p>Use o fluxo oficial da Meta. Nenhum token será exibido nesta página.</p><button id="go" class="btn">Continuar com a Meta</button><p id="msg" class="msg"></p></main><script async defer crossorigin="anonymous" src="https://connect.facebook.net/pt_BR/sdk.js"></script><script>
+let sessionInfo=null;
+const state="${nonce}";
+const msg=document.getElementById("msg");
+window.fbAsyncInit=function(){FB.init({appId:"${DEFAULT_APP_ID}",autoLogAppEvents:true,xfbml:false,version:"${GRAPH_VERSION}"});};
+window.addEventListener("message",(event)=>{if(!event.origin.endsWith("facebook.com"))return;try{const d=JSON.parse(event.data);if(d&&d.type==="WA_EMBEDDED_SIGNUP")sessionInfo=d;}catch{}});
+async function finish(code){
+  if(!sessionInfo||!sessionInfo.data){msg.textContent="A Meta não retornou os ativos do WhatsApp. Tente novamente.";return;}
+  const d=sessionInfo.data;
+  const body={state,code,waba_id:d.waba_id,phone_number_id:d.phone_number_id,business_id:d.business_id,flow_event:sessionInfo.event};
+  const r=await fetch("/admin/whatsapp-onboard/embedded-complete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok&&j.redirect){location.href=j.redirect;return;}
+  msg.textContent=j.error||j.reason||"Falha ao concluir o onboarding.";
+}
+document.getElementById("go").onclick=function(){
+  msg.textContent="Abrindo autorização oficial da Meta...";
+  FB.login((response)=>{if(response.authResponse&&response.authResponse.code){finish(response.authResponse.code);}else{msg.textContent="Autorização não concluída.";}},
+  {config_id:"${DEFAULT_CONFIG_ID}",response_type:"code",override_default_response_type:true,extras:{setup:{}}});
+};
+</script></body></html>`,200,{"content-security-policy":"default-src 'self' https://connect.facebook.net https://www.facebook.com; script-src 'self' 'unsafe-inline' https://connect.facebook.net; connect-src 'self' https://www.facebook.com https://graph.facebook.com; frame-src https://www.facebook.com; style-src 'unsafe-inline'; frame-ancestors 'none'"});
+}
 async function graphJson(url,{token,method="GET",body=null,headers={}}={}){
   const h={...headers};
   if(token) h.authorization="Bearer "+token;
@@ -278,9 +302,9 @@ export async function handleWhatsappOnboarding(request,env={}){
   if(url.pathname==="/admin/whatsapp-onboard/start"&&request.method==="GET"){
     if(brokerBinding(env)){
       const started=await brokerJson(env,"/broker/oauth/start",{method:"POST",body:{}});
-      const target=safeText(started.authorization_url,4000);
-      if(!target.startsWith("https://www.facebook.com/")) throw new Error("whatsapp_broker_oauth_start_invalid");
-      return Response.redirect(target,302);
+      const state=safeText(started.state,300);
+      if(!state) throw new Error("whatsapp_broker_oauth_state_missing");
+      return embeddedSignupHtml(state);
     }
     if(!record?.app_secret) return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message=Provedor%20Meta%20indispon%C3%ADvel",303);
     const state={id:b64url(crypto.getRandomValues(new Uint8Array(24))),created_at:Date.now()};
@@ -294,6 +318,25 @@ export async function handleWhatsappOnboarding(request,env={}){
     u.searchParams.set("override_default_response_type","true");
     u.searchParams.set("scope",["business_management","whatsapp_business_management","whatsapp_business_messaging"].join(","));
     return Response.redirect(u.toString(),302);
+  }
+  if(url.pathname==="/admin/whatsapp-onboard/embedded-complete"&&request.method==="POST"){
+    if(!brokerBinding(env)) return responseJson({error:"whatsapp_broker_unavailable"},503);
+    const body=await request.json().catch(()=>({}));
+    const stateId=safeText(body.state,300),code=safeText(body.code,5000);
+    const wabaId=digits(body.waba_id),phoneId=digits(body.phone_number_id),businessId=digits(body.business_id),flowEvent=safeText(body.flow_event,80);
+    if(!stateId||!code||!wabaId||!phoneId) return responseJson({error:"embedded_payload_invalid"},400);
+    try{
+      await brokerJson(env,"/broker/oauth/consume-state",{method:"POST",body:{state:stateId}});
+      const outcome=await brokerJson(env,"/broker/oauth/callback",{method:"POST",body:{code,waba_id:wabaId,phone_number_id:phoneId,business_id:businessId,flow_event:flowEvent}});
+      const message=outcome.identity_verified
+        ?"Número oficial localizado, registrado e identidade Meta verificada."
+        :outcome.official_number_found
+          ?"Número oficial localizado. A identidade ainda precisa concluir os critérios Meta."
+          :"Onboarding concluído sem correspondência do número oficial.";
+      return responseJson({ok:true,redirect:"https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent(message),outcome:{official_number_found:Boolean(outcome.official_number_found),identity_verified:Boolean(outcome.identity_verified),webhook_configured:Boolean(outcome.webhook_configured),waba_subscribed:Boolean(outcome.waba_subscribed)}});
+    }catch(error){
+      return responseJson({error:"embedded_completion_failed",reason:safeText(error?.message,180)},400);
+    }
   }
   if(url.pathname==="/admin/whatsapp-onboard/callback"&&request.method==="GET"){
     const error=safeText(url.searchParams.get("error"),100), code=safeText(url.searchParams.get("code"),4000), stateId=safeText(url.searchParams.get("state"),200);
