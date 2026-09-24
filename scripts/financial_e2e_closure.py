@@ -141,7 +141,6 @@ def replay_webhook(evt, expect=(200,)):
           "payment":{"id":evt["provider_payment_id"]}}
     return app("/api/webhooks/asaas","POST",{"asaas-access-token":ASAAS_WEBHOOK_TOKEN},body,ok=expect)
 
-
 def _recover_existing_refund(release):
     _,payments=asaas("/payments?limit=100&offset=0",ok=(200,))
     rows=payments.get("data",[]) if isinstance(payments,dict) else []
@@ -210,6 +209,7 @@ def _recover_existing_refund(release):
     print("REFUND_RECOVERY_MODE=PASS"); print("NO_DOUBLE_CHARGE=PASS"); print("NO_DOUBLE_REFUND=PASS")
     print("SHA_CODE = SHA_CI = SHA_DEPLOY = SHA_E2E = SHA_CERTIFICATION = "+EXPECTED_SHA)
     return True
+
 
 def main():
     required={"ASAAS_API_KEY":ASAAS_API_KEY,"ASAAS_WEBHOOK_TOKEN":ASAAS_WEBHOOK_TOKEN,
@@ -284,9 +284,27 @@ def main():
     def provider_refund_done():
         _,refunds=asaas("/payments/"+urllib.parse.quote(payment_id)+"/refunds",ok=(200,))
         rows=refunds.get("data",[]) if isinstance(refunds,dict) else []
-        done=[x for x in rows if str(x.get("status",""))=="DONE"]
+        done=[x for x in rows if str(x.get("status","")).upper()=="DONE"]
         _,provider_status=asaas("/payments/"+urllib.parse.quote(payment_id)+"/status",ok=(200,))
-        if str(provider_status.get("status","")).upper()!="REFUNDED" or not done:
+        observed_at=dt.datetime.now(dt.timezone.utc).isoformat()
+        diagnostic={
+          "schema_version":1,
+          "gate":"ZEVANORY_FINANCIAL_E2E_REFUND_DIAGNOSTIC",
+          "state":"IN_PROGRESS",
+          "phase":"refund_pending",
+          "observed_at":observed_at,
+          "sha":{"code":EXPECTED_SHA,"ci":EXPECTED_SHA,"deploy":EXPECTED_SHA,"e2e":EXPECTED_SHA,"certification":EXPECTED_SHA},
+          "order_id":order_id,
+          "payment_id":payment_id,
+          "provider_payment_status":provider_status,
+          "provider_refunds":rows,
+          "provider_refund_ids":[x.get("id") for x in rows if x.get("id")],
+          "provider_refund_statuses":[x.get("status") for x in rows],
+          "terminal":str(provider_status.get("status","")).upper()=="REFUNDED" and bool(done)
+        }
+        OUT.parent.mkdir(parents=True,exist_ok=True)
+        OUT.write_text(json.dumps(diagnostic,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+        if not diagnostic["terminal"]:
             return None
         return {"payment_status":provider_status,"refunds":rows,"done":done}
 
