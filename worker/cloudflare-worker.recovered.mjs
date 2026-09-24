@@ -7684,11 +7684,16 @@ async function authorizeCertificationPilotCheckout(sql, { token, sessionId, requ
   const raw = String(token || "").trim();
   if (raw.length < 32 || raw.length > 128) return Object.freeze({ authorized: false, reason: "pilot_token_invalid" });
   const tokenSha256 = hashCertificationPilotToken(raw);
-  const existing = await sql.query(`select o.order_id,o.certification_pilot_invite_id from orders o
+  const existing = await sql.query(`select o.order_id,o.session_id,o.certification_pilot_invite_id from orders o
     join certification_pilot_invites i on i.invite_id=o.certification_pilot_invite_id
-    where o.request_id=$1 and o.session_id=$2 and o.certification_pilot=true
-      and i.token_sha256=$3 and i.status='active' and i.expires_at>now() limit 1`, [requestId, sessionId, tokenSha256]);
-  if (existing.length === 1) return Object.freeze({ authorized: true, replay: true, invite_id: existing[0].certification_pilot_invite_id });
+    where o.request_id=$1 and o.certification_pilot=true
+      and i.token_sha256=$2 and i.status='active' and i.expires_at>now() limit 1`, [requestId, tokenSha256]);
+  if (existing.length === 1) return Object.freeze({
+    authorized: true,
+    replay: true,
+    invite_id: existing[0].certification_pilot_invite_id,
+    session_match: String(existing[0].session_id || "") === String(sessionId || "")
+  });
   const capacity = await sql.query(`select count(*)::int count from orders o join certification_pilot_invites i on i.invite_id=o.certification_pilot_invite_id where o.certification_pilot=true and o.status not in ('refunded','canceled') and i.status='active' and i.expires_at>now()`);
   if (Number(capacity?.[0]?.count || 0) >= policy.max_orders) return Object.freeze({ authorized: false, reason: "pilot_capacity_reached" });
   const claimed = await sql.query(`update certification_pilot_invites set
