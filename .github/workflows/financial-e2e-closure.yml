@@ -72,14 +72,27 @@ jobs:
           fi
           echo "FINANCIAL_INTERNAL_SECRET_GENERATION=PASS"
 
-      - name: Verify financial runtime bindings without mutating Cloudflare
+      - name: Ensure only missing Asaas API key is synchronized to Cloudflare
         shell: bash
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.135.0 secret list --name zevanory > /tmp/zevanory-secrets.json
+          npx --yes wrangler@4.135.0 secret list --name zevanory > /tmp/zevanory-secrets-before.json
+          if ! python3 - <<'PY'
+          import json
+          rows=json.load(open("/tmp/zevanory-secrets-before.json",encoding="utf-8"))
+          raise SystemExit(0 if any(str(x.get("name",""))=="ASAAS_API_KEY" for x in rows) else 1)
+          PY
+          then
+            test -n "${ASAAS_API_KEY:-}" || { echo "ASAAS_API_KEY_INPUT_MISSING"; exit 2; }
+            printf '%s' "$ASAAS_API_KEY" | npx --yes wrangler@4.135.0 secret put ASAAS_API_KEY --name zevanory
+            echo "ASAAS_API_KEY_RUNTIME_SYNC=PASS"
+          else
+            echo "ASAAS_API_KEY_RUNTIME_SYNC=ALREADY_PRESENT"
+          fi
+          npx --yes wrangler@4.135.0 secret list --name zevanory > /tmp/zevanory-secrets-after.json
           python3 - <<'PY'
           import json
-          rows=json.load(open("/tmp/zevanory-secrets.json",encoding="utf-8"))
+          rows=json.load(open("/tmp/zevanory-secrets-after.json",encoding="utf-8"))
           names={str(x.get("name","")) for x in rows}
           required={"ASAAS_API_KEY","ASAAS_WEBHOOK_TOKEN","OPERATOR_TOKEN"}
           missing=sorted(required-names)
