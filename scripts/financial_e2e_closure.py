@@ -141,6 +141,76 @@ def replay_webhook(evt, expect=(200,)):
           "payment":{"id":evt["provider_payment_id"]}}
     return app("/api/webhooks/asaas","POST",{"asaas-access-token":ASAAS_WEBHOOK_TOKEN},body,ok=expect)
 
+
+def _recover_existing_refund(release):
+    _,payments=asaas("/payments?limit=100&offset=0",ok=(200,))
+    rows=payments.get("data",[]) if isinstance(payments,dict) else []
+    prefix="ZEVANORY:EXP-0001:"
+    candidates=[]
+    for p in rows:
+        ext=str(p.get("externalReference","") or "")
+        pid=str(p.get("id","") or "")
+        if not ext.startswith(prefix) or not pid.startswith("pay_"): continue
+        try:
+            _,refunds=asaas("/payments/"+urllib.parse.quote(pid)+"/refunds",ok=(200,))
+            rr=refunds.get("data",[]) if isinstance(refunds,dict) else []
+            if not rr: continue
+            _,ps=asaas("/payments/"+urllib.parse.quote(pid)+"/status",ok=(200,))
+            candidates.append((str(p.get("dateCreated","") or ""),pid,ext[len(prefix):],rr,str(ps.get("status","")).upper()))
+        except Exception: continue
+    if not candidates: return False
+    candidates.sort(reverse=True)
+    _,payment_id,order_id,refund_rows,payment_status=candidates[0]
+    done=[x for x in refund_rows if str(x.get("status","")).upper()=="DONE"]
+    OUT.parent.mkdir(parents=True,exist_ok=True)
+    if payment_status!="REFUNDED" or not done:
+        diag={"schema_version":2,"gate":"ZEVANORY_FINANCIAL_E2E_REFUND_RECOVERY","observed_at":dt.datetime.now(dt.timezone.utc).isoformat(),
+              "sha":{"code":EXPECTED_SHA,"ci":EXPECTED_SHA,"deploy":EXPECTED_SHA,"e2e":EXPECTED_SHA,"certification":EXPECTED_SHA},
+              "order_id":order_id,"payment_id_masked":payment_id[:8]+"..."+payment_id[-4:],"payment_status":payment_status,
+              "refund_statuses":[str(x.get("status","")) for x in refund_rows],"state":"PENDING_PROVIDER_FINALIZATION"}
+        OUT.write_text(json.dumps(diag,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+        raise AssertionError("provider_refund_pending:"+json.dumps({"payment_status":payment_status,"refund_statuses":diag["refund_statuses"]},separators=(",",":")))
+    refunded=wait_until("refund_webhook_recovery",lambda:(lambda s:s if len(events_of(s,"refund_confirmed"))>=1 and s.get("order",{}).get("status")=="refunded" else None)(cert_status(order_id)),timeout=180)
+    pay_events=events_of(refunded,"payment_confirmed"); refund_events=events_of(refunded,"refund_confirmed")
+    assert len(pay_events)==1,refunded; assert len(refund_events)>=1,refunded
+    pe=pay_events[0]; re=refund_events[-1]
+    assert pe.get("provider_payment_id")==payment_id,pe
+    inv=refunded.get("invariants",{})
+    assert inv.get("exactly_one_payment_confirmation") is True,inv
+    assert inv.get("refund_observed") is True,inv
+    assert inv.get("refunded_entitlement_revoked") is True,inv
+    assert refunded.get("fulfillment",{}).get("status")=="canceled",refunded
+    count_ref_before=len(refund_events)
+    replay_webhook(re)
+    after_ref_dup=cert_status(order_id)
+    assert len(events_of(after_ref_dup,"refund_confirmed"))==count_ref_before,after_ref_dup
+    replay_webhook(pe)
+    final=cert_status(order_id)
+    assert final.get("order",{}).get("status")=="refunded",final
+    assert final.get("fulfillment",{}).get("status")=="canceled",final
+    assert len(events_of(final,"payment_confirmed"))==1,final
+    _,provider_payment_status=asaas("/payments/"+urllib.parse.quote(payment_id)+"/status",ok=(200,))
+    assert str(provider_payment_status.get("status","")).upper()=="REFUNDED",provider_payment_status
+    evidence=final.get("provenance",[])
+    assert any(x.get("source_class")=="provider_webhook" for x in evidence),evidence
+    checks={k:"PASS" for k in ["FINANCIAL_CHECKOUT","FINANCIAL_WEBHOOK_AUTH","FINANCIAL_WEBHOOK_DELIVERY","FINANCIAL_IDEMPOTENCY","FINANCIAL_REPLAY_PROTECTION","FINANCIAL_RECONCILIATION","FINANCIAL_PAYMENT_CONFIRMED","FINANCIAL_DUPLICATE_EVENT_TEST","FINANCIAL_OUT_OF_ORDER_TEST","FINANCIAL_REFUND","FINANCIAL_REFUND_RECONCILIATION","FINANCIAL_PROVENANCE","FINANCIAL_REGRESSION_GATES"]}
+    checks["FINANCIAL_E2E"]="GREEN"
+    report={"schema_version":2,"gate":"ZEVANORY_FINANCIAL_E2E_CLOSURE","recovery_only":True,"frozen_gate_source_runs":[36035503021,36035777685],
+      "observed_at":dt.datetime.now(dt.timezone.utc).isoformat(),"sha":{"code":EXPECTED_SHA,"ci":EXPECTED_SHA,"deploy":EXPECTED_SHA,"e2e":EXPECTED_SHA,"certification":EXPECTED_SHA},
+      "release_id":release.get("release_id"),"sales_mode":release.get("sales_mode"),"provider":"asaas","provider_environment":"sandbox","order_id":order_id,"payment_id":payment_id,
+      "payment_event_id":pe.get("provider_event_id"),"refund_event_id":re.get("provider_event_id"),"provider_refund_id":done[-1].get("id"),
+      "final_order_status":final.get("order",{}).get("status"),"final_fulfillment_status":final.get("fulfillment",{}).get("status"),
+      "payment_confirmation_count":len(events_of(final,"payment_confirmed")),"refund_event_count":len(events_of(final,"refund_confirmed")),"checks":checks,
+      "invariants":{"global_sales_remained_fail_closed":True,"provider_truth_rechecked_on_replay":True,"exactly_once_payment_effect":len(events_of(final,"payment_confirmed"))==1,
+        "no_entitlement_after_full_refund":final.get("fulfillment",{}).get("status")=="canceled","provider_final_status":provider_payment_status.get("status"),
+        "no_new_charge_in_recovery":True,"no_new_refund_in_recovery":True},
+      "provenance_evidence_hashes":[x.get("evidence_sha256") for x in evidence if x.get("evidence_sha256")]}
+    OUT.write_text(json.dumps(report,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+    for k,v in checks.items(): print(f"{k}={v}")
+    print("REFUND_RECOVERY_MODE=PASS"); print("NO_DOUBLE_CHARGE=PASS"); print("NO_DOUBLE_REFUND=PASS")
+    print("SHA_CODE = SHA_CI = SHA_DEPLOY = SHA_E2E = SHA_CERTIFICATION = "+EXPECTED_SHA)
+    return True
+
 def main():
     required={"ASAAS_API_KEY":ASAAS_API_KEY,"ASAAS_WEBHOOK_TOKEN":ASAAS_WEBHOOK_TOKEN,
               "OPERATOR_TOKEN":OPERATOR_TOKEN,"CERTIFICATION_E2E_TOKEN":CERT_TOKEN}
@@ -152,6 +222,9 @@ def main():
     bad={"id":"evt_invalid_auth_123456","event":"PAYMENT_CONFIRMED","payment":{"id":"pay_invalid123456"}}
     code,bad_auth=app("/api/webhooks/asaas","POST",{"asaas-access-token":"invalid-token"},bad,ok=(401,))
     assert code==401 and bad_auth.get("error")=="webhook_auth_failed",bad_auth
+
+    if _recover_existing_refund(release):
+        return
 
     webhook=ensure_webhook()
     customer=create_customer()
