@@ -14449,7 +14449,6 @@ async function handler15(req, res) {
       orders.length === 1 &&
       ["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"].includes(webhook.eventName) &&
       String(payment.status || "") === "REFUNDED" &&
-      ["partially_refunded", "refunded"].includes(String(orders[0].status || "")) &&
       paymentMatchesOrderIdentity(payment, orders[0])
     ) {
       return json11(res, 200, { accepted: true, ignored: true, reason: "superseded_payment_event", order_id: String(orders[0].order_id), order_status: String(orders[0].status) });
