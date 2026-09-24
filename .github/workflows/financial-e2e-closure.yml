@@ -61,18 +61,22 @@ jobs:
             local name="$1" value
             value="$(gen_secret)"
             echo "::add-mask::$value"
+            export "$name=$value"
             printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
           }
           if [ -z "${ASAAS_WEBHOOK_TOKEN:-}" ]; then provision_generated ASAAS_WEBHOOK_TOKEN; fi
           if [ -z "${OPERATOR_TOKEN:-}" ]; then provision_generated OPERATOR_TOKEN; fi
-          if [ -z "${CERTIFICATION_E2E_TOKEN:-}" ]; then provision_generated CERTIFICATION_E2E_TOKEN; fi
+          if [ -z "${CERTIFICATION_E2E_TOKEN:-}" ]; then
+            export CERTIFICATION_E2E_TOKEN="$OPERATOR_TOKEN"
+            printf '%s=%s\n' "CERTIFICATION_E2E_TOKEN" "$CERTIFICATION_E2E_TOKEN" >> "$GITHUB_ENV"
+          fi
           echo "FINANCIAL_INTERNAL_SECRET_GENERATION=PASS"
 
       - name: Synchronize certification credentials to Cloudflare Worker
         shell: bash
         run: |
           set -euo pipefail
-          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN OPERATOR_TOKEN; do
             test -n "${!k:-}" || { echo "FINANCIAL_SECRET_SYNC_INPUT_MISSING=$k"; exit 2; }
             printf '%s' "${!k}" | npx --yes wrangler@4.135.0 secret put "$k" --name zevanory
           done
