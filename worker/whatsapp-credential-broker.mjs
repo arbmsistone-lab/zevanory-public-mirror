@@ -1,6 +1,6 @@
 const OFFICIAL_E164 = "5588992545413";
 const DEFAULT_APP_ID = "1071149631917061";
-const DEFAULT_CONFIG_ID = "1138959298884634";
+const DEFAULT_CONFIG_ID = "1447104223954128";
 const GRAPH_VERSION = "v26.0";
 const CALLBACK_URL = "https://zevanory.api.br/api/webhooks/meta";
 const OAUTH_REDIRECT = "https://zevanory.api.br/admin/whatsapp-onboard/callback";
