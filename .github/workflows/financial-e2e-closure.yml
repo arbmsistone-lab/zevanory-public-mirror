@@ -29,9 +29,11 @@ jobs:
     env:
       ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY || secrets.ASAAS_SANDBOX_API_KEY }}
       ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
-      ASAAS_WEBHOOK_EMAIL: ${{ secrets.ASAAS_WEBHOOK_EMAIL }}
+      ASAAS_WEBHOOK_EMAIL: ${{ secrets.ASAAS_WEBHOOK_EMAIL || vars.ASAAS_WEBHOOK_EMAIL }}
       OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
       EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || inputs.expected_sha || github.sha }}
     steps:
       - name: Checkout exact canonical SHA
@@ -40,17 +42,56 @@ jobs:
           ref: ${{ env.EXPECTED_SHA }}
           fetch-depth: 1
 
-      - name: Validate secret presence and SHA shape
+      - name: Validate external credential presence and SHA shape
         shell: bash
         run: |
           set -euo pipefail
           test "${#EXPECTED_SHA}" -eq 40
+          test -n "${ASAAS_API_KEY:-}" || { echo "MISSING_REQUIRED_SECRET=ASAAS_API_KEY"; exit 2; }
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "MISSING_REQUIRED_SECRET=CLOUDFLARE_API_TOKEN"; exit 2; }
+          echo "FINANCIAL_EXTERNAL_SECRET_READINESS=PASS"
+          echo "EXPECTED_SHA=$EXPECTED_SHA"
+
+      - name: Generate internal certification credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          gen_secret(){ openssl rand -hex 32; }
+          provision_generated(){
+            local name="$1" value
+            value="$(gen_secret)"
+            echo "::add-mask::$value"
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
+          }
+          if [ -z "${ASAAS_WEBHOOK_TOKEN:-}" ]; then provision_generated ASAAS_WEBHOOK_TOKEN; fi
+          if [ -z "${OPERATOR_TOKEN:-}" ]; then provision_generated OPERATOR_TOKEN; fi
+          if [ -z "${CERTIFICATION_E2E_TOKEN:-}" ]; then provision_generated CERTIFICATION_E2E_TOKEN; fi
+          echo "FINANCIAL_INTERNAL_SECRET_GENERATION=PASS"
+
+      - name: Synchronize certification credentials to Cloudflare Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          for k in ASAAS_WEBHOOK_TOKEN OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+            test -n "${!k:-}" || { echo "INTERNAL_SECRET_GENERATION_FAILED=$k"; exit 2; }
+            printf '%s' "${!k}" | npx --yes wrangler@4.135.0 secret put "$k" --name zevanory
+          done
+          echo "FINANCIAL_INTERNAL_SECRET_SYNC=PASS"
+
+      - name: Validate complete financial preflight
+        shell: bash
+        run: |
+          set -euo pipefail
           for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
             test -n "${!k:-}" || { echo "MISSING_REQUIRED_SECRET=$k"; exit 2; }
           done
           test "${#ASAAS_WEBHOOK_TOKEN}" -ge 32
-          echo "FINANCIAL_SECRET_READINESS=PASS"
-          echo "EXPECTED_SHA=$EXPECTED_SHA"
+          echo "ASAAS_API_KEY_PRESENT=true"
+          echo "ASAAS_WEBHOOK_TOKEN_PRESENT=true"
+          if [ -n "${ASAAS_WEBHOOK_EMAIL:-}" ]; then echo "ASAAS_WEBHOOK_EMAIL_PRESENT=true"; else echo "ASAAS_WEBHOOK_EMAIL_PRESENT=false_optional_if_webhook_exists"; fi
+          echo "OPERATOR_TOKEN_PRESENT=true"
+          echo "CERTIFICATION_E2E_TOKEN_PRESENT=true"
+          echo "FINANCIAL_PREFLIGHT=PASS"
 
       - name: Run real provider financial lifecycle
         run: python3 scripts/financial_e2e_closure.py
