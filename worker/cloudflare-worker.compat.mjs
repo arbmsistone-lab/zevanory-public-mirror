@@ -98,12 +98,15 @@ const wrapped = {
     const canonicalRedirect = canonicalizePublicPath(request, url);
     if (canonicalRedirect) return canonicalRedirect;
 
-    if (url.pathname === "/admin/whatsapp-onboard/callback") {
+    if (
+      url.pathname === "/admin/whatsapp-onboard/callback" ||
+      (url.pathname === "/admin/whatsapp-onboard/embedded-complete" && request.method === "POST")
+    ) {
       const response = await handleWhatsappOnboarding(request, normalized);
       if (response) return response;
     }
-    // Temporary narrow public launcher: it only creates a short-lived CSRF state
-    // and redirects to Meta's official OAuth/Embedded Signup. No admin data or
+    // Narrow public launcher for Meta Embedded Signup. It creates a short-lived
+    // broker-backed CSRF state and renders the official Meta JS SDK flow. No
     // credentials are disclosed, and all other onboarding/admin routes remain protected.
     if (url.pathname === "/admin/whatsapp-onboard/start" && request.method === "GET") {
       const response = await handleWhatsappOnboarding(request, normalized);
