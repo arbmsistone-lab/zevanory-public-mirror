@@ -202,12 +202,31 @@ def main():
     after_dup=cert_status(order_id)
     assert len(events_of(after_dup,"payment_confirmed"))==1,after_dup
 
-    # Full provider refund. Do not infer refund from API response: wait for the real webhook and DB reconciliation.
+    # Full provider refund. First wait for provider truth to reach DONE/REFUNDED,
+    # then require the real webhook and DB reconciliation. This avoids assuming
+    # that asynchronous provider settlement always completes within 120 seconds.
     asaas("/payments/"+urllib.parse.quote(payment_id)+"/refund","POST",
           {"description":"ZEVANORY E2E full refund"},ok=(200,201))
+
+    def provider_refund_done():
+        _,refunds=asaas("/payments/"+urllib.parse.quote(payment_id)+"/refunds",ok=(200,))
+        rows=refunds.get("data",[]) if isinstance(refunds,dict) else []
+        done=[x for x in rows if String(x.get("status",""))=="DONE"]
+        _,provider_payment=asaas("/payments/"+urllib.parse.quote(payment_id),ok=(200,))
+        if str(provider_payment.get("status",""))!="REFUNDED" or not done:
+            return None
+        return {"payment":provider_payment,"refunds":rows,"done":done}
+
+    provider_refund=wait_until("provider_refund_done",provider_refund_done,timeout=300,interval=3)
+
+    # Reassert webhook configuration after provider finalization. This keeps the
+    # Asaas queue enabled/uninterrupted and still requires an actual provider
+    # webhook; no local event is synthesized here.
+    ensure_webhook()
+
     refunded=wait_until("refund_webhook",lambda: (
         lambda s: s if len(events_of(s,"refund_confirmed"))>=1 and s.get("order",{}).get("status")=="refunded" else None
-    )(cert_status(order_id)),timeout=120)
+    )(cert_status(order_id)),timeout=180)
     refund_events=events_of(refunded,"refund_confirmed")
     assert len(refund_events)>=1,refunded
     re=refund_events[-1]
@@ -259,6 +278,7 @@ def main():
       "order_id":order_id,"payment_id":payment_id,
       "webhook":webhook,"sandbox_balance":balance,
       "payment_event_id":pe.get("provider_event_id"),"refund_event_id":re.get("provider_event_id"),
+      "provider_refund_id":(provider_refund.get("done") or [{}])[-1].get("id"),
       "final_order_status":final.get("order",{}).get("status"),
       "final_fulfillment_status":final.get("fulfillment",{}).get("status"),
       "payment_confirmation_count":len(events_of(final,"payment_confirmed")),
