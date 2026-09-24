@@ -211,7 +211,7 @@ def main():
     def provider_refund_done():
         _,refunds=asaas("/payments/"+urllib.parse.quote(payment_id)+"/refunds",ok=(200,))
         rows=refunds.get("data",[]) if isinstance(refunds,dict) else []
-        done=[x for x in rows if String(x.get("status",""))=="DONE"]
+        done=[x for x in rows if str(x.get("status",""))=="DONE"]
         _,provider_payment=asaas("/payments/"+urllib.parse.quote(payment_id),ok=(200,))
         if str(provider_payment.get("status",""))!="REFUNDED" or not done:
             return None
