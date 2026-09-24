@@ -57,9 +57,15 @@ jobs:
         run: |
           set -euo pipefail
           gen_secret(){ openssl rand -hex 32; }
-          if [ -z "${ASAAS_WEBHOOK_TOKEN:-}" ]; then echo "ASAAS_WEBHOOK_TOKEN=$(gen_secret)" >> "$GITHUB_ENV"; fi
-          if [ -z "${OPERATOR_TOKEN:-}" ]; then echo "OPERATOR_TOKEN=$(gen_secret)" >> "$GITHUB_ENV"; fi
-          if [ -z "${CERTIFICATION_E2E_TOKEN:-}" ]; then echo "CERTIFICATION_E2E_TOKEN=$(gen_secret)" >> "$GITHUB_ENV"; fi
+          provision_generated(){
+            local name="$1" value
+            value="$(gen_secret)"
+            echo "::add-mask::$value"
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
+          }
+          if [ -z "${ASAAS_WEBHOOK_TOKEN:-}" ]; then provision_generated ASAAS_WEBHOOK_TOKEN; fi
+          if [ -z "${OPERATOR_TOKEN:-}" ]; then provision_generated OPERATOR_TOKEN; fi
+          if [ -z "${CERTIFICATION_E2E_TOKEN:-}" ]; then provision_generated CERTIFICATION_E2E_TOKEN; fi
           echo "FINANCIAL_INTERNAL_SECRET_GENERATION=PASS"
 
       - name: Synchronize certification credentials to Cloudflare Worker
