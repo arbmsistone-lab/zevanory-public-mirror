@@ -7694,6 +7694,17 @@ async function authorizeCertificationPilotCheckout(sql, { token, sessionId, requ
     invite_id: existing[0].certification_pilot_invite_id,
     session_match: String(existing[0].session_id || "") === String(sessionId || "")
   });
+  await sql.query(`update certification_pilot_invites i set status='revoked'
+    where i.status='active'
+      and i.bound_session_id is not null
+      and i.claimed_at < now()-interval '15 minutes'
+      and exists (
+        select 1 from orders o
+        where o.certification_pilot_invite_id=i.invite_id
+          and o.certification_pilot=true
+          and o.updated_at < now()-interval '15 minutes'
+          and o.status in ('checkout_uncertain','checkout_ready','paid','partially_refunded')
+      )`);
   const capacity = await sql.query(`select count(*)::int count from orders o join certification_pilot_invites i on i.invite_id=o.certification_pilot_invite_id where o.certification_pilot=true and o.status not in ('refunded','canceled') and i.status='active' and i.expires_at>now()`);
   if (Number(capacity?.[0]?.count || 0) >= policy.max_orders) return Object.freeze({ authorized: false, reason: "pilot_capacity_reached" });
   const claimed = await sql.query(`update certification_pilot_invites set
