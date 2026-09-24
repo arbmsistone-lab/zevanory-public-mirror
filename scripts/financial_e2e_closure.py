@@ -212,10 +212,10 @@ def main():
         _,refunds=asaas("/payments/"+urllib.parse.quote(payment_id)+"/refunds",ok=(200,))
         rows=refunds.get("data",[]) if isinstance(refunds,dict) else []
         done=[x for x in rows if str(x.get("status",""))=="DONE"]
-        _,provider_payment=asaas("/payments/"+urllib.parse.quote(payment_id),ok=(200,))
-        if str(provider_payment.get("status",""))!="REFUNDED" or not done:
+        _,provider_status=asaas("/payments/"+urllib.parse.quote(payment_id)+"/status",ok=(200,))
+        if str(provider_status.get("status","")).upper()!="REFUNDED" or not done:
             return None
-        return {"payment":provider_payment,"refunds":rows,"done":done}
+        return {"payment_status":provider_status,"refunds":rows,"done":done}
 
     provider_refund=wait_until("provider_refund_done",provider_refund_done,timeout=300,interval=3)
 
@@ -250,8 +250,8 @@ def main():
 
     evidence=final.get("provenance",[])
     assert any(x.get("source_class")=="provider_webhook" for x in evidence),evidence
-    _,provider_payment=asaas("/payments/"+urllib.parse.quote(payment_id),ok=(200,))
-    assert str(provider_payment.get("status",""))=="REFUNDED",provider_payment
+    _,provider_payment_status=asaas("/payments/"+urllib.parse.quote(payment_id)+"/status",ok=(200,))
+    assert str(provider_payment_status.get("status","")).upper()=="REFUNDED",provider_payment_status
 
     checks={
       "FINANCIAL_CHECKOUT":"PASS",
@@ -289,7 +289,7 @@ def main():
         "provider_truth_rechecked_on_replay":True,
         "exactly_once_payment_effect":len(events_of(final,"payment_confirmed"))==1,
         "no_entitlement_after_full_refund":final.get("fulfillment",{}).get("status")=="canceled",
-        "provider_final_status":provider_payment.get("status")
+        "provider_final_status":provider_payment_status.get("status")
       },
       "provenance_evidence_hashes":[x.get("evidence_sha256") for x in evidence if x.get("evidence_sha256")]
     }
