@@ -77,7 +77,7 @@ async function brokerJson(env,path,{method="GET",body=null}={}){
   if(body!==null) init.body=JSON.stringify(body);
   const r=await broker.fetch(new Request("https://whatsapp-broker.internal"+path,init));
   const j=await r.json().catch(()=>({}));
-  if(!r.ok) throw new Error("whatsapp_broker_http_"+r.status+"_"+safeText(j?.error||j?.reason||"provider_error",120));
+  if(!r.ok) throw new Error("whatsapp_broker_http_"+r.status+"_"+safeText(j?.reason||j?.error||"provider_error",180));
   return j;
 }
 async function brokerStatus(env){
@@ -300,14 +300,19 @@ export async function handleWhatsappOnboarding(request,env={}){
     if(error) return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent("Meta recusou a autorização: "+error),303);
     if(!code||!stateId||(!brokerBinding(env)&&!record?.app_secret)) return responseJson({error:"meta_callback_invalid"},400);
     if(brokerBinding(env)){
-      await brokerJson(env,"/broker/oauth/consume-state",{method:"POST",body:{state:stateId}});
-      const outcome=await brokerJson(env,"/broker/oauth/callback",{method:"POST",body:{code,redirect_uri:REDIRECT_URI,official_e164:OFFICIAL_E164}});
-      const message=outcome.identity_verified
-        ?"Número oficial localizado, registrado e identidade Meta verificada."
-        :outcome.official_number_found
-          ?"Número oficial localizado. A Meta ainda exige conclusão da verificação do número."
-          :"Autorização concluída. A Meta ainda exige adicionar e verificar o número +55 88 99254-5413 na conta WhatsApp Business.";
-      return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent(message),303);
+      try {
+        await brokerJson(env,"/broker/oauth/consume-state",{method:"POST",body:{state:stateId}});
+        const outcome=await brokerJson(env,"/broker/oauth/callback",{method:"POST",body:{code,redirect_uri:REDIRECT_URI,official_e164:OFFICIAL_E164}});
+        const message=outcome.identity_verified
+          ?"Número oficial localizado, registrado e identidade Meta verificada."
+          :outcome.official_number_found
+            ?"Número oficial localizado. A Meta ainda exige conclusão da verificação do número."
+            :"Autorização concluída. A Meta ainda exige adicionar e verificar o número +55 88 99254-5413 na conta WhatsApp Business.";
+        return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent(message),303);
+      } catch(error) {
+        const reason=safeText(error?.message||"whatsapp_oauth_callback_failed",180);
+        return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent("Falha segura no callback Meta: "+reason+". Reinicie pelo launcher oficial."),303);
+      }
     }
     await takeState(env,stateId);
     const access_token=await exchangeCode({code,app_id:record.app_id||DEFAULT_APP_ID,app_secret:record.app_secret});
