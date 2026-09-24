@@ -34,3 +34,24 @@ jobs:
           for name in sorted(found):
               print(f"BINDING {name} TYPE={found[name]}")
           PY
+
+      - name: Probe alternate Cloudflare account Asaas bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          ALT_ACCOUNT="1b26415802588185a86c1d4d3ebf5bdb"
+          CODE="$(curl -sS -o /tmp/alt-settings.json -w '%{http_code}'             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$ALT_ACCOUNT/workers/scripts/zevanory/settings")"
+          echo "ALT_ACCOUNT_SETTINGS_HTTP=$CODE"
+          if [ "$CODE" = "200" ]; then
+            python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/alt-settings.json"))
+          r=d.get("result",{})
+          bs=r.get("bindings",[]) if isinstance(r,dict) else []
+          for b in bs:
+              if not isinstance(b,dict): continue
+              n=str(b.get("name") or "")
+              if n.startswith("ASAAS_"):
+                  print("ALT_BINDING",n,"TYPE="+str(b.get("type") or ""))
+          PY
+          fi
