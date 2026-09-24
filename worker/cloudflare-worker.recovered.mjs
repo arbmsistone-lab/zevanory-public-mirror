@@ -14391,7 +14391,7 @@ async function fetchAsaasPayment(paymentId, env, apiKey, fetchImpl = fetch) {
   if (!base || !apiKey) throw new Error("asaas_not_configured");
   const response2 = await fetchImpl(`${base}/payments/${encodeURIComponent(paymentId)}`, {
     method: "GET",
-    headers: { accept: "application/json", access_token: apiKey }
+    headers: { accept: "application/json", "user-agent": "ZEVANORY/1.0 (Cloudflare Worker; sandbox)", access_token: apiKey }
   });
   if (!response2.ok) throw new Error(`asaas_lookup_${response2.status}`);
   return response2.json();
