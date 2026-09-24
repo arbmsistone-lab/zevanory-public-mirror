@@ -13964,7 +13964,7 @@ async function createAsaasCheckout(payload, apiKey, env = "sandbox", fetchImpl =
   if (!base) throw new Error("asaas_environment_invalid");
   const response2 = await fetchImpl(`${base}/checkouts`, {
     method: "POST",
-    headers: { accept: "application/json", "content-type": "application/json", access_token: apiKey },
+    headers: { accept: "application/json", "content-type": "application/json", "user-agent": "ZEVANORY/1.0 (Cloudflare Worker; sandbox)", access_token: apiKey },
     body: JSON.stringify(payload)
   });
   const data = await response2.json().catch(() => ({}));
