@@ -1,3 +1,4 @@
+import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
 import { handleVoiceFinalClosure } from "./voice-final-closure.mjs";
 import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "./whatsapp-onboarding.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
@@ -97,6 +98,9 @@ const wrapped = {
     globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = normalized.ZEVANORY_PRIVATE_ARTIFACTS || null;
     const canonicalRedirect = canonicalizePublicPath(request, url);
     if (canonicalRedirect) return canonicalRedirect;
+
+    const asaasAuthResponse = await handleAsaasPixRefundAuthorization(request, normalized);
+    if (asaasAuthResponse) return asaasAuthResponse;
 
     if (
       url.pathname === "/admin/whatsapp-onboard/callback" ||
