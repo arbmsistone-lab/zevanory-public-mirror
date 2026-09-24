@@ -7689,7 +7689,7 @@ async function authorizeCertificationPilotCheckout(sql, { token, sessionId, requ
     where o.request_id=$1 and o.session_id=$2 and o.certification_pilot=true
       and i.token_sha256=$3 and i.status='active' and i.expires_at>now() limit 1`, [requestId, sessionId, tokenSha256]);
   if (existing.length === 1) return Object.freeze({ authorized: true, replay: true, invite_id: existing[0].certification_pilot_invite_id });
-  const capacity = await sql.query(`select count(*)::int count from orders where certification_pilot=true`);
+  const capacity = await sql.query(`select count(*)::int count from orders where certification_pilot=true and status not in ('refunded','canceled')`);
   if (Number(capacity?.[0]?.count || 0) >= policy.max_orders) return Object.freeze({ authorized: false, reason: "pilot_capacity_reached" });
   const claimed = await sql.query(`update certification_pilot_invites set
     bound_session_id=coalesce(bound_session_id,$2),request_id=coalesce(request_id,$3),claimed_at=coalesce(claimed_at,now())
