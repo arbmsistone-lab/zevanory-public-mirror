@@ -10294,6 +10294,38 @@ async function handler8(req, res) {
   }
   const body = await readJsonRequestBody(req) || {};
   const name = sanitizeText(body.name, 60);
+  if (name === "certification_pilot_invites_revoke_stale") {
+    const approver = sanitizeText(process.env.CERTIFICATION_PILOT_APPROVER, 120);
+    if (!approver) {
+      res.statusCode = 503;
+      return res.end(JSON.stringify({ error: "certification_pilot_approver_not_configured" }));
+    }
+    if (!process.env.DATABASE_URL) {
+      res.statusCode = 503;
+      return res.end(JSON.stringify({ error: "operational_storage_unavailable" }));
+    }
+    const staleMinutes = boundedInt(body.stale_minutes, 10, 5, 60);
+    try {
+      const sql = cs(process.env.DATABASE_URL);
+      const rows = await sql.query(`update certification_pilot_invites i set status='revoked'
+        where i.status='active'
+          and i.bound_session_id is not null
+          and i.claimed_at < now()-($1::text||' minutes')::interval
+          and exists (
+            select 1 from orders o
+            where o.certification_pilot_invite_id=i.invite_id
+              and o.certification_pilot=true
+              and o.updated_at < now()-($1::text||' minutes')::interval
+              and o.status in ('checkout_uncertain','checkout_ready','paid','partially_refunded')
+          )
+        returning i.invite_id`, [String(staleMinutes)]);
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ revoked: rows.length, stale_minutes: staleMinutes, commercial_unlock: false }));
+    } catch (error) {
+      res.statusCode = 409;
+      return res.end(JSON.stringify({ error: String(error?.message || "certification_pilot_stale_revoke_failed") }));
+    }
+  }
   if (name === "certification_pilot_invite_create") {
     const approver = sanitizeText(process.env.CERTIFICATION_PILOT_APPROVER, 120);
     if (!approver) {
