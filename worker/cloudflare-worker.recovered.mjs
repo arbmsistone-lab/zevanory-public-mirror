@@ -13968,7 +13968,14 @@ async function createAsaasCheckout(payload, apiKey, env = "sandbox", fetchImpl =
     body: JSON.stringify(payload)
   });
   const data = await response2.json().catch(() => ({}));
-  if (!response2.ok) throw new Error(`asaas_checkout_${response2.status}`);
+  if (!response2.ok) {
+    const rawCode = String(data?.errors?.[0]?.code || data?.error || data?.code || "");
+    const safeCode = /^[A-Za-z0-9_.-]{1,80}$/.test(rawCode) ? rawCode : "";
+    const error = new Error(`asaas_checkout_${response2.status}`);
+    error.providerHttpStatus = Number(response2.status || 0);
+    error.providerErrorCode = safeCode;
+    throw error;
+  }
   return data;
 }
 __name(createAsaasCheckout, "createAsaasCheckout");
@@ -14042,13 +14049,15 @@ async function handler11(req, res) {
     let checkout;
     try {
       checkout = await createAsaasCheckout(payload, process.env.ASAAS_API_KEY, asaasEnv);
-    } catch {
+    } catch (providerError) {
       try {
         await sql.query(`UPDATE orders SET status='checkout_uncertain',updated_at=now() WHERE order_id=$1`, [order.order_id]);
       } catch {
       }
-      const recovery = await preserveFinancialReconciliation({ provider: "asaas", eventId: order.order_id, kind: "checkout_provider_uncertain", orderId: order.order_id, payload: { external_reference: order.external_reference, request_id: input.requestId, offer_id: input.offer.id } });
-      return json8(res, 503, { error: "checkout_provider_uncertain", accepted: false, preserved: recovery.preserved, reconciliation_required: true });
+      const providerHttpStatus = Number(providerError?.providerHttpStatus || 0);
+      const providerErrorCode = String(providerError?.providerErrorCode || "");
+      const recovery = await preserveFinancialReconciliation({ provider: "asaas", eventId: order.order_id, kind: "checkout_provider_uncertain", orderId: order.order_id, payload: { external_reference: order.external_reference, request_id: input.requestId, offer_id: input.offer.id, provider_http_status: providerHttpStatus || null, provider_error_code: providerErrorCode || null } });
+      return json8(res, 503, { error: "checkout_provider_uncertain", accepted: false, preserved: recovery.preserved, reconciliation_required: true, provider_http_status: providerHttpStatus || null, provider_error_code: providerErrorCode || null });
     }
     const checkoutResponse = normalizeAsaasCheckoutResponse(checkout, order.external_reference, asaasEnv);
     if (!checkoutResponse) {
