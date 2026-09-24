@@ -10287,7 +10287,7 @@ async function handler8(req, res) {
     res.statusCode = 401;
     return res.end(JSON.stringify({ error: "operator_auth_required" }));
   }
-  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const body = await readJsonRequestBody(req) || {};
   const name = sanitizeText(body.name, 60);
   if (name === "certification_pilot_invite_create") {
     const approver = sanitizeText(process.env.CERTIFICATION_PILOT_APPROVER, 120);
