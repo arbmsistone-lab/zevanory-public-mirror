@@ -17262,7 +17262,7 @@ async function handlerFinancialE2EStatus(req, res) {
     res.statusCode = 405;
     return res.end(JSON.stringify({ error: "method_not_allowed" }));
   }
-  const expected = String(process.env.CERTIFICATION_E2E_TOKEN || "");
+  const expected = String(process.env.CERTIFICATION_E2E_TOKEN || process.env.OPERATOR_TOKEN || "");
   const provided = String(req.headers?.["x-certification-e2e-token"] || "");
   if (!secureTokenEqual(expected, provided)) {
     res.statusCode = 401;
