@@ -216,7 +216,26 @@ async function createOAuthStart(env){
   u.searchParams.set("config_id",DEFAULT_CONFIG_ID);
   u.searchParams.set("override_default_response_type","true");
   u.searchParams.set("scope",["business_management","whatsapp_business_management","whatsapp_business_messaging"].join(","));
-  return {authorization_url:u.toString(),state_backend:"broker_d1",expires_in:900,zero_spend:true};
+  return {authorization_url:u.toString(),state,state_backend:"broker_d1",expires_in:900,zero_spend:true};
+}
+async function exchangeEmbeddedCode(env,code){
+  const appId=DEFAULT_APP_ID, secret=clean(env.META_APP_SECRET,4000);
+  if(!secret) throw new Error("meta_app_secret_missing");
+  const u=new URL("https://graph.facebook.com/"+GRAPH_VERSION+"/oauth/access_token");
+  u.searchParams.set("client_id",appId);
+  u.searchParams.set("client_secret",secret);
+  u.searchParams.set("code",clean(code,5000));
+  const r=await fetch(u,{signal:AbortSignal.timeout(20000)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok||!j.access_token) throw new Error("meta_embedded_exchange_failed_"+clean(j?.error?.code||r.status,30));
+  return String(j.access_token);
+}
+async function validateEmbeddedAssets(env,{token,wabaId,phoneId}){
+  const phones=await graph(encodeURIComponent(wabaId)+"/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status,name_status,new_name_status&limit=100",{env,token});
+  const phone=(phones.data||[]).find(p=>String(p.id||"")===String(phoneId));
+  if(!phone) throw new Error("embedded_phone_not_in_waba");
+  if(digits(phone.display_phone_number)!==OFFICIAL_E164) throw new Error("embedded_phone_not_official_number");
+  return phone;
 }
 async function consumeOAuthState(env,state){
   await ensureSchema(env);
@@ -277,23 +296,25 @@ async function registerPhone(env,phoneId,token,pin){
   }
 }
 async function oauthCallback(env,body){
-  const code=clean(body?.code,5000), redirect=clean(body?.redirect_uri,1000);
-  if(!code||redirect!==OAUTH_REDIRECT) throw new Error("oauth_callback_invalid");
-  const token=await exchangeCode(env,code,redirect);
+  const code=clean(body?.code,5000);
+  const wabaId=digits(body?.waba_id);
+  const phoneId=digits(body?.phone_number_id);
+  const businessId=digits(body?.business_id);
+  const flowEvent=clean(body?.flow_event,80).toUpperCase();
+  if(!code||!/^\d{5,40}$/.test(wabaId)||!/^\d{5,40}$/.test(phoneId)||!/^FINISH/.test(flowEvent)) throw new Error("embedded_callback_invalid");
+  const token=await exchangeEmbeddedCode(env,code);
   const perms=await permissions(env,token);
-  const found=await discoverOfficial(env,token);
-  if(!found){
-    await storeRuntime(env,{access_token:token,app_id:DEFAULT_APP_ID});
-    return {authorized:true,official_number_found:false,identity_verified:false,requires_number_addition:true,permissions:perms};
-  }
-  const phoneId=String(found.phone.id),wabaId=String(found.waba.id);
+  if(!perms.whatsapp_business_management||!perms.whatsapp_business_messaging) throw new Error("embedded_required_permissions_missing");
+  await validateEmbeddedAssets(env,{token,wabaId,phoneId});
+  const identityBefore=await phoneIdentity(env,phoneId,token);
+  if(!identityBefore.number_verified) throw new Error("embedded_official_number_identity_mismatch");
   const pin=String(crypto.getRandomValues(new Uint32Array(1))[0]%1000000).padStart(6,"0");
   await storeRuntime(env,{access_token:token,phone_number_id:phoneId,waba_id:wabaId,pin,app_id:DEFAULT_APP_ID});
   let webhook={webhook_configured:false,waba_subscribed:false};
   try{webhook=await configureWebhook(env,wabaId,token);}catch{}
   const registration=await registerPhone(env,phoneId,token,pin);
   const identity=await phoneIdentity(env,phoneId,token);
-  return {authorized:true,official_number_found:true,waba_id:wabaId,phone_number_id:phoneId,permissions:perms,...webhook,phone_registration_ok:Boolean(registration.ok),...identity};
+  return {authorized:true,embedded_signup:true,flow_event:flowEvent,business_id:businessId||null,official_number_found:true,waba_id:wabaId,phone_number_id:phoneId,permissions:perms,...webhook,phone_registration_ok:Boolean(registration.ok),...identity};
 }
 async function requestCode(env,body){
   const r=await runtime(env), token=await accessToken(env), phoneId=clean(r?.phone_number_id,120);
