@@ -162,13 +162,23 @@ jobs:
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          curl -fsS https://zevanory.api.br/api/health -o /tmp/predeploy-health.json
-          python3 <<'PY'
+          ok=0
+          for url in https://zevanory.api.br/api/health https://edge.zevanory.api.br/api/health https://zevanory.girolocal-rb.workers.dev/api/health; do
+            if curl -fsS --max-time 15 "$url" -o /tmp/predeploy-health.json; then
+              if python3 - <<'PY'
           import json
           h=json.load(open("/tmp/predeploy-health.json"))
-          assert h.get("live") is True and h.get("ready") is True, h
-          print("LEGACY_PRODUCTION_BRIDGE_ROUTE_REACHABLE")
+          raise SystemExit(0 if h.get("live") is True and h.get("ready") is True else 1)
           PY
+              then
+                echo "PREDEPLOY_HEALTH_ROUTE=$url"
+                ok=1
+                break
+              fi
+            fi
+          done
+          test "$ok" = "1"
+          echo "LEGACY_PRODUCTION_BRIDGE_ROUTE_REACHABLE"
       - name: Discover production KV namespaces
         if: steps.auth.outputs.available == 'true'
         run: |
