@@ -147,6 +147,9 @@ jobs:
           c["vars"]["VOICE_TTS_VOICE"]="jeff"
           c["vars"]["VOICE_TTS_PIPER_VOICE"]="jeff"
           c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
+          for k in ["VOICE_TTS_FREE_ONLY","VOICE_TTS_FAILOVER_ENABLED","VOICE_TTS_PROVIDER_CHAIN","KNOWLEDGE_SEED_ALLOWED","ZEVANORY_WHATSAPP_COUNTRY"]:
+              c["vars"].pop(k,None)
+          print("CLOUDFLARE_FREE_BINDING_PRUNE=5")
           open(p,"w").write(json.dumps(c,indent=2)+"\n")
           PY
           node --check worker/cloudflare-worker.compat.mjs
@@ -211,7 +214,7 @@ jobs:
         run: |
           set -euo pipefail
           ready=true
-          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET; do
             if [ -z "${!k:-}" ]; then
               echo "FINANCIAL_SECRET_INPUT_MISSING=$k"
               ready=false
@@ -229,7 +232,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET; do
             printf '%s' "${!k}" | npx --yes wrangler@4.135.0 secret put "$k" --config wrangler.central-fix.jsonc
           done
           echo "MERCADOPAGO_RUNTIME_SECRET_SYNC=PASS"
