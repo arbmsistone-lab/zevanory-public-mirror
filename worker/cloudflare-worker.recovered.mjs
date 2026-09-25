@@ -14253,7 +14253,10 @@ async function createMercadoPagoPreference(payload, accessToken, fetchImpl = fet
     body: JSON.stringify(payload)
   });
   const data = await response2.json().catch(() => ({}));
-  if (!response2.ok) throw new Error(`mercadopago_preference_${response2.status}`);
+  if (!response2.ok) {
+    const providerCode = String(data?.error || data?.code || data?.message || "").trim().slice(0, 120).replace(/[^a-zA-Z0-9_.-]+/g, "_");
+    throw new Error(`mercadopago_preference_${response2.status}${providerCode ? `_${providerCode}` : ""}`);
+  }
   return data;
 }
 __name(createMercadoPagoPreference, "createMercadoPagoPreference");
@@ -14314,13 +14317,14 @@ async function handler12(req, res) {
     let raw;
     try {
       raw = await createMercadoPagoPreference(payload, providerToken);
-    } catch {
+    } catch (error) {
       try {
         await sql.query(`UPDATE orders SET status='checkout_uncertain',updated_at=now() WHERE order_id=$1`, [order.order_id]);
       } catch {
       }
-      const recovery = await preserveFinancialReconciliation({ provider: "mercadopago", eventId: order.order_id, kind: "checkout_provider_uncertain", orderId: order.order_id, payload: { external_reference: order.external_reference, request_id: input.requestId, offer_id: input.offer.id, certification_pilot: Boolean(pilot?.authorized) } });
-      return json9(res, 503, { error: "checkout_provider_uncertain", accepted: false, preserved: recovery.preserved, reconciliation_required: true });
+      const providerError = String(error?.message || "mercadopago_preference_unknown").slice(0, 180);
+      const recovery = await preserveFinancialReconciliation({ provider: "mercadopago", eventId: order.order_id, kind: "checkout_provider_uncertain", orderId: order.order_id, payload: { external_reference: order.external_reference, request_id: input.requestId, offer_id: input.offer.id, certification_pilot: Boolean(pilot?.authorized), provider_error: providerError } });
+      return json9(res, 503, { error: "checkout_provider_uncertain", provider_error: providerError, order_id: String(order.order_id), accepted: false, preserved: recovery.preserved, reconciliation_required: true });
     }
     const checkout = normalizeMercadoPagoPreference(raw, order.external_reference, checkoutEnv);
     if (!checkout) {
