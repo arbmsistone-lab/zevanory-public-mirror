@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      EXPECTED_SHA: ${{ inputs.expected_sha || github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,7 +35,7 @@ jobs:
           print(uuid.uuid4())
           PY
           )"
-          payload="$(python3 - <<'PY'
+          payload="$(NONCE="$nonce" python3 - <<'PY'
           import json,os
           print(json.dumps({"nonce":os.environ["NONCE"],"sha":os.environ["EXPECTED_SHA"]},separators=(",",":")))
           PY
