@@ -20,6 +20,8 @@ on:
       - "evidence/admin-control-center.json"
       - ".github/workflows/central-production-deploy.yml"
       - ".github/workflows/financial-e2e-closure.yml"
+      - ".github/workflows/financial-e2e-stripe.yml"
+      - "scripts/financial_e2e_stripe.py"
       - "scripts/financial_e2e_closure.py"
       - ".github/workflows/zpc-cloudflare-route-discovery.yml"
 permissions:
@@ -111,6 +113,7 @@ jobs:
           c["vars"]["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
           c["vars"]["CERTIFICATION_PILOT_AMOUNT_BRL"]="5"
           c["vars"]["MERCADOPAGO_ENV"]="sandbox"
+          c["vars"]["STRIPE_ENV"]="sandbox"
           c["vars"]["CERTIFICATION_PILOT_PAYMENT_MODE"]="sandbox"
           c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
           c["vars"]["PAYMENT_PROVIDER_POOL"]="mercadopago"
