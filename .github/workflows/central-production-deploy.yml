@@ -164,6 +164,18 @@ jobs:
       - name: Authenticate Cloudflare
         if: steps.auth.outputs.available == 'true'
         run: npx --yes wrangler@4.135.0 whoami
+      - name: Diagnose Mercado Pago credential HTTP only
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          code_ml="$(curl -sS -o /tmp/mp-user-ml.json -w '%{http_code}' -H "Authorization: Bearer $MERCADOPAGO_TEST_ACCESS_TOKEN" https://api.mercadolibre.com/users/me || true)"
+          code_mp="$(curl -sS -o /tmp/mp-user-api.json -w '%{http_code}' -H "Authorization: Bearer $MERCADOPAGO_TEST_ACCESS_TOKEN" https://api.mercadopago.com/users/me || true)"
+          code_methods="$(curl -sS -o /tmp/mp-methods.json -w '%{http_code}' -H "Authorization: Bearer $MERCADOPAGO_TEST_ACCESS_TOKEN" https://api.mercadopago.com/v1/payment_methods || true)"
+          echo "MP_AUTH_MERCADOLIBRE_USERS_ME_HTTP=$code_ml"
+          echo "MP_AUTH_MERCADOPAGO_USERS_ME_HTTP=$code_mp"
+          echo "MP_AUTH_PAYMENT_METHODS_HTTP=$code_methods"
+
       - name: Probe legacy production bridge route without blocking recovery
         if: steps.auth.outputs.available == 'true'
         run: |
