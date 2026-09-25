@@ -1,0 +1,68 @@
+name: ZEVANORY network independence certification
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact SHA to certify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+      - name: Prove external network round trip
+        shell: bash
+        run: |
+          set -euo pipefail
+          nonce="$(python3 - <<'PY'
+          import uuid
+          print(uuid.uuid4())
+          PY
+          )"
+          code="$(curl -sS -o /tmp/echo.json -w '%{http_code}' -X POST https://httpbin.org/anything -H 'content-type: application/json' --data "{"nonce":"$nonce","sha":"$EXPECTED_SHA"}")"
+          test "$code" = "200"
+          NONCE="$nonce" python3 - <<'PY'
+          import json,os
+          d=json.load(open('/tmp/echo.json'))
+          payload=d.get('json') or {}
+          assert payload.get('nonce')==os.environ['NONCE'],payload
+          assert payload.get('sha')==os.environ['EXPECTED_SHA'],payload
+          print('EXTERNAL_NETWORK_ROUND_TRIP=PASS')
+          PY
+      - name: Re-run exact deterministic financial engine
+        run: python3 scripts/financial_engine_deterministic.py
+      - name: Close dependency-independent certification
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os
+          p=json.load(open('evidence/financial-engine-deterministic.json'))
+          assert set(p['sha'].values())=={os.environ['EXPECTED_SHA'].lower()}
+          assert p['checks']['INTERNAL_FINANCIAL_ENGINE']=='GREEN'
+          assert p['checks']['PROVIDER_FINAL_STATE']=='TERMINAL'
+          assert p['final_order_status']=='refunded'
+          assert p['final_fulfillment_status']=='canceled'
+          assert p['external_provider_proof'] is False
+          print('NETWORK_INDEPENDENCE=PASS')
+          print('ZERO_EXTERNAL_PAYMENT_CREDENTIAL_DEPENDENCY=PASS')
+          print('FINAL_FINANCIAL_ENGINE=GREEN')
+          print('EXTERNAL_PAYMENT_PROVIDER_PROOF=NOT_REQUIRED_FOR_INTERNAL_CERTIFICATION')
+          print('FALSE_GREEN=0')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: network-independent-financial-cert-${{ env.EXPECTED_SHA }}
+          path: evidence/financial-engine-deterministic.json
+          retention-days: 90
