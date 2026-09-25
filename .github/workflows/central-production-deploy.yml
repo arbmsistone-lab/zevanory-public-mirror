@@ -175,6 +175,12 @@ jobs:
           echo "MP_AUTH_MERCADOLIBRE_USERS_ME_HTTP=$code_ml"
           echo "MP_AUTH_MERCADOPAGO_USERS_ME_HTTP=$code_mp"
           echo "MP_AUTH_PAYMENT_METHODS_HTTP=$code_methods"
+          python3 - <<'PY'
+          from pathlib import Path
+          for p in ("/tmp/mp-user-ml.json","/tmp/mp-user-api.json","/tmp/mp-methods.json"):
+              t=Path(p).read_text(encoding="utf-8",errors="replace")[:500]
+              print(Path(p).name+"="+t.replace("\n"," "))
+          PY
 
       - name: Probe legacy production bridge route without blocking recovery
         if: steps.auth.outputs.available == 'true'
