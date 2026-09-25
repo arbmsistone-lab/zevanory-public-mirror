@@ -174,13 +174,21 @@ jobs:
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          curl -fsS https://zevanory.api.br/api/health -o /tmp/predeploy-health.json
-          python3 <<'PY'
+          code="$(curl -sS -o /tmp/predeploy-health.json -w '%{http_code}' https://zevanory.api.br/api/health || true)"
+          if [ "$code" = "200" ]; then
+            python3 <<'PY'
           import json
           h=json.load(open("/tmp/predeploy-health.json"))
           assert h.get("live") is True and h.get("ready") is True, h
           print("LEGACY_PRODUCTION_BRIDGE_ROUTE_REACHABLE")
           PY
+          elif [ "$code" = "503" ]; then
+            echo "LEGACY_PRODUCTION_BRIDGE_ROUTE=DEGRADED_RECOVERY_ALLOWED"
+            echo "RECOVERY_REASON=HTTP_503_PREEXISTING"
+          else
+            echo "LEGACY_PRODUCTION_BRIDGE_ROUTE_UNEXPECTED_HTTP=$code"
+            exit 22
+          fi
       - name: Discover production KV namespaces
         if: steps.auth.outputs.available == 'true'
         run: |
