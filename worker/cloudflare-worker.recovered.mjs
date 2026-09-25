@@ -16240,6 +16240,127 @@ function consumeAdaptiveWebhookRate({ key, provider, now = Date.now() }) {
 }
 __name(consumeAdaptiveWebhookRate, "consumeAdaptiveWebhookRate");
 
+// src/http/webhookStripe.mjs
+function verifyStripeSignature(rawBody, signatureHeader, secret, now = Date.now()) {
+  const parts = String(signatureHeader || "").split(",").map((x) => x.trim());
+  const ts = Number((parts.find((x) => x.startsWith("t=")) || "").slice(2));
+  const candidates = parts.filter((x) => x.startsWith("v1=")).map((x) => x.slice(3));
+  if (!Number.isFinite(ts) || !secret || !candidates.length) return false;
+  if (Math.abs(Math.floor(now / 1000) - ts) > 300) return false;
+  const signed = `${ts}.${Buffer.from(rawBody || Buffer.alloc(0)).toString("utf8")}`;
+  const digest = createHmac("sha256", secret).update(signed).digest("hex");
+  return candidates.some((value) => value.length === digest.length && timingSafeEqual(Buffer.from(value), Buffer.from(digest)));
+}
+__name(verifyStripeSignature, "verifyStripeSignature");
+async function fetchStripePaymentIntent(paymentIntentId, secretKey) {
+  return stripeApi(`/payment_intents/${encodeURIComponent(paymentIntentId)}`, secretKey, null, "GET");
+}
+__name(fetchStripePaymentIntent, "fetchStripePaymentIntent");
+async function fetchStripeCharge(chargeId, secretKey) {
+  return stripeApi(`/charges/${encodeURIComponent(chargeId)}`, secretKey, null, "GET");
+}
+__name(fetchStripeCharge, "fetchStripeCharge");
+async function handleStripeWebhook(req, res) {
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("x-content-type-options", "nosniff");
+  if (req.method !== "POST") return json12(res, 405, { error: "method_not_allowed" });
+  const raw = req.rawBody || Buffer.alloc(0);
+  const signature = String(req.headers?.["stripe-signature"] || "");
+  if (!verifyStripeSignature(raw, signature, process.env.STRIPE_WEBHOOK_SECRET)) return json12(res, 401, { error: "webhook_auth_failed", accepted: false });
+  if (process.env.FINANCIAL_EVENTS_ENABLED !== "true") return json12(res, 503, { error: "financial_events_disabled", accepted: false });
+  if (!process.env.STRIPE_SECRET_KEY) return json12(res, 503, { error: "financial_provider_unavailable", accepted: false });
+  let event;
+  try { event = raw.length ? JSON.parse(raw.toString("utf8")) : {}; } catch { return json12(res, 400, { error: "invalid_json", accepted: false }); }
+  const type = String(event?.type || "");
+  if (!["payment_intent.succeeded","charge.refunded"].includes(type)) return json12(res, 200, { accepted: true, ignored: true, reason: "non_financial_event" });
+  try {
+    let paymentIntentId = "";
+    let eventName = type;
+    if (type === "payment_intent.succeeded") paymentIntentId = String(event?.data?.object?.id || "");
+    if (type === "charge.refunded") paymentIntentId = String(event?.data?.object?.payment_intent || "");
+    if (!paymentIntentId.startsWith("pi_")) return json12(res, 200, { accepted: true, ignored: true, reason: "unlinked_payment" });
+    const intent = await fetchStripePaymentIntent(paymentIntentId, process.env.STRIPE_SECRET_KEY);
+    const orderId = String(intent?.metadata?.zevanory_order_id || "");
+    if (!orderId) return json12(res, 200, { accepted: true, ignored: true, reason: "unlinked_payment" });
+    let refundedTotal = 0;
+    if (type === "charge.refunded") {
+      const chargeId = String(event?.data?.object?.id || intent?.latest_charge || "");
+      if (chargeId.startsWith("ch_")) {
+        const charge = await fetchStripeCharge(chargeId, process.env.STRIPE_SECRET_KEY);
+        refundedTotal = Number(charge?.amount_refunded || 0) / 100;
+      }
+    }
+    const amount = Number(intent?.amount || 0) / 100;
+    const normalized = type === "payment_intent.succeeded" ? "payment_confirmed" : "refund_confirmed";
+    const providerEventId = String(event?.id || `stripe:${paymentIntentId}:${type}`);
+    const snapshot = { payment_intent_id: paymentIntentId, status: String(intent?.status || ""), amount, refunded_total: refundedTotal, provider_event_name: eventName };
+    if (!process.env.DATABASE_URL) {
+      const recovery = await preserveFinancialReconciliation({ provider: "stripe", eventId: providerEventId, kind: "webhook_pending_canonical_reconciliation", orderId, payload: snapshot });
+      return json12(res, recovery.preserved ? 202 : 503, { accepted: recovery.preserved, preserved: recovery.preserved, reconciliation_pending: recovery.preserved, financial_truth: false });
+    }
+    const sql = cs(process.env.DATABASE_URL);
+    const orders = await sql.query(`SELECT order_id,amount,status,external_reference,provider,certification_pilot FROM orders WHERE order_id::text=$1`, [orderId]);
+    if (orders.length === 0) return json12(res, 200, { accepted: true, ignored: true, reason: "unlinked_payment" });
+    if (orders.length !== 1 || orders[0].provider !== "stripe") return json12(res, 409, { error: "payment_reconciliation_failed", accepted: false });
+    const externalReference = String(orders[0].external_reference || "");
+    const fulfillmentId = crypto5.randomUUID();
+    const rows = await sql.query(`
+      WITH target AS (
+        SELECT order_id,amount,status FROM orders
+        WHERE order_id=$8 AND provider='stripe' AND amount=$7 AND (
+          ($3='payment_confirmed' AND status IN ('checkout_ready','checkout_uncertain','paid')) OR
+          ($3='refund_confirmed' AND status IN ('paid','partially_refunded','refunded'))
+        )
+      ), inserted AS (
+        INSERT INTO financial_events
+          (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount,order_id,refunded_total)
+        SELECT $1,'stripe',$2,$3,$4,$5,$6,$7,order_id,$9 FROM target
+        ON CONFLICT DO NOTHING
+        RETURNING order_id,normalized_event,refunded_total
+      ), updated AS (
+        UPDATE orders o SET status=CASE
+          WHEN i.normalized_event='payment_confirmed' THEN 'paid'
+          WHEN i.refunded_total>=o.amount THEN 'refunded'
+          ELSE 'partially_refunded'
+        END,updated_at=now()
+        FROM inserted i WHERE o.order_id=i.order_id
+        RETURNING o.order_id,o.status
+      ), fulfillment_paid AS (
+        INSERT INTO service_fulfillment
+          (fulfillment_id,order_id,status,delivery_mode,evidence_ref,created_at,updated_at)
+        SELECT $10,i.order_id,'pending','digital','stripe:'||$1,now(),now()
+        FROM inserted i
+        WHERE i.normalized_event='payment_confirmed'
+        ON CONFLICT(order_id) DO UPDATE SET evidence_ref=EXCLUDED.evidence_ref,updated_at=now()
+        RETURNING order_id,status
+      ), fulfillment_refund AS (
+        UPDATE service_fulfillment sf SET status='canceled',evidence_ref='stripe:'||$1,updated_at=now()
+        FROM inserted i,target t
+        WHERE sf.order_id=i.order_id AND i.normalized_event='refund_confirmed' AND i.refunded_total>=t.amount
+        RETURNING sf.order_id,sf.status
+      )
+      SELECT
+        (SELECT count(*)::int FROM target) target_count,
+        (SELECT count(*)::int FROM inserted) inserted_count,
+        (SELECT status FROM updated LIMIT 1) order_status,
+        (SELECT status FROM orders WHERE order_id=$8) current_status,
+        coalesce((SELECT status FROM fulfillment_refund LIMIT 1),(SELECT status FROM fulfillment_paid LIMIT 1),(SELECT status FROM service_fulfillment WHERE order_id=$8 LIMIT 1)) fulfillment_status
+    `, [providerEventId,paymentIntentId,normalized,eventName,String(intent?.status || ""),externalReference,amount,orderId,refundedTotal,fulfillmentId]);
+    const outcome = rows[0] || {};
+    if (Number(outcome.target_count) !== 1) return json12(res, 409, { error: "order_state_invalid", accepted: false });
+    if (Number(outcome.inserted_count) === 1) {
+      try {
+        await recordVerifiedLifecycleEvidence(sql, { dimension: normalized === "payment_confirmed" ? "payment" : "reconciliation", source_class: "provider_webhook", source: "stripe-test", subject_ref: orderId, idempotency_key: `${normalized}-evidence:stripe:${providerEventId}`, metadata: { provider: "stripe", certification_pilot: true, sandbox: true, refunded_total: refundedTotal } });
+      } catch {}
+    }
+    return json12(res, 200, { accepted: true, duplicate: Number(outcome.inserted_count) === 0, event: normalized, order_id: orderId, order_status: outcome.order_status || outcome.current_status, fulfillment_status: outcome.fulfillment_status || null, refunded_total: refundedTotal, certification_pilot: true });
+  } catch (error) {
+    return json12(res, 503, { error: "financial_reconciliation_unavailable", accepted: false, provider_error: String(error?.message || "stripe_webhook_unknown").slice(0,160) });
+  }
+}
+__name(handleStripeWebhook, "handleStripeWebhook");
+
 // api/webhooks.mjs
 var WEBHOOK_MAX_BYTES = 256 * 1024;
 var providerFrom = /* @__PURE__ */ __name((req) => {
@@ -16267,7 +16388,7 @@ var readRawBody = /* @__PURE__ */ __name(async (req) => {
 }, "readRawBody");
 async function handler26(req, res) {
   const provider = providerFrom(req);
-  if (!["asaas", "mercadopago", "mercadopago_test", "resend", "meta", "mercadolivre", "mercadolivre_oauth", "tiktok_oauth", "tiktok_review", "linkedin_oauth", "nuvemshop_oauth", "nuvemshop", "youtube_identity_oauth", "meta_oauth"].includes(provider)) {
+  if (!["asaas", "mercadopago", "mercadopago_test", "stripe", "resend", "meta", "mercadolivre", "mercadolivre_oauth", "tiktok_oauth", "tiktok_review", "linkedin_oauth", "nuvemshop_oauth", "nuvemshop", "youtube_identity_oauth", "meta_oauth"].includes(provider)) {
     res.setHeader("content-type", "application/json; charset=utf-8");
     res.statusCode = 400;
     return res.end(JSON.stringify({ error: "webhook_provider_invalid", accepted: false }));
@@ -16302,6 +16423,7 @@ async function handler26(req, res) {
   if (provider === "asaas") return handler15(req, res);
   if (provider === "mercadopago") return handler16(req, res);
   if (provider === "mercadopago_test") return handleMercadoPagoWebhook(req, res, { accessToken: process.env.MERCADOPAGO_TEST_ACCESS_TOKEN, webhookSecret: process.env.MERCADOPAGO_TEST_WEBHOOK_SECRET, certificationOnly: true, source: "mercadopago-test" });
+  if (provider === "stripe") return handleStripeWebhook(req, res);
   if (provider === "meta") return handler18(req, res);
   if (provider === "mercadolivre") return handler19(req, res);
   if (provider === "mercadolivre_oauth") return handler20(req, res);
@@ -17595,6 +17717,10 @@ function resolveHandler(req) {
   }
   if (url.pathname === "/api/checkout/mercadopago") {
     req.url = "/api/checkout?provider=mercadopago";
+    return handler13;
+  }
+  if (url.pathname === "/api/checkout/stripe") {
+    req.url = "/api/checkout?provider=stripe";
     return handler13;
   }
   if (url.pathname === "/api/oauth/meta/start") {
