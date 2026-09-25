@@ -16249,7 +16249,7 @@ function verifyStripeSignature(rawBody, signatureHeader, secret, now = Date.now(
   if (Math.abs(Math.floor(now / 1000) - ts) > 300) return false;
   const signed = `${ts}.${Buffer.from(rawBody || Buffer.alloc(0)).toString("utf8")}`;
   const digest = createHmac("sha256", secret).update(signed).digest("hex");
-  return candidates.some((value) => value.length === digest.length && timingSafeEqual(Buffer.from(value), Buffer.from(digest)));
+  return candidates.some((value) => value.length === digest.length && crypto5.timingSafeEqual(Buffer.from(value), Buffer.from(digest)));
 }
 __name(verifyStripeSignature, "verifyStripeSignature");
 async function fetchStripePaymentIntent(paymentIntentId, secretKey) {
