@@ -31,8 +31,10 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
-      ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY || secrets.ASAAS_SANDBOX_API_KEY }}
-      ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+      MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN || secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+      MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_WEBHOOK_SECRET || secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
+      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN || secrets.MERCADOPAGO_ACCESS_TOKEN }}
+      MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET || secrets.MERCADOPAGO_WEBHOOK_SECRET }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
@@ -98,7 +100,10 @@ jobs:
           c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"
           c["vars"]["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
           c["vars"]["CERTIFICATION_PILOT_AMOUNT_BRL"]="5"
-          c["vars"]["ASAAS_ENV"]="sandbox"
+          c["vars"]["MERCADOPAGO_ENV"]="sandbox"
+          c["vars"]["CERTIFICATION_PILOT_PAYMENT_MODE"]="sandbox"
+          c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
+          c["vars"]["PAYMENT_PROVIDER_POOL"]="mercadopago"
           c["vars"]["CHECKOUT_ENABLED"]="true"
           c["vars"]["FINANCIAL_EVENTS_ENABLED"]="true"
           c["vars"]["SALE_GLOBALLY_ENABLED"]="false"
@@ -206,28 +211,28 @@ jobs:
         run: |
           set -euo pipefail
           ready=true
-          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
             if [ -z "${!k:-}" ]; then
               echo "FINANCIAL_SECRET_INPUT_MISSING=$k"
               ready=false
             fi
           done
-          if [ "$ready" = "true" ] && [ "${#ASAAS_WEBHOOK_TOKEN}" -ge 32 ]; then
+          if [ "$ready" = "true" ] && [ "${#MERCADOPAGO_WEBHOOK_SECRET}" -ge 16 ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
-            echo "FINANCIAL_SECRET_SYNC_ROUTE=AVAILABLE"
+            echo "MERCADOPAGO_SECRET_SYNC_ROUTE=AVAILABLE"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "FINANCIAL_SECRET_SYNC_ROUTE=UNAVAILABLE_PRESERVE_EXISTING_RUNTIME"
+            echo "MERCADOPAGO_SECRET_SYNC_ROUTE=UNAVAILABLE_FAIL_CLOSED"
           fi
       - name: Synchronize financial certification secrets
         if: steps.auth.outputs.available == 'true' && steps.financial_secrets.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
             printf '%s' "${!k}" | npx --yes wrangler@4.135.0 secret put "$k" --config wrangler.central-fix.jsonc
           done
-          echo "FINANCIAL_RUNTIME_SECRET_SYNC=PASS"
+          echo "MERCADOPAGO_RUNTIME_SECRET_SYNC=PASS"
       - name: Deploy repaired production worker
         if: steps.auth.outputs.available == 'true'
         run: |
