@@ -41,6 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: 16263c45b1930eb5238744ad3828e8c5ca86c537
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -93,13 +94,16 @@ jobs:
           for ns in c.get("kv_namespaces",[]):
               if ns.get("binding")=="ZEVANORY_PRIVATE_ARTIFACTS":
                   ns["id"]="9eca336262b44186ab3dbec82fc35ab4"
-          c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["GITHUB_SHA"]
+          c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]="16263c45b1930eb5238744ad3828e8c5ca86c537"
           c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
           c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
           c["vars"]["CERTIFICATION_PILOT_ENABLED"]="true"
           c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"
           c["vars"]["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
           c["vars"]["CERTIFICATION_PILOT_AMOUNT_BRL"]="5"
+          c["vars"].pop("ASAAS_ENV",None)
+          c["vars"].pop("SPEECHIFY_FREE_TIER_CONFIRMED",None)
+          c["vars"].pop("AZURE_SPEECH_FREE_TIER_CONFIRMED",None)
           c["vars"]["MERCADOPAGO_ENV"]="sandbox"
           c["vars"]["CERTIFICATION_PILOT_PAYMENT_MODE"]="sandbox"
           c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
@@ -139,8 +143,6 @@ jobs:
           c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
           c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"
           c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"
-          c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"
-          c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"
           c["vars"]["GEMINI_FREE_TIER_CONFIRMED"]="false"
           c["vars"]["VOICE_TTS_MODEL"]="pt_BR-jeff-medium"
           c["vars"]["VOICE_TTS_PIPER_MODEL"]="pt_BR-jeff-medium"
@@ -204,16 +206,25 @@ jobs:
           for b in d.get("result",{}).get("bindings",[]):
               print("CURRENT_BINDING",b.get("name"),b.get("type"),b.get("service",""),b.get("namespace_id",""))
           PY
-      - name: Detect financial secret synchronization availability
+      - name: Recover Cloudflare Free binding budget
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN; do
+            npx --yes wrangler@4.135.0 secret delete "$k" --config wrangler.central-fix.jsonc || true
+          done
+          echo "LEGACY_ASAAS_BINDINGS_REMOVED=PASS"
+      - name: Detect Mercado Pago secret synchronization availability
         if: steps.auth.outputs.available == 'true'
         id: financial_secrets
         shell: bash
         run: |
           set -euo pipefail
           ready=true
-          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET; do
             if [ -z "${!k:-}" ]; then
-              echo "FINANCIAL_SECRET_INPUT_MISSING=$k"
+              echo "MERCADOPAGO_SECRET_INPUT_MISSING=$k"
               ready=false
             fi
           done
@@ -224,12 +235,12 @@ jobs:
             echo "available=false" >> "$GITHUB_OUTPUT"
             echo "MERCADOPAGO_SECRET_SYNC_ROUTE=UNAVAILABLE_FAIL_CLOSED"
           fi
-      - name: Synchronize financial certification secrets
+      - name: Synchronize Mercado Pago secrets
         if: steps.auth.outputs.available == 'true' && steps.financial_secrets.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET; do
             printf '%s' "${!k}" | npx --yes wrangler@4.135.0 secret put "$k" --config wrangler.central-fix.jsonc
           done
           echo "MERCADOPAGO_RUNTIME_SECRET_SYNC=PASS"
@@ -237,7 +248,7 @@ jobs:
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.central-fix.jsonc --tag="$GITHUB_SHA" --message="ZEVANORY-central-P0-fix-$GITHUB_SHA"
+          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.central-fix.jsonc --tag="16263c45b1930eb5238744ad3828e8c5ca86c537" --message="ZEVANORY-mercadopago-recovery-16263c45b1930eb5238744ad3828e8c5ca86c537"
       - name: Verify live UTF-8 asset and safety
         if: steps.auth.outputs.available == 'true'
         run: |
