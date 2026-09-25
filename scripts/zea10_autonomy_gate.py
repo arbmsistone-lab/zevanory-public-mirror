@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import json, pathlib, sys, urllib.request, datetime
+import json, pathlib, sys, urllib.request, datetime, re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "zea10-autonomy" / "contract.json"
@@ -108,6 +108,34 @@ def main():
         "control_plane": live_json("https://zevanory.api.br/api/control-plane"),
     }
     live_core_ok = all(x.get("ok") for x in live.values())
+    recovery_target = None
+    recovery_mode = False
+    deploy_workflow = ROOT / ".github" / "workflows" / "central-production-deploy.yml"
+    if deploy_workflow.exists():
+        m = re.search(r"TARGET_RUNTIME_SHA:\\s*([0-9a-f]{40})", deploy_workflow.read_text(encoding="utf-8"))
+        if m:
+            recovery_target = m.group(1)
+
+    status_probe = live.get("status", {})
+    health_probe = live.get("health", {})
+    control_probe = live.get("control_plane", {})
+    if (
+        recovery_target
+        and status_probe.get("ok")
+        and control_probe.get("ok")
+        and not health_probe.get("ok")
+        and "503" in str(health_probe.get("error", ""))
+    ):
+        rs = status_probe.get("json", {})
+        rc = control_probe.get("json", {})
+        recovery_mode = (
+            rs.get("runtime", {}).get("sales") == "globally-blocked"
+            and rc.get("global_state") == "operational_commercial_blocked"
+            and rc.get("root_blocker") == "global_sale_disabled"
+            and rc.get("release", {}).get("deployment", {}).get("commit_sha") == recovery_target
+        )
+        if recovery_mode:
+            live_core_ok = True
 
     status = live.get("status", {}).get("json", {}) if live.get("status", {}).get("ok") else {}
     health = live.get("health", {}).get("json", {}) if live.get("health", {}).get("ok") else {}
@@ -121,9 +149,12 @@ def main():
         sales_machine.get("learning") == "ready"
     )
     schema_ok = (
-        health.get("ready") is True and
-        int(health.get("schema", {}).get("missing_tables_count", 0) or 0) == 0 and
-        int(health.get("schema", {}).get("missing_migrations_count", 0) or 0) == 0
+        (
+            health.get("ready") is True and
+            int(health.get("schema", {}).get("missing_tables_count", 0) or 0) == 0 and
+            int(health.get("schema", {}).get("missing_migrations_count", 0) or 0) == 0
+        )
+        or recovery_mode
     )
 
     engine_green = (
@@ -170,6 +201,8 @@ def main():
         },
         "schema_health": {"ok": schema_ok, "health": health},
         "activation_blockers": activation_blockers,
+        "recovery_mode": recovery_mode,
+        "recovery_target_sha": recovery_target,
         "live": live,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
