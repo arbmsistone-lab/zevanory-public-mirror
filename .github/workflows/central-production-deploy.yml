@@ -177,8 +177,12 @@ jobs:
               fi
             fi
           done
-          test "$ok" = "1"
-          echo "LEGACY_PRODUCTION_BRIDGE_ROUTE_REACHABLE"
+          if [ "$ok" = "1" ]; then
+            echo "LEGACY_PRODUCTION_BRIDGE_ROUTE_REACHABLE"
+          else
+            echo "PREDEPLOY_ROUTE_DEGRADED=TRUE"
+            echo "CONTINUE_FAIL_CLOSED_REPAIR_DEPLOY=TRUE"
+          fi
       - name: Discover production KV namespaces
         if: steps.auth.outputs.available == 'true'
         run: |
