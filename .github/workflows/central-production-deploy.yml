@@ -264,6 +264,17 @@ jobs:
           done
           echo "MERCADOPAGO_RUNTIME_SECRET_SYNC=PASS"
 
+      - name: Diagnose Mercado Pago test credential read-only
+        if: steps.auth.outputs.available == 'true' && steps.financial_secrets.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          code_ml="$(curl -sS -o /tmp/mp-users-me.json -w '%{http_code}' --max-time 20 -H "Authorization: Bearer $MERCADOPAGO_TEST_ACCESS_TOKEN" https://api.mercadolibre.com/users/me || true)"
+          code_mp="$(curl -sS -o /tmp/mp-methods.json -w '%{http_code}' --max-time 20 -H "Authorization: Bearer $MERCADOPAGO_TEST_ACCESS_TOKEN" https://api.mercadopago.com/v1/payment_methods || true)"
+          echo "MP_USERS_ME_HTTP=$code_ml"
+          echo "MP_PAYMENT_METHODS_HTTP=$code_mp"
+          test "$code_ml" = "200" || test "$code_mp" = "200"
+
       - name: Verify Mercado Pago provider readiness
         if: steps.auth.outputs.available == 'true' && steps.financial_secrets.outputs.available == 'true'
         shell: bash
