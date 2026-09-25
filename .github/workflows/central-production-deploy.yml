@@ -113,6 +113,7 @@ jobs:
           c["vars"]["CERTIFICATION_PILOT_PAYMENT_MODE"]="sandbox"
           c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
           c["vars"]["PAYMENT_PROVIDER_POOL"]="mercadopago"
+          c["vars"]["PUBLIC_BASE_URL"]="https://zevanory.api.br"
           c["vars"]["CHECKOUT_ENABLED"]="true"
           c["vars"]["FINANCIAL_EVENTS_ENABLED"]="true"
           c["vars"]["SALE_GLOBALLY_ENABLED"]="false"
