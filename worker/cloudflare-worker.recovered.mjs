@@ -7647,8 +7647,16 @@ function certificationPilotPolicy(env = process.env) {
   if (!yes4(env.CHECKOUT_ENABLED)) blockers.push("checkout_disabled");
   if (!yes4(env.FINANCIAL_EVENTS_ENABLED)) blockers.push("financial_events_disabled");
   if (sandbox) {
-    if (String(env.ASAAS_ENV || "").toLowerCase() !== "sandbox") blockers.push("asaas_sandbox_unconfigured");
-    if (!String(env.ASAAS_API_KEY || "").trim() || !String(env.ASAAS_WEBHOOK_TOKEN || "").trim()) blockers.push("asaas_sandbox_credentials_missing");
+    const provider = String(env.PAYMENT_PROVIDER || env.PAYMENT_PROVIDER_POOL || "asaas").trim().toLowerCase();
+    if (provider === "mercadopago") {
+      if (String(env.MERCADOPAGO_ENV || "").toLowerCase() !== "sandbox") blockers.push("mercadopago_sandbox_unconfigured");
+      if (!String(env.MERCADOPAGO_TEST_ACCESS_TOKEN || "").trim() || !String(env.MERCADOPAGO_TEST_WEBHOOK_SECRET || "").trim()) blockers.push("mercadopago_sandbox_credentials_missing");
+    } else if (provider === "asaas") {
+      if (String(env.ASAAS_ENV || "").toLowerCase() !== "sandbox") blockers.push("asaas_sandbox_unconfigured");
+      if (!String(env.ASAAS_API_KEY || "").trim() || !String(env.ASAAS_WEBHOOK_TOKEN || "").trim()) blockers.push("asaas_sandbox_credentials_missing");
+    } else {
+      blockers.push("certification_pilot_provider_unsupported");
+    }
   } else if (!activation.ready) blockers.push(...activation.blockers);
   return Object.freeze({ ready: blockers.length === 0, environment: sandbox ? "sandbox" : "production", max_orders: maxOrders, invite_ttl_hours: ttlHours, blockers: Object.freeze([...new Set(blockers)]) });
 }
