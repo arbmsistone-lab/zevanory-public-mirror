@@ -911,7 +911,7 @@ __name(evaluateCommercialCompliance, "evaluateCommercialCompliance");
 
 // src/paymentProviders.mjs
 import { createHash } from "node:crypto";
-var PAYMENT_PROVIDERS = Object.freeze(["asaas", "mercadopago"]);
+var PAYMENT_PROVIDERS = Object.freeze(["stripe", "asaas", "mercadopago"]);
 var present2 = /* @__PURE__ */ __name((value) => Boolean(String(value || "").trim()), "present");
 var csv = /* @__PURE__ */ __name((value) => String(value || "").split(",").map((x2) => x2.trim().toLowerCase()).filter(Boolean), "csv");
 function normalizePaymentProvider(value) {
@@ -943,6 +943,11 @@ function readinessFor(provider, env, { production = true } = {}) {
     const mode = String(env.MERCADOPAGO_ENV || "").trim().toLowerCase();
     if (mode !== (production ? "production" : "sandbox")) local.push(production ? "mercadopago_production_not_configured" : "mercadopago_sandbox_unconfigured");
     if (!present2(env.MERCADOPAGO_ACCESS_TOKEN) || !present2(env.MERCADOPAGO_WEBHOOK_SECRET)) local.push("mercadopago_credentials_missing");
+  }
+  if (provider === "stripe") {
+    const mode = String(env.STRIPE_ENV || "").trim().toLowerCase();
+    if (mode !== (production ? "production" : "sandbox")) local.push(production ? "stripe_production_not_configured" : "stripe_sandbox_unconfigured");
+    if (!present2(env.STRIPE_SECRET_KEY) || !present2(env.STRIPE_WEBHOOK_SECRET)) local.push("stripe_credentials_missing");
   }
   if (local.length === 0) return Object.freeze({ provider, ready: true, delegated: false, blockers: Object.freeze([]) });
   if (delegatedReady && (pool.includes(provider) || legacy === provider)) return Object.freeze({ provider, ready: true, delegated: true, blockers: Object.freeze([]) });
@@ -7651,6 +7656,10 @@ function certificationPilotPolicy(env = process.env) {
     if (provider === "mercadopago") {
       if (String(env.MERCADOPAGO_ENV || "").toLowerCase() !== "sandbox") blockers.push("mercadopago_sandbox_unconfigured");
       if (!String(env.MERCADOPAGO_TEST_ACCESS_TOKEN || "").trim() || !String(env.MERCADOPAGO_TEST_WEBHOOK_SECRET || "").trim()) blockers.push("mercadopago_sandbox_credentials_missing");
+    }
+    if (provider === "stripe") {
+      if (String(env.STRIPE_ENV || "").toLowerCase() !== "sandbox") blockers.push("stripe_sandbox_unconfigured");
+      if (!String(env.STRIPE_SECRET_KEY || "").trim() || !String(env.STRIPE_WEBHOOK_SECRET || "").trim()) blockers.push("stripe_sandbox_credentials_missing");
     } else if (provider === "asaas") {
       if (String(env.ASAAS_ENV || "").toLowerCase() !== "sandbox") blockers.push("asaas_sandbox_unconfigured");
       if (!String(env.ASAAS_API_KEY || "").trim() || !String(env.ASAAS_WEBHOOK_TOKEN || "").trim()) blockers.push("asaas_sandbox_credentials_missing");
@@ -7745,7 +7754,7 @@ __name(revokeCertificationPilotInvite, "revokeCertificationPilotInvite");
 async function recordCertificationPilotCheckoutEvidence(sql, { orderId, sessionId, provider } = {}) {
   if (!isUuid(orderId) || !isUuid(sessionId)) return Object.freeze({ recorded: false, reason: "pilot_checkout_identity_invalid" });
   const providerName = String(provider || "").toLowerCase();
-  if (!["asaas", "mercadopago"].includes(providerName)) return Object.freeze({ recorded: false, reason: "pilot_checkout_provider_invalid" });
+  if (!["asaas", "mercadopago", "stripe"].includes(providerName)) return Object.freeze({ recorded: false, reason: "pilot_checkout_provider_invalid" });
   const verified = await sql.query(`select o.order_id from orders o
     join certification_pilot_invites i on i.invite_id=o.certification_pilot_invite_id
     where o.order_id=$1 and o.session_id=$2 and o.provider=$3 and o.certification_pilot=true
@@ -14358,11 +14367,101 @@ async function handler12(req, res) {
 }
 __name(handler12, "handler");
 
+// src/http/checkoutStripe.mjs
+var STRIPE_API_BASE = "https://api.stripe.com/v1";
+async function stripeApi(path, secretKey, fields = null, method = "POST", idempotencyKey = "") {
+  const headers = { accept: "application/json", authorization: `Bearer ${secretKey}` };
+  const init = { method, headers };
+  if (fields) {
+    const form = new URLSearchParams();
+    for (const [key, value] of Object.entries(fields)) {
+      if (Array.isArray(value)) {
+        for (const item of value) form.append(key, String(item));
+      } else if (value !== void 0 && value !== null) {
+        form.append(key, String(value));
+      }
+    }
+    headers["content-type"] = "application/x-www-form-urlencoded";
+    init.body = form.toString();
+  }
+  if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+  const response2 = await fetch(`${STRIPE_API_BASE}${path}`, init);
+  const data = await response2.json().catch(() => ({}));
+  if (!response2.ok) {
+    const providerCode = String(data?.error?.code || data?.error?.type || data?.error?.message || "").slice(0, 120).replace(/[^a-zA-Z0-9_.-]+/g, "_");
+    throw new Error(`stripe_${response2.status}${providerCode ? `_${providerCode}` : ""}`);
+  }
+  return data;
+}
+__name(stripeApi, "stripeApi");
+async function handleStripeCheckout(req, res) {
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("x-content-type-options", "nosniff");
+  if (req.method !== "POST") return json9(res, 405, { error: "method_not_allowed" });
+  const input = normalizeCheckoutRequest(await readJsonRequestBody(req));
+  if (!input) return json9(res, 400, { error: "invalid_checkout_request" });
+  const gate = salesGate();
+  const pilotToken = String(req.headers?.["x-certification-pilot-token"] || "").trim();
+  if (!pilotToken) return json9(res, 503, { error: "stripe_certification_only" });
+  if (process.env.CHECKOUT_ENABLED !== "true") return json9(res, 503, { error: "checkout_disabled" });
+  if (String(process.env.STRIPE_ENV || "").toLowerCase() !== "sandbox") return json9(res, 503, { error: "checkout_environment_invalid" });
+  if (!process.env.STRIPE_SECRET_KEY || !process.env.DATABASE_URL) return json9(res, 503, { error: "checkout_provider_unavailable" });
+  const sql = cs(process.env.DATABASE_URL);
+  const pilot = await authorizeCertificationPilotCheckout(sql, { token: pilotToken, sessionId: input.sessionId, requestId: input.requestId });
+  if (!pilot.authorized) return json9(res, 503, { error: "sales_globally_blocked", blockers: gate.blockers, pilot_reason: pilot.reason });
+  const effectiveOffer = Object.freeze({ ...input.offer, price_brl: certificationPilotAmountBrl(process.env) });
+  const orderId = crypto6.randomUUID();
+  const externalReference = externalReferenceForOrder(orderId);
+  try {
+    const inserted = await sql.query(`INSERT INTO orders (order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status,certification_pilot,certification_pilot_invite_id) VALUES ($1,$2,$3,$4,$5,$6,'BRL','stripe',$7,'created',true,$8) ON CONFLICT (request_id) DO NOTHING RETURNING order_id`, [orderId, input.requestId, input.sessionId, PROJECT.experimentId, input.offer.id, effectiveOffer.price_brl, externalReference, pilot.invite_id || null]);
+    let order = inserted.length ? { order_id: orderId, external_reference: externalReference, status: "created" } : (await sql.query(`SELECT order_id,session_id,offer_id,external_reference,status,checkout_url,provider,provider_checkout_id FROM orders WHERE request_id=$1`, [input.requestId]))[0];
+    if (!order) return json9(res, 503, { error: "order_lookup_failed" });
+    if (order.provider && order.provider !== "stripe") return json9(res, 409, { error: "request_id_provider_conflict" });
+    if (!inserted.length) {
+      const replay = checkoutReplayDecision(order, input.sessionId, input.offer.id);
+      if (replay.action === "conflict") return json9(res, 409, { error: "request_id_conflict" });
+      if (replay.action === "offer_conflict") return json9(res, 409, { error: "request_id_offer_conflict" });
+      if (replay.action === "reuse") return json9(res, 200, { accepted: true, duplicate: true, order_id: order.order_id, checkout_url: replay.checkoutUrl, payment_intent_id: order.provider_checkout_id || null });
+      if (replay.action !== "create") return json9(res, 409, { error: replay.action === "in_progress" ? "checkout_in_progress" : "checkout_not_retryable" });
+    }
+    const claimed = await sql.query(`UPDATE orders SET status='checkout_creating',updated_at=now() WHERE order_id=$1 AND status='created' RETURNING order_id`, [order.order_id]);
+    if (claimed.length !== 1) return json9(res, 409, { error: "checkout_in_progress" });
+    let intent;
+    try {
+      intent = await stripeApi("/payment_intents", process.env.STRIPE_SECRET_KEY, {
+        amount: Math.round(Number(effectiveOffer.price_brl) * 100),
+        currency: "brl",
+        "payment_method_types[]": ["card"],
+        description: "ZEVANORY certification sandbox",
+        "metadata[zevanory_order_id]": String(order.order_id),
+        "metadata[external_reference]": String(order.external_reference),
+        "metadata[certification]": "true"
+      }, "POST", `zevanory-checkout-${input.requestId}`);
+    } catch (error) {
+      try { await sql.query(`UPDATE orders SET status='checkout_uncertain',updated_at=now() WHERE order_id=$1`, [order.order_id]); } catch {}
+      const providerError = String(error?.message || "stripe_payment_intent_unknown").slice(0, 180);
+      const recovery = await preserveFinancialReconciliation({ provider: "stripe", eventId: String(order.order_id), kind: "checkout_provider_uncertain", orderId: String(order.order_id), payload: { external_reference: order.external_reference, request_id: input.requestId, provider_error: providerError } });
+      return json9(res, 503, { error: "checkout_provider_uncertain", provider_error: providerError, order_id: String(order.order_id), accepted: false, preserved: recovery.preserved, reconciliation_required: true });
+    }
+    if (!String(intent?.id || "").startsWith("pi_") || intent?.livemode !== false) return json9(res, 503, { error: "checkout_response_invalid", accepted: false });
+    const checkoutLink = `https://dashboard.stripe.com/test/payments/${encodeURIComponent(String(intent.id))}`;
+    const persisted = await sql.query(`UPDATE orders SET status='checkout_ready',provider_checkout_id=$2,checkout_url=$3,updated_at=now() WHERE order_id=$1 AND status='checkout_creating' RETURNING order_id`, [order.order_id, String(intent.id), checkoutLink]);
+    if (persisted.length !== 1) return json9(res, 503, { error: "checkout_persist_failed", accepted: false, reconciliation_required: true });
+    try { await recordCertificationPilotCheckoutEvidence(sql, { orderId: order.order_id, sessionId: input.sessionId, provider: "stripe" }); } catch {}
+    return json9(res, 201, { accepted: true, duplicate: false, order_id: String(order.order_id), checkout_url: checkoutLink, payment_intent_id: String(intent.id), client_secret: String(intent.client_secret || "") });
+  } catch {
+    return json9(res, 503, { error: "checkout_storage_error", accepted: false });
+  }
+}
+__name(handleStripeCheckout, "handleStripeCheckout");
+
 // api/checkout.mjs
 async function handler13(req, res) {
   const selected = resolveCheckoutProviderRequest(req);
   if (selected.ready && selected.provider === "asaas") return handler11(req, res);
   if (selected.ready && selected.provider === "mercadopago") return handler12(req, res);
+  if (selected.ready && selected.provider === "stripe") return handleStripeCheckout(req, res);
   res.setHeader("content-type", "application/json; charset=utf-8");
   res.setHeader("cache-control", "no-store");
   res.statusCode = 503;
