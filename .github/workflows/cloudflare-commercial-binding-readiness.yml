@@ -33,4 +33,93 @@ jobs:
                   found[name]=str(b.get("type") or "unknown")
           for name in sorted(found):
               print(f"BINDING {name} TYPE={found[name]}")
+          for b in d.get("result",{}).get("bindings",[]):
+              if str(b.get("name") or "")=="WHATSAPP_BROKER":
+                  print("WHATSAPP_BROKER_SERVICE="+str(b.get("service") or ""))
+                  print("WHATSAPP_BROKER_ENVIRONMENT="+str(b.get("environment") or ""))
           PY
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/giro-whatsapp-bridge/settings" \
+            -o /tmp/wa-broker-settings.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/wa-broker-settings.json"))
+          print("BROKER_SETTINGS_API_SUCCESS="+str(d.get("success") is True).lower())
+          result=d.get("result",{})
+          print("BROKER_COMPATIBILITY_DATE="+str(result.get("compatibility_date") or ""))
+          print("BROKER_COMPATIBILITY_FLAGS="+json.dumps(result.get("compatibility_flags") or [],separators=(",",":")))
+          print("BROKER_USAGE_MODEL="+str(result.get("usage_model") or ""))
+          for b in d.get("result",{}).get("bindings",[]):
+              name=str(b.get("name") or "")
+              typ=str(b.get("type") or "unknown")
+              print(f"BROKER_ALL_BINDING {name} TYPE={typ}")
+              if typ in {"d1","kv_namespace","r2_bucket","service","ai"}:
+                  meta={k:v for k,v in b.items() if k not in {"text","value"} and k!="name"}
+                  print("BROKER_BINDING_META "+name+"="+json.dumps(meta,separators=(",",":")))
+          for b in d.get("result",{}).get("bindings",[]):
+              name=str(b.get("name") or "")
+              if name.startswith(("META_","WHATSAPP_","WABA_")) or name in {"PHONE_NUMBER_ID","WABA_ID","APP_ID","GRAPH_VERSION","OFFICIAL_NUMBER"}:
+                  typ=str(b.get("type") or "unknown")
+                  print(f"BROKER_BINDING {name} TYPE={typ}")
+                  if typ=="plain_text" and any(k in name for k in ("PHONE","WABA","APP_ID","GRAPH_VERSION","OFFICIAL_NUMBER")):
+                      v=str(b.get("text") or b.get("value") or "")
+                      print(f"BROKER_SAFE_VALUE {name}={v}")
+          PY
+          curl -fsS -D /tmp/wa-broker-headers.txt -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/giro-whatsapp-bridge" \
+            -o /tmp/wa-broker-script.bin
+          grep -i "^content-type:" /tmp/wa-broker-headers.txt | sed "s/^/BROKER_RESPONSE_/"
+          python3 - <<'PY'
+          raw=open("/tmp/wa-broker-script.bin","rb").read().decode("utf-8","ignore")
+          print("BROKER_MULTIPART_HEAD="+raw[:1800].replace("\n","\\n"))
+          PY
+          python3 - <<'PY'
+          import re
+          raw=open("/tmp/wa-broker-script.bin","rb").read().decode("utf-8","ignore")
+          print("BROKER_SCRIPT_BYTES="+str(len(raw)))
+          tokens=["broker/status","broker/send","broker/media","broker/verify-signature","broker/verify-token","graph.facebook.com","request_code","verify_code","/register","558892340423","5588992545413","1241435312391697"]
+          for token in tokens:
+              key=re.sub(r"[^A-Za-z0-9]+","_",token).strip("_").upper()
+              print("BROKER_SCRIPT_HAS_"+key+"="+str(token in raw).lower())
+          paths=sorted(set(re.findall(r"/broker/[A-Za-z0-9_./-]+",raw)))
+          print("BROKER_PATHS="+",".join(paths[:50]))
+          route_eq=sorted(set(re.findall(r"url\\.pathname\\s*===\\s*[\'\"]([^\'\"]+)[\'\"]",raw)))
+          print("BROKER_ROUTE_EQ="+",".join(route_eq))
+          route_lines=[line.strip() for line in raw.splitlines() if "url.pathname" in line or "pathname ===" in line or "pathname==" in line]
+          print("BROKER_ROUTE_LINES="+" || ".join(route_lines[:80]))
+          for needle in ["graph.facebook.com","pathname","webhook","messages","WHATSAPP_PHONE_NUMBER_ID","/admin/status","bearer(req)"]:
+              i=raw.find(needle)
+              if i>=0:
+                  excerpt=raw[max(0,i-500):min(len(raw),i+1600)].replace("\\n"," ")
+                  print("BROKER_EXCERPT_"+needle.upper().replace(".","_")+"="+excerpt[:2100])
+          PY
+          set +e
+          code=$(curl -sS -o /tmp/broker-health.json -w "%{http_code}" "https://giro-whatsapp-bridge.girolocal-rb.workers.dev/health")
+          set -e
+          echo "BROKER_PUBLIC_HEALTH_HTTP=$code"
+          python3 - <<'PY'
+          import json
+          try:
+              d=json.load(open("/tmp/broker-health.json"))
+              safe={k:d.get(k) for k in ("ok","service","configured","contacts","awaiting_reply","optouts","inbound_messages","outbound_messages","timestamp","d1","ai") if k in d}
+              print("BROKER_PUBLIC_HEALTH="+json.dumps(safe,separators=(",",":")))
+          except Exception:
+              print("BROKER_PUBLIC_HEALTH=UNPARSEABLE")
+          PY
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/settings" \
+            -o /tmp/zevanory-settings.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/zevanory-settings.json"))
+          hit=None
+          for b in d.get("result",{}).get("bindings",[]):
+              if str(b.get("name") or "")=="ZEVANORY_PRIVATE_ARTIFACTS":
+                  hit=b; break
+          print("MAIN_PRIVATE_KV_FOUND="+str(bool(hit)).lower())
+          if hit:
+              print("MAIN_PRIVATE_KV_NAMESPACE_ID="+str(hit.get("namespace_id") or hit.get("id") or ""))
+              print("MAIN_PRIVATE_KV_TYPE="+str(hit.get("type") or ""))
+          PY
+
+# zero-spend WhatsApp readiness probe 2026-09-23
