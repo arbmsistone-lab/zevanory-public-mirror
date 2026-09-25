@@ -1,0 +1,131 @@
+name: ZEVANORY Stripe financial E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact deployed runtime SHA to certify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stripe-financial-e2e
+  cancel-in-progress: false
+
+jobs:
+  stripe-financial-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate Stripe test preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${#EXPECTED_SHA}" -eq 40
+          case "${STRIPE_SECRET_KEY:-}" in sk_test_*) ;; *) echo "MISSING_OR_NON_TEST_STRIPE_SECRET_KEY"; exit 2;; esac
+          test "${#CERTIFICATION_E2E_TOKEN}" -ge 32
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          echo "PAYMENT_PROVIDER=stripe"
+          echo "STRIPE_ENV=sandbox"
+          echo "SALE_GLOBALLY_ENABLED=false"
+          echo "ZERO_SPEND=PASS"
+
+      - name: Create ephemeral Stripe webhook endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://api.stripe.com/v1/webhook_endpoints             -u "$STRIPE_SECRET_KEY:"             --data-urlencode "url=https://zevanory.api.br/api/webhooks?provider=stripe"             -d "enabled_events[]=payment_intent.succeeded"             -d "enabled_events[]=charge.refunded" > /tmp/stripe-webhook.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("/tmp/stripe-webhook.json"))
+          assert str(d.get("id","")).startswith("we_"),d
+          assert str(d.get("secret","")).startswith("whsec_"),d
+          open(os.environ["GITHUB_ENV"],"a").write("STRIPE_WEBHOOK_ENDPOINT_ID="+d["id"]+"\n")
+          open(os.environ["GITHUB_ENV"],"a").write("STRIPE_WEBHOOK_SECRET="+d["secret"]+"\n")
+          print("STRIPE_WEBHOOK_ENDPOINT=CREATED")
+          PY
+
+      - name: Synchronize Stripe sandbox secrets to Cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os
+          json.dump({
+            "STRIPE_SECRET_KEY":os.environ["STRIPE_SECRET_KEY"],
+            "STRIPE_WEBHOOK_SECRET":os.environ["STRIPE_WEBHOOK_SECRET"]
+          },open("/tmp/stripe-secrets.json","w"))
+          PY
+          npx --yes wrangler@4.135.0 secret bulk /tmp/stripe-secrets.json --name zevanory
+          rm -f /tmp/stripe-secrets.json
+          echo "STRIPE_SECRET_SYNC=PASS"
+
+      - name: Verify exact live SHA before finance
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://zevanory.api.br/api/release -o /tmp/release.json
+          python3 - <<'PY'
+          import json,os
+          d=json.load(open("/tmp/release.json"))
+          assert d.get("deployment",{}).get("commit_sha","").lower()==os.environ["EXPECTED_SHA"].lower(),d
+          assert d.get("sales_mode")=="globally-blocked",d
+          print("RUNTIME_SHA_MATCH=PASS")
+          PY
+
+      - name: Run Stripe sandbox lifecycle
+        run: python3 scripts/financial_e2e_stripe.py
+
+      - name: Verify immutable GREEN evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os
+          p=json.load(open("evidence/financial-e2e-stripe.json"))
+          assert p["provider"]=="stripe"
+          assert p["provider_environment"]=="sandbox"
+          assert p["sales_mode"]=="globally-blocked"
+          assert set(p["sha"].values())=={os.environ["EXPECTED_SHA"].lower()}
+          assert p["checks"]["FINAL_FINANCIAL_E2E"]=="GREEN"
+          assert p["checks"]["PROVIDER_FINAL_STATE"]=="TERMINAL"
+          assert p["final_order_status"]=="refunded"
+          assert p["final_fulfillment_status"]=="canceled"
+          assert p["payment_confirmation_count"]==1
+          print("FINANCIAL_EXACT_SHA_CERTIFICATION=PASS")
+          print("FALSE_GREEN=0")
+          PY
+
+      - name: Upload Stripe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stripe-financial-e2e-${{ env.EXPECTED_SHA }}
+          path: evidence/financial-e2e-stripe.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Remove ephemeral Stripe webhook endpoint
+        if: always() && env.STRIPE_WEBHOOK_ENDPOINT_ID != ''
+        shell: bash
+        run: |
+          curl -fsS -X DELETE "https://api.stripe.com/v1/webhook_endpoints/$STRIPE_WEBHOOK_ENDPOINT_ID"             -u "$STRIPE_SECRET_KEY:" >/tmp/stripe-webhook-delete.json || true
+          echo "STRIPE_WEBHOOK_ENDPOINT=CLEANED"
