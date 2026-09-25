@@ -6,33 +6,38 @@ on:
     - cron: '17 * * * *'
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   reconcile:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
           ref: gh-pages
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Read live blinded human study
+      - name: Read live blinded human study on canonical production SHA
         id: study
         shell: bash
         run: |
           set -euo pipefail
           curl -fsS https://zevanory.api.br/api/voice-study/status -o /tmp/voice-study.json
+          curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/control.json
           python3 - <<'PY'
           import json, os
           d=json.load(open('/tmp/voice-study.json'))
+          c=json.load(open('/tmp/control.json'))
+          release=str(c.get('release',{}).get('deployment',{}).get('commit_sha') or '')
+          assert len(release)==40, release
+          assert d.get('release_sha')==release,(d.get('release_sha'),release)
           assert d.get('blinded') is True
           assert d.get('provider_disclosed') is False
           assert d.get('real_tts_audio') is True
           assert d.get('pt_br') is True
           certified = d.get('certified') is True
+          print('VOICE_STUDY_RELEASE_SHA='+release)
           print('VOICE_STUDY_UNIQUE_EVALUATORS='+str(d.get('unique_evaluators',0)))
           print('VOICE_STUDY_CLIPS_COVERED='+str(d.get('clips_covered',0)))
           print('VOICE_STUDY_NATURAL_ACCEPTANCE='+str(d.get('natural_acceptance_pct',0)))
@@ -42,24 +47,26 @@ jobs:
               f.write('certified='+('true' if certified else 'false')+'\n')
           PY
 
-      - name: Stop fail-closed while evidence is insufficient
+      - name: Keep fail-closed while immutable thresholds are incomplete
         if: steps.study.outputs.certified != 'true'
         run: |
           echo "VOICE_NATURALITY_CERTIFIED=false"
-          echo "Human blind evidence has not reached the immutable thresholds yet."
+          echo "No code, evidence file, policy, score or gate is mutated."
 
-      - name: Materialize certification evidence
+      - name: Prove certification thresholds without changing SHA
         if: steps.study.outputs.certified == 'true'
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, datetime
+          import json
           d=json.load(open('/tmp/voice-study.json'))
           required={
             'clips>=20': d.get('clips',0) >= 20,
-            'ratings>=100': d.get('blind_ratings',0) >= 100,
-            'blinded': d.get('blinded') is True,
+            'clips_covered>=20': d.get('clips_covered',0) >= 20,
+            'unique_evaluators>=100': d.get('unique_evaluators',0) >= 100,
+            'blind_ratings>=100': d.get('blind_ratings',0) >= 100,
+            'blinded': d.get('blinded') is True and d.get('provider_disclosed') is False,
             'real_tts_audio': d.get('real_tts_audio') is True,
             'pt_br': d.get('pt_br') is True,
             'natural_acceptance>=99': float(d.get('natural_acceptance_pct',0)) >= 99.0,
@@ -67,57 +74,9 @@ jobs:
             'mean_naturalness>=4.8': float(d.get('mean_naturalness_5',0)) >= 4.8,
           }
           assert all(required.values()), required
-          out={
-            'schema_version':1,
-            'engine':'ZEVANORY Voice Support Engine',
-            'provider':'blinded_runtime_router',
-            'model':'provider_blinded',
-            'language':'pt-BR',
-            'voice':'provider_blinded',
-            'blinded':True,
-            'real_tts_audio':True,
-            'pt_br':True,
-            'clips':int(d.get('clips',0)),
-            'blind_ratings':int(d.get('blind_ratings',0)),
-            'unique_evaluators':int(d.get('unique_evaluators',0)),
-            'clips_covered':int(d.get('clips_covered',0)),
-            'natural_acceptance_pct':float(d.get('natural_acceptance_pct',0)),
-            'intelligibility_pct':float(d.get('intelligibility_pct',0)),
-            'mean_naturalness_5':float(d.get('mean_naturalness_5',0)),
-            'certified':True,
-            'certified_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            'source':'https://zevanory.api.br/api/voice-study/status',
-            'policy':{
-              'minimum_clips':20,
-              'minimum_blind_ratings':100,
-              'minimum_natural_acceptance_pct':99,
-              'minimum_intelligibility_pct':99,
-              'minimum_mean_naturalness_5':4.8,
-              'human_identity_impersonation_not_required':True
-            }
-          }
-          open('evidence/voice-naturality-current.json','w',encoding='utf-8').write(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          print('VOICE_PERCEPTUAL_BLINDING=PASS')
+          print('VOICE_PERCEPTUAL_SAMPLE_COUNT='+str(d['unique_evaluators']))
+          print('VOICE_PERCEPTUAL_SCORE='+str(d['natural_acceptance_pct']))
+          print('VOICE_NATURALITY_CERTIFIED=true')
+          print('CERTIFICATION_SHA='+str(d['release_sha']))
           PY
-          python3 scripts/voice_naturality_gate.py
-
-      - name: Open certification PR
-        if: steps.study.outputs.certified == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet -- evidence/voice-naturality-current.json; then
-            echo "Certification evidence already synchronized."
-            exit 0
-          fi
-          branch="voice-human-certification-${GITHUB_RUN_ID}"
-          git config user.name "zevanory-certification-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git checkout -b "$branch"
-          git add evidence/voice-naturality-current.json
-          git commit -m "evidence(voice): certify blinded human pt-BR naturality"
-          git push origin "$branch"
-          url=$(gh pr create             --base gh-pages             --head "$branch"             --title "evidence(voice): certify blinded human pt-BR naturality"             --body "Automated reconciliation of the live blinded human study after the immutable thresholds were met. The evidence remains fail-closed unless >=100 independent ratings, >=20 clips covered, >=99% natural acceptance, >=99% intelligibility and >=4.8/5 mean naturalness are all simultaneously true.")
-          echo "CERTIFICATION_PR=$url"
-          gh pr merge "$url" --auto --squash --delete-branch

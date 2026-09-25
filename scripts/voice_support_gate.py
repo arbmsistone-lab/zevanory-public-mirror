@@ -154,3 +154,21 @@ assert 'recordWhatsappEvidence("outbound_voice"' in worker
 assert 'recordWhatsappEvidence("delivery"' in worker
 print("WHATSAPP_E2E_AUDIT_LEDGER_GATE=PASS")
 print("VOICE_CANONICAL_FINAL_CLOSURE_GATE=PASS")
+
+
+human_reconcile=Path(".github/workflows/voice-human-certification-reconcile.yml").read_text(encoding="utf-8")
+final_reconcile=Path(".github/workflows/voice-final-closure-reconcile.yml").read_text(encoding="utf-8")
+assert 'release_sha:sha' in study
+assert 'voice-study/rating/${sha}/' in study
+assert 'voice-study/fingerprint/${sha}/' in study
+assert 'release_sha,' in e2e
+assert 'whatsapp-e2e/${release_sha}/' in e2e
+assert '__ZEVANORY_RELEASE_SHA__' in compat
+assert 'perceptual_evidence_same_sha' in closure
+assert 'whatsapp_e2e_same_sha' in closure
+assert 'No code, evidence file, policy, score or gate is mutated.' in human_reconcile
+assert 'gh pr create' not in human_reconcile
+assert "REGRESSION_GATES=PASS" in final_reconcile
+assert "PERCEPTUAL_EVIDENCE_SAME_SHA" in final_reconcile
+assert "WHATSAPP_E2E_SAME_SHA" in final_reconcile
+print("VOICE_CANONICAL_EVIDENCE_SHA_BINDING_GATE=PASS")

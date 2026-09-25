@@ -20,10 +20,12 @@ export async function voiceFinalClosureStatus(env={}){
   const transport=whatsapp.configured===true&&whatsapp.identity_verified===true&&whatsapp.webhook_configured===true&&whatsapp.waba_subscribed===true&&whatsapp.phone_registration_ok===true;
   const zeroSpend=router.zero_spend_enforced===true&&router.providers.some(x=>x.available===true);
   const certifiedSha=String(certificate?.sha||"");
+  const certificationEvidenceBound=Boolean(release_sha&&study.release_sha===release_sha);
+  const whatsappE2EBound=Boolean(release_sha&&e2e.release_sha===release_sha);
   const canonical=Boolean(release_sha&&certifiedSha&&release_sha===certifiedSha);
   const regression=certificate?.regression_gates===true&&canonical;
   const productionProbe=certificate?.production_probe===true&&canonical;
-  const finalGreen=study.certified===true&&transport&&e2e.e2e===true&&zeroSpend&&regression&&productionProbe&&canonical;
+  const finalGreen=study.certified===true&&certificationEvidenceBound&&transport&&e2e.e2e===true&&whatsappE2EBound&&zeroSpend&&regression&&productionProbe&&canonical;
   return Object.freeze({
     schema_version:1,
     service:"ZEVANORY",
@@ -31,6 +33,10 @@ export async function voiceFinalClosureStatus(env={}){
     release_sha:release_sha||null,
     certified_sha:certifiedSha||null,
     canonical_sha_consistent:canonical,
+    perceptual_evidence_sha:study.release_sha||null,
+    perceptual_evidence_same_sha:certificationEvidenceBound,
+    whatsapp_e2e_sha:e2e.release_sha||null,
+    whatsapp_e2e_same_sha:whatsappE2EBound,
     voice_router:router.providers.some(x=>x.available===true),
     voice_provider_failover:router.failover_enabled===true,
     voice_zero_spend:zeroSpend,
