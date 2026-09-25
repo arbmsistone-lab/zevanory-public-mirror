@@ -211,7 +211,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN; do
+          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN PUBLIC_BASE_URL; do
             npx --yes wrangler@4.135.0 secret delete "$k" --config wrangler.central-fix.jsonc || true
           done
           echo "LEGACY_ASAAS_BINDINGS_REMOVED=PASS"
