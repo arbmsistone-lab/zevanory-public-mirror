@@ -38,7 +38,8 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
-      TARGET_RUNTIME_SHA: 16263c45b1930eb5238744ad3828e8c5ca86c537
+      # This release intentionally advances the runtime SHA: the previous SHA lacked Mercado Pago entitlement reconciliation.
+      TARGET_RUNTIME_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
