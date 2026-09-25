@@ -14639,9 +14639,62 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
     const externalReference = String(orders[0].external_reference);
     const prefix = certificationOnly ? "mp-test" : "mp";
     const providerEventId = `${prefix}:${webhook.paymentId}:${String(payment.status || "")}:${String(payment.transaction_amount_refunded || 0)}`;
+    const fulfillmentId = crypto5.randomUUID();
     let rows;
     try {
-      rows = await sql.query(`WITH target AS (SELECT order_id,amount,status FROM orders WHERE order_id=$8 AND provider='mercadopago' AND external_reference=$6 AND amount=$7 AND (($3='payment_confirmed' AND status IN ('checkout_ready','checkout_uncertain','paid')) OR ($3='refund_confirmed' AND status IN ('paid','partially_refunded','refunded')))), inserted AS (INSERT INTO financial_events (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount,order_id,refunded_total) SELECT $1,'mercadopago',$2,$3,$4,$5,$6,$7,order_id,$9 FROM target ON CONFLICT DO NOTHING RETURNING order_id,normalized_event,refunded_total), updated AS (UPDATE orders o SET status=CASE WHEN i.normalized_event='payment_confirmed' THEN 'paid' WHEN i.refunded_total>=o.amount THEN 'refunded' ELSE 'partially_refunded' END,updated_at=now() FROM inserted i WHERE o.order_id=i.order_id RETURNING o.order_id,o.status) SELECT (SELECT count(*)::int FROM target) target_count,(SELECT count(*)::int FROM inserted) inserted_count,(SELECT status FROM updated LIMIT 1) order_status,(SELECT status FROM orders WHERE order_id=$8) current_status`, [providerEventId, webhook.paymentId, event.normalized, "payment.updated", String(payment.status || ""), externalReference, Number(payment.transaction_amount), String(orders[0].order_id), event.refundedTotal]);
+      rows = await sql.query(`
+      WITH target AS (
+        SELECT order_id,amount,status FROM orders
+        WHERE order_id=$8 AND provider='mercadopago' AND external_reference=$6 AND amount=$7 AND (
+          ($3='payment_confirmed' AND status IN ('checkout_ready','checkout_uncertain','paid')) OR
+          ($3='refund_confirmed' AND status IN ('paid','partially_refunded','refunded'))
+        )
+      ), inserted AS (
+        INSERT INTO financial_events
+          (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount,order_id,refunded_total)
+        SELECT $1,'mercadopago',$2,$3,$4,$5,$6,$7,order_id,$9 FROM target
+        ON CONFLICT DO NOTHING
+        RETURNING order_id,normalized_event,refunded_total
+      ), updated AS (
+        UPDATE orders o SET status=CASE
+          WHEN i.normalized_event='payment_confirmed' THEN 'paid'
+          WHEN i.refunded_total>=o.amount THEN 'refunded'
+          ELSE 'partially_refunded'
+        END,updated_at=now()
+        FROM inserted i WHERE o.order_id=i.order_id
+        RETURNING o.order_id,o.status
+      ), fulfillment_paid AS (
+        INSERT INTO service_fulfillment
+          (fulfillment_id,order_id,status,delivery_mode,evidence_ref,created_at,updated_at)
+        SELECT $10,i.order_id,'pending','digital','mercadopago:'||$1,now(),now()
+        FROM inserted i
+        WHERE i.normalized_event='payment_confirmed'
+        ON CONFLICT(order_id) DO UPDATE SET
+          evidence_ref=EXCLUDED.evidence_ref,
+          updated_at=now()
+        RETURNING order_id,status
+      ), fulfillment_refund AS (
+        UPDATE service_fulfillment sf SET
+          status='canceled',
+          evidence_ref='mercadopago:'||$1,
+          updated_at=now()
+        FROM inserted i,target t
+        WHERE sf.order_id=i.order_id
+          AND i.normalized_event='refund_confirmed'
+          AND i.refunded_total>=t.amount
+        RETURNING sf.order_id,sf.status
+      )
+      SELECT
+        (SELECT count(*)::int FROM target) target_count,
+        (SELECT count(*)::int FROM inserted) inserted_count,
+        (SELECT status FROM updated LIMIT 1) order_status,
+        (SELECT status FROM orders WHERE order_id=$8) current_status,
+        coalesce(
+          (SELECT status FROM fulfillment_refund LIMIT 1),
+          (SELECT status FROM fulfillment_paid LIMIT 1),
+          (SELECT status FROM service_fulfillment WHERE order_id=$8 LIMIT 1)
+        ) fulfillment_status
+      `, [providerEventId, webhook.paymentId, event.normalized, "payment.updated", String(payment.status || ""), externalReference, Number(payment.transaction_amount), String(orders[0].order_id), event.refundedTotal, fulfillmentId]);
     } catch {
       const recovery = await preserveFinancialReconciliation({ provider: "mercadopago", eventId: providerEventId, kind: "webhook_database_effect_uncertain", orderId: String(orders[0].order_id), payload: { ...snapshot, normalized_event: event.normalized, refunded_total: event.refundedTotal } });
       return json12(res, 503, { error: "financial_reconciliation_unavailable", accepted: false, preserved: recovery.preserved, reconciliation_required: true, financial_truth: false });
@@ -14665,9 +14718,14 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
           await recordVerifiedLifecycleEvidence(sql, { dimension: "reconciliation", source_class: "provider_webhook", source, subject_ref: String(orders[0].order_id), idempotency_key: `reconciliation-evidence:${source}:${providerEventId}`, metadata: { provider: "mercadopago", certification_pilot: certificationOnly, sandbox: certificationOnly } });
         } catch {
         }
+      } else if (event.normalized === "refund_confirmed") {
+        try {
+          await recordVerifiedLifecycleEvidence(sql, { dimension: "reconciliation", source_class: "provider_webhook", source, subject_ref: String(orders[0].order_id), idempotency_key: `refund-reconciliation-evidence:${source}:${providerEventId}`, metadata: { provider: "mercadopago", certification_pilot: certificationOnly, sandbox: certificationOnly, refunded_total: event.refundedTotal } });
+        } catch {
+        }
       }
     }
-    return json12(res, 200, { accepted: true, duplicate: Number(outcome.inserted_count) === 0, event: event.normalized, order_id: String(orders[0].order_id), order_status: outcome.order_status || outcome.current_status, refunded_total: event.refundedTotal, certification_pilot: certificationOnly });
+    return json12(res, 200, { accepted: true, duplicate: Number(outcome.inserted_count) === 0, event: event.normalized, order_id: String(orders[0].order_id), order_status: outcome.order_status || outcome.current_status, fulfillment_status: outcome.fulfillment_status || null, refunded_total: event.refundedTotal, certification_pilot: certificationOnly });
   } catch {
     return json12(res, 503, { error: "financial_reconciliation_unavailable", accepted: false });
   }
