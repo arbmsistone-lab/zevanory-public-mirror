@@ -1,6 +1,10 @@
 name: ZEVANORY network independence certification
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/network-independence-certification.yml"
+      - "scripts/financial_engine_deterministic.py"
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -31,9 +35,14 @@ jobs:
           print(uuid.uuid4())
           PY
           )"
-          code="$(curl -sS -o /tmp/echo.json -w '%{http_code}' -X POST https://httpbin.org/anything -H 'content-type: application/json' --data "{"nonce":"$nonce","sha":"$EXPECTED_SHA"}")"
+          payload="$(python3 - <<'PY'
+          import json,os
+          print(json.dumps({"nonce":os.environ["NONCE"],"sha":os.environ["EXPECTED_SHA"]},separators=(",",":")))
+          PY
+          )"
+          code="$(curl -sS -o /tmp/echo.json -w '%{http_code}' -X POST https://httpbin.org/anything -H 'content-type: application/json' --data "$payload")"
           test "$code" = "200"
-          NONCE="$nonce" python3 - <<'PY'
+          NONCE="$nonce" payload="$payload" python3 - <<'PY'
           import json,os
           d=json.load(open('/tmp/echo.json'))
           payload=d.get('json') or {}
