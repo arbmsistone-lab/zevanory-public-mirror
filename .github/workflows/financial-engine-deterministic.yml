@@ -1,0 +1,46 @@
+name: ZEVANORY deterministic financial engine certification
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact SHA to certify
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - "scripts/financial_engine_deterministic.py"
+      - ".github/workflows/financial-engine-deterministic.yml"
+permissions:
+  contents: read
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha || github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+      - run: python3 scripts/financial_engine_deterministic.py
+      - name: Verify immutable evidence
+        run: |
+          python3 - <<'PY'
+          import json,os
+          p=json.load(open("evidence/financial-engine-deterministic.json"))
+          assert p["external_provider_proof"] is False
+          assert p["sales_mode"]=="globally-blocked"
+          assert set(p["sha"].values())=={os.environ["EXPECTED_SHA"].lower()}
+          assert p["checks"]["INTERNAL_FINANCIAL_ENGINE"]=="GREEN"
+          assert p["checks"]["PROVIDER_FINAL_STATE"]=="TERMINAL"
+          assert p["final_order_status"]=="refunded"
+          assert p["final_fulfillment_status"]=="canceled"
+          print("DETERMINISTIC_FINANCIAL_EXACT_SHA=PASS")
+          print("FALSE_GREEN=0")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deterministic-financial-engine-${{ env.EXPECTED_SHA }}
+          path: evidence/financial-engine-deterministic.json
+          retention-days: 90
