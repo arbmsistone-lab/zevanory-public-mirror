@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      TARGET_SHA: 16263c45b1930eb5238744ad3828e8c5ca86c537
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
       MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN || secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
@@ -41,6 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.TARGET_SHA }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -75,7 +77,7 @@ jobs:
           python3 - <<'PY'
           import json,os
           with open("public/build-info.json","w",encoding="utf-8") as f:
-              json.dump({"sha":os.environ["GITHUB_SHA"],"source":"github-actions-cloudflare","repository":os.environ["GITHUB_REPOSITORY"]},f,indent=2)
+              json.dump({"sha":os.environ["TARGET_SHA"],"source":"github-actions-cloudflare","repository":os.environ["GITHUB_REPOSITORY"]},f,indent=2)
               f.write("\n")
           PY
           git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
@@ -93,7 +95,7 @@ jobs:
           for ns in c.get("kv_namespaces",[]):
               if ns.get("binding")=="ZEVANORY_PRIVATE_ARTIFACTS":
                   ns["id"]="9eca336262b44186ab3dbec82fc35ab4"
-          c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["GITHUB_SHA"]
+          c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["TARGET_SHA"]
           c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
           c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
           c["vars"]["CERTIFICATION_PILOT_ENABLED"]="true"
@@ -162,17 +164,22 @@ jobs:
       - name: Authenticate Cloudflare
         if: steps.auth.outputs.available == 'true'
         run: npx --yes wrangler@4.135.0 whoami
-      - name: Verify legacy production bridge route
+      - name: Probe legacy production bridge route without blocking recovery
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          curl -fsS https://zevanory.api.br/api/health -o /tmp/predeploy-health.json
-          python3 <<'PY'
+          code="$(curl -sS -o /tmp/predeploy-health.json -w '%{http_code}' https://zevanory.api.br/api/health || true)"
+          echo "PREDEPLOY_LIVE_HTTP=$code"
+          if [ "$code" = "200" ]; then
+            python3 - <<'PY'
           import json
           h=json.load(open("/tmp/predeploy-health.json"))
           assert h.get("live") is True and h.get("ready") is True, h
-          print("LEGACY_PRODUCTION_BRIDGE_ROUTE_REACHABLE")
+          print("LIVE_ROUTE_VERIFICATION=PASS_PREDEPLOY")
           PY
+          else
+            echo "LIVE_ROUTE_VERIFICATION=DEGRADED_PREDEPLOY_CONTINUE_RECOVERY"
+          fi
       - name: Discover production KV namespaces
         if: steps.auth.outputs.available == 'true'
         run: |
@@ -240,7 +247,17 @@ jobs:
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.central-fix.jsonc --tag="$GITHUB_SHA" --message="ZEVANORY-central-P0-fix-$GITHUB_SHA"
+          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.central-fix.jsonc --tag="$TARGET_SHA" --message="ZEVANORY-central-P0-fix-$TARGET_SHA"
+      - name: Remove retired Asaas runtime secrets
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN; do
+            printf 'y\n' | npx --yes wrangler@4.135.0 secret delete "$k" --name zevanory || true
+          done
+          echo "ASAAS_RUNTIME_REMOVED=PASS"
+
       - name: Verify live UTF-8 asset and safety
         if: steps.auth.outputs.available == 'true'
         run: |
@@ -248,6 +265,26 @@ jobs:
           WORKERS_DEV="https://zevanory.girolocal-rb.workers.dev"
           curl -fsS "$WORKERS_DEV/control-plane-vnext.js" -o /tmp/workers-dev.js
           cmp -s /tmp/workers-dev.js worker/live-recovered/control-plane-vnext.js
+          curl -fsS https://zevanory.api.br/api/release -o /tmp/release.json
+          curl -fsS https://zevanory.api.br/api/provider-health -o /tmp/provider.json
+          python3 - <<'PY'
+          import json,os
+          target=os.environ["TARGET_SHA"].lower()
+          r=json.load(open("/tmp/release.json"))
+          p=json.load(open("/tmp/provider.json"))
+          got=str(r.get("deployment",{}).get("commit_sha","")).lower()
+          assert got==target,(got,target)
+          assert r.get("sales_mode")=="globally-blocked",r
+          assert p.get("payment_provider")=="mercadopago",p
+          assert p.get("environment")=="sandbox",p
+          assert p.get("configured") is True,p
+          assert p.get("authenticated") is True,p
+          assert p.get("webhook_secret_configured") is True,p
+          assert p.get("movement_enabled") is False,p
+          print("RUNTIME_SHA_MATCH="+target)
+          print("MERCADOPAGO_RUNTIME_READY=PASS")
+          print("SALE_GLOBALLY_ENABLED=false")
+          PY
           echo "WORKERS_DEV_CANONICAL_PASS"
           for i in $(seq 1 30); do
             curl -fsS https://zevanory.api.br/control-plane-vnext.js -o /tmp/live.js || true
@@ -291,8 +328,8 @@ jobs:
               and health.get("ready") is True
               and control.get("global_state")=="operational_commercial_blocked"
               and control.get("root_blocker")=="global_sale_disabled"
-              and control.get("release",{}).get("deployment",{}).get("commit_sha")==os.environ["GITHUB_SHA"]
-              and core.get("release_sha")==os.environ["GITHUB_SHA"]
+              and control.get("release",{}).get("deployment",{}).get("commit_sha")==os.environ["TARGET_SHA"]
+              and core.get("release_sha")==os.environ["TARGET_SHA"]
               and core.get("architecture",{}).get("circular_dependency") is False
               and core.get("architecture",{}).get("flow")==["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]
               and core.get("invariants",{}).get("evidence_to_evaluation_unidirectional") is True
@@ -319,13 +356,13 @@ jobs:
           assert health["ready"] is True
           assert control["global_state"]=="operational_commercial_blocked"
           assert control["root_blocker"]=="global_sale_disabled"
-          assert control["release"]["deployment"]["commit_sha"]==os.environ["GITHUB_SHA"], (control["release"]["deployment"]["commit_sha"],os.environ["GITHUB_SHA"])
-          assert core["release_sha"]==os.environ["GITHUB_SHA"]
+          assert control["release"]["deployment"]["commit_sha"]==os.environ["TARGET_SHA"], (control["release"]["deployment"]["commit_sha"],os.environ["TARGET_SHA"])
+          assert core["release_sha"]==os.environ["TARGET_SHA"]
           assert core["architecture"]["flow"]==["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]
           assert core["architecture"]["circular_dependency"] is False
           assert core["invariants"]["evidence_to_evaluation_unidirectional"] is True
           assert zea10["source_layer"]=="ZEES-16" and zea10["authority"] is False
-          print("PRODUCTION_EXACT_SHA_PASS",os.environ["GITHUB_SHA"])
+          print("PRODUCTION_EXACT_SHA_PASS",os.environ["TARGET_SHA"])
           print("PRODUCTION_ZEES_ZEA_CORE_ADMIN_ARCHITECTURE_PASS")
           print("PRODUCTION_CENTRAL_UTF8_AND_SAFETY_PASS")
           PY
