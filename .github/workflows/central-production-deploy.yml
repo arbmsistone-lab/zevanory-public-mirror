@@ -215,6 +215,13 @@ jobs:
             npx --yes wrangler@4.135.0 secret delete "$k" --config wrangler.central-fix.jsonc || true
           done
           echo "LEGACY_ASAAS_BINDINGS_REMOVED=PASS"
+      - name: Trim legacy Cloudflare bindings before secret sync
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.central-fix.jsonc --tag="16263c45b1930eb5238744ad3828e8c5ca86c537" --message="ZEVANORY-binding-trim-16263c45b1930eb5238744ad3828e8c5ca86c537"
+          echo "CLOUDFLARE_BINDING_BUDGET_TRIM=PASS"
       - name: Detect Mercado Pago secret synchronization availability
         if: steps.auth.outputs.available == 'true'
         id: financial_secrets
