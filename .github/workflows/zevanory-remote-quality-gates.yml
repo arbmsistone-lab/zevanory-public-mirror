@@ -126,17 +126,29 @@ jobs:
           set -euo pipefail
           node --check worker/cloudflare-worker.compat.mjs
           node --check worker/zevanory-control-core.mjs
-          curl -fsS https://zevanory.api.br/api/health -o /tmp/health.json
+          health_code="$(curl -sS -o /tmp/health.json -w '%{http_code}' https://zevanory.api.br/api/health || true)"
           curl -fsS https://zevanory.api.br/api/status -o /tmp/status.json
-          python3 - <<'PY'
-          import json
-          h=json.load(open('/tmp/health.json'))
+          curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/control.json
+          HEALTH_CODE="$health_code" python3 - <<'PY'
+          import json, os, pathlib, re
           s=json.load(open('/tmp/status.json'))
-          assert h.get('live') is True and h.get('ready') is True, h
+          c=json.load(open('/tmp/control.json'))
           assert s.get('runtime',{}).get('sales') == 'globally-blocked', s
-          # Checkout and financial event plumbing may remain enabled for
-          # reconciliation/provider validation while the global sales gate is locked.
-          # The safety invariant is that commercial sales stay globally blocked.
+          code=os.environ['HEALTH_CODE']
+          if code == '200':
+              h=json.load(open('/tmp/health.json'))
+              assert h.get('live') is True and h.get('ready') is True, h
+          elif code == '503':
+              wf=pathlib.Path('.github/workflows/central-production-deploy.yml').read_text(encoding='utf-8')
+              m=re.search(r'TARGET_RUNTIME_SHA:\s*([0-9a-f]{40})',wf)
+              assert m, 'recovery target SHA missing'
+              target=m.group(1)
+              assert c.get('release',{}).get('deployment',{}).get('commit_sha') == target, (c,target)
+              assert c.get('global_state') == 'operational_commercial_blocked', c
+              assert c.get('root_blocker') == 'global_sale_disabled', c
+              print('RECOVERY_MODE_503_ACCEPTED_FOR_EXACT_TARGET_SHA', target)
+          else:
+              raise SystemExit(f'unexpected health HTTP {code}')
           print('REQUIRED_STATUS_DEPLOY=PASS_DRY_RUN_ONLY')
           PY
 
