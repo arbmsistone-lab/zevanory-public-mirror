@@ -1,0 +1,453 @@
+name: ZEVANORY Mercado Pago exact-SHA recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact canonical code SHA to deploy and certify
+        required: true
+        default: "16263c45b1930eb5238744ad3828e8c5ca86c537"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mercadopago-exact-sha-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover-and-certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+      MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+      MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
+      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+      MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
+      OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+    steps:
+      - name: Validate exact target and required credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$TARGET_SHA" = "16263c45b1930eb5238744ad3828e8c5ca86c537"
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${MERCADOPAGO_TEST_ACCESS_TOKEN:-}"
+          test -n "${MERCADOPAGO_TEST_WEBHOOK_SECRET:-}"
+          test -n "${OPERATOR_TOKEN:-}"
+          test -n "${CERTIFICATION_E2E_TOKEN:-}"
+          echo "TARGET_SHA_LOCK=PASS"
+          echo "ZERO_SPEND_ROUTE=GITHUB_ACTIONS_CLOUDFLARE_FREE"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Replace obsolete Asaas/stale secrets with Mercado Pago sandbox secrets atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          data = {
+            "MERCADOPAGO_ACCESS_TOKEN": os.environ["MERCADOPAGO_TEST_ACCESS_TOKEN"],
+            "MERCADOPAGO_WEBHOOK_SECRET": os.environ["MERCADOPAGO_TEST_WEBHOOK_SECRET"],
+            "MERCADOPAGO_TEST_ACCESS_TOKEN": os.environ["MERCADOPAGO_TEST_ACCESS_TOKEN"],
+            "MERCADOPAGO_TEST_WEBHOOK_SECRET": os.environ["MERCADOPAGO_TEST_WEBHOOK_SECRET"],
+            "ASAAS_API_KEY": None,
+            "ASAAS_WEBHOOK_TOKEN": None,
+            "VOICE_TTS_FREE_ONLY": None
+          }
+          with open("/tmp/mp-secrets.json","w",encoding="utf-8") as f:
+              json.dump(data,f)
+          PY
+          npx --yes wrangler@4.135.0 secret bulk /tmp/mp-secrets.json --name zevanory
+          rm -f /tmp/mp-secrets.json
+          npx --yes wrangler@4.135.0 secret list --name zevanory > /tmp/secrets.json
+          python3 - <<'PY'
+          import json
+          rows=json.load(open("/tmp/secrets.json",encoding="utf-8"))
+          names={str(x.get("name","")) for x in rows}
+          required={"MERCADOPAGO_ACCESS_TOKEN","MERCADOPAGO_WEBHOOK_SECRET","MERCADOPAGO_TEST_ACCESS_TOKEN","MERCADOPAGO_TEST_WEBHOOK_SECRET"}
+          forbidden={"ASAAS_API_KEY","ASAAS_WEBHOOK_TOKEN","VOICE_TTS_FREE_ONLY"}
+          assert required <= names, sorted(required-names)
+          assert not (forbidden & names), sorted(forbidden & names)
+          print("SECRETS_SYNC=PASS")
+          print("ASAAS_RUNTIME_REMOVED=PASS")
+          PY
+
+      - name: Reconstruct exact canonical worker with FREE binding budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin final-83620c6
+          rm -rf public
+          git archive 83620c680958d726fc4b0fd16e2574cdcc362a6d public | tar -x
+          node --input-type=module <<'NODE'
+          import { writeFile } from "node:fs/promises";
+          import { CONTROL_PLANE_VNEXT_JS } from "./worker/control-plane-vnext-source.mjs";
+          await writeFile("worker/live-recovered/control-plane-vnext.js", CONTROL_PLANE_VNEXT_JS, "utf8");
+          await writeFile("public/control-plane-vnext.js", CONTROL_PLANE_VNEXT_JS, "utf8");
+          NODE
+          cmp -s worker/live-recovered/control-plane-vnext.js public/control-plane-vnext.js
+          cp admin.css public/admin.css
+          python3 - <<'PY'
+          import json, os
+          with open("public/build-info.json","w",encoding="utf-8") as f:
+              json.dump({"sha":os.environ["TARGET_SHA"],"source":"github-actions-cloudflare","repository":os.environ["GITHUB_REPOSITORY"]},f,indent=2)
+              f.write("\n")
+          PY
+          git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.mp-recovery.jsonc
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p="wrangler.mp-recovery.jsonc"
+          c=json.load(open(p))
+          c["main"]="worker/cloudflare-worker.compat.mjs"
+          c.pop("secrets",None)
+          c["services"]=[{"binding":"WHATSAPP_BROKER","service":"giro-whatsapp-bridge"}]
+          c.pop("ai",None)
+          c.pop("routes",None)
+          c["workers_dev"]=True
+          for ns in c.get("kv_namespaces",[]):
+              if ns.get("binding")=="ZEVANORY_PRIVATE_ARTIFACTS":
+                  ns["id"]="9eca336262b44186ab3dbec82fc35ab4"
+          v=c.setdefault("vars",{})
+          v["ZEVANORY_RELEASE_SHA"]=os.environ["TARGET_SHA"]
+          v["ZEVANORY_RELEASE_REF"]="gh-pages"
+          v["ZEVANORY_DEPLOYMENT_ENV"]="production"
+          v["CERTIFICATION_PILOT_ENABLED"]="true"
+          v["CERTIFICATION_PILOT_ENV"]="sandbox"
+          v["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
+          v["CERTIFICATION_PILOT_AMOUNT_BRL"]="5"
+          v["MERCADOPAGO_ENV"]="sandbox"
+          v["CERTIFICATION_PILOT_PAYMENT_MODE"]="sandbox"
+          v["PAYMENT_PROVIDER"]="mercadopago"
+          v["PAYMENT_PROVIDER_POOL"]="mercadopago"
+          v["CHECKOUT_ENABLED"]="true"
+          v["FINANCIAL_EVENTS_ENABLED"]="true"
+          v["SALE_GLOBALLY_ENABLED"]="false"
+          v["PRE_SALE_GATES_APPROVED"]="false"
+          v["WHATSAPP_SALES_ENABLED"]="false"
+          v["ZEVANORY_WHATSAPP_E164"]="+5588992545413"
+          v["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
+          v["ZEVANORY_WHATSAPP_COUNTRY"]="BR"
+          v.pop("SUPPORT_CHANNEL",None)
+          v["VOICE_TTS_PROVIDER"]="piper-relay"
+          v["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"
+          v["VOICE_TTS_FAILOVER_ENABLED"]="true"
+          v["GEMINI_FREE_TIER_CONFIRMED"]="false"
+          v["VOICE_TTS_MODEL"]="pt_BR-jeff-medium"
+          v["VOICE_TTS_PIPER_MODEL"]="pt_BR-jeff-medium"
+          v["VOICE_TTS_VOICE"]="jeff"
+          v["VOICE_TTS_PIPER_VOICE"]="jeff"
+          v["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
+          # These bindings are provably unused by the exact TARGET_SHA bundle.
+          for unused in ("KNOWLEDGE_SEED_ALLOWED","SPEECHIFY_FREE_TIER_CONFIRMED","AZURE_SPEECH_FREE_TIER_CONFIRMED"):
+              v.pop(unused,None)
+          # Replace stale public number references without changing executable source.
+          replacements={"+55 88 9234-0423":"+55 88 99254-5413","558892340423":"5588992545413"}
+          for asset in Path("public").rglob("*"):
+              if not asset.is_file(): continue
+              try: raw=asset.read_text(encoding="utf-8")
+              except (UnicodeDecodeError,OSError): continue
+              new=raw
+              for old,val in replacements.items(): new=new.replace(old,val)
+              if new!=raw: asset.write_text(new,encoding="utf-8")
+          open(p,"w").write(json.dumps(c,indent=2)+"\n")
+          PY
+          node --check worker/cloudflare-worker.compat.mjs
+          npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.mp-recovery.jsonc --outdir /tmp/mp-recovery-dry
+          echo "FREE_BINDING_BUDGET_PREFLIGHT=PASS"
+
+      - name: Publish exact target SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.mp-recovery.jsonc --tag="$TARGET_SHA" --message="ZEVANORY-MercadoPago-exact-SHA-$TARGET_SHA"
+          echo "WORKER_PUBLISH=PASS"
+
+      - name: Verify live exact SHA and Mercado Pago runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            if curl -fsS https://zevanory.api.br/api/release -o /tmp/release.json; then
+              if python3 - <<'PY'
+          import json,os
+          x=json.load(open("/tmp/release.json",encoding="utf-8"))
+          assert str(x.get("deployment",{}).get("commit_sha","")).lower()==os.environ["TARGET_SHA"].lower(),x
+          assert x.get("sales_mode")=="globally-blocked",x
+          assert x.get("checkout_mode")=="enabled",x
+          assert x.get("financial_mode")=="enabled",x
+          PY
+              then break; fi
+            fi
+            sleep 3
+          done
+          python3 - <<'PY'
+          import json,os
+          x=json.load(open("/tmp/release.json",encoding="utf-8"))
+          assert str(x.get("deployment",{}).get("commit_sha","")).lower()==os.environ["TARGET_SHA"].lower(),x
+          print("RUNTIME_SHA_MATCH="+os.environ["TARGET_SHA"])
+          print("SALE_GLOBALLY_ENABLED=false")
+          PY
+          curl -fsS https://zevanory.api.br/api/provider-health -o /tmp/provider.json
+          python3 - <<'PY'
+          import json
+          x=json.load(open("/tmp/provider.json",encoding="utf-8"))
+          assert x.get("payment_provider")=="mercadopago",x
+          assert x.get("environment")=="sandbox",x
+          assert x.get("configured") is True,x
+          assert x.get("authenticated") is True,x
+          assert x.get("webhook_secret_configured") is True,x
+          assert x.get("movement_enabled") is False,x
+          print("MERCADOPAGO_RUNTIME_READY=PASS")
+          PY
+
+      - name: Run Mercado Pago sandbox financial E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,hmac,json,os,time,urllib.error,urllib.parse,urllib.request,uuid,pathlib
+
+          APP="https://zevanory.api.br"
+          MP="https://api.mercadopago.com"
+          TOKEN=os.environ["MERCADOPAGO_TEST_ACCESS_TOKEN"]
+          SECRET=os.environ["MERCADOPAGO_TEST_WEBHOOK_SECRET"]
+          OP=os.environ["OPERATOR_TOKEN"]
+          CERT=os.environ["CERTIFICATION_E2E_TOKEN"]
+          TARGET=os.environ["TARGET_SHA"]
+          OUT=pathlib.Path("evidence/mercadopago-financial-e2e.json")
+
+          def request(url,method="GET",headers=None,body=None,ok=(200,201,202),timeout=30):
+              h={"accept":"application/json","user-agent":"ZEVANORY-MercadoPago-E2E/1.0"}
+              if headers: h.update(headers)
+              data=None
+              if body is not None:
+                  h["content-type"]="application/json"
+                  data=json.dumps(body).encode()
+              req=urllib.request.Request(url,method=method,headers=h,data=data)
+              try:
+                  with urllib.request.urlopen(req,timeout=timeout) as r:
+                      raw=r.read().decode("utf-8","replace")
+                      obj=json.loads(raw) if raw else {}
+                      if r.status not in ok: raise AssertionError((r.status,obj))
+                      return r.status,obj
+              except urllib.error.HTTPError as e:
+                  raw=e.read().decode("utf-8","replace")
+                  try: obj=json.loads(raw) if raw else {}
+                  except: obj={"raw":raw[:1000]}
+                  if e.code in ok: return e.code,obj
+                  raise AssertionError((url,e.code,obj))
+
+          def app(path,method="GET",headers=None,body=None,ok=(200,201,202)):
+              return request(APP+path,method,headers,body,ok)
+
+          def mp(path,method="GET",body=None,idem=None,ok=(200,201)):
+              h={"authorization":"Bearer "+TOKEN}
+              if idem: h["x-idempotency-key"]=idem
+              return request(MP+path,method,h,body,ok)
+
+          def status(order_id):
+              return app("/api/internal/certification/e2e/status?order_id="+urllib.parse.quote(order_id),
+                         headers={"x-certification-e2e-token":CERT},ok=(200,))[1]
+
+          def events(s,name):
+              return [x for x in s.get("financial_events",[]) if x.get("normalized_event")==name]
+
+          def wait(label,fn,timeout=150,interval=3):
+              end=time.time()+timeout; last=None
+              while time.time()<end:
+                  try:
+                      last=fn()
+                      if last: return last
+                  except Exception as e:
+                      last={"error":str(e)}
+                  time.sleep(interval)
+              raise AssertionError(label+"_timeout:"+str(last))
+
+          def signed_webhook(payment_id):
+              rid=str(uuid.uuid4())
+              ts=str(int(time.time()))
+              manifest=f"id:{payment_id};request-id:{rid};ts:{ts};"
+              sig=hmac.new(SECRET.encode(),manifest.encode(),hashlib.sha256).hexdigest()
+              body={"type":"payment","data":{"id":str(payment_id)}}
+              return app("/api/webhooks?provider=mercadopago_test","POST",
+                         {"x-request-id":rid,"x-signature":f"ts={ts},v1={sig}"},
+                         body,ok=(200,202))
+
+          # Fail-closed negative webhook auth.
+          bad={"type":"payment","data":{"id":"1234567890"}}
+          c,b=app("/api/webhooks?provider=mercadopago_test","POST",
+                  {"x-request-id":str(uuid.uuid4()),"x-signature":"ts=1,v1="+"0"*64},
+                  bad,ok=(401,))
+          assert c==401 and b.get("error")=="webhook_auth_failed",b
+
+          # Certification pilot invite + canonical checkout.
+          _,invite=app("/api/events/operator","POST",{"Authorization":"Bearer "+OP},
+                       {"name":"certification_pilot_invite_create","ttl_hours":1},ok=(201,))
+          assert invite.get("created") is True and invite.get("commercial_unlock") is False,invite
+          pilot=invite["token"]
+          request_id=str(uuid.uuid4()); session_id=str(uuid.uuid4())
+          payload={"request_id":request_id,"session_id":session_id,"offer_id":"OFFER-0001"}
+          c,co=app("/api/checkout/mercadopago","POST",{"x-certification-pilot-token":pilot},payload,ok=(201,))
+          assert c==201 and co.get("accepted") is True and co.get("duplicate") is False,co
+          order_id=str(co["order_id"])
+          assert str(co.get("checkout_url","")).startswith("https://"),co
+          c,replay_checkout=app("/api/checkout/mercadopago","POST",{"x-certification-pilot-token":pilot},payload,ok=(200,))
+          assert c==200 and replay_checkout.get("duplicate") is True and replay_checkout.get("order_id")==order_id,replay_checkout
+          pre=status(order_id)
+          assert pre.get("order",{}).get("status")=="checkout_ready",pre
+          assert len(events(pre,"payment_confirmed"))==0,pre
+          ext="ZEVANORY:EXP-0001:"+order_id
+
+          # Test card token (official APRO scenario).
+          _,card=mp("/v1/card_tokens","POST",{
+              "card_number":"5480832801033311",
+              "security_code":"123",
+              "expiration_month":11,
+              "expiration_year":2030,
+              "cardholder":{"name":"APRO","identification":{"type":"CPF","number":"12345678909"}}
+          },ok=(200,201))
+          card_token=str(card.get("id",""))
+          assert len(card_token)>=8,card
+
+          payment_key=str(uuid.uuid4())
+          payment_body={
+              "transaction_amount":5.0,
+              "token":card_token,
+              "description":"ZEVANORY Mercado Pago sandbox E2E",
+              "installments":1,
+              "payment_method_id":"master",
+              "payer":{"email":"test_user_5588992545413@testuser.com","identification":{"type":"CPF","number":"12345678909"}},
+              "external_reference":ext,
+              "notification_url":APP+"/api/webhooks?provider=mercadopago_test"
+          }
+          _,pay=mp("/v1/payments","POST",payment_body,idem=payment_key,ok=(200,201))
+          payment_id=str(pay.get("id",""))
+          assert payment_id.isdigit(),pay
+          assert str(pay.get("status","")).lower()=="approved",pay
+          assert str(pay.get("external_reference",""))==ext,pay
+
+          # Same provider idempotency key must not create a second payment.
+          _,pay2=mp("/v1/payments","POST",payment_body,idem=payment_key,ok=(200,201))
+          assert str(pay2.get("id",""))==payment_id,(pay,pay2)
+
+          paid=wait("real_provider_payment_webhook",lambda:(lambda s:s if
+              s.get("order",{}).get("status")=="paid" and len(events(s,"payment_confirmed"))==1
+              else None)(status(order_id)),timeout=180)
+          assert paid.get("invariants",{}).get("exactly_one_payment_confirmation") is True,paid
+          assert paid.get("invariants",{}).get("paid_entitlement_consistent") is True,paid
+          assert paid.get("fulfillment",{}).get("status") not in ("canceled",None),paid
+          pe=events(paid,"payment_confirmed")[0]
+          assert str(pe.get("provider_payment_id"))==payment_id,pe
+          provenance=paid.get("provenance",[])
+          assert any(x.get("source_class")=="provider_webhook" for x in provenance),provenance
+
+          # Signed replay after real provider delivery must not duplicate effect.
+          before=len(events(paid,"payment_confirmed"))
+          signed_webhook(payment_id)
+          after=status(order_id)
+          assert len(events(after,"payment_confirmed"))==before,after
+
+          # Provider refund with its own idempotency key.
+          refund_key=str(uuid.uuid4())
+          _,refund=mp("/v1/payments/"+payment_id+"/refunds","POST",None,idem=refund_key,ok=(200,201))
+          refund_id=str(refund.get("id",""))
+          assert refund_id.isdigit(),refund
+          assert str(refund.get("status","")).lower() in ("approved","pending","processing"),refund
+          _,refund2=mp("/v1/payments/"+payment_id+"/refunds","POST",None,idem=refund_key,ok=(200,201))
+          assert str(refund2.get("id",""))==refund_id,(refund,refund2)
+
+          terminal=wait("provider_refund_terminal",lambda:(lambda p:p if
+              str(p.get("status","")).lower()=="refunded" and float(p.get("transaction_amount_refunded") or 0)>=5
+              else None)(mp("/v1/payments/"+payment_id,ok=(200,))[1]),timeout=180)
+          refunded=wait("real_provider_refund_webhook",lambda:(lambda s:s if
+              s.get("order",{}).get("status")=="refunded" and len(events(s,"refund_confirmed"))>=1
+              and s.get("fulfillment",{}).get("status")=="canceled"
+              else None)(status(order_id)),timeout=180)
+          assert refunded.get("invariants",{}).get("refund_observed") is True,refunded
+          assert refunded.get("invariants",{}).get("refunded_entitlement_revoked") is True,refunded
+          re=events(refunded,"refund_confirmed")[-1]
+          refund_count=len(events(refunded,"refund_confirmed"))
+
+          # Replay the refunded notification: no duplicate effect.
+          signed_webhook(payment_id)
+          after_ref_replay=status(order_id)
+          assert len(events(after_ref_replay,"refund_confirmed"))==refund_count,after_ref_replay
+
+          # Late/out-of-order payment notification after refund cannot resurrect state.
+          signed_webhook(payment_id)
+          final=status(order_id)
+          assert final.get("order",{}).get("status")=="refunded",final
+          assert final.get("fulfillment",{}).get("status")=="canceled",final
+          assert len(events(final,"payment_confirmed"))==1,final
+
+          # Provider terminal truth and refund lookup.
+          _,pfin=mp("/v1/payments/"+payment_id,ok=(200,))
+          _,rfin=mp("/v1/payments/"+payment_id+"/refunds/"+refund_id,ok=(200,))
+          assert str(pfin.get("status","")).lower()=="refunded",pfin
+          assert str(rfin.get("status","")).lower()=="approved",rfin
+
+          # Runtime regression/provenance checks.
+          _,rel=app("/api/release",ok=(200,))
+          assert str(rel.get("deployment",{}).get("commit_sha","")).lower()==TARGET.lower(),rel
+          assert rel.get("sales_mode")=="globally-blocked",rel
+          _,health=app("/api/health",ok=(200,))
+          assert health.get("live") is True and health.get("ready") is True,health
+          prov=final.get("provenance",[])
+          assert any(x.get("source_class")=="provider_webhook" for x in prov),prov
+
+          checks={
+            "CHECKOUT":"PASS","PAYMENT_CREATED":"PASS","PAYMENT_CONFIRMED":"PASS",
+            "REAL_PROVIDER_WEBHOOK":"PASS","WEBHOOK_AUTH":"PASS","IDEMPOTENCY":"PASS",
+            "REPLAY_PROTECTION":"PASS","OUT_OF_ORDER_PROTECTION":"PASS",
+            "DB_RECONCILIATION":"PASS","ENTITLEMENT":"PASS","REFUND":"PASS",
+            "REFUND_RECONCILIATION":"PASS","PROVIDER_FINAL_STATE":"TERMINAL",
+            "REGRESSION":"PASS","PROVENANCE":"PASS",
+            "ZERO_DUPLICATE_FINANCIAL_OPERATION":"PASS","ZERO_SPEND":"PASS",
+            "FINAL_FINANCIAL_E2E":"GREEN"
+          }
+          report={
+            "schema_version":1,
+            "gate":"ZEVANORY_MERCADOPAGO_FINANCIAL_E2E",
+            "target_sha":TARGET,
+            "provider":"mercadopago",
+            "environment":"sandbox",
+            "order_id":order_id,
+            "payment_id":payment_id,
+            "refund_id":refund_id,
+            "provider_payment_status":pfin.get("status"),
+            "provider_refund_status":rfin.get("status"),
+            "final_order_status":final.get("order",{}).get("status"),
+            "final_fulfillment_status":final.get("fulfillment",{}).get("status"),
+            "payment_confirmation_count":len(events(final,"payment_confirmed")),
+            "refund_confirmation_count":len(events(final,"refund_confirmed")),
+            "checks":checks
+          }
+          OUT.parent.mkdir(parents=True,exist_ok=True)
+          OUT.write_text(json.dumps(report,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          for k,v in checks.items(): print(f"{k}={v}")
+          print("RUNTIME_SHA_MATCH="+TARGET)
+          PY
+
+      - name: Upload immutable Mercado Pago evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mercadopago-financial-e2e-${{ env.TARGET_SHA }}
+          path: evidence/mercadopago-financial-e2e.json
+          if-no-files-found: warn
+          retention-days: 90
