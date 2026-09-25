@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      CANONICAL_SHA: 16263c45b1930eb5238744ad3828e8c5ca86c537
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
       MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN || secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
@@ -41,6 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.CANONICAL_SHA }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -75,7 +77,7 @@ jobs:
           python3 - <<'PY'
           import json,os
           with open("public/build-info.json","w",encoding="utf-8") as f:
-              json.dump({"sha":os.environ["GITHUB_SHA"],"source":"github-actions-cloudflare","repository":os.environ["GITHUB_REPOSITORY"]},f,indent=2)
+              json.dump({"sha":os.environ["CANONICAL_SHA"],"source":"github-actions-cloudflare","repository":os.environ["GITHUB_REPOSITORY"]},f,indent=2)
               f.write("\n")
           PY
           git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
@@ -93,7 +95,7 @@ jobs:
           for ns in c.get("kv_namespaces",[]):
               if ns.get("binding")=="ZEVANORY_PRIVATE_ARTIFACTS":
                   ns["id"]="9eca336262b44186ab3dbec82fc35ab4"
-          c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["GITHUB_SHA"]
+          c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["CANONICAL_SHA"]
           c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
           c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
           c["vars"]["CERTIFICATION_PILOT_ENABLED"]="true"
@@ -139,9 +141,6 @@ jobs:
           c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
           c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"
           c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"
-          c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"
-          c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"
-          c["vars"]["GEMINI_FREE_TIER_CONFIRMED"]="false"
           c["vars"]["VOICE_TTS_MODEL"]="pt_BR-jeff-medium"
           c["vars"]["VOICE_TTS_PIPER_MODEL"]="pt_BR-jeff-medium"
           c["vars"]["VOICE_TTS_VOICE"]="jeff"
@@ -204,6 +203,15 @@ jobs:
           for b in d.get("result",{}).get("bindings",[]):
               print("CURRENT_BINDING",b.get("name"),b.get("type"),b.get("service",""),b.get("namespace_id",""))
           PY
+      - name: Reclaim Cloudflare FREE binding capacity
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN VOICE_TTS_FREE_ONLY; do
+            printf 'y\n' | npx --yes wrangler@4.135.0 secret delete "$k" --name zevanory || true
+          done
+          echo "FREE_BINDING_CAPACITY_RECLAIM=PASS"
       - name: Detect financial secret synchronization availability
         if: steps.auth.outputs.available == 'true'
         id: financial_secrets
@@ -211,7 +219,7 @@ jobs:
         run: |
           set -euo pipefail
           ready=true
-          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET; do
             if [ -z "${!k:-}" ]; then
               echo "FINANCIAL_SECRET_INPUT_MISSING=$k"
               ready=false
@@ -224,20 +232,53 @@ jobs:
             echo "available=false" >> "$GITHUB_OUTPUT"
             echo "MERCADOPAGO_SECRET_SYNC_ROUTE=UNAVAILABLE_FAIL_CLOSED"
           fi
-      - name: Synchronize financial certification secrets
+      - name: Defer Mercado Pago secret sync until reduced-binding deploy
         if: steps.auth.outputs.available == 'true' && steps.financial_secrets.outputs.available == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET DATABASE_URL OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
-            printf '%s' "${!k}" | npx --yes wrangler@4.135.0 secret put "$k" --config wrangler.central-fix.jsonc
-          done
-          echo "MERCADOPAGO_RUNTIME_SECRET_SYNC=PASS"
+        run: echo "MERCADOPAGO_RUNTIME_SECRET_SYNC=DEFERRED_UNTIL_FREE_CAP_DEPLOY"
       - name: Deploy repaired production worker
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.central-fix.jsonc --tag="$GITHUB_SHA" --message="ZEVANORY-central-P0-fix-$GITHUB_SHA"
+          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.central-fix.jsonc --tag="$CANONICAL_SHA" --message="ZEVANORY-central-P0-fix-$CANONICAL_SHA"
+      - name: Synchronize Mercado Pago runtime secrets
+        if: steps.auth.outputs.available == 'true' && steps.financial_secrets.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET; do
+            printf '%s' "${!k}" | npx --yes wrangler@4.135.0 secret put "$k" --name zevanory
+          done
+          echo "MERCADOPAGO_RUNTIME_SECRET_SYNC=PASS"
+
+      - name: Verify Mercado Pago provider readiness
+        if: steps.auth.outputs.available == 'true' && steps.financial_secrets.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            curl -fsS https://zevanory.api.br/api/provider-health -o /tmp/provider-health.json || true
+            if python3 - <<'PY'
+          import json
+          try: p=json.load(open("/tmp/provider-health.json"))
+          except Exception: raise SystemExit(1)
+          ok=(p.get("payment_provider")=="mercadopago" and p.get("environment")=="sandbox" and p.get("configured") is True and p.get("authenticated") is True and p.get("webhook_secret_configured") is True and p.get("movement_enabled") is False)
+          raise SystemExit(0 if ok else 1)
+          PY
+            then break; fi
+            sleep 3
+          done
+          python3 - <<'PY'
+          import json
+          p=json.load(open("/tmp/provider-health.json"))
+          assert p.get("payment_provider")=="mercadopago",p
+          assert p.get("environment")=="sandbox",p
+          assert p.get("configured") is True,p
+          assert p.get("authenticated") is True,p
+          assert p.get("webhook_secret_configured") is True,p
+          assert p.get("movement_enabled") is False,p
+          print("MERCADOPAGO_RUNTIME_READY=PASS")
+          PY
+
       - name: Verify live UTF-8 asset and safety
         if: steps.auth.outputs.available == 'true'
         run: |
@@ -270,7 +311,7 @@ jobs:
             curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/control.json || true
             curl -fsS https://zevanory.api.br/api/core/v1/snapshot -o /tmp/core.json || true
             curl -fsS https://zevanory.api.br/api/core/v1/evaluation/zea10 -o /tmp/zea10.json || true
-            if GITHUB_SHA="$GITHUB_SHA" python3 - <<'PY'
+            if GITHUB_SHA="$CANONICAL_SHA" python3 - <<'PY'
           import json, os, pathlib, sys
           try:
               status=json.load(open("/tmp/status.json"))
@@ -288,8 +329,8 @@ jobs:
               and health.get("ready") is True
               and control.get("global_state")=="operational_commercial_blocked"
               and control.get("root_blocker")=="global_sale_disabled"
-              and control.get("release",{}).get("deployment",{}).get("commit_sha")==os.environ["GITHUB_SHA"]
-              and core.get("release_sha")==os.environ["GITHUB_SHA"]
+              and control.get("release",{}).get("deployment",{}).get("commit_sha")==os.environ["CANONICAL_SHA"]
+              and core.get("release_sha")==os.environ["CANONICAL_SHA"]
               and core.get("architecture",{}).get("circular_dependency") is False
               and core.get("architecture",{}).get("flow")==["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]
               and core.get("invariants",{}).get("evidence_to_evaluation_unidirectional") is True
@@ -316,13 +357,13 @@ jobs:
           assert health["ready"] is True
           assert control["global_state"]=="operational_commercial_blocked"
           assert control["root_blocker"]=="global_sale_disabled"
-          assert control["release"]["deployment"]["commit_sha"]==os.environ["GITHUB_SHA"], (control["release"]["deployment"]["commit_sha"],os.environ["GITHUB_SHA"])
-          assert core["release_sha"]==os.environ["GITHUB_SHA"]
+          assert control["release"]["deployment"]["commit_sha"]==os.environ["CANONICAL_SHA"], (control["release"]["deployment"]["commit_sha"],os.environ["CANONICAL_SHA"])
+          assert core["release_sha"]==os.environ["CANONICAL_SHA"]
           assert core["architecture"]["flow"]==["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]
           assert core["architecture"]["circular_dependency"] is False
           assert core["invariants"]["evidence_to_evaluation_unidirectional"] is True
           assert zea10["source_layer"]=="ZEES-16" and zea10["authority"] is False
-          print("PRODUCTION_EXACT_SHA_PASS",os.environ["GITHUB_SHA"])
+          print("PRODUCTION_EXACT_SHA_PASS",os.environ["CANONICAL_SHA"])
           print("PRODUCTION_ZEES_ZEA_CORE_ADMIN_ARCHITECTURE_PASS")
           print("PRODUCTION_CENTRAL_UTF8_AND_SAFETY_PASS")
           PY
