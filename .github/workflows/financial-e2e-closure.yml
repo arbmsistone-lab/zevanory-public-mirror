@@ -1,9 +1,6 @@
 name: ZEVANORY financial E2E closure
 
 on:
-  workflow_run:
-    workflows: ["ZEVANORY central production deploy"]
-    types: [completed]
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -20,10 +17,7 @@ concurrency:
 
 jobs:
   financial-e2e:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'gh-pages')
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
