@@ -112,7 +112,7 @@ def main():
     recovery_mode = False
     deploy_workflow = ROOT / ".github" / "workflows" / "central-production-deploy.yml"
     if deploy_workflow.exists():
-        m = re.search(r"TARGET_RUNTIME_SHA:\\s*([0-9a-f]{40})", deploy_workflow.read_text(encoding="utf-8"))
+        m = re.search(r"TARGET_RUNTIME_SHA:\s*([0-9a-f]{40})", deploy_workflow.read_text(encoding="utf-8"))
         if m:
             recovery_target = m.group(1)
 
