@@ -107,6 +107,7 @@ p, li, a, span, strong, summary, h1, h2, h3 { overflow-wrap: anywhere; }
   transform: none;
   outline: 4px solid var(--focus-ring);
   outline-offset: 4px;
+  box-shadow: 0 0 0 4px var(--focus-ring);
 }
 
 .site-header {
