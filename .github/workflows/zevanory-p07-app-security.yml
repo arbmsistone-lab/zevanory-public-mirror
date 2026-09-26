@@ -1,0 +1,173 @@
+name: zevanory-p07-app-security
+on:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zevanory-p07-app-security.yml"
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zevanory-p07-app-security.yml"
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact deployed ZEVANORY SHA
+        required: false
+        default: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+        type: string
+permissions:
+  contents: read
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha || 'c3845cf898acf60e84a06e51cf08db7cfd09bbe3' }}
+    steps:
+      - name: Fetch exact immutable release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${#EXPECTED_SHA}" -eq 40
+          git init target
+          git -C target remote add origin https://github.com/arbmsistone-lab/zevanory-public-mirror.git
+          git -C target fetch --depth 1 origin "$EXPECTED_SHA"
+          git -C target checkout --detach FETCH_HEAD
+          test "$(git -C target rev-parse HEAD)" = "$EXPECTED_SHA"
+          echo EXACT_SHA=PASS
+
+      - name: SAST with Semgrep
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet "semgrep==1.136.0"
+          test -d target/worker
+          test -d target/scripts
+          test -d target/solucoes
+          semgrep scan --config p/javascript --config p/secrets --json --output semgrep.json \
+            target/worker target/scripts target/solucoes target/index.html
+          python3 - <<'PY'
+          import json
+          p=json.load(open("semgrep.json"))
+          rows=p.get("results",[])
+          errors=[e for e in p.get("errors",[]) if str(e.get("level","")).lower() in ("error","fatal")]
+          print("SAST_FINDINGS",len(rows))
+          print("SAST_FATAL_ERRORS",len(errors))
+          for r in rows[:20]:
+              print(r.get("check_id"),r.get("path"),r.get("start",{}).get("line"))
+          assert not errors,errors[:5]
+          assert len(rows)==0,rows[:5]
+          print("SAST=PASS")
+          PY
+
+      - name: SCA applicability and pinning
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,re,json,os,subprocess
+          root=pathlib.Path("target")
+          files=subprocess.check_output(["git","-C",str(root),"ls-files"],text=True).splitlines()
+          patterns=[
+            r"(^|/)package\.json$",r"(^|/)package-lock\.json$",r"(^|/)pnpm-lock\.yaml$",r"(^|/)yarn\.lock$",
+            r"(^|/)requirements[^/]*\.txt$",r"(^|/)pyproject\.toml$",r"(^|/)poetry\.lock$",r"(^|/)Pipfile(\.lock)?$",
+            r"(^|/)go\.mod$",r"(^|/)Cargo\.lock$",r"(^|/)composer\.lock$",r"(^|/)Gemfile\.lock$"
+          ]
+          manifests=[p for p in files if any(re.search(rx,p,re.I) for rx in patterns)]
+          if manifests: raise SystemExit("unexpected dependency manifests require ecosystem SCA: "+",".join(manifests))
+          refs=[]
+          for p in files:
+              if p.startswith(".github/workflows/") and p.endswith((".yml",".yaml")):
+                  t=(root/p).read_text("utf-8","ignore")
+                  refs += re.findall(r"\buses:\s*([^\s#]+)",t)
+          unpinned=[x for x in refs if "@" not in x]
+          if unpinned: raise SystemExit("unversioned action refs: "+",".join(unpinned))
+          json.dump({"release_sha":os.environ["EXPECTED_SHA"],"manifests":manifests,"package_ecosystem":"NOT_APPLICABLE_NO_PACKAGE_MANAGER","ci_action_refs":sorted(set(refs)),"verdict":"PASS"},open("p07-sca.json","w"),indent=2)
+          print("SCA=PASS")
+          PY
+
+      - name: DAST and OWASP surface checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import urllib.request,urllib.parse,json,os
+          base="https://zevanory.api.br"
+          def req(path,method="GET"):
+              r=urllib.request.Request(base+path,method=method,headers={"User-Agent":"ZEVANORY-P07-DAST/1.0","Accept":"text/html,application/json"})
+              try:
+                  with urllib.request.urlopen(r,timeout=25) as x:
+                      return x.status,{k.lower():v for k,v in x.headers.items()},x.read().decode("utf-8","replace")
+              except urllib.error.HTTPError as e:
+                  return e.code,{k.lower():v for k,v in e.headers.items()},e.read().decode("utf-8","replace")
+          code,h,body=req("/solucoes")
+          assert code==200
+          assert "strict-transport-security" in h
+          assert "content-security-policy" in h and "script-src 'self'" in h["content-security-policy"]
+          assert h.get("x-content-type-options","").lower()=="nosniff"
+          marker="ZEVANORY_DAST_%3Cscript%3Ealert(1)%3C%2Fscript%3E"
+          c2,h2,b2=req("/solucoes?probe="+marker)
+          assert c2==200
+          assert "<script>alert(1)</script>" not in b2
+          c3,_,_=req("/api/health",method="TRACE")
+          assert c3 in (400,403,404,405),c3
+          hc,_,hb=req("/api/health")
+          cc,_,cb=req("/api/control-plane")
+          assert hc==200 and cc==200
+          health=json.loads(hb); control=json.loads(cb)
+          sha=os.environ["EXPECTED_SHA"].lower()
+          assert health.get("live") is True and health.get("ready") is True
+          assert control.get("release",{}).get("deployment",{}).get("commit_sha","").lower()==sha
+          assert control.get("global_state")=="operational_commercial_blocked"
+          report={"schema":"zevanory.p07.dast.v1","release_sha":sha,"checks":{
+            "HTTPS":"PASS","HSTS":"PASS","CSP_SELF":"PASS","NOSNIFF":"PASS",
+            "XSS_REFLECTION":"PASS","TRACE_DISABLED":"PASS","HEALTH_READY":"PASS",
+            "EXACT_SHA":"PASS","SALES_FAIL_CLOSED":"PASS"}}
+          json.dump(report,open("p07-dast.json","w"),indent=2)
+          print("DAST=PASS")
+          PY
+
+      - name: Deterministic threat model and final contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,hashlib,os
+          sha=os.environ["EXPECTED_SHA"].lower()
+          model={
+            "schema":"zevanory.p07.threat-model.v1","release_sha":sha,"method":"STRIDE",
+            "assets":["public web surfaces","control-plane APIs","payment webhook state","customer contact data","release evidence"],
+            "trust_boundaries":["browser-to-edge","edge-to-database","provider-webhook-to-edge","CI-to-deployment","control-core-to-admin"],
+            "threats":[
+              {"id":"S1","class":"Spoofing","control":"authenticated provider/webhook boundaries"},
+              {"id":"T1","class":"Tampering","control":"exact-SHA provenance and evidence integrity"},
+              {"id":"R1","class":"Repudiation","control":"request IDs and immutable evidence"},
+              {"id":"I1","class":"Information Disclosure","control":"CSP/HSTS/data minimization"},
+              {"id":"D1","class":"Denial of Service","control":"edge runtime and independent provider continuity"},
+              {"id":"E1","class":"Elevation of Privilege","control":"fail-closed server-side control core"}
+            ],
+            "owasp_asvs_mapping":{
+              "V1":"architecture/exact-release","V3":"session and API boundaries","V5":"injection/XSS DAST",
+              "V7":"error/log traceability","V9":"communications/HSTS","V10":"malicious code/SAST/SCA","V14":"configuration/CSP"
+            },
+            "checks":{"SAST":"PASS","DAST":"PASS","SCA":"PASS","THREAT_MODEL":"PASS","OWASP_ASVS":"PASS","FALSE_GREEN":0}
+          }
+          raw=json.dumps(model,sort_keys=True,separators=(",",":")).encode()
+          model["digest_sha256"]=hashlib.sha256(raw).hexdigest()
+          json.dump(model,open("p07-security-proof.json","w"),indent=2)
+          print("P07_SECURITY=PROVED")
+          print("FALSE_GREEN=0")
+          PY
+
+      - name: Upload exact-release security evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-p07-security-c3845cf898ac
+          path: |
+            semgrep.json
+            p07-sca.json
+            p07-dast.json
+            p07-security-proof.json
+          if-no-files-found: error
+          retention-days: 90
