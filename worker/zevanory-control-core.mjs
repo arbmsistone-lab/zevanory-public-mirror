@@ -152,6 +152,34 @@ export function evaluateCoreDecision(snapshot){
 export async function handleControlCoreRequest(request,env,ctx,worker){
   const url=new URL(request.url);
 
+  if(url.pathname==="/api/core/v1/storage-health"){
+    if(request.method!=="GET") return json({error:"method_not_allowed"},405,{allow:"GET"});
+    const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
+    const response={
+      binding_present:Boolean(kv&&typeof kv.get==="function"),
+      key_present:false,
+      release_sha:null,
+      counts:null,
+      persistence:null,
+      read_error:null
+    };
+    if(!response.binding_present) return json(response,503);
+    try{
+      const raw=await kv.get("control:v2:state:zevanory");
+      response.key_present=Boolean(raw);
+      if(raw){
+        const state=JSON.parse(raw);
+        response.release_sha=state?.release_sha||null;
+        response.counts=state?.counts||null;
+        response.persistence=state?.persistence||null;
+      }
+      return json(response,response.key_present?200:503);
+    }catch(error){
+      response.read_error=String(error?.message||error);
+      return json(response,503);
+    }
+  }
+
   if(url.pathname==="/api/core/v1/snapshot"){
     if(request.method!=="GET") return json({error:"method_not_allowed"},405,{allow:"GET"});
     try{
