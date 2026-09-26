@@ -1,0 +1,101 @@
+{
+  "schema": "zevanory.ped-versal.arbm-sist.v1",
+  "product": "ARBM SIST",
+  "profile": "HYBRID_UI_PROOF",
+  "ui": {
+    "html": "arbm-sist/index.html",
+    "css": "arbm-sist/arbm-sist.css",
+    "publicUrl": "https://zevanory.api.br/arbm-sist",
+    "themes": [
+      "dark",
+      "light"
+    ],
+    "viewports": [
+      {
+        "name": "large",
+        "width": 1920,
+        "height": 1080
+      },
+      {
+        "name": "desktop",
+        "width": 1440,
+        "height": 900
+      },
+      {
+        "name": "tablet",
+        "width": 768,
+        "height": 1024
+      },
+      {
+        "name": "mobile",
+        "width": 375,
+        "height": 812
+      }
+    ],
+    "requiredStates": [
+      "hover",
+      "focus-visible",
+      "active",
+      "reduced-motion"
+    ],
+    "asyncStates": "N/A_STATIC_INFORMATIONAL_SURFACE",
+    "macroGridPx": 8,
+    "microGridPx": 4,
+    "typographyPx": [
+      12,
+      14,
+      16,
+      21,
+      28,
+      37
+    ],
+    "contrast": {
+      "bodyTarget": 7,
+      "titleAndGraphicsFloor": 4.5
+    },
+    "tokens": {
+      "dark": {
+        "bg-primary": "#050912",
+        "bg-secondary": "#0B1220",
+        "surface": "#111C2D",
+        "surface-elevated": "#172438",
+        "text-primary": "#F7FAFF",
+        "text-secondary": "#C5D1E1",
+        "border": "#39506D",
+        "action-primary": "#8EC5FF",
+        "action-primary-text": "#07111D",
+        "status-success": "#78E3B5",
+        "status-error": "#FF9B9B",
+        "status-warning": "#FFD37A",
+        "status-info": "#9CC9FF",
+        "focus-ring": "#D5EAFF"
+      },
+      "light": {
+        "bg-primary": "#F8FAFD",
+        "bg-secondary": "#EEF3F9",
+        "surface": "#FFFFFF",
+        "surface-elevated": "#E4ECF5",
+        "text-primary": "#0A1423",
+        "text-secondary": "#263850",
+        "border": "#526984",
+        "action-primary": "#0A4A85",
+        "action-primary-text": "#FFFFFF",
+        "status-success": "#0B6444",
+        "status-error": "#9F1D1D",
+        "status-warning": "#6E4A00",
+        "status-info": "#0B4D8C",
+        "focus-ring": "#073F73"
+      }
+    }
+  },
+  "proof": {
+    "exactSha": true,
+    "visualMatrix": true,
+    "axe": true,
+    "contrast": true,
+    "noHorizontalOverflow": true,
+    "contentIntegrity": true,
+    "falseGreen": 0,
+    "regressionBudget": 0
+  }
+}
