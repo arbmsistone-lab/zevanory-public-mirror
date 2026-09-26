@@ -94,6 +94,16 @@ for(const viewport of contract.ui.viewports){
     if(!focus.cls.includes('skip-link')) pushFail(row,'skip_link_focus',JSON.stringify(focus));
     if(parseFloat(focus.outlineWidth||'0')<4) pushFail(row,'focus_ring_width',focus.outlineWidth);
 
+    const overlap=await page.evaluate(()=>{
+      const a=document.querySelector('.skip-link')?.getBoundingClientRect();
+      const b=document.querySelector('.theme-toggle')?.getBoundingClientRect();
+      if(!a||!b)return {overlap:false};
+      return {overlap:!(a.right<=b.left||b.right<=a.left||a.bottom<=b.top||b.bottom<=a.top),skip:{left:a.left,top:a.top,right:a.right,bottom:a.bottom},toggle:{left:b.left,top:b.top,right:b.right,bottom:b.bottom}};
+    });
+    row.checks.skipLinkOverlap=overlap;
+    if(overlap.overlap) pushFail(row,'skip_link_overlaps_theme_toggle',JSON.stringify(overlap));
+    await page.keyboard.press('Tab');
+
     const toggle=page.locator('.theme-toggle');
     await toggle.click();
     const toggled=await page.evaluate(()=>({theme:document.documentElement.dataset.theme,label:document.querySelector('.theme-toggle')?.getAttribute('aria-label')}));
