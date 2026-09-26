@@ -1,0 +1,103 @@
+name: portfolio-six-target-exact-cert
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/portfolio_target_exact_cert.py"
+      - ".github/workflows/portfolio-six-target-exact-cert.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "scripts/portfolio_target_exact_cert.py"
+      - ".github/workflows/portfolio-six-target-exact-cert.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        slug: [ia-na-pratica, vendas-na-pratica, combo-ia-vendas, lucro-e-caixa, negocio-completo, zevanory-one]
+    env:
+      TARGET_SLUG: ${{ matrix.slug }}
+      EXPECTED_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Exact source/live/base contract
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          python3 scripts/portfolio_target_exact_cert.py
+      - name: Install visual and WCAG probes
+        run: |
+          npm install --no-save playwright@1.55.0 pa11y@9.0.1
+          npx playwright install --with-deps chromium
+      - name: P02 P03 P04 target-specific browser proof
+        run: |
+          cat > /tmp/portfolio-browser.mjs <<'JS'
+          import { chromium } from 'playwright';
+          import pa11y from 'pa11y';
+          import fs from 'fs';
+          const slug=process.env.TARGET_SLUG, url='https://zevanory.api.br/'+slug;
+          const browser=await chromium.launch({headless:true});
+          const views=[{n:'mobile',w:390,h:844},{n:'tablet',w:768,h:1024},{n:'desktop',w:1440,h:900}];
+          const evidence=[];
+          for(const v of views){
+            const page=await browser.newPage({viewport:{width:v.w,height:v.h}});
+            await page.goto(url,{waitUntil:'networkidle',timeout:30000});
+            const r=await page.evaluate(()=>{
+              const de=document.documentElement, body=getComputedStyle(document.body), h1=document.querySelector('h1');
+              const bad=[...document.querySelectorAll('main *')].filter(el=>{const x=el.getBoundingClientRect();return x.width>0&&x.height>0&&(x.right>de.clientWidth+2||x.left<-2)}).slice(0,10).map(el=>el.tagName);
+              const fg=body.color,bg=body.backgroundColor;
+              return {overflowX:de.scrollWidth>de.clientWidth+1,bad,bodyFont:parseFloat(body.fontSize),fontFamily:body.fontFamily,fg,bg,h1Size:h1?parseFloat(getComputedStyle(h1).fontSize):0};
+            });
+            if(r.overflowX||r.bad.length||r.bodyFont<14||!r.fontFamily||r.fg===r.bg||r.h1Size<=r.bodyFont) throw new Error(slug+' geometry/token failure '+JSON.stringify(r));
+            await page.screenshot({path:`evidence/${slug}-${v.n}.png`,fullPage:true});
+            evidence.push({...v,...r});
+            await page.close();
+          }
+          await browser.close();
+          const a11y=await pa11y(url,{standard:'WCAG2AA',timeout:30000,wait:750,chromeLaunchConfig:{args:['--no-sandbox','--disable-setuid-sandbox']},includeWarnings:false,includeNotices:false});
+          const errors=a11y.issues.filter(x=>x.type==='error');
+          if(errors.length) throw new Error(slug+' WCAG errors '+JSON.stringify(errors.slice(0,10)));
+          fs.writeFileSync(`evidence/${slug}-browser-cert.json`,JSON.stringify({schema:'zevanory.portfolio.browser-cert.v1',target:slug,checks:{P02:'PASS',P03:'PASS',P04:'PASS'},views,wcag:{standard:'WCAG2AA',errors:0},false_green:0},null,2));
+          console.log(slug+':P02=PASS'); console.log(slug+':P03=PASS'); console.log(slug+':P04=PASS'); console.log('FALSE_GREEN=0');
+          JS
+          node /tmp/portfolio-browser.mjs
+      - name: Final target contract
+        run: |
+          python3 - <<'PY'
+          import json,os,pathlib
+          s=os.environ["TARGET_SLUG"]
+          a=json.load(open(f"evidence/{s}-base-cert.json"))
+          b=json.load(open(f"evidence/{s}-browser-cert.json"))
+          checks={**a["checks"],**b["checks"]}
+          expected={"P01","P02","P03","P04","P05","P06","P07","P08","P09","P10","P11","P12","P13","P15"}
+          assert set(checks)==expected and all(v=="PASS" for v in checks.values()),checks
+          out={"schema":"zevanory.portfolio.target-proof.v1","target":s,"workflow_sha":os.environ["EXPECTED_SHA"],"checks":checks,"P14":"N/A","P16":"NOT_CERTIFIED_HERE","sales_mode":"globally-blocked","false_green":0,"verdict":"PROVED_TECHNICAL_14"}
+          pathlib.Path(f"evidence/{s}-portfolio-proof.json").write_text(json.dumps(out,indent=2)+"\n")
+          print(f"{s}:TECHNICAL_14=PROVED")
+          print("FALSE_GREEN=0")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-cert-${{ matrix.slug }}-${{ github.sha }}
+          path: |
+            evidence/${{ matrix.slug }}-base-cert.json
+            evidence/${{ matrix.slug }}-browser-cert.json
+            evidence/${{ matrix.slug }}-portfolio-proof.json
+            evidence/${{ matrix.slug }}-*.png
+          if-no-files-found: error
+          retention-days: 90
