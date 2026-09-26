@@ -36,10 +36,9 @@ jobs:
       OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
     steps:
-      - name: Checkout exact immutable release
+      - name: Checkout certification harness
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.EXPECTED_SHA }}
           fetch-depth: 1
 
       - name: Validate fail-closed sandbox preflight
