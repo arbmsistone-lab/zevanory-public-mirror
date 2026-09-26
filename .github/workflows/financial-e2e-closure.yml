@@ -1,6 +1,10 @@
 name: ZEVANORY financial E2E closure
 
 on:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/financial-e2e-closure.yml"
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -23,7 +27,7 @@ jobs:
       MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN || secrets.MERCADOPAGO_ACCESS_TOKEN }}
       MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET || secrets.MERCADOPAGO_WEBHOOK_SECRET }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
-      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      EXPECTED_SHA: ${{ inputs.expected_sha || 'c3845cf898acf60e84a06e51cf08db7cfd09bbe3' }}
     steps:
       - name: Checkout exact certified runtime SHA
         uses: actions/checkout@v4
