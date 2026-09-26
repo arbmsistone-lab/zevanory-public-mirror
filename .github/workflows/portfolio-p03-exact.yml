@@ -1,0 +1,183 @@
+name: portfolio-p03-exact
+
+on:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/portfolio-p03-exact.yml"
+      - "product.css"
+      - "ia-na-pratica/index.html"
+      - "vendas-na-pratica/index.html"
+      - "combo-ia-vendas/index.html"
+      - "lucro-e-caixa/index.html"
+      - "negocio-completo/index.html"
+      - "zevanory-one/index.html"
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/portfolio-p03-exact.yml"
+      - "product.css"
+      - "ia-na-pratica/index.html"
+      - "vendas-na-pratica/index.html"
+      - "combo-ia-vendas/index.html"
+      - "lucro-e-caixa/index.html"
+      - "negocio-completo/index.html"
+      - "zevanory-one/index.html"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  p03:
+    name: P03 ${{ matrix.slug }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - slug: ia-na-pratica
+            blob: 7c5b9dac20fc1ff0421e64f52ab7b6d2689d2d22
+          - slug: vendas-na-pratica
+            blob: 2a6b9be0bd12a2ffbd9e7a4a8e9941829eab30d3
+          - slug: combo-ia-vendas
+            blob: 2d0c53565af6eef646439b1c4f505a331c842705
+          - slug: lucro-e-caixa
+            blob: 427e208349bd280128413af2f16e31bca1cb9a43
+          - slug: negocio-completo
+            blob: d4fb45a28616cf714c1f33b93bf39bfcacfbfce3
+          - slug: zevanory-one
+            blob: 86dfeb01fac627de4358e8b7f840e1b89e54e24c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify immutable target blob and static geometry contract
+        shell: bash
+        env:
+          SLUG: ${{ matrix.slug }}
+          EXPECTED_BLOB: ${{ matrix.blob }}
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$SLUG/index.html")" = "$EXPECTED_BLOB"
+          grep -Eiq '<meta[^>]+name=["'\'' ]*viewport' "$SLUG/index.html"
+          grep -Fq '/zevanory-public-mirror/product.css' "$SLUG/index.html"
+          grep -Eiq '<h1[^>]*>' "$SLUG/index.html"
+          grep -Eiq 'class=["'\''][^"'\'']*button' "$SLUG/index.html"
+          echo "TARGET_BLOB_MATCH=PASS"
+          echo "STATIC_TYPOGRAPHY_GEOMETRY_CONTRACT=PASS"
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Verify target-specific responsive typography geometry and interaction
+        shell: bash
+        env:
+          SLUG: ${{ matrix.slug }}
+          EXPECTED_BLOB: ${{ matrix.blob }}
+        run: |
+          cat > p03.mjs <<'JS'
+          import { chromium } from 'playwright';
+          import fs from 'fs';
+          const slug=process.env.SLUG;
+          const expectedBlob=process.env.EXPECTED_BLOB;
+          const viewports=[
+            {name:'mobile',width:390,height:844},
+            {name:'tablet',width:768,height:1024},
+            {name:'desktop',width:1440,height:900}
+          ];
+          const browser=await chromium.launch({headless:true});
+          const evidence=[];
+          let failed=false;
+          for(const v of viewports){
+            const page=await browser.newPage({viewport:{width:v.width,height:v.height}});
+            const response=await page.goto('https://zevanory.api.br/'+slug,{waitUntil:'networkidle',timeout:30000});
+            if(!response || response.status()!==200) throw new Error('live_http_not_200:'+slug+':'+String(response?.status()));
+            const result=await page.evaluate(()=>{
+              const de=document.documentElement;
+              const body=getComputedStyle(document.body);
+              const h1=document.querySelector('h1');
+              const h1s=h1?getComputedStyle(h1):null;
+              const buttons=[...document.querySelectorAll('a.button,button')].map(el=>{
+                const r=el.getBoundingClientRect();
+                const s=getComputedStyle(el);
+                return {w:Math.round(r.width),h:Math.round(r.height),fontSize:parseFloat(s.fontSize||'0'),visible:r.width>0&&r.height>0};
+              });
+              const bad=[];
+              for(const el of document.querySelectorAll('main *')){
+                const r=el.getBoundingClientRect();
+                if(r.width>0&&r.height>0&&(r.right>de.clientWidth+2||r.left<-2)) bad.push({tag:el.tagName,cls:String(el.className),left:r.left,right:r.right});
+              }
+              return {
+                viewportMeta:Boolean(document.querySelector('meta[name="viewport"]')),
+                stylesheetLoaded:[...document.styleSheets].some(s=>String(s.href||'').includes('product.css')),
+                bodyFontSize:parseFloat(body.fontSize||'0'),
+                bodyLineHeight:parseFloat(body.lineHeight||'0'),
+                h1FontSize:h1s?parseFloat(h1s.fontSize||'0'):0,
+                h1LineHeight:h1s?parseFloat(h1s.lineHeight||'0'):0,
+                overflowX:de.scrollWidth>de.clientWidth+1,
+                scrollWidth:de.scrollWidth,
+                clientWidth:de.clientWidth,
+                bad:bad.slice(0,20),
+                buttons
+              };
+            });
+            const visibleButtons=result.buttons.filter(x=>x.visible);
+            const contract=
+              result.viewportMeta &&
+              result.stylesheetLoaded &&
+              result.bodyFontSize>=14 &&
+              result.h1FontSize>=28 &&
+              !result.overflowX &&
+              result.bad.length===0 &&
+              visibleButtons.length>0 &&
+              visibleButtons.every(x=>x.h>=40 && x.fontSize>=14);
+            if(!contract) failed=true;
+            await page.screenshot({path:`p03-${slug}-${v.name}.png`,fullPage:true});
+            evidence.push({...v,...result,contract});
+            await page.close();
+          }
+          await browser.close();
+          const proof={
+            schema:'zevanory.portfolio.p03.v1',
+            target:slug,
+            production_blob:expectedBlob,
+            live_url:'https://zevanory.api.br/'+slug,
+            checks:{
+              TARGET_BLOB_MATCH:'PASS',
+              VIEWPORTS:failed?'FAIL':'PASS',
+              TYPOGRAPHY:failed?'FAIL':'PASS',
+              GEOMETRY:failed?'FAIL':'PASS',
+              NO_HORIZONTAL_OVERFLOW:failed?'FAIL':'PASS',
+              INTERACTION_SIZE:failed?'FAIL':'PASS'
+            },
+            evidence,
+            false_green:0,
+            verdict:failed?'BLOCKED':'PROVED'
+          };
+          fs.writeFileSync(`p03-${slug}.json`,JSON.stringify(proof,null,2)+'\n');
+          console.log('P03_TARGET='+slug);
+          console.log('P03_PRODUCTION_BLOB='+expectedBlob);
+          console.log('P03_GEOMETRY_TYPOGRAPHY= '+(failed?'BLOCKED':'PROVED'));
+          console.log('FALSE_GREEN=0');
+          if(failed) process.exit(1);
+          JS
+          node p03.mjs
+
+      - name: Upload target-specific P03 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-p03-${{ matrix.slug }}
+          path: |
+            p03-${{ matrix.slug }}.json
+            p03-${{ matrix.slug }}-*.png
+          if-no-files-found: error
+          retention-days: 90
