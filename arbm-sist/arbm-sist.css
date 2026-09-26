@@ -21,6 +21,8 @@
   --header-bg: #050912;
   --header-text: #F7FAFF;
   --header-muted: #C5D1E1;
+  --header-border: #39506D;
+  --header-control-bg: #0B1220;
   --shadow: 0 24px 64px rgba(0, 0, 0, 0.32);
   --radius-sm: 8px;
   --radius-md: 16px;
@@ -107,7 +109,7 @@ p, li, a, span, strong, summary, h1, h2, h3 { overflow-wrap: anywhere; }
   position: sticky;
   top: 0;
   z-index: 64;
-  border-bottom: 1px solid #39506D;
+  border-bottom: 1px solid var(--header-border);
   background: var(--header-bg);
 }
 .header-inner {
@@ -149,15 +151,15 @@ p, li, a, span, strong, summary, h1, h2, h3 { overflow-wrap: anywhere; }
 .theme-toggle:active { color: var(--header-text); }
 .nav-cta {
   padding: 0 16px;
-  border: 1px solid #526984;
+  border: 1px solid var(--header-border);
   color: var(--header-text) !important;
-  background: #0B1220;
+  background: var(--header-control-bg);
 }
 .theme-toggle {
   width: 48px;
   padding: 0;
-  border: 1px solid #526984;
-  background: #0B1220;
+  border: 1px solid var(--header-border);
+  background: var(--header-control-bg);
   cursor: pointer;
 }
 
