@@ -64,63 +64,8 @@ jobs:
           PY
           echo "FINANCIAL_SECRET_READINESS=PASS"
 
-      - name: Recover cancelled sandbox refund only when provider truth is still RECEIVED
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json, os, urllib.request, urllib.error, urllib.parse
-          base="https://api-sandbox.asaas.com/v3"
-          key=os.environ["ASAAS_API_KEY"]
-          prefix="ZEVANORY:EXP-0001:"
-          def req(path,method="GET",body=None,ok=(200,201)):
-            data=None if body is None else json.dumps(body).encode()
-            r=urllib.request.Request(base+path,method=method,data=data,headers={"access_token":key,"accept":"application/json","content-type":"application/json","User-Agent":"ZEVANORY-P16-Recovery/1.0"})
-            try:
-              with urllib.request.urlopen(r,timeout=30) as x:
-                raw=x.read().decode("utf-8","replace"); obj=json.loads(raw) if raw else {}
-                assert x.status in ok,(path,x.status,obj)
-                return x.status,obj
-            except urllib.error.HTTPError as e:
-              raw=e.read().decode("utf-8","replace")
-              try: obj=json.loads(raw) if raw else {}
-              except Exception: obj={"raw":raw[:1000]}
-              if e.code in ok: return e.code,obj
-              raise AssertionError((path,e.code,obj))
-          _,p=req("/payments?limit=100&offset=0")
-          candidates=[]
-          for row in p.get("data",[]):
-            ext=str(row.get("externalReference","") or "")
-            pid=str(row.get("id","") or "")
-            if not ext.startswith(prefix) or not pid.startswith("pay_"): continue
-            try:
-              _,rr=req("/payments/"+urllib.parse.quote(pid)+"/refunds")
-              refunds=rr.get("data",[]) if isinstance(rr,dict) else []
-              if not refunds: continue
-              _,ps=req("/payments/"+urllib.parse.quote(pid)+"/status")
-              candidates.append((str(row.get("dateCreated","") or ""),pid,str(ps.get("status","")).upper(),refunds))
-            except Exception:
-              continue
-          if not candidates:
-            print("REFUND_RECOVERY=NO_EXISTING_REFUND")
-            raise SystemExit(0)
-          candidates.sort(reverse=True)
-          _,pid,status,refunds=candidates[0]
-          states=[str(x.get("status","")).upper() for x in refunds]
-          if status=="REFUNDED" and "DONE" in states:
-            print("REFUND_RECOVERY=ALREADY_DONE")
-            raise SystemExit(0)
-          assert status=="RECEIVED",(status,states)
-          assert "DONE" not in states,(status,states)
-          assert states and all(x in ("CANCELLED","FAILED","DENIED") for x in states),(status,states)
-          code,obj=req("/payments/"+urllib.parse.quote(pid)+"/refund","POST",{"description":"ZEVANORY exact-release sandbox refund recovery"},ok=(200,201))
-          print("REFUND_RECOVERY_REISSUED=PASS")
-          print("REFUND_RECOVERY_HTTP="+str(code))
-          print("REFUND_RECOVERY_PROVIDER_STATE_BEFORE="+status)
-          PY
-
-      - name: Run real Asaas sandbox lifecycle
-        run: python3 scripts/financial_e2e_closure.py
+      - name: Run independent Asaas card sandbox lifecycle
+        run: python3 scripts/financial_e2e_asaas_card.py
 
       - name: Verify terminal exact-release evidence
         shell: bash
@@ -128,12 +73,12 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import json,os,re
-          p=json.load(open("evidence/financial-e2e-current.json",encoding="utf-8"))
+          p=json.load(open("evidence/financial-e2e-card-current.json",encoding="utf-8"))
           sha=os.environ["EXPECTED_SHA"].lower()
           assert re.fullmatch(r"[0-9a-f]{40}",sha)
           assert set(p["sha"].values())=={sha},p["sha"]
           assert p["provider"]=="asaas"
-          assert p["provider_environment"]=="sandbox"
+          assert p["provider_environment"]=="sandbox"\n          assert p["payment_method"]=="CREDIT_CARD_TEST"
           assert p["sales_mode"]=="globally-blocked"
           assert p["checks"]["FINANCIAL_E2E"]=="GREEN"
           assert all(v in ("PASS","GREEN") for v in p["checks"].values()),p["checks"]
@@ -160,6 +105,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zevanory-p16-financial-c3845cf898ac
-          path: evidence/financial-e2e-current.json
+          path: evidence/financial-e2e-card-current.json
           if-no-files-found: error
           retention-days: 90
