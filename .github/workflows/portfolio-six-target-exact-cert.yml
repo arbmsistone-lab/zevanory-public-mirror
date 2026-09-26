@@ -26,10 +26,11 @@ jobs:
         slug: [ia-na-pratica, vendas-na-pratica, combo-ia-vendas, lucro-e-caixa, negocio-completo]
     env:
       TARGET_SLUG: ${{ matrix.slug }}
-      EXPECTED_SHA: ${{ github.sha }}
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.EXPECTED_SHA }}
           persist-credentials: false
           fetch-depth: 1
       - uses: actions/setup-node@v4
