@@ -1,0 +1,91 @@
+name: Exact production evidence dispatcher
+
+on:
+  push:
+    branches:
+      - orchestrator/c3845-exact
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-and-watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      TARGET_REF: cert/c3845-exact
+      TARGET_SHA: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+    steps:
+      - name: Dispatch exact-SHA evidence workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflows=(
+            "zevanory-apex-engineering.yml"
+            "zees16-evidence-gate.yml"
+            "zevanory-remote-quality-gates.yml"
+            "zevanory-p02-visual-regression.yml"
+            "zevanory-p04-wcag.yml"
+            "zevanory-p15-provenance.yml"
+            "zevanory-provider-independence.yml"
+            "zevanory-three-provider-quorum.yml"
+            "zevanory-portable-dr.yml"
+            "zevanory-consolidated-closure.yml"
+          )
+          for wf in "${workflows[@]}"; do
+            echo "DISPATCH $wf @ $TARGET_REF -> $TARGET_SHA"
+            gh workflow run "$wf" --repo "$REPO" --ref "$TARGET_REF"
+          done
+
+      - name: Resolve run ids for exact production SHA
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          sleep 15
+          workflows=(
+            "zevanory-apex-engineering.yml"
+            "zees16-evidence-gate.yml"
+            "zevanory-remote-quality-gates.yml"
+            "zevanory-p02-visual-regression.yml"
+            "zevanory-p04-wcag.yml"
+            "zevanory-p15-provenance.yml"
+            "zevanory-provider-independence.yml"
+            "zevanory-three-provider-quorum.yml"
+            "zevanory-portable-dr.yml"
+            "zevanory-consolidated-closure.yml"
+          )
+          : > /tmp/run_ids.txt
+          for wf in "${workflows[@]}"; do
+            id=""
+            for attempt in {1..12}; do
+              id="$(gh run list --repo "$REPO" --workflow "$wf" --branch "$TARGET_REF" --limit 10 --json databaseId,headSha,event --jq '.[] | select(.headSha=="'"$TARGET_SHA"'" and .event=="workflow_dispatch") | .databaseId' | head -n1)"
+              [ -n "$id" ] && break
+              sleep 5
+            done
+            if [ -z "$id" ]; then
+              echo "NO_EXACT_RUN $wf" >&2
+              exit 1
+            fi
+            echo "$wf $id" | tee -a /tmp/run_ids.txt
+          done
+
+      - name: Wait for exact-SHA evidence matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          while read -r wf id; do
+            echo "WATCH $wf run=$id"
+            if ! gh run watch "$id" --repo "$REPO" --exit-status; then
+              failed=1
+            fi
+          done < /tmp/run_ids.txt
+          echo "=== FINAL EXACT-SHA MATRIX ==="
+          while read -r wf id; do
+            gh run view "$id" --repo "$REPO" --json databaseId,workflowName,headSha,status,conclusion,url --jq '{id:.databaseId,workflow:.workflowName,sha:.headSha,status:.status,conclusion:.conclusion,url:.url}'
+          done < /tmp/run_ids.txt
+          exit "$failed"
