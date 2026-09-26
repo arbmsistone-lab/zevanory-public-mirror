@@ -1,0 +1,125 @@
+name: zevanory-one-surface-exact-cert
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "zevanory-one/**"
+      - "product.css"
+      - "privacidade/**"
+      - "termos/**"
+      - "reembolso/**"
+      - ".github/workflows/zevanory-one-surface-exact-cert.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "zevanory-one/**"
+      - "product.css"
+      - "privacidade/**"
+      - "termos/**"
+      - "reembolso/**"
+      - ".github/workflows/zevanory-one-surface-exact-cert.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  surface:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      TARGET_SLUG: zevanory-one
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Exact source and live identity
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,re,urllib.request,time
+          slug=os.environ["TARGET_SLUG"]; base="https://zevanory.api.br"
+          p=pathlib.Path(slug)/"index.html"; html=p.read_text("utf-8")
+          blob=__import__("subprocess").check_output(["git","hash-object",str(p)],text=True).strip()
+          def get(url):
+              req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-ONE-SURFACE-CERT/1.0","Accept":"text/html,application/json"})
+              t=time.perf_counter()
+              with urllib.request.urlopen(req,timeout=25) as r: return r.status,r.read(),{k.lower():v for k,v in r.headers.items()},round((time.perf_counter()-t)*1000,2)
+          c,b,h,ms=get(base+"/"+slug); assert c==200
+          live=b.decode("utf-8","replace")
+          def m(pattern,text):
+              x=re.search(pattern,text,re.I|re.S); assert x; return re.sub(r"<[^>]+>","",x.group(1)).strip()
+          assert m(r"<title>(.*?)</title>",html)==m(r"<title>(.*?)</title>",live)
+          assert m(r"<h1[^>]*>(.*?)</h1>",html)==m(r"<h1[^>]*>(.*?)</h1>",live)
+          assert f'href="{base}/{slug}"' in live
+          assert "ZEVANORY ONE" in live
+          for path,needle in [("privacidade","lgpd"),("termos","consum"),("reembolso","reembolso")]:
+              assert f'href="/{path}"' in live
+              cc,bb,hh,xx=get(base+"/"+path); assert cc==200 and needle in bb.decode("utf-8","replace").lower()
+          sec={k:h.get(k,"") for k in ["strict-transport-security","content-security-policy","x-content-type-options"]}
+          assert all(sec.values()),sec
+          lat=[ms]
+          for _ in range(2):
+              cc,bb,hh,xx=get(base+"/"+slug); assert cc==200; lat.append(xx)
+          assert max(lat)<5000,lat
+          out={"schema":"zevanory.one.surface.v1","target":slug,"workflow_sha":os.environ["EXPECTED_SHA"],"source_blob":blob,
+               "checks":{"P01":"PASS","P05_SURFACE":"PASS","P07_SURFACE":"PASS","P09":"PASS","P11":"PASS","P15_SURFACE":"PASS"},
+               "security_headers":sec,"latency_ms":lat,"false_green":0}
+          pathlib.Path("evidence").mkdir(exist_ok=True)
+          pathlib.Path("evidence/zevanory-one-surface-base.json").write_text(json.dumps(out,indent=2)+"\n")
+          print("ZEVANORY_ONE_SURFACE_BASE=PASS")
+          print("FALSE_GREEN=0")
+          PY
+      - name: Install browser audit tools
+        run: |
+          npm install --no-save playwright@1.55.0 pa11y@9.0.1
+          npx playwright install --with-deps chromium
+      - name: P02 P03 P04 exact target browser proof
+        run: |
+          cat > zevanory-one-browser.mjs <<'JS'
+          import { chromium } from 'playwright'; import pa11y from 'pa11y'; import fs from 'fs';
+          const url='https://zevanory.api.br/zevanory-one';
+          const browser=await chromium.launch({headless:true}); const views=[];
+          for(const v of [{n:'mobile',w:390,h:844},{n:'tablet',w:768,h:1024},{n:'desktop',w:1440,h:900}]){
+            const page=await browser.newPage({viewport:{width:v.w,height:v.h}});
+            await page.goto(url,{waitUntil:'networkidle',timeout:30000});
+            const r=await page.evaluate(()=>{const de=document.documentElement,b=getComputedStyle(document.body),h1=document.querySelector('h1');const bad=[...document.querySelectorAll('main *')].filter(el=>{const x=el.getBoundingClientRect();return x.width>0&&x.height>0&&(x.right>de.clientWidth+2||x.left<-2)}).slice(0,10).map(el=>el.tagName);return {overflowX:de.scrollWidth>de.clientWidth+1,bad,bodyFont:parseFloat(b.fontSize),h1Size:h1?parseFloat(getComputedStyle(h1).fontSize):0,fontFamily:b.fontFamily};});
+            if(r.overflowX||r.bad.length||r.bodyFont<14||r.h1Size<=r.bodyFont||!r.fontFamily) throw new Error(JSON.stringify(r));
+            await page.screenshot({path:`evidence/zevanory-one-${v.n}.png`,fullPage:true}); views.push({...v,...r}); await page.close();
+          }
+          await browser.close();
+          const a=await pa11y(url,{standard:'WCAG2AA',timeout:30000,wait:750,chromeLaunchConfig:{args:['--no-sandbox','--disable-setuid-sandbox']},includeWarnings:false,includeNotices:false});
+          const errors=a.issues.filter(x=>x.type==='error'); if(errors.length) throw new Error(JSON.stringify(errors.slice(0,10)));
+          fs.writeFileSync('evidence/zevanory-one-surface-browser.json',JSON.stringify({schema:'zevanory.one.surface.browser.v1',checks:{P02:'PASS',P03:'PASS',P04:'PASS'},views,wcag_errors:0,false_green:0},null,2));
+          console.log('P02=PASS'); console.log('P03=PASS'); console.log('P04=PASS'); console.log('FALSE_GREEN=0');
+          JS
+          node zevanory-one-browser.mjs
+      - name: Final surface contract
+        run: |
+          python3 - <<'PY'
+          import json,os,pathlib
+          a=json.load(open("evidence/zevanory-one-surface-base.json")); b=json.load(open("evidence/zevanory-one-surface-browser.json"))
+          out={"schema":"zevanory.one.surface.proof.v1","target":"zevanory-one","workflow_sha":os.environ["EXPECTED_SHA"],
+               "source_blob":a["source_blob"],"checks":{**a["checks"],**b["checks"]},"deep_transactional_proof":"REQUIRED_SEPARATELY",
+               "false_green":0,"verdict":"SURFACE_PROVED"}
+          pathlib.Path("evidence/zevanory-one-surface-proof.json").write_text(json.dumps(out,indent=2)+"\n")
+          print("ZEVANORY_ONE_SURFACE=PROVED"); print("FALSE_GREEN=0")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-one-surface-${{ env.EXPECTED_SHA }}
+          path: |
+            evidence/zevanory-one-surface-base.json
+            evidence/zevanory-one-surface-browser.json
+            evidence/zevanory-one-surface-proof.json
+            evidence/zevanory-one-*.png
+          if-no-files-found: error
+          retention-days: 90
