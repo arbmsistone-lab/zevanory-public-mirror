@@ -127,6 +127,25 @@ async function persist(env,state){
     }catch{}
   }
 
+  // A collector outage must never overwrite already-materialized evidence for the
+  // same release. Preserve the last immutable decision and remain fail-closed
+  // with respect to new claims until collection recovers.
+  if(
+    state?.collector_error &&
+    previous?.release_sha===state?.release_sha &&
+    /^[0-9a-f]{64}$/.test(String(previous?.decision_hash||""))
+  ){
+    return {
+      ...previous,
+      collector_error:state.collector_error,
+      persistence:"kv-append-only",
+      persistence_mode:"collector-failure-preserved",
+      persistence_error:null,
+      evaluator:"ZEES16_POLICY_ENGINE",
+      evaluator_version:ZEES16_POLICY.version
+    };
+  }
+
   const semantic={
     policy_version:state.policy_version,
     release_sha:state.release_sha,
