@@ -40,8 +40,8 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
-      # This release intentionally advances the runtime SHA: the previous SHA lacked Mercado Pago entitlement reconciliation.
-      TARGET_RUNTIME_SHA: ${{ github.sha }}
+      # Binding repair only: preserve the already-certified production runtime SHA.
+      TARGET_RUNTIME_SHA: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,9 +102,15 @@ jobs:
           c.pop("ai",None)
           c.pop("routes",None)
           c["workers_dev"]=True
-          for ns in c.get("kv_namespaces",[]):
-              if ns.get("binding")=="ZEVANORY_PRIVATE_ARTIFACTS":
+          kv=c.setdefault("kv_namespaces",[])
+          found_private=False
+          for ns in kv:
+              if ns.get("binding") in ("ZEVANORY_PRIVATE_ARTIFACTS","ZEVANORY_ARTEFATOS_PRIVADOS"):
+                  ns["binding"]="ZEVANORY_PRIVATE_ARTIFACTS"
                   ns["id"]="9eca336262b44186ab3dbec82fc35ab4"
+                  found_private=True
+          if not found_private:
+              kv.append({"binding":"ZEVANORY_PRIVATE_ARTIFACTS","id":"9eca336262b44186ab3dbec82fc35ab4"})
           c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["TARGET_RUNTIME_SHA"]
           c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
           c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
