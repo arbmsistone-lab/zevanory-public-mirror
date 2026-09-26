@@ -1,0 +1,110 @@
+name: zevanory-p16-asaas-exact-financial-lifecycle
+
+on:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zevanory-p16-asaas-exact-financial-lifecycle.yml"
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zevanory-p16-asaas-exact-financial-lifecycle.yml"
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact deployed ZEVANORY SHA
+        required: false
+        default: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zevanory-p16-asaas-exact
+  cancel-in-progress: false
+
+jobs:
+  financial-lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha || 'c3845cf898acf60e84a06e51cf08db7cfd09bbe3' }}
+      ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY || secrets.ASAAS_SANDBOX_API_KEY }}
+      ASAAS_WEBHOOK_TOKEN: ${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+      ASAAS_WEBHOOK_EMAIL: ${{ secrets.ASAAS_WEBHOOK_EMAIL }}
+      OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+    steps:
+      - name: Checkout exact immutable release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 1
+
+      - name: Validate fail-closed sandbox preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${#EXPECTED_SHA}" -eq 40
+          for k in ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN OPERATOR_TOKEN CERTIFICATION_E2E_TOKEN; do
+            test -n "${!k:-}" || { echo "MISSING_REQUIRED_SECRET=$k"; exit 2; }
+          done
+          test "${#ASAAS_WEBHOOK_TOKEN}" -ge 32
+          curl -fsS https://zevanory.api.br/api/release -o /tmp/release.json
+          python3 - <<'PY'
+          import json,os
+          d=json.load(open("/tmp/release.json"))
+          assert d.get("deployment",{}).get("commit_sha","").lower()==os.environ["EXPECTED_SHA"].lower(),d
+          assert d.get("sales_mode")=="globally-blocked",d
+          assert d.get("checkout_mode")=="enabled",d
+          assert d.get("financial_mode")=="enabled",d
+          print("RUNTIME_SHA_MATCH=PASS")
+          print("SALE_GLOBALLY_ENABLED=false")
+          PY
+          echo "FINANCIAL_SECRET_READINESS=PASS"
+
+      - name: Run real Asaas sandbox lifecycle
+        run: python3 scripts/financial_e2e_closure.py
+
+      - name: Verify terminal exact-release evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,re
+          p=json.load(open("evidence/financial-e2e-current.json",encoding="utf-8"))
+          sha=os.environ["EXPECTED_SHA"].lower()
+          assert re.fullmatch(r"[0-9a-f]{40}",sha)
+          assert set(p["sha"].values())=={sha},p["sha"]
+          assert p["provider"]=="asaas"
+          assert p["provider_environment"]=="sandbox"
+          assert p["sales_mode"]=="globally-blocked"
+          assert p["checks"]["FINANCIAL_E2E"]=="GREEN"
+          assert all(v in ("PASS","GREEN") for v in p["checks"].values()),p["checks"]
+          assert p["final_order_status"]=="refunded"
+          assert p["final_fulfillment_status"]=="canceled"
+          assert p["payment_confirmation_count"]==1
+          assert p["invariants"]["global_sales_remained_fail_closed"] is True
+          assert p["invariants"]["exactly_once_payment_effect"] is True
+          assert p["invariants"]["no_entitlement_after_full_refund"] is True
+          assert p["invariants"]["provider_final_status"]=="REFUNDED"
+          print("CHECKOUT=PASS")
+          print("PAYMENT=PASS")
+          print("WEBHOOK=PASS")
+          print("PERSISTENCE_RECONCILIATION=PASS")
+          print("ENTITLEMENT=PASS")
+          print("REFUND=PASS")
+          print("FINAL_FINANCIAL_E2E=GREEN")
+          print("P16_LIFECYCLE=PROVED")
+          print("FALSE_GREEN=0")
+          PY
+
+      - name: Upload exact-release P16 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-p16-financial-c3845cf898ac
+          path: evidence/financial-e2e-current.json
+          if-no-files-found: error
+          retention-days: 90
