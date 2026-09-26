@@ -95,7 +95,11 @@ jobs:
           import json,os
           json.dump({
             "ASAAS_API_KEY":os.environ["ASAAS_API_KEY"],
-            "ASAAS_WEBHOOK_TOKEN":os.environ["ASAAS_WEBHOOK_TOKEN"]
+            "ASAAS_WEBHOOK_TOKEN":os.environ["ASAAS_WEBHOOK_TOKEN"],
+            "MERCADOPAGO_ACCESS_TOKEN":None,
+            "MERCADOPAGO_WEBHOOK_SECRET":None,
+            "MERCADOPAGO_TEST_ACCESS_TOKEN":None,
+            "MERCADOPAGO_TEST_WEBHOOK_SECRET":None
           },open("/tmp/p16-asaas-secrets.json","w",encoding="utf-8"))
           PY
           npx --yes wrangler@4.135.0 secret bulk /tmp/p16-asaas-secrets.json --name zevanory
