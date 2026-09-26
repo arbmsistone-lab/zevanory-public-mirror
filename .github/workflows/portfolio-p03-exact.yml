@@ -48,7 +48,7 @@ jobs:
           - slug: negocio-completo
             blob: d4fb45a28616cf714c1f33b93bf39bfcacfbfce3
           - slug: zevanory-one
-            blob: 86dfeb01fac627de4358e8b7f840e1b89e54e24c
+            blob: 459cc8d7537b9de414c4fd8ce8a6d5d6dabe9b6a
     steps:
       - uses: actions/checkout@v4
         with:
