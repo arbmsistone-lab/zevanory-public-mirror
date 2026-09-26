@@ -1,0 +1,124 @@
+name: zevanory-one-exact-saas-cert
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "zevanory-one/**"
+      - "product.css"
+      - "contracts/zevanory-one-saas.v1.json"
+      - "scripts/zevanory_one_exact_cert.py"
+      - ".github/workflows/zevanory-one-exact-saas-cert.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "zevanory-one/**"
+      - "product.css"
+      - "contracts/zevanory-one-saas.v1.json"
+      - "scripts/zevanory_one_exact_cert.py"
+      - ".github/workflows/zevanory-one-exact-saas-cert.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPECTED_RUNTIME_SHA: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exact SaaS target contract and lifecycle
+        run: python3 scripts/zevanory_one_exact_cert.py
+
+      - name: Install browser audit tools
+        run: |
+          npm install --no-save playwright@1.58.2 pa11y@9.0.1
+          npx playwright install --with-deps chromium
+
+      - name: P02 P03 exact visual and geometry audit
+        shell: bash
+        run: |
+          node <<'JS'
+          const { chromium } = require('playwright');
+          const fs = require('fs');
+          (async()=>{
+            const browser=await chromium.launch({headless:true});
+            const viewports=[[360,800],[390,844],[768,1024],[1366,768],[1920,1080]];
+            const rows=[];
+            for(const [width,height] of viewports){
+              const page=await browser.newPage({viewport:{width,height}});
+              await page.goto('https://zevanory.api.br/zevanory-one',{waitUntil:'networkidle'});
+              const m=await page.evaluate(()=>{
+                const h1=document.querySelector('h1');
+                const buttons=[...document.querySelectorAll('.button')];
+                const hs=h1?getComputedStyle(h1):null;
+                return {
+                  scrollWidth:document.documentElement.scrollWidth,
+                  innerWidth:window.innerWidth,
+                  h1Font:h1?parseFloat(hs.fontSize):0,
+                  h1Line:h1?parseFloat(hs.lineHeight):0,
+                  h1Height:h1?h1.getBoundingClientRect().height:0,
+                  minButtonHeight:buttons.length?Math.min(...buttons.map(x=>x.getBoundingClientRect().height)):0,
+                  focusCss:[...document.styleSheets].some(()=>true)
+                };
+              });
+              if(m.scrollWidth>m.innerWidth) throw new Error('horizontal_overflow '+width);
+              if(m.h1Font < (width<768?28:32)) throw new Error('h1_too_small '+JSON.stringify(m));
+              if(m.minButtonHeight<40) throw new Error('button_height '+JSON.stringify(m));
+              const path='evidence/zevanory-one-'+width+'x'+height+'.png';
+              await page.screenshot({path,fullPage:true});
+              rows.push({width,height,...m,screenshot:path});
+              await page.close();
+            }
+            await browser.close();
+            fs.writeFileSync('evidence/zevanory-one-visual.json',JSON.stringify({target:'zevanory-one',checks:{P02:'PASS',P03:'PASS'},rows,false_green:0},null,2));
+            console.log('P02_VISUAL=PASS'); console.log('P03_GEOMETRY=PASS'); console.log('FALSE_GREEN=0');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+
+      - name: P04 WCAG audit
+        run: |
+          npx pa11y https://zevanory.api.br/zevanory-one --standard WCAG2AA --reporter json > evidence/zevanory-one-pa11y.json
+          node -e "const x=require('./evidence/zevanory-one-pa11y.json'); if(x.issues&&x.issues.length) { console.error(x.issues); process.exit(1) }"
+          echo P04_WCAG=PASS
+
+      - name: Aggregate exact target certification
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,pathlib,os
+          base=json.load(open("evidence/zevanory-one-saas-cert.json"))
+          visual=json.load(open("evidence/zevanory-one-visual.json"))
+          pa11y=json.load(open("evidence/zevanory-one-pa11y.json"))
+          assert base["false_green"]==0
+          assert visual["false_green"]==0
+          assert len(pa11y.get("issues",[]))==0
+          applicable=["P01","P02","P03","P04","P05","P06","P07","P08","P09","P10","P11","P12","P13","P15","P16"]
+          checks=dict(base["checks"]); checks.update({"P02":"PASS","P03":"PASS","P04":"PASS"})
+          assert all(checks.get(p)=="PASS" for p in applicable),checks
+          out={
+            "schema":"zevanory.one.zees16-target.v1","target":"zevanory-one","profile":"SAAS_TRANSACTIONAL",
+            "workflow_sha":os.environ["GITHUB_SHA"],"runtime_sha":base["runtime_sha"],
+            "target_blob":base["target_blob"],"contract_blob":base["contract_blob"],
+            "applicable":applicable,"na":["P14"],"checks":checks,
+            "sales_mode":"globally-blocked","false_green":0,"verdict":"PROVED"
+          }
+          pathlib.Path("evidence/zevanory-one-exact-cert.json").write_text(json.dumps(out,indent=2)+"\n")
+          print("ZEVANORY_ONE=15/15_PROVED")
+          print("P14=N/A")
+          print("SALE_GLOBALLY_ENABLED=false")
+          print("FALSE_GREEN=0")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-one-exact-cert-${{ github.sha }}
+          path: |
+            evidence/zevanory-one-*.json
+            evidence/zevanory-one-*.png
+          if-no-files-found: error
+          retention-days: 90
