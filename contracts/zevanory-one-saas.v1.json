@@ -1,0 +1,83 @@
+{
+  "schema": "zevanory.one.saas-contract.v1",
+  "target": "zevanory-one",
+  "profile": "SAAS_TRANSACTIONAL",
+  "commercial_name": "ZEVANORY ONE",
+  "public_surface": "https://zevanory.api.br/zevanory-one",
+  "sales_policy": {
+    "globally_enabled": false,
+    "activation_requires": [
+      "price",
+      "legal",
+      "payment",
+      "fulfillment",
+      "support",
+      "technical_certification"
+    ]
+  },
+  "deployment": {
+    "model": "isolated_per_customer",
+    "shared_customer_runtime": false,
+    "tenant_boundary": "environment+configuration+data"
+  },
+  "modules": [
+    "PDV",
+    "atendimento",
+    "clientes",
+    "pedidos",
+    "estoque"
+  ],
+  "lifecycle": [
+    "lead",
+    "checkout_intent",
+    "payment_confirmed",
+    "provisioning",
+    "tenant_active",
+    "refund",
+    "tenant_suspended"
+  ],
+  "data_governance": {
+    "classification": [
+      "customer_profile",
+      "orders",
+      "inventory",
+      "operational_events"
+    ],
+    "retention": "purpose_bound_and_policy_driven",
+    "deletion": "tenant_scoped",
+    "lineage": "release+tenant+event"
+  },
+  "security": {
+    "threat_model": "STRIDE",
+    "controls": [
+      "tenant_isolation",
+      "signed_webhook",
+      "idempotency",
+      "replay_protection",
+      "least_privilege",
+      "https_only",
+      "no_secrets_in_public_surface"
+    ]
+  },
+  "continuity": {
+    "backup_scope": "tenant_state",
+    "restore_scope": "tenant_state",
+    "rpo_test": "zero_acknowledged_ops_lost_in_deterministic_harness",
+    "rto_test": "measured_not_marketing_sla"
+  },
+  "observability": {
+    "correlation": "request_id+trace_id",
+    "events": [
+      "checkout",
+      "payment",
+      "provisioning",
+      "refund",
+      "restore"
+    ],
+    "fail_closed": true
+  },
+  "inheritance": {
+    "arbm_one_certifications": "FORBIDDEN_AUTOMATIC_INHERITANCE",
+    "shared_evidence": "ONLY_WHEN_SCOPE_EQUIVALENCE_IS_PROVED"
+  }
+}
