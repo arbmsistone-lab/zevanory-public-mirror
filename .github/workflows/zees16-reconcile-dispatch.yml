@@ -1,0 +1,30 @@
+name: ZEES16 reconcile dispatcher
+
+on:
+  push:
+    branches:
+      - orchestrator/c3845-exact
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Dispatch reconciler on canonical branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run "zees16-control-reconciler.yml" --repo "$REPO" --ref gh-pages
+          sleep 8
+          id="$(gh run list --repo "$REPO" --workflow "zees16-control-reconciler.yml" --branch gh-pages --event workflow_dispatch --limit 10 --json databaseId,status,createdAt --jq '.[0].databaseId')"
+          test -n "$id"
+          echo "RECONCILER_RUN_ID=$id"
+          gh run watch "$id" --repo "$REPO" --exit-status
+          gh run view "$id" --repo "$REPO" --json databaseId,workflowName,headSha,status,conclusion,url
