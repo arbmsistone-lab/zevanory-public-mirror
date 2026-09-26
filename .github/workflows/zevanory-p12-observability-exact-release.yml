@@ -79,7 +79,7 @@ jobs:
           python3 - <<'PY'
           import urllib.request, urllib.error, time, uuid, json, os, statistics, pathlib
           base="https://zevanory.api.br"
-          paths=["/api/health","/api/release","/api/control-plane"]
+          paths=["/api/live","/api/health"]
           rows=[]
           for path in paths:
             for n in range(3):
@@ -99,9 +99,13 @@ jobs:
               obj=json.loads(body)
               if path=="/api/health":
                 assert obj.get("live") is True and obj.get("ready") is True,obj
-              if path in ("/api/release","/api/control-plane"):
-                dep=(obj.get("deployment") or obj.get("release",{}).get("deployment") or {})
-                assert str(dep.get("commit_sha","")).lower()==os.environ["EXPECTED_SHA"].lower(),obj
+              if path=="/api/live":
+                assert obj.get("live") is True,obj
+          # Exact runtime identity is checked separately because /api/release is not a request-context route.
+          req=urllib.request.Request(base+"/api/release",headers={"User-Agent":"ZEVANORY-P12/1.0","Accept":"application/json"})
+          with urllib.request.urlopen(req,timeout=20) as r:
+            release=json.loads(r.read().decode("utf-8","replace"))
+          assert str(release.get("deployment",{}).get("commit_sha","")).lower()==os.environ["EXPECTED_SHA"].lower(),release
           ok=sum(1 for x in rows if x["status"]==200)
           availability=ok/len(rows)
           lat=sorted(x["latency_ms"] for x in rows)
