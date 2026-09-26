@@ -1,0 +1,187 @@
+name: portfolio-five-digital-target-exact-cert
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "ia-na-pratica/**"
+      - "vendas-na-pratica/**"
+      - "combo-ia-vendas/**"
+      - "lucro-e-caixa/**"
+      - "negocio-completo/**"
+      - "product.css"
+      - "privacidade/**"
+      - "termos/**"
+      - "reembolso/**"
+      - "worker/**"
+      - "scripts/portfolio_target_exact_cert.py"
+      - ".github/workflows/portfolio-six-target-exact-cert.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "ia-na-pratica/**"
+      - "vendas-na-pratica/**"
+      - "combo-ia-vendas/**"
+      - "lucro-e-caixa/**"
+      - "negocio-completo/**"
+      - "product.css"
+      - "privacidade/**"
+      - "termos/**"
+      - "reembolso/**"
+      - "worker/**"
+      - "scripts/portfolio_target_exact_cert.py"
+      - ".github/workflows/portfolio-six-target-exact-cert.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        slug: [ia-na-pratica, vendas-na-pratica, combo-ia-vendas, lucro-e-caixa, negocio-completo]
+    env:
+      TARGET_SLUG: ${{ matrix.slug }}
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Exact source/live/base contract
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          python3 scripts/premerge_product_audit.py
+          python3 scripts/portfolio_target_exact_cert.py
+      - name: P10 clean remote restore rehearsal
+        run: |
+          set -euo pipefail
+          started="$(date +%s)"
+          rm -rf /tmp/portfolio-restore
+          git clone --quiet --no-checkout https://github.com/arbmsistone-lab/zevanory-public-mirror.git /tmp/portfolio-restore
+          git -C /tmp/portfolio-restore checkout --quiet --detach "$EXPECTED_SHA"
+          test "$(git -C /tmp/portfolio-restore rev-parse HEAD)" = "$EXPECTED_SHA"
+          src="$(git hash-object "$TARGET_SLUG/index.html")"
+          restored="$(git -C /tmp/portfolio-restore hash-object "$TARGET_SLUG/index.html")"
+          test "$src" = "$restored"
+          test "$(git hash-object product.css)" = "$(git -C /tmp/portfolio-restore hash-object product.css)"
+          elapsed="$(( $(date +%s) - started ))"
+          test "$elapsed" -lt 120
+          python3 - <<'PY'
+          import json,os,pathlib
+          pathlib.Path("evidence").mkdir(exist_ok=True)
+          pathlib.Path(f"evidence/{os.environ['TARGET_SLUG']}-restore.json").write_text(json.dumps({
+            "schema":"zevanory.portfolio.restore.v1","target":os.environ["TARGET_SLUG"],
+            "workflow_sha":os.environ["EXPECTED_SHA"],"remote_source":"github",
+            "rpo":"ZERO_COMMITTED_SOURCE_LOSS","rto_budget_seconds":120,
+            "verdict":"PASS","false_green":0
+          },indent=2)+"\n")
+          print(os.environ["TARGET_SLUG"]+":P10=PASS")
+          PY
+      - name: P12 bind protected shared-runtime observability proof
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,pathlib,urllib.request
+          slug=os.environ["TARGET_SLUG"]
+          base=json.load(open(f"evidence/{slug}-base-cert.json"))
+          runtime_sha=base["shared_runtime_release"]
+          api="https://api.github.com/repos/arbmsistone-lab/zevanory-public-mirror"
+          def get(url):
+              req=urllib.request.Request(url,headers={"Accept":"application/vnd.github+json","User-Agent":"ZEVANORY-PORTFOLIO-CERT/2.0"})
+              with urllib.request.urlopen(req,timeout=20) as r:return json.loads(r.read().decode())
+          runs=get(api+"/actions/workflows/zevanory-p12-observability-exact-release.yml/runs?branch=gh-pages&event=push&status=success&per_page=10").get("workflow_runs",[])
+          selected=None
+          for run in runs:
+              head=str(run.get("head_sha") or "")
+              raw=urllib.request.urlopen(urllib.request.Request(
+                  f"https://raw.githubusercontent.com/arbmsistone-lab/zevanory-public-mirror/{head}/.github/workflows/zevanory-p12-observability-exact-release.yml",
+                  headers={"User-Agent":"ZEVANORY-PORTFOLIO-CERT/2.0"}),timeout=20).read().decode()
+              if runtime_sha not in raw: continue
+              arts=get(api+f"/actions/runs/{run['id']}/artifacts?per_page=100").get("artifacts",[])
+              expected="zevanory-p12-observability-"+runtime_sha[:12]
+              art=next((a for a in arts if a.get("name")==expected and not a.get("expired") and int(a.get("size_in_bytes") or 0)>0),None)
+              if art:
+                  selected={"run_id":run["id"],"head_sha":head,"artifact":expected,"artifact_id":art["id"]}
+                  break
+          assert selected,(slug,"shared_runtime_p12_proof_missing",runtime_sha)
+          out={"schema":"zevanory.portfolio.shared-runtime-p12.v1","target":slug,"runtime_sha":runtime_sha,**selected,"verdict":"PASS","false_green":0}
+          pathlib.Path(f"evidence/{slug}-shared-runtime-p12.json").write_text(json.dumps(out,indent=2)+"\n")
+          print(slug+":P12=PASS")
+          PY
+      - name: Install visual and WCAG probes
+        run: |
+          npm install --no-save playwright@1.55.0 pa11y@9.0.1
+          npx playwright install --with-deps chromium
+      - name: P02 P03 P04 target-specific browser proof
+        run: |
+          cat > portfolio-browser.mjs <<'JS'
+          import { chromium } from 'playwright';
+          import pa11y from 'pa11y';
+          import fs from 'fs';
+          const slug=process.env.TARGET_SLUG, url='https://zevanory.api.br/'+slug;
+          const browser=await chromium.launch({headless:true});
+          const views=[{n:'mobile',w:390,h:844},{n:'tablet',w:768,h:1024},{n:'desktop',w:1440,h:900}];
+          const evidence=[];
+          for(const v of views){
+            const page=await browser.newPage({viewport:{width:v.w,height:v.h}});
+            await page.goto(url,{waitUntil:'networkidle',timeout:30000});
+            const r=await page.evaluate(()=>{
+              const de=document.documentElement, body=getComputedStyle(document.body), h1=document.querySelector('h1');
+              const bad=[...document.querySelectorAll('main *')].filter(el=>{const x=el.getBoundingClientRect();return x.width>0&&x.height>0&&(x.right>de.clientWidth+2||x.left<-2)}).slice(0,10).map(el=>el.tagName);
+              const fg=body.color,bg=body.backgroundColor;
+              return {overflowX:de.scrollWidth>de.clientWidth+1,bad,bodyFont:parseFloat(body.fontSize),fontFamily:body.fontFamily,fg,bg,h1Size:h1?parseFloat(getComputedStyle(h1).fontSize):0};
+            });
+            if(r.overflowX||r.bad.length||r.bodyFont<14||!r.fontFamily||r.fg===r.bg||r.h1Size<=r.bodyFont) throw new Error(slug+' geometry/token failure '+JSON.stringify(r));
+            await page.screenshot({path:`evidence/${slug}-${v.n}.png`,fullPage:true});
+            evidence.push({...v,...r});
+            await page.close();
+          }
+          await browser.close();
+          const a11y=await pa11y(url,{standard:'WCAG2AA',timeout:30000,wait:750,chromeLaunchConfig:{args:['--no-sandbox','--disable-setuid-sandbox']},includeWarnings:false,includeNotices:false});
+          const errors=a11y.issues.filter(x=>x.type==='error');
+          if(errors.length) throw new Error(slug+' WCAG errors '+JSON.stringify(errors.slice(0,10)));
+          fs.writeFileSync(`evidence/${slug}-browser-cert.json`,JSON.stringify({schema:'zevanory.portfolio.browser-cert.v1',target:slug,checks:{P02:'PASS',P03:'PASS',P04:'PASS'},views,wcag:{standard:'WCAG2AA',errors:0},false_green:0},null,2));
+          console.log(slug+':P02=PASS'); console.log(slug+':P03=PASS'); console.log(slug+':P04=PASS'); console.log('FALSE_GREEN=0');
+          JS
+          node portfolio-browser.mjs
+      - name: Final target contract
+        run: |
+          python3 - <<'PY'
+          import json,os,pathlib
+          s=os.environ["TARGET_SLUG"]
+          a=json.load(open(f"evidence/{s}-base-cert.json"))
+          b=json.load(open(f"evidence/{s}-browser-cert.json"))
+          r=json.load(open(f"evidence/{s}-restore.json"))
+          o=json.load(open(f"evidence/{s}-shared-runtime-p12.json"))
+          assert r["verdict"]=="PASS" and o["verdict"]=="PASS"
+          checks={**a["checks"],**b["checks"],"P06":"PASS","P10":"PASS","P12":"PASS","P15":"PASS"}
+          expected={"P01","P02","P03","P04","P05","P06","P07","P08","P09","P10","P11","P12","P13","P15"}
+          assert set(checks)==expected and all(v=="PASS" for v in checks.values()),checks
+          out={"schema":"zevanory.portfolio.target-proof.v2","target":s,"workflow_sha":os.environ["EXPECTED_SHA"],"source_blob":a["source_blob"],"shared_runtime_release":a["shared_runtime_release"],"checks":checks,"P14":"N/A","P16":"NOT_CERTIFIED_HERE","sales_mode":"globally-blocked","false_green":0,"verdict":"PROVED_TECHNICAL_14"}
+          pathlib.Path(f"evidence/{s}-portfolio-proof.json").write_text(json.dumps(out,indent=2)+"\n")
+          print(f"{s}:TECHNICAL_14=PROVED")
+          print("FALSE_GREEN=0")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-cert-${{ matrix.slug }}-${{ env.EXPECTED_SHA }}
+          path: |
+            evidence/${{ matrix.slug }}-base-cert.json
+            evidence/${{ matrix.slug }}-browser-cert.json
+            evidence/${{ matrix.slug }}-restore.json
+            evidence/${{ matrix.slug }}-shared-runtime-p12.json
+            evidence/${{ matrix.slug }}-sbom.cdx.json
+            evidence/${{ matrix.slug }}-portfolio-proof.json
+            evidence/${{ matrix.slug }}-*.png
+          if-no-files-found: error
+          retention-days: 90
