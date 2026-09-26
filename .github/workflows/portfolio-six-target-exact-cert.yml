@@ -174,7 +174,7 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: portfolio-cert-${{ matrix.slug }}-${{ github.sha }}
+          name: portfolio-cert-${{ matrix.slug }}-${{ env.EXPECTED_SHA }}
           path: |
             evidence/${{ matrix.slug }}-base-cert.json
             evidence/${{ matrix.slug }}-browser-cert.json
