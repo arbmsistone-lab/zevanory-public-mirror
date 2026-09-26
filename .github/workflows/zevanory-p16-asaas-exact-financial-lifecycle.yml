@@ -35,11 +35,105 @@ jobs:
       ASAAS_WEBHOOK_EMAIL: ${{ secrets.ASAAS_WEBHOOK_EMAIL }}
       OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+      MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN || secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+      MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_WEBHOOK_SECRET || secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
+      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN || secrets.MERCADOPAGO_ACCESS_TOKEN }}
+      MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET || secrets.MERCADOPAGO_WEBHOOK_SECRET }}
     steps:
       - name: Checkout certification harness
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Setup Node for reversible runtime cutover
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Prepare exact c384 production candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "MISSING_REQUIRED_SECRET=CLOUDFLARE_API_TOKEN"; exit 2; }
+          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET; do
+            test -n "${!k:-}" || { echo "MISSING_REQUIRED_SECRET=$k"; exit 2; }
+          done
+          git fetch --depth 1 origin "$EXPECTED_SHA"
+          git fetch --depth 1 origin 83620c680958d726fc4b0fd16e2574cdcc362a6d
+          git checkout "$EXPECTED_SHA" -- worker admin.css
+          rm -rf public
+          git archive 83620c680958d726fc4b0fd16e2574cdcc362a6d public | tar -x
+          node --input-type=module <<'NODE'
+          import { writeFile } from "node:fs/promises";
+          import { CONTROL_PLANE_VNEXT_JS } from "./worker/control-plane-vnext-source.mjs";
+          await writeFile("worker/live-recovered/control-plane-vnext.js", CONTROL_PLANE_VNEXT_JS, "utf8");
+          await writeFile("public/control-plane-vnext.js", CONTROL_PLANE_VNEXT_JS, "utf8");
+          NODE
+          cmp -s worker/live-recovered/control-plane-vnext.js public/control-plane-vnext.js
+          cp admin.css public/admin.css
+          EXPECTED_SHA="$EXPECTED_SHA" python3 - <<'PY'
+          import json,os
+          with open("public/build-info.json","w",encoding="utf-8") as f:
+              json.dump({"sha":os.environ["EXPECTED_SHA"],"source":"github-actions-cloudflare-p16-cert","repository":os.environ["GITHUB_REPOSITORY"]},f,indent=2)
+              f.write("\n")
+          PY
+          git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.p16.base.jsonc
+          python3 scripts/p16_prepare_wrangler.py asaas wrangler.p16.base.jsonc wrangler.p16.asaas.jsonc
+          python3 scripts/p16_prepare_wrangler.py mercadopago wrangler.p16.base.jsonc wrangler.p16.mercadopago.jsonc
+          node --check worker/cloudflare-worker.compat.mjs
+          npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.p16.asaas.jsonc --outdir /tmp/p16-asaas-dry
+          npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.p16.mercadopago.jsonc --outdir /tmp/p16-mp-dry
+          echo "P16_EXACT_RUNTIME_CANDIDATES=PASS"
+
+      - name: Temporarily provision Asaas sandbox runtime bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os
+          json.dump({
+            "ASAAS_API_KEY":os.environ["ASAAS_API_KEY"],
+            "ASAAS_WEBHOOK_TOKEN":os.environ["ASAAS_WEBHOOK_TOKEN"]
+          },open("/tmp/p16-asaas-secrets.json","w",encoding="utf-8"))
+          PY
+          npx --yes wrangler@4.135.0 secret bulk /tmp/p16-asaas-secrets.json --name zevanory
+          rm -f /tmp/p16-asaas-secrets.json
+          echo "P16_ASAAS_RUNTIME_BINDINGS=PASS"
+
+      - name: Cut over same c384 runtime to Asaas sandbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.p16.asaas.jsonc --tag="p16-asaas-$EXPECTED_SHA" --message="P16 temporary Asaas sandbox certification on exact $EXPECTED_SHA"
+          ready=0
+          for i in $(seq 1 30); do
+            curl -fsS https://zevanory.api.br/api/release -o /tmp/p16-release.json || true
+            curl -fsS https://zevanory.api.br/api/config -o /tmp/p16-config.json || true
+            if EXPECTED_SHA="$EXPECTED_SHA" python3 - <<'PY'
+          import json,os
+          try:
+              r=json.load(open("/tmp/p16-release.json"))
+              c=json.load(open("/tmp/p16-config.json"))
+          except Exception:
+              raise SystemExit(1)
+          ok=(
+              r.get("deployment",{}).get("commit_sha","").lower()==os.environ["EXPECTED_SHA"].lower()
+              and r.get("sales_mode")=="globally-blocked"
+              and r.get("checkout_mode")=="enabled"
+              and r.get("financial_mode")=="enabled"
+              and c.get("certification_pilot",{}).get("enabled") is True
+              and c.get("certification_pilot",{}).get("ready") is True
+          )
+          raise SystemExit(0 if ok else 1)
+          PY
+            then ready=1; break; fi
+            sleep 4
+          done
+          test "$ready" = "1"
+          echo "P16_ASAAS_CUTOVER=PASS"
+          echo "SALE_GLOBALLY_ENABLED=false"
 
       - name: Validate fail-closed sandbox preflight
         shell: bash
@@ -98,6 +192,51 @@ jobs:
           print("P16_LIFECYCLE=PROVED")
           print("FALSE_GREEN=0")
           PY
+
+      - name: Restore canonical Mercado Pago runtime on same c384 SHA
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for k in MERCADOPAGO_ACCESS_TOKEN MERCADOPAGO_WEBHOOK_SECRET MERCADOPAGO_TEST_ACCESS_TOKEN MERCADOPAGO_TEST_WEBHOOK_SECRET; do
+            test -n "${!k:-}" || { echo "RESTORE_SECRET_MISSING=$k"; exit 2; }
+          done
+          python3 - <<'PY'
+          import json,os
+          json.dump({
+            "MERCADOPAGO_ACCESS_TOKEN":os.environ["MERCADOPAGO_ACCESS_TOKEN"],
+            "MERCADOPAGO_WEBHOOK_SECRET":os.environ["MERCADOPAGO_WEBHOOK_SECRET"],
+            "MERCADOPAGO_TEST_ACCESS_TOKEN":os.environ["MERCADOPAGO_TEST_ACCESS_TOKEN"],
+            "MERCADOPAGO_TEST_WEBHOOK_SECRET":os.environ["MERCADOPAGO_TEST_WEBHOOK_SECRET"],
+            "ASAAS_API_KEY":None,
+            "ASAAS_WEBHOOK_TOKEN":None
+          },open("/tmp/p16-restore-secrets.json","w",encoding="utf-8"))
+          PY
+          npx --yes wrangler@4.135.0 secret bulk /tmp/p16-restore-secrets.json --name zevanory
+          rm -f /tmp/p16-restore-secrets.json
+          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.p16.mercadopago.jsonc --tag="$EXPECTED_SHA" --message="Restore canonical Mercado Pago runtime after P16 certification"
+          restored=0
+          for i in $(seq 1 30); do
+            curl -fsS https://zevanory.api.br/api/release -o /tmp/p16-restored-release.json || true
+            if EXPECTED_SHA="$EXPECTED_SHA" python3 - <<'PY'
+          import json,os
+          try:r=json.load(open("/tmp/p16-restored-release.json"))
+          except Exception: raise SystemExit(1)
+          ok=(
+            r.get("deployment",{}).get("commit_sha","").lower()==os.environ["EXPECTED_SHA"].lower()
+            and r.get("sales_mode")=="globally-blocked"
+            and r.get("checkout_mode")=="enabled"
+            and r.get("financial_mode")=="enabled"
+          )
+          raise SystemExit(0 if ok else 1)
+          PY
+            then restored=1; break; fi
+            sleep 4
+          done
+          test "$restored" = "1"
+          echo "P16_CANONICAL_PROVIDER_RESTORE=PASS"
+          echo "RUNTIME_SHA_RESTORED=$EXPECTED_SHA"
+          echo "SALE_GLOBALLY_ENABLED=false"
 
       - name: Upload exact-release P16 evidence
         if: always()
