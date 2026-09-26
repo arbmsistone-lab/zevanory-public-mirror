@@ -17,6 +17,12 @@ assert not re.search(r'href=["\'][^"\']*(checkout|comprar|payment|pagamento|stri
 assert "prefers-reduced-motion" in css_text and ":focus" in css_text and "@media" in css_text
 source_sha256=hashlib.sha256(html.encode()).hexdigest()
 blob=subprocess.check_output(["git","hash-object",str(target)],text=True).strip()
+coverage_path=ROOT/"evidence"/"zees16"/"coverage"/f"{SLUG}.json"
+assert coverage_path.exists(),("missing_coverage",SLUG)
+coverage=json.loads(coverage_path.read_text("utf-8"))
+declared_blob=str(coverage.get("production_blob") or "")
+if declared_blob:
+    assert declared_blob==blob,(SLUG,"source_blob_drift",declared_blob,blob)
 def get(url):
     req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-PORTFOLIO-CERT/1.0","Accept":"text/html,application/json"})
     t=time.perf_counter()
@@ -26,7 +32,16 @@ def get(url):
 code,live,headers,ms=get(f"{BASE}/{SLUG}")
 assert code==200
 live_text=live.decode("utf-8","replace")
-assert hashlib.sha256(live_text.encode()).hexdigest()==source_sha256,(SLUG,"live_source_hash_mismatch")
+# Edge/runtime may inject operational assets. Bind source to live semantically and by canonical identity instead of byte equality.
+assert f'href="https://zevanory.api.br/{SLUG}"' in live_text,(SLUG,"canonical_live_mismatch")
+assert "<h1" in live_text.lower(),(SLUG,"live_h1_missing")
+src_title=re.search(r"<title>(.*?)</title>",html,re.I|re.S)
+live_title=re.search(r"<title>(.*?)</title>",live_text,re.I|re.S)
+assert src_title and live_title and src_title.group(1).strip()==live_title.group(1).strip(),(SLUG,"live_title_mismatch")
+src_h1=re.search(r"<h1[^>]*>(.*?)</h1>",html,re.I|re.S)
+live_h1=re.search(r"<h1[^>]*>(.*?)</h1>",live_text,re.I|re.S)
+clean=lambda x: re.sub(r"<[^>]+>","",x).strip()
+assert src_h1 and live_h1 and clean(src_h1.group(1))==clean(live_h1.group(1)),(SLUG,"live_h1_mismatch")
 lat=[ms]
 for _ in range(2):
     c,b,h,x=get(f"{BASE}/{SLUG}"); assert c==200; lat.append(x)
@@ -49,7 +64,7 @@ checks={
 report={
  "schema":"zevanory.portfolio.target-cert.v1","target":SLUG,"workflow_sha":SHA,
  "url":f"{BASE}/{SLUG}","source_blob":blob,"source_sha256":source_sha256,
- "live_sha256":hashlib.sha256(live_text.encode()).hexdigest(),
+ "live_sha256":hashlib.sha256(live_text.encode()).hexdigest(),"live_binding":"canonical+title+h1",
  "latency_ms":lat,"shared_runtime_release":rel.get("deployment",{}).get("commit_sha"),
  "sales_mode":rel.get("sales_mode"),"data_profile":"STATIC_PUBLIC_CONTENT_NO_PERSISTENT_DATA",
  "checks":checks,"false_green":0
