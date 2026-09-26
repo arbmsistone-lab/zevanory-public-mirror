@@ -41,6 +41,7 @@ jobs:
       OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
       # Binding repair only: preserve the already-certified production runtime SHA.
+      # Reconcile trigger 2026-09-26: restore canonical KV binding without changing runtime SHA.
       TARGET_RUNTIME_SHA: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
     steps:
       - uses: actions/checkout@v4
