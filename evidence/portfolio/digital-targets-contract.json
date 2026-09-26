@@ -1,0 +1,58 @@
+{
+  "schema": "zevanory.portfolio.digital-contract.v1",
+  "version": "2026.09",
+  "architecture": {
+    "model": "immutable static product surface",
+    "source": "gh-pages",
+    "primary_host": "https://zevanory.api.br",
+    "fallback_host": "https://arbmsistone-lab.github.io/zevanory-public-mirror",
+    "shared_assets": [
+      "product.css",
+      "brand/"
+    ],
+    "client_runtime": "none",
+    "data_store": "none",
+    "sales_mode": "fail-closed",
+    "notes": "Shared controls are reusable only for these DIGITAL_CONTENT targets; target identity is bound by route and immutable Git blob."
+  },
+  "targets": {
+    "ia-na-pratica": {
+      "name": "ZEVANORY IA na Pratica",
+      "profile": "DIGITAL_CONTENT",
+      "path": "ia-na-pratica/index.html",
+      "blob": "7c5b9dac20fc1ff0421e64f52ab7b6d2689d2d22"
+    },
+    "vendas-na-pratica": {
+      "name": "ZEVANORY Vendas na Pratica",
+      "profile": "DIGITAL_CONTENT",
+      "path": "vendas-na-pratica/index.html",
+      "blob": "2a6b9be0bd12a2ffbd9e7a4a8e9941829eab30d3"
+    },
+    "combo-ia-vendas": {
+      "name": "ZEVANORY Combo IA + Vendas",
+      "profile": "DIGITAL_CONTENT",
+      "path": "combo-ia-vendas/index.html",
+      "blob": "2d0c53565af6eef646439b1c4f505a331c842705"
+    },
+    "lucro-e-caixa": {
+      "name": "ZEVANORY Lucro & Caixa",
+      "profile": "DIGITAL_CONTENT",
+      "path": "lucro-e-caixa/index.html",
+      "blob": "427e208349bd280128413af2f16e31bca1cb9a43"
+    },
+    "negocio-completo": {
+      "name": "ZEVANORY Negocio Completo",
+      "profile": "DIGITAL_CONTENT",
+      "path": "negocio-completo/index.html",
+      "blob": "d4fb45a28616cf714c1f33b93bf39bfcacfbfce3"
+    }
+  },
+  "data_governance": {
+    "classification": "PUBLIC_STATIC_CONTENT",
+    "client_persistence": false,
+    "cookies_required": false,
+    "tracking_required": false,
+    "lineage": "Git commit + target blob + workflow evidence",
+    "retention": "Git history plus published privacy/terms/refund policies"
+  }
+}
