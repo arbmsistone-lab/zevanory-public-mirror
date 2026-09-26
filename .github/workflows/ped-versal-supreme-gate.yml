@@ -1,0 +1,36 @@
+name: PED-Versal V1.1 Supreme Gate
+
+on:
+  pull_request:
+    branches: [gh-pages]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ped-versal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: PED-Versal no-new-debt gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin gh-pages --depth=1
+          python3 scripts/ped_versal_audit.py --base-ref origin/gh-pages
+      - name: Verify corporate invariant
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '"standard": "PED-VERSAL-V1.1-SUPREME"' .zevanory/ped-versal-policy.json
+          grep -q '"falseGreen": 0' .zevanory/ped-versal-policy.json
+          grep -q '"regressionBudget": 0' .zevanory/ped-versal-policy.json

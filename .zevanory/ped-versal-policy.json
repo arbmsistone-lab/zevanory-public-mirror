@@ -1,0 +1,51 @@
+{
+  "standard": "PED-VERSAL-V1.1-SUPREME",
+  "owner": "ZEVANORY",
+  "falseGreen": 0,
+  "failClosed": true,
+  "regressionBudget": 0,
+  "enforcement": "NO_NEW_DEBT",
+  "ui": {
+    "macroGridPx": 8,
+    "microGridPx": 4,
+    "typography": {
+      "body": 16,
+      "h3": 21,
+      "h2": 28,
+      "h1": 37,
+      "label": [
+        12,
+        14
+      ]
+    },
+    "viewports": [
+      1920,
+      1440,
+      768,
+      375
+    ],
+    "wcag": {
+      "target": "AAA",
+      "floor": "AA"
+    },
+    "states": [
+      "empty",
+      "loading",
+      "success",
+      "error"
+    ],
+    "performance": [
+      "LCP",
+      "INP",
+      "CLS",
+      "bundle"
+    ]
+  },
+  "proof": {
+    "exactSha": true,
+    "reproducibleEvidence": true,
+    "boundedRetries": true,
+    "providerTruth": true
+  },
+  "profile": "UI_ENTERPRISE"
+}
