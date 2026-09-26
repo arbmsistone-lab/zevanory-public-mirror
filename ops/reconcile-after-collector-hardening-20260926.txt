@@ -1,0 +1,3 @@
+Trigger ZEES-16 reconciliation after collector-outage preservation hardening.
+Target release: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+Worker hardening merge: 7feb6776e4d4bfe4c75820f45fc4eb249abaeb28
