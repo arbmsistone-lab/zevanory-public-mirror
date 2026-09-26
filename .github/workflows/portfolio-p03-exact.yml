@@ -69,7 +69,7 @@ jobs:
           grep -Eiq '<meta[^>]+name=["'\'' ]*viewport' "$SLUG/index.html"
           grep -Fq '/zevanory-public-mirror/product.css' "$SLUG/index.html"
           grep -Eiq '<h1[^>]*>' "$SLUG/index.html"
-          grep -Eiq 'class=["'\''][^"'\'']*button' "$SLUG/index.html"
+          grep -Fq 'class="button' "$SLUG/index.html"
           echo "TARGET_BLOB_MATCH=PASS"
           echo "STATIC_TYPOGRAPHY_GEOMETRY_CONTRACT=PASS"
 
