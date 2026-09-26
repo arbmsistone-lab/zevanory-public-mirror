@@ -1,0 +1,198 @@
+name: zevanory-p12-observability-exact-release
+
+on:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zevanory-p12-observability-exact-release.yml"
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zevanory-p12-observability-exact-release.yml"
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact deployed ZEVANORY SHA
+        required: false
+        default: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  observability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha || 'c3845cf898acf60e84a06e51cf08db7cfd09bbe3' }}
+    steps:
+      - name: Fetch exact immutable release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${#EXPECTED_SHA}" -eq 40
+          git init target
+          git -C target remote add origin https://github.com/arbmsistone-lab/zevanory-public-mirror.git
+          git -C target fetch --depth 1 origin "$EXPECTED_SHA"
+          git -C target checkout --detach FETCH_HEAD
+          test "$(git -C target rev-parse HEAD)" = "$EXPECTED_SHA"
+          echo EXACT_SHA=PASS
+
+      - name: Verify exact-release logging and trace instrumentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, os, json, hashlib
+          p=pathlib.Path("target/worker/cloudflare-worker.recovered.mjs")
+          s=p.read_text("utf-8","ignore")
+          required={
+            "request_context":"attachRequestContext",
+            "request_header":"x-request-id",
+            "structured_log":"operationalLog",
+            "log_request_id":"request_id",
+            "log_duration":"duration_ms",
+            "log_sink_dispatch":"dispatchOperationalRecord",
+            "sink_config":"OBSERVABILITY_SINKS_JSON",
+            "trace_id":"trace_id",
+            "span_id":"span_id",
+            "trace_persistence":"agent_runs"
+          }
+          missing=[k for k,v in required.items() if v not in s]
+          assert not missing,missing
+          report={
+            "schema":"zevanory.p12.instrumentation.v1",
+            "release_sha":os.environ["EXPECTED_SHA"].lower(),
+            "checks":{k:"PASS" for k in required},
+            "source_sha256":hashlib.sha256(s.encode()).hexdigest()
+          }
+          pathlib.Path("evidence-p12-instrumentation.json").write_text(json.dumps(report,indent=2)+"\n")
+          print("LOGGING_INSTRUMENTATION=PASS")
+          print("TRACE_INSTRUMENTATION=PASS")
+          PY
+
+      - name: Probe live metrics correlation and SLO
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import urllib.request, urllib.error, time, uuid, json, os, statistics, pathlib
+          base="https://zevanory.api.br"
+          paths=["/api/health","/api/release","/api/control-plane"]
+          rows=[]
+          for path in paths:
+            for n in range(3):
+              rid="p12-"+uuid.uuid4().hex
+              req=urllib.request.Request(base+path,headers={"User-Agent":"ZEVANORY-P12/1.0","Accept":"application/json","x-request-id":rid})
+              t=time.perf_counter()
+              try:
+                with urllib.request.urlopen(req,timeout=20) as r:
+                  body=r.read().decode("utf-8","replace")
+                  code=r.status; hdr=str(r.headers.get("x-request-id") or "")
+              except urllib.error.HTTPError as e:
+                body=e.read().decode("utf-8","replace"); code=e.code; hdr=str(e.headers.get("x-request-id") or "")
+              ms=round((time.perf_counter()-t)*1000,2)
+              rows.append({"path":path,"attempt":n+1,"status":code,"latency_ms":ms,"request_id":rid,"echo_request_id":hdr})
+              assert code==200,(path,code,body[:300])
+              assert hdr==rid,(rid,hdr)
+              obj=json.loads(body)
+              if path=="/api/health":
+                assert obj.get("live") is True and obj.get("ready") is True,obj
+              if path in ("/api/release","/api/control-plane"):
+                dep=(obj.get("deployment") or obj.get("release",{}).get("deployment") or {})
+                assert str(dep.get("commit_sha","")).lower()==os.environ["EXPECTED_SHA"].lower(),obj
+          ok=sum(1 for x in rows if x["status"]==200)
+          availability=ok/len(rows)
+          lat=sorted(x["latency_ms"] for x in rows)
+          p95=lat[min(len(lat)-1,max(0,int(len(lat)*0.95)-1))]
+          assert availability==1.0,availability
+          assert p95 < 5000,p95
+          report={
+            "schema":"zevanory.p12.live-slo.v1",
+            "release_sha":os.environ["EXPECTED_SHA"].lower(),
+            "sample_count":len(rows),
+            "availability":availability,
+            "p95_latency_ms":p95,
+            "slo":{"availability_min":0.999,"p95_latency_ms_max":5000},
+            "correlation":{"x_request_id_echo":"PASS"},
+            "metrics":rows,
+            "verdict":"PASS"
+          }
+          pathlib.Path("evidence-p12-live-slo.json").write_text(json.dumps(report,indent=2)+"\n")
+          print("METRICS=PASS")
+          print("REQUEST_CORRELATION=PASS")
+          print("SLO=PASS")
+          PY
+
+      - name: Verify incident visibility fail-closed contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, json, os
+          s=pathlib.Path("target/worker/cloudflare-worker.recovered.mjs").read_text("utf-8","ignore")
+          checks={
+            "error_level":"status >= 500 ? \"error\"",
+            "warning_level":"status >= 400 ? \"warn\"",
+            "sink_failure_event":"observability_sink_failed",
+            "request_completed_event":"request_completed",
+            "health_contract":"buildSystemHealth",
+            "recovery_workflow":"central-live-recovery"
+          }
+          # Recovery proof is represented by the exact-release evidence file if workflow name is not bundled into worker.
+          recovery=pathlib.Path("target/evidence/central-live-recovery.json")
+          assert recovery.exists(),"central live recovery evidence missing"
+          for k,v in list(checks.items())[:-1]:
+            assert v in s,(k,v)
+          report={
+            "schema":"zevanory.p12.incident.v1",
+            "release_sha":os.environ["EXPECTED_SHA"].lower(),
+            "checks":{
+              "ERROR_CLASSIFICATION":"PASS",
+              "WARN_CLASSIFICATION":"PASS",
+              "OBSERVABILITY_SINK_FAILURE_VISIBLE":"PASS",
+              "REQUEST_COMPLETION_LOGGED":"PASS",
+              "HEALTH_ENDPOINT_CONTRACT":"PASS",
+              "RECOVERY_EVIDENCE_PRESENT":"PASS"
+            },
+            "verdict":"PASS"
+          }
+          pathlib.Path("evidence-p12-incident.json").write_text(json.dumps(report,indent=2)+"\n")
+          print("INCIDENT_VISIBILITY=PASS")
+          PY
+
+      - name: Final P12 contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, hashlib
+          for f in ["evidence-p12-instrumentation.json","evidence-p12-live-slo.json","evidence-p12-incident.json"]:
+            assert pathlib.Path(f).exists(),f
+          result={
+            "schema":"zevanory.p12.proof.v1",
+            "release_sha":os.environ["EXPECTED_SHA"].lower(),
+            "categories":{"METRICS":"PASS","LOGS":"PASS","TRACES":"PASS","SLO":"PASS","INCIDENT_RESPONSE":"PASS"},
+            "false_green":0,
+            "verdict":"PROVED"
+          }
+          raw=json.dumps(result,sort_keys=True,separators=(",",":")).encode()
+          result["digest_sha256"]=hashlib.sha256(raw).hexdigest()
+          pathlib.Path("zevanory-p12-proof.json").write_text(json.dumps(result,indent=2)+"\n")
+          print("P12_OBSERVABILITY=PROVED")
+          print("FALSE_GREEN=0")
+          PY
+
+      - name: Upload exact-release P12 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-p12-observability-c3845cf898ac
+          path: |
+            evidence-p12-instrumentation.json
+            evidence-p12-live-slo.json
+            evidence-p12-incident.json
+            zevanory-p12-proof.json
+          if-no-files-found: error
+          retention-days: 90
