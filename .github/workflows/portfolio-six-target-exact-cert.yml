@@ -1,4 +1,4 @@
-name: portfolio-six-target-exact-cert
+name: portfolio-five-digital-target-exact-cert
 
 on:
   pull_request:
@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        slug: [ia-na-pratica, vendas-na-pratica, combo-ia-vendas, lucro-e-caixa, negocio-completo, zevanory-one]
+        slug: [ia-na-pratica, vendas-na-pratica, combo-ia-vendas, lucro-e-caixa, negocio-completo]
     env:
       TARGET_SLUG: ${{ matrix.slug }}
       EXPECTED_SHA: ${{ github.sha }}
