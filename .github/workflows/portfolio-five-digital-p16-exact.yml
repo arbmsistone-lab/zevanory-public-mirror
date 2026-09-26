@@ -1,0 +1,89 @@
+name: portfolio-five-digital-p16-exact
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/portfolio_target_lifecycle.py"
+      - ".github/workflows/portfolio-five-digital-p16-exact.yml"
+      - "ia-na-pratica/**"
+      - "vendas-na-pratica/**"
+      - "combo-ia-vendas/**"
+      - "lucro-e-caixa/**"
+      - "negocio-completo/**"
+      - "worker/cloudflare-worker.recovered.mjs"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "scripts/portfolio_target_lifecycle.py"
+      - ".github/workflows/portfolio-five-digital-p16-exact.yml"
+      - "ia-na-pratica/**"
+      - "vendas-na-pratica/**"
+      - "combo-ia-vendas/**"
+      - "lucro-e-caixa/**"
+      - "negocio-completo/**"
+      - "worker/cloudflare-worker.recovered.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  p16:
+    name: P16 ${{ matrix.slug }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        slug:
+          - ia-na-pratica
+          - vendas-na-pratica
+          - combo-ia-vendas
+          - lucro-e-caixa
+          - negocio-completo
+    env:
+      TARGET_SLUG: ${{ matrix.slug }}
+      EXPECTED_RUNTIME_SHA: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prove exact target lifecycle with sales fail-closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/portfolio_target_lifecycle.py
+
+      - name: Verify immutable P16 evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os
+          slug=os.environ["TARGET_SLUG"]
+          p=json.load(open(f"evidence/{slug}-p16-lifecycle.json",encoding="utf-8"))
+          assert p["target"]==slug
+          assert p["runtime_sha"]==os.environ["EXPECTED_RUNTIME_SHA"]
+          assert p["sales_mode"]=="globally-blocked"
+          assert p["external_provider_proof"] is False
+          assert p["final_order_status"]=="refunded"
+          assert p["final_entitlement_status"]=="revoked"
+          assert p["final_fulfillment_status"]=="canceled"
+          assert p["checks"]["CHECKOUT"]=="PASS"
+          assert p["checks"]["WEBHOOK_AUTH"]=="PASS"
+          assert p["checks"]["IDEMPOTENCY"]=="PASS"
+          assert p["checks"]["ENTITLEMENT"]=="PASS"
+          assert p["checks"]["FULFILLMENT"]=="PASS"
+          assert p["checks"]["REFUND"]=="PASS"
+          assert p["checks"]["PROVIDER_FINAL_STATE"]=="TERMINAL"
+          assert p["false_green"]==0 and p["verdict"]=="PROVED"
+          print(slug+":P16_EXACT=PASS")
+          print("FALSE_GREEN=0")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-p16-${{ matrix.slug }}-${{ github.sha }}
+          path: evidence/${{ matrix.slug }}-p16-lifecycle.json
+          if-no-files-found: error
+          retention-days: 90
