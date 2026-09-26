@@ -46,7 +46,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: P02 P03 P04 target-specific browser proof
         run: |
-          cat > /tmp/portfolio-browser.mjs <<'JS'
+          cat > portfolio-browser.mjs <<'JS'
           import { chromium } from 'playwright';
           import pa11y from 'pa11y';
           import fs from 'fs';
@@ -75,7 +75,7 @@ jobs:
           fs.writeFileSync(`evidence/${slug}-browser-cert.json`,JSON.stringify({schema:'zevanory.portfolio.browser-cert.v1',target:slug,checks:{P02:'PASS',P03:'PASS',P04:'PASS'},views,wcag:{standard:'WCAG2AA',errors:0},false_green:0},null,2));
           console.log(slug+':P02=PASS'); console.log(slug+':P03=PASS'); console.log(slug+':P04=PASS'); console.log('FALSE_GREEN=0');
           JS
-          node /tmp/portfolio-browser.mjs
+          node portfolio-browser.mjs
       - name: Final target contract
         run: |
           python3 - <<'PY'
