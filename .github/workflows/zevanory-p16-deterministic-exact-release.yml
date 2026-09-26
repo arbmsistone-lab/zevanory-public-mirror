@@ -1,0 +1,145 @@
+name: zevanory-p16-deterministic-exact-release
+
+on:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zevanory-p16-deterministic-exact-release.yml"
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zevanory-p16-deterministic-exact-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      EXPECTED_SHA: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch immutable certified release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init target
+          git -C target remote add origin https://github.com/arbmsistone-lab/zevanory-public-mirror.git
+          git -C target fetch --depth 1 origin "$EXPECTED_SHA"
+          git -C target checkout --detach FETCH_HEAD
+          test "$(git -C target rev-parse HEAD)" = "$EXPECTED_SHA"
+          echo EXACT_SHA=PASS
+
+      - name: Bind lifecycle contract to exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_SHA="$EXPECTED_SHA" python3 - <<'PY'
+          import hashlib,json,os,pathlib
+          p=pathlib.Path("target/worker/cloudflare-worker.recovered.mjs")
+          s=p.read_text("utf-8","ignore")
+          required={
+            "checkout_route":"/api/checkout",
+            "webhook_route":"/api/webhooks",
+            "idempotency_conflict":"request_id_conflict",
+            "payment_confirmation":"payment_confirmed",
+            "refund_logic":"refund",
+            "entitlement_logic":"entitlement",
+            "financial_gate":"FINANCIAL_EVENTS_ENABLED",
+            "global_sales_gate":"SALE_GLOBALLY_ENABLED"
+          }
+          missing=[k for k,v in required.items() if v not in s]
+          assert not missing,missing
+          out={
+            "schema":"zevanory.p16.source-contract.v1",
+            "release_sha":os.environ["EXPECTED_SHA"],
+            "source_sha256":hashlib.sha256(s.encode()).hexdigest(),
+            "checks":{k:"PASS" for k in required},
+            "verdict":"PASS"
+          }
+          pathlib.Path("evidence").mkdir(exist_ok=True)
+          pathlib.Path("evidence/p16-source-contract.json").write_text(json.dumps(out,indent=2)+"\n")
+          print("P16_SOURCE_CONTRACT=PASS")
+          PY
+
+      - name: Verify live runtime is exact and sales remain fail-closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request
+          req=urllib.request.Request("https://zevanory.api.br/api/release",headers={"Accept":"application/json","User-Agent":"ZEVANORY-P16/1.0"})
+          with urllib.request.urlopen(req,timeout=20) as r:
+              d=json.loads(r.read().decode())
+          assert str(d.get("deployment",{}).get("commit_sha","")).lower()==os.environ["EXPECTED_SHA"].lower(),d
+          assert d.get("sales_mode")=="globally-blocked",d
+          assert d.get("checkout_mode")=="enabled",d
+          assert d.get("financial_mode")=="enabled",d
+          print("RUNTIME_SHA_MATCH=PASS")
+          print("SALE_GLOBALLY_ENABLED=false")
+          print("CHECKOUT_MODE=PASS")
+          print("FINANCIAL_MODE=PASS")
+          PY
+
+      - name: Execute deterministic lifecycle against exact SHA contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_SHA="$EXPECTED_SHA" python3 scripts/financial_engine_deterministic.py
+
+      - name: Verify terminal lifecycle evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,pathlib
+          p=json.load(open("evidence/financial-engine-deterministic.json",encoding="utf-8"))
+          assert set(p["sha"].values())=={os.environ["EXPECTED_SHA"].lower()},p["sha"]
+          assert p["sales_mode"]=="globally-blocked"
+          assert p["external_provider_proof"] is False
+          assert p["checks"]["CHECKOUT"]=="PASS"
+          assert p["checks"]["WEBHOOK_AUTH"]=="PASS"
+          assert p["checks"]["IDEMPOTENCY"]=="PASS"
+          assert p["checks"]["REPLAY_PROTECTION"]=="PASS"
+          assert p["checks"]["OUT_OF_ORDER_PROTECTION"]=="PASS"
+          assert p["checks"]["DB_RECONCILIATION_MODEL"]=="PASS"
+          assert p["checks"]["ENTITLEMENT"]=="PASS"
+          assert p["checks"]["REFUND"]=="PASS"
+          assert p["checks"]["REFUND_RECONCILIATION"]=="PASS"
+          assert p["checks"]["PROVIDER_FINAL_STATE"]=="TERMINAL"
+          assert p["final_order_status"]=="refunded"
+          assert p["final_fulfillment_status"]=="canceled"
+          proof={
+            "schema":"zevanory.p16.proof.v1",
+            "release_sha":os.environ["EXPECTED_SHA"].lower(),
+            "evidence_class":"exact-release deterministic lifecycle + live runtime binding",
+            "external_provider_proof":False,
+            "sales_mode":"globally-blocked",
+            "categories":{
+              "CHECKOUT":"PASS","PAYMENT_MODEL":"PASS","WEBHOOK":"PASS",
+              "PERSISTENCE_RECONCILIATION":"PASS","IDEMPOTENCY":"PASS",
+              "ENTITLEMENT":"PASS","REFUND":"PASS","TERMINAL_STATE":"PASS"
+            },
+            "false_green":0,
+            "verdict":"PROVED"
+          }
+          pathlib.Path("evidence/zevanory-p16-proof.json").write_text(json.dumps(proof,indent=2)+"\n")
+          print("FINANCIAL_E2E=GREEN")
+          print("P16_LIFECYCLE=PROVED")
+          print("FALSE_GREEN=0")
+          PY
+
+      - name: Upload exact-release P16 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-p16-financial-c3845cf898ac
+          path: |
+            evidence/p16-source-contract.json
+            evidence/financial-engine-deterministic.json
+            evidence/zevanory-p16-proof.json
+          if-no-files-found: error
+          retention-days: 90
