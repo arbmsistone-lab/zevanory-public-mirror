@@ -41,21 +41,22 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pip install --disable-pip-version-check --quiet "semgrep==1.136.0"
-          semgrep scan --config p/javascript --config p/secrets --error --json --output semgrep.json target/worker target/public || {
-            python3 - <<'PY'
-          import json
-          p=json.load(open("semgrep.json"))
-          rows=p.get("results",[])
-          print("SAST_FINDINGS",len(rows))
-          for r in rows[:20]:
-              print(r.get("check_id"),r.get("path"),r.get("start",{}).get("line"))
-          PY
-            exit 1
-          }
+          test -d target/worker
+          test -d target/scripts
+          test -d target/solucoes
+          semgrep scan --config p/javascript --config p/secrets --json --output semgrep.json \
+            target/worker target/scripts target/solucoes target/index.html
           python3 - <<'PY'
           import json
           p=json.load(open("semgrep.json"))
-          assert len(p.get("results",[]))==0,p.get("results",[])[:5]
+          rows=p.get("results",[])
+          errors=[e for e in p.get("errors",[]) if str(e.get("level","")).lower() in ("error","fatal")]
+          print("SAST_FINDINGS",len(rows))
+          print("SAST_FATAL_ERRORS",len(errors))
+          for r in rows[:20]:
+              print(r.get("check_id"),r.get("path"),r.get("start",{}).get("line"))
+          assert not errors,errors[:5]
+          assert len(rows)==0,rows[:5]
           print("SAST=PASS")
           PY
 
