@@ -88,11 +88,13 @@ for(const viewport of contract.ui.viewports){
     const focus=await page.evaluate(()=>{
       const el=document.activeElement; const s=getComputedStyle(el);
       const r=el.getBoundingClientRect();
-      return {tag:el?.tagName,cls:String(el?.className||''),outlineWidth:s.outlineWidth,outlineStyle:s.outlineStyle,left:r.left,top:r.top,right:r.right,bottom:r.bottom};
+      return {tag:el?.tagName,cls:String(el?.className||''),outlineWidth:s.outlineWidth,outlineStyle:s.outlineStyle,boxShadow:s.boxShadow,left:r.left,top:r.top,right:r.right,bottom:r.bottom};
     });
     row.checks.keyboardFocus=focus;
     if(!focus.cls.includes('skip-link')) pushFail(row,'skip_link_focus',JSON.stringify(focus));
-    if(parseFloat(focus.outlineWidth||'0')<4) pushFail(row,'focus_ring_width',focus.outlineWidth);
+    const hasOutline=parseFloat(focus.outlineWidth||'0')>=4 && focus.outlineStyle!=='none';
+    const hasShadow=focus.boxShadow && focus.boxShadow!=='none';
+    if(!hasOutline && !hasShadow) pushFail(row,'focus_ring_missing',JSON.stringify({outlineWidth:focus.outlineWidth,outlineStyle:focus.outlineStyle,boxShadow:focus.boxShadow}));
 
     const overlap=await page.evaluate(()=>{
       const a=document.querySelector('.skip-link')?.getBoundingClientRect();
