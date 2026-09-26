@@ -1,6 +1,10 @@
 name: ZEVANORY Stripe financial E2E
 
 on:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/financial-e2e-stripe.yml"
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -20,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      EXPECTED_SHA: ${{ inputs.expected_sha || 'c3845cf898acf60e84a06e51cf08db7cfd09bbe3' }}
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
