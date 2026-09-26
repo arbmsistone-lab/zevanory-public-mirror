@@ -235,16 +235,25 @@ export async function reconcileControlPlane(worker,env,ctx,baseUrl="https://zeva
 export async function readControlState(env){
   const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
   if(!kv||typeof kv.get!=="function") return null;
-  const raw=await kv.get(STATE_KEY);
-  if(!raw) return null;
-  try{return JSON.parse(raw);}catch{return null;}
+  try{
+    const raw=await kv.get(STATE_KEY);
+    if(!raw) return null;
+    try{return JSON.parse(raw);}catch{return null;}
+  }catch{
+    return null;
+  }
 }
 export async function readOrReconcileControlState(worker,env,ctx,baseUrl,expectedReleaseSha=null){
-  const current=await readControlState(env);
+  let current=null;
+  try{current=await readControlState(env);}catch{current=null;}
   const fresh=Boolean(current?.observed_at&&Date.now()-Date.parse(current.observed_at)<10*60*1000);
   const sameRelease=!expectedReleaseSha||current?.release_sha===expectedReleaseSha;
   if(fresh&&sameRelease) return current;
-  return reconcileControlPlane(worker,env,ctx,baseUrl);
+  try{
+    return await reconcileControlPlane(worker,env,ctx,baseUrl);
+  }catch{
+    return current&&sameRelease?current:null;
+  }
 }
 export async function listControlEvents(env,limit=30){
   const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
