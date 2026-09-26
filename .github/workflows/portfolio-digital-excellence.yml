@@ -193,7 +193,7 @@ jobs:
           set -euo pipefail
           (cd .. && python3 -m http.server 18081 >/tmp/candidate-http.log 2>&1 & echo $! >/tmp/candidate.pid)
           trap 'kill $(cat /tmp/candidate.pid) 2>/dev/null || true' EXIT
-          cat > /tmp/digital-audit.mjs <<'JS'
+          cat > digital-audit.mjs <<'JS'
           import { chromium } from 'playwright';
           import AxeBuilder from '@axe-core/playwright';
           import pixelmatch from 'pixelmatch';
@@ -263,7 +263,7 @@ jobs:
           console.log('P11_PERFORMANCE='+(failed?'FAIL':'PASS'));
           if(failed) process.exit(1);
           JS
-          node /tmp/digital-audit.mjs
+          node digital-audit.mjs
 
       - name: Synthetic observability SLO
         shell: bash
