@@ -1,0 +1,99 @@
+name: ARBM SIST PED-Versal Supreme Certification
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - 'arbm-sist/**'
+      - 'scripts/audit_arbm_sist_ped.py'
+      - 'scripts/audit-arbm-sist-browser.mjs'
+      - '.github/workflows/arbm-sist-ped-supreme.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arbm-sist-ped-supreme-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "EXACT_SHA=PASS sha=$GITHUB_SHA"
+
+      - name: Static PED-Supreme audit
+        run: python3 scripts/audit_arbm_sist_ped.py
+
+      - name: Install browser auditors
+        run: |
+          npm install --no-save playwright@1.55.0 axe-core@4.10.3 lighthouse@12
+          npx playwright install --with-deps chromium
+
+      - name: Serve exact branch without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ..
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/arbm-sist-http.log 2>&1 &
+          echo $! >/tmp/arbm-sist-http.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:4173/zevanory-public-mirror/arbm-sist/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/arbm-sist-http.log
+          exit 1
+
+      - name: Browser 4-viewports x 2-themes matrix
+        env:
+          ARBM_SIST_AUDIT_URL: http://127.0.0.1:4173/zevanory-public-mirror/arbm-sist/
+        run: node scripts/audit-arbm-sist-browser.mjs
+
+      - name: Lighthouse candidate audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME_PATH="$(find "$HOME/.cache/ms-playwright" -type f -path '*/chrome-linux*/chrome' | head -n1 || true)"
+          test -n "$CHROME_PATH"
+          npx lighthouse http://127.0.0.1:4173/zevanory-public-mirror/arbm-sist/             --chrome-path="$CHROME_PATH"             --chrome-flags="--headless=new --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage"             --only-categories=performance,accessibility,best-practices,seo             --output=json --output-path=arbm-sist-lighthouse.json --quiet
+          node - <<'NODE'
+          const r=require('./arbm-sist-lighthouse.json');
+          const s=Object.fromEntries(Object.entries(r.categories).map(([k,v])=>[k,Math.round(v.score*100)]));
+          console.log(JSON.stringify(s));
+          if(s.performance<90||s.accessibility<100||s['best-practices']<95||s.seo<95) process.exit(1);
+          NODE
+
+      - name: Fail-closed commercial contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -Eqi 'checkout\.stripe\.com|buy\.stripe\.com|mercadopago\.com/checkout' arbm-sist/index.html
+          grep -q 'Venda condicionada aos gates oficiais' arbm-sist/index.html
+          echo "ARBM_SIST_SALES_FAIL_CLOSED=PASS"
+
+      - name: Upload immutable evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: arbm-sist-ped-supreme-evidence-${{ github.sha }}
+          path: |
+            arbm-sist-browser-evidence.json
+            arbm-sist-*.png
+            arbm-sist-lighthouse.json
+            arbm-sist/ped-versal-contract.json
+          retention-days: 90
