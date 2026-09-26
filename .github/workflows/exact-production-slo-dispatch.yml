@@ -1,0 +1,41 @@
+name: Exact production SLO dispatcher
+
+on:
+  push:
+    branches:
+      - orchestrator/c3845-exact
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-and-watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      TARGET_REF: cert/c3845-exact
+      TARGET_SHA: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+    steps:
+      - name: Dispatch exact-SHA SLO proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run "zevanory-p12-continuous-slo.yml" --repo "$REPO" --ref "$TARGET_REF"
+      - name: Resolve and wait exact-SHA SLO run
+        shell: bash
+        run: |
+          set -euo pipefail
+          sleep 8
+          id=""
+          for attempt in {1..12}; do
+            id="$(gh run list --repo "$REPO" --workflow "zevanory-p12-continuous-slo.yml" --branch "$TARGET_REF" --limit 10 --json databaseId,headSha,event --jq '.[] | select(.headSha=="'"$TARGET_SHA"'" and .event=="workflow_dispatch") | .databaseId' | head -n1)"
+            [ -n "$id" ] && break
+            sleep 5
+          done
+          test -n "$id"
+          echo "SLO_RUN_ID=$id"
+          gh run watch "$id" --repo "$REPO" --exit-status
+          gh run view "$id" --repo "$REPO" --json databaseId,workflowName,headSha,status,conclusion,url
