@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import copy, hashlib, hmac, json, os, pathlib, re, subprocess, time, urllib.request, uuid
+import copy, hashlib, hmac, json, os, pathlib, re, subprocess, time, urllib.request, uuid, unicodedata
 
 ROOT=pathlib.Path(".")
 SLUG="zevanory-one"
@@ -81,7 +81,7 @@ for path,needles in {
 }.items():
     assert f'href="/{path}"' in live_text
     c,b,_,_=get(BASE+"/"+path); assert c==200
-    low=b.decode("utf-8","replace").lower()
+    low=unicodedata.normalize("NFD",b.decode("utf-8","replace")).encode("ascii","ignore").decode().lower()
     assert all(n in low for n in needles),(path,needles)
 
 # Shared delivery-plane identity; not ARBM ONE certification inheritance.
