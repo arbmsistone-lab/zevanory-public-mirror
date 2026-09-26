@@ -4,11 +4,31 @@ on:
   pull_request:
     branches: [gh-pages]
     paths:
+      - "ia-na-pratica/**"
+      - "vendas-na-pratica/**"
+      - "combo-ia-vendas/**"
+      - "lucro-e-caixa/**"
+      - "negocio-completo/**"
+      - "product.css"
+      - "privacidade/**"
+      - "termos/**"
+      - "reembolso/**"
+      - "worker/**"
       - "scripts/portfolio_target_exact_cert.py"
       - ".github/workflows/portfolio-six-target-exact-cert.yml"
   push:
     branches: [gh-pages]
     paths:
+      - "ia-na-pratica/**"
+      - "vendas-na-pratica/**"
+      - "combo-ia-vendas/**"
+      - "lucro-e-caixa/**"
+      - "negocio-completo/**"
+      - "product.css"
+      - "privacidade/**"
+      - "termos/**"
+      - "reembolso/**"
+      - "worker/**"
       - "scripts/portfolio_target_exact_cert.py"
       - ".github/workflows/portfolio-six-target-exact-cert.yml"
   workflow_dispatch:
