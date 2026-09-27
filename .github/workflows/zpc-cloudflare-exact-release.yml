@@ -37,17 +37,32 @@ jobs:
           test "$(git rev-parse HEAD)" = "$ZPC_SHA"
           npm install --ignore-scripts
           npm run build
-          grep -F 'name = "zevanory-product-control-portable"' cf-worker/wrangler.toml
-          grep -F 'controle.zevanory.api.br' cf-worker/wrangler.toml
-          python3 -c 'from pathlib import Path; p=Path("cf-worker/wrangler.toml"); s=p.read_text(); needle="  { pattern = \\"zevanory.api.br/control*\\", zone_name = \\"zevanory.api.br\\" }\\n"; assert needle in s; p.write_text(s.replace(needle,""))'
-          grep -F 'controle.zevanory.api.br' cf-worker/wrangler.toml
-          ! grep -F 'zevanory.api.br/control' cf-worker/wrangler.toml
+          cat > cf-worker/wrangler.release.toml <<'EOF'
+          name = "zevanory-product-control-portable"
+          main = "worker.ts"
+          compatibility_date = "2026-09-19"
+          routes = [
+            { pattern = "controle.zevanory.api.br", custom_domain = true }
+          ]
+          [assets]
+          directory = "../dist"
+          binding = "ASSETS"
+          not_found_handling = "single-page-application"
+          run_worker_first = true
+          [vars]
+          SUPABASE_URL = "https://pvkpkqwdnnpkgvllwqbc.supabase.co"
+          SUPABASE_PUBLISHABLE_KEY = "sb_publishable_IAPNVvyZRbgLjiaEdArk_g_6qd3Dp_-"
+          RENDER_BACKEND_URL = "https://zevanory-product-control-edge.onrender.com"
+          BACKEND_INSTANCE_ID = "cloudflare"
+          EOF
+          grep -F 'name = "zevanory-product-control-portable"' cf-worker/wrangler.release.toml
+          grep -F 'controle.zevanory.api.br' cf-worker/wrangler.release.toml
       - name: Deploy exact Cloudflare Worker
         shell: bash
         run: |
           set -euo pipefail
           cd /tmp/zpc
-          npx --yes wrangler@4.135.0 deploy --strict --config cf-worker/wrangler.toml --var WORKER_COMMIT:"$ZPC_SHA" --message="ZPC-control-SSE-alias-$ZPC_SHA"
+          npx --yes wrangler@4.135.0 deploy --strict --config cf-worker/wrangler.release.toml --var WORKER_COMMIT:"$ZPC_SHA" --message="ZPC-control-SSE-alias-$ZPC_SHA"
       - name: Verify production readback
         shell: bash
         run: |
