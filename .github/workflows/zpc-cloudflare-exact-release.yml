@@ -39,7 +39,7 @@ jobs:
           npm run build
           grep -F 'name = "zevanory-product-control-portable"' cf-worker/wrangler.toml
           grep -F 'controle.zevanory.api.br' cf-worker/wrangler.toml
-          sed -i '/zevanory.api.br\\/control\\*/,d' cf-worker/wrangler.toml
+          python3 -c 'from pathlib import Path; p=Path("cf-worker/wrangler.toml"); s=p.read_text(); needle="  { pattern = \\"zevanory.api.br/control*\\", zone_name = \\"zevanory.api.br\\" }\\n"; assert needle in s; p.write_text(s.replace(needle,""))'
           grep -F 'controle.zevanory.api.br' cf-worker/wrangler.toml
           ! grep -F 'zevanory.api.br/control' cf-worker/wrangler.toml
       - name: Deploy exact Cloudflare Worker
