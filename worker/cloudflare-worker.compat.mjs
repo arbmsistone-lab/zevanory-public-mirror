@@ -91,11 +91,24 @@ const wrapped = {
   async fetch(request, env, ctx) {
     const normalized = normalizeEnv(env);
     const url = new URL(request.url);
-    const whatsappRuntime = await loadWhatsappRuntimeCredentials(normalized).catch(()=>null);
-    globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = whatsappRuntime || {};
-    globalThis.__ZEVANORY_WHATSAPP_BROKER__ = normalized.WHATSAPP_BROKER || null;
-    globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = await loadWhatsappBrokerState(normalized.WHATSAPP_BROKER);
-    globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = normalized.ZEVANORY_PRIVATE_ARTIFACTS || null;
+    // Keep the administrative/control critical path independent from WhatsApp.
+    // Broker/credential I/O is intentionally lazy so PIN -> Control Center is not
+    // delayed by an unrelated provider or service binding.
+    const whatsappPath =
+      url.pathname.startsWith("/admin/whatsapp-onboard") ||
+      url.pathname.startsWith("/api/admin/whatsapp-onboard") ||
+      url.pathname.startsWith("/api/whatsapp") ||
+      url.pathname.startsWith("/webhooks/whatsapp");
+    if (whatsappPath) {
+      const [whatsappRuntime, whatsappBrokerState] = await Promise.all([
+        loadWhatsappRuntimeCredentials(normalized).catch(()=>null),
+        loadWhatsappBrokerState(normalized.WHATSAPP_BROKER).catch(()=>null)
+      ]);
+      globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = whatsappRuntime || {};
+      globalThis.__ZEVANORY_WHATSAPP_BROKER__ = normalized.WHATSAPP_BROKER || null;
+      globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = whatsappBrokerState;
+      globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = normalized.ZEVANORY_PRIVATE_ARTIFACTS || null;
+    }
     const canonicalRedirect = canonicalizePublicPath(request, url);
     if (canonicalRedirect) return canonicalRedirect;
 
