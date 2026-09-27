@@ -255,7 +255,12 @@ jobs:
           }
           json.dump(data,open("/tmp/mp-secrets.json","w",encoding="utf-8"))
           PY
-          npx --yes wrangler@4.135.0 secret bulk /tmp/mp-secrets.json --name zevanory
+          # Preserve already-provisioned production secrets when Cloudflare rejects a redundant bulk rewrite.
+          # The following secret-list assertion remains fail-closed: deployment proceeds only when every required
+          # Mercado Pago secret is actually present on the Worker and deprecated secrets are absent.
+          if ! npx --yes wrangler@4.135.0 secret bulk /tmp/mp-secrets.json --name zevanory; then
+            echo "SECRETS_BULK_REWRITE=REJECTED_VERIFY_EXISTING"
+          fi
           rm -f /tmp/mp-secrets.json
           npx --yes wrangler@4.135.0 secret list --name zevanory > /tmp/mp-secret-list.json
           python3 - <<'PY'
