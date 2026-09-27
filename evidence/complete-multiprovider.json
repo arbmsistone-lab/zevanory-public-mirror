@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "objective": "complete-multiprovider-administrative-execution",
   "min_independent_executors": 3,
   "endpoint_health_does_not_count_as_execution": true,
@@ -14,9 +14,41 @@
     "fail closed below execution quorum"
   ],
   "executors": [
-    {"id":"notebook-rdc","status":"partial","canary":"pending-long-run","independent_control_plane":false},
-    {"id":"zevanory-relay-01","status":"blocked","canary":"mcp-runtime-missing","independent_control_plane":true},
-    {"id":"external-executor-3","status":"unproven","canary":"missing","independent_control_plane":true}
+    {
+      "id": "github-actions",
+      "status": "proven",
+      "canary": "pass",
+      "independent_control_plane": true,
+      "evidence": "run-36328289030 exact branch gate execution"
+    },
+    {
+      "id": "railway-buildkite",
+      "status": "proven",
+      "canary": "pass",
+      "independent_control_plane": true,
+      "evidence": "zevanory-railway-independent-canary build-1 exact-sha 50839ba265799330d2ba5e01fa594f81a60fbc03"
+    },
+    {
+      "id": "zevanory-relay-01",
+      "status": "blocked",
+      "canary": "mcp-runtime-missing",
+      "independent_control_plane": true,
+      "evidence": "RDC transport pong; get_config reports Desktop Commander MCP not found"
+    },
+    {
+      "id": "buildkite-hosted",
+      "status": "unproven",
+      "canary": "admission-canceled",
+      "independent_control_plane": true
+    },
+    {
+      "id": "historical-arbm-free-oci-arm64",
+      "status": "unproven",
+      "canary": "no-agent-connected",
+      "independent_control_plane": false,
+      "evidence": "queue exists but historical build 14 executed Windows PowerShell/Chrome; OCI identity not established"
+    }
   ],
+  "proven_execution_planes": 2,
   "final_green": false
 }
