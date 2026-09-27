@@ -1,0 +1,34 @@
+name: ZEVANORY complete multiprovider execution gate
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "evidence/complete-multiprovider.json"
+      - "scripts/verify-multiprovider-n1.py"
+      - ".github/workflows/complete-multiprovider-execution.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute N-1 checkpoint lease and idempotency proof
+        run: python3 scripts/verify-multiprovider-n1.py
+      - name: Fail closed until complete multiprovider continuity is proven
+        run: |
+          python3 - <<'PY'
+          import json
+          c=json.load(open("evidence/complete-multiprovider.json"))
+          assert c["min_independent_executors"] == 3
+          assert c["endpoint_health_does_not_count_as_execution"] is True
+          xs=c["executors"]
+          proven=[x for x in xs if x["status"]=="proven" and x["canary"]=="pass" and x["independent_control_plane"]]
+          assert len(proven) >= 3, f"ADMIN_EXECUTION_QUORUM_NOT_PROVEN: {len(proven)}/3"
+          required={"n_minus_one_failover":"pass","checkpoint_continuity":"pass","idempotent_resume":"pass","auto_recovery":"pass","notebook_dependency":0,"single_point_of_failure":0,"false_green":0}
+          for k,v in required.items(): assert c.get(k)==v, f"{k.upper()}_NOT_PROVEN: {c.get(k)!r}"
+          assert c["final_green"] is True
+          print("ADMIN_EXECUTION_QUORUM=3/3")
+          print("MULTI_PROVIDER_COMPLETE=GREEN")
+          PY
