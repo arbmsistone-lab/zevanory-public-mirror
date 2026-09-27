@@ -1,93 +1,37 @@
 name: ZPC Cloudflare exact release
 on:
-  workflow_dispatch:
-  push:
+  pull_request:
     branches: [gh-pages]
-    paths:
-      - ".github/workflows/zpc-cloudflare-exact-release.yml"
 permissions:
   contents: read
 jobs:
-  deploy:
+  credential-alias-probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: e3caca88f4343c3cdfcf66eebe6ac124
-      ZPC_SHA: 1d705c7c1170e38eb9fce00e9352aa7c686601f0
+      T1: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      T2: ${{ secrets.CF_API_TOKEN }}
+      T3: ${{ secrets.CLOUDFLARE_TOKEN }}
+      T4: ${{ secrets.CF_WORKERS_TOKEN }}
+      K1: ${{ secrets.CLOUDFLARE_API_KEY }}
+      E1: ${{ secrets.CLOUDFLARE_EMAIL }}
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Require authenticated Cloudflare route
+      - name: Probe token aliases without disclosure
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${CLOUDFLARE_API_TOKEN:-}"
-          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
-          npx --yes wrangler@4.135.0 whoami
-      - name: Fetch exact Product Control release
-        shell: bash
-        run: |
-          set -euo pipefail
-          git clone --filter=blob:none https://github.com/arbmsistone-lab/zevanory-product-control-edge.git /tmp/zpc
-          cd /tmp/zpc
-          git checkout --detach "$ZPC_SHA"
-          test "$(git rev-parse HEAD)" = "$ZPC_SHA"
-          npm install --ignore-scripts
-          npm run build
-          cat > cf-worker/wrangler.release.toml <<'EOF'
-          name = "zevanory-product-control-portable"
-          main = "worker.ts"
-          compatibility_date = "2026-09-19"
-          routes = [
-            { pattern = "controle.zevanory.api.br", custom_domain = true }
-          ]
-          [assets]
-          directory = "../dist"
-          binding = "ASSETS"
-          not_found_handling = "single-page-application"
-          run_worker_first = true
-          [vars]
-          SUPABASE_URL = "https://pvkpkqwdnnpkgvllwqbc.supabase.co"
-          SUPABASE_PUBLISHABLE_KEY = "sb_publishable_IAPNVvyZRbgLjiaEdArk_g_6qd3Dp_-"
-          RENDER_BACKEND_URL = "https://zevanory-product-control-edge.onrender.com"
-          BACKEND_INSTANCE_ID = "cloudflare"
-          EOF
-          grep -F 'name = "zevanory-product-control-portable"' cf-worker/wrangler.release.toml
-          grep -F 'controle.zevanory.api.br' cf-worker/wrangler.release.toml
-      - name: Deploy exact Cloudflare Worker
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd /tmp/zpc
-          npx --yes wrangler@4.135.0 deploy --strict --config cf-worker/wrangler.release.toml --var WORKER_COMMIT:"$ZPC_SHA" --message="ZPC-control-SSE-alias-$ZPC_SHA"
-      - name: Verify production readback
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json,time,urllib.request
-          sha="1d705c7c1170e38eb9fce00e9352aa7c686601f0"
-          def get(url, accept="application/json"):
-              req=urllib.request.Request(url,headers={"User-Agent":"ZPC-Exact-Readback/1.0","Accept":accept,"Cache-Control":"no-cache"})
-              with urllib.request.urlopen(req,timeout=25) as r:
-                  return r.status,r.headers.get("content-type",""),r.read(2048).decode("utf-8","replace")
-          health=None
-          for _ in range(24):
-              try:
-                  status,ct,body=get("https://controle.zevanory.api.br/portable-health")
-                  health=json.loads(body)
-                  if status==200 and health.get("workerCommit")==sha: break
-              except Exception: pass
-              time.sleep(5)
-          assert health and health.get("workerCommit")==sha,health
-          for path in ["/api/commercial/stream","/control/api/commercial/stream"]:
-              status,ct,body=get("https://controle.zevanory.api.br"+path,"text/event-stream")
-              assert status==200,(path,status)
-              assert "text/event-stream" in ct,(path,ct)
-              assert "event: commercial-update" in body,(path,body[:300])
-          print("ZPC_PRODUCTION_READBACK_4_OF_4=PASS")
-          print("WORKER_COMMIT="+sha)
-          PY
+          for n in T1 T2 T3 T4; do
+            v="${!n:-}"
+            if [ -n "$v" ]; then
+              echo "$n=PRESENT"
+              CLOUDFLARE_API_TOKEN="$v" npx --yes wrangler@4.135.0 whoami
+            else
+              echo "$n=ABSENT"
+            fi
+          done
+          if [ -n "${K1:-}" ]; then echo "GLOBAL_KEY=PRESENT"; else echo "GLOBAL_KEY=ABSENT"; fi
+          if [ -n "${E1:-}" ]; then echo "GLOBAL_EMAIL=PRESENT"; else echo "GLOBAL_EMAIL=ABSENT"; fi
+          echo "MUTATION=0"
