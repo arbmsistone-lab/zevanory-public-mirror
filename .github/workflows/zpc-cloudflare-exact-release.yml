@@ -39,6 +39,9 @@ jobs:
           npm run build
           grep -F 'name = "zevanory-product-control-portable"' cf-worker/wrangler.toml
           grep -F 'controle.zevanory.api.br' cf-worker/wrangler.toml
+          sed -i '/zevanory.api.br\\/control\\*/,d' cf-worker/wrangler.toml
+          grep -F 'controle.zevanory.api.br' cf-worker/wrangler.toml
+          ! grep -F 'zevanory.api.br/control' cf-worker/wrangler.toml
       - name: Deploy exact Cloudflare Worker
         shell: bash
         run: |
