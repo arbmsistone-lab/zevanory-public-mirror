@@ -88,6 +88,29 @@ function html(snapshot){
 export async function handleAdminRequest(request,env,ctx,worker){
   if(!isAdminAuthorized(request,env)) return unauthorized();
   const base=new URL(request.url);
+
+  // First-paint fast path: authentication must not wait for the full Core snapshot.
+  // Serve an authenticated fail-closed shell immediately; telemetry hydrates through
+  // the protected JSON endpoint on the next refresh/request.
+  if(base.pathname==="/admin" && request.method==="GET"){
+    const shell={
+      status:{runtime:{sales:"loading",checkout:"loading",financial:"loading",whatsapp:"loading"},channel_readiness:{}},
+      health:{ready:false,checks:{database_reachable:false,schema_ready:false},schema:{}},
+      control:{global_state:"operational_commercial_blocked",root_blocker:"loading_canonical_snapshot",policy:{}},
+      continuity:{quorum_ok:false,available_channels:[],whatsapp_dependency_required:false,mode:"loading"},
+      zees16:{counts:{proven:0,partial:0,blocked:0},pillars:[],persistence:"loading"},
+      zea10:{counts:{proven:0,partial:0,blocked:0},pillars:[]}
+    };
+    const body=html(shell)
+      .replace('<meta http-equiv="refresh" content="30">','<meta http-equiv="refresh" content="1">');
+    return new Response(body,{status:200,headers:{
+      "content-type":"text/html; charset=utf-8","cache-control":"no-store",
+      "content-security-policy":"default-src 'none'; style-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+      "x-frame-options":"DENY","x-content-type-options":"nosniff","referrer-policy":"no-referrer",
+      "permissions-policy":"camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+      "server-timing":"admin-auth;dur=0"
+    }});
+  }
   try{
     const core=await jsonThrough(worker,new URL("/api/core/v1/snapshot",base),request,env,ctx);
     const {status,health,control,continuity,zees16}=core;
