@@ -4,6 +4,7 @@ on:
     branches: [gh-pages]
     paths:
       - "evidence/complete-multiprovider.json"
+      - "scripts/verify-multiprovider-n1.py"
       - ".github/workflows/complete-multiprovider-execution.yml"
   workflow_dispatch:
 permissions:
@@ -13,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Execute N-1 checkpoint lease and idempotency proof
+        run: python3 scripts/verify-multiprovider-n1.py
       - name: Fail closed until complete multiprovider continuity is proven
         run: |
           python3 - <<'PY'
@@ -23,22 +26,9 @@ jobs:
           xs=c["executors"]
           proven=[x for x in xs if x["status"]=="proven" and x["canary"]=="pass" and x["independent_control_plane"]]
           assert len(proven) >= 3, f"ADMIN_EXECUTION_QUORUM_NOT_PROVEN: {len(proven)}/3"
-          required={
-            "n_minus_one_failover":"pass",
-            "checkpoint_continuity":"pass",
-            "idempotent_resume":"pass",
-            "auto_recovery":"pass",
-            "notebook_dependency":0,
-            "single_point_of_failure":0,
-            "false_green":0,
-          }
-          for k,v in required.items():
-              assert c.get(k)==v, f"{k.upper()}_NOT_PROVEN: {c.get(k)!r}"
+          required={"n_minus_one_failover":"pass","checkpoint_continuity":"pass","idempotent_resume":"pass","auto_recovery":"pass","notebook_dependency":0,"single_point_of_failure":0,"false_green":0}
+          for k,v in required.items(): assert c.get(k)==v, f"{k.upper()}_NOT_PROVEN: {c.get(k)!r}"
           assert c["final_green"] is True
           print("ADMIN_EXECUTION_QUORUM=3/3")
-          print("N_MINUS_ONE_FAILOVER=PASS")
-          print("CHECKPOINT_CONTINUITY=PASS")
-          print("IDEMPOTENT_RESUME=PASS")
-          print("AUTO_RECOVERY=PASS")
           print("MULTI_PROVIDER_COMPLETE=GREEN")
           PY
