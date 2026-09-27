@@ -68,7 +68,7 @@ function html(snapshot){
   <title>Central Administrativa ZEVANORY</title><link rel="stylesheet" href="/admin.css"></head><body>
   <a class="skip" href="#main">Ir para o conteúdo</a><header><div><strong>ZEVANORY</strong><span>Central Administrativa</span></div><div class="meta">Atualização automática • 30s</div></header>
   <main id="main">
-  <section class="hero"><div><p class="eyebrow">ZEVANORY CONTROL CORE</p><h1>Visão operacional executiva</h1><p>Superfície administrativa governada pelo core canônico. A UI nunca autoriza mudanças críticas de estado.</p></div><div class="hero-state">${pill(c.global_state)}</div></section>
+  <section class="hero"><div><p class="eyebrow">ZEVANORY CONTROL CORE</p><h1>Visão operacional executiva</h1><p>Superfície administrativa governada pelo core canônico. A UI nunca autoriza mudanças críticas de estado.</p><p><a class="pill ok" href="https://zevanory.api.br/solucoes" rel="noopener">Abrir Página de Vendas →</a></p></div><div class="hero-state">${pill(c.global_state)}</div></section>
   <section class="grid">
     <article><span>Saúde</span><strong>${h.ready?"READY":"NOT READY"}</strong><small>DB ${h.checks?.database_reachable?"OK":"FAIL"} • schema ${h.checks?.schema_ready?"OK":"FAIL"}</small></article>
     <article><span>Vendas</span><strong>${esc(s.runtime?.sales)}</strong><small>checkout ${esc(s.runtime?.checkout)} • financeiro ${esc(s.runtime?.financial)}</small></article>
