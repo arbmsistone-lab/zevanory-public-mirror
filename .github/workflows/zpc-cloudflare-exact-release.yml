@@ -1,6 +1,10 @@
 name: ZPC Cloudflare exact release
 on:
   workflow_dispatch:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zpc-cloudflare-exact-release.yml"
 permissions:
   contents: read
 jobs:
