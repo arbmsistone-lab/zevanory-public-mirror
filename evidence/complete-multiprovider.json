@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "objective": "complete-multiprovider-administrative-execution",
+  "min_independent_executors": 3,
+  "endpoint_health_does_not_count_as_execution": true,
+  "required_invariants": ["distinct administrative control planes","real execution canary per provider","shared checkpoint with lease owner and idempotency key","survive complete loss of any single executor","automatic recovery without notebook dependency","no critical recovery credential exclusively on notebook","zero duplicate side effects","fail closed below execution quorum"],
+  "executors": [
+    {"id":"github-actions","status":"proven","canary":"pass","independent_control_plane":true,"evidence":"run-36328289030 exact branch gate execution"},
+    {"id":"railway-buildkite","status":"proven","canary":"pass","independent_control_plane":true,"evidence":"zevanory-railway-independent-canary build-1 exact-sha 50839ba265799330d2ba5e01fa594f81a60fbc03"},
+    {"id":"render-native","status":"proven","canary":"pass","independent_control_plane":true,"evidence":"Render service srv-daskbmm0tbcc73fq9ekg deploy dep-daskbne0tbcc73fq9is0 executed exact SHA 41ef503d19205c96d48023ef470046a9d6f94148; build log ZEVANORY_EXECUTOR_CANARY=PASS PROVIDER=RENDER_NATIVE; deploy terminal status live"},
+    {"id":"zevanory-relay-01","status":"blocked","canary":"mcp-runtime-missing","independent_control_plane":true,"evidence":"RDC transport pong; get_config reports Desktop Commander MCP not found"},
+    {"id":"buildkite-hosted","status":"unproven","canary":"admission-canceled","independent_control_plane":true},
+    {"id":"historical-arbm-free-oci-arm64","status":"unproven","canary":"no-agent-connected","independent_control_plane":false,"evidence":"queue exists; current Buildkite agent inventory shows only provider=railway-zero-spend, so OCI identity remains unproven"}
+  ],
+  "proven_execution_planes": 3,
+  "n_minus_one_failover": "pass",
+  "checkpoint_continuity": "pass",
+  "idempotent_resume": "pass",
+  "auto_recovery": "pass",
+  "notebook_dependency": 0,
+  "single_point_of_failure": 0,
+  "false_green": 0,
+  "proof": "persistent shared-state mission zevanory-multiprovider-n1-20260927 plus GitHub Actions certification; N-1 and idempotency invariants passed",
+  "final_green": true
+}
