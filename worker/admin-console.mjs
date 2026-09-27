@@ -94,7 +94,7 @@ export async function handleAdminRequest(request,env,ctx,worker){
   // the protected JSON endpoint on the next refresh/request.
   if(base.pathname==="/admin" && request.method==="GET"){
     const shell={
-      status:{runtime:{sales:"loading",checkout:"loading",financial:"loading",whatsapp:"loading"},channel_readiness:{}},
+      status:{runtime:{sales:"globally-blocked",checkout:"loading",financial:"loading",whatsapp:"loading"},channel_readiness:{}},
       health:{ready:false,checks:{database_reachable:false,schema_ready:false},schema:{}},
       control:{global_state:"operational_commercial_blocked",root_blocker:"loading_canonical_snapshot",policy:{}},
       continuity:{quorum_ok:false,available_channels:[],whatsapp_dependency_required:false,mode:"loading"},
