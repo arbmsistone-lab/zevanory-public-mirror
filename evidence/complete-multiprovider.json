@@ -29,6 +29,13 @@
       "evidence": "zevanory-railway-independent-canary build-1 exact-sha 50839ba265799330d2ba5e01fa594f81a60fbc03"
     },
     {
+      "id": "render-native",
+      "status": "proven",
+      "canary": "pass",
+      "independent_control_plane": true,
+      "evidence": "Render service srv-daskbmm0tbcc73fq9ekg deploy dep-daskbne0tbcc73fq9is0 executed exact SHA 41ef503d19205c96d48023ef470046a9d6f94148; build log ZEVANORY_EXECUTOR_CANARY=PASS PROVIDER=RENDER_NATIVE; deploy terminal status live"
+    },
+    {
       "id": "zevanory-relay-01",
       "status": "blocked",
       "canary": "mcp-runtime-missing",
@@ -46,9 +53,13 @@
       "status": "unproven",
       "canary": "no-agent-connected",
       "independent_control_plane": false,
-      "evidence": "queue exists but historical build 14 executed Windows PowerShell/Chrome; OCI identity not established"
+      "evidence": "queue exists; current Buildkite agent inventory shows only provider=railway-zero-spend, so OCI identity remains unproven"
     }
   ],
-  "proven_execution_planes": 2,
+  "proven_execution_planes": 3,
+  "n_minus_one_failover": "pending",
+  "checkpoint_continuity": "pending",
+  "idempotent_resume": "pending",
+  "auto_recovery": "pending",
   "final_green": false
 }
