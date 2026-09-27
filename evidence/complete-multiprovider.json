@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "objective": "complete-multiprovider-administrative-execution",
+  "min_independent_executors": 3,
+  "endpoint_health_does_not_count_as_execution": true,
+  "required_invariants": [
+    "distinct administrative control planes",
+    "real execution canary per provider",
+    "shared checkpoint with lease owner and idempotency key",
+    "survive complete loss of any single executor",
+    "automatic recovery without notebook dependency",
+    "no critical recovery credential exclusively on notebook",
+    "zero duplicate side effects",
+    "fail closed below execution quorum"
+  ],
+  "executors": [
+    {"id":"notebook-rdc","status":"partial","canary":"pending-long-run","independent_control_plane":false},
+    {"id":"zevanory-relay-01","status":"blocked","canary":"mcp-runtime-missing","independent_control_plane":true},
+    {"id":"external-executor-3","status":"unproven","canary":"missing","independent_control_plane":true}
+  ],
+  "final_green": false
+}
