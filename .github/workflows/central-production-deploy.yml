@@ -167,6 +167,7 @@ jobs:
           c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
           c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"
           c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"
+          c["vars"]["GEMINI_FREE_TIER_CONFIRMED"]="false"
           c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"
           c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"
           c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
