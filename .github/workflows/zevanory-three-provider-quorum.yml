@@ -1,4 +1,4 @@
-name: ZEVANORY authenticated three-provider runtime quorum
+name: ZEVANORY authenticated open-provider runtime quorum
 on:
   pull_request:
     branches: [gh-pages]
@@ -16,45 +16,61 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Verify three authenticated independent providers
+      - name: Verify open independent-provider quorum
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json, urllib.request
 
           c=json.load(open("evidence/three-provider-quorum.json"))
-          assert c["schema_version"]==2
-          assert c["min_quorum"]==3
+          assert c["schema_version"]==3
+          assert c["min_quorum"]>=3
           assert c["zero_spend"] is True
           assert c["commercial_release_allowed"] is False
           assert c["fail_closed"] is True
           assert c["hourly_revalidation"] is True
-          assert c["observed_primary_endpoint"]["origin_provider_asserted"] is False
+          assert c["provider_policy"]=="open_mesh_no_individual_provider_required"
+          assert not any(p.get("required") is True for p in c["providers"])
 
           results=[]
           for p in c["providers"]:
+              if p.get("enabled", True) is False:
+                  results.append({"provider":p["provider"],"failure_domain":p["failure_domain"],"ok":False,"disabled":True})
+                  continue
               url=p.get("url") or p.get("status_url")
-              req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-Authenticated-3P/2.0","Accept":"application/json"})
+              req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-Open-Mesh/3.0","Accept":"application/json"})
               try:
                   with urllib.request.urlopen(req,timeout=30) as r:
                       raw=r.read().decode("utf-8","replace")
                       body=json.loads(raw)
                       identity_ok=(body.get(p["identity_field"])==p["identity_value"])
-                      if p["provider"]=="render":
-                          attested=(body.get("provider")==p["expected_provider_attestation"] or body.get("quorum_attestation",{}).get("provider")==p["expected_provider_attestation"])
+                      expected=p.get("expected_provider_attestation")
+                      if expected:
+                          attested=(body.get("provider")==expected or body.get("quorum_attestation",{}).get("provider")==expected)
                           identity_ok=identity_ok and attested
+                      expected_direct=p.get("expected_provider")
+                      if expected_direct:
+                          identity_ok=identity_ok and body.get("provider")==expected_direct
                       sales=body.get("runtime",{}).get("sales")
-                      commercial_safe=(sales in (None,"globally-blocked"))
-                      results.append({"provider":p["provider"],"ok":r.status==200 and identity_ok and commercial_safe,"status":r.status})
+                      commercial_safe=(sales in (None,"globally-blocked")) and body.get("public_sales_locked") is not False
+                      results.append({
+                          "provider":p["provider"],
+                          "failure_domain":p["failure_domain"],
+                          "ok":r.status==200 and identity_ok and commercial_safe,
+                          "status":r.status
+                      })
               except Exception as exc:
-                  results.append({"provider":p["provider"],"ok":False,"error":str(exc)})
+                  results.append({"provider":p["provider"],"failure_domain":p["failure_domain"],"ok":False,"error":str(exc)})
 
           print(json.dumps(results,sort_keys=True))
           healthy=[x for x in results if x["ok"]]
           providers={x["provider"] for x in healthy}
-          if len(healthy)<c["min_quorum"]:
-              raise SystemExit(f"authenticated provider quorum failed: {len(healthy)}/{c['min_quorum']}")
-          if providers!={"cloudflare","netlify","render"}:
-              raise SystemExit("authenticated provider identity set mismatch: "+repr(sorted(providers)))
-          print("PASS: Cloudflare + Netlify + Render are independently authenticated, healthy, ZERO_SPEND, and fail-closed")
+          domains={x["failure_domain"] for x in healthy}
+          if len(providers)<c["min_quorum"] or len(domains)<c["min_quorum"]:
+              raise SystemExit(
+                  f"open provider quorum failed: providers={len(providers)} domains={len(domains)} required={c['min_quorum']}"
+              )
+          print("PASS: open provider mesh satisfies independent quorum without any individually required provider")
+          print("HEALTHY_PROVIDERS",",".join(sorted(providers)))
+          print("HEALTHY_FAILURE_DOMAINS",",".join(sorted(domains)))
           PY
