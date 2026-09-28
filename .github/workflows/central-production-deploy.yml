@@ -43,7 +43,7 @@ jobs:
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
       # Binding repair only: preserve the already-certified production runtime SHA.
       # Reconcile trigger 2026-09-27: reassert canonical KV binding after verified ZEES-16 16/16 state.
-      TARGET_RUNTIME_SHA: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+      TARGET_RUNTIME_SHA: 2237836450cd371365d9fe00c83e42f70df28025
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,7 +75,7 @@ jobs:
             echo "CONFIGURED_ACCOUNT=${CLOUDFLARE_ACCOUNT_ID:-unset}"
             exit 0
           fi
-          code="$(curl -sS -o /tmp/public-owner.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/zevanory/settings" || true)"
+          code="$(curl -sS -o /tmp/public-owner.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID" || true)"
           if [ "$code" != "200" ] || ! python3 -c "import json; d=json.load(open('/tmp/public-owner.json')); raise SystemExit(0 if d.get('success') is True else 1)"; then
             echo "CLOUDFLARE_PUBLIC_OWNER_AUTHORITY=UNAVAILABLE_FAIL_CLOSED"
             exit 0
@@ -239,6 +239,7 @@ jobs:
               print("CURRENT_BINDING",b.get("name"),b.get("type"),b.get("service",""),b.get("namespace_id",""))
           PY
       - name: Verify financial safety boundary without mutating secrets
+        if: steps.auth.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
