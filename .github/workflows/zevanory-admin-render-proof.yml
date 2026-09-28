@@ -58,10 +58,14 @@ jobs:
           done
           curl -fsS http://127.0.0.1:10001/api/status >/dev/null
           curl -fsS http://127.0.0.1:10000/healthz >/dev/null
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:10000/admin)" = "401"
-          test "$(curl -s -u operator:wrong -o /dev/null -w '%{http_code}' http://127.0.0.1:10000/admin)" = "401"
-          CODE="$(curl -s -u operator:test-secret-only -o /tmp/admin.html -w '%{http_code}' http://127.0.0.1:10000/admin)"
+          CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:10000/admin)"
+          test "$CODE" = "308" || { cat /tmp/admin.log; exit 1; }
+          LOCATION="$(curl -s -D - -o /dev/null http://127.0.0.1:10000/admin | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}')"
+          test "$LOCATION" = "https://controle.zevanory.api.br/" || { echo "unexpected canonical redirect: $LOCATION"; exit 1; }
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:10000/api/admin/snapshot)" = "401"
+          test "$(curl -s -u operator:wrong -o /dev/null -w '%{http_code}' http://127.0.0.1:10000/api/admin/snapshot)" = "401"
+          CODE="$(curl -s -u operator:test-secret-only -o /tmp/admin.json -w '%{http_code}' http://127.0.0.1:10000/api/admin/snapshot)"
           test "$CODE" = "200" || { cat /tmp/admin.log; exit 1; }
-          grep -q "Central Administrativa" /tmp/admin.html
-          ! grep -q "test-secret-only" /tmp/admin.html
-          echo "PASS: alternate runtime authentication behavior"
+          grep -q '"status"' /tmp/admin.json
+          ! grep -q "test-secret-only" /tmp/admin.json
+          echo "PASS: legacy UI converges on canonical Control Center while snapshot API remains authenticated"
