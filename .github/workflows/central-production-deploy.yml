@@ -32,7 +32,8 @@ jobs:
     timeout-minutes: 20
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+      PUBLIC_OWNER_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
       MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN || secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
       MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_WEBHOOK_SECRET || secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
       MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN || secrets.MERCADOPAGO_ACCESS_TOKEN }}
@@ -58,18 +59,30 @@ jobs:
           git checkout "$TARGET_RUNTIME_SHA" -- worker admin.css
           echo "CANONICAL_RUNTIME_SOURCE=$TARGET_RUNTIME_SHA"
 
-      - name: Determine authenticated deployment availability
+      - name: Determine authenticated public-owner deployment authority
         id: auth
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-            echo "CLOUDFLARE_AUTH_ROUTE=AVAILABLE"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
+          echo "available=false" >> "$GITHUB_OUTPUT"
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
             echo "CLOUDFLARE_AUTH_ROUTE=ABSENT_FAIL_CLOSED"
+            exit 0
           fi
+          if [ "${CLOUDFLARE_ACCOUNT_ID:-}" != "$PUBLIC_OWNER_ACCOUNT_ID" ]; then
+            echo "CLOUDFLARE_ACCOUNT_MISMATCH=FAIL_CLOSED"
+            echo "EXPECTED_ACCOUNT=$PUBLIC_OWNER_ACCOUNT_ID"
+            echo "CONFIGURED_ACCOUNT=${CLOUDFLARE_ACCOUNT_ID:-unset}"
+            exit 0
+          fi
+          code="$(curl -sS -o /tmp/public-owner.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/zevanory/settings" || true)"
+          if [ "$code" != "200" ] || ! python3 -c "import json; d=json.load(open('/tmp/public-owner.json')); raise SystemExit(0 if d.get('success') is True else 1)"; then
+            echo "CLOUDFLARE_PUBLIC_OWNER_AUTHORITY=UNAVAILABLE_FAIL_CLOSED"
+            exit 0
+          fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "CLOUDFLARE_PUBLIC_OWNER_AUTHORITY=PASS"
+          echo "CLOUDFLARE_ACCOUNT_ID=$PUBLIC_OWNER_ACCOUNT_ID"
       - name: Reconstruct exact production candidate
         if: steps.auth.outputs.available == 'true'
         run: |
@@ -97,9 +110,10 @@ jobs:
           from pathlib import Path
           p="wrangler.central-fix.jsonc"
           c=json.load(open(p))
+          c["account_id"]=os.environ["PUBLIC_OWNER_ACCOUNT_ID"]
           c["main"]="worker/cloudflare-worker.compat.mjs"
           c.pop("secrets",None)
-          c["services"]=[{"binding":"WHATSAPP_BROKER","service":"giro-whatsapp-bridge"}]
+          c.pop("services",None)
           c.pop("ai",None)
           c.pop("routes",None)
           c["workers_dev"]=True
@@ -108,23 +122,16 @@ jobs:
           for ns in kv:
               if ns.get("binding") in ("ZEVANORY_PRIVATE_ARTIFACTS","ZEVANORY_ARTEFATOS_PRIVADOS"):
                   ns["binding"]="ZEVANORY_PRIVATE_ARTIFACTS"
-                  ns["id"]="9eca336262b44186ab3dbec82fc35ab4"
+                  ns["id"]="728a45738e4047f29bcb89934fd533c1"
                   found_private=True
           if not found_private:
-              kv.append({"binding":"ZEVANORY_PRIVATE_ARTIFACTS","id":"9eca336262b44186ab3dbec82fc35ab4"})
+              kv.append({"binding":"ZEVANORY_PRIVATE_ARTIFACTS","id":"728a45738e4047f29bcb89934fd533c1"})
           c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["TARGET_RUNTIME_SHA"]
           c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
           c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
-          c["vars"]["CERTIFICATION_PILOT_ENABLED"]="true"
           c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"
-          c["vars"]["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
-          c["vars"]["CERTIFICATION_PILOT_AMOUNT_BRL"]="5"
           c["vars"]["MERCADOPAGO_ENV"]="sandbox"
-          c["vars"]["STRIPE_ENV"]="sandbox"
-          c["vars"]["CERTIFICATION_PILOT_PAYMENT_MODE"]="sandbox"
           c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
-          c["vars"]["PAYMENT_PROVIDER_POOL"]="mercadopago"
-          c["vars"]["PUBLIC_BASE_URL"]="https://zevanory.api.br"
           c["vars"]["CHECKOUT_ENABLED"]="true"
           c["vars"]["FINANCIAL_EVENTS_ENABLED"]="true"
           c["vars"]["SALE_GLOBALLY_ENABLED"]="false"
@@ -132,8 +139,7 @@ jobs:
           c["vars"]["WHATSAPP_SALES_ENABLED"]="false"
           c["vars"]["ZEVANORY_WHATSAPP_E164"]="+5588992545413"
           c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
-          c["vars"]["ZEVANORY_WHATSAPP_COUNTRY"]="BR"
-          c["vars"].pop("SUPPORT_CHANNEL",None)
+          c["vars"]["SUPPORT_CHANNEL"]="WhatsApp +55 88 99254-5413"
           # Replace every legacy public contact reference in the reconstructed production snapshot.
           replacements = {
               "+55 88 9234-0423": "+55 88 99254-5413",
@@ -162,11 +168,6 @@ jobs:
           c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"
           c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"
           c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"
-          c["vars"]["GEMINI_FREE_TIER_CONFIRMED"]="false"
-          c["vars"]["VOICE_TTS_MODEL"]="pt_BR-jeff-medium"
-          c["vars"]["VOICE_TTS_PIPER_MODEL"]="pt_BR-jeff-medium"
-          c["vars"]["VOICE_TTS_VOICE"]="jeff"
-          c["vars"]["VOICE_TTS_PIPER_VOICE"]="jeff"
           c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
           for unused in ("KNOWLEDGE_SEED_ALLOWED","SPEECHIFY_FREE_TIER_CONFIRMED","AZURE_SPEECH_FREE_TIER_CONFIRMED"):
               c["vars"].pop(unused,None)
@@ -178,7 +179,7 @@ jobs:
           node --check worker/whatsapp-e2e-evidence.mjs
           node --check worker/voice-final-closure.mjs
           node --check public/control-plane-vnext.js
-          npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.central-fix.jsonc --outdir /tmp/central-final
+          npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir /tmp/central-final
       - name: Authenticate Cloudflare
         if: steps.auth.outputs.available == 'true'
         run: npx --yes wrangler@4.135.0 whoami
@@ -257,7 +258,7 @@ jobs:
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.135.0 deploy --strict --config wrangler.central-fix.jsonc --tag="$TARGET_RUNTIME_SHA" --message="ZEVANORY-MercadoPago-exact-SHA-$TARGET_RUNTIME_SHA"
+          npx --yes wrangler@4.143.0 deploy --strict --keep-vars --config wrangler.central-fix.jsonc --tag="$TARGET_RUNTIME_SHA" --message="ZEVANORY-public-owner-exact-SHA-$TARGET_RUNTIME_SHA"
       - name: Verify live UTF-8 asset and safety
         if: steps.auth.outputs.available == 'true'
         run: |
@@ -349,5 +350,6 @@ jobs:
       - name: Fail-closed deployment status
         if: steps.auth.outputs.available != 'true'
         run: |
-          echo "Deployment intentionally not attempted: no Cloudflare credential is connected to GitHub Actions."
-          echo "The repaired candidate remains proven and ready; production is unchanged."
+          echo "Deployment blocked: GitHub Actions does not currently hold authenticated authority for the Cloudflare account that owns the public ZEVANORY domains."
+          echo "Production is unchanged. No alternate account is permitted to masquerade as production."
+          exit 1
