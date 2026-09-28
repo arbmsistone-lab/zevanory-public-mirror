@@ -79,18 +79,46 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import json, urllib.request
-          c=json.load(open('evidence/three-provider-quorum.json')); assert c['schema_version']==2 and c['min_quorum']==3
+          c=json.load(open('evidence/three-provider-quorum.json'))
+          assert c['schema_version']>=3 and c['min_quorum']>=3
+          assert c['provider_policy']=='open_mesh_no_individual_provider_required'
+          import time
           healthy=[]
+          failures=[]
           for p in c['providers']:
+              if not p.get('enabled',True):
+                  continue
               u=p.get('url') or p.get('status_url')
-              req=urllib.request.Request(u,headers={'User-Agent':'ZEVANORY-Apex-3P/1.0','Accept':'application/json'})
-              with urllib.request.urlopen(req,timeout=30) as r:
-                  body=json.loads(r.read().decode())
-                  ok=r.status==200 and body.get(p['identity_field'])==p['identity_value']
-                  if p['provider']=='render': ok=ok and (body.get('provider')==p['expected_provider_attestation'] or body.get('quorum_attestation',{}).get('provider')==p['expected_provider_attestation'])
-                  if ok: healthy.append(p['provider'])
-          assert set(healthy)=={'cloudflare','netlify','render'},healthy
-          print('PASS provider quorum',healthy)
+              last_error='unknown'
+              verified=False
+              for attempt in range(1,4):
+                  try:
+                      req=urllib.request.Request(u,headers={'User-Agent':'ZEVANORY-Apex-3P/2.1','Accept':'application/json','Cache-Control':'no-cache'})
+                      with urllib.request.urlopen(req,timeout=35) as r:
+                          body=json.loads(r.read().decode())
+                          ok=r.status==200 and body.get(p['identity_field'])==p['identity_value']
+                          if p['provider']=='render':
+                              ok=ok and (body.get('provider')==p['expected_provider_attestation'] or body.get('quorum_attestation',{}).get('provider')==p['expected_provider_attestation'])
+                          if p['provider']=='digitalocean':
+                              expected=p.get('expected_provider')
+                              observed=body.get('provider') or body.get('quorum_attestation',{}).get('provider')
+                              ok=ok and observed==expected
+                          if ok:
+                              healthy.append((p['provider'],p['failure_domain']))
+                              verified=True
+                              break
+                          last_error='attestation_mismatch'
+                  except Exception as exc:
+                      last_error=type(exc).__name__
+                  if attempt<3:
+                      time.sleep(5*attempt)
+              if not verified:
+                  failures.append((p['provider'],last_error))
+          providers={provider for provider,_ in healthy}
+          domains={domain for _,domain in healthy}
+          assert len(providers)>=c['min_quorum'],(healthy,failures)
+          assert len(domains)>=c['min_quorum'],(healthy,failures)
+          print('PASS open provider quorum',healthy,'failures',failures)
           PY
       - name: Verify responsive geometry typography and interaction quality
         run: |

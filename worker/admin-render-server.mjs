@@ -159,6 +159,14 @@ function render(x){
 
 const server=http.createServer(async(req,res)=>{
   const u=new URL(req.url||"/","http://localhost");
+  if((req.method==="GET"||req.method==="HEAD")&&(u.pathname==="/"||u.pathname==="/admin")){
+    res.statusCode=308;
+    res.setHeader("location","https://controle.zevanory.api.br/");
+    res.setHeader("cache-control","no-store");
+    res.end();
+    return;
+  }
+
   if(u.pathname==="/healthz") return reply(res,200,JSON.stringify({
     service:"zevanory-admin-control",
     live:true,
