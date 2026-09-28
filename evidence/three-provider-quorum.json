@@ -1,32 +1,24 @@
 {
-  "schema_version": 2,
-  "objective": "authenticated-three-provider-runtime-quorum",
-  "canonical_parent": "77b0b0ebd76605a84850232e72253085127dce0a",
+  "schema_version": 3,
+  "objective": "authenticated-open-provider-runtime-quorum",
+  "canonical_parent": "fc4d58008f42a775fbc450364ffecf856b76c29a",
+  "provider_policy": "open_mesh_no_individual_provider_required",
   "providers": [
     {
       "id": "edge",
       "provider": "cloudflare",
-      "provider_identity_evidence": "edge.zevanory.api.br returns Cloudflare cf-ray through authorized production probe",
+      "failure_domain": "cloudflare-edge",
+      "provider_identity_evidence": "edge.zevanory.api.br returns the ZEVANORY status contract through the Cloudflare edge route",
       "url": "https://edge.zevanory.api.br/api/status",
       "identity_field": "project",
       "identity_value": "ZEVANORY",
-      "required": true
+      "required": false,
+      "enabled": true
     },
     {
-      "id": "backup",
-      "provider": "netlify",
-      "site_id": "05e2d28a-233e-43a4-9f9f-d6aab23d4a92",
-      "deploy_id": "6aaec20bfc3fafc10699be60",
-      "deploy_state": "ready",
-      "status_url": "https://zevanory-production-backup.netlify.app/api/status",
-      "identity_field": "project",
-      "identity_value": "ZEVANORY",
-      "deployed_functions": 11,
-      "required": true
-    },
-    {
-      "id": "quorum",
+      "id": "quorum-render",
       "provider": "render",
+      "failure_domain": "render-virginia",
       "service_id": "srv-danh5vn40ujc73buii7g",
       "service_name": "zevanory-quorum-render-v2",
       "service_state": "not_suspended",
@@ -35,13 +27,39 @@
       "identity_value": "ZEVANORY",
       "expected_provider_attestation": "render-free",
       "plan": "free",
-      "required": true
+      "required": false,
+      "enabled": true
+    },
+    {
+      "id": "quorum-digitalocean",
+      "provider": "digitalocean",
+      "failure_domain": "digitalocean-nyc1-relay-01",
+      "droplet_id": 602725296,
+      "status_url": "https://tts.167-172-146-60.sslip.io/quorum",
+      "identity_field": "project",
+      "identity_value": "ZEVANORY",
+      "expected_provider": "digitalocean-relay",
+      "artifact_sha": "fc4d58008f42a775fbc450364ffecf856b76c29a",
+      "required": false,
+      "enabled": true
+    },
+    {
+      "id": "backup-netlify",
+      "provider": "netlify",
+      "failure_domain": "netlify-production",
+      "site_id": "05e2d28a-233e-43a4-9f9f-d6aab23d4a92",
+      "status_url": "https://zevanory-production-backup.netlify.app/api/status",
+      "identity_field": "project",
+      "identity_value": "ZEVANORY",
+      "required": false,
+      "enabled": true,
+      "note": "Optional route. Latest redeploy attempt on 2026-09-28 was skipped by Netlify because account credit usage was exceeded; it must never block quorum."
     }
   ],
   "observed_primary_endpoint": {
     "url": "https://zevanory.api.br/api/status",
     "origin_provider_asserted": false,
-    "note": "healthy primary endpoint, excluded from independent-provider count until origin provider is authenticated"
+    "note": "Primary endpoint remains excluded from independent-provider count until origin ownership is authenticated."
   },
   "min_quorum": 3,
   "zero_spend": true,
