@@ -139,6 +139,7 @@ jobs:
           c["vars"]["WHATSAPP_SALES_ENABLED"]="false"
           c["vars"]["ZEVANORY_WHATSAPP_E164"]="+5588992545413"
           c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
+          c["vars"]["ZEVANORY_WHATSAPP_COUNTRY"]="BR"
           c["vars"]["SUPPORT_CHANNEL"]="WhatsApp +55 88 99254-5413"
           # Replace every legacy public contact reference in the reconstructed production snapshot.
           replacements = {
