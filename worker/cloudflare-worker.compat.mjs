@@ -91,6 +91,14 @@ const wrapped = {
   async fetch(request, env, ctx) {
     const normalized = normalizeEnv(env);
     const url = new URL(request.url);
+
+    // One administrative surface only: legacy HTML entrypoints permanently
+    // converge on the canonical React Control Center. Technical admin APIs stay
+    // in this worker for compatibility and Core integration.
+    if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/admin") {
+      return Response.redirect("https://controle.zevanory.api.br/", 308);
+    }
+
     // Keep the administrative/control critical path independent from WhatsApp.
     // Broker/credential I/O is intentionally lazy so PIN -> Control Center is not
     // delayed by an unrelated provider or service binding.
