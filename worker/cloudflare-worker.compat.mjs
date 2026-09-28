@@ -91,6 +91,13 @@ const wrapped = {
   async fetch(request, env, ctx) {
     const normalized = normalizeEnv(env);
     const url = new URL(request.url);
+
+    // One administrative surface only. Keep technical admin APIs in this Worker,
+    // but converge the legacy HTML entrypoint on the canonical React Control Center.
+    if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/admin") {
+      return Response.redirect("https://controle.zevanory.api.br/", 308);
+    }
+
     const whatsappRuntime = await loadWhatsappRuntimeCredentials(normalized).catch(()=>null);
     globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = whatsappRuntime || {};
     globalThis.__ZEVANORY_WHATSAPP_BROKER__ = normalized.WHATSAPP_BROKER || null;
