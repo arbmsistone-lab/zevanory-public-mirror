@@ -11,6 +11,8 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  EXPECTED_SHA: "37e695127af02c9a32c601db0353a3708fc45d82"
 jobs:
   apex:
     runs-on: ubuntu-latest
@@ -23,6 +25,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Bind apex proof to exact live release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/release -o /tmp/release.json
+          ACTUAL_SHA="$(jq -r '.deployment.commit_sha // empty' /tmp/release.json)"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          echo "P01_APEX_EXACT_RELEASE=PASS sha=$ACTUAL_SHA"
       - name: Install audit stack
         run: |
           npm install --no-save lighthouse@12 pa11y@9 playwright@1.55.0
@@ -214,7 +224,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: zevanory-apex-engineering-evidence
+          name: zevanory-apex-engineering-evidence-37e695127af0
           path: |
             apex-visual.json
             apex-*.png

@@ -49,6 +49,30 @@ for(const run of runsDoc.workflow_runs||[]){
 
 const exactWorkflowProofs=[
   {
+    name:"ZEVANORY apex engineering gate",
+    file:"zevanory-apex-engineering.yml",
+    artifact:"zevanory-apex-engineering-evidence-"+sha.slice(0,12),
+    markers:["P01_APEX_EXACT_RELEASE=PASS","PASS production health/legal/security/parity","PASS source hygiene/provenance"]
+  },
+  {
+    name:"ZEES-16 Evidence Gate",
+    file:"zees16-evidence-gate.yml",
+    artifact:"p06-zees-gate-"+sha.slice(0,12),
+    markers:["P06_ZEES_GATE_EXACT_RELEASE=PASS","Validate ZEES-16 registry","Validate P14 provider independence"]
+  },
+  {
+    name:"ZEVANORY portable disaster recovery",
+    file:"zevanory-portable-dr.yml",
+    artifact:"zevanory-portable-recovery-kit-"+sha.slice(0,12),
+    markers:["P09_P10_DR_EXACT_RELEASE=PASS","transport outage and commercial lock semantics are independently fail-safe","rollback_version"]
+  },
+  {
+    name:"zevanory-p15-provenance",
+    file:"zevanory-p15-provenance.yml",
+    artifact:"p15-provenance-"+sha.slice(0,12),
+    markers:["P13_P15_PROVENANCE_EXACT_RELEASE=PASS","Build deterministic exact-production tree manifest","tracked_tree_sha256"]
+  },
+  {
     name:"ZEVANORY provider independence gate",
     file:"zevanory-provider-independence.yml",
     artifact:"p14-provider-independence-"+sha.slice(0,12),
