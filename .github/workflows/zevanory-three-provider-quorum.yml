@@ -10,12 +10,22 @@ on:
     - cron: "23 * * * *"
 permissions:
   contents: read
+env:
+  EXPECTED_SHA: 37e695127af02c9a32c601db0353a3708fc45d82
 jobs:
   quorum:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Bind quorum proof to exact live release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/release -o /tmp/release.json
+          ACTUAL_SHA="$(jq -r '.deployment.commit_sha // empty' /tmp/release.json)"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          echo "P14_THREE_PROVIDER_QUORUM_EXACT_RELEASE=PASS sha=$ACTUAL_SHA"
       - name: Verify open independent-provider quorum
         run: |
           set -euo pipefail
@@ -74,3 +84,16 @@ jobs:
           print("HEALTHY_PROVIDERS",",".join(sorted(providers)))
           print("HEALTHY_FAILURE_DOMAINS",",".join(sorted(domains)))
           PY
+
+      - name: Emit immutable three-provider quorum evidence
+        if: always()
+        shell: bash
+        run: |
+          printf '{"schema":"zevanory.p14.three-provider-quorum.v1","release_sha":"%s","run_id":"%s","status":"proved"}
+' "$EXPECTED_SHA" "$GITHUB_RUN_ID" > p14-three-provider-quorum.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p14-three-provider-quorum-37e695127af0
+          path: p14-three-provider-quorum.json
+          retention-days: 90
