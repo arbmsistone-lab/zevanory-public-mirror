@@ -14,7 +14,7 @@ on:
       expected_sha:
         description: Exact deployed ZEVANORY SHA
         required: false
-        default: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+        default: 37e695127af02c9a32c601db0353a3708fc45d82
         type: string
 
 permissions:
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-      EXPECTED_SHA: ${{ inputs.expected_sha || 'c3845cf898acf60e84a06e51cf08db7cfd09bbe3' }}
+      EXPECTED_SHA: ${{ inputs.expected_sha || '37e695127af02c9a32c601db0353a3708fc45d82' }}
     steps:
       - name: Fetch exact immutable release
         shell: bash
