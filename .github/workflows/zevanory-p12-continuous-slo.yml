@@ -7,11 +7,21 @@ on:
     - cron: '17 * * * *'
 permissions:
   contents: read
+env:
+  EXPECTED_SHA: 37e695127af02c9a32c601db0353a3708fc45d82
 jobs:
   observe:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Bind audit to exact live release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/release -o /tmp/release.json
+          ACTUAL_SHA="$(jq -r '.deployment.commit_sha // empty' /tmp/release.json)"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          echo "EXACT_RELEASE_BINDING=PASS sha=$ACTUAL_SHA"
       - name: Probe independent production endpoints
         env:
           URLS: "https://zevanory.api.br/solucoes https://edge.zevanory.api.br/solucoes https://zevanory.api.br/api/control-plane"
@@ -37,6 +47,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p12-slo-observation
+          name: p12-slo-observation-37e695127af0
           path: p12-slo-observation.json
           retention-days: 90
