@@ -1,0 +1,52 @@
+name: ZEVANORY canonical public authority probe
+on:
+  push:
+    branches: [promotion/canonical-public-authority-probe]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      LEGACY_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+      OWNER_TOKEN: "${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}"
+      LEGACY_ACCOUNT: "e3caca88f4343c3cdfcf66eebe6ac124"
+      PUBLIC_OWNER_ACCOUNT: "1b26415802588185a86c1d4d3ebf5bdb"
+    steps:
+      - name: Probe existing authorized Cloudflare routes without exposing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe(){
+            label="$1"; token="$2"; account="$3";
+            if [ -z "$token" ]; then echo "$label=ABSENT"; return 0; fi
+            code=$(curl -sS -o /tmp/${label}.json -w '%{http_code}' -H "Authorization: Bearer $token" "https://api.cloudflare.com/client/v4/accounts/$account" || true)
+            if [ "$code" = 200 ] && python3 -c "import json;d=json.load(open('/tmp/${label}.json'));raise SystemExit(0 if d.get('success') is True else 1)"; then echo "$label=ACCOUNT_AUTH_PASS"; else echo "$label=ACCOUNT_AUTH_FAIL_HTTP_$code"; fi
+          }
+          probe LEGACY_ON_LEGACY "$LEGACY_TOKEN" "$LEGACY_ACCOUNT"
+          probe LEGACY_ON_PUBLIC_OWNER "$LEGACY_TOKEN" "$PUBLIC_OWNER_ACCOUNT"
+          probe OWNER_ON_PUBLIC_OWNER "$OWNER_TOKEN" "$PUBLIC_OWNER_ACCOUNT"
+          probe OWNER_ON_LEGACY "$OWNER_TOKEN" "$LEGACY_ACCOUNT"
+      - name: Probe zone and worker authority for any present token
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_token(){
+            label="$1"; token="$2";
+            if [ -z "$token" ]; then echo "$label=ABSENT"; return 0; fi
+            zcode=$(curl -sS -o /tmp/${label}-zones.json -w '%{http_code}' -H "Authorization: Bearer $token" "https://api.cloudflare.com/client/v4/zones?name=zevanory.api.br" || true)
+            if [ "$zcode" = 200 ]; then
+              python3 - <<PY
+import json
+d=json.load(open('/tmp/${label}-zones.json'))
+ok=d.get('success') is True and bool(d.get('result'))
+print('${label}_ZONE_AUTH=' + ('PASS' if ok else 'FAIL'))
+if ok: print('${label}_ZONE_ID='+str(d['result'][0]['id']))
+PY
+            else echo "${label}_ZONE_AUTH=FAIL_HTTP_$zcode"; fi
+          }
+          probe_token LEGACY "$LEGACY_TOKEN"
+          probe_token OWNER "$OWNER_TOKEN"
+      - name: Emit authority summary
+        run: echo CANONICAL_AUTHORITY_PROBE_COMPLETE=PASS
