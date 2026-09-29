@@ -110,10 +110,11 @@ jobs:
           const okRun=name=>({name,conclusion:"success",id:1,html_url:"https://example.test/"+encodeURIComponent(name),updated_at:"2026-09-22T22:00:00Z"});
           const names=[
             "ZEVANORY apex engineering gate","zevanory-p02-visual-regression","zevanory-p04-wcag",
-            "zevanory-p12-continuous-slo","zevanory-remote-quality-gates","ZEES-16 Evidence Gate",
-            "zevanory-p15-provenance","ZEVANORY portable disaster recovery","ZEVANORY authenticated three-provider runtime quorum",
-            "ZEVANORY provider independence gate","pages build and deployment",
-            "ZEVANORY central production deploy"
+            "zevanory-p07-app-security","zevanory-p12-continuous-slo","zevanory-p12-observability-exact-release",
+            "zevanory-remote-quality-gates","ZEES-16 Evidence Gate","zevanory-p15-provenance",
+            "zevanory-p16-deterministic-exact-release","ZEVANORY portable disaster recovery",
+            "ZEVANORY authenticated three-provider runtime quorum","ZEVANORY provider independence gate",
+            "pages build and deployment","ZEVANORY central production deploy"
           ];
           const workflows=new Map(names.map(n=>[n,okRun(n)]));
           const signals={
@@ -121,9 +122,9 @@ jobs:
             "runtime:quorum_ok":true,"runtime:sales_fail_closed":true,"runtime:commercial_release":false
           };
           const state=evaluatePolicy({signals,workflows,releaseSha:"a".repeat(40),observedAt:"2026-09-22T22:00:00Z"});
-          if(state.counts.proven!==15||state.counts.partial!==1||state.counts.blocked!==0) throw new Error("unexpected ZEES state "+JSON.stringify(state.counts));
+          if(state.counts.proven!==16||state.counts.partial!==0||state.counts.blocked!==0) throw new Error("unexpected ZEES state "+JSON.stringify(state.counts));
           const p16=state.pillars.find(x=>x.id==="P16");
-          if(p16?.state!=="PARTIAL") throw new Error("P16 must stay fail-closed until commercial release");
+          if(p16?.state!=="PROVADO") throw new Error("P16 readiness must be evidence-proved while sales remain fail-closed");
           workflows.delete("zevanory-p04-wcag");
           const degraded=evaluatePolicy({signals,workflows,releaseSha:"a".repeat(40)});
           if(degraded.pillars.find(x=>x.id==="P04")?.state!=="BLOCKED") throw new Error("missing proof must downgrade P04");

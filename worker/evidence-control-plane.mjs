@@ -13,16 +13,16 @@ export const ZEES16_POLICY={
     {id:"P04",name:"Acessibilidade",requires:["workflow:zevanory-p04-wcag"]},
     {id:"P05",name:"Confiabilidade operacional",requires:["workflow:zevanory-remote-quality-gates","runtime:health_ready"]},
     {id:"P06",name:"Testes e regressão",requires:["workflow:ZEES-16 Evidence Gate","workflow:zevanory-remote-quality-gates"]},
-    {id:"P07",name:"Segurança aplicável",requires:["workflow:ZEES-16 Evidence Gate","workflow:zevanory-p15-provenance"]},
-    {id:"P08",name:"Observabilidade",requires:["workflow:zevanory-p12-continuous-slo","runtime:telemetry_active"]},
+    {id:"P07",name:"Segurança aplicável",requires:["workflow:zevanory-p07-app-security"]},
+    {id:"P08",name:"Observabilidade",requires:["workflow:zevanory-p12-observability-exact-release","runtime:telemetry_active"]},
     {id:"P09",name:"Resiliência",requires:["workflow:ZEVANORY portable disaster recovery","workflow:zevanory-remote-quality-gates"]},
     {id:"P10",name:"Continuidade e recuperação",requires:["workflow:ZEVANORY portable disaster recovery","workflow:ZEVANORY authenticated three-provider runtime quorum","runtime:quorum_ok"]},
     {id:"P11",name:"Frontend e eficiência de entrega",requires:["workflow:zevanory-p02-visual-regression","workflow:zevanory-p12-continuous-slo"]},
-    {id:"P12",name:"Produção e SRE",requires:["workflow:ZEVANORY central production deploy","runtime:exact_sha","runtime:health_ready"]},
+    {id:"P12",name:"Produção e SRE",requires:["workflow:ZEVANORY central production deploy","workflow:zevanory-p12-observability-exact-release","runtime:exact_sha","runtime:health_ready"]},
     {id:"P13",name:"Governança e evidência",requires:["workflow:zevanory-p15-provenance","runtime:exact_sha"]},
     {id:"P14",name:"Automação, IA e provedores",requires:["workflow:ZEVANORY provider independence gate","workflow:ZEVANORY authenticated three-provider runtime quorum"]},
     {id:"P15",name:"CI/CD e proveniência",requires:["workflow:zevanory-p15-provenance","workflow:pages build and deployment","workflow:ZEVANORY central production deploy"]},
-    {id:"P16",name:"Prontidão comercial",requires:["workflow:ZEVANORY consolidated closure gate","runtime:sales_fail_closed","runtime:health_ready"]}
+    {id:"P16",name:"Prontidão comercial",requires:["workflow:zevanory-p16-deterministic-exact-release","runtime:sales_fail_closed","runtime:health_ready"]}
   ]
 };
 

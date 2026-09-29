@@ -38,13 +38,111 @@ const [runsDoc,manifest,branchDoc,branchRuns]=await Promise.all([
   jf("https://api.github.com/repos/"+repo+"/actions/runs?head_sha="+sha+"&per_page=100"),
   jf("https://raw.githubusercontent.com/"+repo+"/gh-pages/zea10-external/manifest.json?cb="+Date.now()),
   jf("https://api.github.com/repos/"+repo+"/branches/gh-pages"),
-  jf("https://api.github.com/repos/"+repo+"/actions/runs?branch=gh-pages&per_page=50")
+  jf("https://api.github.com/repos/"+repo+"/actions/runs?branch=gh-pages&per_page=100")
 ]);
 const workflows=new Map();
 for(const run of runsDoc.workflow_runs||[]){
   if(run.head_sha!==sha||run.status!=="completed") continue;
   const current=workflows.get(run.name);
   if(!current||new Date(run.updated_at||run.created_at)>new Date(current.updated_at||current.created_at)) workflows.set(run.name,run);
+}
+
+const exactWorkflowProofs=[
+  {
+    name:"zevanory-p02-visual-regression",
+    file:"zevanory-p02-visual-regression.yml",
+    artifact:"p02-visual-evidence-"+sha.slice(0,12),
+    markers:["EXACT_RELEASE_BINDING=PASS","Verify responsive no-horizontal-scroll contract","overflowX"]
+  },
+  {
+    name:"zevanory-p04-wcag",
+    file:"zevanory-p04-wcag.yml",
+    artifact:"p04-wcag-evidence-"+sha.slice(0,12),
+    markers:["EXACT_RELEASE_BINDING=PASS","WCAG2AA","errorCount"]
+  },
+  {
+    name:"zevanory-remote-quality-gates",
+    file:"zevanory-remote-quality-gates.yml",
+    artifact:"zevanory-remote-quality-evidence-"+sha.slice(0,12),
+    markers:["EXACT_RELEASE_BINDING=PASS","Audit production quality","REQUIRED_STATUS_REPORT=PASS"]
+  },
+  {
+    name:"zevanory-p12-continuous-slo",
+    file:"zevanory-p12-continuous-slo.yml",
+    artifact:"p12-slo-observation-"+sha.slice(0,12),
+    markers:["EXACT_RELEASE_BINDING=PASS","zevanory.p12.slo.v1","all_ok"]
+  },
+  {
+    name:"zevanory-p07-app-security",
+    file:"zevanory-p07-app-security.yml",
+    artifact:"zevanory-p07-security-"+sha.slice(0,12),
+    markers:["P07_SECURITY=PROVED","SAST=PASS","DAST=PASS","SCA=PASS","FALSE_GREEN=0"]
+  },
+  {
+    name:"ZEVANORY P08 supply-chain exact-release proof",
+    file:"zevanory-p08-supply-chain.yml",
+    artifact:"zevanory-p08-supply-chain-"+sha.slice(0,12),
+    markers:["P08_SUPPLY_CHAIN=PROVED","SBOM=PASS","SCA=PASS","PROVENANCE=PASS","FAIL_CLOSED=PASS"]
+  },
+  {
+    name:"zevanory-p12-observability-exact-release",
+    file:"zevanory-p12-observability-exact-release.yml",
+    artifact:"zevanory-p12-observability-"+sha.slice(0,12),
+    markers:["P12_OBSERVABILITY=PROVED","METRICS=PASS","REQUEST_CORRELATION=PASS","SLO=PASS","INCIDENT_VISIBILITY=PASS"]
+  },
+  {
+    name:"zevanory-p16-deterministic-exact-release",
+    file:"zevanory-p16-deterministic-exact-release.yml",
+    artifact:"zevanory-p16-financial-"+sha.slice(0,12),
+    markers:["P16_LIFECYCLE=PROVED","P16_SOURCE_CONTRACT=PASS","RUNTIME_SHA_MATCH=PASS","financial_engine_deterministic.py","IDEMPOTENCY","REFUND"]
+  }
+];
+
+async function collectProtectedExactProof(spec){
+  const candidates=(branchRuns.workflow_runs||[]).filter(run=>
+    run.name===spec.name &&
+    run.status==="completed" &&
+    run.conclusion==="success" &&
+    String(run.path||"")===".github/workflows/"+spec.file
+  ).sort((a,b)=>new Date(b.updated_at||b.created_at)-new Date(a.updated_at||a.created_at));
+
+  for(const run of candidates.slice(0,20)){
+    const head=String(run.head_sha||"");
+    if(!/^[0-9a-f]{40}$/.test(head)) continue;
+    const [workflowResponse,artifactsDoc]=await Promise.all([
+      fetch("https://raw.githubusercontent.com/"+repo+"/"+head+"/.github/workflows/"+spec.file,{
+        headers:{"user-agent":"ZEVANORY-ZEES16-Reconciler/1.1","cache-control":"no-cache"}
+      }),
+      jf("https://api.github.com/repos/"+repo+"/actions/runs/"+run.id+"/artifacts?per_page=100")
+    ]);
+    if(!workflowResponse.ok) continue;
+    const workflow=await workflowResponse.text();
+    if(!workflow.includes(sha)) continue;
+    if(!spec.markers.every(marker=>workflow.includes(marker))) continue;
+    const artifact=(artifactsDoc.artifacts||[]).find(item=>
+      item?.name===spec.artifact &&
+      item?.expired!==true &&
+      Number(item?.size_in_bytes||0)>0
+    );
+    if(!artifact) continue;
+    return {
+      ...run,
+      conclusion:"success",
+      exact_release_bound:true,
+      target_release_sha:sha,
+      proof_artifact:{id:artifact.id,name:artifact.name,size_in_bytes:artifact.size_in_bytes,digest:artifact.digest||null}
+    };
+  }
+  return null;
+}
+
+for(const spec of exactWorkflowProofs){
+  try{
+    const proof=await collectProtectedExactProof(spec);
+    if(proof) workflows.set(spec.name,proof);
+  }catch(error){
+    console.error("EXACT_PROOF_COLLECTOR_ERROR",spec.name,String(error?.message||error));
+  }
 }
 const currentHead=branchDoc?.commit?.sha||null;
 const packRun=(branchRuns.workflow_runs||[]).find(run=>

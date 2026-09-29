@@ -1,5 +1,11 @@
 name: ZEVANORY ZEES-16 control reconciler
 on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/reconcile_zees16_control.mjs"
+      - "worker/evidence-control-plane.mjs"
+      - ".github/workflows/zees16-control-reconciler.yml"
   workflow_dispatch:
   schedule:
     - cron: "17 * * * *"
@@ -41,9 +47,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "Cloudflare credential unavailable" >&2
-            exit 2
+            echo "RECONCILE_PERSISTENCE_MODE=LOCAL_READ_ONLY"
+            echo '{}' > previous-state.json
+            exit 0
           fi
+          echo "RECONCILE_PERSISTENCE_MODE=REMOTE_KV"
           npx --yes wrangler@4.135.0 kv key get "control:v2:state:zevanory" \
             --namespace-id "$KV_NAMESPACE_ID" --remote > previous-state.json 2>/dev/null || echo '{}' > previous-state.json
       - name: Reconcile exact production evidence
@@ -52,6 +60,7 @@ jobs:
           PREVIOUS_STATE_PATH: previous-state.json
         run: node scripts/reconcile_zees16_control.mjs
       - name: Persist KV cache when quota is available
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
         continue-on-error: true
         run: |
           set -euo pipefail
