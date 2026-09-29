@@ -40,7 +40,7 @@ jobs:
       - name: Verify production release identity is a real Git commit
         run: |
           python3 - <<'PY'
-          import urllib.request,json,subprocess,re
+          import urllib.request,json,subprocess,re,os
           req=urllib.request.Request("https://zevanory.api.br/build-info.json",headers={"User-Agent":"ZEVANORY-Provenance/1.0","Cache-Control":"no-cache"})
           d=json.load(urllib.request.urlopen(req,timeout=20))
           sha=str(d.get("sha","")).strip()
