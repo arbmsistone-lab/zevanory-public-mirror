@@ -1,0 +1,64 @@
+name: Cloudflare Authority Alias Probe
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - '.github/workflows/cloudflare-authority-alias-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EXPECTED_ACCOUNT: 1b26415802588185a86c1d4d3ebf5bdb
+      TOKEN_PUBLIC: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
+      TOKEN_DEFAULT: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TOKEN_CF: ${{ secrets.CF_API_TOKEN }}
+      TOKEN_ALT: ${{ secrets.CLOUDFLARE_TOKEN }}
+      GLOBAL_KEY: ${{ secrets.CLOUDFLARE_GLOBAL_API_KEY }}
+      API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+      CF_KEY: ${{ secrets.CF_API_KEY }}
+      EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+      CF_EMAIL: ${{ secrets.CF_API_EMAIL }}
+    steps:
+      - name: Probe configured authorities without exposing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_bearer() {
+            name="$1"; token="$2"
+            if [ -z "$token" ]; then echo "$name=PRESENT:false"; return 0; fi
+            echo "$name=PRESENT:true"
+            code="$(curl -sS -o "/tmp/$name.json" -w '%{http_code}' -H "Authorization: Bearer $token" 'https://api.cloudflare.com/client/v4/accounts?per_page=100' || true)"
+            if [ "$code" != "200" ]; then echo "$name=AUTH:false HTTP:$code"; return 0; fi
+            EXPECTED_ACCOUNT="$EXPECTED_ACCOUNT" FILE="/tmp/$name.json" python3 - <<'PY'
+          import json,os
+          d=json.load(open(os.environ["FILE"]))
+          ids=[str(x.get("id") or "") for x in d.get("result",[])]
+          print("AUTH:true EXPECTED_ACCOUNT:"+str(os.environ["EXPECTED_ACCOUNT"] in ids).lower())
+          PY
+          }
+          probe_global() {
+            name="$1"; key="$2"; email="$3"
+            if [ -z "$key" ] || [ -z "$email" ]; then echo "$name=PRESENT:false"; return 0; fi
+            echo "$name=PRESENT:true"
+            code="$(curl -sS -o "/tmp/$name.json" -w '%{http_code}' -H "X-Auth-Email: $email" -H "X-Auth-Key: $key" 'https://api.cloudflare.com/client/v4/accounts?per_page=100' || true)"
+            if [ "$code" != "200" ]; then echo "$name=AUTH:false HTTP:$code"; return 0; fi
+            EXPECTED_ACCOUNT="$EXPECTED_ACCOUNT" FILE="/tmp/$name.json" python3 - <<'PY'
+          import json,os
+          d=json.load(open(os.environ["FILE"]))
+          ids=[str(x.get("id") or "") for x in d.get("result",[])]
+          print("AUTH:true EXPECTED_ACCOUNT:"+str(os.environ["EXPECTED_ACCOUNT"] in ids).lower())
+          PY
+          }
+          probe_bearer TOKEN_PUBLIC "$TOKEN_PUBLIC"
+          probe_bearer TOKEN_DEFAULT "$TOKEN_DEFAULT"
+          probe_bearer TOKEN_CF "$TOKEN_CF"
+          probe_bearer TOKEN_ALT "$TOKEN_ALT"
+          probe_global GLOBAL_KEY "$GLOBAL_KEY" "${EMAIL:-$CF_EMAIL}"
+          probe_global API_KEY "$API_KEY" "${EMAIL:-$CF_EMAIL}"
+          probe_global CF_KEY "$CF_KEY" "${CF_EMAIL:-$EMAIL}"
