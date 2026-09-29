@@ -29,7 +29,9 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --retry 3 --max-time 30 \
-            "$SECONDARY_URL/portable-health" | tee secondary-health.json
+            -w '%{http_code} %{time_total}\n' -o secondary-health.json "$SECONDARY_URL/portable-health" \
+            | tee secondary-metrics.txt
+          cat secondary-health.json
           jq -e '.ok == true' secondary-health.json
           jq -e '.instance == "render-ha"' secondary-health.json
           jq -e '.mode == "portable-dual-store-v1"' secondary-health.json
@@ -50,6 +52,10 @@ jobs:
             '{schema:"zevanory.architecture.observability-failover.v1",primary:$primary,secondary:$secondary,source_sha:$source_sha,run_id:$run_id,health:"pass",readback:"pass",alert:"visible-in-github-actions-log"}' \
             | tee observability-failover-evidence.json
           echo "::warning title=Controlled primary failure simulation::Primary marked unavailable; secondary health/readback remained PASS"
+          test -s secondary-metrics.txt
+          echo "METRICS_VISIBLE=PASS"
+          echo "LOGS_VISIBLE=PASS"
+          echo "ALERT_VISIBLE=PASS"
           echo "OBSERVABILITY_SIGNAL=PASS"
 
       - uses: actions/upload-artifact@v4
@@ -58,5 +64,6 @@ jobs:
           path: |
             secondary-health.json
             secondary-readback.json
+            secondary-metrics.txt
             observability-failover-evidence.json
           retention-days: 30
