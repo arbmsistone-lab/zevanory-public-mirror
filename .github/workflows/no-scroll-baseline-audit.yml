@@ -22,9 +22,9 @@ jobs:
           npx playwright install --with-deps chromium >/dev/null
       - name: Serve candidate
         run: |
-          python3 -m http.server 4173 > /tmp/zevanory-static.log 2>&1 &
+          python3 -m http.server 4173 --directory .. > /tmp/zevanory-static.log 2>&1 &
           echo $! > /tmp/server.pid
-          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:4173/ >/dev/null && exit 0; sleep 1; done
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:4173/zevanory-public-mirror/ >/dev/null && exit 0; sleep 1; done
           cat /tmp/zevanory-static.log
           exit 1
       - name: Measure global overflow
@@ -45,7 +45,7 @@ jobs:
           for(const v of views){
             for(const route of routes){
               const page=await browser.newPage({viewport:{width:v.width,height:v.height}});
-              const response=await page.goto('http://127.0.0.1:4173'+route,{waitUntil:'load'});
+              const response=await page.goto('http://127.0.0.1:4173/zevanory-public-mirror'+route,{waitUntil:'load'});
               const m=await page.evaluate(()=>({
                 sh:document.documentElement.scrollHeight,
                 sw:document.documentElement.scrollWidth,
