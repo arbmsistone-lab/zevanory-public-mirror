@@ -41,7 +41,7 @@ jobs:
           const evidence=fs.readFileSync("worker/evidence-control-plane.mjs","utf8");
           if(/zea10/i.test(evidence)) throw new Error("ZEES-16 evidence layer must not depend on ZEA-10");
           const evaluator=fs.readFileSync("worker/zea10-evaluator.mjs","utf8");
-          if(!evaluator.includes('source_layer:"ZEES-16"')||!evaluator.includes("authority:false")) throw new Error("ZEA-10 evaluator role contract missing");
+          if(!evaluator.includes('source_layer:"ZEES-16"')||!evaluator.includes("authority:true")||!evaluator.includes("external_review_required:false")) throw new Error("ZEA-10 internal authority contract missing");
           const core=fs.readFileSync("worker/zevanory-control-core.mjs","utf8");
           for(const token of ['flow:["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]',"circular_dependency:false","evidence_to_evaluation_unidirectional:true"]){
             if(!core.includes(token)) throw new Error("missing architecture invariant "+token);
@@ -63,7 +63,7 @@ jobs:
           const pillars=Array.from({length:16},(_,i)=>({id:"P"+String(i+1).padStart(2,"0"),state:"PROVADO",release_sha:"b".repeat(40)}));
           const zea=evaluateZea10FromZees16({release_sha:"b".repeat(40),decision_hash:"cafebabe",pillars});
           if(zea.counts.proven!==10) throw new Error("expected 10/10 ZEA evaluation from complete ZEES evidence");
-          if(zea.authority!==false||zea.source_layer!=="ZEES-16") throw new Error("evaluation layer authority violation");
+          if(zea.authority!==true||zea.external_review_required!==false||zea.source_layer!=="ZEES-16") throw new Error("internal evaluation authority violation");
           const degraded=evaluateZea10FromZees16({release_sha:"b".repeat(40),pillars:pillars.map(p=>p.id==="P10"?{...p,state:"BLOCKED"}:p)});
           const affected=degraded.pillars.filter(p=>p.requires.includes("P10"));
           if(!affected.length||affected.some(p=>p.state!=="BLOCKED")) throw new Error("blocked evidence did not propagate fail-closed");
