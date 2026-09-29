@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "canonical_sha": "4e16fc48486f8d56f16401adbe34e764528a6a52",
   "policy": "fail_closed_external_evidence_only",
   "pillars": {
@@ -60,7 +60,8 @@
     "independent_reviews": 0,
     "accepted_reviews": 0
   },
-  "note": "Generated status starts fail-closed. Only validated independent review artifacts can change a pillar.",
-  "audited_candidate_sha": "bd7e587cec1eb35cb8dcbabbb4d548ad4684e3f5",
-  "last_refresh": "2026-09-22"
+  "note": "Fail-closed external review status. Internal evidence pack refreshed to the current live release; no pillar becomes remote_certified without a validated independent review artifact bound to that release.",
+  "audited_candidate_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+  "last_refresh": "2026-09-29",
+  "evaluated_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82"
 }
