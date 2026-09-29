@@ -110,8 +110,24 @@ jobs:
           NODE
           node audit.mjs
 
+      - name: Canonical CFO readback evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -L --max-time 30 -o canonical-cfo.html -w '%{http_code}' https://zevanory.api.br/zevanory-cfo || true)"
+          bytes="$(wc -c < canonical-cfo.html 2>/dev/null || echo 0)"
+          printf 'CANONICAL_CFO_HTTP=%s\nCANONICAL_CFO_BYTES=%s\n' "$code" "$bytes" | tee canonical-cfo-readback.env
+          if [ "$code" = "200" ]; then
+            echo "CANONICAL_CFO_READBACK=PASS"
+          else
+            echo "CANONICAL_CFO_READBACK=NOT_PROMOTED"
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: zevanory-exact-mirror-6c770f
-          path: exact-mirror-layout.json
+          path: |
+            exact-mirror-layout.json
+            canonical-cfo-readback.env
+            canonical-cfo.html
           retention-days: 30
