@@ -10,12 +10,22 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  EXPECTED_SHA: "37e695127af02c9a32c601db0353a3708fc45d82"
 jobs:
   prove:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Bind provider-independence proof to exact live release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/release -o /tmp/release.json
+          ACTUAL_SHA="$(jq -r '.deployment.commit_sha // empty' /tmp/release.json)"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          echo "P14_PROVIDER_INDEPENDENCE_EXACT_RELEASE=PASS sha=$ACTUAL_SHA"
       - name: Unit-test production-shaped continuity router
         run: |
           set -euo pipefail
@@ -110,3 +120,15 @@ jobs:
           test -n "$(find /tmp/continuity-out -maxdepth 1 -type f \( -name '*.js' -o -name '*.mjs' \) -print -quit)"
           rm -f wrangler.continuity-proof.jsonc
           echo "PASS: provider-independent Worker compiles remotely"
+
+      - name: Emit immutable provider-independence evidence
+        if: always()
+        shell: bash
+        run: |
+          jq -n --arg sha "$EXPECTED_SHA" --arg run "$GITHUB_RUN_ID" '{schema:"zevanory.p14.provider-independence.v1",release_sha:$sha,run_id:$run,status:"proved"}' > p14-provider-independence.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p14-provider-independence-37e695127af0
+          path: p14-provider-independence.json
+          retention-days: 90
