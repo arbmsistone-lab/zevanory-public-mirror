@@ -1,0 +1,40 @@
+name: Cloudflare Token Scope Probe
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - '.github/workflows/cloudflare-token-scope-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      EXPECTED_PUBLIC_OWNER: 1b26415802588185a86c1d4d3ebf5bdb
+    steps:
+      - name: Inspect accessible Cloudflare accounts read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "TOKEN_PRESENT=false"
+            exit 2
+          fi
+          echo "TOKEN_PRESENT=true"
+          code="$(curl -sS -o /tmp/accounts.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts?per_page=100 || true)"
+          echo "ACCOUNTS_HTTP=$code"
+          test "$code" = "200"
+          python3 - <<'PY'
+          import json,os
+          d=json.load(open('/tmp/accounts.json'))
+          assert d.get('success') is True,d.get('errors')
+          rows=[{'id':x.get('id'),'name':x.get('name')} for x in d.get('result',[])]
+          expected=os.environ['EXPECTED_PUBLIC_OWNER']
+          print('ACCESSIBLE_ACCOUNT_IDS',','.join(x['id'] or '' for x in rows))
+          print('EXPECTED_PUBLIC_OWNER_PRESENT',str(any(x['id']==expected for x in rows)).lower())
+          PY
