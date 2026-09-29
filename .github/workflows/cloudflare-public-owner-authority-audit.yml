@@ -1,0 +1,49 @@
+name: ZEVANORY Cloudflare Public Owner Authority Audit
+
+on:
+  push:
+    branches:
+      - audit/cloudflare-authority-20260929
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
+      PUBLIC_OWNER_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+    steps:
+      - name: Probe dedicated public-owner authority only
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="false"
+          reason="DEDICATED_TOKEN_ABSENT"
+          if [ -n "${CLOUDFLARE_PUBLIC_OWNER_API_TOKEN:-}" ]; then
+            code="$(curl -sS -o /tmp/account.json -w '%{http_code}'               -H "Authorization: Bearer $CLOUDFLARE_PUBLIC_OWNER_API_TOKEN"               "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID" || true)"
+            if [ "$code" = "200" ] && python3 - <<'PY'
+          import json
+          j=json.load(open('/tmp/account.json'))
+          raise SystemExit(0 if j.get('success') is True and j.get('result',{}).get('id')=='1b26415802588185a86c1d4d3ebf5bdb' else 1)
+          PY
+            then
+              result="true"
+              reason="DEDICATED_PUBLIC_OWNER_AUTHORITY_PROVEN"
+            else
+              reason="DEDICATED_TOKEN_NOT_AUTHORIZED_FOR_PUBLIC_OWNER"
+            fi
+          fi
+          printf 'CLOUDFLARE_PUBLIC_OWNER_AUTHORITY=%s\nAUTHORITY_REASON=%s\n' "$result" "$reason" | tee cloudflare-authority.env
+          if [ "$result" = "true" ]; then
+            echo "REMOTE_AUTHORITY_PROOF=PASS"
+          else
+            echo "REMOTE_AUTHORITY_PROOF=FAIL_CLOSED"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-cloudflare-authority-audit
+          path: cloudflare-authority.env
+          retention-days: 30
