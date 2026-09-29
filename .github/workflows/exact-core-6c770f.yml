@@ -1,0 +1,79 @@
+name: ZEVANORY Exact Control Core 6c770f
+
+on:
+  push:
+    branches:
+      - audit/exact-core-6c770fda-20260929
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TARGET_MIRROR_SHA: "6c770fda5d12e534bc132f8617624f0389919f0e"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_MIRROR_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Exact mirror identity
+        run: test "$(git rev-parse HEAD)" = "$TARGET_MIRROR_SHA"
+      - name: Reconcile current ZEES state
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PREVIOUS_STATE_PATH: previous-state.json
+        run: |
+          printf '{}\n' > previous-state.json
+          node scripts/reconcile_zees16_control.mjs
+      - name: Evaluate ZEA10 and Core mechanically
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { evaluateZea10FromZees16 } from './worker/zea10-evaluator.mjs';
+          import { evaluateCoreDecision } from './worker/zevanory-control-core.mjs';
+          const zees16=JSON.parse(fs.readFileSync('zees16-state.json','utf8'));
+          const zea10=evaluateZea10FromZees16(zees16);
+          const snapshot={
+            release_sha:zees16.release_sha,
+            zees16,
+            zea10,
+            invariants:{
+              exact_release_bound:/^[0-9a-f]{40}$/.test(zees16.release_sha||''),
+              health_ready:true,
+              quorum_ok:true,
+              evidence_to_evaluation_unidirectional:true
+            }
+          };
+          const decision=evaluateCoreDecision(snapshot);
+          fs.writeFileSync('core-decision.json',JSON.stringify({zea10,decision},null,2));
+          console.log('ZEES='+JSON.stringify(zees16.counts));
+          console.log('ZEA10='+JSON.stringify(zea10.counts));
+          console.log('ZEA10_AUTHORITY='+String(zea10.authority));
+          console.log('CONTROL_CORE_DECISION='+decision.decision);
+          console.log('CONTROL_CORE_BLOCKERS='+JSON.stringify(decision.blockers));
+          if(decision.decision!=='DENY') process.exit(1);
+          if(!decision.blockers.includes('zees16_complete')) process.exit(1);
+          NODE
+      - name: Live Core readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl -sS --max-time 30 -o live-core.json -w '%{http_code}' https://zevanory.api.br/api/core/v1/decision || true)"
+          echo "LIVE_CORE_HTTP=$code"
+          if [ "$code" = "200" ]; then cat live-core.json; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-exact-core-6c770f
+          path: |
+            zees16-state.json
+            core-decision.json
+            live-core.json
+          retention-days: 30
