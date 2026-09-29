@@ -113,7 +113,7 @@ jobs:
             "zevanory-p07-app-security","zevanory-p12-continuous-slo","zevanory-p12-observability-exact-release",
             "zevanory-remote-quality-gates","ZEES-16 Evidence Gate","zevanory-p15-provenance",
             "zevanory-p16-deterministic-exact-release","ZEVANORY portable disaster recovery",
-            "ZEVANORY authenticated three-provider runtime quorum","ZEVANORY provider independence gate",
+            "ZEVANORY authenticated open-provider runtime quorum","ZEVANORY provider independence gate",
             "pages build and deployment","ZEVANORY central production deploy"
           ];
           const workflows=new Map(names.map(n=>[n,okRun(n)]));
