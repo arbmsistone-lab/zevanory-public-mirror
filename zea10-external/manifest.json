@@ -1,25 +1,24 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "pack": "ZEA-10 External Evidence Pack",
   "purpose": "independent-review-ready evidence bundle; not an external certification",
   "canonical_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa",
-  "production_release_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa",
-  "generated_at": "2026-09-23",
-  "claim_scope": "internal engineering evidence prepared for independent external review",
+  "production_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+  "generated_at": "2026-09-29",
+  "claim_scope": "internal exact-release engineering evidence prepared for independent external review; not an external certification",
   "external_certification_claimed": false,
   "commercial_release_allowed": false,
   "rollback_version": "52a989a2",
   "verified_runs": {
-    "apex": 35802478738,
-    "remote_quality": 35802543813,
-    "visual": 35802505576,
-    "wcag": 35802527894,
-    "slo": 35833261841,
-    "provenance": 35802573634,
-    "dr": 35802596481,
-    "provider_quorum": 35857029812,
-    "zees16": 35847379896,
-    "pages_deploy": 35859551225
+    "p02_visual_exact_release": 36605818184,
+    "p04_wcag_exact_release": 36605818095,
+    "p07_security_exact_release": 36605817914,
+    "p08_supply_chain_exact_release": 36605818015,
+    "p12_observability_exact_release": 36605818184,
+    "p15_provenance": 36608475653,
+    "p16_lifecycle_exact_release": 36605818095,
+    "zees16_gate": 36608475615,
+    "ped_versal": 36608475592
   },
   "pillars": [
     {
@@ -237,26 +236,19 @@
     },
     "completion_definition": "The goal is complete only when all ten ZEA-10 pillars have accepted independent external review artifacts bound to the evaluated SHA; any formal standards certification is claimed only when issued through an applicable recognized process."
   },
-  "audited_candidate_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa",
+  "audited_candidate_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
   "freeze": {
     "status": "active",
-    "repository_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa",
-    "audited_candidate_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa",
-    "production_release_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa",
-    "mutation_policy": "Any material change after freeze requires a new evidence-pack version and reviewer target."
+    "production_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+    "audited_candidate_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+    "evidence_refresh_date": "2026-09-29",
+    "mutation_policy": "Any material production release change requires a new external-review evidence-pack version and reviewer target."
   },
   "runtime_snapshot_expectations": {
     "control_plane_http": 200,
     "health_http": 200,
     "health_ready": true,
-    "schema_missing_tables": 0,
-    "schema_missing_migrations": 0,
     "sales": "globally-blocked",
-    "zea10_counts": {
-      "proven": 0,
-      "partial": 10,
-      "blocked": 0
-    },
-    "claim_scope": "internal_engineering_alignment_not_external_certification"
+    "claim_scope": "internal_engineering_evidence_only_not_external_certification"
   }
 }
