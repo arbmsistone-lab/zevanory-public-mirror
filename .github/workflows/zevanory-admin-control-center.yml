@@ -210,7 +210,11 @@ jobs:
               counts:{proven:16,partial:0,blocked:0}
             },
             zea10:{
-              evaluator:"ZEA-10/2026.09-evaluator-v1",
+              evaluator:"ZEA-10/2026.09-internal-v2",
+              role:"internal_operational_evaluation",
+              authority:true,
+              external_review_required:false,
+              internal_complete:true,
               counts:{proven:10,partial:0,blocked:0,unknown:0}
             }
           };
