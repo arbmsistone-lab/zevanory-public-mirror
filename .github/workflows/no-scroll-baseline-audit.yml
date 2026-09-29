@@ -43,8 +43,8 @@ jobs:
           const browser=await chromium.launch({headless:true});
           const rows=[];
           for(const v of views){
-            const page=await browser.newPage({viewport:{width:v.width,height:v.height}});
             for(const route of routes){
+              const page=await browser.newPage({viewport:{width:v.width,height:v.height}});
               const response=await page.goto('http://127.0.0.1:4173'+route,{waitUntil:'load'});
               const m=await page.evaluate(()=>({
                 sh:document.documentElement.scrollHeight,
@@ -68,6 +68,7 @@ jobs:
           NODE
           node audit.mjs
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: zevanory-no-scroll-baseline
           path: no-scroll-baseline.json
