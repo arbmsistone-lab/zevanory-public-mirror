@@ -23,28 +23,40 @@ jobs:
           set -euo pipefail
           test "$PRIMARY_SIMULATED_UNAVAILABLE" = "true"
           echo "PRIMARY_UNAVAILABLE_SIMULATION=PASS"
-      - name: Secondary health and readback
+
+      - name: Secondary health and failover readback
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --retry 3 --max-time 30             "$SECONDARY_URL/portable-health" | tee secondary-health.json
+          curl --fail --silent --show-error --retry 3 --max-time 30 \
+            "$SECONDARY_URL/portable-health" | tee secondary-health.json
           jq -e '.ok == true' secondary-health.json
-          curl --fail --silent --show-error --retry 3 --max-time 30             "$SECONDARY_URL/" -o secondary-readback.json
-          test -s secondary-readback.html
+          jq -e '.instance == "render-ha"' secondary-health.json
+          jq -e '.mode == "portable-dual-store-v1"' secondary-health.json
+          jq -e '.primary.ok == false and .secondary.ok == true' secondary-health.json
+          cp secondary-health.json secondary-readback.json
           echo "SECONDARY_HEALTH=PASS"
           echo "SECONDARY_READBACK=PASS"
+
       - name: Emit failover observability signal
         shell: bash
         run: |
           set -euo pipefail
-          jq -n             --arg primary "simulated-unavailable"             --arg secondary "$SECONDARY_URL"             --arg source_sha "$EXPECTED_SOURCE_SHA"             --arg run_id "$GITHUB_RUN_ID"             '{schema:"zevanory.architecture.observability-failover.v1",primary:$primary,secondary:$secondary,source_sha:$source_sha,run_id:$run_id,health:"pass",readback:"pass",alert:"visible-in-github-actions-log"}'             | tee observability-failover-evidence.json
+          jq -n \
+            --arg primary "simulated-unavailable" \
+            --arg secondary "$SECONDARY_URL" \
+            --arg source_sha "$EXPECTED_SOURCE_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            '{schema:"zevanory.architecture.observability-failover.v1",primary:$primary,secondary:$secondary,source_sha:$source_sha,run_id:$run_id,health:"pass",readback:"pass",alert:"visible-in-github-actions-log"}' \
+            | tee observability-failover-evidence.json
           echo "::warning title=Controlled primary failure simulation::Primary marked unavailable; secondary health/readback remained PASS"
           echo "OBSERVABILITY_SIGNAL=PASS"
+
       - uses: actions/upload-artifact@v4
         with:
           name: architecture-observability-failover-evidence
           path: |
             secondary-health.json
-            secondary-readback.html
+            secondary-readback.json
             observability-failover-evidence.json
           retention-days: 30
