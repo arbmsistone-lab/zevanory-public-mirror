@@ -21,7 +21,7 @@ export const ZEES16_POLICY={
     {id:"P12",name:"Produção e SRE",requires:["workflow:ZEVANORY central production deploy","workflow:zevanory-p12-observability-exact-release","runtime:exact_sha","runtime:health_ready"]},
     {id:"P13",name:"Governança e evidência",requires:["workflow:zevanory-p15-provenance","runtime:exact_sha"]},
     {id:"P14",name:"Automação, IA e provedores",requires:["workflow:ZEVANORY provider independence gate","workflow:ZEVANORY authenticated open-provider runtime quorum"]},
-    {id:"P15",name:"CI/CD e proveniência",requires:["workflow:zevanory-p15-provenance","workflow:pages build and deployment","workflow:ZEVANORY central production deploy"]},
+    {id:"P15",name:"CI/CD e proveniência",requires:["workflow:zevanory-p15-provenance","workflow:ZEVANORY central production deploy"]},
     {id:"P16",name:"Prontidão comercial",requires:["workflow:zevanory-p16-deterministic-exact-release","runtime:sales_fail_closed","runtime:health_ready"]}
   ]
 };
