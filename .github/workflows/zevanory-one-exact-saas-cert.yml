@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      EXPECTED_RUNTIME_SHA: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+      EXPECTED_RUNTIME_SHA: 37e695127af02c9a32c601db0353a3708fc45d82
     steps:
       - uses: actions/checkout@v4
 

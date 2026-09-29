@@ -1,0 +1,62 @@
+name: ZEVANORY 9 Product Inventory Audit
+
+on:
+  push:
+    branches:
+      - audit/9-products-20260929
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bind mirror source
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote origin refs/heads/gh-pages | awk '{print $1}')"
+          test "$remote_sha" = "51ad5e5a656be65d7ce54ddf84ef8f33887f11d1"
+          echo "PUBLIC_MIRROR_SHA=$remote_sha"
+      - name: Audit source routes and live readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib, subprocess, time
+          products=[
+            ("ZEVANORY","zevanory","/","index.html"),
+            ("ARBM SIST","arbm-sist","/arbm-sist","arbm-sist/index.html"),
+            ("ZEVANORY IA na Pratica","ia-na-pratica","/ia-na-pratica","ia-na-pratica/index.html"),
+            ("ZEVANORY Vendas na Pratica","vendas-na-pratica","/vendas-na-pratica","vendas-na-pratica/index.html"),
+            ("ZEVANORY Combo IA + Vendas","combo-ia-vendas","/combo-ia-vendas","combo-ia-vendas/index.html"),
+            ("ZEVANORY Lucro & Caixa","lucro-e-caixa","/lucro-e-caixa","lucro-e-caixa/index.html"),
+            ("ZEVANORY Negocio Completo","negocio-completo","/negocio-completo","negocio-completo/index.html"),
+            ("ZEVANORY ONE","zevanory-one","/zevanory-one","zevanory-one/index.html"),
+            ("ZEVANORY CFO","zevanory-cfo","/zevanory-cfo","zevanory-cfo/index.html"),
+          ]
+          out=[]
+          for name,slug,route,source in products:
+            url="https://zevanory.api.br"+route
+            p=subprocess.run(["curl","--silent","--show-error","--location","--max-time","20","--output",f"/tmp/{slug}.body","--write-out","%{http_code} %{url_effective}",url],capture_output=True,text=True)
+            parts=(p.stdout.strip().split(" ",1)+[""])[:2]
+            code=int(parts[0]) if parts[0].isdigit() else 0
+            out.append({
+              "name":name,"slug":slug,"route":route,"source_path":source,
+              "source_exists":pathlib.Path(source).is_file(),
+              "live_http":code,"effective_url":parts[1],
+              "body_bytes":pathlib.Path(f"/tmp/{slug}.body").stat().st_size if pathlib.Path(f"/tmp/{slug}.body").exists() else 0,
+              "curl_rc":p.returncode
+            })
+          result={"schema":"zevanory.9-products.inventory-audit.v1","mirror_sha":"51ad5e5a656be65d7ce54ddf84ef8f33887f11d1","products":out}
+          pathlib.Path("nine-products-audit.json").write_text(json.dumps(result,indent=2,ensure_ascii=False))
+          print(json.dumps(result,indent=2,ensure_ascii=False))
+          assert len(out)==9
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-9-products-inventory-audit
+          path: nine-products-audit.json
+          retention-days: 30
