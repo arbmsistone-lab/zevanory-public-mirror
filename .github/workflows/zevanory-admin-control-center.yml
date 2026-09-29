@@ -142,7 +142,7 @@ jobs:
           const zees={release_sha:"a".repeat(40),decision_hash:"deadbeef",pillars};
           const zea=evaluateZea10FromZees16(zees);
           if(zea.counts.proven!==10||zea.counts.partial!==0||zea.counts.blocked!==0||zea.counts.unknown!==0) throw new Error("full ZEES evidence must yield 10/10 ZEA evaluation");
-          if(zea.authority!==false||zea.source_layer!=="ZEES-16") throw new Error("ZEA layer role contract mismatch");
+          if(zea.authority!==true||zea.external_review_required!==false||zea.source_layer!=="ZEES-16") throw new Error("ZEA internal authority contract mismatch");
           const degraded={...zees,pillars:pillars.map(p=>p.id==="P07"?{...p,state:"BLOCKED"}:p)};
           const degradedZea=evaluateZea10FromZees16(degraded);
           if(degradedZea.pillars.find(x=>x.id==="ZEA10-06")?.state!=="BLOCKED") throw new Error("blocked ZEES security proof must block ZEA10-06");
