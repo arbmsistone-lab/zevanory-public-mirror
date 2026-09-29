@@ -40,7 +40,7 @@ jobs:
           assert d.get('ok') is True, d
           print('RUNTIME_HEALTH=PASS')
           PY
-          curl --fail --silent --show-error --retry 5 --retry-delay 3 "$RUNTIME_URL/" -o runtime-root.out
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 "$RUNTIME_URL/api/_healthcheck" -o runtime-root.out
           test -s runtime-root.out
           echo "SECONDARY_RUNTIME_ACTIVE=PASS"
           echo "RUNTIME_READBACK=PASS"
@@ -52,12 +52,12 @@ jobs:
           export PRIMARY_ROUTE_STATE=UNAVAILABLE_SIMULATED
           test "$PRIMARY_ROUTE_STATE" = "UNAVAILABLE_SIMULATED"
           curl --fail --silent --show-error --retry 3 "$EDGE_URL/" -o failover-edge.html
-          curl --fail --silent --show-error --retry 3 "$RUNTIME_URL/portable-health" -o failover-health.json
+          curl --fail --silent --show-error --retry 3 "$RUNTIME_URL/portable-health" -o failover-health.json\n          curl --fail --silent --show-error --retry 3 "$RUNTIME_URL/api/_healthcheck" -o failover-readback.json
           python3 - <<'PY'
           import json, pathlib
           h=json.load(open('failover-health.json'))
           assert h.get('ok') is True, h
-          assert pathlib.Path('failover-edge.html').stat().st_size > 0
+          assert pathlib.Path('failover-edge.html').stat().st_size > 0\n          r=json.load(open('failover-readback.json'))\n          assert r.get('ok') is True, r
           print('PRIMARY_ROUTE_UNAVAILABLE_SIMULATION=PASS')
           print('STATE_CONTINUITY=PASS')
           print('PERSONAL_MACHINE_REQUIRED=false')
@@ -85,5 +85,5 @@ jobs:
             edge-root.html
             runtime-root.out
             failover-edge.html
-            failover-health.json
+            failover-health.json\n            failover-readback.json
           retention-days: 90
