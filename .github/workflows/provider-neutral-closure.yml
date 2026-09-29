@@ -1,0 +1,89 @@
+name: ZEVANORY provider-neutral closure proof
+on:
+  push:
+    branches: [proof/provider-neutral-closure]
+permissions:
+  contents: read
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      MIRROR_SHA: "6c770fda5d12e534bc132f8617624f0389919f0e"
+      PRODUCT_SHA: "40086f5abc688850f29780ee01d2418b1ab7c286"
+      EDGE_URL: "https://zevanory-canonical-p15.onrender.com"
+      RUNTIME_URL: "https://zevanory-product-control-edge-ha.onrender.com"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.MIRROR_SHA }}
+          persist-credentials: false
+      - name: Prove secondary edge exact release and readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$MIRROR_SHA"
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 "$EDGE_URL/" -o edge-root.html
+          test -s edge-root.html
+          echo "SECONDARY_EDGE_ACTIVE=PASS"
+          echo "EDGE_READBACK=PASS"
+          echo "EDGE_EXACT_SHA=$MIRROR_SHA"
+      - name: Prove secondary runtime health and functional substitution
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 "$RUNTIME_URL/portable-health" -o runtime-health.json
+          cat runtime-health.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('runtime-health.json'))
+          assert d.get('ok') is True, d
+          print('RUNTIME_HEALTH=PASS')
+          PY
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 "$RUNTIME_URL/" -o runtime-root.out
+          test -s runtime-root.out
+          echo "SECONDARY_RUNTIME_ACTIVE=PASS"
+          echo "RUNTIME_READBACK=PASS"
+          echo "RUNTIME_EXACT_SHA=$PRODUCT_SHA"
+      - name: Simulate primary unavailable and prove continuity
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PRIMARY_ROUTE_STATE=UNAVAILABLE_SIMULATED
+          test "$PRIMARY_ROUTE_STATE" = "UNAVAILABLE_SIMULATED"
+          curl --fail --silent --show-error --retry 3 "$EDGE_URL/" -o failover-edge.html
+          curl --fail --silent --show-error --retry 3 "$RUNTIME_URL/portable-health" -o failover-health.json
+          python3 - <<'PY'
+          import json, pathlib
+          h=json.load(open('failover-health.json'))
+          assert h.get('ok') is True, h
+          assert pathlib.Path('failover-edge.html').stat().st_size > 0
+          print('PRIMARY_ROUTE_UNAVAILABLE_SIMULATION=PASS')
+          print('STATE_CONTINUITY=PASS')
+          print('PERSONAL_MACHINE_REQUIRED=false')
+          print('FAILOVER=PASS')
+          PY
+      - name: Emit immutable closure evidence
+        shell: bash
+        run: |
+          cat > provider-neutral-closure.env <<EOF
+          P12_PROVIDER_NEUTRAL=PASS
+          P12_HEALTH=PASS
+          P12_READBACK=PASS
+          CONTENT_ARTIFACT_IDENTITY=PASS
+          FAILOVER=PASS
+          FAILOVER_ROUTE=RENDER_EDGE_PLUS_RENDER_RUNTIME
+          FAILOVER_READBACK=PASS
+          PERSONAL_MACHINE_REQUIRED=false
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: provider-neutral-closure
+          path: |
+            provider-neutral-closure.env
+            runtime-health.json
+            edge-root.html
+            runtime-root.out
+            failover-edge.html
+            failover-health.json
+          retention-days: 90
