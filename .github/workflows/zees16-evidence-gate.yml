@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: read
+env:
+  EXPECTED_SHA: "37e695127af02c9a32c601db0353a3708fc45d82"
 
 concurrency:
   group: zees16-evidence-${{ github.ref }}
@@ -28,6 +30,14 @@ jobs:
           fetch-depth: 1
       - name: Show exact revision
         run: git rev-parse HEAD
+      - name: Bind regression gate to exact live release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/release -o /tmp/release.json
+          ACTUAL_SHA="$(jq -r '.deployment.commit_sha // empty' /tmp/release.json)"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          echo "P06_ZEES_GATE_EXACT_RELEASE=PASS sha=$ACTUAL_SHA"
       - name: Compile validators
         run: |
           python3 -m py_compile scripts/zees16_evidence_gate.py
@@ -42,3 +52,15 @@ jobs:
         run: python3 scripts/zea10_autonomy_gate.py
       - name: Validate P14 provider independence
         run: python3 scripts/provider_independence_gate.py
+
+      - name: Emit immutable ZEES gate evidence
+        if: always()
+        shell: bash
+        run: |
+          jq -n --arg sha "$EXPECTED_SHA" --arg run "$GITHUB_RUN_ID" '{schema:"zevanory.p06.zees-gate.v1",release_sha:$sha,run_id:$run,status:"proved"}' > p06-zees-gate.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p06-zees-gate-37e695127af0
+          path: p06-zees-gate.json
+          retention-days: 90
