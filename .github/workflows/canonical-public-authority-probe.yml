@@ -14,39 +14,35 @@ jobs:
       LEGACY_ACCOUNT: "e3caca88f4343c3cdfcf66eebe6ac124"
       PUBLIC_OWNER_ACCOUNT: "1b26415802588185a86c1d4d3ebf5bdb"
     steps:
-      - name: Probe existing authorized Cloudflare routes without exposing secrets
+      - name: Probe Cloudflare account authority
         shell: bash
         run: |
           set -euo pipefail
-          probe(){
-            label="$1"; token="$2"; account="$3";
+          probe_account(){
+            label="$1"; token="$2"; account="$3"
             if [ -z "$token" ]; then echo "$label=ABSENT"; return 0; fi
-            code=$(curl -sS -o /tmp/${label}.json -w '%{http_code}' -H "Authorization: Bearer $token" "https://api.cloudflare.com/client/v4/accounts/$account" || true)
-            if [ "$code" = 200 ] && python3 -c "import json;d=json.load(open('/tmp/${label}.json'));raise SystemExit(0 if d.get('success') is True else 1)"; then echo "$label=ACCOUNT_AUTH_PASS"; else echo "$label=ACCOUNT_AUTH_FAIL_HTTP_$code"; fi
+            code=$(curl -sS -o "/tmp/$label.json" -w "%{http_code}" -H "Authorization: Bearer $token" "https://api.cloudflare.com/client/v4/accounts/$account" || true)
+            if [ "$code" = "200" ] && python3 -c "import json,sys; d=json.load(open(sys.argv[1])); raise SystemExit(0 if d.get(\"success\") is True else 1)" "/tmp/$label.json"; then
+              echo "$label=ACCOUNT_AUTH_PASS"
+            else
+              echo "$label=ACCOUNT_AUTH_FAIL_HTTP_$code"
+            fi
           }
-          probe LEGACY_ON_LEGACY "$LEGACY_TOKEN" "$LEGACY_ACCOUNT"
-          probe LEGACY_ON_PUBLIC_OWNER "$LEGACY_TOKEN" "$PUBLIC_OWNER_ACCOUNT"
-          probe OWNER_ON_PUBLIC_OWNER "$OWNER_TOKEN" "$PUBLIC_OWNER_ACCOUNT"
-          probe OWNER_ON_LEGACY "$OWNER_TOKEN" "$LEGACY_ACCOUNT"
-      - name: Probe zone and worker authority for any present token
+          probe_account LEGACY_ON_LEGACY "$LEGACY_TOKEN" "$LEGACY_ACCOUNT"
+          probe_account LEGACY_ON_PUBLIC_OWNER "$LEGACY_TOKEN" "$PUBLIC_OWNER_ACCOUNT"
+          probe_account OWNER_ON_PUBLIC_OWNER "$OWNER_TOKEN" "$PUBLIC_OWNER_ACCOUNT"
+          probe_account OWNER_ON_LEGACY "$OWNER_TOKEN" "$LEGACY_ACCOUNT"
+      - name: Probe zone authority
         shell: bash
         run: |
           set -euo pipefail
-          probe_token(){
-            label="$1"; token="$2";
+          probe_zone(){
+            label="$1"; token="$2"
             if [ -z "$token" ]; then echo "$label=ABSENT"; return 0; fi
-            zcode=$(curl -sS -o /tmp/${label}-zones.json -w '%{http_code}' -H "Authorization: Bearer $token" "https://api.cloudflare.com/client/v4/zones?name=zevanory.api.br" || true)
-            if [ "$zcode" = 200 ]; then
-              python3 - <<PY
-import json
-d=json.load(open('/tmp/${label}-zones.json'))
-ok=d.get('success') is True and bool(d.get('result'))
-print('${label}_ZONE_AUTH=' + ('PASS' if ok else 'FAIL'))
-if ok: print('${label}_ZONE_ID='+str(d['result'][0]['id']))
-PY
-            else echo "${label}_ZONE_AUTH=FAIL_HTTP_$zcode"; fi
+            code=$(curl -sS -o "/tmp/$label-zones.json" -w "%{http_code}" -H "Authorization: Bearer $token" "https://api.cloudflare.com/client/v4/zones?name=zevanory.api.br" || true)
+            python3 -c "import json,sys; p=sys.argv[1]; label=sys.argv[2]; code=sys.argv[3]; d=json.load(open(p)) if code==\"200\" else {}; ok=(d.get(\"success\") is True and bool(d.get(\"result\"))); print(label+\"_ZONE_AUTH=\"+(\"PASS\" if ok else \"FAIL_HTTP_\"+code)); print(label+\"_ZONE_ID=\"+str(d[\"result\"][0][\"id\"])) if ok else None" "/tmp/$label-zones.json" "$label" "$code"
           }
-          probe_token LEGACY "$LEGACY_TOKEN"
-          probe_token OWNER "$OWNER_TOKEN"
+          probe_zone LEGACY "$LEGACY_TOKEN"
+          probe_zone OWNER "$OWNER_TOKEN"
       - name: Emit authority summary
         run: echo CANONICAL_AUTHORITY_PROBE_COMPLETE=PASS
