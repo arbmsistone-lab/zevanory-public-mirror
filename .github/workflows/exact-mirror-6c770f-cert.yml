@@ -1,0 +1,117 @@
+name: ZEVANORY Exact Mirror 6c770f Certification
+
+on:
+  push:
+    branches:
+      - audit/exact-mirror-6c770fda-20260929
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TARGET_SHA: "6c770fda5d12e534bc132f8617624f0389919f0e"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Exact source identity
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          echo "PUBLIC_MIRROR_EXACT_SHA=PASS"
+
+      - name: Nine-product source inventory
+        run: |
+          set -euo pipefail
+          for p in             index.html             arbm-sist/index.html             ia-na-pratica/index.html             vendas-na-pratica/index.html             combo-ia-vendas/index.html             lucro-e-caixa/index.html             negocio-completo/index.html             zevanory-one/index.html             zevanory-cfo/index.html; do
+            test -s "$p"
+          done
+          grep -q 'zevanory-cfo' sitemap.xml
+          grep -q 'ZEVANORY CFO' solucoes/index.html
+          echo "ALL_9_PRODUCTS_INVENTORIED=PASS"
+
+      - name: Existing fail-closed static gates
+        run: |
+          set -euo pipefail
+          python3 scripts/premerge_product_audit.py
+          python3 scripts/zevanory_10p_excellence_gate.py
+          python3 scripts/test_crown_negative.py
+          python3 scripts/zevanory_crown_gate.py
+          python3 scripts/zees16_evidence_gate.py
+          echo "STATIC_CERTIFICATION_GATES=PASS"
+
+      - name: Install browser
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.62.1 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Serve exact mirror
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 --directory .. > /tmp/zevanory-exact.log 2>&1 &
+          echo $! > /tmp/server.pid
+          for i in $(seq 1 20); do
+            curl -fsS http://127.0.0.1:4173/zevanory-public-mirror/ >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/zevanory-exact.log
+          exit 1
+
+      - name: No global scroll, responsive and reachable
+        shell: bash
+        run: |
+          cat > audit.mjs <<'NODE'
+          import { chromium } from 'playwright';
+          import fs from 'node:fs';
+          const routes=['/','/arbm-sist/','/ia-na-pratica/','/vendas-na-pratica/','/combo-ia-vendas/','/lucro-e-caixa/','/negocio-completo/','/zevanory-one/','/zevanory-cfo/'];
+          const views=[
+            {name:'desktop',width:1440,height:900},
+            {name:'laptop',width:1366,height:768},
+            {name:'tablet',width:768,height:1024},
+            {name:'mobile',width:390,height:844},
+            {name:'reflow320',width:320,height:640}
+          ];
+          const browser=await chromium.launch({headless:true});
+          const rows=[];
+          for(const v of views){
+            for(const route of routes){
+              const page=await browser.newPage({viewport:{width:v.width,height:v.height}});
+              const response=await page.goto('http://127.0.0.1:4173/zevanory-public-mirror'+route,{waitUntil:'load'});
+              const m=await page.evaluate(()=>{
+                const root=document.documentElement, main=document.querySelector('main');
+                const before=main?main.scrollTop:0;
+                if(main) main.scrollTop=main.scrollHeight;
+                const reachable=!main || main.scrollHeight<=main.clientHeight+1 ||
+                  (main.scrollTop>before && main.scrollTop+main.clientHeight>=main.scrollHeight-2);
+                return {
+                  sh:root.scrollHeight, sw:root.scrollWidth, ih:innerHeight, iw:innerWidth,
+                  verticalOverflow:root.scrollHeight>innerHeight+1,
+                  horizontalOverflow:root.scrollWidth>innerWidth+1,
+                  controlledReachable:reachable
+                };
+              });
+              rows.push({view:v.name,route,http:response?.status()||0,...m});
+              await page.close();
+            }
+          }
+          await browser.close();
+          const pass=rows.every(r=>r.http===200&&!r.verticalOverflow&&!r.horizontalOverflow&&r.controlledReachable);
+          fs.writeFileSync('exact-mirror-layout.json',JSON.stringify({target:process.env.TARGET_SHA,rows,pass},null,2));
+          if(!pass) process.exit(1);
+          console.log('LAYOUT_NO_SCROLL=PASS');
+          console.log('RESPONSIVE_LAYOUT=PASS');
+          console.log('CONTROLLED_CONTENT_REACHABILITY=PASS');
+          NODE
+          node audit.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-exact-mirror-6c770f
+          path: exact-mirror-layout.json
+          retention-days: 30
