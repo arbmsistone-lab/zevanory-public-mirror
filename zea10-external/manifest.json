@@ -242,13 +242,19 @@
     "production_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
     "audited_candidate_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
     "evidence_refresh_date": "2026-09-29",
-    "mutation_policy": "Any material production release change requires a new external-review evidence-pack version and reviewer target."
+    "mutation_policy": "Any material production release change requires a new external-review evidence-pack version and reviewer target.",
+    "repository_sha": "e4a566a139ac60b462f182074b15eb468eeda2aa"
   },
   "runtime_snapshot_expectations": {
     "control_plane_http": 200,
     "health_http": 200,
     "health_ready": true,
     "sales": "globally-blocked",
-    "claim_scope": "internal_engineering_evidence_only_not_external_certification"
+    "claim_scope": "internal_engineering_evidence_only_not_external_certification",
+    "zea10_counts": {
+      "proven": 0,
+      "partial": 10,
+      "blocked": 0
+    }
   }
 }
