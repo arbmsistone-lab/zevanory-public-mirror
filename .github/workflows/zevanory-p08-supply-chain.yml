@@ -145,7 +145,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zevanory-p08-supply-chain-c3845cf898ac
+          name: zevanory-p08-supply-chain-37e695127af0
           path: |
             p08-supply-chain.json
             p08-sbom.cdx.json
