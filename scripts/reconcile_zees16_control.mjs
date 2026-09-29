@@ -49,6 +49,30 @@ for(const run of runsDoc.workflow_runs||[]){
 
 const exactWorkflowProofs=[
   {
+    name:"zevanory-p02-visual-regression",
+    file:"zevanory-p02-visual-regression.yml",
+    artifact:"p02-visual-evidence-"+sha.slice(0,12),
+    markers:["EXACT_RELEASE_BINDING=PASS","Verify responsive no-horizontal-scroll contract","overflowX"]
+  },
+  {
+    name:"zevanory-p04-wcag",
+    file:"zevanory-p04-wcag.yml",
+    artifact:"p04-wcag-evidence-"+sha.slice(0,12),
+    markers:["EXACT_RELEASE_BINDING=PASS","WCAG2AA","errorCount"]
+  },
+  {
+    name:"zevanory-remote-quality-gates",
+    file:"zevanory-remote-quality-gates.yml",
+    artifact:"zevanory-remote-quality-evidence-"+sha.slice(0,12),
+    markers:["EXACT_RELEASE_BINDING=PASS","Audit production quality","REQUIRED_STATUS_REPORT=PASS"]
+  },
+  {
+    name:"zevanory-p12-continuous-slo",
+    file:"zevanory-p12-continuous-slo.yml",
+    artifact:"p12-slo-observation-"+sha.slice(0,12),
+    markers:["EXACT_RELEASE_BINDING=PASS","zevanory.p12.slo.v1","all_ok"]
+  },
+  {
     name:"zevanory-p07-app-security",
     file:"zevanory-p07-app-security.yml",
     artifact:"zevanory-p07-security-"+sha.slice(0,12),
