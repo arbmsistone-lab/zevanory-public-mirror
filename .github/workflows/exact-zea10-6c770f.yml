@@ -1,0 +1,49 @@
+name: ZEVANORY Exact ZEA10 Internal 6c770f
+
+on:
+  push:
+    branches:
+      - audit/exact-zea10-6c770fda-20260929
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TARGET_MIRROR_SHA: "6c770fda5d12e534bc132f8617624f0389919f0e"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_MIRROR_SHA }}
+          persist-credentials: false
+      - name: Exact mirror identity
+        run: test "$(git rev-parse HEAD)" = "$TARGET_MIRROR_SHA"
+      - name: ZEA10 internal autonomy gate
+        shell: bash
+        run: |
+          set +e
+          python3 scripts/zea10_autonomy_gate.py | tee zea10-run.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          test -s evidence/zea10-autonomy-current.json
+          python3 - <<'PY'
+          import json
+          j=json.load(open('evidence/zea10-autonomy-current.json'))
+          print('ZEA10_PILLARS='+str(sum(1 for p in j['pillars'] if p['ok']))+'/'+str(len(j['pillars'])))
+          print('ZEA10_SOURCE_CAPABILITY_GREEN='+str(j['source_capability_green']).lower())
+          print('ZEA10_ENGINE_GREEN='+str(j['engine_green']).lower())
+          print('ZEA10_LIVE_SALES_GREEN='+str(j['live_sales_green']).lower())
+          print('ZEA10_ACTIVATION_BLOCKERS='+json.dumps(j['activation_blockers']))
+          PY
+          exit "$rc"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zevanory-exact-zea10-6c770f
+          path: |
+            evidence/zea10-autonomy-current.json
+            zea10-run.log
+          retention-days: 30
