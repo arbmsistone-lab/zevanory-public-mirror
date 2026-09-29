@@ -99,14 +99,16 @@ const exactWorkflowProofs=[
 ];
 
 async function collectProtectedExactProof(spec){
-  const candidates=(branchRuns.workflow_runs||[]).filter(run=>
-    run.name===spec.name &&
+  const specificRuns=await jf(
+    "https://api.github.com/repos/"+repo+"/actions/workflows/"+encodeURIComponent(spec.file)+"/runs?status=success&per_page=50"
+  );
+  const candidates=(specificRuns.workflow_runs||[]).filter(run=>
     run.status==="completed" &&
     run.conclusion==="success" &&
     String(run.path||"")===".github/workflows/"+spec.file
   ).sort((a,b)=>new Date(b.updated_at||b.created_at)-new Date(a.updated_at||a.created_at));
 
-  for(const run of candidates.slice(0,20)){
+  for(const run of candidates.slice(0,50)){
     const head=String(run.head_sha||"");
     if(!/^[0-9a-f]{40}$/.test(head)) continue;
     const [workflowResponse,artifactsDoc]=await Promise.all([
