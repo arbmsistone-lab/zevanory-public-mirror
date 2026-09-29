@@ -11,7 +11,7 @@ on:
 permissions:
   contents: read
 env:
-  EXPECTED_SHA: 37e695127af02c9a32c601db0353a3708fc45d82
+  EXPECTED_SHA: "37e695127af02c9a32c601db0353a3708fc45d82"
 jobs:
   prove:
     runs-on: ubuntu-latest
@@ -125,8 +125,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          printf '{"schema":"zevanory.p14.provider-independence.v1","release_sha":"%s","run_id":"%s","status":"proved"}
-' "$EXPECTED_SHA" "$GITHUB_RUN_ID" > p14-provider-independence.json
+          jq -n --arg sha "$EXPECTED_SHA" --arg run "$GITHUB_RUN_ID" '{schema:"zevanory.p14.provider-independence.v1",release_sha:$sha,run_id:$run,status:"proved"}' > p14-provider-independence.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
