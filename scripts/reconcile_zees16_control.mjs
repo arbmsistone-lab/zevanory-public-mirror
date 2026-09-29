@@ -49,6 +49,18 @@ for(const run of runsDoc.workflow_runs||[]){
 
 const exactWorkflowProofs=[
   {
+    name:"ZEVANORY provider independence gate",
+    file:"zevanory-provider-independence.yml",
+    artifact:"p14-provider-independence-"+sha.slice(0,12),
+    markers:["P14_PROVIDER_INDEPENDENCE_EXACT_RELEASE=PASS","technical continuity is independent","minQuorum:3"]
+  },
+  {
+    name:"ZEVANORY authenticated open-provider runtime quorum",
+    file:"zevanory-three-provider-quorum.yml",
+    artifact:"p14-three-provider-quorum-"+sha.slice(0,12),
+    markers:["P14_THREE_PROVIDER_QUORUM_EXACT_RELEASE=PASS","open provider mesh satisfies independent quorum","min_quorum"]
+  },
+  {
     name:"zevanory-p02-visual-regression",
     file:"zevanory-p02-visual-regression.yml",
     artifact:"p02-visual-evidence-"+sha.slice(0,12),
