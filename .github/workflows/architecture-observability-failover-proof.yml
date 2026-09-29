@@ -29,7 +29,7 @@ jobs:
           set -euo pipefail
           curl --fail --silent --show-error --retry 3 --max-time 30             "$SECONDARY_URL/portable-health" | tee secondary-health.json
           jq -e '.ok == true' secondary-health.json
-          curl --fail --silent --show-error --retry 3 --max-time 30             "$SECONDARY_URL/" -o secondary-readback.html
+          curl --fail --silent --show-error --retry 3 --max-time 30             "$SECONDARY_URL/" -o secondary-readback.json
           test -s secondary-readback.html
           echo "SECONDARY_HEALTH=PASS"
           echo "SECONDARY_READBACK=PASS"
