@@ -5,11 +5,21 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  EXPECTED_SHA: 37e695127af02c9a32c601db0353a3708fc45d82
 jobs:
   wcag:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Bind audit to exact live release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/release -o /tmp/release.json
+          ACTUAL_SHA="$(jq -r '.deployment.commit_sha // empty' /tmp/release.json)"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          echo "EXACT_RELEASE_BINDING=PASS sha=$ACTUAL_SHA"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -27,6 +37,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p04-wcag-evidence
+          name: p04-wcag-evidence-37e695127af0
           path: p04-wcag-evidence.json
           retention-days: 90
