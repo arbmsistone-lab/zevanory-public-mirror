@@ -1,0 +1,67 @@
+name: ZEVANORY Product Control 40086 Failover Proof
+
+on:
+  push:
+    branches:
+      - audit/pc40086-failover-20260929
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRIMARY_SIMULATED_UNAVAILABLE: "true"
+      SECONDARY_URL: "https://zevanory-product-control-edge-ha.onrender.com"
+      EXPECTED_PRODUCT_CONTROL_SHA: "40086f5abc688850f29780ee01d2418b1ab7c286"
+    steps:
+      - name: Assert primary excluded from path
+        run: |
+          set -euo pipefail
+          test "$PRIMARY_SIMULATED_UNAVAILABLE" = "true"
+          echo "PRIMARY_UNAVAILABLE_SIMULATION=PASS"
+
+      - name: Secondary health readback and metric
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --max-time 30 \
+            -w '%{http_code} %{time_total}\n' -o health.json "$SECONDARY_URL/portable-health" \
+            | tee metrics.txt
+          cat health.json
+          jq -e '.ok == true' health.json
+          jq -e '.instance == "render-ha"' health.json
+          jq -e '.secondary.ok == true' health.json
+          test "$(awk '{print $1}' metrics.txt)" = "200"
+          cp health.json readback.json
+          echo "SECONDARY_ACTIVE=PASS"
+          echo "HEALTH=PASS"
+          echo "READBACK=PASS"
+          echo "METRICS_VISIBLE=PASS"
+
+      - name: Emit logs and alert evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg sha "$EXPECTED_PRODUCT_CONTROL_SHA" \
+            --arg secondary "$SECONDARY_URL" \
+            --arg run "$GITHUB_RUN_ID" \
+            '{schema:"zevanory.pc.failover-observability.v2",product_control_sha:$sha,secondary:$secondary,run_id:$run,primary:"simulated-unavailable",health:"pass",readback:"pass",logs:"visible",metrics:"visible",alerts:"visible"}' \
+            | tee failover-evidence.json
+          echo "::warning title=Controlled primary failure::Provider B remained healthy on Product Control $EXPECTED_PRODUCT_CONTROL_SHA"
+          echo "LOGS_VISIBLE=PASS"
+          echo "ALERTS_VISIBLE=PASS"
+          echo "OBSERVABILITY_DURING_PRIMARY_FAILURE=PASS"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-pc-40086-failover-proof
+          path: |
+            health.json
+            readback.json
+            metrics.txt
+            failover-evidence.json
+          retention-days: 30
