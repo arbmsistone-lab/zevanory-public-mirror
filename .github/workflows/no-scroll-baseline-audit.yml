@@ -38,7 +38,8 @@ jobs:
             {name:'desktop',width:1440,height:900},
             {name:'laptop',width:1366,height:768},
             {name:'tablet',width:768,height:1024},
-            {name:'mobile',width:390,height:844}
+            {name:'mobile',width:390,height:844},
+            {name:'reflow320',width:320,height:640}
           ];
           const browser=await chromium.launch({headless:true});
           const rows=[];
@@ -46,21 +47,34 @@ jobs:
             for(const route of routes){
               const page=await browser.newPage({viewport:{width:v.width,height:v.height}});
               const response=await page.goto('http://127.0.0.1:4173/zevanory-public-mirror'+route,{waitUntil:'load'});
-              const m=await page.evaluate(()=>({
-                sh:document.documentElement.scrollHeight,
-                sw:document.documentElement.scrollWidth,
-                ih:window.innerHeight,
-                iw:window.innerWidth,
-                bodySh:document.body.scrollHeight,
-                overflowY:getComputedStyle(document.documentElement).overflowY,
-                overflowX:getComputedStyle(document.documentElement).overflowX
-              }));
+              const m=await page.evaluate(()=>{
+                const root=document.documentElement;
+                const main=document.querySelector('main');
+                const mainStyle=main?getComputedStyle(main):null;
+                const before=main?main.scrollTop:0;
+                if(main) main.scrollTop=main.scrollHeight;
+                const controlledReachable=!main || main.scrollHeight<=main.clientHeight+1 ||
+                  (main.scrollTop>before && main.scrollTop+main.clientHeight>=main.scrollHeight-2);
+                return {
+                  sh:root.scrollHeight,
+                  sw:root.scrollWidth,
+                  ih:window.innerHeight,
+                  iw:window.innerWidth,
+                  bodySh:document.body.scrollHeight,
+                  overflowY:getComputedStyle(root).overflowY,
+                  overflowX:getComputedStyle(root).overflowX,
+                  mainOverflowY:mainStyle?.overflowY||null,
+                  mainScrollHeight:main?.scrollHeight||0,
+                  mainClientHeight:main?.clientHeight||0,
+                  controlledReachable
+                };
+              });
               rows.push({view:v.name,route,http:response?.status()||0,...m,verticalOverflow:m.sh>m.ih+1,horizontalOverflow:m.sw>m.iw+1});
               await page.close();
             }
           }
           await browser.close();
-          const result={schema:'zevanory.no-scroll-baseline.v1',rows,pass:rows.every(r=>!r.verticalOverflow&&!r.horizontalOverflow&&r.http===200)};
+          const result={schema:'zevanory.no-scroll-responsive.v2',rows,pass:rows.every(r=>!r.verticalOverflow&&!r.horizontalOverflow&&r.http===200&&r.controlledReachable)};
           fs.writeFileSync('no-scroll-baseline.json',JSON.stringify(result,null,2));
           console.log(JSON.stringify(result,null,2));
           if(result.pass) console.log('LAYOUT_NO_SCROLL=PASS');
