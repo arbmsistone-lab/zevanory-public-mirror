@@ -188,7 +188,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zevanory-p12-observability-c3845cf898ac
+          name: zevanory-p12-observability-37e695127af0
           path: |
             evidence-p12-instrumentation.json
             evidence-p12-live-slo.json
