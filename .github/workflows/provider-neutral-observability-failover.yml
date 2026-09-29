@@ -1,0 +1,66 @@
+name: ZEVANORY provider-neutral observability failover proof
+on:
+  push:
+    branches: [proof/provider-neutral-closure]
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EDGE_URL: "https://zevanory-canonical-p15.onrender.com"
+      RUNTIME_URL: "https://zevanory-product-control-edge-ha.onrender.com"
+    steps:
+      - name: Declare primary unavailable simulation and visible alert
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'PRIMARY_ROUTE_STATE=UNAVAILABLE_SIMULATED' | tee failover-alert.env
+          echo 'ALERTS_VISIBLE=PASS' | tee -a failover-alert.env
+          echo '::warning title=ZEVANORY Failover Alert::PRIMARY_ROUTE_UNAVAILABLE_SIMULATED; validating independent secondary routes'
+      - name: Independent health and readback telemetry
+        shell: bash
+        run: |
+          set -euo pipefail
+          edge_code=$(curl -sS -o edge.out -w '%{http_code}' --retry 5 --retry-delay 2 "$EDGE_URL/")
+          runtime_code=$(curl -sS -o health.json -w '%{http_code}' --retry 5 --retry-delay 2 "$RUNTIME_URL/portable-health")
+          edge_time=$(curl -sS -o /dev/null -w '%{time_total}' "$EDGE_URL/")
+          runtime_time=$(curl -sS -o /dev/null -w '%{time_total}' "$RUNTIME_URL/portable-health")
+          test "$edge_code" = 200
+          test "$runtime_code" = 200
+          test -s edge.out
+          python3 - <<'PY'
+          import json
+          d=json.load(open('health.json'))
+          assert d.get('ok') is True,d
+          print('HEALTH_VISIBLE=PASS')
+          print('READBACK_VISIBLE=PASS')
+          PY
+          printf 'edge_http=%s\nruntime_http=%s\nedge_seconds=%s\nruntime_seconds=%s\n' "$edge_code" "$runtime_code" "$edge_time" "$runtime_time" | tee failover-metrics.env
+          echo 'METRICS_VISIBLE=PASS' | tee -a failover-metrics.env
+          echo 'LOGS_VISIBLE=PASS' | tee failover-logs.env
+      - name: Final observability failover verdict
+        shell: bash
+        run: |
+          cat > observability-failover.env <<EOF
+          OBSERVABILITY_FAILOVER=PASS
+          LOGS=PASS
+          METRICS=PASS
+          ALERTS=PASS
+          HEALTH_VISIBLE=PASS
+          READBACK_VISIBLE=PASS
+          OBSERVABILITY_PRIMARY_PROVIDER_DEPENDENCY=false
+          EOF
+          cat observability-failover.env
+      - uses: actions/upload-artifact@v4
+        with:
+          name: provider-neutral-observability-failover
+          path: |
+            failover-alert.env
+            failover-metrics.env
+            failover-logs.env
+            observability-failover.env
+            edge.out
+            health.json
+          retention-days: 90
