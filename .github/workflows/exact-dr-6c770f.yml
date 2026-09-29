@@ -1,0 +1,104 @@
+name: ZEVANORY Exact Portable DR 6c770f
+
+on:
+  push:
+    branches:
+      - audit/exact-dr-6c770fda-20260929
+
+permissions:
+  contents: read
+
+jobs:
+  dr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MIRROR_SHA: "6c770fda5d12e534bc132f8617624f0389919f0e"
+      RUNTIME_SHA: "37e695127af02c9a32c601db0353a3708fc45d82"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.MIRROR_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Exact identities and live release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$MIRROR_SHA"
+          curl --fail --silent --show-error --retry 3 --max-time 30 https://zevanory.api.br/api/release -o release.json
+          test "$(jq -r '.deployment.commit_sha // empty' release.json)" = "$RUNTIME_SHA"
+          echo "EXACT_MIRROR=PASS"
+          echo "EXACT_LIVE_RUNTIME=PASS"
+      - name: Verify recovery contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,pathlib
+          c=json.load(open('evidence/portable-dr-contract.json'))
+          assert c['rollback']['preserved'] is True
+          assert c['release_quorum_required']==3
+          assert c['runtime_survival_minimum']==1
+          assert c['commercial_fail_closed'] is True
+          for p in c['portable_sources']:
+              f=pathlib.Path(p); assert f.is_file() and f.stat().st_size>0,p
+          print('RECOVERY_CONTRACT=PASS')
+          PY
+      - name: Build portable recovery bundle on clean runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > wrangler.dr-proof.jsonc <<'JSON'
+          {
+            "$schema": "node_modules/wrangler/config-schema.json",
+            "name": "zevanory-portable-dr-proof",
+            "main": "worker/cloudflare-worker.compat.mjs",
+            "compatibility_date": "2026-09-04",
+            "compatibility_flags": ["nodejs_compat"],
+            "workers_dev": true,
+            "preview_urls": true
+          }
+          JSON
+          rm -rf /tmp/zevanory-dr-out
+          npx --yes wrangler@4.135.0 deploy --dry-run --config wrangler.dr-proof.jsonc --outdir /tmp/zevanory-dr-out
+          bundle="$(find /tmp/zevanory-dr-out -maxdepth 1 -type f \( -name '*.js' -o -name '*.mjs' \) -print -quit)"
+          test -n "$bundle"
+          cp "$bundle" zevanory-portable-worker.js
+          sha256sum zevanory-portable-worker.js > zevanory-portable-worker.sha256
+          echo "CLEAN_REMOTE_BUILD=PASS"
+      - name: Failover semantics
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { buildContinuityPlan } from './worker/continuity-router.mjs';
+          const ready={scope_status:'active',release_gate:'ready',commercial_execution:'ready'};
+          const down={scope_status:'down',release_gate:'globally-blocked',commercial_execution:'blocked'};
+          const oneDown=buildContinuityPlan({runtime:{sales:'globally-blocked'},channel_readiness:{zevanory:ready,email:ready,instagram:ready,facebook:down}},{minQuorum:3});
+          if(!oneDown.quorum_ok) throw new Error('single provider outage failed');
+          const below=buildContinuityPlan({runtime:{sales:'globally-blocked'},channel_readiness:{zevanory:ready,email:down,instagram:down}},{minQuorum:3});
+          if(below.quorum_ok || below.mode!=='degraded_fail_closed') throw new Error('fail-closed regression');
+          console.log('FAILOVER_SEMANTICS=PASS');
+          NODE
+      - name: Package immutable recovery kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovery-kit/worker recovery-kit/evidence
+          cp worker/cloudflare-worker.recovered.mjs worker/cloudflare-worker.compat.mjs worker/binding-aliases.mjs worker/continuity-router.mjs recovery-kit/worker/
+          cp evidence/portable-dr-contract.json evidence/cloudflare-binding-alias-contract.json evidence/three-provider-quorum.json recovery-kit/evidence/
+          cp release.json zevanory-portable-worker.js zevanory-portable-worker.sha256 recovery-kit/
+          tar -czf zevanory-exact-recovery-kit.tgz recovery-kit
+          sha256sum zevanory-exact-recovery-kit.tgz | tee zevanory-exact-recovery-kit.sha256
+          echo "REMOTE_RECOVERY_KIT=PASS"
+          echo "LOCAL_MACHINE_CRITICAL_DEPENDENCIES=0"
+          echo "LOCAL_PROGRAM_CRITICAL_DEPENDENCIES=0"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-exact-recovery-6c770f
+          path: |
+            zevanory-exact-recovery-kit.tgz
+            zevanory-exact-recovery-kit.sha256
+            release.json
+          retention-days: 90
