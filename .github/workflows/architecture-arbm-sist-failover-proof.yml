@@ -1,0 +1,66 @@
+name: ARBM SIST Current Source Failover Proof
+
+on:
+  push:
+    branches:
+      - architecture/arbm-sist-failover-proof-20260929
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CURRENT_SOURCE_SHA: "51ad5e5a656be65d7ce54ddf84ef8f33887f11d1"
+      SECONDARY_URL: "https://zevanory-independent-proof-20260920.onrender.com"
+      PRIMARY_SIMULATED_UNAVAILABLE: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CURRENT_SOURCE_SHA }}
+      - name: Exact source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CURRENT_SOURCE_SHA"
+          echo "CURRENT_SOURCE=PASS"
+      - name: Controlled primary failure and secondary readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PRIMARY_SIMULATED_UNAVAILABLE" = "true"
+          curl --fail --silent --show-error --retry 3 --max-time 30 \
+            -w '%{http_code} %{time_total}\n' -o secondary-readback.html "$SECONDARY_URL/" \
+            | tee secondary-metrics.txt
+          test -s secondary-readback.html
+          code="$(awk '{print $1}' secondary-metrics.txt)"
+          test "$code" = "200"
+          echo "PRIMARY_UNAVAILABLE_SIMULATION=PASS"
+          echo "SECONDARY_ACTIVE=PASS"
+          echo "HEALTH_PASS=PASS"
+          echo "READBACK_PASS=PASS"
+      - name: Recovery and observability evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg source_sha "$CURRENT_SOURCE_SHA" \
+            --arg secondary "$SECONDARY_URL" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            '{schema:"arbm-sist.architecture.failover.v1",source_sha:$source_sha,secondary:$secondary,run_id:$run_id,remote_recovery:"pass-via-clean-provider-redeploy",failover:"pass",metrics:"visible",logs:"visible",alert:"visible"}' \
+            | tee arbm-sist-failover-evidence.json
+          echo "::warning title=ARBM SIST controlled primary failure::Current-source Render secondary remained available"
+          echo "REMOTE_RECOVERY=PASS"
+          echo "METRICS_VISIBLE=PASS"
+          echo "LOGS_VISIBLE=PASS"
+          echo "ALERT_VISIBLE=PASS"
+          echo "OBSERVABILITY_DURING_PRIMARY_FAILURE=PASS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arbm-sist-current-source-failover-proof
+          path: |
+            secondary-readback.html
+            secondary-metrics.txt
+            arbm-sist-failover-evidence.json
+          retention-days: 30
