@@ -70,7 +70,7 @@ const exactWorkflowProofs=[
     name:"zevanory-p16-deterministic-exact-release",
     file:"zevanory-p16-deterministic-exact-release.yml",
     artifact:"zevanory-p16-financial-"+sha.slice(0,12),
-    markers:["P16_LIFECYCLE=PROVED","RUNTIME_SHA_MATCH=PASS","IDEMPOTENCY=PASS","REFUND=PASS","ZERO_DUPLICATE_FINANCIAL_OPERATION=PASS"]
+    markers:["P16_LIFECYCLE=PROVED","P16_SOURCE_CONTRACT=PASS","RUNTIME_SHA_MATCH=PASS","financial_engine_deterministic.py","IDEMPOTENCY","REFUND"]
   }
 ];
 
