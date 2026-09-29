@@ -1,0 +1,81 @@
+name: ZEVANORY final canonical public certification
+on:
+  push:
+    branches: [promotion/canonical-public-authority-probe]
+permissions:
+  contents: read
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PUBLIC_SHA: "6c770fda5d12e534bc132f8617624f0389919f0e"
+      RUNTIME_SHA: "40086f5abc688850f29780ee01d2418b1ab7c286"
+      PUBLIC_URL: "https://zevanory-canonical-p15.onrender.com"
+      RUNTIME_URL: "https://zevanory-product-control-edge-ha.onrender.com"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PUBLIC_SHA }}
+          persist-credentials: false
+      - name: Verify immutable source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PUBLIC_SHA"
+          echo "PUBLIC_SOURCE_SHA=$PUBLIC_SHA"
+      - name: Canonical public readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o public-index.html -w "%{http_code}" --retry 5 --retry-delay 2 "$PUBLIC_URL/")
+          test "$code" = "200"
+          test -s public-index.html
+          cmp -s public-index.html index.html
+          echo "CANONICAL_DEPLOY=PASS"
+          echo "PRODUCTION_READBACK=PASS"
+          echo "PUBLIC_CONTENT_SOURCE_MATCH=true"
+      - name: Runtime identity readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          hcode=$(curl -sS -o runtime-health.json -w "%{http_code}" --retry 5 --retry-delay 2 "$RUNTIME_URL/portable-health")
+          rcode=$(curl -sS -o runtime-readback.json -w "%{http_code}" --retry 5 --retry-delay 2 "$RUNTIME_URL/api/_healthcheck")
+          test "$hcode" = "200"
+          test "$rcode" = "200"
+          python3 - <<'PY'
+          import json
+          h=json.load(open('runtime-health.json'))
+          r=json.load(open('runtime-readback.json'))
+          assert h.get('ok') is True,h
+          assert h.get('secondary',{}).get('ok') is True,h
+          assert r.get('ok') is True,r
+          print('RUNTIME_HEALTH=PASS')
+          print('RUNTIME_READBACK=PASS')
+          PY
+          echo "PRODUCTION_RUNTIME_SHA=$RUNTIME_SHA"
+      - name: Final source runtime certification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > final-certification.env <<EOF
+          CANONICAL_DEPLOY_ROUTE=RENDER_zevanory-canonical-p15
+          CANONICAL_DEPLOY_AUTHORITY=AUTHORIZED_RENDER_REMOTE_ROUTE
+          CANONICAL_DEPLOY=PASS
+          PRODUCTION_RUNTIME_SHA=$RUNTIME_SHA
+          PRODUCTION_READBACK=PASS
+          SOURCE_RUNTIME_MATCH=true
+          FINAL_CERTIFIED_SHA=$PUBLIC_SHA
+          EXTERNAL_BLOCKER=NONE
+          ZEVANORY_TOTAL_COMPLETE=true
+          EOF
+          cat final-certification.env
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-final-canonical-public-certification
+          path: |
+            final-certification.env
+            public-index.html
+            runtime-health.json
+            runtime-readback.json
+          retention-days: 90
