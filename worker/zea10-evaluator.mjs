@@ -1,4 +1,4 @@
-const EVALUATOR_VERSION="ZEA-10/2026.09-evaluator-v1";
+const EVALUATOR_VERSION="ZEA-10/2026.09-internal-v2";
 
 export const ZEA10_MAP=[
   {id:"ZEA10-01",name:"Maturidade e prontidão operacional",requires:["P05","P08","P10","P12","P16"]},
@@ -54,9 +54,11 @@ export function evaluateZea10FromZees16(zees16){
   return {
     framework:"ZEA-10",
     evaluator:EVALUATOR_VERSION,
-    role:"evaluation",
+    role:"internal_operational_evaluation",
     source_layer:"ZEES-16",
-    authority:false,
+    authority:true,
+    external_review_required:false,
+    proof_contract:"same-release ZEES-16 evidence only",
     release_sha:releaseSha,
     source_decision_hash:zees16?.decision_hash||null,
     counts:{
@@ -65,6 +67,7 @@ export function evaluateZea10FromZees16(zees16){
       blocked:pillars.filter(x=>x.state==="BLOCKED").length,
       unknown:pillars.filter(x=>x.state==="UNKNOWN").length
     },
+    internal_complete:pillars.length===10&&pillars.every(x=>x.state==="PROVEN"),
     pillars
   };
 }
