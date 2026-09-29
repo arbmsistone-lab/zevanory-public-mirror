@@ -30,7 +30,7 @@ jobs:
       - name: Measure global overflow
         shell: bash
         run: |
-          cat > /tmp/audit.mjs <<'NODE'
+          cat > audit.mjs <<'NODE'
           import { chromium } from 'playwright';
           import fs from 'node:fs';
           const routes=['/','/arbm-sist/','/ia-na-pratica/','/vendas-na-pratica/','/combo-ia-vendas/','/lucro-e-caixa/','/negocio-completo/','/zevanory-one/','/zevanory-cfo/'];
@@ -66,7 +66,7 @@ jobs:
           if(result.pass) console.log('LAYOUT_NO_SCROLL=PASS');
           else console.log('LAYOUT_NO_SCROLL=FAIL');
           NODE
-          node /tmp/audit.mjs
+          node audit.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: zevanory-no-scroll-baseline
