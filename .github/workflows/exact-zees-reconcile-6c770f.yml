@@ -1,0 +1,51 @@
+name: ZEVANORY Exact ZEES Reconcile 6c770f
+
+on:
+  push:
+    branches:
+      - audit/exact-zees-reconcile-6c770fda-20260929
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TARGET_MIRROR_SHA: "6c770fda5d12e534bc132f8617624f0389919f0e"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_MIRROR_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Exact mirror identity
+        run: test "$(git rev-parse HEAD)" = "$TARGET_MIRROR_SHA"
+      - name: Reconcile live evidence without mutating production
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PREVIOUS_STATE_PATH: previous-state.json
+        run: |
+          printf '{}\n' > previous-state.json
+          node scripts/reconcile_zees16_control.mjs
+      - name: Report fail-closed state
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const s=JSON.parse(fs.readFileSync('zees16-state.json','utf8'));
+          console.log('ZEES16_COUNTS='+JSON.stringify(s.counts));
+          console.log('ZEES16_RELEASE_SHA='+s.release_sha);
+          console.log('ZEES16_DECISION_HASH='+s.decision_hash);
+          console.log('ZEES16_NON_PROVEN='+JSON.stringify(s.pillars.filter(x=>x.state!=='PROVEN').map(x=>({id:x.id,state:x.state,blockers:x.blockers}))));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-exact-zees-reconcile-6c770f
+          path: |
+            zees16-event.json
+            zees16-state.json
+          retention-days: 30
