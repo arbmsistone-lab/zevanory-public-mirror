@@ -585,6 +585,10 @@ main { min-width: 0; }
 }
 
 @media (max-width: 704px) {
+  .skip-link:focus {
+    top: 72px;
+    left: 16px;
+  }
   .header-inner,
   .container {
     padding-left: 16px;
