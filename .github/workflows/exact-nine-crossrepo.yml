@@ -1,0 +1,83 @@
+name: ZEVANORY Exact 9 Products Cross Repo Audit
+
+on:
+  push:
+    branches:
+      - audit/exact-nine-crossrepo-20260929
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MIRROR_SHA: "6c770fda5d12e534bc132f8617624f0389919f0e"
+      PRODUCT_CONTROL_SHA: "40086f5abc688850f29780ee01d2418b1ab7c286"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.MIRROR_SHA }}
+          path: mirror
+      - name: Fetch exact Product Control catalog source
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/arbmsistone-lab/zevanory-product-control-edge.git product-control
+          cd product-control
+          git checkout --quiet --detach "$PRODUCT_CONTROL_SHA"
+          test "$(git rev-parse HEAD)" = "$PRODUCT_CONTROL_SHA"
+      - name: Cross-repo nominal audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,re,pathlib,os
+          mirror=pathlib.Path('mirror')
+          source=(pathlib.Path('product-control')/'backend/index.ts').read_text(encoding='utf-8')
+          expected=[
+            ('ZEVANORY','zevanory','/','index.html'),
+            ('ARBM SIST','arbm-sist','/arbm-sist','arbm-sist/index.html'),
+            ('ZEVANORY IA na Pratica','ia-na-pratica','/ia-na-pratica','ia-na-pratica/index.html'),
+            ('ZEVANORY Vendas na Pratica','vendas-na-pratica','/vendas-na-pratica','vendas-na-pratica/index.html'),
+            ('ZEVANORY Combo IA + Vendas','combo-ia-vendas','/combo-ia-vendas','combo-ia-vendas/index.html'),
+            ('ZEVANORY Lucro & Caixa','lucro-e-caixa','/lucro-e-caixa','lucro-e-caixa/index.html'),
+            ('ZEVANORY Negocio Completo','negocio-completo','/negocio-completo','negocio-completo/index.html'),
+            ('ZEVANORY ONE','zevanory-one','/zevanory-one','zevanory-one/index.html'),
+            ('ZEVANORY CFO','zevanory-cfo','/zevanory-cfo','zevanory-cfo/index.html'),
+          ]
+          rows=[]
+          for name,slug,route,path in expected:
+            assert f"name: '{name}'" in source,(name,'missing_product_control_name')
+            assert f"slug: '{slug}'" in source,(slug,'missing_product_control_slug')
+            if route!='/':
+              assert f"publicUrl: 'https://zevanory.api.br{route}'" in source,(slug,'missing_product_control_url')
+            fp=mirror/path
+            assert fp.is_file(),(slug,'missing_mirror_source')
+            html=fp.read_text(encoding='utf-8')
+            assert len(re.findall(r'<h1(?:\s|>)',html,re.I))==1,(slug,'h1')
+            canonical='https://zevanory.api.br'+route
+            assert canonical.rstrip('/') in html,(slug,'canonical')
+            checkout=bool(re.search(r'href=["\'][^"\']*(checkout|comprar|payment|pagamento|stripe|mercadopago|hotmart|kiwify)',html,re.I))
+            assert not checkout,(slug,'unexpected_checkout')
+            rows.append({
+              'product':name,'slug':slug,'route':route,'source_path':path,
+              'product_control_sha':os.environ['PRODUCT_CONTROL_SHA'],
+              'mirror_sha':os.environ['MIRROR_SHA'],
+              'catalog_identity':'PASS','public_source':'PASS','fail_closed_sales_surface':'PASS'
+            })
+          sitemap=(mirror/'sitemap.xml').read_text(encoding='utf-8')
+          solutions=(mirror/'solucoes/index.html').read_text(encoding='utf-8')
+          for _,slug,route,_ in expected:
+            if route!='/': assert ('https://zevanory.api.br'+route) in sitemap,(slug,'sitemap')
+            if slug!='zevanory': assert slug in solutions,(slug,'catalog')
+          out={'schema':'zevanory.9-products.crossrepo.v1','count':len(rows),'products':rows,'all_inventoried':True,'all_audited':True}
+          pathlib.Path('nine-products-crossrepo.json').write_text(json.dumps(out,indent=2,ensure_ascii=False))
+          print('ALL_9_PRODUCTS_INVENTORIED=PASS')
+          print('ALL_9_PRODUCTS_AUDITED=PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-exact-nine-products-crossrepo
+          path: nine-products-crossrepo.json
+          retention-days: 30
