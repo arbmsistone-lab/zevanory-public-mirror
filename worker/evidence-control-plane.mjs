@@ -70,7 +70,7 @@ export function validateReleaseBinding(doc,sha,run,artifacts){
   if(!/^[0-9a-f]{40}$/.test(sha||"")||doc.status!=="PASS") return false;
   const cert=doc.certificate;
   if(!cert||run?.id!==cert.run_id||run.status!=="completed"||run.conclusion!=="success"||run.head_sha!==cert.head_sha) return false;
-  if(run.path!==".github/workflows/exact-release-integral-proof.yml") return false;
+  if(run.path!==".github/workflows/zees16-control-reconciler.yml") return false;
   const artifact=(artifacts?.artifacts||[]).find(a=>a.id===cert.artifact?.id&&a.name==="exact-release-integral-proof-"+sha.slice(0,12)&&a.expired!==true&&a.digest===cert.artifact?.digest);
   if(!artifact||!/^sha256:[0-9a-f]{64}$/.test(artifact.digest||"")) return false;
   const expected=ZEES16_POLICY.pillars.flatMap(p=>p.requires).filter(k=>k.startsWith("workflow:")).map(k=>k.slice(9));
