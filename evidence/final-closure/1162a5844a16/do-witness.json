@@ -1,0 +1,1 @@
+{"service":"ZEVANORY","project":"ZEVANORY","status":"proven","canary":"pass","provider":"digitalocean-relay","independent_control_plane":true,"fail_closed":true,"public_sales_locked":true,"runtime":{"sales":"globally-blocked"},"artifact_sha":"fc4d58008f42a775fbc450364ffecf856b76c29a","witness":"zevanory-relay-01"}

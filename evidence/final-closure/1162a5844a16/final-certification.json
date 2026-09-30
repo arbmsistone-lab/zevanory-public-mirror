@@ -1,0 +1,110 @@
+{
+  "schema": "zevanory.final-public-certification.v1",
+  "status": "PASS",
+  "final_certified_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+  "canonical_sha": "2237836450cd371365d9fe00c83e42f70df28025",
+  "final_certification_run": 36768724448,
+  "final_certification_head": "bde4b1df69253fd1aa2a2e2ad31ab675510b1595",
+  "nominal_certificate": {
+    "run_id": 36766452819,
+    "head_sha": "78a593bf49ae8ecc2b4f4f8fd6c4482f28aaa6ff",
+    "artifact": {
+      "id": 11121825375,
+      "name": "exact-release-integral-proof-1162a5844a16",
+      "digest": "sha256:453f65d5984bbd05ad3320d8505f057db995288683d3772159fa592a1bcfda73"
+    }
+  },
+  "checks": {
+    "RELEASE_SHA_READBACK": true,
+    "CORE_PUBLIC_PROJECTION": true,
+    "P12": true,
+    "P15": true,
+    "ZEES": true,
+    "ZEA10": true,
+    "CORE_DECISION": true,
+    "PRIMARY_PROVIDER": true,
+    "SECONDARY_PROVIDER": true,
+    "PROVIDER_NEUTRALITY": true,
+    "REMOTE_RECOVERY": true,
+    "FAILOVER": true,
+    "OBSERVABILITY_FAILOVER": true,
+    "SALES_FROZEN": true,
+    "JS_BYTES": true,
+    "CSS_BYTES": true,
+    "ARCHITECTURE": true,
+    "EVIDENCE_PRESERVATION": true
+  },
+  "ZEES": "16/16_PASS",
+  "ZEA10": "10/10_PASS",
+  "decision_hash": "56c6b6d2f2ce7727ae76d40000bb9e8d5587cf385177c52f73270a1ad487d19b",
+  "production_observed_at": "2026-09-30T19:53:03.591Z",
+  "certified_at": "2026-09-30T19:53:40.081Z",
+  "sales": "BLOCKED_BY_FROZEN_CONFIGURATION",
+  "provider_scope": "canonical public Core plus independent provider witnesses and portable dual-store failover",
+  "multicloud_ready": true,
+  "zero_gate_counts": {
+    "FAIL": 0,
+    "PARTIAL": 0,
+    "BLOCKED": 0,
+    "UNKNOWN": 0,
+    "NOT_PROVEN": 0,
+    "NOT_RUN": 0,
+    "PENDING": 0
+  },
+  "evidence": [
+    {
+      "name": "continuity.json",
+      "sha256": "1ce146efe76dd3c8d67c7370521e84b74fa6259c9be64d5209461a8eda846b01"
+    },
+    {
+      "name": "control.json",
+      "sha256": "c0f7934664e7980bf8d4d26acf588363efa5b1107e7380fc4561fdf0fc1960c3"
+    },
+    {
+      "name": "core.json",
+      "sha256": "54f33ff1b965d34c4a918b08bdf83ab5850f7e506ee2666ce15b3d8e259d4459"
+    },
+    {
+      "name": "css.bin",
+      "sha256": "9db8657a2ab4d8585b4de840da5a13b0c2037717d4e8f72a8f0cf52b5efcb8f1"
+    },
+    {
+      "name": "decision.json",
+      "sha256": "e1ca2e1546cc4be3adb9d4e9199db1d5e88c35bff30f5fe11c67ab18bcf9f47a"
+    },
+    {
+      "name": "do-witness.json",
+      "sha256": "e39e86958dc618069c365d9447349a33f9b79df08c9884f2a9b03567baf2c7c7"
+    },
+    {
+      "name": "health.json",
+      "sha256": "f3013d67905652e95f1d53ddce2e5cbaee388e923ef8080ee14d8dec5272e3b1"
+    },
+    {
+      "name": "integral-evidence.zip",
+      "sha256": "453f65d5984bbd05ad3320d8505f057db995288683d3772159fa592a1bcfda73"
+    },
+    {
+      "name": "js.bin",
+      "sha256": "ff7d3f47bdac219793bdb4295b79f6694a486ea3aa73c6acc6e0a8595aef8ad9"
+    },
+    {
+      "name": "render-witness.json",
+      "sha256": "7dd215691d8680d14778b2dba4843a878e0274dd388db07f085e36c16ceb7a8b"
+    },
+    {
+      "name": "secondary-failover.json",
+      "sha256": "fbad6113af9267c61711cd001a20f1508239ad701c383e3f989aa84dea8c0aa2"
+    },
+    {
+      "name": "status.json",
+      "sha256": "2acf3b65b11b970c44124152b833e460fbad1e3a982879fffb8450751cd32bd7"
+    },
+    {
+      "name": "zea10.json",
+      "sha256": "8c2777d2233be5e360ba43123d67d8f92238ac2fa3555313cecb95ed411cccd5"
+    }
+  ],
+  "ZEVANORY_TOTAL_COMPLETE": true,
+  "SEM_RESSALVAS": true
+}
