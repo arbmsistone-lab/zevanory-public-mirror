@@ -1,0 +1,46 @@
+name: ZEVANORY exact-release integral proof
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        type: string
+        required: true
+      preflight_only:
+        type: boolean
+        default: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      PREFLIGHT_ONLY: ${{ inputs.preflight_only }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test exact evidence collector and preserve frozen layout bytes
+        run: node scripts/exact_release_collector_regression.mjs
+      - name: Verify collector with SAST
+        run: |
+          python3 -m pip install --quiet semgrep==1.136.0
+          semgrep scan --config p/javascript --config p/secrets --error /tmp/exact-collector/worker/evidence-control-plane.mjs
+      - name: Certify exact-release final matrix
+        if: ${{ !inputs.preflight_only }}
+        run: node scripts/exact_release_integral_proof.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exact-release-integral-proof-${{ inputs.expected_sha }}
+          path: |
+            collector-regression.json
+            integral-proof/**
+          retention-days: 90
+          if-no-files-found: error
