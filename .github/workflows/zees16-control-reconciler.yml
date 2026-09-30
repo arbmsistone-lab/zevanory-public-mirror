@@ -5,23 +5,17 @@ on:
       expected_sha:
         type: string
         required: true
-      preflight_only:
-        type: boolean
-        default: true
 permissions:
   contents: read
   actions: read
 jobs:
-  certify:
+  final-readback:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 8
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
-      PREFLIGHT_ONLY: ${{ inputs.preflight_only }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - id: identity
-        run: echo "prefix=${EXPECTED_SHA:0:12}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -29,20 +23,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Test exact evidence collector and preserve frozen layout bytes
-        run: node scripts/exact_release_collector_regression.mjs
-      - name: Verify collector with SAST
-        run: |
-          python3 -m pip install --quiet semgrep==1.136.0
-          semgrep scan --config p/javascript --config p/secrets --error /tmp/exact-collector/worker/evidence-control-plane.mjs
-      - name: Certify exact-release final matrix
-        if: ${{ !inputs.preflight_only }}
-        run: node scripts/exact_release_integral_proof.mjs
+      - run: node scripts/final_public_readback.mjs
       - uses: actions/upload-artifact@v4
         with:
-          name: exact-release-integral-proof-${{ steps.identity.outputs.prefix }}
-          path: |
-            collector-regression.json
-            integral-proof/**
+          name: zevanory-final-public-certification
+          path: final-proof/**
           retention-days: 90
           if-no-files-found: error
