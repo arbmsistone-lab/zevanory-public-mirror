@@ -13,16 +13,16 @@ export const ZEES16_POLICY={
     {id:"P04",name:"Acessibilidade",requires:["workflow:zevanory-p04-wcag"]},
     {id:"P05",name:"Confiabilidade operacional",requires:["workflow:zevanory-remote-quality-gates","runtime:health_ready"]},
     {id:"P06",name:"Testes e regressão",requires:["workflow:ZEES-16 Evidence Gate","workflow:zevanory-remote-quality-gates"]},
-    {id:"P07",name:"Segurança aplicável",requires:["workflow:ZEES-16 Evidence Gate","workflow:zevanory-p15-provenance"]},
-    {id:"P08",name:"Observabilidade",requires:["workflow:zevanory-p12-continuous-slo","runtime:telemetry_active"]},
+    {id:"P07",name:"Segurança aplicável",requires:["workflow:zevanory-p07-app-security"]},
+    {id:"P08",name:"Observabilidade",requires:["workflow:zevanory-p12-observability-exact-release","runtime:telemetry_active"]},
     {id:"P09",name:"Resiliência",requires:["workflow:ZEVANORY portable disaster recovery","workflow:zevanory-remote-quality-gates"]},
-    {id:"P10",name:"Continuidade e recuperação",requires:["workflow:ZEVANORY portable disaster recovery","workflow:ZEVANORY authenticated three-provider runtime quorum","runtime:quorum_ok"]},
+    {id:"P10",name:"Continuidade e recuperação",requires:["workflow:ZEVANORY portable disaster recovery","workflow:ZEVANORY authenticated open-provider runtime quorum","runtime:quorum_ok"]},
     {id:"P11",name:"Frontend e eficiência de entrega",requires:["workflow:zevanory-p02-visual-regression","workflow:zevanory-p12-continuous-slo"]},
-    {id:"P12",name:"Produção e SRE",requires:["workflow:ZEVANORY central production deploy","runtime:exact_sha","runtime:health_ready"]},
+    {id:"P12",name:"Produção e SRE",requires:["workflow:ZEVANORY central production deploy","workflow:zevanory-p12-observability-exact-release","runtime:exact_sha","runtime:health_ready"]},
     {id:"P13",name:"Governança e evidência",requires:["workflow:zevanory-p15-provenance","runtime:exact_sha"]},
-    {id:"P14",name:"Automação, IA e provedores",requires:["workflow:ZEVANORY provider independence gate","workflow:ZEVANORY authenticated three-provider runtime quorum"]},
-    {id:"P15",name:"CI/CD e proveniência",requires:["workflow:zevanory-p15-provenance","workflow:pages build and deployment","workflow:ZEVANORY central production deploy"]},
-    {id:"P16",name:"Prontidão comercial",requires:["workflow:ZEVANORY consolidated closure gate","runtime:sales_fail_closed","runtime:health_ready"]}
+    {id:"P14",name:"Automação, IA e provedores",requires:["workflow:ZEVANORY provider independence gate","workflow:ZEVANORY authenticated open-provider runtime quorum"]},
+    {id:"P15",name:"CI/CD e proveniência",requires:["workflow:zevanory-p15-provenance","workflow:ZEVANORY central production deploy"]},
+    {id:"P16",name:"Prontidão comercial",requires:["workflow:zevanory-p16-deterministic-exact-release","runtime:sales_fail_closed","runtime:health_ready"]}
   ]
 };
 
@@ -64,7 +64,34 @@ function runtimeSignals(status,health,control,continuity){
     }
   };
 }
+
+export function validateReleaseBinding(doc,sha,run,artifacts){
+  if(doc?.schema!=="zevanory.exact-release-certification.v1"||doc.release_sha!==sha) return false;
+  if(!/^[0-9a-f]{40}$/.test(sha||"")||doc.status!=="PASS") return false;
+  const cert=doc.certificate;
+  if(!cert||run?.id!==cert.run_id||run.status!=="completed"||run.conclusion!=="success"||run.head_sha!==cert.head_sha) return false;
+  if(run.path!==".github/workflows/exact-release-integral-proof.yml") return false;
+  const artifact=(artifacts?.artifacts||[]).find(a=>a.id===cert.artifact?.id&&a.name==="exact-release-integral-proof-"+sha.slice(0,12)&&a.expired!==true&&a.digest===cert.artifact?.digest);
+  if(!artifact||!/^sha256:[0-9a-f]{64}$/.test(artifact.digest||"")) return false;
+  const expected=ZEES16_POLICY.pillars.flatMap(p=>p.requires).filter(k=>k.startsWith("workflow:")).map(k=>k.slice(9));
+  const rows=doc.workflows||[];
+  return [...new Set(expected)].every(name=>rows.some(p=>p.name===name&&p.conclusion==="success"&&Number.isInteger(p.id)&&p.id>0&&p.target_release_sha===sha&&["exact-run","dependency-equivalence"].includes(p.binding?.mode)));
+}
+async function certifiedWorkflowEvidence(sha){
+  const url="https://raw.githubusercontent.com/"+REPO+"/closure/exact-223783-evidence-20260930/evidence/release-certifications/"+sha+".json";
+  const response=await fetch(url,{headers:{"user-agent":"ZEVANORY-Control-Plane-exact-binding/1.0","cache-control":"no-cache"}});
+  if(response.status===404) return null;
+  if(!response.ok) throw new Error("binding_fetch_"+response.status);
+  const doc=await response.json(),id=doc?.certificate?.run_id;
+  if(!Number.isInteger(id)) throw new Error("binding_certificate_missing");
+  const [run,artifacts]=await Promise.all([fetchJson(API+"/actions/runs/"+id),fetchJson(API+"/actions/runs/"+id+"/artifacts?per_page=100")]);
+  if(!validateReleaseBinding(doc,sha,run,artifacts)) throw new Error("binding_certificate_invalid");
+  return {runs:doc.workflows,workflows:new Map(doc.workflows.map(p=>[p.name,p])),certificate:doc.certificate};
+}
+
 async function githubEvidence(sha){
+  const certified=await certifiedWorkflowEvidence(sha);
+  if(certified) return certified;
   if(!sha) return {runs:[],workflows:new Map()};
   const doc=await fetchJson(API+"/actions/runs?head_sha="+encodeURIComponent(sha)+"&per_page=100");
   const runs=(doc.workflow_runs||[]).filter(r=>r.head_sha===sha&&r.status==="completed");
@@ -80,7 +107,7 @@ function requirementResult(req,signals,workflows){
   if(req.startsWith("workflow:")){
     const name=req.slice(9);
     const run=workflows.get(name);
-    return {ok:run?.conclusion==="success",source:"github-actions",key:req,run_id:run?.id||null,url:run?.html_url||null,conclusion:run?.conclusion||null};
+    return {ok:run?.conclusion==="success",source:run?.binding?"github-actions-verified-release-binding":"github-actions",binding:run?.binding||null,exact_release_sha:run?.target_release_sha||null,key:req,run_id:run?.id||null,url:run?.html_url||null,conclusion:run?.conclusion||null};
   }
   return {ok:false,source:"unknown",key:req};
 }
