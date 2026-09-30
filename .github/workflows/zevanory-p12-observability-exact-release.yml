@@ -14,7 +14,7 @@ on:
       expected_sha:
         description: Exact deployed ZEVANORY SHA
         required: false
-        default: 2237836450cd371365d9fe00c83e42f70df28025
+        default: 1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2
         type: string
 
 permissions:
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-      EXPECTED_SHA: ${{ inputs.expected_sha || '2237836450cd371365d9fe00c83e42f70df28025' }}
+      EXPECTED_SHA: ${{ inputs.expected_sha || '1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2' }}
     steps:
       - name: Fetch exact immutable release
         shell: bash
@@ -188,7 +188,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zevanory-p12-observability-2237836450cd
+          name: zevanory-p12-observability-1162a5844a16
           path: |
             evidence-p12-instrumentation.json
             evidence-p12-live-slo.json

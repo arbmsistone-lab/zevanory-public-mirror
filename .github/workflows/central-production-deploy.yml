@@ -50,7 +50,7 @@ jobs:
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
       # Binding repair only: preserve the already-certified production runtime SHA.
       # Reconcile trigger 2026-09-27: reassert canonical KV binding after verified ZEES-16 16/16 state.
-      TARGET_RUNTIME_SHA: 2237836450cd371365d9fe00c83e42f70df28025
+      TARGET_RUNTIME_SHA: 1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -382,7 +382,7 @@ jobs:
         run: node scripts/canonical_existing_deploy_proof.mjs
       - uses: actions/upload-artifact@v4
         with:
-          name: canonical-public-promotion-2237836450cd
+          name: canonical-public-promotion-1162a5844a16
           path: canonical-existing-deploy-proof.json
           if-no-files-found: error
           retention-days: 90

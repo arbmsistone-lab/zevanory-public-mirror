@@ -13,7 +13,7 @@ on:
       expected_sha:
         description: Exact deployed ZEVANORY SHA
         required: false
-        default: 37e695127af02c9a32c601db0353a3708fc45d82
+        default: 1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2
         type: string
 permissions:
   contents: read
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      EXPECTED_SHA: ${{ inputs.expected_sha || '37e695127af02c9a32c601db0353a3708fc45d82' }}
+      EXPECTED_SHA: ${{ inputs.expected_sha || '1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2' }}
     steps:
       - name: Fetch exact immutable release
         shell: bash
@@ -163,7 +163,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zevanory-p07-security-37e695127af0
+          name: zevanory-p07-security-1162a5844a16
           path: |
             semgrep.json
             p07-sca.json

@@ -1,7 +1,7 @@
 import fs from 'node:fs';import {execFileSync} from 'node:child_process';import {createHash} from 'node:crypto';
-const sha='2237836450cd371365d9fe00c83e42f70df28025',base='https://zevanory.api.br';
-const att=JSON.parse(fs.readFileSync('evidence/canonical-deployment-2237836450cd.json','utf8'));
-if(att.release_sha!==sha||att.account_id!=='1b26415802588185a86c1d4d3ebf5bdb'||!att.active_deployment.versions.some(v=>v.version_id==='5003dc65-98d0-446f-9e52-05e3b987694d'&&v.percentage===100))throw Error('DEPLOY_ATTESTATION_MISMATCH');
+const sha='1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2',base='https://zevanory.api.br';
+const att=JSON.parse(fs.readFileSync('evidence/canonical-deployment-1162a5844a16.json','utf8'));
+if(att.release_sha!==sha||att.account_id!=='1b26415802588185a86c1d4d3ebf5bdb'||!att.active_deployment.versions.some(v=>v.version_id==='54b3f37e-0fe4-4c7d-a715-50b0d9f6e17b'&&v.percentage===100))throw Error('DEPLOY_ATTESTATION_MISMATCH');
 execFileSync('git',['worktree','add','--detach','/tmp/exact-runtime',sha]);
 const {CONTROL_PLANE_VNEXT_JS}=await import('/tmp/exact-runtime/worker/control-plane-vnext-source.mjs');
 const paths=['/api/status','/api/health','/api/control-plane','/api/core/v1/snapshot','/api/core/v1/evaluation/zea10','/control-plane-vnext.js','/admin.css','/build-info.json'];

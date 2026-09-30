@@ -11,7 +11,7 @@ on:
 permissions:
   contents: read
 env:
-  EXPECTED_SHA: "37e695127af02c9a32c601db0353a3708fc45d82"
+  EXPECTED_SHA: "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
 jobs:
   quorum:
     runs-on: ubuntu-latest
@@ -93,6 +93,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p14-three-provider-quorum-37e695127af0
+          name: p14-three-provider-quorum-1162a5844a16
           path: p14-three-provider-quorum.json
           retention-days: 90

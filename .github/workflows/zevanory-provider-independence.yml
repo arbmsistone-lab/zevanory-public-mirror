@@ -11,13 +11,17 @@ on:
 permissions:
   contents: read
 env:
-  EXPECTED_SHA: "37e695127af02c9a32c601db0353a3708fc45d82"
+  EXPECTED_SHA: "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
 jobs:
   prove:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Materialize exact runtime modules
+        run: |
+          git fetch origin 1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2
+          git checkout 1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2 -- worker
       - name: Bind provider-independence proof to exact live release
         shell: bash
         run: |
@@ -129,6 +133,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p14-provider-independence-37e695127af0
+          name: p14-provider-independence-1162a5844a16
           path: p14-provider-independence.json
           retention-days: 90

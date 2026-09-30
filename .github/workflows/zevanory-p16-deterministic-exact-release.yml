@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-      EXPECTED_SHA: 37e695127af02c9a32c601db0353a3708fc45d82
+      EXPECTED_SHA: 1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2
     steps:
       - uses: actions/checkout@v4
 
@@ -136,7 +136,7 @@ jobs:
       - name: Upload exact-release P16 evidence
         uses: actions/upload-artifact@v4
         with:
-          name: zevanory-p16-financial-37e695127af0
+          name: zevanory-p16-financial-1162a5844a16
           path: |
             evidence/p16-source-contract.json
             evidence/financial-engine-deterministic.json

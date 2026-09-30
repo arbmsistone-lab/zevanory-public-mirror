@@ -10,13 +10,17 @@ on:
 permissions:
   contents: read
 env:
-  EXPECTED_SHA: "37e695127af02c9a32c601db0353a3708fc45d82"
+  EXPECTED_SHA: "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
 jobs:
   dr:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+      - name: Materialize exact runtime modules
+        run: |
+          git fetch origin 1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2
+          git checkout 1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2 -- worker
       - name: Bind DR proof to exact live release
         shell: bash
         run: |
@@ -126,7 +130,7 @@ jobs:
           sha256sum zevanory-portable-recovery-kit.tgz | tee zevanory-portable-recovery-kit.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: zevanory-portable-recovery-kit-37e695127af0
+          name: zevanory-portable-recovery-kit-1162a5844a16
           path: |
             zevanory-portable-recovery-kit.tgz
             zevanory-portable-recovery-kit.sha256

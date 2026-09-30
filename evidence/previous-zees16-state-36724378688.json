@@ -1,0 +1,439 @@
+{
+  "policy_version": "ZEES-16/2026.09-control-v2",
+  "target": "zevanory",
+  "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+  "observed_at": "2026-09-30T13:49:39.387Z",
+  "counts": {
+    "proven": 14,
+    "partial": 2,
+    "blocked": 0,
+    "na": 0
+  },
+  "pillars": [
+    {
+      "id": "P01",
+      "name": "Arquitetura e contrato do sistema",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:ZEVANORY apex engineering gate",
+          "run_id": 36640737288,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737288",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "runtime",
+          "key": "runtime:exact_sha"
+        },
+        {
+          "ok": true,
+          "source": "runtime",
+          "key": "runtime:health_ready"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P02",
+      "name": "Interface e experiência visual",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-p02-visual-regression",
+          "run_id": 36640737084,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737084",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-p04-wcag",
+          "run_id": 36640737318,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737318",
+          "conclusion": "success"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P03",
+      "name": "Performance e eficiência",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-p12-continuous-slo",
+          "run_id": 36723386648,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36723386648",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "runtime",
+          "key": "runtime:health_ready"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P04",
+      "name": "Acessibilidade",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-p04-wcag",
+          "run_id": 36640737318,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737318",
+          "conclusion": "success"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P05",
+      "name": "Confiabilidade operacional",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-remote-quality-gates",
+          "run_id": 36640737333,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737333",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "runtime",
+          "key": "runtime:health_ready"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P06",
+      "name": "Testes e regressão",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:ZEES-16 Evidence Gate",
+          "run_id": 36707525414,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36707525414",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-remote-quality-gates",
+          "run_id": 36640737333,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737333",
+          "conclusion": "success"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P07",
+      "name": "Segurança aplicável",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-p07-app-security",
+          "run_id": 36605988441,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36605988441",
+          "conclusion": "success"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P08",
+      "name": "Observabilidade",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-p12-observability-exact-release",
+          "run_id": 36605988279,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36605988279",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "runtime",
+          "key": "runtime:telemetry_active"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P09",
+      "name": "Resiliência",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:ZEVANORY portable disaster recovery",
+          "run_id": 36626250739,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36626250739",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-remote-quality-gates",
+          "run_id": 36640737333,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737333",
+          "conclusion": "success"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P10",
+      "name": "Continuidade e recuperação",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:ZEVANORY portable disaster recovery",
+          "run_id": 36626250739,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36626250739",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:ZEVANORY authenticated open-provider runtime quorum",
+          "run_id": 36680514760,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36680514760",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "runtime",
+          "key": "runtime:quorum_ok"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P11",
+      "name": "Frontend e eficiência de entrega",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-p02-visual-regression",
+          "run_id": 36640737084,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737084",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-p12-continuous-slo",
+          "run_id": 36723386648,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36723386648",
+          "conclusion": "success"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P12",
+      "name": "Produção e SRE",
+      "state": "PARTIAL",
+      "evidence": [
+        {
+          "ok": false,
+          "source": "github-actions",
+          "key": "workflow:ZEVANORY central production deploy",
+          "run_id": null,
+          "url": null,
+          "conclusion": null
+        },
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-p12-observability-exact-release",
+          "run_id": 36605988279,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36605988279",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "runtime",
+          "key": "runtime:exact_sha"
+        },
+        {
+          "ok": true,
+          "source": "runtime",
+          "key": "runtime:health_ready"
+        }
+      ],
+      "blockers": [
+        "workflow:ZEVANORY central production deploy"
+      ],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P13",
+      "name": "Governança e evidência",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-p15-provenance",
+          "run_id": 36640737269,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737269",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "runtime",
+          "key": "runtime:exact_sha"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P14",
+      "name": "Automação, IA e provedores",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:ZEVANORY provider independence gate",
+          "run_id": 36614880227,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36614880227",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:ZEVANORY authenticated open-provider runtime quorum",
+          "run_id": 36680514760,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36680514760",
+          "conclusion": "success"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P15",
+      "name": "CI/CD e proveniência",
+      "state": "PARTIAL",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-p15-provenance",
+          "run_id": 36640737269,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737269",
+          "conclusion": "success"
+        },
+        {
+          "ok": false,
+          "source": "github-actions",
+          "key": "workflow:ZEVANORY central production deploy",
+          "run_id": null,
+          "url": null,
+          "conclusion": null
+        }
+      ],
+      "blockers": [
+        "workflow:ZEVANORY central production deploy"
+      ],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    },
+    {
+      "id": "P16",
+      "name": "Prontidão comercial",
+      "state": "PROVADO",
+      "evidence": [
+        {
+          "ok": true,
+          "source": "github-actions",
+          "key": "workflow:zevanory-p16-deterministic-exact-release",
+          "run_id": 36605988581,
+          "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36605988581",
+          "conclusion": "success"
+        },
+        {
+          "ok": true,
+          "source": "runtime",
+          "key": "runtime:sales_fail_closed"
+        },
+        {
+          "ok": true,
+          "source": "runtime",
+          "key": "runtime:health_ready"
+        }
+      ],
+      "blockers": [],
+      "release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+      "observed_at": "2026-09-30T13:49:39.387Z"
+    }
+  ],
+  "inputs": {
+    "runtime:exact_sha": true,
+    "runtime:health_ready": true,
+    "runtime:telemetry_active": true,
+    "runtime:quorum_ok": true,
+    "runtime:sales_fail_closed": true,
+    "runtime:commercial_release": false,
+    "runtime:zea10_pack_bound": false
+  },
+  "decision_hash": "535cf4435f9b98ed135efe91e5e1043c4a363025d1a4b2ab6bc7c1b3b2653434",
+  "previous_decision_hash": "0d25ab3eb563bcfde64eaaa9cd8621737dbd6e5a7e13ade81c32416edeb1227c",
+  "persistence": "kv-append-only",
+  "evaluator": "ZEES16_POLICY_ENGINE",
+  "evaluator_version": "ZEES-16/2026.09-control-v2"
+}

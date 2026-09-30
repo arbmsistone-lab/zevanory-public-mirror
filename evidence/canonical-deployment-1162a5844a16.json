@@ -1,0 +1,34 @@
+{
+  "schema": "zevanory.canonical.deployment-attestation.v1",
+  "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+  "canonical_base_sha": "2237836450cd371365d9fe00c83e42f70df28025",
+  "account_id": "1b26415802588185a86c1d4d3ebf5bdb",
+  "worker": "zevanory",
+  "captured_at": "2026-09-30T19:24:36.312Z",
+  "origin": "Authenticated Wrangler existing owner deployments list",
+  "active_deployment": {
+    "id": "d2deeb8c-f2ca-41e7-b9c1-539139d3318c",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "zevanory@gmail.com",
+    "annotations": {
+      "workers/message": "ZEVANORY-causal-exact-release-evidence-collector-fix",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "54b3f37e-0fe4-4c7d-a715-50b0d9f6e17b",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-09-30T19:20:58.483821Z"
+  },
+  "causal_fix": "Exact-release evidence collector discards proofs executed on protected control-plane commits",
+  "preflight_run": 36764712197,
+  "changed_files": [
+    "worker/evidence-control-plane.mjs"
+  ],
+  "canonical_deploy_run": 36628256233,
+  "canonical_deploy_run_conclusion": "failure",
+  "sales": "globally-blocked"
+}
