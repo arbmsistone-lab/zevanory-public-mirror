@@ -1,6 +1,11 @@
 name: ZEVANORY central production deploy
 on:
   workflow_dispatch:
+    inputs:
+      evidence_only:
+        description: Bind already-active canonical release without deploying
+        type: boolean
+        default: false
   push:
     branches: [gh-pages]
     paths:
@@ -28,6 +33,7 @@ permissions:
   contents: read
 jobs:
   deploy:
+    if: ${{ !inputs.evidence_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -362,3 +368,21 @@ jobs:
           echo "Deployment blocked: GitHub Actions does not currently hold authenticated authority for the Cloudflare account that owns the public ZEVANORY domains."
           echo "Production is unchanged. No alternate account is permitted to masquerade as production."
           exit 1
+
+  canonical-evidence-binding:
+    if: ${{ inputs.evidence_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify existing canonical deployment and exact-release bytes
+        run: node scripts/canonical_existing_deploy_proof.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: canonical-public-promotion-2237836450cd
+          path: canonical-existing-deploy-proof.json
+          if-no-files-found: error
+          retention-days: 90
