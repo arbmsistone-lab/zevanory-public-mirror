@@ -1,0 +1,2166 @@
+{
+  "schema": "zevanory.exact-release-certification.v1",
+  "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+  "canonical_base_sha": "2237836450cd371365d9fe00c83e42f70df28025",
+  "status": "PASS",
+  "certificate_run": 36766452819,
+  "certificate_head_sha": "78a593bf49ae8ecc2b4f4f8fd6c4482f28aaa6ff",
+  "checks": {
+    "exact_runtime": true,
+    "health": true,
+    "commercial_lock": true,
+    "ZEES": true,
+    "ZEA10": true,
+    "architecture": true,
+    "secondary": true,
+    "actual_datastore_failover": true,
+    "independent_render": true,
+    "independent_do": true,
+    "remote_recovery": true,
+    "provider_neutrality": true
+  },
+  "workflows": [
+    {
+      "name": "ZEVANORY apex engineering gate",
+      "id": 36640737288,
+      "head_sha": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737288",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "dependency-equivalence",
+        "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+        "original_workflow_head": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+        "source_scope_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+        "source_hashes": [
+          {
+            "path": "solucoes/index.html",
+            "sha256": "16dfad8c9a07eb4d02914faa43df3fb0519016f776e069125cc55f10bcc093f8"
+          },
+          {
+            "path": "product.css",
+            "sha256": "2f7c14f91e34eec33df3f4f83877d019ce050b438838693af274887de626df5a"
+          },
+          {
+            "path": "worker/cloudflare-worker.recovered.mjs",
+            "sha256": "e3af434936e8d93415b11207144589f96dc41dbc55f62a25b32af588bb5325d5"
+          },
+          {
+            "path": "worker/continuity-router.mjs",
+            "sha256": "a9c55776fec93f9138878d86cc6fe85e9528e0e5614d2d28ad454834fd750262"
+          },
+          {
+            "path": "evidence/zevanory-apex-engineering.json",
+            "sha256": "c053265eca67b26e1dd7a1be272ae3952b9c51f453e769e0b30723cc4923e255"
+          }
+        ],
+        "layout_frozen": true,
+        "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+        "artifact": {
+          "id": 11066163762,
+          "name": "zevanory-apex-engineering-evidence-37e695127af0",
+          "digest": "sha256:e6ec17e99c8baca986d1939a5cb06f50c6616e582d5220062c4785cf6a2189a7"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36640737288/apex-desktop.png",
+            "sha256": "e1d003d05fa4e7712d192aaafde3d83e82ea13e54b756ce3a5b9e5f7428aeef5"
+          },
+          {
+            "path": "integral-proof/workflows/36640737288/apex-lh-1.json",
+            "sha256": "1d7ea5084085b035efff7559556adb5e1c3f7859c66efc39649c368517f942aa"
+          },
+          {
+            "path": "integral-proof/workflows/36640737288/apex-lh-2.json",
+            "sha256": "16955412b0249ec6ecc4af97075f84d4278c8d187b95a7a253b51c5434acb9b4"
+          },
+          {
+            "path": "integral-proof/workflows/36640737288/apex-lh-3.json",
+            "sha256": "e496b9e2aecf75d19635f4072c6b7ad53c7c2da60a8d42486afe6eedfcd8f7c1"
+          },
+          {
+            "path": "integral-proof/workflows/36640737288/apex-lighthouse.json",
+            "sha256": "77f819cea4947c3b6059fc79e0e74eb39a8ac68758a886fc85b7f29b3bab1b05"
+          },
+          {
+            "path": "integral-proof/workflows/36640737288/apex-mobile.png",
+            "sha256": "860197859e7ebf7c197e3fd6c7007f7fa353c51d286acab91efab151578d8687"
+          },
+          {
+            "path": "integral-proof/workflows/36640737288/apex-tablet.png",
+            "sha256": "c9f52f03534a14301fa22d59e498f8f50495cfefd15251052a9607aa174a66ab"
+          },
+          {
+            "path": "integral-proof/workflows/36640737288/apex-visual.json",
+            "sha256": "70010e011f024017449b914a5b2b534b4f3a7156e1a3f37b87004be672c914e6"
+          },
+          {
+            "path": "integral-proof/workflows/36640737288/apex-wide.png",
+            "sha256": "3324d31e20b52ea1dad1aaddd04e6726df5a425965f703af74e0b3c9b1b04631"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zevanory-p02-visual-regression",
+      "id": 36640737084,
+      "head_sha": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737084",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "dependency-equivalence",
+        "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+        "original_workflow_head": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+        "source_scope_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+        "source_hashes": [
+          {
+            "path": "solucoes/index.html",
+            "sha256": "16dfad8c9a07eb4d02914faa43df3fb0519016f776e069125cc55f10bcc093f8"
+          },
+          {
+            "path": "product.css",
+            "sha256": "2f7c14f91e34eec33df3f4f83877d019ce050b438838693af274887de626df5a"
+          }
+        ],
+        "layout_frozen": true,
+        "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+        "artifact": {
+          "id": 11066356778,
+          "name": "p02-visual-evidence-37e695127af0",
+          "digest": "sha256:6c6c57f38b7de3024fb8de11c871a360d7d56380c727b3125dc2cf28bc93eb9f"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36640737084/p02-visual-evidence.json",
+            "sha256": "01896b63205b2e034d4e62f55d2de58c98bf22575b565c33816e5a1fd2d8388c"
+          },
+          {
+            "path": "integral-proof/workflows/36640737084/visual-desktop.png",
+            "sha256": "e1d003d05fa4e7712d192aaafde3d83e82ea13e54b756ce3a5b9e5f7428aeef5"
+          },
+          {
+            "path": "integral-proof/workflows/36640737084/visual-mobile.png",
+            "sha256": "860197859e7ebf7c197e3fd6c7007f7fa353c51d286acab91efab151578d8687"
+          },
+          {
+            "path": "integral-proof/workflows/36640737084/visual-tablet.png",
+            "sha256": "c9f52f03534a14301fa22d59e498f8f50495cfefd15251052a9607aa174a66ab"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zevanory-p04-wcag",
+      "id": 36640737318,
+      "head_sha": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737318",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "dependency-equivalence",
+        "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+        "original_workflow_head": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+        "source_scope_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+        "source_hashes": [
+          {
+            "path": "solucoes/index.html",
+            "sha256": "16dfad8c9a07eb4d02914faa43df3fb0519016f776e069125cc55f10bcc093f8"
+          },
+          {
+            "path": "product.css",
+            "sha256": "2f7c14f91e34eec33df3f4f83877d019ce050b438838693af274887de626df5a"
+          }
+        ],
+        "layout_frozen": true,
+        "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+        "artifact": {
+          "id": 11066241822,
+          "name": "p04-wcag-evidence-37e695127af0",
+          "digest": "sha256:e4128b0d3e4bf061015bb3a19c776c8f075be9a163702405ac7d1acd2cafb2dd"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36640737318/p04-wcag-evidence.json",
+            "sha256": "779d065303f57bbd3713086126634f31e1e5b5b2c6e665f45ded805d3b525c83"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zevanory-p12-continuous-slo",
+      "id": 36765496661,
+      "head_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765496661",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "exact-run",
+        "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+        "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "artifact": {
+          "id": 11120875479,
+          "name": "p12-slo-observation-1162a5844a16",
+          "digest": "sha256:b73bf574e839ab5d26bf1768c8051ed21acd8c44b74bc316c7b54eda1003e27a"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36765496661/p12-slo-observation.json",
+            "sha256": "eb23d4fe0a1322245c1bca6683eb089aa6e320625e699b8c81a3385f304490c1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zevanory-remote-quality-gates",
+      "id": 36640737333,
+      "head_sha": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737333",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "dependency-equivalence",
+        "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+        "original_workflow_head": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+        "source_scope_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+        "source_hashes": [
+          {
+            "path": "solucoes/index.html",
+            "sha256": "16dfad8c9a07eb4d02914faa43df3fb0519016f776e069125cc55f10bcc093f8"
+          },
+          {
+            "path": "product.css",
+            "sha256": "2f7c14f91e34eec33df3f4f83877d019ce050b438838693af274887de626df5a"
+          },
+          {
+            "path": "legal.css",
+            "sha256": "cc5adb594ab22d15506fea9bceaf2cea342526bb4e57c5a9c2a7b6b03263bdc9"
+          },
+          {
+            "path": "worker/cloudflare-worker.recovered.mjs",
+            "sha256": "e3af434936e8d93415b11207144589f96dc41dbc55f62a25b32af588bb5325d5"
+          }
+        ],
+        "layout_frozen": true,
+        "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+        "artifact": {
+          "id": 11066371756,
+          "name": "zevanory-remote-quality-evidence-37e695127af0",
+          "digest": "sha256:c93977186fda72b8e6d6c69f3b2de7e546d2580069f26966eb49b8c29a20a8b1"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36640737333/lighthouse.json",
+            "sha256": "a22c08e7b4bbef7eef8df4da6d5ce12a4616ec76ea6eaaacc90342d2cb993d26"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ZEES-16 Evidence Gate",
+      "id": 36707525414,
+      "head_sha": "6c770fda5d12e534bc132f8617624f0389919f0e",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36707525414",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "dependency-equivalence",
+        "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+        "original_workflow_head": "6c770fda5d12e534bc132f8617624f0389919f0e",
+        "source_scope_sha": "6c770fda5d12e534bc132f8617624f0389919f0e",
+        "source_hashes": [
+          {
+            "path": "evidence/zees16/current.json",
+            "sha256": "cc7ede412c3a12963b5fb7089e47163ce5ba3e20cdcc7241182730279647e969"
+          },
+          {
+            "path": "scripts/zees16_evidence_gate.py",
+            "sha256": "c32bbbc4ca298f63af226e6f720a9af720b959cc35d41f5bdc79656dfbf4a5fb"
+          },
+          {
+            "path": "scripts/zea10_autonomy_gate.py",
+            "sha256": "e567e790ece03e47c5856ae711dedd32127cd696991b528dcda988a837be87b1"
+          },
+          {
+            "path": "scripts/provider_independence_gate.py",
+            "sha256": "8e591ac7dc4510dcf6e7cb5d6a84bcc8c138879d8089ae3c0dca8e4f448c898f"
+          },
+          {
+            "path": "scripts/operational_preservation_gate.py",
+            "sha256": "1d921c1189ab75bdece5a427bd7c499a638820957ce68b8b0f26c487fbe4cd22"
+          }
+        ],
+        "layout_frozen": true,
+        "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+        "artifact": {
+          "id": 11092731884,
+          "name": "p06-zees-gate-37e695127af0",
+          "digest": "sha256:d1444e2f4e0ee43082ae01a331816ed6cce85dfea9351a0591ab47a5f4bfad96"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36707525414/p06-zees-gate.json",
+            "sha256": "a1b68c71c44ec301f43b9c56a125efd8256cc3ee430850bd5279033c60491af6"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zevanory-p07-app-security",
+      "id": 36765512499,
+      "head_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765512499",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "exact-run",
+        "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+        "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "artifact": {
+          "id": 11119803332,
+          "name": "zevanory-p07-security-1162a5844a16",
+          "digest": "sha256:fe51e8f3816893f12ae1125cfa3ce4f3690b25dd0701b506f62ff411fdbf7b08"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36765512499/p07-dast.json",
+            "sha256": "42134efc710801e52c515d8f12d095c0feacb98731988339a5e685f0a2c21562"
+          },
+          {
+            "path": "integral-proof/workflows/36765512499/p07-sca.json",
+            "sha256": "1a3af76953eba212e33bfacdc00cff5b6bac438739f2aa220728efbb09683eb4"
+          },
+          {
+            "path": "integral-proof/workflows/36765512499/p07-security-proof.json",
+            "sha256": "e7967e3136fc3bd6b6446e58523f2935c6f695fe38bad119a1e2db5c5df064fd"
+          },
+          {
+            "path": "integral-proof/workflows/36765512499/semgrep.json",
+            "sha256": "3e1953659f37c5522b6646496ceaa6123db4197e2a3315b127de1740d5d2fd6b"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zevanory-p12-observability-exact-release",
+      "id": 36765492511,
+      "head_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765492511",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "exact-run",
+        "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+        "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "artifact": {
+          "id": 11120357731,
+          "name": "zevanory-p12-observability-1162a5844a16",
+          "digest": "sha256:be445c78e723e29646f2708c1ac14fa5240d2bfbfdde8ef1bbafbed1d6a9329d"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36765492511/evidence-p12-incident.json",
+            "sha256": "29f1615f347a760a2febeb6cdfb1a719059e917f4618f729b620e14761dd0311"
+          },
+          {
+            "path": "integral-proof/workflows/36765492511/evidence-p12-instrumentation.json",
+            "sha256": "a549fbd349c43204a3b90831dcdef4c4bbcabce090ffebf2618f317ab267c937"
+          },
+          {
+            "path": "integral-proof/workflows/36765492511/evidence-p12-live-slo.json",
+            "sha256": "fe606e708e4127cce7bed73adb3cbbd1c4360caef8a017c00adb24467909f469"
+          },
+          {
+            "path": "integral-proof/workflows/36765492511/zevanory-p12-proof.json",
+            "sha256": "45ad89ea7bcf2831913fe23e51df1d17fb291c4efbf2f9625ef800e480607b12"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ZEVANORY portable disaster recovery",
+      "id": 36765500311,
+      "head_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765500311",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "exact-run",
+        "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+        "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "artifact": {
+          "id": 11120502619,
+          "name": "zevanory-portable-recovery-kit-1162a5844a16",
+          "digest": "sha256:1858eafcf499b4d6b64cacb22ba6ee6d87d352f21bd4f003e867083180d50291"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36765500311/recovery-build.json",
+            "sha256": "07101268b838f7b5b1e0904f73c5b43889612cd6b1965c54f0fbb6a997ace404"
+          },
+          {
+            "path": "integral-proof/workflows/36765500311/zevanory-portable-recovery-kit.sha256",
+            "sha256": "771be29c187cd3352b8750dea5861852733a5f4307e557ac5a60da481ec67993"
+          },
+          {
+            "path": "integral-proof/workflows/36765500311/zevanory-portable-recovery-kit.tgz",
+            "sha256": "b138fd81f95e8f500bc83f59dfdfd2cecd239b2c9b9e7302bfea1e86d204f160"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ZEVANORY authenticated open-provider runtime quorum",
+      "id": 36765508335,
+      "head_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765508335",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "exact-run",
+        "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+        "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "artifact": {
+          "id": 11120432668,
+          "name": "p14-three-provider-quorum-1162a5844a16",
+          "digest": "sha256:0da25a564ead22eec74d95662e70bdea74473f208ef3f792a124ec79c911ba31"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36765508335/p14-three-provider-quorum.json",
+            "sha256": "913c3ffbedfa2f6c506c305b678e7af678e6fcaa7529ff7a4f6ca8e0263fd0ed"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ZEVANORY central production deploy",
+      "id": 36765483175,
+      "head_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765483175",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "exact-run",
+        "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+        "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "artifact": {
+          "id": 11120332760,
+          "name": "canonical-public-promotion-1162a5844a16",
+          "digest": "sha256:94c2a9b7313afb5f58dfbac27b5b1757120c09736b8162610cd534e6502db7d4"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36765483175/canonical-existing-deploy-proof.json",
+            "sha256": "d242e301ce490d4ec64b1fe9c0975be0b6e8ee49300bc56a0dee203e3f88dc7a"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zevanory-p15-provenance",
+      "id": 36765488258,
+      "head_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765488258",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "exact-run",
+        "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+        "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "artifact": {
+          "id": 11120337485,
+          "name": "p15-provenance-1162a5844a16",
+          "digest": "sha256:14ce8a84fc10ce6173f0bf4fc18538899bf86dfbfc4d4db41f2a689a3e1a9fe4"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36765488258/p15-provenance.json",
+            "sha256": "d4c736823cab315e4aa9f087be35389d29f6a859828b84c3f6d9eb74dc53d799"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ZEVANORY provider independence gate",
+      "id": 36765504038,
+      "head_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765504038",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "exact-run",
+        "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+        "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "artifact": {
+          "id": 11120262559,
+          "name": "p14-provider-independence-1162a5844a16",
+          "digest": "sha256:e4a285848d595c06df4eb951cd0798410ddc8ffb1ebf7a2878024b4796ed638d"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36765504038/p14-provider-independence.json",
+            "sha256": "b1a4f5079cade74b79865cb9ca5df7eabde4f7a81a167ab2799a210562b6ca39"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zevanory-p16-deterministic-exact-release",
+      "id": 36765517616,
+      "head_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+      "html_url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765517616",
+      "conclusion": "success",
+      "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+      "binding": {
+        "mode": "exact-run",
+        "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+        "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "artifact": {
+          "id": 11120307449,
+          "name": "zevanory-p16-financial-1162a5844a16",
+          "digest": "sha256:124b4f6e17103d017f94b67670f10a9cdf6c8ac90c8e102c595917d35f6ae274"
+        },
+        "files": [
+          {
+            "path": "integral-proof/workflows/36765517616/financial-engine-deterministic.json",
+            "sha256": "d9f9ba500c7e2c58c2de97388d7171129ec9624723d94b9e8692eb58332b4fc6"
+          },
+          {
+            "path": "integral-proof/workflows/36765517616/p16-source-contract.json",
+            "sha256": "a19b497f1509679a0636156868685400d319dcc0277f83ca86457e6430d1cf8a"
+          },
+          {
+            "path": "integral-proof/workflows/36765517616/zevanory-p16-proof.json",
+            "sha256": "1ee900e6b31193724ca3e20bce212b312ebcce1c60df1ec74af3f3d251fa9416"
+          }
+        ]
+      }
+    }
+  ],
+  "zees16": {
+    "policy_version": "ZEES-16/2026.09-control-v2",
+    "target": "zevanory",
+    "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+    "observed_at": "2026-09-30T19:33:51.400Z",
+    "counts": {
+      "proven": 16,
+      "partial": 0,
+      "blocked": 0,
+      "na": 0
+    },
+    "pillars": [
+      {
+        "id": "P01",
+        "name": "Arquitetura e contrato do sistema",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "dependency-equivalence",
+              "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "original_workflow_head": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+              "source_scope_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "source_hashes": [
+                {
+                  "path": "solucoes/index.html",
+                  "sha256": "16dfad8c9a07eb4d02914faa43df3fb0519016f776e069125cc55f10bcc093f8"
+                },
+                {
+                  "path": "product.css",
+                  "sha256": "2f7c14f91e34eec33df3f4f83877d019ce050b438838693af274887de626df5a"
+                },
+                {
+                  "path": "worker/cloudflare-worker.recovered.mjs",
+                  "sha256": "e3af434936e8d93415b11207144589f96dc41dbc55f62a25b32af588bb5325d5"
+                },
+                {
+                  "path": "worker/continuity-router.mjs",
+                  "sha256": "a9c55776fec93f9138878d86cc6fe85e9528e0e5614d2d28ad454834fd750262"
+                },
+                {
+                  "path": "evidence/zevanory-apex-engineering.json",
+                  "sha256": "c053265eca67b26e1dd7a1be272ae3952b9c51f453e769e0b30723cc4923e255"
+                }
+              ],
+              "layout_frozen": true,
+              "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+              "artifact": {
+                "id": 11066163762,
+                "name": "zevanory-apex-engineering-evidence-37e695127af0",
+                "digest": "sha256:e6ec17e99c8baca986d1939a5cb06f50c6616e582d5220062c4785cf6a2189a7"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36640737288/apex-desktop.png",
+                  "sha256": "e1d003d05fa4e7712d192aaafde3d83e82ea13e54b756ce3a5b9e5f7428aeef5"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737288/apex-lh-1.json",
+                  "sha256": "1d7ea5084085b035efff7559556adb5e1c3f7859c66efc39649c368517f942aa"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737288/apex-lh-2.json",
+                  "sha256": "16955412b0249ec6ecc4af97075f84d4278c8d187b95a7a253b51c5434acb9b4"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737288/apex-lh-3.json",
+                  "sha256": "e496b9e2aecf75d19635f4072c6b7ad53c7c2da60a8d42486afe6eedfcd8f7c1"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737288/apex-lighthouse.json",
+                  "sha256": "77f819cea4947c3b6059fc79e0e74eb39a8ac68758a886fc85b7f29b3bab1b05"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737288/apex-mobile.png",
+                  "sha256": "860197859e7ebf7c197e3fd6c7007f7fa353c51d286acab91efab151578d8687"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737288/apex-tablet.png",
+                  "sha256": "c9f52f03534a14301fa22d59e498f8f50495cfefd15251052a9607aa174a66ab"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737288/apex-visual.json",
+                  "sha256": "70010e011f024017449b914a5b2b534b4f3a7156e1a3f37b87004be672c914e6"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737288/apex-wide.png",
+                  "sha256": "3324d31e20b52ea1dad1aaddd04e6726df5a425965f703af74e0b3c9b1b04631"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:ZEVANORY apex engineering gate",
+            "run_id": 36640737288,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737288",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "runtime",
+            "key": "runtime:exact_sha"
+          },
+          {
+            "ok": true,
+            "source": "runtime",
+            "key": "runtime:health_ready"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P02",
+        "name": "Interface e experiência visual",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "dependency-equivalence",
+              "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "original_workflow_head": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+              "source_scope_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "source_hashes": [
+                {
+                  "path": "solucoes/index.html",
+                  "sha256": "16dfad8c9a07eb4d02914faa43df3fb0519016f776e069125cc55f10bcc093f8"
+                },
+                {
+                  "path": "product.css",
+                  "sha256": "2f7c14f91e34eec33df3f4f83877d019ce050b438838693af274887de626df5a"
+                }
+              ],
+              "layout_frozen": true,
+              "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+              "artifact": {
+                "id": 11066356778,
+                "name": "p02-visual-evidence-37e695127af0",
+                "digest": "sha256:6c6c57f38b7de3024fb8de11c871a360d7d56380c727b3125dc2cf28bc93eb9f"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36640737084/p02-visual-evidence.json",
+                  "sha256": "01896b63205b2e034d4e62f55d2de58c98bf22575b565c33816e5a1fd2d8388c"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737084/visual-desktop.png",
+                  "sha256": "e1d003d05fa4e7712d192aaafde3d83e82ea13e54b756ce3a5b9e5f7428aeef5"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737084/visual-mobile.png",
+                  "sha256": "860197859e7ebf7c197e3fd6c7007f7fa353c51d286acab91efab151578d8687"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737084/visual-tablet.png",
+                  "sha256": "c9f52f03534a14301fa22d59e498f8f50495cfefd15251052a9607aa174a66ab"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-p02-visual-regression",
+            "run_id": 36640737084,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737084",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "dependency-equivalence",
+              "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "original_workflow_head": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+              "source_scope_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "source_hashes": [
+                {
+                  "path": "solucoes/index.html",
+                  "sha256": "16dfad8c9a07eb4d02914faa43df3fb0519016f776e069125cc55f10bcc093f8"
+                },
+                {
+                  "path": "product.css",
+                  "sha256": "2f7c14f91e34eec33df3f4f83877d019ce050b438838693af274887de626df5a"
+                }
+              ],
+              "layout_frozen": true,
+              "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+              "artifact": {
+                "id": 11066241822,
+                "name": "p04-wcag-evidence-37e695127af0",
+                "digest": "sha256:e4128b0d3e4bf061015bb3a19c776c8f075be9a163702405ac7d1acd2cafb2dd"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36640737318/p04-wcag-evidence.json",
+                  "sha256": "779d065303f57bbd3713086126634f31e1e5b5b2c6e665f45ded805d3b525c83"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-p04-wcag",
+            "run_id": 36640737318,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737318",
+            "conclusion": "success"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P03",
+        "name": "Performance e eficiência",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120875479,
+                "name": "p12-slo-observation-1162a5844a16",
+                "digest": "sha256:b73bf574e839ab5d26bf1768c8051ed21acd8c44b74bc316c7b54eda1003e27a"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765496661/p12-slo-observation.json",
+                  "sha256": "eb23d4fe0a1322245c1bca6683eb089aa6e320625e699b8c81a3385f304490c1"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-p12-continuous-slo",
+            "run_id": 36765496661,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765496661",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "runtime",
+            "key": "runtime:health_ready"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P04",
+        "name": "Acessibilidade",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "dependency-equivalence",
+              "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "original_workflow_head": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+              "source_scope_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "source_hashes": [
+                {
+                  "path": "solucoes/index.html",
+                  "sha256": "16dfad8c9a07eb4d02914faa43df3fb0519016f776e069125cc55f10bcc093f8"
+                },
+                {
+                  "path": "product.css",
+                  "sha256": "2f7c14f91e34eec33df3f4f83877d019ce050b438838693af274887de626df5a"
+                }
+              ],
+              "layout_frozen": true,
+              "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+              "artifact": {
+                "id": 11066241822,
+                "name": "p04-wcag-evidence-37e695127af0",
+                "digest": "sha256:e4128b0d3e4bf061015bb3a19c776c8f075be9a163702405ac7d1acd2cafb2dd"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36640737318/p04-wcag-evidence.json",
+                  "sha256": "779d065303f57bbd3713086126634f31e1e5b5b2c6e665f45ded805d3b525c83"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-p04-wcag",
+            "run_id": 36640737318,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737318",
+            "conclusion": "success"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P05",
+        "name": "Confiabilidade operacional",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "dependency-equivalence",
+              "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "original_workflow_head": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+              "source_scope_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "source_hashes": [
+                {
+                  "path": "solucoes/index.html",
+                  "sha256": "16dfad8c9a07eb4d02914faa43df3fb0519016f776e069125cc55f10bcc093f8"
+                },
+                {
+                  "path": "product.css",
+                  "sha256": "2f7c14f91e34eec33df3f4f83877d019ce050b438838693af274887de626df5a"
+                },
+                {
+                  "path": "legal.css",
+                  "sha256": "cc5adb594ab22d15506fea9bceaf2cea342526bb4e57c5a9c2a7b6b03263bdc9"
+                },
+                {
+                  "path": "worker/cloudflare-worker.recovered.mjs",
+                  "sha256": "e3af434936e8d93415b11207144589f96dc41dbc55f62a25b32af588bb5325d5"
+                }
+              ],
+              "layout_frozen": true,
+              "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+              "artifact": {
+                "id": 11066371756,
+                "name": "zevanory-remote-quality-evidence-37e695127af0",
+                "digest": "sha256:c93977186fda72b8e6d6c69f3b2de7e546d2580069f26966eb49b8c29a20a8b1"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36640737333/lighthouse.json",
+                  "sha256": "a22c08e7b4bbef7eef8df4da6d5ce12a4616ec76ea6eaaacc90342d2cb993d26"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-remote-quality-gates",
+            "run_id": 36640737333,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737333",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "runtime",
+            "key": "runtime:health_ready"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P06",
+        "name": "Testes e regressão",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "dependency-equivalence",
+              "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "original_workflow_head": "6c770fda5d12e534bc132f8617624f0389919f0e",
+              "source_scope_sha": "6c770fda5d12e534bc132f8617624f0389919f0e",
+              "source_hashes": [
+                {
+                  "path": "evidence/zees16/current.json",
+                  "sha256": "cc7ede412c3a12963b5fb7089e47163ce5ba3e20cdcc7241182730279647e969"
+                },
+                {
+                  "path": "scripts/zees16_evidence_gate.py",
+                  "sha256": "c32bbbc4ca298f63af226e6f720a9af720b959cc35d41f5bdc79656dfbf4a5fb"
+                },
+                {
+                  "path": "scripts/zea10_autonomy_gate.py",
+                  "sha256": "e567e790ece03e47c5856ae711dedd32127cd696991b528dcda988a837be87b1"
+                },
+                {
+                  "path": "scripts/provider_independence_gate.py",
+                  "sha256": "8e591ac7dc4510dcf6e7cb5d6a84bcc8c138879d8089ae3c0dca8e4f448c898f"
+                },
+                {
+                  "path": "scripts/operational_preservation_gate.py",
+                  "sha256": "1d921c1189ab75bdece5a427bd7c499a638820957ce68b8b0f26c487fbe4cd22"
+                }
+              ],
+              "layout_frozen": true,
+              "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+              "artifact": {
+                "id": 11092731884,
+                "name": "p06-zees-gate-37e695127af0",
+                "digest": "sha256:d1444e2f4e0ee43082ae01a331816ed6cce85dfea9351a0591ab47a5f4bfad96"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36707525414/p06-zees-gate.json",
+                  "sha256": "a1b68c71c44ec301f43b9c56a125efd8256cc3ee430850bd5279033c60491af6"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:ZEES-16 Evidence Gate",
+            "run_id": 36707525414,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36707525414",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "dependency-equivalence",
+              "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "original_workflow_head": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+              "source_scope_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "source_hashes": [
+                {
+                  "path": "solucoes/index.html",
+                  "sha256": "16dfad8c9a07eb4d02914faa43df3fb0519016f776e069125cc55f10bcc093f8"
+                },
+                {
+                  "path": "product.css",
+                  "sha256": "2f7c14f91e34eec33df3f4f83877d019ce050b438838693af274887de626df5a"
+                },
+                {
+                  "path": "legal.css",
+                  "sha256": "cc5adb594ab22d15506fea9bceaf2cea342526bb4e57c5a9c2a7b6b03263bdc9"
+                },
+                {
+                  "path": "worker/cloudflare-worker.recovered.mjs",
+                  "sha256": "e3af434936e8d93415b11207144589f96dc41dbc55f62a25b32af588bb5325d5"
+                }
+              ],
+              "layout_frozen": true,
+              "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+              "artifact": {
+                "id": 11066371756,
+                "name": "zevanory-remote-quality-evidence-37e695127af0",
+                "digest": "sha256:c93977186fda72b8e6d6c69f3b2de7e546d2580069f26966eb49b8c29a20a8b1"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36640737333/lighthouse.json",
+                  "sha256": "a22c08e7b4bbef7eef8df4da6d5ce12a4616ec76ea6eaaacc90342d2cb993d26"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-remote-quality-gates",
+            "run_id": 36640737333,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737333",
+            "conclusion": "success"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P07",
+        "name": "Segurança aplicável",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11119803332,
+                "name": "zevanory-p07-security-1162a5844a16",
+                "digest": "sha256:fe51e8f3816893f12ae1125cfa3ce4f3690b25dd0701b506f62ff411fdbf7b08"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765512499/p07-dast.json",
+                  "sha256": "42134efc710801e52c515d8f12d095c0feacb98731988339a5e685f0a2c21562"
+                },
+                {
+                  "path": "integral-proof/workflows/36765512499/p07-sca.json",
+                  "sha256": "1a3af76953eba212e33bfacdc00cff5b6bac438739f2aa220728efbb09683eb4"
+                },
+                {
+                  "path": "integral-proof/workflows/36765512499/p07-security-proof.json",
+                  "sha256": "e7967e3136fc3bd6b6446e58523f2935c6f695fe38bad119a1e2db5c5df064fd"
+                },
+                {
+                  "path": "integral-proof/workflows/36765512499/semgrep.json",
+                  "sha256": "3e1953659f37c5522b6646496ceaa6123db4197e2a3315b127de1740d5d2fd6b"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-p07-app-security",
+            "run_id": 36765512499,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765512499",
+            "conclusion": "success"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P08",
+        "name": "Observabilidade",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120357731,
+                "name": "zevanory-p12-observability-1162a5844a16",
+                "digest": "sha256:be445c78e723e29646f2708c1ac14fa5240d2bfbfdde8ef1bbafbed1d6a9329d"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765492511/evidence-p12-incident.json",
+                  "sha256": "29f1615f347a760a2febeb6cdfb1a719059e917f4618f729b620e14761dd0311"
+                },
+                {
+                  "path": "integral-proof/workflows/36765492511/evidence-p12-instrumentation.json",
+                  "sha256": "a549fbd349c43204a3b90831dcdef4c4bbcabce090ffebf2618f317ab267c937"
+                },
+                {
+                  "path": "integral-proof/workflows/36765492511/evidence-p12-live-slo.json",
+                  "sha256": "fe606e708e4127cce7bed73adb3cbbd1c4360caef8a017c00adb24467909f469"
+                },
+                {
+                  "path": "integral-proof/workflows/36765492511/zevanory-p12-proof.json",
+                  "sha256": "45ad89ea7bcf2831913fe23e51df1d17fb291c4efbf2f9625ef800e480607b12"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-p12-observability-exact-release",
+            "run_id": 36765492511,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765492511",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "runtime",
+            "key": "runtime:telemetry_active"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P09",
+        "name": "Resiliência",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120502619,
+                "name": "zevanory-portable-recovery-kit-1162a5844a16",
+                "digest": "sha256:1858eafcf499b4d6b64cacb22ba6ee6d87d352f21bd4f003e867083180d50291"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765500311/recovery-build.json",
+                  "sha256": "07101268b838f7b5b1e0904f73c5b43889612cd6b1965c54f0fbb6a997ace404"
+                },
+                {
+                  "path": "integral-proof/workflows/36765500311/zevanory-portable-recovery-kit.sha256",
+                  "sha256": "771be29c187cd3352b8750dea5861852733a5f4307e557ac5a60da481ec67993"
+                },
+                {
+                  "path": "integral-proof/workflows/36765500311/zevanory-portable-recovery-kit.tgz",
+                  "sha256": "b138fd81f95e8f500bc83f59dfdfd2cecd239b2c9b9e7302bfea1e86d204f160"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:ZEVANORY portable disaster recovery",
+            "run_id": 36765500311,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765500311",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "dependency-equivalence",
+              "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "original_workflow_head": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+              "source_scope_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "source_hashes": [
+                {
+                  "path": "solucoes/index.html",
+                  "sha256": "16dfad8c9a07eb4d02914faa43df3fb0519016f776e069125cc55f10bcc093f8"
+                },
+                {
+                  "path": "product.css",
+                  "sha256": "2f7c14f91e34eec33df3f4f83877d019ce050b438838693af274887de626df5a"
+                },
+                {
+                  "path": "legal.css",
+                  "sha256": "cc5adb594ab22d15506fea9bceaf2cea342526bb4e57c5a9c2a7b6b03263bdc9"
+                },
+                {
+                  "path": "worker/cloudflare-worker.recovered.mjs",
+                  "sha256": "e3af434936e8d93415b11207144589f96dc41dbc55f62a25b32af588bb5325d5"
+                }
+              ],
+              "layout_frozen": true,
+              "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+              "artifact": {
+                "id": 11066371756,
+                "name": "zevanory-remote-quality-evidence-37e695127af0",
+                "digest": "sha256:c93977186fda72b8e6d6c69f3b2de7e546d2580069f26966eb49b8c29a20a8b1"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36640737333/lighthouse.json",
+                  "sha256": "a22c08e7b4bbef7eef8df4da6d5ce12a4616ec76ea6eaaacc90342d2cb993d26"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-remote-quality-gates",
+            "run_id": 36640737333,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737333",
+            "conclusion": "success"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P10",
+        "name": "Continuidade e recuperação",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120502619,
+                "name": "zevanory-portable-recovery-kit-1162a5844a16",
+                "digest": "sha256:1858eafcf499b4d6b64cacb22ba6ee6d87d352f21bd4f003e867083180d50291"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765500311/recovery-build.json",
+                  "sha256": "07101268b838f7b5b1e0904f73c5b43889612cd6b1965c54f0fbb6a997ace404"
+                },
+                {
+                  "path": "integral-proof/workflows/36765500311/zevanory-portable-recovery-kit.sha256",
+                  "sha256": "771be29c187cd3352b8750dea5861852733a5f4307e557ac5a60da481ec67993"
+                },
+                {
+                  "path": "integral-proof/workflows/36765500311/zevanory-portable-recovery-kit.tgz",
+                  "sha256": "b138fd81f95e8f500bc83f59dfdfd2cecd239b2c9b9e7302bfea1e86d204f160"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:ZEVANORY portable disaster recovery",
+            "run_id": 36765500311,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765500311",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120432668,
+                "name": "p14-three-provider-quorum-1162a5844a16",
+                "digest": "sha256:0da25a564ead22eec74d95662e70bdea74473f208ef3f792a124ec79c911ba31"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765508335/p14-three-provider-quorum.json",
+                  "sha256": "913c3ffbedfa2f6c506c305b678e7af678e6fcaa7529ff7a4f6ca8e0263fd0ed"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:ZEVANORY authenticated open-provider runtime quorum",
+            "run_id": 36765508335,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765508335",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "runtime",
+            "key": "runtime:quorum_ok"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P11",
+        "name": "Frontend e eficiência de entrega",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "dependency-equivalence",
+              "original_release_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "original_workflow_head": "e7d6ea54e3b16fa701f468f38e51a9e6958a5b3f",
+              "source_scope_sha": "37e695127af02c9a32c601db0353a3708fc45d82",
+              "source_hashes": [
+                {
+                  "path": "solucoes/index.html",
+                  "sha256": "16dfad8c9a07eb4d02914faa43df3fb0519016f776e069125cc55f10bcc093f8"
+                },
+                {
+                  "path": "product.css",
+                  "sha256": "2f7c14f91e34eec33df3f4f83877d019ce050b438838693af274887de626df5a"
+                }
+              ],
+              "layout_frozen": true,
+              "changes_outside_scope_verified_by": "collector-regression.json + exact P07 SAST/DAST + live architecture readback",
+              "artifact": {
+                "id": 11066356778,
+                "name": "p02-visual-evidence-37e695127af0",
+                "digest": "sha256:6c6c57f38b7de3024fb8de11c871a360d7d56380c727b3125dc2cf28bc93eb9f"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36640737084/p02-visual-evidence.json",
+                  "sha256": "01896b63205b2e034d4e62f55d2de58c98bf22575b565c33816e5a1fd2d8388c"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737084/visual-desktop.png",
+                  "sha256": "e1d003d05fa4e7712d192aaafde3d83e82ea13e54b756ce3a5b9e5f7428aeef5"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737084/visual-mobile.png",
+                  "sha256": "860197859e7ebf7c197e3fd6c7007f7fa353c51d286acab91efab151578d8687"
+                },
+                {
+                  "path": "integral-proof/workflows/36640737084/visual-tablet.png",
+                  "sha256": "c9f52f03534a14301fa22d59e498f8f50495cfefd15251052a9607aa174a66ab"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-p02-visual-regression",
+            "run_id": 36640737084,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36640737084",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120875479,
+                "name": "p12-slo-observation-1162a5844a16",
+                "digest": "sha256:b73bf574e839ab5d26bf1768c8051ed21acd8c44b74bc316c7b54eda1003e27a"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765496661/p12-slo-observation.json",
+                  "sha256": "eb23d4fe0a1322245c1bca6683eb089aa6e320625e699b8c81a3385f304490c1"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-p12-continuous-slo",
+            "run_id": 36765496661,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765496661",
+            "conclusion": "success"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P12",
+        "name": "Produção e SRE",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120332760,
+                "name": "canonical-public-promotion-1162a5844a16",
+                "digest": "sha256:94c2a9b7313afb5f58dfbac27b5b1757120c09736b8162610cd534e6502db7d4"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765483175/canonical-existing-deploy-proof.json",
+                  "sha256": "d242e301ce490d4ec64b1fe9c0975be0b6e8ee49300bc56a0dee203e3f88dc7a"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:ZEVANORY central production deploy",
+            "run_id": 36765483175,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765483175",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120357731,
+                "name": "zevanory-p12-observability-1162a5844a16",
+                "digest": "sha256:be445c78e723e29646f2708c1ac14fa5240d2bfbfdde8ef1bbafbed1d6a9329d"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765492511/evidence-p12-incident.json",
+                  "sha256": "29f1615f347a760a2febeb6cdfb1a719059e917f4618f729b620e14761dd0311"
+                },
+                {
+                  "path": "integral-proof/workflows/36765492511/evidence-p12-instrumentation.json",
+                  "sha256": "a549fbd349c43204a3b90831dcdef4c4bbcabce090ffebf2618f317ab267c937"
+                },
+                {
+                  "path": "integral-proof/workflows/36765492511/evidence-p12-live-slo.json",
+                  "sha256": "fe606e708e4127cce7bed73adb3cbbd1c4360caef8a017c00adb24467909f469"
+                },
+                {
+                  "path": "integral-proof/workflows/36765492511/zevanory-p12-proof.json",
+                  "sha256": "45ad89ea7bcf2831913fe23e51df1d17fb291c4efbf2f9625ef800e480607b12"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-p12-observability-exact-release",
+            "run_id": 36765492511,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765492511",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "runtime",
+            "key": "runtime:exact_sha"
+          },
+          {
+            "ok": true,
+            "source": "runtime",
+            "key": "runtime:health_ready"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P13",
+        "name": "Governança e evidência",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120337485,
+                "name": "p15-provenance-1162a5844a16",
+                "digest": "sha256:14ce8a84fc10ce6173f0bf4fc18538899bf86dfbfc4d4db41f2a689a3e1a9fe4"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765488258/p15-provenance.json",
+                  "sha256": "d4c736823cab315e4aa9f087be35389d29f6a859828b84c3f6d9eb74dc53d799"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-p15-provenance",
+            "run_id": 36765488258,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765488258",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "runtime",
+            "key": "runtime:exact_sha"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P14",
+        "name": "Automação, IA e provedores",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120262559,
+                "name": "p14-provider-independence-1162a5844a16",
+                "digest": "sha256:e4a285848d595c06df4eb951cd0798410ddc8ffb1ebf7a2878024b4796ed638d"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765504038/p14-provider-independence.json",
+                  "sha256": "b1a4f5079cade74b79865cb9ca5df7eabde4f7a81a167ab2799a210562b6ca39"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:ZEVANORY provider independence gate",
+            "run_id": 36765504038,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765504038",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120432668,
+                "name": "p14-three-provider-quorum-1162a5844a16",
+                "digest": "sha256:0da25a564ead22eec74d95662e70bdea74473f208ef3f792a124ec79c911ba31"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765508335/p14-three-provider-quorum.json",
+                  "sha256": "913c3ffbedfa2f6c506c305b678e7af678e6fcaa7529ff7a4f6ca8e0263fd0ed"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:ZEVANORY authenticated open-provider runtime quorum",
+            "run_id": 36765508335,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765508335",
+            "conclusion": "success"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P15",
+        "name": "CI/CD e proveniência",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120337485,
+                "name": "p15-provenance-1162a5844a16",
+                "digest": "sha256:14ce8a84fc10ce6173f0bf4fc18538899bf86dfbfc4d4db41f2a689a3e1a9fe4"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765488258/p15-provenance.json",
+                  "sha256": "d4c736823cab315e4aa9f087be35389d29f6a859828b84c3f6d9eb74dc53d799"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-p15-provenance",
+            "run_id": 36765488258,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765488258",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120332760,
+                "name": "canonical-public-promotion-1162a5844a16",
+                "digest": "sha256:94c2a9b7313afb5f58dfbac27b5b1757120c09736b8162610cd534e6502db7d4"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765483175/canonical-existing-deploy-proof.json",
+                  "sha256": "d242e301ce490d4ec64b1fe9c0975be0b6e8ee49300bc56a0dee203e3f88dc7a"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:ZEVANORY central production deploy",
+            "run_id": 36765483175,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765483175",
+            "conclusion": "success"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      },
+      {
+        "id": "P16",
+        "name": "Prontidão comercial",
+        "state": "PROVADO",
+        "evidence": [
+          {
+            "ok": true,
+            "source": "github-actions-verified-release-binding",
+            "binding": {
+              "mode": "exact-run",
+              "workflow_source_sha": "1ed8495d83810669d4bf45a4e6f70cc520244d0e",
+              "target_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+              "artifact": {
+                "id": 11120307449,
+                "name": "zevanory-p16-financial-1162a5844a16",
+                "digest": "sha256:124b4f6e17103d017f94b67670f10a9cdf6c8ac90c8e102c595917d35f6ae274"
+              },
+              "files": [
+                {
+                  "path": "integral-proof/workflows/36765517616/financial-engine-deterministic.json",
+                  "sha256": "d9f9ba500c7e2c58c2de97388d7171129ec9624723d94b9e8692eb58332b4fc6"
+                },
+                {
+                  "path": "integral-proof/workflows/36765517616/p16-source-contract.json",
+                  "sha256": "a19b497f1509679a0636156868685400d319dcc0277f83ca86457e6430d1cf8a"
+                },
+                {
+                  "path": "integral-proof/workflows/36765517616/zevanory-p16-proof.json",
+                  "sha256": "1ee900e6b31193724ca3e20bce212b312ebcce1c60df1ec74af3f3d251fa9416"
+                }
+              ]
+            },
+            "exact_release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+            "key": "workflow:zevanory-p16-deterministic-exact-release",
+            "run_id": 36765517616,
+            "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/actions/runs/36765517616",
+            "conclusion": "success"
+          },
+          {
+            "ok": true,
+            "source": "runtime",
+            "key": "runtime:sales_fail_closed"
+          },
+          {
+            "ok": true,
+            "source": "runtime",
+            "key": "runtime:health_ready"
+          }
+        ],
+        "blockers": [],
+        "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+        "observed_at": "2026-09-30T19:33:51.400Z"
+      }
+    ]
+  },
+  "zea10": {
+    "framework": "ZEA-10",
+    "evaluator": "ZEA-10/2026.09-evaluator-v1",
+    "role": "evaluation",
+    "source_layer": "ZEES-16",
+    "authority": false,
+    "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+    "source_decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+    "counts": {
+      "proven": 10,
+      "partial": 0,
+      "blocked": 0,
+      "unknown": 0
+    },
+    "pillars": [
+      {
+        "id": "ZEA10-01",
+        "name": "Maturidade e prontidão operacional",
+        "state": "PROVEN",
+        "requires": [
+          "P05",
+          "P08",
+          "P10",
+          "P12",
+          "P16"
+        ],
+        "evidence": [
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P05",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P08",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P10",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P12",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P16",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          }
+        ],
+        "blockers": []
+      },
+      {
+        "id": "ZEA10-02",
+        "name": "Arquitetura e engenharia de sistemas",
+        "state": "PROVEN",
+        "requires": [
+          "P01",
+          "P11",
+          "P15"
+        ],
+        "evidence": [
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P01",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P11",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P15",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          }
+        ],
+        "blockers": []
+      },
+      {
+        "id": "ZEA10-03",
+        "name": "Performance e eficiência computacional",
+        "state": "PROVEN",
+        "requires": [
+          "P03",
+          "P08",
+          "P12"
+        ],
+        "evidence": [
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P03",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P08",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P12",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          }
+        ],
+        "blockers": []
+      },
+      {
+        "id": "ZEA10-04",
+        "name": "Qualidade de software",
+        "state": "PROVEN",
+        "requires": [
+          "P02",
+          "P04",
+          "P05",
+          "P06"
+        ],
+        "evidence": [
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P02",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P04",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P05",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P06",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          }
+        ],
+        "blockers": []
+      },
+      {
+        "id": "ZEA10-05",
+        "name": "Safety e integridade funcional",
+        "state": "PROVEN",
+        "requires": [
+          "P05",
+          "P06",
+          "P09",
+          "P10"
+        ],
+        "evidence": [
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P05",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P06",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P09",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P10",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          }
+        ],
+        "blockers": []
+      },
+      {
+        "id": "ZEA10-06",
+        "name": "Cibersegurança",
+        "state": "PROVEN",
+        "requires": [
+          "P07",
+          "P15"
+        ],
+        "evidence": [
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P07",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P15",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          }
+        ],
+        "blockers": []
+      },
+      {
+        "id": "ZEA10-07",
+        "name": "Qualidade global do produto",
+        "state": "PROVEN",
+        "requires": [
+          "P02",
+          "P03",
+          "P04",
+          "P05",
+          "P06"
+        ],
+        "evidence": [
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P02",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P03",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P04",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P05",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P06",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          }
+        ],
+        "blockers": []
+      },
+      {
+        "id": "ZEA10-08",
+        "name": "Automação e integrações",
+        "state": "PROVEN",
+        "requires": [
+          "P08",
+          "P14"
+        ],
+        "evidence": [
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P08",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P14",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          }
+        ],
+        "blockers": []
+      },
+      {
+        "id": "ZEA10-09",
+        "name": "Segurança da informação e governança",
+        "state": "PROVEN",
+        "requires": [
+          "P07",
+          "P13",
+          "P15"
+        ],
+        "evidence": [
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P07",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P13",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P15",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          }
+        ],
+        "blockers": []
+      },
+      {
+        "id": "ZEA10-10",
+        "name": "Validação, testes extremos, resiliência e recuperação",
+        "state": "PROVEN",
+        "requires": [
+          "P06",
+          "P09",
+          "P10",
+          "P12"
+        ],
+        "evidence": [
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P06",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P09",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P10",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          },
+          {
+            "source_layer": "ZEES-16",
+            "source_pillar": "P12",
+            "state": "PROVEN",
+            "decision_hash": "fdabc8cbd95651d0adcebe2dd16943fbe9c9193138025c376b350d05aa60ea4a",
+            "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+          }
+        ],
+        "blockers": []
+      }
+    ]
+  },
+  "observations": [
+    {
+      "url": "https://zevanory.api.br/api/status",
+      "http": 200,
+      "sha256": "b00a57eb4353dbf4e7a3b4b4f6c3f758012818ab2b5f4e958e875810ea6afba2",
+      "source_identity": null
+    },
+    {
+      "url": "https://zevanory.api.br/api/health",
+      "http": 200,
+      "sha256": "e251072c2c980de7f5036430c471214f419d54230e68f00383b938d762a64a58",
+      "source_identity": null
+    },
+    {
+      "url": "https://zevanory.api.br/api/control-plane",
+      "http": 200,
+      "sha256": "c0f7934664e7980bf8d4d26acf588363efa5b1107e7380fc4561fdf0fc1960c3",
+      "source_identity": null
+    },
+    {
+      "url": "https://zevanory.api.br/api/continuity",
+      "http": 200,
+      "sha256": "1ce146efe76dd3c8d67c7370521e84b74fa6259c9be64d5209461a8eda846b01",
+      "source_identity": null
+    },
+    {
+      "url": "https://zevanory.api.br/api/core/v1/snapshot",
+      "http": 200,
+      "sha256": "fefacb6f24da7047e1e194266042d06a53a48b9678d5e1349dca4266685dc47a",
+      "source_identity": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2"
+    },
+    {
+      "url": "https://zevanory-product-control-edge-ha.onrender.com/portable-health",
+      "http": 200,
+      "sha256": "fbad6113af9267c61711cd001a20f1508239ad701c383e3f989aa84dea8c0aa2",
+      "source_identity": null
+    },
+    {
+      "url": "https://zevanory-quorum-render-v2.onrender.com",
+      "http": 200,
+      "sha256": "05991901ee4389280c3747d62365e20dce746d078d34251f8cd85a340bc9513b",
+      "source_identity": "5fdd49dacec4a467b35bc63bec88979b2909b2c6"
+    },
+    {
+      "url": "https://tts.167-172-146-60.sslip.io/quorum",
+      "http": 200,
+      "sha256": "e39e86958dc618069c365d9447349a33f9b79df08c9884f2a9b03567baf2c7c7",
+      "source_identity": "fc4d58008f42a775fbc450364ffecf856b76c29a"
+    }
+  ],
+  "observability": {
+    "metrics": [
+      {
+        "url": "https://zevanory.api.br/api/status",
+        "http": 200,
+        "latency_ms": 1496,
+        "sha256": "b00a57eb4353dbf4e7a3b4b4f6c3f758012818ab2b5f4e958e875810ea6afba2"
+      },
+      {
+        "url": "https://zevanory.api.br/api/health",
+        "http": 200,
+        "latency_ms": 1652,
+        "sha256": "e251072c2c980de7f5036430c471214f419d54230e68f00383b938d762a64a58"
+      },
+      {
+        "url": "https://zevanory.api.br/api/control-plane",
+        "http": 200,
+        "latency_ms": 380,
+        "sha256": "c0f7934664e7980bf8d4d26acf588363efa5b1107e7380fc4561fdf0fc1960c3"
+      },
+      {
+        "url": "https://zevanory.api.br/api/continuity",
+        "http": 200,
+        "latency_ms": 1454,
+        "sha256": "1ce146efe76dd3c8d67c7370521e84b74fa6259c9be64d5209461a8eda846b01"
+      },
+      {
+        "url": "https://zevanory.api.br/api/core/v1/snapshot",
+        "http": 200,
+        "latency_ms": 2784,
+        "sha256": "fefacb6f24da7047e1e194266042d06a53a48b9678d5e1349dca4266685dc47a"
+      },
+      {
+        "url": "https://zevanory-product-control-edge-ha.onrender.com/portable-health",
+        "http": 200,
+        "latency_ms": 903,
+        "sha256": "fbad6113af9267c61711cd001a20f1508239ad701c383e3f989aa84dea8c0aa2"
+      },
+      {
+        "url": "https://zevanory-quorum-render-v2.onrender.com",
+        "http": 200,
+        "latency_ms": 230,
+        "sha256": "05991901ee4389280c3747d62365e20dce746d078d34251f8cd85a340bc9513b"
+      },
+      {
+        "url": "https://tts.167-172-146-60.sslip.io/quorum",
+        "http": 200,
+        "latency_ms": 512,
+        "sha256": "e39e86958dc618069c365d9447349a33f9b79df08c9884f2a9b03567baf2c7c7"
+      }
+    ],
+    "logs_visible": true,
+    "alert_visible": true,
+    "primary_outage": "observed primary_database_unconfigured on Render HA",
+    "secondary_ok": true,
+    "simulation_production_mutations": 0
+  },
+  "scope": "ZEVANORY technical certification with frozen commercial lock",
+  "certified_at": "2026-09-30T19:33:51.401Z",
+  "certificate": {
+    "run_id": 36766452819,
+    "head_sha": "78a593bf49ae8ecc2b4f4f8fd6c4482f28aaa6ff",
+    "artifact": {
+      "id": 11121825375,
+      "name": "exact-release-integral-proof-1162a5844a16",
+      "digest": "sha256:453f65d5984bbd05ad3320d8505f057db995288683d3772159fa592a1bcfda73"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schema": "zevanory.collector.regression.v1",
+  "release_sha": "1162a5844a1679d7d4ffa17f17fdd2c2b80a35b2",
+  "base_sha": "2237836450cd371365d9fe00c83e42f70df28025",
+  "changed": [
+    "worker/evidence-control-plane.mjs"
+  ],
+  "negative_tests": 6,
+  "checks": "PASS",
+  "layout_hashes": [
+    {
+      "path": "admin.css",
+      "sha256": "9db8657a2ab4d8585b4de840da5a13b0c2037717d4e8f72a8f0cf52b5efcb8f1"
+    },
+    {
+      "path": "worker/control-plane-vnext-source.mjs",
+      "sha256": "e0c93ba5de2ffa9fa62640adb994f7e3721e2fdc417dcd84b2ecbc76c82c5a9e"
+    },
+    {
+      "path": "worker/admin-console.mjs",
+      "sha256": "a5e97002d212f9ff37d2a5107ecc2e27e2a46401fb5adcc2fd602c100c89de24"
+    },
+    {
+      "path": "worker/admin-render-server.mjs",
+      "sha256": "e6c3bca7af1543067c103ba55d0c8474f922ac14eb719a72ced98f16f6269cd4"
+    }
+  ]
+}
