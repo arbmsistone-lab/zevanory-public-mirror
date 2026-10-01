@@ -1,0 +1,22 @@
+name = "zevanory-public-router"
+main = "public-router-worker.mjs"
+compatibility_date = "2026-09-19"
+account_id = "1b26415802588185a86c1d4d3ebf5bdb"
+routes = [
+  "zevanory.api.br/",
+  "zevanory.api.br/solucoes*",
+  "zevanory.api.br/zevanory-cfo*",
+  "zevanory.api.br/arbm-contador-saloes*",
+  "zevanory.api.br/ia-na-pratica*",
+  "zevanory.api.br/vendas-na-pratica*",
+  "zevanory.api.br/lucro-e-caixa*",
+  "zevanory.api.br/combo-ia-vendas*",
+  "zevanory.api.br/negocio-completo*",
+  "zevanory.api.br/termos*",
+  "zevanory.api.br/privacidade*",
+  "zevanory.api.br/reembolso*",
+  "zevanory.api.br/afiliados*",
+  "zevanory.api.br/arbm-sist*",
+  "zevanory.api.br/zevanory-one*",
+  "zevanory.api.br/arbm-one*"
+]

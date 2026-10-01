@@ -1,0 +1,12 @@
+name = "zevanory-sales-public"
+main = "sales-worker.mjs"
+compatibility_date = "2026-09-19"
+account_id = "1b26415802588185a86c1d4d3ebf5bdb"
+routes = [
+  { pattern = "vendas.zevanory.api.br", custom_domain = true }
+]
+[assets]
+directory = "./sales-public"
+binding = "ASSETS"
+run_worker_first = true
+html_handling = "none"
