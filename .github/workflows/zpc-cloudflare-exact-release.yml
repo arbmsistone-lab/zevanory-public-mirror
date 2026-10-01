@@ -81,6 +81,16 @@ jobs:
               req=urllib.request.Request(url,headers={"User-Agent":"ZPC-Exact-Readback/1.0","Accept":accept,"Cache-Control":"no-cache"})
               with urllib.request.urlopen(req,timeout=25) as r:
                   return r.status,r.headers.get("content-type",""),r.read(2048).decode("utf-8","replace")
+          def get_stream(url):
+              req=urllib.request.Request(url,headers={"User-Agent":"ZPC-Exact-Readback/1.0","Accept":"text/event-stream","Cache-Control":"no-cache"})
+              with urllib.request.urlopen(req,timeout=10) as r:
+                  parts=[]
+                  for _ in range(32):
+                      line=r.readline().decode("utf-8","replace")
+                      if not line: break
+                      parts.append(line)
+                      if "event: commercial-update" in "".join(parts): break
+                  return r.status,r.headers.get("content-type",""),"".join(parts)
           health=None
           for _ in range(24):
               try:
@@ -91,7 +101,7 @@ jobs:
               time.sleep(5)
           assert health and health.get("workerCommit")==sha,health
           for path in ["/api/commercial/stream","/control/api/commercial/stream"]:
-              status,ct,body=get("https://controle.zevanory.api.br"+path,"text/event-stream")
+              status,ct,body=get_stream("https://controle.zevanory.api.br"+path)
               assert status==200,(path,status)
               assert "text/event-stream" in ct,(path,ct)
               assert "event: commercial-update" in body,(path,body[:300])
