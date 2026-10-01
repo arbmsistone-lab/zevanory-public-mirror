@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   validate:
-    name: zees16-evidence / fail-closed
+    name: zees16-evidence / exact-release-legacy
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
