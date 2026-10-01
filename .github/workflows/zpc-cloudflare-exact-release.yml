@@ -14,7 +14,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
-      ZPC_SHA: 4e89cfb33e7e206e35065287808c7aefe1060f36
+      ZPC_SHA: c2f7a904dc2e0cdfbaaf6c3507b034331fdf2d5a
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
