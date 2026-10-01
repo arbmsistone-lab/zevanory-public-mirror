@@ -112,7 +112,7 @@ jobs:
           PY
           git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
           python3 <<'PY'
-          import json,os
+          import json,os,re
           from pathlib import Path
           p="wrangler.central-fix.jsonc"
           c=json.load(open(p))
@@ -170,6 +170,33 @@ jobs:
               print("WHATSAPP_NUMBER_CUTOVER_FILES none_needed")
           else:
               print("WHATSAPP_NUMBER_CUTOVER_FILES", *changed)
+
+          retired_slugs=("zevanory-one","arbm-sist")
+          for retired_asset in ("public/zevanory-one.html","public/arbm-one.html","public/arbm-sist.html"):
+              Path(retired_asset).unlink(missing_ok=True)
+
+          solutions_path=Path("public/solucoes.html")
+          solutions=solutions_path.read_text(encoding="utf-8")
+          solutions=re.sub(r'<a class="legacy-contract" href="/zevanory-one">ZEVANORY ONE</a>\s*',"",solutions)
+          for slug in retired_slugs:
+              solutions=re.sub(rf'<a class="catalog-card" href="/{re.escape(slug)}">.*?</a>\s*',"",solutions,flags=re.S)
+          solutions=solutions.replace("ZEVANORY ONE, ARBM SIST, ","")
+          solutions_path.write_text(solutions,encoding="utf-8")
+
+          sitemap_path=Path("public/sitemap.xml")
+          sitemap=sitemap_path.read_text(encoding="utf-8")
+          for slug in retired_slugs:
+              sitemap=re.sub(rf'\s*<url><loc>https://zevanory\.api\.br/{re.escape(slug)}</loc>.*?</url>',"",sitemap,flags=re.S)
+          sitemap_path.write_text(sitemap,encoding="utf-8")
+
+          assert "ZEVANORY ONE" not in solutions
+          assert "ARBM SIST" not in solutions
+          for slug in retired_slugs:
+              assert f"https://zevanory.api.br/{slug}" not in sitemap
+          for retired_asset in ("public/zevanory-one.html","public/arbm-one.html","public/arbm-sist.html"):
+              assert not Path(retired_asset).exists()
+          print("COMMERCIAL_RETIREMENT_OVERLAY=PASS")
+
           c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
           c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"
           c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"
