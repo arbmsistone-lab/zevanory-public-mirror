@@ -20,13 +20,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Require authenticated Cloudflare route
+      - name: Determine authenticated Cloudflare authority
+        id: authority
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
-          npx --yes wrangler@4.135.0 whoami
+          if test -n "${CLOUDFLARE_API_TOKEN:-}" && npx --yes wrangler@4.135.0 whoami 2>&1 | tee /tmp/whoami.txt | grep -F "${CLOUDFLARE_ACCOUNT_ID}"; then
+            echo "can_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "CLOUDFLARE_CANONICAL_AUTHORITY=PASS"
+          else
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "CLOUDFLARE_CANONICAL_AUTHORITY=READBACK_ONLY"
+          fi
       - name: Fetch exact Product Control release
         shell: bash
         run: |
@@ -58,6 +64,7 @@ jobs:
           grep -F 'name = "zevanory-product-control-portable"' cf-worker/wrangler.release.toml
           grep -F 'controle.zevanory.api.br' cf-worker/wrangler.release.toml
       - name: Deploy exact Cloudflare Worker
+        if: steps.authority.outputs.can_deploy == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -68,8 +75,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json,time,urllib.request
-          sha="1d705c7c1170e38eb9fce00e9352aa7c686601f0"
+          import json,os,time,urllib.request
+          sha=os.environ["ZPC_SHA"]
           def get(url, accept="application/json"):
               req=urllib.request.Request(url,headers={"User-Agent":"ZPC-Exact-Readback/1.0","Accept":accept,"Cache-Control":"no-cache"})
               with urllib.request.urlopen(req,timeout=25) as r:
