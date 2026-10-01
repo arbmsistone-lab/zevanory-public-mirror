@@ -20,6 +20,8 @@ PRODUCTS = [
     ("combo-ia-vendas/index.html", "combo-ia-vendas", "Product"),
     ("negocio-completo/index.html", "negocio-completo", "Product"),
 ]
+RETIRED_COMMERCIAL = {"zevanory-one", "arbm-sist"}
+ACTIVE_PRODUCTS = [row for row in PRODUCTS if row[1] not in RETIRED_COMMERCIAL]
 CHECKOUT_RE = re.compile(r"(checkout|comprar|buy|payment|pagamento|mercadopago|stripe|hotmart|kiwify)", re.I)
 
 class Doc(HTMLParser):
@@ -169,11 +171,14 @@ def check_solutions():
         errors += fail(f"solucoes: esperado 1 h1, encontrado {doc.h1}")
     if not doc.meta.get("description") or not doc.canonical:
         errors += fail("solucoes: metadata essencial ausente")
-    for slug in [x[1] for x in PRODUCTS]:
+    for slug in [x[1] for x in ACTIVE_PRODUCTS]:
         if not any(slug in href for href in doc.links):
             errors += fail(f"solucoes: link para {slug} ausente")
+    for slug in RETIRED_COMMERCIAL:
+        if any(slug in href for href in doc.links):
+            errors += fail(f"solucoes: produto retirado ainda exposto: {slug}")
     if errors == 0:
-        pass_(f"solucoes/index.html: catálogo {len(PRODUCTS)}/{len(PRODUCTS)} aprovado")
+        pass_(f"solucoes/index.html: catálogo ativo {len(ACTIVE_PRODUCTS)}/{len(ACTIVE_PRODUCTS)} aprovado; retirados ausentes")
     return errors
 
 def check_css():
@@ -191,14 +196,18 @@ def check_css():
 def check_sitemap():
     text = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
     errors = 0
-    for _, slug, _ in PRODUCTS:
+    for _, slug, _ in ACTIVE_PRODUCTS:
         url = f"{BASE}/{slug}"
         if url not in text:
             errors += fail(f"sitemap: {url} ausente")
+    for slug in RETIRED_COMMERCIAL:
+        url = f"{BASE}/{slug}"
+        if url in text:
+            errors += fail(f"sitemap: produto retirado ainda indexado: {url}")
     if f"{BASE}/solucoes" not in text:
         errors += fail("sitemap: /solucoes ausente")
     if errors == 0:
-        pass_(f"sitemap.xml: {len(PRODUCTS)} produtos + soluções presentes")
+        pass_(f"sitemap.xml: {len(ACTIVE_PRODUCTS)} produtos ativos + soluções presentes; retirados ausentes")
     return errors
 
 
