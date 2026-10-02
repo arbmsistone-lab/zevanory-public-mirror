@@ -44,7 +44,7 @@ jobs:
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
       # Binding repair only: preserve the already-certified production runtime SHA.
       # Reconcile trigger 2026-09-27: reassert canonical KV binding after verified ZEES-16 16/16 state.
-      TARGET_RUNTIME_SHA: 2237836450cd371365d9fe00c83e42f70df28025
+      TARGET_RUNTIME_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -450,6 +450,77 @@ jobs:
           print("PRODUCTION_EXACT_SHA_PASS",os.environ["TARGET_RUNTIME_SHA"])
           print("PRODUCTION_ZEES_ZEA_CORE_ADMIN_ARCHITECTURE_PASS")
           print("PRODUCTION_CENTRAL_UTF8_AND_SAFETY_PASS")
+          PY
+      - name: Verify public security headers after deploy
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -D /tmp/security-headers.txt -o /tmp/security-body.html https://zevanory.api.br/ia-na-pratica
+          python3 - <<'PY'
+          from pathlib import Path
+          raw=Path("/tmp/security-headers.txt").read_text("utf-8","replace").lower()
+          assert "strict-transport-security:" in raw, raw
+          assert "content-security-policy:" in raw, raw
+          assert "script-src 'self'" in raw, raw
+          assert "x-content-type-options: nosniff" in raw, raw
+          print("POSTDEPLOY_SECURITY_HEADERS=PASS")
+          PY
+      - name: Create clean canonical Mercado Pago test checkout
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.parse,urllib.request,uuid
+          app="https://zevanory.api.br"
+          cert=os.environ["CERTIFICATION_E2E_TOKEN"].strip()
+          mp=os.environ["MERCADOPAGO_TEST_ACCESS_TOKEN"].strip()
+          assert cert and mp
+          def call(url,method="GET",headers=None,body=None):
+              h={"accept":"application/json","user-agent":"ZEVANORY-PostDeploy-CleanCheckout/1.0"}
+              if headers: h.update(headers)
+              data=None
+              if body is not None:
+                  h["content-type"]="application/json"
+                  data=json.dumps(body).encode()
+              req=urllib.request.Request(url,method=method,headers=h,data=data)
+              with urllib.request.urlopen(req,timeout=30) as r:
+                  raw=r.read().decode("utf-8","replace")
+                  return r.status,(json.loads(raw) if raw else {})
+          _,invite=call(app+"/api/internal/certification/e2e/invite","POST",{"x-certification-e2e-token":cert},{})
+          assert invite.get("created") is True and invite.get("token"),invite
+          request_id=str(uuid.uuid4()); session_id=str(uuid.uuid4())
+          code,checkout=call(app+"/api/checkout/mercadopago","POST",{"x-certification-pilot-token":invite["token"]},
+                             {"request_id":request_id,"session_id":session_id,"offer_id":"ZEV-IA-011"})
+          assert code==201 and checkout.get("accepted") is True and checkout.get("duplicate") is False,checkout
+          oid=str(checkout.get("order_id") or "")
+          url=str(checkout.get("checkout_url") or "")
+          assert oid and url.startswith("https://www.mercadopago.com"),checkout
+          _,state=call(app+"/api/internal/certification/e2e/status?order_id="+urllib.parse.quote(oid),"GET",
+                       {"x-certification-e2e-token":cert})
+          order=state.get("order") or {}
+          assert order.get("offer_id")=="ZEV-IA-011",order
+          assert abs(float(order.get("amount") or 0)-197.0)<0.001,order
+          pref_id=str(order.get("provider_checkout_id") or "")
+          assert pref_id,pref_id
+          _,pref=call("https://api.mercadopago.com/checkout/preferences/"+urllib.parse.quote(pref_id),"GET",
+                      {"Authorization":"Bearer "+mp})
+          assert str(pref.get("external_reference") or "").lower()==oid.lower(),pref
+          assert str(pref.get("notification_url") or "").startswith("https://zevanory.api.br/api/webhooks"),pref
+          items=pref.get("items") or []
+          assert len(items)==1 and abs(float(items[0].get("unit_price") or 0)-197.0)<0.001,items
+          assert str(pref.get("auto_return") or "")=="approved",pref
+          assert str(pref.get("init_point") or "")==url,pref
+          print("CLEAN_ORDER_AMOUNT_197=PASS")
+          print("CLEAN_PREFERENCE_FROM_ORDER=PASS")
+          print("CLEAN_ORDER_ID="+oid)
+          print("CLEAN_CHECKOUT_URL="+url)
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+              f.write("\n## Mercado Pago clean test checkout\n\n")
+              f.write("- Order ID: `"+oid+"`\n")
+              f.write("- Amount: **R$ 197,00**\n")
+              f.write("- Checkout: "+url+"\n")
           PY
       - name: Fail-closed deployment status
         if: steps.auth.outputs.available != 'true'
