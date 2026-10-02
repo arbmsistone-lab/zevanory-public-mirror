@@ -13840,8 +13840,9 @@ function normalizeAsaasWebhook(body) {
 }
 __name(normalizeAsaasWebhook, "normalizeAsaasWebhook");
 function parseExternalReference(value) {
+  const text = String(value || "").trim();
+  if (isUuid(text)) return text.toLowerCase();
   const prefix = `ZEVANORY:${PROJECT.experimentId}:`;
-  const text = String(value || "");
   if (!text.startsWith(prefix)) return null;
   const orderId = text.slice(prefix.length);
   return isUuid(orderId) ? orderId.toLowerCase() : null;
@@ -14181,14 +14182,14 @@ var safeText2 = /* @__PURE__ */ __name((value, min = 1, max = 160) => {
   return text.length >= min && text.length <= max && !/[\u0000-\u001f\u007f]/.test(text) ? text : "";
 }, "safeText");
 function buildMercadoPagoPreference(orderId, publicBaseUrl, offer = resolveCheckoutOffer(PROJECT.offerId), options = {}) {
-  const externalReference = externalReferenceForOrder(orderId);
+  const externalReference = isUuid(orderId) ? String(orderId).toLowerCase() : "";
   const base = safePublicBaseUrl(publicBaseUrl);
   if (!externalReference || !base || !isUuid(orderId) || !offer) return null;
   const notificationPath = String(options.notificationPath || "/api/webhooks/mercadopago");
   if (!notificationPath.startsWith("/api/")) return null;
   return Object.freeze({
     items: [{ id: offer.id, title: `${offer.product} ${offer.version}`, description: "Produto digital ZEVANORY", quantity: 1, currency_id: "BRL", unit_price: offer.price_brl }],
-    back_urls: { success: `${base}/piloto?checkout=success`, pending: `${base}/piloto?checkout=pending`, failure: `${base}/piloto?checkout=failure` },
+    back_urls: { success: "https://vendas.zevanory.api.br/solucoes?pagamento=aprovado", pending: "https://vendas.zevanory.api.br/solucoes?pagamento=pendente", failure: "https://vendas.zevanory.api.br/solucoes?pagamento=falhou" },
     auto_return: "approved",
     external_reference: externalReference,
     notification_url: `${base}${notificationPath}`,
@@ -14212,7 +14213,7 @@ function normalizeMercadoPagoPreference(value, externalReference, env = "sandbox
   if (!value || typeof value !== "object") return null;
   const id = safeText2(value.id, 4, 160);
   if (!id || String(value.external_reference || "") !== externalReference) return null;
-  const preferred = String(env || "").toLowerCase() === "production" ? value.init_point : value.sandbox_init_point || value.init_point;
+  const preferred = value.init_point || value.sandbox_init_point;
   const link = trustedCheckoutUrl(preferred);
   if (!link) return null;
   return Object.freeze({ id, link });
@@ -14312,7 +14313,7 @@ async function handler12(req, res) {
   if (!providerToken) return json9(res, 503, { error: "checkout_provider_unavailable" });
   const effectiveOffer = pilot?.authorized ? Object.freeze({ ...input.offer, price_brl: certificationPilotAmountBrl(process.env) }) : input.offer;
   const orderId = crypto6.randomUUID();
-  const externalReference = externalReferenceForOrder(orderId);
+  const externalReference = String(orderId).toLowerCase();
   try {
     const inserted = await sql.query(`INSERT INTO orders (order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status,certification_pilot,certification_pilot_invite_id) VALUES ($1,$2,$3,$4,$5,$6,'BRL','mercadopago',$7,'created',$8,$9) ON CONFLICT (request_id) DO NOTHING RETURNING order_id`, [orderId, input.requestId, input.sessionId, PROJECT.experimentId, input.offer.id, effectiveOffer.price_brl, externalReference, Boolean(pilot?.authorized), pilot?.invite_id || null]);
     let order = inserted.length ? { order_id: orderId, external_reference: externalReference, status: "created" } : (await sql.query(`SELECT order_id,session_id,offer_id,external_reference,status,checkout_url,provider FROM orders WHERE request_id=$1`, [input.requestId]))[0];
@@ -14748,7 +14749,7 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
       return json12(res, recovery.preserved ? 202 : 503, { accepted: recovery.preserved, preserved: recovery.preserved, reconciliation_pending: recovery.preserved, financial_truth: false, error: recovery.preserved ? void 0 : "financial_reconciliation_unavailable" });
     }
     const sql = cs(process.env.DATABASE_URL);
-    const orders = await sql.query(`SELECT order_id,amount,status,external_reference,provider_checkout_id,provider,certification_pilot FROM orders WHERE order_id::text=$1`, [orderId || ""]);
+    const orders = await sql.query(`SELECT order_id,amount,status,external_reference,provider_checkout_id,provider,certification_pilot FROM orders WHERE provider='mercadopago' AND (order_id::text=$1 OR external_reference=$2)`, [orderId || "", String(payment.external_reference || "")]);
     if (orders.length === 0) return json12(res, 200, { accepted: true, ignored: true, reason: "unlinked_payment" });
     if (orders.length !== 1 || orders[0].provider !== "mercadopago") return json12(res, 409, { error: "payment_reconciliation_failed", accepted: false });
     if (certificationOnly && orders[0].certification_pilot !== true) return json12(res, 409, { error: "certification_payment_required", accepted: false });
