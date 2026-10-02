@@ -44,7 +44,7 @@ jobs:
           - negocio-completo
     env:
       TARGET_SLUG: ${{ matrix.slug }}
-      EXPECTED_RUNTIME_SHA: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
+      EXPECTED_RUNTIME_SHA: 2237836450cd371365d9fe00c83e42f70df28025
     steps:
       - uses: actions/checkout@v4
 
