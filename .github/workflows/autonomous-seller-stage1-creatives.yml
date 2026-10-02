@@ -3,7 +3,7 @@ name: ZEVANORY autonomous seller stage1 creatives
 on:
   push:
     branches:
-      - feat/autonomous-seller-stage1-creatives-20261002
+      - s1-ai
     paths:
       - "scripts/autonomous_seller_stage1_creatives.py"
       - "sales-public/ia-na-pratica.html"
