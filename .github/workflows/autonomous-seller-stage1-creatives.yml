@@ -25,25 +25,42 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   generate:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       OUT_DIR: evidence/autonomous-seller/stage1
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
-          python-version: "3.12"
-      - name: Preflight Gemini authority
+          workload_identity_provider: projects/781761447388/locations/global/workloadIdentityPools/github-actions/providers/zevanory-github
+          service_account: zevanory-gemini-auth@zevanory-gemini.iam.gserviceaccount.com
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+      - name: Resolve Gemini authority without exposing key
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${GEMINI_API_KEY:-}" || { echo "GEMINI_API_KEY=ABSENT"; exit 2; }
-          echo "GEMINI_API_KEY=PRESENT"
+          umask 077
+          gcloud services api-keys get-key-string c572db8f-7fbf-4a80-80d8-f59c2597e6e2 --project=zevanory-gemini --format='value(keyString)' > /tmp/gemini.key
+          test -s /tmp/gemini.key
+          key="$(cat /tmp/gemini.key)"
+          echo "::add-mask::$key"
+          {
+            echo 'GEMINI_API_KEY<<__GEMINI__'
+            printf '%s\n' "$key"
+            echo '__GEMINI__'
+          } >> "$GITHUB_ENV"
+          unset key
+          echo "GEMINI_AUTHORITY=PASS"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Install generator dependencies
         run: python -m pip install --disable-pip-version-check "google-genai>=1,<2"
       - name: Generate five real AI creatives
@@ -73,7 +90,12 @@ jobs:
           print("STAGE1_EVIDENCE=PASS")
           print("STAGE1_PRODUCTS=5/5")
           PY
+      - name: Remove transient Gemini credential
+        if: always()
+        shell: bash
+        run: rm -f /tmp/gemini.key
       - name: Upload five creatives
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: autonomous-seller-stage1-creatives-${{ github.sha }}
