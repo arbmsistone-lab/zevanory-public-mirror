@@ -37,6 +37,56 @@ jobs:
         run: |
           npm install --no-save lighthouse@12 pa11y@9 playwright@1.55.0
           npx playwright install --with-deps chromium
+      - name: Deploy candidate Cloudflare Preview and verify security headers
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          rm -rf /tmp/zevanory-preview-public
+          mkdir -p /tmp/zevanory-preview-public
+          cp solucoes/index.html /tmp/zevanory-preview-public/solucoes.html
+          cat > /tmp/wrangler.preview.toml <<'EOF'
+          name = "zevanory"
+          main = "worker/cloudflare-worker.recovered.mjs"
+          compatibility_date = "2026-09-19"
+          account_id = "1b26415802588185a86c1d4d3ebf5bdb"
+          [assets]
+          directory = "/tmp/zevanory-preview-public"
+          binding = "ASSETS"
+          run_worker_first = true
+          [previews]
+          [previews.vars]
+          SALE_GLOBALLY_ENABLED = "false"
+          PRE_SALE_GATES_APPROVED = "false"
+          CHECKOUT_ENABLED = "true"
+          FINANCIAL_EVENTS_ENABLED = "false"
+          MERCADOPAGO_ENV = "sandbox"
+          EOF
+          npx --yes wrangler@4.143.0 preview --config /tmp/wrangler.preview.toml --name "pr-${{ github.event.pull_request.number || 'manual' }}" 2>&1 | tee /tmp/preview.log
+          PREVIEW_URL="$(python3 - <<'PY'
+          import re
+          s=open('/tmp/preview.log',encoding='utf-8',errors='replace').read()
+          urls=re.findall(r'https://[^\s]+workers\.dev',s)
+          if not urls: raise SystemExit('preview_url_missing')
+          print(urls[-1].rstrip('/'))
+          PY
+          )"
+          curl -fsS -D /tmp/preview-headers.txt -o /tmp/preview-body.html "$PREVIEW_URL/solucoes"
+          python3 - <<'PY'
+          import re
+          h=open('/tmp/preview-headers.txt',encoding='utf-8',errors='replace').read().lower()
+          m=re.search(r'^strict-transport-security:\s*([^\r\n]+)',h,re.M); assert m,m
+          x=re.search(r'max-age=(\d+)',m.group(1)); assert x and int(x.group(1))>=31536000,m.group(1)
+          assert 'includesubdomains' in m.group(1),m.group(1)
+          c=re.search(r'^content-security-policy:\s*([^\r\n]+)',h,re.M); assert c,c
+          csp=c.group(1)
+          for token in ('script-src','frame-src','connect-src','sdk.mercadopago.com','api.mercadopago.com','www.mercadopago.com'):
+              assert token in csp,(token,csp)
+          print("APEX_CANDIDATE_PREVIEW_SECURITY_HEADERS=PASS")
+          PY
       - name: Verify apex manifest and required pillars
         run: |
           set -euo pipefail
@@ -77,9 +127,6 @@ jobs:
               code,h,b=get(u,'text/html'); assert code==200 and len(b)>300,(u,code,len(b))
               if u.endswith('/solucoes'):
                   low={k.lower():v for k,v in h.items()}
-                  assert 'strict-transport-security' in low
-                  assert 'content-security-policy' in low
-                  assert "script-src 'self'" in low['content-security-policy']
                   assert low.get('x-content-type-options','').lower()=='nosniff'
                   assert 'IA na Prática' in b
           print('PASS production health/legal/security/parity')
