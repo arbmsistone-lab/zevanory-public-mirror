@@ -22,12 +22,20 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Verify Cloudflare authority
+      - name: Normalize and verify Cloudflare authority
         shell: bash
         run: |
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
-          echo "CLOUDFLARE_TOKEN_PRESENT=PASS"
+          clean="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '\r\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/^[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//')"
+          test -n "$clean"
+          echo "::add-mask::$clean"
+          {
+            echo 'CLOUDFLARE_API_TOKEN<<__CF__'
+            printf '%s\n' "$clean"
+            echo '__CF__'
+          } >> "$GITHUB_ENV"
+          echo "CLOUDFLARE_TOKEN_NORMALIZED=PASS"
 
       - name: Build exact Product Control release
         shell: bash
