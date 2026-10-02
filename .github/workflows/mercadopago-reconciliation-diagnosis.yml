@@ -1,0 +1,49 @@
+name: Mercado Pago - diagnosticar reconciliação real
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/mercadopago-reconciliation-diagnosis.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      MP_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+      APPROVED_PAYMENT_ID: 182085091992
+      DECLINED_PAYMENT_ID: 182084804008
+      PREF_ID: 3670768257-f4236a66-96f6-49fc-ba1c-2587780b36e2
+    steps:
+      - name: Inspect provider truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request
+          tok=os.environ["MP_ACCESS_TOKEN"]
+          def get(url):
+              req=urllib.request.Request(url,headers={"Authorization":"Bearer "+tok,"Accept":"application/json"})
+              with urllib.request.urlopen(req,timeout=30) as r: return json.loads(r.read().decode())
+          pref=get("https://api.mercadopago.com/checkout/preferences/"+os.environ["PREF_ID"])
+          pa=get("https://api.mercadopago.com/v1/payments/"+os.environ["APPROVED_PAYMENT_ID"])
+          pd=get("https://api.mercadopago.com/v1/payments/"+os.environ["DECLINED_PAYMENT_ID"])
+          def show(k,v): print(k+"="+str(v))
+          show("PREF_EXTERNAL_REFERENCE",pref.get("external_reference"))
+          show("PREF_NOTIFICATION_URL",pref.get("notification_url"))
+          show("PREF_INIT_POINT",pref.get("init_point"))
+          show("APPROVED_STATUS",pa.get("status"))
+          show("APPROVED_EXTERNAL_REFERENCE",pa.get("external_reference"))
+          show("APPROVED_PREF_ID",(pa.get("metadata") or {}).get("preference_id") or pa.get("order",{}).get("id"))
+          show("DECLINED_STATUS",pd.get("status"))
+          show("DECLINED_EXTERNAL_REFERENCE",pd.get("external_reference"))
+          print("DIAGNOSIS_JSON="+json.dumps({
+             "preference":{"external_reference":pref.get("external_reference"),"notification_url":pref.get("notification_url"),"init_point":pref.get("init_point")},
+             "approved":{"id":pa.get("id"),"status":pa.get("status"),"status_detail":pa.get("status_detail"),"external_reference":pa.get("external_reference"),"transaction_amount":pa.get("transaction_amount")},
+             "declined":{"id":pd.get("id"),"status":pd.get("status"),"status_detail":pd.get("status_detail"),"external_reference":pd.get("external_reference"),"transaction_amount":pd.get("transaction_amount")}
+          },separators=(",",":")))
+          PY
