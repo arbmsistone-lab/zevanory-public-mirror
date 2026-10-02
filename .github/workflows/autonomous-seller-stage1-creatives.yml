@@ -54,7 +54,18 @@ jobs:
           )"
           echo "::add-mask::$clean"
           code="$(curl -sS -o /tmp/ai-test.json -w '%{http_code}'             -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/zai-org/glm-4.7-flash"             -H "Authorization: Bearer $clean" -H 'Content-Type: application/json'             --data '{"messages":[{"role":"user","content":"Responda apenas OK"}],"max_tokens":8}')"
-          test "$code" = "200"
+          echo "WORKERS_AI_HTTP=$code"
+          if [ "$code" != "200" ]; then
+            python3 - <<'PY'
+          import json
+          try:
+              d=json.load(open("/tmp/ai-test.json"))
+              print("WORKERS_AI_ERRORS="+json.dumps(d.get("errors",d.get("error",{})),ensure_ascii=False)[:800])
+          except Exception:
+              print("WORKERS_AI_ERRORS=unparseable")
+          PY
+            exit 3
+          fi
           {
             echo 'CLOUDFLARE_API_TOKEN<<__CF__'
             printf '%s\n' "$clean"
