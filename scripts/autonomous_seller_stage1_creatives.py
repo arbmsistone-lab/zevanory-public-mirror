@@ -6,6 +6,8 @@ from pathlib import Path
 
 ACCOUNT_ID=(os.environ.get("CLOUDFLARE_ACCOUNT_ID") or "").strip()
 TOKEN=(os.environ.get("CLOUDFLARE_API_TOKEN") or "").strip()
+PROXY_URL=(os.environ.get("WORKERS_AI_PROXY_URL") or "").strip()
+PROXY_SECRET=(os.environ.get("WORKERS_AI_PROXY_SECRET") or "").strip()
 TEXT_MODEL="@cf/zai-org/glm-4.7-flash"
 IMAGE_MODEL="@cf/black-forest-labs/flux-1-schnell"
 PRODUCTS=[
@@ -35,10 +37,14 @@ def canonical(path):
  return text[:14000]
 
 def cf_run(model,payload,timeout=90):
- if not ACCOUNT_ID or not TOKEN: raise RuntimeError("cloudflare_authority_missing")
- url=f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/run/{model}"
- req=urllib.request.Request(url,data=json.dumps(payload,ensure_ascii=False).encode(),method="POST",
-  headers={"Authorization":"Bearer "+TOKEN,"Content-Type":"application/json","Accept":"application/json"})
+ if PROXY_URL and PROXY_SECRET:
+  req=urllib.request.Request(PROXY_URL,data=json.dumps({"model":model,"payload":payload},ensure_ascii=False).encode(),method="POST",
+   headers={"Authorization":"Bearer "+PROXY_SECRET,"Content-Type":"application/json","Accept":"application/json"})
+ else:
+  if not ACCOUNT_ID or not TOKEN: raise RuntimeError("cloudflare_authority_missing")
+  url=f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/run/{model}"
+  req=urllib.request.Request(url,data=json.dumps(payload,ensure_ascii=False).encode(),method="POST",
+   headers={"Authorization":"Bearer "+TOKEN,"Content-Type":"application/json","Accept":"application/json"})
  try:
   with urllib.request.urlopen(req,timeout=timeout) as r:
    raw=r.read()
@@ -117,7 +123,7 @@ def image_bytes(prompt,seed):
 
 def main():
  ap=argparse.ArgumentParser(); ap.add_argument("--out",required=True); args=ap.parse_args()
- if not ACCOUNT_ID or not TOKEN: raise SystemExit("CLOUDFLARE_AI_AUTHORITY_missing")
+ if not ((PROXY_URL and PROXY_SECRET) or (ACCOUNT_ID and TOKEN)): raise SystemExit("CLOUDFLARE_AI_AUTHORITY_missing")
  out=Path(args.out); out.mkdir(parents=True,exist_ok=True)
  manifest={"schema":"zevanory.autonomous-seller.creatives.v1","generated_at":datetime.now(timezone.utc).isoformat(),"text_model":TEXT_MODEL,"image_model":IMAGE_MODEL,"products":[]}
  for idx,(name,path,slug) in enumerate(PRODUCTS,1):
