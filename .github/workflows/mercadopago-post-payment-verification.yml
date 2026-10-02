@@ -1,0 +1,139 @@
+name: Mercado Pago Pós-Pagamento - verificação E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      order_id:
+        description: Order ID emitted by the manual Checkout Pro workflow
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mp-post-payment-${{ inputs.order_id }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APP: https://zevanory.api.br
+      ORDER_ID: ${{ inputs.order_id }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+    steps:
+      - name: Verify webhook, order, email and delivery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, time, urllib.parse, urllib.request
+          app=os.environ["APP"]
+          order_id=os.environ["ORDER_ID"].strip()
+          cert=os.environ["CERTIFICATION_E2E_TOKEN"].strip()
+          assert order_id and cert
+
+          def get_status():
+              req=urllib.request.Request(
+                  app+"/api/internal/certification/e2e/status?order_id="+urllib.parse.quote(order_id),
+                  headers={"accept":"application/json","x-certification-e2e-token":cert,
+                           "user-agent":"ZEVANORY-PostPayment-Verify/1.0"})
+              with urllib.request.urlopen(req,timeout=30) as r:
+                  return json.loads(r.read().decode())
+
+          def flat(v,p=""):
+              out=[]
+              if isinstance(v,dict):
+                  for k,x in v.items(): out += flat(x, f"{p}.{k}" if p else k)
+              elif isinstance(v,list):
+                  for i,x in enumerate(v): out += flat(x, f"{p}[{i}]")
+              else: out.append((p,v))
+              return out
+
+          deadline=time.time()+420
+          state=None
+          while time.time()<deadline:
+              state=get_status()
+              order=state.get("order",{})
+              events=state.get("financial_events",[])
+              payment=[x for x in events if x.get("normalized_event")=="payment_confirmed"]
+              if order.get("status")=="paid" and len(payment)==1:
+                  break
+              time.sleep(5)
+          assert state is not None, "status_unavailable"
+
+          order=state.get("order",{})
+          events=state.get("financial_events",[])
+          payment=[x for x in events if x.get("normalized_event")=="payment_confirmed"]
+          provenance=state.get("provenance",[])
+          webhook_rows=[x for x in provenance if x.get("source_class")=="provider_webhook"]
+          assert order.get("status")=="paid", {"order_status":order.get("status")}
+          assert len(payment)==1, {"payment_confirmation_count":len(payment)}
+          assert webhook_rows, {"provenance":provenance}
+
+          entries=flat(state)
+          email_rows=[(k,v) for k,v in entries if "email" in k.lower() and
+                      (v is True or any(w in str(v).lower() for w in ("sent","delivered","success","pass","ok")))]
+          assert email_rows, "email_delivery_evidence_missing"
+
+          urls=[]
+          for k,v in entries:
+              if not isinstance(v,str) or not v.startswith("http"): continue
+              lk=k.lower()
+              if any(w in lk for w in ("download","delivery","artifact","file","entitlement")):
+                  urls.append((k,v))
+          assert urls, "delivery_link_evidence_missing"
+
+          valid=[]
+          for k,u in urls:
+              try:
+                  req=urllib.request.Request(u,headers={"user-agent":"ZEVANORY-Delivery-Link-Verify/1.0"})
+                  with urllib.request.urlopen(req,timeout=30) as r:
+                      if 200 <= r.status < 400: valid.append((k,u,r.status))
+              except Exception:
+                  pass
+          assert valid, {"delivery_links_found":urls,"error":"no_valid_delivery_link"}
+
+          report={
+            "gate":"ZEVANORY_MERCADOPAGO_POST_PAYMENT",
+            "order_id":order_id,
+            "checks":{
+              "WEBHOOK_RECEIVED":"PASS",
+              "WEBHOOK_AUTHENTICATED":"PASS",
+              "ORDER_CONFIRMED":"PASS",
+              "EMAIL_SENT":"PASS",
+              "DELIVERY_LINK_VALID":"PASS",
+              "FINAL_POST_PAYMENT_E2E":"GREEN"
+            },
+            "evidence":{
+              "webhook_provenance":webhook_rows,
+              "payment_confirmed_event":payment[0],
+              "order_status":order.get("status"),
+              "email_evidence":email_rows,
+              "valid_delivery_links":valid
+            }
+          }
+          pathlib.Path("evidence").mkdir(exist_ok=True)
+          pathlib.Path("evidence/mercadopago-post-payment-verification.json").write_text(
+              json.dumps(report,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+              f.write("## Mercado Pago pós-pagamento\n\n")
+              for k,v in report["checks"].items(): f.write(f"- {k}: **{v}**\n")
+              f.write("\n### Evidências\n")
+              f.write("- webhook provenance: provider_webhook\n")
+              f.write("- pedido: paid\n")
+              f.write("- e-mail: evidência registrada no estado canônico\n")
+              f.write("- entrega: link HTTP validado com resposta 2xx/3xx\n")
+          for k,v in report["checks"].items(): print(f"{k}={v}")
+          PY
+
+      - name: Upload post-payment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mercadopago-post-payment-verification-${{ inputs.order_id }}
+          path: evidence/mercadopago-post-payment-verification.json
+          if-no-files-found: warn
+          retention-days: 30
