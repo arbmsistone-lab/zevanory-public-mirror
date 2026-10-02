@@ -1,0 +1,112 @@
+name: ZEVANORY Payment Sandbox Adversarial
+on:
+  push:
+    branches:
+      - audit/payment-sandbox-adversarial-20261002
+permissions:
+  contents: read
+concurrency:
+  group: zevanory-payment-adversarial
+  cancel-in-progress: false
+jobs:
+  mercado-pago:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN || secrets.MERCADOPAGO_ACCESS_TOKEN }}
+      MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET || secrets.MERCADOPAGO_WEBHOOK_SECRET }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Bind test to current live runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://zevanory.api.br/api/release -o /tmp/release.json
+          SHA="$(jq -r '.deployment.commit_sha // empty' /tmp/release.json)"
+          test "${#SHA}" -eq 40
+          test "$(jq -r '.sales_mode' /tmp/release.json)" = "globally-blocked"
+          echo "EXPECTED_SHA=$SHA" >> "$GITHUB_ENV"
+          echo "PAYMENT_TEST_LIVE_SHA=$SHA"
+      - name: Mercado Pago sandbox preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${MERCADOPAGO_TEST_ACCESS_TOKEN:-}"
+          test "${#MERCADOPAGO_TEST_WEBHOOK_SECRET}" -ge 16
+          test "${#CERTIFICATION_E2E_TOKEN}" -ge 32
+      - name: Run explicit Mercado Pago adversarial matrix
+        run: python3 scripts/financial_adversarial_mercadopago.py
+
+  stripe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Bind test to current live runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://zevanory.api.br/api/release -o /tmp/release.json
+          SHA="$(jq -r '.deployment.commit_sha // empty' /tmp/release.json)"
+          test "${#SHA}" -eq 40
+          test "$(jq -r '.sales_mode' /tmp/release.json)" = "globally-blocked"
+          echo "EXPECTED_SHA=$SHA" >> "$GITHUB_ENV"
+          echo "PAYMENT_TEST_LIVE_SHA=$SHA"
+      - name: Stripe sandbox preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${STRIPE_SECRET_KEY:-}" in sk_test_*) ;; *) echo "MISSING_OR_NON_TEST_STRIPE_SECRET_KEY"; exit 2;; esac
+          test "${#CERTIFICATION_E2E_TOKEN}" -ge 32
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+      - name: Create isolated Stripe test webhook endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://api.stripe.com/v1/webhook_endpoints \
+            -u "$STRIPE_SECRET_KEY:" \
+            --data-urlencode "url=https://zevanory.api.br/api/webhooks?provider=stripe" \
+            -d "enabled_events[]=payment_intent.succeeded" \
+            -d "enabled_events[]=charge.refunded" > /tmp/stripe-webhook.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("/tmp/stripe-webhook.json"))
+          assert str(d.get("id","")).startswith("we_"), d
+          assert str(d.get("secret","")).startswith("whsec_"), d
+          with open(os.environ["GITHUB_ENV"],"a") as f:
+              f.write("STRIPE_WEBHOOK_ENDPOINT_ID="+d["id"]+"\n")
+              f.write("STRIPE_WEBHOOK_SECRET="+d["secret"]+"\n")
+          print("STRIPE_EPHEMERAL_WEBHOOK=READY")
+          PY
+      - name: Bind current sandbox webhook secret to current runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os
+          json.dump({
+            "STRIPE_SECRET_KEY":os.environ["STRIPE_SECRET_KEY"],
+            "STRIPE_WEBHOOK_SECRET":os.environ["STRIPE_WEBHOOK_SECRET"]
+          },open("/tmp/stripe-secrets.json","w"))
+          PY
+          npx --yes wrangler@4.135.0 secret bulk /tmp/stripe-secrets.json --name zevanory >/tmp/wrangler-stripe.txt
+          rm -f /tmp/stripe-secrets.json
+          echo "STRIPE_SANDBOX_SECRET_BINDING=PASS"
+      - name: Run explicit Stripe adversarial matrix
+        run: python3 scripts/financial_adversarial_stripe.py
+      - name: Delete isolated Stripe test webhook endpoint
+        if: always() && env.STRIPE_WEBHOOK_ENDPOINT_ID != ''
+        shell: bash
+        run: |
+          curl -fsS -X DELETE "https://api.stripe.com/v1/webhook_endpoints/$STRIPE_WEBHOOK_ENDPOINT_ID" \
+            -u "$STRIPE_SECRET_KEY:" >/tmp/stripe-webhook-delete.json || true
+          echo "STRIPE_EPHEMERAL_WEBHOOK=CLEANED"
