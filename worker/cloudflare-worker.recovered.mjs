@@ -14737,6 +14737,65 @@ var json12 = /* @__PURE__ */ __name((res, status, body) => {
   res.statusCode = status;
   return res.end(JSON.stringify(body));
 }, "json");
+function validMercadoPagoDeliveryEmail(value) {
+  const email = String(value || "").trim().toLowerCase();
+  return email.length <= 254 && /^[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+$/.test(email) ? email : "";
+}
+__name(validMercadoPagoDeliveryEmail, "validMercadoPagoDeliveryEmail");
+async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, providerEventId } = {}) {
+  const existing = (await sql.query(`select status,evidence_ref from service_fulfillment where order_id=$1 limit 1`, [orderId]))[0] || {};
+  let evidence = {};
+  try {
+    evidence = existing.evidence_ref && String(existing.evidence_ref).trim().startsWith("{") ? JSON.parse(existing.evidence_ref) : {};
+  } catch {
+    evidence = {};
+  }
+  if (existing.status === "delivered" && evidence.email_status === "sent" && /^https:\\/\\//.test(String(evidence.download_url || ""))) return Object.freeze(evidence);
+  const recipient = validMercadoPagoDeliveryEmail(payment?.payer?.email);
+  if (!recipient) throw new Error("delivery_recipient_invalid");
+  if (!String(process.env.RESEND_API_KEY || "").trim()) throw new Error("delivery_mailer_unavailable");
+  const base = safePublicBaseUrl(process.env.PAYMENT_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL) || "https://zevanory.api.br";
+  if (!evidence.download_url || !evidence.verification_url) {
+    const issued = await issueArtifactDownload(sql, { orderId, issuedBy: "mercadopago-webhook", ttlMinutes: 60 });
+    const probe = await issueArtifactDownload(sql, { orderId, issuedBy: "mercadopago-verification", ttlMinutes: 15 });
+    const download = new URL("/private/artifacts/download", base);
+    download.searchParams.set("token", issued.token);
+    const verification = new URL("/private/artifacts/download", base);
+    verification.searchParams.set("token", probe.token);
+    evidence = {
+      payment_id: String(payment?.id || ""),
+      provider_event_id: String(providerEventId || ""),
+      email_status: "pending",
+      email_provider_id: null,
+      download_url: download.toString(),
+      verification_url: verification.toString(),
+      artifact_sha256: String(issued.artifact?.sha256 || ""),
+      expires_at: issued.expires_at
+    };
+    await sql.query(`update service_fulfillment set evidence_ref=$2,updated_at=now() where order_id=$1`, [orderId, JSON.stringify(evidence)]);
+  }
+  const response2 = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "content-type": "application/json",
+      "Idempotency-Key": `zevanory-delivery-${String(payment?.id || "")}`
+    },
+    body: JSON.stringify({
+      from: process.env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>",
+      to: [recipient],
+      subject: "Seu acesso ZEVANORY",
+      text: `Pagamento confirmado. Seu link seguro de entrega: ${evidence.download_url}`
+    })
+  });
+  const sent = await response2.json().catch(() => ({}));
+  if (!response2.ok || !String(sent?.id || "").trim()) throw new Error("delivery_email_failed");
+  evidence = { ...evidence, email_status: "sent", email_provider_id: String(sent.id) };
+  const updated = await sql.query(`update service_fulfillment set status='delivered',evidence_ref=$2,delivered_at=coalesce(delivered_at,now()),updated_at=now() where order_id=$1 and status in ('pending','scheduled','in_progress','delivered') returning order_id`, [orderId, JSON.stringify(evidence)]);
+  if (updated.length !== 1) throw new Error("delivery_state_update_failed");
+  return Object.freeze(evidence);
+}
+__name(ensureMercadoPagoDigitalDelivery, "ensureMercadoPagoDigitalDelivery");
 async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, certificationOnly = false, source = "mercadopago" } = {}) {
   res.setHeader("content-type", "application/json; charset=utf-8");
   res.setHeader("cache-control", "no-store");
@@ -14763,6 +14822,12 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
     if (orders.length === 0) return json12(res, 200, { accepted: true, ignored: true, reason: "unlinked_payment" });
     if (orders.length !== 1 || orders[0].provider !== "mercadopago") return json12(res, 409, { error: "payment_reconciliation_failed", accepted: false });
     if (certificationOnly && orders[0].certification_pilot !== true) return json12(res, 409, { error: "certification_payment_required", accepted: false });
+    const observedAmount = Math.round(Number(payment.transaction_amount) * 100);
+    const expectedAmount = Math.round(Number(orders[0].amount) * 100);
+    if (String(payment.status || "").toLowerCase() === "approved" && (!Number.isFinite(observedAmount) || observedAmount !== expectedAmount || expectedAmount <= 0)) {
+      console.error("PAYMENT_AMOUNT_MISMATCH_REVIEW_REQUIRED", JSON.stringify({ provider: "mercadopago", payment_id: String(webhook.paymentId), order_id: String(orders[0].order_id), expected_amount: Number(orders[0].amount), observed_amount: Number(payment.transaction_amount) }));
+      return json12(res, 409, { error: "payment_amount_mismatch", accepted: false, review_required: true, order_id: String(orders[0].order_id), payment_id: String(webhook.paymentId) });
+    }
     const event = normalizeMercadoPagoFinancialEvent(payment, orders[0]);
     if (!event) return json12(res, 200, { accepted: true, ignored: true, reason: "non_final_payment" });
     const externalReference = String(orders[0].external_reference);
@@ -14831,6 +14896,15 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
     const outcome = rows[0] || {};
     if (Number(outcome.target_count) !== 1) return json12(res, 409, { error: "order_state_invalid", accepted: false });
     if (Number(outcome.inserted_count) === 1 && !outcome.order_status) return json12(res, 503, { error: "order_state_update_failed", accepted: false });
+    let deliveryEvidence = null;
+    if (event.normalized === "payment_confirmed" && String(outcome.order_status || outcome.current_status) === "paid") {
+      try {
+        deliveryEvidence = await ensureMercadoPagoDigitalDelivery(sql, { orderId: String(orders[0].order_id), payment, providerEventId });
+      } catch (deliveryError) {
+        console.error("PAID_ORDER_DELIVERY_PENDING", JSON.stringify({ order_id: String(orders[0].order_id), payment_id: String(webhook.paymentId), error: String(deliveryError?.message || "delivery_failed") }));
+        return json12(res, 503, { error: "paid_order_delivery_pending", accepted: false, payment_reconciled: true, order_id: String(orders[0].order_id), payment_id: String(webhook.paymentId), retry_required: true });
+      }
+    }
     if (Number(outcome.inserted_count) === 1) {
       if (!certificationOnly) {
         try {
@@ -14854,7 +14928,7 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
         }
       }
     }
-    return json12(res, 200, { accepted: true, duplicate: Number(outcome.inserted_count) === 0, event: event.normalized, order_id: String(orders[0].order_id), order_status: outcome.order_status || outcome.current_status, fulfillment_status: outcome.fulfillment_status || null, refunded_total: event.refundedTotal, certification_pilot: certificationOnly });
+    return json12(res, 200, { accepted: true, duplicate: Number(outcome.inserted_count) === 0, event: event.normalized, order_id: String(orders[0].order_id), order_status: outcome.order_status || outcome.current_status, fulfillment_status: deliveryEvidence ? "delivered" : outcome.fulfillment_status || null, delivery: deliveryEvidence, refunded_total: event.refundedTotal, certification_pilot: certificationOnly });
   } catch {
     return json12(res, 503, { error: "financial_reconciliation_unavailable", accepted: false });
   }
@@ -17663,11 +17737,18 @@ async function handlerFinancialE2EStatus(req, res) {
     const refundEvents = events.filter((x2) => x2.normalized_event === "refund_confirmed");
     const order = orders[0];
     const fulfillmentRow = fulfillment[0] || null;
+    let deliveryEvidence = null;
+    try {
+      deliveryEvidence = fulfillmentRow?.evidence_ref && String(fulfillmentRow.evidence_ref).trim().startsWith("{") ? JSON.parse(fulfillmentRow.evidence_ref) : null;
+    } catch {
+      deliveryEvidence = null;
+    }
     res.statusCode = 200;
     return res.end(JSON.stringify({
       order,
       financial_events: events,
       fulfillment: fulfillmentRow,
+      delivery_evidence: deliveryEvidence,
       provenance: evidence,
       invariants: {
         exactly_one_payment_confirmation: paymentEvents.length === 1,
