@@ -12,7 +12,7 @@ on:
 permissions:
   contents: read
 env:
-  EXPECTED_SHA: "37e695127af02c9a32c601db0353a3708fc45d82"
+  EXPECTED_SHA: "2237836450cd371365d9fe00c83e42f70df28025"
 jobs:
   apex:
     runs-on: ubuntu-latest
@@ -37,6 +37,254 @@ jobs:
         run: |
           npm install --no-save lighthouse@12 pa11y@9 playwright@1.55.0
           npx playwright install --with-deps chromium
+      - name: Deploy candidate Cloudflare Preview and verify security headers
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          rm -rf /tmp/zevanory-preview-public
+          mkdir -p /tmp/zevanory-preview-public
+          cp solucoes/index.html /tmp/zevanory-preview-public/solucoes.html
+          cat > /tmp/wrangler.preview.toml <<'EOF'
+          name = "zevanory"
+          main = "worker/cloudflare-worker.recovered.mjs"
+          compatibility_date = "2026-09-19"
+          account_id = "1b26415802588185a86c1d4d3ebf5bdb"
+          [assets]
+          directory = "/tmp/zevanory-preview-public"
+          binding = "ASSETS"
+          run_worker_first = true
+          [previews]
+          [previews.vars]
+          SALE_GLOBALLY_ENABLED = "false"
+          PRE_SALE_GATES_APPROVED = "false"
+          CHECKOUT_ENABLED = "true"
+          FINANCIAL_EVENTS_ENABLED = "false"
+          MERCADOPAGO_ENV = "sandbox"
+          EOF
+          npx --yes wrangler@4.143.0 preview --config /tmp/wrangler.preview.toml --name "pr-${{ github.event.pull_request.number || 'manual' }}" 2>&1 | tee /tmp/preview.log
+          PREVIEW_URL="$(python3 - <<'PY'
+          import re
+          s=open('/tmp/preview.log',encoding='utf-8',errors='replace').read()
+          urls=re.findall(r'https://[^\s]+workers\.dev',s)
+          if not urls: raise SystemExit('preview_url_missing')
+          print(urls[-1].rstrip('/'))
+          PY
+          )"
+          echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
+          curl -fsS -D /tmp/preview-headers.txt -o /tmp/preview-body.html "$PREVIEW_URL/solucoes"
+          python3 - <<'PY'
+          import re
+          h=open('/tmp/preview-headers.txt',encoding='utf-8',errors='replace').read().lower()
+          m=re.search(r'^strict-transport-security:\s*([^\r\n]+)',h,re.M)
+          assert m,m
+          maxage=re.search(r'max-age=(\d+)',m.group(1))
+          assert maxage and int(maxage.group(1))>=31536000,m.group(1)
+          assert 'includesubdomains' in m.group(1),m.group(1)
+          c=re.search(r'^content-security-policy:\s*([^\r\n]+)',h,re.M)
+          assert c,c
+          csp=c.group(1)
+          assert "script-src" in csp and "sdk.mercadopago.com" in csp and "www.mercadopago.com" in csp,csp
+          assert "frame-src" in csp and "mercadopago.com" in csp,csp
+          assert "connect-src" in csp and "api.mercadopago.com" in csp,csp
+          assert re.search(r'^x-content-type-options:\s*nosniff\s*
+      - name: Verify apex manifest and required pillars
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib
+          c=json.load(open('evidence/zevanory-apex-engineering.json'))
+          required={'architecture','source_integrity','provenance','security','privacy','availability','resilience','disaster_recovery','provider_independence','performance','latency','accessibility','responsive_layout','typography','color_contrast','interaction_quality','seo','legal','api_health','main_edge_parity','observability','commercial_safety','channel_continuity','release_reproducibility'}
+          assert required.issubset(set(c['pillars']))
+          assert c['claim_policy']=='fail_closed_evidence_only'
+          assert c['thresholds']['provider_quorum']==3
+          assert c['commercial_release_allowed'] is False
+          assert c['rollback_version']=='52a989a2'
+          assert c['external_certification_claimed'] is False
+          for f in ['worker/cloudflare-worker.recovered.mjs','worker/cloudflare-worker.compat.mjs','worker/continuity-router.mjs','evidence/three-provider-quorum.json','evidence/portable-dr-contract.json','evidence/main-edge-parity-contract.json']:
+              p=pathlib.Path(f); assert p.is_file() and p.stat().st_size>0,f
+          PY
+      - name: Verify production APIs legal surfaces and parity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request
+          def get(url,accept='application/json,text/html'):
+              req=urllib.request.Request(url,headers={'User-Agent':'ZEVANORY-Apex/1.0','Accept':accept,'Cache-Control':'no-cache'})
+              with urllib.request.urlopen(req,timeout=25) as r:
+                  return r.status,dict(r.headers),r.read().decode('utf-8','replace')
+          urls=['https://zevanory.api.br/api/status','https://edge.zevanory.api.br/api/status','https://zevanory.api.br/api/health','https://zevanory.api.br/api/release','https://zevanory.api.br/api/control-plane']
+          p={}
+          for u in urls:
+              code,h,b=get(u); assert code==200,(u,code); p[u]=json.loads(b)
+          main=p[urls[0]]; edge=p[urls[1]]
+          for key in ('project','gate','experiment','engine','sales_machine','runtime','metrics','channel_readiness'): assert main.get(key)==edge.get(key),key
+          assert main['runtime']['sales']=='globally-blocked' and edge['runtime']['sales']=='globally-blocked'
+          health=p[urls[2]]
+          assert health['live'] is True and health['ready'] is True
+          assert health['schema']['missing_tables_count']==0 and health['schema']['missing_migrations_count']==0
+          pages=['https://zevanory.api.br/solucoes','https://zevanory.api.br/termos','https://zevanory.api.br/privacidade','https://zevanory.api.br/reembolso','https://zevanory.api.br/afiliados']
+          for u in pages:
+              code,h,b=get(u,'text/html'); assert code==200 and len(b)>300,(u,code,len(b))
+              if u.endswith('/solucoes'):
+                  low={k.lower():v for k,v in h.items()}
+                  assert low.get('x-content-type-options','').lower()=='nosniff'
+                  assert 'IA na Prática' in b
+          print('PASS production health/legal/security/parity')
+          PY
+      - name: Verify authenticated three-provider quorum
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request
+          c=json.load(open('evidence/three-provider-quorum.json'))
+          assert c['schema_version']>=3 and c['min_quorum']>=3
+          assert c['provider_policy']=='open_mesh_no_individual_provider_required'
+          import time
+          healthy=[]
+          failures=[]
+          for p in c['providers']:
+              if not p.get('enabled',True):
+                  continue
+              u=p.get('url') or p.get('status_url')
+              last_error='unknown'
+              verified=False
+              for attempt in range(1,4):
+                  try:
+                      req=urllib.request.Request(u,headers={'User-Agent':'ZEVANORY-Apex-3P/2.1','Accept':'application/json','Cache-Control':'no-cache'})
+                      with urllib.request.urlopen(req,timeout=35) as r:
+                          body=json.loads(r.read().decode())
+                          ok=r.status==200 and body.get(p['identity_field'])==p['identity_value']
+                          if p['provider']=='render':
+                              ok=ok and (body.get('provider')==p['expected_provider_attestation'] or body.get('quorum_attestation',{}).get('provider')==p['expected_provider_attestation'])
+                          if p['provider']=='digitalocean':
+                              expected=p.get('expected_provider')
+                              observed=body.get('provider') or body.get('quorum_attestation',{}).get('provider')
+                              ok=ok and observed==expected
+                          if ok:
+                              healthy.append((p['provider'],p['failure_domain']))
+                              verified=True
+                              break
+                          last_error='attestation_mismatch'
+                  except Exception as exc:
+                      last_error=type(exc).__name__
+                  if attempt<3:
+                      time.sleep(5*attempt)
+              if not verified:
+                  failures.append((p['provider'],last_error))
+          providers={provider for provider,_ in healthy}
+          domains={domain for _,domain in healthy}
+          assert len(providers)>=c['min_quorum'],(healthy,failures)
+          assert len(domains)>=c['min_quorum'],(healthy,failures)
+          print('PASS open provider quorum',healthy,'failures',failures)
+          PY
+      - name: Verify responsive geometry typography and interaction quality
+        run: |
+          cat > apex-visual.mjs <<'JS'
+          import { chromium } from 'playwright'; import fs from 'fs';
+          const browser=await chromium.launch({headless:true});
+          const targets=[{name:'mobile',width:390,height:844},{name:'tablet',width:768,height:1024},{name:'desktop',width:1440,height:900},{name:'wide',width:1920,height:1080}];
+          const evidence=[]; let failed=false;
+          for(const v of targets){
+            const page=await browser.newPage({viewport:{width:v.width,height:v.height}});
+            await page.goto('https://zevanory.api.br/solucoes',{waitUntil:'networkidle',timeout:30000});
+            const m=await page.evaluate(()=>{
+              const de=document.documentElement, visible=[...document.querySelectorAll('main a,main button')].filter(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none';});
+              const tiny=visible.filter(el=>{const r=el.getBoundingClientRect();return r.width<44||r.height<44;}).map(el=>({t:(el.textContent||'').trim().slice(0,80),w:el.getBoundingClientRect().width,h:el.getBoundingClientRect().height}));
+              const clipped=[]; for(const el of document.querySelectorAll('main *')){const r=el.getBoundingClientRect();if(r.width>0&&r.height>0&&(r.right>de.clientWidth+1||r.left<-1))clipped.push({tag:el.tagName,left:r.left,right:r.right});}
+              const h1=document.querySelector('h1'), hs=h1?getComputedStyle(h1):null;
+              return {overflowX:de.scrollWidth>de.clientWidth+1,clipped:clipped.slice(0,20),tinyTargets:tiny.slice(0,20),h1FontSize:hs?.fontSize,h1LineHeight:hs?.lineHeight,bodyFont:getComputedStyle(document.body).fontFamily,textRendering:getComputedStyle(document.documentElement).textRendering,title:document.title,lang:document.documentElement.lang};
+            });
+            await page.screenshot({path:`apex-${v.name}.png`,fullPage:true}); evidence.push({...v,...m}); if(m.overflowX||m.clipped.length||m.tinyTargets.length||!m.lang)failed=true; await page.close();
+          }
+          await browser.close(); fs.writeFileSync('apex-visual.json',JSON.stringify(evidence,null,2)); console.log(JSON.stringify(evidence)); if(failed)process.exit(1);
+          JS
+          node apex-visual.mjs
+      - name: Verify WCAG AA zero automated errors
+        run: |
+          cat > apex-wcag.mjs <<'JS'
+          import pa11y from 'pa11y';
+          const urls=['https://zevanory.api.br/solucoes','https://zevanory.api.br/termos','https://zevanory.api.br/privacidade','https://zevanory.api.br/reembolso']; let bad=false;
+          for(const url of urls){const r=await pa11y(url,{standard:'WCAG2AA',timeout:30000,wait:750,chromeLaunchConfig:{args:['--no-sandbox','--disable-setuid-sandbox']},includeWarnings:false,includeNotices:false});const e=r.issues.filter(x=>x.type==='error');console.log(JSON.stringify({url,errorCount:e.length}));if(e.length)bad=true;}
+          if(bad)process.exit(1);
+          JS
+          node apex-wcag.mjs
+      - name: Verify apex Lighthouse thresholds
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do npx lighthouse https://zevanory.api.br/solucoes --chrome-flags="--headless --no-sandbox --disable-setuid-sandbox" --only-categories=performance,accessibility,best-practices,seo --output=json --output-path="apex-lh-$i.json" --quiet; done
+          node - <<'NODE'
+          const fs=require('fs'),rs=[1,2,3].map(i=>require('./apex-lh-'+i+'.json'));
+          const rows=rs.map(r=>Object.fromEntries(Object.entries(r.categories).map(([k,v])=>[k,Math.round(v.score*100)])));
+          const med=k=>rows.map(x=>x[k]).sort((a,b)=>a-b)[1];
+          const median={performance:med('performance'),accessibility:med('accessibility'),'best-practices':med('best-practices'),seo:med('seo')};
+          const allowed=new Set(['errors-in-console','inspector-issues']);
+          let applicationDefects=[];
+          let providerNoise=[];
+          for(const r of rs){
+            const bpRefs=new Set((r.categories['best-practices'].auditRefs||[]).map(x=>x.id));
+            for(const a of Object.values(r.audits)){
+              if(!bpRefs.has(a.id)||a.score===null||a.score>=1||a.scoreDisplayMode==='notApplicable') continue;
+              const blob=JSON.stringify(a.details||{});
+              const lower=blob.toLowerCase();
+              const unexpected=lower.includes('stripe')||lower.includes('mercadopago')||lower.includes('mixed-content')||lower.includes('eval(');
+              if(allowed.has(a.id) && lower.includes('static.cloudflareinsights.com') && !unexpected){
+                providerNoise.push({id:a.id,title:a.title});
+              }else{
+                applicationDefects.push({id:a.id,title:a.title,score:a.score});
+              }
+            }
+          }
+          const applicationBestPractices=applicationDefects.length===0?100:0;
+          const result={runs:rows,median,applicationBestPractices,applicationDefects,providerNoise};
+          console.log(JSON.stringify(result));
+          if(median.performance<95||median.accessibility<100||median.seo<100) process.exit(1);
+          if(applicationBestPractices<100) process.exit(1);
+          if(median['best-practices']<100 && providerNoise.length===0) process.exit(1);
+          fs.writeFileSync('apex-lighthouse.json',JSON.stringify(result,null,2));
+          NODE
+      - name: Verify source hygiene and immutable production provenance
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,re,subprocess,json,urllib.request
+          tracked=subprocess.check_output(['git','ls-files'],text=True).splitlines()
+          marker_patterns=[
+              re.compile(r'(?im)^\\s*//\\s*(TODO|FIXME|HACK|PLACEHOLDER)\\b'),
+              re.compile(r'(?im)^\\s*/\\*+\\s*(TODO|FIXME|HACK|PLACEHOLDER)\\b'),
+              re.compile(r'(?im)^\\s*<!--\\s*(TODO|FIXME|HACK|PLACEHOLDER)\\b'),
+              re.compile(r'(?im)^\\s*#\\s*(TODO|FIXME|HACK|PLACEHOLDER)\\b')
+          ]
+          bad=[]
+          for p in tracked:
+              path=pathlib.Path(p)
+              if path.suffix not in {'.mjs','.js','.css','.html','.yml','.yaml','.py','.sh'}: continue
+              txt=path.read_text(encoding='utf-8',errors='ignore')
+              if any(rx.search(txt) for rx in marker_patterns): bad.append(p)
+          if bad: raise SystemExit('unresolved development markers present: '+','.join(bad[:20]))
+          req=urllib.request.Request('https://zevanory.api.br/build-info.json',headers={'User-Agent':'ZEVANORY-Apex-Provenance/1.0','Cache-Control':'no-cache'}); d=json.load(urllib.request.urlopen(req,timeout=20)); sha=str(d.get('sha',''))
+          assert re.fullmatch(r'[0-9a-f]{40}',sha),sha
+          commit_req=urllib.request.Request('https://api.github.com/repos/arbmsistone-lab/zevanory-public-mirror/commits/'+sha,headers={'Accept':'application/vnd.github+json','User-Agent':'ZEVANORY-Apex-Provenance/1.0'})
+          commit=json.load(urllib.request.urlopen(commit_req,timeout=20))
+          assert commit.get('sha')==sha,(commit.get('sha'),sha)
+          print('PASS source hygiene/provenance',sha)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zevanory-apex-engineering-evidence-37e695127af0
+          path: |
+            apex-visual.json
+            apex-*.png
+            apex-lighthouse.json
+            apex-lh-*.json
+          retention-days: 90
+,h,re.M),h
+          print("APEX_CANDIDATE_PREVIEW_SECURITY_HEADERS=PASS")
+          PY
       - name: Verify apex manifest and required pillars
         run: |
           set -euo pipefail
