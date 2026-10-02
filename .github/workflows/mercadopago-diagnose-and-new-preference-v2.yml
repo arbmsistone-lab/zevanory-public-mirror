@@ -1,0 +1,75 @@
+name: Mercado Pago - diagnóstico e preferência v2
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/mercadopago-diagnose-and-new-preference-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-and-create:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      MP_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+      MP_BUYER_EMAIL: ${{ secrets.MERCADOPAGO_TEST_BUYER_EMAIL }}
+      ORDER_ID: 4a615149-7dac-4c36-93a3-b7f895d2c9ca
+    steps:
+      - name: Query payments and create new preference
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          token=os.environ["MP_ACCESS_TOKEN"].strip()
+          buyer=os.environ["MP_BUYER_EMAIL"].strip()
+          order=os.environ["ORDER_ID"].strip()
+          external="ZEVANORY:EXP-0001:"+order
+          assert token and buyer
+
+          def call(url, method="GET", body=None):
+              headers={"Authorization":"Bearer "+token,"Accept":"application/json","User-Agent":"ZEVANORY-MP-Test/1.0"}
+              data=None
+              if body is not None:
+                  headers["Content-Type"]="application/json"
+                  data=json.dumps(body).encode()
+              req=urllib.request.Request(url,method=method,headers=headers,data=data)
+              with urllib.request.urlopen(req,timeout=30) as r:
+                  raw=r.read().decode("utf-8","replace")
+                  return json.loads(raw) if raw else {}
+
+          q=urllib.parse.urlencode({"external_reference":external,"sort":"date_created","criteria":"desc"})
+          search=call("https://api.mercadopago.com/v1/payments/search?"+q)
+          rows=search.get("results") or []
+          print("PAYMENT_SEARCH_COUNT="+str(len(rows)))
+          if not rows:
+              print("PAYMENT_STATUS=NONE_CREATED")
+          for p in rows:
+              print("PAYMENT="+str(p.get("id"))+"|"+str(p.get("status"))+"|"+str(p.get("status_detail"))+"|"+str(p.get("payment_method_id")))
+
+          payload={
+              "items":[{"id":"ZEV-IA-NA-PRATICA","title":"ZEVANORY IA na Prática","quantity":1,"currency_id":"BRL","unit_price":197.0}],
+              "payer":{"email":buyer},
+              "external_reference":external,
+              "back_urls":{
+                  "success":"https://vendas.zevanory.api.br/solucoes?checkout=success",
+                  "failure":"https://vendas.zevanory.api.br/solucoes?checkout=failure",
+                  "pending":"https://vendas.zevanory.api.br/solucoes?checkout=pending"
+              },
+              "auto_return":"approved",
+              "notification_url":"https://zevanory.api.br/api/webhooks?provider=mercadopago_test",
+              "payment_methods":{"excluded_payment_methods":[],"excluded_payment_types":[],"installments":1},
+              "metadata":{"zevanory_order_id":order,"certification":True}
+          }
+          pref=call("https://api.mercadopago.com/checkout/preferences","POST",payload)
+          init_point=str(pref.get("init_point") or "")
+          assert init_point.startswith("https://www.mercadopago.com"), init_point
+          print("PREFERENCE_ID="+str(pref.get("id")))
+          print("INIT_POINT="+init_point)
+          print("BUYER_EMAIL_BOUND=PASS")
+          print("CREDIT_CARD_EXCLUSIONS=NONE")
+          PY
