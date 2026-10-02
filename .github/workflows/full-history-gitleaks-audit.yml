@@ -1,0 +1,41 @@
+name: Full History Gitleaks Audit
+on:
+  push:
+    branches:
+      - audit/full-history-gitleaks-20261002
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Gitleaks Action full history
+        id: gitleaks_action
+        continue-on-error: true
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
+          GITLEAKS_ENABLE_SUMMARY: "true"
+      - name: Fallback full-history CLI scan
+        if: steps.gitleaks_action.outcome != 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=8.30.1
+          curl -fsSL -o /tmp/gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          /tmp/gitleaks git --redact=100 --report-format=json --report-path=/tmp/gitleaks-report.json .
+          echo "GITLEAKS_FALLBACK_FULL_HISTORY=PASS"
+      - name: Audit route summary
+        if: always()
+        shell: bash
+        run: |
+          echo "GITLEAKS_ACTION_OUTCOME=${{ steps.gitleaks_action.outcome }}"
