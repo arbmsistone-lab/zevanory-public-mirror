@@ -144,10 +144,43 @@ jobs:
           c["vars"]["SALE_GLOBALLY_ENABLED"]="false"
           c["vars"]["PRE_SALE_GATES_APPROVED"]="false"
           c["vars"]["WHATSAPP_SALES_ENABLED"]="false"
-          c["vars"]["ZEVANORY_WHATSAPP_E164"]="+5588992545413"
           c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
-          c["vars"]["ZEVANORY_WHATSAPP_COUNTRY"]="BR"
           c["vars"]["SUPPORT_CHANNEL"]="WhatsApp +55 88 99254-5413"
+          runtime=c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})
+          if not isinstance(runtime,dict):
+              runtime={}
+              c["vars"]["ZEVANORY_RUNTIME_CONFIG"]=runtime
+          for key in (
+              "CLOUDFLARE_AI_FREE_ONLY",
+              "CLOUDFLARE_AI_DAILY_CALL_LIMIT",
+              "VOICE_TTS_PROVIDER",
+              "VOICE_TTS_PROVIDER_CHAIN",
+              "VOICE_TTS_FAILOVER_ENABLED",
+              "GEMINI_FREE_TIER_CONFIRMED",
+          ):
+              if key in c["vars"]:
+                  runtime[key]=c["vars"].pop(key)
+          c["vars"].pop("ZEVANORY_WHATSAPP_E164",None)
+          c["vars"].pop("ZEVANORY_WHATSAPP_COUNTRY",None)
+          
+          # Preserve compacted values through normalizeEnv.
+          aliases=Path("worker/binding-aliases.mjs")
+          alias_src=aliases.read_text(encoding="utf-8")
+          alias_src=alias_src.replace(
+              '      return Reflect.get(target, prop, receiver);',
+              '      const direct = Reflect.get(target, prop, receiver);\n'
+              '      if (direct !== undefined) return direct;\n'
+              '      const runtime = Reflect.get(target, "ZEVANORY_RUNTIME_CONFIG", receiver);\n'
+              '      if (runtime && typeof runtime === "object" && prop in runtime) return runtime[prop];\n'
+              '      return undefined;'
+          )
+          alias_src=alias_src.replace(
+              '      return Reflect.has(target, prop);',
+              '      if (Reflect.has(target, prop)) return true;\n'
+              '      const runtime = Reflect.get(target, "ZEVANORY_RUNTIME_CONFIG");\n'
+              '      return Boolean(runtime && typeof runtime === "object" && prop in runtime);'
+          )
+          aliases.write_text(alias_src,encoding="utf-8")
           # Replace every legacy public contact reference in the reconstructed production snapshot.
           replacements = {
               "+55 88 9234-0423": "+55 88 99254-5413",
