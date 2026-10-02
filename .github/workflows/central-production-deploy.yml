@@ -136,6 +136,7 @@ jobs:
           c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
           c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
           c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"
+          c["vars"]["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
           c["vars"]["MERCADOPAGO_ENV"]="sandbox"
           c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
           c["vars"]["CHECKOUT_ENABLED"]="true"
