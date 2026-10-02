@@ -290,6 +290,14 @@ jobs:
           print("FINANCIAL_SECRETS_MUTATION=DECOUPLED")
           PY
 
+      - name: Require certification secret before production deploy
+        if: steps.auth.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.143.0 secret list --name zevanory --format json > /tmp/zevanory-secrets.json
+          jq -e 'map(.name) | index("CERTIFICATION_E2E_TOKEN") != null' /tmp/zevanory-secrets.json >/dev/null
+          echo "CERTIFICATION_E2E_TOKEN_PRESENT=PASS"
+
       - name: Deploy repaired production worker
         if: steps.auth.outputs.available == 'true'
         run: |
