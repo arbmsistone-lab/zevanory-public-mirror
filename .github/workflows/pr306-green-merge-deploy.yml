@@ -6,7 +6,7 @@ on:
     types: [synchronize, reopened, ready_for_review]
 
 permissions:
-  actions: read
+  actions: write
   checks: read
   contents: write
   pull-requests: write
