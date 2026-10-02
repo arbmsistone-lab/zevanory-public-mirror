@@ -1,0 +1,68 @@
+name: ZEVANORY Payment Sandbox Audit
+on:
+  push:
+    branches:
+      - audit/payment-sandbox-20261002
+permissions:
+  contents: read
+jobs:
+  mercadopago:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN || secrets.MERCADOPAGO_ACCESS_TOKEN }}
+      MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET || secrets.MERCADOPAGO_WEBHOOK_SECRET }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Resolve live blocked runtime SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://zevanory.api.br/api/release -o /tmp/release.json
+          python3 - <<'PY'
+          import json,os,re
+          d=json.load(open('/tmp/release.json'))
+          sha=str(d.get('deployment',{}).get('commit_sha','')).lower()
+          assert re.fullmatch(r'[0-9a-f]{40}',sha),d
+          assert d.get('sales_mode')=='globally-blocked',d
+          with open(os.environ['GITHUB_ENV'],'a') as f: f.write('EXPECTED_SHA='+sha+'\n')
+          print('LIVE_FINANCIAL_RUNTIME_SHA='+sha)
+          print('SALE_GLOBALLY_ENABLED=false')
+          PY
+      - name: Checkout exact live financial runtime
+        run: git checkout --detach "$EXPECTED_SHA"
+      - name: Mercado Pago sandbox preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${MERCADOPAGO_TEST_ACCESS_TOKEN:-}"
+          test -n "${MERCADOPAGO_TEST_WEBHOOK_SECRET:-}"
+          test "${#MERCADOPAGO_TEST_WEBHOOK_SECRET}" -ge 16
+          test "${#CERTIFICATION_E2E_TOKEN}" -ge 32
+          echo "MERCADOPAGO_SANDBOX_PREFLIGHT=PASS"
+      - name: Run Mercado Pago provider sandbox lifecycle
+        run: python3 scripts/financial_e2e_mercadopago.py
+      - name: Require requested cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'WEBHOOK_AUTH=PASS' "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          test -f evidence/financial-e2e-mercadopago.json
+          python3 - <<'PY'
+          import json
+          p=json.load(open('evidence/financial-e2e-mercadopago.json'))
+          c=p['checks']
+          for k in ['PAYMENT_CONFIRMED','WEBHOOK_AUTH','IDEMPOTENCY','REPLAY_PROTECTION','OUT_OF_ORDER_PROTECTION','REFUND','ZERO_DUPLICATE_FINANCIAL_OPERATION']:
+              assert c.get(k)=='PASS',(k,c.get(k))
+          assert c.get('FINAL_FINANCIAL_E2E')=='GREEN'
+          print('MERCADOPAGO_REQUESTED_CASES=PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: payment-sandbox-mercadopago
+          path: evidence/financial-e2e-mercadopago.json
+          if-no-files-found: warn
