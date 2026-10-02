@@ -62,6 +62,13 @@ jobs:
               "pending":"https://vendas.zevanory.api.br/solucoes?checkout=pending",
           }
           patch={
+              "items":[{
+                  "id":"ZEV-IA-NA-PRATICA",
+                  "title":"ZEVANORY IA na Prática",
+                  "quantity":1,
+                  "currency_id":"BRL",
+                  "unit_price":197.0
+              }],
               "back_urls": safe_back,
               "auto_return":"approved",
               "notification_url":"https://zevanory.api.br/api/webhooks?provider=mercadopago_test",
@@ -70,7 +77,8 @@ jobs:
           _, after = call("PUT", patch)
 
           items2=after.get("items") or []
-          assert items2 and all(float(x.get("unit_price") or 0)>0 for x in items2), after
+          assert len(items2)==1 and items2[0].get("title")=="ZEVANORY IA na Prática", after
+          assert all(float(x.get("unit_price") or 0)>0 for x in items2), after
           assert all(str(x.get("currency_id") or "").upper()=="BRL" for x in items2), after
           assert after.get("back_urls")==safe_back, after.get("back_urls")
           assert after.get("auto_return")=="approved", after.get("auto_return")
