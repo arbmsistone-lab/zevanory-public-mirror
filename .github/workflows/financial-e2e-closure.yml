@@ -64,6 +64,17 @@ jobs:
           echo "CANONICAL_WORKER_ACCOUNT=RESOLVED"
           echo "CERTIFICATION_E2E_TOKEN_SYNC=PASS"
 
+      - name: Diagnose certification route ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          ORDER_ID="00000000-0000-4000-8000-000000000000"
+          for base in "https://zevanory.zevanory.workers.dev" "https://zevanory.api.br"; do
+            code="$(curl -sS -o /tmp/e2e-probe.json -w '%{http_code}' -H "x-certification-e2e-token: $CERTIFICATION_E2E_TOKEN" "$base/api/internal/certification/e2e/status?order_id=$ORDER_ID")"
+            body="$(cat /tmp/e2e-probe.json)"
+            echo "E2E_ROUTE_PROBE base=$base status=$code body=$body"
+          done
+
       - name: Validate Mercado Pago sandbox preflight
         shell: bash
         run: |
