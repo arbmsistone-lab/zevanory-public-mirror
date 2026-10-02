@@ -18,6 +18,7 @@ OUT = pathlib.Path("evidence/financial-e2e-mercadopago.json")
 TOKEN = (os.environ.get("MERCADOPAGO_TEST_ACCESS_TOKEN") or "").strip()
 WEBHOOK_SECRET = (os.environ.get("MERCADOPAGO_TEST_WEBHOOK_SECRET") or "").strip()
 CERT_TOKEN = (os.environ.get("CERTIFICATION_E2E_TOKEN") or "").strip()
+OPERATOR_TOKEN = (os.environ.get("OPERATOR_TOKEN") or "").strip()
 EXPECTED_SHA = (os.environ.get("EXPECTED_SHA") or "").strip().lower()
 
 def request(url, method="GET", headers=None, body=None, ok=(200, 201, 202)):
@@ -89,11 +90,12 @@ def assert_release():
     return release
 
 def create_invite():
+    assert OPERATOR_TOKEN, "OPERATOR_TOKEN_missing"
     _, invite = app(
-        "/api/internal/certification/e2e/invite",
+        "/api/events/operator",
         "POST",
-        {"x-certification-e2e-token": CERT_TOKEN},
-        {},
+        {"authorization": "Bearer " + OPERATOR_TOKEN},
+        {"name": "certification_pilot_invite_create"},
         ok=(201,),
     )
     assert invite.get("created") is True and invite.get("commercial_unlock") is False, invite
