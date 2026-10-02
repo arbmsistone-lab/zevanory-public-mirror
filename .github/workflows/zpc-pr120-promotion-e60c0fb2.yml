@@ -82,3 +82,5 @@ jobs:
           jq -e '.ok == true' /tmp/health.json >/dev/null
           echo "CLOUDFLARE_OWNER_PROMOTION=PASS"
           echo "WORKER_COMMIT=$ZPC_SHA"
+
+# retry after canonical CLOUDFLARE_API_TOKEN refresh 2026-10-02
