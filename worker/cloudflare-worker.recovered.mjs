@@ -17987,7 +17987,7 @@ function withSecurityHeaders(response2, env) {
   if (contentType.startsWith("text/html")) headers2.set("content-type", "text/html; charset=utf-8");
   else if (contentType.startsWith("text/javascript") || contentType.startsWith("application/javascript")) headers2.set("content-type", "text/javascript; charset=utf-8");
   else if (contentType.startsWith("text/css")) headers2.set("content-type", "text/css; charset=utf-8");
-  headers2.set("content-security-policy", "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'");
+  headers2.set("content-security-policy", "default-src 'self'; base-uri 'none'; form-action 'self' https://www.mercadopago.com https://www.mercadopago.com.br; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://www.mercadopago.com https://www.mercadopago.com.br https://sdk.mercadopago.com; frame-src https://www.mercadopago.com https://www.mercadopago.com.br https://*.mercadopago.com https://*.mercadopago.com.br; style-src 'self'; img-src 'self' data: https://www.mercadopago.com https://www.mercadopago.com.br; connect-src 'self' https://api.mercadopago.com https://www.mercadopago.com https://www.mercadopago.com.br https://*.mercadopago.com https://*.mercadopago.com.br; font-src 'self'");
   headers2.set("x-content-type-options", "nosniff");
   headers2.set("referrer-policy", "strict-origin-when-cross-origin");
   headers2.set("permissions-policy", "camera=(), microphone=(), geolocation=()");
@@ -18106,10 +18106,10 @@ var cloudflare_worker_default = {
       const controlPlane = { ...snapshot, zea10_live: zea10Live };
       const headers2 = new Headers({ "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
       if (env?.ZEVANORY_RELEASE_SHA) headers2.set("x-deployment-sha", String(env.ZEVANORY_RELEASE_SHA));
-      return new Response(JSON.stringify(controlPlane), { status: 200, headers: headers2 });
+      return withSecurityHeaders(new Response(JSON.stringify(controlPlane), { status: 200, headers: headers2 }), env);
     }
     const delegatedPayment = await delegatePaymentRequest(request, env);
-    if (delegatedPayment) return delegatedPayment;
+    if (delegatedPayment) return withSecurityHeaders(delegatedPayment, env);
     if (url.pathname === "/private/artifacts/issue") return handleArtifactIssue(request, env);
     if (url.pathname === "/private/artifacts/download") return handleArtifactDownload(request, env);
     if (url.pathname === "/private/journal/append") return handleCloudflareJournalAppend(request, env);
@@ -18181,12 +18181,12 @@ var cloudflare_worker_default = {
         body.channel_readiness = publicCommercialChannelReadinessSummary(env);
         const headers2 = new Headers(response3.headers);
         headers2.set("content-type", "application/json; charset=utf-8");
-        return new Response(JSON.stringify(body), { status: response3.status, statusText: response3.statusText, headers: headers2 });
+        return withSecurityHeaders(new Response(JSON.stringify(body), { status: response3.status, statusText: response3.statusText, headers: headers2 }), env);
       } catch {
-        return response3;
+        return withSecurityHeaders(response3, env);
       }
     }
-    if (url.pathname.startsWith("/api/")) return handleAsNodeRequest(PORT, request);
+    if (url.pathname.startsWith("/api/")) return withSecurityHeaders(await handleAsNodeRequest(PORT, request), env);
     const alias = staticAliases.get(url.pathname);
     const assetUrl = alias ? new URL(alias, url) : url;
     const assetRequest = new Request(assetUrl, request);
