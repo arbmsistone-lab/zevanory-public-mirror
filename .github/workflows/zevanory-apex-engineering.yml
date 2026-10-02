@@ -45,16 +45,17 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
-          rm -rf $GITHUB_WORKSPACE/.preview-public
-          mkdir -p $GITHUB_WORKSPACE/.preview-public
-          cp solucoes/index.html $GITHUB_WORKSPACE/.preview-public/solucoes.html
-          cat > $GITHUB_WORKSPACE/wrangler.preview.tmp.toml <<'EOF'
+          cd "$GITHUB_WORKSPACE"
+          rm -rf .preview-public
+          mkdir -p .preview-public
+          cp solucoes/index.html .preview-public/solucoes.html
+          cat > wrangler.preview.tmp.toml <<'EOF'
           name = "zevanory"
           main = "worker/cloudflare-worker.recovered.mjs"
           compatibility_date = "2026-09-19"
           account_id = "1b26415802588185a86c1d4d3ebf5bdb"
           [assets]
-          directory = "$GITHUB_WORKSPACE/.preview-public"
+          directory = ".preview-public"
           binding = "ASSETS"
           run_worker_first = true
           [previews]
@@ -65,32 +66,12 @@ jobs:
           FINANCIAL_EVENTS_ENABLED = "false"
           MERCADOPAGO_ENV = "sandbox"
           EOF
-          npx --yes wrangler@4.143.0 preview --config $GITHUB_WORKSPACE/wrangler.preview.tmp.toml --name "pr-${{ github.event.pull_request.number || 'manual' }}" 2>&1 | tee /tmp/preview.log
-          PREVIEW_URL="$(python3 - <<'PY'
-          import re
-          s=open('/tmp/preview.log',encoding='utf-8',errors='replace').read()
-          urls=re.findall(r'https://[^\s]+workers\.dev',s)
-          if not urls: raise SystemExit('preview_url_missing')
-          print(urls[-1].rstrip('/'))
-          PY
-          )"
-          echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
+          npx --yes wrangler@4.143.0 preview --config "$GITHUB_WORKSPACE/wrangler.preview.tmp.toml" --name "pr-${{ github.event.pull_request.number || 'manual' }}" 2>&1 | tee /tmp/preview.log
+          PREVIEW_URL="$(grep -Eo 'https://[^[:space:]]+workers\.dev' /tmp/preview.log | tail -1)"
+          test -n "$PREVIEW_URL"
           curl -fsS -D /tmp/preview-headers.txt -o /tmp/preview-body.html "$PREVIEW_URL/solucoes"
-          python3 - <<'PY'
-          import re
-          h=open('/tmp/preview-headers.txt',encoding='utf-8',errors='replace').read().lower()
-          m=re.search(r'^strict-transport-security:\s*([^\r\n]+)',h,re.M)
-          assert m,m
-          maxage=re.search(r'max-age=(\d+)',m.group(1))
-          assert maxage and int(maxage.group(1))>=31536000,m.group(1)
-          assert 'includesubdomains' in m.group(1),m.group(1)
-          c=re.search(r'^content-security-policy:\s*([^\r\n]+)',h,re.M)
-          assert c,c
-          csp=c.group(1)
-          assert "script-src" in csp and "sdk.mercadopago.com" in csp and "www.mercadopago.com" in csp,csp
-          assert "frame-src" in csp and "mercadopago.com" in csp,csp
-          assert "connect-src" in csp and "api.mercadopago.com" in csp,csp
-          assert re.search(r'^x-content-type-options:\s*nosniff\s*
+          python3 scripts/verify-live-headers.py /tmp/preview-headers.txt
+          echo "APEX_CANDIDATE_PREVIEW_SECURITY_HEADERS=PASS"
       - name: Verify apex manifest and required pillars
         run: |
           set -euo pipefail
@@ -282,9 +263,6 @@ jobs:
             apex-lighthouse.json
             apex-lh-*.json
           retention-days: 90
-,h,re.M),h
-          print("APEX_CANDIDATE_PREVIEW_SECURITY_HEADERS=PASS")
-          PY
       - name: Verify apex manifest and required pillars
         run: |
           set -euo pipefail
