@@ -1,0 +1,82 @@
+name: ZEVANORY autonomous seller stage1 creatives
+
+on:
+  push:
+    branches:
+      - feat/autonomous-seller-stage1-creatives-20261002
+    paths:
+      - "scripts/autonomous_seller_stage1_creatives.py"
+      - "sales-public/ia-na-pratica.html"
+      - "sales-public/vendas-na-pratica.html"
+      - "sales-public/lucro-e-caixa.html"
+      - "sales-public/combo-ia-vendas.html"
+      - "sales-public/negocio-completo.html"
+      - ".github/workflows/autonomous-seller-stage1-creatives.yml"
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/autonomous_seller_stage1_creatives.py"
+      - "sales-public/ia-na-pratica.html"
+      - "sales-public/vendas-na-pratica.html"
+      - "sales-public/lucro-e-caixa.html"
+      - "sales-public/combo-ia-vendas.html"
+      - "sales-public/negocio-completo.html"
+      - ".github/workflows/autonomous-seller-stage1-creatives.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OUT_DIR: evidence/autonomous-seller/stage1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Preflight Gemini authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GEMINI_API_KEY:-}" || { echo "GEMINI_API_KEY=ABSENT"; exit 2; }
+          echo "GEMINI_API_KEY=PRESENT"
+      - name: Install generator dependencies
+        run: python -m pip install --disable-pip-version-check "google-genai>=1,<2"
+      - name: Generate five real AI creatives
+        run: python scripts/autonomous_seller_stage1_creatives.py --out "$OUT_DIR"
+      - name: Verify immutable stage1 evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, hashlib
+          root=pathlib.Path("evidence/autonomous-seller/stage1")
+          manifest=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          assert manifest.get("schema")=="zevanory.autonomous-seller.creatives.v1"
+          rows=manifest.get("products") or []
+          assert len(rows)==5, rows
+          assert all(x.get("faithful") is True for x in rows), rows
+          for row in rows:
+              d=root/row["slug"]
+              meta=json.loads((d/"post.json").read_text(encoding="utf-8"))
+              raw=(d/"post.png").read_bytes()
+              assert len(raw)>=10000
+              assert hashlib.sha256(raw).hexdigest()==meta["image_sha256"]==row["image_sha256"]
+              assert 4<=len(meta["hashtags"])<=8
+              assert meta["verification"]["faithful"] is True
+              assert meta["verification"].get("unsupported_claims")==[]
+              assert meta["verification"].get("misleading_promises")==[]
+          print("STAGE1_EVIDENCE=PASS")
+          print("STAGE1_PRODUCTS=5/5")
+          PY
+      - name: Upload five creatives
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-seller-stage1-creatives-${{ github.sha }}
+          path: evidence/autonomous-seller/stage1
+          if-no-files-found: error
+          retention-days: 90
