@@ -29,10 +29,10 @@ jobs:
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
       EXPECTED_SHA: ${{ inputs.expected_sha || 'c3845cf898acf60e84a06e51cf08db7cfd09bbe3' }}
     steps:
-      - name: Checkout exact certified runtime SHA
+      - name: Checkout current E2E harness
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.EXPECTED_SHA }}
+          ref: gh-pages
           fetch-depth: 1
 
       - name: Validate Mercado Pago sandbox preflight
