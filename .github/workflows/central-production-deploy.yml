@@ -358,6 +358,7 @@ jobs:
           echo "CERTIFICATION_E2E_TOKEN_PRESENT=PASS"
 
       - name: Deploy repaired production worker
+        id: deployworker
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
@@ -450,6 +451,12 @@ jobs:
           print("PRODUCTION_ZEES_ZEA_CORE_ADMIN_ARCHITECTURE_PASS")
           print("PRODUCTION_CENTRAL_UTF8_AND_SAFETY_PASS")
           PY
+      - name: Verify production API legal surfaces and parity after deploy
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-production-surfaces.py
       - name: Verify live HSTS CSP and Mercado Pago navigation
         if: steps.auth.outputs.available == 'true'
         shell: bash
@@ -476,6 +483,28 @@ jobs:
           await browser.close();
           JS
           node /tmp/mp-csp-smoke.mjs
+      - name: Automatic rollback after failed post-deploy smoke
+        if: failure() && steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "POSTDEPLOY_SMOKE_FAILED=1"
+          npx --yes wrangler@4.143.0 rollback --name zevanory --config wrangler.central-fix.jsonc --message "Automatic rollback after failed production smoke for $TARGET_RUNTIME_SHA"
+          for i in $(seq 1 20); do
+            code="$(curl -sS -o /tmp/rollback-health.json -w '%{http_code}' https://zevanory.api.br/api/health || true)"
+            if [ "$code" = "200" ] && python3 - <<'PY'
+import json
+h=json.load(open('/tmp/rollback-health.json'))
+raise SystemExit(0 if h.get('live') is True and h.get('ready') is True else 1)
+PY
+            then
+              echo "AUTO_ROLLBACK_HEALTH=PASS"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "AUTO_ROLLBACK_HEALTH=FAIL"
+          exit 1
       - name: Fail-closed deployment status
         if: steps.auth.outputs.available != 'true'
         run: |
