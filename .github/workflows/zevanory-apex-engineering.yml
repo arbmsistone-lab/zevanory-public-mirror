@@ -45,16 +45,16 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
-          rm -rf /tmp/zevanory-preview-public
-          mkdir -p /tmp/zevanory-preview-public
-          cp solucoes/index.html /tmp/zevanory-preview-public/solucoes.html
-          cat > /tmp/wrangler.preview.toml <<'EOF'
+          rm -rf $GITHUB_WORKSPACE/.preview-public
+          mkdir -p $GITHUB_WORKSPACE/.preview-public
+          cp solucoes/index.html $GITHUB_WORKSPACE/.preview-public/solucoes.html
+          cat > $GITHUB_WORKSPACE/wrangler.preview.tmp.toml <<'EOF'
           name = "zevanory"
           main = "worker/cloudflare-worker.recovered.mjs"
           compatibility_date = "2026-09-19"
           account_id = "1b26415802588185a86c1d4d3ebf5bdb"
           [assets]
-          directory = "/tmp/zevanory-preview-public"
+          directory = "$GITHUB_WORKSPACE/.preview-public"
           binding = "ASSETS"
           run_worker_first = true
           [previews]
@@ -65,7 +65,7 @@ jobs:
           FINANCIAL_EVENTS_ENABLED = "false"
           MERCADOPAGO_ENV = "sandbox"
           EOF
-          npx --yes wrangler@4.143.0 preview --config /tmp/wrangler.preview.toml --name "pr-${{ github.event.pull_request.number || 'manual' }}" 2>&1 | tee /tmp/preview.log
+          npx --yes wrangler@4.143.0 preview --config $GITHUB_WORKSPACE/wrangler.preview.tmp.toml --name "pr-${{ github.event.pull_request.number || 'manual' }}" 2>&1 | tee /tmp/preview.log
           PREVIEW_URL="$(python3 - <<'PY'
           import re
           s=open('/tmp/preview.log',encoding='utf-8',errors='replace').read()
