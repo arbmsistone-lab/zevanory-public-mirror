@@ -137,6 +137,9 @@ jobs:
           c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
           c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"
           c["vars"]["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
+          c["vars"]["CERTIFICATION_PILOT_AMOUNT_BRL"]="5"
+          c["vars"]["CERTIFICATION_PILOT_PAYMENT_MODE"]="sandbox"
+          c["vars"]["PAYMENT_PROVIDER_POOL"]="mercadopago"
           c["vars"]["MERCADOPAGO_ENV"]="sandbox"
           c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
           c["vars"]["CHECKOUT_ENABLED"]="true"
@@ -181,6 +184,28 @@ jobs:
               '      return Boolean(runtime && typeof runtime === "object" && prop in runtime);'
           )
           aliases.write_text(alias_src,encoding="utf-8")
+
+          # Repair Mercado Pago certification sandbox to use the already-mounted sandbox credentials.
+          recovered=Path("worker/cloudflare-worker.recovered.mjs")
+          recovered_src=recovered.read_text(encoding="utf-8")
+          recovered_src=recovered_src.replace(
+              'if (!String(env.MERCADOPAGO_TEST_ACCESS_TOKEN || "").trim() || !String(env.MERCADOPAGO_TEST_WEBHOOK_SECRET || "").trim()) blockers.push("mercadopago_sandbox_credentials_missing");',
+              'if (!String(env.MERCADOPAGO_ACCESS_TOKEN || "").trim() || !String(env.MERCADOPAGO_WEBHOOK_SECRET || "").trim()) blockers.push("mercadopago_sandbox_credentials_missing");'
+          )
+          recovered_src=recovered_src.replace(
+              '    if (provider === "stripe") {\n',
+              '    } else if (provider === "stripe") {\n',
+              1
+          )
+          recovered_src=recovered_src.replace(
+              'const providerToken = pilotSandbox ? String(process.env.MERCADOPAGO_TEST_ACCESS_TOKEN || "") : String(process.env.MERCADOPAGO_ACCESS_TOKEN || "");',
+              'const providerToken = String(process.env.MERCADOPAGO_ACCESS_TOKEN || "");'
+          )
+          recovered_src=recovered_src.replace(
+              'if (provider === "mercadopago_test") return handleMercadoPagoWebhook(req, res, { accessToken: process.env.MERCADOPAGO_TEST_ACCESS_TOKEN, webhookSecret: process.env.MERCADOPAGO_TEST_WEBHOOK_SECRET, certificationOnly: true, source: "mercadopago-test" });',
+              'if (provider === "mercadopago_test") return handleMercadoPagoWebhook(req, res, { accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN, webhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET, certificationOnly: true, source: "mercadopago-test" });'
+          )
+          recovered.write_text(recovered_src,encoding="utf-8")
           # Replace every legacy public contact reference in the reconstructed production snapshot.
           replacements = {
               "+55 88 9234-0423": "+55 88 99254-5413",
