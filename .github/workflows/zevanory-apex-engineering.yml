@@ -193,10 +193,19 @@ jobs:
           if(bad)process.exit(1);
           JS
           node apex-wcag.mjs
+      - name: Verify canonical sales redirect contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -w '%{http_code}' https://zevanory.api.br/solucoes)"
+          location="$(curl -sSI https://zevanory.api.br/solucoes | awk 'BEGIN{IGNORECASE=1} /^location:/{gsub("\\r",""); print $2; exit}')"
+          test "$code" = "308" -o "$code" = "301" -o "$code" = "302"
+          test "$location" = "https://vendas.zevanory.api.br/solucoes"
+          echo "CANONICAL_SALES_REDIRECT=PASS"
       - name: Verify apex Lighthouse thresholds
         run: |
           set -euo pipefail
-          for i in 1 2 3; do npx lighthouse https://zevanory.api.br/solucoes --chrome-flags="--headless --no-sandbox --disable-setuid-sandbox" --only-categories=performance,accessibility,best-practices,seo --output=json --output-path="apex-lh-$i.json" --quiet; done
+          for i in 1 2 3; do npx lighthouse https://vendas.zevanory.api.br/solucoes --chrome-flags="--headless --no-sandbox --disable-setuid-sandbox" --only-categories=performance,accessibility,best-practices,seo --output=json --output-path="apex-lh-$i.json" --quiet; done
           node - <<'NODE'
           const fs=require('fs'),rs=[1,2,3].map(i=>require('./apex-lh-'+i+'.json'));
           const rows=rs.map(r=>Object.fromEntries(Object.entries(r.categories).map(([k,v])=>[k,Math.round(v.score*100)])));
@@ -256,7 +265,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: zevanory-apex-engineering-evidence-37e695127af0
+          name: zevanory-apex-engineering-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             apex-visual.json
             apex-*.png
@@ -390,7 +399,7 @@ jobs:
       - name: Verify apex Lighthouse thresholds
         run: |
           set -euo pipefail
-          for i in 1 2 3; do npx lighthouse https://zevanory.api.br/solucoes --chrome-flags="--headless --no-sandbox --disable-setuid-sandbox" --only-categories=performance,accessibility,best-practices,seo --output=json --output-path="apex-lh-$i.json" --quiet; done
+          for i in 1 2 3; do npx lighthouse https://vendas.zevanory.api.br/solucoes --chrome-flags="--headless --no-sandbox --disable-setuid-sandbox" --only-categories=performance,accessibility,best-practices,seo --output=json --output-path="apex-lh-$i.json" --quiet; done
           node - <<'NODE'
           const fs=require('fs'),rs=[1,2,3].map(i=>require('./apex-lh-'+i+'.json'));
           const rows=rs.map(r=>Object.fromEntries(Object.entries(r.categories).map(([k,v])=>[k,Math.round(v.score*100)])));
