@@ -35,6 +35,17 @@ jobs:
             printf '%s\n' "$clean"
             echo '__CF__'
           } >> "$GITHUB_ENV"
+          TOKEN_DIAG="$clean" python3 - <<'PY'
+          import os,re
+          s=os.environ["TOKEN_DIAG"]
+          print("TOKEN_LENGTH="+str(len(s)))
+          print("TOKEN_HAS_SPACE="+str(any(ch.isspace() for ch in s)).lower())
+          print("TOKEN_HAS_COLON="+str(":" in s).lower())
+          print("TOKEN_HAS_EQUALS="+str("=" in s).lower())
+          print("TOKEN_HAS_QUOTES="+str(any(ch in "'\"" for ch in s)).lower())
+          print("TOKEN_INVALID_TOKEN68_COUNT="+str(sum(1 for ch in s if not re.match(r"[A-Za-z0-9._~+/-]",ch))))
+          print("TOKEN_SEGMENTS="+str(len([x for x in re.split(r"[^A-Za-z0-9._~+/-]+",s) if x])))
+          PY
           echo "CLOUDFLARE_TOKEN_NORMALIZED=PASS"
 
       - name: Build exact Product Control release
