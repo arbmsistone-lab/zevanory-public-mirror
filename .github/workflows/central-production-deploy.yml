@@ -193,7 +193,7 @@ jobs:
               'if (!String(env.MERCADOPAGO_ACCESS_TOKEN || "").trim() || !String(env.MERCADOPAGO_WEBHOOK_SECRET || "").trim()) blockers.push("mercadopago_sandbox_credentials_missing");'
           )
           recovered_src=recovered_src.replace(
-              '    if (provider === "stripe") {\n',
+              '    }\n    if (provider === "stripe") {\n',
               '    } else if (provider === "stripe") {\n',
               1
           )
