@@ -137,9 +137,6 @@ jobs:
           c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
           c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"
           c["vars"]["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
-          c["vars"]["CERTIFICATION_PILOT_AMOUNT_BRL"]="5"
-          c["vars"]["CERTIFICATION_PILOT_PAYMENT_MODE"]="sandbox"
-          c["vars"]["PAYMENT_PROVIDER_POOL"]="mercadopago"
           c["vars"]["MERCADOPAGO_ENV"]="sandbox"
           c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
           c["vars"]["CHECKOUT_ENABLED"]="true"
@@ -196,6 +193,10 @@ jobs:
               '    }\n    if (provider === "stripe") {\n',
               '    } else if (provider === "stripe") {\n',
               1
+          )
+          recovered_src=recovered_src.replace(
+              'const pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_PAYMENT_MODE || "").toLowerCase() === "sandbox";',
+              'const pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox";'
           )
           recovered_src=recovered_src.replace(
               'const providerToken = pilotSandbox ? String(process.env.MERCADOPAGO_TEST_ACCESS_TOKEN || "") : String(process.env.MERCADOPAGO_ACCESS_TOKEN || "");',
