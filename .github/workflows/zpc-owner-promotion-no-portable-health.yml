@@ -1,0 +1,84 @@
+name: ZPC owner promotion no portable health
+
+on:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zpc-owner-promotion-no-portable-health.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      ZPC_SHA: ada7bf5d097692db26d45511880f7efda0832d0e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify Cloudflare authority
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          npx --yes wrangler@4.135.0 whoami | grep -F "$CLOUDFLARE_ACCOUNT_ID"
+
+      - name: Build exact Product Control release
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/arbmsistone-lab/zevanory-product-control-edge.git /tmp/zpc
+          cd /tmp/zpc
+          git checkout --detach "$ZPC_SHA"
+          test "$(git rev-parse HEAD)" = "$ZPC_SHA"
+          npm install --no-audit --no-fund
+          npm run build
+          cat > cf-worker/wrangler.owner-promotion.toml <<'EOF'
+          name = "zevanory-product-control-portable"
+          main = "worker.ts"
+          compatibility_date = "2026-09-19"
+          routes = [
+            { pattern = "controle.zevanory.api.br", custom_domain = true }
+          ]
+          [assets]
+          directory = "../dist"
+          binding = "ASSETS"
+          not_found_handling = "single-page-application"
+          run_worker_first = true
+          [vars]
+          SUPABASE_URL = "https://pvkpkqwdnnpkgvllwqbc.supabase.co"
+          SUPABASE_PUBLISHABLE_KEY = "sb_publishable_IAPNVvyZRbgLjiaEdArk_g_6qd3Dp_-"
+          RENDER_BACKEND_URL = "https://zevanory-product-control-edge.onrender.com"
+          BACKEND_INSTANCE_ID = "cloudflare"
+          EOF
+
+      - name: Deploy exact Worker
+        run: |
+          set -euo pipefail
+          cd /tmp/zpc
+          npx --yes wrangler@4.135.0 deploy --strict --keep-vars --config cf-worker/wrangler.owner-promotion.toml --var WORKER_COMMIT:"$ZPC_SHA" --message="owner-promotion-$ZPC_SHA"
+
+      - name: Verify version and safe smoke
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 24); do
+            if curl -fsS -H 'Cache-Control: no-cache' https://controle.zevanory.api.br/version.json -o /tmp/version.json; then
+              if jq -e --arg sha "$ZPC_SHA" '.sha == $sha and .runtime == "cloudflare-worker"' /tmp/version.json >/dev/null; then
+                break
+              fi
+            fi
+            sleep 5
+          done
+          jq -e --arg sha "$ZPC_SHA" '.sha == $sha and .runtime == "cloudflare-worker"' /tmp/version.json >/dev/null
+          curl -fsS https://controle.zevanory.api.br/runtime-proof -o /tmp/runtime-proof.json
+          jq -e --arg sha "$ZPC_SHA" '.ok == true and .workerCommit == $sha' /tmp/runtime-proof.json >/dev/null
+          curl -fsS https://controle.zevanory.api.br/api/_healthcheck -o /tmp/health.json
+          jq -e '.ok == true' /tmp/health.json >/dev/null
+          echo "CLOUDFLARE_OWNER_PROMOTION=PASS"
+          echo "WORKER_COMMIT=$ZPC_SHA"
