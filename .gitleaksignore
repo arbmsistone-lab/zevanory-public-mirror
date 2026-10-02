@@ -21,3 +21,5 @@ c8c4aa535dd969d5c68baf68ca21f1d1c8901b21:.github/workflows/zevanory-admin-contro
 8b82973ab375ccda05078ce505d080af37d3d85a:evidence/EG-0021-dominio-publicado-verificacao-vercel.md:generic-api-key:16
 0b54a9d7d68b2062d90678548e3954650e4dda21:evidence/EG-0022-vercel-ownership-txt.md:generic-api-key:16
 3ec9f421648fb8b5f645b3dd23e2ba756815342f:ZEVANORY_MASTER.md:generic-api-key:45
+0b532d13edde9ba5782b0b7eb96f550c8cf84660:.github/workflows/payment-sandbox-adversarial.yml:curl-auth-user:75
+0b532d13edde9ba5782b0b7eb96f550c8cf84660:.github/workflows/payment-sandbox-adversarial.yml:curl-auth-user:110
