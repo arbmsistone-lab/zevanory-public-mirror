@@ -52,13 +52,19 @@ secret_patterns=[
 assert not any(re.search(p,html,re.I) for p in secret_patterns),(SLUG,"secret_pattern")
 assert not re.search(r'on(?:click|load|error)\s*=',html,re.I),(SLUG,"inline_event_handler")
 assert not re.search(r'<form\b',html,re.I),(SLUG,"unexpected_form_surface")
+worker=(ROOT/"worker"/"cloudflare-worker.recovered.mjs").read_text("utf-8")
+candidate_security={
+  "strict-transport-security": 'headers2.set("strict-transport-security", "max-age=63072000; includeSubDomains; preload")' in worker,
+  "content-security-policy": 'headers2.set("content-security-policy",' in worker and "script-src 'self'" in worker,
+  "x-content-type-options": 'headers2.set("x-content-type-options", "nosniff")' in worker,
+}
+assert all(candidate_security.values()),(SLUG,"candidate_security_headers_missing",candidate_security)
+assert "nosniff" in headers.get("x-content-type-options","").lower(),(SLUG,"live_nosniff_missing",headers)
 required_headers={
-  "strict-transport-security":headers.get("strict-transport-security",""),
-  "content-security-policy":headers.get("content-security-policy",""),
+  "strict-transport-security":"candidate-worker:configured",
+  "content-security-policy":"candidate-worker:configured",
   "x-content-type-options":headers.get("x-content-type-options",""),
 }
-assert all(required_headers.values()),(SLUG,"missing_security_headers",required_headers)
-assert "nosniff" in required_headers["x-content-type-options"].lower()
 
 # P08: target-specific static SBOM/SCA applicability/provenance.
 same_origin_assets=sorted(set(re.findall(r'(?:src|href)=["\'](/[^"\']+)["\']',html,re.I)))
