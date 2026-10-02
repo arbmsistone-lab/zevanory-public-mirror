@@ -1,0 +1,133 @@
+name: Phase 0 M5 M6 Functional Gate
+
+on:
+  push:
+    branches: [audit/m5-m6-functional-20261002]
+    paths:
+      - ".github/workflows/phase0-m5-m6-functional.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  functional:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe M5 live WhatsApp and AI runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/m5-m6
+          curl -fsS 'https://zevanory.api.br/api/config?view=channel_identity_health' -o evidence/m5-m6/identity.json
+          curl -fsS 'https://zevanory.api.br/api/config?view=closure_status' -o evidence/m5-m6/closure.json
+          curl -fsS 'https://zevanory.api.br/api/voice/final-closure' -o evidence/m5-m6/voice-final.json
+          curl -fsS 'https://zevanory.api.br/api/voice/probe' -o evidence/m5-m6/voice-probe.json
+          curl -fsS 'https://giro-whatsapp-bridge.girolocal-rb.workers.dev/__zevanory/runtime' -o evidence/m5-m6/broker-runtime.json
+          python3 - <<'PY'
+          import json,datetime,pathlib
+          p=pathlib.Path("evidence/m5-m6")
+          identity=json.load(open(p/"identity.json"))
+          closure=json.load(open(p/"closure.json"))
+          final=json.load(open(p/"voice-final.json"))
+          probe=json.load(open(p/"voice-probe.json"))
+          broker=json.load(open(p/"broker-runtime.json"))
+          wa=identity.get("whatsapp") or {}
+          ch=((closure.get("channels") or {}).get("whatsapp") or {})
+          chain=final.get("e2e_chain") or {}
+          duration=None
+          try:
+              a=datetime.datetime.fromisoformat(str(chain["started_at"]).replace("Z","+00:00"))
+              b=datetime.datetime.fromisoformat(str(chain["completed_at"]).replace("Z","+00:00"))
+              duration=(b-a).total_seconds()
+          except Exception:
+              pass
+          checks={
+            "official_number_verified": bool(wa.get("verified")) and str(wa.get("display_phone_number") or "").replace("+","").replace(" ","").replace("-","")=="5588992545413",
+            "operational_ready": bool(ch.get("operational_ready")),
+            "broker_live": broker.get("ok") is True and broker.get("zero_spend") is True and broker.get("legacy_route_bypass")==0,
+            "whatsapp_transport": final.get("whatsapp_transport_configured") is True,
+            "whatsapp_inbound": final.get("whatsapp_inbound") is True,
+            "runtime_processing": final.get("whatsapp_runtime_processing") is True,
+            "tts": final.get("whatsapp_tts") is True,
+            "outbound": final.get("whatsapp_outbound") is True,
+            "delivery": final.get("whatsapp_delivery") is True,
+            "e2e": final.get("whatsapp_e2e") is True,
+            "zero_spend": final.get("zero_spend") is True,
+            "voice_ai_probe": probe.get("ok") is True and int(probe.get("bytes") or 0)>1000 and probe.get("language")=="pt-BR",
+            "first_response_under_60s": duration is not None and duration < 60,
+          }
+          status="PASS" if all(checks.values()) else "BLOCKED"
+          result={"module":"M5","status":status,"checks":checks,"e2e_seconds":duration,"chain":chain,
+                  "safe_identity":{"verified":wa.get("verified"),"display_phone_number":wa.get("display_phone_number"),
+                                   "verified_name":wa.get("verified_name"),"operational_mode":ch.get("operational_mode")}}
+          json.dump(result,open(p/"m5-result.json","w"),indent=2)
+          print("M5_STATUS="+status)
+          print("M5_CHECKS="+json.dumps(checks,separators=(",",":")))
+          print("M5_E2E_SECONDS="+str(duration))
+          PY
+
+      - name: Probe M6 canonical corpus and runtime QA capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          routes="$(grep -Eo '["''']/api/[^"''']+["''']' worker/cloudflare-worker.recovered.mjs 2>/dev/null | tr -d '"''' | grep -Ei 'knowledge|faq|support|answer|assistant' | sort -u || true)"
+          printf '%s\n' "$routes" > evidence/m5-m6/m6-runtime-routes.txt
+          for slug in ia-na-pratica vendas-na-pratica lucro-e-caixa combo-ia-vendas negocio-completo; do
+            curl -fsS "https://vendas.zevanory.api.br/$slug" -o "evidence/m5-m6/$slug.html"
+          done
+          python3 - <<'PY'
+          import json,re,pathlib
+          p=pathlib.Path("evidence/m5-m6")
+          slugs=["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo"]
+          rows=[]
+          passed=0
+          for slug in slugs:
+              html=(p/(slug+".html")).read_text(errors="ignore")
+              text=re.sub(r"<[^>]+>"," ",html)
+              text=re.sub(r"\s+"," ",text).lower()
+              qs=[
+                ("preco", bool(re.search(r"r\$\s*\d",text))),
+                ("reembolso_7_dias", bool(re.search(r"(7\s*dias|sete\s*dias)",text)) and "reembolso" in text),
+                ("entrega_ou_acesso", bool(re.search(r"(entrega|acesso|download|arquivo|material)",text))),
+                ("conteudo_ou_incluso", bool(re.search(r"(conte[uú]do|inclui|inclu[ií]do|m[oó]dulo|material)",text))),
+              ]
+              for q,ok in qs:
+                  rows.append({"product":slug,"question":q,"correct":ok})
+                  passed+=int(ok)
+          routes=[x.strip() for x in (p/"m6-runtime-routes.txt").read_text().splitlines() if x.strip()]
+          corpus_pct=passed/20*100
+          runtime_qa=bool(routes)
+          status="PASS" if corpus_pct>=95 and runtime_qa else "BLOCKED"
+          result={"module":"M6","status":status,"questions_total":20,"questions_correct":passed,
+                  "corpus_accuracy_pct":corpus_pct,"runtime_qa_routes":routes,"runtime_qa_proven":runtime_qa,"questions":rows}
+          json.dump(result,open(p/"m6-result.json","w"),indent=2)
+          print("M6_STATUS="+status)
+          print("M6_CORPUS="+str(passed)+"/20")
+          print("M6_RUNTIME_QA="+("PASS" if runtime_qa else "BLOCKED"))
+          PY
+
+      - name: Enforce M5 and M6 functional gates
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          m5=json.load(open("evidence/m5-m6/m5-result.json"))
+          m6=json.load(open("evidence/m5-m6/m6-result.json"))
+          print("FUNCTIONAL_M5="+m5["status"])
+          print("FUNCTIONAL_M6="+m6["status"])
+          assert m5["status"]=="PASS",m5
+          assert m6["status"]=="PASS",m6
+          print("M5_M6_FUNCTIONAL=PASS")
+          PY
+
+      - name: Upload M5 M6 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-m5-m6-functional-${{ github.sha }}
+          path: evidence/m5-m6
+          if-no-files-found: error
+          retention-days: 90
