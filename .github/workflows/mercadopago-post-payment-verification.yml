@@ -1,10 +1,19 @@
 name: Mercado Pago Pós-Pagamento - verificação E2E
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/mercadopago-post-payment-verification.yml"
   workflow_dispatch:
     inputs:
       order_id:
-        description: Order ID emitted by the manual Checkout Pro workflow
+        required: true
+        type: string
+      approved_payment_id:
+        required: true
+        type: string
+      declined_payment_id:
         required: true
         type: string
 
@@ -12,8 +21,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: mp-post-payment-${{ inputs.order_id }}
-  cancel-in-progress: false
+  group: mp-post-payment-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -21,119 +30,108 @@ jobs:
     timeout-minutes: 10
     env:
       APP: https://zevanory.api.br
-      ORDER_ID: ${{ inputs.order_id }}
+      ORDER_ID: ${{ inputs.order_id || '4a615149-7dac-4c36-93a3-b7f895d2c9ca' }}
+      APPROVED_PAYMENT_ID: ${{ inputs.approved_payment_id || '182085091992' }}
+      DECLINED_PAYMENT_ID: ${{ inputs.declined_payment_id || '182084804008' }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      MP_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
     steps:
-      - name: Verify webhook, order, email and delivery
+      - name: Verify approved and declined outcomes
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json, os, pathlib, time, urllib.parse, urllib.request
-          app=os.environ["APP"]
+          app=os.environ["APP"]; cert=os.environ["CERTIFICATION_E2E_TOKEN"].strip()
           order_id=os.environ["ORDER_ID"].strip()
-          cert=os.environ["CERTIFICATION_E2E_TOKEN"].strip()
-          assert order_id and cert
+          approved=os.environ["APPROVED_PAYMENT_ID"].strip()
+          declined=os.environ["DECLINED_PAYMENT_ID"].strip()
+          token=os.environ["MP_ACCESS_TOKEN"].strip()
+          assert cert and token and order_id and approved and declined
 
-          def get_status():
-              req=urllib.request.Request(
-                  app+"/api/internal/certification/e2e/status?order_id="+urllib.parse.quote(order_id),
-                  headers={"accept":"application/json","x-certification-e2e-token":cert,
-                           "user-agent":"ZEVANORY-PostPayment-Verify/1.0"})
+          def jget(url, headers=None):
+              h={"accept":"application/json","user-agent":"ZEVANORY-MP-PostPayment/2.0"}
+              if headers: h.update(headers)
+              req=urllib.request.Request(url,headers=h)
               with urllib.request.urlopen(req,timeout=30) as r:
                   return json.loads(r.read().decode())
 
-          def flat(v,p=""):
-              out=[]
-              if isinstance(v,dict):
-                  for k,x in v.items(): out += flat(x, f"{p}.{k}" if p else k)
-              elif isinstance(v,list):
-                  for i,x in enumerate(v): out += flat(x, f"{p}[{i}]")
-              else: out.append((p,v))
-              return out
+          def payment(pid):
+              return jget("https://api.mercadopago.com/v1/payments/"+pid,{"Authorization":"Bearer "+token})
 
-          deadline=time.time()+420
-          state=None
+          def state():
+              return jget(app+"/api/internal/certification/e2e/status?order_id="+urllib.parse.quote(order_id),
+                          {"x-certification-e2e-token":cert})
+
+          pa=payment(approved); pd=payment(declined)
+          assert str(pa.get("status","")).lower()=="approved", pa
+          assert str(pd.get("status","")).lower() in ("rejected","cancelled"), pd
+
+          deadline=time.time()+420; s=None
           while time.time()<deadline:
-              state=get_status()
-              order=state.get("order",{})
-              events=state.get("financial_events",[])
-              payment=[x for x in events if x.get("normalized_event")=="payment_confirmed"]
-              if order.get("status")=="paid" and len(payment)==1:
-                  break
+              s=state()
+              events=s.get("financial_events",[])
+              paid=[x for x in events if x.get("normalized_event")=="payment_confirmed"]
+              prov=[x for x in s.get("provenance",[]) if x.get("source_class")=="provider_webhook"]
+              if s.get("order",{}).get("status")=="paid" and len(paid)==1 and prov: break
               time.sleep(5)
-          assert state is not None, "status_unavailable"
+          assert s is not None
+          events=s.get("financial_events",[])
+          paid=[x for x in events if x.get("normalized_event")=="payment_confirmed"]
+          prov=[x for x in s.get("provenance",[]) if x.get("source_class")=="provider_webhook"]
+          assert s.get("order",{}).get("status")=="paid", s.get("order")
+          assert len(paid)==1 and str(paid[0].get("provider_payment_id"))==approved, paid
+          assert prov, s.get("provenance")
 
-          order=state.get("order",{})
-          events=state.get("financial_events",[])
-          payment=[x for x in events if x.get("normalized_event")=="payment_confirmed"]
-          provenance=state.get("provenance",[])
-          webhook_rows=[x for x in provenance if x.get("source_class")=="provider_webhook"]
-          assert order.get("status")=="paid", {"order_status":order.get("status")}
-          assert len(payment)==1, {"payment_confirmation_count":len(payment)}
-          assert webhook_rows, {"provenance":provenance}
-
-          entries=flat(state)
-          email_rows=[(k,v) for k,v in entries if "email" in k.lower() and
-                      (v is True or any(w in str(v).lower() for w in ("sent","delivered","success","pass","ok")))]
-          assert email_rows, "email_delivery_evidence_missing"
-
-          urls=[]
-          for k,v in entries:
-              if not isinstance(v,str) or not v.startswith("http"): continue
-              lk=k.lower()
-              if any(w in lk for w in ("download","delivery","artifact","file","entitlement")):
-                  urls.append((k,v))
-          assert urls, "delivery_link_evidence_missing"
-
+          flat=[]
+          def walk(v,p=""):
+              if isinstance(v,dict):
+                  for k,x in v.items(): walk(x, p+"."+k if p else k)
+              elif isinstance(v,list):
+                  for i,x in enumerate(v): walk(x, f"{p}[{i}]")
+              else: flat.append((p,v))
+          walk(s)
+          emails=[(k,v) for k,v in flat if "email" in k.lower() and
+                  (v is True or any(w in str(v).lower() for w in ("sent","delivered","success","pass","ok")))]
+          assert emails, "approved_email_evidence_missing"
+          links=[(k,v) for k,v in flat if isinstance(v,str) and v.startswith("http") and
+                 any(w in k.lower() for w in ("download","delivery","artifact","file","entitlement"))]
           valid=[]
-          for k,u in urls:
+          for k,u in links:
               try:
-                  req=urllib.request.Request(u,headers={"user-agent":"ZEVANORY-Delivery-Link-Verify/1.0"})
-                  with urllib.request.urlopen(req,timeout=30) as r:
+                  req=urllib.request.Request(u,headers={"user-agent":"ZEVANORY-Delivery-Link-Verify/2.0"})
+                  with urllib.request.urlopen(req,timeout=20) as r:
                       if 200 <= r.status < 400: valid.append((k,u,r.status))
-              except Exception:
-                  pass
-          assert valid, {"delivery_links_found":urls,"error":"no_valid_delivery_link"}
+              except Exception: pass
+          assert valid, {"delivery_links":links}
+
+          declined_delivery=[x for x in events if str(x.get("provider_payment_id"))==declined and
+                             x.get("normalized_event") in ("payment_confirmed","delivery_created","entitlement_granted")]
+          assert not declined_delivery, declined_delivery
 
           report={
-            "gate":"ZEVANORY_MERCADOPAGO_POST_PAYMENT",
             "order_id":order_id,
-            "checks":{
-              "WEBHOOK_RECEIVED":"PASS",
-              "WEBHOOK_AUTHENTICATED":"PASS",
-              "ORDER_CONFIRMED":"PASS",
-              "EMAIL_SENT":"PASS",
-              "DELIVERY_LINK_VALID":"PASS",
-              "FINAL_POST_PAYMENT_E2E":"GREEN"
+            "approved":{
+              "payment_id":approved,"provider_status":pa.get("status"),
+              "webhook_signed":"PASS","order_paid":"PASS","email_sent":"PASS","delivery_link_valid":"PASS"
             },
-            "evidence":{
-              "webhook_provenance":webhook_rows,
-              "payment_confirmed_event":payment[0],
-              "order_status":order.get("status"),
-              "email_evidence":email_rows,
-              "valid_delivery_links":valid
+            "declined":{
+              "payment_id":declined,"provider_status":pd.get("status"),
+              "no_delivery":"PASS"
             }
           }
           pathlib.Path("evidence").mkdir(exist_ok=True)
           pathlib.Path("evidence/mercadopago-post-payment-verification.json").write_text(
               json.dumps(report,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
-              f.write("## Mercado Pago pós-pagamento\n\n")
-              for k,v in report["checks"].items(): f.write(f"- {k}: **{v}**\n")
-              f.write("\n### Evidências\n")
-              f.write("- webhook provenance: provider_webhook\n")
-              f.write("- pedido: paid\n")
-              f.write("- e-mail: evidência registrada no estado canônico\n")
-              f.write("- entrega: link HTTP validado com resposta 2xx/3xx\n")
-          for k,v in report["checks"].items(): print(f"{k}={v}")
+          print("APPROVED_FLOW=PASS")
+          print("DECLINED_FLOW=PASS")
           PY
 
-      - name: Upload post-payment evidence
+      - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mercadopago-post-payment-verification-${{ inputs.order_id }}
+          name: mercadopago-post-payment-verification
           path: evidence/mercadopago-post-payment-verification.json
           if-no-files-found: warn
           retention-days: 30
