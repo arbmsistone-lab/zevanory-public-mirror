@@ -1,0 +1,63 @@
+name: ZEVANORY sales legal publish
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "sales-public/**"
+      - "wrangler.sales.toml"
+      - "sales-worker.mjs"
+      - ".github/workflows/sales-legal-publish.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "sales-public/**"
+      - "wrangler.sales.toml"
+      - "sales-worker.mjs"
+      - ".github/workflows/sales-legal-publish.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify approved seller text and fail-closed state
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'A ZEVANORY é a marca comercial de A. RENAN ALVES MOREIRA BITU LTDA, inscrita no CNPJ sob o nº 69.077.233/0001-99, com sede na Rua Francisco de Freitas Neto, 96, Casa Residencial, Alto do Tenente, Várzea Alegre/CE, CEP 63540-000. Atendimento e suporte: suporte@zevanory.api.br e WhatsApp +55 88 99254-5413.' sales-public/termos.html
+          grep -Fq 'A ativação comercial continua condicionada aos demais gates aplicáveis.' sales-public/termos.html
+          ! grep -R -E 'SALE_GLOBALLY_ENABLED["=: ]+true' sales-public sales-worker.mjs
+          echo "LEGAL_TEXT_EXACT=PASS"
+          echo "GLOBAL_SALES_FAIL_CLOSED=PASS"
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/gh-pages'
+    needs: validate
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Deploy sales Worker and assets
+        run: npx --yes wrangler@4.135.0 deploy --config wrangler.sales.toml
+      - name: Verify public legal text
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in {1..12}; do
+            curl -fsS https://vendas.zevanory.api.br/termos -o /tmp/termos.html || true
+            if grep -Fq 'A ZEVANORY é a marca comercial de A. RENAN ALVES MOREIRA BITU LTDA, inscrita no CNPJ sob o nº 69.077.233/0001-99, com sede na Rua Francisco de Freitas Neto, 96, Casa Residencial, Alto do Tenente, Várzea Alegre/CE, CEP 63540-000. Atendimento e suporte: suporte@zevanory.api.br e WhatsApp +55 88 99254-5413.' /tmp/termos.html; then
+              echo "PUBLIC_LEGAL_READBACK=PASS"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "PUBLIC_LEGAL_READBACK=FAIL"
+          exit 1
