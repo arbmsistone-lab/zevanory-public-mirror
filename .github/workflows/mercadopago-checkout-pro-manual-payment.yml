@@ -1,0 +1,105 @@
+name: Mercado Pago Checkout Pro - pagamento manual
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/mercadopago-checkout-pro-manual-payment.yml"
+      - ".github/workflows/mercadopago-post-payment-verification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mp-checkout-pro-manual-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  create-preference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APP: https://zevanory.api.br
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+    steps:
+      - name: Validate sandbox seller credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CERTIFICATION_E2E_TOKEN:-}"
+          test -n "${MERCADOPAGO_TEST_ACCESS_TOKEN:-}"
+          echo "SELLER_TEST_ACCESS_TOKEN=PRESENT"
+
+      - name: Create certification order and Checkout Pro preference
+        id: checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.request, uuid, pathlib
+          app=os.environ["APP"]
+          cert=os.environ["CERTIFICATION_E2E_TOKEN"]
+
+          def req(path, method="GET", headers=None, body=None, ok=(200,201)):
+              h={"accept":"application/json","user-agent":"ZEVANORY-CheckoutPro-Manual/1.0"}
+              if headers: h.update(headers)
+              data=None
+              if body is not None:
+                  h["content-type"]="application/json"
+                  data=json.dumps(body).encode()
+              r=urllib.request.Request(app+path,method=method,headers=h,data=data)
+              with urllib.request.urlopen(r,timeout=30) as res:
+                  raw=res.read().decode()
+                  obj=json.loads(raw) if raw else {}
+                  if res.status not in ok: raise SystemExit((res.status,obj))
+                  return res.status,obj
+
+          _,invite=req("/api/internal/certification/e2e/invite","POST",
+                       {"x-certification-e2e-token":cert},{},(201,))
+          assert invite.get("created") is True and invite.get("token"), invite
+
+          request_id=str(uuid.uuid4())
+          session_id=str(uuid.uuid4())
+          _,checkout=req("/api/checkout/mercadopago","POST",
+                         {"x-certification-pilot-token":invite["token"]},
+                         {"request_id":request_id,"session_id":session_id,"offer_id":"OFFER-0001"},(201,))
+          assert checkout.get("accepted") is True and checkout.get("duplicate") is False, checkout
+          order_id=str(checkout.get("order_id",""))
+          url=str(checkout.get("checkout_url",""))
+          assert order_id and url.startswith("https://"), checkout
+
+          _,state=req("/api/internal/certification/e2e/status?order_id="+order_id,
+                      "GET",{"x-certification-e2e-token":cert},None,(200,))
+          pathlib.Path("evidence").mkdir(exist_ok=True)
+          report={
+            "flow":"checkout_pro_redirect",
+            "offer_id":"OFFER-0001",
+            "catalog_reference":"cheapest_offer_test_path",
+            "order_id":order_id,
+            "checkout_url":url,
+            "initial_order_status":state.get("order",{}).get("status"),
+            "amount":state.get("order",{}).get("amount"),
+            "provider":state.get("order",{}).get("provider"),
+          }
+          pathlib.Path("evidence/mercadopago-manual-checkout.json").write_text(json.dumps(report,indent=2)+"\n")
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
+              f.write("order_id="+order_id+"\n")
+              f.write("checkout_url="+url+"\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+              f.write("## Mercado Pago Checkout Pro\n\n")
+              f.write("- Order ID: `"+order_id+"`\n")
+              f.write("- Checkout: "+url+"\n")
+              f.write("- Status inicial: `"+str(report["initial_order_status"])+"`\n")
+              f.write("- Valor sandbox: `"+str(report["amount"])+"`\n")
+          print("ORDER_ID="+order_id)
+          print("CHECKOUT_URL="+url)
+          PY
+
+      - name: Upload checkout evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: mercadopago-manual-checkout
+          path: evidence/mercadopago-manual-checkout.json
+          retention-days: 7
