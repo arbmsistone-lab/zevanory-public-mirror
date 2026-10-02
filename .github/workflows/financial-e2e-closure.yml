@@ -1,6 +1,10 @@
 name: ZEVANORY financial E2E closure
 
 on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/financial-e2e-closure.yml"
   push:
     branches: [gh-pages]
     paths:
@@ -27,13 +31,28 @@ jobs:
       MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN || secrets.MERCADOPAGO_ACCESS_TOKEN }}
       MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET || secrets.MERCADOPAGO_WEBHOOK_SECRET }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
-      EXPECTED_SHA: ${{ inputs.expected_sha || 'c3845cf898acf60e84a06e51cf08db7cfd09bbe3' }}
+      EXPECTED_SHA: ${{ inputs.expected_sha || '2237836450cd371365d9fe00c83e42f70df28025' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
     steps:
       - name: Checkout exact certified runtime SHA
         uses: actions/checkout@v4
         with:
           ref: ${{ env.EXPECTED_SHA }}
           fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Synchronize internal certification token to Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${#CERTIFICATION_E2E_TOKEN}" -ge 32
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          printf '%s' "$CERTIFICATION_E2E_TOKEN" | npx --yes wrangler@4.135.0 secret put CERTIFICATION_E2E_TOKEN --name zevanory
+          echo "CERTIFICATION_E2E_TOKEN_SYNC=PASS"
 
       - name: Validate Mercado Pago sandbox preflight
         shell: bash
