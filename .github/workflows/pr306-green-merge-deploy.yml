@@ -1,0 +1,141 @@
+name: PR306 green merge and deploy
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    types: [synchronize, reopened, ready_for_review]
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr306-green-merge-deploy
+  cancel-in-progress: true
+
+jobs:
+  orchestrate:
+    if: github.event.pull_request.number == 306
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_NUMBER: "306"
+    steps:
+      - name: Wait for every other PR check to finish green
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,time,urllib.request
+          repo=os.environ["GITHUB_REPOSITORY"]
+          sha=os.environ["HEAD_SHA"]
+          token=os.environ["GH_TOKEN"]
+          run_id=os.environ["GITHUB_RUN_ID"]
+          minimum_checks=25
+
+          def api(path):
+              req=urllib.request.Request(
+                  "https://api.github.com"+path,
+                  headers={
+                      "Authorization":"Bearer "+token,
+                      "Accept":"application/vnd.github+json",
+                      "X-GitHub-Api-Version":"2022-11-28",
+                      "User-Agent":"ZEVANORY-PR306-Orchestrator/1.0"
+                  })
+              with urllib.request.urlopen(req,timeout=30) as r:
+                  return json.loads(r.read().decode())
+
+          deadline=time.time()+1500
+          last=None
+          stable_green=0
+          while time.time()<deadline:
+              data=api(f"/repos/{repo}/commits/{sha}/check-runs?per_page=100")
+              checks=[]
+              for c in data.get("check_runs",[]):
+                  if f"/actions/runs/{run_id}/" in str(c.get("details_url") or ""):
+                      continue
+                  checks.append(c)
+              pending=[c for c in checks if c.get("status")!="completed"]
+              bad=[c for c in checks if c.get("status")=="completed" and c.get("conclusion") not in ("success","neutral","skipped")]
+              names=sorted((str(c.get("name")),str(c.get("status")),str(c.get("conclusion"))) for c in checks)
+              signature=(len(checks),tuple(names))
+              print("CHECK_COUNT",len(checks),"PENDING",len(pending),"BAD",len(bad))
+              if bad:
+                  for c in bad: print("RED_CHECK",c.get("name"),c.get("conclusion"),c.get("details_url"))
+                  raise SystemExit("PR_GATES_RED_ABORT")
+              if len(checks)>=minimum_checks and not pending:
+                  if signature==last:
+                      stable_green+=1
+                  else:
+                      stable_green=1
+                  if stable_green>=2:
+                      print("ALL_PR_GATES_GREEN=PASS")
+                      break
+              else:
+                  stable_green=0
+              last=signature
+              time.sleep(20)
+          else:
+              raise SystemExit("PR_GATES_TIMEOUT")
+          PY
+
+      - name: Merge PR with skip render
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$(gh api --method PUT             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/merge"             -f merge_method=merge             -f sha="$HEAD_SHA"             -f commit_title="Merge PR #306 [skip render]"             -f commit_message="Mercado Pago canonical order/preference reconciliation and clean E2E [skip render]")"
+          echo "$out" | jq -e '.merged == true'
+          sha="$(echo "$out" | jq -r '.sha')"
+          test -n "$sha" -a "$sha" != "null"
+          echo "merge_sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "MERGE_SHA=$sha"
+          echo "RENDER_DEPLOY=SKIPPED_BY_COMMIT_AND_NOT_APPLICABLE_TO_PUBLIC_MIRROR"
+
+      - name: Wait for canonical Cloudflare deploy
+        shell: bash
+        env:
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,time,urllib.parse,urllib.request
+          repo=os.environ["GITHUB_REPOSITORY"]
+          sha=os.environ["MERGE_SHA"]
+          token=os.environ["GH_TOKEN"]
+          def api(path):
+              req=urllib.request.Request("https://api.github.com"+path,headers={
+                  "Authorization":"Bearer "+token,
+                  "Accept":"application/vnd.github+json",
+                  "X-GitHub-Api-Version":"2022-11-28",
+                  "User-Agent":"ZEVANORY-PR306-Orchestrator/1.0"})
+              with urllib.request.urlopen(req,timeout=30) as r:return json.loads(r.read().decode())
+
+          deadline=time.time()+1200
+          run=None
+          while time.time()<deadline:
+              data=api(f"/repos/{repo}/actions/workflows/central-production-deploy.yml/runs?branch=gh-pages&event=push&per_page=20")
+              run=next((x for x in data.get("workflow_runs",[]) if str(x.get("head_sha"))==sha),None)
+              if run:
+                  print("DEPLOY_RUN_ID="+str(run["id"]))
+                  if run.get("status")=="completed":
+                      if run.get("conclusion")!="success":
+                          raise SystemExit("CANONICAL_DEPLOY_FAILED:"+str(run.get("conclusion")))
+                      print("CANONICAL_DEPLOY=PASS")
+                      with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+                          f.write("\n- Canonical deploy run: `"+str(run["id"])+"`\n")
+                      break
+              time.sleep(20)
+          else:
+              raise SystemExit("CANONICAL_DEPLOY_TIMEOUT")
+          PY
+
+      - name: Final owner-visible checkpoint
+        run: |
+          echo "PR306_PROMOTION=PASS"
+          echo "SALES_MODE_EXPECTED=globally-blocked"
+          echo "Read CLEAN_CHECKOUT_URL from the successful central production deploy log/summary."
