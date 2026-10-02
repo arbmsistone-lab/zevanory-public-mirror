@@ -342,6 +342,12 @@ function resolveCheckoutOffer(id) {
   if (!product || product.sellable !== true || product.artifact_materialized !== true) return null;
   return Object.freeze({ id: product.sku, product: product.product, commercial_name: product.commercial_name, brand: product.brand, endorsed_by: product.endorsed_by, brand_signature: product.brand_signature, version: product.version, price_brl: product.pilot_price_brl, artifact_name: product.artifact_name, artifact_sha256: product.artifact_sha256 });
 }
+function resolveCertificationCheckoutOffer(id) {
+  const product = getZevanoryProduct(id);
+  if (!product || product.artifact_materialized !== true || Number(product.table_price_brl) <= 0) return null;
+  return Object.freeze({ id: product.sku, product: product.product, commercial_name: product.commercial_name, brand: product.brand, endorsed_by: product.endorsed_by, brand_signature: product.brand_signature, version: product.version, price_brl: Number(product.table_price_brl), artifact_name: product.artifact_name, artifact_sha256: product.artifact_sha256, certification_only: true });
+}
+__name(resolveCertificationCheckoutOffer, "resolveCertificationCheckoutOffer");
 var ARBM_SIST_OFFER, ZEVANORY_PRODUCTS, ZEVANORY_PORTFOLIO;
 var init_offerCatalog = __esm({
   "src/offerCatalog.mjs"() {
@@ -13953,10 +13959,11 @@ var FINANCIAL_RECONCILIATION_RULES = Object.freeze({
 // src/order.mjs
 init_config();
 init_offerCatalog();
-function normalizeCheckoutRequest(body) {
+function normalizeCheckoutRequest(body, { certification = false } = {}) {
   if (!body || typeof body !== "object") return null;
   if (!isUuid(body.request_id) || !isUuid(body.session_id)) return null;
-  const offer = resolveCheckoutOffer(body.offer_id || body.sku || PROJECT.offerId);
+  const offerId = body.offer_id || body.sku || PROJECT.offerId;
+  const offer = certification ? resolveCertificationCheckoutOffer(offerId) : resolveCheckoutOffer(offerId);
   if (!offer) return null;
   return Object.freeze({ requestId: String(body.request_id).toLowerCase(), sessionId: String(body.session_id).toLowerCase(), offer });
 }
@@ -14286,10 +14293,11 @@ async function handler12(req, res) {
   res.setHeader("cache-control", "no-store");
   res.setHeader("x-content-type-options", "nosniff");
   if (req.method !== "POST") return json9(res, 405, { error: "method_not_allowed" });
-  const input = normalizeCheckoutRequest(await readJsonRequestBody(req));
-  if (!input) return json9(res, 400, { error: "invalid_checkout_request" });
   const gate = salesGate();
   const pilotToken = String(req.headers?.["x-certification-pilot-token"] || "").trim();
+  const checkoutBody = await readJsonRequestBody(req);
+  const input = normalizeCheckoutRequest(checkoutBody, { certification: !gate.enabled && Boolean(pilotToken) });
+  if (!input) return json9(res, 400, { error: "invalid_checkout_request" });
   if (!gate.enabled && !pilotToken) return json9(res, 503, { error: "sales_globally_blocked", blockers: gate.blockers });
   if (process.env.CHECKOUT_ENABLED !== "true") return json9(res, 503, { error: "checkout_disabled" });
   const env = String(process.env.MERCADOPAGO_ENV || "").toLowerCase();
@@ -14311,7 +14319,7 @@ async function handler12(req, res) {
   const checkoutEnv = pilotSandbox ? "sandbox" : env;
   const providerToken = pilotSandbox ? String(process.env.MERCADOPAGO_TEST_ACCESS_TOKEN || "") : String(process.env.MERCADOPAGO_ACCESS_TOKEN || "");
   if (!providerToken) return json9(res, 503, { error: "checkout_provider_unavailable" });
-  const effectiveOffer = pilot?.authorized ? Object.freeze({ ...input.offer, price_brl: certificationPilotAmountBrl(process.env) }) : input.offer;
+  const effectiveOffer = input.offer;
   const orderId = crypto6.randomUUID();
   const externalReference = String(orderId).toLowerCase();
   try {
@@ -14326,10 +14334,12 @@ async function handler12(req, res) {
       if (replay.action === "reuse") return json9(res, 200, { accepted: true, duplicate: true, order_id: order.order_id, checkout_url: replay.checkoutUrl });
       if (replay.action !== "create") return json9(res, 409, { error: replay.action === "in_progress" ? "checkout_in_progress" : "checkout_not_retryable" });
     }
-    const claimed = await sql.query(`UPDATE orders SET status='checkout_creating',updated_at=now() WHERE order_id=$1 AND status='created' RETURNING order_id`, [order.order_id]);
+    const claimed = await sql.query(`UPDATE orders SET status='checkout_creating',updated_at=now() WHERE order_id=$1 AND status='created' RETURNING order_id,amount,offer_id`, [order.order_id]);
     if (claimed.length !== 1) return json9(res, 409, { error: "checkout_in_progress" });
+    const orderBoundOffer = Object.freeze({ ...effectiveOffer, id: String(claimed[0].offer_id), price_brl: Number(claimed[0].amount) });
+    if (!Number.isFinite(orderBoundOffer.price_brl) || orderBoundOffer.price_brl <= 0) return json9(res, 409, { error: "order_amount_invalid" });
     const notificationPath = pilotSandbox ? "/api/webhooks?provider=mercadopago_test" : "/api/webhooks/mercadopago";
-    const payload = buildMercadoPagoPreference(order.order_id, publicBase, effectiveOffer, { notificationPath });
+    const payload = buildMercadoPagoPreference(order.order_id, publicBase, orderBoundOffer, { notificationPath });
     if (!payload) return json9(res, 503, { error: "checkout_payload_unavailable" });
     let raw;
     try {
