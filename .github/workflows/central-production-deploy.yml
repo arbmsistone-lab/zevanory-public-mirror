@@ -42,9 +42,8 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
-      # Binding repair only: preserve the already-certified production runtime SHA.
-      # Reconcile trigger 2026-09-27: reassert canonical KV binding after verified ZEES-16 16/16 state.
-      TARGET_RUNTIME_SHA: 2237836450cd371365d9fe00c83e42f70df28025
+      # Deploy the exact merged source SHA; sales remain fail-closed by configuration.
+      TARGET_RUNTIME_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -451,6 +450,53 @@ jobs:
           print("PRODUCTION_ZEES_ZEA_CORE_ADMIN_ARCHITECTURE_PASS")
           print("PRODUCTION_CENTRAL_UTF8_AND_SAFETY_PASS")
           PY
+      - name: Verify live HSTS CSP and Mercado Pago navigation
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -D /tmp/live-security-headers.txt -o /tmp/live-solutions.html https://zevanory.api.br/solucoes
+          python3 - <<'PY'
+          import re
+          h=open('/tmp/live-security-headers.txt',encoding='utf-8',errors='replace').read().lower()
+          m=re.search(r'^strict-transport-security:\s*([^\r\n]+)',h,re.M)
+          assert m,m
+          maxage=re.search(r'max-age=(\d+)',m.group(1))
+          assert maxage and int(maxage.group(1))>=31536000,m.group(1)
+          assert 'includesubdomains' in m.group(1),m.group(1)
+          c=re.search(r'^content-security-policy:\s*([^\r\n]+)',h,re.M)
+          assert c,c
+          csp=c.group(1)
+          for token in ('script-src','frame-src','connect-src','sdk.mercadopago.com','api.mercadopago.com','www.mercadopago.com'):
+              assert token in csp,(token,csp)
+          assert re.search(r'^x-content-type-options:\s*nosniff\s*
+        if: steps.auth.outputs.available != 'true'
+        run: |
+          echo "Deployment blocked: GitHub Actions does not currently hold authenticated authority for the Cloudflare account that owns the public ZEVANORY domains."
+          echo "Production is unchanged. No alternate account is permitted to masquerade as production."
+          exit 1
+,h,re.M),h
+          print("LIVE_HSTS_CSP=PASS")
+          PY
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null 2>&1
+          cat > /tmp/mp-csp-smoke.mjs <<'JS'
+          import { chromium } from 'playwright';
+          const checkout='https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=3670768257-f4236a66-96f6-49fc-ba1c-2587780b36e2';
+          const browser=await chromium.launch({headless:true});
+          const page=await browser.newPage();
+          const csp=[];
+          page.on('console',m=>{const t=m.text();if(/content security policy|refused to (load|connect|frame|execute)|csp/i.test(t))csp.push(t)});
+          await page.goto('https://zevanory.api.br/solucoes',{waitUntil:'domcontentloaded',timeout:30000});
+          await page.evaluate(url=>{location.href=url},checkout);
+          await page.waitForLoadState('domcontentloaded',{timeout:30000});
+          if(!/mercadopago\.com(?:\.br)?$/i.test(new URL(page.url()).hostname)) throw new Error('mercadopago_navigation_failed:'+page.url());
+          if(/\/fatal(?:\?|$)/i.test(new URL(page.url()).pathname)) throw new Error('mercadopago_fatal:'+page.url());
+          if(csp.length) throw new Error('csp_console_block:'+JSON.stringify(csp.slice(0,10)));
+          console.log('MERCADOPAGO_CHECKOUT_CSP_SMOKE=PASS '+page.url());
+          await browser.close();
+          JS
+          node /tmp/mp-csp-smoke.mjs
       - name: Fail-closed deployment status
         if: steps.auth.outputs.available != 'true'
         run: |
