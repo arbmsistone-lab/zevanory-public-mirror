@@ -27,26 +27,30 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
-          clean="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '\r\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/^[Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+//')"
+          clean="$(RAW_TOKEN="$CLOUDFLARE_API_TOKEN" python3 - <<'PY'
+          import os,re
+          raw=os.environ["RAW_TOKEN"].replace("\r","").replace("\n","").strip()
+          parts=[p for p in re.findall(r"[A-Za-z0-9._~+/-]{20,}",raw) if p.lower() not in {"authorization","bearer"}]
+          if not parts:
+              raise SystemExit("no_token_segment")
+          print(max(parts,key=len))
+          PY
+          )"
           test -n "$clean"
           echo "::add-mask::$clean"
+          code="$(curl -sS -o /tmp/cf-account.json -w '%{http_code}' -H "Authorization: Bearer $clean" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID" || true)"
+          test "$code" = "200"
+          CF_FILE=/tmp/cf-account.json python3 - <<'PY'
+          import json,os
+          d=json.load(open(os.environ["CF_FILE"]))
+          assert d.get("success") is True, d.get("errors")
+          print("CLOUDFLARE_CANONICAL_AUTHORITY=PASS")
+          PY
           {
             echo 'CLOUDFLARE_API_TOKEN<<__CF__'
             printf '%s\n' "$clean"
             echo '__CF__'
           } >> "$GITHUB_ENV"
-          TOKEN_DIAG="$clean" python3 - <<'PY'
-          import os,re
-          s=os.environ["TOKEN_DIAG"]
-          print("TOKEN_LENGTH="+str(len(s)))
-          print("TOKEN_HAS_SPACE="+str(any(ch.isspace() for ch in s)).lower())
-          print("TOKEN_HAS_COLON="+str(":" in s).lower())
-          print("TOKEN_HAS_EQUALS="+str("=" in s).lower())
-          print("TOKEN_HAS_QUOTES="+str(any(ch in "'\"" for ch in s)).lower())
-          print("TOKEN_INVALID_TOKEN68_COUNT="+str(sum(1 for ch in s if not re.match(r"[A-Za-z0-9._~+/-]",ch))))
-          print("TOKEN_SEGMENTS="+str(len([x for x in re.split(r"[^A-Za-z0-9._~+/-]+",s) if x])))
-          PY
-          echo "CLOUDFLARE_TOKEN_NORMALIZED=PASS"
 
       - name: Build exact Product Control release
         shell: bash
