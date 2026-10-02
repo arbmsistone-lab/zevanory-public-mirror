@@ -109,7 +109,16 @@ jobs:
                   try: data=json.loads(raw or "{}")
                   except: data={"raw":raw[:300]}
                   return e.code,data
-          code,me=call("/users/me")
+          req=urllib.request.Request("https://api.mercadolibre.com/users/me",headers={"accept":"application/json","authorization":"Bearer "+token,"user-agent":"ZEVANORY-MP-Sandbox-Probe/1.0"})
+          try:
+              with urllib.request.urlopen(req,timeout=40) as rr:
+                  code=rr.status
+                  me=json.loads(rr.read().decode() or "{}")
+          except urllib.error.HTTPError as e:
+              code=e.code
+              raw=e.read().decode(errors="replace")
+              try: me=json.loads(raw or "{}")
+              except: me={}
           print("MP_ACCESS_TOKEN_AUTH="+("PASS" if code==200 else f"FAIL_{code}"))
           pix_body={
             "transaction_amount":1.0,
@@ -120,6 +129,7 @@ jobs:
           }
           pcode,p=call("/v1/payments","POST",pix_body,str(uuid.uuid4()))
           print("MP_PIX_PAYMENTS_CREATE_HTTP="+str(pcode))
+          print("MP_PIX_PAYMENTS_PROVIDER_CODE="+str(p.get("code") or p.get("error") or p.get("status_detail") or "none")[:120])
           pid=str(p.get("id",""))
           pstatus=str(p.get("status",""))
           if pid.isdigit():
@@ -138,6 +148,8 @@ jobs:
           }
           ocode,o=call("/v1/orders","POST",order_body,str(uuid.uuid4()))
           print("MP_PIX_ORDERS_CREATE_HTTP="+str(ocode))
+          order_errors=o.get("errors") if isinstance(o,dict) else None
+          print("MP_PIX_ORDERS_PROVIDER_CODE="+str((order_errors or o.get("code") or o.get("error") or "none"))[:180])
           oid=str(o.get("id",""))
           ostatus=str(o.get("status",""))
           if oid.startswith("ORD"):
