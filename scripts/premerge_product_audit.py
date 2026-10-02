@@ -244,14 +244,14 @@ def check_official_whatsapp():
             errors += fail(f"WhatsApp oficial: frente comercial não herdando perfil canônico: {front}")
 
     for marker in (
-        'c["vars"]["ZEVANORY_WHATSAPP_E164"]="+5588992545413"',
+        'c["vars"].pop("ZEVANORY_WHATSAPP_E164",None)',
         'c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"',
-        'c["vars"]["ZEVANORY_WHATSAPP_COUNTRY"]="BR"',
+        'c["vars"].pop("ZEVANORY_WHATSAPP_COUNTRY",None)',
         '"+55 88 9234-0423": "+55 88 99254-5413"',
         '"558892340423": "5588992545413"',
     ):
         if marker not in deploy:
-            errors += fail(f"WhatsApp oficial: marcador de cutover ausente no deploy: {marker}")
+            errors += fail(f"WhatsApp oficial: marcador de cutover/compactação ausente no deploy: {marker}")
 
     if 'c["vars"]["WHATSAPP_SALES_ENABLED"]="false"' not in deploy:
         errors += fail("WhatsApp oficial: fail-closed WHATSAPP_SALES_ENABLED=false ausente")
