@@ -350,6 +350,19 @@ jobs:
           print("FINANCIAL_SECRETS_MUTATION=DECOUPLED")
           PY
 
+      - name: Sync Mercado Pago sandbox credentials to existing Worker bindings
+        if: steps.auth.outputs.available == 'true'
+        env:
+          MP_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+          MP_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$MP_TEST_ACCESS_TOKEN"
+          test -n "$MP_TEST_WEBHOOK_SECRET"
+          printf '%s' "$MP_TEST_ACCESS_TOKEN" | npx --yes wrangler@4.143.0 secret put MERCADOPAGO_ACCESS_TOKEN --name zevanory
+          printf '%s' "$MP_TEST_WEBHOOK_SECRET" | npx --yes wrangler@4.143.0 secret put MERCADOPAGO_WEBHOOK_SECRET --name zevanory
+          echo "MERCADOPAGO_SANDBOX_SECRET_SYNC=PASS"
+
       - name: Require certification secret before production deploy
         if: steps.auth.outputs.available == 'true'
         run: |
