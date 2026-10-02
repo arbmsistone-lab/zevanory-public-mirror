@@ -39,7 +39,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Normalize and verify Workers AI authority
+      - name: Deploy ephemeral Workers AI binding proxy
         shell: bash
         run: |
           set -euo pipefail
@@ -53,25 +53,65 @@ jobs:
           PY
           )"
           echo "::add-mask::$clean"
-          code="$(curl -sS -o /tmp/ai-test.json -w '%{http_code}'             -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/zai-org/glm-4.7-flash"             -H "Authorization: Bearer $clean" -H 'Content-Type: application/json'             --data '{"messages":[{"role":"user","content":"Responda apenas OK"}],"max_tokens":8}')"
-          echo "WORKERS_AI_HTTP=$code"
-          if [ "$code" != "200" ]; then
-            python3 - <<'PY'
-          import json
-          try:
-              d=json.load(open("/tmp/ai-test.json"))
-              print("WORKERS_AI_ERRORS="+json.dumps(d.get("errors",d.get("error",{})),ensure_ascii=False)[:800])
-          except Exception:
-              print("WORKERS_AI_ERRORS=unparseable")
+          worker_name="zv-s1-$GITHUB_RUN_ID"
+          proxy_secret="$(python3 - <<'PY'
+          import secrets
+          print(secrets.token_urlsafe(36))
           PY
-            exit 3
-          fi
+          )"
+          echo "::add-mask::$proxy_secret"
+          cat > /tmp/stage1-ai-worker.mjs <<'JS'
+          export default {
+            async fetch(request, env) {
+              if (request.method !== "POST") return new Response("method_not_allowed", { status: 405 });
+              if (request.headers.get("authorization") !== `Bearer ${env.PROXY_SECRET}`) {
+                return new Response("unauthorized", { status: 401 });
+              }
+              try {
+                const body = await request.json();
+                const model = String(body?.model || "");
+                if (!model.startsWith("@cf/")) return Response.json({ success: false, error: "model_not_allowed" }, { status: 400 });
+                const result = await env.AI.run(model, body?.payload || {});
+                return Response.json({ success: true, result });
+              } catch (error) {
+                return Response.json({ success: false, error: String(error?.message || error) }, { status: 502 });
+              }
+            }
+          };
+          JS
+          cat > /tmp/wrangler-stage1.toml <<EOF
+          name = "$worker_name"
+          main = "/tmp/stage1-ai-worker.mjs"
+          compatibility_date = "2026-10-02"
+          workers_dev = true
+          [ai]
+          binding = "AI"
+          EOF
+          export CLOUDFLARE_API_TOKEN="$clean"
+          export CLOUDFLARE_ACCOUNT_ID
+          npx --yes wrangler@4.135.0 deploy --config /tmp/wrangler-stage1.toml 2>&1 | tee /tmp/wrangler-stage1-deploy.log
+          printf '%s' "$proxy_secret" | npx --yes wrangler@4.135.0 secret put PROXY_SECRET --config /tmp/wrangler-stage1.toml >/tmp/wrangler-stage1-secret.log 2>&1
+          proxy_url="$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' /tmp/wrangler-stage1-deploy.log | tail -n1)"
+          test -n "$proxy_url"
+          code="$(curl -sS -o /tmp/ai-test.json -w '%{http_code}' -X POST "$proxy_url"             -H "Authorization: Bearer $proxy_secret" -H 'Content-Type: application/json'             --data '{"model":"@cf/zai-org/glm-4.7-flash","payload":{"messages":[{"role":"user","content":"Responda apenas OK"}],"max_tokens":8}}')"
+          echo "WORKERS_AI_BINDING_HTTP=$code"
+          test "$code" = "200"
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/ai-test.json"))
+          assert d.get("success") is True, d
+          print("WORKERS_AI_BINDING=PASS")
+          PY
           {
             echo 'CLOUDFLARE_API_TOKEN<<__CF__'
             printf '%s\n' "$clean"
             echo '__CF__'
+            echo "WORKER_NAME=$worker_name"
+            echo "WORKERS_AI_PROXY_URL=$proxy_url"
+            echo 'WORKERS_AI_PROXY_SECRET<<__PROXY__'
+            printf '%s\n' "$proxy_secret"
+            echo '__PROXY__'
           } >> "$GITHUB_ENV"
-          echo "WORKERS_AI_AUTHORITY=PASS"
       - name: Generate five real AI creatives
         run: python scripts/autonomous_seller_stage1_creatives.py --out "$OUT_DIR"
       - name: Verify immutable stage1 evidence
@@ -99,6 +139,18 @@ jobs:
           print("STAGE1_EVIDENCE=PASS")
           print("STAGE1_PRODUCTS=5/5")
           PY
+      - name: Delete ephemeral Workers AI proxy
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -n "${WORKER_NAME:-}" ] && [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            npx --yes wrangler@4.135.0 delete --name "$WORKER_NAME" --force >/tmp/wrangler-stage1-delete.log 2>&1
+            rc=$?
+            echo "EPHEMERAL_WORKER_DELETE_RC=$rc"
+          else
+            echo "EPHEMERAL_WORKER_DELETE_RC=SKIPPED"
+          fi
       - name: Upload five creatives
         if: success()
         uses: actions/upload-artifact@v4
