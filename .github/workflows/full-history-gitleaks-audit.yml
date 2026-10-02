@@ -40,9 +40,15 @@ jobs:
           VERSION=8.30.1
           curl -fsSL -o /tmp/gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
           tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
-          /tmp/gitleaks git --redact=100 --report-format=json --report-path=/tmp/gitleaks-full-history.json .
+          set +e
+          /tmp/gitleaks git --redact=100 --exit-code=0 --report-format=json --report-path=/tmp/gitleaks-full-history.json .
+          GL=$?
+          set -e
+          test "$GL" -eq 0
           COUNT="$(jq 'length' /tmp/gitleaks-full-history.json 2>/dev/null || echo 0)"
+          jq '[.[] | {RuleID,File,Commit,StartLine}] | unique' /tmp/gitleaks-full-history.json > /tmp/gitleaks-sanitized.json
           echo "GITLEAKS_FULL_HISTORY_FINDINGS=$COUNT"
+          cat /tmp/gitleaks-sanitized.json
           test "$COUNT" -eq 0
       - name: Audit route summary
         if: always()
