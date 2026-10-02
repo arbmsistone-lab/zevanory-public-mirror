@@ -89,6 +89,68 @@ jobs:
           echo "SALE_GLOBALLY_ENABLED=false"
           echo "FINANCIAL_PREFLIGHT=PASS"
 
+      - name: Probe Mercado Pago sandbox Pix routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, time, urllib.request, urllib.error, uuid
+          token=os.environ["MERCADOPAGO_TEST_ACCESS_TOKEN"].strip()
+          base="https://api.mercadopago.com"
+          def call(path, method="GET", body=None, idem=None):
+              headers={"accept":"application/json","authorization":"Bearer "+token,"user-agent":"ZEVANORY-MP-Sandbox-Probe/1.0"}
+              if body is not None: headers["content-type"]="application/json"
+              if idem: headers["x-idempotency-key"]=idem
+              req=urllib.request.Request(base+path,method=method,headers=headers,data=None if body is None else json.dumps(body).encode())
+              try:
+                  with urllib.request.urlopen(req,timeout=40) as r: return r.status,json.loads(r.read().decode() or "{}")
+              except urllib.error.HTTPError as e:
+                  raw=e.read().decode(errors="replace")
+                  try: data=json.loads(raw or "{}")
+                  except: data={"raw":raw[:300]}
+                  return e.code,data
+          code,me=call("/users/me")
+          print("MP_ACCESS_TOKEN_AUTH="+("PASS" if code==200 else f"FAIL_{code}"))
+          pix_body={
+            "transaction_amount":1.0,
+            "description":"ZEVANORY sandbox Pix probe",
+            "payment_method_id":"pix",
+            "external_reference":"ZEVANORY_PIX_PROBE_"+uuid.uuid4().hex,
+            "payer":{"email":"test_user_br@testuser.com","first_name":"APRO"}
+          }
+          pcode,p=call("/v1/payments","POST",pix_body,str(uuid.uuid4()))
+          print("MP_PIX_PAYMENTS_CREATE_HTTP="+str(pcode))
+          pid=str(p.get("id",""))
+          pstatus=str(p.get("status",""))
+          if pid.isdigit():
+              for _ in range(8):
+                  if pstatus in ("approved","rejected","cancelled","refunded"): break
+                  time.sleep(2)
+                  qcode,q=call("/v1/payments/"+pid)
+                  if qcode==200: pstatus=str(q.get("status",""))
+          print("MP_PIX_PAYMENTS_FINAL="+(pstatus or "unknown"))
+          order_body={
+            "type":"online",
+            "external_reference":"ZEVANORY_ORDER_PROBE_"+uuid.uuid4().hex,
+            "total_amount":"1.00",
+            "payer":{"email":"test_user_br@testuser.com","first_name":"APRO"},
+            "transactions":{"payments":[{"amount":"1.00","payment_method":{"id":"pix","type":"bank_transfer"}}]}
+          }
+          ocode,o=call("/v1/orders","POST",order_body,str(uuid.uuid4()))
+          print("MP_PIX_ORDERS_CREATE_HTTP="+str(ocode))
+          oid=str(o.get("id",""))
+          ostatus=str(o.get("status",""))
+          if oid.startswith("ORD"):
+              for _ in range(8):
+                  if ostatus in ("processed","failed","cancelled"): break
+                  time.sleep(2)
+                  qcode,q=call("/v1/orders/"+oid)
+                  if qcode==200: ostatus=str(q.get("status",""))
+          print("MP_PIX_ORDERS_FINAL="+(ostatus or "unknown"))
+          assert code==200, ("access_token_auth",code)
+          assert pcode in (200,201) or ocode in (200,201), ("pix_probe_failed",pcode,ocode)
+          PY
+
       - name: Run Mercado Pago sandbox financial lifecycle
         run: python3 scripts/financial_e2e_mercadopago.py
 
