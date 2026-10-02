@@ -50,34 +50,16 @@ jobs:
           set -euo pipefail
           test "${#CERTIFICATION_E2E_TOKEN}" -ge 32
           test -n "${CLOUDFLARE_API_TOKEN:-}"
-          ACCOUNT_ID="$(python3 - <<'PY'
-import json, os, urllib.request
-token=os.environ["CLOUDFLARE_API_TOKEN"]
-headers={"Authorization":f"Bearer {token}","Content-Type":"application/json"}
-req=urllib.request.Request("https://api.cloudflare.com/client/v4/accounts",headers=headers)
-with urllib.request.urlopen(req,timeout=30) as r:
-    accounts=json.load(r).get("result",[])
-matches=[]
-for account in accounts:
-    aid=account.get("id")
-    if not aid:
-        continue
-    url=f"https://api.cloudflare.com/client/v4/accounts/{aid}/workers/services/zevanory"
-    try:
-        req=urllib.request.Request(url,headers=headers)
-        with urllib.request.urlopen(req,timeout=20) as r:
-            payload=json.load(r)
-        if payload.get("success") and payload.get("result"):
-            matches.append(aid)
-    except Exception:
-        pass
-if len(matches)!=1:
-    raise SystemExit(f"canonical_worker_account_resolution_failed:{len(matches)}")
-print(matches[0])
-PY
-)"
-          test -n "$ACCOUNT_ID"
-          export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
+          mapfile -t ACCOUNT_IDS < <(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts | jq -r '.result[].id')
+          MATCHES=()
+          for aid in "${ACCOUNT_IDS[@]}"; do
+            payload="$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$aid/workers/services/zevanory" || true)"
+            if jq -e '.success == true and .result != null' >/dev/null 2>&1 <<<"$payload"; then
+              MATCHES+=("$aid")
+            fi
+          done
+          test "${#MATCHES[@]}" -eq 1
+          export CLOUDFLARE_ACCOUNT_ID="${MATCHES[0]}"
           printf '%s' "$CERTIFICATION_E2E_TOKEN" | npx --yes wrangler@4.135.0 secret put CERTIFICATION_E2E_TOKEN --name zevanory
           echo "CANONICAL_WORKER_ACCOUNT=RESOLVED"
           echo "CERTIFICATION_E2E_TOKEN_SYNC=PASS"
