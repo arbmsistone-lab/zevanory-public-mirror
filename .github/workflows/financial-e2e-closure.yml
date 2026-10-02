@@ -40,7 +40,9 @@ jobs:
         run: |
           set -euo pipefail
           test "${#EXPECTED_SHA}" -eq 40
-          test -n "${MERCADOPAGO_TEST_ACCESS_TOKEN:-}" || { echo "MISSING_REQUIRED_SECRET=MERCADOPAGO_TEST_ACCESS_TOKEN"; exit 2; }
+          test -n "${MERCADOPAGO_TEST_ACCESS_TOKEN:-}"
+          test -n "${MERCADOPAGO_TEST_PUBLIC_KEY:-}"
+          test -n "${MERCADOPAGO_TEST_BUYER_EMAIL:-}" || { echo "MISSING_REQUIRED_SECRET=MERCADOPAGO_TEST_ACCESS_TOKEN"; exit 2; }
           test -n "${MERCADOPAGO_TEST_WEBHOOK_SECRET:-}" || { echo "MISSING_REQUIRED_SECRET=MERCADOPAGO_TEST_WEBHOOK_SECRET"; exit 2; }
           test "${#MERCADOPAGO_TEST_WEBHOOK_SECRET}" -ge 16
           test "${#CERTIFICATION_E2E_TOKEN}" -ge 32
