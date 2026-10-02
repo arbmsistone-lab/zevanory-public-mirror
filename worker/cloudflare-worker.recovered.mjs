@@ -14750,7 +14750,7 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
   } catch {
     evidence = {};
   }
-  if (existing.status === "delivered" && evidence.email_status === "sent" && /^https:\\/\\//.test(String(evidence.download_url || ""))) return Object.freeze(evidence);
+  if (existing.status === "delivered" && evidence.email_status === "sent" && String(evidence.download_url || "").startsWith("https://")) return Object.freeze(evidence);
   const recipient = validMercadoPagoDeliveryEmail(payment?.payer?.email);
   if (!recipient) throw new Error("delivery_recipient_invalid");
   if (!String(process.env.RESEND_API_KEY || "").trim()) throw new Error("delivery_mailer_unavailable");
