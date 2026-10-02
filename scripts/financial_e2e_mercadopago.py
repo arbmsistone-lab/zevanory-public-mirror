@@ -109,7 +109,7 @@ def create_checkout(token, request_id, session_id, ok=(201,)):
         ok=ok,
     )
 
-def create_card_token():
+def _create_card_token_once():
     _, card = mp(
         "/v1/card_tokens",
         "POST",
@@ -128,6 +128,18 @@ def create_card_token():
     token = str(card.get("id", ""))
     assert token and card.get("status") == "active", card
     return token
+
+def create_card_token():
+    last = None
+    for _ in range(3):
+        try:
+            return _create_card_token_once()
+        except AssertionError as exc:
+            last = exc
+            if "unexpected_processing" not in str(exc):
+                raise
+            time.sleep(3)
+    raise last
 
 def create_payment(order_id, amount):
     card_token = create_card_token()
