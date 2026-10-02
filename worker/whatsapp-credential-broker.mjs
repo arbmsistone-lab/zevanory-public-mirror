@@ -354,7 +354,8 @@ async function signatureValid(env,payload,signature){
 function constantEqual(a,b){
   a=String(a||"");b=String(b||"");if(a.length!==b.length)return false;let d=0;for(let i=0;i<a.length;i++)d|=a.charCodeAt(i)^b.charCodeAt(i);return d===0;
 }
-async function sendMessage(env,message){
+async function sendMessage(env,message,authorization={}){
+  if(authorization.support_context!==true&&authorization.opt_in!==true) throw new Error("whatsapp_opt_in_required");
   const s=await status(env);
   if(!s.identity_verified||!s.phone_number_id) throw new Error("official_number_not_verified");
   const token=await accessToken(env);
@@ -445,7 +446,7 @@ export default {
         const body=await request.json().catch(()=>({})); return json({valid:constantEqual(body.token,env.WHATSAPP_VERIFY_TOKEN)});
       }
       if(request.method==="POST"&&url.pathname==="/broker/send"){
-        const body=await request.json().catch(()=>({})); return json(await sendMessage(env,body.message||{}));
+        const body=await request.json().catch(()=>({})); return json(await sendMessage(env,body.message||{},{opt_in:body.opt_in===true,support_context:body.support_context===true}));
       }
       if(request.method==="POST"&&url.pathname==="/broker/media") return json(await uploadMedia(env,request));
       return json({error:"not_found"},404);

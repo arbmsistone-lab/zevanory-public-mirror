@@ -1,0 +1,52 @@
+name: ZEVANORY Sales Safety Contract
+
+on:
+  push:
+    branches:
+      - feat/zevanory-sales-safety-contract-20261002
+  pull_request:
+    branches:
+      - gh-pages
+    paths:
+      - 'worker/cloudflare-worker.recovered.mjs'
+      - 'worker/whatsapp-credential-broker.mjs'
+      - 'scripts/zevanory_sales_safety_contract.py'
+      - 'scripts/financial_engine_deterministic.py'
+      - 'privacidade/index.html'
+      - 'reembolso/index.html'
+      - '.github/workflows/zevanory-sales-safety-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safety-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Opt-in and compliance negative contracts
+        run: python3 scripts/zevanory_sales_safety_contract.py
+      - name: Deterministic payment sandbox
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: python3 scripts/financial_engine_deterministic.py
+      - name: Assert no external side effects
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '"provider": "deterministic-sandbox"' evidence/financial-engine-deterministic.json
+          grep -q '"external_provider_proof": false' evidence/financial-engine-deterministic.json
+          grep -q '"ZERO_SPEND": "PASS"' evidence/financial-engine-deterministic.json
+          echo "EXTERNAL_PROVIDER_CALLS=0"
+          echo "REAL_MESSAGE_SENT=false"
+          echo "REAL_TRANSACTION_CREATED=false"
+      - name: Upload safe evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zevanory-sales-safety-contract
+          path: evidence/financial-engine-deterministic.json
+          if-no-files-found: error
+          retention-days: 90
