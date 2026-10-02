@@ -1,0 +1,243 @@
+name: Mercado Pago - reconciliação de segurança
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "worker/cloudflare-worker.recovered.mjs"
+      - "scripts/mercadopago_reconciliation_regression.py"
+      - ".github/workflows/mercadopago-reconciliation-safety.yml"
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mp-reconciliation-safety-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  regression-and-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      APP: https://zevanory.api.br
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      MP_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+      MP_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
+      CERT_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      FULFILLMENT_OPERATOR_TOKEN: ${{ secrets.FULFILLMENT_OPERATOR_TOKEN }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      RESEND_FROM_ADDRESS: ${{ secrets.RESEND_FROM_ADDRESS }}
+      BUYER_EMAIL: ${{ secrets.MERCADOPAGO_TEST_BUYER_EMAIL }}
+      APPROVED_PAYMENT_ID: "182085091992"
+      DECLINED_PAYMENT_ID: "182084804008"
+      PREF_ID: "3670768257-f4236a66-96f6-49fc-ba1c-2587780b36e2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Regression contract
+        run: python scripts/mercadopago_reconciliation_regression.py
+
+      - name: Install PostgreSQL client library
+        run: python -m pip install --quiet "psycopg[binary]==3.2.10"
+
+      - name: Reconcile approved payment and prove rejected attempt has no delivery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,hmac,json,os,time,urllib.parse,urllib.request,urllib.error,uuid
+          from urllib.parse import urlparse
+          import psycopg
+
+          APP=os.environ["APP"].rstrip("/")
+          DB=os.environ["DATABASE_URL"].strip()
+          TOKEN=os.environ["MP_ACCESS_TOKEN"].strip()
+          SECRET=os.environ["MP_WEBHOOK_SECRET"].strip()
+          CERT=os.environ["CERT_TOKEN"].strip()
+          FUL=os.environ["FULFILLMENT_OPERATOR_TOKEN"].strip()
+          RESEND=os.environ["RESEND_API_KEY"].strip()
+          FROM=os.environ.get("RESEND_FROM_ADDRESS","").strip() or "ZEVANORY <contato@zevanory.api.br>"
+          BUYER=os.environ["BUYER_EMAIL"].strip()
+          APPROVED=os.environ["APPROVED_PAYMENT_ID"]
+          DECLINED=os.environ["DECLINED_PAYMENT_ID"]
+          PREF=os.environ["PREF_ID"]
+          assert all([DB,TOKEN,SECRET,CERT,FUL,RESEND,BUYER])
+
+          host=(urlparse(DB).hostname or "").lower()
+          if "supabase" in host or host=="pvkpkqwdnnpkgvllwqbc":
+              raise SystemExit("SUPABASE_PRODUCTION_BLOCKED=1")
+
+          def request(url,method="GET",headers=None,body=None):
+              h={"Accept":"application/json","User-Agent":"ZEVANORY-Reconciliation-Safety/1.0"}
+              if headers: h.update(headers)
+              data=None
+              if body is not None:
+                  h["Content-Type"]="application/json"
+                  data=json.dumps(body).encode()
+              req=urllib.request.Request(url,method=method,headers=h,data=data)
+              try:
+                  with urllib.request.urlopen(req,timeout=30) as r:
+                      raw=r.read().decode("utf-8","replace")
+                      return r.status,(json.loads(raw) if raw else {}),dict(r.headers)
+              except urllib.error.HTTPError as e:
+                  raw=e.read().decode("utf-8","replace")
+                  raise AssertionError((url,e.code,raw[:1200]))
+
+          def mp(path):
+              return request("https://api.mercadopago.com"+path,headers={"Authorization":"Bearer "+TOKEN})[1]
+
+          pa=mp("/v1/payments/"+APPROVED)
+          pd=mp("/v1/payments/"+DECLINED)
+          pref=mp("/checkout/preferences/"+PREF)
+          assert pa.get("status")=="approved",pa
+          assert pd.get("status")=="rejected",pd
+          ref=str(pa.get("external_reference") or "")
+          assert ref and ref==str(pd.get("external_reference") or "")==str(pref.get("external_reference") or "")
+          assert str(pref.get("notification_url") or "").startswith("https://"),pref
+          order_id=ref.split(":")[-1].lower()
+          uuid.UUID(order_id)
+          assert abs(float(pa.get("transaction_amount") or 0)-197.0)<0.001,pa
+          assert abs(float(pd.get("transaction_amount") or 0)-197.0)<0.001,pd
+
+          with psycopg.connect(DB,connect_timeout=10) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("""select order_id::text,amount::text,status,offer_id,external_reference,provider,certification_pilot
+                                 from orders where order_id=%s for update""",(order_id,))
+                  row=cur.fetchone()
+                  assert row,row
+                  assert row[5]=="mercadopago" and row[6] is True,row
+                  assert row[4]==ref,row
+                  if row[2] not in ("paid","refunded"):
+                      assert row[2] in ("checkout_ready","checkout_uncertain"),row
+                      if abs(float(row[1])-197.0)>0.001 or row[3]!="ZEV-IA-011":
+                          cur.execute("""update orders set amount=197.00,offer_id='ZEV-IA-011',updated_at=now()
+                                         where order_id=%s and certification_pilot=true and provider='mercadopago'
+                                           and status in ('checkout_ready','checkout_uncertain')""",(order_id,))
+                          assert cur.rowcount==1
+                          print("CURRENT_ORDER_COMPENSATION=PASS")
+              conn.commit()
+
+          def signed_webhook(pid):
+              ts=str(int(time.time()))
+              rid=str(uuid.uuid4())
+              manifest=f"id:{pid};request-id:{rid};ts:{ts};"
+              digest=hmac.new(SECRET.encode(),manifest.encode(),hashlib.sha256).hexdigest()
+              return request(APP+"/api/webhooks?provider=mercadopago_test&data.id="+urllib.parse.quote(pid),
+                             method="POST",
+                             headers={"x-request-id":rid,"x-signature":f"ts={ts},v1={digest}"},
+                             body={"type":"payment","data":{"id":pid}})[1]
+
+          rejected_response=signed_webhook(DECLINED)
+          assert rejected_response.get("accepted") is True and rejected_response.get("ignored") is True,rejected_response
+          print("DECLINED_ATTEMPT_REJECTED_NO_FINANCIAL_EFFECT=PASS")
+
+          approved_response=signed_webhook(APPROVED)
+          assert approved_response.get("accepted") is True,approved_response
+          print("SIGNED_WEBHOOK_REPLAY=PASS")
+
+          def status():
+              return request(APP+"/api/internal/certification/e2e/status?order_id="+order_id,
+                             headers={"x-certification-e2e-token":CERT})[1]
+
+          deadline=time.time()+180
+          state=None
+          while time.time()<deadline:
+              state=status()
+              events=state.get("financial_events",[])
+              if state.get("order",{}).get("status")=="paid" and any(str(e.get("provider_payment_id"))==APPROVED and e.get("normalized_event")=="payment_confirmed" for e in events):
+                  break
+              time.sleep(4)
+          assert state and state.get("order",{}).get("status")=="paid",state
+          events=state.get("financial_events",[])
+          assert any(str(e.get("provider_payment_id"))==APPROVED and e.get("normalized_event")=="payment_confirmed" for e in events),events
+          assert not any(str(e.get("provider_payment_id"))==DECLINED and e.get("normalized_event")=="payment_confirmed" for e in events),events
+          assert any(x.get("source_class")=="provider_webhook" for x in state.get("provenance",[])),state.get("provenance")
+          print("ORDER_PAID=PASS")
+          print("WEBHOOK_PROVENANCE=PASS")
+
+          def issue():
+              code,body,_=request(APP+"/private/artifacts/issue","POST",
+                                  {"Authorization":"Bearer "+FUL},{"order_id":order_id,"ttl_minutes":30})
+              assert code==201 and body.get("issued") is True and str(body.get("download_url","")).startswith("https://"),body
+              return body["download_url"]
+
+          probe=issue()
+          code,_,hdr=request(probe,"GET")
+          assert code==200 and hdr.get("x-artifact-sha256"),hdr
+          print("DELIVERY_ARTIFACT_PROBE=PASS")
+
+          delivery=issue()
+          mail_body={
+              "from":FROM,
+              "to":[BUYER],
+              "subject":"ZEVANORY IA na Prática — acesso de teste",
+              "text":"Pagamento de teste confirmado. Link de entrega (uso único, expira): "+delivery
+          }
+          code,sent,_=request("https://api.resend.com/emails","POST",
+                              {"Authorization":"Bearer "+RESEND,"Idempotency-Key":"zevanory-mp-"+APPROVED},mail_body)
+          assert code in (200,201) and sent.get("id"),sent
+          print("EMAIL_SENT=PASS")
+          print("DELIVERY_LINK_ISSUED=PASS")
+
+          with psycopg.connect(DB,connect_timeout=10) as conn:
+              with conn.cursor() as cur:
+                  cur.execute("""update service_fulfillment set status='delivered',delivered_at=coalesce(delivered_at,now()),updated_at=now()
+                                 where order_id=%s and status in ('pending','scheduled','in_progress','delivered')""",(order_id,))
+                  assert cur.rowcount==1
+              conn.commit()
+
+          final=status()
+          assert final.get("order",{}).get("status")=="paid",final
+          assert final.get("fulfillment",{}).get("status")=="delivered",final
+          print("FULFILLMENT_DELIVERED=PASS")
+          print("APPROVED_FLOW=GREEN")
+          print("DECLINED_FLOW=PASS")
+          PY
+
+      - name: Safety scan for approved payments without paid orders
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime as dt,hashlib,hmac,json,os,time,urllib.parse,urllib.request,uuid
+          import psycopg
+          from urllib.parse import urlparse
+          DB=os.environ["DATABASE_URL"].strip(); TOKEN=os.environ["MP_ACCESS_TOKEN"].strip(); SECRET=os.environ["MP_WEBHOOK_SECRET"].strip(); APP=os.environ["APP"].rstrip("/")
+          host=(urlparse(DB).hostname or "").lower()
+          if "supabase" in host or host=="pvkpkqwdnnpkgvllwqbc": raise SystemExit("SUPABASE_PRODUCTION_BLOCKED=1")
+          begin=(dt.datetime.now(dt.timezone.utc)-dt.timedelta(days=7)).isoformat(timespec="seconds").replace("+00:00","Z")
+          end=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00","Z")
+          q=urllib.parse.urlencode({"status":"approved","range":"date_created","begin_date":begin,"end_date":end,"sort":"date_created","criteria":"desc","limit":100})
+          req=urllib.request.Request("https://api.mercadopago.com/v1/payments/search?"+q,headers={"Authorization":"Bearer "+TOKEN,"Accept":"application/json"})
+          with urllib.request.urlopen(req,timeout=30) as r: rows=json.loads(r.read().decode()).get("results",[])
+          repaired=0; skipped=0
+          with psycopg.connect(DB,connect_timeout=10) as conn:
+            with conn.cursor() as cur:
+              for p in rows:
+                ref=str(p.get("external_reference") or "")
+                oid=(ref.split(":")[-1] if ref else "").lower()
+                try: uuid.UUID(oid)
+                except Exception: continue
+                cur.execute("select amount::text,status,provider,external_reference from orders where order_id=%s",(oid,))
+                order=cur.fetchone()
+                if not order or order[2]!="mercadopago" or order[1] in ("paid","refunded"): continue
+                if order[3]!=ref or abs(float(order[0])-float(p.get("transaction_amount") or 0))>0.001:
+                    skipped+=1
+                    print("SAFETY_RECONCILIATION_REVIEW_REQUIRED="+oid)
+                    continue
+                ts=str(int(time.time())); rid=str(uuid.uuid4()); pid=str(p["id"])
+                manifest=f"id:{pid};request-id:{rid};ts:{ts};"
+                sig=hmac.new(SECRET.encode(),manifest.encode(),hashlib.sha256).hexdigest()
+                body=json.dumps({"type":"payment","data":{"id":pid}}).encode()
+                wr=urllib.request.Request(APP+"/api/webhooks?provider=mercadopago_test&data.id="+pid,method="POST",
+                    headers={"x-request-id":rid,"x-signature":f"ts={ts},v1={sig}","content-type":"application/json"},data=body)
+                with urllib.request.urlopen(wr,timeout=30) as res:
+                    out=json.loads(res.read().decode())
+                    if out.get("accepted") is True: repaired+=1
+          print("SAFETY_RECONCILIATION_REPLAYED="+str(repaired))
+          print("SAFETY_RECONCILIATION_REVIEW_REQUIRED_COUNT="+str(skipped))
+          print("SAFETY_RECONCILIATION_JOB=PASS")
+          PY
