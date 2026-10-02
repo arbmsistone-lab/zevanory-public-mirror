@@ -21,19 +21,31 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p evidence/m5-m6
-          curl -fsS 'https://zevanory.api.br/api/config?view=channel_identity_health' -o evidence/m5-m6/identity.json
-          curl -fsS 'https://zevanory.api.br/api/config?view=closure_status' -o evidence/m5-m6/closure.json
-          curl -fsS 'https://zevanory.api.br/api/voice/final-closure' -o evidence/m5-m6/voice-final.json
-          curl -fsS 'https://zevanory.api.br/api/voice/probe' -o evidence/m5-m6/voice-probe.json
-          curl -fsS 'https://giro-whatsapp-bridge.girolocal-rb.workers.dev/__zevanory/runtime' -o evidence/m5-m6/broker-runtime.json
+          probe() {
+            name="$1"; url="$2"
+            code="$(curl -sS -o "evidence/m5-m6/$name.json" -w '%{http_code}' "$url" || true)"
+            printf '%s' "$code" > "evidence/m5-m6/$name.http"
+            echo "$name HTTP=$code"
+          }
+          probe identity 'https://zevanory.api.br/api/config?view=channel_identity_health'
+          probe closure 'https://zevanory.api.br/api/config?view=closure_status'
+          probe voice-final 'https://zevanory.api.br/api/voice/final-closure'
+          probe voice-probe 'https://zevanory.api.br/api/voice/probe'
+          probe broker-runtime 'https://giro-whatsapp-bridge.girolocal-rb.workers.dev/__zevanory/runtime'
           python3 - <<'PY'
           import json,datetime,pathlib
           p=pathlib.Path("evidence/m5-m6")
-          identity=json.load(open(p/"identity.json"))
-          closure=json.load(open(p/"closure.json"))
-          final=json.load(open(p/"voice-final.json"))
-          probe=json.load(open(p/"voice-probe.json"))
-          broker=json.load(open(p/"broker-runtime.json"))
+          def load(name):
+              try: return json.load(open(p/(name+".json")))
+              except Exception: return {}
+          def http(name):
+              try: return int((p/(name+".http")).read_text().strip())
+              except Exception: return 0
+          identity=load("identity")
+          closure=load("closure")
+          final=load("voice-final")
+          probe=load("voice-probe")
+          broker=load("broker-runtime")
           wa=identity.get("whatsapp") or {}
           ch=((closure.get("channels") or {}).get("whatsapp") or {})
           chain=final.get("e2e_chain") or {}
@@ -45,6 +57,11 @@ jobs:
           except Exception:
               pass
           checks={
+            "identity_http_200": http("identity")==200,
+            "closure_http_200": http("closure")==200,
+            "final_closure_http_200": http("voice-final")==200,
+            "voice_probe_http_200": http("voice-probe")==200,
+            "broker_http_200": http("broker-runtime")==200,
             "official_number_verified": bool(wa.get("verified")) and str(wa.get("display_phone_number") or "").replace("+","").replace(" ","").replace("-","")=="5588992545413",
             "operational_ready": bool(ch.get("operational_ready")),
             "broker_live": broker.get("ok") is True and broker.get("zero_spend") is True and broker.get("legacy_route_bypass")==0,
@@ -60,7 +77,7 @@ jobs:
             "first_response_under_60s": duration is not None and duration < 60,
           }
           status="PASS" if all(checks.values()) else "BLOCKED"
-          result={"module":"M5","status":status,"checks":checks,"e2e_seconds":duration,"chain":chain,
+          result={"module":"M5","status":status,"checks":checks,"http":{"identity":http("identity"),"closure":http("closure"),"voice_final":http("voice-final"),"voice_probe":http("voice-probe"),"broker":http("broker-runtime")},"e2e_seconds":duration,"chain":chain,
                   "safe_identity":{"verified":wa.get("verified"),"display_phone_number":wa.get("display_phone_number"),
                                    "verified_name":wa.get("verified_name"),"operational_mode":ch.get("operational_mode")}}
           json.dump(result,open(p/"m5-result.json","w"),indent=2)
@@ -76,7 +93,8 @@ jobs:
           routes="$(grep -Eo '["''']/api/[^"''']+["''']' worker/cloudflare-worker.recovered.mjs 2>/dev/null | tr -d '"''' | grep -Ei 'knowledge|faq|support|answer|assistant' | sort -u || true)"
           printf '%s\n' "$routes" > evidence/m5-m6/m6-runtime-routes.txt
           for slug in ia-na-pratica vendas-na-pratica lucro-e-caixa combo-ia-vendas negocio-completo; do
-            curl -fsS "https://vendas.zevanory.api.br/$slug" -o "evidence/m5-m6/$slug.html"
+            code="$(curl -sSL -o "evidence/m5-m6/$slug.html" -w '%{http_code}' "https://vendas.zevanory.api.br/$slug" || true)"
+            printf '%s' "$code" > "evidence/m5-m6/$slug.http"
           done
           python3 - <<'PY'
           import json,re,pathlib
