@@ -1,0 +1,23 @@
+# Reviewed 2026-10-02. Exact historical false-positive fingerprints only.
+# No rule-wide or path-wide suppression. New findings remain fatal.
+04e9b9c9159db16df436916f8b744b7c5e1e33f6:evidence/final-closure/1162a5844a16/control.json:generic-api-key:1
+7cc8080de1fb05b89c2369e7ffb9fb7cd7514a89:.github/workflows/zevanory-admin-render-proof.yml:curl-auth-user:61
+974c16eb01025f0498f33f1b2bf21dc9406d9281:.github/workflows/zevanory-admin-render-proof.yml:curl-auth-user:61
+04e9b9c9159db16df436916f8b744b7c5e1e33f6:evidence/final-closure/1162a5844a16/core.json:generic-api-key:1
+c3845cf898acf60e84a06e51cf08db7cfd09bbe3:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:55
+c3845cf898acf60e84a06e51cf08db7cfd09bbe3:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:130
+9e917e36620b72c1803a953738b6d869ae98ac08:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:55
+9e917e36620b72c1803a953738b6d869ae98ac08:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:130
+c8c4aa535dd969d5c68baf68ca21f1d1c8901b21:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:269
+c8c4aa535dd969d5c68baf68ca21f1d1c8901b21:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:281
+59ded1db1fc4bfb51353b0e0f56b43c1c8ba18a9:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:269
+59ded1db1fc4bfb51353b0e0f56b43c1c8ba18a9:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:281
+8700285ba1a0a240deef9c779d9fb20f79c66500:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:269
+8700285ba1a0a240deef9c779d9fb20f79c66500:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:281
+39d4e583dd1458bc268722eb7f1de61eb9576b66:.github/workflows/zevanory-control-plane-v2-proof.yml:generic-api-key:67
+90336ddeffbbc3666368356502fdefc05b7d6d8f:.github/workflows/zevanory-control-plane-v2-proof.yml:generic-api-key:67
+7a488a8ad1998abb4e906b3cb566eea98d400d64:test/meta-oauth.test.mjs:generic-api-key:5
+9b4175ecf4c1bc4f53b1a58c444aa5a214d0dc9e:scripts/audit-seo-50x.mjs:generic-api-key:44
+8b82973ab375ccda05078ce505d080af37d3d85a:evidence/EG-0021-dominio-publicado-verificacao-vercel.md:generic-api-key:16
+0b54a9d7d68b2062d90678548e3954650e4dda21:evidence/EG-0022-vercel-ownership-txt.md:generic-api-key:16
+3ec9f421648fb8b5f645b3dd23e2ba756815342f:ZEVANORY_MASTER.md:generic-api-key:45
