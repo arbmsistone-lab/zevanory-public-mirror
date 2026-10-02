@@ -1,0 +1,297 @@
+name: ZEVANORY SALES public release
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "zevanory-sales/**"
+      - "solucoes/**"
+      - "sitemap.xml"
+      - "product.css"
+      - "brand/**"
+      - "sales-worker.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "wrangler.sales.toml"
+      - "scripts/build_sales_public.py"
+      - "scripts/premerge_product_audit.py"
+      - ".github/workflows/zevanory-sales-public-release.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "zevanory-sales/**"
+      - "solucoes/**"
+      - "sitemap.xml"
+      - "product.css"
+      - "brand/**"
+      - "sales-worker.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "wrangler.sales.toml"
+      - "scripts/build_sales_public.py"
+      - "scripts/premerge_product_audit.py"
+      - ".github/workflows/zevanory-sales-public-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zevanory-sales-public-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build exact sales-domain assets
+        run: python3 scripts/build_sales_public.py
+
+      - name: Validate product contract
+        run: python3 scripts/premerge_product_audit.py
+
+      - name: Validate worker syntax
+        run: |
+          node --check sales-worker.mjs
+          node --check worker/sales-public-worker.mjs
+
+      - name: Cloudflare dry-run
+        run: npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.sales.toml --outdir /tmp/zevanory-sales-public
+
+      - name: Verify generated surface
+        run: |
+          test -f sales-public/zevanory-sales.html
+          test -f sales-public/solucoes.html
+          test -f sales-public/product.css
+          test -f sales-public/brand/zevanory-logo-dark.svg
+          grep -Fq "ZEVANORY SALES" sales-public/zevanory-sales.html
+          grep -Fq 'href="/product.css"' sales-public/zevanory-sales.html
+          ! grep -Fq "/zevanory-public-mirror/" sales-public/zevanory-sales.html
+          echo "ZEVANORY_SALES_PUBLIC_VERIFY=PASS"
+
+  deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
+      PUBLIC_OWNER_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+      SCRIPT_NAME: "zevanory-sales-public"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Require authenticated deployment authority
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "CLOUDFLARE_AUTH=ABSENT_FAIL_CLOSED"; exit 21; }
+          test "$CLOUDFLARE_ACCOUNT_ID" = "$PUBLIC_OWNER_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT=WRONG_FAIL_CLOSED"; exit 22; }
+          curl -fsS             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID"             -o /tmp/cloudflare-account.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/cloudflare-account.json"))
+          assert d.get("success") is True, d.get("errors")
+          print("CLOUDFLARE_PUBLIC_OWNER_AUTHORITY=PASS")
+          PY
+
+      - name: Build exact release assets
+        run: python3 scripts/build_sales_public.py
+
+      - name: Materialize release configs
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          sha=os.environ["GITHUB_SHA"]
+          source=Path("wrangler.sales.toml").read_text(encoding="utf-8")
+          source=source.replace("SOURCE_SHA_REPLACED_AT_DEPLOY",sha)
+          Path("wrangler.sales.deploy.toml").write_text(source,encoding="utf-8")
+
+          candidate=f"zevanory-sales-candidate-{os.environ['GITHUB_RUN_ID']}"
+          lines=[]
+          skipping_routes=False
+          inserted_workers_dev=False
+          for line in source.splitlines():
+              if line.startswith('name = "zevanory-sales-public"'):
+                  lines.append(f'name = "{candidate}"')
+                  continue
+              if line.strip().startswith("routes = ["):
+                  skipping_routes=True
+                  continue
+              if skipping_routes:
+                  if line.strip()=="]":
+                      skipping_routes=False
+                  continue
+              if line.strip()=="[assets]" and not inserted_workers_dev:
+                  lines.append("workers_dev = true")
+                  inserted_workers_dev=True
+              lines.append(line)
+          Path("wrangler.sales.preview.toml").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          Path("/tmp/candidate-name").write_text(candidate,encoding="utf-8")
+          print("CANDIDATE="+candidate)
+          PY
+
+      - name: Snapshot active canonical deployment
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /tmp/previous-deployments.json -w '%{http_code}'             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$SCRIPT_NAME/deployments" || true)"
+          python3 - "$code" <<'PY'
+          import json,sys
+          from pathlib import Path
+          code=sys.argv[1]
+          previous=None
+          if code=="200":
+              d=json.load(open("/tmp/previous-deployments.json"))
+              result=d.get("result")
+              if isinstance(result,dict):
+                  deps=result.get("deployments") or []
+              elif isinstance(result,list):
+                  deps=result
+              else:
+                  deps=[]
+              if deps:
+                  previous=deps[0]
+          if previous and previous.get("versions"):
+              body={
+                  "strategy":"percentage",
+                  "versions":[
+                      {"version_id":str(v["version_id"]),"percentage":float(v["percentage"])}
+                      for v in previous["versions"]
+                  ],
+                  "annotations":{
+                      "workers/message":"automatic ZEVANORY SALES rollback snapshot"
+                  }
+              }
+              Path("/tmp/rollback-deployment.json").write_text(json.dumps(body),encoding="utf-8")
+              print("PREVIOUS_DEPLOYMENT_SNAPSHOT=PASS")
+              print("PREVIOUS_DEPLOYMENT_ID="+str(previous.get("id","")))
+          else:
+              Path("/tmp/rollback-deployment.json").write_text("",encoding="utf-8")
+              print("PREVIOUS_DEPLOYMENT_SNAPSHOT=NONE_FIRST_RELEASE")
+          PY
+
+      - name: Deploy isolated candidate
+        run: npx --yes wrangler@4.143.0 deploy --config wrangler.sales.preview.toml
+
+      - name: Resolve candidate URL and smoke test
+        run: |
+          set -euo pipefail
+          CANDIDATE="$(cat /tmp/candidate-name)"
+          curl -fsS             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/subdomain"             -o /tmp/workers-subdomain.json
+          SUBDOMAIN="$(python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/workers-subdomain.json"))
+          assert d.get("success") is True, d.get("errors")
+          print(d["result"]["subdomain"])
+          PY
+          )"
+          BASE="https://$CANDIDATE.$SUBDOMAIN.workers.dev"
+          echo "$BASE" > /tmp/candidate-base
+          for i in $(seq 1 12); do
+            if curl -fsS "$BASE/health" -o /tmp/candidate-health.json               && curl -fsS "$BASE/zevanory-sales" -o /tmp/candidate-sales.html; then
+              break
+            fi
+            sleep 5
+          done
+          python3 - <<'PY'
+          import json,os
+          h=json.load(open("/tmp/candidate-health.json"))
+          assert h.get("ok") is True, h
+          assert h.get("service")=="zevanory-sales-public", h
+          assert h.get("release")==os.environ["GITHUB_SHA"], h
+          page=open("/tmp/candidate-sales.html",encoding="utf-8").read()
+          assert "ZEVANORY SALES" in page
+          assert "SALES ASSIST" in page and "SALES AUTOPILOT" in page and "SALES AUTONOMOUS" in page
+          assert "/zevanory-public-mirror/" not in page
+          print("ZEVANORY_SALES_CANDIDATE_SMOKE=PASS")
+          PY
+
+      - name: Promote exact candidate source to canonical domain
+        id: promote
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.143.0 deploy --config wrangler.sales.deploy.toml
+          echo "promoted=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify canonical production readback
+        id: readback
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          BASE="https://vendas.zevanory.api.br"
+          ok=false
+          for i in $(seq 1 18); do
+            if curl -fsS "$BASE/health" -o /tmp/canonical-health.json               && curl -fsS "$BASE/zevanory-sales" -o /tmp/canonical-sales.html; then
+              if python3 - <<'PY'
+          import json,os
+          h=json.load(open("/tmp/canonical-health.json"))
+          page=open("/tmp/canonical-sales.html",encoding="utf-8").read()
+          assert h.get("ok") is True, h
+          assert h.get("service")=="zevanory-sales-public", h
+          assert h.get("release")==os.environ["GITHUB_SHA"], h
+          assert "ZEVANORY SALES" in page
+          assert "/zevanory-public-mirror/" not in page
+          PY
+              then
+                ok=true
+                break
+              fi
+            fi
+            sleep 5
+          done
+          test "$ok" = "true"
+          echo "ZEVANORY_SALES_CANONICAL_READBACK=PASS"
+
+      - name: Roll back canonical deployment on failed readback
+        if: steps.promote.outputs.promoted == 'true' && steps.readback.outcome != 'success'
+        run: |
+          set -euo pipefail
+          if [ -s /tmp/rollback-deployment.json ]; then
+            curl -fsS -X POST               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               -H "Content-Type: application/json"               --data-binary @/tmp/rollback-deployment.json               "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$SCRIPT_NAME/deployments"               -o /tmp/rollback-result.json
+            python3 - <<'PY'
+          import json
+          d=json.load(open("/tmp/rollback-result.json"))
+          assert d.get("success") is True, d.get("errors")
+          print("ZEVANORY_SALES_CANONICAL_ROLLBACK=PASS")
+          PY
+          else
+            curl -fsS -X DELETE               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$SCRIPT_NAME"               -o /tmp/delete-first-failed-release.json || true
+            echo "ZEVANORY_SALES_FAILED_FIRST_RELEASE_REMOVED=PASS"
+          fi
+          exit 1
+
+      - name: Delete isolated candidate
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f /tmp/candidate-name ]; then
+            CANDIDATE="$(cat /tmp/candidate-name)"
+            curl -sS -X DELETE               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$CANDIDATE"               >/tmp/delete-candidate.json || true
+          fi
+
+      - name: Certify public release
+        if: steps.readback.outcome == 'success'
+        run: |
+          echo "ZEVANORY_SALES_PUBLIC_RELEASE=PASS"
+          echo "RELEASE_SHA=$GITHUB_SHA"
+          echo "CANONICAL_DOMAIN=vendas.zevanory.api.br"

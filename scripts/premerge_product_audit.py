@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "https://zevanory.api.br"
 PRODUCTS = [
+    ("zevanory-sales/index.html", "zevanory-sales", "SoftwareApplication"),
     ("zevanory-one/index.html", "zevanory-one", "SoftwareApplication"),
     ("arbm-contador-saloes/index.html", "arbm-contador-saloes", "SoftwareApplication"),
     ("arbm-sist/index.html", "arbm-sist", "SoftwareApplication"),
