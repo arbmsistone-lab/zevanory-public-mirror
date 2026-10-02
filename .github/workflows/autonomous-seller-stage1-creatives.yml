@@ -25,7 +25,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   generate:
@@ -33,36 +32,35 @@ jobs:
     timeout-minutes: 20
     env:
       OUT_DIR: evidence/autonomous-seller/stage1
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      RAW_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: projects/781761447388/locations/global/workloadIdentityPools/github-actions/providers/zevanory-github
-          service_account: zevanory-gemini-auth@zevanory-gemini.iam.gserviceaccount.com
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-      - name: Resolve Gemini authority without exposing key
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          gcloud services api-keys get-key-string c572db8f-7fbf-4a80-80d8-f59c2597e6e2 --project=zevanory-gemini --format='value(keyString)' > /tmp/gemini.key
-          test -s /tmp/gemini.key
-          key="$(cat /tmp/gemini.key)"
-          echo "::add-mask::$key"
-          {
-            echo 'GEMINI_API_KEY<<__GEMINI__'
-            printf '%s\n' "$key"
-            echo '__GEMINI__'
-          } >> "$GITHUB_ENV"
-          unset key
-          echo "GEMINI_AUTHORITY=PASS"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install generator dependencies
-        run: python -m pip install --disable-pip-version-check "google-genai>=2,<3"
+      - name: Normalize and verify Workers AI authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RAW_CLOUDFLARE_API_TOKEN:-}"
+          clean="$(RAW_TOKEN="$RAW_CLOUDFLARE_API_TOKEN" python3 - <<'PY'
+          import os,re
+          raw=os.environ["RAW_TOKEN"].replace("\r","").replace("\n","").strip()
+          parts=[p for p in re.findall(r"[A-Za-z0-9._~+/-]{20,}",raw) if p.lower() not in {"authorization","bearer"}]
+          if not parts: raise SystemExit("no_token_segment")
+          print(max(parts,key=len))
+          PY
+          )"
+          echo "::add-mask::$clean"
+          code="$(curl -sS -o /tmp/ai-test.json -w '%{http_code}'             -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/run/@cf/zai-org/glm-4.7-flash"             -H "Authorization: Bearer $clean" -H 'Content-Type: application/json'             --data '{"messages":[{"role":"user","content":"Responda apenas OK"}],"max_tokens":8}')"
+          test "$code" = "200"
+          {
+            echo 'CLOUDFLARE_API_TOKEN<<__CF__'
+            printf '%s\n' "$clean"
+            echo '__CF__'
+          } >> "$GITHUB_ENV"
+          echo "WORKERS_AI_AUTHORITY=PASS"
       - name: Generate five real AI creatives
         run: python scripts/autonomous_seller_stage1_creatives.py --out "$OUT_DIR"
       - name: Verify immutable stage1 evidence
@@ -80,7 +78,7 @@ jobs:
           for row in rows:
               d=root/row["slug"]
               meta=json.loads((d/"post.json").read_text(encoding="utf-8"))
-              raw=(d/"post.png").read_bytes()
+              raw=(d/"post.jpg").read_bytes()
               assert len(raw)>=10000
               assert hashlib.sha256(raw).hexdigest()==meta["image_sha256"]==row["image_sha256"]
               assert 4<=len(meta["hashtags"])<=8
@@ -90,10 +88,6 @@ jobs:
           print("STAGE1_EVIDENCE=PASS")
           print("STAGE1_PRODUCTS=5/5")
           PY
-      - name: Remove transient Gemini credential
-        if: always()
-        shell: bash
-        run: rm -f /tmp/gemini.key
       - name: Upload five creatives
         if: success()
         uses: actions/upload-artifact@v4
