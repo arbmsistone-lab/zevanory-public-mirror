@@ -12134,7 +12134,7 @@ async function executeTool(sql, tool, context, decision, { runId, traceId, env }
     assertChannelActionAllowed(lead.channel, env);
     const text = String(decision.message || decision.content || "").trim();
     if (!text) throw new Error("message_content_required");
-    const payload = { contact_ref: lead.contact_ref, text: text.slice(0, 4e3), subject: String(decision.subject || decision.title || "ZEVANORY").slice(0, 240) };
+    const payload = { contact_ref: lead.contact_ref, text: text.slice(0, 4e3), subject: String(decision.subject || decision.title || "ZEVANORY").slice(0, 240), consent_allowed: context.job_payload?.consent_allowed === true, suppressed: context.job_payload?.suppressed === true };
     if (/^https:\/\//i.test(String(decision.media_url || ""))) {
       payload.media_url = String(decision.media_url).slice(0, 4e3);
       payload.media_type = String(decision.media_type || "").toLowerCase().slice(0, 20);
@@ -12921,7 +12921,14 @@ var required3 = /* @__PURE__ */ __name((value, code) => {
 var ORGANIC_DESTINATIONS = /* @__PURE__ */ new Set(["channel:facebook", "channel:instagram", "channel:youtube", "channel:tiktok", "channel:linkedin"]);
 var organicEventAllowed = /* @__PURE__ */ __name((event, env, gateEvaluator = salesGate) => !gateEvaluator(env).enabled && ORGANIC_DESTINATIONS.has(String(event?.destination || "")) && env.ORGANIC_PUBLISHING_ENABLED === "true" && event?.event_type === "publish_content" && event?.payload?.organic_only === true && event?.payload?.commercial_intent !== true && !event?.payload?.landing_url, "organicEventAllowed");
 var supportEventAllowed = /* @__PURE__ */ __name((event) => event?.event_type === "send_support_message" && event?.payload?.support_only === true && !event?.payload?.commercial_intent && !event?.payload?.checkout_url && !event?.payload?.payment_link, "supportEventAllowed");
+var COMMERCIAL_CONSENT_DESTINATIONS = /* @__PURE__ */ new Set(["channel:whatsapp", "channel:email"]);
+var ensureCommercialContactConsent = /* @__PURE__ */ __name((event) => {
+  if (event?.event_type !== "send_message" || !COMMERCIAL_CONSENT_DESTINATIONS.has(String(event?.destination || ""))) return;
+  if (event?.payload?.suppressed === true) throw new Error("commercial_contact_suppressed");
+  if (event?.payload?.consent_allowed !== true) throw new Error("commercial_contact_consent_required");
+}, "ensureCommercialContactConsent");
 var ensureOutboundAllowed = /* @__PURE__ */ __name((event, env, gateEvaluator = salesGate) => {
+  ensureCommercialContactConsent(event);
   if (gateEvaluator(env).enabled) return;
   if (supportEventAllowed(event)) return;
   if (organicEventAllowed(event, env, gateEvaluator)) return;
@@ -13042,7 +13049,7 @@ function buildOutboundAdapters({ env = process.env, fetchImpl = globalThis.fetch
       }
       const body = token && phoneId
         ? await requestJson2(fetchImpl, `${metaBase()}/${encodeURIComponent(phoneId)}/messages`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(message2) }, [200])
-        : (await whatsappBrokerCall("/broker/send", { method: "POST", body: { message: message2 } })).body;
+        : (await whatsappBrokerCall("/broker/send", { method: "POST", body: { message: message2, opt_in: event.payload?.consent_allowed === true, support_context: supportEventAllowed(event) } })).body;
       const messageId = String(body?.messages?.[0]?.id || body?.provider_message_id || "");
       if (!messageId) throw providerAcceptanceMissing("whatsapp_message_id_missing");
       if (generatedVoice) await recordWhatsappEvidence("outbound_voice", { provider_message_id: messageId, contact_ref: to, generated_voice: true, event_id: event.event_id || event.idempotency_key || "" }).catch(()=>false);
