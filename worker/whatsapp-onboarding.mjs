@@ -314,8 +314,13 @@ export async function handleWhatsappOnboarding(request,env={}){
     u.searchParams.set("redirect_uri",REDIRECT_URI);
     u.searchParams.set("state",stateToken);
     u.searchParams.set("response_type","code");
-    u.searchParams.set("config_id",record?.config_id||DEFAULT_CONFIG_ID);
-    u.searchParams.set("override_default_response_type","true");
+    // Own-number onboarding uses standard business login (scopes), which works for app
+    // admins while the app is unpublished. Embedded Signup (config_id) is only used when
+    // explicitly enabled, because Meta blocks it until the app is live and the business verified.
+    if(String(env?.WHATSAPP_EMBEDDED_SIGNUP||"").toLowerCase()==="true"){
+      u.searchParams.set("config_id",record?.config_id||DEFAULT_CONFIG_ID);
+      u.searchParams.set("override_default_response_type","true");
+    }
     u.searchParams.set("scope",["business_management","whatsapp_business_management","whatsapp_business_messaging"].join(","));
     return Response.redirect(u.toString(),302);
   }
