@@ -81,7 +81,8 @@ def apply_approved_overlay() -> None:
         if 'src="/whatsapp-contact.js"' not in html:
             html = html.replace("</body>", '<script src="/whatsapp-contact.js" defer></script></body>', 1)
         path.write_text(html, encoding="utf-8")
-    for asset in ("legal.css", "robots.txt", "whatsapp-contact.js"):
+    shutil.copy2(ROOT / "legal.css", OUT / "legal.css")
+    for asset in ("robots.txt", "whatsapp-contact.js"):
         shutil.copy2(OVERLAY / asset, OUT / asset)
 
     controller = (OUT / "privacidade.html").read_text(encoding="utf-8")
