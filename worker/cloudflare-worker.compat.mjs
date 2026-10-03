@@ -191,6 +191,13 @@ const wrapped = {
       if (response) return response;
     }
 
+    if (url.pathname === "/api/support/instant-status" && request.method === "GET") {
+      const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+      let last = null;
+      try { last = kv ? JSON.parse(await kv.get("whatsapp:instant:last") || "null") : null; } catch {}
+      return new Response(JSON.stringify({ service: "zevanory-whatsapp-instant-reply", enabled: (env.WHATSAPP_INSTANT_REPLY ?? "true") !== "false", last }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+    }
+
     if (url.pathname === "/api/support/knowledge") {
       return handleSupportKnowledge(request);
     }
