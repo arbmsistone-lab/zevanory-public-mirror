@@ -1,4 +1,5 @@
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
+import { answerSupportQuestion } from "./support-knowledge.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -15033,6 +15034,45 @@ async function queueWhatsappConversation(sql, { contactRef, text, messageId = ""
   return Object.freeze({ queued: rows.length === 1, job_id: rows[0]?.job_id || null, lead_id: lead.lead_id, kind: "commercial" });
 }
 __name(queueWhatsappConversation, "queueWhatsappConversation");
+// Instant grounded WhatsApp reply: answers price/content/delivery/refund from the
+// approved catalog right when the message arrives, instead of waiting for the
+// hourly agent cycle. Only published facts are sent; anything else gets the menu.
+const WHATSAPP_MENU = "Olá! Aqui é o atendimento da ZEVANORY. Posso te ajudar com preço, conteúdo, entrega e reembolso de: IA na Prática, Vendas na Prática, Lucro & Caixa, Combo IA + Vendas e Negócio Completo. Veja tudo em https://vendas.zevanory.api.br";
+function buildInstantWhatsappReply(text) {
+  const q = String(text || "").trim();
+  if (!q) return null;
+  const r = answerSupportQuestion({ question: q });
+  if (r.answered) {
+    const src = Array.isArray(r.sources) ? (r.intent === "delivery" ? r.sources[r.sources.length - 1] : r.sources[0]) : "";
+    const link = src ? `\n\n${src}` : "";
+    return { body: `${r.answer}${link}`, intent: r.intent, product: r.product || null, grounded: true };
+  }
+  if (r.needs_product) return { body: r.answer, intent: r.intent, product: null, grounded: true };
+  return { body: WHATSAPP_MENU, intent: "menu", product: null, grounded: true };
+}
+__name(buildInstantWhatsappReply, "buildInstantWhatsappReply");
+async function sendInstantWhatsappReply(item, reply) {
+  const rt = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+  const verified = rt.identity_verified === true && rt.access_token;
+  const token = String((verified ? rt.access_token : "") || process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+  const phoneId = String((verified ? rt.phone_number_id : "") || item.phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+  const version = String(rt.graph_version || process.env.META_GRAPH_VERSION || "v26.0").trim();
+  if (!token || !phoneId) return { sent: false, reason: "whatsapp_transport_not_configured" };
+  const kv = globalThis.__ZEVANORY_PRIVATE_KV__;
+  const dedupKey = item.message_id ? `whatsapp:instant:${item.message_id}` : "";
+  if (dedupKey && kv?.get && await kv.get(dedupKey).catch(() => null)) return { sent: false, reason: "already_replied" };
+  if (dedupKey && kv?.put) await kv.put(dedupKey, "1", { expirationTtl: 86400 }).catch(() => {});
+  const body = { messaging_product: "whatsapp", recipient_type: "individual", to: item.from, type: "text", text: { preview_url: false, body: reply.body.slice(0, 4000) } };
+  if (item.message_id) body.context = { message_id: item.message_id };
+  const res = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(phoneId)}/messages`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  const providerId = String(data?.messages?.[0]?.id || "");
+  const result = { sent: res.ok && Boolean(providerId), status: res.status, provider_message_id: providerId || null, error: res.ok ? null : String(data?.error?.message || "").slice(0, 300) };
+  try { if (kv?.put) await kv.put("whatsapp:instant:last", JSON.stringify({ at: new Date().toISOString(), intent: reply.intent, product: reply.product, ...result }), { expirationTtl: 604800 }); } catch {}
+  await recordWhatsappEvidence("outbound_text", { provider_message_id: providerId, contact_ref: item.from, intent: reply.intent, sent: result.sent }).catch(() => false);
+  return result;
+}
+__name(sendInstantWhatsappReply, "sendInstantWhatsappReply");
 function extractWhatsappInboundMessages(payload = {}) {
   const out = [];
   for (const entry of Array.isArray(payload.entry) ? payload.entry : []) for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
@@ -15302,7 +15342,7 @@ async function handler18(req, res) {
   const inbound = extractWhatsappInboundMessages(payload);
   if (inbound.length && process.env.DATABASE_URL) {
     const sql = cs(process.env.DATABASE_URL);
-    let queued = 0, support = 0, commercial = 0, media_review = 0;
+    let queued = 0, support = 0, commercial = 0, media_review = 0, instant = 0;
     for (const item of inbound) {
       let enriched = item;
       try {
@@ -15311,8 +15351,19 @@ async function handler18(req, res) {
         enriched = { ...item, understanding: item.text || item.caption || `Cliente enviou ${item.type}; midia requer revisao.`, understanding_mode: "media_review_required", understanding_confidence: 0 };
       }
       const text = String(enriched.understanding || enriched.text || "").trim();
-      const r = await queueWhatsappConversation(sql, { contactRef: item.from, text, messageId: item.message_id, mediaType: item.type, mediaId: item.media_id, source: "meta_whatsapp" });
+      let r = { queued: false, job_id: null, kind: "" };
+      try {
+        r = await queueWhatsappConversation(sql, { contactRef: item.from, text, messageId: item.message_id, mediaType: item.type, mediaId: item.media_id, source: "meta_whatsapp" });
+      } catch {}
       await recordWhatsappEvidence("inbound_processed", { message_id: item.message_id, contact_ref: item.from, phone_number_id: item.phone_number_id, queued: r.queued, kind: r.kind || "" }).catch(()=>false);
+      if (process.env.WHATSAPP_INSTANT_REPLY !== "false" && item.type === "text") {
+        try {
+          const reply = buildInstantWhatsappReply(text);
+          const sent = reply ? await sendInstantWhatsappReply(item, reply) : { sent: false };
+          if (sent.sent && r.job_id) await sql.query("update agent_jobs set status='completed',completed_at=now(),last_error=null where job_id=$1 and status='queued'", [r.job_id]).catch(() => {});
+          if (sent.sent) instant++;
+        } catch {}
+      }
       if (r.queued) {
         queued++;
         if (r.kind === "support") support++;
@@ -15320,7 +15371,7 @@ async function handler18(req, res) {
       }
       if (Number(enriched.understanding_confidence || 0) < 0.99 && item.media_id) media_review++;
     }
-    return json14(res, 200, { accepted: true, inbound_jobs_queued: queued, support_jobs_queued: support, commercial_jobs_queued: commercial, media_review_required: media_review });
+    return json14(res, 200, { accepted: true, inbound_jobs_queued: queued, support_jobs_queued: support, commercial_jobs_queued: commercial, media_review_required: media_review, instant_replies: instant });
   }
   const confirmations = normalizeWhatsappStatusPayload(payload);
   for (const confirmation of confirmations) await recordWhatsappEvidence("delivery", { provider_message_id: confirmation.provider_message_id, status: confirmation.status, event_id: confirmation.provider_event_id }).catch(()=>false);
