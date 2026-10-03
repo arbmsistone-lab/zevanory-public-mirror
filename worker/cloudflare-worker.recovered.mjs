@@ -15269,6 +15269,14 @@ async function handler18(req, res) {
     const runtimeVerify = String((globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {}).verify_token || "").trim();
     const verifyCandidates = [resolveMetaVerifyToken(process.env), String(process.env.META_WEBHOOK_VERIFY_TOKEN || "").trim(), runtimeVerify].filter(Boolean);
     const directValid = mode === "subscribe" && Boolean(token) && verifyCandidates.includes(token);
+    try {
+      const kv = globalThis.__ZEVANORY_PRIVATE_KV__;
+      if (kv?.put) await kv.put("whatsapp:webhook:last-verify", JSON.stringify({
+        at: new Date().toISOString(), mode, token_present: Boolean(token), token_len: token.length,
+        candidates: verifyCandidates.length, runtime_token_loaded: Boolean(runtimeVerify),
+        matched: directValid, ua: String(req.headers?.["user-agent"] || "").slice(0, 80)
+      }), { expirationTtl: 86400 });
+    } catch {}
     const brokerValid = !directValid && mode === "subscribe" && token ? await whatsappBrokerVerifyToken(token) : false;
     if (directValid || brokerValid) {
       res.statusCode = 200;

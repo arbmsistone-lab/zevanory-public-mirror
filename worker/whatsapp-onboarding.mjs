@@ -235,6 +235,8 @@ function dashboard(record,live,message=""){
   ${!ready?`<form method="post" action="/admin/whatsapp-onboard/bootstrap"><label>Meta App Secret</label><input type="password" name="app_secret" minlength="16" required autocomplete="off"><label>App ID</label><input name="app_id" value="${DEFAULT_APP_ID}" required><label>Configuration ID</label><input name="config_id" value="${DEFAULT_CONFIG_ID}" required><button type="submit">Salvar com criptografia</button></form>`:""}
   ${ready&&!verified?`<a class="btn" href="/admin/whatsapp-onboard/start">Autorizar e localizar o número na Meta</a>`:""}
   ${connected?`<div class="row">Webhook do app: <b class="${record.webhook_configured?"ok":"warn"}">${record.webhook_configured?"configurado":"pendente"}</b>${record.webhook_error?` <small>(${htmlEscape(record.webhook_error)})</small>`:""}</div>
+  ${record.webhook_selftest?`<div class="row">Autoteste do webhook: <b class="${record.webhook_selftest.ok?"ok":"warn"}">${record.webhook_selftest.ok?"OK":"falhou"}</b> <small>(HTTP ${htmlEscape(String(record.webhook_selftest.status))} · ${htmlEscape(record.webhook_selftest.body||"")})</small></div>`:""}
+  ${record.webhook_last_verify?`<div class="row">Última verificação recebida: <small>${htmlEscape(JSON.stringify(record.webhook_last_verify))}</small></div>`:""}
   <div class="row">WABA assinada: <b class="${record.waba_subscribed?"ok":"warn"}">${record.waba_subscribed?"sim":"pendente"}</b>${record.waba_subscribe_error?` <small>(${htmlEscape(record.waba_subscribe_error)})</small>`:""}</div>
   <div class="row">Número registrado na Cloud API: <b class="${record.phone_registration_ok?"ok":"warn"}">${record.phone_registration_ok?"sim":"pendente"}</b>${record.phone_registration_error?` <small>(${htmlEscape(record.phone_registration_error)})</small>`:""}</div>`:""}
   ${verified&&connected&&!(record.webhook_configured&&record.waba_subscribed&&record.phone_registration_ok)?`<form method="post" action="/admin/whatsapp-onboard/finalize"><button class="btn" type="submit">Concluir configuração (webhook, assinatura e registro)</button></form>`:""}
@@ -321,10 +323,20 @@ export async function handleWhatsappOnboarding(request,env={}){
     record={...record,verify_token,two_step_pin:pin};
     await putRecord(env,record); // the webhook challenge reads this verify token
     let webhook_configured=false,waba_subscribed=false,webhook_error=null,waba_subscribe_error=null;
+    // Self-test exactly what Meta will call, so a failure is diagnosable here.
+    let webhook_selftest=null;
+    try {
+      const probe=new URL(WEBHOOK_URI);
+      probe.searchParams.set("hub.mode","subscribe");probe.searchParams.set("hub.verify_token",verify_token);probe.searchParams.set("hub.challenge","zv-selftest-123");
+      const rr=await fetch(probe.toString(),{headers:{"user-agent":"ZEVANORY-Webhook-SelfTest/1.0"}});
+      const body=(await rr.text()).slice(0,160);
+      webhook_selftest={status:rr.status,ok:rr.status===200&&body==="zv-selftest-123",body:body.replace(/zv-selftest-123/,"<challenge>")};
+    } catch(error){ webhook_selftest={status:0,ok:false,body:safeText(error?.message,160)}; }
     try { webhook_configured=await configureAppWebhook({app_id:record.app_id||DEFAULT_APP_ID,app_secret:record.app_secret,verify_token}); } catch(error){ webhook_error=safeText(error?.message,240); }
     try { waba_subscribed=await subscribeWaba({waba_id:String(record.waba_id),token:record.access_token}); } catch(error){ waba_subscribe_error=safeText(error?.message,240); }
     const registration=await registerPhone({phone_id:String(record.phone_number_id),token:record.access_token,pin});
-    record={...record,webhook_configured,waba_subscribed,webhook_error,waba_subscribe_error,phone_registration_ok:registration.ok,phone_registration_already:registration.already_registered,phone_registration_error:registration.error,updated_at:new Date().toISOString()};
+    const lastVerify=await store(env)?.get("whatsapp:webhook:last-verify",{type:"json"}).catch(()=>null);
+    record={...record,webhook_selftest,webhook_last_verify:lastVerify||null,webhook_configured,waba_subscribed,webhook_error,waba_subscribe_error,phone_registration_ok:registration.ok,phone_registration_already:registration.already_registered,phone_registration_error:registration.error,updated_at:new Date().toISOString()};
     const live=await verifyRuntime(record);
     record={...record,identity_verified:Boolean(live.verified),identity_live:live};
     await putRecord(env,record);
