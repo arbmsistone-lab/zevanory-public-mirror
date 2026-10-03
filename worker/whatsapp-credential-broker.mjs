@@ -1,4 +1,12 @@
 const OFFICIAL_E164 = "5588992545413";
+// Brazilian mobiles exist with and without the 9th digit (55 DD 9XXXXXXXX vs 55 DD XXXXXXXX);
+// Meta may report either form for the same line, so compare them as one number.
+function isOfficialNumber(value){
+  const d=String(value||"").replace(/\D/g,"");
+  if(d===OFFICIAL_E164) return true;
+  const m=/^55(\d{2})9(\d{8})$/.exec(OFFICIAL_E164);
+  return Boolean(m&&d==="55"+m[1]+m[2]);
+}
 const DEFAULT_APP_ID = "1071149631917061";
 const DEFAULT_CONFIG_ID = "1447104223954128";
 const GRAPH_VERSION = "v26.0";
@@ -168,7 +176,7 @@ async function discoverOfficial(env,token){
       try{phones=await graph(encodeURIComponent(waba.id)+"/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status,name_status,new_name_status&limit=100",{env,token});}
       catch{continue;}
       for(const phone of phones.data||[]){
-        if(digits(phone.display_phone_number)===OFFICIAL_E164) return {business,waba,phone};
+        if(isOfficialNumber(phone.display_phone_number)) return {business,waba,phone};
       }
     }
   }
@@ -178,7 +186,7 @@ async function phoneIdentity(env,phoneId,token){
   if(!phoneId) return {number_verified:false,identity_verified:false,reason:"phone_number_id_missing"};
   try{
     const p=await graph(encodeURIComponent(phoneId)+"?fields=id,display_phone_number,verified_name,name_status,new_name_status,quality_rating,code_verification_status",{env,token});
-    const numberVerified=String(p.id||"")===String(phoneId)&&digits(p.display_phone_number)===OFFICIAL_E164;
+    const numberVerified=String(p.id||"")===String(phoneId)&&isOfficialNumber(p.display_phone_number);
     const brand=clean(p.verified_name,160).toUpperCase()==="ZEVANORY";
     const nameStatus=clean(p.name_status,80).toUpperCase();
     const nameOk=["APPROVED","AVAILABLE_WITHOUT_REVIEW"].includes(nameStatus);
@@ -234,7 +242,7 @@ async function validateEmbeddedAssets(env,{token,wabaId,phoneId}){
   const phones=await graph(encodeURIComponent(wabaId)+"/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status,name_status,new_name_status&limit=100",{env,token});
   const phone=(phones.data||[]).find(p=>String(p.id||"")===String(phoneId));
   if(!phone) throw new Error("embedded_phone_not_in_waba");
-  if(digits(phone.display_phone_number)!==OFFICIAL_E164) throw new Error("embedded_phone_not_official_number");
+  if(!isOfficialNumber(phone.display_phone_number)) throw new Error("embedded_phone_not_official_number");
   return phone;
 }
 async function consumeOAuthState(env,state){
