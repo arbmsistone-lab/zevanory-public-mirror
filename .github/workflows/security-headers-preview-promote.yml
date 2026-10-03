@@ -1,0 +1,129 @@
+name: Security headers preview promote
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: security-headers-preview-promote
+  cancel-in-progress: true
+
+jobs:
+  promote:
+    if: github.event.pull_request.head.ref == 'fix/security-headers-preview-20261002'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Wait required security gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,time,urllib.request
+          repo=os.environ["GITHUB_REPOSITORY"]; sha=os.environ["HEAD_SHA"]; token=os.environ["GH_TOKEN"]
+          required={"apex","product-pages / static-audit","zees16-evidence / fail-closed"}
+          def api(path):
+              req=urllib.request.Request("https://api.github.com"+path,headers={
+                  "Authorization":"Bearer "+token,
+                  "Accept":"application/vnd.github+json",
+                  "X-GitHub-Api-Version":"2022-11-28",
+                  "User-Agent":"ZEVANORY-Security-Promote/1.0"})
+              with urllib.request.urlopen(req,timeout=30) as r:return json.loads(r.read().decode())
+          deadline=time.time()+1500
+          while time.time()<deadline:
+              rows=api(f"/repos/{repo}/commits/{sha}/check-runs?per_page=100").get("check_runs",[])
+              by={}
+              for x in rows:
+                  by.setdefault(str(x.get("name")),[]).append(x)
+              missing=[]; pending=[]; bad=[]
+              for name in required:
+                  xs=by.get(name,[])
+                  if not xs: missing.append(name); continue
+                  latest=sorted(xs,key=lambda x:str(x.get("completed_at") or x.get("started_at") or ""),reverse=True)[0]
+                  if latest.get("status")!="completed": pending.append(name)
+                  elif latest.get("conclusion")!="success": bad.append((name,latest.get("conclusion"),latest.get("details_url")))
+              print("REQUIRED_MISSING",missing,"PENDING",pending,"BAD",bad)
+              if bad: raise SystemExit("REQUIRED_GATE_RED:"+json.dumps(bad))
+              if not missing and not pending:
+                  print("SECURITY_REQUIRED_GATES_GREEN=PASS"); break
+              time.sleep(20)
+          else: raise SystemExit("SECURITY_GATE_TIMEOUT")
+          PY
+
+      - name: Merge authorized security hotfix
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$(gh api --method PUT "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/merge"             -f merge_method=merge             -f sha="$HEAD_SHA"             -f commit_title="Merge security headers preview hotfix [skip render] [security-headers-hotfix]"             -f commit_message="HSTS/CSP on Worker responses; Apex validates candidate in Cloudflare Preview. Sales remain globally blocked. [skip render]")"
+          echo "$out" | jq -e '.merged == true'
+          sha="$(echo "$out" | jq -r '.sha')"
+          echo "merge_sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "SECURITY_HOTFIX_MERGED=$sha"
+
+      - name: Wait Cloudflare production deploy and live verification
+        env:
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,time,urllib.request
+          repo=os.environ["GITHUB_REPOSITORY"]; sha=os.environ["MERGE_SHA"]; token=os.environ["GH_TOKEN"]
+          def api(path):
+              req=urllib.request.Request("https://api.github.com"+path,headers={
+                  "Authorization":"Bearer "+token,
+                  "Accept":"application/vnd.github+json",
+                  "X-GitHub-Api-Version":"2022-11-28",
+                  "User-Agent":"ZEVANORY-Security-Promote/1.0"})
+              with urllib.request.urlopen(req,timeout=30) as r:return json.loads(r.read().decode())
+          deadline=time.time()+1200
+          while time.time()<deadline:
+              runs=api(f"/repos/{repo}/actions/workflows/central-production-deploy.yml/runs?branch=gh-pages&event=push&per_page=20").get("workflow_runs",[])
+              run=next((x for x in runs if str(x.get("head_sha"))==sha),None)
+              if run:
+                  print("SECURITY_DEPLOY_RUN_ID="+str(run["id"]))
+                  if run.get("status")=="completed":
+                      if run.get("conclusion")!="success": raise SystemExit("SECURITY_DEPLOY_FAILED:"+str(run.get("conclusion")))
+                      print("SECURITY_DEPLOY=PASS")
+                      break
+              time.sleep(20)
+          else: raise SystemExit("SECURITY_DEPLOY_TIMEOUT")
+          PY
+          curl -fsS -D /tmp/live-headers.txt -o /tmp/live.html https://zevanory.api.br/solucoes
+          python3 - <<'PY'
+          import re
+          h=open('/tmp/live-headers.txt',encoding='utf-8',errors='replace').read().lower()
+          st=re.search(r'^strict-transport-security:\s*([^\r\n]+)',h,re.M); assert st,st
+          ma=re.search(r'max-age=(\d+)',st.group(1)); assert ma and int(ma.group(1))>=31536000
+          assert 'includesubdomains' in st.group(1)
+          c=re.search(r'^content-security-policy:\s*([^\r\n]+)',h,re.M); assert c,c
+          csp=c.group(1)
+          for token in ('script-src','frame-src','connect-src','sdk.mercadopago.com','api.mercadopago.com','www.mercadopago.com'):
+              assert token in csp,(token,csp)
+          print("LIVE_SECURITY_HEADERS=PASS")
+          PY
+
+      - name: Redispatch PR306 by new commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" /tmp/z
+          cd /tmp/z
+          git checkout --quiet fix/mp-checkout-pro-e2e-20261002
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "ci: rerun PR306 after live security headers"
+          git push origin HEAD:fix/mp-checkout-pro-e2e-20261002
+          echo "PR306_REDISPATCHED_SHA=$(git rev-parse HEAD)"

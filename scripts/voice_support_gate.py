@@ -3,7 +3,7 @@ from pathlib import Path
 
 worker=Path("worker/cloudflare-worker.recovered.mjs").read_text(encoding="utf-8")
 router=Path("worker/voice-provider-router.mjs").read_text(encoding="utf-8")
-deploy=Path(".github/workflows/central-production-deploy.yml").read_text(encoding="utf-8")
+deploy=Path("scripts/deploy/prepare-central-candidate.py").read_text(encoding="utf-8")
 
 worker_required=[
   "function voiceReplyRequested",

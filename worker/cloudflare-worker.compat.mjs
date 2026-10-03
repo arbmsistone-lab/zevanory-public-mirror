@@ -2,6 +2,7 @@ import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
 import { handleVoiceFinalClosure } from "./voice-final-closure.mjs";
 import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "./whatsapp-onboarding.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
+import { handleSupportKnowledge } from "./support-knowledge.mjs";
 import worker from "./cloudflare-worker.recovered.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
@@ -141,6 +142,10 @@ const wrapped = {
       if (!isAdminAuthorized(request, normalized)) return handleAdminRequest(request, normalized, ctx, wrapped);
       const response = await handleWhatsappOnboarding(request, normalized);
       if (response) return response;
+    }
+
+    if (url.pathname === "/api/support/knowledge") {
+      return handleSupportKnowledge(request);
     }
 
     if (url.pathname === "/api/voice/final-closure") {

@@ -96,30 +96,17 @@ jobs:
           slug=os.environ["TARGET_SLUG"]
           base=json.load(open(f"evidence/{slug}-base-cert.json"))
           runtime_sha=base["shared_runtime_release"]
-          api="https://api.github.com/repos/arbmsistone-lab/zevanory-public-mirror"
-          def headers(raw=False):
-              h={"User-Agent":"ZEVANORY-PORTFOLIO-CERT/2.0"}
-              if not raw: h["Accept"]="application/vnd.github+json"
-              token=os.environ.get("GH_READ_TOKEN","").strip()
-              if token: h["Authorization"]="Bearer "+token
-              return h
-          def get(url):
-              req=urllib.request.Request(url,headers=headers())
-              with urllib.request.urlopen(req,timeout=20) as r:return json.loads(r.read().decode())
-          runs=get(api+"/actions/workflows/zevanory-p12-observability-exact-release.yml/runs?branch=gh-pages&event=push&status=success&per_page=10").get("workflow_runs",[])
+          import subprocess
+          # Quota-free readback: P12 records each certified release proof on its evidence branch.
+          subprocess.run(["rm","-rf","/tmp/p12-evidence"],check=True)
+          subprocess.run(["git","clone","--quiet","--depth","1","--branch","evidence/p12-observability",
+                          "https://github.com/arbmsistone-lab/zevanory-public-mirror.git","/tmp/p12-evidence"],check=True)
+          d=pathlib.Path("/tmp/p12-evidence")/runtime_sha
           selected=None
-          for run in runs:
-              head=str(run.get("head_sha") or "")
-              raw=urllib.request.urlopen(urllib.request.Request(
-                  f"https://raw.githubusercontent.com/arbmsistone-lab/zevanory-public-mirror/{head}/.github/workflows/zevanory-p12-observability-exact-release.yml",
-                  headers=headers(raw=True)),timeout=20).read().decode()
-              if runtime_sha not in raw: continue
-              arts=get(api+f"/actions/runs/{run['id']}/artifacts?per_page=100").get("artifacts",[])
-              expected="zevanory-p12-observability-"+runtime_sha[:12]
-              art=next((a for a in arts if a.get("name")==expected and not a.get("expired") and int(a.get("size_in_bytes") or 0)>0),None)
-              if art:
-                  selected={"run_id":run["id"],"head_sha":head,"artifact":expected,"artifact_id":art["id"]}
-                  break
+          if (d/"evidence-p12-live-slo.json").is_file() and (d/"run.json").is_file():
+              slo=json.load(open(d/"evidence-p12-live-slo.json")); run=json.load(open(d/"run.json"))
+              if slo.get("verdict")=="PASS" and slo.get("release_sha")==runtime_sha and run.get("release_sha")==runtime_sha:
+                  selected={"run_id":run.get("run_id"),"event":run.get("event"),"evidence":f"evidence/p12-observability/{runtime_sha}"}
           assert selected,(slug,"shared_runtime_p12_proof_missing",runtime_sha)
           out={"schema":"zevanory.portfolio.shared-runtime-p12.v1","target":slug,"runtime_sha":runtime_sha,**selected,"verdict":"PASS","false_green":0}
           pathlib.Path(f"evidence/{slug}-shared-runtime-p12.json").write_text(json.dumps(out,indent=2)+"\n")

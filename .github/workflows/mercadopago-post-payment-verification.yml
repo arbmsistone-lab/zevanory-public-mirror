@@ -1,0 +1,141 @@
+name: Mercado Pago Pós-Pagamento - verificação E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      order_id:
+        description: Pedido interno criado pelo ciclo limpo
+        required: true
+        type: string
+      approved_payment_id:
+        description: Payment ID aprovado do Mercado Pago
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mp-post-payment-${{ inputs.order_id }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      APP: https://zevanory.api.br
+      ORDER_ID: ${{ inputs.order_id }}
+      APPROVED_PAYMENT_ID: ${{ inputs.approved_payment_id }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      MP_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+    steps:
+      - name: Verify webhook, paid order, email and delivery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' 2>/tmp/mp-step.err || { { grep -oE 'line [0-9]+' /tmp/mp-step.err | tail -1 | sed 's/^/::error title=MP_FAILED_AT::stdin /' || true; }; tail -c 700 /tmp/mp-step.err | tr '\n' ' ' | sed 's/^/::error title=MP_STEP_FAILED::/'; echo; exit 1; }
+          import json,os,pathlib,time,urllib.parse,urllib.request
+          import urllib.error as _ue, urllib.request as _ur
+          _orig_urlopen=_ur.urlopen
+          def _urlopen(req,*a,**k):
+              try:
+                  return _orig_urlopen(req,*a,**k)
+              except _ue.HTTPError as e:
+                  body=e.read().decode("utf-8","replace")[:400]
+                  url=getattr(req,"full_url",str(req)).split("?")[0]
+                  raise RuntimeError(f"HTTP {e.code} {url} {body}") from None
+          _ur.urlopen=_urlopen
+          app=os.environ["APP"].rstrip("/")
+          oid=os.environ["ORDER_ID"].strip()
+          pid=os.environ["APPROVED_PAYMENT_ID"].strip()
+          cert=os.environ["CERTIFICATION_E2E_TOKEN"].strip()
+          token=os.environ["MP_ACCESS_TOKEN"].strip()
+          assert oid and pid and cert and token
+
+          def get(url,headers=None):
+              h={"Accept":"application/json","User-Agent":"ZEVANORY-MP-PostPayment/3.0"}
+              if headers: h.update(headers)
+              req=urllib.request.Request(url,headers=h)
+              with urllib.request.urlopen(req,timeout=30) as r:
+                  raw=r.read().decode("utf-8","replace")
+                  return r.status,(json.loads(raw) if raw else {}),dict(r.headers)
+
+          _,payment,_=get("https://api.mercadopago.com/v1/payments/"+urllib.parse.quote(pid),
+                          {"Authorization":"Bearer "+token})
+          assert str(payment.get("status") or "").lower()=="approved",payment
+          assert str(payment.get("external_reference") or "").lower()==oid.lower(),payment
+
+          def status():
+              return get(app+"/api/internal/certification/e2e/status?order_id="+urllib.parse.quote(oid),
+                         {"x-certification-e2e-token":cert})[1]
+
+          deadline=time.time()+240
+          state=None
+          while time.time()<deadline:
+              state=status()
+              ev=state.get("financial_events") or []
+              de=state.get("delivery_evidence") or {}
+              if (state.get("order",{}).get("status")=="paid"
+                  and any(str(x.get("provider_payment_id"))==pid and x.get("normalized_event")=="payment_confirmed" for x in ev)
+                  and state.get("fulfillment",{}).get("status")=="delivered"
+                  and de.get("email_status")=="sent"
+                  and str(de.get("verification_url") or "").startswith("https://")):
+                  break
+              time.sleep(5)
+          assert state is not None
+          order=state.get("order") or {}
+          events=state.get("financial_events") or []
+          prov=state.get("provenance") or []
+          fulfillment=state.get("fulfillment") or {}
+          delivery=state.get("delivery_evidence") or {}
+
+          assert order.get("status")=="paid",order
+          assert abs(float(order.get("amount") or 0)-float(payment.get("transaction_amount") or 0))<0.001,(order,payment)
+          assert any(str(x.get("provider_payment_id"))==pid and x.get("normalized_event")=="payment_confirmed" for x in events),events
+          assert any(x.get("source_class")=="provider_webhook" for x in prov),prov
+          assert fulfillment.get("status")=="delivered",fulfillment
+          assert delivery.get("email_status")=="sent" and delivery.get("email_provider_id"),delivery
+          assert str(delivery.get("download_url") or "").startswith("https://"),delivery
+          verify_url=str(delivery.get("verification_url") or "")
+          assert verify_url.startswith("https://"),delivery
+
+          code,_,headers=get(verify_url)
+          assert code==200,code
+          artifact_sha=str(headers.get("x-artifact-sha256") or headers.get("X-Artifact-Sha256") or "")
+          assert artifact_sha and artifact_sha.upper()==str(delivery.get("artifact_sha256") or "").upper(),(artifact_sha,delivery)
+
+          report={
+            "gate":"MERCADOPAGO_POST_PAYMENT_E2E",
+            "order_id":oid,
+            "payment_id":pid,
+            "checks":{
+              "SIGNED_WEBHOOK_ACCEPTED":"PASS",
+              "ORDER_PAID":"PASS",
+              "AMOUNT_MATCH":"PASS",
+              "EMAIL_SENT":"PASS",
+              "DELIVERY_LINK_ISSUED":"PASS",
+              "DELIVERY_PROBE_VALID":"PASS",
+              "FULFILLMENT_DELIVERED":"PASS",
+              "FINAL":"GREEN"
+            },
+            "evidence":{
+              "provider_webhook_provenance":prov,
+              "payment_event":[x for x in events if str(x.get("provider_payment_id"))==pid],
+              "email_provider_id":delivery.get("email_provider_id"),
+              "artifact_sha256":delivery.get("artifact_sha256")
+            }
+          }
+          pathlib.Path("evidence").mkdir(exist_ok=True)
+          pathlib.Path("evidence/mercadopago-post-payment-verification.json").write_text(
+              json.dumps(report,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          for k,v in report["checks"].items(): print(f"{k}={v}")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mercadopago-post-payment-verification-${{ inputs.order_id }}
+          path: evidence/mercadopago-post-payment-verification.json
+          if-no-files-found: warn
+          retention-days: 30

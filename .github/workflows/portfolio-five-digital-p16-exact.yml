@@ -44,9 +44,22 @@ jobs:
           - negocio-completo
     env:
       TARGET_SLUG: ${{ matrix.slug }}
-      EXPECTED_RUNTIME_SHA: c3845cf898acf60e84a06e51cf08db7cfd09bbe3
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve certified live release
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Live release must be a real commit on the canonical gh-pages branch.
+          # Pure git + public endpoint: no GitHub API quota involved.
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/release -o /tmp/certified-release.json
+          sha="$(jq -r '.deployment.commit_sha // empty' /tmp/certified-release.json)"
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then echo "::error title=CERTIFIED_LIVE_SHA::live release has no exact commit sha"; exit 1; fi
+          rm -rf /tmp/canonical-gh-pages
+          git clone --quiet --filter=blob:none --no-checkout --depth 400 --branch gh-pages "https://github.com/${{ github.repository }}.git" /tmp/canonical-gh-pages
+          if ! git -C /tmp/canonical-gh-pages merge-base --is-ancestor "$sha" HEAD; then echo "::error title=CERTIFIED_LIVE_SHA::live $sha is not a commit of canonical gh-pages"; exit 1; fi
+          echo "EXPECTED_RUNTIME_SHA=$sha" >> "$GITHUB_ENV"
+          echo "CERTIFIED_LIVE_SHA=$sha"
 
       - name: Prove exact target lifecycle with sales fail-closed
         shell: bash
