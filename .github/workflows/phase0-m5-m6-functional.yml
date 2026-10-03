@@ -1,0 +1,165 @@
+name: Phase 0 M5 M6 Functional Gate
+
+on:
+  push:
+    branches: [audit/m5-m6-functional-20261002]
+    paths:
+      - ".github/workflows/phase0-m5-m6-functional.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  functional:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe M5 live WhatsApp and AI runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/m5-m6
+          probe() {
+            name="$1"; url="$2"
+            code="$(curl -sS -o "evidence/m5-m6/$name.json" -w '%{http_code}' "$url" || true)"
+            printf '%s' "$code" > "evidence/m5-m6/$name.http"
+            echo "$name HTTP=$code"
+          }
+          probe identity 'https://zevanory.api.br/api/config?view=channel_identity_health'
+          probe closure 'https://zevanory.api.br/api/config?view=closure_status'
+          probe voice-final 'https://zevanory.api.br/api/voice/final-closure'
+          probe voice-probe 'https://zevanory.api.br/api/voice/probe'
+          probe broker-runtime 'https://giro-whatsapp-bridge.girolocal-rb.workers.dev/__zevanory/runtime'
+          python3 - <<'PY'
+          import json,datetime,pathlib
+          p=pathlib.Path("evidence/m5-m6")
+          def load(name):
+              try: return json.load(open(p/(name+".json")))
+              except Exception: return {}
+          def http(name):
+              try: return int((p/(name+".http")).read_text().strip())
+              except Exception: return 0
+          identity=load("identity")
+          closure=load("closure")
+          final=load("voice-final")
+          probe=load("voice-probe")
+          broker=load("broker-runtime")
+          wa=identity.get("whatsapp") or {}
+          ch=((closure.get("channels") or {}).get("whatsapp") or {})
+          chain=final.get("e2e_chain") or {}
+          duration=None
+          try:
+              a=datetime.datetime.fromisoformat(str(chain["started_at"]).replace("Z","+00:00"))
+              b=datetime.datetime.fromisoformat(str(chain["completed_at"]).replace("Z","+00:00"))
+              duration=(b-a).total_seconds()
+          except Exception:
+              pass
+          checks={
+            "identity_http_200": http("identity")==200,
+            "closure_http_200": http("closure")==200,
+            "final_closure_http_200": http("voice-final")==200,
+            "voice_probe_http_200": http("voice-probe")==200,
+            "broker_http_200": http("broker-runtime")==200,
+            "official_number_verified": bool(wa.get("verified")) and str(wa.get("display_phone_number") or "").replace("+","").replace(" ","").replace("-","")=="5588992545413",
+            "operational_ready": bool(ch.get("operational_ready")),
+            "broker_live": broker.get("ok") is True and broker.get("zero_spend") is True and broker.get("legacy_route_bypass")==0,
+            "whatsapp_transport": final.get("whatsapp_transport_configured") is True,
+            "whatsapp_inbound": final.get("whatsapp_inbound") is True,
+            "runtime_processing": final.get("whatsapp_runtime_processing") is True,
+            "tts": final.get("whatsapp_tts") is True,
+            "outbound": final.get("whatsapp_outbound") is True,
+            "delivery": final.get("whatsapp_delivery") is True,
+            "e2e": final.get("whatsapp_e2e") is True,
+            "zero_spend": final.get("zero_spend") is True,
+            "voice_ai_probe": probe.get("ok") is True and int(probe.get("bytes") or 0)>1000 and probe.get("language")=="pt-BR",
+            "first_response_under_60s": duration is not None and duration < 60,
+          }
+          status="PASS" if all(checks.values()) else "BLOCKED"
+          result={"module":"M5","status":status,"checks":checks,"http":{"identity":http("identity"),"closure":http("closure"),"voice_final":http("voice-final"),"voice_probe":http("voice-probe"),"broker":http("broker-runtime")},"e2e_seconds":duration,"chain":chain,
+                  "safe_identity":{"verified":wa.get("verified"),"display_phone_number":wa.get("display_phone_number"),
+                                   "verified_name":wa.get("verified_name"),"operational_mode":ch.get("operational_mode")}}
+          json.dump(result,open(p/"m5-result.json","w"),indent=2)
+          print("M5_STATUS="+status)
+          print("M5_CHECKS="+json.dumps(checks,separators=(",",":")))
+          print("M5_E2E_SECONDS="+str(duration))
+          PY
+
+      - name: Probe M6 canonical corpus and runtime QA capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          routes="$(grep -Eoh '/api/[A-Za-z0-9_./-]+' worker/*.mjs 2>/dev/null | grep -Ei 'knowledge|faq|support|answer|assistant' | sort -u || true)"
+          # Functional proof against production: the live route must answer canonical questions correctly.
+          for q in "quanto%20custa%20o%20combo" "posso%20pedir%20reembolso" "como%20recebo%20o%20acesso%20do%20lucro%20e%20caixa" "o%20que%20vem%20no%20conteudo%20do%20negocio%20completo"; do
+            curl -fsS --max-time 20 "https://zevanory.api.br/api/support/knowledge?q=$q" >> evidence/m5-m6/m6-live-qa.jsonl || echo '{"answered":false}' >> evidence/m5-m6/m6-live-qa.jsonl
+            echo >> evidence/m5-m6/m6-live-qa.jsonl
+          done
+          printf '%s\n' "$routes" > evidence/m5-m6/m6-runtime-routes.txt
+          for slug in ia-na-pratica vendas-na-pratica lucro-e-caixa combo-ia-vendas negocio-completo; do
+            code="$(curl -sSL -o "evidence/m5-m6/$slug.html" -w '%{http_code}' "https://vendas.zevanory.api.br/$slug" || true)"
+            printf '%s' "$code" > "evidence/m5-m6/$slug.http"
+          done
+          python3 - <<'PY'
+          import json,re,pathlib
+          p=pathlib.Path("evidence/m5-m6")
+          slugs=["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo"]
+          rows=[]
+          passed=0
+          for slug in slugs:
+              html=(p/(slug+".html")).read_text(errors="ignore")
+              text=re.sub(r"<[^>]+>"," ",html)
+              text=re.sub(r"\s+"," ",text).lower()
+              qs=[
+                ("preco", bool(re.search(r"r\$\s*\d",text))),
+                ("reembolso_7_dias", bool(re.search(r"(7\s*dias|sete\s*dias)",text)) and "reembolso" in text),
+                ("entrega_ou_acesso", bool(re.search(r"(entrega|acesso|download|arquivo|material)",text))),
+                ("conteudo_ou_incluso", bool(re.search(r"(conte[uú]do|inclui|inclu[ií]do|m[oó]dulo|material)",text))),
+              ]
+              for q,ok in qs:
+                  rows.append({"product":slug,"question":q,"correct":ok})
+                  passed+=int(ok)
+          routes=[x.strip() for x in (p/"m6-runtime-routes.txt").read_text().splitlines() if x.strip()]
+          corpus_pct=passed/20*100
+          live=[json.loads(x) for x in (p/"m6-live-qa.jsonl").read_text().splitlines() if x.strip()]
+          expect=[("price","combo-ia-vendas","R$ 297"),("refund",None,"7 dias"),("delivery","lucro-e-caixa","e-mail"),("content","negocio-completo","Negócio Completo:")]
+          live_ok=len(live)==4 and all(r.get("answered") and r.get("intent")==i and (pr is None or r.get("product")==pr) and txt in str(r.get("answer")) for r,(i,pr,txt) in zip(live,expect))
+          runtime_qa=bool(routes) and live_ok
+          status="PASS" if corpus_pct>=95 and runtime_qa else "BLOCKED"
+          result={"module":"M6","status":status,"questions_total":20,"questions_correct":passed,
+                  "corpus_accuracy_pct":corpus_pct,"runtime_qa_routes":routes,"runtime_qa_proven":runtime_qa,"questions":rows}
+          json.dump(result,open(p/"m6-result.json","w"),indent=2)
+          print("M6_STATUS="+status)
+          print("M6_CORPUS="+str(passed)+"/20")
+          print("M6_RUNTIME_QA="+("PASS" if runtime_qa else "BLOCKED"))
+          PY
+
+      - name: Enforce M5 and M6 functional gates
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          m5=json.load(open("evidence/m5-m6/m5-result.json"))
+          m6=json.load(open("evidence/m5-m6/m6-result.json"))
+          print("FUNCTIONAL_M5="+m5["status"])
+          print("FUNCTIONAL_M6="+m6["status"])
+          failed5=[k for k,v in m5.get("checks",{}).items() if not v]
+          print("::notice title=M5::status="+m5["status"]+" failed="+",".join(failed5)+" http="+json.dumps(m5.get("http"))+" identity="+json.dumps(m5.get("safe_identity"))[:300])
+          wrong6=[q["product"]+":"+q["question"] for q in m6.get("questions",[]) if not q.get("correct")]
+          print("::notice title=M6::status="+m6["status"]+" corpus="+str(m6.get("questions_correct"))+"/20 runtime_qa="+str(m6.get("runtime_qa_proven"))+" routes="+",".join(m6.get("runtime_qa_routes",[]))+" wrong="+",".join(wrong6))
+          assert m5["status"]=="PASS",m5
+          assert m6["status"]=="PASS",m6
+          print("M5_M6_FUNCTIONAL=PASS")
+          PY
+
+      - name: Upload M5 M6 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-m5-m6-functional-${{ github.sha }}
+          path: evidence/m5-m6
+          if-no-files-found: error
+          retention-days: 90
+# rerun 2026-10-03T21:56:34Z
+# rerun 2026-10-03T22:09:34Z
