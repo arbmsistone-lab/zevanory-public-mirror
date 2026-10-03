@@ -15263,7 +15263,9 @@ async function handler18(req, res) {
   res.setHeader("cache-control", "no-store");
   res.setHeader("x-content-type-options", "nosniff");
   if (req.method === "GET") {
-    const mode = String(req.query?.["hub.mode"] || ""), token = String(req.query?.["hub.verify_token"] || ""), challenge = String(req.query?.["hub.challenge"] || "");
+    // The node-compat req.query drops dotted keys (hub.mode → mode=""), so read the raw URL.
+    const hubParams = new URL(String(req.url || "/"), "https://zevanory.api.br").searchParams;
+    const mode = String(hubParams.get("hub.mode") || req.query?.["hub.mode"] || ""), token = String(hubParams.get("hub.verify_token") || req.query?.["hub.verify_token"] || ""), challenge = String(hubParams.get("hub.challenge") || req.query?.["hub.challenge"] || "");
     // Accept the onboarding-issued token as well as configured env tokens: legacy vars must not
     // shadow the verify token Meta was just given by /admin/whatsapp-onboard.
     const runtimeVerify = String((globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {}).verify_token || "").trim();
