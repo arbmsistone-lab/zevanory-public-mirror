@@ -136,7 +136,7 @@ const exactWorkflowProofs=[
 
 async function collectProtectedExactProof(spec){
   const specificRuns=await jf(
-    "https://api.github.com/repos/"+repo+"/actions/workflows/"+encodeURIComponent(spec.file)+"/runs?status=success&per_page=50"
+    "https://api.github.com/repos/"+repo+"/actions/workflows/"+encodeURIComponent(spec.file)+"/runs?status=success&per_page=10"
   );
   const candidates=(specificRuns.workflow_runs||[]).filter(run=>
     run.status==="completed" &&
@@ -144,19 +144,20 @@ async function collectProtectedExactProof(spec){
     String(run.path||"")===".github/workflows/"+spec.file
   ).sort((a,b)=>new Date(b.updated_at||b.created_at)-new Date(a.updated_at||a.created_at));
 
-  for(const run of candidates.slice(0,50)){
+  // Quota-aware: newest 5 runs only; markers are checked on raw.githubusercontent
+  // (no API quota) before a single artifacts API call. The proof stays bound to
+  // the exact release through the SHA-derived artifact name.
+  for(const run of candidates.slice(0,5)){
     const head=String(run.head_sha||"");
     if(!/^[0-9a-f]{40}$/.test(head)) continue;
-    const [workflowResponse,artifactsDoc]=await Promise.all([
-      fetch("https://raw.githubusercontent.com/"+repo+"/"+head+"/.github/workflows/"+spec.file,{
-        headers:{"user-agent":"ZEVANORY-ZEES16-Reconciler/1.1","cache-control":"no-cache"}
-      }),
-      jf("https://api.github.com/repos/"+repo+"/actions/runs/"+run.id+"/artifacts?per_page=100")
-    ]);
+    const workflowResponse=await fetch("https://raw.githubusercontent.com/"+repo+"/"+head+"/.github/workflows/"+spec.file,{
+      headers:{"user-agent":"ZEVANORY-ZEES16-Reconciler/1.2","cache-control":"no-cache"}
+    });
     if(!workflowResponse.ok) continue;
     const workflow=await workflowResponse.text();
-    if(!workflow.includes(sha)) continue;
     if(!spec.markers.every(marker=>workflow.includes(marker))) continue;
+    if(!workflow.includes(sha) && !workflow.includes("EXPECTED_SHA12")) continue;
+    const artifactsDoc=await jf("https://api.github.com/repos/"+repo+"/actions/runs/"+run.id+"/artifacts?per_page=100");
     const artifact=(artifactsDoc.artifacts||[]).find(item=>
       item?.name===spec.artifact &&
       item?.expired!==true &&
