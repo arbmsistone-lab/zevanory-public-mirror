@@ -22,7 +22,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   observability:
@@ -215,3 +215,23 @@ jobs:
             zevanory-p12-proof.json
           if-no-files-found: error
           retention-days: 90
+
+      - name: Record P12 proof on the evidence branch (quota-free readback)
+        env:
+          GH_PUSH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/p12-evidence
+          git clone --quiet --depth 1 --branch evidence/p12-observability "https://x-access-token:${GH_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" /tmp/p12-evidence 2>/dev/null || {
+            mkdir -p /tmp/p12-evidence && git -C /tmp/p12-evidence init -q && git -C /tmp/p12-evidence checkout -q -b evidence/p12-observability
+            git -C /tmp/p12-evidence remote add origin "https://x-access-token:${GH_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"; }
+          mkdir -p "/tmp/p12-evidence/$EXPECTED_SHA"
+          cp evidence-p12-instrumentation.json evidence-p12-live-slo.json evidence-p12-incident.json zevanory-p12-proof.json "/tmp/p12-evidence/$EXPECTED_SHA/"
+          printf '{"run_id":"%s","event":"%s","release_sha":"%s"}\n' "$GITHUB_RUN_ID" "$GITHUB_EVENT_NAME" "$EXPECTED_SHA" > "/tmp/p12-evidence/$EXPECTED_SHA/run.json"
+          cd /tmp/p12-evidence
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A && git commit -qm "P12 observability proof for $EXPECTED_SHA (run $GITHUB_RUN_ID)"
+          for i in 1 2 3; do git push -q origin HEAD:evidence/p12-observability && break; git pull -q --rebase origin evidence/p12-observability || true; done
+          echo "P12_EVIDENCE_BRANCH=evidence/p12-observability/$EXPECTED_SHA"
