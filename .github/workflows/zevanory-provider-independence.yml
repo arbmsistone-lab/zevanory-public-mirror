@@ -10,13 +10,25 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-env:
-  EXPECTED_SHA: "37e695127af02c9a32c601db0353a3708fc45d82"
 jobs:
   prove:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Resolve certified live release
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Live release must be a real commit on the canonical gh-pages branch.
+          # Pure git + public endpoint: no GitHub API quota involved.
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/release -o /tmp/certified-release.json
+          sha="$(jq -r '.deployment.commit_sha // empty' /tmp/certified-release.json)"
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then echo "::error title=CERTIFIED_LIVE_SHA::live release has no exact commit sha"; exit 1; fi
+          rm -rf /tmp/canonical-gh-pages
+          git clone --quiet --filter=blob:none --no-checkout --depth 400 --branch gh-pages "https://github.com/${{ github.repository }}.git" /tmp/canonical-gh-pages
+          if ! git -C /tmp/canonical-gh-pages merge-base --is-ancestor "$sha" HEAD; then echo "::error title=CERTIFIED_LIVE_SHA::live $sha is not a commit of canonical gh-pages"; exit 1; fi
+          echo "EXPECTED_SHA=$sha" >> "$GITHUB_ENV"
+          echo "CERTIFIED_LIVE_SHA=$sha"
       - uses: actions/checkout@v4
       - name: Bind provider-independence proof to exact live release
         shell: bash
