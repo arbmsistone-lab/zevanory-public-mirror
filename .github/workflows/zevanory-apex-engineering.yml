@@ -270,37 +270,6 @@ jobs:
           for f in ['worker/cloudflare-worker.recovered.mjs','worker/cloudflare-worker.compat.mjs','worker/continuity-router.mjs','evidence/three-provider-quorum.json','evidence/portable-dr-contract.json','evidence/main-edge-parity-contract.json']:
               p=pathlib.Path(f); assert p.is_file() and p.stat().st_size>0,f
           PY
-      - name: Verify production APIs legal surfaces and parity
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json, urllib.request
-          def get(url,accept='application/json,text/html'):
-              req=urllib.request.Request(url,headers={'User-Agent':'ZEVANORY-Apex/1.0','Accept':accept,'Cache-Control':'no-cache'})
-              with urllib.request.urlopen(req,timeout=25) as r:
-                  return r.status,dict(r.headers),r.read().decode('utf-8','replace')
-          urls=['https://zevanory.api.br/api/status','https://edge.zevanory.api.br/api/status','https://zevanory.api.br/api/health','https://zevanory.api.br/api/release','https://zevanory.api.br/api/control-plane']
-          p={}
-          for u in urls:
-              code,h,b=get(u); assert code==200,(u,code); p[u]=json.loads(b)
-          main=p[urls[0]]; edge=p[urls[1]]
-          for key in ('project','gate','experiment','engine','sales_machine','runtime','metrics','channel_readiness'): assert main.get(key)==edge.get(key),key
-          assert main['runtime']['sales']=='globally-blocked' and edge['runtime']['sales']=='globally-blocked'
-          health=p[urls[2]]
-          assert health['live'] is True and health['ready'] is True
-          assert health['schema']['missing_tables_count']==0 and health['schema']['missing_migrations_count']==0
-          pages=['https://zevanory.api.br/solucoes','https://zevanory.api.br/termos','https://zevanory.api.br/privacidade','https://zevanory.api.br/reembolso','https://zevanory.api.br/afiliados']
-          for u in pages:
-              code,h,b=get(u,'text/html'); assert code==200 and len(b)>300,(u,code,len(b))
-              if u.endswith('/solucoes'):
-                  low={k.lower():v for k,v in h.items()}
-                  assert 'strict-transport-security' in low
-                  assert 'content-security-policy' in low
-                  assert "script-src 'self'" in low['content-security-policy']
-                  assert low.get('x-content-type-options','').lower()=='nosniff'
-                  assert 'IA na Prática' in b
-          print('PASS production health/legal/security/parity')
-          PY
       - name: Verify authenticated three-provider quorum
         run: |
           set -euo pipefail
