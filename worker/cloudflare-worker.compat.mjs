@@ -148,6 +148,23 @@ const wrapped = {
       globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = whatsappBrokerState;
       globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = normalized.ZEVANORY_PRIVATE_ARTIFACTS || null;
     }
+    // Meta webhook verification answered at the edge from the original request URL:
+    // the legacy node bridge loses the hub.* query (observed mode="" / no token).
+    if (url.pathname === "/api/webhooks/meta" && request.method === "GET") {
+      const mode = url.searchParams.get("hub.mode") || "";
+      const token = url.searchParams.get("hub.verify_token") || "";
+      const challenge = url.searchParams.get("hub.challenge") || "";
+      const rt = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+      const candidates = [rt.verify_token, normalized.META_VERIFY_TOKEN, normalized.META_WEBHOOK_VERIFY_TOKEN].map((v) => String(v || "").trim()).filter(Boolean);
+      const matched = mode === "subscribe" && Boolean(token) && candidates.includes(token);
+      try {
+        const kv = normalized.ZEVANORY_PRIVATE_ARTIFACTS;
+        if (kv?.put) await kv.put("whatsapp:webhook:last-verify", JSON.stringify({ at: new Date().toISOString(), layer: "edge", mode, token_present: Boolean(token), token_len: token.length, candidates: candidates.length, runtime_token_loaded: Boolean(rt.verify_token), matched, ua: String(request.headers.get("user-agent") || "").slice(0, 80) }), { expirationTtl: 86400 });
+      } catch {}
+      if (matched) return new Response(challenge, { status: 200, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+      return new Response(JSON.stringify({ error: "webhook_verification_failed" }), { status: 403, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+    }
+
     const canonicalRedirect = canonicalizePublicPath(request, url);
     if (canonicalRedirect) return canonicalRedirect;
 
