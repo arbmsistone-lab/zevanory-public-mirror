@@ -95,178 +95,12 @@ jobs:
           git fetch origin final-83620c6
           rm -rf public
           git archive 83620c680958d726fc4b0fd16e2574cdcc362a6d public | tar -x
-          node --input-type=module <<'NODE'
-          import { writeFile } from "node:fs/promises";
-          import { CONTROL_PLANE_VNEXT_JS } from "./worker/control-plane-vnext-source.mjs";
-          await writeFile("worker/live-recovered/control-plane-vnext.js", CONTROL_PLANE_VNEXT_JS, "utf8");
-          await writeFile("public/control-plane-vnext.js", CONTROL_PLANE_VNEXT_JS, "utf8");
-          NODE
+          node scripts/deploy/materialize-control-plane.mjs
           cmp -s worker/live-recovered/control-plane-vnext.js public/control-plane-vnext.js
           cp admin.css public/admin.css
-          python3 - <<'PY'
-          import json,os
-          with open("public/build-info.json","w",encoding="utf-8") as f:
-              json.dump({"sha":os.environ["TARGET_RUNTIME_SHA"],"source":"github-actions-cloudflare","repository":os.environ["GITHUB_REPOSITORY"]},f,indent=2)
-              f.write("\n")
-          PY
+          python3 scripts/deploy/write-build-info.py
           git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
-          python3 <<'PY'
-          import json,os,re
-          from pathlib import Path
-          p="wrangler.central-fix.jsonc"
-          c=json.load(open(p))
-          c["account_id"]=os.environ["PUBLIC_OWNER_ACCOUNT_ID"]
-          c["main"]="worker/cloudflare-worker.compat.mjs"
-          c.pop("secrets",None)
-          c.pop("services",None)
-          c.pop("ai",None)
-          c.pop("routes",None)
-          c["workers_dev"]=True
-          kv=c.setdefault("kv_namespaces",[])
-          found_private=False
-          for ns in kv:
-              if ns.get("binding") in ("ZEVANORY_PRIVATE_ARTIFACTS","ZEVANORY_ARTEFATOS_PRIVADOS"):
-                  ns["binding"]="ZEVANORY_PRIVATE_ARTIFACTS"
-                  ns["id"]="728a45738e4047f29bcb89934fd533c1"
-                  found_private=True
-          if not found_private:
-              kv.append({"binding":"ZEVANORY_PRIVATE_ARTIFACTS","id":"728a45738e4047f29bcb89934fd533c1"})
-          c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["TARGET_RUNTIME_SHA"]
-          c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
-          c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
-          c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"
-          c["vars"]["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
-          c["vars"]["MERCADOPAGO_ENV"]="sandbox"
-          c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
-          c["vars"]["CHECKOUT_ENABLED"]="true"
-          c["vars"]["FINANCIAL_EVENTS_ENABLED"]="true"
-          c["vars"]["SALE_GLOBALLY_ENABLED"]="false"
-          c["vars"]["PRE_SALE_GATES_APPROVED"]="false"
-          c["vars"]["WHATSAPP_SALES_ENABLED"]="false"
-          c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
-          c["vars"]["SUPPORT_CHANNEL"]="WhatsApp +55 88 99254-5413"
-          runtime=c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})
-          if not isinstance(runtime,dict):
-              runtime={}
-              c["vars"]["ZEVANORY_RUNTIME_CONFIG"]=runtime
-          for key in (
-              "CLOUDFLARE_AI_FREE_ONLY",
-              "CLOUDFLARE_AI_DAILY_CALL_LIMIT",
-              "VOICE_TTS_PROVIDER",
-              "VOICE_TTS_PROVIDER_CHAIN",
-              "VOICE_TTS_FAILOVER_ENABLED",
-              "GEMINI_FREE_TIER_CONFIRMED",
-          ):
-              if key in c["vars"]:
-                  runtime[key]=c["vars"].pop(key)
-          c["vars"].pop("ZEVANORY_WHATSAPP_E164",None)
-          c["vars"].pop("ZEVANORY_WHATSAPP_COUNTRY",None)
-          
-          # Preserve compacted values through normalizeEnv.
-          aliases=Path("worker/binding-aliases.mjs")
-          alias_src=aliases.read_text(encoding="utf-8")
-          alias_src=alias_src.replace(
-              '      return Reflect.get(target, prop, receiver);',
-              '      const direct = Reflect.get(target, prop, receiver);\n'
-              '      if (direct !== undefined) return direct;\n'
-              '      const runtime = Reflect.get(target, "ZEVANORY_RUNTIME_CONFIG", receiver);\n'
-              '      if (runtime && typeof runtime === "object" && prop in runtime) return runtime[prop];\n'
-              '      return undefined;'
-          )
-          alias_src=alias_src.replace(
-              '      return Reflect.has(target, prop);',
-              '      if (Reflect.has(target, prop)) return true;\n'
-              '      const runtime = Reflect.get(target, "ZEVANORY_RUNTIME_CONFIG");\n'
-              '      return Boolean(runtime && typeof runtime === "object" && prop in runtime);'
-          )
-          aliases.write_text(alias_src,encoding="utf-8")
-
-          # Repair Mercado Pago certification sandbox to use the already-mounted sandbox credentials.
-          recovered=Path("worker/cloudflare-worker.recovered.mjs")
-          recovered_src=recovered.read_text(encoding="utf-8")
-          recovered_src=recovered_src.replace(
-              'if (!String(env.MERCADOPAGO_TEST_ACCESS_TOKEN || "").trim() || !String(env.MERCADOPAGO_TEST_WEBHOOK_SECRET || "").trim()) blockers.push("mercadopago_sandbox_credentials_missing");',
-              'if (!String(env.MERCADOPAGO_ACCESS_TOKEN || "").trim() || !String(env.MERCADOPAGO_WEBHOOK_SECRET || "").trim()) blockers.push("mercadopago_sandbox_credentials_missing");'
-          )
-          recovered_src=recovered_src.replace(
-              '    }\n    if (provider === "stripe") {\n',
-              '    } else if (provider === "stripe") {\n',
-              1
-          )
-          recovered_src=recovered_src.replace(
-              'const pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_PAYMENT_MODE || "").toLowerCase() === "sandbox";',
-              'const pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox";'
-          )
-          recovered_src=recovered_src.replace(
-              'const providerToken = pilotSandbox ? String(process.env.MERCADOPAGO_TEST_ACCESS_TOKEN || "") : String(process.env.MERCADOPAGO_ACCESS_TOKEN || "");',
-              'const providerToken = String(process.env.MERCADOPAGO_ACCESS_TOKEN || "");'
-          )
-          recovered_src=recovered_src.replace(
-              'if (provider === "mercadopago_test") return handleMercadoPagoWebhook(req, res, { accessToken: process.env.MERCADOPAGO_TEST_ACCESS_TOKEN, webhookSecret: process.env.MERCADOPAGO_TEST_WEBHOOK_SECRET, certificationOnly: true, source: "mercadopago-test" });',
-              'if (provider === "mercadopago_test") return handleMercadoPagoWebhook(req, res, { accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN, webhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET, certificationOnly: true, source: "mercadopago-test" });'
-          )
-          recovered.write_text(recovered_src,encoding="utf-8")
-          # Replace every legacy public contact reference in the reconstructed production snapshot.
-          replacements = {
-              "+55 88 9234-0423": "+55 88 99254-5413",
-              "558892340423": "5588992545413",
-          }
-          changed = []
-          for asset in Path("public").rglob("*"):
-              if not asset.is_file():
-                  continue
-              try:
-                  raw = asset.read_text(encoding="utf-8")
-              except (UnicodeDecodeError, OSError):
-                  continue
-              new = raw
-              for old, value in replacements.items():
-                  new = new.replace(old, value)
-              if new != raw:
-                  asset.write_text(new, encoding="utf-8")
-                  changed.append(str(asset))
-          if not changed:
-              print("WHATSAPP_NUMBER_CUTOVER_FILES none_needed")
-          else:
-              print("WHATSAPP_NUMBER_CUTOVER_FILES", *changed)
-
-          retired_slugs=("zevanory-one","arbm-sist")
-          for retired_asset in ("public/zevanory-one.html","public/arbm-one.html","public/arbm-sist.html"):
-              Path(retired_asset).unlink(missing_ok=True)
-
-          solutions_path=Path("public/solucoes.html")
-          solutions=solutions_path.read_text(encoding="utf-8")
-          solutions=re.sub(r'<a class="legacy-contract" href="/zevanory-one">ZEVANORY ONE</a>\s*',"",solutions)
-          for slug in retired_slugs:
-              solutions=re.sub(rf'<a class="catalog-card" href="/{re.escape(slug)}">.*?</a>\s*',"",solutions,flags=re.S)
-          solutions=solutions.replace("ZEVANORY ONE, ARBM SIST, ","")
-          solutions_path.write_text(solutions,encoding="utf-8")
-
-          sitemap_path=Path("public/sitemap.xml")
-          sitemap=sitemap_path.read_text(encoding="utf-8")
-          for slug in retired_slugs:
-              sitemap=re.sub(rf'\s*<url><loc>https://zevanory\.api\.br/{re.escape(slug)}</loc>.*?</url>',"",sitemap,flags=re.S)
-          sitemap_path.write_text(sitemap,encoding="utf-8")
-
-          assert "ZEVANORY ONE" not in solutions
-          assert "ARBM SIST" not in solutions
-          for slug in retired_slugs:
-              assert f"https://zevanory.api.br/{slug}" not in sitemap
-          for retired_asset in ("public/zevanory-one.html","public/arbm-one.html","public/arbm-sist.html"):
-              assert not Path(retired_asset).exists()
-          print("COMMERCIAL_RETIREMENT_OVERLAY=PASS")
-
-          c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
-          c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"
-          c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"
-          c["vars"]["GEMINI_FREE_TIER_CONFIRMED"]="false"
-          c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"
-          c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"
-          c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
-          for unused in ("KNOWLEDGE_SEED_ALLOWED","SPEECHIFY_FREE_TIER_CONFIRMED","AZURE_SPEECH_FREE_TIER_CONFIRMED"):
-              c["vars"].pop(unused,None)
-          open(p,"w").write(json.dumps(c,indent=2)+"\n")
-          PY
+          python3 scripts/deploy/prepare-central-candidate.py
           node --check worker/cloudflare-worker.compat.mjs
           node --check worker/voice-naturality-study.mjs
           node --check worker/whatsapp-onboarding.mjs
@@ -283,12 +117,7 @@ jobs:
           set -euo pipefail
           code="$(curl -sS -o /tmp/predeploy-health.json -w '%{http_code}' https://zevanory.api.br/api/health || true)"
           if [ "$code" = "200" ]; then
-            python3 <<'PY'
-          import json
-          h=json.load(open("/tmp/predeploy-health.json"))
-          assert h.get("live") is True and h.get("ready") is True, h
-          print("LEGACY_PRODUCTION_BRIDGE_ROUTE_REACHABLE")
-          PY
+            python3 scripts/deploy/verify-predeploy-health.py
           elif [ "$code" = "503" ]; then
             echo "LEGACY_PRODUCTION_BRIDGE_ROUTE=DEGRADED_RECOVERY_ALLOWED"
             echo "RECOVERY_REASON=HTTP_503_PREEXISTING"
@@ -301,35 +130,19 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces?per_page=100" -o /tmp/kv.json
-          python3 - <<'PY'
-          import json
-          d=json.load(open("/tmp/kv.json"))
-          assert d.get("success") is True, d.get("errors")
-          for x in d.get("result",[]): print("KV_NAMESPACE",x.get("title"),x.get("id"))
-          PY
+          python3 scripts/deploy/inspect-kv.py
       - name: Discover Worker service bindings
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
           curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" -o /tmp/scripts.json
-          python3 - <<'PY'
-          import json
-          d=json.load(open("/tmp/scripts.json"))
-          assert d.get("success") is True, d.get("errors")
-          for x in d.get("result",[]): print("WORKER_SCRIPT",x.get("id"))
-          PY
+          python3 scripts/deploy/inspect-workers.py
       - name: Inspect current zevanory bindings
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
           curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/settings" -o /tmp/settings.json
-          python3 - <<'PY'
-          import json
-          d=json.load(open("/tmp/settings.json"))
-          assert d.get("success") is True, d.get("errors")
-          for b in d.get("result",{}).get("bindings",[]):
-              print("CURRENT_BINDING",b.get("name"),b.get("type"),b.get("service",""),b.get("namespace_id",""))
-          PY
+          python3 scripts/deploy/inspect-bindings.py
       - name: Verify financial safety boundary without mutating secrets
         if: steps.auth.outputs.available == 'true'
         shell: bash
@@ -338,16 +151,7 @@ jobs:
           # This workflow repairs/proves the Control Core only. Financial credential provisioning
           # belongs to the financial closure workflow and must not block a fail-closed Core deploy.
           # Sales remain globally disabled by the candidate configuration.
-          python3 - <<'PY'
-          import json
-          c=json.load(open("wrangler.central-fix.jsonc",encoding="utf-8"))
-          v=c.get("vars",{})
-          assert str(v.get("SALE_GLOBALLY_ENABLED","")).lower()=="false"
-          assert str(v.get("PRE_SALE_GATES_APPROVED","")).lower()=="false"
-          assert str(v.get("WHATSAPP_SALES_ENABLED","")).lower()=="false"
-          print("CORE_DEPLOY_FINANCIAL_BOUNDARY=PASS")
-          print("FINANCIAL_SECRETS_MUTATION=DECOUPLED")
-          PY
+          python3 scripts/deploy/verify-financial-boundary.py
 
       - name: Require certification secret before production deploy
         if: steps.auth.outputs.available == 'true'
@@ -377,15 +181,7 @@ jobs:
             sleep 5
           done
           cmp -s /tmp/live.js worker/live-recovered/control-plane-vnext.js
-          python3 <<'PY'
-          from pathlib import Path
-          import re
-          s=Path("/tmp/live.js").read_text(encoding="utf-8")
-          bad=[r"Ã[\x80-\xBF]",r"Â[\x80-\xBF ]",r"â€”",r"â€“",r"â€™",r"â€œ",r"â€",r"â†",r"\ufffd"]
-          assert sum(len(re.findall(p,s)) for p in bad)==0
-          assert "QUORUM & TRUST CHAIN" in s
-          assert "Decisão executiva baseada em evidência." in s
-          PY
+          python3 scripts/deploy/verify-live-asset.py
           # Cloudflare edge propagation can lag behind the successful Worker upload.
           # Poll the canonical, non-query API until it serves this exact release SHA.
           exact_sha=0
@@ -395,34 +191,7 @@ jobs:
             curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/control.json || true
             curl -fsS https://zevanory.api.br/api/core/v1/snapshot -o /tmp/core.json || true
             curl -fsS https://zevanory.api.br/api/core/v1/evaluation/zea10 -o /tmp/zea10.json || true
-            if GITHUB_SHA="$GITHUB_SHA" python3 - <<'PY'
-          import json, os, pathlib, sys
-          try:
-              status=json.load(open("/tmp/status.json"))
-              health=json.load(open("/tmp/health.json"))
-              control=json.load(open("/tmp/control.json"))
-          except Exception:
-              raise SystemExit(1)
-          try:
-              core=json.load(open("/tmp/core.json"))
-              zea10=json.load(open("/tmp/zea10.json"))
-          except Exception:
-              raise SystemExit(1)
-          ok=(
-              status.get("runtime",{}).get("sales")=="globally-blocked"
-              and health.get("ready") is True
-              and control.get("global_state")=="operational_commercial_blocked"
-              and control.get("root_blocker")=="global_sale_disabled"
-              and control.get("release",{}).get("deployment",{}).get("commit_sha")==os.environ["TARGET_RUNTIME_SHA"]
-              and core.get("release_sha")==os.environ["TARGET_RUNTIME_SHA"]
-              and core.get("architecture",{}).get("circular_dependency") is False
-              and core.get("architecture",{}).get("flow")==["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]
-              and core.get("invariants",{}).get("evidence_to_evaluation_unidirectional") is True
-              and zea10.get("source_layer")=="ZEES-16"
-              and zea10.get("authority") is False
-          )
-          raise SystemExit(0 if ok else 1)
-          PY
+            if GITHUB_SHA="$GITHUB_SHA" python3 scripts/deploy/verify-exact-release-poll.py;
             then
               exact_sha=1
               break
@@ -430,27 +199,7 @@ jobs:
             sleep 5
           done
           test "$exact_sha" = "1"
-          python3 <<'PY'
-          import json,os
-          status=json.load(open("/tmp/status.json"))
-          health=json.load(open("/tmp/health.json"))
-          control=json.load(open("/tmp/control.json"))
-          core=json.load(open("/tmp/core.json"))
-          zea10=json.load(open("/tmp/zea10.json"))
-          assert status["runtime"]["sales"]=="globally-blocked"
-          assert health["ready"] is True
-          assert control["global_state"]=="operational_commercial_blocked"
-          assert control["root_blocker"]=="global_sale_disabled"
-          assert control["release"]["deployment"]["commit_sha"]==os.environ["TARGET_RUNTIME_SHA"], (control["release"]["deployment"]["commit_sha"],os.environ["TARGET_RUNTIME_SHA"])
-          assert core["release_sha"]==os.environ["TARGET_RUNTIME_SHA"]
-          assert core["architecture"]["flow"]==["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]
-          assert core["architecture"]["circular_dependency"] is False
-          assert core["invariants"]["evidence_to_evaluation_unidirectional"] is True
-          assert zea10["source_layer"]=="ZEES-16" and zea10["authority"] is False
-          print("PRODUCTION_EXACT_SHA_PASS",os.environ["TARGET_RUNTIME_SHA"])
-          print("PRODUCTION_ZEES_ZEA_CORE_ADMIN_ARCHITECTURE_PASS")
-          print("PRODUCTION_CENTRAL_UTF8_AND_SAFETY_PASS")
-          PY
+          python3 scripts/deploy/verify-exact-release-final.py
       - name: Verify production API legal surfaces and parity after deploy
         if: steps.auth.outputs.available == 'true'
         shell: bash
@@ -466,22 +215,7 @@ jobs:
           python3 scripts/verify-live-headers.py /tmp/live-security-headers.txt
           npm install --no-save playwright@1.55.0 >/dev/null 2>&1
           npx playwright install --with-deps chromium >/dev/null 2>&1
-          cat > /tmp/mp-csp-smoke.mjs <<'JS'
-          import { chromium } from 'playwright';
-          const checkout='https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=3670768257-f4236a66-96f6-49fc-ba1c-2587780b36e2';
-          const browser=await chromium.launch({headless:true});
-          const page=await browser.newPage();
-          const csp=[];
-          page.on('console',m=>{const t=m.text();if(/content security policy|refused to (load|connect|frame|execute)|csp/i.test(t))csp.push(t)});
-          await page.goto('https://zevanory.api.br/solucoes',{waitUntil:'domcontentloaded',timeout:30000});
-          await page.evaluate(url=>{location.href=url},checkout);
-          await page.waitForLoadState('domcontentloaded',{timeout:30000});
-          if(!/mercadopago\.com(?:\.br)?$/i.test(new URL(page.url()).hostname)) throw new Error('mercadopago_navigation_failed:'+page.url());
-          if(/\/fatal(?:\?|$)/i.test(new URL(page.url()).pathname)) throw new Error('mercadopago_fatal:'+page.url());
-          if(csp.length) throw new Error('csp_console_block:'+JSON.stringify(csp.slice(0,10)));
-          console.log('MERCADOPAGO_CHECKOUT_CSP_SMOKE=PASS '+page.url());
-          await browser.close();
-          JS
+          node scripts/deploy/mercadopago-csp-smoke.mjs
           node /tmp/mp-csp-smoke.mjs
       - name: Automatic rollback after failed post-deploy smoke
         if: failure() && steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
@@ -492,11 +226,7 @@ jobs:
           npx --yes wrangler@4.143.0 rollback --name zevanory --config wrangler.central-fix.jsonc --message "Automatic rollback after failed production smoke for $TARGET_RUNTIME_SHA"
           for i in $(seq 1 20); do
             code="$(curl -sS -o /tmp/rollback-health.json -w '%{http_code}' https://zevanory.api.br/api/health || true)"
-            if [ "$code" = "200" ] && python3 - <<'PY'
-import json
-h=json.load(open('/tmp/rollback-health.json'))
-raise SystemExit(0 if h.get('live') is True and h.get('ready') is True else 1)
-PY
+            if [ "$code" = "200" ] && python3 scripts/deploy/verify-rollback-health.py /tmp/rollback-health.json;
             then
               echo "AUTO_ROLLBACK_HEALTH=PASS"
               exit 0
