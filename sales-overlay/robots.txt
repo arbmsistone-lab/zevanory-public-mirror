@@ -1,0 +1,3 @@
+﻿User-agent: *
+Allow: /
+Sitemap: https://vendas.zevanory.api.br/sitemap.xml
