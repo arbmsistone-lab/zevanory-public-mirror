@@ -121,9 +121,9 @@ jobs:
           node --check worker/cloudflare-worker.compat.mjs
           node --check worker/zevanory-control-core.mjs
           python3 scripts/premerge_product_audit.py
-          grep -q 'SALE_GLOBALLY_ENABLED.*false' .github/workflows/central-production-deploy.yml
-          grep -q 'PRE_SALE_GATES_APPROVED.*false' .github/workflows/central-production-deploy.yml
-          grep -q 'WHATSAPP_SALES_ENABLED.*false' .github/workflows/central-production-deploy.yml
+          grep -q 'SALE_GLOBALLY_ENABLED.*false' scripts/deploy/prepare-central-candidate.py
+          grep -q 'PRE_SALE_GATES_APPROVED.*false' scripts/deploy/prepare-central-candidate.py
+          grep -q 'WHATSAPP_SALES_ENABLED.*false' scripts/deploy/prepare-central-candidate.py
           echo "REQUIRED_STATUS_BUILD=PASS"
 
   deploy:
