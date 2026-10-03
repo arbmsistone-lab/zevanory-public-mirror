@@ -90,7 +90,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          routes="$(grep -Eo '["''']/api/[^"''']+["''']' worker/*.mjs 2>/dev/null | tr -d '"''' | grep -Ei 'knowledge|faq|support|answer|assistant' | sort -u || true)"
+          routes="$(grep -Eoh '/api/[A-Za-z0-9_./-]+' worker/*.mjs 2>/dev/null | grep -Ei 'knowledge|faq|support|answer|assistant' | sort -u || true)"
+          # Functional proof against production: the live route must answer canonical questions correctly.
+          for q in "quanto%20custa%20o%20combo" "posso%20pedir%20reembolso" "como%20recebo%20o%20acesso%20do%20lucro%20e%20caixa" "o%20que%20vem%20no%20conteudo%20do%20negocio%20completo"; do
+            curl -fsS --max-time 20 "https://zevanory.api.br/api/support/knowledge?q=$q" >> evidence/m5-m6/m6-live-qa.jsonl || echo '{"answered":false}' >> evidence/m5-m6/m6-live-qa.jsonl
+            echo >> evidence/m5-m6/m6-live-qa.jsonl
+          done
           printf '%s\n' "$routes" > evidence/m5-m6/m6-runtime-routes.txt
           for slug in ia-na-pratica vendas-na-pratica lucro-e-caixa combo-ia-vendas negocio-completo; do
             code="$(curl -sSL -o "evidence/m5-m6/$slug.html" -w '%{http_code}' "https://vendas.zevanory.api.br/$slug" || true)"
@@ -117,7 +122,10 @@ jobs:
                   passed+=int(ok)
           routes=[x.strip() for x in (p/"m6-runtime-routes.txt").read_text().splitlines() if x.strip()]
           corpus_pct=passed/20*100
-          runtime_qa=bool(routes)
+          live=[json.loads(x) for x in (p/"m6-live-qa.jsonl").read_text().splitlines() if x.strip()]
+          expect=[("price","combo-ia-vendas","R$ 297"),("refund",None,"7 dias"),("delivery","lucro-e-caixa","e-mail"),("content","negocio-completo","Negócio Completo:")]
+          live_ok=len(live)==4 and all(r.get("answered") and r.get("intent")==i and (pr is None or r.get("product")==pr) and txt in str(r.get("answer")) for r,(i,pr,txt) in zip(live,expect))
+          runtime_qa=bool(routes) and live_ok
           status="PASS" if corpus_pct>=95 and runtime_qa else "BLOCKED"
           result={"module":"M6","status":status,"questions_total":20,"questions_correct":passed,
                   "corpus_accuracy_pct":corpus_pct,"runtime_qa_routes":routes,"runtime_qa_proven":runtime_qa,"questions":rows}
