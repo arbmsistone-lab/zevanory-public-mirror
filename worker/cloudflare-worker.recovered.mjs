@@ -15264,7 +15264,11 @@ async function handler18(req, res) {
   res.setHeader("x-content-type-options", "nosniff");
   if (req.method === "GET") {
     const mode = String(req.query?.["hub.mode"] || ""), token = String(req.query?.["hub.verify_token"] || ""), challenge = String(req.query?.["hub.challenge"] || "");
-    const directValid = mode === "subscribe" && token && token === resolveMetaVerifyToken(process.env);
+    // Accept the onboarding-issued token as well as configured env tokens: legacy vars must not
+    // shadow the verify token Meta was just given by /admin/whatsapp-onboard.
+    const runtimeVerify = String((globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {}).verify_token || "").trim();
+    const verifyCandidates = [resolveMetaVerifyToken(process.env), String(process.env.META_WEBHOOK_VERIFY_TOKEN || "").trim(), runtimeVerify].filter(Boolean);
+    const directValid = mode === "subscribe" && Boolean(token) && verifyCandidates.includes(token);
     const brokerValid = !directValid && mode === "subscribe" && token ? await whatsappBrokerVerifyToken(token) : false;
     if (directValid || brokerValid) {
       res.statusCode = 200;
