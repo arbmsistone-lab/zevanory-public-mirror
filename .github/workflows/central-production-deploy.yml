@@ -172,16 +172,16 @@ jobs:
         run: |
           set -euo pipefail
           WORKERS_DEV="https://zevanory.girolocal-rb.workers.dev"
-          curl -fsS "$WORKERS_DEV/control-plane-vnext.js" -o /tmp/workers-dev.js
-          cmp -s /tmp/workers-dev.js worker/live-recovered/control-plane-vnext.js
+          curl -fsS "$WORKERS_DEV/control-plane-vnext.js" -o /tmp/workers-dev.js || echo "::error title=VERIFY_WORKERS_DEV_FETCH::workers.dev control-plane-vnext.js fetch failed"
+          cmp -s /tmp/workers-dev.js worker/live-recovered/control-plane-vnext.js || { echo "::error title=VERIFY_WORKERS_DEV_CMP::workers.dev asset differs from canonical ($(wc -c </tmp/workers-dev.js 2>/dev/null) vs $(wc -c <worker/live-recovered/control-plane-vnext.js) bytes)"; exit 1; }
           echo "WORKERS_DEV_CANONICAL_PASS"
           for i in $(seq 1 30); do
             curl -fsS https://zevanory.api.br/control-plane-vnext.js -o /tmp/live.js || true
             if cmp -s /tmp/live.js worker/live-recovered/control-plane-vnext.js; then break; fi
             sleep 5
           done
-          cmp -s /tmp/live.js worker/live-recovered/control-plane-vnext.js
-          python3 scripts/deploy/verify-live-asset.py
+          cmp -s /tmp/live.js worker/live-recovered/control-plane-vnext.js || { echo "::error title=VERIFY_APEX_ASSET_CMP::zevanory.api.br asset differs from canonical after 150s"; exit 1; }
+          python3 scripts/deploy/verify-live-asset.py || { echo "::error title=VERIFY_LIVE_ASSET::UTF-8/marker assertions failed"; exit 1; }
           # Cloudflare edge propagation can lag behind the successful Worker upload.
           # Poll the canonical, non-query API until it serves this exact release SHA.
           exact_sha=0
@@ -198,7 +198,10 @@ jobs:
             fi
             sleep 5
           done
-          test "$exact_sha" = "1"
+          if [ "$exact_sha" != "1" ]; then
+            GITHUB_SHA="$GITHUB_SHA" VERIFY_DIAG=1 python3 scripts/deploy/verify-exact-release-poll.py || true
+            exit 1
+          fi
           python3 scripts/deploy/verify-exact-release-final.py
       - name: Verify production API legal surfaces and parity after deploy
         if: steps.auth.outputs.available == 'true'
