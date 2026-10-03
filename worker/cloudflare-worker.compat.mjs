@@ -195,19 +195,6 @@ const wrapped = {
       return handleSupportKnowledge(request);
     }
 
-    // Piper relay accepts only CF-Worker=girolocal-rb.workers.dev (the original workers.dev zone).
-    // Calls made while serving zevanory.api.br carry that zone instead, so TTS hops once through
-    // this Worker's own workers.dev host, authenticated by an internal token.
-    if (url.pathname === "/internal/voice/relay-tts" && request.method === "POST") {
-      const expected = String(normalized.OPERATOR_TOKEN || "");
-      if (!url.hostname.endsWith(".workers.dev") || expected.length < 24 || request.headers.get("x-zevanory-relay-auth") !== expected) {
-        return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: { "content-type": "application/json" } });
-      }
-      const relay = String(normalized.VOICE_TTS_RELAY_URL || "https://tts.167-172-146-60.sslip.io").replace(/\/+$/, "");
-      const upstream = await fetch(relay + "/tts", { method: "POST", headers: { "content-type": "application/json" }, body: await request.text(), signal: AbortSignal.timeout(20000) });
-      return new Response(upstream.body, { status: upstream.status, headers: { "content-type": upstream.headers.get("content-type") || "audio/wav", "cache-control": "no-store" } });
-    }
-
     if (url.pathname === "/api/voice/final-closure") {
       const response = await handleVoiceFinalClosure(request, normalized);
       if (response) return response;
