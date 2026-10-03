@@ -25,6 +25,7 @@ jobs:
           git clone --quiet --filter=blob:none --no-checkout --depth 400 --branch gh-pages "https://github.com/${{ github.repository }}.git" /tmp/canonical-gh-pages
           if ! git -C /tmp/canonical-gh-pages merge-base --is-ancestor "$sha" HEAD; then echo "::error title=CERTIFIED_LIVE_SHA::live $sha is not a commit of canonical gh-pages"; exit 1; fi
           echo "EXPECTED_SHA=$sha" >> "$GITHUB_ENV"
+          echo "EXPECTED_SHA12=${sha:0:12}" >> "$GITHUB_ENV"
           echo "CERTIFIED_LIVE_SHA=$sha"
       - name: Bind audit to exact live release
         shell: bash
@@ -59,6 +60,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p12-slo-observation-37e695127af0
+          name: p12-slo-observation-${{ env.EXPECTED_SHA12 }}
           path: p12-slo-observation.json
           retention-days: 90

@@ -9,6 +9,10 @@ on:
     branches: [gh-pages]
     paths:
       - ".github/workflows/zevanory-p16-deterministic-exact-release.yml"
+  workflow_run:
+    workflows: ["ZEVANORY central production deploy"]
+    types: [completed]
+    branches: [gh-pages]
   workflow_dispatch:
 
 permissions:
@@ -18,9 +22,23 @@ jobs:
   lifecycle:
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    env:
-      EXPECTED_SHA: 37e695127af02c9a32c601db0353a3708fc45d82
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     steps:
+      - name: Resolve certified live release
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Live release must be a real commit on the canonical gh-pages branch.
+          # Pure git + public endpoint: no GitHub API quota involved.
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/release -o /tmp/certified-release.json
+          sha="$(jq -r '.deployment.commit_sha // empty' /tmp/certified-release.json)"
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then echo "::error title=CERTIFIED_LIVE_SHA::live release has no exact commit sha"; exit 1; fi
+          rm -rf /tmp/canonical-gh-pages
+          git clone --quiet --filter=blob:none --no-checkout --depth 400 --branch gh-pages "https://github.com/${{ github.repository }}.git" /tmp/canonical-gh-pages
+          if ! git -C /tmp/canonical-gh-pages merge-base --is-ancestor "$sha" HEAD; then echo "::error title=CERTIFIED_LIVE_SHA::live $sha is not a commit of canonical gh-pages"; exit 1; fi
+          echo "EXPECTED_SHA=$sha" >> "$GITHUB_ENV"
+          echo "EXPECTED_SHA12=${sha:0:12}" >> "$GITHUB_ENV"
+          echo "CERTIFIED_LIVE_SHA=$sha"
       - uses: actions/checkout@v4
 
       - name: Fetch immutable certified release
@@ -136,7 +154,7 @@ jobs:
       - name: Upload exact-release P16 evidence
         uses: actions/upload-artifact@v4
         with:
-          name: zevanory-p16-financial-37e695127af0
+          name: zevanory-p16-financial-${{ env.EXPECTED_SHA12 }}
           path: |
             evidence/p16-source-contract.json
             evidence/financial-engine-deterministic.json

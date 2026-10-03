@@ -27,6 +27,9 @@ on:
 permissions:
   contents: read
   actions: read
+concurrency:
+  group: zees16-control-reconciler
+  cancel-in-progress: true
 jobs:
   reconcile:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
