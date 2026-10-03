@@ -1,0 +1,116 @@
+name: Mercado Pago Checkout Pro - ciclo limpo manual
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mp-checkout-pro-clean-cycle
+  cancel-in-progress: false
+
+jobs:
+  create-clean-order-and-preference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APP: https://zevanory.api.br
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+    steps:
+      - name: Create canonical R$197 order and preference
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.parse, urllib.request, uuid, pathlib
+
+          app=os.environ["APP"].rstrip("/")
+          cert=os.environ["CERTIFICATION_E2E_TOKEN"].strip()
+          mp_token=os.environ["MERCADOPAGO_TEST_ACCESS_TOKEN"].strip()
+          assert cert and mp_token
+
+          def app_req(path, method="GET", headers=None, body=None, ok=(200,201)):
+              h={"accept":"application/json","user-agent":"ZEVANORY-Clean-Checkout/1.0"}
+              if headers: h.update(headers)
+              data=None
+              if body is not None:
+                  h["content-type"]="application/json"
+                  data=json.dumps(body).encode()
+              req=urllib.request.Request(app+path,method=method,headers=h,data=data)
+              with urllib.request.urlopen(req,timeout=30) as res:
+                  raw=res.read().decode()
+                  obj=json.loads(raw) if raw else {}
+                  assert res.status in ok,(res.status,obj)
+                  return obj
+
+          def mp_req(path):
+              req=urllib.request.Request("https://api.mercadopago.com"+path,headers={
+                  "Authorization":"Bearer "+mp_token,"Accept":"application/json",
+                  "User-Agent":"ZEVANORY-Clean-Checkout/1.0"})
+              with urllib.request.urlopen(req,timeout=30) as res:
+                  return json.loads(res.read().decode())
+
+          invite=app_req("/api/internal/certification/e2e/invite","POST",
+                         {"x-certification-e2e-token":cert},{},(201,))
+          assert invite.get("created") is True and invite.get("token"),invite
+
+          request_id=str(uuid.uuid4()); session_id=str(uuid.uuid4())
+          checkout=app_req("/api/checkout/mercadopago","POST",
+                           {"x-certification-pilot-token":invite["token"]},
+                           {"request_id":request_id,"session_id":session_id,"offer_id":"ZEV-IA-011"},(201,))
+          assert checkout.get("accepted") is True and checkout.get("duplicate") is False,checkout
+          order_id=str(checkout.get("order_id") or "")
+          checkout_url=str(checkout.get("checkout_url") or "")
+          assert order_id and checkout_url.startswith("https://www.mercadopago.com"),checkout
+
+          state=app_req("/api/internal/certification/e2e/status?order_id="+urllib.parse.quote(order_id),
+                        "GET",{"x-certification-e2e-token":cert},None,(200,))
+          order=state.get("order") or {}
+          assert order.get("offer_id")=="ZEV-IA-011",order
+          assert abs(float(order.get("amount") or 0)-197.0)<0.001,order
+          assert order.get("status")=="checkout_ready",order
+          pref_id=str(order.get("provider_checkout_id") or "")
+          assert pref_id,pref_id
+
+          pref=mp_req("/checkout/preferences/"+urllib.parse.quote(pref_id))
+          assert str(pref.get("external_reference") or "").lower()==order_id.lower(),pref
+          assert str(pref.get("notification_url") or "").startswith("https://zevanory.api.br/api/webhooks"),pref
+          items=pref.get("items") or []
+          assert len(items)==1 and abs(float(items[0].get("unit_price") or 0)-197.0)<0.001,items
+          assert str(items[0].get("currency_id") or "")=="BRL",items
+          assert str(pref.get("auto_return") or "")=="approved",pref
+          assert str(pref.get("init_point") or "")==checkout_url,pref
+
+          pathlib.Path("evidence").mkdir(exist_ok=True)
+          report={
+              "gate":"MERCADOPAGO_CLEAN_CHECKOUT_PRO",
+              "order_id":order_id,
+              "offer_id":"ZEV-IA-011",
+              "amount_brl":197.0,
+              "preference_id":pref_id,
+              "external_reference":pref.get("external_reference"),
+              "notification_url":pref.get("notification_url"),
+              "init_point":checkout_url,
+              "verdict":"PASS"
+          }
+          pathlib.Path("evidence/mercadopago-clean-checkout.json").write_text(json.dumps(report,ensure_ascii=False,indent=2)+"\n")
+          print("CLEAN_ORDER_AMOUNT_197=PASS")
+          print("PREFERENCE_FROM_ORDER=PASS")
+          print("EXTERNAL_REFERENCE_EQUALS_ORDER_ID=PASS")
+          print("NOTIFICATION_URL=PASS")
+          print("CHECKOUT_URL="+checkout_url)
+          print("ORDER_ID="+order_id)
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+              f.write("## Checkout Pro limpo\n\n")
+              f.write("- Pedido: `"+order_id+"`\n")
+              f.write("- Valor: **R$ 197,00**\n")
+              f.write("- Link: "+checkout_url+"\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mercadopago-clean-checkout
+          path: evidence/mercadopago-clean-checkout.json
+          retention-days: 7

@@ -342,6 +342,12 @@ function resolveCheckoutOffer(id) {
   if (!product || product.sellable !== true || product.artifact_materialized !== true) return null;
   return Object.freeze({ id: product.sku, product: product.product, commercial_name: product.commercial_name, brand: product.brand, endorsed_by: product.endorsed_by, brand_signature: product.brand_signature, version: product.version, price_brl: product.pilot_price_brl, artifact_name: product.artifact_name, artifact_sha256: product.artifact_sha256 });
 }
+function resolveCertificationCheckoutOffer(id) {
+  const product = getZevanoryProduct(id);
+  if (!product || product.artifact_materialized !== true || Number(product.table_price_brl) <= 0) return null;
+  return Object.freeze({ id: product.sku, product: product.product, commercial_name: product.commercial_name, brand: product.brand, endorsed_by: product.endorsed_by, brand_signature: product.brand_signature, version: product.version, price_brl: Number(product.table_price_brl), artifact_name: product.artifact_name, artifact_sha256: product.artifact_sha256, certification_only: true });
+}
+__name(resolveCertificationCheckoutOffer, "resolveCertificationCheckoutOffer");
 var ARBM_SIST_OFFER, ZEVANORY_PRODUCTS, ZEVANORY_PORTFOLIO;
 var init_offerCatalog = __esm({
   "src/offerCatalog.mjs"() {
@@ -13840,8 +13846,9 @@ function normalizeAsaasWebhook(body) {
 }
 __name(normalizeAsaasWebhook, "normalizeAsaasWebhook");
 function parseExternalReference(value) {
+  const text = String(value || "").trim();
+  if (isUuid(text)) return text.toLowerCase();
   const prefix = `ZEVANORY:${PROJECT.experimentId}:`;
-  const text = String(value || "");
   if (!text.startsWith(prefix)) return null;
   const orderId = text.slice(prefix.length);
   return isUuid(orderId) ? orderId.toLowerCase() : null;
@@ -13952,10 +13959,11 @@ var FINANCIAL_RECONCILIATION_RULES = Object.freeze({
 // src/order.mjs
 init_config();
 init_offerCatalog();
-function normalizeCheckoutRequest(body) {
+function normalizeCheckoutRequest(body, { certification = false } = {}) {
   if (!body || typeof body !== "object") return null;
   if (!isUuid(body.request_id) || !isUuid(body.session_id)) return null;
-  const offer = resolveCheckoutOffer(body.offer_id || body.sku || PROJECT.offerId);
+  const offerId = body.offer_id || body.sku || PROJECT.offerId;
+  const offer = certification ? resolveCertificationCheckoutOffer(offerId) : resolveCheckoutOffer(offerId);
   if (!offer) return null;
   return Object.freeze({ requestId: String(body.request_id).toLowerCase(), sessionId: String(body.session_id).toLowerCase(), offer });
 }
@@ -14181,14 +14189,14 @@ var safeText2 = /* @__PURE__ */ __name((value, min = 1, max = 160) => {
   return text.length >= min && text.length <= max && !/[\u0000-\u001f\u007f]/.test(text) ? text : "";
 }, "safeText");
 function buildMercadoPagoPreference(orderId, publicBaseUrl, offer = resolveCheckoutOffer(PROJECT.offerId), options = {}) {
-  const externalReference = externalReferenceForOrder(orderId);
+  const externalReference = isUuid(orderId) ? String(orderId).toLowerCase() : "";
   const base = safePublicBaseUrl(publicBaseUrl);
   if (!externalReference || !base || !isUuid(orderId) || !offer) return null;
   const notificationPath = String(options.notificationPath || "/api/webhooks/mercadopago");
   if (!notificationPath.startsWith("/api/")) return null;
   return Object.freeze({
     items: [{ id: offer.id, title: `${offer.product} ${offer.version}`, description: "Produto digital ZEVANORY", quantity: 1, currency_id: "BRL", unit_price: offer.price_brl }],
-    back_urls: { success: `${base}/piloto?checkout=success`, pending: `${base}/piloto?checkout=pending`, failure: `${base}/piloto?checkout=failure` },
+    back_urls: { success: "https://vendas.zevanory.api.br/solucoes?pagamento=aprovado", pending: "https://vendas.zevanory.api.br/solucoes?pagamento=pendente", failure: "https://vendas.zevanory.api.br/solucoes?pagamento=falhou" },
     auto_return: "approved",
     external_reference: externalReference,
     notification_url: `${base}${notificationPath}`,
@@ -14212,7 +14220,7 @@ function normalizeMercadoPagoPreference(value, externalReference, env = "sandbox
   if (!value || typeof value !== "object") return null;
   const id = safeText2(value.id, 4, 160);
   if (!id || String(value.external_reference || "") !== externalReference) return null;
-  const preferred = String(env || "").toLowerCase() === "production" ? value.init_point : value.sandbox_init_point || value.init_point;
+  const preferred = value.init_point || value.sandbox_init_point;
   const link = trustedCheckoutUrl(preferred);
   if (!link) return null;
   return Object.freeze({ id, link });
@@ -14285,10 +14293,11 @@ async function handler12(req, res) {
   res.setHeader("cache-control", "no-store");
   res.setHeader("x-content-type-options", "nosniff");
   if (req.method !== "POST") return json9(res, 405, { error: "method_not_allowed" });
-  const input = normalizeCheckoutRequest(await readJsonRequestBody(req));
-  if (!input) return json9(res, 400, { error: "invalid_checkout_request" });
   const gate = salesGate();
   const pilotToken = String(req.headers?.["x-certification-pilot-token"] || "").trim();
+  const checkoutBody = await readJsonRequestBody(req);
+  const input = normalizeCheckoutRequest(checkoutBody, { certification: !gate.enabled && Boolean(pilotToken) });
+  if (!input) return json9(res, 400, { error: "invalid_checkout_request" });
   if (!gate.enabled && !pilotToken) return json9(res, 503, { error: "sales_globally_blocked", blockers: gate.blockers });
   if (process.env.CHECKOUT_ENABLED !== "true") return json9(res, 503, { error: "checkout_disabled" });
   const env = String(process.env.MERCADOPAGO_ENV || "").toLowerCase();
@@ -14310,9 +14319,9 @@ async function handler12(req, res) {
   const checkoutEnv = pilotSandbox ? "sandbox" : env;
   const providerToken = pilotSandbox ? String(process.env.MERCADOPAGO_TEST_ACCESS_TOKEN || "") : String(process.env.MERCADOPAGO_ACCESS_TOKEN || "");
   if (!providerToken) return json9(res, 503, { error: "checkout_provider_unavailable" });
-  const effectiveOffer = pilot?.authorized ? Object.freeze({ ...input.offer, price_brl: certificationPilotAmountBrl(process.env) }) : input.offer;
+  const effectiveOffer = input.offer;
   const orderId = crypto6.randomUUID();
-  const externalReference = externalReferenceForOrder(orderId);
+  const externalReference = String(orderId).toLowerCase();
   try {
     const inserted = await sql.query(`INSERT INTO orders (order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status,certification_pilot,certification_pilot_invite_id) VALUES ($1,$2,$3,$4,$5,$6,'BRL','mercadopago',$7,'created',$8,$9) ON CONFLICT (request_id) DO NOTHING RETURNING order_id`, [orderId, input.requestId, input.sessionId, PROJECT.experimentId, input.offer.id, effectiveOffer.price_brl, externalReference, Boolean(pilot?.authorized), pilot?.invite_id || null]);
     let order = inserted.length ? { order_id: orderId, external_reference: externalReference, status: "created" } : (await sql.query(`SELECT order_id,session_id,offer_id,external_reference,status,checkout_url,provider FROM orders WHERE request_id=$1`, [input.requestId]))[0];
@@ -14325,10 +14334,12 @@ async function handler12(req, res) {
       if (replay.action === "reuse") return json9(res, 200, { accepted: true, duplicate: true, order_id: order.order_id, checkout_url: replay.checkoutUrl });
       if (replay.action !== "create") return json9(res, 409, { error: replay.action === "in_progress" ? "checkout_in_progress" : "checkout_not_retryable" });
     }
-    const claimed = await sql.query(`UPDATE orders SET status='checkout_creating',updated_at=now() WHERE order_id=$1 AND status='created' RETURNING order_id`, [order.order_id]);
+    const claimed = await sql.query(`UPDATE orders SET status='checkout_creating',updated_at=now() WHERE order_id=$1 AND status='created' RETURNING order_id,amount,offer_id`, [order.order_id]);
     if (claimed.length !== 1) return json9(res, 409, { error: "checkout_in_progress" });
+    const orderBoundOffer = Object.freeze({ ...effectiveOffer, id: String(claimed[0].offer_id), price_brl: Number(claimed[0].amount) });
+    if (!Number.isFinite(orderBoundOffer.price_brl) || orderBoundOffer.price_brl <= 0) return json9(res, 409, { error: "order_amount_invalid" });
     const notificationPath = pilotSandbox ? "/api/webhooks?provider=mercadopago_test" : "/api/webhooks/mercadopago";
-    const payload = buildMercadoPagoPreference(order.order_id, publicBase, effectiveOffer, { notificationPath });
+    const payload = buildMercadoPagoPreference(order.order_id, publicBase, orderBoundOffer, { notificationPath });
     if (!payload) return json9(res, 503, { error: "checkout_payload_unavailable" });
     let raw;
     try {
@@ -14726,6 +14737,65 @@ var json12 = /* @__PURE__ */ __name((res, status, body) => {
   res.statusCode = status;
   return res.end(JSON.stringify(body));
 }, "json");
+function validMercadoPagoDeliveryEmail(value) {
+  const email = String(value || "").trim().toLowerCase();
+  return email.length <= 254 && /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email) ? email : "";
+}
+__name(validMercadoPagoDeliveryEmail, "validMercadoPagoDeliveryEmail");
+async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, providerEventId } = {}) {
+  const existing = (await sql.query(`select status,evidence_ref from service_fulfillment where order_id=$1 limit 1`, [orderId]))[0] || {};
+  let evidence = {};
+  try {
+    evidence = existing.evidence_ref && String(existing.evidence_ref).trim().startsWith("{") ? JSON.parse(existing.evidence_ref) : {};
+  } catch {
+    evidence = {};
+  }
+  if (existing.status === "delivered" && evidence.email_status === "sent" && String(evidence.download_url || "").startsWith("https://")) return Object.freeze(evidence);
+  const recipient = validMercadoPagoDeliveryEmail(payment?.payer?.email);
+  if (!recipient) throw new Error("delivery_recipient_invalid");
+  if (!String(process.env.RESEND_API_KEY || "").trim()) throw new Error("delivery_mailer_unavailable");
+  const base = safePublicBaseUrl(process.env.PAYMENT_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL) || "https://zevanory.api.br";
+  if (!evidence.download_url || !evidence.verification_url) {
+    const issued = await issueArtifactDownload(sql, { orderId, issuedBy: "mercadopago-webhook", ttlMinutes: 60 });
+    const probe = await issueArtifactDownload(sql, { orderId, issuedBy: "mercadopago-verification", ttlMinutes: 15 });
+    const download = new URL("/private/artifacts/download", base);
+    download.searchParams.set("token", issued.token);
+    const verification = new URL("/private/artifacts/download", base);
+    verification.searchParams.set("token", probe.token);
+    evidence = {
+      payment_id: String(payment?.id || ""),
+      provider_event_id: String(providerEventId || ""),
+      email_status: "pending",
+      email_provider_id: null,
+      download_url: download.toString(),
+      verification_url: verification.toString(),
+      artifact_sha256: String(issued.artifact?.sha256 || ""),
+      expires_at: issued.expires_at
+    };
+    await sql.query(`update service_fulfillment set evidence_ref=$2,updated_at=now() where order_id=$1`, [orderId, JSON.stringify(evidence)]);
+  }
+  const response2 = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "content-type": "application/json",
+      "Idempotency-Key": `zevanory-delivery-${String(payment?.id || "")}`
+    },
+    body: JSON.stringify({
+      from: process.env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>",
+      to: [recipient],
+      subject: "Seu acesso ZEVANORY",
+      text: `Pagamento confirmado. Seu link seguro de entrega: ${evidence.download_url}`
+    })
+  });
+  const sent = await response2.json().catch(() => ({}));
+  if (!response2.ok || !String(sent?.id || "").trim()) throw new Error("delivery_email_failed");
+  evidence = { ...evidence, email_status: "sent", email_provider_id: String(sent.id) };
+  const updated = await sql.query(`update service_fulfillment set status='delivered',evidence_ref=$2,delivered_at=coalesce(delivered_at,now()),updated_at=now() where order_id=$1 and status in ('pending','scheduled','in_progress','delivered') returning order_id`, [orderId, JSON.stringify(evidence)]);
+  if (updated.length !== 1) throw new Error("delivery_state_update_failed");
+  return Object.freeze(evidence);
+}
+__name(ensureMercadoPagoDigitalDelivery, "ensureMercadoPagoDigitalDelivery");
 async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, certificationOnly = false, source = "mercadopago" } = {}) {
   res.setHeader("content-type", "application/json; charset=utf-8");
   res.setHeader("cache-control", "no-store");
@@ -14748,10 +14818,16 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
       return json12(res, recovery.preserved ? 202 : 503, { accepted: recovery.preserved, preserved: recovery.preserved, reconciliation_pending: recovery.preserved, financial_truth: false, error: recovery.preserved ? void 0 : "financial_reconciliation_unavailable" });
     }
     const sql = cs(process.env.DATABASE_URL);
-    const orders = await sql.query(`SELECT order_id,amount,status,external_reference,provider_checkout_id,provider,certification_pilot FROM orders WHERE order_id::text=$1`, [orderId || ""]);
+    const orders = await sql.query(`SELECT order_id,amount,status,external_reference,provider_checkout_id,provider,certification_pilot FROM orders WHERE provider='mercadopago' AND (order_id::text=$1 OR external_reference=$2)`, [orderId || "", String(payment.external_reference || "")]);
     if (orders.length === 0) return json12(res, 200, { accepted: true, ignored: true, reason: "unlinked_payment" });
     if (orders.length !== 1 || orders[0].provider !== "mercadopago") return json12(res, 409, { error: "payment_reconciliation_failed", accepted: false });
     if (certificationOnly && orders[0].certification_pilot !== true) return json12(res, 409, { error: "certification_payment_required", accepted: false });
+    const observedAmount = Math.round(Number(payment.transaction_amount) * 100);
+    const expectedAmount = Math.round(Number(orders[0].amount) * 100);
+    if (String(payment.status || "").toLowerCase() === "approved" && (!Number.isFinite(observedAmount) || observedAmount !== expectedAmount || expectedAmount <= 0)) {
+      console.error("PAYMENT_AMOUNT_MISMATCH_REVIEW_REQUIRED", JSON.stringify({ provider: "mercadopago", payment_id: String(webhook.paymentId), order_id: String(orders[0].order_id), expected_amount: Number(orders[0].amount), observed_amount: Number(payment.transaction_amount) }));
+      return json12(res, 409, { error: "payment_amount_mismatch", accepted: false, review_required: true, order_id: String(orders[0].order_id), payment_id: String(webhook.paymentId) });
+    }
     const event = normalizeMercadoPagoFinancialEvent(payment, orders[0]);
     if (!event) return json12(res, 200, { accepted: true, ignored: true, reason: "non_final_payment" });
     const externalReference = String(orders[0].external_reference);
@@ -14820,6 +14896,15 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
     const outcome = rows[0] || {};
     if (Number(outcome.target_count) !== 1) return json12(res, 409, { error: "order_state_invalid", accepted: false });
     if (Number(outcome.inserted_count) === 1 && !outcome.order_status) return json12(res, 503, { error: "order_state_update_failed", accepted: false });
+    let deliveryEvidence = null;
+    if (event.normalized === "payment_confirmed" && String(outcome.order_status || outcome.current_status) === "paid") {
+      try {
+        deliveryEvidence = await ensureMercadoPagoDigitalDelivery(sql, { orderId: String(orders[0].order_id), payment, providerEventId });
+      } catch (deliveryError) {
+        console.error("PAID_ORDER_DELIVERY_PENDING", JSON.stringify({ order_id: String(orders[0].order_id), payment_id: String(webhook.paymentId), error: String(deliveryError?.message || "delivery_failed") }));
+        return json12(res, 503, { error: "paid_order_delivery_pending", accepted: false, payment_reconciled: true, order_id: String(orders[0].order_id), payment_id: String(webhook.paymentId), retry_required: true });
+      }
+    }
     if (Number(outcome.inserted_count) === 1) {
       if (!certificationOnly) {
         try {
@@ -14843,7 +14928,7 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
         }
       }
     }
-    return json12(res, 200, { accepted: true, duplicate: Number(outcome.inserted_count) === 0, event: event.normalized, order_id: String(orders[0].order_id), order_status: outcome.order_status || outcome.current_status, fulfillment_status: outcome.fulfillment_status || null, refunded_total: event.refundedTotal, certification_pilot: certificationOnly });
+    return json12(res, 200, { accepted: true, duplicate: Number(outcome.inserted_count) === 0, event: event.normalized, order_id: String(orders[0].order_id), order_status: outcome.order_status || outcome.current_status, fulfillment_status: deliveryEvidence ? "delivered" : outcome.fulfillment_status || null, delivery: deliveryEvidence, refunded_total: event.refundedTotal, certification_pilot: certificationOnly });
   } catch {
     return json12(res, 503, { error: "financial_reconciliation_unavailable", accepted: false });
   }
@@ -17652,11 +17737,18 @@ async function handlerFinancialE2EStatus(req, res) {
     const refundEvents = events.filter((x2) => x2.normalized_event === "refund_confirmed");
     const order = orders[0];
     const fulfillmentRow = fulfillment[0] || null;
+    let deliveryEvidence = null;
+    try {
+      deliveryEvidence = fulfillmentRow?.evidence_ref && String(fulfillmentRow.evidence_ref).trim().startsWith("{") ? JSON.parse(fulfillmentRow.evidence_ref) : null;
+    } catch {
+      deliveryEvidence = null;
+    }
     res.statusCode = 200;
     return res.end(JSON.stringify({
       order,
       financial_events: events,
       fulfillment: fulfillmentRow,
+      delivery_evidence: deliveryEvidence,
       provenance: evidence,
       invariants: {
         exactly_one_payment_confirmation: paymentEvents.length === 1,
