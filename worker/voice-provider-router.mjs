@@ -157,10 +157,10 @@ async function azureTts(text, env, fetchImpl) {
 
 async function piperTts(text, env, fetchImpl) {
   const relay = String(env.VOICE_TTS_RELAY_URL || "https://tts.167-172-146-60.sslip.io").replace(/\/+$/, "");
-  const hop = String(env.VOICE_TTS_WORKERS_DEV_HOP || "https://zevanory.girolocal-rb.workers.dev").replace(/\/+$/, "");
+  const hop = String(env.VOICE_TTS_WORKERS_DEV_HOP || "https://zevanory-tts-hop.girolocal-rb.workers.dev").replace(/\/+$/, "");
   const internal = String(env.OPERATOR_TOKEN || "");
   const viaHop = internal.length >= 24 && /^https:\/\/[a-z0-9-]+\.girolocal-rb\.workers\.dev$/i.test(hop);
-  const response = await fetchImpl(viaHop ? `${hop}/internal/voice/relay-tts` : `${relay}/tts`, {
+  const response = await fetchImpl(viaHop ? `${hop}/tts` : `${relay}/tts`, {
     method: "POST",
     headers: viaHop
       ? { "content-type": "application/json", "x-zevanory-relay-auth": internal }
