@@ -214,7 +214,7 @@ def check_sitemap():
 
 def check_official_whatsapp():
     worker_path = ROOT / "worker" / "cloudflare-worker.recovered.mjs"
-    deploy_path = ROOT / ".github" / "workflows" / "central-production-deploy.yml"
+    deploy_path = ROOT / "scripts" / "deploy" / "prepare-central-candidate.py"
     if not worker_path.exists() or not deploy_path.exists():
         return fail("WhatsApp oficial: fontes canônicas ausentes")
 

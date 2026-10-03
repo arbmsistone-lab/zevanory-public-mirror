@@ -1,0 +1,22 @@
+name: Workflow YAML validation
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workflow-yaml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate all workflow YAML with safe_load
+        run: |
+          python -m pip install --quiet "PyYAML==6.0.2"
+          python scripts/validate_workflows_yaml.py

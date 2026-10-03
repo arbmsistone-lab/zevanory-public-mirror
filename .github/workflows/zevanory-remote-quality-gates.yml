@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 env:
-  EXPECTED_SHA: 37e695127af02c9a32c601db0353a3708fc45d82
+  EXPECTED_SHA: 2237836450cd371365d9fe00c83e42f70df28025
 jobs:
   remote-quality:
     runs-on: ubuntu-latest
@@ -121,9 +121,9 @@ jobs:
           node --check worker/cloudflare-worker.compat.mjs
           node --check worker/zevanory-control-core.mjs
           python3 scripts/premerge_product_audit.py
-          grep -q 'SALE_GLOBALLY_ENABLED.*false' .github/workflows/central-production-deploy.yml
-          grep -q 'PRE_SALE_GATES_APPROVED.*false' .github/workflows/central-production-deploy.yml
-          grep -q 'WHATSAPP_SALES_ENABLED.*false' .github/workflows/central-production-deploy.yml
+          grep -q 'SALE_GLOBALLY_ENABLED.*false' scripts/deploy/prepare-central-candidate.py
+          grep -q 'PRE_SALE_GATES_APPROVED.*false' scripts/deploy/prepare-central-candidate.py
+          grep -q 'WHATSAPP_SALES_ENABLED.*false' scripts/deploy/prepare-central-candidate.py
           echo "REQUIRED_STATUS_BUILD=PASS"
 
   deploy:

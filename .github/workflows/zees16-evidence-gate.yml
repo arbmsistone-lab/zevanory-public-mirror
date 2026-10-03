@@ -11,7 +11,7 @@ on:
 permissions:
   contents: read
 env:
-  EXPECTED_SHA: "37e695127af02c9a32c601db0353a3708fc45d82"
+  EXPECTED_SHA: "2237836450cd371365d9fe00c83e42f70df28025"
 
 concurrency:
   group: zees16-evidence-${{ github.ref }}
