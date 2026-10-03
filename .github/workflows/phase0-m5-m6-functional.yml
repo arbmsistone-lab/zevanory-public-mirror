@@ -136,6 +136,10 @@ jobs:
           m6=json.load(open("evidence/m5-m6/m6-result.json"))
           print("FUNCTIONAL_M5="+m5["status"])
           print("FUNCTIONAL_M6="+m6["status"])
+          failed5=[k for k,v in m5.get("checks",{}).items() if not v]
+          print("::notice title=M5::status="+m5["status"]+" failed="+",".join(failed5)+" http="+json.dumps(m5.get("http"))+" identity="+json.dumps(m5.get("safe_identity"))[:300])
+          wrong6=[q["product"]+":"+q["question"] for q in m6.get("questions",[]) if not q.get("correct")]
+          print("::notice title=M6::status="+m6["status"]+" corpus="+str(m6.get("questions_correct"))+"/20 runtime_qa="+str(m6.get("runtime_qa_proven"))+" routes="+",".join(m6.get("runtime_qa_routes",[]))+" wrong="+",".join(wrong6))
           assert m5["status"]=="PASS",m5
           assert m6["status"]=="PASS",m6
           print("M5_M6_FUNCTIONAL=PASS")
