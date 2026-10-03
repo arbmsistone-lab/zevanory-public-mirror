@@ -24,8 +24,12 @@ jobs:
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           # Owner rule: zero spend. Free providers only (self-hosted Piper relay); support only, sales stay closed.
-          printf '%s' 'true' | npx --yes wrangler@4.143.0 secret put VOICE_TTS_FREE_ONLY --name zevanory
-          printf '%s' 'true' | npx --yes wrangler@4.143.0 secret put ZEVANORY_VOICE_SUPPORT_ENABLED --name zevanory
+          for name in VOICE_TTS_FREE_ONLY ZEVANORY_VOICE_SUPPORT_ENABLED; do
+            if ! printf '%s' 'true' | npx --yes wrangler@4.143.0 secret put "$name" --name zevanory > /tmp/put.log 2>&1; then
+              echo "::error title=SECRET_PUT_$name::$(tail -c 600 /tmp/put.log | tr '\n' ' ')"
+              exit 1
+            fi
+          done
           echo "VOICE_ZERO_SPEND_SECRETS=SET"
       - name: Verify voice probe synthesizes pt-BR audio
         shell: bash
