@@ -285,6 +285,32 @@ export async function whatsappOnboardingStatus(env={}) {
   });
 }
 
+async function finalizeTransport(env,record){
+    // Re-run only the transport steps with the stored, identity-verified credentials.
+  const verify_token=record.verify_token||b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const pin=record.two_step_pin||String(crypto.getRandomValues(new Uint32Array(1))[0]%1000000).padStart(6,"0");
+  record={...record,verify_token,two_step_pin:pin};
+  await putRecord(env,record); // the webhook challenge reads this verify token
+  let webhook_configured=false,waba_subscribed=false,webhook_error=null,waba_subscribe_error=null;
+  // Self-test exactly what Meta will call, so a failure is diagnosable here.
+  let webhook_selftest=null;
+  try {
+    const probe=new URL(WEBHOOK_URI);
+    probe.searchParams.set("hub.mode","subscribe");probe.searchParams.set("hub.verify_token",verify_token);probe.searchParams.set("hub.challenge","zv-selftest-123");
+    const rr=await fetch(probe.toString(),{headers:{"user-agent":"ZEVANORY-Webhook-SelfTest/1.0"}});
+    const body=(await rr.text()).slice(0,160);
+    webhook_selftest={status:rr.status,ok:rr.status===200&&body==="zv-selftest-123",body:body.replace(/zv-selftest-123/,"<challenge>")};
+  } catch(error){ webhook_selftest={status:0,ok:false,body:safeText(error?.message,160)}; }
+  try { webhook_configured=await configureAppWebhook({app_id:record.app_id||DEFAULT_APP_ID,app_secret:record.app_secret,verify_token}); } catch(error){ webhook_error=safeText(error?.message,240); }
+  try { waba_subscribed=await subscribeWaba({waba_id:String(record.waba_id),token:record.access_token}); } catch(error){ waba_subscribe_error=safeText(error?.message,240); }
+  const registration=await registerPhone({phone_id:String(record.phone_number_id),token:record.access_token,pin});
+  const lastVerify=await store(env)?.get("whatsapp:webhook:last-verify",{type:"json"}).catch(()=>null);
+  record={...record,webhook_selftest,webhook_last_verify:lastVerify||null,webhook_configured,waba_subscribed,webhook_error,waba_subscribe_error,phone_registration_ok:registration.ok,phone_registration_already:registration.already_registered,phone_registration_error:registration.error,updated_at:new Date().toISOString()};
+  const live=await verifyRuntime(record);
+  record={...record,identity_verified:Boolean(live.verified),identity_live:live};
+  await putRecord(env,record);
+  return record;
+}
 export async function handleWhatsappOnboarding(request,env={}){
   const url=new URL(request.url);
   let record=await getRecord(env).catch(()=>null);
@@ -303,6 +329,13 @@ export async function handleWhatsappOnboarding(request,env={}){
       waba_id:brokerState.waba_id||""
     }:record;
     if(record&&brokerState?.broker!==true&&Boolean(record.identity_verified)!==Boolean(live.verified)){record={...record,identity_verified:Boolean(live.verified),updated_at:new Date().toISOString()}; await putRecord(env,record);}
+    let autoMessage="";
+    const pendingTransport=brokerState?.broker!==true&&live.verified&&record?.access_token&&record?.phone_number_id&&record?.waba_id&&record?.app_secret&&!(record.webhook_configured&&record.waba_subscribed&&record.phone_registration_ok);
+    if(pendingTransport&&Date.now()-Number(record.last_finalize_at||0)>120000){
+      // Owner only needs to open/reload the page: transport setup retries itself.
+      try { record=await finalizeTransport(env,{...record,last_finalize_at:Date.now()}); autoMessage=record.webhook_configured&&record.waba_subscribed&&record.phone_registration_ok?"Configuração concluída automaticamente.":"Tentativa automática feita — veja os itens pendentes abaixo."; } catch {}
+      return responseHtml(dashboard(record,live,autoMessage||url.searchParams.get("message")||""));
+    }
     return responseHtml(dashboard(viewRecord,live,url.searchParams.get("message")||""));
   }
   if(url.pathname==="/admin/whatsapp-onboard/bootstrap"&&request.method==="POST"){
@@ -317,30 +350,8 @@ export async function handleWhatsappOnboarding(request,env={}){
     if(brokerState?.broker===true||!record?.access_token||!record?.phone_number_id||!record?.waba_id||!record?.app_secret){
       return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent("Conecte o número antes de concluir a configuração."),303);
     }
-    // Re-run only the transport steps with the stored, identity-verified credentials.
-    const verify_token=record.verify_token||b64url(crypto.getRandomValues(new Uint8Array(32)));
-    const pin=record.two_step_pin||String(crypto.getRandomValues(new Uint32Array(1))[0]%1000000).padStart(6,"0");
-    record={...record,verify_token,two_step_pin:pin};
-    await putRecord(env,record); // the webhook challenge reads this verify token
-    let webhook_configured=false,waba_subscribed=false,webhook_error=null,waba_subscribe_error=null;
-    // Self-test exactly what Meta will call, so a failure is diagnosable here.
-    let webhook_selftest=null;
-    try {
-      const probe=new URL(WEBHOOK_URI);
-      probe.searchParams.set("hub.mode","subscribe");probe.searchParams.set("hub.verify_token",verify_token);probe.searchParams.set("hub.challenge","zv-selftest-123");
-      const rr=await fetch(probe.toString(),{headers:{"user-agent":"ZEVANORY-Webhook-SelfTest/1.0"}});
-      const body=(await rr.text()).slice(0,160);
-      webhook_selftest={status:rr.status,ok:rr.status===200&&body==="zv-selftest-123",body:body.replace(/zv-selftest-123/,"<challenge>")};
-    } catch(error){ webhook_selftest={status:0,ok:false,body:safeText(error?.message,160)}; }
-    try { webhook_configured=await configureAppWebhook({app_id:record.app_id||DEFAULT_APP_ID,app_secret:record.app_secret,verify_token}); } catch(error){ webhook_error=safeText(error?.message,240); }
-    try { waba_subscribed=await subscribeWaba({waba_id:String(record.waba_id),token:record.access_token}); } catch(error){ waba_subscribe_error=safeText(error?.message,240); }
-    const registration=await registerPhone({phone_id:String(record.phone_number_id),token:record.access_token,pin});
-    const lastVerify=await store(env)?.get("whatsapp:webhook:last-verify",{type:"json"}).catch(()=>null);
-    record={...record,webhook_selftest,webhook_last_verify:lastVerify||null,webhook_configured,waba_subscribed,webhook_error,waba_subscribe_error,phone_registration_ok:registration.ok,phone_registration_already:registration.already_registered,phone_registration_error:registration.error,updated_at:new Date().toISOString()};
-    const live=await verifyRuntime(record);
-    record={...record,identity_verified:Boolean(live.verified),identity_live:live};
-    await putRecord(env,record);
-    const done=webhook_configured&&waba_subscribed&&registration.ok;
+    record=await finalizeTransport(env,{...record,last_finalize_at:Date.now()});
+    const done=record.webhook_configured&&record.waba_subscribed&&record.phone_registration_ok;
     return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent(done?"Configuração concluída: webhook, assinatura e registro OK.":"Configuração parcial — veja os itens pendentes abaixo."),303);
   }
   if(url.pathname==="/admin/whatsapp-onboard/start"&&request.method==="GET"){
