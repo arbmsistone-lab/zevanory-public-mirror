@@ -85,13 +85,23 @@ jobs:
           assert pref_id,pref_id
 
           pref=mp_req("/checkout/preferences/"+urllib.parse.quote(pref_id))
-          assert str(pref.get("external_reference") or "").lower()==order_id.lower(),pref
-          assert str(pref.get("notification_url") or "").startswith("https://zevanory.api.br/api/webhooks"),pref
           items=pref.get("items") or []
-          assert len(items)==1 and abs(float(items[0].get("unit_price") or 0)-197.0)<0.001,items
-          assert str(items[0].get("currency_id") or "")=="BRL",items
-          assert str(pref.get("auto_return") or "")=="approved",pref
-          assert str(pref.get("init_point") or "")==checkout_url,pref
+          checks={
+              "external_reference": str(pref.get("external_reference") or "").lower()==order_id.lower(),
+              "notification_url": str(pref.get("notification_url") or "").startswith("https://zevanory.api.br/api/webhooks"),
+              "single_item_197": len(items)==1 and abs(float(items[0].get("unit_price") or 0)-197.0)<0.001,
+              "currency_brl": bool(items) and str(items[0].get("currency_id") or "")=="BRL",
+              "auto_return": str(pref.get("auto_return") or "")=="approved",
+              "init_point_matches": str(pref.get("init_point") or "")==checkout_url,
+          }
+          observed={"external_reference":pref.get("external_reference"),"notification_url":pref.get("notification_url"),
+                    "auto_return":pref.get("auto_return"),"back_urls":pref.get("back_urls"),
+                    "init_point":pref.get("init_point"),"checkout_url":checkout_url,
+                    "items":[{k:i.get(k) for k in ("unit_price","currency_id")} for i in items],"order_id":order_id}
+          failed=[k for k,v in checks.items() if not v]
+          if failed:
+              print("::error title=MP_PREFERENCE_CHECKS::failed="+",".join(failed)+" observed="+json.dumps(observed,ensure_ascii=False)[:700])
+              raise SystemExit(1)
 
           pathlib.Path("evidence").mkdir(exist_ok=True)
           report={
