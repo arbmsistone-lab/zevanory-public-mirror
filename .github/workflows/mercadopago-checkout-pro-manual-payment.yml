@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY' 2>/tmp/mp-step.err || { tail -c 900 /tmp/mp-step.err | tr '\n' ' ' | sed 's/^/::error title=MP_STEP_FAILED::/'; echo; exit 1; }
+          python3 - <<'PY' 2>/tmp/mp-step.err || { grep -E '^ +(assert|raise|[a-z_]+=)' /tmp/mp-step.err | tail -1 | sed 's/^ */::error title=MP_FAILED_AT::/'; tail -c 700 /tmp/mp-step.err | tr '\n' ' ' | sed 's/^/::error title=MP_STEP_FAILED::/'; echo; exit 1; }
           import json, os, urllib.parse, urllib.request, uuid, pathlib
           import urllib.error as _ue, urllib.request as _ur
           _orig_urlopen=_ur.urlopen
