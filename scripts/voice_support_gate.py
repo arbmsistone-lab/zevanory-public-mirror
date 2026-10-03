@@ -68,6 +68,9 @@ for marker in [
     assert marker in deploy, f"missing production voice var: {marker}"
 assert 'c["vars"]["VOICE_TTS_FREE_ONLY"]' not in deploy
 assert 'c["vars"]["ZEVANORY_VOICE_SUPPORT_ENABLED"]' not in deploy
+# Voice support is switched on only through the compact runtime config (owner zero-spend
+# decision, Workers Free 64-variable cap); the zero-spend guard stays a Worker secret.
+assert 'runtime_config["ZEVANORY_VOICE_SUPPORT_ENABLED"]="true"' in deploy
 print("VOICE_PRODUCTION_FAIL_CLOSED_ZERO_SPEND_CONFIG_GATE=PASS")
 
 assert 'VOICE_NATURALITY_CERTIFIED' in worker
