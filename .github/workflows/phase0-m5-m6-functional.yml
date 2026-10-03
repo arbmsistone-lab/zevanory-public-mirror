@@ -90,7 +90,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          routes="$(grep -Eo '["''']/api/[^"''']+["''']' worker/cloudflare-worker.recovered.mjs 2>/dev/null | tr -d '"''' | grep -Ei 'knowledge|faq|support|answer|assistant' | sort -u || true)"
+          routes="$(grep -Eo '["''']/api/[^"''']+["''']' worker/*.mjs 2>/dev/null | tr -d '"''' | grep -Ei 'knowledge|faq|support|answer|assistant' | sort -u || true)"
           printf '%s\n' "$routes" > evidence/m5-m6/m6-runtime-routes.txt
           for slug in ia-na-pratica vendas-na-pratica lucro-e-caixa combo-ia-vendas negocio-completo; do
             code="$(curl -sSL -o "evidence/m5-m6/$slug.html" -w '%{http_code}' "https://vendas.zevanory.api.br/$slug" || true)"
