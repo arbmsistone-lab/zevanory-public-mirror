@@ -215,7 +215,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS -D /tmp/live-security-headers.txt -o /tmp/live-solutions.html https://zevanory.api.br/solucoes
+          curl -fsSL -D /tmp/live-security-headers.txt -o /tmp/live-solutions.html https://zevanory.api.br/solucoes
           python3 scripts/verify-live-headers.py /tmp/live-security-headers.txt > /tmp/headers.log 2>&1 || { tail -5 /tmp/headers.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_HEADERS::/'; echo; exit 1; }
           npm install --no-save playwright@1.55.0 >/dev/null 2>&1
           npx playwright install --with-deps chromium >/dev/null 2>&1
