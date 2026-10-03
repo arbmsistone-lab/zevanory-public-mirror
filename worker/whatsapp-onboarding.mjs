@@ -4,6 +4,14 @@ const GRAPH_VERSION = "v26.0";
 const REDIRECT_URI = "https://zevanory.api.br/admin/whatsapp-onboard/callback";
 const WEBHOOK_URI = "https://zevanory.api.br/api/webhooks/meta";
 const OFFICIAL_E164 = "5588992545413";
+// Brazilian mobiles exist with and without the 9th digit (55 DD 9XXXXXXXX vs 55 DD XXXXXXXX);
+// Meta may report either form for the same line, so compare them as one number.
+function isOfficialNumber(value){
+  const d=String(value||"").replace(/\D/g,"");
+  if(d===OFFICIAL_E164) return true;
+  const m=/^55(\d{2})9(\d{8})$/.exec(OFFICIAL_E164);
+  return Boolean(m&&d==="55"+m[1]+m[2]);
+}
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -165,7 +173,7 @@ async function discoverOfficialNumber(token){
         phones=await graphJson("https://graph.facebook.com/"+GRAPH_VERSION+"/"+encodeURIComponent(waba.id)+"/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status,name_status,new_name_status&limit=100",{token});
       } catch { continue; }
       for(const phone of phones.data||[]){
-        if(digits(phone.display_phone_number)===OFFICIAL_E164){
+        if(isOfficialNumber(phone.display_phone_number)){
           return {business,waba,phone};
         }
       }
@@ -205,7 +213,7 @@ async function verifyRuntime(record){
   try {
     const fields="id,display_phone_number,verified_name,name_status,new_name_status,quality_rating,code_verification_status";
     const p=await graphJson("https://graph.facebook.com/"+GRAPH_VERSION+"/"+encodeURIComponent(record.phone_number_id)+"?fields="+encodeURIComponent(fields),{token:record.access_token});
-    const number_ok=String(p.id||"")===String(record.phone_number_id)&&digits(p.display_phone_number)===OFFICIAL_E164;
+    const number_ok=String(p.id||"")===String(record.phone_number_id)&&isOfficialNumber(p.display_phone_number);
     const brand_ok=String(p.verified_name||"").trim().toUpperCase()==="ZEVANORY";
     const name_ok=["APPROVED","AVAILABLE_WITHOUT_REVIEW"].includes(String(p.name_status||"").toUpperCase());
     return {verified:number_ok&&brand_ok&&name_ok,number_ok,brand_ok,name_ok,verified_name:safeText(p.verified_name),name_status:safeText(p.name_status),quality_rating:safeText(p.quality_rating),code_verification_status:safeText(p.code_verification_status)};
