@@ -1,0 +1,41 @@
+name: ZEVANORY voice zero-spend enable
+on:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/voice-zero-spend-enable.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: voice-zero-spend-enable
+  cancel-in-progress: false
+jobs:
+  enable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+    steps:
+      - name: Enable zero-spend TTS guard and voice support (Worker secrets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          # Owner rule: zero spend. Free providers only (self-hosted Piper relay); support only, sales stay closed.
+          printf '%s' 'true' | npx --yes wrangler@4.143.0 secret put VOICE_TTS_FREE_ONLY --name zevanory
+          printf '%s' 'true' | npx --yes wrangler@4.143.0 secret put ZEVANORY_VOICE_SUPPORT_ENABLED --name zevanory
+          echo "VOICE_ZERO_SPEND_SECRETS=SET"
+      - name: Verify voice probe synthesizes pt-BR audio
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 12); do
+            code="$(curl -sS -o /tmp/probe.json -w '%{http_code}' https://zevanory.api.br/api/voice/probe || true)"
+            [ "$code" = "200" ] && break
+            sleep 10
+          done
+          echo "::notice title=VOICE_PROBE::HTTP $code $(head -c 300 /tmp/probe.json)"
+          test "$code" = "200"
+          python3 -c "import json;d=json.load(open('/tmp/probe.json'));assert d.get('ok') is True and d.get('bytes',0)>1000 and d.get('language')=='pt-BR',d;print('VOICE_PROBE=PASS',d.get('provider'),d.get('bytes'))"
