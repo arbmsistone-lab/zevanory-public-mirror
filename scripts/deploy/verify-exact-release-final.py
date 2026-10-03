@@ -14,7 +14,7 @@ assert core["release_sha"]==os.environ["TARGET_RUNTIME_SHA"]
 assert core["architecture"]["flow"]==["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]
 assert core["architecture"]["circular_dependency"] is False
 assert core["invariants"]["evidence_to_evaluation_unidirectional"] is True
-assert zea10["source_layer"]=="ZEES-16" and zea10["authority"] is False
+assert zea10["source_layer"]=="ZEES-16" and zea10["authority"] is True
 print("PRODUCTION_EXACT_SHA_PASS",os.environ["TARGET_RUNTIME_SHA"])
 print("PRODUCTION_ZEES_ZEA_CORE_ADMIN_ARCHITECTURE_PASS")
 print("PRODUCTION_CENTRAL_UTF8_AND_SAFETY_PASS")

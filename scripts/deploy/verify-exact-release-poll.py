@@ -20,7 +20,7 @@ checks={
     "core.architecture.flow": (core.get("architecture",{}).get("flow"), ["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]),
     "core.invariants.evidence_to_evaluation_unidirectional": (core.get("invariants",{}).get("evidence_to_evaluation_unidirectional"), True),
     "zea10.source_layer": (zea10.get("source_layer"), "ZEES-16"),
-    "zea10.authority": (zea10.get("authority"), False),
+    "zea10.authority": (zea10.get("authority"), True),
 }
 failed=[k for k,(got,want) in checks.items() if got!=want]
 if diag:
