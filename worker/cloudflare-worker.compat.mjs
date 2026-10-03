@@ -90,7 +90,7 @@ function legacyTrustProjection(body) {
 
 const wrapped = {
   async fetch(request, env, ctx) {
-    const normalized = normalizeEnv(env);
+    let normalized = normalizeEnv(env);
     const url = new URL(request.url);
 
     // One administrative surface only: legacy HTML entrypoints permanently
@@ -118,6 +118,32 @@ const wrapped = {
         loadWhatsappBrokerState(normalized.WHATSAPP_BROKER).catch(()=>null)
       ]);
       globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = whatsappRuntime || {};
+      // Credentials verified live by the official onboarding win over legacy Worker vars,
+      // which may belong to a previous number/app (Meta answered HTTP 400 with them).
+      if (whatsappRuntime?.identity_verified === true && whatsappRuntime.access_token && whatsappRuntime.phone_number_id) {
+        const overrides = {
+          WHATSAPP_ACCESS_TOKEN: whatsappRuntime.access_token,
+          WHATSAPP_PHONE_NUMBER_ID: whatsappRuntime.phone_number_id,
+          WHATSAPP_BUSINESS_ACCOUNT_ID: whatsappRuntime.waba_id || "",
+          META_APP_SECRET: whatsappRuntime.app_secret,
+          META_VERIFY_TOKEN: whatsappRuntime.verify_token,
+          META_WEBHOOK_VERIFY_TOKEN: whatsappRuntime.verify_token,
+          META_GRAPH_VERSION: whatsappRuntime.graph_version || "v26.0"
+        };
+        const base = normalized;
+        const own = (k) => Object.prototype.hasOwnProperty.call(overrides, k);
+        // Empty extensible target: forwarding to a frozen env would violate Proxy invariants.
+        normalized = new Proxy({}, {
+          get(_t, prop) { return own(prop) ? overrides[prop] : Reflect.get(base, prop); },
+          has(_t, prop) { return own(prop) || Reflect.has(base, prop); },
+          ownKeys() { return [...new Set([...Reflect.ownKeys(base), ...Object.keys(overrides)])]; },
+          getOwnPropertyDescriptor(_t, prop) {
+            if (own(prop)) return { value: overrides[prop], enumerable: true, configurable: true, writable: false };
+            const d = Reflect.getOwnPropertyDescriptor(base, prop);
+            return d ? { ...d, configurable: true } : undefined;
+          }
+        });
+      }
       globalThis.__ZEVANORY_WHATSAPP_BROKER__ = normalized.WHATSAPP_BROKER || null;
       globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = whatsappBrokerState;
       globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = normalized.ZEVANORY_PRIVATE_ARTIFACTS || null;
