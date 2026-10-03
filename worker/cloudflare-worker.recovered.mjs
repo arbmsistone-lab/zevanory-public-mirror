@@ -8627,6 +8627,13 @@ async function verifyInstagramIdentity({ env = process.env, fetchImpl = globalTh
   return result(true, ok, ok ? "identity_match" : "identity_mismatch", { provider_id: clean7(x2.body?.id), username: clean7(x2.body?.username), biography, website, whatsapp_contact_visible: whatsappVisible, whatsapp_route_ready: whatsappVisible || whatsappRouteReady, whatsapp_route_mode: whatsappVisible ? "native_profile" : whatsappRouteMode });
 }
 __name(verifyInstagramIdentity, "verifyInstagramIdentity");
+function sameBrazilMobile(a, b) {
+  // Meta may report a BR mobile with or without the 9th digit (55DD9XXXXXXXX vs 55DDXXXXXXXX).
+  const x = String(a || ""), y = String(b || "");
+  if (x === y) return true;
+  const strip = (v) => { const m = /^55(\d{2})9(\d{8})$/.exec(v); return m ? "55" + m[1] + m[2] : v; };
+  return Boolean(x) && strip(x) === strip(y);
+}
 async function verifyWhatsappIdentity({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
   const runtime = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
   const brokerState = globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ || {};
@@ -8649,7 +8656,7 @@ async function verifyWhatsappIdentity({ env = process.env, fetchImpl = globalThi
   const fields = "id,display_phone_number,verified_name,name_status,new_name_status,quality_rating,code_verification_status";
   const x2 = await getJson(fetchImpl, `https://graph.facebook.com/${version}/${encodeURIComponent(id)}?fields=${fields}`, token);
   if (!x2.ok) return result(true, false, `provider_http_${x2.status}`);
-  const numberMatch = clean7(x2.body?.id) === id && digits(x2.body?.display_phone_number) === PROJECT.officialWhatsappE164;
+  const numberMatch = clean7(x2.body?.id) === id && sameBrazilMobile(digits(x2.body?.display_phone_number), PROJECT.officialWhatsappE164);
   const verifiedName = clean7(x2.body?.verified_name), nameStatus = clean7(x2.body?.name_status).toUpperCase();
   const brandMatch = verifiedName.toUpperCase() === "ZEVANORY";
   const nameUsable = ["APPROVED", "AVAILABLE_WITHOUT_REVIEW"].includes(nameStatus);

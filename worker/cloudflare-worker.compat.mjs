@@ -107,7 +107,11 @@ const wrapped = {
       url.pathname.startsWith("/admin/whatsapp-onboard") ||
       url.pathname.startsWith("/api/admin/whatsapp-onboard") ||
       url.pathname.startsWith("/api/whatsapp") ||
-      url.pathname.startsWith("/webhooks/whatsapp");
+      url.pathname.startsWith("/webhooks/whatsapp") ||
+      // Inbound Meta messages and the WhatsApp/voice diagnostics need the stored credentials too.
+      url.pathname.startsWith("/api/webhooks") ||
+      url.pathname.startsWith("/api/voice") ||
+      (url.pathname === "/api/config" && /^(channel_identity_health|closure_status)$/.test(url.searchParams.get("view") || ""));
     if (whatsappPath) {
       const [whatsappRuntime, whatsappBrokerState] = await Promise.all([
         loadWhatsappRuntimeCredentials(normalized).catch(()=>null),
