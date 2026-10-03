@@ -157,14 +157,16 @@ async function azureTts(text, env, fetchImpl) {
 
 async function piperTts(text, env, fetchImpl) {
   const relay = String(env.VOICE_TTS_RELAY_URL || "https://tts.167-172-146-60.sslip.io").replace(/\/+$/, "");
-  const response = await fetchImpl(`${relay}/tts`, {
+  const hop = String(env.VOICE_TTS_WORKERS_DEV_HOP || "https://zevanory.girolocal-rb.workers.dev").replace(/\/+$/, "");
+  const internal = String(env.OPERATOR_TOKEN || "");
+  const viaHop = internal.length >= 24 && /^https:\/\/[a-z0-9-]+\.girolocal-rb\.workers\.dev$/i.test(hop);
+  const response = await fetchImpl(viaHop ? `${hop}/internal/voice/relay-tts` : `${relay}/tts`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "CF-Worker": "girolocal-rb.workers.dev"
-    },
+    headers: viaHop
+      ? { "content-type": "application/json", "x-zevanory-relay-auth": internal }
+      : { "content-type": "application/json", "CF-Worker": "girolocal-rb.workers.dev" },
     body: JSON.stringify({ text }),
-    signal: AbortSignal.timeout(20_000)
+    signal: AbortSignal.timeout(25_000)
   });
   if (!response.ok) throw new Error(`voice_tts_piper_relay_http_${response.status}`);
   const bytes = new Uint8Array(await response.arrayBuffer());
