@@ -147,6 +147,10 @@ print("COMMERCIAL_RETIREMENT_OVERLAY=PASS")
 c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
 c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"
 c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"
+# Owner rule: zero spend. The router only synthesizes when this guard is on and then
+# uses free providers only (self-hosted Piper relay); paid providers stay unconfirmed.
+c["vars"]["VOICE_TTS_FREE_ONLY"]="true"
+c["vars"]["ZEVANORY_VOICE_SUPPORT_ENABLED"]="true"
 c["vars"]["GEMINI_FREE_TIER_CONFIRMED"]="false"
 c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"
 c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"
