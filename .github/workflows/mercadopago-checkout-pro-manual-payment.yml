@@ -122,6 +122,7 @@ jobs:
           print("EXTERNAL_REFERENCE_EQUALS_ORDER_ID=PASS")
           print("NOTIFICATION_URL=PASS")
           print("CHECKOUT_URL="+checkout_url)
+          print("::notice title=MP_CLEAN_CHECKOUT::order_id="+order_id+" checkout_url="+checkout_url)
           print("ORDER_ID="+order_id)
           with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
               f.write("## Checkout Pro limpo\n\n")
