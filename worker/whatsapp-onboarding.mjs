@@ -234,6 +234,10 @@ function dashboard(record,live,message=""){
   <div class="row">Phone Number ID: <code>${connected?htmlEscape(record.phone_number_id):"—"}</code></div>
   ${!ready?`<form method="post" action="/admin/whatsapp-onboard/bootstrap"><label>Meta App Secret</label><input type="password" name="app_secret" minlength="16" required autocomplete="off"><label>App ID</label><input name="app_id" value="${DEFAULT_APP_ID}" required><label>Configuration ID</label><input name="config_id" value="${DEFAULT_CONFIG_ID}" required><button type="submit">Salvar com criptografia</button></form>`:""}
   ${ready&&!verified?`<a class="btn" href="/admin/whatsapp-onboard/start">Autorizar e localizar o número na Meta</a>`:""}
+  ${connected?`<div class="row">Webhook do app: <b class="${record.webhook_configured?"ok":"warn"}">${record.webhook_configured?"configurado":"pendente"}</b>${record.webhook_error?` <small>(${htmlEscape(record.webhook_error)})</small>`:""}</div>
+  <div class="row">WABA assinada: <b class="${record.waba_subscribed?"ok":"warn"}">${record.waba_subscribed?"sim":"pendente"}</b>${record.waba_subscribe_error?` <small>(${htmlEscape(record.waba_subscribe_error)})</small>`:""}</div>
+  <div class="row">Número registrado na Cloud API: <b class="${record.phone_registration_ok?"ok":"warn"}">${record.phone_registration_ok?"sim":"pendente"}</b>${record.phone_registration_error?` <small>(${htmlEscape(record.phone_registration_error)})</small>`:""}</div>`:""}
+  ${verified&&connected&&!(record.webhook_configured&&record.waba_subscribed&&record.phone_registration_ok)?`<form method="post" action="/admin/whatsapp-onboard/finalize"><button class="btn" type="submit">Concluir configuração (webhook, assinatura e registro)</button></form>`:""}
   ${verified?`<p class="ok"><strong>Identidade Meta confirmada.</strong> O runtime pode usar as credenciais privadas armazenadas.</p>`:""}
   <p><small>Callback: ${REDIRECT_URI}<br>Webhook: ${WEBHOOK_URI}</small></p>
   </main></body></html>`;
@@ -306,6 +310,26 @@ export async function handleWhatsappOnboarding(request,env={}){
     record={...(record||{}),app_id,config_id,app_secret,graph_version:GRAPH_VERSION,updated_at:new Date().toISOString()};
     await putRecord(env,record);
     return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard",303);
+  }
+  if(url.pathname==="/admin/whatsapp-onboard/finalize"&&request.method==="POST"){
+    if(brokerState?.broker===true||!record?.access_token||!record?.phone_number_id||!record?.waba_id||!record?.app_secret){
+      return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent("Conecte o número antes de concluir a configuração."),303);
+    }
+    // Re-run only the transport steps with the stored, identity-verified credentials.
+    const verify_token=record.verify_token||b64url(crypto.getRandomValues(new Uint8Array(32)));
+    const pin=record.two_step_pin||String(crypto.getRandomValues(new Uint32Array(1))[0]%1000000).padStart(6,"0");
+    record={...record,verify_token,two_step_pin:pin};
+    await putRecord(env,record); // the webhook challenge reads this verify token
+    let webhook_configured=false,waba_subscribed=false,webhook_error=null,waba_subscribe_error=null;
+    try { webhook_configured=await configureAppWebhook({app_id:record.app_id||DEFAULT_APP_ID,app_secret:record.app_secret,verify_token}); } catch(error){ webhook_error=safeText(error?.message,240); }
+    try { waba_subscribed=await subscribeWaba({waba_id:String(record.waba_id),token:record.access_token}); } catch(error){ waba_subscribe_error=safeText(error?.message,240); }
+    const registration=await registerPhone({phone_id:String(record.phone_number_id),token:record.access_token,pin});
+    record={...record,webhook_configured,waba_subscribed,webhook_error,waba_subscribe_error,phone_registration_ok:registration.ok,phone_registration_already:registration.already_registered,phone_registration_error:registration.error,updated_at:new Date().toISOString()};
+    const live=await verifyRuntime(record);
+    record={...record,identity_verified:Boolean(live.verified),identity_live:live};
+    await putRecord(env,record);
+    const done=webhook_configured&&waba_subscribed&&registration.ok;
+    return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent(done?"Configuração concluída: webhook, assinatura e registro OK.":"Configuração parcial — veja os itens pendentes abaixo."),303);
   }
   if(url.pathname==="/admin/whatsapp-onboard/start"&&request.method==="GET"){
     if(brokerBinding(env)){
