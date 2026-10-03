@@ -5,13 +5,24 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-env:
-  EXPECTED_SHA: 2237836450cd371365d9fe00c83e42f70df28025
+  actions: read
 jobs:
   remote-quality:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Resolve certified live release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Certified live SHA = head of the latest successful central production deploy,
+          # which only succeeds after proving that exact SHA is serving production.
+          sha="$(gh api "repos/${{ github.repository }}/actions/workflows/central-production-deploy.yml/runs?branch=gh-pages&status=success&per_page=1" --jq '.workflow_runs[0].head_sha')"
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then echo "::error title=CERTIFIED_LIVE_SHA::could not resolve certified live release"; exit 1; fi
+          echo "EXPECTED_SHA=$sha" >> "$GITHUB_ENV"
+          echo "CERTIFIED_LIVE_SHA=$sha"
       - name: Bind audit to exact live release
         shell: bash
         run: |
