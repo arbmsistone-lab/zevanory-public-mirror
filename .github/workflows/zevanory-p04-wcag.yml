@@ -5,24 +5,23 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  actions: read
 jobs:
   wcag:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Resolve certified live release
-        env:
-          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          # Certified live SHA = head of the latest successful central production deploy,
-          # which only succeeds after proving that exact SHA is serving production.
-          api="https://api.github.com/repos/${{ github.repository }}/actions/workflows/central-production-deploy.yml/runs?branch=gh-pages&status=success&per_page=1"
-          code="$(curl -sS -o /tmp/certified-live.json -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$api" || true)"
-          sha="$(jq -r '.workflow_runs[0].head_sha // empty' /tmp/certified-live.json 2>/dev/null || true)"
-          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then echo "::error title=CERTIFIED_LIVE_SHA::http=$code body=$(head -c 300 /tmp/certified-live.json 2>/dev/null | tr '\n' ' ')"; exit 1; fi
+          # Live release must be a real commit on the canonical gh-pages branch.
+          # Pure git + public endpoint: no GitHub API quota involved.
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/release -o /tmp/certified-release.json
+          sha="$(jq -r '.deployment.commit_sha // empty' /tmp/certified-release.json)"
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then echo "::error title=CERTIFIED_LIVE_SHA::live release has no exact commit sha"; exit 1; fi
+          rm -rf /tmp/canonical-gh-pages
+          git clone --quiet --filter=blob:none --no-checkout --depth 400 --branch gh-pages "https://github.com/${{ github.repository }}.git" /tmp/canonical-gh-pages
+          if ! git -C /tmp/canonical-gh-pages merge-base --is-ancestor "$sha" HEAD; then echo "::error title=CERTIFIED_LIVE_SHA::live $sha is not a commit of canonical gh-pages"; exit 1; fi
           echo "EXPECTED_SHA=$sha" >> "$GITHUB_ENV"
           echo "CERTIFIED_LIVE_SHA=$sha"
       - name: Bind audit to exact live release
