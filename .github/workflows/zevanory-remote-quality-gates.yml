@@ -82,9 +82,10 @@ jobs:
           const inspector=r.audits['inspector-issues'];
           const blob=JSON.stringify([consoleAudit?.details,inspector?.details]);
           const cfOnly=blob.includes('static.cloudflareinsights.com') && !/(stripe|mercadopago|eval\(|mixed-content)/i.test(blob);
-          if(s.performance<90||s.accessibility<95||s.seo<95) process.exit(1);
+          const failing=Object.values(r.audits).filter(a=>a.score!==null&&a.score<1&&!['notApplicable','informative','manual'].includes(a.scoreDisplayMode)).map(a=>a.id+'='+a.score).slice(0,25).join(' ');
+          if(s.performance<90||s.accessibility<95||s.seo<95) { console.log('::error title=LIGHTHOUSE_SCORE::'+JSON.stringify(s)+' runs='+JSON.stringify(scores)+' failing='+failing); process.exit(1); }
           if(s['best-practices']<95 && (!cfOnly || bad.length)) {
-            console.error('Unwaived best-practices defects:',bad.map(x=>x.id));
+            console.log('::error title=LIGHTHOUSE_BEST_PRACTICES::'+JSON.stringify(s)+' bad='+bad.map(x=>x.id).join(',')+' cfOnly='+cfOnly+' console='+blob.slice(0,600));
             process.exit(1);
           }
           if(s['best-practices']<95) console.log('PASS_WITH_PROVIDER_EXCEPTION: Cloudflare Insights blocked by strict CSP; application defects=0; CSP remains strict.');
