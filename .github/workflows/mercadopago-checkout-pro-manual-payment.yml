@@ -88,7 +88,8 @@ jobs:
           items=pref.get("items") or []
           checks={
               "external_reference": str(pref.get("external_reference") or "").lower()==order_id.lower(),
-              "notification_url": str(pref.get("notification_url") or "").startswith("https://zevanory.api.br/api/webhooks"),
+              # Both canonical hosts route to the same production Worker (parity proven post-deploy).
+              "notification_url": any(str(pref.get("notification_url") or "").startswith(h+"/api/webhooks") for h in ("https://zevanory.api.br","https://edge.zevanory.api.br")),
               "single_item_197": len(items)==1 and abs(float(items[0].get("unit_price") or 0)-197.0)<0.001,
               "currency_brl": bool(items) and str(items[0].get("currency_id") or "")=="BRL",
               "auto_return": str(pref.get("auto_return") or "")=="approved",
