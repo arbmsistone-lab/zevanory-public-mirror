@@ -34,8 +34,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
+          python3 - <<'PY' 2>/tmp/mp-step.err || { tail -c 900 /tmp/mp-step.err | tr '\n' ' ' | sed 's/^/::error title=MP_STEP_FAILED::/'; echo; exit 1; }
           import json,os,pathlib,time,urllib.parse,urllib.request
+          import urllib.error as _ue, urllib.request as _ur
+          _orig_urlopen=_ur.urlopen
+          def _urlopen(req,*a,**k):
+              try:
+                  return _orig_urlopen(req,*a,**k)
+              except _ue.HTTPError as e:
+                  body=e.read().decode("utf-8","replace")[:400]
+                  url=getattr(req,"full_url",str(req)).split("?")[0]
+                  raise RuntimeError(f"HTTP {e.code} {url} {body}") from None
+          _ur.urlopen=_urlopen
           app=os.environ["APP"].rstrip("/")
           oid=os.environ["ORDER_ID"].strip()
           pid=os.environ["APPROVED_PAYMENT_ID"].strip()
