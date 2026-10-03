@@ -35,7 +35,8 @@ def get(url, headers=None):
 code,live,headers,ms=get(f"{BASE}/{SLUG}")
 assert code==200
 live_text=live.decode("utf-8","replace")
-assert f'href="https://zevanory.api.br/{SLUG}"' in live_text,(SLUG,"canonical_live_mismatch")
+# Owner-approved canonical is the domain that serves the page (zevanory.api.br/<slug> 308-redirects there).
+assert f'href="https://vendas.zevanory.api.br/{SLUG}"' in live_text,(SLUG,"canonical_live_mismatch")
 src_title=re.search(r"<title>(.*?)</title>",html,re.I|re.S)
 live_title=re.search(r"<title>(.*?)</title>",live_text,re.I|re.S)
 assert src_title and live_title and src_title.group(1).strip()==live_title.group(1).strip(),(SLUG,"live_title_mismatch")

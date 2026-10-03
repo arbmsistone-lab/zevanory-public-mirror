@@ -1,0 +1,29 @@
+name: ZEVANORY support knowledge gate
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/support-knowledge.mjs"
+      - "scripts/support_knowledge_test.mjs"
+      - "sales-overlay/approved.json"
+      - ".github/workflows/support-knowledge-gate.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "worker/support-knowledge.mjs"
+      - "scripts/support_knowledge_test.mjs"
+      - "sales-overlay/approved.json"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  knowledge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 20 canonical questions, handoff and HTTP contract
+        run: node scripts/support_knowledge_test.mjs

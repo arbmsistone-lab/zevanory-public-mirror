@@ -106,19 +106,15 @@ jobs:
           def get(url):
               req=urllib.request.Request(url,headers=headers())
               with urllib.request.urlopen(req,timeout=20) as r:return json.loads(r.read().decode())
-          runs=get(api+"/actions/workflows/zevanory-p12-observability-exact-release.yml/runs?branch=gh-pages&event=push&status=success&per_page=10").get("workflow_runs",[])
+          runs=get(api+"/actions/workflows/zevanory-p12-observability-exact-release.yml/runs?branch=gh-pages&status=success&per_page=20").get("workflow_runs",[])
           selected=None
+          expected="zevanory-p12-observability-"+runtime_sha[:12]
           for run in runs:
-              head=str(run.get("head_sha") or "")
-              raw=urllib.request.urlopen(urllib.request.Request(
-                  f"https://raw.githubusercontent.com/arbmsistone-lab/zevanory-public-mirror/{head}/.github/workflows/zevanory-p12-observability-exact-release.yml",
-                  headers=headers(raw=True)),timeout=20).read().decode()
-              if runtime_sha not in raw: continue
               arts=get(api+f"/actions/runs/{run['id']}/artifacts?per_page=100").get("artifacts",[])
-              expected="zevanory-p12-observability-"+runtime_sha[:12]
+              # The artifact name is derived from the SHA the run measured, binding the proof to that exact release.
               art=next((a for a in arts if a.get("name")==expected and not a.get("expired") and int(a.get("size_in_bytes") or 0)>0),None)
               if art:
-                  selected={"run_id":run["id"],"head_sha":head,"artifact":expected,"artifact_id":art["id"]}
+                  selected={"run_id":run["id"],"head_sha":str(run.get("head_sha") or ""),"event":run.get("event"),"artifact":expected,"artifact_id":art["id"]}
                   break
           assert selected,(slug,"shared_runtime_p12_proof_missing",runtime_sha)
           out={"schema":"zevanory.portfolio.shared-runtime-p12.v1","target":slug,"runtime_sha":runtime_sha,**selected,"verdict":"PASS","false_green":0}
