@@ -25,6 +25,31 @@ jobs:
           mkdir -p /tmp/proof
           curl -fsS --max-time 20 https://zevanory.api.br/api/support/instant-status > /tmp/proof/baseline.json
           cat /tmp/proof/baseline.json
+      - name: Inspect deployed Worker and canonical routes
+        run: |
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error
+          root='https://api.cloudflare.com/client/v4'
+          def get(path):
+              req=urllib.request.Request(root+path,headers={'Authorization':'Bearer '+os.environ['CLOUDFLARE_API_TOKEN']})
+              try:
+                  with urllib.request.urlopen(req,timeout=20) as r: return json.load(r)
+              except Exception: return {'success':False}
+          account=os.environ['CLOUDFLARE_ACCOUNT_ID']
+          settings=get('/accounts/'+account+'/workers/scripts/zevanory/settings')
+          bindings=(settings.get('result') or {}).get('bindings',[])
+          summary={'settings_read_ok':settings.get('success'),'binding_names':[b.get('name') for b in bindings],'release_sha':next((b.get('text') for b in bindings if b.get('name')=='ZEVANORY_RELEASE_SHA'),None)}
+          deployments=get('/accounts/'+account+'/workers/scripts/zevanory/deployments')
+          summary['deployments']=(deployments.get('result') or {}).get('deployments',[])[:2]
+          zones=get('/zones?name=zevanory.api.br')
+          summary['zones_read_ok']=zones.get('success')
+          summary['routes']=[]
+          for zone in zones.get('result') or []:
+              routes=get('/zones/'+zone['id']+'/workers/routes')
+              summary['routes'] += [{'pattern':r.get('pattern'),'script':r.get('script')} for r in routes.get('result') or []]
+          open('/tmp/proof/routes.json','w').write(json.dumps(summary,indent=2))
+          print(json.dumps(summary,indent=2))
+          PY
       - name: Capture live Worker evidence without sending messages
         run: |
           test -n "$CLOUDFLARE_API_TOKEN"
