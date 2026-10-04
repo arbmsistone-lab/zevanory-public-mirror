@@ -7,7 +7,7 @@ c["account_id"]=os.environ["PUBLIC_OWNER_ACCOUNT_ID"]
 c["main"]="worker/cloudflare-worker.compat.mjs"
 c.pop("secrets",None)
 c.pop("services",None)
-c.pop("ai",None)
+c["ai"]={"binding":"AI"}
 c.pop("routes",None)
 c["workers_dev"]=True
 kv=c.setdefault("kv_namespaces",[])

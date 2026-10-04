@@ -228,6 +228,9 @@ function dashboard(record,live,message=""){
   <h1>Conexão oficial WhatsApp · ZEVANORY</h1><p>Número alvo: <strong>+55 88 99254-5413</strong>. Segredos são gravados criptografados e nunca exibidos novamente.</p>
   ${message?`<p class="warn">${htmlEscape(message)}</p>`:""}
   <div class="row">App Secret: <b class="${ready?"ok":"bad"}">${ready?"armazenado":"ausente"}</b></div>
+  <div class="row">Voz (Gemini grátis): <b class="${record?.gemini_api_key?"ok":"warn"}">${record?.gemini_api_key?"configurada":"ausente"}</b></div>
+  <p><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Criar chave grátis no Google AI Studio</a>. Use um projeto sem faturamento ativado para manter custo zero.</p>
+  <form method="post" action="/admin/whatsapp-onboard/voice-key"><label for="gemini-api-key">Chave Gemini para voz</label><input id="gemini-api-key" type="password" name="gemini_api_key" required maxlength="512" autocomplete="off"><button type="submit">Validar e salvar voz com criptografia</button></form>
   <div class="row">Cloud API: <b class="${connected?"ok":"warn"}">${connected?"credencial descoberta":"aguardando autorização"}</b></div>
   <div class="row">Identidade do número: <b class="${verified?"ok":"warn"}">${verified?"verificada ao vivo":"ainda não verificada"}</b></div>
   <div class="row">WABA: <code>${connected?htmlEscape(record.waba_id):"—"}</code></div>
@@ -254,9 +257,11 @@ async function parseForm(request){
 export async function loadWhatsappRuntimeCredentials(env={}){
   try {
     const r=await getRecord(env);
-    if(!r?.access_token||!r?.phone_number_id||!r?.app_secret||!r?.verify_token) return null;
+    if(!r) return null;
+    if(!r.gemini_api_key&&(!r.access_token||!r.phone_number_id||!r.app_secret||!r.verify_token)) return null;
     return Object.freeze({
       access_token:r.access_token,
+      gemini_api_key:r.gemini_api_key||"",
       phone_number_id:r.phone_number_id,
       waba_id:r.waba_id||"",
       app_secret:r.app_secret,
@@ -326,7 +331,8 @@ export async function handleWhatsappOnboarding(request,env={}){
       app_secret:Boolean(brokerState.app_secret_valid),
       access_token:Boolean(brokerState.configured),
       phone_number_id:brokerState.phone_number_id||"",
-      waba_id:brokerState.waba_id||""
+      waba_id:brokerState.waba_id||"",
+      gemini_api_key:Boolean(record?.gemini_api_key)
     }:record;
     if(record&&brokerState?.broker!==true&&Boolean(record.identity_verified)!==Boolean(live.verified)){record={...record,identity_verified:Boolean(live.verified),updated_at:new Date().toISOString()}; await putRecord(env,record);}
     let autoMessage="";
@@ -337,6 +343,25 @@ export async function handleWhatsappOnboarding(request,env={}){
       return responseHtml(dashboard(record,live,autoMessage||url.searchParams.get("message")||""));
     }
     return responseHtml(dashboard(viewRecord,live,url.searchParams.get("message")||""));
+  }
+  if(url.pathname==="/admin/whatsapp-onboard/voice-key"&&request.method==="POST"){
+    // The compat router requires admin authentication. Reject cross-origin form submissions.
+    if(request.headers.get("origin")!==url.origin) return responseJson({error:"voice_key_origin_invalid"},403);
+    const body=await parseForm(request);
+    const key=String(body.gemini_api_key||"").trim();
+    if(!key||key.length>512||/[\r\n]/.test(key)) return responseJson({error:"gemini_key_invalid"},400);
+    let validation;
+    try {
+      validation=await fetch("https://generativelanguage.googleapis.com/v1beta/models",{headers:{"x-goog-api-key":key},signal:AbortSignal.timeout(15000)});
+    } catch {
+      return responseJson({error:"gemini_key_validation_unavailable"},503);
+    }
+    // Never echo the key or the provider response, including on errors.
+    if(validation.status!==200) return responseJson({error:"gemini_key_validation_failed",provider_status:validation.status},400);
+    await validation.body?.cancel().catch(()=>{});
+    record={...(record||{}),gemini_api_key:key,updated_at:new Date().toISOString()};
+    await putRecord(env,record);
+    return Response.redirect("https://zevanory.api.br/admin/whatsapp-onboard?message="+encodeURIComponent("Voz Gemini configurada. Chave validada e armazenada com criptografia."),303);
   }
   if(url.pathname==="/admin/whatsapp-onboard/bootstrap"&&request.method==="POST"){
     const body=await parseForm(request);

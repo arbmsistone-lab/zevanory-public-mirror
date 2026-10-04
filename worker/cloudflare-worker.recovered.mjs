@@ -15061,7 +15061,7 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false 
   const dedupKey = item.message_id ? `whatsapp:instant:${item.message_id}` : "";
   if (dedupKey && kv?.get && await kv.get(dedupKey).catch(() => null)) return { sent: false, reason: "already_replied" };
   if (dedupKey && kv?.put) await kv.put(dedupKey, "1", { expirationTtl: 86400 }).catch(() => {});
-  const status = { at: new Date().toISOString(), inbound_type: item.type, heard: Boolean(question) };
+  const status = { at: new Date().toISOString(), inbound_type: item.type, heard: Boolean(question), model: null, text_sent: false, voice_sent: false, voice_error: null };
   let reply;
   if (!question) {
     reply = { body: "Recebi seu áudio, mas não consegui entender bem. Pode repetir ou me escrever a sua dúvida?", mode: "audio_unheard", intent: "clarify" };

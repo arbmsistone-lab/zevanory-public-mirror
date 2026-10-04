@@ -166,7 +166,11 @@ jobs:
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.143.0 deploy --strict --keep-vars --config wrangler.central-fix.jsonc --tag="$TARGET_RUNTIME_SHA" --message="ZEVANORY-public-owner-exact-SHA-$TARGET_RUNTIME_SHA"
+          npx --yes wrangler@4.143.0 deploy --strict --keep-vars --config wrangler.central-fix.jsonc --tag="$TARGET_RUNTIME_SHA" --message="ZEVANORY-public-owner-exact-SHA-$TARGET_RUNTIME_SHA" 2>&1 | tee /tmp/central-deploy.log || {
+            tail -15 /tmp/central-deploy.log | tr '\n' ' ' | cut -c1-1800 | sed 's/^/::error title=CENTRAL_DEPLOY_FAILED::/'
+            echo
+            exit 1
+          }
       - name: Verify live UTF-8 asset and safety
         if: steps.auth.outputs.available == 'true'
         run: |

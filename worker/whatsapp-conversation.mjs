@@ -6,7 +6,7 @@ import { SUPPORT_PRODUCTS, answerSupportQuestion } from "./support-knowledge.mjs
 
 const SALES_ORIGIN = "https://vendas.zevanory.api.br";
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
-const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct-fast", "@cf/meta/llama-3.1-8b-instruct"];
+const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"];
 const HISTORY_TURNS = 10;
 const ALLOWED_PRICES = new Set(Object.values(SUPPORT_PRODUCTS).map((p) => p.price_brl));
 const ALLOWED_URLS = new Set([SALES_ORIGIN, `${SALES_ORIGIN}/`, `${SALES_ORIGIN}/solucoes`, `${SALES_ORIGIN}/reembolso`, `${SALES_ORIGIN}/privacidade`, `${SALES_ORIGIN}/termos`, ...Object.keys(SUPPORT_PRODUCTS).map((slug) => `${SALES_ORIGIN}/${slug}`)]);
@@ -68,6 +68,10 @@ export function validateReply(text) {
 }
 
 export function deterministicReply(question) {
+  if (/\b(melhorar|aumentar|organizar|recomenda|ajud)/i.test(question) && /\bvendas?\b/i.test(question)) {
+    const p = SUPPORT_PRODUCTS["vendas-na-pratica"];
+    return { body: `Para melhorar suas vendas, recomendo ${p.name}, por ${brl(p.price_brl)}: ajuda a organizar prospecção, atendimento, oferta e follow-up. Qual dessas etapas é sua maior dificuldade hoje?\n\n${SALES_ORIGIN}/vendas-na-pratica`, intent: "recommendation", product: "vendas-na-pratica" };
+  }
   const r = answerSupportQuestion({ question });
   if (r.answered) {
     const src = Array.isArray(r.sources) ? (r.intent === "delivery" ? r.sources[r.sources.length - 1] : r.sources[0]) : "";
@@ -121,10 +125,11 @@ export async function converse({ ai, question, history = [], salesOpen = false, 
   ];
   const tried = [];
   for (const model of MODELS) {
+    let timer;
     try {
       const out = await Promise.race([
         ai.run(model, { messages, max_tokens: 320, temperature: 0.4 }),
-        new Promise((_, rej) => setTimeout(() => rej(new Error("ai_timeout")), 20000)),
+        new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("ai_timeout")), 20000); }),
       ]);
       const text = aiText(out).replace(/\*\*/g, "").trim();
       const check = validateReply(text);
@@ -132,6 +137,8 @@ export async function converse({ ai, question, history = [], salesOpen = false, 
       tried.push(`${model}:${check.issues.join("|")}`);
     } catch (error) {
       tried.push(`${model}:${String(error?.message || error).slice(0, 80)}`);
+    } finally {
+      clearTimeout(timer);
     }
   }
   return { ...grounded, mode: "grounded_fallback", issues: tried };
