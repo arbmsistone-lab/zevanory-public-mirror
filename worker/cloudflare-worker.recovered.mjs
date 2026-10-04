@@ -1,5 +1,5 @@
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
-import { whatsappStageRecorder } from "./whatsapp-background.mjs";
+import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 var __defProp = Object.defineProperty;
@@ -18123,6 +18123,7 @@ var cloudflare_worker_default = {
     globalThis.__ZEVANORY_PRIVATE_KV__ = env.ZEVANORY_PRIVATE_ARTIFACTS || null;
     hydrateRuntimeConfig(env);
     const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/api/webhooks/meta") return withSecurityHeaders(await handleNodeWebhookFetch(request, handler26), env);
     if (url.pathname === "/arbm-one" || url.pathname === "/arbm-one.html") {
       return Response.redirect(new URL("/zevanory-one", url), 301);
     }

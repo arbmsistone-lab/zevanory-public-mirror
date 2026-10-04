@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { deferMetaWebhook, whatsappStageRecorder } from "../worker/whatsapp-background.mjs";
+import { deferMetaWebhook, whatsappStageRecorder, handleNodeWebhookFetch } from "../worker/whatsapp-background.mjs";
 import { unpackPcm, encodePcmRemotely } from "../worker/voice-pcm.mjs";
 import { pcm16ToMp3, ttsBytesWithFailover } from "../worker/voice-provider-router.mjs";
 
@@ -122,3 +122,19 @@ async function exerciseInbound(database) {
 }
 await exerciseInbound(true); await exerciseInbound(false);
 console.log("INBOUND_CHECKPOINT_BEFORE_STT_REPLY_BEFORE_CRM_NO_DATABASE=PASS");
+
+const signedBody = JSON.stringify({ text: "áudio em português", entry: [] });
+const signature = "sha256=" + createHmac("sha256", "synthetic-meta-secret").update(signedBody).digest("hex");
+const signedRequest = new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", headers: { "x-hub-signature-256": signature }, body: signedBody });
+const directResult = await handleNodeWebhookFetch(signedRequest, async (req, res) => {
+  const chunks = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  const raw = Buffer.concat(chunks);
+  assert.equal(raw.toString(), signedBody);
+  assert.equal(req.query.provider, "meta");
+  assert.equal(req.headers["x-hub-signature-256"], "sha256=" + createHmac("sha256", "synthetic-meta-secret").update(raw).digest("hex"));
+  res.setHeader("content-type", "application/json"); res.statusCode = 200; res.end('{"accepted":true}');
+});
+assert.equal(directResult.status, 200); assert.equal((await directResult.json()).accepted, true);
+const oversized = await handleNodeWebhookFetch(new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", body: "oversized" }), () => { throw new Error("must_not_call_handler"); }, 3);
+assert.equal(oversized.status, 413);
+console.log("DIRECT_WEB_REQUEST_SIGNED_BYTES_SIZE_BOUNDARY=PASS");
