@@ -346,7 +346,11 @@ export async function handleWhatsappOnboarding(request,env={}){
   }
   if(url.pathname==="/admin/whatsapp-onboard/voice-key"&&request.method==="POST"){
     // The compat router requires admin authentication. Reject cross-origin form submissions.
-    if(request.headers.get("origin")!==url.origin) return responseJson({error:"voice_key_origin_invalid"},403);
+    // Behind the router the request URL origin can differ from the browser origin, so
+    // accept the canonical host or a browser-asserted same-origin submission.
+    const reqOrigin=String(request.headers.get("origin")||"");
+    const sameSite=String(request.headers.get("sec-fetch-site")||"")==="same-origin";
+    if(!(sameSite||reqOrigin===url.origin||reqOrigin==="https://zevanory.api.br")) return responseJson({error:"voice_key_origin_invalid"},403);
     const body=await parseForm(request);
     const key=String(body.gemini_api_key||"").trim();
     if(!key||key.length>512||/[\r\n]/.test(key)) return responseJson({error:"gemini_key_invalid"},400);
