@@ -38,3 +38,10 @@ const attempted=[];
 await assert.rejects(()=>ttsBytesWithFailover("Olá",{VOICE_TTS_FREE_ONLY:"true",GEMINI_API_KEY:"synthetic",GEMINI_FREE_TIER_CONFIRMED:"true",VOICE_TTS_PROVIDER_CHAIN:"gemini",GEMINI_TTS_MODEL:"gemini-2.5-legacy"},async(url,init)=>{const b=JSON.parse(init.body);attempted.push(b.model);assert.ok(init.signal instanceof AbortSignal);return Response.json({error:{code:404}},{status:404});}),/voice_tts_all_providers_failed/);
 assert.deepEqual(attempted,["gemini-3.8-flash-tts","gemini-3.8-flash-lite-tts"]);
 console.log("GEMINI_TWO_CURRENT_MODELS_FAILOVER_NO_LEGACY=PASS");
+
+const certification="synthetic-certification-at-least-32-characters";
+const certEnv={...env,CERTIFICATION_E2E_TOKEN:certification};
+const certRequest=new Request("https://zevanory.api.br/api/admin/whatsapp-onboard/delivery-proof",{method:"POST",headers:{authorization:"Bearer "+certification},body:JSON.stringify({operation:"subscriptions"})});
+assert.equal((await handleWhatsappOnboarding(certRequest,certEnv)).status,200);
+assert.equal((await handleWhatsappOnboarding(request({operation:"subscriptions"}),certEnv)).status,401);
+console.log("DEDICATED_CERTIFICATION_AUTHORITY_PRECEDENCE=PASS");
