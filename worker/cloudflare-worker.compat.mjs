@@ -202,6 +202,7 @@ const wrapped = {
       const response = await handleWhatsappOnboarding(request, normalized);
       if (response) return response;
     }
+    if (url.pathname === "/api/admin/whatsapp-onboard/delivery-proof") return handleWhatsappOnboarding(request, normalized);
     if (url.pathname.startsWith("/admin/whatsapp-onboard") || url.pathname === "/api/admin/whatsapp-onboard/status") {
       if (!isAdminAuthorized(request, normalized)) return handleAdminRequest(request, normalized, ctx, wrapped);
       const response = await handleWhatsappOnboarding(request, normalized);
