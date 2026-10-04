@@ -1,5 +1,5 @@
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
-import { answerSupportQuestion } from "./support-knowledge.mjs";
+import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -15034,45 +15034,65 @@ async function queueWhatsappConversation(sql, { contactRef, text, messageId = ""
   return Object.freeze({ queued: rows.length === 1, job_id: rows[0]?.job_id || null, lead_id: lead.lead_id, kind: "commercial" });
 }
 __name(queueWhatsappConversation, "queueWhatsappConversation");
-// Instant grounded WhatsApp reply: answers price/content/delivery/refund from the
-// approved catalog right when the message arrives, instead of waiting for the
-// hourly agent cycle. Only published facts are sent; anything else gets the menu.
-const WHATSAPP_MENU = "Olá! Aqui é o atendimento da ZEVANORY. Posso te ajudar com preço, conteúdo, entrega e reembolso de: IA na Prática, Vendas na Prática, Lucro & Caixa, Combo IA + Vendas e Negócio Completo. Veja tudo em https://vendas.zevanory.api.br";
-function buildInstantWhatsappReply(text) {
-  const q = String(text || "").trim();
-  if (!q) return null;
-  const r = answerSupportQuestion({ question: q });
-  if (r.answered) {
-    const src = Array.isArray(r.sources) ? (r.intent === "delivery" ? r.sources[r.sources.length - 1] : r.sources[0]) : "";
-    const link = src ? `\n\n${src}` : "";
-    return { body: `${r.answer}${link}`, intent: r.intent, product: r.product || null, grounded: true };
-  }
-  if (r.needs_product) return { body: r.answer, intent: r.intent, product: null, grounded: true };
-  return { body: WHATSAPP_MENU, intent: "menu", product: null, grounded: true };
-}
-__name(buildInstantWhatsappReply, "buildInstantWhatsappReply");
-async function sendInstantWhatsappReply(item, reply) {
+// Instant WhatsApp attendant: answers each inbound text or audio right away with a
+// sales/support conversation grounded on the approved catalog (validated prices and
+// links), and replies with voice when the customer spoke by voice.
+function whatsappTransport(item = {}) {
   const rt = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
   const verified = rt.identity_verified === true && rt.access_token;
-  const token = String((verified ? rt.access_token : "") || process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
-  const phoneId = String((verified ? rt.phone_number_id : "") || item.phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
-  const version = String(rt.graph_version || process.env.META_GRAPH_VERSION || "v26.0").trim();
-  if (!token || !phoneId) return { sent: false, reason: "whatsapp_transport_not_configured" };
+  return {
+    token: String((verified ? rt.access_token : "") || process.env.WHATSAPP_ACCESS_TOKEN || "").trim(),
+    phoneId: String((verified ? rt.phone_number_id : "") || item.phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim(),
+    version: String(rt.graph_version || process.env.META_GRAPH_VERSION || "v26.0").trim()
+  };
+}
+__name(whatsappTransport, "whatsappTransport");
+async function postWhatsappMessage(t, message) {
+  const res = await fetch(`https://graph.facebook.com/${t.version}/${encodeURIComponent(t.phoneId)}/messages`, { method: "POST", headers: { authorization: `Bearer ${t.token}`, "content-type": "application/json" }, body: JSON.stringify(message), signal: AbortSignal.timeout(15e3) });
+  const data = await res.json().catch(() => ({}));
+  const id = String(data?.messages?.[0]?.id || "");
+  return { ok: res.ok && Boolean(id), status: res.status, provider_message_id: id || null, error: res.ok ? null : String(data?.error?.message || "").slice(0, 300) };
+}
+__name(postWhatsappMessage, "postWhatsappMessage");
+async function replyWhatsappConversation(item, question, { inboundAudio = false } = {}) {
+  const t = whatsappTransport(item);
+  if (!t.token || !t.phoneId) return { sent: false, reason: "whatsapp_transport_not_configured" };
   const kv = globalThis.__ZEVANORY_PRIVATE_KV__;
   const dedupKey = item.message_id ? `whatsapp:instant:${item.message_id}` : "";
   if (dedupKey && kv?.get && await kv.get(dedupKey).catch(() => null)) return { sent: false, reason: "already_replied" };
   if (dedupKey && kv?.put) await kv.put(dedupKey, "1", { expirationTtl: 86400 }).catch(() => {});
-  const body = { messaging_product: "whatsapp", recipient_type: "individual", to: item.from, type: "text", text: { preview_url: false, body: reply.body.slice(0, 4000) } };
-  if (item.message_id) body.context = { message_id: item.message_id };
-  const res = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(phoneId)}/messages`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
-  const data = await res.json().catch(() => ({}));
-  const providerId = String(data?.messages?.[0]?.id || "");
-  const result = { sent: res.ok && Boolean(providerId), status: res.status, provider_message_id: providerId || null, error: res.ok ? null : String(data?.error?.message || "").slice(0, 300) };
-  try { if (kv?.put) await kv.put("whatsapp:instant:last", JSON.stringify({ at: new Date().toISOString(), intent: reply.intent, product: reply.product, ...result }), { expirationTtl: 604800 }); } catch {}
-  await recordWhatsappEvidence("outbound_text", { provider_message_id: providerId, contact_ref: item.from, intent: reply.intent, sent: result.sent }).catch(() => false);
-  return result;
+  const status = { at: new Date().toISOString(), inbound_type: item.type, heard: Boolean(question) };
+  let reply;
+  if (!question) {
+    reply = { body: "Recebi seu áudio, mas não consegui entender bem. Pode repetir ou me escrever a sua dúvida?", mode: "audio_unheard", intent: "clarify" };
+  } else {
+    const history = await loadWhatsappHistory(kv, item.from);
+    reply = await converseWhatsapp({ ai: runtimeAi(), question, history, salesOpen: process.env.SALE_GLOBALLY_ENABLED === "true" });
+    history.push({ r: "u", t: question.slice(0, 1200) }, { r: "a", t: reply.body.slice(0, 1200) });
+    await saveWhatsappHistory(kv, item.from, history);
+  }
+  Object.assign(status, { mode: reply.mode, model: reply.model || null, intent: reply.intent || null, product: reply.product || null, ai_issues: reply.issues || null });
+  const text = { messaging_product: "whatsapp", recipient_type: "individual", to: item.from, type: "text", text: { preview_url: false, body: reply.body.slice(0, 4000) } };
+  if (item.message_id) text.context = { message_id: item.message_id };
+  const sentText = await postWhatsappMessage(t, text);
+  Object.assign(status, { text_sent: sentText.ok, text_status: sentText.status, text_error: sentText.error });
+  await recordWhatsappEvidence("outbound_text", { provider_message_id: sentText.provider_message_id, contact_ref: item.from, kind: reply.mode }).catch(() => false);
+  const wantsVoice = inboundAudio || /\b(audio|áudio|voz|fala(r)? comigo)\b/i.test(question || "");
+  if (wantsVoice && question && process.env.WHATSAPP_VOICE_REPLY !== "false") {
+    try {
+      const audio = await ttsBytesFromRuntime(whatsappSpeechText(reply.body), process.env);
+      const uploaded = await uploadVoiceToWhatsapp({ audio, phoneId: t.phoneId, token: t.token, version: t.version, env: process.env });
+      const sentVoice = await postWhatsappMessage(t, { messaging_product: "whatsapp", recipient_type: "individual", to: item.from, type: "audio", audio: { id: uploaded.media_id } });
+      Object.assign(status, { voice_sent: sentVoice.ok, voice_provider: audio.provider, voice_model: audio.model, voice_error: sentVoice.error });
+      if (sentVoice.ok) await recordWhatsappEvidence("outbound_voice", { provider_message_id: sentVoice.provider_message_id, contact_ref: item.from, generated_voice: true, event_id: item.message_id || "" }).catch(() => false);
+    } catch (error) {
+      Object.assign(status, { voice_sent: false, voice_error: String(error?.message || error).slice(0, 400) });
+    }
+  }
+  try { if (kv?.put) await kv.put("whatsapp:instant:last", JSON.stringify(status), { expirationTtl: 604800 }); } catch {}
+  return { sent: sentText.ok, ...status };
 }
-__name(sendInstantWhatsappReply, "sendInstantWhatsappReply");
+__name(replyWhatsappConversation, "replyWhatsappConversation");
 function extractWhatsappInboundMessages(payload = {}) {
   const out = [];
   for (const entry of Array.isArray(payload.entry) ? payload.entry : []) for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
@@ -15209,7 +15229,8 @@ var base64 = /* @__PURE__ */ __name((bytes) => {
   return btoa(s);
 }, "base64");
 async function fetchWhatsappMedia(item, env, fetchImpl = globalThis.fetch) {
-  const id = clean29(item?.media_id, 240), token = clean29(env.WHATSAPP_ACCESS_TOKEN, 5e3), version = clean29(env.META_GRAPH_VERSION || "v26.0", 20);
+  const rtMedia = globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ || {};
+  const id = clean29(item?.media_id, 240), token = clean29((rtMedia.identity_verified === true && rtMedia.access_token) || env.WHATSAPP_ACCESS_TOKEN, 5e3), version = clean29(rtMedia.graph_version || env.META_GRAPH_VERSION || "v26.0", 20);
   if (!id || !token) throw new Error("whatsapp_media_credentials_missing");
   const meta = await fetchImpl(`https://graph.facebook.com/${encodeURIComponent(version)}/${encodeURIComponent(id)}`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(12e3) });
   if (!meta.ok) throw new Error(`whatsapp_media_meta_http_${meta.status}`);
@@ -15244,10 +15265,14 @@ async function understandWhatsappInbound(item, { env = process.env, fetchImpl = 
   if (!ai) return Object.freeze({ ...item, understanding: caption || `Cliente enviou ${type}; an?lise multim?dia indispon?vel.`, understanding_mode: "media_pending", understanding_confidence: 0 });
   const { bytes, mime } = await fetchWhatsappMedia(item, env, fetchImpl);
   if (type === "audio" || String(mime).startsWith("audio/")) {
-    const result2 = await ai.run("@cf/openai/whisper", { audio: [...bytes], task: "transcribe", language: "pt" });
+    let result2 = null;
+    try {
+      result2 = await ai.run("@cf/openai/whisper-large-v3-turbo", { audio: base64(bytes), task: "transcribe", language: "pt" });
+    } catch {}
+    if (!clean29(result2?.text, 5e3)) result2 = await ai.run("@cf/openai/whisper", { audio: [...bytes], task: "transcribe", language: "pt" });
     const transcript = clean29(result2?.text || result2?.transcription_info?.text, 5e3);
     if (!transcript) throw new Error("whatsapp_audio_transcription_empty");
-    return Object.freeze({ ...item, understanding: [caption, `Transcri??o do ?udio: ${transcript}`].filter(Boolean).join(" | "), understanding_mode: "cloudflare_whisper", understanding_confidence: 0.99, mime_type: mime });
+    return Object.freeze({ ...item, transcript, understanding: [caption, `Transcri??o do ?udio: ${transcript}`].filter(Boolean).join(" | "), understanding_mode: "cloudflare_whisper", understanding_confidence: 0.99, mime_type: mime });
   }
   if (type === "image" || String(mime).startsWith("image/")) {
     let data = "";
@@ -15356,10 +15381,10 @@ async function handler18(req, res) {
         r = await queueWhatsappConversation(sql, { contactRef: item.from, text, messageId: item.message_id, mediaType: item.type, mediaId: item.media_id, source: "meta_whatsapp" });
       } catch {}
       await recordWhatsappEvidence("inbound_processed", { message_id: item.message_id, contact_ref: item.from, phone_number_id: item.phone_number_id, queued: r.queued, kind: r.kind || "" }).catch(()=>false);
-      if (process.env.WHATSAPP_INSTANT_REPLY !== "false" && item.type === "text") {
+      if (process.env.WHATSAPP_INSTANT_REPLY !== "false" && (item.type === "text" || item.type === "audio")) {
         try {
-          const reply = buildInstantWhatsappReply(text);
-          const sent = reply ? await sendInstantWhatsappReply(item, reply) : { sent: false };
+          const question = item.type === "audio" ? String(enriched.transcript || "").trim() : text;
+          const sent = await replyWhatsappConversation(item, question, { inboundAudio: item.type === "audio" });
           if (sent.sent && r.job_id) await sql.query("update agent_jobs set status='completed',completed_at=now(),last_error=null where job_id=$1 and status='queued'", [r.job_id]).catch(() => {});
           if (sent.sent) instant++;
         } catch {}

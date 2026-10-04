@@ -1,3 +1,4 @@
+import lamejs from "./vendor/lame.min.mjs";
 const DEFAULT_CHAIN = Object.freeze(["speechify", "azure", "piper-relay", "gemini"]);
 const FAILURE_THRESHOLD = 2;
 const COOLDOWN_MS = 5 * 60 * 1000;
@@ -180,45 +181,63 @@ async function piperTts(text, env, fetchImpl) {
   });
 }
 
+// Gemini speech generation returns raw 16-bit PCM (24 kHz mono). WhatsApp only
+// accepts compressed audio, so the PCM is encoded to MP3 inside the Worker.
+export function pcm16ToMp3(pcmBytes, sampleRate = 24000, kbps = 64) {
+  const samples = new Int16Array(pcmBytes.buffer, pcmBytes.byteOffset, Math.floor(pcmBytes.byteLength / 2));
+  const encoder = new lamejs.Mp3Encoder(1, sampleRate, kbps);
+  const chunks = [];
+  for (let i = 0; i < samples.length; i += 1152) {
+    const out = encoder.encodeBuffer(samples.subarray(i, i + 1152));
+    if (out.length) chunks.push(out);
+  }
+  const tail = encoder.flush();
+  if (tail.length) chunks.push(tail);
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const mp3 = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { mp3.set(new Uint8Array(c.buffer, c.byteOffset, c.length), offset); offset += c.length; }
+  return mp3;
+}
+
+function geminiTtsModels(env = {}) {
+  const list = [env.GEMINI_TTS_MODEL, "gemini-2.5-flash-preview-tts", "gemini-2.5-flash-tts", "gemini-3.1-flash-tts-preview"]
+    .map((m) => String(m || "").trim()).filter(Boolean);
+  return [...new Set(list)];
+}
+
 async function geminiTts(text, env, fetchImpl) {
   const key = String(env.GEMINI_API_KEY || "").trim();
-  const model = String(env.GEMINI_TTS_MODEL || "gemini-3.1-flash-tts-preview").trim();
   const voice = String(env.GEMINI_TTS_VOICE || "Achird").trim();
-  const style = String(env.VOICE_TTS_STYLE || "Português brasileiro natural, acolhedor, claro e profissional. Ritmo conversacional e pausas discretas.").trim();
-  const response = await fetchImpl("https://generativelanguage.googleapis.com/v1beta/interactions", {
-    method: "POST",
-    headers: { "x-goog-api-key": key, "content-type": "application/json" },
-    body: JSON.stringify({
-      model,
-      input: `${style} Não leia estas instruções. Pronuncie fielmente: ${text}`,
-      response_format: { type: "audio", mime_type: "audio/mp3", delivery: "inline", bit_rate: 128000 },
-      generation_config: { speech_config: [{ voice }] }
-    }),
-    signal: AbortSignal.timeout(30_000)
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`voice_tts_gemini_http_${response.status}`);
-  const audio = body?.output_audio || body?.interaction?.output_audio || body?.outputAudio || body?.interaction?.outputAudio || null;
-  const encoded = typeof audio === "string" ? audio : audio?.data || audio?.inline_data?.data || audio?.inlineData?.data || null;
-  const uri = typeof audio === "object" ? audio?.uri || null : null;
-  let bytes = null;
-  if (encoded) {
-    bytes = decodeBase64(encoded);
-  } else if (uri && /^https:\/\//i.test(String(uri))) {
-    const audioResponse = await fetchImpl(String(uri), { signal: AbortSignal.timeout(20_000) });
-    if (!audioResponse.ok) throw new Error(`voice_tts_audio_uri_http_${audioResponse.status}`);
-    bytes = new Uint8Array(await audioResponse.arrayBuffer());
+  const style = String(env.VOICE_TTS_STYLE || "Fale em português do Brasil, com voz natural, acolhedora, clara e profissional, em ritmo de conversa.").trim();
+  const errors = [];
+  for (const model of geminiTtsModels(env)) {
+    const response = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": key, "content-type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `${style}\n\n${text}` }] }],
+        generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } }
+      }),
+      signal: AbortSignal.timeout(30_000)
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) { errors.push(`${model}:${response.status}`); if (response.status === 404 || response.status === 400) continue; break; }
+    const part = (body?.candidates?.[0]?.content?.parts || []).find((p) => p?.inlineData?.data || p?.inline_data?.data);
+    const data = part?.inlineData?.data || part?.inline_data?.data;
+    const mimeIn = String(part?.inlineData?.mimeType || part?.inline_data?.mime_type || "audio/L16;rate=24000");
+    if (!data) { errors.push(`${model}:no_audio`); continue; }
+    const raw = decodeBase64(data);
+    let bytes = raw, mime = mimeIn.split(";")[0];
+    if (/l16|pcm/i.test(mimeIn)) {
+      const rate = Number((mimeIn.match(/rate=(\d+)/i) || [])[1]) || 24000;
+      bytes = pcm16ToMp3(raw, rate);
+      mime = "audio/mpeg";
+    }
+    if (!bytes?.length || bytes.length > 12 * 1024 * 1024) throw new Error("voice_tts_output_size_invalid");
+    return Object.freeze({ bytes, mime, model, provider: "gemini", voice, language: "pt-BR", chars: text.length });
   }
-  if (!bytes?.length || bytes.length > 12 * 1024 * 1024) throw new Error("voice_tts_output_size_invalid");
-  return Object.freeze({
-    bytes,
-    mime: "audio/mpeg",
-    model,
-    provider: "gemini",
-    voice,
-    language: "pt-BR",
-    chars: text.length
-  });
+  throw new Error(`voice_tts_gemini_failed:${errors.join(",").slice(0, 200)}`);
 }
 
 const PROVIDERS = Object.freeze({
