@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { deferMetaWebhook, whatsappStageRecorder } from "../worker/whatsapp-background.mjs";
+import vm from "node:vm";
+import { deferMetaWebhook, whatsappStageRecorder, handleNodeWebhookFetch, latestWhatsappStage } from "../worker/whatsapp-background.mjs";
 import { unpackPcm, encodePcmRemotely } from "../worker/voice-pcm.mjs";
 import { pcm16ToMp3, ttsBytesWithFailover } from "../worker/voice-provider-router.mjs";
 
@@ -27,8 +28,8 @@ assert.equal(deferMetaWebhook(request, {}, {}, () => {}).status, 503);
 console.log("META_IMMEDIATE_ACK_WAITUNTIL_CLONED_BODY=PASS");
 
 let clock = 0;
-const snapshots = [], state = { heard: true, text_sent: false, voice_sent: false, voice_error: null };
-const checkpoint = whatsappStageRecorder({ async put(key, value) { assert.equal(key, "whatsapp:instant:last"); snapshots.push(JSON.parse(value)); } }, state, () => clock += 2);
+const snapshots = [], pointers = [], state = { heard: true, text_sent: false, voice_sent: false, voice_error: null };
+const checkpoint = whatsappStageRecorder({ async put(key, value) { if (key === "whatsapp:instant:last") pointers.push({ at: clock, value: JSON.parse(value) }); else { assert.ok(key.startsWith("whatsapp:instant:stage:")); snapshots.push(JSON.parse(value)); } } }, state, () => clock += 2, async ms => { clock += ms; });
 for (const stage of ["heard", "ai_done", "text_sent", "tts_start", "tts_done", "encode_start", "encode_done", "upload_done", "voice_sent"]) {
   await checkpoint(stage, stage === "text_sent" ? { text_sent: true } : stage === "voice_sent" ? { voice_sent: true } : {});
 }
@@ -95,3 +96,52 @@ assert.ok(workerSource.indexOf('await checkpoint("text_sent")') < workerSource.i
 assert.match(workerSource, /if \(!localSignatureValid && !brokerSignatureValid\) return json14\(res, 401/);
 console.log("GEMINI_38_8KHZ_REMOTE_STAGES_SIGNATURE_PRESERVED=PASS");
 console.log("WHATSAPP_AUDIO_RUNTIME=PASS");
+
+const handlerSource = workerSource.slice(workerSource.indexOf("async function handler18(req, res) {"), workerSource.indexOf('__name(handler18, "handler")'));
+async function exerciseInbound(database) {
+  const order = [], captured = [], kv = { async put(_key, value) { if (_key.startsWith("whatsapp:instant:stage:")) captured.push(JSON.parse(value)); } };
+  const item = { from: "synthetic-contact", type: "audio", media_id: "synthetic-media", message_id: "synthetic-message" };
+  const sandbox = {
+    process: { env: { DATABASE_URL: database ? "synthetic-database" : "" } },
+    globalThis: { __ZEVANORY_PRIVATE_KV__: kv, __ZEVANORY_WHATSAPP_RUNTIME__: {} },
+    rawText: () => '{}', verifyMetaSignature: () => true, whatsappBrokerSignatureValid: async () => false,
+    extractWhatsappInboundMessages: () => [item], cs: () => ({ query: async () => [] }),
+    whatsappStageRecorder, Date,
+    understandWhatsappInbound: async () => { assert.equal(captured[0].stage, "received"); order.push("understand"); return { ...item, transcript: "Olá", understanding: "Olá" }; },
+    replyWhatsappConversation: async (_item, question, { status, checkpoint }) => { assert.equal(question, "Olá"); order.push("reply"); await checkpoint("voice_sent", { heard: true, text_sent: true, voice_sent: true }); return { sent: true, ...status }; },
+    queueWhatsappConversation: async () => { assert.ok(order.includes("reply")); order.push("archive"); return { queued: true, job_id: "synthetic", kind: "support" }; },
+    recordWhatsappEvidence: async () => { assert.ok(order.includes("reply")); order.push("evidence"); },
+    json14: (_res, code, body) => ({ code, body })
+  };
+  vm.createContext(sandbox); vm.runInContext(handlerSource, sandbox);
+  const result = await sandbox.handler18({ method: "POST", headers: {} }, { setHeader() {} });
+  assert.equal(result.code, 200); assert.equal(result.body.instant_replies, 1);
+  assert.deepEqual(captured.map(x => x.stage), ["received", "stt_start", "stt_done", "voice_sent"]);
+  assert.equal(order.includes("archive"), database);
+  assert.equal(captured.at(-1).voice_sent, true);
+}
+await exerciseInbound(true); await exerciseInbound(false);
+console.log("INBOUND_CHECKPOINT_BEFORE_STT_REPLY_BEFORE_CRM_NO_DATABASE=PASS");
+
+const signedBody = JSON.stringify({ text: "áudio em português", entry: [] });
+const signature = "sha256=" + createHmac("sha256", "synthetic-meta-secret").update(signedBody).digest("hex");
+const signedRequest = new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", headers: { "x-hub-signature-256": signature }, body: signedBody });
+const directResult = await handleNodeWebhookFetch(signedRequest, async (req, res) => {
+  const chunks = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  const raw = Buffer.concat(chunks);
+  assert.equal(raw.toString(), signedBody);
+  assert.equal(req.query.provider, "meta");
+  assert.equal(req.headers["x-hub-signature-256"], "sha256=" + createHmac("sha256", "synthetic-meta-secret").update(raw).digest("hex"));
+  res.setHeader("content-type", "application/json"); res.statusCode = 200; res.end('{"accepted":true}');
+});
+assert.equal(directResult.status, 200); assert.equal((await directResult.json()).accepted, true);
+const oversized = await handleNodeWebhookFetch(new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", body: "oversized" }), () => { throw new Error("must_not_call_handler"); }, 3);
+assert.equal(oversized.status, 413);
+console.log("DIRECT_WEB_REQUEST_SIGNED_BYTES_SIZE_BOUNDARY=PASS");
+
+for (let i = 1; i < pointers.length; i++) assert.ok(pointers[i].at - pointers[i - 1].at >= 1000);
+assert.equal(pointers.at(-1).value.stage, "voice_error");
+const fresh = { at: "2026-10-04T20:50:00Z", elapsed_ms: 40, stage: "encode_start" };
+const historical = { at: "2026-10-04T19:55:11Z", text_sent: true };
+assert.deepEqual(await latestWhatsappStage({ get: async key => JSON.stringify(key === "whatsapp:instant:last" ? historical : fresh), list: async () => ({ keys: [{ name: "whatsapp:instant:stage:synthetic" }] }) }), fresh);
+console.log("KV_SAME_KEY_RATE_LIMIT_ALL_STAGES_RETAINED=PASS");

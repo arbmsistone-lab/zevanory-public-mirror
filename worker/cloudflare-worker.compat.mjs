@@ -1,5 +1,5 @@
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
-import { deferMetaWebhook } from "./whatsapp-background.mjs";
+import { deferMetaWebhook, latestWhatsappStage } from "./whatsapp-background.mjs";
 import { handleVoiceFinalClosure } from "./voice-final-closure.mjs";
 import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "./whatsapp-onboarding.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
@@ -210,8 +210,7 @@ const wrapped = {
 
     if (url.pathname === "/api/support/instant-status" && request.method === "GET") {
       const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
-      let last = null;
-      try { last = kv ? JSON.parse(await kv.get("whatsapp:instant:last") || "null") : null; } catch {}
+      let last = await latestWhatsappStage(kv);
       // Preserve the timestamp and facts of historical text-only records. Null means
       // the old runtime did not record that field; it is not new conversation evidence.
       if (last) last = { mode: null, model: null, text_sent: last.sent ?? false, voice_sent: false, voice_error: null, ...last };
