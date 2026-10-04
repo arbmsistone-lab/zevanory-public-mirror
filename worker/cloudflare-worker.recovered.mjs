@@ -15077,9 +15077,9 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
   Object.assign(status, { mode: reply.mode, model: reply.model || null, intent: reply.intent || null, product: reply.product || null, ai_issues: reply.issues || null });
   await checkpoint("ai_done");
   const text = { messaging_product: "whatsapp", recipient_type: "individual", to: item.from, type: "text", text: { preview_url: false, body: reply.body.slice(0, 4000) } };
-  if (item.message_id) text.context = { message_id: item.message_id };
+  if (/^wamid\./.test(String(item.message_id || ""))) text.context = { message_id: item.message_id };
   const sentText = await postWhatsappMessage(t, text);
-  Object.assign(status, { text_sent: sentText.ok, text_status: sentText.status, text_error: sentText.error });
+  Object.assign(status, { text_sent: sentText.ok, text_status: sentText.status, text_error: sentText.error, text_provider_message_id: sentText.provider_message_id || null });
   await checkpoint("text_sent");
   const wantsVoice = inboundAudio || /\b(audio|áudio|voz|fala(r)? comigo)\b/i.test(question || "");
   if (wantsVoice && question && process.env.WHATSAPP_VOICE_REPLY !== "false") {
@@ -15089,7 +15089,7 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
       const uploaded = await uploadVoiceToWhatsapp({ audio, phoneId: t.phoneId, token: t.token, version: t.version, env: process.env });
       await checkpoint("upload_done", { voice_media_uploaded: Boolean(uploaded.media_id) });
       const sentVoice = await postWhatsappMessage(t, { messaging_product: "whatsapp", recipient_type: "individual", to: item.from, type: "audio", audio: { id: uploaded.media_id } });
-      Object.assign(status, { voice_sent: sentVoice.ok, voice_provider: audio.provider, voice_model: audio.model, voice_error: sentVoice.error });
+      Object.assign(status, { voice_sent: sentVoice.ok, voice_provider: audio.provider, voice_model: audio.model, voice_error: sentVoice.error, voice_provider_message_id: sentVoice.provider_message_id || null });
       await checkpoint(sentVoice.ok ? "voice_sent" : "voice_error");
       if (sentVoice.ok) await recordWhatsappEvidence("outbound_voice", { provider_message_id: sentVoice.provider_message_id, contact_ref: item.from, generated_voice: true, event_id: item.message_id || "" }).catch(() => false);
     } catch (error) {
