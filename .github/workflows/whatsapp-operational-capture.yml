@@ -1,4 +1,4 @@
-name: WhatsApp operational evidence capture
+name: WhatsApp real owner final evidence
 on:
   pull_request:
     branches: [gh-pages]
@@ -6,63 +6,49 @@ on:
 permissions:
   contents: read
 jobs:
-  plan:
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
-    steps:
-      - uses: actions/setup-node@v4
-        with: {node-version: '22'}
-      - name: Read account plan and Worker CPU settings without changing subscription
-        run: |
-          node --input-type=module <<'JS'
-          const base='https://api.cloudflare.com/client/v4/accounts/1b26415802588185a86c1d4d3ebf5bdb',headers={authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN};
-          for(const path of ['/subscriptions','/workers/account-settings','/workers/scripts/zevanory/settings','/workers/services/zevanory']){
-           const r=await fetch(base+path,{headers});const j=await r.json();const x=j.result;
-           const result=path==='/subscriptions'?(Array.isArray(x)?x:[]).filter(s=>/worker/i.test(JSON.stringify(s.rate_plan||{}))).map(s=>({state:s.state,rate_plan:s.rate_plan,price:s.price})):path.includes('/scripts/')?{usage_model:x?.usage_model,limits:x?.limits,compatibility_date:x?.compatibility_date}:path.includes('/services/')?{default_environment:x?.default_environment?.environment,usage_model:x?.default_environment?.script?.usage_model,limits:x?.default_environment?.script?.limits}:x;
-           console.log(JSON.stringify({path,http:r.status,success:j.success,result,errors:(j.errors||[]).map(e=>({code:e.code,message:e.message}))}));
-          }
-          JS
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 5
     env:
+      OPERATOR_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN || secrets.OPERATOR_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      CLOUDFLARE_ACCOUNT_ID: '1b26415802588185a86c1d4d3ebf5bdb'
     steps:
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Tail and preserve real owner status and history
+      - name: Capture current real messages and delivery receipt
         run: |
-          mkdir -p /tmp/capture
-          npm install --prefix /tmp/capture-tools --no-save wrangler@4.143.0 >/dev/null 2>&1
-          timeout 1200s /tmp/capture-tools/node_modules/.bin/wrangler tail zevanory --format json > /tmp/tail.json 2>/tmp/tail.err &
+          mkdir -p /tmp/real-evidence
+          npm install --prefix /tmp/real-tools --no-save wrangler@4.143.0 >/dev/null 2>&1
+          timeout 90s /tmp/real-tools/node_modules/.bin/wrangler tail zevanory --format json > /tmp/real-tail.json 2>/tmp/real-tail.err &
           tail_pid=$!
           trap 'kill "$tail_pid" 2>/dev/null || true' EXIT
           node --input-type=module <<'JS'
           import {writeFileSync} from 'node:fs';
-          const base='https://api.cloudflare.com/client/v4/accounts/1b26415802588185a86c1d4d3ebf5bdb/storage/kv/namespaces/728a45738e4047f29bcb89934fd533c1';
-          const headers={authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},seen=new Set(),all=[];
-          for(let n=0;n<240;n++){
-           const r=await fetch('https://zevanory.api.br/api/support/instant-status');const s=await r.json();
-           if(/^wamid\./.test(s.last?.inbound_message_id||'')&&Date.parse(s.last.at)>=Date.parse('2026-10-04T22:34:00Z')){
-            const key=s.last.inbound_message_id+':'+s.last.stage;
-            if(!seen.has(key)){seen.add(key);all.push(s);console.log(JSON.stringify({real_status:s}));writeFileSync('/tmp/capture/real-status.json',JSON.stringify(all,null,2));}
-           }
-           if(n===0||n%12===0){
-            const r=await fetch(base+'/values/'+encodeURIComponent('wa:conv:36d2242dc5564e7e751c19b153787c20cb69ba79d83307a7499d30effe9c0526'),{headers});
-            if(r.ok){const h=await r.json();writeFileSync('/tmp/capture/owner-history.json',JSON.stringify(h,null,2));}
-           }
-           await new Promise(r=>setTimeout(r,5000));
+          const origin='https://zevanory.api.br';
+          async function op(input){
+           const r=await fetch(origin+'/api/admin/whatsapp-onboard/delivery-proof',{method:'POST',headers:{authorization:'Bearer '+process.env.OPERATOR_TOKEN,'content-type':'application/json'},body:JSON.stringify(input),signal:AbortSignal.timeout(60000)});
+           return {http:r.status,...await r.json()};
           }
+          const observations=await op({operation:'audit-observe'});
+          writeFileSync('/tmp/real-evidence/observations.json',JSON.stringify(observations,null,2));console.log(JSON.stringify({observations}));
+          const audio=observations.observations?.find(o=>o.inbound_type==='audio'&&o.voice_sent);
+          if(audio?.voice_media_id){
+            const media=await op({operation:'audit-media',media_id:audio.voice_media_id});
+            if(media.audio_base64){const quality=await op({operation:'audit-transcribe',audio_base64:media.audio_base64});console.log(JSON.stringify({real_voice_quality:{expected:audio.speech_text,...quality}}));writeFileSync('/tmp/real-evidence/quality.json',JSON.stringify({expected:audio.speech_text,...quality},null,2));}
+          }
+          let closure;
+          for(let n=0;n<12;n++){closure=await fetch(origin+'/api/voice/final-closure').then(r=>r.json());if(closure.whatsapp_e2e)break;await new Promise(r=>setTimeout(r,5000));}
+          console.log(JSON.stringify({final_closure:closure}));writeFileSync('/tmp/real-evidence/final-closure.json',JSON.stringify(closure,null,2));
+          await new Promise(r=>setTimeout(r,15000));
           JS
       - name: Sanitize tail
         if: always()
         run: |
           python3 - <<'PY'
           import json,pathlib
-          raw=pathlib.Path('/tmp/tail.json').read_text() if pathlib.Path('/tmp/tail.json').exists() else ''
+          p=pathlib.Path('/tmp/real-tail.json')
+          raw=p.read_text() if p.exists() else ''
           decoder=json.JSONDecoder();pos=0;events=[]
           while pos<len(raw):
               start=raw.find('{',pos)
@@ -71,43 +57,12 @@ jobs:
               except ValueError:pos=start+1;continue
               req=(e.get('event') or {}).get('request') or {}
               if '/api/webhooks/meta' not in str(req.get('url','')):continue
-              events.append({'timestamp':e.get('eventTimestamp'),'outcome':e.get('outcome'),'cpuTime':e.get('cpuTime'),'wallTime':e.get('wallTime'),'exceptions':[{'name':x.get('name'),'message':x.get('message')} for x in e.get('exceptions',[])]})
-          pathlib.Path('/tmp/capture').mkdir(exist_ok=True)
-          pathlib.Path('/tmp/capture/tail.json').write_text(json.dumps(events,indent=2))
-          print(json.dumps(events,indent=2))
+              events.append({'timestamp':e.get('eventTimestamp'),'outcome':e.get('outcome'),'cpuTime':e.get('cpuTime'),'wallTime':e.get('wallTime'),'path':'/api/webhooks/meta','exceptions':[x.get('name') for x in e.get('exceptions',[])]})
+          pathlib.Path('/tmp/real-evidence/tail.json').write_text(json.dumps(events,indent=2));print(json.dumps(events,indent=2))
           PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: whatsapp-operational-real-evidence
-          path: /tmp/capture/
+          name: whatsapp-real-owner-final-evidence
+          path: /tmp/real-evidence/
           retention-days: 7
-
-  recent-evidence:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
-    steps:
-      - uses: actions/setup-node@v4
-        with: {node-version: '22'}
-      - name: Read only the owner's recent stage records and conversational history
-        run: |
-          node --input-type=module <<'JS'
-          import {createHash} from 'node:crypto';
-          const base='https://api.cloudflare.com/client/v4/accounts/1b26415802588185a86c1d4d3ebf5bdb/storage/kv/namespaces/728a45738e4047f29bcb89934fd533c1';
-          const headers={authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},hash='36d2242dc5564e7e751c19b153787c20cb69ba79d83307a7499d30effe9c0526';
-          const list=await fetch(base+'/keys?prefix=whatsapp%3Ainstant%3Astage%3A&limit=100',{headers}).then(r=>r.json());
-          const records=[];
-          for(const key of list.result||[]){
-           const r=await fetch(base+'/values/'+encodeURIComponent(key.name),{headers});if(!r.ok)continue;const s=await r.json();
-           if(!/^wamid\./.test(s.inbound_message_id||'')||Date.parse(s.at)<Date.parse('2026-10-04T22:34:00Z'))continue;
-           const decoded=Buffer.from(s.inbound_message_id.slice(6),'base64').toString('utf8');
-           const number=decoded.match(/55\d{10,11}/)?.[0];
-           if(!number||createHash('sha256').update(number).digest('hex')!==hash)continue;
-           records.push(s);
-          }
-          const newest=new Map();for(const s of records){const old=newest.get(s.inbound_message_id);if(!old||s.elapsed_ms>=old.elapsed_ms)newest.set(s.inbound_message_id,s);}
-          for(const s of newest.values())console.log(JSON.stringify({owner_status:s}));
-          const h=await fetch(base+'/values/'+encodeURIComponent('wa:conv:'+hash),{headers});if(h.ok)console.log(JSON.stringify({owner_history:await h.json()}));
-          JS
