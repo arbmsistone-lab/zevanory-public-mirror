@@ -9,6 +9,11 @@ const key=await crypto.subtle.importKey("raw",await crypto.subtle.digest("SHA-25
 const cipher=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,e.encode(JSON.stringify(record)));
 const sealed=Buffer.from(iv).toString("base64url")+"."+Buffer.from(cipher).toString("base64url");
 const env={ELITE_INTERNAL_TOKEN:master,OPERATOR_TOKEN:operator,ZEVANORY_PRIVATE_ARTIFACTS:{get:async()=>sealed}};
+const proofOptions={proofSql:()=>({query:async(query)=>{
+ if(query.startsWith("select contact_ref"))return [{contact_ref:"5511999991234",updated_at:"2026-10-04T19:55:00Z"}];
+ return [{payload:{message_id:"wamid.realtext",inbound_message:"so texto",media_type:"text"},created_at:"2026-10-04T19:55:00Z"},{payload:{message_id:"wamid.realaudio",media_type:"audio"},created_at:"2026-10-04T19:54:00Z"}];
+}})};
+const handle=(req,env)=>handleWhatsappOnboarding(req,env,proofOptions);
 const request=(body,auth=true)=>new Request("https://zevanory.api.br/api/admin/whatsapp-onboard/delivery-proof",{method:"POST",headers:auth?{authorization:"Bearer "+operator}:{},body:JSON.stringify(body)});
 let calls=0;
 globalThis.fetch=async(url,init={})=>{
@@ -19,17 +24,17 @@ globalThis.fetch=async(url,init={})=>{
   assert.equal(String(url),"https://zevanory.api.br/api/webhooks/meta");
   assert.equal(init.headers["x-hub-signature-256"],"sha256="+createHmac("sha256",record.app_secret).update(init.body).digest("hex"));
   const msg=JSON.parse(init.body).entry[0].changes[0].value.messages[0];
-  assert.equal(msg.from,"558892545413");assert.match(msg.id,/^internal-(text|audio)-/);
+  assert.equal(msg.from,"5511999991234");assert.match(msg.id,/^internal-(text|audio)-/);
   if(msg.type==="text")assert.equal(msg.text.body,"teste interno: quanto custa o combo?");
   else assert.equal(msg.audio.id,"synthetic-media");
   return Response.json({accepted:true});
 };
-assert.equal((await handleWhatsappOnboarding(request({operation:"text"},false),env)).status,401);assert.equal(calls,0);
-assert.equal((await handleWhatsappOnboarding(request({operation:"arbitrary-send"}),env)).status,400);assert.equal(calls,0);
-const subscriptions=await handleWhatsappOnboarding(request({operation:"subscriptions"}),env);assert.equal((await subscriptions.json()).valid,true);
-const text=await handleWhatsappOnboarding(request({operation:"text",recipient:"ignored-attacker-target"}),env);
-const proof=await text.json();assert.equal(proof.signature,"sha256="+createHmac("sha256",record.app_secret).update(proof.signed_body).digest("hex"));assert.equal(JSON.parse(proof.signed_body).entry[0].changes[0].value.messages[0].from,"558892545413");assert.ok(proof.body_sha256);assert.ok(!JSON.stringify(proof).includes(record.app_secret));
-const audio=await handleWhatsappOnboarding(request({operation:"audio",audio_base64:Buffer.from("OggSsynthetic-unit-test").toString("base64")}),env);
+assert.equal((await handle(request({operation:"text"},false),env)).status,401);assert.equal(calls,0);
+assert.equal((await handle(request({operation:"arbitrary-send"}),env)).status,400);assert.equal(calls,0);
+const subscriptions=await handle(request({operation:"subscriptions"}),env);assert.equal((await subscriptions.json()).valid,true);
+const text=await handle(request({operation:"text",recipient:"ignored-attacker-target"}),env);
+const proof=await text.json();assert.equal(proof.signature,"sha256="+createHmac("sha256",record.app_secret).update(proof.signed_body).digest("hex"));assert.equal(JSON.parse(proof.signed_body).entry[0].changes[0].value.messages[0].from,"5511999991234");assert.ok(proof.body_sha256);assert.ok(!JSON.stringify(proof).includes(record.app_secret));
+const audio=await handle(request({operation:"audio",audio_base64:Buffer.from("OggSsynthetic-unit-test").toString("base64")}),env);
 const audioProof=await audio.json();assert.equal(JSON.parse(audioProof.signed_body).entry[0].changes[0].value.messages[0].audio.id,"synthetic-media");
 console.log("DELIVERY_PROOF_AUTH_FIXED_RECIPIENT_HMAC_MEDIA_NO_SECRET_LEAK=PASS");
 
@@ -42,6 +47,16 @@ console.log("GEMINI_TWO_CURRENT_MODELS_FAILOVER_NO_LEGACY=PASS");
 const certification="synthetic-certification-at-least-32-characters";
 const certEnv={...env,CERTIFICATION_E2E_TOKEN:certification};
 const certRequest=new Request("https://zevanory.api.br/api/admin/whatsapp-onboard/delivery-proof",{method:"POST",headers:{authorization:"Bearer "+certification},body:JSON.stringify({operation:"subscriptions"})});
-assert.equal((await handleWhatsappOnboarding(certRequest,certEnv)).status,200);
-assert.equal((await handleWhatsappOnboarding(request({operation:"subscriptions"}),certEnv)).status,401);
+assert.equal((await handle(certRequest,certEnv)).status,200);
+assert.equal((await handle(request({operation:"subscriptions"}),certEnv)).status,401);
 console.log("DEDICATED_CERTIFICATION_AUTHORITY_PRECEDENCE=PASS");
+
+const {whatsappInboundSafety,resolveOwnerProof}=await import("../worker/whatsapp-inbound-safety.mjs");
+for(const from of ["558892545413","5588992545413","+55 (88) 9254-5413"])assert.equal(whatsappInboundSafety({from,phone_number_id:"1300972319774588"}),"self_sender");
+assert.equal(whatsappInboundSafety({from:"5511999991234",phone_number_id:"other"}),"phone_number_mismatch");
+assert.equal(whatsappInboundSafety({from:"5511999991234",phone_number_id:"1300972319774588"}),null);
+await assert.rejects(()=>resolveOwnerProof({query:async()=>[{contact_ref:"5511999995678",updated_at:"2026-10-04T19:55:00Z"}]}),/owner_proof_evidence_not_found/);
+const recovered=await import("node:fs").then(fs=>fs.readFileSync(new URL("../worker/cloudflare-worker.recovered.mjs",import.meta.url),"utf8"));
+assert.ok(recovered.includes("if (whatsappInboundSafety(item)) continue;"));
+assert.ok(recovered.includes("const safetyReason = whatsappInboundSafety(item);"));
+console.log("SELF_SENDER_BOTH_FORMATS_PHONE_ID_OWNER_EVIDENCE_GUARDS=PASS");

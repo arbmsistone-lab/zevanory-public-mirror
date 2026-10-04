@@ -4,7 +4,7 @@ import { handleVoiceFinalClosure } from "./voice-final-closure.mjs";
 import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "./whatsapp-onboarding.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
-import worker from "./cloudflare-worker.recovered.mjs";
+import worker, { whatsappProofDatabase } from "./cloudflare-worker.recovered.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
 import { handleAdminRequest, isAdminAuthorized } from "./admin-console.mjs";
@@ -200,7 +200,7 @@ const wrapped = {
       const response = await handleWhatsappOnboarding(request, normalized);
       if (response) return response;
     }
-    if (url.pathname === "/api/admin/whatsapp-onboard/delivery-proof") return handleWhatsappOnboarding(request, normalized);
+    if (url.pathname === "/api/admin/whatsapp-onboard/delivery-proof") return handleWhatsappOnboarding(request, normalized, { proofSql: () => whatsappProofDatabase(normalized.DATABASE_URL) });
     if (url.pathname.startsWith("/admin/whatsapp-onboard") || url.pathname === "/api/admin/whatsapp-onboard/status") {
       if (!isAdminAuthorized(request, normalized)) return handleAdminRequest(request, normalized, ctx, wrapped);
       const response = await handleWhatsappOnboarding(request, normalized);

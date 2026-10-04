@@ -1,3 +1,4 @@
+import { resolveOwnerProof } from "./whatsapp-inbound-safety.mjs";
 const DEFAULT_APP_ID = "1071149631917061";
 const DEFAULT_CONFIG_ID = "1447104223954128";
 const GRAPH_VERSION = "v26.0";
@@ -324,14 +325,14 @@ function proofAuthorized(request,env){
   let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^presented.charCodeAt(i);
   return diff===0;
 }
-async function handleDeliveryProof(request,env){
+async function handleDeliveryProof(request,env,proofSql){
   if(!proofAuthorized(request,env))return responseJson({error:"unauthorized"},401);
   if(request.method!=="POST")return responseJson({error:"method_not_allowed"},405);
   const raw=await request.text();if(raw.length>180000)return responseJson({error:"payload_too_large"},413);
   let input;try{input=JSON.parse(raw);}catch{return responseJson({error:"invalid_json"},400);}
-  if(!["subscriptions","text","audio"].includes(input.operation))return responseJson({error:"invalid_operation"},400);
+  if(!["subscriptions","owner","text","audio"].includes(input.operation))return responseJson({error:"invalid_operation"},400);
   let record=await getRecord(env).catch(()=>null);
-  const appId=DEFAULT_APP_ID,wabaId="4019600665012911",phoneId="1300972319774588",recipient="558892545413";
+  const appId=DEFAULT_APP_ID,wabaId="4019600665012911",phoneId="1300972319774588";
   if(!record?.app_secret||!record?.access_token||String(record.phone_number_id)!==phoneId||String(record.waba_id)!==wabaId)return responseJson({error:"onboarding_identity_mismatch"},409);
   try{
     if(input.operation==="subscriptions"){
@@ -346,6 +347,10 @@ async function handleDeliveryProof(request,env){
       if(!proof.valid){record=await finalizeTransport(env,record);repaired=true;proof=await inspect();}
       return responseJson({...proof,repaired},proof.valid?200:502);
     }
+    if(!proofSql)return responseJson({error:"proof_database_unavailable"},503);
+    const owner=await resolveOwnerProof(proofSql());
+    if(input.operation==="owner")return responseJson({recipient_suffix:owner.recipient_suffix,evidence:owner.evidence});
+    const recipient=owner.recipient;
     let mediaId=null;
     if(input.operation==="audio"){
       const b64=String(input.audio_base64||"");if(!b64||b64.length>170000)return responseJson({error:"audio_size_invalid"},400);
@@ -364,16 +369,16 @@ async function handleDeliveryProof(request,env){
     const key=await crypto.subtle.importKey("raw",encoder.encode(record.app_secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
     const hex=b=>[...new Uint8Array(b)].map(n=>n.toString(16).padStart(2,"0")).join("");
     const signature="sha256="+hex(await crypto.subtle.sign("HMAC",key,encoder.encode(body)));
-    return responseJson({operation:input.operation,inbound_message_id:messageId,media_id:mediaId,signed_body:body,signature,body_sha256:hex(await crypto.subtle.digest("SHA-256",encoder.encode(body)))});
+    return responseJson({operation:input.operation,recipient_suffix:owner.recipient_suffix,inbound_message_id:messageId,media_id:mediaId,signed_body:body,signature,body_sha256:hex(await crypto.subtle.digest("SHA-256",encoder.encode(body)))});
   }catch(error){
-    const code=String(error?.message||"proof_failed").match(/^meta_http_\d+_[A-Za-z0-9]+/)?.[0]||"delivery_proof_failed";
+    const code=String(error?.message||"proof_failed").match(/^meta_http_\d+_[A-Za-z0-9]+/)?.[0]||(error?.message==="owner_proof_evidence_not_found"?"owner_proof_evidence_not_found":"delivery_proof_failed");
     return responseJson({error:code},502);
   }
 }
 
-export async function handleWhatsappOnboarding(request,env={}){
+export async function handleWhatsappOnboarding(request,env={}, {proofSql}={}){
   const url=new URL(request.url);
-  if(url.pathname==="/api/admin/whatsapp-onboard/delivery-proof")return handleDeliveryProof(request,env);
+  if(url.pathname==="/api/admin/whatsapp-onboard/delivery-proof")return handleDeliveryProof(request,env,proofSql);
   let record=await getRecord(env).catch(()=>null);
   const brokerState=await brokerStatus(env);
   if(url.pathname==="/admin/whatsapp-onboard"&&request.method==="GET"){
