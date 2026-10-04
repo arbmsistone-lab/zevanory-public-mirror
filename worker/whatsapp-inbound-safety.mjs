@@ -16,7 +16,7 @@ export async function resolveOwnerProof(sql,kv){
   const events=await sql.query("select j.payload,j.created_at from agent_jobs j join sales_leads l on l.lead_id=j.lead_id where l.channel='whatsapp' and l.contact_ref=$1 and j.created_at >= '2026-10-04T03:00:00Z'::timestamptz and j.created_at < '2026-10-05T03:00:00Z'::timestamptz order by j.created_at desc limit 100",[lead.contact_ref]);
   const real=events.filter(e=>!String(e.payload?.message_id||"").startsWith("internal-"));
   let text=real.find(e=>/^s[oó]\s+texto[.!]?$/i.test(String(e.payload?.inbound_message||"").trim())&&Math.abs(new Date(e.created_at).getTime()-Date.parse("2026-10-04T19:55:00Z"))<=10*60*1000) || memory.find(e=>/^s[oó]\s+texto[.!]?$/i.test(String(e.memory_value?.text||"").trim())&&Math.abs(new Date(e.updated_at).getTime()-Date.parse("2026-10-04T19:55:00Z"))<=10*60*1000);
-  const audio=real.find(e=>e.payload?.media_type==="audio");
+  const audio=real.find(e=>e.payload?.media_type==="audio"&&Math.abs(new Date(e.created_at).getTime()-Date.parse("2026-10-04T19:55:00Z"))<=10*60*1000);
 
   let kvAnchor=null;
   if(!text&&audio&&Math.abs(new Date(audio.created_at).getTime()-Date.parse("2026-10-04T19:55:00Z"))<=10*60*1000&&real.some(e=>e.payload?.media_type==="text")&&kv?.list&&kv?.get){
