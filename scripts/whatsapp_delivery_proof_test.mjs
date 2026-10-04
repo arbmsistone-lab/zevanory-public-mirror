@@ -60,3 +60,12 @@ const recovered=await import("node:fs").then(fs=>fs.readFileSync(new URL("../wor
 assert.ok(recovered.includes("if (whatsappInboundSafety(item)) continue;"));
 assert.ok(recovered.includes("const safetyReason = whatsappInboundSafety(item);"));
 console.log("SELF_SENDER_BOTH_FORMATS_PHONE_ID_OWNER_EVIDENCE_GUARDS=PASS");
+
+const candidate="5511999991234";
+const kvHash=Buffer.from(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(candidate))).toString("hex");
+const fallbackSql={query:async q=>q.startsWith("select contact_ref")?[{contact_ref:candidate,updated_at:"2026-10-04T19:55:31Z"}]:q.startsWith("select m.")?[]:[{created_at:"2026-10-04T19:55:10Z",payload:{message_id:"wamid.audio",media_type:"audio",inbound_message:"Tenho uma loja"}},{created_at:"2026-10-04T19:35:28Z",payload:{message_id:"wamid.text",media_type:"text",inbound_message:"Tenho uma loja"}}]};
+const proofKv={list:async()=>({keys:[{name:"whatsapp-e2e/"+Date.parse("2026-10-04T19:55:31Z")+"-test"}],list_complete:true}),get:async()=>({type:"inbound_processed",phone_number_id:"1300972319774588",contact_hash:kvHash,created_at:"2026-10-04T19:55:31Z"})};
+assert.equal((await resolveOwnerProof(fallbackSql,proofKv)).recipient_suffix,"1234");
+await assert.rejects(()=>resolveOwnerProof(fallbackSql,{...proofKv,get:async()=>({type:"inbound_processed",phone_number_id:"other",contact_hash:kvHash})}),/owner_proof_evidence_not_found/);
+await assert.rejects(()=>resolveOwnerProof(fallbackSql,{...proofKv,get:async()=>({type:"inbound_processed",phone_number_id:"1300972319774588",contact_hash:"wrong-contact"})}),/owner_proof_evidence_not_found/);
+console.log("OWNER_AUDIO_TIMESTAMP_KV_CONTACT_PHONE_CROSSCHECK=PASS");

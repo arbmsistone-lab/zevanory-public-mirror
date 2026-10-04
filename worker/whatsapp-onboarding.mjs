@@ -348,7 +348,7 @@ async function handleDeliveryProof(request,env,proofSql){
       return responseJson({...proof,repaired},proof.valid?200:502);
     }
     if(!proofSql)return responseJson({error:"proof_database_unavailable"},503);
-    const owner=await resolveOwnerProof(proofSql());
+    const owner=await resolveOwnerProof(proofSql(),env.ZEVANORY_PRIVATE_ARTIFACTS);
     if(input.operation==="owner")return responseJson({recipient_suffix:owner.recipient_suffix,evidence:owner.evidence});
     const recipient=owner.recipient;
     let mediaId=null;
