@@ -1,37 +1,30 @@
-name: WhatsApp owner evidence read only
+name: Cancel superseded WhatsApp proof
 on:
   pull_request:
     branches: [gh-pages]
     paths: ['.github/workflows/whatsapp-owner-evidence.yml']
 permissions:
   contents: read
+  actions: write
 jobs:
-  evidence:
+  cancel:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+    timeout-minutes: 2
     steps:
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Read KV inbound events near 16:55 without exposing contacts
+      - name: Cancel only the proof awaiting the unpublished superseded SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           node --input-type=module <<'JS'
-          const base='https://api.cloudflare.com/client/v4/accounts/1b26415802588185a86c1d4d3ebf5bdb/storage/kv/namespaces/728a45738e4047f29bcb89934fd533c1';
-          const headers={authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN};
-          let cursor;
-          let found=0;
-          for(let n=0;n<5;n++){
-           const r=await fetch(base+'/keys?prefix=whatsapp-e2e%2F&limit=1000'+(cursor?'&cursor='+encodeURIComponent(cursor):''),{headers});if(!r.ok)throw Error('kv_keys_http_'+r.status);
-           const page=await r.json();
-           for(const key of page.result||[]){
-            const time=Number(key.name.slice('whatsapp-e2e/'.length).split('-')[0]);
-            if(Math.abs(time-Date.parse('2026-10-04T19:55:00Z'))>600000)continue;
-            const r=await fetch(base+'/values/'+encodeURIComponent(key.name),{headers});if(!r.ok)throw Error('kv_value_http_'+r.status);
-            const e=await r.json();
-            console.log(JSON.stringify({type:e.type,at:e.created_at,message_id:e.message_id,phone_number_id:e.phone_number_id,contact_hash:e.contact_hash,queued:e.queued}));found++;
-           }
-           cursor=page.result_info?.cursor;if(!cursor)break;
-          }
-          console.log(JSON.stringify({read_only:true,events_near_1655:found}));
+          const base='https://api.github.com/repos/arbmsistone-lab/zevanory-public-mirror/actions/runs/37240044513';
+          const headers={authorization:'Bearer '+process.env.GH_TOKEN,'accept':'application/vnd.github+json'};
+          const r=await fetch(base,{headers});if(!r.ok)throw Error('run_read_http_'+r.status);
+          const run=await r.json();
+          if(run.head_sha!=='2034f4e0eb320898db43bde4c9e024bca3ef957e'||run.name!=='WhatsApp delivery recovery and real proofs')throw Error('superseded_run_identity_mismatch');
+          if(run.status!=='completed'){
+           const c=await fetch(base+'/cancel',{method:'POST',headers});if(c.status!==202&&c.status!==409)throw Error('cancel_http_'+c.status);
+           console.log(JSON.stringify({cancel_requested:true,run_id:run.id,status:c.status}));
+          }else console.log(JSON.stringify({already_completed:true,run_id:run.id}));
           JS
