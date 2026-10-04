@@ -1,0 +1,28 @@
+name: WhatsApp live tail (redacted, immediate)
+on:
+  push:
+    branches: [fix/whatsapp-live-tail]
+    paths: [.github/workflows/whatsapp-live-tail.yml]
+permissions:
+  contents: read
+jobs:
+  tail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install diagnostic CLI
+        run: npm install --no-save --ignore-scripts wrangler@4
+      - name: Observe live webhook outcomes without credentials or content
+        run: |
+          set -o pipefail
+          echo TAIL_LISTENING_NOW
+          timeout 180s npx wrangler tail zevanory --format=json | python3 -u scripts/whatsapp-tail-redact.py
+          result=${PIPESTATUS[0]}
+          if [ "$result" != 0 ] && [ "$result" != 124 ]; then echo "::error::wrangler tail exited $result"; exit "$result"; fi
