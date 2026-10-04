@@ -1,3 +1,4 @@
+import { whatsappInboundSafety } from "../worker/whatsapp-inbound-safety.mjs";
 import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -98,15 +99,15 @@ console.log("GEMINI_38_8KHZ_REMOTE_STAGES_SIGNATURE_PRESERVED=PASS");
 console.log("WHATSAPP_AUDIO_RUNTIME=PASS");
 
 const handlerSource = workerSource.slice(workerSource.indexOf("async function handler18(req, res) {"), workerSource.indexOf('__name(handler18, "handler")'));
-async function exerciseInbound(database) {
+async function exerciseInbound(database, blocked = null) {
   const order = [], captured = [], kv = { async put(_key, value) { if (_key.startsWith("whatsapp:instant:stage:")) captured.push(JSON.parse(value)); } };
-  const item = { from: "synthetic-contact", type: "audio", media_id: "synthetic-media", message_id: "synthetic-message" };
+  const item = { from: blocked === "self" ? "558892545413" : blocked === "self9" ? "5588992545413" : "5511999991234", phone_number_id: blocked === "phone" ? "other" : "1300972319774588", type: "audio", media_id: "synthetic-media", message_id: "synthetic-message" };
   const sandbox = {
     process: { env: { DATABASE_URL: database ? "synthetic-database" : "" } },
     globalThis: { __ZEVANORY_PRIVATE_KV__: kv, __ZEVANORY_WHATSAPP_RUNTIME__: {} },
     rawText: () => '{}', verifyMetaSignature: () => true, whatsappBrokerSignatureValid: async () => false,
     extractWhatsappInboundMessages: () => [item], cs: () => ({ query: async () => [] }),
-    whatsappStageRecorder, Date,
+    whatsappStageRecorder, whatsappInboundSafety, Date,
     understandWhatsappInbound: async () => { assert.equal(captured[0].stage, "received"); order.push("understand"); return { ...item, transcript: "Olá", understanding: "Olá" }; },
     replyWhatsappConversation: async (_item, question, { status, checkpoint }) => { assert.equal(question, "Olá"); order.push("reply"); await checkpoint("voice_sent", { heard: true, text_sent: true, voice_sent: true }); return { sent: true, ...status }; },
     queueWhatsappConversation: async () => { assert.ok(order.includes("reply")); order.push("archive"); return { queued: true, job_id: "synthetic", kind: "support" }; },
@@ -115,12 +116,16 @@ async function exerciseInbound(database) {
   };
   vm.createContext(sandbox); vm.runInContext(handlerSource, sandbox);
   const result = await sandbox.handler18({ method: "POST", headers: {} }, { setHeader() {} });
-  assert.equal(result.code, 200); assert.equal(result.body.instant_replies, 1);
+  assert.equal(result.code, 200);
+  if (blocked) { assert.equal(result.body.instant_replies, 0); assert.deepEqual(order, []); assert.deepEqual(captured, []); return; }
+  assert.equal(result.body.instant_replies, 1);
   assert.deepEqual(captured.map(x => x.stage), ["received", "stt_start", "stt_done", "voice_sent"]);
   assert.equal(order.includes("archive"), database);
   assert.equal(captured.at(-1).voice_sent, true);
 }
 await exerciseInbound(true); await exerciseInbound(false);
+for (const blocked of ["self", "self9", "phone"]) await exerciseInbound(true, blocked);
+console.log("IGNORED_WEBHOOK_NO_STT_REPLY_CRM_OR_EVIDENCE=PASS");
 console.log("INBOUND_CHECKPOINT_BEFORE_STT_REPLY_BEFORE_CRM_NO_DATABASE=PASS");
 
 const signedBody = JSON.stringify({ text: "áudio em português", entry: [] });
