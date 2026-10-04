@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import subprocess
 
 worker=Path("worker/cloudflare-worker.recovered.mjs").read_text(encoding="utf-8")
 router=Path("worker/voice-provider-router.mjs").read_text(encoding="utf-8")
@@ -49,13 +50,19 @@ router_required=[
   'voice_tts_speechify_http_',
   'voice_tts_azure_http_',
   'voice_tts_piper_relay_http_',
-  'voice_tts_gemini_http_',
+  'voice_tts_gemini_failed:',
   'language: "pt-BR"',
-  'response_format: { type: "audio", mime_type: "audio/mp3"',
+  'responseModalities: ["AUDIO"]',
+  ':generateContent',
+  'export function pcm16ToMp3',
+  'bytes = pcm16ToMp3(raw, rate)',
 ]
 missing=[x for x in router_required if x not in router]
 assert not missing, f"missing provider router markers: {missing}"
 print("VOICE_MULTI_PROVIDER_ZERO_SPEND_FAILOVER_GATE=PASS")
+# Verify the Gemini wire contract and valid MP3 bytes rather than accepting a
+# marker from the retired interactions API that did not generate usable audio.
+subprocess.run(["node", "scripts/whatsapp_conversation_test.mjs"], check=True)
 
 for marker in [
   'c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"',

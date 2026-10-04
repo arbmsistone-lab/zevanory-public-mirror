@@ -111,6 +111,7 @@ const wrapped = {
       // Inbound Meta messages and the WhatsApp/voice diagnostics need the stored credentials too.
       url.pathname.startsWith("/api/webhooks") ||
       url.pathname.startsWith("/api/voice") ||
+      url.pathname === "/api/support/instant-status" ||
       (url.pathname === "/api/config" && /^(channel_identity_health|closure_status)$/.test(url.searchParams.get("view") || ""));
     if (whatsappPath) {
       const [whatsappRuntime, whatsappBrokerState] = await Promise.all([
@@ -120,8 +121,9 @@ const wrapped = {
       globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = whatsappRuntime || {};
       // Credentials verified live by the official onboarding win over legacy Worker vars,
       // which may belong to a previous number/app (Meta answered HTTP 400 with them).
+      const overrides = {};
       if (whatsappRuntime?.identity_verified === true && whatsappRuntime.access_token && whatsappRuntime.phone_number_id) {
-        const overrides = {
+        Object.assign(overrides, {
           WHATSAPP_ACCESS_TOKEN: whatsappRuntime.access_token,
           WHATSAPP_PHONE_NUMBER_ID: whatsappRuntime.phone_number_id,
           WHATSAPP_BUSINESS_ACCOUNT_ID: whatsappRuntime.waba_id || "",
@@ -129,7 +131,16 @@ const wrapped = {
           META_VERIFY_TOKEN: whatsappRuntime.verify_token,
           META_WEBHOOK_VERIFY_TOKEN: whatsappRuntime.verify_token,
           META_GRAPH_VERSION: whatsappRuntime.graph_version || "v26.0"
-        };
+        });
+      }
+      if (whatsappRuntime?.gemini_api_key) {
+        Object.assign(overrides, {
+          GEMINI_API_KEY: whatsappRuntime.gemini_api_key,
+          GEMINI_FREE_TIER_CONFIRMED: "true",
+          VOICE_TTS_PROVIDER_CHAIN: "gemini,piper-relay"
+        });
+      }
+      if (Object.keys(overrides).length) {
         const base = normalized;
         const own = (k) => Object.prototype.hasOwnProperty.call(overrides, k);
         // Empty extensible target: forwarding to a frozen env would violate Proxy invariants.
@@ -195,7 +206,10 @@ const wrapped = {
       const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
       let last = null;
       try { last = kv ? JSON.parse(await kv.get("whatsapp:instant:last") || "null") : null; } catch {}
-      return new Response(JSON.stringify({ service: "zevanory-whatsapp-instant-reply", enabled: (env.WHATSAPP_INSTANT_REPLY ?? "true") !== "false", last }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+      // Preserve the timestamp and facts of historical text-only records. Null means
+      // the old runtime did not record that field; it is not new conversation evidence.
+      if (last) last = { mode: null, model: null, text_sent: last.sent ?? false, voice_sent: false, voice_error: null, ...last };
+      return new Response(JSON.stringify({ service: "zevanory-whatsapp-instant-reply", enabled: (env.WHATSAPP_INSTANT_REPLY ?? "true") !== "false", ai_binding_present: Boolean(normalized.AI?.run), gemini_voice_configured: Boolean(globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.gemini_api_key), sales_globally_enabled: normalized.SALE_GLOBALLY_ENABLED === "true", release_sha: normalized.ZEVANORY_RELEASE_SHA || null, last }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
     }
 
     if (url.pathname === "/api/support/knowledge") {

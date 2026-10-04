@@ -4,6 +4,9 @@ on:
     branches: [gh-pages]
     paths:
       - "worker/support-knowledge.mjs"
+      - "worker/**/*.mjs"
+      - "scripts/whatsapp_conversation_test.mjs"
+      - "scripts/deploy/prepare-central-candidate.py"
       - "scripts/support_knowledge_test.mjs"
       - "sales-overlay/approved.json"
       - ".github/workflows/support-knowledge-gate.yml"
@@ -11,11 +14,17 @@ on:
     branches: [gh-pages]
     paths:
       - "worker/support-knowledge.mjs"
+      - "worker/**/*.mjs"
+      - "scripts/whatsapp_conversation_test.mjs"
+      - "scripts/deploy/prepare-central-candidate.py"
       - "scripts/support_knowledge_test.mjs"
       - "sales-overlay/approved.json"
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: support-knowledge-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   knowledge:
     runs-on: ubuntu-latest
@@ -27,3 +36,7 @@ jobs:
           node-version: "22"
       - name: 20 canonical questions, handoff and HTTP contract
         run: node scripts/support_knowledge_test.mjs
+      - name: Grounded WhatsApp conversation, encrypted voice onboarding and MP3
+        run: node scripts/whatsapp_conversation_test.mjs
+      - name: Syntax check every Worker module
+        run: find worker -type f -name '*.mjs' -print0 | xargs -0 -n1 node --check
