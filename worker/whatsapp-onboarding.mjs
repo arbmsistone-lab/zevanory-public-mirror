@@ -318,7 +318,7 @@ async function finalizeTransport(env,record){
 }
 
 function proofAuthorized(request,env){
-  const expected=String(env.OPERATOR_TOKEN||"");
+  const expected=String(env.CERTIFICATION_E2E_TOKEN||env.OPERATOR_TOKEN||"");
   const presented=String(request.headers.get("authorization")||"").replace(/^Bearer /,"");
   if(expected.length<24||presented.length!==expected.length)return false;
   let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^presented.charCodeAt(i);
