@@ -66,7 +66,7 @@ jobs:
           async function operation(input){
            const r=await fetch(origin+'/api/admin/whatsapp-onboard/delivery-proof',{method:'POST',headers:{authorization:'Bearer '+process.env.OPERATOR_TOKEN,'content-type':'application/json'},body:JSON.stringify(input),signal:AbortSignal.timeout(120000)});
            const j=await r.json();if(!r.ok)throw Error('proof_operation_http_'+r.status+'_'+(j.error||'unknown'));
-           if(input.operation!=='subscriptions'){
+           if(!['subscriptions','owner'].includes(input.operation)){
             const {createHash}=await import('node:crypto');
             if(createHash('sha256').update(j.signed_body).digest('hex')!==j.body_sha256)throw Error('signed_fixture_digest_mismatch');
             const result=await fetch(origin+'/api/webhooks/meta',{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':j.signature},body:j.signed_body,signal:AbortSignal.timeout(120000)});
@@ -76,6 +76,7 @@ jobs:
            return j;
           }
           const subscriptions=await operation({operation:'subscriptions'});writeFileSync('/tmp/proof/meta-subscriptions.json',JSON.stringify(subscriptions,null,2));console.log(JSON.stringify({subscriptions}));
+          const owner=await operation({operation:'owner'});console.log(JSON.stringify({owner}));
           for(const type of ['text','audio']){
            const input={operation:type};if(type==='audio')input.audio_base64=readFileSync('/tmp/internal-proof.ogg').toString('base64');
            const ack=await operation(input);console.log(JSON.stringify({test:type,ack}));

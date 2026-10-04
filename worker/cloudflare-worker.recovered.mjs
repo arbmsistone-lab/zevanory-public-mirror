@@ -1,3 +1,4 @@
+import { whatsappInboundSafety } from "./whatsapp-inbound-safety.mjs";
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText } from "./whatsapp-conversation.mjs";
@@ -15052,10 +15053,12 @@ async function postWhatsappMessage(t, message) {
   const res = await fetch(`https://graph.facebook.com/${t.version}/${encodeURIComponent(t.phoneId)}/messages`, { method: "POST", headers: { authorization: `Bearer ${t.token}`, "content-type": "application/json" }, body: JSON.stringify(message), signal: AbortSignal.timeout(15e3) });
   const data = await res.json().catch(() => ({}));
   const id = String(data?.messages?.[0]?.id || "");
-  return { ok: res.ok && Boolean(id), status: res.status, provider_message_id: id || null, error: res.ok ? null : String(data?.error?.message || "").slice(0, 300) };
+  return { ok: res.ok && Boolean(id), status: res.status, provider_message_id: id || null, error: res.ok ? null : JSON.stringify({message:data?.error?.message||"",code:data?.error?.code,subcode:data?.error?.error_subcode,details:data?.error?.error_data?.details}).slice(0, 600) };
 }
 __name(postWhatsappMessage, "postWhatsappMessage");
 async function replyWhatsappConversation(item, question, { inboundAudio = false, status: inboundStatus, checkpoint: inboundCheckpoint } = {}) {
+  const safetyReason = whatsappInboundSafety(item);
+  if (safetyReason) return { sent: false, reason: safetyReason };
   const t = whatsappTransport(item);
   if (!t.token || !t.phoneId) return { sent: false, reason: "whatsapp_transport_not_configured" };
   const kv = globalThis.__ZEVANORY_PRIVATE_KV__;
@@ -15377,6 +15380,7 @@ async function handler18(req, res) {
     const sql = process.env.DATABASE_URL ? cs(process.env.DATABASE_URL) : null;
     let queued = 0, support = 0, commercial = 0, media_review = 0, instant = 0;
     for (const item of inbound) {
+      if (whatsappInboundSafety(item)) continue;
       const status = { at: new Date().toISOString(), inbound_type: item.type, inbound_message_id: item.message_id || null, heard: false, model: null, text_sent: false, voice_sent: false, voice_error: null };
       const checkpoint = whatsappStageRecorder(globalThis.__ZEVANORY_PRIVATE_KV__, status);
       await checkpoint("received");
@@ -18308,7 +18312,8 @@ var cloudflare_worker_default = {
   }
 };
 export {
-  cloudflare_worker_default as default
+  cloudflare_worker_default as default,
+  cs as whatsappProofDatabase
 };
 /*! Bundled license information:
 
