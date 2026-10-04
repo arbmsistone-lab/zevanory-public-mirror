@@ -10,25 +10,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Read three candidate leads and correlate memory and inbound jobs
+      - name: Read KV inbound events near 16:55 without exposing contacts
         run: |
-          mkdir -p /tmp/owner-evidence
-          npm install --prefix /tmp/owner-evidence --no-save @neondatabase/serverless@1.0.2 >/dev/null 2>&1
-          cd /tmp/owner-evidence
           node --input-type=module <<'JS'
-          import {neon} from '@neondatabase/serverless';
-          if(!process.env.DATABASE_URL)throw Error('database_secret_missing');
-          const sql=neon(process.env.DATABASE_URL);
-          const leads=await sql.query("select contact_ref, updated_at from sales_leads where channel='whatsapp' and contact_ref not in ('558892545413','5588992545413') order by updated_at desc limit 3");
-          const redact=x=>String(x||'').replace(/\d{5,}/g,'[redacted]').slice(0,250);
-          for(const lead of leads){
-           const memory=await sql.query("select m.updated_at,m.memory_value from agent_memory m join sales_leads l on m.scope_type='lead' and m.scope_ref=l.lead_id::text where l.channel='whatsapp' and l.contact_ref=$1 and m.memory_key='last_inbound_message' order by m.updated_at desc limit 3",[lead.contact_ref]);
-           const jobs=await sql.query("select j.created_at,j.payload from agent_jobs j join sales_leads l on l.lead_id=j.lead_id where l.channel='whatsapp' and l.contact_ref=$1 order by j.created_at desc limit 15",[lead.contact_ref]);
-           console.log(JSON.stringify({suffix:String(lead.contact_ref).slice(-4),updated_at:lead.updated_at,memory:memory.map(m=>({at:m.updated_at,value:redact(JSON.stringify(m.memory_value))})),jobs:jobs.map(j=>({at:j.created_at,text:redact(j.payload?.inbound_message),type:j.payload?.media_type,message_id:j.payload?.message_id,keys:Object.keys(j.payload||{})}))}));
+          const base='https://api.cloudflare.com/client/v4/accounts/1b26415802588185a86c1d4d3ebf5bdb/storage/kv/namespaces/728a45738e4047f29bcb89934fd533c1';
+          const headers={authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN};
+          let cursor;
+          let found=0;
+          for(let n=0;n<5;n++){
+           const r=await fetch(base+'/keys?prefix=whatsapp-e2e%2F&limit=1000'+(cursor?'&cursor='+encodeURIComponent(cursor):''),{headers});if(!r.ok)throw Error('kv_keys_http_'+r.status);
+           const page=await r.json();
+           for(const key of page.result||[]){
+            const time=Number(key.name.slice('whatsapp-e2e/'.length).split('-')[0]);
+            if(Math.abs(time-Date.parse('2026-10-04T19:55:00Z'))>600000)continue;
+            const r=await fetch(base+'/values/'+encodeURIComponent(key.name),{headers});if(!r.ok)throw Error('kv_value_http_'+r.status);
+            const e=await r.json();
+            console.log(JSON.stringify({type:e.type,at:e.created_at,message_id:e.message_id,phone_number_id:e.phone_number_id,contact_hash:e.contact_hash,queued:e.queued}));found++;
+           }
+           cursor=page.result_info?.cursor;if(!cursor)break;
           }
-          console.log('OWNER_EVIDENCE_READ_ONLY_DONE');
+          console.log(JSON.stringify({read_only:true,events_near_1655:found}));
           JS
