@@ -151,14 +151,14 @@ jobs:
               try:e,end=decoder.raw_decode(raw[start:]);pos=start+end
               except ValueError:pos=start+1;continue
               req=(e.get('event') or {}).get('request') or {};u=urllib.parse.urlparse(req.get('url',''))
-              if u.path not in ['/internal/voice/encode-chunk','/api/webhooks/meta','/api/admin/voice/encode-audit']:continue
+              if u.path not in ['/api/internal/voice/encode-chunk','/api/webhooks/meta','/api/admin/voice/encode-audit']:continue
               q=urllib.parse.parse_qs(u.query)
               events.append({'path':u.path,'audit_id':q.get('audit_id',[None])[0],'chunk':q.get('chunk',[None])[0],'attempt':q.get('attempt',[None])[0],'cpuTime':e.get('cpuTime'),'wallTime':e.get('wallTime'),'outcome':e.get('outcome'),'exceptions':[x.get('name') for x in e.get('exceptions',[])]})
           pathlib.Path('/tmp/stress/tail.json').write_text(json.dumps(events,indent=2));print(json.dumps(events))
           matrix_path=pathlib.Path('/tmp/stress/matrix.json')
           if matrix_path.exists():
               matrix=json.loads(matrix_path.read_text())
-              for item in matrix:item['cpu_per_block']=[e for e in events if e['audit_id']=='stress-'+str(item['index']) and e['path']=='/internal/voice/encode-chunk']
+              for item in matrix:item['cpu_per_block']=[e for e in events if e['audit_id']=='stress-'+str(item['index']) and e['path']=='/api/internal/voice/encode-chunk']
               matrix_path.write_text(json.dumps(matrix,indent=2))
               with open('/tmp/stress/matrix.csv','w') as f:
                   writer=csv.writer(f);writer.writerow(['index','chars','http','valid_mp3','time_ms','provider','fallback_used','cpu_per_block'])

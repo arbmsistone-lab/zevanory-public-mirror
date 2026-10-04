@@ -79,7 +79,7 @@ export async function encodePcmInChunks(pcm,rate,env,fetchImpl=fetch,{auditId=cr
     if(++calls>38)throw Error("voice_chunk_invocation_budget");
     const meta={audit_id:String(auditId).slice(0,80),index,attempt,samples,first:index===0,last:start+samples>=total};
     const headers=await voiceSignedHeaders(block,rate,env,meta);
-    const request=new Request("https://zevanory.api.br/internal/voice/encode-chunk?audit_id="+encodeURIComponent(meta.audit_id)+"&chunk="+index+"&attempt="+attempt,{method:"POST",headers,body:block,signal:AbortSignal.timeout(15000)});
+    const request=new Request("https://zevanory.api.br/api/internal/voice/encode-chunk?audit_id="+encodeURIComponent(meta.audit_id)+"&chunk="+index+"&attempt="+attempt,{method:"POST",headers,body:block,signal:AbortSignal.timeout(15000)});
     const at=Date.now(),response=await fetchImpl(request);
     metrics.push({index,attempt,http:response.status,wall_ms:Date.now()-at,samples});
     if(response.ok){const bytes=new Uint8Array(await response.arrayBuffer());frames(bytes);parts.push(bytes);completed=true;break;}

@@ -97,7 +97,7 @@ const wrapped = {
   async processFetch(request, env, ctx) {
     let normalized = normalizeEnv(env);
     const url = new URL(request.url);
-    if(url.pathname==="/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
+    if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
     if(url.pathname==="/api/admin/voice/encode-audit") return handleVoiceEncodeAudit(request,normalized);
 
     // One administrative surface only: legacy HTML entrypoints permanently
