@@ -46,7 +46,8 @@ router_required=[
   'pt-BR-FranciscaNeural',
   'simba-3.0',
   'pt_BR-jeff-medium',
-  'gemini-3.1-flash-tts-preview',
+  'const list = ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"]',
+  'AbortSignal.timeout(Math.min(15000, remaining))',
   'voice_tts_speechify_http_',
   'voice_tts_azure_http_',
   'voice_tts_piper_relay_http_',
@@ -63,6 +64,7 @@ router_required=[
 missing=[x for x in router_required if x not in router]
 assert not missing, f"missing provider router markers: {missing}"
 print("VOICE_MULTI_PROVIDER_ZERO_SPEND_FAILOVER_GATE=PASS")
+subprocess.run(["node", "scripts/whatsapp_delivery_proof_test.mjs"], check=True)
 # Verify the Gemini wire contract and valid MP3 bytes rather than accepting a
 # marker from the retired interactions API that did not generate usable audio.
 subprocess.run(["node", "scripts/whatsapp_conversation_test.mjs"], check=True)

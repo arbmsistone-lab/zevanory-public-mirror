@@ -1,0 +1,110 @@
+name: WhatsApp delivery recovery and real proofs
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths: ['worker/**', 'scripts/whatsapp*', '.github/workflows/whatsapp-delivery-recovery.yml']
+  push:
+    branches: [gh-pages]
+    paths: ['worker/whatsapp-onboarding.mjs', 'worker/cloudflare-worker.compat.mjs', 'worker/cloudflare-worker.recovered.mjs', 'worker/voice-provider-router.mjs', '.github/workflows/whatsapp-delivery-recovery.yml']
+permissions:
+  contents: read
+concurrency:
+  group: whatsapp-delivery-recovery-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify webhook, stages and authenticated proof boundary
+        run: |
+          node scripts/whatsapp_delivery_proof_test.mjs
+          node scripts/whatsapp_audio_runtime_test.mjs
+          node scripts/whatsapp_conversation_test.mjs
+          python3 scripts/voice_support_gate.py
+          node --check worker/cloudflare-worker.compat.mjs
+          node --check worker/cloudflare-worker.recovered.mjs
+          node --check worker/whatsapp-onboarding.mjs
+          node --check worker/voice-provider-router.mjs
+  production-proof:
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
+    steps:
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Generate short Portuguese OGG Opus on cloud runner
+        run: |
+          mkdir -p /tmp/proof
+          if ! command -v espeak >/dev/null || ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq espeak ffmpeg >/dev/null
+          fi
+          espeak -v pt-br -s 155 -w /tmp/internal-proof.wav 'quanto custa o combo'
+          ffmpeg -nostdin -hide_banner -loglevel error -y -i /tmp/internal-proof.wav -ac 1 -ar 48000 -c:a libopus -b:a 24k /tmp/internal-proof.ogg
+      - name: Capture tail while proving actual text and voice delivery
+        run: |
+          npm install --prefix /tmp/proof-tools --no-save wrangler@4.143.0 >/dev/null 2>&1
+          timeout 900s /tmp/proof-tools/node_modules/.bin/wrangler tail zevanory --format json > /tmp/tail-private.json 2>/tmp/tail-private.err &
+          tail_pid=$!
+          trap 'kill "$tail_pid" 2>/dev/null || true' EXIT
+          node --input-type=module <<'JS'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const origin='https://zevanory.api.br';
+          const status=async()=>fetch(origin+'/api/support/instant-status',{signal:AbortSignal.timeout(15000)}).then(r=>r.json());
+          let live;
+          for(let n=0;n<120;n++){live=await status();if(live.release_sha===process.env.GITHUB_SHA)break;await new Promise(r=>setTimeout(r,5000));}
+          if(live.release_sha!==process.env.GITHUB_SHA)throw Error('exact_release_not_live');
+          async function operation(input){
+           const r=await fetch(origin+'/api/admin/whatsapp-onboard/delivery-proof',{method:'POST',headers:{authorization:'Bearer '+process.env.OPERATOR_TOKEN,'content-type':'application/json'},body:JSON.stringify(input),signal:AbortSignal.timeout(120000)});
+           const j=await r.json();if(!r.ok)throw Error('proof_operation_http_'+r.status+'_'+(j.error||'unknown'));return j;
+          }
+          const subscriptions=await operation({operation:'subscriptions'});writeFileSync('/tmp/proof/meta-subscriptions.json',JSON.stringify(subscriptions,null,2));console.log(JSON.stringify({subscriptions}));
+          for(const type of ['text','audio']){
+           const input={operation:type};if(type==='audio')input.audio_base64=readFileSync('/tmp/internal-proof.ogg').toString('base64');
+           const ack=await operation(input);console.log(JSON.stringify({test:type,ack}));
+           let result;
+           for(let n=0;n<60;n++){result=await status();if(result.last?.inbound_message_id===ack.inbound_message_id&&(type==='text'?result.last.text_sent||result.last.text_error:result.last.voice_sent||result.last.voice_error))break;await new Promise(r=>setTimeout(r,2000));}
+           const last=result.last||{};
+           const exact=last.inbound_message_id===ack.inbound_message_id;
+           const stages=(last.steps||[]).map(x=>x.stage);
+           const pass=exact&&last.heard&&last.text_sent&&/^wamid\./.test(last.text_provider_message_id||'')&&(type==='text'||(last.voice_sent&&/^wamid\./.test(last.voice_provider_message_id||'')&&['tts_done','encode_done','upload_done','voice_sent'].every(x=>stages.includes(x))));
+           const proof={test:type,pass,ack,status:result};writeFileSync('/tmp/proof/'+type+'-test.json',JSON.stringify(proof,null,2));console.log(JSON.stringify(proof));
+           if(!pass)throw Error(type==='text'?'TEXT_FAIL_REQUIRES_SYNCHRONOUS_ROLLBACK':'REAL_AUDIO_PROOF_FAILED');
+          }
+          console.log('REAL_INTERNAL_TEXT_AND_AUDIO_WAMIDS=PASS');
+          JS
+      - name: Preserve sanitized webhook tail
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('/tmp/tail-private.json')
+          raw=p.read_text() if p.exists() else ''
+          decoder=json.JSONDecoder();pos=0;events=[]
+          while pos<len(raw):
+              start=raw.find('{',pos)
+              if start<0:break
+              try:e,end=decoder.raw_decode(raw[start:]);pos=start+end
+              except ValueError:pos=start+1;continue
+              req=(e.get('event') or {}).get('request') or {}
+              if '/api/webhooks/meta' not in str(req.get('url','')):continue
+              events.append({'timestamp':e.get('eventTimestamp'),'outcome':e.get('outcome'),'cpuTime':e.get('cpuTime'),'wallTime':e.get('wallTime'),'method':req.get('method'),'path':'/api/webhooks/meta','exception_names':[x.get('name') for x in e.get('exceptions',[])]})
+          pathlib.Path('/tmp/proof').mkdir(exist_ok=True)
+          pathlib.Path('/tmp/proof/tail-sanitized.json').write_text(json.dumps(events,indent=2))
+          print(json.dumps(events,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whatsapp-real-delivery-proof
+          path: /tmp/proof/
+          retention-days: 7
