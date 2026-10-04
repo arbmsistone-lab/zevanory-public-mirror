@@ -4,7 +4,7 @@ import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { deferMetaWebhook, whatsappStageRecorder, handleNodeWebhookFetch, latestWhatsappStage } from "../worker/whatsapp-background.mjs";
-import { unpackPcm, encodePcmRemotely } from "../worker/voice-pcm.mjs";
+import { unpackPcm, encodePcmRemotely, downsamplePcmMono } from "../worker/voice-pcm.mjs";
 import { pcm16ToMp3, ttsBytesWithFailover } from "../worker/voice-provider-router.mjs";
 
 let pending, release, finished = false, handlerStarted = false;
@@ -150,3 +150,22 @@ const fresh = { at: "2026-10-04T20:50:00Z", elapsed_ms: 40, stage: "encode_start
 const historical = { at: "2026-10-04T19:55:11Z", text_sent: true };
 assert.deepEqual(await latestWhatsappStage({ get: async key => JSON.stringify(key === "whatsapp:instant:last" ? historical : fresh), list: async () => ({ keys: [{ name: "whatsapp:instant:stage:synthetic" }] }) }), fresh);
 console.log("KV_SAME_KEY_RATE_LIMIT_ALL_STAGES_RETAINED=PASS");
+
+const source24k = new Uint8Array(24000 * 2);
+const sourceView = new DataView(source24k.buffer);
+for(let i=0;i<24000;i++) sourceView.setInt16(i*2,Math.round(Math.sin(i*2*Math.PI*440/24000)*12000),true);
+const narrow = downsamplePcmMono(source24k,24000);
+assert.equal(narrow.sampleRate,8000);assert.equal(narrow.pcm.length,16000);
+assert.equal(narrow.pcm.length/2/narrow.sampleRate,source24k.length/2/24000);
+assert.ok(Math.abs(new DataView(narrow.pcm.buffer).getInt16(0,true))<2000);
+const dc = new Uint8Array(12); const dcView = new DataView(dc.buffer);
+for(let i=0;i<6;i++)dcView.setInt16(i*2,-12000,true);
+const dc8 = downsamplePcmMono(dc,24000);
+assert.deepEqual([...new Int16Array(dc8.pcm.buffer)],[-12000,-12000]);
+assert.equal(downsamplePcmMono(dc,8000).pcm,dc);
+assert.throws(()=>downsamplePcmMono(dc,12345),/voice_resample_format_invalid/);
+const fullDuration = new Uint8Array(789120);fullDuration.set(source24k);
+const timeStart = performance.now();const mono8 = downsamplePcmMono(fullDuration,24000);const encoded8 = pcm16ToMp3(mono8.pcm,8000,32);
+assert.ok(encoded8.length>4000);
+console.log("ACTUAL_LENGTH_24KHZ_TO_8KHZ_NODE_BENCHMARK_MS="+(performance.now()-timeStart).toFixed(1)+" (not production CPU proof)");
+console.log("LOCAL_DOWNSAMPLE_DURATION_SIGNED_SAMPLES_LOW_CPU=PASS");

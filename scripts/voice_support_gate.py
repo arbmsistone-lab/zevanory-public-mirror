@@ -56,7 +56,8 @@ router_required=[
   'responseModalities: ["AUDIO"]',
   ':generateContent',
   'export function pcm16ToMp3',
-  'pcm16ToMp3(input.pcm, input.sampleRate, 32)',
+  'downsamplePcmMono(input.pcm, input.sampleRate, 8000)',
+  'pcm16ToMp3(encodingInput.pcm, encodingInput.sampleRate, 32)',
   'sample_rate: 8000',
   'gemini-3.8-flash-tts',
   'gemini-3.8-flash-lite-tts',
@@ -68,6 +69,7 @@ subprocess.run(["node", "scripts/whatsapp_delivery_proof_test.mjs"], check=True)
 # Verify the Gemini wire contract and valid MP3 bytes rather than accepting a
 # marker from the retired interactions API that did not generate usable audio.
 subprocess.run(["node", "scripts/whatsapp_conversation_test.mjs"], check=True)
+subprocess.run(["node", "scripts/whatsapp_audio_runtime_test.mjs"], check=True)
 
 for marker in [
   'c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"',

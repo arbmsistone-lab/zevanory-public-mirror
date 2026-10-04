@@ -43,3 +43,23 @@ export async function encodePcmRemotely(bytes, sampleRate, env, fetchImpl = fetc
   if (mp3.length < 4 || mp3[0] !== 0xff || (mp3[1] & 0xe0) !== 0xe0) throw new Error("voice_encode_invalid_mp3");
   return mp3;
 }
+
+export function downsamplePcmMono(pcm, sourceRate, targetRate = 8000) {
+  if (!(pcm instanceof Uint8Array) || !pcm.length || pcm.length % 2 || ![8000,16000,24000,32000,44100,48000].includes(sourceRate) || targetRate !== 8000) throw new Error("voice_resample_format_invalid");
+  if (sourceRate === targetRate) return { pcm, sampleRate: targetRate };
+  const input = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+  const count = pcm.length / 2, ratio = sourceRate / targetRate;
+  const output = new Uint8Array(Math.floor(count / ratio) * 2);
+  const view = new DataView(output.buffer);
+  // Average each source interval before decimation, preserving duration and pitch.
+  for (let i = 0; i < output.length / 2; i++) {
+    const start = i * ratio, end = Math.min((i + 1) * ratio, count);
+    let sum = 0;
+    for (let j = Math.floor(start); j < Math.ceil(end); j++) {
+      const weight = Math.min(end, j + 1) - Math.max(start, j);
+      sum += input.getInt16(j * 2, true) * weight;
+    }
+    view.setInt16(i * 2, Math.round(sum / (end - start)), true);
+  }
+  return { pcm: output, sampleRate: targetRate };
+}
