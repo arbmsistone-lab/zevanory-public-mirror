@@ -202,7 +202,7 @@ export function pcm16ToMp3(pcmBytes, sampleRate = 24000, kbps = 64) {
 }
 
 function geminiTtsModels(env = {}) {
-  const list = ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", env.GEMINI_TTS_MODEL, "gemini-2.5-flash-preview-tts", "gemini-3.1-flash-tts-preview"]
+  const list = ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"]
     .map((m) => String(m || "").trim()).filter(Boolean);
   return [...new Set(list)];
 }
@@ -213,7 +213,7 @@ async function geminiTts(text, env, fetchImpl, { onStage = async () => {} } = {}
   const style = String(env.VOICE_TTS_STYLE || "Fale em português do Brasil, com voz natural, acolhedora, clara e profissional, em ritmo de conversa.").trim();
   const errors = [];
   const started = Date.now();
-  const deadline = started + 18000;
+  const deadline = started + 30000;
   for (const model of geminiTtsModels(env)) {
     const modern = model.startsWith("gemini-3.8-");
     const remaining = deadline - Date.now();
@@ -231,7 +231,7 @@ async function geminiTts(text, env, fetchImpl, { onStage = async () => {} } = {}
         contents: [{ parts: [{ text: `${style}\n\n${text}` }] }],
         generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } }
       }),
-      signal: AbortSignal.timeout(Math.min(8000, remaining))
+      signal: AbortSignal.timeout(Math.min(15000, remaining))
     }); } catch (error) { errors.push(`${model}:${error?.name || "fetch_failed"}`); continue; }
     const body = await response.json().catch(() => ({}));
     if (!response.ok) { errors.push(`${model}:${response.status}`); if (response.status === 404 || response.status === 400) continue; break; }
