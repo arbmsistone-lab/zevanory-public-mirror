@@ -1,0 +1,34 @@
+name: WhatsApp owner evidence read only
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths: ['.github/workflows/whatsapp-owner-evidence.yml']
+permissions:
+  contents: read
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Read three candidate leads and correlate memory and inbound jobs
+        run: |
+          mkdir -p /tmp/owner-evidence
+          npm install --prefix /tmp/owner-evidence --no-save @neondatabase/serverless@1.0.2 >/dev/null 2>&1
+          cd /tmp/owner-evidence
+          node --input-type=module <<'JS'
+          import {neon} from '@neondatabase/serverless';
+          if(!process.env.DATABASE_URL)throw Error('database_secret_missing');
+          const sql=neon(process.env.DATABASE_URL);
+          const leads=await sql.query("select contact_ref, updated_at from sales_leads where channel='whatsapp' and contact_ref not in ('558892545413','5588992545413') order by updated_at desc limit 3");
+          const redact=x=>String(x||'').replace(/\d{5,}/g,'[redacted]').slice(0,250);
+          for(const lead of leads){
+           const memory=await sql.query("select m.updated_at,m.memory_value from agent_memory m join sales_leads l on m.scope_type='lead' and m.scope_ref=l.lead_id::text where l.channel='whatsapp' and l.contact_ref=$1 and m.memory_key='last_inbound_message' order by m.updated_at desc limit 3",[lead.contact_ref]);
+           const jobs=await sql.query("select j.created_at,j.payload from agent_jobs j join sales_leads l on l.lead_id=j.lead_id where l.channel='whatsapp' and l.contact_ref=$1 order by j.created_at desc limit 15",[lead.contact_ref]);
+           console.log(JSON.stringify({suffix:String(lead.contact_ref).slice(-4),updated_at:lead.updated_at,memory:memory.map(m=>({at:m.updated_at,value:redact(JSON.stringify(m.memory_value))})),jobs:jobs.map(j=>({at:j.created_at,text:redact(j.payload?.inbound_message),type:j.payload?.media_type,message_id:j.payload?.message_id,keys:Object.keys(j.payload||{})}))}));
+          }
+          console.log('OWNER_EVIDENCE_READ_ONLY_DONE');
+          JS
