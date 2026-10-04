@@ -28,9 +28,9 @@ assert.equal((await handleWhatsappOnboarding(request({operation:"text"},false),e
 assert.equal((await handleWhatsappOnboarding(request({operation:"arbitrary-send"}),env)).status,400);assert.equal(calls,0);
 const subscriptions=await handleWhatsappOnboarding(request({operation:"subscriptions"}),env);assert.equal((await subscriptions.json()).valid,true);
 const text=await handleWhatsappOnboarding(request({operation:"text",recipient:"ignored-attacker-target"}),env);
-const proof=await text.json();assert.equal(proof.webhook_http,200);assert.ok(proof.body_sha256);assert.ok(!JSON.stringify(proof).includes(record.app_secret));
+const proof=await text.json();assert.equal(proof.signature,"sha256="+createHmac("sha256",record.app_secret).update(proof.signed_body).digest("hex"));assert.equal(JSON.parse(proof.signed_body).entry[0].changes[0].value.messages[0].from,"558892545413");assert.ok(proof.body_sha256);assert.ok(!JSON.stringify(proof).includes(record.app_secret));
 const audio=await handleWhatsappOnboarding(request({operation:"audio",audio_base64:Buffer.from("OggSsynthetic-unit-test").toString("base64")}),env);
-assert.equal((await audio.json()).webhook_http,200);
+const audioProof=await audio.json();assert.equal(JSON.parse(audioProof.signed_body).entry[0].changes[0].value.messages[0].audio.id,"synthetic-media");
 console.log("DELIVERY_PROOF_AUTH_FIXED_RECIPIENT_HMAC_MEDIA_NO_SECRET_LEAK=PASS");
 
 const {ttsBytesWithFailover}=await import("../worker/voice-provider-router.mjs");
