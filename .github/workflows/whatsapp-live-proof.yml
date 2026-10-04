@@ -12,7 +12,7 @@ jobs:
   observe:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
@@ -31,7 +31,11 @@ jobs:
           npm install --prefix /tmp/proof-tools --no-save wrangler@4.143.0 >/dev/null 2>&1
           echo "TAIL_WINDOW_START=$(date -u +%FT%TZ)"
           set +e
-          timeout 180s /tmp/proof-tools/node_modules/.bin/wrangler tail zevanory --format json > /tmp/whatsapp-tail-private.json 2>/tmp/whatsapp-tail-private.err
+          timeout 300s /tmp/proof-tools/node_modules/.bin/wrangler tail zevanory --format json > /tmp/whatsapp-tail-private.json 2>/tmp/whatsapp-tail-private.err &
+          tail_pid=$!
+          sleep 5
+          curl -fsS --max-time 20 https://zevanory.api.br/api/support/instant-status > /tmp/proof/ingress-control.json
+          wait "$tail_pid"
           result=$?
           set -e
           if [ "$result" != 0 ] && [ "$result" != 124 ]; then
@@ -45,6 +49,7 @@ jobs:
           curl -fsS --max-time 20 https://zevanory.api.br/api/support/instant-status > /tmp/proof/final.json
           python3 - <<'PY'
           import json,re,pathlib
+          from urllib.parse import urlsplit
           p=pathlib.Path('/tmp/whatsapp-tail-private.json')
           raw=p.read_text() if p.exists() else ''
           events=[]
@@ -60,7 +65,9 @@ jobs:
                   pos=start+1
                   continue
               request=(event.get('event') or {}).get('request') or {}
-              if '/api/webhooks/meta' not in str(request.get('url','')): continue
+              if not request: continue
+              route=urlsplit(str(request.get('url',''))).path
+              if not re.fullmatch(r'/[A-Za-z0-9_./-]{0,120}',route): route='redacted'
               logs=[]
               for log in event.get('logs',[]):
                   parts=log.get('message',[])
@@ -70,7 +77,7 @@ jobs:
                           if isinstance(item,(int,float,bool)) or re.fullmatch(r'[a-z_]{1,80}',str(item)):
                               safe.append(item)
                       logs.append(safe)
-              events.append({'timestamp':event.get('eventTimestamp'),'outcome':event.get('outcome'),'cpuTime':event.get('cpuTime'),'wallTime':event.get('wallTime'),'method':request.get('method'),'path':'/api/webhooks/meta','logs':logs,'exception_names':[e.get('name') for e in event.get('exceptions',[])]})
+              events.append({'timestamp':event.get('eventTimestamp'),'outcome':event.get('outcome'),'cpuTime':event.get('cpuTime'),'wallTime':event.get('wallTime'),'method':request.get('method'),'path':route,'logs':logs,'exception_names':[e.get('name') for e in event.get('exceptions',[])]})
           pathlib.Path('/tmp/proof/tail-sanitized.json').write_text(json.dumps(events,indent=2))
           baseline=json.loads(pathlib.Path('/tmp/proof/baseline.json').read_text())
           final=json.loads(pathlib.Path('/tmp/proof/final.json').read_text())
