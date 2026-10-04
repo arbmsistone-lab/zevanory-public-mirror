@@ -364,9 +364,7 @@ async function handleDeliveryProof(request,env){
     const key=await crypto.subtle.importKey("raw",encoder.encode(record.app_secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
     const hex=b=>[...new Uint8Array(b)].map(n=>n.toString(16).padStart(2,"0")).join("");
     const signature="sha256="+hex(await crypto.subtle.sign("HMAC",key,encoder.encode(body)));
-    const sent=await fetch(WEBHOOK_URI,{method:"POST",headers:{"content-type":"application/json","x-hub-signature-256":signature},body,signal:AbortSignal.timeout(90000)});
-    await sent.body?.cancel().catch(()=>{});
-    return responseJson({operation:input.operation,inbound_message_id:messageId,media_id:mediaId,webhook_http:sent.status,body_sha256:hex(await crypto.subtle.digest("SHA-256",encoder.encode(body)))},sent.ok?200:502);
+    return responseJson({operation:input.operation,inbound_message_id:messageId,media_id:mediaId,signed_body:body,signature,body_sha256:hex(await crypto.subtle.digest("SHA-256",encoder.encode(body)))});
   }catch(error){
     const code=String(error?.message||"proof_failed").match(/^meta_http_\d+_[A-Za-z0-9]+/)?.[0]||"delivery_proof_failed";
     return responseJson({error:code},502);
