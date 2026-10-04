@@ -125,7 +125,7 @@ async function graphJson(url,{token,method="GET",body=null,headers={}}={}){
   const h={...headers};
   if(token) h.authorization="Bearer "+token;
   let payload=body;
-  if(body && !(body instanceof URLSearchParams) && typeof body==="object"){
+  if(body && !(body instanceof URLSearchParams) && !(body instanceof FormData) && typeof body==="object"){
     h["content-type"]="application/json"; payload=JSON.stringify(body);
   }
   const r=await fetch(url,{method,headers:h,body:payload,signal:AbortSignal.timeout(20000)});
@@ -316,8 +316,66 @@ async function finalizeTransport(env,record){
   await putRecord(env,record);
   return record;
 }
+
+function proofAuthorized(request,env){
+  const expected=String(env.OPERATOR_TOKEN||"");
+  const presented=String(request.headers.get("authorization")||"").replace(/^Bearer /,"");
+  if(expected.length<24||presented.length!==expected.length)return false;
+  let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^presented.charCodeAt(i);
+  return diff===0;
+}
+async function handleDeliveryProof(request,env){
+  if(!proofAuthorized(request,env))return responseJson({error:"unauthorized"},401);
+  if(request.method!=="POST")return responseJson({error:"method_not_allowed"},405);
+  const raw=await request.text();if(raw.length>180000)return responseJson({error:"payload_too_large"},413);
+  let input;try{input=JSON.parse(raw);}catch{return responseJson({error:"invalid_json"},400);}
+  if(!["subscriptions","text","audio"].includes(input.operation))return responseJson({error:"invalid_operation"},400);
+  let record=await getRecord(env).catch(()=>null);
+  const appId=DEFAULT_APP_ID,wabaId="4019600665012911",phoneId="1300972319774588",recipient="558892545413";
+  if(!record?.app_secret||!record?.access_token||String(record.phone_number_id)!==phoneId||String(record.waba_id)!==wabaId)return responseJson({error:"onboarding_identity_mismatch"},409);
+  try{
+    if(input.operation==="subscriptions"){
+      const inspect=async()=>{
+        const subscriptions=await graphJson("https://graph.facebook.com/"+GRAPH_VERSION+"/"+appId+"/subscriptions",{token:appId+"|"+record.app_secret});
+        const apps=await graphJson("https://graph.facebook.com/"+GRAPH_VERSION+"/"+wabaId+"/subscribed_apps",{token:record.access_token});
+        const s=(subscriptions.data||[]).find(s=>s.object==="whatsapp_business_account");
+        const valid=s?.callback_url===WEBHOOK_URI&&s.active===true&&(s.fields||[]).some(f=>(f.name||f)==="messages")&&(apps.data||[]).some(a=>String(a.whatsapp_business_api_data?.id||a.id)===appId);
+        return {valid,subscription:s?{object:s.object,callback_url:s.callback_url,active:s.active,fields:s.fields}:null,subscribed_apps:(apps.data||[]).map(a=>({id:a.whatsapp_business_api_data?.id||a.id}))};
+      };
+      let proof=await inspect(),repaired=false;
+      if(!proof.valid){record=await finalizeTransport(env,record);repaired=true;proof=await inspect();}
+      return responseJson({...proof,repaired},proof.valid?200:502);
+    }
+    let mediaId=null;
+    if(input.operation==="audio"){
+      const b64=String(input.audio_base64||"");if(!b64||b64.length>170000)return responseJson({error:"audio_size_invalid"},400);
+      const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+      if(decoder.decode(bytes.subarray(0,4))!=="OggS")return responseJson({error:"ogg_required"},400);
+      const form=new FormData();form.set("messaging_product","whatsapp");form.set("type","audio/ogg");form.set("file",new Blob([bytes],{type:"audio/ogg"}),"internal-proof.ogg");
+      const upload=await graphJson("https://graph.facebook.com/"+GRAPH_VERSION+"/"+phoneId+"/media",{token:record.access_token,method:"POST",body:form});
+      mediaId=String(upload.id||"");if(!mediaId)throw Error("internal_media_upload_missing");
+    }
+    const messageId="internal-"+input.operation+"-"+crypto.randomUUID();
+    const message={from:recipient,id:messageId,timestamp:String(Math.floor(Date.now()/1000)),type:input.operation};
+    if(input.operation==="text")message.text={body:"teste interno: quanto custa o combo?"};
+    else message.audio={id:mediaId,mime_type:"audio/ogg; codecs=opus",voice:true};
+    const payload={object:"whatsapp_business_account",entry:[{id:wabaId,changes:[{field:"messages",value:{messaging_product:"whatsapp",metadata:{phone_number_id:phoneId},messages:[message]}}]}]};
+    const body=JSON.stringify(payload);
+    const key=await crypto.subtle.importKey("raw",encoder.encode(record.app_secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+    const hex=b=>[...new Uint8Array(b)].map(n=>n.toString(16).padStart(2,"0")).join("");
+    const signature="sha256="+hex(await crypto.subtle.sign("HMAC",key,encoder.encode(body)));
+    const sent=await fetch(WEBHOOK_URI,{method:"POST",headers:{"content-type":"application/json","x-hub-signature-256":signature},body,signal:AbortSignal.timeout(90000)});
+    await sent.body?.cancel().catch(()=>{});
+    return responseJson({operation:input.operation,inbound_message_id:messageId,media_id:mediaId,webhook_http:sent.status,body_sha256:hex(await crypto.subtle.digest("SHA-256",encoder.encode(body)))},sent.ok?200:502);
+  }catch(error){
+    const code=String(error?.message||"proof_failed").match(/^meta_http_\d+_[A-Za-z0-9]+/)?.[0]||"delivery_proof_failed";
+    return responseJson({error:code},502);
+  }
+}
+
 export async function handleWhatsappOnboarding(request,env={}){
   const url=new URL(request.url);
+  if(url.pathname==="/api/admin/whatsapp-onboard/delivery-proof")return handleDeliveryProof(request,env);
   let record=await getRecord(env).catch(()=>null);
   const brokerState=await brokerStatus(env);
   if(url.pathname==="/admin/whatsapp-onboard"&&request.method==="GET"){
