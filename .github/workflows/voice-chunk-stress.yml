@@ -124,6 +124,25 @@ jobs:
           console.log(JSON.stringify({stress_pass:pass,passed:matrix.filter(x=>x.valid_mp3).length,average_ms:matrix.reduce((n,x)=>n+x.time_ms,0)/20,worst_ms:Math.max(...matrix.map(x=>x.time_ms))}));
           if(qualityAudio){const quality=await op({operation:'audit-transcribe',audio_base64:qualityAudio});writeFileSync('/tmp/stress/quality.json',JSON.stringify({expected,...quality},null,2));console.log(JSON.stringify({concatenated_quality:{expected,...quality}}));}
           if(!pass)throw Error('TWENTY_OF_TWENTY_REQUIRED');
+          // Verify the concatenation algorithm with an actual Gemini speech source,
+          // independently of whether the CPU stress required the automatic reserve.
+          const reference=readFileSync('/tmp/stress/350.txt','utf8');
+          const generated=await op({operation:'audit-source',text:reference});
+          const source=generated.ok?Buffer.from(generated.pcm_base64,'base64'):readFileSync('/tmp/stress/350.pcm');
+          const sourceRate=generated.ok?generated.sample_rate:24000;
+          const {encodePcmInChunks,handleVoiceChunk}=await import(process.cwd()+'/worker/voice-chunks.mjs');
+          const testEnv={ELITE_INTERNAL_TOKEN:'cloud-audit-synthetic-auth-material-32chars'};
+          const joined=await encodePcmInChunks(new Uint8Array(source),sourceRate,testEnv,req=>handleVoiceChunk(req,testEnv));
+          writeFileSync('/tmp/stress/concatenated-quality.mp3',joined.bytes);
+          writeFileSync('/tmp/stress/quality-source.pcm',source);
+          spawnSync('ffmpeg',['-nostdin','-v','error','-y','-f','s16le','-ar',String(sourceRate),'-ac','1','-i','/tmp/stress/quality-source.pcm','/tmp/stress/quality-source.wav']);
+          const original=await op({operation:'audit-transcribe',audio_base64:readFileSync('/tmp/stress/quality-source.wav').toString('base64')});
+          const concatenated=await op({operation:'audit-transcribe',audio_base64:Buffer.from(joined.bytes).toString('base64')});
+          const normalize=s=>String(s||'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\\s+/g,' ').trim();
+          const qualityProof={source:generated.ok?'gemini':'espeak',expected:reference,original_transcript:original.transcript,concatenated_transcript:concatenated.transcript,identical_to_original:normalize(original.transcript)===normalize(concatenated.transcript),identical_to_written:normalize(reference)===normalize(concatenated.transcript),chunks:joined.chunks};
+          writeFileSync('/tmp/stress/concatenation-quality.json',JSON.stringify(qualityProof,null,2));console.log(JSON.stringify({concatenation_quality:qualityProof}));
+          if(!qualityProof.identical_to_original)throw Error('CONCATENATED_TRANSCRIPT_CHANGED');
+
           const opus=spawnSync('ffmpeg',['-nostdin','-v','error','-y','-i','/tmp/stress/350.wav','-ac','1','-ar','48000','-c:a','libopus','-b:a','24k','/tmp/stress/final.ogg']);
           if(opus.status!==0)throw Error('final_ogg_failed');
           const ack=await op({operation:'audio',audio_base64:readFileSync('/tmp/stress/final.ogg').toString('base64')});
