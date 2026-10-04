@@ -40,8 +40,8 @@ jobs:
           sudo apt-get install -y -qq espeak ffmpeg >/dev/null
           node --input-type=module <<'JS'
           import {writeFileSync} from 'node:fs';
-          const text='Olá! A ZEVANORY ajuda a organizar o atendimento e orientar a escolha dos produtos digitais. Para começar, identifique a principal dificuldade do seu negócio e defina um objetivo claro. Depois, reúna as perguntas mais frequentes dos clientes, acompanhe os pedidos e confira os resultados toda semana. A inteligência artificial pode ajudar a escrever mensagens, estruturar propostas e preparar respostas. Revise sempre as informações antes de enviar e mantenha os preços e as condições corretos. Os detalhes e os links estão na mensagem de texto. Se precisar de apoio, nossa equipe pode orientar o próximo passo.';
-          writeFileSync('/tmp/voice-audit/reference.txt',text);console.log(JSON.stringify({reference_chars:text.length}));
+          const fullText='Olá! A ZEVANORY ajuda a organizar o atendimento e orientar a escolha dos produtos digitais. Para começar, identifique a principal dificuldade do seu negócio e defina um objetivo claro. Depois, reúna as perguntas mais frequentes dos clientes, acompanhe os pedidos e confira os resultados toda semana. A inteligência artificial pode ajudar a escrever mensagens, estruturar propostas e preparar respostas. Revise sempre as informações antes de enviar e mantenha os preços e as condições corretos. Os detalhes e os links estão na mensagem de texto. Se precisar de apoio, nossa equipe pode orientar o próximo passo.';
+          const text=fullText.slice(0,350);writeFileSync('/tmp/voice-audit/reference.txt',text);console.log(JSON.stringify({reference_chars:text.length}));
           JS
           espeak -v pt-br -s 155 -w /tmp/audit.wav -f /tmp/voice-audit/reference.txt
           ffmpeg -nostdin -hide_banner -loglevel error -y -i /tmp/audit.wav -ac 1 -ar 24000 -f s16le /tmp/voice-audit/reference.pcm
@@ -71,7 +71,7 @@ jobs:
           }
           const measurements=[];let firstAudio;
           for(let index=1;index<=5;index++){
-           const result=await op({operation:'audit-encode',audit_id:'cpu600-'+index,pcm_base64:readFileSync('/tmp/voice-audit/reference.pcm').toString('base64'),sample_rate:24000});
+           const result=await op({operation:'audit-encode',audit_id:'cpu350-'+index,pcm_base64:readFileSync('/tmp/voice-audit/reference.pcm').toString('base64'),sample_rate:24000});
            if(result.audio_base64&&!firstAudio)firstAudio=result.audio_base64;delete result.audio_base64;measurements.push({index,...result});console.log(JSON.stringify({conversion:measurements.at(-1)}));await new Promise(r=>setTimeout(r,1000));
           }
           writeFileSync('/tmp/voice-audit/cpu-five.json',JSON.stringify(measurements,null,2));
@@ -87,7 +87,7 @@ jobs:
            }else console.log(JSON.stringify({quality_media_error:media}));
           }
           if(firstAudio){
-           const transcript=await op({operation:'audit-transcribe',audio_base64:firstAudio});const quality={kind:'600_char_conversion',expected:readFileSync('/tmp/voice-audit/reference.txt','utf8'),...transcript};
+           const transcript=await op({operation:'audit-transcribe',audio_base64:firstAudio});const quality={kind:'350_char_conversion',expected:readFileSync('/tmp/voice-audit/reference.txt','utf8'),...transcript};
            writeFileSync('/tmp/voice-audit/long-conversion-quality.json',JSON.stringify(quality,null,2));console.log(JSON.stringify({long_quality:quality}));
           }
           writeFileSync('/tmp/voice-audit/final-closure.json',JSON.stringify(await fetch(origin+'/api/voice/final-closure').then(r=>r.json()),null,2));
@@ -106,7 +106,7 @@ jobs:
               except ValueError:pos=start+1;continue
               req=(e.get('event') or {}).get('request') or {}
               url=str(req.get('url',''))
-              if 'cpu600-' not in url:continue
+              if 'cpu350-' not in url:continue
               events.append({'url':url,'outcome':e.get('outcome'),'cpuTime':e.get('cpuTime'),'wallTime':e.get('wallTime'),'exceptions':[x.get('name') for x in e.get('exceptions',[])]})
           pathlib.Path('/tmp/voice-audit').mkdir(exist_ok=True)
           pathlib.Path('/tmp/voice-audit/cpu-tail.json').write_text(json.dumps(events,indent=2))

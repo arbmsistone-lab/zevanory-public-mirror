@@ -69,3 +69,7 @@ assert.equal((await resolveOwnerProof(fallbackSql,proofKv)).recipient_suffix,"12
 await assert.rejects(()=>resolveOwnerProof(fallbackSql,{...proofKv,get:async()=>({type:"inbound_processed",phone_number_id:"other",contact_hash:kvHash})}),/owner_proof_evidence_not_found/);
 await assert.rejects(()=>resolveOwnerProof(fallbackSql,{...proofKv,get:async()=>({type:"inbound_processed",phone_number_id:"1300972319774588",contact_hash:"wrong-contact"})}),/owner_proof_evidence_not_found/);
 console.log("OWNER_AUDIO_TIMESTAMP_KV_CONTACT_PHONE_CROSSCHECK=PASS");
+
+const newerAudioSql={query:async q=>q.startsWith("select contact_ref")?[{contact_ref:candidate,updated_at:"2026-10-04T22:36:33Z"}]:q.startsWith("select m.")?[]:[{created_at:"2026-10-04T22:36:21Z",payload:{message_id:"wamid.newaudio",media_type:"audio"}},...await fallbackSql.query(q)]};
+assert.equal((await resolveOwnerProof(newerAudioSql,proofKv)).recipient_suffix,"1234");
+console.log("NEW_REAL_AUDIO_PRESERVES_VERIFIED_OWNER_ANCHOR=PASS");
