@@ -15055,16 +15055,16 @@ async function postWhatsappMessage(t, message) {
   return { ok: res.ok && Boolean(id), status: res.status, provider_message_id: id || null, error: res.ok ? null : String(data?.error?.message || "").slice(0, 300) };
 }
 __name(postWhatsappMessage, "postWhatsappMessage");
-async function replyWhatsappConversation(item, question, { inboundAudio = false } = {}) {
+async function replyWhatsappConversation(item, question, { inboundAudio = false, status: inboundStatus, checkpoint: inboundCheckpoint } = {}) {
   const t = whatsappTransport(item);
   if (!t.token || !t.phoneId) return { sent: false, reason: "whatsapp_transport_not_configured" };
   const kv = globalThis.__ZEVANORY_PRIVATE_KV__;
   const dedupKey = item.message_id ? `whatsapp:instant:${item.message_id}` : "";
   if (dedupKey && kv?.get && await kv.get(dedupKey).catch(() => null)) return { sent: false, reason: "already_replied" };
   if (dedupKey && kv?.put) await kv.put(dedupKey, "1", { expirationTtl: 86400 }).catch(() => {});
-  const status = { at: new Date().toISOString(), inbound_type: item.type, heard: Boolean(question), model: null, text_sent: false, voice_sent: false, voice_error: null };
-  const checkpoint = whatsappStageRecorder(kv, status);
-  await checkpoint("heard");
+  const status = inboundStatus || { at: new Date().toISOString(), inbound_type: item.type, model: null, text_sent: false, voice_sent: false, voice_error: null };
+  const checkpoint = inboundCheckpoint || whatsappStageRecorder(kv, status);
+  await checkpoint("heard", { heard: Boolean(question) });
   let reply;
   if (!question) {
     reply = { body: "Recebi seu áudio, mas não consegui entender bem. Pode repetir ou me escrever a sua dúvida?", mode: "audio_unheard", intent: "clarify" };
@@ -15081,7 +15081,6 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false 
   const sentText = await postWhatsappMessage(t, text);
   Object.assign(status, { text_sent: sentText.ok, text_status: sentText.status, text_error: sentText.error });
   await checkpoint("text_sent");
-  await recordWhatsappEvidence("outbound_text", { provider_message_id: sentText.provider_message_id, contact_ref: item.from, kind: reply.mode }).catch(() => false);
   const wantsVoice = inboundAudio || /\b(audio|áudio|voz|fala(r)? comigo)\b/i.test(question || "");
   if (wantsVoice && question && process.env.WHATSAPP_VOICE_REPLY !== "false") {
     try {
@@ -15098,6 +15097,7 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false 
       await checkpoint("voice_error");
     }
   }
+  await recordWhatsappEvidence("outbound_text", { provider_message_id: sentText.provider_message_id, contact_ref: item.from, kind: reply.mode }).catch(() => false);
   return { sent: sentText.ok, ...status };
 }
 __name(replyWhatsappConversation, "replyWhatsappConversation");
@@ -15373,30 +15373,37 @@ async function handler18(req, res) {
     return json14(res, 400, { error: "invalid_json", accepted: false });
   }
   const inbound = extractWhatsappInboundMessages(payload);
-  if (inbound.length && process.env.DATABASE_URL) {
-    const sql = cs(process.env.DATABASE_URL);
+  if (inbound.length) {
+    const sql = process.env.DATABASE_URL ? cs(process.env.DATABASE_URL) : null;
     let queued = 0, support = 0, commercial = 0, media_review = 0, instant = 0;
     for (const item of inbound) {
+      const status = { at: new Date().toISOString(), inbound_type: item.type, heard: false, model: null, text_sent: false, voice_sent: false, voice_error: null };
+      const checkpoint = whatsappStageRecorder(globalThis.__ZEVANORY_PRIVATE_KV__, status);
+      await checkpoint("received");
       let enriched = item;
+      await checkpoint(item.type === "audio" ? "stt_start" : "understanding_start");
       try {
         enriched = await understandWhatsappInbound(item, { env: process.env });
       } catch {
         enriched = { ...item, understanding: item.text || item.caption || `Cliente enviou ${item.type}; midia requer revisao.`, understanding_mode: "media_review_required", understanding_confidence: 0 };
       }
+      await checkpoint(item.type === "audio" ? "stt_done" : "understanding_done", { heard: Boolean(enriched.transcript || enriched.text) });
       const text = String(enriched.understanding || enriched.text || "").trim();
-      let r = { queued: false, job_id: null, kind: "" };
-      try {
-        r = await queueWhatsappConversation(sql, { contactRef: item.from, text, messageId: item.message_id, mediaType: item.type, mediaId: item.media_id, source: "meta_whatsapp" });
-      } catch {}
-      await recordWhatsappEvidence("inbound_processed", { message_id: item.message_id, contact_ref: item.from, phone_number_id: item.phone_number_id, queued: r.queued, kind: r.kind || "" }).catch(()=>false);
+      let sent = { sent: false };
       if (process.env.WHATSAPP_INSTANT_REPLY !== "false" && (item.type === "text" || item.type === "audio")) {
         try {
           const question = item.type === "audio" ? String(enriched.transcript || "").trim() : text;
-          const sent = await replyWhatsappConversation(item, question, { inboundAudio: item.type === "audio" });
-          if (sent.sent && r.job_id) await sql.query("update agent_jobs set status='completed',completed_at=now(),last_error=null where job_id=$1 and status='queued'", [r.job_id]).catch(() => {});
+          sent = await replyWhatsappConversation(item, question, { inboundAudio: item.type === "audio", status, checkpoint });
           if (sent.sent) instant++;
         } catch {}
       }
+      // CRM persistence must never delay the customer reply.
+      let r = { queued: false, job_id: null, kind: "" };
+      if (sql) {
+        try { r = await queueWhatsappConversation(sql, { contactRef: item.from, text, messageId: item.message_id, mediaType: item.type, mediaId: item.media_id, source: "meta_whatsapp" }); } catch {}
+        if (sent.sent && r.job_id) await sql.query("update agent_jobs set status='completed',completed_at=now(),last_error=null where job_id=$1 and status='queued'", [r.job_id]).catch(() => {});
+      }
+      await recordWhatsappEvidence("inbound_processed", { message_id: item.message_id, contact_ref: item.from, phone_number_id: item.phone_number_id, queued: r.queued, kind: r.kind || "" }).catch(()=>false);
       if (r.queued) {
         queued++;
         if (r.kind === "support") support++;

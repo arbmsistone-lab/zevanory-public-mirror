@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
+import vm from "node:vm";
 import { deferMetaWebhook, whatsappStageRecorder } from "../worker/whatsapp-background.mjs";
 import { unpackPcm, encodePcmRemotely } from "../worker/voice-pcm.mjs";
 import { pcm16ToMp3, ttsBytesWithFailover } from "../worker/voice-provider-router.mjs";
@@ -95,3 +96,29 @@ assert.ok(workerSource.indexOf('await checkpoint("text_sent")') < workerSource.i
 assert.match(workerSource, /if \(!localSignatureValid && !brokerSignatureValid\) return json14\(res, 401/);
 console.log("GEMINI_38_8KHZ_REMOTE_STAGES_SIGNATURE_PRESERVED=PASS");
 console.log("WHATSAPP_AUDIO_RUNTIME=PASS");
+
+const handlerSource = workerSource.slice(workerSource.indexOf("async function handler18(req, res) {"), workerSource.indexOf('__name(handler18, "handler")'));
+async function exerciseInbound(database) {
+  const order = [], captured = [], kv = { async put(_key, value) { captured.push(JSON.parse(value)); } };
+  const item = { from: "synthetic-contact", type: "audio", media_id: "synthetic-media", message_id: "synthetic-message" };
+  const sandbox = {
+    process: { env: { DATABASE_URL: database ? "synthetic-database" : "" } },
+    globalThis: { __ZEVANORY_PRIVATE_KV__: kv, __ZEVANORY_WHATSAPP_RUNTIME__: {} },
+    rawText: () => '{}', verifyMetaSignature: () => true, whatsappBrokerSignatureValid: async () => false,
+    extractWhatsappInboundMessages: () => [item], cs: () => ({ query: async () => [] }),
+    whatsappStageRecorder, Date,
+    understandWhatsappInbound: async () => { assert.equal(captured[0].stage, "received"); order.push("understand"); return { ...item, transcript: "Olá", understanding: "Olá" }; },
+    replyWhatsappConversation: async (_item, question, { status, checkpoint }) => { assert.equal(question, "Olá"); order.push("reply"); await checkpoint("voice_sent", { heard: true, text_sent: true, voice_sent: true }); return { sent: true, ...status }; },
+    queueWhatsappConversation: async () => { assert.ok(order.includes("reply")); order.push("archive"); return { queued: true, job_id: "synthetic", kind: "support" }; },
+    recordWhatsappEvidence: async () => { assert.ok(order.includes("reply")); order.push("evidence"); },
+    json14: (_res, code, body) => ({ code, body })
+  };
+  vm.createContext(sandbox); vm.runInContext(handlerSource, sandbox);
+  const result = await sandbox.handler18({ method: "POST", headers: {} }, { setHeader() {} });
+  assert.equal(result.code, 200); assert.equal(result.body.instant_replies, 1);
+  assert.deepEqual(captured.map(x => x.stage), ["received", "stt_start", "stt_done", "voice_sent"]);
+  assert.equal(order.includes("archive"), database);
+  assert.equal(captured.at(-1).voice_sent, true);
+}
+await exerciseInbound(true); await exerciseInbound(false);
+console.log("INBOUND_CHECKPOINT_BEFORE_STT_REPLY_BEFORE_CRM_NO_DATABASE=PASS");
