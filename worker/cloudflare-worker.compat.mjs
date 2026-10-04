@@ -1,4 +1,5 @@
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
+import { deferMetaWebhook } from "./whatsapp-background.mjs";
 import { handleVoiceFinalClosure } from "./voice-final-closure.mjs";
 import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "./whatsapp-onboarding.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
@@ -90,6 +91,11 @@ function legacyTrustProjection(body) {
 
 const wrapped = {
   async fetch(request, env, ctx) {
+    const accepted = deferMetaWebhook(request, env, ctx, (copy, runtimeEnv, context) => wrapped.processFetch(copy, runtimeEnv, context));
+    if (accepted) return accepted;
+    return wrapped.processFetch(request, env, ctx);
+  },
+  async processFetch(request, env, ctx) {
     let normalized = normalizeEnv(env);
     const url = new URL(request.url);
 

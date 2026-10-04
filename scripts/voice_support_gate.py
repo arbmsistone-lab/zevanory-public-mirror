@@ -55,7 +55,10 @@ router_required=[
   'responseModalities: ["AUDIO"]',
   ':generateContent',
   'export function pcm16ToMp3',
-  'bytes = pcm16ToMp3(raw, rate)',
+  'pcm16ToMp3(input.pcm, input.sampleRate, 32)',
+  'sample_rate: 8000',
+  'gemini-3.8-flash-tts',
+  'gemini-3.8-flash-lite-tts',
 ]
 missing=[x for x in router_required if x not in router]
 assert not missing, f"missing provider router markers: {missing}"

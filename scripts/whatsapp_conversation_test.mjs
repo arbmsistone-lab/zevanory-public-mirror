@@ -47,8 +47,8 @@ const voice = await ttsBytesWithFailover("Olá, podemos melhorar suas vendas.", 
   geminiCalls++;
   assert.match(String(url), /generativelanguage\.googleapis\.com/);
   assert.equal(init.headers["x-goog-api-key"], "unit-test-only");
-  assert.deepEqual(JSON.parse(init.body).generationConfig.responseModalities, ["AUDIO"]);
-  return Response.json({ candidates: [{ content: { parts: [{ inlineData: { mimeType: "audio/L16;rate=24000", data: Buffer.from(pcm).toString("base64") } }] } }] });
+  assert.deepEqual(JSON.parse(init.body).response_format, { type: "audio", mime_type: "audio/l16", sample_rate: 8000 });
+  return Response.json({ steps: [{ type: "model_output", content: [{ type: "audio", mime_type: "audio/l16", sample_rate: 8000, data: Buffer.from(pcm).toString("base64") }] }] });
 });
 check("Gemini audio contract and MP3", () => { assert.equal(geminiCalls, 1); assert.equal(voice.provider, "gemini"); assert.equal(voice.mime, "audio/mpeg"); assert.equal(voice.bytes[0], 0xff); });
 
