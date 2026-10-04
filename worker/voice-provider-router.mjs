@@ -1,5 +1,5 @@
 import lamejs from "./vendor/lame.min.mjs";
-import { unpackPcm, encodePcmRemotely } from "./voice-pcm.mjs";
+import { unpackPcm, encodePcmRemotely, downsamplePcmMono } from "./voice-pcm.mjs";
 const DEFAULT_CHAIN = Object.freeze(["speechify", "azure", "piper-relay", "gemini"]);
 const FAILURE_THRESHOLD = 2;
 const COOLDOWN_MS = 5 * 60 * 1000;
@@ -248,9 +248,10 @@ async function geminiTts(text, env, fetchImpl, { onStage = async () => {} } = {}
       const rate = Number(part?.sample_rate || (mimeIn.match(/rate=(\d+)/i) || [])[1]) || (modern ? 8000 : 24000);
       const input = unpackPcm(raw, rate);
       const remote = Boolean(env.VOICE_ENCODE_URL && env.VOICE_ENCODE_SECRET);
-      await onStage("encode_start", { encode_provider: remote ? "render" : "worker", sample_rate: input.sampleRate });
+      const encodingInput = remote ? input : downsamplePcmMono(input.pcm, input.sampleRate, 8000);
+      await onStage("encode_start", { encode_provider: remote ? "render" : "worker", sample_rate: encodingInput.sampleRate, source_sample_rate: input.sampleRate });
       const encodingStarted = Date.now();
-      bytes = remote ? await encodePcmRemotely(input.pcm, input.sampleRate, env, fetchImpl) : pcm16ToMp3(input.pcm, input.sampleRate, 32);
+      bytes = remote ? await encodePcmRemotely(input.pcm, input.sampleRate, env, fetchImpl) : pcm16ToMp3(encodingInput.pcm, encodingInput.sampleRate, 32);
       await onStage("encode_done", { encode_bytes: bytes.length, encode_ms: Date.now() - encodingStarted });
       mime = "audio/mpeg";
     }

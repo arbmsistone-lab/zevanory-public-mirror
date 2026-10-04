@@ -75,6 +75,7 @@ jobs:
            }
            return j;
           }
+          await new Promise(r=>setTimeout(r,8000)); // Allow tail to attach before sending proofs.
           const subscriptions=await operation({operation:'subscriptions'});writeFileSync('/tmp/proof/meta-subscriptions.json',JSON.stringify(subscriptions,null,2));console.log(JSON.stringify({subscriptions}));
           const owner=await operation({operation:'owner'});console.log(JSON.stringify({owner}));
           for(const type of ['text','audio']){
