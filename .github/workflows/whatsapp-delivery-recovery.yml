@@ -24,7 +24,7 @@ jobs:
           node scripts/whatsapp_delivery_proof_test.mjs
           node scripts/whatsapp_audio_runtime_test.mjs
           node scripts/whatsapp_conversation_test.mjs
-          node scripts/voice_provider_router_test.mjs
+          python3 scripts/voice_support_gate.py
           node --check worker/cloudflare-worker.compat.mjs
           node --check worker/cloudflare-worker.recovered.mjs
           node --check worker/whatsapp-onboarding.mjs
@@ -82,6 +82,26 @@ jobs:
           }
           console.log('REAL_INTERNAL_TEXT_AND_AUDIO_WAMIDS=PASS');
           JS
+      - name: Preserve sanitized webhook tail
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('/tmp/tail-private.json')
+          raw=p.read_text() if p.exists() else ''
+          decoder=json.JSONDecoder();pos=0;events=[]
+          while pos<len(raw):
+              start=raw.find('{',pos)
+              if start<0:break
+              try:e,end=decoder.raw_decode(raw[start:]);pos=start+end
+              except ValueError:pos=start+1;continue
+              req=(e.get('event') or {}).get('request') or {}
+              if '/api/webhooks/meta' not in str(req.get('url','')):continue
+              events.append({'timestamp':e.get('eventTimestamp'),'outcome':e.get('outcome'),'cpuTime':e.get('cpuTime'),'wallTime':e.get('wallTime'),'method':req.get('method'),'path':'/api/webhooks/meta','exception_names':[x.get('name') for x in e.get('exceptions',[])]})
+          pathlib.Path('/tmp/proof').mkdir(exist_ok=True)
+          pathlib.Path('/tmp/proof/tail-sanitized.json').write_text(json.dumps(events,indent=2))
+          print(json.dumps(events,indent=2))
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
