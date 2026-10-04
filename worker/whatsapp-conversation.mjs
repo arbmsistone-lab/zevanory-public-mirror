@@ -54,6 +54,7 @@ export function validateReply(text) {
   const issues = [];
   if (!body) issues.push("empty");
   if (body.length > 1200) issues.push("too_long");
+  if ((body.match(/\?/g)||[]).length > 1) issues.push("multiple_questions");
   for (const m of body.matchAll(/R\$\s*([\d.]+)(?:,(\d{1,2}))?/g)) {
     const value = Number(m[1].replace(/\./g, ""));
     const cents = Number(m[2] || 0);
@@ -146,11 +147,14 @@ export async function converse({ ai, question, history = [], salesOpen = false, 
 
 // Text suitable for speech: no URLs or markdown.
 export function speechText(body) {
-  return String(body || "")
-    .replace(/https?:\/\/\S+/g, "")
-    .replace(/R\$\s*([\d.]+),00/g, (_, v) => `${v.replace(/\./g, "")} reais`)
-    .replace(/[*_#`>]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 900);
+ const text=String(body||"")
+  .replace(/https?:\/\/\S+/g,"")
+  .replace(/R\$\s*([\d.]+),00/g,(_,v)=>v.replace(/\./g,"")+" reais")
+  .replace(/[*_#`>]/g,"")
+  .replace(/\s+/g," ").trim();
+ if(text.length<=350)return text;
+ const head=text.slice(0,300);
+ const sentenceEnd=Math.max(head.lastIndexOf("."),head.lastIndexOf("!"),head.lastIndexOf("?"));
+ const summary=sentenceEnd>=80?head.slice(0,sentenceEnd+1):head.slice(0,head.lastIndexOf(" ")).replace(/[,;:]$/,"")+".";
+ return summary+" Os detalhes estão na mensagem de texto.";
 }

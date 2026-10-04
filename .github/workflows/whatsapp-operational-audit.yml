@@ -1,0 +1,120 @@
+name: WhatsApp CPU and voice fidelity audit
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths: ['worker/voice-operational-audit.mjs', 'scripts/whatsapp_operational_audit_test.mjs', '.github/workflows/whatsapp-operational-audit.yml']
+  push:
+    branches: [gh-pages]
+    paths: ['worker/voice-operational-audit.mjs', 'worker/whatsapp-onboarding.mjs', '.github/workflows/whatsapp-operational-audit.yml']
+permissions:
+  contents: read
+concurrency:
+  group: whatsapp-operational-audit-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: node scripts/whatsapp_operational_audit_test.mjs
+  audit:
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OPERATOR_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN || secrets.OPERATOR_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ALTERNATE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+    steps:
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Prepare 600-character voice response and mono PCM on cloud runner
+        run: |
+          mkdir -p /tmp/voice-audit
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq espeak ffmpeg >/dev/null
+          node --input-type=module <<'JS'
+          import {writeFileSync} from 'node:fs';
+          const text='Olá! A ZEVANORY ajuda a organizar o atendimento e orientar a escolha dos produtos digitais. Para começar, identifique a principal dificuldade do seu negócio e defina um objetivo claro. Depois, reúna as perguntas mais frequentes dos clientes, acompanhe os pedidos e confira os resultados toda semana. A inteligência artificial pode ajudar a escrever mensagens, estruturar propostas e preparar respostas. Revise sempre as informações antes de enviar e mantenha os preços e as condições corretos. Os detalhes e os links estão na mensagem de texto. Se precisar de apoio, nossa equipe pode orientar o próximo passo.';
+          writeFileSync('/tmp/voice-audit/reference.txt',text);console.log(JSON.stringify({reference_chars:text.length}));
+          JS
+          espeak -v pt-br -s 155 -w /tmp/audit.wav -f /tmp/voice-audit/reference.txt
+          ffmpeg -nostdin -hide_banner -loglevel error -y -i /tmp/audit.wav -ac 1 -ar 24000 -f s16le /tmp/voice-audit/reference.pcm
+      - name: Measure five sequential production conversions and exact voice round trip
+        run: |
+          npm install --prefix /tmp/audit-tools --no-save wrangler@4.143.0 >/dev/null 2>&1
+          timeout 600s /tmp/audit-tools/node_modules/.bin/wrangler tail zevanory --format json > /tmp/audit-tail.json 2>/tmp/audit-tail.err &
+          tail_pid=$!
+          trap 'kill "$tail_pid" 2>/dev/null || true' EXIT
+          node --input-type=module <<'JS'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const origin='https://zevanory.api.br',auth={authorization:'Bearer '+process.env.OPERATOR_TOKEN,'content-type':'application/json'};
+          let live;
+          for(let n=0;n<120;n++){live=await fetch(origin+'/api/support/instant-status').then(r=>r.json());if(live.release_sha===process.env.GITHUB_SHA)break;await new Promise(r=>setTimeout(r,5000));}
+          if(live.release_sha!==process.env.GITHUB_SHA)throw Error('exact_release_not_live');
+          const plans=[];
+          for(const [authority,token] of [['public_owner',process.env.CLOUDFLARE_API_TOKEN],['alternate',process.env.CLOUDFLARE_ALTERNATE_TOKEN]]){
+           if(!token)continue;
+           const r=await fetch('https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+'/subscriptions',{headers:{authorization:'Bearer '+token}});const j=await r.json();
+           plans.push({authority,http:r.status,subscriptions:(Array.isArray(j.result)?j.result:[]).filter(s=>/worker/i.test(JSON.stringify(s.rate_plan||{}))).map(s=>({state:s.state,rate_plan:s.rate_plan})),errors:(j.errors||[]).map(e=>({code:e.code,message:e.message}))});
+          }
+          writeFileSync('/tmp/voice-audit/plans.json',JSON.stringify(plans,null,2));console.log(JSON.stringify({plans}));
+          await new Promise(r=>setTimeout(r,8000));
+          async function op(input){
+           const start=Date.now(),r=await fetch(origin+'/api/admin/whatsapp-onboard/delivery-proof?audit_id='+encodeURIComponent(input.audit_id||input.operation),{method:'POST',headers:auth,body:JSON.stringify(input),signal:AbortSignal.timeout(90000)});
+           const j=await r.json().catch(()=>({error:'non_json_response'}));return {http:r.status,wall_ms:Date.now()-start,...j};
+          }
+          const measurements=[];let firstAudio;
+          for(let index=1;index<=5;index++){
+           const result=await op({operation:'audit-encode',audit_id:'cpu600-'+index,pcm_base64:readFileSync('/tmp/voice-audit/reference.pcm').toString('base64'),sample_rate:24000});
+           if(result.audio_base64&&!firstAudio)firstAudio=result.audio_base64;delete result.audio_base64;measurements.push({index,...result});console.log(JSON.stringify({conversion:measurements.at(-1)}));await new Promise(r=>setTimeout(r,1000));
+          }
+          writeFileSync('/tmp/voice-audit/cpu-five.json',JSON.stringify(measurements,null,2));
+          let observations;
+          for(let n=0;n<40;n++){observations=await op({operation:'audit-observe'});if(observations.proof_observations?.some(o=>o.voice_sent&&o.voice_media_id))break;await new Promise(r=>setTimeout(r,2000));}
+          writeFileSync('/tmp/voice-audit/owner-observations.json',JSON.stringify(observations,null,2));console.log(JSON.stringify({owner_observations:observations}));
+          const proof=observations.proof_observations?.find(o=>o.voice_sent&&o.voice_media_id);
+          if(proof){
+           const media=await op({operation:'audit-media',media_id:proof.voice_media_id});
+           if(media.audio_base64){
+            const transcript=await op({operation:'audit-transcribe',audio_base64:media.audio_base64});const quality={kind:'exact_sent_proof_audio',media_id:proof.voice_media_id,expected:proof.speech_text,...transcript};
+            writeFileSync('/tmp/voice-audit/voice-quality.json',JSON.stringify(quality,null,2));console.log(JSON.stringify({quality}));
+           }else console.log(JSON.stringify({quality_media_error:media}));
+          }
+          if(firstAudio){
+           const transcript=await op({operation:'audit-transcribe',audio_base64:firstAudio});const quality={kind:'600_char_conversion',expected:readFileSync('/tmp/voice-audit/reference.txt','utf8'),...transcript};
+           writeFileSync('/tmp/voice-audit/long-conversion-quality.json',JSON.stringify(quality,null,2));console.log(JSON.stringify({long_quality:quality}));
+          }
+          writeFileSync('/tmp/voice-audit/final-closure.json',JSON.stringify(await fetch(origin+'/api/voice/final-closure').then(r=>r.json()),null,2));
+          JS
+      - name: Preserve CPU outcomes
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json,pathlib
+          raw=pathlib.Path('/tmp/audit-tail.json').read_text() if pathlib.Path('/tmp/audit-tail.json').exists() else ''
+          decoder=json.JSONDecoder();pos=0;events=[]
+          while pos<len(raw):
+              start=raw.find('{',pos)
+              if start<0:break
+              try:e,end=decoder.raw_decode(raw[start:]);pos=start+end
+              except ValueError:pos=start+1;continue
+              req=(e.get('event') or {}).get('request') or {}
+              url=str(req.get('url',''))
+              if 'cpu600-' not in url:continue
+              events.append({'url':url,'outcome':e.get('outcome'),'cpuTime':e.get('cpuTime'),'wallTime':e.get('wallTime'),'exceptions':[x.get('name') for x in e.get('exceptions',[])]})
+          pathlib.Path('/tmp/voice-audit').mkdir(exist_ok=True)
+          pathlib.Path('/tmp/voice-audit/cpu-tail.json').write_text(json.dumps(events,indent=2))
+          print(json.dumps(events,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whatsapp-operational-audit
+          path: /tmp/voice-audit/
+          retention-days: 7
