@@ -209,7 +209,7 @@ const wrapped = {
       // Preserve the timestamp and facts of historical text-only records. Null means
       // the old runtime did not record that field; it is not new conversation evidence.
       if (last) last = { mode: null, model: null, text_sent: last.sent ?? false, voice_sent: false, voice_error: null, ...last };
-      return new Response(JSON.stringify({ service: "zevanory-whatsapp-instant-reply", enabled: (env.WHATSAPP_INSTANT_REPLY ?? "true") !== "false", ai_binding_present: Boolean(normalized.AI?.run), gemini_voice_configured: Boolean(globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.gemini_api_key), sales_globally_enabled: normalized.SALE_GLOBALLY_ENABLED === "true", release_sha: normalized.ZEVANORY_RELEASE_SHA || null, last }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+      return new Response(JSON.stringify({ service: "zevanory-whatsapp-instant-reply", enabled: (env.WHATSAPP_INSTANT_REPLY ?? "true") !== "false", ai_binding_present: Boolean(normalized.AI?.run), broker_binding_present: Boolean(normalized.WHATSAPP_BROKER?.fetch), voice_free_only: normalized.VOICE_TTS_FREE_ONLY === "true", gemini_voice_configured: Boolean(globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.gemini_api_key), sales_globally_enabled: normalized.SALE_GLOBALLY_ENABLED === "true", release_sha: normalized.ZEVANORY_RELEASE_SHA || null, last }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
     }
 
     if (url.pathname === "/api/support/knowledge") {

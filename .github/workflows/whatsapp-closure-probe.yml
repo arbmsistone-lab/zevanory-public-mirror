@@ -99,11 +99,48 @@ jobs:
           print("WHATSAPP_OAUTH_LAUNCHER=PASS")
           print("WHATSAPP_OAUTH_STATE=PASS")
           PY
-      - name: Probe broker runtime provenance after canonical deploy
+      - name: Probe active WhatsApp runtime provenance after canonical deploy
         if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
+          matched=0
+          for attempt in $(seq 1 24); do
+            curl --max-time 20 -fsS "https://zevanory.api.br/api/support/instant-status" -o /tmp/canonical-wa.json || true
+            if GITHUB_SHA="$GITHUB_SHA" python3 - <<'PY'
+          import json,os
+          try:
+              x=json.load(open("/tmp/canonical-wa.json"))
+              assert x.get("release_sha")==os.environ["GITHUB_SHA"]
+              assert x.get("enabled") is True
+              assert x.get("ai_binding_present") is True
+              assert x.get("voice_free_only") is True
+              assert x.get("sales_globally_enabled") is False
+              assert isinstance(x.get("broker_binding_present"),bool)
+              last=x.get("last")
+              if last is not None:
+                  assert {"mode","model","text_sent","voice_sent","voice_error"}.issubset(last)
+          except Exception:
+              raise SystemExit(1)
+          PY
+            then
+              matched=1
+              echo "CANONICAL_WHATSAPP_RUNTIME_SHA_AI_ZERO_SPEND_SALES_CLOSED=PASS"
+              break
+            fi
+            echo "CANONICAL_WHATSAPP_PROPAGATION_ATTEMPT=$attempt WAIT"
+            sleep 5
+          done
+          test "$matched" = "1"
+          broker_bound="$(python3 -c 'import json; print(str(json.load(open("/tmp/canonical-wa.json"))["broker_binding_present"]).lower())')"
+          if [ "$broker_bound" = "false" ]; then
+            # The deployed candidate deliberately removes service bindings and uses
+            # the encrypted canonical record. An unbound legacy broker is not its runtime.
+            echo "WHATSAPP_RUNTIME_ROUTE=CANONICAL_DIRECT"
+            echo "LEGACY_BROKER_PROVENANCE=NOT_APPLICABLE_UNBOUND"
+            exit 0
+          fi
+          # Preserve the exact-SHA, version and zero-spend proof when a broker is active.
           matched=0
           for attempt in $(seq 1 24); do
             curl -fsS "https://giro-whatsapp-bridge.girolocal-rb.workers.dev/__zevanory/runtime" -o /tmp/runtime.json || true
