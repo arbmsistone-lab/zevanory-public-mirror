@@ -1,0 +1,91 @@
+name: WhatsApp live proof (read only)
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths: ['.github/workflows/whatsapp-live-proof.yml']
+permissions:
+  contents: read
+concurrency:
+  group: whatsapp-live-proof
+  cancel-in-progress: false
+jobs:
+  observe:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Read baseline
+        run: |
+          mkdir -p /tmp/proof
+          curl -fsS --max-time 20 https://zevanory.api.br/api/support/instant-status > /tmp/proof/baseline.json
+          cat /tmp/proof/baseline.json
+      - name: Capture live Worker evidence without sending messages
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npm install --prefix /tmp/proof-tools --no-save wrangler@4.143.0 >/dev/null 2>&1
+          echo "TAIL_WINDOW_START=$(date -u +%FT%TZ)"
+          set +e
+          timeout 180s /tmp/proof-tools/node_modules/.bin/wrangler tail zevanory --format json > /tmp/whatsapp-tail-private.json 2>/tmp/whatsapp-tail-private.err
+          result=$?
+          set -e
+          if [ "$result" != 0 ] && [ "$result" != 124 ]; then
+            echo "TAIL_CONNECTION_FAILED_EXIT=$result"
+            exit 1
+          fi
+          echo "TAIL_WINDOW_END=$(date -u +%FT%TZ)"
+      - name: Sanitize evidence and require a fresh real voice delivery
+        if: always()
+        run: |
+          curl -fsS --max-time 20 https://zevanory.api.br/api/support/instant-status > /tmp/proof/final.json
+          python3 - <<'PY'
+          import json,re,pathlib
+          p=pathlib.Path('/tmp/whatsapp-tail-private.json')
+          raw=p.read_text() if p.exists() else ''
+          events=[]
+          dec=json.JSONDecoder()
+          pos=0
+          while pos<len(raw):
+              start=raw.find('{',pos)
+              if start<0: break
+              try:
+                  event,end=dec.raw_decode(raw[start:])
+                  pos=start+end
+              except ValueError:
+                  pos=start+1
+                  continue
+              request=(event.get('event') or {}).get('request') or {}
+              if '/api/webhooks/meta' not in str(request.get('url','')): continue
+              logs=[]
+              for log in event.get('logs',[]):
+                  parts=log.get('message',[])
+                  if parts and re.match(r'^whatsapp_[a-z_]+$',str(parts[0])):
+                      safe=[str(parts[0])]
+                      for item in parts[1:]:
+                          if isinstance(item,(int,float,bool)) or re.fullmatch(r'[a-z_]{1,80}',str(item)):
+                              safe.append(item)
+                      logs.append(safe)
+              events.append({'timestamp':event.get('eventTimestamp'),'outcome':event.get('outcome'),'cpuTime':event.get('cpuTime'),'wallTime':event.get('wallTime'),'method':request.get('method'),'path':'/api/webhooks/meta','logs':logs,'exception_names':[e.get('name') for e in event.get('exceptions',[])]})
+          pathlib.Path('/tmp/proof/tail-sanitized.json').write_text(json.dumps(events,indent=2))
+          baseline=json.loads(pathlib.Path('/tmp/proof/baseline.json').read_text())
+          final=json.loads(pathlib.Path('/tmp/proof/final.json').read_text())
+          last=final.get('last') or {}
+          fresh=bool(last.get('at') and last.get('at')!=(baseline.get('last') or {}).get('at'))
+          result={'release_sha':final.get('release_sha'),'new_inbound':fresh,'heard':last.get('heard'),'text_sent':last.get('text_sent'),'voice_sent':last.get('voice_sent'),'stage':last.get('stage'),'tail_events':len(events),'background_200_proven':False,'signed_bytes_identical_proven':False,'result':'PASS_REAL_VOICE' if fresh and last.get('heard') and last.get('text_sent') and last.get('voice_sent') and events else 'FAIL_NO_REAL_VOICE_PROOF'}
+          pathlib.Path('/tmp/proof/checkpoint.json').write_text(json.dumps(result,indent=2))
+          print(json.dumps(result,indent=2))
+          print(json.dumps(final,indent=2))
+          print(json.dumps(events,indent=2))
+          raise SystemExit(0 if result['result']=='PASS_REAL_VOICE' else 1)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whatsapp-live-proof
+          path: /tmp/proof/
+          retention-days: 3
