@@ -36,7 +36,7 @@ export async function encodePcmRemotely(bytes, sampleRate, env, fetchImpl = fetc
   const signature = hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)));
   const response = await fetchImpl(endpoint, {
     method: "POST", headers: { "content-type": "application/octet-stream", "x-voice-timestamp": timestamp, "x-voice-nonce": nonce, "x-voice-sample-rate": String(sampleRate), "x-voice-signature": signature },
-    body: bytes, signal: AbortSignal.timeout(12000)
+    body: bytes, signal: AbortSignal.timeout(45000)
   });
   if (!response.ok) throw new Error(`voice_encode_http_${response.status}`);
   const mp3 = new Uint8Array(await response.arrayBuffer());

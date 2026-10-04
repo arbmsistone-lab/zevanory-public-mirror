@@ -1,16 +1,34 @@
 import { downsamplePcmMono } from "./voice-pcm.mjs";
-import { pcm16ToMp3 } from "./voice-provider-router.mjs";
+import { encodePcmInChunks, renderVoiceSecret } from "./voice-chunks.mjs";
+import { Buffer } from "node:buffer";
 const decoder=new TextDecoder();
 export async function handleVoiceAudit(input,env){
  if(input.operation==="audit-encode"){
   const b64=String(input.pcm_base64||"");
   if(!b64||b64.length>4000000||Number(input.sample_rate)!==24000)return Response.json({error:"audit_pcm_invalid"},{status:400});
-  const pcm=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+  const pcm=new Uint8Array(Buffer.from(b64,"base64"));
   if(pcm.length>3000000||pcm.length%2)return Response.json({error:"audit_pcm_invalid"},{status:400});
-  const reduced=downsamplePcmMono(pcm,24000,8000);
-  const mp3=pcm16ToMp3(reduced.pcm,reduced.sampleRate,32);
+  const encoded=await encodePcmInChunks(pcm,24000,env,fetch,{auditId:input.audit_id});
+  const mp3=encoded.bytes;
   let binary="";for(let i=0;i<mp3.length;i+=8192)binary+=String.fromCharCode(...mp3.subarray(i,i+8192));
-  return Response.json({ok:true,audit_id:String(input.audit_id||"").slice(0,100),source_rate:24000,sample_rate:8000,source_bytes:pcm.length,source_seconds:pcm.length/48000,encode_bytes:mp3.length,audio_base64:btoa(binary)});
+  return Response.json({ok:true,audit_id:String(input.audit_id||"").slice(0,100),source_rate:24000,sample_rate:8000,source_bytes:pcm.length,source_seconds:pcm.length/48000,encode_bytes:mp3.length,encode_provider:encoded.provider,chunks:encoded.chunks,fallback_used:encoded.fallback_used,audio_base64:btoa(binary)});
+ }
+ if(input.operation==="audit-source"){
+  if(!env.GEMINI_API_KEY||env.GEMINI_FREE_TIER_CONFIRMED!=="true")return Response.json({error:"free_gemini_key_missing"},{status:503});
+  const text=String(input.text||"");if(text.length<100||text.length>650)return Response.json({error:"audit_source_text_invalid"},{status:400});
+  for(const model of ["gemini-3.8-flash-tts","gemini-3.8-flash-lite-tts"]){
+   try{
+    const response=await fetch("https://generativelanguage.googleapis.com/v1beta/interactions",{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":env.GEMINI_API_KEY},body:JSON.stringify({model,input:[{type:"user_input",content:[{type:"text",text,annotations:[{type:"speech_metadata",style:"Fale em português do Brasil, com clareza e ritmo de conversa."}]}]}],response_format:{type:"audio",mime_type:"audio/l16",sample_rate:8000},generation_config:{speech_config:[{voice:"Achird"}]}}),signal:AbortSignal.timeout(15000)});
+    const body=await response.json();const audio=(body.steps||[]).filter(s=>s.type==="model_output").flatMap(s=>s.content||[]).find(x=>x.type==="audio"&&x.data);
+    if(response.ok&&audio)return Response.json({ok:true,model,pcm_base64:audio.data,sample_rate:Number(audio.sample_rate||(String(audio.mime_type||"").match(/rate=(\d+)/)||[])[1])||24000});
+   }catch{}
+  }
+  return Response.json({error:"audit_source_tts_failed"},{status:502});
+ }
+ if(input.operation==="audit-encoder-key"){
+  const publicKey=await crypto.subtle.importKey("jwk",input.public_key,{name:"RSA-OAEP",hash:"SHA-256"},false,["encrypt"]);
+  const wrapped=await crypto.subtle.encrypt({name:"RSA-OAEP"},publicKey,new TextEncoder().encode(await renderVoiceSecret(env)));
+  return Response.json({wrapped_key:Buffer.from(wrapped).toString("base64")});
  }
  if(input.operation==="audit-transcribe"){
   const b64=String(input.audio_base64||"");

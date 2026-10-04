@@ -1,3 +1,4 @@
+import { handleVoiceChunk } from "../worker/voice-chunks.mjs";
 import { whatsappInboundSafety } from "../worker/whatsapp-inbound-safety.mjs";
 import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
@@ -79,18 +80,21 @@ await assert.rejects(() => encodePcmRemotely(pcm, 8000, remote, async () => new 
 console.log("ALTERNATE_ENCODER_HMAC_FAIL_CLOSED=PASS");
 
 const stages = [];
-const audio = await ttsBytesWithFailover("Olá!", { ...remote, VOICE_TTS_FREE_ONLY: "true", GEMINI_API_KEY: "synthetic", GEMINI_FREE_TIER_CONFIRMED: "true", VOICE_TTS_PROVIDER_CHAIN: "gemini" }, async (url, init) => {
+const chunkEnv={ELITE_INTERNAL_TOKEN:"synthetic-chunk-secret-at-least-32-chars"};
+const audio = await ttsBytesWithFailover("Olá!", { ...remote, ...chunkEnv, VOICE_TTS_FREE_ONLY: "true", GEMINI_API_KEY: "synthetic", GEMINI_FREE_TIER_CONFIRMED: "true", VOICE_TTS_PROVIDER_CHAIN: "gemini" }, async (url, init) => {
   if (String(url).includes("googleapis")) {
     const request = JSON.parse(init.body);
     assert.equal(request.model, "gemini-3.8-flash-tts");
     assert.equal(request.response_format.sample_rate, 8000);
     return Response.json({ steps: [{ type: "model_output", content: [{ type: "audio", mime_type: "audio/wav", data: Buffer.from(wav).toString("base64") }] }] });
   }
+  if(url instanceof Request)return handleVoiceChunk(url,chunkEnv);
   return fetchRemote(url, init);
 }, { onStage: async (stage, details) => stages.push({ stage, ...details }) });
 assert.equal(audio.mime, "audio/mpeg");
 assert.deepEqual(stages.map(x => x.stage), ["tts_done", "encode_start", "encode_done"]);
-assert.equal(stages[1].encode_provider, "render");
+assert.equal(stages[1].encode_provider, "cloudflare-chunks");
+assert.equal(stages[2].encode_fallback_used,false);
 assert.ok(stages[0].tts_bytes > 0); assert.ok(stages[2].encode_bytes > 0);
 const workerSource = readFileSync(new URL("../worker/cloudflare-worker.recovered.mjs", import.meta.url), "utf8");
 assert.ok(workerSource.indexOf('await checkpoint("text_sent")') < workerSource.indexOf('await checkpoint("tts_start")'));
