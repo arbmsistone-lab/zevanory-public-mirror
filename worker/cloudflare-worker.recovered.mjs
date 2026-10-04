@@ -15062,7 +15062,7 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
   const dedupKey = item.message_id ? `whatsapp:instant:${item.message_id}` : "";
   if (dedupKey && kv?.get && await kv.get(dedupKey).catch(() => null)) return { sent: false, reason: "already_replied" };
   if (dedupKey && kv?.put) await kv.put(dedupKey, "1", { expirationTtl: 86400 }).catch(() => {});
-  const status = inboundStatus || { at: new Date().toISOString(), inbound_type: item.type, model: null, text_sent: false, voice_sent: false, voice_error: null };
+  const status = inboundStatus || { at: new Date().toISOString(), inbound_type: item.type, inbound_message_id: item.message_id || null, model: null, text_sent: false, voice_sent: false, voice_error: null };
   const checkpoint = inboundCheckpoint || whatsappStageRecorder(kv, status);
   await checkpoint("heard", { heard: Boolean(question) });
   let reply;
@@ -15377,7 +15377,7 @@ async function handler18(req, res) {
     const sql = process.env.DATABASE_URL ? cs(process.env.DATABASE_URL) : null;
     let queued = 0, support = 0, commercial = 0, media_review = 0, instant = 0;
     for (const item of inbound) {
-      const status = { at: new Date().toISOString(), inbound_type: item.type, heard: false, model: null, text_sent: false, voice_sent: false, voice_error: null };
+      const status = { at: new Date().toISOString(), inbound_type: item.type, inbound_message_id: item.message_id || null, heard: false, model: null, text_sent: false, voice_sent: false, voice_error: null };
       const checkpoint = whatsappStageRecorder(globalThis.__ZEVANORY_PRIVATE_KV__, status);
       await checkpoint("received");
       let enriched = item;
