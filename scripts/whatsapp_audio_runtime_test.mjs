@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { deferMetaWebhook, whatsappStageRecorder, handleNodeWebhookFetch } from "../worker/whatsapp-background.mjs";
+import { deferMetaWebhook, whatsappStageRecorder, handleNodeWebhookFetch, latestWhatsappStage } from "../worker/whatsapp-background.mjs";
 import { unpackPcm, encodePcmRemotely } from "../worker/voice-pcm.mjs";
 import { pcm16ToMp3, ttsBytesWithFailover } from "../worker/voice-provider-router.mjs";
 
@@ -28,8 +28,8 @@ assert.equal(deferMetaWebhook(request, {}, {}, () => {}).status, 503);
 console.log("META_IMMEDIATE_ACK_WAITUNTIL_CLONED_BODY=PASS");
 
 let clock = 0;
-const snapshots = [], state = { heard: true, text_sent: false, voice_sent: false, voice_error: null };
-const checkpoint = whatsappStageRecorder({ async put(key, value) { assert.equal(key, "whatsapp:instant:last"); snapshots.push(JSON.parse(value)); } }, state, () => clock += 2);
+const snapshots = [], pointers = [], state = { heard: true, text_sent: false, voice_sent: false, voice_error: null };
+const checkpoint = whatsappStageRecorder({ async put(key, value) { if (key === "whatsapp:instant:last") pointers.push({ at: clock, value: JSON.parse(value) }); else { assert.ok(key.startsWith("whatsapp:instant:stage:")); snapshots.push(JSON.parse(value)); } } }, state, () => clock += 2, async ms => { clock += ms; });
 for (const stage of ["heard", "ai_done", "text_sent", "tts_start", "tts_done", "encode_start", "encode_done", "upload_done", "voice_sent"]) {
   await checkpoint(stage, stage === "text_sent" ? { text_sent: true } : stage === "voice_sent" ? { voice_sent: true } : {});
 }
@@ -99,7 +99,7 @@ console.log("WHATSAPP_AUDIO_RUNTIME=PASS");
 
 const handlerSource = workerSource.slice(workerSource.indexOf("async function handler18(req, res) {"), workerSource.indexOf('__name(handler18, "handler")'));
 async function exerciseInbound(database) {
-  const order = [], captured = [], kv = { async put(_key, value) { captured.push(JSON.parse(value)); } };
+  const order = [], captured = [], kv = { async put(_key, value) { if (_key.startsWith("whatsapp:instant:stage:")) captured.push(JSON.parse(value)); } };
   const item = { from: "synthetic-contact", type: "audio", media_id: "synthetic-media", message_id: "synthetic-message" };
   const sandbox = {
     process: { env: { DATABASE_URL: database ? "synthetic-database" : "" } },
@@ -138,3 +138,10 @@ assert.equal(directResult.status, 200); assert.equal((await directResult.json())
 const oversized = await handleNodeWebhookFetch(new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", body: "oversized" }), () => { throw new Error("must_not_call_handler"); }, 3);
 assert.equal(oversized.status, 413);
 console.log("DIRECT_WEB_REQUEST_SIGNED_BYTES_SIZE_BOUNDARY=PASS");
+
+for (let i = 1; i < pointers.length; i++) assert.ok(pointers[i].at - pointers[i - 1].at >= 1000);
+assert.equal(pointers.at(-1).value.stage, "voice_error");
+const fresh = { at: "2026-10-04T20:50:00Z", elapsed_ms: 40, stage: "encode_start" };
+const historical = { at: "2026-10-04T19:55:11Z", text_sent: true };
+assert.deepEqual(await latestWhatsappStage({ get: async key => JSON.stringify(key === "whatsapp:instant:last" ? historical : fresh), list: async () => ({ keys: [{ name: "whatsapp:instant:stage:synthetic" }] }) }), fresh);
+console.log("KV_SAME_KEY_RATE_LIMIT_ALL_STAGES_RETAINED=PASS");

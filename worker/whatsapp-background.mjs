@@ -15,17 +15,44 @@ export function deferMetaWebhook(request, env, ctx, processRequest) {
   return Response.json({ accepted: true }, { headers: { "cache-control": "no-store" } });
 }
 
-export function whatsappStageRecorder(kv, status, now = Date.now) {
-  const started = now();
+export function whatsappStageRecorder(kv, status, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms))) {
+  const started = now(), invocation = crypto.randomUUID();
+  let lastWrite = null, sequence = 0;
   return async function checkpoint(stage, details = {}) {
     Object.assign(status, details, { stage, elapsed_ms: now() - started });
     status.steps ||= [];
     status.steps.push({ stage, elapsed_ms: status.elapsed_ms });
     status.steps = status.steps.slice(-24);
     if (!kv?.put) { console.error("whatsapp_checkpoint_storage_missing"); return; }
-    try { await kv.put("whatsapp:instant:last", JSON.stringify(status), { expirationTtl: 604800 }); }
+    // KV limits the same key to one write/second. Unique stage records retain
+    // every checkpoint without delaying the processing pipeline.
+    const key = `whatsapp:instant:stage:${String(9999999999999 - now()).padStart(13, "0")}:${String(999 - sequence++).padStart(3, "0")}:${invocation}`;
+    try { await kv.put(key, JSON.stringify(status), { expirationTtl: 86400 }); }
     catch { console.error("whatsapp_checkpoint_write_failed", stage); }
+    const terminal = stage === "voice_sent" || stage === "voice_error";
+    if (lastWrite !== null && now() - lastWrite < 1100) {
+      if (!terminal) return;
+      await sleep(1100 - (now() - lastWrite));
+    }
+    try {
+      await kv.put("whatsapp:instant:last", JSON.stringify(status), { expirationTtl: 604800 });
+      lastWrite = now();
+    } catch { console.error("whatsapp_checkpoint_pointer_failed", stage); }
   };
+}
+
+export async function latestWhatsappStage(kv) {
+  if (!kv?.get) return null;
+  let last = null;
+  try { last = JSON.parse(await kv.get("whatsapp:instant:last") || "null"); } catch {}
+  if (!kv.list) return last;
+  try {
+    const page = await kv.list({ prefix: "whatsapp:instant:stage:", limit: 1 });
+    if (!page.keys?.[0]?.name) return last;
+    const latest = JSON.parse(await kv.get(page.keys[0].name) || "null");
+    if (latest && (!last || String(latest.at || "") > String(last.at || "") || (latest.at === last.at && latest.elapsed_ms >= (last.elapsed_ms || 0)))) return latest;
+  } catch {}
+  return last;
 }
 
 // Read the Web Request directly before invoking the existing signed Node handler.
