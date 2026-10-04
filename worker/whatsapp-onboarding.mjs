@@ -372,7 +372,7 @@ async function handleDeliveryProof(request,env,proofSql){
     return responseJson({operation:input.operation,recipient_suffix:owner.recipient_suffix,inbound_message_id:messageId,media_id:mediaId,signed_body:body,signature,body_sha256:hex(await crypto.subtle.digest("SHA-256",encoder.encode(body)))});
   }catch(error){
     const code=String(error?.message||"proof_failed").match(/^meta_http_\d+_[A-Za-z0-9]+/)?.[0]||(error?.message==="owner_proof_evidence_not_found"?"owner_proof_evidence_not_found":"delivery_proof_failed");
-    return responseJson({error:code},502);
+    return responseJson({error:code,...(error?.candidates?{owner_candidates:error.candidates}:{})},502);
   }
 }
 

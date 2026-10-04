@@ -65,7 +65,7 @@ jobs:
           if(live.release_sha!==process.env.GITHUB_SHA)throw Error('exact_release_not_live');
           async function operation(input){
            const r=await fetch(origin+'/api/admin/whatsapp-onboard/delivery-proof',{method:'POST',headers:{authorization:'Bearer '+process.env.OPERATOR_TOKEN,'content-type':'application/json'},body:JSON.stringify(input),signal:AbortSignal.timeout(120000)});
-           const j=await r.json();if(!r.ok)throw Error('proof_operation_http_'+r.status+'_'+(j.error||'unknown'));
+           const j=await r.json();if(!r.ok){console.log(JSON.stringify({operation:input.operation,error:j}));throw Error('proof_operation_http_'+r.status+'_'+(j.error||'unknown'));}
            if(!['subscriptions','owner'].includes(input.operation)){
             const {createHash}=await import('node:crypto');
             if(createHash('sha256').update(j.signed_body).digest('hex')!==j.body_sha256)throw Error('signed_fixture_digest_mismatch');
