@@ -6,13 +6,13 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: whatsapp-live-proof
+  group: whatsapp-meta-delivery-proof
   cancel-in-progress: false
 jobs:
   observe:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
@@ -50,13 +50,78 @@ jobs:
           open('/tmp/proof/routes.json','w').write(json.dumps(summary,indent=2))
           print(json.dumps(summary,indent=2))
           PY
+      - name: Check and repair Meta subscriptions then send authorized internal text
+        env:
+          ELITE_INTERNAL_TOKEN: ${{ secrets.ELITE_INTERNAL_TOKEN }}
+          OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
+          ZEVANORY_ADMIN_PASSWORD: ${{ secrets.ZEVANORY_ADMIN_PASSWORD }}
+        run: |
+          node --input-type=module <<'JS'
+          import {createHash,createDecipheriv,createHmac,randomUUID} from 'node:crypto';
+          import {writeFileSync} from 'node:fs';
+          const root='https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID;
+          async function cf(path){const r=await fetch(root+path,{headers:{authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(20000)});if(!r.ok)throw Error('cloudflare_http_'+r.status);return r.json();}
+          const settings=await cf('/workers/scripts/zevanory/settings');
+          const bindings=settings.result.bindings||[];
+          const ns=bindings.find(x=>x.name==='ZEVANORY_PRIVATE_ARTIFACTS')?.namespace_id;
+          if(!ns)throw Error('onboarding_namespace_absent');
+          const encryptedResponse=await fetch(root+'/storage/kv/namespaces/'+ns+'/values/whatsapp-onboarding%2Fruntime',{headers:{authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},signal:AbortSignal.timeout(20000)});
+          if(!encryptedResponse.ok)throw Error('onboarding_record_http_'+encryptedResponse.status);
+          const sealed=await encryptedResponse.text();
+          const [iv,cipher]=sealed.split('.').map(x=>Buffer.from(x,'base64url'));
+          const materialNames=['ELITE_INTERNAL_TOKEN','OPERATOR_TOKEN','ZEVANORY_ADMIN_PASSWORD'];
+          let record;
+          for(const name of materialNames){
+            const candidates=[process.env[name],bindings.find(x=>x.name===name)?.text].filter(Boolean);
+            for(const material of candidates){
+              try{const key=createHash('sha256').update('zevanory:whatsapp:onboarding:v1:'+material).digest();
+                const d=createDecipheriv('aes-256-gcm',key,iv);d.setAuthTag(cipher.subarray(-16));
+                record=JSON.parse(Buffer.concat([d.update(cipher.subarray(0,-16)),d.final()]).toString());break;}catch{}
+            }
+            if(record)break;
+          }
+          if(!record?.app_secret||!record?.access_token)throw Error('onboarding_decryption_authority_absent');
+          async function graph(path,token,method='GET',body){
+            const r=await fetch('https://graph.facebook.com/'+(record.graph_version||'v26.0')+'/'+path,{method,headers:{authorization:'Bearer '+token,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(20000)});
+            const data=await r.json();if(!r.ok)throw Error('meta_http_'+r.status+'_code_'+(data.error?.code||'unknown'));return data;
+          }
+          const appId='1071149631917061',waba='4019600665012911',phone='1300972319774588';
+          const appToken=appId+'|'+record.app_secret;
+          let subscriptions=await graph(appId+'/subscriptions',appToken);
+          let apps=await graph(waba+'/subscribed_apps',record.access_token);
+          function good(){const sub=subscriptions.data?.find(x=>x.object==='whatsapp_business_account');return sub?.callback_url==='https://zevanory.api.br/api/webhooks/meta'&&sub.active===true&&sub.fields?.some(x=>(x.name||x)==='messages')&&apps.data?.some(x=>String(x.whatsapp_business_api_data?.id||x.id)===appId);}
+          let repaired=false;
+          if(!good()){
+            if(!record.verify_token)throw Error('onboarding_verify_token_absent');
+            await graph(appId+'/subscriptions',appToken,'POST',{object:'whatsapp_business_account',callback_url:'https://zevanory.api.br/api/webhooks/meta',verify_token:record.verify_token,fields:'messages'});
+            await graph(waba+'/subscribed_apps',record.access_token,'POST',{});
+            repaired=true;
+            subscriptions=await graph(appId+'/subscriptions',appToken);apps=await graph(waba+'/subscribed_apps',record.access_token);
+          }
+          const subscriptionProof={at:new Date().toISOString(),repaired,valid:good(),subscriptions:subscriptions.data?.map(x=>({object:x.object,callback_url:x.callback_url,active:x.active,fields:x.fields})),subscribed_apps:apps.data?.map(x=>({id:x.whatsapp_business_api_data?.id||x.id,name:x.whatsapp_business_api_data?.name||x.name}))};
+          writeFileSync('/tmp/proof/meta-subscriptions.json',JSON.stringify(subscriptionProof,null,2));console.log(JSON.stringify(subscriptionProof));
+          if(!good())throw Error('meta_subscription_repair_failed');
+          const messageId='internal-text-'+randomUUID();
+          const payload={object:'whatsapp_business_account',entry:[{id:waba,changes:[{field:'messages',value:{messaging_product:'whatsapp',metadata:{phone_number_id:phone},contacts:[{wa_id:'558892545413',profile:{name:'Teste interno autorizado'}}],messages:[{from:'558892545413',id:messageId,timestamp:String(Math.floor(Date.now()/1000)),type:'text',text:{body:'teste interno: quanto custa o combo?'}}]}}]}]};
+          const body=JSON.stringify(payload),signature='sha256='+createHmac('sha256',record.app_secret).update(body).digest('hex');
+          const baseline=await fetch('https://zevanory.api.br/api/support/instant-status').then(x=>x.json());
+          const started=new Date().toISOString();
+          const response=await fetch('https://zevanory.api.br/api/webhooks/meta',{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':signature},body,signal:AbortSignal.timeout(90000)});
+          console.log(JSON.stringify({test:'authorized_internal_text',http:response.status,body_sha256:createHash('sha256').update(body).digest('hex'),bytes:Buffer.byteLength(body)}));
+          let final;
+          for(let n=0;n<30;n++){await new Promise(r=>setTimeout(r,2000));final=await fetch('https://zevanory.api.br/api/support/instant-status',{signal:AbortSignal.timeout(15000)}).then(x=>x.json());if(final.last?.at>=started&&(final.last.text_sent||final.last.text_error||final.last.voice_error))break;}
+          const proof={test:'authorized_internal_text',inbound_message_id:messageId,request_http:response.status,fresh:final?.last?.at>=started,status:final};
+          writeFileSync('/tmp/proof/text-test.json',JSON.stringify(proof,null,2));console.log(JSON.stringify(proof));
+          if(!proof.fresh||!final.last?.text_sent)throw Error('production_text_delivery_failed_requires_synchronous_rollback');
+          
+          JS
       - name: Capture live Worker evidence without sending messages
         run: |
           test -n "$CLOUDFLARE_API_TOKEN"
           npm install --prefix /tmp/proof-tools --no-save wrangler@4.143.0 >/dev/null 2>&1
           echo "TAIL_WINDOW_START=$(date -u +%FT%TZ)"
           set +e
-          timeout 300s /tmp/proof-tools/node_modules/.bin/wrangler tail zevanory --format json > /tmp/whatsapp-tail-private.json 2>/tmp/whatsapp-tail-private.err &
+          timeout 60s /tmp/proof-tools/node_modules/.bin/wrangler tail zevanory --format json > /tmp/whatsapp-tail-private.json 2>/tmp/whatsapp-tail-private.err &
           tail_pid=$!
           sleep 5
           curl -fsS --max-time 20 https://zevanory.api.br/api/support/instant-status > /tmp/proof/ingress-control.json
