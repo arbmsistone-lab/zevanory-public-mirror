@@ -1,0 +1,28 @@
+name: CF AI capability probe
+on:
+  workflow_dispatch:
+  push:
+    branches: [gh-pages]
+    paths: [".github/workflows/cf-ai-capability-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ACC: 1b26415802588185a86c1d4d3ebf5bdb
+    steps:
+      - name: Probe Workers AI
+        shell: bash
+        run: |
+          set -uo pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/$ACC/ai"
+          code=$(curl -s -o /tmp/m.json -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN" "$api/models/search?per_page=200")
+          echo "::notice title=MODELS_HTTP::$code"
+          jq -r '.result[]? | select((.task.name // "") | test("Speech|Text-to|Automatic";"i")) | "\(.task.name)|\(.name)|\(.description|tostring|.[0:160])"' /tmp/m.json | while read -r l; do echo "::notice title=MODEL::$l"; done
+          for m in "@cf/myshell-ai/melotts" "@cf/deepgram/aura-2-es" "@cf/deepgram/aura-1"; do
+            c=$(curl -s -o /tmp/t.bin -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN" -H 'content-type: application/json' "$api/run/$m" -d '{"prompt":"Olá, aqui é o atendimento da Zevanory. O combo custa duzentos e noventa e sete reais.","text":"Olá, aqui é o atendimento da Zevanory. O combo custa duzentos e noventa e sete reais.","lang":"pt"}')
+            echo "::notice title=TTS $m::http=$c bytes=$(stat -c%s /tmp/t.bin) head=$(head -c 160 /tmp/t.bin | tr -d '\n\r' | tr -c '[:print:]' '.')"
+          done
