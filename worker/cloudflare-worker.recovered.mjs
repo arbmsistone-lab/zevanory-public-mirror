@@ -1,4 +1,5 @@
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
+import { whatsappStageRecorder } from "./whatsapp-background.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 var __defProp = Object.defineProperty;
@@ -12984,7 +12985,7 @@ function voiceReplyRequested(event = {}, env = process.env) {
   return payload.support_only === true && String(payload.inbound_media_type || "").toLowerCase() === "audio";
 }
 __name(voiceReplyRequested, "voiceReplyRequested");
-async function ttsBytesFromRuntime(text, env = process.env, fetchImpl = globalThis.fetch) {
+async function ttsBytesFromRuntime(text, env = process.env, fetchImpl = globalThis.fetch, options = {}) {
   let runtimeEnv = env;
   if (!String(env.GEMINI_API_KEY || "").trim()) {
     const vaultGemini = String((await loadAiVaultSecret("gemini", {
@@ -12993,7 +12994,7 @@ async function ttsBytesFromRuntime(text, env = process.env, fetchImpl = globalTh
     })) || "").trim();
     if (vaultGemini) runtimeEnv = Object.freeze({ ...env, GEMINI_API_KEY: vaultGemini });
   }
-  return ttsBytesWithFailover(text, runtimeEnv, fetchImpl);
+  return ttsBytesWithFailover(text, runtimeEnv, fetchImpl, options);
 }
 __name(ttsBytesFromRuntime, "ttsBytesFromRuntime");
 async function stageVoiceTemporarily(audio, env = process.env) {
@@ -15062,6 +15063,8 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false 
   if (dedupKey && kv?.get && await kv.get(dedupKey).catch(() => null)) return { sent: false, reason: "already_replied" };
   if (dedupKey && kv?.put) await kv.put(dedupKey, "1", { expirationTtl: 86400 }).catch(() => {});
   const status = { at: new Date().toISOString(), inbound_type: item.type, heard: Boolean(question), model: null, text_sent: false, voice_sent: false, voice_error: null };
+  const checkpoint = whatsappStageRecorder(kv, status);
+  await checkpoint("heard");
   let reply;
   if (!question) {
     reply = { body: "Recebi seu áudio, mas não consegui entender bem. Pode repetir ou me escrever a sua dúvida?", mode: "audio_unheard", intent: "clarify" };
@@ -15072,24 +15075,29 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false 
     await saveWhatsappHistory(kv, item.from, history);
   }
   Object.assign(status, { mode: reply.mode, model: reply.model || null, intent: reply.intent || null, product: reply.product || null, ai_issues: reply.issues || null });
+  await checkpoint("ai_done");
   const text = { messaging_product: "whatsapp", recipient_type: "individual", to: item.from, type: "text", text: { preview_url: false, body: reply.body.slice(0, 4000) } };
   if (item.message_id) text.context = { message_id: item.message_id };
   const sentText = await postWhatsappMessage(t, text);
   Object.assign(status, { text_sent: sentText.ok, text_status: sentText.status, text_error: sentText.error });
+  await checkpoint("text_sent");
   await recordWhatsappEvidence("outbound_text", { provider_message_id: sentText.provider_message_id, contact_ref: item.from, kind: reply.mode }).catch(() => false);
   const wantsVoice = inboundAudio || /\b(audio|áudio|voz|fala(r)? comigo)\b/i.test(question || "");
   if (wantsVoice && question && process.env.WHATSAPP_VOICE_REPLY !== "false") {
     try {
-      const audio = await ttsBytesFromRuntime(whatsappSpeechText(reply.body), process.env);
+      await checkpoint("tts_start");
+      const audio = await ttsBytesFromRuntime(whatsappSpeechText(reply.body), process.env, globalThis.fetch, { onStage: checkpoint });
       const uploaded = await uploadVoiceToWhatsapp({ audio, phoneId: t.phoneId, token: t.token, version: t.version, env: process.env });
+      await checkpoint("upload_done", { voice_media_uploaded: Boolean(uploaded.media_id) });
       const sentVoice = await postWhatsappMessage(t, { messaging_product: "whatsapp", recipient_type: "individual", to: item.from, type: "audio", audio: { id: uploaded.media_id } });
       Object.assign(status, { voice_sent: sentVoice.ok, voice_provider: audio.provider, voice_model: audio.model, voice_error: sentVoice.error });
+      await checkpoint(sentVoice.ok ? "voice_sent" : "voice_error");
       if (sentVoice.ok) await recordWhatsappEvidence("outbound_voice", { provider_message_id: sentVoice.provider_message_id, contact_ref: item.from, generated_voice: true, event_id: item.message_id || "" }).catch(() => false);
     } catch (error) {
       Object.assign(status, { voice_sent: false, voice_error: String(error?.message || error).slice(0, 400) });
+      await checkpoint("voice_error");
     }
   }
-  try { if (kv?.put) await kv.put("whatsapp:instant:last", JSON.stringify(status), { expirationTtl: 604800 }); } catch {}
   return { sent: sentText.ok, ...status };
 }
 __name(replyWhatsappConversation, "replyWhatsappConversation");
