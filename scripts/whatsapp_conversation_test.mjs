@@ -78,3 +78,6 @@ try {
 
 check("deployment retains AI binding and closed sales", () => { const source = readFileSync(new URL("./deploy/prepare-central-candidate.py", import.meta.url), "utf8"); assert.match(source, /c\["ai"\]=\{"binding":"AI"\}/); assert.match(source, /c\["vars"\]\["SALE_GLOBALLY_ENABLED"\]="false"/); });
 console.log(`WHATSAPP_CONVERSATION_TEST=PASS checks=${checks}`);
+
+check("reject multiple customer questions",()=>assert.equal(validateReply("Qual seu negócio? Qual seu objetivo?").ok,false));
+check("spoken summary keeps full text separate",()=>{const original="Olá! "+("Esta orientação ajuda a organizar o atendimento e melhorar as vendas. ").repeat(10)+" https://vendas.zevanory.api.br/combo-ia-vendas";const voice=speechText(original);assert.ok(voice.length<=350);assert.ok(!voice.includes("https://"));assert.ok(voice.endsWith("Os detalhes estão na mensagem de texto."));assert.ok(original.length>600);});

@@ -26,7 +26,10 @@ export async function recordWhatsappEvidence(type,payload={}){
     generated_voice:bool(payload.generated_voice),
     status:safe(payload.status,40)||null,
     kind:safe(payload.kind,80)||null,
-    event_id:safe(payload.event_id,300)||null
+    event_id:safe(payload.event_id,300)||null,
+    received_at:safe(payload.received_at,80)||null,
+    inbound_type:safe(payload.inbound_type,40)||null,
+    release_sha:safe(payload.release_sha,80)||null
   };
   const suffix=crypto.randomUUID();
   await kv.put("whatsapp-e2e/"+Date.now()+"-"+suffix,JSON.stringify(record),{expirationTtl:60*60*24*30});
@@ -49,14 +52,14 @@ async function listEvidence(env={}){
 }
 export async function whatsappE2EStatus(env={}){
   const events=await listEvidence(env);
-  const inbound=events.filter(x=>x.type==="inbound_processed"&&x.queued===true&&x.contact_hash);
+  const inbound=events.filter(x=>x.type==="inbound_processed"&&/^wamid\./.test(x.message_id||"")&&x.phone_number_id==="1300972319774588"&&x.contact_hash);
   const outbound=events.filter(x=>x.type==="outbound_voice"&&x.generated_voice===true&&x.provider_message_id&&x.contact_hash);
   const delivery=events.filter(x=>x.type==="delivery"&&["delivered","read"].includes(String(x.status||"").toLowerCase())&&x.provider_message_id);
   let chain=null;
   for(const i of inbound){
     for(const o of outbound){
-      if(i.contact_hash!==o.contact_hash||String(o.created_at)<=String(i.created_at)) continue;
-      const d=delivery.find(x=>x.provider_message_id===o.provider_message_id&&String(x.created_at)>=String(o.created_at));
+      if(i.contact_hash!==o.contact_hash||o.event_id!==i.message_id) continue;
+      const d=delivery.find(x=>x.provider_message_id===o.provider_message_id&&String(x.created_at)>=String(i.received_at||i.created_at));
       if(d){chain={inbound:i,outbound:o,delivery:d}; break;}
     }
     if(chain) break;
@@ -73,7 +76,7 @@ export async function whatsappE2EStatus(env={}){
       inbound_message_id:chain.inbound.message_id,
       outbound_provider_message_id:chain.outbound.provider_message_id,
       delivery_status:chain.delivery.status,
-      started_at:chain.inbound.created_at,
+      started_at:chain.inbound.received_at||chain.inbound.created_at,
       completed_at:chain.delivery.created_at
     }:null
   });

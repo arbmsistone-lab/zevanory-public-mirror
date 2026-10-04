@@ -1,3 +1,4 @@
+import { handleVoiceAudit } from "./voice-operational-audit.mjs";
 import { resolveOwnerProof } from "./whatsapp-inbound-safety.mjs";
 const DEFAULT_APP_ID = "1071149631917061";
 const DEFAULT_CONFIG_ID = "1447104223954128";
@@ -328,9 +329,11 @@ function proofAuthorized(request,env){
 async function handleDeliveryProof(request,env,proofSql){
   if(!proofAuthorized(request,env))return responseJson({error:"unauthorized"},401);
   if(request.method!=="POST")return responseJson({error:"method_not_allowed"},405);
-  const raw=await request.text();if(raw.length>180000)return responseJson({error:"payload_too_large"},413);
+  const raw=await request.text();if(raw.length>4300000)return responseJson({error:"payload_too_large"},413);
   let input;try{input=JSON.parse(raw);}catch{return responseJson({error:"invalid_json"},400);}
-  if(!["subscriptions","owner","text","audio"].includes(input.operation))return responseJson({error:"invalid_operation"},400);
+  if(!["subscriptions","owner","text","audio","audit-encode","audit-transcribe","audit-observe","audit-media"].includes(input.operation))return responseJson({error:"invalid_operation"},400);
+  if(raw.length>180000&&!["audit-encode","audit-transcribe"].includes(input.operation))return responseJson({error:"payload_too_large"},413);
+  if(["audit-encode","audit-transcribe"].includes(input.operation))return handleVoiceAudit(input,env);
   let record=await getRecord(env).catch(()=>null);
   const appId=DEFAULT_APP_ID,wabaId="4019600665012911",phoneId="1300972319774588";
   if(!record?.app_secret||!record?.access_token||String(record.phone_number_id)!==phoneId||String(record.waba_id)!==wabaId)return responseJson({error:"onboarding_identity_mismatch"},409);
@@ -349,6 +352,34 @@ async function handleDeliveryProof(request,env,proofSql){
     }
     if(!proofSql)return responseJson({error:"proof_database_unavailable"},503);
     const owner=await resolveOwnerProof(proofSql(),env.ZEVANORY_PRIVATE_ARTIFACTS);
+    if(input.operation==="audit-observe"){
+      const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,observations=[];
+      const digest=await crypto.subtle.digest("SHA-256",encoder.encode(owner.recipient));
+      const contactHash=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,"0")).join("");
+      const page=await kv.list({prefix:"whatsapp:observation:",limit:1000});
+      for(const key of page.keys||[]){
+       const value=await kv.get(key.name,{type:"json"});const item=typeof value==="string"?JSON.parse(value):value;
+       if(item?.contact_hash===contactHash)observations.push(item);
+      }
+      observations.sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+      const historyRaw=await kv.get("wa:conv:"+contactHash);
+      return responseJson({recipient_suffix:owner.recipient_suffix,observations:observations.filter(x=>/^wamid\./.test(x.inbound_message_id||"")).slice(0,10),proof_observations:observations.filter(x=>String(x.inbound_message_id||"").startsWith("internal-")).slice(0,5),history:historyRaw?JSON.parse(historyRaw):[]});
+    }
+    if(input.operation==="audit-media"){
+      const id=String(input.media_id||"");if(!/^\d{5,30}$/.test(id))return responseJson({error:"invalid_media_id"},400);
+      const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
+      const page=await kv.list({prefix:"whatsapp:observation:",limit:1000});let allowed=false;
+      const digest=await crypto.subtle.digest("SHA-256",encoder.encode(owner.recipient));const hash=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,"0")).join("");
+      for(const key of page.keys||[]){let item=await kv.get(key.name,{type:"json"});if(typeof item==="string")item=JSON.parse(item);if(item?.contact_hash===hash&&item.voice_media_id===id&&(String(item.inbound_message_id||"").startsWith("internal-")||/^wamid\./.test(item.inbound_message_id||""))){allowed=true;break;}}
+      if(!allowed)return responseJson({error:"media_not_in_owner_observations"},403);
+      const metadata=await graphJson("https://graph.facebook.com/"+GRAPH_VERSION+"/"+id,{token:record.access_token});
+      const response=await fetch(metadata.url,{headers:{authorization:"Bearer "+record.access_token},signal:AbortSignal.timeout(15000)});
+      if(!response.ok)return responseJson({error:"audit_media_download_failed"},502);
+      const bytes=new Uint8Array(await response.arrayBuffer());let binary="";
+      if(bytes.length>1000000)return responseJson({error:"audit_media_size_invalid"},413);
+      for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+      return responseJson({ok:true,media_id:id,mime:metadata.mime_type,audio_base64:btoa(binary)});
+    }
     if(input.operation==="owner")return responseJson({recipient_suffix:owner.recipient_suffix,evidence:owner.evidence});
     const recipient=owner.recipient;
     let mediaId=null;

@@ -21,6 +21,7 @@ jobs:
         with: {node-version: '22'}
       - name: Verify webhook, stages and authenticated proof boundary
         run: |
+          node scripts/whatsapp_operational_audit_test.mjs
           node scripts/whatsapp_delivery_proof_test.mjs
           node scripts/whatsapp_audio_runtime_test.mjs
           node scripts/whatsapp_conversation_test.mjs
