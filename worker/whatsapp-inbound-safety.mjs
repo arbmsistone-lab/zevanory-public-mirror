@@ -6,7 +6,7 @@ export function whatsappInboundSafety(item){
  if(String(item?.phone_number_id||"")!==PHONE_ID)return "phone_number_mismatch";
  return null;
 }
-export async function resolveOwnerProof(sql){
+export async function resolveOwnerProof(sql,kv){
  const candidates=[];
  const leads=await sql.query("select contact_ref, updated_at from sales_leads where channel='whatsapp' and contact_ref not in ('558892545413','5588992545413') order by updated_at desc limit 3");
  for(const lead of leads){
@@ -15,10 +15,29 @@ export async function resolveOwnerProof(sql){
   const memory=await sql.query("select m.updated_at,m.memory_value from agent_memory m join sales_leads l on m.scope_type='lead' and m.scope_ref=l.lead_id::text where l.channel='whatsapp' and l.contact_ref=$1 and m.memory_key='last_inbound_message' order by m.updated_at desc limit 3",[lead.contact_ref]);
   const events=await sql.query("select j.payload,j.created_at from agent_jobs j join sales_leads l on l.lead_id=j.lead_id where l.channel='whatsapp' and l.contact_ref=$1 and j.created_at >= '2026-10-04T03:00:00Z'::timestamptz and j.created_at < '2026-10-05T03:00:00Z'::timestamptz order by j.created_at desc limit 100",[lead.contact_ref]);
   const real=events.filter(e=>!String(e.payload?.message_id||"").startsWith("internal-"));
-  const text=real.find(e=>/^s[oó]\s+texto[.!]?$/i.test(String(e.payload?.inbound_message||"").trim())&&Math.abs(new Date(e.created_at).getTime()-Date.parse("2026-10-04T19:55:00Z"))<=10*60*1000) || memory.find(e=>/^s[oó]\s+texto[.!]?$/i.test(String(e.memory_value?.text||"").trim())&&Math.abs(new Date(e.updated_at).getTime()-Date.parse("2026-10-04T19:55:00Z"))<=10*60*1000);
+  let text=real.find(e=>/^s[oó]\s+texto[.!]?$/i.test(String(e.payload?.inbound_message||"").trim())&&Math.abs(new Date(e.created_at).getTime()-Date.parse("2026-10-04T19:55:00Z"))<=10*60*1000) || memory.find(e=>/^s[oó]\s+texto[.!]?$/i.test(String(e.memory_value?.text||"").trim())&&Math.abs(new Date(e.updated_at).getTime()-Date.parse("2026-10-04T19:55:00Z"))<=10*60*1000);
   const audio=real.find(e=>e.payload?.media_type==="audio");
+
+  let kvAnchor=null;
+  if(!text&&audio&&Math.abs(new Date(audio.created_at).getTime()-Date.parse("2026-10-04T19:55:00Z"))<=10*60*1000&&real.some(e=>e.payload?.media_type==="text")&&kv?.list&&kv?.get){
+   const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(contact));
+   const hash=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,"0")).join("");
+   let cursor;
+   for(let pageNo=0;pageNo<5;pageNo++){
+    const page=await kv.list({prefix:"whatsapp-e2e/",limit:1000,cursor});
+    for(const key of page.keys||[]){
+     const timestamp=Number(key.name.slice("whatsapp-e2e/".length).split("-")[0]);
+     if(Math.abs(timestamp-Date.parse("2026-10-04T19:55:00Z"))>10*60*1000)continue;
+     const value=await kv.get(key.name,{type:"json"});
+     const event=typeof value==="string"?JSON.parse(value):value;
+     if(event?.type==="inbound_processed"&&event.contact_hash===hash&&event.phone_number_id===PHONE_ID){kvAnchor=event;break;}
+    }
+    if(kvAnchor||page.list_complete||!page.cursor)break;cursor=page.cursor;
+   }
+   if(kvAnchor)text=real.find(e=>e.payload?.media_type==="text");
+  }
   candidates.push({suffix:contact.slice(-4),updated_at:lead.updated_at,memory:memory.map(m=>({at:m.updated_at,text:String(m.memory_value?.text||"").replace(/\d{5,}/g,"[redacted]").slice(0,120)})),events:real.slice(0,20).map(e=>({at:e.created_at,type:e.payload?.media_type,text:String(e.payload?.inbound_message||"").replace(/\d{5,}/g,"[redacted]").slice(0,120)}))});
-  if(text&&audio)return {recipient:contact,recipient_suffix:contact.slice(-4),evidence:{text_at:text.created_at||text.updated_at,audio_at:audio.created_at,text:"so texto",audio:true}};
+  if(text&&audio)return {recipient:contact,recipient_suffix:contact.slice(-4),evidence:{text_at:text.created_at||text.updated_at,audio_at:audio.created_at,text:text.payload?.inbound_message||text.memory_value?.text||"so texto",audio:true,selection:kvAnchor?"audio_1655_and_kv_contact_match":"literal_text_and_audio",kv_at:kvAnchor?.created_at||null}};
  }
  const error=Error("owner_proof_evidence_not_found");error.candidates=candidates;throw error;
 }
