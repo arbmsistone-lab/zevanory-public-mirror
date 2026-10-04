@@ -82,3 +82,32 @@ jobs:
           name: whatsapp-operational-real-evidence
           path: /tmp/capture/
           retention-days: 7
+
+  recent-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Read only the owner's recent stage records and conversational history
+        run: |
+          node --input-type=module <<'JS'
+          import {createHash} from 'node:crypto';
+          const base='https://api.cloudflare.com/client/v4/accounts/1b26415802588185a86c1d4d3ebf5bdb/storage/kv/namespaces/728a45738e4047f29bcb89934fd533c1';
+          const headers={authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN},hash='36d2242dc5564e7e751c19b153787c20cb69ba79d83307a7499d30effe9c0526';
+          const list=await fetch(base+'/keys?prefix=whatsapp%3Ainstant%3Astage%3A&limit=100',{headers}).then(r=>r.json());
+          const records=[];
+          for(const key of list.result||[]){
+           const r=await fetch(base+'/values/'+encodeURIComponent(key.name),{headers});if(!r.ok)continue;const s=await r.json();
+           if(!/^wamid\./.test(s.inbound_message_id||'')||Date.parse(s.at)<Date.parse('2026-10-04T22:34:00Z'))continue;
+           const decoded=Buffer.from(s.inbound_message_id.slice(6),'base64').toString('utf8');
+           const number=decoded.match(/55\d{10,11}/)?.[0];
+           if(!number||createHash('sha256').update(number).digest('hex')!==hash)continue;
+           records.push(s);
+          }
+          const newest=new Map();for(const s of records){const old=newest.get(s.inbound_message_id);if(!old||s.elapsed_ms>=old.elapsed_ms)newest.set(s.inbound_message_id,s);}
+          for(const s of newest.values())console.log(JSON.stringify({owner_status:s}));
+          const h=await fetch(base+'/values/'+encodeURIComponent('wa:conv:'+hash),{headers});if(h.ok)console.log(JSON.stringify({owner_history:await h.json()}));
+          JS
