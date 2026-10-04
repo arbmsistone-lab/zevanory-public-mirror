@@ -1,3 +1,4 @@
+import {handleVoiceChunk} from "../worker/voice-chunks.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { validateReply, converse, deterministicReply, speechText } from "../worker/whatsapp-conversation.mjs";
@@ -42,8 +43,9 @@ check("PCM -> valid MP3 frame", () => { assert.ok(mp3.length > 100); assert.equa
 // Provider simulation verifies Gemini's wire contract and PCM conversion without a key or cost.
 let geminiCalls = 0;
 const voice = await ttsBytesWithFailover("Olá, podemos melhorar suas vendas.", {
-  VOICE_TTS_FREE_ONLY: "true", GEMINI_API_KEY: "unit-test-only", GEMINI_FREE_TIER_CONFIRMED: "true", VOICE_TTS_PROVIDER_CHAIN: "gemini,piper-relay"
+  ELITE_INTERNAL_TOKEN:"unit-test-master-material-32-chars", VOICE_TTS_FREE_ONLY: "true", GEMINI_API_KEY: "unit-test-only", GEMINI_FREE_TIER_CONFIRMED: "true", VOICE_TTS_PROVIDER_CHAIN: "gemini,piper-relay"
 }, async (url, init) => {
+  if(url instanceof Request)return handleVoiceChunk(url,{ELITE_INTERNAL_TOKEN:"unit-test-master-material-32-chars"});
   geminiCalls++;
   assert.match(String(url), /generativelanguage\.googleapis\.com/);
   assert.equal(init.headers["x-goog-api-key"], "unit-test-only");

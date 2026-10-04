@@ -1,3 +1,5 @@
+import { encodePcmInChunks } from "./voice-chunks.mjs";
+import { Buffer } from "node:buffer";
 import lamejs from "./vendor/lame.min.mjs";
 import { unpackPcm, encodePcmRemotely, downsamplePcmMono } from "./voice-pcm.mjs";
 const DEFAULT_CHAIN = Object.freeze(["speechify", "azure", "piper-relay", "gemini"]);
@@ -76,8 +78,7 @@ function noteFailure(provider, error) {
 }
 
 function decodeBase64(value) {
-  const raw = atob(String(value || ""));
-  return Uint8Array.from(raw, (ch) => ch.charCodeAt(0));
+  return new Uint8Array(Buffer.from(String(value || ""), "base64"));
 }
 
 function escapeXml(value) {
@@ -247,12 +248,11 @@ async function geminiTts(text, env, fetchImpl, { onStage = async () => {} } = {}
     if (/l16|pcm|wav/i.test(mimeIn)) {
       const rate = Number(part?.sample_rate || (mimeIn.match(/rate=(\d+)/i) || [])[1]) || (modern ? 8000 : 24000);
       const input = unpackPcm(raw, rate);
-      const remote = Boolean(env.VOICE_ENCODE_URL && env.VOICE_ENCODE_SECRET);
-      const encodingInput = remote ? input : downsamplePcmMono(input.pcm, input.sampleRate, 8000);
-      await onStage("encode_start", { encode_provider: remote ? "render" : "worker", sample_rate: encodingInput.sampleRate, source_sample_rate: input.sampleRate });
-      const encodingStarted = Date.now();
-      bytes = remote ? await encodePcmRemotely(input.pcm, input.sampleRate, env, fetchImpl) : pcm16ToMp3(encodingInput.pcm, encodingInput.sampleRate, 32);
-      await onStage("encode_done", { encode_bytes: bytes.length, encode_ms: Date.now() - encodingStarted });
+      await onStage("encode_start", { encode_provider:"cloudflare-chunks",sample_rate:8000,source_sample_rate:input.sampleRate });
+      const encodingStarted=Date.now();
+      const encoded=await encodePcmInChunks(input.pcm,input.sampleRate,env,fetchImpl,{onStage});
+      bytes=encoded.bytes;
+      await onStage("encode_done",{encode_bytes:bytes.length,encode_ms:Date.now()-encodingStarted,encode_provider:encoded.provider,encode_chunks:encoded.chunks,encode_fallback_used:encoded.fallback_used});
       mime = "audio/mpeg";
     }
     if (!bytes?.length || bytes.length > 12 * 1024 * 1024) throw new Error("voice_tts_output_size_invalid");

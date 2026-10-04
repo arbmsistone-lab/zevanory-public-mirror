@@ -56,8 +56,8 @@ router_required=[
   'responseModalities: ["AUDIO"]',
   ':generateContent',
   'export function pcm16ToMp3',
-  'downsamplePcmMono(input.pcm, input.sampleRate, 8000)',
-  'pcm16ToMp3(encodingInput.pcm, encodingInput.sampleRate, 32)',
+  'encodePcmInChunks(input.pcm,input.sampleRate,env,fetchImpl,{onStage})',
+  'encode_fallback_used:encoded.fallback_used',
   'sample_rate: 8000',
   'gemini-3.8-flash-tts',
   'gemini-3.8-flash-lite-tts',
@@ -65,6 +65,8 @@ router_required=[
 missing=[x for x in router_required if x not in router]
 assert not missing, f"missing provider router markers: {missing}"
 print("VOICE_MULTI_PROVIDER_ZERO_SPEND_FAILOVER_GATE=PASS")
+# Execute chunk auth, ordering, retries and fallback checks, not just router markers.
+subprocess.run(["node", "scripts/voice_chunks_test.mjs"], check=True)
 subprocess.run(["node", "scripts/whatsapp_delivery_proof_test.mjs"], check=True)
 # Verify the Gemini wire contract and valid MP3 bytes rather than accepting a
 # marker from the retired interactions API that did not generate usable audio.
