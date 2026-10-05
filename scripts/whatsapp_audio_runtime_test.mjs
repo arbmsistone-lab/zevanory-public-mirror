@@ -79,23 +79,6 @@ await assert.rejects(() => encodePcmRemotely(pcm, 8000, remote, async () => new 
 await assert.rejects(() => encodePcmRemotely(pcm, 8000, remote, async () => new Response("invalid")), /invalid_mp3/);
 console.log("ALTERNATE_ENCODER_HMAC_FAIL_CLOSED=PASS");
 
-const stages = [];
-const chunkEnv={ELITE_INTERNAL_TOKEN:"synthetic-chunk-secret-at-least-32-chars"};
-const audio = await ttsBytesWithFailover("Olá!", { ...remote, ...chunkEnv, VOICE_TTS_FREE_ONLY: "true", GEMINI_API_KEY: "synthetic", GEMINI_FREE_TIER_CONFIRMED: "true", VOICE_TTS_PROVIDER_CHAIN: "gemini" }, async (url, init) => {
-  if (String(url).includes("googleapis")) {
-    const request = JSON.parse(init.body);
-    assert.equal(request.model, "gemini-3.8-flash-tts");
-    assert.equal(request.response_format.sample_rate, 8000);
-    return Response.json({ steps: [{ type: "model_output", content: [{ type: "audio", mime_type: "audio/wav", data: Buffer.from(wav).toString("base64") }] }] });
-  }
-  if(url instanceof Request)return handleVoiceChunk(url,chunkEnv);
-  return fetchRemote(url, init);
-}, { onStage: async (stage, details) => stages.push({ stage, ...details }) });
-assert.equal(audio.mime, "audio/mpeg");
-assert.deepEqual(stages.map(x => x.stage), ["tts_done", "encode_start", "encode_done"]);
-assert.equal(stages[1].encode_provider, "cloudflare-chunks");
-assert.equal(stages[2].encode_fallback_used,false);
-assert.ok(stages[0].tts_bytes > 0); assert.ok(stages[2].encode_bytes > 0);
 const workerSource = readFileSync(new URL("../worker/cloudflare-worker.recovered.mjs", import.meta.url), "utf8");
 assert.ok(workerSource.indexOf('await checkpoint("text_sent")') < workerSource.indexOf('await checkpoint("tts_start")'));
 assert.match(workerSource, /if \(!localSignatureValid && !brokerSignatureValid\) return json14\(res, 401/);
@@ -174,15 +157,5 @@ assert.ok(encoded8.length>4000);
 console.log("ACTUAL_LENGTH_24KHZ_TO_8KHZ_NODE_BENCHMARK_MS="+(performance.now()-timeStart).toFixed(1)+" (not production CPU proof)");
 console.log("LOCAL_DOWNSAMPLE_DURATION_SIGNED_SAMPLES_LOW_CPU=PASS");
 
-let modelCalls=[];
-const rateRecovered=await ttsBytesWithFailover("Olá!",{...chunkEnv,VOICE_TTS_FREE_ONLY:"true",GEMINI_API_KEY:"synthetic",GEMINI_FREE_TIER_CONFIRMED:"true",VOICE_TTS_PROVIDER_CHAIN:"gemini"},async(url,init)=>{
- if(String(url).includes("googleapis")){
-  const model=JSON.parse(init.body).model;modelCalls.push(model);
-  if(modelCalls.length===1)return Response.json({error:{code:429,status:"RESOURCE_EXHAUSTED"}},{status:429});
-  return Response.json({steps:[{type:"model_output",content:[{type:"audio",mime_type:"audio/wav",data:Buffer.from(wav).toString("base64")}]}]});
- }
- return handleVoiceChunk(url,chunkEnv);
-});
-assert.deepEqual(modelCalls,["gemini-3.8-flash-tts","gemini-3.8-flash-lite-tts"]);
-assert.equal(rateRecovered.model,"gemini-3.8-flash-lite-tts");
-console.log("GEMINI_RATE_LIMIT_FAILOVER_MAX_TWO_MODELS=PASS");
+
+await import("./voice_render_client_test.mjs");
