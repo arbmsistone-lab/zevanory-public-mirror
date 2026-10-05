@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {createHash,createHmac} from 'node:crypto';
+import {renderTextTts} from '../worker/voice-render-client.mjs';
+const text='O preço do teste é vinte reais.',key='synthetic-gemini-key',secret='synthetic-signing-key-at-least-32-characters',mp3=new Uint8Array([255,251,144,0,1,2,3]);
+const store=new Map(),ttls=[];
+const kv={async get(k,type){return store.get(k)||null;},async put(k,v,options){store.set(k,v instanceof Uint8Array?v.buffer.slice(0):v);ttls.push(options.expirationTtl);}};
+const env={GEMINI_API_KEY:key,VOICE_ENCODE_SECRET:secret};
+let calls=0;
+const fetchMock=async(url,init)=>{
+ calls++;assert.equal(url,'https://zevanory-product-control-edge.onrender.com/api/voice/synthesize');
+ const body=JSON.parse(init.body);assert.deepEqual(body,{text,api_key:key,voice:'Achird',models:['gemini-3.8-flash-tts','gemini-3.8-flash-lite-tts']});
+ const h=init.headers,message=['zevanory-voice-synth-v1',h['x-voice-timestamp'],h['x-voice-nonce'],createHash('sha256').update(init.body).digest('hex')].join('\n');
+ assert.equal(h['x-voice-signature'],createHmac('sha256',secret).update(message).digest('hex'));
+ assert.ok(!JSON.stringify(init.headers).includes(key));
+ return new Response(mp3,{headers:{'x-voice-model':'gemini-3.8-flash-tts'}});
+};
+assert.deepEqual((await renderTextTts(text,env,fetchMock,{kv})).bytes,mp3);
+assert.deepEqual((await renderTextTts(text,env,()=>assert.fail('cache miss'),{kv})).bytes,mp3);
+assert.equal(calls,1);assert.equal(ttls[0],30*86400);
+await assert.rejects(()=>renderTextTts('x'.repeat(351),env,fetchMock,{kv}),/limit/);
+await assert.rejects(()=>renderTextTts('quota fixture',env,async()=>Response.json({error:'gemini_quota'},{status:429,headers:{'retry-after':'120'}}),{kv}),/^Error: quota$/);
+await assert.rejects(()=>renderTextTts('another text',env,()=>assert.fail('quota retried'),{kv}),/^Error: quota$/);
+assert.deepEqual((await renderTextTts(text,env,()=>assert.fail('cached quota text refetched'),{kv})).bytes,mp3);
+console.log('VOICE_RENDER_HMAC_30_DAY_BINARY_CACHE_QUOTA_COOLDOWN=PASS');
