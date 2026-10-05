@@ -137,6 +137,7 @@ def validate_request(url, method, headers, identity):
                    (not q or set(q) == {'order_id'} and len(q['order_id']) == 1 and
                     re.fullmatch(r'[0-9a-f-]{36}', q['order_id'][0])) or
                    method == 'POST' and p.path == CERT_PATH + 'checkout' and not q or
+                   method == 'POST' and p.path == CERT_PATH + 'reconcile' and not q or
                    method == 'GET' and p.path == CERT_PATH + 'download' and
                    set(q) == {'token'} and len(q['token']) == 1 and bool(q['token'][0]))
         require(allowed, 'CERT_ENDPOINT_DENIED')
@@ -325,7 +326,12 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         require(str(confirmed.get('id', '')) == pid and confirmed.get('status') == 'approved' and
                 confirmed.get('external_reference') == oid, 'APPROVED_SANDBOX_PAYMENT_LOOKUP_REQUIRED')
         report['checks']['PAYMENT_LOOKUP'] = 'PASS'
+        report['provider_payment_status'] = str(confirmed.get('status') or '')
+        report['provider_external_reference'] = str(confirmed.get('external_reference') or '')
+        report['provider_notification_url'] = str(confirmed.get('notification_url') or '')
+        webhook_deadline = now() + 90
         deadline = now() + 240
+        reconciled = False
         while True:
             try:
                 state = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}),
@@ -342,7 +348,11 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
             webhook_ok = verified_webhook(state, oid, pid)
             payment_event_ok = any(e.get('normalized_event') == 'payment_confirmed' and
                 str(e.get('provider_payment_id')) == pid for e in events) if isinstance(events, list) else False
-            if (webhook_ok and state.get('order', {}).get('status') == 'paid' and
+            receipt_source = str(state.get('receipt_source') or '')
+            if webhook_ok and payment_event_ok and receipt_source in ('webhook', 'reconciliation'):
+                report['receipt_source'] = receipt_source
+            if (webhook_ok and payment_event_ok and receipt_source in ('webhook', 'reconciliation') and
+                    state.get('order', {}).get('status') == 'paid' and
                     delivery.get('email_recipient') == identity.inbox_email and delivery.get('email_status') == 'sent' and
                     state.get('fulfillment', {}).get('status') == 'delivered'):
                 mid, text = received_message(client, oid, identity, started_ms, audit_id)
@@ -350,12 +360,28 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
                     report['email_id'] = str(delivery.get('email_provider_id') or mid)
                     report['inbox_message_id'] = mid
                     break
+            if not webhook_ok and not payment_event_ok and not reconciled and now() >= webhook_deadline:
+                latest = client.mp('/v1/payments/' + pid, headers={'x-test-token': 'true'},
+                                   failure_code='receipt_reconciliation_payment_lookup')
+                require(str(latest.get('id', '')) == pid and latest.get('status') == 'approved' and
+                        latest.get('external_reference') == oid, 'RECONCILIATION_REQUIRES_APPROVED_PAYMENT')
+                reconciled_doc = client.cert('reconcile', 'POST', {'order_id': oid, 'payment_id': pid},
+                                             audit_id=audit_id, failure_code='receipt_reconciliation')
+                require(reconciled_doc.get('accepted') is True and
+                        reconciled_doc.get('receipt_source') == 'reconciliation' and
+                        str(reconciled_doc.get('payment_id', '')) == pid and
+                        reconciled_doc.get('order_id') == oid, 'RECEIPT_RECONCILIATION_REJECTED')
+                report['receipt_source'] = 'reconciliation'
+                reconciled = True
+                continue
             if now() >= deadline:
                 report['timeout_state'] = {
                     'order_status': str(state.get('order', {}).get('status') or ''),
                     'financial_events_count': len(events) if isinstance(events, list) else 0,
                     'matching_payment_event': payment_event_ok,
                     'verified_webhook': webhook_ok,
+                    'receipt_source': str(state.get('receipt_source') or report.get('receipt_source') or ''),
+                    'reconciliation_attempted': reconciled,
                     'fulfillment_status': str(state.get('fulfillment', {}).get('status') or ''),
                     'email_status': str(delivery.get('email_status') or ''),
                     'email_recipient_match': delivery.get('email_recipient') == identity.inbox_email,
@@ -382,7 +408,10 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         final = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}),
                             audit_id=audit_id, failure_code='order_final_status')
         validate_isolation(final, identity, oid)
-        report['checks'].update({'RECEIVER_SIGNATURE': 'PASS', 'INBOX_RECEIPT': 'PASS',
+        final_source = str(final.get('receipt_source') or report.get('receipt_source') or '')
+        require(final_source in ('webhook', 'reconciliation'), 'RECEIPT_SOURCE_REQUIRED')
+        report['receipt_source'] = final_source
+        report['checks'].update({'RECEIPT': 'PASS', 'INBOX_RECEIPT': 'PASS',
                                 'DOWNLOAD': 'PASS', 'SALES_BLOCKED': 'PASS'})
         report['status'] = 'PASS'
     except GuardError as error:

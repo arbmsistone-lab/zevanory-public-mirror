@@ -160,3 +160,64 @@ test("recovered delivery only relaxes live_mode for registered v2 orders on the 
   assert.ok(src.includes("/^prova-sandbox@zevanory\\.api\\.br$/"));
   assert.ok(createHash("sha256"));
 });
+
+
+test("approved-payment reconciliation uses the signed canonical sandbox webhook and records source", async () => {
+  const oid = "22222222-3333-4444-8555-666666666666";
+  const e = env({ MERCADOPAGO_TEST_WEBHOOK_SECRET: "sandbox-webhook-secret-0123456789abcdef" });
+  await e.ZEVANORY_PRIVATE_ARTIFACTS.put(`sandbox-proof-v2:order:${oid}`, JSON.stringify({
+    order_id: oid, session_id: "s", buyer_id: body.buyer_id, buyer_email: body.buyer_email,
+    email_recipient: body.email_recipient, created_at: new Date().toISOString()
+  }));
+  let seen = null;
+  const worker = {
+    fetch: async (request) => {
+      const u = new URL(request.url);
+      assert.equal(u.pathname, "/api/webhooks");
+      assert.equal(u.searchParams.get("provider"), "mercadopago_test");
+      seen = {
+        headers: Object.fromEntries(request.headers),
+        body: await request.json()
+      };
+      return Response.json({
+        accepted: true,
+        event: "payment_confirmed",
+        order_id: oid,
+        order_status: "paid"
+      });
+    }
+  };
+  const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/reconcile", {
+    method: "POST",
+    headers: { "x-certification-e2e-token": TOKEN },
+    body: JSON.stringify({ order_id: oid, payment_id: "1353134497" })
+  }), e, {}, worker, sqlOk);
+  const d = await r.json();
+  assert.equal(r.status, 200);
+  assert.equal(d.receipt_source, "reconciliation");
+  assert.deepEqual(seen.body, { type: "payment", data: { id: "1353134497" } });
+  assert.match(seen.headers["x-request-id"], /^[0-9a-f-]{36}$/);
+  assert.match(seen.headers["x-signature"], /^ts=[0-9]+,v1=[0-9a-f]{64}$/);
+  const saved = JSON.parse(await e.ZEVANORY_PRIVATE_ARTIFACTS.get(`sandbox-proof-v2:order:${oid}`));
+  assert.equal(saved.receipt_source, "reconciliation");
+  assert.equal(saved.reconciled_payment_id, "1353134497");
+});
+
+test("reconciliation never certifies a non-approved canonical event", async () => {
+  const oid = "22222222-3333-4444-8555-666666666666";
+  const e = env({ MERCADOPAGO_TEST_WEBHOOK_SECRET: "sandbox-webhook-secret-0123456789abcdef" });
+  await e.ZEVANORY_PRIVATE_ARTIFACTS.put(`sandbox-proof-v2:order:${oid}`, JSON.stringify({
+    order_id: oid, session_id: "s", buyer_id: body.buyer_id, buyer_email: body.buyer_email,
+    email_recipient: body.email_recipient, created_at: new Date().toISOString()
+  }));
+  const worker = { fetch: async () => Response.json({
+    accepted: true, event: "payment_pending", order_id: oid, order_status: "checkout_ready"
+  }) };
+  const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/reconcile", {
+    method: "POST", headers: { "x-certification-e2e-token": TOKEN },
+    body: JSON.stringify({ order_id: oid, payment_id: "1353134497" })
+  }), e, {}, worker, sqlOk);
+  assert.equal(r.status, 409);
+  const saved = JSON.parse(await e.ZEVANORY_PRIVATE_ARTIFACTS.get(`sandbox-proof-v2:order:${oid}`));
+  assert.equal(saved.receipt_source, undefined);
+});

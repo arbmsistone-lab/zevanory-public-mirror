@@ -61,6 +61,8 @@ class FakeProvider:
         self.error = None
         self.http_errors = {}
         self.download_calls = 0
+        self.requires_reconcile = False
+        self.reconciled = False
 
     def __call__(self, req, timeout):
         self.calls.append(req)
@@ -91,9 +93,23 @@ class FakeProvider:
         elif path == '/v1/payments':
             data = {'id': 77, 'live_mode': True, 'collector_id': 10, 'status': 'approved', 'external_reference': NEW_ORDER}
         elif path == '/v1/payments/77':
-            data = {'id': 77, 'live_mode': True, 'collector_id': 10, 'status': 'approved', 'external_reference': NEW_ORDER}
+            data = {'id': 77, 'live_mode': True, 'collector_id': 10, 'status': 'approved',
+                    'external_reference': NEW_ORDER,
+                    'notification_url': proof.APP + '/api/webhooks?provider=mercadopago_test'}
+        elif path == proof.CERT_PATH + 'reconcile':
+            payload = json.loads(req.data.decode()) if req.data else {}
+            self.assert_reconcile_payload = payload
+            self.reconciled = True
+            data = {'accepted': True, 'order_id': NEW_ORDER, 'payment_id': '77',
+                    'receipt_source': 'reconciliation'}
         elif path == proof.CERT_PATH + 'status':
-            data = {**isolation, 'order': {'status': 'paid'}, 'fulfillment': {'status': 'delivered'},
+            if self.requires_reconcile and not self.reconciled:
+                data = {**isolation, 'receipt_source': None, 'order': {'status': 'checkout_ready'},
+                        'fulfillment': {'status': ''}, 'financial_events': [],
+                        'delivery_evidence': {}}
+                return Response(json.dumps(data).encode())
+            data = {**isolation, 'receipt_source': 'reconciliation' if self.reconciled else 'webhook',
+                'order': {'status': 'paid'}, 'fulfillment': {'status': 'delivered'},
                 'financial_events': [{'normalized_event': 'payment_confirmed', 'provider_payment_id': 77,
                     'order_id': NEW_ORDER, 'source_class': 'provider_webhook', 'signature_verified': self.signature,
                     'signature_secret_class': 'sandbox', 'signature_verified_by': 'receiver'}],
@@ -141,6 +157,22 @@ class GuardTests(unittest.TestCase):
         self.assertNotIn(proof.FROZEN_ORDER, saved)
         self.assertTrue(all(proof.FROZEN_ORDER not in r.full_url for r in self.fake.calls))
         self.assertTrue(all(r.method == 'GET' for r in self.fake.calls if proof.INBOX_PATH in r.full_url))
+
+    def test_reconciles_after_90_seconds_when_provider_is_still_approved(self):
+        self.fake.requires_reconcile = True
+        clock = [NOW]
+
+        def sleep(seconds):
+            clock[0] += seconds
+
+        report = proof.run(self.env, self.fake, now=lambda: clock[0], sleep=sleep)
+        self.assertEqual(report['status'], 'PASS', report)
+        self.assertEqual(report.get('receipt_source'), 'reconciliation')
+        self.assertEqual(self.fake.assert_reconcile_payload,
+                         {'order_id': NEW_ORDER, 'payment_id': '77'})
+        reconcile_calls = [r for r in self.fake.calls
+                           if proof.urllib.parse.urlsplit(r.full_url).path == proof.CERT_PATH + 'reconcile']
+        self.assertEqual(len(reconcile_calls), 1)
 
     def test_disabled_default(self):
         self.env.pop('SANDBOX_FINANCIAL_ENABLED')
