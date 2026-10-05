@@ -1,0 +1,65 @@
+{
+  "schema": "zevanory.p12.live-slo.v1",
+  "release_sha": "a3c4a30f7fc96dabeed17f718fa5f5e63479b75e",
+  "sample_count": 6,
+  "availability": 1.0,
+  "p95_latency_ms": 584.67,
+  "slo": {
+    "availability_min": 0.999,
+    "p95_latency_ms_max": 5000
+  },
+  "correlation": {
+    "x_request_id_echo": "PASS"
+  },
+  "metrics": [
+    {
+      "path": "/api/live",
+      "attempt": 1,
+      "status": 200,
+      "latency_ms": 258.0,
+      "request_id": "p12-70007ae2c02647e99b0b2e7f6c55f0cc",
+      "echo_request_id": "p12-70007ae2c02647e99b0b2e7f6c55f0cc"
+    },
+    {
+      "path": "/api/live",
+      "attempt": 2,
+      "status": 200,
+      "latency_ms": 245.48,
+      "request_id": "p12-3bbd087d96b34b8e99fcba4602e982d9",
+      "echo_request_id": "p12-3bbd087d96b34b8e99fcba4602e982d9"
+    },
+    {
+      "path": "/api/live",
+      "attempt": 3,
+      "status": 200,
+      "latency_ms": 79.56,
+      "request_id": "p12-e39f583371554258a4611ed0850e506b",
+      "echo_request_id": "p12-e39f583371554258a4611ed0850e506b"
+    },
+    {
+      "path": "/api/health",
+      "attempt": 1,
+      "status": 200,
+      "latency_ms": 790.36,
+      "request_id": "p12-864926bccc97488e80dd07b80008e840",
+      "echo_request_id": "p12-864926bccc97488e80dd07b80008e840"
+    },
+    {
+      "path": "/api/health",
+      "attempt": 2,
+      "status": 200,
+      "latency_ms": 473.79,
+      "request_id": "p12-9f1a0be8ff41479a87aa18ab48976c7a",
+      "echo_request_id": "p12-9f1a0be8ff41479a87aa18ab48976c7a"
+    },
+    {
+      "path": "/api/health",
+      "attempt": 3,
+      "status": 200,
+      "latency_ms": 584.67,
+      "request_id": "p12-e64447be5d3e4b6cb39093e2410b073a",
+      "echo_request_id": "p12-e64447be5d3e4b6cb39093e2410b073a"
+    }
+  ],
+  "verdict": "PASS"
+}
