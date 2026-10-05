@@ -13,7 +13,7 @@ const okFetch = async (url, init) => {
   const msg = ["zevanory-voice-synth-v1", h["x-voice-timestamp"], h["x-voice-nonce"], createHash("sha256").update(body).digest("hex")].join("\n");
   assert.equal(h["x-voice-signature"], createHmac("sha256", secret).update(msg).digest("hex"), "signature matches Render verifier");
   const json = JSON.parse(body.toString());
-  assert.equal(json.api_key, "AIza-test"); assert.deepEqual(json.models, ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"]);
+  assert.equal(json.api_key, "AIza-test"); assert.deepEqual(json.models, ["gemini-3.8-flash-lite-tts"]);
   return new Response(mp3, { status: 200, headers: { "content-type": "audio/mpeg", "x-voice-model": "gemini-3.8-flash-tts" } });
 };
 const stages = [];
@@ -25,7 +25,14 @@ assert.equal(b.cached, true); assert.equal(calls.length, 1, "cache hit spends no
 await assert.rejects(synthesizeVoice("outro texto", { apiKey: "AIza-test", kv, secret, fetchImpl: async () => new Response(JSON.stringify({ error: "gemini_quota" }), { status: 429 }) }), /^Error: quota$/);
 let n = 0;
 await assert.rejects(synthesizeVoice("texto 3", { apiKey: "k", secret, fetchImpl: async () => { n++; return new Response("{}", { status: 503 }); } }), /voice_synth_http_503/);
-assert.equal(n, 2, "one retry on 5xx");
+assert.equal(n, 1, "ambiguous failures never retry");
 await assert.rejects(synthesizeVoice("texto 4", { apiKey: "k", secret, fetchImpl: async () => new Response(new Uint8Array(10), { status: 200 }) }), /invalid_mp3/);
 await assert.rejects(synthesizeVoice("texto 5", { apiKey: "", secret, fetchImpl: okFetch }), /gemini_key_missing/);
 console.log("VOICE_REMOTE_TTS_TEST=PASS");
+
+let repeatCalls = 0;
+await assert.rejects(synthesizeVoice("missing", {cacheOnly:true, apiKey:"k", secret, fetchImpl:async()=>{repeatCalls++;throw Error("unexpected request");}}), /voice_cache_miss/);
+assert.equal(repeatCalls, 0, "cache-only repeat cannot call Gemini");
+const quotaCalls = [];
+await assert.rejects(synthesizeVoice("quota", {apiKey:"k",secret,fetchImpl:async(u,i)=>{quotaCalls.push(JSON.parse(new TextDecoder().decode(i.body)));return Response.json({error:"gemini_quota"},{status:429});}}), /^Error: quota$/);
+assert.equal(quotaCalls.length,1);assert.equal(quotaCalls[0].models.length,1);

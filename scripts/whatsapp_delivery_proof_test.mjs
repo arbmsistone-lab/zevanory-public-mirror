@@ -73,3 +73,10 @@ console.log("OWNER_AUDIO_TIMESTAMP_KV_CONTACT_PHONE_CROSSCHECK=PASS");
 const newerAudioSql={query:async q=>q.startsWith("select contact_ref")?[{contact_ref:candidate,updated_at:"2026-10-04T22:36:33Z"}]:q.startsWith("select m.")?[]:[{created_at:"2026-10-04T22:36:21Z",payload:{message_id:"wamid.newaudio",media_type:"audio"}},...await fallbackSql.query(q)]};
 assert.equal((await resolveOwnerProof(newerAudioSql,proofKv)).recipient_suffix,"1234");
 console.log("NEW_REAL_AUDIO_PRESERVES_VERIFIED_OWNER_ANCHOR=PASS");
+
+const cacheOnlyAudio=await handle(request({operation:"audio",voice_cache_only:true,audio_base64:Buffer.from("OggSsynthetic-unit-test").toString("base64")}),env);
+const cacheOnlyProof=await cacheOnlyAudio.json();
+assert.equal(cacheOnlyAudio.status,200);
+assert.equal(JSON.parse(cacheOnlyProof.signed_body).entry[0].changes[0].value.messages[0].audio.voice_cache_only,true);
+assert.equal(cacheOnlyProof.signature,"sha256="+createHmac("sha256",record.app_secret).update(cacheOnlyProof.signed_body).digest("hex"));
+console.log("PROOF_REPEAT_CACHE_ONLY=PASS");

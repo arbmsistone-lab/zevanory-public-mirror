@@ -1,0 +1,41 @@
+name: Manual catalog voice cache warm
+on:
+  workflow_dispatch:
+    inputs:
+      max_voices:
+        description: 'Maximum new voices (1–10); stops at first quota'
+        default: '10'
+        required: true
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: voice-cache-warm
+  cancel-in-progress: false
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OPERATOR_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN || secrets.OPERATOR_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: '1b26415802588185a86c1d4d3ebf5bdb'
+      VOICE_WARM_MAX: ${{ inputs.max_voices }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/781761447388/locations/global/workloadIdentityPools/github-actions/providers/zevanory-github
+          service_account: zevanory-github-deployer@zevanory-gemini.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Warm once, resume from existing KV entries
+        shell: bash
+        run: |
+          set -euo pipefail
+          export GEMINI_API_KEY="$(gcloud secrets versions access latest --secret=ZEVANORY_GEMINI_API_KEY --project=zevanory-gemini)"
+          echo "::add-mask::$GEMINI_API_KEY"
+          node scripts/voice_cache_warm.mjs

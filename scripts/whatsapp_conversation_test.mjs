@@ -1,7 +1,7 @@
 import {handleVoiceChunk} from "../worker/voice-chunks.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { validateReply, converse, deterministicReply, speechText } from "../worker/whatsapp-conversation.mjs";
+import { validateReply, converse, deterministicReply, speechText, voiceReplyBody } from "../worker/whatsapp-conversation.mjs";
 import { SUPPORT_PRODUCTS } from "../worker/support-knowledge.mjs";
 import { pcm16ToMp3, ttsBytesWithFailover } from "../worker/voice-provider-router.mjs";
 import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "../worker/whatsapp-onboarding.mjs";
@@ -83,3 +83,16 @@ console.log(`WHATSAPP_CONVERSATION_TEST=PASS checks=${checks}`);
 
 check("reject multiple customer questions",()=>assert.equal(validateReply("Qual seu negócio? Qual seu objetivo?").ok,false));
 check("spoken summary keeps full text separate",()=>{const original="Olá! "+("Esta orientação ajuda a organizar o atendimento e melhorar as vendas. ").repeat(10)+" https://vendas.zevanory.api.br/combo-ia-vendas";const voice=speechText(original);assert.ok(voice.length<=350);assert.ok(!voice.includes("https://"));assert.ok(voice.endsWith("Os detalhes estão na mensagem de texto."));assert.ok(original.length>600);});
+
+const {voiceCacheKey} = await import("../worker/voice-remote-tts.mjs");
+const alternativeAI = await converse({question,ai:{async run(){return {response:"Por R$ 297,00 você leva o Combo IA + Vendas. Quer conhecer o material?"};}}});
+assert.notEqual(validAI.body,alternativeAI.body);
+assert.equal(await voiceCacheKey(speechText(voiceReplyBody(question,validAI.body))),await voiceCacheKey(speechText(voiceReplyBody(question,alternativeAI.body))));
+for(const q of ["Como recebo o combo?","Quero reembolso do combo"]){assert.equal(speechText(voiceReplyBody(q,"fala variável da IA")),speechText(deterministicReply(q).body));}
+const outside="Como organizar minha rotina de trabalho?";
+assert.equal(voiceReplyBody(outside,"Vamos organizar sua rotina juntos."),"Vamos organizar sua rotina juntos.");
+assert.equal(voiceReplyBody("Quanto custa o produto que não existe?","Qual produto?"),"Qual produto?");
+const runtime=readFileSync(new URL("../worker/cloudflare-worker.recovered.mjs",import.meta.url),"utf8");
+assert.match(runtime,/whatsappSpeechText\(voiceReplyBody\(question, reply.body\)\)/);
+assert.doesNotMatch(runtime,/voice_synth_fallback/);
+console.log("DETERMINISTIC_CATALOG_VOICE_AI_TEXT_PRESERVED=PASS");
