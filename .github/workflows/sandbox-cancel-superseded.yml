@@ -1,0 +1,28 @@
+name: Cancel superseded checks of sandbox PR 406
+on:
+  push:
+    branches: [chore/sandbox-close-once-20261005]
+    paths: [.github/workflows/sandbox-cancel-superseded.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Cancel only obsolete PR 406 checks
+        run: |
+          node --input-type=module <<'NODE'
+          const root='https://api.github.com/repos/'+process.env.GITHUB_REPOSITORY,headers={authorization:'Bearer '+process.env.GH_TOKEN,accept:'application/vnd.github+json'};
+          const r=await fetch(root+'/actions/runs?head_sha=5584ca4aa51844e12aa745a27c108c2a154f66eb&per_page=100',{headers});
+          if(!r.ok)throw Error('list_http_'+r.status);
+          for(const x of (await r.json()).workflow_runs){
+            if(x.head_sha!=='5584ca4aa51844e12aa745a27c108c2a154f66eb'||x.head_branch!=='fix/sandbox-secret-env-20261005'||x.event!=='pull_request'||!['queued','in_progress'].includes(x.status))continue;
+            const q=await fetch(root+'/actions/runs/'+x.id+'/cancel',{method:'POST',headers});
+            if(!q.ok&&q.status!==409)throw Error('cancel_http_'+q.status);
+            console.log('SUPERSEDED_PR406_CANCEL '+x.id+' '+x.name+' '+q.status);
+          }
+          NODE
