@@ -1,0 +1,42 @@
+name: Sandbox identity attestation (read-only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  attest:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      MP_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+      APPLICATION_ID: "7110331176975646"
+      SELLER_ID: "3670768257"
+      BUYER_ID: "3670747423"
+    steps:
+      - name: Read-only GETs; prints digests and booleans only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$MP_TOKEN"
+          python3 - <<'PY'
+          import hashlib, json, os, re, urllib.request
+          t = os.environ['MP_TOKEN']
+          def get(path):
+              req = urllib.request.Request('https://api.mercadopago.com' + path, headers={'authorization': 'Bearer ' + t})
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as r: return r.status, json.load(r)
+              except urllib.error.HTTPError as e: return e.code, {}
+          s, me = get('/users/me'); b, buyer = get('/users/' + os.environ['BUYER_ID'])
+          parts = t.split('-')
+          print(json.dumps({
+              'access_token_sha256': hashlib.sha256(t.encode()).hexdigest(),
+              'token_prefix': parts[0] if parts else '',
+              'token_embeds_application_id': os.environ['APPLICATION_ID'] in parts,
+              'token_ends_with_seller_id': parts[-1] == os.environ['SELLER_ID'] if parts else False,
+              'users_me_status': s, 'seller_id_match': str(me.get('id')) == os.environ['SELLER_ID'],
+              'seller_test_user': 'test_user' in (me.get('tags') or []),
+              'buyer_status': b, 'buyer_id_match': str(buyer.get('id')) == os.environ['BUYER_ID'],
+              'buyer_test_user': 'test_user' in (buyer.get('tags') or []),
+              'buyer_fields': sorted(buyer.keys())[:30]}, indent=1))
+          PY

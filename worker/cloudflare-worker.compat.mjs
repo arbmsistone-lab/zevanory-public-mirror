@@ -14,6 +14,7 @@ import { handleControlPlaneV2Request, reconcileControlPlane } from "./evidence-c
 import { handleControlActionRequest } from "./control-action-plane.mjs";
 import { handleZea10AutonomyRequest } from "./zea10-autonomy.mjs";
 import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
+import { handleSandboxProofV2, handleSandboxInboundEmail } from "./sandbox-proof-v2.mjs";
 
 async function loadWhatsappBrokerState(binding) {
   if (!binding?.fetch) return null;
@@ -272,6 +273,11 @@ const wrapped = {
       return handleAdminRequest(request, normalized, ctx, wrapped);
     }
 
+    if (url.pathname.startsWith("/api/internal/certification/e2e/") || url.pathname.startsWith("/api/internal/certification/inbox/")) {
+      const response = await handleSandboxProofV2(request, normalized, ctx, worker, whatsappProofDatabase);
+      if (response) return response;
+    }
+
     if (url.pathname === "/api/internal/certification/e2e/invite") {
       if (String(request.method || "GET").toUpperCase() !== "POST") {
         return new Response(JSON.stringify({ error: "method_not_allowed" }), {
@@ -377,8 +383,11 @@ wrapped.scheduled = async (controller, env, ctx) => {
 if (typeof worker.queue === "function") {
   wrapped.queue = async (batch, env, ctx) => worker.queue(batch, normalizeEnv(env), ctx);
 }
-if (typeof worker.email === "function") {
-  wrapped.email = async (message, env, ctx) => worker.email(message, normalizeEnv(env), ctx);
-}
+wrapped.email = async (message, env, ctx) => {
+  const normalized = normalizeEnv(env);
+  if (await handleSandboxInboundEmail(message, normalized)) return;
+  if (typeof worker.email === "function") return worker.email(message, normalized, ctx);
+  message.setReject?.("mailbox_unavailable");
+};
 
 export default wrapped;

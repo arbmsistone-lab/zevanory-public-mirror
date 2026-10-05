@@ -5,11 +5,12 @@ Requires a protected, previously verified identity manifest (not prefix inferenc
 The certification receiver must expose explicit isolation/capability/signature
 proofs. Missing contracts fail closed; this change does not implement server
 routes, provision environments, attest identities or enable financial execution.
-Mailbox adapter: Gmail API with an attested gmail.readonly credential.
+Mailbox adapter: Cloudflare Email Routing on the isolated subdomain
+sandbox-mail.zevanory.api.br, read through a dedicated read-only receiver token.
+Mercado Pago test-user credentials report live_mode=true; sandbox safety is
+proven by the seller/buyer test_user tags and collector binding instead.
 """
-import base64
 import datetime as dt
-import email.utils
 import hashlib
 import hmac
 import json
@@ -25,12 +26,13 @@ from dataclasses import dataclass
 
 APP = 'https://zevanory.api.br'
 MP = 'https://api.mercadopago.com'
-INBOX = 'https://gmail.googleapis.com'
+INBOX_PATH = '/api/internal/certification/inbox/'
+INBOX_DOMAIN = 'sandbox-mail.zevanory.api.br'
 CERT_PATH = '/api/internal/certification/e2e/'
 FROZEN_ORDER = 'a28c53ab-9ce7-429d-9d6b-1311a3fad406'
 OUT = pathlib.Path('evidence/mercadopago-combo-sandbox.json')
-READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
-ALLOWED_HOSTS = frozenset({'api.mercadopago.com', 'zevanory.api.br', 'gmail.googleapis.com'})
+READ_SCOPE = 'zevanory.sandbox_inbox.read'
+ALLOWED_HOSTS = frozenset({'api.mercadopago.com', 'zevanory.api.br'})
 PRODUCTION_NAMES = frozenset({'MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_PUBLIC_KEY',
     'OPERATOR_TOKEN', 'STRIPE_SECRET_KEY', 'RESEND_API_KEY', 'ASAAS_API_KEY'})
 SECRET_NAMES = ('MERCADOPAGO_TEST_PUBLIC_KEY', 'MERCADOPAGO_TEST_ACCESS_TOKEN',
@@ -93,10 +95,10 @@ def preflight(env):
             str(b.get('id', '')).isdigit() and str(b['id']) != str(m['seller_id']) and
             re.fullmatch(r'[^@\s]+@testuser\.com', str(b.get('email', '')), re.I) and
             b['email'].lower() != 'test@testuser.com', 'VERIFIED_BUYER_REQUIRED')
-    require(isinstance(box, dict) and box.get('verified') is True and box.get('provider') == 'gmail' and
+    require(isinstance(box, dict) and box.get('verified') is True and box.get('provider') == 'cloudflare-email-routing' and
             box.get('scopes') == [READ_SCOPE] and box.get('read_only') is True and
             re.fullmatch(r'[^@\s]+@[^@\s]+', str(box.get('email', ''))) and
-            not box['email'].lower().endswith(('@resend.dev', '@testuser.com')), 'READ_ONLY_CONTROLLED_INBOX_REQUIRED')
+            box['email'].lower().endswith('@' + INBOX_DOMAIN), 'READ_ONLY_CONTROLLED_INBOX_REQUIRED')
     return Identity(sha, str(m['application_id']), str(m['seller_id']), str(b['id']),
                     b['email'].lower(), box['email'].lower(), env['MERCADOPAGO_TEST_PUBLIC_KEY'],
                     env['MERCADOPAGO_TEST_ACCESS_TOKEN'], env['SANDBOX_INBOX_READ_TOKEN'],
@@ -121,6 +123,13 @@ def validate_request(url, method, headers, identity):
             require('authorization' not in headers, 'CARD_AUTH_DENIED')
         else:
             require(headers.get('authorization') == 'Bearer ' + identity.access_token, 'MP_AUTH_DENIED')
+    elif p.hostname == 'zevanory.api.br' and p.path.startswith(INBOX_PATH):
+        allowed = (method == 'GET' and p.path == INBOX_PATH + 'profile' and not q or
+                   method == 'GET' and p.path == INBOX_PATH + 'messages' and set(q) == {'order_id'} and
+                   len(q['order_id']) == 1 and re.fullmatch(r'[0-9a-f-]{36}', q['order_id'][0]))
+        require(allowed, 'INBOX_ENDPOINT_DENIED')
+        require(headers.get('x-sandbox-inbox-token') == identity.inbox_token and
+                'authorization' not in headers and 'x-certification-e2e-token' not in headers, 'INBOX_AUTH_DENIED')
     elif p.hostname == 'zevanory.api.br':
         allowed = (method == 'GET' and p.path == CERT_PATH + 'status' and
                    (not q or set(q) == {'order_id'} and len(q['order_id']) == 1 and
@@ -130,20 +139,13 @@ def validate_request(url, method, headers, identity):
                    set(q) == {'token'} and len(q['token']) == 1 and bool(q['token'][0]))
         require(allowed, 'CERT_ENDPOINT_DENIED')
         require(headers.get('x-certification-e2e-token') == identity.certification_token and
-                'authorization' not in headers, 'CERT_AUTH_DENIED')
+                'authorization' not in headers and 'x-sandbox-inbox-token' not in headers, 'CERT_AUTH_DENIED')
     else:
-        root = '/gmail/v1/users/me/'
-        allowed = (method == 'GET' and p.path == root + 'profile' and not q or
-                   method == 'GET' and p.path == root + 'messages' and set(q) == {'q', 'maxResults'} and
-                   q['maxResults'] == ['20'] or
-                   method == 'GET' and re.fullmatch(root + r'messages/[a-zA-Z0-9_-]+', p.path) and q == {'format': ['full']})
-        require(allowed, 'INBOX_ENDPOINT_DENIED')
-        require(headers.get('authorization') == 'Bearer ' + identity.inbox_token and
-                'x-certification-e2e-token' not in headers, 'INBOX_AUTH_DENIED')
+        raise GuardError('ENDPOINT_DENIED')
     # Never send an unrelated credential in body/query/header values.
     for credential in (identity.certification_token, identity.access_token, identity.inbox_token):
         if credential in url or any(credential in str(v) for v in headers.values()):
-            expected = identity.certification_token if p.hostname == 'zevanory.api.br' else identity.access_token if p.hostname == 'api.mercadopago.com' else identity.inbox_token
+            expected = (identity.inbox_token if p.path.startswith(INBOX_PATH) else identity.certification_token) if p.hostname == 'zevanory.api.br' else identity.access_token
             require(credential == expected and credential not in url, 'CROSS_HOST_CREDENTIAL_DENIED')
 
 
@@ -189,8 +191,8 @@ class Client:
                             {'authorization': 'Bearer ' + self.identity.access_token, **(headers or {})})
 
     def inbox(self, path):
-        return self.request(INBOX + '/gmail/v1/users/me/' + path,
-                            headers={'authorization': 'Bearer ' + self.identity.inbox_token})
+        return self.request(APP + INBOX_PATH + path,
+                            headers={'x-sandbox-inbox-token': self.identity.inbox_token})
 
 
 def validate_isolation(doc, identity, order_id=None):
@@ -214,32 +216,17 @@ def verified_webhook(state, oid, payment_id):
         for e in events)
 
 
-def message_text(part):
-    values = []
-    data = part.get('body', {}).get('data')
-    if data:
-        try:
-            values.append(base64.urlsafe_b64decode(data + '=' * (-len(data) % 4)).decode('utf-8'))
-        except (ValueError, UnicodeError):
-            raise GuardError('INBOX_MESSAGE_INVALID') from None
-    for child in part.get('parts', []):
-        values.append(message_text(child))
-    return '\n'.join(values)
-
-
 def received_message(client, oid, identity, started_ms):
-    query = urllib.parse.urlencode({'q': 'in:inbox to:' + identity.inbox_email + ' "' + oid + '"', 'maxResults': '20'})
-    messages = client.inbox('messages?' + query).get('messages', [])
-    for row in messages:
-        mid = row.get('id', '')
-        require(re.fullmatch(r'[a-zA-Z0-9_-]+', mid), 'INBOX_MESSAGE_ID_INVALID')
-        msg = client.inbox('messages/' + mid + '?format=full')
-        payload = msg.get('payload', {})
-        headers = {h['name'].lower(): h['value'] for h in payload.get('headers', [])}
-        recipients = [addr.lower() for _, addr in email.utils.getaddresses([headers.get('to', '')])]
-        if (identity.inbox_email in recipients and int(msg.get('internalDate', 0)) >= started_ms and
-                headers.get('x-zevanory-order-id') == oid and 'INBOX' in msg.get('labelIds', [])):
-            return msg['id'], message_text(payload)
+    rows = client.inbox('messages?' + urllib.parse.urlencode({'order_id': oid})).get('messages', [])
+    require(isinstance(rows, list) and len(rows) <= 20, 'INBOX_RESPONSE_INVALID')
+    for msg in rows:
+        mid = str(msg.get('id', ''))
+        require(re.fullmatch(r'[a-zA-Z0-9_-]{1,128}', mid), 'INBOX_MESSAGE_ID_INVALID')
+        recipients = [str(a).lower() for a in msg.get('to', [])]
+        if (identity.inbox_email in recipients and int(msg.get('received_at_ms', 0)) >= started_ms and
+                msg.get('x_zevanory_order_id') == oid and msg.get('delivered_via') == 'cloudflare-email-routing' and
+                isinstance(msg.get('text'), str)):
+            return mid, msg['text']
     return None, None
 
 
@@ -264,10 +251,11 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         seller = client.mp('/users/me')
         buyer = client.mp('/users/' + identity.buyer_id)
         require(str(seller.get('id')) == identity.seller_id and 'test_user' in seller.get('tags', []) and
-                str(buyer.get('id')) == identity.buyer_id and 'test_user' in buyer.get('tags', []) and
-                str(buyer.get('email', '')).lower() == identity.buyer_email, 'PROVIDER_IDENTITY_MISMATCH')
+                str(buyer.get('id')) == identity.buyer_id and 'test_user' in buyer.get('tags', []),
+                'PROVIDER_IDENTITY_MISMATCH')
         profile = client.inbox('profile')
-        require(str(profile.get('emailAddress', '')).lower() == identity.inbox_email, 'INBOX_IDENTITY_MISMATCH')
+        require(str(profile.get('email_address', '')).lower() == identity.inbox_email and
+                profile.get('read_only') is True, 'INBOX_IDENTITY_MISMATCH')
         require(preflight(env) == identity, 'IDENTITY_CHANGED_BEFORE_CHECKOUT')
         report['checks']['IDENTITY'] = 'PASS'
         started_ms = int(now() * 1000)
@@ -287,9 +275,8 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
             'POST', {'card_number': '4235647728025682', 'security_code': '123', 'expiration_month': 11,
                      'expiration_year': 2030, 'cardholder': {'name': 'APRO', 'identification':
                      {'type': 'CPF', 'number': '12345678909'}}}, {'x-test-token': 'true'})
-        require(card.get('status') == 'active' and card.get('live_mode') is False and
-                str(card.get('client_id')) == identity.application_id and bool(card.get('id')),
-                'SANDBOX_CARD_APP_REQUIRED')
+        require(card.get('status') == 'active' and card.get('public_key') == identity.public_key and
+                bool(card.get('id')), 'SANDBOX_CARD_TOKEN_REQUIRED')
         payment = client.mp('/v1/payments', 'POST', {'transaction_amount': 297, 'token': card['id'],
             'description': 'ZEVANORY Combo sandbox', 'installments': 1, 'payment_method_id': 'visa',
             'binary_mode': True, 'external_reference': oid,
@@ -297,7 +284,7 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
             'payer': {'email': identity.buyer_email},
             'metadata': {'zevanory_order_id': oid, 'certification': True, 'sandbox': True}},
             {'x-idempotency-key': str(make_uuid()), 'x-test-token': 'true'})
-        require(payment.get('live_mode') is False and payment.get('status') == 'approved' and
+        require(str(payment.get('collector_id')) == identity.seller_id and payment.get('status') == 'approved' and
                 payment.get('external_reference') == oid and str(payment.get('id', '')).isdigit(), 'APPROVED_SANDBOX_PAYMENT_REQUIRED')
         pid = str(payment['id'])
         report['payment_id'] = pid

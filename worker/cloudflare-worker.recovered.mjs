@@ -14763,8 +14763,21 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
     evidence = {};
   }
   if (existing.status === "delivered" && evidence.email_status === "sent" && String(evidence.download_url || "").startsWith("https://")) return Object.freeze(evidence);
-  if (certificationOnly && payment?.live_mode !== false) throw new Error("sandbox_delivery_requires_test_payment");
-  const recipient = certificationOnly ? "delivered@resend.dev" : validMercadoPagoDeliveryEmail(payment?.payer?.email);
+  // Sandbox proof v2: Mercado Pago test-user credentials report live_mode=true.
+  // Only orders registered by the v2 contract, with MERCADOPAGO_ENV=sandbox and
+  // global sales closed, may deliver to the isolated sandbox inbox.
+  let sandboxV2 = null;
+  if (certificationOnly) {
+    try {
+      const raw = await globalThis.__ZEVANORY_PRIVATE_KV__?.get(`sandbox-proof-v2:order:${String(orderId).toLowerCase()}`);
+      sandboxV2 = raw ? JSON.parse(raw) : null;
+    } catch {
+      sandboxV2 = null;
+    }
+    if (sandboxV2 && !(String(process.env.MERCADOPAGO_ENV || "").toLowerCase() === "sandbox" && String(process.env.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true" && /^prova@sandbox-mail\.zevanory\.api\.br$/.test(String(sandboxV2.email_recipient || "")))) sandboxV2 = null;
+  }
+  if (certificationOnly && payment?.live_mode !== false && !sandboxV2) throw new Error("sandbox_delivery_requires_test_payment");
+  const recipient = certificationOnly ? sandboxV2 ? String(sandboxV2.email_recipient) : "delivered@resend.dev" : validMercadoPagoDeliveryEmail(payment?.payer?.email);
   if (!recipient) throw new Error("delivery_recipient_invalid");
   if (!String(process.env.RESEND_API_KEY || "").trim()) throw new Error("delivery_mailer_unavailable");
   const base = safePublicBaseUrl(process.env.PAYMENT_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL) || "https://zevanory.api.br";
@@ -14775,15 +14788,18 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
     download.searchParams.set("token", issued.token);
     const verification = new URL("/private/artifacts/download", base);
     verification.searchParams.set("token", probe.token);
+    const certificationVerification = new URL("/api/internal/certification/e2e/download", "https://zevanory.api.br");
+    certificationVerification.searchParams.set("token", probe.token);
     evidence = {
       payment_id: String(payment?.id || ""),
       provider_event_id: String(providerEventId || ""),
       email_status: "pending",
       email_provider_id: null,
       email_recipient: recipient,
-      email_destination_kind: certificationOnly ? "resend_test_sink" : "payer",
+      email_destination_kind: sandboxV2 ? "sandbox_controlled_inbox" : certificationOnly ? "resend_test_sink" : "payer",
       download_url: download.toString(),
       verification_url: verification.toString(),
+      certification_verification_url: sandboxV2 ? certificationVerification.toString() : null,
       artifact_sha256: String(issued.artifact?.sha256 || ""),
       expires_at: issued.expires_at
     };
@@ -14799,8 +14815,9 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
     body: JSON.stringify({
       from: process.env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>",
       to: [recipient],
-      subject: "Seu acesso ZEVANORY",
-      text: `Pagamento confirmado. Seu link seguro de entrega: ${evidence.download_url}`
+      subject: sandboxV2 ? "[SANDBOX] Prova ZEVANORY" : "Seu acesso ZEVANORY",
+      ...sandboxV2 ? { headers: { "X-Zevanory-Order-ID": String(orderId).toLowerCase() } } : {},
+      text: sandboxV2 ? `SANDBOX - sem valor comercial. Pedido ${String(orderId).toLowerCase()}.\nLink de verificacao: ${evidence.certification_verification_url}\nLink de entrega: ${evidence.download_url}` : `Pagamento confirmado. Seu link seguro de entrega: ${evidence.download_url}`
     })
   });
   const sent = await response2.json().catch(() => ({}));

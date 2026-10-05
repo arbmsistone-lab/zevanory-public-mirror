@@ -29,7 +29,7 @@ def environment():
     m = {'schema': 'sandbox.identity.v1', 'verified': True, 'credential_mode': 'sandbox',
          'verification_evidence_id': 'protected-verification-1', 'application_id': '123', 'seller_id': '10',
          'buyer': {'id': '20', 'email': 'verified-buyer@testuser.com', 'sandbox': True, 'verified': True},
-         'inbox': {'email': 'controlled@example.com', 'provider': 'gmail', 'read_only': True,
+         'inbox': {'email': 'controlled@sandbox-mail.zevanory.api.br', 'provider': 'cloudflare-email-routing', 'read_only': True,
                    'verified': True, 'scopes': [proof.READ_SCOPE]}}
     for field, name in [('public_key_sha256', 'MERCADOPAGO_TEST_PUBLIC_KEY'),
                         ('access_token_sha256', 'MERCADOPAGO_TEST_ACCESS_TOKEN'),
@@ -55,7 +55,7 @@ class FakeProvider:
         self.checkout_changes = {}
         self.card_changes = {}
         self.signature = True
-        self.recipient = 'controlled@example.com'
+        self.recipient = 'controlled@sandbox-mail.zevanory.api.br'
         self.buyer = 'verified-buyer@testuser.com'
         self.contract = True
         self.error = None
@@ -77,15 +77,15 @@ class FakeProvider:
         elif path == '/users/me':
             data = {'id': 10, 'tags': ['test_user']}
         elif path == '/users/20':
-            data = {'id': 20, 'tags': ['test_user'], 'email': self.buyer}
-        elif path.endswith('/profile'):
-            data = {'emailAddress': self.recipient}
+            data = {'id': 20, 'tags': ['test_user']}
+        elif path == proof.INBOX_PATH + 'profile':
+            data = {'email_address': self.recipient, 'read_only': True}
         elif path == proof.CERT_PATH + 'checkout':
             data = {**isolation, 'accepted': True, 'created_new': True, 'amount_brl': 297, **self.checkout_changes}
         elif path == '/v1/card_tokens':
-            data = {'id': 'mock-card-token', 'status': 'active', 'live_mode': False, 'client_id': 123, **self.card_changes}
+            data = {'id': 'mock-card-token', 'status': 'active', 'live_mode': True, 'public_key': 'test-public-key-unique-value', **self.card_changes}
         elif path == '/v1/payments':
-            data = {'id': 77, 'live_mode': False, 'status': 'approved', 'external_reference': NEW_ORDER}
+            data = {'id': 77, 'live_mode': True, 'collector_id': 10, 'status': 'approved', 'external_reference': NEW_ORDER}
         elif path == proof.CERT_PATH + 'status':
             data = {**isolation, 'order': {'status': 'paid'}, 'fulfillment': {'status': 'delivered'},
                 'financial_events': [{'normalized_event': 'payment_confirmed', 'provider_payment_id': 77,
@@ -97,13 +97,9 @@ class FakeProvider:
             # Set expiration from the mock clock, not a fixed calendar assumption.
             data['delivery_evidence']['expires_at'] = proof.dt.datetime.fromtimestamp(NOW + 120,
                 proof.dt.timezone.utc).isoformat()
-        elif path.endswith('/messages'):
-            data = {'messages': [{'id': 'mockmessage1'}]}
-        elif path.endswith('/messages/mockmessage1'):
-            data = {'id': 'mockmessage1', 'internalDate': str(NOW * 1000 + 1), 'labelIds': ['INBOX'],
-                'payload': {'headers': [{'name': 'To', 'value': self.recipient},
-                    {'name': 'X-Zevanory-Order-ID', 'value': NEW_ORDER}],
-                    'body': {'data': base64.urlsafe_b64encode(DOWNLOAD.encode()).decode()}}}
+        elif path == proof.INBOX_PATH + 'messages':
+            data = {'messages': [{'id': 'mockmessage1', 'to': [self.recipient], 'received_at_ms': NOW * 1000 + 1,
+                'x_zevanory_order_id': NEW_ORDER, 'delivered_via': 'cloudflare-email-routing', 'text': DOWNLOAD}]}
         elif path == proof.CERT_PATH + 'download':
             return Response(b'private sandbox artifact')
         else:
@@ -135,7 +131,7 @@ class GuardTests(unittest.TestCase):
         self.assertNotIn('sha256', saved)
         self.assertNotIn(proof.FROZEN_ORDER, saved)
         self.assertTrue(all(proof.FROZEN_ORDER not in r.full_url for r in self.fake.calls))
-        self.assertTrue(all(r.method == 'GET' for r in self.fake.calls if r.host == 'gmail.googleapis.com'))
+        self.assertTrue(all(r.method == 'GET' for r in self.fake.calls if proof.INBOX_PATH in r.full_url))
 
     def test_disabled_default(self):
         self.env.pop('SANDBOX_FINANCIAL_ENABLED')
@@ -196,7 +192,7 @@ class GuardTests(unittest.TestCase):
         self.denied_preflight('VERIFIED_BUYER_REQUIRED')
 
     def test_inbox_write_scope_refused(self):
-        change_manifest(self.env, lambda m: m['inbox'].update(scopes=['gmail.modify']))
+        change_manifest(self.env, lambda m: m['inbox'].update(scopes=['zevanory.sandbox_inbox.write']))
         self.denied_preflight('READ_ONLY_CONTROLLED_INBOX_REQUIRED')
 
     def test_sink_refused(self):
@@ -254,9 +250,37 @@ class GuardTests(unittest.TestCase):
         self.assertTrue(all(r.host != 'api.mercadopago.com' for r in self.fake.calls))
 
     def test_card_app_mismatch_no_payment(self):
-        self.fake.card_changes['client_id'] = 999
-        self.assertEqual(self.run_fake()['cause'], 'SANDBOX_CARD_APP_REQUIRED')
+        self.fake.card_changes['public_key'] = 'other-application-key'
+        self.assertEqual(self.run_fake()['cause'], 'SANDBOX_CARD_TOKEN_REQUIRED')
         self.assertFalse(any('/v1/payments' in r.full_url for r in self.fake.calls))
+
+    def test_payment_for_other_collector_cannot_pass(self):
+        original = self.fake.__call__
+        def call(req, timeout):
+            if req.full_url.endswith('/v1/payments'):
+                return Response(json.dumps({'id': 77, 'collector_id': 99, 'status': 'approved',
+                                            'external_reference': NEW_ORDER}).encode())
+            return original(req, timeout)
+        self.assertEqual(proof.run(self.env, call, now=lambda: NOW)['cause'], 'APPROVED_SANDBOX_PAYMENT_REQUIRED')
+
+    def test_seller_without_test_user_tag_cannot_pay(self):
+        original = self.fake.__call__
+        def call(req, timeout):
+            if req.full_url.endswith('/users/me'):
+                return Response(json.dumps({'id': 10, 'tags': ['normal']}).encode())
+            return original(req, timeout)
+        self.assertEqual(proof.run(self.env, call, now=lambda: NOW)['cause'], 'PROVIDER_IDENTITY_MISMATCH')
+        self.assertFalse(any('/v1/payments' in r.full_url for r in self.fake.calls))
+
+    def test_inbox_outside_isolated_subdomain_denied(self):
+        change_manifest(self.env, lambda m: m['inbox'].update(email='suporte@zevanory.api.br'))
+        self.denied_preflight('READ_ONLY_CONTROLLED_INBOX_REQUIRED')
+
+    def test_inbox_token_never_sent_to_certification_routes(self):
+        with self.assertRaisesRegex(proof.GuardError, 'CERT_AUTH_DENIED'):
+            proof.validate_request(proof.APP + proof.CERT_PATH + 'status', 'GET',
+                {'x-certification-e2e-token': self.identity.certification_token,
+                 'x-sandbox-inbox-token': self.identity.inbox_token}, self.identity)
 
     def test_invalid_signature_cannot_pass(self):
         self.fake.signature = False
