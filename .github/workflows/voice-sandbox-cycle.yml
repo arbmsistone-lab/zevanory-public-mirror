@@ -12,10 +12,11 @@ concurrency:
   cancel-in-progress: false
 jobs:
   cycle:
-    if: github.run_attempt == 1 && github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.conclusion == 'success' && (contains(github.event.workflow_run.head_commit.message, '[cache-audit-cycle-20261005]') || contains(github.event.workflow_run.head_commit.message, '[cache-audit-recovery-20261005]'))
+    if: github.run_attempt == 1 && github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.conclusion == 'success' && (contains(github.event.workflow_run.head_commit.message, '[cache-audit-cycle-20261005]') || contains(github.event.workflow_run.head_commit.message, '[cache-audit-recovery-20261005]') || contains(github.event.workflow_run.head_commit.message, '[cache-audit-quality-20261005]'))
     runs-on: ubuntu-latest
     timeout-minutes: 50
     env:
+      REPAIR_ONLY: ${{ contains(github.event.workflow_run.head_commit.message, '[cache-audit-quality-20261005]') }}
       GH_TOKEN: ${{ github.token }}
       CYCLE_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:

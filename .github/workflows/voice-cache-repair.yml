@@ -1,0 +1,37 @@
+name: Manual cached audio prefix repair
+run-name: voice-repair:${{ inputs.cycle || github.sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      cycle: {description: One-time cycle identifier, required: false, type: string}
+permissions:
+  contents: read
+concurrency:
+  group: voice-cache-repair
+  cancel-in-progress: false
+jobs:
+  warm:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OPERATOR_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN || secrets.OPERATOR_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: '1b26415802588185a86c1d4d3ebf5bdb'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate and trim cached prefix without synthesis
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/voice_cache_repair.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voice-cache-repair-evidence
+          path: /tmp/voice-repair/
+          retention-days: 30

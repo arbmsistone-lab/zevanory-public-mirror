@@ -2,10 +2,10 @@ const values = Object.fromEntries([
  ['zero',0],['um',1],['dois',2],['tres',3],['quatro',4],['cinco',5],['seis',6],['sete',7],['oito',8],['nove',9],['dez',10],['onze',11],['doze',12],['treze',13],['quatorze',14],['catorze',14],['quinze',15],['dezesseis',16],['dezessete',17],['dezoito',18],['dezenove',19],['vinte',20],['trinta',30],['quarenta',40],['cinquenta',50],['sessenta',60],['setenta',70],['oitenta',80],['noventa',90],['cem',100],['cento',100],['duzentos',200],['trezentos',300],['quatrocentos',400],['quinhentos',500],['seiscentos',600],['setecentos',700],['oitocentos',800],['novecentos',900],
 ]);
 export function tokens(text) {
- const words=String(text).normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/\bi\s+a\b/g,'ia').replace(/\+/g,' mais ').replace(/&/g,' e ').match(/\d+(?:[.,]\d+)?|[a-z]+/g)||[];
+ const words=String(text).normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/r\$/g,'').replace(/\bi\s+a\b/g,'ia').replace(/\+/g,' mais ').replace(/&/g,' e ').match(/\d+(?:[.,]\d+)?|[a-z]+/g)||[];
  const out=[];
  for(let i=0;i<words.length;i++){
-  if(values[words[i]]===undefined){out.push(words[i]);continue;}
+  if(values[words[i]]===undefined){out.push(/^\d/.test(words[i])?String(Number(words[i].replace(',','.'))):words[i]);continue;}
   let n=values[words[i]];
   while(words[i+1]==='e'&&values[words[i+2]]!==undefined){n+=values[words[i+2]];i+=2;}
   out.push(String(n));

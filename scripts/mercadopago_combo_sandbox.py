@@ -47,8 +47,17 @@ try:
     seller=mp('/users/me')
     require(TOKEN.startswith('TEST-') or 'test_user' in seller.get('tags',[]),'sandbox_seller_required')
     report['seller_id']=seller.get('id');save()
-    buyer=mp('/users/test','POST',{'site_id':'MLB','description':'ZEVANORY Combo sandbox buyer'})
-    require(buyer.get('id') and str(buyer.get('email','')).endswith('@testuser.com'),'test_buyer_required')
+    try:
+        buyer=mp('/users/test','POST',{'site_id':'MLB','description':'ZEVANORY Combo sandbox buyer'})
+        report['buyer_creation']='created'
+    except RuntimeError as error:
+        if '40311' not in str(error):raise
+        email=os.environ.get('MERCADOPAGO_TEST_BUYER_EMAIL','').strip()
+        require(email.endswith('@testuser.com') and email!=seller.get('email'),'existing_distinct_test_buyer_required')
+        buyer={'id':None,'email':email}
+        report['buyer_creation']='blocked_40311_existing_test_buyer_reused'
+        print('::warning title=MP_TEST_BUYER::Test token cannot create users; reusing configured test buyer')
+    require(str(buyer.get('email','')).endswith('@testuser.com'),'test_buyer_required')
     print('::add-mask::'+str(buyer.get('password','')))
     report['buyer_id']=buyer['id'];report['checks']['TEST_BUYER']='PASS';save()
     invite=app('/api/internal/certification/e2e/invite','POST',{}, {'x-certification-e2e-token':CERT})

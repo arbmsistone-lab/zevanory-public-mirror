@@ -34,7 +34,7 @@ export async function handleVoiceAudit(input,env){
   if(!b64||b64.length>1500000)return Response.json({error:"audit_audio_invalid"},{status:400});
   const ai=env.AI||env.ZEVANORY_AI;
   if(!ai?.run)return Response.json({error:"audit_ai_binding_missing"},{status:503});
-  try{const result=await ai.run("@cf/openai/whisper-large-v3-turbo",{audio:b64,task:"transcribe",language:"pt"});return Response.json({ok:true,model:"@cf/openai/whisper-large-v3-turbo",transcript:String(result?.text||result?.transcription_info?.text||"").slice(0,5000)});}catch(error){return Response.json({error:"audit_whisper_failed",name:String(error?.name||"Error")},{status:502});}
+  try{const result=await ai.run("@cf/openai/whisper-large-v3-turbo",{audio:b64,task:"transcribe",language:"pt"});return Response.json({ok:true,model:"@cf/openai/whisper-large-v3-turbo",segments:Array.isArray(result?.segments)?result.segments.slice(0,100):[],transcript:String(result?.text||result?.transcription_info?.text||"").slice(0,5000)});}catch(error){return Response.json({error:"audit_whisper_failed",name:String(error?.name||"Error")},{status:502});}
  }
  return null;
 }
