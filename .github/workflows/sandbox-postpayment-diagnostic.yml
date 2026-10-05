@@ -29,6 +29,7 @@ jobs:
                   except Exception: d={}
                   return e.code,d
           mp_code,mp=get("https://api.mercadopago.com/v1/payments/"+pid,{"Authorization":"Bearer "+os.environ["MP_TOKEN"]})
+          mp_test_code,mp_test=get("https://api.mercadopago.com/v1/payments/"+pid,{"Authorization":"Bearer "+os.environ["MP_TOKEN"],"x-test-token":"true"})
           st_code,st=get("https://zevanory.api.br/api/internal/certification/e2e/status?order_id="+urllib.parse.quote(oid),
               {"x-certification-e2e-token":os.environ["CERTIFICATION_E2E_TOKEN"]})
           ib_code,ib=get("https://zevanory.api.br/api/internal/certification/inbox/messages?order_id="+urllib.parse.quote(oid),
@@ -39,6 +40,9 @@ jobs:
           out={
             "payment_http":mp_code,
             "payment_status":str(mp.get("status","")) if isinstance(mp,dict) else "",
+            "payment_with_test_header_http":mp_test_code,
+            "payment_with_test_header_status":str(mp_test.get("status","")) if isinstance(mp_test,dict) else "",
+            "payment_with_test_header_external_reference_match":str(mp_test.get("external_reference",""))==oid if isinstance(mp_test,dict) else False,
             "payment_external_reference_match":str(mp.get("external_reference",""))==oid if isinstance(mp,dict) else False,
             "status_http":st_code,
             "order_status":str((st.get("order") or {}).get("status","")) if isinstance(st,dict) else "",
