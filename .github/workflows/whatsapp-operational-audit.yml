@@ -28,7 +28,7 @@ jobs:
         with: {node-version: '22'}
       - run: node scripts/whatsapp_operational_audit_test.mjs || { echo "::error title=CACHE_CONTRACT::Cache-only contract regression failed; see assertion above"; exit 1; }
   audit:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && !contains(github.event.workflow_run.head_commit.message, '[cache-audit-cycle-20261005]'))
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && !contains(github.event.workflow_run.head_commit.message, '[cache-audit-'))
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 15

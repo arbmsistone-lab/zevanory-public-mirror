@@ -10,7 +10,6 @@ on:
         required: true
 permissions:
   contents: read
-  id-token: write
 concurrency:
   group: voice-cache-warm
   cancel-in-progress: false
@@ -30,17 +29,10 @@ jobs:
           ref: gh-pages
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: projects/781761447388/locations/global/workloadIdentityPools/github-actions/providers/zevanory-github
-          service_account: zevanory-github-deployer@zevanory-gemini.iam.gserviceaccount.com
-      - uses: google-github-actions/setup-gcloud@v2
       - name: Warm once, resume from existing KV entries
         shell: bash
         run: |
           set -euo pipefail
-          export GEMINI_API_KEY="$(gcloud secrets versions access latest --secret=ZEVANORY_GEMINI_API_KEY --project=zevanory-gemini)"
-          echo "::add-mask::$GEMINI_API_KEY"
           node scripts/voice_cache_warm.mjs
       - uses: actions/upload-artifact@v4
         if: always()

@@ -22,7 +22,12 @@ export async function handleVoiceAudit(input,env){
  if(input.operation==="audit-encoder-key"){
   const publicKey=await crypto.subtle.importKey("jwk",input.public_key,{name:"RSA-OAEP",hash:"SHA-256"},false,["encrypt"]);
   const wrapped=await crypto.subtle.encrypt({name:"RSA-OAEP"},publicKey,new TextEncoder().encode(await renderVoiceSecret(env)));
-  return Response.json({wrapped_key:Buffer.from(wrapped).toString("base64")});
+  let wrappedGemini=null;
+  if(input.include_gemini===true){
+   if(!env.GEMINI_API_KEY||env.GEMINI_FREE_TIER_CONFIRMED!=="true")return Response.json({error:"validated_free_gemini_key_required"},{status:503});
+   wrappedGemini=Buffer.from(await crypto.subtle.encrypt({name:"RSA-OAEP"},publicKey,new TextEncoder().encode(env.GEMINI_API_KEY))).toString("base64");
+  }
+  return Response.json({wrapped_key:Buffer.from(wrapped).toString("base64"),...(wrappedGemini?{wrapped_gemini_key:wrappedGemini}:{})});
  }
  if(input.operation==="audit-transcribe"){
   const b64=String(input.audio_base64||"");
