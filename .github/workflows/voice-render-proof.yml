@@ -67,7 +67,7 @@ jobs:
           async function send(index){
             const ack=await op({operation:'audio',voice_cache_only:index===2||process.env.PROOF_CACHE_ONLY==='true',audio_base64:readFileSync(dir+'question.ogg').toString('base64')});
             if(ack.recipient_suffix!=='4023')throw Error('OWNER_MISMATCH');
-            const r=await fetch(base+'/api/webhooks/meta',{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':ack.signature},body:ack.signed_body,signal:AbortSignal.timeout(120000)});
+            const r=await fetch(base+'/api/webhooks/meta?voice_proof='+encodeURIComponent(ack.inbound_message_id),{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':ack.signature},body:ack.signed_body,signal:AbortSignal.timeout(120000)});
             delete ack.signature;delete ack.signed_body;
             let status;
             for(let n=0;n<60;n++){status=await fetch(base+'/api/support/instant-status').then(r=>r.json());if(status.last?.inbound_message_id===ack.inbound_message_id&&(status.last.voice_sent||status.last.voice_error))break;await new Promise(r=>setTimeout(r,2000));}
@@ -115,9 +115,19 @@ jobs:
               except ValueError:pos=start+1;continue
               req=(e.get('event') or {}).get('request') or {}
               if '/api/webhooks/meta' not in req.get('url',''):continue
-              events.append({k:e.get(k) for k in ['eventTimestamp','cpuTime','wallTime','outcome','exceptions']})
+              from urllib.parse import urlparse,parse_qs
+              message_id=parse_qs(urlparse(req.get('url','')).query).get('voice_proof',[None])[0]
+              if message_id:events.append({'inbound_message_id':message_id,**{k:e.get(k) for k in ['eventTimestamp','cpuTime','wallTime','outcome','exceptions']}})
           (p/'cpu.json').write_text(json.dumps(events,indent=2))
           print(json.dumps({'webhook_tail':events}))
+          if (p/'summary.json').exists():
+              summary=json.loads((p/'summary.json').read_text())
+              for proof in summary['proofs']:
+                  matches=[e for e in events if e['inbound_message_id']==proof['ack']['inbound_message_id']]
+                  assert len(matches)==1 and isinstance(matches[0].get('cpuTime'),(int,float)), 'CORRELATED_CPU_REQUIRED'
+                  proof['cpuTime']=matches[0]['cpuTime']
+              (p/'summary.json').write_text(json.dumps(summary,indent=2))
+              print(json.dumps({'correlated_proofs':summary}))
           PY
       - uses: actions/upload-artifact@v4
         if: always()
