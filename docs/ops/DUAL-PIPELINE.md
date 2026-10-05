@@ -23,3 +23,11 @@ If CircleCI reserve deployment is later enabled, create a dedicated least-privil
 ## Safety
 
 Never change `gh-pages` protection for an outage. Never run the financial proof automatically on push. Never expose credentials in logs, files, artifacts, or chat. Never run two production deploy pipelines concurrently. GitHub remains the source repository.
+
+## Reserve trigger (Cloudflare Workers Builds)
+
+Workers Builds is connected to this repository (production branch `gh-pages`) with build watch path **only** `ops/RESERVE_DEPLOY`. Normal merges never trigger it.
+
+To publish through the reserve during a GitHub Actions outage: create or edit `ops/RESERVE_DEPLOY` (one line: UTC timestamp and reason) on `gh-pages`. Workers Builds then runs `scripts/ci/cloudflare-build.sh` (gates, exact candidate, guards, dry-run) and the deploy command. Immediately after, run `bash scripts/ci/cloudflare-post-deploy-verify.sh <sha>`; on mismatch run the rollback it prints.
+
+Never add or edit `ops/RESERVE_DEPLOY` in the same change as a normal release: that would run the reserve deploy concurrently with the central pipeline.
