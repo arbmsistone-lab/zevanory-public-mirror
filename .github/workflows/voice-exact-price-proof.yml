@@ -1,0 +1,105 @@
+name: Voice exact SHA Whisper price and final 4023 proof
+on:
+  push:
+    branches: ['audit/voice-exact-a112-price-20261005']
+    paths: ['.github/workflows/voice-exact-price-proof.yml']
+permissions:
+  contents: read
+concurrency:
+  group: voice-exact-price-proof
+  cancel-in-progress: false
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OPERATOR_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN || secrets.OPERATOR_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: '1b26415802588185a86c1d4d3ebf5bdb'
+      EXPECTED_SHA: a112de55c723be4857e0b04ccc1b69a9b7481d46
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a112de55c723be4857e0b04ccc1b69a9b7481d46
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Prepare spoken price fixture in cloud
+        run: |
+          mkdir -p /tmp/stress
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak >/dev/null
+          cat > /tmp/stress/price.txt <<'TEXT'
+          Olá! Esta é uma prova técnica de áudio da ZEVANORY. O preço usado neste teste é noventa e sete reais e noventa centavos. Confira o valor com atenção antes de confirmar. Vamos comparar a gravação original com os blocos concatenados para verificar se todas as palavras foram preservadas.
+          TEXT
+          espeak -v pt-br -s 155 -w /tmp/stress/source.wav -f /tmp/stress/price.txt
+          ffmpeg -nostdin -v error -y -i /tmp/stress/source.wav -ac 1 -ar 24000 -f s16le /tmp/stress/source.pcm
+          espeak -v pt-br -s 155 -w /tmp/stress/question.wav "Qual é o preço do produto IA na Prática?"
+          ffmpeg -nostdin -v error -y -i /tmp/stress/question.wav -ac 1 -ar 48000 -c:a libopus -b:a 24k /tmp/stress/final.ogg
+      - name: Exact runtime Whisper comparison and real delivery
+        run: |
+          npm install --prefix /tmp/stress-tools --no-save wrangler@4.143.0 >/dev/null 2>&1
+          timeout 500s /tmp/stress-tools/node_modules/.bin/wrangler tail zevanory --format json > /tmp/stress-tail.json 2>/tmp/stress-tail.err &
+          tail_pid=$!
+          trap 'kill "$tail_pid" 2>/dev/null || true' EXIT
+          node --input-type=module <<'JS'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const origin='https://zevanory.api.br',auth={authorization:'Bearer '+process.env.OPERATOR_TOKEN,'content-type':'application/json'};
+          async function op(input){const r=await fetch(origin+'/api/admin/whatsapp-onboard/delivery-proof',{method:'POST',headers:auth,body:JSON.stringify(input),signal:AbortSignal.timeout(90000)});return {http:r.status,...await r.json()};}
+          const live=await fetch(origin+'/api/support/instant-status').then(r=>r.json());
+          if(live.release_sha!==process.env.EXPECTED_SHA)throw Error('EXACT_SHA_MISMATCH');
+          await new Promise(r=>setTimeout(r,12000));
+          const source=readFileSync('/tmp/stress/source.pcm');
+          const {encodePcmInChunks,handleVoiceChunk}=await import(process.cwd()+'/worker/voice-chunks.mjs');
+          const testEnv={ELITE_INTERNAL_TOKEN:'cloud-audit-synthetic-auth-material-32chars'};
+          const joined=await encodePcmInChunks(new Uint8Array(source),24000,testEnv,req=>handleVoiceChunk(req,testEnv));
+          writeFileSync('/tmp/stress/concatenated-price.mp3',joined.bytes);
+          const original=await op({operation:'audit-transcribe',audio_base64:readFileSync('/tmp/stress/source.wav').toString('base64')});
+          const concatenated=await op({operation:'audit-transcribe',audio_base64:Buffer.from(joined.bytes).toString('base64')});
+          const norm=s=>String(s||'').replace(/\s+/g,' ').trim();
+          const proof={runtime_sha:live.release_sha,source:'espeak',algorithm_sha:process.env.EXPECTED_SHA,production_chunk_stress_pass:false,expected:readFileSync('/tmp/stress/price.txt','utf8').trim(),original,concatenated,identical_to_original:original.ok===true&&concatenated.ok===true&&norm(original.transcript)===norm(concatenated.transcript),price_expected:'noventa e sete reais e noventa centavos',chunks:joined.chunks};
+          writeFileSync('/tmp/stress/whisper-price-proof.json',JSON.stringify(proof,null,2));
+          console.log(JSON.stringify({whisper_price_proof:proof}));
+          const ack=await op({operation:'audio',audio_base64:readFileSync('/tmp/stress/final.ogg').toString('base64')});
+          if(ack.http!==200)throw Error('FINAL_FIXTURE_HTTP_'+ack.http);
+          const result=await fetch(origin+'/api/webhooks/meta',{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':ack.signature},body:ack.signed_body,signal:AbortSignal.timeout(120000)});
+          delete ack.signature;delete ack.signed_body;
+          let status;
+          for(let n=0;n<40;n++){status=await fetch(origin+'/api/support/instant-status').then(r=>r.json());if(status.last?.inbound_message_id===ack.inbound_message_id&&(status.last.voice_sent||status.last.voice_error))break;await new Promise(r=>setTimeout(r,2000));}
+          const final={expected_sha:process.env.EXPECTED_SHA,ack,webhook_http:result.status,status};
+          writeFileSync('/tmp/stress/final-delivery.json',JSON.stringify(final,null,2));console.log(JSON.stringify({final_delivery:final}));
+          await new Promise(r=>setTimeout(r,10000));
+          if(!proof.identical_to_original)process.exitCode=1;
+          if(status.release_sha!==process.env.EXPECTED_SHA||status.last?.inbound_message_id!==ack.inbound_message_id||!status.last?.voice_sent)process.exitCode=1;
+          JS
+      - name: Extract per-block CPU and webhook tail
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import pathlib,json,urllib.parse,csv
+          raw=pathlib.Path('/tmp/stress-tail.json').read_text() if pathlib.Path('/tmp/stress-tail.json').exists() else ''
+          decoder=json.JSONDecoder();pos=0;events=[]
+          while pos<len(raw):
+              start=raw.find('{',pos)
+              if start<0:break
+              try:e,end=decoder.raw_decode(raw[start:]);pos=start+end
+              except ValueError:pos=start+1;continue
+              req=(e.get('event') or {}).get('request') or {};u=urllib.parse.urlparse(req.get('url',''))
+              if u.path not in ['/api/internal/voice/encode-chunk','/api/webhooks/meta','/api/admin/voice/encode-audit']:continue
+              q=urllib.parse.parse_qs(u.query)
+              events.append({'path':u.path,'audit_id':q.get('audit_id',[None])[0],'chunk':q.get('chunk',[None])[0],'attempt':q.get('attempt',[None])[0],'cpuTime':e.get('cpuTime'),'wallTime':e.get('wallTime'),'outcome':e.get('outcome'),'exceptions':[x.get('name') for x in e.get('exceptions',[])]})
+          pathlib.Path('/tmp/stress/tail.json').write_text(json.dumps(events,indent=2));print(json.dumps(events))
+          matrix_path=pathlib.Path('/tmp/stress/matrix.json')
+          if matrix_path.exists():
+              matrix=json.loads(matrix_path.read_text())
+              for item in matrix:item['cpu_per_block']=[e for e in events if e['audit_id']=='stress-'+str(item['index']) and e['path']=='/api/internal/voice/encode-chunk']
+              matrix_path.write_text(json.dumps(matrix,indent=2))
+              with open('/tmp/stress/matrix.csv','w') as f:
+                  writer=csv.writer(f);writer.writerow(['index','chars','http','valid_mp3','time_ms','provider','fallback_used','cpu_per_block'])
+                  for x in matrix:writer.writerow([x.get(k) for k in ['index','chars','http','valid_mp3','time_ms','provider','fallback_used']]+[json.dumps(x['cpu_per_block'])])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voice-exact-price-proof
+          path: /tmp/stress/
+          retention-days: 7
