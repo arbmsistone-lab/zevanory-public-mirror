@@ -296,6 +296,19 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(report['checks']['ISOLATED_CHECKOUT'], 'PASS')
         self.assertNotIn('PAYMENT', report['checks'])
 
+    def test_transient_order_status_request_failure_is_retried(self):
+        original = self.fake.__call__
+        attempts = [0]
+        def call(req, timeout):
+            url = proof.urllib.parse.urlsplit(req.full_url)
+            if url.path == proof.CERT_PATH + 'status' and url.query:
+                attempts[0] += 1
+                if attempts[0] == 1:
+                    raise TimeoutError('transient status timeout')
+            return original(req, timeout)
+        report = proof.run(self.env, call, now=lambda: NOW, sleep=lambda _: None)
+        self.assertEqual(report['status'], 'PASS', report)
+        self.assertGreaterEqual(attempts[0], 2)
     def test_payment_is_rechecked_with_test_access_token(self):
         report = self.run_fake()
         self.assertEqual(report['checks']['PAYMENT_LOOKUP'], 'PASS')

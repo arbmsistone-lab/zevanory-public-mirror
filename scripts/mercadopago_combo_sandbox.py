@@ -327,8 +327,15 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         report['checks']['PAYMENT_LOOKUP'] = 'PASS'
         deadline = now() + 240
         while True:
-            state = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}),
-                                audit_id=audit_id, failure_code='order_status')
+            try:
+                state = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}),
+                                    audit_id=audit_id, failure_code='order_status')
+            except GuardError as error:
+                transient = re.fullmatch(r'order_status_(?:request_failed|http_503(?:_detail_[a-z0-9_]+)?)', str(error))
+                if transient and now() < deadline:
+                    sleep(5)
+                    continue
+                raise
             validate_isolation(state, identity, oid)
             delivery = state.get('delivery_evidence', {})
             events = state.get('financial_events', [])
