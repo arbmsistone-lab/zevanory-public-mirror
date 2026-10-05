@@ -434,6 +434,11 @@ def main():
     print(json.dumps(report))
     if report['status'] != 'PASS':
         print('::error title=COMBO_SANDBOX::' + report.get('cause', 'FAILED'))
+        # Same allowlisted, sanitized fields as the evidence file, surfaced as an annotation
+        # so the diagnosis is readable without downloading artifacts.
+        diag = {'checks': report.get('checks', {}), 'receipt_source': report.get('receipt_source', ''),
+                'timeout_state': report.get('timeout_state', {})}
+        print('::error title=COMBO_SANDBOX_DIAG::' + json.dumps(diag, sort_keys=True, separators=(',', ':'))[:1800])
         return 1
     return 0
 
