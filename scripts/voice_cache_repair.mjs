@@ -30,10 +30,18 @@ try{
   if(!(boundary>0))throw Error(key+':whisper_word_alignment_required_original_preserved');
   const name=String(report.entries.length),src=dir+'/'+name+'-original.mp3',dst=dir+'/'+name+'-repaired.mp3';
   writeFileSync(src,Buffer.from(original));
-  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',src,'-ss',String(Math.max(0,boundary-0.08)),'-c:a','libmp3lame','-b:a','64k',dst]);
-  const bytes=readFileSync(dst),after=await transcribe(bytes);rec.after={transcript:after.transcript,...voiceQuality(entry.text,after.transcript)};rec.trim_seconds=Math.max(0,boundary-0.08);save();
-  if(!rec.after.pass)throw Error(key+':repair_quality_failed_original_preserved');
-  await kv.put(key,bytes,{expirationTtl:30*86400});rec.recorded=true;save();
+  // Preserve a bounded silent lead; timestamps are approximate and short initials
+  // can be misrecognized when audio begins immediately at the first phoneme.
+  rec.candidates=[];let accepted=null;
+  for(const lead of [0.45,0.70,0.24]){
+   const trim=Math.max(0,boundary-lead);
+   execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',src,'-ss',String(trim),'-c:a','libmp3lame','-b:a','64k',dst]);
+   const bytes=readFileSync(dst),after=await transcribe(bytes),quality=voiceQuality(entry.text,after.transcript);
+   rec.candidates.push({trim_seconds:trim,transcript:after.transcript,...quality});save();
+   if(quality.pass){accepted=bytes;rec.after=rec.candidates.at(-1);break;}
+  }
+  if(!accepted)throw Error(key+':repair_quality_failed_original_preserved');
+  await kv.put(key,accepted,{expirationTtl:30*86400});rec.recorded=true;save();
   console.log(JSON.stringify(rec));
  }
  report.pass=true;save();

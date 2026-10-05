@@ -1,17 +1,21 @@
 name: Manual cached audio prefix repair
 run-name: voice-repair:${{ inputs.cycle || github.sha }}
 on:
+  pull_request:
+    branches: [gh-pages]
+    paths: ['scripts/voice_cache_repair.mjs', '.github/workflows/voice-cache-repair.yml']
   workflow_dispatch:
     inputs:
       cycle: {description: One-time cycle identifier, required: false, type: string}
 permissions:
   contents: read
+  actions: write
 concurrency:
   group: voice-cache-repair
   cancel-in-progress: false
 jobs:
   warm:
-    if: github.run_attempt == 1
+    if: github.run_attempt == 1 && (github.event_name == 'workflow_dispatch' || (github.head_ref == 'fix/cache-leading-silence-20261005' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -21,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: gh-pages
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Validate and trim cached prefix without synthesis
@@ -38,3 +42,10 @@ jobs:
           name: voice-cache-repair-evidence
           path: /tmp/voice-repair/
           retention-days: 30
+      - name: Dispatch strict cache audit for current live release
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run whatsapp-operational-audit.yml --ref gh-pages -f cycle=repair-silence-${{ github.run_id }}
