@@ -17,6 +17,7 @@ const base = {
   AZURE_SPEECH_REGION: "brazilsouth",
   AZURE_SPEECH_FREE_TIER_CONFIRMED: "true",
   GEMINI_API_KEY: "test",
+  ELITE_INTERNAL_TOKEN:"synthetic-auth-key-at-least-32-characters",
   GEMINI_FREE_TIER_CONFIRMED: "true"
 };
 
@@ -52,11 +53,11 @@ reset();
     calls.push(String(url));
     if(String(url).includes("speechify")) return failed(503);
     if(String(url).includes("tts.speech.microsoft.com")) return failed(503);
-    if(String(url).includes("relay.test")) return okBytes();
+    if(String(url).includes("onrender.com")) return new Response(new Uint8Array([255,251,144,0,1]),{headers:{"x-voice-model":"gemini-test"}});
     throw new Error("unexpected_provider");
   };
   const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"piper-relay");
+  assert.equal(r.provider,"gemini");
   assert.equal(calls.length,3);
   console.log("VOICE_PROVIDER_FAILOVER=PASS");
 }
@@ -75,7 +76,7 @@ reset();
       return speechifyOk();
     }
     if(u.includes("tts.speech.microsoft.com")) return failed(503);
-    if(u.includes("relay.test")) return okBytes();
+    if(u.includes("onrender.com")) return new Response(new Uint8Array([255,251,144,0,1]),{headers:{"x-voice-model":"gemini-test"}});
     throw new Error("unexpected_provider");
   };
   await ttsBytesWithFailover(text,base,fetchMock);
@@ -99,11 +100,11 @@ reset();
     const u=String(url);
     if(u.includes("speechify")) { const e=new Error("timeout"); e.name="TimeoutError"; throw e; }
     if(u.includes("tts.speech.microsoft.com")) return failed(503);
-    if(u.includes("relay.test")) return okBytes();
+    if(u.includes("onrender.com")) return new Response(new Uint8Array([255,251,144,0,1]),{headers:{"x-voice-model":"gemini-test"}});
     throw new Error("unexpected_provider");
   };
   const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"piper-relay");
+  assert.equal(r.provider,"gemini");
   console.log("VOICE_TIMEOUT_FAILOVER=PASS");
 }
 
@@ -114,34 +115,24 @@ reset();
     const u=String(url);
     if(u.includes("speechify")) return new Response("{}",{status:200,headers:{"content-type":"application/json"}});
     if(u.includes("tts.speech.microsoft.com")) return failed(503);
-    if(u.includes("relay.test")) return okBytes();
+    if(u.includes("onrender.com")) return new Response(new Uint8Array([255,251,144,0,1]),{headers:{"x-voice-model":"gemini-test"}});
     throw new Error("unexpected_provider");
   };
   const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"piper-relay");
+  assert.equal(r.provider,"gemini");
   assert.ok(r.bytes.length>0);
   console.log("VOICE_INVALID_OUTPUT_FAILOVER=PASS");
 }
 
-// 6. Unconfirmed free tier blocks provider even with credentials.
+// 6. Unconfirmed free tier calls no provider.
 reset();
 {
-  const env={...base,SPEECHIFY_FREE_TIER_CONFIRMED:"false",AZURE_SPEECH_FREE_TIER_CONFIRMED:"false",GEMINI_FREE_TIER_CONFIRMED:"false"};
-  const st=voiceProviderStatus(env);
-  assert.equal(st.providers.find(x=>x.provider==="speechify").available,false);
-  let paidTouched=false;
-  const fetchMock=async url=>{
-    const u=String(url);
-    if(u.includes("speechify")||u.includes("microsoft")||u.includes("googleapis")) { paidTouched=true; throw new Error("paid_route_touched"); }
-    if(u.includes("relay.test")) return okBytes();
-    throw new Error("unexpected_provider");
-  };
-  const r=await ttsBytesWithFailover(text,env,fetchMock);
-  assert.equal(r.provider,"piper-relay");
-  assert.equal(paidTouched,false);
-  console.log("VOICE_ZERO_SPEND=PASS");
+ const env={...base,SPEECHIFY_FREE_TIER_CONFIRMED:"false",AZURE_SPEECH_FREE_TIER_CONFIRMED:"false",GEMINI_FREE_TIER_CONFIRMED:"false"};
+ let touched=false;
+ await assert.rejects(()=>ttsBytesWithFailover(text,env,async()=>{touched=true;throw Error('paid_route_touched');}),/voice_tts_all_providers_failed/);
+ assert.equal(touched,false);assert.ok(!voiceProviderStatus(env).chain.includes('piper-relay'));
+ console.log("VOICE_ZERO_SPEND=PASS");
 }
-
 // 7. Invalid credential/401 does not interrupt entire chain.
 reset();
 {
@@ -149,11 +140,11 @@ reset();
     const u=String(url);
     if(u.includes("speechify")) return failed(401);
     if(u.includes("tts.speech.microsoft.com")) return failed(401);
-    if(u.includes("relay.test")) return okBytes();
+    if(u.includes("onrender.com")) return new Response(new Uint8Array([255,251,144,0,1]),{headers:{"x-voice-model":"gemini-test"}});
     throw new Error("unexpected_provider");
   };
   const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"piper-relay");
+  assert.equal(r.provider,"gemini");
   console.log("VOICE_INVALID_CREDENTIAL_FAILOVER=PASS");
 }
 
