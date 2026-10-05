@@ -8,6 +8,7 @@ on:
       - "scripts/whatsapp_conversation_test.mjs"
       - "scripts/whatsapp_audio_runtime_test.mjs"
       - "scripts/voice_remote_tts_test.mjs"
+      - "scripts/voice_cache_warm*.mjs"
       - "scripts/deploy/prepare-central-candidate.py"
       - "scripts/support_knowledge_test.mjs"
       - "sales-overlay/approved.json"
@@ -20,6 +21,7 @@ on:
       - "scripts/whatsapp_conversation_test.mjs"
       - "scripts/whatsapp_audio_runtime_test.mjs"
       - "scripts/voice_remote_tts_test.mjs"
+      - "scripts/voice_cache_warm*.mjs"
       - "scripts/deploy/prepare-central-candidate.py"
       - "scripts/support_knowledge_test.mjs"
       - "sales-overlay/approved.json"
@@ -48,3 +50,5 @@ jobs:
         run: node scripts/whatsapp_audio_runtime_test.mjs
       - name: Voice synthesized on Render, signed, cached and quota-safe
         run: node scripts/voice_remote_tts_test.mjs
+      - name: Manual cache warm limit, quota stop and resume without real calls
+        run: node scripts/voice_cache_warm_test.mjs

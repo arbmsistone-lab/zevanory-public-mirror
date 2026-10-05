@@ -2,7 +2,7 @@ import { saveWhatsappObservation } from "./voice-operational-audit.mjs";
 import { whatsappInboundSafety } from "./whatsapp-inbound-safety.mjs";
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
-import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText } from "./whatsapp-conversation.mjs";
+import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
 var __defProp = Object.defineProperty;
@@ -15079,6 +15079,7 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
     history.push({ r: "u", t: question.slice(0, 1200) }, { r: "a", t: reply.body.slice(0, 1200) });
     await saveWhatsappHistory(kv, item.from, history);
   }
+  const voiceSpeech = whatsappSpeechText(voiceReplyBody(question, reply.body));
   Object.assign(status, { mode: reply.mode, model: reply.model || null, intent: reply.intent || null, product: reply.product || null, ai_issues: reply.issues || null });
   await checkpoint("ai_done");
   const text = { messaging_product: "whatsapp", recipient_type: "individual", to: item.from, type: "text", text: { preview_url: false, body: reply.body.slice(0, 4000) } };
@@ -15086,7 +15087,7 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
   const sentText = await postWhatsappMessage(t, text);
   Object.assign(status, { text_sent: sentText.ok, text_status: sentText.status, text_error: sentText.error, text_provider_message_id: sentText.provider_message_id || null });
   await checkpoint("text_sent");
-  await saveWhatsappObservation(kv,item,question,reply,status,{speech_text:whatsappSpeechText(reply.body)}).catch(()=>{});
+  await saveWhatsappObservation(kv,item,question,reply,status,{speech_text:voiceSpeech}).catch(()=>{});
   const wantsVoice = inboundAudio || /\b(audio|áudio|voz|fala(r)? comigo)\b/i.test(question || "");
   if (wantsVoice && question && process.env.WHATSAPP_VOICE_REPLY !== "false") {
     try {
@@ -15095,15 +15096,10 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
       // caches and forwards bytes, so it never hits the Workers Free CPU cap.
       let geminiKey = String(process.env.GEMINI_API_KEY || "").trim();
       if (!geminiKey) geminiKey = String((await loadAiVaultSecret("gemini", { kv: globalThis.__ZEVANORY_PRIVATE_KV__, master: process.env.AI_VAULT_ENCRYPTION_KEY || process.env.ELITE_INTERNAL_TOKEN }).catch(() => null)) || "").trim();
-      let audio;
-      try {
-        audio = await synthesizeWhatsappVoice(whatsappSpeechText(reply.body), { apiKey: geminiKey, env: process.env, kv: globalThis.__ZEVANORY_PRIVATE_KV__, onStage: checkpoint });
-      } catch (synthError) {
-        // Only while the Render synth route is not deployed yet: keep the previous path.
-        if (!/voice_synth_http_404|voice_synth_unreachable|voice_synth_timeout/.test(String(synthError?.message || ""))) throw synthError;
-        Object.assign(status, { voice_synth_fallback: String(synthError.message).slice(0, 120) });
-        audio = await ttsBytesFromRuntime(whatsappSpeechText(reply.body), process.env, globalThis.fetch, { onStage: checkpoint });
-      }
+      // Internal proof repeats are cache-only: eventual KV visibility must never spend quota.
+      const cacheOnly = String(item.message_id || "").startsWith("internal-audio-")
+        && item.voice_cache_only === true;
+      const audio = await synthesizeWhatsappVoice(voiceSpeech, { apiKey: geminiKey, env: process.env, kv, cacheOnly, onStage: checkpoint });
       Object.assign(status, { voice_cached: audio.cached === true });
       const uploaded = await uploadVoiceToWhatsapp({ audio, phoneId: t.phoneId, token: t.token, version: t.version, env: process.env });
       await checkpoint("upload_done", { voice_media_uploaded: Boolean(uploaded.media_id), voice_media_id: uploaded.media_id });
@@ -15116,7 +15112,7 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
       await checkpoint("voice_error");
     }
   }
-  await saveWhatsappObservation(kv,item,question,reply,status,{speech_text:whatsappSpeechText(reply.body)}).catch(()=>{});
+  await saveWhatsappObservation(kv,item,question,reply,status,{speech_text:voiceSpeech}).catch(()=>{});
   await recordWhatsappEvidence("outbound_text", { provider_message_id: sentText.provider_message_id, contact_ref: item.from, kind: reply.mode }).catch(() => false);
   return { sent: sentText.ok, ...status };
 }
@@ -15131,7 +15127,7 @@ function extractWhatsappInboundMessages(payload = {}) {
       const text = String(message2?.text?.body || message2?.button?.text || message2?.interactive?.button_reply?.title || message2?.interactive?.list_reply?.title || media?.caption || "").trim();
       const from = String(message2?.from || "").trim();
       const mediaId = String(media?.id || "").trim();
-      if (from && (text || mediaId)) out.push(Object.freeze({ from, type, text, caption: String(media?.caption || "").trim(), media_id: mediaId, mime_type: String(media?.mime_type || "").trim(), filename: String(media?.filename || "").trim(), message_id: String(message2?.id || ""), phone_number_id: String(value?.metadata?.phone_number_id || "") }));
+      if (from && (text || mediaId)) out.push(Object.freeze({ from, type, text, caption: String(media?.caption || "").trim(), media_id: mediaId, mime_type: String(media?.mime_type || "").trim(), filename: String(media?.filename || "").trim(), voice_cache_only: type === "audio" && media?.voice_cache_only === true, message_id: String(message2?.id || ""), phone_number_id: String(value?.metadata?.phone_number_id || "") }));
     }
   }
   return Object.freeze(out);

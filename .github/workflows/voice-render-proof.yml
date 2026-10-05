@@ -1,0 +1,133 @@
+name: Render voice synthesis and cache proof
+on:
+  workflow_run:
+    workflows: ['ZEVANORY central production deploy']
+    types: [completed]
+    branches: [gh-pages]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Only cached repetition is allowed on manual runs'
+        type: choice
+        options: [cache-only]
+        default: cache-only
+permissions:
+  contents: read
+concurrency:
+  group: render-voice-real-proof
+  cancel-in-progress: false
+jobs:
+  proof:
+    # This authorization is for one cycle only. Future deploys and reruns cannot synthesize.
+    if: ${{ github.run_attempt == 1 && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_commit.message, '[voice-cache-cycle-20261005]'))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      OPERATOR_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN || secrets.OPERATOR_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: '1b26415802588185a86c1d4d3ebf5bdb'
+      PROOF_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      PROOF_CACHE_ONLY: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate without Gemini calls
+        run: node scripts/voice_remote_tts_test.mjs
+      - name: Prepare OGG and tail on cloud
+        run: |
+          mkdir -p /tmp/voice-proof
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak >/dev/null
+          espeak -v pt-br -s 145 -w /tmp/voice-proof/question.wav 'Quanto custa o combo?'
+          ffmpeg -nostdin -v error -y -i /tmp/voice-proof/question.wav -ac 1 -ar 48000 -c:a libopus -b:a 24k /tmp/voice-proof/question.ogg
+          npm install --prefix /tmp/voice-proof-tools --no-save wrangler@4.143.0 >/dev/null 2>&1
+      - name: Synthesis then cached delivery, no stress or automatic retry
+        run: |
+          timeout 540s /tmp/voice-proof-tools/node_modules/.bin/wrangler tail zevanory --format json > /tmp/voice-proof/tail-raw.json 2>/tmp/voice-proof/tail.err &
+          tail_pid=$!
+          trap 'kill "$tail_pid" 2>/dev/null || true' EXIT
+          node --input-type=module <<'JS'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          import {voiceCacheKey} from './worker/voice-remote-tts.mjs';
+          const base='https://zevanory.api.br',dir='/tmp/voice-proof/';
+          const auth={authorization:'Bearer '+process.env.OPERATOR_TOKEN,'content-type':'application/json'};
+          async function op(body){const r=await fetch(base+'/api/admin/whatsapp-onboard/delivery-proof',{method:'POST',headers:auth,body:JSON.stringify(body),signal:AbortSignal.timeout(60000)});const j=await r.json();if(!r.ok)throw Error('proof_http_'+r.status+':'+JSON.stringify(j));return j;}
+          async function cf(path){const r=await fetch('https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+path,{headers:{authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN}});if(!r.ok)throw Error('cf_http_'+r.status);return r;}
+          const live=await fetch(base+'/api/core/v1/snapshot').then(r=>r.json());
+          if(live.release_sha!==process.env.PROOF_SHA)throw Error('EXACT_DEPLOYED_SHA_REQUIRED');
+          const ready=await fetch('https://zevanory-product-control-edge.onrender.com/api/voice/synthesize');
+          writeFileSync(dir+'route.json',JSON.stringify({http:ready.status,checked_at:new Date().toISOString()}));
+          if(ready.status!==405)throw Error('SYNTH_ROUTE_405_REQUIRED');
+          const owner=await op({operation:'owner'});if(owner.recipient_suffix!=='4023')throw Error('OWNER_4023_REQUIRED');
+          await new Promise(r=>setTimeout(r,12000));
+          const proofs=[];
+          async function send(index){
+            const ack=await op({operation:'audio',voice_cache_only:index===2||process.env.PROOF_CACHE_ONLY==='true',audio_base64:readFileSync(dir+'question.ogg').toString('base64')});
+            if(ack.recipient_suffix!=='4023')throw Error('OWNER_MISMATCH');
+            const r=await fetch(base+'/api/webhooks/meta',{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':ack.signature},body:ack.signed_body,signal:AbortSignal.timeout(120000)});
+            delete ack.signature;delete ack.signed_body;
+            let status;
+            for(let n=0;n<60;n++){status=await fetch(base+'/api/support/instant-status').then(r=>r.json());if(status.last?.inbound_message_id===ack.inbound_message_id&&(status.last.voice_sent||status.last.voice_error))break;await new Promise(r=>setTimeout(r,2000));}
+            const observation=await op({operation:'audit-observe'});const observed=observation.proof_observations?.find(x=>x.inbound_message_id===ack.inbound_message_id);
+            const proof={index,ack,webhook_http:r.status,status:status.last,observation:observed};
+            proofs.push(proof);writeFileSync(dir+'delivery-'+index+'.json',JSON.stringify(proof,null,2));console.log(JSON.stringify(proof));
+            if(r.status!==200||!proof.status?.voice_sent||proof.status.voice_synth_fallback)throw Error('VOICE_DELIVERY_WITHOUT_FALLBACK_REQUIRED');
+            return proof;
+          }
+          const expected=(await import('./worker/whatsapp-conversation.mjs')).speechText((await import('./worker/whatsapp-conversation.mjs')).deterministicReply('Quanto custa o combo?').body);
+          const first=await send(1);
+          if(first.observation?.speech_text!==expected)throw Error('FIXED_CATALOG_SPEECH_REQUIRED');
+          if(!['render-gemini','cache'].includes(first.status.voice_provider))throw Error('RENDER_OR_CACHE_REQUIRED');
+          // One model, one request; the second message is enforced cache-only inside the Worker.
+          // KV visibility is confirmed before sending the repeat.
+          const speech=first.observation?.speech_text;
+          if(!speech)throw Error('SPEECH_TEXT_EVIDENCE_REQUIRED');
+          const key=await voiceCacheKey(speech);
+          const settings=await cf('/workers/scripts/zevanory/settings').then(r=>r.json());
+          const binding=settings.result?.bindings?.find(x=>x.name==='ZEVANORY_PRIVATE_ARTIFACTS');
+          if(!binding?.namespace_id)throw Error('CACHE_NAMESPACE_REQUIRED');
+          let cacheReady=false;
+          for(let n=0;n<20;n++){
+            const r=await fetch('https://api.cloudflare.com/client/v4/accounts/'+process.env.CLOUDFLARE_ACCOUNT_ID+'/storage/kv/namespaces/'+binding.namespace_id+'/values/'+encodeURIComponent(key),{headers:{authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN}});
+            if(r.ok&&(await r.arrayBuffer()).byteLength>64){cacheReady=true;break;}
+            await new Promise(r=>setTimeout(r,3000));
+          }
+          if(!cacheReady)throw Error('CACHE_NOT_PROVEN_SECOND_CALL_SKIPPED');
+          const second=await send(2);
+          if(second.status.voice_cached!==true||second.status.voice_provider!=='cache')throw Error('CACHE_HIT_REQUIRED');
+          writeFileSync(dir+'summary.json',JSON.stringify({pass:true,sha:process.env.PROOF_SHA,gemini_call_budget:1,new_synthesis_requests:first.status.voice_cached?0:1,route_http:405,proofs},null,2));
+          await new Promise(r=>setTimeout(r,10000));
+          JS
+      - name: Extract CPU evidence
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import pathlib,json
+          p=pathlib.Path('/tmp/voice-proof');raw=(p/'tail-raw.json').read_text() if (p/'tail-raw.json').exists() else ''
+          decoder=json.JSONDecoder();pos=0;events=[]
+          while pos<len(raw):
+              start=raw.find('{',pos)
+              if start<0:break
+              try:e,end=decoder.raw_decode(raw[start:]);pos=start+end
+              except ValueError:pos=start+1;continue
+              req=(e.get('event') or {}).get('request') or {}
+              if '/api/webhooks/meta' not in req.get('url',''):continue
+              events.append({k:e.get(k) for k in ['eventTimestamp','cpuTime','wallTime','outcome','exceptions']})
+          (p/'cpu.json').write_text(json.dumps(events,indent=2))
+          print(json.dumps({'webhook_tail':events}))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: render-voice-two-deliveries-proof
+          path: |
+            /tmp/voice-proof/route.json
+            /tmp/voice-proof/delivery-*.json
+            /tmp/voice-proof/summary.json
+            /tmp/voice-proof/cpu.json
+            /tmp/voice-proof/tail.err
+          retention-days: 14
+

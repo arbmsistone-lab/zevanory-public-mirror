@@ -394,7 +394,7 @@ async function handleDeliveryProof(request,env,proofSql){
     const messageId="internal-"+input.operation+"-"+crypto.randomUUID();
     const message={from:recipient,id:messageId,timestamp:String(Math.floor(Date.now()/1000)),type:input.operation};
     if(input.operation==="text")message.text={body:"teste interno: quanto custa o combo?"};
-    else message.audio={id:mediaId,mime_type:"audio/ogg; codecs=opus",voice:true};
+    else message.audio={id:mediaId,mime_type:"audio/ogg; codecs=opus",voice:true,...(input.voice_cache_only===true?{voice_cache_only:true}:{})};
     const payload={object:"whatsapp_business_account",entry:[{id:wabaId,changes:[{field:"messages",value:{messaging_product:"whatsapp",metadata:{phone_number_id:phoneId},messages:[message]}}]}]};
     const body=JSON.stringify(payload);
     const key=await crypto.subtle.importKey("raw",encoder.encode(record.app_secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);

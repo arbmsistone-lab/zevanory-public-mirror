@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {catalogVoices,warmVoiceCache} from './voice_cache_warm.mjs';
+const mp3=new Uint8Array(200);mp3.set([0xff,0xf3]);
+const store=new Map();const kv={async get(k){return store.get(k)?.buffer||null;},async put(k,v){store.set(k,new Uint8Array(v));}};
+assert.equal(catalogVoices().length,15);
+assert.equal(new Set(catalogVoices().map(e=>e.text)).size,7,'delivery/refund are shared policies, not 10 redundant calls');
+let calls=0;
+const ok=async()=>{calls++;return new Response(mp3);};
+const first=await warmVoiceCache({kv,apiKey:'test',secret:'test',max:2,fetchImpl:ok});
+assert.equal(first.attempted,2);assert.equal(calls,2);
+const second=await warmVoiceCache({kv,apiKey:'test',secret:'test',fetchImpl:ok});
+assert.equal(second.generated,5);assert.equal(calls,7);
+assert.equal((await warmVoiceCache({kv,apiKey:'test',secret:'test',fetchImpl:ok})).attempted,0);
+let quotaCalls=0;
+const quota=await warmVoiceCache({kv:{async get(){return null;},async put(){throw Error('unexpected put');}},apiKey:'test',secret:'test',fetchImpl:async()=>{quotaCalls++;return Response.json({error:'gemini_quota'},{status:429});}});
+assert.equal(quota.stopped,'quota');assert.equal(quotaCalls,1);
+await assert.rejects(warmVoiceCache({kv,max:11}),/warm_limit/);
+console.log('VOICE_CACHE_WARM_MANUAL_LIMIT_QUOTA_RESUME=PASS');

@@ -158,3 +158,10 @@ export function speechText(body) {
  const summary=sentenceEnd>=80?head.slice(0,sentenceEnd+1):head.slice(0,head.lastIndexOf(" ")).replace(/[,;:]$/,"")+".";
  return summary+" Os detalhes estão na mensagem de texto.";
 }
+
+// Catalog voice must not vary with the AI's phrasing; written replies stay conversational.
+export function voiceReplyBody(question, aiBody) {
+  const known = answerSupportQuestion({ question });
+  return known.answered && ["price", "delivery", "refund"].includes(known.intent)
+    ? deterministicReply(question).body : aiBody;
+}
