@@ -1,0 +1,55 @@
+name: Sandbox post-payment read-only diagnostic
+on:
+  push:
+    branches: [diag/sandbox-postpayment-20261005]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      ORDER_ID: f6f44157-64e5-4454-8b78-c2176fda19c5
+      PAYMENT_ID: "1328350328"
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      SANDBOX_INBOX_READ_TOKEN: ${{ secrets.SANDBOX_INBOX_READ_TOKEN }}
+      MP_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+    steps:
+      - name: Query sanitized provider and receiver state
+        shell: python
+        run: |
+          import json, os, urllib.request, urllib.parse, urllib.error
+          oid=os.environ["ORDER_ID"]; pid=os.environ["PAYMENT_ID"]
+          def get(url, headers):
+              req=urllib.request.Request(url,headers={**headers,"User-Agent":"ZEVANORY-Sandbox-Diagnostic/1","Accept":"application/json"})
+              try:
+                  with urllib.request.urlopen(req,timeout=20) as r: return r.status,json.load(r)
+              except urllib.error.HTTPError as e:
+                  try: d=json.load(e)
+                  except Exception: d={}
+                  return e.code,d
+          mp_code,mp=get("https://api.mercadopago.com/v1/payments/"+pid,{"Authorization":"Bearer "+os.environ["MP_TOKEN"]})
+          st_code,st=get("https://zevanory.api.br/api/internal/certification/e2e/status?order_id="+urllib.parse.quote(oid),
+              {"x-certification-e2e-token":os.environ["CERTIFICATION_E2E_TOKEN"]})
+          ib_code,ib=get("https://zevanory.api.br/api/internal/certification/inbox/messages?order_id="+urllib.parse.quote(oid),
+              {"x-sandbox-inbox-token":os.environ["SANDBOX_INBOX_READ_TOKEN"]})
+          events=st.get("financial_events",[]) if isinstance(st,dict) else []
+          delivery=st.get("delivery_evidence",{}) if isinstance(st,dict) else {}
+          msgs=ib.get("messages",[]) if isinstance(ib,dict) else []
+          out={
+            "payment_http":mp_code,
+            "payment_status":str(mp.get("status","")) if isinstance(mp,dict) else "",
+            "payment_external_reference_match":str(mp.get("external_reference",""))==oid if isinstance(mp,dict) else False,
+            "status_http":st_code,
+            "order_status":str((st.get("order") or {}).get("status","")) if isinstance(st,dict) else "",
+            "financial_events_count":len(events) if isinstance(events,list) else 0,
+            "matching_payment_event":any(str(e.get("provider_payment_id",""))==pid and e.get("normalized_event")=="payment_confirmed" for e in events) if isinstance(events,list) else False,
+            "signature_verified":any(str(e.get("provider_payment_id",""))==pid and e.get("signature_verified") is True for e in events) if isinstance(events,list) else False,
+            "fulfillment_status":str((st.get("fulfillment") or {}).get("status","")) if isinstance(st,dict) else "",
+            "email_status":str(delivery.get("email_status","")) if isinstance(delivery,dict) else "",
+            "email_provider_id":str(delivery.get("email_provider_id",""))[:128] if isinstance(delivery,dict) else "",
+            "inbox_http":ib_code,
+            "inbox_message_count":len(msgs) if isinstance(msgs,list) else 0,
+            "inbox_ids":[str(m.get("id",""))[:128] for m in msgs[:5]] if isinstance(msgs,list) else []
+          }
+          print(json.dumps(out,separators=(",",":")))
