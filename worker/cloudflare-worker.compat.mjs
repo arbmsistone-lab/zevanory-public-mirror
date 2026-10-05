@@ -1,4 +1,4 @@
-import { handleVoiceChunk, handleVoiceEncodeAudit } from "./voice-chunks.mjs";
+import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
 import { latestWhatsappStage } from "./whatsapp-background.mjs";
 import { handleVoiceFinalClosure } from "./voice-final-closure.mjs";
@@ -98,6 +98,7 @@ const wrapped = {
     let normalized = normalizeEnv(env);
     const url = new URL(request.url);
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
+    if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);
     if(url.pathname==="/api/admin/voice/encode-audit") return handleVoiceEncodeAudit(request,normalized);
 
     // One administrative surface only: legacy HTML entrypoints permanently

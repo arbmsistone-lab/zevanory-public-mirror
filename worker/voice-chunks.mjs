@@ -1,13 +1,16 @@
+import { Buffer } from "node:buffer";
 import lamejs from "./vendor/lame.min.mjs";
 import { downsamplePcmMono, encodePcmRemotely } from "./voice-pcm.mjs";
 const E=new TextEncoder(), FRAME=576, CORE=FRAME*21, WARM=FRAME*2, MAX=3*1024*1024;
-const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
+const hex=b=>Buffer.from(b).toString("hex");
+let cachedSecret,cachedKey;
+async function hmacKey(secret){if(secret!==cachedSecret){cachedSecret=secret;cachedKey=crypto.subtle.importKey("raw",E.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign","verify"]);}return cachedKey;}
 const replay=new Map();
 export async function voiceSignedHeaders(bytes,rate,env,fields={}){
  const secret=String(env.ELITE_INTERNAL_TOKEN||"");if(secret.length<24)throw Error("voice_chunk_secret_missing");
  const timestamp=String(Date.now()),nonce=crypto.randomUUID(),digest=hex(await crypto.subtle.digest("SHA-256",bytes));
  const meta=JSON.stringify(fields),message=["zevanory-voice-chunk-v1",timestamp,nonce,rate,digest,meta].join("\n");
- const key=await crypto.subtle.importKey("raw",E.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+ const key=await hmacKey(secret);
  return {"content-type":"application/octet-stream","x-voice-timestamp":timestamp,"x-voice-nonce":nonce,"x-voice-sample-rate":String(rate),"x-voice-meta":meta,"x-voice-signature":hex(await crypto.subtle.sign("HMAC",key,E.encode(message)))};
 }
 async function authenticated(request,bytes,env){
@@ -16,7 +19,7 @@ async function authenticated(request,bytes,env){
  const secret=String(env.ELITE_INTERNAL_TOKEN||"");if(secret.length<24)return false;
  const digest=hex(await crypto.subtle.digest("SHA-256",bytes)),message=["zevanory-voice-chunk-v1",timestamp,nonce,rate,digest,meta].join("\n"),sig=request.headers.get("x-voice-signature")||"";
  if(!/^[a-f0-9]{64}$/.test(sig))return false;
- const key=await crypto.subtle.importKey("raw",E.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["verify"]);
+ const key=await hmacKey(secret);
  if(!await crypto.subtle.verify("HMAC",key,Uint8Array.from(sig.match(/../g),x=>parseInt(x,16)),E.encode(message)))return false;
  for(const [k,at] of replay)if(at<Date.now()-60000)replay.delete(k);
  if(replay.has(nonce))return false;replay.set(nonce,Date.now());return true;
@@ -66,7 +69,7 @@ export async function renderVoiceSecret(env){
  const key=await crypto.subtle.importKey("raw",E.encode(String(env.ELITE_INTERNAL_TOKEN||"")),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
  return hex(await crypto.subtle.sign("HMAC",key,E.encode("zevanory-render-voice-v1")));
 }
-export async function encodePcmInChunks(pcm,rate,env,fetchImpl=fetch,{auditId=crypto.randomUUID(),onStage=async()=>{}}={}){
+async function encodeChunksDirect(pcm,rate,env,fetchImpl=fetch,{auditId=crypto.randomUUID(),onStage=async()=>{}}={}){
  if(!(pcm instanceof Uint8Array)||!pcm.length||pcm.length>MAX||pcm.length%2||![8000,16000,24000,32000,48000].includes(rate))throw Error("voice_pcm_size_invalid");
  const sourceSamples=pcm.length/2,ratio=rate/8000,total=Math.floor(sourceSamples/ratio),parts=[],metrics=[];let calls=0;
  try{
@@ -76,7 +79,7 @@ export async function encodePcmInChunks(pcm,rate,env,fetchImpl=fetch,{auditId=cr
    block.set(pcm.subarray(a*2,b*2),(a-begin)*2);
    let completed=false;
    for(let attempt=0;attempt<3;attempt++){
-    if(++calls>30)throw Error("voice_chunk_invocation_budget");
+    if(++calls>28)throw Error("voice_chunk_invocation_budget");
     const meta={audit_id:String(auditId).slice(0,80),index,attempt,samples,first:index===0,last:start+samples>=total};
     const headers=await voiceSignedHeaders(block,rate,env,meta);
     const request=new Request("https://zevanory.api.br/api/internal/voice/encode-chunk?audit_id="+encodeURIComponent(meta.audit_id)+"&chunk="+index+"&attempt="+attempt,{method:"POST",headers,body:block,signal:AbortSignal.timeout(15000)});
@@ -84,7 +87,7 @@ export async function encodePcmInChunks(pcm,rate,env,fetchImpl=fetch,{auditId=cr
     try{response=env.SELF?.fetch?await env.SELF.fetch(request):await fetchImpl(request);}
     catch(error){fetchError=String(error?.message||error).slice(0,150);response=new Response("",{status:503});}
     metrics.push({index,attempt,http:response.status,wall_ms:Date.now()-at,samples,...(fetchError?{fetch_error:fetchError}:{})});
-    if(response.ok){const bytes=new Uint8Array(await response.arrayBuffer());frames(bytes);parts.push(bytes);completed=true;break;}
+    if(response.ok){const bytes=new Uint8Array(await response.arrayBuffer());if(bytes.length<4||bytes[0]!==255||(bytes[1]&224)!==224)throw Error("voice_chunk_mp3_header_invalid");parts.push(bytes);completed=true;break;}
     await response.body?.cancel();
     if(response.status!==503)throw Error("voice_chunk_http_"+response.status);
    }
@@ -96,6 +99,38 @@ export async function encodePcmInChunks(pcm,rate,env,fetchImpl=fetch,{auditId=cr
   const bytes=await encodePcmRemotely(pcm,rate,{VOICE_ENCODE_URL:"https://zevanory-product-control-edge.onrender.com/api/voice/encode",VOICE_ENCODE_SECRET:await renderVoiceSecret(env)},fetchImpl);
   return {bytes,provider:"render",chunks:metrics,fallback_used:true,chunk_error:String(error.message).slice(0,200)};
  }
+}
+
+export async function handleVoiceStream(request,env){
+ if(request.method!=="POST")return Response.json({error:"method_not_allowed"},{status:405});
+ if(Number(request.headers.get("content-length")||0)>MAX)return Response.json({error:"voice_pcm_size_invalid"},{status:413});
+ const pcm=new Uint8Array(await request.arrayBuffer());
+ if(!pcm.length||pcm.length>MAX||pcm.length%2)return Response.json({error:"voice_pcm_size_invalid"},{status:413});
+ if(!await authenticated(request,pcm,env))return Response.json({error:"voice_chunk_auth_required"},{status:401});
+ const rate=Number(request.headers.get("x-voice-sample-rate")),meta=JSON.parse(request.headers.get("x-voice-meta")||"{}");
+ if(meta.purpose!=="voice-stream")return Response.json({error:"voice_stream_purpose_required"},{status:400});
+ const result=await encodeChunksDirect(pcm,rate,env,fetch,{auditId:meta.audit_id});
+ return new Response(result.bytes,{headers:{"content-type":"audio/mpeg","x-voice-provider":result.provider,"x-voice-chunks":JSON.stringify(result.chunks),"x-voice-fallback-used":String(result.fallback_used)}});
+}
+export async function encodePcmInChunks(pcm,rate,env,fetchImpl=fetch,{auditId=crypto.randomUUID(),onStage=async()=>{}}={}){
+ // The caller awaits one coordinator invocation and does no per-block work.
+ // A killed coordinator is catchable here, preserving the reserve CPU budget.
+ if(!env.SELF?.fetch)return encodeChunksDirect(pcm,rate,env,fetchImpl,{auditId,onStage});
+ if(!(pcm instanceof Uint8Array)||!pcm.length||pcm.length>MAX||pcm.length%2||![8000,16000,24000,32000,48000].includes(rate))throw Error("voice_pcm_size_invalid");
+ let failure;
+ try{
+  const headers=await voiceSignedHeaders(pcm,rate,env,{purpose:"voice-stream",audit_id:auditId});
+  const response=await env.SELF.fetch(new Request("https://zevanory.api.br/api/internal/voice/encode-stream?audit_id="+encodeURIComponent(auditId),{method:"POST",headers,body:pcm,signal:AbortSignal.timeout(90000)}));
+  if(!response.ok){await response.body?.cancel();throw Error("voice_coordinator_http_"+response.status);}
+  const bytes=new Uint8Array(await response.arrayBuffer());
+  if(bytes.length<4||bytes[0]!==255||(bytes[1]&224)!==224)throw Error("voice_coordinator_mp3_invalid");
+  const result={bytes,provider:response.headers.get("x-voice-provider"),chunks:JSON.parse(response.headers.get("x-voice-chunks")||"[]"),fallback_used:response.headers.get("x-voice-fallback-used")==="true"};
+  if(result.fallback_used)await onStage("encode_fallback",{encode_chunk_error:"voice_chunk_retries_exhausted",encode_chunks:result.chunks});
+  return result;
+ }catch(error){failure=String(error?.message||error).slice(0,200);}
+ await onStage("encode_fallback",{encode_chunk_error:failure,encode_chunks:[]});
+ const bytes=await encodePcmRemotely(pcm,rate,{VOICE_ENCODE_URL:"https://zevanory-product-control-edge.onrender.com/api/voice/encode",VOICE_ENCODE_SECRET:await renderVoiceSecret(env)},fetchImpl);
+ return {bytes,provider:"render",chunks:[],fallback_used:true,chunk_error:failure};
 }
 
 export async function handleVoiceEncodeAudit(request,env){
