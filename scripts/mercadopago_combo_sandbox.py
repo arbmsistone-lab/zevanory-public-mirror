@@ -305,13 +305,30 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
             state = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}))
             validate_isolation(state, identity, oid)
             delivery = state.get('delivery_evidence', {})
-            if (verified_webhook(state, oid, pid) and state.get('order', {}).get('status') == 'paid' and
+            events = state.get('financial_events', [])
+            webhook_ok = verified_webhook(state, oid, pid)
+            payment_event_ok = any(e.get('normalized_event') == 'payment_confirmed' and
+                str(e.get('provider_payment_id')) == pid for e in events) if isinstance(events, list) else False
+            if (webhook_ok and state.get('order', {}).get('status') == 'paid' and
                     delivery.get('email_recipient') == identity.inbox_email and delivery.get('email_status') == 'sent' and
                     state.get('fulfillment', {}).get('status') == 'delivered'):
                 mid, text = received_message(client, oid, identity, started_ms)
                 if mid:
+                    report['email_id'] = str(delivery.get('email_provider_id') or mid)
+                    report['inbox_message_id'] = mid
                     break
-            require(now() < deadline, 'RECEIPT_WEBHOOK_TIMEOUT')
+            if now() >= deadline:
+                report['timeout_state'] = {
+                    'order_status': str(state.get('order', {}).get('status') or ''),
+                    'financial_events_count': len(events) if isinstance(events, list) else 0,
+                    'matching_payment_event': payment_event_ok,
+                    'verified_webhook': webhook_ok,
+                    'fulfillment_status': str(state.get('fulfillment', {}).get('status') or ''),
+                    'email_status': str(delivery.get('email_status') or ''),
+                    'email_recipient_match': delivery.get('email_recipient') == identity.inbox_email,
+                    'email_provider_id_present': bool(delivery.get('email_provider_id')),
+                }
+                raise GuardError('RECEIPT_WEBHOOK_TIMEOUT')
             sleep(5)
         probe = str(delivery.get('verification_url', ''))
         require(probe and probe in text, 'RECEIVED_DOWNLOAD_LINK_REQUIRED')
@@ -319,6 +336,7 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         require(0 < expires.timestamp() - now() <= 3600, 'TEMPORARY_DOWNLOAD_REQUIRED')
         data = client.request(probe, headers={'x-certification-e2e-token': identity.certification_token}, binary=True)
         require(data and digest_bytes(data) == delivery.get('artifact_sha256'), 'DOWNLOAD_INTEGRITY_REQUIRED')
+        report['download_http'] = 200
         final = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}))
         validate_isolation(final, identity, oid)
         report['checks'].update({'RECEIVER_SIGNATURE': 'PASS', 'INBOX_RECEIPT': 'PASS',

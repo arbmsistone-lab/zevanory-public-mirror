@@ -117,6 +117,7 @@ export function projectStatus(record, base) {
     financial_events: events,
     delivery_evidence: {
       email_status: d.email_status || null,
+      email_provider_id: String(d.email_provider_id || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 128) || null,
       email_recipient: d.email_recipient || null,
       verification_url: d.certification_verification_url || null,
       expires_at: d.expires_at || null,
