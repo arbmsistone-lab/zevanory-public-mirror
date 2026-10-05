@@ -1,0 +1,30 @@
+name: Read-only configured sandbox buyer diagnosis
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths: ['scripts/mercadopago_buyer_diagnostic.py', '.github/workflows/mercadopago-buyer-diagnostic.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mercadopago-buyer-diagnostic
+  cancel-in-progress: false
+jobs:
+  diagnostic:
+    if: github.run_attempt == 1 && (github.event_name == 'workflow_dispatch' || (github.head_ref == 'fix/mp-buyer-identity-diagnostic-20261005' && github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+      MERCADOPAGO_TEST_BUYER_EMAIL: ${{ secrets.MERCADOPAGO_TEST_BUYER_EMAIL }}
+      MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}'}
+      - run: python3 scripts/mercadopago_buyer_diagnostic.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sandbox-buyer-diagnostic
+          path: /tmp/buyer-diagnostic/report.json
+          retention-days: 30
