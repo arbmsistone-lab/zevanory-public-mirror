@@ -186,3 +186,7 @@ const rateRecovered=await ttsBytesWithFailover("Olá!",{...chunkEnv,VOICE_TTS_FR
 assert.deepEqual(modelCalls,["gemini-3.8-flash-tts","gemini-3.8-flash-lite-tts"]);
 assert.equal(rateRecovered.model,"gemini-3.8-flash-lite-tts");
 console.log("GEMINI_RATE_LIMIT_FAILOVER_MAX_TWO_MODELS=PASS");
+
+assert.match(workerSource,/await ttsBytesFromRuntime\(whatsappSpeechText\(reply.body\)/);
+assert.ok(!workerSource.includes("await synthesizeWhatsappVoice("),"Render is only the PCM encoder reserve");
+console.log("WHATSAPP_PRIMARY_CHUNKS_RENDER_RESERVE_ONLY=PASS");

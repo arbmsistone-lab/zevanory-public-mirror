@@ -4,7 +4,6 @@ import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
-import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -15091,12 +15090,7 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
   if (wantsVoice && question && process.env.WHATSAPP_VOICE_REPLY !== "false") {
     try {
       await checkpoint("tts_start");
-      // Voice runs on the Render backend (Gemini TTS + MP3); the Worker only signs,
-      // caches and forwards bytes, so it never hits the Workers Free CPU cap.
-      let geminiKey = String(process.env.GEMINI_API_KEY || "").trim();
-      if (!geminiKey) geminiKey = String((await loadAiVaultSecret("gemini", { kv: globalThis.__ZEVANORY_PRIVATE_KV__, master: process.env.AI_VAULT_ENCRYPTION_KEY || process.env.ELITE_INTERNAL_TOKEN }).catch(() => null)) || "").trim();
-      const audio = await synthesizeWhatsappVoice(whatsappSpeechText(reply.body), { apiKey: geminiKey, env: process.env, kv: globalThis.__ZEVANORY_PRIVATE_KV__, onStage: checkpoint });
-      Object.assign(status, { voice_cached: audio.cached === true });
+      const audio = await ttsBytesFromRuntime(whatsappSpeechText(reply.body), process.env, globalThis.fetch, { onStage: checkpoint });
       const uploaded = await uploadVoiceToWhatsapp({ audio, phoneId: t.phoneId, token: t.token, version: t.version, env: process.env });
       await checkpoint("upload_done", { voice_media_uploaded: Boolean(uploaded.media_id), voice_media_id: uploaded.media_id });
       const sentVoice = await postWhatsappMessage(t, { messaging_product: "whatsapp", recipient_type: "individual", to: item.from, type: "audio", audio: { id: uploaded.media_id } });
