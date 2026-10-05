@@ -1,3 +1,4 @@
+import {handleReserveEncodeAudit} from "./voice-render-client.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
 import { latestWhatsappStage } from "./whatsapp-background.mjs";
@@ -98,9 +99,9 @@ const wrapped = {
     let normalized = normalizeEnv(env);
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
     const url = new URL(request.url);
-    if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
-    if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);
-    if(url.pathname==="/api/admin/voice/encode-audit") return handleVoiceEncodeAudit(request,normalized);
+    if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return Response.json({error:"voice_chunks_disabled"},{status:410});
+    if(url.pathname==="/api/internal/voice/encode-stream") return Response.json({error:"voice_chunks_disabled"},{status:410});
+    if(url.pathname==="/api/admin/voice/encode-audit") return handleReserveEncodeAudit(request,normalized);
 
     // One administrative surface only: legacy HTML entrypoints permanently
     // converge on the canonical React Control Center. Technical admin APIs stay
