@@ -29,7 +29,7 @@ def environment():
     m = {'schema': 'sandbox.identity.v1', 'verified': True, 'credential_mode': 'sandbox',
          'verification_evidence_id': 'protected-verification-1', 'application_id': '123', 'seller_id': '10',
          'buyer': {'id': '20', 'email': 'verified-buyer@testuser.com', 'sandbox': True, 'verified': True},
-         'inbox': {'email': 'controlled@sandbox-mail.zevanory.api.br', 'provider': 'cloudflare-email-routing', 'read_only': True,
+         'inbox': {'email': 'prova-sandbox@zevanory.api.br', 'provider': 'resend-inbound', 'read_only': True,
                    'verified': True, 'scopes': [proof.READ_SCOPE]}}
     for field, name in [('public_key_sha256', 'MERCADOPAGO_TEST_PUBLIC_KEY'),
                         ('access_token_sha256', 'MERCADOPAGO_TEST_ACCESS_TOKEN'),
@@ -55,7 +55,7 @@ class FakeProvider:
         self.checkout_changes = {}
         self.card_changes = {}
         self.signature = True
-        self.recipient = 'controlled@sandbox-mail.zevanory.api.br'
+        self.recipient = 'prova-sandbox@zevanory.api.br'
         self.buyer = 'verified-buyer@testuser.com'
         self.contract = True
         self.error = None
@@ -77,7 +77,7 @@ class FakeProvider:
         elif path == '/users/me':
             data = {'id': 10, 'tags': ['test_user']}
         elif path == '/users/20':
-            data = {'id': 20, 'tags': ['test_user']}
+            data = {'id': 20, 'nickname': 'TESTUSER827000000'}
         elif path == proof.INBOX_PATH + 'profile':
             data = {'email_address': self.recipient, 'read_only': True}
         elif path == proof.CERT_PATH + 'checkout':
@@ -99,7 +99,7 @@ class FakeProvider:
                 proof.dt.timezone.utc).isoformat()
         elif path == proof.INBOX_PATH + 'messages':
             data = {'messages': [{'id': 'mockmessage1', 'to': [self.recipient], 'received_at_ms': NOW * 1000 + 1,
-                'x_zevanory_order_id': NEW_ORDER, 'delivered_via': 'cloudflare-email-routing', 'text': DOWNLOAD}]}
+                'x_zevanory_order_id': NEW_ORDER, 'delivered_via': 'resend-inbound', 'text': DOWNLOAD}]}
         elif path == proof.CERT_PATH + 'download':
             return Response(b'private sandbox artifact')
         else:

@@ -5,8 +5,8 @@ Requires a protected, previously verified identity manifest (not prefix inferenc
 The certification receiver must expose explicit isolation/capability/signature
 proofs. Missing contracts fail closed; this change does not implement server
 routes, provision environments, attest identities or enable financial execution.
-Mailbox adapter: Cloudflare Email Routing on the isolated subdomain
-sandbox-mail.zevanory.api.br, read through a dedicated read-only receiver token.
+Mailbox adapter: Resend Receiving on the apex MX (prova-sandbox@zevanory.api.br),
+read through the receiver with a dedicated read-only token.
 Mercado Pago test-user credentials report live_mode=true; sandbox safety is
 proven by the seller/buyer test_user tags and collector binding instead.
 """
@@ -27,7 +27,7 @@ from dataclasses import dataclass
 APP = 'https://zevanory.api.br'
 MP = 'https://api.mercadopago.com'
 INBOX_PATH = '/api/internal/certification/inbox/'
-INBOX_DOMAIN = 'sandbox-mail.zevanory.api.br'
+INBOX_ADDRESS = 'prova-sandbox@zevanory.api.br'
 CERT_PATH = '/api/internal/certification/e2e/'
 FROZEN_ORDER = 'a28c53ab-9ce7-429d-9d6b-1311a3fad406'
 OUT = pathlib.Path('evidence/mercadopago-combo-sandbox.json')
@@ -95,10 +95,10 @@ def preflight(env):
             str(b.get('id', '')).isdigit() and str(b['id']) != str(m['seller_id']) and
             re.fullmatch(r'[^@\s]+@testuser\.com', str(b.get('email', '')), re.I) and
             b['email'].lower() != 'test@testuser.com', 'VERIFIED_BUYER_REQUIRED')
-    require(isinstance(box, dict) and box.get('verified') is True and box.get('provider') == 'cloudflare-email-routing' and
+    require(isinstance(box, dict) and box.get('verified') is True and box.get('provider') == 'resend-inbound' and
             box.get('scopes') == [READ_SCOPE] and box.get('read_only') is True and
             re.fullmatch(r'[^@\s]+@[^@\s]+', str(box.get('email', ''))) and
-            box['email'].lower().endswith('@' + INBOX_DOMAIN), 'READ_ONLY_CONTROLLED_INBOX_REQUIRED')
+            box['email'].lower() == INBOX_ADDRESS, 'READ_ONLY_CONTROLLED_INBOX_REQUIRED')
     return Identity(sha, str(m['application_id']), str(m['seller_id']), str(b['id']),
                     b['email'].lower(), box['email'].lower(), env['MERCADOPAGO_TEST_PUBLIC_KEY'],
                     env['MERCADOPAGO_TEST_ACCESS_TOKEN'], env['SANDBOX_INBOX_READ_TOKEN'],
@@ -224,7 +224,7 @@ def received_message(client, oid, identity, started_ms):
         require(re.fullmatch(r'[a-zA-Z0-9_-]{1,128}', mid), 'INBOX_MESSAGE_ID_INVALID')
         recipients = [str(a).lower() for a in msg.get('to', [])]
         if (identity.inbox_email in recipients and int(msg.get('received_at_ms', 0)) >= started_ms and
-                msg.get('x_zevanory_order_id') == oid and msg.get('delivered_via') == 'cloudflare-email-routing' and
+                msg.get('x_zevanory_order_id') == oid and msg.get('delivered_via') == 'resend-inbound' and
                 isinstance(msg.get('text'), str)):
             return mid, msg['text']
     return None, None
@@ -251,7 +251,7 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         seller = client.mp('/users/me')
         buyer = client.mp('/users/' + identity.buyer_id)
         require(str(seller.get('id')) == identity.seller_id and 'test_user' in seller.get('tags', []) and
-                str(buyer.get('id')) == identity.buyer_id and 'test_user' in buyer.get('tags', []),
+                str(buyer.get('id')) == identity.buyer_id and str(buyer.get('nickname', '')).startswith('TESTUSER'),
                 'PROVIDER_IDENTITY_MISMATCH')
         profile = client.inbox('profile')
         require(str(profile.get('email_address', '')).lower() == identity.inbox_email and

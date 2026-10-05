@@ -33,6 +33,7 @@ jobs:
               'access_token_sha256': hashlib.sha256(t.encode()).hexdigest(),
               'token_prefix': parts[0] if parts else '',
               'token_embeds_application_id': os.environ['APPLICATION_ID'] in parts,
+              'token_client_id': parts[1] if len(parts) > 1 and parts[1].isdigit() else '',
               'token_ends_with_seller_id': parts[-1] == os.environ['SELLER_ID'] if parts else False,
               'users_me_status': s, 'seller_id_match': str(me.get('id')) == os.environ['SELLER_ID'],
               'seller_test_user': 'test_user' in (me.get('tags') or []),

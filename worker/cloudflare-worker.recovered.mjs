@@ -14774,7 +14774,7 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
     } catch {
       sandboxV2 = null;
     }
-    if (sandboxV2 && !(String(process.env.MERCADOPAGO_ENV || "").toLowerCase() === "sandbox" && String(process.env.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true" && /^prova@sandbox-mail\.zevanory\.api\.br$/.test(String(sandboxV2.email_recipient || "")))) sandboxV2 = null;
+    if (sandboxV2 && !(String(process.env.MERCADOPAGO_ENV || "").toLowerCase() === "sandbox" && String(process.env.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true" && /^prova-sandbox@zevanory\.api\.br$/.test(String(sandboxV2.email_recipient || "")))) sandboxV2 = null;
   }
   if (certificationOnly && payment?.live_mode !== false && !sandboxV2) throw new Error("sandbox_delivery_requires_test_payment");
   const recipient = certificationOnly ? sandboxV2 ? String(sandboxV2.email_recipient) : "delivered@resend.dev" : validMercadoPagoDeliveryEmail(payment?.payer?.email);
