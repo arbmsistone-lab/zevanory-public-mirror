@@ -1,7 +1,9 @@
 name: Manual catalog voice cache warm
+run-name: voice-warm:${{ inputs.cycle || github.sha }}
 on:
   workflow_dispatch:
     inputs:
+      cycle: {description: One-time cycle identifier, required: false, type: string}
       max_voices:
         description: 'Maximum new voices (1–10); stops at first quota'
         default: '10'
@@ -14,6 +16,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   warm:
+    if: github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -39,3 +42,9 @@ jobs:
           export GEMINI_API_KEY="$(gcloud secrets versions access latest --secret=ZEVANORY_GEMINI_API_KEY --project=zevanory-gemini)"
           echo "::add-mask::$GEMINI_API_KEY"
           node scripts/voice_cache_warm.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voice-cache-warm-evidence
+          path: /tmp/voice-warm/summary.json
+          retention-days: 30

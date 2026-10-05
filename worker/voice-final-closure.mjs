@@ -25,7 +25,12 @@ export async function voiceFinalClosureStatus(env={}){
   const productionProbe=certificate?.production_probe===true&&canonical;
   const finalGreen=study.certified===true&&transport&&e2e.e2e===true&&zeroSpend&&regression&&productionProbe&&canonical;
   return Object.freeze({
-    schema_version:1,
+    schema_version:2,
+    voice_architecture:"render-gemini+cache",
+    voice_synthesis_provider:"render-gemini",
+    voice_repeat_provider:"cache",
+    voice_audit_mode:"cache-only",
+    whatsapp_cache_proof:{pr:379,artifact_id:11337072269,sha:"c750488fda84e0a0ba14ea12d8aabc87add12e16",voice_cached:true,cpuTime:38},
     service:"ZEVANORY",
     engine:"ZEVANORY Voice Support Final Closure",
     release_sha:release_sha||null,

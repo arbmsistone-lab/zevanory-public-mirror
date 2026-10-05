@@ -1,4 +1,5 @@
 // Manual only. No timers/schedules. Existing KV entries are the durable resume cursor.
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { generateKeyPairSync, privateDecrypt, constants } from 'node:crypto';
 import { SUPPORT_PRODUCTS } from '../worker/support-knowledge.mjs';
@@ -62,8 +63,13 @@ export async function renderSecret(env,fetchImpl=fetch) {
   return privateDecrypt({key:privateKey,oaepHash:'sha256',padding:constants.RSA_PKCS1_OAEP_PADDING},Buffer.from(body.wrapped_key,'base64')).toString();
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href) {
-  if(!process.env.GEMINI_API_KEY)throw Error('gemini_key_required');
-  const kv=await cloudKv(process.env),secret=await renderSecret(process.env);
-  const result=await warmVoiceCache({kv,secret,apiKey:process.env.GEMINI_API_KEY,max:Number(process.env.VOICE_WARM_MAX||10),onProgress:e=>console.log(JSON.stringify({product:e.product,intent:e.intent,key:e.key,cached:e.cached}))});
-  console.log(JSON.stringify(result));
+  const entries=[];mkdirSync('/tmp/voice-warm',{recursive:true});
+  const save=result=>writeFileSync('/tmp/voice-warm/summary.json',JSON.stringify({entries,...result},null,2));
+  try {
+    if(!process.env.GEMINI_API_KEY)throw Error('gemini_key_required');
+    const kv=await cloudKv(process.env),secret=await renderSecret(process.env);
+    const result=await warmVoiceCache({kv,secret,apiKey:process.env.GEMINI_API_KEY,max:Number(process.env.VOICE_WARM_MAX||10),onProgress:e=>{entries.push({...e,recorded:!e.cached});save({state:'running'});console.log(JSON.stringify(e));}});
+    save(result);console.log(JSON.stringify(result));
+    if(result.stopped==='quota')console.log('::warning title=GEMINI_QUOTA::Stopped immediately; existing keys preserved; no automatic resume');
+  }catch(error){save({stopped:'error',cause:error.message});console.error('::error title=VOICE_CACHE_WARM::'+error.message);process.exitCode=1;}
 }

@@ -1,0 +1,11 @@
+# M5 — current WhatsApp audio architecture
+
+WhatsApp replies use Render Gemini TTS and MP3 conversion (`render-gemini`) on a cache miss. The Worker signs text, reads/writes the deterministic KV MP3 cache, and forwards audio to Meta. Catalog price, delivery and refund speech is deterministic. Repeats use `voice_cached:true`; they do not call Gemini.
+
+Historical verified delivery: PR #379, deployed SHA `c750488fda84e0a0ba14ea12d8aabc87add12e16`, run `37292205572`, artifact `11337072269`. The first signed inbound proof sent actual WhatsApp audio via `render-gemini` with CPU 37 ms; the second sent actual audio via cache with CPU 38 ms and `voice_cached:true`. This proof remains preserved; it is not synthesized again by the audit. Final-closure retains its independent real inbound/delivery chain and human naturality requirements; this change does not assert a new final-green certificate.
+
+The operational audit reads the seven unique catalog keys only. Missing keys produce SKIP/warning, never synthesis. For present keys it requires `voice_cached:true`, correlated Worker CPU <50 ms, Whisper word error rate <=10%, and identical numeric values (Portuguese number words normalized). Legacy `audit-source` and `audit-encode` return HTTP 410. Final-closure GET retries 503/HTML at most three attempts.
+
+One authorized cycle, after the exact tagged deployment, dispatches the warm workflow exactly once with a seven-call maximum, then dispatches the cache audit and the Combo sandbox proof. A quota response stops warm immediately and preserves written-key evidence. No schedules are introduced. GitHub public repository runners are free; no provider plans or billing settings are changed.
+
+The Combo proof creates a Mercado Pago test buyer, uses its official test Visa, and creates the payment for the sandbox checkout's exact order/reference and R$297 amount. It requires actual provider webhook reconciliation, internal order `paid` (provider `approved`), Resend email ID and a valid temporary download with matching SHA256. Sandbox delivery goes only to Resend's official `delivered@resend.dev` test sink, not a human inbox; the report identifies this distinction. Payment creation via API is not a browser Checkout Pro interaction. Global sales remain disabled.
