@@ -145,6 +145,127 @@ def automatic_workflow_guard(text):
     check(not re.search(r'(?:scripts|tests)/[^\s\"\']*(?:mercadopago|financial|payment|stripe|asaas)[^\s\"\']*\.(?:py|mjs|js|sh)', text, re.I), 'AUTOMATIC_NO_FINANCIAL_SCRIPT')
 
 
+def order_sql_reused_params_typed(root=ROOT):
+    violations = []
+    query_re = re.compile(r'(?:sql|db)\\.query\\(\\s*`([\\s\\S]*?)`', re.I)
+    for path in sorted((root / 'worker').rglob('*.mjs')):
+        text = path.read_text('utf-8')
+        for match in query_re.finditer(text):
+            sql = match.group(1)
+            if not re.search(r'\\b(?:INSERT\\s+INTO|UPDATE|FROM)\\s+orders\\b', sql, re.I):
+                continue
+            nums = re.findall(r'\\$(\\d+)', sql)
+            for number in sorted(set(nums)):
+                if nums.count(number) < 2:
+                    continue
+                occurrences = list(re.finditer(r'\\
+    filename = REGISTERED_EXCEPTION['filename']
+    if filename in workflows:
+        data = workflows[filename].encode()
+        actual = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        check(actual == REGISTERED_EXCEPTION['blob'], 'ZEES_EXCEPTION_BLOB_CHANGED')
+        automatic_workflow_guard(workflows[filename])
+
+
+def downstream_guards(workflows, initial_names):
+    validate_registered_exception(workflows)
+    reachable = set(initial_names)
+    reviewed = set()
+    while True:
+        added = False
+        for filename, text in workflows.items():
+            if filename in reviewed:
+                continue
+            block = event_block(text, 'workflow_run')
+            if not block:
+                continue
+            watched = set(re.findall(r'^\s+-\s*[\"\']?([^\n\"\']+)[\"\']?\s*$', block, re.M))
+            inline = re.search(r'workflows:\s*\[([^\]]+)\]', block)
+            if inline:
+                watched.update(x.strip().strip('\"\'') for x in inline.group(1).split(','))
+            if not watched.intersection(reachable):
+                continue
+            reviewed.add(filename)
+            try:
+                automatic_workflow_guard(text)
+            except AssertionError as error:
+                raise AssertionError('DOWNSTREAM:' + filename + ':' + str(error)) from None
+            name = re.search(r'^name:\s*(.+)$', text, re.M)
+            if name:
+                reachable.add(name.group(1).strip().strip('\"\''))
+            added = True
+        if not added:
+            return reviewed
+
+
+def guard_results(root=ROOT):
+    rows = {}
+    for name, operation in [
+        ('MANUAL_WORKFLOW', lambda: guarded_workflow((root / MANUAL).read_text(), True)),
+        ('STATIC_WORKFLOW', lambda: guarded_workflow((root / STATIC).read_text(), False)),
+        ('SCRIPT_ENDPOINT_IDENTITY_ISOLATION', lambda: script_guards((root / SCRIPT).read_text())),
+        ('ORDER_SQL_REUSED_PARAMS_TYPED', lambda: order_sql_reused_params_typed(root)),
+    ]:
+        operation()
+        rows[name] = 'PASS'
+    workflows = {}
+    initial_names = {'Sandbox static checks'}
+    for path in sorted((root / '.github/workflows').glob('*.yml')):
+        if path.name in {pathlib.Path(MANUAL).name, pathlib.Path(STATIC).name}:
+            continue
+        text = path.read_text()
+        workflows[path.name] = text
+        if applies_to_scope(text):
+            automatic_workflow_guard(text)
+            rows['AUTOMATIC:' + path.name] = 'PASS'
+            name = re.search(r'^name:\s*(.+)$', text, re.M)
+            if name:
+                initial_names.add(name.group(1).strip().strip('\"\''))
+    validate_registered_exception(workflows)
+    rows['ZEES_REGISTERED_EXCEPTION_BLOB'] = 'PASS'
+    try:
+        downstream_guards(workflows, initial_names)
+        rows['DOWNSTREAM_AUTOMATION'] = 'PASS'
+    except AssertionError as error:
+        rows['DOWNSTREAM_AUTOMATION'] = 'FAIL:' + str(error)
+    return rows
+
+
+def main():
+    try:
+        rows = guard_results()
+        for path in (SCRIPT, CHECKER, TEST):
+            text = (ROOT / path).read_text()
+            compile(text, path, 'exec')
+            check(not re.search(r'[ \t]+$', text, re.M), 'TRAILING_WHITESPACE')
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        suite = unittest.defaultTestLoader.discover(str(ROOT / 'tests'), pattern='test_sandbox_guards.py')
+        # Includes a negative transport test: any unmocked network attempt fails.
+        with patch.object(socket.socket, 'connect', side_effect=AssertionError('NETWORK_FORBIDDEN')), \
+             patch.object(socket, 'create_connection', side_effect=AssertionError('NETWORK_FORBIDDEN')):
+            result = unittest.TextTestRunner(verbosity=2).run(suite)
+        check(result.wasSuccessful() and result.testsRun >= 20, 'MOCK_GUARDS_FAILED')
+        print(json.dumps({'guards': rows, 'syntax': 'PASS', 'mock_tests': result.testsRun, 'network': 'BLOCKED',
+            'registered_exception': REGISTERED_EXCEPTION,
+            'separate_risks': ['financial-e2e-closure production-token fallback unchanged',
+                               'certification token used as operator substitute in other workflows; unchanged']}))
+        check(all(value == 'PASS' for value in rows.values()), 'DOWNSTREAM_AUTOMATION_UNSAFE')
+        return 0
+    except Exception as error:
+        print('::error title=SANDBOX_STATIC::' + str(error))
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
+ + re.escape(number) + r'(?!\\d)', sql))
+                untyped = [m for m in occurrences if not re.match(r'::[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?', sql[m.end():])]
+                if untyped:
+                    line = text[:match.start()].count('\\n') + 1
+                    violations.append(f'{path.relative_to(root)}:{line}:reused_${number}_without_cast')
+    check(not violations, 'ORDER_SQL_REUSED_PARAM_UNTYPED:' + ','.join(violations[:20]))
+    return 'PASS'
+
 def validate_registered_exception(workflows):
     filename = REGISTERED_EXCEPTION['filename']
     if filename in workflows:
