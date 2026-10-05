@@ -11,3 +11,5 @@ Run `37249761141`, artifact `11320467528`, delivered two signed inbound OGG proo
 ## New proof safeguards
 
 The production deploy whose commit carries `[voice-cache-cycle-20261005]` authorizes one proof cycle only. No automatic rerun can synthesize. Manual proof dispatch is cache-only. The signed inbound repeat carries a cache-only flag enforced by the Worker before contacting Render, even if KV propagation lags. Missing cache stops the proof. The cache warm workflow is manual only and is not executed in this cycle.
+
+The legacy delivery-recovery workflow now keeps automatic validation but requires an explicit manual dispatch for real deliveries, preventing an extra Gemini call from the merge push.

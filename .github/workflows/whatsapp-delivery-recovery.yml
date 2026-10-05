@@ -6,6 +6,12 @@ on:
   push:
     branches: [gh-pages]
     paths: ['.github/workflows/central-production-deploy.yml', 'worker/whatsapp-onboarding.mjs', 'worker/whatsapp-inbound-safety.mjs', 'worker/cloudflare-worker.compat.mjs', 'worker/cloudflare-worker.recovered.mjs', 'worker/voice-provider-router.mjs', '.github/workflows/whatsapp-delivery-recovery.yml']
+  workflow_dispatch:
+    inputs:
+      real_proof:
+        description: 'Explicitly authorize the legacy real WhatsApp delivery proof'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -32,7 +38,8 @@ jobs:
           node --check worker/whatsapp-onboarding.mjs
           node --check worker/voice-provider-router.mjs
   production-proof:
-    if: github.event_name == 'push'
+    # Real synthesis spends quota; pushes run validation only.
+    if: github.event_name == 'workflow_dispatch' && inputs.real_proof == true
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 20

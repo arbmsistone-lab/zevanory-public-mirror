@@ -1,5 +1,3 @@
-import { renderVoiceSecret } from "./voice-auth.mjs";
-export { renderVoiceSecret } from "./voice-auth.mjs";
 import { Buffer } from "node:buffer";
 import lamejs from "./vendor/lame.min.mjs";
 import { downsamplePcmMono, encodePcmRemotely } from "./voice-pcm.mjs";
@@ -66,6 +64,10 @@ export async function handleVoiceChunk(request,env){
  const mp3=encodeVoiceChunk(bytes,rate,meta);
  console.log(JSON.stringify({voice_encode_chunk:true,audit_id:meta.audit_id,index:meta.index,attempt:meta.attempt,samples:meta.samples,mp3_bytes:mp3.length}));
  return new Response(mp3,{headers:{"content-type":"audio/mpeg","cache-control":"no-store"}});
+}
+export async function renderVoiceSecret(env){
+ const key=await crypto.subtle.importKey("raw",E.encode(String(env.ELITE_INTERNAL_TOKEN||"")),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+ return hex(await crypto.subtle.sign("HMAC",key,E.encode("zevanory-render-voice-v1")));
 }
 async function encodeChunksDirect(pcm,rate,env,fetchImpl=fetch,{auditId=crypto.randomUUID(),onStage=async()=>{}}={}){
  if(!(pcm instanceof Uint8Array)||!pcm.length||pcm.length>MAX||pcm.length%2||![8000,16000,24000,32000,48000].includes(rate))throw Error("voice_pcm_size_invalid");
