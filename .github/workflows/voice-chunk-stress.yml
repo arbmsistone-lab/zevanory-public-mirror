@@ -31,7 +31,7 @@ jobs:
           import array,math
           p=array.array('h');p.frombytes(open('/tmp/chunk-decoded.pcm','rb').read())
           # Each interior seam must retain tone energy without an inserted silent frame.
-          for index in [23*576,43*576,63*576]:
+          for index in [24*576,45*576,66*576]:
               values=p[index-200:index+200]
               rms=math.sqrt(sum(x*x for x in values)/len(values))
               assert rms>1000,('silent_mp3_seam',index,rms)

@@ -6,7 +6,7 @@ c=json.load(open(p))
 c["account_id"]=os.environ["PUBLIC_OWNER_ACCOUNT_ID"]
 c["main"]="worker/cloudflare-worker.compat.mjs"
 c.pop("secrets",None)
-c.pop("services",None)
+c["services"]=[{"binding":"SELF","service":"zevanory"}]
 c["ai"]={"binding":"AI"}
 c.pop("routes",None)
 c["workers_dev"]=True

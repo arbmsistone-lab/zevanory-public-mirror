@@ -1,6 +1,6 @@
 import lamejs from "./vendor/lame.min.mjs";
 import { downsamplePcmMono, encodePcmRemotely } from "./voice-pcm.mjs";
-const E=new TextEncoder(), FRAME=576, CORE=FRAME*20, WARM=FRAME*2, MAX=3*1024*1024;
+const E=new TextEncoder(), FRAME=576, CORE=FRAME*21, WARM=FRAME*2, MAX=3*1024*1024;
 const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
 const replay=new Map();
 export async function voiceSignedHeaders(bytes,rate,env,fields={}){
@@ -43,7 +43,7 @@ export function encodeVoiceChunk(pcm,rate,meta){
  for(let i=0;i<samples.length;i+=1152){const b=encoder.encodeBuffer(samples.subarray(i,i+1152));if(b.length)parts.push(new Uint8Array(b));}
  parts.push(new Uint8Array(encoder.flush()));
  const all=frames(join(parts)),count=Math.ceil(Number(meta.samples)/FRAME);
- if(!Number.isInteger(count)||count<1||count>20||all.length<3+count)throw Error("voice_chunk_frame_count_invalid");
+ if(!Number.isInteger(count)||count<1||count>21||all.length<3+count)throw Error("voice_chunk_frame_count_invalid");
  // LAME's 576-sample encoder delay follows 1152 samples of overlap.
  // Keep initial warmup/final flush only once for the complete MP3 stream.
  const first=meta.first===true,last=meta.last===true;
@@ -76,12 +76,14 @@ export async function encodePcmInChunks(pcm,rate,env,fetchImpl=fetch,{auditId=cr
    block.set(pcm.subarray(a*2,b*2),(a-begin)*2);
    let completed=false;
    for(let attempt=0;attempt<3;attempt++){
-    if(++calls>38)throw Error("voice_chunk_invocation_budget");
+    if(++calls>30)throw Error("voice_chunk_invocation_budget");
     const meta={audit_id:String(auditId).slice(0,80),index,attempt,samples,first:index===0,last:start+samples>=total};
     const headers=await voiceSignedHeaders(block,rate,env,meta);
     const request=new Request("https://zevanory.api.br/api/internal/voice/encode-chunk?audit_id="+encodeURIComponent(meta.audit_id)+"&chunk="+index+"&attempt="+attempt,{method:"POST",headers,body:block,signal:AbortSignal.timeout(15000)});
-    const at=Date.now(),response=await fetchImpl(request);
-    metrics.push({index,attempt,http:response.status,wall_ms:Date.now()-at,samples});
+    const at=Date.now();let response,fetchError=null;
+    try{response=env.SELF?.fetch?await env.SELF.fetch(request):await fetchImpl(request);}
+    catch(error){fetchError=String(error?.message||error).slice(0,150);response=new Response("",{status:503});}
+    metrics.push({index,attempt,http:response.status,wall_ms:Date.now()-at,samples,...(fetchError?{fetch_error:fetchError}:{})});
     if(response.ok){const bytes=new Uint8Array(await response.arrayBuffer());frames(bytes);parts.push(bytes);completed=true;break;}
     await response.body?.cancel();
     if(response.status!==503)throw Error("voice_chunk_http_"+response.status);
