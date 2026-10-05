@@ -14625,7 +14625,7 @@ async function handler15(req, res) {
     const sql = cs(process.env.DATABASE_URL);
     const orders = await sql.query(`
       SELECT order_id,amount,status,external_reference,provider_checkout_id,certification_pilot FROM orders
-      WHERE ($1<>'' AND order_id::text=$1) OR ($2<>'' AND provider_checkout_id=$2)
+      WHERE ($1::text<>'' AND order_id::text=$1::text) OR ($2::text<>'' AND provider_checkout_id=$2::text)
     `, [parsedOrderId || "", checkoutSession]);
     if (orders.length === 0) return json11(res, 200, { accepted: true, ignored: true, reason: "unlinked_payment" });
     if (orders.length === 1 && supersededPartialRefund(webhook, payment, orders[0])) return json11(res, 200, { accepted: true, ignored: true, reason: "superseded_partial_refund" });
@@ -14651,14 +14651,14 @@ async function handler15(req, res) {
       rows = await sql.query(`
       WITH target AS (
         SELECT order_id, amount, status FROM orders
-        WHERE order_id=$8 AND external_reference=$6 AND provider_checkout_id=$10 AND amount=$7 AND (
-          ($3='payment_confirmed' AND status IN ('checkout_ready','checkout_uncertain','paid')) OR
-          ($3='refund_confirmed' AND status IN ('paid','partially_refunded','refunded'))
+        WHERE order_id=$8::uuid AND external_reference=$6::text AND provider_checkout_id=$10::text AND amount=$7::numeric AND (
+          ($3::text='payment_confirmed' AND status IN ('checkout_ready','checkout_uncertain','paid')) OR
+          ($3::text='refund_confirmed' AND status IN ('paid','partially_refunded','refunded'))
         )
       ), inserted AS (
         INSERT INTO financial_events
           (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount,order_id,refunded_total)
-        SELECT $1,'asaas',$2,$3,$4,$5,$6,$7,order_id,$9 FROM target
+        SELECT $1::text,'asaas',$2::text,$3::text,$4::text,$5::text,$6::text,$7::numeric,order_id,$9::numeric FROM target
         ON CONFLICT DO NOTHING
         RETURNING order_id,normalized_event,refunded_total
       ), updated AS (
@@ -14672,7 +14672,7 @@ async function handler15(req, res) {
       ), fulfillment_paid AS (
         INSERT INTO service_fulfillment
           (fulfillment_id,order_id,status,delivery_mode,evidence_ref,created_at,updated_at)
-        SELECT $11,i.order_id,'pending','digital','asaas:'||$1,now(),now()
+        SELECT $11::uuid,i.order_id,'pending','digital','asaas:'||$1::text,now(),now()
         FROM inserted i
         WHERE i.normalized_event='payment_confirmed'
         ON CONFLICT(order_id) DO UPDATE SET
@@ -14682,7 +14682,7 @@ async function handler15(req, res) {
       ), fulfillment_refund AS (
         UPDATE service_fulfillment sf SET
           status='canceled',
-          evidence_ref='asaas:'||$1,
+          evidence_ref='asaas:'||$1::text,
           updated_at=now()
         FROM inserted i,target t
         WHERE sf.order_id=i.order_id
@@ -14694,11 +14694,11 @@ async function handler15(req, res) {
         (SELECT count(*)::int FROM target) AS target_count,
         (SELECT count(*)::int FROM inserted) AS inserted_count,
         (SELECT status FROM updated LIMIT 1) AS order_status,
-        (SELECT status FROM orders WHERE order_id=$8) AS current_status,
+        (SELECT status FROM orders WHERE order_id=$8::uuid) AS current_status,
         coalesce(
           (SELECT status FROM fulfillment_refund LIMIT 1),
           (SELECT status FROM fulfillment_paid LIMIT 1),
-          (SELECT status FROM service_fulfillment WHERE order_id=$8 LIMIT 1)
+          (SELECT status FROM service_fulfillment WHERE order_id=$8::uuid LIMIT 1)
         ) AS fulfillment_status
     `, [webhook.providerEventId, webhook.paymentId, normalized, webhook.eventName, String(payment.status), externalReference, Number(payment.value), orderId, refundedTotal, String(orders[0].provider_checkout_id), fulfillmentId]);
     } catch {
@@ -14871,14 +14871,14 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
       rows = await sql.query(`
       WITH target AS (
         SELECT order_id,amount,status FROM orders
-        WHERE order_id=$8 AND provider='mercadopago' AND external_reference=$6 AND amount=$7 AND (
-          ($3='payment_confirmed' AND status IN ('checkout_ready','checkout_uncertain','paid')) OR
-          ($3='refund_confirmed' AND status IN ('paid','partially_refunded','refunded'))
+        WHERE order_id=$8::uuid AND provider='mercadopago' AND external_reference=$6::text AND amount=$7::numeric AND (
+          ($3::text='payment_confirmed' AND status IN ('checkout_ready','checkout_uncertain','paid')) OR
+          ($3::text='refund_confirmed' AND status IN ('paid','partially_refunded','refunded'))
         )
       ), inserted AS (
         INSERT INTO financial_events
           (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount,order_id,refunded_total)
-        SELECT $1,'mercadopago',$2,$3,$4,$5,$6,$7,order_id,$9 FROM target
+        SELECT $1::text,'mercadopago',$2::text,$3::text,$4::text,$5::text,$6::text,$7::numeric,order_id,$9::numeric FROM target
         ON CONFLICT DO NOTHING
         RETURNING order_id,normalized_event,refunded_total
       ), updated AS (
@@ -14892,7 +14892,7 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
       ), fulfillment_paid AS (
         INSERT INTO service_fulfillment
           (fulfillment_id,order_id,status,delivery_mode,evidence_ref,created_at,updated_at)
-        SELECT $10,i.order_id,'pending','digital','mercadopago:'||$1,now(),now()
+        SELECT $10::uuid,i.order_id,'pending','digital','mercadopago:'||$1::text,now(),now()
         FROM inserted i
         WHERE i.normalized_event='payment_confirmed'
         ON CONFLICT(order_id) DO UPDATE SET
@@ -14902,7 +14902,7 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
       ), fulfillment_refund AS (
         UPDATE service_fulfillment sf SET
           status='canceled',
-          evidence_ref='mercadopago:'||$1,
+          evidence_ref='mercadopago:'||$1::text,
           updated_at=now()
         FROM inserted i,target t
         WHERE sf.order_id=i.order_id
@@ -14914,11 +14914,11 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
         (SELECT count(*)::int FROM target) target_count,
         (SELECT count(*)::int FROM inserted) inserted_count,
         (SELECT status FROM updated LIMIT 1) order_status,
-        (SELECT status FROM orders WHERE order_id=$8) current_status,
+        (SELECT status FROM orders WHERE order_id=$8::uuid) current_status,
         coalesce(
           (SELECT status FROM fulfillment_refund LIMIT 1),
           (SELECT status FROM fulfillment_paid LIMIT 1),
-          (SELECT status FROM service_fulfillment WHERE order_id=$8 LIMIT 1)
+          (SELECT status FROM service_fulfillment WHERE order_id=$8::uuid LIMIT 1)
         ) fulfillment_status
       `, [providerEventId, webhook.paymentId, event.normalized, "payment.updated", String(payment.status || ""), externalReference, Number(payment.transaction_amount), String(orders[0].order_id), event.refundedTotal, fulfillmentId]);
     } catch {
@@ -16549,14 +16549,14 @@ async function handleStripeWebhook(req, res) {
     const rows = await sql.query(`
       WITH target AS (
         SELECT order_id,amount,status FROM orders
-        WHERE order_id=$8 AND provider='stripe' AND amount=$7 AND (
-          ($3='payment_confirmed' AND status IN ('checkout_ready','checkout_uncertain','paid')) OR
-          ($3='refund_confirmed' AND status IN ('paid','partially_refunded','refunded'))
+        WHERE order_id=$8::uuid AND provider='stripe' AND amount=$7::numeric AND (
+          ($3::text='payment_confirmed' AND status IN ('checkout_ready','checkout_uncertain','paid')) OR
+          ($3::text='refund_confirmed' AND status IN ('paid','partially_refunded','refunded'))
         )
       ), inserted AS (
         INSERT INTO financial_events
           (provider_event_id,provider,provider_payment_id,normalized_event,provider_event_name,provider_status,external_reference,amount,order_id,refunded_total)
-        SELECT $1,'stripe',$2,$3,$4,$5,$6,$7,order_id,$9 FROM target
+        SELECT $1::text,'stripe',$2::text,$3::text,$4::text,$5::text,$6::text,$7::numeric,order_id,$9::numeric FROM target
         ON CONFLICT DO NOTHING
         RETURNING order_id,normalized_event,refunded_total
       ), updated AS (
@@ -16570,13 +16570,13 @@ async function handleStripeWebhook(req, res) {
       ), fulfillment_paid AS (
         INSERT INTO service_fulfillment
           (fulfillment_id,order_id,status,delivery_mode,evidence_ref,created_at,updated_at)
-        SELECT $10,i.order_id,'pending','digital','stripe:'||$1,now(),now()
+        SELECT $10::uuid,i.order_id,'pending','digital','stripe:'||$1::text,now(),now()
         FROM inserted i
         WHERE i.normalized_event='payment_confirmed'
         ON CONFLICT(order_id) DO UPDATE SET evidence_ref=EXCLUDED.evidence_ref,updated_at=now()
         RETURNING order_id,status
       ), fulfillment_refund AS (
-        UPDATE service_fulfillment sf SET status='canceled',evidence_ref='stripe:'||$1,updated_at=now()
+        UPDATE service_fulfillment sf SET status='canceled',evidence_ref='stripe:'||$1::text,updated_at=now()
         FROM inserted i,target t
         WHERE sf.order_id=i.order_id AND i.normalized_event='refund_confirmed' AND i.refunded_total>=t.amount
         RETURNING sf.order_id,sf.status
@@ -16585,8 +16585,8 @@ async function handleStripeWebhook(req, res) {
         (SELECT count(*)::int FROM target) target_count,
         (SELECT count(*)::int FROM inserted) inserted_count,
         (SELECT status FROM updated LIMIT 1) order_status,
-        (SELECT status FROM orders WHERE order_id=$8) current_status,
-        coalesce((SELECT status FROM fulfillment_refund LIMIT 1),(SELECT status FROM fulfillment_paid LIMIT 1),(SELECT status FROM service_fulfillment WHERE order_id=$8 LIMIT 1)) fulfillment_status
+        (SELECT status FROM orders WHERE order_id=$8::uuid) current_status,
+        coalesce((SELECT status FROM fulfillment_refund LIMIT 1),(SELECT status FROM fulfillment_paid LIMIT 1),(SELECT status FROM service_fulfillment WHERE order_id=$8::uuid LIMIT 1)) fulfillment_status
     `, [providerEventId,paymentIntentId,normalized,eventName,String(intent?.status || ""),externalReference,amount,orderId,refundedTotal,fulfillmentId]);
     const outcome = rows[0] || {};
     if (Number(outcome.target_count) !== 1) return json12(res, 409, { error: "order_state_invalid", accepted: false });
