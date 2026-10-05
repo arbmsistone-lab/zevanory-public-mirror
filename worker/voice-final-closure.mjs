@@ -9,11 +9,12 @@ async function readFinalCertificate(env={}){
   return kv.get("voice-final/certification",{type:"json"}).catch(()=>null);
 }
 export async function voiceFinalClosureStatus(env={}){
-  const [study,whatsapp,e2e,certificate]=await Promise.all([
+  const [study,whatsapp,e2e,certificate,sandboxProof]=await Promise.all([
     voiceStudyStatus(env),
     whatsappOnboardingStatus(env),
     whatsappE2EStatus(env),
-    readFinalCertificate(env)
+    readFinalCertificate(env),
+    env.ZEVANORY_PRIVATE_ARTIFACTS?.get?.("sandbox-proof-v2:certification", {type:"json"}).catch(()=>null) || null
   ]);
   const router=voiceProviderStatus(env);
   const release_sha=String(env.ZEVANORY_RELEASE_SHA||"").trim();
@@ -31,6 +32,7 @@ export async function voiceFinalClosureStatus(env={}){
     voice_repeat_provider:"cache",
     voice_audit_mode:"cache-only",
     whatsapp_cache_proof:{pr:379,artifact_id:11337072269,sha:"c750488fda84e0a0ba14ea12d8aabc87add12e16",voice_cached:true,cpuTime:38},
+    sandbox_purchase_proof:sandboxProof?.status === "PASS" ? sandboxProof : null,
     service:"ZEVANORY",
     engine:"ZEVANORY Voice Support Final Closure",
     release_sha:release_sha||null,
