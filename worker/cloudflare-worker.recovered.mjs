@@ -14739,8 +14739,8 @@ async function handler15(req, res) {
 __name(handler15, "handler");
 
 // src/http/webhookMercadoPago.mjs
-async function fetchMercadoPagoPayment(paymentId, accessToken, { test = false, fetchImpl = fetch } = {}) {
-  const response2 = await fetchImpl(`${MERCADOPAGO_API_BASE}/v1/payments/${encodeURIComponent(paymentId)}`, { method: "GET", headers: { accept: "application/json", authorization: `Bearer ${accessToken}`, ...(test ? { "x-test-token": "true" } : {}) } });
+async function fetchMercadoPagoPayment(paymentId, accessToken, fetchImpl = fetch) {
+  const response2 = await fetchImpl(`${MERCADOPAGO_API_BASE}/v1/payments/${encodeURIComponent(paymentId)}`, { method: "GET", headers: { accept: "application/json", authorization: `Bearer ${accessToken}` } });
   if (!response2.ok) throw new Error(`mercadopago_lookup_${response2.status}`);
   return response2.json();
 }
@@ -14841,7 +14841,7 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
   if (process.env.FINANCIAL_EVENTS_ENABLED !== "true") return json12(res, 503, { error: "financial_events_disabled", accepted: false });
   if (!accessToken) return json12(res, 503, { error: "financial_provider_unavailable", accepted: false });
   try {
-    const payment = await fetchMercadoPagoPayment(webhook.paymentId, accessToken, { test: certificationOnly });
+    const payment = await fetchMercadoPagoPayment(webhook.paymentId, accessToken);
     const orderId = parseExternalReference(payment.external_reference);
     const snapshot = { payment_id: webhook.paymentId, status: String(payment.status || ""), external_reference: String(payment.external_reference || ""), transaction_amount: Number(payment.transaction_amount || 0), refunded_total: Number(payment.transaction_amount_refunded || 0), certification_pilot: certificationOnly };
     if (!process.env.DATABASE_URL) {
