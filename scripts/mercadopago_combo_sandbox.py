@@ -29,6 +29,7 @@ MP = 'https://api.mercadopago.com'
 INBOX_PATH = '/api/internal/certification/inbox/'
 INBOX_ADDRESS = 'prova-sandbox@zevanory.api.br'
 CERT_PATH = '/api/internal/certification/e2e/'
+USER_AGENT = 'zevanory-sandbox-proof/3'
 FROZEN_ORDER = 'a28c53ab-9ce7-429d-9d6b-1311a3fad406'
 OUT = pathlib.Path('evidence/mercadopago-combo-sandbox.json')
 READ_SCOPE = 'zevanory.sandbox_inbox.read'
@@ -168,6 +169,8 @@ class Client:
             require(not any(s.encode() in raw_body for s in (self.identity.access_token,
                 self.identity.inbox_token, self.identity.certification_token)), 'BODY_CREDENTIAL_DENIED')
             headers['content-type'] = 'application/json'
+        # Cloudflare rejects the default Python-urllib signature (error 1010).
+        headers['user-agent'] = USER_AGENT
         req = urllib.request.Request(url, method=method, headers=headers, data=raw_body)
         try:
             with self.transport(req, timeout=30) as response:
