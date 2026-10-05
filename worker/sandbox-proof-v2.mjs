@@ -337,11 +337,11 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
     // Provider-side delivery outcome of the sandbox email (delivered/bounced/...),
     // read with the sending key; independent of the receiving inbox.
     const emailId = projected.delivery_evidence.email_provider_id;
-    if (emailId && String(env.RESEND_API_KEY || "")) {
+    if (emailId) {
       try {
-        const r = await fetch(`${RESEND}/emails/${encodeURIComponent(emailId)}`, { headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, accept: "application/json" } });
-        const body = r.ok ? await r.json().catch(() => null) : null;
-        projected.delivery_evidence.email_last_event = String(body?.last_event || (r.ok ? "" : `http_${r.status}`)).replace(/[^a-z0-9_]/gi, "").slice(0, 40) || null;
+        // The sending key is send-only (401 on reads); the full-access sandbox key can read.
+        const r = await resendGet(env, `/emails/${encodeURIComponent(emailId)}`);
+        projected.delivery_evidence.email_last_event = String(r.body?.last_event || (r.status === 200 ? "" : `http_${r.status}`)).replace(/[^a-z0-9_]/gi, "").slice(0, 40) || null;
       } catch { projected.delivery_evidence.email_last_event = "lookup_failed"; }
     }
     return json(200, projected);
