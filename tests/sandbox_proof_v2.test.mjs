@@ -84,6 +84,15 @@ test("status projection marks signature only from receiver provenance", () => {
   assert.equal(unsigned.financial_events[0].signature_verified, false);
 });
 
+test("resend received email matches only exact address and order header", () => {
+  const oid = "11111111-2222-4333-8444-555555555555";
+  const ok = v2.receivedMatches({ id: "r1", to: ["prova-sandbox@zevanory.api.br"], created_at: "2030-01-01T00:00:00Z", headers: { "X-Zevanory-Order-ID": oid }, text: "link https://zevanory.api.br/api/internal/certification/e2e/download?token=abc" }, oid);
+  assert.equal(ok.delivered_via, "resend-inbound");
+  assert.match(ok.text, /token=abc/);
+  assert.equal(v2.receivedMatches({ id: "r2", to: ["suporte@zevanory.api.br"], headers: { "x-zevanory-order-id": oid } }, oid), null);
+  assert.equal(v2.receivedMatches({ id: "r3", to: ["prova-sandbox@zevanory.api.br"], headers: { "x-zevanory-order-id": "other" } }, oid), null);
+});
+
 test("inbox requires the read token and stores only the isolated address", async () => {
   const e = env();
   const oid = "11111111-2222-4333-8444-555555555555";
@@ -105,6 +114,6 @@ test("quoted-printable soft breaks are joined so the link survives", () => {
 test("recovered delivery only relaxes live_mode for registered v2 orders on the isolated inbox", () => {
   const src = readFileSync(new URL("../worker/cloudflare-worker.recovered.mjs", import.meta.url), "utf8");
   assert.match(src, /if \(certificationOnly && payment\?\.live_mode !== false && !sandboxV2\) throw/);
-  assert.ok(src.includes("/^prova@sandbox-mail\\.zevanory\\.api\\.br$/"));
+  assert.ok(src.includes("/^prova-sandbox@zevanory\\.api\\.br$/"));
   assert.ok(createHash("sha256"));
 });

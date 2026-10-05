@@ -4,8 +4,11 @@
 // are certification_pilot=true, excluded from revenue and never delivered to a
 // real customer: the delivery mail goes only to the isolated inbox subdomain.
 
-export const SANDBOX_INBOX_DOMAIN = "sandbox-mail.zevanory.api.br";
-export const SANDBOX_INBOX_ADDRESS = `prova@${SANDBOX_INBOX_DOMAIN}`;
+export const SANDBOX_INBOX_DOMAIN = "zevanory.api.br";
+// Apex MX is Resend Receiving (inbound-smtp.sa-east-1.amazonaws.com); any address
+// on the domain is received. Only this exact address is readable by the proof.
+export const SANDBOX_INBOX_ADDRESS = "prova-sandbox@zevanory.api.br";
+const RESEND = "https://api.resend.com";
 export const SANDBOX_OFFER_ID = "ZEV-CMB-011";
 export const SANDBOX_AMOUNT_BRL = 297;
 export const FROZEN_ORDER = "a28c53ab-9ce7-429d-9d6b-1311a3fad406";
@@ -158,9 +161,37 @@ export function mimeText(raw) {
   return { headers, text };
 }
 
+async function resendGet(env, path) {
+  const key = String(env.RESEND_API_KEY || "");
+  if (!key) return { status: 503, body: null };
+  const r = await fetch(RESEND + path, { headers: { authorization: `Bearer ${key}`, accept: "application/json" } });
+  let body = null;
+  try { body = await r.json(); } catch {}
+  return { status: r.status, body };
+}
+
+function htmlText(html) {
+  return String(html || "").replace(/<a\s[^>]*href="([^"]+)"[^>]*>/gi, " $1 ").replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&");
+}
+
+export function receivedMatches(detail, oid) {
+  const headers = Object.fromEntries(Object.entries(detail?.headers || {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
+  const to = (Array.isArray(detail?.to) ? detail.to : [detail?.to]).map((x) => String(x || "").toLowerCase().replace(/^.*<([^>]+)>.*$/, "$1"));
+  if (!to.includes(SANDBOX_INBOX_ADDRESS)) return null;
+  if (String(headers["x-zevanory-order-id"] || "").toLowerCase() !== oid) return null;
+  return {
+    id: String(detail.id || "").replace(/[^a-zA-Z0-9_-]/g, ""),
+    to: [SANDBOX_INBOX_ADDRESS],
+    received_at_ms: Date.parse(detail.created_at || "") || 0,
+    x_zevanory_order_id: oid,
+    delivered_via: "resend-inbound",
+    text: String(detail.text || "") + "\n" + htmlText(detail.html)
+  };
+}
+
 export async function handleSandboxInboundEmail(message, env) {
   const to = String(message?.to || "").toLowerCase();
-  if (!to.endsWith("@" + SANDBOX_INBOX_DOMAIN)) return false;
+  if (to !== SANDBOX_INBOX_ADDRESS) return false;
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!kv || to !== SANDBOX_INBOX_ADDRESS || Number(message.rawSize || 0) > 1024 * 1024) {
     message.setReject?.("sandbox_inbox_rejected");
@@ -198,16 +229,23 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
     if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
     const provided = String(request.headers.get("x-sandbox-inbox-token") || "");
     if (provided.length < 32 || !timingSafeEqualText(await sha256Hex(provided), SANDBOX_INBOX_TOKEN_SHA256)) return json(401, { error: "sandbox_inbox_auth_required" });
-    if (path === `${INBOX}profile`) return json(200, { email_address: SANDBOX_INBOX_ADDRESS, read_only: true, provider: "cloudflare-email-routing" });
+    if (path === `${INBOX}profile`) {
+      const probe = await resendGet(env, "/emails/receiving?limit=1");
+      return json(200, { email_address: SANDBOX_INBOX_ADDRESS, read_only: true, provider: "resend-inbound", receiving_api_status: probe.status });
+    }
     const oid = String(url.searchParams.get("order_id") || "").toLowerCase();
     if (!UUID.test(oid) || oid === FROZEN_ORDER) return json(400, { error: "order_id_invalid" });
-    const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
-    if (!kv) return json(503, { error: "sandbox_inbox_unavailable" });
-    const listed = await kv.list({ prefix: MAIL_PREFIX(oid), limit: 20 });
+    const listed = await resendGet(env, "/emails/receiving?limit=50");
+    if (listed.status !== 200) return json(503, { error: "sandbox_inbox_unavailable", receiving_api_status: listed.status });
+    const rows = (Array.isArray(listed.body?.data) ? listed.body.data : []).filter((m) =>
+      (Array.isArray(m?.to) ? m.to : [m?.to]).some((x) => String(x || "").toLowerCase().includes(SANDBOX_INBOX_ADDRESS)) &&
+      Date.now() - (Date.parse(m?.created_at || "") || 0) < 24 * 3600 * 1000).slice(0, 10);
     const messages = [];
-    for (const key of listed.keys || []) {
-      const value = await kv.get(key.name);
-      if (value) { try { messages.push(JSON.parse(value)); } catch {} }
+    for (const row of rows) {
+      if (!/^[a-zA-Z0-9_-]{1,128}$/.test(String(row.id || ""))) continue;
+      const detail = await resendGet(env, `/emails/receiving/${row.id}`);
+      const match = detail.status === 200 ? receivedMatches(detail.body, oid) : null;
+      if (match) messages.push(match);
     }
     return json(200, { messages });
   }
