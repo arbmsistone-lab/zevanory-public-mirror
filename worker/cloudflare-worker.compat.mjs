@@ -99,7 +99,7 @@ const wrapped = {
     let normalized = normalizeEnv(env);
     const url = new URL(request.url);
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return Response.json({error:"voice_chunks_disabled"},{status:410});
-    if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);
+    if(url.pathname==="/api/internal/voice/encode-stream") return Response.json({error:"voice_chunks_disabled"},{status:410});
     if(url.pathname==="/api/admin/voice/encode-audit") return handleReserveEncodeAudit(request,normalized);
 
     // One administrative surface only: legacy HTML entrypoints permanently
