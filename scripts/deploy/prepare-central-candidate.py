@@ -69,13 +69,9 @@ alias_src=alias_src.replace(
 )
 aliases.write_text(alias_src,encoding="utf-8")
 
-# Repair Mercado Pago certification sandbox to use the already-mounted sandbox credentials.
+# Preserve dedicated sandbox credentials; never replace them with production credentials.
 recovered=Path("worker/cloudflare-worker.recovered.mjs")
 recovered_src=recovered.read_text(encoding="utf-8")
-recovered_src=recovered_src.replace(
-    'if (!String(env.MERCADOPAGO_TEST_ACCESS_TOKEN || "").trim() || !String(env.MERCADOPAGO_TEST_WEBHOOK_SECRET || "").trim()) blockers.push("mercadopago_sandbox_credentials_missing");',
-    'if (!String(env.MERCADOPAGO_ACCESS_TOKEN || "").trim() || !String(env.MERCADOPAGO_WEBHOOK_SECRET || "").trim()) blockers.push("mercadopago_sandbox_credentials_missing");'
-)
 recovered_src=recovered_src.replace(
     '    }\n    if (provider === "stripe") {\n',
     '    } else if (provider === "stripe") {\n',
@@ -84,14 +80,6 @@ recovered_src=recovered_src.replace(
 recovered_src=recovered_src.replace(
     'const pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_PAYMENT_MODE || "").toLowerCase() === "sandbox";',
     'const pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox";'
-)
-recovered_src=recovered_src.replace(
-    'const providerToken = pilotSandbox ? String(process.env.MERCADOPAGO_TEST_ACCESS_TOKEN || "") : String(process.env.MERCADOPAGO_ACCESS_TOKEN || "");',
-    'const providerToken = String(process.env.MERCADOPAGO_ACCESS_TOKEN || "");'
-)
-recovered_src=recovered_src.replace(
-    'if (provider === "mercadopago_test") return handleMercadoPagoWebhook(req, res, { accessToken: process.env.MERCADOPAGO_TEST_ACCESS_TOKEN, webhookSecret: process.env.MERCADOPAGO_TEST_WEBHOOK_SECRET, certificationOnly: true, source: "mercadopago-test" });',
-    'if (provider === "mercadopago_test") return handleMercadoPagoWebhook(req, res, { accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN, webhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET, certificationOnly: true, source: "mercadopago-test" });'
 )
 recovered.write_text(recovered_src,encoding="utf-8")
 # Replace every legacy public contact reference in the reconstructed production snapshot.
@@ -159,4 +147,6 @@ c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"
 c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
 for unused in ("KNOWLEDGE_SEED_ALLOWED","SPEECHIFY_FREE_TIER_CONFIRMED","AZURE_SPEECH_FREE_TIER_CONFIRMED"):
     c["vars"].pop(unused,None)
+for key in ("VOICE_TTS_PROVIDER", "VOICE_TTS_PROVIDER_CHAIN"):
+    runtime_config[key]=c["vars"].pop(key)
 open(p,"w").write(json.dumps(c,indent=2)+"\n")
