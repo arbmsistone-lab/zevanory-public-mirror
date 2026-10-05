@@ -1,115 +1,354 @@
 #!/usr/bin/env python3
-"""One manual sandbox purchase; provider webhook required; no synthesized webhook."""
+"""Manual-only sandbox proof. Importing this module never performs I/O.
+
+Requires a protected, previously verified identity manifest (not prefix inference).
+The certification receiver must expose explicit isolation/capability/signature
+proofs. Missing contracts fail closed; this change does not implement server
+routes, provision environments, attest identities or enable financial execution.
+Mailbox adapter: Gmail API with an attested gmail.readonly credential.
+"""
+import base64
 import datetime as dt
+import email.utils
 import hashlib
+import hmac
 import json
 import os
 import pathlib
+import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from dataclasses import dataclass
 
-OUT=pathlib.Path('evidence/mercadopago-combo-sandbox.json')
-report={'gate':'COMBO_SANDBOX_E2E','sha':os.environ.get('EXPECTED_SHA'),'amount_brl':297,'sale_globally_enabled':False,'checks':{},'email_destination':'delivered@resend.dev','email_destination_kind':'resend_test_sink'}
+APP = 'https://zevanory.api.br'
+MP = 'https://api.mercadopago.com'
+INBOX = 'https://gmail.googleapis.com'
+CERT_PATH = '/api/internal/certification/e2e/'
+FROZEN_ORDER = 'a28c53ab-9ce7-429d-9d6b-1311a3fad406'
+OUT = pathlib.Path('evidence/mercadopago-combo-sandbox.json')
+READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
+ALLOWED_HOSTS = frozenset({'api.mercadopago.com', 'zevanory.api.br', 'gmail.googleapis.com'})
+PRODUCTION_NAMES = frozenset({'MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_PUBLIC_KEY',
+    'OPERATOR_TOKEN', 'STRIPE_SECRET_KEY', 'RESEND_API_KEY', 'ASAAS_API_KEY'})
+SECRET_NAMES = ('MERCADOPAGO_TEST_PUBLIC_KEY', 'MERCADOPAGO_TEST_ACCESS_TOKEN',
+    'SANDBOX_IDENTITY_MANIFEST', 'SANDBOX_INBOX_READ_TOKEN', 'CERTIFICATION_E2E_TOKEN')
 
-def save():
-    OUT.parent.mkdir(exist_ok=True);OUT.write_text(json.dumps(report,indent=2)+'\n')
 
-def require(condition,cause):
-    if not condition:raise RuntimeError(cause)
+class GuardError(RuntimeError):
+    """Public error codes contain no provider payload, URL or credential."""
 
-def req(url,method='GET',body=None,headers=None):
-    h={'accept':'application/json','user-agent':'ZEVANORY-Combo-Sandbox/1.0',**(headers or {})}
-    if body is not None:h['content-type']='application/json'
-    data=json.dumps(body).encode() if body is not None else None
+
+def require(condition, code):
+    if not condition:
+        raise GuardError(code)
+
+
+def digest(value):
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+@dataclass(frozen=True)
+class Identity:
+    sha: str
+    application_id: str
+    seller_id: str
+    buyer_id: str
+    buyer_email: str
+    inbox_email: str
+    public_key: str
+    access_token: str
+    inbox_token: str
+    certification_token: str
+    manifest: str
+
+
+def preflight(env):
+    require(env.get('SANDBOX_FINANCIAL_ENABLED') == 'true', 'FINANCIAL_DISABLED')
+    require(env.get('GITHUB_EVENT_NAME') == 'workflow_dispatch' and
+            env.get('GITHUB_REF') == 'refs/heads/gh-pages' and
+            env.get('GITHUB_RUN_ATTEMPT') == '1', 'MANUAL_FIRST_ATTEMPT_ONLY')
+    for name, value in env.items():
+        if value and (name in PRODUCTION_NAMES or re.search(r'(PROD|LIVE).*?(TOKEN|KEY|SECRET)|(TOKEN|KEY|SECRET).*?(PROD|LIVE)', name, re.I)):
+            raise GuardError('PRODUCTION_CREDENTIAL_PRESENT')
+    require(all(env.get(name) for name in SECRET_NAMES), 'SANDBOX_SECRETS_REQUIRED')
+    sha = env.get('EXPECTED_SHA', '')
+    require(re.fullmatch(r'[0-9a-f]{40}', sha) and sha == env.get('GITHUB_SHA'), 'APPROVED_SOURCE_SHA_REQUIRED')
     try:
-        with urllib.request.urlopen(urllib.request.Request(url,method=method,headers=h,data=data),timeout=60) as r:
-            raw=r.read();return json.loads(raw) if raw else {}
-    except urllib.error.HTTPError as e:
-        raw=e.read().decode('utf-8','replace')[:1000]
-        for value in [os.environ.get('MERCADOPAGO_TEST_ACCESS_TOKEN'),os.environ.get('CERTIFICATION_E2E_TOKEN'),os.environ.get('MERCADOPAGO_ACCESS_TOKEN')]:
-            if value:raw=raw.replace(value,'[redacted]')
-        raise RuntimeError(f'http_{e.code}:{urllib.parse.urlparse(url).path}:{raw}') from None
+        m = json.loads(env['SANDBOX_IDENTITY_MANIFEST'])
+    except (ValueError, TypeError):
+        raise GuardError('MANIFEST_INVALID') from None
+    require(isinstance(m, dict) and m.get('schema') == 'sandbox.identity.v1' and
+            m.get('verified') is True and m.get('credential_mode') == 'sandbox' and
+            bool(m.get('verification_evidence_id')), 'PAIR_ATTESTATION_REQUIRED')
+    require(str(m.get('application_id', '')).isdigit() and str(m.get('seller_id', '')).isdigit(), 'APP_SELLER_REQUIRED')
+    for field, name in [('public_key_sha256', 'MERCADOPAGO_TEST_PUBLIC_KEY'),
+                        ('access_token_sha256', 'MERCADOPAGO_TEST_ACCESS_TOKEN'),
+                        ('inbox_token_sha256', 'SANDBOX_INBOX_READ_TOKEN')]:
+        require(hmac.compare_digest(str(m.get(field, '')), digest(env[name])), 'CREDENTIAL_ATTESTATION_MISMATCH')
+    b, box = m.get('buyer', {}), m.get('inbox', {})
+    require(isinstance(b, dict) and b.get('verified') is True and b.get('sandbox') is True and
+            str(b.get('id', '')).isdigit() and str(b['id']) != str(m['seller_id']) and
+            re.fullmatch(r'[^@\s]+@testuser\.com', str(b.get('email', '')), re.I) and
+            b['email'].lower() != 'test@testuser.com', 'VERIFIED_BUYER_REQUIRED')
+    require(isinstance(box, dict) and box.get('verified') is True and box.get('provider') == 'gmail' and
+            box.get('scopes') == [READ_SCOPE] and box.get('read_only') is True and
+            re.fullmatch(r'[^@\s]+@[^@\s]+', str(box.get('email', ''))) and
+            not box['email'].lower().endswith(('@resend.dev', '@testuser.com')), 'READ_ONLY_CONTROLLED_INBOX_REQUIRED')
+    return Identity(sha, str(m['application_id']), str(m['seller_id']), str(b['id']),
+                    b['email'].lower(), box['email'].lower(), env['MERCADOPAGO_TEST_PUBLIC_KEY'],
+                    env['MERCADOPAGO_TEST_ACCESS_TOKEN'], env['SANDBOX_INBOX_READ_TOKEN'],
+                    env['CERTIFICATION_E2E_TOKEN'], env['SANDBOX_IDENTITY_MANIFEST'])
 
-APP='https://zevanory.api.br'
-TOKEN=os.environ.get('MERCADOPAGO_TEST_ACCESS_TOKEN','')
-CERT=os.environ.get('CERTIFICATION_E2E_TOKEN','')
-mp=lambda path,method='GET',body=None,extra=None:req('https://api.mercadopago.com'+path,method,body,{'authorization':'Bearer '+TOKEN,**(extra or {})})
-app=lambda path,method='GET',body=None,headers=None:req(APP+path,method,body,headers)
-status=lambda oid:app('/api/internal/certification/e2e/status?order_id='+urllib.parse.quote(oid),headers={'x-certification-e2e-token':CERT})
-try:
-    require(TOKEN and CERT,'required_sandbox_secrets_missing')
-    release=app('/api/release')
-    require(release.get('sales_mode')=='globally-blocked','sales_must_remain_blocked')
-    require(release.get('deployment',{}).get('commit_sha')==os.environ['EXPECTED_SHA'],'exact_live_sha_required')
-    seller=mp('/users/me')
-    require(TOKEN.startswith('TEST-') or 'test_user' in seller.get('tags',[]),'sandbox_seller_required')
-    report['seller_id']=seller.get('id');save()
+
+def validate_request(url, method, headers, identity):
+    p = urllib.parse.urlsplit(url)
+    require(p.scheme == 'https' and p.hostname in ALLOWED_HOSTS and not p.username and
+            not p.password and p.port in (None, 443) and not p.fragment and
+            '%' not in p.path and FROZEN_ORDER not in urllib.parse.unquote(url), 'ENDPOINT_DENIED')
+    q = urllib.parse.parse_qs(p.query, keep_blank_values=True)
+    require(len(urllib.parse.parse_qsl(p.query, keep_blank_values=True)) == len(q), 'DUPLICATE_QUERY_DENIED')
+    if p.hostname == 'api.mercadopago.com':
+        allowed = (method == 'GET' and p.path == '/users/me' and not q or
+                   method == 'GET' and re.fullmatch(r'/users/[0-9]+', p.path) and not q or
+                   method == 'POST' and p.path == '/v1/card_tokens' and q == {'public_key': [identity.public_key]} or
+                   method == 'POST' and p.path == '/v1/payments' and not q)
+        require(allowed, 'MP_ENDPOINT_DENIED')
+        require('x-certification-e2e-token' not in headers, 'CERT_TOKEN_SCOPE_DENIED')
+        if p.path == '/v1/card_tokens':
+            require('authorization' not in headers, 'CARD_AUTH_DENIED')
+        else:
+            require(headers.get('authorization') == 'Bearer ' + identity.access_token, 'MP_AUTH_DENIED')
+    elif p.hostname == 'zevanory.api.br':
+        allowed = (method == 'GET' and p.path == CERT_PATH + 'status' and
+                   (not q or set(q) == {'order_id'} and len(q['order_id']) == 1 and
+                    re.fullmatch(r'[0-9a-f-]{36}', q['order_id'][0])) or
+                   method == 'POST' and p.path == CERT_PATH + 'checkout' and not q or
+                   method == 'GET' and p.path == CERT_PATH + 'download' and
+                   set(q) == {'token'} and len(q['token']) == 1 and bool(q['token'][0]))
+        require(allowed, 'CERT_ENDPOINT_DENIED')
+        require(headers.get('x-certification-e2e-token') == identity.certification_token and
+                'authorization' not in headers, 'CERT_AUTH_DENIED')
+    else:
+        root = '/gmail/v1/users/me/'
+        allowed = (method == 'GET' and p.path == root + 'profile' and not q or
+                   method == 'GET' and p.path == root + 'messages' and set(q) == {'q', 'maxResults'} and
+                   q['maxResults'] == ['20'] or
+                   method == 'GET' and re.fullmatch(root + r'messages/[a-zA-Z0-9_-]+', p.path) and q == {'format': ['full']})
+        require(allowed, 'INBOX_ENDPOINT_DENIED')
+        require(headers.get('authorization') == 'Bearer ' + identity.inbox_token and
+                'x-certification-e2e-token' not in headers, 'INBOX_AUTH_DENIED')
+    # Never send an unrelated credential in body/query/header values.
+    for credential in (identity.certification_token, identity.access_token, identity.inbox_token):
+        if credential in url or any(credential in str(v) for v in headers.values()):
+            expected = identity.certification_token if p.hostname == 'zevanory.api.br' else identity.access_token if p.hostname == 'api.mercadopago.com' else identity.inbox_token
+            require(credential == expected and credential not in url, 'CROSS_HOST_CREDENTIAL_DENIED')
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise GuardError('REDIRECT_DENIED')
+
+
+class Client:
+    def __init__(self, identity, transport=None):
+        self.identity = identity
+        self.transport = transport or urllib.request.build_opener(NoRedirect(), urllib.request.ProxyHandler({})).open
+
+    def request(self, url, method='GET', body=None, headers=None, binary=False):
+        headers = {k.lower(): v for k, v in (headers or {}).items()}
+        validate_request(url, method, headers, self.identity)
+        raw_body = json.dumps(body).encode() if body is not None else None
+        if raw_body:
+            require(FROZEN_ORDER.encode() not in raw_body, 'FROZEN_ORDER_BODY_DENIED')
+            require(not any(s.encode() in raw_body for s in (self.identity.access_token,
+                self.identity.inbox_token, self.identity.certification_token)), 'BODY_CREDENTIAL_DENIED')
+            headers['content-type'] = 'application/json'
+        req = urllib.request.Request(url, method=method, headers=headers, data=raw_body)
+        try:
+            with self.transport(req, timeout=30) as response:
+                require(response.status == 200 or response.status == 201, 'HTTP_RESPONSE_DENIED')
+                raw = response.read(10 * 1024 * 1024 + 1)
+                require(len(raw) <= 10 * 1024 * 1024, 'RESPONSE_TOO_LARGE')
+            return raw if binary else json.loads(raw)
+        except GuardError:
+            raise
+        except urllib.error.HTTPError as error:
+            raise GuardError('HTTP_' + str(error.code)) from None
+        except Exception:
+            raise GuardError('REQUEST_FAILED') from None
+
+    def cert(self, path, method='GET', body=None, binary=False):
+        return self.request(APP + CERT_PATH + path, method, body,
+                            {'x-certification-e2e-token': self.identity.certification_token}, binary)
+
+    def mp(self, path, method='GET', body=None, headers=None):
+        return self.request(MP + path, method, body,
+                            {'authorization': 'Bearer ' + self.identity.access_token, **(headers or {})})
+
+    def inbox(self, path):
+        return self.request(INBOX + '/gmail/v1/users/me/' + path,
+                            headers={'authorization': 'Bearer ' + self.identity.inbox_token})
+
+
+def validate_isolation(doc, identity, order_id=None):
+    require(doc.get('sale_globally_enabled') is False and doc.get('sales_mode') == 'globally-blocked', 'SALES_MUST_REMAIN_BLOCKED')
+    require(doc.get('sandbox') is True and doc.get('excluded_from_revenue') is True and
+            doc.get('real_customer_delivery') is False and doc.get('commercial_unlock') is False,
+            'SANDBOX_ISOLATION_REQUIRED')
+    require(str(doc.get('buyer_id')) == identity.buyer_id and
+            doc.get('buyer_email') == identity.buyer_email and doc.get('email_recipient') == identity.inbox_email,
+            'IDENTITY_DIVERGENCE')
+    if order_id:
+        require(order_id != FROZEN_ORDER and doc.get('order_id') == order_id, 'NEW_ORDER_BINDING_REQUIRED')
+
+
+def verified_webhook(state, oid, payment_id):
+    events = state.get('financial_events', [])
+    return any(e.get('normalized_event') == 'payment_confirmed' and
+        str(e.get('provider_payment_id')) == payment_id and e.get('order_id') == oid and
+        e.get('source_class') == 'provider_webhook' and e.get('signature_verified') is True and
+        e.get('signature_secret_class') == 'sandbox' and e.get('signature_verified_by') == 'receiver'
+        for e in events)
+
+
+def message_text(part):
+    values = []
+    data = part.get('body', {}).get('data')
+    if data:
+        try:
+            values.append(base64.urlsafe_b64decode(data + '=' * (-len(data) % 4)).decode('utf-8'))
+        except (ValueError, UnicodeError):
+            raise GuardError('INBOX_MESSAGE_INVALID') from None
+    for child in part.get('parts', []):
+        values.append(message_text(child))
+    return '\n'.join(values)
+
+
+def received_message(client, oid, identity, started_ms):
+    query = urllib.parse.urlencode({'q': 'in:inbox to:' + identity.inbox_email + ' "' + oid + '"', 'maxResults': '20'})
+    messages = client.inbox('messages?' + query).get('messages', [])
+    for row in messages:
+        mid = row.get('id', '')
+        require(re.fullmatch(r'[a-zA-Z0-9_-]+', mid), 'INBOX_MESSAGE_ID_INVALID')
+        msg = client.inbox('messages/' + mid + '?format=full')
+        payload = msg.get('payload', {})
+        headers = {h['name'].lower(): h['value'] for h in payload.get('headers', [])}
+        recipients = [addr.lower() for _, addr in email.utils.getaddresses([headers.get('to', '')])]
+        if (identity.inbox_email in recipients and int(msg.get('internalDate', 0)) >= started_ms and
+                headers.get('x-zevanory-order-id') == oid and 'INBOX' in msg.get('labelIds', [])):
+            return msg['id'], message_text(payload)
+    return None, None
+
+
+def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uuid4):
+    report = {'schema': 'sandbox.proof.sanitized.v2', 'sale_globally_enabled': False,
+              'amount_brl': 297, 'checks': {}, 'status': 'FAIL'}
     try:
-        buyer=mp('/users/test','POST',{'site_id':'MLB','description':'ZEVANORY Combo sandbox buyer'})
-        report['buyer_creation']='created'
-    except RuntimeError as error:
-        if '40311' not in str(error):raise
-        creator=os.environ.get('MERCADOPAGO_ACCESS_TOKEN','').strip()
-        if creator and creator!=TOKEN:
-            account=req('https://api.mercadopago.com/users/me',headers={'authorization':'Bearer '+creator})
-            if 'test_user' not in account.get('tags',[]):
-                buyer=req('https://api.mercadopago.com/users/test','POST',{'site_id':'MLB','description':'ZEVANORY sandbox buyer'}, {'authorization':'Bearer '+creator})
-                report['buyer_creation']='created_with_existing_productive_credential_no_payment'
-            else:buyer=None
-        else:buyer=None
-        email=(buyer or {}).get('email') or os.environ.get('MERCADOPAGO_TEST_BUYER_EMAIL','').strip()
-        require(email.endswith('@testuser.com') and email!=seller.get('email'),'existing_distinct_test_buyer_required')
-        buyer=buyer or {'id':None,'email':email}
-        if not buyer.get('id'):report['buyer_creation']='blocked_40311_existing_test_buyer_reused'
-        print('::warning title=MP_TEST_BUYER::Test token cannot create users; reusing configured test buyer')
-    require(str(buyer.get('email','')).endswith('@testuser.com'),'test_buyer_required')
-    print('::add-mask::'+str(buyer.get('password','')))
-    report['buyer_id']=buyer['id'];report['checks']['TEST_BUYER']='PASS';save()
-    invite=app('/api/internal/certification/e2e/invite','POST',{}, {'x-certification-e2e-token':CERT})
-    require(invite.get('commercial_unlock') is False and invite.get('token'),'isolated_certification_invite_required')
-    checkout=app('/api/checkout/mercadopago','POST',{'request_id':str(uuid.uuid4()),'session_id':str(uuid.uuid4()),'offer_id':'ZEV-CMB-011'}, {'x-certification-pilot-token':invite['token']})
-    oid=checkout.get('order_id');require(oid and checkout.get('accepted'),'checkout_required')
-    report['order_id']=oid;save()
-    initial=status(oid);order=initial.get('order',{})
-    require(float(order.get('amount',0))==297 and order.get('certification_pilot') is True,'combo_297_sandbox_order_required')
-    pref=mp('/checkout/preferences/'+str(order.get('provider_checkout_id')))
-    require(float(pref.get('items',[{}])[0].get('unit_price',0))==297,'checkout_preference_297_required')
-    require(pref.get('external_reference')==oid,'checkout_preference_order_binding_required')
-    report['preference_id']=pref.get('id');report['checks']['CHECKOUT']='PASS';save()
-    card=mp('/v1/card_tokens','POST',{'card_number':'4235647728025682','security_code':'123','expiration_month':11,'expiration_year':2030,'cardholder':{'name':'APRO','identification':{'type':'CPF','number':'12345678909'}}})
-    require(card.get('id') and card.get('status')=='active','official_test_card_token_required')
-    payment=mp('/v1/payments','POST',{'transaction_amount':297,'token':card['id'],'description':'ZEVANORY Combo IA + Vendas sandbox','installments':1,'payment_method_id':'visa','binary_mode':True,'external_reference':oid,'notification_url':APP+'/api/webhooks?provider=mercadopago_test','payer':{'email':buyer['email'],'identification':{'type':'CPF','number':'12345678909'}},'metadata':{'zevanory_order_id':oid,'certification':True}}, {'x-idempotency-key':str(uuid.uuid4())})
-    report['payment_id']=str(payment.get('id',''));report['payment_status']=payment.get('status');save()
-    require(payment.get('live_mode') is False and payment.get('status')=='approved','approved_test_payment_required')
-    report['checks']['PAYMENT_APPROVED']='PASS';save()
-    deadline=time.time()+240;state={}
-    while time.time()<deadline:
-        state=status(oid)
-        if state.get('order',{}).get('status')=='paid' and state.get('delivery_evidence',{}).get('email_status')=='sent':break
-        time.sleep(5)
-    delivery=state.get('delivery_evidence') or {}
-    ev=[x for x in state.get('financial_events',[]) if str(x.get('provider_payment_id'))==report['payment_id'] and x.get('normalized_event')=='payment_confirmed']
-    require(ev and any(x.get('source_class')=='provider_webhook' for x in state.get('provenance',[])),'real_provider_webhook_required_no_local_replay')
-    require(state.get('order',{}).get('status')=='paid','internal_order_paid_required')
-    require(state.get('fulfillment',{}).get('status')=='delivered' and delivery.get('email_status')=='sent' and delivery.get('email_provider_id'),'resend_delivery_email_required')
-    require(delivery.get('email_recipient')=='delivered@resend.dev','controlled_resend_test_sink_required')
-    report['order_status']='paid';report['email_id']=delivery['email_provider_id'];report['webhook_events']=ev
-    report['checks'].update({'PROVIDER_WEBHOOK':'PASS','ORDER_PAID':'PASS','EMAIL_SENT':'PASS'});save()
-    expires=dt.datetime.fromisoformat(str(delivery.get('expires_at','')).replace('Z','+00:00'))
-    remaining=(expires-dt.datetime.now(dt.timezone.utc)).total_seconds()
-    require(0<remaining<=3600,'temporary_download_max_60_minutes_required')
-    probe=str(delivery.get('verification_url',''))
-    require(probe.startswith(APP+'/private/artifacts/download?token='),'trusted_download_probe_required')
-    with urllib.request.urlopen(probe,timeout=60) as response:
-        data=response.read();require(response.status==200 and data,'download_200_required')
-        require(hashlib.sha256(data).hexdigest().lower()==str(delivery.get('artifact_sha256','')).lower(),'download_sha256_required')
-    report['download_expires_at']=delivery['expires_at'];report['artifact_sha256']=delivery.get('artifact_sha256')
-    report['checks']['TEMPORARY_DOWNLOAD']='PASS'
-    require(app('/api/release').get('sales_mode')=='globally-blocked','sales_must_remain_blocked_after_purchase')
-    report['checks']['FINAL']='GREEN';save();print(json.dumps(report))
-except Exception as e:
-    report['checks']['FINAL']='FAIL';report['cause']=str(e);save()
-    print('::error title=COMBO_SANDBOX::'+str(e).replace('\n',' '));raise SystemExit(1)
+        identity = preflight(env)
+        report['source_sha'] = identity.sha
+        client = Client(identity, transport)
+        # Immutable snapshot; recheck inside the proof, not only a workflow step.
+        require(preflight(env) == identity, 'IDENTITY_CHANGED_AFTER_PREFLIGHT')
+        report['checks']['PREFLIGHT'] = 'PASS'
+        capabilities = client.cert('status')
+        require(capabilities.get('sale_globally_enabled') is False and
+                capabilities.get('sales_mode') == 'globally-blocked', 'SALES_MUST_REMAIN_BLOCKED')
+        require(capabilities.get('sandbox_proof_contract') == 'v2' and
+                capabilities.get('sandbox_checkout_isolated') is True and
+                capabilities.get('receiver_test_signature_evidence') is True and
+                capabilities.get('certification_download_isolated') is True,
+                'RECEIVER_CONTRACT_V2_REQUIRED')
+        seller = client.mp('/users/me')
+        buyer = client.mp('/users/' + identity.buyer_id)
+        require(str(seller.get('id')) == identity.seller_id and 'test_user' in seller.get('tags', []) and
+                str(buyer.get('id')) == identity.buyer_id and 'test_user' in buyer.get('tags', []) and
+                str(buyer.get('email', '')).lower() == identity.buyer_email, 'PROVIDER_IDENTITY_MISMATCH')
+        profile = client.inbox('profile')
+        require(str(profile.get('emailAddress', '')).lower() == identity.inbox_email, 'INBOX_IDENTITY_MISMATCH')
+        require(preflight(env) == identity, 'IDENTITY_CHANGED_BEFORE_CHECKOUT')
+        report['checks']['IDENTITY'] = 'PASS'
+        started_ms = int(now() * 1000)
+        checkout = client.cert('checkout', 'POST', {'request_id': str(make_uuid()),
+            'offer_id': 'ZEV-CMB-011', 'sandbox': True, 'buyer_id': identity.buyer_id,
+            'buyer_email': identity.buyer_email, 'email_recipient': identity.inbox_email})
+        oid = checkout.get('order_id', '')
+        require(re.fullmatch(r'[0-9a-f-]{36}', oid) and oid != FROZEN_ORDER and
+                checkout.get('created_new') is True and checkout.get('accepted') is True,
+                'NEW_SANDBOX_ORDER_REQUIRED')
+        validate_isolation(checkout, identity, oid)
+        require(checkout.get('amount_brl') == 297, 'COMBO_AMOUNT_REQUIRED')
+        report['order_id'] = oid
+        report['checks']['ISOLATED_CHECKOUT'] = 'PASS'
+        require(preflight(env) == identity, 'IDENTITY_CHANGED_BEFORE_TOKENIZATION')
+        card = client.request(MP + '/v1/card_tokens?' + urllib.parse.urlencode({'public_key': identity.public_key}),
+            'POST', {'card_number': '4235647728025682', 'security_code': '123', 'expiration_month': 11,
+                     'expiration_year': 2030, 'cardholder': {'name': 'APRO', 'identification':
+                     {'type': 'CPF', 'number': '12345678909'}}}, {'x-test-token': 'true'})
+        require(card.get('status') == 'active' and card.get('live_mode') is False and
+                str(card.get('client_id')) == identity.application_id and bool(card.get('id')),
+                'SANDBOX_CARD_APP_REQUIRED')
+        payment = client.mp('/v1/payments', 'POST', {'transaction_amount': 297, 'token': card['id'],
+            'description': 'ZEVANORY Combo sandbox', 'installments': 1, 'payment_method_id': 'visa',
+            'binary_mode': True, 'external_reference': oid,
+            'notification_url': APP + '/api/webhooks?provider=mercadopago_test',
+            'payer': {'email': identity.buyer_email},
+            'metadata': {'zevanory_order_id': oid, 'certification': True, 'sandbox': True}},
+            {'x-idempotency-key': str(make_uuid()), 'x-test-token': 'true'})
+        require(payment.get('live_mode') is False and payment.get('status') == 'approved' and
+                payment.get('external_reference') == oid and str(payment.get('id', '')).isdigit(), 'APPROVED_SANDBOX_PAYMENT_REQUIRED')
+        pid = str(payment['id'])
+        report['payment_id'] = pid
+        report['checks']['PAYMENT'] = 'PASS'
+        deadline = now() + 240
+        while True:
+            state = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}))
+            validate_isolation(state, identity, oid)
+            delivery = state.get('delivery_evidence', {})
+            if (verified_webhook(state, oid, pid) and state.get('order', {}).get('status') == 'paid' and
+                    delivery.get('email_recipient') == identity.inbox_email and delivery.get('email_status') == 'sent' and
+                    state.get('fulfillment', {}).get('status') == 'delivered'):
+                mid, text = received_message(client, oid, identity, started_ms)
+                if mid:
+                    break
+            require(now() < deadline, 'RECEIPT_WEBHOOK_TIMEOUT')
+            sleep(5)
+        probe = str(delivery.get('verification_url', ''))
+        require(probe and probe in text, 'RECEIVED_DOWNLOAD_LINK_REQUIRED')
+        expires = dt.datetime.fromisoformat(str(delivery.get('expires_at', '')).replace('Z', '+00:00'))
+        require(0 < expires.timestamp() - now() <= 3600, 'TEMPORARY_DOWNLOAD_REQUIRED')
+        data = client.request(probe, headers={'x-certification-e2e-token': identity.certification_token}, binary=True)
+        require(data and digest_bytes(data) == delivery.get('artifact_sha256'), 'DOWNLOAD_INTEGRITY_REQUIRED')
+        final = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}))
+        validate_isolation(final, identity, oid)
+        report['checks'].update({'RECEIVER_SIGNATURE': 'PASS', 'INBOX_RECEIPT': 'PASS',
+                                'DOWNLOAD': 'PASS', 'SALES_BLOCKED': 'PASS'})
+        report['status'] = 'PASS'
+    except GuardError as error:
+        report['cause'] = str(error) if re.fullmatch(r'[A-Z0-9_]+', str(error)) else 'GUARD_FAILED'
+    except Exception:
+        report['cause'] = 'INVALID_RESPONSE_OR_CONFIGURATION'
+    return report
+
+
+def digest_bytes(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def main():
+    report = run(os.environ)
+    # Fixed allowlisted evidence only: never save raw payloads, URLs, identity
+    # manifests, credential hashes, message bodies or download tokens.
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(json.dumps(report, indent=2) + '\n')
+    print(json.dumps(report))
+    if report['status'] != 'PASS':
+        print('::error title=COMBO_SANDBOX::' + report.get('cause', 'FAILED'))
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
