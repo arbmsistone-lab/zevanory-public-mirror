@@ -28,6 +28,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          trap 'echo "::error title=CACHE_REPAIR_STEP::Command failed at line $LINENO (exit $?)"' ERR
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg > /tmp/ffmpeg-install.log 2>&1
           node scripts/voice_cache_repair.mjs
       - uses: actions/upload-artifact@v4
         if: always()
