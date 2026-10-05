@@ -53,22 +53,27 @@ export async function cloudKv(env,fetchImpl=fetch) {
     async put(k,v,{expirationTtl}){const r=await fetchImpl(`${url(k)}?expiration_ttl=${expirationTtl}`,{method:'PUT',headers:{...headers,'content-type':'application/octet-stream'},body:v});if(!r.ok)throw Error(`kv_write_http_${r.status}`);},
   };
 }
-export async function renderSecret(env,fetchImpl=fetch) {
-  if(env.VOICE_ENCODE_SECRET)return env.VOICE_ENCODE_SECRET;
+export async function renderCredentials(env,fetchImpl=fetch,includeGemini=false) {
+  if(!includeGemini&&env.VOICE_ENCODE_SECRET)return {secret:env.VOICE_ENCODE_SECRET};
   if(!env.OPERATOR_TOKEN)throw Error('operator_token_required');
   const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
-  const r=await fetchImpl('https://zevanory.api.br/api/admin/whatsapp-onboard/delivery-proof',{method:'POST',headers:{authorization:`Bearer ${env.OPERATOR_TOKEN}`,'content-type':'application/json'},body:JSON.stringify({operation:'audit-encoder-key',public_key:publicKey.export({format:'jwk'})})});
-  if(!r.ok)throw Error(`render_secret_http_${r.status}`);
+  const r=await fetchImpl('https://zevanory.api.br/api/admin/whatsapp-onboard/delivery-proof',{method:'POST',headers:{authorization:`Bearer ${env.OPERATOR_TOKEN}`,'content-type':'application/json'},body:JSON.stringify({operation:'audit-encoder-key',include_gemini:includeGemini,public_key:publicKey.export({format:'jwk'})})});
+  if(!r.ok)throw Error(`render_credentials_http_${r.status}`);
   const body=await r.json();
-  return privateDecrypt({key:privateKey,oaepHash:'sha256',padding:constants.RSA_PKCS1_OAEP_PADDING},Buffer.from(body.wrapped_key,'base64')).toString();
+  const decrypt=value=>privateDecrypt({key:privateKey,oaepHash:'sha256',padding:constants.RSA_PKCS1_OAEP_PADDING},Buffer.from(value,'base64')).toString();
+  return {secret:decrypt(body.wrapped_key),...(includeGemini?{apiKey:decrypt(body.wrapped_gemini_key)}:{})};
 }
+export async function renderSecret(env,fetchImpl=fetch){return (await renderCredentials(env,fetchImpl)).secret;}
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href) {
   const entries=[];mkdirSync('/tmp/voice-warm',{recursive:true});
   const save=result=>writeFileSync('/tmp/voice-warm/summary.json',JSON.stringify({entries,...result},null,2));
   try {
-    if(!process.env.GEMINI_API_KEY)throw Error('gemini_key_required');
-    const kv=await cloudKv(process.env),secret=await renderSecret(process.env);
-    const result=await warmVoiceCache({kv,secret,apiKey:process.env.GEMINI_API_KEY,max:Number(process.env.VOICE_WARM_MAX||10),onProgress:e=>{entries.push({...e,recorded:!e.cached});save({state:'running'});console.log(JSON.stringify(e));}});
+    const kv=await cloudKv(process.env);
+    const credentials=await renderCredentials(process.env,fetch,!process.env.GEMINI_API_KEY);
+    const secret=credentials.secret,apiKey=process.env.GEMINI_API_KEY||credentials.apiKey;
+    if(!apiKey)throw Error('gemini_key_required');
+    console.log('::add-mask::'+apiKey);
+    const result=await warmVoiceCache({kv,secret,apiKey,max:Number(process.env.VOICE_WARM_MAX||10),onProgress:e=>{entries.push({...e,recorded:!e.cached});save({state:'running'});console.log(JSON.stringify(e));}});
     save(result);console.log(JSON.stringify(result));
     if(result.stopped==='quota')console.log('::warning title=GEMINI_QUOTA::Stopped immediately; existing keys preserved; no automatic resume');
   }catch(error){save({stopped:'error',cause:error.message});console.error('::error title=VOICE_CACHE_WARM::'+error.message);process.exitCode=1;}
