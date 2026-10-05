@@ -168,6 +168,27 @@ jobs:
           jq -e 'map(.name) | index("CERTIFICATION_E2E_TOKEN") != null' /tmp/zevanory-secrets.json >/dev/null
           echo "CERTIFICATION_E2E_TOKEN_PRESENT=PASS"
 
+      - name: Sync sandbox receipt credentials to public-owner Worker
+        if: steps.auth.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${MERCADOPAGO_TEST_ACCESS_TOKEN:-}"
+          test -n "${MERCADOPAGO_TEST_WEBHOOK_SECRET:-}"
+          python3 - <<'PY'
+          import json, os
+          with open("/tmp/sandbox-receipt-secrets.json","w",encoding="utf-8") as f:
+              json.dump({
+                  "MERCADOPAGO_TEST_ACCESS_TOKEN": os.environ["MERCADOPAGO_TEST_ACCESS_TOKEN"],
+                  "MERCADOPAGO_TEST_WEBHOOK_SECRET": os.environ["MERCADOPAGO_TEST_WEBHOOK_SECRET"]
+              }, f)
+          PY
+          npx --yes wrangler@4.143.0 secret bulk /tmp/sandbox-receipt-secrets.json --name zevanory
+          rm -f /tmp/sandbox-receipt-secrets.json
+          npx --yes wrangler@4.143.0 secret list --name zevanory --format json > /tmp/zevanory-secrets-after-sync.json
+          jq -e 'map(.name) | index("MERCADOPAGO_TEST_ACCESS_TOKEN") != null and index("MERCADOPAGO_TEST_WEBHOOK_SECRET") != null' /tmp/zevanory-secrets-after-sync.json >/dev/null
+          echo "MERCADOPAGO_SANDBOX_RECEIPT_SECRETS_SYNC=PASS"
+
       - name: Deploy repaired production worker
         id: deployworker
         if: steps.auth.outputs.available == 'true'
