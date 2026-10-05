@@ -24,7 +24,7 @@ TEST = 'tests/test_sandbox_guards.py'
 SCOPE = (MANUAL, STATIC, SCRIPT, CHECKER, TEST)
 ALLOWED_SECRETS = {'MERCADOPAGO_TEST_PUBLIC_KEY', 'MERCADOPAGO_TEST_ACCESS_TOKEN',
                    'SANDBOX_IDENTITY_MANIFEST', 'SANDBOX_INBOX_READ_TOKEN', 'CERTIFICATION_E2E_TOKEN'}
-HOSTS = {'api.mercadopago.com', 'zevanory.api.br', 'gmail.googleapis.com'}
+HOSTS = {'api.mercadopago.com', 'zevanory.api.br'}
 REGISTERED_EXCEPTION = {
     'filename': 'zees16-control-reconciler.yml',
     'blob': '729509bf5ae39a681014ed0133cb92db47f300bb',
@@ -89,7 +89,7 @@ def script_guards(text):
     check(not any(isinstance(n, ast.Constant) and isinstance(n.value, str) and
                   re.match(r'https?://', n.value) and
                   __import__('urllib.parse', fromlist=['urlsplit']).urlsplit(n.value).hostname not in HOSTS
-                  for n in ast.walk(tree) if not (isinstance(n, ast.Constant) and n.value == 'https://www.googleapis.com/auth/gmail.readonly')),
+                  for n in ast.walk(tree)),
           'NO_UNKNOWN_HOST')
     check('NoRedirect' in text and 'validate_request(url, method, headers, self.identity)' in text, 'CENTRAL_TRANSPORT_GUARD')
     check('excluded_from_revenue' in text and 'real_customer_delivery' in text and 'created_new' in text, 'ORDER_ISOLATION')

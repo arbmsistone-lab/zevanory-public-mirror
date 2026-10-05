@@ -1,0 +1,73 @@
+name: Sandbox mail routing (subdomain only)
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "probe (read-only) or configure (subdomain MX + literal rule to worker)"
+        required: true
+        default: probe
+        type: choice
+        options: [probe, configure]
+permissions:
+  contents: read
+concurrency:
+  group: sandbox-mail-routing
+  cancel-in-progress: false
+jobs:
+  routing:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ZONE_NAME: zevanory.api.br
+      SUBDOMAIN: sandbox-mail.zevanory.api.br
+      ADDRESS: prova@sandbox-mail.zevanory.api.br
+      ACTION: ${{ inputs.action }}
+    steps:
+      - name: Subdomain-only routing; apex MX must stay untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CF_TOKEN"
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.parse
+          T = os.environ['CF_TOKEN']; A = os.environ['ACTION']
+          def cf(method, path, body=None):
+              req = urllib.request.Request('https://api.cloudflare.com/client/v4' + path, method=method,
+                  data=json.dumps(body).encode() if body is not None else None,
+                  headers={'authorization': 'Bearer ' + T, 'content-type': 'application/json'})
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as r:
+                      return r.status, json.load(r)
+              except urllib.error.HTTPError as e:
+                  try: return e.code, json.load(e)
+                  except Exception: return e.code, {}
+          def apex_mx():
+              q = urllib.parse.urlencode({'name': os.environ['ZONE_NAME'], 'type': 'MX'})
+              with urllib.request.urlopen(urllib.request.Request('https://cloudflare-dns.com/dns-query?' + q, headers={'accept': 'application/dns-json'}), timeout=10) as r:
+                  return sorted(a['data'] for a in json.load(r).get('Answer', []))
+          before = apex_mx(); print('APEX_MX_BEFORE', before)
+          s, z = cf('GET', '/zones?' + urllib.parse.urlencode({'name': os.environ['ZONE_NAME']}))
+          assert s == 200 and z.get('result'), ('ZONE_UNAVAILABLE', s)
+          zid = z['result'][0]['id']
+          for path in ['/email/routing', '/email/routing/dns', '/email/routing/rules']:
+              s, d = cf('GET', f'/zones/{zid}' + path)
+              r = d.get('result')
+              print('PROBE', path, s, json.dumps({'errors': [e.get('code') for e in d.get('errors', [])],
+                    'result': r if path != '/email/routing/rules' else [{'name': x.get('name'), 'enabled': x.get('enabled'), 'matchers': x.get('matchers'), 'actions': x.get('actions')} for x in (r or [])]})[:1500])
+          if A == 'configure':
+              s, d = cf('POST', f'/zones/{zid}/email/routing/dns', {'name': os.environ['SUBDOMAIN']})
+              print('SUBDOMAIN_DNS', s, [e.get('code') for e in d.get('errors', [])], json.dumps(d.get('result'))[:800])
+              s, rules = cf('GET', f'/zones/{zid}/email/routing/rules')
+              exists = any(m.get('value') == os.environ['ADDRESS'] for x in (rules.get('result') or []) for m in x.get('matchers', []))
+              if not exists:
+                  s, d = cf('POST', f'/zones/{zid}/email/routing/rules', {'name': 'ZEVANORY sandbox proof inbox', 'enabled': True,
+                      'matchers': [{'type': 'literal', 'field': 'to', 'value': os.environ['ADDRESS']}],
+                      'actions': [{'type': 'worker', 'value': ['zevanory']}]})
+                  print('RULE_CREATE', s, [e.get('code') for e in d.get('errors', [])])
+              else:
+                  print('RULE_CREATE', 'already_present')
+          after = apex_mx(); print('APEX_MX_AFTER', after)
+          assert after == before, 'APEX_MX_CHANGED'
+          PY
