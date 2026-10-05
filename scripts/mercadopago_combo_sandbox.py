@@ -12,7 +12,7 @@ import urllib.request
 import uuid
 
 OUT=pathlib.Path('evidence/mercadopago-combo-sandbox.json')
-report={'gate':'COMBO_SANDBOX_E2E','sha':os.environ.get('EXPECTED_SHA'),'amount_brl':297,'sale_globally_enabled':False,'checks':{},'email_destination':'delivered@resend.dev','email_destination_kind':'resend_test_sink'}
+report={'gate':'COMBO_SANDBOX_E2E','sha':os.environ.get('EXPECTED_SHA'),'test_source_sha':os.environ.get('TEST_SOURCE_SHA'),'amount_brl':297,'sale_globally_enabled':False,'checks':{},'email_destination':'delivered@resend.dev','email_destination_kind':'resend_test_sink'}
 
 def save():
     OUT.parent.mkdir(exist_ok=True);OUT.write_text(json.dumps(report,indent=2)+'\n')
@@ -61,10 +61,15 @@ try:
             else:buyer=None
         else:buyer=None
         email=(buyer or {}).get('email') or os.environ.get('MERCADOPAGO_TEST_BUYER_EMAIL','').strip()
-        require(email.endswith('@testuser.com') and email!=seller.get('email'),'existing_distinct_test_buyer_required')
+        if not (email.lower().endswith('@testuser.com') and email.lower()!=str(seller.get('email','')).lower()):
+            # Official Checkout API sandbox payer; not a newly created account.
+            email='test@testuser.com'
+            report['buyer_creation']='blocked_40311_official_api_sandbox_payer'
+            report['buyer_account_created']=False
+        require(email.lower().endswith('@testuser.com') and email.lower()!=str(seller.get('email','')).lower(),'distinct_test_payer_required')
         buyer=buyer or {'id':None,'email':email}
-        if not buyer.get('id'):report['buyer_creation']='blocked_40311_existing_test_buyer_reused'
-        print('::warning title=MP_TEST_BUYER::Test token cannot create users; reusing configured test buyer')
+        if not buyer.get('id') and report.get('buyer_creation')!='blocked_40311_official_api_sandbox_payer':report['buyer_creation']='blocked_40311_existing_test_buyer_reused'
+        print('::warning title=MP_TEST_BUYER::'+report['buyer_creation'])
     require(str(buyer.get('email','')).endswith('@testuser.com'),'test_buyer_required')
     print('::add-mask::'+str(buyer.get('password','')))
     report['buyer_id']=buyer['id'];report['checks']['TEST_BUYER']='PASS';save()

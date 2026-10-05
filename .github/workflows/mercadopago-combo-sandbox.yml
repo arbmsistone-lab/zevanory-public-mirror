@@ -1,6 +1,9 @@
 name: Combo sandbox purchase and delivery proof
 run-name: combo-sandbox:${{ inputs.cycle || github.sha }}
 on:
+  pull_request:
+    branches: [gh-pages]
+    paths: ['scripts/mercadopago_combo_sandbox.py', '.github/workflows/mercadopago-combo-sandbox.yml']
   workflow_dispatch:
     inputs:
       expected_sha: {description: Exact live SHA, required: true, type: string}
@@ -12,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   purchase:
-    if: github.run_attempt == 1
+    if: github.run_attempt == 1 && (github.event_name == 'workflow_dispatch' || (github.head_ref == 'fix/mp-official-api-test-payer-20261005' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
@@ -20,10 +23,11 @@ jobs:
       MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
       MERCADOPAGO_TEST_BUYER_EMAIL: ${{ secrets.MERCADOPAGO_TEST_BUYER_EMAIL }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
-      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      EXPECTED_SHA: ${{ inputs.expected_sha || '0e59ea91f0e88b648b5f6b887aaea5ab1eabbd3d' }}
+      TEST_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
-        with: {ref: '${{ inputs.expected_sha }}'}
+        with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}'}
       - run: python3 scripts/mercadopago_combo_sandbox.py
       - uses: actions/upload-artifact@v4
         if: always()
