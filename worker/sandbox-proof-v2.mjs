@@ -300,25 +300,41 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
   const day = new Date().toISOString().slice(0, 10);
   const used = Number(await kv.get(DAILY_KEY(day)) || 0);
   if (used >= MAX_ORDERS_PER_DAY) return json(429, { error: "sandbox_daily_limit" });
-  const oid = crypto.randomUUID();
-  // orders.session_id is a uuid column (the public checkout requires UUIDs).
+  // Prove the real checkout path. The sandbox facade must never persist an order
+  // independently: it creates a short-lived certification invite and delegates
+  // order + Mercado Pago preference creation to the canonical checkout handler.
+  if (!worker?.fetch) return json(503, { error: "canonical_checkout_unavailable" });
+  const operatorToken = String(env.OPERATOR_TOKEN || "");
+  if (operatorToken.length < 24) return json(503, { error: "operator_secret_unavailable" });
+
+  const inviteResponse = await worker.fetch(new Request(new URL("/api/events/operator", request.url), {
+    method: "POST",
+    headers: { "content-type": "application/json", "authorization": `Bearer ${operatorToken}` },
+    body: JSON.stringify({ name: "certification_pilot_invite_create", ttl_hours: 1 })
+  }), env, ctx);
+  let invite = null;
+  try { invite = await inviteResponse.json(); } catch {}
+  if (!inviteResponse.ok || !String(invite?.token || "")) return json(503, { error: "certification_invite_unavailable" });
+
   const sessionId = crypto.randomUUID();
-  const sql = sqlFactory(env.DATABASE_URL);
-  let inserted;
-  try {
-    inserted = await sql.query(`INSERT INTO orders
-      (order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status,certification_pilot)
-      VALUES ($1::uuid,$2::uuid,$3::uuid,'EXP-0001'::text,$4::text,$5::numeric,'BRL'::text,'mercadopago'::text,$6::text,'checkout_ready'::text,true)
-      ON CONFLICT (request_id) DO NOTHING RETURNING order_id`,
-      [oid, input.requestId, sessionId, SANDBOX_OFFER_ID, SANDBOX_AMOUNT_BRL, oid]);
-  } catch (error) {
-    // Sanitized: SQLSTATE and constraint/column names only, never values.
-    const safe = (v) => String(v || "").replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
-    return json(503, { error: "sandbox_order_persist_failed", sqlstate: safe(error?.code), constraint: safe(error?.constraint), column: safe(error?.column) });
+  const checkoutResponse = await worker.fetch(new Request(new URL("/api/checkout/mercadopago", request.url), {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-certification-pilot-token": String(invite.token) },
+    body: JSON.stringify({ request_id: input.requestId, session_id: sessionId, offer_id: SANDBOX_OFFER_ID })
+  }), env, ctx);
+  let checkout = null;
+  try { checkout = await checkoutResponse.json(); } catch {}
+  const oid = String(checkout?.order_id || "").toLowerCase();
+  if (!checkoutResponse.ok || checkout?.accepted !== true || checkout?.duplicate === true || !UUID.test(oid) || oid === FROZEN_ORDER) {
+    const safe = String(checkout?.error || "canonical_checkout_failed").replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
+    return json(checkoutResponse.status >= 400 && checkoutResponse.status < 600 ? checkoutResponse.status : 503,
+      { error: safe || "canonical_checkout_failed" });
   }
-  if (!Array.isArray(inserted) || inserted.length !== 1) return json(409, { error: "request_id_already_used", created_new: false, accepted: false });
+  const checkoutUrl = String(checkout?.checkout_url || "");
+  if (!/^https:\/\/www\.mercadopago\.(?:com|com\.br)\//.test(checkoutUrl)) return json(503, { error: "canonical_checkout_url_invalid" });
+
   const record = { order_id: oid, session_id: sessionId, buyer_id: input.buyerId, buyer_email: input.buyerEmail, email_recipient: input.recipient, created_at: new Date().toISOString() };
   await kv.put(ORDER_KEY(oid), JSON.stringify(record), { expirationTtl: 30 * 24 * 3600 });
   await kv.put(DAILY_KEY(day), String(used + 1), { expirationTtl: 2 * 24 * 3600 });
-  return json(201, { ...isolation(record), accepted: true, created_new: true, amount_brl: SANDBOX_AMOUNT_BRL, external_reference: oid });
+  return json(201, { ...isolation(record), accepted: true, created_new: true, amount_brl: SANDBOX_AMOUNT_BRL, external_reference: oid, checkout_url: checkoutUrl });
 }
