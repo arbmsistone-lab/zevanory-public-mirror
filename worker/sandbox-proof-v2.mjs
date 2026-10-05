@@ -42,6 +42,18 @@ function timingSafeEqualText(a, b) {
   return diff === 0;
 }
 
+async function hmacSha256Hex(secret, value) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(String(secret)),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(String(value)));
+  return [...new Uint8Array(signature)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export function sandboxFailClosed(env) {
   return String(env.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox" &&
     String(env.MERCADOPAGO_ENV || "").toLowerCase() === "sandbox" &&
@@ -112,6 +124,7 @@ export function projectStatus(record, base) {
   const d = base?.delivery_evidence || {};
   return {
     ...isolation(record),
+    receipt_source: record.receipt_source === "reconciliation" ? "reconciliation" : (receiverVerified ? "webhook" : null),
     order: { status: String(base?.order?.status || "") },
     fulfillment: { status: String(base?.fulfillment?.status || "") },
     financial_events: events,
@@ -247,7 +260,7 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
   const auditId = String(request.headers.get("x-audit-id") || "").toLowerCase();
   if (UUID.test(auditId)) console.log("SANDBOX_AUDIT", JSON.stringify({ audit_id: auditId, route: path, method: request.method }));
   const isInbox = path.startsWith(INBOX);
-  const v2Paths = new Set([`${CERT}checkout`, `${CERT}download`, `${CERT}status`, `${INBOX}profile`, `${INBOX}messages`]);
+  const v2Paths = new Set([`${CERT}checkout`, `${CERT}download`, `${CERT}status`, `${CERT}reconcile`, `${INBOX}profile`, `${INBOX}messages`]);
   if (!v2Paths.has(path)) return null;
   if (!sandboxFailClosed(env)) return json(409, { error: "certification_e2e_not_fail_closed" });
   if (isInbox) {
@@ -291,6 +304,7 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
         sandbox_checkout_isolated: true,
         receiver_test_signature_evidence: true,
         certification_download_isolated: true,
+        sandbox_reconciliation_supported: true,
         inbox_domain: SANDBOX_INBOX_DOMAIN
       });
     }
@@ -300,6 +314,49 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
     const base = await workerStatus(worker, request, env, ctx, oid);
     if (!base) return json(503, { error: "order_status_unavailable" });
     return json(200, projectStatus(record, base));
+  }
+
+  if (path === `${CERT}reconcile`) {
+    if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
+    const body = await readJson(request);
+    const oid = String(body?.order_id || "").toLowerCase();
+    const paymentId = String(body?.payment_id || "");
+    if (!UUID.test(oid) || oid === FROZEN_ORDER || !/^[0-9]{1,32}$/.test(paymentId)) {
+      return json(400, { error: "sandbox_reconciliation_input_invalid" });
+    }
+    const record = JSON.parse(await kv.get(ORDER_KEY(oid)) || "null");
+    if (!record || record.order_id !== oid) return json(404, { error: "sandbox_order_not_found" });
+    const secret = String(env.MERCADOPAGO_TEST_WEBHOOK_SECRET || "");
+    if (secret.length < 16 || !worker?.fetch) return json(503, { error: "sandbox_reconciliation_unavailable" });
+
+    const requestId = crypto.randomUUID();
+    const ts = String(Math.floor(Date.now() / 1000));
+    const manifest = `id:${paymentId};request-id:${requestId};ts:${ts};`;
+    const signature = await hmacSha256Hex(secret, manifest);
+    const webhookUrl = new URL("/api/webhooks?provider=mercadopago_test", request.url);
+    const response = await worker.fetch(new Request(webhookUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": requestId,
+        "x-signature": `ts=${ts},v1=${signature}`
+      },
+      body: JSON.stringify({ type: "payment", data: { id: paymentId } })
+    }), env, ctx);
+    let result = null;
+    try { result = await response.json(); } catch {}
+    if (!response.ok) {
+      const status = response.status >= 400 && response.status < 600 ? response.status : 503;
+      return json(status, { error: "sandbox_reconciliation_failed" });
+    }
+    const confirmed = result?.accepted === true &&
+      result?.event === "payment_confirmed" &&
+      String(result?.order_id || "").toLowerCase() === oid &&
+      ["paid", "approved", "completed"].includes(String(result?.order_status || "").toLowerCase());
+    if (!confirmed) return json(409, { error: "sandbox_payment_not_approved" });
+    const reconciled = { ...record, receipt_source: "reconciliation", reconciled_payment_id: paymentId };
+    await kv.put(ORDER_KEY(oid), JSON.stringify(reconciled), { expirationTtl: 30 * 24 * 3600 });
+    return json(200, { accepted: true, order_id: oid, payment_id: paymentId, receipt_source: "reconciliation" });
   }
 
   if (path === `${CERT}download`) {
