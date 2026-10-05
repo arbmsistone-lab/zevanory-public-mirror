@@ -308,9 +308,9 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
   try {
     inserted = await sql.query(`INSERT INTO orders
       (order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status,certification_pilot)
-      VALUES ($1,$2,$3,'EXP-0001',$4,$5,'BRL','mercadopago',$1,'checkout_ready',true)
+      VALUES ($1::uuid,$2::uuid,$3::uuid,'EXP-0001'::text,$4::text,$5::numeric,'BRL'::text,'mercadopago'::text,$6::text,'checkout_ready'::text,true)
       ON CONFLICT (request_id) DO NOTHING RETURNING order_id`,
-      [oid, input.requestId, sessionId, SANDBOX_OFFER_ID, SANDBOX_AMOUNT_BRL]);
+      [oid, input.requestId, sessionId, SANDBOX_OFFER_ID, SANDBOX_AMOUNT_BRL, oid]);
   } catch (error) {
     // Sanitized: SQLSTATE and constraint/column names only, never values.
     const safe = (v) => String(v || "").replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
