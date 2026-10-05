@@ -191,7 +191,9 @@ class Client:
             except Exception:
                 detail = ''
             code = re.sub(r'[^a-z0-9_]', '_', str(failure_code).lower()).strip('_') or 'request'
-            suffix = ('_provider_' + detail.lower()) if detail else ''
+            host = urllib.parse.urlsplit(url).hostname
+            detail_class = 'provider' if host == 'api.mercadopago.com' else 'detail'
+            suffix = ('_' + detail_class + '_' + detail.lower()) if detail else ''
             raise GuardError(code + '_http_' + str(error.code) + suffix) from None
         except Exception:
             code = re.sub(r'[^a-z0-9_]', '_', str(failure_code).lower()).strip('_') or 'request'
@@ -288,11 +290,14 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
             audit_id=audit_id, failure_code='checkout_canonical')
         oid = checkout.get('order_id', '')
         require(re.fullmatch(r'[0-9a-f-]{36}', oid) and oid != FROZEN_ORDER and
-                checkout.get('created_new') is True and checkout.get('accepted') is True,
-                'NEW_SANDBOX_ORDER_REQUIRED')
+                checkout.get('accepted') is True and
+                (checkout.get('created_new') is True or
+                 (checkout.get('created_new') is False and checkout.get('reused_existing') is True)),
+                'NEW_OR_REUSED_SANDBOX_ORDER_REQUIRED')
         validate_isolation(checkout, identity, oid)
         require(checkout.get('amount_brl') == 297, 'COMBO_AMOUNT_REQUIRED')
         report['order_id'] = oid
+        report['checkout_reused'] = checkout.get('created_new') is False
         report['checks']['ISOLATED_CHECKOUT'] = 'PASS'
         require(preflight(env) == identity, 'IDENTITY_CHANGED_BEFORE_TOKENIZATION')
         card = client.request(MP + '/v1/card_tokens?' + urllib.parse.urlencode({'public_key': identity.public_key}),
@@ -314,6 +319,7 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
                 payment.get('external_reference') == oid and str(payment.get('id', '')).isdigit(), 'APPROVED_SANDBOX_PAYMENT_REQUIRED')
         pid = str(payment['id'])
         report['payment_id'] = pid
+        report['notification_url_provider'] = 'mercadopago_test'
         report['checks']['PAYMENT'] = 'PASS'
         confirmed = client.mp('/v1/payments/' + pid, headers={'x-test-token': 'true'}, failure_code='checkout_payment_lookup')
         require(str(confirmed.get('id', '')) == pid and confirmed.get('status') == 'approved' and
@@ -358,6 +364,14 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
                               'x-audit-id': audit_id}, binary=True, failure_code='delivery_download')
         require(data and digest_bytes(data) == delivery.get('artifact_sha256'), 'DOWNLOAD_INTEGRITY_REQUIRED')
         report['download_http'] = 200
+        try:
+            client.request(probe, headers={'x-certification-e2e-token': identity.certification_token,
+                           'x-audit-id': audit_id}, binary=True, failure_code='delivery_download_reuse')
+            raise GuardError('DOWNLOAD_REUSE_MUST_FAIL')
+        except GuardError as error:
+            match = re.fullmatch(r'delivery_download_reuse_http_(403|410)(?:_detail_[a-z0-9_]+)?', str(error))
+            require(bool(match), 'DOWNLOAD_REUSE_MUST_FAIL')
+            report['reuse_http'] = int(match.group(1))
         final = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}),
                             audit_id=audit_id, failure_code='order_final_status')
         validate_isolation(final, identity, oid)

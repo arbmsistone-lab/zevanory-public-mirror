@@ -60,6 +60,7 @@ class FakeProvider:
         self.contract = True
         self.error = None
         self.http_errors = {}
+        self.download_calls = 0
 
     def __call__(self, req, timeout):
         self.calls.append(req)
@@ -259,6 +260,25 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(self.run_fake()['cause'], 'SANDBOX_CARD_TOKEN_REQUIRED')
         self.assertFalse(any('/v1/payments' in r.full_url for r in self.fake.calls))
 
+    def test_app_http_detail_is_not_labeled_provider(self):
+        original = self.fake.__call__
+        def call(req, timeout):
+            if proof.urllib.parse.urlsplit(req.full_url).path == proof.CERT_PATH + 'checkout':
+                body = io.BytesIO(json.dumps({'error': 'sandbox_daily_limit'}).encode())
+                raise proof.urllib.error.HTTPError(req.full_url, 429, 'local', {}, body)
+            return original(req, timeout)
+        report = proof.run(self.env, call, now=lambda: NOW)
+        self.assertEqual(report['cause'], 'checkout_canonical_http_429_detail_sandbox_daily_limit')
+
+    def test_provider_http_detail_keeps_provider_label(self):
+        original = self.fake.__call__
+        def call(req, timeout):
+            if proof.urllib.parse.urlsplit(req.full_url).path == '/v1/payments':
+                body = io.BytesIO(json.dumps({'error': 'provider_limit'}).encode())
+                raise proof.urllib.error.HTTPError(req.full_url, 429, 'provider', {}, body)
+            return original(req, timeout)
+        report = proof.run(self.env, call, now=lambda: NOW)
+        self.assertEqual(report['cause'], 'checkout_payment_http_429_provider_provider_limit')
     def test_card_token_500_has_stable_route_code(self):
         self.fake.http_errors['/v1/card_tokens'] = 500
         report = self.run_fake()

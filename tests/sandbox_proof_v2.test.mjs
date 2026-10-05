@@ -86,10 +86,30 @@ test("checkout rejects generic buyer, other recipients and other offers", async 
   }
 });
 
+test("checkout reuses an unpaid sandbox order from today before creating a new one", async () => {
+  const e = env({ OPERATOR_TOKEN: "operator-token-0123456789abcdef0123456789" });
+  const oid = "22222222-3333-4444-8555-666666666666";
+  const record = { order_id: oid, session_id: "s", buyer_id: body.buyer_id, buyer_email: body.buyer_email,
+    email_recipient: body.email_recipient, created_at: new Date().toISOString() };
+  await e.ZEVANORY_PRIVATE_ARTIFACTS.put("sandbox-proof-v2:order:" + oid, JSON.stringify(record));
+  const worker = canonicalWorker({ fetch: async (request) => {
+    const u = new URL(request.url);
+    if (u.pathname.endsWith("/status")) return Response.json({ order: { status: "pending" } });
+    throw new Error("should not create a new order");
+  }});
+  const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/checkout", {
+    method: "POST", headers: { "x-certification-e2e-token": TOKEN }, body: JSON.stringify(body)
+  }), e, {}, worker, sqlOk);
+  const d = await r.json();
+  assert.equal(r.status, 200);
+  assert.equal(d.order_id, oid);
+  assert.equal(d.created_new, false);
+  assert.equal(d.reused_existing, true);
+});
 test("daily limit caps sandbox orders", async () => {
   const e = env();
   const day = new Date().toISOString().slice(0, 10);
-  await e.ZEVANORY_PRIVATE_ARTIFACTS.put(`sandbox-proof-v2:daily:${day}`, "3");
+  await e.ZEVANORY_PRIVATE_ARTIFACTS.put(`sandbox-proof-v2:daily:${day}`, "10");
   const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/checkout", { method: "POST", headers: { "x-certification-e2e-token": TOKEN }, body: JSON.stringify(body) }), e, {}, canonicalWorker(), sqlOk);
   assert.equal(r.status, 429);
 });
