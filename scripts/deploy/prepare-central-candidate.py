@@ -6,7 +6,7 @@ c=json.load(open(p))
 c["account_id"]=os.environ["PUBLIC_OWNER_ACCOUNT_ID"]
 c["main"]="worker/cloudflare-worker.compat.mjs"
 c.pop("secrets",None)
-c["services"]=[{"binding":"SELF","service":"zevanory"}]
+c["services"]=[]
 c["ai"]={"binding":"AI"}
 c.pop("routes",None)
 c["workers_dev"]=True
@@ -144,8 +144,8 @@ for retired_asset in ("public/zevanory-one.html","public/arbm-one.html","public/
     assert not Path(retired_asset).exists()
 print("COMMERCIAL_RETIREMENT_OVERLAY=PASS")
 
-c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
-c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"
+c["vars"]["VOICE_TTS_PROVIDER"]="gemini"
+c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="gemini"
 c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"
 # Workers Free caps a Worker at 64 variables (secrets + text) and buying the paid plan
 # breaks the owner's zero-spend rule, so the voice support switch rides in the compact
@@ -160,3 +160,6 @@ c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
 for unused in ("KNOWLEDGE_SEED_ALLOWED","SPEECHIFY_FREE_TIER_CONFIRMED","AZURE_SPEECH_FREE_TIER_CONFIRMED"):
     c["vars"].pop(unused,None)
 open(p,"w").write(json.dumps(c,indent=2)+"\n")
+
+runtime_config["VOICE_CHUNKS_ENABLED"]="false"
+open(p,"w").write(json.dumps(c,ensure_ascii=False,indent=2)+"\n")
