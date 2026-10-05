@@ -315,7 +315,7 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         pid = str(payment['id'])
         report['payment_id'] = pid
         report['checks']['PAYMENT'] = 'PASS'
-        confirmed = client.mp('/v1/payments/' + pid, failure_code='checkout_payment_lookup')
+        confirmed = client.mp('/v1/payments/' + pid, headers={'x-test-token': 'true'}, failure_code='checkout_payment_lookup')
         require(str(confirmed.get('id', '')) == pid and confirmed.get('status') == 'approved' and
                 confirmed.get('external_reference') == oid, 'APPROVED_SANDBOX_PAYMENT_LOOKUP_REQUIRED')
         report['checks']['PAYMENT_LOOKUP'] = 'PASS'
