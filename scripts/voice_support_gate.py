@@ -34,34 +34,15 @@ assert 'inboundMediaType === "audio"' in worker
 print("VOICE_ENGINE_STATIC_GATE=PASS")
 
 router_required=[
-  'DEFAULT_CHAIN = Object.freeze(["speechify", "azure", "piper-relay", "gemini"])',
-  'VOICE_TTS_FAILOVER_ENABLED',
-  'VOICE_TTS_FREE_ONLY',
-  'SPEECHIFY_FREE_TIER_CONFIRMED',
-  'AZURE_SPEECH_FREE_TIER_CONFIRMED',
-  'GEMINI_FREE_TIER_CONFIRMED',
-  'FAILURE_THRESHOLD = 2',
-  'COOLDOWN_MS = 5 * 60 * 1000',
-  'voice_tts_all_providers_failed',
-  'pt-BR-FranciscaNeural',
-  'simba-3.0',
-  'pt_BR-jeff-medium',
-  'const list = ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"]',
-  'AbortSignal.timeout(Math.min(15000, remaining))',
-  'voice_tts_speechify_http_',
-  'voice_tts_azure_http_',
-  'voice_tts_piper_relay_http_',
-  'voice_tts_gemini_failed:',
-  'language: "pt-BR"',
-  'responseModalities: ["AUDIO"]',
-  ':generateContent',
-  'export function pcm16ToMp3',
-  'encodePcmInChunks(input.pcm,input.sampleRate,env,fetchImpl,{onStage})',
-  'encode_fallback_used:encoded.fallback_used',
-  'sample_rate: 8000',
-  'gemini-3.8-flash-tts',
-  'gemini-3.8-flash-lite-tts',
+ 'DEFAULT_CHAIN = Object.freeze(["speechify", "azure", "gemini"])',
+ 'renderTextTts', 'VOICE_TTS_FREE_ONLY', 'GEMINI_FREE_TIER_CONFIRMED',
+ 'VOICE_TTS_FAILOVER_ENABLED', 'voice_tts_all_providers_failed',
+ 'FAILURE_THRESHOLD = 2', 'COOLDOWN_MS = 5 * 60 * 1000',
 ]
+client=Path("worker/voice-render-client.mjs").read_text()
+for marker in ['voice:mp3:v2:', '30*86400', 'voice:quota:until', 'voiceReserveSecret', 'HMAC', 'synthesize', 'gemini_key', 'handleReserveEncodeAudit']:
+    assert marker in client, marker
+assert 'encodePcmInChunks' not in router
 missing=[x for x in router_required if x not in router]
 assert not missing, f"missing provider router markers: {missing}"
 print("VOICE_MULTI_PROVIDER_ZERO_SPEND_FAILOVER_GATE=PASS")
@@ -74,7 +55,7 @@ subprocess.run(["node", "scripts/whatsapp_conversation_test.mjs"], check=True)
 subprocess.run(["node", "scripts/whatsapp_audio_runtime_test.mjs"], check=True)
 
 for marker in [
-  'c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"',
+  'c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="gemini"',
   'c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"',
   'c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"',
   'c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"',
