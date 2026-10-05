@@ -29,7 +29,7 @@ def req(url,method='GET',body=None,headers=None):
             raw=r.read();return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
         raw=e.read().decode('utf-8','replace')[:1000]
-        for value in [os.environ.get('MERCADOPAGO_TEST_ACCESS_TOKEN'),os.environ.get('CERTIFICATION_E2E_TOKEN')]:
+        for value in [os.environ.get('MERCADOPAGO_TEST_ACCESS_TOKEN'),os.environ.get('CERTIFICATION_E2E_TOKEN'),os.environ.get('MERCADOPAGO_ACCESS_TOKEN')]:
             if value:raw=raw.replace(value,'[redacted]')
         raise RuntimeError(f'http_{e.code}:{urllib.parse.urlparse(url).path}:{raw}') from None
 
@@ -52,10 +52,18 @@ try:
         report['buyer_creation']='created'
     except RuntimeError as error:
         if '40311' not in str(error):raise
-        email=os.environ.get('MERCADOPAGO_TEST_BUYER_EMAIL','').strip()
+        creator=os.environ.get('MERCADOPAGO_ACCESS_TOKEN','').strip()
+        if creator and creator!=TOKEN:
+            account=req('https://api.mercadopago.com/users/me',headers={'authorization':'Bearer '+creator})
+            if 'test_user' not in account.get('tags',[]):
+                buyer=req('https://api.mercadopago.com/users/test','POST',{'site_id':'MLB','description':'ZEVANORY sandbox buyer'}, {'authorization':'Bearer '+creator})
+                report['buyer_creation']='created_with_existing_productive_credential_no_payment'
+            else:buyer=None
+        else:buyer=None
+        email=(buyer or {}).get('email') or os.environ.get('MERCADOPAGO_TEST_BUYER_EMAIL','').strip()
         require(email.endswith('@testuser.com') and email!=seller.get('email'),'existing_distinct_test_buyer_required')
-        buyer={'id':None,'email':email}
-        report['buyer_creation']='blocked_40311_existing_test_buyer_reused'
+        buyer=buyer or {'id':None,'email':email}
+        if not buyer.get('id'):report['buyer_creation']='blocked_40311_existing_test_buyer_reused'
         print('::warning title=MP_TEST_BUYER::Test token cannot create users; reusing configured test buyer')
     require(str(buyer.get('email','')).endswith('@testuser.com'),'test_buyer_required')
     print('::add-mask::'+str(buyer.get('password','')))
