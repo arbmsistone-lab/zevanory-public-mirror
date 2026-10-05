@@ -11,7 +11,7 @@ export async function voiceSignedHeaders(bytes,rate,env,fields={}){
  const timestamp=String(Date.now()),nonce=crypto.randomUUID(),digest=hex(await crypto.subtle.digest("SHA-256",bytes));
  const meta=JSON.stringify(fields),message=["zevanory-voice-chunk-v1",timestamp,nonce,rate,digest,meta].join("\n");
  const key=await hmacKey(secret);
- return {"content-type":"application/octet-stream","x-voice-timestamp":timestamp,"x-voice-nonce":nonce,"x-voice-sample-rate":String(rate),"x-voice-meta":meta,"x-voice-signature":hex(await crypto.subtle.sign("HMAC",key,E.encode(message)))};
+ return {"content-type":"application/octet-stream","x-voice-timestamp":timestamp,"x-voice-nonce":nonce,"x-voice-sample-rate":String(rate),"x-voice-meta":meta,"x-voice-pcm-sha256":digest,"x-voice-signature":hex(await crypto.subtle.sign("HMAC",key,E.encode(message)))};
 }
 async function authenticated(request,bytes,env){
  const timestamp=request.headers.get("x-voice-timestamp"),nonce=request.headers.get("x-voice-nonce"),rate=request.headers.get("x-voice-sample-rate"),meta=request.headers.get("x-voice-meta")||"{}";
@@ -65,9 +65,11 @@ export async function handleVoiceChunk(request,env){
  console.log(JSON.stringify({voice_encode_chunk:true,audit_id:meta.audit_id,index:meta.index,attempt:meta.attempt,samples:meta.samples,mp3_bytes:mp3.length}));
  return new Response(mp3,{headers:{"content-type":"audio/mpeg","cache-control":"no-store"}});
 }
+let reserveSecretSource,reserveSecretValue;
 export async function renderVoiceSecret(env){
- const key=await crypto.subtle.importKey("raw",E.encode(String(env.ELITE_INTERNAL_TOKEN||"")),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
- return hex(await crypto.subtle.sign("HMAC",key,E.encode("zevanory-render-voice-v1")));
+ const secret=String(env.ELITE_INTERNAL_TOKEN||"");
+ if(secret!==reserveSecretSource){reserveSecretSource=secret;reserveSecretValue=crypto.subtle.sign("HMAC",await hmacKey(secret),E.encode("zevanory-render-voice-v1")).then(hex);}
+ return reserveSecretValue;
 }
 async function encodeChunksDirect(pcm,rate,env,fetchImpl=fetch,{auditId=crypto.randomUUID(),onStage=async()=>{}}={}){
  if(!(pcm instanceof Uint8Array)||!pcm.length||pcm.length>MAX||pcm.length%2||![8000,16000,24000,32000,48000].includes(rate))throw Error("voice_pcm_size_invalid");
@@ -119,9 +121,10 @@ export async function encodePcmInChunks(pcm,rate,env,fetchImpl=fetch,{auditId=cr
  // A killed coordinator is catchable here, preserving the reserve CPU budget.
  if(!env.SELF?.fetch)return encodeChunksDirect(pcm,rate,env,fetchImpl,{auditId,onStage});
  if(!(pcm instanceof Uint8Array)||!pcm.length||pcm.length>MAX||pcm.length%2||![8000,16000,24000,32000,48000].includes(rate))throw Error("voice_pcm_size_invalid");
- let failure;
+ let failure,pcmDigest;
  try{
   const headers=await voiceSignedHeaders(pcm,rate,env,{purpose:"voice-stream",audit_id:auditId});
+  pcmDigest=headers["x-voice-pcm-sha256"];
   const response=await env.SELF.fetch(new Request("https://zevanory.api.br/api/internal/voice/encode-stream?audit_id="+encodeURIComponent(auditId),{method:"POST",headers,body:pcm,signal:AbortSignal.timeout(90000)}));
   if(!response.ok){await response.body?.cancel();throw Error("voice_coordinator_http_"+response.status);}
   const bytes=new Uint8Array(await response.arrayBuffer());
@@ -131,7 +134,7 @@ export async function encodePcmInChunks(pcm,rate,env,fetchImpl=fetch,{auditId=cr
   return result;
  }catch(error){failure=String(error?.message||error).slice(0,200);}
  await onStage("encode_fallback",{encode_chunk_error:failure,encode_chunks:[]});
- const bytes=await encodePcmRemotely(pcm,rate,{VOICE_ENCODE_URL:"https://zevanory-product-control-edge.onrender.com/api/voice/encode",VOICE_ENCODE_SECRET:await renderVoiceSecret(env)},fetchImpl);
+ const bytes=await encodePcmRemotely(pcm,rate,{VOICE_ENCODE_URL:"https://zevanory-product-control-edge.onrender.com/api/voice/encode",VOICE_ENCODE_SECRET:await renderVoiceSecret(env)},fetchImpl,{digest:pcmDigest});
  return {bytes,provider:"render",chunks:[],fallback_used:true,chunk_error:failure};
 }
 

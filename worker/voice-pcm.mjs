@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 export function unpackPcm(bytes, sampleRate = 8000) {
   if (!(bytes instanceof Uint8Array) || !bytes.length || bytes.length > 3 * 1024 * 1024) throw new Error("voice_pcm_size_invalid");
   let pcm = bytes;
@@ -23,14 +24,14 @@ export function unpackPcm(bytes, sampleRate = 8000) {
   return { pcm, sampleRate };
 }
 
-export async function encodePcmRemotely(bytes, sampleRate, env, fetchImpl = fetch) {
+export async function encodePcmRemotely(bytes, sampleRate, env, fetchImpl = fetch, {digest: precomputedDigest} = {}) {
   const endpoint = String(env.VOICE_ENCODE_URL || "");
   const secret = String(env.VOICE_ENCODE_SECRET || "");
   if (!/^https:\/\//.test(endpoint) || secret.length < 32) throw new Error("voice_encode_route_not_configured");
   if (!bytes.length || bytes.length > 3 * 1024 * 1024) throw new Error("voice_pcm_size_invalid");
   const timestamp = String(Date.now()), nonce = crypto.randomUUID();
-  const hex = value => [...new Uint8Array(value)].map(x => x.toString(16).padStart(2, "0")).join("");
-  const digest = hex(await crypto.subtle.digest("SHA-256", bytes));
+  const hex = value => Buffer.from(value).toString("hex");
+  const digest = /^[a-f0-9]{64}$/.test(precomputedDigest||"") ? precomputedDigest : hex(await crypto.subtle.digest("SHA-256", bytes));
   const message = `${timestamp}\n${nonce}\n${sampleRate}\n${digest}`;
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)));

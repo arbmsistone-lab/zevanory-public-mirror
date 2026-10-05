@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {webcrypto} from "node:crypto";
+import {webcrypto,createHash,createHmac} from "node:crypto";
 import {writeFileSync} from "node:fs";
 import {handleVoiceChunk,voiceSignedHeaders,encodePcmInChunks,renderVoiceSecret,handleVoiceStream} from "../worker/voice-chunks.mjs";
 globalThis.crypto ||= webcrypto;
@@ -56,3 +56,12 @@ const bridged=await encodePcmInChunks(pcm,8000,env,async()=>{throw Error("bridge
 assert.equal(bridged.provider,"cloudflare-chunks");
 delete globalThis.__ZEVANORY_VOICE_SELF__;
 console.log("NODE_WEBHOOK_BRIDGE_SELF_PRESERVED=PASS");
+
+const {encodePcmRemotely}=await import("../worker/voice-pcm.mjs");
+const checksum=createHash("sha256").update(pcm).digest("hex"),reserveKey="unit-reserve-key-with-at-least-32-characters";
+await encodePcmRemotely(pcm,8000,{VOICE_ENCODE_URL:"https://unit.example/api/voice/encode",VOICE_ENCODE_SECRET:reserveKey},async(url,init)=>{
+ const h=init.headers;
+ assert.equal(h["x-voice-signature"],createHmac("sha256",reserveKey).update([h["x-voice-timestamp"],h["x-voice-nonce"],"8000",checksum].join(String.fromCharCode(10))).digest("hex"));
+ return new Response(encoded.bytes);
+},{digest:checksum});
+console.log("RESERVE_REUSES_VERIFIED_PCM_DIGEST=PASS");
