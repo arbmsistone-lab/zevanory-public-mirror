@@ -32,8 +32,9 @@ async function wait(file,id){
 try{
  const warm='voice-cache-warm.yml',audit='whatsapp-operational-audit.yml',purchase='mercadopago-combo-sandbox.yml';
  let warmError=null;
- const id=await dispatch(warm,{max_voices:'7'});
- try{await wait(warm,id);}catch(error){warmError=error;console.log('::warning title=WARM_FAILED::'+error.message+'; independent proofs continue');}
+ const phase=process.env.REPAIR_ONLY==='true'?'voice-cache-repair.yml':warm;
+ const id=await dispatch(phase,phase===warm?{max_voices:'7'}:{});
+ try{await wait(phase,id);}catch(error){warmError=error;console.log('::warning title=WARM_FAILED::'+error.message+'; independent proofs continue');}
  // One dispatch for each proof, never auto-rerun a purchase or warm call.
  const aid=await dispatch(audit),pid=await dispatch(purchase,{expected_sha:sha});
  const outcomes=await Promise.allSettled([wait(audit,aid),wait(purchase,pid)]);

@@ -14,6 +14,7 @@ async function op(body,id){
 try{
  const live=await readFinalClosure();
  if(live.release_sha!==process.env.AUDIT_SHA)throw Error('exact_live_audit_sha_required:'+live.release_sha);
+ writeFileSync(dir+'/final-closure.json',JSON.stringify(live,null,2));
  const seen=new Set();
  for(const entry of catalogVoices()){
   const key=await voiceCacheKey(entry.text);if(seen.has(key))continue;seen.add(key);
