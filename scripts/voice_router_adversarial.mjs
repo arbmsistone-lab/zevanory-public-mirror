@@ -57,7 +57,7 @@ reset();
     throw new Error("unexpected_provider");
   };
   const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"gemini");
+  assert.equal(r.provider,"render-gemini");
   assert.equal(calls.length,3);
   console.log("VOICE_PROVIDER_FAILOVER=PASS");
 }
@@ -104,7 +104,7 @@ reset();
     throw new Error("unexpected_provider");
   };
   const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"gemini");
+  assert.equal(r.provider,"render-gemini");
   console.log("VOICE_TIMEOUT_FAILOVER=PASS");
 }
 
@@ -119,7 +119,7 @@ reset();
     throw new Error("unexpected_provider");
   };
   const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"gemini");
+  assert.equal(r.provider,"render-gemini");
   assert.ok(r.bytes.length>0);
   console.log("VOICE_INVALID_OUTPUT_FAILOVER=PASS");
 }
@@ -144,7 +144,7 @@ reset();
     throw new Error("unexpected_provider");
   };
   const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"gemini");
+  assert.equal(r.provider,"render-gemini");
   console.log("VOICE_INVALID_CREDENTIAL_FAILOVER=PASS");
 }
 
