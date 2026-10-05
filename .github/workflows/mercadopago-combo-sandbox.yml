@@ -1,39 +1,71 @@
-name: Combo sandbox purchase and delivery proof
-run-name: combo-sandbox:${{ inputs.cycle || github.sha }}
-on:
-  pull_request:
-    branches: [gh-pages]
-    paths: ['scripts/mercadopago_combo_sandbox.py', '.github/workflows/mercadopago-combo-sandbox.yml']
-  workflow_dispatch:
-    inputs:
-      expected_sha: {description: Exact live SHA, required: true, type: string}
-      cycle: {description: One-time cycle identifier, required: false, type: string}
-permissions:
-  contents: read
-concurrency:
-  group: combo-sandbox-purchase
-  cancel-in-progress: false
-jobs:
-  purchase:
-    if: github.run_attempt == 1 && (github.event_name == 'workflow_dispatch' || (github.head_ref == 'fix/mp-official-api-test-payer-20261005' && github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    env:
-      MERCADOPAGO_TEST_PUBLIC_KEY: ${{ secrets.MERCADOPAGO_TEST_PUBLIC_KEY }}
-      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
-      MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
-      MERCADOPAGO_TEST_BUYER_EMAIL: ${{ secrets.MERCADOPAGO_TEST_BUYER_EMAIL }}
-      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
-      EXPECTED_SHA: ${{ inputs.expected_sha || '0e59ea91f0e88b648b5f6b887aaea5ab1eabbd3d' }}
-      RESUME_ORDER_ID: ${{ github.event_name == 'pull_request' && 'a28c53ab-9ce7-429d-9d6b-1311a3fad406' || '' }}
-      TEST_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-    steps:
-      - uses: actions/checkout@v4
-        with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}'}
-      - run: python3 scripts/mercadopago_combo_sandbox.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: combo-sandbox-evidence
-          path: evidence/mercadopago-combo-sandbox.json
-          retention-days: 30
+{
+  "name": "Combo sandbox purchase and delivery proof",
+  "run-name": "combo-sandbox:${{ github.sha }}",
+  "on": {
+    "workflow_dispatch": {
+      "inputs": {
+        "expected_sha": {
+          "description": "Full approved source SHA; no default",
+          "required": true,
+          "type": "string"
+        }
+      }
+    }
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "concurrency": {
+    "group": "manual-combo-sandbox",
+    "cancel-in-progress": false
+  },
+  "jobs": {
+    "purchase": {
+      "if": "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1 && vars.SANDBOX_FINANCIAL_ENABLED == 'true'",
+      "environment": {
+        "name": "sandbox-financial-approved"
+      },
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 12,
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Verify approved source",
+          "env": {
+            "EXPECTED_SHA": "${{ inputs.expected_sha }}"
+          },
+          "run": "test \"$(git rev-parse HEAD)\" = \"$EXPECTED_SHA\""
+        },
+        {
+          "name": "Preflight and isolated sandbox proof",
+          "env": {
+            "EXPECTED_SHA": "${{ inputs.expected_sha }}",
+            "SANDBOX_FINANCIAL_ENABLED": "${{ vars.SANDBOX_FINANCIAL_ENABLED }}",
+            "MERCADOPAGO_TEST_PUBLIC_KEY": "${{ secrets.MERCADOPAGO_TEST_PUBLIC_KEY }}",
+            "MERCADOPAGO_TEST_ACCESS_TOKEN": "${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}",
+            "SANDBOX_IDENTITY_MANIFEST": "${{ secrets.SANDBOX_IDENTITY_MANIFEST }}",
+            "SANDBOX_INBOX_READ_TOKEN": "${{ secrets.SANDBOX_INBOX_READ_TOKEN }}",
+            "CERTIFICATION_E2E_TOKEN": "${{ secrets.CERTIFICATION_E2E_TOKEN }}"
+          },
+          "run": "python3 scripts/mercadopago_combo_sandbox.py"
+        },
+        {
+          "name": "Upload sanitized evidence only",
+          "if": "always()",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "combo-sandbox-evidence",
+            "path": "evidence/mercadopago-combo-sandbox.json",
+            "if-no-files-found": "warn",
+            "retention-days": 30
+          }
+        }
+      ]
+    }
+  }
+}

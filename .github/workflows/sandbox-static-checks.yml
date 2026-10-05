@@ -1,0 +1,40 @@
+{
+  "name": "Sandbox static checks",
+  "on": {
+    "pull_request": {
+      "branches": [
+        "gh-pages"
+      ]
+    },
+    "push": {
+      "branches": [
+        "gh-pages"
+      ]
+    }
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "concurrency": {
+    "group": "sandbox-static-${{ github.ref }}",
+    "cancel-in-progress": true
+  },
+  "jobs": {
+    "checks": {
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 5,
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Offline guards, syntax and mocked tests",
+          "run": "python3 scripts/sandbox_static_checks.py"
+        }
+      ]
+    }
+  }
+}
