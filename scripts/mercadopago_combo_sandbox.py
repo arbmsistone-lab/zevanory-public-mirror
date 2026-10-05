@@ -186,10 +186,10 @@ class Client:
                 doc = json.loads(error.read(4096))
                 parts = [re.sub(r'[^A-Za-z0-9_]', '', str(doc.get(k, '')))[:64]
                          for k in ('error', 'sqlstate', 'constraint', 'column')] if isinstance(doc, dict) else []
-                detail = ':'.join(x for x in parts if x)
+                detail = '__'.join(x.upper() for x in parts if x)
             except Exception:
                 detail = ''
-            raise GuardError('HTTP_' + str(error.code) + (':' + detail if detail else '')) from None
+            raise GuardError('HTTP_' + str(error.code) + ('__' + detail if detail else '')) from None
         except Exception:
             raise GuardError('REQUEST_FAILED') from None
 
