@@ -147,25 +147,33 @@ def automatic_workflow_guard(text):
 
 def order_sql_reused_params_typed(root=ROOT):
     violations = []
-    query_re = re.compile(r'(?:sql|db)\\.query\\(\\s*`([\\s\\S]*?)`', re.I)
+    query_re = re.compile(r'(?:sql|db)\.query\(\s*`([\s\S]*?)`', re.I)
     for path in sorted((root / 'worker').rglob('*.mjs')):
         text = path.read_text('utf-8')
         for match in query_re.finditer(text):
             sql = match.group(1)
-            if not re.search(r'\\b(?:INSERT\\s+INTO|UPDATE|FROM)\\s+orders\\b', sql, re.I):
+            if not re.search(r'\b(?:INSERT\s+INTO|UPDATE|FROM)\s+orders\b', sql, re.I):
                 continue
-            nums = re.findall(r'\\$(\\d+)', sql)
+            nums = re.findall(r'[$]([0-9]+)', sql)
             for number in sorted(set(nums)):
                 if nums.count(number) < 2:
                     continue
-                occurrences = list(re.finditer(r'\\
+                occurrences = list(re.finditer('[$]' + re.escape(number) + r'(?![0-9])', sql))
+                untyped = [m for m in occurrences if not re.match(r'::[A-Za-z_][A-Za-z0-9_]*(?:\[\])?', sql[m.end():])]
+                if untyped:
+                    line = text[:match.start()].count('\n') + 1
+                    violations.append(f'{path.relative_to(root)}:{line}:reused_${number}_without_cast')
+    check(not violations, 'ORDER_SQL_REUSED_PARAM_UNTYPED:' + ','.join(violations[:20]))
+    return 'PASS'
+
+
+def validate_registered_exception(workflows):
     filename = REGISTERED_EXCEPTION['filename']
     if filename in workflows:
         data = workflows[filename].encode()
         actual = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
         check(actual == REGISTERED_EXCEPTION['blob'], 'ZEES_EXCEPTION_BLOB_CHANGED')
         automatic_workflow_guard(workflows[filename])
-
 
 def downstream_guards(workflows, initial_names):
     validate_registered_exception(workflows)
