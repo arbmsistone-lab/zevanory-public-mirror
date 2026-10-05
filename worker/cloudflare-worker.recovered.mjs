@@ -15095,7 +15095,15 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
       // caches and forwards bytes, so it never hits the Workers Free CPU cap.
       let geminiKey = String(process.env.GEMINI_API_KEY || "").trim();
       if (!geminiKey) geminiKey = String((await loadAiVaultSecret("gemini", { kv: globalThis.__ZEVANORY_PRIVATE_KV__, master: process.env.AI_VAULT_ENCRYPTION_KEY || process.env.ELITE_INTERNAL_TOKEN }).catch(() => null)) || "").trim();
-      const audio = await synthesizeWhatsappVoice(whatsappSpeechText(reply.body), { apiKey: geminiKey, env: process.env, kv: globalThis.__ZEVANORY_PRIVATE_KV__, onStage: checkpoint });
+      let audio;
+      try {
+        audio = await synthesizeWhatsappVoice(whatsappSpeechText(reply.body), { apiKey: geminiKey, env: process.env, kv: globalThis.__ZEVANORY_PRIVATE_KV__, onStage: checkpoint });
+      } catch (synthError) {
+        // Only while the Render synth route is not deployed yet: keep the previous path.
+        if (!/voice_synth_http_404|voice_synth_unreachable|voice_synth_timeout/.test(String(synthError?.message || ""))) throw synthError;
+        Object.assign(status, { voice_synth_fallback: String(synthError.message).slice(0, 120) });
+        audio = await ttsBytesFromRuntime(whatsappSpeechText(reply.body), process.env, globalThis.fetch, { onStage: checkpoint });
+      }
       Object.assign(status, { voice_cached: audio.cached === true });
       const uploaded = await uploadVoiceToWhatsapp({ audio, phoneId: t.phoneId, token: t.token, version: t.version, env: process.env });
       await checkpoint("upload_done", { voice_media_uploaded: Boolean(uploaded.media_id), voice_media_id: uploaded.media_id });
