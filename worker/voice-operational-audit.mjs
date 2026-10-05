@@ -11,7 +11,7 @@ export async function handleVoiceAudit(input,env){
   const text=speechText(deterministicReply(question).body);
   try{
    const result=await synthesizeVoice(text,{kv:env.ZEVANORY_PRIVATE_ARTIFACTS,cacheOnly:true});
-   return Response.json({ok:true,voice_cached:true,voice_provider:result.provider,text,key:await voiceCacheKey(text),audio_base64:Buffer.from(result.bytes).toString("base64")});
+   return Response.json({ok:true,new_synthesis_requests:0,voice_cached:true,voice_provider:result.provider,text,key:await voiceCacheKey(text),audio_base64:Buffer.from(result.bytes).toString("base64")});
   }catch(error){
    if(error.message==="voice_cache_miss")return Response.json({ok:true,skipped:true,warning:"voice_cache_miss",new_synthesis_requests:0});
    throw error;
@@ -34,7 +34,7 @@ export async function handleVoiceAudit(input,env){
   if(!b64||b64.length>1500000)return Response.json({error:"audit_audio_invalid"},{status:400});
   const ai=env.AI||env.ZEVANORY_AI;
   if(!ai?.run)return Response.json({error:"audit_ai_binding_missing"},{status:503});
-  try{const result=await ai.run("@cf/openai/whisper-large-v3-turbo",{audio:b64,task:"transcribe",language:"pt"});return Response.json({ok:true,model:"@cf/openai/whisper-large-v3-turbo",segments:Array.isArray(result?.segments)?result.segments.slice(0,100):[],transcript:String(result?.text||result?.transcription_info?.text||"").slice(0,5000)});}catch(error){return Response.json({error:"audit_whisper_failed",name:String(error?.name||"Error")},{status:502});}
+  try{const result=await ai.run("@cf/openai/whisper-large-v3-turbo",{audio:b64,task:"transcribe",language:"pt"});return Response.json({ok:true,model:"@cf/openai/whisper-large-v3-turbo",segments:Array.isArray(result?.segments)?result.segments.slice(0,100):[],transcript:String(result?.text||result?.transcription_info?.text||"").slice(0,5000)});}catch(error){return Response.json({error:"audit_whisper_failed",cause:String(error?.message||"unknown").slice(0,500),name:String(error?.name||"Error")},{status:502});}
  }
  return null;
 }
