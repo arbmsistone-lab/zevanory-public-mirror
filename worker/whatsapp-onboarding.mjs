@@ -331,9 +331,9 @@ async function handleDeliveryProof(request,env,proofSql){
   if(request.method!=="POST")return responseJson({error:"method_not_allowed"},405);
   const raw=await request.text();if(raw.length>4300000)return responseJson({error:"payload_too_large"},413);
   let input;try{input=JSON.parse(raw);}catch{return responseJson({error:"invalid_json"},400);}
-  if(!["subscriptions","owner","text","audio","audit-encode","audit-transcribe","audit-observe","audit-media","audit-encoder-key","audit-source"].includes(input.operation))return responseJson({error:"invalid_operation"},400);
-  if(raw.length>180000&&!["audit-encode","audit-transcribe"].includes(input.operation))return responseJson({error:"payload_too_large"},413);
-  if(["audit-encode","audit-transcribe","audit-encoder-key","audit-source"].includes(input.operation))return handleVoiceAudit(input,env);
+  if(!["subscriptions","owner","text","audio","audit-cache","audit-encode","audit-transcribe","audit-observe","audit-media","audit-encoder-key","audit-source"].includes(input.operation))return responseJson({error:"invalid_operation"},400);
+  if(raw.length>180000&&!["audit-cache","audit-encode","audit-transcribe"].includes(input.operation))return responseJson({error:"payload_too_large"},413);
+  if(["audit-cache","audit-encode","audit-transcribe","audit-encoder-key","audit-source"].includes(input.operation))return handleVoiceAudit(input,env);
   let record=await getRecord(env).catch(()=>null);
   const appId=DEFAULT_APP_ID,wabaId="4019600665012911",phoneId="1300972319774588";
   if(!record?.app_secret||!record?.access_token||String(record.phone_number_id)!==phoneId||String(record.waba_id)!==wabaId)return responseJson({error:"onboarding_identity_mismatch"},409);

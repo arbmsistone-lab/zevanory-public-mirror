@@ -1,0 +1,32 @@
+name: One-time cache audit and Combo sandbox cycle
+on:
+  workflow_run:
+    workflows: ['ZEVANORY central production deploy']
+    types: [completed]
+    branches: [gh-pages]
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: voice-sandbox-authorized-cycle
+  cancel-in-progress: false
+jobs:
+  cycle:
+    if: github.run_attempt == 1 && github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_commit.message, '[cache-audit-cycle-20261005]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CYCLE_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ github.event.workflow_run.head_sha }}'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: node scripts/voice_sandbox_cycle.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voice-sandbox-cycle-checkpoint
+          path: /tmp/voice-sandbox-cycle/checkpoint.json
+          retention-days: 30

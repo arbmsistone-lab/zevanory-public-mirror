@@ -28,7 +28,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS https://zevanory.api.br/api/voice/final-closure -o /tmp/closure.json
+          node scripts/voice_final_closure_read.mjs /tmp/closure.json
           python3 - <<'PY'
           import json, os
           d=json.load(open('/tmp/closure.json'))
@@ -153,7 +153,7 @@ jobs:
           set -euo pipefail
           ok=0
           for i in $(seq 1 12); do
-            curl -fsS https://zevanory.api.br/api/voice/final-closure -o /tmp/final.json
+            node scripts/voice_final_closure_read.mjs /tmp/final.json
             if python3 - <<'PY'
           import json, os
           d=json.load(open('/tmp/final.json'))

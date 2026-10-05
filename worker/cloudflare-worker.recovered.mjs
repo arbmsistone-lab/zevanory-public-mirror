@@ -14754,7 +14754,7 @@ function validMercadoPagoDeliveryEmail(value) {
   return email.length <= 254 && /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email) ? email : "";
 }
 __name(validMercadoPagoDeliveryEmail, "validMercadoPagoDeliveryEmail");
-async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, providerEventId } = {}) {
+async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, providerEventId, certificationOnly = false } = {}) {
   const existing = (await sql.query(`select status,evidence_ref from service_fulfillment where order_id=$1 limit 1`, [orderId]))[0] || {};
   let evidence = {};
   try {
@@ -14763,7 +14763,8 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
     evidence = {};
   }
   if (existing.status === "delivered" && evidence.email_status === "sent" && String(evidence.download_url || "").startsWith("https://")) return Object.freeze(evidence);
-  const recipient = validMercadoPagoDeliveryEmail(payment?.payer?.email);
+  if (certificationOnly && payment?.live_mode !== false) throw new Error("sandbox_delivery_requires_test_payment");
+  const recipient = certificationOnly ? "delivered@resend.dev" : validMercadoPagoDeliveryEmail(payment?.payer?.email);
   if (!recipient) throw new Error("delivery_recipient_invalid");
   if (!String(process.env.RESEND_API_KEY || "").trim()) throw new Error("delivery_mailer_unavailable");
   const base = safePublicBaseUrl(process.env.PAYMENT_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL) || "https://zevanory.api.br";
@@ -14779,6 +14780,8 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
       provider_event_id: String(providerEventId || ""),
       email_status: "pending",
       email_provider_id: null,
+      email_recipient: recipient,
+      email_destination_kind: certificationOnly ? "resend_test_sink" : "payer",
       download_url: download.toString(),
       verification_url: verification.toString(),
       artifact_sha256: String(issued.artifact?.sha256 || ""),
@@ -14911,7 +14914,7 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
     let deliveryEvidence = null;
     if (event.normalized === "payment_confirmed" && String(outcome.order_status || outcome.current_status) === "paid") {
       try {
-        deliveryEvidence = await ensureMercadoPagoDigitalDelivery(sql, { orderId: String(orders[0].order_id), payment, providerEventId });
+        deliveryEvidence = await ensureMercadoPagoDigitalDelivery(sql, { orderId: String(orders[0].order_id), payment, providerEventId, certificationOnly });
       } catch (deliveryError) {
         console.error("PAID_ORDER_DELIVERY_PENDING", JSON.stringify({ order_id: String(orders[0].order_id), payment_id: String(webhook.paymentId), error: String(deliveryError?.message || "delivery_failed") }));
         return json12(res, 503, { error: "paid_order_delivery_pending", accepted: false, payment_reconciled: true, order_id: String(orders[0].order_id), payment_id: String(webhook.paymentId), retry_required: true });

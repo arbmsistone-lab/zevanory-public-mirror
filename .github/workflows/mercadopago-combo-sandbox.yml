@@ -1,0 +1,31 @@
+name: Combo sandbox purchase and delivery proof
+run-name: combo-sandbox:${{ inputs.cycle || github.sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha: {description: Exact live SHA, required: true, type: string}
+      cycle: {description: One-time cycle identifier, required: false, type: string}
+permissions:
+  contents: read
+concurrency:
+  group: combo-sandbox-purchase
+  cancel-in-progress: false
+jobs:
+  purchase:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ inputs.expected_sha }}'}
+      - run: python3 scripts/mercadopago_combo_sandbox.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: combo-sandbox-evidence
+          path: evidence/mercadopago-combo-sandbox.json
+          retention-days: 30
