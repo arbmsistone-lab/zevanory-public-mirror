@@ -24,8 +24,8 @@ const b = await synthesizeVoice("O combo custa 297 reais.", { apiKey: "AIza-test
 assert.equal(b.cached, true); assert.equal(calls.length, 1, "cache hit spends no Gemini quota");
 await assert.rejects(synthesizeVoice("outro texto", { apiKey: "AIza-test", kv, secret, fetchImpl: async () => new Response(JSON.stringify({ error: "gemini_quota" }), { status: 429 }) }), /^Error: quota$/);
 let n = 0;
-await assert.rejects(synthesizeVoice("texto 3", { apiKey: "k", secret, fetchImpl: async () => { n++; return new Response("{}", { status: 503 }); } }), /voice_synth_http_503/);
-assert.equal(n, 2, "one retry on 5xx");
+await assert.rejects(synthesizeVoice("texto 3", { apiKey: "k", secret, fetchImpl: async () => { n++; return new Response("{}", { status: 503 }); } }), /voice_render_http_503/);
+assert.equal(n, 1, "server errors never duplicate synthesis or consume quota twice");
 await assert.rejects(synthesizeVoice("texto 4", { apiKey: "k", secret, fetchImpl: async () => new Response(new Uint8Array(10), { status: 200 }) }), /invalid_mp3/);
 await assert.rejects(synthesizeVoice("texto 5", { apiKey: "", secret, fetchImpl: okFetch }), /gemini_key_missing/);
 console.log("VOICE_REMOTE_TTS_TEST=PASS");
