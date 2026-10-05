@@ -128,6 +128,7 @@ jobs:
           // independently of whether the CPU stress required the automatic reserve.
           const reference=readFileSync('/tmp/stress/350.txt','utf8');
           const generated=await op({operation:'audit-source',text:reference});
+          console.log(JSON.stringify({quality_source_attempts:generated.attempts||[],quality_source_error:generated.error||null}));
           const source=generated.ok?Buffer.from(generated.pcm_base64,'base64'):readFileSync('/tmp/stress/350.pcm');
           const sourceRate=generated.ok?generated.sample_rate:24000;
           const {encodePcmInChunks,handleVoiceChunk}=await import(process.cwd()+'/worker/voice-chunks.mjs');
@@ -170,7 +171,7 @@ jobs:
               try:e,end=decoder.raw_decode(raw[start:]);pos=start+end
               except ValueError:pos=start+1;continue
               req=(e.get('event') or {}).get('request') or {};u=urllib.parse.urlparse(req.get('url',''))
-              if u.path not in ['/api/internal/voice/encode-chunk','/api/webhooks/meta','/api/admin/voice/encode-audit']:continue
+              if u.path not in ['/api/internal/voice/encode-chunk','/api/internal/voice/encode-stream','/api/webhooks/meta','/api/admin/voice/encode-audit']:continue
               q=urllib.parse.parse_qs(u.query)
               events.append({'path':u.path,'audit_id':q.get('audit_id',[None])[0],'chunk':q.get('chunk',[None])[0],'attempt':q.get('attempt',[None])[0],'cpuTime':e.get('cpuTime'),'wallTime':e.get('wallTime'),'outcome':e.get('outcome'),'exceptions':[x.get('name') for x in e.get('exceptions',[])]})
           pathlib.Path('/tmp/stress/tail.json').write_text(json.dumps(events,indent=2));print(json.dumps(events))

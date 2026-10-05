@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {webcrypto} from "node:crypto";
 import {writeFileSync} from "node:fs";
-import {handleVoiceChunk,voiceSignedHeaders,encodePcmInChunks,renderVoiceSecret} from "../worker/voice-chunks.mjs";
+import {handleVoiceChunk,voiceSignedHeaders,encodePcmInChunks,renderVoiceSecret,handleVoiceStream} from "../worker/voice-chunks.mjs";
 globalThis.crypto ||= webcrypto;
 const env={ELITE_INTERNAL_TOKEN:"unit-test-existing-secret-at-least-32-characters"};
 const pcm=new Uint8Array(8000*2*5);
@@ -30,3 +30,20 @@ const reserve=await encodePcmInChunks(pcm,8000,env,async(req,init)=>{
 });
 assert.equal(attempts,3);assert.equal(fallback,1);assert.equal(reserve.fallback_used,true);
 console.log("CHUNK_HMAC_REPLAY_TAMPER_ORDER_RETRY_RESERVE=PASS");
+
+const killedEnv={...env,SELF:{fetch:async()=>{throw Error("Worker exceeded CPU time limit.");}}};
+let protectedReserve=0;
+const protectedResult=await encodePcmInChunks(pcm,8000,killedEnv,async(url,init)=>{
+ protectedReserve++;assert.match(String(url),/zevanory-product-control-edge/);return new Response(encoded.bytes);
+});
+assert.equal(protectedReserve,1);assert.equal(protectedResult.provider,"render");
+assert.match(protectedResult.chunk_error,/exceeded CPU/);
+const streamUnauth=await handleVoiceStream(new Request("https://internal/api/internal/voice/encode-stream",{method:"POST",body:pcm}),env);
+assert.equal(streamUnauth.status,401);
+let coordinatorCalls=0;
+const isolated=await encodePcmInChunks(pcm,8000,{...env,SELF:{fetch:async(req)=>{
+ coordinatorCalls++;assert.match(req.url,/encode-stream/);
+ return new Response(encoded.bytes,{headers:{"x-voice-provider":"cloudflare-chunks","x-voice-chunks":"[]","x-voice-fallback-used":"false"}});
+}}});
+assert.equal(coordinatorCalls,1);assert.equal(isolated.fallback_used,false);
+console.log("COORDINATOR_CPU_FAILURE_RESERVE_PROTECTED=PASS");

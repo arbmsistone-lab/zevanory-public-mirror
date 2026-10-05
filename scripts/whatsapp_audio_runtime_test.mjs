@@ -173,3 +173,16 @@ const timeStart = performance.now();const mono8 = downsamplePcmMono(fullDuration
 assert.ok(encoded8.length>4000);
 console.log("ACTUAL_LENGTH_24KHZ_TO_8KHZ_NODE_BENCHMARK_MS="+(performance.now()-timeStart).toFixed(1)+" (not production CPU proof)");
 console.log("LOCAL_DOWNSAMPLE_DURATION_SIGNED_SAMPLES_LOW_CPU=PASS");
+
+let modelCalls=[];
+const rateRecovered=await ttsBytesWithFailover("Olá!",{...chunkEnv,VOICE_TTS_FREE_ONLY:"true",GEMINI_API_KEY:"synthetic",GEMINI_FREE_TIER_CONFIRMED:"true",VOICE_TTS_PROVIDER_CHAIN:"gemini"},async(url,init)=>{
+ if(String(url).includes("googleapis")){
+  const model=JSON.parse(init.body).model;modelCalls.push(model);
+  if(modelCalls.length===1)return Response.json({error:{code:429,status:"RESOURCE_EXHAUSTED"}},{status:429});
+  return Response.json({steps:[{type:"model_output",content:[{type:"audio",mime_type:"audio/wav",data:Buffer.from(wav).toString("base64")}]}]});
+ }
+ return handleVoiceChunk(url,chunkEnv);
+});
+assert.deepEqual(modelCalls,["gemini-3.8-flash-tts","gemini-3.8-flash-lite-tts"]);
+assert.equal(rateRecovered.model,"gemini-3.8-flash-lite-tts");
+console.log("GEMINI_RATE_LIMIT_FAILOVER_MAX_TWO_MODELS=PASS");

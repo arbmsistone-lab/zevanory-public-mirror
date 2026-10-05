@@ -235,7 +235,7 @@ async function geminiTts(text, env, fetchImpl, { onStage = async () => {} } = {}
       signal: AbortSignal.timeout(Math.min(15000, remaining))
     }); } catch (error) { errors.push(`${model}:${error?.name || "fetch_failed"}`); continue; }
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) { errors.push(`${model}:${response.status}`); if (response.status === 404 || response.status === 400) continue; break; }
+    if (!response.ok) { errors.push(`${model}:${response.status}`); if ([400,404,408,429,500,502,503,504].includes(response.status)) continue; break; }
     const part = modern
       ? (body.steps || []).filter(s => s.type === "model_output").flatMap(s => s.content || []).find(p => p.type === "audio" && p.data)
       : (body?.candidates?.[0]?.content?.parts || []).find((p) => p?.inlineData?.data || p?.inline_data?.data);
