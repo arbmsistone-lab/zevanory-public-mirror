@@ -7,6 +7,7 @@ on:
       - "worker/**/*.mjs"
       - "scripts/whatsapp_conversation_test.mjs"
       - "scripts/whatsapp_audio_runtime_test.mjs"
+      - "scripts/voice_remote_tts_test.mjs"
       - "scripts/deploy/prepare-central-candidate.py"
       - "scripts/support_knowledge_test.mjs"
       - "sales-overlay/approved.json"
@@ -18,6 +19,7 @@ on:
       - "worker/**/*.mjs"
       - "scripts/whatsapp_conversation_test.mjs"
       - "scripts/whatsapp_audio_runtime_test.mjs"
+      - "scripts/voice_remote_tts_test.mjs"
       - "scripts/deploy/prepare-central-candidate.py"
       - "scripts/support_knowledge_test.mjs"
       - "sales-overlay/approved.json"
@@ -44,3 +46,5 @@ jobs:
         run: find worker -type f -name '*.mjs' -print0 | xargs -0 -n1 node --check
       - name: Webhook background lifetime, stage checkpoints and alternate encoder
         run: node scripts/whatsapp_audio_runtime_test.mjs
+      - name: Voice synthesized on Render, signed, cached and quota-safe
+        run: node scripts/voice_remote_tts_test.mjs
