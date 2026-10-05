@@ -88,7 +88,7 @@ try:
     require(float(pref.get('items',[{}])[0].get('unit_price',0))==297,'checkout_preference_297_required')
     require(pref.get('external_reference')==oid,'checkout_preference_order_binding_required')
     report['preference_id']=pref.get('id');report['checks']['CHECKOUT']='PASS';save()
-    card=mp('/v1/card_tokens','POST',{'card_number':'4235647728025682','security_code':'123','expiration_month':11,'expiration_year':2030,'cardholder':{'name':'APRO','identification':{'type':'CPF','number':'12345678909'}}})
+    card=mp('/v1/card_tokens','POST',{'card_number':'4235647728025682','security_code':'123','expiration_month':11,'expiration_year':2030,'cardholder':{'name':'APRO','identification':{'type':'CPF','number':'12345678909'}}}, {'x-test-token':'true'})
     require(card.get('id') and card.get('status')=='active','official_test_card_token_required')
     payment=mp('/v1/payments','POST',{'transaction_amount':297,'token':card['id'],'description':'ZEVANORY Combo IA + Vendas sandbox','installments':1,'payment_method_id':'visa','binary_mode':True,'external_reference':oid,'notification_url':APP+'/api/webhooks?provider=mercadopago_test','payer':{'email':buyer['email'],'identification':{'type':'CPF','number':'12345678909'}},'metadata':{'zevanory_order_id':oid,'certification':True}}, {'x-idempotency-key':str(uuid.uuid4()),'x-test-token':'true'})
     report['payment_id']=str(payment.get('id',''));report['payment_status']=payment.get('status');save()
