@@ -47,7 +47,7 @@ try:
     seller=mp('/users/me')
     require(TOKEN.startswith('TEST-') or 'test_user' in seller.get('tags',[]),'sandbox_seller_required')
     report['seller_id']=seller.get('id');save()
-    buyer=mp('/users/test','POST',{'site_id':'MLB'})
+    buyer=mp('/users/test','POST',{'site_id':'MLB','description':'ZEVANORY Combo sandbox buyer'})
     require(buyer.get('id') and str(buyer.get('email','')).endswith('@testuser.com'),'test_buyer_required')
     print('::add-mask::'+str(buyer.get('password','')))
     report['buyer_id']=buyer['id'];report['checks']['TEST_BUYER']='PASS';save()

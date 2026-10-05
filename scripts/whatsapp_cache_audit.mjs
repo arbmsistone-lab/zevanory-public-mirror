@@ -12,6 +12,8 @@ async function op(body,id){
  if(!r.ok)throw Error(`${id}:http_${r.status}:${j.error||'unknown'}`);return j;
 }
 try{
+ const live=await readFinalClosure();
+ if(live.release_sha!==process.env.AUDIT_SHA)throw Error('exact_live_audit_sha_required:'+live.release_sha);
  const seen=new Set();
  for(const entry of catalogVoices()){
   const key=await voiceCacheKey(entry.text);if(seen.has(key))continue;seen.add(key);
