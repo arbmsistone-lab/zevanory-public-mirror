@@ -107,6 +107,9 @@ class FakeProvider:
             data = {'messages': [{'id': 'mockmessage1', 'to': [self.recipient], 'received_at_ms': NOW * 1000 + 1,
                 'x_zevanory_order_id': NEW_ORDER, 'delivered_via': 'resend-inbound', 'text': DOWNLOAD}]}
         elif path == proof.CERT_PATH + 'download':
+            self.download_calls += 1
+            if self.download_calls > 1:
+                raise proof.urllib.error.HTTPError(req.full_url, 410, 'gone', {}, io.BytesIO(b''))
             return Response(b'private sandbox artifact')
         else:
             raise AssertionError('Unexpected mock endpoint')
@@ -238,7 +241,7 @@ class GuardTests(unittest.TestCase):
     def test_frozen_order_response_stops_before_status_or_card(self):
         self.fake.checkout_changes['order_id'] = proof.FROZEN_ORDER
         report = self.run_fake()
-        self.assertEqual(report['cause'], 'NEW_SANDBOX_ORDER_REQUIRED')
+        self.assertEqual(report['cause'], 'NEW_OR_REUSED_SANDBOX_ORDER_REQUIRED')
         self.assertFalse(any('/v1/card_tokens' in r.full_url for r in self.fake.calls))
 
     def test_missing_isolation_stops_before_card(self):
