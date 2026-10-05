@@ -279,6 +279,7 @@ class GuardTests(unittest.TestCase):
         lookups = [r for r in self.fake.calls if r.full_url.endswith('/v1/payments/77')]
         self.assertEqual(len(lookups), 1)
         self.assertEqual(lookups[0].get_header('Authorization'), 'Bearer ' + self.identity.access_token)
+        self.assertEqual(lookups[0].get_header('X-test-token'), 'true')
 
     def test_audit_id_is_sanitized_and_reaches_certification_routes(self):
         report = self.run_fake()
