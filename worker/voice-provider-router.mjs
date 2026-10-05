@@ -1,8 +1,8 @@
-import { encodePcmInChunks } from "./voice-chunks.mjs";
+import {renderTextTts} from "./voice-render-client.mjs";
 import { Buffer } from "node:buffer";
 import lamejs from "./vendor/lame.min.mjs";
 import { unpackPcm, encodePcmRemotely, downsamplePcmMono } from "./voice-pcm.mjs";
-const DEFAULT_CHAIN = Object.freeze(["speechify", "azure", "piper-relay", "gemini"]);
+const DEFAULT_CHAIN = Object.freeze(["speechify", "azure", "gemini"]);
 const FAILURE_THRESHOLD = 2;
 const COOLDOWN_MS = 5 * 60 * 1000;
 const breaker = globalThis.__ZEVANORY_VOICE_BREAKER__ || new Map();
@@ -22,7 +22,7 @@ function chainFromEnv(env = {}) {
   const configured = String(env.VOICE_TTS_PROVIDER_CHAIN || "").trim();
   const values = (configured ? configured.split(",") : DEFAULT_CHAIN)
     .map((v) => String(v || "").trim().toLowerCase())
-    .filter(Boolean);
+    .filter(v=>v && v!=='piper-relay');
   return [...new Set(values)];
 }
 
@@ -208,58 +208,7 @@ function geminiTtsModels(env = {}) {
   return [...new Set(list)];
 }
 
-async function geminiTts(text, env, fetchImpl, { onStage = async () => {} } = {}) {
-  const key = String(env.GEMINI_API_KEY || "").trim();
-  const voice = String(env.GEMINI_TTS_VOICE || "Achird").trim();
-  const style = String(env.VOICE_TTS_STYLE || "Fale em português do Brasil, com voz natural, acolhedora, clara e profissional, em ritmo de conversa.").trim();
-  const errors = [];
-  const started = Date.now();
-  const deadline = started + 30000;
-  for (const model of geminiTtsModels(env)) {
-    const modern = model.startsWith("gemini-3.8-");
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) break;
-    let response;
-    try { response = await fetchImpl(modern ? "https://generativelanguage.googleapis.com/v1beta/interactions" : `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
-      headers: { "x-goog-api-key": key, "content-type": "application/json" },
-      body: JSON.stringify(modern ? {
-        model,
-        input: [{ type: "user_input", content: [{ type: "text", text, annotations: [{ type: "speech_metadata", style }] }] }],
-        response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 8000 },
-        generation_config: { speech_config: [{ voice }] }
-      } : {
-        contents: [{ parts: [{ text: `${style}\n\n${text}` }] }],
-        generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } }
-      }),
-      signal: AbortSignal.timeout(Math.min(15000, remaining))
-    }); } catch (error) { errors.push(`${model}:${error?.name || "fetch_failed"}`); continue; }
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) { errors.push(`${model}:${response.status}`); if ([400,404,408,429,500,502,503,504].includes(response.status)) continue; break; }
-    const part = modern
-      ? (body.steps || []).filter(s => s.type === "model_output").flatMap(s => s.content || []).find(p => p.type === "audio" && p.data)
-      : (body?.candidates?.[0]?.content?.parts || []).find((p) => p?.inlineData?.data || p?.inline_data?.data);
-    const data = part?.data || part?.inlineData?.data || part?.inline_data?.data;
-    const mimeIn = String(part?.mime_type || part?.inlineData?.mimeType || part?.inline_data?.mime_type || (modern ? "audio/l16;rate=8000" : "audio/L16;rate=24000"));
-    if (!data) { errors.push(`${model}:no_audio`); continue; }
-    const raw = decodeBase64(data);
-    await onStage("tts_done", { tts_bytes: raw.length, tts_ms: Date.now() - started, tts_mime: mimeIn, voice_model: model });
-    let bytes = raw, mime = mimeIn.split(";")[0];
-    if (/l16|pcm|wav/i.test(mimeIn)) {
-      const rate = Number(part?.sample_rate || (mimeIn.match(/rate=(\d+)/i) || [])[1]) || (modern ? 8000 : 24000);
-      const input = unpackPcm(raw, rate);
-      await onStage("encode_start", { encode_provider:"cloudflare-chunks",sample_rate:8000,source_sample_rate:input.sampleRate });
-      const encodingStarted=Date.now();
-      const encoded=await encodePcmInChunks(input.pcm,input.sampleRate,env,fetchImpl,{onStage});
-      bytes=encoded.bytes;
-      await onStage("encode_done",{encode_bytes:bytes.length,encode_ms:Date.now()-encodingStarted,encode_provider:encoded.provider,encode_chunks:encoded.chunks,encode_fallback_used:encoded.fallback_used});
-      mime = "audio/mpeg";
-    }
-    if (!bytes?.length || bytes.length > 12 * 1024 * 1024) throw new Error("voice_tts_output_size_invalid");
-    return Object.freeze({ bytes, mime, model, provider: "gemini", voice, language: "pt-BR", chars: text.length });
-  }
-  throw new Error(`voice_tts_gemini_failed:${errors.join(",").slice(0, 200)}`);
-}
+async function geminiTts(text,env,fetchImpl,options={}) { return renderTextTts(text,env,fetchImpl,options); }
 
 const PROVIDERS = Object.freeze({
   speechify: speechifyTts,
@@ -293,18 +242,19 @@ export async function ttsBytesWithFailover(text, env = {}, fetchImpl = globalThi
   if (String(env.VOICE_TTS_FREE_ONLY || "").toLowerCase() !== "true") {
     throw new Error("voice_tts_zero_spend_guard_required");
   }
-  const safe = cleanText(text);
+  const safe = cleanText(text,350);
   if (!safe) throw new Error("voice_tts_text_empty");
   const chain = chainFromEnv(env);
   const errors = [];
   for (const provider of chain) {
     const fn = PROVIDERS[provider];
-    if (!fn || !providerAvailable(provider, env)) continue;
+    if (!fn || (provider==='gemini' ? !isConfigured(provider,env) : !providerAvailable(provider, env))) continue;
     try {
       const result = await fn(safe, env, fetchImpl, options);
       noteSuccess(provider);
       return result;
     } catch (error) {
+      if(error?.message==='quota')throw error;
       noteFailure(provider, error);
       errors.push(`${provider}:${String(error?.message || error || "failed")}`);
       if (String(env.VOICE_TTS_FAILOVER_ENABLED || "true").toLowerCase() !== "true") break;
