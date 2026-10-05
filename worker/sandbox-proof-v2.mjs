@@ -301,6 +301,8 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
   const used = Number(await kv.get(DAILY_KEY(day)) || 0);
   if (used >= MAX_ORDERS_PER_DAY) return json(429, { error: "sandbox_daily_limit" });
   const oid = crypto.randomUUID();
+  // orders.session_id is a uuid column (the public checkout requires UUIDs).
+  const sessionId = crypto.randomUUID();
   const sql = sqlFactory(env.DATABASE_URL);
   let inserted;
   try {
@@ -308,12 +310,14 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
       (order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status,certification_pilot)
       VALUES ($1,$2,$3,'EXP-0001',$4,$5,'BRL','mercadopago',$1,'checkout_ready',true)
       ON CONFLICT (request_id) DO NOTHING RETURNING order_id`,
-      [oid, input.requestId, `sandbox-proof-v2:${input.requestId}`, SANDBOX_OFFER_ID, SANDBOX_AMOUNT_BRL]);
-  } catch {
-    return json(503, { error: "sandbox_order_persist_failed" });
+      [oid, input.requestId, sessionId, SANDBOX_OFFER_ID, SANDBOX_AMOUNT_BRL]);
+  } catch (error) {
+    // Sanitized: SQLSTATE and constraint/column names only, never values.
+    const safe = (v) => String(v || "").replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
+    return json(503, { error: "sandbox_order_persist_failed", sqlstate: safe(error?.code), constraint: safe(error?.constraint), column: safe(error?.column) });
   }
   if (!Array.isArray(inserted) || inserted.length !== 1) return json(409, { error: "request_id_already_used", created_new: false, accepted: false });
-  const record = { order_id: oid, buyer_id: input.buyerId, buyer_email: input.buyerEmail, email_recipient: input.recipient, created_at: new Date().toISOString() };
+  const record = { order_id: oid, session_id: sessionId, buyer_id: input.buyerId, buyer_email: input.buyerEmail, email_recipient: input.recipient, created_at: new Date().toISOString() };
   await kv.put(ORDER_KEY(oid), JSON.stringify(record), { expirationTtl: 30 * 24 * 3600 });
   await kv.put(DAILY_KEY(day), String(used + 1), { expirationTtl: 2 * 24 * 3600 });
   return json(201, { ...isolation(record), accepted: true, created_new: true, amount_brl: SANDBOX_AMOUNT_BRL, external_reference: oid });
