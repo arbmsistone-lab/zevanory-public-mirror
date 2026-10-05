@@ -164,7 +164,11 @@ export function mimeText(raw) {
 async function resendGet(env, path) {
   // Dedicated full-access key used only for GET /emails/receiving; the
   // production sending key (RESEND_API_KEY) cannot read received mail.
-  const key = String(env.RESEND_RECEIVING_API_KEY || "");
+  // Stored in private KV: the worker is at the free-plan 64-binding limit.
+  let key = String(env.RESEND_RECEIVING_API_KEY || "");
+  if (!key && env.ZEVANORY_PRIVATE_ARTIFACTS) {
+    try { key = String((await env.ZEVANORY_PRIVATE_ARTIFACTS.get("sandbox-config:resend-receiving-key")) || ""); } catch {}
+  }
   if (!key) return { status: 503, body: null };
   const r = await fetch(RESEND + path, { headers: { authorization: `Bearer ${key}`, accept: "application/json" } });
   let body = null;
