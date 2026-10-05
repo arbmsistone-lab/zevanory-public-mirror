@@ -68,7 +68,7 @@ export async function handleVoiceChunk(request,env){
 let reserveSecretSource,reserveSecretValue;
 export async function renderVoiceSecret(env){
  const secret=String(env.ELITE_INTERNAL_TOKEN||"");
- if(secret!==reserveSecretSource){reserveSecretSource=secret;reserveSecretValue=crypto.subtle.sign("HMAC",await hmacKey(secret),E.encode("zevanory-render-voice-v1")).then(hex);}
+ if(secret!==reserveSecretSource){reserveSecretSource=secret;reserveSecretValue=hmacKey(secret).then(key=>crypto.subtle.sign("HMAC",key,E.encode("zevanory-render-voice-v1"))).then(hex);}
  return reserveSecretValue;
 }
 async function encodeChunksDirect(pcm,rate,env,fetchImpl=fetch,{auditId=crypto.randomUUID(),onStage=async()=>{}}={}){

@@ -65,3 +65,7 @@ await encodePcmRemotely(pcm,8000,{VOICE_ENCODE_URL:"https://unit.example/api/voi
  return new Response(encoded.bytes);
 },{digest:checksum});
 console.log("RESERVE_REUSES_VERIFIED_PCM_DIGEST=PASS");
+
+const concurrentSecrets=await Promise.all(Array.from({length:8},()=>renderVoiceSecret({...env,ELITE_INTERNAL_TOKEN:"unit-fresh-key-for-concurrent-reserve-32chars"})));
+assert.equal(new Set(concurrentSecrets).size,1);assert.match(concurrentSecrets[0],/^[a-f0-9]{64}$/);
+console.log("CONCURRENT_RESERVE_KEY_CACHE_ATOMIC=PASS");
