@@ -59,6 +59,7 @@ class FakeProvider:
         self.buyer = 'verified-buyer@testuser.com'
         self.contract = True
         self.error = None
+        self.http_errors = {}
 
     def __call__(self, req, timeout):
         self.calls.append(req)
@@ -66,6 +67,8 @@ class FakeProvider:
             raise self.error
         url = proof.urllib.parse.urlsplit(req.full_url)
         path = url.path
+        if path in self.http_errors:
+            raise proof.urllib.error.HTTPError(req.full_url, self.http_errors[path], 'provider', {}, io.BytesIO(b''))
         isolation = {'sale_globally_enabled': False, 'sales_mode': 'globally-blocked', 'sandbox': True,
             'excluded_from_revenue': True, 'real_customer_delivery': False, 'commercial_unlock': False,
             'buyer_id': '20', 'buyer_email': self.buyer, 'email_recipient': self.recipient, 'order_id': NEW_ORDER}
@@ -85,6 +88,8 @@ class FakeProvider:
         elif path == '/v1/card_tokens':
             data = {'id': 'mock-card-token', 'status': 'active', 'live_mode': True, 'public_key': 'test-public-key-unique-value', **self.card_changes}
         elif path == '/v1/payments':
+            data = {'id': 77, 'live_mode': True, 'collector_id': 10, 'status': 'approved', 'external_reference': NEW_ORDER}
+        elif path == '/v1/payments/77':
             data = {'id': 77, 'live_mode': True, 'collector_id': 10, 'status': 'approved', 'external_reference': NEW_ORDER}
         elif path == proof.CERT_PATH + 'status':
             data = {**isolation, 'order': {'status': 'paid'}, 'fulfillment': {'status': 'delivered'},
@@ -254,6 +259,37 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(self.run_fake()['cause'], 'SANDBOX_CARD_TOKEN_REQUIRED')
         self.assertFalse(any('/v1/payments' in r.full_url for r in self.fake.calls))
 
+    def test_card_token_500_has_stable_route_code(self):
+        self.fake.http_errors['/v1/card_tokens'] = 500
+        report = self.run_fake()
+        self.assertEqual(report['cause'], 'checkout_card_token_http_500')
+        self.assertEqual(report['checks']['ISOLATED_CHECKOUT'], 'PASS')
+        self.assertNotIn('PAYMENT', report['checks'])
+
+    def test_payment_500_has_stable_route_code(self):
+        self.fake.http_errors['/v1/payments'] = 500
+        report = self.run_fake()
+        self.assertEqual(report['cause'], 'checkout_payment_http_500')
+        self.assertEqual(report['checks']['ISOLATED_CHECKOUT'], 'PASS')
+        self.assertNotIn('PAYMENT', report['checks'])
+
+    def test_payment_is_rechecked_with_test_access_token(self):
+        report = self.run_fake()
+        self.assertEqual(report['checks']['PAYMENT_LOOKUP'], 'PASS')
+        lookups = [r for r in self.fake.calls if r.full_url.endswith('/v1/payments/77')]
+        self.assertEqual(len(lookups), 1)
+        self.assertEqual(lookups[0].get_header('Authorization'), 'Bearer ' + self.identity.access_token)
+
+    def test_audit_id_is_sanitized_and_reaches_certification_routes(self):
+        report = self.run_fake()
+        self.assertRegex(report['audit_id'], r'^[0-9a-f-]{36}$')
+        cert_calls = [r for r in self.fake.calls if r.full_url.startswith(proof.APP + proof.CERT_PATH)]
+        self.assertTrue(cert_calls)
+        self.assertTrue(all(r.get_header('X-audit-id') == report['audit_id'] for r in cert_calls))
+        saved = json.dumps(report)
+        for name in proof.SECRET_NAMES:
+            self.assertNotIn(self.env[name], saved)
+
     def test_payment_for_other_collector_cannot_pass(self):
         original = self.fake.__call__
         def call(req, timeout):
@@ -299,7 +335,7 @@ class GuardTests(unittest.TestCase):
     def test_raw_provider_error_sanitized(self):
         self.fake.error = ValueError('secret=' + self.identity.access_token + '&token=download-token')
         report = self.run_fake()
-        self.assertEqual(report['cause'], 'REQUEST_FAILED')
+        self.assertEqual(report['cause'], 'order_capabilities_request_failed')
         self.assertNotIn(self.identity.access_token, json.dumps(report))
 
     def test_unmocked_network_blocked(self):
@@ -307,7 +343,7 @@ class GuardTests(unittest.TestCase):
         with patch.object(proof.urllib.request, 'build_opener') as opener:
             opener.return_value.open.side_effect = AssertionError('NETWORK_FORBIDDEN')
             report = proof.run(self.env)
-        self.assertEqual(report['cause'], 'REQUEST_FAILED')
+        self.assertEqual(report['cause'], 'order_capabilities_request_failed')
 
     def test_changed_environment_detected(self):
         original = proof.preflight

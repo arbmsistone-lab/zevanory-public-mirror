@@ -228,6 +228,8 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
   const url = new URL(request.url);
   const path = url.pathname;
   if (!path.startsWith(CERT) && !path.startsWith(INBOX)) return null;
+  const auditId = String(request.headers.get("x-audit-id") || "").toLowerCase();
+  if (UUID.test(auditId)) console.log("SANDBOX_AUDIT", JSON.stringify({ audit_id: auditId, route: path, method: request.method }));
   const isInbox = path.startsWith(INBOX);
   const v2Paths = new Set([`${CERT}checkout`, `${CERT}download`, `${CERT}status`, `${INBOX}profile`, `${INBOX}messages`]);
   if (!v2Paths.has(path)) return null;
@@ -280,7 +282,7 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
     const record = JSON.parse(await kv.get(ORDER_KEY(oid)) || "null");
     if (!record) return null; // legacy (v1) orders keep the original handler
     const base = await workerStatus(worker, request, env, ctx, oid);
-    if (!base) return json(503, { error: "certification_e2e_status_unavailable" });
+    if (!base) return json(503, { error: "order_status_unavailable" });
     return json(200, projectStatus(record, base));
   }
 
@@ -290,7 +292,9 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
     if (token.length < 32 || token.length > 128) return json(404, { error: "download_unavailable" });
     const target = new URL("/private/artifacts/download", request.url);
     target.searchParams.set("token", token);
-    return worker.fetch(new Request(target, { method: "GET" }), env, ctx);
+    const response = await worker.fetch(new Request(target, { method: "GET" }), env, ctx);
+    if (!response.ok) return json(response.status >= 400 && response.status < 600 ? response.status : 503, { error: "delivery_download_unavailable" });
+    return response;
   }
 
   // POST checkout
@@ -327,9 +331,10 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
   try { checkout = await checkoutResponse.json(); } catch {}
   const oid = String(checkout?.order_id || "").toLowerCase();
   if (!checkoutResponse.ok || checkout?.accepted !== true || checkout?.duplicate === true || !UUID.test(oid) || oid === FROZEN_ORDER) {
-    const safe = String(checkout?.error || "canonical_checkout_failed").replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
+    const raw = String(checkout?.error || "canonical_failed").replace(/[^a-zA-Z0-9_]/g, "").slice(0, 56);
+    const safe = raw.startsWith("checkout_") ? raw : `checkout_${raw || "canonical_failed"}`;
     return json(checkoutResponse.status >= 400 && checkoutResponse.status < 600 ? checkoutResponse.status : 503,
-      { error: safe || "canonical_checkout_failed" });
+      { error: safe });
   }
   const checkoutUrl = String(checkout?.checkout_url || "");
   if (!/^https:\/\/www\.mercadopago\.(?:com|com\.br)\//.test(checkoutUrl)) return json(503, { error: "canonical_checkout_url_invalid" });
