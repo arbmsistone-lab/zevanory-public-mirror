@@ -62,7 +62,7 @@ jobs:
                   return r.status,(json.loads(raw) if raw else {}),dict(r.headers)
 
           _,payment,_=get("https://api.mercadopago.com/v1/payments/"+urllib.parse.quote(pid),
-                          {"Authorization":"Bearer "+token})
+                          {"Authorization":"Bearer "+token,"x-test-token":"true"})
           assert str(payment.get("status") or "").lower()=="approved",payment
           assert str(payment.get("external_reference") or "").lower()==oid.lower(),payment
 
