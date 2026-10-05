@@ -24,6 +24,7 @@ jobs:
       MERCADOPAGO_TEST_BUYER_EMAIL: ${{ secrets.MERCADOPAGO_TEST_BUYER_EMAIL }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
       EXPECTED_SHA: ${{ inputs.expected_sha || '0e59ea91f0e88b648b5f6b887aaea5ab1eabbd3d' }}
+      RESUME_ORDER_ID: ${{ github.event_name == 'pull_request' && 'a28c53ab-9ce7-429d-9d6b-1311a3fad406' || '' }}
       TEST_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
