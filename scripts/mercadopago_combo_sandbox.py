@@ -239,8 +239,13 @@ def verified_webhook(state, oid, payment_id):
         for e in events)
 
 
+INBOX_SEEN = {'rows': None}
+
+
 def received_message(client, oid, identity, started_ms, audit_id=''):
-    rows = client.inbox('messages?' + urllib.parse.urlencode({'order_id': oid}), audit_id=audit_id).get('messages', [])
+    doc = client.inbox('messages?' + urllib.parse.urlencode({'order_id': oid}), audit_id=audit_id)
+    INBOX_SEEN['rows'] = int(doc.get('inbox_rows_seen', -1)) if isinstance(doc.get('inbox_rows_seen'), int) else -1
+    rows = doc.get('messages', [])
     require(isinstance(rows, list) and len(rows) <= 20, 'INBOX_RESPONSE_INVALID')
     for msg in rows:
         mid = str(msg.get('id', ''))
@@ -386,6 +391,7 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
                     'email_status': str(delivery.get('email_status') or ''),
                     'email_recipient_match': delivery.get('email_recipient') == identity.inbox_email,
                     'email_provider_id_present': bool(delivery.get('email_provider_id')),
+                    'inbox_rows_seen': INBOX_SEEN['rows'],
                 }
                 raise GuardError('RECEIPT_WEBHOOK_TIMEOUT')
             sleep(5)
