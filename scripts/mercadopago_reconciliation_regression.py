@@ -14,6 +14,7 @@ checks={
     "canonical_certification_catalog": "resolveCertificationCheckoutOffer" in runtime and "table_price_brl" in runtime,
     "preference_uses_persisted_order_amount": "orderBoundOffer" in runtime and "RETURNING order_id,amount,offer_id" in runtime,
     "antifraud_amount_guard_present": "if (!Number.isFinite(amount) || amount !== expected || expected <= 0) return null;" in runtime,
+    "sandbox_lookup_uses_test_header": '...(test ? { "x-test-token": "true" } : {})' in runtime and "test: certificationOnly" in runtime,
 }
 assert all(checks.values()), checks
 
