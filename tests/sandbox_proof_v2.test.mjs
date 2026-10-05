@@ -56,6 +56,27 @@ test("checkout creates an isolated R$297 certification order bound to buyer and 
   assert.ok(e.ZEVANORY_PRIVATE_ARTIFACTS.m.has(`sandbox-proof-v2:order:${d.order_id}`));
 });
 
+test("sandbox order insert explicitly types every parameter, including nullable values", async () => {
+  const e = env();
+  let captured;
+  const sql = () => ({ query: async (text, args) => { captured = { text, args }; return [{ order_id: args[0] }]; } });
+  const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/checkout", { method: "POST", headers: { "x-certification-e2e-token": TOKEN }, body: JSON.stringify(body) }), e, {}, null, sql);
+  assert.equal(r.status, 201);
+  assert.match(captured.text, /\$1::uuid/);
+  assert.match(captured.text, /\$2::uuid/);
+  assert.match(captured.text, /\$3::uuid/);
+  assert.match(captured.text, /\$4::text/);
+  assert.match(captured.text, /\$5::numeric/);
+  assert.match(captured.text, /\$6::text/);
+  assert.equal(captured.args.length, 6);
+  const nullableArgs = [...captured.args];
+  nullableArgs[3] = null;
+  nullableArgs[4] = null;
+  nullableArgs[5] = null;
+  assert.deepEqual(nullableArgs.slice(3), [null, null, null]);
+  assert.doesNotMatch(captured.text, /VALUES \([^)]*\$(?:1|2|3|4|5|6)(?!::)/);
+});
+
 test("checkout rejects generic buyer, other recipients and other offers", async () => {
   for (const bad of [{ buyer_email: "test@testuser.com" }, { email_recipient: "suporte@zevanory.api.br" }, { offer_id: "ZEV-OTHER" }, { sandbox: false }]) {
     const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/checkout", { method: "POST", headers: { "x-certification-e2e-token": TOKEN }, body: JSON.stringify({ ...body, ...bad }) }), env(), {}, null, sqlOk);
