@@ -116,6 +116,7 @@ def validate_request(url, method, headers, identity):
     if p.hostname == 'api.mercadopago.com':
         allowed = (method == 'GET' and p.path == '/users/me' and not q or
                    method == 'GET' and re.fullmatch(r'/users/[0-9]+', p.path) and not q or
+                   method == 'GET' and re.fullmatch(r'/v1/payments/[0-9]+', p.path) and not q or
                    method == 'POST' and p.path == '/v1/card_tokens' and q == {'public_key': [identity.public_key]} or
                    method == 'POST' and p.path == '/v1/payments' and not q)
         require(allowed, 'MP_ENDPOINT_DENIED')
@@ -160,7 +161,7 @@ class Client:
         self.identity = identity
         self.transport = transport or urllib.request.build_opener(NoRedirect(), urllib.request.ProxyHandler({})).open
 
-    def request(self, url, method='GET', body=None, headers=None, binary=False):
+    def request(self, url, method='GET', body=None, headers=None, binary=False, failure_code='request'):
         headers = {k.lower(): v for k, v in (headers or {}).items()}
         validate_request(url, method, headers, self.identity)
         raw_body = json.dumps(body).encode() if body is not None else None
@@ -189,21 +190,29 @@ class Client:
                 detail = '__'.join(x.upper() for x in parts if x)
             except Exception:
                 detail = ''
-            raise GuardError('HTTP_' + str(error.code) + ('__' + detail if detail else '')) from None
+            code = re.sub(r'[^a-z0-9_]', '_', str(failure_code).lower()).strip('_') or 'request'
+            suffix = ('_provider_' + detail.lower()) if detail else ''
+            raise GuardError(code + '_http_' + str(error.code) + suffix) from None
         except Exception:
-            raise GuardError('REQUEST_FAILED') from None
+            code = re.sub(r'[^a-z0-9_]', '_', str(failure_code).lower()).strip('_') or 'request'
+            raise GuardError(code + '_request_failed') from None
 
-    def cert(self, path, method='GET', body=None, binary=False):
-        return self.request(APP + CERT_PATH + path, method, body,
-                            {'x-certification-e2e-token': self.identity.certification_token}, binary)
+    def cert(self, path, method='GET', body=None, binary=False, audit_id='', failure_code='order'):
+        headers = {'x-certification-e2e-token': self.identity.certification_token}
+        if audit_id:
+            headers['x-audit-id'] = audit_id
+        return self.request(APP + CERT_PATH + path, method, body, headers, binary, failure_code)
 
-    def mp(self, path, method='GET', body=None, headers=None):
+    def mp(self, path, method='GET', body=None, headers=None, failure_code='checkout_provider'):
         return self.request(MP + path, method, body,
-                            {'authorization': 'Bearer ' + self.identity.access_token, **(headers or {})})
+                            {'authorization': 'Bearer ' + self.identity.access_token, **(headers or {})},
+                            failure_code=failure_code)
 
-    def inbox(self, path):
-        return self.request(APP + INBOX_PATH + path,
-                            headers={'x-sandbox-inbox-token': self.identity.inbox_token})
+    def inbox(self, path, audit_id=''):
+        headers = {'x-sandbox-inbox-token': self.identity.inbox_token}
+        if audit_id:
+            headers['x-audit-id'] = audit_id
+        return self.request(APP + INBOX_PATH + path, headers=headers, failure_code='delivery_inbox')
 
 
 def validate_isolation(doc, identity, order_id=None):
@@ -227,8 +236,8 @@ def verified_webhook(state, oid, payment_id):
         for e in events)
 
 
-def received_message(client, oid, identity, started_ms):
-    rows = client.inbox('messages?' + urllib.parse.urlencode({'order_id': oid})).get('messages', [])
+def received_message(client, oid, identity, started_ms, audit_id=''):
+    rows = client.inbox('messages?' + urllib.parse.urlencode({'order_id': oid}), audit_id=audit_id).get('messages', [])
     require(isinstance(rows, list) and len(rows) <= 20, 'INBOX_RESPONSE_INVALID')
     for msg in rows:
         mid = str(msg.get('id', ''))
@@ -248,10 +257,13 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         identity = preflight(env)
         report['source_sha'] = identity.sha
         client = Client(identity, transport)
+        audit_id = str(make_uuid()).lower()
+        require(bool(re.fullmatch(r'[0-9a-f-]{36}', audit_id)), 'AUDIT_ID_INVALID')
+        report['audit_id'] = audit_id
         # Immutable snapshot; recheck inside the proof, not only a workflow step.
         require(preflight(env) == identity, 'IDENTITY_CHANGED_AFTER_PREFLIGHT')
         report['checks']['PREFLIGHT'] = 'PASS'
-        capabilities = client.cert('status')
+        capabilities = client.cert('status', audit_id=audit_id, failure_code='order_capabilities')
         require(capabilities.get('sale_globally_enabled') is False and
                 capabilities.get('sales_mode') == 'globally-blocked', 'SALES_MUST_REMAIN_BLOCKED')
         require(capabilities.get('sandbox_proof_contract') == 'v2' and
@@ -259,12 +271,12 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
                 capabilities.get('receiver_test_signature_evidence') is True and
                 capabilities.get('certification_download_isolated') is True,
                 'RECEIVER_CONTRACT_V2_REQUIRED')
-        seller = client.mp('/users/me')
-        buyer = client.mp('/users/' + identity.buyer_id)
+        seller = client.mp('/users/me', failure_code='checkout_seller_identity')
+        buyer = client.mp('/users/' + identity.buyer_id, failure_code='checkout_buyer_identity')
         require(str(seller.get('id')) == identity.seller_id and 'test_user' in seller.get('tags', []) and
                 str(buyer.get('id')) == identity.buyer_id and str(buyer.get('nickname', '')).startswith('TESTUSER'),
                 'PROVIDER_IDENTITY_MISMATCH')
-        profile = client.inbox('profile')
+        profile = client.inbox('profile', audit_id=audit_id)
         require(str(profile.get('email_address', '')).lower() == identity.inbox_email and
                 profile.get('read_only') is True, 'INBOX_IDENTITY_MISMATCH')
         require(preflight(env) == identity, 'IDENTITY_CHANGED_BEFORE_CHECKOUT')
@@ -272,7 +284,8 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         started_ms = int(now() * 1000)
         checkout = client.cert('checkout', 'POST', {'request_id': str(make_uuid()),
             'offer_id': 'ZEV-CMB-011', 'sandbox': True, 'buyer_id': identity.buyer_id,
-            'buyer_email': identity.buyer_email, 'email_recipient': identity.inbox_email})
+            'buyer_email': identity.buyer_email, 'email_recipient': identity.inbox_email},
+            audit_id=audit_id, failure_code='checkout_canonical')
         oid = checkout.get('order_id', '')
         require(re.fullmatch(r'[0-9a-f-]{36}', oid) and oid != FROZEN_ORDER and
                 checkout.get('created_new') is True and checkout.get('accepted') is True,
@@ -285,7 +298,8 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         card = client.request(MP + '/v1/card_tokens?' + urllib.parse.urlencode({'public_key': identity.public_key}),
             'POST', {'card_number': '4235647728025682', 'security_code': '123', 'expiration_month': 11,
                      'expiration_year': 2030, 'cardholder': {'name': 'APRO', 'identification':
-                     {'type': 'CPF', 'number': '12345678909'}}}, {'x-test-token': 'true'})
+                     {'type': 'CPF', 'number': '12345678909'}}}, {'x-test-token': 'true'},
+            failure_code='checkout_card_token')
         require(card.get('status') == 'active' and card.get('public_key') == identity.public_key and
                 bool(card.get('id')), 'SANDBOX_CARD_TOKEN_REQUIRED')
         payment = client.mp('/v1/payments', 'POST', {'transaction_amount': 297, 'token': card['id'],
@@ -293,16 +307,22 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
             'binary_mode': True, 'external_reference': oid,
             'notification_url': APP + '/api/webhooks?provider=mercadopago_test',
             'payer': {'email': identity.buyer_email},
-            'metadata': {'zevanory_order_id': oid, 'certification': True, 'sandbox': True}},
-            {'x-idempotency-key': str(make_uuid()), 'x-test-token': 'true'})
+            'metadata': {'zevanory_order_id': oid, 'certification': True, 'sandbox': True, 'audit_id': audit_id}},
+            {'x-idempotency-key': str(make_uuid()), 'x-test-token': 'true'},
+            failure_code='checkout_payment')
         require(str(payment.get('collector_id')) == identity.seller_id and payment.get('status') == 'approved' and
                 payment.get('external_reference') == oid and str(payment.get('id', '')).isdigit(), 'APPROVED_SANDBOX_PAYMENT_REQUIRED')
         pid = str(payment['id'])
         report['payment_id'] = pid
         report['checks']['PAYMENT'] = 'PASS'
+        confirmed = client.mp('/v1/payments/' + pid, failure_code='checkout_payment_lookup')
+        require(str(confirmed.get('id', '')) == pid and confirmed.get('status') == 'approved' and
+                confirmed.get('external_reference') == oid, 'APPROVED_SANDBOX_PAYMENT_LOOKUP_REQUIRED')
+        report['checks']['PAYMENT_LOOKUP'] = 'PASS'
         deadline = now() + 240
         while True:
-            state = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}))
+            state = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}),
+                                audit_id=audit_id, failure_code='order_status')
             validate_isolation(state, identity, oid)
             delivery = state.get('delivery_evidence', {})
             events = state.get('financial_events', [])
@@ -312,7 +332,7 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
             if (webhook_ok and state.get('order', {}).get('status') == 'paid' and
                     delivery.get('email_recipient') == identity.inbox_email and delivery.get('email_status') == 'sent' and
                     state.get('fulfillment', {}).get('status') == 'delivered'):
-                mid, text = received_message(client, oid, identity, started_ms)
+                mid, text = received_message(client, oid, identity, started_ms, audit_id)
                 if mid:
                     report['email_id'] = str(delivery.get('email_provider_id') or mid)
                     report['inbox_message_id'] = mid
@@ -334,16 +354,18 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         require(probe and probe in text, 'RECEIVED_DOWNLOAD_LINK_REQUIRED')
         expires = dt.datetime.fromisoformat(str(delivery.get('expires_at', '')).replace('Z', '+00:00'))
         require(0 < expires.timestamp() - now() <= 3600, 'TEMPORARY_DOWNLOAD_REQUIRED')
-        data = client.request(probe, headers={'x-certification-e2e-token': identity.certification_token}, binary=True)
+        data = client.request(probe, headers={'x-certification-e2e-token': identity.certification_token,
+                              'x-audit-id': audit_id}, binary=True, failure_code='delivery_download')
         require(data and digest_bytes(data) == delivery.get('artifact_sha256'), 'DOWNLOAD_INTEGRITY_REQUIRED')
         report['download_http'] = 200
-        final = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}))
+        final = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}),
+                            audit_id=audit_id, failure_code='order_final_status')
         validate_isolation(final, identity, oid)
         report['checks'].update({'RECEIVER_SIGNATURE': 'PASS', 'INBOX_RECEIPT': 'PASS',
                                 'DOWNLOAD': 'PASS', 'SALES_BLOCKED': 'PASS'})
         report['status'] = 'PASS'
     except GuardError as error:
-        report['cause'] = str(error) if re.fullmatch(r'[A-Z0-9_]+', str(error)) else 'GUARD_FAILED'
+        report['cause'] = str(error) if re.fullmatch(r'[A-Za-z0-9_]+', str(error)) else 'GUARD_FAILED'
     except Exception:
         report['cause'] = 'INVALID_RESPONSE_OR_CONFIGURATION'
     return report
