@@ -20,7 +20,7 @@ const INBOX = "/api/internal/certification/inbox/";
 const ORDER_KEY = (oid) => `sandbox-proof-v2:order:${oid}`;
 const MAIL_PREFIX = (oid) => `sandbox-inbox:${oid}:`;
 const DAILY_KEY = (day) => `sandbox-proof-v2:daily:${day}`;
-const MAX_ORDERS_PER_DAY = 3;
+const MAX_ORDERS_PER_DAY = 10;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 const json = (status, body) => new Response(JSON.stringify(body), {
@@ -224,6 +224,22 @@ export async function handleSandboxInboundEmail(message, env) {
   return true;
 }
 
+async function findReusableOrder(kv, worker, request, env, ctx, input, day) {
+  if (!kv?.list || !worker?.fetch) return null;
+  let listed;
+  try { listed = await kv.list({ prefix: "sandbox-proof-v2:order:" }); } catch { return null; }
+  for (const item of (listed?.keys || []).slice(0, 100)) {
+    let record = null;
+    try { record = JSON.parse(await kv.get(item.name) || "null"); } catch {}
+    if (!record || record.order_id === FROZEN_ORDER || String(record.created_at || "").slice(0, 10) !== day) continue;
+    if (String(record.buyer_id) !== input.buyerId || record.buyer_email !== input.buyerEmail || record.email_recipient !== input.recipient) continue;
+    const base = await workerStatus(worker, request, env, ctx, record.order_id);
+    const status = String(base?.order?.status || "").toLowerCase();
+    if (base && !["paid", "approved", "completed", "refunded", "cancelled", "canceled"].includes(status)) return record;
+  }
+  return null;
+}
+
 export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory) {
   const url = new URL(request.url);
   const path = url.pathname;
@@ -303,6 +319,11 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
   if (!input) return json(400, { error: "invalid_sandbox_checkout_request" });
   if (!env.DATABASE_URL) return json(503, { error: "canonical_database_unavailable" });
   const day = new Date().toISOString().slice(0, 10);
+  const reusable = await findReusableOrder(kv, worker, request, env, ctx, input, day);
+  if (reusable) {
+    return json(200, { ...isolation(reusable), accepted: true, created_new: false, reused_existing: true,
+      amount_brl: SANDBOX_AMOUNT_BRL, external_reference: reusable.order_id });
+  }
   const used = Number(await kv.get(DAILY_KEY(day)) || 0);
   if (used >= MAX_ORDERS_PER_DAY) return json(429, { error: "sandbox_daily_limit" });
   // Prove the real checkout path. The sandbox facade must never persist an order

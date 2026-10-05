@@ -60,6 +60,7 @@ class FakeProvider:
         self.contract = True
         self.error = None
         self.http_errors = {}
+        self.download_calls = 0
 
     def __call__(self, req, timeout):
         self.calls.append(req)
@@ -106,6 +107,9 @@ class FakeProvider:
             data = {'messages': [{'id': 'mockmessage1', 'to': [self.recipient], 'received_at_ms': NOW * 1000 + 1,
                 'x_zevanory_order_id': NEW_ORDER, 'delivered_via': 'resend-inbound', 'text': DOWNLOAD}]}
         elif path == proof.CERT_PATH + 'download':
+            self.download_calls += 1
+            if self.download_calls > 1:
+                raise proof.urllib.error.HTTPError(req.full_url, 410, 'gone', {}, io.BytesIO(b''))
             return Response(b'private sandbox artifact')
         else:
             raise AssertionError('Unexpected mock endpoint')
@@ -237,7 +241,7 @@ class GuardTests(unittest.TestCase):
     def test_frozen_order_response_stops_before_status_or_card(self):
         self.fake.checkout_changes['order_id'] = proof.FROZEN_ORDER
         report = self.run_fake()
-        self.assertEqual(report['cause'], 'NEW_SANDBOX_ORDER_REQUIRED')
+        self.assertEqual(report['cause'], 'NEW_OR_REUSED_SANDBOX_ORDER_REQUIRED')
         self.assertFalse(any('/v1/card_tokens' in r.full_url for r in self.fake.calls))
 
     def test_missing_isolation_stops_before_card(self):
@@ -259,6 +263,25 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(self.run_fake()['cause'], 'SANDBOX_CARD_TOKEN_REQUIRED')
         self.assertFalse(any('/v1/payments' in r.full_url for r in self.fake.calls))
 
+    def test_app_http_detail_is_not_labeled_provider(self):
+        original = self.fake.__call__
+        def call(req, timeout):
+            if proof.urllib.parse.urlsplit(req.full_url).path == proof.CERT_PATH + 'checkout':
+                body = io.BytesIO(json.dumps({'error': 'sandbox_daily_limit'}).encode())
+                raise proof.urllib.error.HTTPError(req.full_url, 429, 'local', {}, body)
+            return original(req, timeout)
+        report = proof.run(self.env, call, now=lambda: NOW)
+        self.assertEqual(report['cause'], 'checkout_canonical_http_429_detail_sandbox_daily_limit')
+
+    def test_provider_http_detail_keeps_provider_label(self):
+        original = self.fake.__call__
+        def call(req, timeout):
+            if proof.urllib.parse.urlsplit(req.full_url).path == '/v1/payments':
+                body = io.BytesIO(json.dumps({'error': 'provider_limit'}).encode())
+                raise proof.urllib.error.HTTPError(req.full_url, 429, 'provider', {}, body)
+            return original(req, timeout)
+        report = proof.run(self.env, call, now=lambda: NOW)
+        self.assertEqual(report['cause'], 'checkout_payment_http_429_provider_provider_limit')
     def test_card_token_500_has_stable_route_code(self):
         self.fake.http_errors['/v1/card_tokens'] = 500
         report = self.run_fake()
