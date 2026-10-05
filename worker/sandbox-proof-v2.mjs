@@ -162,7 +162,9 @@ export function mimeText(raw) {
 }
 
 async function resendGet(env, path) {
-  const key = String(env.RESEND_API_KEY || "");
+  // Dedicated full-access key used only for GET /emails/receiving; the
+  // production sending key (RESEND_API_KEY) cannot read received mail.
+  const key = String(env.RESEND_RECEIVING_API_KEY || "");
   if (!key) return { status: 503, body: null };
   const r = await fetch(RESEND + path, { headers: { authorization: `Bearer ${key}`, accept: "application/json" } });
   let body = null;
