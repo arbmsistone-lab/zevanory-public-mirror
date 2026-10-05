@@ -13,6 +13,20 @@ function kv() {
   return { m, get: async (k) => m.get(k) ?? null, put: async (k, v) => { m.set(k, v); }, list: async ({ prefix }) => ({ keys: [...m.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })) }) };
 }
 const sqlOk = () => ({ query: async () => [{ order_id: "x" }] });
+function canonicalWorker(over = {}) {
+  const calls = [];
+  return {
+    calls,
+    fetch: async (request) => {
+      const u = new URL(request.url);
+      calls.push({ path: u.pathname, method: request.method, headers: Object.fromEntries(request.headers), body: request.method === "POST" ? await request.clone().json().catch(() => null) : null });
+      if (u.pathname === "/api/events/operator") return Response.json({ created: true, token: "pilot-token-0123456789abcdef0123456789abcdef" }, { status: 201 });
+      if (u.pathname === "/api/checkout/mercadopago") return Response.json({ accepted: true, duplicate: false, order_id: "22222222-3333-4444-8555-666666666666", checkout_url: "https://www.mercadopago.com/checkout/v1/redirect?pref_id=test" }, { status: 201 });
+      return Response.json({ error: "unexpected_path" }, { status: 500 });
+    },
+    ...over
+  };
+}
 const req = (path, init = {}) => new Request("https://zevanory.api.br" + path, init);
 const body = { request_id: "11111111-2222-4333-8444-555555555555", offer_id: "ZEV-CMB-011", sandbox: true, buyer_id: "3670747423",
   buyer_email: "test_user_3670747423@testuser.com", email_recipient: v2.SANDBOX_INBOX_ADDRESS };
@@ -31,18 +45,17 @@ test("fails closed when sales are enabled or env is not sandbox", async () => {
 test("capabilities require certification token and report v2 with sales blocked", async () => {
   const denied = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/status"), env(), {}, null, sqlOk);
   assert.equal(denied.status, 401);
-  const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/status", { headers: { "x-certification-e2e-token": TOKEN } }), env(), {}, null, sqlOk);
+  const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/status", { headers: { "x-certification-e2e-token": TOKEN } }), env({ OPERATOR_TOKEN: "operator-token-0123456789abcdef0123456789" }), {}, canonicalWorker(), sqlOk);
   const d = await r.json();
   assert.equal(d.sandbox_proof_contract, "v2");
   assert.equal(d.sale_globally_enabled, false);
   assert.equal(d.sales_mode, "globally-blocked");
 });
 
-test("checkout creates an isolated R$297 certification order bound to buyer and inbox", async () => {
-  const e = env();
-  let captured;
-  const sql = () => ({ query: async (text, args) => { captured = { text, args }; return [{ order_id: args[0] }]; } });
-  const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/checkout", { method: "POST", headers: { "x-certification-e2e-token": TOKEN }, body: JSON.stringify(body) }), e, {}, null, sql);
+test("checkout delegates order and preference creation to the canonical Mercado Pago checkout", async () => {
+  const e = env({ OPERATOR_TOKEN: "operator-token-0123456789abcdef0123456789" });
+  const worker = canonicalWorker();
+  const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/checkout", { method: "POST", headers: { "x-certification-e2e-token": TOKEN }, body: JSON.stringify(body) }), e, {}, worker, sqlOk);
   assert.equal(r.status, 201);
   const d = await r.json();
   assert.equal(d.created_new, true);
@@ -50,15 +63,25 @@ test("checkout creates an isolated R$297 certification order bound to buyer and 
   assert.equal(d.excluded_from_revenue, true);
   assert.equal(d.real_customer_delivery, false);
   assert.equal(d.email_recipient, v2.SANDBOX_INBOX_ADDRESS);
-  assert.match(captured.text, /certification_pilot\)/);
-  assert.match(captured.text, /'checkout_ready',true/);
+  assert.match(d.checkout_url, /^https:\/\/www\.mercadopago\.com\//);
   assert.notEqual(d.order_id, v2.FROZEN_ORDER);
   assert.ok(e.ZEVANORY_PRIVATE_ARTIFACTS.m.has(`sandbox-proof-v2:order:${d.order_id}`));
+  assert.deepEqual(worker.calls.map((x) => x.path), ["/api/events/operator", "/api/checkout/mercadopago"]);
+  assert.equal(worker.calls[1].body.offer_id, "ZEV-CMB-011");
+  assert.equal(worker.calls[1].body.request_id, body.request_id);
+  assert.match(worker.calls[1].body.session_id, /^[0-9a-f-]{36}$/);
+  assert.ok(worker.calls[1].headers["x-certification-pilot-token"]);
+});
+
+test("sandbox checkout facade contains no direct INSERT or UPDATE of orders", () => {
+  const src = readFileSync(new URL("../worker/sandbox-proof-v2.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /(?:INSERT\s+INTO|UPDATE)\s+orders/i);
+  assert.match(src, /\/api\/checkout\/mercadopago/);
 });
 
 test("checkout rejects generic buyer, other recipients and other offers", async () => {
   for (const bad of [{ buyer_email: "test@testuser.com" }, { email_recipient: "suporte@zevanory.api.br" }, { offer_id: "ZEV-OTHER" }, { sandbox: false }]) {
-    const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/checkout", { method: "POST", headers: { "x-certification-e2e-token": TOKEN }, body: JSON.stringify({ ...body, ...bad }) }), env(), {}, null, sqlOk);
+    const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/checkout", { method: "POST", headers: { "x-certification-e2e-token": TOKEN }, body: JSON.stringify({ ...body, ...bad }) }), env({ OPERATOR_TOKEN: "operator-token-0123456789abcdef0123456789" }), {}, canonicalWorker(), sqlOk);
     assert.equal(r.status, 400);
   }
 });
@@ -67,7 +90,7 @@ test("daily limit caps sandbox orders", async () => {
   const e = env();
   const day = new Date().toISOString().slice(0, 10);
   await e.ZEVANORY_PRIVATE_ARTIFACTS.put(`sandbox-proof-v2:daily:${day}`, "3");
-  const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/checkout", { method: "POST", headers: { "x-certification-e2e-token": TOKEN }, body: JSON.stringify(body) }), e, {}, null, sqlOk);
+  const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/checkout", { method: "POST", headers: { "x-certification-e2e-token": TOKEN }, body: JSON.stringify(body) }), e, {}, canonicalWorker(), sqlOk);
   assert.equal(r.status, 429);
 });
 
@@ -102,7 +125,7 @@ test("inbox requires the read token and stores only the isolated address", async
   assert.ok(!msg.rejected);
   const other = { to: "suporte@zevanory.api.br" };
   assert.equal(await v2.handleSandboxInboundEmail(other, e), false);
-  const denied = await v2.handleSandboxProofV2(req(`/api/internal/certification/inbox/messages?order_id=${oid}`, { headers: { "x-sandbox-inbox-token": INBOX_TOKEN } }), e, {}, null, sqlOk);
+  const denied = await v2.handleSandboxProofV2(req(`/api/internal/certification/inbox/messages?order_id=${oid}`, { headers: { "x-sandbox-inbox-token": INBOX_TOKEN } }), e, {}, canonicalWorker(), sqlOk);
   assert.equal(denied.status, 401);
 });
 

@@ -145,6 +145,27 @@ def automatic_workflow_guard(text):
     check(not re.search(r'(?:scripts|tests)/[^\s\"\']*(?:mercadopago|financial|payment|stripe|asaas)[^\s\"\']*\.(?:py|mjs|js|sh)', text, re.I), 'AUTOMATIC_NO_FINANCIAL_SCRIPT')
 
 
+def order_sql_reused_params_typed(root=ROOT):
+    violations = []
+    query_re = re.compile(r'(?:sql|db)\.query\(\s*`([\s\S]*?)`', re.I)
+    for path in sorted((root / 'worker').rglob('*.mjs')):
+        text = path.read_text('utf-8')
+        for match in query_re.finditer(text):
+            sql = match.group(1)
+            if not re.search(r'\b(?:INSERT\s+INTO|UPDATE|FROM)\s+orders\b', sql, re.I):
+                continue
+            nums = re.findall(r'[$]([0-9]+)', sql)
+            for number in sorted(set(nums)):
+                if nums.count(number) < 2:
+                    continue
+                occurrences = list(re.finditer('[$]' + re.escape(number) + r'(?![0-9])', sql))
+                untyped = [m for m in occurrences if not re.match(r'::[A-Za-z_][A-Za-z0-9_]*(?:\[\])?', sql[m.end():])]
+                if untyped:
+                    line = text[:match.start()].count('\n') + 1
+                    violations.append(f'{path.relative_to(root)}:{line}:reused_${number}_without_cast')
+    check(not violations, 'ORDER_SQL_REUSED_PARAM_UNTYPED:' + ','.join(violations[:20]))
+    return 'PASS'
+
 def validate_registered_exception(workflows):
     filename = REGISTERED_EXCEPTION['filename']
     if filename in workflows:
@@ -191,6 +212,7 @@ def guard_results(root=ROOT):
         ('MANUAL_WORKFLOW', lambda: guarded_workflow((root / MANUAL).read_text(), True)),
         ('STATIC_WORKFLOW', lambda: guarded_workflow((root / STATIC).read_text(), False)),
         ('SCRIPT_ENDPOINT_IDENTITY_ISOLATION', lambda: script_guards((root / SCRIPT).read_text())),
+        ('ORDER_SQL_REUSED_PARAMS_TYPED', lambda: order_sql_reused_params_typed(root)),
     ]:
         operation()
         rows[name] = 'PASS'
