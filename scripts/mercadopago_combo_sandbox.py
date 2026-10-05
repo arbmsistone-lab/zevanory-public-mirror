@@ -29,13 +29,14 @@ def req(url,method='GET',body=None,headers=None):
             raw=r.read();return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
         raw=e.read().decode('utf-8','replace')[:1000]
-        for value in [os.environ.get('MERCADOPAGO_TEST_ACCESS_TOKEN'),os.environ.get('CERTIFICATION_E2E_TOKEN'),os.environ.get('MERCADOPAGO_ACCESS_TOKEN')]:
+        for value in [os.environ.get('MERCADOPAGO_TEST_ACCESS_TOKEN'),os.environ.get('CERTIFICATION_E2E_TOKEN'),os.environ.get('MERCADOPAGO_ACCESS_TOKEN'),os.environ.get('MERCADOPAGO_TEST_PUBLIC_KEY')]:
             if value:raw=raw.replace(value,'[redacted]')
         raise RuntimeError(f'http_{e.code}:{urllib.parse.urlparse(url).path}:{raw}') from None
 
 APP='https://zevanory.api.br'
 TOKEN=os.environ.get('MERCADOPAGO_TEST_ACCESS_TOKEN','')
 CERT=os.environ.get('CERTIFICATION_E2E_TOKEN','')
+PUBLIC_KEY=os.environ.get('MERCADOPAGO_TEST_PUBLIC_KEY','').strip()
 mp=lambda path,method='GET',body=None,extra=None:req('https://api.mercadopago.com'+path,method,body,{'authorization':'Bearer '+TOKEN,**(extra or {})})
 app=lambda path,method='GET',body=None,headers=None:req(APP+path,method,body,headers)
 status=lambda oid:app('/api/internal/certification/e2e/status?order_id='+urllib.parse.quote(oid),headers={'x-certification-e2e-token':CERT})
@@ -88,8 +89,11 @@ try:
     require(float(pref.get('items',[{}])[0].get('unit_price',0))==297,'checkout_preference_297_required')
     require(pref.get('external_reference')==oid,'checkout_preference_order_binding_required')
     report['preference_id']=pref.get('id');report['checks']['CHECKOUT']='PASS';save()
-    card=mp('/v1/card_tokens','POST',{'card_number':'4235647728025682','security_code':'123','expiration_month':11,'expiration_year':2030,'cardholder':{'name':'APRO','identification':{'type':'CPF','number':'12345678909'}}}, {'x-test-token':'true'})
+    require(PUBLIC_KEY,'test_public_key_required')
+    report['public_key_test_prefix']=PUBLIC_KEY.startswith('TEST-');save()
+    card=req('https://api.mercadopago.com/v1/card_tokens?public_key='+urllib.parse.quote(PUBLIC_KEY),'POST',{'card_number':'4235647728025682','security_code':'123','expiration_month':11,'expiration_year':2030,'cardholder':{'name':'APRO','identification':{'type':'CPF','number':'12345678909'}}}, {'x-test-token':'true'})
     require(card.get('id') and card.get('status')=='active','official_test_card_token_required')
+    report['card_token_client_id']=card.get('client_id');report['card_token_live_mode']=card.get('live_mode');save()
     payment=mp('/v1/payments','POST',{'transaction_amount':297,'token':card['id'],'description':'ZEVANORY Combo IA + Vendas sandbox','installments':1,'payment_method_id':'visa','binary_mode':True,'external_reference':oid,'notification_url':APP+'/api/webhooks?provider=mercadopago_test','payer':{'email':buyer['email'],'identification':{'type':'CPF','number':'12345678909'}},'metadata':{'zevanory_order_id':oid,'certification':True}}, {'x-idempotency-key':str(uuid.uuid4()),'x-test-token':'true'})
     report['payment_id']=str(payment.get('id',''));report['payment_status']=payment.get('status');save()
     require(payment.get('live_mode') is False and payment.get('status')=='approved','approved_test_payment_required')
