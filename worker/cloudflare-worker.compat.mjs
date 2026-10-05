@@ -96,6 +96,7 @@ const wrapped = {
   },
   async processFetch(request, env, ctx) {
     let normalized = normalizeEnv(env);
+    globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
     const url = new URL(request.url);
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
     if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);

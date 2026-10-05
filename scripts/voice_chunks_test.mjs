@@ -47,3 +47,12 @@ const isolated=await encodePcmInChunks(pcm,8000,{...env,SELF:{fetch:async(req)=>
 }}});
 assert.equal(coordinatorCalls,1);assert.equal(isolated.fallback_used,false);
 console.log("COORDINATOR_CPU_FAILURE_RESERVE_PROTECTED=PASS");
+
+globalThis.__ZEVANORY_VOICE_SELF__={fetch:async(req)=>{
+ assert.match(req.url,/encode-stream/);
+ return new Response(encoded.bytes,{headers:{"x-voice-provider":"cloudflare-chunks","x-voice-chunks":"[]","x-voice-fallback-used":"false"}});
+}};
+const bridged=await encodePcmInChunks(pcm,8000,env,async()=>{throw Error("bridge lost SELF");});
+assert.equal(bridged.provider,"cloudflare-chunks");
+delete globalThis.__ZEVANORY_VOICE_SELF__;
+console.log("NODE_WEBHOOK_BRIDGE_SELF_PRESERVED=PASS");

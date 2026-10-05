@@ -113,6 +113,8 @@ export async function handleVoiceStream(request,env){
  return new Response(result.bytes,{headers:{"content-type":"audio/mpeg","x-voice-provider":result.provider,"x-voice-chunks":JSON.stringify(result.chunks),"x-voice-fallback-used":String(result.fallback_used)}});
 }
 export async function encodePcmInChunks(pcm,rate,env,fetchImpl=fetch,{auditId=crypto.randomUUID(),onStage=async()=>{}}={}){
+ // Preserve the native service binding across the Node-compatible webhook bridge.
+ env=env.SELF?env:{...env,SELF:globalThis.__ZEVANORY_VOICE_SELF__};
  // The caller awaits one coordinator invocation and does no per-block work.
  // A killed coordinator is catchable here, preserving the reserve CPU budget.
  if(!env.SELF?.fetch)return encodeChunksDirect(pcm,rate,env,fetchImpl,{auditId,onStage});

@@ -8,6 +8,7 @@ on:
     paths: ['worker/voice-chunks.mjs', 'worker/voice-operational-audit.mjs', '.github/workflows/voice-chunk-stress.yml']
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: voice-chunk-stress-${{ github.ref }}
   cancel-in-progress: false
@@ -86,6 +87,13 @@ jobs:
             espeak -v pt-br -s 155 -w /tmp/stress/$size.wav -f /tmp/stress/$size.txt
             ffmpeg -nostdin -v error -y -i /tmp/stress/$size.wav -ac 1 -ar 24000 -f s16le /tmp/stress/$size.pcm
           done
+      - name: Reuse already verified Gemini PCM without spending TTS quota
+        uses: actions/download-artifact@v4
+        with:
+          name: voice-chunk-twenty-proof
+          run-id: 37245824581
+          github-token: ${{ github.token }}
+          path: /tmp/prior-voice
       - name: Wait for bounded reserve readiness and attach tail
         run: |
           for n in $(seq 1 80); do
@@ -104,7 +112,14 @@ jobs:
           import {readFileSync,writeFileSync} from 'node:fs';
           import {spawnSync} from 'node:child_process';
           const origin='https://zevanory.api.br',auth={authorization:'Bearer '+process.env.OPERATOR_TOKEN,'content-type':'application/json'};
-          async function op(input){const r=await fetch(origin+'/api/admin/whatsapp-onboard/delivery-proof',{method:'POST',headers:auth,body:JSON.stringify(input),signal:AbortSignal.timeout(90000)});return {http:r.status,...await r.json()};}
+          async function op(input){
+           for(let attempt=0;attempt<3;attempt++){
+            const r=await fetch(origin+'/api/admin/whatsapp-onboard/delivery-proof',{method:'POST',headers:auth,body:JSON.stringify(input),signal:AbortSignal.timeout(90000)});
+            const body=await r.text();let j;try{j=JSON.parse(body);}catch{j={error:'audit_non_json_http_'+r.status};}
+            if(input.operation==='audit-transcribe'&&[502,503,504].includes(r.status)&&attempt<2){await new Promise(resolve=>setTimeout(resolve,1500));continue;}
+            return {http:r.status,...j};
+           }
+          }
           await new Promise(r=>setTimeout(r,12000));
           const matrix=[];let qualityAudio,expected;
           for(let n=1;n<=20;n++){
@@ -127,10 +142,13 @@ jobs:
           // Verify the concatenation algorithm with an actual Gemini speech source,
           // independently of whether the CPU stress required the automatic reserve.
           const reference=readFileSync('/tmp/stress/350.txt','utf8');
-          const generated=await op({operation:'audit-source',text:reference});
-          console.log(JSON.stringify({quality_source_attempts:generated.attempts||[],quality_source_error:generated.error||null}));
-          const source=generated.ok?Buffer.from(generated.pcm_base64,'base64'):readFileSync('/tmp/stress/350.pcm');
-          const sourceRate=generated.ok?generated.sample_rate:24000;
+          const previous=JSON.parse(readFileSync('/tmp/prior-voice/concatenation-quality.json','utf8'));
+          if(previous.source!=='gemini'||previous.expected!==reference||!previous.identical_to_original||!previous.identical_to_written)throw Error('PRIOR_GEMINI_SOURCE_NOT_VERIFIED');
+          const source=readFileSync('/tmp/prior-voice/quality-source.pcm');
+          const sourceSamples=previous.chunks.filter(x=>x.http===200).reduce((n,x)=>n+x.samples,0);
+          const sourceRate=Math.round(8000*(source.length/2)/sourceSamples);
+          if(![8000,16000,24000,32000,48000].includes(sourceRate))throw Error('PRIOR_PCM_RATE_INVALID');
+          console.log(JSON.stringify({quality_source_reused:true,source_rate:sourceRate,source_run:37245824581}));
           const {encodePcmInChunks,handleVoiceChunk}=await import(process.cwd()+'/worker/voice-chunks.mjs');
           const testEnv={ELITE_INTERNAL_TOKEN:'cloud-audit-synthetic-auth-material-32chars'};
           const joined=await encodePcmInChunks(new Uint8Array(source),sourceRate,testEnv,req=>handleVoiceChunk(req,testEnv));
@@ -139,8 +157,8 @@ jobs:
           spawnSync('ffmpeg',['-nostdin','-v','error','-y','-f','s16le','-ar',String(sourceRate),'-ac','1','-i','/tmp/stress/quality-source.pcm','/tmp/stress/quality-source.wav']);
           const original=await op({operation:'audit-transcribe',audio_base64:readFileSync('/tmp/stress/quality-source.wav').toString('base64')});
           const concatenated=await op({operation:'audit-transcribe',audio_base64:Buffer.from(joined.bytes).toString('base64')});
-          const normalize=s=>String(s||'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\\s+/g,' ').trim();
-          const qualityProof={source:generated.ok?'gemini':'espeak',expected:reference,original_transcript:original.transcript,concatenated_transcript:concatenated.transcript,identical_to_original:normalize(original.transcript)===normalize(concatenated.transcript),identical_to_written:normalize(reference)===normalize(concatenated.transcript),chunks:joined.chunks};
+          const normalize=s=>String(s||'').normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+          const qualityProof={source:'gemini',expected:reference,original_transcript:original.transcript,concatenated_transcript:concatenated.transcript,identical_to_original:normalize(original.transcript)===normalize(concatenated.transcript),identical_to_written:normalize(reference)===normalize(concatenated.transcript),chunks:joined.chunks};
           writeFileSync('/tmp/stress/concatenation-quality.json',JSON.stringify(qualityProof,null,2));console.log(JSON.stringify({concatenation_quality:qualityProof}));
           if(!qualityProof.identical_to_original)throw Error('CONCATENATED_TRANSCRIPT_CHANGED');
 
