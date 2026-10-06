@@ -139,7 +139,10 @@ def validate_request(url, method, headers, identity):
                    method == 'POST' and p.path == CERT_PATH + 'checkout' and not q or
                    method == 'POST' and p.path == CERT_PATH + 'reconcile' and not q or
                    method == 'GET' and p.path == CERT_PATH + 'download' and
-                   set(q) == {'token'} and len(q['token']) == 1 and bool(q['token'][0]))
+                   set(q) == {'token'} and len(q['token']) == 1 and bool(q['token'][0]) or
+                   method == 'POST' and p.path == '/api/support/refund-request' and not q or
+                   method == 'POST' and p.path == CERT_PATH + 'refund-approve' and set(q) == {'order_id'} and
+                   len(q['order_id']) == 1 and re.fullmatch(r'[0-9a-f-]{36}', q['order_id'][0]))
         require(allowed, 'CERT_ENDPOINT_DENIED')
         require(headers.get('x-certification-e2e-token') == identity.certification_token and
                 'authorization' not in headers and 'x-sandbox-inbox-token' not in headers, 'CERT_AUTH_DENIED')
@@ -428,6 +431,23 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
             match = re.fullmatch(r'delivery_download_reuse_http_(403|410)(?:_detail_[a-z0-9_]+)?', str(error))
             require(bool(match), 'DOWNLOAD_REUSE_MUST_FAIL')
             report['reuse_http'] = int(match.group(1))
+        # T5: customer refund request (CDC art. 49) -> approval -> Mercado Pago refund -> order refunded.
+        refund_req = client.request(APP + '/api/support/refund-request', 'POST', {'order_id': oid, 'email': identity.buyer_email},
+                                    {'x-certification-e2e-token': identity.certification_token}, failure_code='refund_request')
+        require(refund_req.get('received') is True and refund_req.get('status') == 'pending', 'REFUND_REQUEST_REQUIRED')
+        refund_ok = client.request(APP + CERT_PATH + 'refund-approve?' + urllib.parse.urlencode({'order_id': oid}), 'POST', {},
+                                   {'x-certification-e2e-token': identity.certification_token}, failure_code='refund_approve')
+        require(refund_ok.get('status') == 'approved' and bool(refund_ok.get('refund_id')), 'REFUND_EXECUTION_REQUIRED')
+        refunded = False
+        for _ in range(8):
+            client.cert('reconcile', 'POST', {'order_id': oid, 'payment_id': report['payment_id']}, audit_id=audit_id, failure_code='refund_reconcile')
+            st = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}), audit_id=audit_id, failure_code='refund_status')
+            if str((st.get('order') or {}).get('status', '')) == 'refunded':
+                refunded = True
+                break
+            time.sleep(5)
+        require(refunded, 'REFUND_ORDER_STATUS_REQUIRED')
+        report['checks']['REFUND'] = 'PASS'
         final = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}),
                             audit_id=audit_id, failure_code='order_final_status')
         validate_isolation(final, identity, oid)
