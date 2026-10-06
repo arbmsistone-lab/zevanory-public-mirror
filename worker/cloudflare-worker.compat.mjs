@@ -16,6 +16,7 @@ import { handleControlActionRequest } from "./control-action-plane.mjs";
 import { handleZea10AutonomyRequest } from "./zea10-autonomy.mjs";
 import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
 import { handleSandboxProofV2, handleSandboxInboundEmail } from "./sandbox-proof-v2.mjs";
+import { handleRefundFlow } from "./refund-flow.mjs";
 
 async function loadWhatsappBrokerState(binding) {
   if (!binding?.fetch) return null;
@@ -103,6 +104,10 @@ const wrapped = {
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
     if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);
     if(url.pathname==="/api/admin/voice/encode-audit") return handleVoiceEncodeAudit(request,normalized);
+    {
+      const refund = await handleRefundFlow(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
+      if (refund) return refund;
+    }
 
     // One administrative surface only: legacy HTML entrypoints permanently
     // converge on the canonical React Control Center. Technical admin APIs stay

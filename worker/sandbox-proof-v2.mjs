@@ -384,6 +384,10 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
       result?.event === "payment_confirmed" &&
       String(result?.order_id || "").toLowerCase() === oid &&
       ["paid", "approved", "completed"].includes(String(result?.order_status || "").toLowerCase());
+    const refundConfirmed = result?.accepted === true &&
+      result?.event === "refund_confirmed" &&
+      String(result?.order_id || "").toLowerCase() === oid;
+    if (refundConfirmed) return json(200, { accepted: true, order_id: oid, payment_id: paymentId, event: "refund_confirmed", order_status: String(result?.order_status || "") });
     if (!confirmed) return json(409, { error: "sandbox_payment_not_approved" });
     const reconciled = { ...record, receipt_source: "reconciliation", reconciled_payment_id: paymentId };
     await kv.put(ORDER_KEY(oid), JSON.stringify(reconciled), { expirationTtl: 30 * 24 * 3600 });

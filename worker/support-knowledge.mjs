@@ -7,7 +7,7 @@ const SALES_ORIGIN = "https://vendas.zevanory.api.br";
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
 
 const DELIVERY = "Entrega digital: após o pagamento ser confirmado pelo Mercado Pago, você recebe por e-mail um link seguro e temporário para baixar o material.";
-const REFUND = "Direito de arrependimento: você pode desistir em até 7 dias após a compra e recebe o reembolso integral pelo mesmo meio de pagamento (art. 49 do Código de Defesa do Consumidor). Basta pedir pelo suporte.";
+const REFUND = "Direito de arrependimento: você pode desistir em até 7 dias após a compra e recebe o reembolso integral pelo mesmo meio de pagamento (art. 49 do Código de Defesa do Consumidor). Para pedir, use o link de reembolso com o código do pedido (está no e-mail de entrega) e o e-mail do pagamento.";
 
 export const SUPPORT_PRODUCTS = Object.freeze({
   "ia-na-pratica": { name: "IA na Prática", price_brl: 197, content: "Conteúdo prático para transformar IA em processos claros, repetíveis e úteis no trabalho e no negócio." },
@@ -46,7 +46,7 @@ export function answerSupportQuestion({ product, question } = {}) {
     return { answered: false, intent: null, product: slug, answer: `Não tenho uma resposta segura para isso. Fale com o suporte em ${SUPPORT_EMAIL}.`, handoff: true };
   }
   if (intent === "refund" || intent === "delivery") {
-    return { answered: true, intent, product: slug, answer: intent === "refund" ? REFUND : DELIVERY, sources: [`${SALES_ORIGIN}/reembolso`, slug ? `${SALES_ORIGIN}/${slug}` : `${SALES_ORIGIN}/solucoes`], handoff: false };
+    return { answered: true, intent, product: slug, answer: intent === "refund" ? REFUND : DELIVERY, sources: [intent === "refund" ? "https://zevanory.api.br/reembolso/solicitar" : `${SALES_ORIGIN}/reembolso`, slug ? `${SALES_ORIGIN}/${slug}` : `${SALES_ORIGIN}/solucoes`], handoff: false };
   }
   if (!slug) {
     return { answered: false, intent, product: null, answer: "Sobre qual produto? IA na Prática, Vendas na Prática, Lucro & Caixa, Combo IA + Vendas ou Negócio Completo.", handoff: false, needs_product: true };

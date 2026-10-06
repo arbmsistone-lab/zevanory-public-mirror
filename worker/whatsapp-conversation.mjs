@@ -9,7 +9,7 @@ const SUPPORT_EMAIL = "suporte@zevanory.api.br";
 const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"];
 const HISTORY_TURNS = 10;
 const ALLOWED_PRICES = new Set(Object.values(SUPPORT_PRODUCTS).map((p) => p.price_brl));
-const ALLOWED_URLS = new Set([SALES_ORIGIN, `${SALES_ORIGIN}/`, `${SALES_ORIGIN}/solucoes`, `${SALES_ORIGIN}/reembolso`, `${SALES_ORIGIN}/privacidade`, `${SALES_ORIGIN}/termos`, ...Object.keys(SUPPORT_PRODUCTS).map((slug) => `${SALES_ORIGIN}/${slug}`)]);
+const ALLOWED_URLS = new Set(["https://zevanory.api.br/reembolso/solicitar", SALES_ORIGIN, `${SALES_ORIGIN}/`, `${SALES_ORIGIN}/solucoes`, `${SALES_ORIGIN}/reembolso`, `${SALES_ORIGIN}/privacidade`, `${SALES_ORIGIN}/termos`, ...Object.keys(SUPPORT_PRODUCTS).map((slug) => `${SALES_ORIGIN}/${slug}`)]);
 
 const brl = (n) => "R$ " + Number(n).toFixed(2).replace(".", ",");
 
@@ -21,7 +21,7 @@ export function catalogFacts({ salesOpen = false } = {}) {
     "",
     "POLÍTICAS OFICIAIS:",
     "- Produtos 100% digitais. Após o pagamento confirmado pelo Mercado Pago, o cliente recebe por e-mail um link seguro e temporário para baixar o material.",
-    "- Direito de arrependimento: até 7 dias após a compra, reembolso integral pelo mesmo meio de pagamento (art. 49 do CDC). Pedido pelo suporte.",
+    "- Direito de arrependimento: até 7 dias após a compra, reembolso integral pelo mesmo meio de pagamento (art. 49 do CDC). Pedido pelo link https://zevanory.api.br/reembolso/solicitar, com o código do pedido e o e-mail do pagamento.",
     `- Suporte humano: ${SUPPORT_EMAIL}.`,
     "- Combo IA + Vendas reúne IA na Prática + Vendas na Prática. Negócio Completo reúne IA, vendas e Lucro & Caixa.",
     salesOpen
