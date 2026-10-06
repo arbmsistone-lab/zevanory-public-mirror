@@ -32,7 +32,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: zees16-control-reconciler
+  group: zees16-control-reconciler-${{ github.event_name }}
   cancel-in-progress: true
 jobs:
   reconcile:
