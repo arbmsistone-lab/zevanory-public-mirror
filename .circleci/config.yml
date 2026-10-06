@@ -1,0 +1,65 @@
+version: 2.1
+
+parameters:
+  run_sandbox_proof:
+    type: boolean
+    default: false
+
+executors:
+  zevanory:
+    docker:
+      - image: cimg/node:22.14
+    resource_class: small
+
+commands:
+  install_python_tools:
+    steps:
+      - run:
+          name: Install Python tooling
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y python3 python3-pip jq
+
+jobs:
+  tests:
+    executor: zevanory
+    steps:
+      - checkout
+      - install_python_tools
+      - run:
+          name: Core tests and production/sandbox isolation
+          command: bash scripts/ci/cloudflare-build.sh
+
+  sandbox-proof:
+    executor: zevanory
+    environment:
+      SANDBOX_FINANCIAL_ENABLED: "true"
+    steps:
+      - checkout
+      - install_python_tools
+      - run:
+          name: Fail closed unless required sandbox credentials exist
+          command: |
+            set -euo pipefail
+            for v in MERCADOPAGO_TEST_PUBLIC_KEY MERCADOPAGO_TEST_ACCESS_TOKEN SANDBOX_IDENTITY_MANIFEST SANDBOX_INBOX_READ_TOKEN CERTIFICATION_E2E_TOKEN; do
+              test -n "${!v:-}" || { echo "Missing required protected variable: $v"; exit 1; }
+            done
+      - run:
+          name: Seven-step sandbox purchase and delivery proof
+          command: python3 scripts/mercadopago_combo_sandbox.py
+
+workflows:
+  tests:
+    jobs:
+      - tests
+  manual-sandbox-proof:
+    when: << pipeline.parameters.run_sandbox_proof >>
+    jobs:
+      - approve-sandbox-proof:
+          type: approval
+      - sandbox-proof:
+          requires:
+            - approve-sandbox-proof
+          filters:
+            branches:
+              only: gh-pages
