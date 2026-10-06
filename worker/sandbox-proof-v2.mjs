@@ -397,7 +397,11 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
     const target = new URL("/private/artifacts/download", request.url);
     target.searchParams.set("token", token);
     const response = await worker.fetch(new Request(target, { method: "GET" }), env, ctx);
-    if (!response.ok) return json(response.status >= 400 && response.status < 600 ? response.status : 503, { error: "delivery_download_unavailable" });
+    if (!response.ok) {
+      let cause = "";
+      try { cause = String((await response.clone().json())?.error || "").replace(/[^a-z0-9_]/gi, "").slice(0, 48); } catch {}
+      return json(response.status >= 400 && response.status < 600 ? response.status : 503, { error: cause ? `delivery_download_${cause}` : "delivery_download_unavailable" });
+    }
     return response;
   }
 
