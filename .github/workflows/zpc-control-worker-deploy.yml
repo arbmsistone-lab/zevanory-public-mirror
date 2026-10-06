@@ -1,0 +1,95 @@
+name: ZPC control worker deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact zevanory-product-control-edge main SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zpc-control-worker-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Validate exact source SHA
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git clone --quiet --filter=blob:none https://github.com/arbmsistone-lab/zevanory-product-control-edge.git zpc
+          git -C zpc fetch --quiet origin "$SOURCE_SHA"
+          git -C zpc checkout --quiet --detach "$SOURCE_SHA"
+          test "$(git -C zpc rev-parse HEAD)" = "$SOURCE_SHA"
+          git -C zpc fetch --quiet origin main
+          git -C zpc merge-base --is-ancestor "$SOURCE_SHA" origin/main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Build exact control-plane source
+        working-directory: zpc
+        env:
+          ZPC_BASE_PATH: /
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Bind current GREEN trust artifact
+        working-directory: zpc
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 \
+            https://arbmsistone-lab.github.io/zevanory-product-control-edge/global-trust.json \
+            -o dist/global-trust.json
+          jq -e '.state == "GREEN"' dist/global-trust.json >/dev/null
+          jq -e '.zea10.proven == 10 and .zea10.partial == 0 and .zea10.blocked == 0' dist/global-trust.json >/dev/null
+          jq -e '[.engines[].state] | length == 3 and all(. == "GREEN")' dist/global-trust.json >/dev/null
+          printf '{"sha":"%s","repository":"arbmsistone-lab/zevanory-product-control-edge","workflow_run":"%s"}\n' \
+            "${{ inputs.source_sha }}" "${{ github.run_id }}" > dist/zpc-build.json
+
+      - name: Deploy canonical control Worker
+        working-directory: zpc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          npx --yes wrangler@4.135.0 deploy --config cf-worker/wrangler.toml --var WORKER_COMMIT:"$SOURCE_SHA"
+
+      - name: Verify production readback
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 --max-time 25 \
+            https://controle.zevanory.api.br/version.json -o /tmp/version.json
+          test "$(jq -r '.sha' /tmp/version.json)" = "$SOURCE_SHA"
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 --max-time 25 \
+            https://controle.zevanory.api.br/global-trust.json -o /tmp/global-trust.json
+          jq -e '.state == "GREEN"' /tmp/global-trust.json >/dev/null
+          jq -e '.zea10.proven == 10 and ([.engines[].state] | all(. == "GREEN"))' /tmp/global-trust.json >/dev/null
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 \
+            https://zevanory.api.br/api/support/artifacts-status -o /tmp/artifacts.json
+          jq -e '.artifacts | length == 5 and all(.integrity == true)' /tmp/artifacts.json >/dev/null
+          echo "ZPC_CONTROL_WORKER_DEPLOY=PASS"
+          cat /tmp/version.json
+          cat /tmp/global-trust.json
+          cat /tmp/artifacts.json
