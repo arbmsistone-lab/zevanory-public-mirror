@@ -80,14 +80,23 @@ async function createRequest(env, sql, kv, { oid, email }) {
   const existing = JSON.parse(await kv.get(KEY(oid)) || "null");
   if (existing && existing.status !== "rejected") return { status: 200, body: { received: true, status: existing.status, message: "Seu pedido de reembolso já está registrado e será processado em breve." } };
   const order = await loadOrder(sql, oid);
-  if (!order || order.status !== "paid" || !order.payment_id || !order.paid_at) return { status: 404, body: { error: "nao_elegivel", message: GENERIC_NOT_FOUND } };
-  const test = order.certification_pilot === true;
+  if (!order || order.status !== "paid" || !order.payment_id || !order.paid_at) return { status: 404, body: { error: "nao_elegivel", message: GENERIC_NOT_FOUND, reason: !order ? "order_not_found" : order.status !== "paid" ? "order_status_" + order.status : "payment_missing" } };
+  const test = order.certification_pilot === true || Boolean(await kv.get(`sandbox-proof-v2:order:${oid}`));
   if (Date.now() - new Date(order.paid_at).getTime() > WINDOW_MS) {
     return { status: 409, body: { error: "fora_do_prazo", message: "O prazo de 7 dias para arrependimento deste pedido terminou. Se houver algum problema com o material, escreva para suporte@zevanory.api.br." } };
   }
-  const payment = await mpPayment(env, order.payment_id, test);
-  const payerEmail = String(payment?.payer?.email || "").trim().toLowerCase();
-  if (!payerEmail || !timingSafeEqual(payerEmail, email)) return { status: 404, body: { error: "nao_elegivel", message: GENERIC_NOT_FOUND } };
+  // The customer identifies with the email where the product was delivered (= Mercado Pago payer in production).
+  const candidates = [];
+  try {
+    const f = (await sql.query("select evidence_ref from service_fulfillment where order_id=$1 limit 1", [oid]))[0];
+    const ev = f?.evidence_ref && String(f.evidence_ref).trim().startsWith("{") ? JSON.parse(f.evidence_ref) : {};
+    if (ev.email_recipient) candidates.push(String(ev.email_recipient).trim().toLowerCase());
+  } catch {}
+  try {
+    const payment = await mpPayment(env, order.payment_id, test);
+    if (payment?.payer?.email) candidates.push(String(payment.payer.email).trim().toLowerCase());
+  } catch {}
+  if (!candidates.some((c) => c && timingSafeEqual(c, email))) return { status: 404, body: { error: "nao_elegivel", message: GENERIC_NOT_FOUND, reason: candidates.length ? "email_mismatch" : "email_unverifiable" } };
   const record = {
     status: "pending",
     order_id: oid,
@@ -188,6 +197,9 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     try { input = await request.json(); } catch {}
     try {
       const out = await createRequest(env, sql(), kv, { oid: input.order_id, email: input.email });
+      const cert = String(env.CERTIFICATION_E2E_TOKEN || "");
+      const diagnostic = cert.length >= 32 && timingSafeEqual(cert, request.headers.get("x-certification-e2e-token") || "");
+      if (!diagnostic && out.body?.reason) delete out.body.reason;
       return json(out.status, out.body);
     } catch {
       return json(503, { error: "indisponivel", message: "Não foi possível registrar agora. Tente novamente em instantes ou escreva para suporte@zevanory.api.br." });
