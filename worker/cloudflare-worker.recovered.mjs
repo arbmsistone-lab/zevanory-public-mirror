@@ -17533,7 +17533,8 @@ async function handleArtifactDownload(request, env) {
   let claimed;
   try {
     claimed = await consumeArtifactDownload(db, { token });
-  } catch {
+  } catch (error) {
+    if (String(error?.message || "") === "artifact_token_unavailable") return json30(410, { error: "download_token_used_or_expired" });
     return json30(404, { error: "download_unavailable" });
   } finally {
     await db.pool.end().catch(() => {
