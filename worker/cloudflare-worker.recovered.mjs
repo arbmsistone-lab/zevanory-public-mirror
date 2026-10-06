@@ -1251,6 +1251,15 @@ function salesGate(env = process.env, lifecycleCertification = null) {
   });
 }
 __name(salesGate, "salesGate");
+function publicCheckoutGate(env = process.env) {
+  const globalEnabled = String(env.SALE_GLOBALLY_ENABLED || "").toLowerCase() === "true";
+  const production = String(env.MERCADOPAGO_ENV || "").toLowerCase() === "production";
+  const blockers = [];
+  if (!globalEnabled) blockers.push("global_sale_disabled");
+  if (!production) blockers.push("payments_not_in_production");
+  return Object.freeze({ enabled: globalEnabled && production, blockers: Object.freeze(blockers) });
+}
+__name(publicCheckoutGate, "publicCheckoutGate");
 function channelEnabled(envKey, env = process.env) {
   return salesGate(env).enabled && String(env[envKey] || "").toLowerCase() === "true";
 }
@@ -14272,8 +14281,11 @@ function normalizeMercadoPagoFinancialEvent(payment, order) {
   const amount = Math.round(Number(payment.transaction_amount) * 100);
   const expected = Math.round(Number(order.amount) * 100);
   if (!Number.isFinite(amount) || amount !== expected || expected <= 0) return null;
+  if (String(payment.currency_id || "BRL").toUpperCase() !== "BRL") return null;
   const status = String(payment.status || "").toLowerCase();
   if (status === "approved") return Object.freeze({ normalized: "payment_confirmed", refundedTotal: null });
+  // Chargeback reverses the sale exactly like a full refund: access is revoked.
+  if (status === "charged_back") return Object.freeze({ normalized: "refund_confirmed", refundedTotal: expected / 100 });
   const refunded = Math.round(Number(payment.transaction_amount_refunded || 0) * 100);
   if (status === "refunded" && refunded === expected) return Object.freeze({ normalized: "refund_confirmed", refundedTotal: refunded / 100 });
   if (status === "partially_refunded" && refunded > 0 && refunded < expected) return Object.freeze({ normalized: "refund_confirmed", refundedTotal: refunded / 100 });
@@ -14305,10 +14317,10 @@ async function handler12(req, res) {
   res.setHeader("cache-control", "no-store");
   res.setHeader("x-content-type-options", "nosniff");
   if (req.method !== "POST") return json9(res, 405, { error: "method_not_allowed" });
-  const gate = salesGate();
+  const gate = publicCheckoutGate();
   const pilotToken = String(req.headers?.["x-certification-pilot-token"] || "").trim();
   const checkoutBody = await readJsonRequestBody(req);
-  const input = normalizeCheckoutRequest(checkoutBody, { certification: !gate.enabled && Boolean(pilotToken) });
+  const input = normalizeCheckoutRequest(checkoutBody, { certification: true });
   if (!input) return json9(res, 400, { error: "invalid_checkout_request" });
   if (!gate.enabled && !pilotToken) return json9(res, 503, { error: "sales_globally_blocked", blockers: gate.blockers });
   if (process.env.CHECKOUT_ENABLED !== "true") return json9(res, 503, { error: "checkout_disabled" });
@@ -14781,8 +14793,9 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
   if (!recipient) throw new Error("delivery_recipient_invalid");
   if (!String(process.env.RESEND_API_KEY || "").trim()) throw new Error("delivery_mailer_unavailable");
   const base = safePublicBaseUrl(process.env.PAYMENT_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL) || "https://zevanory.api.br";
-  if (!evidence.download_url || !evidence.verification_url) {
-    const issued = await issueArtifactDownload(sql, { orderId, issuedBy: "mercadopago-webhook", ttlMinutes: 60 });
+  const storedExpired = Boolean(evidence.expires_at) && Date.parse(String(evidence.expires_at)) < Date.now() + 10 * 60 * 1e3;
+  if (!evidence.download_url || !evidence.verification_url || storedExpired) {
+    const issued = await issueArtifactDownload(sql, { orderId, issuedBy: "mercadopago-webhook", ttlMinutes: certificationOnly ? 60 : 4320 });
     const probe = await issueArtifactDownload(sql, { orderId, issuedBy: "mercadopago-verification", ttlMinutes: 15 });
     const download = new URL("/private/artifacts/download", base);
     download.searchParams.set("token", issued.token);
@@ -14817,7 +14830,7 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
       to: [recipient],
       subject: sandboxV2 ? "[SANDBOX] Prova ZEVANORY" : "Seu acesso ZEVANORY",
       ...sandboxV2 ? { headers: { "X-Zevanory-Order-ID": String(orderId).toLowerCase() } } : {},
-      text: sandboxV2 ? `SANDBOX - sem valor comercial. Pedido ${String(orderId).toLowerCase()}.\nLink de verificacao: ${evidence.certification_verification_url}\nLink de entrega: ${evidence.download_url}` : `Pagamento confirmado. Seu link seguro de entrega: ${evidence.download_url}`
+      text: sandboxV2 ? `SANDBOX - sem valor comercial. Pedido ${String(orderId).toLowerCase()}.\nLink de verificacao: ${evidence.certification_verification_url}\nLink de entrega: ${evidence.download_url}` : `Pagamento confirmado. Obrigado por comprar na ZEVANORY!\n\nBaixe seu produto (link pessoal, valido por 72 horas, um download): ${evidence.download_url}\n\nCodigo do pedido: ${String(orderId).toLowerCase()}\nPerdeu o link ou ele expirou? Peca um novo em https://zevanory.api.br/entrega/reenviar\nGarantia de 7 dias: se nao for para voce, peca o reembolso em https://zevanory.api.br/reembolso/solicitar\n\nDuvidas: suporte@zevanory.api.br ou WhatsApp https://wa.me/5588992545413\nA. RENAN ALVES MOREIRA BITU LTDA - CNPJ 69.077.233/0001-99`
     })
   });
   const sent = await response2.json().catch(() => ({}));
@@ -17443,7 +17456,7 @@ var uuid2 = /* @__PURE__ */ __name((value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-
 async function issueArtifactDownload(sql, { orderId, issuedBy = "operator", ttlMinutes = 30 } = {}) {
   if (!sql?.query) throw new Error("artifact_sql_required");
   if (!uuid2(orderId)) throw new Error("artifact_order_id_invalid");
-  const ttl = Math.min(60, Math.max(5, Number.parseInt(String(ttlMinutes), 10) || 30));
+  const ttl = Math.min(4320, Math.max(5, Number.parseInt(String(ttlMinutes), 10) || 30));
   const eligible = await sql.query(`select o.order_id,o.offer_id from orders o
     where o.order_id=$1 and o.status='paid'
       and exists(select 1 from financial_events f where f.order_id=o.order_id and f.normalized_event='payment_confirmed')
@@ -17526,8 +17539,17 @@ async function handleArtifactIssue(request, env) {
 }
 __name(handleArtifactIssue, "handleArtifactIssue");
 async function handleArtifactDownload(request, env) {
-  if (request.method !== "GET") return json30(405, { error: "method_not_allowed" });
-  const token = new URL(request.url).searchParams.get("token") || "";
+  if (request.method === "GET" || request.method === "HEAD") {
+    const pageToken = String(new URL(request.url).searchParams.get("token") || "");
+    if (pageToken.length < 32 || pageToken.length > 128 || !/^[A-Za-z0-9_-]+$/.test(pageToken)) return json30(404, { error: "download_unavailable" });
+    const page = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Seu download ZEVANORY</title><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b1220;color:#e6edf6;margin:0;display:grid;place-items:center;min-height:100vh;padding:16px}main{max-width:460px;background:#111a2c;border:1px solid #1f2b44;border-radius:12px;padding:28px}h1{font-size:20px;margin:0 0 12px}p{color:#a9b6c9;line-height:1.5}button{background:#2dd4a7;color:#04241b;border:0;border-radius:8px;padding:14px 20px;font-weight:700;font-size:16px;cursor:pointer;width:100%}</style></head><body><main><h1>Seu produto ZEVANORY</h1><p>Clique para baixar. O link vale para um download; guarde o arquivo no seu computador ou celular.</p><form method="post"><input type="hidden" name="token" value="${pageToken}"><button type="submit">Baixar agora</button></form><p>Problemas? suporte@zevanory.api.br · <a style="color:#2dd4a7" href="https://zevanory.api.br/entrega/reenviar">pedir novo link</a></p></main></body></html>`;
+    return new Response(request.method === "HEAD" ? null : page, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer", "x-robots-tag": "noindex" } });
+  }
+  if (request.method !== "POST") return json30(405, { error: "method_not_allowed" });
+  let token = new URL(request.url).searchParams.get("token") || "";
+  if (!token) {
+    try { token = String((await request.formData()).get("token") || ""); } catch { token = ""; }
+  }
   if (!env.DATABASE_URL) return json30(503, { error: "download_validation_unavailable" });
   const db = dbFor(env);
   let claimed;
@@ -17623,6 +17645,11 @@ function hydrateRuntimeConfig(env = process.env, target = process.env) {
       if (value === void 0 || value === null || target[key] !== void 0) continue;
       target[key] = String(value);
     }
+  }
+  if (globalThis.__ZEVANORY_SALES_SWITCH__ === true) {
+    // Owner opened sales from the control panel (KV sales:open:v1); deploy defaults stay fail-closed.
+    target.SALE_GLOBALLY_ENABLED = "true";
+    target.MERCADOPAGO_ENV = "production";
   }
   if (target.META_APP_SECRET === void 0 && target.META_APP_SECRET01) target.META_APP_SECRET = target.META_APP_SECRET01;
   if (target.OPERATOR_TOKEN === void 0 && target.ELITE_INTERNAL_TOKEN) target.OPERATOR_TOKEN = target.ELITE_INTERNAL_TOKEN;

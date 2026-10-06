@@ -29,6 +29,98 @@ HTML_ROUTES = (
     "afiliados",
 )
 
+
+LEGAL_FOOTER = ('<div class="container footer-legal" style="padding:12px 16px 28px;font-size:13px;line-height:1.5;opacity:.85">'
+                'A. RENAN ALVES MOREIRA BITU LTDA · CNPJ 69.077.233/0001-99 · Rua Francisco de Freitas Neto, 96, Alto do Tenente, '
+                'Várzea Alegre/CE, CEP 63540-000 · <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a> · '
+                'WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a></div>')
+
+COMMERCE = {
+    "ia-na-pratica": {"sku": "ZEV-IA-011", "name": "IA na Prática", "price": 197,
+        "items": ["Manual completo (PDF e DOCX editável)", "Guia rápido em PDF", "Arquivo de comandos prontos para IA", "Planilha de aplicação (XLSX)", "Arquivo 'Comece aqui' com o passo a passo"],
+        "faq_q": None},
+    "vendas-na-pratica": {"sku": "ZEV-VEN-011", "name": "Vendas na Prática", "price": 197,
+        "items": ["Manual completo (PDF e DOCX editável)", "Guia rápido em PDF", "Modelos de mensagens de venda e follow-up", "Roteiro de conteúdos", "Planilha de acompanhamento comercial (XLSX)", "Arquivo 'Comece aqui' com o passo a passo"],
+        "faq_q": None},
+    "lucro-e-caixa": {"sku": "ZEV-LCX-011", "name": "Lucro & Caixa", "price": 247,
+        "items": ["Manual completo (PDF e DOCX editável)", "Guia rápido (PDF e DOCX)", "Planilha de caixa e margem (XLSX)", "Checklist financeiro semanal", "Comandos de IA para análise financeira", "Arquivo 'Comece aqui' com o passo a passo"],
+        "faq_q": None},
+    "combo-ia-vendas": {"sku": "ZEV-CMB-011", "name": "Combo IA + Vendas", "price": 297,
+        "items": ["IA na Prática completo (manual, guia, comandos e planilha)", "Vendas na Prática completo (manual, guia, mensagens, conteúdos e planilha)", "Economia de R$ 97 em relação à compra separada (R$ 394)"],
+        "faq_q": ("Preciso comprar os produtos separadamente?", "Não. O Combo já inclui o IA na Prática e o Vendas na Prática completos, por R$ 297 (separados custariam R$ 394).")},
+    "negocio-completo": {"sku": "ZEV-NGC-011", "name": "Negócio Completo", "price": 397,
+        "items": ["IA na Prática completo", "Vendas na Prática completo", "Lucro & Caixa completo", "Plano integrado de 30 dias (PDF e DOCX)", "Painel de decisão integrada (XLSX)", "Economia de R$ 244 em relação à compra separada (R$ 641)"],
+        "faq_q": ("Inclui os três produtos separados?", "Sim. Inclui IA na Prática, Vendas na Prática e Lucro & Caixa completos, mais o Plano integrado de 30 dias e o Painel de decisão integrada.")},
+}
+DELIVERY_Q = ("Como recebo o produto?", "Logo após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um link pessoal para baixar o arquivo .zip com todo o material. Se o link se perder, peça outro em zevanory.api.br/entrega/reenviar.")
+GUARANTEE_Q = ("E se não for para mim?", "Você tem 7 dias de garantia: peça o reembolso integral em zevanory.api.br/reembolso/solicitar, sem precisar explicar o motivo.")
+
+def _faq_html(q, a):
+    return f"<details><summary>{q}</summary><p>{a}</p></details>"
+
+def apply_commerce(slug: str, html: str) -> str:
+    c = COMMERCE[slug]
+    buy = f"/comprar/{c['sku']}"
+    label = f"Comprar agora · R$ {c['price']}"
+    html = re.sub(r'<a class="nav-cta" href="mailto:[^"]*">', '<a class="nav-cta" href="https://wa.me/5588992545413">', html)
+    # Every primary CTA buys.
+    html = re.sub(r'<a class="button primary" href="mailto:[^"]*">[^<]*</a>', f'<a class="button primary" href="{buy}" rel="nofollow">{label}</a>', html)
+    html = re.sub(r'<p class="microcopy">[^<]*</p>', '<p class="microcopy">Pagamento seguro pelo Mercado Pago (Pix ou cartão) · download logo após a confirmação · garantia de 7 dias.</p>', html)
+    trust = {
+        ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Download imediato", "Link por e-mail logo após a confirmação do pagamento."),
+        ("Gate antes da venda", "Checkout só após validação completa."): ("Garantia de 7 dias", "Não gostou? Reembolso integral, sem burocracia."),
+        ("Transparência comercial", "Escopo e limites antes da contratação."): ("Pagamento seguro", "Pix ou cartão pelo Mercado Pago."),
+    }
+    for (old_t, old_s), (new_t, new_s) in trust.items():
+        html = html.replace(f"<strong>{old_t}</strong><span>{old_s}</span>", f"<strong>{new_t}</strong><span>{new_s}</span>")
+    items = "".join(f"<li>{i}</li>" for i in c["items"])
+    aside = (f'<aside class="offer-side"><div><span class="status-pill">R$ {c["price"]} · pagamento único</span>'
+             f'<h3>O que você recebe</h3><ul>{items}</ul>'
+             '<p>Entrega por download (.zip) no seu e-mail, logo após a confirmação do pagamento. Garantia de 7 dias.</p></div>'
+             f'<a class="button primary" href="{buy}" rel="nofollow">{label}</a></aside>')
+    html = re.sub(r'<aside class="offer-side">.*?</aside>', aside, html, count=1, flags=re.S)
+    # FAQ: drop "when will sales open" and fix composition answers; add delivery + guarantee.
+    html = re.sub(r'<details><summary>Quando (a compra|o checkout) será liberad[ao]\?</summary><p>[^<]*</p></details>', _faq_html(*DELIVERY_Q) + _faq_html(*GUARANTEE_Q), html)
+    if c["faq_q"]:
+        q, a = c["faq_q"]
+        html = re.sub(rf'(<summary>{re.escape(q)}</summary><p>)[^<]*(</p>)', rf'\g<1>{a}\g<2>', html)
+    # Structured data: price offer + matching FAQ.
+    def fix_ld(m):
+        import json as _json
+        data = _json.loads(m.group(2))
+        for node in data.get("@graph", []):
+            if node.get("@type") == "Product":
+                node["offers"] = {"@type": "Offer", "price": f"{c['price']}.00", "priceCurrency": "BRL", "availability": "https://schema.org/InStock",
+                                  "url": f"{SALES_ORIGIN}/{slug}", "seller": {"@type": "Organization", "name": "A. RENAN ALVES MOREIRA BITU LTDA"}}
+            if node.get("@type") == "FAQPage":
+                kept = [q for q in node.get("mainEntity", []) if "liberad" not in q.get("name", "")]
+                if c["faq_q"]:
+                    for q in kept:
+                        if q.get("name") == c["faq_q"][0]:
+                            q["acceptedAnswer"]["text"] = c["faq_q"][1]
+                for qq, aa in (DELIVERY_Q, GUARANTEE_Q):
+                    kept.append({"@type": "Question", "name": qq, "acceptedAnswer": {"@type": "Answer", "text": aa}})
+                node["mainEntity"] = kept
+        return m.group(1) + _json.dumps(data, ensure_ascii=False) + m.group(3)
+    html = re.sub(r'(<script type="application/ld\+json">)(.*?)(</script>)', fix_ld, html, count=1, flags=re.S)
+    return html
+
+def apply_catalog(html: str) -> str:
+    html = html.replace("com escopo explícito e venda condicionada a gates reais.", "com escopo explícito, pagamento seguro e garantia de 7 dias.")
+    for slug, c in COMMERCE.items():
+        html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', rf'\g<1><span class="catalog-type">R$ {c["price"]} · download imediato</span>', html, count=1, flags=re.S)
+    for slug in ("zevanory-sales", "zevanory-cfo", "arbm-contador-saloes"):
+        html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', r'\g<1><span class="catalog-type">Em breve</span>', html, count=1, flags=re.S)
+    return html
+
+def add_legal_footer(html: str) -> str:
+    if "footer-legal" in html:
+        return html
+    # Inside <main>: the product layout keeps a compact fixed footer, the identification scrolls with the page.
+    if "</main>" in html:
+        return html.replace("</main>", LEGAL_FOOTER + "</main>", 1)
+    return html.replace("</body>", LEGAL_FOOTER + "</body>", 1)
+
 def copy_text_page(slug: str) -> None:
     source = ROOT / slug / "index.html"
     if not source.exists():
@@ -78,6 +170,11 @@ def apply_approved_overlay() -> None:
             if not m:
                 raise SystemExit(f"offer anchor missing in {slug}")
             html = html[: m.end()] + ov["offers"][slug] + html[m.end():]
+        if slug in PRODUCTS:
+            html = apply_commerce(slug, html)
+        if slug == "solucoes":
+            html = apply_catalog(html)
+        html = add_legal_footer(html).replace("contato@zevanory.api.br", "suporte@zevanory.api.br")
         if 'src="/whatsapp-contact.js"' not in html:
             html = html.replace("</body>", '<script src="/whatsapp-contact.js" defer></script></body>', 1)
         path.write_text(html, encoding="utf-8")
@@ -95,6 +192,15 @@ def apply_approved_overlay() -> None:
             problems.append(f"{slug}: approved price missing")
         if f'href="{SALES_ORIGIN}/{slug}"' not in page:
             problems.append(f"{slug}: canonical not on sales domain")
+        if f'href="/comprar/{COMMERCE[slug]["sku"]}"' not in page:
+            problems.append(f"{slug}: buy button missing")
+        for banned in ("gates oficiais", "Gate antes da venda", "será liberad", "pagamento reconciliado", "mailto:contato@"):
+            if banned in page:
+                problems.append(f"{slug}: banned pre-sale copy '{banned}'")
+        if "CNPJ 69.077.233/0001-99" not in page:
+            problems.append(f"{slug}: supplier identification missing")
+        if '"offers"' not in page:
+            problems.append(f"{slug}: structured offer missing")
     if problems:
         raise SystemExit("approved sales overlay contract failed: " + "; ".join(problems))
     print("ZEVANORY_SALES_APPROVED_OVERLAY=PASS")

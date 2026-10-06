@@ -18,8 +18,38 @@ function countView(request,env,ctx,page){
   const body=JSON.stringify({page,ua:request.headers.get("user-agent")||"",ip:request.headers.get("cf-connecting-ip")||"",purpose:request.headers.get("sec-purpose")||request.headers.get("purpose")||""});
   ctx.waitUntil(env.CORE.fetch("https://funnel.internal/hit",{method:"POST",headers:{"content-type":"application/json"},body}).catch(()=>null));
 }
+const BUY_SKUS={"ZEV-IA-011":"ia-na-pratica","ZEV-VEN-011":"vendas-na-pratica","ZEV-LCX-011":"lucro-e-caixa","ZEV-CMB-011":"combo-ia-vendas","ZEV-NGC-011":"negocio-completo"};
+const buyHits=new Map();
+function buyLimited(ip){const now=Date.now();const e=buyHits.get(ip);if(!e||now-e.t>60000){buyHits.set(ip,{t:now,n:1});return false}e.n+=1;return e.n>10}
+function infoPage(status,title,body){
+  const page=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title><link rel="stylesheet" href="/product.css"></head><body><main class="wrap" style="max-width:640px;margin:48px auto;padding:0 16px"><h1>${title}</h1>${body}<p><a href="/solucoes">Ver todas as soluções</a></p></main></body></html>`;
+  return new Response(page,{status,headers:applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex"}))});
+}
+// Buy button target: /comprar/<SKU>. Creates the Mercado Pago checkout through the private
+// service binding and redirects (303). While sales are closed it explains and offers WhatsApp.
+async function handleBuy(request,env,sku){
+  const slug=BUY_SKUS[sku];
+  if(!slug) return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");
+  if(request.method!=="GET"&&request.method!=="POST") return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers())});
+  if(!env?.CORE||typeof env.CORE.fetch!=="function") return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes ou fale com a gente no <a href=\"https://wa.me/5588992545413\">WhatsApp</a>.</p>");
+  const ip=request.headers.get("cf-connecting-ip")||"unknown";
+  if(buyLimited(ip)) return infoPage(429,"Muitas tentativas","<p>Aguarde um minuto e tente de novo.</p>");
+  let open=false;
+  try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/status");open=(await st.json())?.open===true}catch{open=false}
+  if(!open) return infoPage(200,"Vendas abrem em breve",`<p>Este produto ainda não está à venda. Quer ser avisado(a) ou tirar dúvidas agora?</p><p><a class="button primary" href="https://wa.me/5588992545413?text=${encodeURIComponent("Quero saber quando abre a venda do produto "+slug)}">Falar no WhatsApp</a></p>`);
+  try{
+    const res=await env.CORE.fetch("https://zevanory.api.br/api/checkout/mercadopago",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({request_id:crypto.randomUUID(),session_id:crypto.randomUUID(),offer_id:sku})});
+    const data=await res.json().catch(()=>({}));
+    const target=String(data?.checkout_url||"");
+    if((res.status===201||res.status===200)&&/^https:\/\/(www\.)?mercadopago\.com(\.br)?\//.test(target)) return new Response(null,{status:303,headers:applySecurityHeaders(new Headers({location:target,"cache-control":"no-store"}))});
+    console.error("buy_checkout_failed",res.status,String(data?.error||"").slice(0,80));
+  }catch(e){console.error("buy_checkout_error",String(e&&e.message||e).slice(0,80))}
+  return infoPage(503,"Não foi possível abrir o pagamento",`<p>Tente novamente em instantes. Se persistir, fale com a gente no <a href="https://wa.me/5588992545413">WhatsApp</a> ou em suporte@zevanory.api.br.</p>`);
+}
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
+  const buy=url.pathname.match(/^\/comprar\/([A-Z0-9-]{6,20})\/?$/i);
+  if(buy) return handleBuy(request,env,buy[1].toUpperCase());
   if(url.pathname==="/health"&&(request.method==="GET"||request.method==="HEAD")){
     return new Response(request.method==="HEAD"?null:JSON.stringify({
       ok:true,

@@ -61,10 +61,9 @@ export async function recordPageView(env, { sqlFactory, page, ip, userAgent, now
   }
 }
 
-export async function buildFunnelSummary(env, { sqlFactory, now = Date.now() } = {}) {
+export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), production = String(env.MERCADOPAGO_ENV || "").toLowerCase() === "production", salesOpen = String(env.SALE_GLOBALLY_ENABLED || "").toLowerCase() === "true" } = {}) {
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureFunnelSchema(sql);
-  const production = String(env.MERCADOPAGO_ENV || "").toLowerCase() === "production";
   const traffic = await sql.query(
     `select page, metric, sum(n)::int as n from zevanory_funnel_daily
       where day > current_date - 30 group by page, metric`, []);
@@ -101,7 +100,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now() } =
     generatedAt: new Date(now).toISOString(),
     windowDays: 30,
     salesMode: production ? "production" : "test",
-    salesOpen: String(env.SALE_GLOBALLY_ENABLED || "").toLowerCase() === "true",
+    salesOpen,
     pages,
     products,
   };
