@@ -194,18 +194,38 @@ function htmlText(html) {
   return String(html || "").replace(/<a\s[^>]*href="([^"]+)"[^>]*>/gi, " $1 ").replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&");
 }
 
+// Resend's received-email detail can expose headers as an object or as a list of
+// {name,value}, and recipients as strings, "Name <addr>" or {email}. Match on the
+// X-Zevanory-Order-ID header, falling back to the order id written in the sandbox
+// body ("Pedido <uuid>") so a header-shape change cannot hide a delivered email.
+function headerMap(raw) {
+  const out = {};
+  if (Array.isArray(raw)) for (const h of raw) { if (h && h.name) out[String(h.name).toLowerCase()] = String(h.value ?? ""); }
+  else if (raw && typeof raw === "object") for (const [k, v] of Object.entries(raw)) out[k.toLowerCase()] = Array.isArray(v) ? String(v[0] ?? "") : String(v ?? "");
+  return out;
+}
+function addresses(raw) {
+  return (Array.isArray(raw) ? raw : [raw]).map((x) => {
+    const v = x && typeof x === "object" ? (x.email || x.address || "") : x;
+    return String(v || "").toLowerCase().replace(/^.*<([^>]+)>.*$/, "$1").trim();
+  });
+}
+
 export function receivedMatches(detail, oid) {
-  const headers = Object.fromEntries(Object.entries(detail?.headers || {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
-  const to = (Array.isArray(detail?.to) ? detail.to : [detail?.to]).map((x) => String(x || "").toLowerCase().replace(/^.*<([^>]+)>.*$/, "$1"));
-  if (!to.includes(SANDBOX_INBOX_ADDRESS)) return null;
-  if (String(headers["x-zevanory-order-id"] || "").toLowerCase() !== oid) return null;
+  if (!addresses(detail?.to).includes(SANDBOX_INBOX_ADDRESS)) return null;
+  const headers = headerMap(detail?.headers);
+  const text = String(detail?.text || "") + "\n" + htmlText(detail?.html);
+  const byHeader = String(headers["x-zevanory-order-id"] || "").toLowerCase() === oid;
+  const byBody = new RegExp(`Pedido\\s+${oid}\\b`, "i").test(text) && /\[SANDBOX\]/.test(String(detail?.subject || "[SANDBOX]"));
+  if (!byHeader && !byBody) return null;
   return {
     id: String(detail.id || "").replace(/[^a-zA-Z0-9_-]/g, ""),
     to: [SANDBOX_INBOX_ADDRESS],
     received_at_ms: Date.parse(detail.created_at || "") || 0,
     x_zevanory_order_id: oid,
     delivered_via: "resend-inbound",
-    text: String(detail.text || "") + "\n" + htmlText(detail.html)
+    match: byHeader ? "header" : "body",
+    text
   };
 }
 
@@ -285,7 +305,7 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
       const match = detail.status === 200 ? receivedMatches(detail.body, oid) : null;
       if (match) messages.push(match);
     }
-    return json(200, { messages });
+    return json(200, { messages, inbox_rows_seen: rows.length, receiving_api_status: listed.status });
   }
   const expected = String(env.CERTIFICATION_E2E_TOKEN || "");
   const provided = String(request.headers.get("x-certification-e2e-token") || "");
@@ -313,7 +333,18 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
     if (!record) return null; // legacy (v1) orders keep the original handler
     const base = await workerStatus(worker, request, env, ctx, oid);
     if (!base) return json(503, { error: "order_status_unavailable" });
-    return json(200, projectStatus(record, base));
+    const projected = projectStatus(record, base);
+    // Provider-side delivery outcome of the sandbox email (delivered/bounced/...),
+    // read with the sending key; independent of the receiving inbox.
+    const emailId = projected.delivery_evidence.email_provider_id;
+    if (emailId) {
+      try {
+        // The sending key is send-only (401 on reads); the full-access sandbox key can read.
+        const r = await resendGet(env, `/emails/${encodeURIComponent(emailId)}`);
+        projected.delivery_evidence.email_last_event = String(r.body?.last_event || (r.status === 200 ? "" : `http_${r.status}`)).replace(/[^a-z0-9_]/gi, "").slice(0, 40) || null;
+      } catch { projected.delivery_evidence.email_last_event = "lookup_failed"; }
+    }
+    return json(200, projected);
   }
 
   if (path === `${CERT}reconcile`) {
@@ -366,7 +397,11 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
     const target = new URL("/private/artifacts/download", request.url);
     target.searchParams.set("token", token);
     const response = await worker.fetch(new Request(target, { method: "GET" }), env, ctx);
-    if (!response.ok) return json(response.status >= 400 && response.status < 600 ? response.status : 503, { error: "delivery_download_unavailable" });
+    if (!response.ok) {
+      let cause = "";
+      try { cause = String((await response.clone().json())?.error || "").replace(/[^a-z0-9_]/gi, "").slice(0, 48); } catch {}
+      return json(response.status >= 400 && response.status < 600 ? response.status : 503, { error: cause ? `delivery_download_${cause}` : "delivery_download_unavailable" });
+    }
     return response;
   }
 

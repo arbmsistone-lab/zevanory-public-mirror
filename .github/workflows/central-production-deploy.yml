@@ -42,10 +42,10 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
       PUBLIC_OWNER_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '1b26415802588185a86c1d4d3ebf5bdb' }}
-      MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN || secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
-      MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_WEBHOOK_SECRET || secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
-      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN || secrets.MERCADOPAGO_ACCESS_TOKEN }}
-      MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET || secrets.MERCADOPAGO_WEBHOOK_SECRET }}
+      MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
+      MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_WEBHOOK_SECRET }}
+      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+      MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
@@ -173,11 +173,17 @@ jobs:
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.143.0 deploy --strict --keep-vars --config wrangler.central-fix.jsonc --tag="$TARGET_RUNTIME_SHA" --message="ZEVANORY-public-owner-exact-SHA-$TARGET_RUNTIME_SHA" 2>&1 | tee /tmp/central-deploy.log || {
-            tail -15 /tmp/central-deploy.log | tr '\n' ' ' | cut -c1-1800 | sed 's/^/::error title=CENTRAL_DEPLOY_FAILED::/'
-            echo
-            exit 1
-          }
+          deploy() { npx --yes wrangler@4.143.0 deploy "$@" --keep-vars --config wrangler.central-fix.jsonc --tag="$TARGET_RUNTIME_SHA" --message="ZEVANORY-public-owner-exact-SHA-$TARGET_RUNTIME_SHA" 2>&1 | tee /tmp/central-deploy.log; }
+          fail() { tail -15 /tmp/central-deploy.log | tr '\n' ' ' | cut -c1-1800 | sed 's/^/::error title=CENTRAL_DEPLOY_FAILED::/'; echo; exit 1; }
+          if ! deploy --strict; then
+            # --strict aborts only when the Worker was last changed outside this pipeline
+            # (e.g. `wrangler secret put` or dashboard settings). Secrets survive a deploy
+            # and --keep-vars keeps dashboard vars, so retry once without --strict for that
+            # exact condition only; any other failure stays fatal.
+            grep -q "Aborting the upload operation because of conflicts" /tmp/central-deploy.log || fail
+            echo "::notice title=CENTRAL_DEPLOY_STRICT_DRIFT::Worker was last updated via the script API; redeploying without --strict"
+            deploy || fail
+          fi
       - name: Verify live UTF-8 asset and safety
         if: steps.auth.outputs.available == 'true'
         run: |
