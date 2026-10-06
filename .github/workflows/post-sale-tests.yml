@@ -1,0 +1,25 @@
+name: post-sale robot tests
+on:
+  pull_request:
+    paths:
+      - "worker/post-sale.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "tests/post-sale.test.mjs"
+      - ".github/workflows/post-sale-tests.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "worker/post-sale.mjs"
+      - "tests/post-sale.test.mjs"
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --check worker/post-sale.mjs
+      - run: node --test tests/post-sale.test.mjs

@@ -124,6 +124,10 @@ class FakeProvider:
             payload = json.loads(req.data.decode()) if req.data else {}
             assert payload == {'order_id': NEW_ORDER, 'email': self.recipient}, payload
             data = {'received': True, 'status': 'pending'}
+        elif path == proof.CERT_PATH + 'post-sale':
+            payload = json.loads(req.data.decode()) if req.data else {}
+            assert payload == {'order_id': NEW_ORDER, 'step': 'd1'}, payload
+            data = {'ok': True, 'step': 'd1', 'sent': True}
         elif path == proof.CERT_PATH + 'refund-approve':
             self.refunded = True
             data = {'ok': True, 'status': 'approved', 'refund_id': 'mock-refund-1', 'order_status': 'refunded'}
