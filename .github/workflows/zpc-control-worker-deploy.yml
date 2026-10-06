@@ -12,6 +12,7 @@ on:
       - gh-pages
     paths:
       - 'zpc-control-worker-source.txt'
+      - '.github/workflows/zpc-control-worker-deploy.yml'
 
 permissions:
   contents: read
@@ -71,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 \
-            https://arbmsistone-lab.github.io/zevanory-product-control-edge/global-trust.json \
+            https://controle.zevanory.api.br/global-trust.json \
             -o dist/global-trust.json
           jq -e '.state == "GREEN"' dist/global-trust.json >/dev/null
           jq -e '.zea10.proven == 10 and .zea10.partial == 0 and .zea10.blocked == 0' dist/global-trust.json >/dev/null
