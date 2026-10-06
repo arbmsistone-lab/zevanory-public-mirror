@@ -17,6 +17,7 @@ import { handleZea10AutonomyRequest } from "./zea10-autonomy.mjs";
 import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
 import { handleSandboxProofV2, handleSandboxInboundEmail } from "./sandbox-proof-v2.mjs";
 import { handleRefundFlow } from "./refund-flow.mjs";
+import { handlePostSale, runPostSale } from "./post-sale.mjs";
 
 async function loadWhatsappBrokerState(binding) {
   if (!binding?.fetch) return null;
@@ -107,6 +108,8 @@ const wrapped = {
     {
       const refund = await handleRefundFlow(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized, worker, ctx });
       if (refund) return refund;
+      const postSale = await handlePostSale(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
+      if (postSale) return postSale;
     }
 
     // One administrative surface only: legacy HTML entrypoints permanently
@@ -399,6 +402,7 @@ const wrapped = {
 wrapped.scheduled = async (controller, env, ctx) => {
   const normalized = normalizeEnv(env);
   const tasks = [reconcileControlPlane(wrapped, normalized, ctx).catch(()=>null)];
+  tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);
 };
