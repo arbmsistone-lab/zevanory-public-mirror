@@ -7,6 +7,11 @@ on:
         description: Exact zevanory-product-control-edge main SHA
         required: true
         type: string
+  push:
+    branches:
+      - gh-pages
+    paths:
+      - 'zpc-control-worker-source.txt'
 
 permissions:
   contents: read
@@ -20,9 +25,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Validate exact source SHA
+      - uses: actions/checkout@v4
+
+      - name: Resolve exact source SHA
+        shell: bash
         env:
-          SOURCE_SHA: ${{ inputs.source_sha }}
+          DISPATCH_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="${DISPATCH_SHA:-}"
+          if [ -z "$SOURCE_SHA" ]; then
+            SOURCE_SHA="$(tr -d '\r\n ' < zpc-control-worker-source.txt)"
+          fi
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+
+      - name: Validate exact source SHA
         shell: bash
         run: |
           set -euo pipefail
@@ -59,23 +77,20 @@ jobs:
           jq -e '.zea10.proven == 10 and .zea10.partial == 0 and .zea10.blocked == 0' dist/global-trust.json >/dev/null
           jq -e '[.engines[].state] | length == 3 and all(. == "GREEN")' dist/global-trust.json >/dev/null
           printf '{"sha":"%s","repository":"arbmsistone-lab/zevanory-product-control-edge","workflow_run":"%s"}\n' \
-            "${{ inputs.source_sha }}" "${{ github.run_id }}" > dist/zpc-build.json
+            "$SOURCE_SHA" "${{ github.run_id }}" > dist/zpc-build.json
 
       - name: Promote exact main SHA and verify production
         working-directory: zpc
         env:
-          EXPECTED_ZPC_SHA: ${{ inputs.source_sha }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
         shell: bash
         run: |
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}"
-          node scripts/cloudflare-authoritative-repair.mjs
+          EXPECTED_ZPC_SHA="$SOURCE_SHA" node scripts/cloudflare-authoritative-repair.mjs
 
       - name: Verify exact trust and artifact readback
-        env:
-          SOURCE_SHA: ${{ inputs.source_sha }}
         shell: bash
         run: |
           set -euo pipefail
