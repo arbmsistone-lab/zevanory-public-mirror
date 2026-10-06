@@ -179,7 +179,7 @@ function adminPage(items) {
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reembolsos · ZEVANORY</title><style>body{font-family:system-ui,sans-serif;background:#050a1e;color:#e7ecf7;margin:0;padding:24px}table{width:100%;border-collapse:collapse}td,th{padding:10px;border-bottom:1px solid #22305a;text-align:left;vertical-align:top}button{padding:10px 14px;border:0;border-radius:8px;background:#22c55e;color:#04210f;font-weight:700}button.no{background:#334155;color:#fff}code{font-size:12px}</style></head><body><h1>Pedidos de reembolso</h1><p>Aprovar envia o reembolso integral ao Mercado Pago e bloqueia novos downloads do pedido.</p><table><tr><th>Quando</th><th>Pedido</th><th>Valor</th><th>Status</th><th>Ação</th></tr>${rows || '<tr><td colspan="5">Nenhum pedido.</td></tr>'}</table></body></html>`;
 }
 
-export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthorized } = {}) {
+export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthorized, worker, ctx } = {}) {
   const url = new URL(request.url);
   const path = url.pathname;
   const isOurs = path === "/reembolso/solicitar" || path === "/api/support/refund-request" || path === "/admin/refunds" || path === "/admin/refunds/action" || path === "/api/internal/certification/e2e/refund-approve";
@@ -213,6 +213,23 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     const record = JSON.parse(await kv.get(KEY(oid)) || "null");
     if (!record?.test) return json(403, { error: "certification_refund_only_for_test_orders" });
     const out = await executeRefund(env, sql(), kv, oid, { actor: "certification-e2e" });
+    if (out.status === 200 && worker?.fetch) {
+      // Ingest the provider refund state through the signed test webhook (same path as sandbox reconciliation).
+      const secret = String(env.MERCADOPAGO_TEST_WEBHOOK_SECRET || "");
+      if (secret.length >= 16) {
+        for (let i = 0; i < 4; i++) {
+          const requestId = crypto.randomUUID();
+          const ts = String(Math.floor(Date.now() / 1000));
+          const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+          const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`id:${record.payment_id};request-id:${requestId};ts:${ts};`)));
+          const sig = [...mac].map((b) => b.toString(16).padStart(2, "0")).join("");
+          const r = await worker.fetch(new Request(new URL("/api/webhooks?provider=mercadopago_test", request.url), { method: "POST", headers: { "content-type": "application/json", "x-request-id": requestId, "x-signature": `ts=${ts},v1=${sig}` }, body: JSON.stringify({ type: "payment", data: { id: record.payment_id } }) }), env, ctx);
+          const res = await r.json().catch(() => ({}));
+          if (res?.event === "refund_confirmed") { out.body.order_status = String(res.order_status || ""); break; }
+          await new Promise((done) => setTimeout(done, 3000));
+        }
+      }
+    }
     return json(out.status, out.body);
   }
 

@@ -433,19 +433,18 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
             report['reuse_http'] = int(match.group(1))
         # T5: customer refund request (CDC art. 49) -> approval -> Mercado Pago refund -> order refunded.
         refund_req = client.request(APP + '/api/support/refund-request', 'POST', {'order_id': oid, 'email': identity.inbox_email},
-                                    {'x-certification-e2e-token': identity.certification_token}, failure_code='refund_request')
+                                    {'x-certification-e2e-token': identity.certification_token, 'x-audit-id': audit_id}, failure_code='refund_request')
         require(refund_req.get('received') is True and refund_req.get('status') == 'pending', 'REFUND_REQUEST_REQUIRED')
         refund_ok = client.request(APP + CERT_PATH + 'refund-approve?' + urllib.parse.urlencode({'order_id': oid}), 'POST', {},
-                                   {'x-certification-e2e-token': identity.certification_token}, failure_code='refund_approve')
+                                   {'x-certification-e2e-token': identity.certification_token, 'x-audit-id': audit_id}, failure_code='refund_approve')
         require(refund_ok.get('status') == 'approved' and bool(refund_ok.get('refund_id')), 'REFUND_EXECUTION_REQUIRED')
         refunded = False
         for _ in range(8):
-            client.cert('reconcile', 'POST', {'order_id': oid, 'payment_id': report['payment_id']}, audit_id=audit_id, failure_code='refund_reconcile')
             st = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}), audit_id=audit_id, failure_code='refund_status')
             if str((st.get('order') or {}).get('status', '')) == 'refunded':
                 refunded = True
                 break
-            time.sleep(5)
+            sleep(5)
         require(refunded, 'REFUND_ORDER_STATUS_REQUIRED')
         report['checks']['REFUND'] = 'PASS'
         final = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}),
