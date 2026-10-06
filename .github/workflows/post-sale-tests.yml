@@ -1,8 +1,11 @@
-name: post-sale robot tests
+name: post-sale and funnel robot tests
 on:
   pull_request:
     paths:
       - "worker/post-sale.mjs"
+      - "worker/funnel.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "tests/funnel.test.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "tests/post-sale.test.mjs"
       - ".github/workflows/post-sale-tests.yml"
@@ -22,4 +25,6 @@ jobs:
         with:
           node-version: "22"
       - run: node --check worker/post-sale.mjs
-      - run: node --test tests/post-sale.test.mjs
+      - run: node --check worker/funnel.mjs
+      - run: node --check worker/sales-public-worker.mjs
+      - run: node --test tests/post-sale.test.mjs tests/funnel.test.mjs
