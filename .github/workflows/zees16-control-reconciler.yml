@@ -42,7 +42,6 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
-      KV_NAMESPACE_ID: 9eca336262b44186ab3dbec82fc35ab4
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,6 +49,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Resolve authoritative KV namespace
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/settings" \
+            -o /tmp/worker-settings.json
+          test "$(jq -r '.success' /tmp/worker-settings.json)" = "true"
+          KV_NAMESPACE_ID="$(jq -r '.result.bindings[] | select(.name=="ZEVANORY_PRIVATE_ARTIFACTS" and .type=="kv_namespace") | .namespace_id' /tmp/worker-settings.json | head -n1)"
+          test -n "$KV_NAMESPACE_ID"
+          test "$KV_NAMESPACE_ID" != "null"
+          echo "KV_NAMESPACE_ID=$KV_NAMESPACE_ID" >> "$GITHUB_ENV"
+          echo "KV_BINDING_RESOLUTION=PASS name=ZEVANORY_PRIVATE_ARTIFACTS"
+
       - name: Read previous materialized state
         run: |
           set -euo pipefail
