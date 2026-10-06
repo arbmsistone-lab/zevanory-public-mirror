@@ -2,6 +2,10 @@ name: T2 Workers AI creative factory
 
 on:
   workflow_dispatch:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/t2-workers-ai-creative-factory.yml"
 
 permissions:
   contents: read
@@ -45,7 +49,7 @@ jobs:
               'x-commercial-signature': signature,
               'cache-control': 'no-store',
             },
-            signal: AbortSignal.timeout(180_000),
+            signal: AbortSignal.timeout(600_000),
           });
 
           const raw = await response.text();
