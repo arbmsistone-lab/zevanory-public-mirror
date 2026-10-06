@@ -5,6 +5,7 @@ import { handleVoiceFinalClosure } from "./voice-final-closure.mjs";
 import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "./whatsapp-onboarding.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
+import { validateReply } from "./whatsapp-conversation.mjs";
 import worker, { whatsappProofDatabase } from "./cloudflare-worker.recovered.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
@@ -224,6 +225,22 @@ const wrapped = {
 
     if (url.pathname === "/api/support/knowledge") {
       return handleSupportKnowledge(request);
+    }
+
+    if (url.pathname === "/api/support/validate-reply") {
+      if (request.method !== "POST") {
+        return new Response(JSON.stringify({ error: "method_not_allowed" }), {
+          status: 405,
+          headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "allow": "POST" }
+        });
+      }
+      const body = await request.json().catch(() => ({}));
+      const text = typeof body?.text === "string" ? body.text : "";
+      const result = validateReply(text);
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" }
+      });
     }
 
     if (url.pathname === "/api/voice/final-closure") {
