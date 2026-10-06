@@ -18262,6 +18262,19 @@ var cloudflare_worker_default = {
     if (delegatedPayment) return withSecurityHeaders(delegatedPayment, env);
     if (url.pathname === "/private/artifacts/issue") return handleArtifactIssue(request, env);
     if (url.pathname === "/private/artifacts/download") return handleArtifactDownload(request, env);
+    if (url.pathname === "/api/support/artifacts-status" && request.method === "GET") {
+      // Read-only readiness of the digital product files (no content, no tokens).
+      const out = [];
+      for (const a of Object.values(ZEVANORY_ARTIFACTS)) {
+        let present = false, size = 0, integrity = false;
+        try {
+          const bytes = env.ZEVANORY_PRIVATE_ARTIFACTS ? await env.ZEVANORY_PRIVATE_ARTIFACTS.get(a.key, "arrayBuffer") : null;
+          if (bytes) { present = true; size = bytes.byteLength; integrity = createHash24("sha256").update(Buffer.from(bytes)).digest("hex").toUpperCase() === a.sha256; }
+        } catch {}
+        out.push({ offer_id: a.offer_id, filename: a.filename, present, size, integrity });
+      }
+      return new Response(JSON.stringify({ storage_bound: Boolean(env.ZEVANORY_PRIVATE_ARTIFACTS), database_bound: Boolean(env.DATABASE_URL), artifacts: out }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+    }
     if (url.pathname === "/private/journal/append") return handleCloudflareJournalAppend(request, env);
     if (url.pathname === "/api/voice/probe") {
       if (request.method !== "GET") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
