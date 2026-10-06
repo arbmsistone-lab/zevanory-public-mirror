@@ -1,5 +1,9 @@
 name: ZEVANORY ZEES-16 control reconciler
 on:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zees16-control-reconciler.yml"
   pull_request:
     branches: [gh-pages]
     paths:
@@ -37,7 +41,7 @@ jobs:
     timeout-minutes: 10
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+      CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
       KV_NAMESPACE_ID: 9eca336262b44186ab3dbec82fc35ab4
     steps:
       - uses: actions/checkout@v4
@@ -62,9 +66,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PREVIOUS_STATE_PATH: previous-state.json
         run: node scripts/reconcile_zees16_control.mjs
-      - name: Persist KV cache when quota is available
+      - name: Persist KV cache
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
-        continue-on-error: true
         run: |
           set -euo pipefail
           EVENT_HASH=$(node -e "console.log(JSON.parse(require('fs').readFileSync('zees16-event.json','utf8')).event_hash)")
@@ -72,6 +75,24 @@ jobs:
           EVENT_KEY="control:v2:ledger:zevanory:$OBSERVED:$EVENT_HASH"
           npx --yes wrangler@4.135.0 kv key put "$EVENT_KEY" --path zees16-event.json --namespace-id "$KV_NAMESPACE_ID" --remote
           npx --yes wrangler@4.135.0 kv key put "control:v2:state:zevanory" --path zees16-state.json --namespace-id "$KV_NAMESPACE_ID" --remote
+
+      - name: Verify persisted KV state
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.135.0 kv key get "control:v2:state:zevanory" \
+            --namespace-id "$KV_NAMESPACE_ID" --remote > persisted-state.json
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const expected=JSON.parse(fs.readFileSync("zees16-state.json","utf8"));
+          const actual=JSON.parse(fs.readFileSync("persisted-state.json","utf8"));
+          if(actual?.decision_hash !== expected?.decision_hash) throw new Error("persisted decision hash mismatch");
+          if(actual?.release_sha !== expected?.release_sha) throw new Error("persisted release SHA mismatch");
+          if(Number(actual?.counts?.proven||0)!==16 || Number(actual?.counts?.partial||0)!==0 || Number(actual?.counts?.blocked||0)!==0) {
+            throw new Error("persisted ZEES16 state is not 16/16 GREEN");
+          }
+          console.log("ZEES16_KV_PERSISTENCE=PASS", actual.counts, "SHA", actual.release_sha, "DECISION", actual.decision_hash);
+          NODE
       - name: Preserve immutable reconciliation artifact
         uses: actions/upload-artifact@v4
         with:
