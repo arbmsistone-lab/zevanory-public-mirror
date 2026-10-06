@@ -58,7 +58,7 @@ export function answerSupportQuestion({ product, question } = {}) {
 
 export function handleSupportKnowledge(request) {
   const url = new URL(request.url);
-  const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
+  const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-zevanory-support-contract": "knowledge-v1" };
   if (request.method !== "GET") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers: { ...headers, allow: "GET" } });
   const question = url.searchParams.get("q") || "";
   if (!question.trim()) {
