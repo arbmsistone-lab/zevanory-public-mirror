@@ -432,7 +432,7 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
             require(bool(match), 'DOWNLOAD_REUSE_MUST_FAIL')
             report['reuse_http'] = int(match.group(1))
         # T5: customer refund request (CDC art. 49) -> approval -> Mercado Pago refund -> order refunded.
-        refund_req = client.request(APP + '/api/support/refund-request', 'POST', {'order_id': oid, 'email': identity.buyer_email},
+        refund_req = client.request(APP + '/api/support/refund-request', 'POST', {'order_id': oid, 'email': identity.inbox_email},
                                     {'x-certification-e2e-token': identity.certification_token}, failure_code='refund_request')
         require(refund_req.get('received') is True and refund_req.get('status') == 'pending', 'REFUND_REQUEST_REQUIRED')
         refund_ok = client.request(APP + CERT_PATH + 'refund-approve?' + urllib.parse.urlencode({'order_id': oid}), 'POST', {},
