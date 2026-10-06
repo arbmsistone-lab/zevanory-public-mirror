@@ -11,7 +11,14 @@ function applySecurityHeaders(headers){
   headers.set("x-frame-options","DENY");
   return headers;
 }
-export default{async fetch(request,env){
+const FUNNEL_PAGES=new Set(["solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","material-gratuito"]);
+function countView(request,env,ctx,page){
+  // Aggregated, cookie-free view counting through the private service binding (never blocks the page).
+  if(request.method!=="GET"||!env?.CORE||typeof env.CORE.fetch!=="function"||!ctx?.waitUntil||!FUNNEL_PAGES.has(page)) return;
+  const body=JSON.stringify({page,ua:request.headers.get("user-agent")||"",ip:request.headers.get("cf-connecting-ip")||"",purpose:request.headers.get("sec-purpose")||request.headers.get("purpose")||""});
+  ctx.waitUntil(env.CORE.fetch("https://funnel.internal/hit",{method:"POST",headers:{"content-type":"application/json"},body}).catch(()=>null));
+}
+export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
   if(url.pathname==="/health"&&(request.method==="GET"||request.method==="HEAD")){
     return new Response(request.method==="HEAD"?null:JSON.stringify({
@@ -23,9 +30,11 @@ export default{async fetch(request,env){
   }
   if(retired.has(url.pathname)) return new Response("Produto retirado da superficie publica ZEVANORY.",{status:410,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"no-store"}))});
   if(url.pathname.startsWith("/api/")||url.pathname.startsWith("/admin")) return new Response("Not found",{status:404,headers:applySecurityHeaders(new Headers())});
-  if(url.pathname==="/"||url.pathname==="") url.pathname="/solucoes.html";
-  else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) url.pathname="/"+key+".html"; }
+  let page="";
+  if(url.pathname==="/"||url.pathname==="") { url.pathname="/solucoes.html"; page="solucoes"; }
+  else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) { url.pathname="/"+key+".html"; page=key; } }
   const response=await env.ASSETS.fetch(new Request(url,request));
+  if(response.status===200&&page) countView(request,env,ctx,page);
   const headers=new Headers(response.headers);
   headers.set("x-robots-tag","index,follow");
   applySecurityHeaders(headers);

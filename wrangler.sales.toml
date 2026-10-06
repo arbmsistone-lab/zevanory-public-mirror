@@ -10,5 +10,9 @@ directory = "./sales-public"
 binding = "ASSETS"
 run_worker_first = true
 html_handling = "none"
+[[services]]
+binding = "CORE"
+service = "zevanory"
+
 [vars]
 ZEVANORY_SALES_PUBLIC_RELEASE_SHA = "SOURCE_SHA_REPLACED_AT_DEPLOY"
