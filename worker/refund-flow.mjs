@@ -81,7 +81,7 @@ async function createRequest(env, sql, kv, { oid, email }) {
   if (existing && existing.status !== "rejected") return { status: 200, body: { received: true, status: existing.status, message: "Seu pedido de reembolso já está registrado e será processado em breve." } };
   const order = await loadOrder(sql, oid);
   if (!order || order.status !== "paid" || !order.payment_id || !order.paid_at) return { status: 404, body: { error: "nao_elegivel", message: GENERIC_NOT_FOUND, reason: !order ? "order_not_found" : order.status !== "paid" ? "order_status_" + order.status : "payment_missing" } };
-  const test = order.certification_pilot === true;
+  const test = order.certification_pilot === true || Boolean(await kv.get(`sandbox-proof-v2:order:${oid}`));
   if (Date.now() - new Date(order.paid_at).getTime() > WINDOW_MS) {
     return { status: 409, body: { error: "fora_do_prazo", message: "O prazo de 7 dias para arrependimento deste pedido terminou. Se houver algum problema com o material, escreva para suporte@zevanory.api.br." } };
   }
