@@ -40,31 +40,32 @@ function headline(description) {
 const font = (w) => fs.readFileSync(path.join('node_modules/@fontsource/inter/files', `inter-latin-${w}-normal.woff2`)).toString('base64');
 const fonts = { 400: font(400), 600: font(600), 800: font(800) };
 
-function page({ name, description, price, slug, bg, bgMime }) {
+function page({ name, description, price, slug, bg, bgMime, hue }) {
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 ${[400, 600, 800].map((w) => `@font-face{font-family:Inter;font-weight:${w};src:url(data:font/woff2;base64,${fonts[w]}) format('woff2')}`).join('\n')}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:1080px;height:1080px;overflow:hidden;background:#050a1e;font-family:Inter,sans-serif;color:#fff}
-.bg{position:absolute;inset:-60px;background:url(data:${bgMime};base64,${bg}) center/cover;filter:blur(18px) saturate(1.15)}
+.bg{position:absolute;inset:-60px;${bg ? `background:url(data:${bgMime};base64,${bg}) center/cover;filter:blur(18px) saturate(1.15)` : `background:radial-gradient(circle at ${[78,22,70,30,60][hue % 5]}% ${[18,30,24,16,28][hue % 5]}%,rgba(59,130,246,.75),transparent 42%),radial-gradient(circle at 12% 88%,rgba(37,99,235,.45),transparent 38%),radial-gradient(circle at 92% 70%,rgba(14,165,233,.35),transparent 34%),linear-gradient(160deg,#071233,#030817)`}}
+.grid{position:absolute;inset:0;background-image:linear-gradient(rgba(147,197,253,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(147,197,253,.07) 1px,transparent 1px);background-size:72px 72px;mask-image:radial-gradient(circle at 70% 25%,#000,transparent 70%)}
 .shade{position:absolute;inset:0;background:linear-gradient(160deg,rgba(5,10,30,.35) 0%,rgba(5,10,30,.72) 55%,rgba(3,6,20,.94) 100%)}
 .wrap{position:absolute;inset:0;padding:84px 88px;display:flex;flex-direction:column}
 .brand{font-weight:800;font-size:30px;letter-spacing:.32em}
 .rule{width:96px;height:6px;border-radius:3px;background:#3b82f6;margin-top:22px}
 .mid{margin-top:auto}
 .kicker{font-weight:600;font-size:26px;letter-spacing:.14em;text-transform:uppercase;color:#93c5fd}
-h1{font-weight:800;font-size:${name.length > 18 ? 86 : 104}px;line-height:1.02;letter-spacing:-.02em;margin-top:18px}
+h1{font-weight:800;font-size:${name.replace(/^ZEVANORY\s+/i, '').length > 18 ? 88 : 108}px;line-height:1.02;letter-spacing:-.02em;margin-top:18px}
 p{font-weight:400;font-size:34px;line-height:1.32;color:#dbe4f5;margin-top:28px;max-width:860px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .foot{margin-top:56px;display:flex;align-items:flex-end;justify-content:space-between}
 .price{font-weight:800;font-size:76px;letter-spacing:-.02em}
 .price small{display:block;font-weight:600;font-size:22px;letter-spacing:.12em;text-transform:uppercase;color:#93c5fd;margin-bottom:6px}
 .url{font-weight:600;font-size:26px;color:#fff;background:rgba(59,130,246,.22);border:2px solid rgba(147,197,253,.55);padding:16px 24px;border-radius:999px}
 </style></head><body>
-<div class="bg"></div><div class="shade"></div>
+<div class="bg"></div>${bg ? '' : '<div class="grid"></div>'}<div class="shade"></div>
 <div class="wrap">
   <div><div class="brand">ZEVANORY</div><div class="rule"></div></div>
   <div class="mid">
     <div class="kicker">Produto 100% digital</div>
-    <h1>${esc(name)}</h1>
+    <h1>${esc(name.replace(/^ZEVANORY\s+/i, ''))}</h1>
     <p>${esc(headline(description))}</p>
   </div>
   <div class="foot">
@@ -79,12 +80,19 @@ const results = [];
 try {
   for (const [index, slug] of SLUGS.entries()) {
     const facts = await catalog(slug);
-    const bgRes = await fetch(`${ORIGIN}/api/commercial/creative/background?product=${slug}&seed=${7300 + index}`, { method: 'POST', headers: factoryHeaders(), signal: AbortSignal.timeout(120_000) });
-    if (!bgRes.ok) throw new Error('BACKGROUND_HTTP_' + bgRes.status + '_' + slug + '_' + (await bgRes.text()).slice(0, 300));
-    const bgMime = bgRes.headers.get('content-type') || 'image/jpeg';
-    const bg = Buffer.from(await bgRes.arrayBuffer()).toString('base64');
+    let bg = '', bgMime = '', backgroundSource = 'css-art';
+    try {
+      const bgRes = await fetch(`${ORIGIN}/api/commercial/creative/background?product=${slug}&seed=${7300 + index}`, { method: 'POST', headers: factoryHeaders(), signal: AbortSignal.timeout(55_000) });
+      if (!bgRes.ok) throw new Error('HTTP_' + bgRes.status + '_' + (await bgRes.text()).slice(0, 200));
+      bgMime = bgRes.headers.get('content-type') || 'image/jpeg';
+      bg = Buffer.from(await bgRes.arrayBuffer()).toString('base64');
+      backgroundSource = 'workers-ai';
+    } catch (error) {
+      console.log(`T2_BACKGROUND_FALLBACK ${slug} ${error?.name || ''} ${String(error?.message || error).slice(0, 200)}`);
+    }
+    console.log(`T2_BACKGROUND ${slug} source=${backgroundSource}`);
     const tab = await browser.newPage({ viewport: { width: 1080, height: 1080 }, deviceScaleFactor: 1 });
-    await tab.setContent(page({ ...facts, slug, bg, bgMime }), { waitUntil: 'load' });
+    await tab.setContent(page({ ...facts, slug, bg, bgMime, hue: index }), { waitUntil: 'load' });
     await tab.evaluate(() => document.fonts.ready);
     const overflow = await tab.evaluate(() => document.querySelector('.wrap').scrollHeight > 1080);
     if (overflow) throw new Error('LAYOUT_OVERFLOW_' + slug);
