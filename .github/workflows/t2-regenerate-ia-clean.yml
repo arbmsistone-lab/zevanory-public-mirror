@@ -1,0 +1,84 @@
+name: T2 regenerate IA clean visual
+
+on:
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/t2-regenerate-ia-clean.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Regenerate only IA na Prática
+        env:
+          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CERTIFICATION_E2E_TOKEN:-}"
+          mkdir -p t2-output
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { createHmac, randomUUID } from 'node:crypto';
+
+          const secret = process.env.CERTIFICATION_E2E_TOKEN || '';
+          const timestamp = String(Date.now());
+          const nonce = randomUUID();
+          const message = ['zevanory-commercial-creative-factory-v1', timestamp, nonce].join('\n');
+          const signature = createHmac('sha256', secret).update(message).digest('hex');
+          const endpoint = 'https://controle.zevanory.api.br/api/commercial/creative/factory/tick?product=ia-na-pratica&force=1';
+
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'x-commercial-timestamp': timestamp,
+              'x-commercial-nonce': nonce,
+              'x-commercial-signature': signature,
+              'cache-control': 'no-store',
+            },
+            signal: AbortSignal.timeout(180_000),
+          });
+          const raw = await response.text();
+          console.log('T2_IA_REGEN_HTTP=' + response.status);
+          console.log('T2_IA_REGEN_RESPONSE=' + raw);
+          if (!response.ok) throw new Error('T2_IA_REGEN_HTTP_' + response.status + '_' + raw.slice(0,800));
+          const result = JSON.parse(raw);
+          const ia = (result.creativeProof || []).find(x => x?.sourceKey === 't2-workers-ai:ia-na-pratica');
+          if (!ia?.imageUrl || ia.status !== 'approval') throw new Error('T2_IA_REGEN_PROOF_MISSING');
+          fs.writeFileSync('t2-output/regen.json', JSON.stringify(result,null,2));
+          fs.writeFileSync('t2-output/image-url.txt', ia.imageUrl + '\n');
+          NODE
+
+          url="$(cat t2-output/image-url.txt)"
+          curl -fsS --retry 4 --retry-delay 2 "$url" -o t2-output/ia-na-pratica.jpg
+          file t2-output/ia-na-pratica.jpg
+          test -s t2-output/ia-na-pratica.jpg
+
+      - name: Verify artifacts status
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 https://zevanory.api.br/api/support/artifacts-status -o t2-output/artifacts-status.json
+          echo 'T2_ARTIFACTS_STATUS_RAW<<JSON'
+          cat t2-output/artifacts-status.json
+          echo
+          echo 'JSON'
+          jq -e '.artifacts | length == 5 and all(.integrity == true)' t2-output/artifacts-status.json >/dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t2-ia-clean-regeneration
+          path: t2-output/
+          retention-days: 3
+          if-no-files-found: error
