@@ -19,18 +19,18 @@ jobs:
 
       - name: Generate five grounded 1080x1080 creatives inside Worker
         env:
-          COMMERCIAL_ROBOT_TICK_SECRET: ${{ secrets.COMMERCIAL_ROBOT_TICK_SECRET }}
+          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${COMMERCIAL_ROBOT_TICK_SECRET:-}"
+          test -n "${CERTIFICATION_E2E_TOKEN:-}"
           mkdir -p t2-output
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import { createHmac, randomUUID } from 'node:crypto';
 
-          const secret = process.env.COMMERCIAL_ROBOT_TICK_SECRET || '';
-          if (secret.length < 32) throw new Error('T2_HMAC_SECRET_UNAVAILABLE');
+          const secret = process.env.CERTIFICATION_E2E_TOKEN || '';
+          if (secret.length < 32) throw new Error('T2_CERTIFICATION_TOKEN_UNAVAILABLE');
 
           const timestamp = String(Date.now());
           const nonce = randomUUID();
