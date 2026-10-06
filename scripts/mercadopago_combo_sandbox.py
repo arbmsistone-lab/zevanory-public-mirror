@@ -141,6 +141,7 @@ def validate_request(url, method, headers, identity):
                    method == 'GET' and p.path == CERT_PATH + 'download' and
                    set(q) == {'token'} and len(q['token']) == 1 and bool(q['token'][0]) or
                    method == 'POST' and p.path == '/api/support/refund-request' and not q or
+                   method == 'POST' and p.path == CERT_PATH + 'post-sale' and not q or
                    method == 'POST' and p.path == CERT_PATH + 'refund-approve' and set(q) == {'order_id'} and
                    len(q['order_id']) == 1 and re.fullmatch(r'[0-9a-f-]{36}', q['order_id'][0]))
         require(allowed, 'CERT_ENDPOINT_DENIED')
@@ -431,6 +432,11 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
             match = re.fullmatch(r'delivery_download_reuse_http_(403|410)(?:_detail_[a-z0-9_]+)?', str(error))
             require(bool(match), 'DOWNLOAD_REUSE_MUST_FAIL')
             report['reuse_http'] = int(match.group(1))
+        # Post-sale robot: real D+1 template through Resend to the controlled inbox of this test order.
+        post_sale = client.request(APP + CERT_PATH + 'post-sale', 'POST', {'order_id': oid, 'step': 'd1'},
+                                   {'x-certification-e2e-token': identity.certification_token, 'x-audit-id': audit_id}, failure_code='post_sale')
+        require(post_sale.get('ok') is True and post_sale.get('step') == 'd1', 'POST_SALE_REQUIRED')
+        report['checks']['POST_SALE'] = 'PASS'
         # T5: customer refund request (CDC art. 49) -> approval -> Mercado Pago refund -> order refunded.
         refund_req = client.request(APP + '/api/support/refund-request', 'POST', {'order_id': oid, 'email': identity.inbox_email},
                                     {'x-certification-e2e-token': identity.certification_token, 'x-audit-id': audit_id}, failure_code='refund_request')

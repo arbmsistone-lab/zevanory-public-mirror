@@ -11,6 +11,7 @@ on:
       - "worker/cloudflare-worker.recovered.mjs"
       - "worker/sandbox-proof-v2.mjs"
       - "worker/refund-flow.mjs"
+      - "worker/post-sale.mjs"
       - "worker/whatsapp-onboarding.mjs"
       - "worker/whatsapp-inbound-safety.mjs"
       - "worker/voice-provider-router.mjs"
@@ -111,6 +112,8 @@ jobs:
           git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
           python3 scripts/deploy/prepare-central-candidate.py
           node --check worker/cloudflare-worker.compat.mjs
+          node --check worker/post-sale.mjs
+          node --test tests/post-sale.test.mjs
           node --check worker/voice-naturality-study.mjs
           node --check worker/whatsapp-onboarding.mjs
           node --check worker/whatsapp-e2e-evidence.mjs
