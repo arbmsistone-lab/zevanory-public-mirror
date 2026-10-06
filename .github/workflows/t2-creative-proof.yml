@@ -1,0 +1,34 @@
+name: T2 creative visual proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      asset_ids:
+        description: Space-separated creative asset UUIDs
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download creatives and publish to proof branch
+        env:
+          IDS: ${{ inputs.asset_ids }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir proof && cd proof
+          for id in $IDS; do
+            [[ "$id" =~ ^[0-9a-f-]{36}$ ]]
+            curl -fsS --retry 4 "https://controle.zevanory.api.br/api/commercial/creative/assets/$id.jpg" -o "$id.jpg"
+            file "$id.jpg"
+          done
+          git init -q -b proof/t2-creatives
+          git config user.name "zevanory-proof"; git config user.email "proof@zevanory.api.br"
+          git add -A && git commit -qm "T2 creative proof $(date -u +%FT%TZ)"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:proof/t2-creatives
