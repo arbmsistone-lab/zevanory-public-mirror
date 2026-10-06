@@ -27,8 +27,8 @@ ALLOWED_SECRETS = {'MERCADOPAGO_TEST_PUBLIC_KEY', 'MERCADOPAGO_TEST_ACCESS_TOKEN
 HOSTS = {'api.mercadopago.com', 'zevanory.api.br'}
 REGISTERED_EXCEPTION = {
     'filename': 'zees16-control-reconciler.yml',
-    'blob': '729509bf5ae39a681014ed0133cb92db47f300bb',
-    'justification': 'anterior ao PR, não financeiro, roda por agendamento horário',
+    'blob': '71e2c7b86d21e20276d49cc73bcf83454f350a33',
+    'justification': 'T7 não financeiro; binding KV autoritativa e readback fail-closed',
 }
 
 
