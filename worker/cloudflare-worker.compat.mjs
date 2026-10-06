@@ -105,7 +105,7 @@ const wrapped = {
     if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);
     if(url.pathname==="/api/admin/voice/encode-audit") return handleVoiceEncodeAudit(request,normalized);
     {
-      const refund = await handleRefundFlow(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
+      const refund = await handleRefundFlow(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized, worker, ctx });
       if (refund) return refund;
     }
 

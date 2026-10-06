@@ -63,6 +63,7 @@ class FakeProvider:
         self.download_calls = 0
         self.requires_reconcile = False
         self.reconciled = False
+        self.refunded = False
 
     def __call__(self, req, timeout):
         self.calls.append(req)
@@ -109,7 +110,7 @@ class FakeProvider:
                         'delivery_evidence': {}}
                 return Response(json.dumps(data).encode())
             data = {**isolation, 'receipt_source': 'reconciliation' if self.reconciled else 'webhook',
-                'order': {'status': 'paid'}, 'fulfillment': {'status': 'delivered'},
+                'order': {'status': 'refunded' if self.refunded else 'paid'}, 'fulfillment': {'status': 'delivered'},
                 'financial_events': [{'normalized_event': 'payment_confirmed', 'provider_payment_id': 77,
                     'order_id': NEW_ORDER, 'source_class': 'provider_webhook', 'signature_verified': self.signature,
                     'signature_secret_class': 'sandbox', 'signature_verified_by': 'receiver'}],
@@ -119,6 +120,13 @@ class FakeProvider:
             # Set expiration from the mock clock, not a fixed calendar assumption.
             data['delivery_evidence']['expires_at'] = proof.dt.datetime.fromtimestamp(NOW + 120,
                 proof.dt.timezone.utc).isoformat()
+        elif path == '/api/support/refund-request':
+            payload = json.loads(req.data.decode()) if req.data else {}
+            assert payload == {'order_id': NEW_ORDER, 'email': self.recipient}, payload
+            data = {'received': True, 'status': 'pending'}
+        elif path == proof.CERT_PATH + 'refund-approve':
+            self.refunded = True
+            data = {'ok': True, 'status': 'approved', 'refund_id': 'mock-refund-1', 'order_status': 'refunded'}
         elif path == proof.INBOX_PATH + 'messages':
             data = {'messages': [{'id': 'mockmessage1', 'to': [self.recipient], 'received_at_ms': NOW * 1000 + 1,
                 'x_zevanory_order_id': NEW_ORDER, 'delivered_via': 'resend-inbound', 'text': DOWNLOAD}]}

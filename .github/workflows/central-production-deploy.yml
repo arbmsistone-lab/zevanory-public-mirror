@@ -10,6 +10,7 @@ on:
       - "worker/support-knowledge.mjs"
       - "worker/cloudflare-worker.recovered.mjs"
       - "worker/sandbox-proof-v2.mjs"
+      - "worker/refund-flow.mjs"
       - "worker/whatsapp-onboarding.mjs"
       - "worker/whatsapp-inbound-safety.mjs"
       - "worker/voice-provider-router.mjs"
