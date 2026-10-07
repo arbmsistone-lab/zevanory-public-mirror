@@ -54,7 +54,7 @@ jobs:
           assert c["assets"]["binding"]=="ASSETS"
           assert c["assets"]["directory"]=="./public"
           assert c["ai"]["binding"]=="AI"
-          assert c["services"][0]["binding"]=="ZEA10_ENGINE"
+          assert [x["binding"] for x in c["services"]]==["SELF"]
           assert c["kv_namespaces"][0]["binding"]=="ZEVANORY_PRIVATE_ARTIFACTS"
           print("BINDING_AND_COMMERCIAL_SAFETY_PASS")
           PY

@@ -20,3 +20,22 @@ export function projectLiveStatus(body = {}, { salesOpen = false, whatsappTransp
   }]));
   return { ...body, runtime, channel_readiness };
 }
+import { evaluateZea10FromZees16 } from "./zea10-evaluator.mjs";
+
+export function projectLocalZea10(zees16, releaseSha) {
+  const evaluation = evaluateZea10FromZees16(zees16);
+  const exactRelease = Boolean(releaseSha && zees16?.release_sha === releaseSha);
+  return {
+    ready: exactRelease && evaluation?.authority === true,
+    fail_closed: !(exactRelease && evaluation?.internal_complete === true),
+    source: "local_control_core",
+    report: {
+      framework: evaluation?.framework || "ZEA-10",
+      evaluator: evaluation?.evaluator || null,
+      authority: evaluation?.authority === true,
+      release_sha: evaluation?.release_sha || null,
+      counts: evaluation?.counts || null,
+      generated_at: zees16?.observed_at || null
+    }
+  };
+}
