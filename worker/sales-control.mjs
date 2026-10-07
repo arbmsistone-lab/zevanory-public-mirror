@@ -1,4 +1,5 @@
 // Sales switch + customer self-service delivery recovery.
+// Deploy note (2026-10-07): first production rollout was rolled back by the CSP smoke (inline footer style on the sales site, fixed in #460).
 //
 // Sales switch: the owner opens/closes sales from the control panel, which writes the KV key
 // `sales:open:v1` (same namespace bound here as ZEVANORY_PRIVATE_ARTIFACTS). The deploy config

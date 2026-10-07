@@ -191,13 +191,13 @@ function adminPage(items) {
 export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthorized, worker, ctx } = {}) {
   const url = new URL(request.url);
   const path = url.pathname;
-  const isOurs = path === "/reembolso/solicitar" || path === "/api/support/refund-request" || path === "/admin/refunds" || path === "/admin/refunds/action" || path === "/api/internal/certification/e2e/refund-approve";
+  const isOurs = path === "/reembolso/solicitar" || path === "/pedir-reembolso" || path === "/api/support/refund-request" || path === "/admin/refunds" || path === "/admin/refunds/action" || path === "/api/internal/certification/e2e/refund-approve";
   if (!isOurs) return null;
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!kv) return json(503, { error: "refund_state_unavailable" });
   const sql = () => sqlFactory(env.DATABASE_URL);
 
-  if (path === "/reembolso/solicitar") return request.method === "GET" || request.method === "HEAD" ? html(200, FORM_PAGE) : json(405, { error: "method_not_allowed" });
+  if (path === "/reembolso/solicitar" || path === "/pedir-reembolso") return request.method === "GET" || request.method === "HEAD" ? html(200, FORM_PAGE) : json(405, { error: "method_not_allowed" });
 
   if (path === "/api/support/refund-request") {
     if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
