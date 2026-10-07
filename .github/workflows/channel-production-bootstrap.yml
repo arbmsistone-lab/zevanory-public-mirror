@@ -1,0 +1,45 @@
+name: Activate Telegram and YouTube production channels
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate inputs without printing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_API_TOKEN TELEGRAM_BOT_TOKEN TELEGRAM_CHANNEL_ID YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
+            test -n "${!name:-}" || { echo "missing secret: $name"; exit 1; }
+          done
+      - name: Synchronize five channel secrets to zevanory Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          put_secret(){ local name="$1" value="${!1}"; printf '%s' "$value" | npx --yes wrangler@4.143.0 secret put "$name" --name zevanory; }
+          put_secret TELEGRAM_BOT_TOKEN
+          put_secret TELEGRAM_CHANNEL_ID
+          put_secret YOUTUBE_CLIENT_ID
+          put_secret YOUTUBE_CLIENT_SECRET
+          put_secret YOUTUBE_REFRESH_TOKEN
+      - name: Prove Telegram identity, publish welcome and pin
+        run: node scripts/channels/prove-telegram.mjs
+      - name: Render one F1-approved vertical Short
+        run: node scripts/channels/render-youtube-short.mjs /tmp/zevanory-short.mp4
+      - name: Prove YouTube channel and upload private Short
+        run: node scripts/channels/prove-youtube.mjs /tmp/zevanory-short.mp4
