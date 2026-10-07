@@ -18200,10 +18200,12 @@ var cloudflare_worker_default = {
     globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = whatsappOpsStore;
     globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = whatsappOpsStore;
     if (whatsappOpsStore?.cleanupExpired) ctx.waitUntil((async()=>{
-      await whatsappOpsStore.cleanupExpired();
-      const stats=await publishWhatsappOpsStats(whatsappOpsStore,env.ZEVANORY_PRIVATE_ARTIFACTS);
-      if(stats)console.info("whatsapp_neon_stats",JSON.stringify({generatedAt:stats.generatedAt,tables:Object.fromEntries(Object.entries(stats.tables).map(([table,row])=>[table,{count:row.count,max_updated_at:row.max_updated_at}]))}));
-    })().catch((error) => console.error("whatsapp_neon_cleanup_or_stats_failed", String(error?.message || error))));
+      try{await whatsappOpsStore.cleanupExpired()}catch(error){console.error("whatsapp_neon_cleanup_failed",String(error?.message||error))}
+      try{
+        const stats=await publishWhatsappOpsStats(whatsappOpsStore,env.ZEVANORY_PRIVATE_ARTIFACTS);
+        if(stats)console.info("whatsapp_neon_stats",JSON.stringify({generatedAt:stats.generatedAt,tables:Object.fromEntries(Object.entries(stats.tables).map(([table,row])=>[table,{count:row.count,max_updated_at:row.max_updated_at}]))}));
+      }catch(error){console.error("whatsapp_neon_stats_failed",String(error?.message||error))}
+    })());
     ctx.waitUntil(runNonCommercialAutopilot({ env, scheduledTime: controller.scheduledTime }).catch((error) => console.error("noncommercial_autopilot_failed", String(error?.message || error))));
   },
   async fetch(request, env) {

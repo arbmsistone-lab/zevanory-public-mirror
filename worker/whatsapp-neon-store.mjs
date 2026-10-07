@@ -21,17 +21,19 @@ function tableForKey(key){
 export function createWhatsappNeonStore(sql){
  if(!sql?.query)return null;
  let readyPromise=null;
- const ddl=Object.values(TABLES).map(table=>
+ const ddl=Object.values(TABLES).flatMap(table=>[
   "create table if not exists "+table+" (\n"+
-  " store_key text primary key,\n"+
-  " store_value text not null,\n"+
-  " expires_at timestamptz null,\n"+
-  " updated_at timestamptz not null default now()\n"+
-  ");\n"+
-  "create index if not exists "+table+"_expires_at_idx on "+table+"(expires_at) where expires_at is not null;\n"+
-  "create index if not exists "+table+"_updated_at_idx on "+table+"(updated_at desc);"
- ).join("\n");
- const ready=()=>readyPromise ||= sql.query(ddl);
+   " store_key text primary key,\n"+
+   " store_value text not null,\n"+
+   " expires_at timestamptz null,\n"+
+   " updated_at timestamptz not null default now()\n"+
+   ")",
+  "create index if not exists "+table+"_expires_at_idx on "+table+"(expires_at) where expires_at is not null",
+  "create index if not exists "+table+"_updated_at_idx on "+table+"(updated_at desc)"
+ ]);
+ const ready=()=>readyPromise ||= (async()=>{
+  for(const statement of ddl)await sql.query(statement);
+ })();
  return Object.freeze({
   async put(key,value,options={}){
    await ready(); const table=tableForKey(key);
