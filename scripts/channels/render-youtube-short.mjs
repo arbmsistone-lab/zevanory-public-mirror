@@ -1,0 +1,11 @@
+import { spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { evaluateCreativeWithRewrites } from "../../worker/creative-autonomy.mjs";
+const output=process.argv[2];if(!output)throw new Error("output_required");
+const creative={creative_id:"youtube-welcome-v1",brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1920,hook:"IA prática, com clareza",body:"Organize tarefas repetitivas por R$ 197,00. Garantia de 7 dias.",cta:"Conheça a ZEVANORY",price_brl:197};
+const approved=evaluateCreativeWithRewrites(creative,{serverPrice:197,visualScore:1});if(approved.action!=="publish"||approved.compliance!==100||approved.score<85)throw new Error("creative_not_approved");
+const textFile=`${output}.txt`;writeFileSync(textFile,"IA prática, com clareza\n\nOrganize. Automatize. Meça.\n\nGarantia de 7 dias\nzevanory.api.br",{encoding:"utf8"});
+const logo="sales-public/brand/social/zevanory-social-profile-1080.png";
+const filter=`[0:v]scale=1080:1080[logo];color=c=#071018:s=1080x1920:d=20[bg];[bg][logo]overlay=0:120:enable='between(t,0,20)',fade=t=in:st=0:d=1,fade=t=out:st=19:d=1,drawbox=x=70:y=1280:w=940:h=500:color=#0c1c2b@0.92:t=fill,drawtext=textfile=${textFile}:fontcolor=white:fontsize=52:line_spacing=24:x=(w-text_w)/2:y=1340`;
+const p=spawnSync("ffmpeg",["-y","-loop","1","-i",logo,"-filter_complex",filter,"-r","30","-t","20","-c:v","libx264","-pix_fmt","yuv420p","-movflags","+faststart",output],{stdio:"inherit"});if(p.status!==0)throw new Error("ffmpeg_failed");
+console.log(JSON.stringify({creative_id:creative.creative_id,score:approved.score,compliance:approved.compliance,duration_seconds:20,privacyStatus:"private"}));
