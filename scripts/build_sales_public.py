@@ -53,7 +53,7 @@ COMMERCE = {
         "faq_q": ("Inclui os três produtos separados?", "Sim. Inclui IA na Prática, Vendas na Prática e Lucro & Caixa completos, mais o Plano integrado de 30 dias e o Painel de decisão integrada.")},
 }
 DELIVERY_Q = ("Como recebo o produto?", "Logo após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um link pessoal para baixar o arquivo .zip com todo o material. Se o link se perder, peça outro em zevanory.api.br/entrega/reenviar.")
-GUARANTEE_Q = ("E se não for para mim?", "Você tem 7 dias de garantia: peça o reembolso integral em zevanory.api.br/reembolso/solicitar, sem precisar explicar o motivo.")
+GUARANTEE_Q = ("E se não for para mim?", "Você tem 7 dias de garantia: peça o reembolso integral em zevanory.api.br/pedir-reembolso, sem precisar explicar o motivo.")
 
 def _faq_html(q, a):
     return f"<details><summary>{q}</summary><p>{a}</p></details>"
