@@ -2,6 +2,10 @@ name: ZPC sales preflight safe inspection
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zpc-sales-preflight-safe-inspection.yml"
 
 permissions:
   contents: read
