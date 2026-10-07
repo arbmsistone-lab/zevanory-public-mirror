@@ -47,8 +47,7 @@ jobs:
             blob: 427e208349bd280128413af2f16e31bca1cb9a43
           - slug: negocio-completo
             blob: d4fb45a28616cf714c1f33b93bf39bfcacfbfce3
-          - slug: zevanory-one
-            blob: 459cc8d7537b9de414c4fd8ce8a6d5d6dabe9b6a
+          # zevanory-one retired from the public surface (HTTP 410): no live P03 target.
     steps:
       - uses: actions/checkout@v4
         with:
