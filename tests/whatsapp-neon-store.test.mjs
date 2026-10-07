@@ -27,7 +27,7 @@ function fakeKv(seed={}){
  };
 }
 
-test("memoizes one store and one DDL query per DATABASE_URL",async()=>{
+test("memoizes one store and runs Neon-compatible single-statement DDL once per DATABASE_URL",async()=>{
  resetWhatsappOpsStoreMemoForTest();
  const sql=fakeSql(),kv=fakeKv(),factory=()=>sql;
  const a=getWhatsappOpsStore({DATABASE_URL:"postgres://one",ZEVANORY_PRIVATE_ARTIFACTS:kv},factory);
@@ -35,9 +35,14 @@ test("memoizes one store and one DDL query per DATABASE_URL",async()=>{
  assert.equal(a,b);
  await a.put("whatsapp:instant:last",'{"stage":"received"}',{expirationTtl:60});
  await b.put("whatsapp:observation:wamid.1","{}",{expirationTtl:60});
- const ddl=sql.calls.filter(x=>/create table if not exists/i.test(x.text));
- assert.equal(ddl.length,1);
- for(const table of["whatsapp_stage_events","whatsapp_observations","whatsapp_evidence","whatsapp_history"]) assert.match(ddl[0].text,new RegExp("create table if not exists "+table));
+ const ddl=sql.calls.filter(x=>/^(create table|create index) if not exists/i.test(x.text.trim()));
+ assert.equal(ddl.length,12);
+ assert.equal(ddl.every(x=>!x.text.includes(";")),true);
+ for(const table of["whatsapp_stage_events","whatsapp_observations","whatsapp_evidence","whatsapp_history"]){
+  assert.equal(ddl.filter(x=>x.text.includes(table)).length,3);
+ }
+ await a.get("whatsapp:instant:last");
+ assert.equal(sql.calls.filter(x=>/^(create table|create index) if not exists/i.test(x.text.trim())).length,12);
 });
 
 test("writes operational records only to Neon and reads historical KV as fallback",async()=>{
