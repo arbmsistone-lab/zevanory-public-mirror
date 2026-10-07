@@ -54,8 +54,8 @@ jobs:
           assert c["assets"]["binding"]=="ASSETS"
           assert c["assets"]["directory"]=="./public"
           assert c["ai"]["binding"]=="AI"
-          assert c["services"][0]["binding"]=="ZEA10_ENGINE"
-          assert c["kv_namespaces"][0]["binding"]=="ZEVANORY_PRIVATE_ARTIFACTS"
+          assert [x["binding"] for x in c["services"]]==["SELF"]
+          assert any(x["binding"]=="ZEVANORY_PRIVATE_ARTIFACTS" for x in c["kv_namespaces"])
           print("BINDING_AND_COMMERCIAL_SAFETY_PASS")
           PY
       - name: Prove UTF-8 and worker behavior

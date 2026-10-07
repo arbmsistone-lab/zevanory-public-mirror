@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildContinuityPlan } from "../worker/continuity-router.mjs";
-import { projectLiveStatus, whatsappTransportIsOperational } from "../worker/live-runtime-status.mjs";
+import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "../worker/live-runtime-status.mjs";
 import { readSalesSwitch, resetSalesSwitchCache } from "../worker/sales-control.mjs";
 import { evaluatePolicy } from "../worker/evidence-control-plane.mjs";
 
@@ -48,11 +48,22 @@ test("stale preflight remains fail closed", async () => {
   assert.equal(status.runtime.sales, "globally-blocked");
 });
 
-test("central candidate preserves SELF and binds the existing ZEA10 worker", async () => {
+test("central candidate preserves SELF without the incompatible ZEA10 RPC binding", async () => {
   const { readFile } = await import("node:fs/promises");
   const source = await readFile(new URL("../scripts/deploy/prepare-central-candidate.py", import.meta.url), "utf8");
   assert.match(source, /\{"binding":"SELF","service":"zevanory"\}/);
-  assert.match(source, /\{"binding":"ZEA10_ENGINE","service":"zea10-zevanory"\}/);
+  assert.doesNotMatch(source, /\{"binding":"ZEA10_ENGINE"/);
+});
+
+test("local ZEA10 projection is exact-release bound and fail closed", () => {
+  const state = { release_sha: "a".repeat(40), observed_at: "2026-10-07T19:00:00.000Z", pillars: [] };
+  const exact = projectLocalZea10(state, state.release_sha);
+  assert.equal(exact.ready, true);
+  assert.equal(exact.fail_closed, true);
+  assert.equal(exact.source, "local_control_core");
+  const stale = projectLocalZea10(state, "b".repeat(40));
+  assert.equal(stale.ready, false);
+  assert.equal(stale.fail_closed, true);
 });
 
 test("commercial evidence remains strict for both safe closed and healthy open states", () => {

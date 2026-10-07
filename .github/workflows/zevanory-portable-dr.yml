@@ -54,7 +54,7 @@ jobs:
               assert p.is_file(), path
               assert p.stat().st_size>0, path
           bundle=pathlib.Path("worker/cloudflare-worker.recovered.mjs").read_text(encoding="utf-8")
-          for marker in ("handleAsNodeRequest(PORT","env.ASSETS","env.ZEA10_ENGINE","env.ZEVANORY_PRIVATE_ARTIFACTS"):
+          for marker in ("handleAsNodeRequest(PORT","env.ASSETS","env.ZEVANORY_PRIVATE_ARTIFACTS"):
               assert marker in bundle, marker
           PY
       - name: Build portable recovery bundle on clean runner

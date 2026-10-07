@@ -12,12 +12,6 @@
       "bundle_name": "ASSETS",
       "value": null
     },
-    "service": {
-      "production_name": "ZEA10_MOTOR",
-      "bundle_name": "ZEA10_ENGINE",
-      "value": "controle arbm",
-      "entrypoint": "Serviço de Plano de Controle Zea10"
-    },
     "kv": {
       "production_name": "ZEVANORY_ARTEFATOS_PRIVADOS",
       "bundle_name": "ZEVANORY_PRIVATE_ARTIFACTS",
