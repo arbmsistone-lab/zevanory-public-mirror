@@ -224,4 +224,5 @@ const decisionHash=crypto.createHash("sha256").update(stable(event)).digest("hex
 const decision={...state,inputs:signals,decision_hash:decisionHash,previous_decision_hash:event.previous_decision_hash,persistence:"kv-append-only",evaluator:"ZEES16_POLICY_ENGINE",evaluator_version:state.policy_version};
 await fs.writeFile("zees16-state.json",JSON.stringify(decision,null,2)+"\n");
 await fs.writeFile("zees16-event.json",JSON.stringify({...event,event_hash:decisionHash},null,2)+"\n");
+console.log("ZEES16_NON_PROVEN",JSON.stringify(state.pillars.filter(p=>p.state!=="PROVADO").map(p=>({id:p.id,state:p.state,blockers:p.blockers}))));
 console.log(JSON.stringify({sha,counts:state.counts,decision_hash:decisionHash},null,2));
