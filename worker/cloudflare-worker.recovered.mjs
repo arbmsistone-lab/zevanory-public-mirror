@@ -4,6 +4,7 @@ import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
 import { getWhatsappOpsStore, publishWhatsappOpsStats } from "./whatsapp-neon-store.mjs";
 import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
+import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } from "./mercadopago-webhook-safety.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
@@ -14846,7 +14847,7 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
   return Object.freeze(evidence);
 }
 __name(ensureMercadoPagoDigitalDelivery, "ensureMercadoPagoDigitalDelivery");
-async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, certificationOnly = false, source = "mercadopago" } = {}) {
+async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, certificationOnly = false, source = "mercadopago", trustedRecovery = false } = {}) {
   res.setHeader("content-type", "application/json; charset=utf-8");
   res.setHeader("cache-control", "no-store");
   res.setHeader("x-content-type-options", "nosniff");
@@ -14855,7 +14856,10 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
   if (!webhook) return json12(res, 400, { error: "unsupported_webhook", accepted: false });
   const requestId = String(req.headers?.["x-request-id"] || "");
   const signature = String(req.headers?.["x-signature"] || "");
-  if (!verifyMercadoPagoSignature({ signature, requestId, dataId: webhook.paymentId, secret: webhookSecret })) return json12(res, 401, { error: "webhook_auth_failed", accepted: false });
+  const signatureValid = trustedRecovery || verifyMercadoPagoSignature({ signature, requestId, dataId: webhook.paymentId, secret: webhookSecret });
+  const safetyEnv = { ...process.env, ZEVANORY_PRIVATE_ARTIFACTS: globalThis.__ZEVANORY_PRIVATE_KV__ };
+  if (!trustedRecovery) await recordMercadoPagoWebhookSignature(safetyEnv, { signatureValid, requestId, paymentId: webhook.paymentId, production: !certificationOnly });
+  if (!signatureValid) return json12(res, 401, { error: "webhook_auth_failed", accepted: false });
   if (process.env.FINANCIAL_EVENTS_ENABLED !== "true") return json12(res, 503, { error: "financial_events_disabled", accepted: false });
   if (!accessToken) return json12(res, 503, { error: "financial_provider_unavailable", accepted: false });
   try {
@@ -18415,6 +18419,15 @@ async function runPaidDeliveryWatchdog(env) {
   if (!process.env.DATABASE_URL || !process.env.MERCADOPAGO_ACCESS_TOKEN) return { ok: false, reason: "watchdog_unconfigured" };
   const sql = cs(process.env.DATABASE_URL);
   const kv = globalThis.__ZEVANORY_PRIVATE_KV__ || env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const recoveredWebhooks = await drainMercadoPagoWebhookRecovery({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv }, async (paymentId) => {
+    const req = { method: "POST", parsedBody: { type: "payment", data: { id: paymentId } }, body: null, url: "/api/webhooks?provider=mercadopago", headers: {} };
+    let body = "";
+    const res = { statusCode: 200, setHeader() {}, end(value) { body = String(value || ""); return value; } };
+    await handleMercadoPagoWebhook(req, res, { accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN, webhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET, certificationOnly: false, source: "mercadopago-watchdog", trustedRecovery: true });
+    let result = null;
+    try { result = JSON.parse(body); } catch {}
+    return { completed: res.statusCode === 200 && result?.accepted === true && ["payment_confirmed", "refund_confirmed"].includes(String(result?.event || "")) };
+  });
   const rows = await sql.query(`select o.order_id, fe.provider_payment_id
       from orders o
       join service_fulfillment sf on sf.order_id = o.order_id
@@ -18424,7 +18437,7 @@ async function runPaidDeliveryWatchdog(env) {
      where o.status = 'paid' and sf.status = 'pending' and coalesce(o.certification_pilot, false) = false
        and fe.received_at < now() - interval '15 minutes' and fe.received_at > now() - interval '7 days'
      order by fe.received_at asc limit 10`, []);
-  const out = { ok: true, checked: rows.length, delivered: 0, failed: 0 };
+  const out = { ok: true, checked: rows.length, delivered: 0, failed: 0, webhook_recovery: recoveredWebhooks };
   for (const row of rows) {
     const orderId = String(row.order_id);
     if (kv?.get && await kv.get(`sandbox-proof-v2:order:${orderId}`).catch(() => null)) continue;
