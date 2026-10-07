@@ -1,4 +1,4 @@
-name: ZEVANORY Mercado Pago exact-SHA recovery
+name: RETIRED - unsafe Mercado Pago exact-SHA recovery
 
 on:
   workflow_dispatch:
@@ -18,14 +18,13 @@ concurrency:
 
 jobs:
   recover-and-certify:
+    if: ${{ false }} # Permanently retired: it used sandbox credentials in production secret names.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       TARGET_SHA: ${{ inputs.target_sha }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
-      MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
-      MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
       MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
       MERCADOPAGO_TEST_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}
       OPERATOR_TOKEN: ${{ secrets.OPERATOR_TOKEN }}
@@ -53,38 +52,12 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Replace obsolete Asaas/stale secrets with Mercado Pago sandbox secrets atomically
+      - name: Refuse retired production-secret recovery
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json, os
-          data = {
-            "MERCADOPAGO_ACCESS_TOKEN": os.environ["MERCADOPAGO_TEST_ACCESS_TOKEN"],
-            "MERCADOPAGO_WEBHOOK_SECRET": os.environ["MERCADOPAGO_TEST_WEBHOOK_SECRET"],
-            "MERCADOPAGO_TEST_ACCESS_TOKEN": os.environ["MERCADOPAGO_TEST_ACCESS_TOKEN"],
-            "MERCADOPAGO_TEST_WEBHOOK_SECRET": os.environ["MERCADOPAGO_TEST_WEBHOOK_SECRET"],
-            "ASAAS_API_KEY": None,
-            "ASAAS_WEBHOOK_TOKEN": None,
-            "VOICE_TTS_FREE_ONLY": None
-          }
-          with open("/tmp/mp-secrets.json","w",encoding="utf-8") as f:
-              json.dump(data,f)
-          PY
-          npx --yes wrangler@4.135.0 secret bulk /tmp/mp-secrets.json --name zevanory
-          rm -f /tmp/mp-secrets.json
-          npx --yes wrangler@4.135.0 secret list --name zevanory > /tmp/secrets.json
-          python3 - <<'PY'
-          import json
-          rows=json.load(open("/tmp/secrets.json",encoding="utf-8"))
-          names={str(x.get("name","")) for x in rows}
-          required={"MERCADOPAGO_ACCESS_TOKEN","MERCADOPAGO_WEBHOOK_SECRET","MERCADOPAGO_TEST_ACCESS_TOKEN","MERCADOPAGO_TEST_WEBHOOK_SECRET"}
-          forbidden={"ASAAS_API_KEY","ASAAS_WEBHOOK_TOKEN","VOICE_TTS_FREE_ONLY"}
-          assert required <= names, sorted(required-names)
-          assert not (forbidden & names), sorted(forbidden & names)
-          print("SECRETS_SYNC=PASS")
-          print("ASAAS_RUNTIME_REMOVED=PASS")
-          PY
+          echo "::error title=WORKFLOW_RETIRED::Sandbox credentials must never be written to production secret names. Use mercadopago-production-token-rotate.yml."
+          exit 1
 
       - name: Reconstruct exact canonical worker with FREE binding budget
         shell: bash
