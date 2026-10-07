@@ -67,6 +67,7 @@ jobs:
           trap 'kill "$tail_pid" 2>/dev/null || true' EXIT
           node --input-type=module <<'JS'
           import {readFileSync,writeFileSync} from 'node:fs';
+          import {hasVoiceDeliveryProof} from './worker/whatsapp-proof-gate.mjs';
           const origin='https://zevanory.api.br';
           const status=async()=>fetch(origin+'/api/support/instant-status',{signal:AbortSignal.timeout(15000)}).then(r=>r.json());
           let live;
@@ -94,8 +95,7 @@ jobs:
            for(let n=0;n<60;n++){result=await status();if(result.last?.inbound_message_id===ack.inbound_message_id&&(type==='text'?result.last.text_sent||result.last.text_error:result.last.voice_sent||result.last.voice_error))break;await new Promise(r=>setTimeout(r,2000));}
            const last=result.last||{};
            const exact=last.inbound_message_id===ack.inbound_message_id;
-           const stages=(last.steps||[]).map(x=>x.stage);
-           const pass=exact&&last.heard&&last.text_sent&&/^wamid\./.test(last.text_provider_message_id||'')&&(type==='text'||(last.voice_sent&&/^wamid\./.test(last.voice_provider_message_id||'')&&['tts_done','encode_done','upload_done','voice_sent'].every(x=>stages.includes(x))));
+           const pass=exact&&last.heard&&last.text_sent&&/^wamid\./.test(last.text_provider_message_id||'')&&(type==='text'||hasVoiceDeliveryProof(last));
            const proof={test:type,pass,ack,status:result};writeFileSync('/tmp/proof/'+type+'-test.json',JSON.stringify(proof,null,2));console.log(JSON.stringify(proof));
            if(!pass)throw Error(type==='text'?'TEXT_FAIL_REQUIRES_SYNCHRONOUS_ROLLBACK':'REAL_AUDIO_PROOF_FAILED');
           }

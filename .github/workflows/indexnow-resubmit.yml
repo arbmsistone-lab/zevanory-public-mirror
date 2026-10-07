@@ -1,0 +1,37 @@
+name: IndexNow sitemap resubmit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate both sitemaps and submit their URLs to IndexNow
+        shell: bash
+        env:
+          INDEXNOW_KEY: 4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922
+        run: |
+          set -euo pipefail
+          for host in zevanory.api.br vendas.zevanory.api.br; do
+            curl -fsS "https://$host/sitemap.xml" -o "/tmp/$host.xml"
+          done
+          curl -fsS "https://zevanory.api.br/$INDEXNOW_KEY.txt" | grep -Fx "$INDEXNOW_KEY"
+          python3 - <<'PY'
+          import json,xml.etree.ElementTree as ET
+          files=['/tmp/zevanory.api.br.xml','/tmp/vendas.zevanory.api.br.xml']
+          urls=['https://zevanory.api.br/sitemap.xml','https://vendas.zevanory.api.br/sitemap.xml']
+          for path in files:
+              root=ET.parse(path).getroot()
+              urls.extend((node.text or '').strip() for node in root.findall('{http://www.sitemaps.org/schemas/sitemap/0.9}url/{http://www.sitemaps.org/schemas/sitemap/0.9}loc'))
+          urls=list(dict.fromkeys(u for u in urls if u.startswith('https://')))
+          json.dump({'host':'zevanory.api.br','key':'4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922','keyLocation':'https://zevanory.api.br/4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922.txt','urlList':urls},open('/tmp/indexnow.json','w'))
+          print('INDEXNOW_URL_COUNT='+str(len(urls)))
+          PY
+          code="$(curl -sS -o /tmp/indexnow-response.txt -w '%{http_code}' -X POST https://api.indexnow.org/indexnow -H 'content-type: application/json' --data-binary @/tmp/indexnow.json)"
+          test "$code" = "200" -o "$code" = "202"
+          echo "INDEXNOW_HTTP=$code"
