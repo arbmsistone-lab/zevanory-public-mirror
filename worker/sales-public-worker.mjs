@@ -1,5 +1,5 @@
 const retired=new Set(["/arbm-sist","/arbm-sist/","/arbm-sist.html","/zevanory-one","/zevanory-one/","/zevanory-one.html","/arbm-one","/arbm-one/","/arbm-one.html"]);
-const htmlRoutes=new Set(["solucoes","zevanory-sales","arbm-contador-saloes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","zevanory-cfo","termos","privacidade","reembolso","afiliados"]);
+const htmlRoutes=new Set(["material-gratuito","checklist-15-minutos","solucoes","zevanory-sales","arbm-contador-saloes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","zevanory-cfo","termos","privacidade","reembolso","afiliados"]);
 const MP="https://www.mercadopago.com https://www.mercadopago.com.br";
 const CSP=["default-src 'self'","base-uri 'none'",`form-action 'self' ${MP}`,"frame-ancestors 'none'","object-src 'none'",`script-src 'self' ${MP} https://sdk.mercadopago.com https://static.cloudflareinsights.com`,`frame-src ${MP} https://*.mercadopago.com https://*.mercadopago.com.br`,"style-src 'self'",`img-src 'self' data: ${MP}`,`connect-src 'self' https://api.mercadopago.com ${MP} https://*.mercadopago.com https://*.mercadopago.com.br https://cloudflareinsights.com`,"font-src 'self'"].join("; ");
 function applySecurityHeaders(headers){
@@ -61,10 +61,29 @@ async function handleBuy(request,env,sku){
   }catch(e){console.error("buy_checkout_error",String(e&&e.message||e).slice(0,80))}
   return infoPage(503,"Não foi possível abrir o pagamento",`<p>Tente novamente em instantes. Se persistir, fale com a gente no <a href="https://wa.me/5588992545413">WhatsApp</a> ou em suporte@zevanory.api.br.</p>`);
 }
+
+// Lead magnet form (POST, same origin): forwarded to the core Worker through the private binding.
+async function handleLead(request,env){
+  if(request.method!=="POST") return new Response(null,{status:303,headers:applySecurityHeaders(new Headers({location:"/material-gratuito"}))});
+  const ua=request.headers.get("user-agent")||"";
+  if(!ua||BOT_UA.test(ua)) return infoPage(403,"Acesso não permitido","<p>Use um navegador.</p>");
+  const ip=request.headers.get("cf-connecting-ip")||"unknown";
+  if(await overLimit(env,"lead:"+ip)) return infoPage(429,"Muitas tentativas","<p>Aguarde um minuto e tente de novo.</p>");
+  let form;try{form=await request.formData()}catch{form=new FormData()}
+  if(String(form.get("website")||"")) return infoPage(200,"Quase lá!","<p>Confira seu e-mail.</p>");
+  const payload={email:String(form.get("email")||""),name:String(form.get("nome")||""),consent:String(form.get("consentimento")||"")==="sim"};
+  try{
+    const res=await env.CORE.fetch("https://leads.internal/subscribe",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+    const data=await res.json().catch(()=>({}));
+    const msg=String(data?.message||"Tente novamente em instantes.").replace(/[<>&]/g,"");
+    return infoPage(res.ok?200:400,res.ok?"Quase lá!":"Não foi possível concluir",`<p>${msg}</p>${res.ok?"<p>Não chegou? Confira a caixa de spam ou promoções.</p>":"<p><a class=\"button primary\" href=\"/material-gratuito\">Voltar</a></p>"}`);
+  }catch{return infoPage(503,"Não foi possível concluir","<p>Tente novamente em instantes.</p>")}
+}
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
   // Refund form lives on the core domain; the public router sends zevanory.api.br/reembolso* here.
   if(url.pathname==="/reembolso/solicitar"||url.pathname==="/reembolso/solicitar/") return new Response(null,{status:308,headers:applySecurityHeaders(new Headers({location:"https://zevanory.api.br/pedir-reembolso","cache-control":"no-store"}))});
+  if(url.pathname==="/material-gratuito/inscrever") return handleLead(request,env);
   const buy=url.pathname.match(/^\/comprar\/([A-Z0-9-]{6,20})\/?$/i);
   if(buy) return handleBuy(request,env,buy[1].toUpperCase());
   if(url.pathname==="/health"&&(request.method==="GET"||request.method==="HEAD")){

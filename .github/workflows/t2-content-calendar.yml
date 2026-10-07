@@ -1,0 +1,52 @@
+name: T2 daily content calendar
+
+on:
+  schedule:
+    # 08:07 America/Fortaleza: one new creative per day goes to the owner's approval queue.
+    - cron: '7 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: t2-creative-compose
+  cancel-in-progress: false
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install compositor toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/t2 && cd /tmp/t2
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund playwright @fontsource/inter@5.2.8
+          npx playwright install --with-deps chromium
+      - name: Compose and upload today's calendar creative
+        env:
+          T2_CALENDAR: '1'
+          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+          T2_OUT: ${{ github.workspace }}/t2-output
+        run: |
+          set -euo pipefail
+          cp scripts/t2/compose-creatives.mjs /tmp/t2/
+          cd /tmp/t2 && node compose-creatives.mjs
+      - name: Product artifacts still intact
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 https://zevanory.api.br/api/support/artifacts-status | tee /tmp/a.json
+          jq -e '.artifacts | length == 5 and all(.integrity == true)' /tmp/a.json >/dev/null
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: t2-composed-creatives
+          path: t2-output/
+          retention-days: 7
+          if-no-files-found: warn

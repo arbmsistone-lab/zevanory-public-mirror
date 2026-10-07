@@ -14,6 +14,8 @@ PRODUCTS = ("ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-ven
 LEGAL = ("termos", "privacidade", "reembolso", "afiliados")
 
 HTML_ROUTES = (
+    "material-gratuito",
+    "checklist-15-minutos",
     "solucoes",
     "zevanory-sales",
     "arbm-contador-saloes",

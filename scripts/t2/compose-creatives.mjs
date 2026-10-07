@@ -6,7 +6,17 @@ import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
 
 const ORIGIN = 'https://controle.zevanory.api.br';
-const SLUGS = ['ia-na-pratica', 'vendas-na-pratica', 'lucro-e-caixa', 'combo-ia-vendas', 'negocio-completo'];
+const ALL_SLUGS = ['ia-na-pratica', 'vendas-na-pratica', 'lucro-e-caixa', 'combo-ia-vendas', 'negocio-completo'];
+const ANGLES = ['oferta', 'dor', 'garantia', 'entrega'];
+// Calendar mode (T2_CALENDAR=1): one creative per day, rotating product and angle so a 20-day
+// cycle covers every product with every angle. Batch mode (default): the 5 'oferta' creatives.
+const CALENDAR = process.env.T2_CALENDAR === '1';
+const day = Math.floor(Date.now() / 86_400_000);
+const calendarSlug = process.env.T2_SLUG || ALL_SLUGS[day % ALL_SLUGS.length];
+const calendarAngle = process.env.T2_ANGLE || ANGLES[Math.floor(day / ALL_SLUGS.length) % ANGLES.length];
+if (CALENDAR && (!ALL_SLUGS.includes(calendarSlug) || !ANGLES.includes(calendarAngle))) throw new Error('T2_CALENDAR_INVALID');
+const SLUGS = CALENDAR ? [calendarSlug] : ALL_SLUGS;
+const ANGLE = CALENDAR ? calendarAngle : 'oferta';
 const secret = process.env.CERTIFICATION_E2E_TOKEN || '';
 if (secret.length < 32) throw new Error('T2_CERTIFICATION_TOKEN_UNAVAILABLE');
 const out = process.env.T2_OUT || 't2-output';
@@ -32,6 +42,19 @@ async function catalog(slug) {
   return { name, description, price };
 }
 
+let ANGLE_COPY = null;
+async function angleCopy(slug) {
+  if (ANGLE === 'oferta') return { kicker: 'Produto 100% digital', hook: '' };
+  if (!ANGLE_COPY) {
+    const r = await fetch(`${ORIGIN}/api/commercial/creative/angles`, { headers: { accept: 'application/json' } });
+    if (!r.ok) throw new Error('T2_ANGLES_HTTP_' + r.status);
+    ANGLE_COPY = (await r.json()).copy;
+  }
+  const copy = ANGLE_COPY?.[slug]?.[ANGLE];
+  if (!copy?.hook) throw new Error('T2_ANGLE_COPY_MISSING_' + slug + '_' + ANGLE);
+  return copy;
+}
+
 function headline(description) {
   const first = description.split(/(?<=[.!?])\s+/)[0];
   return first.length <= 150 ? first : description;
@@ -40,7 +63,7 @@ function headline(description) {
 const font = (w) => fs.readFileSync(path.join('node_modules/@fontsource/inter/files', `inter-latin-${w}-normal.woff2`)).toString('base64');
 const fonts = { 400: font(400), 600: font(600), 800: font(800) };
 
-function page({ name, description, price, slug, bg, bgMime, hue }) {
+function page({ name, description, price, slug, bg, bgMime, hue, kicker = 'Produto 100% digital', hook = '' }) {
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 ${[400, 600, 800].map((w) => `@font-face{font-family:Inter;font-weight:${w};src:url(data:font/woff2;base64,${fonts[w]}) format('woff2')}`).join('\n')}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -64,9 +87,9 @@ p{font-weight:400;font-size:34px;line-height:1.32;color:#dbe4f5;margin-top:28px;
 <div class="wrap">
   <div><div class="brand">ZEVANORY</div><div class="rule"></div></div>
   <div class="mid">
-    <div class="kicker">Produto 100% digital</div>
+    <div class="kicker">${esc(kicker)}</div>
     <h1>${esc(name.replace(/^ZEVANORY\s+/i, ''))}</h1>
-    <p>${esc(headline(description))}</p>
+    <p>${esc(hook || headline(description))}</p>
   </div>
   <div class="foot">
     <div class="price"><small>Preço de tabela</small>R$ ${esc(price)}</div>
@@ -92,7 +115,8 @@ try {
     }
     console.log(`T2_BACKGROUND ${slug} source=${backgroundSource}`);
     const tab = await browser.newPage({ viewport: { width: 1080, height: 1080 }, deviceScaleFactor: 1 });
-    await tab.setContent(page({ ...facts, slug, bg, bgMime, hue: index }), { waitUntil: 'load' });
+    const copy = await angleCopy(slug);
+    await tab.setContent(page({ ...facts, slug, bg, bgMime, hue: CALENDAR ? day : index, kicker: copy.kicker, hook: copy.hook }), { waitUntil: 'load' });
     await tab.evaluate(() => document.fonts.ready);
     const overflow = await tab.evaluate(() => document.querySelector('.wrap').scrollHeight > 1080);
     if (overflow) throw new Error('LAYOUT_OVERFLOW_' + slug);
@@ -101,7 +125,7 @@ try {
     fs.writeFileSync(path.join(out, slug + '.jpg'), jpeg);
     const sha = createHash('sha256').update(jpeg).digest('hex');
     const ts = String(Date.now()), nonce = randomUUID();
-    const up = await fetch(`${ORIGIN}/api/commercial/creative/upload?product=${slug}`, {
+    const up = await fetch(`${ORIGIN}/api/commercial/creative/upload?product=${slug}&angle=${ANGLE}`, {
       method: 'POST',
       headers: { 'content-type': 'image/jpeg', 'x-commercial-timestamp': ts, 'x-commercial-nonce': nonce, 'x-commercial-signature': sign(['zevanory-commercial-creative-upload-v1', ts, nonce, slug, sha]) },
       body: jpeg,
@@ -122,7 +146,9 @@ console.log('T2_FINALIZE HTTP=' + fin.status + ' ' + finRaw.slice(0, 600));
 if (!fin.ok) throw new Error('FINALIZE_HTTP_' + fin.status);
 const final = JSON.parse(finRaw);
 const composed = (final.creativeProof || []).filter((c) => (c.evidence || []).includes('composer:deterministic-typography-v1'));
-if (final.approvals !== 5 || composed.length !== 5) throw new Error(`T2_APPROVALS_${final.approvals}_COMPOSED_${composed.length}`);
+if (CALENDAR) {
+  if (!composed.some((c) => (c.evidence || []).includes('angle:' + ANGLE) && String(c.product || '').length)) throw new Error('T2_CALENDAR_RECORD_MISSING');
+} else if (final.approvals !== 5 || composed.length !== 5) throw new Error(`T2_APPROVALS_${final.approvals}_COMPOSED_${composed.length}`);
 for (const c of composed) {
   const r = await fetch(c.imageUrl);
   const b = Buffer.from(await r.arrayBuffer());
@@ -130,4 +156,4 @@ for (const c of composed) {
 }
 fs.writeFileSync(path.join(out, 'proof.json'), JSON.stringify({ uploads: results, final }, null, 2));
 console.log('T2_RECORDS=' + JSON.stringify(composed.map((c) => ({ id: c.id, product: c.product, status: c.status, imageUrl: c.imageUrl }))));
-console.log(`T2_CREATIVES=5/5_PASS ARCHIVED_BRIEFS=${final.archivedBriefs}`);
+console.log(CALENDAR ? `T2_CALENDAR=PASS ${calendarSlug} ${ANGLE}` : `T2_CREATIVES=5/5_PASS ARCHIVED_BRIEFS=${final.archivedBriefs}`);
