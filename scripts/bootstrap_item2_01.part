@@ -1,0 +1,9 @@
+from pathlib import Path
+p=Path("worker/cloudflare-worker.recovered.mjs")
+s=p.read_text()
+reps=[
+('import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";','import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";\nimport { createWhatsappNeonStore } from "./whatsapp-neon-store.mjs";'),
+('  const kv = globalThis.__ZEVANORY_PRIVATE_KV__;\n  const dedupKey = item.message_id ? `whatsapp:instant:${item.message_id}` : "";','  const kv = globalThis.__ZEVANORY_PRIVATE_KV__;\n  const operationalStore = globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__;\n  const dedupKey = item.message_id ? `whatsapp:instant:${item.message_id}` : "";'),
+('  const checkpoint = inboundCheckpoint || whatsappStageRecorder(kv, status);','  const checkpoint = inboundCheckpoint || whatsappStageRecorder(operationalStore, status);'),
+('    const history = await loadWhatsappHistory(kv, item.from);','    const history = await loadWhatsappHistory(operationalStore, item.from);'),
+('    await saveWhatsappHistory(kv, item.from, history);','    await saveWhatsappHistory(operationalStore, item.from, history);'),
