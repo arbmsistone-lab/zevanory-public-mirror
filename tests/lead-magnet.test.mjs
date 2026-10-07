@@ -64,7 +64,7 @@ test("double opt-in: only the confirmation link (POST) starts the sequence", asy
 
 test("nurture holds the catalog e-mail while sales are closed; opt-out stops everything", async () => {
   const db = fakeDb(); const sent = mailbox(); const store = kv();
-  db.rows.set("x@y.com", { email: "x@y.com", email_hash: "", name: null, status: "confirmed", nurture_step: 2, nurture_at: new Date(Date.now() - 4 * 86400e3).toISOString() });
+  db.rows.set("x@y.com", { email: "x@y.com", email_hash: "", name: null, status: "confirmed", nurture_step: 2, nurture_at: new Date(Date.now() - 6 * 86400e3).toISOString() });
   const held = await runLeadNurture(env(store), { sqlFactory: db.factory, salesOpen: false });
   assert.equal(held.held, 1); assert.equal(sent.length, 0);
   const open = await runLeadNurture(env(store), { sqlFactory: db.factory, salesOpen: true });
@@ -78,6 +78,7 @@ test("nurture holds the catalog e-mail while sales are closed; opt-out stops eve
 });
 
 test("nurture copy only uses catalog prices and the 7-day guarantee", () => {
+  assert.doesNotMatch(nurtureEmail(1, { name: "", optOutUrl: "u" }).text, /vendas-na-pratica|R\$/);
   const text = nurtureEmail(2, { name: "", optOutUrl: "u" }).text;
   for (const m of text.matchAll(/R\$ (\d+)/g)) assert.ok([197, 247, 297, 397].includes(Number(m[1])));
   assert.match(text, /7 dias/);

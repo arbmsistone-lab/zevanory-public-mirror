@@ -80,7 +80,7 @@ export function nurtureEmail(step, { name, optOutUrl }) {
   const hi = name ? `Olá, ${name}!` : "Olá!";
   const sign = `\n\nEquipe ZEVANORY\n${SUPPORT_EMAIL}\n\nNão quer mais receber? ${optOutUrl}`;
   if (step === 0) return { subject: "Seu checklist: 15 minutos por dia para organizar o negócio", text: `${hi}\n\nAqui está o seu checklist gratuito:\n${CHECKLIST_URL}\n\nComece hoje pelo bloco do caixa (5 minutos). Em 2 dias eu te mando um jeito simples de não perder clientes por falta de follow-up.` + sign };
-  if (step === 1) return { subject: "Follow-up: o hábito que mais recupera vendas perdidas", text: `${hi}\n\nA maior parte das vendas que se perdem não é por preço: é porque ninguém voltou a falar com o cliente.\n\nTeste esta semana:\n1. Liste os contatos que pediram preço e não fecharam.\n2. Envie uma mensagem curta, com uma pergunta concreta (ex.: "Ficou alguma dúvida sobre o prazo?").\n3. Anote a resposta e marque o próximo passo.\n\nSe quiser o processo completo, com modelos prontos: ${SALES}/vendas-na-pratica` + sign };
+  if (step === 1) return { subject: "Follow-up: o hábito que reduz oportunidades perdidas", text: `${hi}\n\nUm processo comercial melhora quando cada conversa tem um próximo passo claro.\n\nTeste esta semana:\n1. Registre apenas contatos que iniciaram a conversa ou deram consentimento.\n2. Responda a dúvida concreta antes de sugerir qualquer próximo passo.\n3. Anote o resultado para não repetir mensagens.\n\nEsta mensagem é apenas uma dica prática; não contém oferta.` + sign };
   return { subject: "Os 5 pacotes da ZEVANORY (com garantia de 7 dias)", text: `${hi}\n\nSe o checklist ajudou, estes materiais aprofundam cada parte com modelos, planilhas e passo a passo:\n\n• IA na Prática — R$ 197\n• Vendas na Prática — R$ 197\n• Lucro & Caixa — R$ 247\n• Combo IA + Vendas — R$ 297\n• Negócio Completo — R$ 397\n\nTodos são digitais, chegam por e-mail após o pagamento e têm 7 dias de garantia.\n${SALES}/solucoes` + sign };
 }
 
@@ -136,7 +136,7 @@ export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now =
       if (now - new Date(lead.nurture_at).getTime() > 30 * DAY) await sql.query("update zevanory_leads set nurture_step=3 where email=$1", [lead.email]);
       out.held += 1; continue;
     }
-    if (step === 2 && now - new Date(lead.nurture_at).getTime() < 3 * DAY) continue; // D+5 overall
+    if (step === 2 && now - new Date(lead.nurture_at).getTime() < 5 * DAY) continue; // one and only offer at D+7 overall
     const optOutUrl = await leadOptOutLink(env, lead.email);
     const mail = nurtureEmail(step, { name: lead.name, optOutUrl });
     const ok = await sendEmail(env, { to: lead.email, ...mail, unsubscribeUrl: optOutUrl, idempotencyKey: `zevanory-lead-${await sha256Hex(lead.email)}-s${step}` });

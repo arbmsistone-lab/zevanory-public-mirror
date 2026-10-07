@@ -7,6 +7,7 @@ import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-ale
 import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } from "./mercadopago-webhook-safety.mjs";
 import { chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
 import { appendBlogSitemap, renderBlogArticle, renderBlogIndex, renderChannelsPage, runMultichannelAutonomy } from "./multichannel-autonomy.mjs";
+import { handleMetaSocialInbound, runInboundLifecycle } from "./inbound-autonomy.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
@@ -15447,6 +15448,12 @@ async function handler18(req, res) {
   } catch {
     return json14(res, 400, { error: "invalid_json", accepted: false });
   }
+  if (payload?.object !== "whatsapp_business_account") {
+    let socialEnv={...process.env,ZEVANORY_PRIVATE_ARTIFACTS:globalThis.__ZEVANORY_PRIVATE_KV__};
+    if (!socialEnv.META_ACCESS_TOKEN && socialEnv.DATABASE_URL) { try { const credential=await loadMetaCredential(cs(socialEnv.DATABASE_URL),socialEnv); socialEnv={...socialEnv,META_ACCESS_TOKEN:credential.access_token,META_PAGE_ID:credential.page_id,INSTAGRAM_BUSINESS_ACCOUNT_ID:credential.instagram_id,ZEVANORY_PRIVATE_ARTIFACTS:globalThis.__ZEVANORY_PRIVATE_KV__}; } catch {} }
+    const social = await handleMetaSocialInbound(payload, socialEnv).catch((error)=>({handled:true,received:0,replied:0,error:String(error?.message||"meta_social_failed")}));
+    if (social.handled) return json14(res, 200, {accepted:true,inbound_received:social.received,replies_sent:social.replied});
+  }
   const inbound = extractWhatsappInboundMessages(payload);
   if (inbound.length) {
     const sql = process.env.DATABASE_URL ? cs(process.env.DATABASE_URL) : null;
@@ -18227,6 +18234,7 @@ var cloudflare_worker_default = {
     ctx.waitUntil(runNonCommercialAutopilot({ env, scheduledTime: controller.scheduledTime }).catch((error) => console.error("noncommercial_autopilot_failed", String(error?.message || error))));
     ctx.waitUntil(sendDailyCreativeReport(env).then((out) => console.info("creative_daily_report", JSON.stringify(out))).catch((error) => console.error("creative_daily_report_failed", String(error?.message || error))));
     ctx.waitUntil(runMultichannelAutonomy(env,new Date(controller.scheduledTime)).then((out) => console.info("multichannel_cycle",JSON.stringify({generatedAt:out.generatedAt,blog:out.blog,channels:out.channels.map(x=>({id:x.id,mode:x.mode}))}))).catch((error)=>console.error("multichannel_cycle_failed",String(error?.message||error))));
+    ctx.waitUntil(runInboundLifecycle(env,{sqlFactory:cs}).then((out)=>console.info("inbound_lifecycle",JSON.stringify(out))).catch((error)=>console.error("inbound_lifecycle_failed",String(error?.message||error))));
   },
   async fetch(request, env) {
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
