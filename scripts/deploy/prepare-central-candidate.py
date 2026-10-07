@@ -40,6 +40,8 @@ if not isinstance(runtime,dict):
     runtime={}
     c["vars"]["ZEVANORY_RUNTIME_CONFIG"]=runtime
 for key in (
+    "ARBM_SIST_PRIVATE_PILOT_DELIVERY_APPROVED",
+    "ARBM_SIST_SECURE_ARTIFACT_READY",
     "CLOUDFLARE_AI_FREE_ONLY",
     "CLOUDFLARE_AI_DAILY_CALL_LIMIT",
     "VOICE_TTS_PROVIDER",
@@ -51,6 +53,8 @@ for key in (
         runtime[key]=c["vars"].pop(key)
 c["vars"].pop("ZEVANORY_WHATSAPP_E164",None)
 c["vars"].pop("ZEVANORY_WHATSAPP_COUNTRY",None)
+# SUPPORT_CHANNEL duplicates the canonical ZEVANORY_WHATSAPP_DISPLAY fallback.
+c["vars"].pop("SUPPORT_CHANNEL",None)
 
 # Preserve compacted values through normalizeEnv.
 aliases=Path("worker/binding-aliases.mjs")
@@ -136,14 +140,14 @@ print("COMMERCIAL_RETIREMENT_OVERLAY=PASS")
 
 c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
 c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"
-c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"
+runtime_config=c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})
+runtime_config["VOICE_TTS_FAILOVER_ENABLED"]="true"
 # Workers Free caps a Worker at 64 variables (secrets + text) and buying the paid plan
 # breaks the owner's zero-spend rule, so the voice support switch rides in the compact
 # runtime config (resolved by binding-aliases) instead of taking a new variable slot.
-runtime_config=c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})
 if isinstance(runtime_config,dict):
     runtime_config["ZEVANORY_VOICE_SUPPORT_ENABLED"]="true"
-c["vars"]["GEMINI_FREE_TIER_CONFIRMED"]="false"
+runtime_config["GEMINI_FREE_TIER_CONFIRMED"]="false"
 c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"
 c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"
 c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
