@@ -2,7 +2,7 @@ import { saveWhatsappObservation } from "./voice-operational-audit.mjs";
 import { whatsappInboundSafety } from "./whatsapp-inbound-safety.mjs";
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
-import { createWhatsappNeonStore } from "./whatsapp-neon-store.mjs";
+import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
 import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
@@ -18196,7 +18196,7 @@ var cloudflare_worker_default = {
   async scheduled(controller, env, ctx) {
     hydrateRuntimeConfig(env);
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
-    const whatsappOpsStore = process.env.DATABASE_URL ? createWhatsappNeonStore(cs(process.env.DATABASE_URL)) : null;
+    const whatsappOpsStore = getWhatsappOpsStore({ DATABASE_URL: process.env.DATABASE_URL, ZEVANORY_PRIVATE_ARTIFACTS: env.ZEVANORY_PRIVATE_ARTIFACTS }, cs);
     globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = whatsappOpsStore;
     globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = whatsappOpsStore;
     if (whatsappOpsStore?.cleanupExpired) ctx.waitUntil(whatsappOpsStore.cleanupExpired().catch((error) => console.error("whatsapp_neon_cleanup_failed", String(error?.message || error))));
@@ -18206,7 +18206,7 @@ var cloudflare_worker_default = {
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
     globalThis.__ZEVANORY_PRIVATE_KV__ = env.ZEVANORY_PRIVATE_ARTIFACTS || null;
     hydrateRuntimeConfig(env);
-    globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = process.env.DATABASE_URL ? createWhatsappNeonStore(cs(process.env.DATABASE_URL)) : null;
+    globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = getWhatsappOpsStore({ DATABASE_URL: process.env.DATABASE_URL, ZEVANORY_PRIVATE_ARTIFACTS: env.ZEVANORY_PRIVATE_ARTIFACTS }, cs);
     globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__;
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/api/webhooks/meta") return withSecurityHeaders(await handleNodeWebhookFetch(request, handler26), env);
@@ -18490,7 +18490,8 @@ export {
   cloudflare_worker_default as default,
   cs as whatsappProofDatabase,
   runPaidDeliveryWatchdog,
-  runSalesPreflight
+  runSalesPreflight,
+  replyWhatsappConversation
 };
 /*! Bundled license information:
 
