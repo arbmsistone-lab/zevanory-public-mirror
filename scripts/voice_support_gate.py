@@ -75,10 +75,10 @@ subprocess.run(["node", "scripts/whatsapp_audio_runtime_test.mjs"], check=True)
 
 for marker in [
   'c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"',
-  'c["vars"]["VOICE_TTS_FAILOVER_ENABLED"]="true"',
+  'runtime_config["VOICE_TTS_FAILOVER_ENABLED"]="true"',
   'c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"',
   'c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"',
-  'c["vars"]["GEMINI_FREE_TIER_CONFIRMED"]="false"',
+  'runtime_config["GEMINI_FREE_TIER_CONFIRMED"]="false"',
   'c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"',
 ]:
     assert marker in deploy, f"missing production voice var: {marker}"
