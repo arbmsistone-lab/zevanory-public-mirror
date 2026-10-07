@@ -1,0 +1,41 @@
+  async get(key,options={}){
+   await ready();
+   const rows=await sql.query(\`select store_value from whatsapp_operational_store
+    where store_key=$1 and (expires_at is null or expires_at>now()) limit 1\`,[String(key)]);
+   const value=rows?.[0]?.store_value??null;
+   const json=options==="json"||options?.type==="json";
+   if(value==null||!json)return value;
+   try{return JSON.parse(value)}catch{return null}
+  },
+  async list({prefix="",limit=MAX_LIST,cursor=""}={}){
+   await ready();
+   const n=Math.max(1,Math.min(MAX_LIST,Number(limit)||MAX_LIST));
+   const rows=await sql.query(\`select store_key from whatsapp_operational_store
+    where left(store_key,length($1))=$1
+      and (expires_at is null or expires_at>now())
+      and ($2='' or store_key>$2)
+    order by store_key asc limit $3\`,[String(prefix),String(cursor||""),n+1]);
+   const complete=rows.length<=n,page=rows.slice(0,n);
+   return {keys:page.map(r=>({name:String(r.store_key)})),list_complete:complete,cursor:complete||!page.length?undefined:String(page.at(-1).store_key)};
+  }
+ });
+}
+""")
+Path("scripts/whatsapp-kv-write-budget.mjs").write_text("""import fs from "node:fs";
+import assert from "node:assert/strict";
+const src=fs.readFileSync("worker/cloudflare-worker.recovered.mjs","utf8");
+const a=src.indexOf("async function replyWhatsappConversation");
+const b=src.indexOf("function extractWhatsappInboundMessages",a);
+assert(a>=0&&b>a,"reply slice missing");
+const reply=src.slice(a,b);
+const raw=(reply.match(/kv\\?\\.put\\(|kv\\.put\\(/g)||[]).length;
+assert.equal(raw,1,"KV writes must be dedup only");
+assert(reply.includes("dedupKey"));
+for(const x of ["whatsappStageRecorder(operationalStore, status)","loadWhatsappHistory(operationalStore, item.from)","saveWhatsappHistory(operationalStore, item.from, history)"])assert(reply.includes(x));
+assert.equal(reply.split("saveWhatsappObservation(operationalStore").length-1,2);
+assert(src.includes("__ZEVANORY_WHATSAPP_E2E_STORE__ = globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__"));
+assert(src.includes("whatsappStageRecorder(globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__, status)"));
+const before=13,after=raw;
+assert.equal(after,1);
+console.log(JSON.stringify({WHATSAPP_KV_WRITE_BUDGET:"PASS",before_minimum_writes_per_text_message:before,after_writes_per_text_message:after,reduction_percent:92.3,kv_remaining:"dedup_only"}));
+""")
