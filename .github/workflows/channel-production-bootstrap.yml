@@ -24,6 +24,8 @@ jobs:
           for name in CLOUDFLARE_API_TOKEN TELEGRAM_BOT_TOKEN TELEGRAM_CHANNEL_ID; do
             test -n "${!name:-}" || { echo "missing secret: $name"; exit 1; }
           done
+      - name: Prove Telegram identity, publish welcome and pin
+        run: node scripts/channels/prove-telegram.mjs
       - name: Synchronize Telegram secrets to zevanory Worker
         shell: bash
         run: |
@@ -31,8 +33,6 @@ jobs:
           put_secret(){ local name="$1" value="${!1}"; printf '%s' "$value" | npx --yes wrangler@4.143.0 secret put "$name" --name zevanory; }
           put_secret TELEGRAM_BOT_TOKEN
           put_secret TELEGRAM_CHANNEL_ID
-      - name: Prove Telegram identity, publish welcome and pin
-        run: node scripts/channels/prove-telegram.mjs
 
   youtube:
     runs-on: ubuntu-latest
