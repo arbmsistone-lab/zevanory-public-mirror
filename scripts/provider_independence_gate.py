@@ -14,6 +14,16 @@ def fail(msg: str) -> int:
     print(f"FAIL: {msg}")
     return 2
 
+def validate_live_sales_authority(body: dict, sales: dict, commercial: list[str]) -> str | None:
+    expected_sales = "enabled" if sales.get("open") is True else "globally-blocked"
+    if body.get("runtime", {}).get("sales") != expected_sales:
+        return f"sales authority mismatch: expected {expected_sales}"
+    if expected_sales == "enabled" and len(commercial) < 3:
+        return f"commercial quorum below 3 while sales are open: {commercial}"
+    if expected_sales == "globally-blocked" and commercial:
+        return f"commercial channels unexpectedly active while sales are closed: {commercial}"
+    return None
+
 def main() -> int:
     try:
         c = json.loads(EVIDENCE.read_text(encoding="utf-8"))
@@ -67,6 +77,15 @@ if(degraded.mode!=="degraded_fail_closed") throw new Error("degraded mode mismat
             return fail(f"production status HTTP {r.status}")
         body = json.loads(r.read().decode())
 
+    sales_req = urllib.request.Request(
+        "https://zevanory.api.br/api/sales/status",
+        headers={"User-Agent":"ZEVANORY-Provider-Independence/3.0","Accept":"application/json"}
+    )
+    with urllib.request.urlopen(sales_req, timeout=20) as r:
+        if r.status != 200:
+            return fail(f"production sales status HTTP {r.status}")
+        sales = json.loads(r.read().decode())
+
     channels = body.get("channel_readiness", {})
     technical = [
         name for name, state in channels.items()
@@ -80,10 +99,9 @@ if(degraded.mode!=="degraded_fail_closed") throw new Error("degraded mode mismat
     ]
     if len(technical) < 3:
         return fail(f"technical quorum below 3: {technical}")
-    if body.get("runtime", {}).get("sales") != "globally-blocked":
-        return fail("sales fail-closed state regressed")
-    if commercial:
-        return fail(f"commercial channels unexpectedly active: {commercial}")
+    sales_error = validate_live_sales_authority(body, sales, commercial)
+    if sales_error:
+        return fail(sales_error)
 
     cfg = ROOT / "wrangler.continuity-proof.jsonc"
     cfg.write_text("""{
