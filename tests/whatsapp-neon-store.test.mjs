@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getWhatsappOpsStore, resetWhatsappOpsStoreMemoForTest } from "../worker/whatsapp-neon-store.mjs";
+import { getWhatsappOpsStore, publishWhatsappOpsStats, resetWhatsappOpsStoreMemoForTest, WHATSAPP_OPS_STATS_KEY } from "../worker/whatsapp-neon-store.mjs";
 import { readWhatsappAuditObserve } from "../worker/whatsapp-onboarding.mjs";
 
-function fakeSql(){
+function fakeSql(statsRows=[]){
  const calls=[], values=new Map();
  return {calls,values,async query(text,params=[]){
   text=String(text); calls.push({text,params});
+  if(/^select 'whatsapp_stage_events' as table_name/i.test(text.trim())) return statsRows;
   if(/^insert into /i.test(text.trim())){ values.set(String(params[0]),String(params[1])); return []; }
   if(/^select store_value/i.test(text.trim())) return values.has(String(params[0])) ? [{store_value:values.get(String(params[0]))}] : [];
   if(/^select store_key/i.test(text.trim())){
@@ -54,8 +55,37 @@ test("without DATABASE_URL operational writes are no-op and legacy reads remain 
  const kv=fakeKv({"whatsapp:observation:old":'{"legacy":true}'});
  const store=getWhatsappOpsStore({ZEVANORY_PRIVATE_ARTIFACTS:kv});
  await store.put("whatsapp:observation:new","{}",{expirationTtl:60});
+ assert.equal(await publishWhatsappOpsStats(store,kv,"2026-10-07T17:01:00.000Z"),null);
  assert.equal(kv.puts.length,0);
  assert.deepEqual(await store.get("whatsapp:observation:old",{type:"json"}),{legacy:true});
+});
+
+test("hourly stats publish only counts and timestamps to KV for three days",async()=>{
+ resetWhatsappOpsStoreMemoForTest();
+ const sql=fakeSql([
+  {table_name:"whatsapp_stage_events",row_count:"4",max_updated_at:"2026-10-07T17:00:00.000Z"},
+  {table_name:"whatsapp_history",row_count:"3",max_updated_at:"2026-10-07T16:59:00.000Z"},
+  {table_name:"whatsapp_observations",row_count:"2",max_updated_at:null},
+  {table_name:"whatsapp_evidence",row_count:"1",max_updated_at:"2026-10-07T16:58:00.000Z"}
+ ]),kv=fakeKv();
+ const store=getWhatsappOpsStore({DATABASE_URL:"postgres://stats",ZEVANORY_PRIVATE_ARTIFACTS:kv},()=>sql);
+ await store.cleanupExpired();
+ const payload=await publishWhatsappOpsStats(store,kv,"2026-10-07T17:01:00.000Z");
+ assert.deepEqual(payload,{
+  generatedAt:"2026-10-07T17:01:00.000Z",
+  tables:{
+   whatsapp_stage_events:{count:4,max_updated_at:"2026-10-07T17:00:00.000Z"},
+   whatsapp_observations:{count:2,max_updated_at:null},
+   whatsapp_evidence:{count:1,max_updated_at:"2026-10-07T16:58:00.000Z"},
+   whatsapp_history:{count:3,max_updated_at:"2026-10-07T16:59:00.000Z"}
+  }
+ });
+ assert.equal(kv.puts.length,1);
+ assert.equal(kv.puts[0].k,WHATSAPP_OPS_STATS_KEY);
+ assert.deepEqual(kv.puts[0].o,{expirationTtl:259200});
+ assert.deepEqual(JSON.parse(kv.puts[0].v),payload);
+ assert.equal(sql.calls.filter(call=>/^select 'whatsapp_stage_events' as table_name/i.test(call.text.trim())).length,1);
+ for(const table of["whatsapp_stage_events","whatsapp_history","whatsapp_observations","whatsapp_evidence"]) assert.match(sql.calls.at(-1).text,new RegExp(table));
 });
 
 test("audit-observe reads observation and history from Neon",async()=>{

@@ -2,10 +2,6 @@ name: WhatsApp Neon live proof
 
 on:
   workflow_dispatch:
-  push:
-    branches: [gh-pages]
-    paths:
-      - ".github/workflows/whatsapp-neon-live-proof.yml"
 
 permissions:
   contents: read
@@ -50,21 +46,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      PGCONNECT_TIMEOUT: "10"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
     steps:
-      - name: Print counts and newest timestamps only
+      - name: Print Worker-authoritative counts and newest timestamps only
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${DATABASE_URL:-}"
-          psql -X -v ON_ERROR_STOP=1 "$DATABASE_URL" -At -F '|' <<'SQL'
-          SELECT 'whatsapp_stage_events', count(*), coalesce(max(updated_at)::text, 'null') FROM whatsapp_stage_events
-          UNION ALL
-          SELECT 'whatsapp_history', count(*), coalesce(max(updated_at)::text, 'null') FROM whatsapp_history
-          UNION ALL
-          SELECT 'whatsapp_observations', count(*), coalesce(max(updated_at)::text, 'null') FROM whatsapp_observations
-          UNION ALL
-          SELECT 'whatsapp_evidence', count(*), coalesce(max(updated_at)::text, 'null') FROM whatsapp_evidence
-          ORDER BY 1;
-          SQL
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          endpoint="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values/zpc-whatsapp-ops:v1:stats"
+          code="$(curl -sS -o /tmp/whatsapp-ops-stats.json -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$endpoint")"
+          test "$code" = "200"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const raw=JSON.parse(fs.readFileSync('/tmp/whatsapp-ops-stats.json','utf8'));
+          const expected=['whatsapp_stage_events','whatsapp_history','whatsapp_observations','whatsapp_evidence'];
+          if(!raw?.generatedAt||!raw?.tables)throw new Error('whatsapp_ops_stats_unavailable');
+          console.log(JSON.stringify({generatedAt:String(raw.generatedAt)}));
+          for(const table of expected){
+            const row=raw.tables[table];
+            if(!row||!Number.isFinite(Number(row.count)))throw new Error('whatsapp_ops_stats_invalid:'+table);
+            console.log(JSON.stringify({table,count:Number(row.count),max_updated_at:row.max_updated_at==null?null:String(row.max_updated_at)}));
+          }
+          NODE

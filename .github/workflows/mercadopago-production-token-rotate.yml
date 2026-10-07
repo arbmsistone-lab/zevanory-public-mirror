@@ -9,23 +9,13 @@ permissions:
 jobs:
   rotate-and-preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 75
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
       KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
       MERCADOPAGO_PROD_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_PROD_ACCESS_TOKEN }}
-      MERCADOPAGO_WEBHOOK_SECRET: ${{ secrets.MERCADOPAGO_WEBHOOK_SECRET }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-      FULFILLMENT_OPERATOR_TOKEN: ${{ secrets.FULFILLMENT_OPERATOR_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
       - name: Require and validate the production credential
         shell: bash
         run: |
@@ -47,67 +37,41 @@ jobs:
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           printf '%s' "$MERCADOPAGO_PROD_ACCESS_TOKEN" | \
             npx --yes wrangler@4.143.0 secret put MERCADOPAGO_ACCESS_TOKEN --name zevanory
+          echo "ROTATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           echo "WORKER_SECRET_ROTATION=PASS"
           echo "WORKER_SECRET_NAME=MERCADOPAGO_ACCESS_TOKEN"
 
-      - name: Run the canonical preflight and persist its safe result
+      - name: Wait for the authoritative Worker preflight
         shell: bash
         run: |
           set -euo pipefail
+          endpoint="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values/zpc-sales-preflight:v1"
+          deadline=$((SECONDS + 4200))
+          fresh=0
+          while (( SECONDS < deadline )); do
+            code="$(curl -sS -o /tmp/zpc-sales-preflight.json -w '%{http_code}' \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$endpoint")"
+            if [ "$code" = "200" ] && ROTATED_AT="$ROTATED_AT" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const raw=JSON.parse(fs.readFileSync('/tmp/zpc-sales-preflight.json','utf8'));
+          const generatedAt=String(raw?.generatedAt??raw?.generated_at??raw?.at??'');
+          process.exit(Date.parse(generatedAt)>Date.parse(process.env.ROTATED_AT)?0:1);
+          NODE
+            then
+              fresh=1
+              break
+            fi
+            echo "PREFLIGHT_WAITING_FOR_WORKER=1"
+            sleep 60
+          done
+          test "$fresh" = "1"
           node --input-type=module <<'NODE'
-          import { runSalesPreflight } from './worker/cloudflare-worker.recovered.mjs';
-
-          const account = process.env.CLOUDFLARE_ACCOUNT_ID;
-          const namespace = process.env.KV_NAMESPACE_ID;
-          const apiToken = process.env.CLOUDFLARE_API_TOKEN;
-          const api = `https://api.cloudflare.com/client/v4/accounts/${account}`;
-          const headers = { authorization: `Bearer ${apiToken}` };
-          const cf = async (path, init = {}) => {
-            const response = await fetch(api + path, { ...init, headers: { ...headers, ...(init.headers || {}) } });
-            const body = await response.json().catch(() => ({}));
-            if (!response.ok || body?.success === false) throw new Error(`cloudflare_api_${response.status}`);
-            return body.result;
-          };
-
-          const settings = await cf('/workers/scripts/zevanory/settings');
-          const runtime = {};
-          for (const binding of settings?.bindings || []) {
-            if (binding?.type === 'plain_text') runtime[binding.name] = String(binding.text ?? '');
-          }
-          Object.assign(runtime, {
-            MERCADOPAGO_ACCESS_TOKEN: process.env.MERCADOPAGO_PROD_ACCESS_TOKEN,
-            MERCADOPAGO_WEBHOOK_SECRET: process.env.MERCADOPAGO_WEBHOOK_SECRET,
-            DATABASE_URL: process.env.DATABASE_URL,
-            RESEND_API_KEY: process.env.RESEND_API_KEY,
-            FULFILLMENT_OPERATOR_TOKEN: process.env.FULFILLMENT_OPERATOR_TOKEN
-          });
-
-          const kv = {
-            async list({ prefix = '', limit = 100 } = {}) {
-              const query = new URLSearchParams({ prefix, limit: String(limit) });
-              const keys = await cf(`/storage/kv/namespaces/${namespace}/keys?${query}`);
-              return { keys: Array.isArray(keys) ? keys : [] };
-            },
-            async put(key, value, options = {}) {
-              const query = new URLSearchParams();
-              if (options.expirationTtl) query.set('expiration_ttl', String(options.expirationTtl));
-              const suffix = query.size ? `?${query}` : '';
-              const response = await fetch(`${api}/storage/kv/namespaces/${namespace}/values/${encodeURIComponent(key)}${suffix}`, {
-                method: 'PUT',
-                headers: { ...headers, 'content-type': 'text/plain; charset=utf-8' },
-                body: String(value)
-              });
-              if (!response.ok) throw new Error(`cloudflare_kv_put_${response.status}`);
-            }
-          };
-          runtime.ZEVANORY_PRIVATE_ARTIFACTS = kv;
-          globalThis.__ZEVANORY_PRIVATE_KV__ = kv;
-
-          const result = await runSalesPreflight(runtime);
-          console.log(JSON.stringify({ generatedAt: result.at }));
-          for (const row of result.checks || []) {
-            console.log(JSON.stringify({ id: row.id, ok: row.ok === true, detail: String(row.detail || '') }));
-          }
-          const tokenCheck = (result.checks || []).find((row) => row.id === 'mercadopago_production_token');
-          if (tokenCheck?.ok !== true) throw new Error('mercadopago_production_token_not_ready');
+          import fs from 'node:fs';
+          const raw=JSON.parse(fs.readFileSync('/tmp/zpc-sales-preflight.json','utf8'));
+          const generatedAt=String(raw?.generatedAt??raw?.generated_at??raw?.at??'');
+          const rows=Array.isArray(raw?.checks)?raw.checks:[];
+          console.log(JSON.stringify({generatedAt}));
+          for(const row of rows)console.log(JSON.stringify({id:String(row?.id??''),ok:row?.ok===true,detail:String(row?.detail??'')}));
+          const token=rows.find(row=>row?.id==='mercadopago_production_token');
+          if(token?.ok!==true)throw new Error('mercadopago_production_token_not_ready');
           NODE
