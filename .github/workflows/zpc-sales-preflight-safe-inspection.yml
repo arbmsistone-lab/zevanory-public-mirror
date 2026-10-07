@@ -31,6 +31,15 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const raw = JSON.parse(fs.readFileSync('/tmp/zpc-sales-preflight.json','utf8'));
+          const generatedAt = String(raw?.generatedAt ?? raw?.generated_at ?? '');
+          if (generatedAt) {
+            const t = Date.parse(generatedAt);
+            const ageMs = Number.isFinite(t) ? Date.now() - t : NaN;
+            const stale = Number.isFinite(ageMs) ? ageMs > 3 * 60 * 60 * 1000 : null;
+            console.log(JSON.stringify({generatedAt,stale}));
+          } else {
+            console.log(JSON.stringify({generatedAt:null,stale:null}));
+          }
           const rows = Array.isArray(raw) ? raw :
             Array.isArray(raw?.checks) ? raw.checks :
             raw?.checks && typeof raw.checks === 'object' ? Object.entries(raw.checks).map(([id,v]) => ({id,...(v||{})})) : [];
