@@ -30,6 +30,7 @@ export async function synthesizeVoice(text, { apiKey, env = {}, kv = null, fetch
     const hit = await kv.get(cacheKey, "arrayBuffer");
     if (hit && validMp3(new Uint8Array(hit))) {
       await onStage("tts_done", { voice_cached: true });
+      await onStage("encode_skipped_provider_encoded", { encode_provider: "cache", encode_bytes: hit.byteLength, format: "mp3", mime: "audio/mpeg" });
       return { bytes: new Uint8Array(hit), mime: "audio/mpeg", provider: "cache", model: "cache", cached: true };
     }
   }
@@ -55,6 +56,7 @@ export async function synthesizeVoice(text, { apiKey, env = {}, kv = null, fetch
   if (!validMp3(bytes) || bytes.length > 12 * 1024 * 1024) throw new Error("voice_synth_invalid_mp3");
   const model = String(response.headers.get("x-voice-model") || "gemini");
   await onStage("tts_done", { voice_cached: false, voice_bytes: bytes.length });
+  await onStage("encode_skipped_provider_encoded", { encode_provider: "render-gemini", encode_bytes: bytes.length, format: "mp3", mime: "audio/mpeg" });
   if (kv?.put) await kv.put(cacheKey, bytes, { expirationTtl: 60 * 60 * 24 * 30 });
   return { bytes, mime: "audio/mpeg", provider: "render-gemini", model, cached: false };
 }
