@@ -84,6 +84,9 @@ export default{async fetch(request,env,ctx){
   if(response.status===200&&page) countView(request,env,ctx,page);
   const headers=new Headers(response.headers);
   headers.set("x-robots-tag","index,follow");
+  // Static assets (css/js/svg/images) are cached by browsers and the edge; pages revalidate.
+  if(response.status===200&&!page&&/\.(css|js|svg|png|webp|jpg|jpeg|ico|woff2?)$/i.test(url.pathname)) headers.set("cache-control","public, max-age=86400, stale-while-revalidate=604800");
+  else if(response.status===200&&page) headers.set("cache-control","public, max-age=300, stale-while-revalidate=3600");
   applySecurityHeaders(headers);
   return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
 }};
