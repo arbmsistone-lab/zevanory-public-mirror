@@ -10,6 +10,7 @@ on:
       - "worker/live-runtime-status.mjs"
       - "worker/support-knowledge.mjs"
       - "worker/cloudflare-worker.recovered.mjs"
+      - "worker/mercadopago-webhook-safety.mjs"
       - "worker/sandbox-proof-v2.mjs"
       - "worker/refund-flow.mjs"
       - "worker/lead-magnet.mjs"
@@ -29,6 +30,7 @@ on:
       - "worker/whatsapp-e2e-evidence.mjs"
       - "worker/whatsapp-neon-store.mjs"
       - "tests/whatsapp-neon-store.test.mjs"
+      - "tests/mercadopago-webhook-safety.test.mjs"
       - "worker/evidence-control-plane.mjs"
       - "tests/live-runtime-status.test.mjs"
       - "worker/zevanory-control-core.mjs"
@@ -123,6 +125,7 @@ jobs:
           python3 scripts/deploy/prepare-central-candidate.py
           node --check worker/cloudflare-worker.compat.mjs
           node --check worker/live-runtime-status.mjs
+          node --check worker/mercadopago-webhook-safety.mjs
           node --check worker/post-sale.mjs
           node --check worker/owner-alerts.mjs
           node --check worker/sales-control.mjs
@@ -137,6 +140,7 @@ jobs:
           node --check worker/whatsapp-neon-store.mjs
           node --test tests/whatsapp-neon-store.test.mjs
           node --test tests/live-runtime-status.test.mjs
+          node --test tests/mercadopago-webhook-safety.test.mjs
           node --check worker/voice-final-closure.mjs
           node --check public/control-plane-vnext.js
           npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir /tmp/central-final

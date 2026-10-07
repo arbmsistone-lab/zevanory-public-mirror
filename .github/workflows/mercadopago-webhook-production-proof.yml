@@ -1,0 +1,42 @@
+name: Mercado Pago production webhook proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove-signature:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
+      EXPECTED_APPLICATION_ID: "1481661361903088"
+    steps:
+      - name: Print only safe production-signature evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          endpoint="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values/zpc-mercadopago-webhook-signature:v1"
+          code="$(curl -sS -o /tmp/webhook-proof.json -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$endpoint")"
+          test "$code" = "200"
+          EXPECTED_APPLICATION_ID="$EXPECTED_APPLICATION_ID" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const raw=JSON.parse(fs.readFileSync('/tmp/webhook-proof.json','utf8'));
+          const proof={
+            generatedAt:String(raw?.generatedAt||''),
+            applicationId:String(raw?.applicationId||''),
+            signature_valid:raw?.signature_valid===true,
+            x_request_id:String(raw?.x_request_id||'')
+          };
+          console.log(JSON.stringify(proof));
+          if(!proof.generatedAt)throw new Error('webhook_proof_missing_timestamp');
+          if(proof.applicationId!==process.env.EXPECTED_APPLICATION_ID)throw new Error('webhook_application_mismatch');
+          if(proof.signature_valid!==true)throw new Error('webhook_signature_not_valid');
+          if(!proof.x_request_id)throw new Error('webhook_request_id_missing');
+          NODE
