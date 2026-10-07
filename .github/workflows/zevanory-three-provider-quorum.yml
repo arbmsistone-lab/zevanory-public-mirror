@@ -39,6 +39,17 @@ jobs:
           ACTUAL_SHA="$(jq -r '.deployment.commit_sha // empty' /tmp/release.json)"
           test "$ACTUAL_SHA" = "$EXPECTED_SHA"
           echo "P14_THREE_PROVIDER_QUORUM_EXACT_RELEASE=PASS sha=$ACTUAL_SHA"
+      - name: Diagnostic current continuity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PRIMARY_STATUS_BEGIN"
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/status | jq '{runtime,channel_readiness}'
+          echo "PRIMARY_STATUS_END"
+          echo "CONTINUITY_BEGIN"
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/continuity | jq .
+          echo "CONTINUITY_END"
+
       - name: Verify open independent-provider quorum
         run: |
           set -euo pipefail
