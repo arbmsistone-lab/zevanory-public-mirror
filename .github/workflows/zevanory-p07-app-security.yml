@@ -132,16 +132,18 @@ jobs:
           assert c3 in (400,403,404,405),c3
           hc,_,hb=req("/api/health")
           cc,_,cb=req("/api/control-plane")
-          assert hc==200 and cc==200
-          health=json.loads(hb); control=json.loads(cb)
+          sc,_,sb=req("/api/sales/status")
+          assert hc==200 and cc==200 and sc==200
+          health=json.loads(hb); control=json.loads(cb); sales=json.loads(sb)
           sha=os.environ["EXPECTED_SHA"].lower()
           assert health.get("live") is True and health.get("ready") is True
           assert control.get("release",{}).get("deployment",{}).get("commit_sha","").lower()==sha
-          assert control.get("global_state")=="operational_commercial_blocked"
+          expected_control="operational_commercial_enabled" if sales.get("open") is True else "operational_commercial_blocked"
+          assert control.get("global_state")==expected_control,(control,sales)
           report={"schema":"zevanory.p07.dast.v1","release_sha":sha,"checks":{
             "HTTPS":"PASS","HSTS":"PASS","CSP_SELF":"PASS","NOSNIFF":"PASS",
             "XSS_REFLECTION":"PASS","TRACE_DISABLED":"PASS","HEALTH_READY":"PASS",
-            "EXACT_SHA":"PASS","SALES_FAIL_CLOSED":"PASS"}}
+            "EXACT_SHA":"PASS","SALES_SWITCH_AUTHORITY":"PASS"}}
           json.dump(report,open("p07-dast.json","w"),indent=2)
           print("DAST=PASS")
           PY

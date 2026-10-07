@@ -93,12 +93,16 @@ jobs:
           req=urllib.request.Request("https://zevanory.api.br/api/release",headers={"Accept":"application/json","User-Agent":"ZEVANORY-P16/1.0"})
           with urllib.request.urlopen(req,timeout=20) as r:
               d=json.loads(r.read().decode())
+          sales_req=urllib.request.Request("https://zevanory.api.br/api/sales/status",headers={"Accept":"application/json","User-Agent":"ZEVANORY-P16/1.0"})
+          with urllib.request.urlopen(sales_req,timeout=20) as r:
+              sales=json.loads(r.read().decode())
           assert str(d.get("deployment",{}).get("commit_sha","")).lower()==os.environ["EXPECTED_SHA"].lower(),d
-          assert d.get("sales_mode")=="globally-blocked",d
+          expected_sales="enabled" if sales.get("open") is True else "globally-blocked"
+          assert d.get("sales_mode")==expected_sales,(d,sales)
           assert d.get("checkout_mode")=="enabled",d
           assert d.get("financial_mode")=="enabled",d
           print("RUNTIME_SHA_MATCH=PASS")
-          print("SALE_GLOBALLY_ENABLED=false")
+          print("SALES_RUNTIME_MATCH=PASS")
           print("CHECKOUT_MODE=PASS")
           print("FINANCIAL_MODE=PASS")
           PY

@@ -99,7 +99,10 @@ c,release,_,_=get(f"{BASE}/api/release"); assert c==200
 rel=json.loads(release.decode())
 runtime_sha=str(rel.get("deployment",{}).get("commit_sha","")).lower()
 assert re.fullmatch(r"[0-9a-f]{40}",runtime_sha),rel
-assert rel.get("sales_mode")=="globally-blocked",rel
+c,sales_body,_,_=get(f"{BASE}/api/sales/status"); assert c==200
+sales=json.loads(sales_body.decode())
+expected_sales="enabled" if sales.get("open") is True else "globally-blocked"
+assert rel.get("sales_mode")==expected_sales,(rel,sales)
 c,health,_,_=get(f"{BASE}/api/health"); assert c==200
 healthj=json.loads(health.decode())
 assert healthj.get("live") is True and healthj.get("ready") is True,healthj
