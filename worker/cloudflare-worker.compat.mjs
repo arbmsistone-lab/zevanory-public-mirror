@@ -12,7 +12,7 @@ import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
 import { handleAdminRequest, isAdminAuthorized } from "./admin-console.mjs";
 import { CONTROL_PLANE_VNEXT_JS } from "./control-plane-vnext-source.mjs";
-import { handleControlPlaneV2Request, reconcileControlPlane } from "./evidence-control-plane.mjs";
+import { handleControlPlaneV2Request, readControlState, reconcileControlPlane } from "./evidence-control-plane.mjs";
 import { handleControlActionRequest } from "./control-action-plane.mjs";
 import { handleZea10AutonomyRequest } from "./zea10-autonomy.mjs";
 import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
@@ -24,7 +24,7 @@ import { runOwnerAlertDigest } from "./owner-alerts.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
-import { projectLiveStatus, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
+import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
 
 async function loadWhatsappBrokerState(binding) {
   if (!binding?.fetch) return null;
@@ -409,6 +409,9 @@ const wrapped = {
     if (url.pathname === "/api/control-plane") {
       const { response, body } = await fetchJsonThroughWorker(request, normalized, ctx);
       if (!response.ok || !body) return response;
+      const releaseSha = body?.release?.deployment?.commit_sha || body?.proof_chain?.sha || null;
+      const zees16 = await readControlState(normalized).catch(() => null);
+      body.zea10_live = projectLocalZea10(zees16, releaseSha);
       if (!body.trust_chain) body.trust_chain = legacyTrustProjection(body);
       if (body.policy && typeof body.policy === "object") {
         body.policy = {
