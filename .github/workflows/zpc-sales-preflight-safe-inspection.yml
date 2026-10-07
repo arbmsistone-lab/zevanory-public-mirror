@@ -1,0 +1,44 @@
+name: ZPC sales preflight safe inspection
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zpc-sales-preflight-safe-inspection.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Read and print safe preflight fields only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          npx --yes wrangler@4.143.0 kv key get "zpc-sales-preflight:v1" \
+            --namespace-id "$KV_NAMESPACE_ID" --remote > /tmp/zpc-sales-preflight.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const raw = JSON.parse(fs.readFileSync('/tmp/zpc-sales-preflight.json','utf8'));
+          const rows = Array.isArray(raw) ? raw :
+            Array.isArray(raw?.checks) ? raw.checks :
+            raw?.checks && typeof raw.checks === 'object' ? Object.entries(raw.checks).map(([id,v]) => ({id,...(v||{})})) : [];
+          if (!rows.length) throw new Error('preflight has no checks');
+          for (const row of rows) {
+            const id = String(row?.id ?? row?.key ?? row?.name ?? 'unknown');
+            const ok = row?.ok === true;
+            const detail = String(row?.detail ?? row?.message ?? row?.reason ?? '');
+            console.log(JSON.stringify({id,ok,detail}));
+          }
+          NODE
