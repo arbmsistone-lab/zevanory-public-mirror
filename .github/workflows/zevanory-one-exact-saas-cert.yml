@@ -1,22 +1,7 @@
 name: zevanory-one-exact-saas-cert
 
+# ZEVANORY ONE is retired from the public surface (410). Kept for manual re-certification only.
 on:
-  pull_request:
-    branches: [gh-pages]
-    paths:
-      - "zevanory-one/**"
-      - "product.css"
-      - "contracts/zevanory-one-saas.v1.json"
-      - "scripts/zevanory_one_exact_cert.py"
-      - ".github/workflows/zevanory-one-exact-saas-cert.yml"
-  push:
-    branches: [gh-pages]
-    paths:
-      - "zevanory-one/**"
-      - "product.css"
-      - "contracts/zevanory-one-saas.v1.json"
-      - "scripts/zevanory_one_exact_cert.py"
-      - ".github/workflows/zevanory-one-exact-saas-cert.yml"
   workflow_dispatch:
 
 permissions:
