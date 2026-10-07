@@ -2,6 +2,7 @@ import { saveWhatsappObservation } from "./voice-operational-audit.mjs";
 import { whatsappInboundSafety } from "./whatsapp-inbound-safety.mjs";
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
+import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
@@ -15109,6 +15110,11 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
   } else {
     const history = await loadWhatsappHistory(kv, item.from);
     reply = await converseWhatsapp({ ai: runtimeAi(), question, history, salesOpen: process.env.SALE_GLOBALLY_ENABLED === "true" });
+    if (OWNER_ESCALATION_RE.test(question)) {
+      // Never leave a sensitive conversation to the robot alone: tell the customer and alert the owner.
+      reply = { ...reply, body: `${reply.body}\n\nJá chamei um atendente humano da ZEVANORY para continuar com você por aqui.`.slice(0, 1200), escalated: true };
+      alertOwnerNow({ ...process.env, ZEVANORY_PRIVATE_ARTIFACTS: kv }, { channel: "WhatsApp", contact: item.from, excerpt: question, reason: "assunto sensível ou pedido de atendimento humano" }).catch(() => null);
+    }
     history.push({ r: "u", t: question.slice(0, 1200) }, { r: "a", t: reply.body.slice(0, 1200) });
     await saveWhatsappHistory(kv, item.from, history);
   }

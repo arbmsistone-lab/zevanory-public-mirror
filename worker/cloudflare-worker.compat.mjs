@@ -19,6 +19,7 @@ import { handleSandboxProofV2, handleSandboxInboundEmail } from "./sandbox-proof
 import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
+import { runOwnerAlertDigest } from "./owner-alerts.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch } from "./sales-control.mjs";
 
 async function loadWhatsappBrokerState(binding) {
@@ -410,6 +411,7 @@ wrapped.scheduled = async (controller, env, ctx) => {
   const salesOpen = applySalesSwitch(await readSalesSwitch(normalized));
   const tasks = [reconcileControlPlane(wrapped, normalized, ctx).catch(()=>null)];
   tasks.push(publishFunnelSummary(normalized, { sqlFactory: whatsappProofDatabase, production: salesOpen, salesOpen }).then((out) => console.info("funnel_summary", JSON.stringify(out))).catch((error) => console.error("funnel_summary_failed", error instanceof Error ? error.message : String(error))));
+  tasks.push(runOwnerAlertDigest(normalized).then((out) => console.info("owner_alert_digest", JSON.stringify(out))).catch((error) => console.error("owner_alert_digest_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runRefundWatchdog(normalized).then((out) => console.info("refund_watchdog", JSON.stringify(out))).catch((error) => console.error("refund_watchdog_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase, production: salesOpen }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
