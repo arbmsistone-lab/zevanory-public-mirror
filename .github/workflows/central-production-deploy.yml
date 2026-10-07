@@ -31,6 +31,7 @@ on:
       - "worker/voice-chunks.mjs"
       - "worker/voice-operational-audit.mjs"
       - "scripts/deploy/prepare-central-candidate.py"
+      - "scripts/deploy/check-binding-budget.py"
       - "worker/voice-pcm.mjs"
       - "worker/whatsapp-e2e-evidence.mjs"
       - "worker/whatsapp-neon-store.mjs"
@@ -202,6 +203,7 @@ jobs:
           set -euo pipefail
           curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/settings" -o /tmp/settings.json
           python3 scripts/deploy/inspect-bindings.py
+          python3 scripts/deploy/check-binding-budget.py wrangler.central-fix.jsonc /tmp/settings.json
       - name: Verify financial safety boundary without mutating secrets
         if: steps.auth.outputs.available == 'true'
         shell: bash
@@ -225,7 +227,9 @@ jobs:
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          deploy() { npx --yes wrangler@4.143.0 deploy "$@" --keep-vars --config wrangler.central-fix.jsonc --tag="$TARGET_RUNTIME_SHA" --message="ZEVANORY-public-owner-exact-SHA-$TARGET_RUNTIME_SHA" 2>&1 | tee /tmp/central-deploy.log; }
+          # Omitting --keep-vars removes only obsolete dashboard plain-text vars;
+          # Wrangler guarantees that deployments never delete secret bindings.
+          deploy() { npx --yes wrangler@4.143.0 deploy "$@" --config wrangler.central-fix.jsonc --tag="$TARGET_RUNTIME_SHA" --message="ZEVANORY-public-owner-exact-SHA-$TARGET_RUNTIME_SHA" 2>&1 | tee /tmp/central-deploy.log; }
           fail() { tail -15 /tmp/central-deploy.log | tr '\n' ' ' | cut -c1-1800 | sed 's/^/::error title=CENTRAL_DEPLOY_FAILED::/'; echo; exit 1; }
           if ! deploy --strict; then
             # --strict aborts only when the Worker was last changed outside this pipeline
