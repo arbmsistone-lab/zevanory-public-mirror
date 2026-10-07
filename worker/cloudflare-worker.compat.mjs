@@ -21,6 +21,7 @@ import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
 import { runOwnerAlertDigest } from "./owner-alerts.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
+import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 
 async function loadWhatsappBrokerState(binding) {
@@ -128,6 +129,8 @@ const wrapped = {
       if (refund) return refund;
       const postSale = await handlePostSale(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
       if (postSale) return postSale;
+      const reviews = await handleReviews(request, normalized, { sqlFactory: whatsappProofDatabase });
+      if (reviews) return reviews;
       const salesControl = await handleSalesControl(request, normalized, { sqlFactory: whatsappProofDatabase, worker, ctx });
       if (salesControl) return salesControl;
     }

@@ -79,6 +79,14 @@ async function handleLead(request,env){
     return infoPage(res.ok?200:400,res.ok?"Quase lá!":"Não foi possível concluir",`<p>${msg}</p>${res.ok?"<p>Não chegou? Confira a caixa de spam ou promoções.</p>":"<p><a class=\"button primary\" href=\"/material-gratuito\">Voltar</a></p>"}`);
   }catch{return infoPage(503,"Não foi possível concluir","<p>Tente novamente em instantes.</p>")}
 }
+
+// Honest social proof: product pages show the real average rating once there are 3+ ratings.
+let reviewCache={at:0,data:{}};
+async function reviewSummary(env){
+  if(Date.now()-reviewCache.at<600000) return reviewCache.data;
+  try{const r=await env.CORE.fetch("https://zevanory.api.br/api/reviews/summary");const j=await r.json();reviewCache={at:Date.now(),data:(j&&j.products)||{}}}catch{reviewCache={at:Date.now(),data:{}}}
+  return reviewCache.data;
+}
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
   // Refund form lives on the core domain; the public router sends zevanory.api.br/reembolso* here.
@@ -107,5 +115,13 @@ export default{async fetch(request,env,ctx){
   if(response.status===200&&!page&&/\.(css|js|svg|png|webp|jpg|jpeg|ico|woff2?)$/i.test(url.pathname)) headers.set("cache-control","public, max-age=86400, stale-while-revalidate=604800");
   else if(response.status===200&&page) headers.set("cache-control","public, max-age=300, stale-while-revalidate=3600");
   applySecurityHeaders(headers);
+  const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===page);
+  if(response.status===200&&sku&&env?.CORE&&typeof HTMLRewriter!=="undefined"){
+    const r=(await reviewSummary(env))[sku];
+    if(r&&r.count>=3){
+      const text=`★ ${String(r.average).replace(".",",")}/5 · ${r.count} avaliações de clientes`;
+      return new HTMLRewriter().on("main h1",{element(el){el.after(`<p class="review-summary">${text}</p>`,{html:true})}}).transform(new Response(response.body,{status:response.status,statusText:response.statusText,headers}));
+    }
+  }
   return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
 }};

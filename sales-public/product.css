@@ -210,3 +210,4 @@ main{
 @media(max-width:760px){.lead-grid,.checklist-grid{grid-template-columns:1fr}}
 .lead-banner{border:1px solid var(--line);border-radius:20px;background:#0b111a;padding:20px 24px;margin-bottom:24px}
 .lead-banner h2{margin:0 0 8px;font-size:1.3rem}
+.review-summary{margin:12px 0 0;color:#fbbf24;font-weight:800}

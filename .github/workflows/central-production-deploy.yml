@@ -12,6 +12,7 @@ on:
       - "worker/sandbox-proof-v2.mjs"
       - "worker/refund-flow.mjs"
       - "worker/lead-magnet.mjs"
+      - "worker/reviews.mjs"
       - "worker/owner-alerts.mjs"
       - "worker/whatsapp-conversation.mjs"
       - "worker/post-sale.mjs"
@@ -123,7 +124,8 @@ jobs:
           node --check worker/funnel.mjs
           node --check worker/sales-control.mjs
           node --check worker/lead-magnet.mjs
-          node --test tests/post-sale.test.mjs tests/funnel.test.mjs tests/sales-control.test.mjs tests/lead-magnet.test.mjs
+          node --check worker/reviews.mjs
+          node --test tests/post-sale.test.mjs tests/funnel.test.mjs tests/sales-control.test.mjs tests/lead-magnet.test.mjs tests/reviews.test.mjs
           node --check worker/voice-naturality-study.mjs
           node --check worker/whatsapp-onboarding.mjs
           node --check worker/whatsapp-e2e-evidence.mjs
