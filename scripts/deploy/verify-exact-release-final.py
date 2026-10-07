@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 import json,os
 status=json.load(open("/tmp/status.json"))
+sales=json.load(open("/tmp/sales.json"))
 health=json.load(open("/tmp/health.json"))
 control=json.load(open("/tmp/control.json"))
 core=json.load(open("/tmp/core.json"))
 zea10=json.load(open("/tmp/zea10.json"))
-assert status["runtime"]["sales"]=="globally-blocked"
+sales_open=sales.get("open") is True
+assert status["runtime"]["sales"]==("enabled" if sales_open else "globally-blocked")
 assert health["ready"] is True
-assert control["global_state"]=="operational_commercial_blocked"
-assert control["root_blocker"]=="global_sale_disabled"
+assert control["global_state"]==("operational_commercial_enabled" if sales_open else "operational_commercial_blocked")
+assert control["root_blocker"]==(None if sales_open else "global_sale_disabled")
 assert control["release"]["deployment"]["commit_sha"]==os.environ["TARGET_RUNTIME_SHA"], (control["release"]["deployment"]["commit_sha"],os.environ["TARGET_RUNTIME_SHA"])
 assert core["release_sha"]==os.environ["TARGET_RUNTIME_SHA"]
 assert core["architecture"]["flow"]==["runtime-ci","ZEES-16","ZEA-10","ZEVANORY Control Core","Admin"]

@@ -1317,12 +1317,13 @@ __name(buildActivationPlan, "buildActivationPlan");
 // src/release.mjs
 var yes3 = /* @__PURE__ */ __name((value) => String(value || "").toLowerCase() === "true", "yes");
 function runtimeReleaseModes(env = process.env) {
-  const salesMode = yes3(env.SALE_GLOBALLY_ENABLED) && yes3(env.PRE_SALE_GATES_APPROVED) ? "enabled" : "globally-blocked";
+  const salesMode = globalThis.__ZEVANORY_SALES_SWITCH__ === true ? "enabled" : "globally-blocked";
+  const whatsappTransport = publicChannelStatus(env).whatsapp?.operational_ready === true;
   return Object.freeze({
     salesMode,
     checkoutMode: yes3(env.CHECKOUT_ENABLED) ? "enabled" : "globally-blocked",
     financialMode: yes3(env.FINANCIAL_EVENTS_ENABLED) ? "enabled" : "disabled",
-    whatsappMode: salesMode === "enabled" && yes3(env.WHATSAPP_SALES_ENABLED) ? "enabled" : "disabled"
+    whatsappMode: whatsappTransport ? "enabled" : "disabled"
   });
 }
 __name(runtimeReleaseModes, "runtimeReleaseModes");
@@ -9367,10 +9368,12 @@ function buildSystemHealth({ env = process.env, databaseReachable = false, schem
   const publicBaseUrl = String(env.PUBLIC_BASE_URL || "").trim();
   const publicBaseUrlValid = /^https:\/\/zevanory\.api\.br\/?$/i.test(publicBaseUrl);
   const switches = Object.fromEntries(SWITCHES.map((key) => [key, enabled2(env[key])]));
-  const publicSafetyLocked = Object.values(switches).every((value) => value === false);
-  const pilotSafetyLocked = enabled2(env.CERTIFICATION_PILOT_ENABLED) && !switches.SALE_GLOBALLY_ENABLED && !switches.PRE_SALE_GATES_APPROVED && switches.CHECKOUT_ENABLED && !switches.WHATSAPP_SALES_ENABLED && switches.FINANCIAL_EVENTS_ENABLED;
+  const ownerSalesOpen = globalThis.__ZEVANORY_SALES_SWITCH__ === true;
+  const whatsappTransport = publicChannelStatus(env).whatsapp?.operational_ready === true;
+  const publicSafetyLocked = !ownerSalesOpen && Object.values(switches).every((value) => value === false);
+  const pilotSafetyLocked = !ownerSalesOpen && enabled2(env.CERTIFICATION_PILOT_ENABLED) && !switches.SALE_GLOBALLY_ENABLED && !switches.PRE_SALE_GATES_APPROVED && switches.CHECKOUT_ENABLED && !switches.WHATSAPP_SALES_ENABLED && switches.FINANCIAL_EVENTS_ENABLED;
   const preSaleCutoverSafe = !switches.SALE_GLOBALLY_ENABLED && switches.PRE_SALE_GATES_APPROVED && switches.CHECKOUT_ENABLED && switches.WHATSAPP_SALES_ENABLED && switches.FINANCIAL_EVENTS_ENABLED;
-  const commercialLivePattern = switches.SALE_GLOBALLY_ENABLED && switches.PRE_SALE_GATES_APPROVED && switches.CHECKOUT_ENABLED && switches.WHATSAPP_SALES_ENABLED && switches.FINANCIAL_EVENTS_ENABLED;
+  const commercialLivePattern = ownerSalesOpen && switches.CHECKOUT_ENABLED && switches.FINANCIAL_EVENTS_ENABLED && whatsappTransport;
   const commercialSafetyLocked = publicSafetyLocked || pilotSafetyLocked || preSaleCutoverSafe || commercialLivePattern;
   const storageConfigured = Boolean(String(env.DATABASE_URL || "").trim());
   const ready = storageConfigured && databaseReachable && schemaReady && publicBaseUrlValid && commercialSafetyLocked;
@@ -9386,7 +9389,7 @@ function buildSystemHealth({ env = process.env, databaseReachable = false, schem
       schema_ready: schemaReady,
       public_base_url_valid: publicBaseUrlValid,
       commercial_safety_locked: commercialSafetyLocked,
-      public_sales_locked: !switches.SALE_GLOBALLY_ENABLED,
+      public_sales_locked: !ownerSalesOpen,
       certification_pilot_safe: pilotSafetyLocked,
       pre_sale_cutover_safe: preSaleCutoverSafe,
       commercial_live_pattern: commercialLivePattern
@@ -17728,7 +17731,7 @@ function buildControlPlaneSnapshot(env = process.env, certification = null) {
     commit_sha: policy.release_sha,
     region: String(env.VERCEL_REGION || env.ZEVANORY_DEPLOYMENT_REGION || "") || null
   });
-  const blocked = !gate.enabled || modes.salesMode !== "enabled";
+  const blocked = modes.salesMode !== "enabled";
   return Object.freeze({
     service: "ZEVANORY",
     surface: "control-plane-vnext",

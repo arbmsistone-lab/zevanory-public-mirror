@@ -7,6 +7,7 @@ on:
       - "worker/live-recovered/control-plane-vnext.js"
       - "worker/control-plane-vnext-source.mjs"
       - "worker/cloudflare-worker.compat.mjs"
+      - "worker/live-runtime-status.mjs"
       - "worker/support-knowledge.mjs"
       - "worker/cloudflare-worker.recovered.mjs"
       - "worker/sandbox-proof-v2.mjs"
@@ -29,6 +30,7 @@ on:
       - "worker/whatsapp-neon-store.mjs"
       - "tests/whatsapp-neon-store.test.mjs"
       - "worker/evidence-control-plane.mjs"
+      - "tests/live-runtime-status.test.mjs"
       - "worker/zevanory-control-core.mjs"
       - "worker/core-command-executor.mjs"
       - "worker/zea10-autonomy.mjs"
@@ -120,6 +122,7 @@ jobs:
           git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
           python3 scripts/deploy/prepare-central-candidate.py
           node --check worker/cloudflare-worker.compat.mjs
+          node --check worker/live-runtime-status.mjs
           node --check worker/post-sale.mjs
           node --check worker/owner-alerts.mjs
           node --check worker/sales-control.mjs
@@ -133,6 +136,7 @@ jobs:
           node --check worker/whatsapp-e2e-evidence.mjs
           node --check worker/whatsapp-neon-store.mjs
           node --test tests/whatsapp-neon-store.test.mjs
+          node --test tests/live-runtime-status.test.mjs
           node --check worker/voice-final-closure.mjs
           node --check public/control-plane-vnext.js
           npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir /tmp/central-final
@@ -225,6 +229,7 @@ jobs:
           exact_sha=0
           for i in $(seq 1 30); do
             curl -fsS https://zevanory.api.br/api/status -o /tmp/status.json || true
+            curl -fsS https://zevanory.api.br/api/sales/status -o /tmp/sales.json || true
             curl -fsS https://zevanory.api.br/api/health -o /tmp/health.json || true
             curl -fsS https://zevanory.api.br/api/control-plane -o /tmp/control.json || true
             curl -fsS https://zevanory.api.br/api/core/v1/snapshot -o /tmp/core.json || true

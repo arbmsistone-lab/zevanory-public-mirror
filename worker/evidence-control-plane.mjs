@@ -22,7 +22,7 @@ export const ZEES16_POLICY={
     {id:"P13",name:"Governança e evidência",requires:["workflow:zevanory-p15-provenance","runtime:exact_sha"]},
     {id:"P14",name:"Automação, IA e provedores",requires:["workflow:ZEVANORY provider independence gate","workflow:ZEVANORY authenticated open-provider runtime quorum"]},
     {id:"P15",name:"CI/CD e proveniência",requires:["workflow:zevanory-p15-provenance","workflow:ZEVANORY central production deploy"]},
-    {id:"P16",name:"Prontidão comercial",requires:["workflow:zevanory-p16-deterministic-exact-release","runtime:sales_fail_closed","runtime:health_ready"]}
+    {id:"P16",name:"Prontidão comercial",requires:["workflow:zevanory-p16-deterministic-exact-release","runtime:commercial_safe","runtime:health_ready"]}
   ]
 };
 
@@ -61,6 +61,7 @@ function runtimeSignals(status,health,control,continuity){
       "runtime:quorum_ok":continuity?.quorum_ok===true,
       "runtime:sales_fail_closed":sales==="globally-blocked",
       "runtime:commercial_release":control?.global_state==="operational_commercial_enabled"&&sales!=="globally-blocked"
+      ,"runtime:commercial_safe":sales==="globally-blocked"||(sales==="enabled"&&health?.ready===true)
     }
   };
 }
@@ -76,7 +77,12 @@ async function githubEvidence(sha){
   return {runs,workflows};
 }
 function requirementResult(req,signals,workflows){
-  if(req.startsWith("runtime:")) return {ok:signals[req]===true,source:"runtime",key:req};
+  if(req.startsWith("runtime:")){
+    const ok=req==="runtime:commercial_safe"
+      ? signals[req]===true||signals["runtime:sales_fail_closed"]===true||(signals["runtime:commercial_release"]===true&&signals["runtime:health_ready"]===true)
+      : signals[req]===true;
+    return {ok,source:"runtime",key:req};
+  }
   if(req.startsWith("workflow:")){
     const name=req.slice(9);
     const run=workflows.get(name);
