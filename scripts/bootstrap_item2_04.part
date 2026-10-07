@@ -1,0 +1,27 @@
+Path(".github/workflows/whatsapp-kv-write-budget.yml").write_text("""name: WhatsApp KV write budget
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/cloudflare-worker.recovered.mjs"
+      - "worker/whatsapp-neon-store.mjs"
+      - "worker/whatsapp-e2e-evidence.mjs"
+      - "scripts/whatsapp-kv-write-budget.mjs"
+      - ".github/workflows/whatsapp-kv-write-budget.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify per-message KV budget
+        run: node scripts/whatsapp-kv-write-budget.mjs
+      - name: Python syntax sanity
+        run: python3 -m py_compile scripts/ped_versal_audit.py
+""")
