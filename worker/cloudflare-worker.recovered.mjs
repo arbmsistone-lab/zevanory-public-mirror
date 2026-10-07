@@ -2,7 +2,7 @@ import { saveWhatsappObservation } from "./voice-operational-audit.mjs";
 import { whatsappInboundSafety } from "./whatsapp-inbound-safety.mjs";
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
-import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
+import { getWhatsappOpsStore, publishWhatsappOpsStats } from "./whatsapp-neon-store.mjs";
 import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
@@ -18199,7 +18199,11 @@ var cloudflare_worker_default = {
     const whatsappOpsStore = getWhatsappOpsStore({ DATABASE_URL: process.env.DATABASE_URL, ZEVANORY_PRIVATE_ARTIFACTS: env.ZEVANORY_PRIVATE_ARTIFACTS }, cs);
     globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = whatsappOpsStore;
     globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = whatsappOpsStore;
-    if (whatsappOpsStore?.cleanupExpired) ctx.waitUntil(whatsappOpsStore.cleanupExpired().catch((error) => console.error("whatsapp_neon_cleanup_failed", String(error?.message || error))));
+    if (whatsappOpsStore?.cleanupExpired) ctx.waitUntil((async()=>{
+      await whatsappOpsStore.cleanupExpired();
+      const stats=await publishWhatsappOpsStats(whatsappOpsStore,env.ZEVANORY_PRIVATE_ARTIFACTS);
+      if(stats)console.info("whatsapp_neon_stats",JSON.stringify({generatedAt:stats.generatedAt,tables:Object.fromEntries(Object.entries(stats.tables).map(([table,row])=>[table,{count:row.count,max_updated_at:row.max_updated_at}]))}));
+    })().catch((error) => console.error("whatsapp_neon_cleanup_or_stats_failed", String(error?.message || error))));
     ctx.waitUntil(runNonCommercialAutopilot({ env, scheduledTime: controller.scheduledTime }).catch((error) => console.error("noncommercial_autopilot_failed", String(error?.message || error))));
   },
   async fetch(request, env) {
@@ -18480,7 +18484,8 @@ async function runSalesPreflight(env) {
   }
   add("delivery_recovery", String(process.env.FULFILLMENT_OPERATOR_TOKEN || "").length >= 16, "reenvio de link pelo cliente");
   const ok = checks.filter((c) => c.id !== "delivery_recovery").every((c) => c.ok);
-  const result = { ok, at: new Date().toISOString(), checks };
+  const generatedAt = new Date().toISOString();
+  const result = { ok, at: generatedAt, generatedAt, checks };
   try { await kv?.put?.("zpc-sales-preflight:v1", JSON.stringify(result), { expirationTtl: 6 * 3600 }); } catch {}
   return result;
 }

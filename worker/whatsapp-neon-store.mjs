@@ -6,6 +6,8 @@ const TABLES=Object.freeze({
  history:"whatsapp_history"
 });
 const STORE_CACHE=new Map();
+export const WHATSAPP_OPS_STATS_KEY="zpc-whatsapp-ops:v1:stats";
+const WHATSAPP_OPS_STATS_TTL=3*24*60*60;
 
 function tableForKey(key){
  const k=String(key||"");
@@ -63,6 +65,28 @@ export function createWhatsappNeonStore(sql){
     deleted[table]=Array.isArray(rows)?rows.length:0;
    }
    return deleted;
+  },
+  async stats(){
+   await ready();
+   const rows=await sql.query(
+    "select 'whatsapp_stage_events' as table_name,count(*)::text as row_count,max(updated_at) as max_updated_at from whatsapp_stage_events "+
+    "union all select 'whatsapp_history',count(*)::text,max(updated_at) from whatsapp_history "+
+    "union all select 'whatsapp_observations',count(*)::text,max(updated_at) from whatsapp_observations "+
+    "union all select 'whatsapp_evidence',count(*)::text,max(updated_at) from whatsapp_evidence"
+   );
+   const tables={};
+   for(const table of Object.values(TABLES))tables[table]={count:0,max_updated_at:null};
+   for(const row of rows||[]){
+    const table=String(row?.table_name||"");
+    if(!Object.hasOwn(tables,table))continue;
+    const rawMax=row?.max_updated_at;
+    const parsedMax=rawMax==null?null:new Date(rawMax);
+    tables[table]={
+     count:Number(row?.row_count||0),
+     max_updated_at:parsedMax&&Number.isFinite(parsedMax.getTime())?parsedMax.toISOString():null
+    };
+   }
+   return tables;
   }
  });
 }
@@ -72,7 +96,8 @@ function readonlyLegacyStore(kv){
   async put(){},
   async get(key,options){ return kv?.get ? kv.get(key,options) : null; },
   async list(options){ return kv?.list ? kv.list(options) : {keys:[],list_complete:true}; },
-  async cleanupExpired(){ return {}; }
+  async cleanupExpired(){ return {}; },
+  async stats(){ return null; }
  });
 }
 
@@ -96,8 +121,18 @@ function withLegacyReadFallback(primary,legacy){
    const keys=[...names.values()].sort((a,b)=>String(a.name).localeCompare(String(b.name))).slice(0,limit);
    return {keys,list_complete:true};
   },
-  async cleanupExpired(){ return primary.cleanupExpired?.()||{}; }
+  async cleanupExpired(){ return primary.cleanupExpired?.()||{}; },
+  async stats(){ return primary.stats?.()||null; }
  });
+}
+
+export async function publishWhatsappOpsStats(store,kv,generatedAt=new Date().toISOString()){
+ if(!store?.stats||!kv?.put)return null;
+ const tables=await store.stats();
+ if(!tables)return null;
+ const payload={generatedAt:String(generatedAt),tables};
+ await kv.put(WHATSAPP_OPS_STATS_KEY,JSON.stringify(payload),{expirationTtl:WHATSAPP_OPS_STATS_TTL});
+ return payload;
 }
 
 export function getWhatsappOpsStore(env={},sqlFactory){
