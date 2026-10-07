@@ -5,6 +5,7 @@ import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-backgr
 import { getWhatsappOpsStore, publishWhatsappOpsStats } from "./whatsapp-neon-store.mjs";
 import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
 import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } from "./mercadopago-webhook-safety.mjs";
+import { chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
@@ -13753,26 +13754,36 @@ async function runNonCommercialAutopilot({ env = process.env, scheduledTime = Da
   const candidate = buildProgramCandidate(subject, aggregate, cycleId);
   await traceAutopilot(sql, { traceId, cycleId, stage: "program_candidate_created", started, details: { candidate_id: candidate.candidate_id, market_decision: candidate.market_decision, market_score: candidate.market_score } });
   const evidenceReady = candidate.verified_sources >= AUTOPILOT_POLICY.min_verified_sources && candidate.independent_organizations >= AUTOPILOT_POLICY.min_independent_organizations;
+  const publicationPaused = await creativeAutopublishPaused(env);
+  const banditState = (await creativeAutonomyDashboard(env)).bandit;
   const channelCreatives = [];
   for (const channel of CREATIVE_CHANNELS) {
+    const format = ["youtube", "tiktok"].includes(channel) ? "short_vertical" : "social_static";
+    const hour = new Date(scheduledTime).getUTCHours();
+    const arm = chooseThompsonArm(banditState, ["evidence", "practical", "clarity"].map((angle) => ({ angle, format, hour }))) || { angle: "evidence", format, hour };
     let accepted2 = null, last = null;
     for (let round2 = 1; round2 <= AUTOPILOT_POLICY.max_revision_rounds; round2++) {
       const focus = eliteSubjectLabel(subject);
-      const brief = { offerId: "OFFER-0001", channel, hook: round2 === 1 ? candidate.name : `Decis\xE3o com evid\xEAncia`, body: round2 === 1 ? `Pesquisa e automa\xE7\xE3o com evid\xEAncia para ${subject}.` : `Pesquisa validada, automa\xE7\xE3o pr\xE1tica e decis\xF5es com evid\xEAncia.`, cta: "Conhe\xE7a a ZEVANORY", objective: "awareness", campaignId: `${cycleId}-${channel}-r${round2}` };
+      const angleHook = arm.angle === "practical" ? `${candidate.name} na pr\xE1tica` : arm.angle === "clarity" ? `${candidate.name} com clareza` : candidate.name;
+      const brief = { offerId: "OFFER-0001", channel, hook: round2 === 1 ? angleHook : `Decis\xE3o com evid\xEAncia`, body: round2 === 1 ? `Pesquisa e automa\xE7\xE3o com evid\xEAncia para ${subject}. Garantia de 7 dias.` : `Pesquisa validada, automa\xE7\xE3o pr\xE1tica e decis\xF5es com evid\xEAncia. Garantia de 7 dias.`, cta: "Conhe\xE7a a ZEVANORY", objective: "awareness", campaignId: `${cycleId}-${channel}-r${round2}` };
       const selection = await selectCreative(sql, brief), winner = selection?.winner || {}, spec = winner.spec || {};
-      const elite2 = evidenceReady && Number(winner.quality_score || 0) >= AUTOPILOT_POLICY.min_creative_quality && Number(winner.perceptual_score || 0) >= AUTOPILOT_POLICY.min_creative_perceptual && winner.review_board?.unanimous === true;
-      last = { channel, round: round2, selection, winner, spec, elite: elite2 };
+      const autonomy = evaluateCreativeWithRewrites(spec, { serverPrice: spec.price_brl, visualScore: winner.perceptual_score });
+      const elite2 = evidenceReady && autonomy.action === "publish" && Number(winner.quality_score || 0) >= AUTOPILOT_POLICY.min_creative_quality && Number(winner.perceptual_score || 0) >= AUTOPILOT_POLICY.min_creative_perceptual && winner.review_board?.unanimous === true;
+      last = { channel, round: round2, selection, winner, spec, autonomy, elite: elite2 };
       if (elite2) {
         accepted2 = last;
         break;
       }
     }
     const item = accepted2 || last || { channel, round: 0, selection: {}, winner: {}, spec: {}, elite: false };
-    channelCreatives.push(Object.freeze({ channel, revision_round: item.round, creative_id: item.spec.creative_id || null, variant_id: item.spec.variant_id || null, campaign_id: item.spec.campaign_id || `${cycleId}-${channel}`, quality_score: Number(item.winner.quality_score || 0), perceptual_score: Number(item.winner.perceptual_score || 0), review_board: item.winner.review_board || item.selection?.review_board || null, selection_basis: item.selection?.selection_basis || null, asset_url: item.elite && item.spec.creative_id ? creativeAssetUrl(item.spec, ["youtube", "tiktok"].includes(channel) ? "webm" : "png", env) : null, elite_accepted: item.elite, revision_required: !item.elite, central_ready: item.elite, commercial_unlock: false }));
+    const status = item.elite ? publicationPaused ? "approved_paused" : "approved_for_autopublish" : "discarded";
+    const row = Object.freeze({ channel, revision_round: item.round, creative_id: item.spec.creative_id || null, variant_id: item.spec.variant_id || null, campaign_id: item.spec.campaign_id || `${cycleId}-${channel}`, quality_score: Number(item.winner.quality_score || 0), perceptual_score: Number(item.winner.perceptual_score || 0), score: Number(item.autonomy?.score || 0), criteria: item.autonomy?.criteria || {}, compliance: Number(item.autonomy?.compliance || 0), compliance_checks: item.autonomy?.compliance_checks || {}, reason: item.autonomy?.reason || "creative_unavailable", status, review_board: item.winner.review_board || item.selection?.review_board || null, selection_basis: item.selection?.selection_basis || null, asset_url: item.elite && item.spec.creative_id ? creativeAssetUrl(item.spec, ["youtube", "tiktok"].includes(channel) ? "webm" : "png", env) : null, elite_accepted: item.elite, revision_required: !item.elite, central_ready: item.elite, publishable: item.elite && !publicationPaused, commercial_unlock: false });
+    channelCreatives.push(row);
+    await recordCreativeEvaluation(env, { ...row, angle: arm.angle, format: arm.format, hour: arm.hour, rewrites: Math.max(0, Number(item.round || 1) - 1), evaluated_at: new Date().toISOString() }).catch(() => false);
   }
   const accepted = channelCreatives.filter((x2) => x2.elite_accepted), elite = accepted.length === CREATIVE_CHANNELS.length, best = [...accepted].sort((a2, b2) => b2.quality_score - a2.quality_score || b2.perceptual_score - a2.perceptual_score)[0] || channelCreatives[0] || {};
   await traceAutopilot(sql, { traceId, cycleId, stage: "creatives_evaluated", started, details: { channels: CREATIVE_CHANNELS, candidate_count: channelCreatives.length, accepted_channels: accepted.length, rejected_channels: channelCreatives.length - accepted.length, best_channel: best.channel || null, quality_score: best.quality_score || 0, perceptual_score: best.perceptual_score || 0, elite_accepted: elite } });
-  const creative = Object.freeze({ channel: best.channel || null, creative_id: best.creative_id || null, variant_id: best.variant_id || null, campaign_id: best.campaign_id || cycleId, quality_score: best.quality_score || 0, perceptual_score: best.perceptual_score || 0, asset_url: best.asset_url || null, image_url: best.asset_url || null, review_board: best.review_board || null, selection_basis: best.selection_basis || null, publishable: false, elite_accepted: elite, revision_required: !elite, central_ready: elite, accepted_channels: accepted.length, total_channels: CREATIVE_CHANNELS.length, channel_creatives: Object.freeze(channelCreatives), commercial_unlock: false });
+  const creative = Object.freeze({ channel: best.channel || null, creative_id: best.creative_id || null, variant_id: best.variant_id || null, campaign_id: best.campaign_id || cycleId, quality_score: best.quality_score || 0, perceptual_score: best.perceptual_score || 0, score: best.score || 0, compliance: best.compliance || 0, reason: best.reason || null, status: best.status || "discarded", asset_url: best.asset_url || null, image_url: best.asset_url || null, review_board: best.review_board || null, selection_basis: best.selection_basis || null, publishable: accepted.length > 0 && !publicationPaused, publication_paused: publicationPaused, elite_accepted: elite, revision_required: !elite, central_ready: elite, accepted_channels: accepted.length, total_channels: CREATIVE_CHANNELS.length, channel_creatives: Object.freeze(channelCreatives), commercial_unlock: false });
   await persistAutopilotCycle(sql, { cycleId, subject, aggregate, candidate, creative, started });
   await traceAutopilot(sql, { traceId, cycleId, stage: "cycle_completed", started, details: { candidate_id: candidate.candidate_id, creative_id: creative.creative_id, elite_accepted: creative.elite_accepted } });
   return Object.freeze({ ok: true, processed: true, cycle_id: cycleId, trace_id: traceId, subject, candidate, creative, commercial_unlock: false, sales: false, checkout: false, financial: false });
@@ -18214,6 +18225,7 @@ var cloudflare_worker_default = {
       }catch(error){console.error("whatsapp_neon_stats_failed",String(error?.message||error))}
     })());
     ctx.waitUntil(runNonCommercialAutopilot({ env, scheduledTime: controller.scheduledTime }).catch((error) => console.error("noncommercial_autopilot_failed", String(error?.message || error))));
+    ctx.waitUntil(sendDailyCreativeReport(env).then((out) => console.info("creative_daily_report", JSON.stringify(out))).catch((error) => console.error("creative_daily_report_failed", String(error?.message || error))));
   },
   async fetch(request, env) {
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
@@ -18286,6 +18298,22 @@ var cloudflare_worker_default = {
     const privateApi = url.pathname.startsWith("/private-api/");
     const owner = privatePage || privateApi ? await verifyOwnerSession(env, readOwnerCookie(request)) : null;
     if (privatePage && !owner) return Response.redirect(new URL("/acesso", url), 302);
+    if (owner && (url.pathname === "/criativos" || url.pathname === "/criativos.html")) return withSecurityHeaders(new Response(await renderCreativeAutonomyPage(env), { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } }), env);
+    if (owner && url.pathname === "/private-api/creative-autonomy" && request.method === "GET") return new Response(JSON.stringify(await creativeAutonomyDashboard(env)), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+    if (owner && url.pathname === "/private-api/creative-autonomy/pause" && request.method === "POST") {
+      const origin = String(request.headers.get("origin") || "");
+      if (origin && origin !== url.origin) return new Response(JSON.stringify({ error: "origin_not_allowed" }), { status: 403, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+      const form = await request.formData();
+      await setCreativeAutopublishPaused(env, String(form.get("paused")) === "1");
+      return Response.redirect(new URL("/criativos", url), 303);
+    }
+    if (owner && url.pathname === "/private-api/creative-autonomy/metrics" && request.method === "POST") {
+      const origin = String(request.headers.get("origin") || "");
+      if (origin && origin !== url.origin) return new Response(JSON.stringify({ error: "origin_not_allowed" }), { status: 403, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+      const metrics = await request.json().catch(() => null);
+      if (!metrics) return new Response(JSON.stringify({ error: "invalid_json" }), { status: 400, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+      return new Response(JSON.stringify(await recordMatureCreativeMetrics(env, metrics)), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+    }
     if (privateApi) {
       if (!owner) return new Response(JSON.stringify({ error: "owner_auth_required" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
       const mapped = "/api/" + url.pathname.slice("/private-api/".length);
