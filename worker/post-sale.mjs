@@ -7,6 +7,8 @@
 //   * idempotent per order+step (KV marker + Resend Idempotency-Key);
 //   * every send is mirrored to the control panel through the shared-activity bridge.
 
+import { reviewLinks } from "./reviews.mjs";
+
 const ORIGIN = "https://zevanory.api.br";
 const SALES = "https://vendas.zevanory.api.br";
 const WHATSAPP = "https://wa.me/5588992545413";
@@ -75,7 +77,7 @@ async function verifyOptOut(env, id, token) {
   return timingSafeEqual((await hmacHex(secret, id)).slice(0, 32), token);
 }
 
-export function renderPostSaleEmail(step, { productName, productSlug, nextOffer, optOutUrl, test = false }) {
+export function renderPostSaleEmail(step, { productName, productSlug, nextOffer, optOutUrl, test = false, ratingLinks = [] }) {
   const prefix = test ? "[TESTE] " : "";
   const productUrl = `${SALES}/${productSlug}`;
   const sign = `\n\nEquipe ZEVANORY\n${SUPPORT_EMAIL} · WhatsApp: ${WHATSAPP}\n\nNão quer mais receber estes e-mails de acompanhamento? ${optOutUrl}`;
@@ -90,7 +92,7 @@ export function renderPostSaleEmail(step, { productName, productSlug, nextOffer,
     : `\n\nVocê já tem o pacote mais completo da ZEVANORY. Se precisar de ajuda para aplicar alguma parte, é só chamar.`;
   return {
     subject: `${prefix}Como está indo com o ${productName}?`,
-    text: `Olá!\n\nJá faz alguns dias que você começou com o ${productName}. Queremos saber: de 1 a 5, quanto ele já ajudou no seu negócio? Basta responder este e-mail com o número (e, se quiser, o que faltou).\n\nSua resposta melhora o material para todos os clientes.` + nextLine + sign,
+    text: `Olá!\n\nJá faz alguns dias que você começou com o ${productName}. De 1 a 5, quanto ele já ajudou no seu negócio? Clique na sua nota (leva 5 segundos):\n\n${ratingLinks.length === 5 ? ratingLinks.map((link, i) => `${i + 1} ${'★'.repeat(i + 1)} — ${link}`).join('\n') : 'Responda este e-mail com o número.'}\n\nSua resposta melhora o material para todos os clientes.` + nextLine + sign,
   };
 }
 
@@ -151,7 +153,8 @@ async function deliverStep(env, kv, { order, evidence, step, email, test }) {
   if (!catalog) return { skipped: "unknown_offer" };
   const nextOffer = catalog.next ? POST_SALE_CATALOG[catalog.next] : null;
   const unsubscribeUrl = await optOutLink(env, email);
-  const message = renderPostSaleEmail(step, { productName: catalog.name, productSlug: catalog.slug, nextOffer, optOutUrl: unsubscribeUrl, test });
+  const ratingLinks = step === "d5" ? await reviewLinks(env, order.order_id) : [];
+  const message = renderPostSaleEmail(step, { productName: catalog.name, productSlug: catalog.slug, nextOffer, optOutUrl: unsubscribeUrl, test, ratingLinks });
   const out = await sendResend(env, { to: email, ...message, idempotencyKey: `zevanory-post-sale-${order.order_id}-${step}`, unsubscribeUrl });
   if (!out.sent) return { failed: out.error || `resend_${out.status}` };
   await kv.put(`postsale:sent:${order.order_id}:${step}`, new Date().toISOString(), { expirationTtl: 90 * 24 * 3600 });

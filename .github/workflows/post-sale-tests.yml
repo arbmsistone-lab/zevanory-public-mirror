@@ -8,6 +8,10 @@ on:
       - "tests/sales-control.test.mjs"
       - "worker/sales-public-worker.mjs"
       - "tests/funnel.test.mjs"
+      - "worker/lead-magnet.mjs"
+      - "tests/lead-magnet.test.mjs"
+      - "worker/reviews.mjs"
+      - "tests/reviews.test.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "tests/post-sale.test.mjs"
       - ".github/workflows/post-sale-tests.yml"
@@ -29,4 +33,4 @@ jobs:
       - run: node --check worker/post-sale.mjs
       - run: node --check worker/funnel.mjs
       - run: node --check worker/sales-public-worker.mjs
-      - run: node --test tests/post-sale.test.mjs tests/funnel.test.mjs tests/sales-control.test.mjs
+      - run: node --test tests/post-sale.test.mjs tests/funnel.test.mjs tests/lead-magnet.test.mjs tests/sales-control.test.mjs tests/reviews.test.mjs
