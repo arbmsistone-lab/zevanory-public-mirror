@@ -1,0 +1,18 @@
+name: Autonomy live evidence
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require real provider IDs and reachable published URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://zevanory.api.br/api/autonomy/evidence -o /tmp/evidence.json
+          jq -e '.generatedAt and (.evidence|length>0)' /tmp/evidence.json >/dev/null
+          jq -c '.evidence[] | {front,channel,provider_post_id,url,published_at,metrics}' /tmp/evidence.json
+          while IFS= read -r url; do curl -fsS -o /dev/null "$url"; done < <(jq -r '.evidence[].url' /tmp/evidence.json)

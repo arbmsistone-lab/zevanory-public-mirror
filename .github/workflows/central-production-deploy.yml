@@ -12,6 +12,7 @@ on:
       - "worker/multichannel-autonomy.mjs"
       - "worker/inbound-autonomy.mjs"
       - "worker/affiliate-program.mjs"
+      - "worker/autonomy-health.mjs"
       - "worker/support-knowledge.mjs"
       - "worker/cloudflare-worker.recovered.mjs"
       - "worker/mercadopago-webhook-safety.mjs"
@@ -41,6 +42,9 @@ on:
       - "tests/multichannel-autonomy.test.mjs"
       - "tests/inbound-autonomy.test.mjs"
       - "tests/affiliate-program.test.mjs"
+      - "tests/autonomy-health.test.mjs"
+      - "tests/owner-alert-policy.test.mjs"
+      - ".github/workflows/autonomy-live-evidence.yml"
       - "worker/zevanory-control-core.mjs"
       - "worker/core-command-executor.mjs"
       - "worker/zea10-autonomy.mjs"
@@ -137,6 +141,7 @@ jobs:
           node --check worker/multichannel-autonomy.mjs
           node --check worker/inbound-autonomy.mjs
           node --check worker/affiliate-program.mjs
+          node --check worker/autonomy-health.mjs
           node --check worker/mercadopago-webhook-safety.mjs
           node --check worker/post-sale.mjs
           node --check worker/owner-alerts.mjs
@@ -156,6 +161,8 @@ jobs:
           node --test tests/multichannel-autonomy.test.mjs
           node --test tests/inbound-autonomy.test.mjs
           node --test tests/affiliate-program.test.mjs
+          node --test tests/autonomy-health.test.mjs
+          node --test tests/owner-alert-policy.test.mjs
           node --test tests/mercadopago-webhook-safety.test.mjs
           node --check worker/voice-final-closure.mjs
           node --check public/control-plane-vnext.js

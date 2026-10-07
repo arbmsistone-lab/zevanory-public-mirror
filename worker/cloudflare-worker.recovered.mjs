@@ -7,6 +7,7 @@ import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-ale
 import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } from "./mercadopago-webhook-safety.mjs";
 import { chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
 import { appendBlogSitemap, renderBlogArticle, renderBlogIndex, renderChannelsPage, runMultichannelAutonomy } from "./multichannel-autonomy.mjs";
+import { collectAutonomyHealth, runAutonomyHealth } from "./autonomy-health.mjs";
 import { handleMetaSocialInbound, runInboundLifecycle } from "./inbound-autonomy.mjs";
 import { affiliateReport, applyAffiliateOrderOutcome, recordAffiliateAttribution, referralCookie, referralFromRequest, renderAffiliatePanel } from "./affiliate-program.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
@@ -15137,7 +15138,7 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
     if (OWNER_ESCALATION_RE.test(question)) {
       // Never leave a sensitive conversation to the robot alone: tell the customer and alert the owner.
       reply = { ...reply, body: `${reply.body}\n\nJá chamei um atendente humano da ZEVANORY para continuar com você por aqui.`.slice(0, 1200), escalated: true };
-      alertOwnerNow({ ...process.env, ZEVANORY_PRIVATE_ARTIFACTS: kv }, { channel: "WhatsApp", contact: item.from, excerpt: question, reason: "assunto sensível ou pedido de atendimento humano" }).catch(() => null);
+      alertOwnerNow({ ...process.env, ZEVANORY_PRIVATE_ARTIFACTS: kv }, { category: /reembols|estorno|cancelar/i.test(question) ? "refund" : "complaint", channel: "WhatsApp", contact: item.from, excerpt: question, reason: "reembolso ou reclamação" }).catch(() => null);
     }
     history.push({ r: "u", t: question.slice(0, 1200) }, { r: "a", t: reply.body.slice(0, 1200) });
     await saveWhatsappHistory(operationalStore, item.from, history);
@@ -18237,6 +18238,7 @@ var cloudflare_worker_default = {
     ctx.waitUntil(runNonCommercialAutopilot({ env, scheduledTime: controller.scheduledTime }).catch((error) => console.error("noncommercial_autopilot_failed", String(error?.message || error))));
     ctx.waitUntil(sendDailyCreativeReport(env).then((out) => console.info("creative_daily_report", JSON.stringify(out))).catch((error) => console.error("creative_daily_report_failed", String(error?.message || error))));
     ctx.waitUntil(runMultichannelAutonomy(env,new Date(controller.scheduledTime)).then((out) => console.info("multichannel_cycle",JSON.stringify({generatedAt:out.generatedAt,blog:out.blog,channels:out.channels.map(x=>({id:x.id,mode:x.mode}))}))).catch((error)=>console.error("multichannel_cycle_failed",String(error?.message||error))));
+    ctx.waitUntil(runAutonomyHealth(env,new Date(controller.scheduledTime)).then((out)=>console.info("autonomy_health",JSON.stringify({generatedAt:out.generatedAt,evidence:out.evidence.length,alerts:out.alerts.map(x=>x.type),sent:out.delivery.sent}))).catch((error)=>console.error("autonomy_health_failed",String(error?.message||error))));
     ctx.waitUntil(runInboundLifecycle(env,{sqlFactory:cs}).then((out)=>console.info("inbound_lifecycle",JSON.stringify(out))).catch((error)=>console.error("inbound_lifecycle_failed",String(error?.message||error))));
   },
   async fetch(request, env) {
@@ -18257,6 +18259,7 @@ var cloudflare_worker_default = {
       return withSecurityHeaders(new Response(JSON.stringify(stats), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
     }
     if (url.pathname === "/blog" || url.pathname === "/blog/") return withSecurityHeaders(new Response(await renderBlogIndex(env),{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=300"}}),env);
+    if (request.method === "GET" && url.pathname === "/api/autonomy/evidence") return withSecurityHeaders(new Response(JSON.stringify(await collectAutonomyHealth(env)),{status:200,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}}),env);
     if (url.pathname.startsWith("/blog/")) { const article=await renderBlogArticle(env,decodeURIComponent(url.pathname.slice(6))); return withSecurityHeaders(new Response(article||"not found",{status:article?200:404,headers:{"content-type":article?"text/html; charset=utf-8":"text/plain; charset=utf-8","cache-control":article?"public, max-age=300":"no-store"}}),env); }
     if (url.pathname === "/sitemap.xml") { const base=await env.ASSETS.fetch(new Request(url,{method:"GET"})); return withSecurityHeaders(new Response(await appendBlogSitemap(env,await base.text()),{status:base.status,headers:{"content-type":"application/xml; charset=utf-8","cache-control":"public, max-age=300"}}),env); }
     if (request.method === "POST" && url.pathname === "/api/webhooks/meta") return withSecurityHeaders(await handleNodeWebhookFetch(request, handler26), env);
