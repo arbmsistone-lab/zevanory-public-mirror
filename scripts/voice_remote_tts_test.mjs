@@ -19,9 +19,14 @@ const okFetch = async (url, init) => {
 const stages = [];
 const a = await synthesizeVoice("O combo custa 297 reais.", { apiKey: "AIza-test", kv, secret, fetchImpl: okFetch, onStage: async (s, d) => stages.push([s, d]) });
 assert.equal(a.cached, false); assert.equal(a.model, "gemini-3.8-flash-tts"); assert.equal(calls.length, 1);
+assert.deepEqual(stages.map(([stage]) => stage), ["tts_done", "encode_skipped_provider_encoded"]);
+assert.deepEqual(stages[1][1], { encode_provider: "render-gemini", encode_bytes: mp3.length, format: "mp3", mime: "audio/mpeg" });
 assert.ok(store.has(await voiceCacheKey("O combo custa 297 reais.")), "mp3 cached");
-const b = await synthesizeVoice("O combo custa 297 reais.", { apiKey: "AIza-test", kv, secret, fetchImpl: okFetch });
+const cacheStages = [];
+const b = await synthesizeVoice("O combo custa 297 reais.", { apiKey: "AIza-test", kv, secret, fetchImpl: okFetch, onStage: async (stage, details) => cacheStages.push([stage, details]) });
 assert.equal(b.cached, true); assert.equal(calls.length, 1, "cache hit spends no Gemini quota");
+assert.deepEqual(cacheStages.map(([stage]) => stage), ["tts_done", "encode_skipped_provider_encoded"]);
+assert.deepEqual(cacheStages[1][1], { encode_provider: "cache", encode_bytes: mp3.length, format: "mp3", mime: "audio/mpeg" });
 await assert.rejects(synthesizeVoice("outro texto", { apiKey: "AIza-test", kv, secret, fetchImpl: async () => new Response(JSON.stringify({ error: "gemini_quota" }), { status: 429 }) }), /^Error: quota$/);
 let n = 0;
 await assert.rejects(synthesizeVoice("texto 3", { apiKey: "k", secret, fetchImpl: async () => { n++; return new Response("{}", { status: 503 }); } }), /voice_synth_http_503/);
