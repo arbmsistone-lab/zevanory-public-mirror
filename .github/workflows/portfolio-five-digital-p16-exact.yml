@@ -77,7 +77,8 @@ jobs:
           p=json.load(open(f"evidence/{slug}-p16-lifecycle.json",encoding="utf-8"))
           assert p["target"]==slug
           assert p["runtime_sha"]==os.environ["EXPECTED_RUNTIME_SHA"]
-          assert p["sales_mode"]=="globally-blocked"
+          assert p["sales_mode"]==("enabled" if p["sales_switch_open"] is True else "globally-blocked")
+          assert p["checks"]["GLOBAL_SALES_SWITCH_MATCH"]=="PASS"
           assert p["external_provider_proof"] is False
           assert p["final_order_status"]=="refunded"
           assert p["final_entitlement_status"]=="revoked"

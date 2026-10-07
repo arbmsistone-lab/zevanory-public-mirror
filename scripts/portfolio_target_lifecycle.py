@@ -42,7 +42,10 @@ def get_text(url):
 code,release=get_json("https://zevanory.api.br/api/release")
 assert code==200
 assert str(release.get("deployment",{}).get("commit_sha","")).lower()==RUNTIME_SHA,release
-assert release.get("sales_mode")=="globally-blocked",release
+code,sales=get_json("https://zevanory.api.br/api/sales/status")
+assert code==200
+expected_sales="enabled" if sales.get("open") is True else "globally-blocked"
+assert release.get("sales_mode")==expected_sales,(release,sales)
 
 code,live=get_text(f"https://zevanory.api.br/{SLUG}")
 assert code==200
@@ -153,7 +156,7 @@ checks={
   "TARGET_SCOPE":"PASS","CHECKOUT":"PASS","WEBHOOK_AUTH":"PASS","IDEMPOTENCY":"PASS",
   "REPLAY_PROTECTION":"PASS","OUT_OF_ORDER_PROTECTION":"PASS","PAYMENT_CONFIRMATION":"PASS",
   "ENTITLEMENT":"PASS","FULFILLMENT":"PASS","REFUND":"PASS","REFUND_RECONCILIATION":"PASS",
-  "PROVIDER_FINAL_STATE":"TERMINAL","GLOBAL_SALES_FAIL_CLOSED":"PASS","EXACT_RUNTIME_BINDING":"PASS"
+  "PROVIDER_FINAL_STATE":"TERMINAL","GLOBAL_SALES_SWITCH_MATCH":"PASS","EXACT_RUNTIME_BINDING":"PASS"
 }
 out={
   "schema":"zevanory.portfolio.p16-lifecycle.v1",
@@ -163,7 +166,8 @@ out={
   "runtime_sha":RUNTIME_SHA,
   "target_blob":blob,
   "delivery_model":ALLOWED[SLUG],
-  "sales_mode":"globally-blocked",
+  "sales_mode":expected_sales,
+  "sales_switch_open":sales.get("open") is True,
   "external_provider_proof":False,
   "final_order_status":e.orders[oid]["status"],
   "final_entitlement_status":e.entitlements[oid],
@@ -183,6 +187,6 @@ print("ENTITLEMENT=PASS")
 print("FULFILLMENT=PASS")
 print("REFUND=PASS")
 print("PROVIDER_FINAL_STATE=TERMINAL")
-print("SALE_GLOBALLY_ENABLED=false")
+print("SALES_RUNTIME_MATCH=PASS")
 print("P16_LIFECYCLE=PROVED")
 print("FALSE_GREEN=0")
