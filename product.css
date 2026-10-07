@@ -189,3 +189,4 @@ main{
 }
 
 .footer-legal{padding:12px 16px 28px;font-size:13px;line-height:1.5;opacity:.85}
+.footer-legal a{display:inline-flex;align-items:center;min-height:44px;min-width:44px}

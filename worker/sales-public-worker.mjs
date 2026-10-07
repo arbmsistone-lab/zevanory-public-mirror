@@ -63,6 +63,8 @@ async function handleBuy(request,env,sku){
 }
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
+  // Refund form lives on the core domain; the public router sends zevanory.api.br/reembolso* here.
+  if(url.pathname==="/reembolso/solicitar"||url.pathname==="/reembolso/solicitar/") return new Response(null,{status:308,headers:applySecurityHeaders(new Headers({location:"https://zevanory.api.br/pedir-reembolso","cache-control":"no-store"}))});
   const buy=url.pathname.match(/^\/comprar\/([A-Z0-9-]{6,20})\/?$/i);
   if(buy) return handleBuy(request,env,buy[1].toUpperCase());
   if(url.pathname==="/health"&&(request.method==="GET"||request.method==="HEAD")){
