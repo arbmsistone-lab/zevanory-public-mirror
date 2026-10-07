@@ -8,6 +8,7 @@ import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } fr
 import { chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
 import { appendBlogSitemap, renderBlogArticle, renderBlogIndex, renderChannelsPage, runMultichannelAutonomy } from "./multichannel-autonomy.mjs";
 import { handleMetaSocialInbound, runInboundLifecycle } from "./inbound-autonomy.mjs";
+import { affiliateReport, applyAffiliateOrderOutcome, recordAffiliateAttribution, referralCookie, referralFromRequest, renderAffiliatePanel } from "./affiliate-program.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
@@ -14201,6 +14202,7 @@ async function handler11(req, res) {
       const recovery = await preserveFinancialReconciliation({ provider: "asaas", eventId: checkoutResponse.id, kind: "checkout_provider_accepted_storage_unconfirmed", orderId: order.order_id, payload: { external_reference: order.external_reference, provider_checkout_id: checkoutResponse.id, checkout_url: checkoutResponse.link } });
       return json8(res, 503, { error: "checkout_persist_failed", accepted: false, preserved: recovery.preserved, reconciliation_required: true });
     }
+    await recordAffiliateAttribution(sql,{databaseUrl:process.env.DATABASE_URL,orderId:order.order_id,partnerCode:String(req.headers?.["x-zevanory-affiliate-ref"]||""),amount:effectiveOffer.price_brl}).catch(()=>null);
     if (pilot?.authorized) {
       try {
         await recordCertificationPilotCheckoutEvidence(sql, { orderId: order.order_id, sessionId: input.sessionId, provider: "asaas" });
@@ -14962,6 +14964,7 @@ async function handleMercadoPagoWebhook(req, res, { accessToken, webhookSecret, 
     const outcome = rows[0] || {};
     if (Number(outcome.target_count) !== 1) return json12(res, 409, { error: "order_state_invalid", accepted: false });
     if (Number(outcome.inserted_count) === 1 && !outcome.order_status) return json12(res, 503, { error: "order_state_update_failed", accepted: false });
+    if (Number(outcome.inserted_count) === 1) await applyAffiliateOrderOutcome(sql,{databaseUrl:process.env.DATABASE_URL,orderId:String(orders[0].order_id),event:event.normalized}).catch(()=>null);
     let deliveryEvidence = null;
     if (event.normalized === "payment_confirmed" && String(outcome.order_status || outcome.current_status) === "paid") {
       try {
@@ -18243,6 +18246,8 @@ var cloudflare_worker_default = {
     globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = getWhatsappOpsStore({ DATABASE_URL: process.env.DATABASE_URL, ZEVANORY_PRIVATE_ARTIFACTS: env.ZEVANORY_PRIVATE_ARTIFACTS }, cs);
     globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__;
     const url = new URL(request.url);
+    const affiliateRef=referralFromRequest(request,env);
+    if (affiliateRef && url.pathname.startsWith("/api/checkout")) { const headers=new Headers(request.headers); headers.set("x-zevanory-affiliate-ref",affiliateRef); request=new Request(request,{headers}); }
     if (url.pathname === "/blog" || url.pathname === "/blog/") return withSecurityHeaders(new Response(await renderBlogIndex(env),{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=300"}}),env);
     if (url.pathname.startsWith("/blog/")) { const article=await renderBlogArticle(env,decodeURIComponent(url.pathname.slice(6))); return withSecurityHeaders(new Response(article||"not found",{status:article?200:404,headers:{"content-type":article?"text/html; charset=utf-8":"text/plain; charset=utf-8","cache-control":article?"public, max-age=300":"no-store"}}),env); }
     if (url.pathname === "/sitemap.xml") { const base=await env.ASSETS.fetch(new Request(url,{method:"GET"})); return withSecurityHeaders(new Response(await appendBlogSitemap(env,await base.text()),{status:base.status,headers:{"content-type":"application/xml; charset=utf-8","cache-control":"public, max-age=300"}}),env); }
@@ -18306,12 +18311,14 @@ var cloudflare_worker_default = {
       return new Response(JSON.stringify({ configured: true }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "set-cookie": ownerCookie(session) } });
     }
     if (url.pathname === "/auth/owner/logout" && request.method === "POST") return new Response(null, { status: 204, headers: { "cache-control": "no-store", "set-cookie": clearOwnerCookie() } });
-    const privatePage = (/* @__PURE__ */ new Set(["/central", "/index.html", "/criativos", "/criativos.html", "/sistema/canais", "/zevanory-robot-control", "/zevanory-robot-control.html", "/financeiro", "/financeiro.html"])).has(url.pathname);
+    const privatePage = (/* @__PURE__ */ new Set(["/central", "/index.html", "/criativos", "/criativos.html", "/sistema/canais", "/afiliados/painel", "/zevanory-robot-control", "/zevanory-robot-control.html", "/financeiro", "/financeiro.html"])).has(url.pathname);
     const privateApi = url.pathname.startsWith("/private-api/");
     const owner = privatePage || privateApi ? await verifyOwnerSession(env, readOwnerCookie(request)) : null;
     if (privatePage && !owner) return Response.redirect(new URL("/acesso", url), 302);
     if (owner && (url.pathname === "/criativos" || url.pathname === "/criativos.html")) return withSecurityHeaders(new Response((await renderCreativeAutonomyPage(env)).replace("<h1>Conteúdo</h1>",'<nav><a href="/central">Sistema</a> → <a href="/sistema/canais">Canais</a></nav><h1>Conteúdo</h1>'), { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } }), env);
     if (owner && url.pathname === "/sistema/canais") return withSecurityHeaders(new Response(await renderChannelsPage(env),{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}}),env);
+    if (owner && url.pathname === "/afiliados/painel") return withSecurityHeaders(new Response(await renderAffiliatePanel(env,cs),{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}}),env);
+    if (owner && url.pathname === "/private-api/affiliate/report" && request.method === "GET") return new Response(JSON.stringify(await affiliateReport(env,cs)),{status:200,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}});
     if (owner && url.pathname === "/private-api/creative-autonomy" && request.method === "GET") return new Response(JSON.stringify(await creativeAutonomyDashboard(env)), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
     if (owner && url.pathname === "/private-api/creative-autonomy/pause" && request.method === "POST") {
       const origin = String(request.headers.get("origin") || "");
@@ -18448,7 +18455,7 @@ var cloudflare_worker_default = {
     const assetUrl = alias ? new URL(alias, url) : url;
     const assetRequest = new Request(assetUrl, request);
     const response2 = await env.ASSETS.fetch(assetRequest);
-    return withSecurityHeaders(response2, env);
+    const captured=referralCookie(url.searchParams.get("ref"),env);if(!captured)return withSecurityHeaders(response2,env);const headers2=new Headers(response2.headers);headers2.append("set-cookie",captured);return withSecurityHeaders(new Response(response2.body,{status:response2.status,statusText:response2.statusText,headers:headers2}),env);
   }
 };
 
