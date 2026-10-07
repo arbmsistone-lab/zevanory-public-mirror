@@ -1,0 +1,14 @@
+{
+  "schema": "zevanory.p12.proof.v1",
+  "release_sha": "cdeb9847df8f8af36093dc4a2dde3f4bc61d374d",
+  "categories": {
+    "METRICS": "PASS",
+    "LOGS": "PASS",
+    "TRACES": "PASS",
+    "SLO": "PASS",
+    "INCIDENT_RESPONSE": "PASS"
+  },
+  "false_green": 0,
+  "verdict": "PROVED",
+  "digest_sha256": "bb5af7452788a088d62d1c9803c618fffa28776f5d44757f5a9c4adcd41c3dc5"
+}
