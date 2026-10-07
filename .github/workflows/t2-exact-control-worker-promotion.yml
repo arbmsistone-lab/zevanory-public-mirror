@@ -1,6 +1,9 @@
 name: T2 exact control worker promotion
 
 on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
   push:
     branches: [gh-pages]
     paths:
@@ -21,13 +24,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Resolve exact T2 source SHA
+        id: source
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_SHA="$(tr -d '\r\n ' < zpc-control-worker-source.txt)"
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            SOURCE_SHA="$(tr -d '\\r\\n ' < zpc-control-worker-source.txt)"
+            SOURCE_MODE="pinned-pointer"
+          else
+            rm -rf /tmp/zpc-source
+            git clone --quiet --filter=blob:none https://github.com/arbmsistone-lab/zevanory-product-control-edge.git /tmp/zpc-source
+            git -C /tmp/zpc-source fetch --quiet origin main
+            git -C /tmp/zpc-source checkout --quiet --detach origin/main
+            SOURCE_SHA="$(git -C /tmp/zpc-source log -1 --format=%H -- cf-worker src public index.html package.json package-lock.json scripts/cloudflare-authoritative-repair.mjs)"
+            SOURCE_MODE="latest-runtime-commit"
+          fi
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          LIVE_SHA="$(curl -fsS --retry 3 --retry-delay 2 --max-time 20 https://controle.zevanory.api.br/version.json | jq -r '.sha // empty' || true)"
+          NEEDS_PROMOTION=true
+          if [ "$LIVE_SHA" = "$SOURCE_SHA" ]; then NEEDS_PROMOTION=false; fi
           echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "SOURCE_MODE=$SOURCE_MODE" >> "$GITHUB_ENV"
+          echo "needs_promotion=$NEEDS_PROMOTION" >> "$GITHUB_OUTPUT"
+          echo "ZPC_RECONCILE source=$SOURCE_SHA live=${LIVE_SHA:-unavailable} mode=$SOURCE_MODE needs_promotion=$NEEDS_PROMOTION"
+      - name: Already synchronized
+        if: steps.source.outputs.needs_promotion != 'true'
+        run: |
+          echo "ZPC_PUBLIC_OWNER_RECONCILER=PASS already_synced=$SOURCE_SHA"
       - name: Checkout exact product-control SHA
+        if: steps.source.outputs.needs_promotion == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -38,15 +63,18 @@ jobs:
           git -C zpc fetch --quiet origin main
           git -C zpc merge-base --is-ancestor "$SOURCE_SHA" origin/main
       - uses: actions/setup-node@v4
+        if: steps.source.outputs.needs_promotion == 'true'
         with:
           node-version: '24'
       - name: Build exact Worker
+        if: steps.source.outputs.needs_promotion == 'true'
         working-directory: zpc
         run: |
           set -euo pipefail
           npm install --no-audit --no-fund
           npm run build
       - name: Deploy exact Worker using public-owner authority
+        if: steps.source.outputs.needs_promotion == 'true'
         working-directory: zpc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
@@ -60,6 +88,7 @@ jobs:
           printf '%s' "$CERTIFICATION_E2E_TOKEN" | npx --yes wrangler@4.143.0 secret put CERTIFICATION_E2E_TOKEN --config cf-worker/wrangler.toml
           npx --yes wrangler@4.143.0 deploy --config cf-worker/wrangler.toml --var WORKER_COMMIT:"$SOURCE_SHA"
       - name: Verify exact SHA and authenticated T2 route
+        if: steps.source.outputs.needs_promotion == 'true'
         shell: bash
         run: |
           set -euo pipefail
