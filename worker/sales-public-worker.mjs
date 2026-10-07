@@ -22,23 +22,38 @@ const BUY_SKUS={"ZEV-IA-011":"ia-na-pratica","ZEV-VEN-011":"vendas-na-pratica","
 const buyHits=new Map();
 function buyLimited(ip){const now=Date.now();const e=buyHits.get(ip);if(!e||now-e.t>60000){buyHits.set(ip,{t:now,n:1});return false}e.n+=1;return e.n>10}
 function infoPage(status,title,body){
-  const page=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title><link rel="stylesheet" href="/product.css"></head><body><main class="wrap" style="max-width:640px;margin:48px auto;padding:0 16px"><h1>${title}</h1>${body}<p><a href="/solucoes">Ver todas as soluções</a></p></main></body></html>`;
+  const page=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title><link rel="stylesheet" href="/product.css"></head><body><main class="wrap"><h1>${title}</h1>${body}<p><a href="/solucoes">Ver todas as soluções</a></p></main></body></html>`;
   return new Response(page,{status,headers:applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex"}))});
 }
-// Buy button target: /comprar/<SKU>. Creates the Mercado Pago checkout through the private
-// service binding and redirects (303). While sales are closed it explains and offers WhatsApp.
+// Buy flow: GET /comprar/<SKU> shows a confirmation step (never creates anything, so link
+// previews, crawlers and prefetch are harmless); the customer's POST creates the Mercado Pago
+// checkout through the private service binding (checkout.internal) and redirects (303).
+const BOT_UA=/bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|headless|lighthouse|curl|wget|python|node-fetch|go-http|axios|okhttp/i;
+const PRICES={"ZEV-IA-011":["IA na Prática",197],"ZEV-VEN-011":["Vendas na Prática",197],"ZEV-LCX-011":["Lucro & Caixa",247],"ZEV-CMB-011":["Combo IA + Vendas",297],"ZEV-NGC-011":["Negócio Completo",397]};
+async function salesOpen(env){
+  try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/status");return (await st.json())?.open===true}catch{return false}
+}
+async function overLimit(env,ip){
+  if(env?.BUY_LIMITER?.limit){try{const r=await env.BUY_LIMITER.limit({key:"buy:"+ip});return !r.success}catch{}}
+  return buyLimited(ip);
+}
 async function handleBuy(request,env,sku){
   const slug=BUY_SKUS[sku];
   if(!slug) return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");
-  if(request.method!=="GET"&&request.method!=="POST") return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers())});
+  if(request.method!=="GET"&&request.method!=="HEAD"&&request.method!=="POST") return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers({allow:"GET, POST"}))});
   if(!env?.CORE||typeof env.CORE.fetch!=="function") return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes ou fale com a gente no <a href=\"https://wa.me/5588992545413\">WhatsApp</a>.</p>");
+  const [name,price]=PRICES[sku];
+  const open=await salesOpen(env);
+  if(!open) return infoPage(200,"Vendas abrem em breve",`<p>O ${name} ainda não está à venda. Quer tirar dúvidas agora?</p><p><a class="button primary" href="https://wa.me/5588992545413?text=${encodeURIComponent("Olá! Tenho interesse no "+name+".")}">Falar no WhatsApp</a></p>`);
+  if(request.method!=="POST"){
+    return infoPage(200,`Comprar ${name}`,`<p><strong>${name}</strong> · R$ ${price},00 · pagamento único, Pix ou cartão.</p><p>Você será levado ao ambiente seguro do Mercado Pago. Depois da aprovação, o link de download chega no seu e-mail (válido por 72 horas). Garantia de 7 dias.</p><form method="post" action="/comprar/${sku}"><button class="button primary" type="submit">Ir para o pagamento seguro</button></form><p class="small">Ao continuar você concorda com os <a href="/termos">Termos</a> e a <a href="/privacidade">Política de Privacidade</a>.</p>`);
+  }
+  const ua=request.headers.get("user-agent")||"";
+  if(!ua||BOT_UA.test(ua)) return infoPage(403,"Acesso não permitido","<p>Use um navegador para comprar.</p>");
   const ip=request.headers.get("cf-connecting-ip")||"unknown";
-  if(buyLimited(ip)) return infoPage(429,"Muitas tentativas","<p>Aguarde um minuto e tente de novo.</p>");
-  let open=false;
-  try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/status");open=(await st.json())?.open===true}catch{open=false}
-  if(!open) return infoPage(200,"Vendas abrem em breve",`<p>Este produto ainda não está à venda. Quer ser avisado(a) ou tirar dúvidas agora?</p><p><a class="button primary" href="https://wa.me/5588992545413?text=${encodeURIComponent("Quero saber quando abre a venda do produto "+slug)}">Falar no WhatsApp</a></p>`);
+  if(await overLimit(env,ip)) return infoPage(429,"Muitas tentativas","<p>Aguarde um minuto e tente de novo.</p>");
   try{
-    const res=await env.CORE.fetch("https://zevanory.api.br/api/checkout/mercadopago",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({request_id:crypto.randomUUID(),session_id:crypto.randomUUID(),offer_id:sku})});
+    const res=await env.CORE.fetch("https://checkout.internal/api/checkout/mercadopago",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({request_id:crypto.randomUUID(),session_id:crypto.randomUUID(),offer_id:sku})});
     const data=await res.json().catch(()=>({}));
     const target=String(data?.checkout_url||"");
     if((res.status===201||res.status===200)&&/^https:\/\/(www\.)?mercadopago\.com(\.br)?\//.test(target)) return new Response(null,{status:303,headers:applySecurityHeaders(new Headers({location:target,"cache-control":"no-store"}))});

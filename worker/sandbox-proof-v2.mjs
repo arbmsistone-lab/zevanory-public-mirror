@@ -57,7 +57,9 @@ async function hmacSha256Hex(secret, value) {
 export function sandboxFailClosed(env) {
   return String(env.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox" &&
     String(env.MERCADOPAGO_ENV || "").toLowerCase() === "sandbox" &&
-    String(env.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true";
+    String(env.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true" &&
+    // Owner opened real sales (KV switch): sandbox certification endpoints shut down.
+    globalThis.__ZEVANORY_SALES_SWITCH__ !== true;
 }
 
 function isolation(record) {

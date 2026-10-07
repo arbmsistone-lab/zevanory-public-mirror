@@ -17548,7 +17548,7 @@ async function handleArtifactDownload(request, env) {
   if (request.method === "GET" || request.method === "HEAD") {
     const pageToken = String(new URL(request.url).searchParams.get("token") || "");
     if (pageToken.length < 32 || pageToken.length > 128 || !/^[A-Za-z0-9_-]+$/.test(pageToken)) return json30(404, { error: "download_unavailable" });
-    const page = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Seu download ZEVANORY</title><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b1220;color:#e6edf6;margin:0;display:grid;place-items:center;min-height:100vh;padding:16px}main{max-width:460px;background:#111a2c;border:1px solid #1f2b44;border-radius:12px;padding:28px}h1{font-size:20px;margin:0 0 12px}p{color:#a9b6c9;line-height:1.5}button{background:#2dd4a7;color:#04241b;border:0;border-radius:8px;padding:14px 20px;font-weight:700;font-size:16px;cursor:pointer;width:100%}</style></head><body><main><h1>Seu produto ZEVANORY</h1><p>Clique para baixar. O link vale para um download; guarde o arquivo no seu computador ou celular.</p><form method="post"><input type="hidden" name="token" value="${pageToken}"><button type="submit">Baixar agora</button></form><p>Problemas? suporte@zevanory.api.br · <a style="color:#2dd4a7" href="https://zevanory.api.br/entrega/reenviar">pedir novo link</a></p></main></body></html>`;
+    const page = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Seu download ZEVANORY</title><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b1220;color:#e6edf6;margin:0;display:grid;place-items:center;min-height:100vh;padding:16px}main{max-width:460px;background:#111a2c;border:1px solid #1f2b44;border-radius:12px;padding:28px}h1{font-size:20px;margin:0 0 12px}p{color:#a9b6c9;line-height:1.5}button{background:#2dd4a7;color:#04241b;border:0;border-radius:8px;padding:14px 20px;font-weight:700;font-size:16px;cursor:pointer;width:100%}</style></head><body><main><h1>Seu produto ZEVANORY</h1><p>Clique para baixar. O link vale para um download; guarde o arquivo no seu computador ou celular. Se abriu pelo Instagram ou outro app, use “abrir no navegador” antes de baixar.</p><form method="post"><input type="hidden" name="token" value="${pageToken}"><button type="submit">Baixar agora</button></form><p>Problemas? suporte@zevanory.api.br · <a style="color:#2dd4a7" href="https://zevanory.api.br/entrega/reenviar">pedir novo link</a></p></main></body></html>`;
     return new Response(request.method === "HEAD" ? null : page, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer", "x-robots-tag": "noindex" } });
   }
   if (request.method !== "POST") return json30(405, { error: "method_not_allowed" });
@@ -17562,6 +17562,13 @@ async function handleArtifactDownload(request, env) {
   try {
     claimed = await consumeArtifactDownload(db, { token });
   } catch (error) {
+    const fromBrowserForm = /application\/x-www-form-urlencoded|multipart\/form-data/i.test(String(request.headers.get("content-type") || ""));
+    if (fromBrowserForm) {
+      // Customers see a page with the self-service recovery, never raw JSON.
+      const used = String(error?.message || "") === "artifact_token_unavailable";
+      const page = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Link de download</title><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b1220;color:#e6edf6;margin:0;display:grid;place-items:center;min-height:100vh;padding:16px}main{max-width:460px;background:#111a2c;border:1px solid #1f2b44;border-radius:12px;padding:28px}h1{font-size:20px;margin:0 0 12px}p{color:#a9b6c9;line-height:1.5}a.b{display:block;text-align:center;background:#2dd4a7;color:#04241b;border-radius:8px;padding:14px 20px;font-weight:700;text-decoration:none}</style></head><body><main><h1>${used ? "Este link já foi usado ou expirou" : "Link inválido"}</h1><p>Sem problema: peça um novo link agora com o código do pedido e o e-mail da compra. Ele chega em instantes.</p><p><a class="b" href="https://zevanory.api.br/entrega/reenviar">Receber novo link</a></p><p>Dúvidas: suporte@zevanory.api.br · WhatsApp +55 88 99254-5413</p></main></body></html>`;
+      return new Response(page, { status: used ? 410 : 404, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer" } });
+    }
     if (String(error?.message || "") === "artifact_token_unavailable") return json30(410, { error: "download_token_used_or_expired" });
     return json30(404, { error: "download_unavailable" });
   } finally {
@@ -18391,9 +18398,91 @@ var cloudflare_worker_default = {
     return withSecurityHeaders(response2, env);
   }
 };
+
+// Paid-but-undelivered watchdog: a confirmed payment must always reach the customer. Real
+// (non-test) orders paid >15 min ago whose fulfillment is still pending are re-delivered from the
+// Mercado Pago payment; if that still fails, the owner is alerted once per order.
+async function runPaidDeliveryWatchdog(env) {
+  hydrateRuntimeConfig(env);
+  if (!process.env.DATABASE_URL || !process.env.MERCADOPAGO_ACCESS_TOKEN) return { ok: false, reason: "watchdog_unconfigured" };
+  const sql = cs(process.env.DATABASE_URL);
+  const kv = globalThis.__ZEVANORY_PRIVATE_KV__ || env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const rows = await sql.query(`select o.order_id, fe.provider_payment_id
+      from orders o
+      join service_fulfillment sf on sf.order_id = o.order_id
+      join lateral (select provider_payment_id, received_at from financial_events f
+                     where f.order_id = o.order_id and f.normalized_event = 'payment_confirmed'
+                     order by received_at asc limit 1) fe on true
+     where o.status = 'paid' and sf.status = 'pending' and coalesce(o.certification_pilot, false) = false
+       and fe.received_at < now() - interval '15 minutes' and fe.received_at > now() - interval '7 days'
+     order by fe.received_at asc limit 10`, []);
+  const out = { ok: true, checked: rows.length, delivered: 0, failed: 0 };
+  for (const row of rows) {
+    const orderId = String(row.order_id);
+    if (kv?.get && await kv.get(`sandbox-proof-v2:order:${orderId}`).catch(() => null)) continue;
+    try {
+      const payment = await fetchMercadoPagoPayment(String(row.provider_payment_id), process.env.MERCADOPAGO_ACCESS_TOKEN);
+      await ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, providerEventId: `watchdog:${row.provider_payment_id}`, certificationOnly: false });
+      out.delivered += 1;
+    } catch (error) {
+      out.failed += 1;
+      const key = `delivery-watchdog:alerted:${orderId}`;
+      if (kv?.get && !(await kv.get(key).catch(() => null)) && process.env.RESEND_API_KEY) {
+        const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ from: String(process.env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>"), to: [String(process.env.OWNER_ALERT_EMAIL || "zevanory@gmail.com")], subject: "ZEVANORY — pagamento confirmado sem entrega (ação necessária)", text: `O pedido ${orderId} foi pago (pagamento ${row.provider_payment_id}) mas a entrega automática falhou: ${String(error?.message || error).slice(0, 160)}.\n\nO sistema tenta de novo a cada hora. Se o e-mail do comprador estiver inválido, entre em contato pelo Mercado Pago e envie o material manualmente.` }), signal: AbortSignal.timeout(10000) }).catch(() => null);
+        if (r?.ok) await kv.put(key, "1", { expirationTtl: 7 * 24 * 3600 }).catch(() => null);
+      }
+    }
+  }
+  return out;
+}
+__name(runPaidDeliveryWatchdog, "runPaidDeliveryWatchdog");
+// Sales preflight: the owner's "open sales" switch is only honored when production payments,
+// webhook, mailer, database and every product file are verified (hourly, written to KV).
+async function runSalesPreflight(env) {
+  hydrateRuntimeConfig(env);
+  const kv = globalThis.__ZEVANORY_PRIVATE_KV__ || env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const checks = [];
+  const add = (id, ok, detail) => checks.push({ id, ok: Boolean(ok), detail: String(detail || "").slice(0, 160) });
+  const token = String(process.env.MERCADOPAGO_ACCESS_TOKEN || "").trim();
+  if (!token) add("mercadopago_production_token", false, "MERCADOPAGO_ACCESS_TOKEN ausente");
+  else {
+    try {
+      const r = await fetch(`${MERCADOPAGO_API_BASE}/users/me`, { headers: { authorization: `Bearer ${token}`, accept: "application/json" }, signal: AbortSignal.timeout(10000) });
+      const me = await r.json().catch(() => ({}));
+      const testUser = Array.isArray(me?.tags) && me.tags.includes("test_user");
+      add("mercadopago_production_token", r.ok && !testUser && String(me?.site_id || "") === "MLB", r.ok ? (testUser ? "credencial de usuário de TESTE (não recebe pagamento real)" : `conta ${me?.site_id || "?"} verificada`) : `Mercado Pago respondeu ${r.status}`);
+    } catch (error) {
+      add("mercadopago_production_token", false, "Mercado Pago indisponível: " + String(error?.message || error));
+    }
+  }
+  add("mercadopago_webhook_secret", String(process.env.MERCADOPAGO_WEBHOOK_SECRET || "").length >= 16, "segredo do webhook de produção");
+  add("checkout_enabled", process.env.CHECKOUT_ENABLED === "true" && process.env.FINANCIAL_EVENTS_ENABLED === "true", "checkout e eventos financeiros habilitados");
+  add("payment_public_base", Boolean(safePublicBaseUrl(process.env.PAYMENT_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL)), "URL pública de notificação");
+  add("mailer", String(process.env.RESEND_API_KEY || "").trim().length > 10, "envio de e-mail de entrega");
+  let dbOk = false;
+  try { if (process.env.DATABASE_URL) { await cs(process.env.DATABASE_URL).query("select 1", []); dbOk = true; } } catch {}
+  add("database", dbOk, "banco de pedidos");
+  try {
+    const listed = kv?.list ? await kv.list({ prefix: PREFIX, limit: 100 }) : { keys: [] };
+    const present = new Set((listed.keys || []).map((k) => String(k.name)));
+    const missing = Object.values(ZEVANORY_ARTIFACTS).filter((a) => !present.has(a.key)).map((a) => a.offerId);
+    add("product_files", missing.length === 0, missing.length ? "faltando: " + missing.join(",") : "5 arquivos presentes");
+  } catch (error) {
+    add("product_files", false, "não foi possível listar os arquivos");
+  }
+  add("delivery_recovery", String(process.env.FULFILLMENT_OPERATOR_TOKEN || "").length >= 16, "reenvio de link pelo cliente");
+  const ok = checks.filter((c) => c.id !== "delivery_recovery").every((c) => c.ok);
+  const result = { ok, at: new Date().toISOString(), checks };
+  try { await kv?.put?.("zpc-sales-preflight:v1", JSON.stringify(result), { expirationTtl: 6 * 3600 }); } catch {}
+  return result;
+}
+__name(runSalesPreflight, "runSalesPreflight");
+
 export {
   cloudflare_worker_default as default,
-  cs as whatsappProofDatabase
+  cs as whatsappProofDatabase,
+  runPaidDeliveryWatchdog,
+  runSalesPreflight
 };
 /*! Bundled license information:
 

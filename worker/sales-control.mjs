@@ -9,6 +9,7 @@
 // fresh single-use link, sent only to the email used in the purchase.
 
 const SALES_KEY = "sales:open:v1";
+const PREFLIGHT_KEY = "zpc-sales-preflight:v1";
 const CACHE_MS = 30_000;
 let cached = { at: 0, value: null };
 
@@ -21,11 +22,19 @@ const html = (status, body) => new Response(body, { status, headers: { "content-
 
 export async function readSalesSwitch(env, now = Date.now()) {
   if (now - cached.at < CACHE_MS && cached.value) return cached.value;
-  let value = { enabled: false };
+  let value = { enabled: false, requested: false };
   try {
-    const raw = await env?.ZEVANORY_PRIVATE_ARTIFACTS?.get?.(SALES_KEY);
+    const kv = env?.ZEVANORY_PRIVATE_ARTIFACTS;
+    const raw = await kv?.get?.(SALES_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
-    if (parsed && parsed.enabled === true) value = { enabled: true, at: String(parsed.at || ""), by: String(parsed.by || "") };
+    if (parsed && parsed.enabled === true) {
+      // Fail-closed: the switch only opens sales while the production preflight is green and fresh.
+      const pre = JSON.parse(String(await kv.get(PREFLIGHT_KEY) || "null"));
+      const fresh = pre && Date.now() - Date.parse(String(pre.at || "")) < 3 * 3600 * 1000;
+      value = pre?.ok === true && fresh
+        ? { enabled: true, requested: true, at: String(parsed.at || ""), by: String(parsed.by || "") }
+        : { enabled: false, requested: true, blocked: "preflight_not_green" };
+    }
   } catch {}
   cached = { at: now, value };
   return value;
@@ -101,7 +110,7 @@ export async function handleSalesControl(request, env, { sqlFactory, worker, ctx
   if (path === "/api/sales/status") {
     if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
     const sw = await readSalesSwitch(env);
-    return json(200, { open: sw.enabled === true });
+    return json(200, { open: sw.enabled === true, requested: sw.requested === true, blocked: sw.blocked || null });
   }
   if (path === "/entrega/reenviar") {
     return request.method === "GET" || request.method === "HEAD" ? html(200, RESEND_PAGE) : json(405, { error: "method_not_allowed" });
