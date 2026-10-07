@@ -31,7 +31,7 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const raw = JSON.parse(fs.readFileSync('/tmp/zpc-sales-preflight.json','utf8'));
-          const generatedAt = String(raw?.generatedAt ?? raw?.generated_at ?? '');
+          const generatedAt = String(raw?.generatedAt ?? raw?.generated_at ?? raw?.at ?? '');
           if (generatedAt) {
             const t = Date.parse(generatedAt);
             const ageMs = Number.isFinite(t) ? Date.now() - t : NaN;
