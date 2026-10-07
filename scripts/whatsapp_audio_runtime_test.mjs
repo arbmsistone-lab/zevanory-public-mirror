@@ -108,7 +108,7 @@ async function exerciseInbound(database, blocked = null) {
   const item = { from: blocked === "self" ? "558892545413" : blocked === "self9" ? "5588992545413" : "5511999991234", phone_number_id: blocked === "phone" ? "other" : "1300972319774588", type: "audio", media_id: "synthetic-media", message_id: "synthetic-message" };
   const sandbox = {
     process: { env: { DATABASE_URL: database ? "synthetic-database" : "" } },
-    globalThis: { __ZEVANORY_PRIVATE_KV__: kv, __ZEVANORY_WHATSAPP_RUNTIME__: {} },
+    globalThis: { __ZEVANORY_PRIVATE_KV__: kv, __ZEVANORY_WHATSAPP_OPS_STORE__: kv, __ZEVANORY_WHATSAPP_RUNTIME__: {} },
     rawText: () => '{}', verifyMetaSignature: () => true, whatsappBrokerSignatureValid: async () => false,
     extractWhatsappInboundMessages: () => [item], cs: () => ({ query: async () => [] }),
     whatsappStageRecorder, whatsappInboundSafety, Date,
