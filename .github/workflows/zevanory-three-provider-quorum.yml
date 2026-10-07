@@ -50,6 +50,17 @@ jobs:
           curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/api/continuity | jq .
           echo "CONTINUITY_END"
 
+      - name: Diagnostic ZEES-16 unresolved requirements
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/reconcile_zees16_control.mjs >/tmp/zees-diag-summary.json
+          echo "ZEES16_UNRESOLVED_BEGIN"
+          jq -c '.pillars[] | select(.state != "PROVADO") | {id,state,blockers,evidence}' zees16-state.json
+          echo "ZEES16_UNRESOLVED_END"
+
       - name: Verify open independent-provider quorum
         run: |
           set -euo pipefail
