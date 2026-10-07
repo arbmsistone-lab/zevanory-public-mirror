@@ -46,8 +46,13 @@ assert release.get("sales_mode")=="globally-blocked",release
 
 code,live=get_text(f"https://zevanory.api.br/{SLUG}")
 assert code==200
-assert "Checkout só após validação completa." in live or "Checkout so apos validacao completa." in live
-assert "Sem promessa artificial" in live
+# Live sales contract (2026-10-07): explicit buy action through the sales Worker, 7-day guarantee,
+# no pre-sale "gate" copy. Opening sales is an owner switch with production preflight.
+SKUS={"ia-na-pratica":"ZEV-IA-011","vendas-na-pratica":"ZEV-VEN-011","lucro-e-caixa":"ZEV-LCX-011","combo-ia-vendas":"ZEV-CMB-011","negocio-completo":"ZEV-NGC-011"}
+assert "Comprar agora" in live,(SLUG,"buy_cta_missing")
+assert f"/comprar/{SKUS[SLUG]}" in live,(SLUG,"buy_target_missing")
+assert "7 dias" in live,(SLUG,"guarantee_missing")
+assert "CNPJ 69.077.233/0001-99" in live,(SLUG,"supplier_identification_missing")
 
 for marker in ["/api/checkout","/api/webhooks","payment_confirmed","refund","entitlement","SALE_GLOBALLY_ENABLED"]:
     assert marker in worker_text,(SLUG,"runtime_contract_missing",marker)
