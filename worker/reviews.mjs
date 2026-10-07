@@ -94,7 +94,7 @@ export async function handleReviews(request, env, { sqlFactory } = {}) {
       sourceKey: `review:${orderId}`, evidence: [`order:${orderId.slice(0, 8)}`, `rating:${rating}`, `publish_consent:${consent}`, new Date().toISOString()],
     }), { expirationTtl: 30 * 24 * 3600 });
   } catch {}
-  if (rating <= 3) await alertOwnerNow(env, { channel: "Avaliação", contact: orderId, excerpt: comment || `nota ${rating}/5 sem comentário`, reason: `nota ${rating}/5 no ${String(order.offer_id || "")} (pedido ${orderId.slice(0, 8)})` }).catch(() => null);
+  if (rating <= 3) await alertOwnerNow(env, { category: "complaint", channel: "Avaliação", contact: orderId, excerpt: comment || `nota ${rating}/5 sem comentário`, reason: `nota ${rating}/5 no ${String(order.offer_id || "")} (pedido ${orderId.slice(0, 8)})` }).catch(() => null);
   return page(200, "Obrigado pela avaliação!", rating <= 3
     ? "<p>Sentimos que não atendeu como esperado. Nossa equipe vai entrar em contato pelo e-mail da compra para ajudar. Lembre: você tem 7 dias de garantia a partir da compra.</p>"
     : "<p>Sua nota ajuda outros empreendedores a decidir e nos ajuda a melhorar o material.</p>");
