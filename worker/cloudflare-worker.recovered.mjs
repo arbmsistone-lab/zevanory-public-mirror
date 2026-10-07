@@ -6,6 +6,7 @@ import { getWhatsappOpsStore, publishWhatsappOpsStats } from "./whatsapp-neon-st
 import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
 import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } from "./mercadopago-webhook-safety.mjs";
 import { chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
+import { appendBlogSitemap, renderBlogArticle, renderBlogIndex, renderChannelsPage, runMultichannelAutonomy } from "./multichannel-autonomy.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
@@ -13776,7 +13777,7 @@ async function runNonCommercialAutopilot({ env = process.env, scheduledTime = Da
     }
     const item = accepted2 || last || { channel, round: 0, selection: {}, winner: {}, spec: {}, elite: false };
     const status = item.elite ? publicationPaused ? "approved_paused" : "approved_for_autopublish" : "discarded";
-    const row = Object.freeze({ channel, revision_round: item.round, creative_id: item.spec.creative_id || null, variant_id: item.spec.variant_id || null, campaign_id: item.spec.campaign_id || `${cycleId}-${channel}`, quality_score: Number(item.winner.quality_score || 0), perceptual_score: Number(item.winner.perceptual_score || 0), score: Number(item.autonomy?.score || 0), criteria: item.autonomy?.criteria || {}, compliance: Number(item.autonomy?.compliance || 0), compliance_checks: item.autonomy?.compliance_checks || {}, reason: item.autonomy?.reason || "creative_unavailable", status, review_board: item.winner.review_board || item.selection?.review_board || null, selection_basis: item.selection?.selection_basis || null, asset_url: item.elite && item.spec.creative_id ? creativeAssetUrl(item.spec, ["youtube", "tiktok"].includes(channel) ? "webm" : "png", env) : null, elite_accepted: item.elite, revision_required: !item.elite, central_ready: item.elite, publishable: item.elite && !publicationPaused, commercial_unlock: false });
+    const row = Object.freeze({ channel, revision_round: item.round, creative_id: item.spec.creative_id || null, variant_id: item.spec.variant_id || null, campaign_id: item.spec.campaign_id || `${cycleId}-${channel}`, title: item.spec.hook || "", content: item.spec.body || "", landing_url: `${String(env.PUBLIC_BASE_URL || "https://zevanory.api.br").replace(/\/$/,"")}/solucoes?utm_source=${encodeURIComponent(channel)}&utm_medium=organic&utm_campaign=${encodeURIComponent(item.spec.campaign_id || cycleId)}`, quality_score: Number(item.winner.quality_score || 0), perceptual_score: Number(item.winner.perceptual_score || 0), score: Number(item.autonomy?.score || 0), criteria: item.autonomy?.criteria || {}, compliance: Number(item.autonomy?.compliance || 0), compliance_checks: item.autonomy?.compliance_checks || {}, reason: item.autonomy?.reason || "creative_unavailable", status, review_board: item.winner.review_board || item.selection?.review_board || null, selection_basis: item.selection?.selection_basis || null, asset_url: item.elite && item.spec.creative_id ? creativeAssetUrl(item.spec, ["youtube", "tiktok"].includes(channel) ? "webm" : "png", env) : null, elite_accepted: item.elite, revision_required: !item.elite, central_ready: item.elite, publishable: item.elite && !publicationPaused, commercial_unlock: false });
     channelCreatives.push(row);
     await recordCreativeEvaluation(env, { ...row, angle: arm.angle, format: arm.format, hour: arm.hour, rewrites: Math.max(0, Number(item.round || 1) - 1), evaluated_at: new Date().toISOString() }).catch(() => false);
   }
@@ -18225,6 +18226,7 @@ var cloudflare_worker_default = {
     })());
     ctx.waitUntil(runNonCommercialAutopilot({ env, scheduledTime: controller.scheduledTime }).catch((error) => console.error("noncommercial_autopilot_failed", String(error?.message || error))));
     ctx.waitUntil(sendDailyCreativeReport(env).then((out) => console.info("creative_daily_report", JSON.stringify(out))).catch((error) => console.error("creative_daily_report_failed", String(error?.message || error))));
+    ctx.waitUntil(runMultichannelAutonomy(env,new Date(controller.scheduledTime)).then((out) => console.info("multichannel_cycle",JSON.stringify({generatedAt:out.generatedAt,blog:out.blog,channels:out.channels.map(x=>({id:x.id,mode:x.mode}))}))).catch((error)=>console.error("multichannel_cycle_failed",String(error?.message||error))));
   },
   async fetch(request, env) {
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
@@ -18233,6 +18235,9 @@ var cloudflare_worker_default = {
     globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = getWhatsappOpsStore({ DATABASE_URL: process.env.DATABASE_URL, ZEVANORY_PRIVATE_ARTIFACTS: env.ZEVANORY_PRIVATE_ARTIFACTS }, cs);
     globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__;
     const url = new URL(request.url);
+    if (url.pathname === "/blog" || url.pathname === "/blog/") return withSecurityHeaders(new Response(await renderBlogIndex(env),{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=300"}}),env);
+    if (url.pathname.startsWith("/blog/")) { const article=await renderBlogArticle(env,decodeURIComponent(url.pathname.slice(6))); return withSecurityHeaders(new Response(article||"not found",{status:article?200:404,headers:{"content-type":article?"text/html; charset=utf-8":"text/plain; charset=utf-8","cache-control":article?"public, max-age=300":"no-store"}}),env); }
+    if (url.pathname === "/sitemap.xml") { const base=await env.ASSETS.fetch(new Request(url,{method:"GET"})); return withSecurityHeaders(new Response(await appendBlogSitemap(env,await base.text()),{status:base.status,headers:{"content-type":"application/xml; charset=utf-8","cache-control":"public, max-age=300"}}),env); }
     if (request.method === "POST" && url.pathname === "/api/webhooks/meta") return withSecurityHeaders(await handleNodeWebhookFetch(request, handler26), env);
     if (url.pathname === "/arbm-one" || url.pathname === "/arbm-one.html") {
       return Response.redirect(new URL("/zevanory-one", url), 301);
@@ -18293,11 +18298,12 @@ var cloudflare_worker_default = {
       return new Response(JSON.stringify({ configured: true }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "set-cookie": ownerCookie(session) } });
     }
     if (url.pathname === "/auth/owner/logout" && request.method === "POST") return new Response(null, { status: 204, headers: { "cache-control": "no-store", "set-cookie": clearOwnerCookie() } });
-    const privatePage = (/* @__PURE__ */ new Set(["/central", "/index.html", "/criativos", "/criativos.html", "/zevanory-robot-control", "/zevanory-robot-control.html", "/financeiro", "/financeiro.html"])).has(url.pathname);
+    const privatePage = (/* @__PURE__ */ new Set(["/central", "/index.html", "/criativos", "/criativos.html", "/sistema/canais", "/zevanory-robot-control", "/zevanory-robot-control.html", "/financeiro", "/financeiro.html"])).has(url.pathname);
     const privateApi = url.pathname.startsWith("/private-api/");
     const owner = privatePage || privateApi ? await verifyOwnerSession(env, readOwnerCookie(request)) : null;
     if (privatePage && !owner) return Response.redirect(new URL("/acesso", url), 302);
-    if (owner && (url.pathname === "/criativos" || url.pathname === "/criativos.html")) return withSecurityHeaders(new Response(await renderCreativeAutonomyPage(env), { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } }), env);
+    if (owner && (url.pathname === "/criativos" || url.pathname === "/criativos.html")) return withSecurityHeaders(new Response((await renderCreativeAutonomyPage(env)).replace("<h1>Conteúdo</h1>",'<nav><a href="/central">Sistema</a> → <a href="/sistema/canais">Canais</a></nav><h1>Conteúdo</h1>'), { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'self'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } }), env);
+    if (owner && url.pathname === "/sistema/canais") return withSecurityHeaders(new Response(await renderChannelsPage(env),{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}}),env);
     if (owner && url.pathname === "/private-api/creative-autonomy" && request.method === "GET") return new Response(JSON.stringify(await creativeAutonomyDashboard(env)), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
     if (owner && url.pathname === "/private-api/creative-autonomy/pause" && request.method === "POST") {
       const origin = String(request.headers.get("origin") || "");
