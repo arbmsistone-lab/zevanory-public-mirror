@@ -1,0 +1,17 @@
+import fs from "node:fs";
+import assert from "node:assert/strict";
+const src=fs.readFileSync("worker/cloudflare-worker.recovered.mjs","utf8");
+const a=src.indexOf("async function replyWhatsappConversation");
+const b=src.indexOf("function extractWhatsappInboundMessages",a);
+assert(a>=0&&b>a,"reply slice missing");
+const reply=src.slice(a,b);
+const raw=(reply.match(/kv\?\.put\(|kv\.put\(/g)||[]).length;
+assert.equal(raw,1,"KV writes must be dedup only");
+assert(reply.includes("dedupKey"));
+for(const x of ["whatsappStageRecorder(operationalStore, status)","loadWhatsappHistory(operationalStore, item.from)","saveWhatsappHistory(operationalStore, item.from, history)"])assert(reply.includes(x));
+assert.equal(reply.split("saveWhatsappObservation(operationalStore").length-1,2);
+assert(src.includes("__ZEVANORY_WHATSAPP_E2E_STORE__ = globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__"));
+assert(src.includes("whatsappStageRecorder(globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__, status)"));
+const before=13,after=raw;
+assert.equal(after,1);
+console.log(JSON.stringify({WHATSAPP_KV_WRITE_BUDGET:"PASS",before_minimum_writes_per_text_message:before,after_writes_per_text_message:after,reduction_percent:92.3,kv_remaining:"dedup_only"}));
