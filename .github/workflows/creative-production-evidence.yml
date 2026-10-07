@@ -31,6 +31,7 @@ jobs:
           date_key="zpc:creative-autonomy:daily:$(date -u +%F)"
           encoded_date="$(printf '%s' "$date_key" | jq -sRr @uri)"
           curl -sS -H "$auth" "$base/values/$encoded_date" -o /tmp/daily.json
+          curl -sS -H "$auth" "$base/values/zpc:creative-autonomy:daily:last" -o /tmp/daily-last.json
           quota_key="zpc:multichannel:quota:telegram:$(date -u +%F)"
           encoded_quota="$(printf '%s' "$quota_key" | jq -sRr @uri)"
           curl -sS -H "$auth" "$base/values/$encoded_quota" -o /tmp/quota.txt
@@ -44,6 +45,6 @@ jobs:
           console.log(JSON.stringify({telegram_posts_last_24h:posts.length,posts}));
           const quota=Number(fs.readFileSync('/tmp/quota.txt','utf8').trim()||0);if(quota>2)throw new Error('telegram_daily_limit_exceeded');
           console.log(JSON.stringify({telegram_daily_quota_used:quota,limit:2}));
-          let daily=null;try{daily=JSON.parse(fs.readFileSync('/tmp/daily.json','utf8'))}catch{daily={legacy_marker:fs.readFileSync('/tmp/daily.json','utf8').trim()==='1'}}
-          console.log(JSON.stringify({daily_report_schedule:'first successful hourly Worker cron after 00:00 UTC',daily_report:daily}));
+          const marker=(path)=>{const raw=fs.readFileSync(path,'utf8').trim();if(raw==='1')return {sent:true,sentAt:null,provider_message_id:null,legacy_marker:true};try{const x=JSON.parse(raw);return x&&typeof x==='object'?{sent:x.sent===true,sentAt:x.sentAt||null,provider_message_id:x.provider_message_id||null,date:x.date||null,legacy_marker:false}:null}catch{return null}};
+          console.log(JSON.stringify({daily_report_schedule:'first successful hourly Worker cron after 00:00 UTC',daily_report:marker('/tmp/daily.json'),daily_report_last:marker('/tmp/daily-last.json')}));
           NODE
