@@ -15,18 +15,18 @@ Path("worker/whatsapp-neon-store.mjs").write_text("""const MAX_LIST=1000;
 export function createWhatsappNeonStore(sql){
  if(!sql?.query)return null;
  let readyPromise=null;
- const ready=()=>readyPromise ||= sql.query(\`create table if not exists whatsapp_operational_store (
+ const ready=()=>readyPromise ||= sql.query(`create table if not exists whatsapp_operational_store (
   store_key text primary key,
   store_value text not null,
   expires_at timestamptz null,
   updated_at timestamptz not null default now()
- )\`);
+ )`);
  return Object.freeze({
   async put(key,value,options={}){
    await ready();
    const ttl=Math.max(0,Math.floor(Number(options?.expirationTtl||0)));
-   await sql.query(\`insert into whatsapp_operational_store(store_key,store_value,expires_at,updated_at)
+   await sql.query(`insert into whatsapp_operational_store(store_key,store_value,expires_at,updated_at)
     values($1,$2,case when $3::int>0 then now()+($3::int * interval '1 second') else null end,now())
-    on conflict(store_key) do update set store_value=excluded.store_value,expires_at=excluded.expires_at,updated_at=now()\`,
+    on conflict(store_key) do update set store_value=excluded.store_value,expires_at=excluded.expires_at,updated_at=now()`,
     [String(key),String(value),ttl]);
   },
