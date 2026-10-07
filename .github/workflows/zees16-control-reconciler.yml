@@ -32,8 +32,8 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: zees16-control-reconciler-${{ github.event_name }}
-  cancel-in-progress: true
+  group: zees16-control-reconciler
+  cancel-in-progress: false
 jobs:
   reconcile:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
@@ -102,10 +102,22 @@ jobs:
           const actual=JSON.parse(fs.readFileSync("persisted-state.json","utf8"));
           if(actual?.decision_hash !== expected?.decision_hash) throw new Error("persisted decision hash mismatch");
           if(actual?.release_sha !== expected?.release_sha) throw new Error("persisted release SHA mismatch");
-          if(Number(actual?.counts?.proven||0)!==16 || Number(actual?.counts?.partial||0)!==0 || Number(actual?.counts?.blocked||0)!==0) {
-            throw new Error("persisted ZEES16 state is not 16/16 GREEN");
+          const expectedCounts = {
+            proven: Number(expected?.counts?.proven || 0),
+            partial: Number(expected?.counts?.partial || 0),
+            blocked: Number(expected?.counts?.blocked || 0),
+            na: Number(expected?.counts?.na || 0),
+          };
+          const actualCounts = {
+            proven: Number(actual?.counts?.proven || 0),
+            partial: Number(actual?.counts?.partial || 0),
+            blocked: Number(actual?.counts?.blocked || 0),
+            na: Number(actual?.counts?.na || 0),
+          };
+          if(JSON.stringify(actualCounts) !== JSON.stringify(expectedCounts)) {
+            throw new Error("persisted ZEES16 counts mismatch");
           }
-          console.log("ZEES16_KV_PERSISTENCE=PASS", actual.counts, "SHA", actual.release_sha, "DECISION", actual.decision_hash);
+          console.log("ZEES16_KV_PERSISTENCE=PASS", actualCounts, "SHA", actual.release_sha, "DECISION", actual.decision_hash);
           NODE
       - name: Preserve immutable reconciliation artifact
         uses: actions/upload-artifact@v4
@@ -122,10 +134,18 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           const s=JSON.parse(fs.readFileSync("zees16-state.json","utf8"));
-          if(s.counts.blocked>0) {
-            console.error("ZEES16_BLOCKED_PILLARS",s.pillars.filter(x=>x.state==="BLOCKED").map(x=>x.id+":"+x.blockers.join(",")));
-          }
+          const counts = {
+            proven: Number(s?.counts?.proven || 0),
+            partial: Number(s?.counts?.partial || 0),
+            blocked: Number(s?.counts?.blocked || 0),
+            na: Number(s?.counts?.na || 0),
+          };
+          const nonProven = s.pillars.filter(x=>x.state!=="PROVEN").map(x=>x.id+":"+x.state+":"+x.blockers.join(","));
+          if(nonProven.length) console.error("ZEES16_NON_PROVEN_PILLARS", nonProven);
           if(!/^[0-9a-f]{64}$/.test(s.decision_hash)) throw new Error("decision hash invalid");
           if(!/^[0-9a-f]{40}$/.test(s.release_sha)) throw new Error("release SHA invalid");
-          console.log("ZEES16_STATE",s.counts,"SHA",s.release_sha,"DECISION",s.decision_hash);
+          if(counts.proven!==16 || counts.partial!==0 || counts.blocked!==0 || counts.na!==0) {
+            throw new Error("ZEES16 acceptance requires exact 16/16 GREEN");
+          }
+          console.log("ZEES16_STATE",counts,"SHA",s.release_sha,"DECISION",s.decision_hash);
           NODE
