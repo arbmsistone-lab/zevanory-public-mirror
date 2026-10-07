@@ -36,7 +36,7 @@ export async function recordWhatsappEvidence(type,payload={}){
   return true;
 }
 async function listEvidence(env={}){
-  const kv=store()||env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const kv=store();
   if(!kv?.list) return [];
   const out=[]; let cursor=undefined;
   do{

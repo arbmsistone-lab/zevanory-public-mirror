@@ -18196,6 +18196,10 @@ var cloudflare_worker_default = {
   async scheduled(controller, env, ctx) {
     hydrateRuntimeConfig(env);
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
+    const whatsappOpsStore = process.env.DATABASE_URL ? createWhatsappNeonStore(cs(process.env.DATABASE_URL)) : null;
+    globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = whatsappOpsStore;
+    globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = whatsappOpsStore;
+    if (whatsappOpsStore?.cleanupExpired) ctx.waitUntil(whatsappOpsStore.cleanupExpired().catch((error) => console.error("whatsapp_neon_cleanup_failed", String(error?.message || error))));
     ctx.waitUntil(runNonCommercialAutopilot({ env, scheduledTime: controller.scheduledTime }).catch((error) => console.error("noncommercial_autopilot_failed", String(error?.message || error))));
   },
   async fetch(request, env) {

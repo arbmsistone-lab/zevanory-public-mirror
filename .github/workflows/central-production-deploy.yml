@@ -26,6 +26,8 @@ on:
       - "scripts/deploy/prepare-central-candidate.py"
       - "worker/voice-pcm.mjs"
       - "worker/whatsapp-e2e-evidence.mjs"
+      - "worker/whatsapp-neon-store.mjs"
+      - "tests/whatsapp-neon-store.test.mjs"
       - "worker/evidence-control-plane.mjs"
       - "worker/zevanory-control-core.mjs"
       - "worker/core-command-executor.mjs"
@@ -129,6 +131,8 @@ jobs:
           node --check worker/voice-naturality-study.mjs
           node --check worker/whatsapp-onboarding.mjs
           node --check worker/whatsapp-e2e-evidence.mjs
+          node --check worker/whatsapp-neon-store.mjs
+          node --test tests/whatsapp-neon-store.test.mjs
           node --check worker/voice-final-closure.mjs
           node --check public/control-plane-vnext.js
           npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir /tmp/central-final
