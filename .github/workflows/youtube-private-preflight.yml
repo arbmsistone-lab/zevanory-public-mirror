@@ -1,0 +1,22 @@
+name: YouTube private preflight (no upload)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      VOICE_ENCODE_SECRET: ${{ secrets.VOICE_ENCODE_SECRET }}
+      VOICE_SYNTH_URL: https://zevanory-product-control-edge.onrender.com/api/voice/synthesize
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install media tools
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+      - name: Validate identity, F1 gate, TTS and final MP4 without uploading
+        run: node scripts/channels/youtube-preflight.mjs
