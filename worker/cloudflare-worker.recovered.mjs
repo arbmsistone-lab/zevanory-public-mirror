@@ -18248,6 +18248,14 @@ var cloudflare_worker_default = {
     const url = new URL(request.url);
     const affiliateRef=referralFromRequest(request,env);
     if (affiliateRef && url.pathname.startsWith("/api/checkout")) { const headers=new Headers(request.headers); headers.set("x-zevanory-affiliate-ref",affiliateRef); request=new Request(request,{headers}); }
+    if (request.method === "POST" && url.pathname === "/api/internal/whatsapp/stats-refresh") {
+      const expected = String(env.CERTIFICATION_E2E_TOKEN || process.env.CERTIFICATION_E2E_TOKEN || "");
+      const provided = String(request.headers.get("x-certification-e2e-token") || "");
+      if (!expected || !secureTokenEqual(expected, provided)) return withSecurityHeaders(new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
+      const stats = await publishWhatsappOpsStats(globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__, env.ZEVANORY_PRIVATE_ARTIFACTS);
+      if (!stats) return withSecurityHeaders(new Response(JSON.stringify({ error: "whatsapp_ops_stats_unavailable" }), { status: 503, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
+      return withSecurityHeaders(new Response(JSON.stringify(stats), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
+    }
     if (url.pathname === "/blog" || url.pathname === "/blog/") return withSecurityHeaders(new Response(await renderBlogIndex(env),{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=300"}}),env);
     if (url.pathname.startsWith("/blog/")) { const article=await renderBlogArticle(env,decodeURIComponent(url.pathname.slice(6))); return withSecurityHeaders(new Response(article||"not found",{status:article?200:404,headers:{"content-type":article?"text/html; charset=utf-8":"text/plain; charset=utf-8","cache-control":article?"public, max-age=300":"no-store"}}),env); }
     if (url.pathname === "/sitemap.xml") { const base=await env.ASSETS.fetch(new Request(url,{method:"GET"})); return withSecurityHeaders(new Response(await appendBlogSitemap(env,await base.text()),{status:base.status,headers:{"content-type":"application/xml; charset=utf-8","cache-control":"public, max-age=300"}}),env); }

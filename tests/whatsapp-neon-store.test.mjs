@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { getWhatsappOpsStore, publishWhatsappOpsStats, resetWhatsappOpsStoreMemoForTest, WHATSAPP_OPS_STATS_KEY } from "../worker/whatsapp-neon-store.mjs";
 import { readWhatsappAuditObserve } from "../worker/whatsapp-onboarding.mjs";
 
@@ -106,4 +107,16 @@ test("audit-observe reads observation and history from Neon",async()=>{
  assert.equal(body.observations[0].inbound_message_id,"wamid.audit");
  assert.deepEqual(body.history,[{r:"u",t:"teste"}]);
  assert.equal(kv.puts.length,0);
+});
+
+test("live proof refreshes stats through a private token and then reads the KV artifact",async()=>{
+ const worker=await readFile(new URL("../worker/cloudflare-worker.recovered.mjs",import.meta.url),"utf8");
+ const workflow=await readFile(new URL("../.github/workflows/whatsapp-neon-live-proof.yml",import.meta.url),"utf8");
+ assert.match(worker,/POST[\s\S]*\/api\/internal\/whatsapp\/stats-refresh/);
+ assert.match(worker,/x-certification-e2e-token/);
+ assert.match(worker,/publishWhatsappOpsStats\(globalThis\.__ZEVANORY_WHATSAPP_OPS_STORE__, env\.ZEVANORY_PRIVATE_ARTIFACTS\)/);
+ assert.match(workflow,/secrets\.CERTIFICATION_E2E_TOKEN/);
+ assert.match(workflow,/POST https:\/\/zevanory\.api\.br\/api\/internal\/whatsapp\/stats-refresh/);
+ assert.match(workflow,/storage\/kv\/namespaces\/\$KV_NAMESPACE_ID\/values\/zpc-whatsapp-ops:v1:stats/);
+ assert.doesNotMatch(workflow,/DATABASE_URL/);
 });
