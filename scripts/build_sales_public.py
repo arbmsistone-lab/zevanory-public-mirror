@@ -31,7 +31,7 @@ HTML_ROUTES = (
 
 
 LEGAL_FOOTER = ('<div class="container footer-legal" style="padding:12px 16px 28px;font-size:13px;line-height:1.5;opacity:.85">'
-                'A. RENAN ALVES MOREIRA BITU LTDA · CNPJ 69.077.233/0001-99 · Rua Francisco de Freitas Neto, 96, Alto do Tenente, '
+                'A. RENAN ALVES MOREIRA BITU LTDA · CNPJ 69.077.233/0001-99 · Rua Francisco de Freitas Neto, 96, Casa Residencial, Alto do Tenente, '
                 'Várzea Alegre/CE, CEP 63540-000 · <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a> · '
                 'WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a></div>')
 
