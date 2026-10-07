@@ -8,6 +8,7 @@ on:
       - "worker/control-plane-vnext-source.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "worker/live-runtime-status.mjs"
+      - "worker/creative-autonomy.mjs"
       - "worker/support-knowledge.mjs"
       - "worker/cloudflare-worker.recovered.mjs"
       - "worker/mercadopago-webhook-safety.mjs"
@@ -33,6 +34,7 @@ on:
       - "tests/mercadopago-webhook-safety.test.mjs"
       - "worker/evidence-control-plane.mjs"
       - "tests/live-runtime-status.test.mjs"
+      - "tests/creative-autonomy.test.mjs"
       - "worker/zevanory-control-core.mjs"
       - "worker/core-command-executor.mjs"
       - "worker/zea10-autonomy.mjs"
@@ -125,6 +127,7 @@ jobs:
           python3 scripts/deploy/prepare-central-candidate.py
           node --check worker/cloudflare-worker.compat.mjs
           node --check worker/live-runtime-status.mjs
+          node --check worker/creative-autonomy.mjs
           node --check worker/mercadopago-webhook-safety.mjs
           node --check worker/post-sale.mjs
           node --check worker/owner-alerts.mjs
@@ -140,6 +143,7 @@ jobs:
           node --check worker/whatsapp-neon-store.mjs
           node --test tests/whatsapp-neon-store.test.mjs
           node --test tests/live-runtime-status.test.mjs
+          node --test tests/creative-autonomy.test.mjs
           node --test tests/mercadopago-webhook-safety.test.mjs
           node --check worker/voice-final-closure.mjs
           node --check public/control-plane-vnext.js
