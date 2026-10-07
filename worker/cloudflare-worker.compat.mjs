@@ -24,6 +24,7 @@ import { runOwnerAlertDigest } from "./owner-alerts.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
+import { projectLiveStatus, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
 
 async function loadWhatsappBrokerState(binding) {
   if (!binding?.fetch) return null;
@@ -155,6 +156,10 @@ const wrapped = {
       url.pathname.startsWith("/api/webhooks") ||
       url.pathname.startsWith("/api/voice") ||
       url.pathname === "/api/support/instant-status" ||
+      url.pathname === "/api/status" ||
+      url.pathname === "/api/health" ||
+      url.pathname === "/api/continuity" ||
+      url.pathname === "/api/control-plane" ||
       (url.pathname === "/api/config" && /^(channel_identity_health|closure_status)$/.test(url.searchParams.get("view") || ""));
     if (whatsappPath) {
       const [whatsappRuntime, whatsappBrokerState] = await Promise.all([
@@ -385,11 +390,16 @@ const wrapped = {
     if (url.pathname === "/api/status") {
       const { response, body } = await fetchJsonThroughWorker(request, normalized, ctx);
       if (!response.ok || !body) return response;
-      body.continuity = buildContinuityPlan(body, { minQuorum: 3 });
+      const salesSwitch = await readSalesSwitch(normalized);
+      const projected = projectLiveStatus(body, {
+        salesOpen: salesSwitch.enabled === true,
+        whatsappTransportOperational: whatsappTransportIsOperational(normalized, globalThis.__ZEVANORY_WHATSAPP_RUNTIME__, globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__)
+      });
+      projected.continuity = buildContinuityPlan(projected, { minQuorum: 3 });
       const headers = new Headers(response.headers);
       headers.set("content-type", "application/json; charset=utf-8");
       headers.set("cache-control", "no-store");
-      return new Response(JSON.stringify(body), {
+      return new Response(JSON.stringify(projected), {
         status: response.status,
         statusText: response.statusText,
         headers

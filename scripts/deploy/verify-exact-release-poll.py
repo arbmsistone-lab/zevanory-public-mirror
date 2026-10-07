@@ -7,13 +7,14 @@ def load(name):
     except Exception as e:
         if diag: print(f"::error title=VERIFY_POLL_UNREADABLE::{name}.json {type(e).__name__}")
         return None
-status,health,control,core,zea10=(load(n) or {} for n in ("status","health","control","core","zea10"))
+status,sales,health,control,core,zea10=(load(n) or {} for n in ("status","sales","health","control","core","zea10"))
 sha=os.environ["TARGET_RUNTIME_SHA"]
+sales_open=sales.get("open") is True
 checks={
-    "status.runtime.sales": (status.get("runtime",{}).get("sales"), "globally-blocked"),
+    "status.runtime.sales": (status.get("runtime",{}).get("sales"), "enabled" if sales_open else "globally-blocked"),
     "health.ready": (health.get("ready"), True),
-    "control.global_state": (control.get("global_state"), "operational_commercial_blocked"),
-    "control.root_blocker": (control.get("root_blocker"), "global_sale_disabled"),
+    "control.global_state": (control.get("global_state"), "operational_commercial_enabled" if sales_open else "operational_commercial_blocked"),
+    "control.root_blocker": (control.get("root_blocker"), None if sales_open else "global_sale_disabled"),
     "control.release.deployment.commit_sha": (control.get("release",{}).get("deployment",{}).get("commit_sha"), sha),
     "core.release_sha": (core.get("release_sha"), sha),
     "core.architecture.circular_dependency": (core.get("architecture",{}).get("circular_dependency"), False),
