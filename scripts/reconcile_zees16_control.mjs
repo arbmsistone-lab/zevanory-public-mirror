@@ -52,7 +52,7 @@ const exactWorkflowProofs=[
     name:"ZEVANORY apex engineering gate",
     file:"zevanory-apex-engineering.yml",
     artifact:"zevanory-apex-engineering-evidence-"+sha.slice(0,12),
-    markers:["P01_APEX_EXACT_RELEASE=PASS","PASS production health/legal/security/parity","PASS source hygiene/provenance"]
+    markers:["P01_APEX_EXACT_RELEASE=PASS","APEX_CANDIDATE_PREVIEW_SECURITY_HEADERS=PASS","Verify candidate preview legal surfaces and parity contract","PASS source hygiene/provenance"]
   },
   {
     name:"ZEES-16 Evidence Gate",
