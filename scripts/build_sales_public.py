@@ -30,7 +30,7 @@ HTML_ROUTES = (
 )
 
 
-LEGAL_FOOTER = ('<div class="container footer-legal" style="padding:12px 16px 28px;font-size:13px;line-height:1.5;opacity:.85">'
+LEGAL_FOOTER = ('<div class="container footer-legal">'
                 'A. RENAN ALVES MOREIRA BITU LTDA · CNPJ 69.077.233/0001-99 · Rua Francisco de Freitas Neto, 96, Casa Residencial, Alto do Tenente, '
                 'Várzea Alegre/CE, CEP 63540-000 · <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a> · '
                 'WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a></div>')
@@ -186,6 +186,13 @@ def apply_approved_overlay() -> None:
     problems = []
     if "CNPJ 69.077.233/0001-99" not in controller or "Pré-comercial." in controller:
         problems.append("privacidade: controller identification missing")
+    # CSP is style-src 'self' / script-src 'self': inline styles or scripts break the live smoke.
+    for html_file in sorted(OUT.glob("*.html")):
+        text = html_file.read_text(encoding="utf-8")
+        if re.search(r'\sstyle="', text) or "<style" in text:
+            problems.append(f"{html_file.name}: inline style blocked by CSP")
+        if re.search(r"<script(?![^>]*\bsrc=)(?![^>]*application/ld\+json)[^>]*>", text):
+            problems.append(f"{html_file.name}: inline script blocked by CSP")
     for slug in PRODUCTS:
         page = (OUT / f"{slug}.html").read_text(encoding="utf-8")
         if not re.search(r"Preço de tabela: R\$ \d+", page):
