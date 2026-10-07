@@ -111,6 +111,7 @@ async function exerciseInbound(database, blocked = null) {
     globalThis: { __ZEVANORY_PRIVATE_KV__: kv, __ZEVANORY_WHATSAPP_OPS_STORE__: kv, __ZEVANORY_WHATSAPP_RUNTIME__: {} },
     rawText: () => '{}', verifyMetaSignature: () => true, whatsappBrokerSignatureValid: async () => false,
     extractWhatsappInboundMessages: () => [item], cs: () => ({ query: async () => [] }),
+    handleMetaSocialInbound: async () => ({ handled: false, received: 0, replied: 0 }),
     whatsappStageRecorder, whatsappInboundSafety, Date,
     understandWhatsappInbound: async () => { assert.equal(captured[0].stage, "received"); order.push("understand"); return { ...item, transcript: "Olá", understanding: "Olá" }; },
     replyWhatsappConversation: async (_item, question, { status, checkpoint }) => { assert.equal(question, "Olá"); order.push("reply"); await checkpoint("voice_sent", { heard: true, text_sent: true, voice_sent: true }); return { sent: true, ...status }; },
