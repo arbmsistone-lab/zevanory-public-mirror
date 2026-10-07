@@ -6,7 +6,7 @@ import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "./what
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
-import worker, { whatsappProofDatabase } from "./cloudflare-worker.recovered.mjs";
+import worker, { whatsappProofDatabase, runPaidDeliveryWatchdog, runSalesPreflight } from "./cloudflare-worker.recovered.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
 import { handleAdminRequest, isAdminAuthorized } from "./admin-console.mjs";
@@ -16,9 +16,11 @@ import { handleControlActionRequest } from "./control-action-plane.mjs";
 import { handleZea10AutonomyRequest } from "./zea10-autonomy.mjs";
 import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
 import { handleSandboxProofV2, handleSandboxInboundEmail } from "./sandbox-proof-v2.mjs";
-import { handleRefundFlow } from "./refund-flow.mjs";
+import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
+import { runOwnerAlertDigest } from "./owner-alerts.mjs";
+import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 
 async function loadWhatsappBrokerState(binding) {
   if (!binding?.fetch) return null;
@@ -102,7 +104,16 @@ const wrapped = {
   async processFetch(request, env, ctx) {
     let normalized = normalizeEnv(env);
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
-    const url = new URL(request.url);
+    applySalesSwitch(await readSalesSwitch(normalized));
+    let url = new URL(request.url);
+    if (url.hostname === "checkout.internal") {
+      // Public checkout is only reachable through the sales Worker's private service binding.
+      if (!url.pathname.startsWith("/api/checkout/")) return new Response("not_found", { status: 404 });
+      request = new Request("https://zevanory.api.br" + url.pathname + url.search, request);
+      url = new URL(request.url);
+    } else if (url.pathname.startsWith("/api/checkout/") && !request.headers.get("x-certification-pilot-token")) {
+      return new Response(JSON.stringify({ error: "checkout_via_sales_page_only", buy: "https://vendas.zevanory.api.br/solucoes" }), { status: 404, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+    }
     if (url.hostname === "funnel.internal") return (await handleFunnel(request, normalized, { sqlFactory: whatsappProofDatabase, ctx })) || new Response("not_found", { status: 404 });
     if(url.pathname==="/internal/voice/encode-chunk"||url.pathname==="/api/internal/voice/encode-chunk") return handleVoiceChunk(request,normalized);
     if(url.pathname==="/api/internal/voice/encode-stream") return handleVoiceStream(request,normalized);
@@ -112,6 +123,8 @@ const wrapped = {
       if (refund) return refund;
       const postSale = await handlePostSale(request, normalized, { sqlFactory: whatsappProofDatabase, isAdminAuthorized });
       if (postSale) return postSale;
+      const salesControl = await handleSalesControl(request, normalized, { sqlFactory: whatsappProofDatabase, worker, ctx });
+      if (salesControl) return salesControl;
     }
 
     // One administrative surface only: legacy HTML entrypoints permanently
@@ -315,7 +328,7 @@ const wrapped = {
       const expected = String(normalized.CERTIFICATION_E2E_TOKEN || "");
       const provided = String(request.headers.get("x-certification-e2e-token") || "");
       const sandbox = String(normalized.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox";
-      const salesClosed = String(normalized.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true";
+      const salesClosed = String(normalized.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true" && globalThis.__ZEVANORY_SALES_SWITCH__ !== true;
       if (!sandbox || !salesClosed) {
         return new Response(JSON.stringify({ error: "certification_e2e_not_fail_closed" }), {
           status: 409,
@@ -403,9 +416,15 @@ const wrapped = {
 
 wrapped.scheduled = async (controller, env, ctx) => {
   const normalized = normalizeEnv(env);
+  await runSalesPreflight(normalized).then((out) => console.info("sales_preflight", JSON.stringify({ ok: out.ok, failed: out.checks.filter((c) => !c.ok).map((c) => c.id) }))).catch((error) => console.error("sales_preflight_failed", error instanceof Error ? error.message : String(error)));
+  resetSalesSwitchCache();
+  const salesOpen = applySalesSwitch(await readSalesSwitch(normalized));
   const tasks = [reconcileControlPlane(wrapped, normalized, ctx).catch(()=>null)];
-  tasks.push(publishFunnelSummary(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => console.info("funnel_summary", JSON.stringify(out))).catch((error) => console.error("funnel_summary_failed", error instanceof Error ? error.message : String(error))));
-  tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
+  tasks.push(publishFunnelSummary(normalized, { sqlFactory: whatsappProofDatabase, production: salesOpen, salesOpen }).then((out) => console.info("funnel_summary", JSON.stringify(out))).catch((error) => console.error("funnel_summary_failed", error instanceof Error ? error.message : String(error))));
+  tasks.push(runPaidDeliveryWatchdog(normalized).then((out) => console.info("paid_delivery_watchdog", JSON.stringify(out))).catch((error) => console.error("paid_delivery_watchdog_failed", error instanceof Error ? error.message : String(error))));
+  tasks.push(runOwnerAlertDigest(normalized).then((out) => console.info("owner_alert_digest", JSON.stringify(out))).catch((error) => console.error("owner_alert_digest_failed", error instanceof Error ? error.message : String(error))));
+  tasks.push(runRefundWatchdog(normalized).then((out) => console.info("refund_watchdog", JSON.stringify(out))).catch((error) => console.error("refund_watchdog_failed", error instanceof Error ? error.message : String(error))));
+  tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase, production: true }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);
 };

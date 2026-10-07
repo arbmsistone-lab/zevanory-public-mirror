@@ -63,12 +63,15 @@ function maskEmail(email) {
 }
 
 async function rateLimited(kv, request) {
-  const ip = request.headers.get("cf-connecting-ip") || "unknown";
-  const hour = new Date().toISOString().slice(0, 13);
-  const key = `refund:rate:${hour}:${ip}`;
-  const n = Number(await kv.get(key) || 0);
-  if (n >= 6) return true;
-  await kv.put(key, String(n + 1), { expirationTtl: 3600 });
+  // Best-effort: a storage hiccup (e.g. KV quota) must never block a legal refund request.
+  try {
+    const ip = request.headers.get("cf-connecting-ip") || "unknown";
+    const hour = new Date().toISOString().slice(0, 13);
+    const key = `refund:rate:${hour}:${ip}`;
+    const n = Number(await kv.get(key) || 0);
+    if (n >= 6) return true;
+    await kv.put(key, String(n + 1), { expirationTtl: 3600 });
+  } catch {}
   return false;
 }
 
@@ -109,7 +112,13 @@ async function createRequest(env, sql, kv, { oid, email }) {
     requested_at: new Date().toISOString(),
   };
   await kv.put(KEY(oid), JSON.stringify(record), { expirationTtl: 90 * 24 * 3600 });
-  if (!test) await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY — novo pedido de reembolso para aprovar", `Pedido ${oid} (${record.offer_id}, R$ ${record.amount}) solicitou reembolso dentro do prazo de 7 dias.\n\nAprovar: ${ORIGIN}/admin/refunds`);
+  if (!test) {
+    const alert = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY — novo pedido de reembolso para aprovar", `Pedido ${oid} (${record.offer_id}, R$ ${record.amount}) solicitou reembolso dentro do prazo de 7 dias.\n\nAprovar: ${ORIGIN}/admin/refunds`);
+    if (!alert.sent) {
+      // Keep a retry marker; the hourly refund watchdog re-alerts the owner.
+      try { await kv.put(`refund:alert-pending:${oid}`, new Date().toISOString(), { expirationTtl: 14 * 24 * 3600 }); } catch {}
+    }
+  }
   if (!test) await sendEmail(env, email, "ZEVANORY — recebemos seu pedido de reembolso", `Recebemos o pedido de reembolso do pedido ${oid}. O valor volta pelo mesmo meio de pagamento assim que o processamento for concluído. Você receberá a confirmação por e-mail.\n\nEquipe ZEVANORY · suporte@zevanory.api.br`);
   return { status: 200, body: { received: true, status: "pending", message: "Pedido de reembolso registrado. Você receberá a confirmação por e-mail." } };
 }
@@ -249,4 +258,29 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     return Response.redirect(`${ORIGIN}/admin/refunds`, 303);
   }
   return null;
+}
+
+// Hourly watchdog: pending refund requests never sit unseen. Re-alerts the owner (at most every
+// 12h) while requests are pending, with the time left inside the 7-day legal window.
+export async function runRefundWatchdog(env, now = Date.now()) {
+  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  if (!kv?.list) return { ok: false, reason: "kv_unavailable" };
+  const listed = await kv.list({ prefix: "refund:req:", limit: 200 });
+  const pending = [];
+  for (const key of listed.keys || []) {
+    let rec = null;
+    try { rec = JSON.parse(await kv.get(key.name) || "null"); } catch {}
+    if (!rec || rec.status !== "pending" || rec.test) continue;
+    const ageH = (now - Date.parse(rec.requested_at || 0)) / 3600e3;
+    if (ageH >= 12 || await kv.get(`refund:alert-pending:${rec.order_id}`)) pending.push({ ...rec, ageH });
+  }
+  if (!pending.length) return { ok: true, pending: 0 };
+  if (await kv.get("refund:watchdog:last")) return { ok: true, pending: pending.length, throttled: true };
+  const lines = pending.map((r) => `- Pedido ${r.order_id} (${r.offer_id}, R$ ${r.amount}) pedido há ${Math.round(r.ageH)}h`).join("\n");
+  const sent = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), `ZEVANORY — ${pending.length} reembolso(s) aguardando aprovação`, `Há reembolsos pendentes dentro do prazo legal de 7 dias:\n\n${lines}\n\nAprovar: ${ORIGIN}/admin/refunds`);
+  if (sent.sent) {
+    await kv.put("refund:watchdog:last", new Date(now).toISOString(), { expirationTtl: 12 * 3600 });
+    for (const r of pending) { try { await kv.delete(`refund:alert-pending:${r.order_id}`); } catch {} }
+  }
+  return { ok: true, pending: pending.length, alerted: sent.sent };
 }

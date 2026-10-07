@@ -4,6 +4,8 @@ on:
     paths:
       - "worker/post-sale.mjs"
       - "worker/funnel.mjs"
+      - "worker/sales-control.mjs"
+      - "tests/sales-control.test.mjs"
       - "worker/sales-public-worker.mjs"
       - "tests/funnel.test.mjs"
       - "worker/cloudflare-worker.compat.mjs"
@@ -27,4 +29,4 @@ jobs:
       - run: node --check worker/post-sale.mjs
       - run: node --check worker/funnel.mjs
       - run: node --check worker/sales-public-worker.mjs
-      - run: node --test tests/post-sale.test.mjs tests/funnel.test.mjs
+      - run: node --test tests/post-sale.test.mjs tests/funnel.test.mjs tests/sales-control.test.mjs

@@ -11,8 +11,11 @@ on:
       - "worker/cloudflare-worker.recovered.mjs"
       - "worker/sandbox-proof-v2.mjs"
       - "worker/refund-flow.mjs"
+      - "worker/owner-alerts.mjs"
+      - "worker/whatsapp-conversation.mjs"
       - "worker/post-sale.mjs"
       - "worker/funnel.mjs"
+      - "worker/sales-control.mjs"
       - "worker/whatsapp-onboarding.mjs"
       - "worker/whatsapp-inbound-safety.mjs"
       - "worker/voice-provider-router.mjs"
@@ -114,8 +117,11 @@ jobs:
           python3 scripts/deploy/prepare-central-candidate.py
           node --check worker/cloudflare-worker.compat.mjs
           node --check worker/post-sale.mjs
+          node --check worker/owner-alerts.mjs
+          node --check worker/sales-control.mjs
           node --check worker/funnel.mjs
-          node --test tests/post-sale.test.mjs tests/funnel.test.mjs
+          node --check worker/sales-control.mjs
+          node --test tests/post-sale.test.mjs tests/funnel.test.mjs tests/sales-control.test.mjs
           node --check worker/voice-naturality-study.mjs
           node --check worker/whatsapp-onboarding.mjs
           node --check worker/whatsapp-e2e-evidence.mjs

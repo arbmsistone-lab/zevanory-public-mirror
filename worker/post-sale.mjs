@@ -82,11 +82,11 @@ export function renderPostSaleEmail(step, { productName, productSlug, nextOffer,
   if (step === "d1") {
     return {
       subject: `${prefix}Como tirar o máximo do ${productName}`,
-      text: `Olá!\n\nObrigado por escolher o ${productName}. Para ter resultado já nesta semana:\n\n1. Abra o material pelo link do e-mail de entrega e leia o guia de início (leva 10 minutos).\n2. Escolha UM processo do seu negócio e aplique o primeiro modelo hoje.\n3. Travou em algo? Responda este e-mail ou chame no WhatsApp — respondemos com base no próprio material.\n\nPágina do produto: ${productUrl}` + sign,
+      text: `Olá!\n\nObrigado por escolher o ${productName}. Para ter resultado já nesta semana:\n\n1. Abra o arquivo 00_COMECE_AQUI e o Guia Rápido em PDF (leitura curta).\n2. Escolha UM processo do seu negócio e aplique o primeiro modelo ou a planilha hoje.\n3. Travou em algo? Responda este e-mail ou chame no WhatsApp — respondemos com base no próprio material.\n\nPerdeu o link de download? Peça outro em https://zevanory.api.br/entrega/reenviar\n\nPágina do produto: ${productUrl}` + sign,
     };
   }
   const nextLine = nextOffer
-    ? `\n\nQuando quiser dar o próximo passo, o ${nextOffer.name} complementa exatamente o que você já tem: ${SALES}/${nextOffer.slug}`
+    ? `\n\nQuando quiser ir além: o ${nextOffer.name} reúne este material e acrescenta as outras frentes (${SALES}/${nextOffer.slug}).`
     : `\n\nVocê já tem o pacote mais completo da ZEVANORY. Se precisar de ajuda para aplicar alguma parte, é só chamar.`;
   return {
     subject: `${prefix}Como está indo com o ${productName}?`,
@@ -167,12 +167,12 @@ async function deliverStep(env, kv, { order, evidence, step, email, test }) {
   return { sent: true, step };
 }
 
-export async function runPostSale(env, { sqlFactory, now = Date.now() } = {}) {
+export async function runPostSale(env, { sqlFactory, now = Date.now(), production = String(env.MERCADOPAGO_ENV || "").toLowerCase() === "production" } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const summary = { ok: true, at: new Date(now).toISOString(), scanned: 0, sent: 0, skipped: {}, failed: 0 };
   const skip = (reason) => { summary.skipped[reason] = (summary.skipped[reason] || 0) + 1; };
   if (!kv || !sqlFactory || !env.DATABASE_URL) return { ...summary, ok: false, reason: "post_sale_unconfigured" };
-  if (String(env.MERCADOPAGO_ENV || "").toLowerCase() !== "production") {
+  if (!production) {
     const out = { ...summary, idle: "sales_not_in_production" };
     await kv.put("postsale:lastrun", JSON.stringify(out), { expirationTtl: 30 * 24 * 3600 }).catch(() => null);
     return out;

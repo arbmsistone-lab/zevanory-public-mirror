@@ -9,7 +9,7 @@ const SUPPORT_EMAIL = "suporte@zevanory.api.br";
 const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"];
 const HISTORY_TURNS = 10;
 const ALLOWED_PRICES = new Set(Object.values(SUPPORT_PRODUCTS).map((p) => p.price_brl));
-const ALLOWED_URLS = new Set(["https://zevanory.api.br/reembolso/solicitar", SALES_ORIGIN, `${SALES_ORIGIN}/`, `${SALES_ORIGIN}/solucoes`, `${SALES_ORIGIN}/reembolso`, `${SALES_ORIGIN}/privacidade`, `${SALES_ORIGIN}/termos`, ...Object.keys(SUPPORT_PRODUCTS).map((slug) => `${SALES_ORIGIN}/${slug}`)]);
+const ALLOWED_URLS = new Set(["https://zevanory.api.br/reembolso/solicitar", "https://zevanory.api.br/entrega/reenviar", SALES_ORIGIN, `${SALES_ORIGIN}/`, `${SALES_ORIGIN}/solucoes`, `${SALES_ORIGIN}/reembolso`, `${SALES_ORIGIN}/privacidade`, `${SALES_ORIGIN}/termos`, ...Object.keys(SUPPORT_PRODUCTS).map((slug) => `${SALES_ORIGIN}/${slug}`)]);
 
 const brl = (n) => "R$ " + Number(n).toFixed(2).replace(".", ",");
 
@@ -20,13 +20,13 @@ export function catalogFacts({ salesOpen = false } = {}) {
     ...lines,
     "",
     "POLÍTICAS OFICIAIS:",
-    "- Produtos 100% digitais. Após o pagamento confirmado pelo Mercado Pago, o cliente recebe por e-mail um link seguro e temporário para baixar o material.",
+    "- Produtos 100% digitais. Após o pagamento confirmado pelo Mercado Pago, o cliente recebe por e-mail um link seguro (válido por 72 horas) para baixar o material. Novo link: https://zevanory.api.br/entrega/reenviar (código do pedido + e-mail da compra).",
     "- Direito de arrependimento: até 7 dias após a compra, reembolso integral pelo mesmo meio de pagamento (art. 49 do CDC). Pedido pelo link https://zevanory.api.br/reembolso/solicitar, com o código do pedido e o e-mail do pagamento.",
     `- Suporte humano: ${SUPPORT_EMAIL}.`,
     "- Combo IA + Vendas reúne IA na Prática + Vendas na Prática. Negócio Completo reúne IA, vendas e Lucro & Caixa.",
     salesOpen
-      ? "- COMPRA: as vendas estão abertas. Para comprar, envie o link da página do produto escolhido; o botão de compra está lá."
-      : "- COMPRA: as vendas ainda não foram abertas. Não envie link de pagamento. Diga que as compras abrem em breve na página do produto e ofereça avisar o cliente pelo WhatsApp quando abrir.",
+      ? "- COMPRA: as vendas estão abertas. Para comprar, envie o link da página do produto escolhido; lá está o botão Comprar agora (Pix ou cartão pelo Mercado Pago)."
+      : "- COMPRA: as vendas ainda não foram abertas. Não envie link de pagamento. Diga que as compras abrem em breve e que o cliente pode voltar à página do produto ou chamar aqui a qualquer momento. Não prometa avisar depois.",
   ].join("\n");
 }
 
@@ -64,7 +64,15 @@ export function validateReply(text) {
     const url = m[0].replace(/[.,;!?]+$/, "");
     if (!ALLOWED_URLS.has(url)) issues.push(`url:${url}`);
   }
-  if (/\b(\d{1,3})\s*%\s*(de\s+)?(desconto|off)\b/i.test(body) || /\bcupom\b/i.test(body)) issues.push("discount");
+  if (/\b(\d{1,3})\s*%\s*(de\s+)?(desconto|off)\b/i.test(body) || /\b(cupom|desconto|promo[cç][aã]o|gr[aá]tis|de gra[cç]a|brinde|b[oô]nus)\b/i.test(body)) issues.push("discount");
+  // Prices only as "R$ <catalog value>" (checked above); any other money amount is invented.
+  if (/\b\d+([.,]\d+)?\s*(reais|conto|pila)\b/i.test(body)) issues.push("money_outside_catalog");
+  // The only guarantee/refund window is 7 days; never claim a refund was approved/done.
+  for (const m of body.matchAll(/\b(\d{1,3})\s*dias?\b/gi)) if (Number(m[1]) !== 7 && /garant|reembols|arrepend|devolu/i.test(body)) issues.push(`days:${m[1]}`);
+  if (/reembolso\s+(j[aá]\s+)?(foi\s+)?(aprovado|feito|liberado|realizado|conclu[ií]do)/i.test(body)) issues.push("refund_promise");
+  // Only official contacts.
+  for (const m of body.matchAll(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi)) if (!/^(suporte|contato)@zevanory\.api\.br$/i.test(m[0].replace(/[.,;!?]+$/, ""))) issues.push("email");
+  if (/(\+?55\s*)?\(?\d{2}\)?\s*9?\d{4}[-\s]?\d{4}/.test(body.replace(/5588992545413|88\s*99254[-\s]?5413/g, ""))) issues.push("phone");
   return { ok: issues.length === 0, issues };
 }
 

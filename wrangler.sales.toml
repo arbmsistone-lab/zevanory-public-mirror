@@ -14,5 +14,10 @@ html_handling = "none"
 binding = "CORE"
 service = "zevanory"
 
+[[ratelimits]]
+name = "BUY_LIMITER"
+namespace_id = "1702"
+simple = { limit = 6, period = 60 }
+
 [vars]
 ZEVANORY_SALES_PUBLIC_RELEASE_SHA = "SOURCE_SHA_REPLACED_AT_DEPLOY"

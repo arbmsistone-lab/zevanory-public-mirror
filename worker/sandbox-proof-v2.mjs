@@ -57,7 +57,9 @@ async function hmacSha256Hex(secret, value) {
 export function sandboxFailClosed(env) {
   return String(env.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox" &&
     String(env.MERCADOPAGO_ENV || "").toLowerCase() === "sandbox" &&
-    String(env.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true";
+    String(env.SALE_GLOBALLY_ENABLED || "").toLowerCase() !== "true" &&
+    // Owner opened real sales (KV switch): sandbox certification endpoints shut down.
+    globalThis.__ZEVANORY_SALES_SWITCH__ !== true;
 }
 
 function isolation(record) {
@@ -400,7 +402,7 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
     if (token.length < 32 || token.length > 128) return json(404, { error: "download_unavailable" });
     const target = new URL("/private/artifacts/download", request.url);
     target.searchParams.set("token", token);
-    const response = await worker.fetch(new Request(target, { method: "GET" }), env, ctx);
+    const response = await worker.fetch(new Request(target, { method: "POST" }), env, ctx);
     if (!response.ok) {
       let cause = "";
       try { cause = String((await response.clone().json())?.error || "").replace(/[^a-z0-9_]/gi, "").slice(0, 48); } catch {}

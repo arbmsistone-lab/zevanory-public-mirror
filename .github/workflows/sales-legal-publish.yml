@@ -29,7 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           grep -Fq 'A ZEVANORY é a marca comercial de A. RENAN ALVES MOREIRA BITU LTDA, inscrita no CNPJ sob o nº 69.077.233/0001-99, com sede na Rua Francisco de Freitas Neto, 96, Casa Residencial, Alto do Tenente, Várzea Alegre/CE, CEP 63540-000. Atendimento e suporte: suporte@zevanory.api.br e WhatsApp +55 88 99254-5413.' sales-public/termos.html
-          grep -Fq 'A ativação comercial continua condicionada aos demais gates aplicáveis.' sales-public/termos.html
+          # Opening sales is an owner switch with production preflight (worker/sales-control.mjs);
+          # the static pages never carry the switch.
           ! grep -R -E 'SALE_GLOBALLY_ENABLED["=: ]+true' sales-public sales-worker.mjs
           echo "LEGAL_TEXT_EXACT=PASS"
           echo "GLOBAL_SALES_FAIL_CLOSED=PASS"

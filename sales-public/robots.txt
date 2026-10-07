@@ -1,3 +1,4 @@
-﻿User-agent: *
+User-agent: *
 Allow: /
+Disallow: /comprar/
 Sitemap: https://vendas.zevanory.api.br/sitemap.xml
