@@ -81,6 +81,11 @@ function decodeBase64(value) {
   return new Uint8Array(Buffer.from(String(value || ""), "base64"));
 }
 
+function audioFormat(mimeValue) {
+  const mime=String(mimeValue||"").split(";")[0].toLowerCase();
+  return mime === "audio/mpeg" ? "mp3" : mime === "audio/ogg" ? "ogg" : mime === "audio/mp4" ? "m4a" : mime.split("/")[1] || "unknown";
+}
+
 function escapeXml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -244,7 +249,7 @@ async function geminiTts(text, env, fetchImpl, { onStage = async () => {} } = {}
     if (!data) { errors.push(`${model}:no_audio`); continue; }
     const raw = decodeBase64(data);
     await onStage("tts_done", { tts_bytes: raw.length, tts_ms: Date.now() - started, tts_mime: mimeIn, voice_model: model });
-    let bytes = raw, mime = mimeIn.split(";")[0];
+    let bytes = raw, mime = mimeIn.split(";")[0].toLowerCase();
     if (/l16|pcm|wav/i.test(mimeIn)) {
       const rate = Number(part?.sample_rate || (mimeIn.match(/rate=(\d+)/i) || [])[1]) || (modern ? 8000 : 24000);
       const input = unpackPcm(raw, rate);
@@ -254,6 +259,9 @@ async function geminiTts(text, env, fetchImpl, { onStage = async () => {} } = {}
       bytes=encoded.bytes;
       await onStage("encode_done",{encode_bytes:bytes.length,encode_ms:Date.now()-encodingStarted,encode_provider:encoded.provider,encode_chunks:encoded.chunks,encode_fallback_used:encoded.fallback_used});
       mime = "audio/mpeg";
+    } else {
+      const format = audioFormat(mime);
+      await onStage("encode_skipped_provider_encoded", { encode_provider: "provider", encode_bytes: bytes.length, format, mime });
     }
     if (!bytes?.length || bytes.length > 12 * 1024 * 1024) throw new Error("voice_tts_output_size_invalid");
     return Object.freeze({ bytes, mime, model, provider: "gemini", voice, language: "pt-BR", chars: text.length });
@@ -301,7 +309,12 @@ export async function ttsBytesWithFailover(text, env = {}, fetchImpl = globalThi
     const fn = PROVIDERS[provider];
     if (!fn || !providerAvailable(provider, env)) continue;
     try {
+      const providerStarted=Date.now();
       const result = await fn(safe, env, fetchImpl, options);
+      if(provider!=="gemini"){
+        await options.onStage?.("tts_done",{tts_bytes:result.bytes.length,tts_ms:Date.now()-providerStarted,tts_mime:result.mime,voice_model:result.model});
+        await options.onStage?.("encode_skipped_provider_encoded",{encode_provider:provider,encode_bytes:result.bytes.length,format:audioFormat(result.mime),mime:String(result.mime||"").split(";")[0].toLowerCase()});
+      }
       noteSuccess(provider);
       return result;
     } catch (error) {

@@ -122,7 +122,10 @@ export async function sendDailyCreativeReport(env={}){
  if(!env.RESEND_API_KEY)return {sent:false,reason:"mailer_unavailable"};
  const lines=data.evaluations.slice(0,30).map(x=>`${x.channel} | ${x.score}/100 | compliance ${x.compliance}% | ${x.status} | ${x.reason}`);
  const r=await fetch("https://api.resend.com/emails",{method:"POST",headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,"content-type":"application/json"},body:JSON.stringify({from:String(env.RESEND_FROM_ADDRESS||"ZEVANORY <contato@zevanory.api.br>"),to:[to],subject:`ZEVANORY — relatório diário de conteúdo ${date}`,text:[`Publicação automática: ${data.paused?"PAUSADA":"ATIVA"}`,"",...lines].join("\n")}),signal:AbortSignal.timeout(10000)}).catch(()=>null);
- if(r?.ok)await kv.put(key,"1",{expirationTtl:8*DAY});return {sent:Boolean(r?.ok)};
+ if(!r?.ok)return {sent:false};
+ const provider=await r.json().catch(()=>({})),evidence={sent:true,sentAt:new Date().toISOString(),provider_message_id:String(provider?.id||"").slice(0,200)||null};
+ await Promise.all([kv.put(key,JSON.stringify(evidence),{expirationTtl:8*DAY}),kv.put("zpc:creative-autonomy:daily:last",JSON.stringify(evidence),{expirationTtl:30*DAY})]);
+ return evidence;
 }
 
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));

@@ -153,6 +153,8 @@ jobs:
           node --check worker/reviews.mjs
           node --test tests/post-sale.test.mjs tests/funnel.test.mjs tests/sales-control.test.mjs tests/lead-magnet.test.mjs tests/reviews.test.mjs
           node --check worker/voice-naturality-study.mjs
+          node --check worker/whatsapp-proof-gate.mjs
+          node scripts/whatsapp_audio_runtime_test.mjs
           node --check worker/whatsapp-onboarding.mjs
           node --check worker/whatsapp-e2e-evidence.mjs
           node --check worker/whatsapp-neon-store.mjs
@@ -160,6 +162,7 @@ jobs:
           node --test tests/live-runtime-status.test.mjs
           node --test tests/creative-autonomy.test.mjs
           node --test tests/multichannel-autonomy.test.mjs
+          node --test tests/production-payment-credential-isolation.test.mjs
           node --test tests/inbound-autonomy.test.mjs
           node --test tests/affiliate-program.test.mjs
           node --test tests/autonomy-health.test.mjs

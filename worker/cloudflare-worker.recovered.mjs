@@ -6,7 +6,7 @@ import { getWhatsappOpsStore, publishWhatsappOpsStats } from "./whatsapp-neon-st
 import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
 import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } from "./mercadopago-webhook-safety.mjs";
 import { chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
-import { appendBlogSitemap, recordChannelProof, renderBlogArticle, renderBlogIndex, renderChannelsPage, runMultichannelAutonomy } from "./multichannel-autonomy.mjs";
+import { appendBlogSitemap, INDEXNOW_PUBLIC_KEY, recordChannelProof, renderBlogArticle, renderBlogIndex, renderChannelsPage, runMultichannelAutonomy } from "./multichannel-autonomy.mjs";
 import { collectAutonomyHealth, runAutonomyHealth } from "./autonomy-health.mjs";
 import { handleMetaSocialInbound, runInboundLifecycle } from "./inbound-autonomy.mjs";
 import { affiliateReport, applyAffiliateOrderOutcome, recordAffiliateAttribution, referralCookie, referralFromRequest, renderAffiliatePanel } from "./affiliate-program.mjs";
@@ -18248,6 +18248,7 @@ var cloudflare_worker_default = {
     globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = getWhatsappOpsStore({ DATABASE_URL: process.env.DATABASE_URL, ZEVANORY_PRIVATE_ARTIFACTS: env.ZEVANORY_PRIVATE_ARTIFACTS }, cs);
     globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__;
     const url = new URL(request.url);
+    if ((request.method === "GET" || request.method === "HEAD") && url.pathname === `/${INDEXNOW_PUBLIC_KEY}.txt`) return withSecurityHeaders(new Response(request.method === "HEAD" ? null : INDEXNOW_PUBLIC_KEY, { status: 200, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=86400" } }), env);
     const affiliateRef=referralFromRequest(request,env);
     if (affiliateRef && url.pathname.startsWith("/api/checkout")) { const headers=new Headers(request.headers); headers.set("x-zevanory-affiliate-ref",affiliateRef); request=new Request(request,{headers}); }
     if (request.method === "POST" && url.pathname === "/api/internal/channels/telegram-proof") {

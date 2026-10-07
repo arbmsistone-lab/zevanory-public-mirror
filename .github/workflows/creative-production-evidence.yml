@@ -1,0 +1,49 @@
+name: F1 creative production evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
+    steps:
+      - name: Print only F1 decisions, post IDs, quota and daily report evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID"
+          auth="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          curl -fsS -H "$auth" "$base/values/zpc:creative-autonomy:feed:v1" -o /tmp/feed.json
+          curl -fsS -H "$auth" "$base/keys?prefix=zpc%3Amultichannel%3Aevidence%3Atelegram%3A" -o /tmp/keys.json
+          mkdir -p /tmp/posts
+          jq -r '.result[].name' /tmp/keys.json | while IFS= read -r key; do
+            encoded="$(printf '%s' "$key" | jq -sRr @uri)"
+            curl -fsS -H "$auth" "$base/values/$encoded" -o "/tmp/posts/$(printf '%s' "$key" | sha256sum | cut -d' ' -f1).json"
+          done
+          date_key="zpc:creative-autonomy:daily:$(date -u +%F)"
+          encoded_date="$(printf '%s' "$date_key" | jq -sRr @uri)"
+          curl -sS -H "$auth" "$base/values/$encoded_date" -o /tmp/daily.json
+          quota_key="zpc:multichannel:quota:telegram:$(date -u +%F)"
+          encoded_quota="$(printf '%s' "$quota_key" | jq -sRr @uri)"
+          curl -sS -H "$auth" "$base/values/$encoded_quota" -o /tmp/quota.txt
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const cutoff=Date.now()-86400000;
+          const feed=JSON.parse(fs.readFileSync('/tmp/feed.json','utf8'));
+          const decisions=(Array.isArray(feed)?feed:[]).filter(x=>Date.parse(x?.evaluated_at||0)>=cutoff).map(x=>({creative_id:x.creative_id,score:Number(x.score),decision:x.status,reason:x.reason,rewrites:Number(x.rewrites||0),evaluated_at:x.evaluated_at}));
+          console.log(JSON.stringify({generated_last_24h:decisions.length,creatives:decisions}));
+          const posts=fs.readdirSync('/tmp/posts').map(f=>JSON.parse(fs.readFileSync('/tmp/posts/'+f,'utf8'))).filter(x=>Date.parse(x?.publishedAt||0)>=cutoff).map(x=>({provider_post_id:x.provider_post_id,url:x.url,publishedAt:x.publishedAt,creative_id:x.creative_id}));
+          console.log(JSON.stringify({telegram_posts_last_24h:posts.length,posts}));
+          const quota=Number(fs.readFileSync('/tmp/quota.txt','utf8').trim()||0);if(quota>2)throw new Error('telegram_daily_limit_exceeded');
+          console.log(JSON.stringify({telegram_daily_quota_used:quota,limit:2}));
+          let daily=null;try{daily=JSON.parse(fs.readFileSync('/tmp/daily.json','utf8'))}catch{daily={legacy_marker:fs.readFileSync('/tmp/daily.json','utf8').trim()==='1'}}
+          console.log(JSON.stringify({daily_report_schedule:'first successful hourly Worker cron after 00:00 UTC',daily_report:daily}));
+          NODE
