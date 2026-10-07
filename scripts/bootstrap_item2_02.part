@@ -1,0 +1,32 @@
+('await saveWhatsappObservation(kv,item,question,reply,status,{speech_text:voiceSpeech})','await saveWhatsappObservation(operationalStore,item,question,reply,status,{speech_text:voiceSpeech})'),
+('      const checkpoint = whatsappStageRecorder(globalThis.__ZEVANORY_PRIVATE_KV__, status);','      const checkpoint = whatsappStageRecorder(globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__, status);'),
+('    globalThis.__ZEVANORY_PRIVATE_KV__ = env.ZEVANORY_PRIVATE_ARTIFACTS || null;\n    hydrateRuntimeConfig(env);','    globalThis.__ZEVANORY_PRIVATE_KV__ = env.ZEVANORY_PRIVATE_ARTIFACTS || null;\n    hydrateRuntimeConfig(env);\n    globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = process.env.DATABASE_URL ? createWhatsappNeonStore(cs(process.env.DATABASE_URL)) : null;\n    globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__;')
+]
+for a,b in reps:
+    if a not in s: raise SystemExit("missing patch marker: "+a[:70])
+    s=s.replace(a,b)
+p.write_text(s)
+q=Path("worker/whatsapp-e2e-evidence.mjs")
+e=q.read_text()
+a='const kv=env.ZEVANORY_PRIVATE_ARTIFACTS||store();'
+if e.count(a)!=1: raise SystemExit("unexpected e2e marker count")
+q.write_text(e.replace(a,'const kv=store()||env.ZEVANORY_PRIVATE_ARTIFACTS;'))
+Path("worker/whatsapp-neon-store.mjs").write_text("""const MAX_LIST=1000;
+export function createWhatsappNeonStore(sql){
+ if(!sql?.query)return null;
+ let readyPromise=null;
+ const ready=()=>readyPromise ||= sql.query(\`create table if not exists whatsapp_operational_store (
+  store_key text primary key,
+  store_value text not null,
+  expires_at timestamptz null,
+  updated_at timestamptz not null default now()
+ )\`);
+ return Object.freeze({
+  async put(key,value,options={}){
+   await ready();
+   const ttl=Math.max(0,Math.floor(Number(options?.expirationTtl||0)));
+   await sql.query(\`insert into whatsapp_operational_store(store_key,store_value,expires_at,updated_at)
+    values($1,$2,case when $3::int>0 then now()+($3::int * interval '1 second') else null end,now())
+    on conflict(store_key) do update set store_value=excluded.store_value,expires_at=excluded.expires_at,updated_at=now()\`,
+    [String(key),String(value),ttl]);
+  },
