@@ -10,6 +10,7 @@ on:
       - "worker/live-runtime-status.mjs"
       - "worker/creative-autonomy.mjs"
       - "worker/multichannel-autonomy.mjs"
+      - "worker/inbound-autonomy.mjs"
       - "worker/support-knowledge.mjs"
       - "worker/cloudflare-worker.recovered.mjs"
       - "worker/mercadopago-webhook-safety.mjs"
@@ -37,6 +38,7 @@ on:
       - "tests/live-runtime-status.test.mjs"
       - "tests/creative-autonomy.test.mjs"
       - "tests/multichannel-autonomy.test.mjs"
+      - "tests/inbound-autonomy.test.mjs"
       - "worker/zevanory-control-core.mjs"
       - "worker/core-command-executor.mjs"
       - "worker/zea10-autonomy.mjs"
@@ -131,6 +133,7 @@ jobs:
           node --check worker/live-runtime-status.mjs
           node --check worker/creative-autonomy.mjs
           node --check worker/multichannel-autonomy.mjs
+          node --check worker/inbound-autonomy.mjs
           node --check worker/mercadopago-webhook-safety.mjs
           node --check worker/post-sale.mjs
           node --check worker/owner-alerts.mjs
@@ -148,6 +151,7 @@ jobs:
           node --test tests/live-runtime-status.test.mjs
           node --test tests/creative-autonomy.test.mjs
           node --test tests/multichannel-autonomy.test.mjs
+          node --test tests/inbound-autonomy.test.mjs
           node --test tests/mercadopago-webhook-safety.test.mjs
           node --check worker/voice-final-closure.mjs
           node --check public/control-plane-vnext.js
