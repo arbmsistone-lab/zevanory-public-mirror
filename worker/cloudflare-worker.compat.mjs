@@ -6,6 +6,7 @@ import { handleWhatsappOnboarding, loadWhatsappRuntimeCredentials } from "./what
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
+import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
 import worker, { whatsappProofDatabase, runPaidDeliveryWatchdog, runSalesPreflight } from "./cloudflare-worker.recovered.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
@@ -199,7 +200,9 @@ const wrapped = {
       }
       globalThis.__ZEVANORY_WHATSAPP_BROKER__ = normalized.WHATSAPP_BROKER || null;
       globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = whatsappBrokerState;
-      globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = normalized.ZEVANORY_PRIVATE_ARTIFACTS || null;
+      const whatsappOpsStore = getWhatsappOpsStore(normalized, whatsappProofDatabase);
+      globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = whatsappOpsStore;
+      globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = whatsappOpsStore;
     }
     // Meta webhook verification answered at the edge from the original request URL:
     // the legacy node bridge loses the hub.* query (observed mode="" / no token).
@@ -246,8 +249,8 @@ const wrapped = {
     }
 
     if (url.pathname === "/api/support/instant-status" && request.method === "GET") {
-      const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
-      let last = await latestWhatsappStage(kv);
+      const opsStore = getWhatsappOpsStore(normalized, whatsappProofDatabase);
+      let last = await latestWhatsappStage(opsStore);
       // Preserve the timestamp and facts of historical text-only records. Null means
       // the old runtime did not record that field; it is not new conversation evidence.
       if (last) last = { mode: null, model: null, text_sent: last.sent ?? false, voice_sent: false, voice_error: null, ...last };

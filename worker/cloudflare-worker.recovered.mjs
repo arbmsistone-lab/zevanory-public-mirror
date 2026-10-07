@@ -2,6 +2,7 @@ import { saveWhatsappObservation } from "./voice-operational-audit.mjs";
 import { whatsappInboundSafety } from "./whatsapp-inbound-safety.mjs";
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
+import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
 import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
@@ -15098,17 +15099,18 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
   const t = whatsappTransport(item);
   if (!t.token || !t.phoneId) return { sent: false, reason: "whatsapp_transport_not_configured" };
   const kv = globalThis.__ZEVANORY_PRIVATE_KV__;
+  const operationalStore = globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__;
   const dedupKey = item.message_id ? `whatsapp:instant:${item.message_id}` : "";
   if (dedupKey && kv?.get && await kv.get(dedupKey).catch(() => null)) return { sent: false, reason: "already_replied" };
   if (dedupKey && kv?.put) await kv.put(dedupKey, "1", { expirationTtl: 86400 }).catch(() => {});
   const status = inboundStatus || { at: new Date().toISOString(), inbound_type: item.type, inbound_message_id: item.message_id || null, model: null, text_sent: false, voice_sent: false, voice_error: null };
-  const checkpoint = inboundCheckpoint || whatsappStageRecorder(kv, status);
+  const checkpoint = inboundCheckpoint || whatsappStageRecorder(operationalStore, status);
   await checkpoint("heard", { heard: Boolean(question) });
   let reply;
   if (!question) {
     reply = { body: "Recebi seu áudio, mas não consegui entender bem. Pode repetir ou me escrever a sua dúvida?", mode: "audio_unheard", intent: "clarify" };
   } else {
-    const history = await loadWhatsappHistory(kv, item.from);
+    const history = await loadWhatsappHistory(operationalStore, item.from);
     reply = await converseWhatsapp({ ai: runtimeAi(), question, history, salesOpen: process.env.SALE_GLOBALLY_ENABLED === "true" });
     if (OWNER_ESCALATION_RE.test(question)) {
       // Never leave a sensitive conversation to the robot alone: tell the customer and alert the owner.
@@ -15116,7 +15118,7 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
       alertOwnerNow({ ...process.env, ZEVANORY_PRIVATE_ARTIFACTS: kv }, { channel: "WhatsApp", contact: item.from, excerpt: question, reason: "assunto sensível ou pedido de atendimento humano" }).catch(() => null);
     }
     history.push({ r: "u", t: question.slice(0, 1200) }, { r: "a", t: reply.body.slice(0, 1200) });
-    await saveWhatsappHistory(kv, item.from, history);
+    await saveWhatsappHistory(operationalStore, item.from, history);
   }
   const voiceSpeech = whatsappSpeechText(voiceReplyBody(question, reply.body));
   Object.assign(status, { mode: reply.mode, model: reply.model || null, intent: reply.intent || null, product: reply.product || null, ai_issues: reply.issues || null });
@@ -15126,7 +15128,7 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
   const sentText = await postWhatsappMessage(t, text);
   Object.assign(status, { text_sent: sentText.ok, text_status: sentText.status, text_error: sentText.error, text_provider_message_id: sentText.provider_message_id || null });
   await checkpoint("text_sent");
-  await saveWhatsappObservation(kv,item,question,reply,status,{speech_text:voiceSpeech}).catch(()=>{});
+  await saveWhatsappObservation(operationalStore,item,question,reply,status,{speech_text:voiceSpeech}).catch(()=>{});
   const wantsVoice = inboundAudio || /\b(audio|áudio|voz|fala(r)? comigo)\b/i.test(question || "");
   if (wantsVoice && question && process.env.WHATSAPP_VOICE_REPLY !== "false") {
     try {
@@ -15151,7 +15153,7 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
       await checkpoint("voice_error");
     }
   }
-  await saveWhatsappObservation(kv,item,question,reply,status,{speech_text:voiceSpeech}).catch(()=>{});
+  await saveWhatsappObservation(operationalStore,item,question,reply,status,{speech_text:voiceSpeech}).catch(()=>{});
   await recordWhatsappEvidence("outbound_text", { provider_message_id: sentText.provider_message_id, contact_ref: item.from, kind: reply.mode }).catch(() => false);
   return { sent: sentText.ok, ...status };
 }
@@ -15434,7 +15436,7 @@ async function handler18(req, res) {
     for (const item of inbound) {
       if (whatsappInboundSafety(item)) continue;
       const status = { at: new Date().toISOString(), inbound_type: item.type, inbound_message_id: item.message_id || null, heard: false, model: null, text_sent: false, voice_sent: false, voice_error: null };
-      const checkpoint = whatsappStageRecorder(globalThis.__ZEVANORY_PRIVATE_KV__, status);
+      const checkpoint = whatsappStageRecorder(globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__, status);
       await checkpoint("received");
       let enriched = item;
       await checkpoint(item.type === "audio" ? "stt_start" : "understanding_start");
@@ -18194,12 +18196,18 @@ var cloudflare_worker_default = {
   async scheduled(controller, env, ctx) {
     hydrateRuntimeConfig(env);
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
+    const whatsappOpsStore = getWhatsappOpsStore({ DATABASE_URL: process.env.DATABASE_URL, ZEVANORY_PRIVATE_ARTIFACTS: env.ZEVANORY_PRIVATE_ARTIFACTS }, cs);
+    globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = whatsappOpsStore;
+    globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = whatsappOpsStore;
+    if (whatsappOpsStore?.cleanupExpired) ctx.waitUntil(whatsappOpsStore.cleanupExpired().catch((error) => console.error("whatsapp_neon_cleanup_failed", String(error?.message || error))));
     ctx.waitUntil(runNonCommercialAutopilot({ env, scheduledTime: controller.scheduledTime }).catch((error) => console.error("noncommercial_autopilot_failed", String(error?.message || error))));
   },
   async fetch(request, env) {
     globalThis.__ZEVANORY_EDGE_AI__ = { AI: env.AI || null };
     globalThis.__ZEVANORY_PRIVATE_KV__ = env.ZEVANORY_PRIVATE_ARTIFACTS || null;
     hydrateRuntimeConfig(env);
+    globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = getWhatsappOpsStore({ DATABASE_URL: process.env.DATABASE_URL, ZEVANORY_PRIVATE_ARTIFACTS: env.ZEVANORY_PRIVATE_ARTIFACTS }, cs);
+    globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__;
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/api/webhooks/meta") return withSecurityHeaders(await handleNodeWebhookFetch(request, handler26), env);
     if (url.pathname === "/arbm-one" || url.pathname === "/arbm-one.html") {
@@ -18482,7 +18490,8 @@ export {
   cloudflare_worker_default as default,
   cs as whatsappProofDatabase,
   runPaidDeliveryWatchdog,
-  runSalesPreflight
+  runSalesPreflight,
+  replyWhatsappConversation
 };
 /*! Bundled license information:
 

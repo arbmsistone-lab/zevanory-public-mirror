@@ -1,5 +1,6 @@
 import { handleVoiceAudit } from "./voice-operational-audit.mjs";
 import { resolveOwnerProof } from "./whatsapp-inbound-safety.mjs";
+import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
 const DEFAULT_APP_ID = "1071149631917061";
 const DEFAULT_CONFIG_ID = "1447104223954128";
 const GRAPH_VERSION = "v26.0";
@@ -326,6 +327,20 @@ function proofAuthorized(request,env){
   let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^presented.charCodeAt(i);
   return diff===0;
 }
+export async function readWhatsappAuditObserve(env,proofSql,owner){
+ const kv=getWhatsappOpsStore(env,()=>proofSql()),observations=[];
+ const digest=await crypto.subtle.digest("SHA-256",encoder.encode(owner.recipient));
+ const contactHash=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,"0")).join("");
+ const page=await kv.list({prefix:"whatsapp:observation:",limit:1000});
+ for(const key of page.keys||[]){
+  const value=await kv.get(key.name,{type:"json"});const item=typeof value==="string"?JSON.parse(value):value;
+  if(item?.contact_hash===contactHash)observations.push(item);
+ }
+ observations.sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+ const historyRaw=await kv.get("wa:conv:"+contactHash);
+ return {recipient_suffix:owner.recipient_suffix,observations:observations.filter(x=>/^wamid\./.test(x.inbound_message_id||"")).slice(0,10),proof_observations:observations.filter(x=>String(x.inbound_message_id||"").startsWith("internal-")).slice(0,5),history:historyRaw?JSON.parse(historyRaw):[]};
+}
+
 async function handleDeliveryProof(request,env,proofSql){
   if(!proofAuthorized(request,env))return responseJson({error:"unauthorized"},401);
   if(request.method!=="POST")return responseJson({error:"method_not_allowed"},405);
@@ -353,21 +368,11 @@ async function handleDeliveryProof(request,env,proofSql){
     if(!proofSql)return responseJson({error:"proof_database_unavailable"},503);
     const owner=await resolveOwnerProof(proofSql(),env.ZEVANORY_PRIVATE_ARTIFACTS);
     if(input.operation==="audit-observe"){
-      const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,observations=[];
-      const digest=await crypto.subtle.digest("SHA-256",encoder.encode(owner.recipient));
-      const contactHash=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,"0")).join("");
-      const page=await kv.list({prefix:"whatsapp:observation:",limit:1000});
-      for(const key of page.keys||[]){
-       const value=await kv.get(key.name,{type:"json"});const item=typeof value==="string"?JSON.parse(value):value;
-       if(item?.contact_hash===contactHash)observations.push(item);
-      }
-      observations.sort((a,b)=>String(b.at).localeCompare(String(a.at)));
-      const historyRaw=await kv.get("wa:conv:"+contactHash);
-      return responseJson({recipient_suffix:owner.recipient_suffix,observations:observations.filter(x=>/^wamid\./.test(x.inbound_message_id||"")).slice(0,10),proof_observations:observations.filter(x=>String(x.inbound_message_id||"").startsWith("internal-")).slice(0,5),history:historyRaw?JSON.parse(historyRaw):[]});
+      return responseJson(await readWhatsappAuditObserve(env,proofSql,owner));
     }
     if(input.operation==="audit-media"){
       const id=String(input.media_id||"");if(!/^\d{5,30}$/.test(id))return responseJson({error:"invalid_media_id"},400);
-      const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
+      const kv=getWhatsappOpsStore(env,()=>proofSql());
       const page=await kv.list({prefix:"whatsapp:observation:",limit:1000});let allowed=false;
       const digest=await crypto.subtle.digest("SHA-256",encoder.encode(owner.recipient));const hash=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,"0")).join("");
       for(const key of page.keys||[]){let item=await kv.get(key.name,{type:"json"});if(typeof item==="string")item=JSON.parse(item);if(item?.contact_hash===hash&&item.voice_media_id===id&&(String(item.inbound_message_id||"").startsWith("internal-")||/^wamid\./.test(item.inbound_message_id||""))){allowed=true;break;}}

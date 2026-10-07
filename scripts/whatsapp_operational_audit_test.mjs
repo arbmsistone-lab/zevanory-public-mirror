@@ -6,7 +6,7 @@ globalThis.crypto ||= webcrypto;
 const inbound={type:"inbound_processed",message_id:"wamid.real",phone_number_id:"1300972319774588",contact_hash:"owner",queued:false,received_at:"2026-10-04T22:00:00Z",created_at:"2026-10-04T22:00:21Z"};
 const voice={type:"outbound_voice",event_id:"wamid.real",provider_message_id:"wamid.voice",contact_hash:"owner",generated_voice:true,created_at:"2026-10-04T22:00:20Z"};
 const delivered={type:"delivery",provider_message_id:"wamid.voice",status:"delivered",created_at:"2026-10-04T22:00:20.500Z"};
-const status=async events=>whatsappE2EStatus({ZEVANORY_PRIVATE_ARTIFACTS:{list:async()=>({keys:events.map((_,i)=>({name:String(i)})),list_complete:true}),get:async key=>events[Number(key)]}});
+const status=async events=>{globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__={list:async()=>({keys:events.map((_,i)=>({name:String(i)})),list_complete:true}),get:async key=>events[Number(key)]};try{return await whatsappE2EStatus({})}finally{delete globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__}};
 assert.equal((await status([inbound,voice,delivered])).e2e,true);
 assert.equal((await status([{...inbound,message_id:"internal-audio-test"},voice,delivered])).e2e,false);
 assert.equal((await status([inbound,{...voice,event_id:"wamid.other"},delivered])).e2e,false);
