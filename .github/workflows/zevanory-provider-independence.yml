@@ -98,6 +98,13 @@ jobs:
           with urllib.request.urlopen(req,timeout=20) as r:
               assert r.status==200
               body=json.loads(r.read().decode())
+          sales_req=urllib.request.Request(
+              "https://zevanory.api.br/api/sales/status",
+              headers={"User-Agent":"ZEVANORY-Provider-Independence/2.0","Accept":"application/json"}
+          )
+          with urllib.request.urlopen(sales_req,timeout=20) as r:
+              assert r.status==200
+              sales=json.loads(r.read().decode())
           channels=body.get("channel_readiness",{})
           technical=[
               name for name,state in channels.items()
@@ -110,9 +117,13 @@ jobs:
               and str(state.get("commercial_execution","")).lower() not in ("blocked","globally-blocked","disabled")
           ]
           assert len(technical)>=3, technical
-          assert body["runtime"]["sales"]=="globally-blocked"
-          assert len(commercial)==0, commercial
-          print("PASS: production has >=3 technical alternatives while commercial execution remains locked")
+          expected="enabled" if sales.get("open") is True else "globally-blocked"
+          assert body["runtime"]["sales"]==expected, (body["runtime"],sales)
+          if sales.get("open") is True:
+              assert len(commercial)>=3, commercial
+          else:
+              assert len(commercial)==0, commercial
+          print("PASS: production has >=3 technical alternatives and commercial execution matches the authoritative sales switch")
           PY
       - name: Remote Wrangler compile
         run: |
