@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {classifyPayment,safeDbHost,handleInternalFinancialAudit} from "../worker/internal-financial-audit.mjs";
+import {classifyPayment,classifyPaymentEvidence,safeDbHost,handleInternalFinancialAudit} from "../worker/internal-financial-audit.mjs";
 const row={id:"12345",provider:"mercadopago",pilot:false,orphan:false,reference:"ZEVANORY:abc",order_id:"abc"};
 const ok={status:200,body:{id:12345,collector_id:9876,external_reference:"ZEVANORY:abc",live_mode:true}};
 test("financial classification: only owned validated payment counts as production",()=>{
@@ -35,4 +35,21 @@ test("both audit endpoints require authentication, reject write methods",async()
 });
 test("unrelated routes are not intercepted",async()=>{
  assert.equal(await handleInternalFinancialAudit(new Request("https://zevanory.api.br/api/health"),{}),null);
+});
+
+test("certification is separated only after production account returns 404",()=>{
+ const pilot={...row,pilot:true};
+ assert.deepEqual(classifyPaymentEvidence(pilot,{status:404,body:null},9876),
+  {classification:"teste_certificacao",reason:"pilot_id_absent_from_production_account"});
+ assert.equal(classifyPayment(pilot,ok,9876),"ambiguo");
+ assert.equal(classifyPaymentEvidence(pilot,ok,9876).reason,"pilot_payment_visible_in_production_account");
+ assert.equal(classifyPaymentEvidence(pilot,{status:403,body:null},9876).classification,"ambiguo");
+});
+test("unknown or malformed events cannot silently be treated as non-production",()=>{
+ assert.equal(classifyPaymentEvidence({...row,pilot:null},{status:404,body:null},9876).classification,"ambiguo");
+ assert.equal(classifyPaymentEvidence({...row,id:"",pilot:true},{status:404,body:null},9876).classification,"ambiguo");
+ assert.equal(classifyPaymentEvidence({...row,orphan:true,pilot:true},{status:404,body:null},9876).classification,"ambiguo");
+ assert.equal(classifyPaymentEvidence({...row,provider:"some-other-provider"},{status:404,body:null},9876).classification,"ambiguo");
+ assert.equal(classifyPaymentEvidence(row,{status:503,body:null},9876).classification,"ambiguo");
+ assert.equal(classifyPaymentEvidence(row,{...ok,body:{...ok.body,collector_id:123}},9876).reason,"merchant_account_mismatch");
 });
