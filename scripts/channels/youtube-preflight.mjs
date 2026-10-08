@@ -47,4 +47,5 @@ const blackProcess=spawnSync("ffmpeg",["-hide_banner","-i",base+".mp4","-vf","bl
 if(blackProcess.status!==0||/black_start:/.test(blackProcess.stderr))fail("youtube_black_frames_detected");
 const report=({channelId:TARGET,dryRun:true,uploaded:false,technicalCheck:"PASS",size:"1080x1920",duration_seconds:duration,audio_seconds:audioDuration,blackFrames:"none_over_0.6s",gate:{creative_id:selected.creative_id,score:gate.score,compliance:gate.compliance,action:gate.action,decision:gate.action==="publish"?"approved_for_autopublish":"discarded",reason:gate.reason,rewrites:gate.rewrites},tts:{provider:audio.provider,model:audio.model},privacyStatus:"private"});
 console.log(JSON.stringify(report));
+await writeFile(base+".json",JSON.stringify(report));
 console.log("::notice title=YOUTUBE_PREFLIGHT::"+JSON.stringify(report));
