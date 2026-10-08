@@ -1,0 +1,123 @@
+name: ZEVANORY F2 production payment boundary read-only
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/f2-production-payment-boundary-readonly.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  payment-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      MP_PROD_TOKEN: ${{ secrets.MERCADOPAGO_PROD_ACCESS_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+      KV_NAMESPACE_ID: "728a45738e4047f29bcb89934fd533c1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify negative webhook signatures offline (no POST)
+        run: node --test tests/mercadopago-webhook-safety.test.mjs
+      - name: Read exact production credential class, Worker bindings, KV and public routes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os,sys,json,urllib.request,urllib.error,datetime
+          from pathlib import Path
+          OUT=Path("f2-production-boundary-sanitized.json")
+          report={"schema":"zevanory.f2.readonly/v1","observed_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),"state":"BLOCKED",
+                  "checks":{},"unknown":[],"changed_nothing":True}
+          def notice(k,v):print("::notice title=F2_"+k+"::"+str(v),flush=True)
+          def stop(reason):
+              report["state"]="BLOCKED"
+              OUT.write_text(json.dumps(report,ensure_ascii=False,indent=2)+"\n")
+              print("::error title=F2_NO_GO::"+reason,flush=True)
+              sys.exit(2)
+          def get(url,token):
+              req=urllib.request.Request(url,headers={"Authorization":"Bearer "+token,"Accept":"application/json"},method="GET")
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as r:
+                      data=r.read(1024*1024)
+                      return r.status,json.loads(data) if data else {}
+              except urllib.error.HTTPError as e: return e.code,{}
+              except Exception: return 0,{}
+          def bare(url):
+              req=urllib.request.Request(url,headers={"Accept":"application/json"},method="GET")
+              try:
+                  with urllib.request.urlopen(req,timeout=20) as r:
+                      return r.status,json.loads(r.read(1024*1024))
+              except urllib.error.HTTPError as e:return e.code,{}
+              except Exception:return 0,{}
+          tok=os.getenv("MP_PROD_TOKEN","").strip()
+          if not tok or tok.startswith("TEST-"):stop("PRODUCTION_MP_TOKEN_MISSING_OR_TEST")
+          code,owner=get("https://api.mercadopago.com/users/me",tok)
+          good=code==200 and owner.get("site_id")=="MLB" and "test_user" not in (owner.get("tags") or []) and bool(owner.get("id"))
+          report["checks"]["mp_users_me"]=code
+          report["checks"]["mp_non_test_account"]=good
+          notice("MP_USERS_ME_HTTP",code);notice("MP_NON_TEST",str(good).lower())
+          if not good:stop("PRODUCTION_MP_ACCOUNT_NOT_VERIFIED")
+          cf=os.getenv("CLOUDFLARE_API_TOKEN","").strip()
+          if not cf:stop("CLOUDFLARE_READ_CREDENTIAL_MISSING")
+          aid=os.environ["CLOUDFLARE_ACCOUNT_ID"];nid=os.environ["KV_NAMESPACE_ID"]
+          code,payload=get(f"https://api.cloudflare.com/client/v4/accounts/{aid}/workers/scripts/zevanory/settings",cf)
+          if code!=200 or payload.get("success") is not True:stop("WORKER_SETTINGS_READ_FAILED")
+          bindings=payload.get("result",{}).get("bindings") or []
+          names={str(b.get("name","")):b for b in bindings}
+          for key in ["MERCADOPAGO_ACCESS_TOKEN","MERCADOPAGO_TEST_ACCESS_TOKEN","MERCADOPAGO_WEBHOOK_SECRET","MERCADOPAGO_TEST_WEBHOOK_SECRET","DATABASE_URL"]:
+              present=key in names
+              report["checks"]["binding_"+key]=present
+              notice("BINDING_"+key,str(present).lower())
+          flags=["MERCADOPAGO_ENV","CHECKOUT_ENABLED","SALE_GLOBALLY_ENABLED","PRE_SALE_GATES_APPROVED","ABSOLUTE_RELEASE_APPROVED","FINANCIAL_EVENTS_ENABLED"]
+          for key in flags:
+              binding=names.get(key,{})
+              val=str(binding.get("text","")).lower() if binding.get("type")=="plain_text" else "not_visible"
+              enum=val if val in ("true","false","production","sandbox") else "not_visible"
+              report["checks"][key]=enum
+              notice("RUNTIME_"+key,enum)
+          url=f"https://api.cloudflare.com/client/v4/accounts/{aid}/storage/kv/namespaces/{nid}/values/"
+          for label,k in [("SALES_SWITCH","sales:open:v1"),("PREFLIGHT","zpc-sales-preflight:v1")]:
+              kcode,kval=get(url+k,cf)
+              info=kval if isinstance(kval,dict) else {}
+              report["checks"][label+"_HTTP"]=kcode
+              if label=="SALES_SWITCH":
+                  enabled=info.get("enabled") is True
+                  report["checks"]["sales_switch_enabled"]=enabled
+                  notice("KV_SALES_SWITCH_ENABLED",str(enabled).lower())
+              else:
+                  ok=info.get("ok") is True
+                  at=str(info.get("at") or info.get("generatedAt") or "")
+                  report["checks"]["preflight_ok"]=ok
+                  report["checks"]["preflight_has_timestamp"]=bool(at)
+                  notice("KV_PREFLIGHT_OK",str(ok).lower())
+                  notice("KV_PREFLIGHT_HAS_TIMESTAMP",str(bool(at)).lower())
+          for label,path in [("STATUS","/api/status"),("RELEASE","/api/release"),("PROVIDER_HEALTH","/api/provider-health"),("SALES_STATUS","/api/sales/status")]:
+              status,body=bare("https://zevanory.api.br"+path)
+              report["checks"][label+"_HTTP"]=status
+              notice(label+"_HTTP",status)
+              if label=="STATUS":
+                  runtime=body.get("runtime") or {}
+                  report["checks"]["public_sales_mode"]=runtime.get("sales","unknown")
+                  notice("PUBLIC_SALES_MODE",report["checks"]["public_sales_mode"])
+              if label=="PROVIDER_HEALTH":
+                  report["checks"]["provider_environment"]=str(body.get("environment") or "unknown")
+                  report["checks"]["provider_authenticated"]=body.get("authenticated") is True
+                  report["checks"]["provider_webhook_secret_configured"]=body.get("webhook_secret_configured") is True
+                  notice("PROVIDER_ENVIRONMENT",report["checks"]["provider_environment"])
+                  notice("PROVIDER_AUTHENTICATED",str(report["checks"]["provider_authenticated"]).lower())
+          # Cloudflare does not expose the plaintext Worker secret via GET/settings:
+          # existence is NOT proof of identity equality with GH production token.
+          report["unknown"]=["worker_mp_secret_parity_with_production_account","webhook_prod_secret_identity","test_token_not_reachable_outside_certified_pilot","production_collector_ownership_assertion"]
+          for x in report["unknown"]:notice("NOT_PROVEN",x)
+          OUT.write_text(json.dumps(report,ensure_ascii=False,indent=2)+"\n")
+          stop("WORKER_CREDENTIAL_PARITY_REMAINS_UNPROVEN")
+          PY
+      - name: Store sanitized report only for one day
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f2-payment-boundary-sanitized
+          path: f2-production-boundary-sanitized.json
+          retention-days: 1
+          if-no-files-found: warn
