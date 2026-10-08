@@ -14314,6 +14314,18 @@ function normalizeMercadoPagoFinancialEvent(payment, order) {
 }
 __name(normalizeMercadoPagoFinancialEvent, "normalizeMercadoPagoFinancialEvent");
 
+function preferenceMatchesPersistedOrder(payload, persisted) {
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (items.length !== 1) return false;
+  const item = items[0];
+  const charged = Math.round(Number(item?.unit_price) * 100);
+  const expected = Math.round(Number(persisted?.amount) * 100);
+  if (!Number.isFinite(charged) || !Number.isFinite(expected) || expected <= 0) return false;
+  if (Number(item?.quantity) !== 1 || String(item?.currency_id || "") !== "BRL") return false;
+  if (String(item?.id || "") !== String(persisted?.offer_id || "")) return false;
+  return charged === expected;
+}
+__name(preferenceMatchesPersistedOrder, "preferenceMatchesPersistedOrder");
 // src/http/checkoutMercadoPago.mjs
 async function createMercadoPagoPreference(payload, accessToken, fetchImpl = fetch) {
   const response2 = await fetchImpl(`${MERCADOPAGO_API_BASE}/checkout/preferences`, {
@@ -14386,6 +14398,14 @@ async function handler12(req, res) {
     const notificationPath = pilotSandbox ? "/api/webhooks?provider=mercadopago_test" : "/api/webhooks/mercadopago";
     const payload = buildMercadoPagoPreference(order.order_id, publicBase, orderBoundOffer, { notificationPath });
     if (!payload) return json9(res, 503, { error: "checkout_payload_unavailable" });
+    // Fail closed (issue #307): the preference must charge exactly the persisted order amount.
+    if (!preferenceMatchesPersistedOrder(payload, claimed[0])) {
+      try {
+        await sql.query(`UPDATE orders SET status='created',updated_at=now() WHERE order_id=$1 AND status='checkout_creating'`, [order.order_id]);
+      } catch {
+      }
+      return json9(res, 409, { error: "preference_amount_mismatch", provider_called: false });
+    }
     let raw;
     try {
       raw = await createMercadoPagoPreference(payload, providerToken);

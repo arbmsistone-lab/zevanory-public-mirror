@@ -6,6 +6,7 @@ on:
     paths:
       - "worker/cloudflare-worker.recovered.mjs"
       - "scripts/mercadopago_reconciliation_regression.py"
+      - "scripts/mercadopago_preference_amount_guard_test.mjs"
       - ".github/workflows/mercadopago-rootcause-antifraud.yml"
 
 permissions:
@@ -24,6 +25,9 @@ jobs:
 
       - name: Syntax check patched runtime
         run: node --check worker/cloudflare-worker.recovered.mjs
+
+      - name: Behavioral guard - preference must equal persisted order (issue 307)
+        run: node scripts/mercadopago_preference_amount_guard_test.mjs
 
       - name: Regression - canonical price and mismatch rejection
         run: python scripts/mercadopago_reconciliation_regression.py
