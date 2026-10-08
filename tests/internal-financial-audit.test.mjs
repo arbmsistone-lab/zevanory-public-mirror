@@ -1,0 +1,38 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {classifyPayment,safeDbHost,handleInternalFinancialAudit} from "../worker/internal-financial-audit.mjs";
+const row={id:"12345",provider:"mercadopago",pilot:false,orphan:false,reference:"ZEVANORY:abc",order_id:"abc"};
+const ok={status:200,body:{id:12345,collector_id:9876,external_reference:"ZEVANORY:abc",live_mode:true}};
+test("financial classification: only owned validated payment counts as production",()=>{
+ assert.equal(classifyPayment(row,ok,9876),"producao_confirmado");
+ assert.equal(classifyPayment(row,{status:404,body:null},9876),"nao_existe_em_producao");
+ assert.equal(classifyPayment(row,{status:403,body:null},9876),"ambiguo");
+ assert.equal(classifyPayment(row,ok,1111),"ambiguo");
+ assert.equal(classifyPayment({...row,pilot:true},ok,9876),"ambiguo");
+ assert.equal(classifyPayment({...row,provider:"asaas"},ok,9876),"ambiguo");
+ assert.equal(classifyPayment({...row,orphan:true},ok,9876),"ambiguo");
+ assert.equal(classifyPayment({...row,id:"TEST123"},ok,9876),"ambiguo");
+ assert.equal(classifyPayment(row,{...ok,body:{...ok.body,external_reference:"different"}},9876),"ambiguo");
+ assert.equal(classifyPayment(row,{...ok,body:{...ok.body,live_mode:false}},9876),"ambiguo");
+});
+test("database host reports suffix only",()=>{
+ assert.equal(safeDbHost("postgres://some-user:secret@ep-abc-pooler.us-east-2.aws.neon.tech/name"),"neon.tech");
+ assert.equal(safeDbHost("postgres://secret:secret@somehost.render.com:5432/name"),"render.com");
+ assert.equal(safeDbHost("postgres://secret:secret@myhost.local/name"),"unknown");
+});
+test("both audit endpoints require authentication, reject write methods",async()=>{
+ for(const p of ["/api/internal/audit/financial-classification","/api/internal/audit/runtime-identity"]){
+  const env={CERTIFICATION_E2E_TOKEN:"x".repeat(40),DATABASE_URL:"postgresql://sensitive:password@db.internal/secret",MERCADOPAGO_ACCESS_TOKEN:"APP_USR-SENSITIVE"};
+  const r=await handleInternalFinancialAudit(new Request("https://zevanory.api.br"+p),env);
+  assert.equal(r.status,401);
+  const text=await r.text();
+  assert.equal(text.includes("sensitive"),false);
+  assert.equal(text.includes("password"),false);
+  assert.equal(text.includes("APP_USR"),false);
+  const wr=await handleInternalFinancialAudit(new Request("https://zevanory.api.br"+p,{method:"POST"}),env);
+  assert.equal(wr.status,405);
+ }
+});
+test("unrelated routes are not intercepted",async()=>{
+ assert.equal(await handleInternalFinancialAudit(new Request("https://zevanory.api.br/api/health"),{}),null);
+});
