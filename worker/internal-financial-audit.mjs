@@ -30,7 +30,7 @@ export function classifyPaymentEvidence(row,response,accountId) {
   const status=Number(response?.status||0);
   const ambiguous=reason=>({classification:"ambiguo",reason});
   // An unidentifiable payment is not evidence of being a sandbox payment.
-  if(!/^\\d{1,32}$/.test(id))return ambiguous("payment_id_missing_or_invalid");
+  if(!/^\d{1,32}$/.test(id))return ambiguous("payment_id_missing_or_invalid");
   if(row?.orphan===true)return ambiguous("order_missing");
   if(row?.pilot===true){
     // Production-token 404 plus an explicit pilot flag is provable certification,
