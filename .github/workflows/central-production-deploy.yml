@@ -123,6 +123,8 @@ jobs:
           echo "available=true" >> "$GITHUB_OUTPUT"
           echo "CLOUDFLARE_PUBLIC_OWNER_AUTHORITY=PASS"
           echo "CLOUDFLARE_ACCOUNT_ID=$PUBLIC_OWNER_ACCOUNT_ID"
+      - name: Zero-cost guard (owner rule, fail closed before any deploy)
+        run: python3 scripts/zero_cost_guard.py
       - name: Reconstruct exact production candidate
         if: steps.auth.outputs.available == 'true'
         run: |
