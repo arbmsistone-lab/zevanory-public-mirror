@@ -1,0 +1,103 @@
+name: ZEVANORY F1 financial provenance read-only
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/f1-financial-provenance-readonly.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  financial-provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      F1_DATABASE_URL: ${{ secrets.ZEVANORY_NEON_DATABASE_URL || secrets.DATABASE_URL }}
+    steps:
+      - name: Require read-only database access
+        shell: bash
+        run: |
+          if [ -z "${F1_DATABASE_URL:-}" ]; then
+            echo "::error title=F1_DATABASE_ACCESS::NO_NEON_DATABASE_CREDENTIAL_IN_GITHUB_ACTIONS"
+            exit 2
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PostgreSQL read-only client
+        run: python -m pip install --disable-pip-version-check 'psycopg[binary]==3.2.10'
+      - name: Aggregate canonical financial provenance without PII
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, sys, datetime
+          from pathlib import Path
+          import psycopg
+          from psycopg import sql
+          def notice(key, value):
+              print("::notice title=F1_"+key+"::"+str(value), flush=True)
+          def error(code):
+              print("::error title=F1_FINANCIAL_PROVENANCE::"+code, flush=True)
+          out={"schema":"zevanory.f1.financial-provenance/v1","generated_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),"classification_policy":"fail_closed_unknown_without_provider_account_proof","aggregates":{},"production_payment_proven":False}
+          try:
+              with psycopg.connect(os.environ["F1_DATABASE_URL"], connect_timeout=15, options="-c default_transaction_read_only=on -c statement_timeout=25000") as db:
+                  with db.cursor() as cur:
+                      cur.execute("select table_name,column_name from information_schema.columns where table_schema='public' and table_name in ('orders','financial_events')")
+                      fields={}
+                      for table,col in cur.fetchall():
+                          fields.setdefault(table,set()).add(col)
+                      required={"orders":{"order_id","certification_pilot"},"financial_events":{"order_id","provider","normalized_event"}}
+                      missing={k:sorted(v-fields.get(k,set())) for k,v in required.items() if v-fields.get(k,set())}
+                      if missing:
+                          error("SCHEMA_REQUIRED_COLUMNS_MISSING")
+                          notice("MISSING_COLUMN_COUNT",sum(len(x) for x in missing.values()))
+                          raise RuntimeError("schema_unverified")
+                      cur.execute("""select count(*)::int,
+                          count(*) filter(where certification_pilot is true)::int,
+                          count(*) filter(where certification_pilot is not true)::int
+                          from orders""")
+                      total,pilot,unverified=map(int,cur.fetchone())
+                      cur.execute("""select
+                          case when f.provider='mercadopago' then 'mercadopago'
+                               when f.provider='asaas' then 'asaas'
+                               when f.provider='stripe' then 'stripe'
+                               else 'other_or_missing' end as provider_group,
+                          case when o.certification_pilot is true then 'certification_pilot'
+                               when o.order_id is null then 'orphan_unverified'
+                               else 'origin_unverified' end as origin_class,
+                          case when f.normalized_event='payment_confirmed' then 'payment_confirmed'
+                               when f.normalized_event='refund_confirmed' then 'refund_confirmed'
+                               else 'other_event' end as event_class,
+                          count(*)::int
+                          from financial_events f left join orders o on o.order_id=f.order_id
+                          group by 1,2,3 order by 1,2,3""")
+                      grouped=[{"provider":str(a),"origin":str(b),"event":str(c),"count":int(n)} for a,b,c,n in cur.fetchall()]
+                      out["aggregates"]={"orders_total":total,"orders_certification_pilot":pilot,"orders_origin_unverified":unverified,"financial_events_by_origin_provider":grouped}
+                      notice("ORDERS_TOTAL",total)
+                      notice("ORDERS_PILOT",pilot)
+                      notice("ORDERS_ORIGIN_UNVERIFIED",unverified)
+                      notice("EVENT_GROUP_COUNT",len(grouped))
+                      notice("PAYMENT_PROVIDER_ACCOUNT_CROSSCHECK","NOT_PERFORMED")
+                      notice("LIVE_MODE_ALONE_SUFFICIENT","false")
+          except Exception as exc:
+              if not isinstance(exc,RuntimeError):
+                  error("READ_ONLY_QUERY_FAILED_"+type(exc).__name__)
+              out["audit_state"]="BLOCKED"
+              Path("f1-financial-provenance-sanitized.json").write_text(json.dumps(out,indent=2)+"\n")
+              sys.exit(2)
+          out["audit_state"]="BLOCKED" if out["aggregates"]["orders_origin_unverified"] or out["aggregates"]["financial_events_by_origin_provider"] else "NO_RECORDS_ONLY"
+          Path("f1-financial-provenance-sanitized.json").write_text(json.dumps(out,indent=2)+"\n")
+          if out["audit_state"]=="BLOCKED":
+              error("UNVERIFIED_FINANCIAL_ORIGIN_PREVENTS_COMMERCIAL_GO")
+              sys.exit(3)
+          notice("AUDIT_STATE",out["audit_state"])
+          PY
+      - name: Preserve aggregated evidence (one day, no customer data)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f1-financial-provenance-sanitized
+          path: f1-financial-provenance-sanitized.json
+          retention-days: 1
+          if-no-files-found: warn
