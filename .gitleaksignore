@@ -39,3 +39,39 @@ cdeb9847df8f8af36093dc4a2dde3f4bc61d374d:tests/reviews.test.mjs:generic-api-key:
 f6a7557df5fccd3c9ebd35a0c61a6656719fc5fa:.github/workflows/indexnow-resubmit.yml:generic-api-key:17
 # IndexNow key is public by protocol (served at /<key>.txt)
 f6a7557df5fccd3c9ebd35a0c61a6656719fc5fa:.github/workflows/indexnow-resubmit.yml:generic-api-key:32
+
+# Reviewed 2026-10-08: findings on non-production branches (all refs scan). No live credential.
+# env var reference ($STRIPE_SECRET_KEY), not a value
+20247ab29fdadcbba260013a6bc04d0a250cebad:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:134
+# env var reference ($STRIPE_SECRET_KEY), not a value
+20247ab29fdadcbba260013a6bc04d0a250cebad:.github/workflows/financial-e2e-stripe.yml:curl-auth-user:59
+# idempotency key, not a credential
+20247ab29fdadcbba260013a6bc04d0a250cebad:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:290
+# idempotency key, not a credential
+20247ab29fdadcbba260013a6bc04d0a250cebad:.github/workflows/zevanory-admin-control-center.yml:generic-api-key:302
+# local CI mock server credential (127.0.0.1)
+20247ab29fdadcbba260013a6bc04d0a250cebad:.github/workflows/zevanory-admin-render-proof.yml:curl-auth-user:61
+# idempotency key, not a credential
+20247ab29fdadcbba260013a6bc04d0a250cebad:.github/workflows/zevanory-control-plane-v2-proof.yml:generic-api-key:95
+# synthetic test fixture
+20247ab29fdadcbba260013a6bc04d0a250cebad:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83
+# SHA-256 digest, not a credential
+20247ab29fdadcbba260013a6bc04d0a250cebad:worker/sandbox-proof-v2.mjs:generic-api-key:17
+# SHA-256 digest, not a credential
+47b4301366ce0f63bba0a3edddffce6ebc44bfc0:worker/sandbox-proof-v2.mjs:generic-api-key:14
+# synthetic test fixture
+4b56f6447d8f362353b17ee27f7bd7bfa548c712:scripts/voice_render_client_test.mjs:generic-api-key:4
+# synthetic test fixture
+6cd301b238f46a15db3efc24134937c223394c46:tests/post-sale.test.mjs:generic-api-key:25
+# synthetic test fixture
+6d35b4741a1b8c6f4afcff79366c21b9d1712ada:scripts/voice_render_client_test.mjs:generic-api-key:4
+# synthetic test fixture
+d7a878ec8d4532e5e3d6e3372668aae049a3bb67:tests/reviews.test.mjs:generic-api-key:21
+# IndexNow key is public by protocol
+ed60fc5cce6be620dceffce0c14983b415055b17:.github/workflows/indexnow-resubmit.yml:generic-api-key:17
+# IndexNow key is public by protocol
+ed60fc5cce6be620dceffce0c14983b415055b17:.github/workflows/indexnow-resubmit.yml:generic-api-key:32
+# synthetic test fixture
+f2523167c479ca601f1bc2b7d6ecd07b8e621431:tests/lead-magnet.test.mjs:generic-api-key:31
+# synthetic test fixture
+fecd365a8d3e8b8a01681e38692e37e47cfc622e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83
