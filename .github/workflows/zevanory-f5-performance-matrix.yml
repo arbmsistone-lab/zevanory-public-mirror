@@ -1,0 +1,38 @@
+name: ZEVANORY F5 performance matrix (every run must pass)
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [gh-pages]
+    paths: [".github/workflows/zevanory-f5-performance-matrix.yml", "scripts/f5_lighthouse_gate.mjs"]
+permissions:
+  contents: read
+concurrency:
+  group: f5-performance-matrix-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        page: ["/", "/solucoes", "/ia-na-pratica", "/vendas-na-pratica", "/lucro-e-caixa", "/combo-ia-vendas", "/negocio-completo", "/material-gratuito", "/afiliados", "/privacidade", "/termos", "/reembolso"]
+        device: [mobile, desktop]
+    env:
+      ORIGIN: https://vendas.zevanory.api.br
+      PAGE: ${{ matrix.page }}
+      DEVICE: ${{ matrix.device }}
+      RUNS: "5"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned tools
+        run: npm install --no-save --prefix /tmp/f5 lighthouse@12.8.2 pa11y@8.0.0 >/dev/null 2>&1
+      - name: Lighthouse x5 and axe, gate every individual run
+        run: |
+          export CHROME_PATH="$(command -v google-chrome || command -v chromium)"
+          NODE_PATH=/tmp/f5/node_modules node scripts/f5_lighthouse_gate.mjs
