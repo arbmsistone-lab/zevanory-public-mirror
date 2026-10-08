@@ -19,7 +19,7 @@ jobs:
           python3 - <<'PY'
           import os,json,hashlib,urllib.request,urllib.error,time,datetime
           from pathlib import Path
-          expected="e00818ee490fded53380347c650525f3995472cd"
+          expected="0ff520d43c57edd21c00f5a5b73759743cfd30c8"
           root="https://zevanory.api.br"
           report={"schema":"zevanory.c1.live.proof/v1","sha_expected":expected,"checks":{},"commercial_release_allowed":False}
           token=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
@@ -81,6 +81,15 @@ jobs:
                   report["checks"]["production_confirmed"]=data.get("production_confirmed")
                   notice("FINANCIAL_AMBIGUOUS",data.get("ambiguous"))
                   notice("FINANCIAL_PRODUCTION_CONFIRMED",data.get("production_confirmed"))
+                  asa=data.get("asaas_sandbox") or {}
+                  asa_env=asa.get("environment")
+                  asa_key=asa.get("credential_configured")
+                  asa_n=asa.get("ids_queried")
+                  if asa and (asa_env not in ("sandbox","production","unknown") or type(asa_key) is not bool or type(asa_n) is not int or not 0<=asa_n<=40):stop("UNSAFE_ASAAS_PROOF_METADATA")
+                  notice("ASAAS_SANDBOX_ENV",asa_env)
+                  notice("ASAAS_KEY_CONFIGURED_BOOLEAN",asa_key)
+                  notice("ASAAS_SANDBOX_PAYMENT_GET_COUNT",asa_n)
+                  report["checks"]["asaas_sandbox"]={"environment":asa_env,"credential_configured":asa_key,"ids_queried":asa_n}
                   report["checks"]["financial_test_pilot"]=data.get("certification_events")
                   report["checks"]["financial_not_in_production"]=data.get("not_in_production")
                   report["checks"]["orders_aggregates"]=data.get("orders") if isinstance(data.get("orders"),dict) else {}
