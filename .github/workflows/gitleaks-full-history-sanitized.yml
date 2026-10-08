@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          /tmp/gitleaks git --log-opts="--all" --report-format json --report-path /tmp/gitleaks-raw.json --no-banner . >/tmp/gitleaks-log.txt 2>&1
+          /tmp/gitleaks git --log-opts="--all" --gitleaks-ignore-path .gitleaksignore --report-format json --report-path /tmp/gitleaks-raw.json --no-banner . >/tmp/gitleaks-log.txt 2>&1
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
