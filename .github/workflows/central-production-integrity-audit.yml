@@ -35,6 +35,11 @@ jobs:
             output.append({'path':'worker/live-recovered/control-plane-vnext.js','git_sha256':hashlib.sha256(data).hexdigest()})
           privacy=next((x for x in output if x.get('path')=='/privacidade'),{})
           print(json.dumps({'production':output},ensure_ascii=False,indent=2))
+          expected='50ac7a0993fb7b8cbee1ff7f418aca17de3851b1284464ed350850cfed789904'
+          for x in output:
+            print('::notice title=CENTRAL_INTEGRITY::'+json.dumps(x,ensure_ascii=False)[:900])
+          live=next((x for x in output if x.get('path')=='/control-plane-vnext.js'),{})
+          print('::notice title=CENTRAL_PROVENANCE::live_equals_repaired='+str(live.get('sha256')==expected).lower())
           bad=any(x.get('error') or x.get('http')!=200 or sum(x.get('mojibake',{}).values()) for x in output if x.get('path','').startswith('/'))
           if bad:sys.exit('CENTRAL_INTEGRITY_PROOF_FAILED')
           PY
