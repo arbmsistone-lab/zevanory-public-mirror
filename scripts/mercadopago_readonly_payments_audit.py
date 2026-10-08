@@ -61,6 +61,8 @@ while True:
 rows.sort(key=lambda x:(x["data"],x["payment_id"]))
 report={"begin_date":START,"end_date":end,"total_pagamentos":len(rows),"aprovados_sem_conciliacao":sum(x["status"]=="approved" and not x["concilia_mesmo_valor"] for x in rows),"pagamentos":rows}
 with open("mercadopago-readonly-sanitized.json","w",encoding="utf-8") as f:json.dump(report,f,ensure_ascii=False,indent=2)
-print("payment_id | data | valor | status | external_reference | concilia_mesmo_valor | motivo")
-for x in rows:print(" | ".join(str(x[k]) for k in ("payment_id","data","valor","status","external_reference","concilia_mesmo_valor","motivo")))
+# Public repository: Actions logs are world-readable. Never print per-payment rows,
+# amounts or references to the log; the table lives only in the short-lived artifact.
+print("TOTAL_PAYMENTS="+str(report["total_pagamentos"]))
+print("APPROVED_COUNT="+str(sum(x["status"]=="approved" for x in rows)))
 print("APPROVED_UNRECONCILED_COUNT="+str(report["aprovados_sem_conciliacao"]))
