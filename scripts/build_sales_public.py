@@ -177,6 +177,9 @@ def apply_approved_overlay() -> None:
         if slug == "solucoes":
             html = apply_catalog(html)
         html = add_legal_footer(html).replace("contato@zevanory.api.br", "suporte@zevanory.api.br")
+        # Source pages may list both addresses ("contato@ ou suporte@"); after the public
+        # canonicalization they would read "suporte@ ou suporte@". Collapse the duplicate.
+        html = re.sub(r"suporte@zevanory\.api\.br( ou | or |, | e )suporte@zevanory\.api\.br", "suporte@zevanory.api.br", html)
         if 'src="/whatsapp-contact.js"' not in html:
             html = html.replace("</body>", '<script src="/whatsapp-contact.js" defer></script></body>', 1)
         path.write_text(html, encoding="utf-8")
