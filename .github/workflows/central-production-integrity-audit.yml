@@ -1,0 +1,40 @@
+name: Central production asset integrity audit
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  central-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect public central HTML JS CSS and release provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,re,urllib.request,sys,pathlib
+          root='https://zevanory.api.br'
+          paths=['/central','/control-plane-vnext.js','/control-plane-vnext.css','/privacidade','/zpc-build.json']
+          output=[]
+          for path in paths:
+            try:
+              req=urllib.request.Request(root+path,headers={'User-Agent':'ZEVANORY-integrity-audit/1.0'})
+              with urllib.request.urlopen(req,timeout=25) as res: data=res.read(); status=res.status; mime=res.headers.get('content-type','')
+              txt=data.decode('utf-8',errors='strict')
+              markers={k:len(re.findall(re.escape(k),txt)) for k in ['Ã©','Ã§','â€','Ã£','Ãª']}
+              output.append({'path':path,'http':status,'sha256':hashlib.sha256(data).hexdigest(),'content_type':mime,'mojibake':markers})
+            except Exception as e:
+              output.append({'path':path,'error':type(e).__name__})
+          local=pathlib.Path('worker/live-recovered/control-plane-vnext.js')
+          if local.is_file():
+            data=local.read_bytes()
+            output.append({'path':'worker/live-recovered/control-plane-vnext.js','git_sha256':hashlib.sha256(data).hexdigest()})
+          privacy=next((x for x in output if x.get('path')=='/privacidade'),{})
+          print(json.dumps({'production':output},ensure_ascii=False,indent=2))
+          bad=any(x.get('error') or x.get('http')!=200 or sum(x.get('mojibake',{}).values()) for x in output if x.get('path','').startswith('/'))
+          if bad:sys.exit('CENTRAL_INTEGRITY_PROOF_FAILED')
+          PY
