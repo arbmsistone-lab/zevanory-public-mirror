@@ -67,6 +67,14 @@ try {
     chromeLaunchConfig: { executablePath: process.env.CHROME_PATH, args: ["--no-sandbox", "--disable-dev-shm-usage"] } });
   const errs = res.issues.filter(x => x.type === "error");
   note(errs.length ? "error" : "notice", "F5_AXE", `violations=${errs.length}${errs.length ? " " + [...new Set(errs.map(e => e.code))].slice(0, 6).join(",") : ""}`);
+  // Distinct offending (selector | message) pairs, so the cause can be fixed at the source CSS.
+  const seen = new Set(), detail = [];
+  for (const e of errs) {
+    const msg = String(e.message || "").replace(/\s+/g, " ").slice(0, 200);
+    const k = e.selector + "|" + msg;
+    if (!seen.has(k)) { seen.add(k); detail.push(`${e.selector} :: ${msg}`.slice(0, 300)); }
+  }
+  for (const d of detail.slice(0, 7)) note("warning", "F5_AXE_DETAIL", d);
   if (errs.length) failures.push(`axe:${errs.length}`);
 } catch (e) { failures.push("axe:did_not_run"); note("error", "F5_AXE", "did_not_run " + String(e.message).slice(0, 80)); }
 
