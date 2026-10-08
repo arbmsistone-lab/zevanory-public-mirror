@@ -81,3 +81,13 @@ print("::notice title=MP_READONLY_SUMMARY::total="+str(len(rows))+" por_status="
 for x in rows:
     if x["status"]=="approved" and not x["concilia_mesmo_valor"]:
         print("::warning title=MP_APPROVED_UNRECONCILED::payment_id="+x["payment_id"]+" data="+x["data"][:19]+" valor="+str(x["valor"])+" motivo="+x["motivo"])
+
+# Read-only lookup of specific payment ids (e.g. issue #307) in the PRODUCTION account.
+# 404 means the payment does not exist in production (e.g. it was made with test credentials).
+for lookup_id in [x for x in os.environ.get("MP_LOOKUP_PAYMENT_IDS","").split(",") if x.strip().isdigit()][:5]:
+    lookup_id=lookup_id.strip()
+    try:
+        p=fetch_json("https://api.mercadopago.com/v1/payments/"+lookup_id,{"Authorization":"Bearer "+token,"Accept":"application/json"})
+        print("::notice title=MP_PAYMENT_LOOKUP::payment_id="+lookup_id+" producao=encontrado status="+str(p.get("status") or "")[:32]+" valor="+str(amount(p.get("transaction_amount")))+" live_mode="+str(p.get("live_mode")).lower())
+    except RuntimeError as e:
+        print("::notice title=MP_PAYMENT_LOOKUP::payment_id="+lookup_id+" producao="+("nao_existe" if str(e)=="HTTP_404" else str(e)))
