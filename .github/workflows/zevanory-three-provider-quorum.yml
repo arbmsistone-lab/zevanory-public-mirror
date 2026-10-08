@@ -5,6 +5,8 @@ on:
     paths:
       - "evidence/three-provider-quorum.json"
       - ".github/workflows/zevanory-three-provider-quorum.yml"
+      - ".github/workflows/zevanory-quorum-safe-diagnostics.yml"
+      - "worker/commercial-metrics-projection.mjs"
   workflow_dispatch:
   schedule:
     - cron: "23 * * * *"
@@ -80,7 +82,9 @@ jobs:
                           "provider":p["provider"],
                           "failure_domain":p["failure_domain"],
                           "ok":r.status==200 and identity_ok and commercial_safe,
-                          "status":r.status
+                          "status":r.status,
+                          "identity_attestation_ok":identity_ok,
+                          "commercial_lock_ok":commercial_safe
                       })
               except Exception as exc:
                   results.append({"provider":p["provider"],"failure_domain":p["failure_domain"],"ok":False,"error":str(exc)})
