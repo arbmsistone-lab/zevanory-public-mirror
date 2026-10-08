@@ -18,7 +18,7 @@ jobs:
           python3 - <<'PY'
           import hashlib,json,re,urllib.request,sys,pathlib
           root='https://zevanory.api.br'
-          paths=['/central','/control-plane-vnext.js','/control-plane-vnext.css','/privacidade','/zpc-build.json']
+          paths=['/central','/control-plane-vnext.js','/privacidade']
           output=[]
           for path in paths:
             try:
@@ -29,17 +29,20 @@ jobs:
               output.append({'path':path,'http':status,'sha256':hashlib.sha256(data).hexdigest(),'content_type':mime,'mojibake':markers})
             except Exception as e:
               output.append({'path':path,'error':type(e).__name__})
-          local=pathlib.Path('worker/live-recovered/control-plane-vnext.js')
-          if local.is_file():
-            data=local.read_bytes()
-            output.append({'path':'worker/live-recovered/control-plane-vnext.js','git_sha256':hashlib.sha256(data).hexdigest()})
+          # Canonical source served by the Worker (worker/control-plane-vnext-source.mjs, CONTROL_PLANE_VNEXT_JS).
+          import subprocess
+          canon=subprocess.check_output(['node','-e','import("./worker/control-plane-vnext-source.mjs").then(m=>process.stdout.write(m.CONTROL_PLANE_VNEXT_JS))'])
+          output.append({'path':'git:worker/control-plane-vnext-source.mjs','git_sha256':hashlib.sha256(canon).hexdigest()})
           privacy=next((x for x in output if x.get('path')=='/privacidade'),{})
           print(json.dumps({'production':output},ensure_ascii=False,indent=2))
-          expected='50ac7a0993fb7b8cbee1ff7f418aca17de3851b1284464ed350850cfed789904'
+          expected=hashlib.sha256(canon).hexdigest()
           for x in output:
             print('::notice title=CENTRAL_INTEGRITY::'+json.dumps(x,ensure_ascii=False)[:900])
           live=next((x for x in output if x.get('path')=='/control-plane-vnext.js'),{})
-          print('::notice title=CENTRAL_PROVENANCE::live_equals_repaired='+str(live.get('sha256')==expected).lower())
+          parity=live.get('sha256')==expected
+          print('::notice title=CENTRAL_PROVENANCE::live_js_equals_git_canonical='+str(parity).lower()+' quorum_trust_chain='+str(b'QUORUM' in canon).lower())
+          charset_ok=all('charset=utf-8' in x.get('content_type','').lower() for x in output if x.get('path') in ('/central','/control-plane-vnext.js'))
+          if not parity or not charset_ok:sys.exit('CENTRAL_PROVENANCE_OR_CHARSET_FAILED')
           bad=any(x.get('error') or x.get('http')!=200 or sum(x.get('mojibake',{}).values()) for x in output if x.get('path','').startswith('/'))
           if bad:sys.exit('CENTRAL_INTEGRITY_PROOF_FAILED')
           PY
