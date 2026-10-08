@@ -19,7 +19,7 @@ jobs:
           python3 - <<'PY'
           import os,json,hashlib,urllib.request,urllib.error,time,datetime
           from pathlib import Path
-          expected="31b26f2de0f9af928207a39685e784d1ab129e47"
+          expected="e00818ee490fded53380347c650525f3995472cd"
           root="https://zevanory.api.br"
           report={"schema":"zevanory.c1.live.proof/v1","sha_expected":expected,"checks":{},"commercial_release_allowed":False}
           token=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
@@ -92,6 +92,22 @@ jobs:
                       if not reason or len(reason)>95 or not all(c.islower() or c.isdigit() or c in ":_" for c in reason) or type(count) is not int:stop("UNSAFE_EVIDENCE_REASON")
                       notice("AGGREGATE_REASON",reason+" count="+str(count))
                       report.setdefault("sanitized_reasons",[]).append({"reason":reason,"count":count})
+                  allowed={
+                      "provider":{"mercadopago","asaas","stripe","other_or_missing"},
+                      "event":{"payment_confirmed","refund_confirmed","other_event"},
+                      "pilot":{"pilot_true","pilot_false","pilot_unknown"},
+                      "id_format":{"missing","mercadopago_numeric","other_format"},
+                      "marker_hint":{"mp_test_prefix","fixture_or_seed_prefix","pilot_or_test_prefix","not_classifiable_from_prefix"},
+                      "classification":{"ambiguo","teste_certificacao","nao_existe_em_producao","producao_confirmado"}
+                  }
+                  for dim in data.get("evidence_breakdown") or []:
+                      selected={k:dim.get(k) for k in allowed}
+                      count=dim.get("count")
+                      reason=str(dim.get("reason") or "")
+                      if any(v not in allowed[k] for k,v in selected.items()) or type(count) is not int or not reason or not all(c.islower() or c.isdigit() or c=="_" for c in reason):stop("UNSAFE_BREAKDOWN_DIMENSIONS")
+                      line="|".join(str(selected[k]) for k in ["classification","provider","event","pilot","id_format","marker_hint"])+":reason="+reason+":count="+str(count)
+                      notice("EVENT_ORIGIN_BREAKDOWN",line)
+                      report.setdefault("sanitized_breakdown",[]).append({**selected,"reason":reason,"count":count})
               if code!=200:stop(kind.upper()+"_NOT_PROVEN")
           if not report["checks"].get("same_mp_account_hash"):stop("COLLECTOR_ACCOUNT_MISMATCH")
           if report["checks"].get("financial_ambiguous")!=0:stop("AMBIGUOUS_PAYMENT_RECORDS")
