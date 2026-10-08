@@ -116,15 +116,16 @@ jobs:
           v["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
           v["ZEVANORY_WHATSAPP_COUNTRY"]="BR"
           v.pop("SUPPORT_CHANNEL",None)
-          v["VOICE_TTS_PROVIDER"]="piper-relay"
-          v["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"
+          # Owner rule: 100% free (no Speechify, no paid DigitalOcean relay).
+          v["VOICE_TTS_PROVIDER"]="gemini"
+          v["VOICE_TTS_PROVIDER_CHAIN"]="gemini"
           v["VOICE_TTS_FAILOVER_ENABLED"]="true"
-          v["GEMINI_FREE_TIER_CONFIRMED"]="false"
+          v["GEMINI_FREE_TIER_CONFIRMED"]="true"
           v["VOICE_TTS_MODEL"]="pt_BR-jeff-medium"
           v["VOICE_TTS_PIPER_MODEL"]="pt_BR-jeff-medium"
           v["VOICE_TTS_VOICE"]="jeff"
           v["VOICE_TTS_PIPER_VOICE"]="jeff"
-          v["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
+          v.pop("VOICE_TTS_RELAY_URL",None)
           # These bindings are provably unused by the exact TARGET_SHA bundle.
           for unused in ("KNOWLEDGE_SEED_ALLOWED","SPEECHIFY_FREE_TIER_CONFIRMED","AZURE_SPEECH_FREE_TIER_CONFIRMED"):
               v.pop(unused,None)

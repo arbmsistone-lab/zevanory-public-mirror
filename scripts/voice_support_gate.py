@@ -34,7 +34,8 @@ assert 'inboundMediaType === "audio"' in worker
 print("VOICE_ENGINE_STATIC_GATE=PASS")
 
 router_required=[
-  'DEFAULT_CHAIN = Object.freeze(["speechify", "azure", "piper-relay", "gemini"])',
+  'DEFAULT_CHAIN = Object.freeze(["gemini"])',
+  'const ZERO_SPEND_PROVIDERS = Object.freeze(["gemini", "azure"])',
   'VOICE_TTS_FAILOVER_ENABLED',
   'VOICE_TTS_FREE_ONLY',
   'SPEECHIFY_FREE_TIER_CONFIRMED',
@@ -74,12 +75,12 @@ subprocess.run(["node", "scripts/whatsapp_conversation_test.mjs"], check=True)
 subprocess.run(["node", "scripts/whatsapp_audio_runtime_test.mjs"], check=True)
 
 for marker in [
-  'c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"',
+  'c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="gemini"',
   'runtime_config["VOICE_TTS_FAILOVER_ENABLED"]="true"',
   'c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"',
   'c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"',
-  'runtime_config["GEMINI_FREE_TIER_CONFIRMED"]="false"',
-  'c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"',
+  'runtime_config["GEMINI_FREE_TIER_CONFIRMED"]="true"',
+  'c["vars"].pop("VOICE_TTS_RELAY_URL",None)',
 ]:
     assert marker in deploy, f"missing production voice var: {marker}"
 assert 'c["vars"]["VOICE_TTS_FREE_ONLY"]' not in deploy

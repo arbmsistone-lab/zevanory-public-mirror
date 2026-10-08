@@ -1,0 +1,21 @@
+name: Zero-spend guard (100% free rule)
+on:
+  pull_request:
+    branches: [gh-pages]
+  push:
+    branches: [gh-pages]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  zero-spend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Block paid dependencies
+        run: python3 scripts/zero_spend_guard.py
+      - name: Zero-spend voice router adversarial gate
+        run: node scripts/voice_router_adversarial.mjs

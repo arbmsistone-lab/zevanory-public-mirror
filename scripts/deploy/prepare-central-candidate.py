@@ -138,8 +138,9 @@ for retired_asset in ("public/zevanory-one.html","public/arbm-one.html","public/
     assert not Path(retired_asset).exists()
 print("COMMERCIAL_RETIREMENT_OVERLAY=PASS")
 
-c["vars"]["VOICE_TTS_PROVIDER"]="piper-relay"
-c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="speechify,azure,piper-relay,gemini"
+c["vars"]["VOICE_TTS_PROVIDER"]="gemini"
+# Owner rule: 100% free. No paid TTS API (Speechify) and no paid VPS relay (DigitalOcean).
+c["vars"]["VOICE_TTS_PROVIDER_CHAIN"]="gemini"
 runtime_config=c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})
 runtime_config["VOICE_TTS_FAILOVER_ENABLED"]="true"
 # Workers Free caps a Worker at 64 variables (secrets + text) and buying the paid plan
@@ -147,10 +148,12 @@ runtime_config["VOICE_TTS_FAILOVER_ENABLED"]="true"
 # runtime config (resolved by binding-aliases) instead of taking a new variable slot.
 if isinstance(runtime_config,dict):
     runtime_config["ZEVANORY_VOICE_SUPPORT_ENABLED"]="true"
-runtime_config["GEMINI_FREE_TIER_CONFIRMED"]="false"
+# Every Google Cloud project has billing disabled (owner, 2026-10-08), so the Gemini key
+# can only run on the free tier: confirm it so the zero-spend router can use it.
+runtime_config["GEMINI_FREE_TIER_CONFIRMED"]="true"
 c["vars"]["SPEECHIFY_FREE_TIER_CONFIRMED"]="false"
 c["vars"]["AZURE_SPEECH_FREE_TIER_CONFIRMED"]="false"
-c["vars"]["VOICE_TTS_RELAY_URL"]="https://tts.167-172-146-60.sslip.io"
+c["vars"].pop("VOICE_TTS_RELAY_URL",None)
 for unused in ("KNOWLEDGE_SEED_ALLOWED","SPEECHIFY_FREE_TIER_CONFIRMED","AZURE_SPEECH_FREE_TIER_CONFIRMED"):
     c["vars"].pop(unused,None)
 for key in ("VOICE_TTS_PROVIDER", "VOICE_TTS_PROVIDER_CHAIN"):

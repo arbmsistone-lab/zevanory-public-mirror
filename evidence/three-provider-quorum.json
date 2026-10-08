@@ -41,7 +41,8 @@
       "expected_provider": "digitalocean-relay",
       "artifact_sha": "fc4d58008f42a775fbc450364ffecf856b76c29a",
       "required": false,
-      "enabled": true
+      "enabled": false,
+      "disabled_reason": "owner_rule_100_percent_free_2026-10-08: DigitalOcean has no free tier; droplet scheduled for removal"
     },
     {
       "id": "backup-netlify",

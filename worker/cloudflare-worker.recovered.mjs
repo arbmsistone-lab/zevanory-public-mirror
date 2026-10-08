@@ -18462,7 +18462,7 @@ var cloudflare_worker_default = {
         "piper-relay": String(env.VOICE_TTS_PIPER_VOICE || env.VOICE_TTS_VOICE || "jeff"),
         gemini: String(env.GEMINI_TTS_VOICE || "Achird")
       };
-      const relayUrl = String(env.VOICE_TTS_RELAY_URL || "https://tts.167-172-146-60.sslip.io").trim();
+      const relayUrl = String(env.VOICE_TTS_RELAY_URL || "").trim();
       const body = {
         engine: "ZEVANORY Voice Support Engine",
         enabled: env.ZEVANORY_VOICE_SUPPORT_ENABLED === "true",

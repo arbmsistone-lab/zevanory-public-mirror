@@ -2,7 +2,17 @@ import { encodePcmInChunks } from "./voice-chunks.mjs";
 import { Buffer } from "node:buffer";
 import lamejs from "./vendor/lame.min.mjs";
 import { unpackPcm, encodePcmRemotely, downsamplePcmMono } from "./voice-pcm.mjs";
-const DEFAULT_CHAIN = Object.freeze(["speechify", "azure", "piper-relay", "gemini"]);
+const DEFAULT_CHAIN = Object.freeze(["gemini"]);
+// Owner rule: every ARBM One system is 100% free. Under VOICE_TTS_FREE_ONLY only providers
+// that cannot bill are allowed: Gemini (no billing account linked => free tier only) and
+// Azure Speech only when explicitly confirmed on the F0 free tier. Speechify (paid API) and
+// the piper relay (paid VPS) are never allowed in zero-spend mode.
+const ZERO_SPEND_PROVIDERS = Object.freeze(["gemini", "azure"]);
+function zeroSpendAllowed(provider, env = {}) {
+  if (!ZERO_SPEND_PROVIDERS.includes(provider)) return false;
+  if (provider === "azure") return String(env.AZURE_SPEECH_FREE_TIER_CONFIRMED || "").toLowerCase() === "true";
+  return true;
+}
 const FAILURE_THRESHOLD = 2;
 const COOLDOWN_MS = 5 * 60 * 1000;
 const breaker = globalThis.__ZEVANORY_VOICE_BREAKER__ || new Map();
@@ -23,12 +33,14 @@ function chainFromEnv(env = {}) {
   const values = (configured ? configured.split(",") : DEFAULT_CHAIN)
     .map((v) => String(v || "").trim().toLowerCase())
     .filter(Boolean);
-  return [...new Set(values)];
+  const unique = [...new Set(values)];
+  if (String(env.VOICE_TTS_FREE_ONLY || "").toLowerCase() === "true") return unique.filter((p) => zeroSpendAllowed(p, env));
+  return unique;
 }
 
 function isConfigured(provider, env = {}) {
   if (provider === "piper-relay") {
-    return /^https:\/\//i.test(String(env.VOICE_TTS_RELAY_URL || "https://tts.167-172-146-60.sslip.io"));
+    return /^https:\/\//i.test(String(env.VOICE_TTS_RELAY_URL || ""));
   }
   if (provider === "speechify") {
     return Boolean(String(env.SPEECHIFY_API_KEY || "").trim())
@@ -164,7 +176,8 @@ async function azureTts(text, env, fetchImpl) {
 }
 
 async function piperTts(text, env, fetchImpl) {
-  const relay = String(env.VOICE_TTS_RELAY_URL || "https://tts.167-172-146-60.sslip.io").replace(/\/+$/, "");
+  const relay = String(env.VOICE_TTS_RELAY_URL || "").replace(/\/+$/, "");
+  if (!/^https:\/\//i.test(relay)) throw new Error("voice_tts_relay_not_configured");
   const response = await fetchImpl(`${relay}/tts`, {
     method: "POST",
     headers: {
