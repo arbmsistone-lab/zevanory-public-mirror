@@ -24,7 +24,7 @@ jobs:
             ts=str(int(time.time()))
             headers={"Accept":"application/json","User-Agent":"ZEVANORY-A2A3-SAFE-PROBE/1"}
             if signed:
-              msg="GET\\n"+path+"\\n"+ts
+              msg="GET\n"+path+"\n"+ts
               headers["x-zevanory-audit-ts"]=ts
               headers["x-zevanory-audit-signature"]=hmac.new(secret.encode(),msg.encode(),hashlib.sha256).hexdigest()
             if body is not None:headers["Content-Type"]="application/json"
