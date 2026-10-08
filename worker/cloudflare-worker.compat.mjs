@@ -26,6 +26,7 @@ import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
 import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
+import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlocked, requiresPilotDenial } from "./commercial-checkout-guard.mjs";
 
 async function loadWhatsappBrokerState(binding) {
   if (!binding?.fetch) return null;
@@ -116,6 +117,23 @@ const wrapped = {
       const audit = await handleInternalFinancialAudit(request, normalized, { sqlFactory: whatsappProofDatabase });
       if (audit) return audit;
       return new Response("not_found",{status:404});
+    }
+    // Universal pre-routing guard: applies to private service binding and legacy checkout paths.
+    if (await requiresPilotDenial(request, normalized)) return denyCheckout("production_certification_pilot_disabled");
+    if (isCheckoutRoute(url.pathname)) {
+      const pilot = Boolean(request.headers.get("x-certification-pilot-token"));
+      if (pilot) {
+        if (isProductionPilotBlocked(normalized) ||
+            String(normalized.MERCADOPAGO_ENV || "").toLowerCase() !== "sandbox" ||
+            String(normalized.CERTIFICATION_PILOT_ENV || "").toLowerCase() !== "sandbox" ||
+            String(normalized.SALE_GLOBALLY_ENABLED || "").toLowerCase() === "true" ||
+            (await readSalesSwitch(normalized)).enabled === true) {
+          return denyCheckout("certification_checkout_not_isolated");
+        }
+      } else {
+        const gate = await evaluateCheckout(normalized, await readSalesSwitch(normalized));
+        if (!gate.allowed) return denyCheckout();
+      }
     }
     if (url.hostname === "checkout.internal") {
       // Public checkout is only reachable through the sales Worker's private service binding.
