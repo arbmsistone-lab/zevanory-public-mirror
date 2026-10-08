@@ -1,0 +1,20 @@
+name: ZEVANORY staged launch configuration safety
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/deploy/prepare-central-candidate.py"
+      - "scripts/launch_config_contract.py"
+      - ".github/workflows/staged-launch-config-safety.yml"
+permissions:
+  contents: read
+jobs:
+  stage-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate future production configuration stays owner-gated
+        run: python3 scripts/launch_config_contract.py
+      - name: Enforce zero paid dependencies
+        run: python3 scripts/zero_cost_guard.py
