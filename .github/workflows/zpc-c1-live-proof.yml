@@ -19,7 +19,7 @@ jobs:
           python3 - <<'PY'
           import os,json,hashlib,urllib.request,urllib.error,time,datetime
           from pathlib import Path
-          expected="95b436bf06ee6dfa039d923841fa0dabbaacaac1"
+          expected="e2713acb8810ce4181b30f6ead62a946b0560bcb"
           root="https://zevanory.api.br"
           report={"schema":"zevanory.c1.live.proof/v1","sha_expected":expected,"checks":{},"commercial_release_allowed":False}
           token=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
@@ -81,6 +81,17 @@ jobs:
                   report["checks"]["production_confirmed"]=data.get("production_confirmed")
                   notice("FINANCIAL_AMBIGUOUS",data.get("ambiguous"))
                   notice("FINANCIAL_PRODUCTION_CONFIRMED",data.get("production_confirmed"))
+                  report["checks"]["financial_test_pilot"]=data.get("certification_events")
+                  report["checks"]["financial_not_in_production"]=data.get("not_in_production")
+                  report["checks"]["orders_aggregates"]=data.get("orders") if isinstance(data.get("orders"),dict) else {}
+                  notice("FINANCIAL_TEST_PILOT",data.get("certification_events"))
+                  notice("FINANCIAL_NOT_IN_PRODUCTION",data.get("not_in_production"))
+                  for item in data.get("evidence_reasons") or []:
+                      reason=str(item.get("reason") or "")
+                      count=item.get("count")
+                      if not reason or len(reason)>95 or not all(c.islower() or c.isdigit() or c in ":_" for c in reason) or type(count) is not int:stop("UNSAFE_EVIDENCE_REASON")
+                      notice("AGGREGATE_REASON",reason+" count="+str(count))
+                      report.setdefault("sanitized_reasons",[]).append({"reason":reason,"count":count})
               if code!=200:stop(kind.upper()+"_NOT_PROVEN")
           if not report["checks"].get("same_mp_account_hash"):stop("COLLECTOR_ACCOUNT_MISMATCH")
           if report["checks"].get("financial_ambiguous")!=0:stop("AMBIGUOUS_PAYMENT_RECORDS")
