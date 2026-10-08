@@ -9,7 +9,9 @@ export function createFinancialProofSnapshot(env,classified,{now=Date.now()}={})
   const sha=String(env?.ZEVANORY_RELEASE_SHA||"");
   const verified=classified?.code===200&&details.complete===true&&details.ambiguous===0&&/^[0-9a-f]{40}$/.test(sha)&&
     ["production_confirmed","production_paid_orders","production_payment_events","production_refund_events","certification_events"]
-      .every(k=>isCount(details[k]))&&isCount(details.orders?.certification)&&isCount(details.orders?.noncertified_unverified);
+      .every(k=>isCount(details[k]))&&isCount(details.orders?.certification)&&isCount(details.orders?.noncertified_unverified)&&
+    details.production_paid_orders<=details.production_payment_events&&
+    details.production_payment_events+details.production_refund_events<=details.production_confirmed;
   return {
     schema:"zevanory.production-financial-proof/v1",
     release_sha:sha,
@@ -34,6 +36,7 @@ export function verifyFinancialProofSnapshot(snapshot,env,{now=Date.now()}={}){
   if(!Number.isFinite(measured)||measured>now||now-measured>MAX_AGE_MS)return false;
   if(snapshot.ambiguous!==0)return false;
   return ["paid_orders","payment_events","refund_events"].every(k=>isCount(snapshot.production?.[k]))&&
+    snapshot.production.paid_orders<=snapshot.production.payment_events&&
     isCount(snapshot.certification?.events)&&isCount(snapshot.certification?.orders_flagged)&&
     isCount(snapshot.unverified?.orders);
 }
@@ -81,8 +84,8 @@ export function projectProductionOnlyStatus(body={},proof=null,{now=Date.now(),e
   const rawExp=body.experiment||{};
   return {
     ...body,
-    gate:hadPaid?"G3":"G2",
-    experiment:{...rawExp,status:hadPaid?"commercial_live_payment_observed":"technical_ready_commercial_not_started"},
+    gate:"G2",
+    experiment:{...rawExp,status:hadPaid?"production_payment_observed_commercial_locked":"technical_ready_commercial_not_started"},
     metrics,
     economics:null,
     commercial_metrics_provenance:{

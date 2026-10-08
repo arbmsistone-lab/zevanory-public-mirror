@@ -38,7 +38,9 @@ test("only provider-confirmed real production evidence contributes paid and refu
  assert.equal(out.metrics.orders,3);
  assert.equal(out.metrics.payments_confirmed,3);
  assert.equal(out.metrics.refunds_confirmed,1);
- assert.equal(out.gate,"G3");
+ assert.equal(out.gate,"G2");
+ assert.equal(out.experiment.status,"production_payment_observed_commercial_locked");
+ assert.equal(out.commercial_metrics_provenance.commercial_release_allowed,false);
 });
 test("bounded KV snapshot read never claims verification on corrupt or expired data",async()=>{
  const snap=createFinancialProofSnapshot(env,audited,{now});
@@ -47,4 +49,26 @@ test("bounded KV snapshot read never claims verification on corrupt or expired d
  assert.equal(read.verified,true);
  assert.equal(await readFinancialProofSnapshot({...env,ZEVANORY_PRIVATE_ARTIFACTS:kv},{now:now+70*60000}),null);
  assert.equal(createFinancialProofSnapshot(env,{code:409,result:{...audited.result,ambiguous:1}},{now}).verified,false);
+});
+
+test("inconsistent provider event counts fail closed before KV evidence",()=>{
+ const invalid=[
+  {production_confirmed:1,production_payment_events:2,production_refund_events:0,production_paid_orders:1},
+  {production_confirmed:2,production_payment_events:1,production_refund_events:2,production_paid_orders:1},
+  {production_confirmed:2,production_payment_events:1,production_refund_events:0,production_paid_orders:2}
+ ];
+ for(const counts of invalid){
+  const snap=createFinancialProofSnapshot(env,{...audited,result:{...audited.result,...counts}},{now});
+  assert.equal(snap.verified,false);
+  assert.equal(verifyFinancialProofSnapshot(snap,env,{now}),false);
+  const out=projectProductionOnlyStatus(source,snap,{now,env});
+  assert.equal(out.gate,"G2");
+  assert.equal(out.commercial_metrics_provenance.state,"UNVERIFIED_FAIL_CLOSED");
+ }
+});
+test("tampered persisted snapshot with more paid orders than payments is rejected",()=>{
+ const good=createFinancialProofSnapshot(env,{...audited,result:{...audited.result,production_confirmed:2,production_paid_orders:1,production_payment_events:1,production_refund_events:1}},{now});
+ assert.equal(good.verified,true);
+ const forged={...good,production:{...good.production,paid_orders:2}};
+ assert.equal(verifyFinancialProofSnapshot(forged,env,{now}),false);
 });
