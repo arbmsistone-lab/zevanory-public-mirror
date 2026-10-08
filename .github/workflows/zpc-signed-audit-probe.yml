@@ -1,0 +1,28 @@
+name: ZEVANORY signed read-only audit probe
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/signed-audit-probe.mjs"
+      - "worker/internal-financial-audit.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "tests/signed-audit-probe.test.mjs"
+      - ".github/workflows/zpc-signed-audit-probe.yml"
+permissions:
+  contents: read
+jobs:
+  hmac-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Compile deployed Worker and HMAC verifier
+        run: |
+          node --check worker/cloudflare-worker.compat.mjs
+          node --check worker/internal-financial-audit.mjs
+          node --check worker/signed-audit-probe.mjs
+      - name: Reject forged, stale, wrong-route and unauthenticated probes
+        run: node --test tests/signed-audit-probe.test.mjs tests/internal-financial-audit.test.mjs
