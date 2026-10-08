@@ -3,7 +3,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  id-token: write
 jobs:
   preflight:
     runs-on: ubuntu-latest
@@ -12,31 +11,14 @@ jobs:
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      # Free-tier Gemini key as a GitHub secret (zero-cost rule: no Cloud billing / Secret Manager).
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Validate YouTube OAuth and exact channel identity (read-only)
         run: node scripts/channels/youtube-identity.mjs
-      - name: Authenticate to Google Cloud with OIDC
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: projects/781761447388/locations/global/workloadIdentityPools/github-actions/providers/zevanory-github
-          service_account: zevanory-github-deployer@zevanory-gemini.iam.gserviceaccount.com
-      - uses: google-github-actions/setup-gcloud@v2
-      - name: Fetch Gemini credential from Secret Manager (masked)
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! key="$(gcloud secrets versions access latest --secret=ZEVANORY_GEMINI_API_KEY --project=zevanory-gemini 2>/tmp/gsm.err)"; then
-            reason="$(grep -oE 'PERMISSION_DENIED|NOT_FOUND|FAILED_PRECONDITION|UNAUTHENTICATED|SERVICE_DISABLED|secretmanager.googleapis.com has not been used|DESTROYED|DISABLED' /tmp/gsm.err | head -1 | tr ' .' '__')"
-            names="$(gcloud secrets list --project=zevanory-gemini --format='value(name)' 2>/dev/null | grep -iE 'gemini|youtube|voice|elite' | tr '\n' ',' | head -c 300 || true)"
-            echo "::error title=YOUTUBE_PREFLIGHT::gemini_secret_fetch_failed reason=${reason:-unknown} visible_secret_names=${names:-none}"
-            exit 1
-          fi
-          test -n "$key" || { echo "::error title=YOUTUBE_PREFLIGHT::gemini_secret_empty"; exit 1; }
-          echo "::add-mask::$key"
-          echo "GEMINI_API_KEY=$key" >> "$GITHUB_ENV"
       - name: Install media tools
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
       - name: Validate identity, F1 gate, TTS and final MP4 without uploading
