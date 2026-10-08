@@ -13017,6 +13017,14 @@ async function ttsBytesFromRuntime(text, env = process.env, fetchImpl = globalTh
     })) || "").trim();
     if (vaultGemini) runtimeEnv = Object.freeze({ ...env, GEMINI_API_KEY: vaultGemini });
   }
+  // Zero-cost path proven in production (Render free + Gemini free tier); the router is a fallback.
+  const apiKey = String(runtimeEnv.GEMINI_API_KEY || "").trim();
+  if (apiKey) {
+    try {
+      return await synthesizeWhatsappVoice(text, { apiKey, env: runtimeEnv, kv: globalThis.__ZEVANORY_PRIVATE_KV__, fetchImpl, onStage: options.onStage });
+    } catch {
+    }
+  }
   return ttsBytesWithFailover(text, runtimeEnv, fetchImpl, options);
 }
 __name(ttsBytesFromRuntime, "ttsBytesFromRuntime");
@@ -18462,7 +18470,7 @@ var cloudflare_worker_default = {
         "piper-relay": String(env.VOICE_TTS_PIPER_VOICE || env.VOICE_TTS_VOICE || "jeff"),
         gemini: String(env.GEMINI_TTS_VOICE || "Achird")
       };
-      const relayUrl = String(env.VOICE_TTS_RELAY_URL || "https://tts.167-172-146-60.sslip.io").trim();
+      const relayUrl = String(env.VOICE_TTS_RELAY_URL || "").trim();
       const body = {
         engine: "ZEVANORY Voice Support Engine",
         enabled: env.ZEVANORY_VOICE_SUPPORT_ENABLED === "true",

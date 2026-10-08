@@ -2,7 +2,7 @@ import { encodePcmInChunks } from "./voice-chunks.mjs";
 import { Buffer } from "node:buffer";
 import lamejs from "./vendor/lame.min.mjs";
 import { unpackPcm, encodePcmRemotely, downsamplePcmMono } from "./voice-pcm.mjs";
-const DEFAULT_CHAIN = Object.freeze(["speechify", "azure", "piper-relay", "gemini"]);
+const DEFAULT_CHAIN = Object.freeze(["gemini"]);
 const FAILURE_THRESHOLD = 2;
 const COOLDOWN_MS = 5 * 60 * 1000;
 const breaker = globalThis.__ZEVANORY_VOICE_BREAKER__ || new Map();
@@ -28,7 +28,7 @@ function chainFromEnv(env = {}) {
 
 function isConfigured(provider, env = {}) {
   if (provider === "piper-relay") {
-    return /^https:\/\//i.test(String(env.VOICE_TTS_RELAY_URL || "https://tts.167-172-146-60.sslip.io"));
+    return /^https:\/\//i.test(String(env.VOICE_TTS_RELAY_URL || ""));
   }
   if (provider === "speechify") {
     return Boolean(String(env.SPEECHIFY_API_KEY || "").trim())
@@ -164,7 +164,7 @@ async function azureTts(text, env, fetchImpl) {
 }
 
 async function piperTts(text, env, fetchImpl) {
-  const relay = String(env.VOICE_TTS_RELAY_URL || "https://tts.167-172-146-60.sslip.io").replace(/\/+$/, "");
+  const relay = String(env.VOICE_TTS_RELAY_URL || "").replace(/\/+$/, "");
   const response = await fetchImpl(`${relay}/tts`, {
     method: "POST",
     headers: {

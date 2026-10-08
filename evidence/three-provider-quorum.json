@@ -41,7 +41,8 @@
       "expected_provider": "digitalocean-relay",
       "artifact_sha": "fc4d58008f42a775fbc450364ffecf856b76c29a",
       "required": false,
-      "enabled": true
+      "enabled": false,
+      "retired_reason": "paid droplet removed under zero-cost rule (2026-10-08)"
     },
     {
       "id": "backup-netlify",
