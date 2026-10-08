@@ -23,3 +23,19 @@ c8c4aa535dd969d5c68baf68ca21f1d1c8901b21:.github/workflows/zevanory-admin-contro
 3ec9f421648fb8b5f645b3dd23e2ba756815342f:ZEVANORY_MASTER.md:generic-api-key:45
 0b532d13edde9ba5782b0b7eb96f550c8cf84660:.github/workflows/payment-sandbox-adversarial.yml:curl-auth-user:75
 0b532d13edde9ba5782b0b7eb96f550c8cf84660:.github/workflows/payment-sandbox-adversarial.yml:curl-auth-user:110
+
+# Reviewed 2026-10-08: no live credential in history. Each entry is a verified false positive.
+# synthetic test fixture
+37b6e4b3badec47b037a3086f4141b2903142cbc:tests/post-sale.test.mjs:generic-api-key:25
+# synthetic test fixture
+3b8e641875fc07bd3c6eda8712c7fe23891c7e2e:scripts/whatsapp_audio_runtime_test.mjs:generic-api-key:83
+# SHA-256 digest, not a credential
+9489f3b197441aac5563a9e3505cc6280f33c9b7:worker/sandbox-proof-v2.mjs:generic-api-key:14
+# synthetic test fixture
+cdeb9847df8f8af36093dc4a2dde3f4bc61d374d:tests/lead-magnet.test.mjs:generic-api-key:31
+# synthetic test fixture
+cdeb9847df8f8af36093dc4a2dde3f4bc61d374d:tests/reviews.test.mjs:generic-api-key:21
+# IndexNow key is public by protocol (served at /<key>.txt)
+f6a7557df5fccd3c9ebd35a0c61a6656719fc5fa:.github/workflows/indexnow-resubmit.yml:generic-api-key:17
+# IndexNow key is public by protocol (served at /<key>.txt)
+f6a7557df5fccd3c9ebd35a0c61a6656719fc5fa:.github/workflows/indexnow-resubmit.yml:generic-api-key:32
