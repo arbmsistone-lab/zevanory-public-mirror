@@ -59,24 +59,29 @@ for (let i = 1; i <= runs; i++) {
 }
 note("notice", "F5_RUNS", lines.join(" | "));
 
-// WCAG 2 AA via axe (pa11y runner).
+// WCAG 2 AA via axe-core injected directly (full node data: colors and ratio), after load settles.
 try {
-  const pa11y = require("pa11y");
-  const res = await pa11y(url, { runners: ["axe"], standard: "WCAG2AA", timeout: 60000,
-    viewport: device === "desktop" ? { width: 1350, height: 940 } : { width: 412, height: 823, isMobile: true },
-    chromeLaunchConfig: { executablePath: process.env.CHROME_PATH, args: ["--no-sandbox", "--disable-dev-shm-usage"] } });
-  const errs = res.issues.filter(x => x.type === "error");
-  note(errs.length ? "error" : "notice", "F5_AXE", `violations=${errs.length}${errs.length ? " " + [...new Set(errs.map(e => e.code))].slice(0, 6).join(",") : ""}`);
-  // Distinct offending (selector | message) pairs, so the cause can be fixed at the source CSS.
-  const seen = new Set(), detail = [];
-  for (const e of errs) {
-    const msg = String(e.message || "").replace(/\s+/g, " ").slice(0, 200);
-    const k = e.selector + "|" + msg;
-    if (!seen.has(k)) { seen.add(k); detail.push(`${e.selector} :: ${msg}`.slice(0, 300)); }
+  const puppeteer = require("puppeteer-core");
+  const axeSource = readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
+  const browser = await puppeteer.launch({ executablePath: process.env.CHROME_PATH, args: ["--no-sandbox", "--disable-dev-shm-usage"], headless: "new" });
+  const pg = await browser.newPage();
+  await pg.setViewport(device === "desktop" ? { width: 1350, height: 940 } : { width: 412, height: 823, isMobile: true, deviceScaleFactor: 2 });
+  const resp = await pg.goto(url, { waitUntil: "networkidle0", timeout: 60000 });
+  await new Promise(r => setTimeout(r, 1500));
+  const css = await pg.evaluate(() => [...document.styleSheets].map(s => { try { return (s.href || "inline") + ":" + s.cssRules.length; } catch { return (s.href || "inline") + ":blocked"; } }));
+  await pg.evaluate(axeSource);
+  const res = await pg.evaluate(() => axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] } }));
+  await browser.close();
+  const nodes = res.violations.flatMap(v => v.nodes.map(n => ({ id: v.id, sel: n.target.join(" "), d: (n.any[0] || n.all[0] || n.none[0] || {}).data || {} })));
+  note(nodes.length ? "error" : "notice", "F5_AXE", `http=${resp?.status()} css=${css.join(",").slice(0, 160)} violations=${nodes.length} incomplete=${res.incomplete.length}`);
+  const seen = new Set();
+  for (const n of nodes) {
+    const k = n.id + n.sel; if (seen.has(k)) continue; seen.add(k);
+    if (seen.size > 6) break;
+    note("warning", "F5_AXE_DETAIL", `${n.id} ${n.sel} fg=${n.d.fgColor} bg=${n.d.bgColor} ratio=${n.d.contrastRatio} need=${n.d.expectedContrastRatio} size=${n.d.fontSize}`);
   }
-  for (const d of detail.slice(0, 7)) note("warning", "F5_AXE_DETAIL", d);
-  if (errs.length) failures.push(`axe:${errs.length}`);
-} catch (e) { failures.push("axe:did_not_run"); note("error", "F5_AXE", "did_not_run " + String(e.message).slice(0, 80)); }
+  if (nodes.length) failures.push(`axe:${nodes.length}`);
+} catch (e) { failures.push("axe:did_not_run"); note("error", "F5_AXE", "did_not_run " + String(e.message).slice(0, 120)); }
 
 if (failures.length) {
   note("error", "F5_FAIL", failures.join(" ; ") + (hints.size ? " || causes: " + [...hints.values()].slice(0, 12).join(", ") : ""));
