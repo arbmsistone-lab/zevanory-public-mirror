@@ -101,6 +101,34 @@ async function getOwner(token){
   const verified=r.status===200&&body.site_id==="MLB"&&Array.isArray(tags)&&!tags.includes("test_user")&&/^\d+$/.test(String(body.id||""));
   return {verified,body};
 }
+// Free-tier budget: counts Resend sends (24 h and month to date) from the list API.
+// Only timestamps are read; recipients, subjects and IDs never leave this function.
+export async function resendUsage(env,{fetchImpl=fetch,now=Date.now(),maxPages=35}={}){
+  const key=String(env?.RESEND_API_KEY||"").trim();
+  if(!key)return {status:"no_key",emails_24h:null,emails_month:null};
+  const dayAgo=now-24*3600e3, d=new Date(now), monthStart=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1);
+  let day=0,month=0,after="";
+  for(let page=0;page<maxPages;page++){
+    let r;
+    try{r=await fetchImpl("https://api.resend.com/emails?limit=100"+(after?"&after="+encodeURIComponent(after):""),{headers:{authorization:"Bearer "+key},signal:AbortSignal.timeout(8000)});}
+    catch{return {status:"unreachable",emails_24h:null,emails_month:null};}
+    if(!r.ok)return {status:"list_http_"+r.status,emails_24h:null,emails_month:null};
+    const body=await r.json().catch(()=>({}));
+    const items=Array.isArray(body?.data)?body.data:[];
+    let oldest=Infinity;
+    for(const it of items){
+      const t=Date.parse(String(it?.created_at||"").replace(" ","T").replace(/([+-]\d{2})$/,"$1:00"));
+      if(!Number.isFinite(t))continue;
+      oldest=Math.min(oldest,t);
+      if(t>=dayAgo)day++;
+      if(t>=monthStart)month++;
+    }
+    if(!body?.has_more||!items.length||oldest<monthStart)return {status:"ok",emails_24h:day,emails_month:month};
+    after=String(items[items.length-1]?.id||"");
+    if(!after)break;
+  }
+  return {status:"ok_truncated",emails_24h:day,emails_month:month};
+}
 async function runtimeIdentity(env,sqlFactory){
   const token=String(env.MERCADOPAGO_ACCESS_TOKEN||"");
   const owner=await getOwner(token);
@@ -118,7 +146,8 @@ async function runtimeIdentity(env,sqlFactory){
       db.size_bytes=Number(rows?.[0]?.bytes)||0;
     }catch{db.database_query="unavailable";}
   }
-  return {schema:"zevanory.audit.runtime-identity/v1",identity,database:db,commercial_release_allowed:false};
+  const email=await resendUsage(env);
+  return {schema:"zevanory.audit.runtime-identity/v1",identity,database:db,email,commercial_release_allowed:false};
 }
 // Diagnostic dimensions are fixed enums. Never output raw event IDs or references.
 export function safeFinancialAuditDimensions(row={}) {
