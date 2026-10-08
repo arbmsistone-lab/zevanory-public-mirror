@@ -1,6 +1,16 @@
 const retired=new Set(["/arbm-sist","/arbm-sist/","/arbm-sist.html","/zevanory-one","/zevanory-one/","/zevanory-one.html","/arbm-one","/arbm-one/","/arbm-one.html"]);
 const htmlRoutes=new Set(["material-gratuito","checklist-15-minutos","solucoes","zevanory-sales","arbm-contador-saloes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","zevanory-cfo","termos","privacidade","reembolso","afiliados"]);
 const MP="https://www.mercadopago.com https://www.mercadopago.com.br";
+// With no-transform the edge no longer compresses pages, so the Worker gzips HTML itself.
+function compressPage(request, body, init){
+  const accepts=String(request.headers.get("accept-encoding")||"");
+  if(!body||!/\bgzip\b/i.test(accepts)||typeof CompressionStream==="undefined") return new Response(body,init);
+  const headers=new Headers(init.headers);
+  headers.set("content-encoding","gzip");
+  headers.delete("content-length");
+  headers.append("vary","accept-encoding");
+  return new Response(body.pipeThrough(new CompressionStream("gzip")),{...init,headers,encodeBody:"manual"});
+}
 const CSP=["default-src 'self'","base-uri 'none'",`form-action 'self' ${MP}`,"frame-ancestors 'none'","object-src 'none'",`script-src 'self' ${MP} https://sdk.mercadopago.com https://static.cloudflareinsights.com`,`frame-src ${MP} https://*.mercadopago.com https://*.mercadopago.com.br`,"style-src 'self'",`img-src 'self' data: ${MP}`,`connect-src 'self' https://api.mercadopago.com ${MP} https://*.mercadopago.com https://*.mercadopago.com.br https://cloudflareinsights.com`,"font-src 'self'"].join("; ");
 function applySecurityHeaders(headers){
   headers.set("strict-transport-security","max-age=63072000; includeSubDomains; preload");
@@ -122,8 +132,10 @@ export default{async fetch(request,env,ctx){
     const r=(await reviewSummary(env))[sku];
     if(r&&r.count>=3){
       const text=`★ ${String(r.average).replace(".",",")}/5 · ${r.count} avaliações de clientes`;
-      return new HTMLRewriter().on("main h1",{element(el){el.after(`<p class="review-summary">${text}</p>`,{html:true})}}).transform(new Response(response.body,{status:response.status,statusText:response.statusText,headers}));
+      const rewritten=new HTMLRewriter().on("main h1",{element(el){el.after(`<p class="review-summary">${text}</p>`,{html:true})}}).transform(new Response(response.body,{status:response.status,statusText:response.statusText,headers}));
+      return page?compressPage(request,rewritten.body,{status:rewritten.status,statusText:rewritten.statusText,headers}):rewritten;
     }
   }
+  if(response.status===200&&page) return compressPage(request,response.body,{status:response.status,statusText:response.statusText,headers});
   return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
 }};

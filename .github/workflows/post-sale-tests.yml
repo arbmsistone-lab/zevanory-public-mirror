@@ -33,4 +33,4 @@ jobs:
       - run: node --check worker/post-sale.mjs
       - run: node --check worker/funnel.mjs
       - run: node --check worker/sales-public-worker.mjs
-      - run: node --test tests/post-sale.test.mjs tests/funnel.test.mjs tests/lead-magnet.test.mjs tests/sales-control.test.mjs tests/reviews.test.mjs
+      - run: node --test tests/post-sale.test.mjs tests/funnel.test.mjs tests/lead-magnet.test.mjs tests/sales-control.test.mjs tests/reviews.test.mjs tests/sales-public-gzip.test.mjs
