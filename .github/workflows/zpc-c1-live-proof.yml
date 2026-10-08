@@ -19,7 +19,7 @@ jobs:
           python3 - <<'PY'
           import os,json,hashlib,urllib.request,urllib.error,time,datetime
           from pathlib import Path
-          expected="e2713acb8810ce4181b30f6ead62a946b0560bcb"
+          expected="31b26f2de0f9af928207a39685e784d1ab129e47"
           root="https://zevanory.api.br"
           report={"schema":"zevanory.c1.live.proof/v1","sha_expected":expected,"checks":{},"commercial_release_allowed":False}
           token=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
