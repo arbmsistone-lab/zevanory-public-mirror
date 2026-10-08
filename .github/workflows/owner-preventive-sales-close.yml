@@ -1,0 +1,70 @@
+name: ZEVANORY owner-authorized preventive sales closure
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/owner-preventive-sales-close.yml"
+permissions:
+  contents: read
+jobs:
+  close-sales-fail-closed:
+    if: github.repository == 'arbmsistone-lab/zevanory-public-mirror' && github.head_ref == 'safety/preventive-close-sales-kv-20261008' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    concurrency:
+      group: zevanory-owner-authorized-preventive-sales-close
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+      KV_NAMESPACE_ID: "728a45738e4047f29bcb89934fd533c1"
+    steps:
+      - name: Close production sales switch and persist audit record
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "::error title=SALES_CLOSE::CLOUDFLARE_TOKEN_UNAVAILABLE"; exit 2; }
+          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values"
+          code="$(curl --silent --show-error --retry 2 --max-time 25 -o /tmp/switch-before.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/sales:open:v1")"
+          if [ "$code" != "200" ] && [ "$code" != "404" ]; then echo "::error title=SALES_CLOSE::KV_PRE_READ_HTTP_$code"; exit 2; fi
+          KV_READ_CODE="$code" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const readCode=process.env.KV_READ_CODE;
+          let previous={};
+          if(readCode==="200"){try{previous=JSON.parse(fs.readFileSync('/tmp/switch-before.json','utf8'));}catch{throw Error('INVALID_EXISTING_SWITCH_JSON');}}
+          if(previous===null || typeof previous!=='object' || Array.isArray(previous))throw Error('INVALID_EXISTING_SWITCH_TYPE');
+          const at=new Date().toISOString();
+          const actor=String(process.env.GITHUB_ACTOR||'github-actions').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,80);
+          const reason='estado inconsistente com SALE_GLOBALLY_ENABLED=false, fechamento preventivo';
+          const audit_id='owner-preventive-close-'+String(process.env.GITHUB_RUN_ID||'unknown');
+          const record={audit_id,by:actor,at,reason,prior_enabled:previous.enabled===true,enabled:false,action:'close_sales',source:'owner_authorized_20261008'};
+          // Never expose existing switch metadata to logs or artifact.
+          const next={...previous,enabled:false,by:actor,at,reason,last_audit_id:audit_id};
+          fs.writeFileSync('/tmp/switch-next.json',JSON.stringify(next));
+          fs.writeFileSync('/tmp/switch-audit.json',JSON.stringify(record));
+          fs.appendFileSync(process.env.GITHUB_ENV,'SALES_CLOSE_AUDIT_ID='+audit_id+'\n');
+          console.log('::notice title=SALES_CLOSE_PREVIOUS_ENABLED::'+String(previous.enabled===true));
+          NODE
+          close_code="$(curl --silent --show-error --retry 2 --max-time 25 -o /tmp/switch-put-response.json -w '%{http_code}' -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Type: application/json' --data-binary @/tmp/switch-next.json "$base/sales:open:v1")"
+          test "$close_code" = "200" || { echo "::error title=SALES_CLOSE::KV_CLOSE_HTTP_$close_code"; exit 2; }
+          # Read back the actual production value. Successful PUT alone is insufficient.
+          read_code="$(curl --silent --show-error --retry 2 --max-time 25 -o /tmp/switch-readback.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/sales:open:v1")"
+          test "$read_code" = "200" || { echo "::error title=SALES_CLOSE::KV_READBACK_HTTP_$read_code"; exit 2; }
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const v=JSON.parse(fs.readFileSync('/tmp/switch-readback.json','utf8'));
+          const expected=JSON.parse(fs.readFileSync('/tmp/switch-audit.json','utf8'));
+          if(v?.enabled!==false || v?.last_audit_id!==expected.audit_id || v?.by!==expected.by || v?.reason!==expected.reason)throw Error('KV_READBACK_MISMATCH');
+          console.log('::notice title=SALES_CLOSE_READBACK::enabled=false');
+          console.log('::notice title=SALES_CLOSE_AUDIT_ID::'+expected.audit_id);
+          NODE
+          audit_code="$(curl --silent --show-error --retry 2 --max-time 25 -o /tmp/audit-put-response.json -w '%{http_code}' -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Type: application/json' --data-binary @/tmp/switch-audit.json "$base/sales:audit:$SALES_CLOSE_AUDIT_ID")"
+          test "$audit_code" = "200" || { echo "::error title=SALES_CLOSE::AUDIT_WRITE_HTTP_$audit_code"; exit 2; }
+          audit_read_code="$(curl --silent --show-error --retry 2 --max-time 25 -o /tmp/audit-readback.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/sales:audit:$SALES_CLOSE_AUDIT_ID")"
+          test "$audit_read_code" = "200" || { echo "::error title=SALES_CLOSE::AUDIT_READBACK_HTTP_$audit_read_code"; exit 2; }
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const a=JSON.parse(fs.readFileSync('/tmp/audit-readback.json','utf8'));
+          if(a?.enabled!==false || a?.audit_id!==process.env.SALES_CLOSE_AUDIT_ID)throw Error('AUDIT_RECORD_READBACK_MISMATCH');
+          console.log('::notice title=SALES_CLOSE_PROOF::KV_SWITCH_FALSE_AND_AUDIT_VERIFIED');
+          NODE
