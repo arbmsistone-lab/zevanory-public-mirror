@@ -1,0 +1,83 @@
+name: ZEVANORY F7 emergency close drill (sales stay closed)
+# Writes a NEW closed record to sales:open:v1 and times how long production takes to serve it,
+# while proving checkout keeps refusing. It never writes enabled:true. If sales are found open,
+# the drill aborts without touching anything (an operator, not a drill, must handle that).
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: zevanory-sales-switch-writes
+  cancel-in-progress: false
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+      KV_NAMESPACE_ID: "728a45738e4047f29bcb89934fd533c1"
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+    steps:
+      - name: Close-again drill with stopwatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,hmac,json,os,time,urllib.error,urllib.request,datetime,sys
+          tok=os.environ["CLOUDFLARE_API_TOKEN"].strip(); key=os.environ["CERTIFICATION_E2E_TOKEN"].strip()
+          base=f"https://api.cloudflare.com/client/v4/accounts/{os.environ['CLOUDFLARE_ACCOUNT_ID']}/storage/kv/namespaces/{os.environ['KV_NAMESPACE_ID']}/values/"
+          def fail(c):print("::error title=F7_DRILL::"+c);sys.exit(2)
+          def req(url,method="GET",data=None,headers=None):
+            r=urllib.request.Request(url,data=data,method=method,headers=headers or {})
+            try:
+              with urllib.request.urlopen(r,timeout=20) as x:return x.status,x.read()
+            except urllib.error.HTTPError as e:return e.code,e.read()
+            except Exception:return 0,b""
+          def signed(path):
+            ts=str(int(time.time()))
+            sig=hmac.new(key.encode(),("GET\n"+path+"\n"+ts).encode(),hashlib.sha256).hexdigest()
+            c,b=req("https://zevanory.api.br"+path,headers={"Accept":"application/json","User-Agent":"ZEVANORY-AuditReadOnly/1.0","x-zevanory-audit-ts":ts,"x-zevanory-audit-signature":sig})
+            try:return c,json.loads(b or b"{}")
+            except Exception:return c,{}
+          if not tok or len(key)<32:fail("SECRETS_UNAVAILABLE")
+          kvh={"Authorization":"Bearer "+tok}
+          # 1. Production must already be closed; a drill never touches an open store.
+          c,s=signed("/api/sales/status")
+          if c!=200 or "revision" not in s:fail(f"STATUS_NOT_READY_HTTP_{c}")
+          if s.get("open") is not False:fail("SALES_OPEN_DRILL_ABORTED")
+          c,b=req(base+"sales:open:v1",headers=kvh)
+          if c not in (200,404):fail(f"KV_READ_HTTP_{c}")
+          prev=json.loads(b) if c==200 else {}
+          if not isinstance(prev,dict):fail("KV_VALUE_NOT_OBJECT")
+          if prev.get("enabled") is True:fail("KV_SWITCH_OPEN_DRILL_ABORTED")
+          # 2. Write a new CLOSED revision.
+          at=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00","Z")
+          audit_id="emergency-close-drill-"+os.environ.get("GITHUB_RUN_ID","x")
+          nxt={**prev,"enabled":False,"at":at,"by":"github-actions-drill","reason":"emergency close drill (F7)","last_audit_id":audit_id}
+          c,_=req(base+"sales:open:v1","PUT",json.dumps(nxt).encode(),{**kvh,"Content-Type":"application/json"})
+          if c!=200:fail(f"KV_WRITE_HTTP_{c}")
+          t0=time.time()
+          c,b=req(base+"sales:open:v1",headers=kvh)
+          rb=json.loads(b or b"{}") if c==200 else {}
+          if rb.get("enabled") is not False or rb.get("at")!=at:fail("KV_READBACK_MISMATCH")
+          # 3. Stopwatch: production serves the new closed revision; never open during the wait.
+          elapsed=None
+          while time.time()-t0<120:
+            c,s=signed("/api/sales/status")
+            if c==200 and s.get("open") is not False:fail("SALES_REPORTED_OPEN_DURING_DRILL")
+            if c==200 and s.get("revision")==at:elapsed=round(time.time()-t0,1);break
+            time.sleep(2)
+          if elapsed is None:fail("NEW_CLOSED_REVISION_NOT_SERVED_WITHIN_120S")
+          print(f"::notice title=F7_DRILL_PROPAGATION::new closed revision served in {elapsed}s (target <60s, one edge location)")
+          # 4. Checkout keeps refusing after the close.
+          c,b=req("https://zevanory.api.br/api/checkout/mercadopago","POST",b'{"offer_id":"ZEV-IA-011"}',{"Content-Type":"application/json","User-Agent":"ZEVANORY-AuditReadOnly/1.0"})
+          print(f"::notice title=F7_DRILL_CHECKOUT::http={c} body_code={(json.loads(b or b'{}').get('error') if b and b[:1]==b'{' else '')}")
+          if c in (200,201,202):fail("CHECKOUT_ACCEPTED_AFTER_CLOSE")
+          # 5. Audit record.
+          rec={"audit_id":audit_id,"at":at,"action":"emergency_close_drill","enabled":False,"propagation_seconds":elapsed}
+          c,_=req(base+"sales:audit:"+audit_id,"PUT",json.dumps(rec).encode(),{**kvh,"Content-Type":"application/json"})
+          if c!=200:fail(f"AUDIT_WRITE_HTTP_{c}")
+          if elapsed>=60:fail(f"PROPAGATION_{elapsed}S_EXCEEDS_60S")
+          print(f"::notice title=F7_DRILL::PASS close effective in {elapsed}s, checkout refused, audit {audit_id}")
+          PY

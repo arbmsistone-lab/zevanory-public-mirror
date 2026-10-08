@@ -1,7 +1,8 @@
 // Signed internal GET probes only. Does not bypass or alter Cloudflare WAF.
 export const AUDIT_READ_PATHS=Object.freeze(new Set([
   "/api/status","/api/health","/api/provider-health","/api/control-plane",
-  "/api/internal/audit/financial-classification","/api/internal/audit/runtime-identity"
+  "/api/internal/audit/financial-classification","/api/internal/audit/runtime-identity",
+  "/api/sales/status"
 ]));
 export async function verifySignedAuditProbe(request, env, {now=Date.now()}={}){
   const url=new URL(request.url);
