@@ -1,0 +1,54 @@
+name: ZEVANORY C2 production-only status live proof read only
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths: [".github/workflows/zpc-c2-status-live-proof.yml"]
+permissions:
+  contents: read
+jobs:
+  c2-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+    steps:
+      - name: Prove /api/status exposes only provider-proven production counts
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hmac,hashlib,urllib.request,urllib.error,json,os,time,sys
+          expected="03e9c7dc44652218c76454b425d51c34cd49dc59"
+          key=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
+          def get(path,signed=False):
+            h={"Accept":"application/json","User-Agent":"ZEVANORY-AuditReadOnly/1.0"}
+            if signed:
+              ts=str(int(time.time()))
+              h.update({"x-zevanory-audit-ts":ts,"x-zevanory-audit-signature":hmac.new(key.encode(),("GET\n"+path+"\n"+ts).encode(),hashlib.sha256).hexdigest()})
+            try:
+              with urllib.request.urlopen(urllib.request.Request("https://zevanory.api.br"+path,headers=h),timeout=15) as r:return r.status,json.load(r)
+            except urllib.error.HTTPError as e:return e.code,{}
+            except Exception:return 0,{}
+          def fail(c):print("::error title=C2_LIVE::"+c);sys.exit(2)
+          if len(key)<32:fail("AUDIT_SECRET_MISSING")
+          live=False
+          for _ in range(10):
+            c,b=get("/api/control-plane")
+            if c==200 and ((b.get("release") or {}).get("deployment") or {}).get("commit_sha")==expected:live=True;break
+            time.sleep(10)
+          print("::notice title=C2_EXACT_SHA::"+str(live).lower())
+          if not live:fail("EXACT_SHA_NOT_VISIBLE")
+          c,s=get("/api/status",True)
+          if c!=200:fail("STATUS_HTTP_"+str(c))
+          m=s.get("metrics") or {};p=s.get("commercial_metrics_provenance") or {}
+          out={"provenance_state":p.get("state"),"commercial_release_allowed":p.get("commercial_release_allowed"),"gate":s.get("gate"),
+               "orders":m.get("orders"),"payments_confirmed":m.get("payments_confirmed"),"refunds_confirmed":m.get("refunds_confirmed"),
+               "checkouts_started":m.get("checkouts_started"),"economics":s.get("economics"),
+               "test_certification":s.get("test_certification"),"legacy_counts_isolated":isinstance(s.get("legacy_technical_unverified_counts"),dict)}
+          print("::notice title=C2_STATUS::"+json.dumps(out,sort_keys=True))
+          if p.get("state") not in ("PROVEN","UNVERIFIED_FAIL_CLOSED"):fail("PROVENANCE_MISSING")
+          if p.get("commercial_release_allowed") is not False:fail("COMMERCIAL_RELEASE_FLAG_NOT_FALSE")
+          if p.get("state")=="UNVERIFIED_FAIL_CLOSED" and any(m.get(k) for k in ("orders","payments_confirmed","refunds_confirmed")):fail("UNVERIFIED_BUT_NONZERO")
+          if s.get("economics") is not None:fail("ECONOMICS_NOT_SUPPRESSED")
+          if not out["legacy_counts_isolated"]:fail("LEGACY_NOT_ISOLATED")
+          print("::notice title=C2_LIVE::PASS production-only counters live")
+          PY
