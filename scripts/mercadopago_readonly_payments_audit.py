@@ -7,7 +7,7 @@ def _fail(code):
     print("::error title=MP_READONLY_AUDIT::"+str(code)[:120],flush=True)
     _exit(1)
 sys.exit=_fail
-START="2026-10-02T00:00:00-03:00"
+START="2026-10-02T00:00:00-03:00"  # exact window enforced locally; API window is NOW-7DAYS..NOW
 API="https://api.mercadopago.com/v1/payments/search"
 APP="https://zevanory.api.br"
 token=os.environ.get("MERCADOPAGO_PROD_ACCESS_TOKEN","").strip()
@@ -28,7 +28,7 @@ end=now.isoformat(timespec="seconds")
 start=datetime.datetime.fromisoformat(START)
 rows=[];offset=0;limit=50;seen=set()
 while True:
-    params=urllib.parse.urlencode({"range":"date_created","begin_date":START,"end_date":end,"sort":"date_created","criteria":"asc","limit":limit,"offset":offset})
+    params=urllib.parse.urlencode({"range":"date_created","begin_date":"NOW-7DAYS","end_date":"NOW","sort":"date_created","criteria":"asc","limit":limit,"offset":offset})
     try:response=fetch_json(API+"?"+params,{"Authorization":"Bearer "+token,"Accept":"application/json"})
     except RuntimeError as e:sys.exit("PAYMENTS_SEARCH_"+str(e))
     items=response.get("results")
