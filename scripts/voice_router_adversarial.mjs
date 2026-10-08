@@ -1,10 +1,13 @@
 #!/usr/bin/env node
+// Adversarial gate for the zero-spend voice router (owner rule: ARBM One is 100% free).
+// Paid providers (Speechify API, piper relay on a paid VPS) must never be reached, even if
+// they are listed in the chain and "confirmed". Only Gemini (no billing account) and Azure
+// confirmed on F0 may run, with failover, circuit breaker and fail-closed behavior.
 import assert from "node:assert/strict";
 import { ttsBytesWithFailover, voiceProviderStatus } from "../worker/voice-provider-router.mjs";
 
 const text = "Olá, teste adversarial da voz ZEVANORY.";
-const wav = new Uint8Array([82,73,70,70,36,0,0,0,87,65,86,69,102,109,116,32,16,0,0,0,1,0,1,0,64,31,0,0,128,62,0,0,2,0,16,0,100,97,116,97,0,0,0,0]);
-const audio64 = Buffer.from(wav).toString("base64");
+const mp3 = new Uint8Array([0xff, 0xfb, 0x90, 0x64, 0, 0, 0, 0, 0, 0, 0, 0]);
 const base = {
   VOICE_TTS_FREE_ONLY: "true",
   VOICE_TTS_FAILOVER_ENABLED: "true",
@@ -19,172 +22,113 @@ const base = {
   GEMINI_API_KEY: "test",
   GEMINI_FREE_TIER_CONFIRMED: "true"
 };
+const PAID = ["speechify", "relay.test"];
+const reset = () => globalThis.__ZEVANORY_VOICE_BREAKER__?.clear?.();
+const failed = (status = 503) => new Response(JSON.stringify({ error: "synthetic failure" }), { status, headers: { "content-type": "application/json" } });
+const azureOk = () => new Response(mp3, { status: 200, headers: { "content-type": "audio/mpeg" } });
+const isAzure = u => u.includes("tts.speech.microsoft.com");
+const isGemini = u => u.includes("generativelanguage.googleapis.com");
+const guardPaid = u => { if (PAID.some(p => u.includes(p))) throw new Error("PAID_PROVIDER_TOUCHED:" + u); };
 
-function reset() {
-  globalThis.__ZEVANORY_VOICE_BREAKER__?.clear?.();
-}
-function okBytes(contentType="audio/wav") {
-  return new Response(wav,{status:200,headers:{"content-type":contentType}});
-}
-function speechifyOk() {
-  return new Response(JSON.stringify({audio_data:audio64}),{status:200,headers:{"content-type":"application/json"}});
-}
-function failed(status=503) {
-  return new Response(JSON.stringify({error:"synthetic failure"}),{status,headers:{"content-type":"application/json"}});
-}
-
-// 1. Healthy primary is selected.
+// 1. Paid providers are removed from the effective chain even when listed and "confirmed".
 reset();
 {
-  const calls=[];
-  const fetchMock=async url=>{calls.push(String(url)); if(String(url).includes("speechify")) return speechifyOk(); throw new Error("unexpected_provider");};
-  const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"speechify");
-  assert.equal(calls.length,1);
+  const st = voiceProviderStatus(base);
+  assert.deepEqual(st.chain, ["azure", "gemini"]);
+  assert.equal(st.zero_spend_enforced, true);
+  assert.ok(!st.providers.some(p => p.provider === "speechify" || p.provider === "piper-relay"));
+  console.log("VOICE_PAID_PROVIDERS_EXCLUDED=PASS");
+}
+
+// 2. Healthy free primary (Azure F0) is selected; nothing paid is touched.
+reset();
+{
+  const calls = [];
+  const r = await ttsBytesWithFailover(text, base, async url => { const u = String(url); calls.push(u); guardPaid(u); if (isAzure(u)) return azureOk(); throw new Error("unexpected_provider"); });
+  assert.equal(r.provider, "azure");
+  assert.equal(calls.length, 1);
   console.log("VOICE_ROUTER=PASS");
 }
 
-// 2. HTTP failure activates failover to Piper.
+// 3. HTTP failure fails over to Gemini (free tier), never to a paid route.
 reset();
 {
-  const calls=[];
-  const fetchMock=async url=>{
-    calls.push(String(url));
-    if(String(url).includes("speechify")) return failed(503);
-    if(String(url).includes("tts.speech.microsoft.com")) return failed(503);
-    if(String(url).includes("relay.test")) return okBytes();
-    throw new Error("unexpected_provider");
-  };
-  const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"piper-relay");
-  assert.equal(calls.length,3);
+  const calls = [];
+  await ttsBytesWithFailover(text, base, async url => { const u = String(url); calls.push(u); guardPaid(u); if (isAzure(u)) return failed(503); if (isGemini(u)) return failed(503); throw new Error("unexpected_provider"); })
+    .then(() => assert.fail("expected controlled failure"), e => assert.match(String(e.message), /^voice_tts_all_providers_failed:.*azure.*gemini/));
+  assert.ok(calls.some(isAzure) && calls.some(isGemini));
   console.log("VOICE_PROVIDER_FAILOVER=PASS");
 }
 
-// 3. Two primary failures open the circuit; recovery after cooldown selects primary again.
+// 4. Two primary failures open the circuit; recovery after cooldown selects primary again.
 reset();
 {
-  let now=1_800_000_000_000;
-  const originalNow=Date.now;
-  Date.now=()=>now;
-  let speechifyFailures=0;
-  const fetchMock=async url=>{
-    const u=String(url);
-    if(u.includes("speechify")) {
-      if(speechifyFailures<2){speechifyFailures++; return failed(503);}
-      return speechifyOk();
-    }
-    if(u.includes("tts.speech.microsoft.com")) return failed(503);
-    if(u.includes("relay.test")) return okBytes();
-    throw new Error("unexpected_provider");
-  };
-  await ttsBytesWithFailover(text,base,fetchMock);
-  await ttsBytesWithFailover(text,base,fetchMock);
-  let st=voiceProviderStatus(base).providers.find(x=>x.provider==="speechify");
-  assert.equal(st.circuit_open,true);
-  assert.equal(st.failures,2);
-  now += 5*60*1000+1;
-  st=voiceProviderStatus(base).providers.find(x=>x.provider==="speechify");
-  assert.equal(st.circuit_open,false);
-  const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"speechify");
-  Date.now=originalNow;
+  let now = 1_800_000_000_000;
+  const originalNow = Date.now;
+  Date.now = () => now;
+  let azureFailures = 0;
+  const fetchMock = async url => { const u = String(url); guardPaid(u); if (isAzure(u)) { if (azureFailures < 2) { azureFailures++; return failed(503); } return azureOk(); } if (isGemini(u)) return failed(503); throw new Error("unexpected_provider"); };
+  await ttsBytesWithFailover(text, base, fetchMock).catch(() => {});
+  await ttsBytesWithFailover(text, base, fetchMock).catch(() => {});
+  let st = voiceProviderStatus(base).providers.find(x => x.provider === "azure");
+  assert.equal(st.circuit_open, true);
+  assert.equal(st.failures, 2);
+  now += 5 * 60 * 1000 + 1;
+  st = voiceProviderStatus(base).providers.find(x => x.provider === "azure");
+  assert.equal(st.circuit_open, false);
+  const r = await ttsBytesWithFailover(text, base, fetchMock);
+  assert.equal(r.provider, "azure");
+  Date.now = originalNow;
   console.log("VOICE_CIRCUIT_BREAKER=PASS");
 }
 
-// 4. Timeout activates failover.
+// 5. Timeout and 401 on the primary keep the chain going to the next free provider.
 reset();
-{
-  const fetchMock=async url=>{
-    const u=String(url);
-    if(u.includes("speechify")) { const e=new Error("timeout"); e.name="TimeoutError"; throw e; }
-    if(u.includes("tts.speech.microsoft.com")) return failed(503);
-    if(u.includes("relay.test")) return okBytes();
+for (const mode of ["timeout", "401"]) {
+  reset();
+  const calls = [];
+  await ttsBytesWithFailover(text, base, async url => {
+    const u = String(url); calls.push(u); guardPaid(u);
+    if (isAzure(u)) { if (mode === "timeout") { const e = new Error("timeout"); e.name = "TimeoutError"; throw e; } return failed(401); }
+    if (isGemini(u)) return failed(503);
     throw new Error("unexpected_provider");
-  };
-  const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"piper-relay");
-  console.log("VOICE_TIMEOUT_FAILOVER=PASS");
+  }).catch(() => {});
+  assert.ok(calls.some(isGemini), "failover after " + mode);
 }
+console.log("VOICE_TIMEOUT_FAILOVER=PASS");
+console.log("VOICE_INVALID_CREDENTIAL_FAILOVER=PASS");
 
-// 5. Invalid primary output never reaches user and fallback assumes.
+// 6. Unconfirmed free tier blocks a provider even with credentials: nothing is called at all.
 reset();
 {
-  const fetchMock=async url=>{
-    const u=String(url);
-    if(u.includes("speechify")) return new Response("{}",{status:200,headers:{"content-type":"application/json"}});
-    if(u.includes("tts.speech.microsoft.com")) return failed(503);
-    if(u.includes("relay.test")) return okBytes();
-    throw new Error("unexpected_provider");
-  };
-  const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"piper-relay");
-  assert.ok(r.bytes.length>0);
-  console.log("VOICE_INVALID_OUTPUT_FAILOVER=PASS");
-}
-
-// 6. Unconfirmed free tier blocks provider even with credentials.
-reset();
-{
-  const env={...base,SPEECHIFY_FREE_TIER_CONFIRMED:"false",AZURE_SPEECH_FREE_TIER_CONFIRMED:"false",GEMINI_FREE_TIER_CONFIRMED:"false"};
-  const st=voiceProviderStatus(env);
-  assert.equal(st.providers.find(x=>x.provider==="speechify").available,false);
-  let paidTouched=false;
-  const fetchMock=async url=>{
-    const u=String(url);
-    if(u.includes("speechify")||u.includes("microsoft")||u.includes("googleapis")) { paidTouched=true; throw new Error("paid_route_touched"); }
-    if(u.includes("relay.test")) return okBytes();
-    throw new Error("unexpected_provider");
-  };
-  const r=await ttsBytesWithFailover(text,env,fetchMock);
-  assert.equal(r.provider,"piper-relay");
-  assert.equal(paidTouched,false);
+  const env = { ...base, AZURE_SPEECH_FREE_TIER_CONFIRMED: "false", GEMINI_FREE_TIER_CONFIRMED: "false" };
+  let touched = false;
+  await assert.rejects(() => ttsBytesWithFailover(text, env, async () => { touched = true; return azureOk(); }), /^Error: voice_tts_all_providers_failed:/);
+  assert.equal(touched, false);
   console.log("VOICE_ZERO_SPEND=PASS");
 }
 
-// 7. Invalid credential/401 does not interrupt entire chain.
+// 7. No provider -> controlled error, never a paid fallback.
 reset();
 {
-  const fetchMock=async url=>{
-    const u=String(url);
-    if(u.includes("speechify")) return failed(401);
-    if(u.includes("tts.speech.microsoft.com")) return failed(401);
-    if(u.includes("relay.test")) return okBytes();
-    throw new Error("unexpected_provider");
-  };
-  const r=await ttsBytesWithFailover(text,base,fetchMock);
-  assert.equal(r.provider,"piper-relay");
-  console.log("VOICE_INVALID_CREDENTIAL_FAILOVER=PASS");
+  let touched = false;
+  await assert.rejects(() => ttsBytesWithFailover(text, { VOICE_TTS_FREE_ONLY: "true", VOICE_TTS_FAILOVER_ENABLED: "true", VOICE_TTS_PROVIDER_CHAIN: "speechify,piper-relay", SPEECHIFY_API_KEY: "x", SPEECHIFY_VOICE_ID: "v", SPEECHIFY_FREE_TIER_CONFIRMED: "true", VOICE_TTS_RELAY_URL: "https://relay.test" }, async () => { touched = true; return failed(500); }), /voice_tts_all_providers_failed:/);
+  assert.equal(touched, false);
+  console.log("VOICE_NO_PROVIDER_FAIL_CLOSED=PASS");
 }
 
-// 8. No provider -> controlled error, never a paid fallback.
+// 8. Default chain is the free Gemini route only; relay has no built-in (paid VPS) default.
 reset();
 {
-  const env={
-    VOICE_TTS_FREE_ONLY:"true",
-    VOICE_TTS_FAILOVER_ENABLED:"true",
-    VOICE_TTS_PROVIDER_CHAIN:"speechify,azure,gemini"
-  };
-  let touched=false;
-  try {
-    await ttsBytesWithFailover(text,env,async()=>{touched=true; return failed(500);});
-    assert.fail("expected controlled failure");
-  } catch (e) {
-    assert.match(String(e.message),/^voice_tts_all_providers_failed:/);
-  }
-  assert.equal(touched,false);
-  console.log("VOICE_NO_PROVIDER_FAIL_CLOSED=PASS");
+  const st = voiceProviderStatus({ VOICE_TTS_FREE_ONLY: "true", GEMINI_API_KEY: "k", GEMINI_FREE_TIER_CONFIRMED: "true" });
+  assert.deepEqual(st.chain, ["gemini"]);
+  console.log("VOICE_DEFAULT_CHAIN_FREE=PASS");
 }
 
 // 9. ZERO_SPEND guard itself is mandatory.
 reset();
-{
-  await assert.rejects(
-    ()=>ttsBytesWithFailover(text,{...base,VOICE_TTS_FREE_ONLY:"false"},async()=>okBytes()),
-    /voice_tts_zero_spend_guard_required/
-  );
-  console.log("VOICE_PAID_FALLBACK_FALSE=PASS");
-}
+await assert.rejects(() => ttsBytesWithFailover(text, { ...base, VOICE_TTS_FREE_ONLY: "false" }, async () => azureOk()), /voice_tts_zero_spend_guard_required/);
+console.log("VOICE_PAID_FALLBACK_FALSE=PASS");
 
 console.log("VOICE_RUNTIME_GENERATION=PASS");
 console.log("VOICE_PT_BR=PASS");

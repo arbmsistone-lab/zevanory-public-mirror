@@ -106,10 +106,15 @@ assert.equal(providerStages[1].format,"mp3");
 assert.equal(providerStages[1].mime,"audio/mpeg");
 assert.equal(hasVoiceDeliveryProof({voice_sent:true,voice_provider_message_id:"wamid.provider",steps:[...providerStages,{stage:"upload_done"},{stage:"voice_sent"}]}),true);
 const relayStages=[];
-const relayEncoded=await ttsBytesWithFailover("Olá!",{VOICE_TTS_FREE_ONLY:"true",VOICE_TTS_PROVIDER_CHAIN:"piper-relay",VOICE_TTS_RELAY_URL:"https://relay.example"},async()=>new Response(Buffer.from("provider-ogg"),{status:200,headers:{"content-type":"audio/ogg"}}),{onStage:async(stage,details)=>relayStages.push({stage,...details})});
-assert.equal(relayEncoded.mime,"audio/ogg");
+// Zero-spend: the paid VPS relay is refused without any network call.
+let relayTouched=false;
+await assert.rejects(()=>ttsBytesWithFailover("Olá!",{VOICE_TTS_FREE_ONLY:"true",VOICE_TTS_PROVIDER_CHAIN:"piper-relay",VOICE_TTS_RELAY_URL:"https://relay.example"},async()=>{relayTouched=true;return new Response("x");}),/voice_tts_all_providers_failed/);
+assert.equal(relayTouched,false);
+// Provider-encoded path proven with Azure F0 (free tier), which returns MP3 directly.
+const relayEncoded=await ttsBytesWithFailover("Olá!",{VOICE_TTS_FREE_ONLY:"true",VOICE_TTS_PROVIDER_CHAIN:"azure",AZURE_SPEECH_KEY:"synthetic",AZURE_SPEECH_REGION:"brazilsouth",AZURE_SPEECH_FREE_TIER_CONFIRMED:"true"},async()=>new Response(Buffer.from("provider-mp3"),{status:200,headers:{"content-type":"audio/mpeg"}}),{onStage:async(stage,details)=>relayStages.push({stage,...details})});
+assert.equal(relayEncoded.mime,"audio/mpeg");
 assert.deepEqual(relayStages.map(x=>x.stage),["tts_done","encode_skipped_provider_encoded"]);
-assert.deepEqual({format:relayStages[1].format,mime:relayStages[1].mime},{format:"ogg",mime:"audio/ogg"});
+assert.deepEqual({format:relayStages[1].format,mime:relayStages[1].mime},{format:"mp3",mime:"audio/mpeg"});
 assert.equal(hasVoiceDeliveryProof({voice_sent:true,voice_provider_message_id:"wamid.relay",steps:[...relayStages,{stage:"upload_done"},{stage:"voice_sent"}]}),true);
 assert.equal(hasVoiceDeliveryProof({voice_sent:true,voice_provider_message_id:"wamid.missing",steps:[{stage:"tts_done"},{stage:"upload_done"},{stage:"voice_sent"}]}),false);
 console.log("VOICE_ENCODED_AND_PROVIDER_ENCODED_PROOF_PATHS=PASS");
