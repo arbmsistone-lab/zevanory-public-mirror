@@ -25,21 +25,38 @@ export function safeDbHost(url) {
   }catch{}
   return "unknown";
 }
-export function classifyPayment(row,response,accountId) {
-  if(row.provider!=="mercadopago"||row.pilot!==false||row.orphan)return "ambiguo";
-  const id=String(row.id||"");
-  if(!/^\d{1,32}$/.test(id))return "ambiguo";
-  if(response.status===404)return "nao_existe_em_producao";
-  if(response.status!==200||!response.body)return "ambiguo";
-  const b=response.body;
-  const idMatch=String(b.id||"")===id;
-  const collectorMatch=String(b.collector_id||b.collector?.id||"")===String(accountId);
-  const ref=String(b.external_reference||"");
-  const origin=String(row.reference||"");
+export function classifyPaymentEvidence(row,response,accountId) {
+  const id=String(row?.id||"");
+  const status=Number(response?.status||0);
+  const ambiguous=reason=>({classification:"ambiguo",reason});
+  // An unidentifiable payment is not evidence of being a sandbox payment.
+  if(!/^\d{1,32}$/.test(id))return ambiguous("payment_id_missing_or_invalid");
+  if(row?.orphan===true)return ambiguous("order_missing");
+  if(row?.pilot===true){
+    // Production-token 404 plus an explicit pilot flag is provable certification,
+    // not proof of commercial revenue. HTTP 200 here indicates account contamination.
+    if(status===404)return {classification:"teste_certificacao",reason:"pilot_id_absent_from_production_account"};
+    if(status===200)return ambiguous("pilot_payment_visible_in_production_account");
+    return ambiguous("pilot_payment_lookup_unverified");
+  }
+  if(row?.pilot!==false)return ambiguous("certification_provenance_unverified");
+  if(row?.provider!=="mercadopago")return ambiguous("provider_outside_mercadopago_proof");
+  if(status===404)return {classification:"nao_existe_em_producao",reason:"production_provider_404"};
+  if(status!==200||!response?.body)return ambiguous("production_provider_unavailable_or_unexpected_http");
+  const payment=response.body;
+  if(String(payment.id||"")!==id)return ambiguous("provider_payment_id_mismatch");
+  if(String(payment.collector_id||payment.collector?.id||"")!==String(accountId))return ambiguous("merchant_account_mismatch");
+  if(payment.live_mode!==true)return ambiguous("provider_live_mode_not_true");
+  const reference=String(payment.external_reference||"");
+  const expected=String(row.reference||"");
   const orderId=String(row.order_id||"");
-  const refMatch=ref!==""&&(ref===origin||ref===orderId||ref.endsWith(":"+orderId));
-  return idMatch&&collectorMatch&&refMatch&&b.live_mode===true?"producao_confirmado":"ambiguo";
+  if(!reference||(reference!==expected&&reference!==orderId&&!reference.endsWith(":"+orderId)))return ambiguous("external_reference_not_reconciled");
+  return {classification:"producao_confirmado",reason:"production_account_and_reference_verified"};
 }
+export function classifyPayment(row,response,accountId) {
+  return classifyPaymentEvidence(row,response,accountId).classification;
+}
+
 async function mpGet(path,token) {
   if(!token||token.startsWith("TEST-"))return {status:0,body:null};
   try{
@@ -76,7 +93,7 @@ async function runtimeIdentity(env,sqlFactory){
 async function financialClassification(env,sqlFactory){
   const result={schema:"zevanory.audit.financial-classification/v1",production_confirmed:0,
     not_in_production:0,ambiguous:0,orders:{total:0,certification:0,noncertified_unverified:0},
-    payment_ids:{producao_confirmado:[],ambiguo:[]},complete:false,commercial_release_allowed:false};
+    payment_ids:{producao_confirmado:[],ambiguo:[]},evidence_reasons:[],certification_events:0,complete:false,commercial_release_allowed:false};
   if(!env.DATABASE_URL||!sqlFactory)return {code:503,result:{error:"database_unavailable"}};
   const token=String(env.MERCADOPAGO_ACCESS_TOKEN||"");
   const owner=await getOwner(token);
@@ -99,14 +116,20 @@ async function financialClassification(env,sqlFactory){
   for(const x of rows)if(/^\d{1,32}$/.test(String(x.id||"")))ids.set(String(x.id),null);
   if(ids.size>40)return {code:503,result:{error:"audit_limit_exceeded",complete:false}};
   for(const id of ids.keys())ids.set(id,await mpGet("/v1/payments/"+id,token));
+  const reasonCounts=new Map();
   for(const row of rows){
-    const label=classifyPayment(row,ids.get(String(row.id))||{status:0,body:null},owner.body.id);
+    const evidence=classifyPaymentEvidence(row,ids.get(String(row.id))||{status:0,body:null},owner.body.id);
+    const label=evidence.classification;
+    const reasonKey=label+":"+evidence.reason;
+    reasonCounts.set(reasonKey,(reasonCounts.get(reasonKey)||0)+1);
     if(label==="producao_confirmado"){result.production_confirmed++;result.payment_ids.producao_confirmado.push(String(row.id));}
     else if(label==="nao_existe_em_producao")result.not_in_production++;
+    else if(label==="teste_certificacao")result.certification_events++;
     else{result.ambiguous++;result.payment_ids.ambiguo.push(String(row.id||"unknown"));}
   }
   result.payment_ids.producao_confirmado=[...new Set(result.payment_ids.producao_confirmado)];
   result.payment_ids.ambiguo=[...new Set(result.payment_ids.ambiguo)];
+  result.evidence_reasons=[...reasonCounts.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([reason,count])=>({reason,count}));
   result.complete=true;
   return {code:result.ambiguous?409:200,result};
 }
