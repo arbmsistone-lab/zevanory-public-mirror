@@ -1,0 +1,26 @@
+name: Mercado Pago production payments read-only
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  payments-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MERCADOPAGO_PROD_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_PROD_ACCESS_TOKEN }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: GET payments/search with full pagination and read-only reconciliation
+        run: python3 scripts/mercadopago_readonly_payments_audit.py
+      - name: Archive sanitized data only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mercadopago-readonly-sanitized
+          path: mercadopago-readonly-sanitized.json
+          if-no-files-found: warn
+          retention-days: 1
