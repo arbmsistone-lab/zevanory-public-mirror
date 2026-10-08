@@ -26,6 +26,7 @@ import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
 import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
+import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
 import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlocked, requiresPilotDenial } from "./commercial-checkout-guard.mjs";
 
 async function loadWhatsappBrokerState(binding) {
@@ -112,6 +113,12 @@ const wrapped = {
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
+    // Signed probes are accepted only on explicit read-only audit/status routes.
+    if (request.headers.has("x-zevanory-audit-ts") || request.headers.has("x-zevanory-audit-signature")) {
+      if (!(await verifySignedAuditProbe(request, normalized))) {
+        return new Response(JSON.stringify({error:"invalid_audit_signature"}),{status:401,headers:{"content-type":"application/json","cache-control":"no-store"}});
+      }
+    }
     // Operator-authenticated READ-ONLY audit before legacy routing. Does not mutate commerce.
     if (url.pathname.startsWith("/api/internal/audit/")) {
       const audit = await handleInternalFinancialAudit(request, normalized, { sqlFactory: whatsappProofDatabase });

@@ -1,4 +1,5 @@
 // Internal financial read-only audit. No mutation of commerce, provider or database.
+import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
 const HEADERS={"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff"};
 const reply=(code,data)=>new Response(JSON.stringify(data),{status:code,headers:HEADERS});
 const authLimiter=new Map();
@@ -113,7 +114,7 @@ export async function handleInternalFinancialAudit(request,env,{sqlFactory}={}){
   const path=new URL(request.url).pathname;
   if(!["/api/internal/audit/financial-classification","/api/internal/audit/runtime-identity"].includes(path))return null;
   if(request.method!=="GET")return reply(405,{error:"method_not_allowed"});
-  if(!(await authorized(request,env)))return reply(401,{error:"unauthorized"});
+  if(!(await authorized(request,env)) && !(await verifySignedAuditProbe(request,env)))return reply(401,{error:"unauthorized"});
   if(rateLimited(request))return reply(429,{error:"audit_rate_limited"});
   if(path.endsWith("/runtime-identity"))return reply(200,await runtimeIdentity(env,sqlFactory));
   const x=await financialClassification(env,sqlFactory);
