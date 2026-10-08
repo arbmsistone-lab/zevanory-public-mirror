@@ -90,10 +90,24 @@ async function runtimeIdentity(env,sqlFactory){
   }
   return {schema:"zevanory.audit.runtime-identity/v1",identity,database:db,commercial_release_allowed:false};
 }
+// Diagnostic dimensions are fixed enums. Never output raw event IDs or references.
+export function safeFinancialAuditDimensions(row={}) {
+  const provider=["mercadopago","asaas","stripe"].includes(String(row.provider||""))?String(row.provider):"other_or_missing";
+  const event=["payment_confirmed","refund_confirmed"].includes(String(row.normalized_event||""))?String(row.normalized_event):"other_event";
+  const pilot=row.pilot===true?"pilot_true":row.pilot===false?"pilot_false":"pilot_unknown";
+  const rawId=String(row.id||"");
+  const id_format=rawId.trim()===""?"missing":/^\d{1,32}$/.test(rawId)?"mercadopago_numeric":"other_format";
+  const eventId=String(row.provider_event_id||"").toLowerCase();
+  const marker_hint=eventId.startsWith("mp-test:")?"mp_test_prefix":
+    /(?:^|[-_:])(?:fixture|seed)(?:[-_:]|$)/.test(eventId)?"fixture_or_seed_prefix":
+    /(?:^|[-_:])(?:pilot|test|sandbox)(?:[-_:]|$)/.test(eventId)?"pilot_or_test_prefix":"not_classifiable_from_prefix";
+  return {provider,event,pilot,id_format,marker_hint};
+}
+
 async function financialClassification(env,sqlFactory){
   const result={schema:"zevanory.audit.financial-classification/v1",production_confirmed:0,
     not_in_production:0,ambiguous:0,orders:{total:0,certification:0,noncertified_unverified:0},
-    payment_ids:{producao_confirmado:[],ambiguo:[]},evidence_reasons:[],certification_events:0,complete:false,commercial_release_allowed:false};
+    payment_ids:{producao_confirmado:[],ambiguo:[]},evidence_reasons:[],evidence_breakdown:[],certification_events:0,complete:false,commercial_release_allowed:false};
   if(!env.DATABASE_URL||!sqlFactory)return {code:503,result:{error:"database_unavailable"}};
   const token=String(env.MERCADOPAGO_ACCESS_TOKEN||"");
   const owner=await getOwner(token);
@@ -107,6 +121,7 @@ async function financialClassification(env,sqlFactory){
     result.orders.noncertified_unverified=result.orders.total-result.orders.certification;
     rows=await sql.query(`select f.provider_payment_id::text id,f.provider::text provider,
       f.external_reference::text reference,f.order_id::text order_id,
+      f.normalized_event::text normalized_event,f.provider_event_id::text provider_event_id,
       o.certification_pilot pilot,(o.order_id is null) orphan
       from financial_events f left join orders o on o.order_id=f.order_id
       order by f.provider_payment_id::text limit 41`,[]);
@@ -117,11 +132,15 @@ async function financialClassification(env,sqlFactory){
   if(ids.size>40)return {code:503,result:{error:"audit_limit_exceeded",complete:false}};
   for(const id of ids.keys())ids.set(id,await mpGet("/v1/payments/"+id,token));
   const reasonCounts=new Map();
+  const breakdown=new Map();
   for(const row of rows){
     const evidence=classifyPaymentEvidence(row,ids.get(String(row.id))||{status:0,body:null},owner.body.id);
     const label=evidence.classification;
     const reasonKey=label+":"+evidence.reason;
     reasonCounts.set(reasonKey,(reasonCounts.get(reasonKey)||0)+1);
+    const d=safeFinancialAuditDimensions(row);
+    const breakdownKey=JSON.stringify({classification:label,reason:evidence.reason,...d});
+    breakdown.set(breakdownKey,(breakdown.get(breakdownKey)||0)+1);
     if(label==="producao_confirmado"){result.production_confirmed++;result.payment_ids.producao_confirmado.push(String(row.id));}
     else if(label==="nao_existe_em_producao")result.not_in_production++;
     else if(label==="teste_certificacao")result.certification_events++;
@@ -130,6 +149,7 @@ async function financialClassification(env,sqlFactory){
   result.payment_ids.producao_confirmado=[...new Set(result.payment_ids.producao_confirmado)];
   result.payment_ids.ambiguo=[...new Set(result.payment_ids.ambiguo)];
   result.evidence_reasons=[...reasonCounts.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([reason,count])=>({reason,count}));
+  result.evidence_breakdown=[...breakdown.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([dims,count])=>({...JSON.parse(dims),count}));
   result.complete=true;
   return {code:result.ambiguous?409:200,result};
 }

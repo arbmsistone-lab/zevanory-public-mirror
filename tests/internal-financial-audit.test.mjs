@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {classifyPayment,classifyPaymentEvidence,safeDbHost,handleInternalFinancialAudit} from "../worker/internal-financial-audit.mjs";
+import {classifyPayment,classifyPaymentEvidence,safeFinancialAuditDimensions,safeDbHost,handleInternalFinancialAudit} from "../worker/internal-financial-audit.mjs";
 const row={id:"12345",provider:"mercadopago",pilot:false,orphan:false,reference:"ZEVANORY:abc",order_id:"abc"};
 const ok={status:200,body:{id:12345,collector_id:9876,external_reference:"ZEVANORY:abc",live_mode:true}};
 test("financial classification: only owned validated payment counts as production",()=>{
@@ -52,4 +52,17 @@ test("unknown or malformed events cannot silently be treated as non-production",
  assert.equal(classifyPaymentEvidence({...row,provider:"some-other-provider"},{status:404,body:null},9876).classification,"ambiguo");
  assert.equal(classifyPaymentEvidence(row,{status:503,body:null},9876).classification,"ambiguo");
  assert.equal(classifyPaymentEvidence(row,{...ok,body:{...ok.body,collector_id:123}},9876).reason,"merchant_account_mismatch");
+});
+
+test("audit breakdown reports fixed enums only, never provider event ID or customer reference",()=>{
+ const raw={provider:"mercadopago",normalized_event:"payment_confirmed",pilot:true,id:"",provider_event_id:"mp-test:SECRET_PRIVATE_ID",reference:"private@example.com"};
+ const x=safeFinancialAuditDimensions(raw);
+ assert.deepEqual(x,{provider:"mercadopago",event:"payment_confirmed",pilot:"pilot_true",id_format:"missing",marker_hint:"mp_test_prefix"});
+ assert.equal(JSON.stringify(x).includes("PRIVATE"),false);
+ assert.equal(JSON.stringify(x).includes("@"),false);
+});
+test("unknown non-Mercado Pago ID format cannot claim commercial proof",()=>{
+ const x=safeFinancialAuditDimensions({provider:"stripe",normalized_event:"refund_confirmed",pilot:false,id:"pi_sandbox_mock",provider_event_id:"fixture:123"});
+ assert.deepEqual(x,{provider:"stripe",event:"refund_confirmed",pilot:"pilot_false",id_format:"other_format",marker_hint:"fixture_or_seed_prefix"});
+ assert.equal(classifyPaymentEvidence({id:"pi_sandbox_mock",provider:"stripe",pilot:false,orphan:false},{status:0,body:null},123).classification,"ambiguo");
 });
