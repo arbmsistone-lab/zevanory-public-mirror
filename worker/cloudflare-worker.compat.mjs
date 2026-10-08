@@ -25,6 +25,7 @@ import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
+import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
 
 async function loadWhatsappBrokerState(binding) {
   if (!binding?.fetch) return null;
@@ -110,6 +111,12 @@ const wrapped = {
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
+    // Operator-authenticated READ-ONLY audit before legacy routing. Does not mutate commerce.
+    if (url.pathname.startsWith("/api/internal/audit/")) {
+      const audit = await handleInternalFinancialAudit(request, normalized, { sqlFactory: whatsappProofDatabase });
+      if (audit) return audit;
+      return new Response("not_found",{status:404});
+    }
     if (url.hostname === "checkout.internal") {
       // Public checkout is only reachable through the sales Worker's private service binding.
       if (!url.pathname.startsWith("/api/checkout/")) return new Response("not_found", { status: 404 });
