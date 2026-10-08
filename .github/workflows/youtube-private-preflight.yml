@@ -26,7 +26,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          key="$(gcloud secrets versions access latest --secret=ZEVANORY_GEMINI_API_KEY --project=zevanory-gemini)" || { echo "::error title=YOUTUBE_PREFLIGHT::gemini_secret_fetch_failed"; exit 1; }
+          if ! key="$(gcloud secrets versions access latest --secret=ZEVANORY_GEMINI_API_KEY --project=zevanory-gemini 2>/tmp/gsm.err)"; then
+            reason="$(grep -oE 'PERMISSION_DENIED|NOT_FOUND|FAILED_PRECONDITION|UNAUTHENTICATED|SERVICE_DISABLED|secretmanager.googleapis.com has not been used|DESTROYED|DISABLED' /tmp/gsm.err | head -1 | tr ' .' '__')"
+            names="$(gcloud secrets list --project=zevanory-gemini --format='value(name)' 2>/dev/null | grep -iE 'gemini|youtube|voice|elite' | tr '\n' ',' | head -c 300 || true)"
+            echo "::error title=YOUTUBE_PREFLIGHT::gemini_secret_fetch_failed reason=${reason:-unknown} visible_secret_names=${names:-none}"
+            exit 1
+          fi
           test -n "$key" || { echo "::error title=YOUTUBE_PREFLIGHT::gemini_secret_empty"; exit 1; }
           echo "::add-mask::$key"
           echo "GEMINI_API_KEY=$key" >> "$GITHUB_ENV"
