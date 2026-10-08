@@ -48,6 +48,11 @@ for (let i = 1; i <= runs; i++) {
   if (m.tbt >= T.tbt) f.push(`TBT${m.tbt}`);
   if (m.console) f.push(`console_errors${m.console}`);
   if (m.bad) f.push(`http4xx5xx${m.bad}`);
+  // Third-party entities and legacy JS sources (to fix the cause at the edge configuration).
+  const tp = (a["third-party-summary"]?.details?.items || []).map(x => `${x.entity?.text || x.entity}:${Math.round(x.blockingTime || 0)}ms:${Math.round((x.transferSize || 0) / 1024)}KiB`);
+  const legacy = (a["legacy-javascript"]?.details?.items || a["legacy-javascript-insight"]?.details?.items || []).map(x => String(x.url || "").replace(/^https?:\/\/[^/]+/, "")).slice(0, 3);
+  const longCache = (a["uses-long-cache-ttl"]?.details?.items || []).map(x => String(x.url || "").replace(/^https?:\/\/[^/]+/, "") + "@" + Math.round((x.cacheLifetimeMs || 0) / 1000) + "s").slice(0, 3);
+  if (i === 1 && (tp.length || legacy.length || longCache.length)) note("warning", "F5_THIRD_PARTY", `tp=[${tp.join(", ")}] legacy=[${legacy.join(", ")}] short_cache=[${longCache.join(", ")}]`);
   if (f.length) {
     failures.push(`run${i}:${f.join(",")}`);
     // Collect the failing audits to point at the cause.
