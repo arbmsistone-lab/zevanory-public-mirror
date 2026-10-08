@@ -10,6 +10,7 @@ jobs:
     env:
       MERCADOPAGO_PROD_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_PROD_ACCESS_TOKEN }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      MP_LOOKUP_PAYMENT_IDS: "182085091992"
     steps:
       - uses: actions/checkout@v4
         with:
