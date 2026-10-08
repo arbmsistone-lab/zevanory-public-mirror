@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { synthesizeVoice } from "../../worker/voice-remote-tts.mjs";
 import { evaluateCreativeWithRewrites } from "../../worker/creative-autonomy.mjs";
 const TARGET = "UCMl8-SxMVv77S2tz2H63P3A";
 const fail = code => { throw Error(code); };
@@ -10,7 +9,7 @@ const run = (cmd,args) => { const p=spawnSync(cmd,args,{encoding:"utf8",maxBuffe
 const selected = {creative_id:"youtube-welcome-v1",brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1920,hook:"IA prática, com clareza",body:"Organize tarefas repetitivas por R$ 197,00. Garantia de 7 dias.",cta:"Conheça a ZEVANORY",price_brl:197};
 const gate=evaluateCreativeWithRewrites(selected,{serverPrice:197});
 if(gate.action!=="publish"||gate.compliance!==100||gate.score<85)fail("f1_gate_rejected");
-const required=["YOUTUBE_CLIENT_ID","YOUTUBE_CLIENT_SECRET","YOUTUBE_REFRESH_TOKEN","GEMINI_API_KEY","VOICE_ENCODE_SECRET"];
+const required=["YOUTUBE_CLIENT_ID","YOUTUBE_CLIENT_SECRET","YOUTUBE_REFRESH_TOKEN","GEMINI_API_KEY"];
 for(const name of required)if(!process.env[name])fail("missing_secret_"+name);
 const tokenResponse=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:process.env.YOUTUBE_CLIENT_ID,client_secret:process.env.YOUTUBE_CLIENT_SECRET,refresh_token:process.env.YOUTUBE_REFRESH_TOKEN,grant_type:"refresh_token"})});
 if(!tokenResponse.ok)fail("youtube_oauth_http_"+tokenResponse.status);
@@ -21,9 +20,22 @@ if(!check.ok)fail("youtube_channels_http_"+check.status);
 const channels=await check.json();
 if(channels.items?.length!==1||channels.items[0].id!==TARGET)fail("youtube_channel_id_mismatch");
 const speech=[gate.spec.hook,gate.spec.body,gate.spec.cta].join(". ");
-const audio=await synthesizeVoice(speech,{apiKey:process.env.GEMINI_API_KEY,secret:process.env.VOICE_ENCODE_SECRET,env:{VOICE_SYNTH_URL:process.env.VOICE_SYNTH_URL}});
+// Same Gemini TTS models and voice (Achird) as production voice; raw PCM is encoded by ffmpeg here.
+const STYLE="Fale em português do Brasil, com voz natural, acolhedora, clara e profissional, em ritmo de conversa.";
+let pcm=null,ttsModel="",rate=24000;
+for(const model of ["gemini-3.8-flash-tts","gemini-3.8-flash-lite-tts"]){
+  const r=await fetch("https://generativelanguage.googleapis.com/v1beta/interactions",{method:"POST",headers:{"x-goog-api-key":process.env.GEMINI_API_KEY,"content-type":"application/json"},body:JSON.stringify({model,input:[{type:"user_input",content:[{type:"text",text:speech,annotations:[{type:"speech_metadata",style:STYLE}]}]}],response_format:{type:"audio",mime_type:"audio/l16",sample_rate:24000},generation_config:{speech_config:[{voice:"Achird"}]}}),signal:AbortSignal.timeout(60000)}).catch(()=>null);
+  if(!r?.ok)continue;
+  const body=await r.json().catch(()=>({}));
+  const part=(body.steps||[]).filter(x=>x.type==="model_output").flatMap(x=>x.content||[]).find(x=>x.type==="audio"&&x.data);
+  if(!part)continue;
+  pcm=Buffer.from(part.data,"base64");ttsModel=model;rate=Number(part.sample_rate||(String(part.mime_type||"").match(/rate=(\d+)/)||[])[1])||24000;break;
+}
+if(!pcm||pcm.length<rate)fail("gemini_tts_failed");
 const base="/tmp/zevanory-youtube-preflight";
-await writeFile(base+".mp3",audio.bytes);
+await writeFile(base+".pcm",pcm);
+run("ffmpeg",["-y","-f","s16le","-ar",String(rate),"-ac","1","-i",base+".pcm","-c:a","libmp3lame","-b:a","128k",base+".mp3"]);
+const audio={provider:"gemini-direct",model:ttsModel};
 await writeFile(base+".txt",["IA prática, com clareza","Organize. Automatize. Meça.","Garantia de 7 dias","zevanory.api.br"].join("\n"));
 const file="sales-public/brand/social/zevanory-social-profile-1080.png";
 const vf="scale=1080:1080,pad=1080:1920:0:120:color=0x071018,drawtext=textfile="+base+".txt:fontcolor=white:fontsize=49:line_spacing=24:x=(w-text_w)/2:y=1330";
