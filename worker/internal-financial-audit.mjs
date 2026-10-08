@@ -137,7 +137,7 @@ export function safeFinancialAuditDimensions(row={}) {
 async function financialClassification(env,sqlFactory){
   const result={schema:"zevanory.audit.financial-classification/v1",production_confirmed:0,
     not_in_production:0,ambiguous:0,orders:{total:0,certification:0,noncertified_unverified:0},
-    payment_ids:{producao_confirmado:[],ambiguo:[]},evidence_reasons:[],evidence_breakdown:[],certification_events:0,asaas_sandbox:{environment:"unknown",credential_configured:false,ids_queried:0},complete:false,commercial_release_allowed:false};
+    payment_ids:{producao_confirmado:[],ambiguo:[]},production_payment_events:0,production_refund_events:0,production_paid_orders:0,evidence_reasons:[],evidence_breakdown:[],certification_events:0,asaas_sandbox:{environment:"unknown",credential_configured:false,ids_queried:0},complete:false,commercial_release_allowed:false};
   if(!env.DATABASE_URL||!sqlFactory)return {code:503,result:{error:"database_unavailable"}};
   const token=String(env.MERCADOPAGO_ACCESS_TOKEN||"");
   const owner=await getOwner(token);
@@ -171,6 +171,7 @@ async function financialClassification(env,sqlFactory){
     }
   }
   result.asaas_sandbox.ids_queried=asaasResults.size;
+  const productionOrderIds=new Set();
   const reasonCounts=new Map();
   const breakdown=new Map();
   for(const row of rows){
@@ -183,17 +184,29 @@ async function financialClassification(env,sqlFactory){
     const d=safeFinancialAuditDimensions(row);
     const breakdownKey=JSON.stringify({classification:label,reason:evidence.reason,...d});
     breakdown.set(breakdownKey,(breakdown.get(breakdownKey)||0)+1);
-    if(label==="producao_confirmado"){result.production_confirmed++;result.payment_ids.producao_confirmado.push(String(row.id));}
+    if(label==="producao_confirmado"){
+      result.production_confirmed++;
+      result.payment_ids.producao_confirmado.push(String(row.id));
+      if(row.normalized_event==="payment_confirmed"){
+        result.production_payment_events++;
+        if(row.order_id)productionOrderIds.add(String(row.order_id));
+      }else if(row.normalized_event==="refund_confirmed")result.production_refund_events++;
+    }
     else if(label==="nao_existe_em_producao")result.not_in_production++;
     else if(label==="teste_certificacao")result.certification_events++;
     else{result.ambiguous++;result.payment_ids.ambiguo.push(String(row.id||"unknown"));}
   }
+  result.production_paid_orders=productionOrderIds.size;
   result.payment_ids.producao_confirmado=[...new Set(result.payment_ids.producao_confirmado)];
   result.payment_ids.ambiguo=[...new Set(result.payment_ids.ambiguo)];
   result.evidence_reasons=[...reasonCounts.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([reason,count])=>({reason,count}));
   result.evidence_breakdown=[...breakdown.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([dims,count])=>({...JSON.parse(dims),count}));
   result.complete=true;
   return {code:result.ambiguous?409:200,result};
+}
+// Used exclusively by the scheduled reconciler; does not modify financial records.
+export async function collectFinancialProvenanceReadOnly(env,{sqlFactory}={}){
+  return financialClassification(env,sqlFactory);
 }
 export async function handleInternalFinancialAudit(request,env,{sqlFactory}={}){
   const path=new URL(request.url).pathname;

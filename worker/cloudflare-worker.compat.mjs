@@ -26,6 +26,7 @@ import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
 import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
+import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinancialProofSnapshot } from "./commercial-metrics-projection.mjs";
 import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
 import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlocked, requiresPilotDenial } from "./commercial-checkout-guard.mjs";
 
@@ -423,10 +424,14 @@ const wrapped = {
       const { response, body } = await fetchJsonThroughWorker(request, normalized, ctx);
       if (!response.ok || !body) return response;
       const salesSwitch = await readSalesSwitch(normalized);
-      const projected = projectLiveStatus(body, {
-        salesOpen: salesSwitch.enabled === true,
+      const snapshot = await readFinancialProofSnapshot(normalized);
+      const safeRelease = snapshot?.verified === true && salesSwitch.enabled === true &&
+        String(normalized.SALE_GLOBALLY_ENABLED || "").toLowerCase() === "true" &&
+        String(normalized.MERCADOPAGO_ENV || "").toLowerCase() === "production";
+      const projected = projectProductionOnlyStatus(projectLiveStatus(body, {
+        salesOpen: safeRelease,
         whatsappTransportOperational: whatsappTransportIsOperational(normalized, globalThis.__ZEVANORY_WHATSAPP_RUNTIME__, globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__)
-      });
+      }), snapshot, { env: normalized });
       projected.continuity = buildContinuityPlan(projected, { minQuorum: 3 });
       const headers = new Headers(response.headers);
       headers.set("content-type", "application/json; charset=utf-8");
@@ -476,6 +481,9 @@ wrapped.scheduled = async (controller, env, ctx) => {
   resetSalesSwitchCache();
   const salesOpen = applySalesSwitch(await readSalesSwitch(normalized));
   const tasks = [reconcileControlPlane(wrapped, normalized, ctx).catch(()=>null)];
+  tasks.push(refreshFinancialProofSnapshot(normalized, { sqlFactory: whatsappProofDatabase })
+    .then((out) => console.info("commercial_metrics_proof", JSON.stringify({ok:out.ok===true,reason:out.reason||"unavailable",ambiguous:out.ambiguous??null})))
+    .catch(() => console.error("commercial_metrics_proof_unavailable")));
   tasks.push(publishFunnelSummary(normalized, { sqlFactory: whatsappProofDatabase, production: salesOpen, salesOpen }).then((out) => console.info("funnel_summary", JSON.stringify(out))).catch((error) => console.error("funnel_summary_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runPaidDeliveryWatchdog(normalized).then((out) => console.info("paid_delivery_watchdog", JSON.stringify(out))).catch((error) => console.error("paid_delivery_watchdog_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runLeadNurture(normalized, { sqlFactory: whatsappProofDatabase, salesOpen }).then((out) => console.info("lead_nurture", JSON.stringify(out))).catch((error) => console.error("lead_nurture_failed", error instanceof Error ? error.message : String(error))));
