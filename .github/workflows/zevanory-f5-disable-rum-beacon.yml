@@ -1,0 +1,47 @@
+name: ZEVANORY F5 disable Cloudflare Web Analytics auto-injected beacon
+# Third-party beacon (/beacon.min.js) was the only F5 offender: legacy JS, short cache,
+# main-thread blocking on cold loads. The sales site already counts visits first-party.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths: [".github/workflows/zevanory-f5-disable-rum-beacon.yml"]
+permissions:
+  contents: read
+jobs:
+  disable-beacon:
+    if: github.head_ref == 'perf/disable-cf-web-analytics-beacon' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCOUNT: "1b26415802588185a86c1d4d3ebf5bdb"
+    steps:
+      - name: List RUM sites, disable auto-install only for ZEVANORY hosts, read back
+        run: |
+          python3 - <<'PY'
+          import json,os,sys,urllib.request,urllib.error
+          tok=os.environ["CF_TOKEN"].strip(); acc=os.environ["CF_ACCOUNT"]
+          base=f"https://api.cloudflare.com/client/v4/accounts/{acc}/rum/site_info"
+          def call(url,method="GET",body=None):
+            r=urllib.request.Request(url,method=method,data=json.dumps(body).encode() if body is not None else None,headers={"Authorization":"Bearer "+tok,"Content-Type":"application/json"})
+            try:
+              with urllib.request.urlopen(r,timeout=25) as x:return x.status,json.load(x)
+            except urllib.error.HTTPError as e:
+              try:return e.code,json.load(e)
+              except Exception:return e.code,{}
+          c,b=call(base+"/list?per_page=50")
+          if c!=200:print(f"::error title=RUM::list_http_{c} {str(b.get('errors'))[:200]}");sys.exit(1)
+          sites=b.get("result") or []
+          print("::notice title=RUM_SITES::"+json.dumps([{"host":s.get("host"),"auto_install":s.get("auto_install"),"id":str(s.get("site_tag",""))[:8]} for s in sites]))
+          targets=[s for s in sites if "zevanory" in str(s.get("host","")) and s.get("auto_install")]
+          if not targets:print("::notice title=RUM::no ZEVANORY site with auto_install=true");sys.exit(0)
+          for s in targets:
+            c,b=call(f"{base}/{s['site_tag']}","PUT",{"auto_install":False,"host":s.get("host"),"zone_tag":s.get("zone_tag") or (s.get("ruleset") or {}).get("zone_tag")})
+            ok=c==200 and (b.get("result") or {}).get("auto_install") is False
+            print(f"::{'notice' if ok else 'error'} title=RUM_DISABLE::host={s.get('host')} http={c} auto_install_after={(b.get('result') or {}).get('auto_install')} {'' if ok else str(b.get('errors'))[:200]}")
+            if not ok:sys.exit(1)
+          c,b=call(base+"/list?per_page=50")
+          left=[s.get("host") for s in (b.get("result") or []) if "zevanory" in str(s.get("host","")) and s.get("auto_install")]
+          if left:print("::error title=RUM::still_auto_install "+",".join(left));sys.exit(1)
+          print("::notice title=RUM::PASS auto-injected beacon disabled for all ZEVANORY hosts")
+          PY
