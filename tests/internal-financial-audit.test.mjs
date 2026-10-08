@@ -87,3 +87,18 @@ test("Asaas events cannot borrow Mercado Pago proof",()=>{
  const row={id:"pay_sandbox123",provider:"asaas",pilot:true,orphan:false,order_id:"11111111-1111-4111-8111-111111111111",reference:"",normalized_event:"payment_confirmed"};
  assert.equal(classifyAsaasSandboxPilot(row,{status:200,body:{id:row.id,externalReference:"some-other-order",status:"CONFIRMED"}},{ASAAS_ENV:"sandbox",ASAAS_API_KEY:"dummy"}).classification,"ambiguo");
 });
+
+import { resendUsage } from "../worker/internal-financial-audit.mjs";
+test("resend usage counts only timestamps, paginates, and never returns recipients", async () => {
+  const now = Date.parse("2026-10-20T12:00:00Z");
+  const pages = [
+    { data: [{ id: "a", created_at: "2026-10-20 10:00:00.000+00", to: ["x@y.com"] }, { id: "b", created_at: "2026-10-19 13:00:00.000+00" }], has_more: true },
+    { data: [{ id: "c", created_at: "2026-10-05 08:00:00.000+00" }, { id: "d", created_at: "2026-09-30 08:00:00.000+00" }], has_more: true },
+  ];
+  let n = 0;
+  const out = await resendUsage({ RESEND_API_KEY: "re_test" }, { now, fetchImpl: async () => new Response(JSON.stringify(pages[n++])) });
+  assert.deepEqual(out, { status: "ok", emails_24h: 2, emails_month: 3 });
+  assert.equal(JSON.stringify(out).includes("@"), false);
+  assert.deepEqual(await resendUsage({}, {}), { status: "no_key", emails_24h: null, emails_month: null });
+  assert.equal((await resendUsage({ RESEND_API_KEY: "k" }, { fetchImpl: async () => new Response("{}", { status: 401 }) })).status, "list_http_401");
+});
