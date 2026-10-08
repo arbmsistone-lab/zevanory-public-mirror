@@ -4,6 +4,8 @@ import { synthesizeVoice } from "../../worker/voice-remote-tts.mjs";
 import { evaluateCreativeWithRewrites } from "../../worker/creative-autonomy.mjs";
 const TARGET = "UCMl8-SxMVv77S2tz2H63P3A";
 const fail = code => { throw Error(code); };
+// Only fixed codes reach the public log; never tokens, provider bodies or channel data beyond the id.
+const report_fail=e=>{console.log("::error title=YOUTUBE_PREFLIGHT::"+String(e?.message||e).replace(/[^a-z0-9_:.-]/gi,"_").slice(0,120));process.exit(1);};process.on("unhandledRejection",report_fail);process.on("uncaughtException",report_fail);
 const run = (cmd,args) => { const p=spawnSync(cmd,args,{encoding:"utf8",maxBuffer:8*1024*1024});if(p.status!==0)fail(cmd+"_failed");return p.stdout; };
 const selected = {creative_id:"youtube-welcome-v1",brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1920,hook:"IA prática, com clareza",body:"Organize tarefas repetitivas por R$ 197,00. Garantia de 7 dias.",cta:"Conheça a ZEVANORY",price_brl:197};
 const gate=evaluateCreativeWithRewrites(selected,{serverPrice:197});
@@ -29,7 +31,8 @@ run("ffmpeg",["-y","-loop","1","-framerate","30","-i",file,"-i",base+".mp3","-fi
 const probe=JSON.parse(run("ffprobe",["-v","error","-show_streams","-show_format","-of","json",base+".mp4"]));
 const v=probe.streams.find(s=>s.codec_type==="video"),a=probe.streams.find(s=>s.codec_type==="audio"),duration=Number(probe.format.duration),audioDuration=Number(a?.duration||duration);
 if(!v||v.width!==1080||v.height!==1920||!a||!Number.isFinite(duration)||duration<19||duration>21||!Number.isFinite(audioDuration)||Math.abs(audioDuration-duration)>1)fail("youtube_mp4_technical_gate_failed");
-const black=run("ffmpeg",["-i",base+".mp4","-vf","blackdetect=d=0.6:pix_th=0.08","-an","-f","null","-"]); // detection is emitted on stderr, checked separately below
 const blackProcess=spawnSync("ffmpeg",["-hide_banner","-i",base+".mp4","-vf","blackdetect=d=0.6:pix_th=0.08","-an","-f","null","-"],{encoding:"utf8"});
 if(blackProcess.status!==0||/black_start:/.test(blackProcess.stderr))fail("youtube_black_frames_detected");
-console.log(JSON.stringify({channelId:TARGET,dryRun:true,uploaded:false,technicalCheck:"PASS",size:"1080x1920",duration_seconds:duration,audio_seconds:audioDuration,blackFrames:"none_over_0.6s",gate:{creative_id:selected.creative_id,score:gate.score,compliance:gate.compliance,action:gate.action,decision:"approved_for_autopublish"},tts:{provider:audio.provider,model:audio.model},privacyStatus:"private"}));
+const report=({channelId:TARGET,dryRun:true,uploaded:false,technicalCheck:"PASS",size:"1080x1920",duration_seconds:duration,audio_seconds:audioDuration,blackFrames:"none_over_0.6s",gate:{creative_id:selected.creative_id,score:gate.score,compliance:gate.compliance,action:gate.action,decision:gate.action==="publish"?"approved_for_autopublish":"discarded",reason:gate.reason,rewrites:gate.rewrites},tts:{provider:audio.provider,model:audio.model},privacyStatus:"private"});
+console.log(JSON.stringify(report));
+console.log("::notice title=YOUTUBE_PREFLIGHT::"+JSON.stringify(report));
