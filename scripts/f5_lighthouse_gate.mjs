@@ -16,7 +16,9 @@ const tag = `${device} ${page}`;
 const note = (lvl, title, msg) => console.log(`::${lvl} title=${title}::${tag} ${msg}`.slice(0, 900));
 const failures = [], lines = [], hints = new Map();
 
-for (let i = 1; i <= runs; i++) {
+// One explicit warm-up run (Chrome process, DNS/TLS) is executed and REPORTED but not scored,
+// as recommended by Lighthouse CI; then every one of the scored runs must pass on its own.
+for (let i = 0; i <= runs; i++) {
   const out = `/tmp/lh-${i}.json`;
   rmSync(out, { force: true });
   const args = [url, "--output=json", `--output-path=${out}`, "--quiet",
@@ -39,6 +41,7 @@ for (let i = 1; i <= runs; i++) {
     console: a["errors-in-console"]?.details?.items?.length || 0,
     bad: (a["network-requests"]?.details?.items || []).filter(x => Number(x.statusCode) >= 400).length,
   };
+  if (i === 0) { note("notice", "F5_WARMUP", `unscored P${m.perf} LCP${m.lcp} TBT${m.tbt}`); continue; }
   lines.push(`r${i}:P${m.perf}/A${m.a11y}/B${m.bp}/S${m.seo} LCP${m.lcp} CLS${m.cls} TBT${m.tbt} err${m.console} 4xx${m.bad}`);
   const f = [];
   if (m.perf < T.perf) f.push(`perf${m.perf}<${T.perf}`);
