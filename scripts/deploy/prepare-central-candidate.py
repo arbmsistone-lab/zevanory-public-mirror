@@ -25,6 +25,8 @@ c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["TARGET_RUNTIME_SHA"]
 c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
 c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
 c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"
+# Dedicated Asaas financial-certification probes must never default to the live API.
+c["vars"]["ASAAS_ENV"]="sandbox"
 c["vars"]["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
 c["vars"]["MERCADOPAGO_ENV"]="sandbox"
 c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
