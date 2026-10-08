@@ -74,3 +74,10 @@ with open("mercadopago-readonly-sanitized.json","w",encoding="utf-8") as f:json.
 print("TOTAL_PAYMENTS="+str(report["total_pagamentos"]))
 print("APPROVED_COUNT="+str(sum(x["status"]=="approved" for x in rows)))
 print("APPROVED_UNRECONCILED_COUNT="+str(report["aprovados_sem_conciliacao"]))
+statuses={}
+for x in rows:statuses[x["status"]]=statuses.get(x["status"],0)+1
+print("::notice title=MP_READONLY_SUMMARY::total="+str(len(rows))+" por_status="+json.dumps(statuses,sort_keys=True)+" aprovados_sem_conciliacao="+str(report["aprovados_sem_conciliacao"]))
+# Only exceptions are surfaced (payment id, date, amount, reason); full table stays in the 1-day artifact.
+for x in rows:
+    if x["status"]=="approved" and not x["concilia_mesmo_valor"]:
+        print("::warning title=MP_APPROVED_UNRECONCILED::payment_id="+x["payment_id"]+" data="+x["data"][:19]+" valor="+str(x["valor"])+" motivo="+x["motivo"])
