@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {classifyPayment,classifyPaymentEvidence,safeFinancialAuditDimensions,safeDbHost,handleInternalFinancialAudit} from "../worker/internal-financial-audit.mjs";
+import {classifyPayment,classifyPaymentEvidence,classifyAsaasSandboxPilot,safeFinancialAuditDimensions,safeDbHost,handleInternalFinancialAudit} from "../worker/internal-financial-audit.mjs";
 const row={id:"12345",provider:"mercadopago",pilot:false,orphan:false,reference:"ZEVANORY:abc",order_id:"abc"};
 const ok={status:200,body:{id:12345,collector_id:9876,external_reference:"ZEVANORY:abc",live_mode:true}};
 test("financial classification: only owned validated payment counts as production",()=>{
@@ -65,4 +65,25 @@ test("unknown non-Mercado Pago ID format cannot claim commercial proof",()=>{
  const x=safeFinancialAuditDimensions({provider:"stripe",normalized_event:"refund_confirmed",pilot:false,id:"pi_sandbox_mock",provider_event_id:"fixture:123"});
  assert.deepEqual(x,{provider:"stripe",event:"refund_confirmed",pilot:"pilot_false",id_format:"other_format",marker_hint:"fixture_or_seed_prefix"});
  assert.equal(classifyPaymentEvidence({id:"pi_sandbox_mock",provider:"stripe",pilot:false,orphan:false},{status:0,body:null},123).classification,"ambiguo");
+});
+
+test("Asaas sandbox pilot can be isolated only after GET identity and order reference proof",()=>{
+ const env={ASAAS_ENV:"sandbox",ASAAS_API_KEY:"test-only-credential-placeholder"};
+ const order_id="11111111-1111-4111-8111-111111111111";
+ const row={id:"pay_sandbox123",provider:"asaas",pilot:true,orphan:false,order_id,reference:"ZEVANORY:EXP:"+order_id,normalized_event:"payment_confirmed"};
+ const payment={status:200,body:{id:"pay_sandbox123",externalReference:row.reference,status:"CONFIRMED"}};
+ assert.equal(classifyAsaasSandboxPilot(row,payment,env).classification,"teste_certificacao");
+ assert.equal(classifyAsaasSandboxPilot(row,payment,{...env,ASAAS_ENV:"production"}).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot(row,payment,{...env,ASAAS_API_KEY:""}).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot(row,{status:404,body:null},env).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot(row,{...payment,body:{...payment.body,id:"pay_wrong"}},env).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot(row,{...payment,body:{...payment.body,externalReference:"different"}},env).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot(row,{...payment,body:{...payment.body,status:"PENDING"}},env).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot({...row,pilot:false},payment,env).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot({...row,orphan:true},payment,env).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot({...row,id:"fake:///id"},payment,env).classification,"ambiguo");
+});
+test("Asaas events cannot borrow Mercado Pago proof",()=>{
+ const row={id:"pay_sandbox123",provider:"asaas",pilot:true,orphan:false,order_id:"11111111-1111-4111-8111-111111111111",reference:"",normalized_event:"payment_confirmed"};
+ assert.equal(classifyAsaasSandboxPilot(row,{status:200,body:{id:row.id,externalReference:"some-other-order",status:"CONFIRMED"}},{ASAAS_ENV:"sandbox",ASAAS_API_KEY:"dummy"}).classification,"ambiguo");
 });
