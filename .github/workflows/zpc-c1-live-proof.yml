@@ -39,9 +39,9 @@ jobs:
           if not token or not prod:stop("AUDIT_OR_PRODUCTION_TOKEN_MISSING")
           release_ok=False
           for _ in range(8):
-              code,release=get(root+"/api/release")
-              raw=json.dumps(release)
-              if code==200 and expected in raw:release_ok=True;break
+              code,release=get(root+"/api/control-plane")
+              current=(release.get("release") or {}).get("deployment") or {}
+              if code==200 and current.get("commit_sha")==expected:release_ok=True;break
               time.sleep(12)
           report["checks"]["exact_release"]=release_ok
           notice("EXACT_RELEASE",release_ok)
