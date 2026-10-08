@@ -26,6 +26,8 @@ on:
       - "worker/funnel.mjs"
       - "worker/sales-control.mjs"
       - "worker/internal-financial-audit.mjs"
+      - "worker/commercial-metrics-projection.mjs"
+      - "tests/commercial-metrics-projection.test.mjs"
       - "worker/commercial-checkout-guard.mjs"
       - "worker/signed-audit-probe.mjs"
       - "tests/internal-financial-audit.test.mjs"
