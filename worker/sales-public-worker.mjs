@@ -113,7 +113,9 @@ export default{async fetch(request,env,ctx){
   headers.set("x-robots-tag","index,follow");
   // Static assets (css/js/svg/images) are cached by browsers and the edge; pages revalidate.
   if(response.status===200&&!page&&/\.(css|js|svg|png|webp|jpg|jpeg|ico|woff2?)$/i.test(url.pathname)) headers.set("cache-control","public, max-age=86400, stale-while-revalidate=604800");
-  else if(response.status===200&&page) headers.set("cache-control","public, max-age=300, stale-while-revalidate=3600");
+  // no-transform: the edge must not inject third-party scripts (Web Analytics beacon) into sales
+  // pages — it was the only F5 performance offender and contradicts "no invasive tracking".
+  else if(response.status===200&&page) headers.set("cache-control","public, max-age=300, stale-while-revalidate=3600, no-transform");
   applySecurityHeaders(headers);
   const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===page);
   if(response.status===200&&sku&&env?.CORE&&typeof HTMLRewriter!=="undefined"){
