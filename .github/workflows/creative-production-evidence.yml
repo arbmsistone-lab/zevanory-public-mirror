@@ -34,7 +34,8 @@ jobs:
           curl -sS -H "$auth" "$base/values/zpc:creative-autonomy:daily:last" -o /tmp/daily-last.json
           quota_key="zpc:multichannel:quota:telegram:$(date -u +%F)"
           encoded_quota="$(printf '%s' "$quota_key" | jq -sRr @uri)"
-          curl -sS -H "$auth" "$base/values/$encoded_quota" -o /tmp/quota.txt
+          quota_http="$(curl -sS -H "$auth" "$base/values/$encoded_quota" -o /tmp/quota.txt -w '%{http_code}')"
+          if [ "$quota_http" = "404" ]; then printf '0' > /tmp/quota.txt; elif [ "$quota_http" != "200" ]; then echo "telegram quota read failed: HTTP $quota_http"; exit 1; fi
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const cutoff=Date.now()-86400000;
@@ -43,7 +44,7 @@ jobs:
           console.log(JSON.stringify({generated_last_24h:decisions.length,creatives:decisions}));
           const posts=fs.readdirSync('/tmp/posts').map(f=>JSON.parse(fs.readFileSync('/tmp/posts/'+f,'utf8'))).filter(x=>Date.parse(x?.publishedAt||0)>=cutoff).map(x=>({provider_post_id:x.provider_post_id,url:x.url,publishedAt:x.publishedAt,creative_id:x.creative_id}));
           console.log(JSON.stringify({telegram_posts_last_24h:posts.length,posts}));
-          const quota=Number(fs.readFileSync('/tmp/quota.txt','utf8').trim()||0);if(quota>2)throw new Error('telegram_daily_limit_exceeded');
+          const quotaRaw=fs.readFileSync('/tmp/quota.txt','utf8').trim(),quota=Number(quotaRaw||0);if(!Number.isFinite(quota)||quota<0)throw new Error('telegram_daily_quota_invalid');if(quota>2)throw new Error('telegram_daily_limit_exceeded');
           console.log(JSON.stringify({telegram_daily_quota_used:quota,limit:2}));
           const marker=(path)=>{const raw=fs.readFileSync(path,'utf8').trim();if(raw==='1')return {sent:true,sentAt:null,provider_message_id:null,legacy_marker:true};try{const x=JSON.parse(raw);return x&&typeof x==='object'?{sent:x.sent===true,sentAt:x.sentAt||null,provider_message_id:x.provider_message_id||null,date:x.date||null,legacy_marker:false}:null}catch{return null}};
           console.log(JSON.stringify({daily_report_schedule:'first successful hourly Worker cron after 00:00 UTC',daily_report:marker('/tmp/daily.json'),daily_report_last:marker('/tmp/daily-last.json')}));
