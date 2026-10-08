@@ -1,0 +1,38 @@
+name: ZEVANORY Asaas certification environment fail-closed
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/deploy/prepare-central-candidate.py"
+      - "scripts/deploy/verify-financial-boundary.py"
+      - ".github/workflows/zpc-asaas-sandbox-config.yml"
+permissions:
+  contents: read
+jobs:
+  asaas-sandbox-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify sandbox-only release candidate source and fail-closed financial assertions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          a=Path("scripts/deploy/prepare-central-candidate.py").read_text()
+          v=Path("scripts/deploy/verify-financial-boundary.py").read_text()
+          ast.parse(a);ast.parse(v)
+          expected=[
+            'c["vars"]["ASAAS_ENV"]="sandbox"',
+            'c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"',
+            'c["vars"]["MERCADOPAGO_ENV"]="sandbox"',
+            'c["vars"]["SALE_GLOBALLY_ENABLED"]="false"',
+            'c["vars"]["PRE_SALE_GATES_APPROVED"]="false"'
+          ]
+          for e in expected:
+            if e not in a:raise SystemExit("ASAAS_FINANCIAL_SAFETY_MISSING")
+          if 'ASAAS_ENV_MUST_BE_SANDBOX' not in v:raise SystemExit("ASAAS_DEPLOY_PROOF_MISSING")
+          print("::notice title=ASAAS_CERTIFICATION_ENV::SANDBOX_ONLY_PASS")
+          print("::notice title=PRODUCTION_COMMERCE::SALES_CLOSED_PASS")
+          PY
