@@ -1,0 +1,57 @@
+name: Gitleaks full history sanitized
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  full-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install pinned Gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 2 https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks version
+      - name: Scan entire Git history without printing findings
+        id: scan
+        shell: bash
+        run: |
+          set +e
+          /tmp/gitleaks git --log-opts="--all" --report-format json --report-path /tmp/gitleaks-raw.json --no-banner . >/tmp/gitleaks-log.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Sanitize findings and enforce no leaks
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,sys
+          raw='/tmp/gitleaks-raw.json'
+          code=int(os.environ.get('SCAN_EXIT','0'))
+          if code not in (0,1):
+              print('GITLEAKS_EXECUTION_ERROR='+str(code));sys.exit(2)
+          try: rows=json.load(open(raw,encoding='utf-8')) if os.path.exists(raw) else []
+          except Exception: print('GITLEAKS_INVALID_JSON');sys.exit(2)
+          safe=sorted({(str(x.get('RuleID',''))[:120],str(x.get('File',''))[:300],str(x.get('Commit',''))[:64]) for x in rows})
+          output=[{'rule':r,'file':f,'commit':c} for r,f,c in safe]
+          with open('gitleaks-sanitized.json','w',encoding='utf-8') as f:json.dump({'findings':output,'count':len(output)},f,ensure_ascii=False,indent=2)
+          print('GITLEAKS_FINDINGS_COUNT='+str(len(output)))
+          for x in output:print('GITLEAKS_FINDING '+json.dumps(x,ensure_ascii=False))
+          if code==1 or output:sys.exit(1)
+          PY
+        env:
+          SCAN_EXIT: ${{ steps.scan.outputs.exit_code }}
+      - name: Upload sanitized report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-sanitized
+          path: gitleaks-sanitized.json
+          if-no-files-found: warn
