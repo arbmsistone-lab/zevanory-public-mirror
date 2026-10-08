@@ -1,0 +1,86 @@
+name: ZEVANORY quorum safe identity diagnostics
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zevanory-quorum-safe-diagnostics.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect-three-provider-quorum:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read-only provider identity and commercial-lock inspection
+        env:
+          EXPECTED_RELEASE_SHA: 24de54a0ada3891356c92542901f5dae17886042
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          cfg=json.load(open("evidence/three-provider-quorum.json"))
+          assert cfg["schema_version"]==3
+          assert cfg["min_quorum"]>=3
+          assert cfg["commercial_release_allowed"] is False
+          assert cfg["fail_closed"] is True
+          assert cfg["zero_spend"] is True
+          assert cfg["provider_policy"]=="open_mesh_no_individual_provider_required"
+          def get_json(url):
+              req=urllib.request.Request(url,headers={"Accept":"application/json","User-Agent":"ZEVANORY-PHASE2-QUORUM-DIAGNOSTIC/1.0"})
+              with urllib.request.urlopen(req,timeout=18) as response:
+                  if response.status!=200:
+                      return response.status,None
+                  raw=response.read(32769)
+                  if len(raw)>32768: raise ValueError("oversize_response")
+                  body=json.loads(raw)
+                  if not isinstance(body,dict): raise ValueError("non_object_response")
+                  return response.status,body
+          try:
+              _,rel=get_json("https://zevanory.api.br/api/release")
+              actual=str((rel or {}).get("deployment",{}).get("commit_sha",""))
+          except Exception as e:
+              print("EXACT_RELEASE=FAIL",type(e).__name__)
+              raise SystemExit(1)
+          if actual!=os.environ["EXPECTED_RELEASE_SHA"]:
+              print("EXACT_RELEASE=FAIL_SHA_MISMATCH")
+              raise SystemExit(1)
+          print("EXACT_RELEASE=PASS",actual)
+          results=[]
+          for p in cfg["providers"]:
+              outcome={"provider":p["provider"],"failure_domain":p["failure_domain"],"configured_enabled":p.get("enabled",True) is True}
+              if p.get("enabled",True) is False:
+                  outcome.update(ok=False,reasons=["provider_disabled_by_policy"])
+                  results.append(outcome)
+                  print("PROVIDER_DIAGNOSTIC",json.dumps(outcome,sort_keys=True))
+                  continue
+              try:
+                  code,body=get_json(p.get("url") or p.get("status_url"))
+                  identity=body.get(p["identity_field"])
+                  match_identity=identity==p["identity_value"]
+                  expected=p.get("expected_provider_attestation")
+                  attested=True if not expected else body.get("provider")==expected or (body.get("quorum_attestation") or {}).get("provider")==expected
+                  direct=p.get("expected_provider")
+                  direct_match=True if not direct else body.get("provider")==direct
+                  runtime=body.get("runtime") or {}
+                  sales=runtime.get("sales") if isinstance(runtime,dict) else None
+                  locked=body.get("public_sales_locked")
+                  safe=(sales is None or sales=="globally-blocked") and locked is not False
+                  reasons=[]
+                  if not match_identity: reasons.append("identity_missing" if identity is None else "identity_mismatch")
+                  if not attested: reasons.append("provider_attestation_mismatch")
+                  if not direct_match: reasons.append("direct_provider_mismatch")
+                  if not safe: reasons.append("commercial_lock_not_proven")
+                  outcome.update(status=code,identity_present=identity is not None,identity_matches=match_identity,attestation_matches=bool(attested),direct_provider_matches=bool(direct_match),sales_marker=sales if sales in ("globally-blocked","enabled","disabled") else "other_or_missing",public_sales_lock_marker="true" if locked is True else "false" if locked is False else "absent",ok=not reasons,reasons=reasons)
+              except Exception as e:
+                  outcome.update(ok=False,reasons=["request_or_json_failed"],error_type=type(e).__name__)
+              results.append(outcome)
+              print("PROVIDER_DIAGNOSTIC",json.dumps(outcome,sort_keys=True))
+          healthy=[p for p in results if p["ok"]]
+          providers={p["provider"] for p in healthy}
+          domains={p["failure_domain"] for p in healthy}
+          print("REAL_INDEPENDENT_QUORUM",json.dumps({"providers":len(providers),"domains":len(domains),"required":cfg["min_quorum"]},sort_keys=True))
+          if len(providers)<cfg["min_quorum"] or len(domains)<cfg["min_quorum"]:
+              raise SystemExit("NO_QUORUM_FAIL_CLOSED")
+          print("THREE_PROVIDER_QUORUM=PASS")
+          PY
