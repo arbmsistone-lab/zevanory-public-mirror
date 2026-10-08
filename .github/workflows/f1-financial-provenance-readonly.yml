@@ -10,90 +10,126 @@ permissions:
 jobs:
   financial-provenance:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 25
     env:
-      F1_DATABASE_URL: ${{ secrets.ZEVANORY_NEON_DATABASE_URL || secrets.DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.ZEVANORY_NEON_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+      MERCADOPAGO_PROD_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_PROD_ACCESS_TOKEN }}
     steps:
-      - name: Require read-only database access
-        shell: bash
-        run: |
-          if [ -z "${F1_DATABASE_URL:-}" ]; then
-            echo "::error title=F1_DATABASE_ACCESS::NO_NEON_DATABASE_CREDENTIAL_IN_GITHUB_ACTIONS"
-            exit 2
-          fi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install PostgreSQL read-only client
+      - name: Install read-only SQL client
         run: python -m pip install --disable-pip-version-check 'psycopg[binary]==3.2.10'
-      - name: Aggregate canonical financial provenance without PII
+      - name: Validate provider identity and financial origin by production GET only
         shell: bash
         run: |
-          set -euo pipefail
           python - <<'PY'
-          import json, os, sys, datetime
+          import json,os,sys,urllib.request,urllib.error,re,collections,datetime,unittest
           from pathlib import Path
+          from urllib.parse import urlparse
           import psycopg
-          from psycopg import sql
-          def notice(key, value):
-              print("::notice title=F1_"+key+"::"+str(value), flush=True)
-          def error(code):
-              print("::error title=F1_FINANCIAL_PROVENANCE::"+code, flush=True)
-          out={"schema":"zevanory.f1.financial-provenance/v1","generated_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),"classification_policy":"fail_closed_unknown_without_provider_account_proof","aggregates":{},"production_payment_proven":False}
+          OUT=Path("f1-financial-provenance-sanitized.json")
+          result={"schema":"zevanory.f1.readonly/v2","observed_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "state":"BLOCKED","production_token_eligible":False,"database":{"provider":"not_verified","plan":"not_verified","created":"not_verified","expiration":"not_verified"},
+            "classes":[],"confirmed_or_ambiguous_ids":{"producao_confirmado":[],"ambiguo":[]}}
+          def notice(code,v): print("::notice title=F1_"+code+"::"+str(v),flush=True)
+          def stop(code):
+            OUT.write_text(json.dumps(result,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+            print("::error title=F1_BLOCKED::"+code,flush=True)
+            sys.exit(2)
+          def get(path,token):
+            req=urllib.request.Request("https://api.mercadopago.com"+path,method="GET",headers={"Authorization":"Bearer "+token,"Accept":"application/json"})
+            try:
+              with urllib.request.urlopen(req,timeout=18) as r: return r.status,json.loads(r.read(262144))
+            except urllib.error.HTTPError as e: return e.code,{}
+            except Exception: return 0,{}
+          def valid_id(s): return bool(re.fullmatch(r"[0-9]{1,32}",str(s or "")))
+          def classify(ev,code,p,user_id):
+            if ev["pilot"] is True: return "teste_certificacao"
+            if ev["provider"]!="mercadopago": return "ambiguo"
+            if ev["missing"] or ev["pilot"] is None or not valid_id(ev["payment_id"]): return "ambiguo"
+            if code==404: return "nao_existe_em_producao"
+            if code!=200: return "ambiguo"
+            collector=p.get("collector_id") or (p.get("collector") or {}).get("id")
+            ref=str(p.get("external_reference") or "").strip()
+            expected={ev["order_id"],ev["external_reference"]}-set([""])
+            if str(collector)==str(user_id) and p.get("live_mode") is True and ref in expected and ev["pilot"] is False: return "producao_confirmado"
+            return "ambiguo"
+          class NegativeTests(unittest.TestCase):
+            def test_classifications(self):
+              e=dict(pilot=False,provider="mercadopago",missing=False,payment_id="123456",order_id="order",external_reference="order")
+              p=dict(collector_id=77,live_mode=True,external_reference="order")
+              self.assertEqual(classify(e,200,p,77),"producao_confirmado")
+              self.assertEqual(classify({**e,"pilot":True},200,p,77),"teste_certificacao")
+              self.assertEqual(classify(e,404,{},77),"nao_existe_em_producao")
+              self.assertEqual(classify(e,200,p,99),"ambiguo")
+              self.assertEqual(classify(e,200,{**p,"live_mode":False},77),"ambiguo")
+              self.assertEqual(classify(e,200,{**p,"external_reference":"other"},77),"ambiguo")
+              self.assertEqual(classify({**e,"missing":True},200,p,77),"ambiguo")
+              self.assertEqual(classify({**e,"pilot":None},200,p,77),"ambiguo")
+              self.assertEqual(classify({**e,"provider":"asaas"},200,p,77),"ambiguo")
+          suite=unittest.defaultTestLoader.loadTestsFromTestCase(NegativeTests)
+          if not unittest.TextTestRunner(verbosity=0).run(suite).wasSuccessful(): stop("NEGATIVE_REGRESSION")
+          notice("NEGATIVE_CLASSIFICATION_TESTS","PASS")
+          token=os.environ.get("MERCADOPAGO_PROD_ACCESS_TOKEN","").strip()
+          if not token or token.startswith("TEST-"): stop("PRODUCTION_TOKEN_MISSING_OR_TEST")
+          status,owner=get("/users/me",token)
+          tags=owner.get("tags") or []
+          eligible=status==200 and owner.get("site_id")=="MLB" and isinstance(tags,list) and "test_user" not in tags and valid_id(owner.get("id"))
+          notice("MERCADOPAGO_USERS_ME_HTTP",status)
+          notice("MERCADOPAGO_ACCOUNT_NON_TEST",str(eligible).lower())
+          result["production_token_eligible"]=eligible
+          if not eligible: stop("PRODUCTION_ACCOUNT_NOT_VERIFIED")
+          url=os.environ.get("DATABASE_URL","").strip()
+          if not url: stop("DATABASE_URL_NOT_ACCESSIBLE_IN_THIS_GITHUB_JOB")
+          host=(urlparse(url).hostname or "").lower()
+          result["database"]["provider"]=("neon_host_inferred" if host.endswith(".neon.tech") else "supabase_host_inferred" if "supabase" in host else "render_host_inferred" if "render.com" in host else "unknown")
+          notice("DATABASE_PROVIDER",result["database"]["provider"])
+          # The URI cannot prove the plan, creation timestamp or expiry: stay unknown.
           try:
-              with psycopg.connect(os.environ["F1_DATABASE_URL"], connect_timeout=15, options="-c default_transaction_read_only=on -c statement_timeout=25000") as db:
-                  with db.cursor() as cur:
-                      cur.execute("select table_name,column_name from information_schema.columns where table_schema='public' and table_name in ('orders','financial_events')")
-                      fields={}
-                      for table,col in cur.fetchall():
-                          fields.setdefault(table,set()).add(col)
-                      required={"orders":{"order_id","certification_pilot"},"financial_events":{"order_id","provider","normalized_event"}}
-                      missing={k:sorted(v-fields.get(k,set())) for k,v in required.items() if v-fields.get(k,set())}
-                      if missing:
-                          error("SCHEMA_REQUIRED_COLUMNS_MISSING")
-                          notice("MISSING_COLUMN_COUNT",sum(len(x) for x in missing.values()))
-                          raise RuntimeError("schema_unverified")
-                      cur.execute("""select count(*)::int,
-                          count(*) filter(where certification_pilot is true)::int,
-                          count(*) filter(where certification_pilot is not true)::int
-                          from orders""")
-                      total,pilot,unverified=map(int,cur.fetchone())
-                      cur.execute("""select
-                          case when f.provider='mercadopago' then 'mercadopago'
-                               when f.provider='asaas' then 'asaas'
-                               when f.provider='stripe' then 'stripe'
-                               else 'other_or_missing' end as provider_group,
-                          case when o.certification_pilot is true then 'certification_pilot'
-                               when o.order_id is null then 'orphan_unverified'
-                               else 'origin_unverified' end as origin_class,
-                          case when f.normalized_event='payment_confirmed' then 'payment_confirmed'
-                               when f.normalized_event='refund_confirmed' then 'refund_confirmed'
-                               else 'other_event' end as event_class,
-                          count(*)::int
-                          from financial_events f left join orders o on o.order_id=f.order_id
-                          group by 1,2,3 order by 1,2,3""")
-                      grouped=[{"provider":str(a),"origin":str(b),"event":str(c),"count":int(n)} for a,b,c,n in cur.fetchall()]
-                      out["aggregates"]={"orders_total":total,"orders_certification_pilot":pilot,"orders_origin_unverified":unverified,"financial_events_by_origin_provider":grouped}
-                      notice("ORDERS_TOTAL",total)
-                      notice("ORDERS_PILOT",pilot)
-                      notice("ORDERS_ORIGIN_UNVERIFIED",unverified)
-                      notice("EVENT_GROUP_COUNT",len(grouped))
-                      notice("PAYMENT_PROVIDER_ACCOUNT_CROSSCHECK","NOT_PERFORMED")
-                      notice("LIVE_MODE_ALONE_SUFFICIENT","false")
+            with psycopg.connect(url,connect_timeout=15,options="-c default_transaction_read_only=on -c statement_timeout=30000") as db:
+              with db.cursor() as cur:
+                cur.execute("select table_name,column_name from information_schema.columns where table_schema='public' and table_name in ('orders','financial_events')")
+                fields=collections.defaultdict(set)
+                for t,c in cur.fetchall(): fields[t].add(c)
+                required={"orders":{"order_id","certification_pilot"},"financial_events":{"order_id","provider","provider_payment_id","normalized_event","external_reference"}}
+                if any(not required[t].issubset(fields[t]) for t in required): stop("SCHEMA_PROVENANCE_COLUMNS_MISSING")
+                cur.execute("select count(*)::int,count(*) filter(where certification_pilot is true)::int from orders")
+                total,pilot=cur.fetchone()
+                notice("ORDERS_TOTAL",int(total)); notice("ORDERS_CERTIFICATION",int(pilot))
+                cur.execute("""select f.provider_payment_id::text,f.provider::text,f.normalized_event::text,
+                          coalesce(f.external_reference,'')::text,f.order_id::text,
+                          o.order_id is null,o.certification_pilot
+                          from financial_events f left join orders o on o.order_id=f.order_id""")
+                rows=[dict(payment_id=str(pid or ""),provider=str(prov or ""),event=str(ev or ""),
+                           external_reference=str(ref or ""),order_id=str(oid or ""),missing=missing,pilot=pilot)
+                      for pid,prov,ev,ref,oid,missing,pilot in cur.fetchall()]
+          except SystemExit: raise
           except Exception as exc:
-              if not isinstance(exc,RuntimeError):
-                  error("READ_ONLY_QUERY_FAILED_"+type(exc).__name__)
-              out["audit_state"]="BLOCKED"
-              Path("f1-financial-provenance-sanitized.json").write_text(json.dumps(out,indent=2)+"\n")
-              sys.exit(2)
-          out["audit_state"]="BLOCKED" if out["aggregates"]["orders_origin_unverified"] or out["aggregates"]["financial_events_by_origin_provider"] else "NO_RECORDS_ONLY"
-          Path("f1-financial-provenance-sanitized.json").write_text(json.dumps(out,indent=2)+"\n")
-          if out["audit_state"]=="BLOCKED":
-              error("UNVERIFIED_FINANCIAL_ORIGIN_PREVENTS_COMMERCIAL_GO")
-              sys.exit(3)
-          notice("AUDIT_STATE",out["audit_state"])
+            notice("READ_ERROR_CLASS",type(exc).__name__)
+            stop("READ_ONLY_SQL_FAILED")
+          ids=sorted({e["payment_id"] for e in rows if e["payment_id"]})
+          if len(ids)>1000: stop("PAYMENT_ID_COUNT_EXCEEDS_SAFE_AUDIT_LIMIT")
+          evidence={pid:get("/v1/payments/"+pid,token) if valid_id(pid) else (0,{}) for pid in ids}
+          aggregates=collections.Counter(); per_id=collections.defaultdict(set)
+          for e in rows:
+            code,p=evidence.get(e["payment_id"],(0,{}))
+            cls=classify(e,code,p,owner["id"])
+            aggregates[(cls,e["provider"],e["event"])]+=1
+            per_id[e["payment_id"]].add(cls)
+          for pid,classes in per_id.items():
+            cls=next(iter(classes)) if len(classes)==1 else "ambiguo"
+            if cls in result["confirmed_or_ambiguous_ids"]: result["confirmed_or_ambiguous_ids"][cls].append(pid)
+          result["classes"]=[{"class":cls,"provider":provider,"event":event,"count":count} for (cls,provider,event),count in sorted(aggregates.items())]
+          for cls in ["producao_confirmado","nao_existe_em_producao","teste_certificacao","ambiguo"]:
+            notice("EVENTS_"+cls.upper(),sum(n for (k,_,_),n in aggregates.items() if k==cls))
+          notice("DISTINCT_PAYMENT_IDS",len(ids))
+          result["state"]="BLOCKED" if result["confirmed_or_ambiguous_ids"]["ambiguo"] else "CLASSIFIED_NOT_COMMERCIAL_GO"
+          OUT.write_text(json.dumps(result,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          if result["state"]=="BLOCKED": stop("AMBIGUOUS_PAYMENTS_FAIL_CLOSED")
+          notice("FINAL",result["state"])
           PY
-      - name: Preserve aggregated evidence (one day, no customer data)
+      - name: Publish sanitized aggregates for 24 hours
         if: always()
         uses: actions/upload-artifact@v4
         with:
