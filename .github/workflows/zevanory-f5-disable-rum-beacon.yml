@@ -32,16 +32,26 @@ jobs:
           c,b=call(base+"/list?per_page=50")
           if c!=200:print(f"::error title=RUM::list_http_{c} {str(b.get('errors'))[:200]}");sys.exit(1)
           sites=b.get("result") or []
-          print("::notice title=RUM_SITES::"+json.dumps([{"host":s.get("host"),"auto_install":s.get("auto_install"),"id":str(s.get("site_tag",""))[:8]} for s in sites]))
-          targets=[s for s in sites if "zevanory" in str(s.get("host","")) and s.get("auto_install")]
+          def zone_name(s):
+            z=(s.get("ruleset") or {}).get("zone_name") or s.get("zone_name")
+            if z:return z
+            zt=s.get("zone_tag") or (s.get("ruleset") or {}).get("zone_tag")
+            if not zt:return ""
+            c,zb=call(f"https://api.cloudflare.com/client/v4/zones/{zt}")
+            return (zb.get("result") or {}).get("name","") if c==200 else f"zone_lookup_http_{c}"
+          for s in sites:s["_zone"]=s.get("host") or zone_name(s)
+          print("::notice title=RUM_SITES::"+json.dumps([{"zone":s["_zone"],"auto_install":s.get("auto_install"),"id":str(s.get("site_tag",""))[:8]} for s in sites]))
+          targets=[s for s in sites if str(s["_zone"]).endswith("zevanory.api.br") and s.get("auto_install")]
           if not targets:print("::notice title=RUM::no ZEVANORY site with auto_install=true");sys.exit(0)
           for s in targets:
-            c,b=call(f"{base}/{s['site_tag']}","PUT",{"auto_install":False,"host":s.get("host"),"zone_tag":s.get("zone_tag") or (s.get("ruleset") or {}).get("zone_tag")})
+            body={"auto_install":False,"zone_tag":s.get("zone_tag") or (s.get("ruleset") or {}).get("zone_tag")}
+            if s.get("host"):body["host"]=s["host"]
+            c,b=call(f"{base}/{s['site_tag']}","PUT",body)
             ok=c==200 and (b.get("result") or {}).get("auto_install") is False
-            print(f"::{'notice' if ok else 'error'} title=RUM_DISABLE::host={s.get('host')} http={c} auto_install_after={(b.get('result') or {}).get('auto_install')} {'' if ok else str(b.get('errors'))[:200]}")
+            print(f"::{'notice' if ok else 'error'} title=RUM_DISABLE::zone={s['_zone']} http={c} auto_install_after={(b.get('result') or {}).get('auto_install')} {'' if ok else str(b.get('errors'))[:200]}")
             if not ok:sys.exit(1)
           c,b=call(base+"/list?per_page=50")
-          left=[s.get("host") for s in (b.get("result") or []) if "zevanory" in str(s.get("host","")) and s.get("auto_install")]
+          left=[s.get("site_tag","")[:8] for s in (b.get("result") or []) if s.get("site_tag") in {t["site_tag"] for t in targets} and s.get("auto_install")]
           if left:print("::error title=RUM::still_auto_install "+",".join(left));sys.exit(1)
           print("::notice title=RUM::PASS auto-injected beacon disabled for all ZEVANORY hosts")
           PY
