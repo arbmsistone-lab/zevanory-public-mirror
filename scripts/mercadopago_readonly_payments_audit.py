@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
 """Read-only Mercado Pago production reconciliation. Never print provider response bodies."""
 import datetime,json,os,sys,urllib.parse,urllib.request,urllib.error
+_exit=sys.exit
+def _fail(code):
+    # Only fixed error codes reach the public log/annotations, never provider bodies or data.
+    print("::error title=MP_READONLY_AUDIT::"+str(code)[:120],flush=True)
+    _exit(1)
+sys.exit=_fail
 START="2026-10-02T00:00:00-03:00"
 API="https://api.mercadopago.com/v1/payments/search"
 APP="https://zevanory.api.br"
 token=os.environ.get("MERCADOPAGO_PROD_ACCESS_TOKEN","").strip()
 cert=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
-if not token or not cert:sys.exit("MISSING_REQUIRED_SECRETS")
+if not token:sys.exit("MISSING_MERCADOPAGO_PROD_ACCESS_TOKEN")
+if not cert:sys.exit("MISSING_CERTIFICATION_E2E_TOKEN")
 def fetch_json(url,headers):
     req=urllib.request.Request(url,headers=headers,method="GET")
     try:
         with urllib.request.urlopen(req,timeout=25) as res:return json.loads(res.read())
     except urllib.error.HTTPError as e:raise RuntimeError("HTTP_"+str(e.code)) from None
-    except Exception:raise RuntimeError("READ_REQUEST_FAILED") from None
+    except Exception as e:raise RuntimeError("READ_REQUEST_FAILED_"+type(e).__name__) from None
 def amount(x):
     try:return round(float(x),2)
     except Exception:return None
@@ -22,7 +29,8 @@ start=datetime.datetime.fromisoformat(START)
 rows=[];offset=0;limit=50;seen=set()
 while True:
     params=urllib.parse.urlencode({"range":"date_created","begin_date":START,"end_date":end,"sort":"date_created","criteria":"asc","limit":limit,"offset":offset})
-    response=fetch_json(API+"?"+params,{"Authorization":"Bearer "+token,"Accept":"application/json"})
+    try:response=fetch_json(API+"?"+params,{"Authorization":"Bearer "+token,"Accept":"application/json"})
+    except RuntimeError as e:sys.exit("PAYMENTS_SEARCH_"+str(e))
     items=response.get("results")
     if not isinstance(items,list):sys.exit("INVALID_PAYMENTS_RESPONSE")
     paging=response.get("paging") or {}
