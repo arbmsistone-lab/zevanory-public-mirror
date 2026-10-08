@@ -120,6 +120,23 @@ jobs:
               if code!=200:stop(kind.upper()+"_NOT_PROVEN")
           if not report["checks"].get("same_mp_account_hash"):stop("COLLECTOR_ACCOUNT_MISMATCH")
           if report["checks"].get("financial_ambiguous")!=0:stop("AMBIGUOUS_PAYMENT_RECORDS")
+          # C2: public commercial status must not count certified pilots as sales.
+          status_code,public_status=get(root+"/api/status")
+          metrics=public_status.get("metrics") or {}
+          safe_keys=["orders","payments_confirmed","refunds_confirmed","checkouts_started"]
+          counts={}
+          if status_code==200:
+              for field in safe_keys:
+                  value=metrics.get(field)
+                  counts[field]=value if isinstance(value,int) and not isinstance(value,bool) and 0<=value<=1000000 else None
+          report["checks"]["public_status_http"]=status_code
+          report["checks"]["public_commercial_metrics"]=counts
+          notice("PUBLIC_STATUS_HTTP",status_code)
+          for field,value in counts.items():
+              notice("PUBLIC_"+field.upper(),value)
+          if status_code!=200:stop("PUBLIC_STATUS_READ_FAILED")
+          if report["checks"]["production_confirmed"]==0 and (counts.get("orders") or counts.get("payments_confirmed") or counts.get("refunds_confirmed")):
+              stop("COMMERCIAL_STATUS_MIXES_CERTIFICATION_AND_PRODUCTION")
           report["state"]="CLASSIFICATION_PROVEN_NOT_COMMERCIAL_GO"
           Path("c1-live-proof-sanitized.json").write_text(json.dumps(report,indent=2)+"\n")
           notice("STATE",report["state"])
