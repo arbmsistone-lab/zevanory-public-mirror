@@ -57,6 +57,36 @@ export function classifyPayment(row,response,accountId) {
   return classifyPaymentEvidence(row,response,accountId).classification;
 }
 
+const asaasSafeId=id=>/^[a-zA-Z0-9_-]{6,96}$/.test(String(id||""));
+export function classifyAsaasSandboxPilot(row,response,env={}) {
+  const denied=reason=>({classification:"ambiguo",reason});
+  if(row?.provider!=="asaas"||row?.pilot!==true||row?.orphan!==false)return denied("asaas_pilot_provenance_unverified");
+  if(String(env.ASAAS_ENV||"").toLowerCase()!=="sandbox" || !String(env.ASAAS_API_KEY||"").trim())return denied("asaas_sandbox_credential_not_verified");
+  if(!asaasSafeId(row.id))return denied("asaas_payment_id_not_eligible_for_lookup");
+  if(response?.status!==200||!response?.body)return denied("asaas_sandbox_payment_lookup_unverified");
+  const payment=response.body;
+  const ref=String(payment.externalReference||"");
+  const orderId=String(row.order_id||"");
+  const expected=String(row.reference||"");
+  const refOk=orderId.length>=32&&(ref===orderId||ref.endsWith(":"+orderId))&&(!expected||ref===expected);
+  if(String(payment.id||"")!==String(row.id)||!refOk)return denied("asaas_sandbox_payment_reference_mismatch");
+  const state=String(payment.status||"").toUpperCase();
+  if(row.normalized_event==="payment_confirmed"&&!["CONFIRMED","RECEIVED","REFUNDED"].includes(state))return denied("asaas_sandbox_payment_status_not_confirmed");
+  if(row.normalized_event==="refund_confirmed"&&state!=="REFUNDED")return denied("asaas_sandbox_refund_status_not_confirmed");
+  if(!["payment_confirmed","refund_confirmed"].includes(String(row.normalized_event||"")))return denied("asaas_sandbox_event_not_supported");
+  return {classification:"teste_certificacao",reason:"asaas_sandbox_provider_get_and_reference_verified"};
+}
+async function asaasSandboxGet(id,env) {
+  if(String(env.ASAAS_ENV||"").toLowerCase()!=="sandbox"||!String(env.ASAAS_API_KEY||"").trim()||!asaasSafeId(id))return {status:0,body:null};
+  try{
+    const response=await fetch("https://api-sandbox.asaas.com/v3/payments/"+encodeURIComponent(id),{
+      method:"GET",headers:{access_token:String(env.ASAAS_API_KEY),accept:"application/json","user-agent":"ZEVANORY-F1-READONLY-AUDIT/1.0"},
+      signal:AbortSignal.timeout(7000)});
+    if(response.status!==200)return {status:response.status,body:null};
+    return {status:200,body:await response.json()};
+  }catch{return {status:0,body:null};}
+}
+
 async function mpGet(path,token) {
   if(!token||token.startsWith("TEST-"))return {status:0,body:null};
   try{
@@ -107,7 +137,7 @@ export function safeFinancialAuditDimensions(row={}) {
 async function financialClassification(env,sqlFactory){
   const result={schema:"zevanory.audit.financial-classification/v1",production_confirmed:0,
     not_in_production:0,ambiguous:0,orders:{total:0,certification:0,noncertified_unverified:0},
-    payment_ids:{producao_confirmado:[],ambiguo:[]},evidence_reasons:[],evidence_breakdown:[],certification_events:0,complete:false,commercial_release_allowed:false};
+    payment_ids:{producao_confirmado:[],ambiguo:[]},evidence_reasons:[],evidence_breakdown:[],certification_events:0,asaas_sandbox:{environment:"unknown",credential_configured:false,ids_queried:0},complete:false,commercial_release_allowed:false};
   if(!env.DATABASE_URL||!sqlFactory)return {code:503,result:{error:"database_unavailable"}};
   const token=String(env.MERCADOPAGO_ACCESS_TOKEN||"");
   const owner=await getOwner(token);
@@ -131,10 +161,22 @@ async function financialClassification(env,sqlFactory){
   for(const x of rows)if(/^\d{1,32}$/.test(String(x.id||"")))ids.set(String(x.id),null);
   if(ids.size>40)return {code:503,result:{error:"audit_limit_exceeded",complete:false}};
   for(const id of ids.keys())ids.set(id,await mpGet("/v1/payments/"+id,token));
+  const asaasMode=String(env.ASAAS_ENV||"").toLowerCase();
+  result.asaas_sandbox.environment=asaasMode==="sandbox"?"sandbox":asaasMode==="production"?"production":"unknown";
+  result.asaas_sandbox.credential_configured=Boolean(String(env.ASAAS_API_KEY||"").trim());
+  const asaasResults=new Map();
+  if(asaasMode==="sandbox"&&result.asaas_sandbox.credential_configured){
+    for(const row of rows)if(row.provider==="asaas"&&row.pilot===true&&asaasSafeId(row.id)&&!asaasResults.has(String(row.id))){
+      asaasResults.set(String(row.id),await asaasSandboxGet(row.id,env));
+    }
+  }
+  result.asaas_sandbox.ids_queried=asaasResults.size;
   const reasonCounts=new Map();
   const breakdown=new Map();
   for(const row of rows){
-    const evidence=classifyPaymentEvidence(row,ids.get(String(row.id))||{status:0,body:null},owner.body.id);
+    const evidence=row.provider==="asaas"&&row.pilot===true?
+      classifyAsaasSandboxPilot(row,asaasResults.get(String(row.id))||{status:0,body:null},env):
+      classifyPaymentEvidence(row,ids.get(String(row.id))||{status:0,body:null},owner.body.id);
     const label=evidence.classification;
     const reasonKey=label+":"+evidence.reason;
     reasonCounts.set(reasonKey,(reasonCounts.get(reasonKey)||0)+1);
