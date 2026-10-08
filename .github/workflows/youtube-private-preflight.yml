@@ -16,6 +16,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Validate YouTube OAuth and exact channel identity (read-only)
+        run: node scripts/channels/youtube-identity.mjs
       - name: Authenticate to Google Cloud with OIDC
         uses: google-github-actions/auth@v2
         with:
