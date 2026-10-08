@@ -1,0 +1,62 @@
+name: ZEVANORY A2 A3 closed-checkout read-only provenance proof
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths: [".github/workflows/audit-a2a3-closed-checkout-20261008.yml"]
+permissions:
+  contents: read
+jobs:
+  blocked-checkout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      EXPECTED_SHA: 03e9c7dc44652218c76454b425d51c34cd49dc59
+    steps:
+      - name: Verify live closed state, probe checkout routes, and compare financial event counts
+        run: |
+          python3 - <<'PY'
+          import os,json,time,hmac,hashlib,urllib.request,urllib.error
+          base="https://zevanory.api.br"
+          secret=os.environ.get("CERTIFICATION_E2E_TOKEN","")
+          assert len(secret)>=32,"AUDIT_SECRET_MISSING"
+          def req(path,method="GET",body=None,signed=False):
+            ts=str(int(time.time()))
+            headers={"Accept":"application/json","User-Agent":"ZEVANORY-A2A3-SAFE-PROBE/1"}
+            if signed:
+              msg="GET\\n"+path+"\\n"+ts
+              headers["x-zevanory-audit-ts"]=ts
+              headers["x-zevanory-audit-signature"]=hmac.new(secret.encode(),msg.encode(),hashlib.sha256).hexdigest()
+            if body is not None:headers["Content-Type"]="application/json"
+            request=urllib.request.Request(base+path,method=method,data=(json.dumps(body).encode() if body is not None else None),headers=headers)
+            try:
+              with urllib.request.urlopen(request,timeout=18) as response:status,raw=response.status,response.read(8192)
+            except urllib.error.HTTPError as err:status,raw=err.code,err.read(8192)
+            try:data=json.loads(raw)
+            except:data={}
+            return status,data
+          rel_code,release=req("/api/release")
+          assert rel_code==200 and release.get("deployment",{}).get("commit_sha")==os.environ["EXPECTED_SHA"],"LIVE_SHA_NOT_EXACT"
+          s_code,state=req("/api/status",signed=True)
+          assert s_code==200 and state.get("commercial_metrics_provenance",{}).get("commercial_release_allowed") is False,"SALES_NOT_PROVEN_CLOSED"
+          assert state.get("gate")=="G2","COMMERCIAL_GATE_NOT_G2"
+          def count():
+            status,a=req("/api/internal/audit/financial-classification",signed=True)
+            assert status==200 and a.get("complete") is True and a.get("ambiguous")==0,"AUDIT_BASELINE_NOT_PROVEN"
+            assert isinstance(a.get("orders",{}).get("total"),int),"ORDER_COUNT_UNAVAILABLE"
+            return a["orders"]["total"]
+          before=count()
+          routes=["/api/checkout","/api/checkout/mercadopago","/api/checkout/asaas","/api/checkout/stripe","/checkout","/checkout/legacy","/comprar","/comprar/ZEV-IA-011","/api/payment/checkout","/api/payments/checkout"]
+          for path in routes:
+            status,result=req(path,"POST",{"audit_probe":True,"product_id":"INVALID_AUDIT_PROBE"})
+            denied=status==503 and result.get("error")=="commercial_checkout_closed"
+            print("::notice title=A2A3_CHECKOUT::path=%s status=%s denied=%s"%(path,status,str(denied).lower()))
+            assert denied,"CHECKOUT_NOT_FAIL_CLOSED:"+path
+          after=count()
+          assert before==after,"ORDER_COUNT_CHANGED"
+          print("::notice title=A2A3_ORDER_DELTA::before=%s after=%s delta=0"%(before,after))
+          status,pilot=req("/api/internal/certification/e2e/invite","POST",{"audit_probe":True})
+          assert status in (401,403,404,503),"PILOT_INVITE_UNEXPECTED_STATUS"
+          print("::notice title=A3_PILOT_DENIAL::status=%s (no invitation created)"%status)
+          print("::notice title=A2A3_RESULT::PASS exact_sha="+os.environ["EXPECTED_SHA"])
+          PY
