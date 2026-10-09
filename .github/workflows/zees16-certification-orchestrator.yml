@@ -205,7 +205,7 @@ jobs:
         run: echo '{}' > previous-state.json
       - name: Reconcile production evidence
         run: node scripts/reconcile_zees16_control.mjs
-      - name: Report ZEES-16 state
+      - name: Enforce ZEES-16 fail-closed acceptance
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
@@ -217,5 +217,13 @@ jobs:
             blocked: Number(s?.counts?.blocked || 0),
             na: Number(s?.counts?.na || 0),
           };
+          const expected=process.env.EXPECTED_SHA;
+          if (!/^[a-f0-9]{40}$/.test(expected || "") || s.release_sha !== expected) {
+            throw new Error("ZEES16 exact production SHA mismatch");
+          }
           console.log("ZEES16_ORCHESTRATED_EVALUATION_REPORT", counts, "SHA", s.release_sha);
+          if (counts.proven !== 16 || counts.partial !== 0 || counts.blocked !== 0 || counts.na !== 0) {
+            throw new Error(`ZEES16 acceptance requires 16/16 PROVEN; got ${JSON.stringify(counts)}`);
+          }
+          console.log("ZEES16_CERTIFICATION_PASS", expected);
           NODE
