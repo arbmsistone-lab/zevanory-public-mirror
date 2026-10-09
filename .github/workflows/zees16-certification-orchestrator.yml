@@ -18,6 +18,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  fail-closed-regression:
+    name: ZEES-16 fail-closed regression contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Incomplete evidence MUST fail; exact 16 of 16 MUST pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, tempfile
+
+          source=pathlib.Path(".github/workflows/zees16-certification-orchestrator.yml").read_text()
+          lines=source.splitlines()
+          header="      - name: Report ZEES-16 state"
+          begin_marker="          node --input-type=module <<'NODE'"
+          if header not in lines:
+              raise SystemExit("Fail-closed test: certifier step is missing")
+          start=lines.index(header)
+          if begin_marker not in lines[start:]:
+              raise SystemExit("Fail-closed test: certifier executable is missing")
+          begin=lines.index(begin_marker, start)+1
+          if "          NODE" not in lines[begin:]:
+              raise SystemExit("Fail-closed test: certifier end marker is missing")
+          end=lines.index("          NODE",begin)
+          code="\n".join(line[10:] for line in lines[begin:end])
+          sha="a"*40
+          scenarios=[
+              ("12/16 incomplete",{"proven":12,"partial":3,"blocked":1,"na":0},sha,False),
+              ("15/16 incomplete",{"proven":15,"partial":1,"blocked":0,"na":0},sha,False),
+              ("release mismatch",{"proven":16,"partial":0,"blocked":0,"na":0},"b"*40,False),
+              ("16/16 complete",{"proven":16,"partial":0,"blocked":0,"na":0},sha,True),
+          ]
+          for label,counts,release_sha,should_pass in scenarios:
+              with tempfile.TemporaryDirectory() as directory:
+                  state={"counts":counts,"release_sha":release_sha}
+                  pathlib.Path(directory,"zees16-state.json").write_text(json.dumps(state))
+                  env=os.environ.copy()
+                  env["EXPECTED_SHA"]=sha
+                  result=subprocess.run(["node","--input-type=module","-e",code],
+                                        cwd=directory,env=env,capture_output=True,text=True,timeout=15)
+                  passed=(result.returncode==0)
+                  if passed!=should_pass:
+                      raise SystemExit("Fail-closed regression failure: "+label+
+                                       " expected_pass="+str(should_pass)+" actual_pass="+str(passed))
+                  print("ZEES16_CONTRACT_PASS:",label,"observed_pass=",passed)
+          PY
+
   resolve-sha:
     name: Resolve Certified Live SHA
     runs-on: ubuntu-latest
@@ -187,7 +238,7 @@ jobs:
 
   reconcile-acceptance:
     name: Phase 5 - Final ZEES-16 Reconciler Acceptance
-    needs: [resolve-sha, evidence-gate-and-provenance]
+    needs: [resolve-sha, evidence-gate-and-provenance, fail-closed-regression]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -224,8 +275,8 @@ jobs:
           const isCertified = counts.proven === 16 && counts.partial === 0 && counts.blocked === 0 && counts.na === 0;
           console.log("ZEES16_EVALUATION_REPORT", counts, "SHA", s.release_sha, "CERTIFIED_16_16", isCertified);
           if (!isCertified) {
-            console.log("ZEES16_GOVERNANCE_STATUS: REPROVED (F6 remains UNCERTIFIED until 16/16 evidence runs complete)");
-          } else {
-            console.log("ZEES16_GOVERNANCE_STATUS: PROVEN (F6 FULL CERTIFICATION GRANTED)");
+            console.error("ZEES16_GOVERNANCE_STATUS: REPROVED (F6 remains UNCERTIFIED until 16/16 evidence runs complete)");
+            throw new Error("ZEES16_FAIL_CLOSED: exact 16/16 PROVEN required; see ZEES16_EVALUATION_REPORT above");
           }
+          console.log("ZEES16_GOVERNANCE_STATUS: PROVEN (F6 FULL CERTIFICATION GRANTED)");
           NODE
