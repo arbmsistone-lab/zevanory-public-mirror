@@ -118,3 +118,11 @@ class SalesSwitchWorkflowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class DeployLookupRegression(unittest.TestCase):
+    def test_deploy_lookup_is_workflow_scoped_and_read_cap_is_large(self):
+        src = (pathlib.Path(__file__).resolve().parents[1] / "scripts" / "sales_switch_workflow.py").read_text()
+        self.assertIn("/actions/workflows/central-production-deploy.yml/runs?head_sha=", src)
+        self.assertNotIn('"/actions/runs?head_sha="', src)
+        self.assertIn("resp.read(4 * 1024 * 1024)", src)

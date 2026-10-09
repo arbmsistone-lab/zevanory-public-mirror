@@ -33,7 +33,7 @@ def request(url, method="GET", token=None, body=None, cf=False):
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=body, method=method, headers=headers)
     with urllib.request.urlopen(req, timeout=25) as resp:
-        output = resp.read(65536)
+        output = resp.read(4 * 1024 * 1024)
         status = resp.status
     if status < 200 or status >= 300:
         raise RuntimeError("HTTP_REQUEST_FAILED")
@@ -57,7 +57,8 @@ def production_sha_and_deploy():
     actual = github_json("/branches/gh-pages")["commit"]["sha"]
     if actual != os.environ.get("GITHUB_SHA") or not re.fullmatch("[a-f0-9]{40}", actual):
         raise RuntimeError("CANONICAL_SHA_CHANGED")
-    history = github_json("/actions/runs?head_sha=" + actual + "&per_page=100")
+    # Workflow-scoped query: small response (the repo-wide list exceeds the read cap).
+    history = github_json("/actions/workflows/central-production-deploy.yml/runs?head_sha=" + actual + "&per_page=20")
     deployments = [w for w in history.get("workflow_runs", []) if w.get("name") == "ZEVANORY central production deploy"
                    and w.get("head_sha") == actual and w.get("conclusion") == "success"]
     if not deployments:
