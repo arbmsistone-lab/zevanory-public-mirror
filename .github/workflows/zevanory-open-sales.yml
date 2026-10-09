@@ -1,0 +1,53 @@
+name: zevanory-open-sales
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Exact owner order: LIBERAR VENDAS'
+        required: true
+        type: string
+      ref:
+        description: 'Link to the written owner order in an issue or conversation'
+        required: true
+        type: string
+      dry_run:
+        description: 'Safety default: true never writes to production KV'
+        required: true
+        default: true
+        type: boolean
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: zevanory-owner-sales-switch
+  cancel-in-progress: false
+jobs:
+  owner-open:
+    if: github.ref == 'refs/heads/gh-pages'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+      CONFIRM: ${{ inputs.confirm }}
+      ORDER_REF: ${{ inputs.ref }}
+      ZEVANORY_LAUNCH_AUTHORIZATION: ${{ vars.ZEVANORY_LAUNCH_AUTHORIZATION }}
+      MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ${{ vars.MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16 }}
+      MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED: ${{ vars.MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify owner command and exact release, write only if explicitly armed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = 'true' ]; then
+            python3 scripts/sales_switch_workflow.py open --dry-run
+          elif [ "$DRY_RUN" = 'false' ]; then
+            python3 scripts/sales_switch_workflow.py open
+          else
+            echo '::error::DRY_RUN_VALUE_INVALID'
+            exit 1
+          fi
