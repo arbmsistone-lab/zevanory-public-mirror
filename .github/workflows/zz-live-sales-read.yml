@@ -1,0 +1,22 @@
+name: zz live sales readout (ops, never merge)
+on:
+  push:
+    branches: [ops/f4-ia-reconcile-read]
+    paths: ['.github/workflows/zz-live-sales-read.yml']
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - run: |
+          python3 - <<'PY'
+          import json,urllib.request
+          def g(u):
+            with urllib.request.urlopen(urllib.request.Request(u,headers={"user-agent":"zevanory-ops/1","accept":"application/json"}),timeout=25) as r: return r.status,json.loads(r.read())
+          c,s=g("https://zevanory.api.br/api/sales/status"); print("::warning title=SALES::"+json.dumps({"http":c,**s}))
+          c,st=g("https://zevanory.api.br/api/status")
+          print("::warning title=STATUS::"+json.dumps({"sales":st.get("runtime",{}).get("sales"),"gate":st.get("gate"),"release_allowed":(st.get("commercial_metrics_provenance") or {}).get("commercial_release_allowed"),"auth":st.get("sales_authorization")}))
+          with urllib.request.urlopen(urllib.request.Request("https://vendas.zevanory.api.br/solucoes",headers={"user-agent":"zevanory-ops/1"}),timeout=25) as r: print("::warning title=PAGE::"+str(r.status))
+          PY
