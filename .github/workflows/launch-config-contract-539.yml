@@ -1,0 +1,36 @@
+name: ZEVANORY staged launch configuration safety
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - 'scripts/deploy/prepare-central-candidate.py'
+      - 'scripts/launch_config_contract.py'
+      - 'tests/test_launch_config_modes.py'
+      - 'worker/commercial-checkout-guard.mjs'
+      - 'worker/cloudflare-worker.compat.mjs'
+      - 'tests/commercial-checkout-guard.test.mjs'
+      - '.github/workflows/central-production-deploy.yml'
+      - '.github/workflows/launch-config-contract-539.yml'
+permissions:
+  contents: read
+jobs:
+  launch-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Strict owner-gated launch static contract
+        run: python3 scripts/launch_config_contract.py
+      - name: Execute actual preparer in isolated default and authorized test modes
+        run: python3 tests/test_launch_config_modes.py
+      - name: Nine-checkout-gate closed/open matrix
+        run: node --test tests/commercial-checkout-guard.test.mjs
+      - name: Validate Worker syntax
+        run: |
+          node --check worker/cloudflare-worker.compat.mjs
+          node --check worker/commercial-checkout-guard.mjs
+      - name: Zero-cost guard
+        run: python3 scripts/zero_cost_guard.py

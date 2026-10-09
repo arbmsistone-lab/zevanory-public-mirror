@@ -439,8 +439,9 @@ const wrapped = {
       if (!response.ok || !body) return response;
       const salesSwitch = await readSalesSwitch(normalized);
       const snapshot = await readFinancialProofSnapshot(normalized);
-      const safeRelease = snapshot?.verified === true && salesSwitch.enabled === true &&
-        String(normalized.SALE_GLOBALLY_ENABLED || "").toLowerCase() === "true" &&
+      const safeRelease = snapshot?.verified === true && salesSwitch.enabled === true && salesSwitch.authorized === true &&
+        String(normalized.ABSOLUTE_RELEASE_APPROVED || "").toLowerCase() === "true" &&
+        String(normalized.PRE_SALE_GATES_APPROVED || "").toLowerCase() === "true" &&
         String(normalized.MERCADOPAGO_ENV || "").toLowerCase() === "production";
       const projected = projectProductionOnlyStatus(projectLiveStatus(body, {
         salesOpen: safeRelease,

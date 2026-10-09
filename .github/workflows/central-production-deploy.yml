@@ -136,6 +136,10 @@ jobs:
         run: python3 scripts/zero_cost_guard.py
       - name: Reconstruct exact production candidate
         if: steps.auth.outputs.available == 'true'
+        env:
+          ZEVANORY_LAUNCH_AUTHORIZATION: ${{ vars.ZEVANORY_LAUNCH_AUTHORIZATION }}
+          MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ${{ vars.MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16 }}
+          MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED: ${{ vars.MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED }}
         run: |
           set -euo pipefail
           git fetch origin final-83620c6

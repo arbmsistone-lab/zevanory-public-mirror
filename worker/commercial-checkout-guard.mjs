@@ -35,7 +35,7 @@ export async function evaluateCheckout(env,sw,{verify=verifyProductionToken,now=
   try{pre=JSON.parse(String(await env?.ZEVANORY_PRIVATE_ARTIFACTS?.get("zpc-sales-preflight:v1")||"null"));}catch{}
   const timestamp=Date.parse(String(pre?.at||""));
   const flags={
-    global:String(env?.SALE_GLOBALLY_ENABLED||"").toLowerCase()==="true",
+    global:(String(env?.SALE_GLOBALLY_ENABLED||"").toLowerCase()==="true" || sw?.authorized===true) && sw?.enabled===true,
     pre_sale:String(env?.PRE_SALE_GATES_APPROVED||"").toLowerCase()==="true",
     absolute:String(env?.ABSOLUTE_RELEASE_APPROVED||"").toLowerCase()==="true",
     checkout:String(env?.CHECKOUT_ENABLED||"").toLowerCase()==="true",

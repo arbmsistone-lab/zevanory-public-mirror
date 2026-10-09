@@ -49,6 +49,11 @@ c["vars"]["CHECKOUT_ENABLED"]="true"
 c["vars"]["FINANCIAL_EVENTS_ENABLED"]="true"
 c["vars"]["SALE_GLOBALLY_ENABLED"]="false"
 c["vars"]["PRE_SALE_GATES_APPROVED"]="false"
+# Override only AFTER closed-by-default flags are established.
+# This never opens sales: the separate, owner-authorized KV switch is mandatory.
+if launch_authorized:
+    c["vars"]["ABSOLUTE_RELEASE_APPROVED"]="true"
+    c["vars"]["PRE_SALE_GATES_APPROVED"]="true"
 c["vars"]["WHATSAPP_SALES_ENABLED"]="false"
 c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
 c["vars"]["SUPPORT_CHANNEL"]="WhatsApp +55 88 99254-5413"
