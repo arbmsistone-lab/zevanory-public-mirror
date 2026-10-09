@@ -1,0 +1,26 @@
+name: zz live checkout probe (ops, never merge)
+on:
+  push:
+    branches: [ops/f4-ia-reconcile-read]
+    paths: ['.github/workflows/zz-live-checkout-probe.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error,urllib.parse
+          class NoRedir(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self,*a,**k): return None
+          op=urllib.request.build_opener(NoRedir)
+          req=urllib.request.Request("https://vendas.zevanory.api.br/comprar/ZEV-IA-011",data=b"",method="POST",headers={"user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0 ZEVANORY-launch-probe","content-type":"application/x-www-form-urlencoded"})
+          try:
+            r=op.open(req,timeout=30); code=r.status; loc=r.headers.get("location","")
+          except urllib.error.HTTPError as e:
+            code=e.code; loc=e.headers.get("location","")
+          u=urllib.parse.urlsplit(loc)
+          print("::warning title=CHECKOUT::"+str({"http":code,"host":u.hostname,"path":u.path,"sandbox":"sandbox" in (u.hostname or "")}))
+          PY
