@@ -1,0 +1,22 @@
+name: zz probe autonomy alerts (never merge)
+on:
+  pull_request:
+    paths: [".github/workflows/zz-probe-autonomy-alerts.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read public autonomy evidence (alerts only)
+        run: |
+          set -euo pipefail
+          curl -sS --max-time 25 https://zevanory.api.br/api/autonomy/evidence -o /tmp/a.json -w '%{http_code}\n'
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/a.json'))
+          print("::warning title=ALERTS::"+json.dumps(d.get("alerts"),separators=(",",":"))[:900])
+          print("::warning title=CHANNELS::"+json.dumps(d.get("channels"),separators=(",",":"))[:900])
+          print("::warning title=EVIDENCE_COUNT::"+str(len(d.get("evidence") or []))+" generated "+str(d.get("generatedAt")))
+          PY
