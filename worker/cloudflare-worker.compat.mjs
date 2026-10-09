@@ -26,7 +26,7 @@ import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
 import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
-import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinancialProofSnapshot } from "./commercial-metrics-projection.mjs";
+import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinancialProofSnapshot, persistClassificationSnapshot, describeFinancialProofSnapshot } from "./commercial-metrics-projection.mjs";
 import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
 import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlocked, requiresPilotDenial } from "./commercial-checkout-guard.mjs";
 
@@ -123,6 +123,20 @@ const wrapped = {
     // Operator-authenticated READ-ONLY audit before legacy routing. Does not mutate commerce.
     if (url.pathname.startsWith("/api/internal/audit/")) {
       const audit = await handleInternalFinancialAudit(request, normalized, { sqlFactory: whatsappProofDatabase });
+      if (audit && audit.status === 200) {
+        // Authenticated read-only audit already computed the provider-verified classification:
+        // persist the derived snapshot (fail-closed validation) and expose its diagnostic state.
+        try {
+          const body = await audit.clone().json();
+          if (url.pathname.endsWith("/financial-classification")) {
+            const persisted = await persistClassificationSnapshot(normalized, { code: 200, result: body });
+            body.snapshot_persist = persisted.reason;
+          }
+          body.financial_snapshot = await describeFinancialProofSnapshot(normalized);
+          const headers = new Headers(audit.headers);
+          return new Response(JSON.stringify(body), { status: 200, headers });
+        } catch {}
+      }
       if (audit) return audit;
       return new Response("not_found",{status:404});
     }

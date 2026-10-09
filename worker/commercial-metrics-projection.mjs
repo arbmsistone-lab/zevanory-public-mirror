@@ -102,3 +102,27 @@ export function projectProductionOnlyStatus(body={},proof=null,{now=Date.now(),e
     legacy_economics_suppressed:Boolean(body.economics)
   };
 }
+
+// Persist a snapshot from an already-computed, authenticated read-only classification
+// (same validation as the scheduled refresh). Writes only the derived KV artifact.
+export async function persistClassificationSnapshot(env,classified,{now=Date.now()}={}){
+  const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
+  if(!kv?.put)return {ok:false,reason:"kv_unavailable"};
+  const snapshot=createFinancialProofSnapshot(env,classified,{now});
+  if(!snapshot.verified)return {ok:false,reason:"unverified_not_persisted"};
+  await kv.put(COMMERCIAL_PROOF_KV_KEY,JSON.stringify(snapshot),{expirationTtl:2*3600});
+  return {ok:true,reason:"proven"};
+}
+// Diagnostic view of the stored snapshot: no counts beyond what /api/status shows, no IDs.
+export async function describeFinancialProofSnapshot(env,{now=Date.now()}={}){
+  const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
+  if(!kv?.get)return {present:false,reason:"kv_unavailable"};
+  let snap=null;
+  try{snap=JSON.parse(String(await kv.get(COMMERCIAL_PROOF_KV_KEY)||"null"));}catch{return {present:true,reason:"corrupt"};}
+  if(!snap)return {present:false,reason:"absent"};
+  const at=Date.parse(String(snap.measured_at||""));
+  return {present:true,schema_ok:snap.schema==="zevanory.production-financial-proof/v1",verified_flag:snap.verified===true,
+    release_matches:String(snap.release_sha||"")===String(env?.ZEVANORY_RELEASE_SHA||""),
+    age_minutes:Number.isFinite(at)?Math.round((now-at)/60000):null,ambiguous:snap.ambiguous??null,
+    accepted:verifyFinancialProofSnapshot(snap,env,{now})};
+}
