@@ -140,7 +140,7 @@ else:
         calcs = ((ob.get("result") or {}).get("calculations") or [])
         for c in calcs:
             agg = c.get("aggregates") or []
-            note("notice", "F7_CPU_BY_PATH", (c.get("alias") or c.get("calculation") or "?") + " " + json.dumps([[",".join(str(x.get("value")) for x in (g.get("groups") or [])), round(g.get("value") or 0, 1)] for g in agg[:15]])[:850])
+            note("warning", "F7_CPU_BY_PATH", (c.get("alias") or c.get("calculation") or "?") + " " + json.dumps([[",".join(str(x.get("value")) for x in (g.get("groups") or [])), round(g.get("value") or 0, 1)] for g in agg[:15]])[:850])
         if not calcs: note("warning", "F7_CPU_BY_PATH", json.dumps(ob)[:400])
     else:
         note("warning", "F7_CPU_BY_PATH", f"telemetry_http_{oc} {str(ob.get('errors'))[:200]}")
