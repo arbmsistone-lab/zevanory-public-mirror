@@ -1,0 +1,41 @@
+name: ZEVANORY Order5 exact SHA proof dispatch
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/order5-exact-release-proof-dispatch.yml"
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch-exact-release-proofs:
+    if: github.event_name == 'pull_request' && github.head_ref == 'ops/order5-proof-dispatch-exact-sha-20261009'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_RELEASE_SHA: b2b25b8d563e6922ffb98061e56082c073ab43c0
+    steps:
+      - name: Verify immutable canonical SHA, owner and fail-closed public sales
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "arbmsistone-lab/zevanory-public-mirror"
+          current="$(gh api "repos/$GITHUB_REPOSITORY/branches/gh-pages" --jq '.commit.sha')"
+          test "$current" = "$EXPECTED_RELEASE_SHA"
+          curl --fail --silent --show-error --max-time 25 https://zevanory.api.br/api/release -o /tmp/order5-release.json
+          live="$(jq -r '.deployment.commit_sha // empty' /tmp/order5-release.json)"
+          test "$live" = "$EXPECTED_RELEASE_SHA"
+          curl --fail --silent --show-error --max-time 25 https://zevanory.api.br/api/sales/status -o /tmp/order5-sales.json
+          jq -e '.open == false' /tmp/order5-sales.json >/dev/null
+          echo "ORDER5_EXACT_SHA_AND_SALES_CLOSED=PASS $EXPECTED_RELEASE_SHA"
+      - name: Dispatch existing evidence-only workflows at gh-pages SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          for workflow in             zevanory-apex-engineering.yml             zevanory-p02-visual-regression.yml             zevanory-p04-wcag.yml             zevanory-p12-continuous-slo.yml             zevanory-remote-quality-gates.yml             zees16-evidence-gate.yml             zevanory-portable-dr.yml             zevanory-three-provider-quorum.yml             zevanory-provider-independence.yml             zevanory-p15-provenance.yml
+          do
+            gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/dispatches" -f ref=gh-pages
+            echo "ORDER5_PROOF_DISPATCHED=$workflow SHA=$EXPECTED_RELEASE_SHA"
+            sleep 2
+          done
