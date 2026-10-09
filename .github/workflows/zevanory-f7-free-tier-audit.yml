@@ -1,0 +1,25 @@
+name: ZEVANORY F7 free-tier consumption audit (alert at 70%)
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 11 * * *"
+  pull_request:
+    branches: [gh-pages]
+    paths: [".github/workflows/zevanory-f7-free-tier-audit.yml", "scripts/f7_free_tier_audit.py"]
+permissions:
+  contents: read
+jobs:
+  free-tier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Measure consumption against free-tier limits (read-only)
+        run: python3 scripts/f7_free_tier_audit.py
