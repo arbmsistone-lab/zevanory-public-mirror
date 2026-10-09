@@ -21,7 +21,7 @@ jobs:
           CF=os.getenv("CLOUDFLARE_API_TOKEN","")
           ACCOUNT="1b26415802588185a86c1d4d3ebf5bdb"
           def emit(k,v):
-              print("::warning::"+k+"="+re.sub(r"[^A-Za-z0-9_.:-]","",str(v))[:100],flush=True)
+              print("::warning::"+k+"="+re.sub(r"[^A-Za-z0-9_.:/*-]","",str(v))[:100],flush=True)
           def get(url,token=False,headers=None):
               h={"User-Agent":"zevanory-sandbox-proof/3","Accept":"application/json"}
               if token and CF:h["Authorization"]="Bearer "+CF
