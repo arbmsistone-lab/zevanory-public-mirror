@@ -132,7 +132,7 @@ else:
     tq = {"queryId": "f7-cpu-by-path", "timeframe": {"from": int((_t.time()-24*3600)*1000), "to": int(_t.time()*1000)},
           "parameters": {"datasets": ["cloudflare-workers"], "filters": [{"key": "$workers.scriptName", "operation": "eq", "type": "string", "value": "zevanory"}],
                          "calculations": [{"operator": "p99", "key": "$workers.cpuTimeMs", "keyType": "number", "alias": "p99cpu"}, {"operator": "count", "alias": "n"}, {"operator": "sum", "key": "$workers.cpuTimeMs", "keyType": "number", "alias": "sumcpu"}],
-                         "groupBys": [{"type": "string", "value": "$workers.event.request.path"}], "orderBy": {"value": "p99cpu", "order": "desc"}, "limit": 15},
+                         "groupBys": [{"type": "string", "value": "$workers.event.request.url"}], "orderBy": {"value": "p99cpu", "order": "desc"}, "limit": 15},
           "view": "calculations"}
     oc, ob = http(f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/workers/observability/telemetry/query",
                   {"Authorization": "Bearer " + CF_TOKEN, "Content-Type": "application/json"}, json.dumps(tq).encode(), "POST")
@@ -146,14 +146,17 @@ else:
         note("warning", "F7_CPU_BY_PATH", f"telemetry_http_{oc} {str(ob.get('errors'))[:200]}")
     tq2 = {"queryId": "f7-channel-down", "timeframe": {"from": int((_t.time()-24*3600)*1000), "to": int(_t.time()*1000)},
            "parameters": {"datasets": ["cloudflare-workers"], "filters": [{"key": "$workers.scriptName", "operation": "eq", "type": "string", "value": "zevanory"},
-                          {"key": "$metadata.message", "operation": "includes", "type": "string", "value": "channel"}],
-                          "calculations": [{"operator": "count", "alias": "n"}], "groupBys": [{"type": "string", "value": "$metadata.message"}], "orderBy": {"value": "n", "order": "desc"}, "limit": 8},
+                          {"key": "$metadata.message", "operation": "includes", "type": "string", "value": "\"error\""}],
+                          "calculations": [{"operator": "count", "alias": "n"}], "groupBys": [{"type": "string", "value": "$metadata.message"}], "orderBy": {"value": "n", "order": "desc"}, "limit": 6},
            "view": "calculations"}
     oc, ob = http(f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/workers/observability/telemetry/query",
                   {"Authorization": "Bearer " + CF_TOKEN, "Content-Type": "application/json"}, json.dumps(tq2).encode(), "POST")
     if oc == 200:
         for c in ((ob.get("result") or {}).get("calculations") or []):
-            note("warning", "F7_CHANNEL_LOGS", json.dumps([[",".join(str(x.get("value"))[:160] for x in (g.get("groups") or [])), g.get("value")] for g in (c.get("aggregates") or [])[:8]])[:900])
+                        for g in (c.get("aggregates") or [])[:6]:
+                msg = ",".join(str(x.get("value")) for x in (g.get("groups") or []))
+                i = msg.find('"error"')
+                note("warning", "F7_CHANNEL_LOGS", f'{g.get("value")}x ' + msg[:60] + " … " + msg[max(0,i-120):i+160])
     else:
         note("warning", "F7_CHANNEL_LOGS", f"telemetry_http_{oc} {str(ob.get('errors'))[:200]}")
     # Account plan: any paid Workers subscription would violate the zero-cost rule.
