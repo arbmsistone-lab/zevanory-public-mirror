@@ -502,20 +502,41 @@ def digest_bytes(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def summary(report):
+    return {'offer_id': report.get('offer_id', ''), 'amount_brl': report.get('amount_brl', 0),
+            'status': report.get('status', 'FAIL'), 'cause': report.get('cause', ''),
+            'checks': report.get('checks', {}), 'receipt_source': report.get('receipt_source', ''),
+            'fulfillment_after_refund': report.get('fulfillment_after_refund', ''),
+            'reuse_http': report.get('reuse_http', 0)}
+
+
+def run_catalog(env, runner=None):
+    """SANDBOX_OFFER_ID=ALL: one approval, the 5 SKUs in sequence (each refunded before the next)."""
+    runner = runner or run
+    results = [runner({**env, 'SANDBOX_OFFER_ID': offer}) for offer in SANDBOX_OFFERS]
+    ok = all(r.get('status') == 'PASS' for r in results)
+    return {'schema': 'sandbox.proof.catalog.v1', 'sale_globally_enabled': False,
+            'status': 'PASS' if ok else 'FAIL', 'passed': sum(r.get('status') == 'PASS' for r in results),
+            'total': len(results), 'source_sha': next((r.get('source_sha') for r in results if r.get('source_sha')), ''),
+            'results': results}
+
+
 def main():
-    report = run(os.environ)
+    catalog = str(os.environ.get('SANDBOX_OFFER_ID') or '') == 'ALL'
+    report = run_catalog(os.environ) if catalog else run(os.environ)
     # Fixed allowlisted evidence only: never save raw payloads, URLs, identity
     # manifests, credential hashes, message bodies or download tokens.
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report))
+    # Annotations: readable without downloading artifacts (sanitized summary only).
+    for item in (report['results'] if catalog else [report]):
+        level = 'notice' if item.get('status') == 'PASS' else 'error'
+        print('::' + level + ' title=SANDBOX_' + str(item.get('offer_id') or 'UNKNOWN') + '::' +
+              json.dumps(summary(item), sort_keys=True, separators=(',', ':'))[:1800])
     if report['status'] != 'PASS':
-        print('::error title=COMBO_SANDBOX::' + report.get('cause', 'FAILED'))
-        # Same allowlisted, sanitized fields as the evidence file, surfaced as an annotation
-        # so the diagnosis is readable without downloading artifacts.
-        diag = {'checks': report.get('checks', {}), 'receipt_source': report.get('receipt_source', ''),
-                'timeout_state': report.get('timeout_state', {})}
-        print('::error title=COMBO_SANDBOX_DIAG::' + json.dumps(diag, sort_keys=True, separators=(',', ':'))[:1800])
+        print('::error title=COMBO_SANDBOX::' + (report.get('cause', 'FAILED') if not catalog else
+              'CATALOG_' + str(report['passed']) + '_OF_' + str(report['total'])))
         return 1
     return 0
 

@@ -195,6 +195,34 @@ class GuardTests(unittest.TestCase):
                     if proof.urllib.parse.urlsplit(r.full_url).path == '/v1/payments' and r.method == 'POST']
             self.assertEqual([p['transaction_amount'] for p in pays], [price])
 
+    def test_catalog_mode_runs_all_five_and_fails_if_any_fails(self):
+        seen = []
+
+        def fake_run(env):
+            seen.append(env['SANDBOX_OFFER_ID'])
+            ok = env['SANDBOX_OFFER_ID'] != 'ZEV-LCX-011'
+            return {'offer_id': env['SANDBOX_OFFER_ID'], 'status': 'PASS' if ok else 'FAIL', 'source_sha': 'a' * 40}
+        out = proof.run_catalog({'X': '1'}, runner=fake_run)
+        self.assertEqual(seen, list(proof.SANDBOX_OFFERS))
+        self.assertEqual((out['status'], out['passed'], out['total']), ('FAIL', 4, 5))
+        all_ok = proof.run_catalog({}, runner=lambda env: {'offer_id': env['SANDBOX_OFFER_ID'], 'status': 'PASS'})
+        self.assertEqual(all_ok['status'], 'PASS')
+
+    def test_catalog_mode_real_runner_with_mock_provider(self):
+        fakes = []
+
+        def runner(env):
+            self.setUp()
+            fakes.append(self.fake)
+            return proof.run({**self.env, 'SANDBOX_OFFER_ID': env['SANDBOX_OFFER_ID']}, self.fake, now=lambda: NOW,
+                             sleep=lambda _: (_ for _ in ()).throw(proof.GuardError('RECEIPT_WEBHOOK_TIMEOUT')))
+        out = proof.run_catalog({}, runner=runner)
+        self.assertEqual(out['status'], 'PASS', out)
+        self.assertEqual([r['amount_brl'] for r in out['results']], [197, 197, 247, 297, 397])
+        saved = json.dumps(out)
+        self.assertNotIn('temporary-download-value', saved)
+        self.assertNotIn('sha256', saved)
+
     def test_unknown_sku_fails_before_any_network_call(self):
         self.env['SANDBOX_OFFER_ID'] = 'ZEV-XYZ-999'
         report = self.run_fake()

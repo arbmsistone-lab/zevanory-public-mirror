@@ -10,11 +10,12 @@
           "type": "string"
         },
         "offer_id": {
-          "description": "Catalog SKU proved at its table price",
+          "description": "Catalog SKU proved at its table price (ALL = the 5 SKUs in sequence, one approval)",
           "required": true,
           "type": "choice",
           "default": "ZEV-CMB-011",
           "options": [
+            "ALL",
             "ZEV-IA-011",
             "ZEV-VEN-011",
             "ZEV-LCX-011",
@@ -39,7 +40,7 @@
         "name": "sandbox-financial-approved"
       },
       "runs-on": "ubuntu-latest",
-      "timeout-minutes": 12,
+      "timeout-minutes": 45,
       "steps": [
         {
           "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
