@@ -131,16 +131,16 @@ else:
     import time as _t
     tq = {"queryId": "f7-cpu-by-path", "timeframe": {"from": int((_t.time()-24*3600)*1000), "to": int(_t.time()*1000)},
           "parameters": {"datasets": ["cloudflare-workers"], "filters": [{"key": "$metadata.service", "operation": "eq", "type": "string", "value": "zevanory"}],
-                         "calculations": [{"operator": "count"}, {"operator": "p99", "key": "$workers.cpuTimeMs", "keyType": "number"}, {"operator": "avg", "key": "$workers.cpuTimeMs", "keyType": "number"}],
-                         "groupBys": [{"type": "string", "value": "$workers.event.request.path"}], "orderBy": {"value": "p99"}, "limit": 15},
+                         "calculations": [{"operator": "p99", "key": "$workers.cpuTimeMs", "keyType": "number", "alias": "p99cpu"}, {"operator": "count", "alias": "n"}, {"operator": "sum", "key": "$workers.cpuTimeMs", "keyType": "number", "alias": "sumcpu"}],
+                         "groupBys": [{"type": "string", "value": "$workers.event.request.path"}], "orderBy": {"value": "p99cpu", "order": "desc"}, "limit": 15},
           "view": "calculations"}
     oc, ob = http(f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/workers/observability/telemetry/query",
                   {"Authorization": "Bearer " + CF_TOKEN, "Content-Type": "application/json"}, json.dumps(tq).encode(), "POST")
     if oc == 200:
         calcs = ((ob.get("result") or {}).get("calculations") or [])
-        for c in calcs[:1]:
-            for g in (c.get("aggregates") or [])[:15]:
-                note("notice", "F7_CPU_BY_PATH", json.dumps(g)[:300])
+        for c in calcs:
+            agg = c.get("aggregates") or []
+            note("notice", "F7_CPU_BY_PATH", (c.get("alias") or c.get("calculation") or "?") + " " + json.dumps([[",".join(str(x.get("value")) for x in (g.get("groups") or [])), round(g.get("value") or 0, 1)] for g in agg[:15]])[:850])
         if not calcs: note("warning", "F7_CPU_BY_PATH", json.dumps(ob)[:400])
     else:
         note("warning", "F7_CPU_BY_PATH", f"telemetry_http_{oc} {str(ob.get('errors'))[:200]}")
