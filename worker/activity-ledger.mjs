@@ -40,11 +40,7 @@ function safeLink(input) {
     return url.origin + url.pathname + (params.size ? "?" + params.toString() : "");
   } catch { return null; }
 }
-export function activityPayloadIsPrivate(value) {
-  return !value || typeof value !== "object" ||
-    ["customer","email","phone","payment_id","external_reference","payer","token"].some(x=>x in value);
-}
-export async function emitActivity(env, {type, channel, status, ref, link, amount} = {}, {now=Date.now()} = {}) {
+export async function emitActivity(env, {type, channel, status, ref, link, amount, financialProof} = {}, {now=Date.now()} = {}) {
   const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!kv?.get || !kv?.put) return {emitted:false,reason:"kv_unavailable"};
   if (!ACTIVITY_TYPES.has(type) || !CHANNELS.has(channel) ||
@@ -53,6 +49,11 @@ export async function emitActivity(env, {type, channel, status, ref, link, amoun
       !Number.isSafeInteger(now) || now <= 0 ||
       (amount != null && (!Number.isSafeInteger(amount) || amount < 0 || amount > 1000000000)))
     return {emitted:false,reason:"invalid_input"};
+  const financial = type==="payment_confirmed" || type==="refund_approved";
+  // Finance is credited only by the provider-GET-verified read-side
+  // reconciler. A raw webhook / client claim is not financial proof.
+  if (financial && financialProof !== "provider-get-verified")
+    return {emitted:false,reason:"financial_proof_required"};
   const normalizedLink=safeLink(link);
   if (link && !normalizedLink) return {emitted:false,reason:"invalid_link"};
   const digest=await sha256(type+":"+ref);
@@ -69,7 +70,8 @@ export async function emitActivity(env, {type, channel, status, ref, link, amoun
       channel,status,
       refHash:digest,sourceKey,
       link:normalizedLink,
-      amountCents:amount??null,
+      amountCents:amount??(financial?0:null),
+      financialProof:financial?"provider-get-verified":null,
       evidence:[type,"source:zevanory-worker",new Date(now).toISOString()],
       at:new Date(now).toISOString()
     };
