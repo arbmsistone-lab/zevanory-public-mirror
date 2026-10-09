@@ -40,6 +40,7 @@ on:
       - "worker/voice-chunks.mjs"
       - "worker/voice-operational-audit.mjs"
       - "scripts/deploy/prepare-central-candidate.py"
+      - "scripts/deploy/verify-financial-boundary.py"
       - "scripts/deploy/check-binding-budget.py"
       - "worker/voice-pcm.mjs"
       - "worker/whatsapp-e2e-evidence.mjs"
