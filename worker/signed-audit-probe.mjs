@@ -2,6 +2,7 @@
 export const AUDIT_READ_PATHS=Object.freeze(new Set([
   "/api/status","/api/health","/api/provider-health","/api/control-plane",
   "/api/internal/audit/financial-classification","/api/internal/audit/runtime-identity",
+  "/api/internal/watch/paid-delivery",
   "/api/sales/status"
 ]));
 export async function verifySignedAuditProbe(request, env, {now=Date.now()}={}){
