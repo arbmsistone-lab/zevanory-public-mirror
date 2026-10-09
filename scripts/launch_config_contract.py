@@ -40,6 +40,16 @@ guard=Path("worker/commercial-checkout-guard.mjs").read_text(encoding="utf-8")
 assert 'sw?.authorized===true' in guard and 'sw?.enabled===true' in guard, "KV_OWNER_AUTHORIZATION_REQUIRED"
 status=Path("worker/cloudflare-worker.compat.mjs").read_text(encoding="utf-8")
 assert "salesSwitch.authorized === true" in status, "COMMERCIAL_STATUS_OWNER_SWITCH_REQUIRED"
+# Hash16 shares the existing compact runtime binding instead of exceeding Workers Free budget.
+assert 'c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})["MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16"]=collector_hash' in s, "COLLECTOR_HASH_MUST_USE_COMPACT_RUNTIME"
+assert 'c["vars"]["MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16"]=collector_hash' not in s, "COLLECTOR_HASH_NEW_BINDING_FORBIDDEN"
+# The downstream financial-boundary step must receive the same authorization as the preparer.
+verify=wf.split('- name: Verify financial safety boundary without mutating secrets',1)[1].split('run: |',1)[0]
+for var in ('ZEVANORY_LAUNCH_AUTHORIZATION','MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16','MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED'):
+    assert var+': ${{ vars.'+var+' }}' in verify, "FINANCIAL_BOUNDARY_AUTH_ENV_MISSING:"+var
+boundary=Path("scripts/deploy/verify-financial-boundary.py").read_text(encoding="utf-8")
+for invariant in ('DEPLOY_MUST_KEEP_SALES_CLOSED','AUTHORIZED_PRODUCTION_ENV_MISSING','PRODUCTION_MERCADOPAGO_NOT_AUTHORIZED','LAUNCH_COLLECTOR_PROOF_MISSING','LAUNCH_PRODUCTION_WEBHOOK_UNVERIFIED'):
+    assert invariant in boundary, "BOUNDARY_GUARD_MISSING:"+invariant
 # D: open sales require a complete owner authorization record; the release flag is derived.
 sc=Path("worker/sales-control.mjs").read_text(encoding="utf-8")
 for needle in ['OWNER_SALES_AUTHORIZATION = "LIBERAR VENDAS"','owner_authorization_incomplete','validOwnerAuthorization(parsed, now)']:
