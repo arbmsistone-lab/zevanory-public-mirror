@@ -41,6 +41,8 @@ on:
       - "worker/voice-operational-audit.mjs"
       - "scripts/deploy/prepare-central-candidate.py"
       - "scripts/deploy/check-binding-budget.py"
+      - "scripts/deploy/**/*.py"
+      - "scripts/deploy/*.py"
       - "worker/voice-pcm.mjs"
       - "worker/whatsapp-e2e-evidence.mjs"
       - "worker/whatsapp-neon-store.mjs"
