@@ -253,8 +253,28 @@ def check_official_whatsapp():
         if marker not in deploy:
             errors += fail(f"WhatsApp oficial: marcador de cutover/compactação ausente no deploy: {marker}")
 
-    if 'c["vars"]["WHATSAPP_SALES_ENABLED"]="false"' not in deploy:
-        errors += fail("WhatsApp oficial: fail-closed WHATSAPP_SALES_ENABLED=false ausente")
+    # Inbound support is allowed only when the owner KV sales lock is still enforced.
+    whatsapp_off = 'c["vars"]["WHATSAPP_SALES_ENABLED"]="false"' in deploy
+    whatsapp_inbound = 'c["vars"]["WHATSAPP_SALES_ENABLED"]="true"' in deploy
+    if whatsapp_off == whatsapp_inbound:
+        errors += fail("WhatsApp oficial: modo comercial ambiguo")
+    if whatsapp_inbound:
+        sales_path = ROOT / "worker" / "sales-control.mjs"
+        conversation_path = ROOT / "worker" / "whatsapp-conversation.mjs"
+        sales_source = sales_path.read_text(encoding="utf-8") if sales_path.exists() else ""
+        conversation = conversation_path.read_text(encoding="utf-8") if conversation_path.exists() else ""
+        for marker in (
+            'c["vars"]["SALE_GLOBALLY_ENABLED"]="false"',
+            'c["vars"]["PRE_SALE_GATES_APPROVED"]="false"',
+        ):
+            if marker not in deploy:
+                errors += fail("WhatsApp oficial: trava de venda foi removida")
+        for marker in ('OWNER_SALES_AUTHORIZATION', 'validOwnerAuthorization(', 'PREFLIGHT_KEY', 'readSalesSwitch('):
+            if marker not in sales_source:
+                errors += fail("WhatsApp oficial: trava KV do dono nao comprovada")
+        for marker in ('OFFICIAL_PURCHASE_SKUS', 'purchaseLinkFor', 'withVerifiedPurchaseLink', 'salesOpen = false'):
+            if marker not in conversation:
+                errors += fail("WhatsApp oficial: link SKU sem guarda")
 
     if errors == 0:
         pass_("WhatsApp oficial: novo número propagado a 12 frentes e legado bloqueado")
