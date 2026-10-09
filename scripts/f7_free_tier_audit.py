@@ -77,6 +77,30 @@ else:
         record("kv_writes_day", by.get("write", 0), LIMITS["kv_writes_day"])
         record("kv_deletes_day", by.get("delete", 0), LIMITS["kv_deletes_day"])
         record("kv_lists_day", by.get("list", 0), LIMITS["kv_lists_day"])
+    # Breakdown of writes by namespace and hour to find the writers (aggregates only).
+    q = '{viewer{accounts(filter:{accountTag:"%s"}){kvOperationsAdaptiveGroups(limit:2000,filter:{datetime_geq:"%s",datetime_leq:"%s",actionType:"write"}){sum{requests}dimensions{namespaceId datetimeHour}}}}}' % (ACCOUNT, since, until)
+    code, body = gql(q)
+    rows = (((body.get("data") or {}).get("viewer") or {}).get("accounts") or [{}])[0].get("kvOperationsAdaptiveGroups") if code == 200 else None
+    if rows:
+        ns, hours = {}, {}
+        for r in rows:
+            d = r["dimensions"]; n = r["sum"]["requests"]
+            ns[d["namespaceId"][:8]] = ns.get(d["namespaceId"][:8], 0) + n
+            hours[d["datetimeHour"][11:13]] = hours.get(d["datetimeHour"][11:13], 0) + n
+        note("notice", "F7_KV_WRITES_BY_NAMESPACE", json.dumps(dict(sorted(ns.items(), key=lambda x: -x[1])), sort_keys=False))
+        note("notice", "F7_KV_WRITES_BY_HOUR_UTC", json.dumps(dict(sorted(hours.items()))))
+    # Per-script CPU and requests (ZEVANORY scripts are the launch scope).
+    q = '{viewer{accounts(filter:{accountTag:"%s"}){workersInvocationsAdaptive(limit:1000,filter:{datetime_geq:"%s",datetime_leq:"%s"}){sum{requests errors}quantiles{cpuTimeP50 cpuTimeP99}dimensions{scriptName}}}}}' % (ACCOUNT, since, until)
+    code, body = gql(q)
+    rows = (((body.get("data") or {}).get("viewer") or {}).get("accounts") or [{}])[0].get("workersInvocationsAdaptive") if code == 200 else None
+    if rows:
+        per = {}
+        for r in rows:
+            k = r["dimensions"]["scriptName"]; e = per.setdefault(k, [0, 0, 0.0, 0.0])
+            e[0] += r["sum"]["requests"]; e[1] += r["sum"]["errors"]
+            e[2] = max(e[2], (r["quantiles"]["cpuTimeP50"] or 0) / 1000); e[3] = max(e[3], (r["quantiles"]["cpuTimeP99"] or 0) / 1000)
+        for k, (req_, err, p50, p99) in sorted(per.items(), key=lambda x: -x[1][0])[:8]:
+            note("notice", "F7_WORKER_SCRIPT", f"{k}: req={req_} err={err} cpu_p50={p50:.1f}ms cpu_p99={p99:.1f}ms")
 
 # 2. Neon storage via the signed read-only runtime-identity endpoint.
 if len(AUDIT_KEY) < 32:
