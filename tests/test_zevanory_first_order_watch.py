@@ -117,9 +117,14 @@ class FirstOrderWatchTests(unittest.TestCase):
 
     def test_database_read_only_aggregate(self):
         db = ReadOnlyDatabase()
+        options = {}
+        def connect(*args, **kwargs):
+            options.update(kwargs)
+            return db
         with patch.dict("os.environ", {"DATABASE_URL": "postgresql://dummy@localhost/db"}):
-            result = watchdog.read_paid_delivery_counts(
-                connector=lambda *_args, **_kwargs: db)
+            result = watchdog.read_paid_delivery_counts(connector=connect)
+        self.assertTrue(options.get("autocommit"), "BEGIN READ ONLY must not be nested inside an implicit transaction")
+        self.assertEqual(options.get("sslmode"), "require")
         self.assertEqual(result, COUNTS)
         self.assertEqual(db.statements[0][0], "BEGIN READ ONLY")
         self.assertEqual(db.statements[-1][0], "ROLLBACK")

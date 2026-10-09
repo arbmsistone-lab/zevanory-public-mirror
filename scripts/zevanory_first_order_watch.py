@@ -94,7 +94,9 @@ def read_paid_delivery_counts(connector=None):
     if not dsn.startswith(("postgres://", "postgresql://")):
         raise WatchError("DATABASE_URL_MISSING")
     try:
-        with connector(dsn, connect_timeout=15, sslmode="require") as connection:
+        # Explicit BEGIN READ ONLY requires autocommit: otherwise psycopg starts an implicit
+        # read-write transaction first and PostgreSQL ignores the nested BEGIN mode.
+        with connector(dsn, connect_timeout=15, sslmode="require", autocommit=True) as connection:
             with connection.cursor() as cursor:
                 cursor.execute("BEGIN READ ONLY")
                 cursor.execute(CHECKOUT_SQL, {"launch": LAUNCH_UTC})
