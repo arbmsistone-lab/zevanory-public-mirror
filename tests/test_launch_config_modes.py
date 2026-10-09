@@ -39,6 +39,7 @@ class LaunchConfigModes(unittest.TestCase):
             self.assertEqual(vars_[name], "false", name)
         self.assertEqual(vars_["MERCADOPAGO_ENV"], "sandbox")
         self.assertNotIn("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16", vars_)
+        self.assertNotIn("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16", vars_["ZEVANORY_RUNTIME_CONFIG"])
     def test_authorization_missing_collector_hash_fails_closed(self):
         code, _, out = run_case(auth="AUTORIZO COMPRA REAL", collector="", webhook="true")
         self.assertNotEqual(code,0)
@@ -55,7 +56,8 @@ class LaunchConfigModes(unittest.TestCase):
         code, vars_, _ = run_case(auth="AUTORIZO COMPRA REAL",collector=HASH,webhook="true")
         self.assertEqual(code,0)
         self.assertEqual(vars_["MERCADOPAGO_ENV"],"production")
-        self.assertEqual(vars_["MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16"],HASH)
+        self.assertNotIn("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16",vars_)
+        self.assertEqual(vars_["ZEVANORY_RUNTIME_CONFIG"]["MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16"], HASH)
         self.assertEqual(vars_["ABSOLUTE_RELEASE_APPROVED"],"true")
         self.assertEqual(vars_["PRE_SALE_GATES_APPROVED"],"true")
         self.assertEqual(vars_["SALE_GLOBALLY_ENABLED"],"false")

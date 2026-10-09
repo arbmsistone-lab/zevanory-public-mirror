@@ -38,10 +38,13 @@ if launch_authorized:
     if os.environ.get("MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED")!="true":
         raise SystemExit("LAUNCH_PRODUCTION_WEBHOOK_UNVERIFIED")
     c["vars"]["MERCADOPAGO_ENV"]="production"
-    c["vars"]["MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16"]=collector_hash
+    # Respect Workers Free binding budget: hash is read through normalizeEnv runtime alias.
+    c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})["MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16"]=collector_hash
+    c["vars"].pop("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16",None)
 else:
     c["vars"]["MERCADOPAGO_ENV"]="sandbox"
     c["vars"].pop("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16",None)
+    c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{}).pop("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16",None)
 c["vars"]["CERTIFICATION_PILOT_PRODUCTION_ALLOWED"]="false"
 c["vars"]["ABSOLUTE_RELEASE_APPROVED"]="false"
 c["vars"]["PAYMENT_PROVIDER"]="mercadopago"

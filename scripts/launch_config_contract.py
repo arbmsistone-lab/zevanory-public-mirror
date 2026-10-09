@@ -40,6 +40,9 @@ guard=Path("worker/commercial-checkout-guard.mjs").read_text(encoding="utf-8")
 assert 'sw?.authorized===true' in guard and 'sw?.enabled===true' in guard, "KV_OWNER_AUTHORIZATION_REQUIRED"
 status=Path("worker/cloudflare-worker.compat.mjs").read_text(encoding="utf-8")
 assert "salesSwitch.authorized === true" in status, "COMMERCIAL_STATUS_OWNER_SWITCH_REQUIRED"
+# Hash16 shares the existing compact runtime binding instead of exceeding Workers Free budget.
+assert 'c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})["MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16"]=collector_hash' in s, "COLLECTOR_HASH_MUST_USE_COMPACT_RUNTIME"
+assert 'c["vars"]["MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16"]=collector_hash' not in s, "COLLECTOR_HASH_NEW_BINDING_FORBIDDEN"
 # D: open sales require a complete owner authorization record; the release flag is derived.
 sc=Path("worker/sales-control.mjs").read_text(encoding="utf-8")
 for needle in ['OWNER_SALES_AUTHORIZATION = "LIBERAR VENDAS"','owner_authorization_incomplete','validOwnerAuthorization(parsed, now)']:
