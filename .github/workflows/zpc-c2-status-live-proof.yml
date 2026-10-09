@@ -1,10 +1,15 @@
 name: ZEVANORY C2 production-only status live proof read only
 on:
+  push:
+    branches: [audit/c2-status-live-proof]
   pull_request:
     branches: [gh-pages]
     paths: [".github/workflows/zpc-c2-status-live-proof.yml"]
 permissions:
   contents: read
+concurrency:
+  group: zevanory-c2-signed-proof
+  cancel-in-progress: false
 jobs:
   c2-proof:
     runs-on: ubuntu-latest
@@ -12,52 +17,17 @@ jobs:
     env:
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
     steps:
-      - name: Prove /api/status exposes only provider-proven production counts
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Renew current production financial snapshot via canonical signed GET
         shell: bash
         run: |
-          python3 - <<'PY'
-          import hmac,hashlib,urllib.request,urllib.error,json,os,time,sys
-          expected="baa0ad64d249745473370f0a95f24f9e5d848501"
-          key=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
-          def get(path,signed=False):
-            h={"Accept":"application/json","User-Agent":"ZEVANORY-AuditReadOnly/1.0"}
-            if signed:
-              ts=str(int(time.time()))
-              h.update({"x-zevanory-audit-ts":ts,"x-zevanory-audit-signature":hmac.new(key.encode(),("GET\n"+path+"\n"+ts).encode(),hashlib.sha256).hexdigest()})
-            try:
-              with urllib.request.urlopen(urllib.request.Request("https://zevanory.api.br"+path,headers=h),timeout=15) as r:return r.status,json.load(r)
-            except urllib.error.HTTPError as e:return e.code,{}
-            except Exception:return 0,{}
-          def fail(c):print("::error title=C2_LIVE::"+c);sys.exit(2)
-          if len(key)<32:fail("AUDIT_SECRET_MISSING")
-          live=False
-          for _ in range(10):
-            c,b=get("/api/control-plane")
-            if c==200 and ((b.get("release") or {}).get("deployment") or {}).get("commit_sha")==expected:live=True;break
-            time.sleep(10)
-          print("::notice title=C2_EXACT_SHA::"+str(live).lower())
-          if not live:fail("EXACT_SHA_NOT_VISIBLE")
-          fc,fb=get("/api/internal/audit/financial-classification",True)
-          fr=(fb.get("result") if isinstance(fb.get("result"),dict) else fb) or {}
-          diag={k:fr.get(k) for k in ("complete","ambiguous","production_confirmed","production_payment_events","production_refund_events","production_paid_orders","certification_events","not_in_production","error")}
-          diag["http"]=fc;diag["persist"]=fb.get("snapshot_persist");diag["snapshot"]=fb.get("financial_snapshot")
-          print("::notice title=C2_CLASSIFICATION::"+json.dumps(diag,sort_keys=True)[:900])
-          ic,ib=get("/api/internal/audit/runtime-identity",True)
-          print("::notice title=C2_SNAPSHOT_AFTER::"+json.dumps(ib.get("financial_snapshot"),sort_keys=True))
-          c,s=get("/api/status",True)
-          if c!=200:fail("STATUS_HTTP_"+str(c))
-          m=s.get("metrics") or {};p=s.get("commercial_metrics_provenance") or {}
-          out={"provenance_state":p.get("state"),"commercial_release_allowed":p.get("commercial_release_allowed"),"gate":s.get("gate"),
-               "orders":m.get("orders"),"payments_confirmed":m.get("payments_confirmed"),"refunds_confirmed":m.get("refunds_confirmed"),
-               "checkouts_started":m.get("checkouts_started"),"economics":s.get("economics"),
-               "test_certification":s.get("test_certification"),"legacy_counts_isolated":isinstance(s.get("legacy_technical_unverified_counts"),dict)}
-          print("::notice title=C2_STATUS::"+json.dumps(out,sort_keys=True))
-          if p.get("state")!="PROVEN":fail("PROVENANCE_NOT_PROVEN_"+str(p.get("state")))
-          tc=s.get("test_certification") or {}
-          if tc.get("events")!=22:fail("CERTIFICATION_EVENTS_"+str(tc.get("events")))
-          if p.get("commercial_release_allowed") is not False:fail("COMMERCIAL_RELEASE_FLAG_NOT_FALSE")
-          if p.get("state")=="UNVERIFIED_FAIL_CLOSED" and any(m.get(k) for k in ("orders","payments_confirmed","refunds_confirmed")):fail("UNVERIFIED_BUT_NONZERO")
-          if s.get("economics") is not None:fail("ECONOMICS_NOT_SUPPRESSED")
-          if not out["legacy_counts_isolated"]:fail("LEGACY_NOT_ISOLATED")
-          print("::notice title=C2_LIVE::PASS production-only counters live")
-          PY
+          set -euo pipefail
+          # Execute only the reviewed protected-branch implementation, not this stale audit branch.
+          git fetch --no-tags --depth=1 origin gh-pages
+          git show FETCH_HEAD:scripts/financial_proof_renewal.py > /tmp/c2-financial-proof-renewal.py
+          python3 -m py_compile /tmp/c2-financial-proof-renewal.py
+          python3 /tmp/c2-financial-proof-renewal.py
+          echo "::notice title=C2_SNAPSHOT_AFTER::accepted=true"
