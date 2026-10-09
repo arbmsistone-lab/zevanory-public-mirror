@@ -55,6 +55,8 @@ on:
       - "tests/owner-alert-policy.test.mjs"
       - ".github/workflows/autonomy-live-evidence.yml"
       - "worker/zevanory-control-core.mjs"
+      - "worker/production-health-safety.mjs"
+      - "tests/production-staging-health.test.mjs"
       - "tests/core-snapshot-memo.test.mjs"
       - "worker/core-command-executor.mjs"
       - "worker/zea10-autonomy.mjs"
@@ -174,7 +176,7 @@ jobs:
           node --check worker/whatsapp-e2e-evidence.mjs
           node --check worker/whatsapp-neon-store.mjs
           node --test tests/whatsapp-neon-store.test.mjs
-          node --test tests/live-runtime-status.test.mjs tests/core-snapshot-memo.test.mjs tests/commercial-metrics-projection.test.mjs
+          node --test tests/live-runtime-status.test.mjs tests/core-snapshot-memo.test.mjs tests/production-staging-health.test.mjs tests/commercial-metrics-projection.test.mjs
           node --test tests/creative-autonomy.test.mjs
           node --test tests/multichannel-autonomy.test.mjs
           node --test tests/production-payment-credential-isolation.test.mjs
@@ -266,7 +268,10 @@ jobs:
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          WORKERS_DEV="https://zevanory.girolocal-rb.workers.dev"
+          WORKERS_DEV="https://zevanory.zevanory.workers.dev"
+          # Legacy route is strictly diagnostic: it is not the current owner release.
+          legacy_http="$(curl -sS -o /tmp/legacy-workers-dev.js -w '%{http_code}' https://zevanory.girolocal-rb.workers.dev/control-plane-vnext.js || true)"
+          echo "LEGACY_WORKERS_DEV_DIAGNOSTIC_HTTP=$legacy_http"
           curl -fsS "$WORKERS_DEV/control-plane-vnext.js" -o /tmp/workers-dev.js || echo "::error title=VERIFY_WORKERS_DEV_FETCH::workers.dev control-plane-vnext.js fetch failed"
           cmp -s /tmp/workers-dev.js worker/live-recovered/control-plane-vnext.js || { echo "::error title=VERIFY_WORKERS_DEV_CMP::workers.dev asset differs from canonical ($(wc -c </tmp/workers-dev.js 2>/dev/null) vs $(wc -c <worker/live-recovered/control-plane-vnext.js) bytes)"; exit 1; }
           echo "WORKERS_DEV_CANONICAL_PASS"

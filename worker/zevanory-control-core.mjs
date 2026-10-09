@@ -54,21 +54,20 @@ export async function buildCoreSnapshot(worker,env,ctx,baseUrl="https://zevanory
   const [status,health,control,continuity]=await Promise.all([
     readJsonThrough(worker,baseUrl,"/api/status",env,ctx),
     readJsonThrough(worker,baseUrl,"/api/health",env,ctx),
-    readJsonThrough(worker,baseUrl,"/api/control-plane",env,ctx),
+    readJsonThrough(worker,baseUrl,"/api/control-plane",env,ctx).catch(()=>null),
     readJsonThrough(worker,baseUrl,"/api/continuity",env,ctx)
   ]);
 
-  const canonicalReleaseSha=
-    control?.release?.deployment?.commit_sha ||
-    control?.proof_chain?.sha ||
-    null;
-  const zees16=await readOrReconcileControlState(worker,env,ctx,baseUrl,canonicalReleaseSha).catch(()=>null);
-
-  const releaseSha=
-    canonicalReleaseSha ||
-    zees16?.release_sha ||
-    null;
-
+  // The configured build SHA is authoritative. Never substitute a stale KV
+  // reconciliation when the internal control-plane read is unavailable.
+  const configuredSha=String(env?.ZEVANORY_RELEASE_SHA||"").trim().toLowerCase();
+  const buildSha=/^[a-f0-9]{40}$/.test(configuredSha)?configuredSha:null;
+  const reportedSha=String(control?.release?.deployment?.commit_sha||control?.proof_chain?.sha||"").trim().toLowerCase();
+  const upstreamSha=/^[a-f0-9]{40}$/.test(reportedSha)?reportedSha:null;
+  const releaseSha=buildSha||upstreamSha||null;
+  const zeesCandidate=await readOrReconcileControlState(worker,env,ctx,baseUrl,releaseSha).catch(()=>null);
+  const zees16=zeesCandidate?.release_sha===releaseSha?zeesCandidate:null;
+  const identityMatches=Boolean(releaseSha&&(!buildSha||releaseSha===buildSha)&&(!upstreamSha||upstreamSha===releaseSha));
   const zea10=evaluateZea10FromZees16(zees16);
   const zeaCounts=zea10?.counts||{};
   const zeesCounts=zees16?.counts||{};
@@ -99,7 +98,8 @@ export async function buildCoreSnapshot(worker,env,ctx,baseUrl="https://zevanory
       circular_dependency:false
     },
     invariants:{
-      exact_release_bound:Boolean(releaseSha&&/^[0-9a-f]{40}$/.test(releaseSha)),
+      exact_release_bound:identityMatches,
+      control_plane_ready:control!==null,
       health_ready:health?.ready===true&&health?.live!==false,
       quorum_ok:continuity?.quorum_ok===true,
       sales_fail_closed:status?.runtime?.sales==="globally-blocked",
@@ -136,6 +136,7 @@ export function evaluateCoreDecision(snapshot){
   const zeaCounts=snapshot?.zea10?.counts||{};
   const checks={
     exact_release_bound:snapshot?.invariants?.exact_release_bound===true,
+    control_plane_ready:snapshot?.invariants?.control_plane_ready===true,
     health_ready:snapshot?.invariants?.health_ready===true,
     quorum_ok:snapshot?.invariants?.quorum_ok===true,
     evidence_flow_unidirectional:snapshot?.invariants?.evidence_to_evaluation_unidirectional===true,

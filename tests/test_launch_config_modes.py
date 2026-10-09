@@ -18,7 +18,7 @@ def run_case(auth="", collector="", webhook=""):
         (path/"wrangler.central-fix.jsonc").write_text(json.dumps({"vars":{}, "kv_namespaces":[]}), encoding="utf-8")
         (path/"worker/binding-aliases.mjs").write_text("return Reflect.get(target, prop, receiver);\nreturn Reflect.has(target, prop);\n", encoding="utf-8")
         (path/"worker/cloudflare-worker.recovered.mjs").write_text(
-            '    }\n    if (provider === "stripe") {\nconst pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_PAYMENT_MODE || "").toLowerCase() === "sandbox";',
+            '    }\n    if (provider === "stripe") {\nconst pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_PAYMENT_MODE || "").toLowerCase() === "sandbox";\\nconst commercialSafetyLocked = publicSafetyLocked || pilotSafetyLocked || preSaleCutoverSafe || commercialLivePattern;',
             encoding="utf-8")
         (path/"public/solucoes.html").write_text("<!doctype html><title>Solucoes</title>", encoding="utf-8")
         (path/"public/sitemap.xml").write_text("<urlset></urlset>", encoding="utf-8")
