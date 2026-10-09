@@ -1,0 +1,45 @@
+name: Ordem 7 Telegram evidence (GET-only)
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/order7-telegram-readonly-proof.yml"
+      - "worker/multichannel-autonomy.mjs"
+      - "tests/multichannel-autonomy.test.mjs"
+permissions:
+  contents: read
+jobs:
+  published-evidence-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Probe canonical public evidence (GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS --max-time 20 -o /tmp/order7-evidence.json -w '%{http_code}' https://zevanory.api.br/api/autonomy/evidence || true)
+          echo "ORD7_PUBLIC_EVIDENCE_HTTP=$code"
+          if [ "$code" != "200" ] || ! jq -e . /tmp/order7-evidence.json >/dev/null 2>&1; then
+            echo "ORD7_TELEGRAM_EVIDENCE=NOT_PROVEN"
+            exit 0
+          fi
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const obj=JSON.parse(fs.readFileSync('/tmp/order7-evidence.json','utf8'));
+          const rows=Array.isArray(obj.evidence)?obj.evidence:[];
+          const verified=rows.filter(item=>{
+            const id=String(item?.provider_post_id||'');
+            const url=String(item?.url||'');
+            const date=Date.parse(String(item?.publishedAt||item?.published_at||''));
+            return item?.channel==='telegram'&&/^\d{1,20}$/.test(id)&&
+              /^https:\/\/t\.me\/[A-Za-z0-9_]+\/\d{1,20}$/.test(url)&&
+              Number.isFinite(date)&&date>=Date.parse('2026-10-09T00:00:00Z');
+          });
+          // Never log credential values or customer data.
+          for(const row of verified){
+            console.log('ORD7_TELEGRAM_PROOF',JSON.stringify({
+              provider_post_id:row.provider_post_id,url:row.url,published_at:row.publishedAt||row.published_at
+            }));
+          }
+          if(!verified.length)console.log('ORD7_TELEGRAM_EVIDENCE=NOT_PROVEN');
+          NODE
