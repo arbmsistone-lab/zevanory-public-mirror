@@ -15,6 +15,9 @@ if "0 * * * *" not in crons:
     crons.insert(0,"0 * * * *")
 if "15,45 * * * *" not in crons:
     crons.append("15,45 * * * *")
+# Fase 0 is read-only producer, separate from both financial proof crons.
+if "5,35 * * * *" not in crons:
+    crons.append("5,35 * * * *")
 if len(crons)>5:
     raise SystemExit("CRON_TRIGGER_FREE_LIMIT_EXCEEDED")
 c.pop("secrets",None)
