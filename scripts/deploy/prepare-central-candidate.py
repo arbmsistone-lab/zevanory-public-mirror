@@ -5,6 +5,16 @@ p="wrangler.central-fix.jsonc"
 c=json.load(open(p))
 c["account_id"]=os.environ["PUBLIC_OWNER_ACCOUNT_ID"]
 c["main"]="worker/cloudflare-worker.compat.mjs"
+# Keep the existing hourly maintenance cron; the financial-only cron runs at
+# minute 15 and 45, each in a separate Cloudflare Worker invocation.
+triggers=c.setdefault("triggers",{})
+crons=triggers.setdefault("crons",[])
+if "0 * * * *" not in crons:
+    raise SystemExit("HOURLY_CRON_MISSING_FAIL_CLOSED")
+if "15,45 * * * *" not in crons:
+    crons.append("15,45 * * * *")
+if len(crons)>5:
+    raise SystemExit("CRON_TRIGGER_FREE_LIMIT_EXCEEDED")
 c.pop("secrets",None)
 c["services"]=[
     {"binding":"SELF","service":"zevanory"},
