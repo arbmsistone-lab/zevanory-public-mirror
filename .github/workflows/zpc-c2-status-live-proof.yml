@@ -17,7 +17,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import hmac,hashlib,urllib.request,urllib.error,json,os,time,sys
-          expected="a6f49eb185155a774963c8dadf8fd22909504654"
+          expected="77658062488ebe13e1454aad530ae87a80b5f555"
           key=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
           def get(path,signed=False):
             h={"Accept":"application/json","User-Agent":"ZEVANORY-AuditReadOnly/1.0"}
@@ -40,8 +40,10 @@ jobs:
           fc,fb=get("/api/internal/audit/financial-classification",True)
           fr=(fb.get("result") if isinstance(fb.get("result"),dict) else fb) or {}
           diag={k:fr.get(k) for k in ("complete","ambiguous","production_confirmed","production_payment_events","production_refund_events","production_paid_orders","certification_events","not_in_production","error")}
-          diag["http"]=fc;diag["reasons"]=fr.get("evidence_reasons");diag["asaas"]=fr.get("asaas_sandbox")
+          diag["http"]=fc;diag["persist"]=fb.get("snapshot_persist");diag["snapshot"]=fb.get("financial_snapshot")
           print("::notice title=C2_CLASSIFICATION::"+json.dumps(diag,sort_keys=True)[:900])
+          ic,ib=get("/api/internal/audit/runtime-identity",True)
+          print("::notice title=C2_SNAPSHOT_AFTER::"+json.dumps(ib.get("financial_snapshot"),sort_keys=True))
           c,s=get("/api/status",True)
           if c!=200:fail("STATUS_HTTP_"+str(c))
           m=s.get("metrics") or {};p=s.get("commercial_metrics_provenance") or {}
@@ -50,7 +52,9 @@ jobs:
                "checkouts_started":m.get("checkouts_started"),"economics":s.get("economics"),
                "test_certification":s.get("test_certification"),"legacy_counts_isolated":isinstance(s.get("legacy_technical_unverified_counts"),dict)}
           print("::notice title=C2_STATUS::"+json.dumps(out,sort_keys=True))
-          if p.get("state") not in ("PROVEN","UNVERIFIED_FAIL_CLOSED"):fail("PROVENANCE_MISSING")
+          if p.get("state")!="PROVEN":fail("PROVENANCE_NOT_PROVEN_"+str(p.get("state")))
+          tc=s.get("test_certification") or {}
+          if tc.get("events")!=22:fail("CERTIFICATION_EVENTS_"+str(tc.get("events")))
           if p.get("commercial_release_allowed") is not False:fail("COMMERCIAL_RELEASE_FLAG_NOT_FALSE")
           if p.get("state")=="UNVERIFIED_FAIL_CLOSED" and any(m.get(k) for k in ("orders","payments_confirmed","refunds_confirmed")):fail("UNVERIFIED_BUT_NONZERO")
           if s.get("economics") is not None:fail("ECONOMICS_NOT_SUPPRESSED")
