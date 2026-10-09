@@ -452,6 +452,13 @@ const wrapped = {
         ? { state: safeRelease ? "open_authorized" : "open_authorized_proof_pending", authorized_by_owner: true, at: String(salesSwitch.at || ""), revision: salesSwitch.revision || null }
         : { state: salesSwitch.requested === true ? "requested_blocked" : "closed", authorized_by_owner: false, blocked: salesSwitch.blocked || null, revision: salesSwitch.revision || null };
       projected.continuity = buildContinuityPlan(projected, { minQuorum: 3 });
+      try {
+        const raw = await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.get?.("zpc:financial-proof:last-isolated-run:v1");
+        const evidence = JSON.parse(String(raw || "null"));
+        if (evidence && typeof evidence.at === "string" && typeof evidence.ok === "boolean" && !Number.isNaN(Date.parse(evidence.at))) {
+          projected.financial_proof = { last_isolated_run: { at: evidence.at, ok: evidence.ok } };
+        }
+      } catch { /* Missing evidence is never a synthetic success. */ }
       const headers = new Headers(response.headers);
       headers.set("content-type", "application/json; charset=utf-8");
       headers.set("cache-control", "no-store");
@@ -523,6 +530,7 @@ wrapped.scheduled = async (controller, env, ctx) => {
         ok: proof.ok === true, reason: proof.reason || "unavailable",
         ambiguous: proof.ambiguous ?? null
       }));
+      await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:financial-proof:last-isolated-run:v1", JSON.stringify({at:new Date().toISOString(),ok:proof.ok===true}), {expirationTtl:7*86400});
       if (!proof.ok) {
         console.error("commercial_metrics_proof_isolated_failed", String(proof.reason || "unavailable"));
         throw new Error("financial_proof_not_renewed");
