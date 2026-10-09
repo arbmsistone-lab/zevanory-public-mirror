@@ -507,7 +507,10 @@ wrapped.scheduled = async (controller, env, ctx) => {
         ok: proof.ok === true, reason: proof.reason || "unavailable",
         ambiguous: proof.ambiguous ?? null
       }));
-      if (!proof.ok) console.error("commercial_metrics_proof_isolated_failed", String(proof.reason || "unavailable"));
+      if (!proof.ok) {
+        console.error("commercial_metrics_proof_isolated_failed", String(proof.reason || "unavailable"));
+        throw new Error("financial_proof_not_renewed");
+      }
     } catch (error) {
       // Only a fixed category, never raw SQL/HTTP errors or account details.
       console.error("commercial_metrics_proof_isolated_failed", "exception");
