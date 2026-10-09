@@ -128,16 +128,31 @@ async function executeRefund(env, sql, kv, oid, { actor }) {
   if (!record) return { status: 404, body: { error: "refund_request_not_found" } };
   if (record.status === "refunded" || record.status === "approved") return { status: 200, body: { ok: true, status: record.status, refund_id: record.refund_id, duplicate: true } };
   if (record.status !== "pending") return { status: 409, body: { error: "refund_request_not_pending", status: record.status } };
+  // HTTP 5xx or an interrupted request can leave the provider's actual refund
+  // outcome unknown. Never issue a second POST until a read-only reconciliation
+  // establishes the result, even though the idempotency key is stable.
+  if (record.provider_outcome_unknown === true) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
   const token = tokenFor(env, record.test);
   if (!token) return { status: 503, body: { error: "mercadopago_token_missing" } };
-  const r = await fetch(`${MP}/v1/payments/${encodeURIComponent(record.payment_id)}/refunds`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "x-idempotency-key": `zevanory-refund-${oid}`, ...(record.test ? { "x-test-token": "true" } : {}) },
-    body: "{}",
-    signal: AbortSignal.timeout(20000),
-  });
+  let r;
+  try {
+    r = await fetch(`${MP}/v1/payments/${encodeURIComponent(record.payment_id)}/refunds`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "x-idempotency-key": `zevanory-refund-${oid}`, ...(record.test ? { "x-test-token": "true" } : {}) },
+      body: "{}",
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch {
+    record.provider_outcome_unknown = true;
+    record.last_error = "mercadopago_refund_outcome_unknown";
+    await kv.put(KEY(oid), JSON.stringify(record), { expirationTtl: 90 * 24 * 3600 });
+    return { status: 502, body: { error: record.last_error } };
+  }
   const body = await r.json().catch(() => ({}));
   if (!r.ok || !body?.id) {
+    // 5xx/408 and malformed successful responses are ambiguous; preserve the
+    // pending request, but block all follow-up provider writes until reviewed.
+    if (r.status >= 500 || r.status === 408 || r.ok) record.provider_outcome_unknown = true;
     record.last_error = `mercadopago_refund_${r.status}_${String(body?.message || body?.error || "").slice(0, 120)}`;
     await kv.put(KEY(oid), JSON.stringify(record), { expirationTtl: 90 * 24 * 3600 });
     return { status: 502, body: { error: record.last_error } };
@@ -184,7 +199,7 @@ const FORM_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"
 <script>document.getElementById('f').addEventListener('submit',async(ev)=>{ev.preventDefault();const m=document.getElementById('msg');m.style.display='block';m.textContent='Enviando…';try{const r=await fetch('/api/support/refund-request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({order_id:document.getElementById('o').value,email:document.getElementById('e').value})});const j=await r.json();m.textContent=j.message||'Não foi possível registrar agora. Tente novamente.';}catch{m.textContent='Não foi possível registrar agora. Tente novamente.';}});</script></body></html>`;
 
 function adminPage(items) {
-  const rows = items.map((r) => `<tr><td>${esc(r.requested_at.slice(0, 16).replace("T", " "))}</td><td><code>${esc(r.order_id)}</code><br><small>${esc(r.offer_id)} · ${esc(r.email_masked)}</small></td><td>R$ ${esc(r.amount)}</td><td>${esc(r.status)}${r.last_error ? `<br><small>${esc(r.last_error)}</small>` : ""}</td><td>${r.status === "pending" ? `<form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Aprovar reembolso</button> <button name="action" value="reject" class="no">Recusar</button></form>` : esc(r.refund_id || "")}</td></tr>`).join("");
+  const rows = items.map((r) => `<tr><td>${esc(r.requested_at.slice(0, 16).replace("T", " "))}</td><td><code>${esc(r.order_id)}</code><br><small>${esc(r.offer_id)} · ${esc(r.email_masked)}</small></td><td>R$ ${esc(r.amount)}</td><td>${esc(r.status)}${r.last_error ? `<br><small>${esc(r.last_error)}</small>` : ""}</td><td>${r.status === "pending" && r.provider_outcome_unknown !== true ? `<form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Aprovar reembolso</button> <button name="action" value="reject" class="no">Recusar</button></form>` : r.provider_outcome_unknown === true ? "Verificar no Mercado Pago antes de nova tentativa" : esc(r.refund_id || "")}</td></tr>`).join("");
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reembolsos · ZEVANORY</title><style>body{font-family:system-ui,sans-serif;background:#050a1e;color:#e7ecf7;margin:0;padding:24px}table{width:100%;border-collapse:collapse}td,th{padding:10px;border-bottom:1px solid #22305a;text-align:left;vertical-align:top}button{padding:10px 14px;border:0;border-radius:8px;background:#22c55e;color:#04210f;font-weight:700}button.no{background:#334155;color:#fff}code{font-size:12px}</style></head><body><h1>Pedidos de reembolso</h1><p>Aprovar envia o reembolso integral ao Mercado Pago e bloqueia novos downloads do pedido.</p><table><tr><th>Quando</th><th>Pedido</th><th>Valor</th><th>Status</th><th>Ação</th></tr>${rows || '<tr><td colspan="5">Nenhum pedido.</td></tr>'}</table></body></html>`;
 }
 
