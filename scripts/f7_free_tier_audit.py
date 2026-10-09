@@ -62,7 +62,8 @@ else:
     else:
         total = sum(r["sum"]["requests"] for r in rows); errors = sum(r["sum"]["errors"] for r in rows)
         record("workers_requests_day", total, LIMITS["workers_requests_day"])
-        worst = max(((r["quantiles"]["cpuTimeP99"] or 0) / 1000.0, r["dimensions"]["scriptName"]) for r in rows) if rows else (0, "-")
+        scoped = [r for r in rows if str(r["dimensions"]["scriptName"]).startswith("zevanory")]  # ARBM One is out of scope
+        worst = max(((r["quantiles"]["cpuTimeP99"] or 0) / 1000.0, r["dimensions"]["scriptName"]) for r in scoped) if scoped else (0, "-")
         record("workers_cpu_ms_per_invocation", round(worst[0], 2), LIMITS["workers_cpu_ms_per_invocation"], "ms")
         note("notice", "F7_WORKERS", f"scripts={len({r['dimensions']['scriptName'] for r in rows})} errors_24h={errors} worst_p99_cpu_script={worst[1]}")
     q = '{viewer{accounts(filter:{accountTag:"%s"}){kvOperationsAdaptiveGroups(limit:1000,filter:{datetime_geq:"%s",datetime_leq:"%s"}){sum{requests}dimensions{actionType}}}}}' % (ACCOUNT, since, until)
@@ -111,37 +112,19 @@ else:
     code, body = http("https://zevanory.api.br" + path, {"Accept": "application/json", "User-Agent": "ZEVANORY-AuditReadOnly/1.0",
                       "x-zevanory-audit-ts": ts, "x-zevanory-audit-signature": sig})
     db = (body or {}).get("database") or {}
+    email = (body or {}).get("email") or {}
     if code == 200 and isinstance(db.get("size_bytes"), int) and db.get("size_bytes") > 0:
         record("neon_storage_bytes", db["size_bytes"], LIMITS["neon_storage_bytes"], "B")
         note("notice", "F7_DB", f"host_suffix={db.get('provider_host_suffix')} postgres={db.get('postgres_version')}")
     else:
         unavailable("neon_storage_bytes", f"identity_http_{code}")
 
-# 3. Resend sends (list API, paginated; only timestamps are read).
-if not RESEND:
-    unavailable("resend_emails_day", "no_key")
+# 3. Resend sends, counted by the Worker with its own key (aggregates only).
+if len(AUDIT_KEY) >= 32 and isinstance(locals().get("email"), dict) and email.get("status", "").startswith("ok"):
+    record("resend_emails_day", email["emails_24h"], LIMITS["resend_emails_day"])
+    record("resend_emails_month", email["emails_month"], LIMITS["resend_emails_month"])
 else:
-    day_ago, month_start = now - datetime.timedelta(hours=24), now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    day = month = 0; after = None; ok = True
-    for _ in range(40):
-        code, body = http("https://api.resend.com/emails?limit=100" + (f"&after={after}" if after else ""), {"Authorization": "Bearer " + RESEND})
-        if code != 200: ok = False; break
-        items = body.get("data") or []
-        for it in items:
-            try: t = datetime.datetime.fromisoformat(str(it.get("created_at")).replace(" ", "T").replace("Z", "+00:00"))
-            except Exception: continue
-            if t.tzinfo is None: t = t.replace(tzinfo=datetime.timezone.utc)
-            if t >= day_ago: day += 1
-            if t >= month_start: month += 1
-        if not body.get("has_more") or not items: break
-        last = items[-1]
-        if datetime.datetime.fromisoformat(str(last.get("created_at")).replace(" ", "T").replace("Z", "+00:00")).replace(tzinfo=datetime.timezone.utc) < month_start: break
-        after = last.get("id")
-    if ok:
-        record("resend_emails_day", day, LIMITS["resend_emails_day"])
-        record("resend_emails_month", month, LIMITS["resend_emails_month"])
-    else:
-        unavailable("resend_emails_day", f"list_http_{code}")
+    unavailable("resend_emails_day", str((locals().get("email") or {}).get("status", "no_identity")))
 
 if failures:
     note("error", "F7_FREE_TIER", "ALERT/NOT_PROVEN: " + "; ".join(failures))
