@@ -34,6 +34,7 @@ on:
       - "tests/commercial-checkout-guard.test.mjs"
       - "tests/signed-audit-probe.test.mjs"
       - "worker/whatsapp-onboarding.mjs"
+      - "tests/order7-whatsapp-commercial.test.mjs"
       - "worker/whatsapp-inbound-safety.mjs"
       - "worker/voice-provider-router.mjs"
       - "worker/voice-chunks.mjs"
@@ -177,6 +178,7 @@ jobs:
           node --check worker/whatsapp-proof-gate.mjs
           node scripts/whatsapp_audio_runtime_test.mjs
           node --check worker/whatsapp-onboarding.mjs
+          node --test tests/order7-whatsapp-commercial.test.mjs
           node --check worker/whatsapp-e2e-evidence.mjs
           node --check worker/whatsapp-neon-store.mjs
           node --test tests/whatsapp-neon-store.test.mjs

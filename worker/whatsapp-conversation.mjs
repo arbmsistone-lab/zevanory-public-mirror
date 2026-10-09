@@ -6,15 +6,18 @@ import { SUPPORT_PRODUCTS, answerSupportQuestion } from "./support-knowledge.mjs
 
 const SALES_ORIGIN = "https://vendas.zevanory.api.br";
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
+// Exact SKUs from sales-public-worker.mjs; never generate arbitrary checkout targets.
+export const OFFICIAL_PURCHASE_SKUS = Object.freeze({"ia-na-pratica":"ZEV-IA-011","vendas-na-pratica":"ZEV-VEN-011","lucro-e-caixa":"ZEV-LCX-011","combo-ia-vendas":"ZEV-CMB-011","negocio-completo":"ZEV-NGC-011"});
+export const purchaseLinkFor = (slug, salesOpen = false) => salesOpen === true && OFFICIAL_PURCHASE_SKUS[slug] ? `${SALES_ORIGIN}/comprar/${OFFICIAL_PURCHASE_SKUS[slug]}` : null;
 const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"];
 const HISTORY_TURNS = 10;
 const ALLOWED_PRICES = new Set(Object.values(SUPPORT_PRODUCTS).map((p) => p.price_brl));
-const ALLOWED_URLS = new Set(["https://zevanory.api.br/pedir-reembolso", "https://zevanory.api.br/entrega/reenviar", SALES_ORIGIN, `${SALES_ORIGIN}/`, `${SALES_ORIGIN}/solucoes`, `${SALES_ORIGIN}/reembolso`, `${SALES_ORIGIN}/privacidade`, `${SALES_ORIGIN}/termos`, ...Object.keys(SUPPORT_PRODUCTS).map((slug) => `${SALES_ORIGIN}/${slug}`)]);
+const ALLOWED_URLS = new Set(["https://zevanory.api.br/pedir-reembolso", "https://zevanory.api.br/entrega/reenviar", SALES_ORIGIN, `${SALES_ORIGIN}/`, `${SALES_ORIGIN}/solucoes`, `${SALES_ORIGIN}/reembolso`, `${SALES_ORIGIN}/privacidade`, `${SALES_ORIGIN}/termos`, ...Object.keys(SUPPORT_PRODUCTS).map((slug) => `${SALES_ORIGIN}/${slug}`), ...Object.values(OFFICIAL_PURCHASE_SKUS).map((sku) => `${SALES_ORIGIN}/comprar/${sku}`)]);
 
 const brl = (n) => "R$ " + Number(n).toFixed(2).replace(".", ",");
 
 export function catalogFacts({ salesOpen = false } = {}) {
-  const lines = Object.entries(SUPPORT_PRODUCTS).map(([slug, p]) => `- ${p.name}: ${brl(p.price_brl)}. ${p.content} Página: ${SALES_ORIGIN}/${slug}`);
+  const lines = Object.entries(SUPPORT_PRODUCTS).map(([slug, p]) => `- ${p.name}: ${brl(p.price_brl)}. ${p.content} Página: ${SALES_ORIGIN}/${slug}${salesOpen ? `. Link de compra: ${purchaseLinkFor(slug, true)}` : ""}`);
   return [
     "CATÁLOGO OFICIAL (únicos produtos e preços que existem):",
     ...lines,
@@ -25,7 +28,7 @@ export function catalogFacts({ salesOpen = false } = {}) {
     `- Suporte humano: ${SUPPORT_EMAIL}.`,
     "- Combo IA + Vendas reúne IA na Prática + Vendas na Prática. Negócio Completo reúne IA, vendas e Lucro & Caixa.",
     salesOpen
-      ? "- COMPRA: as vendas estão abertas. Para comprar, envie o link da página do produto escolhido; lá está o botão Comprar agora (Pix ou cartão pelo Mercado Pago)."
+      ? "- COMPRA: as vendas estão abertas. Informe o link /comprar/SKU do produto exato, fornecido no catálogo, somente na resposta à pessoa que chamou."
       : "- COMPRA: as vendas ainda não foram abertas. Não envie link de pagamento. Diga que as compras abrem em breve e que o cliente pode voltar à página do produto ou chamar aqui a qualquer momento. Não prometa avisar depois.",
   ].join("\n");
 }
@@ -34,6 +37,7 @@ export function systemPrompt({ salesOpen = false, voice = false, fact = "" } = {
   return [
     "Você é o atendimento da ZEVANORY no WhatsApp: consultor de vendas e suporte, humano no tom, direto e gentil.",
     "Objetivo: entender a necessidade do cliente, orientar, tirar dúvidas e recomendar o produto certo do catálogo, conduzindo para a compra sem pressão.",
+    "Atenda exclusivamente quem iniciou a conversa e está na janela de atendimento permitida pela Meta. Não envie mensagens frias, campanhas em massa ou seguimentos não solicitados.",
     "Regras obrigatórias:",
     "1. Responda sempre em português do Brasil.",
     "2. Use SOMENTE os fatos do catálogo e das políticas abaixo. Nunca invente produto, preço, desconto, prazo, bônus, garantia ou link.",
@@ -120,11 +124,36 @@ function aiText(result) {
   return String(result?.response ?? result?.result?.response ?? result?.choices?.[0]?.message?.content ?? "");
 }
 
+// A model can invent *another valid SKU* or include a checkout URL during a
+// closed sale. Catalog allowlisting alone cannot authorize sending that link.
+const checkoutUrls = (body) => [...String(body || "").matchAll(/https?:\/\/[^\s)>\]]+/gi)]
+  .map(([url]) => url.replace(/[.,;!?]+$/, ""))
+  .filter((url) => url.startsWith(`${SALES_ORIGIN}/comprar/`));
+export function checkoutLinksAreAuthorized(body, { product = null, salesOpen = false, voice = false } = {}) {
+  const links = checkoutUrls(body);
+  if (links.length === 0) return true;
+  const permitted = voice ? null : purchaseLinkFor(product, salesOpen);
+  return Boolean(permitted && links.length === 1 && links[0] === permitted);
+}
+
+// Only the requested SKU can be sent, and never in a closed/voice reply.
+// Unsafe model output gets a neutral, catalog-only response, not its proposed URL.
+export function withVerifiedPurchaseLink(reply, { salesOpen = false, voice = false } = {}) {
+  if (!reply?.body) return reply;
+  if (!checkoutLinksAreAuthorized(reply.body, { product: reply.product, salesOpen, voice })) {
+    return { ...reply, body: "Posso explicar os produtos e seus preços oficiais. Qual material você quer conhecer?", mode: "checkout_link_guarded" };
+  }
+  const link = purchaseLinkFor(reply.product, salesOpen);
+  if (!link || voice || reply.body.includes(link)) return reply;
+  const body = `${reply.body}\n\nComprar: ${link}`;
+  return validateReply(body).ok ? { ...reply, body } : reply;
+}
+
 // Returns { body, mode, intent, product, model?, issues? }. Never throws.
 export async function converse({ ai, question, history = [], salesOpen = false, voice = false } = {}) {
   const q = String(question || "").trim().slice(0, 2000);
   const grounded = deterministicReply(q);
-  if (!ai?.run || !q) return { ...grounded, mode: "grounded" };
+  if (!ai?.run || !q) return withVerifiedPurchaseLink({ ...grounded, mode: "grounded" }, { salesOpen, voice });
   const known = answerSupportQuestion({ question: q });
   const fact = known.answered ? known.answer : "";
   const messages = [
@@ -142,15 +171,17 @@ export async function converse({ ai, question, history = [], salesOpen = false, 
       ]);
       const text = aiText(out).replace(/\*\*/g, "").trim();
       const check = validateReply(text);
-      if (check.ok) return { body: text, mode: "ai_grounded", model, intent: known.intent || "conversation", product: known.product || null };
-      tried.push(`${model}:${check.issues.join("|")}`);
+      if (check.ok && checkoutLinksAreAuthorized(text, { product: known.product || null, salesOpen, voice })) {
+        return withVerifiedPurchaseLink({ body: text, mode: "ai_grounded", model, intent: known.intent || "conversation", product: known.product || null }, { salesOpen, voice });
+      }
+      tried.push(`${model}:${[...check.issues, ...(check.ok ? ["checkout_link_scope"] : [])].join("|")}`);
     } catch (error) {
       tried.push(`${model}:${String(error?.message || error).slice(0, 80)}`);
     } finally {
       clearTimeout(timer);
     }
   }
-  return { ...grounded, mode: "grounded_fallback", issues: tried };
+  return withVerifiedPurchaseLink({ ...grounded, mode: "grounded_fallback", issues: tried }, { salesOpen, voice });
 }
 
 // Text suitable for speech: no URLs or markdown.

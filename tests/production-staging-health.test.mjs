@@ -26,7 +26,8 @@ test("production readiness classification stays fail-closed for altered flags", 
   assert.equal(safeClosedCommercialStaging(env,false,{...flags,PRE_SALE_GATES_APPROVED:false}),false);
   assert.equal(safeClosedCommercialStaging(env,false,{...flags,CHECKOUT_ENABLED:false}),false);
   assert.equal(safeClosedCommercialStaging(env,false,{...flags,FINANCIAL_EVENTS_ENABLED:false}),false);
-  assert.equal(safeClosedCommercialStaging(env,false,{...flags,WHATSAPP_SALES_ENABLED:true}),false);
+  // The owner can close checkout while inbound WhatsApp support remains enabled.
+  assert.equal(safeClosedCommercialStaging(env,false,{...flags,WHATSAPP_SALES_ENABLED:true}),true);
   assert.equal(safeClosedCommercialStaging({...env,MERCADOPAGO_ENV:"sandbox"},false,flags),false);
   assert.equal(safeClosedCommercialStaging({...env,ABSOLUTE_RELEASE_APPROVED:"false"},false,flags),false);
   assert.equal(safeClosedCommercialStaging({...env,PAYMENT_PROVIDER:"asaas"},false,flags),false);
