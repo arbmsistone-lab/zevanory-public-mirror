@@ -1,6 +1,6 @@
 {
-  "name": "Combo sandbox purchase and delivery proof",
-  "run-name": "combo-sandbox:${{ github.sha }}",
+  "name": "Catalog sandbox purchase, delivery and refund proof",
+  "run-name": "catalog-sandbox:${{ inputs.offer_id }}:${{ github.sha }}",
   "on": {
     "workflow_dispatch": {
       "inputs": {
@@ -8,6 +8,19 @@
           "description": "Full approved source SHA; no default",
           "required": true,
           "type": "string"
+        },
+        "offer_id": {
+          "description": "Catalog SKU proved at its table price",
+          "required": true,
+          "type": "choice",
+          "default": "ZEV-CMB-011",
+          "options": [
+            "ZEV-IA-011",
+            "ZEV-VEN-011",
+            "ZEV-LCX-011",
+            "ZEV-CMB-011",
+            "ZEV-NGC-011"
+          ]
         }
       }
     }
@@ -50,7 +63,8 @@
             "MERCADOPAGO_TEST_ACCESS_TOKEN": "${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}",
             "SANDBOX_IDENTITY_MANIFEST": "${{ secrets.SANDBOX_IDENTITY_MANIFEST }}",
             "SANDBOX_INBOX_READ_TOKEN": "${{ secrets.SANDBOX_INBOX_READ_TOKEN }}",
-            "CERTIFICATION_E2E_TOKEN": "${{ secrets.CERTIFICATION_E2E_TOKEN }}"
+            "CERTIFICATION_E2E_TOKEN": "${{ secrets.CERTIFICATION_E2E_TOKEN }}",
+            "SANDBOX_OFFER_ID": "${{ inputs.offer_id }}"
           },
           "run": "python3 scripts/mercadopago_combo_sandbox.py"
         },
@@ -59,7 +73,7 @@
           "if": "always()",
           "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
           "with": {
-            "name": "combo-sandbox-evidence",
+            "name": "catalog-sandbox-evidence-${{ inputs.offer_id }}",
             "path": "evidence/mercadopago-combo-sandbox.json",
             "if-no-files-found": "warn",
             "retention-days": 30

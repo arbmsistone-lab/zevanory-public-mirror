@@ -64,6 +64,13 @@ class FakeProvider:
         self.requires_reconcile = False
         self.reconciled = False
         self.refunded = False
+        self.offer = 'ZEV-CMB-011'
+        self.persisted = {}
+        self.payment_amounts = []
+        self.served = None
+
+    def artifact_bytes(self):
+        return ('private sandbox artifact ' + str(self.offer)).encode()
 
     def __call__(self, req, timeout):
         self.calls.append(req)
@@ -88,7 +95,9 @@ class FakeProvider:
         elif path == proof.INBOX_PATH + 'profile':
             data = {'email_address': self.recipient, 'read_only': True}
         elif path == proof.CERT_PATH + 'checkout':
-            data = {**isolation, 'accepted': True, 'created_new': True, 'amount_brl': 297, **self.checkout_changes}
+            self.offer = json.loads(req.data or b'{}').get('offer_id')
+            data = {**isolation, 'accepted': True, 'created_new': True, 'offer_id': self.offer,
+                    'amount_brl': proof.SANDBOX_OFFERS.get(self.offer), **self.checkout_changes}
         elif path == '/v1/card_tokens':
             data = {'id': 'mock-card-token', 'status': 'active', 'live_mode': True, 'public_key': 'test-public-key-unique-value', **self.card_changes}
         elif path == '/v1/payments':
@@ -110,13 +119,15 @@ class FakeProvider:
                         'delivery_evidence': {}}
                 return Response(json.dumps(data).encode())
             data = {**isolation, 'receipt_source': 'reconciliation' if self.reconciled else 'webhook',
-                'order': {'status': 'refunded' if self.refunded else 'paid'}, 'fulfillment': {'status': 'delivered'},
+                'order': {'status': 'refunded' if self.refunded else 'paid', 'offer_id': self.offer,
+                          'amount_brl': proof.SANDBOX_OFFERS.get(self.offer), 'currency': 'BRL',
+                          'certification_pilot': True, **self.persisted}, 'fulfillment': {'status': 'delivered'},
                 'financial_events': [{'normalized_event': 'payment_confirmed', 'provider_payment_id': 77,
                     'order_id': NEW_ORDER, 'source_class': 'provider_webhook', 'signature_verified': self.signature,
                     'signature_secret_class': 'sandbox', 'signature_verified_by': 'receiver'}],
                 'delivery_evidence': {'email_status': 'sent', 'email_recipient': self.recipient,
                     'verification_url': DOWNLOAD, 'expires_at': '2027-01-15T09:00:00+00:00',
-                    'artifact_sha256': proof.digest_bytes(b'private sandbox artifact')}}
+                    'artifact_sha256': proof.digest_bytes(self.artifact_bytes())}}
             # Set expiration from the mock clock, not a fixed calendar assumption.
             data['delivery_evidence']['expires_at'] = proof.dt.datetime.fromtimestamp(NOW + 120,
                 proof.dt.timezone.utc).isoformat()
@@ -138,7 +149,7 @@ class FakeProvider:
             self.download_calls += 1
             if self.download_calls > 1:
                 raise proof.urllib.error.HTTPError(req.full_url, 410, 'gone', {}, io.BytesIO(b''))
-            return Response(b'private sandbox artifact')
+            return Response(self.served if self.served is not None else self.artifact_bytes())
         else:
             raise AssertionError('Unexpected mock endpoint')
         return Response(json.dumps(data).encode())
@@ -146,6 +157,10 @@ class FakeProvider:
 
 class GuardTests(unittest.TestCase):
     def setUp(self):
+        self._catalog = dict(proof.CATALOG_ARTIFACTS)
+        for sku in proof.CATALOG_ARTIFACTS:
+            proof.CATALOG_ARTIFACTS[sku] = proof.digest_bytes(('private sandbox artifact ' + sku).encode())
+        self.addCleanup(lambda saved=self._catalog: proof.CATALOG_ARTIFACTS.update(saved))
         self.env = environment()
         self.identity = proof.preflight(self.env)
         self.fake = FakeProvider()
@@ -157,6 +172,48 @@ class GuardTests(unittest.TestCase):
     def run_fake(self):
         return proof.run(self.env, self.fake, now=lambda: NOW,
             sleep=lambda _: (_ for _ in ()).throw(proof.GuardError('RECEIPT_WEBHOOK_TIMEOUT')))
+
+    def test_delivered_file_of_another_product_fails(self):
+        self.env['SANDBOX_OFFER_ID'] = 'ZEV-NGC-011'
+        original = proof.CATALOG_ARTIFACTS['ZEV-NGC-011']
+        try:
+            proof.CATALOG_ARTIFACTS['ZEV-NGC-011'] = proof.digest_bytes(b'private sandbox artifact ZEV-IA-011')
+            report = self.run_fake()
+        finally:
+            proof.CATALOG_ARTIFACTS['ZEV-NGC-011'] = original
+        self.assertEqual(report['cause'], 'DOWNLOAD_PRODUCT_MISMATCH')
+
+    def test_each_catalog_sku_runs_at_its_table_price(self):
+        for sku, price in proof.SANDBOX_OFFERS.items():
+            self.setUp()
+            self.env['SANDBOX_OFFER_ID'] = sku
+            report = self.run_fake()
+            self.assertEqual(report['status'], 'PASS', (sku, report))
+            self.assertEqual((report['offer_id'], report['amount_brl']), (sku, price))
+            self.assertEqual(report['checks'].get('CANONICAL_ORDER'), 'PASS')
+            pays = [json.loads(r.data) for r in self.fake.calls
+                    if proof.urllib.parse.urlsplit(r.full_url).path == '/v1/payments' and r.method == 'POST']
+            self.assertEqual([p['transaction_amount'] for p in pays], [price])
+
+    def test_unknown_sku_fails_before_any_network_call(self):
+        self.env['SANDBOX_OFFER_ID'] = 'ZEV-XYZ-999'
+        report = self.run_fake()
+        self.assertEqual(report['cause'], 'SANDBOX_OFFER_NOT_IN_CATALOG')
+        self.assertEqual(self.fake.calls, [])
+
+    def test_checkout_amount_divergence_stops_before_payment(self):
+        self.env['SANDBOX_OFFER_ID'] = 'ZEV-NGC-011'
+        self.fake.checkout_changes = {'amount_brl': 347}
+        report = self.run_fake()
+        self.assertEqual(report['cause'], 'CATALOG_AMOUNT_REQUIRED')
+        self.assertFalse(any('/v1/payments' in r.full_url for r in self.fake.calls))
+
+    def test_persisted_order_mismatch_fails(self):
+        for change in ({'amount_brl': 147}, {'offer_id': 'ZEV-IA-011'}, {'certification_pilot': False}, {'currency': 'USD'}):
+            self.setUp()
+            self.fake.persisted = change
+            report = self.run_fake()
+            self.assertEqual(report['cause'], 'PERSISTED_ORDER_CATALOG_MISMATCH', change)
 
     def test_full_mock_proof_and_sanitized_evidence(self):
         report = self.run_fake()

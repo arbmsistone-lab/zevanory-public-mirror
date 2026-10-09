@@ -221,3 +221,45 @@ test("reconciliation never certifies a non-approved canonical event", async () =
   const saved = JSON.parse(await e.ZEVANORY_PRIVATE_ARTIFACTS.get(`sandbox-proof-v2:order:${oid}`));
   assert.equal(saved.receipt_source, undefined);
 });
+
+test("sandbox offers mirror the canonical public catalog prices", () => {
+  assert.deepEqual({ ...v2.SANDBOX_OFFERS }, { "ZEV-IA-011": 197, "ZEV-VEN-011": 197, "ZEV-LCX-011": 247, "ZEV-CMB-011": 297, "ZEV-NGC-011": 397 });
+  const sales = readFileSync(new URL("../worker/sales-public-worker.mjs", import.meta.url), "utf8");
+  for (const [sku, price] of Object.entries(v2.SANDBOX_OFFERS)) assert.match(sales, new RegExp(`"${sku}":\\["[^"]+",${price}\\]`));
+});
+
+test("checkout accepts each catalog SKU and forwards it with its table price", async () => {
+  for (const [sku, price] of Object.entries(v2.SANDBOX_OFFERS)) {
+    const worker = canonicalWorker();
+    const e = env({ OPERATOR_TOKEN: "operator-token-0123456789abcdef0123456789" });
+    const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/checkout", { method: "POST", headers: { "x-certification-e2e-token": TOKEN }, body: JSON.stringify({ ...body, offer_id: sku }) }), e, {}, worker, sqlOk);
+    assert.equal(r.status, 201, sku);
+    const d = await r.json();
+    assert.equal(d.offer_id, sku);
+    assert.equal(d.amount_brl, price);
+    assert.equal(worker.calls[1].body.offer_id, sku);
+    const rec = JSON.parse(e.ZEVANORY_PRIVATE_ARTIFACTS.m.get(`sandbox-proof-v2:order:${d.order_id}`));
+    assert.equal(rec.offer_id, sku);
+    assert.equal(rec.amount_brl, price);
+  }
+  for (const bad of ["zev-ia-011", "ZEV-IA-012", "__proto__", "constructor", "", null]) {
+    assert.equal(v2.validCheckoutInput({ ...body, offer_id: bad }), null, String(bad));
+  }
+});
+
+test("an unpaid order of another SKU is never reused", async () => {
+  const e = env({ OPERATOR_TOKEN: "operator-token-0123456789abcdef0123456789" });
+  const oid = "33333333-3333-4444-8555-666666666666";
+  await e.ZEVANORY_PRIVATE_ARTIFACTS.put("sandbox-proof-v2:order:" + oid, JSON.stringify({ order_id: oid, session_id: "s",
+    buyer_id: body.buyer_id, buyer_email: body.buyer_email, email_recipient: body.email_recipient, offer_id: "ZEV-IA-011", created_at: new Date().toISOString() }));
+  const base = canonicalWorker();
+  const worker = { calls: base.calls, fetch: async (request) => {
+    if (new URL(request.url).pathname.endsWith("/status")) return Response.json({ order: { status: "pending" } });
+    return base.fetch(request);
+  } };
+  const r = await v2.handleSandboxProofV2(req("/api/internal/certification/e2e/checkout", { method: "POST", headers: { "x-certification-e2e-token": TOKEN }, body: JSON.stringify({ ...body, offer_id: "ZEV-NGC-011" }) }), e, {}, worker, sqlOk);
+  assert.equal(r.status, 201);
+  const d = await r.json();
+  assert.equal(d.created_new, true);
+  assert.equal(d.amount_brl, 397);
+});
