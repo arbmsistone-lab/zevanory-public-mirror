@@ -7,6 +7,19 @@ test("channel bundle includes YouTube refresh without Google Business fields and
 test("blog creates all three compliant weekly articles in one cycle with Article, FAQ and UTMs",async()=>{const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};const out=await ensureWeeklyBlog(env,new Date("2026-10-07T12:00:00Z"),async()=>({ok:true}));assert.equal(out.total,3);assert.equal(out.created.length,3);const html=await renderBlogArticle(env,out.created[0].id);assert.match(html,/Article/);assert.match(html,/FAQPage/);assert.match(html,/utm_source=blog/);assert.match(html,/Garantia de 7 dias/);});
 test("official Telegram and Pinterest adapters return real provider evidence",async()=>{const calls=[];const fetchImpl=async(url,init)=>{calls.push([url,init]);return url.includes("telegram")?{status:200,json:async()=>({ok:true,result:{message_id:7}})}:{status:201,json:async()=>({id:"pin-9"})};};const tg=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"secret",TELEGRAM_CHANNEL_ID:"@zevanory"},payload:{content:"oi"},fetchImpl});assert.equal(tg.url,"https://t.me/zevanory/7");const pin=await publishPinterest({env:{PINTEREST_ACCESS_TOKEN:"secret",PINTEREST_BOARD_ID:"board"},payload:{title:"t",content:"c",landing_url:"https://zevanory.api.br",media_url:"https://zevanory.api.br/x.png"},fetchImpl});assert.equal(pin.url,"https://www.pinterest.com/pin/pin-9/");assert.equal(calls.length,2);});
 test("private Sistema channels checklist contains exact Pinterest fields and replaces Google Business with Search Console",async()=>{const html=await renderChannelsPage({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.match(html,/Sistema/);assert.match(html,/TELEGRAM_BOT_TOKEN/);assert.match(html,/YOUTUBE_CLIENT_ID/);assert.match(html,/PINTEREST_ACCESS_TOKEN/);assert.match(html,/PINTEREST_BOARD_ID/);assert.match(html,/pins:write/);assert.match(html,/boards:write/);assert.match(html,/developers\.pinterest\.com\/apps\//);assert.match(html,/Google Search Console \+ Blog/);assert.doesNotMatch(html,/Google Perfil da Empresa/);assert.doesNotMatch(html,/GOOGLE_BUSINESS_/);assert.match(html,/Aguardando verificação da empresa \(em análise\)/);assert.match(html,/Pendente credencial/);assert.match(html,/developers\.facebook\.com/);});
+test("all six editorial topics satisfy the original 85/100 and 100% publishing rubric",async()=>{
+  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};
+  const slugs=[];
+  for(let i=0;i<6;i++){
+    const date=new Date(Date.UTC(2026,9,10+i,12));
+    const outcome=await ensureDailyBlog(env,date);
+    assert.equal(outcome.created.length,1,"day "+i+" must pass unchanged creative compliance gate");
+    assert.equal(outcome.latest.compliance,100);
+    assert.ok(outcome.latest.score>=85);
+    slugs.push(outcome.latest.slug);
+  }
+  assert.equal(new Set(slugs).size,6);
+});
 test("one SEO article per Fortaleza calendar day for two consecutive dates",async()=>{
   const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};
   const first=await ensureDailyBlog(env,new Date("2026-10-08T12:00:00Z"));
