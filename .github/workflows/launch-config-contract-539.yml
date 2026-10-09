@@ -6,6 +6,8 @@ on:
       - 'scripts/deploy/prepare-central-candidate.py'
       - 'scripts/launch_config_contract.py'
       - 'tests/test_launch_config_modes.py'
+      - 'scripts/deploy/verify-financial-boundary.py'
+      - 'tests/test_verify_financial_boundary.py'
       - 'worker/commercial-checkout-guard.mjs'
       - 'worker/cloudflare-worker.compat.mjs'
       - 'tests/commercial-checkout-guard.test.mjs'
@@ -26,6 +28,8 @@ jobs:
         run: python3 scripts/launch_config_contract.py
       - name: Execute actual preparer in isolated default and authorized test modes
         run: python3 tests/test_launch_config_modes.py
+      - name: Assert the financial safety gate accepts only authorized mode
+        run: python3 tests/test_verify_financial_boundary.py
       - name: Nine-checkout-gate closed/open matrix
         run: node --test tests/commercial-checkout-guard.test.mjs
       - name: Validate Worker syntax

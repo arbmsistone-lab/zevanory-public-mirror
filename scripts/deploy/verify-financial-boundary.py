@@ -1,13 +1,37 @@
 #!/usr/bin/env python3
+"""No secret changes. Verify either closed-by-default or explicitly authorized launch config."""
 import json
-c=json.load(open("wrangler.central-fix.jsonc",encoding="utf-8"))
-v=c.get("vars",{})
-assert str(v.get("SALE_GLOBALLY_ENABLED","")).lower()=="false"
-assert str(v.get("PRE_SALE_GATES_APPROVED","")).lower()=="false"
-assert str(v.get("ASAAS_ENV","")).lower()=="sandbox", "ASAAS_ENV_MUST_BE_SANDBOX"
-assert str(v.get("CERTIFICATION_PILOT_ENV","")).lower()=="sandbox", "CERTIFICATION_PILOT_MUST_BE_SANDBOX"
-assert str(v.get("MERCADOPAGO_ENV","")).lower()=="sandbox", "PRODUCTION_MERCADOPAGO_NOT_AUTHORIZED"
-assert str(v.get("PAYMENT_PROVIDER","")).lower()=="mercadopago", "PRODUCTION_PROVIDER_CHANGED"
-assert str(v.get("WHATSAPP_SALES_ENABLED","")).lower()=="false"
+import os
+import re
+
+with open("wrangler.central-fix.jsonc", encoding="utf-8") as f:
+    vars = json.load(f).get("vars", {})
+
+assert str(vars.get("SALE_GLOBALLY_ENABLED", "")).lower() == "false", "DEPLOY_MUST_KEEP_SALES_CLOSED"
+assert str(vars.get("CERTIFICATION_PILOT_PRODUCTION_ALLOWED", "")).lower() == "false", "NO_PRODUCTION_PILOT"
+assert str(vars.get("WHATSAPP_SALES_ENABLED", "")).lower() == "false", "WHATSAPP_SALES_CLOSED"
+assert str(vars.get("ASAAS_ENV", "")).lower() == "sandbox", "ASAAS_ENV_MUST_BE_SANDBOX"
+assert str(vars.get("CERTIFICATION_PILOT_ENV", "")).lower() == "sandbox", "CERTIFICATION_PILOT_MUST_BE_SANDBOX"
+assert str(vars.get("PAYMENT_PROVIDER", "")).lower() == "mercadopago", "PRODUCTION_PROVIDER_CHANGED"
+
+authorized = os.getenv("ZEVANORY_LAUNCH_AUTHORIZATION", "") == "AUTORIZO COMPRA REAL"
+runtime = vars.get("ZEVANORY_RUNTIME_CONFIG", {})
+assert isinstance(runtime, dict), "RUNTIME_CONFIG_INVALID"
+if authorized:
+    account_hash = os.getenv("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16", "").lower()
+    assert re.fullmatch(r"[a-f0-9]{16}", account_hash), "LAUNCH_COLLECTOR_PROOF_MISSING"
+    assert os.getenv("MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED", "") == "true", "LAUNCH_PRODUCTION_WEBHOOK_UNVERIFIED"
+    assert vars.get("MERCADOPAGO_ENV") == "production", "AUTHORIZED_PRODUCTION_ENV_MISSING"
+    assert vars.get("ABSOLUTE_RELEASE_APPROVED") == "true", "AUTHORIZED_ABSOLUTE_GATE_MISSING"
+    assert vars.get("PRE_SALE_GATES_APPROVED") == "true", "AUTHORIZED_PRE_SALE_GATE_MISSING"
+    assert runtime.get("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16") == account_hash, "COLLECTOR_HASH_RUNTIME_MISMATCH"
+    assert "MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16" not in vars, "COLLECTOR_HASH_UNCOMPACTED"
+else:
+    assert vars.get("MERCADOPAGO_ENV") == "sandbox", "PRODUCTION_MERCADOPAGO_NOT_AUTHORIZED"
+    assert vars.get("ABSOLUTE_RELEASE_APPROVED") == "false", "ABSOLUTE_GATE_MUST_BE_FALSE"
+    assert vars.get("PRE_SALE_GATES_APPROVED") == "false", "PRE_SALE_GATE_MUST_BE_FALSE"
+    assert "MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16" not in runtime, "PRODUCTION_HASH_WITHOUT_AUTH"
+
 print("CORE_DEPLOY_FINANCIAL_BOUNDARY=PASS")
 print("FINANCIAL_SECRETS_MUTATION=DECOUPLED")
+print("SALES_DEPLOYED_CLOSED=PASS")

@@ -224,6 +224,10 @@ jobs:
           python3 scripts/deploy/check-binding-budget.py wrangler.central-fix.jsonc /tmp/settings.json
       - name: Verify financial safety boundary without mutating secrets
         if: steps.auth.outputs.available == 'true'
+        env:
+          ZEVANORY_LAUNCH_AUTHORIZATION: ${{ vars.ZEVANORY_LAUNCH_AUTHORIZATION }}
+          MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ${{ vars.MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16 }}
+          MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED: ${{ vars.MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED }}
         shell: bash
         run: |
           set -euo pipefail
