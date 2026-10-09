@@ -1,0 +1,46 @@
+name: ZEVANORY production collector identity digest read-only
+on:
+  push:
+    branches: [ops/f4-get-only-reconcile-569-20261009]
+    paths: ['.github/workflows/collector-hash16-readonly-20261009.yml']
+permissions:
+  contents: read
+jobs:
+  identity-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: GET users/me only and emit sanitized SHA256 digest
+        env:
+          MP_PROD_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,hashlib,urllib.request,urllib.error,re,sys
+          token=os.environ.get('MP_PROD_TOKEN','').strip()
+          if len(token)<32 or token.startswith('TEST-'):
+              print('::error::PRODUCTION_TOKEN_ABSENT_OR_TEST')
+              sys.exit(1)
+          req=urllib.request.Request('https://api.mercadopago.com/users/me',headers={
+              'Authorization':'Bearer '+token,'Accept':'application/json','User-Agent':'ZEVANORY-production-collector-readonly/1.0'
+          },method='GET')
+          try:
+              with urllib.request.urlopen(req,timeout=18) as resp:
+                  if resp.status!=200: raise ValueError('HTTP_NOT_200')
+                  doc=json.loads(resp.read(16384))
+          except Exception:
+              print('::error::PRODUCTION_IDENTITY_LOOKUP_FAILED')
+              sys.exit(1)
+          ident=str(doc.get('id',''))
+          site=str(doc.get('site_id',''))
+          tags=doc.get('tags',[])
+          if not re.fullmatch(r'[0-9]+',ident) or not re.fullmatch(r'[A-Z]{3}',site) or not isinstance(tags,list):
+              print('::error::IDENTITY_FIELDS_INVALID')
+              sys.exit(1)
+          digest=hashlib.sha256(ident.encode()).hexdigest()[:16]
+          print('::warning::MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16='+digest)
+          print('::warning::SITE_ID='+site)
+          print('::warning::TEST_USER_TAG='+str('test_user' in tags).lower())
+          print('::warning::ACCOUNT_IS_PRODUCTION_MLB='+str(site=='MLB' and 'test_user' not in tags).lower())
+          PY
