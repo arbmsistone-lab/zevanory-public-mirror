@@ -1,0 +1,56 @@
+name: ZEVANORY canonical routing read-only diagnosis
+on:
+  push:
+    branches: [ops/launch-readonly-audit-20261009]
+    paths: ['.github/workflows/zpc-canonical-route-readonly.yml']
+permissions:
+  contents: read
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Inspect public release endpoints and Cloudflare domain bindings by GET only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,re,urllib.request,urllib.error
+          CF=os.getenv("CLOUDFLARE_API_TOKEN","")
+          ACCOUNT="1b26415802588185a86c1d4d3ebf5bdb"
+          def emit(k,v):
+              print("::warning::"+k+"="+re.sub(r"[^A-Za-z0-9_.:-]","",str(v))[:100],flush=True)
+          def get(url,token=False):
+              h={"User-Agent":"zevanory-sandbox-proof/3","Accept":"application/json"}
+              if token and CF:h["Authorization"]="Bearer "+CF
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url,headers=h,method="GET"),timeout=25) as f:
+                      return f.status,json.loads(f.read(65536))
+              except urllib.error.HTTPError as e:
+                  return e.code,{}
+              except Exception:
+                  return 0,{}
+          for label,url in [
+              ("APEX","https://zevanory.api.br/api/release"),
+              ("OWNER_WORKERS_DEV","https://zevanory.zevanory.workers.dev/api/release"),
+              ("LEGACY_WORKERS_DEV","https://zevanory.girolocal-rb.workers.dev/api/release")]:
+              code,doc=get(url)
+              sha=doc.get("deployment",{}).get("commit_sha") or doc.get("release_sha") or "unknown"
+              emit(label+"_HTTP",code)
+              emit(label+"_SHA",sha if re.fullmatch("[a-f0-9]{40}",str(sha)) else "unverified")
+          if not CF:
+              emit("CLOUDFLARE_READ","token_unavailable")
+          else:
+              code,doc=get("https://api.cloudflare.com/client/v4/accounts/"+ACCOUNT+"/workers/domains",True)
+              emit("WORKERS_CUSTOM_DOMAINS_HTTP",code)
+              arr=doc.get("result",[])
+              if isinstance(arr,list):
+                  for name in ["zevanory.api.br","controle.zevanory.api.br","vendas.zevanory.api.br"]:
+                      matches=[x for x in arr if isinstance(x,dict) and x.get("hostname")==name]
+                      emit("DOMAIN_"+name.replace(".","_")+"_COUNT",len(matches))
+                      for x in matches:
+                          emit("DOMAIN_"+name.replace(".","_")+"_SERVICE",x.get("service","unknown"))
+              code,doc=get("https://api.cloudflare.com/client/v4/accounts/"+ACCOUNT+"/workers/scripts/zevanory/settings",True)
+              emit("OWNER_WORKER_SETTINGS_HTTP",code)
+          PY
