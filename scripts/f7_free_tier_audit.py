@@ -90,6 +90,23 @@ else:
             hours[d["datetimeHour"][11:13]] = hours.get(d["datetimeHour"][11:13], 0) + n
         note("notice", "F7_KV_WRITES_BY_NAMESPACE", json.dumps(dict(sorted(ns.items(), key=lambda x: -x[1])), sort_keys=False))
         note("notice", "F7_KV_WRITES_BY_HOUR_UTC", json.dumps(dict(sorted(hours.items()))))
+    # Invocation outcome for the main Worker (exceeded CPU would appear here).
+    q = '{viewer{accounts(filter:{accountTag:"%s"}){workersInvocationsAdaptive(limit:200,filter:{datetime_geq:"%s",datetime_leq:"%s",scriptName:"zevanory"}){sum{requests}quantiles{cpuTimeP50 cpuTimeP99}dimensions{status usageModel}}}}}' % (ACCOUNT, since, until)
+    code, body = gql(q)
+    rows = (((body.get("data") or {}).get("viewer") or {}).get("accounts") or [{}])[0].get("workersInvocationsAdaptive") if code == 200 else None
+    if rows is not None and not body.get("errors"):
+        note("notice", "F7_ZEVANORY_STATUS", json.dumps([{"status": r["dimensions"]["status"], "model": r["dimensions"].get("usageModel"), "req": r["sum"]["requests"], "p99ms": round((r["quantiles"]["cpuTimeP99"] or 0) / 1000, 1)} for r in rows]))
+    else:
+        note("warning", "F7_ZEVANORY_STATUS", f"graphql_{code} {str(body.get('errors'))[:160]}")
+    # Account plan: any paid Workers subscription would violate the zero-cost rule.
+    code, body = http(f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/subscriptions", {"Authorization": "Bearer " + CF_TOKEN})
+    if code == 200:
+        subs = [{"product": ((x.get("rate_plan") or {}).get("public_name") or (x.get("rate_plan") or {}).get("id")), "price": x.get("price"), "state": x.get("state")} for x in (body.get("result") or [])]
+        paid = [x for x in subs if (x.get("price") or 0) > 0]
+        note("error" if paid else "notice", "F7_CF_PLAN", json.dumps(subs)[:700])
+        if paid: failures.append("cloudflare_paid_subscription")
+    else:
+        note("warning", "F7_CF_PLAN", f"subscriptions_http_{code} (token lacks billing read)")
     # Per-script CPU and requests (ZEVANORY scripts are the launch scope).
     q = '{viewer{accounts(filter:{accountTag:"%s"}){workersInvocationsAdaptive(limit:1000,filter:{datetime_geq:"%s",datetime_leq:"%s"}){sum{requests errors}quantiles{cpuTimeP50 cpuTimeP99}dimensions{scriptName}}}}}' % (ACCOUNT, since, until)
     code, body = gql(q)
@@ -112,6 +129,14 @@ else:
     code, body = http("https://zevanory.api.br" + path, {"Accept": "application/json", "User-Agent": "ZEVANORY-AuditReadOnly/1.0",
                       "x-zevanory-audit-ts": ts, "x-zevanory-audit-signature": sig})
     db = (body or {}).get("database") or {}
+    em = (body or {}).get("email") or {}
+    if code == 200 and em.get("status", "").startswith("ok") and isinstance(em.get("emails_24h"), int):
+        record("resend_emails_day", em["emails_24h"], LIMITS["resend_emails_day"])
+        record("resend_emails_month", em["emails_month"], LIMITS["resend_emails_month"])
+        RESEND = ""  # measured via the Worker's own key
+        RESEND_DONE = True
+    else:
+        note("warning", "F7_RESEND_VIA_WORKER", f"status={em.get('status')}")
     email = (body or {}).get("email") or {}
     if code == 200 and isinstance(db.get("size_bytes"), int) and db.get("size_bytes") > 0:
         record("neon_storage_bytes", db["size_bytes"], LIMITS["neon_storage_bytes"], "B")
