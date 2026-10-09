@@ -98,6 +98,20 @@ else:
         note("notice", "F7_ZEVANORY_STATUS", json.dumps([{"status": r["dimensions"]["status"], "model": r["dimensions"].get("usageModel"), "req": r["sum"]["requests"], "p99ms": round((r["quantiles"]["cpuTimeP99"] or 0) / 1000, 1)} for r in rows]))
     else:
         note("warning", "F7_ZEVANORY_STATUS", f"graphql_{code} {str(body.get('errors'))[:160]}")
+    # Where does the CPU go? p99 per minute-of-hour: if heavy invocations cluster at :00 they are the cron.
+    q = '{viewer{accounts(filter:{accountTag:"%s"}){workersInvocationsAdaptive(limit:3000,filter:{datetime_geq:"%s",datetime_leq:"%s",scriptName:"zevanory"}){sum{requests}quantiles{cpuTimeP99 cpuTimeP50}dimensions{datetimeMinute}}}}}' % (ACCOUNT, since, until)
+    code, body = gql(q)
+    rows = (((body.get("data") or {}).get("viewer") or {}).get("accounts") or [{}])[0].get("workersInvocationsAdaptive") if code == 200 else None
+    if rows:
+        heavy = [r for r in rows if (r["quantiles"]["cpuTimeP99"] or 0) / 1000 > 10]
+        by_min = {}
+        for r in heavy:
+            m = r["dimensions"]["datetimeMinute"][14:16]; by_min[m] = by_min.get(m, 0) + r["sum"]["requests"]
+        top = sorted(heavy, key=lambda r: -(r["quantiles"]["cpuTimeP99"] or 0))[:8]
+        note("notice", "F7_CPU_HEAVY_MINUTES", f"minutes_with_p99_over_10ms={len(heavy)}/{len(rows)} by_minute_of_hour={json.dumps(dict(sorted(by_min.items(), key=lambda x:-x[1])[:10]))}")
+        note("notice", "F7_CPU_TOP", json.dumps([[r['dimensions']['datetimeMinute'][11:16], r['sum']['requests'], round((r['quantiles']['cpuTimeP99'] or 0)/1000,1)] for r in top]))
+    else:
+        note("warning", "F7_CPU_HEAVY_MINUTES", f"graphql_{code} {str(body.get('errors'))[:200]}")
     # Account plan: any paid Workers subscription would violate the zero-cost rule.
     code, body = http(f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/subscriptions", {"Authorization": "Bearer " + CF_TOKEN})
     if code == 200:
