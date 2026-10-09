@@ -1,0 +1,80 @@
+name: ZEVANORY T1 single sandbox retry after GET-only reconciliation
+on:
+  push:
+    branches: [ops/f4-get-only-reconcile-569-20261009]
+    paths: ['.github/workflows/t1-single-sandbox-retry-20261009.yml']
+permissions:
+  contents: read
+jobs:
+  once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Wait for 18:17 UTC and reconcile first (single provider retry maximum)
+        env:
+          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os,sys,json,datetime,time,urllib.request,urllib.error,re
+          OID="2073655f-cd83-4490-a62c-f77a29ffe9ad"
+          TOKEN=os.getenv("CERTIFICATION_E2E_TOKEN","")
+          ENDPOINT="https://zevanory.api.br/api/internal/certification/e2e/"
+          TARGET=datetime.datetime(2026,10,9,18,17,tzinfo=datetime.timezone.utc)
+          now=datetime.datetime.now(datetime.timezone.utc)
+          def note(field,value):
+              v=str(value)
+              v=re.sub(r"[^a-zA-Z0-9_.,:\[\]-]","",v)[:240]
+              print("::warning::"+field+"="+v)
+          def stop(reason):
+              note("T1_STOP",reason)
+              sys.exit(1)
+          if len(TOKEN)<32: stop("CERTIFICATION_TOKEN_UNAVAILABLE")
+          if now.date()!=TARGET.date(): stop("DATE_MISMATCH")
+          delay=(TARGET-now).total_seconds()
+          if delay>0:
+              if delay>1350: stop("UNEXPECTED_PREMATURE_START")
+              time.sleep(delay)
+          if datetime.datetime.now(datetime.timezone.utc)>TARGET+datetime.timedelta(minutes=45):
+              stop("OUTSIDE_AUTHORIZED_WINDOW")
+          def request(path,method="GET"):
+              headers={"user-agent":"zevanory-sandbox-proof/3","accept":"application/json","x-certification-e2e-token":TOKEN}
+              body=b"{}" if method=="POST" else None
+              if body is not None: headers["content-type"]="application/json"
+              req=urllib.request.Request(ENDPOINT+path,data=body,headers=headers,method=method)
+              try:
+                  with urllib.request.urlopen(req,timeout=40) as resp:
+                      return resp.status,json.loads(resp.read(65536))
+              except urllib.error.HTTPError as e:
+                  try: data=json.loads(e.read(65536))
+                  except: data={}
+                  return e.code,data
+              except Exception:
+                  return 0,{}
+          # EXACTLY ONE reconciliation and potentially ONE owner-authorized sandbox endpoint approval
+          http,doc=request("refund-reconcile?order_id="+OID,method="POST")
+          state=str(doc.get("status","unknown"))
+          missing=doc.get("missing",[])
+          if not isinstance(missing,list): missing=["invalid_missing_shape"]
+          note("T1_RECONCILE_HTTP",http)
+          note("T1_RECONCILE_STATUS",state)
+          note("T1_RECONCILE_MISSING",",".join(map(str,missing)) or "none")
+          note("T1_RETRY_PERMITTED",str(doc.get("retry_permitted",False)).lower())
+          if http!=200 or state!="not_refunded" or doc.get("retry_permitted") is not True:
+              stop("NO_FINANCIAL_RETRY_CONDITIONS_NOT_MET")
+          # ONE and ONLY ONE sandbox POST to the internal certification endpoint.
+          http2,done=request("refund-approve?order_id="+OID,method="POST")
+          note("T1_SINGLE_APPROVAL_HTTP",http2)
+          note("T1_SINGLE_APPROVAL_STATUS",done.get("status","unknown"))
+          note("T1_SINGLE_APPROVAL_ORDER_STATUS",done.get("order_status","unknown"))
+          if http2!=200 or done.get("status")!="approved": stop("SINGLE_RETRY_NOT_CONFIRMED_NO_REPEAT")
+          http3,check=request("status?order_id="+OID)
+          statuses=[str(e.get("normalized_event","")) for e in check.get("financial_events",[]) if isinstance(e,dict)]
+          order=(check.get("order") or {}).get("status","unknown")
+          note("T1_NEON_HTTP",http3)
+          note("T1_NEON_ORDER_STATUS",order)
+          note("T1_NEON_REFUND_CONFIRMED_EVENT",str("refund_confirmed" in statuses).lower())
+          if http3!=200 or order!="refunded" or "refund_confirmed" not in statuses:
+              stop("REFUND_PENDING_NEON_RECONCILIATION_NO_REPEAT")
+          note("T1_FINAL","CONCILIADO")
+          PY
