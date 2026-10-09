@@ -1,0 +1,35 @@
+name: ZEVANORY production sales switch read-only attestation
+on:
+  push:
+    branches: [ops/f4-get-only-reconcile-569-20261009]
+    paths: ['.github/workflows/sales-switch-readonly-20261009.yml']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: GET sales switch only, print sanitized open status
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request,urllib.error
+          req=urllib.request.Request('https://zevanory.api.br/api/sales/status',method='GET',
+                                     headers={'User-Agent':'zevanory-sandbox-proof/3','Accept':'application/json'})
+          try:
+              with urllib.request.urlopen(req,timeout=20) as response:
+                  code=response.status
+                  data=json.loads(response.read(8192))
+          except urllib.error.HTTPError as e:
+              code=e.code
+              data={}
+          except Exception:
+              code=0
+              data={}
+          print('::warning::SALES_STATUS_HTTP='+str(code))
+          print('::warning::SALES_OPEN='+str(data.get('open','unknown')).lower())
+          print('::warning::SALES_REQUESTED='+str(data.get('requested','unknown')).lower())
+          if code!=200 or data.get('open') is not False:
+              raise SystemExit('SALES_NOT_CONFIRMED_CLOSED')
+          PY
