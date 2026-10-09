@@ -270,7 +270,7 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     const record = JSON.parse(await kv.get(KEY(oid)) || "null");
     if (!record?.test) return json(403, { error: "certification_refund_only_for_test_orders" });
     const out = path.endsWith("/refund-reconcile") ? await reconcileRefund(env, sql(), kv, oid) : await executeRefund(env, sql(), kv, oid, { actor: "certification-e2e" });
-    if (out.status === 200 && out.body?.status === "approved" && !path.endsWith("/refund-reconcile") && worker?.fetch) {
+    if (out.status === 200 && out.body?.status === "approved" && record.test === true && worker?.fetch) {
       // Ingest the provider refund state through the signed test webhook (same path as sandbox reconciliation).
       const secret = String(env.MERCADOPAGO_TEST_WEBHOOK_SECRET || "");
       if (secret.length >= 16) {

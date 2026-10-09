@@ -79,7 +79,14 @@ function fixture(initial = {}) {
   };
   const watchdog = () => runRefundWatchdog(env, Date.now(), { sqlFactory });
   const reconcile = () => reconcileRefund(env, sqlFactory(), kv, OID);
-  return { invoke, reject, watchdog, reconcile, state, env, updates: () => updateCount,
+  const reconcileRoute = async (worker, token = TOKEN) => {
+    const request = new Request("https://zevanory.api.br/api/internal/certification/e2e/refund-reconcile?order_id=" + OID, {
+      method: "POST", headers: { "x-certification-e2e-token": token }
+    });
+    const response = await handleRefundFlow(request, env, { sqlFactory, worker });
+    return { code: response.status, body: await response.json() };
+  };
+  return { invoke, reject, watchdog, reconcile, reconcileRoute, state, env, updates: () => updateCount,
     claims: () => claimCount, claim: () => claim,
     setClaimAgeMinutes: (n) => { claim.claimed_at = new Date(Date.now() - n * 60000).toISOString(); },
     setDbFailure: (v) => { databaseDown = v; },
@@ -471,4 +478,68 @@ test("download revocation pending alert is bounded to one email per 12h KV windo
     assert.equal(emails, 1);
     assert.ok(x.state.has("refund:watchdog:revocation:last"));
   } finally { globalThis.fetch = original; }
+});
+
+
+test("certification refund-reconcile approved ingests signed sandbox webhook and returns Neon status", async () => {
+  const x = fixture();
+  x.env.MERCADOPAGO_TEST_WEBHOOK_SECRET = "SANDBOX_TEST_SECRET_32_CHARACTERS_ONLY";
+  let webhookCalls = 0;
+  const worker = { fetch: async (request) => {
+    webhookCalls++;
+    assert.equal(request.method, "POST");
+    assert.equal(new URL(request.url).pathname, "/api/webhooks");
+    assert.equal(new URL(request.url).searchParams.get("provider"), "mercadopago_test");
+    assert.match(request.headers.get("x-signature"), /^ts=\d+,v1=[a-f0-9]{64}$/);
+    assert.ok(request.headers.get("x-request-id"));
+    assert.deepEqual(await request.json(), { type: "payment", data: { id: PAYMENT } });
+    return Response.json({ accepted: true, event: "refund_confirmed", order_status: "refunded" });
+  }};
+  await withPaymentStub(
+    () => Response.json({ message: "upstream" }, { status: 500 }),
+    cleanPayment({ status: "refunded", status_detail: "refunded", transaction_amount_refunded: 197,
+      refunds: [{ id: "rec-refund", status: "approved", amount: 197 }] }),
+    async (calls) => {
+      assert.equal((await x.invoke()).code, 502);
+      const result = await x.reconcileRoute(worker);
+      assert.equal(result.code, 200);
+      assert.equal(result.body.status, "approved");
+      assert.equal(result.body.order_status, "refunded");
+      assert.equal(x.state.has(key), true);
+      assert.equal(webhookCalls, 1);
+      assert.equal(calls.post, 1); // only the mocked *prior* attempted refund, never recovery
+      assert.equal(calls.get, 1);
+    });
+});
+test("certification refund-reconcile absent or ambiguous never invokes webhook or provider POST", async () => {
+  for (const payment of [cleanPayment(), cleanPayment({ refunds: undefined })]) {
+    const x = fixture({ provider_outcome_unknown: true, last_error: "mercadopago_refund_500_upstream" });
+    x.env.MERCADOPAGO_TEST_WEBHOOK_SECRET = "SANDBOX_TEST_SECRET_32_CHARACTERS_ONLY";
+    let webhookCalls = 0;
+    const worker = { fetch: async () => { webhookCalls++; throw Error("webhook forbidden"); } };
+    await withPaymentStub(
+      () => { throw Error("financial POST forbidden"); }, payment,
+      async (calls) => {
+        const result = await x.reconcileRoute(worker);
+        assert.notEqual(result.body.status, "approved");
+        assert.equal(webhookCalls, 0);
+        assert.equal(calls.post, 0);
+        assert.equal(calls.get, 1);
+        if (payment.refunds === undefined) {
+          assert.equal(result.code, 409);
+          assert.ok(result.body.missing.includes("refunds"));
+        }
+      });
+  }
+});
+test("certification refund-reconcile rejects missing or incorrect token before provider calls", async () => {
+  const x = fixture();
+  await withPaymentStub(
+    () => { throw Error("unexpected refund POST"); }, cleanPayment(),
+    async (calls) => {
+      const r = await x.reconcileRoute({ fetch: () => { throw Error("unexpected webhook"); } }, "wrong-token");
+      assert.equal(r.code, 401);
+      assert.equal(calls.post, 0);
+      assert.equal(calls.get, 0);
+    });
 });
