@@ -113,4 +113,22 @@ jobs:
                   emit("PREFLIGHT_OK",str(pre.get("ok","unknown")).lower())
                   emit("PREFLIGHT_COUNTS",str(passed)+"/"+str(len(checks)))
                   emit("PREFLIGHT_AGE_SECONDS",age)
+          if CF:
+              for domain in ("zevanory.api.br","api.br"):
+                  code,doc=get("https://api.cloudflare.com/client/v4/zones?name="+urllib.parse.quote(domain),True)
+                  zones=doc.get("result",[])
+                  if not isinstance(zones,list):zones=[]
+                  emit("ZONE_"+domain.replace(".","_")+"_HTTP",code)
+                  emit("ZONE_"+domain.replace(".","_")+"_COUNT",len(zones))
+                  for zone in zones[:3]:
+                      zid=zone.get("id","")
+                      if not re.fullmatch("[a-f0-9]{32}",zid):continue
+                      code,routes=get("https://api.cloudflare.com/client/v4/zones/"+zid+"/workers/routes",True)
+                      items=routes.get("result",[])
+                      if not isinstance(items,list):items=[]
+                      related=[item for item in items if isinstance(item,dict) and "zevanory.api.br" in str(item.get("pattern",""))]
+                      emit("WORKERS_ROUTES_"+domain.replace(".","_")+"_HTTP",code)
+                      emit("WORKERS_ROUTES_"+domain.replace(".","_")+"_MATCH",len(related))
+                      for item in related:
+                          emit("WORKERS_ROUTE_SCRIPT",item.get("script","none"))
           PY
