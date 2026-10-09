@@ -287,6 +287,17 @@ jobs:
           cmp -s /tmp/live.js worker/live-recovered/control-plane-vnext.js || { echo "::error title=VERIFY_APEX_ASSET_CMP::zevanory.api.br asset differs from canonical after 150s"; exit 1; }
           python3 scripts/deploy/verify-live-asset.py || { echo "::error title=VERIFY_LIVE_ASSET::UTF-8/marker assertions failed"; exit 1; }
           # Cloudflare edge propagation can lag behind the successful Worker upload.
+          # Sales open: the financial proof is bound to the release SHA, so every deploy
+          # invalidates it and /api/status falls back to globally-blocked. Renew it for the
+          # new release (signed GET-only audit) before the exact-release poll.
+          if curl -fsS https://zevanory.api.br/api/sales/status | python3 -c 'import json,sys;sys.exit(0 if json.load(sys.stdin).get("open") is True else 1)'; then
+            for i in $(seq 1 30); do
+              rel="$(curl -fsS https://zevanory.api.br/api/release | python3 -c 'import json,sys;print((json.load(sys.stdin).get("deployment") or {}).get("commit_sha",""))' || true)"
+              [ "$rel" = "$TARGET_RUNTIME_SHA" ] && break
+              sleep 5
+            done
+            python3 scripts/financial_proof_renewal.py || { sleep 15; python3 scripts/financial_proof_renewal.py; } || echo "::warning title=DEPLOY_PROOF_RENEWAL::not accepted yet; exact-release poll decides"
+          fi
           # Poll the canonical, non-query API until it serves this exact release SHA.
           exact_sha=0
           for i in $(seq 1 30); do
