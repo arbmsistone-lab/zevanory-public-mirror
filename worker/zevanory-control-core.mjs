@@ -98,7 +98,8 @@ export async function buildCoreSnapshot(worker,env,ctx,baseUrl="https://zevanory
       circular_dependency:false
     },
     invariants:{
-      exact_release_bound:identityMatches,\n      control_plane_ready:control!==null,
+      exact_release_bound:identityMatches,
+      control_plane_ready:control!==null,
       health_ready:health?.ready===true&&health?.live!==false,
       quorum_ok:continuity?.quorum_ok===true,
       sales_fail_closed:status?.runtime?.sales==="globally-blocked",
@@ -134,7 +135,8 @@ export function evaluateCoreDecision(snapshot){
   const zeesCounts=snapshot?.zees16?.counts||{};
   const zeaCounts=snapshot?.zea10?.counts||{};
   const checks={
-    exact_release_bound:snapshot?.invariants?.exact_release_bound===true,\n    control_plane_ready:snapshot?.invariants?.control_plane_ready===true,
+    exact_release_bound:snapshot?.invariants?.exact_release_bound===true,
+    control_plane_ready:snapshot?.invariants?.control_plane_ready===true,
     health_ready:snapshot?.invariants?.health_ready===true,
     quorum_ok:snapshot?.invariants?.quorum_ok===true,
     evidence_flow_unidirectional:snapshot?.invariants?.evidence_to_evaluation_unidirectional===true,
