@@ -65,6 +65,10 @@ on:
       - "admin.css"
       - "evidence/admin-control-center.json"
       - ".github/workflows/central-production-deploy.yml"
+      # Keep the owner-operated sales switch deploy-gated on the exact branch SHA.
+      - ".github/workflows/zevanory-open-sales.yml"
+      - ".github/workflows/zevanory-close-sales.yml"
+      - "scripts/sales_switch_workflow.py"
       - ".github/workflows/financial-e2e-closure.yml"
       - ".github/workflows/financial-e2e-stripe.yml"
       - "scripts/financial_e2e_stripe.py"
