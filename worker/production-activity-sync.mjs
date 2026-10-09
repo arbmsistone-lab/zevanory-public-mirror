@@ -5,7 +5,7 @@ import { emitActivity } from "./activity-ledger.mjs";
 import { readFinancialProofSnapshot, LAUNCH_EPOCH_KV_KEY } from "./commercial-metrics-projection.mjs";
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const ACTIVITY_SYNC_LIMIT=20;
+export const ACTIVITY_SYNC_LIMIT=3;
 export async function syncProductionActivity(env,{sqlFactory,now=Date.now()}={}){
   const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
   if(!kv?.get||!kv?.put||!env?.DATABASE_URL||!sqlFactory)return {ok:false,reason:"unavailable"};
@@ -25,7 +25,7 @@ export async function syncProductionActivity(env,{sqlFactory,now=Date.now()}={})
       "from orders o left join financial_events f on f.order_id=o.order_id "+
       "where o.certification_pilot is false and o.created_at >= $1 "+
       "group by o.order_id,o.status,o.amount,o.created_at "+
-      "order by o.created_at desc limit 20",[new Date(startedAt).toISOString()]);
+      "order by o.created_at desc limit 3",[new Date(startedAt).toISOString()]);
   } catch {return {ok:false,reason:"database_read_unavailable"};}
   if(!Array.isArray(rows))return {ok:false,reason:"database_result_invalid"};
   let emitted=0,seen=0,finance=0;
