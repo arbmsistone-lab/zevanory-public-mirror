@@ -19,16 +19,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  signed-renewal:
-    name: Renew signed financial snapshot and assert G3
+  contract:
+    name: Check HMAC and fail-closed renewal contract
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: Validate Python and fail-closed tests
         run: |
           python3 -m py_compile scripts/financial_proof_renewal.py
           python3 -m unittest discover -s tests -p 'test_financial_proof_renewal.py' -v
+
+  signed-renewal:
+    name: Renew signed financial snapshot and assert G3
+    if: github.event_name != 'pull_request'
+    needs: contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
       - name: GET-only production HMAC audit and snapshot acceptance
         env:
           CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
