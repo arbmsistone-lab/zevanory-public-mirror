@@ -5,7 +5,7 @@
 //   KV; the hourly cron emails one digest and deletes them.
 
 export const ESCALATION_RE = /golpe|fraude|procon|advogad|processo|absurdo|n[aã]o recebi|cad[eê] (meu|o) (produto|acesso|link)|reembols|estorno|cancelar|reclama[cç][aã]o|reclame aqui/i;
-const ALLOWED_OWNER_ALERTS = new Set(["channel_down", "compliance_rejected_3x", "refund", "complaint"]);
+const ALLOWED_OWNER_ALERTS = new Set(["channel_down", "compliance_rejected_3x", "refund", "complaint", "financial_proof_stale"]);
 
 async function sha256Hex(value) {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
@@ -40,6 +40,19 @@ export async function alertOwnerNow(env, { channel, contact, excerpt, reason, ca
   const sent = await sendOwnerEmail(env, `ZEVANORY — cliente precisa de você (${channel})`,
     `Um cliente no ${channel} precisa de atendimento humano.\n\nMotivo: ${reason}\nMensagem: "${maskExcerpt(excerpt)}"\nContato (ref.): ${contactHash}\n\nO robô já respondeu de forma segura e avisou que um atendente vai continuar. Responda pelo próprio ${channel}.`);
   if (sent) { try { await kv?.put?.(key, "1", { expirationTtl: 6 * 3600 }); } catch {} }
+  return { sent };
+}
+
+// Sales are open but the production financial proof is missing, unverified or older than 65 min:
+// the owner must know now (status already falls back to fail-closed). At most one e-mail per 55 min.
+export async function alertFinancialProofStale(env, diag = {}) {
+  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const key = "owner-alert:sent:financial-proof-stale";
+  try { if (kv?.get && await kv.get(key)) return { sent: false, reason: "recently_alerted" }; } catch {}
+  const age = Number.isFinite(diag.age_minutes) ? `${diag.age_minutes} min` : "desconhecida";
+  const sent = await sendOwnerEmail(env, "ZEVANORY — vendas abertas sem prova financeira atualizada",
+    `As vendas estão abertas, mas a prova financeira de produção não está válida (idade: ${age}; presente: ${diag.present === true ? "sim" : "não"}; mesma versão: ${diag.release_matches === true ? "sim" : "não"}; ambíguos: ${diag.ambiguous ?? "?"}).\n\nO status público já voltou ao modo seguro. Verifique o painel (https://controle.zevanory.api.br). Para fechar as vendas imediatamente use o interruptor de emergência.`);
+  if (sent) { try { await kv?.put?.(key, "1", { expirationTtl: 55 * 60 }); } catch {} }
   return { sent };
 }
 

@@ -23,4 +23,15 @@ for needle in required:
 assert s.index('launch_authorized=')<s.index('c["vars"]["MERCADOPAGO_ENV"]="production"')
 assert s.index('LAUNCH_COLLECTOR_PROOF_MISSING')<s.index('c["vars"]["MERCADOPAGO_ENV"]="production"')
 assert s.index('LAUNCH_PRODUCTION_WEBHOOK_UNVERIFIED')<s.index('c["vars"]["MERCADOPAGO_ENV"]="production"')
+# D: open sales require a complete owner authorization record; the release flag is derived.
+sc=Path("worker/sales-control.mjs").read_text(encoding="utf-8")
+for needle in ['OWNER_SALES_AUTHORIZATION = "LIBERAR VENDAS"','owner_authorization_incomplete','validOwnerAuthorization(parsed, now)']:
+    assert needle in sc, "SALES_AUTH_GUARD_MISSING:"+needle[:35]
+cm=Path("worker/commercial-metrics-projection.mjs").read_text(encoding="utf-8")
+assert "commercial_release_allowed:releaseAllowed" in cm and "const releaseAllowed=verified&&salesRelease===true" in cm, "RELEASE_FLAG_NOT_DERIVED"
+assert "coalesce(certification_pilot,false)=false and created_at >= $1" in cm, "CHECKOUTS_NOT_PRODUCTION_ONLY"
+cp=Path("worker/cloudflare-worker.compat.mjs").read_text(encoding="utf-8")
+assert "alertFinancialProofStale" in cp and "salesRelease: safeRelease" in cp, "STALE_PROOF_ALERT_OR_RELEASE_WIRING_MISSING"
+q=Path(".github/workflows/zevanory-three-provider-quorum.yml").read_text(encoding="utf-8")
+assert 'auth.get("state")=="open_authorized"' in q and 'auth.get("authorized_by_owner") is True' in q and "commercial_safe=locked or authorized_open" in q, "QUORUM_TRANSITION_MISSING"
 print("STAGED_LAUNCH_CONFIG_FAIL_CLOSED_STATIC=PASS")

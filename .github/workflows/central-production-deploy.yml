@@ -170,7 +170,7 @@ jobs:
           node --check worker/whatsapp-e2e-evidence.mjs
           node --check worker/whatsapp-neon-store.mjs
           node --test tests/whatsapp-neon-store.test.mjs
-          node --test tests/live-runtime-status.test.mjs tests/core-snapshot-memo.test.mjs
+          node --test tests/live-runtime-status.test.mjs tests/core-snapshot-memo.test.mjs tests/commercial-metrics-projection.test.mjs
           node --test tests/creative-autonomy.test.mjs
           node --test tests/multichannel-autonomy.test.mjs
           node --test tests/production-payment-credential-isolation.test.mjs

@@ -23,6 +23,20 @@ const HEADERS = { "content-type": "application/json; charset=utf-8", "cache-cont
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: HEADERS });
 const html = (status, body) => new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer" } });
 
+// Owner authorization record (D): the switch only opens with a complete, explicit record.
+// {enabled:true, authorization:"LIBERAR VENDAS", by:<owner label>, at:<ISO>, ref:<audit reference>}
+// Anything missing, malformed or dated in the future keeps sales closed.
+export const OWNER_SALES_AUTHORIZATION = "LIBERAR VENDAS";
+export function validOwnerAuthorization(record, now = Date.now()) {
+  if (!record || record.enabled !== true) return false;
+  if (record.authorization !== OWNER_SALES_AUTHORIZATION) return false;
+  const by = String(record.by || "");
+  const ref = String(record.ref || "");
+  if (!/^[A-Za-z0-9 ._@:-]{3,64}$/.test(by) || !/^[A-Za-z0-9._:/#-]{6,200}$/.test(ref)) return false;
+  const at = Date.parse(String(record.at || ""));
+  return Number.isFinite(at) && at <= now + 60_000 && /^\d{4}-\d{2}-\d{2}T/.test(String(record.at));
+}
+
 export async function readSalesSwitch(env, now = Date.now()) {
   if (now - cached.at < CACHE_MS && cached.value) return cached.value;
   let value = { enabled: false, requested: false, revision: "" };
@@ -34,12 +48,14 @@ export async function readSalesSwitch(env, now = Date.now()) {
     // close without ever opening sales. It carries no secret and no customer data.
     const revision = String(parsed?.at || "").slice(0, 40);
     value = { enabled: false, requested: false, revision };
-    if (parsed && parsed.enabled === true) {
+    if (parsed && parsed.enabled === true && !validOwnerAuthorization(parsed, now)) {
+      value = { enabled: false, requested: true, blocked: "owner_authorization_incomplete", revision };
+    } else if (parsed && parsed.enabled === true) {
       // Fail-closed: the switch only opens sales while the production preflight is green and fresh.
       const pre = JSON.parse(String(await kv.get(PREFLIGHT_KEY) || "null"));
       const fresh = pre && Date.now() - Date.parse(String(pre.at || "")) < 3 * 3600 * 1000;
       value = pre?.ok === true && fresh
-        ? { enabled: true, requested: true, at: String(parsed.at || ""), by: String(parsed.by || ""), revision }
+        ? { enabled: true, requested: true, at: String(parsed.at || ""), by: String(parsed.by || ""), authorized: true, revision }
         : { enabled: false, requested: true, blocked: "preflight_not_green", revision };
     }
   } catch {}
