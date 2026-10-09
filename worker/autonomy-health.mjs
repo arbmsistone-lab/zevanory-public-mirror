@@ -15,7 +15,7 @@ export function selectAutonomyAlerts({channelState={},creativeFeed=[],events=[]}
  return alerts.filter(x=>ALLOWED_ALERTS.has(x.type));
 }
 
-export async function collectAutonomyHealth(env={},now=new Date()){
+export async function collectAutonomyHealth(env={},now=new Date(),{persist=true}={}){
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  const [blog,channels,creativeFeed,events]=await Promise.all([
   safeJson(kv,BLOG_INDEX_KEY,{articles:[]}),safeJson(kv,CHANNEL_STATE_KEY,{channels:[],evidence:[]}),
@@ -25,7 +25,8 @@ export async function collectAutonomyHealth(env={},now=new Date()){
  for(const article of blog.articles||[])if(article?.slug&&/^https:\/\//.test(String(article?.url||"")))evidence.push({front:"F2",channel:"blog",provider_post_id:String(article.slug),url:String(article.url),published_at:String(article.publishedAt||""),metrics:article.metrics||null});
  for(const row of channels.evidence||[])if(row?.provider_post_id&&/^https:\/\//.test(String(row?.url||"")))evidence.push({front:"F2",channel:String(row.channel),provider_post_id:String(row.provider_post_id),url:String(row.url),published_at:String(row.publishedAt||""),metrics:row.metrics||null});
  const payload={generatedAt:now.toISOString(),evidence,alerts:selectAutonomyAlerts({channelState:channels,creativeFeed,events}),channels:(channels.channels||[]).map(x=>({id:x.id,mode:x.mode,configured:Boolean(x.configured)}))};
- await kv?.put?.(AUTONOMY_HEALTH_KEY,JSON.stringify(payload),{expirationTtl:8*DAY});
+ // Public GET reads must never spend the Workers Free KV write budget (1k/day); only the cron persists.
+ if(persist)await kv?.put?.(AUTONOMY_HEALTH_KEY,JSON.stringify(payload),{expirationTtl:8*DAY});
  return payload;
 }
 
