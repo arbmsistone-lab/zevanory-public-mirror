@@ -33,7 +33,7 @@ jobs:
            print(k+"="+s)
            with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f: f.write("- "+k+": "+s+"\\n")
           def call(url, method="GET", body=None, cert=False, gh=False):
-           h={"accept":"application/json"}
+           h={"accept":"application/json","user-agent":"zevanory-sandbox-proof/3"}
            if cert: h["x-certification-e2e-token"]=TOKEN
            if gh: h["authorization"]="Bearer "+GH
            if body is not None: h["content-type"]="application/json"
@@ -63,6 +63,7 @@ jobs:
           if not isinstance(missing,list): missing=[]
           emit("RECONCILE_HTTP",http)
           emit("RECONCILE_STATUS",status)
+          emit("RECONCILE_ERROR",result.get("error","none"))
           emit("MISSING",",".join(str(v)[:40] for v in missing) if missing else "none")
           emit("WEBHOOK_ORDER_STATUS",result.get("order_status","unknown"))
           if http!=200 or status not in ("approved","not_refunded"): stop("BLOCKED_AMBIGUOUS")
