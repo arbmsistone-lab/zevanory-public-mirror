@@ -69,7 +69,7 @@ c["vars"]["PRE_SALE_GATES_APPROVED"]="false"
 if launch_authorized:
     c["vars"]["ABSOLUTE_RELEASE_APPROVED"]="true"
     c["vars"]["PRE_SALE_GATES_APPROVED"]="true"
-c["vars"]["WHATSAPP_SALES_ENABLED"]="false"
+c["vars"]["WHATSAPP_SALES_ENABLED"]="true"  # Inbound-only owner-authorized support and catalog sales; KV controls checkout
 c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
 c["vars"]["SUPPORT_CHANNEL"]="WhatsApp +55 88 99254-5413"
 runtime=c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})
