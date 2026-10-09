@@ -1,0 +1,82 @@
+name: F4 GET-only reconciliation of ZEV-IA-011
+on:
+  push:
+    branches: [ops/f4-get-only-reconcile-569-20261009]
+    paths: ['.github/workflows/f4-get-only-reconcile-569.yml']
+permissions:
+  contents: read
+  actions: write
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: GET-only sandbox refund reconciliation after central deploy
+        env:
+          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          SANDBOX_FINANCIAL_ENABLED: ${{ vars.SANDBOX_FINANCIAL_ENABLED }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os,json,re,sys,urllib.request,urllib.error
+          SHA="a69b0abd52ad7d6576d53a59a5facc0d0795a3cf"
+          ORDER="2073655f-cd83-4490-a62c-f77a29ffe9ad"
+          REPO="arbmsistone-lab/zevanory-public-mirror"
+          TOKEN=os.getenv("CERTIFICATION_E2E_TOKEN","")
+          GH=os.getenv("GITHUB_TOKEN","")
+          def emit(k,v):
+           s=re.sub("[^A-Za-z0-9_,.\\[\\]-]","",str(v))[:200]
+           print(k+"="+s)
+           with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f: f.write("- "+k+": "+s+"\\n")
+          def call(url, method="GET", body=None, cert=False, gh=False):
+           h={"accept":"application/json"}
+           if cert: h["x-certification-e2e-token"]=TOKEN
+           if gh: h["authorization"]="Bearer "+GH
+           if body is not None: h["content-type"]="application/json"
+           try:
+            with urllib.request.urlopen(urllib.request.Request(url,data=body,headers=h,method=method),timeout=45) as r: return r.status,r.read(65536)
+           except urllib.error.HTTPError as e: return e.code,e.read(65536)
+          def github(path):
+           code,data=call("https://api.github.com/repos/"+REPO+path,gh=True)
+           if code!=200: raise RuntimeError("github_read_http_"+str(code))
+           return json.loads(data)
+          def safejson(b):
+           try: return json.loads(b)
+           except: return {}
+          def stop(reason, code=0):
+           emit("F4_STATE",reason)
+           sys.exit(code)
+          if len(TOKEN)<32 or not GH: stop("CERTIFICATION_TOKEN_MISSING",1)
+          branch=github("/branches/gh-pages")
+          deploy=github("/actions/runs/37968174192")
+          if branch.get("commit",{}).get("sha")!=SHA or deploy.get("head_sha")!=SHA or deploy.get("conclusion")!="success": stop("DEPLOY_NOT_VERIFIED",1)
+          emit("VERIFIED_SHA",SHA)
+          emit("DEPLOY_RUN","37968174192")
+          http,raw=call("https://zevanory.api.br/api/internal/certification/e2e/refund-reconcile?order_id="+ORDER,method="POST",body=b"",cert=True)
+          result=safejson(raw)
+          status=str(result.get("status","ambiguous"))
+          missing=result.get("missing",[])
+          if not isinstance(missing,list): missing=[]
+          emit("RECONCILE_HTTP",http)
+          emit("RECONCILE_STATUS",status)
+          emit("MISSING",",".join(str(v)[:40] for v in missing) if missing else "none")
+          emit("WEBHOOK_ORDER_STATUS",result.get("order_status","unknown"))
+          if http!=200 or status not in ("approved","not_refunded"): stop("BLOCKED_AMBIGUOUS")
+          if status=="not_refunded": stop("STOP_NO_RETRY")
+          code,data=call("https://zevanory.api.br/api/internal/certification/e2e/status?order_id="+ORDER,cert=True)
+          neon=str(safejson(data).get("order",{}).get("status","unknown"))
+          emit("NEON_HTTP",code)
+          emit("NEON_ORDER_STATUS",neon)
+          if code!=200 or neon!="refunded" or result.get("order_status")!="refunded": stop("BLOCKED_NEON_NOT_REFUNDED",1)
+          emit("FINANCIAL_RECONCILIATION","CONCILIADO")
+          if os.getenv("SANDBOX_FINANCIAL_ENABLED","").lower()!="true": stop("SANDBOX_FINANCIAL_FLAG_DISABLED")
+          payload=json.dumps({"ref":"gh-pages","inputs":{"offer_id":"ZEV-IA-011","expected_sha":SHA}}).encode()
+          code,_=call("https://api.github.com/repos/"+REPO+"/actions/workflows/mercadopago-combo-sandbox.yml/dispatches",method="POST",body=payload,gh=True)
+          emit("F4_DISPATCH_HTTP",code)
+          if code!=204: stop("F4_DISPATCH_FAILED",1)
+          stop("F4_REQUESTED_AWAITING_OWNER_APPROVAL")
+          PY
