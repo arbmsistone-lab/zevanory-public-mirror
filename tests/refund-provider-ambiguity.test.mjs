@@ -79,7 +79,7 @@ function fixture(initial = {}) {
   };
   const watchdog = () => runRefundWatchdog(env, Date.now(), { sqlFactory });
   const reconcile = () => reconcileRefund(env, sqlFactory(), kv, OID);
-  return { invoke, reject, watchdog, reconcile, state, updates: () => updateCount,
+  return { invoke, reject, watchdog, reconcile, state, env, updates: () => updateCount,
     claims: () => claimCount, claim: () => claim,
     setClaimAgeMinutes: (n) => { claim.claimed_at = new Date(Date.now() - n * 60000).toISOString(); },
     setDbFailure: (v) => { databaseDown = v; },
@@ -424,4 +424,51 @@ test("watchdog never refunds automatically; it only reconciles with provider GET
       assert.equal(calls.get, 1);
       assert.equal(calls.post, 1);
     });
+});
+
+
+test("invalid provider-approved refund amount must never release download", async () => {
+  const x = fixture();
+  await withPaymentStub(() => Response.json({ id: 999, status: "approved", amount: "not-a-number" }),
+    cleanPayment(), async (calls) => {
+      assert.equal((await x.invoke()).code, 502);
+      assert.equal(JSON.parse(x.state.get(key)).status, "pending");
+      assert.equal(x.updates(), 0);
+      assert.equal(calls.post, 1);
+    });
+});
+test("watchdog repairs an approved refund after Worker dies before KV persistence, via GET alone", async () => {
+  const x = fixture();
+  x.killAfterPost();
+  await withPaymentStub(() => Response.json({ id: 5555, status: "approved" }),
+    cleanPayment({ status: "refunded", status_detail: "refunded", transaction_amount_refunded: 197,
+      refunds: [{ id: 5555, status: "approved", amount: 197 }] }), async (calls) => {
+      assert.equal((await x.invoke()).code, 503);
+      assert.equal(JSON.parse(x.state.get(key)).provider_outcome_unknown, undefined);
+      const result = await x.watchdog();
+      assert.equal(result.reconciled, 1);
+      assert.equal(JSON.parse(x.state.get(key)).status, "approved");
+      assert.equal(x.updates(), 1);
+      assert.equal(calls.post, 1);
+      assert.equal(calls.get, 1);
+    });
+});
+test("download revocation pending alert is bounded to one email per 12h KV window", async () => {
+  const x = fixture({ status: "approved", test: false, download_revocation_pending: true });
+  x.setRevocationFailure(true);
+  x.env.RESEND_API_KEY = "mock-resend-key";
+  const original = globalThis.fetch;
+  let emails = 0;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(String(url), "https://api.resend.com/emails");
+    assert.equal(options.method, "POST");
+    emails++;
+    return Response.json({ id: "mock-sent" }, { status: 200 });
+  };
+  try {
+    assert.equal((await x.watchdog()).revocation_pending, 1);
+    assert.equal((await x.watchdog()).revocation_pending, 1);
+    assert.equal(emails, 1);
+    assert.ok(x.state.has("refund:watchdog:revocation:last"));
+  } finally { globalThis.fetch = original; }
 });
