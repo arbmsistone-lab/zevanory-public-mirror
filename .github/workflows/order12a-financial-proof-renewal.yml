@@ -2,7 +2,7 @@ name: ZEVANORY Order 12-A financial proof renewal
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "11,41 * * * *"
   workflow_dispatch:
   pull_request:
     branches: [gh-pages]
