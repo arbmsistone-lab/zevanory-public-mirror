@@ -132,4 +132,14 @@ jobs:
                       for item in related:
                           emit("WORKERS_ROUTE_PATTERN",item.get("pattern","unknown"))
                           emit("WORKERS_ROUTE_SCRIPT",item.get("script","none"))
+          cert=os.getenv("CERTIFICATION_E2E_TOKEN","")
+          if len(cert)>=32:
+              endpoint="https://zevanory.api.br/api/internal/certification/e2e/status?order_id=2073655f-cd83-4490-a62c-f77a29ffe9ad"
+              code,result=get(endpoint,headers={"x-certification-e2e-token":cert})
+              order=result.get("order") or {}
+              rows=result.get("financial_events",[])
+              events=[str(x.get("normalized_event","")) for x in rows if isinstance(x,dict)] if isinstance(rows,list) else []
+              emit("OLD_IA_NEON_HTTP",code)
+              emit("OLD_IA_NEON_ORDER_STATUS",order.get("status","unknown"))
+              emit("OLD_IA_REFUND_CONFIRMED",str("refund_confirmed" in events).lower())
           PY
