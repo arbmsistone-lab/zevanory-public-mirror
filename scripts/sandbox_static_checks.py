@@ -63,7 +63,7 @@ def guarded_workflow(text, manual):
         offer = inputs.get('offer_id')
         # Optional SKU selector: a closed choice of the canonical catalog only.
         check(offer is None or (offer.get('type') == 'choice' and offer.get('required') is True and
-              offer.get('options') == ['ZEV-IA-011', 'ZEV-VEN-011', 'ZEV-LCX-011', 'ZEV-CMB-011', 'ZEV-NGC-011'] and
+              offer.get('options') == ['ALL', 'ZEV-IA-011', 'ZEV-VEN-011', 'ZEV-LCX-011', 'ZEV-CMB-011', 'ZEV-NGC-011'] and
               offer.get('default') == 'ZEV-CMB-011'), 'OFFER_CHOICE_CLOSED')
     else:
         check(all(events[e] == {'branches': ['gh-pages']} for e in events), 'STATIC_BRANCHES')
