@@ -1,4 +1,4 @@
-import { syncProductionActivity } from "./production-activity-sync.mjs";
+import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
 import { latestWhatsappStage } from "./whatsapp-background.mjs";
@@ -120,6 +120,10 @@ const wrapped = {
       if (!(await verifySignedAuditProbe(request, normalized))) {
         return new Response(JSON.stringify({error:"invalid_audit_signature"}),{status:401,headers:{"content-type":"application/json","cache-control":"no-store"}});
       }
+    }
+    // HMAC is mandatory even for unsigned GETs: never expose database aggregates anonymously.
+    if (url.pathname === "/api/internal/watch/paid-delivery") {
+      return handleFirstOrderWatchReadOnly(request, normalized, {sqlFactory: whatsappProofDatabase});
     }
     // Operator-authenticated READ-ONLY audit before legacy routing. Does not mutate commerce.
     if (url.pathname.startsWith("/api/internal/audit/")) {
@@ -452,13 +456,6 @@ const wrapped = {
         ? { state: safeRelease ? "open_authorized" : "open_authorized_proof_pending", authorized_by_owner: true, at: String(salesSwitch.at || ""), revision: salesSwitch.revision || null }
         : { state: salesSwitch.requested === true ? "requested_blocked" : "closed", authorized_by_owner: false, blocked: salesSwitch.blocked || null, revision: salesSwitch.revision || null };
       projected.continuity = buildContinuityPlan(projected, { minQuorum: 3 });
-      try {
-        const raw = await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.get?.("zpc:financial-proof:last-isolated-run:v1");
-        const evidence = JSON.parse(String(raw || "null"));
-        if (evidence && typeof evidence.at === "string" && typeof evidence.ok === "boolean" && !Number.isNaN(Date.parse(evidence.at))) {
-          projected.financial_proof = { last_isolated_run: { at: evidence.at, ok: evidence.ok } };
-        }
-      } catch { /* Missing evidence is never a synthetic success. */ }
       const headers = new Headers(response.headers);
       headers.set("content-type", "application/json; charset=utf-8");
       headers.set("cache-control", "no-store");
@@ -503,21 +500,6 @@ const wrapped = {
 
 wrapped.scheduled = async (controller, env, ctx) => {
   const normalized = normalizeEnv(env);
-  if (controller?.cron === "5,35 * * * *") {
-    try {
-      const out = await syncProductionActivity(normalized, {sqlFactory:whatsappProofDatabase});
-      console.info("order13_activity_sync", JSON.stringify({
-        ok:out.ok===true,emitted:out.emitted||0,finance:out.finance||0,
-        proof_accepted:out.proof_accepted===true
-      }));
-      if (!out.ok) throw new Error("order13_activity_sync_unavailable");
-    } catch {
-      // Never log database records, customer references or provider errors.
-      console.error("order13_activity_sync_failed");
-      throw new Error("order13_activity_sync_failed");
-    }
-    return;
-  }
   // Separate cron invocation: the financial proof must not share a Workers Free
   // subrequest/CPU budget with blog, email, orders and other hourly jobs.
   // The original hourly cron remains fully operational.
@@ -530,7 +512,6 @@ wrapped.scheduled = async (controller, env, ctx) => {
         ok: proof.ok === true, reason: proof.reason || "unavailable",
         ambiguous: proof.ambiguous ?? null
       }));
-      await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:financial-proof:last-isolated-run:v1", JSON.stringify({at:new Date().toISOString(),ok:proof.ok===true}), {expirationTtl:7*86400});
       if (!proof.ok) {
         console.error("commercial_metrics_proof_isolated_failed", String(proof.reason || "unavailable"));
         throw new Error("financial_proof_not_renewed");
