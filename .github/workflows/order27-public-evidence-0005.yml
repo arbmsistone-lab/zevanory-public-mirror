@@ -1,0 +1,61 @@
+name: ZEVANORY Order 27 public evidence 00:05 UTC
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "5 0 * * *"
+permissions:
+  contents: read
+jobs:
+  read-only-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read sanitized production evidence (GET only)
+        env:
+          TZ: UTC
+        run: |
+          python3 - <<'PY'
+          import datetime,json,re,urllib.request,urllib.error
+          BASE="https://zevanory.api.br"
+          def get(path):
+              try:
+                  req=urllib.request.Request(BASE+path,headers={"User-Agent":"ZEVANORY-Order27-Proof/1","Accept":"application/json,text/html","Cache-Control":"no-cache"},method="GET")
+                  with urllib.request.urlopen(req,timeout=18) as response:
+                      data=response.read(400000)
+                      return response.status, data
+              except urllib.error.HTTPError as error:return error.code,b""
+              except Exception:return 0,b""
+          now=datetime.datetime.now(datetime.timezone.utc)
+          local_day=(now-datetime.timedelta(hours=3)).date().isoformat()
+          status_code,status_raw=get("/api/status")
+          proof=None
+          if status_code==200:
+              try:proof=json.loads(status_raw).get("financial_proof",{}).get("last_isolated_run")
+              except (ValueError,TypeError,AttributeError):pass
+          at=proof.get("at") if isinstance(proof,dict) else None
+          ok=proof.get("ok") is True if isinstance(proof,dict) else False
+          if not isinstance(at,str) or not re.fullmatch(r"20[0-9]{2}-[0-9T:.+Z-]{15,40}",at):at=None;ok=False
+          print("ORD27_FINANCIAL_PROOF_ISOLATED",json.dumps({"at":at,"ok":ok,"http":status_code}))
+          evidence_code,evidence_raw=get("/api/autonomy/evidence")
+          try: evidence=json.loads(evidence_raw) if evidence_code==200 else {}
+          except (ValueError,TypeError):evidence={}
+          rows=evidence.get("evidence") if isinstance(evidence,dict) else None
+          rows=rows if isinstance(rows,list) else []
+          posts=[]
+          for row in rows:
+              if not isinstance(row,dict) or row.get("channel")!="telegram":continue
+              mid=str(row.get("provider_post_id",""))
+              link=str(row.get("url",""))
+              if re.fullmatch(r"[0-9]{1,20}",mid) and re.fullmatch(r"https://t\\.me/[A-Za-z0-9_]+/[0-9]{1,20}",link) and link.endswith("/"+mid):
+                  posts.append({"provider_post_id":mid,"url":link})
+          print("ORD27_TELEGRAM_EVIDENCE",json.dumps({"http":evidence_code,"posts":posts[:3]}))
+          slugs=("ia-pratica-pequenos-negocios","automacao-atendimento-clareza","conteudo-organico-com-evidencia","vendas-lojas-fortaleza","caixa-comercio-juazeiro-do-norte","atendimento-servicos-varzea-alegre")
+          articles=[]
+          for slug in slugs:
+              path="/blog/"+slug+"-"+local_day
+              code,_=get(path)
+              if code==200:articles.append({"path":path,"http":200})
+          print("ORD27_DAILY_ARTICLE",json.dumps({"day":local_day,"matches":articles}))
+          if not ok or not posts or not articles:
+              print("::warning title=ORDER27_PROOF_INCOMPLETE::At least one public production proof remains unavailable")
+          PY
