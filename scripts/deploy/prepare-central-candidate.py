@@ -112,6 +112,18 @@ recovered_src=recovered_src.replace(
     'const pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_PAYMENT_MODE || "").toLowerCase() === "sandbox";',
     'const pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox";'
 )
+# Repair the legacy health state machine, not the health gates: an authorized
+# production checkout can be staged while owner sales and WhatsApp remain closed.
+# Fail if the immutable snapshot no longer matches this narrowly reviewed source.
+health_anchor = "const commercialSafetyLocked = publicSafetyLocked || pilotSafetyLocked || preSaleCutoverSafe || commercialLivePattern;"
+assert recovered_src.count(health_anchor) == 1, "HEALTH_SAFETY_ANCHOR_CHANGED"
+recovered_src = (
+    'import { safeClosedCommercialStaging } from "./production-health-safety.mjs";\n'
+    + recovered_src.replace(
+        health_anchor,
+        "const commercialSafetyLocked = publicSafetyLocked || pilotSafetyLocked || preSaleCutoverSafe || commercialLivePattern || safeClosedCommercialStaging(env, ownerSalesOpen, switches);"
+    )
+)
 recovered.write_text(recovered_src,encoding="utf-8")
 # Replace every legacy public contact reference in the reconstructed production snapshot.
 replacements = {
