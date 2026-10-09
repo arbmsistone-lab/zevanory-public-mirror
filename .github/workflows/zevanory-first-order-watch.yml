@@ -31,15 +31,16 @@ jobs:
           python3 -m pip install --disable-pip-version-check --quiet PyYAML==6.0.2
           python3 -m py_compile scripts/zevanory_first_order_watch.py
           python3 -m unittest discover -s tests -p 'test_zevanory_first_order_watch.py' -v
+          node --test tests/first-order-watch-audit.test.mjs
 
   first-order-watch:
-    name: Read production paid orders, close only on proven delivery breach
+    name: Signed read-only audit; close only on proven delivery breach
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/gh-pages'
     needs: contract
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       OWNER_ALERT_EMAIL: ${{ secrets.OWNER_ALERT_EMAIL }}
@@ -49,8 +50,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Install read-only PostgreSQL driver
-        run: python3 -m pip install --disable-pip-version-check --quiet "psycopg[binary]==3.2.10"
       - name: Hourly watch (GET and read-only SQL; emergency close if proven breach)
         run: |
           set -euo pipefail

@@ -35,23 +35,6 @@ def run(status=STATUS, sales=SALES, counts=COUNTS, *, env=CANON):
     return report, calls, stdout.getvalue()
 
 
-class ReadOnlyDatabase:
-    def __init__(self, result=(2, 0, 0, 0, 0)):
-        self.statements = []
-        self.result = result
-    def __enter__(self):
-        return self
-    def __exit__(self, *a):
-        return False
-    def cursor(self):
-        return self
-    def execute(self, sql, args=None):
-        self.statements.append((sql, args))
-        return self
-    def fetchone(self):
-        return self.result
-
-
 class FirstOrderWatchTests(unittest.TestCase):
     def test_no_paid_order_no_close_or_owner_email(self):
         result, calls, out = run()
@@ -105,31 +88,33 @@ class FirstOrderWatchTests(unittest.TestCase):
             with self.assertRaisesRegex(watchdog.WatchError, "CANONICAL_WATCH_REQUIRED"):
                 watchdog.emergency_close("PAID_UNDELIVERED_15M", close_impl=lambda _: True)
 
-    def test_no_raw_customer_record_selected_or_logged(self):
-        upper = watchdog.CHECKOUT_SQL.upper()
-        self.assertNotIn(" EMAIL", upper)
-        self.assertNotIn(" PAYER", upper)
-        self.assertNotIn("EXTERNAL_REFERENCE", upper)
-        self.assertIn("BEGIN READ ONLY", __import__("inspect").getsource(watchdog.read_paid_delivery_counts))
-        self.assertIn("certification_pilot", watchdog.CHECKOUT_SQL)
-        self.assertIn("interval '15 minutes'", watchdog.CHECKOUT_SQL)
-        self.assertIn("coalesce(confirmed_at,updated_at)", watchdog.CHECKOUT_SQL.lower())
+    def test_hmac_signed_get_only_returns_aggregates_without_database_secret(self):
+        import hashlib, hmac
+        captured = []
+        def signed(path, headers):
+            captured.append((path, headers))
+            return {"schema": "zevanory.first-order-watch.v1", "counts": COUNTS}
+        with patch.dict("os.environ", {"CERTIFICATION_E2E_TOKEN": "k"*40}, clear=True):
+            output = watchdog.read_paid_delivery_counts(fetch=signed)
+        self.assertEqual(output, COUNTS)
+        self.assertEqual(len(captured), 1)
+        path, headers = captured[0]
+        self.assertEqual(path, "/api/internal/watch/paid-delivery")
+        expected = hmac.new(b"k"*40, ("GET\n"+path+"\n"+headers["x-zevanory-audit-ts"]).encode(), hashlib.sha256).hexdigest()
+        self.assertEqual(headers["x-zevanory-audit-signature"], expected)
+        self.assertNotIn("DATABASE_URL", __import__("inspect").getsource(watchdog))
+        self.assertNotIn("psycopg", __import__("inspect").getsource(watchdog))
 
-    def test_database_read_only_aggregate(self):
-        db = ReadOnlyDatabase()
-        options = {}
-        def connect(*args, **kwargs):
-            options.update(kwargs)
-            return db
-        with patch.dict("os.environ", {"DATABASE_URL": "postgresql://dummy@localhost/db"}):
-            result = watchdog.read_paid_delivery_counts(connector=connect)
-        self.assertTrue(options.get("autocommit"), "BEGIN READ ONLY must not be nested inside an implicit transaction")
-        self.assertEqual(options.get("sslmode"), "require")
-        self.assertEqual(result, COUNTS)
-        self.assertEqual(db.statements[0][0], "BEGIN READ ONLY")
-        self.assertEqual(db.statements[-1][0], "ROLLBACK")
-        self.assertIn("%(launch)s", db.statements[1][0])
-        self.assertNotIn("DELETE FROM", db.statements[1][0])
+    def test_missing_secret_and_invalid_aggregates_fail_closed(self):
+        with patch.dict("os.environ", {}, clear=True):
+            with self.assertRaisesRegex(watchdog.WatchError, "AUDIT_SECRET_MISSING"):
+                watchdog.read_paid_delivery_counts(fetch=lambda *_: None)
+        for data in [None, {"paid": 1}, {**COUNTS, "paid": True},
+                     {**COUNTS, "paid": -1}, {**COUNTS, "overdue_paid": 1}]:
+            with patch.dict("os.environ", {"CERTIFICATION_E2E_TOKEN":"k"*40}, clear=True):
+                with self.assertRaises(watchdog.WatchError):
+                    watchdog.read_paid_delivery_counts(
+                        fetch=lambda *_: {"schema":"zevanory.first-order-watch.v1","counts":data})
 
     def test_yaml_has_hourly_schedule_and_sealed_production_gate(self):
         import yaml
@@ -141,8 +126,9 @@ class FirstOrderWatchTests(unittest.TestCase):
         watch = wf["jobs"]["first-order-watch"]
         self.assertIn("github.event_name != 'pull_request'", watch["if"])
         self.assertIn("refs/heads/gh-pages", watch["if"])
-        self.assertIn("DATABASE_URL", watch["env"])
+        self.assertNotIn("DATABASE_URL", watch["env"])
         self.assertIn("RESEND_API_KEY", watch["env"])
+        self.assertIn("CERTIFICATION_E2E_TOKEN", watch["env"])
         self.assertEqual(wf["concurrency"]["group"], "zevanory-owner-sales-switch")
 
     def test_get_requests_are_only_read_in_stub(self):

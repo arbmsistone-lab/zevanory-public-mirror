@@ -13,45 +13,8 @@ import sys
 import urllib.error
 import urllib.request
 
-LAUNCH_UTC = "2026-10-09T20:19:12+00:00"
 ROOT = "https://zevanory.api.br"
 ALERT_ISSUE = "https://api.github.com/repos/arbmsistone-lab/zevanory-public-mirror/issues/576/comments"
-CHECKOUT_SQL = """
-WITH production_orders AS (
-  SELECT order_id, status, updated_at
-    FROM orders
-   WHERE coalesce(certification_pilot,false) = false
-     AND created_at >= %(launch)s::timestamptz
-     AND provider = 'mercadopago'
-), payments AS (
-  SELECT order_id, MIN(received_at) AS confirmed_at
-    FROM financial_events
-   WHERE provider = 'mercadopago'
-     AND normalized_event = 'payment_confirmed'
-     AND received_at >= %(launch)s::timestamptz
-   GROUP BY order_id
-), joined AS (
-  SELECT o.status AS order_status, o.updated_at, p.confirmed_at,
-         f.status AS fulfillment_status, f.delivered_at
-    FROM production_orders o
-    LEFT JOIN payments p ON p.order_id = o.order_id
-    LEFT JOIN service_fulfillment f ON f.order_id = o.order_id
-)
-SELECT COUNT(*) AS checkouts,
-       COUNT(*) FILTER (WHERE order_status='paid') AS paid,
-       COUNT(*) FILTER (WHERE order_status='paid'
-                         AND fulfillment_status='delivered'
-                         AND delivered_at IS NOT NULL) AS delivered,
-       COUNT(*) FILTER (WHERE order_status='paid'
-                         AND (fulfillment_status IS DISTINCT FROM 'delivered'
-                              OR delivered_at IS NULL)
-                         AND COALESCE(confirmed_at,updated_at) <= now()-interval '15 minutes')
-           AS overdue_paid,
-       COUNT(*) FILTER (WHERE order_status='paid'
-                         AND fulfillment_status IN ('failed','error','blocked','canceled'))
-           AS fulfillment_failed
-  FROM joined
-"""
 
 
 class WatchError(Exception):
@@ -82,37 +45,40 @@ def get_status(path, fetch=None):
         return None
 
 
-def read_paid_delivery_counts(connector=None):
-    """Return aggregates ONLY. PostgreSQL transaction explicitly READ ONLY."""
-    if connector is None:
+def read_paid_delivery_counts(fetch=None):
+    """Signed GET-only aggregate, using existing Worker HMAC. No DB credential in Actions."""
+    import hashlib
+    import hmac
+    import time
+    key = os.getenv("CERTIFICATION_E2E_TOKEN", "").strip()
+    if len(key) < 32:
+        raise WatchError("AUDIT_SECRET_MISSING")
+    path = "/api/internal/watch/paid-delivery"
+    ts = str(int(time.time()))
+    signature = hmac.new(key.encode(), f"GET\n{path}\n{ts}".encode(), hashlib.sha256).hexdigest()
+    headers = {
+        "Accept": "application/json", "Cache-Control": "no-store",
+        "User-Agent": "ZEVANORY-Order17-Watch/1.0",
+        "x-zevanory-audit-ts": ts, "x-zevanory-audit-signature": signature,
+    }
+    if fetch:
+        body = fetch(path, headers)
+    else:
         try:
-            import psycopg
-        except ImportError as exc:
-            raise WatchError("DATABASE_DRIVER_MISSING") from exc
-        connector = psycopg.connect
-    dsn = os.getenv("DATABASE_URL", "")
-    if not dsn.startswith(("postgres://", "postgresql://")):
-        raise WatchError("DATABASE_URL_MISSING")
-    try:
-        # Explicit BEGIN READ ONLY requires autocommit: otherwise psycopg starts an implicit
-        # read-write transaction first and PostgreSQL ignores the nested BEGIN mode.
-        with connector(dsn, connect_timeout=15, sslmode="require", autocommit=True) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("BEGIN READ ONLY")
-                cursor.execute(CHECKOUT_SQL, {"launch": LAUNCH_UTC})
-                record = cursor.fetchone()
-                cursor.execute("ROLLBACK")
-        if record is None or len(record) != 5:
-            raise WatchError("DB_AGGREGATE_UNAVAILABLE")
-        result = dict(zip(("checkouts", "paid", "delivered", "overdue_paid", "fulfillment_failed"), map(int, record)))
-        if any(v < 0 for v in result.values()) or result["delivered"] > result["paid"]:
-            raise WatchError("DB_AGGREGATE_INVALID")
-        return result
-    except WatchError:
-        raise
-    except Exception as exc:
-        # Never log raw DB errors, SQL, credentials or customer records.
-        raise WatchError("DB_QUERY_FAILED") from exc
+            req = urllib.request.Request(ROOT + path, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=25) as response:
+                body = json.load(response) if response.status == 200 else None
+        except Exception as exc:
+            raise WatchError("SIGNED_WATCH_UNAVAILABLE") from exc
+    if not isinstance(body, dict) or body.get("schema") != "zevanory.first-order-watch.v1":
+        raise WatchError("SIGNED_WATCH_SCHEMA_INVALID")
+    counts = body.get("counts")
+    keys = ("checkouts", "paid", "delivered", "overdue_paid", "fulfillment_failed")
+    if not isinstance(counts, dict) or not all(type(counts.get(k)) is int and 0 <= counts[k] <= 100000000 for k in keys):
+        raise WatchError("SIGNED_WATCH_COUNTS_INVALID")
+    if counts["delivered"] > counts["paid"] or counts["overdue_paid"] > counts["paid"] or counts["fulfillment_failed"] > counts["paid"]:
+        raise WatchError("SIGNED_WATCH_COUNTS_INCONSISTENT")
+    return {k: counts[k] for k in keys}
 
 
 def evaluate(status, sales, counts):
