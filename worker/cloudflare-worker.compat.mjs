@@ -495,6 +495,29 @@ const wrapped = {
 
 wrapped.scheduled = async (controller, env, ctx) => {
   const normalized = normalizeEnv(env);
+  // Separate cron invocation: the financial proof must not share a Workers Free
+  // subrequest/CPU budget with blog, email, orders and other hourly jobs.
+  // The original hourly cron remains fully operational.
+  if (controller?.cron === "15,45 * * * *") {
+    try {
+      const proof = await refreshFinancialProofSnapshot(normalized, {
+        sqlFactory: whatsappProofDatabase, force: true
+      });
+      console.info("commercial_metrics_proof_isolated", JSON.stringify({
+        ok: proof.ok === true, reason: proof.reason || "unavailable",
+        ambiguous: proof.ambiguous ?? null
+      }));
+      if (!proof.ok) {
+        console.error("commercial_metrics_proof_isolated_failed", String(proof.reason || "unavailable"));
+        throw new Error("financial_proof_not_renewed");
+      }
+    } catch (error) {
+      // Only a fixed category, never raw SQL/HTTP errors or account details.
+      console.error("commercial_metrics_proof_isolated_failed", "exception");
+      throw new Error("commercial_metrics_proof_isolated_failed");
+    }
+    return;
+  }
   await runSalesPreflight(normalized).then((out) => console.info("sales_preflight", JSON.stringify({ ok: out.ok, failed: out.checks.filter((c) => !c.ok).map((c) => c.id) }))).catch((error) => console.error("sales_preflight_failed", error instanceof Error ? error.message : String(error)));
   resetSalesSwitchCache();
   const salesSwitchState = await readSalesSwitch(normalized);

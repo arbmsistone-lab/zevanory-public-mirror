@@ -79,19 +79,34 @@ export async function readFinancialProofSnapshot(env,{now=Date.now()}={}){
     return verifyFinancialProofSnapshot(snap,env,{now})?snap:null;
   }catch{return null;}
 }
-export async function refreshFinancialProofSnapshot(env,{sqlFactory,now=Date.now()}={}){
+export async function refreshFinancialProofSnapshot(env,{
+  sqlFactory,now=Date.now(),force=false,
+  audit=collectFinancialProvenanceReadOnly,countCheckouts=countProductionCheckouts
+}={}){
   const kv=env?.ZEVANORY_PRIVATE_ARTIFACTS;
   if(!kv?.get||!kv?.put||!sqlFactory||!env?.DATABASE_URL)return {ok:false,reason:"unavailable"};
   let prior=null;
   try{prior=JSON.parse(String(await kv.get(COMMERCIAL_PROOF_KV_KEY)||"null"));}catch{}
   const priorAt=Date.parse(String(prior?.measured_at||""));
-  if(Number.isFinite(priorAt)&&priorAt<=now&&now-priorAt<MIN_REFRESH_MS&&prior?.release_sha===env.ZEVANORY_RELEASE_SHA)
-    return {ok:verifyFinancialProofSnapshot(prior,env,{now}),reason:"recent_snapshot"};
-  const audited=await collectFinancialProvenanceReadOnly(env,{sqlFactory});
-  const checkoutsStarted=await countProductionCheckouts(env,{sqlFactory});
+  // A recent *failed* snapshot must not suppress retry for another 50 minutes.
+  // The isolated Cloudflare cron forces a genuine GET-only recheck independent of
+  // GitHub Actions even if GitHub has recently persisted a valid snapshot.
+  if(!force&&Number.isFinite(priorAt)&&priorAt<=now&&now-priorAt<MIN_REFRESH_MS&&
+     verifyFinancialProofSnapshot(prior,env,{now}))
+    return {ok:true,reason:"recent_snapshot"};
+  const audited=await audit(env,{sqlFactory});
+  const checkoutsStarted=await countCheckouts(env,{sqlFactory});
   const snapshot=createFinancialProofSnapshot(env,audited,{now,checkoutsStarted});
+  if(!snapshot.verified){
+    // Transient provider/DB 503 must not erase still-valid proof. A positive
+    // ambiguity (409) DOES invalidate immediately. Never synthesize a PASS.
+    if(audited?.code===409||!verifyFinancialProofSnapshot(prior,env,{now}))
+      await kv.put(COMMERCIAL_PROOF_KV_KEY,JSON.stringify(snapshot),{expirationTtl:2*3600});
+    return {ok:false,ambiguous:snapshot.ambiguous,
+      reason:audited?.code===409?"ambiguous":audited?.code===503?"audit_unavailable":"unverified"};
+  }
   await kv.put(COMMERCIAL_PROOF_KV_KEY,JSON.stringify(snapshot),{expirationTtl:2*3600});
-  return {ok:snapshot.verified,ambiguous:snapshot.ambiguous,reason:snapshot.verified?"proven":"unverified"};
+  return {ok:true,ambiguous:0,reason:"proven"};
 }
 export function projectProductionOnlyStatus(body={},proof=null,{now=Date.now(),env={},salesRelease=false}={}){
   const verified=verifyFinancialProofSnapshot(proof,env,{now});
