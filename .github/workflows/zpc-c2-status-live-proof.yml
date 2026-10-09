@@ -17,7 +17,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import hmac,hashlib,urllib.request,urllib.error,json,os,time,sys
-          expected="77658062488ebe13e1454aad530ae87a80b5f555"
+          expected="baa0ad64d249745473370f0a95f24f9e5d848501"
           key=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
           def get(path,signed=False):
             h={"Accept":"application/json","User-Agent":"ZEVANORY-AuditReadOnly/1.0"}
