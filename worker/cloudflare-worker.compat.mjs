@@ -1,3 +1,4 @@
+import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
@@ -120,6 +121,10 @@ const wrapped = {
       if (!(await verifySignedAuditProbe(request, normalized))) {
         return new Response(JSON.stringify({error:"invalid_audit_signature"}),{status:401,headers:{"content-type":"application/json","cache-control":"no-store"}});
       }
+    }
+    // HMAC is mandatory even for unsigned GETs: never expose database aggregates anonymously.
+    if (url.pathname === "/api/internal/watch/paid-delivery") {
+      return handleFirstOrderWatchReadOnly(request, normalized, {sqlFactory: whatsappProofDatabase});
     }
     // Operator-authenticated READ-ONLY audit before legacy routing. Does not mutate commerce.
     if (url.pathname.startsWith("/api/internal/audit/")) {
