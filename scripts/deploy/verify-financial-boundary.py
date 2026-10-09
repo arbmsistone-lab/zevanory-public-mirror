@@ -9,12 +9,19 @@ with open("wrangler.central-fix.jsonc", encoding="utf-8") as f:
 
 assert str(vars.get("SALE_GLOBALLY_ENABLED", "")).lower() == "false", "DEPLOY_MUST_KEEP_SALES_CLOSED"
 assert str(vars.get("CERTIFICATION_PILOT_PRODUCTION_ALLOWED", "")).lower() == "false", "NO_PRODUCTION_PILOT"
-assert str(vars.get("WHATSAPP_SALES_ENABLED", "")).lower() == "false", "WHATSAPP_SALES_CLOSED"
+whatsapp_mode = str(vars.get("WHATSAPP_SALES_ENABLED", "")).lower()
+assert whatsapp_mode in ("false", "true"), "WHATSAPP_SALES_MODE_INVALID"
 assert str(vars.get("ASAAS_ENV", "")).lower() == "sandbox", "ASAAS_ENV_MUST_BE_SANDBOX"
 assert str(vars.get("CERTIFICATION_PILOT_ENV", "")).lower() == "sandbox", "CERTIFICATION_PILOT_MUST_BE_SANDBOX"
 assert str(vars.get("PAYMENT_PROVIDER", "")).lower() == "mercadopago", "PRODUCTION_PROVIDER_CHANGED"
 
 authorized = os.getenv("ZEVANORY_LAUNCH_AUTHORIZATION", "") == "AUTORIZO COMPRA REAL"
+# An enabled inbound WhatsApp responder is not authorization to bypass the sales
+# switch. Only permit it with the independently verified owner launch order.
+if whatsapp_mode == "true":
+    assert authorized, "WHATSAPP_INBOUND_OWNER_AUTHORIZATION_REQUIRED"
+    assert str(vars.get("SALE_GLOBALLY_ENABLED", "")).lower() == "false", "WHATSAPP_CANNOT_OPEN_KV_SWITCH"
+    assert vars.get("PRE_SALE_GATES_APPROVED") == "true", "WHATSAPP_INBOUND_GATES_REQUIRED"
 runtime = vars.get("ZEVANORY_RUNTIME_CONFIG", {})
 assert isinstance(runtime, dict), "RUNTIME_CONFIG_INVALID"
 if authorized:

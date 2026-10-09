@@ -15,6 +15,9 @@ if "0 * * * *" not in crons:
     crons.insert(0,"0 * * * *")
 if "15,45 * * * *" not in crons:
     crons.append("15,45 * * * *")
+# Fase 0 is read-only producer, separate from both financial proof crons.
+if "5,35 * * * *" not in crons:
+    crons.append("5,35 * * * *")
 if len(crons)>5:
     raise SystemExit("CRON_TRIGGER_FREE_LIMIT_EXCEEDED")
 c.pop("secrets",None)
@@ -69,7 +72,7 @@ c["vars"]["PRE_SALE_GATES_APPROVED"]="false"
 if launch_authorized:
     c["vars"]["ABSOLUTE_RELEASE_APPROVED"]="true"
     c["vars"]["PRE_SALE_GATES_APPROVED"]="true"
-c["vars"]["WHATSAPP_SALES_ENABLED"]="false"
+c["vars"]["WHATSAPP_SALES_ENABLED"]="true"  # Inbound-only owner-authorized support and catalog sales; KV controls checkout
 c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
 c["vars"]["SUPPORT_CHANNEL"]="WhatsApp +55 88 99254-5413"
 runtime=c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})

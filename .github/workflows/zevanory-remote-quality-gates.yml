@@ -137,7 +137,8 @@ jobs:
           python3 scripts/premerge_product_audit.py
           grep -q 'SALE_GLOBALLY_ENABLED.*false' scripts/deploy/prepare-central-candidate.py
           grep -q 'PRE_SALE_GATES_APPROVED.*false' scripts/deploy/prepare-central-candidate.py
-          grep -q 'WHATSAPP_SALES_ENABLED.*false' scripts/deploy/prepare-central-candidate.py
+          # Required product audit validates inbound WhatsApp + unchanged independent owner KV gate.
+          grep -q 'WHATSAPP_SALES_ENABLED.*true' scripts/deploy/prepare-central-candidate.py
           echo "REQUIRED_STATUS_BUILD=PASS"
 
   deploy:
