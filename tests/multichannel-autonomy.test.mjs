@@ -1,5 +1,5 @@
 import test from "node:test";import assert from "node:assert/strict";
-import {channelChecklist,ensureWeeklyBlog,INDEXNOW_PUBLIC_KEY,publishTelegram,publishPinterest,renderBlogArticle,renderChannelsPage,resolveChannelCredentials,runMultichannelAutonomy} from "../worker/multichannel-autonomy.mjs";
+import {channelChecklist,ensureWeeklyBlog,ensureDailyBlog,localContentDay,INDEXNOW_PUBLIC_KEY,publishTelegram,publishPinterest,renderBlogArticle,renderChannelsPage,resolveChannelCredentials,runMultichannelAutonomy} from "../worker/multichannel-autonomy.mjs";
 const kv=()=>{const m=new Map();return{m,get:async k=>m.get(k)||null,put:async(k,v)=>m.set(k,v)}};
 test("missing credential blocks only its channel and verified channels leave dry_run",()=>{const rows=channelChecklist({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.equal(rows.find(x=>x.id==="blog").configured,true);assert.equal(rows.find(x=>x.id==="telegram").mode,"pending");assert.equal(rows.find(x=>x.id==="facebook").mode,"dry_run");const live=channelChecklist({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i",META_APP_LIVE:"true"});assert.equal(live.find(x=>x.id==="facebook").mode,"active");});
 test("CHANNEL_CREDENTIALS_JSON takes precedence and individual bindings remain a fallback",()=>{const bundled=resolveChannelCredentials({CHANNEL_CREDENTIALS_JSON:JSON.stringify({TELEGRAM_BOT_TOKEN:"bundle",TELEGRAM_CHANNEL_ID:"@zevanory"}),TELEGRAM_BOT_TOKEN:"legacy"});assert.equal(bundled.TELEGRAM_BOT_TOKEN,"bundle");assert.equal(channelChecklist({CHANNEL_CREDENTIALS_JSON:JSON.stringify({TELEGRAM_BOT_TOKEN:"bundle",TELEGRAM_CHANNEL_ID:"@zevanory"})}).find(x=>x.id==="telegram").configured,true);assert.equal(resolveChannelCredentials({TELEGRAM_BOT_TOKEN:"legacy"}).TELEGRAM_BOT_TOKEN,"legacy");});
@@ -7,8 +7,43 @@ test("channel bundle includes YouTube refresh without Google Business fields and
 test("blog creates all three compliant weekly articles in one cycle with Article, FAQ and UTMs",async()=>{const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};const out=await ensureWeeklyBlog(env,new Date("2026-10-07T12:00:00Z"),async()=>({ok:true}));assert.equal(out.total,3);assert.equal(out.created.length,3);const html=await renderBlogArticle(env,out.created[0].id);assert.match(html,/Article/);assert.match(html,/FAQPage/);assert.match(html,/utm_source=blog/);assert.match(html,/Garantia de 7 dias/);});
 test("official Telegram and Pinterest adapters return real provider evidence",async()=>{const calls=[];const fetchImpl=async(url,init)=>{calls.push([url,init]);return url.includes("telegram")?{status:200,json:async()=>({ok:true,result:{message_id:7}})}:{status:201,json:async()=>({id:"pin-9"})};};const tg=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"secret",TELEGRAM_CHANNEL_ID:"@zevanory"},payload:{content:"oi"},fetchImpl});assert.equal(tg.url,"https://t.me/zevanory/7");const pin=await publishPinterest({env:{PINTEREST_ACCESS_TOKEN:"secret",PINTEREST_BOARD_ID:"board"},payload:{title:"t",content:"c",landing_url:"https://zevanory.api.br",media_url:"https://zevanory.api.br/x.png"},fetchImpl});assert.equal(pin.url,"https://www.pinterest.com/pin/pin-9/");assert.equal(calls.length,2);});
 test("private Sistema channels checklist contains exact Pinterest fields and replaces Google Business with Search Console",async()=>{const html=await renderChannelsPage({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.match(html,/Sistema/);assert.match(html,/TELEGRAM_BOT_TOKEN/);assert.match(html,/YOUTUBE_CLIENT_ID/);assert.match(html,/PINTEREST_ACCESS_TOKEN/);assert.match(html,/PINTEREST_BOARD_ID/);assert.match(html,/pins:write/);assert.match(html,/boards:write/);assert.match(html,/developers\.pinterest\.com\/apps\//);assert.match(html,/Google Search Console \+ Blog/);assert.doesNotMatch(html,/Google Perfil da Empresa/);assert.doesNotMatch(html,/GOOGLE_BUSINESS_/);assert.match(html,/Aguardando verificação da empresa \(em análise\)/);assert.match(html,/Pendente credencial/);assert.match(html,/developers\.facebook\.com/);});
-test("hourly cycle publishes approved content only to configured channels and persists provider evidence",async()=>{const store=kv();await store.put("zpc:creative-autonomy:feed:v1",JSON.stringify([{creative_id:"c1",status:"approved_for_autopublish",score:91,compliance:100,title:"t",content:"c",asset_url:"https://zevanory.api.br/a.png",landing_url:"https://zevanory.api.br/solucoes"}]));const env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"@zevanory"};const out=await runMultichannelAutonomy(env,new Date("2026-10-06T12:00:00Z"),async url=>url.includes("telegram")?{status:200,json:async()=>({ok:true,result:{message_id:9}})}:{status:200,json:async()=>({})});assert.equal(out.evidence.length,1);assert.equal(out.evidence[0].url,"https://t.me/zevanory/9");assert.ok(await store.get("zpc:multichannel:evidence:telegram:c1"));});
-test("Telegram automatic publishing is capped at two approved creatives per UTC day",async()=>{const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"@zevanory"};let calls=0;for(let i=1;i<=3;i++){await store.put("zpc:creative-autonomy:feed:v1",JSON.stringify([{creative_id:`c${i}`,status:"approved_for_autopublish",score:91,compliance:100,content:"c",asset_url:"https://zevanory.api.br/a.png"}]));await runMultichannelAutonomy(env,new Date("2026-10-07T12:00:00Z"),async()=>{calls++;return{status:200,json:async()=>({ok:true,result:{message_id:calls}})}});}assert.equal(calls,2);assert.equal(await store.get("zpc:multichannel:quota:telegram:2026-10-07"),"2");});
+test("one SEO article per Fortaleza calendar day for two consecutive dates",async()=>{
+  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};
+  const first=await ensureDailyBlog(env,new Date("2026-10-08T12:00:00Z"));
+  const repeat=await ensureDailyBlog(env,new Date("2026-10-08T18:00:00Z"));
+  const next=await ensureDailyBlog(env,new Date("2026-10-09T12:00:00Z"));
+  assert.equal(first.created.length,1);
+  assert.equal(repeat.created.length,0);
+  assert.equal(next.created.length,1);
+  assert.equal(localContentDay(new Date("2026-10-09T01:00:00Z")),"2026-10-08");
+  const index=JSON.parse(await store.get("zpc:blog:index:v1"));
+  assert.equal(index.articles.length,2);
+  const html=await renderBlogArticle(env,next.latest.slug);
+  assert.match(html,/utm_source=blog/);
+  assert.match(html,/https:\/\/vendas\.zevanory\.api\.br\/comprar\/ZEV-IA-011\?utm_source=blog/);
+});
+test("hourly cycle publishes one approved daily article to Telegram with real-URL contract and UTM",async()=>{
+  const store=kv(),calls=[];
+  const env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"@zevanory"};
+  const fetchImpl=async (url,options)=>{calls.push({url,body:JSON.parse(options.body)});return new Response(JSON.stringify({ok:true,result:{message_id:9}}),{status:200});};
+  const out=await runMultichannelAutonomy(env,new Date("2026-10-06T12:00:00Z"),fetchImpl);
+  assert.equal(out.blog.created.length,1);
+  assert.equal(out.evidence.length,1);
+  assert.equal(out.evidence[0].url,"https://t.me/zevanory/9");
+  assert.match(calls[0].body.text,/\/comprar\/ZEV-IA-011\?utm_source=telegram/);
+  assert.equal((await store.get("zpc:multichannel:evidence:telegram:daily:2026-10-06"))!==null,true);
+});
+test("Telegram daily publication is idempotent within the day and renews tomorrow",async()=>{
+  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"@zevanory"};
+  let calls=0;
+  const fetchImpl=async()=>{calls++;return new Response(JSON.stringify({ok:true,result:{message_id:calls}}),{status:200});};
+  for(let i=0;i<3;i++)await runMultichannelAutonomy(env,new Date("2026-10-07T12:00:00Z"),fetchImpl);
+  assert.equal(calls,1);
+  assert.equal(await store.get("zpc:multichannel:quota:telegram:2026-10-07"),"1");
+  await runMultichannelAutonomy(env,new Date("2026-10-08T12:00:00Z"),fetchImpl);
+  assert.equal(calls,2);
+  assert.equal(await store.get("zpc:multichannel:quota:telegram:2026-10-08"),"1");
+});
 
 test("telegram photo caption stays within the 1024-char Bot API limit", async () => {
   const { publishTelegram, telegramCaption, TELEGRAM_CAPTION_MAX } = await import("../worker/multichannel-autonomy.mjs");
@@ -36,4 +71,33 @@ test("telegram falls back to a text message when the photo is refused with 400, 
   assert.deepEqual(calls.map((u) => u.split("/").pop()), ["sendPhoto", "sendMessage"]);
   const failing = async () => new Response("{}", { status: 401 });
   await assert.rejects(publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: "x", media_url: "https://zevanory.api.br/x.png" }, fetchImpl: failing }), /provider_http_401/);
+});
+
+test("Telegram post evidence survives hourly cron and contains two consecutive verified days",async()=>{
+  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"@zevanory"};
+  let sent=0;
+  const fetchImpl=async()=>new Response(JSON.stringify({ok:true,result:{message_id:100+(++sent)}}),{status:200});
+  const day1=await runMultichannelAutonomy(env,new Date("2026-10-08T12:00:00Z"),fetchImpl);
+  const repeat=await runMultichannelAutonomy(env,new Date("2026-10-08T13:00:00Z"),fetchImpl);
+  assert.equal(day1.evidence.length,1);
+  assert.equal(repeat.evidence.length,1);
+  assert.equal(repeat.evidence[0].url,"https://t.me/zevanory/101");
+  const day2=await runMultichannelAutonomy(env,new Date("2026-10-09T12:00:00Z"),fetchImpl);
+  assert.equal(sent,2);
+  assert.equal(day2.evidence.length,2);
+  assert.deepEqual(new Set(day2.evidence.map(e=>e.provider_post_id)),new Set(["101","102"]));
+  const later=await runMultichannelAutonomy(env,new Date("2026-10-09T13:00:00Z"),fetchImpl);
+  assert.equal(sent,2);
+  assert.equal(later.evidence.length,2);
+  const publicState=JSON.parse(await store.get("zpc:multichannel:state:v1"));
+  assert.equal(publicState.evidence.length,2);
+});
+
+test("Telegram resolves a public t.me URL even when configured with numeric chat ID",async()=>{
+  const fetchImpl=async()=>new Response(JSON.stringify({ok:true,result:{message_id:42,chat:{id:-10098765,username:"zevanory"}}}),{status:200});
+  const out=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"-10098765"},payload:{content:"Guia publicado"},fetchImpl});
+  assert.equal(out.url,"https://t.me/zevanory/42");
+  const withoutUsername=async()=>new Response(JSON.stringify({ok:true,result:{message_id:43,chat:{id:-10098765}}}),{status:200});
+  const privatePost=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"-10098765"},payload:{content:"Guia publicado"},fetchImpl:withoutUsername});
+  assert.equal(privatePost.url,null,"do not invent public links for a private channel");
 });
