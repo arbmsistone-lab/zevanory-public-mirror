@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {createFinancialProofSnapshot,verifyFinancialProofSnapshot,readFinancialProofSnapshot,projectProductionOnlyStatus,COMMERCIAL_PROOF_KV_KEY,persistClassificationSnapshot,describeFinancialProofSnapshot,countProductionCheckouts,recordLaunchEpoch,LAUNCH_EPOCH_KV_KEY} from "../worker/commercial-metrics-projection.mjs";
+import {createFinancialProofSnapshot,verifyFinancialProofSnapshot,readFinancialProofSnapshot,projectProductionOnlyStatus,COMMERCIAL_PROOF_KV_KEY,persistClassificationSnapshot,describeFinancialProofSnapshot,countProductionCheckouts,recordLaunchEpoch,LAUNCH_EPOCH_KV_KEY,refreshFinancialProofSnapshot} from "../worker/commercial-metrics-projection.mjs";
 const SHA="a".repeat(40);
 const env={ZEVANORY_RELEASE_SHA:SHA};
 const now=Date.parse("2026-10-08T19:15:00Z");
@@ -134,4 +134,55 @@ test("production checkouts count only non-certification orders since the launch 
  assert.match(queries[0].text,/created_at >= \$1/);
  assert.deepEqual(queries[0].params,["2026-10-09T15:00:00.000Z"]);
  assert.equal(await countProductionCheckouts(e,{sqlFactory:()=>({query:async()=>{throw new Error("db");}})}),null);
+});
+
+
+test("isolated Cloudflare renewal is independent of an existing verified snapshot",async()=>{
+ const m=new Map(),kv={get:async k=>m.get(k)||null,put:async(k,v)=>{m.set(k,v);}};
+ const environment={...env,DATABASE_URL:"postgres://test",ZEVANORY_PRIVATE_ARTIFACTS:kv};
+ const at=now+70*60000;
+ const prior=createFinancialProofSnapshot(environment,audited,{now:at-20*60000});
+ m.set(COMMERCIAL_PROOF_KV_KEY,JSON.stringify(prior));
+ let calls=0;
+ const audit=async()=>{calls++;return audited;},countCheckouts=async()=>0;
+ const recent=await refreshFinancialProofSnapshot(environment,{now:at,sqlFactory:()=>{},audit,countCheckouts});
+ assert.equal(recent.reason,"recent_snapshot");
+ assert.equal(calls,0);
+ const forced=await refreshFinancialProofSnapshot(environment,{now:at,sqlFactory:()=>{},audit,countCheckouts,force:true});
+ assert.equal(forced.ok,true);
+ assert.equal(forced.reason,"proven");
+ assert.equal(calls,1);
+ const refreshed=await readFinancialProofSnapshot(environment,{now:at+5*60000});
+ assert.ok(refreshed);
+ assert.equal(refreshed.measured_at,new Date(at).toISOString());
+});
+
+test("an unverified recent snapshot never suppresses a new financial GET audit",async()=>{
+ const m=new Map(),kv={get:async k=>m.get(k)||null,put:async(k,v)=>{m.set(k,v);}};
+ const environment={...env,DATABASE_URL:"postgres://test",ZEVANORY_PRIVATE_ARTIFACTS:kv};
+ const bad={...createFinancialProofSnapshot(environment,audited,{now}),verified:false};
+ m.set(COMMERCIAL_PROOF_KV_KEY,JSON.stringify(bad));
+ let attempts=0;
+ const result=await refreshFinancialProofSnapshot(environment,{now:now+120000,sqlFactory:()=>{},
+   audit:async()=>{attempts++;return audited;},countCheckouts:async()=>0});
+ assert.equal(attempts,1);
+ assert.equal(result.ok,true);
+ assert.equal((await readFinancialProofSnapshot(environment,{now:now+120000})).verified,true);
+});
+
+test("transient provider 503 preserves only still-valid proof, but 409 ambiguity invalidates",async()=>{
+ const m=new Map(),kv={get:async k=>m.get(k)||null,put:async(k,v)=>{m.set(k,v);}};
+ const environment={...env,DATABASE_URL:"postgres://test",ZEVANORY_PRIVATE_ARTIFACTS:kv};
+ const accepted=createFinancialProofSnapshot(environment,audited,{now});
+ m.set(COMMERCIAL_PROOF_KV_KEY,JSON.stringify(accepted));
+ const transient=await refreshFinancialProofSnapshot(environment,{now:now+60000,sqlFactory:()=>{},force:true,
+   audit:async()=>({code:503,result:{error:"provider_unavailable"}}),countCheckouts:async()=>0});
+ assert.equal(transient.ok,false);
+ assert.equal(transient.reason,"audit_unavailable");
+ assert.equal(JSON.parse(m.get(COMMERCIAL_PROOF_KV_KEY)).verified,true);
+ const conflict=await refreshFinancialProofSnapshot(environment,{now:now+120000,sqlFactory:()=>{},force:true,
+   audit:async()=>({code:409,result:{...audited.result,ambiguous:1}}),countCheckouts:async()=>0});
+ assert.equal(conflict.ok,false);
+ assert.equal(conflict.reason,"ambiguous");
+ assert.equal(await readFinancialProofSnapshot(environment,{now:now+120000}),null);
 });
