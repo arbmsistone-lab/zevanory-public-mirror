@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {createFinancialProofSnapshot,verifyFinancialProofSnapshot,readFinancialProofSnapshot,projectProductionOnlyStatus,COMMERCIAL_PROOF_KV_KEY} from "../worker/commercial-metrics-projection.mjs";
+import {createFinancialProofSnapshot,verifyFinancialProofSnapshot,readFinancialProofSnapshot,projectProductionOnlyStatus,COMMERCIAL_PROOF_KV_KEY,persistClassificationSnapshot,describeFinancialProofSnapshot} from "../worker/commercial-metrics-projection.mjs";
 const SHA="a".repeat(40);
 const env={ZEVANORY_RELEASE_SHA:SHA};
 const now=Date.parse("2026-10-08T19:15:00Z");
@@ -71,4 +71,17 @@ test("tampered persisted snapshot with more paid orders than payments is rejecte
  assert.equal(good.verified,true);
  const forged={...good,production:{...good.production,paid_orders:2}};
  assert.equal(verifyFinancialProofSnapshot(forged,env,{now}),false);
+});
+
+test("authenticated classification persists only verified snapshots and describes them without IDs",async()=>{
+ const map={};const kv={get:async k=>map[k]??null,put:async(k,v)=>{map[k]=v;}};
+ const e={...env,ZEVANORY_PRIVATE_ARTIFACTS:kv};
+ assert.equal((await persistClassificationSnapshot(e,{code:200,result:{...audited.result,ambiguous:1}},{now})).ok,false);
+ assert.equal(map[COMMERCIAL_PROOF_KV_KEY],undefined);
+ assert.equal((await persistClassificationSnapshot(e,audited,{now})).ok,true);
+ const d=await describeFinancialProofSnapshot(e,{now});
+ assert.deepEqual([d.present,d.verified_flag,d.release_matches,d.accepted,d.age_minutes],[true,true,true,true,0]);
+ assert.equal(JSON.stringify(d).includes("should-not-be-copied"),false);
+ assert.equal((await readFinancialProofSnapshot(e,{now})).verified,true);
+ assert.equal((await describeFinancialProofSnapshot({...e,ZEVANORY_RELEASE_SHA:"b".repeat(40)},{now})).accepted,false);
 });
