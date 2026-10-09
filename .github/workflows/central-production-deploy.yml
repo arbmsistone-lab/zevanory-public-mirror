@@ -254,8 +254,7 @@ jobs:
           # Omitting --keep-vars removes only obsolete dashboard plain-text vars;
           # Wrangler guarantees that deployments never delete secret bindings.
           deploy() { npx --yes wrangler@4.143.0 deploy "$@" --config wrangler.central-fix.jsonc --tag="$TARGET_RUNTIME_SHA" --message="ZEVANORY-public-owner-exact-SHA-$TARGET_RUNTIME_SHA" 2>&1 | tee /tmp/central-deploy.log; }
-          fail() { tail -15 /tmp/central-deploy.log | tr '
-' ' ' | cut -c1-1800 | sed 's/^/::error title=CENTRAL_DEPLOY_FAILED::/'; echo; exit 1; }
+          fail() { tail -15 /tmp/central-deploy.log | tr '\n' ' ' | cut -c1-1800 | sed 's/^/::error title=CENTRAL_DEPLOY_FAILED::/'; echo; exit 1; }
           if ! deploy --strict; then
             # --strict aborts only when the Worker was last changed outside this pipeline
             # (e.g. `wrangler secret put` or dashboard settings). Secrets survive a deploy
@@ -310,8 +309,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/verify-production-surfaces.py > /tmp/surfaces.log 2>&1 || { tail -5 /tmp/surfaces.log | tr '
-' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_SURFACES::/'; echo; cat /tmp/surfaces.log; exit 1; }
+          python3 scripts/verify-production-surfaces.py > /tmp/surfaces.log 2>&1 || { tail -5 /tmp/surfaces.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_SURFACES::/'; echo; cat /tmp/surfaces.log; exit 1; }
           cat /tmp/surfaces.log
       - name: Verify live HSTS CSP and Mercado Pago navigation
         if: steps.auth.outputs.available == 'true'
@@ -319,12 +317,10 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL -D /tmp/live-security-headers.txt -o /tmp/live-solutions.html https://zevanory.api.br/solucoes
-          python3 scripts/verify-live-headers.py /tmp/live-security-headers.txt > /tmp/headers.log 2>&1 || { tail -5 /tmp/headers.log | tr '
-' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_HEADERS::/'; echo; exit 1; }
+          python3 scripts/verify-live-headers.py /tmp/live-security-headers.txt > /tmp/headers.log 2>&1 || { tail -5 /tmp/headers.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_HEADERS::/'; echo; exit 1; }
           npm install --no-save playwright@1.55.0 >/dev/null 2>&1
           npx playwright install --with-deps chromium >/dev/null 2>&1
-          node scripts/deploy/mercadopago-csp-smoke.mjs > /tmp/mpsmoke.log 2>&1 || { tail -5 /tmp/mpsmoke.log | tr '
-' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_MP_SMOKE::/'; echo; exit 1; }
+          node scripts/deploy/mercadopago-csp-smoke.mjs > /tmp/mpsmoke.log 2>&1 || { tail -5 /tmp/mpsmoke.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_MP_SMOKE::/'; echo; exit 1; }
           cat /tmp/mpsmoke.log
       - name: Automatic rollback after failed post-deploy smoke
         if: failure() && steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
