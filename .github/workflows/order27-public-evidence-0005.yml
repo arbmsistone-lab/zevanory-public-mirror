@@ -46,7 +46,7 @@ jobs:
               if not isinstance(row,dict) or row.get("channel")!="telegram":continue
               mid=str(row.get("provider_post_id",""))
               link=str(row.get("url",""))
-              if re.fullmatch(r"[0-9]{1,20}",mid) and re.fullmatch(r"https://t\\.me/[A-Za-z0-9_]+/[0-9]{1,20}",link) and link.endswith("/"+mid):
+              if re.fullmatch(r"[0-9]{1,20}",mid) and re.fullmatch(r"https://t\.me/[A-Za-z0-9_]+/[0-9]{1,20}",link) and link.endswith("/"+mid):
                   posts.append({"provider_post_id":mid,"url":link})
           print("ORD27_TELEGRAM_EVIDENCE",json.dumps({"http":evidence_code,"posts":posts[:3]}))
           slugs=("ia-pratica-pequenos-negocios","automacao-atendimento-clareza","conteudo-organico-com-evidencia","vendas-lojas-fortaleza","caixa-comercio-juazeiro-do-norte","atendimento-servicos-varzea-alegre")
