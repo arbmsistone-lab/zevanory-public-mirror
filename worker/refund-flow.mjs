@@ -7,6 +7,11 @@ const MP = "https://api.mercadopago.com";
 const ORIGIN = "https://zevanory.api.br";
 const WINDOW_MS = 7 * 24 * 3600 * 1000;
 const KEY = (oid) => `refund:req:${oid}`;
+// Historical provider 500/408 must remain blocked even if the newer explicit
+// ambiguity marker was not persisted by the deployed legacy handler.
+const isAmbiguousRefund = (r) => r?.provider_outcome_unknown === true ||
+  /^mercadopago_refund_(?:[25][0-9]{2}|408)_/.test(String(r?.last_error || "")) ||
+  r?.last_error === "mercadopago_refund_outcome_unknown";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: HEADERS });
@@ -75,13 +80,39 @@ async function rateLimited(kv, request) {
   return false;
 }
 
+// The existing control record table has a unique (bucket, id) index. Its insert
+// is an atomic durable claim across Workers and concurrent HTTP requests; a KV
+// read/write is NOT an atomic lock. Claims are intentionally never auto-expired
+// or removed: only a separately approved reconciliation can permit retry.
+async function hasRefundClaim(sql, oid) {
+  const rows = await sql.query(
+    "select id from public.zpc_records where bucket='refund_provider_attempt' and id=$1::uuid limit 1",
+    [oid]
+  );
+  return rows.length > 0;
+}
+async function acquireRefundClaim(sql, record) {
+  const rows = await sql.query(
+    `insert into public.zpc_records (bucket, id, record)
+     values ('refund_provider_attempt', $1::uuid, $2::jsonb)
+     on conflict (bucket, id) do nothing returning id`,
+    [record.order_id, JSON.stringify({ provider: "mercadopago", payment_id: record.payment_id,
+      test: record.test, stage: "provider_call_may_have_been_sent",
+      claimed_at: new Date().toISOString() })]
+  );
+  return rows.length === 1;
+}
+async function revokeRefundDownloads(sql, record) {
+  await sql.query("update artifact_download_tokens set used_at=coalesce(used_at, now()) where order_id=$1", [record.order_id]);
+}
+
 // Customer request. Returns the same generic message for every non-eligible combination.
 async function createRequest(env, sql, kv, { oid, email }) {
   oid = String(oid || "").trim().toLowerCase();
   email = String(email || "").trim().toLowerCase();
   if (!UUID.test(oid) || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email) || email.length > 254) return { status: 400, body: { error: "dados_invalidos", message: GENERIC_NOT_FOUND } };
   const existing = JSON.parse(await kv.get(KEY(oid)) || "null");
-  if (existing && existing.status !== "rejected") return { status: 200, body: { received: true, status: existing.status, message: "Seu pedido de reembolso já está registrado e será processado em breve." } };
+  if (existing && (existing.status !== "rejected" || isAmbiguousRefund(existing))) return { status: 200, body: { received: true, status: existing.status, message: "Seu pedido de reembolso já está registrado e será processado em breve." } };
   const order = await loadOrder(sql, oid);
   if (!order || order.status !== "paid" || !order.payment_id || !order.paid_at) return { status: 404, body: { error: "nao_elegivel", message: GENERIC_NOT_FOUND, reason: !order ? "order_not_found" : order.status !== "paid" ? "order_status_" + order.status : "payment_missing" } };
   const test = order.certification_pilot === true || Boolean(await kv.get(`sandbox-proof-v2:order:${oid}`));
@@ -126,14 +157,31 @@ async function createRequest(env, sql, kv, { oid, email }) {
 async function executeRefund(env, sql, kv, oid, { actor }) {
   const record = JSON.parse(await kv.get(KEY(oid)) || "null");
   if (!record) return { status: 404, body: { error: "refund_request_not_found" } };
-  if (record.status === "refunded" || record.status === "approved") return { status: 200, body: { ok: true, status: record.status, refund_id: record.refund_id, duplicate: true } };
+  if (record.status === "refunded" || record.status === "approved") {
+    // A failed Neon revocation must recover independently of any provider POST.
+    if (record.download_revocation_pending === true) {
+      try {
+        await revokeRefundDownloads(sql, record);
+        record.download_revocation_pending = false;
+        await kv.put(KEY(oid), JSON.stringify(record), { expirationTtl: 90 * 24 * 3600 });
+      } catch {
+        return { status: 503, body: { error: "refund_download_revocation_pending" } };
+      }
+    }
+    return { status: 200, body: { ok: true, status: record.status, refund_id: record.refund_id, duplicate: true } };
+  }
   if (record.status !== "pending") return { status: 409, body: { error: "refund_request_not_pending", status: record.status } };
-  // HTTP 5xx or an interrupted request can leave the provider's actual refund
-  // outcome unknown. Never issue a second POST until a read-only reconciliation
-  // establishes the result, even though the idempotency key is stable.
-  if (record.provider_outcome_unknown === true) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
+  if (isAmbiguousRefund(record)) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
   const token = tokenFor(env, record.test);
   if (!token) return { status: 503, body: { error: "mercadopago_token_missing" } };
+  // Fail closed on DB unavailability or an existing claim, before financial I/O.
+  try {
+    if (!(await acquireRefundClaim(sql, record))) {
+      return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
+    }
+  } catch {
+    return { status: 503, body: { error: "refund_claim_store_unavailable" } };
+  }
   let r;
   try {
     r = await fetch(`${MP}/v1/payments/${encodeURIComponent(record.payment_id)}/refunds`, {
@@ -149,17 +197,26 @@ async function executeRefund(env, sql, kv, oid, { actor }) {
     return { status: 502, body: { error: record.last_error } };
   }
   const body = await r.json().catch(() => ({}));
-  if (!r.ok || !body?.id) {
-    // 5xx/408 and malformed successful responses are ambiguous; preserve the
-    // pending request, but block all follow-up provider writes until reviewed.
-    if (r.status >= 500 || r.status === 408 || r.ok) record.provider_outcome_unknown = true;
+  if (!r.ok || !body?.id || body.status !== "approved") {
+    // Once a claim is durable, ALL non-confirmed outcomes require reconciliation.
+    record.provider_outcome_unknown = true;
     record.last_error = `mercadopago_refund_${r.status}_${String(body?.message || body?.error || "").slice(0, 120)}`;
     await kv.put(KEY(oid), JSON.stringify(record), { expirationTtl: 90 * 24 * 3600 });
     return { status: 502, body: { error: record.last_error } };
   }
-  await sql.query("update artifact_download_tokens set used_at=coalesce(used_at, now()) where order_id=$1", [oid]).catch(() => null);
-  Object.assign(record, { status: "approved", refund_id: String(body.id), refund_status: String(body.status || ""), approved_at: new Date().toISOString(), approved_by: actor });
+  Object.assign(record, { status: "approved", refund_id: String(body.id), refund_status: "approved",
+    approved_at: new Date().toISOString(), approved_by: actor, download_revocation_pending: true });
+  // The provider is already confirmed. Never repeat POST if this Neon write fails.
+  try {
+    await revokeRefundDownloads(sql, record);
+    record.download_revocation_pending = false;
+  } catch {
+    record.last_error = "refund_download_revocation_pending";
+  }
   await kv.put(KEY(oid), JSON.stringify(record), { expirationTtl: 90 * 24 * 3600 });
+  if (record.download_revocation_pending) {
+    return { status: 503, body: { error: "refund_download_revocation_pending" } };
+  }
   try {
     const payment = await mpPayment(env, record.payment_id, record.test);
     const to = String(payment?.payer?.email || "").trim().toLowerCase();
@@ -168,9 +225,17 @@ async function executeRefund(env, sql, kv, oid, { actor }) {
   return { status: 200, body: { ok: true, status: "approved", refund_id: record.refund_id, refund_status: record.refund_status } };
 }
 
-async function rejectRequest(kv, oid, actor) {
+async function rejectRequest(kv, sql, oid, actor) {
   const record = JSON.parse(await kv.get(KEY(oid)) || "null");
   if (!record || record.status !== "pending") return { status: 409, body: { error: "refund_request_not_pending" } };
+  if (isAmbiguousRefund(record)) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
+  // Even if the KV error marker was lost, the durable provider claim blocks
+  // rejection and recreation of an already-dispatched financial operation.
+  try {
+    if (await hasRefundClaim(sql, oid)) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
+  } catch {
+    return { status: 503, body: { error: "refund_claim_store_unavailable" } };
+  }
   Object.assign(record, { status: "rejected", rejected_at: new Date().toISOString(), rejected_by: actor });
   await kv.put(KEY(oid), JSON.stringify(record), { expirationTtl: 90 * 24 * 3600 });
   return { status: 200, body: { ok: true, status: "rejected" } };
@@ -199,7 +264,7 @@ const FORM_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"
 <script>document.getElementById('f').addEventListener('submit',async(ev)=>{ev.preventDefault();const m=document.getElementById('msg');m.style.display='block';m.textContent='Enviando…';try{const r=await fetch('/api/support/refund-request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({order_id:document.getElementById('o').value,email:document.getElementById('e').value})});const j=await r.json();m.textContent=j.message||'Não foi possível registrar agora. Tente novamente.';}catch{m.textContent='Não foi possível registrar agora. Tente novamente.';}});</script></body></html>`;
 
 function adminPage(items) {
-  const rows = items.map((r) => `<tr><td>${esc(r.requested_at.slice(0, 16).replace("T", " "))}</td><td><code>${esc(r.order_id)}</code><br><small>${esc(r.offer_id)} · ${esc(r.email_masked)}</small></td><td>R$ ${esc(r.amount)}</td><td>${esc(r.status)}${r.last_error ? `<br><small>${esc(r.last_error)}</small>` : ""}</td><td>${r.status === "pending" && r.provider_outcome_unknown !== true ? `<form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Aprovar reembolso</button> <button name="action" value="reject" class="no">Recusar</button></form>` : r.provider_outcome_unknown === true ? "Verificar no Mercado Pago antes de nova tentativa" : esc(r.refund_id || "")}</td></tr>`).join("");
+  const rows = items.map((r) => `<tr><td>${esc(r.requested_at.slice(0, 16).replace("T", " "))}</td><td><code>${esc(r.order_id)}</code><br><small>${esc(r.offer_id)} · ${esc(r.email_masked)}</small></td><td>R$ ${esc(r.amount)}</td><td>${esc(r.status)}${r.last_error ? `<br><small>${esc(r.last_error)}</small>` : ""}</td><td>${r.status === "pending" && !isAmbiguousRefund(r) ? `<form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Aprovar reembolso</button> <button name="action" value="reject" class="no">Recusar</button></form>` : isAmbiguousRefund(r) ? "Verificar no Mercado Pago antes de nova tentativa" : r.download_revocation_pending === true ? "Revogação de downloads pendente; verificar recuperação" : esc(r.refund_id || "")}</td></tr>`).join("");
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reembolsos · ZEVANORY</title><style>body{font-family:system-ui,sans-serif;background:#050a1e;color:#e7ecf7;margin:0;padding:24px}table{width:100%;border-collapse:collapse}td,th{padding:10px;border-bottom:1px solid #22305a;text-align:left;vertical-align:top}button{padding:10px 14px;border:0;border-radius:8px;background:#22c55e;color:#04210f;font-weight:700}button.no{background:#334155;color:#fff}code{font-size:12px}</style></head><body><h1>Pedidos de reembolso</h1><p>Aprovar envia o reembolso integral ao Mercado Pago e bloqueia novos downloads do pedido.</p><table><tr><th>Quando</th><th>Pedido</th><th>Valor</th><th>Status</th><th>Ação</th></tr>${rows || '<tr><td colspan="5">Nenhum pedido.</td></tr>'}</table></body></html>`;
 }
 
@@ -268,7 +333,7 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     const oid = String(form?.get("order_id") || "").toLowerCase();
     const action = String(form?.get("action") || "");
     if (!UUID.test(oid)) return json(400, { error: "order_id_invalid" });
-    const out = action === "approve" ? await executeRefund(env, sql(), kv, oid, { actor: "owner" }) : action === "reject" ? await rejectRequest(kv, oid, "owner") : { status: 400, body: { error: "action_invalid" } };
+    const out = action === "approve" ? await executeRefund(env, sql(), kv, oid, { actor: "owner" }) : action === "reject" ? await rejectRequest(kv, sql(), oid, "owner") : { status: 400, body: { error: "action_invalid" } };
     if (out.status >= 400) return html(out.status, `<p style="font-family:system-ui">Não foi possível: ${esc(out.body.error)}</p><p><a href="/admin/refunds">Voltar</a></p>`);
     return Response.redirect(`${ORIGIN}/admin/refunds`, 303);
   }
@@ -277,19 +342,39 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
 
 // Hourly watchdog: pending refund requests never sit unseen. Re-alerts the owner (at most every
 // 12h) while requests are pending, with the time left inside the 7-day legal window.
-export async function runRefundWatchdog(env, now = Date.now()) {
+export async function runRefundWatchdog(env, now = Date.now(), { sqlFactory } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!kv?.list) return { ok: false, reason: "kv_unavailable" };
   const listed = await kv.list({ prefix: "refund:req:", limit: 200 });
   const pending = [];
+  const revocationPending = [];
   for (const key of listed.keys || []) {
     let rec = null;
     try { rec = JSON.parse(await kv.get(key.name) || "null"); } catch {}
-    if (!rec || rec.status !== "pending" || rec.test) continue;
+    if (!rec) continue;
+    if (rec.status === "approved" && rec.download_revocation_pending === true) {
+      try {
+        if (!sqlFactory) throw new Error("sql_factory_unavailable");
+        await revokeRefundDownloads(sqlFactory(env.DATABASE_URL), rec);
+        rec.download_revocation_pending = false;
+        await kv.put(key.name, JSON.stringify(rec), { expirationTtl: 90 * 24 * 3600 });
+      } catch {
+        revocationPending.push({ order_id: rec.order_id, test: rec.test });
+      }
+      continue;
+    }
+    if (rec.status !== "pending" || rec.test) continue;
     const ageH = (now - Date.parse(rec.requested_at || 0)) / 3600e3;
     if (ageH >= 12 || await kv.get(`refund:alert-pending:${rec.order_id}`)) pending.push({ ...rec, ageH });
   }
-  if (!pending.length) return { ok: true, pending: 0 };
+  if (!pending.length) {
+    if (revocationPending.some((r) => !r.test)) {
+      await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"),
+        "ZEVANORY — revogação de download pendente",
+        "Uma revogação de download pós-reembolso precisa de verificação no painel de reembolsos.");
+    }
+    return { ok: revocationPending.length === 0, pending: 0, revocation_pending: revocationPending.length };
+  }
   if (await kv.get("refund:watchdog:last")) return { ok: true, pending: pending.length, throttled: true };
   const lines = pending.map((r) => `- Pedido ${r.order_id} (${r.offer_id}, R$ ${r.amount}) pedido há ${Math.round(r.ageH)}h`).join("\n");
   const sent = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), `ZEVANORY — ${pending.length} reembolso(s) aguardando aprovação`, `Há reembolsos pendentes dentro do prazo legal de 7 dias:\n\n${lines}\n\nAprovar: ${ORIGIN}/admin/refunds`);
