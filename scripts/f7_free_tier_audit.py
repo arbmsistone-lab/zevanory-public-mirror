@@ -112,6 +112,21 @@ else:
         note("notice", "F7_CPU_TOP", json.dumps([[r['dimensions']['datetimeMinute'][11:16], r['sum']['requests'], round((r['quantiles']['cpuTimeP99'] or 0)/1000,1)] for r in top]))
     else:
         note("warning", "F7_CPU_HEAVY_MINUTES", f"graphql_{code} {str(body.get('errors'))[:200]}")
+    # Which paths/clients hit the main Worker at :00/:15/:30/:45 (zone HTTP analytics, aggregates only).
+    zc, zb = http("https://api.cloudflare.com/client/v4/zones?name=zevanory.api.br", {"Authorization": "Bearer " + CF_TOKEN})
+    zone = ((zb.get("result") or [{}])[0] or {}).get("id") if zc == 200 else None
+    if zone:
+        q = '{viewer{zones(filter:{zoneTag:"%s"}){httpRequestsAdaptiveGroups(limit:60,orderBy:[count_DESC],filter:{datetime_geq:"%s",datetime_leq:"%s",requestSource:"eyeball"}){count dimensions{clientRequestHTTPHost clientRequestPath clientRequestHTTPMethodName userAgent}}}}}' % (zone, since, until)
+        code, body = gql(q)
+        rows = (((body.get("data") or {}).get("viewer") or {}).get("zones") or [{}])[0].get("httpRequestsAdaptiveGroups") if code == 200 else None
+        if rows:
+            for r in rows[:14]:
+                d = r["dimensions"]
+                note("notice", "F7_TOP_PATH", f'{r["count"]} {d["clientRequestHTTPMethodName"]} {d["clientRequestHTTPHost"]}{d["clientRequestPath"][:70]} ua={str(d.get("userAgent"))[:60]}')
+        else:
+            note("warning", "F7_TOP_PATH", f"graphql_{code} {str(body.get('errors'))[:200]}")
+    else:
+        note("warning", "F7_TOP_PATH", f"zone_lookup_http_{zc}")
     # Account plan: any paid Workers subscription would violate the zero-cost rule.
     code, body = http(f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/subscriptions", {"Authorization": "Bearer " + CF_TOKEN})
     if code == 200:
