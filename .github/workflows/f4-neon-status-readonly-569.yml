@@ -1,0 +1,37 @@
+name: F4 read-only Neon status after ambiguous refund
+on:
+  push:
+    branches: [ops/f4-get-only-reconcile-569-20261009]
+    paths: ['.github/workflows/f4-neon-status-readonly-569.yml']
+permissions:
+  contents: read
+jobs:
+  observe-order:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Read only certified sandbox order status
+        env:
+          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${#CERTIFICATION_E2E_TOKEN}" -ge 32
+          code="$(curl -sS --max-time 35 -o /tmp/f4-neon-status.json -w '%{http_code}' \
+            -A 'zevanory-sandbox-proof/3' \
+            -H "x-certification-e2e-token: $CERTIFICATION_E2E_TOKEN" \
+            'https://zevanory.api.br/api/internal/certification/e2e/status?order_id=2073655f-cd83-4490-a62c-f77a29ffe9ad')"
+          export STATUS_CODE="$code"
+          python3 - <<'PY'
+          import os,json,re
+          try: d=json.load(open('/tmp/f4-neon-status.json'))
+          except: d={}
+          order=d.get('order') or {}
+          def sanitize(s): return re.sub(r'[^a-zA-Z0-9_-]','',str(s))[:60]
+          print('TARGET_PRODUCTION_SHA=a69b0abd52ad7d6576d53a59a5facc0d0795a3cf')
+          print('SANDBOX_NEON_STATUS_HTTP='+sanitize(os.environ['STATUS_CODE']))
+          print('SANDBOX_NEON_ORDER_STATUS='+sanitize(order.get('status','unknown')))
+          print('SANDBOX_NEON_OFFER='+sanitize(order.get('offer_id','unknown')))
+          print('SANDBOX_NEON_CERTIFICATION_PILOT='+sanitize(order.get('certification_pilot','unknown')))
+          print('SANDBOX_NEON_ERROR='+sanitize(d.get('error','none')))
+          PY
