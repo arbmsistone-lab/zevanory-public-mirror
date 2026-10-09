@@ -34,6 +34,22 @@ async function readJsonThrough(worker,base,path,env,ctx){
   return r.json();
 }
 
+// Read-only endpoints (snapshot/decision/evaluation/authority) are polled in bursts by the control
+// Worker (~50 calls per 15-min tick). Building a snapshot runs 4 internal routes and the ZEES-16
+// reconciliation (~60-140 ms CPU). Share one build per isolate for 20 s and dedupe in-flight builds,
+// keyed by origin + release. Critical commands always build fresh (cachedOk=false).
+const SNAPSHOT_MEMO_MS=20_000;
+const snapshotMemo=new Map();
+export function resetCoreSnapshotMemo(){snapshotMemo.clear();}
+export async function buildCoreSnapshotCached(worker,env,ctx,baseUrl="https://zevanory.api.br",{now=Date.now()}={}){
+  const key=String(baseUrl)+"|"+String(env?.ZEVANORY_RELEASE_SHA||"");
+  const hit=snapshotMemo.get(key);
+  if(hit&&now-hit.at<SNAPSHOT_MEMO_MS)return hit.promise;
+  const promise=buildCoreSnapshot(worker,env,ctx,baseUrl);
+  snapshotMemo.set(key,{at:now,promise});
+  promise.catch(()=>{if(snapshotMemo.get(key)?.promise===promise)snapshotMemo.delete(key);});
+  return promise;
+}
 export async function buildCoreSnapshot(worker,env,ctx,baseUrl="https://zevanory.api.br"){
   const [status,health,control,continuity]=await Promise.all([
     readJsonThrough(worker,baseUrl,"/api/status",env,ctx),
@@ -185,7 +201,7 @@ export async function handleControlCoreRequest(request,env,ctx,worker){
   if(url.pathname==="/api/core/v1/snapshot"){
     if(request.method!=="GET") return json({error:"method_not_allowed"},405,{allow:"GET"});
     try{
-      return json(await buildCoreSnapshot(worker,env,ctx,url.origin));
+      return json(await buildCoreSnapshotCached(worker,env,ctx,url.origin));
     }catch(error){
       return json({
         error:"core_snapshot_unavailable",
@@ -198,7 +214,7 @@ export async function handleControlCoreRequest(request,env,ctx,worker){
   if(url.pathname==="/api/core/v1/evaluation/zea10"){
     if(request.method!=="GET") return json({error:"method_not_allowed"},405,{allow:"GET"});
     try{
-      const snapshot=await buildCoreSnapshot(worker,env,ctx,url.origin);
+      const snapshot=await buildCoreSnapshotCached(worker,env,ctx,url.origin);
       return json({
         ...snapshot.zea10,
         architecture:snapshot.architecture,
@@ -219,7 +235,7 @@ export async function handleControlCoreRequest(request,env,ctx,worker){
   if(url.pathname==="/api/core/v1/decision"){
     if(request.method!=="GET") return json({error:"method_not_allowed"},405,{allow:"GET"});
     try{
-      const snapshot=await buildCoreSnapshot(worker,env,ctx,url.origin);
+      const snapshot=await buildCoreSnapshotCached(worker,env,ctx,url.origin);
       return json(evaluateCoreDecision(snapshot));
     }catch(error){
       return json({
@@ -237,7 +253,7 @@ export async function handleControlCoreRequest(request,env,ctx,worker){
   if(url.pathname==="/api/core/v1/authority"){
     if(request.method!=="GET") return json({error:"method_not_allowed"},405,{allow:"GET"});
     try{
-      const snapshot=await buildCoreSnapshot(worker,env,ctx,url.origin);
+      const snapshot=await buildCoreSnapshotCached(worker,env,ctx,url.origin);
       return json(authorityContract(snapshot));
     }catch(error){
       return json({
