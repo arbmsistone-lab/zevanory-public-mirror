@@ -1,0 +1,47 @@
+name: F6 exact-release official gate dispatch
+on:
+  push:
+    branches: [ops/f4-get-only-reconcile-569-20261009]
+    paths: ['.github/workflows/f6-dispatch-once-569.yml']
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Verify canonical target and request the 11 official certification gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO='arbmsistone-lab/zevanory-public-mirror'
+          TARGET='a69b0abd52ad7d6576d53a59a5facc0d0795a3cf'
+          ACTUAL="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$REPO/branches/gh-pages" | jq -r '.commit.sha')"
+          test "$ACTUAL" = "$TARGET"
+          echo "F6_EXACT_GH_PAGES_SHA=$ACTUAL"
+          for file in \
+            zevanory-apex-engineering.yml \
+            zevanory-p02-visual-regression.yml \
+            zevanory-p04-wcag.yml \
+            zevanory-p12-continuous-slo.yml \
+            zevanory-p15-provenance.yml \
+            zevanory-portable-dr.yml \
+            zevanory-provider-independence.yml \
+            zevanory-remote-quality-gates.yml \
+            zevanory-three-provider-quorum.yml \
+            zees16-evidence-gate.yml \
+            zea10-external-evidence-pack.yml; do
+            code="$(curl -sS -o /tmp/f6-dispatch.json -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              -H "Content-Type: application/json" \
+              --data '{"ref":"gh-pages"}' \
+              "https://api.github.com/repos/$REPO/actions/workflows/$file/dispatches")"
+            echo "F6_GATE_DISPATCH=$file HTTP=$code"
+            test "$code" = "204"
+          done
+          echo "F6_STATUS=AWAITING_OFFICIAL_GATE_RUNS"
