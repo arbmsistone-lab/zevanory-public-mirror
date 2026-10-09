@@ -94,6 +94,20 @@ class FinancialProofRenewalTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(renewal.RenewalError):
                 renewal.validate_status(200, {**GOOD_STATUS, **change}, SHA)
 
+    def test_two_independent_cron_contracts_and_fixed_proof_ttl(self):
+        root = PATH.parents[1]
+        central = (root / "scripts/deploy/prepare-central-candidate.py").read_text("utf-8")
+        worker = (root / "worker/cloudflare-worker.compat.mjs").read_text("utf-8")
+        workflow = (root / ".github/workflows/order12a-financial-proof-renewal.yml").read_text("utf-8")
+        metrics = (root / "worker/commercial-metrics-projection.mjs").read_text("utf-8")
+        self.assertIn('15,45 * * * *', central)
+        self.assertIn('15,45 * * * *', worker)
+        self.assertIn('force: true', worker)
+        self.assertIn('cron: "*/30 * * * *"', workflow)
+        self.assertIn("65*60*1000", metrics)
+        self.assertIn("github.event_name != 'pull_request'", workflow)
+        self.assertNotIn("sales:open:v1", workflow)
+
     def test_status_retry_uses_last_result_not_fake_success(self):
         attempts = {"status": 0}
         def getter(path, secret=""):
