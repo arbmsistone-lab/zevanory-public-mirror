@@ -130,5 +130,6 @@ jobs:
                       emit("WORKERS_ROUTES_"+domain.replace(".","_")+"_HTTP",code)
                       emit("WORKERS_ROUTES_"+domain.replace(".","_")+"_MATCH",len(related))
                       for item in related:
+                          emit("WORKERS_ROUTE_PATTERN",item.get("pattern","unknown"))
                           emit("WORKERS_ROUTE_SCRIPT",item.get("script","none"))
           PY
