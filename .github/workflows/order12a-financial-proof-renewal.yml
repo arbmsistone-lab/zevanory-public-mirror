@@ -1,0 +1,37 @@
+name: ZEVANORY Order 12-A financial proof renewal
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/order12a-financial-proof-renewal.yml"
+      - "scripts/financial_proof_renewal.py"
+      - "tests/test_financial_proof_renewal.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: order12a-financial-proof-renewal
+  cancel-in-progress: false
+
+jobs:
+  signed-renewal:
+    name: Renew signed financial snapshot and assert G3
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Python and fail-closed tests
+        run: |
+          python3 -m py_compile scripts/financial_proof_renewal.py
+          python3 -m unittest discover -s tests -p 'test_financial_proof_renewal.py' -v
+      - name: GET-only production HMAC audit and snapshot acceptance
+        env:
+          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/financial_proof_renewal.py
