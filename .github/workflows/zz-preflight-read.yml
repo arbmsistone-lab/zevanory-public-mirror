@@ -1,0 +1,24 @@
+name: zz production preflight readout (ops, never merge)
+on:
+  push:
+    branches: [ops/f4-ia-reconcile-read]
+    paths: ['.github/workflows/zz-preflight-read.yml']
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Read preflight checks (ids, ok, safe detail)
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.143.0 kv key get "zpc-sales-preflight:v1" --namespace-id 728a45738e4047f29bcb89934fd533c1 --remote > /tmp/p.json
+          node --input-type=module -e '
+          import fs from "node:fs";
+          const p=JSON.parse(fs.readFileSync("/tmp/p.json","utf8"));
+          console.log("::warning title=PREFLIGHT::"+JSON.stringify({ok:p.ok,at:p.at,checks:(p.checks||[]).map(c=>({id:c.id,ok:c.ok,detail:String(c.detail||"").replace(/[^\p{L}\p{N} :,.?()-]/gu,"").slice(0,90)}))}));'
