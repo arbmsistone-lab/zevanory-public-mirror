@@ -37,6 +37,11 @@ jobs:
             time.sleep(10)
           print("::notice title=C2_EXACT_SHA::"+str(live).lower())
           if not live:fail("EXACT_SHA_NOT_VISIBLE")
+          fc,fb=get("/api/internal/audit/financial-classification",True)
+          fr=(fb.get("result") if isinstance(fb.get("result"),dict) else fb) or {}
+          diag={k:fr.get(k) for k in ("complete","ambiguous","production_confirmed","production_payment_events","production_refund_events","production_paid_orders","certification_events","not_in_production","error")}
+          diag["http"]=fc;diag["reasons"]=fr.get("evidence_reasons");diag["asaas"]=fr.get("asaas_sandbox")
+          print("::notice title=C2_CLASSIFICATION::"+json.dumps(diag,sort_keys=True)[:900])
           c,s=get("/api/status",True)
           if c!=200:fail("STATUS_HTTP_"+str(c))
           m=s.get("metrics") or {};p=s.get("commercial_metrics_provenance") or {}
