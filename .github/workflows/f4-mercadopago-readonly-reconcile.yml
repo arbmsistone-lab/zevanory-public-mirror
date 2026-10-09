@@ -1,0 +1,83 @@
+name: ZEVANORY F4 Mercado Pago sandbox READ ONLY
+on:
+  push:
+    branches: [fix/f4-refund-hardening-orq02-staged-20261009]
+    paths: [".github/workflows/f4-mercadopago-readonly-reconcile.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: zevanory-f4-refund-readonly-consult
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
+    steps:
+      - name: Consult sandbox payment and refund using GET ONLY
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error, time
+          token=os.environ.get("MERCADOPAGO_TEST_ACCESS_TOKEN","").strip()
+          if not token:
+              print("F4_READONLY_RESULT=BLOCKED reason=test_credential_missing")
+              raise SystemExit(2)
+          payment_id="1353422739"
+          base="https://api.mercadopago.com/v1/payments/"+payment_id
+          def get(path):
+              req=urllib.request.Request(path,headers={
+                  "Authorization":"Bearer "+token,
+                  "Accept":"application/json",
+                  "x-test-token":"true",
+              },method="GET")
+              for attempt in range(3):
+                  try:
+                      with urllib.request.urlopen(req, timeout=18) as response:
+                          return response.status,json.load(response)
+                  except urllib.error.HTTPError as e:
+                      if e.code not in (429,500,502,503,504) or attempt==2:
+                          return e.code,{}
+                  except (TimeoutError, OSError):
+                      if attempt==2: return 0,{}
+                  time.sleep(attempt+1)
+              return 0,{}
+          status,payment=get(base)
+          refund_status,refund_payload=get(base+"/refunds")
+          refunds=refund_payload if isinstance(refund_payload,list) else (
+              refund_payload.get("results",[]) if isinstance(refund_payload,dict) else [])
+          if not isinstance(refunds,list): refunds=[]
+          summary={
+              "payment_id":payment_id,
+              "environment":"sandbox",
+              "method":"GET_ONLY",
+              "payment_http":status,
+              "payment_status":str(payment.get("status","unknown")) if isinstance(payment,dict) else "unknown",
+              "payment_refunded_amount":payment.get("transaction_details",{}).get("total_paid_amount",None) if False else payment.get("refunded_amount",None) if isinstance(payment,dict) else None,
+              "refund_list_http":refund_status,
+              "refund_count":len(refunds) if refund_status==200 else None,
+              "refunds":[{"id":str(r.get("id","")),"status":str(r.get("status","unknown")),"amount":r.get("amount")} for r in refunds if isinstance(r,dict)][:20]
+          }
+          if status!=200 or refund_status!=200:
+              summary["reconciliation"]="INDETERMINATE"
+          elif any(r.get("status")=="approved" for r in refunds if isinstance(r,dict)):
+              summary["reconciliation"]="REFUND_APPROVED_PROVIDER"
+          elif refunds:
+              summary["reconciliation"]="REFUND_EXISTS_NONTERMINAL"
+          else:
+              summary["reconciliation"]="NO_REFUND_LISTED_BY_PROVIDER"
+          print("F4_READONLY_RESULT="+json.dumps(summary,ensure_ascii=False,separators=(",",":")))
+          with open("f4-refund-provider-readonly.json","w",encoding="utf8") as out:
+              json.dump(summary,out,ensure_ascii=False,indent=2)
+          if status!=200 or refund_status!=200: raise SystemExit(3)
+          PY
+      - name: Upload sanitized consultation only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f4-refund-readonly-${{ github.run_id }}
+          path: f4-refund-provider-readonly.json
+          if-no-files-found: ignore
+          retention-days: 30
