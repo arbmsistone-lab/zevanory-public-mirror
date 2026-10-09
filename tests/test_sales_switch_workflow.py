@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import datetime as dt
+import contextlib
+import io
 import importlib.util
 import json
 import os
@@ -59,7 +61,48 @@ class SalesSwitchWorkflowTests(unittest.TestCase):
         chunk=source.split("    else:\n        if args.dry_run:",1)[1]
         self.assertNotIn("production_sha_and_deploy()",chunk)
         self.assertNotIn("preflight_guard(",chunk)
-        self.assertIn('kv_write(token, ns, {"enabled": False})',chunk)
+        self.assertIn('kv_write(token, ns, {"enabled": False, "at": ISO(), "by": "owner-close"})',chunk)
+    def test_close_survives_settings_failure_and_records_owner_audit(self):
+        # A failed Worker settings lookup must not prevent the F7 namespace write.
+        with patch.dict(os.environ, {
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "GITHUB_REF": "refs/heads/gh-pages",
+            "CLOUDFLARE_API_TOKEN": "test-token",
+        }):
+            with patch.object(sys, "argv", [str(SCRIPT), "close"]), \
+                 patch.object(mod, "request", side_effect=TimeoutError("settings unavailable")) as settings, \
+                 patch.object(mod, "kv_write") as write, \
+                 patch.object(mod, "await_status", return_value=True) as observed:
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    mod.main()
+        settings.assert_called_once()
+        write.assert_called_once()
+        token, namespace, record = write.call_args.args
+        self.assertEqual(token, "test-token")
+        self.assertEqual(namespace, mod.EMERGENCY_CLOSE_NAMESPACE)
+        self.assertEqual(namespace, "728a45738e4047f29bcb89934fd533c1")
+        self.assertIs(record["enabled"], False)
+        self.assertEqual(record["by"], "owner-close")
+        self.assertRegex(record["at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+        observed.assert_called_once_with(False)
+        self.assertIn("KNOWN_NAMESPACE_FALLBACK", out.getvalue())
+        self.assertIn("CLOSE_SALES=PASS", out.getvalue())
+
+    def test_close_binding_mismatch_cannot_redirect_emergency_write(self):
+        with patch.dict(os.environ, {"CLOUDFLARE_API_TOKEN": "test-token"}):
+            with patch.object(mod, "cf_binding", return_value=("test-token", "a"*32)):
+                token, namespace = mod.close_binding()
+        self.assertEqual(token, "test-token")
+        self.assertEqual(namespace, mod.EMERGENCY_CLOSE_NAMESPACE)
+
+    def test_close_requires_cloudflare_write_credential(self):
+        with patch.dict(os.environ, {"CLOUDFLARE_API_TOKEN": ""}):
+            with patch.object(mod, "cf_binding") as settings:
+                with self.assertRaisesRegex(RuntimeError, "CLOUDFLARE_TOKEN_UNAVAILABLE"):
+                    mod.close_binding()
+        settings.assert_not_called()
+
     def test_workflow_dispatch_only_for_live_writes(self):
         from pathlib import Path
         o=(ROOT/".github/workflows/zevanory-open-sales.yml").read_text()
