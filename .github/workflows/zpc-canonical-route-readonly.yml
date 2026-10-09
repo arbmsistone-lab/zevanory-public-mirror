@@ -11,19 +11,21 @@ jobs:
     timeout-minutes: 5
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
     steps:
       - name: Inspect public release endpoints and Cloudflare domain bindings by GET only
         shell: bash
         run: |
           python3 - <<'PY'
-          import json,os,re,urllib.request,urllib.error
+          import json,os,re,hashlib,hmac,time,datetime as dt,urllib.request,urllib.error,urllib.parse
           CF=os.getenv("CLOUDFLARE_API_TOKEN","")
           ACCOUNT="1b26415802588185a86c1d4d3ebf5bdb"
           def emit(k,v):
               print("::warning::"+k+"="+re.sub(r"[^A-Za-z0-9_.:-]","",str(v))[:100],flush=True)
-          def get(url,token=False):
+          def get(url,token=False,headers=None):
               h={"User-Agent":"zevanory-sandbox-proof/3","Accept":"application/json"}
               if token and CF:h["Authorization"]="Bearer "+CF
+              h.update(headers or {})
               try:
                   with urllib.request.urlopen(urllib.request.Request(url,headers=h,method="GET"),timeout=25) as f:
                       return f.status,json.loads(f.read(65536))
@@ -53,4 +55,62 @@ jobs:
                           emit("DOMAIN_"+name.replace(".","_")+"_SERVICE",x.get("service","unknown"))
               code,doc=get("https://api.cloudflare.com/client/v4/accounts/"+ACCOUNT+"/workers/scripts/zevanory/settings",True)
               emit("OWNER_WORKER_SETTINGS_HTTP",code)
+          code,sales=get("https://zevanory.api.br/api/sales/status")
+          emit("SALES_STATUS_HTTP",code)
+          emit("SALES_OPEN",str(sales.get("open","unknown")).lower())
+          code,status=get("https://zevanory.api.br/api/status")
+          emit("RUNTIME_STATUS_HTTP",code)
+          emit("RUNTIME_SALES",str((status.get("runtime") or {}).get("sales","unknown")))
+          release_allowed=status.get("commercial_release_allowed",(status.get("commercial_metrics_provenance") or {}).get("commercial_release_allowed","unknown"))
+          emit("COMMERCIAL_RELEASE_ALLOWED",str(release_allowed).lower())
+          if sales.get("open") is False:
+              payload=b'{"offer_id":"INVALID-CLOSED-PROBE"}'
+              req=urllib.request.Request("https://zevanory.api.br/api/checkout/mercadopago",
+                  data=payload,method="POST",headers={"User-Agent":"zevanory-sandbox-proof/3","Content-Type":"application/json"})
+              try:
+                  with urllib.request.urlopen(req,timeout=20) as f:
+                      checkout_code=f.status; result=json.loads(f.read(4096))
+              except urllib.error.HTTPError as e:
+                  checkout_code=e.code
+                  try:result=json.loads(e.read(4096))
+                  except:result={}
+              except Exception:
+                  checkout_code=0;result={}
+              emit("CLOSED_CHECKOUT_HTTP",checkout_code)
+              emit("CLOSED_CHECKOUT_ERROR",result.get("error","unknown"))
+          else:
+              emit("CLOSED_CHECKOUT_PROBE","SKIPPED_SALES_NOT_CLOSED")
+          cert=os.getenv("CERTIFICATION_E2E_TOKEN","")
+          if len(cert)>=32:
+              path="/api/internal/audit/runtime-identity"
+              ts=str(int(time.time()))
+              signature=hmac.new(cert.encode(),("GET\n"+path+"\n"+ts).encode(),hashlib.sha256).hexdigest()
+              code,doc=get("https://zevanory.api.br"+path,headers={"x-zevanory-audit-ts":ts,"x-zevanory-audit-signature":signature})
+              identity=doc.get("identity") or {}
+              reported=identity.get("user_id_sha256_16") or "NAO_VERIFICADO"
+              emit("SIGNED_IDENTITY_HTTP",code)
+              emit("PROD_HASH16",reported)
+              emit("PROD_HASH16_MATCH",str(reported=="384d9fe762bbdf9b").lower())
+              emit("PROD_SITE_ID",identity.get("site_id") or "unknown")
+              emit("PROD_TEST_USER",str(identity.get("test_user","unknown")).lower())
+          else:
+              emit("SIGNED_IDENTITY_HTTP","CERT_SECRET_UNAVAILABLE")
+          if CF:
+              code,settings=get("https://api.cloudflare.com/client/v4/accounts/"+ACCOUNT+"/workers/scripts/zevanory/settings",True)
+              bindings=(settings.get("result") or {}).get("bindings",[])
+              kvs=[b.get("namespace_id") for b in bindings if isinstance(b,dict) and b.get("name")=="ZEVANORY_PRIVATE_ARTIFACTS" and b.get("type")=="kv_namespace"]
+              if len(kvs)==1:
+                  url="https://api.cloudflare.com/client/v4/accounts/"+ACCOUNT+"/storage/kv/namespaces/"+kvs[0]+"/values/"+urllib.parse.quote("zpc-sales-preflight:v1",safe="")
+                  code,pre=get(url,True)
+                  checks=pre.get("checks",[])
+                  if isinstance(checks,dict):checks=list(checks.values())
+                  if not isinstance(checks,list):checks=[]
+                  passed=sum(x.get("ok") is True for x in checks if isinstance(x,dict))
+                  age=-1
+                  try:age=int((dt.datetime.now(dt.timezone.utc)-dt.datetime.fromisoformat(str(pre.get("at","")).replace("Z","+00:00"))).total_seconds())
+                  except:pass
+                  emit("PREFLIGHT_HTTP",code)
+                  emit("PREFLIGHT_OK",str(pre.get("ok","unknown")).lower())
+                  emit("PREFLIGHT_COUNTS",str(passed)+"/"+str(len(checks)))
+                  emit("PREFLIGHT_AGE_SECONDS",age)
           PY
