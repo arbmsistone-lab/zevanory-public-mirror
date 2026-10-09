@@ -131,6 +131,13 @@ class FirstOrderWatchTests(unittest.TestCase):
         self.assertIn("CERTIFICATION_E2E_TOKEN", watch["env"])
         self.assertEqual(wf["concurrency"]["group"], "zevanory-owner-sales-switch")
 
+    def test_actions_never_receives_primary_database_credentials(self):
+        workflow = (ROOT / ".github/workflows/zevanory-first-order-watch.yml").read_text()
+        self.assertNotIn("DATABASE_URL", workflow)
+        self.assertNotIn("psycopg", workflow)
+        self.assertIn("CERTIFICATION_E2E_TOKEN", workflow)
+        self.assertIn("CLOUDFLARE_API_TOKEN", workflow)
+
     def test_get_requests_are_only_read_in_stub(self):
         seen = []
         def stub(path):
