@@ -1,0 +1,57 @@
+name: ZEVANORY first order watch
+
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zevanory-first-order-watch.yml"
+      - "scripts/zevanory_first_order_watch.py"
+      - "tests/test_zevanory_first_order_watch.py"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: zevanory-owner-sales-switch
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    name: First order watch contract (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify workflow YAML and no-network tests
+        run: |
+          python3 -m pip install --disable-pip-version-check --quiet PyYAML==6.0.2
+          python3 -m py_compile scripts/zevanory_first_order_watch.py
+          python3 -m unittest discover -s tests -p 'test_zevanory_first_order_watch.py' -v
+
+  first-order-watch:
+    name: Read production paid orders, close only on proven delivery breach
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/gh-pages'
+    needs: contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      OWNER_ALERT_EMAIL: ${{ secrets.OWNER_ALERT_EMAIL }}
+      RESEND_FROM_ADDRESS: ${{ secrets.RESEND_FROM_ADDRESS }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install read-only PostgreSQL driver
+        run: python3 -m pip install --disable-pip-version-check --quiet "psycopg[binary]==3.2.10"
+      - name: Hourly watch (GET and read-only SQL; emergency close if proven breach)
+        run: |
+          set -euo pipefail
+          python3 scripts/zevanory_first_order_watch.py
