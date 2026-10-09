@@ -84,6 +84,17 @@ jobs:
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
         run: |
           set -euo pipefail
+          # KV write budget (Workers Free: 1,000 writes/day): skip both writes when the semantic
+          # state (release, counts, pillars) is unchanged and the stored state is < 6 h old.
+          UNCHANGED=$(node --input-type=module -e '
+            import fs from "node:fs";
+            const sem=s=>JSON.stringify({r:s?.release_sha||"",c:s?.counts||{},p:(s?.pillars||[]).map(x=>[x.id,x.state,(x.blockers||[]).join(",")])});
+            let prev={};try{prev=JSON.parse(fs.readFileSync("previous-state.json","utf8"))}catch{}
+            const next=JSON.parse(fs.readFileSync("zees16-state.json","utf8"));
+            const age=Date.now()-Date.parse(prev?.observed_at||0);
+            console.log(sem(prev)===sem(next)&&Number.isFinite(age)&&age<6*3600e3?"1":"0");')
+          echo "ZEES16_SEMANTIC_UNCHANGED=$UNCHANGED" | tee -a "$GITHUB_ENV"
+          if [ "$UNCHANGED" = "1" ]; then echo "KV_WRITES_SKIPPED=state_unchanged"; exit 0; fi
           EVENT_HASH=$(node -e "console.log(JSON.parse(require('fs').readFileSync('zees16-event.json','utf8')).event_hash)")
           OBSERVED=$(node -e "console.log(JSON.parse(require('fs').readFileSync('zees16-event.json','utf8')).observed_at.replace(/[:.]/g,'-'))")
           EVENT_KEY="control:v2:ledger:zevanory:$OBSERVED:$EVENT_HASH"
@@ -100,7 +111,8 @@ jobs:
           import fs from "node:fs";
           const expected=JSON.parse(fs.readFileSync("zees16-state.json","utf8"));
           const actual=JSON.parse(fs.readFileSync("persisted-state.json","utf8"));
-          if(actual?.decision_hash !== expected?.decision_hash) throw new Error("persisted decision hash mismatch");
+          const unchanged = process.env.ZEES16_SEMANTIC_UNCHANGED === "1";
+          if(!unchanged && actual?.decision_hash !== expected?.decision_hash) throw new Error("persisted decision hash mismatch");
           if(actual?.release_sha !== expected?.release_sha) throw new Error("persisted release SHA mismatch");
           const expectedCounts = {
             proven: Number(expected?.counts?.proven || 0),

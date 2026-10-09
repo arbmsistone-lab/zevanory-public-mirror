@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {classifyPayment,safeDbHost,handleInternalFinancialAudit} from "../worker/internal-financial-audit.mjs";
+import {classifyPayment,classifyPaymentEvidence,classifyAsaasSandboxPilot,safeFinancialAuditDimensions,safeDbHost,handleInternalFinancialAudit} from "../worker/internal-financial-audit.mjs";
 const row={id:"12345",provider:"mercadopago",pilot:false,orphan:false,reference:"ZEVANORY:abc",order_id:"abc"};
 const ok={status:200,body:{id:12345,collector_id:9876,external_reference:"ZEVANORY:abc",live_mode:true}};
 test("financial classification: only owned validated payment counts as production",()=>{
@@ -35,4 +35,70 @@ test("both audit endpoints require authentication, reject write methods",async()
 });
 test("unrelated routes are not intercepted",async()=>{
  assert.equal(await handleInternalFinancialAudit(new Request("https://zevanory.api.br/api/health"),{}),null);
+});
+
+test("certification is separated only after production account returns 404",()=>{
+ const pilot={...row,pilot:true};
+ assert.deepEqual(classifyPaymentEvidence(pilot,{status:404,body:null},9876),
+  {classification:"teste_certificacao",reason:"pilot_id_absent_from_production_account"});
+ assert.equal(classifyPayment(pilot,ok,9876),"ambiguo");
+ assert.equal(classifyPaymentEvidence(pilot,ok,9876).reason,"pilot_payment_visible_in_production_account");
+ assert.equal(classifyPaymentEvidence(pilot,{status:403,body:null},9876).classification,"ambiguo");
+});
+test("unknown or malformed events cannot silently be treated as non-production",()=>{
+ assert.equal(classifyPaymentEvidence({...row,pilot:null},{status:404,body:null},9876).classification,"ambiguo");
+ assert.equal(classifyPaymentEvidence({...row,id:"",pilot:true},{status:404,body:null},9876).classification,"ambiguo");
+ assert.equal(classifyPaymentEvidence({...row,orphan:true,pilot:true},{status:404,body:null},9876).classification,"ambiguo");
+ assert.equal(classifyPaymentEvidence({...row,provider:"some-other-provider"},{status:404,body:null},9876).classification,"ambiguo");
+ assert.equal(classifyPaymentEvidence(row,{status:503,body:null},9876).classification,"ambiguo");
+ assert.equal(classifyPaymentEvidence(row,{...ok,body:{...ok.body,collector_id:123}},9876).reason,"merchant_account_mismatch");
+});
+
+test("audit breakdown reports fixed enums only, never provider event ID or customer reference",()=>{
+ const raw={provider:"mercadopago",normalized_event:"payment_confirmed",pilot:true,id:"",provider_event_id:"mp-test:SECRET_PRIVATE_ID",reference:"private@example.com"};
+ const x=safeFinancialAuditDimensions(raw);
+ assert.deepEqual(x,{provider:"mercadopago",event:"payment_confirmed",pilot:"pilot_true",id_format:"missing",marker_hint:"mp_test_prefix"});
+ assert.equal(JSON.stringify(x).includes("PRIVATE"),false);
+ assert.equal(JSON.stringify(x).includes("@"),false);
+});
+test("unknown non-Mercado Pago ID format cannot claim commercial proof",()=>{
+ const x=safeFinancialAuditDimensions({provider:"stripe",normalized_event:"refund_confirmed",pilot:false,id:"pi_sandbox_mock",provider_event_id:"fixture:123"});
+ assert.deepEqual(x,{provider:"stripe",event:"refund_confirmed",pilot:"pilot_false",id_format:"other_format",marker_hint:"fixture_or_seed_prefix"});
+ assert.equal(classifyPaymentEvidence({id:"pi_sandbox_mock",provider:"stripe",pilot:false,orphan:false},{status:0,body:null},123).classification,"ambiguo");
+});
+
+test("Asaas sandbox pilot can be isolated only after GET identity and order reference proof",()=>{
+ const env={ASAAS_ENV:"sandbox",ASAAS_API_KEY:"test-only-credential-placeholder"};
+ const order_id="11111111-1111-4111-8111-111111111111";
+ const row={id:"pay_sandbox123",provider:"asaas",pilot:true,orphan:false,order_id,reference:"ZEVANORY:EXP:"+order_id,normalized_event:"payment_confirmed"};
+ const payment={status:200,body:{id:"pay_sandbox123",externalReference:row.reference,status:"CONFIRMED"}};
+ assert.equal(classifyAsaasSandboxPilot(row,payment,env).classification,"teste_certificacao");
+ assert.equal(classifyAsaasSandboxPilot(row,payment,{...env,ASAAS_ENV:"production"}).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot(row,payment,{...env,ASAAS_API_KEY:""}).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot(row,{status:404,body:null},env).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot(row,{...payment,body:{...payment.body,id:"pay_wrong"}},env).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot(row,{...payment,body:{...payment.body,externalReference:"different"}},env).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot(row,{...payment,body:{...payment.body,status:"PENDING"}},env).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot({...row,pilot:false},payment,env).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot({...row,orphan:true},payment,env).classification,"ambiguo");
+ assert.equal(classifyAsaasSandboxPilot({...row,id:"fake:///id"},payment,env).classification,"ambiguo");
+});
+test("Asaas events cannot borrow Mercado Pago proof",()=>{
+ const row={id:"pay_sandbox123",provider:"asaas",pilot:true,orphan:false,order_id:"11111111-1111-4111-8111-111111111111",reference:"",normalized_event:"payment_confirmed"};
+ assert.equal(classifyAsaasSandboxPilot(row,{status:200,body:{id:row.id,externalReference:"some-other-order",status:"CONFIRMED"}},{ASAAS_ENV:"sandbox",ASAAS_API_KEY:"dummy"}).classification,"ambiguo");
+});
+
+import { resendUsage } from "../worker/internal-financial-audit.mjs";
+test("resend usage counts only timestamps, paginates, and never returns recipients", async () => {
+  const now = Date.parse("2026-10-20T12:00:00Z");
+  const pages = [
+    { data: [{ id: "a", created_at: "2026-10-20 10:00:00.000+00", to: ["x@y.com"] }, { id: "b", created_at: "2026-10-19 13:00:00.000+00" }], has_more: true },
+    { data: [{ id: "c", created_at: "2026-10-05 08:00:00.000+00" }, { id: "d", created_at: "2026-09-30 08:00:00.000+00" }], has_more: true },
+  ];
+  let n = 0;
+  const out = await resendUsage({ RESEND_API_KEY: "re_test" }, { now, fetchImpl: async () => new Response(JSON.stringify(pages[n++])) });
+  assert.deepEqual(out, { status: "ok", emails_24h: 2, emails_month: 3 });
+  assert.equal(JSON.stringify(out).includes("@"), false);
+  assert.deepEqual(await resendUsage({}, {}), { status: "no_key", emails_24h: null, emails_month: null });
+  assert.equal((await resendUsage({ RESEND_API_KEY: "k" }, { fetchImpl: async () => new Response("{}", { status: 401 }) })).status, "list_http_401");
 });

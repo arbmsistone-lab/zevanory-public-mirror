@@ -26,6 +26,9 @@ import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
 import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
+import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinancialProofSnapshot, persistClassificationSnapshot, describeFinancialProofSnapshot } from "./commercial-metrics-projection.mjs";
+import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
+import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlocked, requiresPilotDenial } from "./commercial-checkout-guard.mjs";
 
 async function loadWhatsappBrokerState(binding) {
   if (!binding?.fetch) return null;
@@ -111,11 +114,48 @@ const wrapped = {
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
+    // Signed probes are accepted only on explicit read-only audit/status routes.
+    if (request.headers.has("x-zevanory-audit-ts") || request.headers.has("x-zevanory-audit-signature")) {
+      if (!(await verifySignedAuditProbe(request, normalized))) {
+        return new Response(JSON.stringify({error:"invalid_audit_signature"}),{status:401,headers:{"content-type":"application/json","cache-control":"no-store"}});
+      }
+    }
     // Operator-authenticated READ-ONLY audit before legacy routing. Does not mutate commerce.
     if (url.pathname.startsWith("/api/internal/audit/")) {
       const audit = await handleInternalFinancialAudit(request, normalized, { sqlFactory: whatsappProofDatabase });
+      if (audit && audit.status === 200) {
+        // Authenticated read-only audit already computed the provider-verified classification:
+        // persist the derived snapshot (fail-closed validation) and expose its diagnostic state.
+        try {
+          const body = await audit.clone().json();
+          if (url.pathname.endsWith("/financial-classification")) {
+            const persisted = await persistClassificationSnapshot(normalized, { code: 200, result: body });
+            body.snapshot_persist = persisted.reason;
+          }
+          body.financial_snapshot = await describeFinancialProofSnapshot(normalized);
+          const headers = new Headers(audit.headers);
+          return new Response(JSON.stringify(body), { status: 200, headers });
+        } catch {}
+      }
       if (audit) return audit;
       return new Response("not_found",{status:404});
+    }
+    // Universal pre-routing guard: applies to private service binding and legacy checkout paths.
+    if (await requiresPilotDenial(request, normalized)) return denyCheckout("production_certification_pilot_disabled");
+    if (isCheckoutRoute(url.pathname)) {
+      const pilot = Boolean(request.headers.get("x-certification-pilot-token"));
+      if (pilot) {
+        if (isProductionPilotBlocked(normalized) ||
+            String(normalized.MERCADOPAGO_ENV || "").toLowerCase() !== "sandbox" ||
+            String(normalized.CERTIFICATION_PILOT_ENV || "").toLowerCase() !== "sandbox" ||
+            String(normalized.SALE_GLOBALLY_ENABLED || "").toLowerCase() === "true" ||
+            (await readSalesSwitch(normalized)).enabled === true) {
+          return denyCheckout("certification_checkout_not_isolated");
+        }
+      } else {
+        const gate = await evaluateCheckout(normalized, await readSalesSwitch(normalized));
+        if (!gate.allowed) return denyCheckout();
+      }
     }
     if (url.hostname === "checkout.internal") {
       // Public checkout is only reachable through the sales Worker's private service binding.
@@ -398,10 +438,14 @@ const wrapped = {
       const { response, body } = await fetchJsonThroughWorker(request, normalized, ctx);
       if (!response.ok || !body) return response;
       const salesSwitch = await readSalesSwitch(normalized);
-      const projected = projectLiveStatus(body, {
-        salesOpen: salesSwitch.enabled === true,
+      const snapshot = await readFinancialProofSnapshot(normalized);
+      const safeRelease = snapshot?.verified === true && salesSwitch.enabled === true &&
+        String(normalized.SALE_GLOBALLY_ENABLED || "").toLowerCase() === "true" &&
+        String(normalized.MERCADOPAGO_ENV || "").toLowerCase() === "production";
+      const projected = projectProductionOnlyStatus(projectLiveStatus(body, {
+        salesOpen: safeRelease,
         whatsappTransportOperational: whatsappTransportIsOperational(normalized, globalThis.__ZEVANORY_WHATSAPP_RUNTIME__, globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__)
-      });
+      }), snapshot, { env: normalized });
       projected.continuity = buildContinuityPlan(projected, { minQuorum: 3 });
       const headers = new Headers(response.headers);
       headers.set("content-type", "application/json; charset=utf-8");
@@ -451,6 +495,9 @@ wrapped.scheduled = async (controller, env, ctx) => {
   resetSalesSwitchCache();
   const salesOpen = applySalesSwitch(await readSalesSwitch(normalized));
   const tasks = [reconcileControlPlane(wrapped, normalized, ctx).catch(()=>null)];
+  tasks.push(refreshFinancialProofSnapshot(normalized, { sqlFactory: whatsappProofDatabase })
+    .then((out) => console.info("commercial_metrics_proof", JSON.stringify({ok:out.ok===true,reason:out.reason||"unavailable",ambiguous:out.ambiguous??null})))
+    .catch(() => console.error("commercial_metrics_proof_unavailable")));
   tasks.push(publishFunnelSummary(normalized, { sqlFactory: whatsappProofDatabase, production: salesOpen, salesOpen }).then((out) => console.info("funnel_summary", JSON.stringify(out))).catch((error) => console.error("funnel_summary_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runPaidDeliveryWatchdog(normalized).then((out) => console.info("paid_delivery_watchdog", JSON.stringify(out))).catch((error) => console.error("paid_delivery_watchdog_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runLeadNurture(normalized, { sqlFactory: whatsappProofDatabase, salesOpen }).then((out) => console.info("lead_nurture", JSON.stringify(out))).catch((error) => console.error("lead_nurture_failed", error instanceof Error ? error.message : String(error))));

@@ -24,4 +24,4 @@ jobs:
           node --check worker/internal-financial-audit.mjs
           node --check worker/cloudflare-worker.compat.mjs
       - name: Negative audit authorization and classification tests
-        run: node --test tests/internal-financial-audit.test.mjs
+        run: node --test tests/internal-financial-audit.test.mjs tests/commercial-metrics-projection.test.mjs

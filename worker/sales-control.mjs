@@ -11,7 +11,9 @@
 
 const SALES_KEY = "sales:open:v1";
 const PREFLIGHT_KEY = "zpc-sales-preflight:v1";
-const CACHE_MS = 30_000;
+// Emergency close must take effect in < 60 s: 10 s isolate cache + KV edge cache capped at 30 s.
+const CACHE_MS = 10_000;
+const KV_EDGE_TTL_S = 30;
 let cached = { at: 0, value: null };
 
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
@@ -23,18 +25,22 @@ const html = (status, body) => new Response(body, { status, headers: { "content-
 
 export async function readSalesSwitch(env, now = Date.now()) {
   if (now - cached.at < CACHE_MS && cached.value) return cached.value;
-  let value = { enabled: false, requested: false };
+  let value = { enabled: false, requested: false, revision: "" };
   try {
     const kv = env?.ZEVANORY_PRIVATE_ARTIFACTS;
-    const raw = await kv?.get?.(SALES_KEY);
+    const raw = await kv?.get?.(SALES_KEY, { cacheTtl: KV_EDGE_TTL_S });
     const parsed = raw ? JSON.parse(raw) : null;
+    // Revision = write timestamp of the switch record; lets operators measure propagation of a
+    // close without ever opening sales. It carries no secret and no customer data.
+    const revision = String(parsed?.at || "").slice(0, 40);
+    value = { enabled: false, requested: false, revision };
     if (parsed && parsed.enabled === true) {
       // Fail-closed: the switch only opens sales while the production preflight is green and fresh.
       const pre = JSON.parse(String(await kv.get(PREFLIGHT_KEY) || "null"));
       const fresh = pre && Date.now() - Date.parse(String(pre.at || "")) < 3 * 3600 * 1000;
       value = pre?.ok === true && fresh
-        ? { enabled: true, requested: true, at: String(parsed.at || ""), by: String(parsed.by || "") }
-        : { enabled: false, requested: true, blocked: "preflight_not_green" };
+        ? { enabled: true, requested: true, at: String(parsed.at || ""), by: String(parsed.by || ""), revision }
+        : { enabled: false, requested: true, blocked: "preflight_not_green", revision };
     }
   } catch {}
   cached = { at: now, value };
@@ -111,7 +117,7 @@ export async function handleSalesControl(request, env, { sqlFactory, worker, ctx
   if (path === "/api/sales/status") {
     if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
     const sw = await readSalesSwitch(env);
-    return json(200, { open: sw.enabled === true, requested: sw.requested === true, blocked: sw.blocked || null });
+    return json(200, { open: sw.enabled === true, requested: sw.requested === true, blocked: sw.blocked || null, revision: sw.revision || null });
   }
   if (path === "/entrega/reenviar") {
     return request.method === "GET" || request.method === "HEAD" ? html(200, RESEND_PAGE) : json(405, { error: "method_not_allowed" });

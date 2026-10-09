@@ -1,0 +1,26 @@
+name: ZEVANORY universal checkout fail-closed matrix
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/commercial-checkout-guard.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "tests/commercial-checkout-guard.test.mjs"
+      - ".github/workflows/zpc-checkout-fail-closed-matrix.yml"
+permissions:
+  contents: read
+jobs:
+  fail-closed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax checks
+        run: |
+          node --check worker/cloudflare-worker.compat.mjs
+          node --check worker/commercial-checkout-guard.mjs
+      - name: Exhaustive 512-combination safety tests
+        run: node --test tests/commercial-checkout-guard.test.mjs

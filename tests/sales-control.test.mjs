@@ -43,3 +43,30 @@ test("resend-delivery never reveals whether an order exists", async () => {
   const bad = await handleSalesControl(req({ order_id: "x", email: "y" }), env, { sqlFactory });
   assert.equal(bad.status, 400);
 });
+
+test("emergency close is observable by revision and never opens sales", async () => {
+  resetSalesSwitchCache();
+  const map = { "sales:open:v1": JSON.stringify({ enabled: false, at: "2026-10-08T21:40:00.000Z", by: "drill" }) };
+  const calls = [];
+  const store = { async get(k, opts) { calls.push(opts); return map[k] ?? null; } };
+  const sw = await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: store });
+  assert.equal(sw.enabled, false);
+  assert.equal(sw.revision, "2026-10-08T21:40:00.000Z");
+  assert.equal(calls[0].cacheTtl, 30);
+  const res = await handleSalesControl(new Request("https://zevanory.api.br/api/sales/status"), { ZEVANORY_PRIVATE_ARTIFACTS: store });
+  const body = await res.json();
+  assert.equal(body.open, false);
+  assert.equal(body.revision, "2026-10-08T21:40:00.000Z");
+  resetSalesSwitchCache();
+});
+test("switch cache expires within 10 s so a close propagates in < 60 s", async () => {
+  resetSalesSwitchCache();
+  const map = { "sales:open:v1": JSON.stringify({ enabled: false, at: "r1" }) };
+  const store = { async get(k) { return map[k] ?? null; } };
+  const t0 = 1_000_000;
+  assert.equal((await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: store }, t0)).revision, "r1");
+  map["sales:open:v1"] = JSON.stringify({ enabled: false, at: "r2" });
+  assert.equal((await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: store }, t0 + 9_000)).revision, "r1");
+  assert.equal((await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: store }, t0 + 10_001)).revision, "r2");
+  resetSalesSwitchCache();
+});
