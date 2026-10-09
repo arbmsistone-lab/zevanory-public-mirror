@@ -79,7 +79,7 @@ def validate_status(code, body, sha):
     return {"gate": "G3", "authorized": True, "proven": True}
 
 
-def renew(secret, fetch=get_json, retries=4, pause=time.sleep):
+def renew(secret, fetch=get_json, retries=9, pause=time.sleep):
     if len(secret) < 32:
         raise RenewalError("AUDIT_SECRET_MISSING")
     rc, release = fetch("/api/release")
@@ -91,6 +91,8 @@ def renew(secret, fetch=get_json, retries=4, pause=time.sleep):
         raise RenewalError("OWNER_SALES_SWITCH_NOT_OPEN")
     audit_code, audit = fetch(AUDIT_PATH, secret)
     snap = validate_audit(audit_code, audit)
+    # The snapshot is written by an edge Worker; permit up to 80 seconds for
+    # cross-PoP KV propagation before reporting a false-negative G2.
     last_error = "STATUS_UNAVAILABLE"
     for i in range(retries):
         st_code, status = fetch("/api/status")
