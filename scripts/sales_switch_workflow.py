@@ -14,6 +14,7 @@ import urllib.request
 REPO = "arbmsistone-lab/zevanory-public-mirror"
 CF_ACCOUNT = "1b26415802588185a86c1d4d3ebf5bdb"
 KEY = "sales:open:v1"
+EMERGENCY_CLOSE_NAMESPACE = "728a45738e4047f29bcb89934fd533c1"  # F7 verified production KV
 PREFLIGHT = "zpc-sales-preflight:v1"
 ROOT = "https://zevanory.api.br"
 ISO = lambda: dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -78,6 +79,24 @@ def cf_binding():
     if len(matches) != 1 or not re.fullmatch("[a-f0-9]{32}", str(matches[0])):
         raise RuntimeError("SALES_KV_BINDING_NOT_UNIQUE")
     return token, matches[0]
+
+
+def close_binding():
+    """Resolve the canonical close target even when Worker settings cannot be read."""
+    token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("CLOUDFLARE_TOKEN_UNAVAILABLE")
+    try:
+        _, namespace = cf_binding()
+        if namespace != EMERGENCY_CLOSE_NAMESPACE:
+            # Never let an unexpected dynamic binding redirect the emergency write.
+            annotate("CLOSE_SALES_BINDING", "KNOWN_NAMESPACE_OVERRIDE")
+            namespace = EMERGENCY_CLOSE_NAMESPACE
+    except Exception:
+        # Settings access must not prevent a known-namespace emergency close.
+        namespace = EMERGENCY_CLOSE_NAMESPACE
+        annotate("CLOSE_SALES_BINDING", "KNOWN_NAMESPACE_FALLBACK")
+    return token, namespace
 
 
 def kv_url(namespace, key):
@@ -190,8 +209,8 @@ def main():
             return
         if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch" or os.environ.get("GITHUB_REF") != "refs/heads/gh-pages":
             raise RuntimeError("CANONICAL_DISPATCH_REQUIRED")
-        token, ns = cf_binding()
-        kv_write(token, ns, {"enabled": False})
+        token, ns = close_binding()
+        kv_write(token, ns, {"enabled": False, "at": ISO(), "by": "owner-close"})
         annotate("CLOSE_SALES_KV", "ENABLED_FALSE")
         if not await_status(False):
             raise RuntimeError("CLOSE_SALES_STATUS_NOT_OBSERVED_WITHIN_60_SECONDS")
