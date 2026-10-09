@@ -1,3 +1,5 @@
+import { isAmbiguousRefund, hasRefundClaim, getRefundClaim, acquireRefundClaim, revokeRefundDownloads, saveRefund, markRefundApproved, reconcileRefund } from "./refund-provider-claims.mjs";
+export { reconcileRefund } from "./refund-provider-claims.mjs";
 // T5 — Refund flow (CDC art. 49: up to 7 days after payment).
 // Customer requests -> owner approves in /admin/refunds (admin basic auth) -> Mercado Pago refund API
 // -> provider webhook/reconciliation marks the order refunded. Download tokens are revoked on approval.
@@ -7,6 +9,8 @@ const MP = "https://api.mercadopago.com";
 const ORIGIN = "https://zevanory.api.br";
 const WINDOW_MS = 7 * 24 * 3600 * 1000;
 const KEY = (oid) => `refund:req:${oid}`;
+
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: HEADERS });
@@ -75,13 +79,16 @@ async function rateLimited(kv, request) {
   return false;
 }
 
+
+
 // Customer request. Returns the same generic message for every non-eligible combination.
 async function createRequest(env, sql, kv, { oid, email }) {
   oid = String(oid || "").trim().toLowerCase();
   email = String(email || "").trim().toLowerCase();
   if (!UUID.test(oid) || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email) || email.length > 254) return { status: 400, body: { error: "dados_invalidos", message: GENERIC_NOT_FOUND } };
   const existing = JSON.parse(await kv.get(KEY(oid)) || "null");
-  if (existing && existing.status !== "rejected") return { status: 200, body: { received: true, status: existing.status, message: "Seu pedido de reembolso já está registrado e será processado em breve." } };
+  if (existing && (existing.status !== "rejected" || isAmbiguousRefund(existing))) return { status: 200, body: { received: true, status: existing.status, message: "Seu pedido de reembolso já está registrado e será processado em breve." } };
+  if (existing?.status === "rejected" && await hasRefundClaim(sql, oid)) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
   const order = await loadOrder(sql, oid);
   if (!order || order.status !== "paid" || !order.payment_id || !order.paid_at) return { status: 404, body: { error: "nao_elegivel", message: GENERIC_NOT_FOUND, reason: !order ? "order_not_found" : order.status !== "paid" ? "order_status_" + order.status : "payment_missing" } };
   const test = order.certification_pilot === true || Boolean(await kv.get(`sandbox-proof-v2:order:${oid}`));
@@ -126,49 +133,90 @@ async function createRequest(env, sql, kv, { oid, email }) {
 async function executeRefund(env, sql, kv, oid, { actor }) {
   const record = JSON.parse(await kv.get(KEY(oid)) || "null");
   if (!record) return { status: 404, body: { error: "refund_request_not_found" } };
-  if (record.status === "refunded" || record.status === "approved") return { status: 200, body: { ok: true, status: record.status, refund_id: record.refund_id, duplicate: true } };
-  if (record.status !== "pending") return { status: 409, body: { error: "refund_request_not_pending", status: record.status } };
+  if (record.status === "refunded" || record.status === "approved") {
+    if (record.download_revocation_pending === true) {
+      try {
+        await revokeRefundDownloads(sql, record);
+        record.download_revocation_pending = false;
+        await saveRefund(kv, record);
+      } catch { return { status: 503, body: { error: "refund_download_revocation_pending" } }; }
+    }
+    return { status: 200, body: { ok: true, status: record.status, refund_id: record.refund_id, duplicate: true } };
+  }
+  if (record.status !== "pending") return { status: 409, body: { error: "refund_request_not_pending" } };
+  if (isAmbiguousRefund(record)) {
+    try {
+      const claim = await getRefundClaim(sql, oid);
+      if (claim?.stage !== "reconciled_not_refunded" || claim.reconciled_status !== "not_refunded") {
+        return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
+      }
+    } catch { return { status: 503, body: { error: "refund_claim_store_unavailable" } }; }
+  }
   const token = tokenFor(env, record.test);
   if (!token) return { status: 503, body: { error: "mercadopago_token_missing" } };
-  const r = await fetch(`${MP}/v1/payments/${encodeURIComponent(record.payment_id)}/refunds`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "x-idempotency-key": `zevanory-refund-${oid}`, ...(record.test ? { "x-test-token": "true" } : {}) },
-    body: "{}",
-    signal: AbortSignal.timeout(20000),
-  });
-  const body = await r.json().catch(() => ({}));
-  if (!r.ok || !body?.id) {
-    record.last_error = `mercadopago_refund_${r.status}_${String(body?.message || body?.error || "").slice(0, 120)}`;
-    await kv.put(KEY(oid), JSON.stringify(record), { expirationTtl: 90 * 24 * 3600 });
+  // Every financial POST is preceded by a single durable claim or one CAS-controlled retry.
+  try {
+    if (!await acquireRefundClaim(sql, record)) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
+  } catch { return { status: 503, body: { error: "refund_claim_store_unavailable" } }; }
+  let r;
+  try {
+    r = await fetch(MP + "/v1/payments/" + encodeURIComponent(record.payment_id) + "/refunds", {
+      method: "POST",
+      headers: { authorization: "Bearer " + token, "content-type": "application/json",
+        "x-idempotency-key": "zevanory-refund-" + oid, ...(record.test ? { "x-test-token": "true" } : {}) },
+      body: "{}", signal: AbortSignal.timeout(20000) });
+  } catch {
+    record.provider_outcome_unknown = true;
+    record.last_error = "mercadopago_refund_outcome_unknown";
+    try { await saveRefund(kv, record); } catch {}
     return { status: 502, body: { error: record.last_error } };
   }
-  await sql.query("update artifact_download_tokens set used_at=coalesce(used_at, now()) where order_id=$1", [oid]).catch(() => null);
-  Object.assign(record, { status: "approved", refund_id: String(body.id), refund_status: String(body.status || ""), approved_at: new Date().toISOString(), approved_by: actor });
-  await kv.put(KEY(oid), JSON.stringify(record), { expirationTtl: 90 * 24 * 3600 });
-  try {
-    const payment = await mpPayment(env, record.payment_id, record.test);
-    const to = String(payment?.payer?.email || "").trim().toLowerCase();
-    if (to && !record.test) await sendEmail(env, to, "ZEVANORY — reembolso aprovado", `O reembolso do pedido ${oid} (R$ ${record.amount}) foi aprovado e enviado ao Mercado Pago. O valor retorna pelo mesmo meio de pagamento, no prazo do seu banco/cartão.\n\nEquipe ZEVANORY · suporte@zevanory.api.br`);
-  } catch {}
-  return { status: 200, body: { ok: true, status: "approved", refund_id: record.refund_id, refund_status: record.refund_status } };
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok || !body?.id || body.status !== "approved" ||
+      (body.amount != null && (!Number.isFinite(Number(body.amount)) || Math.abs(Number(body.amount) - Number(record.amount)) > 0.005))) {
+    record.provider_outcome_unknown = true;
+    record.last_error = "mercadopago_refund_" + r.status + "_" +
+      String(body?.message || body?.error || body?.status || "unconfirmed").slice(0, 120);
+    try { await saveRefund(kv, record); } catch {}
+    return { status: 502, body: { error: record.last_error } };
+  }
+  const outcome = await markRefundApproved(sql, kv, record, body.id, actor).catch(() =>
+    ({ status: 503, body: { error: "refund_persistence_unavailable_reconciliation_required" } }));
+  if (outcome.status === 200) {
+    try {
+      const payment = await mpPayment(env, record.payment_id, record.test);
+      const to = String(payment?.payer?.email || "").trim().toLowerCase();
+      if (to && !record.test) await sendEmail(env, to, "ZEVANORY — reembolso aprovado",
+        "O reembolso do pedido " + oid + " foi aprovado e enviado ao Mercado Pago.");
+    } catch {}
+  }
+  return outcome;
 }
 
-async function rejectRequest(kv, oid, actor) {
+async function rejectRequest(kv, sql, oid, actor) {
   const record = JSON.parse(await kv.get(KEY(oid)) || "null");
   if (!record || record.status !== "pending") return { status: 409, body: { error: "refund_request_not_pending" } };
+  if (isAmbiguousRefund(record)) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
+  try {
+    if (await hasRefundClaim(sql, oid)) return { status: 409, body: { error: "refund_provider_reconciliation_required" } };
+  } catch { return { status: 503, body: { error: "refund_claim_store_unavailable" } }; }
   Object.assign(record, { status: "rejected", rejected_at: new Date().toISOString(), rejected_by: actor });
-  await kv.put(KEY(oid), JSON.stringify(record), { expirationTtl: 90 * 24 * 3600 });
+  await saveRefund(kv, record);
   return { status: 200, body: { ok: true, status: "rejected" } };
 }
 
-async function listRequests(kv) {
+async function listRequests(kv, sql) {
   const out = [];
   let cursor;
   do {
     const page = await kv.list({ prefix: "refund:req:", cursor });
-    for (const k of page.keys) {
+    for (const k of page.keys || []) {
       const v = JSON.parse(await kv.get(k.name) || "null");
-      if (v && !v.test) out.push(v);
+      if (v && !v.test) {
+        try { const claim = await getRefundClaim(sql, v.order_id); v.claim_present = Boolean(claim); v.retry_permitted = claim?.stage === "reconciled_not_refunded" && claim?.reconciled_status === "not_refunded"; }
+        catch { v.claim_present = true; v.retry_permitted = false; }
+        out.push(v);
+      }
     }
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
@@ -184,14 +232,14 @@ const FORM_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"
 <script>document.getElementById('f').addEventListener('submit',async(ev)=>{ev.preventDefault();const m=document.getElementById('msg');m.style.display='block';m.textContent='Enviando…';try{const r=await fetch('/api/support/refund-request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({order_id:document.getElementById('o').value,email:document.getElementById('e').value})});const j=await r.json();m.textContent=j.message||'Não foi possível registrar agora. Tente novamente.';}catch{m.textContent='Não foi possível registrar agora. Tente novamente.';}});</script></body></html>`;
 
 function adminPage(items) {
-  const rows = items.map((r) => `<tr><td>${esc(r.requested_at.slice(0, 16).replace("T", " "))}</td><td><code>${esc(r.order_id)}</code><br><small>${esc(r.offer_id)} · ${esc(r.email_masked)}</small></td><td>R$ ${esc(r.amount)}</td><td>${esc(r.status)}${r.last_error ? `<br><small>${esc(r.last_error)}</small>` : ""}</td><td>${r.status === "pending" ? `<form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Aprovar reembolso</button> <button name="action" value="reject" class="no">Recusar</button></form>` : esc(r.refund_id || "")}</td></tr>`).join("");
+  const rows = items.map((r) => `<tr><td>${esc(r.requested_at.slice(0, 16).replace("T", " "))}</td><td><code>${esc(r.order_id)}</code><br><small>${esc(r.offer_id)} · ${esc(r.email_masked)}</small></td><td>R$ ${esc(r.amount)}</td><td>${esc(r.status)}${r.last_error ? `<br><small>${esc(r.last_error)}</small>` : ""}</td><td>${r.status === "pending" && r.retry_permitted ? `<form method="post" action="/admin/refunds/action"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Repetir após conciliação (uma vez)</button></form>` : r.status === "pending" && !r.claim_present && !isAmbiguousRefund(r) ? `<form method="post" action="/admin/refunds/action" style="display:inline"><input type="hidden" name="order_id" value="${esc(r.order_id)}"><button name="action" value="approve">Aprovar reembolso</button> <button name="action" value="reject" class="no">Recusar</button></form>` : (isAmbiguousRefund(r) || r.claim_present) ? "Verificar conciliação no Mercado Pago antes de nova tentativa" : r.download_revocation_pending === true ? "Revogação de downloads pendente; verificar recuperação" : esc(r.refund_id || "")}</td></tr>`).join("");
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reembolsos · ZEVANORY</title><style>body{font-family:system-ui,sans-serif;background:#050a1e;color:#e7ecf7;margin:0;padding:24px}table{width:100%;border-collapse:collapse}td,th{padding:10px;border-bottom:1px solid #22305a;text-align:left;vertical-align:top}button{padding:10px 14px;border:0;border-radius:8px;background:#22c55e;color:#04210f;font-weight:700}button.no{background:#334155;color:#fff}code{font-size:12px}</style></head><body><h1>Pedidos de reembolso</h1><p>Aprovar envia o reembolso integral ao Mercado Pago e bloqueia novos downloads do pedido.</p><table><tr><th>Quando</th><th>Pedido</th><th>Valor</th><th>Status</th><th>Ação</th></tr>${rows || '<tr><td colspan="5">Nenhum pedido.</td></tr>'}</table></body></html>`;
 }
 
 export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthorized, worker, ctx } = {}) {
   const url = new URL(request.url);
   const path = url.pathname;
-  const isOurs = path === "/reembolso/solicitar" || path === "/pedir-reembolso" || path === "/api/support/refund-request" || path === "/admin/refunds" || path === "/admin/refunds/action" || path === "/api/internal/certification/e2e/refund-approve";
+  const isOurs = path === "/reembolso/solicitar" || path === "/pedir-reembolso" || path === "/api/support/refund-request" || path === "/admin/refunds" || path === "/admin/refunds/action" || path === "/api/internal/certification/e2e/refund-approve" || path === "/api/internal/certification/e2e/refund-reconcile";
   if (!isOurs) return null;
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!kv) return json(503, { error: "refund_state_unavailable" });
@@ -215,14 +263,14 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     }
   }
 
-  if (path === "/api/internal/certification/e2e/refund-approve") {
+  if (path === "/api/internal/certification/e2e/refund-approve" || path === "/api/internal/certification/e2e/refund-reconcile") {
     const expected = String(env.CERTIFICATION_E2E_TOKEN || "");
     if (request.method !== "POST" || expected.length < 32 || !timingSafeEqual(expected, request.headers.get("x-certification-e2e-token") || "")) return json(401, { error: "certification_e2e_auth_required" });
     const oid = String(url.searchParams.get("order_id") || "").toLowerCase();
     const record = JSON.parse(await kv.get(KEY(oid)) || "null");
     if (!record?.test) return json(403, { error: "certification_refund_only_for_test_orders" });
-    const out = await executeRefund(env, sql(), kv, oid, { actor: "certification-e2e" });
-    if (out.status === 200 && worker?.fetch) {
+    const out = path.endsWith("/refund-reconcile") ? await reconcileRefund(env, sql(), kv, oid) : await executeRefund(env, sql(), kv, oid, { actor: "certification-e2e" });
+    if (out.status === 200 && out.body?.status === "approved" && record.test === true && worker?.fetch) {
       // Ingest the provider refund state through the signed test webhook (same path as sandbox reconciliation).
       const secret = String(env.MERCADOPAGO_TEST_WEBHOOK_SECRET || "");
       if (secret.length >= 16) {
@@ -244,7 +292,7 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
 
   // Owner surfaces: admin basic auth.
   if (!isAdminAuthorized?.(request, env)) return new Response("Autenticação necessária", { status: 401, headers: { "www-authenticate": 'Basic realm="ZEVANORY Reembolsos", charset="UTF-8"', "cache-control": "no-store" } });
-  if (path === "/admin/refunds") return html(200, adminPage(await listRequests(kv)));
+  if (path === "/admin/refunds") return html(200, adminPage(await listRequests(kv, sql())));
   if (path === "/admin/refunds/action") {
     if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
     const origin = request.headers.get("origin") || "";
@@ -253,34 +301,76 @@ export async function handleRefundFlow(request, env, { sqlFactory, isAdminAuthor
     const oid = String(form?.get("order_id") || "").toLowerCase();
     const action = String(form?.get("action") || "");
     if (!UUID.test(oid)) return json(400, { error: "order_id_invalid" });
-    const out = action === "approve" ? await executeRefund(env, sql(), kv, oid, { actor: "owner" }) : action === "reject" ? await rejectRequest(kv, oid, "owner") : { status: 400, body: { error: "action_invalid" } };
+    const out = action === "approve" ? await executeRefund(env, sql(), kv, oid, { actor: "owner" }) : action === "reject" ? await rejectRequest(kv, sql(), oid, "owner") : { status: 400, body: { error: "action_invalid" } };
     if (out.status >= 400) return html(out.status, `<p style="font-family:system-ui">Não foi possível: ${esc(out.body.error)}</p><p><a href="/admin/refunds">Voltar</a></p>`);
     return Response.redirect(`${ORIGIN}/admin/refunds`, 303);
   }
   return null;
 }
 
-// Hourly watchdog: pending refund requests never sit unseen. Re-alerts the owner (at most every
-// 12h) while requests are pending, with the time left inside the 7-day legal window.
-export async function runRefundWatchdog(env, now = Date.now()) {
+// Hourly watchdog does GET-only reconciliation; never makes refund POST requests.
+export async function runRefundWatchdog(env, now = Date.now(), { sqlFactory } = {}) {
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!kv?.list) return { ok: false, reason: "kv_unavailable" };
-  const listed = await kv.list({ prefix: "refund:req:", limit: 200 });
   const pending = [];
-  for (const key of listed.keys || []) {
-    let rec = null;
-    try { rec = JSON.parse(await kv.get(key.name) || "null"); } catch {}
-    if (!rec || rec.status !== "pending" || rec.test) continue;
-    const ageH = (now - Date.parse(rec.requested_at || 0)) / 3600e3;
-    if (ageH >= 12 || await kv.get(`refund:alert-pending:${rec.order_id}`)) pending.push({ ...rec, ageH });
+  const revocationPending = [];
+  let reconciled = 0;
+  let cursor;
+  do {
+    const listed = await kv.list({ prefix: "refund:req:", limit: 200, cursor });
+    for (const key of listed.keys || []) {
+      let rec = null;
+      try { rec = JSON.parse(await kv.get(key.name) || "null"); } catch {}
+      if (!rec) continue;
+      if (rec.status === "approved" && rec.download_revocation_pending === true) {
+        try {
+          if (!sqlFactory) throw Error("sql_factory_unavailable");
+          await revokeRefundDownloads(sqlFactory(env.DATABASE_URL), rec);
+          rec.download_revocation_pending = false;
+          await saveRefund(kv, rec);
+        } catch { revocationPending.push({ order_id: rec.order_id, test: rec.test }); }
+        continue;
+      }
+      if (rec.status === "pending") {
+        try {
+          if (!sqlFactory) throw Error("sql_factory_unavailable");
+          const sql = sqlFactory(env.DATABASE_URL);
+          const persisted = await getRefundClaim(sql, rec.order_id);
+          if (persisted || isAmbiguousRefund(rec) || rec.reconciliation_missing?.length) {
+            const status = await reconcileRefund(env, sql, kv, rec.order_id);
+            if (status.status === 200) reconciled++;
+            if (status.body?.error === "refund_download_revocation_pending") revocationPending.push({ order_id: rec.order_id, test: rec.test });
+          }
+        } catch {}
+      }
+      if (rec.status !== "pending" || rec.test) continue;
+      const ageH = (now - Date.parse(rec.requested_at || 0)) / 3600e3;
+      if (ageH >= 12 || await kv.get("refund:alert-pending:" + rec.order_id)) pending.push({ ...rec, ageH });
+    }
+    cursor = listed.list_complete ? undefined : listed.cursor;
+  } while (cursor);
+  let revocationAlerted = false;
+  if (revocationPending.some((r) => !r.test)) {
+    try {
+      if (!await kv.get("refund:watchdog:revocation:last")) {
+        await kv.put("refund:watchdog:revocation:last", new Date(now).toISOString(), { expirationTtl: 12 * 3600 });
+        const mail = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"),
+          "ZEVANORY — revogação de download pendente",
+          "Uma revogação de download pós-reembolso precisa de verificação no painel de reembolsos.");
+        revocationAlerted = mail.sent;
+      }
+    } catch {}
   }
-  if (!pending.length) return { ok: true, pending: 0 };
-  if (await kv.get("refund:watchdog:last")) return { ok: true, pending: pending.length, throttled: true };
-  const lines = pending.map((r) => `- Pedido ${r.order_id} (${r.offer_id}, R$ ${r.amount}) pedido há ${Math.round(r.ageH)}h`).join("\n");
-  const sent = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), `ZEVANORY — ${pending.length} reembolso(s) aguardando aprovação`, `Há reembolsos pendentes dentro do prazo legal de 7 dias:\n\n${lines}\n\nAprovar: ${ORIGIN}/admin/refunds`);
+  if (!pending.length) return { ok: revocationPending.length === 0, pending: 0,
+    revocation_pending: revocationPending.length, reconciled, revocation_alerted: revocationAlerted };
+  if (await kv.get("refund:watchdog:last")) return { ok: true, pending: pending.length, throttled: true, reconciled };
+  const lines = pending.map((r) => "- Pedido " + r.order_id + " (" + r.offer_id + ", R$ " + r.amount + ") pedido há " + Math.round(r.ageH) + "h").join("\n");
+  const sent = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"),
+    "ZEVANORY — " + pending.length + " reembolso(s) aguardando aprovação",
+    "Há reembolsos pendentes dentro do prazo legal de 7 dias:\n\n" + lines + "\n\nAprovar: " + ORIGIN + "/admin/refunds");
   if (sent.sent) {
     await kv.put("refund:watchdog:last", new Date(now).toISOString(), { expirationTtl: 12 * 3600 });
-    for (const r of pending) { try { await kv.delete(`refund:alert-pending:${r.order_id}`); } catch {} }
+    for (const r of pending) { try { await kv.delete("refund:alert-pending:" + r.order_id); } catch {} }
   }
-  return { ok: true, pending: pending.length, alerted: sent.sent };
+  return { ok: true, pending: pending.length, alerted: sent.sent, reconciled, revocation_pending: revocationPending.length };
 }

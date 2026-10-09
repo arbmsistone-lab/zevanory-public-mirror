@@ -11,6 +11,15 @@ export const SANDBOX_INBOX_ADDRESS = "prova-sandbox@zevanory.api.br";
 const RESEND = "https://api.resend.com";
 export const SANDBOX_OFFER_ID = "ZEV-CMB-011";
 export const SANDBOX_AMOUNT_BRL = 297;
+// Canonical public catalog (same table price the sales page shows and the
+// certification resolver charges). Any other SKU or amount is rejected.
+export const SANDBOX_OFFERS = Object.freeze({
+  "ZEV-IA-011": 197,
+  "ZEV-VEN-011": 197,
+  "ZEV-LCX-011": 247,
+  "ZEV-CMB-011": 297,
+  "ZEV-NGC-011": 397
+});
 export const FROZEN_ORDER = "a28c53ab-9ce7-429d-9d6b-1311a3fad406";
 // sha256 of the high-entropy read-only inbox token kept in the GitHub
 // environment "sandbox-financial-approved". Publishing the digest is safe.
@@ -84,11 +93,12 @@ export function validCheckoutInput(body) {
   const buyerEmail = String(body.buyer_email || "").toLowerCase();
   const recipient = String(body.email_recipient || "").toLowerCase();
   if (!UUID.test(requestId)) return null;
-  if (body.offer_id !== SANDBOX_OFFER_ID || body.sandbox !== true) return null;
+  const offerId = String(body.offer_id || "");
+  if (!Object.hasOwn(SANDBOX_OFFERS, offerId) || body.sandbox !== true) return null;
   if (!/^[0-9]{1,20}$/.test(buyerId)) return null;
   if (!/^[^@\s]+@testuser\.com$/.test(buyerEmail) || buyerEmail === "test@testuser.com") return null;
   if (recipient !== SANDBOX_INBOX_ADDRESS) return null;
-  return { requestId, buyerId, buyerEmail, recipient };
+  return { requestId, buyerId, buyerEmail, recipient, offerId, amountBrl: SANDBOX_OFFERS[offerId] };
 }
 
 async function readJson(request, max = 4096) {
@@ -127,7 +137,13 @@ export function projectStatus(record, base) {
   return {
     ...isolation(record),
     receipt_source: record.receipt_source === "reconciliation" ? "reconciliation" : (receiverVerified ? "webhook" : null),
-    order: { status: String(base?.order?.status || "") },
+    order: {
+      status: String(base?.order?.status || ""),
+      offer_id: String(base?.order?.offer_id || "").replace(/[^A-Z0-9-]/gi, "").slice(0, 32),
+      amount_brl: Number(base?.order?.amount || 0),
+      currency: String(base?.order?.currency || "").slice(0, 3),
+      certification_pilot: base?.order?.certification_pilot === true
+    },
     fulfillment: { status: String(base?.fulfillment?.status || "") },
     financial_events: events,
     delivery_evidence: {
@@ -267,6 +283,7 @@ async function findReusableOrder(kv, worker, request, env, ctx, input, day) {
     let record = null;
     try { record = JSON.parse(await kv.get(item.name) || "null"); } catch {}
     if (!record || record.order_id === FROZEN_ORDER || String(record.created_at || "").slice(0, 10) !== day) continue;
+    if (String(record.offer_id || SANDBOX_OFFER_ID) !== input.offerId) continue;
     if (String(record.buyer_id) !== input.buyerId || record.buyer_email !== input.buyerEmail || record.email_recipient !== input.recipient) continue;
     const base = await workerStatus(worker, request, env, ctx, record.order_id);
     const status = String(base?.order?.status || "").toLowerCase();
@@ -420,7 +437,7 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
   const reusable = await findReusableOrder(kv, worker, request, env, ctx, input, day);
   if (reusable) {
     return json(200, { ...isolation(reusable), accepted: true, created_new: false, reused_existing: true,
-      amount_brl: SANDBOX_AMOUNT_BRL, external_reference: reusable.order_id });
+      offer_id: input.offerId, amount_brl: input.amountBrl, external_reference: reusable.order_id });
   }
   const used = Number(await kv.get(DAILY_KEY(day)) || 0);
   if (used >= MAX_ORDERS_PER_DAY) return json(429, { error: "sandbox_daily_limit" });
@@ -444,7 +461,7 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
   const checkoutResponse = await worker.fetch(new Request(new URL("/api/checkout/mercadopago", request.url), {
     method: "POST",
     headers: { "content-type": "application/json", "x-certification-pilot-token": String(invite.token) },
-    body: JSON.stringify({ request_id: input.requestId, session_id: sessionId, offer_id: SANDBOX_OFFER_ID })
+    body: JSON.stringify({ request_id: input.requestId, session_id: sessionId, offer_id: input.offerId })
   }), env, ctx);
   let checkout = null;
   try { checkout = await checkoutResponse.json(); } catch {}
@@ -458,8 +475,8 @@ export async function handleSandboxProofV2(request, env, ctx, worker, sqlFactory
   const checkoutUrl = String(checkout?.checkout_url || "");
   if (!/^https:\/\/www\.mercadopago\.(?:com|com\.br)\//.test(checkoutUrl)) return json(503, { error: "canonical_checkout_url_invalid" });
 
-  const record = { order_id: oid, session_id: sessionId, buyer_id: input.buyerId, buyer_email: input.buyerEmail, email_recipient: input.recipient, created_at: new Date().toISOString() };
+  const record = { order_id: oid, session_id: sessionId, buyer_id: input.buyerId, buyer_email: input.buyerEmail, email_recipient: input.recipient, offer_id: input.offerId, amount_brl: input.amountBrl, created_at: new Date().toISOString() };
   await kv.put(ORDER_KEY(oid), JSON.stringify(record), { expirationTtl: 30 * 24 * 3600 });
   await kv.put(DAILY_KEY(day), String(used + 1), { expirationTtl: 2 * 24 * 3600 });
-  return json(201, { ...isolation(record), accepted: true, created_new: true, amount_brl: SANDBOX_AMOUNT_BRL, external_reference: oid, checkout_url: checkoutUrl });
+  return json(201, { ...isolation(record), accepted: true, created_new: true, offer_id: input.offerId, amount_brl: input.amountBrl, external_reference: oid, checkout_url: checkoutUrl });
 }

@@ -9,3 +9,31 @@ test("official Telegram and Pinterest adapters return real provider evidence",as
 test("private Sistema channels checklist contains exact Pinterest fields and replaces Google Business with Search Console",async()=>{const html=await renderChannelsPage({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.match(html,/Sistema/);assert.match(html,/TELEGRAM_BOT_TOKEN/);assert.match(html,/YOUTUBE_CLIENT_ID/);assert.match(html,/PINTEREST_ACCESS_TOKEN/);assert.match(html,/PINTEREST_BOARD_ID/);assert.match(html,/pins:write/);assert.match(html,/boards:write/);assert.match(html,/developers\.pinterest\.com\/apps\//);assert.match(html,/Google Search Console \+ Blog/);assert.doesNotMatch(html,/Google Perfil da Empresa/);assert.doesNotMatch(html,/GOOGLE_BUSINESS_/);assert.match(html,/Aguardando verificação da empresa \(em análise\)/);assert.match(html,/Pendente credencial/);assert.match(html,/developers\.facebook\.com/);});
 test("hourly cycle publishes approved content only to configured channels and persists provider evidence",async()=>{const store=kv();await store.put("zpc:creative-autonomy:feed:v1",JSON.stringify([{creative_id:"c1",status:"approved_for_autopublish",score:91,compliance:100,title:"t",content:"c",asset_url:"https://zevanory.api.br/a.png",landing_url:"https://zevanory.api.br/solucoes"}]));const env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"@zevanory"};const out=await runMultichannelAutonomy(env,new Date("2026-10-06T12:00:00Z"),async url=>url.includes("telegram")?{status:200,json:async()=>({ok:true,result:{message_id:9}})}:{status:200,json:async()=>({})});assert.equal(out.evidence.length,1);assert.equal(out.evidence[0].url,"https://t.me/zevanory/9");assert.ok(await store.get("zpc:multichannel:evidence:telegram:c1"));});
 test("Telegram automatic publishing is capped at two approved creatives per UTC day",async()=>{const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"@zevanory"};let calls=0;for(let i=1;i<=3;i++){await store.put("zpc:creative-autonomy:feed:v1",JSON.stringify([{creative_id:`c${i}`,status:"approved_for_autopublish",score:91,compliance:100,content:"c",asset_url:"https://zevanory.api.br/a.png"}]));await runMultichannelAutonomy(env,new Date("2026-10-07T12:00:00Z"),async()=>{calls++;return{status:200,json:async()=>({ok:true,result:{message_id:calls}})}});}assert.equal(calls,2);assert.equal(await store.get("zpc:multichannel:quota:telegram:2026-10-07"),"2");});
+
+test("telegram photo caption stays within the 1024-char Bot API limit", async () => {
+  const { publishTelegram, telegramCaption, TELEGRAM_CAPTION_MAX } = await import("../worker/multichannel-autonomy.mjs");
+  const long = ("palavra ".repeat(400)).trim();
+  assert.ok(telegramCaption(long).length <= TELEGRAM_CAPTION_MAX);
+  assert.equal(telegramCaption("curto"), "curto");
+  const calls = [];
+  const ok = async (url, init) => { calls.push({ url, body: JSON.parse(init.body) }); return new Response(JSON.stringify({ ok: true, result: { message_id: 7 } }), { status: 200 }); };
+  const out = await publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: long, media_url: "https://zevanory.api.br/x.png" }, fetchImpl: ok });
+  assert.equal(out.provider_post_id, "7");
+  assert.match(calls[0].url, /sendPhoto$/);
+  assert.ok(calls[0].body.caption.length <= 1024);
+});
+
+test("telegram falls back to a text message when the photo is refused with 400, never on other errors", async () => {
+  const { publishTelegram } = await import("../worker/multichannel-autonomy.mjs");
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push(url);
+    if (url.endsWith("/sendPhoto")) return new Response(JSON.stringify({ ok: false, description: "Bad Request" }), { status: 400 });
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 9 } }), { status: 200 });
+  };
+  const out = await publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: "texto", media_url: "https://zevanory.api.br/x.svg" }, fetchImpl });
+  assert.equal(out.provider_post_id, "9");
+  assert.deepEqual(calls.map((u) => u.split("/").pop()), ["sendPhoto", "sendMessage"]);
+  const failing = async () => new Response("{}", { status: 401 });
+  await assert.rejects(publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: "x", media_url: "https://zevanory.api.br/x.png" }, fetchImpl: failing }), /provider_http_401/);
+});

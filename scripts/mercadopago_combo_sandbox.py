@@ -32,6 +32,25 @@ CERT_PATH = '/api/internal/certification/e2e/'
 USER_AGENT = 'zevanory-sandbox-proof/3'
 FROZEN_ORDER = 'a28c53ab-9ce7-429d-9d6b-1311a3fad406'
 OUT = pathlib.Path('evidence/mercadopago-combo-sandbox.json')
+# Canonical public catalog: same SKU -> table price as the sales page and the
+# certification resolver. The proof runs one SKU per dispatch (SANDBOX_OFFER_ID).
+SANDBOX_OFFERS = {'ZEV-IA-011': 197, 'ZEV-VEN-011': 197, 'ZEV-LCX-011': 247,
+                  'ZEV-CMB-011': 297, 'ZEV-NGC-011': 397}
+DEFAULT_OFFER = 'ZEV-CMB-011'
+# Digest of each SKU's private deliverable (catalog artifact_sha256): the proof
+# must download exactly the purchased product, not just any intact file.
+CATALOG_ARTIFACTS = {
+    'ZEV-IA-011': 'afb6349acb8f6498e422bffb01ef4f400b3879a9d272d21c55cf9d63aa73edae',
+    'ZEV-VEN-011': '97e5449177666a69a1cfc94f1002109d17f123bc44b2d4023c4d42f731f89070',
+    'ZEV-LCX-011': '48c95a9423a05cb7776301e91d0a9c82051b2bb67f68d7d06464ccd80fdd7b8f',
+    'ZEV-CMB-011': '99644ae9506695956ae515992879998cad9ec5bde1df003097bfad4f14f8b0ea',
+    'ZEV-NGC-011': '8a0d44d43662367149e84f11817485799fa361acdc65ddea319ca3fa79c2571e'}
+
+
+def selected_offer(env):
+    offer = str(env.get('SANDBOX_OFFER_ID') or DEFAULT_OFFER).strip()
+    require(offer in SANDBOX_OFFERS, 'SANDBOX_OFFER_NOT_IN_CATALOG')
+    return offer, SANDBOX_OFFERS[offer]
 READ_SCOPE = 'zevanory.sandbox_inbox.read'
 ALLOWED_HOSTS = frozenset({'api.mercadopago.com', 'zevanory.api.br'})
 PRODUCTION_NAMES = frozenset({'MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_PUBLIC_KEY',
@@ -264,8 +283,11 @@ def received_message(client, oid, identity, started_ms, audit_id=''):
 
 def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uuid4):
     report = {'schema': 'sandbox.proof.sanitized.v2', 'sale_globally_enabled': False,
-              'amount_brl': 297, 'checks': {}, 'status': 'FAIL'}
+              'offer_id': '', 'amount_brl': 0, 'checks': {}, 'status': 'FAIL'}
     try:
+        offer_id, amount = selected_offer(env)
+        report['offer_id'] = offer_id
+        report['amount_brl'] = amount
         identity = preflight(env)
         report['source_sha'] = identity.sha
         client = Client(identity, transport)
@@ -295,7 +317,7 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         report['checks']['IDENTITY'] = 'PASS'
         started_ms = int(now() * 1000)
         checkout = client.cert('checkout', 'POST', {'request_id': str(make_uuid()),
-            'offer_id': 'ZEV-CMB-011', 'sandbox': True, 'buyer_id': identity.buyer_id,
+            'offer_id': offer_id, 'sandbox': True, 'buyer_id': identity.buyer_id,
             'buyer_email': identity.buyer_email, 'email_recipient': identity.inbox_email},
             audit_id=audit_id, failure_code='checkout_canonical')
         oid = checkout.get('order_id', '')
@@ -305,7 +327,7 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
                  (checkout.get('created_new') is False and checkout.get('reused_existing') is True)),
                 'NEW_OR_REUSED_SANDBOX_ORDER_REQUIRED')
         validate_isolation(checkout, identity, oid)
-        require(checkout.get('amount_brl') == 297, 'COMBO_AMOUNT_REQUIRED')
+        require(checkout.get('amount_brl') == amount and checkout.get('offer_id') == offer_id, 'CATALOG_AMOUNT_REQUIRED')
         report['order_id'] = oid
         report['checkout_reused'] = checkout.get('created_new') is False
         report['checks']['ISOLATED_CHECKOUT'] = 'PASS'
@@ -317,8 +339,8 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
             failure_code='checkout_card_token')
         require(card.get('status') == 'active' and card.get('public_key') == identity.public_key and
                 bool(card.get('id')), 'SANDBOX_CARD_TOKEN_REQUIRED')
-        payment = client.mp('/v1/payments', 'POST', {'transaction_amount': 297, 'token': card['id'],
-            'description': 'ZEVANORY Combo sandbox', 'installments': 1, 'payment_method_id': 'visa',
+        payment = client.mp('/v1/payments', 'POST', {'transaction_amount': amount, 'token': card['id'],
+            'description': 'ZEVANORY ' + offer_id + ' sandbox', 'installments': 1, 'payment_method_id': 'visa',
             'binary_mode': True, 'external_reference': oid,
             'notification_url': APP + '/api/webhooks?provider=mercadopago_test',
             'payer': {'email': identity.buyer_email},
@@ -423,6 +445,7 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         data = client.request(probe, headers={'x-certification-e2e-token': identity.certification_token,
                               'x-audit-id': audit_id}, binary=True, failure_code='delivery_download')
         require(data and digest_bytes(data) == delivery.get('artifact_sha256'), 'DOWNLOAD_INTEGRITY_REQUIRED')
+        require(digest_bytes(data) == CATALOG_ARTIFACTS[offer_id], 'DOWNLOAD_PRODUCT_MISMATCH')
         report['download_http'] = 200
         try:
             client.request(probe, headers={'x-certification-e2e-token': identity.certification_token,
@@ -456,6 +479,12 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         final = client.cert('status?' + urllib.parse.urlencode({'order_id': oid}),
                             audit_id=audit_id, failure_code='order_final_status')
         validate_isolation(final, identity, oid)
+        persisted = final.get('order') or {}
+        require(persisted.get('offer_id') == offer_id and persisted.get('amount_brl') == amount and
+                persisted.get('currency') == 'BRL' and persisted.get('certification_pilot') is True,
+                'PERSISTED_ORDER_CATALOG_MISMATCH')
+        report['checks']['CANONICAL_ORDER'] = 'PASS'
+        report['fulfillment_after_refund'] = re.sub(r'[^a-z_]', '', str((final.get('fulfillment') or {}).get('status', '')).lower())[:32]
         final_source = str(final.get('receipt_source') or report.get('receipt_source') or '')
         require(final_source in ('webhook', 'reconciliation'), 'RECEIPT_SOURCE_REQUIRED')
         report['receipt_source'] = final_source
@@ -473,20 +502,41 @@ def digest_bytes(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def summary(report):
+    return {'offer_id': report.get('offer_id', ''), 'amount_brl': report.get('amount_brl', 0),
+            'status': report.get('status', 'FAIL'), 'cause': report.get('cause', ''),
+            'checks': report.get('checks', {}), 'receipt_source': report.get('receipt_source', ''),
+            'fulfillment_after_refund': report.get('fulfillment_after_refund', ''),
+            'reuse_http': report.get('reuse_http', 0)}
+
+
+def run_catalog(env, runner=None):
+    """SANDBOX_OFFER_ID=ALL: one approval, the 5 SKUs in sequence (each refunded before the next)."""
+    runner = runner or run
+    results = [runner({**env, 'SANDBOX_OFFER_ID': offer}) for offer in SANDBOX_OFFERS]
+    ok = all(r.get('status') == 'PASS' for r in results)
+    return {'schema': 'sandbox.proof.catalog.v1', 'sale_globally_enabled': False,
+            'status': 'PASS' if ok else 'FAIL', 'passed': sum(r.get('status') == 'PASS' for r in results),
+            'total': len(results), 'source_sha': next((r.get('source_sha') for r in results if r.get('source_sha')), ''),
+            'results': results}
+
+
 def main():
-    report = run(os.environ)
+    catalog = str(os.environ.get('SANDBOX_OFFER_ID') or '') == 'ALL'
+    report = run_catalog(os.environ) if catalog else run(os.environ)
     # Fixed allowlisted evidence only: never save raw payloads, URLs, identity
     # manifests, credential hashes, message bodies or download tokens.
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report))
+    # Annotations: readable without downloading artifacts (sanitized summary only).
+    for item in (report['results'] if catalog else [report]):
+        level = 'notice' if item.get('status') == 'PASS' else 'error'
+        print('::' + level + ' title=SANDBOX_' + str(item.get('offer_id') or 'UNKNOWN') + '::' +
+              json.dumps(summary(item), sort_keys=True, separators=(',', ':'))[:1800])
     if report['status'] != 'PASS':
-        print('::error title=COMBO_SANDBOX::' + report.get('cause', 'FAILED'))
-        # Same allowlisted, sanitized fields as the evidence file, surfaced as an annotation
-        # so the diagnosis is readable without downloading artifacts.
-        diag = {'checks': report.get('checks', {}), 'receipt_source': report.get('receipt_source', ''),
-                'timeout_state': report.get('timeout_state', {})}
-        print('::error title=COMBO_SANDBOX_DIAG::' + json.dumps(diag, sort_keys=True, separators=(',', ':'))[:1800])
+        print('::error title=COMBO_SANDBOX::' + (report.get('cause', 'FAILED') if not catalog else
+              'CATALOG_' + str(report['passed']) + '_OF_' + str(report['total'])))
         return 1
     return 0
 

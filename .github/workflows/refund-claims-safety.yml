@@ -1,0 +1,28 @@
+name: ZEVANORY refund claim and reconciliation safety
+on:
+  pull_request:
+    paths:
+      - 'worker/refund-flow.mjs'
+      - 'worker/refund-provider-claims.mjs'
+      - 'worker/cloudflare-worker.compat.mjs'
+      - 'tests/refund-provider-ambiguity.test.mjs'
+      - '.github/workflows/refund-claims-safety.yml'
+permissions:
+  contents: read
+jobs:
+  refund-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate refund modules
+        run: |
+          node --check worker/refund-provider-claims.mjs
+          node --check worker/refund-flow.mjs
+          node --check worker/cloudflare-worker.compat.mjs
+          node --check tests/refund-provider-ambiguity.test.mjs
+      - name: Execute isolated, mocked refund safety tests
+        run: node --test tests/refund-provider-ambiguity.test.mjs

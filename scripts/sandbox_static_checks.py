@@ -58,8 +58,13 @@ def guarded_workflow(text, manual):
                     'github.run_attempt == 1', "vars.SANDBOX_FINANCIAL_ENABLED == 'true'"]
         check(job.get('if') == ' && '.join(required), 'DISABLED_MANUAL_GATE')
         inputs = events['workflow_dispatch']['inputs']
-        check(set(inputs) == {'expected_sha'} and inputs['expected_sha'].get('required') is True and
+        check(set(inputs) <= {'expected_sha', 'offer_id'} and 'expected_sha' in inputs and inputs['expected_sha'].get('required') is True and
               'default' not in inputs['expected_sha'], 'NO_SHA_DEFAULT')
+        offer = inputs.get('offer_id')
+        # Optional SKU selector: a closed choice of the canonical catalog only.
+        check(offer is None or (offer.get('type') == 'choice' and offer.get('required') is True and
+              offer.get('options') == ['ALL', 'ZEV-IA-011', 'ZEV-VEN-011', 'ZEV-LCX-011', 'ZEV-CMB-011', 'ZEV-NGC-011'] and
+              offer.get('default') == 'ZEV-CMB-011'), 'OFFER_CHOICE_CLOSED')
     else:
         check(all(events[e] == {'branches': ['gh-pages']} for e in events), 'STATIC_BRANCHES')
     steps = job['steps']
