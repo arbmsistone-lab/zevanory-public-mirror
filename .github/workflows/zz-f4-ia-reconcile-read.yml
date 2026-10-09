@@ -1,0 +1,35 @@
+name: zz F4 IA reconcile readout (ops, never merge)
+on:
+  push:
+    branches: [ops/f4-ia-reconcile-read]
+    paths: ['.github/workflows/zz-f4-ia-reconcile-read.yml']
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: GET-only reconcile + Neon status (annotations only, no PII)
+        env:
+          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+          FLAG: ${{ vars.SANDBOX_FINANCIAL_ENABLED }}
+        run: |
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error
+          T=os.environ["CERTIFICATION_E2E_TOKEN"]; O="2073655f-cd83-4490-a62c-f77a29ffe9ad"
+          def call(u,m="GET"):
+            r=urllib.request.Request(u,data=(b"" if m=="POST" else None),method=m,headers={"x-certification-e2e-token":T,"accept":"application/json","user-agent":"zevanory-ops/1"})
+            try:
+              with urllib.request.urlopen(r,timeout=45) as x: return x.status,json.loads(x.read() or b"{}")
+            except urllib.error.HTTPError as e:
+              try: return e.code,json.loads(e.read() or b"{}")
+              except Exception: return e.code,{}
+          c,b=call("https://zevanory.api.br/api/internal/certification/e2e/refund-reconcile?order_id="+O,"POST")
+          keep={k:b.get(k) for k in ("ok","status","error","missing","order_status","retry_permitted","recovered")}
+          print("::warning title=RECONCILE::"+json.dumps({"http":c,**keep},separators=(",",":")))
+          c2,s=call("https://zevanory.api.br/api/internal/certification/e2e/status?order_id="+O)
+          ev=[{"e":x.get("normalized_event")} for x in (s.get("financial_events") or [])]
+          print("::warning title=NEON::"+json.dumps({"http":c2,"order":(s.get("order") or {}).get("status"),"fulfillment":(s.get("fulfillment") or {}).get("status"),"events":ev},separators=(",",":")))
+          print("::warning title=FLAG::SANDBOX_FINANCIAL_ENABLED="+os.environ.get("FLAG",""))
+          PY
