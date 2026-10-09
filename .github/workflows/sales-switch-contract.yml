@@ -1,0 +1,24 @@
+name: ZEVANORY owner sales switch contract
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - '.github/workflows/zevanory-open-sales.yml'
+      - '.github/workflows/zevanory-close-sales.yml'
+      - '.github/workflows/sales-switch-contract.yml'
+      - 'scripts/sales_switch_workflow.py'
+      - 'tests/test_sales_switch_workflow.py'
+permissions:
+  contents: read
+jobs:
+  dry-run-and-static-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate no-money dry-run and safety contracts
+        run: python3 -m unittest discover -s tests -p test_sales_switch_workflow.py -v
+      - name: Bytecode/parse
+        run: python3 -m py_compile scripts/sales_switch_workflow.py
+      - name: Preserve zero-cost deployment guard
+        run: python3 scripts/zero_cost_guard.py

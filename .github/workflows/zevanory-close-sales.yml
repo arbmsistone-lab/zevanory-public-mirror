@@ -1,0 +1,21 @@
+name: zevanory-close-sales
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: zevanory-owner-sales-switch
+  cancel-in-progress: false
+jobs:
+  emergency-close:
+    if: github.ref == 'refs/heads/gh-pages'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Close sales unconditionally, independently of preflight and deployment
+        run: python3 scripts/sales_switch_workflow.py close
