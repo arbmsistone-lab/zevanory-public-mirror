@@ -75,11 +75,19 @@ jobs:
                       if expected_direct:
                           identity_ok=identity_ok and body.get("provider")==expected_direct
                       sales=body.get("runtime",{}).get("sales")
-                      commercial_safe=(sales in (None,"globally-blocked")) and body.get("public_sales_locked") is not False
+                      locked=(sales in (None,"globally-blocked")) and body.get("public_sales_locked") is not False
+                      # Open sales are commercially safe only with a complete owner authorization
+                      # record and a fresh exact-release financial proof (derived release flag).
+                      auth=body.get("sales_authorization") or {}
+                      authorized_open=(sales=="enabled" and auth.get("state")=="open_authorized" and
+                          auth.get("authorized_by_owner") is True and
+                          (body.get("commercial_metrics_provenance") or {}).get("commercial_release_allowed") is True)
+                      commercial_safe=locked or authorized_open
                       results.append({
                           "provider":p["provider"],
                           "failure_domain":p["failure_domain"],
                           "ok":r.status==200 and identity_ok and commercial_safe,
+                          "sales_state":"authorized_open" if authorized_open else ("locked" if locked else "UNAUTHORIZED_OPEN"),
                           "status":r.status
                       })
               except Exception as exc:

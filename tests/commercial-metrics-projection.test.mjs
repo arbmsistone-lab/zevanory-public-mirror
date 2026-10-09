@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {createFinancialProofSnapshot,verifyFinancialProofSnapshot,readFinancialProofSnapshot,projectProductionOnlyStatus,COMMERCIAL_PROOF_KV_KEY,persistClassificationSnapshot,describeFinancialProofSnapshot} from "../worker/commercial-metrics-projection.mjs";
+import {createFinancialProofSnapshot,verifyFinancialProofSnapshot,readFinancialProofSnapshot,projectProductionOnlyStatus,COMMERCIAL_PROOF_KV_KEY,persistClassificationSnapshot,describeFinancialProofSnapshot,countProductionCheckouts,recordLaunchEpoch,LAUNCH_EPOCH_KV_KEY} from "../worker/commercial-metrics-projection.mjs";
 const SHA="a".repeat(40);
 const env={ZEVANORY_RELEASE_SHA:SHA};
 const now=Date.parse("2026-10-08T19:15:00Z");
@@ -84,4 +84,54 @@ test("authenticated classification persists only verified snapshots and describe
  assert.equal(JSON.stringify(d).includes("should-not-be-copied"),false);
  assert.equal((await readFinancialProofSnapshot(e,{now})).verified,true);
  assert.equal((await describeFinancialProofSnapshot({...e,ZEVANORY_RELEASE_SHA:"b".repeat(40)},{now})).accepted,false);
+});
+
+test("release flag and gate follow the real release state, never a constant",()=>{
+ const snap=createFinancialProofSnapshot(env,audited,{now,checkoutsStarted:4});
+ const closed=projectProductionOnlyStatus(source,snap,{now,env});
+ assert.equal(closed.commercial_metrics_provenance.commercial_release_allowed,false);
+ assert.equal(closed.gate,"G2");
+ const live=projectProductionOnlyStatus(source,snap,{now,env,salesRelease:true});
+ assert.equal(live.commercial_metrics_provenance.commercial_release_allowed,true);
+ assert.equal(live.gate,"G3");
+ assert.equal(live.experiment.status,"commercial_live_awaiting_first_payment");
+ assert.equal(live.metrics.checkouts_started,4);
+ assert.equal(live.commercial_metrics_provenance.checkouts_measured,true);
+ // Sales switch open but the proof is stale, unverified or from another release: fail closed.
+ for(const proof of [null,{...snap,ambiguous:1},{...snap,measured_at:new Date(now-66*60000).toISOString()},{...snap,release_sha:"b".repeat(40)}]){
+  const out=projectProductionOnlyStatus(source,proof,{now,env,salesRelease:true});
+  assert.equal(out.commercial_metrics_provenance.commercial_release_allowed,false);
+  assert.equal(out.gate,"G2");
+  assert.equal(out.metrics.checkouts_started,0);
+ }
+ assert.equal(projectProductionOnlyStatus(source,snap,{now,env,salesRelease:"true"}).commercial_metrics_provenance.commercial_release_allowed,false);
+});
+test("legacy checkouts never leak; snapshot without the field still verifies with 0",()=>{
+ const snap=createFinancialProofSnapshot(env,audited,{now});
+ assert.equal(snap.production.checkouts_started,null);
+ assert.equal(verifyFinancialProofSnapshot(snap,env,{now}),true);
+ const out=projectProductionOnlyStatus(source,snap,{now,env,salesRelease:true});
+ assert.equal(out.metrics.checkouts_started,0);
+ assert.equal(out.commercial_metrics_provenance.checkouts_measured,false);
+ assert.equal(out.legacy_technical_unverified_counts.checkouts_started,10);
+ assert.equal(verifyFinancialProofSnapshot({...snap,production:{...snap.production,checkouts_started:-1}},env,{now}),false);
+});
+test("production checkouts count only non-certification orders since the launch epoch",async()=>{
+ const map=new Map();
+ const kv={get:async k=>map.get(k)??null,put:async(k,v)=>{map.set(k,v);}};
+ const queries=[];
+ const sqlFactory=()=>({query:async(text,params)=>{queries.push({text,params});return [{n:7}];}});
+ const e={...env,DATABASE_URL:"postgres://x",ZEVANORY_PRIVATE_ARTIFACTS:kv};
+ assert.equal(await countProductionCheckouts(e,{sqlFactory}),0);
+ assert.equal(queries.length,0);
+ assert.deepEqual(await recordLaunchEpoch(e,{enabled:true,authorized:false,at:"2026-10-09T15:00:00.000Z"}),{recorded:false});
+ assert.deepEqual(await recordLaunchEpoch(e,{enabled:false,authorized:true,at:"2026-10-09T15:00:00.000Z"}),{recorded:false});
+ assert.equal((await recordLaunchEpoch(e,{enabled:true,authorized:true,at:"2026-10-09T15:00:00.000Z"})).recorded,true);
+ assert.equal((await recordLaunchEpoch(e,{enabled:true,authorized:true,at:"2026-10-10T15:00:00.000Z"})).recorded,false);
+ assert.equal(JSON.parse(map.get(LAUNCH_EPOCH_KV_KEY)).at,"2026-10-09T15:00:00.000Z");
+ assert.equal(await countProductionCheckouts(e,{sqlFactory}),7);
+ assert.match(queries[0].text,/coalesce\(certification_pilot,false\)=false/);
+ assert.match(queries[0].text,/created_at >= \$1/);
+ assert.deepEqual(queries[0].params,["2026-10-09T15:00:00.000Z"]);
+ assert.equal(await countProductionCheckouts(e,{sqlFactory:()=>({query:async()=>{throw new Error("db");}})}),null);
 });

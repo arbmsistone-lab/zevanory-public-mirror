@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readSalesSwitch, resetSalesSwitchCache, applySalesSwitch, handleSalesControl } from "../worker/sales-control.mjs";
+import { readSalesSwitch, resetSalesSwitchCache, applySalesSwitch, handleSalesControl, validOwnerAuthorization } from "../worker/sales-control.mjs";
+const AUTH = () => ({ enabled: true, authorization: "LIBERAR VENDAS", by: "owner", at: new Date().toISOString(), ref: "github:issue-comment:123456" });
 
 const kv = (map = {}) => ({ async get(k) { return map[k] ?? null; }, async put(k, v) { map[k] = v; } });
 
@@ -11,22 +12,46 @@ test("sales stay closed unless the owner switch says enabled:true", async () => 
   assert.equal((await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": "garbage" }) })).enabled, false);
   resetSalesSwitchCache();
   // Switch alone is not enough: production preflight must be green and fresh.
-  const blocked = await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify({ enabled: true, by: "owner" }) }) });
+  const blocked = await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify(AUTH()) }) });
   assert.equal(blocked.enabled, false);
   assert.equal(blocked.blocked, "preflight_not_green");
   resetSalesSwitchCache();
   const stale = JSON.stringify({ ok: true, at: new Date(Date.now() - 4 * 3600e3).toISOString(), checks: [] });
-  assert.equal((await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify({ enabled: true }), "zpc-sales-preflight:v1": stale }) })).enabled, false);
+  assert.equal((await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify(AUTH()), "zpc-sales-preflight:v1": stale }) })).enabled, false);
   resetSalesSwitchCache();
   const red = JSON.stringify({ ok: false, at: new Date().toISOString(), checks: [] });
-  assert.equal((await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify({ enabled: true }), "zpc-sales-preflight:v1": red }) })).enabled, false);
+  assert.equal((await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify(AUTH()), "zpc-sales-preflight:v1": red }) })).enabled, false);
   resetSalesSwitchCache();
   const green = JSON.stringify({ ok: true, at: new Date().toISOString(), checks: [] });
-  assert.equal((await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify({ enabled: true, by: "owner" }), "zpc-sales-preflight:v1": green }) })).enabled, true);
+  assert.equal((await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify(AUTH()), "zpc-sales-preflight:v1": green }) })).enabled, true);
   assert.equal(applySalesSwitch({ enabled: true }), true);
   assert.equal(globalThis.__ZEVANORY_SALES_SWITCH__, true);
   assert.equal(applySalesSwitch({ enabled: false }), false);
   assert.equal(globalThis.__ZEVANORY_SALES_SWITCH__, false);
+  resetSalesSwitchCache();
+});
+
+test("an incomplete owner authorization never opens sales, even with a green preflight", async () => {
+  const green = JSON.stringify({ ok: true, at: new Date().toISOString(), checks: [] });
+  const base = AUTH();
+  const variants = [
+    { ...base, authorization: undefined }, { ...base, authorization: "liberar vendas" }, { ...base, authorization: "AUTORIZO COMPRA REAL" },
+    { ...base, by: "" }, { ...base, by: undefined }, { ...base, ref: "" }, { ...base, ref: undefined }, { ...base, ref: "x" },
+    { ...base, at: "" }, { ...base, at: "not-a-date" }, { ...base, at: new Date(Date.now() + 3600e3).toISOString() },
+    { ...base, enabled: "true" }, { enabled: true }, { enabled: true, by: "owner" }
+  ];
+  for (const record of variants) {
+    assert.equal(validOwnerAuthorization(record), false, JSON.stringify(record));
+    resetSalesSwitchCache();
+    const out = await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify(record), "zpc-sales-preflight:v1": green }) });
+    assert.equal(out.enabled, false, JSON.stringify(record));
+    if (record.enabled === true) assert.equal(out.blocked, "owner_authorization_incomplete");
+  }
+  assert.equal(validOwnerAuthorization(base), true);
+  resetSalesSwitchCache();
+  const open = await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv({ "sales:open:v1": JSON.stringify(base), "zpc-sales-preflight:v1": green }) });
+  assert.equal(open.enabled, true);
+  assert.equal(open.authorized, true);
   resetSalesSwitchCache();
 });
 

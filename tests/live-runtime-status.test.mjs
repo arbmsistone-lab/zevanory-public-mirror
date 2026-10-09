@@ -14,7 +14,7 @@ test("fresh green preflight and open owner switch never project globally-blocked
   resetSalesSwitchCache();
   const now = Date.now();
   const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv([
-    ["sales:open:v1", JSON.stringify({ enabled: true, at: new Date(now).toISOString(), by: "owner" })],
+    ["sales:open:v1", JSON.stringify({ enabled: true, authorization: "LIBERAR VENDAS", at: new Date(now).toISOString(), by: "owner", ref: "github:issue-comment:123456" })],
     ["zpc-sales-preflight:v1", JSON.stringify({ ok: true, at: new Date(now - 60_000).toISOString() })],
   ]) };
   const salesSwitch = await readSalesSwitch(env, now);
@@ -39,7 +39,7 @@ test("stale preflight remains fail closed", async () => {
   resetSalesSwitchCache();
   const now = Date.now();
   const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv([
-    ["sales:open:v1", JSON.stringify({ enabled: true })],
+    ["sales:open:v1", JSON.stringify({ enabled: true, authorization: "LIBERAR VENDAS", at: new Date(now).toISOString(), by: "owner", ref: "github:issue-comment:123456" })],
     ["zpc-sales-preflight:v1", JSON.stringify({ ok: true, at: new Date(now - 4 * 3600_000).toISOString() })],
   ]) };
   const salesSwitch = await readSalesSwitch(env, now);

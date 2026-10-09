@@ -28,12 +28,32 @@ c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"
 # Dedicated Asaas financial-certification probes must never default to the live API.
 c["vars"]["ASAAS_ENV"]="sandbox"
 c["vars"]["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
-c["vars"]["MERCADOPAGO_ENV"]="sandbox"
+# The future launch configuration is dormant unless explicitly authorized.
+# This PR must not be merged before the owner's AUTORIZO COMPRA REAL instruction.
+launch_authorized=os.environ.get("ZEVANORY_LAUNCH_AUTHORIZATION","")=="AUTORIZO COMPRA REAL"
+if launch_authorized:
+    collector_hash=os.environ.get("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16","").lower()
+    if not re.fullmatch(r"[0-9a-f]{16}",collector_hash):
+        raise SystemExit("LAUNCH_COLLECTOR_PROOF_MISSING")
+    if os.environ.get("MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED")!="true":
+        raise SystemExit("LAUNCH_PRODUCTION_WEBHOOK_UNVERIFIED")
+    c["vars"]["MERCADOPAGO_ENV"]="production"
+    c["vars"]["MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16"]=collector_hash
+else:
+    c["vars"]["MERCADOPAGO_ENV"]="sandbox"
+    c["vars"].pop("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16",None)
+c["vars"]["CERTIFICATION_PILOT_PRODUCTION_ALLOWED"]="false"
+c["vars"]["ABSOLUTE_RELEASE_APPROVED"]="false"
 c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
 c["vars"]["CHECKOUT_ENABLED"]="true"
 c["vars"]["FINANCIAL_EVENTS_ENABLED"]="true"
 c["vars"]["SALE_GLOBALLY_ENABLED"]="false"
 c["vars"]["PRE_SALE_GATES_APPROVED"]="false"
+# Override only AFTER closed-by-default flags are established.
+# This never opens sales: the separate, owner-authorized KV switch is mandatory.
+if launch_authorized:
+    c["vars"]["ABSOLUTE_RELEASE_APPROVED"]="true"
+    c["vars"]["PRE_SALE_GATES_APPROVED"]="true"
 c["vars"]["WHATSAPP_SALES_ENABLED"]="false"
 c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
 c["vars"]["SUPPORT_CHANNEL"]="WhatsApp +55 88 99254-5413"

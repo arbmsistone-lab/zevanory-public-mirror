@@ -40,3 +40,20 @@ test("unknown/unverified production token never passes",async()=>{
  assert.equal(await verifyProductionToken({MERCADOPAGO_ACCESS_TOKEN:"TEST-foo",MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16:"a".repeat(16)}),false);
  assert.equal(await verifyProductionToken({MERCADOPAGO_ACCESS_TOKEN:"APP_USR-"+"x".repeat(40),MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16:""}),false);
 });
+
+test("launch prepared with global false opens checkout ONLY with signed owner-authorized KV and all 9 gates",async()=>{
+ const now=Date.parse("2026-10-09T18:00:00Z");
+ const env={SALE_GLOBALLY_ENABLED:"false",PRE_SALE_GATES_APPROVED:"true",ABSOLUTE_RELEASE_APPROVED:"true",
+ CHECKOUT_ENABLED:"true",FINANCIAL_EVENTS_ENABLED:"true",MERCADOPAGO_ENV:"production",
+ ZEVANORY_PRIVATE_ARTIFACTS:{get:async()=>JSON.stringify({ok:true,at:new Date(now-10000).toISOString()})}};
+ const authorized=await evaluateCheckout(env,{enabled:true,authorized:true},{now,verify:async()=>true});
+ assert.equal(authorized.allowed,true);
+ assert.equal(authorized.flags.global,true);
+ for(const sw of [{enabled:false,authorized:true},{enabled:true,authorized:false}, {enabled:false,authorized:false}]){
+  const r=await evaluateCheckout(env,sw,{now,verify:async()=>true});assert.equal(r.allowed,false);
+ }
+ for(const [field,value] of [["PRE_SALE_GATES_APPROVED","false"],["ABSOLUTE_RELEASE_APPROVED","false"],["MERCADOPAGO_ENV","sandbox"]]){
+  const r=await evaluateCheckout({...env,[field]:value},{enabled:true,authorized:true},{now,verify:async()=>true});
+  assert.equal(r.allowed,false,field);
+ }
+});
