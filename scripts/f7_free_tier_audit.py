@@ -153,7 +153,7 @@ else:
                   {"Authorization": "Bearer " + CF_TOKEN, "Content-Type": "application/json"}, json.dumps(tq2).encode(), "POST")
     if oc == 200:
         for c in ((ob.get("result") or {}).get("calculations") or []):
-                        for g in (c.get("aggregates") or [])[:6]:
+            for g in (c.get("aggregates") or [])[:6]:
                 msg = ",".join(str(x.get("value")) for x in (g.get("groups") or []))
                 i = msg.find('"error"')
                 note("warning", "F7_CHANNEL_LOGS", f'{g.get("value")}x ' + msg[:60] + " … " + msg[max(0,i-120):i+160])
