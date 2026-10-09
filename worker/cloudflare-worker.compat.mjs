@@ -1,3 +1,4 @@
+import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
 import { latestWhatsappStage } from "./whatsapp-background.mjs";
@@ -495,6 +496,21 @@ const wrapped = {
 
 wrapped.scheduled = async (controller, env, ctx) => {
   const normalized = normalizeEnv(env);
+  if (controller?.cron === "5,35 * * * *") {
+    try {
+      const out = await syncProductionActivity(normalized, {sqlFactory:whatsappProofDatabase});
+      console.info("order13_activity_sync", JSON.stringify({
+        ok:out.ok===true,emitted:out.emitted||0,finance:out.finance||0,
+        proof_accepted:out.proof_accepted===true
+      }));
+      if (!out.ok) throw new Error("order13_activity_sync_unavailable");
+    } catch {
+      // Never log database records, customer references or provider errors.
+      console.error("order13_activity_sync_failed");
+      throw new Error("order13_activity_sync_failed");
+    }
+    return;
+  }
   // Separate cron invocation: the financial proof must not share a Workers Free
   // subrequest/CPU budget with blog, email, orders and other hourly jobs.
   // The original hourly cron remains fully operational.
