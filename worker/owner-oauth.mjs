@@ -16,7 +16,7 @@ const cookieName=c=>"zpc_oauth_state_"+c;
 const cookie=(c,s,age)=>cookieName(c)+"="+encodeURIComponent(s)+"; Secure; HttpOnly; SameSite=Lax; Path="+new URL(callback(c)).pathname+"; Max-Age="+age;
 const eq=(a,b)=>{const x=enc.encode(String(a)),y=enc.encode(String(b));let n=x.length^y.length;for(let i=0;i<Math.max(x.length,y.length);i++)n|=(x[i]||0)^(y[i]||0);return n===0;};
 const settings=(env,c)=>{
- let bundle={};try{bundle=JSON.parse(String(env.CHANNEL_CREDENTIALS_JSON||"{}"));}catch{}
+ let bundle={};try{const raw=env.CHANNEL_CREDENTIALS_JSON;bundle=raw&&typeof raw==="object"?raw:JSON.parse(String(raw||"{}"));}catch{}
  const prefix=c==="youtube"?"YOUTUBE":"PINTEREST";
  return {id:String(env[prefix+"_CLIENT_ID"]||bundle[prefix+"_CLIENT_ID"]||""),secret:String(env[prefix+"_CLIENT_SECRET"]||bundle[prefix+"_CLIENT_SECRET"]||"")};
 };
