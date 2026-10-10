@@ -33,7 +33,10 @@ const xrpc="https://bsky.social/xrpc/";
 async function json(fetchImpl,url,options={}) {
  const res=await fetchImpl(url,{...options,signal:AbortSignal.timeout(15000)});
  const body=await res.json().catch(()=>({}));
- if(!res.ok)throw new Error("profile_provider_http_"+res.status);
+ if(!res.ok){
+   if(String(body?.description||"").toLowerCase().includes("not enough rights"))throw new Error("telegram_not_enough_rights");
+   throw new Error("profile_provider_http_"+res.status);
+ }
  return body;
 }
 export async function updateBlueskyProfile(env,fetchImpl=fetch){
@@ -86,6 +89,24 @@ export async function updateTelegramChannelPhoto(env,fetchImpl=fetch){
    throw new Error("telegram_profile_readback_unverified");
  return {status:"atualizado",channel:"telegram",profile_url:chat.startsWith("@")?"https://t.me/"+chat.slice(1):null,at:new Date().toISOString()};
 }
+// A verified KV receipt proves a previous update, not that a user has left
+// the remote profile unchanged. Recheck the current provider state on each cycle;
+// never upload new pictures when the certified remote profile is still conforming.
+async function currentProfileConforms(channel,env,fetchImpl){
+ if(channel==="bluesky"){
+   const url="https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor="+encodeURIComponent(env.BLUESKY_HANDLE);
+   const profile=await json(fetchImpl,url);
+   return profile.displayName===OFFICIAL_SOCIAL_PROFILE.bluesky.displayName &&
+     profile.description===OFFICIAL_SOCIAL_PROFILE.bluesky.description &&
+     String(profile.avatar||"").startsWith("https://") && String(profile.banner||"").startsWith("https://");
+ }
+ const endpoint="https://api.telegram.org/bot"+env.TELEGRAM_BOT_TOKEN+"/getChat";
+ const response=await json(fetchImpl,endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:env.TELEGRAM_CHANNEL_ID})});
+ const chat=response.result||{};
+ return response.ok===true && chat.title===OFFICIAL_SOCIAL_PROFILE.telegram.title &&
+   chat.description===OFFICIAL_SOCIAL_PROFILE.telegram.description && Boolean(chat.photo?.big_file_id);
+}
+
 export async function syncBrandProfiles(env={},fetchImpl=fetch){
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get||!kv?.put)return {status:"bloqueado",code:"kv_unavailable"};
@@ -101,7 +122,17 @@ export async function syncBrandProfiles(env={},fetchImpl=fetch){
    const signedReceipt=previous?.status==="atualizado" && Boolean(previous?.at) &&
      (channel==="telegram" || Boolean(previous?.provider_record));
    if(signedReceipt){
-     outcomes.push(previous);continue;
+     const resolved=resolveChannelCredentials(env);
+     const available=channel==="bluesky"?(resolved.BLUESKY_HANDLE&&resolved.BLUESKY_APP_PASSWORD):
+       (resolved.TELEGRAM_BOT_TOKEN&&resolved.TELEGRAM_CHANNEL_ID);
+     if(!available){outcomes.push({channel,status:"depende_do_dono",code:"credentials_missing"});continue;}
+     let current;
+     try{current=await currentProfileConforms(channel,resolved,fetchImpl);}catch{
+       outcomes.push({channel,status:"pendente_conciliacao",code:"provider_readback_unavailable"});
+       continue;
+     }
+     if(current){outcomes.push(previous);continue;}
+     // A remote manual edit revoked the receipt's ability to suppress reconciliation.
    }
    let result;
    const resolved=resolveChannelCredentials(env);
@@ -117,7 +148,7 @@ export async function syncBrandProfiles(env={},fetchImpl=fetch){
        await emitActivity(env,{type:"profile_updated",channel,status:"updated",ref:"brand-profile:"+channel+":v2",link:result.profile_url}).catch(()=>null);
        await kv.put(key,JSON.stringify(result),{expirationTtl:180*86400});
      }
-   }catch{result={channel,status:"pendente_conciliacao",code:"provider_or_readback_unverified"};}
+   }catch(error){result={channel,status:"pendente_conciliacao",code:error?.message==="telegram_not_enough_rights"?"telegram_not_enough_rights":"provider_or_readback_unverified"};}
    outcomes.push(result);
  }
  const snapshot={schema:"zevanory.brand-profiles.v1",at:new Date().toISOString(),profiles:[...outcomes,...MANUAL_PROFILE_ACTIONS]};
