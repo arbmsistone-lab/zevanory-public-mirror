@@ -6,6 +6,8 @@ on:
     paths:
       - "zevanory-sales/**"
       - "solucoes/**"
+      - "quem-criou/**"
+      - "assets/renan-bitu.webp"
       - "ia-na-pratica/**"
       - "vendas-na-pratica/**"
       - "lucro-e-caixa/**"
@@ -29,6 +31,8 @@ on:
     paths:
       - "zevanory-sales/**"
       - "solucoes/**"
+      - "quem-criou/**"
+      - "assets/renan-bitu.webp"
       - "ia-na-pratica/**"
       - "vendas-na-pratica/**"
       - "lucro-e-caixa/**"
@@ -89,6 +93,8 @@ jobs:
         run: |
           test -f sales-public/zevanory-sales.html
           test -f sales-public/solucoes.html
+          test -f sales-public/quem-criou.html
+          test -s sales-public/assets/renan-bitu.webp
           test -f sales-public/product.css
           test -f sales-public/brand/zevanory-logo-dark.svg
           grep -Fq "ZEVANORY SALES" sales-public/zevanory-sales.html
@@ -278,6 +284,7 @@ jobs:
             sleep 5
           done
           test "$ok" = "true"
+          bash scripts/ci/verify-founder-and-products.sh
           echo "ZEVANORY_SALES_CANONICAL_READBACK=PASS"
 
       - name: Roll back canonical deployment on failed readback
