@@ -27,8 +27,8 @@ ALLOWED_SECRETS = {'MERCADOPAGO_TEST_PUBLIC_KEY', 'MERCADOPAGO_TEST_ACCESS_TOKEN
 HOSTS = {'api.mercadopago.com', 'zevanory.api.br'}
 REGISTERED_EXCEPTION = {
     'filename': 'zees16-control-reconciler.yml',
-    'blob': '64fc08b54d154127ff21ad724568d0b0045f43b8',
-    'justification': 'T7 não financeiro; execuções serializadas, readback de fidelidade exata e aceitação 16/16 permanece fail-closed; 2026-10-08: grava no KV só quando o estado semântico muda (orçamento de 1.000 escritas/dia do Workers Free); 2026-10-10: concurrency por head_sha com cancel-in-progress, filtro gh-pages e nome real do quorum (open-provider); gatilhos preservados (Ordem 38)',
+    'blob': '70466f7d797f6e2046ed53dabd77f6ca8ec15243',
+    'justification': 'T7 não financeiro; execuções serializadas, readback de fidelidade exata e aceitação 16/16 permanece fail-closed; 2026-10-08: grava no KV só quando o estado semântico muda (orçamento de 1.000 escritas/dia do Workers Free); 2026-10-10: concurrency por head_sha com cancel-in-progress, filtro gh-pages e nome real do quorum (open-provider); gatilhos preservados (Ordem 38); 2026-10-10: concurrency no nível do job, sem cancelamento (Ordem 48)',
 }
 
 
