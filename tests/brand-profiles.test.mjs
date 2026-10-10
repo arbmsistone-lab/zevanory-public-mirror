@@ -200,3 +200,21 @@ test("Telegram bot lacking can_change_info reports safe permission category inst
  assert.equal(result.profiles.find(x=>x.channel==="telegram")?.code,"telegram_missing_can_change_info");
  assert.notEqual(result.profiles.find(x=>x.channel==="telegram")?.status,"atualizado");
 });
+
+test("profile images are read from the ASSETS binding (self-zone fetch cannot re-enter the Worker)",async()=>{
+ let reads=0,assetReads=0;
+ const assets={fetch:async req=>{assetReads++;assert.equal(new URL(req.url).pathname,"/brand/export/avatar-800.png");return pic("avatar-800.png");}};
+ const mock=async(url,opts={})=>{
+  if(String(url).includes("/brand/export/"))return new Response("origin miss",{status:404});
+  if(url.endsWith("/getChat"))return Response.json({ok:true,result:{title:OFFICIAL_SOCIAL_PROFILE.telegram.title,description:OFFICIAL_SOCIAL_PROFILE.telegram.description,photo:{big_file_id:reads++===0?"old":"new"}}});
+  if(url.endsWith("/setChatPhoto"))return Response.json({ok:true,result:true});
+  throw Error("other request");
+ };
+ const out=await updateTelegramChannelPhoto({TELEGRAM_BOT_TOKEN:"fake",TELEGRAM_CHANNEL_ID:"@zevanory",ASSETS:assets},mock);
+ assert.equal(out.status,"atualizado");assert.equal(assetReads,1);
+ // Without ASSETS the old network path is unchanged and still fail-closed.
+ await assert.rejects(updateTelegramChannelPhoto({TELEGRAM_BOT_TOKEN:"fake",TELEGRAM_CHANNEL_ID:"@zevanory"},mock),/brand_image_fetch_unverified/);
+ // Tampered asset bytes are still rejected by the approved SHA-256.
+ const bad={fetch:async()=>pic("banner-bluesky.png")};
+ await assert.rejects(updateTelegramChannelPhoto({TELEGRAM_BOT_TOKEN:"fake",TELEGRAM_CHANNEL_ID:"@zevanory",ASSETS:bad},mock));
+});

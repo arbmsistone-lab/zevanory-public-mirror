@@ -41,7 +41,9 @@ export function channelChecklist(env={}){
 }
 
 async function brandMediaGate(env,channel,url,fetchImpl){
- try{return await requireBrandedPublication({url,channel,fetchImpl});}
+ // Same-zone subrequests cannot re-enter this Worker: read pinned brand bytes from ASSETS (SHA still enforced).
+ const assetFetch=env?.ASSETS?.fetch?((u,init={})=>String(u).startsWith("https://zevanory.api.br/brand/export/")?env.ASSETS.fetch(new Request(String(u),{method:"GET"})):fetchImpl(u,init)):fetchImpl;
+ try{return await requireBrandedPublication({url,channel,fetchImpl:assetFetch});}
  catch(error){
   await emitActivity(env,{type:"brand_blocked",channel,status:"blocked",ref:"brand:"+channel+":"+new Date().toISOString().slice(0,13)}).catch(()=>null);
   throw error;
