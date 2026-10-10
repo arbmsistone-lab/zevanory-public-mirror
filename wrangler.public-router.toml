@@ -5,8 +5,6 @@ account_id = "1b26415802588185a86c1d4d3ebf5bdb"
 routes = [
   "zevanory.api.br/",
   "zevanory.api.br/solucoes*",
-  "zevanory.api.br/quem-criou*",
-  "zevanory.api.br/assets/*",
   "zevanory.api.br/zevanory-cfo*",
   "zevanory.api.br/arbm-contador-saloes*",
   "zevanory.api.br/ia-na-pratica*",
