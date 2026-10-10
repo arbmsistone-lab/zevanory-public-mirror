@@ -53,3 +53,20 @@ jobs:
           }
           if(!verified.length)console.log('ORD7_TELEGRAM_EVIDENCE=NOT_PROVEN');
           NODE
+
+      - name: GET-only founder-independent daily blog and isolated financial status
+        shell: bash
+        run: |
+          set -euo pipefail
+          for day in 2026-10-09 2026-10-10; do
+            for slug in ia-pratica-pequenos-negocios automacao-atendimento-clareza conteudo-organico-com-evidencia vendas-lojas-fortaleza caixa-comercio-juazeiro-do-norte atendimento-servicos-varzea-alegre; do
+              path="/blog/${slug}-${day}"
+              code="$(curl -LsS --max-time 12 -o /dev/null -w '%{http_code}' "https://zevanory.api.br${path}" || true)"
+              if [ "$code" = "200" ]; then echo "ORD30_BLOG_HTTP200=${path}"; fi
+            done
+          done
+          code="$(curl -sS --max-time 16 -o /tmp/order30-status.json -w '%{http_code}' https://zevanory.api.br/api/status || true)"
+          echo "ORD30_STATUS_HTTP=$code"
+          if [ "$code" = "200" ]; then
+            jq -c '{gate,financial_proof:{last_isolated_run:.financial_proof.last_isolated_run}}' /tmp/order30-status.json || true
+          fi
