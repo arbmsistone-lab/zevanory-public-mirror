@@ -65,7 +65,9 @@
             "SANDBOX_IDENTITY_MANIFEST": "${{ secrets.SANDBOX_IDENTITY_MANIFEST }}",
             "SANDBOX_INBOX_READ_TOKEN": "${{ secrets.SANDBOX_INBOX_READ_TOKEN }}",
             "CERTIFICATION_E2E_TOKEN": "${{ secrets.CERTIFICATION_E2E_TOKEN }}",
-            "SANDBOX_OFFER_ID": "${{ inputs.offer_id }}"
+            "SANDBOX_OFFER_ID": "${{ inputs.offer_id }}",
+            "CERTIFICATION_SANDBOX_URL": "${{ vars.CERTIFICATION_SANDBOX_URL }}",
+            "CERTIFICATION_WORKER_NAME": "zevanory-certification"
           },
           "run": "python3 scripts/mercadopago_combo_sandbox.py"
         },
