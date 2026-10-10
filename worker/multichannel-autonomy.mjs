@@ -108,7 +108,7 @@ export async function ensureDailyBlog(env={}, now=new Date(), fetchImpl=fetch) {
   let index={articles:[]};try{index=JSON.parse(String(await kv.get(BLOG_INDEX_KEY)||"null"))||index;}catch{}
   // Never republish an editorial body under a new day/slug: search quality is fail-closed.
   const trigrams=text=>{
-    const words=String(text||"").toLocaleLowerCase("pt-BR").match(/[\\p{L}\\p{N}]+/gu)||[];
+    const words=String(text||"").toLocaleLowerCase("pt-BR").match(/[\p{L}\p{N}]+/gu)||[];
     return new Set(words.slice(0,-2).map((_,i)=>words.slice(i,i+3).join(" ")));
   };
   const incoming=trigrams(article.body);
