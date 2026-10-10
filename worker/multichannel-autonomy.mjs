@@ -48,6 +48,14 @@ async function brandMediaGate(env,channel,url,fetchImpl){
 }
 async function requestJson(fetchImpl,url,options,accepted=[200,201]){const response=await fetchImpl(url,{...options,signal:AbortSignal.timeout(15000)});const body=await response.json().catch(()=>({}));if(!accepted.includes(response.status))throw new Error(`provider_http_${response.status}`);return body;}
 
+// Branded static pin is the approved raster for dynamic editorial copy.
+ // Never forward an unverified F1 creative image to Pinterest.
+export const PINTEREST_APPROVED_BRAND_PIN_URL="https://zevanory.api.br/brand/export/pin.png";
+export function brandPinterestCreative(creative={}) {
+  if(!creative.asset_url||!creative.creative_id)throw new Error("pinterest_creative_missing_source");
+  return {...creative,media_url:PINTEREST_APPROVED_BRAND_PIN_URL,brand_asset_strategy:"approved_official_pin"};
+}
+
 export const TELEGRAM_CAPTION_MAX=1024;
 export function telegramCaption(text=""){const value=String(text||"");if(value.length<=TELEGRAM_CAPTION_MAX)return value;const cut=value.slice(0,TELEGRAM_CAPTION_MAX-1),space=cut.lastIndexOf(" ");return (space>TELEGRAM_CAPTION_MAX-200?cut.slice(0,space):cut).trimEnd()+"…";}
 export async function publishTelegram({env={},payload={},fetchImpl=fetch}={}){const token=clean(env.TELEGRAM_BOT_TOKEN),chat=clean(env.TELEGRAM_CHANNEL_ID,200),text=clean(payload.content||payload.text,3900),media=clean(payload.media_url);if(!token||!chat)throw new Error("telegram_credentials_missing");const send=(method,body)=>requestJson(fetchImpl,`https://api.telegram.org/bot${token}/${method}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});let out;if(media){await brandMediaGate(env,"telegram",media,fetchImpl);/* Bot API: photo captions are capped at 1024 chars (longer => HTTP 400). Keep the full text by falling back to a message with the image link when the photo is refused. */try{out=await send("sendPhoto",{chat_id:chat,photo:media,caption:telegramCaption(text)});}catch(error){if(!/_400$/.test(String(error?.message||"")))throw error;out=await send("sendMessage",{chat_id:chat,text:clean(`${text}\n\n${media}`,4096)});}}else out=await send("sendMessage",{chat_id:chat,text});if(out?.ok!==true||!out?.result?.message_id)throw new Error("telegram_acceptance_missing");const username=chat.startsWith("@")?chat.slice(1):String(out.result?.chat?.username||"");return {provider:"telegram",provider_post_id:String(out.result.message_id),url:/^[A-Za-z0-9_]{5,32}$/.test(username)?`https://t.me/${username}/${out.result.message_id}`:null};}
@@ -177,8 +185,10 @@ export async function runMultichannelAutonomy(env={},now=new Date(),fetchImpl=fe
     const key="zpc:multichannel:evidence:pinterest:"+creative.creative_id;
     if(!await kv.get(key)){
       try{
-        const result=await publishPinterest({env,payload:{...creative,media_url:creative.asset_url},fetchImpl});
-        const row={channel:"pinterest",creative_id:creative.creative_id,provider_post_id:result.provider_post_id,url:result.url,publishedAt:now.toISOString()};
+        // Dynamic editorial fields remain unique; the raster comes from the signed brand kit.
+        const branded=brandPinterestCreative(creative);
+        const result=await publishPinterest({env,payload:branded,fetchImpl});
+        const row={channel:"pinterest",creative_id:creative.creative_id,provider_post_id:result.provider_post_id,url:result.url,brand_asset_url:branded.media_url,brand_asset_strategy:branded.brand_asset_strategy,publishedAt:now.toISOString()};
         await kv.put(key,JSON.stringify(row),{expirationTtl:370*DAY});evidence.push(row);
       }catch(error){evidence.push({channel:"pinterest",error:String(error?.message||"provider_failed").slice(0,90)});}
     }

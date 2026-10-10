@@ -53,3 +53,23 @@ test("Telegram refuses to certify unchanged profile photograph",async()=>{
  };
  await assert.rejects(updateTelegramChannelPhoto({TELEGRAM_BOT_TOKEN:"t",TELEGRAM_CHANNEL_ID:"@zevanory"},mock),/readback_unverified/);
 });
+
+test("hourly brand cycle is outside acquisition try/catch and has independent failure telemetry",()=>{
+  const source=readFileSync(new URL("../worker/cloudflare-worker.compat.mjs",import.meta.url),"utf8");
+  const start=source.indexOf('if (controller?.cron === "0 * * * *")');
+  const end=source.indexOf('if (typeof worker.queue',start);
+  assert.ok(start>=0&&end>start);
+  const cron=source.slice(start,end);
+  const acquisitionFailure=cron.indexOf('console.error("acquisition_cycle_failed")');
+  const brandSync=cron.indexOf('await syncBrandProfiles(normalized)');
+  const brandFailure=cron.indexOf('console.error("brand_profile_cycle_unverified")');
+  assert.ok(acquisitionFailure>0&&brandSync>acquisitionFailure&&brandFailure>brandSync);
+});
+
+test("canonical brand PNGs are delegated to static assets despite run_worker_first",()=>{
+  const source=readFileSync(new URL("../worker/cloudflare-worker.compat.mjs",import.meta.url),"utf8");
+  assert.match(source,/url\.pathname\.startsWith\("\/brand\/export\/"\)/);
+  assert.match(source,/Object\.prototype\.hasOwnProperty\.call\(BRAND_SIZES,name\)/);
+  assert.match(source,/normalized\.ASSETS\.fetch\(request\)/);
+  assert.match(source,/brand_assets_unavailable/);
+});
