@@ -76,11 +76,11 @@ on:
       - "scripts/financial_e2e_stripe.py"
       - "scripts/financial_e2e_closure.py"
       - ".github/workflows/zpc-cloudflare-route-discovery.yml"
-permissions:
-  contents: read
-  actions: write
 jobs:
   deploy:
+    permissions:
+      contents: read
+      actions: write
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
