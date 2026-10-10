@@ -5,14 +5,16 @@ import { SUPPORT_PRODUCTS } from "../worker/support-knowledge.mjs";
 import { OFFICIAL_PURCHASE_SKUS, purchaseLinkFor, catalogFacts, validateReply, converse } from "../worker/whatsapp-conversation.mjs";
 
 const BUY_ROOT = "https://vendas.zevanory.api.br/comprar/";
+const WHATSAPP_UTM = "?utm_source=whatsapp&utm_medium=chat";
 test("official SKU links match published sales worker for every catalog product", () => {
   const source = readFileSync(new URL("../worker/sales-public-worker.mjs", import.meta.url), "utf8");
   for (const [slug, sku] of Object.entries(OFFICIAL_PURCHASE_SKUS)) {
     assert.ok(SUPPORT_PRODUCTS[slug], "missing product " + slug);
     assert.match(source, new RegExp(sku));
-    assert.equal(purchaseLinkFor(slug, true), BUY_ROOT + sku);
+    assert.equal(purchaseLinkFor(slug, true), BUY_ROOT + sku + WHATSAPP_UTM);
     assert.equal(purchaseLinkFor(slug, false), null);
-    assert.equal(validateReply(BUY_ROOT + sku).ok, true);
+    assert.equal(validateReply(BUY_ROOT + sku + WHATSAPP_UTM).ok, true);
+    assert.equal(validateReply(BUY_ROOT + sku).ok, false);
   }
   assert.equal(purchaseLinkFor("unknown-product", true), null);
   assert.equal(validateReply(BUY_ROOT + "FAKE-SKU").ok, false);
@@ -88,4 +90,15 @@ test("voice replies reject model-supplied checkout links", async () => {
     ai: { run: async () => ({ response: "Acesse " + BUY_ROOT + "ZEV-IA-011" }) }
   });
   assert.doesNotMatch(answer.body, /\/comprar\//);
+});
+
+test("WhatsApp attribution is required on every allowed checkout URL", async () => {
+  for (const [slug, sku] of Object.entries(OFFICIAL_PURCHASE_SKUS)) {
+    const answer = await converse({ question: `Quanto custa ${SUPPORT_PRODUCTS[slug].name}?`, salesOpen: true });
+    if (answer.body.includes("/comprar/")) {
+      assert.ok(answer.body.includes(BUY_ROOT + sku + WHATSAPP_UTM));
+      assert.equal(validateReply(answer.body).ok, true);
+    }
+    assert.equal(validateReply(BUY_ROOT + sku + "?utm_source=other&utm_medium=chat").ok, false);
+  }
 });
