@@ -154,3 +154,26 @@ export async function handleOwnerOAuth(req,env){
    return finish(c,"connected");
  }catch{return finish(c,"provider_unverified");}
 }
+
+const youtubePublisherNonce=nonce=>"zpc:owner:oauth:youtube-publisher:"+nonce;
+export async function handleYoutubePublisherAccess(req,env,fetchImpl=fetch){
+ const headers={"cache-control":"no-store","x-content-type-options":"nosniff"};
+ if(req.method!=="POST")return Response.json({error:"method_not_allowed"},{status:405,headers});
+ const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
+ if(!kv?.get||!kv?.put)return Response.json({error:"secure_store_unavailable"},{status:503,headers});
+ let body;try{body=await req.json();}catch{return Response.json({error:"invalid_request"},{status:400,headers});}
+ const ts=String(body?.ts||""),nonce=String(body?.nonce||""),sig=String(body?.sig||"");
+ const secret=settings(env,"youtube").secret;
+ if(secret.length<12||!/^[0-9]{13}$/.test(ts)||Math.abs(Date.now()-Number(ts))>60000||
+    !/^[A-Za-z0-9_-]{40,128}$/.test(nonce)||!/^[A-Za-z0-9_-]{43}$/.test(sig))
+      return Response.json({error:"publisher_unauthorized"},{status:401,headers});
+ const expected=await mac(secret,["zpc-youtube-publisher-v1",ts,nonce].join("\n"));
+ if(!eq(sig,expected)||await kv.get(youtubePublisherNonce(nonce)))
+   return Response.json({error:"publisher_unauthorized"},{status:401,headers});
+ await kv.put(youtubePublisherNonce(nonce),"used",{expirationTtl:120});
+ try{
+   const access=await resolveOwnerPublisherToken(env,"youtube",fetchImpl);
+   if(!access)return Response.json({connected:false},{headers});
+   return Response.json({connected:true,access_token:access},{headers});
+ }catch{return Response.json({error:"publisher_refresh_unavailable"},{status:503,headers});}
+}
