@@ -6,6 +6,15 @@ import { resolveChannelCredentials } from "./multichannel-autonomy.mjs";
 
 export const BRAND_PROFILE_STATE_KEY="zpc:brand:profiles:v1";
 const URL="https://zevanory.api.br/brand/export/";
+export const MANUAL_PROFILE_ACTIONS=Object.freeze([
+ {channel:"instagram",status:"depende_do_dono",profile_url:"https://www.instagram.com/zevanory_/",edit_url:"https://www.instagram.com/accounts/edit/",assets:["avatar-800.png"]},
+ {channel:"facebook",status:"depende_do_dono",profile_url:"https://www.facebook.com/profile.php?id=1249902628211703",edit_url:"https://www.facebook.com/",assets:["avatar-800.png","banner-facebook.png"]},
+ {channel:"youtube",status:"depende_do_dono",profile_url:"https://www.youtube.com/@zevanory",edit_url:"https://studio.youtube.com/",assets:["avatar-800.png","banner-youtube.png"]},
+ {channel:"pinterest",status:"depende_do_dono",profile_url:null,edit_url:"https://www.pinterest.com/settings/",assets:["avatar-800.png"]},
+ {channel:"whatsapp",status:"depende_do_dono",profile_url:null,edit_url:null,instructions:"WhatsApp Business > Ferramentas comerciais > Perfil comercial > Foto",assets:["avatar-800.png"]},
+ {channel:"google",status:"depende_do_dono",profile_url:null,edit_url:"https://business.google.com/",assets:["avatar-800.png"]}
+]);
+
 const read=async (kv,key,fallback=null)=>{try{return JSON.parse(String(await kv.get(key)||"null"))??fallback;}catch{return fallback;}};
 async function verifiedImage(channel,name,fetchImpl){
  return (await validateBrandProfileAsset({channel,url:URL+name,fetchImpl,includeBytes:true})).bytes;
@@ -85,12 +94,12 @@ export async function syncBrandProfiles(env={},fetchImpl=fetch){
    }catch{result={channel,status:"pendente_conciliacao",code:"provider_or_readback_unverified"};}
    outcomes.push(result);
  }
- const snapshot={schema:"zevanory.brand-profiles.v1",at:new Date().toISOString(),profiles:outcomes};
+ const snapshot={schema:"zevanory.brand-profiles.v1",at:new Date().toISOString(),profiles:[...outcomes,...MANUAL_PROFILE_ACTIONS]};
  await kv.put(BRAND_PROFILE_STATE_KEY,JSON.stringify({...state,...snapshot}),{expirationTtl:30*86400});
  return snapshot;
 }
 export async function brandProfileSnapshot(env={}){
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get)return {schema:"zevanory.brand-profiles.v1",status:"indisponivel"};
- return await read(kv,BRAND_PROFILE_STATE_KEY,{schema:"zevanory.brand-profiles.v1",status:"sem_dados",profiles:[]});
+ return await read(kv,BRAND_PROFILE_STATE_KEY,{schema:"zevanory.brand-profiles.v1",status:"sem_dados",profiles:[...MANUAL_PROFILE_ACTIONS]});
 }

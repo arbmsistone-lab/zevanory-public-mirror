@@ -7,8 +7,10 @@ const kv=()=>{const m=new Map();return {get:async k=>m.get(k)||null,put:async(k,
 test("empty channel credentials: no upload, no remote write, no invented profile_updated",async()=>{
  let remote=0;const env={ZEVANORY_PRIVATE_ARTIFACTS:kv()};
  const state=await syncBrandProfiles(env,async()=>{remote++;throw Error("never")});
- assert.equal(remote,0);assert.equal(state.profiles.length,2);
- assert.deepEqual(state.profiles.map(x=>x.status),["depende_do_dono","depende_do_dono"]);
+ assert.equal(remote,0);assert.equal(state.profiles.length,8);
+ assert.ok(state.profiles.every(x=>x.status==="depende_do_dono"));
+ assert.deepEqual(state.profiles.map(x=>x.channel),["bluesky","telegram","instagram","facebook","youtube","pinterest","whatsapp","google"]);
+ assert.ok(state.profiles.find(x=>x.channel==="youtube").edit_url.includes("studio.youtube.com"));
  const readback=await brandProfileSnapshot(env);assert.equal(readback.schema,"zevanory.brand-profiles.v1");
 });
 test("Bluesky avatar and banner uploaded from approved PNGs, preserves biography and verifies readback",async()=>{
