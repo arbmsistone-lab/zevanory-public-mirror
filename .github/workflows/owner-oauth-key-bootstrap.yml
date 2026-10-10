@@ -35,12 +35,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "CLOUDFLARE_TOKEN_MISSING"; exit 1; }
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "::error title=OAUTH_BOOTSTRAP::CLOUDFLARE_TOKEN_MISSING"; exit 1; }
           api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts"
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$L_WORKER/settings" -o /tmp/l.json
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$P_WORKER/settings" -o /tmp/p.json
+          for w in "$L_WORKER" "$P_WORKER"; do
+            code="$(curl -sS -o "/tmp/$w.json" -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$w/settings")"
+            [ "$code" = 200 ] || { echo "::error title=OAUTH_BOOTSTRAP::settings_http_${code}_worker_${w}"; exit 1; }
+          done
+          cp "/tmp/$L_WORKER.json" /tmp/l.json; cp "/tmp/$P_WORKER.json" /tmp/p.json
           python3 - <<'PY'
-          import json,os
+          import json,os,sys
+          def fail(m):
+              print("::error title=OAUTH_BOOTSTRAP::"+m); sys.exit(1)
           def names(p,types):
               rows=(json.load(open(p)).get("result") or {}).get("bindings") or []
               return {r.get("name") for r in rows if r.get("type") in types}
@@ -54,9 +59,9 @@ jobs:
           if all(present):
               print("OWNER_OAUTH_KEYS=ALREADY_COMPLETE (no rotation)"); out.write("action=none\n"); raise SystemExit(0)
           if any(present):
-              raise SystemExit("OWNER_OAUTH_KEYS_PARTIAL_FAIL_CLOSED: refusing to rotate or guess; manual review required")
+              fail(f"OWNER_OAUTH_KEYS_PARTIAL_FAIL_CLOSED L_ENC={enc} L_BRIDGE={lb} P_BRIDGE={pb}")
           planned=len(l_all)+2
-          if planned>60: raise SystemExit(f"OWNER_OAUTH_BINDING_BUDGET_EXCEEDED planned={planned} max=60")
+          if planned>60: fail(f"OWNER_OAUTH_BINDING_BUDGET_EXCEEDED planned={planned} max=60")
           print(f"OWNER_OAUTH_BINDING_BUDGET_PASS planned={planned} max=60")
           out.write("action=generate\n")
           PY
@@ -83,7 +88,7 @@ jobs:
           printf '%s' "$BRIDGE" | $W secret put OWNER_OAUTH_BRIDGE_SECRET --name "$L_WORKER" >/dev/null
           printf '%s' "$ENCKEY" | $W secret put OWNER_OAUTH_ENCRYPTION_KEY --name "$L_WORKER" >/dev/null
           unset BRIDGE ENCKEY
-          echo "OWNER_OAUTH_KEYS_WRITTEN=PASS (values never printed)"
+          echo "::notice title=OAUTH_BOOTSTRAP::OWNER_OAUTH_KEYS_WRITTEN=PASS (values never printed)"
 
       - name: Read back names only
         shell: bash
@@ -100,5 +105,6 @@ jobs:
           l=names("/tmp/l.json"); p=names("/tmp/p.json")
           ok={"OWNER_OAUTH_ENCRYPTION_KEY","OWNER_OAUTH_BRIDGE_SECRET"}<=l and "OWNER_OAUTH_BRIDGE_SECRET" in p
           print("OWNER_OAUTH_KEYS_READBACK="+("PASS" if ok else "FAIL"))
+          if not ok: print("::error title=OAUTH_BOOTSTRAP::readback_fail")
           raise SystemExit(0 if ok else 1)
           PY
