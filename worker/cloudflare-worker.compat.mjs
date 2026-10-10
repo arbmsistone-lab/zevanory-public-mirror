@@ -2,7 +2,7 @@ import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
 import { syncBrandProfiles, brandProfileSnapshot } from "./brand-profiles.mjs";
-import { handleOwnerOAuth } from "./owner-oauth.mjs";
+import { handleOwnerOAuth, handleYoutubePublisherAccess } from "./owner-oauth.mjs";
 import { BRAND_SIZES } from "./brand-kit.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
@@ -121,6 +121,7 @@ const wrapped = {
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
+    if (url.pathname==="/api/internal/owner/oauth/youtube-access") return handleYoutubePublisherAccess(request,normalized);
     // Wrangler has assets.run_worker_first=true. Explicitly delegate the
     // exact, SHA-pinned public brand exports; legacy Worker routing cannot serve them.
     if (url.pathname.startsWith("/brand/export/")) {
