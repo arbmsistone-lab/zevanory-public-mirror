@@ -113,3 +113,25 @@ test("canonical brand PNGs are delegated to static assets despite run_worker_fir
   assert.match(source,/normalized\.ASSETS\.fetch\(request\)/);
   assert.match(source,/brand_assets_unavailable/);
 });
+
+test("pending brand profile is retried instead of being treated as a verified receipt",async()=>{
+ const store=kv();
+ await store.put("zpc:brand:profile:bluesky:v2",JSON.stringify({channel:"bluesky",status:"pendente_conciliacao"}));
+ let attempts=0;
+ const next=await syncBrandProfiles({
+   ZEVANORY_PRIVATE_ARTIFACTS:store,BLUESKY_HANDLE:"official.bsky.social",BLUESKY_APP_PASSWORD:"dummy"
+ },async()=>{attempts++;throw Error("simulated provider outage")});
+ assert.equal(attempts,1,"a previously pending profile must retry the next brand cycle");
+ assert.equal(next.profiles.find(x=>x.channel==="bluesky")?.status,"pendente_conciliacao");
+});
+test("certified official v2 profile receipt remains idempotent",async()=>{
+ const store=kv();
+ const verified={channel:"bluesky",status:"atualizado",provider_record:"at://did:plc:verified/app.bsky.actor.profile/self",at:"2026-10-10T18:00:00Z"};
+ await store.put("zpc:brand:profile:bluesky:v2",JSON.stringify(verified));
+ let calls=0;
+ const result=await syncBrandProfiles({
+   ZEVANORY_PRIVATE_ARTIFACTS:store,BLUESKY_HANDLE:"official.bsky.social",BLUESKY_APP_PASSWORD:"dummy"
+ },async()=>{calls++;throw Error("verified receipt should skip provider");});
+ assert.equal(calls,0);
+ assert.equal(result.profiles.find(x=>x.channel==="bluesky")?.status,"atualizado");
+});

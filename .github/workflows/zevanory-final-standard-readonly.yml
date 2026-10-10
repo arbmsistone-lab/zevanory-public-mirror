@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 15
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_CHANNEL_ID: ${{ vars.TELEGRAM_CHANNEL_ID }}
+      TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID || vars.TELEGRAM_CHANNEL_ID }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -151,6 +151,15 @@ jobs:
           except (ValueError, UnicodeDecodeError):
               profile = {}
           bio = str(profile.get("description") or "")
+          print("BLUESKY_READBACK=" + json.dumps({
+              "http_status": status,
+              "displayName_ok": profile.get("displayName") == "ZEVANORY",
+              "avatar_present": str(profile.get("avatar") or "").startswith("https://"),
+              "banner_present": str(profile.get("banner") or "").startswith("https://"),
+              "bio_complete": all(p in bio for p in ("IA na prática","Renan Bitu",
+                                  "Várzea Alegre/CE","vendas.zevanory.api.br",
+                                  "utm_source=bluesky")),
+          },ensure_ascii=False))
           record("Bluesky", "DisplayName ZEVANORY, avatar, banner e bio oficial com UTM",
                  status == 200 and profile.get("displayName") == "ZEVANORY" and
                  str(profile.get("avatar") or "").startswith("https://") and
@@ -175,6 +184,16 @@ jobs:
           if not isinstance(chat, dict):
               chat = {}
           description = str(chat.get("description") or "")
+          print("TELEGRAM_READBACK=" + json.dumps({
+              "http_status": status,
+              "token_present": bool(token),
+              "chat_id_configured": bool(os.environ.get("TELEGRAM_CHANNEL_ID","").strip()),
+              "title_ok": chat.get("title") == "ZEVANORY",
+              "photo_present": bool((chat.get("photo") or {}).get("small_file_id")),
+              "description_complete": all(p in description for p in
+                                         ("IA na prática","Renan Bitu","Várzea Alegre/CE",
+                                          "vendas.zevanory.api.br","utm_source=telegram"))
+          },ensure_ascii=False))
           record("Telegram", "getChat: título, descrição, foto e UTM",
                  status == 200 and chat.get("title") == "ZEVANORY" and
                  bool((chat.get("photo") or {}).get("small_file_id")) and

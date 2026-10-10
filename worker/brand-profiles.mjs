@@ -96,7 +96,11 @@ export async function syncBrandProfiles(env={},fetchImpl=fetch){
    // v2 invalidates receipts made before the official name/bio readback contract.
    const key="zpc:brand:profile:"+channel+":v2";
    const previous=await read(kv,key);
-   if(previous){outcomes.push(previous);continue;}
+   // A pending marker is not a receipt: failed provider updates must retry on the next hourly cycle.
+   // Only a successfully verified v2 record can suppress a duplicate profile mutation.
+   if(previous?.status==="atualizado" && previous?.provider_record && previous?.at){
+     outcomes.push(previous);continue;
+   }
    let result;
    const resolved=resolveChannelCredentials(env);
    if(channel==="bluesky"&&(!resolved.BLUESKY_HANDLE||!resolved.BLUESKY_APP_PASSWORD) ||
