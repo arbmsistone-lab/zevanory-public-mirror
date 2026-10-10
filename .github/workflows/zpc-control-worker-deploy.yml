@@ -85,7 +85,7 @@ jobs:
             exit 1
           fi
           if ! jq -e '[.engines[].state] | length == 3 and all(. == "GREEN")' dist/global-trust.json >/dev/null; then
-            value="$(jq -cr '{engines: [.engines[] | {name, state}]}' dist/global-trust.json)"
+            value="$(jq -cr '{engines: [.engines[] | {name: (.name // .id // ""), state}]}' dist/global-trust.json)"
             echo "::error title=TRUST_ENGINES::$value"
             exit 1
           fi
