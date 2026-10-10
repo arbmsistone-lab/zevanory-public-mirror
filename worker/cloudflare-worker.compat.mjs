@@ -1,5 +1,6 @@
 import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
+import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
 import { latestWhatsappStage } from "./whatsapp-background.mjs";
@@ -365,6 +366,15 @@ const wrapped = {
       return handleControlCoreRequest(request, normalized, ctx, wrapped);
     }
 
+    // Read-only owner API. Never expose private activity or metrics without admin PIN.
+    if (url.pathname === "/api/admin/acquisition/snapshot") {
+      if (request.method !== "GET") return new Response(null,{status:405});
+      if (!isAdminAuthorized(request, normalized))
+        return new Response(JSON.stringify({error:"admin_auth_required"}),{status:401,headers:{"content-type":"application/json","cache-control":"no-store"}});
+      const payload=await acquisitionSnapshot(normalized,new Date());
+      return new Response(JSON.stringify(payload),{headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff"}});
+    }
+
     if (
       url.pathname === "/admin" ||
       url.pathname === "/api/admin/snapshot" ||
@@ -570,6 +580,16 @@ wrapped.scheduled = async (controller, env, ctx) => {
   tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase, production: true }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);
+  // The existing Cloudflare hourly cron is the sole ingress for acquisition.
+  // Run after legacy scheduled work to prevent competing Telegram/Blog writes.
+  if (controller?.cron === "0 * * * *") {
+    try {
+      const out=await runAcquisitionEngine(normalized,new Date());
+      console.info("acquisition_cycle",JSON.stringify({ok:out.ok===true,day:out.day||null,channels:(out.outcomes||[]).map(x=>({channel:x.channel,status:x.status}))}));
+    } catch {
+      console.error("acquisition_cycle_failed");
+    }
+  }
 };
 if (typeof worker.queue === "function") {
   wrapped.queue = async (batch, env, ctx) => worker.queue(batch, normalizeEnv(env), ctx);
