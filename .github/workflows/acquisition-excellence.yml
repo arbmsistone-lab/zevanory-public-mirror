@@ -36,7 +36,7 @@ jobs:
           python3 - <<'PY'
           import re
           text=open('/tmp/acquisition-coverage.log',encoding='utf8').read()
-          matches=re.findall(r'^#\s*(worker/(?:acquisition-engine|bluesky-publisher)\.mjs)\s*\|\s*([0-9.]+)\s*\|',text,re.M)
+          matches=re.findall(r'^#\s*((?:worker/)?(?:acquisition-engine|bluesky-publisher)\.mjs)\s*\|\s*([0-9.]+)\s*\|',text,re.M)
           if len(matches)!=2:
               raise SystemExit('COVERAGE_PROOF_MISSING: '+repr(matches))
           for path,percent in matches:
