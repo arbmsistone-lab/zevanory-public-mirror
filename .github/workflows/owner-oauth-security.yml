@@ -1,0 +1,36 @@
+name: Owner OAuth security contract
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/owner-oauth.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "tests/owner-oauth.test.mjs"
+      - ".github/workflows/owner-oauth-security.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "worker/owner-oauth.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "tests/owner-oauth.test.mjs"
+      - ".github/workflows/owner-oauth-security.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  oauth-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax and side-effect-free security contracts
+        run: |
+          set -euo pipefail
+          node --check worker/owner-oauth.mjs
+          node --check worker/cloudflare-worker.compat.mjs
+          node --test tests/owner-oauth.test.mjs
