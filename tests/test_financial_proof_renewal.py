@@ -134,7 +134,7 @@ class FinancialProofRenewalTests(unittest.TestCase):
         self.assertIn('15,45 * * * *', central)
         self.assertIn('15,45 * * * *', worker)
         self.assertIn('force: true', worker)
-        self.assertIn('cron: "11,41 * * * *"', workflow)
+        self.assertIn('cron: "15,45 * * * *"', workflow)
         self.assertIn("65*60*1000", metrics)
         self.assertIn("github.event_name != 'pull_request'", workflow)
         self.assertNotIn("sales:open:v1", workflow)
