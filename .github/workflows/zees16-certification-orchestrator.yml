@@ -1,0 +1,282 @@
+name: ZEVANORY ZEES-16 certification pipeline orchestrator
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/zees16-certification-orchestrator.yml"
+      - "worker/evidence-control-plane.mjs"
+      - "scripts/reconcile_zees16_control.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: zees16-orchestrator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fail-closed-regression:
+    name: ZEES-16 fail-closed regression contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Incomplete evidence MUST fail; exact 16 of 16 MUST pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, tempfile
+
+          source=pathlib.Path(".github/workflows/zees16-certification-orchestrator.yml").read_text()
+          lines=source.splitlines()
+          header="      - name: Report ZEES-16 state"
+          begin_marker="          node --input-type=module <<'NODE'"
+          if header not in lines:
+              raise SystemExit("Fail-closed test: certifier step is missing")
+          start=lines.index(header)
+          if begin_marker not in lines[start:]:
+              raise SystemExit("Fail-closed test: certifier executable is missing")
+          begin=lines.index(begin_marker, start)+1
+          if "          NODE" not in lines[begin:]:
+              raise SystemExit("Fail-closed test: certifier end marker is missing")
+          end=lines.index("          NODE",begin)
+          code="\n".join(line[10:] for line in lines[begin:end])
+          sha="a"*40
+          scenarios=[
+              ("12/16 incomplete",{"proven":12,"partial":3,"blocked":1,"na":0},sha,False),
+              ("15/16 incomplete",{"proven":15,"partial":1,"blocked":0,"na":0},sha,False),
+              ("release mismatch",{"proven":16,"partial":0,"blocked":0,"na":0},"b"*40,False),
+              ("16/16 complete",{"proven":16,"partial":0,"blocked":0,"na":0},sha,True),
+          ]
+          for label,counts,release_sha,should_pass in scenarios:
+              with tempfile.TemporaryDirectory() as directory:
+                  state={"counts":counts,"release_sha":release_sha}
+                  pathlib.Path(directory,"zees16-state.json").write_text(json.dumps(state))
+                  env=os.environ.copy()
+                  env["EXPECTED_SHA"]=sha
+                  result=subprocess.run(["node","--input-type=module","-e",code],
+                                        cwd=directory,env=env,capture_output=True,text=True,timeout=15)
+                  passed=(result.returncode==0)
+                  if passed!=should_pass:
+                      raise SystemExit("Fail-closed regression failure: "+label+
+                                       " expected_pass="+str(should_pass)+" actual_pass="+str(passed))
+                  print("ZEES16_CONTRACT_PASS:",label,"observed_pass=",passed)
+          PY
+
+  resolve-sha:
+    name: Resolve Certified Live SHA
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release_sha: ${{ steps.resolve.outputs.EXPECTED_SHA }}
+      release_sha12: ${{ steps.resolve.outputs.EXPECTED_SHA12 }}
+    steps:
+      - name: Resolve certified live release
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 https://zevanory.api.br/build-info.json -o /tmp/build-info.json
+          sha="$(jq -r '.sha // empty' /tmp/build-info.json)"
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then echo "::error title=CERTIFIED_LIVE_SHA::live release has no exact commit sha"; exit 1; fi
+          echo "EXPECTED_SHA=$sha" >> "$GITHUB_OUTPUT"
+          echo "EXPECTED_SHA12=${sha:0:12}" >> "$GITHUB_OUTPUT"
+          echo "CERTIFIED_LIVE_SHA=$sha"
+
+  quorum-and-independence:
+    name: Phase 1 - Quorum and Provider Independence
+    needs: resolve-sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-sha.outputs.release_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify authenticated open-provider runtime quorum
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request, time
+
+          c=json.load(open("evidence/three-provider-quorum.json"))
+          assert c["schema_version"]==3
+          assert c["min_quorum"]>=3
+          assert c["zero_spend"] is True
+          assert c["commercial_release_allowed"] is False
+          assert c["fail_closed"] is True
+
+          results=[]
+          for p in c["providers"]:
+              if p.get("enabled", True) is False:
+                  results.append({"provider":p["provider"],"failure_domain":p["failure_domain"],"ok":False,"disabled":True})
+                  continue
+              url=p.get("url") or p.get("status_url")
+              last_error="unknown"
+              verified=False
+              for attempt in range(1,4):
+                  try:
+                      req=urllib.request.Request(url,headers={"User-Agent":"ZEVANORY-Orchestrator/3.0","Accept":"application/json"})
+                      with urllib.request.urlopen(req,timeout=35) as r:
+                          raw=r.read().decode("utf-8","replace")
+                          body=json.loads(raw)
+                          identity_ok=(body.get(p["identity_field"])==p["identity_value"])
+                          expected=p.get("expected_provider_attestation")
+                          if expected:
+                              attested=(body.get("provider")==expected or body.get("quorum_attestation",{}).get("provider")==expected)
+                              identity_ok=identity_ok and attested
+                          expected_direct=p.get("expected_provider")
+                          if expected_direct:
+                              identity_ok=identity_ok and body.get("provider")==expected_direct
+                          sales=body.get("runtime",{}).get("sales")
+                          commercial_safe=(sales in (None,"globally-blocked")) and body.get("public_sales_locked") is not False
+                          if r.status==200 and identity_ok and commercial_safe:
+                              results.append({"provider":p["provider"],"failure_domain":p["failure_domain"],"ok":True,"status":r.status})
+                              verified=True
+                              break
+                          last_error="attestation_mismatch"
+                  except Exception as exc:
+                      last_error=type(exc).__name__
+                  if attempt<3:
+                      time.sleep(5*attempt)
+              if not verified:
+                  results.append({"provider":p["provider"],"failure_domain":p["failure_domain"],"ok":False,"error":last_error})
+
+          healthy=[x for x in results if x["ok"]]
+          providers={x["provider"] for x in healthy}
+          domains={x["failure_domain"] for x in healthy}
+          if len(providers)<c["min_quorum"] or len(domains)<c["min_quorum"]:
+              raise SystemExit(f"open provider quorum failed: providers={len(providers)} domains={len(domains)} required={c['min_quorum']}")
+          print("PASS open provider quorum:", sorted(providers))
+          PY
+      - name: Validate P14 provider independence
+        run: python3 scripts/provider_independence_gate.py
+
+  system-resilience-and-apex:
+    name: Phase 2 - System Resilience and Apex Contracts
+    needs: [resolve-sha, quorum-and-independence]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-sha.outputs.release_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify apex manifest and required contracts
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib
+          c=json.load(open('evidence/zevanory-apex-engineering.json'))
+          required={'architecture','source_integrity','provenance','security','privacy','availability','resilience','disaster_recovery','provider_independence','performance','latency','accessibility','responsive_layout','typography','color_contrast','interaction_quality','seo','legal','api_health','main_edge_parity','observability','commercial_safety','channel_continuity','release_reproducibility'}
+          assert required.issubset(set(c['pillars']))
+          assert c['claim_policy']=='fail_closed_evidence_only'
+          assert c['external_certification_claimed'] is False
+          print('PASS apex engineering manifest')
+          PY
+
+  quality-wcag-and-slo:
+    name: Phase 3 - Quality, Visual Regression and WCAG
+    needs: [resolve-sha, system-resilience-and-apex]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-sha.outputs.release_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate operational baseline
+        run: python3 scripts/operational_preservation_gate.py
+      - name: Validate ZEA-10 autonomy
+        run: python3 scripts/zea10_autonomy_gate.py
+
+  evidence-gate-and-provenance:
+    name: Phase 4 - Evidence Gate and Provenance Audit
+    needs: [resolve-sha, quality-wcag-and-slo]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-sha.outputs.release_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate ZEES-16 registry
+        run: python3 scripts/zees16_evidence_gate.py
+      - name: Verify source hygiene and production provenance
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, re, subprocess
+          tracked=subprocess.check_output(['git','ls-files'],text=True).splitlines()
+          marker_patterns=[
+              re.compile(r'(?im)^\s*//\s*(TODO|FIXME|HACK|PLACEHOLDER)\b'),
+              re.compile(r'(?im)^\s*/\*+\s*(TODO|FIXME|HACK|PLACEHOLDER)\b')
+          ]
+          bad=[]
+          for p in tracked:
+              path=pathlib.Path(p)
+              if path.suffix not in {'.mjs','.js','.css','.html','.yml','.yaml','.py','.sh'}: continue
+              txt=path.read_text(encoding='utf-8',errors='ignore')
+              if any(rx.search(txt) for rx in marker_patterns): bad.append(p)
+          if bad: raise SystemExit('unresolved dev markers: '+','.join(bad[:10]))
+          print('PASS source hygiene and provenance')
+          PY
+
+  reconcile-acceptance:
+    name: Phase 5 - Final ZEES-16 Reconciler Acceptance
+    needs: [resolve-sha, evidence-gate-and-provenance, fail-closed-regression]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PREVIOUS_STATE_PATH: previous-state.json
+      EXPECTED_SHA: ${{ needs.resolve-sha.outputs.release_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-sha.outputs.release_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Read local state template
+        run: echo '{}' > previous-state.json
+      - name: Reconcile production evidence
+        run: node scripts/reconcile_zees16_control.mjs
+      - name: Report ZEES-16 state
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const s=JSON.parse(fs.readFileSync("zees16-state.json","utf8"));
+          const counts = {
+            proven: Number(s?.counts?.proven || 0),
+            partial: Number(s?.counts?.partial || 0),
+            blocked: Number(s?.counts?.blocked || 0),
+            na: Number(s?.counts?.na || 0),
+          };
+          const expected=process.env.EXPECTED_SHA;
+          if (!/^[a-f0-9]{40}$/.test(expected || "") || s.release_sha !== expected) {
+            throw new Error("ZEES16 exact production SHA mismatch");
+          }
+          const isCertified = counts.proven === 16 && counts.partial === 0 && counts.blocked === 0 && counts.na === 0;
+          console.log("ZEES16_EVALUATION_REPORT", counts, "SHA", s.release_sha, "CERTIFIED_16_16", isCertified);
+          if (!isCertified) {
+            console.error("ZEES16_GOVERNANCE_STATUS: REPROVED (F6 remains UNCERTIFIED until 16/16 evidence runs complete)");
+            throw new Error("ZEES16_FAIL_CLOSED: exact 16/16 PROVEN required; see ZEES16_EVALUATION_REPORT above");
+          }
+          console.log("ZEES16_GOVERNANCE_STATUS: PROVEN (F6 FULL CERTIFICATION GRANTED)");
+          NODE
