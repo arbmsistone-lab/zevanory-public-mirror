@@ -3,6 +3,7 @@
 import { ensureDailyBlog, publishTelegram, channelChecklist, resolveChannelCredentials, localContentDay } from "./multichannel-autonomy.mjs";
 import { publishBluesky, blueskyReady, blueskyPostText, graphemeCount } from "./bluesky-publisher.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
+import { creativeAutopublishPaused } from "./creative-autonomy.mjs";
 export const ACQUISITION_STATE_PREFIX="zpc:acquisition:daily:";
 export const ACQUISITION_CALENDAR_KEY="zpc:acquisition:calendar:v1";
 const DAY=86400000;
@@ -116,6 +117,7 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  if(!kv?.get||!kv?.put)return {ok:false,code:"kv_unavailable"};
  const day=localContentDay(now),entry=calendarEntry(day),hour=localHour(now),channels=channelChecklist(env);
  const active=channel=>channels.find(x=>x.id===channel)?.configured===true;
+ const paused=await creativeAutopublishPaused(env);
  const outcomes=[];
  if(hour>=PEAK_HOURS.blog){
   try{
@@ -125,6 +127,7 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  }
  for(const channel of ["telegram","bluesky"]){
   if(hour<PEAK_HOURS[channel])continue;
+  if(paused){outcomes.push({channel,status:"pausado",code:"creative_autopublish_paused",day});continue;}
   if(!active(channel)){
    outcomes.push({channel,status:"aguardando credencial",day});
    continue;
