@@ -1,3 +1,4 @@
+import { readFinancialProofSnapshot } from "./commercial-metrics-projection.mjs";
 // Sales switch + customer self-service delivery recovery.
 // Deploy note (2026-10-07): first production rollout was rolled back by the CSP smoke (inline footer style on the sales site, fixed in #460).
 //
@@ -133,7 +134,19 @@ export async function handleSalesControl(request, env, { sqlFactory, worker, ctx
   if (path === "/api/sales/status") {
     if (request.method !== "GET") return json(405, { error: "method_not_allowed" });
     const sw = await readSalesSwitch(env);
-    return json(200, { open: sw.enabled === true, requested: sw.requested === true, blocked: sw.blocked || null, revision: sw.revision || null });
+    // Public open means EFFECTIVE commercial release, not merely the owner's
+    // KV request. The runtime /api/status remains fail-closed without exact
+    // financial proof and the production release gates. This public readback
+    // must agree without changing the owner switch or any checkout rule.
+    const proof = await readFinancialProofSnapshot(env);
+    const open = sw.enabled === true && sw.authorized === true &&
+      proof?.verified === true &&
+      String(env.ABSOLUTE_RELEASE_APPROVED || "").toLowerCase() === "true" &&
+      String(env.PRE_SALE_GATES_APPROVED || "").toLowerCase() === "true" &&
+      String(env.MERCADOPAGO_ENV || "").toLowerCase() === "production";
+    return json(200, { open, requested: sw.requested === true,
+      blocked: open ? null : (sw.blocked || (sw.enabled ? "release_or_financial_proof_pending" : null)),
+      revision: sw.revision || null });
   }
   if (path === "/entrega/reenviar") {
     return request.method === "GET" || request.method === "HEAD" ? html(200, RESEND_PAGE) : json(405, { error: "method_not_allowed" });
