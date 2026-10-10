@@ -98,7 +98,9 @@ export async function syncBrandProfiles(env={},fetchImpl=fetch){
    const previous=await read(kv,key);
    // A pending marker is not a receipt: failed provider updates must retry on the next hourly cycle.
    // Only a successfully verified v2 record can suppress a duplicate profile mutation.
-   if(previous?.status==="atualizado" && previous?.provider_record && previous?.at){
+   const signedReceipt=previous?.status==="atualizado" && Boolean(previous?.at) &&
+     (channel==="telegram" || Boolean(previous?.provider_record));
+   if(signedReceipt){
      outcomes.push(previous);continue;
    }
    let result;
