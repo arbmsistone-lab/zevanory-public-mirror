@@ -2,6 +2,7 @@ import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
 import { syncBrandProfiles, brandProfileSnapshot } from "./brand-profiles.mjs";
+import { BRAND_SIZES } from "./brand-kit.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
 import { latestWhatsappStage } from "./whatsapp-background.mjs";
@@ -118,6 +119,15 @@ const wrapped = {
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
+    // Wrangler has assets.run_worker_first=true. Explicitly delegate the
+    // exact, SHA-pinned public brand exports; legacy Worker routing cannot serve them.
+    if (url.pathname.startsWith("/brand/export/")) {
+      if (request.method !== "GET" && request.method !== "HEAD")return new Response(null,{status:405});
+      const name=url.pathname.slice("/brand/export/".length);
+      if(!Object.prototype.hasOwnProperty.call(BRAND_SIZES,name))return new Response("not_found",{status:404});
+      if(!normalized.ASSETS?.fetch)return new Response("brand_assets_unavailable",{status:503});
+      return normalized.ASSETS.fetch(request);
+    }
     // Signed probes are accepted only on explicit read-only audit/status routes.
     if (request.headers.has("x-zevanory-audit-ts") || request.headers.has("x-zevanory-audit-signature")) {
       if (!(await verifySignedAuditProbe(request, normalized))) {
