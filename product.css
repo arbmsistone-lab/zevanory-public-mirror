@@ -211,3 +211,6 @@ main{
 .lead-banner{border:1px solid var(--line);border-radius:20px;background:#0b111a;padding:20px 24px;margin-bottom:24px}
 .lead-banner h2{margin:0 0 8px;font-size:1.3rem}
 .review-summary{margin:12px 0 0;color:var(--warning);font-weight:800}
+
+/* Founder profile link must meet 44px mobile/tablet touch-target geometry. */
+.founder-section #founder-title a{display:inline-flex;min-height:44px;align-items:center}
