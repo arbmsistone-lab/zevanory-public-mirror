@@ -76,10 +76,11 @@ on:
       - "scripts/financial_e2e_stripe.py"
       - "scripts/financial_e2e_closure.py"
       - ".github/workflows/zpc-cloudflare-route-discovery.yml"
-permissions:
-  contents: read
 jobs:
   deploy:
+    permissions:
+      contents: read
+      actions: write
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -358,6 +359,15 @@ jobs:
           done
           echo "AUTO_ROLLBACK_HEALTH=FAIL"
           exit 1
+      - name: Dispatch exact-production ZEES-16 provider evidence
+        if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/deploy/dispatch-exact-production-evidence.sh "$TARGET_RUNTIME_SHA"
       - name: Fail-closed deployment status
         if: steps.auth.outputs.available != 'true'
         run: |
