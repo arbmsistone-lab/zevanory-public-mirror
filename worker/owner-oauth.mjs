@@ -15,17 +15,24 @@ const callback=c=>host+c+"/callback";
 const cookieName=c=>"zpc_oauth_state_"+c;
 const cookie=(c,s,age)=>cookieName(c)+"="+encodeURIComponent(s)+"; Secure; HttpOnly; SameSite=Lax; Path="+new URL(callback(c)).pathname+"; Max-Age="+age;
 const eq=(a,b)=>{const x=enc.encode(String(a)),y=enc.encode(String(b));let n=x.length^y.length;for(let i=0;i<Math.max(x.length,y.length);i++)n|=(x[i]||0)^(y[i]||0);return n===0;};
+// Dedicated secrets may be stored inside the existing encrypted-by-Cloudflare
+// credential bundle to respect the strict 60-binding deployment budget.
+// No secret is inferred or re-used from the commercial/payment trust chain.
+const dedicatedSecret=(env,name)=>{
+ let bundle={};
+ try{const raw=env.CHANNEL_CREDENTIALS_JSON;bundle=raw&&typeof raw==="object"?raw:JSON.parse(String(raw||"{}"));}catch{}
+ return String(env[name]||bundle?.[name]||"");
+};
 const settings=(env,c)=>{
- let bundle={};try{bundle=JSON.parse(String(env.CHANNEL_CREDENTIALS_JSON||"{}"));}catch{}
  const prefix=c==="youtube"?"YOUTUBE":"PINTEREST";
- return {id:String(env[prefix+"_CLIENT_ID"]||bundle[prefix+"_CLIENT_ID"]||""),secret:String(env[prefix+"_CLIENT_SECRET"]||bundle[prefix+"_CLIENT_SECRET"]||"")};
+ return {id:dedicatedSecret(env,prefix+"_CLIENT_ID"),secret:dedicatedSecret(env,prefix+"_CLIENT_SECRET")};
 };
 async function mac(secret,message){
  const key=await crypto.subtle.importKey("raw",enc.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
  return b64(await crypto.subtle.sign("HMAC",key,enc.encode(message)));
 }
 async function cipherKey(env){
- const secret=String(env.OWNER_OAUTH_ENCRYPTION_KEY||"");
+ const secret=dedicatedSecret(env,"OWNER_OAUTH_ENCRYPTION_KEY");
  if(secret.length<32)throw Error("oauth_encryption_not_configured");
  const key=await crypto.subtle.digest("SHA-256",enc.encode(secret));
  return crypto.subtle.importKey("raw",key,{name:"AES-GCM"},false,["encrypt"]);
@@ -41,7 +48,7 @@ function finish(c,status){
 }
 async function ticketAuth(u,env,kv,c,action){
  const ts=u.searchParams.get("ts")||"",nonce=u.searchParams.get("nonce")||"",sig=u.searchParams.get("sig")||"";
- const key=String(env.OWNER_OAUTH_BRIDGE_SECRET||"");
+ const key=dedicatedSecret(env,"OWNER_OAUTH_BRIDGE_SECRET");
  if(key.length<32||!/^\d{13}$/.test(ts)||!/^[a-zA-Z0-9_-]{40,128}$/.test(nonce)||!/^[a-zA-Z0-9_-]{43}$/.test(sig))return false;
  if(Math.abs(Date.now()-Number(ts))>60000)return false;
  const expected=await mac(key,["zpc-oauth-v1",action,c,ts,nonce].join("\n"));
