@@ -94,16 +94,19 @@ test("historical v1 approval cannot skip the new official v2 profile readback", 
  assert.equal(JSON.parse(await store.get("zpc:brand:profile:bluesky:v1")).provider_record,"legacy");
 });
 
-test("hourly brand cycle is outside acquisition try/catch and has independent failure telemetry",()=>{
+test("brand cycle runs in the isolated 5,35 cron, before activity sync, with independent failure telemetry",()=>{
   const source=readFileSync(new URL("../worker/cloudflare-worker.compat.mjs",import.meta.url),"utf8");
-  const start=source.indexOf('if (controller?.cron === "0 * * * *")');
-  const end=source.indexOf('if (typeof worker.queue',start);
+  const start=source.indexOf('if (controller?.cron === "5,35 * * * *")');
+  const end=source.indexOf('if (controller?.cron === "15,45 * * * *")',start);
   assert.ok(start>=0&&end>start);
   const cron=source.slice(start,end);
-  const acquisitionFailure=cron.indexOf('console.error("acquisition_cycle_failed")');
   const brandSync=cron.indexOf('await syncBrandProfiles(normalized)');
   const brandFailure=cron.indexOf('console.error("brand_profile_cycle_unverified")');
-  assert.ok(acquisitionFailure>0&&brandSync>acquisitionFailure&&brandFailure>brandSync);
+  const activity=cron.indexOf('syncProductionActivity');
+  assert.ok(brandSync>0&&brandFailure>brandSync&&activity>brandFailure);
+  // Not duplicated in the subrequest-exhausted hourly invocation.
+  const hourly=source.slice(source.indexOf('if (controller?.cron === "0 * * * *")'));
+  assert.equal(hourly.indexOf('await syncBrandProfiles(normalized)'),-1);
 });
 
 test("canonical brand PNGs are delegated to static assets despite run_worker_first",()=>{

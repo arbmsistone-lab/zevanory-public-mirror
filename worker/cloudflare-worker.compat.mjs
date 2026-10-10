@@ -539,6 +539,16 @@ const wrapped = {
 wrapped.scheduled = async (controller, env, ctx) => {
   const normalized = normalizeEnv(env);
   if (controller?.cron === "5,35 * * * *") {
+    // Brand profiles run here, isolated from the hourly cron: on Workers Free the
+    // hourly invocation exhausts its 50-subrequest budget (acquisition, blog,
+    // email, orders) before the profile sync is reached. Conforming profiles cost
+    // only GET readbacks; writes happen solely on verified drift.
+    try {
+      const brand=await syncBrandProfiles(normalized);
+      console.info("brand_profile_cycle",JSON.stringify({statuses:(brand.profiles||[]).map(p=>({channel:p.channel,status:p.status,code:p.code||null}))}));
+    } catch {
+      console.error("brand_profile_cycle_unverified");
+    }
     try {
       const out = await syncProductionActivity(normalized, {sqlFactory:whatsappProofDatabase});
       console.info("order13_activity_sync", JSON.stringify({
@@ -609,13 +619,7 @@ wrapped.scheduled = async (controller, env, ctx) => {
     } catch {
       console.error("acquisition_cycle_failed");
     }
-    // Profile maintenance remains independent if acquisition throws.
-    try {
-      const brand=await syncBrandProfiles(normalized);
-      console.info("brand_profile_cycle",JSON.stringify({statuses:(brand.profiles||[]).map(p=>({channel:p.channel,status:p.status}))}));
-    } catch {
-      console.error("brand_profile_cycle_unverified");
-    }
+    // Profile maintenance moved to the isolated "5,35" cron (subrequest budget).
   }
 };
 if (typeof worker.queue === "function") {
