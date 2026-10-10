@@ -22,6 +22,30 @@ for wf in zevanory-provider-independence.yml zevanory-portable-dr.yml zevanory-t
   gh workflow run "$wf" --ref gh-pages
   echo "ZEES16_EVIDENCE_DISPATCHED=$wf TARGET_SHA=$expected"
 done
-# Completion of the three workflows also triggers the reconciler via workflow_run.
-# Do not dispatch the reconciler before provider evidence has had a chance to finish.
-echo "ZEES16_RECONCILER=TRIGGERED_BY_WORKFLOW_RUN_AFTER_EVIDENCE"
+# Wait for all three dispatches on this exact commit before reconciling.
+workflows=(zevanory-provider-independence.yml zevanory-portable-dr.yml zevanory-three-provider-quorum.yml)
+for attempt in $(seq 1 90); do
+  completed=0
+  for wf in "${workflows[@]}"; do
+    result="$(gh run list --workflow "$wf" --branch gh-pages --event workflow_dispatch --limit 10 --json headSha,status,conclusion --jq '[.[] | select(.headSha == "'$expected'")][0] | if . == null then "missing" elif .status != "completed" then "running" else .conclusion end')"
+    if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+      echo "::error title=ZEES16_EVIDENCE_NOT_GREEN::$wf $result"
+      exit 1
+    fi
+    [ "$result" = "success" ] && completed=$((completed+1))
+  done
+  [ "$completed" = 3 ] && break
+  sleep 8
+done
+if [ "$completed" != 3 ]; then
+  echo "::error title=ZEES16_EVIDENCE_TIMEOUT::Only $completed/3 workflows succeeded"
+  exit 1
+fi
+head="$(gh api "repos/$repo/git/ref/heads/gh-pages" --jq '.object.sha')"
+live="$(curl -fsS --max-time 25 https://zevanory.api.br/api/release | jq -r '.deployment.commit_sha // empty')"
+if [ "$head" != "$expected" ] || [ "$live" != "$expected" ]; then
+  echo "::warning title=ZEES16_RECONCILER_SHA_MOVED::head=$head live=$live target=$expected"
+  exit 0
+fi
+gh workflow run zees16-control-reconciler.yml --ref gh-pages
+echo "ZEES16_RECONCILER_DISPATCHED_SHA=$expected"
