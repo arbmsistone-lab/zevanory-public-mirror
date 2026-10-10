@@ -76,3 +76,15 @@ jobs:
           if [ "$code" = "200" ]; then
             jq -c '{gate,financial_proof:{last_isolated_run:.financial_proof.last_isolated_run}}' /tmp/order30-status.json || true
           fi
+
+      - name: GET-only live control checkout state after canonical promotion
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl -sS --max-time 15 -o /tmp/order30-sales-state.json -w '%{http_code}' https://controle.zevanory.api.br/api/sales/state || true)"
+          echo "ORD30_SALES_STATE_HTTP=$code"
+          if [ "$code" = "200" ]; then
+            jq -c '{ok,state,open}' /tmp/order30-sales-state.json || true
+          else
+            echo "ORD30_SALES_STATE=Estado indisponível"
+          fi
