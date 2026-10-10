@@ -1,0 +1,81 @@
+{
+  "name": "ZEVANORY isolated certification Worker (manual Free)",
+  "run-name": "certification-only:${{ inputs.expected_sha }}",
+  "on": {
+    "workflow_dispatch": {
+      "inputs": {
+        "expected_sha": {
+          "description": "Full reviewed gh-pages SHA; mandatory exact pin",
+          "required": true,
+          "type": "string"
+        }
+      }
+    }
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "concurrency": {
+    "group": "certification-worker-free",
+    "cancel-in-progress": false
+  },
+  "jobs": {
+    "certification": {
+      "if": "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1 && vars.SANDBOX_FINANCIAL_ENABLED == 'true'",
+      "environment": {
+        "name": "sandbox-financial-approved"
+      },
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 30,
+      "env": {
+        "EXPECTED_SHA": "${{ inputs.expected_sha }}",
+        "CLOUDFLARE_API_TOKEN": "${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}",
+        "CLOUDFLARE_ACCOUNT_ID": "1b26415802588185a86c1d4d3ebf5bdb",
+        "TARGET_RUNTIME_SHA": "${{ github.sha }}",
+        "CERTIFICATION_KV_ID": "${{ vars.CERTIFICATION_KV_ID }}",
+        "CERTIFICATION_D1_ID": "${{ vars.CERTIFICATION_D1_ID }}",
+        "CERTIFICATION_SANDBOX_URL": "${{ vars.CERTIFICATION_SANDBOX_URL }}",
+        "MERCADOPAGO_TEST_PUBLIC_KEY": "${{ secrets.MERCADOPAGO_TEST_PUBLIC_KEY }}",
+        "MERCADOPAGO_TEST_ACCESS_TOKEN": "${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}",
+        "MERCADOPAGO_TEST_WEBHOOK_SECRET": "${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}",
+        "CERTIFICATION_E2E_TOKEN": "${{ secrets.CERTIFICATION_E2E_TOKEN }}",
+        "CERTIFICATION_DATABASE_URL": "${{ secrets.CERTIFICATION_DATABASE_URL }}",
+        "CERTIFICATION_OPERATOR_TOKEN": "${{ secrets.CERTIFICATION_OPERATOR_TOKEN }}",
+        "CERTIFICATION_RESEND_API_KEY": "${{ secrets.CERTIFICATION_RESEND_API_KEY }}",
+        "CERTIFICATION_RESEND_RECEIVING_API_KEY": "${{ secrets.CERTIFICATION_RESEND_RECEIVING_API_KEY }}",
+        "SANDBOX_INBOX_READ_TOKEN": "${{ secrets.SANDBOX_INBOX_READ_TOKEN }}"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "persist-credentials": false,
+            "fetch-depth": 0
+          }
+        },
+        {
+          "uses": "actions/setup-node@v4",
+          "with": {
+            "node-version": "22"
+          }
+        },
+        {
+          "name": "Build same pinned canonical source, generate wholly separate Free config, tests and dry-run",
+          "run": "set -euo pipefail\ntest \"$(git rev-parse HEAD)\" = \"$EXPECTED_SHA\"\ntest \"$TARGET_RUNTIME_SHA\" = \"$EXPECTED_SHA\"\npython3 scripts/zero_cost_guard.py\ngit fetch origin final-83620c6\nrm -rf public\ngit archive 83620c680958d726fc4b0fd16e2574cdcc362a6d public | tar -x\nnode scripts/deploy/materialize-control-plane.mjs\ncp admin.css public/admin.css\npython3 scripts/deploy/write-build-info.py\ngit show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc\nZEVANORY_LAUNCH_AUTHORIZATION='' python3 scripts/deploy/prepare-central-candidate.py\npython3 scripts/deploy/prepare-certification-config.py\nnode --check certification-worker.mjs\npython3 -m unittest discover -s tests -p test_sandbox_guards.py\nnode --test tests/certification-worker.test.mjs\nnpx --yes wrangler@4.143.0 deploy --dry-run --config wrangler.certification.generated.jsonc --outdir /tmp/certification-bundle"
+        },
+        {
+          "name": "Deploy CERTIFICATION script only, never zevanory or sales workers",
+          "run": "set -euo pipefail\nnode -e 'const c=require(\"./wrangler.certification.generated.jsonc\");if(c.name!==\"zevanory-certification\"||c.routes.length||c.services?.length||c.triggers.crons.length)process.exit(1)'\nnpx --yes wrangler@4.143.0 deploy --config wrangler.certification.generated.jsonc --tag=\"$EXPECTED_SHA\"\necho 'CERTIFICATION_ONLY_DEPLOY_REQUESTED=PASS'"
+        },
+        {
+          "name": "Attach only sandbox-named secrets to certification Worker",
+          "run": "set -euo pipefail\npython3 - <<'PY'\nimport json,os,pathlib,sys\nnames=[\"MERCADOPAGO_TEST_PUBLIC_KEY\",\"MERCADOPAGO_TEST_ACCESS_TOKEN\",\"MERCADOPAGO_TEST_WEBHOOK_SECRET\",\"CERTIFICATION_E2E_TOKEN\",\"CERTIFICATION_DATABASE_URL\",\"CERTIFICATION_OPERATOR_TOKEN\",\"CERTIFICATION_RESEND_API_KEY\",\"CERTIFICATION_RESEND_RECEIVING_API_KEY\",\"SANDBOX_INBOX_READ_TOKEN\"]\nmissing=[n for n in names if not os.environ.get(n)]\nif missing:sys.exit(\"CERTIFICATION_SECRETS_MISSING: \"+\",\".join(missing))\np=pathlib.Path(\"/tmp/certification-secrets-only.json\")\np.touch(mode=0o600)\np.write_text(json.dumps({n:os.environ[n] for n in names}))\nPY\ntrap 'rm -f /tmp/certification-secrets-only.json' EXIT\nnpx --yes wrangler@4.143.0 secret bulk /tmp/certification-secrets-only.json --config wrangler.certification.generated.jsonc\n"
+        },
+        {
+          "name": "Read back isolated Worker capability with exact deployed SHA",
+          "run": "set -euo pipefail\ncase \"$CERTIFICATION_SANDBOX_URL\" in https://zevanory-certification.*.workers.dev) ;; *) echo 'CERTIFICATION_SANDBOX_URL_INVALID'; exit 1;; esac\ncode=\"$(curl -sS -o /tmp/certification-readback.json -w '%{http_code}' --connect-timeout 10 --max-time 25 -H \"x-certification-e2e-token: $CERTIFICATION_E2E_TOKEN\" \"$CERTIFICATION_SANDBOX_URL/api/internal/certification/e2e/status\")\"\ntest \"$code\" = 200 || { echo 'CERTIFICATION_READBACK_HTTP_FAIL'; exit 1; }\npython3 - <<'PY'\nimport json,os\nj=json.load(open('/tmp/certification-readback.json'))\nassert j.get('certification_worker_source_sha')==os.environ['EXPECTED_SHA']\nassert j.get('sale_globally_enabled') is False and j.get('sales_mode')=='globally-blocked'\nassert j.get('sandbox_proof_contract')=='v2' and j.get('sandbox_checkout_isolated') is True\nprint('CERTIFICATION_ONLY_READBACK=PASS; PUBLIC_SALES_UNMODIFIED=true')\nPY"
+        }
+      ]
+    }
+  }
+}
