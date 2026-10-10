@@ -24,7 +24,7 @@ TEST = 'tests/test_sandbox_guards.py'
 SCOPE = (MANUAL, STATIC, SCRIPT, CHECKER, TEST)
 ALLOWED_SECRETS = {'MERCADOPAGO_TEST_PUBLIC_KEY', 'MERCADOPAGO_TEST_ACCESS_TOKEN',
                    'SANDBOX_IDENTITY_MANIFEST', 'SANDBOX_INBOX_READ_TOKEN', 'CERTIFICATION_E2E_TOKEN'}
-HOSTS = {'api.mercadopago.com', 'zevanory.api.br'}
+HOSTS = {'api.mercadopago.com', 'zevanory-certification.fixture.workers.dev'}
 REGISTERED_EXCEPTION = {
     'filename': 'zees16-control-reconciler.yml',
     'blob': '70466f7d797f6e2046ed53dabd77f6ca8ec15243',
