@@ -141,6 +141,10 @@ jobs:
             echo "::error title=READBACK_VERSION::HTTP fetch failed"
             exit 1
           fi
+          if ! jq -e . /tmp/version.json >/dev/null 2>&1; then
+            echo "::error title=READBACK_VERSION::invalid_json content_prefix=$(head -c 80 /tmp/version.json | tr '\\n' ' ' | tr -cd '[:print:]')"
+            exit 1
+          fi
           if ! jq -e --arg expected "$SOURCE_SHA" '.sha == $expected' /tmp/version.json >/dev/null; then
             echo "::error title=READBACK_VERSION::$(jq -c '{sha,repository}' /tmp/version.json)"
             exit 1
