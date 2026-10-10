@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";import assert from "node:assert/strict";
-import {channelChecklist,ensureWeeklyBlog,ensureDailyBlog,localContentDay,INDEXNOW_PUBLIC_KEY,publishTelegram,publishPinterest,renderBlogArticle,renderChannelsPage,resolveChannelCredentials,runMultichannelAutonomy} from "../worker/multichannel-autonomy.mjs";
+import {channelChecklist,ensureWeeklyBlog,ensureDailyBlog,localContentDay,INDEXNOW_PUBLIC_KEY,publishTelegram,publishPinterest,renderBlogArticle,renderChannelsPage,resolveChannelCredentials,runMultichannelAutonomy,brandPinterestCreative,PINTEREST_APPROVED_BRAND_PIN_URL} from "../worker/multichannel-autonomy.mjs";
 const brandResponse=name=>new Response(readFileSync(new URL("../assets/brand/export/"+name,import.meta.url)),{status:200,headers:{"content-type":"image/png"}});
 const kv=()=>{const m=new Map();return{m,get:async k=>m.get(k)||null,put:async(k,v)=>m.set(k,v)}};
 test("missing credential blocks only its channel and verified channels leave dry_run",()=>{const rows=channelChecklist({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.equal(rows.find(x=>x.id==="blog").configured,true);assert.equal(rows.find(x=>x.id==="telegram").mode,"pending");assert.equal(rows.find(x=>x.id==="facebook").mode,"dry_run");const live=channelChecklist({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i",META_APP_LIVE:"true"});assert.equal(live.find(x=>x.id==="facebook").mode,"active");});
@@ -116,4 +116,34 @@ test("Telegram resolves a public t.me URL even when configured with numeric chat
   const withoutUsername=async()=>new Response(JSON.stringify({ok:true,result:{message_id:43,chat:{id:-10098765}}}),{status:200});
   const privatePost=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"-10098765"},payload:{content:"Guia publicado"},fetchImpl:withoutUsername});
   assert.equal(privatePost.url,null,"do not invent public links for a private channel");
+});
+
+test("Pinterest F1 dynamic editorial is published with the official hashed Z image",async()=>{
+  const creative={creative_id:"f1-test-10",status:"approved_for_autopublish",compliance:100,score:92,asset_url:"https://creative.example/unverified.png",title:"Tema editorial específico",content:"Descrição editorial específica",landing_url:"https://vendas.zevanory.api.br/solucoes"};
+  const rebranded=brandPinterestCreative(creative);
+  assert.equal(rebranded.media_url,PINTEREST_APPROVED_BRAND_PIN_URL);
+  assert.equal(rebranded.title,creative.title);
+  assert.equal(rebranded.content,creative.content);
+  const store=kv();
+  await store.put("zpc:creative-autonomy:feed:v1",JSON.stringify([creative]));
+  const requests=[];
+  const fake=async(url,options={})=>{
+    requests.push(url);
+    if(url===PINTEREST_APPROVED_BRAND_PIN_URL)return brandResponse("pin.png");
+    if(url==="https://api.pinterest.com/v5/pins"){
+      const p=JSON.parse(options.body);
+      assert.equal(p.media_source.url,PINTEREST_APPROVED_BRAND_PIN_URL);
+      assert.equal(p.title,creative.title);
+      assert.equal(p.description,creative.content);
+      return new Response(JSON.stringify({id:"pin-brand-test"}),{status:201});
+    }
+    throw Error("Unexpected endpoint "+url);
+  };
+  const env={ZEVANORY_PRIVATE_ARTIFACTS:store,PINTEREST_ACCESS_TOKEN:"test",PINTEREST_BOARD_ID:"board"};
+  const outcome=await runMultichannelAutonomy(env,new Date("2026-10-10T18:00:00Z"),fake);
+  assert.ok(!requests.includes(creative.asset_url));
+  assert.ok(requests.includes(PINTEREST_APPROVED_BRAND_PIN_URL));
+  const pin=outcome.evidence.find(x=>x.channel==="pinterest");
+  assert.equal(pin?.provider_post_id,"pin-brand-test");
+  assert.equal(pin?.brand_asset_strategy,"approved_official_pin");
 });
