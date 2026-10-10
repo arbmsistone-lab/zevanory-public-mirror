@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {calendarEntry,planCalendar,productLink,generateNative,validateDraft,textSimilarity,runAcquisitionEngine,acquisitionSnapshot,verifyProductLink} from "../worker/acquisition-engine.mjs";
+import {calendarEntry,planCalendar,productLink,generateNative,validateDraft,textSimilarity,runAcquisitionEngine,acquisitionSnapshot,verifyProductLink,runOwnerDailyDigest} from "../worker/acquisition-engine.mjs";
 const kv=()=>{const m=new Map();return{m,get:async k=>m.get(k)??null,put:async(k,v)=>{m.set(k,String(v))}}};
 test("30-day calendar rotates five real SKUs, five niches, five angles",()=>{
  const c=planCalendar(new Date("2026-10-10T12:00:00Z"));
@@ -71,4 +71,29 @@ test("peak schedule delays Bluesky until 19:00 Sao Paulo",async()=>{
  const env={ZEVANORY_PRIVATE_ARTIFACTS:kv(),BLUESKY_HANDLE:"abc",BLUESKY_APP_PASSWORD:"xyz"};
  const out=await runAcquisitionEngine(env,new Date("2026-10-10T16:00:00Z"),async()=>({status:200,ok:true,json:async()=>({})}));
  assert.equal(out.outcomes.some(x=>x.channel==="bluesky"),false);
+});
+
+test("daily owner digest requires existing opt-in owner email and real receipts",async()=>{
+ const store=kv(),now=new Date("2026-10-10T23:00:00Z"),env={ZEVANORY_PRIVATE_ARTIFACTS:store,RESEND_API_KEY:"resend-test",OWNER_ALERT_EMAIL:"owner@example.org"};
+ await store.put("zpc:acquisition:daily:2026-10-10",JSON.stringify({outcomes:[{channel:"blog",status:"publicado",url:"https://zevanory.api.br/blog/verified"}]}));
+ const sent=[];const mock=async(url,options)=>{assert.equal(url,"https://api.resend.com/emails");sent.push(JSON.parse(options.body));return{ok:true,json:async()=>({id:"email-123"})};};
+ const receipt=await runOwnerDailyDigest(env,now,mock);
+ assert.equal(receipt.status,"publicado");assert.equal(receipt.provider_post_id,"email-123");
+ assert.match(sent[0].text,/https:\/\/zevanory.api.br\/blog\/verified/);assert.match(sent[0].text,/Vendas: sem dados/);
+ assert.equal((await runOwnerDailyDigest(env,now,mock)).status,"publicado");assert.equal(sent.length,1);
+});
+test("owner digest waits until peak and does not send with missing credential",async()=>{
+ const env={ZEVANORY_PRIVATE_ARTIFACTS:kv()};
+ assert.equal((await runOwnerDailyDigest(env,new Date("2026-10-10T19:00:00Z"))).status,"agendado");
+ assert.equal((await runOwnerDailyDigest(env,new Date("2026-10-10T23:00:00Z"))).status,"aguardando credencial");
+});
+test("legacy Telegram receipt is adopted without a duplicate remote post",async()=>{
+ const store=kv(),day="2026-10-10";
+ await store.put("zpc:multichannel:evidence:telegram:daily:"+day,JSON.stringify({channel:"telegram",provider_post_id:"17",url:"https://t.me/zevanory/17",publishedAt:"2026-10-10T14:00:00Z"}));
+ const env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"secret",TELEGRAM_CHANNEL_ID:"@zevanory"};
+ let requests=0;const mock=async(url,req)=>{if(url.includes("api.telegram.org"))requests++;return{ok:true,status:200,json:async()=>({})};};
+ const result=await runAcquisitionEngine(env,new Date("2026-10-10T23:00:00Z"),mock);
+ assert.equal(result.outcomes.find(x=>x.channel==="telegram").status,"publicado");
+ assert.equal(result.outcomes.find(x=>x.channel==="telegram").provenance,"legacy");
+ assert.equal(requests,0);
 });
