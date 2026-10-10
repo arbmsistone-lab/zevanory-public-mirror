@@ -156,8 +156,32 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
  await kv.put(ACQUISITION_CALENDAR_KEY,JSON.stringify({updatedAt:now.toISOString(),days:planCalendar(now),timezone:TIMEZONE}),{expirationTtl:86400*2});
  const state={day,generatedAt:now.toISOString(),product:entry.product.sku,niche:entry.niche,angle:entry.angle,outcomes};
  await kv.put(ACQUISITION_STATE_PREFIX+day,JSON.stringify(state),{expirationTtl:45*86400});
- return {ok:true,...state};
+ const ownerDigest=await runOwnerDailyDigest(env,now,fetchImpl);
+ return {ok:true,...state,ownerDigest};
 }
+// 20:00 Sao Paulo owner digest: only real receipts, no invented funnel counts.
+export async function runOwnerDailyDigest(env={},now=new Date(),fetchImpl=fetch){
+ const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,day=localDay(now),hour=localHour(now),key="zpc:acquisition:owner-digest:"+day;
+ if(hour<20)return {status:"agendado",day};
+ if(!kv?.get||!kv?.put)return {status:"erro",code:"kv_unavailable"};
+ const existing=await safeJson(kv,key,null);if(existing)return existing;
+ if(!env.RESEND_API_KEY||!env.OWNER_ALERT_EMAIL)return {status:"aguardando credencial",missing:["RESEND_API_KEY","OWNER_ALERT_EMAIL"].filter(x=>!env[x])};
+ const state=await safeJson(kv,ACQUISITION_STATE_PREFIX+day,null);
+ const actual=(state?.outcomes||[]).filter(x=>x.status==="publicado"&&x.url);
+ const lines=actual.map(x=>"• "+x.channel+": "+x.url);
+ const subject="ZEVANORY | Resumo de divulgação "+day;
+ const content=["Publicações confirmadas:",...(lines.length?lines:["Sem publicações comprovadas."]),"","Leads: sem dados","Checkouts: sem dados","Vendas: sem dados","Alertas: sem dados","Agenda de amanhã: "+(calendarEntry(new Date(Date.parse(day+"T00:00:00Z")+DAY).toISOString().slice(0,10)).subject),"","Painel: https://controle.zevanory.api.br"].join("\n");
+ await kv.put(key,JSON.stringify({status:"pending",day,at:now.toISOString()}),{expirationTtl:7*86400});
+ try{
+  const response=await fetchImpl("https://api.resend.com/emails",{method:"POST",headers:{"authorization":"Bearer "+String(env.RESEND_API_KEY),"content-type":"application/json"},body:JSON.stringify({from:String(env.RESEND_FROM_ADDRESS||"ZEVANORY <contato@zevanory.api.br>"),to:[String(env.OWNER_ALERT_EMAIL)],subject,text:content}),signal:AbortSignal.timeout(10000)});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok||!data?.id)throw new Error("owner_digest_provider_unverified");
+  const receipt={status:"publicado",day,at:now.toISOString(),provider_post_id:String(data.id),channels:actual.map(x=>x.channel)};
+  await kv.put(key,JSON.stringify(receipt),{expirationTtl:45*86400});
+  return receipt;
+ }catch{return {status:"erro",code:"owner_digest_unverified",needs_reconciliation:true};}
+}
+
 export async function acquisitionSnapshot(env={},now=new Date()){
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,day=localDay(now);
  const [today,calendar]=await Promise.all([safeJson(kv,ACQUISITION_STATE_PREFIX+day,null),safeJson(kv,ACQUISITION_CALENDAR_KEY,null)]);
