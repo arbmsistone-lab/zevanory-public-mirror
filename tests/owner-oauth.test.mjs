@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { handleOwnerOAuth, OAUTH_PROVIDERS, openOAuthRefresh, resolveOwnerPublisherToken, handleYoutubePublisherAccess } from "../worker/owner-oauth.mjs";
+import { handleOwnerOAuth, OAUTH_PROVIDERS, openOAuthRefresh, sealOAuthRefresh, OAUTH_BRIDGE_KV_KEY, resolveOwnerPublisherToken, handleYoutubePublisherAccess } from "../worker/owner-oauth.mjs";
 const base="https://zevanory.api.br/api/owner/oauth/";
 const env=()=>({
  OWNER_OAUTH_BRIDGE_SECRET:"bridge-high-entropy-12345678901234567890",
@@ -153,4 +153,28 @@ test("broken encrypted KV connection never silently downgrades to legacy",async(
  const e=env();
  await e.ZEVANORY_PRIVATE_ARTIFACTS.put("zpc:owner:oauth:connection:pinterest:v1",JSON.stringify({schema:"zpc.owner.oauth.v1",channel:"pinterest",encryptedRefresh:{alg:"AES-256-GCM",iv:"bad",ciphertext:"bad"}}));
  await assert.rejects(()=>resolveOwnerPublisherToken(e,"pinterest",async()=>{throw Error("should-not-fetch");}));
+});
+
+test("Free-budget key sourcing: HKDF subkey of the marketplace token key, bridge from private KV",async()=>{
+ const kv=new MapKV();
+ const parent="bWVyY2Fkb2xpdnJlLXRva2VuLWVuY3J5cHRpb24ta2V5LTMy";
+ const e={MERCADOLIVRE_TOKEN_ENCRYPTION_KEY:parent,YOUTUBE_CLIENT_ID:"client.apps.googleusercontent.com",
+   YOUTUBE_CLIENT_SECRET:"client-secret",ZEVANORY_PRIVATE_ARTIFACTS:kv};
+ const blob=await sealOAuthRefresh(e,"refresh-xyz");
+ assert.equal(await openOAuthRefresh(e,blob),"refresh-xyz");
+ // Different parent key => authenticated decryption fails closed, never garbage.
+ await assert.rejects(openOAuthRefresh({...e,MERCADOLIVRE_TOKEN_ENCRYPTION_KEY:parent+"x"},blob));
+ // Parent key is not used directly: a raw-SHA256(parent) AES key cannot open it.
+ await assert.rejects(openOAuthRefresh({OWNER_OAUTH_ENCRYPTION_KEY:parent},blob));
+ // No bridge anywhere => 401 even with a well-formed ticket.
+ const bridge="kv-bridge-high-entropy-1234567890123456789012";
+ const signed=await url("start","youtube",{OWNER_OAUTH_BRIDGE_SECRET:bridge});
+ assert.equal((await handleOwnerOAuth(new Request(signed),e)).status,401);
+ // Bridge provisioned in KV by the one-time bootstrap => accepted.
+ await kv.put(OAUTH_BRIDGE_KV_KEY,bridge);
+ const ok=await handleOwnerOAuth(new Request(await url("start","youtube",{OWNER_OAUTH_BRIDGE_SECRET:bridge})),e);
+ assert.equal(ok.status,302);
+ // Short/absent parent key => fail closed.
+ const weak={...e,MERCADOLIVRE_TOKEN_ENCRYPTION_KEY:"short"};
+ assert.equal((await handleOwnerOAuth(new Request(await url("start","youtube",{OWNER_OAUTH_BRIDGE_SECRET:bridge})),weak)).status,503);
 });

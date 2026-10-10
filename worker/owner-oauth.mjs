@@ -24,12 +24,37 @@ async function mac(secret,message){
  const key=await crypto.subtle.importKey("raw",enc.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
  return b64(await crypto.subtle.sign("HMAC",key,enc.encode(message)));
 }
+// Workers Free caps the L Worker at 60 bindings (all used). Key material is
+// therefore sourced without new bindings:
+//  - encryption: a dedicated OWNER_OAUTH_ENCRYPTION_KEY if ever bound; otherwise
+//    an HKDF-SHA256 subkey, domain-separated, of the existing secret binding
+//    MERCADOLIVRE_TOKEN_ENCRYPTION_KEY (a key minted for marketplace OAuth token
+//    encryption). The parent key is never used directly. Rotating it orphans
+//    stored connections (owner reconnects with one click), it never decrypts
+//    with a wrong key: AES-GCM authentication fails closed.
+//  - bridge: dedicated OWNER_OAUTH_BRIDGE_SECRET if bound; otherwise the value
+//    the one-time bootstrap wrote to private KV (same value as the panel secret).
+export const OAUTH_BRIDGE_KV_KEY="zpc:owner:oauth:bridge:v1";
+const HKDF_SALT=enc.encode("zevanory-owner-oauth-salt-v1");
+const HKDF_INFO=enc.encode("zpc-owner-oauth-refresh-aes-256-gcm-v1");
 async function cipherKey(env){
- const secret=String(env.OWNER_OAUTH_ENCRYPTION_KEY||"");
- if(secret.length<32)throw Error("oauth_encryption_not_configured");
- const key=await crypto.subtle.digest("SHA-256",enc.encode(secret));
- return crypto.subtle.importKey("raw",key,{name:"AES-GCM"},false,["encrypt","decrypt"]);
+ const dedicated=String(env.OWNER_OAUTH_ENCRYPTION_KEY||"");
+ if(dedicated.length>=32){
+  const key=await crypto.subtle.digest("SHA-256",enc.encode(dedicated));
+  return crypto.subtle.importKey("raw",key,{name:"AES-GCM"},false,["encrypt","decrypt"]);
+ }
+ const parent=String(env.MERCADOLIVRE_TOKEN_ENCRYPTION_KEY||"");
+ if(parent.length<32)throw Error("oauth_encryption_not_configured");
+ const ikm=await crypto.subtle.importKey("raw",enc.encode(parent),"HKDF",false,["deriveKey"]);
+ return crypto.subtle.deriveKey({name:"HKDF",hash:"SHA-256",salt:HKDF_SALT,info:HKDF_INFO},ikm,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
 }
+async function bridgeSecret(env,kv){
+ const dedicated=String(env.OWNER_OAUTH_BRIDGE_SECRET||"");
+ if(dedicated.length>=32)return dedicated;
+ const stored=String(await kv?.get?.(OAUTH_BRIDGE_KV_KEY)||"");
+ return stored.length>=32?stored:"";
+}
+export async function sealOAuthRefresh(env,s){return seal(env,s);}
 async function seal(env,s){
  const iv=crypto.getRandomValues(new Uint8Array(12));
  const bytes=await crypto.subtle.encrypt({name:"AES-GCM",iv},await cipherKey(env),enc.encode(s));
@@ -84,7 +109,7 @@ function finish(c,status){
 }
 async function ticketAuth(u,env,kv,c,action){
  const ts=u.searchParams.get("ts")||"",nonce=u.searchParams.get("nonce")||"",sig=u.searchParams.get("sig")||"";
- const key=String(env.OWNER_OAUTH_BRIDGE_SECRET||"");
+ const key=await bridgeSecret(env,kv);
  if(key.length<32||!/^\d{13}$/.test(ts)||!/^[a-zA-Z0-9_-]{40,128}$/.test(nonce)||!/^[a-zA-Z0-9_-]{43}$/.test(sig))return false;
  if(Math.abs(Date.now()-Number(ts))>60000)return false;
  const expected=await mac(key,["zpc-oauth-v1",action,c,ts,nonce].join("\n"));
