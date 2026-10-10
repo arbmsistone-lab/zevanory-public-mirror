@@ -1,0 +1,33 @@
+name: ZEVANORY C2 production-only status live proof read only
+on:
+  push:
+    branches: [audit/c2-status-live-proof]
+  pull_request:
+    branches: [gh-pages]
+    paths: [".github/workflows/zpc-c2-status-live-proof.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: zevanory-c2-signed-proof
+  cancel-in-progress: false
+jobs:
+  c2-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Renew current production financial snapshot via canonical signed GET
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Execute only the reviewed protected-branch implementation, not this stale audit branch.
+          git fetch --no-tags --depth=1 origin gh-pages
+          git show FETCH_HEAD:scripts/financial_proof_renewal.py > /tmp/c2-financial-proof-renewal.py
+          python3 -m py_compile /tmp/c2-financial-proof-renewal.py
+          python3 /tmp/c2-financial-proof-renewal.py
+          echo "::notice title=C2_SNAPSHOT_AFTER::accepted=true"
