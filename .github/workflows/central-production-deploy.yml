@@ -307,7 +307,10 @@ jobs:
           # Sales open: the financial proof is bound to the release SHA, so every deploy
           # invalidates it and /api/status falls back to globally-blocked. Renew it for the
           # new release (signed GET-only audit) before the exact-release poll.
-          if curl -fsS https://zevanory.api.br/api/sales/status | python3 -c 'import json,sys;sys.exit(0 if json.load(sys.stdin).get("open") is True else 1)'; then
+          # Decide on the OWNER'S authorized request, not on the effective state: a new
+          # release SHA has, by design, no proof yet, so "open" is already false here and
+          # the renewal was skipped -> exact-release poll mismatch -> automatic rollback.
+          if curl -fsS https://zevanory.api.br/api/sales/status | python3 -c 'import json,sys;j=json.load(sys.stdin);sys.exit(0 if (j.get("open") is True or j.get("requested") is True) else 1)'; then
             for i in $(seq 1 30); do
               rel="$(curl -fsS https://zevanory.api.br/api/release | python3 -c 'import json,sys;print((json.load(sys.stdin).get("deployment") or {}).get("commit_sha",""))' || true)"
               [ "$rel" = "$TARGET_RUNTIME_SHA" ] && break
