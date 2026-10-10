@@ -25,6 +25,7 @@ jobs:
           ctype="${ctype:-unavailable}"
           size="$(wc -c <"$bytes")"
           magic="$(head -c8 "$bytes" | od -An -tx1 | tr -d ' \n')"
-          printf 'BRAND_LIVE_DIAGNOSTIC url=%s status=%s content_type=%s bytes=%s png_signature=%s\n' "$url" "$code" "$ctype" "$size" "$magic"
+          digest="$(sha256sum "$bytes" | cut -d' ' -f1)"
+          printf 'BRAND_LIVE_DIAGNOSTIC url=%s status=%s content_type=%s bytes=%s png_signature=%s sha256=%s\n' "$url" "$code" "$ctype" "$size" "$magic" "$digest"
           # Diagnostic only: never certify an invalid response. The production
           # deploy's SHA-256 check remains the mandatory acceptance gate.
