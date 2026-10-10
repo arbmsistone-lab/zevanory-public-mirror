@@ -208,4 +208,11 @@ for unused in ("KNOWLEDGE_SEED_ALLOWED","SPEECHIFY_FREE_TIER_CONFIRMED","AZURE_S
     c["vars"].pop(unused,None)
 for key in ("VOICE_TTS_PROVIDER", "VOICE_TTS_PROVIDER_CHAIN"):
     runtime_config[key]=c["vars"].pop(key)
+# Preserve both preexisting public values without spending standalone Worker
+# variable slots. normalizeEnv reads ZEVANORY_RUNTIME_CONFIG for their old names.
+# Do not compact secret bindings or change any sales/financial safety gates.
+for key in ("ZEVANORY_RELEASE_REF", "ZEVANORY_WHATSAPP_DISPLAY"):
+    if key in c["vars"]:
+        runtime_config[key] = c["vars"].pop(key)
+
 open(p,"w").write(json.dumps(c,indent=2)+"\n")
