@@ -61,7 +61,9 @@ jobs:
           if any(present):
               fail(f"OWNER_OAUTH_KEYS_PARTIAL_FAIL_CLOSED L_ENC={enc} L_BRIDGE={lb} P_BRIDGE={pb}")
           planned=len(l_all)+2
-          if planned>60: fail(f"OWNER_OAUTH_BINDING_BUDGET_EXCEEDED planned={planned} max=60")
+          if planned>60:
+              print("::notice title=L_BINDING_NAMES::"+",".join(sorted(n for n in l_all if n)))
+              fail(f"OWNER_OAUTH_BINDING_BUDGET_EXCEEDED planned={planned} max=60")
           print(f"OWNER_OAUTH_BINDING_BUDGET_PASS planned={planned} max=60")
           out.write("action=generate\n")
           PY
