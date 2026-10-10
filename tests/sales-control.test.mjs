@@ -95,3 +95,21 @@ test("switch cache expires within 10 s so a close propagates in < 60 s", async (
   assert.equal((await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: store }, t0 + 10_001)).revision, "r2");
   resetSalesSwitchCache();
 });
+
+test("public sales status remains fail-closed despite an approved owner switch while release proof is missing", async () => {
+  resetSalesSwitchCache();
+  const store = kv({
+    "sales:open:v1": JSON.stringify(AUTH()),
+    "zpc-sales-preflight:v1": JSON.stringify({ ok: true, at: new Date().toISOString() })
+  });
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: store,
+    ABSOLUTE_RELEASE_APPROVED: "true", PRE_SALE_GATES_APPROVED: "true", MERCADOPAGO_ENV: "production" };
+  const req = new Request("https://zevanory.api.br/api/sales/status");
+  const sw = await readSalesSwitch(env);
+  assert.equal(sw.enabled, true, "owner switch is unchanged");
+  const status = await (await handleSalesControl(req, env)).json();
+  assert.equal(status.open, false, "unproven financial snapshot cannot announce live sales");
+  assert.equal(status.requested, true);
+  assert.equal(status.blocked, "release_or_financial_proof_pending");
+  resetSalesSwitchCache();
+});
