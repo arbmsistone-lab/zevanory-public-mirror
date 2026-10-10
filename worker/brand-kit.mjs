@@ -24,6 +24,16 @@ export const BRAND_CHANNEL_FILES = Object.freeze({
   facebook: ["post-01.png","post-02.png","post-03.png"],
   blog: ["blog-card.png"], email: ["email-card.png"], link: ["link-card.png"],
 });
+export const BRAND_PROFILE_FILES = Object.freeze({
+ bluesky:["avatar-800.png","banner-bluesky.png"],
+ telegram:["avatar-800.png"],
+ youtube:["avatar-800.png","banner-youtube.png"],
+ facebook:["avatar-800.png","banner-facebook.png"],
+ instagram:["avatar-800.png"],
+ pinterest:["avatar-800.png"],
+ whatsapp:["avatar-800.png"],
+ google:["avatar-800.png"],
+});
 export const PNG_SIGNATURE = new Uint8Array([137,80,78,71,13,10,26,10]);
 export function pngDimensions(value) {
   const bytes=value instanceof Uint8Array?value:new Uint8Array(value);
@@ -40,9 +50,9 @@ export function brandUrlFilename(value) {
   return url.pathname.split("/").pop();
 }
 const hex=bytes=>Array.from(bytes,x=>x.toString(16).padStart(2,"0")).join("");
-export async function validateOutboundBrandImage({url,channel,fetchImpl=fetch,approved=BRAND_APPROVED_MEDIA,cryptoImpl=crypto}={}) {
+export async function validateOutboundBrandImage({url,channel,fetchImpl=fetch,approved=BRAND_APPROVED_MEDIA,cryptoImpl=crypto,role="publication",includeBytes=false}={}) {
   const name=brandUrlFilename(url);
-  if(!BRAND_CHANNEL_FILES[channel]?.includes(name))throw new Error("brand_channel_size_or_role");
+  if(!(role==="profile"?BRAND_PROFILE_FILES:BRAND_CHANNEL_FILES)[channel]?.includes(name))throw new Error("brand_channel_size_or_role");
   const expected=approved[name];
   if(!expected || !/^[0-9a-f]{64}$/.test(expected))throw new Error("brand_artifact_unapproved");
   const response=await fetchImpl(url,{method:"GET",redirect:"manual",signal:AbortSignal.timeout(10000)});
@@ -53,8 +63,10 @@ export async function validateOutboundBrandImage({url,channel,fetchImpl=fetch,ap
   if(actual[0]!==need[0]||actual[1]!==need[1])throw new Error("brand_image_dimensions");
   const digest=hex(new Uint8Array(await cryptoImpl.subtle.digest("SHA-256",bytes)));
   if(digest!==expected)throw new Error("brand_logo_or_palette_unverified");
-  return Object.freeze({ok:true,channel,name,sha256:digest,width:actual[0],height:actual[1]});
+  return Object.freeze({ok:true,channel,name,sha256:digest,width:actual[0],height:actual[1],...(includeBytes?{bytes}:{})});
 }
 // Images not in the signed-off brand build are never forwarded; do not silently
 // replace a missing image or send it unbranded.
 export const requireBrandedPublication = validateOutboundBrandImage;
+
+export const validateBrandProfileAsset=options=>validateOutboundBrandImage({...options,role:"profile"});
