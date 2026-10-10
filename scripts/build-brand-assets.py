@@ -51,13 +51,13 @@ def post_svg(w,h,a,b,c):
 <rect width="{w}" height="{h}" fill="#05070b"/>
 <rect x="{pad//2}" y="{pad//2}" width="{w-pad}" height="{h-pad}" rx="30" fill="#0b0f16" stroke="#202a38" stroke-width="3"/>
 {nested_mark(pad,pad,logo)}
-<text x="{pad+logo+22}" y="{pad+round(logo*.7)}" font-family="Arial,Helvetica,sans-serif" font-weight="700" font-size="{round(logo*.48)}" fill="#f5f7fb">ZEVANORY</text>
+<text x="{pad+logo+22}" y="{pad+round(logo*.7)}" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-weight="700" font-size="{round(logo*.48)}" fill="#f5f7fb">ZEVANORY</text>
 <path d="M{pad} {y1-round(title_size*1.6)} H{round(w*.65)}" stroke="#00b8ff" stroke-width="5"/>
-<text x="{pad}" y="{y1}" font-family="Arial,Helvetica,sans-serif" font-weight="700" font-size="{title_size}" fill="#f5f7fb">{safe(a)}</text>
-<text x="{pad}" y="{y1+gap}" font-family="Arial,Helvetica,sans-serif" font-weight="700" font-size="{title_size}" fill="#8fb8ff">{safe(b)}</text>
-<text x="{pad}" y="{desc_y}" font-family="Arial,Helvetica,sans-serif" font-size="{max(23,round(title_size*.37))}" fill="#a8f0d0">{safe(c)}</text>
+<text x="{pad}" y="{y1}" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-weight="700" font-size="{title_size}" fill="#f5f7fb">{safe(a)}</text>
+<text x="{pad}" y="{y1+gap}" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-weight="700" font-size="{title_size}" fill="#8fb8ff">{safe(b)}</text>
+<text x="{pad}" y="{desc_y}" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="{max(23,round(title_size*.37))}" fill="#a8f0d0">{safe(c)}</text>
 <path d="M{pad} {footer_y-38} H{w-pad}" stroke="#202a38" stroke-width="3"/>
-<text x="{pad}" y="{footer_y}" font-family="Arial,Helvetica,sans-serif" font-size="{max(25,round(min(w,h)*.032))}" fill="#f5f7fb">{HOST}</text>
+<text x="{pad}" y="{footer_y}" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="{max(25,round(min(w,h)*.032))}" fill="#f5f7fb">{HOST}</text>
 </svg>'''
 def render(xml:bytes,w:int,h:int,dest:Path):
     png=cairosvg.svg2png(bytestring=xml,output_width=w,output_height=h)
