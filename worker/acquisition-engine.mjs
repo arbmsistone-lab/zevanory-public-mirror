@@ -110,7 +110,7 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[]}){
  await kv.put(key,JSON.stringify(reservation),{expirationTtl:45*86400});
  try{
   const receipt=channel==="telegram"
-   ?await publishTelegram({env,payload:{content:draft.text},fetchImpl})
+   ?await publishTelegram({env,payload:{content:draft.text,media_url:"https://zevanory.api.br/brand/export/post-01.png"},fetchImpl})
    :await publishBluesky({env,title:draft.hook,hook:draft.hook,value:draft.value,cta:draft.cta,productUrl:draft.link,day:entry.day,topic:entry.product.sku,fetchImpl});
   if(!receipt?.url||!receipt?.provider_post_id)throw new Error("provider_receipt_missing");
   const outcome={channel,day:entry.day,status:"publicado",provider_post_id:receipt.provider_post_id,url:receipt.url,product:entry.product.sku,utm:draft.link,text:draft.text,at:now.toISOString(),gate};

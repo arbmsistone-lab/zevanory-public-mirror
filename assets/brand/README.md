@@ -28,3 +28,28 @@ As chamadas de publicação de imagens devem usar `validateOutboundBrandImage` n
 Nenhuma ação externa deve ocorrer sem permissão adequada; upload manual não equivale a `profile_updated` comprovado.
 
 Os PNGs aprovados são servidos por `https://zevanory.api.br/brand/export/<arquivo>.png`: o deploy central copia e certifica todos os hashes para `public/brand/export/` antes de publicar. `vendas.zevanory.api.br` continua sendo o endereço obrigatório do rodapé, não a dependência de CDN.
+
+## Textos prontos para os perfis (sem fingir publicação)
+
+**Identidade universal:** nome `ZEVANORY`; avatar `https://zevanory.api.br/brand/export/avatar-800.png` (400×400 também em `avatar-400.png`). O perfil deve usar a mesma imagem, não uma recriação. Em perfis comerciais, preencher os campos próprios com a razão social, CNPJ e contatos aprovados.
+
+- **Instagram** (bio de até 150 caracteres, sem banner):
+  `IA na prática para pequenos negócios. Criada por Renan Bitu, Várzea Alegre/CE. https://vendas.zevanory.api.br/?utm_source=instagram&utm_medium=profile`
+  Foto: avatar-800; editar https://www.instagram.com/accounts/edit/
+- **Facebook**:
+  `IA na prática para pequenos negócios. Criada por Renan Bitu, Várzea Alegre/CE. https://vendas.zevanory.api.br/?utm_source=facebook&utm_medium=profile`
+  Foto: avatar-800; capa: banner-facebook.png (1640×624); editar na página com permissões de administrador https://www.facebook.com/profile.php?id=1249902628211703
+- **YouTube**:
+  `IA na prática para pequenos negócios. Criada por Renan Bitu, Várzea Alegre/CE. https://vendas.zevanory.api.br/?utm_source=youtube&utm_medium=profile`
+  Foto: avatar-800; capa: banner-youtube.png (2560×1440, conteúdo central 1546×423); editar https://studio.youtube.com/
+- **Pinterest**:
+  `IA na prática para pequenos negócios. Criada por Renan Bitu, Várzea Alegre/CE. https://vendas.zevanory.api.br/?utm_source=pinterest&utm_medium=profile`
+  Foto: avatar-800; pin: pin.png; editar https://www.pinterest.com/settings/
+- **WhatsApp Business** (seção Sobre, texto abreviado para caber):
+  `IA prática para pequenos negócios. Renan Bitu · Várzea Alegre/CE.`
+  Nome: ZEVANORY; foto: avatar-800; URL no campo Site: `https://vendas.zevanory.api.br/?utm_source=whatsapp&utm_medium=profile`; editar pelo aplicativo oficial em Ferramentas comerciais → Perfil comercial
+- **Google Perfil da Empresa**: nome `ZEVANORY` apenas se corresponder à identidade empresarial real; logotipo: avatar-800; descrição sem links ou alegações proibidas: `IA na prática para pequenos negócios. Marca criada por Renan Bitu, em Várzea Alegre/CE.` URL no campo Website: `https://vendas.zevanory.api.br/?utm_source=google&utm_medium=profile`; editar https://business.google.com/
+- **Telegram**: nome `ZEVANORY`; avatar-800; descrição e UTM fornecidos por `OFFICIAL_SOCIAL_PROFILE.telegram`; acesso https://t.me/zevanory
+- **Bluesky**: nome `ZEVANORY`; avatar-800; capa banner-bluesky.png (1500×500); bio e UTM fornecidos por `OFFICIAL_SOCIAL_PROFILE.bluesky`; editar https://bsky.app/settings/account
+
+**Pendências reais:** sem readback do provedor, avatar/capa/bio é `depende_do_dono` ou `pendente_conciliacao`. Não registrar `profile_updated` ou `post_published` com base em configuração local.

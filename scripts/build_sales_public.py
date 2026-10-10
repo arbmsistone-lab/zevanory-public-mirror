@@ -229,7 +229,13 @@ def main() -> int:
     apply_approved_overlay()
 
     shutil.copy2(ROOT / "product.css", OUT / "product.css")
-    shutil.copy2(ROOT / "sitemap.xml", OUT / "sitemap.xml")
+    # Sales sitemap must match the canonical vendas domain, not the apex blog.
+    # Keep the apex sitemap as-is for editorial articles.
+    sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
+    sitemap = re.sub(r"\s*<url><loc>https://zevanory\.api\.br/</loc>.*?</url>", "", sitemap, count=1, flags=re.S)
+    sitemap = re.sub(r"\s*<url><loc>https://zevanory\.api\.br/blog/[^<]+</loc>.*?</url>", "", sitemap, flags=re.S)
+    sitemap = sitemap.replace("<loc>https://zevanory.api.br/", "<loc>https://vendas.zevanory.api.br/")
+    (OUT / "sitemap.xml").write_text(sitemap, encoding="utf-8")
     shutil.copytree(ROOT / "brand", OUT / "brand")
     (OUT / "assets").mkdir(exist_ok=True)
     portrait = ROOT / "assets" / "renan-bitu.webp"

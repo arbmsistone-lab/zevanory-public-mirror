@@ -1,3 +1,4 @@
+import { brandedEmailHtml } from "./brand-email.mjs";
 // Post-sale robot (fidelização) — only for customers who actually paid and received a product.
 // D+1: onboarding ("como começar"); D+5: satisfaction check + the natural next step in the catalog.
 // Hard rules:
@@ -127,6 +128,7 @@ async function sendResend(env, { to, subject, text, idempotencyKey, unsubscribeU
       reply_to: SUPPORT_EMAIL,
       subject,
       text,
+      html: brandedEmailHtml(text,{unsubscribeUrl}),
       headers: { "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:${SUPPORT_EMAIL}?subject=descadastrar>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
       tags: [{ name: "flow", value: "post_sale" }],
     }),
