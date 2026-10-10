@@ -33,7 +33,7 @@ jobs:
             code=$(curl -sS -A "$UA" -o /dev/null -w '%{http_code}' "https://vendas.zevanory.api.br$path")
             echo "::notice title=PAGE $path::$code"; [ "$code" = 200 ] || fail=1
           done
-          for sku in ZEV-IA-011 $(curl -sS -A "$UA" https://vendas.zevanory.api.br/solucoes | grep -o '/comprar/ZEV-[A-Z0-9-]*' | sed 's#/comprar/##' | sort -u); do
+          for sku in ZEV-IA-011 ZEV-VEN-011 ZEV-LCX-011 ZEV-NGC-011 ZEV-CMB-011; do
             body=$(curl -sS -A "$UA" "https://vendas.zevanory.api.br/comprar/$sku")
             if echo "$body" | grep -q 'Ir para o pagamento seguro'; then st=OPEN; elif echo "$body" | grep -q 'Vendas abrem em breve'; then st=CLOSED; fail=1; else st=UNKNOWN; fail=1; fi
             price=$(echo "$body" | grep -o 'R\$ [0-9.,]*' | head -1)
