@@ -115,6 +115,22 @@ class FinancialProofRenewalTests(unittest.TestCase):
         with self.assertRaisesRegex(renewal.RenewalError, "SWITCH_NOT_OPEN"):
             renewal.renew(SECRET, fetch=getter, retries=1)
 
+    def test_renews_fresh_release_when_only_proof_is_pending(self):
+        def getter(path, secret=""):
+            if path == "/api/sales/status":
+                return 200, {"open": False, "requested": True, "blocked": "release_or_financial_proof_pending"}
+            return fake_fetch(path, secret)
+        self.assertEqual(renewal.renew(SECRET, fetch=getter, retries=1)["gate"], "G3")
+
+    def test_still_refuses_unauthorized_or_red_preflight_request(self):
+        for blocked in ("owner_authorization_incomplete", "preflight_not_green", None):
+            def getter(path, secret="", blocked=blocked):
+                if path == "/api/sales/status":
+                    return 200, {"open": False, "requested": True, "blocked": blocked}
+                return fake_fetch(path, secret)
+            with self.assertRaisesRegex(renewal.RenewalError, "SWITCH_NOT_OPEN"):
+                renewal.renew(SECRET, fetch=getter, retries=1)
+
     def test_requires_proven_financial_gate_and_authorization(self):
         for change in [
             {"gate": "G2"}, {"runtime": {"sales": "globally-blocked"}},
