@@ -37,12 +37,68 @@ def get_json(path, secret="", timeout=28):
         with urllib.request.urlopen(urllib.request.Request(BASE + path, headers=headers, method="GET"), timeout=timeout) as response:
             return response.status, json.load(response)
     except urllib.error.HTTPError as exc:
-        return exc.code, {}
+        try:
+            body = json.load(exc)
+            return exc.code, body if isinstance(body, dict) else {}
+        except (ValueError, UnicodeError, OSError):
+            return exc.code, {}
     except Exception:
         return 0, {}
 
 
+def report_ambiguous_409(body):
+    """Only bounded, enumerated dimensions. No raw provider JSON or PII."""
+    if not isinstance(body, dict):
+        body = {}
+    count = body.get("ambiguous")
+    count = count if type(count) is int and 0 <= count <= 100000 else "unknown"
+    print("ORD12A_AMBIGUOUS=" + str(count))
+    allowed_reasons = {
+        "payment_id_missing_or_invalid", "order_missing",
+        "pilot_payment_visible_in_production_account", "pilot_payment_lookup_unverified",
+        "certification_provenance_unverified", "provider_outside_mercadopago_proof",
+        "production_provider_unavailable_or_unexpected_http", "provider_payment_id_mismatch",
+        "merchant_account_mismatch", "provider_live_mode_not_true",
+        "external_reference_not_reconciled", "asaas_pilot_provenance_unverified",
+        "asaas_sandbox_credential_not_verified", "asaas_payment_id_not_eligible_for_lookup",
+        "asaas_sandbox_payment_lookup_unverified", "asaas_sandbox_payment_reference_mismatch",
+        "asaas_sandbox_payment_status_not_confirmed", "asaas_sandbox_refund_status_not_confirmed",
+        "asaas_sandbox_event_not_supported"
+    }
+    reasons = []
+    for row in body.get("evidence_reasons", [])[:100] if isinstance(body.get("evidence_reasons"), list) else []:
+        if not isinstance(row, dict):
+            continue
+        label, sep, reason = str(row.get("reason", "")).partition(":")
+        n = row.get("count")
+        if sep and label == "ambiguo" and reason in allowed_reasons and type(n) is int and 0 <= n <= 100000:
+            reasons.append({"reason": reason, "count": n})
+    print("ORD12A_REASONS=" + json.dumps(reasons, separators=(",", ":")))
+    allowed = {
+        "provider": {"mercadopago", "asaas", "stripe", "other_or_missing"},
+        "event": {"payment_confirmed", "refund_confirmed", "other_event"},
+        "pilot": {"pilot_true", "pilot_false", "pilot_unknown"},
+        "id_format": {"missing", "mercadopago_numeric", "other_format"},
+        "marker_hint": {"mp_test_prefix", "fixture_or_seed_prefix", "pilot_or_test_prefix", "not_classifiable_from_prefix"},
+    }
+    breakdown = []
+    for row in body.get("evidence_breakdown", [])[:100] if isinstance(body.get("evidence_breakdown"), list) else []:
+        if not isinstance(row, dict) or row.get("classification") != "ambiguo":
+            continue
+        n = row.get("count")
+        if type(n) is not int or not 0 <= n <= 100000:
+            continue
+        if all(row.get(k) in values for k, values in allowed.items()):
+            breakdown.append({**{k: row[k] for k in allowed}, "count": n})
+    print("ORD12A_BREAKDOWN=" + json.dumps(breakdown, separators=(",", ":")))
+    ids = (body.get("payment_ids") or {}).get("ambiguo", []) if isinstance(body.get("payment_ids"), dict) else []
+    tails = [v[-4:] for v in ids[:100] if isinstance(v, str) and re.fullmatch(r"\d{4,32}", v)] if isinstance(ids, list) else []
+    print("ORD12A_AMBIG_IDS=" + json.dumps(tails, separators=(",", ":")))
+
+
 def validate_audit(code, body):
+    if code == 409:
+        report_ambiguous_409(body)
     if code != 200:
         raise RenewalError("AUDIT_HTTP_" + str(code))
     if not isinstance(body, dict):
