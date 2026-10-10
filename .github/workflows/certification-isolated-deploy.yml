@@ -65,7 +65,7 @@
         },
         {
           "name": "Deploy CERTIFICATION script only, never zevanory or sales workers",
-          "run": "set -euo pipefail\nnode -e 'const c=require(\"./wrangler.certification.generated.jsonc\");if(c.name!==\"zevanory-certification\"||c.routes.length||c.services?.length||c.triggers.crons.length)process.exit(1)'\nnpx --yes wrangler@4.143.0 deploy --config wrangler.certification.generated.jsonc --tag=\"$EXPECTED_SHA\"\necho 'CERTIFICATION_ONLY_DEPLOY_REQUESTED=PASS'"
+          "run": "set -euo pipefail\nnode -e 'const c=JSON.parse(require(\"fs\").readFileSync(\"wrangler.certification.generated.jsonc\"));if(c.name!==\"zevanory-certification\"||c.routes.length||c.services?.length||c.triggers.crons.length)process.exit(1)'\nnpx --yes wrangler@4.143.0 deploy --config wrangler.certification.generated.jsonc --tag=\"$EXPECTED_SHA\"\necho 'CERTIFICATION_ONLY_DEPLOY_REQUESTED=PASS'"
         },
         {
           "name": "Attach only sandbox-named secrets to certification Worker",
