@@ -21,6 +21,7 @@ const reply=(status,error)=>new Response(JSON.stringify({error}),{
 });
 function safe(env){
  if(env.CERTIFICATION_WORKER_NAME!=="zevanory-certification"||
+    !/^[0-9a-f]{40}$/.test(String(env.CERTIFICATION_SOURCE_SHA||""))||
     env.ZEVANORY_DEPLOYMENT_ENV!=="certification"||
     env.CERTIFICATION_PILOT_ENV!=="sandbox"||
     env.MERCADOPAGO_ENV!=="sandbox"||
@@ -55,7 +56,15 @@ export default {
      RESEND_API_KEY:env.CERTIFICATION_RESEND_API_KEY,
      RESEND_RECEIVING_API_KEY:env.CERTIFICATION_RESEND_RECEIVING_API_KEY
    };
-   return canonical.fetch(request,sandboxEnv,ctx);
+   const res=await canonical.fetch(request,sandboxEnv,ctx);
+   if(url.pathname==="/api/internal/certification/e2e/status" && res.status===200){
+     const payload=await res.clone().json().catch(()=>null);
+     if(!payload||typeof payload!=="object")return reply(503,"certification_status_invalid");
+     const headers=new Headers(res.headers);
+     headers.set("cache-control","no-store");
+     return new Response(JSON.stringify({...payload,certification_worker_source_sha:env.CERTIFICATION_SOURCE_SHA}),{status:res.status,headers});
+   }
+   return res;
  },
  async scheduled(){ /* Intentionally no cron; certification is manual-only. */ },
 };
