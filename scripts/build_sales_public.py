@@ -17,6 +17,7 @@ HTML_ROUTES = (
     "material-gratuito",
     "checklist-15-minutos",
     "solucoes",
+    "quem-criou",
     "zevanory-sales",
     "arbm-contador-saloes",
     "ia-na-pratica",
@@ -230,6 +231,11 @@ def main() -> int:
     shutil.copy2(ROOT / "product.css", OUT / "product.css")
     shutil.copy2(ROOT / "sitemap.xml", OUT / "sitemap.xml")
     shutil.copytree(ROOT / "brand", OUT / "brand")
+    (OUT / "assets").mkdir(exist_ok=True)
+    portrait = ROOT / "assets" / "renan-bitu.webp"
+    if not portrait.is_file() or portrait.stat().st_size != 16232:
+        raise SystemExit("founder portrait missing or unexpected size")
+    shutil.copy2(portrait, OUT / "assets" / "renan-bitu.webp")
     # Approved social/creative brand assets live in the overlay (2026-10-02).
     shutil.copytree(OVERLAY / "brand", OUT / "brand", dirs_exist_ok=True)
 
