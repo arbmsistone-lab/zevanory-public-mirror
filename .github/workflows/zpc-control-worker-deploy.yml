@@ -66,43 +66,56 @@ jobs:
           npm install --no-audit --no-fund
           npm run build
 
-      - name: Bind current GREEN trust artifact
+      - name: Bind current GREEN trust artifact from Control Core
         working-directory: zpc
         shell: bash
         run: |
           set -euo pipefail
-          # Store-facing control plane is the authority; do not read stale panel static JSON.
+          # Core snapshot is authoritative for three independent control engines.
+          # Missing data, absent proof, incompatible SHA or error always fails closed.
           curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 \
-            https://zevanory.api.br/api/control-plane -o /tmp/zpc-authoritative-control-plane.json
-          jq -e '
-            (.trust_chain | type == "object") and
-            (.policy.counts | type == "object") and
-            (.trust_chain.engines | type == "array")
-          ' /tmp/zpc-authoritative-control-plane.json >/dev/null
+            https://zevanory.api.br/api/core/v1/snapshot -o /tmp/zpc-core-snapshot.json
           jq '{
-            state: (.trust_chain.state // "BLOCKED"),
-            sha: (.trust_chain.artifact_sha // .release.deployment.commit_sha // null),
-            evidenceRoot: (.trust_chain.evidence_root // null),
-            policyVersion: (.trust_chain.policy_version // null),
-            quorum: {passed: (.trust_chain.passed // 0), total: (.trust_chain.total // 3), required: (.trust_chain.required // 2), conflicts: (.trust_chain.conflicts // 0), independentKeys: (.trust_chain.independent_keys // 0)},
-            zea10: {proven: (.policy.counts.proven // 0), partial: (.policy.counts.partial // 0), blocked: (.policy.counts.blocked // 10)},
-            engines: [.trust_chain.engines[] | {id: (.id // ""), state: (.state // "UNKNOWN")}],
-            checkedAt: (.trust_chain.ledger.checked_at // null),
+            sha: (.release_sha // null),
+            checkedAt: (.generated_at // null),
+            evidenceRoot: (.zees16.decision_hash // null),
+            policyVersion: (.zees16.policy_version // null),
+            source: "ZEVANORY Control Core /api/core/v1/snapshot",
+            zea10: {
+              proven: (.zea10.counts.proven // 0),
+              partial: (.zea10.counts.partial // 0),
+              blocked: (.zea10.counts.blocked // 10),
+              unknown: (.zea10.counts.unknown // 10)
+            },
+            zees16: {
+              proven: (.zees16.counts.proven // 0),
+              partial: (.zees16.counts.partial // 0),
+              blocked: (.zees16.counts.blocked // 16),
+              na: (.zees16.counts.na // 16)
+            },
+            quorum: {
+              passed: (if .invariants.quorum_ok == true then 3 else 0 end),
+              total: 3, required: 3, conflicts: 0, independentKeys: 3
+            },
+            engines: [
+              {id:"ZEES-16",state:(if (.zees16.counts.proven == 16 and .zees16.counts.partial == 0 and .zees16.counts.blocked == 0 and .zees16.counts.na == 0 and (.zees16.persistence == "kv-append-only" or .zees16.persistence == "recomputed-immutable-sources")) then "GREEN" else "BLOCKED" end)},
+              {id:"ZEA-10",state:(if (.zea10.counts.proven == 10 and .zea10.counts.partial == 0 and .zea10.counts.blocked == 0 and .zea10.counts.unknown == 0 and .zea10.authority == true and .zea10.external_review_required != true) then "GREEN" else "BLOCKED" end)},
+              {id:"CORE",state:(if (.authority == "server-side-core-only" and .source_of_truth == true and .fail_closed == true and .ui_can_authorize == false and .invariants.exact_release_bound == true and .invariants.control_plane_ready == true and .invariants.health_ready == true and .invariants.quorum_ok == true and .invariants.evidence_to_evaluation_unidirectional == true) then "GREEN" else "BLOCKED" end)}
+            ],
             source_error: null
-          }' /tmp/zpc-authoritative-control-plane.json > dist/global-trust.json
-          if ! jq -e '.state == "GREEN"' dist/global-trust.json >/dev/null; then
-            value="$(jq -cr '{state: .state}' dist/global-trust.json)"
-            echo "::error title=TRUST_STATE::$value"
+          } | .state = (if ([.engines[].state] | length == 3 and all(. == "GREEN")) then "GREEN" else "BLOCKED" end)' /tmp/zpc-core-snapshot.json > dist/global-trust.json
+          # Never accept a missing or unverified release or missing core fields.
+          if ! jq -e '.state == "GREEN" and (.sha|type=="string" and test("^[a-f0-9]{40}$")) and (.checkedAt|type=="string")' dist/global-trust.json >/dev/null; then
+            value="$(jq -cr '{state,sha,zea10,zees16,engines,checkedAt}' dist/global-trust.json)"
+            echo "::error title=TRUST_CORE_BLOCKED::$value"
             exit 1
           fi
-          if ! jq -e '.zea10.proven == 10 and .zea10.partial == 0 and .zea10.blocked == 0' dist/global-trust.json >/dev/null; then
-            value="$(jq -cr '{zea10: {proven: .zea10.proven, partial: .zea10.partial, blocked: .zea10.blocked}}' dist/global-trust.json)"
-            echo "::error title=TRUST_ZEA10::$value"
+          if ! jq -e '.zea10.proven == 10 and .zea10.partial == 0 and .zea10.blocked == 0 and .zea10.unknown == 0' dist/global-trust.json >/dev/null; then
+            echo "::error title=TRUST_ZEA10::$(jq -cr '.zea10' dist/global-trust.json)"
             exit 1
           fi
           if ! jq -e '[.engines[].state] | length == 3 and all(. == "GREEN")' dist/global-trust.json >/dev/null; then
-            value="$(jq -cr '{engines: [.engines[] | {name: (.name // .id // ""), state}]}' dist/global-trust.json)"
-            echo "::error title=TRUST_ENGINES::$value"
+            echo "::error title=TRUST_ENGINES::$(jq -cr '.engines' dist/global-trust.json)"
             exit 1
           fi
           printf '{"sha":"%s","repository":"arbmsistone-lab/zevanory-product-control-edge","workflow_run":"%s"}\n' \
