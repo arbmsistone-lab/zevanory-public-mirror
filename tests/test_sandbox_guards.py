@@ -544,7 +544,7 @@ class WorkflowTests(unittest.TestCase):
                 self.reject_manual(lambda d: d['on'].update({event: None}))
 
     def test_production_secret_reference(self):
-        self.reject_manual(lambda d: d['jobs']['purchase']['steps'][2]['env'].update(
+        self.reject_manual(lambda d: next(s for s in d['jobs']['purchase']['steps'] if s.get('name') == 'Preflight and isolated sandbox proof')['env'].update(
             MERCADOPAGO_ACCESS_TOKEN='${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}'))
 
     def test_static_secret_reference(self):
@@ -569,7 +569,7 @@ class WorkflowTests(unittest.TestCase):
             MERCADOPAGO_TEST_WEBHOOK_SECRET='${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}'))
 
     def test_artifact_wildcard_refused(self):
-        self.reject_manual(lambda d: d['jobs']['purchase']['steps'][3]['with'].update(path='evidence/**'))
+        self.reject_manual(lambda d: next(s for s in d['jobs']['purchase']['steps'] if s.get('uses','').startswith('actions/upload-artifact@'))['with'].update(path='evidence/**'))
 
     def test_automatic_public_get_allowed(self):
         guards.automatic_workflow_guard('permissions:\n  contents: read\nrun: curl -fsS https://zevanory.api.br/api/release')
