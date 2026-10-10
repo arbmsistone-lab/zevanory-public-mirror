@@ -14,6 +14,9 @@ def generate(source,env):
     old_d1={x.get("database_id") for x in source.get("d1_databases",[])}
     if kv_id in old_kv or d1_id in old_d1 or kv_id=="728a45738e4047f29bcb89934fd533c1":
         raise ValueError("PRODUCTION_STORAGE_REUSE_DENIED")
+    source_sha=env.get("TARGET_RUNTIME_SHA","")
+    if not re.fullmatch(r"[0-9a-f]{40}",source_sha):
+        raise ValueError("CERTIFICATION_SOURCE_SHA_REQUIRED")
     if account!="1b26415802588185a86c1d4d3ebf5bdb":
         raise ValueError("CLOUDFLARE_ACCOUNT_MISMATCH")
     config={
@@ -29,6 +32,7 @@ def generate(source,env):
       "d1_databases":[{"binding":"CERTIFICATION_D1","database_name":"zevanory-certification-only","database_id":d1_id}],
       "vars":{
        "CERTIFICATION_WORKER_NAME":"zevanory-certification",
+       "CERTIFICATION_SOURCE_SHA":source_sha,
        "ZEVANORY_DEPLOYMENT_ENV":"certification",
        "CERTIFICATION_PILOT_ENV":"sandbox",
        "MERCADOPAGO_ENV":"sandbox",
