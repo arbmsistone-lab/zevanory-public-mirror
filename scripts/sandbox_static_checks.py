@@ -24,7 +24,7 @@ TEST = 'tests/test_sandbox_guards.py'
 SCOPE = (MANUAL, STATIC, SCRIPT, CHECKER, TEST)
 ALLOWED_SECRETS = {'MERCADOPAGO_TEST_PUBLIC_KEY', 'MERCADOPAGO_TEST_ACCESS_TOKEN',
                    'SANDBOX_IDENTITY_MANIFEST', 'SANDBOX_INBOX_READ_TOKEN', 'CERTIFICATION_E2E_TOKEN'}
-HOSTS = {'api.mercadopago.com', 'zevanory.api.br'}
+HOSTS = {'api.mercadopago.com', 'zevanory-certification.fixture.workers.dev'}
 REGISTERED_EXCEPTION = {
     'filename': 'zees16-control-reconciler.yml',
     'blob': '70466f7d797f6e2046ed53dabd77f6ca8ec15243',
@@ -43,7 +43,7 @@ def guarded_workflow(text, manual):
     events = d.get('on', {})
     check(isinstance(events, dict), 'EVENT_MAPPING')
     check(set(events) == ({'workflow_dispatch'} if manual else {'pull_request', 'push'}), 'TRIGGERS')
-    check(d.get('permissions') == {'contents': 'read'}, 'MINIMUM_PERMISSIONS')
+    check(d.get('permissions') == ({'contents': 'read', 'actions': 'read'} if manual else {'contents': 'read'}), 'MINIMUM_PERMISSIONS')
     check(not re.search(r'\bsecrets\s*\.', text, re.I) or manual, 'STATIC_NO_SECRETS')
     secret_refs = set(re.findall(r'\bsecrets\.([A-Za-z0-9_]+)', text))
     check(secret_refs <= ALLOWED_SECRETS, 'NO_PRODUCTION_SECRETS')

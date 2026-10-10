@@ -1,0 +1,56 @@
+{
+  "name": "Isolated certification safety gate",
+  "on": {
+    "pull_request": {
+      "branches": [
+        "gh-pages"
+      ],
+      "paths": [
+        "certification-worker.mjs",
+        "scripts/deploy/prepare-certification-config.py",
+        "scripts/mercadopago_combo_sandbox.py",
+        ".github/workflows/certification-isolated-deploy.yml",
+        ".github/workflows/mercadopago-combo-sandbox.yml",
+        "tests/certification-worker.test.mjs",
+        "tests/test_sandbox_guards.py",
+        ".github/workflows/certification-isolation-gate.yml"
+      ]
+    },
+    "workflow_dispatch": {}
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "jobs": {
+    "certification-safety": {
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 8,
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "uses": "actions/setup-node@v4",
+          "with": {
+            "node-version": "22"
+          }
+        },
+        {
+          "name": "Static runtime isolation and scope",
+          "run": "node --check certification-worker.mjs && node --test tests/certification-worker.test.mjs"
+        },
+        {
+          "name": "Legacy and new sandbox proofs without network or financial writes",
+          "run": "python3 -m unittest discover -s tests -p test_sandbox_guards.py -v"
+        },
+        {
+          "name": "Render config with distinct dummy Free resource IDs",
+          "run": "set -euo pipefail\npython3 - <<'PY'\nimport json\nwith open('wrangler.central-fix.jsonc','w') as out: json.dump({'compatibility_date':'2026-09-19','compatibility_flags':['nodejs_compat'],'kv_namespaces':[{'binding':'ZEVANORY_PRIVATE_ARTIFACTS','id':'728a45738e4047f29bcb89934fd533c1'}], 'd1_databases':[{'binding':'MAIN_DB','database_id':'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}]},out)\nPY\nCLOUDFLARE_ACCOUNT_ID=1b26415802588185a86c1d4d3ebf5bdb CERTIFICATION_KV_ID=11111111111111111111111111111111 CERTIFICATION_D1_ID=22222222-2222-4222-8222-222222222222 TARGET_RUNTIME_SHA=3333333333333333333333333333333333333333 python3 scripts/deploy/prepare-certification-config.py\npython3 - <<'PY'\nimport json\nx=json.load(open('wrangler.certification.generated.jsonc'))\nassert x['name']=='zevanory-certification' and x['routes']==[] and x['triggers']['crons']==[]\nassert len(x['kv_namespaces'])==len(x['d1_databases'])==1\nassert 'services' not in x and 'assets' not in x and 'ai' not in x\nassert x['vars']['SALE_GLOBALLY_ENABLED']=='false' and x['vars']['CERTIFICATION_SOURCE_SHA']=='3'*40\nassert x['d1_databases'][0]['database_id']=='22222222-2222-4222-8222-222222222222'\nprint('ISOLATED_CONFIG_TEST=PASS')\nPY\n# IDs provided by the owner/orchestrator are built into the generator: no vars required.\nCLOUDFLARE_ACCOUNT_ID=1b26415802588185a86c1d4d3ebf5bdb TARGET_RUNTIME_SHA=3333333333333333333333333333333333333333 python3 scripts/deploy/prepare-certification-config.py\npython3 - <<'PY'\nimport json\nx=json.load(open(\"wrangler.certification.generated.jsonc\"))\nassert x[\"kv_namespaces\"][0][\"id\"]==\"48afe69de2ff4014b89acb553780ef35\"\nassert x[\"d1_databases\"][0][\"database_id\"]==\"7ff006f3-1daf-44c5-9494-aabab600608e\"\nprint(\"EXISTING_FREE_RESOURCES=PASS\")\nPY\n# Explicit production KV override must still fail closed.\nif CLOUDFLARE_ACCOUNT_ID=1b26415802588185a86c1d4d3ebf5bdb CERTIFICATION_KV_ID=728a45738e4047f29bcb89934fd533c1 TARGET_RUNTIME_SHA=3333333333333333333333333333333333333333 python3 scripts/deploy/prepare-certification-config.py >/tmp/should-fail.log 2>&1; then\n echo \"PRODUCTION_KV_OVERRIDE_ALLOWED=FAIL\"; exit 1\nfi\necho \"PRODUCTION_KV_OVERRIDE_DENIED=PASS\"\n"
+        }
+      ]
+    }
+  }
+}

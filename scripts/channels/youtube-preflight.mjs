@@ -1,3 +1,4 @@
+import { getYoutubeAccessToken } from "./youtube-access.mjs";
 import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { evaluateCreativeWithRewrites } from "../../worker/creative-autonomy.mjs";
@@ -9,13 +10,10 @@ const run = (cmd,args) => { const p=spawnSync(cmd,args,{encoding:"utf8",maxBuffe
 const selected = {creative_id:"youtube-welcome-v1",brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1920,hook:"IA prática, com clareza",body:"Organize tarefas repetitivas por R$ 197,00. Garantia de 7 dias.",cta:"Conheça a ZEVANORY",price_brl:197};
 const gate=evaluateCreativeWithRewrites(selected,{serverPrice:197});
 if(gate.action!=="publish"||gate.compliance!==100||gate.score<85)fail("f1_gate_rejected");
-const required=["YOUTUBE_CLIENT_ID","YOUTUBE_CLIENT_SECRET","YOUTUBE_REFRESH_TOKEN","GEMINI_API_KEY"];
+const required=["YOUTUBE_CLIENT_ID","YOUTUBE_CLIENT_SECRET","GEMINI_API_KEY"];
 for(const name of required)if(!process.env[name])fail("missing_secret_"+name);
-const tokenResponse=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:process.env.YOUTUBE_CLIENT_ID,client_secret:process.env.YOUTUBE_CLIENT_SECRET,refresh_token:process.env.YOUTUBE_REFRESH_TOKEN,grant_type:"refresh_token"})});
-if(!tokenResponse.ok)fail("youtube_oauth_http_"+tokenResponse.status);
-const token=await tokenResponse.json();
-if(!token.access_token)fail("youtube_access_token_missing");
-const check=await fetch("https://www.googleapis.com/youtube/v3/channels?part=id,snippet&mine=true",{headers:{authorization:"Bearer "+token.access_token}});
+const accessToken=await getYoutubeAccessToken();
+const check=await fetch("https://www.googleapis.com/youtube/v3/channels?part=id,snippet&mine=true",{headers:{authorization:"Bearer "+accessToken}});
 if(!check.ok)fail("youtube_channels_http_"+check.status);
 const channels=await check.json();
 if(channels.items?.length!==1||channels.items[0].id!==TARGET)fail("youtube_channel_id_mismatch");

@@ -1,3 +1,4 @@
+import { getYoutubeAccessToken } from "./youtube-access.mjs";
 // Private proof upload (issue: YouTube plan step 3). Uploads ONE private video built and
 // gated by youtube-preflight.mjs, is idempotent across retries, polls until processing ends,
 // and stops. It never changes visibility and never enables automation.
@@ -13,10 +14,8 @@ try {
   const mp4 = await readFile(base + ".mp4");
   const proofKey = createHash("sha256").update(`${report.gate.creative_id}|proof-v1`).digest("hex").slice(0, 16);
   const marker = `zevanory-proof-key:${proofKey}`;
-  const t = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: process.env.YOUTUBE_CLIENT_ID, client_secret: process.env.YOUTUBE_CLIENT_SECRET, refresh_token: process.env.YOUTUBE_REFRESH_TOKEN, grant_type: "refresh_token" }) });
-  const tj = await t.json().catch(() => ({}));
-  if (!t.ok || !tj.access_token) fail("oauth_http_" + t.status);
-  const auth = { authorization: "Bearer " + tj.access_token };
+  const accessToken = await getYoutubeAccessToken();
+  const auth = { authorization: "Bearer " + accessToken };
   const ch = await (await fetch("https://www.googleapis.com/youtube/v3/channels?part=id,contentDetails&mine=true", { headers: auth })).json();
   if (ch.items?.length !== 1 || ch.items[0].id !== TARGET) fail("channel_id_mismatch");
   // Idempotency: reuse a previous proof carrying the same key instead of uploading again.

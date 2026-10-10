@@ -2,7 +2,7 @@ import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
 import { syncBrandProfiles, brandProfileSnapshot } from "./brand-profiles.mjs";
-import { handleOwnerOAuth } from "./owner-oauth.mjs";
+import { handleOwnerOAuth, handleYoutubePublisherAccess } from "./owner-oauth.mjs";
 import { BRAND_SIZES } from "./brand-kit.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
@@ -121,6 +121,7 @@ const wrapped = {
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
+    if (url.pathname==="/api/internal/owner/oauth/youtube-access") return handleYoutubePublisherAccess(request,normalized);
     // Wrangler has assets.run_worker_first=true. Explicitly delegate the
     // exact, SHA-pinned public brand exports; legacy Worker routing cannot serve them.
     if (url.pathname.startsWith("/brand/export/")) {
@@ -538,6 +539,16 @@ const wrapped = {
 wrapped.scheduled = async (controller, env, ctx) => {
   const normalized = normalizeEnv(env);
   if (controller?.cron === "5,35 * * * *") {
+    // Brand profiles run here, isolated from the hourly cron: on Workers Free the
+    // hourly invocation exhausts its 50-subrequest budget (acquisition, blog,
+    // email, orders) before the profile sync is reached. Conforming profiles cost
+    // only GET readbacks; writes happen solely on verified drift.
+    try {
+      const brand=await syncBrandProfiles(normalized);
+      console.info("brand_profile_cycle",JSON.stringify({statuses:(brand.profiles||[]).map(p=>({channel:p.channel,status:p.status,code:p.code||null}))}));
+    } catch {
+      console.error("brand_profile_cycle_unverified");
+    }
     try {
       const out = await syncProductionActivity(normalized, {sqlFactory:whatsappProofDatabase});
       console.info("order13_activity_sync", JSON.stringify({
@@ -608,13 +619,7 @@ wrapped.scheduled = async (controller, env, ctx) => {
     } catch {
       console.error("acquisition_cycle_failed");
     }
-    // Profile maintenance remains independent if acquisition throws.
-    try {
-      const brand=await syncBrandProfiles(normalized);
-      console.info("brand_profile_cycle",JSON.stringify({statuses:(brand.profiles||[]).map(p=>({channel:p.channel,status:p.status}))}));
-    } catch {
-      console.error("brand_profile_cycle_unverified");
-    }
+    // Profile maintenance moved to the isolated "5,35" cron (subrequest budget).
   }
 };
 if (typeof worker.queue === "function") {
