@@ -9,7 +9,7 @@ export const ACTIVITY_TYPES = Object.freeze(new Set([
   "refund_requested", "refund_approved", "refund_ambiguous",
   "post_published", "whatsapp_replied", "link_sent", "lead_captured",
   "email_sent", "owner_alert_sent", "sales_switch", "deploy",
-  "certification", "review_received"
+  "certification", "review_received", "brand_blocked", "profile_updated"
 ]));
 const CHANNELS = new Set([
   "checkout", "finance", "delivery", "download", "blog", "telegram",
