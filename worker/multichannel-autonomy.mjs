@@ -1,4 +1,3 @@
-import { publishBluesky, blueskyReady } from "./bluesky-publisher.mjs";
 import { CREATIVE_AUTONOMY_FEED_KEY, creativeAutopublishPaused, evaluateCreativeWithRewrites } from "./creative-autonomy.mjs";
 
 export const CHANNEL_STATE_KEY="zpc:multichannel:state:v1";
@@ -162,21 +161,6 @@ export async function runMultichannelAutonomy(env={},now=new Date(),fetchImpl=fe
       }
     }
   }
-  // Bluesky: reserve once BEFORE posting. Ambiguous failures remain pending for manual reconciliation.
-  const blueskyKey="zpc:multichannel:evidence:bluesky:daily:"+day;
-  if(blog.latest && !paused && blueskyReady(env) && kv?.get && kv?.put && !await kv.get(blueskyKey)){
-    await kv.put(blueskyKey,JSON.stringify({status:"pending",day,startedAt:now.toISOString()}),{expirationTtl:7*DAY});
-    try {
-      const result=await publishBluesky({env,title:blog.latest.title,productUrl:"https://vendas.zevanory.api.br/comprar/ZEV-IA-011",day,fetchImpl});
-      const row={channel:"bluesky",status:"publicado",provider_post_id:result.provider_post_id,url:result.url,landing_url:result.landing_url,publishedAt:now.toISOString()};
-      await kv.put(blueskyKey,JSON.stringify(row),{expirationTtl:370*DAY});
-      evidence.push(row);
-    } catch(error) {
-      evidence.push({channel:"bluesky",status:"erro",error:String(error?.message||"provider_failed").slice(0,90)});
-    }
-  }
-  const blueskyProof=await kv?.get?.(blueskyKey);
-  if(blueskyProof){try{const row=JSON.parse(String(blueskyProof));if(row?.status==="publicado"&&!evidence.some(x=>x.channel==="bluesky"))evidence.push(row);}catch{}}
   // Pinterest retains the existing approved F1 score/compliance path; no new DM.
   let feed=[];try{feed=JSON.parse(String(await kv?.get?.(CREATIVE_AUTONOMY_FEED_KEY)||"[]"));}catch{}
   const creative=(Array.isArray(feed)?feed:[]).find(x=>x?.status==="approved_for_autopublish"&&Number(x?.compliance)===100&&Number(x?.score)>=85);
