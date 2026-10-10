@@ -24,7 +24,8 @@ import urllib.request
 import uuid
 from dataclasses import dataclass
 
-APP = 'https://zevanory.api.br'
+APP = (os.environ.get('CERTIFICATION_SANDBOX_URL') or 'https://zevanory-certification.fixture.workers.dev').rstrip('/')
+CERT_HOST = urllib.parse.urlsplit(APP).hostname
 MP = 'https://api.mercadopago.com'
 INBOX_PATH = '/api/internal/certification/inbox/'
 INBOX_ADDRESS = 'prova-sandbox@zevanory.api.br'
@@ -52,7 +53,7 @@ def selected_offer(env):
     require(offer in SANDBOX_OFFERS, 'SANDBOX_OFFER_NOT_IN_CATALOG')
     return offer, SANDBOX_OFFERS[offer]
 READ_SCOPE = 'zevanory.sandbox_inbox.read'
-ALLOWED_HOSTS = frozenset({'api.mercadopago.com', 'zevanory.api.br'})
+ALLOWED_HOSTS = frozenset({'api.mercadopago.com', CERT_HOST})
 PRODUCTION_NAMES = frozenset({'MERCADOPAGO_ACCESS_TOKEN', 'MERCADOPAGO_PUBLIC_KEY',
     'OPERATOR_TOKEN', 'STRIPE_SECRET_KEY', 'RESEND_API_KEY', 'ASAAS_API_KEY'})
 SECRET_NAMES = ('MERCADOPAGO_TEST_PUBLIC_KEY', 'MERCADOPAGO_TEST_ACCESS_TOKEN',
@@ -89,6 +90,13 @@ class Identity:
 
 def preflight(env):
     require(env.get('SANDBOX_FINANCIAL_ENABLED') == 'true', 'FINANCIAL_DISABLED')
+    origin = urllib.parse.urlsplit(str(env.get('CERTIFICATION_SANDBOX_URL') or ''))
+    require(origin.scheme == 'https' and origin.hostname == CERT_HOST and
+            bool(re.fullmatch(r'zevanory-certification\.[a-z0-9-]+\.workers\.dev', origin.hostname or '')) and
+            origin.path in ('', '/') and not origin.query and not origin.fragment and
+            not origin.username and not origin.password and origin.port is None and
+            APP == str(env.get('CERTIFICATION_SANDBOX_URL') or '').rstrip('/'),
+            'ISOLATED_WORKER_ORIGIN_REQUIRED')
     require(env.get('GITHUB_EVENT_NAME') == 'workflow_dispatch' and
             env.get('GITHUB_REF') == 'refs/heads/gh-pages' and
             env.get('GITHUB_RUN_ATTEMPT') == '1', 'MANUAL_FIRST_ATTEMPT_ONLY')
@@ -144,14 +152,14 @@ def validate_request(url, method, headers, identity):
             require('authorization' not in headers, 'CARD_AUTH_DENIED')
         else:
             require(headers.get('authorization') == 'Bearer ' + identity.access_token, 'MP_AUTH_DENIED')
-    elif p.hostname == 'zevanory.api.br' and p.path.startswith(INBOX_PATH):
+    elif p.hostname == CERT_HOST and p.path.startswith(INBOX_PATH):
         allowed = (method == 'GET' and p.path == INBOX_PATH + 'profile' and not q or
                    method == 'GET' and p.path == INBOX_PATH + 'messages' and set(q) == {'order_id'} and
                    len(q['order_id']) == 1 and re.fullmatch(r'[0-9a-f-]{36}', q['order_id'][0]))
         require(allowed, 'INBOX_ENDPOINT_DENIED')
         require(headers.get('x-sandbox-inbox-token') == identity.inbox_token and
                 'authorization' not in headers and 'x-certification-e2e-token' not in headers, 'INBOX_AUTH_DENIED')
-    elif p.hostname == 'zevanory.api.br':
+    elif p.hostname == CERT_HOST:
         allowed = (method == 'GET' and p.path == CERT_PATH + 'status' and
                    (not q or set(q) == {'order_id'} and len(q['order_id']) == 1 and
                     re.fullmatch(r'[0-9a-f-]{36}', q['order_id'][0])) or
@@ -171,7 +179,7 @@ def validate_request(url, method, headers, identity):
     # Never send an unrelated credential in body/query/header values.
     for credential in (identity.certification_token, identity.access_token, identity.inbox_token):
         if credential in url or any(credential in str(v) for v in headers.values()):
-            expected = (identity.inbox_token if p.path.startswith(INBOX_PATH) else identity.certification_token) if p.hostname == 'zevanory.api.br' else identity.access_token
+            expected = (identity.inbox_token if p.path.startswith(INBOX_PATH) else identity.certification_token) if p.hostname == CERT_HOST else identity.access_token
             require(credential == expected and credential not in url, 'CROSS_HOST_CREDENTIAL_DENIED')
 
 
@@ -298,6 +306,7 @@ def run(env, transport=None, sleep=time.sleep, now=time.time, make_uuid=uuid.uui
         require(preflight(env) == identity, 'IDENTITY_CHANGED_AFTER_PREFLIGHT')
         report['checks']['PREFLIGHT'] = 'PASS'
         capabilities = client.cert('status', audit_id=audit_id, failure_code='order_capabilities')
+        require(capabilities.get('certification_worker_source_sha') == identity.sha, 'ISOLATED_WORKER_SOURCE_SHA_MISMATCH')
         require(capabilities.get('sale_globally_enabled') is False and
                 capabilities.get('sales_mode') == 'globally-blocked', 'SALES_MUST_REMAIN_BLOCKED')
         require(capabilities.get('sandbox_proof_contract') == 'v2' and
