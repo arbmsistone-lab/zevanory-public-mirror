@@ -13,6 +13,10 @@ on:
     paths:
       - 'zpc-control-worker-source.txt'
       - '.github/workflows/zpc-control-worker-deploy.yml'
+  workflow_run:
+    workflows:
+      - "ZEVANORY ZEES-16 control reconciler"
+    types: [completed]
 
 permissions:
   contents: read
@@ -23,6 +27,8 @@ concurrency:
 
 jobs:
   deploy:
+    # A skipped workflow_run is never an authority to promote the panel.
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
