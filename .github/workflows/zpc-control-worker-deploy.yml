@@ -71,9 +71,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Store-facing control plane is the authority; do not read stale panel static JSON.
           curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 \
-            https://controle.zevanory.api.br/global-trust.json \
-            -o dist/global-trust.json
+            https://zevanory.api.br/api/control-plane -o /tmp/zpc-authoritative-control-plane.json
+          jq -e '
+            (.trust_chain | type == "object") and
+            (.policy.counts | type == "object") and
+            (.trust_chain.engines | type == "array")
+          ' /tmp/zpc-authoritative-control-plane.json >/dev/null
+          jq '{
+            state: (.trust_chain.state // "BLOCKED"),
+            sha: (.trust_chain.artifact_sha // .release.deployment.commit_sha // null),
+            evidenceRoot: (.trust_chain.evidence_root // null),
+            policyVersion: (.trust_chain.policy_version // null),
+            quorum: {passed: (.trust_chain.passed // 0), total: (.trust_chain.total // 3), required: (.trust_chain.required // 2), conflicts: (.trust_chain.conflicts // 0), independentKeys: (.trust_chain.independent_keys // 0)},
+            zea10: {proven: (.policy.counts.proven // 0), partial: (.policy.counts.partial // 0), blocked: (.policy.counts.blocked // 10)},
+            engines: [.trust_chain.engines[] | {id: (.id // ""), state: (.state // "UNKNOWN")}],
+            checkedAt: (.trust_chain.ledger.checked_at // null),
+            source_error: null
+          }' /tmp/zpc-authoritative-control-plane.json > dist/global-trust.json
           if ! jq -e '.state == "GREEN"' dist/global-trust.json >/dev/null; then
             value="$(jq -cr '{state: .state}' dist/global-trust.json)"
             echo "::error title=TRUST_STATE::$value"

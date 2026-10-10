@@ -24,19 +24,19 @@ on:
       - "zevanory-p15-provenance"
       - "ZEVANORY portable disaster recovery"
       - "ZEVANORY provider independence gate"
-      - "ZEVANORY authenticated three-provider runtime quorum"
+      - "ZEVANORY authenticated open-provider runtime quorum"
       - "ZEES-16 Evidence Gate"
       - "ZEA-10 external evidence pack"
     types: [completed]
 permissions:
   contents: read
   actions: read
-concurrency:
-  group: zees16-control-reconciler
-  cancel-in-progress: false
 jobs:
   reconcile:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    concurrency:
+      group: zees16-control-reconciler-${{ github.event.workflow_run.head_sha || github.sha }}
+      cancel-in-progress: false
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
