@@ -55,6 +55,8 @@ jobs:
           const channel=Array.isArray(obj.channels)?obj.channels.find(c=>c?.id==='telegram'):null;
           const alerts=Array.isArray(obj.alerts)?obj.alerts.filter(a=>a?.channel==='telegram').map(a=>({type:String(a.type||''),reason:String(a.reason||'')})).slice(0,3):[];
           console.log('ORD30_TELEGRAM_DIAGNOSTIC',JSON.stringify({configured:channel?.configured===true,mode:channel?.mode||null,evidenceRows:rows.length,alerts}));
+          console.log('ORD30_EVIDENCE_CLASSES',JSON.stringify(rows.map(r=>({channel:String(r?.channel||''),id_format:/^\\d{1,20}$/.test(String(r?.provider_post_id||'')),url_host:/^https:\\/\\/t\\.me\\//.test(String(r?.url||''))?'t.me':/^https:\\/\\/zevanory\\.api\\.br\\//.test(String(r?.url||''))?'official':'other',published_at:typeof (r?.published_at||r?.publishedAt)==='string'?String(r.published_at||r.publishedAt).slice(0,10):null})).slice(0,12)));
+
 
           NODE
 
