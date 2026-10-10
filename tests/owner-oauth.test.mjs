@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { handleOwnerOAuth, OAUTH_PROVIDERS } from "../worker/owner-oauth.mjs";
+import { handleOwnerOAuth, OAUTH_PROVIDERS, openOAuthRefresh, resolveOwnerPublisherToken, handleYoutubePublisherAccess } from "../worker/owner-oauth.mjs";
 const base="https://zevanory.api.br/api/owner/oauth/";
 const env=()=>({
  OWNER_OAUTH_BRIDGE_SECRET:"bridge-high-entropy-12345678901234567890",
@@ -96,4 +96,61 @@ test("status and disconnect need distinct signed POST; neither returns tokens",a
  assert.equal((await disconnect.json()).providerRevocation,"not_confirmed");
  const nope=await handleOwnerOAuth(new Request(base+"pinterest/disconnect",{method:"POST"}),e);
  assert.equal(nope.status,401);
+});
+
+test("KV Pinterest publisher decrypts AES-GCM refresh, uses continuous refresh and rotates secret",async()=>{
+ const e=env();
+ const start=await handleOwnerOAuth(new Request(await url("start","pinterest",e)),e);
+ const state=new URL(start.headers.get("location")).searchParams.get("state");
+ const cookie=start.headers.get("set-cookie").split(";")[0];
+ const original=globalThis.fetch;
+ globalThis.fetch=async (target,options={})=>{
+   if(String(target)===OAUTH_PROVIDERS.pinterest.token){
+     const form=new URLSearchParams(options.body);
+     assert.equal(form.get("grant_type"),"authorization_code");
+     assert.equal(form.get("continuous_refresh"),"true");
+     return Response.json({access_token:"init-access",refresh_token:"pinr-initial"});
+   }
+   if(String(target).endsWith("/user_account"))return Response.json({username:"zevanory"});
+   throw Error("unexpected_endpoint");
+ };
+ try{
+   const result=await handleOwnerOAuth(new Request(base+"pinterest/callback?"+new URLSearchParams({state,code:"abc"}),{headers:{cookie}}),e);
+   assert.equal(new URL(result.headers.get("location")).searchParams.get("oauth_result"),"connected");
+ }finally{globalThis.fetch=original;}
+ const key="zpc:owner:oauth:connection:pinterest:v1";
+ let before=JSON.parse(await e.ZEVANORY_PRIVATE_ARTIFACTS.get(key));
+ assert.equal(await openOAuthRefresh(e,before.encryptedRefresh),"pinr-initial");
+ let refreshed=0;
+ const access=await resolveOwnerPublisherToken(e,"pinterest",async(target,options)=>{
+   assert.equal(target,OAUTH_PROVIDERS.pinterest.token);
+   assert.match(options.headers.authorization,/^Basic /);
+   assert.equal(new URLSearchParams(options.body).get("refresh_token"),"pinr-initial");
+   assert.equal(new URLSearchParams(options.body).get("grant_type"),"refresh_token");
+   refreshed++;
+   return Response.json({access_token:"fresh-pinterest-access",refresh_token:"pinr-rotated"});
+ });
+ assert.equal(access,"fresh-pinterest-access");
+ assert.equal(refreshed,1);
+ const after=JSON.parse(await e.ZEVANORY_PRIVATE_ARTIFACTS.get(key));
+ assert.equal(await openOAuthRefresh(e,after.encryptedRefresh),"pinr-rotated");
+ assert.doesNotMatch(JSON.stringify(after),/pinr-initial|pinr-rotated|fresh-pinterest-access/);
+});
+test("YouTube publisher token endpoint requires HMAC nonce, consumes ticket and uses KV refresh",async()=>{
+ const e=env();
+ const nonce=b64(crypto.getRandomValues(new Uint8Array(32))),ts=String(Date.now());
+ const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(e.YOUTUBE_CLIENT_SECRET),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+ const sig=b64(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(["zpc-youtube-publisher-v1",ts,nonce].join("\n"))));
+ const make=(input)=>new Request("https://zevanory.api.br/api/internal/owner/oauth/youtube-access",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(input)});
+ const invalid=await handleYoutubePublisherAccess(make({ts,nonce,sig:"invalid"}),e,async()=>{throw Error("network");});
+ assert.equal(invalid.status,401);
+ const first=await handleYoutubePublisherAccess(make({ts,nonce,sig}),e);
+ assert.equal(first.status,200);
+ assert.deepEqual(await first.json(),{connected:false});
+ assert.equal((await handleYoutubePublisherAccess(make({ts,nonce,sig}),e)).status,401);
+});
+test("broken encrypted KV connection never silently downgrades to legacy",async()=>{
+ const e=env();
+ await e.ZEVANORY_PRIVATE_ARTIFACTS.put("zpc:owner:oauth:connection:pinterest:v1",JSON.stringify({schema:"zpc.owner.oauth.v1",channel:"pinterest",encryptedRefresh:{alg:"AES-256-GCM",iv:"bad",ciphertext:"bad"}}));
+ await assert.rejects(()=>resolveOwnerPublisherToken(e,"pinterest",async()=>{throw Error("should-not-fetch");}));
 });
