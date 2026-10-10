@@ -341,14 +341,6 @@ jobs:
           npx playwright install --with-deps chromium >/dev/null 2>&1
           node scripts/deploy/mercadopago-csp-smoke.mjs > /tmp/mpsmoke.log 2>&1 || { tail -5 /tmp/mpsmoke.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_MP_SMOKE::/'; echo; exit 1; }
           cat /tmp/mpsmoke.log
-      - name: Dispatch exact-production ZEES-16 provider evidence
-        if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash scripts/deploy/dispatch-exact-production-evidence.sh "$TARGET_RUNTIME_SHA"
       - name: Automatic rollback after failed post-deploy smoke
         if: failure() && steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
         shell: bash
@@ -367,6 +359,15 @@ jobs:
           done
           echo "AUTO_ROLLBACK_HEALTH=FAIL"
           exit 1
+      - name: Dispatch exact-production ZEES-16 provider evidence
+        if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/deploy/dispatch-exact-production-evidence.sh "$TARGET_RUNTIME_SHA"
       - name: Fail-closed deployment status
         if: steps.auth.outputs.available != 'true'
         run: |
