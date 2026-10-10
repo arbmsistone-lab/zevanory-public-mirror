@@ -65,3 +65,11 @@ test("hourly brand cycle is outside acquisition try/catch and has independent fa
   const brandFailure=cron.indexOf('console.error("brand_profile_cycle_unverified")');
   assert.ok(acquisitionFailure>0&&brandSync>acquisitionFailure&&brandFailure>brandSync);
 });
+
+test("canonical brand PNGs are delegated to static assets despite run_worker_first",()=>{
+  const source=readFileSync(new URL("../worker/cloudflare-worker.compat.mjs",import.meta.url),"utf8");
+  assert.match(source,/url\.pathname\.startsWith\("\/brand\/export\/"\)/);
+  assert.match(source,/Object\.prototype\.hasOwnProperty\.call\(BRAND_SIZES,name\)/);
+  assert.match(source,/normalized\.ASSETS\.fetch\(request\)/);
+  assert.match(source,/brand_assets_unavailable/);
+});
