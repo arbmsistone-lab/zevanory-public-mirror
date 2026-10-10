@@ -82,7 +82,7 @@ jobs:
       contents: read
       actions: write
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
