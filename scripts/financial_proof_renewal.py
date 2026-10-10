@@ -92,7 +92,7 @@ def report_ambiguous_409(body):
             breakdown.append({**{k: row[k] for k in allowed}, "count": n})
     print("ORD12A_BREAKDOWN=" + json.dumps(breakdown, separators=(",", ":")))
     ids = (body.get("payment_ids") or {}).get("ambiguo", []) if isinstance(body.get("payment_ids"), dict) else []
-    tails = [v[-4:] for v in ids[:100] if isinstance(v, str) and re.fullmatch(r"\\d{4,32}", v)] if isinstance(ids, list) else []
+    tails = [v[-4:] for v in ids[:100] if isinstance(v, str) and re.fullmatch(r"\d{4,32}", v)] if isinstance(ids, list) else []
     print("ORD12A_AMBIG_IDS=" + json.dumps(tails, separators=(",", ":")))
 
 
