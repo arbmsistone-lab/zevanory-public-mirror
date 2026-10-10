@@ -31,6 +31,7 @@ jobs:
           echo "ORD7_PUBLIC_EVIDENCE_HTTP=$code"
           if [ "$code" != "200" ] || ! jq -e . /tmp/order7-evidence.json >/dev/null 2>&1; then
             echo "ORD7_TELEGRAM_EVIDENCE=NOT_PROVEN"
+            echo "ORD7_TELEGRAM_CAUSE=PUBLIC_EVIDENCE_UNAVAILABLE_OR_INVALID_JSON"
             exit 0
           fi
           node --input-type=module <<'NODE'
@@ -51,5 +52,8 @@ jobs:
               provider_post_id:row.provider_post_id,url:row.url,published_at:row.publishedAt||row.published_at
             }));
           }
-          if(!verified.length)console.log('ORD7_TELEGRAM_EVIDENCE=NOT_PROVEN');
+          if(!verified.length){
+            console.log('ORD7_TELEGRAM_EVIDENCE=NOT_PROVEN');
+            console.log('ORD7_TELEGRAM_CAUSE=NO_VERIFIABLE_PUBLISHED_POST');
+          }
           NODE
