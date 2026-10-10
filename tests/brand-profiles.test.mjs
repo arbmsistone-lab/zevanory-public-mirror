@@ -131,8 +131,8 @@ test("certified official v2 profile receipt remains idempotent",async()=>{
  let calls=0;
  const result=await syncBrandProfiles({
    ZEVANORY_PRIVATE_ARTIFACTS:store,BLUESKY_HANDLE:"official.bsky.social",BLUESKY_APP_PASSWORD:"dummy"
- },async()=>{calls++;throw Error("verified receipt should skip provider");});
- assert.equal(calls,0);
+ },async(url,options)=>{calls++;assert.match(String(url),/getProfile/);assert.equal(options.method,"GET");return Response.json({displayName:"ZEVANORY",description:OFFICIAL_SOCIAL_PROFILE.bluesky.description,avatar:"https://cdn.bsky.app/avatar",banner:"https://cdn.bsky.app/banner"});});
+ assert.equal(calls,1,"GET revalidates a previously certified profile without writing to the provider");
  assert.equal(result.profiles.find(x=>x.channel==="bluesky")?.status,"atualizado");
 });
 
@@ -143,7 +143,57 @@ test("verified Telegram v2 readback remains idempotent without Bluesky provider_
  let calls=0;
  const result=await syncBrandProfiles({
    ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"dummy",TELEGRAM_CHANNEL_ID:"@zevanory"
- },async()=>{calls++;throw Error("Telegram already certified");});
- assert.equal(calls,0,"verified Telegram receipt must not reupload photo on each cron");
+ },async(url,opts)=>{calls++;assert.match(String(url),/getChat$/);return Response.json({ok:true,result:{title:"ZEVANORY",description:OFFICIAL_SOCIAL_PROFILE.telegram.description,photo:{big_file_id:"certified-photo"}}});});
+ assert.equal(calls,1,"one read-only getChat; no duplicate photo uploads");
  assert.equal(result.profiles.find(x=>x.channel==="telegram")?.status,"atualizado");
+});
+
+test("a manually overwritten Bluesky bio invalidates a previously verified receipt and is overwritten",async()=>{
+ const store=kv();
+ await store.put("zpc:brand:profile:bluesky:v2",JSON.stringify({channel:"bluesky",status:"atualizado",provider_record:"at://did:plc:old/app.bsky.actor.profile/self",at:"2026-10-10T18:00:00Z"}));
+ let posted=null,reads=0,uploads=0;
+ const fake=async (url,opts={})=>{
+  if(url.includes("app.bsky.actor.getProfile"))return Response.json({displayName:"ZEVANORY",description:"Biografia parcial alterada manualmente",avatar:"https://cdn.bsky.app/avatar",banner:"https://cdn.bsky.app/banner"});
+  if(url.endsWith("avatar-800.png"))return pic("avatar-800.png");
+  if(url.endsWith("banner-bluesky.png"))return pic("banner-bluesky.png");
+  if(url.endsWith("createSession"))return Response.json({did:"did:plc:brandv2",accessJwt:"token"});
+  if(url.includes("getRecord"))return Response.json(reads++===0?{value:{description:"incomplete"},cid:"prior"}:{value:posted,cid:"new"});
+  if(url.endsWith("uploadBlob"))return Response.json({blob:{ref:{$link:"cid-"+(++uploads)}}});
+  if(url.endsWith("putRecord")){posted=JSON.parse(opts.body).record;return Response.json({uri:"at://did:plc:brandv2/app.bsky.actor.profile/self",cid:"new"});}
+  throw Error("unexpected endpoint");
+ };
+ const outcome=await syncBrandProfiles({ZEVANORY_PRIVATE_ARTIFACTS:store,BLUESKY_HANDLE:"zevanoryoficial.bsky.social",BLUESKY_APP_PASSWORD:"dummy"},fake);
+ assert.equal(outcome.profiles.find(x=>x.channel==="bluesky")?.status,"atualizado");
+ assert.equal(posted.description,OFFICIAL_SOCIAL_PROFILE.bluesky.description);
+ assert.equal(uploads,2);
+});
+test("Telegram missing photo and incomplete description trigger real write and readback",async()=>{
+ const store=kv();
+ await store.put("zpc:brand:profile:telegram:v2",JSON.stringify({channel:"telegram",status:"atualizado",at:"2026-10-10T18:00:00Z"}));
+ let reads=0,desc=0,photo=0;
+ const fake=async(url,opts={})=>{
+  if(url.endsWith("avatar-800.png"))return pic("avatar-800.png");
+  if(url.endsWith("getChat"))return Response.json({ok:true,result:reads++===0
+   ?{title:"ZEVANORY",description:"Incomplete"}
+   :reads===2?{title:"ZEVANORY",description:"Incomplete"}:{title:"ZEVANORY",description:OFFICIAL_SOCIAL_PROFILE.telegram.description,photo:{big_file_id:"new",small_file_id:"new-sm"}}});
+  if(url.endsWith("setChatDescription")){desc++;return Response.json({ok:true,result:true});}
+  if(url.endsWith("setChatPhoto")){photo++;return Response.json({ok:true,result:true});}
+  throw Error("unrecognized mock");
+ };
+ const outcome=await syncBrandProfiles({ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"fake",TELEGRAM_CHANNEL_ID:"@zevanory"},fake);
+ assert.equal(outcome.profiles.find(x=>x.channel==="telegram")?.status,"atualizado");
+ assert.equal(desc,1);assert.equal(photo,1);
+});
+test("Telegram bot lacking can_change_info reports safe permission category instead of writing a success receipt",async()=>{
+ const store=kv();let tried=0;
+ const fake=async(url)=>{
+  if(url.endsWith("avatar-800.png"))return pic("avatar-800.png");
+  if(url.endsWith("getChat"))return Response.json({ok:true,result:{title:"ZEVANORY",description:"incomplete"}});
+  if(url.endsWith("setChatDescription")){tried++;return Response.json({ok:false,description:"Bad Request: not enough rights to change chat info"},{status:400});}
+  throw Error("unrecognized mock");
+ };
+ const result=await syncBrandProfiles({ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"fake",TELEGRAM_CHANNEL_ID:"@zevanory"},fake);
+ assert.equal(tried,1);
+ assert.equal(result.profiles.find(x=>x.channel==="telegram")?.code,"telegram_missing_can_change_info");
+ assert.notEqual(result.profiles.find(x=>x.channel==="telegram")?.status,"atualizado");
 });
