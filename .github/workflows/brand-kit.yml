@@ -13,6 +13,8 @@ on:
       - 'tests/multichannel-autonomy.test.mjs'
       - 'tests/brand-kit.test.mjs'
       - 'scripts/build-brand-assets.py'
+      - 'scripts/deploy/copy-brand-export.py'
+      - 'scripts/deploy/verify-brand-assets-live.py'
       - '.github/workflows/brand-kit.yml'
   workflow_dispatch:
 permissions:
@@ -32,6 +34,8 @@ jobs:
         run: python3 -m pip install --user --disable-pip-version-check 'CairoSVG==2.8.2' 'Pillow==12.3.0'
       - name: Render from approved official logo only
         run: python3 scripts/build-brand-assets.py
+      - name: Verify exact static assets in canonical Worker package
+        run: python3 scripts/deploy/copy-brand-export.py
       - name: Brand source and negative image-gate tests
         run: node --test tests/brand-kit.test.mjs tests/multichannel-autonomy.test.mjs tests/brand-profiles.test.mjs
       - name: Verify generated exports are committed exactly
