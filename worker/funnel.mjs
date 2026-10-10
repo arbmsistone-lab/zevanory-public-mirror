@@ -95,10 +95,18 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
       revenue: Number(row.revenue) || 0, checkoutErrors: Number(row.checkout_errors) || 0,
     });
   }
+  // Order 45: read-only seven-day aggregate, no migration and no PII.
+  const traffic7 = await sql.query("select metric, coalesce(sum(n),0)::int as n from zevanory_funnel_daily where day >= current_date - 6 and metric in ('views','visitors') group by metric", []);
+  const checkouts7 = production ? await sql.query("select count(*)::int as n from orders where created_at >= current_date - interval '6 days' and coalesce(certification_pilot,false) = false", []) : [];
+  // Read the existing double-opt-in lead table; do not create or alter schemas.
+  const leads7 = await sql.query("select count(*)::int as n from zevanory_leads where created_at >= current_date - interval '6 days'", []);
+  const metrics7 = Object.fromEntries(traffic7.map(row=>[row.metric,Number(row.n)||0]));
+  const last7Days = {windowDays:7, views:metrics7.views||0, visitors:metrics7.visitors||0, leads:Number(leads7[0]?.n)||0, checkouts:Number(checkouts7[0]?.n)||0, mode:production?"production":"test"};
   return {
     schema: "zevanory-funnel/v1",
     generatedAt: new Date(now).toISOString(),
     windowDays: 30,
+    last7Days,
     salesMode: production ? "production" : "test",
     salesOpen,
     pages,
