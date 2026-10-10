@@ -110,9 +110,9 @@ export async function handleOwnerOAuth(req,env){
    }else{
     token=await exchange(provider.token,{grant_type:"authorization_code",code,redirect_uri:callback(c),continuous_refresh:"true"},"Basic "+btoa(credentials.id+":"+credentials.secret));
    }
-   const verify=await fetch(c==="youtube"?"https://www.googleapis.com/youtube/v3/channels?part=id&mine=true":"https://api.pinterest.com/v5/user_account",{headers:{authorization:"Bearer "+token.access_token},signal:AbortSignal.timeout(10000)});
+   const verify=await fetch(c==="youtube"?"https://www.googleapis.com/youtube/v3/channels?part=id&mine=true":"https://api.pinterest.com/v5/boards?page_size=1",{headers:{authorization:"Bearer "+token.access_token},signal:AbortSignal.timeout(10000)});
    const profile=await verify.json().catch(()=>null);
-   if(!verify.ok||(c==="youtube"?!profile?.items?.length:!profile?.username))throw Error("identity_unverified");
+   if(!verify.ok||(c==="youtube"?!profile?.items?.length:!Array.isArray(profile?.items)))throw Error("identity_unverified");
    const encryptedRefresh=await seal(env,token.refresh_token);
    await kv.put(connKey(c),JSON.stringify({schema:"zpc.owner.oauth.v1",channel:c,connectedAt:new Date().toISOString(),scope:String(token.scope||provider.scope),encryptedRefresh}));
    return finish(c,"connected");
