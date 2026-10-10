@@ -1,3 +1,4 @@
+import { publishBluesky, blueskyReady } from "./bluesky-publisher.mjs";
 import { CREATIVE_AUTONOMY_FEED_KEY, creativeAutopublishPaused, evaluateCreativeWithRewrites } from "./creative-autonomy.mjs";
 
 export const CHANNEL_STATE_KEY="zpc:multichannel:state:v1";
@@ -8,7 +9,7 @@ const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const clean=(v,n=4000)=>String(v??"").trim().slice(0,n);
 const truth=v=>[true,"true","1","live","approved"].includes(typeof v==="string"?v.toLowerCase():v);
 const baseUrl=env=>clean(env.PUBLIC_BASE_URL||"https://zevanory.api.br",500).replace(/\/$/,"");
-const CHANNEL_SECRET_NAMES=Object.freeze(["TELEGRAM_BOT_TOKEN","TELEGRAM_CHANNEL_ID","YOUTUBE_CLIENT_ID","YOUTUBE_CLIENT_SECRET","YOUTUBE_REFRESH_TOKEN","PINTEREST_ACCESS_TOKEN","PINTEREST_BOARD_ID"]);
+const CHANNEL_SECRET_NAMES=Object.freeze(["TELEGRAM_BOT_TOKEN","TELEGRAM_CHANNEL_ID","YOUTUBE_CLIENT_ID","YOUTUBE_CLIENT_SECRET","YOUTUBE_REFRESH_TOKEN","PINTEREST_ACCESS_TOKEN","PINTEREST_BOARD_ID","BLUESKY_HANDLE","BLUESKY_APP_PASSWORD"]);
 export const INDEXNOW_PUBLIC_KEY="4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922";
 
 export function resolveChannelCredentials(env={}){
@@ -21,6 +22,7 @@ export function resolveChannelCredentials(env={}){
 
 export const CHANNELS=Object.freeze([
  {id:"telegram",label:"Telegram",docs:"https://core.telegram.org/bots/tutorial",secrets:["TELEGRAM_BOT_TOKEN","TELEGRAM_CHANNEL_ID"],activation:"credential"},
+ {id:"bluesky",label:"Bluesky",docs:"https://bsky.app/settings/app-passwords",secrets:["BLUESKY_HANDLE","BLUESKY_APP_PASSWORD"],activation:"credential"},
  {id:"pinterest",label:"Pinterest",docs:"https://developers.pinterest.com/apps/",secrets:["PINTEREST_ACCESS_TOKEN","PINTEREST_BOARD_ID"],scopes:["pins:write","boards:write"],activation:"credential"},
  {id:"blog",label:"Blog / SEO",docs:"https://www.indexnow.org/documentation",secrets:[],activation:"automatic"},
  {id:"youtube",label:"YouTube Shorts",docs:"https://developers.google.com/youtube/v3/guides/uploading_a_video",secrets:["YOUTUBE_CLIENT_ID","YOUTUBE_CLIENT_SECRET","YOUTUBE_REFRESH_TOKEN"],activation:"credential"},
@@ -160,6 +162,21 @@ export async function runMultichannelAutonomy(env={},now=new Date(),fetchImpl=fe
       }
     }
   }
+  // Bluesky: reserve once BEFORE posting. Ambiguous failures remain pending for manual reconciliation.
+  const blueskyKey="zpc:multichannel:evidence:bluesky:daily:"+day;
+  if(blog.latest && !paused && blueskyReady(env) && kv?.get && kv?.put && !await kv.get(blueskyKey)){
+    await kv.put(blueskyKey,JSON.stringify({status:"pending",day,startedAt:now.toISOString()}),{expirationTtl:7*DAY});
+    try {
+      const result=await publishBluesky({env,title:blog.latest.title,productUrl:"https://vendas.zevanory.api.br/comprar/ZEV-IA-011",day,fetchImpl});
+      const row={channel:"bluesky",status:"publicado",provider_post_id:result.provider_post_id,url:result.url,landing_url:result.landing_url,publishedAt:now.toISOString()};
+      await kv.put(blueskyKey,JSON.stringify(row),{expirationTtl:370*DAY});
+      evidence.push(row);
+    } catch(error) {
+      evidence.push({channel:"bluesky",status:"erro",error:String(error?.message||"provider_failed").slice(0,90)});
+    }
+  }
+  const blueskyProof=await kv?.get?.(blueskyKey);
+  if(blueskyProof){try{const row=JSON.parse(String(blueskyProof));if(row?.status==="publicado"&&!evidence.some(x=>x.channel==="bluesky"))evidence.push(row);}catch{}}
   // Pinterest retains the existing approved F1 score/compliance path; no new DM.
   let feed=[];try{feed=JSON.parse(String(await kv?.get?.(CREATIVE_AUTONOMY_FEED_KEY)||"[]"));}catch{}
   const creative=(Array.isArray(feed)?feed:[]).find(x=>x?.status==="approved_for_autopublish"&&Number(x?.compliance)===100&&Number(x?.score)>=85);
