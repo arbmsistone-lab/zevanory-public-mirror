@@ -3,16 +3,22 @@
 import json,os,re,sys
 from pathlib import Path
 BASE=Path("wrangler.central-fix.jsonc")
-def valid_id(v):return bool(re.fullmatch(r"[0-9a-f]{32}",v or ""))
+DEFAULT_KV_ID="48afe69de2ff4014b89acb553780ef35"
+DEFAULT_D1_ID="7ff006f3-1daf-44c5-9494-aabab600608e"
+# KV uses a 32-char hex ID, while D1 uses a hyphenated UUID.
+def valid_kv_id(v):return bool(re.fullmatch(r"[0-9a-f]{32}",v or ""))
+def valid_d1_id(v):return bool(re.fullmatch(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",v or ""))
 def generate(source,env):
-    kv_id=env.get("CERTIFICATION_KV_ID","").lower()
-    d1_id=env.get("CERTIFICATION_D1_ID","").lower()
+    kv_id=(env.get("CERTIFICATION_KV_ID") or DEFAULT_KV_ID).lower()
+    d1_id=(env.get("CERTIFICATION_D1_ID") or DEFAULT_D1_ID).lower()
     account=env.get("CLOUDFLARE_ACCOUNT_ID","")
-    if not valid_id(kv_id) or not valid_id(d1_id) or not valid_id(account):
+    if not valid_kv_id(kv_id) or not valid_d1_id(d1_id) or not valid_kv_id(account):
         raise ValueError("CERTIFICATION_RESOURCE_IDS_REQUIRED")
-    old_kv={x.get("id") for x in source.get("kv_namespaces",[])}
-    old_d1={x.get("database_id") for x in source.get("d1_databases",[])}
-    if kv_id in old_kv or d1_id in old_d1 or kv_id=="728a45738e4047f29bcb89934fd533c1":
+    old_kv={str(x.get("id","")).lower() for x in source.get("kv_namespaces",[])}
+    old_d1={str(x.get("database_id","")).lower() for x in source.get("d1_databases",[])}
+    known_production_kv={"728a45738e4047f29bcb89934fd533c1"}
+    if kv_id in old_kv or d1_id in old_d1 or kv_id in known_production_kv:
         raise ValueError("PRODUCTION_STORAGE_REUSE_DENIED")
     source_sha=env.get("TARGET_RUNTIME_SHA","")
     if not re.fullmatch(r"[0-9a-f]{40}",source_sha):
