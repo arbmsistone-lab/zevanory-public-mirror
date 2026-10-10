@@ -1,14 +1,16 @@
 name: Owner OAuth key bootstrap (one-time, fail-closed)
 
-# Generates the two OAuth keys once, inside the runner, and writes them only as
-# Cloudflare Worker secrets. Values are never echoed, committed, logged or stored
-# as GitHub secrets. Existing keys are NEVER rotated: rotating the encryption key
-# would orphan stored connections, rotating the bridge would desync L and P.
+# The L Worker is at the Workers Free 60-binding cap, so no new L binding is
+# added. Encryption uses an HKDF subkey of the existing secret binding
+# MERCADOLIVRE_TOKEN_ENCRYPTION_KEY (see worker/owner-oauth.mjs). This job only
+# provisions the shared panel→L ticket key: generated in-runner, written as the
+# panel Worker secret and to the L private KV. Never printed, committed or stored
+# in GitHub. Never rotated: any partial state fails closed.
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: Type BOOTSTRAP to generate keys only if all are absent
+        description: Type BOOTSTRAP to generate the bridge only if absent everywhere
         required: true
         type: string
 
@@ -29,42 +31,37 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
       L_WORKER: zevanory
       P_WORKER: zevanory-product-control-portable
+      L_KV: 728a45738e4047f29bcb89934fd533c1
+      BRIDGE_KEY: zpc%3Aowner%3Aoauth%3Abridge%3Av1
     steps:
-      - name: Inventory secret names and Free binding budget (names only)
+      - name: Inventory (names and presence only)
         id: inv
         shell: bash
         run: |
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "::error title=OAUTH_BOOTSTRAP::CLOUDFLARE_TOKEN_MISSING"; exit 1; }
-          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts"
+          acc="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
           for w in "$L_WORKER" "$P_WORKER"; do
-            code="$(curl -sS -o "/tmp/$w.json" -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$w/settings")"
+            code="$(curl -sS -o "/tmp/$w.json" -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$acc/workers/scripts/$w/settings")"
             [ "$code" = 200 ] || { echo "::error title=OAUTH_BOOTSTRAP::settings_http_${code}_worker_${w}"; exit 1; }
           done
-          cp "/tmp/$L_WORKER.json" /tmp/l.json; cp "/tmp/$P_WORKER.json" /tmp/p.json
-          python3 - <<'PY'
+          kv="$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$acc/storage/kv/namespaces/$L_KV/values/$BRIDGE_KEY")"
+          case "$kv" in 200) KV_PRESENT=True;; 404) KV_PRESENT=False;; *) echo "::error title=OAUTH_BOOTSTRAP::kv_http_$kv"; exit 1;; esac
+          KV_PRESENT="$KV_PRESENT" python3 - <<'PY'
           import json,os,sys
+          def names(p):
+              rows=(json.load(open(p)).get("result") or {}).get("bindings") or []
+              return {r.get("name") for r in rows if r.get("type") in {"secret_text","secret_key"}}
           def fail(m):
               print("::error title=OAUTH_BOOTSTRAP::"+m); sys.exit(1)
-          def names(p,types):
-              rows=(json.load(open(p)).get("result") or {}).get("bindings") or []
-              return {r.get("name") for r in rows if r.get("type") in types}
-          sec={"secret_text","secret_key"}
-          l=names("/tmp/l.json",sec); p=names("/tmp/p.json",sec)
-          l_all=names("/tmp/l.json",sec|{"plain_text","json"})|{"CHANNEL_CREDENTIALS_JSON"}
-          enc="OWNER_OAUTH_ENCRYPTION_KEY" in l; lb="OWNER_OAUTH_BRIDGE_SECRET" in l; pb="OWNER_OAUTH_BRIDGE_SECRET" in p
-          present=[enc,lb,pb]
-          print(f"L_ENCRYPTION_PRESENT={enc} L_BRIDGE_PRESENT={lb} P_BRIDGE_PRESENT={pb}")
+          l=names("/tmp/"+os.environ["L_WORKER"]+".json"); p=names("/tmp/"+os.environ["P_WORKER"]+".json")
+          if "MERCADOLIVRE_TOKEN_ENCRYPTION_KEY" not in l and "OWNER_OAUTH_ENCRYPTION_KEY" not in l:
+              fail("L_ENCRYPTION_PARENT_KEY_ABSENT")
+          pb="OWNER_OAUTH_BRIDGE_SECRET" in p; kb=os.environ["KV_PRESENT"]=="True"
+          print(f"::notice title=OAUTH_BOOTSTRAP::P_BRIDGE_PRESENT={pb} L_KV_BRIDGE_PRESENT={kb} L_ENCRYPTION_SOURCE=present")
           out=open(os.environ["GITHUB_OUTPUT"],"a")
-          if all(present):
-              print("OWNER_OAUTH_KEYS=ALREADY_COMPLETE (no rotation)"); out.write("action=none\n"); raise SystemExit(0)
-          if any(present):
-              fail(f"OWNER_OAUTH_KEYS_PARTIAL_FAIL_CLOSED L_ENC={enc} L_BRIDGE={lb} P_BRIDGE={pb}")
-          planned=len(l_all)+2
-          if planned>60:
-              print("::notice title=L_BINDING_NAMES::"+",".join(sorted(n for n in l_all if n)))
-              fail(f"OWNER_OAUTH_BINDING_BUDGET_EXCEEDED planned={planned} max=60")
-          print(f"OWNER_OAUTH_BINDING_BUDGET_PASS planned={planned} max=60")
+          if pb and kb: out.write("action=none\n"); print("::notice title=OAUTH_BOOTSTRAP::ALREADY_COMPLETE (no rotation)"); sys.exit(0)
+          if pb or kb: fail(f"PARTIAL_FAIL_CLOSED P_BRIDGE={pb} L_KV_BRIDGE={kb}")
           out.write("action=generate\n")
           PY
 
@@ -73,40 +70,35 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Generate in memory and write only to Worker secrets
+      - name: Generate in memory; write panel secret and L private KV
         if: steps.inv.outputs.action == 'generate'
         shell: bash
         run: |
           set -euo pipefail
-          set +x
           umask 077
           BRIDGE="$(openssl rand -base64 48 | tr -d '\n=' | tr '+/' '-_')"
-          ENCKEY="$(openssl rand -base64 48 | tr -d '\n=' | tr '+/' '-_')"
-          echo "::add-mask::$BRIDGE"; echo "::add-mask::$ENCKEY"
-          [ "${#BRIDGE}" -ge 32 ] && [ "${#ENCKEY}" -ge 32 ]
-          W="npx --yes wrangler@4.143.0"
-          # Panel first: if it fails nothing in L changes.
-          printf '%s' "$BRIDGE" | $W secret put OWNER_OAUTH_BRIDGE_SECRET --name "$P_WORKER" >/dev/null
-          printf '%s' "$BRIDGE" | $W secret put OWNER_OAUTH_BRIDGE_SECRET --name "$L_WORKER" >/dev/null
-          printf '%s' "$ENCKEY" | $W secret put OWNER_OAUTH_ENCRYPTION_KEY --name "$L_WORKER" >/dev/null
-          unset BRIDGE ENCKEY
-          echo "::notice title=OAUTH_BOOTSTRAP::OWNER_OAUTH_KEYS_WRITTEN=PASS (values never printed)"
+          echo "::add-mask::$BRIDGE"
+          [ "${#BRIDGE}" -ge 32 ]
+          printf '%s' "$BRIDGE" | npx --yes wrangler@4.143.0 secret put OWNER_OAUTH_BRIDGE_SECRET --name "$P_WORKER" >/dev/null
+          printf '%s' "$BRIDGE" > /tmp/b; trap 'rm -f /tmp/b' EXIT
+          code="$(curl -sS -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H 'content-type: text/plain' --data-binary @/tmp/b \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$L_KV/values/$BRIDGE_KEY")"
+          rm -f /tmp/b; unset BRIDGE
+          [ "$code" = 200 ] || { echo "::error title=OAUTH_BOOTSTRAP::kv_write_http_$code (panel secret written; rerun fails closed until reviewed)"; exit 1; }
+          echo "::notice title=OAUTH_BOOTSTRAP::BRIDGE_WRITTEN=PASS (value never printed)"
 
-      - name: Read back names only
+      - name: Read back presence only
         shell: bash
         run: |
           set -euo pipefail
-          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts"
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$L_WORKER/settings" -o /tmp/l.json
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/$P_WORKER/settings" -o /tmp/p.json
-          python3 - <<'PY'
-          import json
-          def names(p):
-              rows=(json.load(open(p)).get("result") or {}).get("bindings") or []
-              return {r.get("name") for r in rows if r.get("type") in {"secret_text","secret_key"}}
-          l=names("/tmp/l.json"); p=names("/tmp/p.json")
-          ok={"OWNER_OAUTH_ENCRYPTION_KEY","OWNER_OAUTH_BRIDGE_SECRET"}<=l and "OWNER_OAUTH_BRIDGE_SECRET" in p
-          print("OWNER_OAUTH_KEYS_READBACK="+("PASS" if ok else "FAIL"))
-          if not ok: print("::error title=OAUTH_BOOTSTRAP::readback_fail")
-          raise SystemExit(0 if ok else 1)
-          PY
+          acc="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
+          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$acc/workers/scripts/$P_WORKER/settings" -o /tmp/p.json
+          kv="$(curl -sS -o /tmp/kvv -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$acc/storage/kv/namespaces/$L_KV/values/$BRIDGE_KEY")"
+          len="$(wc -c < /tmp/kvv)"; rm -f /tmp/kvv
+          pb="$(jq -r '[.result.bindings[]?|select(.name=="OWNER_OAUTH_BRIDGE_SECRET")]|length' /tmp/p.json)"
+          if [ "$kv" = 200 ] && [ "$len" -ge 32 ] && [ "$pb" = 1 ]; then
+            echo "::notice title=OAUTH_BOOTSTRAP::READBACK=PASS"
+          else
+            echo "::error title=OAUTH_BOOTSTRAP::READBACK=FAIL kv=$kv len_ok=$([ "$len" -ge 32 ] && echo y || echo n) p=$pb"; exit 1
+          fi
