@@ -1,0 +1,73 @@
+name: ZEES-16 exact SHA reconciler retry coordinator
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["ZEVANORY central production deploy"]
+    types: [completed]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  coordinate:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    concurrency:
+      group: zees16-exact-retry-${{ github.event.workflow_run.head_sha || github.sha }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Bind live release and exact source SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "TARGET_SHA_INVALID"; exit 1; }
+          LIVE_SHA="$(curl -fsS --retry 3 --max-time 20 https://zevanory.api.br/api/release | jq -r '.deployment.commit_sha // empty')"
+          [ "$TARGET_SHA" = "$LIVE_SHA" ] || { echo "LIVE_SHA_DIFFERENT_FROM_TARGET"; exit 1; }
+          echo "TARGET_SHA=$TARGET_SHA" >> "$GITHUB_ENV"
+          echo "RECONCILER_EXACT_LIVE_SHA=PASS"
+      - name: Wait for push workflows on this TARGET_SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          for attempt in $(seq 1 24); do
+            runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&event=push&per_page=100")"
+            total="$(jq --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha==$sha and .event=="push")] | length' <<< "$runs")"
+            active="$(jq --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha==$sha and .event=="push" and .status!="completed")] | length' <<< "$runs")"
+            central="$(jq --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha==$sha and .event=="push" and .name=="ZEVANORY central production deploy" and .conclusion=="success")] | length' <<< "$runs")"
+            echo "EXACT_PUSH_RUNS total=$total active=$active central_success=$central attempt=$attempt"
+            if [ "$total" -gt 0 ] && [ "$active" -eq 0 ] && [ "$central" -ge 1 ]; then ready=1; break; fi
+            sleep 10
+          done
+          [ "$ready" = 1 ] || { echo "EXACT_PUSH_RUNS_NOT_COMPLETE"; exit 1; }
+      - name: Reconcile through the unchanged protected workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          watch_one() {
+            local before next info
+            before="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/zees16-control-reconciler.yml/runs?event=workflow_dispatch&per_page=30" --jq '[.workflow_runs[].id] | max // 0')"
+            gh workflow run zees16-control-reconciler.yml --ref gh-pages
+            next=""
+            for i in $(seq 1 24); do
+              info="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/zees16-control-reconciler.yml/runs?event=workflow_dispatch&per_page=30")"
+              next="$(jq -r --arg sha "$TARGET_SHA" --argjson before "$before" '[.workflow_runs[] | select(.head_sha==$sha and .id>$before)] | sort_by(.id) | last | .id // empty' <<< "$info")"
+              [ -n "$next" ] && break
+              sleep 5
+            done
+            [ -n "$next" ] || { echo "RECONCILER_DISPATCH_NOT_OBSERVED"; return 1; }
+            echo "RECONCILER_RUN_ID=$next"
+            gh run watch "$next" --exit-status
+          }
+          if watch_one; then
+            echo "RECONCILER_FIRST_PASS=GREEN"
+            exit 0
+          fi
+          echo "RECONCILER_FIRST_PASS=NOT_GREEN RETRY_AFTER_SECONDS=300"
+          sleep 300
+          # Exactly one additional invocation; original 16/16 acceptance remains untouched.
+          watch_one
+          echo "RECONCILER_RETRY_RESULT=GREEN"
