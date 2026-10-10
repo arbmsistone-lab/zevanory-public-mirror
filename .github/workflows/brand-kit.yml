@@ -1,0 +1,50 @@
+name: ZEVANORY official brand gate
+on:
+  pull_request:
+    paths:
+      - 'assets/brand/**'
+      - 'sales-public/brand/export/**'
+      - 'worker/brand-kit.mjs'
+      - 'worker/brand-profiles.mjs'
+      - 'tests/brand-profiles.test.mjs'
+      - 'worker/brand-approved.mjs'
+      - 'worker/multichannel-autonomy.mjs'
+      - 'worker/activity-ledger.mjs'
+      - 'tests/multichannel-autonomy.test.mjs'
+      - 'tests/brand-kit.test.mjs'
+      - 'scripts/build-brand-assets.py'
+      - 'scripts/deploy/copy-brand-export.py'
+      - 'scripts/deploy/verify-brand-assets-live.py'
+      - '.github/workflows/brand-kit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  brand:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned renderer
+        run: python3 -m pip install --user --disable-pip-version-check 'CairoSVG==2.8.2' 'Pillow==12.3.0'
+      - name: Render from approved official logo only
+        run: python3 scripts/build-brand-assets.py
+      - name: Verify exact static assets in canonical Worker package
+        run: python3 scripts/deploy/copy-brand-export.py
+      - name: Brand source and negative image-gate tests
+        run: node --test tests/brand-kit.test.mjs tests/multichannel-autonomy.test.mjs tests/brand-profiles.test.mjs
+      - name: Verify generated exports are committed exactly
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- worker/brand-approved.mjs assets/brand/export/ sales-public/brand/export/
+          test "$(find assets/brand/export -maxdepth 1 -name '*.png' | wc -l)" -eq 13
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-official-brand-kit
+          path: assets/brand/export/
+          retention-days: 7

@@ -1,0 +1,34 @@
+name: Build committed official brand exports (feature branch only)
+on:
+  push:
+    branches: ['feat/brand-kit-unified-20261010']
+    paths:
+      - 'assets/brand/*.svg'
+      - 'scripts/build-brand-assets.py'
+      - '.github/workflows/brand-kit-export.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  materialize-assets:
+    if: github.repository == 'arbmsistone-lab/zevanory-public-mirror' && github.ref == 'refs/heads/feat/brand-kit-unified-20261010'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/brand-kit-unified-20261010
+          persist-credentials: true
+      - name: Dependencies pinned
+        run: python3 -m pip install --user --disable-pip-version-check 'CairoSVG==2.8.2' 'Pillow==12.3.0'
+      - name: Render and verify official artifacts
+        run: python3 scripts/build-brand-assets.py
+      - name: Commit generated PNGs and pinned digests only to feature branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/brand/export sales-public/brand/export worker/brand-approved.mjs
+          if git diff --cached --quiet; then echo "BRAND_EXPORT_ALREADY_CURRENT=PASS"; exit 0; fi
+          git commit -m "build(brand): pin exact exported PNG hashes and publishable copies"
+          git push origin HEAD:refs/heads/feat/brand-kit-unified-20261010
