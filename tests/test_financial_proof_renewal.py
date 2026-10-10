@@ -62,7 +62,7 @@ class FinancialProofRenewalTests(unittest.TestCase):
         with redirect_stdout(capture), self.assertRaisesRegex(renewal.RenewalError, "AUDIT_HTTP_409"):
             renewal.validate_audit(code, body)
         output = capture.getvalue()
-        self.assertIn("ORD12A_AMBIG_IDS=[\\"5678\\"]", output)
+        self.assertIn('ORD12A_AMBIG_IDS=["5678"]', output)
         self.assertIn("ORD12A_REASONS=", output)
         self.assertIn("ORD12A_BREAKDOWN=", output)
         self.assertNotIn("12345678", output)
