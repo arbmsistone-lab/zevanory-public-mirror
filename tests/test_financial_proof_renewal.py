@@ -1,4 +1,8 @@
 import importlib.util
+import io
+import json
+import urllib.error
+from contextlib import redirect_stdout
 import pathlib
 import unittest
 from unittest.mock import patch
@@ -37,6 +41,33 @@ def fake_fetch(path, secret=""):
 
 
 class FinancialProofRenewalTests(unittest.TestCase):
+    def test_409_json_body_preserved_and_sanitized(self):
+        payload = {
+            "ambiguous": 1,
+            "evidence_reasons": [{"reason": "ambiguo:order_missing", "count": 1}],
+            "evidence_breakdown": [{
+                "classification": "ambiguo", "provider": "mercadopago",
+                "event": "payment_confirmed", "pilot": "pilot_false",
+                "id_format": "mercadopago_numeric",
+                "marker_hint": "not_classifiable_from_prefix", "count": 1
+            }],
+            "payment_ids": {"ambiguo": ["12345678"]},
+            "customer_name": "NEVER_LOG_CUSTOMER",
+        }
+        error = urllib.error.HTTPError("https://example.invalid", 409, "Conflict", {}, io.BytesIO(json.dumps(payload).encode()))
+        with patch.object(renewal.urllib.request, "urlopen", side_effect=error):
+            code, body = renewal.get_json(renewal.AUDIT_PATH, SECRET)
+        self.assertEqual((code, body), (409, payload))
+        capture = io.StringIO()
+        with redirect_stdout(capture), self.assertRaisesRegex(renewal.RenewalError, "AUDIT_HTTP_409"):
+            renewal.validate_audit(code, body)
+        output = capture.getvalue()
+        self.assertIn("ORD12A_AMBIG_IDS=[\\"5678\\"]", output)
+        self.assertIn("ORD12A_REASONS=", output)
+        self.assertIn("ORD12A_BREAKDOWN=", output)
+        self.assertNotIn("12345678", output)
+        self.assertNotIn("NEVER_LOG_CUSTOMER", output)
+
     def test_hmac_contract_matches_worker(self):
         at = "1791580200"
         expected = __import__("hmac").new(
