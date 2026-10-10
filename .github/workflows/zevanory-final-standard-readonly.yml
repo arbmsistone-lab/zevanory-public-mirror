@@ -1,0 +1,215 @@
+name: ZEVANORY final standard read-only proof
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - '.github/workflows/zevanory-final-standard-readonly.yml'
+  push:
+    branches: [gh-pages]
+    paths:
+      - '.github/workflows/zevanory-final-standard-readonly.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  standard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHANNEL_ID: ${{ vars.TELEGRAM_CHANNEL_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Curl-only GET readback and automatic conformity matrix
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import html
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import sys
+          import tempfile
+          import xml.etree.ElementTree as ET
+          from urllib.parse import urlsplit
+          
+          BASE = "https://vendas.zevanory.api.br"
+          LEGAL = ("A. RENAN ALVES MOREIRA BITU LTDA", "69.077.233/0001-99",
+                   "Rua Francisco de Freitas Neto, 96", "Alto do Tenente",
+                   "Várzea Alegre/CE", "suporte@zevanory.api.br", "+55 88 99254-5413")
+          CATALOG = (
+              ("ia-na-pratica", "IA na Prática", 197, "ZEV-IA-011"),
+              ("vendas-na-pratica", "Vendas na Prática", 197, "ZEV-VEN-011"),
+              ("lucro-e-caixa", "Lucro & Caixa", 247, "ZEV-LCX-011"),
+              ("combo-ia-vendas", "Combo IA + Vendas", 297, "ZEV-CMB-011"),
+              ("negocio-completo", "Negócio Completo", 397, "ZEV-NGC-011"),
+          )
+          rows = []
+          failures = 0
+          
+          def get(url):
+              fd, pathname = tempfile.mkstemp(prefix="zevanory-standard-")
+              os.close(fd)
+              try:
+                  completed = subprocess.run(
+                      ["curl", "--silent", "--show-error", "--location", "--retry", "2",
+                       "--connect-timeout", "10", "--max-time", "30",
+                       "--header", "Cache-Control: no-cache", "--output", pathname,
+                       "--write-out", "%{http_code}|%{content_type}", url],
+                      text=True, capture_output=True, timeout=110, check=False,
+                  )
+                  if completed.returncode:
+                      return (0, "", b"")
+                  pieces = completed.stdout.strip().split("|", 1)
+                  if len(pieces) != 2:
+                      return (0, "", b"")
+                  return (int(pieces[0]), pieces[1].lower(), pathlib.Path(pathname).read_bytes())
+              except (OSError, ValueError, subprocess.TimeoutExpired):
+                  return (0, "", b"")
+              finally:
+                  pathlib.Path(pathname).unlink(missing_ok=True)
+          
+          def record(front, item, conforms, proof):
+              global failures
+              status = "CONFORME" if conforms else "NÃO CONFORME"
+              failures += int(not conforms)
+              rows.append((front, item, status, proof))
+          
+          def ready(front, task, proof):
+              rows.append((front, task, "PRONTO, aguardando credencial/aprovação", proof))
+          
+          def text(data):
+              return html.unescape(data.decode("utf-8", errors="replace"))
+          
+          def legal_ok(page):
+              return all(part in page for part in LEGAL)
+          
+          status, mime, raw = get(BASE + "/solucoes")
+          page = text(raw)
+          record("Vitrine", "Catálogo, 5 nomes e preços, rodapé legal",
+                 status == 200 and "text/html" in mime and legal_ok(page) and
+                 all(name in page and ("R$ " + str(price)) in page
+                     for _, name, price, _ in CATALOG), BASE + "/solucoes")
+          
+          for slug, name, price, sku in CATALOG:
+              url = BASE + "/" + slug
+              status, mime, raw = get(url)
+              page = text(raw)
+              record("Produto " + name, "Nome, preço oficial, SKU e rodapé completo",
+                     status == 200 and "text/html" in mime and name in page and
+                     ("R$ " + str(price)) in page and ("/comprar/" + sku) in page and
+                     legal_ok(page), url)
+          
+          status, mime, raw = get(BASE + "/quem-criou/")
+          founder = text(raw)
+          image_status, image_mime, _ = get(BASE + "/assets/renan-bitu.webp")
+          record("Quem criou", "Biografia, logo, rodapé e fotografia HTTP 200 image/*",
+                 status == 200 and "text/html" in mime and
+                 "Renan Bitu" in founder and "zevanory-logo" in founder and
+                 "/assets/renan-bitu.webp" in founder and legal_ok(founder) and
+                 image_status == 200 and image_mime.startswith("image/"),
+                 BASE + "/quem-criou/ ; " + BASE + "/assets/renan-bitu.webp")
+          
+          for slug, required in (
+              ("termos", "Termos"),
+              ("privacidade", "Privacidade"),
+              ("reembolso", "Reembolso"),
+          ):
+              url = BASE + "/" + slug
+              status, mime, raw = get(url)
+              page = text(raw)
+              record("Jurídico", slug + ", conteúdo, identidade jurídica e contato",
+                     status == 200 and "text/html" in mime and
+                     required.lower() in page.lower() and legal_ok(page), url)
+          
+          url = BASE + "/sitemap.xml"
+          status, mime, raw = get(url)
+          sitemap_ok = status == 200 and bool(raw)
+          if sitemap_ok:
+              try:
+                  root = ET.fromstring(raw)
+                  locs = [node.text or "" for node in root.iter() if node.tag.split("}")[-1] == "loc"]
+                  sitemap_ok = (len(locs) >= 6 and len(set(locs)) == len(locs) and
+                                all(urlsplit(loc).scheme == "https" and
+                                    urlsplit(loc).netloc == "vendas.zevanory.api.br" and
+                                    "/blog/" not in urlsplit(loc).path for loc in locs) and
+                                all(any(urlsplit(loc).path.rstrip("/") == "/" + slug
+                                        for loc in locs) for slug, _, _, _ in CATALOG) and
+                                any(urlsplit(loc).path.rstrip("/") == "/quem-criou" for loc in locs))
+              except ET.ParseError:
+                  sitemap_ok = False
+          record("SEO", "Sitemap XML gerado, URLs comerciais canônicas sem blog do apex",
+                 sitemap_ok, url)
+          
+          profile_url = "https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=zevanoryoficial.bsky.social"
+          status, mime, raw = get(profile_url)
+          try:
+              profile = json.loads(raw) if status == 200 else {}
+          except (ValueError, UnicodeDecodeError):
+              profile = {}
+          bio = str(profile.get("description") or "")
+          record("Bluesky", "DisplayName ZEVANORY, avatar, banner e bio oficial com UTM",
+                 status == 200 and profile.get("displayName") == "ZEVANORY" and
+                 str(profile.get("avatar") or "").startswith("https://") and
+                 str(profile.get("banner") or "").startswith("https://") and
+                 all(part in bio for part in ("IA na prática", "Renan Bitu", "Várzea Alegre/CE",
+                                             "vendas.zevanory.api.br", "utm_source=bluesky")),
+                 "https://bsky.app/profile/zevanoryoficial.bsky.social")
+          
+          token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+          chat_id = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip() or "@zevanory"
+          chat = {}
+          status = 0
+          if token:
+              from urllib.parse import quote
+              status, mime, raw = get("https://api.telegram.org/bot" + token +
+                                      "/getChat?chat_id=" + quote(chat_id, safe=""))
+              try:
+                  response = json.loads(raw)
+                  chat = response.get("result") if response.get("ok") is True else {}
+              except (ValueError, UnicodeDecodeError):
+                  chat = {}
+          if not isinstance(chat, dict):
+              chat = {}
+          description = str(chat.get("description") or "")
+          record("Telegram", "getChat: título, descrição, foto e UTM",
+                 status == 200 and chat.get("title") == "ZEVANORY" and
+                 bool((chat.get("photo") or {}).get("small_file_id")) and
+                 all(part in description for part in ("IA na prática", "Renan Bitu",
+                                                     "Várzea Alegre/CE", "vendas.zevanory.api.br",
+                                                     "utm_source=telegram")),
+                 "https://t.me/zevanory ; API getChat (credencial mascarada)")
+          
+          ready("YouTube", "Inserir avatar, banner e bio oficiais",
+                "https://studio.youtube.com/ (dono conecta/aprova o canal)")
+          ready("Pinterest", "Criar/conectar perfil e imagem de pin",
+                "https://www.pinterest.com/settings/ (dono conecta/aprova a conta)")
+          ready("Google", "Validar conta e perfil empresarial elegível, imagem e website",
+                "https://business.google.com/ (dono verifica/aprova a conta)")
+          ready("Meta", "Autorizar página Facebook e Instagram, perfis e publicações",
+                "https://business.facebook.com/ (dono concede credenciais/aprovação)")
+          
+          lines = ["| Frente | Item | CONFORME | Prova |", "|---|---|---|---|"]
+          for front, item, status, proof in rows:
+              lines.append("| " + " | ".join(x.replace("|", "/").replace("\n", " ") for x in
+                                        (front, item, status, proof)) + " |")
+          report = "\n".join(lines) + "\n"
+          print(report)
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as handle:
+                  handle.write("## ZEVANORY: prova automática de padrão\n\n")
+                  handle.write(report)
+                  handle.write("\nFalhas de conformidade: **" + str(failures) + "**.\n\n")
+          if failures:
+              print("FINAL_STANDARD_CONFORMITY=NONCONFORMING count=" + str(failures))
+              if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+                  print("PR_MODE=REPORT_ONLY; produção será verificada estritamente após merge")
+              else:
+                  sys.exit(1)
+          else:
+              print("FINAL_STANDARD_CONFORMITY=PASS")
+          PY
