@@ -155,7 +155,11 @@ export async function syncBrandProfiles(env={},fetchImpl=fetch){
        await emitActivity(env,{type:"profile_updated",channel,status:"updated",ref:"brand-profile:"+channel+":v2",link:result.profile_url}).catch(()=>null);
        await kv.put(key,JSON.stringify(result),{expirationTtl:180*86400});
      }
-   }catch(error){result={channel,status:"pendente_conciliacao",code:String(error?.message||"")==="telegram_missing_can_change_info"?"telegram_missing_can_change_info":"provider_or_readback_unverified"};}
+   }catch(error){
+     // Only fixed internal codes (never provider bodies, tokens or URLs).
+     const raw=String(error?.message||"");
+     result={channel,status:"pendente_conciliacao",code:/^[a-z][a-z0-9_]{2,63}$/.test(raw)?raw:"provider_or_readback_unverified",at:new Date().toISOString()};
+   }
    outcomes.push(result);
  }
  const snapshot={schema:"zevanory.brand-profiles.v1",at:new Date().toISOString(),profiles:[...outcomes,...MANUAL_PROFILE_ACTIONS]};
@@ -166,4 +170,14 @@ export async function brandProfileSnapshot(env={}){
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get)return {schema:"zevanory.brand-profiles.v1",status:"indisponivel"};
  return await read(kv,BRAND_PROFILE_STATE_KEY,{schema:"zevanory.brand-profiles.v1",status:"sem_dados",profiles:[...MANUAL_PROFILE_ACTIONS]});
+}
+
+// Public, sanitized view for the read-only conformity matrix: no credentials,
+// no provider payloads; Bluesky handle is public by definition.
+export async function publicBrandProfileStatus(env={}){
+ const snap=await brandProfileSnapshot(env);
+ const cfg=resolveChannelCredentials(env);
+ const profiles=(snap.profiles||[]).filter(p=>p&&["bluesky","telegram"].includes(p.channel))
+   .map(p=>({channel:p.channel,status:String(p.status||""),code:p.code?String(p.code):null,at:p.at||null}));
+ return {schema:"zevanory.brand-profiles.public.v1",at:snap.at||null,bluesky_handle:cfg.BLUESKY_HANDLE?String(cfg.BLUESKY_HANDLE).replace(/^@/,""):null,profiles};
 }

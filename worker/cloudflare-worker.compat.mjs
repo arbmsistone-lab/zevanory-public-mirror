@@ -1,7 +1,7 @@
 import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
-import { syncBrandProfiles, brandProfileSnapshot } from "./brand-profiles.mjs";
+import { syncBrandProfiles, brandProfileSnapshot, publicBrandProfileStatus } from "./brand-profiles.mjs";
 import { handleOwnerOAuth, handleYoutubePublisherAccess } from "./owner-oauth.mjs";
 import { BRAND_SIZES } from "./brand-kit.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
@@ -380,6 +380,10 @@ const wrapped = {
       return handleControlCoreRequest(request, normalized, ctx, wrapped);
     }
 
+    if (url.pathname === "/api/public/brand/profiles-status") {
+      if (request.method !== "GET") return new Response(null,{status:405});
+      return new Response(JSON.stringify(await publicBrandProfileStatus(normalized)),{headers:{"content-type":"application/json","cache-control":"no-store","x-robots-tag":"noindex"}});
+    }
     if (url.pathname === "/api/admin/brand/snapshot") {
       if (request.method !== "GET") return new Response(null,{status:405});
       if (!isAdminAuthorized(request, normalized))return new Response(JSON.stringify({error:"admin_auth_required"}),{status:401,headers:{"content-type":"application/json","cache-control":"no-store"}});
