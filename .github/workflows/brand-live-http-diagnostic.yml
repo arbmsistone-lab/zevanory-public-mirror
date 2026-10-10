@@ -1,0 +1,30 @@
+name: ZEVANORY brand HTTP diagnostic (read-only)
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/brand-live-http-diagnostic.yml"
+      - "scripts/deploy/verify-brand-assets-live.py"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Inspect canonical PNG URL without write credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://zevanory.api.br/brand/export/avatar-400.png'
+          headers="$(mktemp)"
+          bytes="$(mktemp)"
+          code="$(curl --silent --show-error --max-time 15 --dump-header "$headers" --output "$bytes" --write-out '%{http_code}' --request GET --header 'Accept: image/png' --header 'Cache-Control: no-cache' "$url" || true)"
+          ctype="$(grep -im1 '^content-type:' "$headers" | tr -d '\r' | cut -d: -f2- | xargs || true)"
+          ctype="${ctype:-unavailable}"
+          size="$(wc -c <"$bytes")"
+          magic="$(head -c8 "$bytes" | od -An -tx1 | tr -d ' \n')"
+          printf 'BRAND_LIVE_DIAGNOSTIC url=%s status=%s content_type=%s bytes=%s png_signature=%s\n' "$url" "$code" "$ctype" "$size" "$magic"
+          # Diagnostic only: never certify an invalid response. The production
+          # deploy's SHA-256 check remains the mandatory acceptance gate.
