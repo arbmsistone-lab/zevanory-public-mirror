@@ -1,6 +1,7 @@
 import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
+import { syncBrandProfiles, brandProfileSnapshot } from "./brand-profiles.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
 import { latestWhatsappStage } from "./whatsapp-background.mjs";
@@ -366,6 +367,12 @@ const wrapped = {
       return handleControlCoreRequest(request, normalized, ctx, wrapped);
     }
 
+    if (url.pathname === "/api/admin/brand/snapshot") {
+      if (request.method !== "GET") return new Response(null,{status:405});
+      if (!isAdminAuthorized(request, normalized))return new Response(JSON.stringify({error:"admin_auth_required"}),{status:401,headers:{"content-type":"application/json","cache-control":"no-store"}});
+      return new Response(JSON.stringify(await brandProfileSnapshot(normalized)),{headers:{"content-type":"application/json","cache-control":"no-store"}});
+    }
+
     // Read-only owner API. Never expose private activity or metrics without admin PIN.
     if (url.pathname === "/api/admin/acquisition/snapshot") {
       if (request.method !== "GET") return new Response(null,{status:405});
@@ -586,6 +593,7 @@ wrapped.scheduled = async (controller, env, ctx) => {
     try {
       const out=await runAcquisitionEngine(normalized,new Date());
       console.info("acquisition_cycle",JSON.stringify({ok:out.ok===true,day:out.day||null,channels:(out.outcomes||[]).map(x=>({channel:x.channel,status:x.status}))}));
+      try { const brand=await syncBrandProfiles(normalized); console.info("brand_profile_cycle",JSON.stringify({statuses:(brand.profiles||[]).map(p=>({channel:p.channel,status:p.status}))})); } catch {console.error("brand_profile_cycle_unverified");}
     } catch {
       console.error("acquisition_cycle_failed");
     }

@@ -12,6 +12,8 @@ on:
       - "worker/multichannel-autonomy.mjs"
       - "worker/acquisition-engine.mjs"
       - "worker/brand-kit.mjs"
+      - "worker/brand-profiles.mjs"
+      - "tests/brand-profiles.test.mjs"
       - "worker/brand-approved.mjs"
       - "sales-public/brand/export/**"
       - "worker/bluesky-publisher.mjs"

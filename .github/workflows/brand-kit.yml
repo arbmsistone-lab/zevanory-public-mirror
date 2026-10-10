@@ -5,6 +5,8 @@ on:
       - 'assets/brand/**'
       - 'sales-public/brand/export/**'
       - 'worker/brand-kit.mjs'
+      - 'worker/brand-profiles.mjs'
+      - 'tests/brand-profiles.test.mjs'
       - 'worker/brand-approved.mjs'
       - 'worker/multichannel-autonomy.mjs'
       - 'worker/activity-ledger.mjs'
@@ -31,7 +33,7 @@ jobs:
       - name: Render from approved official logo only
         run: python3 scripts/build-brand-assets.py
       - name: Brand source and negative image-gate tests
-        run: node --test tests/brand-kit.test.mjs tests/multichannel-autonomy.test.mjs
+        run: node --test tests/brand-kit.test.mjs tests/multichannel-autonomy.test.mjs tests/brand-profiles.test.mjs
       - name: Verify generated exports are committed exactly
         run: |
           set -euo pipefail
