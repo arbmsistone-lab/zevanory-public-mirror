@@ -1,3 +1,4 @@
+import { resolveOwnerPublisherToken } from "./owner-oauth.mjs";
 import { requireBrandedPublication } from "./brand-kit.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
 import { CREATIVE_AUTONOMY_FEED_KEY, creativeAutopublishPaused, evaluateCreativeWithRewrites } from "./creative-autonomy.mjs";
@@ -60,7 +61,7 @@ export const TELEGRAM_CAPTION_MAX=1024;
 export function telegramCaption(text=""){const value=String(text||"");if(value.length<=TELEGRAM_CAPTION_MAX)return value;const cut=value.slice(0,TELEGRAM_CAPTION_MAX-1),space=cut.lastIndexOf(" ");return (space>TELEGRAM_CAPTION_MAX-200?cut.slice(0,space):cut).trimEnd()+"…";}
 export async function publishTelegram({env={},payload={},fetchImpl=fetch}={}){const token=clean(env.TELEGRAM_BOT_TOKEN),chat=clean(env.TELEGRAM_CHANNEL_ID,200),text=clean(payload.content||payload.text,3900),media=clean(payload.media_url);if(!token||!chat)throw new Error("telegram_credentials_missing");const send=(method,body)=>requestJson(fetchImpl,`https://api.telegram.org/bot${token}/${method}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});let out;if(media){await brandMediaGate(env,"telegram",media,fetchImpl);/* Bot API: photo captions are capped at 1024 chars (longer => HTTP 400). Keep the full text by falling back to a message with the image link when the photo is refused. */try{out=await send("sendPhoto",{chat_id:chat,photo:media,caption:telegramCaption(text)});}catch(error){if(!/_400$/.test(String(error?.message||"")))throw error;out=await send("sendMessage",{chat_id:chat,text:clean(`${text}\n\n${media}`,4096)});}}else out=await send("sendMessage",{chat_id:chat,text});if(out?.ok!==true||!out?.result?.message_id)throw new Error("telegram_acceptance_missing");const username=chat.startsWith("@")?chat.slice(1):String(out.result?.chat?.username||"");return {provider:"telegram",provider_post_id:String(out.result.message_id),url:/^[A-Za-z0-9_]{5,32}$/.test(username)?`https://t.me/${username}/${out.result.message_id}`:null};}
 
-export async function publishPinterest({env={},payload={},fetchImpl=fetch}={}){const token=clean(env.PINTEREST_ACCESS_TOKEN),board=clean(env.PINTEREST_BOARD_ID,200),link=clean(payload.landing_url),media=clean(payload.media_url);if(!token||!board)throw new Error("pinterest_credentials_missing");await brandMediaGate(env,"pinterest",media,fetchImpl);const out=await requestJson(fetchImpl,"https://api.pinterest.com/v5/pins",{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:JSON.stringify({board_id:board,title:clean(payload.title,100),description:clean(payload.content,500),link,media_source:{source_type:"image_url",url:media}})});if(!out?.id)throw new Error("pinterest_acceptance_missing");return {provider:"pinterest",provider_post_id:String(out.id),url:`https://www.pinterest.com/pin/${out.id}/`};}
+export async function publishPinterest({env={},payload={},fetchImpl=fetch}={}){const connected=await resolveOwnerPublisherToken(env,"pinterest",fetchImpl);const token=clean(connected||env.PINTEREST_ACCESS_TOKEN),board=clean(env.PINTEREST_BOARD_ID,200),link=clean(payload.landing_url),media=clean(payload.media_url);if(!token||!board)throw new Error("pinterest_credentials_missing");await brandMediaGate(env,"pinterest",media,fetchImpl);const out=await requestJson(fetchImpl,"https://api.pinterest.com/v5/pins",{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:JSON.stringify({board_id:board,title:clean(payload.title,100),description:clean(payload.content,500),link,media_source:{source_type:"image_url",url:media}})});if(!out?.id)throw new Error("pinterest_acceptance_missing");return {provider:"pinterest",provider_post_id:String(out.id),url:`https://www.pinterest.com/pin/${out.id}/`};}
 
 const topics=Object.freeze([
 ["ia-pratica-pequenos-negocios","IA prática para pequenos negócios","Como organizar tarefas repetitivas com IA sem perder controle"],
@@ -181,7 +182,13 @@ export async function runMultichannelAutonomy(env={},now=new Date(),fetchImpl=fe
   // Pinterest retains the existing approved F1 score/compliance path; no new DM.
   let feed=[];try{feed=JSON.parse(String(await kv?.get?.(CREATIVE_AUTONOMY_FEED_KEY)||"[]"));}catch{}
   const creative=(Array.isArray(feed)?feed:[]).find(x=>x?.status==="approved_for_autopublish"&&Number(x?.compliance)===100&&Number(x?.score)>=85);
-  if(creative&&!paused&&channels.find(x=>x.id==="pinterest")?.configured&&creative.asset_url&&kv?.get&&kv?.put){
+  let pinterestConnected=false;
+  try{
+    const oauth=JSON.parse(String(await kv?.get?.("zpc:owner:oauth:connection:pinterest:v1")||"null"));
+    pinterestConnected=oauth?.schema==="zpc.owner.oauth.v1"&&oauth?.channel==="pinterest"&&Boolean(oauth?.encryptedRefresh);
+  }catch{}
+  const pinterestReady=Boolean(env.PINTEREST_BOARD_ID)&&(channels.find(x=>x.id==="pinterest")?.configured||pinterestConnected);
+  if(creative&&!paused&&pinterestReady&&creative.asset_url&&kv?.get&&kv?.put){
     const key="zpc:multichannel:evidence:pinterest:"+creative.creative_id;
     if(!await kv.get(key)){
       try{
