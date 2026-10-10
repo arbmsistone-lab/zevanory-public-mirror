@@ -14,7 +14,11 @@ export function blueskyPostText({title,hook,value,cta,productUrl,day}){
  const fixed="\n\n"+link;
  const remaining=300-graphemeCount(fixed);
  if(remaining<40)throw new Error("bluesky_link_too_long");
- const candidate=[textPart(hook||title,95),textPart(value||"Uma ideia prática para organizar sua rotina com revisão humana.",115),textPart(cta||"Veja o guia digital:",35)].filter(Boolean).join("\n");
+ const hookPart=textPart(hook||title,Math.min(65,Math.max(0,remaining-45)));
+ const ctaPart=textPart(cta||"Veja o guia digital:",28);
+ const valueBudget=Math.max(0,remaining-graphemeCount(hookPart)-graphemeCount(ctaPart)-2);
+ const valuePart=textPart(value||"Uma ideia prática para organizar sua rotina com revisão humana.",valueBudget);
+ const candidate=[hookPart,valuePart,ctaPart].filter(Boolean).join("\n");
  const text=textPart(candidate,remaining)+fixed;
  if(graphemeCount(text)>300)throw new Error("bluesky_grapheme_limit");
  return {text,link};
