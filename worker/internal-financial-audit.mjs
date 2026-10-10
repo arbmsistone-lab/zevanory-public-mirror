@@ -76,7 +76,9 @@ export function classifyAsaasSandboxPilot(row,response,env={}) {
   if(!["payment_confirmed","refund_confirmed"].includes(String(row.normalized_event||"")))return denied("asaas_sandbox_event_not_supported");
   return {classification:"teste_certificacao",reason:"asaas_sandbox_provider_get_and_reference_verified"};
 }
-async function asaasSandboxGet(id,env) {
+async function asaasSandboxGet(id,env,budget) {
+  if(budget.requests<=0)return {status:0,body:null};
+  budget.requests--;
   if(String(env.ASAAS_ENV||"").toLowerCase()!=="sandbox"||!String(env.ASAAS_API_KEY||"").trim()||!asaasSafeId(id))return {status:0,body:null};
   try{
     const response=await fetch("https://api-sandbox.asaas.com/v3/payments/"+encodeURIComponent(id),{
@@ -87,16 +89,26 @@ async function asaasSandboxGet(id,env) {
   }catch{return {status:0,body:null};}
 }
 
-async function mpGet(path,token) {
+// Reserve three Worker subrequests for database/infrastructure; 41 initial MP GETs
+// plus at most six transient retries, then sandbox GETs only if budget remains.
+export async function mpGet(path,token,{fetchImpl=fetch,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),budget={requests:47,retries:6}}={}) {
   if(!token||token.startsWith("TEST-"))return {status:0,body:null};
-  try{
-    const r=await fetch("https://api.mercadopago.com"+path,{method:"GET",headers:{"authorization":"Bearer "+token,"accept":"application/json"},signal:AbortSignal.timeout(7000)});
-    if(r.status!==200)return {status:r.status,body:null};
-    return {status:200,body:await r.json()};
-  }catch{return {status:0,body:null};}
+  let last={status:0,body:null};
+  for(let attempt=0;attempt<3;attempt++){
+    if(budget.requests<=0)return last;
+    budget.requests--;
+    try{
+      const r=await fetchImpl("https://api.mercadopago.com"+path,{method:"GET",headers:{"authorization":"Bearer "+token,"accept":"application/json"},signal:AbortSignal.timeout(7000)});
+      last=r.status===200?{status:200,body:await r.json()}:{status:r.status,body:null};
+    }catch{last={status:0,body:null};}
+    if(!(last.status===0||last.status===429||last.status>=500)||attempt===2||budget.retries<=0||budget.requests<=0)return last;
+    budget.retries--;
+    await sleep(attempt===0?500:1500);
+  }
+  return last;
 }
-async function getOwner(token){
-  const r=await mpGet("/users/me",token),body=r.body||{};
+async function getOwner(token,budget){
+  const r=await mpGet("/users/me",token,{budget}),body=r.body||{};
   const tags=body.tags;
   const verified=r.status===200&&body.site_id==="MLB"&&Array.isArray(tags)&&!tags.includes("test_user")&&/^\d+$/.test(String(body.id||""));
   return {verified,body};
@@ -169,7 +181,8 @@ async function financialClassification(env,sqlFactory){
     payment_ids:{producao_confirmado:[],ambiguo:[]},production_payment_events:0,production_refund_events:0,production_paid_orders:0,evidence_reasons:[],evidence_breakdown:[],certification_events:0,asaas_sandbox:{environment:"unknown",credential_configured:false,ids_queried:0},complete:false,commercial_release_allowed:false};
   if(!env.DATABASE_URL||!sqlFactory)return {code:503,result:{error:"database_unavailable"}};
   const token=String(env.MERCADOPAGO_ACCESS_TOKEN||"");
-  const owner=await getOwner(token);
+  const budget={requests:47,retries:6};
+  const owner=await getOwner(token,budget);
   if(!owner.verified)return {code:503,result:{error:"production_token_unverified"}};
   let rows;
   try{
@@ -189,14 +202,14 @@ async function financialClassification(env,sqlFactory){
   const ids=new Map();
   for(const x of rows)if(/^\d{1,32}$/.test(String(x.id||"")))ids.set(String(x.id),null);
   if(ids.size>40)return {code:503,result:{error:"audit_limit_exceeded",complete:false}};
-  for(const id of ids.keys())ids.set(id,await mpGet("/v1/payments/"+id,token));
+  for(const id of ids.keys())ids.set(id,await mpGet("/v1/payments/"+id,token,{budget}));
   const asaasMode=String(env.ASAAS_ENV||"").toLowerCase();
   result.asaas_sandbox.environment=asaasMode==="sandbox"?"sandbox":asaasMode==="production"?"production":"unknown";
   result.asaas_sandbox.credential_configured=Boolean(String(env.ASAAS_API_KEY||"").trim());
   const asaasResults=new Map();
   if(asaasMode==="sandbox"&&result.asaas_sandbox.credential_configured){
     for(const row of rows)if(row.provider==="asaas"&&row.pilot===true&&asaasSafeId(row.id)&&!asaasResults.has(String(row.id))){
-      asaasResults.set(String(row.id),await asaasSandboxGet(row.id,env));
+      asaasResults.set(String(row.id),await asaasSandboxGet(row.id,env,budget));
     }
   }
   result.asaas_sandbox.ids_queried=asaasResults.size;
