@@ -162,6 +162,11 @@ jobs:
                                   "Várzea Alegre/CE","vendas.zevanory.api.br",
                                   "utm_source=bluesky")),
           },ensure_ascii=False))
+          try:
+              sync_status, _, sync_body = get("https://zevanory.api.br/api/public/brand/profiles-status")
+              print("::notice title=BRAND_SYNC_STATUS::" + (sync_body.decode("utf-8", "replace")[:600] if sync_status == 200 else "http_" + str(sync_status)))
+          except Exception as exc:
+              print("::notice title=BRAND_SYNC_STATUS::unavailable " + type(exc).__name__)
           print("::notice title=BLUESKY_DIAG::" + json.dumps({"status": status,
                 "displayName": profile.get("displayName") == "ZEVANORY",
                 "avatar": str(profile.get("avatar") or "").startswith("https://"),
