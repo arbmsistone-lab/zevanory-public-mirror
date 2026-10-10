@@ -24,7 +24,7 @@ permissions:
   actions: read
 concurrency:
   group: zees16-control-reconciler-${{ github.event.workflow_run.head_sha || github.sha }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   reconcile:
     if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages') }}
