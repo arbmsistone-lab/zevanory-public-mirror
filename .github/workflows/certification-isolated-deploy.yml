@@ -32,17 +32,15 @@
         "CLOUDFLARE_API_TOKEN": "${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}",
         "CLOUDFLARE_ACCOUNT_ID": "1b26415802588185a86c1d4d3ebf5bdb",
         "TARGET_RUNTIME_SHA": "${{ github.sha }}",
-        "CERTIFICATION_KV_ID": "${{ vars.CERTIFICATION_KV_ID }}",
-        "CERTIFICATION_D1_ID": "${{ vars.CERTIFICATION_D1_ID }}",
+        "CERTIFICATION_KV_ID": "${{ vars.CERTIFICATION_KV_ID || '48afe69de2ff4014b89acb553780ef35' }}",
+        "CERTIFICATION_D1_ID": "${{ vars.CERTIFICATION_D1_ID || '7ff006f3-1daf-44c5-9494-aabab600608e' }}",
         "CERTIFICATION_SANDBOX_URL": "${{ vars.CERTIFICATION_SANDBOX_URL }}",
         "MERCADOPAGO_TEST_PUBLIC_KEY": "${{ secrets.MERCADOPAGO_TEST_PUBLIC_KEY }}",
         "MERCADOPAGO_TEST_ACCESS_TOKEN": "${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}",
         "MERCADOPAGO_TEST_WEBHOOK_SECRET": "${{ secrets.MERCADOPAGO_TEST_WEBHOOK_SECRET }}",
         "CERTIFICATION_E2E_TOKEN": "${{ secrets.CERTIFICATION_E2E_TOKEN }}",
         "CERTIFICATION_DATABASE_URL": "${{ secrets.CERTIFICATION_DATABASE_URL }}",
-        "CERTIFICATION_OPERATOR_TOKEN": "${{ secrets.CERTIFICATION_OPERATOR_TOKEN }}",
         "CERTIFICATION_RESEND_API_KEY": "${{ secrets.CERTIFICATION_RESEND_API_KEY }}",
-        "CERTIFICATION_RESEND_RECEIVING_API_KEY": "${{ secrets.CERTIFICATION_RESEND_RECEIVING_API_KEY }}",
         "SANDBOX_INBOX_READ_TOKEN": "${{ secrets.SANDBOX_INBOX_READ_TOKEN }}"
       },
       "steps": [
@@ -65,11 +63,11 @@
         },
         {
           "name": "Deploy CERTIFICATION script only, never zevanory or sales workers",
-          "run": "set -euo pipefail\nnode -e 'const c=JSON.parse(require(\"fs\").readFileSync(\"wrangler.certification.generated.jsonc\"));if(c.name!==\"zevanory-certification\"||c.routes.length||c.services?.length||c.triggers.crons.length)process.exit(1)'\nnpx --yes wrangler@4.143.0 deploy --config wrangler.certification.generated.jsonc --tag=\"$EXPECTED_SHA\"\necho 'CERTIFICATION_ONLY_DEPLOY_REQUESTED=PASS'"
+          "run": "set -euo pipefail\nnode -e 'const c=JSON.parse(require(\"fs\").readFileSync(\"wrangler.certification.generated.jsonc\"));if(c.name!==\"zevanory-certification\"||c.routes.length||c.services?.length||c.triggers.crons.length)process.exit(1)'\nnpx --yes wrangler@4.143.0 deploy --config wrangler.certification.generated.jsonc --tag=\"$EXPECTED_SHA\" 2>&1 | tee /tmp/zevanory-certification-deploy.log\ndetected=\"$(grep -Eo 'https://zevanory-certification\\.[A-Za-z0-9-]+\\.workers\\.dev' /tmp/zevanory-certification-deploy.log | tail -1 || true)\"\ntest -n \"$detected\" || { echo 'CERTIFICATION_DEPLOY_URL_MISSING'; exit 1; }\norigin=\"${CERTIFICATION_SANDBOX_URL:-$detected}\"\ncase \"$origin\" in https://zevanory-certification.*.workers.dev) ;; *) echo 'CERTIFICATION_ORIGIN_INVALID'; exit 1;; esac\ntest \"$origin\" = \"$detected\" || { echo 'CERTIFICATION_ORIGIN_OVERRIDE_MISMATCH'; exit 1; }\necho \"CERTIFICATION_SANDBOX_URL=$origin\" >> \"$GITHUB_ENV\"\necho \"CERTIFICATION_ISOLATED_WORKER_URL=$origin\" >> \"$GITHUB_STEP_SUMMARY\"\necho 'CERTIFICATION_ONLY_DEPLOY_REQUESTED=PASS'"
         },
         {
           "name": "Attach only sandbox-named secrets to certification Worker",
-          "run": "set -euo pipefail\npython3 - <<'PY'\nimport json,os,pathlib,sys\nnames=[\"MERCADOPAGO_TEST_PUBLIC_KEY\",\"MERCADOPAGO_TEST_ACCESS_TOKEN\",\"MERCADOPAGO_TEST_WEBHOOK_SECRET\",\"CERTIFICATION_E2E_TOKEN\",\"CERTIFICATION_DATABASE_URL\",\"CERTIFICATION_OPERATOR_TOKEN\",\"CERTIFICATION_RESEND_API_KEY\",\"CERTIFICATION_RESEND_RECEIVING_API_KEY\",\"SANDBOX_INBOX_READ_TOKEN\"]\nmissing=[n for n in names if not os.environ.get(n)]\nif missing:sys.exit(\"CERTIFICATION_SECRETS_MISSING: \"+\",\".join(missing))\np=pathlib.Path(\"/tmp/certification-secrets-only.json\")\np.touch(mode=0o600)\np.write_text(json.dumps({n:os.environ[n] for n in names}))\nPY\ntrap 'rm -f /tmp/certification-secrets-only.json' EXIT\nnpx --yes wrangler@4.143.0 secret bulk /tmp/certification-secrets-only.json --config wrangler.certification.generated.jsonc\n"
+          "run": "set -euo pipefail\nexport CERTIFICATION_OPERATOR_TOKEN=\"$(openssl rand -hex 32)\"\npython3 - <<'PY'\nimport json,os,pathlib,sys\nnames=[\"MERCADOPAGO_TEST_PUBLIC_KEY\",\"MERCADOPAGO_TEST_ACCESS_TOKEN\",\n \"MERCADOPAGO_TEST_WEBHOOK_SECRET\",\"CERTIFICATION_E2E_TOKEN\",\n \"CERTIFICATION_DATABASE_URL\",\"CERTIFICATION_OPERATOR_TOKEN\",\n \"CERTIFICATION_RESEND_API_KEY\",\"SANDBOX_INBOX_READ_TOKEN\"]\nmissing=[n for n in names if not os.environ.get(n)]\nif missing:sys.exit(\"CERTIFICATION_SECRETS_MISSING: \"+\",\".join(missing))\ndata={n:os.environ[n] for n in names}\ndata[\"CERTIFICATION_RESEND_RECEIVING_API_KEY\"]=data[\"CERTIFICATION_RESEND_API_KEY\"]\np=pathlib.Path(\"/tmp/certification-secrets-only.json\")\nfd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)\nwith os.fdopen(fd,\"w\") as f:json.dump(data,f)\nPY\ntrap 'rm -f /tmp/certification-secrets-only.json; unset CERTIFICATION_OPERATOR_TOKEN' EXIT\nnpx --yes wrangler@4.143.0 secret bulk /tmp/certification-secrets-only.json --config wrangler.certification.generated.jsonc\necho 'CERTIFICATION_SECRET_SCOPE=ISOLATED'"
         },
         {
           "name": "Read back isolated Worker capability with exact deployed SHA",
