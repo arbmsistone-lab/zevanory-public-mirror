@@ -33,7 +33,10 @@ const xrpc="https://bsky.social/xrpc/";
 async function json(fetchImpl,url,options={}) {
  const res=await fetchImpl(url,{...options,signal:AbortSignal.timeout(15000)});
  const body=await res.json().catch(()=>({}));
- if(!res.ok)throw new Error("profile_provider_http_"+res.status);
+ if(!res.ok){
+  if(url.startsWith("https://api.telegram.org/")&&/not enough rights|chat_admin_required|not enough permission/i.test(String(body.description||"")))throw new Error("telegram_missing_can_change_info");
+  throw new Error("profile_provider_http_"+res.status);
+ }
  return body;
 }
 export async function updateBlueskyProfile(env,fetchImpl=fetch){
@@ -84,8 +87,36 @@ export async function updateTelegramChannelPhoto(env,fetchImpl=fetch){
  const after=await json(fetchImpl,endpoint+"getChat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:chat})});
  if(!after.ok || after.result?.title!==official.title || after.result?.description!==official.description || !after.result?.photo?.big_file_id || before.result?.photo?.big_file_id===after.result?.photo?.big_file_id)
    throw new Error("telegram_profile_readback_unverified");
- return {status:"atualizado",channel:"telegram",profile_url:chat.startsWith("@")?"https://t.me/"+chat.slice(1):null,at:new Date().toISOString()};
+ return {status:"atualizado",channel:"telegram",profile_url:chat.startsWith("@")?"https://t.me/"+chat.slice(1):null,at:new Date().toISOString(),photo_file_id:after.result.photo.big_file_id};
 }
+// A historical successful receipt is not proof that a human has not subsequently
+// edited the provider profile. GET readback first; mutate only on confirmed drift.
+export async function liveBrandProfileConforms(channel,env={},fetchImpl=fetch,previous={}){
+ const cfg=resolveChannelCredentials(env);
+ if(channel==="bluesky"){
+  if(!cfg.BLUESKY_HANDLE)return false;
+  const url="https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor="+encodeURIComponent(cfg.BLUESKY_HANDLE);
+  const response=await fetchImpl(url,{method:"GET",signal:AbortSignal.timeout(15000)});
+  if(!response.ok)throw new Error("bluesky_readback_unavailable");
+  const profile=await response.json();
+  return profile?.displayName===OFFICIAL_SOCIAL_PROFILE.bluesky.displayName &&
+   profile?.description===OFFICIAL_SOCIAL_PROFILE.bluesky.description &&
+   /^https:\/\//.test(String(profile?.avatar||"")) &&
+   /^https:\/\//.test(String(profile?.banner||""));
+ }
+ if(channel==="telegram"){
+  if(!cfg.TELEGRAM_BOT_TOKEN||!cfg.TELEGRAM_CHANNEL_ID)return false;
+  const reply=await json(fetchImpl,"https://api.telegram.org/bot"+cfg.TELEGRAM_BOT_TOKEN+"/getChat",{
+   method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:cfg.TELEGRAM_CHANNEL_ID})
+  });
+  const chat=reply.result||{},photo=chat.photo?.big_file_id||null;
+  return reply.ok===true && chat.title===OFFICIAL_SOCIAL_PROFILE.telegram.title &&
+   chat.description===OFFICIAL_SOCIAL_PROFILE.telegram.description && Boolean(photo) &&
+   (!previous.photo_file_id || previous.photo_file_id===photo);
+ }
+ return false;
+}
+
 export async function syncBrandProfiles(env={},fetchImpl=fetch){
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get||!kv?.put)return {status:"bloqueado",code:"kv_unavailable"};
@@ -101,7 +132,14 @@ export async function syncBrandProfiles(env={},fetchImpl=fetch){
    const signedReceipt=previous?.status==="atualizado" && Boolean(previous?.at) &&
      (channel==="telegram" || Boolean(previous?.provider_record));
    if(signedReceipt){
-     outcomes.push(previous);continue;
+     try{
+       if(await liveBrandProfileConforms(channel,env,fetchImpl,previous)){
+         outcomes.push(previous);continue;
+       }
+     }catch{
+       outcomes.push({channel,status:"pendente_conciliacao",code:"provider_readback_unavailable"});
+       continue; // No unverified duplicate writes on provider outage.
+     }
    }
    let result;
    const resolved=resolveChannelCredentials(env);
@@ -117,7 +155,7 @@ export async function syncBrandProfiles(env={},fetchImpl=fetch){
        await emitActivity(env,{type:"profile_updated",channel,status:"updated",ref:"brand-profile:"+channel+":v2",link:result.profile_url}).catch(()=>null);
        await kv.put(key,JSON.stringify(result),{expirationTtl:180*86400});
      }
-   }catch{result={channel,status:"pendente_conciliacao",code:"provider_or_readback_unverified"};}
+   }catch(error){result={channel,status:"pendente_conciliacao",code:String(error?.message||"")==="telegram_missing_can_change_info"?"telegram_missing_can_change_info":"provider_or_readback_unverified"};}
    outcomes.push(result);
  }
  const snapshot={schema:"zevanory.brand-profiles.v1",at:new Date().toISOString(),profiles:[...outcomes,...MANUAL_PROFILE_ACTIONS]};
