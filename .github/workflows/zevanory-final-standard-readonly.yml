@@ -77,6 +77,8 @@ jobs:
               status = "CONFORME" if conforms else "NÃO CONFORME"
               failures += int(not conforms)
               rows.append((front, item, status, proof))
+              if not conforms:
+                  print("::error title=NONCONFORMING " + front + "::" + item.replace("\n", " "))
           
           def ready(front, task, proof):
               rows.append((front, task, "PRONTO, aguardando credencial/aprovação", proof))
@@ -160,6 +162,13 @@ jobs:
                                   "Várzea Alegre/CE","vendas.zevanory.api.br",
                                   "utm_source=bluesky")),
           },ensure_ascii=False))
+          print("::notice title=BLUESKY_DIAG::" + json.dumps({"status": status,
+                "displayName": profile.get("displayName") == "ZEVANORY",
+                "avatar": str(profile.get("avatar") or "").startswith("https://"),
+                "banner": str(profile.get("banner") or "").startswith("https://"),
+                "bio_missing": [x for x in ("IA na prática", "Renan Bitu", "Várzea Alegre/CE",
+                                "vendas.zevanory.api.br", "utm_source=bluesky") if x not in bio],
+                "bio_len": len(bio)}, ensure_ascii=False))
           record("Bluesky", "DisplayName ZEVANORY, avatar, banner e bio oficial com UTM",
                  status == 200 and profile.get("displayName") == "ZEVANORY" and
                  str(profile.get("avatar") or "").startswith("https://") and
@@ -194,6 +203,12 @@ jobs:
                                          ("IA na prática","Renan Bitu","Várzea Alegre/CE",
                                           "vendas.zevanory.api.br","utm_source=telegram"))
           },ensure_ascii=False))
+          print("::notice title=TELEGRAM_DIAG::" + json.dumps({"status": status,
+                "title": chat.get("title") == "ZEVANORY",
+                "photo": bool((chat.get("photo") or {}).get("small_file_id")),
+                "desc_missing": [x for x in ("IA na prática", "Renan Bitu", "Várzea Alegre/CE",
+                                 "vendas.zevanory.api.br", "utm_source=telegram") if x not in description],
+                "desc_len": len(description)}, ensure_ascii=False))
           record("Telegram", "getChat: título, descrição, foto e UTM",
                  status == 200 and chat.get("title") == "ZEVANORY" and
                  bool((chat.get("photo") or {}).get("small_file_id")) and
