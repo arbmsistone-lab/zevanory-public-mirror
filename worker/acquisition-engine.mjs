@@ -51,7 +51,7 @@ const guidance=Object.freeze({
 export function generateNative(entry,channel){
  const headline=entry.angle==="tutorial"?"Passo a passo":entry.angle==="comparação"?"O que avaliar":"Uma ideia prática";
  const hook=headline+" para "+entry.niche;
- const value=guidance[entry.angle]+" Material de "+entry.product.name+" para estruturar a rotina.";
+ const value=entry.product.name+": "+guidance[entry.angle]+" Use o guia para organizar a rotina.";
  const cta="Veja o guia digital";
  const link=productLink(entry,channel);
  if(channel==="telegram")return {channel,hook,value,cta,link,text:hook+"\n\n"+value+"\n\n"+cta+": "+link+"\n#ZEVANORY #Negocios"};
@@ -123,6 +123,7 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
   try{
    const blog=await ensureDailyBlog(env,now,fetchImpl);
    outcomes.push({channel:"blog",status:blog.latest?"publicado":"erro",url:blog.latest?.url||null,at:blog.latest?.publishedAt||null,day});
+   if(blog.latest)await emitActivity(env,{type:"post_published",channel:"blog",status:"published",ref:"blog:"+day+":"+blog.latest.slug,link:blog.latest.url},{now:now.getTime()}).catch(()=>null);
   }catch{outcomes.push({channel:"blog",status:"erro",code:"blog_generation_failed",day});}
  }
  for(const channel of ["telegram","bluesky"]){
