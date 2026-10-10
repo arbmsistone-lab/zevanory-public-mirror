@@ -43,7 +43,7 @@ def guarded_workflow(text, manual):
     events = d.get('on', {})
     check(isinstance(events, dict), 'EVENT_MAPPING')
     check(set(events) == ({'workflow_dispatch'} if manual else {'pull_request', 'push'}), 'TRIGGERS')
-    check(d.get('permissions') == {'contents': 'read'}, 'MINIMUM_PERMISSIONS')
+    check(d.get('permissions') == ({'contents': 'read', 'actions': 'read'} if manual else {'contents': 'read'}), 'MINIMUM_PERMISSIONS')
     check(not re.search(r'\bsecrets\s*\.', text, re.I) or manual, 'STATIC_NO_SECRETS')
     secret_refs = set(re.findall(r'\bsecrets\.([A-Za-z0-9_]+)', text))
     check(secret_refs <= ALLOWED_SECRETS, 'NO_PRODUCTION_SECRETS')
