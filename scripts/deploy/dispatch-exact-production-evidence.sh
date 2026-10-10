@@ -13,7 +13,7 @@ if [ "$live" != "$expected" ]; then
   echo "::warning title=EXACT_RELEASE_NOT_LIVE::live=${live:-unavailable} target=$expected; dispatch skipped"
   exit 0
 fi
-for wf in zevanory-provider-independence.yml zevanory-portable-dr.yml zevanory-three-provider-quorum.yml; do
+for wf in zevanory-provider-independence.yml zevanory-portable-dr.yml zevanory-three-provider-quorum.yml zevanory-apex-engineering.yml; do
   head="$(gh api "repos/$repo/git/ref/heads/gh-pages" --jq '.object.sha')"
   if [ "$head" != "$expected" ]; then
     echo "::warning title=EXACT_RELEASE_HEAD_MOVED::workflow=$wf dispatch skipped"
@@ -22,8 +22,8 @@ for wf in zevanory-provider-independence.yml zevanory-portable-dr.yml zevanory-t
   gh workflow run "$wf" --ref gh-pages
   echo "ZEES16_EVIDENCE_DISPATCHED=$wf TARGET_SHA=$expected"
 done
-# Wait for all three dispatches on this exact commit before reconciling.
-workflows=(zevanory-provider-independence.yml zevanory-portable-dr.yml zevanory-three-provider-quorum.yml)
+# Wait for all four dispatches on this exact commit before reconciling.
+workflows=(zevanory-provider-independence.yml zevanory-portable-dr.yml zevanory-three-provider-quorum.yml zevanory-apex-engineering.yml)
 for attempt in $(seq 1 90); do
   completed=0
   for wf in "${workflows[@]}"; do
@@ -34,11 +34,11 @@ for attempt in $(seq 1 90); do
     fi
     [ "$result" = "success" ] && completed=$((completed+1))
   done
-  [ "$completed" = 3 ] && break
+  [ "$completed" = 4 ] && break
   sleep 8
 done
-if [ "$completed" != 3 ]; then
-  echo "::error title=ZEES16_EVIDENCE_TIMEOUT::Only $completed/3 workflows succeeded"
+if [ "$completed" != 4 ]; then
+  echo "::error title=ZEES16_EVIDENCE_TIMEOUT::Only $completed/4 workflows succeeded"
   exit 1
 fi
 head="$(gh api "repos/$repo/git/ref/heads/gh-pages" --jq '.object.sha')"
