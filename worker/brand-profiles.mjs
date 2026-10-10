@@ -26,8 +26,18 @@ export const MANUAL_PROFILE_ACTIONS=Object.freeze([
 ]);
 
 const read=async (kv,key,fallback=null)=>{try{return JSON.parse(String(await kv.get(key)||"null"))??fallback;}catch{return fallback;}};
-async function verifiedImage(channel,name,fetchImpl){
- return (await validateBrandProfileAsset({channel,url:URL+name,fetchImpl,includeBytes:true})).bytes;
+// A Worker's subrequest to its own zone does not re-enter this Worker, so
+// /brand/export/* (served by this Worker from ASSETS) is unreachable via fetch()
+// from inside it (live code: brand_image_fetch_unverified). Read the same
+// SHA-pinned bytes straight from the ASSETS binding; the validator still checks
+// filename, role, PNG dimensions and the approved SHA-256, so trust is unchanged.
+function brandAssetFetch(env,fetchImpl){
+ const assets=env?.ASSETS;
+ if(!assets?.fetch)return fetchImpl;
+ return (url,init={})=>String(url).startsWith(URL)?assets.fetch(new Request(String(url),{method:"GET"})):fetchImpl(url,init);
+}
+async function verifiedImage(channel,name,fetchImpl,env){
+ return (await validateBrandProfileAsset({channel,url:URL+name,fetchImpl:brandAssetFetch(env,fetchImpl),includeBytes:true})).bytes;
 }
 const xrpc="https://bsky.social/xrpc/";
 async function json(fetchImpl,url,options={}) {
@@ -42,7 +52,7 @@ async function json(fetchImpl,url,options={}) {
 export async function updateBlueskyProfile(env,fetchImpl=fetch){
  env=resolveChannelCredentials(env);
  if(!env.BLUESKY_HANDLE||!env.BLUESKY_APP_PASSWORD)return {status:"depende_do_dono",code:"bluesky_credentials"};
- const [avatar,banner]=await Promise.all([verifiedImage("bluesky","avatar-800.png",fetchImpl),verifiedImage("bluesky","banner-bluesky.png",fetchImpl)]);
+ const [avatar,banner]=await Promise.all([verifiedImage("bluesky","avatar-800.png",fetchImpl,env),verifiedImage("bluesky","banner-bluesky.png",fetchImpl,env)]);
  const session=await json(fetchImpl,xrpc+"com.atproto.server.createSession",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({identifier:env.BLUESKY_HANDLE,password:env.BLUESKY_APP_PASSWORD})});
  if(!session.did||!session.accessJwt)throw new Error("profile_session_invalid");
  const bearer={authorization:"Bearer "+session.accessJwt};
@@ -67,7 +77,7 @@ export async function updateBlueskyProfile(env,fetchImpl=fetch){
 export async function updateTelegramChannelPhoto(env,fetchImpl=fetch){
  env=resolveChannelCredentials(env);
  if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHANNEL_ID)return {status:"depende_do_dono",code:"telegram_credentials"};
- const bytes=await verifiedImage("telegram","avatar-800.png",fetchImpl);
+ const bytes=await verifiedImage("telegram","avatar-800.png",fetchImpl,env);
  const endpoint="https://api.telegram.org/bot"+env.TELEGRAM_BOT_TOKEN+"/";
  const chat=env.TELEGRAM_CHANNEL_ID;
  const before=await json(fetchImpl,endpoint+"getChat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:chat})});
