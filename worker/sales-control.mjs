@@ -1,4 +1,5 @@
 import { readFinancialProofSnapshot } from "./commercial-metrics-projection.mjs";
+import { brandedEmailHtml } from "./brand-email.mjs";
 // Sales switch + customer self-service delivery recovery.
 // Deploy note (2026-10-07): first production rollout was rolled back by the CSP smoke (inline footer style on the sales site, fixed in #460).
 //
@@ -122,6 +123,7 @@ async function resendDelivery(env, { sql, worker, ctx }, { orderId, email }) {
       reply_to: "suporte@zevanory.api.br",
       subject: "Seu novo link de download ZEVANORY",
       text: `Aqui está seu novo link de download (válido por 72 horas, um download): ${body.download_url}\n\nCódigo do pedido: ${orderId}\nDúvidas: suporte@zevanory.api.br ou WhatsApp https://wa.me/5588992545413\nA. RENAN ALVES MOREIRA BITU LTDA - CNPJ 69.077.233/0001-99`,
+      html: brandedEmailHtml(`Aqui está seu novo link de download (válido por 72 horas, um download): ${body.download_url}\n\nCódigo do pedido: ${orderId}\nDúvidas: suporte@zevanory.api.br ou WhatsApp https://wa.me/5588992545413`),
     }),
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);

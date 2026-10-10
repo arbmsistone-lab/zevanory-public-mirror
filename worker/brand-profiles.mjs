@@ -4,6 +4,16 @@ import { validateBrandProfileAsset } from "./brand-kit.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
 import { resolveChannelCredentials } from "./multichannel-autonomy.mjs";
 
+export const OFFICIAL_SOCIAL_PROFILE = Object.freeze({
+  bluesky: Object.freeze({
+    displayName:"ZEVANORY",
+    description:"IA na prática para pequenos negócios. Criada por Renan Bitu, Várzea Alegre/CE. https://vendas.zevanory.api.br/?utm_source=bluesky&utm_medium=profile",
+  }),
+  telegram: Object.freeze({
+    title:"ZEVANORY",
+    description:"IA na prática para pequenos negócios. Criada por Renan Bitu, Várzea Alegre/CE. https://vendas.zevanory.api.br/?utm_source=telegram&utm_medium=profile",
+  }),
+});
 export const BRAND_PROFILE_STATE_KEY="zpc:brand:profiles:v1";
 const URL="https://zevanory.api.br/brand/export/";
 export const MANUAL_PROFILE_ACTIONS=Object.freeze([
@@ -44,11 +54,11 @@ export async function updateBlueskyProfile(env,fetchImpl=fetch){
    return data.blob;
  }
  const image=await upload(avatar),cover=await upload(banner);
- const record={...(prior||{}),$type:"app.bsky.actor.profile",createdAt:prior?.createdAt||new Date().toISOString(),avatar:image,banner:cover};
+ const record={...(prior||{}),$type:"app.bsky.actor.profile",createdAt:prior?.createdAt||new Date().toISOString(),...OFFICIAL_SOCIAL_PROFILE.bluesky,avatar:image,banner:cover};
  const data=await json(fetchImpl,xrpc+"com.atproto.repo.putRecord",{method:"POST",headers:{...bearer,"content-type":"application/json"},body:JSON.stringify({repo:session.did,collection:"app.bsky.actor.profile",rkey:"self",record,...(cid?{swapRecord:cid}:{})})});
  if(!data.uri||!data.cid)throw new Error("profile_write_unverified");
  const after=await json(fetchImpl,target,{headers:bearer});
- if(after.value?.avatar?.ref?.$link!==image.ref.$link||after.value?.banner?.ref?.$link!==cover.ref.$link)throw new Error("profile_readback_mismatch");
+ if(after.value?.avatar?.ref?.$link!==image.ref.$link||after.value?.banner?.ref?.$link!==cover.ref.$link||after.value?.displayName!==OFFICIAL_SOCIAL_PROFILE.bluesky.displayName||after.value?.description!==OFFICIAL_SOCIAL_PROFILE.bluesky.description)throw new Error("profile_readback_mismatch");
  return {status:"atualizado",channel:"bluesky",profile_url:"https://bsky.app/profile/"+encodeURIComponent(session.did),at:new Date().toISOString(),provider_record:data.uri};
 }
 export async function updateTelegramChannelPhoto(env,fetchImpl=fetch){
@@ -59,11 +69,20 @@ export async function updateTelegramChannelPhoto(env,fetchImpl=fetch){
  const chat=env.TELEGRAM_CHANNEL_ID;
  const before=await json(fetchImpl,endpoint+"getChat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:chat})});
  if(!before.ok)throw new Error("telegram_chat_read_failed");
+ const official=OFFICIAL_SOCIAL_PROFILE.telegram;
+ if(before.result?.title!==official.title){
+   const titleOut=await json(fetchImpl,endpoint+"setChatTitle",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:chat,title:official.title})});
+   if(titleOut.ok!==true||titleOut.result!==true)throw new Error("telegram_title_update_unverified");
+ }
+ if(before.result?.description!==official.description){
+   const descOut=await json(fetchImpl,endpoint+"setChatDescription",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:chat,description:official.description})});
+   if(descOut.ok!==true||descOut.result!==true)throw new Error("telegram_description_update_unverified");
+ }
  const form=new FormData();form.append("chat_id",chat);form.append("photo",new Blob([bytes],{type:"image/png"}),"zevanory-avatar.png");
  const response=await json(fetchImpl,endpoint+"setChatPhoto",{method:"POST",body:form});
  if(response.ok!==true||response.result!==true)throw new Error("telegram_profile_update_unverified");
  const after=await json(fetchImpl,endpoint+"getChat",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:chat})});
- if(!after.ok || !after.result?.photo?.big_file_id || before.result?.photo?.big_file_id===after.result?.photo?.big_file_id)
+ if(!after.ok || after.result?.title!==official.title || after.result?.description!==official.description || !after.result?.photo?.big_file_id || before.result?.photo?.big_file_id===after.result?.photo?.big_file_id)
    throw new Error("telegram_profile_readback_unverified");
  return {status:"atualizado",channel:"telegram",profile_url:chat.startsWith("@")?"https://t.me/"+chat.slice(1):null,at:new Date().toISOString()};
 }
@@ -74,7 +93,8 @@ export async function syncBrandProfiles(env={},fetchImpl=fetch){
  const tasks=[["bluesky",updateBlueskyProfile],["telegram",updateTelegramChannelPhoto]];
  const outcomes=[];
  for(const [channel,fn] of tasks){
-   const key="zpc:brand:profile:"+channel+":v1";
+   // v2 invalidates receipts made before the official name/bio readback contract.
+   const key="zpc:brand:profile:"+channel+":v2";
    const previous=await read(kv,key);
    if(previous){outcomes.push(previous);continue;}
    let result;
@@ -88,7 +108,7 @@ export async function syncBrandProfiles(env={},fetchImpl=fetch){
    try{
      result=await fn(env,fetchImpl);
      if(result.status==="atualizado"){
-       await emitActivity(env,{type:"profile_updated",channel,status:"updated",ref:"brand-profile:"+channel+":v1",link:result.profile_url}).catch(()=>null);
+       await emitActivity(env,{type:"profile_updated",channel,status:"updated",ref:"brand-profile:"+channel+":v2",link:result.profile_url}).catch(()=>null);
        await kv.put(key,JSON.stringify(result),{expirationTtl:180*86400});
      }
    }catch{result={channel,status:"pendente_conciliacao",code:"provider_or_readback_unverified"};}

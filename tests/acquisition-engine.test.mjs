@@ -1,3 +1,4 @@
+import {readFileSync} from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {calendarEntry,planCalendar,productLink,generateNative,validateDraft,textSimilarity,runAcquisitionEngine,acquisitionSnapshot,verifyProductLink,runOwnerDailyDigest} from "../worker/acquisition-engine.mjs";
@@ -33,6 +34,7 @@ test("one cycle publishes Telegram and Bluesky after peak, then never duplicates
  const store=kv(),counts={telegram:0,createRecord:0},env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"t",TELEGRAM_CHANNEL_ID:"@zevanory",BLUESKY_HANDLE:"zevanory.bsky.social",BLUESKY_APP_PASSWORD:"password"};
  const mock=async(url,req={})=>{
   if(req.method==="HEAD")return{status:200};
+  if(url.endsWith("/brand/export/post-01.png"))return new Response(readFileSync(new URL("../assets/brand/export/post-01.png",import.meta.url)),{status:200});
   if(url.includes("api.telegram.org")){counts.telegram++;return{status:200,json:async()=>({ok:true,result:{message_id:11}})};}
   if(url.endsWith("createSession"))return{ok:true,json:async()=>({did:"did:plc:abc",accessJwt:"access"})};
   if(url.endsWith("createRecord")){counts.createRecord++;const record=JSON.parse(req.body);return{ok:true,json:async()=>({uri:"at://did:plc:abc/app.bsky.feed.post/"+record.rkey,cid:"cid"})};}
@@ -53,6 +55,7 @@ test("a failing Bluesky provider does not prevent Telegram evidence",async()=>{
  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"t",TELEGRAM_CHANNEL_ID:"@zevanory",BLUESKY_HANDLE:"zevanory.bsky.social",BLUESKY_APP_PASSWORD:"bad"};
  const mock=async(url,req={})=>{
   if(req.method==="HEAD")return{status:200};
+  if(url.endsWith("/brand/export/post-01.png"))return new Response(readFileSync(new URL("../assets/brand/export/post-01.png",import.meta.url)),{status:200});
   if(url.includes("api.telegram.org"))return{status:200,json:async()=>({ok:true,result:{message_id:22}})};
   if(url.endsWith("createSession"))return{ok:false,status:401,headers:{get:()=>null}};
   return{status:200,ok:true,json:async()=>({})};

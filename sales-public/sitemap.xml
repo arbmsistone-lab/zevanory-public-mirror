@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://zevanory.api.br/</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>1</priority></url>
-  <url><loc>https://zevanory.api.br/solucoes</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.95</priority></url>
-  <url><loc>https://zevanory.api.br/zevanory-sales</loc><lastmod>2026-10-02</lastmod><changefreq>weekly</changefreq><priority>0.95</priority></url>
-  <url><loc>https://zevanory.api.br/zevanory-cfo</loc><lastmod>2026-09-29</lastmod><changefreq>weekly</changefreq><priority>0.95</priority></url>
-  <url><loc>https://zevanory.api.br/arbm-contador-saloes</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://zevanory.api.br/ia-na-pratica</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://zevanory.api.br/vendas-na-pratica</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://zevanory.api.br/lucro-e-caixa</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://zevanory.api.br/combo-ia-vendas</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://zevanory.api.br/negocio-completo</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://zevanory.api.br/termos</loc><lastmod>2026-09-12</lastmod><changefreq>monthly</changefreq><priority>0.4</priority></url>
-  <url><loc>https://zevanory.api.br/privacidade</loc><lastmod>2026-09-12</lastmod><changefreq>monthly</changefreq><priority>0.4</priority></url>
-  <url><loc>https://zevanory.api.br/reembolso</loc><lastmod>2026-09-12</lastmod><changefreq>monthly</changefreq><priority>0.4</priority></url>
-  <url><loc>https://zevanory.api.br/afiliados</loc><lastmod>2026-09-12</lastmod><changefreq>monthly</changefreq><priority>0.4</priority></url>
-  <url><loc>https://zevanory.api.br/material-gratuito</loc></url>
+  <url><loc>https://vendas.zevanory.api.br/solucoes</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.95</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/zevanory-sales</loc><lastmod>2026-10-02</lastmod><changefreq>weekly</changefreq><priority>0.95</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/zevanory-cfo</loc><lastmod>2026-09-29</lastmod><changefreq>weekly</changefreq><priority>0.95</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/arbm-contador-saloes</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/ia-na-pratica</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/vendas-na-pratica</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/lucro-e-caixa</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/combo-ia-vendas</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/negocio-completo</loc><lastmod>2026-09-18</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/termos</loc><lastmod>2026-09-12</lastmod><changefreq>monthly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/privacidade</loc><lastmod>2026-10-07</lastmod><changefreq>monthly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/reembolso</loc><lastmod>2026-09-12</lastmod><changefreq>monthly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/afiliados</loc><lastmod>2026-09-12</lastmod><changefreq>monthly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/material-gratuito</loc></url>
+  <url><loc>https://vendas.zevanory.api.br/quem-criou/</loc><lastmod>2026-10-09</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
 </urlset>

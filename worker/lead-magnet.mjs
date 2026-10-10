@@ -1,3 +1,4 @@
+import { brandedEmailHtml } from "./brand-email.mjs";
 // Lead magnet: free checklist in exchange for an e-mail, with explicit LGPD consent and double
 // opt-in. Inbound only: nobody receives anything without asking for it and confirming the address.
 // * Subscribe arrives only through the sales Worker's private binding (host leads.internal).
@@ -63,7 +64,7 @@ async function sendEmail(env, { to, subject, text, unsubscribeUrl, idempotencyKe
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST", headers,
     body: JSON.stringify({
-      from: String(env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>"), to: [to], reply_to: SUPPORT_EMAIL, subject, text,
+      from: String(env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>"), to: [to], reply_to: SUPPORT_EMAIL, subject, text, html: brandedEmailHtml(text,{unsubscribeUrl}),
       ...(unsubscribeUrl ? { headers: { "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:${SUPPORT_EMAIL}?subject=descadastrar>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } } : {}),
       tags: [{ name: "flow", value: "lead_magnet" }],
     }),
