@@ -33,7 +33,12 @@ function safe(env){
    "RESEND_API_KEY","ASAAS_API_KEY","SELF","CORE"]){
    if(env[key]!==undefined && env[key]!==null)return false;
  }
- return Boolean(env.ZEVANORY_PRIVATE_ARTIFACTS?.get && env.CERTIFICATION_D1?.prepare &&
+ return (function(){
+   try{const u=new URL(env.CERTIFICATION_DATABASE_URL);
+     return /^postgres(?:ql)?:$/.test(u.protocol)&&/certification/i.test(decodeURIComponent(u.pathname))&&
+       !u.username.toLowerCase().includes("production");
+   }catch{return false;}
+ })() && Boolean(env.ZEVANORY_PRIVATE_ARTIFACTS?.get && env.CERTIFICATION_D1?.prepare &&
    env.CERTIFICATION_DATABASE_URL && env.CERTIFICATION_OPERATOR_TOKEN &&
    env.CERTIFICATION_E2E_TOKEN && env.MERCADOPAGO_TEST_ACCESS_TOKEN &&
    env.MERCADOPAGO_TEST_PUBLIC_KEY && env.MERCADOPAGO_TEST_WEBHOOK_SECRET);
@@ -48,6 +53,11 @@ export default {
        return reply(404,"not_found");
    if(url.pathname==="/api/support/refund-request" && request.method!=="POST")
        return reply(405,"method_not_allowed");
+   if(url.pathname==="/api/support/refund-request" &&
+      request.headers.get("x-certification-e2e-token")!==env.CERTIFICATION_E2E_TOKEN)
+       return reply(401,"certification_auth_required");
+   if(url.pathname==="/api/webhooks" && !request.headers.get("x-signature"))
+       return reply(401,"test_webhook_signature_required");
    if(!url.pathname.startsWith(prefix)&&url.pathname!=="/api/support/refund-request"&&url.pathname!=="/api/webhooks")
        return reply(404,"not_found");
    const sandboxEnv={...env,
