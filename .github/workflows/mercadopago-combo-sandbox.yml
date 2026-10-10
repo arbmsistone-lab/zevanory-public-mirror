@@ -27,7 +27,8 @@
     }
   },
   "permissions": {
-    "contents": "read"
+    "contents": "read",
+    "actions": "read"
   },
   "concurrency": {
     "group": "manual-combo-sandbox",
@@ -56,6 +57,15 @@
           "run": "test \"$(git rev-parse HEAD)\" = \"$EXPECTED_SHA\""
         },
         {
+          "name": "Resolve exact successful isolated deployment artifact (no production Cloudflare token)",
+          "env": {
+            "GH_TOKEN": "${{ github.token }}",
+            "EXPECTED_SHA": "${{ inputs.expected_sha }}",
+            "OVERRIDE_URL": "${{ vars.CERTIFICATION_SANDBOX_URL }}"
+          },
+          "run": "set -euo pipefail\ngh api \"repos/$GITHUB_REPOSITORY/actions/workflows/certification-isolated-deploy.yml/runs?branch=gh-pages&per_page=30\" > /tmp/certification-runs.json\nrun_id=\"$(jq -r --arg sha \"$EXPECTED_SHA\" '[.workflow_runs[]|select(.head_sha==$sha and .conclusion==\"success\")]|first|.id // empty' /tmp/certification-runs.json)\"\ntest -n \"$run_id\" || { echo 'CERTIFICATION_APPROVED_DEPLOY_RUN_MISSING'; exit 1; }\nmkdir -p /tmp/zevanory-certification-origin\ngh run download \"$run_id\" --name \"certification-origin-$EXPECTED_SHA\" --dir /tmp/zevanory-certification-origin\nexport CERTIFICATION_ORIGIN_PATH=\"/tmp/zevanory-certification-origin/certification-origin.json\"\norigin=\"$(python3 - <<'PY'\nimport os,json,re\np=json.load(open(os.environ[\"CERTIFICATION_ORIGIN_PATH\"]))\nurl=str(p.get(\"url\") or \"\")\nassert p.get(\"sha\")==os.environ[\"EXPECTED_SHA\"] and p.get(\"worker\")==\"zevanory-certification\"\nassert re.fullmatch(r\"https://zevanory-certification\\.[a-zA-Z0-9-]+\\.workers\\.dev\",url)\noverride=os.environ.get(\"OVERRIDE_URL\",\"\").strip()\nassert not override or override==url,\"CERTIFICATION_ORIGIN_OVERRIDE_MISMATCH\"\nprint(url)\nPY\n)\"\necho \"CERTIFICATION_SANDBOX_URL=$origin\" >> \"$GITHUB_ENV\"\necho \"CERTIFICATION_ORIGIN_ATTESTED=PASS\""
+        },
+        {
           "name": "Preflight and isolated sandbox proof",
           "env": {
             "EXPECTED_SHA": "${{ inputs.expected_sha }}",
@@ -65,7 +75,9 @@
             "SANDBOX_IDENTITY_MANIFEST": "${{ secrets.SANDBOX_IDENTITY_MANIFEST }}",
             "SANDBOX_INBOX_READ_TOKEN": "${{ secrets.SANDBOX_INBOX_READ_TOKEN }}",
             "CERTIFICATION_E2E_TOKEN": "${{ secrets.CERTIFICATION_E2E_TOKEN }}",
-            "SANDBOX_OFFER_ID": "${{ inputs.offer_id }}"
+            "SANDBOX_OFFER_ID": "${{ inputs.offer_id }}",
+            "CERTIFICATION_SANDBOX_URL": "${{ env.CERTIFICATION_SANDBOX_URL }}",
+            "CERTIFICATION_WORKER_NAME": "zevanory-certification"
           },
           "run": "python3 scripts/mercadopago_combo_sandbox.py"
         },
