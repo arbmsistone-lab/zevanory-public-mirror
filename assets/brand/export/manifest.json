@@ -8,47 +8,47 @@
     "size": 48398
   },
   "banner-bluesky.png": {
-    "sha256": "111d469c0f2af64c557804e1e65eb6615a53bb38a17afc0cf8aacdee835f3699",
-    "size": 80767
+    "sha256": "97d80ed835e8e2cb12667b78a1428e40fc47e9d269edf08014a04486a54cd49c",
+    "size": 80346
   },
   "banner-facebook.png": {
-    "sha256": "9f44883a84aa9f986d22d97917c39a4d28b5cc6ef2dda6f051d89d22ef90f28e",
-    "size": 95633
+    "sha256": "020a1d464007c7dc1c1501b446e2c6a539b2c33114c8c783286c06c19551fb8c",
+    "size": 95757
   },
   "banner-youtube.png": {
-    "sha256": "e888f4e92c141d9ee325cd93dfafa5adf680787987a06b08078ec0d5085c2e91",
-    "size": 164383
+    "sha256": "b940e32df8e4cda2c165189b59eaa0dd6cf27568fa91a9cc996b36c1e5a163ba",
+    "size": 163519
   },
   "blog-card.png": {
-    "sha256": "33977774fea373edc7e052283958d18c0da2337f237cde95d113924ac53d0ffc",
-    "size": 39777
+    "sha256": "39829e4c90e9d57a4c3a0f85411b8f4298ae01afc6807e98c936cd65dfef3442",
+    "size": 37522
   },
   "email-card.png": {
-    "sha256": "58552b3207f5ae723973312f1b4a440c36438575864245c75ec3284f6d1a478d",
-    "size": 35219
+    "sha256": "4ae8a2db27ad6ecb80093c857b6f3e147c77230291ca57a059641ca08d4d8f99",
+    "size": 34710
   },
   "link-card.png": {
-    "sha256": "0d514467c247df6506aab63412a019220f09ce46a80e9c42274d219c9080766e",
-    "size": 40070
+    "sha256": "cbe9f14cfd662804888921fbb4c49acd160ed97ccbe4e1b961791fa6ce8eed02",
+    "size": 38339
   },
   "pin.png": {
-    "sha256": "0d04bec1ad16672ac3c04886fe84a9f4295f0edb40d1a47315dec8b2f6782ea2",
-    "size": 55086
+    "sha256": "2232ed52d1ba1227addb4c0c8b3c70e8fc4a5b235baf3ecea91d0b3c037b3c19",
+    "size": 54658
   },
   "post-01.png": {
-    "sha256": "967ba94bccef8436fe2ff03388a5335f544bcd6f25fa3b6c65dccd1b81001b8d",
-    "size": 59198
+    "sha256": "85b62492c33547964a683d43c4c2d5bb6afd8dfeaf27ba255cb813f88215f880",
+    "size": 56138
   },
   "post-02.png": {
-    "sha256": "7e7f32f88533aee8869814d718a504729bd48209a4ee84fb8b26c437e925a658",
-    "size": 56507
+    "sha256": "867ea9457df1505f9bcce853ef57c7caa319b92d773605f096b662619aaeb873",
+    "size": 55408
   },
   "post-03.png": {
-    "sha256": "3dfa774f8853502d309f3179bf98f445121b96d6d8619b72ac662d54e6458258",
-    "size": 57178
+    "sha256": "b8cbb54a3f069f053d0e3f929830b9bb5759e569453b6f045a109b946a8e7df4",
+    "size": 54487
   },
   "short.png": {
-    "sha256": "f10b7958e51bef047d6ae5ca27c40acee4755bb13b5c7138186a443536c27c8d",
-    "size": 62149
+    "sha256": "dae516edb857fc0c9dddc2d3ad792b7a70b8db9d8baa6f3fae81ab1bfb8bb216",
+    "size": 59639
   }
 }
