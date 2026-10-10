@@ -26,3 +26,5 @@ As chamadas de publicação de imagens devem usar `validateOutboundBrandImage` n
 - **Google Perfil da Empresa:** https://business.google.com/ → Editar perfil → Fotos → Logotipo, se a empresa possuir perfil e acesso
 
 Nenhuma ação externa deve ocorrer sem permissão adequada; upload manual não equivale a `profile_updated` comprovado.
+
+Os PNGs aprovados são servidos por `https://zevanory.api.br/brand/export/<arquivo>.png`: o deploy central copia e certifica todos os hashes para `public/brand/export/` antes de publicar. `vendas.zevanory.api.br` continua sendo o endereço obrigatório do rodapé, não a dependência de CDN.

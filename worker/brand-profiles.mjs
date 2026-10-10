@@ -5,7 +5,7 @@ import { emitActivity } from "./activity-ledger.mjs";
 import { resolveChannelCredentials } from "./multichannel-autonomy.mjs";
 
 export const BRAND_PROFILE_STATE_KEY="zpc:brand:profiles:v1";
-const URL="https://vendas.zevanory.api.br/brand/export/";
+const URL="https://zevanory.api.br/brand/export/";
 const read=async (kv,key,fallback=null)=>{try{return JSON.parse(String(await kv.get(key)||"null"))??fallback;}catch{return fallback;}};
 async function verifiedImage(channel,name,fetchImpl){
  return (await validateBrandProfileAsset({channel,url:URL+name,fetchImpl,includeBytes:true})).bytes;

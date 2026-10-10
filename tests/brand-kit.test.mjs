@@ -6,7 +6,7 @@ const fakePng=(w,h)=>{
  const p=new Uint8Array(33);p.set([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82]);
  new DataView(p.buffer).setUint32(16,w);new DataView(p.buffer).setUint32(20,h);p[24]=8;p[25]=6;return p;
 };
-const knownUrl="https://vendas.zevanory.api.br/brand/export/post-01.png";
+const knownUrl="https://zevanory.api.br/brand/export/post-01.png";
 test("official storefront logo path is immutable and palette anchored",()=>{
  assert.equal(BRAND_SOURCE.logo,"sales-public/brand/zevanory-logo-dark.svg");
  assert.ok(BRAND_SOURCE.palette.includes("#05070b"));
@@ -19,11 +19,11 @@ test("image without official export gate is refused before network",async()=>{
  );assert.equal(calls,0);
 });
 test("off-domain and wrong network path rejected",()=>{
- for(const url of ["http://vendas.zevanory.api.br/brand/export/post-01.png","https://evil.example/brand/export/post-01.png","https://vendas.zevanory.api.br/brand/export/post-01.png?next=foo"])
+ for(const url of ["http://vendas.zevanory.api.br/brand/export/post-01.png","https://evil.example/brand/export/post-01.png","https://zevanory.api.br/brand/export/post-01.png?next=foo"])
  assert.throws(()=>brandUrlFilename(url),/brand_untrusted_url/);
 });
 test("avatar and banner cannot masquerade as a post",async()=>{
- await assert.rejects(validateOutboundBrandImage({url:"https://vendas.zevanory.api.br/brand/export/avatar-800.png",channel:"pinterest"}),/brand_channel_size_or_role/);
+ await assert.rejects(validateOutboundBrandImage({url:"https://zevanory.api.br/brand/export/avatar-800.png",channel:"pinterest"}),/brand_channel_size_or_role/);
 });
 test("unsigned media blocked even if the URL and dimensions look right",async()=>{
  let requests=0;await assert.rejects(validateOutboundBrandImage({url:knownUrl,channel:"telegram",approved:{},fetchImpl:async()=>{requests++;}}),/brand_artifact_unapproved/);

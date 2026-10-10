@@ -45,7 +45,7 @@ export function pngDimensions(value) {
 export function brandUrlFilename(value) {
   let url;
   try{url=new URL(value);}catch{throw new Error("brand_untrusted_url");}
-  if(url.protocol!=="https:" || !["vendas.zevanory.api.br","zevanory.api.br"].includes(url.hostname) || url.port || url.username || url.password || url.search || url.hash)throw new Error("brand_untrusted_url");
+  if(url.protocol!=="https:" || !url.hostname==="zevanory.api.br" || url.port || url.username || url.password || url.search || url.hash)throw new Error("brand_untrusted_url");
   if(!/^\/brand\/export\/[a-z0-9-]+\.png$/.test(url.pathname))throw new Error("brand_untrusted_path");
   return url.pathname.split("/").pop();
 }

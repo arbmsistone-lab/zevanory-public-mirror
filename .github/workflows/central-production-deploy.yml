@@ -16,6 +16,9 @@ on:
       - "tests/brand-profiles.test.mjs"
       - "worker/brand-approved.mjs"
       - "sales-public/brand/export/**"
+      - "assets/brand/export/**"
+      - "scripts/deploy/copy-brand-export.py"
+      - "scripts/deploy/verify-brand-assets-live.py"
       - "worker/bluesky-publisher.mjs"
       - "tests/acquisition-engine.test.mjs"
       - "tests/bluesky-publisher.test.mjs"
@@ -169,6 +172,7 @@ jobs:
           python3 scripts/deploy/write-build-info.py
           git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
           python3 scripts/deploy/prepare-central-candidate.py
+          python3 scripts/deploy/copy-brand-export.py
           node --check worker/cloudflare-worker.compat.mjs
           node --check worker/live-runtime-status.mjs
           node --check worker/creative-autonomy.mjs
@@ -332,6 +336,7 @@ jobs:
             exit 1
           fi
           python3 scripts/deploy/verify-exact-release-final.py
+          python3 scripts/deploy/verify-brand-assets-live.py
       - name: Verify production API legal surfaces and parity after deploy
         if: steps.auth.outputs.available == 'true'
         shell: bash
