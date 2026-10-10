@@ -72,6 +72,20 @@
         {
           "name": "Read back isolated Worker capability with exact deployed SHA",
           "run": "set -euo pipefail\ncase \"$CERTIFICATION_SANDBOX_URL\" in https://zevanory-certification.*.workers.dev) ;; *) echo 'CERTIFICATION_SANDBOX_URL_INVALID'; exit 1;; esac\ncode=\"$(curl -sS -o /tmp/certification-readback.json -w '%{http_code}' --connect-timeout 10 --max-time 25 -H \"x-certification-e2e-token: $CERTIFICATION_E2E_TOKEN\" \"$CERTIFICATION_SANDBOX_URL/api/internal/certification/e2e/status\")\"\ntest \"$code\" = 200 || { echo 'CERTIFICATION_READBACK_HTTP_FAIL'; exit 1; }\npython3 - <<'PY'\nimport json,os\nj=json.load(open('/tmp/certification-readback.json'))\nassert j.get('certification_worker_source_sha')==os.environ['EXPECTED_SHA']\nassert j.get('sale_globally_enabled') is False and j.get('sales_mode')=='globally-blocked'\nassert j.get('sandbox_proof_contract')=='v2' and j.get('sandbox_checkout_isolated') is True\nprint('CERTIFICATION_ONLY_READBACK=PASS; PUBLIC_SALES_UNMODIFIED=true')\nPY"
+        },
+        {
+          "name": "Write nonsecret exact-SHA deployment origin evidence",
+          "run": "set -euo pipefail\nmkdir -p evidence\npython3 - <<'PY'\nimport os,json,pathlib\nurl=os.environ[\"CERTIFICATION_SANDBOX_URL\"]\nsha=os.environ[\"EXPECTED_SHA\"]\nassert url.startswith(\"https://zevanory-certification.\") and url.endswith(\".workers.dev\")\npathlib.Path(\"evidence/certification-origin.json\").write_text(json.dumps({\"url\":url,\"sha\":sha,\"worker\":\"zevanory-certification\"})+\"\\n\")\nprint(\"CERTIFICATION_ORIGIN_EVIDENCE=PASS\")\nPY"
+        },
+        {
+          "name": "Store deploy origin for manually approved ALL sandbox job",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "certification-origin-${{ github.sha }}",
+            "path": "evidence/certification-origin.json",
+            "if-no-files-found": "error",
+            "retention-days": 30
+          }
         }
       ]
     }
