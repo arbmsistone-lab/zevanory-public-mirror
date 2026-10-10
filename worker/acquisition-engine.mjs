@@ -183,9 +183,33 @@ export async function runOwnerDailyDigest(env={},now=new Date(),fetchImpl=fetch)
 }
 
 export async function acquisitionSnapshot(env={},now=new Date()){
+ env=resolveChannelCredentials(env);
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS,day=localDay(now);
- const [today,calendar]=await Promise.all([safeJson(kv,ACQUISITION_STATE_PREFIX+day,null),safeJson(kv,ACQUISITION_CALENDAR_KEY,null)]);
+ const [today,calendar,blog,legacy]=await Promise.all([
+  safeJson(kv,ACQUISITION_STATE_PREFIX+day,null),
+  safeJson(kv,ACQUISITION_CALENDAR_KEY,null),
+  safeJson(kv,"zpc:blog:index:v1",{articles:[]}),
+  safeJson(kv,"zpc:multichannel:state:v1",{evidence:[]})
+ ]);
  const channels=["blog","telegram","bluesky","pinterest","youtube","instagram","facebook","whatsapp","email"];
- const out=channels.map(channel=>{const row=today?.outcomes?.find(x=>x.channel===channel)||null;return {channel,status:row?.status||"sem dados",link:row?.url||null,at:row?.at||null,error:row?.code||null};});
- return {schema:"zevanory.acquisition.v1",day,timezone:TIMEZONE,generatedAt:now.toISOString(),today:out,calendar:calendar?.days||[],metrics:{visits:null,leads:null,checkouts:null,sales:null},timeline:today?.outcomes?.filter(x=>x.status==="publicado").map(x=>({at:x.at||null,channel:x.channel,type:"post_published",status:x.status,link:x.url||null}))||[]};
+ const credentialList=channelChecklist(env);
+ const fallback=[];
+ const article=(blog.articles||[]).filter(x=>x.url&&x.publishedAt&&localDay(new Date(x.publishedAt))===day).sort((a,b)=>Date.parse(b.publishedAt)-Date.parse(a.publishedAt))[0];
+ if(article)fallback.push({channel:"blog",status:"publicado",url:article.url,at:article.publishedAt});
+ const telegram=(legacy.evidence||[]).filter(x=>x.channel==="telegram"&&x.url&&x.provider_post_id&&x.publishedAt&&localDay(new Date(x.publishedAt))===day).sort((a,b)=>Date.parse(b.publishedAt)-Date.parse(a.publishedAt))[0];
+ if(telegram)fallback.push({channel:"telegram",status:"publicado",url:telegram.url,at:telegram.publishedAt});
+ const proof=channels.map(channel=>{
+  const configured=credentialList.find(x=>x.id===channel);
+  const row=today?.outcomes?.find(x=>x.channel===channel)||fallback.find(x=>x.channel===channel)||null;
+  const missing=Boolean(configured)&&!configured.configured;
+  const awaitingApproval=missing&&configured.external_verification_pending===true;
+  return {channel,configured:configured?.configured===true,
+   status:row?.status||(awaitingApproval?"aguardando aprovação":missing?"aguardando credencial":"sem dados"),
+   link:row?.url||null,at:row?.at||null,error:row?.code||null,
+   next_post:calendarEntry(day).publish_at[channel]||null,
+   posts_7d:null,clicks_7d:null,checkouts_7d:null};
+ });
+ return {schema:"zevanory.acquisition.v1",day,timezone:TIMEZONE,generatedAt:now.toISOString(),today:proof,calendar:calendar?.days||[],
+   metrics:{visits:null,leads:null,checkouts:null,sales:null},
+   timeline:proof.filter(x=>x.status==="publicado").map(x=>({at:x.at||null,channel:x.channel,type:"post_published",status:x.status,link:x.link}))};
 }
