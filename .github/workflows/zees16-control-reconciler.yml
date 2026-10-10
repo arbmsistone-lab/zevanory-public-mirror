@@ -16,27 +16,18 @@ on:
   workflow_run:
     workflows:
       - "ZEVANORY central production deploy"
-      - "ZEVANORY apex engineering gate"
-      - "zevanory-remote-quality-gates"
-      - "zevanory-p02-visual-regression"
-      - "zevanory-p04-wcag"
-      - "zevanory-p12-continuous-slo"
-      - "zevanory-p15-provenance"
-      - "ZEVANORY portable disaster recovery"
-      - "ZEVANORY provider independence gate"
       - "ZEVANORY authenticated three-provider runtime quorum"
       - "ZEES-16 Evidence Gate"
-      - "ZEA-10 external evidence pack"
     types: [completed]
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: zees16-control-reconciler
+  group: zees16-control-reconciler-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: false
 jobs:
   reconcile:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'gh-pages') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
