@@ -70,7 +70,7 @@ export async function ensureWeeklyBlog(env={},now=new Date(),fetchImpl=fetch){co
 
 
 // Editorial depth is intentionally independent of the social-caption creative rubric.
-function longFormDailyArticle(article,day){
+export function longFormDailyArticle(article,day){
  const subject=article.title;
  const sections=[
  ["O problema na rotina",`Quando o assunto é ${subject.toLowerCase()}, uma dificuldade comum é começar pela ferramenta em vez de começar pelo problema. No pequeno negócio, a equipe pode alternar entre balcão, telefone, estoque e caixa durante o mesmo turno. Sem um registro simples, a mesma pergunta chega várias vezes e as respostas ficam diferentes. Antes de experimentar uma automação, descreva a tarefa em uma frase, diga quem participa e escolha uma medida observável, como tempo gasto ou quantidade de retrabalho. Não use dados pessoais reais em testes. O objetivo inicial não é prometer mais vendas, mas produzir um processo verificável e que possa ser desfeito.`],
