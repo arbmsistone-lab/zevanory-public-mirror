@@ -1,0 +1,59 @@
+name: ZEVANORY live buy smoke (owner-requested)
+
+# Read-only checks of the public sales surface, plus at most ONE real click on
+# "Ir para o pagamento seguro" for one SKU (what any visitor does): it must
+# redirect to the Mercado Pago production checkout. No payment, no PII, no card.
+on:
+  workflow_dispatch:
+    inputs:
+      click_sku:
+        description: SKU to click through to Mercado Pago (empty = no click)
+        required: false
+        default: ZEV-IA-011
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: github.ref == 'refs/heads/gh-pages'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      CLICK_SKU: ${{ inputs.click_sku }}
+    steps:
+      - name: Public pages and buy pages (GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36'
+          fail=0
+          for path in / /solucoes /termos /privacidade; do
+            code=$(curl -sS -A "$UA" -o /dev/null -w '%{http_code}' "https://vendas.zevanory.api.br$path")
+            echo "::notice title=PAGE $path::$code"; [ "$code" = 200 ] || fail=1
+          done
+          for sku in ZEV-IA-011 $(curl -sS -A "$UA" https://vendas.zevanory.api.br/solucoes | grep -o '/comprar/ZEV-[A-Z0-9-]*' | sed 's#/comprar/##' | sort -u); do
+            body=$(curl -sS -A "$UA" "https://vendas.zevanory.api.br/comprar/$sku")
+            if echo "$body" | grep -q 'Ir para o pagamento seguro'; then st=OPEN; elif echo "$body" | grep -q 'Vendas abrem em breve'; then st=CLOSED; fail=1; else st=UNKNOWN; fail=1; fi
+            price=$(echo "$body" | grep -o 'R\$ [0-9.,]*' | head -1)
+            echo "::notice title=BUY $sku::$st $price"
+          done
+          exit $fail
+      - name: One click through to Mercado Pago (no payment)
+        if: inputs.click_sku != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CLICK_SKU" =~ ^ZEV-[A-Z0-9-]{3,16}$ ]]
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36'
+          hdr=$(curl -sS -A "$UA" -X POST -o /dev/null -D - "https://vendas.zevanory.api.br/comprar/$CLICK_SKU")
+          code=$(echo "$hdr" | head -1 | awk '{print $2}')
+          loc=$(echo "$hdr" | grep -i '^location:' | tr -d '\r' | awk '{print $2}')
+          host=$(echo "$loc" | sed -E 's#^https://([^/]+)/.*#\1#')
+          echo "::notice title=CLICK $CLICK_SKU::http=$code host=$host"
+          [ "$code" = 303 ] && [[ "$host" =~ ^(www\.)?mercadopago\.com(\.br)?$ ]] || { echo "::error title=CLICK::checkout_not_redirected"; exit 1; }
+          mp=$(curl -sS -A "$UA" -o /tmp/mp.html -w '%{http_code}' -L "$loc")
+          title=$(grep -o '<title>[^<]*' /tmp/mp.html | head -1 | sed 's/<title>//')
+          echo "::notice title=MERCADOPAGO::http=$mp title=$title"
+          [ "$mp" = 200 ] || { echo "::error title=MERCADOPAGO::checkout_page_http_$mp"; exit 1; }
