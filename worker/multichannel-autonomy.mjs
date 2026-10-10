@@ -182,7 +182,13 @@ export async function runMultichannelAutonomy(env={},now=new Date(),fetchImpl=fe
   // Pinterest retains the existing approved F1 score/compliance path; no new DM.
   let feed=[];try{feed=JSON.parse(String(await kv?.get?.(CREATIVE_AUTONOMY_FEED_KEY)||"[]"));}catch{}
   const creative=(Array.isArray(feed)?feed:[]).find(x=>x?.status==="approved_for_autopublish"&&Number(x?.compliance)===100&&Number(x?.score)>=85);
-  if(creative&&!paused&&channels.find(x=>x.id==="pinterest")?.configured&&creative.asset_url&&kv?.get&&kv?.put){
+  let pinterestConnected=false;
+  try{
+    const oauth=JSON.parse(String(await kv?.get?.("zpc:owner:oauth:connection:pinterest:v1")||"null"));
+    pinterestConnected=oauth?.schema==="zpc.owner.oauth.v1"&&oauth?.channel==="pinterest"&&Boolean(oauth?.encryptedRefresh);
+  }catch{}
+  const pinterestReady=Boolean(env.PINTEREST_BOARD_ID)&&(channels.find(x=>x.id==="pinterest")?.configured||pinterestConnected);
+  if(creative&&!paused&&pinterestReady&&creative.asset_url&&kv?.get&&kv?.put){
     const key="zpc:multichannel:evidence:pinterest:"+creative.creative_id;
     if(!await kv.get(key)){
       try{
