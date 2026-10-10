@@ -1,11 +1,13 @@
+import { readFileSync } from "node:fs";
 import test from "node:test";import assert from "node:assert/strict";
 import {channelChecklist,ensureWeeklyBlog,ensureDailyBlog,localContentDay,INDEXNOW_PUBLIC_KEY,publishTelegram,publishPinterest,renderBlogArticle,renderChannelsPage,resolveChannelCredentials,runMultichannelAutonomy} from "../worker/multichannel-autonomy.mjs";
+const brandResponse=name=>new Response(readFileSync(new URL("../assets/brand/export/"+name,import.meta.url)),{status:200,headers:{"content-type":"image/png"}});
 const kv=()=>{const m=new Map();return{m,get:async k=>m.get(k)||null,put:async(k,v)=>m.set(k,v)}};
 test("missing credential blocks only its channel and verified channels leave dry_run",()=>{const rows=channelChecklist({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.equal(rows.find(x=>x.id==="blog").configured,true);assert.equal(rows.find(x=>x.id==="telegram").mode,"pending");assert.equal(rows.find(x=>x.id==="facebook").mode,"dry_run");const live=channelChecklist({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i",META_APP_LIVE:"true"});assert.equal(live.find(x=>x.id==="facebook").mode,"active");});
 test("CHANNEL_CREDENTIALS_JSON takes precedence and individual bindings remain a fallback",()=>{const bundled=resolveChannelCredentials({CHANNEL_CREDENTIALS_JSON:JSON.stringify({TELEGRAM_BOT_TOKEN:"bundle",TELEGRAM_CHANNEL_ID:"@zevanory"}),TELEGRAM_BOT_TOKEN:"legacy"});assert.equal(bundled.TELEGRAM_BOT_TOKEN,"bundle");assert.equal(channelChecklist({CHANNEL_CREDENTIALS_JSON:JSON.stringify({TELEGRAM_BOT_TOKEN:"bundle",TELEGRAM_CHANNEL_ID:"@zevanory"})}).find(x=>x.id==="telegram").configured,true);assert.equal(resolveChannelCredentials({TELEGRAM_BOT_TOKEN:"legacy"}).TELEGRAM_BOT_TOKEN,"legacy");});
 test("channel bundle includes YouTube refresh without Google Business fields and IndexNow key is publishable",()=>{const bundled=resolveChannelCredentials({CHANNEL_CREDENTIALS_JSON:JSON.stringify({YOUTUBE_REFRESH_TOKEN:"refresh",GOOGLE_BUSINESS_ACCESS_TOKEN:"retired"})});assert.equal(bundled.YOUTUBE_REFRESH_TOKEN,"refresh");assert.equal(bundled.GOOGLE_BUSINESS_ACCESS_TOKEN,undefined);assert.match(INDEXNOW_PUBLIC_KEY,/^[a-f0-9]{32,128}$/);});
 test("blog creates all three compliant weekly articles in one cycle with Article, FAQ and UTMs",async()=>{const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};const out=await ensureWeeklyBlog(env,new Date("2026-10-07T12:00:00Z"),async()=>({ok:true}));assert.equal(out.total,3);assert.equal(out.created.length,3);const html=await renderBlogArticle(env,out.created[0].id);assert.match(html,/Article/);assert.match(html,/FAQPage/);assert.match(html,/utm_source=blog/);assert.match(html,/Garantia de 7 dias/);});
-test("official Telegram and Pinterest adapters return real provider evidence",async()=>{const calls=[];const fetchImpl=async(url,init)=>{calls.push([url,init]);return url.includes("telegram")?{status:200,json:async()=>({ok:true,result:{message_id:7}})}:{status:201,json:async()=>({id:"pin-9"})};};const tg=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"secret",TELEGRAM_CHANNEL_ID:"@zevanory"},payload:{content:"oi"},fetchImpl});assert.equal(tg.url,"https://t.me/zevanory/7");const pin=await publishPinterest({env:{PINTEREST_ACCESS_TOKEN:"secret",PINTEREST_BOARD_ID:"board"},payload:{title:"t",content:"c",landing_url:"https://zevanory.api.br",media_url:"https://zevanory.api.br/x.png"},fetchImpl});assert.equal(pin.url,"https://www.pinterest.com/pin/pin-9/");assert.equal(calls.length,2);});
+test("official Telegram and Pinterest adapters return real provider evidence",async()=>{const calls=[];const fetchImpl=async(url,init)=>{calls.push([url,init]);if(url.endsWith("/brand/export/pin.png"))return brandResponse("pin.png");return url.includes("telegram")?{status:200,json:async()=>({ok:true,result:{message_id:7}})}:{status:201,json:async()=>({id:"pin-9"})};};const tg=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"secret",TELEGRAM_CHANNEL_ID:"@zevanory"},payload:{content:"oi"},fetchImpl});assert.equal(tg.url,"https://t.me/zevanory/7");const pin=await publishPinterest({env:{PINTEREST_ACCESS_TOKEN:"secret",PINTEREST_BOARD_ID:"board"},payload:{title:"t",content:"c",landing_url:"https://zevanory.api.br",media_url:"https://vendas.zevanory.api.br/brand/export/pin.png"},fetchImpl});assert.equal(pin.url,"https://www.pinterest.com/pin/pin-9/");assert.equal(calls.length,3);});
 test("private Sistema channels checklist contains exact Pinterest fields and replaces Google Business with Search Console",async()=>{const html=await renderChannelsPage({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.match(html,/Sistema/);assert.match(html,/TELEGRAM_BOT_TOKEN/);assert.match(html,/YOUTUBE_CLIENT_ID/);assert.match(html,/PINTEREST_ACCESS_TOKEN/);assert.match(html,/PINTEREST_BOARD_ID/);assert.match(html,/pins:write/);assert.match(html,/boards:write/);assert.match(html,/developers\.pinterest\.com\/apps\//);assert.match(html,/Google Search Console \+ Blog/);assert.doesNotMatch(html,/Google Perfil da Empresa/);assert.doesNotMatch(html,/GOOGLE_BUSINESS_/);assert.match(html,/Aguardando verificação da empresa \(em análise\)/);assert.match(html,/Pendente credencial/);assert.match(html,/developers\.facebook\.com/);});
 test("all six editorial topics satisfy the original 85/100 and 100% publishing rubric",async()=>{
   const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};
@@ -64,8 +66,8 @@ test("telegram photo caption stays within the 1024-char Bot API limit", async ()
   assert.ok(telegramCaption(long).length <= TELEGRAM_CAPTION_MAX);
   assert.equal(telegramCaption("curto"), "curto");
   const calls = [];
-  const ok = async (url, init) => { calls.push({ url, body: JSON.parse(init.body) }); return new Response(JSON.stringify({ ok: true, result: { message_id: 7 } }), { status: 200 }); };
-  const out = await publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: long, media_url: "https://zevanory.api.br/x.png" }, fetchImpl: ok });
+  const ok = async (url, init) => { if(url.endsWith("/brand/export/post-01.png"))return brandResponse("post-01.png");calls.push({ url, body: JSON.parse(init.body) }); return new Response(JSON.stringify({ ok: true, result: { message_id: 7 } }), { status: 200 }); };
+  const out = await publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: long, media_url: "https://vendas.zevanory.api.br/brand/export/post-01.png" }, fetchImpl: ok });
   assert.equal(out.provider_post_id, "7");
   assert.match(calls[0].url, /sendPhoto$/);
   assert.ok(calls[0].body.caption.length <= 1024);
@@ -75,15 +77,16 @@ test("telegram falls back to a text message when the photo is refused with 400, 
   const { publishTelegram } = await import("../worker/multichannel-autonomy.mjs");
   const calls = [];
   const fetchImpl = async (url, init) => {
+    if(url.endsWith("/brand/export/post-01.png"))return brandResponse("post-01.png");
     calls.push(url);
     if (url.endsWith("/sendPhoto")) return new Response(JSON.stringify({ ok: false, description: "Bad Request" }), { status: 400 });
     return new Response(JSON.stringify({ ok: true, result: { message_id: 9 } }), { status: 200 });
   };
-  const out = await publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: "texto", media_url: "https://zevanory.api.br/x.svg" }, fetchImpl });
+  const out = await publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: "texto", media_url: "https://vendas.zevanory.api.br/brand/export/post-01.png" }, fetchImpl });
   assert.equal(out.provider_post_id, "9");
   assert.deepEqual(calls.map((u) => u.split("/").pop()), ["sendPhoto", "sendMessage"]);
-  const failing = async () => new Response("{}", { status: 401 });
-  await assert.rejects(publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: "x", media_url: "https://zevanory.api.br/x.png" }, fetchImpl: failing }), /provider_http_401/);
+  const failing = async (url) => url.endsWith("/brand/export/post-01.png") ? brandResponse("post-01.png") : new Response("{}", { status: 401 });
+  await assert.rejects(publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: "x", media_url: "https://vendas.zevanory.api.br/brand/export/post-01.png" }, fetchImpl: failing }), /provider_http_401/);
 });
 
 test("Telegram post evidence survives hourly cron and contains two consecutive verified days",async()=>{
