@@ -120,3 +120,31 @@ test("a single existing encrypted credential binding can carry independent owner
  assert.equal(result.status,302);
  assert.equal(new URL(result.headers.get("location")).searchParams.get("client_id"),bundle.YOUTUBE_CLIENT_ID);
 });
+
+test("Pinterest authorization verifies only boards:read without the unapproved user_accounts:read scope",async()=>{
+ const e=env(),start=await handleOwnerOAuth(new Request(await url("start","pinterest",e)),e);
+ assert.equal(start.status,302);
+ const state=new URL(start.headers.get("location")).searchParams.get("state");
+ const cookie=start.headers.get("set-cookie").split(";")[0];
+ const original=globalThis.fetch;
+ let boardReads=0;
+ globalThis.fetch=async(target,init={})=>{
+  if(String(target)==="https://api.pinterest.com/v5/oauth/token"){
+   assert.match(init.headers.authorization,/^Basic /);
+   assert.equal(new URLSearchParams(init.body).get("code"),"auth-code");
+   return Response.json({access_token:"PINTEREST_ACCESS_NOT_STORED",refresh_token:"PINTEREST_REFRESH_NOT_STORED"});
+  }
+  if(String(target)==="https://api.pinterest.com/v5/boards?page_size=1"){
+   boardReads++;return Response.json({items:[],bookmark:null});
+  }
+  throw Error("unapproved_scope_or_url");
+ };
+ try{
+  const callback=new Request(base+"pinterest/callback?"+new URLSearchParams({state,code:"auth-code"}),{headers:{cookie}});
+  const outcome=await handleOwnerOAuth(callback,e);
+  assert.equal(new URL(outcome.headers.get("location")).searchParams.get("oauth_result"),"connected");
+  assert.equal(boardReads,1);
+  const raw=String(await e.ZEVANORY_PRIVATE_ARTIFACTS.get("zpc:owner:oauth:connection:pinterest:v1"));
+  assert.doesNotMatch(raw,/PINTEREST_REFRESH_NOT_STORED|PINTEREST_ACCESS_NOT_STORED/);
+ }finally{globalThis.fetch=original;}
+});
