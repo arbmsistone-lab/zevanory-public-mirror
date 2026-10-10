@@ -105,6 +105,19 @@ export async function ensureDailyBlog(env={}, now=new Date(), fetchImpl=fetch) {
   article.description=article.description+". Aplicação prática em pequenos negócios, com revisão humana e sem promessas de faturamento.";
   Object.assign(article,longFormDailyArticle(article,day));
   let index={articles:[]};try{index=JSON.parse(String(await kv.get(BLOG_INDEX_KEY)||"null"))||index;}catch{}
+  // Never republish an editorial body under a new day/slug: search quality is fail-closed.
+  const trigrams=text=>{
+    const words=String(text||"").toLocaleLowerCase("pt-BR").match(/[\\p{L}\\p{N}]+/gu)||[];
+    return new Set(words.slice(0,-2).map((_,i)=>words.slice(i,i+3).join(" ")));
+  };
+  const incoming=trigrams(article.body);
+  for(const prior of index.articles||[]){
+    if(!prior?.body)continue;
+    const existing=trigrams(prior.body);
+    const overlap=[...incoming].filter(x=>existing.has(x)).length;
+    const similarity=overlap/(incoming.size+existing.size-overlap||1);
+    if(similarity>=0.5)throw new Error("blog_duplicate_editorial_content");
+  }
   index={schema:"zevanory.blog-daily/v1",updatedAt:now.toISOString(),articles:[...(index.articles||[]).filter(x=>x.slug!==article.slug),article].slice(-45)};
   await kv.put("zpc:blog:article:"+article.slug,JSON.stringify(article),{expirationTtl:370*DAY});
   await kv.put(BLOG_INDEX_KEY,JSON.stringify(index),{expirationTtl:370*DAY});
