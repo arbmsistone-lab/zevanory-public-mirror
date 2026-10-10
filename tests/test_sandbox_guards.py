@@ -21,6 +21,7 @@ DOWNLOAD = proof.APP + proof.CERT_PATH + 'download?token=temporary-download-valu
 def environment():
     env = {'SANDBOX_FINANCIAL_ENABLED': 'true', 'GITHUB_EVENT_NAME': 'workflow_dispatch',
            'GITHUB_REF': 'refs/heads/gh-pages', 'GITHUB_RUN_ATTEMPT': '1',
+           'CERTIFICATION_SANDBOX_URL': proof.APP,
            'EXPECTED_SHA': 'a' * 40, 'GITHUB_SHA': 'a' * 40,
            'MERCADOPAGO_TEST_PUBLIC_KEY': 'test-public-key-unique-value',
            'MERCADOPAGO_TEST_ACCESS_TOKEN': 'sandbox-access-unique-value',
@@ -87,7 +88,7 @@ class FakeProvider:
             data = {'sale_globally_enabled': False, 'sales_mode': 'globally-blocked',
                     'sandbox_proof_contract': 'v2' if self.contract else 'v1',
                     'sandbox_checkout_isolated': True, 'receiver_test_signature_evidence': True,
-                    'certification_download_isolated': True}
+                    'certification_download_isolated': True, 'certification_worker_source_sha': 'a' * 40}
         elif path == '/users/me':
             data = {'id': 10, 'tags': ['test_user']}
         elif path == '/users/20':
