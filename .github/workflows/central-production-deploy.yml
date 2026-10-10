@@ -357,6 +357,8 @@ jobs:
           cat /tmp/mpsmoke.log
       - name: Automatic rollback after failed post-deploy smoke
         if: failure() && steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -367,6 +369,10 @@ jobs:
             if [ "$code" = "200" ] && python3 scripts/deploy/verify-rollback-health.py /tmp/rollback-health.json;
             then
               echo "AUTO_ROLLBACK_HEALTH=PASS"
+              # Never renew on an unhealthy rollback. Dispatch the existing
+              # signed, GET-only financial proof workflow after health is proven.
+              gh workflow run order12a-financial-proof-renewal.yml --repo "$GITHUB_REPOSITORY" --ref gh-pages
+              echo "AUTO_ROLLBACK_FINANCIAL_PROOF_RENEWAL_DISPATCH=PASS"
               exit 0
             fi
             sleep 5
