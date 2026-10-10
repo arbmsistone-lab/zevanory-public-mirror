@@ -72,6 +72,7 @@ def verify():
             }
             if (
                 response["curl_exit"] == 0 and response["status"] == "200"
+                and response["content_type"].startswith("image/")
                 and raw.startswith(b"\x89PNG\r\n\x1a\n")
                 and len(raw) == expected["size"]
                 and digest == expected["sha256"]
