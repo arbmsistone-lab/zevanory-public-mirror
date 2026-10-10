@@ -44,13 +44,13 @@ jobs:
         run: python3 scripts/deploy/copy-brand-export.py
       - name: Brand source and negative image-gate tests
         run: node --test tests/brand-kit.test.mjs tests/multichannel-autonomy.test.mjs tests/brand-profiles.test.mjs tests/brand-email.test.mjs tests/acquisition-engine.test.mjs
-      - name: Build and test GENERATED canonical sales sitemap
-        run: python3 -m unittest discover -s tests -p 'test_sales_sitemap_generated.py' -v
       - name: Verify generated exports are committed exactly
         run: |
           set -euo pipefail
           git diff --exit-code -- worker/brand-approved.mjs assets/brand/export/ sales-public/brand/export/
           test "$(find assets/brand/export -maxdepth 1 -name '*.png' | wc -l)" -eq 13
+      - name: Build and test GENERATED canonical sales sitemap
+        run: python3 -m unittest discover -s tests -p 'test_sales_sitemap_generated.py' -v
       - uses: actions/upload-artifact@v4
         with:
           name: zevanory-official-brand-kit
