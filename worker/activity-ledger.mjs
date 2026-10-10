@@ -14,13 +14,13 @@ export const ACTIVITY_TYPES = Object.freeze(new Set([
 const CHANNELS = new Set([
   "checkout", "finance", "delivery", "download", "blog", "telegram",
   "instagram", "facebook", "whatsapp", "email", "owner", "system",
-  "web", "affiliate", "store"
+  "web", "affiliate", "store", "bluesky", "pinterest", "youtube"
 ]);
 const LINK_HOSTS = new Set([
   "zevanory.api.br", "vendas.zevanory.api.br", "controle.zevanory.api.br",
   "t.me", "www.instagram.com", "instagram.com", "www.facebook.com", "facebook.com",
   "www.youtube.com", "youtube.com", "www.pinterest.com", "pinterest.com",
-  "www.tiktok.com", "tiktok.com"
+  "www.tiktok.com", "tiktok.com", "bsky.app"
 ]);
 const sha256 = async value => {
   const bytes = new TextEncoder().encode(value);

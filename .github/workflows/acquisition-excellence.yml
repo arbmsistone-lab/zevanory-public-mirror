@@ -1,0 +1,46 @@
+name: Acquisition excellence tests
+on:
+  pull_request:
+    paths:
+      - 'worker/acquisition-engine.mjs'
+      - 'worker/bluesky-publisher.mjs'
+      - 'worker/activity-ledger.mjs'
+      - 'tests/acquisition-engine.test.mjs'
+      - 'tests/bluesky-publisher.test.mjs'
+      - '.github/workflows/acquisition-excellence.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  acquisition-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test acquisition and Bluesky with isolated fetch mocks
+        run: |
+          set -euo pipefail
+          node --test --experimental-test-coverage \
+            --test-coverage-include='worker/acquisition-engine.mjs' \
+            --test-coverage-include='worker/bluesky-publisher.mjs' \
+            tests/acquisition-engine.test.mjs tests/bluesky-publisher.test.mjs \
+            2>&1 | tee /tmp/acquisition-coverage.log
+      - name: Require 90 percent line coverage on acquisition core
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          text=open('/tmp/acquisition-coverage.log',encoding='utf8').read()
+          matches=re.findall(r'^#\s*((?:worker/)?(?:acquisition-engine|bluesky-publisher)\.mjs)\s*\|\s*([0-9.]+)\s*\|',text,re.M)
+          if len(matches)!=2:
+              raise SystemExit('COVERAGE_PROOF_MISSING: '+repr(matches))
+          for path,percent in matches:
+              print(f'COVERAGE {path}: {percent}%')
+              if float(percent)<90:
+                  raise SystemExit('ACQUISITION_COVERAGE_BELOW_90: '+path)
+          PY
