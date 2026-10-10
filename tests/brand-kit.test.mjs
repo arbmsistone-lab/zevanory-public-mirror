@@ -26,7 +26,7 @@ test("avatar and banner cannot masquerade as a post",async()=>{
  await assert.rejects(validateOutboundBrandImage({url:"https://vendas.zevanory.api.br/brand/export/avatar-800.png",channel:"pinterest"}),/brand_channel_size_or_role/);
 });
 test("unsigned media blocked even if the URL and dimensions look right",async()=>{
- let requests=0;await assert.rejects(validateOutboundBrandImage({url:knownUrl,channel:"telegram",fetchImpl:async()=>{requests++;}}),/brand_artifact_unapproved/);
+ let requests=0;await assert.rejects(validateOutboundBrandImage({url:knownUrl,channel:"telegram",approved:{},fetchImpl:async()=>{requests++;}}),/brand_artifact_unapproved/);
  assert.equal(requests,0);
 });
 test("approved binary must match pinned bytes, dimensions and PNG magic",async()=>{
