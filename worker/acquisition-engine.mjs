@@ -91,6 +91,17 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[]}){
  const key=ACQUISITION_STATE_PREFIX+entry.day+":"+channel;
  const prior=await safeJson(kv,key,null);
  if(prior)return prior; // pending is terminal until provider reconciliation, never blindly retry
+ // Preserve legacy Telegram publish-once marker during cutover. Never produce two posts in a day.
+ if(channel==="telegram"){
+  const previous=await safeJson(kv,"zpc:multichannel:evidence:telegram:daily:"+entry.day,null);
+  if(previous){
+   const adopted=previous.provider_post_id&&previous.url
+    ?{channel,day:entry.day,status:"publicado",provider_post_id:String(previous.provider_post_id),url:previous.url,at:previous.publishedAt||null,product:null,provenance:"legacy"}
+    :{channel,day:entry.day,status:"pending",code:"legacy_telegram_unverified",needs_reconciliation:true};
+   await kv.put(key,JSON.stringify(adopted),{expirationTtl:45*86400});
+   return adopted;
+  }
+ }
  const draft=generateNative(entry,channel);
  const linkHttpStatus=await verifyProductLink(draft.link,fetchImpl);
  const gate=validateDraft({draft,entry,priorPosts:past,linkHttpStatus});
