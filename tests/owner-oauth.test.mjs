@@ -97,3 +97,26 @@ test("status and disconnect need distinct signed POST; neither returns tokens",a
  const nope=await handleOwnerOAuth(new Request(base+"pinterest/disconnect",{method:"POST"}),e);
  assert.equal(nope.status,401);
 });
+
+test("a single existing encrypted credential binding can carry independent owner OAuth keys without adding Cloudflare bindings",async()=>{
+ const e=env();
+ const bundle={
+  OWNER_OAUTH_BRIDGE_SECRET:e.OWNER_OAUTH_BRIDGE_SECRET,
+  OWNER_OAUTH_ENCRYPTION_KEY:e.OWNER_OAUTH_ENCRYPTION_KEY,
+  YOUTUBE_CLIENT_ID:e.YOUTUBE_CLIENT_ID,
+  YOUTUBE_CLIENT_SECRET:e.YOUTUBE_CLIENT_SECRET,
+  PINTEREST_CLIENT_ID:e.PINTEREST_CLIENT_ID,
+  PINTEREST_CLIENT_SECRET:e.PINTEREST_CLIENT_SECRET
+ };
+ delete e.OWNER_OAUTH_BRIDGE_SECRET;
+ delete e.OWNER_OAUTH_ENCRYPTION_KEY;
+ delete e.YOUTUBE_CLIENT_ID;
+ delete e.YOUTUBE_CLIENT_SECRET;
+ delete e.PINTEREST_CLIENT_ID;
+ delete e.PINTEREST_CLIENT_SECRET;
+ e.CHANNEL_CREDENTIALS_JSON=JSON.stringify(bundle);
+ const a=await url("start","youtube",{...e,OWNER_OAUTH_BRIDGE_SECRET:bundle.OWNER_OAUTH_BRIDGE_SECRET});
+ const result=await handleOwnerOAuth(new Request(a),e);
+ assert.equal(result.status,302);
+ assert.equal(new URL(result.headers.get("location")).searchParams.get("client_id"),bundle.YOUTUBE_CLIENT_ID);
+});
