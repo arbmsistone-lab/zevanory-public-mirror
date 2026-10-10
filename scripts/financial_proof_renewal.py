@@ -143,7 +143,13 @@ def renew(secret, fetch=get_json, retries=9, pause=time.sleep):
     if rc != 200 or not isinstance(sha, str) or not SHA.fullmatch(sha):
         raise RenewalError("LIVE_RELEASE_UNVERIFIED")
     sw_code, sw = fetch("/api/sales/status")
-    if sw_code != 200 or sw.get("open") is not True:
+    # Effective "open" itself requires this proof for the live SHA, so a fresh
+    # release can never be "open" before renewal (deadlock -> rollback). Accept
+    # exactly one other state: the owner switch is authorized and the preflight is
+    # green (worker reports enabled) and ONLY the release-bound proof is pending.
+    proof_pending = (sw.get("requested") is True and
+                     sw.get("blocked") == "release_or_financial_proof_pending")
+    if sw_code != 200 or not (sw.get("open") is True or proof_pending):
         raise RenewalError("OWNER_SALES_SWITCH_NOT_OPEN")
     audit_code, audit = fetch(AUDIT_PATH, secret)
     snap = validate_audit(audit_code, audit)
