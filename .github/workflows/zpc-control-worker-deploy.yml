@@ -74,9 +74,21 @@ jobs:
           curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 \
             https://controle.zevanory.api.br/global-trust.json \
             -o dist/global-trust.json
-          jq -e '.state == "GREEN"' dist/global-trust.json >/dev/null
-          jq -e '.zea10.proven == 10 and .zea10.partial == 0 and .zea10.blocked == 0' dist/global-trust.json >/dev/null
-          jq -e '[.engines[].state] | length == 3 and all(. == "GREEN")' dist/global-trust.json >/dev/null
+          if ! jq -e '.state == "GREEN"' dist/global-trust.json >/dev/null; then
+            value="$(jq -cr '{state: .state}' dist/global-trust.json)"
+            echo "::error title=TRUST_STATE::$value"
+            exit 1
+          fi
+          if ! jq -e '.zea10.proven == 10 and .zea10.partial == 0 and .zea10.blocked == 0' dist/global-trust.json >/dev/null; then
+            value="$(jq -cr '{zea10: {proven: .zea10.proven, partial: .zea10.partial, blocked: .zea10.blocked}}' dist/global-trust.json)"
+            echo "::error title=TRUST_ZEA10::$value"
+            exit 1
+          fi
+          if ! jq -e '[.engines[].state] | length == 3 and all(. == "GREEN")' dist/global-trust.json >/dev/null; then
+            value="$(jq -cr '{engines: [.engines[] | {name, state}]}' dist/global-trust.json)"
+            echo "::error title=TRUST_ENGINES::$value"
+            exit 1
+          fi
           printf '{"sha":"%s","repository":"arbmsistone-lab/zevanory-product-control-edge","workflow_run":"%s"}\n' \
             "$SOURCE_SHA" "${{ github.run_id }}" > dist/zpc-build.json
 
