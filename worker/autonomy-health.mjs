@@ -29,7 +29,7 @@ export async function collectAutonomyHealth(env={},now=new Date(),{persist=true}
  const telegramChannel=(channels.channels||[]).find(x=>x.id==="telegram");
  const lastOk=(channels.evidence||[]).filter(x=>x.channel==="telegram"&&x.provider_post_id&&x.publishedAt).sort((a,b)=>Date.parse(b.publishedAt)-Date.parse(a.publishedAt))[0];
  const lastError=(channels.evidence||[]).find(x=>x.channel==="telegram"&&(x.error||x.status==="unverified_manual_reconciliation"));
- const errorCode=lastError ? (/^telegram_\\w+_failed$/.test(String(lastError.error||""))?String(lastError.error):"unverified_manual_reconciliation") : null;
+ const errorCode=lastError ? (/^telegram_\w+_failed$/.test(String(lastError.error||""))?String(lastError.error):"unverified_manual_reconciliation") : null;
  const telegram={
    configured:Boolean(telegramChannel?.configured),
    paused:await creativeAutopublishPaused(env),
