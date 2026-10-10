@@ -135,3 +135,15 @@ test("certified official v2 profile receipt remains idempotent",async()=>{
  assert.equal(calls,0);
  assert.equal(result.profiles.find(x=>x.channel==="bluesky")?.status,"atualizado");
 });
+
+test("verified Telegram v2 readback remains idempotent without Bluesky provider_record",async()=>{
+ const store=kv();
+ const verified={channel:"telegram",status:"atualizado",at:"2026-10-10T18:00:00Z",profile_url:"https://t.me/zevanory"};
+ await store.put("zpc:brand:profile:telegram:v2",JSON.stringify(verified));
+ let calls=0;
+ const result=await syncBrandProfiles({
+   ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"dummy",TELEGRAM_CHANNEL_ID:"@zevanory"
+ },async()=>{calls++;throw Error("Telegram already certified");});
+ assert.equal(calls,0,"verified Telegram receipt must not reupload photo on each cron");
+ assert.equal(result.profiles.find(x=>x.channel==="telegram")?.status,"atualizado");
+});
