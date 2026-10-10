@@ -136,16 +136,33 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --retry 5 --retry-delay 3 --max-time 25 \
-            https://controle.zevanory.api.br/version.json -o /tmp/version.json
-          test "$(jq -r '.sha' /tmp/version.json)" = "$SOURCE_SHA"
-          curl --fail --silent --show-error --retry 5 --retry-delay 3 --max-time 25 \
-            https://controle.zevanory.api.br/global-trust.json -o /tmp/global-trust.json
-          jq -e '.state == "GREEN"' /tmp/global-trust.json >/dev/null
-          jq -e '.zea10.proven == 10 and ([.engines[].state] | length == 3 and all(. == "GREEN"))' /tmp/global-trust.json >/dev/null
-          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 \
-            https://zevanory.api.br/api/support/artifacts-status -o /tmp/artifacts.json
-          jq -e '.artifacts | length == 5 and all(.integrity == true)' /tmp/artifacts.json >/dev/null
+          if ! curl --fail --silent --show-error --retry 5 --retry-delay 3 --max-time 25 \
+            https://controle.zevanory.api.br/version.json -o /tmp/version.json; then
+            echo "::error title=READBACK_VERSION::HTTP fetch failed"
+            exit 1
+          fi
+          if ! jq -e --arg expected "$SOURCE_SHA" '.sha == $expected' /tmp/version.json >/dev/null; then
+            echo "::error title=READBACK_VERSION::$(jq -c '{sha,repository}' /tmp/version.json)"
+            exit 1
+          fi
+          if ! curl --fail --silent --show-error --retry 5 --retry-delay 3 --max-time 25 \
+            https://controle.zevanory.api.br/global-trust.json -o /tmp/global-trust.json; then
+            echo "::error title=READBACK_TRUST::HTTP fetch failed"
+            exit 1
+          fi
+          if ! jq -e '.state == "GREEN" and .zea10.proven == 10 and ([.engines[].state] | length == 3 and all(. == "GREEN"))' /tmp/global-trust.json >/dev/null; then
+            echo "::error title=READBACK_TRUST::$(jq -c '{state,sha,zea10,zees16,engines}' /tmp/global-trust.json 2>/dev/null || echo invalid_json)"
+            exit 1
+          fi
+          if ! curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 \
+            https://zevanory.api.br/api/support/artifacts-status -o /tmp/artifacts.json; then
+            echo "::error title=READBACK_ARTIFACTS::HTTP fetch failed"
+            exit 1
+          fi
+          if ! jq -e '.artifacts | length == 5 and all(.integrity == true)' /tmp/artifacts.json >/dev/null; then
+            echo "::error title=READBACK_ARTIFACTS::$(jq -c '{count:(.artifacts|length),integrity:[.artifacts[]?|{id,integrity}]}' /tmp/artifacts.json 2>/dev/null || echo invalid_json)"
+            exit 1
+          fi
           cat /tmp/version.json
           cat /tmp/global-trust.json
           cat /tmp/artifacts.json
