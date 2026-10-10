@@ -1,5 +1,5 @@
 import { BLOG_INDEX_KEY, CHANNEL_STATE_KEY } from "./multichannel-autonomy.mjs";
-import { CREATIVE_AUTONOMY_FEED_KEY } from "./creative-autonomy.mjs";
+import { CREATIVE_AUTONOMY_FEED_KEY, creativeAutopublishPaused } from "./creative-autonomy.mjs";
 
 export const AUTONOMY_HEALTH_KEY="zpc:autonomy:health:v1";
 const ALLOWED_ALERTS=new Set(["channel_down","compliance_rejected_3x","refund","complaint"]);
@@ -24,7 +24,20 @@ export async function collectAutonomyHealth(env={},now=new Date(),{persist=true}
  const evidence=[];
  for(const article of blog.articles||[])if(article?.slug&&/^https:\/\//.test(String(article?.url||"")))evidence.push({front:"F2",channel:"blog",provider_post_id:String(article.slug),url:String(article.url),published_at:String(article.publishedAt||""),metrics:article.metrics||null});
  for(const row of channels.evidence||[])if(row?.provider_post_id&&/^https:\/\//.test(String(row?.url||"")))evidence.push({front:"F2",channel:String(row.channel),provider_post_id:String(row.provider_post_id),url:String(row.url),published_at:String(row.publishedAt||""),metrics:row.metrics||null});
- const payload={generatedAt:now.toISOString(),evidence,alerts:selectAutonomyAlerts({channelState:channels,creativeFeed,events}),channels:(channels.channels||[]).map(x=>({id:x.id,mode:x.mode,configured:Boolean(x.configured)}))};
+ const day=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Fortaleza",year:"numeric",month:"2-digit",day:"2-digit"}).format(now);
+ const daily=await safeJson(kv,"zpc:multichannel:evidence:telegram:daily:"+day,null);
+ const telegramChannel=(channels.channels||[]).find(x=>x.id==="telegram");
+ const lastOk=(channels.evidence||[]).filter(x=>x.channel==="telegram"&&x.provider_post_id&&x.publishedAt).sort((a,b)=>Date.parse(b.publishedAt)-Date.parse(a.publishedAt))[0];
+ const lastError=(channels.evidence||[]).find(x=>x.channel==="telegram"&&(x.error||x.status==="unverified_manual_reconciliation"));
+ const errorCode=lastError ? (/^telegram_\\w+_failed$/.test(String(lastError.error||""))?String(lastError.error):"unverified_manual_reconciliation") : null;
+ const telegram={
+   configured:Boolean(telegramChannel?.configured),
+   paused:await creativeAutopublishPaused(env),
+   last_attempt_at:daily?.startedAt||daily?.publishedAt||null,
+   last_ok_at:lastOk?.publishedAt||(daily?.provider_post_id?daily.publishedAt:null)||null,
+   last_error_code:errorCode
+ };
+ const payload={generatedAt:now.toISOString(),evidence,alerts:selectAutonomyAlerts({channelState:channels,creativeFeed,events}),channels:(channels.channels||[]).map(x=>({id:x.id,mode:x.mode,configured:Boolean(x.configured)})),telegram};
  // Public GET reads must never spend the Workers Free KV write budget (1k/day); only the cron persists.
  if(persist)await kv?.put?.(AUTONOMY_HEALTH_KEY,JSON.stringify(payload),{expirationTtl:8*DAY});
  return payload;
