@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""F7: measure real consumption against the free-tier limits the owner relies on.
+Fails (alert) at >= 70% of any limit, and also when a metric cannot be measured
+(not proven = failed). Only aggregates are printed; the repository is public."""
+import datetime, hashlib, hmac, json, os, sys, time, urllib.error, urllib.request
+
+ACCOUNT = os.environ.get("CF_ACCOUNT_ID") or "1b26415802588185a86c1d4d3ebf5bdb"
+CF_TOKEN = os.environ.get("CF_TOKEN", "").strip()
+AUDIT_KEY = os.environ.get("CERTIFICATION_E2E_TOKEN", "").strip()
+RESEND = os.environ.get("RESEND_API_KEY", "").strip()
+ALERT = 0.70
+LIMITS = {  # free plans (documented limits)
+    "workers_requests_day": 100_000,
+    "workers_cpu_ms_per_invocation": 10.0,
+    "kv_reads_day": 100_000,
+    "kv_writes_day": 1_000,
+    "kv_deletes_day": 1_000,
+    "kv_lists_day": 1_000,
+    "resend_emails_day": 100,
+    "resend_emails_month": 3_000,
+    "neon_storage_bytes": 512 * 1024 * 1024,
+}
+now = datetime.datetime.now(datetime.timezone.utc)
+since = (now - datetime.timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+until = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+results, failures = {}, []
+
+def note(level, title, msg): print(f"::{level} title={title}::{msg}"[:900], flush=True)
+
+def http(url, headers=None, data=None, method="GET"):
+    req = urllib.request.Request(url, headers=headers or {}, data=data, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r: return r.status, json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try: return e.code, json.loads(e.read() or b"{}")
+        except Exception: return e.code, {}
+    except Exception as e: return 0, {"error": type(e).__name__}
+
+def record(metric, used, limit, unit=""):
+    pct = used / limit if limit else 1
+    results[metric] = {"used": used, "limit": limit, "pct": round(pct * 100, 1)}
+    if pct >= ALERT: failures.append(f"{metric}={round(pct*100,1)}%")
+    note("notice" if pct < ALERT else "error", "F7_USAGE", f"{metric}: {used}{unit} / {limit}{unit} ({round(pct*100,1)}%)")
+
+def unavailable(metric, why):
+    results[metric] = {"unavailable": why}; failures.append(f"{metric}:unmeasured({why})")
+    note("error", "F7_USAGE", f"{metric}: NOT MEASURED ({why})")
+
+# 1. Cloudflare Workers + KV via GraphQL analytics (read-only).
+def gql(query):
+    return http("https://api.cloudflare.com/client/v4/graphql",
+                {"Authorization": "Bearer " + CF_TOKEN, "Content-Type": "application/json"},
+                json.dumps({"query": query}).encode(), "POST")
+if not CF_TOKEN:
+    unavailable("workers_requests_day", "no_token"); unavailable("kv_reads_day", "no_token")
+else:
+    q = '{viewer{accounts(filter:{accountTag:"%s"}){workersInvocationsAdaptive(limit:1000,filter:{datetime_geq:"%s",datetime_leq:"%s"}){sum{requests errors subrequests}quantiles{cpuTimeP99}dimensions{scriptName}}}}}' % (ACCOUNT, since, until)
+    code, body = gql(q)
+    rows = (((body.get("data") or {}).get("viewer") or {}).get("accounts") or [{}])[0].get("workersInvocationsAdaptive") if code == 200 else None
+    if rows is None or body.get("errors"):
+        unavailable("workers_requests_day", f"graphql_{code}_{str((body.get('errors') or [{}])[0].get('message',''))[:60]}")
+    else:
+        total = sum(r["sum"]["requests"] for r in rows); errors = sum(r["sum"]["errors"] for r in rows)
+        record("workers_requests_day", total, LIMITS["workers_requests_day"])
+        scoped = [r for r in rows if str(r["dimensions"]["scriptName"]).startswith("zevanory")]  # ARBM One is out of scope
+        worst = max(((r["quantiles"]["cpuTimeP99"] or 0) / 1000.0, r["dimensions"]["scriptName"]) for r in scoped) if scoped else (0, "-")
+        record("workers_cpu_ms_per_invocation", round(worst[0], 2), LIMITS["workers_cpu_ms_per_invocation"], "ms")
+        note("notice", "F7_WORKERS", f"scripts={len({r['dimensions']['scriptName'] for r in rows})} errors_24h={errors} worst_p99_cpu_script={worst[1]}")
+    q = '{viewer{accounts(filter:{accountTag:"%s"}){kvOperationsAdaptiveGroups(limit:1000,filter:{datetime_geq:"%s",datetime_leq:"%s"}){sum{requests}dimensions{actionType}}}}}' % (ACCOUNT, since, until)
+    code, body = gql(q)
+    rows = (((body.get("data") or {}).get("viewer") or {}).get("accounts") or [{}])[0].get("kvOperationsAdaptiveGroups") if code == 200 else None
+    if rows is None or body.get("errors"):
+        unavailable("kv_reads_day", f"graphql_{code}_{str((body.get('errors') or [{}])[0].get('message',''))[:60]}")
+    else:
+        by = {}
+        for r in rows: by[r["dimensions"]["actionType"]] = by.get(r["dimensions"]["actionType"], 0) + r["sum"]["requests"]
+        record("kv_reads_day", by.get("read", 0), LIMITS["kv_reads_day"])
+        record("kv_writes_day", by.get("write", 0), LIMITS["kv_writes_day"])
+        record("kv_deletes_day", by.get("delete", 0), LIMITS["kv_deletes_day"])
+        record("kv_lists_day", by.get("list", 0), LIMITS["kv_lists_day"])
+    # Breakdown of writes by namespace and hour to find the writers (aggregates only).
+    q = '{viewer{accounts(filter:{accountTag:"%s"}){kvOperationsAdaptiveGroups(limit:2000,filter:{datetime_geq:"%s",datetime_leq:"%s",actionType:"write"}){sum{requests}dimensions{namespaceId datetimeHour}}}}}' % (ACCOUNT, since, until)
+    code, body = gql(q)
+    rows = (((body.get("data") or {}).get("viewer") or {}).get("accounts") or [{}])[0].get("kvOperationsAdaptiveGroups") if code == 200 else None
+    if rows:
+        ns, hours = {}, {}
+        for r in rows:
+            d = r["dimensions"]; n = r["sum"]["requests"]
+            ns[d["namespaceId"][:8]] = ns.get(d["namespaceId"][:8], 0) + n
+            hours[d["datetimeHour"][11:13]] = hours.get(d["datetimeHour"][11:13], 0) + n
+        note("notice", "F7_KV_WRITES_BY_NAMESPACE", json.dumps(dict(sorted(ns.items(), key=lambda x: -x[1])), sort_keys=False))
+        note("notice", "F7_KV_WRITES_BY_HOUR_UTC", json.dumps(dict(sorted(hours.items()))))
+    # Invocation outcome for the main Worker (exceeded CPU would appear here).
+    q = '{viewer{accounts(filter:{accountTag:"%s"}){workersInvocationsAdaptive(limit:200,filter:{datetime_geq:"%s",datetime_leq:"%s",scriptName:"zevanory"}){sum{requests}quantiles{cpuTimeP50 cpuTimeP99}dimensions{status usageModel}}}}}' % (ACCOUNT, since, until)
+    code, body = gql(q)
+    rows = (((body.get("data") or {}).get("viewer") or {}).get("accounts") or [{}])[0].get("workersInvocationsAdaptive") if code == 200 else None
+    if rows is not None and not body.get("errors"):
+        note("notice", "F7_ZEVANORY_STATUS", json.dumps([{"status": r["dimensions"]["status"], "model": r["dimensions"].get("usageModel"), "req": r["sum"]["requests"], "p99ms": round((r["quantiles"]["cpuTimeP99"] or 0) / 1000, 1)} for r in rows]))
+    else:
+        note("warning", "F7_ZEVANORY_STATUS", f"graphql_{code} {str(body.get('errors'))[:160]}")
+    # Where does the CPU go? p99 per minute-of-hour: if heavy invocations cluster at :00 they are the cron.
+    q = '{viewer{accounts(filter:{accountTag:"%s"}){workersInvocationsAdaptive(limit:3000,filter:{datetime_geq:"%s",datetime_leq:"%s",scriptName:"zevanory"}){sum{requests}quantiles{cpuTimeP99 cpuTimeP50}dimensions{datetimeMinute}}}}}' % (ACCOUNT, since, until)
+    code, body = gql(q)
+    rows = (((body.get("data") or {}).get("viewer") or {}).get("accounts") or [{}])[0].get("workersInvocationsAdaptive") if code == 200 else None
+    if rows:
+        heavy = [r for r in rows if (r["quantiles"]["cpuTimeP99"] or 0) / 1000 > 10]
+        by_min = {}
+        for r in heavy:
+            m = r["dimensions"]["datetimeMinute"][14:16]; by_min[m] = by_min.get(m, 0) + r["sum"]["requests"]
+        top = sorted(heavy, key=lambda r: -(r["quantiles"]["cpuTimeP99"] or 0))[:8]
+        note("notice", "F7_CPU_HEAVY_MINUTES", f"minutes_with_p99_over_10ms={len(heavy)}/{len(rows)} by_minute_of_hour={json.dumps(dict(sorted(by_min.items(), key=lambda x:-x[1])[:10]))}")
+        note("notice", "F7_CPU_TOP", json.dumps([[r['dimensions']['datetimeMinute'][11:16], r['sum']['requests'], round((r['quantiles']['cpuTimeP99'] or 0)/1000,1)] for r in top]))
+    else:
+        note("warning", "F7_CPU_HEAVY_MINUTES", f"graphql_{code} {str(body.get('errors'))[:200]}")
+    # Which paths/clients hit the main Worker at :00/:15/:30/:45 (zone HTTP analytics, aggregates only).
+    zc, zb = http("https://api.cloudflare.com/client/v4/zones?name=zevanory.api.br", {"Authorization": "Bearer " + CF_TOKEN})
+    zone = ((zb.get("result") or [{}])[0] or {}).get("id") if zc == 200 else None
+    if zone:
+        q = '{viewer{zones(filter:{zoneTag:"%s"}){httpRequestsAdaptiveGroups(limit:60,orderBy:[count_DESC],filter:{datetime_geq:"%s",datetime_leq:"%s",requestSource:"eyeball"}){count dimensions{clientRequestHTTPHost clientRequestPath clientRequestHTTPMethodName userAgent}}}}}' % (zone, since, until)
+        code, body = gql(q)
+        rows = (((body.get("data") or {}).get("viewer") or {}).get("zones") or [{}])[0].get("httpRequestsAdaptiveGroups") if code == 200 else None
+        if rows:
+            for r in rows[:14]:
+                d = r["dimensions"]
+                note("notice", "F7_TOP_PATH", f'{r["count"]} {d["clientRequestHTTPMethodName"]} {d["clientRequestHTTPHost"]}{d["clientRequestPath"][:70]} ua={str(d.get("userAgent"))[:60]}')
+        else:
+            note("warning", "F7_TOP_PATH", f"graphql_{code} {str(body.get('errors'))[:200]}")
+    else:
+        note("warning", "F7_TOP_PATH", f"zone_lookup_http_{zc}")
+    # Workers Logs (observability is enabled on the main Worker): CPU per path, aggregates only.
+    import time as _t
+    tq = {"queryId": "f7-cpu-by-path", "timeframe": {"from": int((_t.time()-24*3600)*1000), "to": int(_t.time()*1000)},
+          "parameters": {"datasets": ["cloudflare-workers"], "filters": [{"key": "$workers.scriptName", "operation": "eq", "type": "string", "value": "zevanory"}],
+                         "calculations": [{"operator": "p99", "key": "$workers.cpuTimeMs", "keyType": "number", "alias": "p99cpu"}, {"operator": "count", "alias": "n"}, {"operator": "sum", "key": "$workers.cpuTimeMs", "keyType": "number", "alias": "sumcpu"}],
+                         "groupBys": [{"type": "string", "value": "$workers.event.request.url"}], "orderBy": {"value": "p99cpu", "order": "desc"}, "limit": 15},
+          "view": "calculations"}
+    oc, ob = http(f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/workers/observability/telemetry/query",
+                  {"Authorization": "Bearer " + CF_TOKEN, "Content-Type": "application/json"}, json.dumps(tq).encode(), "POST")
+    if oc == 200:
+        calcs = ((ob.get("result") or {}).get("calculations") or [])
+        for c in calcs:
+            agg = c.get("aggregates") or []
+            note("warning", "F7_CPU_BY_PATH", (c.get("alias") or c.get("calculation") or "?") + " " + json.dumps([[",".join(str(x.get("value")) for x in (g.get("groups") or [])), round(g.get("value") or 0, 1)] for g in agg[:15]])[:850])
+        if not calcs: note("warning", "F7_CPU_BY_PATH", json.dumps(ob)[:400])
+    else:
+        note("warning", "F7_CPU_BY_PATH", f"telemetry_http_{oc} {str(ob.get('errors'))[:200]}")
+    tq2 = {"queryId": "f7-channel-down", "timeframe": {"from": int((_t.time()-24*3600)*1000), "to": int(_t.time()*1000)},
+           "parameters": {"datasets": ["cloudflare-workers"], "filters": [{"key": "$workers.scriptName", "operation": "eq", "type": "string", "value": "zevanory"},
+                          {"key": "$metadata.message", "operation": "includes", "type": "string", "value": "\"error\""}],
+                          "calculations": [{"operator": "count", "alias": "n"}], "groupBys": [{"type": "string", "value": "$metadata.message"}], "orderBy": {"value": "n", "order": "desc"}, "limit": 6},
+           "view": "calculations"}
+    oc, ob = http(f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/workers/observability/telemetry/query",
+                  {"Authorization": "Bearer " + CF_TOKEN, "Content-Type": "application/json"}, json.dumps(tq2).encode(), "POST")
+    if oc == 200:
+        for c in ((ob.get("result") or {}).get("calculations") or []):
+            for g in (c.get("aggregates") or [])[:6]:
+                msg = ",".join(str(x.get("value")) for x in (g.get("groups") or []))
+                i = msg.find('"error"')
+                note("warning", "F7_CHANNEL_LOGS", f'{g.get("value")}x ' + msg[:60] + " … " + msg[max(0,i-120):i+160])
+    else:
+        note("warning", "F7_CHANNEL_LOGS", f"telemetry_http_{oc} {str(ob.get('errors'))[:200]}")
+    # Account plan: any paid Workers subscription would violate the zero-cost rule.
+    code, body = http(f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}/subscriptions", {"Authorization": "Bearer " + CF_TOKEN})
+    if code == 200:
+        subs = [{"product": ((x.get("rate_plan") or {}).get("public_name") or (x.get("rate_plan") or {}).get("id")), "price": x.get("price"), "state": x.get("state")} for x in (body.get("result") or [])]
+        paid = [x for x in subs if (x.get("price") or 0) > 0]
+        note("error" if paid else "notice", "F7_CF_PLAN", json.dumps(subs)[:700])
+        if paid: failures.append("cloudflare_paid_subscription")
+    else:
+        note("warning", "F7_CF_PLAN", f"subscriptions_http_{code} (token lacks billing read)")
+    # Per-script CPU and requests (ZEVANORY scripts are the launch scope).
+    q = '{viewer{accounts(filter:{accountTag:"%s"}){workersInvocationsAdaptive(limit:1000,filter:{datetime_geq:"%s",datetime_leq:"%s"}){sum{requests errors}quantiles{cpuTimeP50 cpuTimeP99}dimensions{scriptName}}}}}' % (ACCOUNT, since, until)
+    code, body = gql(q)
+    rows = (((body.get("data") or {}).get("viewer") or {}).get("accounts") or [{}])[0].get("workersInvocationsAdaptive") if code == 200 else None
+    if rows:
+        per = {}
+        for r in rows:
+            k = r["dimensions"]["scriptName"]; e = per.setdefault(k, [0, 0, 0.0, 0.0])
+            e[0] += r["sum"]["requests"]; e[1] += r["sum"]["errors"]
+            e[2] = max(e[2], (r["quantiles"]["cpuTimeP50"] or 0) / 1000); e[3] = max(e[3], (r["quantiles"]["cpuTimeP99"] or 0) / 1000)
+        for k, (req_, err, p50, p99) in sorted(per.items(), key=lambda x: -x[1][0])[:8]:
+            note("notice", "F7_WORKER_SCRIPT", f"{k}: req={req_} err={err} cpu_p50={p50:.1f}ms cpu_p99={p99:.1f}ms")
+
+# 2. Neon storage via the signed read-only runtime-identity endpoint.
+if len(AUDIT_KEY) < 32:
+    unavailable("neon_storage_bytes", "no_audit_key")
+else:
+    path, ts = "/api/internal/audit/runtime-identity", str(int(time.time()))
+    sig = hmac.new(AUDIT_KEY.encode(), ("GET\n" + path + "\n" + ts).encode(), hashlib.sha256).hexdigest()
+    code, body = http("https://zevanory.api.br" + path, {"Accept": "application/json", "User-Agent": "ZEVANORY-AuditReadOnly/1.0",
+                      "x-zevanory-audit-ts": ts, "x-zevanory-audit-signature": sig})
+    db = (body or {}).get("database") or {}
+    em = (body or {}).get("email") or {}
+    if code == 200 and em.get("status", "").startswith("ok") and isinstance(em.get("emails_24h"), int):
+        record("resend_emails_day", em["emails_24h"], LIMITS["resend_emails_day"])
+        record("resend_emails_month", em["emails_month"], LIMITS["resend_emails_month"])
+        RESEND = ""  # measured via the Worker's own key
+        RESEND_DONE = True
+    else:
+        note("warning", "F7_RESEND_VIA_WORKER", f"status={em.get('status')}")
+    email = (body or {}).get("email") or {}
+    if code == 200 and isinstance(db.get("size_bytes"), int) and db.get("size_bytes") > 0:
+        record("neon_storage_bytes", db["size_bytes"], LIMITS["neon_storage_bytes"], "B")
+        note("notice", "F7_DB", f"host_suffix={db.get('provider_host_suffix')} postgres={db.get('postgres_version')}")
+    else:
+        unavailable("neon_storage_bytes", f"identity_http_{code}")
+
+# 3. Resend sends, counted by the Worker with its own key (aggregates only).
+if len(AUDIT_KEY) >= 32 and isinstance(locals().get("email"), dict) and email.get("status", "").startswith("ok"):
+    record("resend_emails_day", email["emails_24h"], LIMITS["resend_emails_day"])
+    record("resend_emails_month", email["emails_month"], LIMITS["resend_emails_month"])
+else:
+    unavailable("resend_emails_day", str((locals().get("email") or {}).get("status", "no_identity")))
+
+if failures:
+    note("error", "F7_FREE_TIER", "ALERT/NOT_PROVEN: " + "; ".join(failures))
+    sys.exit(1)
+note("notice", "F7_FREE_TIER", "PASS: every free-tier metric measured and below 70%")
