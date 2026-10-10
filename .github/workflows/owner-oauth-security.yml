@@ -9,6 +9,7 @@ on:
       - "scripts/channels/youtube-identity.mjs"
       - "scripts/channels/youtube-preflight.mjs"
       - "scripts/channels/youtube-private-proof.mjs"
+      - "scripts/channels/prove-youtube.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "tests/owner-oauth.test.mjs"
       - ".github/workflows/owner-oauth-security.yml"
@@ -21,6 +22,7 @@ on:
       - "scripts/channels/youtube-identity.mjs"
       - "scripts/channels/youtube-preflight.mjs"
       - "scripts/channels/youtube-private-proof.mjs"
+      - "scripts/channels/prove-youtube.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "tests/owner-oauth.test.mjs"
       - ".github/workflows/owner-oauth-security.yml"
@@ -47,4 +49,5 @@ jobs:
           node --check scripts/channels/youtube-identity.mjs
           node --check scripts/channels/youtube-preflight.mjs
           node --check scripts/channels/youtube-private-proof.mjs
+          node --check scripts/channels/prove-youtube.mjs
           node --test tests/owner-oauth.test.mjs tests/multichannel-autonomy.test.mjs
