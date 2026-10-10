@@ -593,9 +593,15 @@ wrapped.scheduled = async (controller, env, ctx) => {
     try {
       const out=await runAcquisitionEngine(normalized,new Date());
       console.info("acquisition_cycle",JSON.stringify({ok:out.ok===true,day:out.day||null,channels:(out.outcomes||[]).map(x=>({channel:x.channel,status:x.status}))}));
-      try { const brand=await syncBrandProfiles(normalized); console.info("brand_profile_cycle",JSON.stringify({statuses:(brand.profiles||[]).map(p=>({channel:p.channel,status:p.status}))})); } catch {console.error("brand_profile_cycle_unverified");}
     } catch {
       console.error("acquisition_cycle_failed");
+    }
+    // Profile maintenance remains independent if acquisition throws.
+    try {
+      const brand=await syncBrandProfiles(normalized);
+      console.info("brand_profile_cycle",JSON.stringify({statuses:(brand.profiles||[]).map(p=>({channel:p.channel,status:p.status}))}));
+    } catch {
+      console.error("brand_profile_cycle_unverified");
     }
   }
 };
