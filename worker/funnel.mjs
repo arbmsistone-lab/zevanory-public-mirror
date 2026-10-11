@@ -13,7 +13,7 @@ export const FUNNEL_PRODUCTS = Object.freeze({
   "combo-ia-vendas": { sku: "ZEV-CMB-011", name: "Combo IA + Vendas" },
   "negocio-completo": { sku: "ZEV-NGC-011", name: "Negócio Completo" },
 });
-const TRACKED_PAGES = new Set([...Object.keys(FUNNEL_PRODUCTS), "solucoes", "material-gratuito"]);
+const TRACKED_PAGES = new Set([...Object.keys(FUNNEL_PRODUCTS), "solucoes", "material-gratuito", "conteudo-pronto"]);
 const BOT_RE = /bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|headless|lighthouse|monitor|curl|wget|python|node-fetch|go-http|axios|okhttp|uptime|pingdom|semrush|ahrefs/i;
 const SUMMARY_KEY = "zpc-funnel:v1:summary";
 let schemaReady = false;

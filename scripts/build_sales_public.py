@@ -30,6 +30,7 @@ HTML_ROUTES = (
     "privacidade",
     "reembolso",
     "afiliados",
+    "conteudo-pronto",
 )
 
 
