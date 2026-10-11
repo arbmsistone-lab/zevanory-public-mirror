@@ -31,6 +31,19 @@ HTML_ROUTES = (
     "reembolso",
     "afiliados",
     "conteudo-pronto",
+    "ia-por-ramo",
+    "ia-para-salao-de-beleza",
+    "ia-para-barbearia",
+    "ia-para-restaurante-e-lanchonete",
+    "ia-para-loja-de-roupas",
+    "ia-para-mercadinho",
+    "ia-para-oficina-mecanica",
+    "ia-para-clinica-e-consultorio",
+    "ia-para-academia",
+    "ia-para-pet-shop",
+    "ia-para-contabilidade",
+    "ia-para-imobiliaria",
+    "ia-para-deposito-de-bebidas",
 )
 
 
