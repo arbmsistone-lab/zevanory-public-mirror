@@ -18,9 +18,8 @@ if "15,45 * * * *" not in crons:
 # Fase 0 is read-only producer, separate from both financial proof crons.
 if "5,35 * * * *" not in crons:
     crons.append("5,35 * * * *")
-# Acquisition (blog/Telegram/Bluesky) in its own invocation and subrequest budget.
-if "25,55 * * * *" not in crons:
-    crons.append("25,55 * * * *")
+# Workers Free: 5 cron triggers per ACCOUNT (shared with other Workers). Never add
+# a trigger here; acquisition shares the isolated "5,35" invocation (:35 tick).
 if len(crons)>5:
     raise SystemExit("CRON_TRIGGER_FREE_LIMIT_EXCEEDED")
 c.pop("secrets",None)
