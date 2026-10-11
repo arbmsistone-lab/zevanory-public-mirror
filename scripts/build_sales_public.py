@@ -113,6 +113,7 @@ def apply_catalog(html: str) -> str:
     html = html.replace("com escopo explícito e venda condicionada a gates reais.", "com escopo explícito, pagamento seguro e garantia de 7 dias.")
     for slug, c in COMMERCE.items():
         html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', rf'\g<1><span class="catalog-type">R$ {c["price"]} · download imediato</span>', html, count=1, flags=re.S)
+    html = re.sub(r'(<a class="catalog-card" href="/conteudo-pronto">.*?<p>[^<]*</p>)', r'\g<1><span class="catalog-type">R$ 197/mês · entrega automática por e-mail</span>', html, count=1, flags=re.S)
     for slug in ("zevanory-sales", "zevanory-cfo", "arbm-contador-saloes"):
         html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', r'\g<1><span class="catalog-type">Em breve</span>', html, count=1, flags=re.S)
     return html
