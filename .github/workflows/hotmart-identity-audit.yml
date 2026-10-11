@@ -1,0 +1,39 @@
+name: Hotmart identity audit (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright Chromium
+        run: npm i --no-save playwright@1.48.2 && npx playwright install --with-deps chromium
+      - name: Checkout ia
+        continue-on-error: true
+        run: node scripts/audit/hotmart-identity.mjs "https://pay.hotmart.com/F107979716H?off=g9knd34r" "ZEVANORY IA na Prática" "197,00"
+      - name: Checkout ven
+        continue-on-error: true
+        run: node scripts/audit/hotmart-identity.mjs "https://pay.hotmart.com/Y107979937I?off=8mg88sdd" "ZEVANORY Vendas na Prática" "197,00"
+      - name: Checkout lcx
+        continue-on-error: true
+        run: node scripts/audit/hotmart-identity.mjs "https://pay.hotmart.com/L107979973K?off=ksb5di36" "ZEVANORY Lucro & Caixa" "247,00"
+      - name: Checkout cmb
+        continue-on-error: true
+        run: node scripts/audit/hotmart-identity.mjs "https://pay.hotmart.com/H107979990T?off=b3ytmah4" "ZEVANORY Combo IA + Vendas" "297,00"
+      - name: Checkout ngc
+        continue-on-error: true
+        run: node scripts/audit/hotmart-identity.mjs "https://pay.hotmart.com/U107980005X?off=weo47apk" "ZEVANORY Negócio Completo" "397,00"
+      - name: Checkout cpr
+        continue-on-error: true
+        run: node scripts/audit/hotmart-identity.mjs "https://pay.hotmart.com/X107980075B?off=4ydutio7" "ZEVANORY Conteúdo Pronto" "197,00"

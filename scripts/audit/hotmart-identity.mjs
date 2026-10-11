@@ -1,0 +1,22 @@
+// Read-only: render a public Hotmart checkout and report the identity the buyer sees.
+import { chromium } from "playwright";
+const [url, expectName, expectPrice] = process.argv.slice(2);
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 1280, height: 1800 }, locale: "pt-BR" });
+await p.goto(url, { waitUntil: "networkidle", timeout: 60000 }).catch(() => null);
+await p.waitForTimeout(4000);
+const text = (await p.evaluate(() => document.body.innerText || "")).replace(/\s+/g, " ").trim();
+const imgs = await p.evaluate(() => [...document.images].map((i) => ({ src: i.currentSrc || i.src, w: i.naturalWidth, h: i.naturalHeight, alt: i.alt })).filter((i) => i.w >= 80));
+await b.close();
+const has = (s) => text.toLowerCase().includes(String(s).toLowerCase());
+const price = expectPrice.replace(".", ",");
+const producer = (text.match(/(?:Autor|Produtor|Vendido por|Por)\s*:?\s*([A-ZÀ-Ú][\wÀ-ú .&-]{2,40})/) || [])[1] || "";
+const issues = [];
+if (!has(expectName)) issues.push("name_missing");
+if (!has(price)) issues.push("price_missing:" + price);
+if (/zeva nory/i.test(text)) issues.push("producer_shown_as_Zeva_Nory");
+if (!/ZEVANORY/.test(text)) issues.push("brand_ZEVANORY_absent");
+console.log(`::notice title=CHECKOUT ${expectName}::producer="${producer}" price_ok=${has(price)} name_ok=${has(expectName)} issues=${issues.join(",") || "none"}`);
+console.log(`::notice title=CHECKOUT_IMAGES ${expectName}::${JSON.stringify(imgs.slice(0, 4)).slice(0, 700)}`);
+console.log(`::notice title=CHECKOUT_TEXT ${expectName}::${text.slice(0, 900)}`);
+if (issues.length) process.exitCode = 1;
