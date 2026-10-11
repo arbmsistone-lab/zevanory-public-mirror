@@ -97,8 +97,47 @@ async function reviewSummary(env){
   try{const r=await env.CORE.fetch("https://zevanory.api.br/api/reviews/summary");const j=await r.json();reviewCache={at:Date.now(),data:(j&&j.products)||{}}}catch{reviewCache={at:Date.now(),data:{}}}
   return reviewCache.data;
 }
+// Hotmart affiliate channel: same official product page, but the buy buttons go to the
+// Hotmart checkout (affiliate commission only exists there). Mercado Pago pages stay intact.
+// Links are public checkout URLs (not secrets). Empty => redirect to the normal page.
+export const HOTMART_CHECKOUT=Object.freeze({
+  "ia-na-pratica":"",
+  "vendas-na-pratica":"",
+  "lucro-e-caixa":"",
+  "combo-ia-vendas":"",
+  "negocio-completo":"",
+});
+const HOTMART_TEXT=[
+  ["Pagamento seguro pelo Mercado Pago (Pix ou cartão) · download logo após a confirmação · garantia de 7 dias.","Pagamento seguro pela Hotmart (Pix, cartão ou boleto) · acesso logo após a confirmação · garantia de 7 dias."],
+  ["Download logo após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago). Link pessoal enviado ao seu e-mail.","Acesso logo após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail."],
+  ["Logo após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um link pessoal para baixar o arquivo .zip com todo o material. Se o link se perder, peça outro em zevanory.api.br/entrega/reenviar.","Logo após a confirmação do pagamento, a Hotmart envia ao seu e-mail o acesso para baixar todo o material. Você também encontra o produto em Minhas compras, na sua conta Hotmart."],
+  ["Você tem 7 dias de garantia: peça o reembolso integral em zevanory.api.br/pedir-reembolso, sem precisar explicar o motivo.","Você tem 7 dias de garantia: peça o reembolso integral pela Hotmart, em Minhas compras, sem precisar explicar o motivo."],
+  ["Pix ou cartão pelo Mercado Pago.","Pix, cartão ou boleto pela Hotmart."],
+  ["Link por e-mail logo após a confirmação do pagamento.","Acesso por e-mail logo após a confirmação do pagamento."],
+];
+export function hotmartPage(html,slug,checkout){
+  let out=String(html);
+  for(const [from,to] of HOTMART_TEXT)out=out.split(from).join(to);
+  out=out.replace(/href="\/comprar\/ZEV-[A-Z0-9-]+"/g,'href="'+checkout+'" rel="noopener"');
+  // Avoid duplicate-content SEO: the canonical stays on the main page; this variant is not indexed.
+  out=out.replace("<head>",'<head><meta name="robots" content="noindex,follow">');
+  return out;
+}
+async function handleHotmart(request,env,slug){
+  const checkout=HOTMART_CHECKOUT[slug];
+  if(!Object.prototype.hasOwnProperty.call(HOTMART_CHECKOUT,slug))return infoPage(404,"Produto não encontrado","<p>Esse produto não existe.</p>");
+  if(!/^https:\/\/pay\.hotmart\.com\/[A-Za-z0-9]+(\?[A-Za-z0-9=&_-]*)?$/.test(checkout||""))
+    return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:"/"+slug,"cache-control":"no-store"}))});
+  const page=await env.ASSETS.fetch(new Request(new URL("/"+slug+".html",request.url),{method:"GET"}));
+  if(page.status!==200)return page;
+  const headers=applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=300","x-robots-tag":"noindex, follow"}));
+  return new Response(hotmartPage(await page.text(),slug,checkout),{status:200,headers});
+}
+
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
+  const hm=url.pathname.match(/^\/hotmart\/([a-z-]{3,40})\/?$/);
+  if(hm&&(request.method==="GET"||request.method==="HEAD")) return handleHotmart(request,env,hm[1]);
   // Refund form lives on the core domain; the public router sends zevanory.api.br/reembolso* here.
   if(url.pathname==="/reembolso/solicitar"||url.pathname==="/reembolso/solicitar/") return new Response(null,{status:308,headers:applySecurityHeaders(new Headers({location:"https://zevanory.api.br/pedir-reembolso","cache-control":"no-store"}))});
   if(url.pathname==="/material-gratuito/inscrever") return handleLead(request,env);
