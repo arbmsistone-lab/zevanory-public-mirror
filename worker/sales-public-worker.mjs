@@ -101,11 +101,11 @@ async function reviewSummary(env){
 // Hotmart checkout (affiliate commission only exists there). Mercado Pago pages stay intact.
 // Links are public checkout URLs (not secrets). Empty => redirect to the normal page.
 export const HOTMART_CHECKOUT=Object.freeze({
-  "ia-na-pratica":"",
-  "vendas-na-pratica":"",
-  "lucro-e-caixa":"",
-  "combo-ia-vendas":"",
-  "negocio-completo":"",
+  "ia-na-pratica":"https://pay.hotmart.com/F107979716H?off=g9knd34r",
+  "vendas-na-pratica":"https://pay.hotmart.com/Y107979937I?off=8mg88sdd",
+  "lucro-e-caixa":"https://pay.hotmart.com/L107979973K?off=ksb5di36",
+  "combo-ia-vendas":"https://pay.hotmart.com/H107979990T?off=b3ytmah4",
+  "negocio-completo":"https://pay.hotmart.com/U107980005X?off=weo47apk",
 });
 // Conteúdo Pronto subscription checkout on Hotmart (empty until the product exists).
 export const SERVICE_CHECKOUT="";
