@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";import assert from "node:assert/strict";
-import {channelChecklist,ensureWeeklyBlog,ensureDailyBlog,localContentDay,INDEXNOW_PUBLIC_KEY,publishTelegram,publishPinterest,renderBlogArticle,renderChannelsPage,resolveChannelCredentials,runMultichannelAutonomy,brandPinterestCreative,PINTEREST_APPROVED_BRAND_PIN_URL} from "../worker/multichannel-autonomy.mjs";
+import {channelChecklist,ensureWeeklyBlog,ensureDailyBlog,localContentDay,INDEXNOW_PUBLIC_KEY,publishTelegram,publishPinterest,renderBlogArticle,renderBlogIndex,longFormDailyArticle,renderChannelsPage,resolveChannelCredentials,runMultichannelAutonomy,brandPinterestCreative,PINTEREST_APPROVED_BRAND_PIN_URL} from "../worker/multichannel-autonomy.mjs";
 const brandResponse=name=>new Response(readFileSync(new URL("../assets/brand/export/"+name,import.meta.url)),{status:200,headers:{"content-type":"image/png"}});
 const kv=()=>{const m=new Map();return{m,get:async k=>m.get(k)||null,put:async(k,v)=>m.set(k,v)}};
 test("missing credential blocks only its channel and verified channels leave dry_run",()=>{const rows=channelChecklist({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.equal(rows.find(x=>x.id==="blog").configured,true);assert.equal(rows.find(x=>x.id==="telegram").mode,"pending");assert.equal(rows.find(x=>x.id==="facebook").mode,"dry_run");const live=channelChecklist({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i",META_APP_LIVE:"true"});assert.equal(live.find(x=>x.id==="facebook").mode,"active");});
@@ -9,18 +9,17 @@ test("channel bundle includes YouTube refresh without Google Business fields and
 test("blog creates all three compliant weekly articles in one cycle with Article, FAQ and UTMs",async()=>{const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};const out=await ensureWeeklyBlog(env,new Date("2026-10-07T12:00:00Z"),async()=>({ok:true}));assert.equal(out.total,3);assert.equal(out.created.length,3);const html=await renderBlogArticle(env,out.created[0].id);assert.match(html,/Article/);assert.match(html,/FAQPage/);assert.match(html,/utm_source=blog/);assert.match(html,/Garantia de 7 dias/);});
 test("official Telegram and Pinterest adapters return real provider evidence",async()=>{const calls=[];const fetchImpl=async(url,init)=>{calls.push([url,init]);if(url.endsWith("/brand/export/pin.png"))return brandResponse("pin.png");return url.includes("telegram")?{status:200,json:async()=>({ok:true,result:{message_id:7}})}:{status:201,json:async()=>({id:"pin-9"})};};const tg=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"secret",TELEGRAM_CHANNEL_ID:"@zevanory"},payload:{content:"oi"},fetchImpl});assert.equal(tg.url,"https://t.me/zevanory/7");const pin=await publishPinterest({env:{PINTEREST_ACCESS_TOKEN:"secret",PINTEREST_BOARD_ID:"board"},payload:{title:"t",content:"c",landing_url:"https://zevanory.api.br",media_url:"https://zevanory.api.br/brand/export/pin.png"},fetchImpl});assert.equal(pin.url,"https://www.pinterest.com/pin/pin-9/");assert.equal(calls.length,3);});
 test("private Sistema channels checklist contains exact Pinterest fields and replaces Google Business with Search Console",async()=>{const html=await renderChannelsPage({META_ACCESS_TOKEN:"x",META_PAGE_ID:"p",INSTAGRAM_BUSINESS_ACCOUNT_ID:"i"});assert.match(html,/Sistema/);assert.match(html,/TELEGRAM_BOT_TOKEN/);assert.match(html,/YOUTUBE_CLIENT_ID/);assert.match(html,/PINTEREST_ACCESS_TOKEN/);assert.match(html,/PINTEREST_BOARD_ID/);assert.match(html,/pins:write/);assert.match(html,/boards:write/);assert.match(html,/developers\.pinterest\.com\/apps\//);assert.match(html,/Google Search Console \+ Blog/);assert.doesNotMatch(html,/Google Perfil da Empresa/);assert.doesNotMatch(html,/GOOGLE_BUSINESS_/);assert.match(html,/Aguardando verificação da empresa \(em análise\)/);assert.match(html,/Pendente credencial/);assert.match(html,/developers\.facebook\.com/);});
-test("all six editorial topics satisfy the original 85/100 and 100% publishing rubric",async()=>{
+test("regression: 60 consecutive days publish one compliant article each (the fixed 6-topic library stopped)",async()=>{
   const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};
   const slugs=[];
-  for(let i=0;i<6;i++){
-    const date=new Date(Date.UTC(2026,9,10+i,12));
-    const outcome=await ensureDailyBlog(env,date);
-    assert.equal(outcome.created.length,1,"day "+i+" must pass unchanged creative compliance gate");
+  for(let i=0;i<60;i++){
+    const outcome=await ensureDailyBlog(env,new Date(Date.UTC(2026,9,11+i,15)));
+    assert.equal(outcome.created.length,1,"day "+i);
     assert.equal(outcome.latest.compliance,100);
     assert.ok(outcome.latest.score>=85);
     slugs.push(outcome.latest.slug);
   }
-  assert.equal(new Set(slugs).size,6);
+  assert.equal(new Set(slugs).size,60);
 });
 test("one SEO article per Fortaleza calendar day for two consecutive dates",async()=>{
   const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};
@@ -35,7 +34,25 @@ test("one SEO article per Fortaleza calendar day for two consecutive dates",asyn
   assert.equal(index.articles.length,2);
   const html=await renderBlogArticle(env,next.latest.slug);
   assert.match(html,/utm_source=blog/);
-  assert.match(html,/https:\/\/vendas\.zevanory\.api\.br\/comprar\/ZEV-IA-011\?utm_source=blog/);
+  assert.match(html,new RegExp("https://vendas\\.zevanory\\.api\\.br/comprar/"+next.latest.product+"\\?utm_source=blog"));
+  assert.match(html,/<h2>Perguntas frequentes<\/h2>/);
+});
+test("regression: production index with legacy articles keeps publishing past the old repeat (2026-10-15)",async()=>{
+  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store};
+  // Legacy long-form bodies already in production.
+  const legacy=["ia-pratica-pequenos-negocios","automacao-atendimento-clareza","atendimento-servicos-varzea-alegre"].map((slug,i)=>({slug:slug+"-2026-10-0"+(7+i),title:slug,url:"https://zevanory.api.br/blog/"+slug,publishedAt:"2026-10-0"+(7+i)+"T03:00:00Z",body:longFormDailyArticle({slug,title:slug},"2026-10-10").body}));
+  await store.put("zpc:blog:index:v1",JSON.stringify({articles:legacy}));
+  for(const d of ["2026-10-12","2026-10-13","2026-10-14","2026-10-15","2026-10-16"]){
+    const out=await ensureDailyBlog(env,new Date(d+"T12:30:00Z"));assert.equal(out.created.length,1,d);
+  }
+});
+test("blog index lists newest first with a readable Sao Paulo date",async()=>{
+  const store=kv();
+  await store.put("zpc:blog:index:v1",JSON.stringify({articles:[{slug:"old",title:"Antigo",description:"a",publishedAt:"2026-10-07T20:00:32.000Z"},{slug:"new",title:"Novo",description:"b",publishedAt:"2026-10-11T12:25:00.000Z"}]}));
+  const html=await renderBlogIndex({ZEVANORY_PRIVATE_ARTIFACTS:store});
+  assert.ok(html.indexOf("/blog/new")<html.indexOf("/blog/old"));
+  assert.match(html,/11\/10\/2026/);
+  assert.equal((html.match(/<article>/g)||[]).length,2);
 });
 test("legacy hourly cycle never publishes Telegram or creates the blog article (single engine)",async()=>{
   const store=kv(),calls=[];

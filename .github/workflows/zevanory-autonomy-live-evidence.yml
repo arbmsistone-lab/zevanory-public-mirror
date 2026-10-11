@@ -29,7 +29,8 @@ jobs:
           note TELEGRAM_POST_COUNT_VISIBLE "$(grep -c 'tgme_widget_message_text' /tmp/tg.html)"
           # Blog
           curl -sS -A "$UA" https://zevanory.api.br/blog -o /tmp/blog.html -w '%{http_code}' > /tmp/blog.code
-          note BLOG "http=$(cat /tmp/blog.code) articles=$(grep -c '<article>' /tmp/blog.html) latest=$(grep -o '<small>[^<]*' /tmp/blog.html | head -3 | sed 's/<small>//' | cut -c1-16 | tr '\n' ' ')"
+          # Count every <article> (not lines) and show the newest publication times (index is newest-first).
+          note BLOG "http=$(cat /tmp/blog.code) articles=$(grep -o '<article>' /tmp/blog.html | wc -l) latest=$( (grep -o 'datetime="[^"]*"' /tmp/blog.html | sed 's/datetime="//;s/"//'; grep -o '<small>[0-9][^<]*' /tmp/blog.html | sed 's/<small>//') | sort -r | head -3 | cut -c1-16 | tr '\n' ' ')"
           # Runtime/continuity (public, sanitized)
           for p in /api/status /api/continuity /api/support/instant-status /api/sales/status /api/public/brand/profiles-status; do
             code=$(curl -sS -A "$UA" -o /tmp/p.json -w '%{http_code}' "https://zevanory.api.br$p")
