@@ -28,6 +28,29 @@
       if (lucro < 0) out.push("Atenção: você está vendendo abaixo do custo.");
       return out;
     },
+    caixa: function (v) {
+      if (![v.saldo, v.entradas, v.saidas].every(Number.isFinite) || v.entradas < 0 || v.saidas < 0) return ["Preencha os três valores."];
+      var fim = v.saldo + v.entradas - v.saidas, dia = v.saidas / 30;
+      var out = ["Saldo no fim do mês: " + brl.format(fim), "Resultado do mês (entradas − saídas): " + brl.format(v.entradas - v.saidas)];
+      if (dia > 0) out.push(fim > 0 ? "Esse saldo cobre cerca de " + Math.floor(fim / dia).toLocaleString("pt-BR") + " dias de despesas." : "Atenção: vai faltar " + brl.format(-fim) + ". Antecipe recebimentos ou adie pagamentos.");
+      return out;
+    },
+    hora: function (v) {
+      if (!(v.horas > 0) || !(v.faturaveis > 0) || v.faturaveis > 100 || v.renda < 0 || v.fixos < 0 || v.impostos < 0 || v.impostos >= 100) return ["Revise os valores: horas e % faturável maiores que zero, impostos abaixo de 100%."];
+      var horasMes = v.horas * 52 / 12 * v.faturaveis / 100, hora = (v.renda + v.fixos) / horasMes / (1 - v.impostos / 100);
+      return ["Preço mínimo da hora: " + brl.format(hora), "Horas cobráveis no mês: cerca de " + Math.round(horasMes).toLocaleString("pt-BR"), "Meia diária (4 h): " + brl.format(hora * 4) + " · Diária (8 h): " + brl.format(hora * 8)];
+    },
+    maquininha: function (v) {
+      if (!(v.valor > 0) || !(v.taxa >= 0) || v.taxa >= 100) return ["Informe valor maior que zero e taxa entre 0% e 100%."];
+      var liq = v.valor * (1 - v.taxa / 100);
+      return ["Cai na conta: " + brl.format(liq), "A maquininha fica com: " + brl.format(v.valor - liq), "Para receber " + brl.format(v.valor) + " líquidos, cobre " + brl.format(v.valor / (1 - v.taxa / 100))];
+    },
+    cmv: function (v) {
+      if ([v.inicial, v.compras, v.final].some(function (x) { return x < 0; }) || !(v.faturamento > 0)) return ["Preencha os valores; o faturamento precisa ser maior que zero."];
+      var cmv = v.inicial + v.compras - v.final;
+      if (cmv < 0) return ["O estoque final está maior que o inicial mais as compras. Revise os valores."];
+      return ["CMV do mês: " + brl.format(cmv), "CMV sobre o faturamento: " + pct(cmv / v.faturamento * 100), "Margem bruta: " + brl.format(v.faturamento - cmv) + " (" + pct((v.faturamento - cmv) / v.faturamento * 100) + ")"];
+    },
     equilibrio: function (v) {
       if (!(v.fixos >= 0) || !(v.preco > 0) || !(v.variavel >= 0)) return ["Preencha os três valores com números válidos."];
       var contrib = v.preco - v.variavel;
