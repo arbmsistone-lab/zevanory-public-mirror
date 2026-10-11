@@ -51,3 +51,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$DRY_RUN" = "true" ]; then node scripts/channels/youtube-daily-short.mjs --dry-run; else node scripts/channels/youtube-daily-short.mjs; fi
+      - name: Keep the dry-run preview for the owner to watch (3 days)
+        if: ${{ inputs.dry_run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: short-preview
+          path: |
+            /tmp/zevanory-daily-short.mp4
+            /tmp/zevanory-daily-short.mp3
+          if-no-files-found: warn
+          retention-days: 3
