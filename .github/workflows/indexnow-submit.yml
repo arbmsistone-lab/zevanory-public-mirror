@@ -1,0 +1,40 @@
+name: IndexNow submit (Bing, Yandex, Seznam, Naver)
+
+# Tells IndexNow-enabled search engines about every URL in both sitemaps so new
+# pages (guides, offers, blog) are crawled in hours, not weeks. Public key only.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "40 12 * * *"
+  push:
+    branches: [gh-pages]
+    paths: ["sitemap.xml", "sales-public/sitemap.xml"]
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      KEY: 4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922
+    steps:
+      - name: Submit both hosts
+        shell: bash
+        run: |
+          set -uo pipefail
+          sleep 120  # let the sales/apex deploys publish the new sitemap first
+          for host in zevanory.api.br vendas.zevanory.api.br; do
+            curl -fsS -A "ZEVANORY-Monitor/1.0" "https://$host/sitemap.xml" -o /tmp/s.xml || { echo "::warning title=INDEXNOW::sitemap_unavailable $host"; continue; }
+            key_ok=$(curl -s -o /dev/null -w '%{http_code}' -A "ZEVANORY-Monitor/1.0" "https://$host/$KEY.txt")
+            python3 - "$host" > /tmp/body.json <<'PY'
+          import json,re,sys,os
+          host=sys.argv[1]
+          urls=[u for u in re.findall(r"<loc>([^<]+)</loc>",open('/tmp/s.xml').read()) if u.startswith("https://"+host+"/")][:10000]
+          print(json.dumps({"host":host,"key":os.environ["KEY"],"keyLocation":f"https://{host}/{os.environ['KEY']}.txt","urlList":urls}))
+          PY
+            n=$(python3 -c "import json;print(len(json.load(open('/tmp/body.json'))['urlList']))")
+            code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X POST -H 'content-type: application/json; charset=utf-8' --data-binary @/tmp/body.json https://api.indexnow.org/indexnow)
+            echo "::notice title=INDEXNOW $host::key_file=$key_ok urls=$n http=$code"
+          done
