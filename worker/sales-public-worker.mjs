@@ -21,11 +21,34 @@ function applySecurityHeaders(headers){
   headers.set("x-frame-options","DENY");
   return headers;
 }
-const FUNNEL_PAGES=new Set(["conteudo-pronto","solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","material-gratuito"]);
-function countView(request,env,ctx,page){
+const FUNNEL_PAGES=new Set(["conteudo-pronto","solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","material-gratuito","ferramentas","ia-por-ramo","afiliados","kit-afiliado"]);
+export const isFunnelPage=page=>FUNNEL_PAGES.has(page)||/^(ia-para|calculadora)-[a-z-]{2,60}$/.test(page);
+// Source attribution without cookies or personal data: the utm_source the link
+// carried (our own channels always tag links) or, failing that, the referrer's
+// platform. Only a short normalized label is counted, aggregated per day.
+const SOURCE_HOSTS=[[/(^|\.)google\./,"google"],[/(^|\.)bing\.com$/,"bing"],[/(^|\.)(youtube\.com|youtu\.be)$/,"youtube"],[/(^|\.)(t\.me|telegram\.org)$/,"telegram"],[/(^|\.)bsky\.app$/,"bluesky"],[/(^|\.)instagram\.com$/,"instagram"],[/(^|\.)(facebook\.com|fb\.com|m\.facebook\.com)$/,"facebook"],[/(^|\.)tiktok\.com$/,"tiktok"],[/(^|\.)pinterest\./,"pinterest"],[/(^|\.)hotmart\.com$/,"hotmart"],[/^zevanory\.api\.br$/,"site"],[/^vendas\.zevanory\.api\.br$/,"interno"]];
+export function attribution(request,url){
+  const clean=(v,max)=>{const x=String(v||"").toLowerCase().trim();return new RegExp("^[a-z0-9_-]{1,"+max+"}$").test(x)?x:"";};
+  let src=clean(url.searchParams.get("utm_source"),24);
+  if(!src){let host="";try{host=new URL(request.headers.get("referer")||"").hostname}catch{}
+    src=host?((SOURCE_HOSTS.find(([re])=>re.test(host))||[])[1]||"outro"):"direto";}
+  return {src,camp:clean(url.searchParams.get("utm_campaign"),48)};
+}
+function utmQuery(url){
+  const q=new URLSearchParams();for(const k of ["utm_source","utm_medium","utm_campaign"]){const v=url.searchParams.get(k);if(v&&/^[A-Za-z0-9_.-]{1,48}$/.test(v))q.set(k,v);}
+  return q.toString();
+}
+// Keeps the visitor's source on the way to checkout (buy, Hotmart, subscribe, free material).
+function carryUtm(response,url){
+  const q=utmQuery(url);
+  if(!q||typeof HTMLRewriter==="undefined")return response;
+  return new HTMLRewriter().on('a[href^="/comprar/"],a[href^="/hotmart/"],a[href^="/assinar/"],a[href^="/material-gratuito"]',{element(el){const h=el.getAttribute("href")||"";if(!/utm_source=/.test(h))el.setAttribute("href",h+(h.includes("?")?"&":"?")+q);}}).transform(response);
+}
+function countView(request,env,ctx,page,metric="views"){
   // Aggregated, cookie-free view counting through the private service binding (never blocks the page).
-  if(request.method!=="GET"||!env?.CORE||typeof env.CORE.fetch!=="function"||!ctx?.waitUntil||!FUNNEL_PAGES.has(page)) return;
-  const body=JSON.stringify({page,ua:request.headers.get("user-agent")||"",ip:request.headers.get("cf-connecting-ip")||"",purpose:request.headers.get("sec-purpose")||request.headers.get("purpose")||""});
+  if(request.method!=="GET"||!env?.CORE||typeof env.CORE.fetch!=="function"||!ctx?.waitUntil||!isFunnelPage(page)) return;
+  const url=new URL(request.url),{src,camp}=attribution(request,url);
+  const body=JSON.stringify({page,metric,src,camp,ua:request.headers.get("user-agent")||"",ip:request.headers.get("cf-connecting-ip")||"",purpose:request.headers.get("sec-purpose")||request.headers.get("purpose")||""});
   ctx.waitUntil(env.CORE.fetch("https://funnel.internal/hit",{method:"POST",headers:{"content-type":"application/json"},body}).catch(()=>null));
 }
 const BUY_SKUS={"ZEV-IA-011":"ia-na-pratica","ZEV-VEN-011":"vendas-na-pratica","ZEV-LCX-011":"lucro-e-caixa","ZEV-CMB-011":"combo-ia-vendas","ZEV-NGC-011":"negocio-completo"};
@@ -47,7 +70,7 @@ async function overLimit(env,ip){
   if(env?.BUY_LIMITER?.limit){try{const r=await env.BUY_LIMITER.limit({key:"buy:"+ip});return !r.success}catch{}}
   return buyLimited(ip);
 }
-async function handleBuy(request,env,sku){
+async function handleBuy(request,env,sku,ctx){
   const slug=BUY_SKUS[sku];
   if(!slug) return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");
   if(request.method!=="GET"&&request.method!=="HEAD"&&request.method!=="POST") return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers({allow:"GET, POST"}))});
@@ -56,6 +79,7 @@ async function handleBuy(request,env,sku){
   const open=await salesOpen(env);
   if(!open) return infoPage(200,"Vendas abrem em breve",`<p>O ${name} ainda não está à venda. Quer tirar dúvidas agora?</p><p><a class="button primary" href="https://wa.me/5588992545413?text=${encodeURIComponent("Olá! Tenho interesse no "+name+".")}">Falar no WhatsApp</a></p>`);
   if(request.method!=="POST"){
+    countView(request,env,ctx,slug,"checkout_intent");
     return infoPage(200,`Comprar ${name}`,`<p><strong>${name}</strong> · R$ ${price},00 · pagamento único, Pix ou cartão.</p><p>Você será levado ao ambiente seguro do Mercado Pago. Depois da aprovação, o link de download chega no seu e-mail (válido por 72 horas). Garantia de 7 dias.</p><form method="post" action="/comprar/${sku}"><button class="button primary" type="submit">Ir para o pagamento seguro</button></form><p class="small">Ao continuar você concorda com os <a href="/termos">Termos</a> e a <a href="/privacidade">Política de Privacidade</a>.</p>`);
   }
   const ua=request.headers.get("user-agent")||"";
@@ -126,8 +150,11 @@ export function hotmartPage(html,slug,checkout){
   out=out.replace("<head>",'<head><meta name="robots" content="noindex,follow">');
   return out;
 }
-async function handleHotmart(request,env,slug){
-  const checkout=HOTMART_CHECKOUT[slug];
+async function handleHotmart(request,env,slug,ctx){
+  const {src}=attribution(request,new URL(request.url));
+  countView(request,env,ctx,slug,"hotmart_view");
+  // Hotmart reports sales per "src", so the origin survives up to the actual sale.
+  const checkout=HOTMART_CHECKOUT[slug]&&(HOTMART_CHECKOUT[slug]+"&src="+src);
   if(!Object.prototype.hasOwnProperty.call(HOTMART_CHECKOUT,slug))return infoPage(404,"Produto não encontrado","<p>Esse produto não existe.</p>");
   if(!/^https:\/\/pay\.hotmart\.com\/[A-Za-z0-9]+(\?[A-Za-z0-9=&_-]*)?$/.test(checkout||""))
     return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:"/"+slug,"cache-control":"no-store"}))});
@@ -143,16 +170,18 @@ export default{async fetch(request,env,ctx){
   if(url.pathname==="/4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922.txt"&&(request.method==="GET"||request.method==="HEAD"))
     return new Response(request.method==="HEAD"?null:"4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922",{status:200,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"public, max-age=86400"}))});
   if(url.pathname==="/assinar/conteudo-pronto"){
-    const target=/^https:\/\/pay\.hotmart\.com\/[A-Za-z0-9]+(\?[A-Za-z0-9=&_-]*)?$/.test(SERVICE_CHECKOUT)?SERVICE_CHECKOUT:SERVICE_WA;
+    countView(request,env,ctx,"conteudo-pronto","subscribe_click");
+    const svc=SERVICE_CHECKOUT+"&src="+attribution(request,url).src;
+    const target=/^https:\/\/pay\.hotmart\.com\/[A-Za-z0-9]+(\?[A-Za-z0-9=&_-]*)?$/.test(svc)?svc:SERVICE_WA;
     return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:target,"cache-control":"no-store"}))});
   }
   const hm=url.pathname.match(/^\/hotmart\/([a-z-]{3,40})\/?$/);
-  if(hm&&(request.method==="GET"||request.method==="HEAD")) return handleHotmart(request,env,hm[1]);
+  if(hm&&(request.method==="GET"||request.method==="HEAD")) return handleHotmart(request,env,hm[1],ctx);
   // Refund form lives on the core domain; the public router sends zevanory.api.br/reembolso* here.
   if(url.pathname==="/reembolso/solicitar"||url.pathname==="/reembolso/solicitar/") return new Response(null,{status:308,headers:applySecurityHeaders(new Headers({location:"https://zevanory.api.br/pedir-reembolso","cache-control":"no-store"}))});
   if(url.pathname==="/material-gratuito/inscrever") return handleLead(request,env);
   const buy=url.pathname.match(/^\/comprar\/([A-Z0-9-]{6,20})\/?$/i);
-  if(buy) return handleBuy(request,env,buy[1].toUpperCase());
+  if(buy) return handleBuy(request,env,buy[1].toUpperCase(),ctx);
   if(url.pathname==="/health"&&(request.method==="GET"||request.method==="HEAD")){
     return new Response(request.method==="HEAD"?null:JSON.stringify({
       ok:true,
@@ -181,10 +210,10 @@ export default{async fetch(request,env,ctx){
     const r=(await reviewSummary(env))[sku];
     if(r&&r.count>=3){
       const text=`★ ${String(r.average).replace(".",",")}/5 · ${r.count} avaliações de clientes`;
-      const rewritten=new HTMLRewriter().on("main h1",{element(el){el.after(`<p class="review-summary">${text}</p>`,{html:true})}}).transform(new Response(response.body,{status:response.status,statusText:response.statusText,headers}));
+      const rewritten=carryUtm(new HTMLRewriter().on("main h1",{element(el){el.after(`<p class="review-summary">${text}</p>`,{html:true})}}).transform(new Response(response.body,{status:response.status,statusText:response.statusText,headers})),url);
       return page?compressPage(request,rewritten.body,{status:rewritten.status,statusText:rewritten.statusText,headers}):rewritten;
     }
   }
-  if(response.status===200&&page) return compressPage(request,response.body,{status:response.status,statusText:response.statusText,headers});
+  if(response.status===200&&page){const carried=carryUtm(new Response(response.body,{status:response.status,statusText:response.statusText,headers}),new URL(request.url));return compressPage(request,carried.body,{status:carried.status,statusText:carried.statusText,headers});}
   return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
 }};
