@@ -51,7 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$DRY_RUN" = "true" ]; then node scripts/channels/youtube-daily-short.mjs --dry-run; else node scripts/channels/youtube-daily-short.mjs; fi
-      - name: Cross-post the Short (TikTok, Instagram Reels, Facebook)
+      - name: Cross-post the Short (TikTok, Instagram Reels, Facebook, Telegram)
         if: ${{ inputs.dry_run != 'true' }}
         env:
           TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
@@ -59,6 +59,8 @@ jobs:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
           META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         run: node scripts/channels/short-crosspost.mjs
       - name: Keep the dry-run preview for the owner to watch (3 days)
         if: ${{ inputs.dry_run == 'true' }}
