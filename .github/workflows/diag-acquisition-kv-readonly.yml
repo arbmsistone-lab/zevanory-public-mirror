@@ -33,6 +33,8 @@ jobs:
           echo "== ledger markers"
           for ref in "deploy:deploy:89c8ae3f521422764df5212e36d7fe7d4a532867" "deploy:deploy:03dc00563cf6aeb9b5f3db82457db89f35998feb" "post_published:youtube:2026-10-11:ZEV-VEN-011:salão:objeção"; do
             h=$(printf '%s' "$ref" | sha256sum | cut -d' ' -f1); printf '%s -> ' "$ref"; get "zpc-activity:v1:ref:$h" | head -c 120; echo; done
+          echo "== cron schedules"; curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/schedules" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("success"),[x.get("cron") for x in (d.get("result") or {}).get("schedules",[])])'
+          echo "== account cron usage"; for w in $(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" | python3 -c 'import json,sys;print(" ".join(x["id"] for x in json.load(sys.stdin).get("result",[])))'); do printf '%s: ' "$w"; curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$w/schedules" | python3 -c 'import json,sys;d=json.load(sys.stdin);print([x.get("cron") for x in (d.get("result") or {}).get("schedules",[])])'; done
           echo "== sales switch revision"; get "sales:open:v1" | python3 -c 'import json,sys
           try:
             d=json.load(sys.stdin); print(d.get("at"), d.get("enabled"))
