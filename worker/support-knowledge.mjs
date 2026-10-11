@@ -15,6 +15,7 @@ export const SUPPORT_PRODUCTS = Object.freeze({
   "lucro-e-caixa": { name: "Lucro & Caixa", price_brl: 247, content: "Material prático para acompanhar entradas, saídas, margem e caixa com linguagem objetiva e rotina de decisão." },
   "combo-ia-vendas": { name: "Combo IA + Vendas", price_brl: 297, content: "Combina o método de IA e o processo de vendas para organizar prospecção, atendimento, oferta, follow-up e produção comercial." },
   "negocio-completo": { name: "Negócio Completo", price_brl: 397, content: "Pacote integrado para organizar uso de IA, processo comercial e gestão prática de lucro e caixa em uma única jornada." },
+  "conteudo-pronto": { name: "Conteúdo Pronto (assinatura mensal)", price_brl: 197, content: "Serviço mensal automático: depois de assinar pela Hotmart, você responde um formulário curto e recebe por e-mail, em minutos, 12 posts com legenda, 4 mensagens de venda para WhatsApp e um calendário de 30 dias, no tom do seu negócio. Renovação mensal automática; cancelamento e reembolso (7 dias) pela sua conta Hotmart." },
 });
 
 // Most specific first: "como recebo o acesso depois de pagar" is delivery, not price.
@@ -30,6 +31,7 @@ const brl = (n) => "R$ " + Number(n).toFixed(2).replace(".", ",");
 export function resolveProduct(text) {
   const t = String(text || "").toLowerCase();
   if (SUPPORT_PRODUCTS[t]) return t;
+  if (/conte[uú]do pronto|assinatura|posts? (prontos?|para redes)/.test(t)) return "conteudo-pronto";
   if (/combo/.test(t)) return "combo-ia-vendas";
   if (/completo/.test(t)) return "negocio-completo";
   if (/lucro|caixa/.test(t)) return "lucro-e-caixa";
