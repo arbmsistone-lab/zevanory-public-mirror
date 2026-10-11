@@ -1,0 +1,45 @@
+name: diag acquisition kv readonly
+on:
+  push:
+    branches: ["diag/acquisition-kv-readonly"]
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
+    steps:
+      - name: Read acquisition / blog / telegram markers (no secrets printed)
+        shell: bash
+        run: |
+          set -uo pipefail
+          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values"
+          get(){ curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$1")"; }
+          for d in 2026-10-07 2026-10-08 2026-10-09 2026-10-10 2026-10-11; do
+            echo "== acquisition $d"; get "zpc:acquisition:daily:$d" | python3 -c 'import json,sys
+          try:
+            d=json.load(sys.stdin); print(json.dumps([{k:o.get(k) for k in ("channel","status","code","url","at","provenance")} | ({"gate":o.get("gate",{}).get("reasons")} if o.get("gate") else {}) for o in d.get("outcomes",[])]))
+          except Exception as e: print("none",e)'
+            for c in telegram bluesky; do echo "-- $c"; get "zpc:acquisition:daily:$d:$c" | python3 -c 'import json,sys
+          try:
+            o=json.load(sys.stdin); print({k:o.get(k) for k in ("status","code","url","at","startedAt","provenance","needs_reconciliation")})
+          except Exception as e: print("none")'; done
+            echo "-- legacy telegram"; get "zpc:multichannel:evidence:telegram:daily:$d" | python3 -c 'import json,sys
+          try:
+            o=json.load(sys.stdin); print({k:o.get(k) for k in ("status","url","publishedAt","startedAt")})
+          except Exception as e: print("none")'
+            echo "-- blog marker"; get "zpc:blog:daily:$d" | head -c 300; echo
+          done
+          echo "== blog index"; get "zpc:blog:index:v1" | python3 -c 'import json,sys
+          try:
+            d=json.load(sys.stdin); print([(a.get("slug"),a.get("publishedAt")) for a in d.get("articles",[])])
+          except Exception as e: print("none",e)'
+          echo "== multichannel state"; get "zpc:multichannel:state:v1" | python3 -c 'import json,sys
+          try:
+            d=json.load(sys.stdin); print(d.get("generatedAt"), [ (c.get("id"),c.get("configured"),c.get("missing")) for c in d.get("channels",[])], [ {k:e.get(k) for k in ("channel","status","error","publishedAt")} for e in d.get("evidence",[])])
+          except Exception as e: print("none",e)'
+          echo "== creative pause"; get "zpc:creative-autonomy:paused:v1" | head -c 200; echo
