@@ -9,7 +9,7 @@ const ok=async()=>{calls++;return new Response(mp3);};
 const first=await warmVoiceCache({kv,apiKey:'test',secret:'test',max:2,fetchImpl:ok});
 assert.equal(first.attempted,2);assert.equal(calls,2);
 const second=await warmVoiceCache({kv,apiKey:'test',secret:'test',fetchImpl:ok});
-assert.equal(second.generated,5);assert.equal(calls,7);
+assert.equal(second.generated,8);assert.equal(calls,10);
 assert.equal((await warmVoiceCache({kv,apiKey:'test',secret:'test',fetchImpl:ok})).attempted,0);
 let quotaCalls=0;
 const quota=await warmVoiceCache({kv:{async get(){return null;},async put(){throw Error('unexpected put');}},apiKey:'test',secret:'test',fetchImpl:async()=>{quotaCalls++;return Response.json({error:'gemini_quota'},{status:429});}});
