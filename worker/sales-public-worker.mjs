@@ -1,5 +1,5 @@
 const retired=new Set(["/arbm-sist","/arbm-sist/","/arbm-sist.html","/zevanory-one","/zevanory-one/","/zevanory-one.html","/arbm-one","/arbm-one/","/arbm-one.html"]);
-const htmlRoutes=new Set(["material-gratuito","checklist-15-minutos","solucoes","quem-criou","zevanory-sales","arbm-contador-saloes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","zevanory-cfo","termos","privacidade","reembolso","afiliados"]);
+const htmlRoutes=new Set(["material-gratuito","checklist-15-minutos","solucoes","quem-criou","zevanory-sales","arbm-contador-saloes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","zevanory-cfo","termos","privacidade","reembolso","afiliados","conteudo-pronto"]);
 const MP="https://www.mercadopago.com https://www.mercadopago.com.br";
 // With no-transform the edge no longer compresses pages, so the Worker gzips HTML itself.
 function compressPage(request, body, init){
@@ -21,7 +21,7 @@ function applySecurityHeaders(headers){
   headers.set("x-frame-options","DENY");
   return headers;
 }
-const FUNNEL_PAGES=new Set(["solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","material-gratuito"]);
+const FUNNEL_PAGES=new Set(["conteudo-pronto","solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","material-gratuito"]);
 function countView(request,env,ctx,page){
   // Aggregated, cookie-free view counting through the private service binding (never blocks the page).
   if(request.method!=="GET"||!env?.CORE||typeof env.CORE.fetch!=="function"||!ctx?.waitUntil||!FUNNEL_PAGES.has(page)) return;
