@@ -1,0 +1,53 @@
+name: YouTube autonomous daily Short
+
+# P1-5: one Short per local day from the content calendar (15:00 America/Sao_Paulo).
+# Rendering needs ffmpeg, which Workers Free cannot run, so the publisher is this
+# scheduled job. Upload is UNLISTED (YouTube keeps uploads from unaudited API
+# projects private until the audit passes), idempotent per day, and recorded as a
+# masked post_published activity in the shared KV.
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = render and gate only, no upload"
+        required: false
+        default: "false"
+
+concurrency:
+  group: youtube-autonomous-short
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  short:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install media tools
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core
+      - name: Unit tests (plan, idempotency, recording)
+        run: node --test tests/youtube-daily-short.test.mjs
+      - name: Render, gate and publish today's Short
+        env:
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = "true" ]; then node scripts/channels/youtube-daily-short.mjs --dry-run; else node scripts/channels/youtube-daily-short.mjs; fi
