@@ -30,4 +30,8 @@
   <url><loc>https://vendas.zevanory.api.br/ia-para-deposito-de-bebidas</loc><lastmod>2026-10-11</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://vendas.zevanory.api.br/material-gratuito</loc></url>
   <url><loc>https://vendas.zevanory.api.br/quem-criou/</loc><lastmod>2026-10-09</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/ferramentas</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/calculadora-preco-de-venda</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/calculadora-margem-de-lucro</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://vendas.zevanory.api.br/calculadora-ponto-de-equilibrio</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
 </urlset>

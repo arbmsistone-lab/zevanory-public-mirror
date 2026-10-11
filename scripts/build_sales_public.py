@@ -45,6 +45,10 @@ HTML_ROUTES = (
     "ia-para-contabilidade",
     "ia-para-imobiliaria",
     "ia-para-deposito-de-bebidas",
+    "ferramentas",
+    "calculadora-preco-de-venda",
+    "calculadora-margem-de-lucro",
+    "calculadora-ponto-de-equilibrio",
 )
 
 
@@ -203,6 +207,7 @@ def apply_approved_overlay() -> None:
     shutil.copy2(ROOT / "legal.css", OUT / "legal.css")
     for asset in ("robots.txt", "whatsapp-contact.js"):
         shutil.copy2(OVERLAY / asset, OUT / asset)
+    shutil.copy2(ROOT / "ferramentas.js", OUT / "ferramentas.js")
 
     controller = (OUT / "privacidade.html").read_text(encoding="utf-8")
     problems = []
@@ -249,7 +254,7 @@ def main() -> int:
     # Keep the apex sitemap as-is for editorial articles.
     sitemap = (ROOT / "sitemap.xml").read_text(encoding="utf-8")
     sitemap = re.sub(r"\s*<url><loc>https://zevanory\.api\.br/</loc>.*?</url>", "", sitemap, count=1, flags=re.S)
-    sitemap = re.sub(r"\s*<url><loc>https://zevanory\.api\.br/blog/[^<]+</loc>.*?</url>", "", sitemap, flags=re.S)
+    sitemap = re.sub(r"\s*<url><loc>https://zevanory\.api\.br/blog(?:/[^<]+)?</loc>.*?</url>", "", sitemap, flags=re.S)
     sitemap = sitemap.replace("<loc>https://zevanory.api.br/", "<loc>https://vendas.zevanory.api.br/")
     (OUT / "sitemap.xml").write_text(sitemap, encoding="utf-8")
     shutil.copytree(ROOT / "brand", OUT / "brand")
