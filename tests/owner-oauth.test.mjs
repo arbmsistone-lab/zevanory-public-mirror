@@ -178,3 +178,25 @@ test("Free-budget key sourcing: HKDF subkey of the marketplace token key, bridge
  const weak={...e,MERCADOLIVRE_TOKEN_ENCRYPTION_KEY:"short"};
  assert.equal((await handleOwnerOAuth(new Request(await url("start","youtube",{OWNER_OAUTH_BRIDGE_SECRET:bridge})),weak)).status,503);
 });
+
+test("callback failure exposes only a fixed diagnostic code (no tokens) and records it",async()=>{
+ const cases=[
+  [async t=>String(t).includes("oauth2")?Response.json({error:"invalid_client",error_description:"secret xyz"},{status:401}):null,"token_http_401_invalid_client"],
+  [async t=>String(t).includes("oauth2")?Response.json({access_token:"A"}):null,"token_no_refresh_token"],
+  [async t=>String(t).includes("oauth2")?Response.json({access_token:"A",refresh_token:"R"}):Response.json({items:[]}),"identity_no_youtube_channel"],
+ ];
+ for(const [impl,expected] of cases){
+  const e=env(),start=await handleOwnerOAuth(new Request(await url("start","youtube",e)),e);
+  const state=new URL(start.headers.get("location")).searchParams.get("state");
+  const cookie=start.headers.get("set-cookie").split(";")[0];
+  const original=globalThis.fetch;globalThis.fetch=impl;
+  try{
+   const r=await handleOwnerOAuth(new Request(base+"youtube/callback?"+new URLSearchParams({state,code:"c"}),{headers:{cookie}}),e);
+   const loc=new URL(r.headers.get("location"));
+   assert.equal(loc.searchParams.get("oauth_result"),"provider_unverified");
+   assert.equal(loc.searchParams.get("oauth_reason"),expected);
+   assert.doesNotMatch(loc.toString(),/secret|xyz|R\b/);
+   assert.match(String(await e.ZEVANORY_PRIVATE_ARTIFACTS.get("zpc:owner:oauth:last-failure:youtube")),new RegExp(expected));
+  }finally{globalThis.fetch=original;}
+ }
+});

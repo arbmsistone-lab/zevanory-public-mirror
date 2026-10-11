@@ -103,8 +103,10 @@ export async function resolveOwnerPublisherToken(env,channel,fetchImpl=fetch){
  return token.access_token;
 }
 
-function finish(c,status){
+function finish(c,status,reason=""){
  const u=new URL(panel);u.searchParams.set("oauth_channel",c);u.searchParams.set("oauth_result",status);
+ // Fixed diagnostic code only (provider error *codes*, never tokens or bodies).
+ if(/^[a-z0-9_]{3,64}$/.test(reason))u.searchParams.set("oauth_reason",reason);
  return new Response(null,{status:303,headers:{location:u.toString(),"cache-control":"no-store","referrer-policy":"no-referrer","set-cookie":cookie(c,"",0)}});
 }
 async function ticketAuth(u,env,kv,c,action){
@@ -119,7 +121,10 @@ async function ticketAuth(u,env,kv,c,action){
 async function exchange(url,body,auth){
  const response=await fetch(url,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded",...(auth?{authorization:auth}:{})},body:new URLSearchParams(body),signal:AbortSignal.timeout(12000)});
  const json=await response.json().catch(()=>null);
- if(!response.ok||!json?.access_token||!json?.refresh_token)throw Error("token_unverified");
+ const code=String(json?.error||"").toLowerCase().replace(/[^a-z0-9_]/g,"").slice(0,40);
+ if(!response.ok)throw Error("token_http_"+response.status+(code?"_"+code:""));
+ if(!json?.access_token)throw Error("token_no_access_token");
+ if(!json?.refresh_token)throw Error("token_no_refresh_token");
  return json;
 }
 export async function handleOwnerOAuth(req,env){
@@ -173,11 +178,16 @@ export async function handleOwnerOAuth(req,env){
    }
    const verify=await fetch(c==="youtube"?"https://www.googleapis.com/youtube/v3/channels?part=id&mine=true":"https://api.pinterest.com/v5/user_account",{headers:{authorization:"Bearer "+token.access_token},signal:AbortSignal.timeout(10000)});
    const profile=await verify.json().catch(()=>null);
-   if(!verify.ok||(c==="youtube"?!profile?.items?.length:!profile?.username))throw Error("identity_unverified");
+   if(!verify.ok)throw Error("identity_http_"+verify.status);
+   if(c==="youtube"?!profile?.items?.length:!profile?.username)throw Error(c==="youtube"?"identity_no_youtube_channel":"identity_no_pinterest_user");
    const encryptedRefresh=await seal(env,token.refresh_token);
    await kv.put(connKey(c),JSON.stringify({schema:"zpc.owner.oauth.v1",channel:c,connectedAt:new Date().toISOString(),scope:String(token.scope||provider.scope),encryptedRefresh}));
    return finish(c,"connected");
- }catch{return finish(c,"provider_unverified");}
+ }catch(error){
+   const reason=String(error?.message||"");
+   await kv.put("zpc:owner:oauth:last-failure:"+c,JSON.stringify({at:new Date().toISOString(),reason:/^[a-z0-9_]{3,64}$/.test(reason)?reason:"unclassified"}),{expirationTtl:7*86400}).catch(()=>null);
+   return finish(c,"provider_unverified",reason);
+ }
 }
 
 const youtubePublisherNonce=nonce=>"zpc:owner:oauth:youtube-publisher:"+nonce;
