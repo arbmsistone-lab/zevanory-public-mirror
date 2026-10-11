@@ -14,3 +14,7 @@ test("hotmart variant: buy buttons go to Hotmart, no Mercado Pago or own-refund 
   }
   assert.deepEqual(Object.keys(HOTMART_CHECKOUT).sort(),slugs.slice().sort());
 });
+test("all five Hotmart checkout links are official pay.hotmart.com offers",()=>{
+  for(const [slug,link] of Object.entries(HOTMART_CHECKOUT))
+    assert.match(link,/^https:\/\/pay\.hotmart\.com\/[A-Za-z0-9]+\?off=[a-z0-9]+$/,slug);
+});
