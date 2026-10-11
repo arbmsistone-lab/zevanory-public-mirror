@@ -13,7 +13,11 @@ export const FUNNEL_PRODUCTS = Object.freeze({
   "combo-ia-vendas": { sku: "ZEV-CMB-011", name: "Combo IA + Vendas" },
   "negocio-completo": { sku: "ZEV-NGC-011", name: "Negócio Completo" },
 });
-const TRACKED_PAGES = new Set([...Object.keys(FUNNEL_PRODUCTS), "solucoes", "material-gratuito", "conteudo-pronto"]);
+const TRACKED_PAGES = new Set([...Object.keys(FUNNEL_PRODUCTS), "solucoes", "material-gratuito", "conteudo-pronto", "ferramentas", "ia-por-ramo", "afiliados", "kit-afiliado"]);
+const isTrackedPage = page => TRACKED_PAGES.has(page) || /^(ia-para|calculadora)-[a-z-]{2,60}$/.test(String(page));
+// Intent metrics counted next to views; each also carries the visitor's source.
+export const INTENT_METRICS = Object.freeze(["checkout_intent", "hotmart_view", "subscribe_click"]);
+const label = (v, max) => { const x = String(v || "").toLowerCase(); return new RegExp(`^[a-z0-9_-]{1,${max}}$`).test(x) ? x : ""; };
 const BOT_RE = /bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|headless|lighthouse|monitor|curl|wget|python|node-fetch|go-http|axios|okhttp|uptime|pingdom|semrush|ahrefs|zevanory-monitor/i;
 const SUMMARY_KEY = "zpc-funnel:v1:summary";
 let schemaReady = false;
@@ -36,16 +40,27 @@ export async function ensureFunnelSchema(sql) {
 
 export function isCountableView({ method, page, userAgent, purpose }) {
   if (method !== "GET") return false;
-  if (!TRACKED_PAGES.has(page)) return false;
+  if (!isTrackedPage(page)) return false;
   if (!userAgent || BOT_RE.test(userAgent)) return false;
   if (/prefetch|prerender/i.test(String(purpose || ""))) return false;
   return true;
 }
 
-export async function recordPageView(env, { sqlFactory, page, ip, userAgent, now = Date.now() }) {
+const bump = (sql, day, page, metric) => sql.query(
+  `insert into zevanory_funnel_daily (day, page, metric, n) values ($1::date, $2, $3, 1)
+     on conflict (day, page, metric) do update set n = zevanory_funnel_daily.n + 1`, [day, page, metric]);
+export async function recordPageView(env, { sqlFactory, page, ip, userAgent, metric = "views", src = "", camp = "", now = Date.now() }) {
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureFunnelSchema(sql);
   const day = new Date(now).toISOString().slice(0, 10);
+  const source = label(src, 24) || "direto", campaign = label(camp, 48);
+  if (INTENT_METRICS.includes(metric)) {
+    await bump(sql, day, page, metric);
+    await bump(sql, day, page, `${metric}:src:${source}`);
+    return;
+  }
+  await bump(sql, day, page, `src:${source}`);
+  if (campaign) await bump(sql, day, page, `camp:${campaign}`);
   const salt = String(env.RESEND_API_KEY || env.DATABASE_URL || "zevanory");
   const vhash = (await sha256Hex(`${day}|${ip}|${userAgent}|${salt}`)).slice(0, 32);
   await sql.query(
@@ -77,12 +92,22 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
        from orders o
       where o.created_at > now() - interval '30 days' and coalesce(o.certification_pilot, false) = false
       group by o.offer_id`, []) : [];
+  // Where visitors and buying intent come from (30 days): views and intents per source,
+  // plus the campaigns (creative/day tags) that brought the most visits.
+  const sources = {}, campaigns = {};
+  for (const row of traffic) {
+    const m = /^(?:([a-z_]+):)?src:([a-z0-9_-]+)$/.exec(row.metric);
+    if (m) { const s = (sources[m[2]] = sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0 }); s[m[1] || "views"] += Number(row.n) || 0; continue; }
+    const c = /^camp:([a-z0-9_-]+)$/.exec(row.metric);
+    if (c) campaigns[c[1]] = (campaigns[c[1]] || 0) + (Number(row.n) || 0);
+  }
   const products = {};
   for (const [slug, meta] of Object.entries(FUNNEL_PRODUCTS)) {
     products[slug] = { name: meta.name, sku: meta.sku, views: 0, visitors: 0, checkouts: 0, paid: 0, refunded: 0, revenue: 0, checkoutErrors: 0 };
   }
   const pages = {};
   for (const row of traffic) {
+    if (row.metric.includes(":")) continue;
     pages[row.page] = pages[row.page] || { views: 0, visitors: 0 };
     pages[row.page][row.metric] = Number(row.n) || 0;
     if (products[row.page]) products[row.page][row.metric] = Number(row.n) || 0;
@@ -111,6 +136,8 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
     salesOpen,
     pages,
     products,
+    sources,
+    topCampaigns: Object.entries(campaigns).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([campaign, views]) => ({ campaign, views })),
   };
 }
 
@@ -132,7 +159,8 @@ export async function handleFunnel(request, env, { sqlFactory, ctx } = {}) {
   const page = String(body.page || "");
   const userAgent = String(body.ua || "").slice(0, 300);
   if (!isCountableView({ method: "GET", page, userAgent, purpose: body.purpose })) return new Response(null, { status: 204 });
-  const work = recordPageView(env, { sqlFactory, page, ip: String(body.ip || ""), userAgent }).catch((e) => console.error("funnel_hit_failed", e instanceof Error ? e.message : String(e)));
+  const metric = INTENT_METRICS.includes(body.metric) ? body.metric : "views";
+  const work = recordPageView(env, { sqlFactory, page, ip: String(body.ip || ""), userAgent, metric, src: body.src, camp: body.camp }).catch((e) => console.error("funnel_hit_failed", e instanceof Error ? e.message : String(e)));
   if (ctx?.waitUntil) ctx.waitUntil(work); else await work;
   return new Response(null, { status: 204 });
 }
