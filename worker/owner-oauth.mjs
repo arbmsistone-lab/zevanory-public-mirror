@@ -18,7 +18,8 @@ const eq=(a,b)=>{const x=enc.encode(String(a)),y=enc.encode(String(b));let n=x.l
 const settings=(env,c)=>{
  let bundle={};try{const raw=env.CHANNEL_CREDENTIALS_JSON;bundle=raw&&typeof raw==="object"?raw:JSON.parse(String(raw||"{}"));}catch{}
  const prefix=c==="youtube"?"YOUTUBE":"PINTEREST";
- return {id:String(env[prefix+"_CLIENT_ID"]||bundle[prefix+"_CLIENT_ID"]||""),secret:String(env[prefix+"_CLIENT_SECRET"]||bundle[prefix+"_CLIENT_SECRET"]||"")};
+ // Pasted secrets often carry a trailing newline/space; providers then answer invalid_client.
+ return {id:String(env[prefix+"_CLIENT_ID"]||bundle[prefix+"_CLIENT_ID"]||"").trim(),secret:String(env[prefix+"_CLIENT_SECRET"]||bundle[prefix+"_CLIENT_SECRET"]||"").trim()};
 };
 async function mac(secret,message){
  const key=await crypto.subtle.importKey("raw",enc.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
