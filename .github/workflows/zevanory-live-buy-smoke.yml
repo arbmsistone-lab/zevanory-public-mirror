@@ -39,6 +39,19 @@ jobs:
             price=$(echo "$body" | grep -o 'R\$ [0-9.,]*' | head -1)
             echo "::notice title=BUY $sku::$st $price"
           done
+          for slug in ia-na-pratica vendas-na-pratica lucro-e-caixa combo-ia-vendas negocio-completo; do
+            body=$(curl -sS -A "$UA" "https://vendas.zevanory.api.br/hotmart/$slug")
+            link=$(echo "$body" | grep -o 'href="https://pay.hotmart.com/[^"]*"' | head -1)
+            own=$(echo "$body" | grep -c 'href="/comprar/' || true)
+            echo "::notice title=HOTMART $slug::link=${link:-NONE} own_checkout_links=$own"
+            [ -n "$link" ] && [ "$own" = 0 ] || fail=1
+          done
+          loc=$(curl -sS -A "$UA" -o /dev/null -w '%{redirect_url}' https://vendas.zevanory.api.br/assinar/conteudo-pronto)
+          echo "::notice title=SERVICE_SUBSCRIBE::$loc"
+          case "$loc" in https://pay.hotmart.com/*) ;; *) fail=1;; esac
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' https://zevanory.api.br/api/webhooks/hotmart)
+          echo "::notice title=HOTMART_WEBHOOK_UNAUTH::http=$code (expect 401 if hottok configured, 503 if not yet)"
+          case "$code" in 401|503) ;; *) fail=1;; esac
           exit $fail
       - name: One click through to Mercado Pago (no payment)
         if: inputs.click_sku != ''
