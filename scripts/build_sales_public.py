@@ -31,6 +31,7 @@ HTML_ROUTES = (
     "reembolso",
     "afiliados",
     "conteudo-pronto",
+    "kit-afiliado",
     "ia-por-ramo",
     "ia-para-salao-de-beleza",
     "ia-para-barbearia",
