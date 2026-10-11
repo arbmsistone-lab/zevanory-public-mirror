@@ -1,0 +1,44 @@
+name: ZEVANORY autonomy live evidence (read-only)
+
+# Public, read-only proof that the autonomous engines actually produced output:
+# latest posts per channel with timestamps, blog articles, runtime/continuity
+# status and sitemap. No credentials, no writes.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Collect public evidence
+        shell: bash
+        run: |
+          set -uo pipefail
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/129.0 Safari/537.36'
+          note(){ echo "::notice title=$1::$2"; }
+          # Bluesky: last 5 posts
+          curl -sS "https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=zevanoryoficial.bsky.social&limit=5" -o /tmp/bsky.json
+          note BLUESKY_LAST_POSTS "$(python3 -c "import json;d=json.load(open('/tmp/bsky.json'));print(' | '.join(x['post']['record'].get('createdAt','?')[:16] for x in d.get('feed',[])) or 'none')" 2>&1)"
+          # Telegram public channel preview
+          curl -sS -A "$UA" https://t.me/s/zevanory -o /tmp/tg.html
+          note TELEGRAM_LAST_POSTS "$(grep -o 'datetime="[^"]*"' /tmp/tg.html | tail -5 | sed 's/datetime="//;s/"//' | cut -c1-16 | tr '\n' ' ')"
+          note TELEGRAM_POST_COUNT_VISIBLE "$(grep -c 'tgme_widget_message_text' /tmp/tg.html)"
+          # Blog
+          curl -sS -A "$UA" https://zevanory.api.br/blog -o /tmp/blog.html -w '%{http_code}' > /tmp/blog.code
+          note BLOG "http=$(cat /tmp/blog.code) articles=$(grep -c '<article>' /tmp/blog.html) latest=$(grep -o '<small>[^<]*' /tmp/blog.html | head -3 | sed 's/<small>//' | cut -c1-16 | tr '\n' ' ')"
+          # Runtime/continuity (public, sanitized)
+          for p in /api/status /api/continuity /api/support/instant-status /api/sales/status /api/public/brand/profiles-status; do
+            code=$(curl -sS -A "$UA" -o /tmp/p.json -w '%{http_code}' "https://zevanory.api.br$p")
+            note "API $p" "http=$code $(head -c 450 /tmp/p.json | tr '\n' ' ')"
+          done
+          # Sitemaps
+          for s in https://zevanory.api.br/sitemap.xml https://vendas.zevanory.api.br/sitemap.xml; do
+            code=$(curl -sS -A "$UA" -o /tmp/s.xml -w '%{http_code}' "$s"); note "SITEMAP $s" "http=$code urls=$(grep -c '<loc>' /tmp/s.xml)"
+          done
+          # YouTube channel public
+          code=$(curl -sS -A "$UA" -o /tmp/yt.html -w '%{http_code}' https://www.youtube.com/@ZEVANORY/videos)
+          note YOUTUBE_CHANNEL "http=$code videos_hint=$(grep -o '"videoId":"[^"]*"' /tmp/yt.html | sort -u | wc -l)"
