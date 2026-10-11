@@ -33,6 +33,9 @@ on:
       - "worker/lead-magnet.mjs"
       - "worker/reviews.mjs"
       - "worker/owner-alerts.mjs"
+      - "worker/operational-activity-sync.mjs"
+      - "worker/whatsapp-activity.mjs"
+      - "worker/activity-ledger.mjs"
       - "worker/whatsapp-conversation.mjs"
       - "worker/post-sale.mjs"
       - "worker/funnel.mjs"
@@ -200,6 +203,7 @@ jobs:
           node --test tests/live-runtime-status.test.mjs tests/core-snapshot-memo.test.mjs tests/production-staging-health.test.mjs tests/commercial-metrics-projection.test.mjs
           node --test tests/creative-autonomy.test.mjs
           node --test tests/multichannel-autonomy.test.mjs
+          node --test tests/operational-activity.test.mjs tests/activity-ledger.test.mjs
           node --test tests/production-payment-credential-isolation.test.mjs
           node --test tests/inbound-autonomy.test.mjs
           node --test tests/affiliate-program.test.mjs

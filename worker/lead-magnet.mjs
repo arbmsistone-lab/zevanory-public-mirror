@@ -1,4 +1,5 @@
 import { brandedEmailHtml } from "./brand-email.mjs";
+import { emitActivity } from "./activity-ledger.mjs";
 // Lead magnet: free checklist in exchange for an e-mail, with explicit LGPD consent and double
 // opt-in. Inbound only: nobody receives anything without asking for it and confirming the address.
 // * Subscribe arrives only through the sales Worker's private binding (host leads.internal).
@@ -70,6 +71,7 @@ async function sendEmail(env, { to, subject, text, unsubscribeUrl, idempotencyKe
     }),
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
+  if (r?.ok) await emitActivity(env, { type: "email_sent", channel: "email", status: "sent", ref: "lead-mail:" + (idempotencyKey || (await sha256Hex(to + ":" + subject + ":" + new Date().toISOString().slice(0, 16)))) }).catch(() => null);
   return Boolean(r?.ok);
 }
 
@@ -104,6 +106,7 @@ async function subscribe(env, sql, { email, name, consent }) {
         status = case when zevanory_leads.status = 'unsubscribed' then 'pending' else zevanory_leads.status end,
         unsubscribed_at = null, token_hash = excluded.token_hash, token_expires_at = excluded.token_expires_at`,
     [email, await sha256Hex(email), name || null, CONSENT_VERSION, tokenHash]);
+  await emitActivity(env, { type: "lead_captured", channel: "web", status: "pending", ref: "lead:" + (await sha256Hex(email)) + ":" + new Date().toISOString().slice(0, 10) }).catch(() => null);
   const sent = await sendEmail(env, { to: email, subject: "Confirme seu e-mail para receber o checklist", text: `${name ? `Olá, ${name}!` : "Olá!"}\n\nFalta um clique: confirme seu e-mail para receber o checklist gratuito.\n${CORE}/material-gratuito/confirmar?t=${token}\n\nSe não foi você, ignore esta mensagem: nada será enviado.\n\nEquipe ZEVANORY · ${SUPPORT_EMAIL}` });
   if (!sent) return { status: 503, body: { ok: false, message: "Não conseguimos enviar agora. Tente de novo em instantes." } };
   return { status: 200, body: { ok: true, message: "Quase lá! Enviamos um link de confirmação para o seu e-mail." } };
@@ -119,6 +122,7 @@ async function confirm(env, sql, token) {
   const optOutUrl = await leadOptOutLink(env, lead.email);
   const mail = nurtureEmail(0, { name: lead.name, optOutUrl });
   await sendEmail(env, { to: lead.email, ...mail, unsubscribeUrl: optOutUrl, idempotencyKey: `zevanory-lead-${await sha256Hex(lead.email)}-d0` });
+  await emitActivity(env, { type: "lead_captured", channel: "web", status: "confirmed", ref: "lead-confirmed:" + (await sha256Hex(lead.email)) }).catch(() => null);
   await bridge(env, `lead-${(await sha256Hex(lead.email)).slice(0, 12)}`, { kind: "lead", title: `Lead confirmado (material gratuito) · ${maskEmail(lead.email)}`, detail: "Pediu o checklist gratuito e confirmou o e-mail (dupla confirmação, consentimento LGPD registrado).", status: "nurture", channel: "email", sourceKey: `lead-magnet:${(await sha256Hex(lead.email)).slice(0, 24)}`, evidence: ["double-opt-in", CONSENT_VERSION, new Date().toISOString()] });
   return lead;
 }

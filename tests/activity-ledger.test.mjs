@@ -13,9 +13,9 @@ const store=()=>{const m=new Map();return {m,kv:{
  get:async key=>m.get(key)||null,
  put:async (key,val,opt)=>{assert.equal(opt.expirationTtl,90*86400);m.set(key,val)}
 }}};
-test("one activity per all 17 supported types without PII or raw refs",async()=>{
+test("one activity per all 19 supported types without PII or raw refs",async()=>{
  assert.equal(types.length,17);
- assert.equal(ACTIVITY_TYPES.size,17);
+ assert.equal(ACTIVITY_TYPES.size,19);
  for(const type of types){
    const {m,kv}=store();
    const finance=type==="payment_confirmed"||type==="refund_approved";
