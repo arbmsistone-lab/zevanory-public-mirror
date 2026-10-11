@@ -3,6 +3,7 @@ import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
 import { syncBrandProfiles, brandProfileSnapshot, publicBrandProfileStatus } from "./brand-profiles.mjs";
 import { handleOwnerOAuth, handleYoutubePublisherAccess } from "./owner-oauth.mjs";
+import { handleHotmartWebhook, handleBriefing, handlePackageView, retryPendingPackages } from "./content-service.mjs";
 import { BRAND_SIZES } from "./brand-kit.mjs";
 import { handleVoiceChunk, handleVoiceEncodeAudit, handleVoiceStream } from "./voice-chunks.mjs";
 import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
@@ -122,6 +123,10 @@ const wrapped = {
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
+    // Conteúdo Pronto (Hotmart subscription): authenticated postback + private briefing/package pages.
+    if (url.pathname === "/api/webhooks/hotmart") return handleHotmartWebhook(request,normalized,ctx);
+    if (url.pathname === "/conteudo-pronto/briefing") return handleBriefing(request,normalized,ctx);
+    if (url.pathname === "/conteudo-pronto/pacote") return handlePackageView(request,normalized);
     if (url.pathname==="/api/internal/owner/oauth/youtube-access") return handleYoutubePublisherAccess(request,normalized);
     // Wrangler has assets.run_worker_first=true. Explicitly delegate the
     // exact, SHA-pinned public brand exports; legacy Worker routing cannot serve them.
@@ -573,6 +578,12 @@ wrapped.scheduled = async (controller, env, ctx) => {
       console.info("brand_profile_cycle",JSON.stringify({statuses:(brand.profiles||[]).map(p=>({channel:p.channel,status:p.status,code:p.code||null}))}));
     } catch {
       console.error("brand_profile_cycle_unverified");
+    }
+    try {
+      const cp=await retryPendingPackages(normalized);
+      if(cp?.tried)console.info("content_service_retry",JSON.stringify(cp));
+    } catch {
+      console.error("content_service_retry_failed");
     }
     }
     try {

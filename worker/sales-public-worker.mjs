@@ -107,6 +107,9 @@ export const HOTMART_CHECKOUT=Object.freeze({
   "combo-ia-vendas":"",
   "negocio-completo":"",
 });
+// Conteúdo Pronto subscription checkout on Hotmart (empty until the product exists).
+export const SERVICE_CHECKOUT="";
+const SERVICE_WA="https://wa.me/5588992545413?text=Ol%C3%A1!%20Quero%20assinar%20o%20Conte%C3%BAdo%20Pronto.";
 const HOTMART_TEXT=[
   ["Pagamento seguro pelo Mercado Pago (Pix ou cartão) · download logo após a confirmação · garantia de 7 dias.","Pagamento seguro pela Hotmart (Pix, cartão ou boleto) · acesso logo após a confirmação · garantia de 7 dias."],
   ["Download logo após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago). Link pessoal enviado ao seu e-mail.","Acesso logo após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail."],
@@ -136,6 +139,10 @@ async function handleHotmart(request,env,slug){
 
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
+  if(url.pathname==="/assinar/conteudo-pronto"){
+    const target=/^https:\/\/pay\.hotmart\.com\/[A-Za-z0-9]+(\?[A-Za-z0-9=&_-]*)?$/.test(SERVICE_CHECKOUT)?SERVICE_CHECKOUT:SERVICE_WA;
+    return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:target,"cache-control":"no-store"}))});
+  }
   const hm=url.pathname.match(/^\/hotmart\/([a-z-]{3,40})\/?$/);
   if(hm&&(request.method==="GET"||request.method==="HEAD")) return handleHotmart(request,env,hm[1]);
   // Refund form lives on the core domain; the public router sends zevanory.api.br/reembolso* here.
