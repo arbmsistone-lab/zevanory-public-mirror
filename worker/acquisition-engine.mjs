@@ -204,6 +204,7 @@ export async function runOwnerDailyDigest(env={},now=new Date(),fetchImpl=fetch)
   const data=await response.json().catch(()=>({}));
   if(!response.ok||!data?.id)throw new Error("owner_digest_provider_unverified");
   const receipt={status:"publicado",day,at:now.toISOString(),provider_post_id:String(data.id),channels:actual.map(x=>x.channel)};
+  await emitActivity(env,{type:"email_sent",channel:"owner",status:"sent",ref:"owner-digest:"+day},{now:now.getTime()}).catch(()=>null);
   await kv.put(key,JSON.stringify(receipt),{expirationTtl:45*86400});
   return receipt;
  }catch{return {status:"erro",code:"owner_digest_unverified",needs_reconciliation:true};}

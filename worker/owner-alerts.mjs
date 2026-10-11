@@ -1,3 +1,4 @@
+import { emitActivity } from "./activity-ledger.mjs";
 // Owner alerts: the robots never silently drop a customer who needs a human.
 // * WhatsApp: sensitive messages (complaint, refund, "falar com humano"...) email the owner at once
 //   (max 1 per contact every 6h).
@@ -28,6 +29,8 @@ async function sendOwnerEmail(env, subject, text) {
     body: JSON.stringify({ from: String(env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>"), to: [to], subject, text }),
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
+  // Panel visibility (P1-4): the subject is hashed into the ref, never stored.
+  if (r?.ok) await emitActivity(env, { type: "owner_alert_sent", channel: "owner", status: "sent", ref: "owner-alert:" + subject + ":" + new Date().toISOString().slice(0, 16) }).catch(() => null);
   return Boolean(r?.ok);
 }
 

@@ -30,6 +30,7 @@ import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mj
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
+import { syncOperationalActivity } from "./operational-activity-sync.mjs";
 import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
 import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
 import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinancialProofSnapshot, persistClassificationSnapshot, describeFinancialProofSnapshot, recordLaunchEpoch } from "./commercial-metrics-projection.mjs";
@@ -585,6 +586,15 @@ wrapped.scheduled = async (controller, env, ctx) => {
       // Never log database records, customer references or provider errors.
       console.error("order13_activity_sync_failed");
       throw new Error("order13_activity_sync_failed");
+    } finally {
+      // P1-4: deploy, sales switch, refunds, deliveries and downloads in the panel.
+      try {
+        resetSalesSwitchCache();
+        const ops = await syncOperationalActivity(normalized, { sqlFactory: whatsappProofDatabase, salesSwitch: await readSalesSwitch(normalized) });
+        console.info("operational_activity_sync", JSON.stringify({ ok: ops.ok === true, emitted: ops.emitted || 0, sections: ops.sections || {} }));
+      } catch {
+        console.error("operational_activity_sync_failed");
+      }
     }
     return;
   }
