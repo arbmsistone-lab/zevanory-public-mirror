@@ -1,8 +1,8 @@
 // P1-5: autonomous daily YouTube Short (scheduled GitHub Actions job; Workers Free
 // cannot render video). One Short per local day from the content calendar, with
 // the official brand template, F1 creative gate, idempotent upload (marker in the
-// description), UNLISTED while Google's API audit is pending (YouTube itself keeps
-// uploads from unaudited projects private), and a masked post_published record in
+// description), PUBLIC (if YouTube locks an upload private it is reported honestly as
+// provider_locked), and a masked post_published record in
 // the shared activity outbox. Tokens come from the OAuth bridge; nothing secret is
 // logged. Usage: node youtube-daily-short.mjs [--dry-run] [--day=YYYY-MM-DD]
 import { spawnSync } from "node:child_process";
@@ -54,7 +54,7 @@ export function planShort(day) {
     product: entry.product.name, offer: "R$ " + price + " · Garantia de 7 dias",
     cta: "Link na descrição", url: "vendas.zevanory.api.br"
   };
-  return { day, entry, price, spec, gate, link, marker, title, description, lines, speech, said, screen, privacyStatus: "unlisted" };
+  return { day, entry, price, spec, gate, link, marker, title, description, lines, speech, said, screen, privacyStatus: "public" };
 }
 
 const run = (cmd, args) => { const p = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }); if (p.status !== 0) throw new Error(cmd + "_failed"); return p.stdout; };
