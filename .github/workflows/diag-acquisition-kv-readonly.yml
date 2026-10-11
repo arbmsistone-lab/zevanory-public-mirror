@@ -20,21 +20,23 @@ jobs:
           exec > >(tee /tmp/out.txt) 2>&1
           base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values"
           get(){ curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$1")"; }
-          for d in 2026-10-07 2026-10-08 2026-10-09 2026-10-10 2026-10-11; do
+          for d in 2026-10-11; do
             echo "== acquisition $d"; get "zpc:acquisition:daily:$d" | python3 -c 'import json,sys
           try:
-            d=json.load(sys.stdin); print(json.dumps([{k:o.get(k) for k in ("channel","status","code","url","at","provenance")} | ({"gate":o.get("gate",{}).get("reasons")} if o.get("gate") else {}) for o in d.get("outcomes",[])]))
+            d=json.load(sys.stdin); print(d.get("generatedAt"), json.dumps([{k:o.get(k) for k in ("channel","status","code","url","at","provenance","attempts")} for o in d.get("outcomes",[])]))
           except Exception as e: print("none",e)'
-            for c in telegram bluesky; do echo "-- $c"; get "zpc:acquisition:daily:$d:$c" | python3 -c 'import json,sys
+            for c in telegram bluesky youtube; do echo "-- $c"; get "zpc:acquisition:daily:$d:$c" | python3 -c 'import json,sys
           try:
-            o=json.load(sys.stdin); print({k:o.get(k) for k in ("status","code","url","at","startedAt","provenance","needs_reconciliation")})
+            o=json.load(sys.stdin); print({k:o.get(k) for k in ("status","code","url","at","privacy","provenance","attempts")})
           except Exception as e: print("none")'; done
-            echo "-- legacy telegram"; get "zpc:multichannel:evidence:telegram:daily:$d" | python3 -c 'import json,sys
-          try:
-            o=json.load(sys.stdin); print({k:o.get(k) for k in ("status","url","publishedAt","startedAt")})
-          except Exception as e: print("none")'
-            echo "-- blog marker"; get "zpc:blog:daily:$d" | head -c 300; echo
           done
+          echo "== ledger markers"
+          for ref in "deploy:deploy:89c8ae3f521422764df5212e36d7fe7d4a532867" "deploy:deploy:03dc00563cf6aeb9b5f3db82457db89f35998feb" "post_published:youtube:2026-10-11:ZEV-VEN-011:salão:objeção"; do
+            h=$(printf '%s' "$ref" | sha256sum | cut -d' ' -f1); printf '%s -> ' "$ref"; get "zpc-activity:v1:ref:$h" | head -c 120; echo; done
+          echo "== sales switch revision"; get "sales:open:v1" | python3 -c 'import json,sys
+          try:
+            d=json.load(sys.stdin); print(d.get("at"), d.get("enabled"))
+          except Exception as e: print("none")'
           echo "== blog index"; get "zpc:blog:index:v1" | python3 -c 'import json,sys
           try:
             d=json.load(sys.stdin); print([(a.get("slug"),a.get("publishedAt")) for a in d.get("articles",[])])
