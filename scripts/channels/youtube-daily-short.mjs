@@ -80,26 +80,48 @@ async function geminiSpeech(text, key) {
   return null;
 }
 
+// Retention: Shorts are scored on watch-through, so the video lasts as long as the
+// narration (+ a short tail), never pads with dead air, and is never a frozen
+// frame: the background slowly pushes in and each line appears in step with the
+// voice. Text is drawn after the zoom so it stays crisp.
+export function shortTiming(voiceSeconds, lineCount) {
+  const speech = Number.isFinite(voiceSeconds) && voiceSeconds > 0 ? voiceSeconds : 0;
+  const duration = speech ? Math.min(20, Math.max(8, Math.ceil((speech + 1.2) * 10) / 10)) : 12;
+  const span = Math.min(speech || duration, duration) * 0.8;
+  const reveal = Array.from({ length: lineCount }, (_, i) => Math.round((lineCount > 1 ? (i * span) / (lineCount - 1) : 0) * 100) / 100);
+  return { duration, reveal };
+}
 export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { geminiKey = process.env.GEMINI_API_KEY } = {}) {
-  await writeFile(base + ".txt", plan.lines.join("\n"));
   const voice = await geminiSpeech(plan.speech, geminiKey);
-  let audioInput;
+  let audioInput, voiceSeconds = 0;
   if (voice && voice.pcm.length >= voice.rate) {
+    voiceSeconds = voice.pcm.length / 2 / voice.rate;
     await writeFile(base + ".pcm", voice.pcm);
     run("ffmpeg", ["-y", "-f", "s16le", "-ar", String(voice.rate), "-ac", "1", "-i", base + ".pcm", "-c:a", "libmp3lame", "-b:a", "128k", base + ".mp3"]);
     audioInput = ["-i", base + ".mp3"];
   } else {
     audioInput = ["-f", "lavfi", "-i", "anullsrc=channel_layout=mono:sample_rate=24000"];
   }
+  const shown = plan.lines.map((text, i) => ({ text, i })).filter(l => String(l.text).trim());
+  const { duration, reveal } = shortTiming(voiceSeconds, shown.length);
+  const draws = [];
+  for (let k = 0; k < shown.length; k++) {
+    const file = base + ".line" + k + ".txt";
+    await writeFile(file, String(shown[k].text));
+    const y = 1205 + shown[k].i * 80;
+    draws.push("drawtext=textfile=" + file + ":fontcolor=white:fontsize=58:x=(w-text_w)/2:y=" + y + ":enable='gte(t," + reveal[k] + ")'");
+  }
   const template = "assets/brand/export/short.png";
-  const vf = "scale=1080:1920,drawbox=x=62:y=1150:w=956:h=500:color=0x0c1c2b@0.92:t=fill,drawtext=textfile=" + base + ".txt:fontcolor=white:fontsize=58:line_spacing=22:x=(w-text_w)/2:y=1205";
-  run("ffmpeg", ["-y", "-loop", "1", "-framerate", "30", "-i", template, ...audioInput, "-filter_complex", "[0:v]" + vf + "[v];[1:a]" + (voice ? "loudnorm=I=-16:TP=-1.5:LRA=11," : "") + "apad[a]", "-map", "[v]", "-map", "[a]", "-t", "20", "-c:v", "libx264", "-r", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", base + ".mp4"]);
+  const frames = Math.round(duration * 30);
+  const zoom = "scale=1080:1920,zoompan=z='1+0.06*on/" + frames + "':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30";
+  const vf = zoom + ",drawbox=x=62:y=1150:w=956:h=500:color=0x0c1c2b@0.92:t=fill," + draws.join(",");
+  run("ffmpeg", ["-y", "-loop", "1", "-framerate", "30", "-i", template, ...audioInput, "-filter_complex", "[0:v]" + vf + "[v];[1:a]" + (voice ? "loudnorm=I=-16:TP=-1.5:LRA=11," : "") + "apad[a]", "-map", "[v]", "-map", "[a]", "-t", String(duration), "-c:v", "libx264", "-r", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", base + ".mp4"]);
   const probe = JSON.parse(run("ffprobe", ["-v", "error", "-show_streams", "-show_format", "-of", "json", base + ".mp4"]));
-  const v = probe.streams.find(s => s.codec_type === "video"), a = probe.streams.find(s => s.codec_type === "audio"), duration = Number(probe.format.duration);
-  if (!v || v.width !== 1080 || v.height !== 1920 || !a || !(duration >= 19 && duration <= 21)) throw new Error("youtube_mp4_technical_gate_failed");
+  const v = probe.streams.find(s => s.codec_type === "video"), a = probe.streams.find(s => s.codec_type === "audio"), real = Number(probe.format.duration);
+  if (!v || v.width !== 1080 || v.height !== 1920 || !a || !(Math.abs(real - duration) <= 0.5)) throw new Error("youtube_mp4_technical_gate_failed");
   const black = spawnSync("ffmpeg", ["-hide_banner", "-i", base + ".mp4", "-vf", "blackdetect=d=0.6:pix_th=0.02", "-an", "-f", "null", "-"], { encoding: "utf8" });
   if (black.status !== 0 || /black_start:/.test(black.stderr)) throw new Error("youtube_black_frames_detected");
-  return { file: base + ".mp4", duration, voice: voice ? voice.model : "none" };
+  return { file: base + ".mp4", duration: real, voice: voice ? voice.model : "none" };
 }
 
 // Cloudflare KV REST adapter so the CI job writes the exact emitActivity schema.

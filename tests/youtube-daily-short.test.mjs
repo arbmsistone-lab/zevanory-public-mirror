@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { planShort, publishShort, recordPublication, cloudflareKv, TARGET_CHANNEL, localDay } from "../scripts/channels/youtube-daily-short.mjs";
+import { planShort, publishShort, recordPublication, cloudflareKv, TARGET_CHANNEL, localDay, shortTiming } from "../scripts/channels/youtube-daily-short.mjs";
 import { calendarEntry } from "../worker/acquisition-engine.mjs";
 
 test("daily plan follows the calendar, passes the F1 gate and is unlisted with an idempotency marker", () => {
@@ -77,4 +77,15 @@ test("scheduled workflow: daily, single concurrency, no secret echo", () => {
   assert.match(wf, /concurrency:\s*\n\s*group: youtube-autonomous-short/);
   assert.match(wf, /node scripts\/channels\/youtube-daily-short\.mjs/);
   assert.doesNotMatch(wf, /echo .*secrets\./);
+});
+
+test("Short lasts as long as the narration (no dead air) and reveals every line before it ends", () => {
+  const a = shortTiming(10.2, 4);
+  assert.equal(a.duration, 11.4);
+  assert.deepEqual(a.reveal.map(x => x < a.duration), [true, true, true, true]);
+  assert.equal(shortTiming(3, 4).duration, 8);
+  assert.equal(shortTiming(0, 4).duration, 12);
+  const long = shortTiming(30, 4);
+  assert.equal(long.duration, 20);
+  assert.ok(Math.max(...long.reveal) < long.duration);
 });
