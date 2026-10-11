@@ -2,8 +2,12 @@
 const enc=new TextEncoder(),host="https://zevanory.api.br/api/owner/oauth/",panel="https://controle.zevanory.api.br/";
 export const OAUTH_PROVIDERS=Object.freeze({
  youtube:{auth:"https://accounts.google.com/o/oauth2/v2/auth",token:"https://oauth2.googleapis.com/token",scope:"https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube",pkce:true},
- pinterest:{auth:"https://www.pinterest.com/oauth/",token:"https://api.pinterest.com/v5/oauth/token",scope:"boards:read pins:write pins:read",pkce:false}
+ pinterest:{auth:"https://www.pinterest.com/oauth/",token:"https://api.pinterest.com/v5/oauth/token",scope:"boards:read pins:write pins:read",pkce:false},
+ // TikTok Login Kit v2: the client is "client_key", scopes are comma-separated and
+ // the credentials travel in the form body (no Basic auth). Refresh tokens rotate.
+ tiktok:{auth:"https://www.tiktok.com/v2/auth/authorize/",token:"https://open.tiktokapis.com/v2/oauth/token/",scope:"user.info.basic,video.publish",pkce:false}
 });
+const CLIENT_ENV={youtube:["YOUTUBE_CLIENT_ID","YOUTUBE_CLIENT_SECRET"],pinterest:["PINTEREST_CLIENT_ID","PINTEREST_CLIENT_SECRET"],tiktok:["TIKTOK_CLIENT_KEY","TIKTOK_CLIENT_SECRET"]};
 const result=(data,status=200)=>Response.json(data,{status,headers:{"cache-control":"no-store","referrer-policy":"no-referrer","x-content-type-options":"nosniff"}});
 const b64=buffer=>btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 const rand=()=>b64(crypto.getRandomValues(new Uint8Array(32)));
@@ -17,9 +21,10 @@ const cookie=(c,s,age)=>cookieName(c)+"="+encodeURIComponent(s)+"; Secure; HttpO
 const eq=(a,b)=>{const x=enc.encode(String(a)),y=enc.encode(String(b));let n=x.length^y.length;for(let i=0;i<Math.max(x.length,y.length);i++)n|=(x[i]||0)^(y[i]||0);return n===0;};
 const settings=(env,c)=>{
  let bundle={};try{const raw=env.CHANNEL_CREDENTIALS_JSON;bundle=raw&&typeof raw==="object"?raw:JSON.parse(String(raw||"{}"));}catch{}
- const prefix=c==="youtube"?"YOUTUBE":"PINTEREST";
+ const [idName,secretName]=CLIENT_ENV[c]||[];
+ if(!idName)return {id:"",secret:""};
  // Pasted secrets often carry a trailing newline/space; providers then answer invalid_client.
- return {id:String(env[prefix+"_CLIENT_ID"]||bundle[prefix+"_CLIENT_ID"]||"").trim(),secret:String(env[prefix+"_CLIENT_SECRET"]||bundle[prefix+"_CLIENT_SECRET"]||"").trim()};
+ return {id:String(env[idName]||bundle[idName]||"").trim(),secret:String(env[secretName]||bundle[secretName]||"").trim()};
 };
 async function mac(secret,message){
  const key=await crypto.subtle.importKey("raw",enc.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
@@ -91,6 +96,7 @@ export async function resolveOwnerPublisherToken(env,channel,fetchImpl=fetch){
  const headers={"content-type":"application/x-www-form-urlencoded"};
  const body={grant_type:"refresh_token",refresh_token:refresh};
  if(channel==="youtube"){body.client_id=credentials.id;body.client_secret=credentials.secret;}
+ else if(channel==="tiktok"){body.client_key=credentials.id;body.client_secret=credentials.secret;}
  else headers.authorization="Basic "+btoa(credentials.id+":"+credentials.secret);
  const response=await fetchImpl(provider.token,{method:"POST",headers,body:new URLSearchParams(body),signal:AbortSignal.timeout(12000)});
  const token=await response.json().catch(()=>null);
@@ -129,7 +135,7 @@ async function exchange(url,body,auth){
  return json;
 }
 export async function handleOwnerOAuth(req,env){
- const u=new URL(req.url),match=/^\/api\/owner\/oauth\/(youtube|pinterest)\/(start|callback|status|disconnect)$/.exec(u.pathname);
+ const u=new URL(req.url),match=/^\/api\/owner\/oauth\/(youtube|pinterest|tiktok)\/(start|callback|status|disconnect)$/.exec(u.pathname);
  if(!match)return result({error:"not_found"},404);
  const c=match[1],action=match[2],provider=OAUTH_PROVIDERS[c],kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get||!kv?.put||!kv?.delete)return result({error:"secure_store_unavailable"},503);
@@ -152,7 +158,7 @@ export async function handleOwnerOAuth(req,env){
   const state=rand(),verifier=provider.pkce?rand():null;
   await kv.put(stateKey(state),JSON.stringify({c,at:Date.now(),verifier}),{expirationTtl:600});
   const target=new URL(provider.auth);
-  for(const [name,value] of Object.entries({client_id:auth.id,redirect_uri:callback(c),response_type:"code",scope:provider.scope,state}))target.searchParams.set(name,value);
+  for(const [name,value] of Object.entries({[c==="tiktok"?"client_key":"client_id"]:auth.id,redirect_uri:callback(c),response_type:"code",scope:provider.scope,state}))target.searchParams.set(name,value);
   if(provider.pkce){
     target.searchParams.set("access_type","offline");target.searchParams.set("prompt","consent");
     target.searchParams.set("code_challenge_method","S256");target.searchParams.set("code_challenge",await sha(verifier));
@@ -174,13 +180,17 @@ export async function handleOwnerOAuth(req,env){
    let token;
    if(c==="youtube"){
     token=await exchange(provider.token,{grant_type:"authorization_code",code,client_id:credentials.id,client_secret:credentials.secret,redirect_uri:callback(c),code_verifier:challenge.verifier});
+   }else if(c==="tiktok"){
+    token=await exchange(provider.token,{grant_type:"authorization_code",code,client_key:credentials.id,client_secret:credentials.secret,redirect_uri:callback(c)});
    }else{
     token=await exchange(provider.token,{grant_type:"authorization_code",code,redirect_uri:callback(c),continuous_refresh:"true"},"Basic "+btoa(credentials.id+":"+credentials.secret));
    }
-   const verify=await fetch(c==="youtube"?"https://www.googleapis.com/youtube/v3/channels?part=id&mine=true":"https://api.pinterest.com/v5/user_account",{headers:{authorization:"Bearer "+token.access_token},signal:AbortSignal.timeout(10000)});
+   const identityUrl={youtube:"https://www.googleapis.com/youtube/v3/channels?part=id&mine=true",pinterest:"https://api.pinterest.com/v5/user_account",tiktok:"https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name"}[c];
+   const verify=await fetch(identityUrl,{headers:{authorization:"Bearer "+token.access_token},signal:AbortSignal.timeout(10000)});
    const profile=await verify.json().catch(()=>null);
    if(!verify.ok)throw Error("identity_http_"+verify.status);
-   if(c==="youtube"?!profile?.items?.length:!profile?.username)throw Error(c==="youtube"?"identity_no_youtube_channel":"identity_no_pinterest_user");
+   const identified={youtube:Boolean(profile?.items?.length),pinterest:Boolean(profile?.username),tiktok:Boolean(profile?.data?.user?.open_id)}[c];
+   if(!identified)throw Error({youtube:"identity_no_youtube_channel",pinterest:"identity_no_pinterest_user",tiktok:"identity_no_tiktok_user"}[c]);
    const encryptedRefresh=await seal(env,token.refresh_token);
    await kv.put(connKey(c),JSON.stringify({schema:"zpc.owner.oauth.v1",channel:c,connectedAt:new Date().toISOString(),scope:String(token.scope||provider.scope),encryptedRefresh}));
    return finish(c,"connected");
@@ -191,24 +201,29 @@ export async function handleOwnerOAuth(req,env){
  }
 }
 
-const youtubePublisherNonce=nonce=>"zpc:owner:oauth:youtube-publisher:"+nonce;
-export async function handleYoutubePublisherAccess(req,env,fetchImpl=fetch){
+const publisherNonce=(c,nonce)=>"zpc:owner:oauth:"+c+"-publisher:"+nonce;
+export async function handleYoutubePublisherAccess(req,env,fetchImpl=fetch){return handlePublisherAccess(req,env,"youtube",fetchImpl);}
+// CI publishers (GitHub Actions) obtain a short-lived access token by proving
+// knowledge of the provider client secret (HMAC over ts+nonce, single use). The
+// refresh token never leaves this Worker.
+export async function handlePublisherAccess(req,env,channel,fetchImpl=fetch){
  const headers={"cache-control":"no-store","x-content-type-options":"nosniff"};
  if(req.method!=="POST")return Response.json({error:"method_not_allowed"},{status:405,headers});
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;
  if(!kv?.get||!kv?.put)return Response.json({error:"secure_store_unavailable"},{status:503,headers});
  let body;try{body=await req.json();}catch{return Response.json({error:"invalid_request"},{status:400,headers});}
  const ts=String(body?.ts||""),nonce=String(body?.nonce||""),sig=String(body?.sig||"");
- const secret=settings(env,"youtube").secret;
+ if(!OAUTH_PROVIDERS[channel])return Response.json({error:"not_found"},{status:404,headers});
+ const secret=settings(env,channel).secret;
  if(secret.length<12||!/^[0-9]{13}$/.test(ts)||Math.abs(Date.now()-Number(ts))>60000||
     !/^[A-Za-z0-9_-]{40,128}$/.test(nonce)||!/^[A-Za-z0-9_-]{43}$/.test(sig))
       return Response.json({error:"publisher_unauthorized"},{status:401,headers});
- const expected=await mac(secret,["zpc-youtube-publisher-v1",ts,nonce].join("\n"));
- if(!eq(sig,expected)||await kv.get(youtubePublisherNonce(nonce)))
+ const expected=await mac(secret,["zpc-"+channel+"-publisher-v1",ts,nonce].join("\n"));
+ if(!eq(sig,expected)||await kv.get(publisherNonce(channel,nonce)))
    return Response.json({error:"publisher_unauthorized"},{status:401,headers});
- await kv.put(youtubePublisherNonce(nonce),"used",{expirationTtl:120});
+ await kv.put(publisherNonce(channel,nonce),"used",{expirationTtl:120});
  try{
-   const access=await resolveOwnerPublisherToken(env,"youtube",fetchImpl);
+   const access=await resolveOwnerPublisherToken(env,channel,fetchImpl);
    if(!access)return Response.json({connected:false},{headers});
    return Response.json({connected:true,access_token:access},{headers});
  }catch{return Response.json({error:"publisher_refresh_unavailable"},{status:503,headers});}
