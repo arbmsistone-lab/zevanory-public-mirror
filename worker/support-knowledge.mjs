@@ -47,6 +47,12 @@ export function answerSupportQuestion({ product, question } = {}) {
   if (!intent) {
     return { answered: false, intent: null, product: slug, answer: `Não tenho uma resposta segura para isso. Fale com o suporte em ${SUPPORT_EMAIL}.`, handoff: true };
   }
+  if (slug === "conteudo-pronto" && (intent === "refund" || intent === "delivery")) {
+    const answer = intent === "refund"
+      ? "Conteúdo Pronto: você tem 7 dias de garantia com reembolso integral, pedido direto na sua conta Hotmart (Minhas compras). Cancelar a assinatura também é pela Hotmart, quando quiser, sem multa."
+      : "Conteúdo Pronto: depois do pagamento na Hotmart, você recebe por e-mail um link seguro para um formulário curto; em poucos minutos o pacote do mês chega no mesmo e-mail, também com um link seguro para consulta online.";
+    return { answered: true, intent, product: slug, answer, sources: [`${SALES_ORIGIN}/conteudo-pronto`], handoff: false };
+  }
   if (intent === "refund" || intent === "delivery") {
     return { answered: true, intent, product: slug, answer: intent === "refund" ? REFUND : DELIVERY, sources: [intent === "refund" ? "https://zevanory.api.br/pedir-reembolso" : "https://zevanory.api.br/entrega/reenviar", slug ? `${SALES_ORIGIN}/${slug}` : `${SALES_ORIGIN}/solucoes`], handoff: false };
   }
