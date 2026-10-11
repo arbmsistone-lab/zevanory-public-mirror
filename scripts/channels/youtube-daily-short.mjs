@@ -52,17 +52,31 @@ export function planShort(day) {
 const run = (cmd, args) => { const p = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }); if (p.status !== 0) throw new Error(cmd + "_failed"); return p.stdout; };
 
 async function geminiSpeech(text, key) {
-  if (!key) return null;
+  if (!key) { console.log("::warning title=SHORT_VOICE::GEMINI_API_KEY absent"); return null; }
   const STYLE = "Fale em português do Brasil, com voz natural, acolhedora, clara e profissional, em ritmo de conversa.";
-  for (const model of ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"]) {
-    const r = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify({ model, input: [{ type: "user_input", content: [{ type: "text", text, annotations: [{ type: "speech_metadata", style: STYLE }] }] }], response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 }, generation_config: { speech_config: [{ voice: "Achird" }] } }), signal: AbortSignal.timeout(60000) }).catch(() => null);
-    if (!r?.ok) continue;
-    const body = await r.json().catch(() => ({}));
-    const part = (body.steps || []).filter(x => x.type === "model_output").flatMap(x => x.content || []).find(x => x.type === "audio" && x.data);
-    if (!part) continue;
-    const rate = Number(part.sample_rate || (String(part.mime_type || "").match(/rate=(\d+)/) || [])[1]) || 24000;
-    return { pcm: Buffer.from(part.data, "base64"), rate, model };
+  const errors = [];
+  // Modern Interactions API first, then the classic generateContent TTS models.
+  const chain = [["gemini-3.8-flash-tts", true], ["gemini-3.8-flash-lite-tts", true], ["gemini-3.1-flash-tts-preview", false], ["gemini-2.5-flash-preview-tts", false]];
+  for (const [model, modern] of chain) {
+    const url = modern ? "https://generativelanguage.googleapis.com/v1beta/interactions" : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    const body = modern
+      ? { model, input: [{ type: "user_input", content: [{ type: "text", text, annotations: [{ type: "speech_metadata", style: STYLE }] }] }], response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 }, generation_config: { speech_config: [{ voice: "Achird" }] } }
+      : { contents: [{ parts: [{ text: STYLE + "\n\n" + text }] }], generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Achird" } } } } };
+    const r = await fetch(url, { method: "POST", headers: { "x-goog-api-key": key, "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) }).catch((e) => ({ ok: false, status: "fetch_" + (e?.name || "error") }));
+    if (!r?.ok) { errors.push(model + ":" + r?.status); continue; }
+    const json = await r.json().catch(() => ({}));
+    const part = modern
+      ? (json.steps || []).filter((x) => x.type === "model_output").flatMap((x) => x.content || []).find((x) => x.type === "audio" && x.data)
+      : (json?.candidates?.[0]?.content?.parts || []).find((x) => x?.inlineData?.data || x?.inline_data?.data);
+    const data = part?.data || part?.inlineData?.data || part?.inline_data?.data;
+    if (!data) { errors.push(model + ":no_audio"); continue; }
+    const mime = String(part?.mime_type || part?.inlineData?.mimeType || part?.inline_data?.mime_type || "");
+    const rate = Number(part?.sample_rate || (mime.match(/rate=(\d+)/i) || [])[1]) || 24000;
+    console.log("::notice title=SHORT_VOICE::" + model + " ok");
+    return { pcm: Buffer.from(data, "base64"), rate, model };
   }
+  // Only provider status codes, never the key.
+  console.log("::warning title=SHORT_VOICE::no narration (" + errors.join(", ") + ")");
   return null;
 }
 
