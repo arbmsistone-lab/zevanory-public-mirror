@@ -2,7 +2,11 @@
 // Shared KV namespace with ZEVANORY control panel. Nothing here changes payments,
 // checkout, orders or sales switch. Refs are never stored un-hashed.
 export const ACTIVITY_EVENT_PREFIX = "zpc-activity:v1:event:";
-export const ACTIVITY_REF_PREFIX = "zpc-activity:v1:ref:";
+// Dedup markers must live OUTSIDE the "zpc-activity:v1:" bridge prefix: the
+// control panel consumes that prefix and deletes every key whose kind is not
+// event/support/lead, which erased the markers and let events be re-emitted.
+export const ACTIVITY_REF_PREFIX = "zpc-activity-ref:v1:";
+export const LEGACY_ACTIVITY_REF_PREFIX = "zpc-activity:v1:ref:";
 export const ACTIVITY_TTL_SECONDS = 90 * 24 * 60 * 60;
 export const ACTIVITY_TYPES = Object.freeze(new Set([
   "checkout_created", "payment_confirmed", "delivery_sent", "download_done",
@@ -60,7 +64,7 @@ export async function emitActivity(env, {type, channel, status, ref, link, amoun
   const id=digest.slice(0,32);
   const marker=ACTIVITY_REF_PREFIX+digest;
   try {
-    if (await kv.get(marker)) return {emitted:false,duplicate:true};
+    if (await kv.get(marker) || await kv.get(LEGACY_ACTIVITY_REF_PREFIX+digest)) return {emitted:false,duplicate:true};
     // Event has no PII, payment ID, email, raw order ID or arbitrary text.
     const sourceKey="zpc-activity:"+type+":"+digest;
     const value={
