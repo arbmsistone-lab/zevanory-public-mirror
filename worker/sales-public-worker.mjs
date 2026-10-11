@@ -139,6 +139,9 @@ async function handleHotmart(request,env,slug){
 
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
+  // IndexNow ownership proof for the sales host (same public key as the apex).
+  if(url.pathname==="/4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922.txt"&&(request.method==="GET"||request.method==="HEAD"))
+    return new Response(request.method==="HEAD"?null:"4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922",{status:200,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"public, max-age=86400"}))});
   if(url.pathname==="/assinar/conteudo-pronto"){
     const target=/^https:\/\/pay\.hotmart\.com\/[A-Za-z0-9]+(\?[A-Za-z0-9=&_-]*)?$/.test(SERVICE_CHECKOUT)?SERVICE_CHECKOUT:SERVICE_WA;
     return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:target,"cache-control":"no-store"}))});
