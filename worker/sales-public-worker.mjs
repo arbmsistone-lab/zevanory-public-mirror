@@ -108,7 +108,7 @@ export const HOTMART_CHECKOUT=Object.freeze({
   "negocio-completo":"https://pay.hotmart.com/U107980005X?off=weo47apk",
 });
 // Conteúdo Pronto subscription checkout on Hotmart (empty until the product exists).
-export const SERVICE_CHECKOUT="";
+export const SERVICE_CHECKOUT="https://pay.hotmart.com/X107980075B?off=4ydutio7";
 const SERVICE_WA="https://wa.me/5588992545413?text=Ol%C3%A1!%20Quero%20assinar%20o%20Conte%C3%BAdo%20Pronto.";
 const HOTMART_TEXT=[
   ["Pagamento seguro pelo Mercado Pago (Pix ou cartão) · download logo após a confirmação · garantia de 7 dias.","Pagamento seguro pela Hotmart (Pix, cartão ou boleto) · acesso logo após a confirmação · garantia de 7 dias."],

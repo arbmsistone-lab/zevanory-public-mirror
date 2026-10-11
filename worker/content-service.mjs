@@ -67,7 +67,7 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
   try { body = await request.json(); } catch { return json(400, { error: "invalid_json" }); }
   const provided = request.headers.get("x-hotmart-hottok") || String(body?.hottok || "");
   if (!eq(provided, secret)) return json(401, { error: "unauthorized" });
-  const serviceIds = String(env.HOTMART_SERVICE_PRODUCT_IDS || bundle(env).HOTMART_SERVICE_PRODUCT_IDS || "");
+  const serviceIds = String(env.HOTMART_SERVICE_PRODUCT_IDS || bundle(env).HOTMART_SERVICE_PRODUCT_IDS || "8704905");
   const event = String(body?.event || "").toUpperCase();
   const data = body?.data || {};
   const txn = String(data?.purchase?.transaction || "");
