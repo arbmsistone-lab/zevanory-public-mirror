@@ -71,6 +71,18 @@ export async function publishFacebookVideo(plan, mp4, { token, pageId, fetchImpl
   return { provider_post_id: String(out.id), url: `https://www.facebook.com/${pageId}/videos/${out.id}` };
 }
 
+// Telegram channel: the same vertical video, native player (no external link preview needed).
+export async function publishTelegramVideo(plan, mp4, { token, chatId, fetchImpl = fetch }) {
+  const form = new FormData();
+  form.set("chat_id", chatId); form.set("caption", captionFor(plan, "telegram").slice(0, 1024)); form.set("supports_streaming", "true");
+  form.set("video", new Blob([mp4], { type: "video/mp4" }), "zevanory-" + plan.day + ".mp4");
+  const r = await fetchImpl(`https://api.telegram.org/bot${token}/sendVideo`, { method: "POST", body: form });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j?.ok !== true || !j?.result?.message_id) throw new Error("telegram_video_http_" + r.status);
+  const handle = String(j.result.chat?.username || "");
+  return { provider_post_id: String(j.result.message_id), url: handle ? `https://t.me/${handle}/${j.result.message_id}` : null };
+}
+
 export async function crosspost({ day, mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now() }) {
   const plan = planShort(day), report = {};
   const done = async ch => { const v = await kv.get(`zpc:acquisition:daily:${day}:${ch}`); return v ? JSON.parse(v) : null; };
@@ -90,6 +102,13 @@ export async function crosspost({ day, mp4, env = process.env, kv, fetchImpl = f
       else { const r = await publishTikTok(plan, mp4, { token: access.token, audited: env.TIKTOK_AUDIT_APPROVED === "true", fetchImpl, sleep }); await record("tiktok", r); report.tiktok = "published:" + r.privacy; }
     }
   } catch (e) { report.tiktok = "error:" + String(e.message).slice(0, 80); }
+  // Telegram channel video
+  try {
+    const tgToken = String(env.TELEGRAM_BOT_TOKEN || "").trim(), tgChat = String(env.TELEGRAM_CHANNEL_ID || "").trim();
+    if (await done("telegram_video")) report.telegram_video = "already_published";
+    else if (!tgToken || !tgChat) report.telegram_video = "waiting:telegram_credentials";
+    else { const r = await publishTelegramVideo(plan, mp4, { token: tgToken, chatId: tgChat, fetchImpl }); await record("telegram_video", r); report.telegram_video = "published"; }
+  } catch (e) { report.telegram_video = "error:" + String(e.message).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g, "bot***").slice(0, 80); }
   // Meta (Instagram Reels + Facebook Page)
   const metaToken = String(env.META_ACCESS_TOKEN || "").trim(), igId = String(env.INSTAGRAM_BUSINESS_ACCOUNT_ID || "").trim(), pageId = String(env.META_PAGE_ID || "").trim();
   for (const [ch, ready, run] of [

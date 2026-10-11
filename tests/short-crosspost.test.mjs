@@ -61,3 +61,18 @@ test("pack renders one video per day with a ready caption, skipping nothing that
   for (const d of ["2026-10-12", "2026-10-13", "2026-10-14"]) assert.match(txt, new RegExp(d + ".mp4"));
   assert.match(txt, /garantia de 7 dias/);
 });
+
+test("Telegram channel receives the day's video once, with caption and a provider-confirmed message id", async () => {
+  const kv = memKv(); let sent = 0;
+  const fetchImpl = async (url, o = {}) => {
+    if (url.includes("tiktok-access")) return ok({ connected: false });
+    if (url.includes("/sendVideo")) { sent++; assert.ok(o.body instanceof FormData); assert.match(o.body.get("caption"), /garantia de 7 dias/); return ok({ ok: true, result: { message_id: 42, chat: { username: "zevanory" } } }); }
+    return ok({});
+  };
+  const env = { TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHANNEL_ID: "@zevanory" };
+  const r1 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {} });
+  assert.equal(r1.telegram_video, "published");
+  const r2 = await crosspost({ day: "2026-10-12", mp4: Buffer.from("mp4"), env, kv, fetchImpl, sleep: async () => {} });
+  assert.equal(r2.telegram_video, "already_published"); assert.equal(sent, 1);
+  assert.match(kv.m.get("zpc:acquisition:daily:2026-10-12:telegram_video"), /t\.me\/zevanory\/42/);
+});
