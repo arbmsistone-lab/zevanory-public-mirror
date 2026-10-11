@@ -17,7 +17,7 @@ test("success sends link facets/card and reads proof rkey exactly",async()=>{
  const result=await publishBluesky({...args,fetchImpl});
  assert.equal(result.status,"publicado");assert.equal(result.provider_post_id,rkey);assert.ok(isTid(rkey));assert.equal(calls[1].body.rkey,result.provider_post_id);
  assert.equal(calls[1].body.record.embed.external.uri,result.landing_url);
- assert.equal(calls[1].body.record.facets[0].features[0].uri,result.landing_url);
+ assert.equal(calls[1].body.record.facets.find(f=>f.features[0].$type==="app.bsky.richtext.facet#link").features[0].uri,result.landing_url);
 });
 test("HTTP 401 fails closed without retry",async()=>{
  let calls=0;
@@ -78,4 +78,16 @@ test("conflict on createRecord adopts the already-published deterministic record
 test("conflict without an existing record still fails closed",async()=>{
  const fetchImpl=async(url)=>{if(url.endsWith("createSession"))return{ok:true,json:async()=>({did:"did:plc:abc",accessJwt:"access"})};if(url.endsWith("createRecord"))return{ok:false,status:400,headers:{get:()=>null}};return{ok:false,status:400};};
  await assert.rejects(publishBluesky({...args,fetchImpl,sleepImpl:async()=>{}}),/bluesky_http_400/);
+});
+
+test("discovery hashtags are tag facets with exact byte ranges, inside 300 graphemes",async()=>{
+ const calls=[];const fetchImpl=async(url,o)=>{calls.push({url,body:JSON.parse(o.body)});return{ok:true,json:async()=>url.endsWith("createSession")?{did:"did:plc:abc",accessJwt:"access"}:{uri:receipt,cid:"cid-1"}};};
+ await publishBluesky({...args,hook:"Ação rápida é útil 👩‍💻".repeat(10),value:"é".repeat(400),fetchImpl});
+ const rec=calls[1].body.record,bytes=new TextEncoder().encode(rec.text);
+ assert.ok(graphemeCount(rec.text)<=300);
+ const tags=rec.facets.filter(f=>f.features[0].$type==="app.bsky.richtext.facet#tag");
+ assert.deepEqual(tags.map(f=>f.features[0].tag),["empreendedorismo","pequenosnegocios","ia"]);
+ for(const f of tags)assert.equal(new TextDecoder().decode(bytes.slice(f.index.byteStart,f.index.byteEnd)),"#"+f.features[0].tag);
+ const link=rec.facets.find(f=>f.features[0].$type==="app.bsky.richtext.facet#link");
+ assert.equal(new TextDecoder().decode(bytes.slice(link.index.byteStart,link.index.byteEnd)),link.features[0].uri);
 });
