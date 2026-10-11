@@ -1,0 +1,52 @@
+name: Short pack for native schedulers (TikTok/Kwai)
+
+# Renders the next days of Shorts with voice and captions, kept as a 7-day
+# artifact for upload in TikTok Studio / Kwai schedulers (API posting by
+# own-account tools is not allowed by TikTok's content sharing guidelines).
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Primeiro dia (YYYY-MM-DD); vazio = amanhã"
+        required: false
+        default: ""
+      days:
+        description: "Quantidade de dias (1-14)"
+        required: false
+        default: "10"
+  schedule:
+    - cron: "0 9 */10 * *"
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install media tools
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-inter
+      - name: Render pack
+        run: |
+          set -euo pipefail
+          args=(--days="${{ inputs.days || '10' }}")
+          if [ -n "${{ inputs.start }}" ]; then args+=(--start="${{ inputs.start }}"); fi
+          node scripts/channels/short-pack.mjs "${args[@]}"
+          ls -la /tmp/short-pack
+          rm -f /tmp/short-pack/*.pcm /tmp/short-pack/*.txt.* /tmp/short-pack/*.t*.txt /tmp/short-pack/*.mp3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-short-pack
+          path: |
+            /tmp/short-pack/*.mp4
+            /tmp/short-pack/legendas.txt
+          retention-days: 7
