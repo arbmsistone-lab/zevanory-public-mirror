@@ -1,5 +1,5 @@
 name = "zevanory-public-router"
-main = "public-router-worker.mjs"
+main = "worker/public-surface-router.mjs"
 compatibility_date = "2026-09-19"
 account_id = "1b26415802588185a86c1d4d3ebf5bdb"
 routes = [

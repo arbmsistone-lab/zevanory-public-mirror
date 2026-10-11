@@ -1,0 +1,66 @@
+name: ZEVANORY public router deploy
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/public-surface-router.mjs"
+      - "wrangler.public-router.toml"
+      - "tests/public-surface-router.test.mjs"
+      - ".github/workflows/public-router-deploy.yml"
+  push:
+    branches: [gh-pages]
+    paths:
+      - "worker/public-surface-router.mjs"
+      - "wrangler.public-router.toml"
+      - "tests/public-surface-router.test.mjs"
+      - ".github/workflows/public-router-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-router-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Router behaviour tests
+        run: node --test tests/public-surface-router.test.mjs
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/gh-pages'
+    needs: validate
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Deploy public router Worker
+        run: npx --yes wrangler@4.135.0 deploy --config wrangler.public-router.toml
+      - name: Live readback (apex home -> storefront, panel not indexable)
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA="ZEVANORY-Monitor/1.0 (+public-router-deploy)"
+          for i in {1..12}; do
+            loc=$(curl -sS -o /dev/null -A "$UA" -w '%{http_code} %{redirect_url}' https://zevanory.api.br/ || true)
+            echo "apex: $loc"
+            if [[ "$loc" == "308 https://vendas.zevanory.api.br/solucoes" ]]; then
+              echo "APEX_HOME_STOREFRONT=PASS"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "APEX_HOME_STOREFRONT=FAIL"
+          exit 1
