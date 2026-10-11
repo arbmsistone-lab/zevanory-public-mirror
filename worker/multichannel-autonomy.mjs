@@ -152,35 +152,17 @@ export async function recordChannelProof(env={},proof={}){const id=clean(proof.c
 
 export async function runMultichannelAutonomy(env={},now=new Date(),fetchImpl=fetch){
   env=resolveChannelCredentials(env);
-  const blog=await ensureDailyBlog(env,now,fetchImpl),channels=channelChecklist(env),kv=env.ZEVANORY_PRIVATE_ARTIFACTS,evidence=[];
-  const day=localContentDay(now),telegram=channels.find(x=>x.id==="telegram");
-  const quotaKey="zpc:multichannel:quota:telegram:"+day;
-  const postKey="zpc:multichannel:evidence:telegram:daily:"+day;
+  // Single publishing engine: the daily blog article and the daily Telegram post are
+  // produced only by the acquisition engine (isolated "25,55" cron, 09:00 and 12:00
+  // America/Sao_Paulo). This legacy hourly path used to publish both at the first
+  // tick of the local day (00:00 = 03:00Z), pre-empting the planned 12:00 slot.
+  // It now only reads the latest article and surfaces receipts for public evidence.
+  const channels=channelChecklist(env),kv=env.ZEVANORY_PRIVATE_ARTIFACTS,evidence=[];
+  const day=localContentDay(now);
+  let index={articles:[]};try{index=JSON.parse(String(await kv?.get?.(BLOG_INDEX_KEY)||"null"))||index;}catch{}
+  const latest=(index.articles||[]).filter(x=>x?.url&&x?.publishedAt).sort((a,b)=>Date.parse(b.publishedAt)-Date.parse(a.publishedAt))[0]||null;
+  const blog={created:[],latest,day,reason:"acquisition_engine_owned"};
   const paused=await creativeAutopublishPaused(env);
-  if(blog.latest&&telegram?.configured&&!paused&&kv?.get&&kv?.put){
-    const prior=await kv.get(postKey),used=Number(await kv.get(quotaKey)||0);
-    if(!prior&&used<1){
-      // Write pending before invoking Telegram. Ambiguous network failures stop
-      // automatic retries rather than risk duplicate unsolicited posts.
-      await kv.put(postKey,JSON.stringify({status:"pending",day,startedAt:now.toISOString()}),{expirationTtl:7*DAY});
-      const campaign="conteudo_"+day.replace(/-/g,"");
-      const utm="?utm_source=telegram&utm_medium=organic&utm_campaign="+campaign;
-      const payload={content:blog.latest.title+"\n\n"+blog.latest.description+
-        "\n\nLeia o guia: "+blog.latest.url+utm+
-        "\nConheça a solução: https://vendas.zevanory.api.br/comprar/ZEV-IA-011"+utm};
-      try{
-        const result=await publishTelegram({env,payload,fetchImpl});
-        const row={channel:"telegram",creative_id:"daily:"+day,provider_post_id:result.provider_post_id,url:result.url,publishedAt:now.toISOString()};
-        await kv.put(postKey,JSON.stringify(row),{expirationTtl:370*DAY});
-        await recordChannelProof(env,row);
-        await kv.put(quotaKey,"1",{expirationTtl:2*DAY});
-        evidence.push(row);
-      }catch(error){
-        // Keep pending marker for manual reconciliation: a timeout may have posted.
-        evidence.push({channel:"telegram",status:"unverified_manual_reconciliation",day,error:String(error?.message||"provider_failed").slice(0,90)});
-      }
-    }
-  }
   // Pinterest retains the existing approved F1 score/compliance path; no new DM.
   let feed=[];try{feed=JSON.parse(String(await kv?.get?.(CREATIVE_AUTONOMY_FEED_KEY)||"[]"));}catch{}
   const creative=(Array.isArray(feed)?feed:[]).find(x=>x?.status==="approved_for_autopublish"&&Number(x?.compliance)===100&&Number(x?.score)>=85);
@@ -210,6 +192,13 @@ export async function runMultichannelAutonomy(env={},now=new Date(),fetchImpl=fe
   for(const proofDay of recentDays){
     let proof=null;
     try{proof=JSON.parse(String(await kv?.get?.("zpc:multichannel:evidence:telegram:daily:"+proofDay)||"null"));}catch{}
+    if(!proof){
+      // Engine receipt (acquisition) for days after the legacy cutover.
+      try{
+        const engine=JSON.parse(String(await kv?.get?.("zpc:acquisition:daily:"+proofDay+":telegram")||"null"));
+        if(engine?.status==="publicado"&&engine.provenance!=="legacy")proof={channel:"telegram",creative_id:"daily:"+proofDay,provider_post_id:String(engine.provider_post_id||""),url:engine.url,publishedAt:engine.at};
+      }catch{}
+    }
     if(proof?.channel==="telegram"&&/^\d{1,20}$/.test(String(proof.provider_post_id||""))&&
        /^https:\/\/t\.me\/[A-Za-z0-9_]+\/\d{1,20}$/.test(String(proof.url||""))&&
        Number.isFinite(Date.parse(String(proof.publishedAt||"")))&&!seen.has(String(proof.provider_post_id))){

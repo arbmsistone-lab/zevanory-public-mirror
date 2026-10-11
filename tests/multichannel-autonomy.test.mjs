@@ -37,29 +37,28 @@ test("one SEO article per Fortaleza calendar day for two consecutive dates",asyn
   assert.match(html,/utm_source=blog/);
   assert.match(html,/https:\/\/vendas\.zevanory\.api\.br\/comprar\/ZEV-IA-011\?utm_source=blog/);
 });
-test("hourly cycle publishes one approved daily article to Telegram with real-URL contract and UTM",async()=>{
+test("legacy hourly cycle never publishes Telegram or creates the blog article (single engine)",async()=>{
   const store=kv(),calls=[];
   const env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"@zevanory"};
-  const fetchImpl=async (url,options)=>{calls.push({url,body:JSON.parse(options.body)});return new Response(JSON.stringify({ok:true,result:{message_id:9}}),{status:200});};
-  const out=await runMultichannelAutonomy(env,new Date("2026-10-06T12:00:00Z"),fetchImpl);
-  assert.equal(out.blog.created.length,1);
-  assert.equal(out.evidence.length,1);
-  assert.equal(out.evidence[0].url,"https://t.me/zevanory/9");
-  assert.match(calls[0].body.text,/\/comprar\/ZEV-IA-011\?utm_source=telegram/);
-  assert.equal((await store.get("zpc:multichannel:evidence:telegram:daily:2026-10-06"))!==null,true);
+  const fetchImpl=async (url,options)=>{calls.push(String(url));return new Response(JSON.stringify({ok:true,result:{message_id:9}}),{status:200});};
+  // 03:00Z = 00:00 Sao Paulo, the slot where the legacy post used to pre-empt 12:00.
+  for(const at of ["2026-10-11T03:00:00Z","2026-10-11T15:00:00Z"]){
+    const out=await runMultichannelAutonomy(env,new Date(at),fetchImpl);
+    assert.equal(out.blog.created.length,0);assert.equal(out.blog.reason,"acquisition_engine_owned");
+  }
+  assert.equal(calls.filter(u=>u.includes("api.telegram.org")).length,0);
+  assert.equal(await store.get("zpc:multichannel:evidence:telegram:daily:2026-10-11"),null);
+  assert.equal(await store.get("zpc:blog:daily:2026-10-11"),null);
 });
-test("Telegram daily publication is idempotent within the day and renews tomorrow",async()=>{
-  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"@zevanory"};
-  let calls=0;
-  const fetchImpl=async()=>{calls++;return new Response(JSON.stringify({ok:true,result:{message_id:calls}}),{status:200});};
-  for(let i=0;i<3;i++)await runMultichannelAutonomy(env,new Date("2026-10-07T12:00:00Z"),fetchImpl);
-  assert.equal(calls,1);
-  assert.equal(await store.get("zpc:multichannel:quota:telegram:2026-10-07"),"1");
-  await runMultichannelAutonomy(env,new Date("2026-10-08T12:00:00Z"),fetchImpl);
-  assert.equal(calls,2);
-  assert.equal(await store.get("zpc:multichannel:quota:telegram:2026-10-08"),"1");
+test("legacy cycle surfaces the engine Telegram receipt and the latest article as evidence",async()=>{
+  const store=kv();
+  await store.put("zpc:acquisition:daily:2026-10-12:telegram",JSON.stringify({channel:"telegram",status:"publicado",provider_post_id:"12",url:"https://t.me/zevanory/12",at:"2026-10-12T15:25:01.000Z"}));
+  await store.put("zpc:blog:index:v1",JSON.stringify({articles:[{slug:"a",url:"https://zevanory.api.br/blog/a",publishedAt:"2026-10-11T12:25:00Z"},{slug:"b",url:"https://zevanory.api.br/blog/b",publishedAt:"2026-10-12T12:25:00Z"}]}));
+  const out=await runMultichannelAutonomy({ZEVANORY_PRIVATE_ARTIFACTS:store},new Date("2026-10-12T16:00:00Z"),async()=>{throw new Error("no network expected")});
+  assert.equal(out.blog.latest.slug,"b");
+  assert.deepEqual(out.evidence.map(e=>e.url),["https://t.me/zevanory/12"]);
+  assert.equal(JSON.parse(await store.get("zpc:multichannel:state:v1")).evidence.length,1);
 });
-
 test("telegram photo caption stays within the 1024-char Bot API limit", async () => {
   const { publishTelegram, telegramCaption, TELEGRAM_CAPTION_MAX } = await import("../worker/multichannel-autonomy.mjs");
   const long = ("palavra ".repeat(400)).trim();
@@ -89,26 +88,12 @@ test("telegram falls back to a text message when the photo is refused with 400, 
   await assert.rejects(publishTelegram({ env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHANNEL_ID: "@zevanory" }, payload: { content: "x", media_url: "https://zevanory.api.br/brand/export/post-01.png" }, fetchImpl: failing }), /provider_http_401/);
 });
 
-test("Telegram post evidence survives hourly cron and contains two consecutive verified days",async()=>{
-  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"@zevanory"};
-  let sent=0;
-  const fetchImpl=async()=>new Response(JSON.stringify({ok:true,result:{message_id:100+(++sent)}}),{status:200});
-  const day1=await runMultichannelAutonomy(env,new Date("2026-10-08T12:00:00Z"),fetchImpl);
-  const repeat=await runMultichannelAutonomy(env,new Date("2026-10-08T13:00:00Z"),fetchImpl);
-  assert.equal(day1.evidence.length,1);
-  assert.equal(repeat.evidence.length,1);
-  assert.equal(repeat.evidence[0].url,"https://t.me/zevanory/101");
-  const day2=await runMultichannelAutonomy(env,new Date("2026-10-09T12:00:00Z"),fetchImpl);
-  assert.equal(sent,2);
-  assert.equal(day2.evidence.length,2);
-  assert.deepEqual(new Set(day2.evidence.map(e=>e.provider_post_id)),new Set(["101","102"]));
-  const later=await runMultichannelAutonomy(env,new Date("2026-10-09T13:00:00Z"),fetchImpl);
-  assert.equal(sent,2);
-  assert.equal(later.evidence.length,2);
-  const publicState=JSON.parse(await store.get("zpc:multichannel:state:v1"));
-  assert.equal(publicState.evidence.length,2);
+test("legacy Telegram receipts from before the cutover remain visible as evidence",async()=>{
+  const store=kv();
+  await store.put("zpc:multichannel:evidence:telegram:daily:2026-10-10",JSON.stringify({channel:"telegram",creative_id:"daily:2026-10-10",provider_post_id:"6",url:"https://t.me/zevanory/6",publishedAt:"2026-10-10T03:00:06.000Z"}));
+  const out=await runMultichannelAutonomy({ZEVANORY_PRIVATE_ARTIFACTS:store},new Date("2026-10-11T12:00:00Z"),async()=>{throw new Error("no network")});
+  assert.deepEqual(out.evidence.map(e=>e.provider_post_id),["6"]);
 });
-
 test("Telegram resolves a public t.me URL even when configured with numeric chat ID",async()=>{
   const fetchImpl=async()=>new Response(JSON.stringify({ok:true,result:{message_id:42,chat:{id:-10098765,username:"zevanory"}}}),{status:200});
   const out=await publishTelegram({env:{TELEGRAM_BOT_TOKEN:"s",TELEGRAM_CHANNEL_ID:"-10098765"},payload:{content:"Guia publicado"},fetchImpl});
