@@ -328,7 +328,16 @@ const wrapped = {
       // Preserve the timestamp and facts of historical text-only records. Null means
       // the old runtime did not record that field; it is not new conversation evidence.
       if (last) last = { mode: null, model: null, text_sent: last.sent ?? false, voice_sent: false, voice_error: null, ...last };
-      return new Response(JSON.stringify({ service: "zevanory-whatsapp-instant-reply", enabled: (env.WHATSAPP_INSTANT_REPLY ?? "true") !== "false", ai_binding_present: Boolean(normalized.AI?.run), broker_binding_present: Boolean(normalized.WHATSAPP_BROKER?.fetch), voice_free_only: normalized.VOICE_TTS_FREE_ONLY === "true", gemini_voice_configured: Boolean(globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.gemini_api_key), sales_globally_enabled: normalized.SALE_GLOBALLY_ENABLED === "true", release_sha: normalized.ZEVANORY_RELEASE_SHA || null, last }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+      // Effective commercial state, identical to the public /api/sales/status
+      // readback (owner switch + fresh preflight + financial proof + release
+      // gates). The deploy var SALE_GLOBALLY_ENABLED is always "false" by design
+      // (fail-closed default) and is not the sales state. Read-only.
+      let salesEffective = false;
+      try {
+        const salesStatus = await handleSalesControl(new Request(new URL("/api/sales/status", url), { method: "GET" }), normalized, { sqlFactory: whatsappProofDatabase, worker, ctx });
+        salesEffective = (await salesStatus?.json?.())?.open === true;
+      } catch { salesEffective = false; }
+      return new Response(JSON.stringify({ service: "zevanory-whatsapp-instant-reply", enabled: (env.WHATSAPP_INSTANT_REPLY ?? "true") !== "false", ai_binding_present: Boolean(normalized.AI?.run), broker_binding_present: Boolean(normalized.WHATSAPP_BROKER?.fetch), voice_free_only: normalized.VOICE_TTS_FREE_ONLY === "true", gemini_voice_configured: Boolean(globalThis.__ZEVANORY_WHATSAPP_RUNTIME__?.gemini_api_key), sales_globally_enabled: salesEffective, sales_state_source: "/api/sales/status", release_sha: normalized.ZEVANORY_RELEASE_SHA || null, last }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
     }
 
     if (url.pathname === "/api/support/knowledge") {
