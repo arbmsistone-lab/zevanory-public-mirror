@@ -34,7 +34,6 @@ on:
       - "worker/reviews.mjs"
       - "worker/owner-alerts.mjs"
       - "worker/operational-activity-sync.mjs"
-      - "worker/whatsapp-activity.mjs"
       - "worker/activity-ledger.mjs"
       - "worker/whatsapp-conversation.mjs"
       - "worker/post-sale.mjs"

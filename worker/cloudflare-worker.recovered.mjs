@@ -1,5 +1,4 @@
 import { saveWhatsappObservation } from "./voice-operational-audit.mjs";
-import { recordWhatsappReplyActivity } from "./whatsapp-activity.mjs";
 import { whatsappInboundSafety } from "./whatsapp-inbound-safety.mjs";
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
@@ -15180,7 +15179,6 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
   const sentText = await postWhatsappMessage(t, text);
   Object.assign(status, { text_sent: sentText.ok, text_status: sentText.status, text_error: sentText.error, text_provider_message_id: sentText.provider_message_id || null });
   await checkpoint("text_sent");
-  if (sentText.ok) await recordWhatsappReplyActivity(kv, item, reply, sentText).catch(() => null);
   await saveWhatsappObservation(operationalStore,item,question,reply,status,{speech_text:voiceSpeech}).catch(()=>{});
   const wantsVoice = inboundAudio || /\b(audio|áudio|voz|fala(r)? comigo)\b/i.test(question || "");
   if (wantsVoice && question && process.env.WHATSAPP_VOICE_REPLY !== "false") {

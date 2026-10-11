@@ -38,8 +38,26 @@ export async function syncOperationalActivity(env, { sqlFactory, now = Date.now(
       }
     } catch { out.sections.refund_requested_error = 1; }
   }
-  // Database-backed facts require the launch epoch (production orders only).
   if (!env?.DATABASE_URL || !sqlFactory) return out;
+  // WhatsApp: one aggregated event per completed hour (replies, and replies that
+  // carried a purchase link), from the Neon observation store. Per-message KV
+  // writes are forbidden by the WhatsApp KV write budget (dedup put only).
+  try {
+    const rows = await sqlFactory(env.DATABASE_URL).query(
+      "select date_trunc('hour', updated_at) as hour, " +
+      "count(*) filter (where store_value like '%\"text_sent\":true%') as replies, " +
+      "count(*) filter (where store_value like '%\"text_sent\":true%' and store_value like '%vendas.zevanory.api.br/comprar/ZEV-%') as links " +
+      "from whatsapp_observations where updated_at >= $1 and updated_at < date_trunc('hour', $2::timestamptz) " +
+      "group by 1 order by 1 desc limit 3", [new Date(now - 3 * 3600000).toISOString(), new Date(now).toISOString()]);
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const hour = new Date(row?.hour), replies = Number(row?.replies), links = Number(row?.links);
+      if (!Number.isFinite(hour.getTime()) || !Number.isSafeInteger(replies) || replies <= 0) continue;
+      const h = hour.toISOString().slice(0, 13);
+      await emit("whatsapp_replied", { type: "whatsapp_replied", channel: "whatsapp", status: "replied-" + Math.min(replies, 9999), ref: "wa-hour:" + h });
+      if (Number.isSafeInteger(links) && links > 0) await emit("link_sent", { type: "link_sent", channel: "whatsapp", status: "sent-" + Math.min(links, 9999), ref: "wa-link-hour:" + h, link: "https://vendas.zevanory.api.br/solucoes" });
+    }
+  } catch { out.sections.whatsapp_error = 1; }
+  // Database-backed commercial facts require the launch epoch (production orders only).
   let epoch; try { epoch = JSON.parse(String(await kv.get(LAUNCH_EPOCH_KV_KEY) || "null"))?.at; } catch {}
   const startedAt = Date.parse(String(epoch || ""));
   if (!Number.isFinite(startedAt) || startedAt > now) return { ...out, idle: "no_launch_epoch" };

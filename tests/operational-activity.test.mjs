@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { syncOperationalActivity } from "../worker/operational-activity-sync.mjs";
-import { recordWhatsappReplyActivity } from "../worker/whatsapp-activity.mjs";
 import { createFinancialProofSnapshot, COMMERCIAL_PROOF_KV_KEY, LAUNCH_EPOCH_KV_KEY } from "../worker/commercial-metrics-projection.mjs";
 
 const SHA = "b".repeat(40), now = Date.parse("2026-10-11T12:35:00Z");
@@ -46,7 +45,7 @@ test("deliveries, downloads and provider-verified refunds come from production o
   const out = await syncOperationalActivity(env, { sqlFactory, now });
   assert.equal(out.sections.delivery_sent, 1); assert.equal(out.sections.download_done, 1);
   assert.equal(out.sections.refund_approved, 1, "refund after the proof measurement is not credited");
-  for (const c of calls) { assert.match(c.text, /certification_pilot is false/); assert.deepEqual(c.params, ["2026-10-09T20:19:12.000Z"]); }
+  for (const c of calls.filter(c => !c.text.includes("whatsapp_observations"))) { assert.match(c.text, /certification_pilot is false/); assert.deepEqual(c.params, ["2026-10-09T20:19:12.000Z"]); }
   const refund = events(store).find(e => e.type === "refund_approved");
   assert.equal(refund.financialProof, "provider-get-verified");
   const again = await syncOperationalActivity(env, { sqlFactory, now: now + 60000 });
@@ -62,25 +61,27 @@ test("without a verified financial snapshot no refund_approved is emitted; DB er
   const idle = await syncOperationalActivity({ ZEVANORY_PRIVATE_ARTIFACTS: kv(), DATABASE_URL: "x" }, { sqlFactory: () => ({ query: async () => [] }), now });
   assert.equal(idle.idle, "no_launch_epoch");
 });
-test("WhatsApp reply and purchase link are recorded only after the provider accepted the text", async () => {
-  const store = kv();
-  const item = { message_id: "wamid.ABC", from: "5588999999999" };
-  const reply = { body: "Claro! Compre aqui: https://vendas.zevanory.api.br/comprar/ZEV-IA-011?utm_source=whatsapp&utm_medium=chat&utm_campaign=atendimento ." };
-  assert.equal((await recordWhatsappReplyActivity(store, item, reply, { ok: false })).emitted, 0);
-  assert.equal((await recordWhatsappReplyActivity(store, item, reply, { ok: true }, { now })).emitted, 2);
-  assert.equal((await recordWhatsappReplyActivity(store, item, reply, { ok: true }, { now })).emitted, 0, "idempotent per message");
+test("WhatsApp replies and purchase links: one aggregated event per completed hour, no per-message KV write", async () => {
+  const store = kv(), calls = [];
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: store, DATABASE_URL: "postgres://x" };
+  const sqlFactory = () => ({ query: async (text, params) => { calls.push({ text, params });
+    if (text.includes("whatsapp_observations")) return [{ hour: "2026-10-11T11:00:00Z", replies: 4, links: 2 }, { hour: "2026-10-11T10:00:00Z", replies: 1, links: 0 }, { hour: "bad", replies: 3, links: 1 }];
+    return []; } });
+  const out = await syncOperationalActivity(env, { sqlFactory, now });
+  assert.equal(out.sections.whatsapp_replied, 2); assert.equal(out.sections.link_sent, 1);
+  const q = calls.find(c => c.text.includes("whatsapp_observations"));
+  assert.match(q.text, /updated_at < date_trunc\('hour', \$2::timestamptz\)/, "only completed hours");
   const ev = events(store);
-  assert.deepEqual(ev.map(e => e.type).sort(), ["link_sent", "whatsapp_replied"]);
-  assert.equal(ev.find(e => e.type === "link_sent").link, "https://vendas.zevanory.api.br/comprar/ZEV-IA-011?utm_source=whatsapp&utm_medium=chat&utm_campaign=atendimento");
-  const blob = JSON.stringify(ev);
-  assert.ok(!blob.includes("5588999999999") && !blob.includes("wamid.ABC") && !blob.includes("Claro"));
-  const noLink = kv();
-  assert.equal((await recordWhatsappReplyActivity(noLink, { message_id: "wamid.X" }, { body: "Oi!" }, { ok: true }, { now })).emitted, 1);
+  assert.deepEqual(ev.filter(e => e.type === "whatsapp_replied").map(e => e.status).sort(), ["replied-1", "replied-4"]);
+  assert.equal(ev.find(e => e.type === "link_sent").status, "sent-2");
+  assert.ok(!JSON.stringify(ev).includes("5588"));
+  assert.equal((await syncOperationalActivity(env, { sqlFactory, now: now + 60000 })).sections.whatsapp_replied, undefined, "idempotent per hour");
 });
-test("wiring: WhatsApp hook after text_sent; operational sync in the isolated 5,35 cron", () => {
+test("WhatsApp reply path itself is untouched (KV write budget: dedup put only)", () => {
   const rec = readFileSync(new URL("../worker/cloudflare-worker.recovered.mjs", import.meta.url), "utf8");
-  const i = rec.indexOf('await checkpoint("text_sent");');
-  assert.ok(i > 0 && rec.indexOf("if (sentText.ok) await recordWhatsappReplyActivity(kv, item, reply, sentText)", i) - i < 120);
+  assert.equal(rec.includes("emitActivity"), false);
+});
+test("wiring: operational sync in the isolated 5,35 cron; inline emits for leads and alerts", () => {
   const compat = readFileSync(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url), "utf8");
   const s = compat.indexOf('if (controller?.cron === "5,35 * * * *")'), e = compat.indexOf('if (controller?.cron === "15,45 * * * *")', s);
   assert.ok(compat.slice(s, e).includes("syncOperationalActivity(normalized"));
