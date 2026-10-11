@@ -17,6 +17,7 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
+          exec > >(tee /tmp/out.txt) 2>&1
           base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values"
           get(){ curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$1")"; }
           for d in 2026-10-07 2026-10-08 2026-10-09 2026-10-10 2026-10-11; do
@@ -43,3 +44,12 @@ jobs:
             d=json.load(sys.stdin); print(d.get("generatedAt"), [ (c.get("id"),c.get("configured"),c.get("missing")) for c in d.get("channels",[])], [ {k:e.get(k) for k in ("channel","status","error","publishedAt")} for e in d.get("evidence",[])])
           except Exception as e: print("none",e)'
           echo "== creative pause"; get "zpc:creative-autonomy:paused:v1" | head -c 200; echo
+      - name: Publish as annotation
+        if: always()
+        run: |
+          python3 - <<'PY'
+          s=open('/tmp/out.txt').read()
+          chunks=[s[i:i+3500] for i in range(0,len(s),3500)]
+          for i,c in enumerate(chunks[:9]):
+              print('::notice title=DIAG_%d::'%i + c.replace('%','%25').replace('\r','').replace('\n','%0A'))
+          PY
