@@ -543,15 +543,27 @@ const wrapped = {
 wrapped.scheduled = async (controller, env, ctx) => {
   const normalized = normalizeEnv(env);
   if (controller?.cron === "5,35 * * * *") {
-    // Brand profiles run here, isolated from the hourly cron: on Workers Free the
-    // hourly invocation exhausts its 50-subrequest budget (acquisition, blog,
-    // email, orders) before the profile sync is reached. Conforming profiles cost
-    // only GET readbacks; writes happen solely on verified drift.
+    // Workers Free allows 5 cron triggers per ACCOUNT (all used), so this isolated
+    // invocation is shared by tick minute, each with its own subrequest budget:
+    //  :05 -> brand profiles (GET readbacks; writes only on verified drift)
+    //  :35 -> acquisition (blog 09:35, Telegram 12:35, Bluesky 19:35 Sao Paulo).
+    // Acquisition used to run last in the hourly invocation, after nine
+    // maintenance tasks had exhausted the 50-subrequest budget.
+    const tickMinute = new Date(Number(controller?.scheduledTime) || Date.now()).getUTCMinutes();
+    if (tickMinute >= 30) {
+      try {
+        const out=await runAcquisitionEngine(normalized,new Date());
+        console.info("acquisition_cycle",JSON.stringify({ok:out.ok===true,day:out.day||null,channels:(out.outcomes||[]).map(x=>({channel:x.channel,status:x.status,code:x.code||null}))}));
+      } catch {
+        console.error("acquisition_cycle_failed");
+      }
+    } else {
     try {
       const brand=await syncBrandProfiles(normalized);
       console.info("brand_profile_cycle",JSON.stringify({statuses:(brand.profiles||[]).map(p=>({channel:p.channel,status:p.status,code:p.code||null}))}));
     } catch {
       console.error("brand_profile_cycle_unverified");
+    }
     }
     try {
       const out = await syncProductionActivity(normalized, {sqlFactory:whatsappProofDatabase});
@@ -614,17 +626,7 @@ wrapped.scheduled = async (controller, env, ctx) => {
   tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase, production: true }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);
-  // The existing Cloudflare hourly cron is the sole ingress for acquisition.
-  // Run after legacy scheduled work to prevent competing Telegram/Blog writes.
-  if (controller?.cron === "0 * * * *") {
-    try {
-      const out=await runAcquisitionEngine(normalized,new Date());
-      console.info("acquisition_cycle",JSON.stringify({ok:out.ok===true,day:out.day||null,channels:(out.outcomes||[]).map(x=>({channel:x.channel,status:x.status}))}));
-    } catch {
-      console.error("acquisition_cycle_failed");
-    }
-    // Profile maintenance moved to the isolated "5,35" cron (subrequest budget).
-  }
+  // Acquisition (:35) and brand profiles (:05) run in the isolated "5,35" cron.
 };
 if (typeof worker.queue === "function") {
   wrapped.queue = async (batch, env, ctx) => worker.queue(batch, normalizeEnv(env), ctx);
