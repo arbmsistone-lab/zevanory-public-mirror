@@ -86,15 +86,18 @@ test("ambiguous Telegram failure stays pending (no blind repost); definitive 4xx
  assert.equal(amb.sends,1);
  const def=await run("400");assert.equal(def.status,"publicado");assert.equal(def.sends,3);
 });
-test("acquisition runs only in its isolated 25,55 cron invocation",()=>{
+test("acquisition runs only at the :35 tick of the isolated 5,35 cron (no new account cron)",()=>{
  const src=readFileSync(new URL("../worker/cloudflare-worker.compat.mjs",import.meta.url),"utf8");
- const start=src.indexOf('if (controller?.cron === "25,55 * * * *")');
- assert.ok(start>0);
- const block=src.slice(start,src.indexOf("return;",start));
- assert.match(block,/runAcquisitionEngine\(normalized,new Date\(\)\)/);
+ const start=src.indexOf('if (controller?.cron === "5,35 * * * *")');
+ const end=src.indexOf('if (controller?.cron === "15,45 * * * *")',start);
+ assert.ok(start>0&&end>start);
+ const block=src.slice(start,end);
+ const tick=block.indexOf("tickMinute >= 30"),acq=block.indexOf("runAcquisitionEngine(normalized,new Date())"),brand=block.indexOf("await syncBrandProfiles(normalized)");
+ assert.ok(tick>0&&acq>tick&&brand>acq,"acquisition in the :35 branch, profiles in the :05 branch");
  assert.equal(src.split("runAcquisitionEngine(normalized").length-1,1);
+ assert.equal(src.includes('"25,55 * * * *"'),false);
  const prep=readFileSync(new URL("../scripts/deploy/prepare-central-candidate.py",import.meta.url),"utf8");
- assert.match(prep,/"25,55 \* \* \* \*"/);
+ assert.equal(/crons\.append\("25,55/.test(prep),false);
 });
 test("one cycle publishes Telegram and Bluesky after peak, then never duplicates",async()=>{
  const store=kv(),counts={telegram:0,createRecord:0},env={ZEVANORY_PRIVATE_ARTIFACTS:store,TELEGRAM_BOT_TOKEN:"t",TELEGRAM_CHANNEL_ID:"@zevanory",BLUESKY_HANDLE:"zevanory.bsky.social",BLUESKY_APP_PASSWORD:"password"};
