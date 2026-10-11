@@ -66,3 +66,21 @@ test("missing or failing shared KV fails closed without exposing references",asy
  assert.deepEqual(result,{emitted:false,reason:"kv_write_failed"});
  assert.equal(ACTIVITY_TTL_SECONDS,90*86400);
 });
+
+test("regression: dedup markers survive the panel bridge, which deletes non-event zpc-activity:v1:* keys",async()=>{
+ const m=new Map();const kv={get:async k=>m.get(k)??null,put:async(k,v)=>{m.set(k,v)}};
+ const env={ZEVANORY_PRIVATE_ARTIFACTS:kv},arg={type:"deploy",channel:"system",status:"live",ref:"deploy:"+"a".repeat(40)};
+ assert.equal((await emitActivity(env,arg,{now:1791722114351})).emitted,true);
+ // Simulate the panel syncSharedActivity: consume events, delete any other kind under the bridge prefix.
+ for(const k of [...m.keys()])if(k.startsWith("zpc-activity:v1:")){const kind=k.split(":")[2];m.delete(k);assert.ok(kind==="event",k);}
+ assert.ok([...m.keys()].some(k=>k.startsWith("zpc-activity-ref:v1:")),"marker kept outside the bridge prefix");
+ assert.equal((await emitActivity(env,arg,{now:1791722114351+1800000})).duplicate,true);
+ assert.equal([...m.keys()].filter(k=>k.startsWith("zpc-activity:v1:event:")).length,0,"not re-emitted");
+});
+test("a legacy marker (old prefix) still counts as already emitted",async()=>{
+ const {createHash}=await import("node:crypto");
+ const m=new Map();const kv={get:async k=>m.get(k)??null,put:async(k,v)=>{m.set(k,v)}};
+ const arg={type:"deploy",channel:"system",status:"live",ref:"deploy:"+"b".repeat(40)};
+ m.set("zpc-activity:v1:ref:"+createHash("sha256").update("deploy:"+arg.ref).digest("hex"),"x");
+ assert.equal((await emitActivity({ZEVANORY_PRIVATE_ARTIFACTS:kv},arg,{now:1})).duplicate,true);
+});
