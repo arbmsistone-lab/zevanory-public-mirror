@@ -42,7 +42,7 @@ jobs:
         with:
           node-version: "22"
       - name: Install media tools
-        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-inter && fc-match -f "%{file}\n" "Inter:style=ExtraBold"
       - name: Unit tests (plan, idempotency, recording)
         run: node --test tests/youtube-daily-short.test.mjs
       - name: Render, gate and publish today's Short

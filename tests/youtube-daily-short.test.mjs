@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { planShort, publishShort, recordPublication, cloudflareKv, TARGET_CHANNEL, localDay, shortTiming } from "../scripts/channels/youtube-daily-short.mjs";
+import { planShort, publishShort, recordPublication, cloudflareKv, TARGET_CHANNEL, localDay, shortTiming, beatTimes, wrapText } from "../scripts/channels/youtube-daily-short.mjs";
 import { calendarEntry } from "../worker/acquisition-engine.mjs";
 
 test("daily plan follows the calendar, passes the F1 gate and is unlisted with an idempotency marker", () => {
@@ -88,4 +88,21 @@ test("Short lasts as long as the narration (no dead air) and reveals every line 
   const long = shortTiming(30, 4);
   assert.equal(long.duration, 20);
   assert.ok(Math.max(...long.reveal) < long.duration);
+});
+
+test("beats snap to the real pauses of the voice and keep their order", () => {
+  const said = [["Sem tempo para organizar?", "Isso é para salões de beleza."], ["Comece com 15 minutos por semana."], ["Vendas na Prática, com garantia de sete dias."], ["Veja o guia no link da descrição."]];
+  const starts = beatTimes(said, 12, [1.4, 3.9, 6.6, 9.2], 13.2);
+  assert.deepEqual(starts, [0, 3.9, 6.6, 9.2]);
+  const fallback = beatTimes(said, 12, [], 13.2);
+  assert.ok(fallback[1] > 0 && fallback[1] < fallback[2] && fallback[2] < fallback[3] && fallback[3] < 13.2);
+});
+test("every calendar day has a full on-screen script that wraps within the frame", () => {
+  for (let d = 0; d < 35; d++) {
+    const day = new Date(Date.UTC(2026, 9, 11 + d)).toISOString().slice(0, 10), p = planShort(day);
+    assert.equal(p.said.length, 4);
+    for (const k of ["hook", "niche", "tip", "product", "offer", "cta", "url"]) assert.ok(String(p.screen[k] || "").trim(), k);
+    assert.ok(wrapText(p.screen.hook, 14, 3), "hook fits in 3 lines");
+    assert.match(p.speech, /garantia de sete dias/);
+  }
 });
