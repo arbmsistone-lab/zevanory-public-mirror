@@ -2,7 +2,7 @@ name: YouTube autonomous daily Short
 
 # P1-5: one Short per local day from the content calendar (15:00 America/Sao_Paulo).
 # Rendering needs ffmpeg, which Workers Free cannot run, so the publisher is this
-# scheduled job. Upload is UNLISTED (YouTube keeps uploads from unaudited API
+# scheduled job. Upload is PUBLIC (YouTube may keep uploads from unaudited API
 # projects private until the audit passes), idempotent per day, and recorded as a
 # masked post_published activity in the shared KV.
 on:

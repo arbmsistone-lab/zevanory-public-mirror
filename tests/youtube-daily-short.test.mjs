@@ -4,12 +4,12 @@ import { readFileSync } from "node:fs";
 import { planShort, publishShort, recordPublication, cloudflareKv, TARGET_CHANNEL, localDay, shortTiming, beatTimes, wrapText } from "../scripts/channels/youtube-daily-short.mjs";
 import { calendarEntry } from "../worker/acquisition-engine.mjs";
 
-test("daily plan follows the calendar, passes the F1 gate and is unlisted with an idempotency marker", () => {
+test("daily plan follows the calendar, passes the F1 gate and is public with an idempotency marker", () => {
   for (const day of ["2026-10-11", "2026-10-12", "2026-10-30"]) {
     const p = planShort(day), e = calendarEntry(day);
     assert.equal(p.entry.theme_id, e.theme_id);
     assert.equal(p.gate.action, "publish"); assert.equal(p.gate.compliance, 100); assert.ok(p.gate.score >= 85);
-    assert.equal(p.privacyStatus, "unlisted");
+    assert.equal(p.privacyStatus, "public");
     assert.match(p.marker, /^zevanory-short-key:[0-9a-f]{16}$/);
     assert.ok(p.description.includes(p.marker));
     assert.match(p.link, new RegExp("^https://vendas\\.zevanory\\.api\\.br/comprar/" + e.product.sku + "\\?utm_source=youtube"));
@@ -20,14 +20,14 @@ test("daily plan follows the calendar, passes the F1 gate and is unlisted with a
   assert.equal(localDay(new Date("2026-10-12T02:59:00Z")), "2026-10-11");
 });
 
-function youtubeMock({ existing = null, privacy = "unlisted" } = {}) {
+function youtubeMock({ existing = null, privacy = "public" } = {}) {
   const calls = [];
   const fetchImpl = async (url, init = {}) => {
     calls.push([String(url), init.method || "GET"]);
     const u = String(url);
     if (u.includes("/channels?")) return { ok: true, json: async () => ({ items: [{ id: TARGET_CHANNEL, contentDetails: { relatedPlaylists: { uploads: "UU1" } } }] }) };
     if (u.includes("/playlistItems?")) return { ok: true, json: async () => ({ items: existing ? [{ snippet: { description: "x\n" + existing, resourceId: { videoId: "OLD123" } } }] : [] }) };
-    if (u.includes("uploadType=resumable")) { assert.equal(JSON.parse(init.body).status.privacyStatus, "unlisted"); return { ok: true, status: 200, headers: { get: k => k === "location" ? "https://upload.example/session" : null } }; }
+    if (u.includes("uploadType=resumable")) { assert.equal(JSON.parse(init.body).status.privacyStatus, "public"); return { ok: true, status: 200, headers: { get: k => k === "location" ? "https://upload.example/session" : null } }; }
     if (u === "https://upload.example/session") return { ok: true, status: 200, json: async () => ({ id: "NEW456" }) };
     if (u.includes("/videos?part=status")) return { ok: true, json: async () => ({ items: [{ status: { uploadStatus: "processed", privacyStatus: privacy }, processingDetails: { processingStatus: "succeeded" } }] }) };
     throw new Error("unexpected " + u);
@@ -35,7 +35,7 @@ function youtubeMock({ existing = null, privacy = "unlisted" } = {}) {
   return { calls, fetchImpl };
 }
 
-test("uploads once as unlisted and reports provider-locked privacy honestly", async () => {
+test("uploads once as public and reports provider-locked privacy honestly", async () => {
   const plan = planShort("2026-10-11"), m = youtubeMock({ privacy: "private" });
   const r = await publishShort(plan, Buffer.from("mp4"), { accessToken: "t", fetchImpl: m.fetchImpl, sleep: async () => {} });
   assert.equal(r.video_id, "NEW456"); assert.equal(r.reused, false);
