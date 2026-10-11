@@ -39,4 +39,36 @@
   <url><loc>https://zevanory.api.br/calculadora-preco-de-venda</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://zevanory.api.br/calculadora-margem-de-lucro</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://zevanory.api.br/calculadora-ponto-de-equilibrio</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-padaria</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-pizzaria</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-hamburgueria</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-acaiteria</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-confeitaria</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-farmacia</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-otica</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-papelaria</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-materiais-de-construcao</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-assistencia-tecnica-de-celular</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-autoescola</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-escola-de-idiomas</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-clinica-odontologica</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-psicologo</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-nutricionista</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-fisioterapia</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-estetica</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-manicure</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-lava-jato</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-eletricista-e-encanador</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-fotografo</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-arquitetura-e-design-de-interiores</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-advocacia</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-agencia-de-viagens</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-floricultura</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-marmitaria</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-pousada</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/ia-para-distribuidora-de-gas-e-agua</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/calculadora-fluxo-de-caixa</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zevanory.api.br/calculadora-preco-hora-servico</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zevanory.api.br/calculadora-taxa-maquininha</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zevanory.api.br/calculadora-cmv</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
 </urlset>
