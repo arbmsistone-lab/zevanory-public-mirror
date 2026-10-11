@@ -43,6 +43,28 @@ async function retryXrpc({fetchImpl,url,body,token,retries=2,sleepImpl=ms=>new P
  }
  throw new Error("bluesky_retry_exhausted");
 }
+// app.bsky.feed.post declares record key type "tid": a free-form rkey such as
+// "zev-20261010-zev-ia-011" is rejected by the PDS. The TID is derived from the
+// day's scheduled slot (19:00 America/Sao_Paulo) and the topic, so every retry of
+// the same daily post reuses the same record key and can never duplicate it.
+const TID_ALPHABET="234567abcdefghijklmnopqrstuvwxyz";
+const fnv1a=s=>{let h=0x811c9dc5;for(const c of String(s)){h^=c.codePointAt(0);h=Math.imul(h,0x01000193)>>>0;}return h>>>0;};
+export function deterministicTid(day,topic="daily"){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(day)))throw new Error("bluesky_day_invalid");
+ const ms=Date.parse(day+"T22:00:00Z");if(!Number.isFinite(ms))throw new Error("bluesky_day_invalid");
+ const h=fnv1a(clean(topic).toLowerCase());
+ const micros=BigInt(ms)*1000n+BigInt(h%1000);
+ let v=(micros<<10n)|BigInt(h%1024),out="";
+ for(let i=0;i<13;i++){out=TID_ALPHABET[Number(v&31n)]+out;v>>=5n;}
+ return out;
+}
+export const isTid=v=>/^[234567abcdefghij][234567abcdefghijklmnopqrstuvwxyz]{12}$/.test(String(v));
+async function existingRecord({fetchImpl,did,rkey,token}){
+ // Idempotency readback: an ambiguous earlier attempt may already have created the post.
+ const u=new URL("https://bsky.social/xrpc/com.atproto.repo.getRecord");
+ u.searchParams.set("repo",did);u.searchParams.set("collection","app.bsky.feed.post");u.searchParams.set("rkey",rkey);
+ try{const r=await fetchImpl(u.toString(),{method:"GET",headers:{authorization:"Bearer "+token},signal:AbortSignal.timeout(15000)});if(!r.ok)return null;const j=await r.json();return j?.uri&&j?.cid?j:null;}catch{return null;}
+}
 export async function publishBluesky({env={},title,hook,value,cta,productUrl,day,topic="daily",fetchImpl=fetch,sleepImpl}={}){
  if(!blueskyReady(env))return {status:"aguardando credencial"};
  const endpoint="https://bsky.social/xrpc/";
@@ -51,10 +73,21 @@ export async function publishBluesky({env={},title,hook,value,cta,productUrl,day
  if(!session?.did||!session?.accessJwt)throw new Error("bluesky_session_invalid");
  const {text,link}=blueskyPostText({title,hook,value,cta,productUrl,day});
  const start=text.indexOf(link),byteStart=new TextEncoder().encode(text.slice(0,start)).length,byteEnd=byteStart+new TextEncoder().encode(link).length;
- const rkey="zev-"+day.replaceAll("-","")+"-"+clean(topic).toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,24);
- const record={$type:"app.bsky.feed.post",text,createdAt:new Date().toISOString(),facets:[{index:{byteStart,byteEnd},features:[{$type:"app.bsky.richtext.facet#link",uri:link}]}],embed:{$type:"app.bsky.embed.external",external:{uri:link,title:textPart(title||hook,95),description:textPart(value||"Guia digital ZEVANORY",100)}}};
- const posted=await request("com.atproto.repo.createRecord",{repo:session.did,collection:"app.bsky.feed.post",rkey,record},session.accessJwt);
+ const rkey=deterministicTid(day,topic);
+ const expectedUri="at://"+session.did+"/app.bsky.feed.post/"+rkey;
+ const receiptFor=posted=>({status:"publicado",provider_post_id:rkey,uri:posted.uri,cid:posted.cid,url:"https://bsky.app/profile/"+encodeURIComponent(session.did)+"/post/"+encodeURIComponent(rkey),landing_url:link,graphemes:graphemeCount(text)});
+ const record={$type:"app.bsky.feed.post",text,langs:["pt"],createdAt:new Date().toISOString(),facets:[{index:{byteStart,byteEnd},features:[{$type:"app.bsky.richtext.facet#link",uri:link}]}],embed:{$type:"app.bsky.embed.external",external:{uri:link,title:textPart(title||hook,95),description:textPart(value||"Guia digital ZEVANORY",100)}}};
+ let posted;
+ try{posted=await request("com.atproto.repo.createRecord",{repo:session.did,collection:"app.bsky.feed.post",rkey,record},session.accessJwt);}
+ catch(error){
+  // A conflicting rkey means the deterministic daily post already exists: adopt it.
+  if(/^bluesky_http_(400|409)$/.test(error?.message||"")){
+   const found=await existingRecord({fetchImpl,did:session.did,rkey,token:session.accessJwt});
+   if(found?.uri===expectedUri)return {...receiptFor(found),adopted:true};
+  }
+  throw error;
+ }
  if(!posted?.uri||!posted?.cid)throw new Error("bluesky_receipt_missing");
- if(posted.uri!=="at://"+session.did+"/app.bsky.feed.post/"+rkey)throw new Error("bluesky_receipt_mismatch");
- return {status:"publicado",provider_post_id:rkey,uri:posted.uri,cid:posted.cid,url:"https://bsky.app/profile/"+encodeURIComponent(session.did)+"/post/"+encodeURIComponent(rkey),landing_url:link,graphemes:graphemeCount(text)};
+ if(posted.uri!==expectedUri)throw new Error("bluesky_receipt_mismatch");
+ return receiptFor(posted);
 }
