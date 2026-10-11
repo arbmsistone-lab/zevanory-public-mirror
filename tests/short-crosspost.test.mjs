@@ -49,3 +49,15 @@ test("captions carry the product, guarantee and channel UTM; TikTok avoids dead 
   assert.doesNotMatch(captionFor(p, "tiktok"), /utm_source/);
   assert.match(captionFor(p, "facebook"), /garantia de 7 dias/);
 });
+
+test("pack renders one video per day with a ready caption, skipping nothing that passes the gate", async () => {
+  const { buildPack } = await import("../scripts/channels/short-pack.mjs");
+  const { readFile, rm } = await import("node:fs/promises");
+  const out = "/tmp/zevanory-pack-test";
+  await rm(out, { recursive: true, force: true });
+  const n = await buildPack({ start: "2026-10-12", days: 3, out, render: async (plan, base) => ({ duration: 14.2, voice: "test", file: base + ".mp4" }) });
+  assert.equal(n, 3);
+  const txt = await readFile(out + "/legendas.txt", "utf8");
+  for (const d of ["2026-10-12", "2026-10-13", "2026-10-14"]) assert.match(txt, new RegExp(d + ".mp4"));
+  assert.match(txt, /garantia de 7 dias/);
+});
