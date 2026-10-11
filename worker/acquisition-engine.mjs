@@ -83,16 +83,37 @@ export function validateDraft({draft,entry,priorPosts=[],linkHttpStatus=200}={})
  if(quality<85)reasons.push("quality");
  return {ok:reasons.length===0,compliance:reasons.includes("claims")?0:100,score:quality,similarity_max:Math.max(0,...priorPosts.slice(-30).map(p=>textSimilarity(draft.text,p.text))),reasons};
 }
-export async function verifyProductLink(url,fetchImpl=fetch){
- const u=new URL(url);if(u.protocol!=="https:"||u.hostname!=="vendas.zevanory.api.br"||!/^\/comprar\/ZEV-[A-Z0-9-]+$/.test(u.pathname))return 0;
- try{const r=await fetchImpl(url,{method:"HEAD",redirect:"manual",signal:AbortSignal.timeout(8000)});return r.status;}catch{return 0;}
+// The product URL is served by the separate sales Worker (vendas.zevanory.api.br,
+// Custom Domain on the same account). A subrequest from this core Worker to it is
+// not a reliable probe: it loops back through the sales Worker's CORE service
+// binding and returned non-200 in production for every SKU (KV outcome
+// "product_http_not_200") while browsers received 200. That made the gate block
+// every Bluesky and engine-Telegram post. The link is therefore verified against
+// the published catalog (the same SKUs the sales Worker routes, enforced by test);
+// availability is proven externally by the read-only live-evidence workflow.
+export const CATALOG_SKUS=Object.freeze(PRODUCTS.map(p=>p.sku));
+export async function verifyProductLink(url){
+ let u;try{u=new URL(url);}catch{return 0;}
+ if(u.protocol!=="https:"||u.hostname!=="vendas.zevanory.api.br"||u.username||u.password||u.port)return 0;
+ const m=/^\/comprar\/(ZEV-[A-Z0-9-]+)$/.exec(u.pathname);
+ return m&&CATALOG_SKUS.includes(m[1])?200:0;
 }
+const MAX_DAILY_ATTEMPTS=3;
+// Definitive provider rejections happen before anything is published; they may be
+// retried on a later tick. Ambiguous failures (timeouts, 5xx) stay terminal for
+// Telegram, which has no idempotency key. Bluesky reuses a deterministic record
+// key and adopts an existing record, so it can safely retry either way.
+const definitiveFailure=message=>/^(bluesky_http_4\d\d|bluesky_session_invalid|bluesky_receipt_mismatch|telegram_http_4\d\d|provider_http_4\d\d|bluesky_product_link_invalid|bluesky_link_too_long|bluesky_grapheme_limit|telegram_credentials_missing|brand_[a-z0-9_]+)$/.test(String(message||""))&&!/_(408|429)$/.test(String(message||""));
 async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[]}){
  const key=ACQUISITION_STATE_PREFIX+entry.day+":"+channel;
  const prior=await safeJson(kv,key,null);
- if(prior)return prior; // pending is terminal until provider reconciliation, never blindly retry
+ const attempts=Number(prior?.attempts||(prior?1:0));
+ if(prior){
+  const retryable=prior.status!=="publicado"&&attempts<MAX_DAILY_ATTEMPTS&&(channel==="bluesky"||(prior.status==="erro"&&prior.definitive===true));
+  if(!retryable)return prior; // published, or ambiguous Telegram pending: never blindly repost
+ }
  // Preserve legacy Telegram publish-once marker during cutover. Never produce two posts in a day.
- if(channel==="telegram"){
+ if(channel==="telegram"&&!prior){
   const previous=await safeJson(kv,"zpc:multichannel:evidence:telegram:daily:"+entry.day,null);
   if(previous){
    const adopted=previous.provider_post_id&&previous.url
@@ -103,23 +124,29 @@ async function publishChannel({channel,entry,env,now,kv,fetchImpl,past=[]}){
   }
  }
  const draft=generateNative(entry,channel);
- const linkHttpStatus=await verifyProductLink(draft.link,fetchImpl);
+ const linkHttpStatus=await verifyProductLink(draft.link);
  const gate=validateDraft({draft,entry,priorPosts:past,linkHttpStatus});
  if(!gate.ok){return {channel,day:entry.day,status:"erro",code:gate.reasons.join(","),gate};}
- const reservation={channel,day:entry.day,status:"pending",startedAt:now.toISOString(),theme_id:entry.theme_id};
+ const reservation={channel,day:entry.day,status:"pending",startedAt:now.toISOString(),theme_id:entry.theme_id,attempts:attempts+1};
  await kv.put(key,JSON.stringify(reservation),{expirationTtl:45*86400});
  try{
   const receipt=channel==="telegram"
    ?await publishTelegram({env,payload:{content:draft.text,media_url:"https://zevanory.api.br/brand/export/post-01.png"},fetchImpl})
    :await publishBluesky({env,title:draft.hook,hook:draft.hook,value:draft.value,cta:draft.cta,productUrl:draft.link,day:entry.day,topic:entry.product.sku,fetchImpl});
   if(!receipt?.url||!receipt?.provider_post_id)throw new Error("provider_receipt_missing");
-  const outcome={channel,day:entry.day,status:"publicado",provider_post_id:receipt.provider_post_id,url:receipt.url,product:entry.product.sku,utm:draft.link,text:draft.text,at:now.toISOString(),gate};
+  const outcome={channel,day:entry.day,status:"publicado",provider_post_id:receipt.provider_post_id,url:receipt.url,product:entry.product.sku,utm:draft.link,text:draft.text,at:now.toISOString(),attempts:attempts+1,gate};
   await kv.put(key,JSON.stringify(outcome),{expirationTtl:45*86400});
   // An independent, masked activity record; a failed outbox must not repost to the provider.
   await emitActivity(env,{type:"post_published",channel,status:"published",ref:channel+":"+entry.day+":"+entry.theme_id,link:receipt.url},{now:now.getTime()}).catch(()=>null);
   return outcome;
  }catch(error){
-  return {...reservation,status:"erro",code:/^bluesky_http_401$/.test(error?.message||"")?"credential_expired":"provider_unverified",needs_reconciliation:true};
+  const message=String(error?.message||"");
+  const definitive=definitiveFailure(message);
+  const code=/^bluesky_http_401$/.test(message)?"credential_expired":(/^[a-z0-9_]{3,60}$/.test(message)?message:"provider_unverified");
+  // Telegram ambiguous failures keep "pending" (terminal, manual reconciliation).
+  const failed={...reservation,status:definitive||channel==="bluesky"?"erro":"pending",code,definitive,needs_reconciliation:!definitive,failedAt:now.toISOString()};
+  await kv.put(key,JSON.stringify(failed),{expirationTtl:45*86400}).catch(()=>null);
+  return failed;
  }
 }
 export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch){

@@ -567,6 +567,19 @@ wrapped.scheduled = async (controller, env, ctx) => {
     }
     return;
   }
+  // Acquisition (blog, Telegram, Bluesky, owner digest) runs in its own cron
+  // invocation: in the hourly one it ran last, after nine maintenance tasks had
+  // consumed the Workers Free 50-subrequest budget. Each tick is idempotent
+  // (per-day KV markers); slots are 09:00/12:00/19:00 America/Sao_Paulo.
+  if (controller?.cron === "25,55 * * * *") {
+    try {
+      const out=await runAcquisitionEngine(normalized,new Date());
+      console.info("acquisition_cycle",JSON.stringify({ok:out.ok===true,day:out.day||null,channels:(out.outcomes||[]).map(x=>({channel:x.channel,status:x.status,code:x.code||null}))}));
+    } catch {
+      console.error("acquisition_cycle_failed");
+    }
+    return;
+  }
   // Separate cron invocation: the financial proof must not share a Workers Free
   // subrequest/CPU budget with blog, email, orders and other hourly jobs.
   // The original hourly cron remains fully operational.
@@ -614,17 +627,7 @@ wrapped.scheduled = async (controller, env, ctx) => {
   tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase, production: true }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);
-  // The existing Cloudflare hourly cron is the sole ingress for acquisition.
-  // Run after legacy scheduled work to prevent competing Telegram/Blog writes.
-  if (controller?.cron === "0 * * * *") {
-    try {
-      const out=await runAcquisitionEngine(normalized,new Date());
-      console.info("acquisition_cycle",JSON.stringify({ok:out.ok===true,day:out.day||null,channels:(out.outcomes||[]).map(x=>({channel:x.channel,status:x.status}))}));
-    } catch {
-      console.error("acquisition_cycle_failed");
-    }
-    // Profile maintenance moved to the isolated "5,35" cron (subrequest budget).
-  }
+  // Acquisition moved to the isolated "25,55" cron; profiles to "5,35".
 };
 if (typeof worker.queue === "function") {
   wrapped.queue = async (batch, env, ctx) => worker.queue(batch, normalizeEnv(env), ctx);
