@@ -214,3 +214,7 @@ main{
 
 /* Founder profile link must meet 44px mobile/tablet touch-target geometry. */
 .founder-section #founder-title a{display:inline-flex;min-height:44px;align-items:center}
+.calc-hint{margin:-8px 0 4px;color:var(--muted);font-size:.9rem}
+.calc-result{display:block;border-top:1px solid var(--line);padding-top:16px}
+.calc-result p{margin:4px 0}
+.calc-result .calc-main{font-size:1.5rem;font-weight:800;color:var(--accent)}
