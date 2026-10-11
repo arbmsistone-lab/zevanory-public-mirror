@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36'
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36 ZEVANORY-Monitor/1.0'
           fail=0
           for path in / /solucoes /termos /privacidade; do
             code=$(curl -sS -A "$UA" -o /dev/null -w '%{http_code}' "https://vendas.zevanory.api.br$path")
@@ -59,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$CLICK_SKU" =~ ^ZEV-[A-Z0-9-]{3,16}$ ]]
-          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36'
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36 ZEVANORY-Monitor/1.0'
           hdr=$(curl -sS -A "$UA" -X POST -o /dev/null -D - "https://vendas.zevanory.api.br/comprar/$CLICK_SKU")
           code=$(echo "$hdr" | head -1 | awk '{print $2}')
           loc=$(echo "$hdr" | grep -i '^location:' | tr -d '\r' | awk '{print $2}')
