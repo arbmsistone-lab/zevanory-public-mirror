@@ -45,8 +45,16 @@ export function planShort(day) {
     marker
   ].join("\n");
   const lines = [ANGLE_HOOK[entry.angle], "Para " + niche, "", entry.product.name, "Garantia de 7 dias"];
-  const speech = [hook + ".", ANGLE_LINE[entry.angle], entry.product.name + ", garantia de sete dias.", "Veja o guia digital no link."].join(" ");
-  return { day, entry, price, spec, gate, link, marker, title, description, lines, speech, privacyStatus: "unlisted" };
+  // Spoken script, grouped by on-screen beat: 1 hook, 2 practical tip, 3 offer, 4 call to action.
+  const opener = /[?!.]$/.test(ANGLE_HOOK[entry.angle]) ? ANGLE_HOOK[entry.angle] : ANGLE_HOOK[entry.angle] + ".";
+  const said = [[opener, "Isso é para " + niche + "."], [ANGLE_LINE[entry.angle]], [entry.product.name + ", com garantia de sete dias."], ["Veja o guia no link da descrição."]];
+  const speech = said.map(b => b.join(" ")).join(" ");
+  const screen = {
+    hook: ANGLE_HOOK[entry.angle], niche: "para " + niche, tip: ANGLE_LINE[entry.angle],
+    product: entry.product.name, offer: "R$ " + price + " · Garantia de 7 dias",
+    cta: "Link na descrição", url: "vendas.zevanory.api.br"
+  };
+  return { day, entry, price, spec, gate, link, marker, title, description, lines, speech, said, screen, privacyStatus: "unlisted" };
 }
 
 const run = (cmd, args) => { const p = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }); if (p.status !== 0) throw new Error(cmd + "_failed"); return p.stdout; };
@@ -80,10 +88,11 @@ async function geminiSpeech(text, key) {
   return null;
 }
 
-// Retention: Shorts are scored on watch-through, so the video lasts as long as the
-// narration (+ a short tail), never pads with dead air, and is never a frozen
-// frame: the background slowly pushes in and each line appears in step with the
-// voice. Text is drawn after the zoom so it stays crisp.
+// Retention-first Short (YouTube scores watch-through): the hook is big at the top
+// from frame 0, the length follows the narration (no dead air), the background
+// slowly pushes in, a card changes with each spoken beat (tip -> offer -> call to
+// action) at the real sentence boundaries detected in the voice track, and a
+// progress bar runs along the bottom. Captions double as subtitles for muted viewers.
 export function shortTiming(voiceSeconds, lineCount) {
   const speech = Number.isFinite(voiceSeconds) && voiceSeconds > 0 ? voiceSeconds : 0;
   const duration = speech ? Math.min(20, Math.max(8, Math.ceil((speech + 1.2) * 10) / 10)) : 12;
@@ -91,37 +100,116 @@ export function shortTiming(voiceSeconds, lineCount) {
   const reveal = Array.from({ length: lineCount }, (_, i) => Math.round((lineCount > 1 ? (i * span) / (lineCount - 1) : 0) * 100) / 100);
   return { duration, reveal };
 }
+// Beat start times: expected positions come from each beat's share of the script;
+// each is snapped to the nearest real pause in the voice (±1.5 s), never reordered.
+export function beatTimes(said, speechSeconds, pauses = [], duration) {
+  const chars = said.map(b => b.join(" ").length), total = chars.reduce((a, b) => a + b, 0) || 1;
+  const span = speechSeconds > 0 ? speechSeconds : duration * 0.85;
+  const starts = [0];
+  let acc = 0;
+  for (let i = 1; i < said.length; i++) {
+    acc += chars[i - 1];
+    const expected = (acc / total) * span;
+    const near = pauses.filter(p => Math.abs(p - expected) <= 1.5 && p > starts[i - 1] + 0.6).sort((a, b) => Math.abs(a - expected) - Math.abs(b - expected))[0];
+    starts.push(Math.round(Math.min(duration - 0.8, near ?? expected) * 100) / 100);
+  }
+  return starts;
+}
+export function wrapText(text, maxChars, maxLines = 4) {
+  const words = String(text).split(/\s+/).filter(Boolean), out = [];
+  for (const w of words) {
+    const last = out[out.length - 1];
+    if (last && (last + " " + w).length <= maxChars) out[out.length - 1] = last + " " + w; else out.push(w);
+  }
+  return out.length <= maxLines ? out : null;
+}
+function fitText(text, sizes, width, ratio, maxLines, minCap = 1) {
+  // Prefer the biggest size that fits in the fewest lines (2 before 3...); minCap
+  // lets body copy use more lines at a bigger, more legible size.
+  for (let cap = Math.min(minCap, maxLines); cap <= maxLines; cap++) for (const size of sizes) { const lines = wrapText(text, Math.floor(width / (size * ratio)), cap); if (lines) return { size, lines }; }
+  const size = sizes[sizes.length - 1];
+  return { size, lines: wrapText(text, Math.floor(width / (size * ratio)), 99) };
+}
+const fontFile = (style, fallback) => {
+  const p = spawnSync("fc-match", ["-f", "%{file}", "Inter:style=" + style], { encoding: "utf8" });
+  const f = String(p.stdout || "").trim();
+  return /inter/i.test(f) ? f : fallback;
+};
+function voicePauses(file) {
+  const p = spawnSync("ffmpeg", ["-hide_banner", "-i", file, "-af", "silencedetect=n=-35dB:d=0.22", "-f", "null", "-"], { encoding: "utf8" });
+  return [...String(p.stderr || "").matchAll(/silence_end: ([\d.]+)/g)].map(m => Number(m[1]));
+}
 export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { geminiKey = process.env.GEMINI_API_KEY } = {}) {
   const voice = await geminiSpeech(plan.speech, geminiKey);
-  let audioInput, voiceSeconds = 0;
+  let audioInput, voiceSeconds = 0, pauses = [];
   if (voice && voice.pcm.length >= voice.rate) {
     voiceSeconds = voice.pcm.length / 2 / voice.rate;
     await writeFile(base + ".pcm", voice.pcm);
     run("ffmpeg", ["-y", "-f", "s16le", "-ar", String(voice.rate), "-ac", "1", "-i", base + ".pcm", "-c:a", "libmp3lame", "-b:a", "128k", base + ".mp3"]);
     audioInput = ["-i", base + ".mp3"];
+    pauses = voicePauses(base + ".mp3");
   } else {
     audioInput = ["-f", "lavfi", "-i", "anullsrc=channel_layout=mono:sample_rate=24000"];
   }
-  const shown = plan.lines.map((text, i) => ({ text, i })).filter(l => String(l.text).trim());
-  const { duration, reveal } = shortTiming(voiceSeconds, shown.length);
-  const draws = [];
-  for (let k = 0; k < shown.length; k++) {
-    const file = base + ".line" + k + ".txt";
-    await writeFile(file, String(shown[k].text));
-    const y = 1205 + shown[k].i * 80;
-    draws.push("drawtext=textfile=" + file + ":fontcolor=white:fontsize=58:x=(w-text_w)/2:y=" + y + ":enable='gte(t," + reveal[k] + ")'");
-  }
+  const { duration } = shortTiming(voiceSeconds, 1);
+  const [, tTip, tOffer, tCta] = beatTimes(plan.said, voiceSeconds, pauses, duration);
+  const XB = fontFile("ExtraBold", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf");
+  const SB = fontFile("SemiBold", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf");
+  const MD = fontFile("Medium", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
+  // Width ratios measured on Inter for every string the calendar can produce; the
+  // DejaVu fallback is wider, so it gets a wider ratio and never overflows.
+  const R = /inter/i.test(XB) ? { xb: 0.58, sb: 0.54, md: 0.55 } : { xb: 0.68, sb: 0.64, md: 0.64 };
+  const sc = plan.screen, draws = [];
+  let n = 0;
+  const fade = (a, b) => a === 0 && b == null ? "" : b == null ? `:alpha='min(1,max(0,(t-${a})/0.18))'` : `:alpha='if(between(t,${a},${b}),min(1,(t-${a})/0.18),0)'`;
+  // y is the baseline: every line of a block sits on an even rhythm regardless of glyphs.
+  const text = async (str, font, size, color, baseline, a, b, center = true, x = 96) => {
+    const file = `${base}.t${n++}.txt`;
+    await writeFile(file, str);
+    draws.push(`drawtext=fontfile=${font}:textfile=${file}:fontsize=${size}:fontcolor=${color}:x=${center ? "(w-text_w)/2" : x}:y=${baseline}-ascent${fade(a, b)}`);
+  };
+  // Hook block (top), visible from the first frame.
+  const hook = fitText(sc.hook, [120, 112, 104, 96, 88], 900, R.xb, 3);
+  let y = 270;
+  for (const line of hook.lines) { y += Math.round(hook.size * 1.08); await text(line, XB, hook.size, "0xf5f7fb", y, 0, null, false); }
+  const niche = fitText(sc.niche, [62, 56, 50], 900, R.sb, 2);
+  y += 14;
+  for (const line of niche.lines) { y += Math.round(niche.size * 1.3); await text(line, SB, niche.size, "0x8fb8ff", y, 0, null, false); }
+  // Card beats, vertically centred in the card (y 1000..1600).
+  const block = async (items, a, b) => {
+    const h = items.reduce((s, it) => s + it.lines.length * Math.round(it.size * 1.25) + (it.gap || 0), 0);
+    let cy = 1300 - Math.round(h / 2);
+    for (const it of items) { cy += it.gap || 0; for (const line of it.lines) { cy += Math.round(it.size * 1.25); await text(line, it.font, it.size, it.color, cy - Math.round(it.size * 0.25), a, b); } }
+  };
+  // Beat 1: the card is never empty; it promises the payoff while the hook is spoken.
+  await block([{ ...fitText("1 dica prática", [84, 76], 820, R.xb, 1), font: XB, color: "0x8fb8ff" }, { ...fitText("para aplicar ainda hoje", [52, 46], 820, R.sb, 1), font: SB, color: "0xf5f7fb", gap: 18 }], 0, tTip);
+  const tip = fitText(sc.tip, [66, 60, 54], 820, R.md, 4, 3);
+  await block([{ ...tip, font: MD, color: "0xf5f7fb" }], tTip, tOffer);
+  const prod = fitText(sc.product, [88, 80, 72], 820, R.xb, 2), offer = fitText(sc.offer, [52, 46], 820, R.sb, 2);
+  await block([{ ...prod, font: XB, color: "0xf5f7fb" }, { ...offer, font: SB, color: "0xa8f0d0", gap: 22 }], tOffer, tCta);
+  const cta = fitText(sc.cta, [84, 76, 68], 820, R.xb, 2), url = fitText(sc.url, [52, 46], 820, R.sb, 1);
+  await block([{ ...cta, font: XB, color: "0x21e6f3" }, { ...url, font: SB, color: "0xf5f7fb", gap: 26 }], tCta, null);
   const template = "assets/brand/export/short.png";
   const frames = Math.round(duration * 30);
-  const zoom = "scale=1080:1920,zoompan=z='1+0.06*on/" + frames + "':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30";
-  const vf = zoom + ",drawbox=x=62:y=1150:w=956:h=500:color=0x0c1c2b@0.92:t=fill," + draws.join(",");
-  run("ffmpeg", ["-y", "-loop", "1", "-framerate", "30", "-i", template, ...audioInput, "-filter_complex", "[0:v]" + vf + "[v];[1:a]" + (voice ? "loudnorm=I=-16:TP=-1.5:LRA=11," : "") + "apad[a]", "-map", "[v]", "-map", "[a]", "-t", String(duration), "-c:v", "libx264", "-r", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", base + ".mp4"]);
+  const vf = [
+    "scale=1080:1920",
+    "drawbox=x=56:y=600:w=968:h=560:color=0x0b0f16:t=fill", // clear the template's static headline
+    `zoompan=z='1+0.04*on/${frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30`,
+    "drawbox=x=96:y=228:w=220:h=8:color=0x00b8ff:t=fill",
+      "drawbox=x=76:y=1000:w=928:h=600:color=0x0c1c2b@0.95:t=fill",
+    "drawbox=x=76:y=1000:w=10:h=600:color=0x00b8ff:t=fill",
+    ...draws
+  ].join(",");
+  // Progress bar: a cyan strip slides into an 888x10 track (overlay clips it), then
+  // the track is placed on the frame; drawbox sizes are not per-frame on all ffmpeg builds.
+  const bar = `color=c=0x202a38:s=888x10:r=30:d=${duration}[track];color=c=0x00b8ff:s=888x10:r=30:d=${duration}[fill];[track][fill]overlay=x='-888+888*t/${duration}':y=0:shortest=1[bar];[base][bar]overlay=x=96:y=1724:shortest=1[v]`;
+  run("ffmpeg", ["-y", "-loop", "1", "-framerate", "30", "-i", template, ...audioInput, "-filter_complex", "[0:v]" + vf + "[base];" + bar + ";[1:a]" + (voice ? "loudnorm=I=-16:TP=-1.5:LRA=11," : "") + "apad[a]", "-map", "[v]", "-map", "[a]", "-t", String(duration), "-c:v", "libx264", "-r", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", base + ".mp4"]);
   const probe = JSON.parse(run("ffprobe", ["-v", "error", "-show_streams", "-show_format", "-of", "json", base + ".mp4"]));
   const v = probe.streams.find(s => s.codec_type === "video"), a = probe.streams.find(s => s.codec_type === "audio"), real = Number(probe.format.duration);
   if (!v || v.width !== 1080 || v.height !== 1920 || !a || !(Math.abs(real - duration) <= 0.5)) throw new Error("youtube_mp4_technical_gate_failed");
   const black = spawnSync("ffmpeg", ["-hide_banner", "-i", base + ".mp4", "-vf", "blackdetect=d=0.6:pix_th=0.02", "-an", "-f", "null", "-"], { encoding: "utf8" });
   if (black.status !== 0 || /black_start:/.test(black.stderr)) throw new Error("youtube_black_frames_detected");
-  return { file: base + ".mp4", duration: real, voice: voice ? voice.model : "none" };
+  return { file: base + ".mp4", duration: real, voice: voice ? voice.model : "none", beats: { tip: tTip, offer: tOffer, cta: tCta } };
 }
 
 // Cloudflare KV REST adapter so the CI job writes the exact emitActivity schema.
