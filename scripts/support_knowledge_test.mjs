@@ -5,7 +5,7 @@ import fs from "node:fs";
 
 const failures = [];
 let correct = 0;
-const expectPrices = { "ia-na-pratica": "R$ 197,00", "vendas-na-pratica": "R$ 197,00", "lucro-e-caixa": "R$ 247,00", "combo-ia-vendas": "R$ 297,00", "negocio-completo": "R$ 397,00" };
+const expectPrices = { "ia-na-pratica": "R$ 197,00", "vendas-na-pratica": "R$ 197,00", "lucro-e-caixa": "R$ 247,00", "combo-ia-vendas": "R$ 297,00", "negocio-completo": "R$ 397,00", "conteudo-pronto": "R$ 197,00" };
 
 // Prices must match the approved, published sales pages.
 const ov = JSON.parse(fs.readFileSync(new URL("../sales-overlay/approved.json", import.meta.url), "utf8"));

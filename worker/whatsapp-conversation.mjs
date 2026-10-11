@@ -9,11 +9,12 @@ const SUPPORT_EMAIL = "suporte@zevanory.api.br";
 const WHATSAPP_UTM = "?utm_source=whatsapp&utm_medium=chat";
 // Exact SKUs from sales-public-worker.mjs; never generate arbitrary checkout targets.
 export const OFFICIAL_PURCHASE_SKUS = Object.freeze({"ia-na-pratica":"ZEV-IA-011","vendas-na-pratica":"ZEV-VEN-011","lucro-e-caixa":"ZEV-LCX-011","combo-ia-vendas":"ZEV-CMB-011","negocio-completo":"ZEV-NGC-011"});
-export const purchaseLinkFor = (slug, salesOpen = false) => salesOpen === true && OFFICIAL_PURCHASE_SKUS[slug] ? `${SALES_ORIGIN}/comprar/${OFFICIAL_PURCHASE_SKUS[slug]}${WHATSAPP_UTM}` : null;
+export const SERVICE_SUBSCRIBE_URL = `${SALES_ORIGIN}/assinar/conteudo-pronto`;
+export const purchaseLinkFor = (slug, salesOpen = false) => salesOpen !== true ? null : slug === "conteudo-pronto" ? SERVICE_SUBSCRIBE_URL : OFFICIAL_PURCHASE_SKUS[slug] ? `${SALES_ORIGIN}/comprar/${OFFICIAL_PURCHASE_SKUS[slug]}${WHATSAPP_UTM}` : null;
 const MODELS = ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"];
 const HISTORY_TURNS = 10;
 const ALLOWED_PRICES = new Set(Object.values(SUPPORT_PRODUCTS).map((p) => p.price_brl));
-const ALLOWED_URLS = new Set(["https://zevanory.api.br/pedir-reembolso", "https://zevanory.api.br/entrega/reenviar", SALES_ORIGIN, `${SALES_ORIGIN}/`, `${SALES_ORIGIN}/solucoes`, `${SALES_ORIGIN}/reembolso`, `${SALES_ORIGIN}/privacidade`, `${SALES_ORIGIN}/termos`, ...Object.keys(SUPPORT_PRODUCTS).map((slug) => `${SALES_ORIGIN}/${slug}`), ...Object.values(OFFICIAL_PURCHASE_SKUS).map((sku) => `${SALES_ORIGIN}/comprar/${sku}${WHATSAPP_UTM}`)]);
+const ALLOWED_URLS = new Set(["https://zevanory.api.br/pedir-reembolso", "https://zevanory.api.br/entrega/reenviar", SALES_ORIGIN, `${SALES_ORIGIN}/`, `${SALES_ORIGIN}/solucoes`, `${SALES_ORIGIN}/reembolso`, `${SALES_ORIGIN}/privacidade`, `${SALES_ORIGIN}/termos`, ...Object.keys(SUPPORT_PRODUCTS).map((slug) => `${SALES_ORIGIN}/${slug}`), ...Object.values(OFFICIAL_PURCHASE_SKUS).map((sku) => `${SALES_ORIGIN}/comprar/${sku}${WHATSAPP_UTM}`), `${SALES_ORIGIN}/assinar/conteudo-pronto`]);
 
 const brl = (n) => "R$ " + Number(n).toFixed(2).replace(".", ",");
 
