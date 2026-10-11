@@ -5,13 +5,17 @@ export const BLUESKY_SECRETS=Object.freeze(["BLUESKY_HANDLE","BLUESKY_APP_PASSWO
 export const blueskyReady=env=>BLUESKY_SECRETS.every(k=>Boolean(clean(env?.[k])));
 export const graphemeCount=s=>[...new Intl.Segmenter("pt-BR",{granularity:"grapheme"}).segment(String(s))].length;
 const textPart=(v,n)=>[...new Intl.Segmenter("pt-BR",{granularity:"grapheme"}).segment(clean(v))].slice(0,n).map(x=>x.segment).join("");
+// Discovery tags: Bluesky search/feeds index hashtag facets, so every daily post is
+// reachable by people browsing these topics, not only by our followers.
+export const BLUESKY_TAGS=Object.freeze(["empreendedorismo","pequenosnegocios","ia"]);
 export function blueskyPostText({title,hook,value,cta,productUrl,day}){
  const u=new URL(productUrl);
  if(u.protocol!=="https:"||u.hostname!=="vendas.zevanory.api.br"||!/^\/comprar\/ZEV-[A-Z0-9-]+$/.test(u.pathname))throw new Error("bluesky_product_link_invalid");
  if(!/^\d{4}-\d{2}-\d{2}$/.test(day))throw new Error("bluesky_day_invalid");
  u.searchParams.set("utm_source","bluesky");u.searchParams.set("utm_medium","organic");u.searchParams.set("utm_campaign","conteudo_"+day.replace(/-/g,""));
  const link=u.toString();
- const fixed="\n\n"+link;
+ const tagsLine=BLUESKY_TAGS.map(t=>"#"+t).join(" ");
+ const fixed="\n\n"+tagsLine+"\n"+link;
  const remaining=300-graphemeCount(fixed);
  if(remaining<40)throw new Error("bluesky_link_too_long");
  const hookPart=textPart(hook||title,Math.min(65,Math.max(0,remaining-45)));
@@ -21,7 +25,14 @@ export function blueskyPostText({title,hook,value,cta,productUrl,day}){
  const candidate=[hookPart,valuePart,ctaPart].filter(Boolean).join("\n");
  const text=textPart(candidate,remaining)+fixed;
  if(graphemeCount(text)>300)throw new Error("bluesky_grapheme_limit");
- return {text,link};
+ return {text,link,tags:[...BLUESKY_TAGS]};
+}
+export function blueskyFacets(text,link,tags=BLUESKY_TAGS){
+ const enc=new TextEncoder(),bytes=s=>enc.encode(s).length,facets=[];
+ const start=text.lastIndexOf(link);
+ if(start>=0){const byteStart=bytes(text.slice(0,start));facets.push({index:{byteStart,byteEnd:byteStart+bytes(link)},features:[{$type:"app.bsky.richtext.facet#link",uri:link}]});}
+ for(const tag of tags){const token="#"+tag,at=text.lastIndexOf(token);if(at<0)continue;const byteStart=bytes(text.slice(0,at));facets.push({index:{byteStart,byteEnd:byteStart+bytes(token)},features:[{$type:"app.bsky.richtext.facet#tag",tag}]});}
+ return facets.sort((a,b)=>a.index.byteStart-b.index.byteStart);
 }
 const retryable=(status)=>status===429||(status>=500&&status<=599);
 async function retryXrpc({fetchImpl,url,body,token,retries=2,sleepImpl=ms=>new Promise(resolve=>setTimeout(resolve,ms))}){
@@ -71,12 +82,11 @@ export async function publishBluesky({env={},title,hook,value,cta,productUrl,day
  const request=(method,body,token)=>retryXrpc({fetchImpl,url:endpoint+method,body,token,sleepImpl});
  const session=await request("com.atproto.server.createSession",{identifier:clean(env.BLUESKY_HANDLE),password:clean(env.BLUESKY_APP_PASSWORD)});
  if(!session?.did||!session?.accessJwt)throw new Error("bluesky_session_invalid");
- const {text,link}=blueskyPostText({title,hook,value,cta,productUrl,day});
- const start=text.indexOf(link),byteStart=new TextEncoder().encode(text.slice(0,start)).length,byteEnd=byteStart+new TextEncoder().encode(link).length;
+ const {text,link,tags}=blueskyPostText({title,hook,value,cta,productUrl,day});
  const rkey=deterministicTid(day,topic);
  const expectedUri="at://"+session.did+"/app.bsky.feed.post/"+rkey;
  const receiptFor=posted=>({status:"publicado",provider_post_id:rkey,uri:posted.uri,cid:posted.cid,url:"https://bsky.app/profile/"+encodeURIComponent(session.did)+"/post/"+encodeURIComponent(rkey),landing_url:link,graphemes:graphemeCount(text)});
- const record={$type:"app.bsky.feed.post",text,langs:["pt"],createdAt:new Date().toISOString(),facets:[{index:{byteStart,byteEnd},features:[{$type:"app.bsky.richtext.facet#link",uri:link}]}],embed:{$type:"app.bsky.embed.external",external:{uri:link,title:textPart(title||hook,95),description:textPart(value||"Guia digital ZEVANORY",100)}}};
+ const record={$type:"app.bsky.feed.post",text,langs:["pt"],createdAt:new Date().toISOString(),facets:blueskyFacets(text,link,tags),embed:{$type:"app.bsky.embed.external",external:{uri:link,title:textPart(title||hook,95),description:textPart(value||"Guia digital ZEVANORY",100)}}};
  let posted;
  try{posted=await request("com.atproto.repo.createRecord",{repo:session.did,collection:"app.bsky.feed.post",rkey,record},session.accessJwt);}
  catch(error){
