@@ -161,7 +161,9 @@ export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { ge
   const R = /inter/i.test(XB) ? { xb: 0.58, sb: 0.54, md: 0.55 } : { xb: 0.68, sb: 0.64, md: 0.64 };
   const sc = plan.screen, draws = [];
   let n = 0;
-  const fade = (a, b) => a === 0 && b == null ? "" : b == null ? `:alpha='min(1,max(0,(t-${a})/0.18))'` : `:alpha='if(between(t,${a},${b}),min(1,(t-${a})/0.18),0)'`;
+  // Anything on screen at t=0 is fully visible on the first frame (that frame is the
+  // feed preview); later beats fade in.
+  const fade = (a, b) => a === 0 ? (b == null ? "" : `:enable='lt(t,${b})'`) : b == null ? `:alpha='min(1,max(0,(t-${a})/0.18))'` : `:alpha='if(between(t,${a},${b}),min(1,(t-${a})/0.18),0)'`;
   // y is the baseline: every line of a block sits on an even rhythm regardless of glyphs.
   const text = async (str, font, size, color, baseline, a, b, center = true, x = 96) => {
     const file = `${base}.t${n++}.txt`;
