@@ -269,7 +269,8 @@ export async function main() {
   try { registry = JSON.parse(readFileSync(new URL("../../data/experiments.json", import.meta.url), "utf8")); } catch {}
   let inventoryDef = null;
   try { inventoryDef = JSON.parse(readFileSync(new URL("../../data/process-inventory.json", import.meta.url), "utf8")); } catch {}
-  const inventory = evaluateInventory(inventoryDef, { byDay: pubs.byDay, runs: runs || [], funnelAt: funnel?.generatedAt || null, buyFlow, hotmart, probes: [health, site, control] }, now);
+  const market = await kvGet("zpc:market:v1:weekly");
+  const inventory = evaluateInventory(inventoryDef, { marketAt: market?.generatedAt || null, byDay: pubs.byDay, runs: runs || [], funnelAt: funnel?.generatedAt || null, buyFlow, hotmart, probes: [health, site, control] }, now);
   const experiments = evaluateExperiments(registry, { videos, productDaily: funnel?.productDaily || {}, campaigns: funnel?.topCampaigns || [] }, now);
 
   // Reach history: one point per local day (latest of the day wins), 120 days.
@@ -373,6 +374,7 @@ export async function main() {
     forecast: forecastSales(sales?.byDay || {}, firstSalesDay, now),
     experiments,
     inventory,
+    market: market ? { generatedAt: market.generatedAt, method: market.method, integrity: market.integrity, top: (market.ranking || []).slice(0, 12).map((r) => ({ name: r.name, slug: r.slug, score: r.score, product: r.product, topQueries: (r.topQueries || []).slice(0, 3) })), ideas: market.ideas || [] } : null,
     recommendations: [...(buyFlow.some((b) => b.state === "closed") ? [{ title: "Botão Comprar do site leva a \"Vendas abrem em breve\"", evidence: `${buyFlow.filter((b) => b.state === "closed").length} de ${buyFlow.length} produtos testados mostram o aviso em vez do pagamento`, action: "Levar o botão Comprar e os links dos canais ao checkout da Hotmart, que já vende", confidence: "alta", risk: "baixo", cost: "R$ 0" }] : []), ...recommend({ funnel, reach, sales, publications })],
   };
   await kvPut(SNAPSHOT_KEY, snapshot);

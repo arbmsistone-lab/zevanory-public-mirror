@@ -2,34 +2,334 @@
   "schema": "zevanory-process-inventory/v1",
   "criterion": "Um processo elegível conta como autônomo somente se a evidência dele estiver dentro da janela de frescor no momento da medição. Sem evidência = não conta.",
   "processes": [
-    { "id": "blog", "area": "Aquisição", "agent": "Motor Editorial", "name": "Artigo diário no blog", "eligible": true, "state": "autonomous", "evidence": { "type": "publication", "channel": "blog", "maxAgeHours": 30 } },
-    { "id": "telegram", "area": "Aquisição", "agent": "Motor Social", "name": "Post diário no Telegram", "eligible": true, "state": "autonomous", "evidence": { "type": "publication", "channel": "telegram", "maxAgeHours": 30 } },
-    { "id": "bluesky", "area": "Aquisição", "agent": "Motor Social", "name": "Post diário no Bluesky", "eligible": true, "state": "autonomous", "evidence": { "type": "publication", "channel": "bluesky", "maxAgeHours": 30 } },
-    { "id": "short-oferta", "area": "Aquisição", "agent": "Motor de Vídeo", "name": "Short do produto (YouTube + Telegram)", "eligible": true, "state": "autonomous", "evidence": { "type": "publication", "channel": "youtube", "maxAgeHours": 30 } },
-    { "id": "short-dica", "area": "Aquisição", "agent": "Motor de Vídeo", "name": "Short de dica por ramo", "eligible": true, "state": "autonomous", "evidence": { "type": "publication", "channel": "youtube_dica", "maxAgeHours": 30 } },
-    { "id": "short-calc", "area": "Aquisição", "agent": "Motor de Vídeo", "name": "Short de calculadora gratuita", "eligible": true, "state": "autonomous", "evidence": { "type": "publication", "channel": "youtube_calc", "maxAgeHours": 30 } },
-    { "id": "indexnow", "area": "SEO", "agent": "Motor de SEO", "name": "Aviso diário de páginas aos buscadores (IndexNow)", "eligible": true, "state": "autonomous", "evidence": { "type": "workflow", "workflow": "indexnow-submit.yml", "maxAgeHours": 30 } },
-    { "id": "tiktok", "area": "Aquisição", "agent": "Motor TikTok", "name": "Vídeos no TikTok", "eligible": true, "state": "partial", "dependency": "Agendamento pelo computador do dono (TikTok proíbe API para conta própria): exige o computador ligado nos dias 1, 11 e 21.", "impact": "medium" },
-    { "id": "meta", "area": "Aquisição", "agent": "Motor de Vídeo", "name": "Reels no Instagram e vídeo no Facebook", "eligible": true, "state": "blocked_third_party", "dependency": "Aguardando aprovação do app pela Meta.", "impact": "high" },
-    { "id": "pinterest", "area": "Aquisição", "agent": "Motor Social", "name": "Pins no Pinterest", "eligible": true, "state": "blocked_third_party", "dependency": "Aguardando aprovação do app pelo Pinterest.", "impact": "low" },
-    { "id": "search-console", "area": "SEO", "agent": "Motor de SEO", "name": "Pedido de indexação no Google", "eligible": true, "state": "partial", "dependency": "O Google não oferece API de indexação para páginas comuns; os pedidos são feitos pelo executor de navegador.", "impact": "low" },
-    { "id": "market-intel", "area": "Mercado", "agent": "Inteligência de Mercado", "name": "Pesquisa semanal de demanda por ramo e pontuação de produtos", "eligible": true, "state": "manual", "dependency": "Em construção (próxima entrega).", "impact": "high" },
-    { "id": "funnel", "area": "Vendas", "agent": "Motor de Funil", "name": "Medição do funil e consolidação horária", "eligible": true, "state": "autonomous", "evidence": { "type": "freshness", "field": "funnel", "maxAgeHours": 3 } },
-    { "id": "buy-flow", "area": "Vendas", "agent": "Central de Comando", "name": "Caminho de compra no site funcionando", "eligible": true, "state": "autonomous", "evidence": { "type": "buyflow" } },
-    { "id": "hotmart-checkout", "area": "Vendas", "agent": "Central de Comando", "name": "Checkouts da Hotmart no ar", "eligible": true, "state": "autonomous", "evidence": { "type": "hotmart" } },
-    { "id": "nurture", "area": "Vendas", "agent": "Motor de E-mail", "name": "Sequência de e-mails para quem pediu material", "eligible": true, "state": "autonomous", "evidence": { "type": "freshness", "field": "funnel", "maxAgeHours": 3 }, "note": "Roda no mesmo ciclo horário do funil." },
-    { "id": "experiments", "area": "Inteligência", "agent": "Central de Comando", "name": "Registro de experimentos com veredito automático", "eligible": true, "state": "autonomous", "evidence": { "type": "workflow", "workflow": "command-center-snapshot.yml", "maxAgeHours": 3 } },
-    { "id": "delivery", "area": "Entrega", "agent": "Motor de Entrega", "name": "Entrega do produto após o pagamento", "eligible": true, "state": "autonomous", "evidence": { "type": "none" }, "note": "Automática (Hotmart e e-mail próprio), ainda sem venda real para comprovar." },
-    { "id": "service-content", "area": "Entrega", "agent": "Motor de Conteúdo Pronto", "name": "Geração mensal do Conteúdo Pronto para assinantes", "eligible": true, "state": "autonomous", "evidence": { "type": "none" }, "note": "Automática, ainda sem assinante para comprovar." },
-    { "id": "support", "area": "Atendimento", "agent": "Atendimento", "name": "Resposta a dúvidas de clientes", "eligible": true, "state": "partial", "dependency": "Atendimento automático do WhatsApp ainda não comprovado em produção; e-mail de suporte é lido por pessoa.", "impact": "high" },
-    { "id": "sales-ledger", "area": "Financeiro", "agent": "Motor Financeiro", "name": "Registro de vendas, taxas e reembolsos", "eligible": true, "state": "autonomous", "evidence": { "type": "workflow", "workflow": "command-center-snapshot.yml", "maxAgeHours": 3 }, "note": "Ativo; valores só aparecem quando houver venda." },
-    { "id": "health", "area": "Engenharia", "agent": "Central de Comando", "name": "Verificação horária dos serviços", "eligible": true, "state": "autonomous", "evidence": { "type": "probes" } },
-    { "id": "self-heal-short", "area": "Engenharia", "agent": "Autocorreção", "name": "Reexecução automática do que falhou no dia", "eligible": true, "state": "autonomous", "evidence": { "type": "workflow", "workflow": "youtube-autonomous-short.yml", "maxAgeHours": 30 } },
-    { "id": "live-proof", "area": "Qualidade", "agent": "Controle de Qualidade", "name": "Prova diária do painel em produção (sem corte, sem sobreposição)", "eligible": true, "state": "autonomous", "evidence": { "type": "none" }, "note": "Roda no repositório do painel; resultado visível em Operação." },
-    { "id": "contracts", "area": "Governança", "agent": "Dono", "name": "Aceitar contratos e termos em nome da empresa", "eligible": false, "state": "owner_reserved" },
-    { "id": "logins", "area": "Governança", "agent": "Dono", "name": "Logins, 2FA e conexão de contas", "eligible": false, "state": "owner_reserved" },
-    { "id": "spend", "area": "Governança", "agent": "Dono", "name": "Gastos, tráfego pago e novos custos", "eligible": false, "state": "owner_reserved" },
-    { "id": "pricing", "area": "Governança", "agent": "Dono", "name": "Preço e regras de pagamento", "eligible": false, "state": "owner_reserved" },
-    { "id": "refund-exceptions", "area": "Governança", "agent": "Dono", "name": "Reembolso fora da garantia automática", "eligible": false, "state": "owner_reserved" }
+    {
+      "id": "blog",
+      "area": "Aquisição",
+      "agent": "Motor Editorial",
+      "name": "Artigo diário no blog",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "publication",
+        "channel": "blog",
+        "maxAgeHours": 30
+      }
+    },
+    {
+      "id": "telegram",
+      "area": "Aquisição",
+      "agent": "Motor Social",
+      "name": "Post diário no Telegram",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "publication",
+        "channel": "telegram",
+        "maxAgeHours": 30
+      }
+    },
+    {
+      "id": "bluesky",
+      "area": "Aquisição",
+      "agent": "Motor Social",
+      "name": "Post diário no Bluesky",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "publication",
+        "channel": "bluesky",
+        "maxAgeHours": 30
+      }
+    },
+    {
+      "id": "short-oferta",
+      "area": "Aquisição",
+      "agent": "Motor de Vídeo",
+      "name": "Short do produto (YouTube + Telegram)",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "publication",
+        "channel": "youtube",
+        "maxAgeHours": 30
+      }
+    },
+    {
+      "id": "short-dica",
+      "area": "Aquisição",
+      "agent": "Motor de Vídeo",
+      "name": "Short de dica por ramo",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "publication",
+        "channel": "youtube_dica",
+        "maxAgeHours": 30
+      }
+    },
+    {
+      "id": "short-calc",
+      "area": "Aquisição",
+      "agent": "Motor de Vídeo",
+      "name": "Short de calculadora gratuita",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "publication",
+        "channel": "youtube_calc",
+        "maxAgeHours": 30
+      }
+    },
+    {
+      "id": "indexnow",
+      "area": "SEO",
+      "agent": "Motor de SEO",
+      "name": "Aviso diário de páginas aos buscadores (IndexNow)",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "workflow",
+        "workflow": "indexnow-submit.yml",
+        "maxAgeHours": 30
+      }
+    },
+    {
+      "id": "tiktok",
+      "area": "Aquisição",
+      "agent": "Motor TikTok",
+      "name": "Vídeos no TikTok",
+      "eligible": true,
+      "state": "partial",
+      "dependency": "Agendamento pelo computador do dono (TikTok proíbe API para conta própria): exige o computador ligado nos dias 1, 11 e 21.",
+      "impact": "medium"
+    },
+    {
+      "id": "meta",
+      "area": "Aquisição",
+      "agent": "Motor de Vídeo",
+      "name": "Reels no Instagram e vídeo no Facebook",
+      "eligible": true,
+      "state": "blocked_third_party",
+      "dependency": "Aguardando aprovação do app pela Meta.",
+      "impact": "high"
+    },
+    {
+      "id": "pinterest",
+      "area": "Aquisição",
+      "agent": "Motor Social",
+      "name": "Pins no Pinterest",
+      "eligible": true,
+      "state": "blocked_third_party",
+      "dependency": "Aguardando aprovação do app pelo Pinterest.",
+      "impact": "low"
+    },
+    {
+      "id": "search-console",
+      "area": "SEO",
+      "agent": "Motor de SEO",
+      "name": "Pedido de indexação no Google",
+      "eligible": true,
+      "state": "partial",
+      "dependency": "O Google não oferece API de indexação para páginas comuns; os pedidos são feitos pelo executor de navegador.",
+      "impact": "low"
+    },
+    {
+      "id": "market-intel",
+      "area": "Mercado",
+      "agent": "Inteligência de Mercado",
+      "name": "Pesquisa semanal de demanda por ramo e pontuação de produtos",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "market",
+        "maxAgeHours": 192
+      }
+    },
+    {
+      "id": "funnel",
+      "area": "Vendas",
+      "agent": "Motor de Funil",
+      "name": "Medição do funil e consolidação horária",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "freshness",
+        "field": "funnel",
+        "maxAgeHours": 3
+      }
+    },
+    {
+      "id": "buy-flow",
+      "area": "Vendas",
+      "agent": "Central de Comando",
+      "name": "Caminho de compra no site funcionando",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "buyflow"
+      }
+    },
+    {
+      "id": "hotmart-checkout",
+      "area": "Vendas",
+      "agent": "Central de Comando",
+      "name": "Checkouts da Hotmart no ar",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "hotmart"
+      }
+    },
+    {
+      "id": "nurture",
+      "area": "Vendas",
+      "agent": "Motor de E-mail",
+      "name": "Sequência de e-mails para quem pediu material",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "freshness",
+        "field": "funnel",
+        "maxAgeHours": 3
+      },
+      "note": "Roda no mesmo ciclo horário do funil."
+    },
+    {
+      "id": "experiments",
+      "area": "Inteligência",
+      "agent": "Central de Comando",
+      "name": "Registro de experimentos com veredito automático",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "workflow",
+        "workflow": "command-center-snapshot.yml",
+        "maxAgeHours": 3
+      }
+    },
+    {
+      "id": "delivery",
+      "area": "Entrega",
+      "agent": "Motor de Entrega",
+      "name": "Entrega do produto após o pagamento",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "none"
+      },
+      "note": "Automática (Hotmart e e-mail próprio), ainda sem venda real para comprovar."
+    },
+    {
+      "id": "service-content",
+      "area": "Entrega",
+      "agent": "Motor de Conteúdo Pronto",
+      "name": "Geração mensal do Conteúdo Pronto para assinantes",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "none"
+      },
+      "note": "Automática, ainda sem assinante para comprovar."
+    },
+    {
+      "id": "support",
+      "area": "Atendimento",
+      "agent": "Atendimento",
+      "name": "Resposta a dúvidas de clientes",
+      "eligible": true,
+      "state": "partial",
+      "dependency": "Atendimento automático do WhatsApp ainda não comprovado em produção; e-mail de suporte é lido por pessoa.",
+      "impact": "high"
+    },
+    {
+      "id": "sales-ledger",
+      "area": "Financeiro",
+      "agent": "Motor Financeiro",
+      "name": "Registro de vendas, taxas e reembolsos",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "workflow",
+        "workflow": "command-center-snapshot.yml",
+        "maxAgeHours": 3
+      },
+      "note": "Ativo; valores só aparecem quando houver venda."
+    },
+    {
+      "id": "health",
+      "area": "Engenharia",
+      "agent": "Central de Comando",
+      "name": "Verificação horária dos serviços",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "probes"
+      }
+    },
+    {
+      "id": "self-heal-short",
+      "area": "Engenharia",
+      "agent": "Autocorreção",
+      "name": "Reexecução automática do que falhou no dia",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "workflow",
+        "workflow": "youtube-autonomous-short.yml",
+        "maxAgeHours": 30
+      }
+    },
+    {
+      "id": "live-proof",
+      "area": "Qualidade",
+      "agent": "Controle de Qualidade",
+      "name": "Prova diária do painel em produção (sem corte, sem sobreposição)",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "none"
+      },
+      "note": "Roda no repositório do painel; resultado visível em Operação."
+    },
+    {
+      "id": "contracts",
+      "area": "Governança",
+      "agent": "Dono",
+      "name": "Aceitar contratos e termos em nome da empresa",
+      "eligible": false,
+      "state": "owner_reserved"
+    },
+    {
+      "id": "logins",
+      "area": "Governança",
+      "agent": "Dono",
+      "name": "Logins, 2FA e conexão de contas",
+      "eligible": false,
+      "state": "owner_reserved"
+    },
+    {
+      "id": "spend",
+      "area": "Governança",
+      "agent": "Dono",
+      "name": "Gastos, tráfego pago e novos custos",
+      "eligible": false,
+      "state": "owner_reserved"
+    },
+    {
+      "id": "pricing",
+      "area": "Governança",
+      "agent": "Dono",
+      "name": "Preço e regras de pagamento",
+      "eligible": false,
+      "state": "owner_reserved"
+    },
+    {
+      "id": "refund-exceptions",
+      "area": "Governança",
+      "agent": "Dono",
+      "name": "Reembolso fora da garantia automática",
+      "eligible": false,
+      "state": "owner_reserved"
+    }
   ]
 }
