@@ -359,8 +359,8 @@
       "kind": "pendência",
       "source": "Omega Absolute M2, 12/10",
       "text": "Backup diário gratuito KV↔Neon com restauração real em ambiente isolado e comparação de integridade; só conta como protegido quando a restauração conferir.",
-      "status": "in_progress",
-      "evidence": "PR #729"
+      "status": "done",
+      "evidence": "12/10 16:5x UTC: 50/50 tabelas e 17.489 linhas restauradas e conferidas no schema isolado; KV verificado; 4 tabelas de credenciais excluídas por política (PRs #729, #732, #735)"
     },
     {
       "id": "cost-plans-verify",
@@ -368,7 +368,7 @@
       "source": "Omega Absolute M3, 12/10",
       "text": "Verificar planos reais de todos os provedores e travar cobrança: Supabase verificado (free, 122 MB/500 MB); sonda semanal Cloudflare/Neon; Render e faturamento do Gemini dependem de confirmação do dono.",
       "status": "in_progress",
-      "evidence": "PR #730"
+      "evidence": "Sonda semanal (PR #730): Supabase free 122/500 MB; Workers modelo padrão; cobrança Cloudflare não legível pelo token (não verificado); Render e faturamento Gemini dependem do dono"
     },
     {
       "id": "autonomy-100",
@@ -391,8 +391,8 @@
       "kind": "pendência",
       "source": "Omniscience / ULTRA / Omega Absolute M4",
       "text": "Certificar em produção: conhecimento integral dos produtos, atendimento escrito, áudio recebido e transcrição, resposta por voz, naturalidade da narração, vídeo, coerência entre marketing e atendimento, recuperação entre provedores gratuitos, aviso de que é IA.",
-      "status": "pending",
-      "evidence": null
+      "status": "in_progress",
+      "evidence": "Avaliação ponta a ponta em produção (PRs #734, #736): FALHA real — chave Gemini ausente no Worker e sem voz reserva disponível; texto funciona"
     },
     {
       "id": "acquisition-priority",
@@ -521,6 +521,46 @@
       "text": "Requisitos das ordens ainda sem execução: modelo de clientes e segmentos, estratégia por produto e canal, CAC/LTV/margem, 14 motores com orçamento e logs, SLOs e circuit breakers, previsão com anomalias, testes de injeção de prompt e fuzz, OWASP ASVS/LGPD, desempenho e carga, base de conhecimento versionada (incl. ZEVANORY Gestão), detecção de mudança oficial.",
       "status": "pending",
       "evidence": null
+    },
+    {
+      "id": "gemini-key-worker",
+      "kind": "reservado ao dono",
+      "source": "Avaliação de voz, 12/10",
+      "text": "Instalar a chave Gemini no Worker 'zevanory' (colar como secret GEMINI_API_KEY ou autorizar por escrito a cópia pela rotina existente); sem isso o WhatsApp não responde por áudio.",
+      "status": "owner_reserved",
+      "evidence": "voice-eval 12/10: geminiEnv=false, vaultRecord=false, router sem provedor"
+    },
+    {
+      "id": "panel-remediation-order",
+      "kind": "ordem",
+      "source": "Dono, 12/10 13:00 (Remediação total da Central, 14 missões)",
+      "text": "Sessão x PIN, catálogo reconciliado, estatística dos experimentos, estados do robô, CRM ponta a ponta isolado, publicações sem duplicidade, LIVE/N/D com fonte, CFO fiel, matriz visual 1536x730/1280x720/1366x768/1024x768/390x844 nos dois temas em todas as telas, auditoria de todas as ações, pendências históricas, certificação em produção.",
+      "status": "in_progress",
+      "evidence": "Experimentos corrigidos (PR #738); painel PR #199 (sessão, catálogo, robô, LIVE, CFO, publicações, matriz)"
+    },
+    {
+      "id": "crm-e2e-isolated",
+      "kind": "pendência",
+      "source": "Remediação da Central M5",
+      "text": "Prova ponta a ponta do CRM (captura → qualificação → persistência → atualização → proposta → resultado → relatório) com dados sintéticos em espaço isolado, sem tocar no CRM de produção.",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "panel-actions-audit",
+      "kind": "pendência",
+      "source": "Remediação da Central M10",
+      "text": "Testar cada botão/ação de todas as áreas (inclui rotas fora do menu) com resposta do servidor e resultado persistido.",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "funnel-refresh-stalled",
+      "kind": "pendência",
+      "source": "Heartbeat 12/10",
+      "text": "Consolidação do funil parou de atualizar após 13:25 UTC; heartbeat horário (PR #737) mostra a causa no próximo ciclo; corrigir e provar.",
+      "status": "in_progress",
+      "evidence": "PR #737"
     }
   ]
 }
