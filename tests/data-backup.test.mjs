@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { runDataBackup, tokenOk, validIdent, manifestHash, sha256, KV_PREFIXES, REPORT_KEY } from "../worker/data-backup.mjs";
+import { runDataBackup, finalizeBackup, tokenOk, validIdent, manifestHash, sha256, KV_PREFIXES, REPORT_KEY } from "../worker/data-backup.mjs";
 
 function fakeKv(seed = {}) {
   const m = new Map(Object.entries(seed));
@@ -33,7 +33,10 @@ function fakeSql({ tables = { zevanory_leads: [{ id: 1, email_hash: "a" }, { id:
 test("full run: copies both ways, restores from the copies and reports only counts and hashes", async () => {
   const kv = fakeKv({ "zpc:sales:v1:summary": '{"totals":{"approved":0}}', "zpc:cp:sub:x": '{"plan":"cp"}', "unrelated:key": "no" });
   const { factory } = fakeSql();
-  const r = await runDataBackup({ ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://u:p@h/db" }, { sqlFactory: factory, now: Date.parse("2026-10-12T05:10:00Z") });
+  const now = Date.parse("2026-10-12T05:10:00Z");
+  const r = await runDataBackup({ ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://u:p@h/db" }, { sqlFactory: factory, now });
+  const fin = await finalizeBackup({ ZEVANORY_PRIVATE_ARTIFACTS: kv }, { parts: 1, now });
+  assert.equal(fin.ok, true, JSON.stringify(fin.failures));
   assert.equal(r.ok, true, JSON.stringify(r.failures));
   assert.equal(r.kv.keys, 2);
   assert.equal(r.neon.tables, 1); assert.equal(r.restore.neon.ok, 1);
@@ -78,4 +81,21 @@ test("the trigger endpoint is authenticated and never returns data", () => {
   const block = src.slice(src.indexOf('"/api/internal/backup/run"'), src.indexOf('"/api/zea10/autonomy"'));
   assert.match(block, /backupTokenOk\(request\.headers\.get\("x-backup-token"\)/);
   assert.match(block, /method_not_allowed/);
+});
+
+test("parts: every table lands in exactly one part, credentials are excluded, a missing part fails the day", async () => {
+  const tables = Object.fromEntries(["a_t", "b_t", "c_t", "d_t", "e_t", "provider_oauth_credentials"].map((t) => [t, [{ id: 1 }]]));
+  const kv = fakeKv({ "zpc:sales:v1:summary": "{}" });
+  const { factory } = fakeSql({ tables });
+  const now = Date.parse("2026-10-12T05:10:00Z");
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://x" };
+  const seen = [];
+  for (let p = 0; p < 3; p++) { const r = await runDataBackup(env, { sqlFactory: factory, now, part: p, parts: 3 }); assert.equal(r.ok, true, JSON.stringify(r.failures)); seen.push(...[...kv.m.keys()].filter((k) => k.startsWith("zpc:backup:v1:neon:"))); }
+  const backed = new Set(seen.map((k) => k.split(":").pop()));
+  assert.deepEqual([...backed].sort(), ["a_t", "b_t", "c_t", "d_t", "e_t"]);
+  const fin = await finalizeBackup({ ZEVANORY_PRIVATE_ARTIFACTS: kv }, { parts: 3, now });
+  assert.equal(fin.ok, true, JSON.stringify(fin));
+  assert.equal(fin.neon.excluded[0].table, "provider_oauth_credentials");
+  kv.m.delete("zpc:backup:v1:report:part:2");
+  assert.equal((await finalizeBackup({ ZEVANORY_PRIVATE_ARTIFACTS: kv }, { parts: 3, now })).ok, false);
 });
