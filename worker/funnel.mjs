@@ -40,7 +40,7 @@ export async function ensureFunnelSchema(sql) {
 
 // Cloud/datacenter networks (our own audits, monitors and headless browsers run
 // there with ordinary-looking user agents). Real buyers browse from ISPs/carriers.
-export const DATACENTER_ASNS = Object.freeze(new Set([8075, 16509, 14618, 15169, 396982, 14061, 16276, 24940, 63949, 20473, 13335, 36351, 45102, 132203, 31898, 8987, 19527]));
+export const DATACENTER_ASNS = Object.freeze(new Set([8075, 16509, 14618, 15169, 396982, 14061, 16276, 24940, 63949, 20473, 36351, 45102, 132203, 31898, 8987, 19527]));
 export function isCountableView({ method, page, userAgent, purpose, asn = 0 }) {
   if (DATACENTER_ASNS.has(Number(asn))) return false;
   if (method !== "GET") return false;
