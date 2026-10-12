@@ -1,8 +1,8 @@
 name: Data backup and restore drill (daily)
 
 # KV -> Neon and Neon -> KV cross-provider copies with a real restore drill (isolated schema and
-# sampled KV keys). Zero cost. Data moves provider-to-provider: nothing is stored in GitHub and the
-# logs carry only counts and hashes.
+# sampled KV keys), executed inside the production Worker. Zero cost. Nothing is stored in GitHub;
+# the endpoint and the logs carry only counts and hashes.
 on:
   schedule:
     - cron: "10 5 * * *"
@@ -20,10 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
-      KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,6 +29,4 @@ jobs:
         with:
           node-version: "22"
       - run: node --test tests/data-backup.test.mjs
-      - name: Install Postgres client (pinned)
-        run: npm install --no-save --no-audit --no-fund pg@8.16.3
       - run: node scripts/ops/data-backup.mjs

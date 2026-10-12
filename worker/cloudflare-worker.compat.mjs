@@ -30,6 +30,7 @@ import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
 import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { runSupportEvalIfDue } from "./support-eval.mjs";
+import { runDataBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
 import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { syncOperationalActivity } from "./operational-activity-sync.mjs";
@@ -484,6 +485,15 @@ const wrapped = {
         body: JSON.stringify({ name: "certification_pilot_invite_create", ttl_hours: 1 })
       });
       return worker.fetch(internalRequest, normalized, ctx);
+    }
+
+    if (url.pathname === "/api/internal/backup/run") {
+      // Runs the backup and restore drill; returns only counts and hashes (never data).
+      const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+      if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
+      if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      const report = await runDataBackup(normalized, { sqlFactory: whatsappProofDatabase });
+      return new Response(JSON.stringify(report), { status: report.ok ? 200 : 500, headers });
     }
 
     if (url.pathname === "/api/zea10/autonomy") {
