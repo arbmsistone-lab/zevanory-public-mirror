@@ -50,18 +50,17 @@ test("captions carry the product, guarantee and channel UTM; TikTok avoids dead 
   assert.match(captionFor(p, "facebook"), /garantia de 7 dias/);
 });
 
-test("pack renders one video per day with a ready caption, skipping nothing that passes the gate", async () => {
+test("pack renders the tip and the offer for each day with ready captions", async () => {
   const { buildPack } = await import("../scripts/channels/short-pack.mjs");
   const { readFile, rm } = await import("node:fs/promises");
   const out = "/tmp/zevanory-pack-test";
   await rm(out, { recursive: true, force: true });
   const n = await buildPack({ start: "2026-10-12", days: 3, out, render: async (plan, base) => ({ duration: 14.2, voice: "test", file: base + ".mp4" }) });
-  assert.equal(n, 3);
+  assert.equal(n, 6);
   const txt = await readFile(out + "/legendas.txt", "utf8");
-  for (const d of ["2026-10-12", "2026-10-13", "2026-10-14"]) assert.match(txt, new RegExp(d + ".mp4"));
-  assert.match(txt, /garantia de 7 dias/);
+  for (const d of ["2026-10-12", "2026-10-13", "2026-10-14"]) { assert.match(txt, new RegExp(d + "\\.mp4")); assert.match(txt, new RegExp(d + "-dica\\.mp4")); }
+  assert.match(txt, /garantia de 7 dias/); assert.match(txt, /Guia gratuito/);
 });
-
 test("Telegram channel receives the day's video once, with caption and a provider-confirmed message id", async () => {
   const kv = memKv(); let sent = 0;
   const fetchImpl = async (url, o = {}) => {
@@ -77,9 +76,9 @@ test("Telegram channel receives the day's video once, with caption and a provide
   assert.match(kv.m.get("zpc:acquisition:daily:2026-10-12:telegram_video"), /t\.me\/zevanory\/42/);
 });
 
-test("pack produces the executor command ZEVANORY e-mails to the owner, with every day, link and caption field", async () => {
+test("pack produces the executor command ZEVANORY e-mails to the owner: 2 per day (tip 12:00, offer 19:00)", async () => {
   const { executorCommand } = await import("../scripts/channels/short-pack.mjs");
   const cmd = executorCommand("2026-10-22", 10);
-  for (let d = 22; d <= 31; d++) { assert.match(cmd, new RegExp(`media/short/2026-10-${d}\\.mp4`)); assert.match(cmd, new RegExp(`^${d}/10 \\| .+ \\| .+ \\| .+$`, "m")); }
+  for (let d = 22; d <= 31; d++) { assert.match(cmd, new RegExp(`media/short/2026-10-${d}-dica\\.mp4`)); assert.match(cmd, new RegExp(`media/short/2026-10-${d}\\.mp4`)); assert.match(cmd, new RegExp(`--- ${d}/10 às 12:00`)); assert.match(cmd, new RegExp(`--- ${d}/10 às 19:00`)); }
   assert.match(cmd, /A tua marca/); assert.match(cmd, /Conteúdo gerado por IA/); assert.match(cmd, /Nunca publique na hora/);
 });

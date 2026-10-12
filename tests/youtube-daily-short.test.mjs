@@ -71,9 +71,9 @@ test("Cloudflare KV REST adapter maps 404 to null and passes the TTL", async () 
   await kv.put("a:b", "x", { expirationTtl: 60 });
   assert.match(calls[2][0], /values\/a%3Ab\?expiration_ttl=60$/); assert.equal(calls[2][1], "PUT");
 });
-test("scheduled workflow: daily, single concurrency, no secret echo", () => {
+test("scheduled workflow: three daily slots + backstop, single concurrency, no secret echo", () => {
   const wf = readFileSync(new URL("../.github/workflows/youtube-autonomous-short.yml", import.meta.url), "utf8");
-  assert.match(wf, /schedule:\s*\n\s*- cron: "0 18 \* \* \*"/);
+  for (const c of ["0 13 \\* \\* \\*", "0 18 \\* \\* \\*", "0 22 \\* \\* \\*", "30 23 \\* \\* \\*"]) assert.match(wf, new RegExp(`- cron: "${c}"`));
   assert.match(wf, /concurrency:\s*\n\s*group: youtube-autonomous-short/);
   assert.match(wf, /node scripts\/channels\/youtube-daily-short\.mjs/);
   assert.doesNotMatch(wf, /echo .*secrets\./);
@@ -105,4 +105,23 @@ test("every calendar day has a full on-screen script that wraps within the frame
     assert.ok(wrapText(p.screen.hook, 14, 3), "hook fits in 3 lines");
     assert.match(p.speech, /garantia de sete dias/);
   }
+});
+
+test("reach mix: value Shorts rotate across the 40 guides and 7 calculators, safe wording, distinct markers, offer marker unchanged", async () => {
+  const { planSlot, SLOTS } = await import("../scripts/channels/youtube-daily-short.mjs");
+  assert.deepEqual([...SLOTS], ["dica", "oferta", "calc"]);
+  const seen = new Set(), calcs = new Set();
+  for (let d = 0; d < 40; d++) {
+    const day = new Date(Date.UTC(2026, 9, 12 + d)).toISOString().slice(0, 10);
+    const tip = planSlot(day, "dica"), calc = planSlot(day, "calc"), offer = planSlot(day, "oferta");
+    for (const p of [tip, calc]) {
+      assert.equal(p.gate.action, "publish"); assert.doesNotMatch(p.speech + p.description, /gr[aá]tis|antes e depois/i);
+      assert.match(p.link, /^https:\/\/vendas\.zevanory\.api\.br\/(ia-para|calculadora)-[a-z-]+\?utm_source=youtube&utm_medium=short&utm_campaign=(dica|calc)_[a-z-]+$/);
+      assert.equal(p.said.length, 4); assert.ok(p.title.length <= 100); assert.doesNotMatch(p.screen.tip, /\.\.$/);
+    }
+    assert.notEqual(tip.marker, offer.marker); assert.notEqual(calc.marker, offer.marker);
+    seen.add(tip.link.split("?")[0]); calcs.add(calc.link.split("?")[0]);
+  }
+  assert.equal(seen.size, 40); assert.equal(calcs.size, 7);
+  assert.equal(planSlot("2026-10-11", "oferta").marker, planShort("2026-10-11").marker);
 });

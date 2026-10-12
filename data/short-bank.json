@@ -1,0 +1,535 @@
+{
+ "guides": [
+  {
+   "slug": "ia-para-salao-de-beleza",
+   "name": "Salão de beleza",
+   "plural": "salões de beleza",
+   "uses": [
+    "Confirmar horários no WhatsApp com mensagem pronta na véspera e reduzir faltas",
+    "Criar legendas de antes e depois para o Instagram sem passar meia hora pensando no texto",
+    "Montar pacotes (escova + hidratação, por exemplo) e escrever a oferta em linguagem simples",
+    "Responder perguntas frequentes (preço, duração, cuidados pós-química) com respostas padronizadas",
+    "Planejar a semana de posts em 10 minutos a partir dos serviços que mais saem"
+   ]
+  },
+  {
+   "slug": "ia-para-barbearia",
+   "name": "Barbearia",
+   "plural": "barbearias",
+   "uses": [
+    "Mandar lembrete automático de retorno 3 a 4 semanas depois do corte",
+    "Escrever posts de cortes da semana com chamada para agendar",
+    "Criar plano mensal de cortes e explicar a vantagem em uma frase",
+    "Responder 'quanto é?' e 'tem horário hoje?' com texto pronto",
+    "Organizar a lista de clientes que sumiram e chamar de volta com educação"
+   ]
+  },
+  {
+   "slug": "ia-para-restaurante-e-lanchonete",
+   "name": "Restaurante e lanchonete",
+   "plural": "restaurantes e lanchonetes",
+   "uses": [
+    "Escrever o cardápio do dia e a promoção em texto curto e atrativo",
+    "Responder pedidos no WhatsApp com mensagem padrão de confirmação e tempo de entrega",
+    "Criar posts do prato da semana com descrição que dá vontade",
+    "Calcular rapidamente o preço de combos a partir do custo dos itens",
+    "Pedir avaliação no Google depois da entrega"
+   ]
+  },
+  {
+   "slug": "ia-para-loja-de-roupas",
+   "name": "Loja de roupas",
+   "plural": "lojas de roupas",
+   "uses": [
+    "Descrever peças novas com tamanho, tecido e sugestão de combinação",
+    "Avisar clientes que pediram quando chegar a numeração ou a cor",
+    "Criar posts de 'look da semana' com legenda pronta",
+    "Organizar uma lista de transmissão só com quem pediu novidades",
+    "Escrever a política de troca de forma clara e simpática"
+   ]
+  },
+  {
+   "slug": "ia-para-mercadinho",
+   "name": "Mercadinho e mercearia",
+   "plural": "mercadinhos e mercearias",
+   "uses": [
+    "Escrever o encarte de ofertas da semana em texto para o WhatsApp",
+    "Responder pedidos de entrega com confirmação e valor total",
+    "Avisar quem pediu sobre produtos que voltaram ao estoque",
+    "Criar posts de ofertas com preço destacado e prazo",
+    "Controlar margem básica dos itens mais vendidos"
+   ]
+  },
+  {
+   "slug": "ia-para-oficina-mecanica",
+   "name": "Oficina mecânica",
+   "plural": "oficinas mecânicas",
+   "uses": [
+    "Escrever orçamento claro, item por item, para mandar pelo WhatsApp",
+    "Avisar o cliente quando o carro estiver pronto",
+    "Lembrar revisão e troca de óleo pela quilometragem ou data",
+    "Criar posts de dicas de manutenção que geram confiança",
+    "Responder 'quanto custa?' pedindo as informações certas do carro"
+   ]
+  },
+  {
+   "slug": "ia-para-clinica-e-consultorio",
+   "name": "Clínica e consultório",
+   "plural": "clínicas e consultórios",
+   "uses": [
+    "Confirmar consultas na véspera e reduzir faltas",
+    "Orientar o preparo de exames em texto claro",
+    "Responder dúvidas administrativas (convênio, valores, horários) com respostas padrão",
+    "Criar conteúdo educativo responsável para as redes",
+    "Organizar lista de retornos pendentes"
+   ]
+  },
+  {
+   "slug": "ia-para-academia",
+   "name": "Academia e estúdio",
+   "plural": "academias e estúdios",
+   "uses": [
+    "Chamar de volta alunos que pararam de treinar, com educação",
+    "Criar posts de treino e motivação com chamada para aula experimental",
+    "Responder valores e horários com mensagem pronta",
+    "Montar desafio mensal e escrever as regras",
+    "Pedir indicação a quem está satisfeito"
+   ]
+  },
+  {
+   "slug": "ia-para-pet-shop",
+   "name": "Pet shop",
+   "plural": "pet shops",
+   "uses": [
+    "Confirmar banho e tosa e avisar quando o pet estiver pronto",
+    "Lembrar vacinas e reposição de ração pela data",
+    "Criar posts com fotos dos pets atendidos (com autorização)",
+    "Responder preços por porte com tabela pronta",
+    "Montar pacotes mensais de banho"
+   ]
+  },
+  {
+   "slug": "ia-para-contabilidade",
+   "name": "Escritório de contabilidade",
+   "plural": "escritórios de contabilidade",
+   "uses": [
+    "Lembrar clientes de prazos e documentos com mensagem clara",
+    "Explicar obrigações em linguagem simples nas redes",
+    "Organizar checklist de documentos por tipo de cliente",
+    "Responder dúvidas recorrentes com respostas padronizadas",
+    "Escrever propostas de serviço objetivas"
+   ]
+  },
+  {
+   "slug": "ia-para-imobiliaria",
+   "name": "Imobiliária e corretor",
+   "plural": "imobiliárias e corretores",
+   "uses": [
+    "Escrever anúncios de imóveis completos e atrativos",
+    "Responder interessados com perguntas que qualificam (renda, região, prazo)",
+    "Agendar visitas e confirmar na véspera",
+    "Criar posts de imóveis da semana",
+    "Acompanhar quem visitou e não decidiu"
+   ]
+  },
+  {
+   "slug": "ia-para-deposito-de-bebidas",
+   "name": "Depósito de bebidas",
+   "plural": "depósitos de bebidas",
+   "uses": [
+    "Mandar a tabela de preços da semana para quem pediu",
+    "Confirmar pedidos e entregas com mensagem padrão",
+    "Criar ofertas para fim de semana e datas comemorativas",
+    "Controlar estoque mínimo dos itens que mais saem",
+    "Pedir avaliação no Google depois da entrega"
+   ]
+  },
+  {
+   "slug": "ia-para-padaria",
+   "name": "Padaria",
+   "plural": "padarias",
+   "uses": [
+    "Montar a lista de encomendas de pão, bolo e salgado do fim de semana a partir das mensagens soltas do WhatsApp.",
+    "Escrever a placa do café da manhã e o cardápio do dia com preço e horário de cada fornada, sem erro de português.",
+    "Calcular a produção de pão francês por dia da semana com base no que sobrou e faltou nas últimas semanas.",
+    "Responder no WhatsApp quem pergunta horário de fornada, se tem pão sem lactose e se aceita encomenda para festa.",
+    "Organizar a ficha de cada receita com custo de farinha, fermento e gás para saber quanto custa o cento de salgado."
+   ]
+  },
+  {
+   "slug": "ia-para-pizzaria",
+   "name": "Pizzaria",
+   "plural": "pizzarias",
+   "uses": [
+    "Reescrever o cardápio de sabores com descrição curta e clara de cada pizza, borda recheada e tamanhos disponíveis.",
+    "Responder rápido no WhatsApp quem pergunta taxa de entrega por bairro, tempo médio e formas de pagamento.",
+    "Montar a lista de compras de queijo, calabresa e farinha da semana a partir das vendas por sabor do último mês.",
+    "Criar a mensagem da promoção de terça ou do combo família com regras claras para não gerar confusão no pedido.",
+    "Resumir reclamações de atraso ou pizza fria para descobrir em que horário e em que bairro o problema mais acontece."
+   ]
+  },
+  {
+   "slug": "ia-para-hamburgueria",
+   "name": "Hamburgueria",
+   "plural": "hamburguerias",
+   "uses": [
+    "Escrever a descrição de cada lanche com pão, ponto da carne, molho e adicionais, para o cliente pedir sem dúvida.",
+    "Calcular o custo de cada burger com blend, queijo, pão e embalagem, e ver se o preço no aplicativo ainda compensa.",
+    "Responder no WhatsApp quem pergunta se tem opção vegetariana, sem glúten ou se dá para tirar a cebola.",
+    "Planejar a quantidade de blend e pão de cada dia com base nas vendas das últimas sextas e sábados.",
+    "Organizar o roteiro do motoboy por região quando entram vários pedidos de bairros diferentes ao mesmo tempo."
+   ]
+  },
+  {
+   "slug": "ia-para-acaiteria",
+   "name": "Açaíteria e sorveteria",
+   "plural": "açaíterias e sorveterias",
+   "uses": [
+    "Organizar o cardápio de tamanhos de copo e a lista de complementos com preço, para o cliente montar sem confusão.",
+    "Prever quanto açaí e sorvete pedir ao fornecedor nos dias quentes, usando as vendas das últimas semanas.",
+    "Responder no WhatsApp quem pergunta se tem açaí zero açúcar, opção sem lactose e taxa de entrega.",
+    "Criar a mensagem do combo da tarde ou do copo em dobro com regras claras de dia, horário e tamanho.",
+    "Montar o controle de validade dos complementos e das caixas no freezer para nada vencer escondido no fundo."
+   ]
+  },
+  {
+   "slug": "ia-para-confeitaria",
+   "name": "Confeitaria",
+   "plural": "confeitarias",
+   "uses": [
+    "Transformar a conversa de encomenda em ficha com sabor, massa, recheio, peso, tema, data e horário de retirada.",
+    "Calcular o preço do bolo por quilo e do cento de docinhos somando ingredientes, embalagem, gás e seu tempo.",
+    "Escrever a tabela de sabores e tamanhos com descrição curta e regras de sinal e prazo mínimo de encomenda.",
+    "Responder dúvidas comuns no WhatsApp, como quantos quilos servem 30 pessoas e se faz bolo sem açúcar.",
+    "Montar o cronograma da semana com o que assar, rechear e decorar em cada dia para não acumular na véspera."
+   ]
+  },
+  {
+   "slug": "ia-para-farmacia",
+   "name": "Farmácia",
+   "plural": "farmácias",
+   "uses": [
+    "Organizar os pedidos de entrega que chegam pelo WhatsApp em lista com produto, endereço, forma de pagamento e horário.",
+    "Montar lembrete de reposição para cliente de uso contínuo que pediu aviso, sem indicar remédio nem dosagem.",
+    "Revisar a lista de produtos perto do vencimento e sugerir ordem de exposição na gôndola de higiene e beleza.",
+    "Escrever respostas padrão sobre horário, plantão, taxa de entrega e documentos para retirada de receita controlada.",
+    "Preparar o roteiro de conferência do estoque de dermocosméticos e fraldas, com o que repor primeiro."
+   ]
+  },
+  {
+   "slug": "ia-para-otica",
+   "name": "Ótica",
+   "plural": "óticas",
+   "uses": [
+    "Explicar em linguagem simples a diferença entre lente multifocal, antirreflexo e filtro de luz azul no orçamento.",
+    "Organizar a lista de óculos prontos para retirada com nome, telefone, laboratório e data de chegada.",
+    "Avisar clientes que pediram lembrete quando a receita estiver perto de completar um ano, sugerindo nova consulta.",
+    "Escrever a descrição das armações da vitrine com material, tamanho e indicação de formato de rosto.",
+    "Responder no WhatsApp quem pergunta prazo do laboratório, parcelamento e se a ótica faz ajuste e conserto."
+   ]
+  },
+  {
+   "slug": "ia-para-papelaria",
+   "name": "Papelaria",
+   "plural": "papelarias",
+   "uses": [
+    "Transformar a foto da lista de material escolar em orçamento item por item, com opção econômica e opção de marca.",
+    "Montar a tabela de serviços de impressão, cópia, plastificação e encadernação com preço e prazo de cada um.",
+    "Organizar os pedidos de lista escolar por escola e série para separar tudo antes do pico de janeiro e fevereiro.",
+    "Escrever respostas para quem pergunta se imprime pelo WhatsApp, em que formato mandar o arquivo e quanto custa.",
+    "Planejar o estoque de cadernos, mochilas e itens de volta às aulas comparando com as vendas do ano anterior."
+   ]
+  },
+  {
+   "slug": "ia-para-materiais-de-construcao",
+   "name": "Loja de materiais de construção",
+   "plural": "lojas de materiais de construção",
+   "uses": [
+    "Transformar a lista que o pedreiro mandou por áudio ou foto em orçamento organizado, com código e quantidade.",
+    "Estimar a quantidade de piso, argamassa, rejunte ou tinta a partir da metragem do cômodo, para o vendedor conferir.",
+    "Montar a programação de entregas do caminhão por bairro e horário, juntando pedidos de obras próximas.",
+    "Escrever respostas para dúvidas comuns, como diferença entre argamassa AC1, AC2 e AC3 e prazo de entrega.",
+    "Acompanhar orçamentos que não fecharam e lembrar o vendedor de retornar para o cliente em dois ou três dias."
+   ]
+  },
+  {
+   "slug": "ia-para-assistencia-tecnica-de-celular",
+   "name": "Loja de celulares e assistência técnica",
+   "plural": "lojas de celulares e assistências técnicas",
+   "uses": [
+    "Registrar cada aparelho que entra com modelo, defeito relatado, estado da tela e senha, numa ficha padrão.",
+    "Escrever o orçamento de troca de tela, bateria ou conector explicando prazo, garantia e peça usada em linguagem simples.",
+    "Avisar o cliente quando o aparelho estiver pronto e lembrar quem deixou o celular esquecido há semanas.",
+    "Criar a descrição de capinhas, películas e carregadores com compatibilidade de modelo para evitar troca.",
+    "Responder no WhatsApp quem pergunta se a loja faz backup, quanto tempo demora e se o orçamento é cobrado."
+   ]
+  },
+  {
+   "slug": "ia-para-autoescola",
+   "name": "Autoescola",
+   "plural": "autoescolas",
+   "uses": [
+    "Organizar a agenda de aulas práticas por instrutor, veículo e horário, evitando choque e carro parado.",
+    "Explicar em linguagem simples as etapas para tirar a CNH, do exame médico à prova prática, para quem está começando.",
+    "Lembrar o aluno da aula marcada no dia anterior, com horário e ponto de encontro, para reduzir falta.",
+    "Montar simulados de legislação com perguntas no estilo da prova teórica para o aluno treinar em casa.",
+    "Responder no WhatsApp quem pergunta documentos para matrícula, formas de pagamento e diferença entre categorias A e B."
+   ]
+  },
+  {
+   "slug": "ia-para-escola-de-idiomas",
+   "name": "Escola de idiomas e curso livre",
+   "plural": "escolas de idiomas e cursos livres",
+   "uses": [
+    "Organizar os interessados por idioma, nível e horário preferido para montar turma que realmente feche.",
+    "Preparar exercícios extras e listas de vocabulário por nível para o professor revisar e usar na aula.",
+    "Confirmar a aula experimental um dia antes, com endereço ou link, para reduzir quem esquece de aparecer.",
+    "Escrever o comunicado de reposição de aula, feriado ou troca de professor com clareza e sem gerar dúvida.",
+    "Identificar alunos com várias faltas seguidas para a coordenação conversar antes de a pessoa desistir."
+   ]
+  },
+  {
+   "slug": "ia-para-clinica-odontologica",
+   "name": "Clínica odontológica",
+   "plural": "clínicas odontológicas",
+   "uses": [
+    "Confirmar consultas do dia seguinte e reorganizar a agenda quando alguém desmarca, para reduzir horário vago.",
+    "Escrever orientações gerais de pré e pós-consulta que o dentista já usa, em linguagem simples, para ele revisar.",
+    "Lembrar pacientes que pediram aviso da revisão periódica, sem prometer resultado nem falar de preço.",
+    "Responder no WhatsApp perguntas sobre horário, endereço, estacionamento e convênios aceitos pela clínica.",
+    "Organizar a lista de materiais e insumos do consultório que estão acabando para a reposição da semana."
+   ]
+  },
+  {
+   "slug": "ia-para-psicologo",
+   "name": "Psicólogo",
+   "plural": "psicólogos",
+   "uses": [
+    "Organizar a agenda semanal de sessões presenciais e online, com horários fixos, remarcações e intervalos.",
+    "Escrever mensagens neutras de confirmação e remarcação de sessão, sem expor nada sobre o atendimento.",
+    "Montar o texto de contrato terapêutico com regras de falta, remarcação, pagamento e sigilo, para você revisar.",
+    "Preparar recibos e controle mensal de pagamentos por paciente, usando só nome e valores, sem conteúdo clínico.",
+    "Rascunhar textos educativos gerais para redes sociais, que você revisa conforme o Código de Ética do CFP."
+   ]
+  },
+  {
+   "slug": "ia-para-nutricionista",
+   "name": "Nutricionista",
+   "plural": "nutricionistas",
+   "uses": [
+    "Organizar a agenda de primeiras consultas e retornos, com lembrete de quais pacientes já passaram do prazo.",
+    "Transformar orientações gerais que você já usa em material simples, como lista de compras e ideias de lanche.",
+    "Escrever a mensagem de pré-consulta pedindo exames recentes e registro alimentar, para o paciente chegar preparado.",
+    "Responder no WhatsApp dúvidas de agenda, valores da consulta, convênio e atendimento online.",
+    "Rascunhar textos educativos para redes sociais, que você revisa conforme o Código de Ética do Nutricionista."
+   ]
+  },
+  {
+   "slug": "ia-para-fisioterapia",
+   "name": "Clínica de fisioterapia",
+   "plural": "clínicas de fisioterapia",
+   "uses": [
+    "Organizar a agenda de sessões por fisioterapeuta, sala e aparelho, encaixando reposições sem conflito de horário.",
+    "Controlar quantas sessões cada paciente já fez do pacote ou da guia do convênio e avisar quando está acabando.",
+    "Confirmar sessões do dia seguinte pelo WhatsApp e oferecer o horário vago para quem está na lista de espera.",
+    "Transformar orientações gerais de exercício em casa que o fisioterapeuta já usa em texto claro, para ele revisar.",
+    "Responder dúvidas sobre convênios, documentos, pedido médico e o que vestir para a sessão."
+   ]
+  },
+  {
+   "slug": "ia-para-estetica",
+   "name": "Estética e depilação",
+   "plural": "clínicas de estética e depilação",
+   "uses": [
+    "Organizar a agenda por sala, profissional e duração de cada procedimento, encaixando retornos sem atraso.",
+    "Lembrar a cliente do intervalo entre sessões de depilação que ela combinou, com antecedência de alguns dias.",
+    "Escrever orientações gerais de pré e pós-procedimento que a profissional já usa, em texto claro para revisão.",
+    "Responder no WhatsApp perguntas de horário, duração, formas de pagamento e como funciona a primeira avaliação.",
+    "Montar ficha de anamnese padrão para a profissional revisar, com alergias, medicamentos e cuidados de pele."
+   ]
+  },
+  {
+   "slug": "ia-para-manicure",
+   "name": "Manicure e nail designer",
+   "plural": "manicures e nail designers",
+   "uses": [
+    "Organizar a agenda com tempo certo para cada serviço, como pé e mão, alongamento em gel e manutenção.",
+    "Lembrar a cliente da manutenção do alongamento no prazo combinado, antes de a unha descolar ou quebrar.",
+    "Escrever a tabela de serviços com preço, duração e regra de atraso e cancelamento em linguagem gentil.",
+    "Calcular o custo de cada serviço com gel, tips, lixas e esmalte para ver se o preço cobre o material.",
+    "Criar legendas para fotos dos trabalhos com o nome da técnica e das cores, sem prometer durabilidade exata."
+   ]
+  },
+  {
+   "slug": "ia-para-lava-jato",
+   "name": "Lava-jato",
+   "plural": "lava-jatos",
+   "uses": [
+    "Montar a tabela de serviços por porte do carro, como lavagem simples, completa, higienização interna e polimento.",
+    "Organizar agendamentos por horário para não acumular carro no sábado e deixar a equipe parada na terça.",
+    "Avisar o cliente pelo WhatsApp que o carro está pronto, com valor e horário limite para retirada.",
+    "Calcular o custo de produtos como shampoo, cera e pretinho por lavagem para revisar os preços.",
+    "Lembrar clientes de plano mensal ou de quem lava com frequência quando passa o prazo de costume."
+   ]
+  },
+  {
+   "slug": "ia-para-eletricista-e-encanador",
+   "name": "Eletricista e encanador",
+   "plural": "eletricistas e encanadores",
+   "uses": [
+    "Transformar o áudio do cliente descrevendo o vazamento ou o disjuntor desarmando em lista do que levar na visita.",
+    "Escrever o orçamento com serviço, material, prazo e garantia de forma clara, para o cliente aprovar por escrito.",
+    "Organizar as visitas do dia por bairro para gastar menos tempo e combustível no deslocamento.",
+    "Montar a lista de material de cada serviço, como fios, disjuntores, conexões e registros, antes de ir à loja.",
+    "Lembrar clientes antigos que pediram aviso de manutenção preventiva, como caixa d'água e quadro de energia."
+   ]
+  },
+  {
+   "slug": "ia-para-fotografo",
+   "name": "Fotógrafo",
+   "plural": "fotógrafos",
+   "uses": [
+    "Responder pedidos de orçamento com pacotes claros de ensaio, evento ou casamento, incluindo número de fotos e prazo.",
+    "Rascunhar contrato com data, local, horas de cobertura, entrega, direitos de imagem e cancelamento, para revisar.",
+    "Montar o roteiro de fotos obrigatórias de um casamento ou aniversário a partir da conversa com o cliente.",
+    "Organizar o cronograma de edições e entregas de galerias para não estourar prazo na alta temporada.",
+    "Escrever legendas e textos de portfólio sobre cada trabalho, com autorização de uso de imagem dos clientes."
+   ]
+  },
+  {
+   "slug": "ia-para-arquitetura-e-design-de-interiores",
+   "name": "Arquitetura e design de interiores",
+   "plural": "escritórios de arquitetura e design de interiores",
+   "uses": [
+    "Transformar a conversa inicial com o cliente em briefing organizado com rotina da família, estilo, orçamento e prazo.",
+    "Escrever a proposta com etapas do projeto, número de revisões, entregáveis e forma de pagamento, para revisão.",
+    "Montar o cronograma de obra com ordem dos serviços e marcos de visita, para alinhar com o empreiteiro.",
+    "Organizar a lista de compras de revestimentos, louças e iluminação por ambiente, com quantidade e prazo de entrega.",
+    "Preparar resumos das reuniões e decisões do cliente, para registrar o que foi aprovado e evitar retrabalho."
+   ]
+  },
+  {
+   "slug": "ia-para-advocacia",
+   "name": "Escritório de advocacia",
+   "plural": "escritórios de advocacia",
+   "uses": [
+    "Organizar a agenda de prazos, audiências e reuniões em uma lista semanal, para conferência do advogado responsável.",
+    "Traduzir andamentos processuais para linguagem simples ao atualizar o cliente, sempre com revisão do advogado.",
+    "Montar checklist de documentos por tipo de caso, como trabalhista, família ou inventário, para o primeiro atendimento.",
+    "Rascunhar estrutura de peças e pesquisas iniciais, conferindo cada lei e jurisprudência nas fontes oficiais.",
+    "Escrever textos informativos para redes sociais dentro das regras do Provimento 205/2021 da OAB."
+   ]
+  },
+  {
+   "slug": "ia-para-agencia-de-viagens",
+   "name": "Agência de viagens",
+   "plural": "agências de viagens",
+   "uses": [
+    "Montar rascunho de roteiro dia a dia a partir do pedido do cliente, com passeios, deslocamentos e tempo livre.",
+    "Comparar opções de pacote em uma tabela simples com voo, hotel, regime de alimentação, taxas e regras de cancelamento.",
+    "Criar checklist de documentos por destino, como passaporte, visto e vacinas, para conferir nas fontes oficiais.",
+    "Avisar o cliente sobre check-in online, horário de chegada ao aeroporto e franquia de bagagem antes do embarque.",
+    "Organizar a lista de quem viajou e pediu para receber ofertas de feriados e férias escolares."
+   ]
+  },
+  {
+   "slug": "ia-para-floricultura",
+   "name": "Floricultura",
+   "plural": "floriculturas",
+   "uses": [
+    "Organizar os pedidos de Dia das Mães e Dia dos Namorados em lista com flor, mensagem do cartão, endereço e horário.",
+    "Escrever sugestões de mensagem para o cartão quando o cliente não sabe o que dizer, em tom romântico ou de condolência.",
+    "Montar o catálogo de buquês e arranjos com descrição, tamanho e preço, a partir das fotos que você já tem.",
+    "Planejar a compra de rosas e flores do Ceasa para as datas fortes usando as vendas do ano anterior.",
+    "Organizar a rota de entregas por região e horário, separando o que precisa chegar de manhã."
+   ]
+  },
+  {
+   "slug": "ia-para-marmitaria",
+   "name": "Marmitaria",
+   "plural": "marmitarias",
+   "uses": [
+    "Montar o cardápio semanal variando proteína, guarnição e salada, sem repetir prato e aproveitando o que tem no estoque.",
+    "Juntar os pedidos do dia que chegam até as 10h em uma lista com tamanho, prato, endereço e pagamento.",
+    "Calcular a lista de compras da semana e o custo de cada marmita a partir das receitas e quantidades vendidas.",
+    "Organizar planos semanais e mensais de marmitas congeladas, com regras de entrega e pagamento claras.",
+    "Responder dúvidas sobre opção fit, sem glúten ou vegetariana, informando os ingredientes conforme a receita."
+   ]
+  },
+  {
+   "slug": "ia-para-pousada",
+   "name": "Pousada e hotel",
+   "plural": "pousadas e hotéis",
+   "uses": [
+    "Responder pedidos de reserva com tipos de quarto, tarifas, política de crianças, pets e cancelamento em texto claro.",
+    "Enviar orientações de check-in antes da chegada, com horário, endereço, estacionamento e senha do wi-fi.",
+    "Montar o mapa de ocupação da semana para planejar limpeza, enxoval e café da manhã.",
+    "Escrever o guia do hóspede com dicas de restaurantes, praias e passeios da região em português e em inglês.",
+    "Responder avaliações nos sites de reserva com educação, inclusive as negativas, sem discutir com o hóspede."
+   ]
+  },
+  {
+   "slug": "ia-para-distribuidora-de-gas-e-agua",
+   "name": "Distribuidora de gás e água",
+   "plural": "distribuidoras de gás e água",
+   "uses": [
+    "Organizar os pedidos de botijão P13 e galão de 20 litros que chegam pelo WhatsApp em fila por bairro e horário.",
+    "Lembrar clientes que pediram aviso quando o gás deve estar acabando, com base no intervalo das últimas compras.",
+    "Escrever respostas padrão sobre preço, troca de vasilhame, formas de pagamento e tempo médio de entrega.",
+    "Montar o controle diário de cascos vazios, cheios e vendidos para fechar o caixa e o estoque sem diferença.",
+    "Criar orientações de segurança para o cliente, como checar a validade da mangueira e do regulador."
+   ]
+  }
+ ],
+ "calculators": [
+  {
+   "slug": "calculadora-preco-de-venda",
+   "name": "Calculadora de preço de venda",
+   "hook": "Seu preço cobre tudo?",
+   "topic": "o preço de venda certo",
+   "tip": "Divida o custo por um menos a soma de impostos, taxas, despesas e margem."
+  },
+  {
+   "slug": "calculadora-margem-de-lucro",
+   "name": "Calculadora de margem de lucro",
+   "hook": "Margem ou markup?",
+   "topic": "a sua margem de lucro",
+   "tip": "Margem é o lucro dividido pelo preço, não pelo custo."
+  },
+  {
+   "slug": "calculadora-ponto-de-equilibrio",
+   "name": "Calculadora de ponto de equilíbrio",
+   "hook": "Quantas vendas por mês?",
+   "topic": "o seu ponto de equilíbrio",
+   "tip": "Divida os custos fixos pelo que sobra de cada venda."
+  },
+  {
+   "slug": "calculadora-fluxo-de-caixa",
+   "name": "Calculadora de fluxo de caixa",
+   "hook": "Vai faltar caixa?",
+   "topic": "o fluxo de caixa do mês",
+   "tip": "Some o saldo e as entradas, tire as saídas e veja quantos dias o caixa aguenta."
+  },
+  {
+   "slug": "calculadora-preco-hora-servico",
+   "name": "Calculadora de preço por hora",
+   "hook": "Quanto vale a sua hora?",
+   "topic": "o preço da sua hora de serviço",
+   "tip": "Divida renda e custos pelas horas que você realmente consegue cobrar."
+  },
+  {
+   "slug": "calculadora-taxa-maquininha",
+   "name": "Calculadora de taxa da maquininha",
+   "hook": "Quanto a maquininha leva?",
+   "topic": "a taxa real da maquininha",
+   "tip": "Para receber o valor cheio, divida o preço por um menos a taxa."
+  },
+  {
+   "slug": "calculadora-cmv",
+   "name": "Calculadora de CMV",
+   "hook": "Quanto custa o que você vendeu?",
+   "topic": "o seu CMV",
+   "tip": "Estoque inicial mais compras, menos estoque final."
+  }
+ ]
+}

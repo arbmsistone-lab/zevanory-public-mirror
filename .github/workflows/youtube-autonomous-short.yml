@@ -1,23 +1,30 @@
 name: YouTube autonomous daily Short
 
-# P1-5: one Short per local day from the content calendar (15:00 America/Sao_Paulo).
+# Three Shorts per local day (reach mix 80/20): 10:00 practical AI tip for one of
+# the 40 business types, 15:00 the product Short, 19:00 a free-calculator tip.
 # Rendering needs ffmpeg, which Workers Free cannot run, so the publisher is this
 # scheduled job. Upload is PUBLIC (YouTube may keep uploads from unaudited API
 # projects private until the audit passes), idempotent per day, and recorded as a
 # masked post_published activity in the shared KV.
 on:
   schedule:
-    - cron: "0 18 * * *"
-    # Self-healing backstop (16:30 Brasília): idempotent per day — a published
-    # Short is reused and cross-posts already done are skipped, so this only
-    # completes what the 15:00 run could not.
-    - cron: "30 19 * * *"
+    - cron: "0 13 * * *"   # 10:00 dica
+    - cron: "0 18 * * *"   # 15:00 oferta
+    - cron: "0 22 * * *"   # 19:00 calc
+    # Self-healing backstop (20:30 Brasília): idempotent per day and slot — published
+    # Shorts are reused and cross-posts already done are skipped, so this only
+    # completes what an earlier run could not.
+    - cron: "30 23 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
         description: "true = render and gate only, no upload"
         required: false
         default: "false"
+      slot:
+        description: "dica | oferta | calc | all"
+        required: false
+        default: "oferta"
 
 concurrency:
   group: youtube-autonomous-short
@@ -52,11 +59,18 @@ jobs:
       - name: Render, gate and publish today's Short
         env:
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          SCHEDULE: ${{ github.event.schedule }}
+          SLOT_INPUT: ${{ inputs.slot }}
         run: |
           set -euo pipefail
-          if [ "$DRY_RUN" = "true" ]; then node scripts/channels/youtube-daily-short.mjs --dry-run; else node scripts/channels/youtube-daily-short.mjs; fi
+          case "$SCHEDULE" in
+            "0 13 * * *") SLOT=dica;; "0 18 * * *") SLOT=oferta;; "0 22 * * *") SLOT=calc;; "30 23 * * *") SLOT=all;;
+            *) SLOT="${SLOT_INPUT:-oferta}";;
+          esac
+          echo "SLOT=$SLOT" >> "$GITHUB_ENV"
+          if [ "$DRY_RUN" = "true" ]; then node scripts/channels/youtube-daily-short.mjs --dry-run --slot="$SLOT"; else node scripts/channels/youtube-daily-short.mjs --slot="$SLOT"; fi
       - name: Cross-post the Short (TikTok, Instagram Reels, Facebook, Telegram)
-        if: ${{ inputs.dry_run != 'true' }}
+        if: ${{ !cancelled() && inputs.dry_run != 'true' }}
         env:
           TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           TIKTOK_AUDIT_APPROVED: ${{ vars.TIKTOK_AUDIT_APPROVED }}
@@ -65,14 +79,14 @@ jobs:
           META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-        run: node scripts/channels/short-crosspost.mjs
+        run: node scripts/channels/short-crosspost.mjs --slot="$SLOT"
       - name: Keep the dry-run preview for the owner to watch (3 days)
         if: ${{ inputs.dry_run == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: short-preview
           path: |
-            /tmp/zevanory-daily-short.mp4
-            /tmp/zevanory-daily-short.mp3
+            /tmp/zevanory-daily-short*.mp4
+            /tmp/zevanory-daily-short*.mp3
           if-no-files-found: warn
           retention-days: 3
