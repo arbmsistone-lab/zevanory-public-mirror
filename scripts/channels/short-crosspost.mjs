@@ -5,7 +5,7 @@
 // waiting, never as failure; a provider error fails the step visibly.
 // Usage: node short-crosspost.mjs [--day=YYYY-MM-DD]
 import { readFile } from "node:fs/promises";
-import { planShort, localDay, cloudflareKv } from "./youtube-daily-short.mjs";
+import { planShort, planSlot, localDay, cloudflareKv } from "./youtube-daily-short.mjs";
 import { emitActivity } from "../../worker/activity-ledger.mjs";
 import { getPublisherAccessToken } from "./publisher-access.mjs";
 
@@ -13,8 +13,9 @@ const GRAPH = "https://graph.facebook.com/v21.0";
 const sleepMs = ms => new Promise(r => setTimeout(r, ms));
 export function captionFor(plan, channel) {
   const tags = "#pequenosnegocios #empreendedorismo #ia #zevanory";
-  const base = plan.title + "\n\n" + plan.screen.tip + "\n\n" + plan.entry.product.name + " · garantia de 7 dias.";
-  if (channel === "tiktok") return (base + "\nGuia completo: vendas.zevanory.api.br\n\n" + tags).slice(0, 2200);
+  const offer = plan.slot && plan.slot !== "oferta" ? plan.screen.product + " · " + plan.screen.offer + "." : plan.entry.product.name + " · garantia de 7 dias.";
+  const base = plan.title.replace(/ #shorts$/i, "") + "\n\n" + plan.screen.tip + "\n\n" + offer;
+  if (channel === "tiktok") return (base + "\n" + (plan.slot && plan.slot !== "oferta" ? "No site: vendas.zevanory.api.br" : "Guia completo: vendas.zevanory.api.br") + "\n\n" + tags).slice(0, 2200);
   return (base + "\nGuia completo: " + plan.link.replace("utm_source=youtube", "utm_source=" + channel) + "\n\n" + tags).slice(0, 2200);
 }
 async function jsonOrThrow(r, code) { const j = await r.json().catch(() => ({})); if (!r.ok || j?.error?.code && j.error.code !== "ok") throw new Error(code + "_http_" + r.status + (j?.error?.code && j.error.code !== "ok" ? "_" + String(j.error.code).replace(/[^a-z0-9_]/gi, "").slice(0, 40) : "")); return j; }
@@ -83,19 +84,20 @@ export async function publishTelegramVideo(plan, mp4, { token, chatId, fetchImpl
   return { provider_post_id: String(j.result.message_id), url: handle ? `https://t.me/${handle}/${j.result.message_id}` : null };
 }
 
-export async function crosspost({ day, mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now() }) {
-  const plan = planShort(day), report = {};
-  const done = async ch => { const v = await kv.get(`zpc:acquisition:daily:${day}:${ch}`); return v ? JSON.parse(v) : null; };
+export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now() }) {
+  const plan = planSlot(day, slot), report = {}, sfx = slot === "oferta" ? "" : "_" + slot, mediaId = slot === "oferta" ? day : day + "-" + slot;
+  const done = async ch => { const v = await kv.get(`zpc:acquisition:daily:${day}:${ch}${sfx}`); return v ? JSON.parse(v) : null; };
   const record = async (ch, r) => {
-    await kv.put(`zpc:acquisition:daily:${day}:${ch}`, JSON.stringify({ channel: ch, day, status: "publicado", provider_post_id: r.provider_post_id, url: r.url, privacy: r.privacy || "public", product: plan.entry.product.sku, at: new Date(now).toISOString() }), { expirationTtl: 400 * 86400 });
-    await emitActivity({ ZEVANORY_PRIVATE_ARTIFACTS: kv }, { type: "post_published", channel: ch, status: r.privacy === "SELF_ONLY" ? "private" : "published", ref: `${ch}:${day}:${plan.entry.theme_id}`, link: r.url || "" }, { now });
+    await kv.put(`zpc:acquisition:daily:${day}:${ch}${sfx}`, JSON.stringify({ channel: ch, day, status: "publicado", provider_post_id: r.provider_post_id, url: r.url, privacy: r.privacy || "public", product: plan.entry.product.sku, at: new Date(now).toISOString() }), { expirationTtl: 400 * 86400 });
+    await emitActivity({ ZEVANORY_PRIVATE_ARTIFACTS: kv }, { type: "post_published", channel: ch, status: r.privacy === "SELF_ONLY" ? "private" : "published", ref: `${ch}:${day}:${sfx ? slot + ":" : ""}${plan.entry.theme_id}`, link: r.url || "" }, { now });
   };
   // Media URL for pull-based platforms.
-  await kv.putBinary(`zpc:media:short:${day}`, mp4, { expirationTtl: 30 * 86400 });
-  const videoUrl = `https://zevanory.api.br/media/short/${day}.mp4`;
+  await kv.putBinary(`zpc:media:short:${mediaId}`, mp4, { expirationTtl: 30 * 86400 });
+  const videoUrl = `https://zevanory.api.br/media/short/${mediaId}.mp4`;
   // TikTok
   try {
-    if (await done("tiktok")) report.tiktok = "already_published";
+    if (slot !== "oferta") report.tiktok = "scheduled_via_pack";
+    else if (await done("tiktok")) report.tiktok = "already_published";
     else {
       const access = await getPublisherAccessToken("tiktok", env.TIKTOK_CLIENT_SECRET, fetchImpl);
       if (!access.connected) report.tiktok = "waiting:" + access.reason;
@@ -105,7 +107,8 @@ export async function crosspost({ day, mp4, env = process.env, kv, fetchImpl = f
   // Telegram channel video
   try {
     const tgToken = String(env.TELEGRAM_BOT_TOKEN || "").trim(), tgChat = String(env.TELEGRAM_CHANNEL_ID || "").trim();
-    if (await done("telegram_video")) report.telegram_video = "already_published";
+    if (slot !== "oferta") report.telegram_video = "offer_slot_only";
+    else if (await done("telegram_video")) report.telegram_video = "already_published";
     else if (!tgToken || !tgChat) report.telegram_video = "waiting:telegram_credentials";
     else { const r = await publishTelegramVideo(plan, mp4, { token: tgToken, chatId: tgChat, fetchImpl }); await record("telegram_video", r); report.telegram_video = "published"; }
   } catch (e) { report.telegram_video = "error:" + String(e.message).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g, "bot***").slice(0, 80); }
@@ -126,8 +129,13 @@ export async function crosspost({ day, mp4, env = process.env, kv, fetchImpl = f
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
 if (isMain) {
   const day = (process.argv.find(a => a.startsWith("--day=")) || "").slice(6) || localDay();
+  const slotArg = (process.argv.find(a => a.startsWith("--slot=")) || "").slice(7) || "oferta";
   const kv = cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID });
-  const report = await crosspost({ day, mp4: await readFile("/tmp/zevanory-daily-short.mp4"), kv });
-  for (const [ch, v] of Object.entries(report)) console.log(`::${v.startsWith("error") ? "error" : "notice"} title=SHORT_CROSSPOST::${ch}=${String(v).replace(/[\r\n]+/g, " ")}`);
-  if (Object.values(report).some(v => v.startsWith("error"))) process.exit(1);
+  let errors = 0;
+  for (const slot of slotArg === "all" ? ["dica", "oferta", "calc"] : [slotArg]) {
+    let mp4; try { mp4 = await readFile("/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot) + ".mp4"); } catch { console.log(`::warning title=SHORT_CROSSPOST::${slot}=no_rendered_file`); continue; }
+    const report = await crosspost({ day, slot, mp4, kv });
+    for (const [ch, v] of Object.entries(report)) { if (v.startsWith("error")) errors++; console.log(`::${v.startsWith("error") ? "error" : "notice"} title=SHORT_CROSSPOST::${slot}:${ch}=${String(v).replace(/[\r\n]+/g, " ")}`); }
+  }
+  if (errors) process.exit(1);
 }

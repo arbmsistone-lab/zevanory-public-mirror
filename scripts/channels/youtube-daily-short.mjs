@@ -7,6 +7,7 @@
 // logged. Usage: node youtube-daily-short.mjs [--dry-run] [--day=YYYY-MM-DD]
 import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { calendarEntry, productLink } from "../../worker/acquisition-engine.mjs";
 import { evaluateCreativeWithRewrites } from "../../worker/creative-autonomy.mjs";
@@ -24,6 +25,48 @@ const ANGLE_LINE = {
   "comparação": "Compare tempo, erros e facilidade de desfazer."
 };
 export const localDay = (now = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+
+// Reach mix (80/20): two value Shorts a day (a practical AI tip for one of the 40
+// business types, and a free calculator) plus the product Short. Value content is
+// what short-video feeds distribute to new audiences; the offer converts them.
+export const SLOTS = Object.freeze(["dica", "oferta", "calc"]);
+const BANK = JSON.parse(readFileSync(new URL("../../data/short-bank.json", import.meta.url), "utf8"));
+const dayIndex = day => Math.floor(Date.parse(day + "T12:00:00Z") / 86400000);
+const VALUE_RISK = /\b(gr[aá]tis|renda garantida|lucro garantido|ganhe dinheiro|resultado garantido|fature|enrique[cç]a|antes e depois|cura|milagre|voc[eê] sofre)\b/i;
+const lowerFirst = t => t.charAt(0).toLowerCase() + t.slice(1);
+export function planValueShort(day, slot) {
+  const i = dayIndex(day);
+  let item, use, url, screen, said, title, lead, campaign;
+  if (slot === "dica") {
+    item = BANK.guides[((i % BANK.guides.length) + BANK.guides.length) % BANK.guides.length];
+    const k0 = Math.floor(i / BANK.guides.length) % item.uses.length;
+    use = ([...item.uses.slice(k0), ...item.uses.slice(0, k0)].find(u => !VALUE_RISK.test(u)) || item.uses[0]).replace(/[.\s]+$/, "");
+    campaign = "dica_" + item.slug.replace(/^ia-para-/, "");
+    title = "Como usar IA em " + item.plural + ": dica prática #shorts";
+    screen = { hook: "IA para " + lowerFirst(item.name), niche: "uma dica para aplicar hoje", tip: use + ".", product: "Guia gratuito", offer: "5 usos + mensagens prontas", cta: "Link na descrição", url: "vendas.zevanory.api.br" };
+    said = [["IA para " + lowerFirst(item.name) + "?", "Uma dica prática."], [use + "."], ["No guia gratuito tem mais quatro usos e mensagens prontas."], ["O link está na descrição."]];
+    lead = use + ". Mais 4 usos práticos, mensagens prontas para o WhatsApp e checklist da semana no guia gratuito para " + item.plural + ".";
+  } else {
+    item = BANK.calculators[((i % BANK.calculators.length) + BANK.calculators.length) % BANK.calculators.length];
+    campaign = "calc_" + item.slug.replace(/^calculadora-/, "");
+    title = (item.hook + " Como calcular " + item.topic + " #shorts").slice(0, 100);
+    screen = { hook: item.hook, niche: "calcule em segundos", tip: item.tip, product: item.name, offer: "Gratuita · sem cadastro", cta: "Link na descrição", url: "vendas.zevanory.api.br" };
+    said = [[item.hook], [item.tip], ["Use a calculadora gratuita da ZEVANORY, sem cadastro."], ["O link está na descrição."]];
+    lead = item.tip + " Faça a conta em segundos na calculadora gratuita da ZEVANORY, sem cadastro.";
+  }
+  url = `https://vendas.zevanory.api.br/${item.slug}?utm_source=youtube&utm_medium=short&utm_campaign=${campaign}`;
+  const marker = "zevanory-short-key:" + createHash("sha256").update(day + "|" + slot + "|" + item.slug + "|short-v2").digest("hex").slice(0, 16);
+  const description = [lead, "", url, "", "#Shorts #ZEVANORY #PequenosNegocios #Empreendedorismo", "", marker].join("\n");
+  const speech = said.map(b => b.join(" ")).join(" ");
+  const text = [screen.hook, screen.tip, speech, description].join(" ");
+  const gate = VALUE_RISK.test(text) ? { action: "discard", score: 0, compliance: 0, reason: "value_risk_term" } : { action: "publish", score: 100, compliance: 100, reason: "value_gate_ok" };
+  const entry = { theme_id: slot + ":" + item.slug, product: { name: screen.product, sku: null } };
+  return { day, slot, entry, price: null, spec: null, gate, link: url, marker, title, description, lines: [], speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", slot === "dica" ? item.name : item.name] };
+}
+export function planSlot(day, slot = "oferta") {
+  if (!SLOTS.includes(slot)) throw new Error("short_slot_unknown");
+  return slot === "oferta" ? planShort(day) : planValueShort(day, slot);
+}
 
 export function planShort(day) {
   const entry = calendarEntry(day), price = PRICES[entry.product.sku];
@@ -54,7 +97,7 @@ export function planShort(day) {
     product: entry.product.name, offer: "R$ " + price + " · Garantia de 7 dias",
     cta: "Link na descrição", url: "vendas.zevanory.api.br"
   };
-  return { day, entry, price, spec, gate, link, marker, title, description, lines, speech, said, screen, privacyStatus: "public" };
+  return { day, slot: "oferta", entry, price, spec, gate, link, marker, title, description, lines, speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", entry.product.name] };
 }
 
 const run = (cmd, args) => { const p = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }); if (p.status !== 0) throw new Error(cmd + "_failed"); return p.stdout; };
@@ -185,7 +228,7 @@ export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { ge
   };
   // Beat 1: the card is never empty; it promises the payoff while the hook is spoken.
   await block([{ ...fitText("1 dica prática", [84, 76], 820, R.xb, 1), font: XB, color: "0x8fb8ff" }, { ...fitText("para aplicar ainda hoje", [52, 46], 820, R.sb, 1), font: SB, color: "0xf5f7fb", gap: 18 }], 0, tTip);
-  const tip = fitText(sc.tip, [66, 60, 54], 820, R.md, 4, 3);
+  const tip = fitText(sc.tip, [66, 60, 54, 48], 820, R.md, 5, 3);
   await block([{ ...tip, font: MD, color: "0xf5f7fb" }], tTip, tOffer);
   const prod = fitText(sc.product, [88, 80, 72], 820, R.xb, 2), offer = fitText(sc.offer, [52, 46], 820, R.sb, 2);
   await block([{ ...prod, font: XB, color: "0xf5f7fb" }, { ...offer, font: SB, color: "0xa8f0d0", gap: 22 }], tOffer, tCta);
@@ -238,7 +281,7 @@ export async function publishShort(plan, mp4, { accessToken, fetchImpl = fetch, 
   }
   const reused = Boolean(videoId);
   if (!reused) {
-    const metadata = { snippet: { title: plan.title, description: plan.description, tags: ["ZEVANORY", "Shorts", "pequenos negócios", plan.entry.product.name], categoryId: "27", defaultLanguage: "pt-BR", defaultAudioLanguage: "pt-BR" }, status: { privacyStatus: plan.privacyStatus, selfDeclaredMadeForKids: false, containsSyntheticMedia: true } };
+    const metadata = { snippet: { title: plan.title, description: plan.description, tags: plan.tags || ["ZEVANORY", "Shorts"], categoryId: "27", defaultLanguage: "pt-BR", defaultAudioLanguage: "pt-BR" }, status: { privacyStatus: plan.privacyStatus, selfDeclaredMadeForKids: false, containsSyntheticMedia: true } };
     const start = await fetchImpl("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", { method: "POST", headers: { ...auth, "content-type": "application/json; charset=utf-8", "x-upload-content-type": "video/mp4", "x-upload-content-length": String(mp4.length) }, body: JSON.stringify(metadata) });
     const location = start.headers?.get?.("location");
     if (!start.ok || !location) throw new Error("youtube_resumable_start_http_" + start.status);
@@ -265,9 +308,9 @@ export async function publishShort(plan, mp4, { accessToken, fetchImpl = fetch, 
 
 export async function recordPublication(kv, plan, result, { now = Date.now() } = {}) {
   const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv };
-  const activity = await emitActivity(env, { type: "post_published", channel: "youtube", status: result.privacy_status === "public" ? "published" : (result.privacy_status === "unlisted" ? "unlisted" : "private"), ref: "youtube:" + plan.day + ":" + plan.entry.theme_id, link: result.url }, { now });
+  const activity = await emitActivity(env, { type: "post_published", channel: "youtube", status: result.privacy_status === "public" ? "published" : (result.privacy_status === "unlisted" ? "unlisted" : "private"), ref: "youtube:" + plan.day + ":" + (plan.slot && plan.slot !== "oferta" ? plan.slot + ":" : "") + plan.entry.theme_id, link: result.url }, { now });
   // Same per-day outcome key family as the acquisition engine, for the snapshot.
-  await kv.put("zpc:acquisition:daily:" + plan.day + ":youtube", JSON.stringify({ channel: "youtube", day: plan.day, status: "publicado", provider_post_id: result.video_id, url: result.url, privacy: result.privacy_status, product: plan.entry.product.sku, at: new Date(now).toISOString() }), { expirationTtl: 45 * 86400 });
+  await kv.put("zpc:acquisition:daily:" + plan.day + ":youtube" + (plan.slot && plan.slot !== "oferta" ? "_" + plan.slot : ""), JSON.stringify({ channel: "youtube", slot: plan.slot || "oferta", day: plan.day, status: "publicado", provider_post_id: result.video_id, url: result.url, privacy: result.privacy_status, product: plan.entry.product.sku, at: new Date(now).toISOString() }), { expirationTtl: 45 * 86400 });
   await kv.put("zpc:multichannel:proof:youtube", JSON.stringify({ channel: "youtube", provider_post_id: result.video_id, url: result.url, publishedAt: new Date(now).toISOString() }), { expirationTtl: 370 * 86400 });
   return activity;
 }
@@ -275,20 +318,27 @@ export async function recordPublication(kv, plan, result, { now = Date.now() } =
 const note = (level, msg) => console.log(`::${level} title=YOUTUBE_DAILY_SHORT::${String(msg).replace(/[\r\n]+/g, " ")}`);
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
 if (isMain) {
-  try {
-    const dry = process.argv.includes("--dry-run");
-    const day = (process.argv.find(a => a.startsWith("--day=")) || "").slice(6) || localDay();
-    const plan = planShort(day);
-    if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85) throw new Error("f1_gate_rejected");
-    const rendered = await renderShort(plan);
-    note("notice", JSON.stringify({ day, theme: plan.entry.theme_id, gate: { score: plan.gate.score, compliance: plan.gate.compliance }, duration: rendered.duration, voice: rendered.voice, dry_run: dry }));
-    if (dry) process.exit(0);
-    for (const n of ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "KV_NAMESPACE_ID"]) if (!process.env[n]) throw new Error("missing_" + n);
-    const { getYoutubeAccessToken } = await import("./youtube-access.mjs");
-    const accessToken = await getYoutubeAccessToken();
-    const result = await publishShort(plan, await readFile(rendered.file), { accessToken });
-    const kv = cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID });
-    const activity = await recordPublication(kv, plan, result);
-    note("notice", JSON.stringify({ ...result, activity_emitted: activity.emitted === true || activity.duplicate === true }));
-  } catch (e) { note("error", String(e?.message || e).replace(/[^a-z0-9_:.-]/gi, "_").slice(0, 140)); process.exit(1); }
+  const dry = process.argv.includes("--dry-run");
+  const day = (process.argv.find(a => a.startsWith("--day=")) || "").slice(6) || localDay();
+  const slotArg = (process.argv.find(a => a.startsWith("--slot=")) || "").slice(7) || "oferta";
+  const slots = slotArg === "all" ? SLOTS : [slotArg];
+  let failed = 0;
+  for (const slot of slots) {
+    try {
+      const plan = planSlot(day, slot);
+      if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85) throw new Error("f1_gate_rejected");
+      const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);
+      const rendered = await renderShort(plan, base);
+      note("notice", JSON.stringify({ day, slot, theme: plan.entry.theme_id, gate: { score: plan.gate.score, compliance: plan.gate.compliance }, duration: rendered.duration, voice: rendered.voice, dry_run: dry }));
+      if (dry) continue;
+      for (const n of ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "KV_NAMESPACE_ID"]) if (!process.env[n]) throw new Error("missing_" + n);
+      const { getYoutubeAccessToken } = await import("./youtube-access.mjs");
+      const accessToken = await getYoutubeAccessToken();
+      const result = await publishShort(plan, await readFile(rendered.file), { accessToken });
+      const kv = cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID });
+      const activity = await recordPublication(kv, plan, result);
+      note("notice", JSON.stringify({ slot, ...result, activity_emitted: activity.emitted === true || activity.duplicate === true }));
+    } catch (e) { failed++; note("error", slot + ":" + String(e?.message || e).replace(/[^a-z0-9_:.-]/gi, "_").slice(0, 140)); }
+  }
+  if (failed) process.exit(1);
 }

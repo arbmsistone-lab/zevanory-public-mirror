@@ -130,9 +130,9 @@ const wrapped = {
     if (url.pathname==="/api/internal/owner/oauth/youtube-access") return handleYoutubePublisherAccess(request,normalized);
     if (url.pathname==="/api/internal/owner/oauth/tiktok-access") return handlePublisherAccess(request,normalized,"tiktok");
     // Daily Short video, published by the Short job for platforms that pull media by URL (Instagram Reels).
-    if ((request.method==="GET"||request.method==="HEAD") && /^\/media\/short\/\d{4}-\d{2}-\d{2}\.mp4$/.test(url.pathname)) {
-      const day=url.pathname.slice(13,23);
-      const body=await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.get?.("zpc:media:short:"+day,"arrayBuffer");
+    if ((request.method==="GET"||request.method==="HEAD") && /^\/media\/short\/\d{4}-\d{2}-\d{2}(-(dica|calc))?\.mp4$/.test(url.pathname)) {
+      const id=url.pathname.slice(13,-4);
+      const body=await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.get?.("zpc:media:short:"+id,"arrayBuffer");
       if(!body) return new Response("not found",{status:404,headers:{"cache-control":"no-store"}});
       return new Response(request.method==="HEAD"?null:body,{headers:{"content-type":"video/mp4","content-length":String(body.byteLength),"cache-control":"public, max-age=86400","x-content-type-options":"nosniff","accept-ranges":"none"}});
     }
