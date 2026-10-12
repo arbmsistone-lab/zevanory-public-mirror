@@ -27,7 +27,10 @@ export const AGENDA = [
   { id: "command", agent: "Central de Comando", task: "Atualiza números, autonomia e previsões", cron: { m: 17, h: "*" }, workflow: "command-center-snapshot.yml" },
 ];
 export const DAILY_PROOFS = ["blog", "telegram", "bluesky", "youtube_dica", "youtube", "youtube_calc"];
-const ENGINE_WORKFLOWS = ["youtube-autonomous-short.yml", "short-pack.yml", "indexnow-submit.yml", "command-center-snapshot.yml", "central-production-deploy.yml"];
+// Business engines measured for autonomy. Deploys (engineering changes) and this
+// observer are reported separately so they neither dilute nor inflate the number.
+const ENGINE_WORKFLOWS = ["youtube-autonomous-short.yml", "short-pack.yml", "indexnow-submit.yml"];
+const OBSERVED_WORKFLOWS = [...ENGINE_WORKFLOWS, "central-production-deploy.yml"];
 
 export const localDay = (t = Date.now()) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t));
 const iso = (t) => new Date(t).toISOString();
@@ -171,7 +174,7 @@ async function collectRuns() {
   const repo = process.env.GITHUB_REPOSITORY, tk = process.env.GITHUB_TOKEN;
   if (!repo || !tk) return null;
   const runs = [];
-  for (const wf of ENGINE_WORKFLOWS) {
+  for (const wf of OBSERVED_WORKFLOWS) {
     const r = await j(`https://api.github.com/repos/${repo}/actions/workflows/${wf}/runs?per_page=60&created=>${iso(Date.now() - 8 * DAY).slice(0, 10)}`, { headers: { authorization: "Bearer " + tk, accept: "application/vnd.github+json" } });
     for (const x of r.workflow_runs || []) runs.push({ path: x.path, event: x.event, status: x.status, conclusion: x.conclusion, created_at: x.created_at, updated_at: x.updated_at, name: x.name });
   }
@@ -227,7 +230,7 @@ export async function main() {
   const intents30 = Object.values(funnel?.sources || {}).reduce((a, s) => a + (s.checkout_intent || 0) + (s.hotmart_view || 0) + (s.subscribe_click || 0), 0);
   const views30 = Object.values(funnel?.sources || {}).reduce((a, s) => a + (s.views || 0), 0);
 
-  const autonomy = runs ? computeAutonomy(runs, now) : null;
+  const autonomy = runs ? computeAutonomy(runs.filter((r) => ENGINE_WORKFLOWS.some((w) => r.path.endsWith(w))), now) : null;
   const publications = computePublications(pubs.byDay);
   const firstSalesDay = Object.keys(sales?.byDay || {}).sort()[0] || null;
 
