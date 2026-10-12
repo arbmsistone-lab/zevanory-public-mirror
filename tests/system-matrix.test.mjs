@@ -37,3 +37,11 @@ test("owner-gated proofs: every entry names a gate that really exists in the wor
     assert.ok(g.reason && g.reason.length > 20);
   }
 });
+
+test("a routine whose recent runs were cancelled by concurrency is judged by its last completed run", () => {
+  const runs = [
+    ...Array.from({ length: 6 }, (_, i) => ({ status: "completed", conclusion: "cancelled", created_at: "2026-10-12T23:0" + i + ":00Z" })),
+    { status: "completed", conclusion: "success", created_at: "2026-10-12T22:50:00Z", updated_at: "2026-10-12T22:51:00Z" },
+  ];
+  assert.equal(classifyWorkflow({ state: "active" }, runs, Date.parse("2026-10-12T23:10:00Z")).state, "PASS");
+});
