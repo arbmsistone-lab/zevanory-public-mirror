@@ -3,7 +3,7 @@
 // every business process in the inventory, the production panel proof, the unit-test suite)
 // and classifies each item PASS / FAIL / BLOCKED / NOT_TESTED with its evidence and time.
 // No evidence = NOT_TESTED, never PASS. Writes KV zpc:matrix:v1 (command center).
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 export const MATRIX_KEY = "zpc:matrix:v1";
@@ -53,7 +53,10 @@ export async function main() {
   // 1) Every workflow in the repository (discovered).
   let page = 1, workflows = [];
   for (;;) { const j = await gh(`repos/${repo}/actions/workflows?per_page=100&page=${page}`); workflows = workflows.concat(j.workflows || []); if (!j.workflows || j.workflows.length < 100) break; page++; }
-  for (const wf of workflows) {
+  // GitHub keeps records of workflows that only ever existed on PR branches; those are history,
+  // not part of the running system, and are reported separately instead of as FAIL.
+  const orphans = workflows.filter((wf) => !existsSync(wf.path));
+  for (const wf of workflows.filter((w) => existsSync(w.path))) {
     const j = await gh(`repos/${repo}/actions/workflows/${wf.id}/runs?per_page=5`);
     items.push({ id: "wf:" + wf.path.split("/").pop(), kind: "rotina", name: wf.name, ...classifyWorkflow(wf, j.workflow_runs || [], now) });
   }
@@ -86,9 +89,9 @@ export async function main() {
   const pass = Number((t.stdout.match(/# pass (\d+)/) || [])[1] || 0), fail = Number((t.stdout.match(/# fail (\d+)/) || [])[1] || 0);
   items.push({ id: "tests:unit", kind: "testes", name: "Testes automatizados do repositório", state: fail === 0 && pass > 0 ? "PASS" : pass ? "FAIL" : "NOT_TESTED", owner: "interno", evidence: `${pass} passaram, ${fail} falharam`, at: new Date().toISOString() });
 
-  const out = { schema: "zevanory-matrix/v1", generatedAt: new Date(now).toISOString(), ...summarize(items) };
+  const out = { schema: "zevanory-matrix/v1", generatedAt: new Date(now).toISOString(), ...summarize(items), historyOnlyWorkflows: orphans.length };
   await kv("PUT", MATRIX_KEY, JSON.stringify(out));
-  console.log("::notice title=SYSTEM_MATRIX::" + JSON.stringify({ total: out.total, counts: out.counts, passPct: out.passPct, fail: out.items.filter((i) => i.state === "FAIL").slice(0, 15).map((i) => i.id) }));
+  console.log("::notice title=SYSTEM_MATRIX::" + JSON.stringify({ historyOnly: orphans.length, total: out.total, counts: out.counts, passPct: out.passPct, fail: out.items.filter((i) => i.state === "FAIL").slice(0, 40).map((i) => i.id), notTested: out.items.filter((i) => i.state === "NOT_TESTED").slice(0, 20).map((i) => i.id), blocked: out.items.filter((i) => i.state === "BLOCKED").map((i) => i.id) }));
 }
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
 if (isMain) main().catch((e) => { console.log("::error title=SYSTEM_MATRIX::" + String(e?.message || e).slice(0, 200)); process.exit(1); });
