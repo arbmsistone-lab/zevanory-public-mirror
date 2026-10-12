@@ -42,14 +42,14 @@ export function planValueShort(day, slot) {
     const k0 = Math.floor(i / BANK.guides.length) % item.uses.length;
     use = ([...item.uses.slice(k0), ...item.uses.slice(0, k0)].find(u => !VALUE_RISK.test(u)) || item.uses[0]).replace(/[.\s]+$/, "");
     campaign = "dica_" + item.slug.replace(/^ia-para-/, "");
-    title = "Como usar IA em " + item.plural + ": dica prática #shorts";
+    title = "IA para " + lowerFirst(item.name) + ": 1 dica prática #shorts";
     screen = { hook: "IA para " + lowerFirst(item.name), niche: "uma dica para aplicar hoje", tip: use + ".", product: "Guia gratuito", offer: "5 usos + mensagens prontas", cta: "Link na descrição", url: "vendas.zevanory.api.br" };
     said = [["IA para " + lowerFirst(item.name) + "?", "Uma dica prática."], [use + "."], ["No guia gratuito tem mais quatro usos e mensagens prontas."], ["O link está na descrição."]];
     lead = use + ". Mais 4 usos práticos, mensagens prontas para o WhatsApp e checklist da semana no guia gratuito para " + item.plural + ".";
   } else {
     item = BANK.calculators[((i % BANK.calculators.length) + BANK.calculators.length) % BANK.calculators.length];
     campaign = "calc_" + item.slug.replace(/^calculadora-/, "");
-    title = (item.hook + " Como calcular " + item.topic + " #shorts").slice(0, 100);
+    title = item.hook + " Calcule em segundos #shorts";
     screen = { hook: item.hook, niche: "calcule em segundos", tip: item.tip, product: item.name, offer: "Gratuita · sem cadastro", cta: "Link na descrição", url: "vendas.zevanory.api.br" };
     said = [[item.hook], [item.tip], ["Use a calculadora gratuita da ZEVANORY, sem cadastro."], ["O link está na descrição."]];
     lead = item.tip + " Faça a conta em segundos na calculadora gratuita da ZEVANORY, sem cadastro.";
