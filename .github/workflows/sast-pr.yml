@@ -1,0 +1,35 @@
+name: SAST on pull requests (same rules as P07)
+
+# Shift-left: the release-time P07 Semgrep gate runs here on every PR, so a finding
+# blocks the PR instead of the production trust chain. Prints only rule, file and line.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths: ["worker/**", "scripts/**", "solucoes/**", "index.html", ".github/workflows/sast-pr.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Semgrep (p/javascript + p/secrets)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet "semgrep==1.136.0"
+          semgrep scan --config p/javascript --config p/secrets --json --output semgrep.json worker scripts solucoes index.html || true
+          python3 - <<'PY'
+          import json
+          p=json.load(open("semgrep.json"))
+          rows=p.get("results",[])
+          for r in rows[:30]:
+              print(f"::error file={r.get('path')},line={r.get('start',{}).get('line')},title=SAST::{r.get('check_id')}")
+          print("SAST_FINDINGS",len(rows))
+          assert len(rows)==0
+          PY

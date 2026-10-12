@@ -154,14 +154,14 @@ export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now =
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureLeadSchema(sql);
   const due = await sql.query(`select email, name, nurture_step, nurture_at from zevanory_leads
-      where status='confirmed' and nurture_step < ${NURTURE_DONE} and nurture_at < now() - interval '2 days' order by nurture_at asc limit 50`, []);
+      where status='confirmed' and nurture_step < $1 and nurture_at < now() - interval '2 days' order by nurture_at asc limit 50`, [NURTURE_DONE]);
   const out = { ok: true, checked: due.length, sent: 0, held: 0 };
   for (const lead of due) {
     const step = Number(lead.nurture_step);
     const since = now - new Date(lead.nurture_at).getTime();
     if (step >= 2 && !salesOpen) {
       // Offers only go out while customers can actually buy; give up after 30 days.
-      if (since > 30 * DAY) await sql.query(`update zevanory_leads set nurture_step=${NURTURE_DONE} where email=$1`, [lead.email]);
+      if (since > 30 * DAY) await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]);
       out.held += 1; continue;
     }
     if (since < (MIN_DAYS_BEFORE[step] || 2) * DAY) continue;
