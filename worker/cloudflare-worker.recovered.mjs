@@ -15156,14 +15156,16 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
   if (dedupKey && kv?.put) await kv.put(dedupKey, "1", { expirationTtl: 86400 }).catch(() => {});
   // WhatsApp policy guard (account disabled by Meta on 2026-10-10): at most 3 automatic replies per
   // contact per hour and 8 per day, 60 in total per hour. Above that the conversation goes to the
-  // human queue instead of an automatic reply (protects against bot ping-pong and repeated sends).
-  if (kv?.get && kv?.put) {
+  // human queue instead of an automatic reply (bot ping-pong, repeated sends). Counters live in the
+  // free Cache API so the per-message KV write budget stays at one write.
+  const cache = globalThis.caches?.default;
+  if (cache?.match && cache?.put) {
     const contact = String(item.from || "").replace(/\D/g, "").slice(-15) || "unknown";
     const hour = new Date().toISOString().slice(0, 13), day = hour.slice(0, 10);
-    const keys = [[`whatsapp:rl:h:${contact}:${hour}`, 3, 3700], [`whatsapp:rl:d:${contact}:${day}`, 8, 90000], [`whatsapp:rl:all:${hour}`, 60, 3700]];
-    const counts = await Promise.all(keys.map(([k]) => kv.get(k).then(v => Number(v) || 0).catch(() => 0)));
-    if (keys.some(([, max], i) => counts[i] >= max)) return { sent: false, reason: "whatsapp_reply_rate_limited" };
-    await Promise.all(keys.map(([k, , ttl], i) => kv.put(k, String(counts[i] + 1), { expirationTtl: ttl }).catch(() => {})));
+    const keys = [[`h/${contact}/${hour}`, 3, 3700], [`d/${contact}/${day}`, 8, 90000], [`all/${hour}`, 60, 3700]].map(([k, max, ttl]) => [new Request("https://whatsapp-reply-limit.internal/" + k), max, ttl]);
+    const counts = await Promise.all(keys.map(([k]) => cache.match(k).then(r => r ? r.text() : "0").then(Number).catch(() => 0)));
+    if (keys.some(([, max], i) => (counts[i] || 0) >= max)) return { sent: false, reason: "whatsapp_reply_rate_limited" };
+    await Promise.all(keys.map(([k, , ttl], i) => cache.put(k, new Response(String((counts[i] || 0) + 1), { headers: { "cache-control": "max-age=" + ttl } })).catch(() => {})));
   }
   const status = inboundStatus || { at: new Date().toISOString(), inbound_type: item.type, inbound_message_id: item.message_id || null, model: null, text_sent: false, voice_sent: false, voice_error: null };
   const checkpoint = inboundCheckpoint || whatsappStageRecorder(operationalStore, status);
