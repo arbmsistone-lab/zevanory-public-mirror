@@ -33,7 +33,10 @@ export const DAILY_PROOFS = ["blog", "telegram", "bluesky", "youtube_dica", "you
 // Business engines measured for autonomy. Deploys (engineering changes) and this
 // observer are reported separately so they neither dilute nor inflate the number.
 const ENGINE_WORKFLOWS = ["youtube-autonomous-short.yml", "short-pack.yml", "indexnow-submit.yml"];
-const OBSERVED_WORKFLOWS = [...ENGINE_WORKFLOWS, "central-production-deploy.yml", "command-center-snapshot.yml"];
+const OBSERVED_WORKFLOWS = [...ENGINE_WORKFLOWS, "central-production-deploy.yml", "command-center-snapshot.yml", "engine-dispatcher.yml", "data-backup.yml"];
+// Workflows of the panel repository whose runs are evidence for inventory processes.
+const PANEL_REPO = "arbmsistone-lab/zevanory-product-control-edge";
+const PANEL_WORKFLOWS = ["command-center-live-proof.yml", "creative-auto-decision.yml"];
 
 export const localDay = (t = Date.now()) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t));
 const iso = (t) => new Date(t).toISOString();
@@ -218,6 +221,10 @@ async function collectRuns() {
     const r = await j(`https://api.github.com/repos/${repo}/actions/workflows/${wf}/runs?per_page=60&created=>${iso(Date.now() - 8 * DAY).slice(0, 10)}`, { headers: { authorization: "Bearer " + tk, accept: "application/vnd.github+json" } });
     for (const x of r.workflow_runs || []) runs.push({ path: x.path, event: x.event, actor: x.triggering_actor?.login || x.actor?.login || null, status: x.status, conclusion: x.conclusion, created_at: x.created_at, updated_at: x.updated_at, name: x.name });
   }
+  for (const wf of PANEL_WORKFLOWS) {
+    const r = await j(`https://api.github.com/repos/${PANEL_REPO}/actions/workflows/${wf}/runs?per_page=30&created=>${iso(Date.now() - 8 * DAY).slice(0, 10)}`, { headers: { authorization: "Bearer " + tk, accept: "application/vnd.github+json" } });
+    for (const x of r.workflow_runs || []) runs.push({ path: "panel:" + x.path, event: x.event, actor: x.triggering_actor?.login || x.actor?.login || null, status: x.status, conclusion: x.conclusion, created_at: x.created_at, updated_at: x.updated_at, name: x.name });
+  }
   return runs;
 }
 
@@ -399,7 +406,7 @@ export async function main() {
     recommendations: [...(buyFlow.some((b) => b.state === "closed") ? [{ title: "Botão Comprar do site leva a \"Vendas abrem em breve\"", evidence: `${buyFlow.filter((b) => b.state === "closed").length} de ${buyFlow.length} produtos testados mostram o aviso em vez do pagamento`, action: "Levar o botão Comprar e os links dos canais ao checkout da Hotmart, que já vende", confidence: "alta", risk: "baixo", cost: "R$ 0" }] : []), ...recommend({ funnel, reach, sales, publications })],
   };
   await kvPut(SNAPSHOT_KEY, snapshot);
-  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.cleanVisitors ?? null, visitors7Raw: funnel?.last7Days?.visitors ?? null, reach: point }));
+  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState, unproven: inventory.processes.filter((x) => x.eligible && !x.proven).map((x) => x.id) }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.cleanVisitors ?? null, visitors7Raw: funnel?.last7Days?.visitors ?? null, reach: point }));
 }
 
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
