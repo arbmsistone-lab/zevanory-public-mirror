@@ -21,7 +21,7 @@ test("fresh evidence proves, stale does not; reserved acts never enter the denom
   const r = evaluateInventory(inv, ctx, now);
   const p = Object.fromEntries(r.processes.map((x) => [x.id, x]));
   assert.equal(p.telegram.proven, true); assert.equal(p.blog.proven, false);
-  assert.equal(p.indexnow.proven, true); assert.equal(p.funnel.proven, true);
+  assert.equal(p.indexnow.proven, true); assert.equal(p.funnel.proven, false); // funnel needs the server heartbeat now
   assert.equal(p.contracts.eligible, false);
   assert.equal(r.eligible, inv.processes.filter((x) => x.eligible).length);
   assert.equal(r.dependencies[0].impact, "high");
@@ -52,4 +52,19 @@ test("voice attendant counts only with a fresh, fully passing end-to-end evaluat
   assert.equal(pv({ ok: false, generatedAt: at, scorePct: 66.7, fallback: { ok: true } }).proven, false);
   assert.equal(pv({ ok: true, generatedAt: "2026-10-01T09:00:00Z" }).proven, false);
   assert.equal(pv(null).proven, false);
+});
+
+test("hourly heartbeat proves funnel and nurture; a failing task is FAIL, not 'not tested'", async () => {
+  const { classifyProcess } = await import("../scripts/audit/system-matrix.mjs");
+  const beat = (tasks, at = "2026-10-13T11:20:00Z") => ({ cronBeat: { finishedAt: at, tasks } });
+  const get = (ctx, id) => evaluateInventory(inv, ctx, now).processes.find((x) => x.id === id);
+  assert.equal(get(beat({ funnel: "ok", nurture: "ok" }), "funnel").proven, true);
+  const bad = get(beat({ funnel: "fail:too many subrequests", nurture: "ok" }), "funnel");
+  assert.equal(bad.proven, false); assert.equal(bad.failed, true);
+  assert.equal(classifyProcess(bad).state, "FAIL");
+  assert.equal(get(beat({ funnel: "ok" }, "2026-10-13T06:00:00Z"), "funnel").proven, false); // stale heartbeat
+  const delivery = get({}, "delivery");
+  assert.equal(delivery.state, "awaiting_event"); assert.equal(classifyProcess(delivery).state, "BLOCKED");
+  const voice = get({ voiceEval: { ok: false, generatedAt: "2026-10-12T15:00:00Z", scorePct: 0 } }, "support-voice");
+  assert.equal(classifyProcess(voice).state, "FAIL");
 });

@@ -293,7 +293,8 @@ export async function main() {
   const support = await kvGet("zpc:support:v1:eval");
   const voiceEval = await kvGet("zpc:support:v1:voice-eval");
   const backup = await kvGet("zpc:backup:v1:report");
-  const inventory = evaluateInventory(inventoryDef, { support, voiceEval, backup, marketAt: market?.generatedAt || null, byDay: pubs.byDay, runs: runs || [], funnelAt: funnel?.generatedAt || null, buyFlow, hotmart, probes: [health, site, control] }, now);
+  const cronBeat = await kvGet("zpc:cron:v1:hourly");
+  const inventory = evaluateInventory(inventoryDef, { support, voiceEval, backup, cronBeat, marketAt: market?.generatedAt || null, byDay: pubs.byDay, runs: runs || [], funnelAt: funnel?.generatedAt || null, buyFlow, hotmart, probes: [health, site, control] }, now);
   const experiments = evaluateExperiments(registry, { videos, productDaily: funnel?.productDaily || {}, campaigns: funnel?.topCampaigns || [] }, now);
 
   // Reach history: one point per local day (latest of the day wins), 120 days.

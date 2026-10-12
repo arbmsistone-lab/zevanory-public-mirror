@@ -23,6 +23,8 @@ export function classifyWorkflow(wf, runs, now = Date.now()) {
 export function classifyProcess(p) {
   if (!p.eligible) return null;
   if (p.proven) return { state: "PASS", owner: "interno", evidence: p.how || "evidência recente", at: p.lastEvidence };
+  if (p.failed) return { state: "FAIL", owner: "interno", evidence: p.how || "evidência recente negativa", at: p.lastEvidence };
+  if (p.state === "awaiting_event") return { state: "BLOCKED", owner: "externo", evidence: p.dependency || "aguardando evento real" };
   if (p.state === "blocked_third_party") return { state: "BLOCKED", owner: "externo", evidence: p.dependency || "dependência de terceiro" };
   if (p.state === "partial") return { state: "BLOCKED", owner: "interno", evidence: p.dependency || "parcial" };
   return { state: "NOT_TESTED", owner: "interno", evidence: p.dependency || "sem evidência recente" };
