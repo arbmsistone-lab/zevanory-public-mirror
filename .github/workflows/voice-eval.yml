@@ -1,0 +1,27 @@
+name: Voice attendant end-to-end evaluation (weekly)
+
+# Real production models: customer audio -> Whisper -> attendant -> production voice -> Whisper,
+# plus the free fallback voice. Zero cost (free tiers). Scores only, no conversation data.
+on:
+  schedule:
+    - cron: "30 12 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test tests/voice-eval.test.mjs
+      - run: node scripts/ops/voice-eval.mjs

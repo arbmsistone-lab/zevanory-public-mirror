@@ -18612,7 +18612,8 @@ export {
   cs as whatsappProofDatabase,
   runPaidDeliveryWatchdog,
   runSalesPreflight,
-  replyWhatsappConversation
+  replyWhatsappConversation,
+  loadAiVaultSecret
 };
 /*! Bundled license information:
 
