@@ -91,5 +91,22 @@
       "file": "financial-e2e-closure.yml",
       "event": "fechamento financeiro de um pagamento real"
     }
+  ],
+  "ownerGated": [
+    {
+      "file": "mercadopago-combo-sandbox.yml",
+      "gate": "vars.SANDBOX_FINANCIAL_ENABLED == 'true'",
+      "reason": "prova financeira de sandbox protegida por aprovação do dono (ambiente 'sandbox-financial-approved'); o worker isolado de certificação não está implantado e só o deploy aprovado o recria. Última falha (10/10): o worker de certificação respondeu 'certification_e2e_not_fail_closed'."
+    },
+    {
+      "file": "certification-isolated-deploy.yml",
+      "gate": "sandbox-financial-approved",
+      "reason": "deploy do worker isolado de certificação exige aprovação do dono no ambiente protegido"
+    },
+    {
+      "file": "mercadopago-exact-sha-recovery.yml",
+      "gate": "\"environment\":\"sandbox\"",
+      "reason": "recuperação de sandbox exige aprovação no ambiente protegido 'sandbox'"
+    }
   ]
 }

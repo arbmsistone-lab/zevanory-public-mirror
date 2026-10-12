@@ -27,3 +27,13 @@ test("retirement list never contains security, financial-gate or quality gates",
   for (const r of list) assert.ok(!forbidden.test(r.file), r.file);
   assert.ok(list.every((r) => r.reason && r.since));
 });
+
+test("owner-gated proofs: every entry names a gate that really exists in the workflow file", () => {
+  const list = JSON.parse(readFileSync(new URL("../data/retired-workflows.json", import.meta.url))).ownerGated || [];
+  assert.ok(list.length > 0);
+  for (const g of list) {
+    const src = readFileSync(new URL("../.github/workflows/" + g.file, import.meta.url), "utf8");
+    assert.ok(src.includes(g.gate), g.file + " lost its gate");
+    assert.ok(g.reason && g.reason.length > 20);
+  }
+});
