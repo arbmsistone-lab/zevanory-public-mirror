@@ -283,6 +283,20 @@
       }
     },
     {
+      "id": "backup",
+      "area": "Continuidade",
+      "agent": "Motor de Continuidade",
+      "name": "Cópia diária dos dados (KV↔Neon) com restauração testada",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "workflow",
+        "workflow": "data-backup.yml",
+        "maxAgeHours": 30
+      },
+      "note": "Só conta quando a restauração de teste confere linha a linha."
+    },
+    {
       "id": "self-heal-short",
       "area": "Engenharia",
       "agent": "Autocorreção",
@@ -303,9 +317,11 @@
       "eligible": true,
       "state": "autonomous",
       "evidence": {
-        "type": "none"
+        "type": "workflow",
+        "workflow": "command-center-live-proof.yml",
+        "maxAgeHours": 30
       },
-      "note": "Roda no repositório do painel; resultado visível em Operação."
+      "note": "Roda no repositório do painel; só conta quando a prova diária passa sem nenhuma falha."
     },
     {
       "id": "contracts",
