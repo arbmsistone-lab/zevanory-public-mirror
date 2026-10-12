@@ -38,7 +38,11 @@ export async function ensureFunnelSchema(sql) {
   schemaReady = true;
 }
 
-export function isCountableView({ method, page, userAgent, purpose }) {
+// Cloud/datacenter networks (our own audits, monitors and headless browsers run
+// there with ordinary-looking user agents). Real buyers browse from ISPs/carriers.
+export const DATACENTER_ASNS = Object.freeze(new Set([8075, 16509, 14618, 15169, 396982, 14061, 16276, 24940, 63949, 20473, 36351, 45102, 132203, 31898, 8987, 19527]));
+export function isCountableView({ method, page, userAgent, purpose, asn = 0 }) {
+  if (DATACENTER_ASNS.has(Number(asn))) return false;
   if (method !== "GET") return false;
   if (!isTrackedPage(page)) return false;
   if (!userAgent || BOT_RE.test(userAgent)) return false;
@@ -158,7 +162,7 @@ export async function handleFunnel(request, env, { sqlFactory, ctx } = {}) {
   try { body = await request.json(); } catch {}
   const page = String(body.page || "");
   const userAgent = String(body.ua || "").slice(0, 300);
-  if (!isCountableView({ method: "GET", page, userAgent, purpose: body.purpose })) return new Response(null, { status: 204 });
+  if (!isCountableView({ method: "GET", page, userAgent, purpose: body.purpose, asn: body.asn })) return new Response(null, { status: 204 });
   const metric = INTENT_METRICS.includes(body.metric) ? body.metric : "views";
   const work = recordPageView(env, { sqlFactory, page, ip: String(body.ip || ""), userAgent, metric, src: body.src, camp: body.camp }).catch((e) => console.error("funnel_hit_failed", e instanceof Error ? e.message : String(e)));
   if (ctx?.waitUntil) ctx.waitUntil(work); else await work;

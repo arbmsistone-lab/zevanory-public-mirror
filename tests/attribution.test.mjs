@@ -37,3 +37,9 @@ test("subscribe redirect keeps the source for Hotmart's sale report", async () =
   assert.equal(r.status, 302);
   assert.match(r.headers.get("location"), /^https:\/\/pay\.hotmart\.com\/X107980075B\?off=4ydutio7&src=telegram$/);
 });
+test("visits from cloud/datacenter networks (our audits, monitors, headless browsers) are never counted as people", () => {
+  const ua = "Mozilla/5.0 (Windows NT 10.0) Chrome/130";
+  assert.equal(isCountableView({ method: "GET", page: "ia-na-pratica", userAgent: ua, asn: 8075 }), false);  // Microsoft/Azure (GitHub Actions)
+  assert.equal(isCountableView({ method: "GET", page: "ia-na-pratica", userAgent: ua, asn: 16509 }), false); // Amazon
+  assert.equal(isCountableView({ method: "GET", page: "ia-na-pratica", userAgent: ua, asn: 26599 }), true);  // Brazilian carrier
+});

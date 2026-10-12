@@ -48,7 +48,7 @@ function countView(request,env,ctx,page,metric="views"){
   // Aggregated, cookie-free view counting through the private service binding (never blocks the page).
   if(request.method!=="GET"||!env?.CORE||typeof env.CORE.fetch!=="function"||!ctx?.waitUntil||!isFunnelPage(page)) return;
   const url=new URL(request.url),{src,camp}=attribution(request,url);
-  const body=JSON.stringify({page,metric,src,camp,ua:request.headers.get("user-agent")||"",ip:request.headers.get("cf-connecting-ip")||"",purpose:request.headers.get("sec-purpose")||request.headers.get("purpose")||""});
+  const body=JSON.stringify({page,metric,src,camp,asn:Number(request.cf?.asn)||0,ua:request.headers.get("user-agent")||"",ip:request.headers.get("cf-connecting-ip")||"",purpose:request.headers.get("sec-purpose")||request.headers.get("purpose")||""});
   ctx.waitUntil(env.CORE.fetch("https://funnel.internal/hit",{method:"POST",headers:{"content-type":"application/json"},body}).catch(()=>null));
 }
 const BUY_SKUS={"ZEV-IA-011":"ia-na-pratica","ZEV-VEN-011":"vendas-na-pratica","ZEV-LCX-011":"lucro-e-caixa","ZEV-CMB-011":"combo-ia-vendas","ZEV-NGC-011":"negocio-completo"};
