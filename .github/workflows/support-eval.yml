@@ -1,7 +1,7 @@
 name: Support quality evaluation (weekly)
 
-# The real attendant answers 15 real customer questions on the free Workers AI quota;
-# accuracy, safety, forbidden promises and brevity are scored. Zero cost.
+# Contract tests of the support evaluation. The real evaluation runs weekly inside the
+# production Worker (Workers AI binding) and writes KV zpc:support:v1:eval.
 on:
   schedule:
     - cron: "50 9 * * 2"
@@ -29,6 +29,3 @@ jobs:
         with:
           node-version: "22"
       - run: node --test tests/support-eval.test.mjs
-      - name: Evaluate with the real model (main branch only writes the result)
-        if: github.event_name != 'pull_request'
-        run: node scripts/audit/support-eval.mjs
