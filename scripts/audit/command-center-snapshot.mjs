@@ -151,6 +151,41 @@ async function probe(url) {
   catch (e) { return { url, http: 0, ms: Date.now() - t0, ok: false, error: String(e?.name || "error") }; }
 }
 
+// What a buyer actually sees after clicking "Comprar" on the official site.
+export function classifyBuyPage(status, html) {
+  const t = String(html || "");
+  if (status !== 200) return "error";
+  if (/Vendas abrem em breve|ainda não está à venda/i.test(t)) return "closed";
+  if (/Ir para o pagamento seguro|pay\.hotmart\.com/i.test(t)) return "checkout";
+  return "unknown";
+}
+async function probeBuyFlow() {
+  const out = [];
+  for (const sku of ["ZEV-IA-011", "ZEV-LCX-011", "ZEV-NGC-011"]) {
+    try {
+      const r = await fetch("https://vendas.zevanory.api.br/comprar/" + sku, { signal: AbortSignal.timeout(10000), headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36 zevanory-command-center" } });
+      out.push({ sku, http: r.status, state: classifyBuyPage(r.status, await r.text()) });
+    } catch { out.push({ sku, http: 0, state: "error" }); }
+  }
+  return out;
+}
+
+// Is each Hotmart checkout actually able to take a payment? (public URLs only)
+const HOTMART_CHECKOUTS = { "ia-na-pratica": "https://pay.hotmart.com/F107979716H?off=g9knd34r", "vendas-na-pratica": "https://pay.hotmart.com/Y107979937I?off=8mg88sdd", "lucro-e-caixa": "https://pay.hotmart.com/L107979973K?off=ksb5di36", "combo-ia-vendas": "https://pay.hotmart.com/H107979990T?off=b3ytmah4", "negocio-completo": "https://pay.hotmart.com/U107980005X?off=weo47apk", "conteudo-pronto": "https://pay.hotmart.com/X107980075B?off=4ydutio7" };
+async function probeHotmart() {
+  const out = [];
+  for (const [slug, url] of Object.entries(HOTMART_CHECKOUTS)) {
+    try {
+      const r = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(15000), headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "accept-language": "pt-BR" } });
+      const html = await r.text();
+      const title = (html.match(/<title[^>]*>([^<]{0,120})/i) || [])[1] || "";
+      const blocked = /indispon[ií]vel|n[aã]o est[aá] dispon[ií]vel|unavailable|em an[aá]lise|not available/i.test(html);
+      out.push({ slug, http: r.status, finalHost: new URL(r.url).host, title: title.trim().slice(0, 80), blockedText: blocked, bytes: html.length });
+    } catch (e) { out.push({ slug, http: 0, error: String(e?.name || "error") }); }
+  }
+  return out;
+}
+
 async function collectReach(now) {
   const out = {};
   try { const p = await j("https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=zevanoryoficial.bsky.social"); out.bluesky = p._http ? null : { followers: p.followersCount ?? null, posts: p.postsCount ?? null }; } catch { out.bluesky = null; }
@@ -208,6 +243,8 @@ export async function main() {
     kvGet("zpc-funnel:v1:summary"), kvGet("zpc:sales:v1:summary"), collectReach(now), collectRuns().catch(() => null), collectPublications(now),
     probe("https://zevanory.api.br/api/health"), j("https://zevanory.api.br/api/sales/status").catch(() => null), probe("https://vendas.zevanory.api.br/solucoes"), probe("https://controle.zevanory.api.br/"),
   ]);
+  const buyFlow = await probeBuyFlow().catch(() => []);
+  const hotmart = await probeHotmart().catch(() => []);
 
   // Reach history: one point per local day (latest of the day wins), 120 days.
   const history = (await kvGet(REACH_HISTORY_KEY)) || [];
@@ -303,13 +340,15 @@ export async function main() {
       probes: [health, site, control],
       salesSwitch: salesStatus && !salesStatus._http ? { open: salesStatus.open === true } : null,
       checkoutMode: "Hotmart vendendo; checkout próprio bloqueado até LIBERAR VENDAS",
+      buyFlow,
+      hotmart,
       deploys: runs ? runs.filter((r) => r.path.endsWith("central-production-deploy.yml")).slice(0, 5).map((r) => ({ at: r.created_at, conclusion: r.conclusion })) : [],
     },
     forecast: forecastSales(sales?.byDay || {}, firstSalesDay, now),
-    recommendations: recommend({ funnel, reach, sales, publications }),
+    recommendations: [...(buyFlow.some((b) => b.state === "closed") ? [{ title: "Botão Comprar do site leva a \"Vendas abrem em breve\"", evidence: `${buyFlow.filter((b) => b.state === "closed").length} de ${buyFlow.length} produtos testados mostram o aviso em vez do pagamento`, action: "Levar o botão Comprar e os links dos canais ao checkout da Hotmart, que já vende", confidence: "alta", risk: "baixo", cost: "R$ 0" }] : []), ...recommend({ funnel, reach, sales, publications })],
   };
   await kvPut(SNAPSHOT_KEY, snapshot);
-  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, sales: t.approved || 0, visitors7: funnel?.last7Days?.visitors ?? null, reach: point }));
+  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, buyFlow, hotmart, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.visitors ?? null, reach: point }));
 }
 
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
