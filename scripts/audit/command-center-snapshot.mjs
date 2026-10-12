@@ -199,7 +199,7 @@ async function collectPublications(now) {
   return { byDay, today };
 }
 
-async function main() {
+export async function main() {
   const now = Date.now();
   const [funnel, sales, reach, runs, pubs, health, salesStatus, site, control] = await Promise.all([
     kvGet("zpc-funnel:v1:summary"), kvGet("zpc:sales:v1:summary"), collectReach(now), collectRuns().catch(() => null), collectPublications(now),
@@ -224,7 +224,7 @@ async function main() {
   const todayAgg = sales?.byDay?.[day] || { approved: 0, grossCents: 0 };
   const sIntegrity = "webhook_authenticated";
   const sMeta = (v, def) => metric(v, "Hotmart (postback autenticado)", salesAt || iso(now), def, sIntegrity);
-  const intents = Object.values(funnel?.sources || {}).reduce((a, s) => a + (s.checkout_intent || 0) + (s.hotmart_view || 0) + (s.subscribe_click || 0), 0);
+  const intents30 = Object.values(funnel?.sources || {}).reduce((a, s) => a + (s.checkout_intent || 0) + (s.hotmart_view || 0) + (s.subscribe_click || 0), 0);
   const views30 = Object.values(funnel?.sources || {}).reduce((a, s) => a + (s.views || 0), 0);
 
   const autonomy = runs ? computeAutonomy(runs, now) : null;
