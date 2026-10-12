@@ -54,3 +54,14 @@ test("buy page classification reflects what the buyer sees", () => {
   assert.equal(classifyBuyPage(200, "<button>Ir para o pagamento seguro</button>"), "checkout");
   assert.equal(classifyBuyPage(503, ""), "error");
 });
+
+import { updateUptime } from "../scripts/audit/command-center-snapshot.mjs";
+test("uptime: appends each run, keeps 7 days and reports availability with its denominator", () => {
+  const t0 = Date.parse("2026-10-01T00:00:00Z");
+  let u = updateUptime(null, [{ url: "a", ok: true, ms: 10 }], t0);
+  u = updateUptime(u, [{ url: "a", ok: false, ms: 0 }], t0 + 3600e3);
+  assert.deepEqual(u.last24h.a, { ok: 1, total: 2, pct: 50 });
+  const later = updateUptime(u, [{ url: "a", ok: true, ms: 9 }], t0 + 8 * 24 * 3600e3);
+  assert.equal(later.history.length, 1, "older than 7 days dropped");
+  assert.deepEqual(later.last7d.a, { ok: 1, total: 1, pct: 100 });
+});

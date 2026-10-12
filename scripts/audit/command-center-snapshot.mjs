@@ -289,12 +289,30 @@ async function collectPublications(now) {
   return { byDay, today };
 }
 
+// Uptime history (P2 "monitor de uptime"): each snapshot run (about hourly) appends the result of
+// its availability probes to the previous snapshot's history. No extra KV write: it rides the
+// snapshot itself. Keeps 7 days; availability = probes ok / probes taken, with the denominator.
+export const UPTIME_KEEP_MS = 7 * 24 * 3600e3;
+export function updateUptime(prev, probes, now = Date.now()) {
+  const entry = { t: new Date(now).toISOString(), r: probes.map((p) => ({ u: p?.url || "", ok: p?.ok === true, ms: p?.ms ?? null })) };
+  const history = [...(Array.isArray(prev?.history) ? prev.history : []), entry].filter((e) => now - Date.parse(e.t) <= UPTIME_KEEP_MS);
+  const urls = [...new Set(history.flatMap((e) => e.r.map((x) => x.u)))].filter(Boolean);
+  const window = (ms) => Object.fromEntries(urls.map((u) => {
+    const xs = history.filter((e) => now - Date.parse(e.t) <= ms).flatMap((e) => e.r.filter((x) => x.u === u));
+    const ok = xs.filter((x) => x.ok).length;
+    return [u, { ok, total: xs.length, pct: xs.length ? Math.round((ok / xs.length) * 1000) / 10 : null }];
+  }));
+  return { history, last24h: window(24 * 3600e3), last7d: window(UPTIME_KEEP_MS), since: history[0]?.t || null };
+}
+
 export async function main() {
   const now = Date.now();
   const [funnel, sales, reach, runs, pubs, health, salesStatus, coreStatus, site, control] = await Promise.all([
     kvGet("zpc-funnel:v1:summary"), kvGet("zpc:sales:v1:summary"), collectReach(now), collectRuns().catch(() => null), collectPublications(now),
     probe("https://zevanory.api.br/api/health"), j("https://zevanory.api.br/api/sales/status").catch(() => null), j("https://zevanory.api.br/api/status").catch(() => null), probe("https://vendas.zevanory.api.br/solucoes"), probe("https://controle.zevanory.api.br/"),
   ]);
+  const prevSnapshot = await kvGet(SNAPSHOT_KEY).catch(() => null);
+  const uptime = updateUptime(prevSnapshot?.operations?.uptime, [health, site, control], now);
   const buyFlow = await probeBuyFlow().catch(() => []);
   const hotmart = await probeHotmart().catch(() => []);
   const videos = await collectShortVideos().catch(() => []);
@@ -419,8 +437,11 @@ export async function main() {
     },
     operations: {
       probes: [health, site, control],
+      uptime,
       kvQuota, salesSwitch: salesStatus && !salesStatus._http ? { open: salesStatus.open === true } : null,
-      checkoutMode: "Hotmart vendendo; checkout próprio bloqueado até LIBERAR VENDAS",
+      checkoutMode: salesStatus && !salesStatus._http
+        ? (salesStatus.open === true ? "Hotmart e checkout próprio vendendo" : "Hotmart vendendo; checkout próprio aguardando (interruptor ou prova financeira)")
+        : "Hotmart vendendo; estado do checkout próprio NÃO VERIFICADO nesta leitura",
       buyFlow,
       runtime: coreStatus && !coreStatus._http ? coreStatus.runtime || null : null,
       hotmart,
