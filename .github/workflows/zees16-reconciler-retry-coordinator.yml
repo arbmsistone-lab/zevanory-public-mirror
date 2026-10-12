@@ -23,9 +23,9 @@ jobs:
         run: |
           set -euo pipefail
           TARGET_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
-          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "TARGET_SHA_INVALID"; exit 1; }
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error title=RETRY_COORDINATOR::TARGET_SHA_INVALID"; exit 1; }
           LIVE_SHA="$(curl -fsS --retry 3 --max-time 20 https://zevanory.api.br/api/release | jq -r '.deployment.commit_sha // empty')"
-          [ "$TARGET_SHA" = "$LIVE_SHA" ] || { echo "LIVE_SHA_DIFFERENT_FROM_TARGET"; exit 1; }
+          [ "$TARGET_SHA" = "$LIVE_SHA" ] || { echo "::error title=RETRY_COORDINATOR::LIVE_SHA_DIFFERENT_FROM_TARGET target=$TARGET_SHA live=$LIVE_SHA"; exit 1; }
           echo "TARGET_SHA=$TARGET_SHA" >> "$GITHUB_ENV"
           echo "RECONCILER_EXACT_LIVE_SHA=PASS"
       - name: Wait for push workflows on this TARGET_SHA
@@ -42,7 +42,7 @@ jobs:
             if [ "$total" -gt 0 ] && [ "$active" -eq 0 ] && [ "$central" -ge 1 ]; then ready=1; break; fi
             sleep 10
           done
-          [ "$ready" = 1 ] || { echo "EXACT_PUSH_RUNS_NOT_COMPLETE"; exit 1; }
+          [ "$ready" = 1 ] || { echo "::error title=RETRY_COORDINATOR::EXACT_PUSH_RUNS_NOT_COMPLETE total=$total active=$active central_success=$central"; exit 1; }
       - name: Reconcile through the unchanged protected workflow
         shell: bash
         run: |
@@ -58,9 +58,9 @@ jobs:
               [ -n "$next" ] && break
               sleep 5
             done
-            [ -n "$next" ] || { echo "RECONCILER_DISPATCH_NOT_OBSERVED"; return 1; }
+            [ -n "$next" ] || { echo "::error title=RETRY_COORDINATOR::RECONCILER_DISPATCH_NOT_OBSERVED"; return 1; }
             echo "RECONCILER_RUN_ID=$next"
-            gh run watch "$next" --exit-status
+            gh run watch "$next" --exit-status || { echo "::warning title=RETRY_COORDINATOR::reconciler run $next ended $(gh api repos/$GITHUB_REPOSITORY/actions/runs/$next --jq .conclusion)"; return 1; }
           }
           if watch_one; then
             echo "RECONCILER_FIRST_PASS=GREEN"
