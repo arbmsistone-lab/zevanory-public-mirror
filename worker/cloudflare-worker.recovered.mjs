@@ -15118,7 +15118,7 @@ async function queueWhatsappConversation(sql, { contactRef, text, messageId = ""
     await sql.query("update sales_leads set stage=case when stage='new' then 'contacted' else stage end,touchpoints=touchpoints+1,last_contact_at=now(),updated_at=now() where lead_id=$1", [lead.lead_id]);
   }
   const key = `whatsapp-inbound:${id || Buffer.from(`${contact}:${message2}`).toString("base64url").slice(0, 120)}`;
-  const payload = { source, channel: "whatsapp", inbound_message: message2, message_id: id || null, media_type: type, media_id: clean28(mediaId, 240) || null, consent_allowed: true };
+  const payload = { source, channel: "whatsapp", inbound_message: message2, message_id: id || null, media_type: type, media_id: clean28(mediaId, 240) || null, consent_allowed: false, consent_note: "inbound_message_is_not_marketing_opt_in" };
   const rows = await sql.query("insert into agent_jobs(job_id,job_type,status,priority,lead_id,idempotency_key,payload,available_at) values($1,'lead_review','queued',95,$2,$3,$4::jsonb,now()) on conflict(idempotency_key) do nothing returning job_id", [randomUUID14(), lead.lead_id, key, JSON.stringify(payload)]);
   await sql.query("insert into agent_memory(memory_id,scope_type,scope_ref,memory_key,memory_value,confidence) values($1,'lead',$2,'last_inbound_message',$3::jsonb,1) on conflict(scope_type,scope_ref,memory_key) do update set memory_value=excluded.memory_value,confidence=1,updated_at=now()", [randomUUID14(), String(lead.lead_id), JSON.stringify({ text: message2, message_id: id || null, media_type: type, source })]);
   return Object.freeze({ queued: rows.length === 1, job_id: rows[0]?.job_id || null, lead_id: lead.lead_id, kind: "commercial" });
@@ -15154,6 +15154,19 @@ async function replyWhatsappConversation(item, question, { inboundAudio = false,
   const dedupKey = item.message_id ? `whatsapp:instant:${item.message_id}` : "";
   if (dedupKey && kv?.get && await kv.get(dedupKey).catch(() => null)) return { sent: false, reason: "already_replied" };
   if (dedupKey && kv?.put) await kv.put(dedupKey, "1", { expirationTtl: 86400 }).catch(() => {});
+  // WhatsApp policy guard (account disabled by Meta on 2026-10-10): at most 3 automatic replies per
+  // contact per hour and 8 per day, 60 in total per hour. Above that the conversation goes to the
+  // human queue instead of an automatic reply (bot ping-pong, repeated sends). Counters live in the
+  // free Cache API so the per-message KV write budget stays at one write.
+  const cache = globalThis.caches?.default;
+  if (cache?.match && cache?.put) {
+    const contact = String(item.from || "").replace(/\D/g, "").slice(-15) || "unknown";
+    const hour = new Date().toISOString().slice(0, 13), day = hour.slice(0, 10);
+    const keys = [[`h/${contact}/${hour}`, 3, 3700], [`d/${contact}/${day}`, 8, 90000], [`all/${hour}`, 60, 3700]].map(([k, max, ttl]) => [new Request("https://whatsapp-reply-limit.internal/" + k), max, ttl]);
+    const counts = await Promise.all(keys.map(([k]) => cache.match(k).then(r => r ? r.text() : "0").then(Number).catch(() => 0)));
+    if (keys.some(([, max], i) => (counts[i] || 0) >= max)) return { sent: false, reason: "whatsapp_reply_rate_limited" };
+    await Promise.all(keys.map(([k, , ttl], i) => cache.put(k, new Response(String((counts[i] || 0) + 1), { headers: { "cache-control": "max-age=" + ttl } })).catch(() => {})));
+  }
   const status = inboundStatus || { at: new Date().toISOString(), inbound_type: item.type, inbound_message_id: item.message_id || null, model: null, text_sent: false, voice_sent: false, voice_error: null };
   const checkpoint = inboundCheckpoint || whatsappStageRecorder(operationalStore, status);
   await checkpoint("heard", { heard: Boolean(question) });
