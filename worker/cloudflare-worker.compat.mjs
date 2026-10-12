@@ -511,6 +511,23 @@ const wrapped = {
       return new Response(JSON.stringify(report), { status: report.ok ? 200 : 500, headers });
     }
 
+    if (url.pathname === "/api/internal/funnel/run") {
+      // Funnel consolidation in its own invocation (own subrequest budget). Aggregates only.
+      const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+      if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
+      if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      const beat = { at: new Date().toISOString(), source: "http", tasks: {} };
+      try {
+        const salesOpenNow = applySalesSwitch(await readSalesSwitch(normalized).catch(() => null));
+        const out = await publishFunnelSummary(normalized, { sqlFactory: whatsappProofDatabase, production: salesOpenNow, salesOpen: salesOpenNow });
+        beat.tasks.funnel = out?.ok === true ? "ok" : "fail:" + String(out?.reason || "unknown").slice(0, 120);
+      } catch (error) {
+        beat.tasks.funnel = "fail:" + String(error instanceof Error ? error.message : error).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 120);
+      }
+      try { await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:cron:v1:funnel", JSON.stringify({ ...beat, finishedAt: new Date().toISOString() }), { expirationTtl: 7 * 86400 }); } catch {}
+      return new Response(JSON.stringify(beat), { status: beat.tasks.funnel === "ok" ? 200 : 500, headers });
+    }
+
     if (url.pathname === "/api/internal/voice-eval/run") {
       // End-to-end voice evaluation on the production models; returns and stores scores only.
       const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
@@ -666,18 +683,11 @@ wrapped.scheduled = async (controller, env, ctx) => {
   // subrequest/CPU budget with blog, email, orders and other hourly jobs.
   // The original hourly cron remains fully operational.
   if (controller?.cron === "15,45 * * * *") {
-    // Funnel consolidation first, with its own subrequest budget and its own heartbeat.
-    {
-      const iso = { at: new Date().toISOString(), cron: "15,45 * * * *", tasks: {} };
-      const salesOpenIso = applySalesSwitch(await readSalesSwitch(normalized).catch(() => null));
-      try {
-        const out = await publishFunnelSummary(normalized, { sqlFactory: whatsappProofDatabase, production: salesOpenIso, salesOpen: salesOpenIso });
-        iso.tasks.funnel = out?.ok === true ? "ok" : "fail:" + String(out?.reason || "unknown").slice(0, 120);
-      } catch (error) {
-        iso.tasks.funnel = "fail:" + String(error instanceof Error ? error.message : error).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 120);
-      }
-      try { await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:cron:v1:isolated", JSON.stringify({ ...iso, finishedAt: new Date().toISOString() }), { expirationTtl: 7 * 86400 }); } catch {}
-    }
+    // This invocation belongs to the financial proof alone (its MP verification uses up to 46 of
+    // the 50 subrequests of Workers Free). The funnel moved here on 12/10 starved it: the proof
+    // stopped renewing and sales/status went fail-closed. The funnel now runs in its own HTTP
+    // invocation (/api/internal/funnel/run, called by the hourly Command Center snapshot).
+    const iso = { at: new Date().toISOString(), cron: "15,45 * * * *", tasks: {} };
     try {
       const proof = await refreshFinancialProofSnapshot(normalized, {
         sqlFactory: whatsappProofDatabase, force: true
@@ -687,6 +697,8 @@ wrapped.scheduled = async (controller, env, ctx) => {
         ambiguous: proof.ambiguous ?? null
       }));
       await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:financial-proof:last-isolated-run:v1", JSON.stringify({at:new Date().toISOString(),ok:proof.ok===true}), {expirationTtl:7*86400});
+      iso.tasks.financial_proof = proof.ok === true ? "ok" : "fail:" + String(proof.reason || "unavailable").slice(0, 80);
+      try { await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:cron:v1:isolated", JSON.stringify({ ...iso, finishedAt: new Date().toISOString() }), { expirationTtl: 7 * 86400 }); } catch {}
       if (!proof.ok) {
         console.error("commercial_metrics_proof_isolated_failed", String(proof.reason || "unavailable"));
         throw new Error("financial_proof_not_renewed");
@@ -694,6 +706,7 @@ wrapped.scheduled = async (controller, env, ctx) => {
     } catch (error) {
       // Only a fixed category, never raw SQL/HTTP errors or account details.
       console.error("commercial_metrics_proof_isolated_failed", "exception");
+      if (!iso.tasks.financial_proof) { iso.tasks.financial_proof = "fail:" + String(error instanceof Error ? error.message : error).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 100); try { await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:cron:v1:isolated", JSON.stringify({ ...iso, finishedAt: new Date().toISOString() }), { expirationTtl: 7 * 86400 }); } catch {} }
       throw new Error("commercial_metrics_proof_isolated_failed");
     }
     return;
