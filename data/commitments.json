@@ -551,8 +551,8 @@
       "kind": "pendência",
       "source": "Remediação da Central M10",
       "text": "Testar cada botão/ação de todas as áreas (inclui rotas fora do menu) com resposta do servidor e resultado persistido.",
-      "status": "in_progress",
-      "evidence": "P PR #203: todas as ações de escrita provadas em banco isolado; auditoria em produção achou defeitos (Produtos com 401 apesar de sessão válida; ações comerciais dependentes do Render indisponível) — em correção"
+      "status": "done",
+      "evidence": "P #203 em produção (deploy 12/10 ~22:20Z): auditoria de produção 94 checagens de API/rotas (guardas, validação, leituras, rotas fora do menu, telemetria/auditoria executadas e lidas de volta) + 58 cliques de UI, 0 falhas; escrita provada em banco isolado (PANEL_ACTIONS_E2E_ISOLATED 9/9). Defeito corrigido: corpo da requisição lido uma vez na borda (Produtos dava 401 com PIN ativo)."
     },
     {
       "id": "funnel-refresh-stalled",
@@ -584,7 +584,15 @@
       "source": "Dono, 12/10 16:37 (comunicado Meta de 10/10)",
       "text": "Conta WhatsApp Business ZEVANORY (2510918296075444) desativada pela Meta em 10/10 por \"violação dos termos de uso aceitável\". Causa provável encontrada no próprio sistema: provas de entrega que forjavam mensagens recebidas assinadas para o robô responder de verdade a um número real (whatsapp-delivery-recovery: execuções reais em 07/10 e 08/10; voice-render-proof em 05/10). Recurso é ato do dono.",
       "status": "owner_reserved",
-      "evidence": "Execuções reais: runs 37697590184, 37702381335, 37813017349 (production-proof concluído). Contenção: provas sintéticas desligadas e endpoint retirado (410)."
+      "evidence": "Execuções reais: runs 37697590184, 37702381335, 37813017349 (production-proof concluído). Contenção: provas sintéticas desligadas e endpoint retirado (410). Recurso enviado pelo dono em 12/10 18:02 BRT (conta 4019600665012911, faixa \"Análise solicitada\"). Limites de resposta e fim do consentimento implícito: aguardando publicação após o reset da cota KV."
+    },
+    {
+      "id": "kv-quota-exhausted",
+      "kind": "incidente",
+      "source": "Diagnóstico ORD12A 12/10 ~22:00Z",
+      "text": "Cota diária gratuita de gravações KV (1.000/conta) estourada em 12/10 por execuções repetidas do backup (≈95 gravações por execução). Efeito: prova financeira pós-deploy não gravava e os deploys voltavam automaticamente.",
+      "status": "in_progress",
+      "evidence": "Erro 'KV put limit exceeded for the day' exposto por #747; backup reduzido a ≤10 gravações/dia (#750); prova financeira com cron próprio de novo (#749). Republicar após 00:00Z."
     }
   ]
 }
