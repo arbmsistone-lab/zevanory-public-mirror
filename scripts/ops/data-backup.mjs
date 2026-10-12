@@ -82,11 +82,13 @@ export async function main({ env = process.env, now = Date.now() } = {}) {
   const { default: pg } = await import("pg");
   const kv = cf({ token: env.CLOUDFLARE_API_TOKEN, account: env.CLOUDFLARE_ACCOUNT_ID, namespace: env.KV_NAMESPACE_ID });
   const db = new pg.Client({ connectionString: env.DATABASE_URL, ssl: { rejectUnauthorized: true } });
-  await db.connect();
   const day = new Date(now).toISOString().slice(0, 10);
   const report = { schema: "zevanory-backup/v1", day, startedAt: new Date(now).toISOString(), ok: false, kv: {}, neon: {}, restore: {}, failures: [] };
   const fail = (what) => report.failures.push(what);
   try {
+    if (!env.DATABASE_URL) throw new Error("database_url_missing");
+    try { const u = new URL(env.DATABASE_URL); report.db = { host: u.hostname.replace(/^[^.]+/, "*"), params: [...u.searchParams.keys()] }; } catch { report.db = { host: "unparseable" }; }
+    await db.connect().catch((e) => { throw new Error("db_connect_failed:" + (e?.code || e?.message || e)); });
     // 1. KV -> Neon
     const keys = [...new Set((await mapLimit(KV_PREFIXES, 2, (p) => kv.list(p))).flat())].filter((k) => !k.startsWith("zpc:restore-drill:"));
     const values = await mapLimit(keys, 8, async (k) => [k, await kv.get(k)]);
@@ -166,7 +168,7 @@ export async function main({ env = process.env, now = Date.now() } = {}) {
 
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
 if (isMain) {
-  const report = await main();
-  console.log("::notice title=DATA_BACKUP::" + JSON.stringify({ ok: report.ok, kv: report.kv, neon: { tables: report.neon.tables, rows: report.neon.rows, skipped: report.neon.skipped }, restore: report.restore, failures: report.failures }));
+  const report = await main().catch((e) => ({ ok: false, kv: {}, neon: {}, restore: {}, failures: ["fatal:" + String(e?.message || e).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 160)] }));
+  console.log("::notice title=DATA_BACKUP::" + JSON.stringify({ ok: report.ok, db: report.db, kv: report.kv, neon: { tables: report.neon.tables, rows: report.neon.rows, skipped: report.neon.skipped }, restore: report.restore, failures: report.failures }));
   if (!report.ok) { console.log("::error title=DATA_BACKUP::" + report.failures.join(", ").slice(0, 400)); process.exit(1); }
 }
