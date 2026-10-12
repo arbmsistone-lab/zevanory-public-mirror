@@ -106,6 +106,7 @@ COMMERCE = {
         "items": ["IA na Prática completo", "Vendas na Prática completo", "Lucro & Caixa completo", "Plano integrado de 30 dias (PDF e DOCX)", "Painel de decisão integrada (XLSX)", "Economia de R$ 244 em relação à compra separada (R$ 641)"],
         "faq_q": ("Inclui os três produtos separados?", "Sim. Inclui IA na Prática, Vendas na Prática e Lucro & Caixa completos, mais o Plano integrado de 30 dias e o Painel de decisão integrada.")},
 }
+FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a dia, sem curso longo', 'Quem já testou o ChatGPT mas não sabe aplicar em atendimento, conteúdo e rotina', 'Quem quer comandos prontos e uma planilha para medir o que mudou'], ['Quem procura automação técnica com programação', 'Quem espera resultado sem aplicar o método']), 'vendas-na-pratica': (['Quem vende pelo WhatsApp e Instagram e perde clientes no acompanhamento', 'Quem não tem roteiro de mensagens nem de conteúdo', 'Quem quer acompanhar oportunidades em uma planilha simples'], ['Quem busca anúncios pagos', 'Quem quer lista de contatos ou disparo em massa']), 'lucro-e-caixa': (['Quem fatura, mas não sabe quanto sobra no fim do mês', 'Quem mistura o dinheiro da empresa com o pessoal', 'Quem quer uma rotina semanal curta de caixa e margem'], ['Quem precisa de contabilidade ou obrigações fiscais', 'Quem procura recomendação de investimento']), 'combo-ia-vendas': (['Quem quer usar IA para vender mais no WhatsApp e nas redes', 'Quem quer os dois métodos com economia de R$ 97', 'Quem está organizando atendimento e conteúdo agora'], ['Quem só precisa organizar as finanças (veja Lucro & Caixa)', 'Quem busca anúncios pagos']), 'negocio-completo': (['Quem quer organizar IA, vendas e caixa de uma vez', 'Quem prefere um plano de 30 dias com começo, meio e fim', 'Quem quer a maior economia: R$ 244'], ['Quem quer resolver só um problema específico agora', 'Quem precisa de consultoria individual'])}
 DELIVERY_Q = ("Como recebo o produto?", "Logo após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um link pessoal para baixar o arquivo .zip com todo o material. Se o link se perder, peça outro em zevanory.api.br/entrega/reenviar.")
 GUARANTEE_Q = ("E se não for para mim?", "Você tem 7 dias de garantia: peça o reembolso integral em zevanory.api.br/pedir-reembolso, sem precisar explicar o motivo.")
 
@@ -133,6 +134,26 @@ def apply_commerce(slug: str, html: str) -> str:
              '<p>Entrega por download (.zip) no seu e-mail, logo após a confirmação do pagamento. Garantia de 7 dias.</p></div>'
              f'<a class="button primary" href="{buy}" rel="nofollow">{label}</a></aside>')
     html = re.sub(r'<aside class="offer-side">.*?</aside>', aside, html, count=1, flags=re.S)
+    # Conversion: what the buyer gets, right under the first call to action.
+    chips = "".join(f"<li>{i}</li>" for i in c["items"][:4])
+    includes = (f'<ul class="hero-includes" aria-label="O que está incluído">{chips}</ul>'
+                '<p class="microcopy hero-trust">Empresa brasileira com CNPJ · criada por <a href="/quem-criou">Renan Bitu</a> · suporte humano no <a href="https://wa.me/5588992545413">WhatsApp</a></p>')
+    html = re.sub(r'(<section class="container hero".*?<p class="microcopy">[^<]*</p>)', lambda m: m.group(1) + includes, html, count=1, flags=re.S)
+    # Conversion: who it is for (and who it is not for), right after the trust strip.
+    yes, no = FIT[slug]
+    fit_html = ('<section class="container section fit-section" aria-labelledby="para-quem">'
+                '<div class="section-head"><p class="section-kicker">Para quem é</p>'
+                f'<h2 id="para-quem">Feito para quem vive o problema todo dia.</h2></div>'
+                '<div class="fit-grid"><div class="fit-card fit-yes"><h3>É para você se</h3><ul>'
+                + "".join(f"<li>{x}</li>" for x in yes) +
+                '</ul></div><div class="fit-card fit-no"><h3>Não é para você se</h3><ul>'
+                + "".join(f"<li>{x}</li>" for x in no) +
+                '</ul></div></div></section>')
+    html = re.sub(r'(<section class="trust-strip".*?</section>)', lambda m: m.group(1) + fit_html, html, count=1, flags=re.S)
+    # Conversion: a compact buy bar that follows the reader on phones.
+    bar = (f'<div class="buy-bar" role="region" aria-label="Comprar {c["name"]}"><div><strong>{c["name"]}</strong>'
+           f'<span>R$ {c["price"]} · garantia de 7 dias</span></div><a class="button primary" href="{buy}" rel="nofollow">Comprar</a></div>')
+    html = html.replace("</main>", bar + "</main>", 1)
     # FAQ: drop "when will sales open" and fix composition answers; add delivery + guarantee.
     html = re.sub(r'<details><summary>Quando (a compra|o checkout) será liberad[ao]\?</summary><p>[^<]*</p></details>', _faq_html(*DELIVERY_Q) + _faq_html(*GUARANTEE_Q), html)
     if c["faq_q"]:

@@ -278,3 +278,32 @@ a:focus-visible,.button:focus-visible{outline:2px solid var(--brand-3);outline-o
 .hero:not(:has(.hero-panel)){min-height:auto;padding-bottom:40px}
 .nav-cta{white-space:nowrap}
 @media(max-width:700px){.nav-cta{padding:8px 12px;font-size:.84rem}}
+
+/* Conversion: deliverables under the hero CTA, fit section, phone buy bar. */
+.hero-includes{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0;padding:0;list-style:none}
+.hero-includes li{padding:4px 12px;border:1px solid var(--line-strong);border-radius:999px;background:rgba(0,184,255,.08);color:var(--soft);font-size:.82rem;font-weight:600}
+.hero-trust{margin-top:12px}
+.hero-trust a{color:var(--accent-2)}
+.fit-section{padding-top:64px;padding-bottom:24px}
+.fit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.fit-card{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(180deg,var(--surface-2),var(--surface));padding:24px}
+.fit-card h3{margin:0 0 12px;font-size:1.1rem}
+.fit-card ul{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.fit-card li{position:relative;padding-left:28px;color:var(--soft)}
+.fit-yes li:before{content:"✓";position:absolute;left:4px;color:var(--accent-2);font-weight:900}
+.fit-no li:before{content:"–";position:absolute;left:8px;color:var(--muted);font-weight:900}
+.fit-yes{border-color:var(--line-strong)}
+.buy-bar{display:none}
+@media(max-width:760px){
+  .fit-grid{grid-template-columns:1fr}
+  .buy-bar{position:sticky;bottom:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;padding:12px 16px;border-top:1px solid var(--line-strong);background:rgba(4,10,18,.94);backdrop-filter:blur(12px)}
+  .buy-bar strong{display:block;font-size:.92rem}
+  .buy-bar span{display:block;color:var(--muted);font-size:.8rem}
+  .buy-bar .button{width:auto;min-height:44px;padding:0 20px;flex:0 0 auto}
+}
+@media(max-width:760px){
+  .site-footer .footer-brand{display:none}
+  .site-footer .footer-inner{min-height:0;padding-top:8px;padding-bottom:8px}
+  .site-footer .footer-nav{justify-content:center;gap:16px}
+  .site-footer .footer-nav a{display:inline-flex;align-items:center;min-height:44px}
+}
