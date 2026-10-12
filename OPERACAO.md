@@ -5,6 +5,12 @@ gerado pronto pela própria ZEVANORY. Só sobe para o dono o que é ato dele (lo
 contrato, gasto) e só vai para o executor de navegador o que a plataforma não permite
 fazer por API.
 
+## 0. Registro mestre (ler antes de agir)
+
+`data/commitments.json` guarda toda ordem, decisão, compromisso aceito, evidência e pendência. Qualquer executor
+(humano ou agente) lê esse arquivo antes de agir; nada sai dele sem estar concluído com evidência ou revogado pelo
+dono. A matriz de certificação (`system-matrix.yml`, KV `zpc:matrix:v1`) mostra PASS/FAIL/BLOCKED/NOT TESTED de tudo.
+
 ## 1. Regras do dono (sempre valem)
 
 - Sem ordem escrita do dono: nada de gasto, cobrança/reembolso real, mudança em pagamentos,

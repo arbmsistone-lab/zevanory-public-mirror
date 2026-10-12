@@ -13,6 +13,7 @@ export const ENGINES = [
   { id: "short-calc", workflow: "youtube-autonomous-short.yml", inputs: { slot: "calc", dry_run: "false" }, at: "19:00", maxPerDay: 9, proof: { kv: "youtube_calc" } },
   { id: "indexnow", workflow: "indexnow-submit.yml", inputs: {}, at: "09:40", proof: { runToday: true } },
   { id: "command-center", workflow: "command-center-snapshot.yml", inputs: {}, everyMinutes: 55, maxPerDay: 30, proof: { runWithin: 55 } },
+  { id: "matrix", workflow: "system-matrix.yml", inputs: {}, everyMinutes: 360, maxPerDay: 6, proof: { runWithin: 350 } },
   { id: "market", workflow: "market-weekly.yml", inputs: {}, at: "06:20", weekday: 1, proof: { runWithin: 6 * 24 * 60 } },
   { id: "tiktok-pack", workflow: "short-pack.yml", inputs: {}, at: "06:00", monthDays: [1, 11, 21], proof: { runToday: true } },
 ];
@@ -52,6 +53,7 @@ export function decide({ now = Date.now(), runs = [], kvDone = {} } = {}) {
 async function gh(path, init = {}) {
   const r = await fetch("https://api.github.com/repos/" + process.env.GITHUB_REPOSITORY + path, { ...init, headers: { authorization: "Bearer " + process.env.GITHUB_TOKEN, accept: "application/vnd.github+json", ...(init.headers || {}) } });
   if (init.method === "POST") return r.status;
+  if (!r.ok) console.log("::warning title=ENGINE_DISPATCHER::GET " + path.split("?")[0] + " http " + r.status);
   return r.ok ? r.json() : {};
 }
 async function kvGet(key) {
@@ -66,8 +68,10 @@ export async function main() {
   const now = Date.now();
   const L = localParts(now);
   const runs = [];
+  const seen = {};
   for (const wf of [...new Set(ENGINES.map((e) => e.workflow))]) {
     const j = await gh(`/actions/workflows/${wf}/runs?per_page=30`);
+    seen[wf] = (j.workflow_runs || []).length;
     for (const r of j.workflow_runs || []) runs.push({ path: r.path, status: r.status, conclusion: r.conclusion, created_at: r.created_at, slot: (r.display_title || "").match(/slot=(\w+)/)?.[1] || null });
   }
   const kvDone = {};
@@ -78,7 +82,7 @@ export async function main() {
     const status = await gh(`/actions/workflows/${e.workflow}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "gh-pages", inputs: e.inputs }) });
     started.push(`${e.id}:${status}`);
   }
-  console.log("::notice title=ENGINE_DISPATCHER::" + JSON.stringify({ local: L.day + " " + Math.floor(L.minutes / 60) + ":" + String(L.minutes % 60).padStart(2, "0"), kvDone, started }));
+  console.log("::notice title=ENGINE_DISPATCHER::" + JSON.stringify({ seen, local: L.day + " " + Math.floor(L.minutes / 60) + ":" + String(L.minutes % 60).padStart(2, "0"), kvDone, started }));
 }
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
 if (isMain) main().catch((e) => { console.log("::error title=ENGINE_DISPATCHER::" + String(e?.message || e).slice(0, 200)); process.exit(1); });
