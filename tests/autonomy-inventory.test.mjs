@@ -26,3 +26,19 @@ test("fresh evidence proves, stale does not; reserved acts never enter the denom
   assert.equal(r.eligible, inv.processes.filter((x) => x.eligible).length);
   assert.equal(r.dependencies[0].impact, "high");
 });
+
+test("dispatcher (workflow_run), panel live proof and backup prove only with a successful autonomous run", () => {
+  const run = (path, event, conclusion, actor = null) => ({ path, event, actor, conclusion, created_at: "2026-10-13T11:00:00Z" });
+  const ctx = { runs: [
+    run(".github/workflows/engine-dispatcher.yml", "workflow_run", "success"),
+    run("panel:.github/workflows/command-center-live-proof.yml", "schedule", "failure"),
+    run(".github/workflows/data-backup.yml", "workflow_dispatch", "success", "renan-human"),
+  ] };
+  const p = Object.fromEntries(evaluateInventory(inv, ctx, now).processes.map((x) => [x.id, x]));
+  assert.equal(p.dispatcher.proven, true);
+  assert.equal(p["live-proof"].proven, false); // a failed proof never counts
+  assert.equal(p.backup.proven, false); // a manual run is not autonomy
+  const ok = evaluateInventory(inv, { runs: [run(".github/workflows/data-backup.yml", "schedule", "success"), run("panel:.github/workflows/command-center-live-proof.yml", "schedule", "success")] }, now);
+  const q = Object.fromEntries(ok.processes.map((x) => [x.id, x]));
+  assert.equal(q.backup.proven, true); assert.equal(q["live-proof"].proven, true);
+});
