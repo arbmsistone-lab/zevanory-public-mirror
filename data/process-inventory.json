@@ -248,11 +248,14 @@
       "id": "support",
       "area": "Atendimento",
       "agent": "Atendimento",
-      "name": "Resposta a dúvidas de clientes",
+      "name": "Atendimento por texto no WhatsApp (catálogo oficial, validação de cada resposta)",
       "eligible": true,
-      "state": "partial",
-      "dependency": "Atendimento automático do WhatsApp ainda não comprovado em produção; e-mail de suporte é lido por pessoa.",
-      "impact": "high"
+      "state": "autonomous",
+      "evidence": {
+        "type": "support_eval",
+        "minScore": 90,
+        "maxAgeHours": 192
+      }
     },
     {
       "id": "sales-ledger",
@@ -343,6 +346,16 @@
       "name": "Reembolso fora da garantia automática",
       "eligible": false,
       "state": "owner_reserved"
+    },
+    {
+      "id": "support-voice",
+      "area": "Atendimento",
+      "agent": "Atendimento",
+      "name": "Áudio recebido e resposta por voz no WhatsApp",
+      "eligible": true,
+      "state": "partial",
+      "dependency": "Transcrição e voz existem, mas ainda sem avaliação automática de qualidade comprovada.",
+      "impact": "medium"
     }
   ]
 }

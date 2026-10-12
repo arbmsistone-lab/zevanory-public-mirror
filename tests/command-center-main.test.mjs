@@ -27,3 +27,27 @@ test("snapshot main runs end-to-end against a mocked network and writes every se
     assert.equal(s.forecast.status, "insufficient");
   } finally { globalThis.fetch = realFetch; }
 });
+
+test("snapshot carries the zero-cost ledger and the support evaluation slot", async () => {
+  const store = new Map();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (u, o = {}) => {
+    u = String(u);
+    const res = (status, body) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status });
+    if (u.includes("/storage/kv/")) {
+      if (u.includes("/keys?")) return res(200, { result: [] });
+      const k = decodeURIComponent(u.match(/values\/([^?]+)/)[1]);
+      if ((o.method || "GET") === "PUT") { store.set(k, o.body); return res(200, {}); }
+      return store.has(k) ? res(200, store.get(k)) : res(404, "");
+    }
+    return res(200, {});
+  };
+  try {
+    const { main, SNAPSHOT_KEY } = await import("../scripts/audit/command-center-snapshot.mjs");
+    await main();
+    const s = JSON.parse(store.get(SNAPSHOT_KEY));
+    assert.equal(s.costs.incrementalCostBRL, 0);
+    assert.ok(s.costs.providers.length >= 8);
+    assert.ok("support" in s);
+  } finally { globalThis.fetch = realFetch; }
+});

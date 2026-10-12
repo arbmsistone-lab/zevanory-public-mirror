@@ -28,6 +28,7 @@ export function catalogFacts({ salesOpen = false } = {}) {
     "- Produtos 100% digitais. Após o pagamento confirmado pelo Mercado Pago, o cliente recebe por e-mail um link seguro (válido por 72 horas) para baixar o material. Novo link: https://zevanory.api.br/entrega/reenviar (código do pedido + e-mail da compra).",
     "- Direito de arrependimento: até 7 dias após a compra, reembolso integral pelo mesmo meio de pagamento (art. 49 do CDC). Pedido pelo link https://zevanory.api.br/pedir-reembolso, com o código do pedido e o e-mail do pagamento.",
     `- Suporte humano: ${SUPPORT_EMAIL}.`,
+    "- Compras feitas pela Hotmart: o acesso chega pelo e-mail da Hotmart e fica em Minhas compras; o reembolso (7 dias) também é pedido lá.",
     "- Combo IA + Vendas reúne IA na Prática + Vendas na Prática. Negócio Completo reúne IA, vendas e Lucro & Caixa.",
     salesOpen
       ? "- COMPRA: as vendas estão abertas. Informe o link /comprar/SKU do produto exato, fornecido no catálogo, somente na resposta à pessoa que chamou."
@@ -74,7 +75,7 @@ export function validateReply(text) {
   // Prices only as "R$ <catalog value>" (checked above); any other money amount is invented.
   if (/\b\d+([.,]\d+)?\s*(reais|conto|pila)\b/i.test(body)) issues.push("money_outside_catalog");
   // The only guarantee/refund window is 7 days; never claim a refund was approved/done.
-  for (const m of body.matchAll(/\b(\d{1,3})\s*dias?\b/gi)) if (Number(m[1]) !== 7 && /garant|reembols|arrepend|devolu/i.test(body)) issues.push(`days:${m[1]}`);
+  for (const m of body.matchAll(/\b(\d{1,3})\s*dias?\b/gi)) { const around = body.slice(Math.max(0, m.index - 45), m.index + m[0].length + 45); if (Number(m[1]) !== 7 && /garant|reembols|arrepend|devolu/i.test(around)) issues.push(`days:${m[1]}`); }
   if (/reembolso\s+(j[aá]\s+)?(foi\s+)?(aprovado|feito|liberado|realizado|conclu[ií]do)/i.test(body)) issues.push("refund_promise");
   // Only official contacts.
   for (const m of body.matchAll(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi)) if (!/^(suporte|contato)@zevanory\.api\.br$/i.test(m[0].replace(/[.,;!?]+$/, ""))) issues.push("email");
