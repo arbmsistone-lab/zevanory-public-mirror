@@ -1,0 +1,36 @@
+name: Gemini key to the production Worker (owner-authorized copy)
+
+# Owner's written authorization, 12/10/2026 20:12 BRT: "autorizo copiar a chave Gemini para o Worker".
+# Copies the existing GitHub secret GEMINI_API_KEY (already used daily by the Short voice) into the
+# Worker "zevanory" as the secret GEMINI_API_KEY. The value never appears in logs or outputs. Only
+# this one secret is written: no other variable, flag or binding changes. Manual dispatch only.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gemini-key-to-worker
+  cancel-in-progress: false
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Copy the key (value never printed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -n "${GEMINI_API_KEY:-}" ] || { echo "::error title=GEMINI_COPY::source_secret_missing"; exit 1; }
+          [ -n "${CLOUDFLARE_API_TOKEN:-}" ] || { echo "::error title=GEMINI_COPY::cloudflare_token_missing"; exit 1; }
+          printf '%s' "$GEMINI_API_KEY" | npx --yes wrangler@4.143.0 secret put GEMINI_API_KEY --name zevanory > /tmp/out.txt 2>&1 || { sed -E 's/[A-Za-z0-9_-]{30,}/[redacted]/g' /tmp/out.txt | tail -5; echo "::error title=GEMINI_COPY::secret_put_failed"; exit 1; }
+          echo "::notice title=GEMINI_COPY::GEMINI_API_KEY written to Worker zevanory"
