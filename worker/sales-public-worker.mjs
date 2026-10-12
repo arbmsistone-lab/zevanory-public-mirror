@@ -110,8 +110,11 @@ async function handleLead(request,env){
   try{
     const res=await env.CORE.fetch("https://leads.internal/subscribe",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
     const data=await res.json().catch(()=>({}));
-    const msg=String(data?.message||"Tente novamente em instantes.").replace(/[<>&]/g,"");
-    return infoPage(res.ok?200:400,res.ok?"Quase lá!":"Não foi possível concluir",`<p>${msg}</p>${res.ok?"<p>Não chegou? Confira a caixa de spam ou promoções.</p>":"<p><a class=\"button primary\" href=\"/material-gratuito\">Voltar</a></p>"}`);
+    // Only fixed, known messages are rendered (no upstream text in HTML).
+    const KNOWN=["Quase lá! Enviamos um link de confirmação para o seu e-mail.","Enviamos o checklist para o seu e-mail.","Confira o e-mail.","Marque a autorização para receber o material.","Não conseguimos enviar agora. Tente de novo em instantes.","Não conseguimos registrar agora. Tente de novo em instantes."];
+    const msg=KNOWN.find(k=>k===String(data?.message||""))||(res.ok?KNOWN[0]:"Tente novamente em instantes.");
+    const body=res.ok?"<p>"+msg+"</p><p>Não chegou? Confira a caixa de spam ou promoções.</p>":"<p>"+msg+"</p><p><a class=\"button primary\" href=\"/material-gratuito\">Voltar</a></p>";
+    return infoPage(res.ok?200:400,res.ok?"Quase lá!":"Não foi possível concluir",body);
   }catch{return infoPage(503,"Não foi possível concluir","<p>Tente novamente em instantes.</p>")}
 }
 
