@@ -18,10 +18,10 @@ function fakeDb() {
       for (const r of rows.values()) if (r.token_hash === params[0] && r.status === "pending" && r.token_expires_at > Date.now()) { Object.assign(r, { status: "confirmed", token_hash: null, nurture_step: 1, nurture_at: new Date().toISOString() }); return [{ email: r.email, name: r.name }]; }
       return [];
     }
-    if (/^select email, name, nurture_step/i.test(text.trim())) return [...rows.values()].filter((r) => r.status === "confirmed" && r.nurture_step < 3 && Date.parse(r.nurture_at) < Date.now() - 2 * 86400e3);
+    if (/^select email, name, nurture_step/i.test(text.trim())) return [...rows.values()].filter((r) => r.status === "confirmed" && r.nurture_step < 5 && Date.parse(r.nurture_at) < Date.now() - 2 * 86400e3);
     if (/set nurture_step=\$2/.test(text)) { rows.get(params[0]).nurture_step = params[1]; rows.get(params[0]).nurture_at = new Date().toISOString(); return []; }
     if (/set status='unsubscribed'/.test(text)) { for (const r of rows.values()) if (r.email_hash === params[0]) r.status = "unsubscribed"; return []; }
-    if (/set nurture_step=3/.test(text)) { rows.get(params[0]).nurture_step = 3; return []; }
+    if (/set nurture_step=5/.test(text)) { rows.get(params[0]).nurture_step = 5; return []; }
     throw new Error("unexpected sql: " + text.slice(0, 60));
   };
   return { rows, factory: () => ({ query }) };
@@ -68,7 +68,7 @@ test("nurture holds the catalog e-mail while sales are closed; opt-out stops eve
   const held = await runLeadNurture(env(store), { sqlFactory: db.factory, salesOpen: false });
   assert.equal(held.held, 1); assert.equal(sent.length, 0);
   const open = await runLeadNurture(env(store), { sqlFactory: db.factory, salesOpen: true });
-  assert.equal(open.sent, 1); assert.match(sent[0].text, /R\$ 397/);
+  assert.equal(open.sent, 1); assert.match(sent[0].text, /IA na Prática \(R\$ 197/); assert.match(sent[0].text, /utm_source=email/);
   const e = env(store);
   const link = new URL(await leadOptOutLink(e, "x@y.com"));
   db.rows.get("x@y.com").email_hash = link.searchParams.get("i");
@@ -82,4 +82,19 @@ test("nurture copy only uses catalog prices and the 7-day guarantee", () => {
   const text = nurtureEmail(2, { name: "", optOutUrl: "u" }).text;
   for (const m of text.matchAll(/R\$ (\d+)/g)) assert.ok([197, 247, 297, 397].includes(Number(m[1])));
   assert.match(text, /7 dias/);
+});
+
+import { interestFromPage, NURTURE_DONE } from "../worker/lead-magnet.mjs";
+test("the offer matches what the lead was reading and the sequence ends", () => {
+  assert.equal(interestFromPage("/calculadora-margem-de-lucro"), "caixa");
+  assert.equal(interestFromPage("/vendas-na-pratica"), "vendas");
+  assert.equal(interestFromPage("/ia-para-padaria"), "ia");
+  assert.match(nurtureEmail(2, { name: "", optOutUrl: "u", interest: "caixa" }).text, /Lucro & Caixa \(R\$ 247/);
+  const last = nurtureEmail(4, { name: "", optOutUrl: "u" }).text;
+  assert.match(last, /último e-mail/i); assert.match(last, /R\$ 397/); assert.match(last, /7 dias/);
+  for (let s = 0; s < NURTURE_DONE; s++) {
+    const t = nurtureEmail(s, { name: "", optOutUrl: "OPTOUT" }).text;
+    assert.match(t, /OPTOUT/);
+    for (const m of t.matchAll(/R\$ (\d+)/g)) assert.ok([197, 247, 297, 397, 641].includes(Number(m[1])), m[0]);
+  }
 });
