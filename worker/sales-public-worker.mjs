@@ -105,7 +105,8 @@ async function handleLead(request,env){
   if(await overLimit(env,"lead:"+ip)) return infoPage(429,"Muitas tentativas","<p>Aguarde um minuto e tente de novo.</p>");
   let form;try{form=await request.formData()}catch{form=new FormData()}
   if(String(form.get("website")||"")) return infoPage(200,"Quase lá!","<p>Confira seu e-mail.</p>");
-  const payload={email:String(form.get("email")||""),name:String(form.get("nome")||""),consent:String(form.get("consentimento")||"")==="sim"};
+  let page="";try{const ref=new URL(request.headers.get("referer")||"");if(ref.hostname===new URL(request.url).hostname)page=ref.pathname.slice(0,80)}catch{}
+  const payload={email:String(form.get("email")||""),name:String(form.get("nome")||""),consent:String(form.get("consentimento")||"")==="sim",page};
   try{
     const res=await env.CORE.fetch("https://leads.internal/subscribe",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
     const data=await res.json().catch(()=>({}));
