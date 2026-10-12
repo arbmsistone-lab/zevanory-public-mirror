@@ -71,6 +71,11 @@
       "file": "zea10-external-evidence-pack.yml",
       "reason": "pacote de evidências congelado no release de 09/10, que exigia vendas bloqueadas; as vendas foram liberadas pelo dono em 12/10, então o pacote descreve um estado passado",
       "since": "2026-10-12"
+    },
+    {
+      "file": "t2-workers-ai-creative-factory.yml",
+      "reason": "a fábrica de criativos roda no Worker do painel com o binding de IA (cron a cada 15 min); o token do CI não tem permissão de Workers AI (HTTP 401)",
+      "since": "2026-10-12"
     }
   ],
   "awaitingRealEvent": [

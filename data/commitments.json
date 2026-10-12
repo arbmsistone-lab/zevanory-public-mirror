@@ -257,6 +257,14 @@
       "text": "Comprovar que o modelo de IA responde em produção (avaliação roda no Worker com o binding de IA)",
       "status": "in_progress",
       "evidence": "PR #728"
+    },
+    {
+      "id": "mp-sandbox-proof",
+      "kind": "pendência",
+      "source": "Matriz mestra, 12/10",
+      "text": "Prova de compra/entrega/reembolso em sandbox do Mercado Pago falha com 'certification_e2e_not_fail_closed' (worker de certificação). Investigar sem alterar CERTIFICATION_PILOT_ENV/MERCADOPAGO_ENV de produção",
+      "status": "pending",
+      "evidence": "run mercadopago-combo-sandbox 10/10"
     }
   ]
 }
