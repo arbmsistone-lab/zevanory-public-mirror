@@ -29,7 +29,7 @@
     {
       "id": "decision-sales-open",
       "kind": "decisão",
-      "source": "Dono, 12/10 01:48",
+      "source": "Dono, 10/10 21:47 (primeira abertura) e 12/10 01:48",
       "text": "Vendas liberadas (site e Hotmart)",
       "status": "done",
       "evidence": "Prova horária do caminho de compra (botão Comprar e 6 checkouts Hotmart)"
@@ -152,7 +152,7 @@
       "source": "Auditoria Suprema, 12/10",
       "text": "Matriz mestra automática PASS/FAIL/BLOCKED/NOT TESTED de todo o sistema",
       "status": "done",
-      "evidence": "system-matrix.yml; 273 itens, 86,4% PASS (12/10)"
+      "evidence": "system-matrix 12/10 13:3x: 259 itens, PASS 241 (93,1%), FAIL 2, BLOCKED 8, NOT TESTED 8"
     },
     {
       "id": "auto-remediation",
@@ -215,24 +215,24 @@
       "kind": "correção",
       "source": "Vídeo do dono, 12/10 09:52",
       "text": "Produtos com preço oficial e estado real de venda (prova horária), não o cadastro antigo",
-      "status": "in_progress",
-      "evidence": "painel PR #196"
+      "status": "done",
+      "evidence": "Painel PR #196 implantado 12/10; prova em produção 142 verificações, 0 falhas"
     },
     {
       "id": "panel-commercial-coherence",
       "kind": "correção",
       "source": "Vídeo do dono, 12/10 09:52",
       "text": "Comercial e Publicações usando a mesma fonte da Central de Comando",
-      "status": "in_progress",
-      "evidence": "painel PR #196"
+      "status": "done",
+      "evidence": "Painel PR #196 implantado 12/10; prova em produção 142 verificações, 0 falhas"
     },
     {
       "id": "approvals-auto",
       "kind": "compromisso",
       "source": "Promessa do executor, 12/10 (redesenho do painel, item 6)",
       "text": "Fila de aprovações decidida pelo controle de qualidade; ao dono só atos do dono",
-      "status": "in_progress",
-      "evidence": "creative-auto-decision.yml (painel PR #196)"
+      "status": "done",
+      "evidence": "Aprovação na borda (painel PR #197); creative-auto-decision 12/10 14:2x: 5 criativos conferidos e aprovados (HTTP 200)"
     },
     {
       "id": "health-dedupe",
@@ -248,7 +248,7 @@
       "source": "Print do dono, 12/10 09:51",
       "text": "Pessoas reais contadas só a partir do filtro de robôs; zero vendas com selo correto",
       "status": "in_progress",
-      "evidence": "PR #728, painel PR #195"
+      "evidence": "PR #728 implantado; aguardando o consolidado do funil publicar pessoas filtradas (foto 13:38: pessoas = sem dados, bruto 8.087 marcado estimado)"
     },
     {
       "id": "support-ai-runtime",
@@ -265,6 +265,262 @@
       "text": "Prova de compra/entrega/reembolso em sandbox do Mercado Pago falha com 'certification_e2e_not_fail_closed' (worker de certificação). Investigar sem alterar CERTIFICATION_PILOT_ENV/MERCADOPAGO_ENV de produção",
       "status": "pending",
       "evidence": "run mercadopago-combo-sandbox 10/10"
+    },
+    {
+      "id": "rule-standing-security",
+      "kind": "regra",
+      "source": "Dono (permanente)",
+      "text": "Sem ordem escrita do dono: nada de cobrança/reembolso real, escrita no Mercado Pago de produção, alterar pedidos/pagamentos/entrega, mudar regras do interruptor (fechar é permitido), afrouxar gates/provas, mexer em secrets, PII, spam ou mensagem sem opt-in, inventar prova. Não mexer no ARBM One. Não mudar CERTIFICATION_PILOT_ENV/MERCADOPAGO_ENV. Contratos são ato do dono. Não falar nem assinar como Renan. Nunca remover os 5 crons do worker zevanory.",
+      "status": "active",
+      "evidence": "OPERACAO.md §1 e §7"
+    },
+    {
+      "id": "rule-quality-scale",
+      "kind": "regra",
+      "source": "Dono, 12/10",
+      "text": "Régua do dono: bom = péssimo, muito bom = ruim, excelente = bom, primoroso = excelente, supremo = nível master elite. Nada é declarado pronto sem prova; nenhum relatório declara excelência com deficiência crítica conhecida.",
+      "status": "active",
+      "evidence": null
+    },
+    {
+      "id": "rule-reservations",
+      "kind": "regra",
+      "source": "Dono, 12/10",
+      "text": "Executar só o que tem concordância; cada ressalva fica registrada por ordem e é discutida com o dono no final.",
+      "status": "active",
+      "evidence": "Ressalvas abertas: ver item reservations-open"
+    },
+    {
+      "id": "reservations-open",
+      "kind": "compromisso",
+      "source": "Executor, 12/10",
+      "text": "Ressalvas a discutir com o dono: (1) Meta, Pinterest e Search Console ficam BLOCKED externo até aprovação de terceiros; (2) 'autonomia 100%' só com prova de 26/26; (3) voz 'igual a humana' só com avaliação independente; (4) arquitetura multiagente mantida mínima; (5) mercado internacional fora do escopo atual; (6) dados em tempo real limitados à foto horária; (7) voz/transcrição pagas proibidas pelo custo zero; (8) Kit R$37 e Kiwify não executados; (9) expansão para seis linhas de negócio não adotada sem validação.",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "rule-no-owner-tech",
+      "kind": "regra",
+      "source": "Dono, 10/10",
+      "text": "Nada técnico vai para o dono; o que for ato do dono fica numa lista única, por último, para ele fazer de uma vez.",
+      "status": "active",
+      "evidence": null
+    },
+    {
+      "id": "rule-keep-updated",
+      "kind": "regra",
+      "source": "Dono, 12/10",
+      "text": "Manter o dono atualizado durante a execução e responder ponto a ponto cada ordem enviada.",
+      "status": "active",
+      "evidence": null
+    },
+    {
+      "id": "rule-all-fronts",
+      "kind": "regra",
+      "source": "Dono, 10/10",
+      "text": "A divulgação parte da própria ZEVANORY em todas as frentes de venda, com foto/logo, descrição, legenda e informações padronizadas (padrão 13/13).",
+      "status": "active",
+      "evidence": null
+    },
+    {
+      "id": "weekly-owner-audit",
+      "kind": "pendência",
+      "source": "Dono, 10/10 19:41",
+      "text": "Auditoria automática semanal das frentes (padrão 13/13) que avisa o dono se algo sair do padrão, com evidência de execução agendada.",
+      "status": "pending",
+      "evidence": "zevanory-final-standard-readonly.yml existe sem agendamento"
+    },
+    {
+      "id": "omega-absolute",
+      "kind": "ordem",
+      "source": "Dono, 12/10 10:29 (APEX-Ω Omega Absolute)",
+      "text": "Missões 1–8: reconciliação da matriz, segurança e continuidade, custo zero absoluto, IA de ponta a ponta, aquisição como prioridade, autonomia de 100% dos elegíveis, reconciliação dos compromissos, correção e certificação. Estado-alvo: zero FAIL interno, zero BLOCKED interno solucionável, zero NOT TESTED executável.",
+      "status": "in_progress",
+      "evidence": "M1 feita (matriz 259 itens); M2 RLS feita, backup no PR #729; M3 no PR #730; M7 este registro"
+    },
+    {
+      "id": "supabase-rls",
+      "kind": "entrega",
+      "source": "Omega Absolute M2, 12/10",
+      "text": "Auditoria RLS do Supabase: 329 tabelas; tabelas ZEVANORY sem RLS não têm permissão pela API; 17 funções antigas do painel executáveis por anônimo e sem uso em 24 h tiveram o acesso revogado (caminho de volta registrado).",
+      "status": "done",
+      "evidence": "Migração zpc_revoke_unused_legacy_rpc_public_execute; painel PR #197; prova do painel e aprovações OK depois da mudança"
+    },
+    {
+      "id": "arbm-supabase-decision",
+      "kind": "reservado ao dono",
+      "source": "Auditoria RLS, 12/10",
+      "text": "Alertas do Supabase que pertencem ao ARBM One (379 funções executáveis por usuário autenticado, proteção contra senhas vazadas desligada). O executor não toca no ARBM One.",
+      "status": "owner_reserved",
+      "evidence": null
+    },
+    {
+      "id": "data-backup-restore",
+      "kind": "pendência",
+      "source": "Omega Absolute M2, 12/10",
+      "text": "Backup diário gratuito KV↔Neon com restauração real em ambiente isolado e comparação de integridade; só conta como protegido quando a restauração conferir.",
+      "status": "in_progress",
+      "evidence": "PR #729"
+    },
+    {
+      "id": "cost-plans-verify",
+      "kind": "pendência",
+      "source": "Omega Absolute M3, 12/10",
+      "text": "Verificar planos reais de todos os provedores e travar cobrança: Supabase verificado (free, 122 MB/500 MB); sonda semanal Cloudflare/Neon; Render e faturamento do Gemini dependem de confirmação do dono.",
+      "status": "in_progress",
+      "evidence": "PR #730"
+    },
+    {
+      "id": "autonomy-100",
+      "kind": "meta",
+      "source": "Protocolo Omega §9 / Omega Absolute M6",
+      "text": "Comprovar 100% dos processos elegíveis autônomos com evidência real, período representativo e testes de falha e recuperação.",
+      "status": "in_progress",
+      "evidence": "Hoje 15/26 (57,7%)"
+    },
+    {
+      "id": "zees16-retry-fail",
+      "kind": "pendência",
+      "source": "Matriz 12/10",
+      "text": "Corrigir o FAIL do coordenador de nova tentativa do ZEES-16, com teste de regressão.",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "ai-multimodal-e2e",
+      "kind": "pendência",
+      "source": "Omniscience / ULTRA / Omega Absolute M4",
+      "text": "Certificar em produção: conhecimento integral dos produtos, atendimento escrito, áudio recebido e transcrição, resposta por voz, naturalidade da narração, vídeo, coerência entre marketing e atendimento, recuperação entre provedores gratuitos, aviso de que é IA.",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "acquisition-priority",
+      "kind": "pendência",
+      "source": "Omega Absolute M5, 12/10",
+      "text": "Prioridade executiva à aquisição: análise dos canais e resultados, distribuição orgânica, encaminhamento de compradores qualificados às vitrines; sem confundir publicação com alcance nem checkout com venda.",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "resilience-tests",
+      "kind": "pendência",
+      "source": "Auditoria Suprema §8 / Protocolo Omega §5",
+      "text": "Testes reais de falha e recuperação (failover entre provedores, nova tentativa, rollback) com relatório de resiliência.",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "remediation-matrix-fields",
+      "kind": "pendência",
+      "source": "Auto-Remediation",
+      "text": "Matriz de remediação com causa, criticidade, dependência, referência, regressão e estado final por item; falha nova reabre o item automaticamente.",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "uptime-monitor",
+      "kind": "pendência",
+      "source": "Relatório integral, 12/10",
+      "text": "Monitor de disponibilidade gratuito com histórico, visível no painel.",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "panel-promotion-legacy",
+      "kind": "pendência",
+      "source": "Relatório integral, 12/10",
+      "text": "Investigar ou aposentar a promoção canônica do painel no repositório do painel (5 de 5 execuções falham; o deploy oficial passa pela esteira do site).",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "old-workers-cleanup",
+      "kind": "reservado ao dono",
+      "source": "Relatório integral, 12/10",
+      "text": "Autorizar a remoção dos 16 Workers ZEVANORY antigos de prova/prévia (irreversível).",
+      "status": "owner_reserved",
+      "evidence": null
+    },
+    {
+      "id": "youtube-oauth",
+      "kind": "pendência",
+      "source": "Dono, 10/10",
+      "text": "YouTube conectado e publicando público com prova (Shorts diários rodando pelo despachante).",
+      "status": "in_progress",
+      "evidence": "Shorts publicados 12/10 (dica e oferta)"
+    },
+    {
+      "id": "hotmart-pending",
+      "kind": "bloqueio externo",
+      "source": "Hotmart, 11/10",
+      "text": "Produtos em análise na Hotmart; dono confirma o HOTTOK, decide sobre o Agente de Vendas IA da Hotmart e o PDF de boas-vindas; aceite de contrato de dados é ato do dono.",
+      "status": "blocked_external",
+      "evidence": null
+    },
+    {
+      "id": "tiktok-bio-flags",
+      "kind": "reservado ao dono",
+      "source": "TikTok, 11/10",
+      "text": "Texto da bio do TikTok (até 80 caracteres) e decisão sobre 'Divulga conteúdo' e verificações automáticas.",
+      "status": "owner_reserved",
+      "evidence": null
+    },
+    {
+      "id": "kit-37",
+      "kind": "decisão",
+      "source": "Ordem 13 §3.5 (registrado como aprovado em 09/10)",
+      "text": "Kit 100 Comandos de IA R$ 37 (ZEV-KIT-011): implementar ou revogar com o dono; não está no catálogo oficial.",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "conversion-extras",
+      "kind": "pendência",
+      "source": "Ordem 13 §3.1–3.6, 1.6",
+      "text": "Avaliações reais D+7, amostra grátis por produto, linha de parcelamento real, captura opcional antes do checkout, programa próprio de afiliados.",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "goal-trigger-400",
+      "kind": "regra",
+      "source": "OPERACAO §5",
+      "text": "Se a quinzena fechar abaixo de R$ 400, propor ao dono troca de oferta ou preço, com dados.",
+      "status": "active",
+      "evidence": null
+    },
+    {
+      "id": "chatgt-system",
+      "kind": "pendência",
+      "source": "Dono, 10/10 22:44",
+      "text": "Esclarecer por que o 'ChatGT System' parou de enviar mensagens (fora da ZEVANORY; investigar só com indicação de onde roda).",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "inventory-report",
+      "kind": "entrega",
+      "source": "Inventário Universal, 12/10",
+      "text": "Relatório Integral do Sistema (Docs, 19 seções) entregue; falta o formato de 5 volumes e fonte/data/confiança em cada fato.",
+      "status": "in_progress",
+      "evidence": "Artefato 'Relatório Integral do Sistema ZEVANORY'"
+    },
+    {
+      "id": "render-skip-legacy",
+      "kind": "pendência",
+      "source": "Executor, 12/10",
+      "text": "Aplicar '[skip render]' nos merges do painel e limpar dados legados de Comercial/CRM.",
+      "status": "in_progress",
+      "evidence": "PRs #196 e #197 com [skip render]"
+    },
+    {
+      "id": "orders-gap-list",
+      "kind": "pendência",
+      "source": "Reconciliação M7, 12/10",
+      "text": "Requisitos das ordens ainda sem execução: modelo de clientes e segmentos, estratégia por produto e canal, CAC/LTV/margem, 14 motores com orçamento e logs, SLOs e circuit breakers, previsão com anomalias, testes de injeção de prompt e fuzz, OWASP ASVS/LGPD, desempenho e carga, base de conhecimento versionada (incl. ZEVANORY Gestão), detecção de mudança oficial.",
+      "status": "pending",
+      "evidence": null
     }
   ]
 }
