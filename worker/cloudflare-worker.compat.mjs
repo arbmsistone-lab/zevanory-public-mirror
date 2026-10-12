@@ -169,10 +169,16 @@ const wrapped = {
         try {
           const body = await audit.clone().json();
           if (url.pathname.endsWith("/financial-classification")) {
-            const persisted = await persistClassificationSnapshot(normalized, { code: 200, result: body }, { sqlFactory: whatsappProofDatabase });
-            body.snapshot_persist = persisted.reason;
+            // A thrown error must be visible to the renewal (it used to be swallowed, leaving sales
+            // fail-closed with no reason). Only the error class/message prefix, never data.
+            try {
+              const persisted = await persistClassificationSnapshot(normalized, { code: 200, result: body }, { sqlFactory: whatsappProofDatabase });
+              body.snapshot_persist = persisted.reason;
+            } catch (persistError) {
+              body.snapshot_persist = "error:" + String(persistError?.name || "Error") + ":" + String(persistError?.message || persistError).replace(/[^\w .:-]/g, " ").slice(0, 80);
+            }
           }
-          body.financial_snapshot = await describeFinancialProofSnapshot(normalized);
+          try { body.financial_snapshot = await describeFinancialProofSnapshot(normalized); } catch (describeError) { body.financial_snapshot = { error: String(describeError?.message || describeError).slice(0, 80) }; }
           const headers = new Headers(audit.headers);
           return new Response(JSON.stringify(body), { status: 200, headers });
         } catch {}
