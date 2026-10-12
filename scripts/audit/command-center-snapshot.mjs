@@ -153,6 +153,25 @@ async function kvPut(key, value) { const r = await kvApi("values/" + encodeURICo
 async function kvList(prefix) { const r = await kvApi("keys?limit=1000&prefix=" + encodeURIComponent(prefix)); if (!r.ok) return []; return ((await r.json()).result || []).map((k) => k.name); }
 const j = async (u, o) => { const r = await fetch(u, { ...o, signal: AbortSignal.timeout(15000) }); return r.ok ? r.json() : { _http: r.status }; };
 
+// KV writes today for the whole account (Workers Free: 1,000/day, reset 00:00 UTC). On 12/10 the
+// quota ran out and the financial proof could not be stored. Null = NOT VERIFIED (token scope).
+export const KV_DAILY_WRITE_LIMIT = 1000;
+async function kvWritesToday(now = Date.now()) {
+  const { CLOUDFLARE_API_TOKEN: tk, CLOUDFLARE_ACCOUNT_ID: ac } = process.env;
+  if (!tk || !ac) return null;
+  const day = new Date(now).toISOString().slice(0, 10);
+  const query = `query($a:String!,$d:Date!){viewer{accounts(filter:{accountTag:$a}){kvOperationsAdaptiveGroups(limit:100,filter:{date_geq:$d,date_leq:$d}){sum{requests}dimensions{actionType}}}}}`;
+  try {
+    const r = await fetch("https://api.cloudflare.com/client/v4/graphql", { method: "POST", headers: { authorization: "Bearer " + tk, "content-type": "application/json" }, body: JSON.stringify({ query, variables: { a: ac, d: day } }), signal: AbortSignal.timeout(15000) });
+    const body = await r.json().catch(() => null);
+    const groups = body?.data?.viewer?.accounts?.[0]?.kvOperationsAdaptiveGroups;
+    if (!Array.isArray(groups)) return { verified: false, reason: String(body?.errors?.[0]?.message || "http_" + r.status).slice(0, 80) };
+    const by = (t) => groups.filter((g) => g.dimensions?.actionType === t).reduce((a, g) => a + (g.sum?.requests || 0), 0);
+    const writes = by("write") + by("delete");
+    return { verified: true, day, writes, reads: by("read"), limit: KV_DAILY_WRITE_LIMIT, pct: Math.round((writes / KV_DAILY_WRITE_LIMIT) * 100) };
+  } catch (e) { return { verified: false, reason: String(e?.name || "error") }; }
+}
+
 async function probe(url) {
   const t0 = Date.now();
   try { const r = await fetch(url, { signal: AbortSignal.timeout(10000), headers: { "user-agent": "zevanory-command-center/1" } }); return { url, http: r.status, ms: Date.now() - t0, ok: r.ok }; }
@@ -329,8 +348,11 @@ export async function main() {
   const publications = computePublications(pubs.byDay);
   const firstSalesDay = Object.keys(sales?.byDay || {}).sort()[0] || null;
 
+  const kvQuota = await kvWritesToday(now);
+  if (kvQuota?.verified && kvQuota.writes >= 0.8 * KV_DAILY_WRITE_LIMIT) console.log("::warning title=KV_QUOTA::" + JSON.stringify(kvQuota));
   const snapshot = {
     schema: "zevanory-command-center/v1",
+    platform: { kvQuota },
     generatedAt: iso(now),
     day,
     goals: [
@@ -397,7 +419,7 @@ export async function main() {
     },
     operations: {
       probes: [health, site, control],
-      salesSwitch: salesStatus && !salesStatus._http ? { open: salesStatus.open === true } : null,
+      kvQuota, salesSwitch: salesStatus && !salesStatus._http ? { open: salesStatus.open === true } : null,
       checkoutMode: "Hotmart vendendo; checkout próprio bloqueado até LIBERAR VENDAS",
       buyFlow,
       runtime: coreStatus && !coreStatus._http ? coreStatus.runtime || null : null,
