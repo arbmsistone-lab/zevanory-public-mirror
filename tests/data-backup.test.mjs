@@ -41,7 +41,8 @@ test("full run: copies both ways, restores from the copies and reports only coun
   assert.equal(r.kv.keys, 2);
   assert.equal(r.neon.tables, 1); assert.equal(r.restore.neon.ok, 1);
   assert.equal(r.restore.kv.sampleOk, true); assert.equal(r.restore.kv.mismatch, 0);
-  assert.ok(kv.m.has("zpc:backup:v1:neon:2026-10-12:zevanory_leads"));
+  const bundle = JSON.parse(kv.m.get("zpc:backup:v1:neon:2026-10-12:part:0") || "{}");
+  assert.ok(typeof bundle.zevanory_leads === "string", "table exported inside the part bundle");
   assert.ok(![...kv.m.keys()].some((k) => k.startsWith("zpc:restore-drill:")), "drill keys are cleaned up");
   const stored = JSON.parse(kv.m.get(REPORT_KEY));
   assert.doesNotMatch(JSON.stringify(stored), /email_hash|cp"|approved/); // no data in the report
@@ -90,8 +91,13 @@ test("parts: every table lands in exactly one part, credentials are excluded, a 
   const now = Date.parse("2026-10-12T05:10:00Z");
   const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, DATABASE_URL: "postgres://x" };
   const seen = [];
-  for (let p = 0; p < 3; p++) { const r = await runDataBackup(env, { sqlFactory: factory, now, part: p, parts: 3 }); assert.equal(r.ok, true, JSON.stringify(r.failures)); seen.push(...[...kv.m.keys()].filter((k) => k.startsWith("zpc:backup:v1:neon:"))); }
-  const backed = new Set(seen.map((k) => k.split(":").pop()));
+  let writes = 0; const put = kv.put.bind(kv); kv.put = async (...a) => { writes++; return put(...a); };
+  const del = kv.delete?.bind(kv); if (del) kv.delete = async (...a) => { writes++; return del(...a); };
+  for (let p = 0; p < 3; p++) { const r = await runDataBackup(env, { sqlFactory: factory, now, part: p, parts: 3 }); assert.equal(r.ok, true, JSON.stringify(r.failures)); }
+  for (const k of [...kv.m.keys()].filter((k) => k.startsWith("zpc:backup:v1:neon:2026-10-12:part:"))) seen.push(...Object.keys(JSON.parse(kv.m.get(k))));
+  // KV write budget (Workers Free: 1,000/day for the account): a whole backup stays in single digits.
+  assert.ok(writes <= 10, "backup KV writes " + writes);
+  const backed = new Set(seen);
   assert.deepEqual([...backed].sort(), ["a_t", "b_t", "c_t", "d_t", "e_t"]);
   const fin = await finalizeBackup({ ZEVANORY_PRIVATE_ARTIFACTS: kv }, { parts: 3, now });
   assert.equal(fin.ok, true, JSON.stringify(fin));
