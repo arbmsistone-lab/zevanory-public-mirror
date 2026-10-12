@@ -269,6 +269,9 @@ export async function main() {
   const videos = await collectShortVideos().catch(() => []);
   let registry = null;
   try { registry = JSON.parse(readFileSync(new URL("../../data/experiments.json", import.meta.url), "utf8")); } catch {}
+  let commitmentsDef = null;
+  try { commitmentsDef = JSON.parse(readFileSync(new URL("../../data/commitments.json", import.meta.url), "utf8")); } catch {}
+  const commitments = commitmentsDef ? { rule: commitmentsDef.rule, counts: commitmentsDef.commitments.reduce((a, c) => ((a[c.status] = (a[c.status] || 0) + 1), a), {}), items: commitmentsDef.commitments } : null;
   let inventoryDef = null;
   try { inventoryDef = JSON.parse(readFileSync(new URL("../../data/process-inventory.json", import.meta.url), "utf8")); } catch {}
   const market = await kvGet("zpc:market:v1:weekly");
@@ -376,6 +379,8 @@ export async function main() {
     },
     forecast: forecastSales(sales?.byDay || {}, firstSalesDay, now),
     experiments,
+    commitments,
+    matrix: matrix ? { generatedAt: matrix.generatedAt, counts: matrix.counts, total: matrix.total, passPct: matrix.passPct, open: (matrix.items || []).filter((i) => i.state !== "PASS").slice(0, 60).map((i) => ({ id: i.id, kind: i.kind, name: i.name, state: i.state, owner: i.owner, evidence: i.evidence, at: i.at || null })) } : null,
     inventory,
     market: market ? { generatedAt: market.generatedAt, method: market.method, integrity: market.integrity, top: (market.ranking || []).slice(0, 12).map((r) => ({ name: r.name, slug: r.slug, score: r.score, product: r.product, topQueries: (r.topQueries || []).slice(0, 3) })), ideas: market.ideas || [] } : null,
     recommendations: [...(buyFlow.some((b) => b.state === "closed") ? [{ title: "Botão Comprar do site leva a \"Vendas abrem em breve\"", evidence: `${buyFlow.filter((b) => b.state === "closed").length} de ${buyFlow.length} produtos testados mostram o aviso em vez do pagamento`, action: "Levar o botão Comprar e os links dos canais ao checkout da Hotmart, que já vende", confidence: "alta", risk: "baixo", cost: "R$ 0" }] : []), ...recommend({ funnel, reach, sales, publications })],

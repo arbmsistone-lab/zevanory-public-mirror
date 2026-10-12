@@ -1,0 +1,32 @@
+{
+  "schema": "zevanory-commitments/v1",
+  "rule": "Registro mestre permanente: toda ordem do dono, decisão, compromisso aceito, evidência e pendência. Lido por qualquer executor antes de agir. Nada sai daqui sem estar concluído com evidência ou revogado pelo dono.",
+  "commitments": [
+    { "id": "rule-paid-traffic", "kind": "regra", "source": "Dono, 11/10", "text": "Tráfego pago só após a 7ª venda real e com autorização expressa", "status": "active", "evidence": "Central de Comando: Rumo → metas (vendas para liberar tráfego pago)" },
+    { "id": "rule-zero-cost", "kind": "regra", "source": "Cláusula de Custo Zero, 12/10", "text": "Custo operacional adicional R$ 0,00; nunca migrar para plano pago", "status": "active", "evidence": "data/providers.json, scripts/channels/usage.mjs, Operação → Custo zero" },
+    { "id": "rule-no-fake-data", "kind": "regra", "source": "Dono, 12/10", "text": "Nenhum dado falso ou estimativa apresentada como real", "status": "active", "evidence": "Selos de integridade em cada número; sem evidência = Sem dados / NOT TESTED" },
+    { "id": "decision-sales-open", "kind": "decisão", "source": "Dono, 12/10 01:48", "text": "Vendas liberadas (site e Hotmart)", "status": "done", "evidence": "Prova horária do caminho de compra (botão Comprar e 6 checkouts Hotmart)" },
+    { "id": "rule-panel-geometry", "kind": "regra", "source": "Dono, 12/10", "text": "Painel sem corte, sem sobreposição e sem rolagem, elegante", "status": "active", "evidence": "command-center-live-proof.yml diário: 142 verificações, 0 falhas (12/10)" },
+    { "id": "brand-colors", "kind": "entrega", "source": "Dono, 12/10", "text": "Site e painel com as cores da logo", "status": "done", "evidence": "PR #712 (site), PR #188 (painel)" },
+    { "id": "command-center", "kind": "entrega", "source": "Ordens Executivas, 12/10", "text": "Central de Comando com 7 abas respondendo às 7 perguntas do dono", "status": "done", "evidence": "controle.zevanory.api.br; PRs #188, #191, #192, #193" },
+    { "id": "sales-ledger", "kind": "entrega", "source": "Ordem Executiva, 12/10", "text": "Registro de vendas Hotmart (bruto, líquido, taxas, reembolsos, produto, origem)", "status": "done", "evidence": "worker/sales-ledger.mjs, PR #713" },
+    { "id": "autonomy-index", "kind": "entrega", "source": "Protocolo Omega, 12/10", "text": "Índice de autonomia certificável com inventário de processos", "status": "done", "evidence": "data/process-inventory.json; Central → IA" },
+    { "id": "experiments", "kind": "entrega", "source": "Comando APEX-Ω, 12/10", "text": "Registro de experimentos com veredito automático", "status": "done", "evidence": "data/experiments.json; Central → Funciona?" },
+    { "id": "email-nurture", "kind": "entrega", "source": "Comando APEX-Ω, 12/10", "text": "Sequência de 5 e-mails com o produto certo para quem pediu material", "status": "done", "evidence": "worker/lead-magnet.mjs, PR #718" },
+    { "id": "conversion-pages", "kind": "entrega", "source": "Comando APEX-Ω, 12/10", "text": "Páginas de produto otimizadas para conversão", "status": "done", "evidence": "PR #717; experimento product-page-v2" },
+    { "id": "market-intel", "kind": "entrega", "source": "Ordem Mestra / APEX-Ω", "text": "Inteligência de mercado semanal com pontuação 25/15/15/15/15/10/5", "status": "done", "evidence": "market-weekly.yml; 625 sinais reais em 12/10" },
+    { "id": "consistency", "kind": "entrega", "source": "Diretiva ULTRA, 12/10", "text": "Fonte oficial única dos produtos e bloqueio de deploy em divergência", "status": "done", "evidence": "data/products.json; tests/product-consistency.test.mjs no deploy" },
+    { "id": "audio-qc", "kind": "entrega", "source": "Diretiva ULTRA, 12/10", "text": "Controle de qualidade do áudio dos vídeos e voz de reserva gratuita", "status": "done", "evidence": "SHORT_AUDIO_QC: −16,5/−16,9/−16,4 LUFS em 12/10; Piper testado" },
+    { "id": "dispatcher", "kind": "correção", "source": "Autorremediação, 12/10", "text": "Motores disparados no horário apesar das falhas do cron do GitHub", "status": "done", "evidence": "engine-dispatcher.yml, PR #725" },
+    { "id": "support-eval", "kind": "entrega", "source": "Diretiva ULTRA, 12/10", "text": "Avaliação semanal do atendimento real e correção dos defeitos encontrados", "status": "in_progress", "evidence": "PR #726" },
+    { "id": "support-voice", "kind": "pendência", "source": "Diretiva ULTRA, 12/10", "text": "Avaliação automática de áudio recebido e resposta por voz no WhatsApp", "status": "pending", "evidence": null },
+    { "id": "master-matrix", "kind": "pendência", "source": "Auditoria Suprema, 12/10", "text": "Matriz mestra automática PASS/FAIL/BLOCKED/NOT TESTED de todo o sistema", "status": "in_progress", "evidence": null },
+    { "id": "auto-remediation", "kind": "pendência", "source": "Autorremediação, 12/10", "text": "Fila contínua de correção dos FAIL e BLOCKED internos, com regressão", "status": "pending", "evidence": null },
+    { "id": "new-channels", "kind": "pendência", "source": "Comando APEX-Ω, 12/10", "text": "Novos canais gratuitos, cada um com estratégia, público, atribuição e meta", "status": "pending", "evidence": null },
+    { "id": "meta", "kind": "bloqueio externo", "source": "Canais", "text": "Instagram/Facebook: aguardando aprovação do app pela Meta", "status": "blocked_external", "evidence": "Ação: aguardar e-mail da Meta; ao aprovar, secrets META_* ativam sozinhos" },
+    { "id": "pinterest", "kind": "bloqueio externo", "source": "Canais", "text": "Pinterest: aguardando aprovação do app", "status": "blocked_external", "evidence": null },
+    { "id": "tiktok-name", "kind": "agendado", "source": "Canais", "text": "Trocar nome de exibição do TikTok para ZEVANORY (liberado a partir de 18/10)", "status": "scheduled", "evidence": null },
+    { "id": "gemini-billing", "kind": "reservado ao dono", "source": "Cláusula de Custo Zero", "text": "Confirmar que o projeto Google do Gemini está sem faturamento ativo (não verificável por API)", "status": "owner_reserved", "evidence": "Proteção já ativa: freio diário + voz local gratuita" },
+    { "id": "goals", "kind": "meta", "source": "Dono", "text": "1ª venda até 18/10 · R$ 800 até 25/10 · R$ 2.000 até 10/11", "status": "active", "evidence": "Central → Rumo → Metas" }
+  ]
+}

@@ -1,0 +1,21 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { classifyWorkflow, classifyProcess, summarize } from "../scripts/audit/system-matrix.mjs";
+const now = Date.parse("2026-10-12T12:00:00Z");
+const r = (conclusion, at = "2026-10-12T10:00:00Z") => ({ status: "completed", conclusion, created_at: at, updated_at: at });
+
+test("no run is NOT_TESTED, never PASS; failure is FAIL; disabled is BLOCKED; stale is NOT_TESTED", () => {
+  assert.equal(classifyWorkflow({ state: "active" }, [], now).state, "NOT_TESTED");
+  assert.equal(classifyWorkflow({ state: "active" }, [r("failure")], now).state, "FAIL");
+  assert.equal(classifyWorkflow({ state: "active" }, [r("cancelled"), r("success")], now).state, "PASS");
+  assert.equal(classifyWorkflow({ state: "disabled_manually" }, [r("success")], now).state, "BLOCKED");
+  assert.equal(classifyWorkflow({ state: "active" }, [r("success", "2026-08-01T00:00:00Z")], now).state, "NOT_TESTED");
+});
+
+test("processes: proven PASS, third party BLOCKED externo, owner-reserved excluded", () => {
+  assert.equal(classifyProcess({ eligible: true, proven: true }).state, "PASS");
+  assert.equal(classifyProcess({ eligible: true, proven: false, state: "blocked_third_party" }).owner, "externo");
+  assert.equal(classifyProcess({ eligible: false }), null);
+  const s = summarize([{ id: "a", state: "PASS" }, { id: "b", state: "FAIL" }]);
+  assert.equal(s.items[0].state, "FAIL"); assert.equal(s.passPct, 50);
+});

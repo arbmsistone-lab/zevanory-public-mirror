@@ -13,6 +13,7 @@ export const ENGINES = [
   { id: "short-calc", workflow: "youtube-autonomous-short.yml", inputs: { slot: "calc", dry_run: "false" }, at: "19:00", maxPerDay: 9, proof: { kv: "youtube_calc" } },
   { id: "indexnow", workflow: "indexnow-submit.yml", inputs: {}, at: "09:40", proof: { runToday: true } },
   { id: "command-center", workflow: "command-center-snapshot.yml", inputs: {}, everyMinutes: 55, maxPerDay: 30, proof: { runWithin: 55 } },
+  { id: "matrix", workflow: "system-matrix.yml", inputs: {}, everyMinutes: 360, maxPerDay: 6, proof: { runWithin: 350 } },
   { id: "market", workflow: "market-weekly.yml", inputs: {}, at: "06:20", weekday: 1, proof: { runWithin: 6 * 24 * 60 } },
   { id: "tiktok-pack", workflow: "short-pack.yml", inputs: {}, at: "06:00", monthDays: [1, 11, 21], proof: { runToday: true } },
 ];
