@@ -575,7 +575,7 @@
       "kind": "pendência do dono",
       "source": "Dono, 12/10 16:37",
       "text": "Confirmar no Meta for Developers / Gerenciador de Negócios o status da revisão do app e das permissões de publicação (pages_manage_posts, instagram_content_publish).",
-      "status": "owner",
+      "status": "owner_reserved",
       "evidence": null
     },
     {
@@ -583,7 +583,7 @@
       "kind": "pendência do dono",
       "source": "Dono, 12/10 16:37 (comunicado Meta de 10/10)",
       "text": "Conta WhatsApp Business ZEVANORY desativada pela Meta em 10/10. Recurso é ato do dono; motivo ainda não conhecido pelo executor. Nenhum envio por WhatsApp é feito pelo sistema.",
-      "status": "owner",
+      "status": "owner_reserved",
       "evidence": null
     }
   ]
