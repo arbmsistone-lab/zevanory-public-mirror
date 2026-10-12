@@ -19,7 +19,9 @@ concurrency:
 jobs:
   proof:
     # This authorization is for one cycle only. Future deploys and reruns cannot synthesize.
-    if: ${{ github.run_attempt == 1 && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_commit.message, '[voice-cache-cycle-20261005]'))) }}
+    # DISABLED 12/10: it forged signed inbound webhooks so the bot sent REAL WhatsApp messages to a
+    # real number. Meta disabled the WhatsApp Business account on 10/10 for policy. Never re-enable.
+    if: ${{ false && github.run_attempt == 1 && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.conclusion == 'success' && contains(github.event.workflow_run.head_commit.message, '[voice-cache-cycle-20261005]'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:

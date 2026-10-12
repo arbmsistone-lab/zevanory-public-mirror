@@ -39,7 +39,9 @@ jobs:
           node --check worker/voice-provider-router.mjs
   production-proof:
     # Real synthesis spends quota; pushes run validation only.
-    if: github.event_name == 'workflow_dispatch' && inputs.real_proof == true
+    # DISABLED 12/10: forged signed inbound -> real outbound WhatsApp to a real number (policy risk;
+    # account disabled by Meta on 10/10). Delivery is proven only by genuine inbound conversations.
+    if: false && github.event_name == 'workflow_dispatch' && inputs.real_proof == true
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 20
