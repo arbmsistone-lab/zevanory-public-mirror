@@ -28,6 +28,9 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      RESEND_FROM_ADDRESS: ${{ secrets.RESEND_FROM_ADDRESS }}
+      OWNER_ALERT_EMAIL: ${{ secrets.OWNER_ALERT_EMAIL }}
       KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
     steps:
       - uses: actions/checkout@v4
@@ -56,10 +59,27 @@ jobs:
           done
           sleep 20
           for f in /tmp/short-pack/*.mp4; do d=$(basename "$f" .mp4); echo "$d $(curl -sS -o /dev/null -w '%{http_code}' -A 'ZEVANORY-Monitor/1.0' https://zevanory.api.br/media/short/$d.mp4)"; done
+      - name: E-mail the ready executor command to the owner
+        run: |
+          set -euo pipefail
+          if [ -z "${RESEND_API_KEY:-}" ] || [ -z "${OWNER_ALERT_EMAIL:-}" ]; then echo "::warning title=SHORT_PACK_EMAIL::owner e-mail not configured"; exit 0; fi
+          python3 - <<'PY'
+          import json, os, urllib.request
+          cmd = open("/tmp/short-pack/comando-executor.txt", encoding="utf-8").read()
+          first = cmd.split("de ", 1)[1].split(",")[0] if "de " in cmd else ""
+          body = {"from": os.environ.get("RESEND_FROM_ADDRESS") or "ZEVANORY <acesso@zevanory.api.br>",
+                  "to": [os.environ["OWNER_ALERT_EMAIL"]],
+                  "subject": "ZEVANORY — vídeos do TikTok prontos: copie o comando para o executor",
+                  "text": "Os vídeos dos próximos dias já estão prontos e hospedados. Copie TODO o texto abaixo e cole no executor (Claude computer/Codex).\n\n" + cmd}
+          req = urllib.request.Request("https://api.resend.com/emails", data=json.dumps(body).encode(), headers={"authorization": "Bearer " + os.environ["RESEND_API_KEY"], "content-type": "application/json"})
+          with urllib.request.urlopen(req, timeout=20) as r:
+              print("::notice title=SHORT_PACK_EMAIL::sent", r.status)
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: zevanory-short-pack
           path: |
             /tmp/short-pack/*.mp4
             /tmp/short-pack/legendas.txt
+            /tmp/short-pack/comando-executor.txt
           retention-days: 7
