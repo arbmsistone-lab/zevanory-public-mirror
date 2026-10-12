@@ -290,8 +290,7 @@
       "eligible": true,
       "state": "autonomous",
       "evidence": {
-        "type": "workflow",
-        "workflow": "data-backup.yml",
+        "type": "backup",
         "maxAgeHours": 30
       },
       "note": "Só conta quando a restauração de teste confere linha a linha."
@@ -369,9 +368,13 @@
       "agent": "Atendimento",
       "name": "Áudio recebido e resposta por voz no WhatsApp",
       "eligible": true,
-      "state": "partial",
-      "dependency": "Transcrição e voz existem, mas ainda sem avaliação automática de qualidade comprovada.",
-      "impact": "medium"
+      "state": "autonomous",
+      "impact": "medium",
+      "evidence": {
+        "type": "voice_eval",
+        "maxAgeHours": 192
+      },
+      "note": "Prova semanal ponta a ponta nos modelos de produção: áudio entendido, resposta correta, voz inteligível e voz reserva funcionando."
     }
   ]
 }

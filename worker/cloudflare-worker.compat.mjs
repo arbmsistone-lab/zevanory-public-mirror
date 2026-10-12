@@ -14,7 +14,10 @@ import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
 import { validateReply } from "./whatsapp-conversation.mjs";
 import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
-import worker, { whatsappProofDatabase, runPaidDeliveryWatchdog, runSalesPreflight } from "./cloudflare-worker.recovered.mjs";
+import worker, { whatsappProofDatabase, runPaidDeliveryWatchdog, runSalesPreflight, loadAiVaultSecret } from "./cloudflare-worker.recovered.mjs";
+import { runVoiceEval, VOICE_EVAL_KEY } from "./voice-eval.mjs";
+import { synthesizeVoice } from "./voice-remote-tts.mjs";
+import { ttsBytesWithFailover } from "./voice-provider-router.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
 import { handleAdminRequest, isAdminAuthorized } from "./admin-console.mjs";
@@ -496,6 +499,21 @@ const wrapped = {
       const report = url.searchParams.get("finalize") === "1"
         ? await finalizeBackup(normalized, { parts })
         : await runDataBackup(normalized, { sqlFactory: whatsappProofDatabase, part: Math.min(parts - 1, Math.max(0, Number(url.searchParams.get("part") || 0) | 0)), parts });
+      return new Response(JSON.stringify(report), { status: report.ok ? 200 : 500, headers });
+    }
+
+    if (url.pathname === "/api/internal/voice-eval/run") {
+      // End-to-end voice evaluation on the production models; returns and stores scores only.
+      const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+      if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
+      if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
+      let apiKey = String(normalized.GEMINI_API_KEY || "").trim();
+      if (!apiKey) apiKey = String((await loadAiVaultSecret("gemini", { kv: normalized.ZEVANORY_PRIVATE_ARTIFACTS, master: normalized.AI_VAULT_ENCRYPTION_KEY || normalized.ELITE_INTERNAL_TOKEN }).catch(() => null)) || "").trim();
+      // Uncached on purpose: a cache hit would hide a broken voice path.
+      const synth = (text) => synthesizeVoice(text, { apiKey, env: normalized, kv: null });
+      const fallbackSynth = (text) => ttsBytesWithFailover(text, { ...normalized, GEMINI_API_KEY: apiKey }, fetch);
+      const report = await runVoiceEval({ ai: normalized.AI, synth, fallbackSynth });
+      try { await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.(VOICE_EVAL_KEY, JSON.stringify(report)); } catch {}
       return new Response(JSON.stringify(report), { status: report.ok ? 200 : 500, headers });
     }
 

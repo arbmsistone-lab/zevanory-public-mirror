@@ -38,7 +38,18 @@ test("dispatcher (workflow_run), panel live proof and backup prove only with a s
   assert.equal(p.dispatcher.proven, true);
   assert.equal(p["live-proof"].proven, false); // a failed proof never counts
   assert.equal(p.backup.proven, false); // a manual run is not autonomy
-  const ok = evaluateInventory(inv, { runs: [run(".github/workflows/data-backup.yml", "schedule", "success"), run("panel:.github/workflows/command-center-live-proof.yml", "schedule", "success")] }, now);
+  const ok = evaluateInventory(inv, { runs: [run("panel:.github/workflows/command-center-live-proof.yml", "schedule", "success")], backup: { ok: true, finishedAt: "2026-10-13T05:10:00Z", restore: { neon: { ok: 9 }, kv: { verified: 40 } } } }, now);
   const q = Object.fromEntries(ok.processes.map((x) => [x.id, x]));
   assert.equal(q.backup.proven, true); assert.equal(q["live-proof"].proven, true);
+  const bad = evaluateInventory(inv, { backup: { ok: false, finishedAt: "2026-10-13T05:10:00Z" } }, now);
+  assert.equal(bad.processes.find((x) => x.id === "backup").proven, false); // a backup whose restore did not match never counts
+});
+
+test("voice attendant counts only with a fresh, fully passing end-to-end evaluation", () => {
+  const at = "2026-10-12T09:00:00Z";
+  const pv = (v) => evaluateInventory(inv, { voiceEval: v }, now).processes.find((x) => x.id === "support-voice");
+  assert.equal(pv({ ok: true, generatedAt: at, scorePct: 100, fallback: { ok: true } }).proven, true);
+  assert.equal(pv({ ok: false, generatedAt: at, scorePct: 66.7, fallback: { ok: true } }).proven, false);
+  assert.equal(pv({ ok: true, generatedAt: "2026-10-01T09:00:00Z" }).proven, false);
+  assert.equal(pv(null).proven, false);
 });

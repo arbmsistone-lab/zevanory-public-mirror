@@ -16,6 +16,7 @@ export const ENGINES = [
   { id: "matrix", workflow: "system-matrix.yml", inputs: {}, everyMinutes: 360, maxPerDay: 6, proof: { runWithin: 350 } },
   { id: "market", workflow: "market-weekly.yml", inputs: {}, at: "06:20", weekday: 1, proof: { runWithin: 6 * 24 * 60 } },
   { id: "data-backup", workflow: "data-backup.yml", inputs: {}, at: "02:10", proof: { runToday: true } },
+  { id: "voice-eval", workflow: "voice-eval.yml", inputs: {}, at: "09:30", weekday: 0, proof: { runWithin: 6 * 24 * 60 } },
   { id: "tiktok-pack", workflow: "short-pack.yml", inputs: {}, at: "06:00", monthDays: [1, 11, 21], proof: { runToday: true } },
 ];
 
