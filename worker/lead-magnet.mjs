@@ -5,8 +5,11 @@ import { emitActivity } from "./activity-ledger.mjs";
 // * Subscribe arrives only through the sales Worker's private binding (host leads.internal).
 // * Confirmation link is single-use (token hash stored) and needs a click (POST), so mail scanners
 //   never confirm on the person's behalf.
-// * Nurture: D0 checklist, D+2 practical tips, D+5 catalog (only while sales are open). Every
-//   e-mail carries one-click unsubscribe (RFC 8058). Activity is mirrored to the panel, masked.
+// * Nurture (5 e-mails, then it stops): D0 checklist, D+2 practical tips, D+7 the one product
+//   that matches what the person was reading (calculator → Lucro & Caixa, sales → Vendas na
+//   Prática, otherwise IA na Prática), D+10 honest answers to the usual doubts, D+14 a last
+//   note with the complete package. Offers only go out while sales are open. Every e-mail
+//   carries one-click unsubscribe (RFC 8058) and utm tags so sales are attributed to e-mail.
 
 const CORE = "https://zevanory.api.br";
 const SALES = "https://vendas.zevanory.api.br";
@@ -21,7 +24,7 @@ const HEADERS = { "content-type": "application/json; charset=utf-8", "cache-cont
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: HEADERS });
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const html = (status, title, body) => new Response(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title>
-<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b1220;color:#e6edf6;margin:0;display:grid;place-items:center;min-height:100vh;padding:16px}main{width:100%;max-width:480px;background:#111a2c;border:1px solid #1f2b44;border-radius:12px;padding:28px}h1{font-size:21px;margin:0 0 12px}p{color:#a9b6c9;line-height:1.55}button,a.b{display:block;width:100%;box-sizing:border-box;text-align:center;background:#2dd4a7;color:#04241b;border:0;border-radius:8px;padding:14px 20px;font-weight:700;font-size:16px;cursor:pointer;text-decoration:none;min-height:44px}a{color:#2dd4a7}</style></head><body><main><h1>${esc(title)}</h1>${body}<p>Dúvidas: ${SUPPORT_EMAIL}</p></main></body></html>`, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer" } });
+<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#040a12;color:#f5f8fc;margin:0;display:grid;place-items:center;min-height:100vh;padding:16px}main{width:100%;max-width:480px;background:#07111d;border:1px solid #16304a;border-radius:12px;padding:28px}h1{font-size:21px;margin:0 0 12px}p{color:#a9b6c9;line-height:1.55}button,a.b{display:block;width:100%;box-sizing:border-box;text-align:center;background:#00b8ff;color:#03101c;border:0;border-radius:8px;padding:14px 20px;font-weight:700;font-size:16px;cursor:pointer;text-decoration:none;min-height:44px}a{color:#21e6f3}</style></head><body><main><h1>${esc(title)}</h1>${body}<p>Dúvidas: ${SUPPORT_EMAIL}</p></main></body></html>`, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer" } });
 
 async function sha256Hex(value) {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
@@ -79,15 +82,32 @@ async function bridge(env, key, entry) {
   try { await env.ZEVANORY_PRIVATE_ARTIFACTS?.put?.(`zpc-activity:v1:${entry.kind}:${Date.now()}:${key}`, JSON.stringify(entry), { expirationTtl: 30 * 24 * 3600 }); } catch {}
 }
 
-export function nurtureEmail(step, { name, optOutUrl }) {
+export const NURTURE_DONE = 5;
+const OFFERS = {
+  ia: { name: "IA na Prática", price: 197, slug: "ia-na-pratica", promise: "usar IA no atendimento, no conteúdo e na rotina, com comandos prontos e uma planilha para medir o que mudou" },
+  vendas: { name: "Vendas na Prática", price: 197, slug: "vendas-na-pratica", promise: "ter roteiro de mensagens, acompanhamento de clientes e conteúdo que vende, sem depender de anúncio" },
+  caixa: { name: "Lucro & Caixa", price: 247, slug: "lucro-e-caixa", promise: "saber quanto entra, quanto sai e quanto realmente sobra, com uma rotina semanal curta" },
+};
+export function interestFromPage(page = "") {
+  const p = String(page || "").toLowerCase();
+  if (/calculadora|lucro|caixa|ferramentas|margem/.test(p)) return "caixa";
+  if (/vendas|conteudo-pronto/.test(p)) return "vendas";
+  return "ia";
+}
+const track = (slug, step, interest) => `${SALES}/${slug}?utm_source=email&utm_medium=nurture&utm_campaign=s${step}-${interest}`;
+
+export function nurtureEmail(step, { name, optOutUrl, interest = "ia" }) {
   const hi = name ? `Olá, ${name}!` : "Olá!";
   const sign = `\n\nEquipe ZEVANORY\n${SUPPORT_EMAIL}\n\nNão quer mais receber? ${optOutUrl}`;
-  if (step === 0) return { subject: "Seu checklist: 15 minutos por dia para organizar o negócio", text: `${hi}\n\nAqui está o seu checklist gratuito:\n${CHECKLIST_URL}\n\nComece hoje pelo bloco do caixa (5 minutos). Em 2 dias eu te mando um jeito simples de não perder clientes por falta de follow-up.` + sign };
-  if (step === 1) return { subject: "Follow-up: o hábito que reduz oportunidades perdidas", text: `${hi}\n\nUm processo comercial melhora quando cada conversa tem um próximo passo claro.\n\nTeste esta semana:\n1. Registre apenas contatos que iniciaram a conversa ou deram consentimento.\n2. Responda a dúvida concreta antes de sugerir qualquer próximo passo.\n3. Anote o resultado para não repetir mensagens.\n\nEsta mensagem é apenas uma dica prática; não contém oferta.` + sign };
-  return { subject: "Os 5 pacotes da ZEVANORY (com garantia de 7 dias)", text: `${hi}\n\nSe o checklist ajudou, estes materiais aprofundam cada parte com modelos, planilhas e passo a passo:\n\n• IA na Prática — R$ 197\n• Vendas na Prática — R$ 197\n• Lucro & Caixa — R$ 247\n• Combo IA + Vendas — R$ 297\n• Negócio Completo — R$ 397\n\nTodos são digitais, chegam por e-mail após o pagamento e têm 7 dias de garantia.\n${SALES}/solucoes` + sign };
+  const o = OFFERS[interest] || OFFERS.ia;
+  if (step === 0) return { subject: "Seu checklist: 15 minutos por dia para organizar o negócio", text: `${hi}\n\nAqui está o seu checklist gratuito:\n${CHECKLIST_URL}\n\nComece hoje pelo bloco do caixa (5 minutos). Em 2 dias eu te mando dois hábitos simples que evitam perder dinheiro e clientes.` + sign };
+  if (step === 1) return { subject: "Dois hábitos que evitam perder dinheiro e clientes", text: `${hi}\n\n1. Toda sexta, olhe três números: quanto entrou, quanto saiu e quanto sobrou. Se quiser fazer a conta de margem em segundos, use a calculadora gratuita:\n${SALES}/calculadora-margem-de-lucro?utm_source=email&utm_medium=nurture&utm_campaign=s1-${interest}\n\n2. Toda conversa com cliente termina com um próximo passo claro (responder a dúvida, mandar a proposta, combinar o retorno). Anote o que ficou combinado para não repetir mensagens.\n\nEsta mensagem é apenas uma dica prática; não contém oferta.` + sign };
+  if (step === 2) return { subject: `${o.name}: o próximo passo depois do checklist`, text: `${hi}\n\nPelo que você estava lendo no nosso site, o material que mais combina com o seu momento é o ${o.name} (R$ ${o.price}, pagamento único).\n\nEle serve para ${o.promise}.\n\nVocê recebe tudo por e-mail logo após o pagamento e tem 7 dias de garantia: se não for para você, pede o reembolso integral, sem precisar explicar.\n\nVer o que vem dentro:\n${track(o.slug, 2, interest)}\n\nSe preferir comparar todos os materiais: ${SALES}/solucoes?utm_source=email&utm_medium=nurture&utm_campaign=s2-${interest}` + sign };
+  if (step === 3) return { subject: "As dúvidas mais comuns antes de decidir", text: `${hi}\n\nAntes de comprar, quase todo mundo pergunta:\n\n• "Preciso entender de tecnologia?" Não. Tudo vem com o passo a passo no arquivo "Comece aqui".\n• "Quanto tempo leva?" Dá para começar no mesmo dia, seguindo o arquivo "Comece aqui". Depois, a rotina é curta e semanal.\n• "Substitui contador ou consultor?" Não. É um material prático de gestão do dia a dia.\n• "E se eu não gostar?" São 7 dias de garantia, com reembolso integral.\n\nSe alguma dúvida ficou, é só responder este e-mail.\n\n${o.name}: ${track(o.slug, 3, interest)}` + sign };
+  return { subject: "Último e-mail desta sequência", text: `${hi}\n\nEste é o último e-mail da sequência do checklist. Depois dele, não envio mais nada sobre isso.\n\nSe você quiser resolver tudo de uma vez (IA, vendas e caixa), o Negócio Completo reúne os três materiais e mais um plano de 30 dias, por R$ 397 (separados custariam R$ 641). Garantia de 7 dias.\n${track("negocio-completo", 4, interest)}\n\nSe agora não é o momento, tudo bem. O checklist continua sendo seu:\n${CHECKLIST_URL}` + sign };
 }
 
-async function subscribe(env, sql, { email, name, consent }) {
+async function subscribe(env, sql, { email, name, consent, page }) {
   email = String(email || "").trim().toLowerCase();
   name = String(name || "").trim().replace(/[\r\n<>]/g, " ").slice(0, 60);
   if (!EMAIL_RE.test(email) || email.length > 254) return { status: 400, body: { ok: false, message: "Confira o e-mail." } };
@@ -106,6 +126,7 @@ async function subscribe(env, sql, { email, name, consent }) {
         status = case when zevanory_leads.status = 'unsubscribed' then 'pending' else zevanory_leads.status end,
         unsubscribed_at = null, token_hash = excluded.token_hash, token_expires_at = excluded.token_expires_at`,
     [email, await sha256Hex(email), name || null, CONSENT_VERSION, tokenHash]);
+  try { await env.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:lead:interest:" + (await sha256Hex(email)), interestFromPage(page), { expirationTtl: 180 * 24 * 3600 }); } catch {}
   await emitActivity(env, { type: "lead_captured", channel: "web", status: "pending", ref: "lead:" + (await sha256Hex(email)) + ":" + new Date().toISOString().slice(0, 10) }).catch(() => null);
   const sent = await sendEmail(env, { to: email, subject: "Confirme seu e-mail para receber o checklist", text: `${name ? `Olá, ${name}!` : "Olá!"}\n\nFalta um clique: confirme seu e-mail para receber o checklist gratuito.\n${CORE}/material-gratuito/confirmar?t=${token}\n\nSe não foi você, ignore esta mensagem: nada será enviado.\n\nEquipe ZEVANORY · ${SUPPORT_EMAIL}` });
   if (!sent) return { status: 503, body: { ok: false, message: "Não conseguimos enviar agora. Tente de novo em instantes." } };
@@ -127,23 +148,27 @@ async function confirm(env, sql, token) {
   return lead;
 }
 
+const MIN_DAYS_BEFORE = { 1: 2, 2: 5, 3: 3, 4: 4 };
 export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now = Date.now() } = {}) {
   if (!env.DATABASE_URL || !sqlFactory) return { ok: false, reason: "lead_nurture_unconfigured" };
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureLeadSchema(sql);
   const due = await sql.query(`select email, name, nurture_step, nurture_at from zevanory_leads
-      where status='confirmed' and nurture_step < 3 and nurture_at < now() - interval '2 days' order by nurture_at asc limit 50`, []);
+      where status='confirmed' and nurture_step < ${NURTURE_DONE} and nurture_at < now() - interval '2 days' order by nurture_at asc limit 50`, []);
   const out = { ok: true, checked: due.length, sent: 0, held: 0 };
   for (const lead of due) {
     const step = Number(lead.nurture_step);
-    if (step === 2 && !salesOpen) {
-      // The catalog e-mail only goes out while customers can actually buy; give up after 30 days.
-      if (now - new Date(lead.nurture_at).getTime() > 30 * DAY) await sql.query("update zevanory_leads set nurture_step=3 where email=$1", [lead.email]);
+    const since = now - new Date(lead.nurture_at).getTime();
+    if (step >= 2 && !salesOpen) {
+      // Offers only go out while customers can actually buy; give up after 30 days.
+      if (since > 30 * DAY) await sql.query(`update zevanory_leads set nurture_step=${NURTURE_DONE} where email=$1`, [lead.email]);
       out.held += 1; continue;
     }
-    if (step === 2 && now - new Date(lead.nurture_at).getTime() < 5 * DAY) continue; // one and only offer at D+7 overall
+    if (since < (MIN_DAYS_BEFORE[step] || 2) * DAY) continue;
+    let interest = "ia";
+    try { interest = String(await env.ZEVANORY_PRIVATE_ARTIFACTS?.get?.("zpc:lead:interest:" + (await sha256Hex(lead.email))) || "ia"); } catch {}
     const optOutUrl = await leadOptOutLink(env, lead.email);
-    const mail = nurtureEmail(step, { name: lead.name, optOutUrl });
+    const mail = nurtureEmail(step, { name: lead.name, optOutUrl, interest });
     const ok = await sendEmail(env, { to: lead.email, ...mail, unsubscribeUrl: optOutUrl, idempotencyKey: `zevanory-lead-${await sha256Hex(lead.email)}-s${step}` });
     if (ok) { await sql.query("update zevanory_leads set nurture_step=$2, nurture_at=now() where email=$1", [lead.email, step + 1]); out.sent += 1; }
   }
