@@ -7,6 +7,8 @@
 // Writes KV zpc:command:v1:snapshot (shared with the panel) and keeps daily history of
 // reach in zpc:command:v1:reach-history. Never publishes, charges or changes anything.
 import { getYoutubeAccessToken } from "../channels/youtube-access.mjs";
+import { readFileSync } from "node:fs";
+import { evaluateExperiments } from "./experiments.mjs";
 
 export const SNAPSHOT_KEY = "zpc:command:v1:snapshot";
 export const REACH_HISTORY_KEY = "zpc:command:v1:reach-history";
@@ -216,6 +218,22 @@ async function collectRuns() {
   return runs;
 }
 
+// Shorts published by the engine (30+ days), with their slot and current views.
+async function collectShortVideos() {
+  const keys = (await kvList("zpc:acquisition:daily:")).filter((k) => /:youtube(_dica|_calc)?$/.test(k));
+  const recs = [];
+  for (const k of keys) { const v = await kvGet(k); if (v?.provider_post_id) recs.push({ id: String(v.provider_post_id), slot: v.slot || (k.endsWith("_dica") ? "dica" : k.endsWith("_calc") ? "calc" : "oferta") }); }
+  if (!recs.length) return [];
+  const token = await getYoutubeAccessToken();
+  const out = [];
+  for (let i = 0; i < recs.length; i += 50) {
+    const batch = recs.slice(i, i + 50);
+    const r = await j(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${batch.map((x) => x.id).join(",")}`, { headers: { authorization: "Bearer " + token } });
+    for (const it of r.items || []) { const rec = batch.find((x) => x.id === it.id); out.push({ id: it.id, slot: rec?.slot, views: Number(it.statistics?.viewCount || 0), publishedAt: it.snippet?.publishedAt }); }
+  }
+  return out;
+}
+
 async function collectPublications(now) {
   const byDay = {};
   const today = [];
@@ -244,6 +262,10 @@ export async function main() {
     probe("https://zevanory.api.br/api/health"), j("https://zevanory.api.br/api/sales/status").catch(() => null), probe("https://vendas.zevanory.api.br/solucoes"), probe("https://controle.zevanory.api.br/"),
   ]);
   const buyFlow = await probeBuyFlow().catch(() => []);
+  const videos = await collectShortVideos().catch(() => []);
+  let registry = null;
+  try { registry = JSON.parse(readFileSync(new URL("../../data/experiments.json", import.meta.url), "utf8")); } catch {}
+  const experiments = evaluateExperiments(registry, { videos, productDaily: funnel?.productDaily || {}, campaigns: funnel?.topCampaigns || [] }, now);
   const hotmart = await probeHotmart().catch(() => []);
 
   // Reach history: one point per local day (latest of the day wins), 120 days.
@@ -345,10 +367,11 @@ export async function main() {
       deploys: runs ? runs.filter((r) => r.path.endsWith("central-production-deploy.yml")).slice(0, 5).map((r) => ({ at: r.created_at, conclusion: r.conclusion })) : [],
     },
     forecast: forecastSales(sales?.byDay || {}, firstSalesDay, now),
+    experiments,
     recommendations: [...(buyFlow.some((b) => b.state === "closed") ? [{ title: "Botão Comprar do site leva a \"Vendas abrem em breve\"", evidence: `${buyFlow.filter((b) => b.state === "closed").length} de ${buyFlow.length} produtos testados mostram o aviso em vez do pagamento`, action: "Levar o botão Comprar e os links dos canais ao checkout da Hotmart, que já vende", confidence: "alta", risk: "baixo", cost: "R$ 0" }] : []), ...recommend({ funnel, reach, sales, publications })],
   };
   await kvPut(SNAPSHOT_KEY, snapshot);
-  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, buyFlow, hotmart, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.visitors ?? null, reach: point }));
+  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.visitors ?? null, reach: point }));
 }
 
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;

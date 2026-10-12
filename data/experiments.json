@@ -1,0 +1,38 @@
+{
+  "schema": "zevanory-experiments/v1",
+  "experiments": [
+    {
+      "id": "short-format",
+      "title": "Formato do Short",
+      "hypothesis": "Shorts com dica prática por ramo e com calculadora gratuita atraem mais visualizações do que o Short que apresenta o produto.",
+      "metric": "Visualizações por vídeo com 3 dias ou mais de publicação",
+      "kind": "arms",
+      "arms": ["dica", "oferta", "calc"],
+      "armLabels": { "dica": "Dica por ramo", "oferta": "Produto do dia", "calc": "Calculadora" },
+      "minPerArm": 7,
+      "startedAt": "2026-10-12",
+      "decision": "O formato vencedor ganha mais horários; o perdedor é reescrito ou sai."
+    },
+    {
+      "id": "product-page-v2",
+      "title": "Página de produto v2",
+      "hypothesis": "Mostrar o que vem dentro logo abaixo do botão, para quem é e uma barra de compra no celular aumenta a intenção de compra.",
+      "metric": "Intenção de compra ÷ visitas nas 5 páginas de produto",
+      "kind": "before_after",
+      "changeAt": "2026-10-12",
+      "windowDays": 14,
+      "minViewsPerSide": 200,
+      "decision": "Se não melhorar, a próxima variação muda o primeiro bloco (título e promessa)."
+    },
+    {
+      "id": "nurture-match",
+      "title": "E-mail com o produto certo",
+      "hypothesis": "Oferecer por e-mail o produto ligado à página onde a pessoa pediu o material gera cliques para a oferta.",
+      "metric": "Cliques vindos dos e-mails da sequência (por campanha)",
+      "kind": "tracking",
+      "campaignPrefix": "s2-",
+      "startedAt": "2026-10-12",
+      "decision": "Sem cliques após 30 leads, o e-mail de oferta é reescrito."
+    }
+  ]
+}

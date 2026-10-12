@@ -39,6 +39,6 @@ jobs:
         with:
           node-version: "22"
       - name: Unit tests
-        run: node --test tests/command-center-snapshot.test.mjs tests/command-center-main.test.mjs tests/sales-ledger.test.mjs
+        run: node --test tests/command-center-snapshot.test.mjs tests/command-center-main.test.mjs tests/experiments.test.mjs tests/sales-ledger.test.mjs
       - name: Build and store the snapshot
         run: node scripts/audit/command-center-snapshot.mjs
