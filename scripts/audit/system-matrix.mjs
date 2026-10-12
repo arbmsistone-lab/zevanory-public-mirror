@@ -63,6 +63,10 @@ export async function main() {
   let awaiting = [];
   try { awaiting = JSON.parse(readFileSync("data/retired-workflows.json", "utf8")).awaitingRealEvent || []; } catch {}
   const awaitingSet = new Map(awaiting.map((r) => [r.file, r.event]));
+  let gated = [];
+  try { gated = JSON.parse(readFileSync("data/retired-workflows.json", "utf8")).ownerGated || []; } catch {}
+  // Owner-gated proofs count as BLOCKED (dono) only while the gate really exists in the workflow file.
+  const gatedSet = new Map(gated.filter((g) => { try { return readFileSync(".github/workflows/" + g.file, "utf8").includes(g.gate); } catch { return false; } }).map((g) => [g.file, g.reason]));
   for (const wf of workflows.filter((w) => existsSync(w.path))) {
     const file = wf.path.split("/").pop();
     if (retiredSet.has(file)) { retiredItems.push({ id: "wf:" + file, reason: retiredSet.get(file).reason, since: retiredSet.get(file).since }); continue; }
@@ -70,6 +74,7 @@ export async function main() {
     const c = classifyWorkflow(wf, j.workflow_runs || [], now);
     // Proofs that need a real customer payment cannot be produced artificially: BLOCKED (externo).
     if (awaitingSet.has(file) && c.state !== "PASS") { items.push({ id: "wf:" + file, kind: "rotina", name: wf.name, state: "BLOCKED", owner: "externo", evidence: "aguardando " + awaitingSet.get(file), at: c.at }); continue; }
+    if (gatedSet.has(file) && c.state !== "PASS") { items.push({ id: "wf:" + file, kind: "rotina", name: wf.name, state: "BLOCKED", owner: "dono", evidence: gatedSet.get(file), at: c.at }); continue; }
     items.push({ id: "wf:" + file, kind: "rotina", name: wf.name, ...c });
   }
   // 2) Every public URL in the sitemaps (discovered).
