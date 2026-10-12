@@ -6,5 +6,5 @@ if (token.length < 32) { console.log("::error title=VOICE_EVAL::token_unavailabl
 const r = await fetch(url, { method: "POST", headers: { "x-backup-token": token }, signal: AbortSignal.timeout(280000) });
 const rep = await r.json().catch(() => ({ ok: false, failures: ["http_" + r.status] }));
 const samples = (rep.samples || []).map((s) => ({ tag: s.tag, ok: s.ok, werIn: s.werIn, werOut: s.werOut, answer: s.answer?.score, provider: s.steps?.answerAudio?.provider, error: s.error }));
-console.log("::notice title=VOICE_EVAL::" + JSON.stringify({ http: r.status, ok: rep.ok, scorePct: rep.scorePct, samples, fallback: rep.fallback, failures: rep.failures }));
+console.log("::notice title=VOICE_EVAL::" + JSON.stringify({ http: r.status, ok: rep.ok, scorePct: rep.scorePct, samples, fallback: rep.fallback, keySources: rep.keySources, failures: rep.failures }));
 if (!rep.ok) { console.log("::error title=VOICE_EVAL::" + (rep.failures || []).join(", ").slice(0, 400)); process.exit(1); }

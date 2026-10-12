@@ -17,7 +17,7 @@ import { getWhatsappOpsStore } from "./whatsapp-neon-store.mjs";
 import worker, { whatsappProofDatabase, runPaidDeliveryWatchdog, runSalesPreflight, loadAiVaultSecret } from "./cloudflare-worker.recovered.mjs";
 import { runVoiceEval, VOICE_EVAL_KEY } from "./voice-eval.mjs";
 import { synthesizeVoice } from "./voice-remote-tts.mjs";
-import { ttsBytesWithFailover } from "./voice-provider-router.mjs";
+import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
 import { handleAdminRequest, isAdminAuthorized } from "./admin-console.mjs";
@@ -508,11 +508,15 @@ const wrapped = {
       if (String(request.method || "GET").toUpperCase() !== "POST") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers });
       if (!backupTokenOk(request.headers.get("x-backup-token"), normalized.CERTIFICATION_E2E_TOKEN)) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers });
       let apiKey = String(normalized.GEMINI_API_KEY || "").trim();
-      if (!apiKey) apiKey = String((await loadAiVaultSecret("gemini", { kv: normalized.ZEVANORY_PRIVATE_ARTIFACTS, master: normalized.AI_VAULT_ENCRYPTION_KEY || normalized.ELITE_INTERNAL_TOKEN }).catch(() => null)) || "").trim();
+      // Presence flags only (never values): where the production voice key can come from.
+      const diag = { geminiEnv: Boolean(apiKey), vaultRecord: false, vaultMaster: Boolean(normalized.AI_VAULT_ENCRYPTION_KEY || normalized.ELITE_INTERNAL_TOKEN), vaultDecrypted: false, freeOnly: String(normalized.VOICE_TTS_FREE_ONLY || "") === "true", router: null };
+      try { diag.vaultRecord = Boolean(await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.get?.("ai-vault:gemini")); } catch {}
+      if (!apiKey) { apiKey = String((await loadAiVaultSecret("gemini", { kv: normalized.ZEVANORY_PRIVATE_ARTIFACTS, master: normalized.AI_VAULT_ENCRYPTION_KEY || normalized.ELITE_INTERNAL_TOKEN }).catch(() => null)) || "").trim(); diag.vaultDecrypted = Boolean(apiKey); }
+      try { const st = voiceProviderStatus({ ...normalized, GEMINI_API_KEY: apiKey }); diag.router = { chain: st.chain, available: st.providers.filter((x) => x.available).map((x) => x.provider) }; } catch {}
       // Uncached on purpose: a cache hit would hide a broken voice path.
       const synth = (text) => synthesizeVoice(text, { apiKey, env: normalized, kv: null });
       const fallbackSynth = (text) => ttsBytesWithFailover(text, { ...normalized, GEMINI_API_KEY: apiKey }, fetch);
-      const report = await runVoiceEval({ ai: normalized.AI, synth, fallbackSynth });
+      const report = { ...(await runVoiceEval({ ai: normalized.AI, synth, fallbackSynth })), keySources: diag };
       try { await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.(VOICE_EVAL_KEY, JSON.stringify(report)); } catch {}
       return new Response(JSON.stringify(report), { status: report.ok ? 200 : 500, headers });
     }

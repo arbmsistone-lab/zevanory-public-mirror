@@ -39,7 +39,7 @@
     },
     {
       "file": "voice-gemini-production-provision.yml",
-      "reason": "provisionamento único concluído por outra via (chave do AI Studio)",
+      "reason": "sonda antiga de provisionamento (depende do Google Secret Manager). CORREÇÃO 12/10: a chave da voz NÃO está disponível no Worker de produção (avaliação ponta a ponta falhou com voice_gemini_key_missing); a falha real é acompanhada pelo processo 'support-voice' e reinstalar a chave é ato do dono.",
       "since": "2026-10-12"
     },
     {
