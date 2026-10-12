@@ -56,14 +56,16 @@ export function nextRun(cron, now = Date.now()) {
 export function computeAutonomy(runs = [], now = Date.now()) {
   const since = now - 7 * DAY;
   const recent = runs.filter((r) => Date.parse(r.created_at) >= since && r.status === "completed");
-  const scheduled = recent.filter((r) => r.event === "schedule");
-  const manual = recent.filter((r) => r.event === "workflow_dispatch");
+  // Autonomous = cron or started by the engine dispatcher (github-actions[bot]); manual = a person.
+  const auto = (r) => r.event === "schedule" || (r.event === "workflow_dispatch" && r.actor === "github-actions[bot]");
+  const scheduled = recent.filter(auto);
+  const manual = recent.filter((r) => r.event === "workflow_dispatch" && !auto(r));
   const ok = scheduled.filter((r) => r.conclusion === "success" || r.conclusion === "skipped");
   const failures = scheduled.filter((r) => r.conclusion === "failure" || r.conclusion === "timed_out");
   const recoveries = [];
   for (const f of failures) {
     const fixed = recent
-      .filter((r) => r.path === f.path && r.event === "schedule" && r.conclusion === "success" && Date.parse(r.created_at) > Date.parse(f.created_at))
+      .filter((r) => r.path === f.path && auto(r) && r.conclusion === "success" && Date.parse(r.created_at) > Date.parse(f.created_at))
       .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0];
     if (fixed) recoveries.push((Date.parse(fixed.updated_at || fixed.created_at) - Date.parse(f.updated_at || f.created_at)) / 60000);
   }
@@ -214,7 +216,7 @@ async function collectRuns() {
   const runs = [];
   for (const wf of OBSERVED_WORKFLOWS) {
     const r = await j(`https://api.github.com/repos/${repo}/actions/workflows/${wf}/runs?per_page=60&created=>${iso(Date.now() - 8 * DAY).slice(0, 10)}`, { headers: { authorization: "Bearer " + tk, accept: "application/vnd.github+json" } });
-    for (const x of r.workflow_runs || []) runs.push({ path: x.path, event: x.event, status: x.status, conclusion: x.conclusion, created_at: x.created_at, updated_at: x.updated_at, name: x.name });
+    for (const x of r.workflow_runs || []) runs.push({ path: x.path, event: x.event, actor: x.triggering_actor?.login || x.actor?.login || null, status: x.status, conclusion: x.conclusion, created_at: x.created_at, updated_at: x.updated_at, name: x.name });
   }
   return runs;
 }

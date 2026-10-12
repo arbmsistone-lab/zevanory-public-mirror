@@ -3,6 +3,19 @@
   "criterion": "Um processo elegível conta como autônomo somente se a evidência dele estiver dentro da janela de frescor no momento da medição. Sem evidência = não conta.",
   "processes": [
     {
+      "id": "dispatcher",
+      "area": "Engenharia",
+      "agent": "Despachante de motores",
+      "name": "Disparo confiável dos motores no horário (independente do cron do GitHub)",
+      "eligible": true,
+      "state": "autonomous",
+      "evidence": {
+        "type": "workflow",
+        "workflow": "engine-dispatcher.yml",
+        "maxAgeHours": 3
+      }
+    },
+    {
       "id": "blog",
       "area": "Aquisição",
       "agent": "Motor Editorial",
