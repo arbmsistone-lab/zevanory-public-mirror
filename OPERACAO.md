@@ -25,9 +25,9 @@ fazer por API.
 | 09:40 | IndexNow (Bing e outros) com os sitemaps | `indexnow-submit.yml` |
 | 12:00 | Vídeo do dia no TikTok (agendado no TikTok Studio pelo pacote) | TikTok |
 | 12:35 | Post no Telegram | worker `zevanory` |
-| 15:00 | Short do dia: YouTube (público) + Telegram (vídeo) + Instagram Reels/Facebook/TikTok quando conectados | `youtube-autonomous-short.yml` + `short-crosspost.mjs` |
+| 15:00 (+16:30 reserva) | Short do dia: YouTube (público) + Telegram (vídeo) + Instagram Reels/Facebook/TikTok quando conectados | `youtube-autonomous-short.yml` + `short-crosspost.mjs` |
 | 19:35 | Post no Bluesky com hashtags | worker `zevanory` |
-| Dias 1, 11 e 21 (06:00) | Pacote de 10 vídeos com voz + **comando pronto do executor enviado por e-mail ao dono** | `short-pack.yml` |
+| Dias 1, 11 e 21 (06:00, reserva 07:30) | Pacote de 10 vídeos com voz + **comando pronto do executor enviado por e-mail ao dono** | `short-pack.yml` |
 | Segunda 07:48 | Auditoria semanal com números reais | tarefa agendada |
 
 ## 3. Canais e como cada um é ativado
@@ -77,3 +77,9 @@ fazer por API.
 | certify(*) falha durante deploy | Reexecutar só os jobs falhos |
 | Limite de crons da Cloudflare (5) | Nunca remover os crons do worker `zevanory`; novos projetos usam Durable Object com alarme ou GitHub Actions |
 | Executor não consegue enviar vídeo ao TikTok | A aba precisa estar visível; recarregar a página |
+
+## 8. Autocorreção
+
+- Toda rotina de publicação é idempotente por dia: rodar de novo nunca duplica, só completa o que faltou.
+- Short diário tem execução de reserva às 16:30; o pacote do TikTok, às 07:30 dos dias 1, 11 e 21.
+- Falha em workflow gera e-mail automático do GitHub ao dono; a auditoria de segunda consolida tudo.
