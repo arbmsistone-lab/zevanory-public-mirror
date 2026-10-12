@@ -8,6 +8,10 @@ name: YouTube autonomous daily Short
 on:
   schedule:
     - cron: "0 18 * * *"
+    # Self-healing backstop (16:30 Brasília): idempotent per day — a published
+    # Short is reused and cross-posts already done are skipped, so this only
+    # completes what the 15:00 run could not.
+    - cron: "30 19 * * *"
   workflow_dispatch:
     inputs:
       dry_run:

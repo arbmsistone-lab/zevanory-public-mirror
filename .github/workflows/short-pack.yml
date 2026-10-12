@@ -16,6 +16,8 @@ on:
         default: "10"
   schedule:
     - cron: "0 9 1,11,21 * *"
+    # Backstop 1h30 later; skipped when the pack for tomorrow is already hosted.
+    - cron: "30 10 1,11,21 * *"
 
 permissions:
   contents: read
@@ -39,9 +41,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Skip if this pack is already hosted (scheduled backstop)
+        id: already
+        if: github.event_name == 'schedule'
+        run: |
+          d=$(TZ=America/Sao_Paulo date -d tomorrow +%F)
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -A 'ZEVANORY-Monitor/1.0' "https://zevanory.api.br/media/short/$d.mp4" || true)
+          echo "first=$d http=$code"
+          if [ "$code" = "200" ]; then echo "done=true" >> "$GITHUB_OUTPUT"; fi
       - name: Install media tools
+        if: steps.already.outputs.done != 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-inter
       - name: Render pack
+        if: steps.already.outputs.done != 'true'
         run: |
           set -euo pipefail
           args=(--days="${{ inputs.days || '10' }}")
@@ -50,6 +62,7 @@ jobs:
           ls -la /tmp/short-pack
           rm -f /tmp/short-pack/*.pcm /tmp/short-pack/*.txt.* /tmp/short-pack/*.t*.txt /tmp/short-pack/*.mp3
       - name: Host each video at https://zevanory.api.br/media/short/<day>.mp4 (30 days)
+        if: steps.already.outputs.done != 'true'
         run: |
           set -euo pipefail
           for f in /tmp/short-pack/*.mp4; do
@@ -60,6 +73,7 @@ jobs:
           sleep 20
           for f in /tmp/short-pack/*.mp4; do d=$(basename "$f" .mp4); echo "$d $(curl -sS -o /dev/null -w '%{http_code}' -A 'ZEVANORY-Monitor/1.0' https://zevanory.api.br/media/short/$d.mp4)"; done
       - name: E-mail the ready executor command to the owner
+        if: steps.already.outputs.done != 'true'
         run: |
           set -euo pipefail
           if [ -z "${RESEND_API_KEY:-}" ] || [ -z "${OWNER_ALERT_EMAIL:-}" ]; then echo "::warning title=SHORT_PACK_EMAIL::owner e-mail not configured"; exit 0; fi
@@ -76,6 +90,7 @@ jobs:
               print("::notice title=SHORT_PACK_EMAIL::sent", r.status)
           PY
       - uses: actions/upload-artifact@v4
+        if: steps.already.outputs.done != 'true'
         with:
           name: zevanory-short-pack
           path: |
