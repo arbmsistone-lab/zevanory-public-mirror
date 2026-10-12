@@ -582,9 +582,9 @@
       "id": "whatsapp-business-disabled",
       "kind": "pendência do dono",
       "source": "Dono, 12/10 16:37 (comunicado Meta de 10/10)",
-      "text": "Conta WhatsApp Business ZEVANORY desativada pela Meta em 10/10. Recurso é ato do dono; motivo ainda não conhecido pelo executor. Nenhum envio por WhatsApp é feito pelo sistema.",
+      "text": "Conta WhatsApp Business ZEVANORY (2510918296075444) desativada pela Meta em 10/10 por \"violação dos termos de uso aceitável\". Causa provável encontrada no próprio sistema: provas de entrega que forjavam mensagens recebidas assinadas para o robô responder de verdade a um número real (whatsapp-delivery-recovery: execuções reais em 07/10 e 08/10; voice-render-proof em 05/10). Recurso é ato do dono.",
       "status": "owner_reserved",
-      "evidence": null
+      "evidence": "Execuções reais: runs 37697590184, 37702381335, 37813017349 (production-proof concluído). Contenção: provas sintéticas desligadas e endpoint retirado (410)."
     }
   ]
 }
