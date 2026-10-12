@@ -68,3 +68,12 @@ test("hourly heartbeat proves funnel and nurture; a failing task is FAIL, not 'n
   const voice = get({ voiceEval: { ok: false, generatedAt: "2026-10-12T15:00:00Z", scorePct: 0 } }, "support-voice");
   assert.equal(classifyProcess(voice).state, "FAIL");
 });
+
+test("funnel proof comes from whichever server cycle ran it most recently", () => {
+  const p = evaluateInventory(inv, { cronBeats: [
+    { finishedAt: "2026-10-13T11:00:00Z", tasks: { nurture: "ok" } },
+    { finishedAt: "2026-10-13T11:15:00Z", tasks: { funnel: "ok" } },
+  ] }, now).processes;
+  assert.equal(p.find((x) => x.id === "funnel").proven, true);
+  assert.equal(p.find((x) => x.id === "nurture").proven, true);
+});
