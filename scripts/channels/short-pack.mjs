@@ -61,6 +61,7 @@ export function executorCommand(start, days = 10) {
     "DIA | TÍTULO | DICA | PRODUTO",
     ...rows,
     "",
+    "- antes de cada um, confira em Publicações se a data já tem vídeo agendado; se tiver, pule (nunca duplique);",
     "3) Apague de Downloads os vídeos depois de agendados.",
     "4) RELATÓRIO: os agendamentos com data e hora, e qualquer erro com a mensagem exata.",
   ].join("\n");
