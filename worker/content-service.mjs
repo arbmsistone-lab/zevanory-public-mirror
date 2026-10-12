@@ -10,6 +10,7 @@
 // kept only in the private KV (needed for delivery), never in logs or the activity ledger.
 import { brandedEmailHtml } from "./brand-email.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
+import { recordHotmartSale } from "./sales-ledger.mjs";
 
 export const SERVICE_PRODUCT_NAME = "ZEVANORY Conteúdo Pronto";
 const SUB = "zpc:cp:sub:";        // subscriber record
@@ -75,6 +76,8 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
   const dedupe = TXN + (await sha(event + ":" + txn)).slice(0, 40);
   if (await kv.get(dedupe)) return json(200, { ok: true, duplicate: true });
   await kv.put(dedupe, "1", { expirationTtl: 400 * DAY });
+  // Revenue ledger for the command center (aggregate, PII-free, idempotent per txn/outcome).
+  await recordHotmartSale(kv, event, data).catch(() => null);
 
   if (!isServiceProduct(data, serviceIds)) {
     // Digital products: Hotmart itself delivers the files. Only record visibility.
