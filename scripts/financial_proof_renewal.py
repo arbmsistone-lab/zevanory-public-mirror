@@ -106,6 +106,21 @@ def validate_audit(code, body):
     if body.get("complete") is not True or body.get("ambiguous") != 0:
         raise RenewalError("AUDIT_NOT_COMPLETE_OR_AMBIGUOUS")
     if body.get("snapshot_persist") != "proven":
+        # Booleans only (no counts, IDs or customer data): which validation rule refused the snapshot.
+        def count(v):
+            return type(v) is int and v >= 0
+        keys = ["production_confirmed", "production_paid_orders", "production_payment_events", "production_refund_events", "certification_events"]
+        orders = body.get("orders") if isinstance(body.get("orders"), dict) else {}
+        diag = {k: count(body.get(k)) for k in keys}
+        diag["orders.certification"] = count(orders.get("certification"))
+        diag["orders.noncertified_unverified"] = count(orders.get("noncertified_unverified"))
+        if all(count(body.get(k)) for k in keys):
+            diag["paid_le_payments"] = body["production_paid_orders"] <= body["production_payment_events"]
+            diag["events_le_confirmed"] = body["production_payment_events"] + body["production_refund_events"] <= body["production_confirmed"]
+        snap = body.get("financial_snapshot") or {}
+        diag["release_matches"] = snap.get("release_matches")
+        print("ORD12A_PERSIST_DIAG=" + json.dumps({"reason": str(body.get("snapshot_persist"))[:40], **diag}, separators=(",", ":")))
+        print("::error title=ORD12A_PERSIST_DIAG::" + json.dumps({"reason": str(body.get("snapshot_persist"))[:40], **diag}, separators=(",", ":")))
         raise RenewalError("SNAPSHOT_NOT_PERSISTED")
     snap = body.get("financial_snapshot") or {}
     if not (snap.get("accepted") is True and snap.get("verified_flag") is True
