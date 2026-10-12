@@ -19,3 +19,11 @@ test("processes: proven PASS, third party BLOCKED externo, owner-reserved exclud
   const s = summarize([{ id: "a", state: "PASS" }, { id: "b", state: "FAIL" }]);
   assert.equal(s.items[0].state, "FAIL"); assert.equal(s.passPct, 50);
 });
+
+import { readFileSync } from "node:fs";
+test("retirement list never contains security, financial-gate or quality gates", () => {
+  const list = JSON.parse(readFileSync(new URL("../data/retired-workflows.json", import.meta.url))).retired;
+  const forbidden = /secret|gitleaks|sast|security|p07|p08|ped|mercadopago-(reconcil|webhook)|refund|checkout|deploy|reconciler|matrix|command-center|engine-dispatcher|zees16-control/i;
+  for (const r of list) assert.ok(!forbidden.test(r.file), r.file);
+  assert.ok(list.every((r) => r.reason && r.since));
+});

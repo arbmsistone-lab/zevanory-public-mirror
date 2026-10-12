@@ -1,0 +1,95 @@
+{
+  "schema": "zevanory-retired-workflows/v1",
+  "rule": "Rotinas de diagnóstico de uso único ou de tecnologia substituída. Não fazem parte da operação; ficam registradas aqui (com motivo e data) e aparecem na matriz como RETIRED, fora do denominador. Nenhum gate de segurança, financeiro ou de qualidade pode entrar nesta lista.",
+  "retired": [
+    {
+      "file": "cf-ai-capability-probe.yml",
+      "reason": "sonda única de capacidade do Workers AI (substituída pelo uso real e pela avaliação do atendimento)",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "channel-production-bootstrap.yml",
+      "reason": "bootstrap único de canais (canais ativos verificados pela Central)",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "cloudflare-zero-spend-auth-probe.yml",
+      "reason": "sonda única de autenticação; custo zero agora controlado por data/providers.json e freios de cota",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "financial-e2e-stripe.yml",
+      "reason": "Stripe não é provedor da ZEVANORY (pagamentos: Mercado Pago e Hotmart)",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "voice-cloudflare-free-tts-probe.yml",
+      "reason": "sonda de voz substituída (Gemini + Piper local, com controle de qualidade)",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "voice-gemini-auth-key-probe.yml",
+      "reason": "sonda única de chave do Gemini (voz validada a cada Short)",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "voice-gemini-oauth-probe.yml",
+      "reason": "sonda única de OAuth do Gemini (não utilizada)",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "voice-gemini-production-provision.yml",
+      "reason": "provisionamento único concluído por outra via (chave do AI Studio)",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "voice-zero-spend-enable.yml",
+      "reason": "ativação única; substituída pelos freios de cota",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "youtube-private-preflight.yml",
+      "reason": "preflight de upload privado; Shorts publicam como públicos com prova",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "youtube-private-proof.yml",
+      "reason": "prova de upload privado substituída pela publicação pública diária",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "zevanory-one-exact-saas-cert.yml",
+      "reason": "produto ZEVANORY ONE retirado (rota responde 410)",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "zpc-cloudflare-route-discovery.yml",
+      "reason": "descoberta única de rotas (rotas verificadas pela prova horária de serviços)",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "zea10-external-evidence-pack.yml",
+      "reason": "pacote de evidências congelado no release de 09/10, que exigia vendas bloqueadas; as vendas foram liberadas pelo dono em 12/10, então o pacote descreve um estado passado",
+      "since": "2026-10-12"
+    },
+    {
+      "file": "t2-workers-ai-creative-factory.yml",
+      "reason": "a fábrica de criativos roda no Worker do painel com o binding de IA (cron a cada 15 min); o token do CI não tem permissão de Workers AI (HTTP 401)",
+      "since": "2026-10-12"
+    }
+  ],
+  "awaitingRealEvent": [
+    {
+      "file": "mercadopago-webhook-production-proof.yml",
+      "event": "primeiro pagamento real pelo Mercado Pago (o webhook assinado só existe após uma compra)"
+    },
+    {
+      "file": "mercadopago-post-payment-verification.yml",
+      "event": "um pedido real aprovado (exige o ID do pagamento)"
+    },
+    {
+      "file": "financial-e2e-closure.yml",
+      "event": "fechamento financeiro de um pagamento real"
+    }
+  ]
+}

@@ -20,6 +20,9 @@ export const INTENT_METRICS = Object.freeze(["checkout_intent", "hotmart_view", 
 const label = (v, max) => { const x = String(v || "").toLowerCase(); return new RegExp(`^[a-z0-9_-]{1,${max}}$`).test(x) ? x : ""; };
 const BOT_RE = /bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|headless|lighthouse|monitor|curl|wget|python|node-fetch|go-http|axios|okhttp|uptime|pingdom|semrush|ahrefs|zevanory-monitor/i;
 const SUMMARY_KEY = "zpc-funnel:v1:summary";
+// Datacenter/bot exclusion went live on 2026-10-12; earlier days are contaminated by our own
+// audits and crawlers, so "clean" figures only count days from this date on.
+export const CLEAN_SINCE = "2026-10-12";
 let schemaReady = false;
 
 async function sha256Hex(value) {
@@ -140,8 +143,10 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
       if (row.metric === "views") b.views += Number(row.n) || 0; else b.intents += Number(row.n) || 0;
     }
   } catch {}
+  const clean7 = await sql.query("select metric, coalesce(sum(n),0)::int as n from zevanory_funnel_daily where day >= greatest(current_date - 6, $1::date) and metric in ('views','visitors') group by metric", [CLEAN_SINCE]).catch(() => []);
+  const cleanM = Object.fromEntries((clean7 || []).map(row=>[row.metric,Number(row.n)||0]));
   const metrics7 = Object.fromEntries(traffic7.map(row=>[row.metric,Number(row.n)||0]));
-  const last7Days = {windowDays:7, views:metrics7.views||0, visitors:metrics7.visitors||0, leads:Number(leads7[0]?.n)||0, checkouts:Number(checkouts7[0]?.n)||0, mode:production?"production":"test"};
+  const last7Days = {windowDays:7, views:metrics7.views||0, visitors:metrics7.visitors||0, cleanSince:CLEAN_SINCE, cleanViews:cleanM.views||0, cleanVisitors:cleanM.visitors||0, leads:Number(leads7[0]?.n)||0, checkouts:Number(checkouts7[0]?.n)||0, mode:production?"production":"test"};
   return {
     schema: "zevanory-funnel/v1",
     generatedAt: new Date(now).toISOString(),

@@ -29,6 +29,7 @@ import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
 import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
+import { runSupportEvalIfDue } from "./support-eval.mjs";
 import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { syncOperationalActivity } from "./operational-activity-sync.mjs";
@@ -658,6 +659,7 @@ wrapped.scheduled = async (controller, env, ctx) => {
     .catch(() => console.error("commercial_metrics_proof_unavailable")));
   tasks.push(publishFunnelSummary(normalized, { sqlFactory: whatsappProofDatabase, production: salesOpen, salesOpen }).then((out) => console.info("funnel_summary", JSON.stringify(out))).catch((error) => console.error("funnel_summary_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runPaidDeliveryWatchdog(normalized).then((out) => console.info("paid_delivery_watchdog", JSON.stringify(out))).catch((error) => console.error("paid_delivery_watchdog_failed", error instanceof Error ? error.message : String(error))));
+  tasks.push(runSupportEvalIfDue(normalized).then((out) => console.info("support_eval", JSON.stringify(out))).catch((error) => console.error("support_eval_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runLeadNurture(normalized, { sqlFactory: whatsappProofDatabase, salesOpen }).then((out) => console.info("lead_nurture", JSON.stringify(out))).catch((error) => console.error("lead_nurture_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runOwnerAlertDigest(normalized).then((out) => console.info("owner_alert_digest", JSON.stringify(out))).catch((error) => console.error("owner_alert_digest_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runRefundWatchdog(normalized, Date.now(), { sqlFactory: whatsappProofDatabase }).then((out) => console.info("refund_watchdog", JSON.stringify(out))).catch((error) => console.error("refund_watchdog_failed", error instanceof Error ? error.message : String(error))));
