@@ -119,8 +119,9 @@ def validate_audit(code, body):
             diag["events_le_confirmed"] = body["production_payment_events"] + body["production_refund_events"] <= body["production_confirmed"]
         snap = body.get("financial_snapshot") or {}
         diag["release_matches"] = snap.get("release_matches")
-        print("ORD12A_PERSIST_DIAG=" + json.dumps({"reason": str(body.get("snapshot_persist"))[:40], **diag}, separators=(",", ":")))
-        print("::error title=ORD12A_PERSIST_DIAG::" + json.dumps({"reason": str(body.get("snapshot_persist"))[:40], **diag}, separators=(",", ":")))
+        diag["keys"] = sorted(str(k)[:40] for k in body.keys())[:40]
+        print("ORD12A_PERSIST_DIAG=" + json.dumps({"reason": str(body.get("snapshot_persist"))[:120], **diag}, separators=(",", ":")))
+        print("::error title=ORD12A_PERSIST_DIAG::" + json.dumps({"reason": str(body.get("snapshot_persist"))[:120], **diag}, separators=(",", ":")))
         raise RenewalError("SNAPSHOT_NOT_PERSISTED")
     snap = body.get("financial_snapshot") or {}
     if not (snap.get("accepted") is True and snap.get("verified_flag") is True
