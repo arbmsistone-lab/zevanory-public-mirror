@@ -281,7 +281,7 @@ a:focus-visible,.button:focus-visible{outline:2px solid var(--brand-3);outline-o
 
 /* Conversion: deliverables under the hero CTA, fit section, phone buy bar. */
 .hero-includes{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0;padding:0;list-style:none}
-.hero-includes li{padding:4px 12px;border:1px solid var(--line-strong);border-radius:999px;background:rgba(0,184,255,.08);color:var(--soft);font-size:.82rem;font-weight:600}
+.hero-includes li{padding:4px 12px;border:1px solid var(--line-strong);border-radius:2em;background:rgba(0,184,255,.08);color:var(--soft);font-size:.82rem;font-weight:600}
 .hero-trust{margin-top:12px}
 .hero-trust a{color:var(--accent-2)}
 .fit-section{padding-top:64px;padding-bottom:24px}
