@@ -25,6 +25,10 @@ on:
         description: "dica | oferta | calc | all"
         required: false
         default: "oferta"
+      force_local_voice:
+        description: "true = skip Gemini and narrate with the free local voice (test)"
+        required: false
+        default: "false"
 
 concurrency:
   group: youtube-autonomous-short
@@ -54,11 +58,22 @@ jobs:
           node-version: "22"
       - name: Install media tools
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-inter && fc-match -f "%{file}\n" "Inter:style=ExtraBold"
+      - name: Free local voice (Piper, open source) for the zero-cost fallback
+        continue-on-error: true
+        run: |
+          python3 -m pip install --quiet --user piper-tts
+          mkdir -p "$HOME/piper" && cd "$HOME/piper"
+          base=https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium
+          curl -fsSL -o pt_BR-faber-medium.onnx "$base/pt_BR-faber-medium.onnx"
+          curl -fsSL -o pt_BR-faber-medium.onnx.json "$base/pt_BR-faber-medium.onnx.json"
+          echo "PIPER_MODEL=$HOME/piper/pt_BR-faber-medium.onnx" >> "$GITHUB_ENV"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Unit tests (plan, idempotency, recording)
         run: node --test tests/youtube-daily-short.test.mjs tests/short-crosspost.test.mjs
       - name: Render, gate and publish today's Short
         env:
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          FORCE_LOCAL_VOICE: ${{ inputs.force_local_voice || 'false' }}
           SCHEDULE: ${{ github.event.schedule }}
           SLOT_INPUT: ${{ inputs.slot }}
         run: |
