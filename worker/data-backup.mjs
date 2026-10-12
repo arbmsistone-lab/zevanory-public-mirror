@@ -88,13 +88,17 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     const dumps = names.length ? await sql.query(
       `select t, (xpath('/row/j/text()', query_to_xml(format('select coalesce(json_agg(x), ''[]''::json)::text as j from public.%I x', t), false, true, '')))[1]::text as j
          from unnest($1::text[]) as t`, [names]) : [];
+    // ONE KV write per part (Workers Free: 1,000 KV writes per day for the whole account; one key
+    // per table spent ~50 writes per backup and exhausted the quota on 12/10).
     const exported = [];
+    const bundle = {};
     for (const { t, j } of dumps) {
       const json = j ?? "[]";
-      const e = { table: t, rows: drillSet.find((w) => w.table === t).rows, sha: await sha256(json) };
-      await kv.put(`zpc:backup:v1:neon:${day}:${t}`, json, { expirationTtl: 8 * DAY });
-      exported.push(e);
+      exported.push({ table: t, rows: drillSet.find((w) => w.table === t).rows, sha: await sha256(json) });
+      bundle[t] = json;
     }
+    const bundleKey = `zpc:backup:v1:neon:${day}:part:${part}`;
+    if (exported.length) await kv.put(bundleKey, JSON.stringify(bundle), { expirationTtl: 8 * DAY });
     report.neon = { tables: exported.length, rows: exported.reduce((s, e) => s + e.rows, 0), skipped, excluded, manifest: (await manifestHash(Object.fromEntries(exported.map((e) => [e.table, e.sha])))).slice(0, 16) };
 
     // 3a. Neon restore drill from the KV copy, inside the isolated schema.
@@ -105,8 +109,10 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
           execute format('create table ${DRILL}.%I (like public.%I)', t, t);
         end loop; end $$`);
     const neonDrill = [];
+    let storedBundle = {};
+    try { storedBundle = exported.length ? JSON.parse(String(await kv.get(bundleKey) || "{}")) : {}; } catch { storedBundle = {}; }
     for (const e of exported) {
-      const stored = await kv.get(`zpc:backup:v1:neon:${day}:${e.table}`);
+      const stored = typeof storedBundle[e.table] === "string" ? storedBundle[e.table] : null;
       if (stored == null || (await sha256(stored)) !== e.sha) { fail("neon_copy_integrity:" + e.table); neonDrill.push({ table: e.table, ok: false }); continue; }
       const [r] = await sql.query(
         `with ins as (insert into ${DRILL}."${e.table}" select * from json_populate_recordset(null::${DRILL}."${e.table}", $1::json) returning *)
@@ -128,9 +134,16 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     const missing = present.length - backed.filter((r) => hashes[r.key]).length;
     if (mismatch || missing) fail(`kv_copy_integrity:${mismatch}:${missing}`);
     const sample = backed.slice(0, DRILL_SAMPLE);
-    for (const r of sample) await kv.put("zpc:restore-drill:" + r.key, r.value, { expirationTtl: 3600 });
+    // The sample is restored as ONE key and read back (2 KV writes instead of 2 per sampled key).
     let sampleOk = true;
-    for (const r of sample) { const back = await kv.get("zpc:restore-drill:" + r.key); if (back == null || (await sha256(back)) !== r.sha256) sampleOk = false; await kv.delete("zpc:restore-drill:" + r.key); }
+    if (sample.length) {
+      const drillKey = "zpc:restore-drill:" + day;
+      await kv.put(drillKey, JSON.stringify(Object.fromEntries(sample.map((r) => [r.key, r.value]))), { expirationTtl: 3600 });
+      let back = {};
+      try { back = JSON.parse(String(await kv.get(drillKey) || "{}")); } catch { back = {}; }
+      for (const r of sample) { const v = back[r.key]; if (typeof v !== "string" || (await sha256(v)) !== r.sha256) sampleOk = false; }
+      await kv.delete(drillKey);
+    }
     if (!sampleOk) fail("kv_restore_drill");
     report.restore = {
       neon: { tables: neonDrill.length, ok: neonDrill.filter((d) => d.ok).length, rows: neonDrill.reduce((s, d) => s + (d.restored || 0), 0), isolatedSchema: DRILL },
