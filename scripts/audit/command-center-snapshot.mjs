@@ -269,6 +269,8 @@ export async function main() {
   const videos = await collectShortVideos().catch(() => []);
   let registry = null;
   try { registry = JSON.parse(readFileSync(new URL("../../data/experiments.json", import.meta.url), "utf8")); } catch {}
+  let catalogDef = null;
+  try { catalogDef = JSON.parse(readFileSync(new URL("../../data/products.json", import.meta.url), "utf8")); } catch {}
   let commitmentsDef = null;
   try { commitmentsDef = JSON.parse(readFileSync(new URL("../../data/commitments.json", import.meta.url), "utf8")); } catch {}
   const commitments = commitmentsDef ? { rule: commitmentsDef.rule, counts: commitmentsDef.commitments.reduce((a, c) => ((a[c.status] = (a[c.status] || 0) + 1), a), {}), items: commitmentsDef.commitments } : null;
@@ -388,6 +390,7 @@ export async function main() {
     forecast: forecastSales(sales?.byDay || {}, firstSalesDay, now),
     experiments,
     commitments,
+    catalog: catalogDef ? { guaranteeDays: catalogDef.guaranteeDays, products: catalogDef.products, subscription: catalogDef.subscription || null } : null,
     matrix: matrix ? { generatedAt: matrix.generatedAt, counts: matrix.counts, total: matrix.total, passPct: matrix.passPct, open: (matrix.items || []).filter((i) => i.state !== "PASS").slice(0, 60).map((i) => ({ id: i.id, kind: i.kind, name: i.name, state: i.state, owner: i.owner, evidence: i.evidence, at: i.at || null })) } : null,
     inventory,
     costs,
