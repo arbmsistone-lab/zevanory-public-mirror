@@ -20,7 +20,7 @@ jobs:
           exec > >(tee /tmp/out.txt) 2>&1
           base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values"
           get(){ curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$base/$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$1")"; }
-          for d in 2026-10-11; do
+          for d in 2026-10-12; do
             echo "== acquisition $d"; get "zpc:acquisition:daily:$d" | python3 -c 'import json,sys
           try:
             d=json.load(sys.stdin); print(d.get("generatedAt"), json.dumps([{k:o.get(k) for k in ("channel","status","code","url","at","provenance","attempts")} for o in d.get("outcomes",[])]))
