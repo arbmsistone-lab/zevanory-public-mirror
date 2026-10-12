@@ -8,6 +8,7 @@
 import { spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import { getUsage, addUsage, allow } from "./usage.mjs";
 import { createHash } from "node:crypto";
 import { calendarEntry, productLink } from "../../worker/acquisition-engine.mjs";
 import { evaluateCreativeWithRewrites } from "../../worker/creative-autonomy.mjs";
@@ -103,7 +104,7 @@ export function planShort(day) {
 const run = (cmd, args) => { const p = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }); if (p.status !== 0) throw new Error(cmd + "_failed"); return p.stdout; };
 
 async function geminiSpeech(text, key) {
-  if (!key) { console.log("::warning title=SHORT_VOICE::GEMINI_API_KEY absent"); return null; }
+  if (!key) { console.log("::warning title=SHORT_VOICE::gemini not used; trying the free local voice"); return piperSpeech(text); }
   const STYLE = "Fale em português do Brasil, com voz natural, acolhedora, clara e profissional, em ritmo de conversa.";
   const errors = [];
   // Modern Interactions API first, then the classic generateContent TTS models.
@@ -127,8 +128,30 @@ async function geminiSpeech(text, key) {
     return { pcm: Buffer.from(data, "base64"), rate, model };
   }
   // Only provider status codes, never the key.
-  console.log("::warning title=SHORT_VOICE::no narration (" + errors.join(", ") + ")");
-  return null;
+  console.log("::warning title=SHORT_VOICE::gemini unavailable (" + errors.join(", ") + "); trying the free local voice");
+  return piperSpeech(text);
+}
+
+// Free, local, open-source neural voice (Piper, pt_BR). Zero cost; used when the Gemini free
+// quota is exhausted or unavailable.
+// Brand and money pronunciation for the local voice (Gemini already reads these correctly).
+export function speechForLocalVoice(text) {
+  return String(text)
+    .replace(/ZEVANORY/gi, "Zevanóri")
+    .replace(/R\$\s?(\d+)(?:,00)?/g, "$1 reais")
+    .replace(/\bIA\b/g, "I.A.")
+    .replace(/\bWhatsApp\b/gi, "uótsap")
+    .replace(/\s+/g, " ").trim();
+}
+export function piperSpeech(text, model = process.env.PIPER_MODEL) {
+  text = speechForLocalVoice(text);
+  if (!model) { console.log("::warning title=SHORT_VOICE::no narration (piper model absent)"); return null; }
+  const p = spawnSync("piper", ["--model", model, "--output_raw"], { input: text, maxBuffer: 64 * 1024 * 1024 });
+  if (p.status !== 0 || !p.stdout?.length) { console.log("::warning title=SHORT_VOICE::no narration (piper failed)"); return null; }
+  let rate = 22050;
+  try { rate = JSON.parse(readFileSync(model + ".json", "utf8"))?.audio?.sample_rate || 22050; } catch {}
+  console.log("::notice title=SHORT_VOICE::piper ok");
+  return { pcm: Buffer.from(p.stdout), rate, model: "piper-local" };
 }
 
 // Retention-first Short (YouTube scores watch-through): the hook is big at the top
@@ -181,6 +204,21 @@ const fontFile = (style, fallback) => {
 function voicePauses(file) {
   const p = spawnSync("ffmpeg", ["-hide_banner", "-i", file, "-af", "silencedetect=n=-35dB:d=0.22", "-f", "null", "-"], { encoding: "utf8" });
   return [...String(p.stderr || "").matchAll(/silence_end: ([\d.]+)/g)].map(m => Number(m[1]));
+}
+// Objective audio quality gate: loudness, true peak and dead air inside the narration.
+export function audioQuality(stderrEbur, silenceEnds, silenceStarts, voiceSeconds) {
+  const lufs = Number((stderrEbur.match(/I:\s+(-?[\d.]+) LUFS/g) || []).pop()?.match(/-?[\d.]+/)?.[0]);
+  const peak = Number((stderrEbur.match(/Peak:\s+(-?[\d.]+) dBFS/g) || []).pop()?.match(/-?[\d.]+/)?.[0]);
+  let maxGap = 0;
+  for (let i = 0; i < silenceStarts.length; i++) {
+    const st = silenceStarts[i], en = silenceEnds[i] ?? voiceSeconds;
+    if (st > 0.3 && st < voiceSeconds - 0.6) maxGap = Math.max(maxGap, Math.min(en, voiceSeconds) - st);
+  }
+  const reasons = [];
+  if (!(lufs >= -20 && lufs <= -12)) reasons.push("loudness_" + lufs);
+  if (!(peak <= -0.3)) reasons.push("peak_" + peak);
+  if (maxGap > 1.6) reasons.push("dead_air_" + maxGap.toFixed(1));
+  return { ok: reasons.length === 0, lufs, peak, maxGap: Math.round(maxGap * 10) / 10, reasons };
 }
 export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { geminiKey = process.env.GEMINI_API_KEY } = {}) {
   const voice = await geminiSpeech(plan.speech, geminiKey);
@@ -254,7 +292,17 @@ export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { ge
   if (!v || v.width !== 1080 || v.height !== 1920 || !a || !(Math.abs(real - duration) <= 0.5)) throw new Error("youtube_mp4_technical_gate_failed");
   const black = spawnSync("ffmpeg", ["-hide_banner", "-i", base + ".mp4", "-vf", "blackdetect=d=0.6:pix_th=0.02", "-an", "-f", "null", "-"], { encoding: "utf8" });
   if (black.status !== 0 || /black_start:/.test(black.stderr)) throw new Error("youtube_black_frames_detected");
-  return { file: base + ".mp4", duration: real, voice: voice ? voice.model : "none", beats: { tip: tTip, offer: tOffer, cta: tCta } };
+  let audio = null;
+  if (voice) {
+    const e = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", base + ".mp4", "-vn", "-af", "ebur128=peak=true", "-f", "null", "-"], { encoding: "utf8" });
+    const sd = spawnSync("ffmpeg", ["-hide_banner", "-i", base + ".mp4", "-vn", "-af", "silencedetect=n=-40dB:d=1.2", "-f", "null", "-"], { encoding: "utf8" });
+    const starts = [...String(sd.stderr || "").matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
+    const ends = [...String(sd.stderr || "").matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
+    audio = audioQuality(String(e.stderr || ""), ends, starts, voiceSeconds);
+    console.log("::notice title=SHORT_AUDIO_QC::" + JSON.stringify({ voice: voice.model, ...audio }));
+    if (!audio.ok) throw new Error("audio_qc_failed:" + audio.reasons.join("+"));
+  }
+  return { file: base + ".mp4", duration: real, voice: voice ? voice.model : "none", audio, beats: { tip: tTip, offer: tOffer, cta: tCta } };
 }
 
 // Cloudflare KV REST adapter so the CI job writes the exact emitActivity schema.
@@ -328,14 +376,28 @@ if (isMain) {
       const plan = planSlot(day, slot);
       if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85) throw new Error("f1_gate_rejected");
       const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);
-      const rendered = await renderShort(plan, base);
+      const usageKv = process.env.CLOUDFLARE_API_TOKEN ? cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID }) : null;
+      const usage = usageKv ? await getUsage(usageKv) : {};
+      const geminiAllowed = process.env.FORCE_LOCAL_VOICE !== "true" && allow(usage, "gemini_tts_calls", 4);
+      if (!geminiAllowed) note("warning", process.env.FORCE_LOCAL_VOICE === "true" ? "local voice forced (test)" : "zero-cost guard: gemini daily guard reached, using the free local voice");
+      let rendered;
+      try { rendered = await renderShort(plan, base, { geminiKey: geminiAllowed ? process.env.GEMINI_API_KEY : "" }); }
+      catch (e) {
+        // A narration that fails the audio gate is regenerated once with the free local voice.
+        if (!String(e?.message).startsWith("audio_qc_failed") || !geminiAllowed) throw e;
+        note("warning", slot + ": " + e.message + " — regenerating with the local voice");
+        rendered = await renderShort(plan, base, { geminiKey: "" });
+      }
+      if (usageKv && String(rendered.voice).startsWith("gemini")) await addUsage(usageKv, "gemini_tts_calls", 1).catch(() => null);
       note("notice", JSON.stringify({ day, slot, theme: plan.entry.theme_id, gate: { score: plan.gate.score, compliance: plan.gate.compliance }, duration: rendered.duration, voice: rendered.voice, dry_run: dry }));
       if (dry) continue;
       for (const n of ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "KV_NAMESPACE_ID"]) if (!process.env[n]) throw new Error("missing_" + n);
       const { getYoutubeAccessToken } = await import("./youtube-access.mjs");
       const accessToken = await getYoutubeAccessToken();
-      const result = await publishShort(plan, await readFile(rendered.file), { accessToken });
       const kv = cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID });
+      if (!allow(await getUsage(kv), "youtube_units", 1700)) throw new Error("zero_cost_guard_youtube_quota");
+      const result = await publishShort(plan, await readFile(rendered.file), { accessToken });
+      await addUsage(kv, "youtube_units", result.reused ? 5 : 1650).catch(() => null);
       const activity = await recordPublication(kv, plan, result);
       note("notice", JSON.stringify({ slot, ...result, activity_emitted: activity.emitted === true || activity.duplicate === true }));
     } catch (e) { failed++; note("error", slot + ":" + String(e?.message || e).replace(/[^a-z0-9_:.-]/gi, "_").slice(0, 140)); }

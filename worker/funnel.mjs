@@ -129,6 +129,17 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   const checkouts7 = production ? await sql.query("select count(*)::int as n from orders where created_at >= current_date - interval '6 days' and coalesce(certification_pilot,false) = false", []) : [];
   // Read the existing double-opt-in lead table; do not create or alter schemas.
   const leads7 = await sql.query("select count(*)::int as n from zevanory_leads where created_at >= current_date - interval '6 days'", []);
+  // Daily product-page views and buying intent (30 days) for before/after experiments.
+  const productDaily = {};
+  try {
+    const dailyRows = await sql.query(`select day::text as day, metric, sum(n)::int as n from zevanory_funnel_daily
+      where day > current_date - 30 and page = any($1) and metric in ('views','checkout_intent','hotmart_view') group by day, metric`, [Object.keys(FUNNEL_PRODUCTS)]);
+    for (const row of dailyRows || []) {
+      const d = String(row.day).slice(0, 10);
+      const b = (productDaily[d] = productDaily[d] || { views: 0, intents: 0 });
+      if (row.metric === "views") b.views += Number(row.n) || 0; else b.intents += Number(row.n) || 0;
+    }
+  } catch {}
   const metrics7 = Object.fromEntries(traffic7.map(row=>[row.metric,Number(row.n)||0]));
   const last7Days = {windowDays:7, views:metrics7.views||0, visitors:metrics7.visitors||0, leads:Number(leads7[0]?.n)||0, checkouts:Number(checkouts7[0]?.n)||0, mode:production?"production":"test"};
   return {
@@ -141,6 +152,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
     pages,
     products,
     sources,
+    productDaily,
     topCampaigns: Object.entries(campaigns).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([campaign, views]) => ({ campaign, views })),
   };
 }

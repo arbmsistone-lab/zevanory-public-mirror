@@ -13,6 +13,10 @@ fazer por API.
 - Mensagem só para quem pediu (opt-in). Sem spam, sem depoimento inventado, sem prova inventada.
 - Aceitar contrato em nome da empresa é ato do dono.
 - **Tráfego pago só depois da 7ª venda real**, com o relatório de qual criativo/canal vendeu.
+- **Custo zero (cláusula permanente):** só planos e cotas gratuitas. Cada motor confere a cota antes de agir
+  (`scripts/channels/usage.mjs`, KV `zpc:usage:v1:<dia>`); sem alternativa gratuita a função para e aparece
+  na Central de Comando. Proibido migrar para plano pago. Registro de provedores: `data/providers.json`.
+- **Vendas liberadas** (decisão do dono em 12/10/2026): site (Mercado Pago) e Hotmart vendendo.
 
 ## 2. O que roda sozinho (horário de Brasília)
 
@@ -25,7 +29,9 @@ fazer por API.
 | 09:40 | IndexNow (Bing e outros) com os sitemaps | `indexnow-submit.yml` |
 | 12:00 | Vídeo do dia no TikTok (agendado no TikTok Studio pelo pacote) | TikTok |
 | 12:35 | Post no Telegram | worker `zevanory` |
-| 15:00 (+16:30 reserva) | Short do dia: YouTube (público) + Telegram (vídeo) + Instagram Reels/Facebook/TikTok quando conectados | `youtube-autonomous-short.yml` + `short-crosspost.mjs` |
+| 10:00 · 15:00 · 19:00 (+20:30 reserva) | 3 Shorts/dia: dica por ramo, produto do dia, calculadora (YouTube + cross-post); voz Gemini com reserva local gratuita (Piper) | `youtube-autonomous-short.yml` |
+| A cada hora (:17) | Central de Comando: vendas, funil, alcance, autonomia certificável, experimentos, custos | `command-center-snapshot.yml` |
+| Segunda 06:20 | Inteligência de mercado (buscas reais por ramo, pontuação) | `market-weekly.yml` |
 | 19:35 | Post no Bluesky com hashtags | worker `zevanory` |
 | Dias 1, 11 e 21 (06:00, reserva 07:30) | Pacote de 10 vídeos com voz + **comando pronto do executor enviado por e-mail ao dono** | `short-pack.yml` |
 | Segunda 07:48 | Auditoria semanal com números reais | tarefa agendada |
@@ -64,7 +70,7 @@ fazer por API.
 
 ## 6. Onde ver os números
 
-- Painel: https://controle.zevanory.api.br (Ao vivo, funil, canais).
+- Painel: https://controle.zevanory.api.br → Central de Comando (7 abas: Agora, IA, Desempenho, Funciona?, Operação, Financeiro, Rumo). Todo número mostra fonte, horário e selo de integridade.
 - Resumo do funil (KV `zpc-funnel:v1:summary`): visitas, intenção de compra e origem por canal.
 - Hotmart → Relatórios → Vendas, coluna de origem (`src`).
 
