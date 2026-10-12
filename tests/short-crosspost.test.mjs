@@ -76,3 +76,10 @@ test("Telegram channel receives the day's video once, with caption and a provide
   assert.equal(r2.telegram_video, "already_published"); assert.equal(sent, 1);
   assert.match(kv.m.get("zpc:acquisition:daily:2026-10-12:telegram_video"), /t\.me\/zevanory\/42/);
 });
+
+test("pack produces the executor command ZEVANORY e-mails to the owner, with every day, link and caption field", async () => {
+  const { executorCommand } = await import("../scripts/channels/short-pack.mjs");
+  const cmd = executorCommand("2026-10-22", 10);
+  for (let d = 22; d <= 31; d++) { assert.match(cmd, new RegExp(`media/short/2026-10-${d}\\.mp4`)); assert.match(cmd, new RegExp(`^${d}/10 \\| .+ \\| .+ \\| .+$`, "m")); }
+  assert.match(cmd, /A tua marca/); assert.match(cmd, /Conteúdo gerado por IA/); assert.match(cmd, /Nunca publique na hora/);
+});
