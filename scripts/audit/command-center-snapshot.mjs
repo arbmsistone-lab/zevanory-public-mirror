@@ -260,9 +260,9 @@ async function collectPublications(now) {
 
 export async function main() {
   const now = Date.now();
-  const [funnel, sales, reach, runs, pubs, health, salesStatus, site, control] = await Promise.all([
+  const [funnel, sales, reach, runs, pubs, health, salesStatus, coreStatus, site, control] = await Promise.all([
     kvGet("zpc-funnel:v1:summary"), kvGet("zpc:sales:v1:summary"), collectReach(now), collectRuns().catch(() => null), collectPublications(now),
-    probe("https://zevanory.api.br/api/health"), j("https://zevanory.api.br/api/sales/status").catch(() => null), probe("https://vendas.zevanory.api.br/solucoes"), probe("https://controle.zevanory.api.br/"),
+    probe("https://zevanory.api.br/api/health"), j("https://zevanory.api.br/api/sales/status").catch(() => null), j("https://zevanory.api.br/api/status").catch(() => null), probe("https://vendas.zevanory.api.br/solucoes"), probe("https://controle.zevanory.api.br/"),
   ]);
   const buyFlow = await probeBuyFlow().catch(() => []);
   const hotmart = await probeHotmart().catch(() => []);
@@ -370,6 +370,7 @@ export async function main() {
       salesSwitch: salesStatus && !salesStatus._http ? { open: salesStatus.open === true } : null,
       checkoutMode: "Hotmart vendendo; checkout próprio bloqueado até LIBERAR VENDAS",
       buyFlow,
+      runtime: coreStatus && !coreStatus._http ? coreStatus.runtime || null : null,
       hotmart,
       deploys: runs ? runs.filter((r) => r.path.endsWith("central-production-deploy.yml")).slice(0, 5).map((r) => ({ at: r.created_at, conclusion: r.conclusion })) : [],
     },
@@ -380,7 +381,7 @@ export async function main() {
     recommendations: [...(buyFlow.some((b) => b.state === "closed") ? [{ title: "Botão Comprar do site leva a \"Vendas abrem em breve\"", evidence: `${buyFlow.filter((b) => b.state === "closed").length} de ${buyFlow.length} produtos testados mostram o aviso em vez do pagamento`, action: "Levar o botão Comprar e os links dos canais ao checkout da Hotmart, que já vende", confidence: "alta", risk: "baixo", cost: "R$ 0" }] : []), ...recommend({ funnel, reach, sales, publications })],
   };
   await kvPut(SNAPSHOT_KEY, snapshot);
-  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.visitors ?? null, reach: point }));
+  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.visitors ?? null, reach: point }));
 }
 
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
