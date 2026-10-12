@@ -27,7 +27,7 @@ fazer por API.
 | 12:35 | Post no Telegram | worker `zevanory` |
 | 15:00 | Short do dia: YouTube (público) + Telegram (vídeo) + Instagram Reels/Facebook/TikTok quando conectados | `youtube-autonomous-short.yml` + `short-crosspost.mjs` |
 | 19:35 | Post no Bluesky com hashtags | worker `zevanory` |
-| Dias 1, 11, 21, 31 (06:00) | Pacote de 10 vídeos com voz + **comando pronto do executor enviado por e-mail ao dono** | `short-pack.yml` |
+| Dias 1, 11 e 21 (06:00) | Pacote de 10 vídeos com voz + **comando pronto do executor enviado por e-mail ao dono** | `short-pack.yml` |
 | Segunda 07:48 | Auditoria semanal com números reais | tarefa agendada |
 
 ## 3. Canais e como cada um é ativado
@@ -47,8 +47,9 @@ fazer por API.
 
 ## 4. Tarefas recorrentes do executor (geradas prontas pela ZEVANORY)
 
-1. **TikTok, a cada 10 dias:** chega por e-mail ao dono "ZEVANORY — vídeos do TikTok prontos".
-   O dono cola o texto no executor. Nada mais.
+1. **TikTok, a cada 10 dias:** uma tarefa agendada roda no computador do dono (dias 1, 11 e 21,
+   08:00) e agenda sozinha os vídeos no TikTok Studio pelo Chrome. O mesmo comando também chega
+   por e-mail como reserva. Requisito físico: computador ligado, app Claude aberto e Chrome logado.
 2. **Search Console:** quando muitas páginas novas entram, pedir indexação das principais
    (limite diário do Google; se responder "tente mais tarde", parar e retomar no dia seguinte).
 3. **Nome de exibição do TikTok:** trocar para "ZEVANORY" quando liberar (a partir de 18/10/2026).
