@@ -275,6 +275,7 @@ export async function main() {
   let inventoryDef = null;
   try { inventoryDef = JSON.parse(readFileSync(new URL("../../data/process-inventory.json", import.meta.url), "utf8")); } catch {}
   const market = await kvGet("zpc:market:v1:weekly");
+  const matrix = await kvGet("zpc:matrix:v1");
   const inventory = evaluateInventory(inventoryDef, { marketAt: market?.generatedAt || null, byDay: pubs.byDay, runs: runs || [], funnelAt: funnel?.generatedAt || null, buyFlow, hotmart, probes: [health, site, control] }, now);
   const experiments = evaluateExperiments(registry, { videos, productDaily: funnel?.productDaily || {}, campaigns: funnel?.topCampaigns || [] }, now);
 
