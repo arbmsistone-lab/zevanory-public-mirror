@@ -56,9 +56,15 @@ export async function main() {
   // GitHub keeps records of workflows that only ever existed on PR branches; those are history,
   // not part of the running system, and are reported separately instead of as FAIL.
   const orphans = workflows.filter((wf) => !existsSync(wf.path));
+  const retiredItems = [];
+  let retired = [];
+  try { retired = JSON.parse(readFileSync("data/retired-workflows.json", "utf8")).retired || []; } catch {}
+  const retiredSet = new Map(retired.map((r) => [r.file, r]));
   for (const wf of workflows.filter((w) => existsSync(w.path))) {
+    const file = wf.path.split("/").pop();
+    if (retiredSet.has(file)) { retiredItems.push({ id: "wf:" + file, reason: retiredSet.get(file).reason, since: retiredSet.get(file).since }); continue; }
     const j = await gh(`repos/${repo}/actions/workflows/${wf.id}/runs?per_page=5`);
-    items.push({ id: "wf:" + wf.path.split("/").pop(), kind: "rotina", name: wf.name, ...classifyWorkflow(wf, j.workflow_runs || [], now) });
+    items.push({ id: "wf:" + file, kind: "rotina", name: wf.name, ...classifyWorkflow(wf, j.workflow_runs || [], now) });
   }
   // 2) Every public URL in the sitemaps (discovered).
   for (const sm of ["https://vendas.zevanory.api.br/sitemap.xml", "https://zevanory.api.br/sitemap.xml"]) {
@@ -89,9 +95,9 @@ export async function main() {
   const pass = Number((t.stdout.match(/# pass (\d+)/) || [])[1] || 0), fail = Number((t.stdout.match(/# fail (\d+)/) || [])[1] || 0);
   items.push({ id: "tests:unit", kind: "testes", name: "Testes automatizados do repositório", state: fail === 0 && pass > 0 ? "PASS" : pass ? "FAIL" : "NOT_TESTED", owner: "interno", evidence: `${pass} passaram, ${fail} falharam`, at: new Date().toISOString() });
 
-  const out = { schema: "zevanory-matrix/v1", generatedAt: new Date(now).toISOString(), ...summarize(items), historyOnlyWorkflows: orphans.length };
+  const out = { schema: "zevanory-matrix/v1", generatedAt: new Date(now).toISOString(), ...summarize(items), historyOnlyWorkflows: orphans.length, retired: retiredItems };
   await kv("PUT", MATRIX_KEY, JSON.stringify(out));
-  console.log("::notice title=SYSTEM_MATRIX::" + JSON.stringify({ historyOnly: orphans.length, total: out.total, counts: out.counts, passPct: out.passPct, fail: out.items.filter((i) => i.state === "FAIL").slice(0, 40).map((i) => i.id), notTested: out.items.filter((i) => i.state === "NOT_TESTED").slice(0, 20).map((i) => i.id), blocked: out.items.filter((i) => i.state === "BLOCKED").map((i) => i.id) }));
+  console.log("::notice title=SYSTEM_MATRIX::" + JSON.stringify({ historyOnly: orphans.length, retired: retiredItems.length, total: out.total, counts: out.counts, passPct: out.passPct, fail: out.items.filter((i) => i.state === "FAIL").slice(0, 40).map((i) => i.id), notTested: out.items.filter((i) => i.state === "NOT_TESTED").slice(0, 20).map((i) => i.id), blocked: out.items.filter((i) => i.state === "BLOCKED").map((i) => i.id) }));
 }
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
 if (isMain) main().catch((e) => { console.log("::error title=SYSTEM_MATRIX::" + String(e?.message || e).slice(0, 200)); process.exit(1); });
