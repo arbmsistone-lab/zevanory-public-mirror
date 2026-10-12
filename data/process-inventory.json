@@ -166,9 +166,9 @@
       "eligible": true,
       "state": "autonomous",
       "evidence": {
-        "type": "freshness",
-        "field": "funnel",
-        "maxAgeHours": 3
+        "type": "cron_task",
+        "task": "funnel",
+        "maxAgeHours": 2
       }
     },
     {
@@ -201,11 +201,11 @@
       "eligible": true,
       "state": "autonomous",
       "evidence": {
-        "type": "freshness",
-        "field": "funnel",
-        "maxAgeHours": 3
+        "type": "cron_task",
+        "task": "nurture",
+        "maxAgeHours": 2
       },
-      "note": "Roda no mesmo ciclo horário do funil."
+      "note": "Prova: o ciclo horário do servidor executou a sequência sem erro (enviados/aguardando registrados)."
     },
     {
       "id": "experiments",
@@ -226,11 +226,12 @@
       "agent": "Motor de Entrega",
       "name": "Entrega do produto após o pagamento",
       "eligible": true,
-      "state": "autonomous",
+      "state": "awaiting_event",
       "evidence": {
         "type": "none"
       },
-      "note": "Automática (Hotmart e e-mail próprio), ainda sem venda real para comprovar."
+      "note": "Automática (Hotmart e e-mail próprio), ainda sem venda real para comprovar.",
+      "dependency": "Só pode ser provada com a primeira venda real (ou com a prova de sandbox, que exige aprovação do dono)."
     },
     {
       "id": "service-content",
@@ -238,11 +239,12 @@
       "agent": "Motor de Conteúdo Pronto",
       "name": "Geração mensal do Conteúdo Pronto para assinantes",
       "eligible": true,
-      "state": "autonomous",
+      "state": "awaiting_event",
       "evidence": {
         "type": "none"
       },
-      "note": "Automática, ainda sem assinante para comprovar."
+      "note": "Automática, ainda sem assinante para comprovar.",
+      "dependency": "Só pode ser provada com o primeiro assinante real do Conteúdo Pronto."
     },
     {
       "id": "support",

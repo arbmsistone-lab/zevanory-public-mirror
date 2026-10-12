@@ -28,8 +28,9 @@ export function proveProcess(p, ctx, now = Date.now()) {
     case "freshness": { const t = ctx.funnelAt ? Date.parse(ctx.funnelAt) : null; return { proven: fresh(t), lastEvidence: ctx.funnelAt || null, how: "consolidado horário atualizado" }; }
     case "market": { const t = ctx.marketAt ? Date.parse(ctx.marketAt) : null; return { proven: fresh(t), lastEvidence: ctx.marketAt || null, how: "pesquisa semanal gravada" }; }
     case "support_eval": { const t = ctx.support?.generatedAt ? Date.parse(ctx.support.generatedAt) : null; return { proven: fresh(t) && (ctx.support?.scorePct ?? 0) >= (ev.minScore || 90), lastEvidence: ctx.support?.generatedAt || null, how: `avaliação do atendimento: ${ctx.support?.scorePct ?? "—"}%` }; }
-    case "voice_eval": { const v = ctx.voiceEval; const t = v?.generatedAt ? Date.parse(v.generatedAt) : null; return { proven: fresh(t) && v?.ok === true, lastEvidence: v?.generatedAt || null, how: `voz ponta a ponta: ${v?.scorePct ?? "—"}% das amostras, reserva ${v?.fallback?.ok ? "ok" : "falhou"}` }; }
-    case "backup": { const b = ctx.backup; const t = b?.finishedAt ? Date.parse(b.finishedAt) : null; return { proven: fresh(t) && b?.ok === true, lastEvidence: b?.finishedAt || null, how: `cópia e restauração conferidas (${b?.restore?.neon?.ok ?? 0} tabelas, ${b?.restore?.kv?.verified ?? 0} chaves)` }; }
+    case "voice_eval": { const v = ctx.voiceEval; const t = v?.generatedAt ? Date.parse(v.generatedAt) : null; return { proven: fresh(t) && v?.ok === true, failed: fresh(t) && v?.ok === false, lastEvidence: v?.generatedAt || null, how: `voz ponta a ponta: ${v?.scorePct ?? "—"}% das amostras, reserva ${v?.fallback?.ok ? "ok" : "falhou"}` }; }
+    case "backup": { const b = ctx.backup; const t = b?.finishedAt ? Date.parse(b.finishedAt) : null; return { proven: fresh(t) && b?.ok === true, failed: fresh(t) && b?.ok === false, lastEvidence: b?.finishedAt || null, how: `cópia e restauração conferidas (${b?.restore?.neon?.ok ?? 0} tabelas, ${b?.restore?.kv?.verified ?? 0} chaves)` }; }
+    case "cron_task": { const b = ctx.cronBeat; const t = b?.finishedAt ? Date.parse(b.finishedAt) : null; const st = b?.tasks?.[ev.task]; return { proven: fresh(t) && st === "ok", failed: fresh(t) && String(st || "").startsWith("fail"), lastEvidence: b?.finishedAt || null, how: `ciclo horário do servidor: ${ev.task} ${st || "sem registro"}` }; }
     case "buyflow": { const ok = (ctx.buyFlow || []).length > 0 && ctx.buyFlow.every((b) => b.state === "checkout"); return { proven: ok, lastEvidence: ok ? new Date(now).toISOString() : null, how: "botão Comprar abre o pagamento" }; }
     case "hotmart": { const ok = (ctx.hotmart || []).length > 0 && ctx.hotmart.every((h) => h.http === 200 && !h.blockedText); return { proven: ok, lastEvidence: ok ? new Date(now).toISOString() : null, how: "checkouts respondem com o produto" }; }
     case "probes": { const ok = (ctx.probes || []).length > 0 && ctx.probes.every((x) => x.ok); return { proven: ok, lastEvidence: ok ? new Date(now).toISOString() : null, how: "serviços respondendo" }; }
@@ -40,7 +41,7 @@ export function proveProcess(p, ctx, now = Date.now()) {
 export function evaluateInventory(inventory, ctx = {}, now = Date.now()) {
   const processes = (inventory?.processes || []).map((p) => {
     const proof = p.eligible && p.state === "autonomous" ? proveProcess(p, ctx, now) : { proven: false, lastEvidence: null, how: null };
-    return { id: p.id, area: p.area, agent: p.agent, name: p.name, eligible: p.eligible, state: p.state, proven: proof.proven, lastEvidence: proof.lastEvidence, how: proof.how, dependency: p.dependency || (p.state === "autonomous" && !proof.proven ? (p.note || "Autônomo, mas sem evidência recente") : null), impact: p.impact || null };
+    return { id: p.id, area: p.area, agent: p.agent, name: p.name, eligible: p.eligible, state: p.state, proven: proof.proven, failed: proof.failed === true, lastEvidence: proof.lastEvidence, how: proof.how, dependency: p.dependency || (p.state === "autonomous" && !proof.proven ? (p.note || "Autônomo, mas sem evidência recente") : null), impact: p.impact || null };
   });
   const eligible = processes.filter((p) => p.eligible);
   const proven = eligible.filter((p) => p.proven);
@@ -51,7 +52,7 @@ export function evaluateInventory(inventory, ctx = {}, now = Date.now()) {
     eligible: eligible.length,
     provenAutonomous: proven.length,
     pct: eligible.length ? Math.round((1000 * proven.length) / eligible.length) / 10 : null,
-    byState: { autonomous: count("autonomous"), partial: count("partial"), blocked_third_party: count("blocked_third_party"), manual: count("manual") },
+    byState: { autonomous: count("autonomous"), partial: count("partial"), blocked_third_party: count("blocked_third_party"), manual: count("manual"), awaiting_event: count("awaiting_event") },
     ownerReserved: processes.filter((p) => !p.eligible).map((p) => p.name),
     dependencies: eligible.filter((p) => !p.proven).sort((a, b) => (IMPACT[a.impact] ?? 3) - (IMPACT[b.impact] ?? 3)).map((p) => ({ id: p.id, name: p.name, state: p.state, dependency: p.dependency, impact: p.impact })),
     processes,

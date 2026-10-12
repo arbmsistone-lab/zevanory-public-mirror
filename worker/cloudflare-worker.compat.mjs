@@ -688,15 +688,19 @@ wrapped.scheduled = async (controller, env, ctx) => {
       }
     })
     .catch(() => console.error("commercial_metrics_proof_unavailable")));
-  tasks.push(publishFunnelSummary(normalized, { sqlFactory: whatsappProofDatabase, production: salesOpen, salesOpen }).then((out) => console.info("funnel_summary", JSON.stringify(out))).catch((error) => console.error("funnel_summary_failed", error instanceof Error ? error.message : String(error))));
-  tasks.push(runPaidDeliveryWatchdog(normalized).then((out) => console.info("paid_delivery_watchdog", JSON.stringify(out))).catch((error) => console.error("paid_delivery_watchdog_failed", error instanceof Error ? error.message : String(error))));
+  // Heartbeat of the hourly cycle (no data): when it ran and how each tracked task ended.
+  const beat = { at: new Date().toISOString(), cron: String(controller?.cron || ""), tasks: {} };
+  const mark = (name, ok, why = "") => { beat.tasks[name] = ok ? "ok" : "fail:" + String(why).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 120); };
+  tasks.push(publishFunnelSummary(normalized, { sqlFactory: whatsappProofDatabase, production: salesOpen, salesOpen }).then((out) => { mark("funnel", out?.ok === true, out?.reason); console.info("funnel_summary", JSON.stringify(out)); }).catch((error) => { mark("funnel", false, error instanceof Error ? error.message : error); console.error("funnel_summary_failed", error instanceof Error ? error.message : String(error)); }));
+  tasks.push(runPaidDeliveryWatchdog(normalized).then((out) => { mark("delivery_watchdog", out?.ok !== false, out?.reason); console.info("paid_delivery_watchdog", JSON.stringify(out)); }).catch((error) => { mark("delivery_watchdog", false, error instanceof Error ? error.message : error); console.error("paid_delivery_watchdog_failed", error instanceof Error ? error.message : String(error)); }));
   tasks.push(runSupportEvalIfDue(normalized).then((out) => console.info("support_eval", JSON.stringify(out))).catch((error) => console.error("support_eval_failed", error instanceof Error ? error.message : String(error))));
-  tasks.push(runLeadNurture(normalized, { sqlFactory: whatsappProofDatabase, salesOpen }).then((out) => console.info("lead_nurture", JSON.stringify(out))).catch((error) => console.error("lead_nurture_failed", error instanceof Error ? error.message : String(error))));
+  tasks.push(runLeadNurture(normalized, { sqlFactory: whatsappProofDatabase, salesOpen }).then((out) => { mark("nurture", out?.ok !== false, out?.reason); beat.nurture = { checked: Number(out?.checked) || 0, sent: Number(out?.sent) || 0, held: Number(out?.held) || 0 }; console.info("lead_nurture", JSON.stringify(out)); }).catch((error) => { mark("nurture", false, error instanceof Error ? error.message : error); console.error("lead_nurture_failed", error instanceof Error ? error.message : String(error)); }));
   tasks.push(runOwnerAlertDigest(normalized).then((out) => console.info("owner_alert_digest", JSON.stringify(out))).catch((error) => console.error("owner_alert_digest_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runRefundWatchdog(normalized, Date.now(), { sqlFactory: whatsappProofDatabase }).then((out) => console.info("refund_watchdog", JSON.stringify(out))).catch((error) => console.error("refund_watchdog_failed", error instanceof Error ? error.message : String(error))));
   tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase, production: true }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);
+  try { await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:cron:v1:hourly", JSON.stringify({ ...beat, finishedAt: new Date().toISOString() }), { expirationTtl: 7 * 86400 }); } catch {}
   // Acquisition (:35) and brand profiles (:05) run in the isolated "5,35" cron.
 };
 if (typeof worker.queue === "function") {
