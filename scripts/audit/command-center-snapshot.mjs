@@ -151,6 +151,25 @@ async function probe(url) {
   catch (e) { return { url, http: 0, ms: Date.now() - t0, ok: false, error: String(e?.name || "error") }; }
 }
 
+// What a buyer actually sees after clicking "Comprar" on the official site.
+export function classifyBuyPage(status, html) {
+  const t = String(html || "");
+  if (status !== 200) return "error";
+  if (/Vendas abrem em breve|ainda não está à venda/i.test(t)) return "closed";
+  if (/Ir para o pagamento seguro|pay\.hotmart\.com/i.test(t)) return "checkout";
+  return "unknown";
+}
+async function probeBuyFlow() {
+  const out = [];
+  for (const sku of ["ZEV-IA-011", "ZEV-LCX-011", "ZEV-NGC-011"]) {
+    try {
+      const r = await fetch("https://vendas.zevanory.api.br/comprar/" + sku, { signal: AbortSignal.timeout(10000), headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36 zevanory-command-center" } });
+      out.push({ sku, http: r.status, state: classifyBuyPage(r.status, await r.text()) });
+    } catch { out.push({ sku, http: 0, state: "error" }); }
+  }
+  return out;
+}
+
 async function collectReach(now) {
   const out = {};
   try { const p = await j("https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=zevanoryoficial.bsky.social"); out.bluesky = p._http ? null : { followers: p.followersCount ?? null, posts: p.postsCount ?? null }; } catch { out.bluesky = null; }
@@ -208,6 +227,7 @@ export async function main() {
     kvGet("zpc-funnel:v1:summary"), kvGet("zpc:sales:v1:summary"), collectReach(now), collectRuns().catch(() => null), collectPublications(now),
     probe("https://zevanory.api.br/api/health"), j("https://zevanory.api.br/api/sales/status").catch(() => null), probe("https://vendas.zevanory.api.br/solucoes"), probe("https://controle.zevanory.api.br/"),
   ]);
+  const buyFlow = await probeBuyFlow().catch(() => []);
 
   // Reach history: one point per local day (latest of the day wins), 120 days.
   const history = (await kvGet(REACH_HISTORY_KEY)) || [];
@@ -303,13 +323,14 @@ export async function main() {
       probes: [health, site, control],
       salesSwitch: salesStatus && !salesStatus._http ? { open: salesStatus.open === true } : null,
       checkoutMode: "Hotmart vendendo; checkout próprio bloqueado até LIBERAR VENDAS",
+      buyFlow,
       deploys: runs ? runs.filter((r) => r.path.endsWith("central-production-deploy.yml")).slice(0, 5).map((r) => ({ at: r.created_at, conclusion: r.conclusion })) : [],
     },
     forecast: forecastSales(sales?.byDay || {}, firstSalesDay, now),
-    recommendations: recommend({ funnel, reach, sales, publications }),
+    recommendations: [...(buyFlow.some((b) => b.state === "closed") ? [{ title: "Botão Comprar do site leva a \"Vendas abrem em breve\"", evidence: `${buyFlow.filter((b) => b.state === "closed").length} de ${buyFlow.length} produtos testados mostram o aviso em vez do pagamento`, action: "Levar o botão Comprar e os links dos canais ao checkout da Hotmart, que já vende", confidence: "alta", risk: "baixo", cost: "R$ 0" }] : []), ...recommend({ funnel, reach, sales, publications })],
   };
   await kvPut(SNAPSHOT_KEY, snapshot);
-  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, sales: t.approved || 0, visitors7: funnel?.last7Days?.visitors ?? null, reach: point }));
+  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, buyFlow, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.visitors ?? null, reach: point }));
 }
 
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;

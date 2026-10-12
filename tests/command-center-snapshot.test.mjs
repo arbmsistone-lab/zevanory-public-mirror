@@ -47,3 +47,10 @@ test("metrics without value are marked missing; recommendations carry evidence",
   const r = recommend({ funnel: { sources: { youtube: { views: 10, checkout_intent: 0 } } }, reach: null, sales: { totals: { approved: 0 } }, publications: { pct: 100 } });
   assert.ok(r.length >= 2 && r.every((x) => x.evidence && x.action && x.confidence));
 });
+
+import { classifyBuyPage } from "../scripts/audit/command-center-snapshot.mjs";
+test("buy page classification reflects what the buyer sees", () => {
+  assert.equal(classifyBuyPage(200, "<h1>Vendas abrem em breve</h1>"), "closed");
+  assert.equal(classifyBuyPage(200, "<button>Ir para o pagamento seguro</button>"), "checkout");
+  assert.equal(classifyBuyPage(503, ""), "error");
+});
