@@ -267,10 +267,16 @@ export async function main() {
   const videos = await collectShortVideos().catch(() => []);
   let registry = null;
   try { registry = JSON.parse(readFileSync(new URL("../../data/experiments.json", import.meta.url), "utf8")); } catch {}
+  let providersDef = null;
+  try { providersDef = JSON.parse(readFileSync(new URL("../../data/providers.json", import.meta.url), "utf8")); } catch {}
+  const usageToday = (await kvGet("zpc:usage:v1:" + new Date(now).toISOString().slice(0, 10))) || {};
+  const GUARDS = { youtube_units: 8500, gemini_tts_calls: 40 };
+  const costs = providersDef ? { rule: providersDef.rule, incrementalCostBRL: 0, usageAt: usageToday.updatedAt || null, providers: providersDef.providers.map((p) => ({ ...p, usedToday: p.usageField ? Number(usageToday[p.usageField]) || 0 : null, guard: p.usageField ? GUARDS[p.usageField] ?? null : null })) } : null;
   let inventoryDef = null;
   try { inventoryDef = JSON.parse(readFileSync(new URL("../../data/process-inventory.json", import.meta.url), "utf8")); } catch {}
   const market = await kvGet("zpc:market:v1:weekly");
-  const inventory = evaluateInventory(inventoryDef, { marketAt: market?.generatedAt || null, byDay: pubs.byDay, runs: runs || [], funnelAt: funnel?.generatedAt || null, buyFlow, hotmart, probes: [health, site, control] }, now);
+  const support = await kvGet("zpc:support:v1:eval");
+  const inventory = evaluateInventory(inventoryDef, { support, marketAt: market?.generatedAt || null, byDay: pubs.byDay, runs: runs || [], funnelAt: funnel?.generatedAt || null, buyFlow, hotmart, probes: [health, site, control] }, now);
   const experiments = evaluateExperiments(registry, { videos, productDaily: funnel?.productDaily || {}, campaigns: funnel?.topCampaigns || [] }, now);
 
   // Reach history: one point per local day (latest of the day wins), 120 days.
@@ -374,6 +380,8 @@ export async function main() {
     forecast: forecastSales(sales?.byDay || {}, firstSalesDay, now),
     experiments,
     inventory,
+    costs,
+    support: support ? { generatedAt: support.generatedAt, scorePct: support.scorePct, aiAnsweredPct: support.aiAnsweredPct, questions: support.questions, failures: support.failures || [], method: support.method } : null,
     market: market ? { generatedAt: market.generatedAt, method: market.method, integrity: market.integrity, top: (market.ranking || []).slice(0, 12).map((r) => ({ name: r.name, slug: r.slug, score: r.score, product: r.product, topQueries: (r.topQueries || []).slice(0, 3) })), ideas: market.ideas || [] } : null,
     recommendations: [...(buyFlow.some((b) => b.state === "closed") ? [{ title: "Botão Comprar do site leva a \"Vendas abrem em breve\"", evidence: `${buyFlow.filter((b) => b.state === "closed").length} de ${buyFlow.length} produtos testados mostram o aviso em vez do pagamento`, action: "Levar o botão Comprar e os links dos canais ao checkout da Hotmart, que já vende", confidence: "alta", risk: "baixo", cost: "R$ 0" }] : []), ...recommend({ funnel, reach, sales, publications })],
   };

@@ -6,8 +6,8 @@
 const SALES_ORIGIN = "https://vendas.zevanory.api.br";
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
 
-const DELIVERY = "Entrega digital: após o pagamento ser confirmado pelo Mercado Pago, você recebe por e-mail um link seguro (válido por 72 horas) para baixar o material. Perdeu o e-mail ou o link expirou? Peça um novo link com o código do pedido e o e-mail da compra.";
-const REFUND = "Direito de arrependimento: você pode desistir em até 7 dias após a compra e recebe o reembolso integral pelo mesmo meio de pagamento (art. 49 do Código de Defesa do Consumidor). Para pedir, use o link de reembolso com o código do pedido (está no e-mail de entrega) e o e-mail do pagamento.";
+const DELIVERY = "Entrega digital: após o pagamento ser confirmado pelo Mercado Pago, você recebe por e-mail um link seguro (válido por 72 horas) para baixar o material. Perdeu o e-mail ou o link expirou? Peça um novo link com o código do pedido e o e-mail da compra. Se você comprou pela Hotmart, o acesso chega pelo e-mail da Hotmart e fica em Minhas compras, na sua conta Hotmart.";
+const REFUND = "Direito de arrependimento: você pode desistir em até 7 dias após a compra e recebe o reembolso integral pelo mesmo meio de pagamento (art. 49 do Código de Defesa do Consumidor). Para pedir, use o link de reembolso com o código do pedido (está no e-mail de entrega) e o e-mail do pagamento. Se você comprou pela Hotmart, peça o reembolso em Minhas compras, na sua conta Hotmart.";
 
 export const SUPPORT_PRODUCTS = Object.freeze({
   "ia-na-pratica": { name: "IA na Prática", price_brl: 197, content: "Conteúdo prático para transformar IA em processos claros, repetíveis e úteis no trabalho e no negócio." },
@@ -20,7 +20,8 @@ export const SUPPORT_PRODUCTS = Object.freeze({
 
 // Most specific first: "como recebo o acesso depois de pagar" is delivery, not price.
 const INTENTS = [
-  ["refund", /\b(reembols|devolu|devolv|cancel|arrepend|garantia|desist)/i],
+  ["refund", /\b(reembols|devolu|devolv|cancel|arrepend|garantia|desist|estorn)|dinheiro de volta/i],
+  ["limits", /\b(substitu\w*|contador|contabilidade|contábil|consultori\w*|garant\w* que)/i],
   ["delivery", /\b(entreg|acesso|acessar|receb|download|baixar|chega|n[aã]o (veio|chegou))/i],
   ["price", /\b(pre[cç]o|valor|quanto|custa|custo|pagar|parcel)/i],
   ["content", /\b(conte[uú]do|inclui|inclu[ií]d|o que (vem|tem)|m[oó]dulo|material|aprend|serve)/i],
@@ -52,6 +53,9 @@ export function answerSupportQuestion({ product, question } = {}) {
       ? "Conteúdo Pronto: você tem 7 dias de garantia com reembolso integral, pedido direto na sua conta Hotmart (Minhas compras). Cancelar a assinatura também é pela Hotmart, quando quiser, sem multa."
       : "Conteúdo Pronto: depois do pagamento na Hotmart, você recebe por e-mail um link seguro para um formulário curto; em poucos minutos o pacote do mês chega no mesmo e-mail, também com um link seguro para consulta online.";
     return { answered: true, intent, product: slug, answer, sources: [`${SALES_ORIGIN}/conteudo-pronto`], handoff: false };
+  }
+  if (intent === "limits") {
+    return { answered: true, intent, product: slug, answer: "Não. Os materiais da ZEVANORY ajudam na gestão do dia a dia, mas não substituem contador, obrigações fiscais nem consultoria individual, e não prometem resultado financeiro: o resultado depende da aplicação no seu negócio.", sources: [slug ? `${SALES_ORIGIN}/${slug}` : `${SALES_ORIGIN}/solucoes`], handoff: false };
   }
   if (intent === "refund" || intent === "delivery") {
     return { answered: true, intent, product: slug, answer: intent === "refund" ? REFUND : DELIVERY, sources: [intent === "refund" ? "https://zevanory.api.br/pedir-reembolso" : "https://zevanory.api.br/entrega/reenviar", slug ? `${SALES_ORIGIN}/${slug}` : `${SALES_ORIGIN}/solucoes`], handoff: false };
