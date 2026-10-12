@@ -247,8 +247,8 @@
       "kind": "correção",
       "source": "Print do dono, 12/10 09:51",
       "text": "Pessoas reais contadas só a partir do filtro de robôs; zero vendas com selo correto",
-      "status": "in_progress",
-      "evidence": "PR #728 implantado; aguardando o consolidado do funil publicar pessoas filtradas (foto 13:38: pessoas = sem dados, bruto 8.087 marcado estimado)"
+      "status": "done",
+      "evidence": "Pessoas reais filtradas publicadas pelo funil (459 em 7 dias); selo \"Sem vendas ainda\" correto"
     },
     {
       "id": "support-ai-runtime",
@@ -543,24 +543,48 @@
       "kind": "pendência",
       "source": "Remediação da Central M5",
       "text": "Prova ponta a ponta do CRM (captura → qualificação → persistência → atualização → proposta → resultado → relatório) com dados sintéticos em espaço isolado, sem tocar no CRM de produção.",
-      "status": "pending",
-      "evidence": null
+      "status": "done",
+      "evidence": "P PR #202: workflow \"CRM end-to-end (isolated database)\" 10/10 etapas PASS (captura, idempotência, qualificação, persistência, atualização, proposta, resultado, relatório, isolamento entre tenants); diário 06:23Z"
     },
     {
       "id": "panel-actions-audit",
       "kind": "pendência",
       "source": "Remediação da Central M10",
       "text": "Testar cada botão/ação de todas as áreas (inclui rotas fora do menu) com resposta do servidor e resultado persistido.",
-      "status": "pending",
-      "evidence": null
+      "status": "in_progress",
+      "evidence": "P PR #203: todas as ações de escrita provadas em banco isolado; auditoria em produção achou defeitos (Produtos com 401 apesar de sessão válida; ações comerciais dependentes do Render indisponível) — em correção"
     },
     {
       "id": "funnel-refresh-stalled",
       "kind": "pendência",
       "source": "Heartbeat 12/10",
       "text": "Consolidação do funil parou de atualizar após 13:25 UTC; heartbeat horário (PR #737) mostra a causa no próximo ciclo; corrigir e provar.",
-      "status": "in_progress",
-      "evidence": "PR #737"
+      "status": "done",
+      "evidence": "Causa: limite de 50 subrequests por invocação no plano gratuito; funil movido para o cron 15,45 (heartbeat zpc:cron:v1:isolated); funil ok, 459 pessoas reais em 7 dias"
+    },
+    {
+      "id": "meta-business-verified",
+      "kind": "fato",
+      "source": "Dono, 12/10 16:37 (e-mail Meta for Business de 10/10)",
+      "text": "Verificação empresarial da Meta aprovada para A RENAN ALVES MOREIRA BITU LTDA. Não comprova permissão de publicação pela API nem revisão do app.",
+      "status": "done",
+      "evidence": "E-mail 'Verificação bem-sucedida' de 10/10/2026 (relatado pelo dono). Canal Meta segue NÃO COMPROVADO até a primeira publicação real lida de volta."
+    },
+    {
+      "id": "meta-publish-permission",
+      "kind": "pendência do dono",
+      "source": "Dono, 12/10 16:37",
+      "text": "Confirmar no Meta for Developers / Gerenciador de Negócios o status da revisão do app e das permissões de publicação (pages_manage_posts, instagram_content_publish).",
+      "status": "owner_reserved",
+      "evidence": null
+    },
+    {
+      "id": "whatsapp-business-disabled",
+      "kind": "pendência do dono",
+      "source": "Dono, 12/10 16:37 (comunicado Meta de 10/10)",
+      "text": "Conta WhatsApp Business ZEVANORY desativada pela Meta em 10/10. Recurso é ato do dono; motivo ainda não conhecido pelo executor. Nenhum envio por WhatsApp é feito pelo sistema.",
+      "status": "owner_reserved",
+      "evidence": null
     }
   ]
 }
