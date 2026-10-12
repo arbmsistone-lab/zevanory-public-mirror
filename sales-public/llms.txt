@@ -1,0 +1,65 @@
+# ZEVANORY
+
+> ZEVANORY (A. RENAN ALVES MOREIRA BITU LTDA, CNPJ 69.077.233/0001-99, Várzea Alegre/CE, Brasil) cria guias digitais e conteúdo pronto para pequenos negócios usarem inteligência artificial, vendas e controle de caixa com método e revisão humana. Suporte: suporte@zevanory.api.br · WhatsApp +55 88 99254-5413.
+
+## Produtos
+- [IA na Prática](https://vendas.zevanory.api.br/ia-na-pratica): método para usar IA no dia a dia do negócio, com comandos prontos. R$ 197, garantia de 7 dias.
+- [Vendas na Prática](https://vendas.zevanory.api.br/vendas-na-pratica): processo comercial, mensagens de venda e follow-up. R$ 197.
+- [Lucro & Caixa](https://vendas.zevanory.api.br/lucro-e-caixa): planilha de caixa e margem e rotina financeira semanal. R$ 247.
+- [Combo IA + Vendas](https://vendas.zevanory.api.br/combo-ia-vendas): os dois primeiros juntos. R$ 297.
+- [Negócio Completo](https://vendas.zevanory.api.br/negocio-completo): os três produtos e plano integrado de 30 dias. R$ 397.
+- [Conteúdo Pronto](https://vendas.zevanory.api.br/conteudo-pronto): assinatura mensal com 12 posts e 4 mensagens de venda no tom do negócio. R$ 197/mês.
+
+## Calculadoras gratuitas
+- [Calculadora de preço de venda](https://vendas.zevanory.api.br/calculadora-preco-de-venda): Divida o custo por um menos a soma de impostos, taxas, despesas e margem.
+- [Calculadora de margem de lucro](https://vendas.zevanory.api.br/calculadora-margem-de-lucro): Margem é o lucro dividido pelo preço, não pelo custo.
+- [Calculadora de ponto de equilíbrio](https://vendas.zevanory.api.br/calculadora-ponto-de-equilibrio): Divida os custos fixos pelo que sobra de cada venda.
+- [Calculadora de fluxo de caixa](https://vendas.zevanory.api.br/calculadora-fluxo-de-caixa): Some o saldo e as entradas, tire as saídas e veja quantos dias o caixa aguenta.
+- [Calculadora de preço por hora](https://vendas.zevanory.api.br/calculadora-preco-hora-servico): Divida renda e custos pelas horas que você realmente consegue cobrar.
+- [Calculadora de taxa da maquininha](https://vendas.zevanory.api.br/calculadora-taxa-maquininha): Para receber o valor cheio, divida o preço por um menos a taxa.
+- [Calculadora de CMV](https://vendas.zevanory.api.br/calculadora-cmv): Estoque inicial mais compras, menos estoque final.
+
+## Guias gratuitos de IA por ramo
+- [IA para salão de beleza](https://vendas.zevanory.api.br/ia-para-salao-de-beleza): usos práticos, mensagens prontas para WhatsApp e checklist para salões de beleza.
+- [IA para barbearia](https://vendas.zevanory.api.br/ia-para-barbearia): usos práticos, mensagens prontas para WhatsApp e checklist para barbearias.
+- [IA para restaurante e lanchonete](https://vendas.zevanory.api.br/ia-para-restaurante-e-lanchonete): usos práticos, mensagens prontas para WhatsApp e checklist para restaurantes e lanchonetes.
+- [IA para loja de roupas](https://vendas.zevanory.api.br/ia-para-loja-de-roupas): usos práticos, mensagens prontas para WhatsApp e checklist para lojas de roupas.
+- [IA para mercadinho e mercearia](https://vendas.zevanory.api.br/ia-para-mercadinho): usos práticos, mensagens prontas para WhatsApp e checklist para mercadinhos e mercearias.
+- [IA para oficina mecânica](https://vendas.zevanory.api.br/ia-para-oficina-mecanica): usos práticos, mensagens prontas para WhatsApp e checklist para oficinas mecânicas.
+- [IA para clínica e consultório](https://vendas.zevanory.api.br/ia-para-clinica-e-consultorio): usos práticos, mensagens prontas para WhatsApp e checklist para clínicas e consultórios.
+- [IA para academia e estúdio](https://vendas.zevanory.api.br/ia-para-academia): usos práticos, mensagens prontas para WhatsApp e checklist para academias e estúdios.
+- [IA para pet shop](https://vendas.zevanory.api.br/ia-para-pet-shop): usos práticos, mensagens prontas para WhatsApp e checklist para pet shops.
+- [IA para escritório de contabilidade](https://vendas.zevanory.api.br/ia-para-contabilidade): usos práticos, mensagens prontas para WhatsApp e checklist para escritórios de contabilidade.
+- [IA para imobiliária e corretor](https://vendas.zevanory.api.br/ia-para-imobiliaria): usos práticos, mensagens prontas para WhatsApp e checklist para imobiliárias e corretores.
+- [IA para depósito de bebidas](https://vendas.zevanory.api.br/ia-para-deposito-de-bebidas): usos práticos, mensagens prontas para WhatsApp e checklist para depósitos de bebidas.
+- [IA para padaria](https://vendas.zevanory.api.br/ia-para-padaria): usos práticos, mensagens prontas para WhatsApp e checklist para padarias.
+- [IA para pizzaria](https://vendas.zevanory.api.br/ia-para-pizzaria): usos práticos, mensagens prontas para WhatsApp e checklist para pizzarias.
+- [IA para hamburgueria](https://vendas.zevanory.api.br/ia-para-hamburgueria): usos práticos, mensagens prontas para WhatsApp e checklist para hamburguerias.
+- [IA para açaíteria e sorveteria](https://vendas.zevanory.api.br/ia-para-acaiteria): usos práticos, mensagens prontas para WhatsApp e checklist para açaíterias e sorveterias.
+- [IA para confeitaria](https://vendas.zevanory.api.br/ia-para-confeitaria): usos práticos, mensagens prontas para WhatsApp e checklist para confeitarias.
+- [IA para farmácia](https://vendas.zevanory.api.br/ia-para-farmacia): usos práticos, mensagens prontas para WhatsApp e checklist para farmácias.
+- [IA para ótica](https://vendas.zevanory.api.br/ia-para-otica): usos práticos, mensagens prontas para WhatsApp e checklist para óticas.
+- [IA para papelaria](https://vendas.zevanory.api.br/ia-para-papelaria): usos práticos, mensagens prontas para WhatsApp e checklist para papelarias.
+- [IA para loja de materiais de construção](https://vendas.zevanory.api.br/ia-para-materiais-de-construcao): usos práticos, mensagens prontas para WhatsApp e checklist para lojas de materiais de construção.
+- [IA para loja de celulares e assistência técnica](https://vendas.zevanory.api.br/ia-para-assistencia-tecnica-de-celular): usos práticos, mensagens prontas para WhatsApp e checklist para lojas de celulares e assistências técnicas.
+- [IA para autoescola](https://vendas.zevanory.api.br/ia-para-autoescola): usos práticos, mensagens prontas para WhatsApp e checklist para autoescolas.
+- [IA para escola de idiomas e curso livre](https://vendas.zevanory.api.br/ia-para-escola-de-idiomas): usos práticos, mensagens prontas para WhatsApp e checklist para escolas de idiomas e cursos livres.
+- [IA para clínica odontológica](https://vendas.zevanory.api.br/ia-para-clinica-odontologica): usos práticos, mensagens prontas para WhatsApp e checklist para clínicas odontológicas.
+- [IA para psicólogo](https://vendas.zevanory.api.br/ia-para-psicologo): usos práticos, mensagens prontas para WhatsApp e checklist para psicólogos.
+- [IA para nutricionista](https://vendas.zevanory.api.br/ia-para-nutricionista): usos práticos, mensagens prontas para WhatsApp e checklist para nutricionistas.
+- [IA para clínica de fisioterapia](https://vendas.zevanory.api.br/ia-para-fisioterapia): usos práticos, mensagens prontas para WhatsApp e checklist para clínicas de fisioterapia.
+- [IA para estética e depilação](https://vendas.zevanory.api.br/ia-para-estetica): usos práticos, mensagens prontas para WhatsApp e checklist para clínicas de estética e depilação.
+- [IA para manicure e nail designer](https://vendas.zevanory.api.br/ia-para-manicure): usos práticos, mensagens prontas para WhatsApp e checklist para manicures e nail designers.
+- [IA para lava-jato](https://vendas.zevanory.api.br/ia-para-lava-jato): usos práticos, mensagens prontas para WhatsApp e checklist para lava-jatos.
+- [IA para eletricista e encanador](https://vendas.zevanory.api.br/ia-para-eletricista-e-encanador): usos práticos, mensagens prontas para WhatsApp e checklist para eletricistas e encanadores.
+- [IA para fotógrafo](https://vendas.zevanory.api.br/ia-para-fotografo): usos práticos, mensagens prontas para WhatsApp e checklist para fotógrafos.
+- [IA para arquitetura e design de interiores](https://vendas.zevanory.api.br/ia-para-arquitetura-e-design-de-interiores): usos práticos, mensagens prontas para WhatsApp e checklist para escritórios de arquitetura e design de interiores.
+- [IA para escritório de advocacia](https://vendas.zevanory.api.br/ia-para-advocacia): usos práticos, mensagens prontas para WhatsApp e checklist para escritórios de advocacia.
+- [IA para agência de viagens](https://vendas.zevanory.api.br/ia-para-agencia-de-viagens): usos práticos, mensagens prontas para WhatsApp e checklist para agências de viagens.
+- [IA para floricultura](https://vendas.zevanory.api.br/ia-para-floricultura): usos práticos, mensagens prontas para WhatsApp e checklist para floriculturas.
+- [IA para marmitaria](https://vendas.zevanory.api.br/ia-para-marmitaria): usos práticos, mensagens prontas para WhatsApp e checklist para marmitarias.
+- [IA para pousada e hotel](https://vendas.zevanory.api.br/ia-para-pousada): usos práticos, mensagens prontas para WhatsApp e checklist para pousadas e hotéis.
+- [IA para distribuidora de gás e água](https://vendas.zevanory.api.br/ia-para-distribuidora-de-gas-e-agua): usos práticos, mensagens prontas para WhatsApp e checklist para distribuidoras de gás e água.
+
+## Políticas
+- [Termos](https://vendas.zevanory.api.br/termos) · [Privacidade](https://vendas.zevanory.api.br/privacidade) · [Reembolso](https://vendas.zevanory.api.br/reembolso)

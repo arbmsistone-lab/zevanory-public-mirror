@@ -240,6 +240,7 @@ def apply_approved_overlay() -> None:
     for asset in ("robots.txt", "whatsapp-contact.js"):
         shutil.copy2(OVERLAY / asset, OUT / asset)
     shutil.copy2(ROOT / "ferramentas.js", OUT / "ferramentas.js")
+    shutil.copy2(OVERLAY / "llms.txt", OUT / "llms.txt")
 
     controller = (OUT / "privacidade.html").read_text(encoding="utf-8")
     problems = []
