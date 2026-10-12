@@ -1,0 +1,13 @@
+{
+  "schema": "zevanory-products/v1",
+  "note": "Fonte oficial única de nome, código, preço e garantia. Site, e-mails, vídeos, posts e atendimento são verificados contra este arquivo em todo PR (tests/product-consistency.test.mjs).",
+  "guaranteeDays": 7,
+  "products": [
+    { "slug": "ia-na-pratica", "sku": "ZEV-IA-011", "name": "IA na Prática", "price": 197 },
+    { "slug": "vendas-na-pratica", "sku": "ZEV-VEN-011", "name": "Vendas na Prática", "price": 197 },
+    { "slug": "lucro-e-caixa", "sku": "ZEV-LCX-011", "name": "Lucro & Caixa", "price": 247 },
+    { "slug": "combo-ia-vendas", "sku": "ZEV-CMB-011", "name": "Combo IA + Vendas", "price": 297 },
+    { "slug": "negocio-completo", "sku": "ZEV-NGC-011", "name": "Negócio Completo", "price": 397 }
+  ],
+  "subscription": { "slug": "conteudo-pronto", "name": "Conteúdo Pronto", "price": 197, "period": "mês" }
+}
