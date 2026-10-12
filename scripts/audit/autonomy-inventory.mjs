@@ -15,7 +15,7 @@ function latestPublication(byDay, channel) {
   return best;
 }
 function latestRun(runs, workflow) {
-  const ok = (runs || []).filter((r) => r.path?.endsWith(workflow) && r.event === "schedule" && r.conclusion === "success");
+  const ok = (runs || []).filter((r) => r.path?.endsWith(workflow) && (r.event === "schedule" || (r.event === "workflow_dispatch" && r.actor === "github-actions[bot]")) && r.conclusion === "success");
   return ok.length ? Math.max(...ok.map((r) => Date.parse(r.updated_at || r.created_at))) : null;
 }
 
