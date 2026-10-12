@@ -25,7 +25,7 @@ test("a clear difference with enough data names the winner; noise does not", () 
 });
 
 test("before/after uses equal windows and a proportion test", () => {
-  const exp = registry.experiments[1];
+  const exp = { ...registry.experiments[1], cleanSince: undefined };
   const daily = {};
   for (let i = 1; i <= 14; i++) { daily[new Date(Date.parse("2026-10-12") - i * 864e5).toISOString().slice(0, 10)] = { views: 50, intents: 1 }; daily[new Date(Date.parse("2026-10-12") + (i - 1) * 864e5).toISOString().slice(0, 10)] = { views: 50, intents: 4 }; }
   const r = evaluateBeforeAfter(exp, daily, now);
@@ -36,5 +36,17 @@ test("before/after uses equal windows and a proportion test", () => {
 test("every registered experiment evaluates with no data and never claims a result", () => {
   const out = evaluateExperiments(registry, {}, Date.parse("2026-10-13T00:00:00Z"));
   assert.equal(out.length, registry.experiments.length);
-  for (const e of out) { assert.ok(["collecting", "tracking"].includes(e.status), e.id); assert.ok(e.hypothesis && e.metric && e.verdict); }
+  for (const e of out) { assert.ok(["collecting", "tracking", "inconclusive"].includes(e.status), e.id); assert.ok(e.hypothesis && e.metric && e.verdict); }
+});
+
+import { fmtP } from "../scripts/audit/experiments.mjs";
+test("a contaminated baseline is inconclusive; a short window keeps collecting; p is never 0", () => {
+  const exp = registry.experiments[1];
+  const r = evaluateBeforeAfter(exp, {}, now);
+  assert.equal(r.status, "inconclusive"); assert.match(r.verdict, /filtro de robôs/);
+  const clean = { ...exp, cleanSince: undefined };
+  assert.equal(evaluateBeforeAfter(clean, {}, Date.parse("2026-10-13T00:00:00Z")).status, "collecting");
+  assert.equal(fmtP(0), "p<0,001"); assert.equal(fmtP(0.0004), "p<0,001"); assert.equal(fmtP(0.0312), "p=0,031");
+  const few = {}; for (let i = 1; i <= 14; i++) { few[new Date(Date.parse("2026-10-12") - i * 864e5).toISOString().slice(0, 10)] = { views: 50, intents: 0 }; few[new Date(Date.parse("2026-10-12") + (i - 1) * 864e5).toISOString().slice(0, 10)] = { views: 50, intents: 1 }; }
+  assert.equal(evaluateBeforeAfter(clean, few, now).status, "inconclusive"); // 14 events < 20
 });

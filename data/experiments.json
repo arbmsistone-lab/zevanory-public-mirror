@@ -7,8 +7,16 @@
       "hypothesis": "Shorts com dica prática por ramo e com calculadora gratuita atraem mais visualizações do que o Short que apresenta o produto.",
       "metric": "Visualizações por vídeo com 3 dias ou mais de publicação",
       "kind": "arms",
-      "arms": ["dica", "oferta", "calc"],
-      "armLabels": { "dica": "Dica por ramo", "oferta": "Produto do dia", "calc": "Calculadora" },
+      "arms": [
+        "dica",
+        "oferta",
+        "calc"
+      ],
+      "armLabels": {
+        "dica": "Dica por ramo",
+        "oferta": "Produto do dia",
+        "calc": "Calculadora"
+      },
       "minPerArm": 7,
       "startedAt": "2026-10-12",
       "decision": "O formato vencedor ganha mais horários; o perdedor é reescrito ou sai."
@@ -22,7 +30,9 @@
       "changeAt": "2026-10-12",
       "windowDays": 14,
       "minViewsPerSide": 200,
-      "decision": "Se não melhorar, a próxima variação muda o primeiro bloco (título e promessa)."
+      "decision": "Se não melhorar, a próxima variação muda o primeiro bloco (título e promessa).",
+      "cleanSince": "2026-10-12",
+      "minEventsTotal": 20
     },
     {
       "id": "nurture-match",
