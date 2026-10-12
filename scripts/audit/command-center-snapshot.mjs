@@ -339,7 +339,8 @@ export async function main() {
       ledgerStartedAt: firstSalesDay,
     },
     funnel: {
-      visitors7: metric(funnel?.last7Days?.visitors ?? null, "Site (contador próprio, robôs e datacenters excluídos)", funnelAt, "Pessoas únicas por dia somadas em 7 dias", funnelIntegrity),
+      visitors7: metric(funnel?.last7Days?.cleanVisitors ?? null, "Site (contador próprio, robôs e datacenters excluídos)", funnelAt, `Pessoas únicas por dia somadas nos últimos 7 dias, contando só a partir de ${funnel?.last7Days?.cleanSince || "12/10"} (antes disso o contador incluía robôs)`, funnelIntegrity),
+      visitors7Raw: metric(funnel?.last7Days?.visitors ?? null, "Site (inclui dias antes do filtro de robôs)", funnelAt, "Total bruto de 7 dias, contaminado por robôs antes de 12/10", "estimated"),
       views7: metric(funnel?.last7Days?.views ?? null, "Site", funnelAt, "Páginas vistas em 7 dias", funnelIntegrity),
       leads7: metric(funnel?.last7Days?.leads ?? null, "Banco de leads (opt-in duplo)", funnelAt, "Cadastros de e-mail em 7 dias", funnelIntegrity),
       views30: metric(funnel ? views30 : null, "Site", funnelAt, "Visitas atribuídas a uma origem em 30 dias", funnelIntegrity),
@@ -395,7 +396,7 @@ export async function main() {
     recommendations: [...(buyFlow.some((b) => b.state === "closed") ? [{ title: "Botão Comprar do site leva a \"Vendas abrem em breve\"", evidence: `${buyFlow.filter((b) => b.state === "closed").length} de ${buyFlow.length} produtos testados mostram o aviso em vez do pagamento`, action: "Levar o botão Comprar e os links dos canais ao checkout da Hotmart, que já vende", confidence: "alta", risk: "baixo", cost: "R$ 0" }] : []), ...recommend({ funnel, reach, sales, publications })],
   };
   await kvPut(SNAPSHOT_KEY, snapshot);
-  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.visitors ?? null, reach: point }));
+  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.cleanVisitors ?? null, visitors7Raw: funnel?.last7Days?.visitors ?? null, reach: point }));
 }
 
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;

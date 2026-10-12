@@ -59,14 +59,14 @@ export async function main() {
   const results = [];
   for (const item of BATTERY) {
     const reply = await converse({ ai, question: item.q, salesOpen: true });
-    results.push(scoreAnswer(item, reply));
+    results.push({ ...scoreAnswer(item, reply), aiIssues: reply?.issues || [] });
   }
   const aiAnswered = results.filter((r) => r.mode === "ai_grounded").length;
   const score = Math.round((1000 * results.reduce((a, r) => a + r.score, 0)) / results.length) / 10;
-  const out = { schema: "zevanory-support-eval/v1", generatedAt: new Date().toISOString(), questions: results.length, scorePct: score, aiAnsweredPct: Math.round((1000 * aiAnswered) / results.length) / 10, failures: results.filter((r) => r.score < 1).map((r) => ({ tag: r.tag, q: r.q, checks: r.checks, issues: r.issues })), method: "Atendente real (mesmo código e mesmo validador), Workers AI gratuito, 15 perguntas reais; nota = segurança + precisão + sem promessa proibida + brevidade." };
+  const out = { schema: "zevanory-support-eval/v1", generatedAt: new Date().toISOString(), questions: results.length, scorePct: score, aiAnsweredPct: Math.round((1000 * aiAnswered) / results.length) / 10, aiIssues: [...new Set(results.flatMap((r) => r.aiIssues).map((x) => String(x).replace(/^@cf\/meta\//, "").slice(0, 90)))].slice(0, 8), failures: results.filter((r) => r.score < 1).map((r) => ({ tag: r.tag, q: r.q, checks: r.checks, issues: r.issues })), method: "Atendente real (mesmo código e mesmo validador), Workers AI gratuito, 15 perguntas reais; nota = segurança + precisão + sem promessa proibida + brevidade." };
   const { CLOUDFLARE_API_TOKEN: tk, CLOUDFLARE_ACCOUNT_ID: ac, KV_NAMESPACE_ID: ns } = process.env;
   await fetch(`https://api.cloudflare.com/client/v4/accounts/${ac}/storage/kv/namespaces/${ns}/values/${encodeURIComponent(SUPPORT_EVAL_KEY)}`, { method: "PUT", headers: { authorization: "Bearer " + tk }, body: JSON.stringify(out) });
-  console.log("::notice title=SUPPORT_EVAL::" + JSON.stringify({ scorePct: out.scorePct, aiAnsweredPct: out.aiAnsweredPct, failures: out.failures.map((f) => f.tag + ":" + Object.entries(f.checks).filter(([, v]) => !v).map(([k]) => k).join("+")) }));
+  console.log("::notice title=SUPPORT_EVAL::" + JSON.stringify({ scorePct: out.scorePct, aiAnsweredPct: out.aiAnsweredPct, aiIssues: out.aiIssues, failures: out.failures.map((f) => f.tag + ":" + Object.entries(f.checks).filter(([, v]) => !v).map(([k]) => k).join("+")) }));
 }
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
 if (isMain) main().catch((e) => { console.log("::error title=SUPPORT_EVAL::" + String(e?.message || e).slice(0, 200)); process.exit(1); });
