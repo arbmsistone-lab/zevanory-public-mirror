@@ -1,4 +1,5 @@
 import { handleFirstOrderWatchReadOnly } from "./first-order-watch-audit.mjs";
+import { legacyTrustProjection, guardTrustChain } from "./trust-projection.mjs";
 import { syncProductionActivity } from "./production-activity-sync.mjs";
 import { runAcquisitionEngine, acquisitionSnapshot } from "./acquisition-engine.mjs";
 import { syncBrandProfiles, brandProfileSnapshot, publicBrandProfileStatus } from "./brand-profiles.mjs";
@@ -77,46 +78,6 @@ function canonicalizePublicPath(request, url) {
   const target = new URL(url.toString());
   target.pathname = url.pathname.replace(/\/+$/, "") || "/";
   return Response.redirect(target.toString(), 308);
-}
-
-function legacyTrustProjection(body) {
-  const counts = body?.policy?.counts || {};
-  const totalProven = Number(counts.proven || 0);
-  const liveReady = body?.zea10_live?.ready === true;
-  const liveFailClosed = body?.zea10_live?.fail_closed !== false;
-  const commercialEnabled = body?.global_state === "operational_commercial_enabled";
-  const green = commercialEnabled && totalProven === 10 && liveReady && !liveFailClosed;
-
-  return {
-    state: green ? "GREEN" : "BLOCKED",
-    artifact_sha: body?.proof_chain?.sha
-      || body?.policy?.release_sha
-      || body?.release?.deployment?.commit_sha
-      || null,
-    evidence_root: null,
-    policy_version: body?.policy?.framework || "ZEA-10",
-    passed: 0,
-    total: 0,
-    required: 0,
-    conflicts: 0,
-    independent_keys: 0,
-    engines: [
-      {
-        id: "zea10-live",
-        state: liveReady ? (liveFailClosed ? "FAIL_CLOSED" : "GREEN") : "UNAVAILABLE"
-      }
-    ],
-    ledger: {
-      checked_at: body?.zea10_live?.report?.generated_at
-        || body?.zea10_live?.report?.checked_at
-        || null
-    },
-    compatibility: {
-      source: "control-plane-vnext",
-      quorum_available: false,
-      claim_scope: body?.policy?.claim_scope || "internal_engineering_alignment_not_external_certification"
-    }
-  };
 }
 
 const wrapped = {
@@ -614,7 +575,7 @@ const wrapped = {
       const releaseSha = body?.release?.deployment?.commit_sha || body?.proof_chain?.sha || null;
       const zees16 = await readControlState(normalized).catch(() => null);
       body.zea10_live = projectLocalZea10(zees16, releaseSha);
-      if (!body.trust_chain) body.trust_chain = legacyTrustProjection(body);
+      body.trust_chain = body.trust_chain ? guardTrustChain(body.trust_chain) : legacyTrustProjection(body);
       if (body.policy && typeof body.policy === "object") {
         body.policy = {
           ...body.policy,
