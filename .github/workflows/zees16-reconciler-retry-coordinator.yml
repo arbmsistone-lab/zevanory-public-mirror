@@ -53,7 +53,7 @@ jobs:
             before="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/zees16-control-reconciler.yml/runs?event=workflow_dispatch&per_page=30" --jq '[.workflow_runs[].id] | max // 0')"
             # Inside "if watch_one" errexit is off: a failed dispatch used to pass silently and the
             # coordinator then waited for a run that was never created.
-            if ! dispatch_out="$(gh workflow run zees16-control-reconciler.yml --ref gh-pages 2>&1)"; then
+            if ! dispatch_out="$(gh workflow run zees16-control-reconciler.yml --repo "$GITHUB_REPOSITORY" --ref gh-pages 2>&1)"; then
               echo "::error title=RETRY_COORDINATOR::RECONCILER_DISPATCH_FAILED $(echo "$dispatch_out" | tr '\n' ' ' | cut -c1-200)"
               return 1
             fi
@@ -73,7 +73,7 @@ jobs:
             echo "RECONCILER_RUN_ID=$next"
             ran_sha="$(jq -r --argjson id "$next" '.workflow_runs[] | select(.id==$id) | .head_sha' <<< "$info")"
             [ "$ran_sha" = "$TARGET_SHA" ] || echo "::notice title=RETRY_COORDINATOR::gh-pages advanced: reconciler ran on $ran_sha (deploy target $TARGET_SHA)"
-            gh run watch "$next" --exit-status || { echo "::warning title=RETRY_COORDINATOR::reconciler run $next ended $(gh api repos/$GITHUB_REPOSITORY/actions/runs/$next --jq .conclusion)"; return 1; }
+            gh run watch "$next" --repo "$GITHUB_REPOSITORY" --exit-status || { echo "::warning title=RETRY_COORDINATOR::reconciler run $next ended $(gh api repos/$GITHUB_REPOSITORY/actions/runs/$next --jq .conclusion)"; return 1; }
           }
           if watch_one; then
             echo "RECONCILER_FIRST_PASS=GREEN"
