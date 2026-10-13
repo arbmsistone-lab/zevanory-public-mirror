@@ -66,58 +66,16 @@ jobs:
           npm install --no-audit --no-fund
           npm run build
 
-      - name: Bind current GREEN trust artifact from Control Core
+      - name: Write build lineage (trust is served live by the worker)
         working-directory: zpc
         shell: bash
         run: |
           set -euo pipefail
-          # Core snapshot is authoritative for three independent control engines.
-          # Missing data, absent proof, incompatible SHA or error always fails closed.
-          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 \
-            https://zevanory.api.br/api/core/v1/snapshot -o /tmp/zpc-core-snapshot.json
-          jq '{
-            sha: (.release_sha // null),
-            checkedAt: (.generated_at // null),
-            evidenceRoot: (.zees16.decision_hash // null),
-            policyVersion: (.zees16.policy_version // null),
-            source: "ZEVANORY Control Core /api/core/v1/snapshot",
-            zea10: {
-              proven: (.zea10.counts.proven // 0),
-              partial: (.zea10.counts.partial // 0),
-              blocked: (.zea10.counts.blocked // 10),
-              unknown: (.zea10.counts.unknown // 10)
-            },
-            zees16: {
-              proven: (.zees16.counts.proven // 0),
-              partial: (.zees16.counts.partial // 0),
-              blocked: (.zees16.counts.blocked // 16),
-              na: (.zees16.counts.na // 16)
-            },
-            quorum: {
-              passed: (if .invariants.quorum_ok == true then 3 else 0 end),
-              total: 3, required: 3, conflicts: 0, independentKeys: 3
-            },
-            engines: [
-              {id:"ZEES-16",state:(if (.zees16.counts.proven == 16 and .zees16.counts.partial == 0 and .zees16.counts.blocked == 0 and .zees16.counts.na == 0 and (.zees16.persistence == "kv-append-only" or .zees16.persistence == "recomputed-immutable-sources")) then "GREEN" else "BLOCKED" end)},
-              {id:"ZEA-10",state:(if (.zea10.counts.proven == 10 and .zea10.counts.partial == 0 and .zea10.counts.blocked == 0 and .zea10.counts.unknown == 0 and .zea10.authority == true and .zea10.external_review_required != true) then "GREEN" else "BLOCKED" end)},
-              {id:"CORE",state:(if (.authority == "server-side-core-only" and .source_of_truth == true and .fail_closed == true and .ui_can_authorize == false and .invariants.exact_release_bound == true and .invariants.control_plane_ready == true and .invariants.health_ready == true and .invariants.quorum_ok == true and .invariants.evidence_to_evaluation_unidirectional == true) then "GREEN" else "BLOCKED" end)}
-            ],
-            source_error: null
-          } | .state = (if ([.engines[].state] | length == 3 and all(. == "GREEN")) then "GREEN" else "BLOCKED" end)' /tmp/zpc-core-snapshot.json > dist/global-trust.json
-          # Never accept a missing or unverified release or missing core fields.
-          if ! jq -e '.state == "GREEN" and (.sha|type=="string" and test("^[a-f0-9]{40}$")) and (.checkedAt|type=="string")' dist/global-trust.json >/dev/null; then
-            value="$(jq -cr '{state,sha,zea10,zees16,engines,checkedAt}' dist/global-trust.json)"
-            echo "::error title=TRUST_CORE_BLOCKED::$value"
-            exit 1
-          fi
-          if ! jq -e '.zea10.proven == 10 and .zea10.partial == 0 and .zea10.blocked == 0 and .zea10.unknown == 0' dist/global-trust.json >/dev/null; then
-            echo "::error title=TRUST_ZEA10::$(jq -cr '.zea10' dist/global-trust.json)"
-            exit 1
-          fi
-          if ! jq -e '[.engines[].state] | length == 3 and all(. == "GREEN")' dist/global-trust.json >/dev/null; then
-            echo "::error title=TRUST_ENGINES::$(jq -cr '.engines' dist/global-trust.json)"
-            exit 1
-          fi
+          # P0 13/10/2026: no deploy-time global-trust.json. The old step wrote it with
+          # independentKeys:3 and conflicts:0 hard-coded and passed:3 taken from the core's
+          # continuity.quorum_ok (sales channels); the Central froze GREEN on an old SHA.
+          # Since edge #207 the worker derives /global-trust.json live (schema zpc-global-trust/v2).
+          rm -f dist/global-trust.json
           printf '{"sha":"%s","repository":"arbmsistone-lab/zevanory-product-control-edge","workflow_run":"%s"}\n' \
             "$SOURCE_SHA" "${{ github.run_id }}" > dist/zpc-build.json
 
@@ -154,10 +112,27 @@ jobs:
             echo "::error title=READBACK_TRUST::HTTP fetch failed"
             exit 1
           fi
-          if ! jq -e '.state == "GREEN" and .zea10.proven == 10 and ([.engines[].state] | length == 3 and all(. == "GREEN"))' /tmp/global-trust.json >/dev/null; then
-            echo "::error title=READBACK_TRUST::$(jq -c '{state,sha,zea10,zees16,engines}' /tmp/global-trust.json 2>/dev/null || echo invalid_json)"
+          # Coherence, not colour (edge #207 contract): live, v2, bound to the running core release,
+          # and GREEN only with a proven independent quorum. BLOCKED/DEGRADED/NO_PROOF are honest states.
+          curl --fail --silent --show-error --max-time 25 https://zevanory.api.br/api/core/v1/snapshot -o /tmp/core.json
+          src="$(curl -sS -D - -o /dev/null --max-time 25 https://controle.zevanory.api.br/global-trust.json | tr -d '\r' | awk -F': ' 'tolower($1)=="x-zpc-trust-source"{print $2}')"
+          if [ "$src" != "live-control-core" ]; then echo "::error title=READBACK_TRUST_SOURCE::source=${src:-none} (deploy-time artifact still served)"; exit 1; fi
+          if ! jq -e --slurpfile core /tmp/core.json --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+              .schema == "zpc-global-trust/v2"
+              and (.state | IN("GREEN","DEGRADED","BLOCKED","NO_PROOF"))
+              and (if .state != "NO_PROOF" then .sha == $core[0].release_sha else true end)
+              and (if .state == "GREEN" then
+                    .quorum.ok == true and .quorum.required >= 2 and .quorum.passed >= .quorum.required
+                    and .quorum.independentKeys >= .quorum.required and .quorum.conflicts == 0
+                    and (.evidenceRoot|type=="string" and length>0) and .crossCheck.state == "agree"
+                    and (.validUntil|type=="string") and .validUntil > $now
+                    and $core[0].control.trust_chain.state == "GREEN"
+                  else true end)'\
+              /tmp/global-trust.json >/dev/null; then
+            echo "::error title=READBACK_TRUST_INCOHERENT::$(jq -c '{schema,state,reasons,sha,quorum,crossCheck,validUntil}' /tmp/global-trust.json 2>/dev/null || echo invalid_json)"
             exit 1
           fi
+          echo "::notice title=TRUST_LIVE::$(jq -c '{state,reasons,sha,validUntil,quorum:{passed:.quorum.passed,required:.quorum.required,ok:.quorum.ok}}' /tmp/global-trust.json)"
           if ! curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 \
             https://zevanory.api.br/api/support/artifacts-status -o /tmp/artifacts.json; then
             echo "::error title=READBACK_ARTIFACTS::HTTP fetch failed"
