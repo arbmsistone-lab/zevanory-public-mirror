@@ -2,6 +2,8 @@
 
 Fonte canônica: `sales-public/brand/zevanory-logo-dark.svg` (logo horizontal) e `sales-public/brand/zevanory-mark.svg` (símbolo Z). Cópias fiéis em `assets/brand/`. Não alterar os originais.
 
+**Revisão aprovada pelo dono (12–13/10/2026):** removida do logotipo horizontal e das capas a linha interna "CENTRAL OPERACIONAL · REVENUE OPERATIONS". Símbolo Z, palavra ZEVANORY, geometria, cores e tipografia permanecem idênticos; o enquadramento foi recentrado sem mudar a proporção 1400×320. Bios de Bluesky/Telegram passam à biografia curta oficial: "IA, vendas e soluções práticas para pequenos negócios. Menos improviso. Mais execução."
+
 ## Exportação
 
 `python scripts/build-brand-assets.py` gera `assets/brand/export/`, espelha PNGs públicos em `sales-public/brand/export/` e grava as hashes aprovadas em `worker/brand-approved.mjs`.

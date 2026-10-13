@@ -7,11 +7,11 @@ import { resolveChannelCredentials } from "./multichannel-autonomy.mjs";
 export const OFFICIAL_SOCIAL_PROFILE = Object.freeze({
   bluesky: Object.freeze({
     displayName:"ZEVANORY",
-    description:"IA na prática para pequenos negócios. Criada por Renan Bitu, Várzea Alegre/CE. https://vendas.zevanory.api.br/?utm_source=bluesky&utm_medium=profile",
+    description:"IA, vendas e soluções práticas para pequenos negócios. Menos improviso. Mais execução. https://vendas.zevanory.api.br/?utm_source=bluesky&utm_medium=profile",
   }),
   telegram: Object.freeze({
     title:"ZEVANORY",
-    description:"IA na prática para pequenos negócios. Criada por Renan Bitu, Várzea Alegre/CE. https://vendas.zevanory.api.br/?utm_source=telegram&utm_medium=profile",
+    description:"IA, vendas e soluções práticas para pequenos negócios. Menos improviso. Mais execução. https://vendas.zevanory.api.br/?utm_source=telegram&utm_medium=profile",
   }),
 });
 export const BRAND_PROFILE_STATE_KEY="zpc:brand:profiles:v1";

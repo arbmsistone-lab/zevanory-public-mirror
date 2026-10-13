@@ -1,7 +1,7 @@
 name: Build committed official brand exports (feature branch only)
 on:
   push:
-    branches: ['feat/brand-kit-unified-20261010']
+    branches: ['feat/brand-kit-unified-20261010', 'fix/brand-**']
     paths:
       - 'assets/brand/*.svg'
       - 'scripts/build-brand-assets.py'
@@ -11,13 +11,14 @@ permissions:
   contents: write
 jobs:
   materialize-assets:
-    if: github.repository == 'arbmsistone-lab/zevanory-public-mirror' && github.ref == 'refs/heads/feat/brand-kit-unified-20261010'
+    # Never on gh-pages: renders official exports only on the brand feature/fix branch that changed the sources.
+    if: github.repository == 'arbmsistone-lab/zevanory-public-mirror' && (github.ref == 'refs/heads/feat/brand-kit-unified-20261010' || startsWith(github.ref, 'refs/heads/fix/brand-'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feat/brand-kit-unified-20261010
+          ref: ${{ github.ref_name }}
           persist-credentials: true
       - name: Dependencies pinned
         run: python3 -m pip install --user --disable-pip-version-check 'CairoSVG==2.8.2' 'Pillow==12.3.0'
@@ -31,4 +32,4 @@ jobs:
           git add assets/brand/export sales-public/brand/export worker/brand-approved.mjs
           if git diff --cached --quiet; then echo "BRAND_EXPORT_ALREADY_CURRENT=PASS"; exit 0; fi
           git commit -m "build(brand): pin exact exported PNG hashes and publishable copies"
-          git push origin HEAD:refs/heads/feat/brand-kit-unified-20261010
+          git push origin HEAD:refs/heads/${{ github.ref_name }}

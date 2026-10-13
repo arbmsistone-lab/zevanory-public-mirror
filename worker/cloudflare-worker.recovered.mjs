@@ -1634,7 +1634,7 @@ var profile = /* @__PURE__ */ __name((handle, source, extra = {}) => Object.free
 var CHANNEL_PROFILES = Object.freeze({
   instagram: profile("@zevanory_", "instagram", { profileUrl: "https://www.instagram.com/zevanory_/", identityState: "provider_name_bio_site_confirmed_binding_pending" }),
   facebook: profile("ZEVANORY", "facebook", { coverImage: BRAND_PROFILE.facebookCover, identityState: "provider_name_confirmed_profile_image_pending" }),
-  tiktok: profile("@zevanory3", "tiktok", { profileUrl: "https://www.tiktok.com/@zevanory3", identityState: "public_profile_known_provider_verification_pending" }),
+  tiktok: profile("@zevanory", "tiktok", { profileUrl: "https://www.tiktok.com/@zevanory", identityState: "public_profile_known_provider_verification_pending" }),
   youtube: profile("@zevanory", "youtube", { profileUrl: "https://youtube.com/@zevanory", identityState: "provider_identity_confirmed" }),
   linkedin: profile("ZEVANORY", "linkedin", { identityState: "corporate_page_pending" }),
   google: profile("ZEVANORY", "google", { identityState: "first_party_search_identity" }),

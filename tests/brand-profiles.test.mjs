@@ -57,8 +57,10 @@ test("Telegram refuses to certify unchanged profile photograph",async()=>{
 test("Bluesky official identity never accepts a mismatched post-write biography",async()=>{
   const copy=OFFICIAL_SOCIAL_PROFILE.bluesky;
   assert.equal(copy.displayName,"ZEVANORY");
-  assert.match(copy.description,/Renan Bitu, Várzea Alegre\/CE/);
+  // Official short biography (owner directive 12/10/2026, Missão 4) + channel UTM.
+  assert.ok(copy.description.startsWith("IA, vendas e soluções práticas para pequenos negócios. Menos improviso. Mais execução. "));
   assert.match(copy.description,/utm_source=bluesky/);
+  assert.equal(OFFICIAL_SOCIAL_PROFILE.telegram.description.replace("telegram","bluesky"),copy.description,"Telegram and Bluesky carry the same official text");
 });
 test("Telegram channel official description names ZEVANORY and carries the channel UTM",()=>{
   assert.equal(OFFICIAL_SOCIAL_PROFILE.telegram.title,"ZEVANORY");
