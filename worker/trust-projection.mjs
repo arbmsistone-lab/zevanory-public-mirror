@@ -26,12 +26,24 @@ export function guardTrustChain(t) {
 }
 
 export function legacyTrustProjection(body) {
-  const counts = body?.policy?.counts || {};
+  // Proven count: the canonical ZEA-10 evaluation (zea10_live.report, bound to this release) wins
+  // over the legacy `policy` block, which the worker itself marks deprecated_for_decision. On 13/10
+  // the legacy block said 0/10 while the canonical evaluation and the Control Core said 10/10,
+  // making this route BLOCKED against a core ALLOW (owner audit, Mission 1). The legacy block is
+  // used only when no canonical report exists. The ceiling is still UNVERIFIED (never GREEN).
+  const canonical = body?.zea10_live?.report;
+  const releaseSha = body?.release?.deployment?.commit_sha || body?.proof_chain?.sha || null;
+  const canonicalCounts = canonical?.counts && typeof canonical.counts === "object" ? canonical.counts : null;
+  const lc = (v) => String(v || "").trim().toLowerCase();
+  // Bound only when both SHAs exist and match: an unbound report never counts (independent review).
+  const canonicalBound = Boolean(canonicalCounts && releaseSha && canonical?.release_sha && lc(canonical.release_sha) === lc(releaseSha));
+  const counts = canonicalCounts || body?.policy?.counts || {};
   const totalProven = Number(counts.proven || 0);
+  const noneOpen = !canonicalCounts || (Number(counts.partial || 0) === 0 && Number(counts.blocked || 0) === 0 && Number(counts.unknown || 0) === 0);
   const liveReady = body?.zea10_live?.ready === true;
   const liveFailClosed = body?.zea10_live?.fail_closed !== false;
   const commercialEnabled = body?.global_state === "operational_commercial_enabled";
-  const legacyOk = commercialEnabled && totalProven === 10 && liveReady && !liveFailClosed;
+  const legacyOk = commercialEnabled && totalProven === 10 && noneOpen && (!canonicalCounts || canonicalBound) && liveReady && !liveFailClosed;
 
   return {
     // UNVERIFIED: the legacy indicators agree, but nothing independent confirmed them.
