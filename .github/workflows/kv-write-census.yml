@@ -31,7 +31,11 @@ jobs:
           set -uo pipefail
           npm install --prefix /tmp/t --no-save wrangler@4.143.0 >/dev/null 2>&1
           secs=$(( ${{ inputs.minutes }} * 60 ))
-          timeout "${secs}s" /tmp/t/node_modules/.bin/wrangler tail zevanory --format json > /tmp/tail.jsonl 2>/tmp/tail.err || true
+          # Both Workers that write to the shared namespace (main site Worker and the owner panel).
+          timeout "${secs}s" /tmp/t/node_modules/.bin/wrangler tail zevanory --format json > /tmp/tail-main.jsonl 2>/tmp/tail.err &
+          timeout "${secs}s" /tmp/t/node_modules/.bin/wrangler tail zevanory-product-control-portable --format json > /tmp/tail-panel.jsonl 2>>/tmp/tail.err &
+          wait || true
+          cat /tmp/tail-main.jsonl /tmp/tail-panel.jsonl > /tmp/tail.jsonl
           node --input-type=module <<'JS'
           import { readFileSync } from "node:fs";
           // wrangler tail --format json prints pretty, multi-line events: scan the raw text for the
