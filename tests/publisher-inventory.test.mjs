@@ -96,7 +96,10 @@ test("the scheduled panel reconciler is guarded and never answers pin pushes", (
   const t2 = read("t2-exact-control-worker-promotion.yml");
   assert.doesNotMatch(t2.split(/^permissions:|^concurrency:|^jobs:/m)[0], /^\s+push:/m, "pin pushes belong to the canonical publisher only");
   assert.match(t2, /ZPC_ROLLBACK_HOLD/, "a deliberate rollback must not be undone by the reconciler");
-  assert.match(t2, /merge-base --is-ancestor "\$LIVE_SHA" "\$SOURCE_SHA"/, "reconciler only moves forward from live");
+  assert.match(t2, /promotion_guard\.py --service zevanory-product-control-portable[\s\S]*--repo \/tmp\/zpc-source/, "reconciler uses the shared pre-promotion guard");
+  assert.match(t2, /promotion_guard\.py --verify-promoted --service zevanory-product-control-portable/, "reconciler verifies the effective version after promotion");
+  assert.match(t2, /EXPECTED_ZPC_SHA="\$SOURCE_SHA" node scripts\/cloudflare-authoritative-repair\.mjs/, "one deploy recipe for the panel");
+  assert.doesNotMatch(t2, /wrangler@[\d.]+ deploy --config cf-worker\/wrangler\.toml/, "no second deploy recipe");
 });
 
 test("central and sales promotions pass the pre-promotion guard", () => {

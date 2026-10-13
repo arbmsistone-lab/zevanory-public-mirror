@@ -24,6 +24,8 @@ jobs:
         shell: bash
         env:
           ZPC_ROLLBACK_HOLD: ${{ vars.ZPC_ROLLBACK_HOLD }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
         run: |
           set -euo pipefail
           rm -rf /tmp/zpc-source
@@ -33,27 +35,26 @@ jobs:
           SOURCE_SHA="$(git -C /tmp/zpc-source log -1 --format=%H -- cf-worker src public index.html package.json package-lock.json scripts/cloudflare-authoritative-repair.mjs)"
           SOURCE_MODE="latest-runtime-commit"
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          LIVE_SHA="$(curl -fsS --retry 3 --retry-delay 2 --max-time 20 https://controle.zevanory.api.br/version.json | jq -r '.sha // empty' || true)"
-          # T1 (plan 3.1): the reconciler only moves production FORWARD, in the same serialized
-          # queue as the canonical publisher (zpc-control-worker-deploy.yml):
-          #  - unreadable production is never permission to promote (no blind deploys);
-          #  - production ahead of or diverged from main is left untouched (alert);
-          #  - a deliberate rollback is protected by the repository variable ZPC_ROLLBACK_HOLD,
-          #    which the owner sets after an authorised rollback and clears to resume.
+          # T1 (plan 3.1): the reconciler runs in the panel's single serialized queue and uses the
+          # SAME pre-promotion guard as central and sales (scripts/deploy/promotion_guard.py):
+          # effective version from the Cloudflare tag and from version.json must agree; unknown
+          # production, diverged history or a candidate older than live never promote.
+          # A deliberate rollback is protected by the repository variable ZPC_ROLLBACK_HOLD.
           NEEDS_PROMOTION=false
           if [ -n "$ZPC_ROLLBACK_HOLD" ]; then
             echo "::notice title=ZPC_ROLLBACK_HOLD::reconciler paused: ${ZPC_ROLLBACK_HOLD:0:120}"
-          elif ! [[ "$LIVE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::warning title=ZPC_LIVE_UNREADABLE::production version unreadable; reconciler does not promote blind"
-          elif [ "$LIVE_SHA" = "$SOURCE_SHA" ]; then
-            :
-          elif git -C /tmp/zpc-source merge-base --is-ancestor "$LIVE_SHA" "$SOURCE_SHA"; then
-            NEEDS_PROMOTION=true
-          elif git -C /tmp/zpc-source merge-base --is-ancestor "$SOURCE_SHA" "$LIVE_SHA"; then
-            echo "ZPC_RECONCILE live already contains the latest runtime commit"
           else
-            echo "::warning title=ZPC_LIVE_NOT_BEHIND_MAIN::live ${LIVE_SHA:0:12} is not an ancestor of main runtime ${SOURCE_SHA:0:12}; left untouched"
+            python3 scripts/deploy/promotion_guard.py --service zevanory-product-control-portable \
+              --candidate "$SOURCE_SHA" --repo /tmp/zpc-source \
+              --readback-url https://controle.zevanory.api.br/version.json --readback-path sha \
+              --cloudflare-script zevanory-product-control-portable > /tmp/guard.txt || { cat /tmp/guard.txt; exit 1; }
+            cat /tmp/guard.txt
+            decision="$(sed -n 's/^PROMOTION_GUARD=//p' /tmp/guard.txt | jq -r .decision)"
+            reason="$(sed -n 's/^PROMOTION_GUARD=//p' /tmp/guard.txt | jq -r .reason)"
+            # Same SHA as live: nothing to do for a reconciler (a redeploy is the canonical's call).
+            if [ "$decision" = promote ] && [ "$reason" != same_as_live_redeploy ]; then NEEDS_PROMOTION=true; fi
           fi
+          LIVE_SHA="$(sed -n 's/^PROMOTION_GUARD=//p' /tmp/guard.txt 2>/dev/null | jq -r '.live_cloudflare // .live_readback // empty' || true)"
           echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
           echo "SOURCE_MODE=$SOURCE_MODE" >> "$GITHUB_ENV"
           echo "needs_promotion=$NEEDS_PROMOTION" >> "$GITHUB_OUTPUT"
@@ -97,14 +98,21 @@ jobs:
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CERTIFICATION_E2E_TOKEN:-}"
           printf '%s' "$CERTIFICATION_E2E_TOKEN" | npx --yes wrangler@4.143.0 secret put CERTIFICATION_E2E_TOKEN --config cf-worker/wrangler.toml
-          npx --yes wrangler@4.143.0 deploy --config cf-worker/wrangler.toml --var WORKER_COMMIT:"$SOURCE_SHA" --tag="$SOURCE_SHA" --message="ZPC-reconciler-$SOURCE_SHA"
+          # Same artifact and config as the canonical publisher (route-free script config, zone check,
+          # tagged version, production readback): no second deploy recipe for the panel.
+          EXPECTED_ZPC_SHA="$SOURCE_SHA" node scripts/cloudflare-authoritative-repair.mjs
       - name: Verify exact SHA and authenticated T2 route
         if: steps.source.outputs.needs_promotion == 'true'
         shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
         run: |
           set -euo pipefail
+          python3 scripts/deploy/promotion_guard.py --verify-promoted --service zevanory-product-control-portable \
+            --candidate "$SOURCE_SHA" --readback-url https://controle.zevanory.api.br/version.json --readback-path sha \
+            --cloudflare-script zevanory-product-control-portable
           curl -fsS --retry 5 --retry-delay 3 https://controle.zevanory.api.br/version.json -o /tmp/version.json
-          test "$(jq -r '.sha' /tmp/version.json)" = "$SOURCE_SHA"
           code="$(curl -sS -o /tmp/t2route.json -w '%{http_code}' -X POST https://controle.zevanory.api.br/api/commercial/creative/factory/tick -H 'content-type: application/json' -d '{}')"
           test "$code" = "401"
           jq -e '.error == "commercial_creative_factory_auth_required"' /tmp/t2route.json >/dev/null

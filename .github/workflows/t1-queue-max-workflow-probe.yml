@@ -1,0 +1,26 @@
+name: T1 workflow-level queue max probe
+
+# Plan 3.1, T1: the production deploy workflows use queue: max at WORKFLOW level. This probe proves
+# that behaviour at the same level (not only job level): three runs of this workflow are started
+# by three labels "t1-probe-*" on the PR; with queue: max all three must run, one at a time.
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: t1-wl-queue-probe-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  contender:
+    if: startsWith(github.event.label.name, 't1-probe-')
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "WL_CONTENDER=${{ github.event.label.name }} start=$(date -u +%FT%TZ)"
+          sleep 25
+          echo "WL_CONTENDER=${{ github.event.label.name }} end=$(date -u +%FT%TZ)"
