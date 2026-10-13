@@ -105,6 +105,10 @@ test("central and sales promotions pass the pre-promotion guard", () => {
   const sales = read("zevanory-sales-public-release.yml");
   assert.match(sales, /scripts\/deploy\/promotion_guard\.py --service zevanory-sales-public/);
   assert.match(sales, /--tag="\$GITHUB_SHA"/, "sales versions are tagged with their source SHA");
+  // Post-promotion: the effective version must be the candidate (Cloudflare tag + readback).
+  assert.match(central, /promotion_guard\.py --verify-promoted --service zevanory/);
+  assert.match(sales, /promotion_guard\.py --verify-promoted --service zevanory-sales-public/);
+  assert.doesNotMatch(read("zevanory-sales-public-release.yml"), /-X DELETE[^\n]*workers\/scripts\/\$SCRIPT_NAME"/, "the production sales script is never deleted");
 });
 
 test("sales pages built from sales-public are released only by the canonical publisher", () => {

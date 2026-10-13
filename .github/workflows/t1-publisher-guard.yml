@@ -49,11 +49,20 @@ jobs:
           echo "EXTERNAL_REPOSITORY_PUBLISHERS=0"
 
   session-guard:
+    # WHAT THIS CHECK CAN AND CANNOT DO (audit T1 v2):
+    #  - It reads session identifiers DECLARED in commit messages and in the PR body. A declaration
+    #    is text, not authentication: anyone with push access can write any identifier.
+    #  - It FAILS when no identifier is declared (identity not established) and when any declared
+    #    identifier is not in ops/executor.json (foreign session). It never passes on absence.
+    #  - It cannot prove who produced the code. Every agent pushes with the owner's GitHub identity,
+    #    so GitHub actor/author fields do not distinguish owner from agents either.
+    #  - The decisive control is outside this check: only the owner merges (pull-request review),
+    #    and making this check required is a branch-protection decision of the owner.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Only the authorised executor session
+      - name: Declared executor session must be present and authorised
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
@@ -62,36 +71,73 @@ jobs:
           set -euo pipefail
           allowed="$(jq -r '.authorized_claude_sessions[]' ops/executor.json)"
           sessions="$( { gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/commits" --paginate --jq '.[].commit.message'; printf '%s' "$BODY"; } | grep -oE 'session_[A-Za-z0-9]{8,}' | sort -u || true)"
+          if [ -z "$sessions" ]; then
+            echo "::error title=EXECUTOR_IDENTITY_NOT_ESTABLISHED::no executor session declared in commits or PR body; absence is never treated as authorised"
+            exit 1
+          fi
           bad=""
           for s in $sessions; do grep -qx "$s" <<<"$allowed" || bad="$bad $s"; done
           if [ -n "$bad" ]; then
-            echo "::error title=UNAUTHORISED_EXECUTOR_SESSION::PR carries session(s):$bad — owner decision 13/10: single executor session"
+            echo "::error title=UNAUTHORISED_EXECUTOR_SESSION::declared session(s):$bad"
             exit 1
           fi
-          echo "EXECUTOR_SESSION_GUARD=PASS sessions=${sessions:-none}"
+          echo "::notice title=EXECUTOR_SESSION_DECLARED::authorised declaration only (not authentication): $sessions"
 
   credential-scope:
-    # Read-only probe of what the shared Cloudflare credentials can reach (names are counted,
-    # never printed with values). A token scoped to "Specified Workers" sees only its Workers;
-    # an account-wide token sees every Worker in the account.
+    # Read-only. Distinguishes READ REACH (what a token can list) from EDIT PERMISSION (what its
+    # policies grant). Edit permission is reported as proven only when the token's own policies
+    # are readable; otherwise NAO_COMPROVADO. No write call is ever made.
+    # Also certifies optional per-Worker tokens (CF_TOKEN_<SERVICE>) BEFORE any workflow uses
+    # them: each must see exactly its Worker and read its deployments and settings.
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    env:
+      ACCOUNT: 1b26415802588185a86c1d4d3ebf5bdb
+      T_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      T_CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
+      T_CF_TOKEN_ZEVANORY: ${{ secrets.CF_TOKEN_ZEVANORY }}
+      T_CF_TOKEN_SALES: ${{ secrets.CF_TOKEN_SALES }}
+      T_CF_TOKEN_ROUTER: ${{ secrets.CF_TOKEN_ROUTER }}
+      T_CF_TOKEN_PANEL: ${{ secrets.CF_TOKEN_PANEL }}
     steps:
-      - name: Scope of each Cloudflare credential used by publishers
-        env:
-          T_API: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          T_OWNER: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
-          ACCOUNT: 1b26415802588185a86c1d4d3ebf5bdb
+      - name: Read reach vs edit permission of each credential
         run: |
-          set -euo pipefail
-          for name in T_API T_OWNER; do
-            tok="${!name:-}"
-            if [ -z "$tok" ]; then echo "::notice title=CREDENTIAL_SCOPE_$name::not configured"; continue; fi
-            v="$(curl -sS -H "Authorization: Bearer $tok" "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/tokens/verify" | jq -r '.result.status // "n/a"')"
-            [ "$v" = "n/a" ] && v="$(curl -sS -H "Authorization: Bearer $tok" https://api.cloudflare.com/client/v4/user/tokens/verify | jq -r '.result.status // "unknown"')"
-            n="$(curl -sS -H "Authorization: Bearer $tok" "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/workers/scripts" | jq -r 'if .success then (.result|length) else "denied" end')"
-            echo "::notice title=CREDENTIAL_SCOPE_$name::status=$v visible_workers=$n (account has 39; >= that means account-wide authority)"
+          set -uo pipefail
+          api() { curl -sS -H "Authorization: Bearer $1" "https://api.cloudflare.com/client/v4$2"; }
+          declare -A WORKER=([CF_TOKEN_ZEVANORY]=zevanory [CF_TOKEN_SALES]=zevanory-sales-public [CF_TOKEN_ROUTER]=zevanory-public-router [CF_TOKEN_PANEL]=zevanory-product-control-portable)
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_PUBLIC_OWNER_API_TOKEN CF_TOKEN_ZEVANORY CF_TOKEN_SALES CF_TOKEN_ROUTER CF_TOKEN_PANEL; do
+            var="T_$name"; tok="${!var:-}"
+            if [ -z "$tok" ]; then echo "::notice title=CRED_$name::not configured"; continue; fi
+            av="$(api "$tok" "/accounts/$ACCOUNT/tokens/verify")"; uv="$(api "$tok" /user/tokens/verify)"
+            id="$(jq -r '.result.id // empty' <<<"$av")"; scope=account
+            [ -z "$id" ] && { id="$(jq -r '.result.id // empty' <<<"$uv")"; scope=user; }
+            status="$(jq -r '.result.status // empty' <<<"$av")"; [ -z "$status" ] && status="$(jq -r '.result.status // "unknown"' <<<"$uv")"
+            # Read reach: how many Workers it can list.
+            reach="$(api "$tok" "/accounts/$ACCOUNT/workers/scripts" | jq -r 'if .success then ([.result[].id]|length|tostring) else "denied" end')"
+            names="$(api "$tok" "/accounts/$ACCOUNT/workers/scripts" | jq -r 'if .success then ([.result[].id]|sort|join(",")) else "" end')"
+            # Edit permission: only provable from the token's own policies.
+            if [ "$scope" = account ]; then pol="$(api "$tok" "/accounts/$ACCOUNT/tokens/$id")"; else pol="$(api "$tok" "/user/tokens/$id")"; fi
+            if jq -e '.success == true and (.result.policies|type=="array")' <<<"$pol" >/dev/null 2>&1; then
+              edit="$(jq -r '[.result.policies[]|select(.effect=="allow")|.permission_groups[]?.name|select(test("Edit|Write|Admin|Editor";"i"))]|unique|join("; ")' <<<"$pol")"
+              res="$(jq -r '[.result.policies[]|select(.effect=="allow")|.resources|keys[]]|unique|join("; ")' <<<"$pol")"
+              echo "::notice title=CRED_$name::status=$status reach=$reach EDIT_PROVEN groups=[${edit:-none}] resources=[$res]"
+            else
+              echo "::notice title=CRED_$name::status=$status reach=$reach edit_permission=NAO_COMPROVADO (token policies not readable with this token)"
+            fi
+            # Per-Worker tokens: certify scope before any workflow uses them.
+            if [ -n "${WORKER[$name]:-}" ]; then
+              w="${WORKER[$name]}"
+              dep="$(api "$tok" "/accounts/$ACCOUNT/workers/scripts/$w/deployments" | jq -r '.success')"
+              set_="$(api "$tok" "/accounts/$ACCOUNT/workers/scripts/$w/settings" | jq -r '.success')"
+              if [ "$names" = "$w" ] && [ "$dep" = true ] && [ "$set_" = true ]; then
+                echo "::notice title=CRED_$name::SCOPE_READY only=$w deployments=read settings=read"
+              else
+                echo "::error title=CRED_$name::SCOPE_NOT_READY visible=[$names] expected=[$w] deployments=$dep settings=$set_"
+                fail=1
+              fi
+            fi
           done
+          exit "${fail:-0}"
 
   merge-effect-preview:
     # Shows, BEFORE merge, what merging this pull request would do in production: which

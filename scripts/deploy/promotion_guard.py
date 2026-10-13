@@ -123,7 +123,10 @@ def main(argv=None) -> int:
     ap.add_argument("--readback-path")
     ap.add_argument("--cloudflare-script")
     ap.add_argument("--preview", action="store_true", help="report the decision without failing (pre-merge evidence)")
+    ap.add_argument("--verify-promoted", action="store_true", help="after promotion: the effective version must BE the candidate")
     args = ap.parse_args(argv)
+    if args.verify_promoted:
+        return verify_promoted(args)
 
     live_http = readback_sha(args.readback_url, args.readback_path)
     live_cf = cloudflare_sha(args.cloudflare_script)
@@ -138,6 +141,31 @@ def main(argv=None) -> int:
     level = "error" if decision == "refuse" and not args.preview else "notice"
     print(f"::{level} title=PROMOTION_GUARD_{args.service}::{decision} ({reason}) cloudflare={live_cf or 'unreadable'} readback={live_http or 'unreadable'}")
     return 1 if decision == "refuse" and not args.preview else 0
+
+
+def verify_effective(candidate: str, live_http: str | None, live_cf: str | None) -> tuple[bool, str]:
+    candidate = norm(candidate) or ""
+    if not (live_http or live_cf):
+        return False, "effective_version_unreadable_after_promotion"
+    for label, value in (("cloudflare", live_cf), ("readback", live_http)):
+        if value and value != candidate:
+            return False, f"{label}_reports_{value[:12]}_not_{candidate[:12]}"
+    return True, "effective_version_is_candidate"
+
+
+def verify_promoted(args) -> int:
+    import time
+    ok, reason, live_http, live_cf = False, "", None, None
+    for _ in range(18):  # up to ~3 minutes for edge propagation
+        live_http = readback_sha(args.readback_url, args.readback_path)
+        live_cf = cloudflare_sha(args.cloudflare_script)
+        ok, reason = verify_effective(args.candidate, live_http, live_cf)
+        if ok:
+            break
+        time.sleep(10)
+    print("POST_PROMOTION=" + json.dumps({"service": args.service, "candidate": args.candidate, "cloudflare": live_cf, "readback": live_http, "ok": ok, "reason": reason}, sort_keys=True))
+    print(f"::{'notice' if ok else 'error'} title=POST_PROMOTION_{args.service}::{reason}")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

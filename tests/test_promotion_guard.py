@@ -62,6 +62,15 @@ class Decide(unittest.TestCase):
         self.assertEqual(self.d("main")[0], "refuse")
 
 
+class VerifyPromoted(unittest.TestCase):
+    def test_effective_must_be_candidate(self):
+        self.assertTrue(pg.verify_effective(C, C, C)[0])
+        self.assertTrue(pg.verify_effective(C, C, None)[0])
+        self.assertFalse(pg.verify_effective(C, B, C)[0])
+        self.assertFalse(pg.verify_effective(C, C, B)[0])
+        self.assertFalse(pg.verify_effective(C, None, None)[0])
+
+
 class Readers(unittest.TestCase):
     def test_readback_path(self):
         fetch = lambda url, headers=None: {"deployment": {"commit_sha": B.upper()}}
