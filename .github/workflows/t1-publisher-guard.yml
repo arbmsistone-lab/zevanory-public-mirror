@@ -25,6 +25,8 @@ on:
       - "tests/publisher-inventory.test.mjs"
       - "tests/test_promotion_guard.py"
       - "tests/test_t1_transition.py"
+      - "scripts/deploy/worker_secret_rotate.py"
+      - "tests/test_worker_secret_rotate.py"
       - "tests/t1_sim/**"
 
 permissions:
@@ -43,6 +45,8 @@ jobs:
         run: node --test tests/publisher-inventory.test.mjs
       - name: Promotion guard decisions
         run: python3 -m unittest -v tests/test_promotion_guard.py
+      - name: Worker secret key ring writer (one tagged version, rollback, rotation)
+        run: python3 -m unittest -v tests/test_worker_secret_rotate.py
       - name: "Integrated #799 -> #210 transition simulation (real workflow scripts, no publish)"
         run: |
           git fetch --quiet --depth 1 origin gh-pages:refs/remotes/origin/gh-pages || true
