@@ -10,12 +10,31 @@ import { emitActivity } from "./activity-ledger.mjs";
 //   Prática, otherwise IA na Prática), D+10 honest answers to the usual doubts, D+14 a last
 //   note with the complete package. Offers only go out while sales are open. Every e-mail
 //   carries one-click unsubscribe (RFC 8058) and utm tags so sales are attributed to e-mail.
+// * T3 / LGPD (plan 3.1): processing follows the consent text and the published privacy policy.
+//   - Consent v1 ("o checklist e até 2 e-mails de dicas e produtos") caps the sequence at the
+//     checklist + 2 e-mails; longer sequences need a new consent version.
+//   - Revocation (one-click opt-out) ERASES the lead row (e-mail, name) and the interest key.
+//   - Retention: unconfirmed requests are erased 7 days after the link expires; confirmed leads
+//     after 2 years without interaction (policy maximum).
+//   - Audit trail without e-mail in clear: zevanory_lead_events keeps event, consent version and
+//     a keyed HMAC of the e-mail (pseudonymised, NOT anonymised: still personal data, kept
+//     LEAD_EVENT_RETENTION_DAYS) so consent and its revocation can be proven (LGPD art. 8, §2).
+//   - Identifiers in links, KV keys and activity refs are keyed HMACs, never plain SHA-256 of the
+//     e-mail (a plain hash of an e-mail can be reversed by guessing).
 
 const CORE = "https://zevanory.api.br";
 const SALES = "https://vendas.zevanory.api.br";
 const CHECKLIST_URL = `${SALES}/checklist-15-minutos`;
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
 const CONSENT_VERSION = "lead-magnet-v1-2026-10-07";
+// E-mails after the checklist that each consent text allows ("até 2 e-mails de dicas e produtos").
+export const CONSENT_FOLLOWUPS = { [CONSENT_VERSION]: 2 };
+export const PENDING_GRACE_DAYS = 7;
+export const INACTIVE_RETENTION_DAYS = 730;
+// After the last e-mail the consent allows (or the held offer was abandoned), the purpose is fulfilled.
+export const SEQUENCE_END_GRACE_DAYS = 30;
+export const DEFAULT_EVENT_RETENTION_DAYS = 730;
+const RETENTION_BATCH = 200;
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/;
 const DAY = 86_400_000;
 let schemaReady = false;
@@ -42,13 +61,59 @@ export function maskEmail(email) {
   const [u, d] = String(email).split("@");
   return (u || "").slice(0, 2) + "***@" + (d || "");
 }
+// Legacy opt-out secret (links already sent): derived from the e-mail provider key.
 function secretFor(env) { return env.RESEND_API_KEY ? "zevanory-lead-optout-v1:" + env.RESEND_API_KEY : ""; }
+// Privacy key ring for subject references and link tokens. ONLY the dedicated secret is used
+// (never derived from the e-mail provider key, so rotating that key changes nothing here):
+//   LEAD_PRIVACY_SECRET           current key: new references and new link tokens
+//   LEAD_PRIVACY_SECRET_PREVIOUS  previous key during a rotation: tokens signed with it stay valid
+// A row's subject_ref is computed once (at sign-up) and stored; links always carry the STORED
+// reference, so a rotation never changes which row a link points to.
+// Without a configured key: no reference is derived and links keep the legacy format.
+const keyOf = (v) => (v && String(v).length >= 32 ? "zevanory-lead-privacy-v1:" + v : "");
+function privacyKeys(env) { return [keyOf(env.LEAD_PRIVACY_SECRET), keyOf(env.LEAD_PRIVACY_SECRET_PREVIOUS)].filter(Boolean); }
+const privacySecret = (env) => privacyKeys(env)[0] || "";
+const normEmail = (email) => String(email || "").trim().toLowerCase();
+// Keyed pseudonym of the e-mail; null when no key is configured (never falls back to a plain hash).
+export async function subjectRef(env, email) {
+  const secret = privacySecret(env);
+  return secret ? hmacHex(secret, "subject:" + normEmail(email)) : null;
+}
+const tokenWith = async (key, ref) => (await hmacHex(key, "optout:" + ref)).slice(0, 32);
+async function optOutTokenValid(env, ref, t) {
+  for (const key of privacyKeys(env)) if ((await tokenWith(key, ref)) === t) return true;
+  return false;
+}
 
-export async function leadOptOutLink(env, email) {
-  const id = await sha256Hex(String(email).trim().toLowerCase());
-  const secret = secretFor(env);
-  const t = secret ? (await hmacHex(secret, id)).slice(0, 32) : "";
-  return `${CORE}/material-gratuito/sair?i=${id}&t=${t}`;
+// storedRef: the row's subject_ref. Rows without one (signed up before the key existed) get the
+// legacy link, which their row can still be found by (email_hash).
+export async function leadOptOutLink(env, email, storedRef = null) {
+  const key = privacySecret(env);
+  if (storedRef && key) return `${CORE}/material-gratuito/sair?r=${storedRef}&t=${await tokenWith(key, storedRef)}`;
+  const id = await sha256Hex(normEmail(email));
+  const legacy = secretFor(env);
+  return `${CORE}/material-gratuito/sair?i=${id}&t=${legacy ? (await hmacHex(legacy, id)).slice(0, 32) : ""}`;
+}
+
+async function recordEvent(sql, ref, event, consentVersion = null) {
+  await sql.query("insert into zevanory_lead_events (subject_ref, event, consent_version) values ($1, $2, $3)", [ref || null, event, consentVersion]);
+}
+
+// Erases the personal data of one lead (row already deleted by the caller) and its interest keys,
+// records the event and reports what could NOT be removed, so the answer to the person is exact.
+// A failed KV delete of a keyed reference is queued (event erase_kv_pending) and retried by the
+// daily retention; a legacy key (plain-hash name, pre-T3) cannot be queued without storing that
+// hash, so it is left to its TTL (set at sign-up, at most 180 days).
+async function eraseLead(env, sql, row, event) {
+  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const ref = row.subject_ref || null;
+  const residual = [];
+  if (ref) { try { await kv.delete("zpc:lead:interest:" + ref); } catch { residual.push("interest_keyed"); } }
+  if (row.email) { try { await kv.delete("zpc:lead:interest:" + (await sha256Hex(normEmail(row.email)))); } catch { residual.push("interest_legacy"); } }
+  await recordEvent(sql, ref, event, row.consent_version || null);
+  if (residual.includes("interest_keyed")) await recordEvent(sql, ref, "erase_kv_pending");
+  if (residual.length) console.error("lead_erase_residual", residual.join(","));
+  return { residual };
 }
 
 export async function ensureLeadSchema(sql) {
@@ -58,6 +123,10 @@ export async function ensureLeadSchema(sql) {
     consent_version text not null, consent_at timestamptz not null, status text not null default 'pending',
     token_hash text, token_expires_at timestamptz, created_at timestamptz not null default now(),
     confirmed_at timestamptz, unsubscribed_at timestamptz, nurture_step integer not null default 0, nurture_at timestamptz)`, []);
+  await sql.query("alter table zevanory_leads add column if not exists subject_ref text", []);
+  // Audit trail without e-mail, name or IP (pseudonymised subject reference only).
+  await sql.query(`create table if not exists zevanory_lead_events (id bigserial primary key, subject_ref text, event text not null,
+    consent_version text, at timestamptz not null default now())`, []);
   schemaReady = true;
 }
 
@@ -74,7 +143,7 @@ async function sendEmail(env, { to, subject, text, unsubscribeUrl, idempotencyKe
     }),
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
-  if (r?.ok) await emitActivity(env, { type: "email_sent", channel: "email", status: "sent", ref: "lead-mail:" + (idempotencyKey || (await sha256Hex(to + ":" + subject + ":" + new Date().toISOString().slice(0, 16)))) }).catch(() => null);
+  if (r?.ok) await emitActivity(env, { type: "email_sent", channel: "email", status: "sent", ref: "lead-mail:" + (idempotencyKey || randomToken()) }).catch(() => null);
   return Boolean(r?.ok);
 }
 
@@ -108,26 +177,29 @@ export function nurtureEmail(step, { name, optOutUrl, interest = "ia" }) {
 }
 
 async function subscribe(env, sql, { email, name, consent, page }) {
-  email = String(email || "").trim().toLowerCase();
+  email = normEmail(email);
   name = String(name || "").trim().replace(/[\r\n<>]/g, " ").slice(0, 60);
   if (!EMAIL_RE.test(email) || email.length > 254) return { status: 400, body: { ok: false, message: "Confira o e-mail." } };
   if (consent !== true) return { status: 400, body: { ok: false, message: "Marque a autorização para receber o material." } };
   await ensureLeadSchema(sql);
-  const existing = (await sql.query("select status, confirmed_at from zevanory_leads where email=$1", [email]))[0];
+  const existing = (await sql.query("select status, confirmed_at, subject_ref from zevanory_leads where email=$1", [email]))[0];
   if (existing?.status === "confirmed") {
-    await sendEmail(env, { to: email, subject: "Seu checklist ZEVANORY", text: `Você já está inscrito(a). Aqui está o checklist de novo:\n${CHECKLIST_URL}\n\nNão quer mais receber? ${await leadOptOutLink(env, email)}`, unsubscribeUrl: await leadOptOutLink(env, email) });
+    const link = await leadOptOutLink(env, email, existing.subject_ref);
+    await sendEmail(env, { to: email, subject: "Seu checklist ZEVANORY", text: `Você já está inscrito(a). Aqui está o checklist de novo:\n${CHECKLIST_URL}\n\nNão quer mais receber? ${link}`, unsubscribeUrl: link });
     return { status: 200, body: { ok: true, message: "Enviamos o checklist para o seu e-mail." } };
   }
   const token = randomToken();
   const tokenHash = await sha256Hex(token);
-  await sql.query(`insert into zevanory_leads (email, email_hash, name, consent_version, consent_at, status, token_hash, token_expires_at)
-      values ($1, $2, $3, $4, now(), 'pending', $5, now() + interval '48 hours')
+  const ref = await subjectRef(env, email);
+  await sql.query(`insert into zevanory_leads (email, email_hash, name, consent_version, consent_at, status, token_hash, token_expires_at, subject_ref)
+      values ($1, $2, $3, $4, now(), 'pending', $5, now() + interval '48 hours', $6)
       on conflict (email) do update set name = excluded.name, consent_version = excluded.consent_version, consent_at = now(),
         status = case when zevanory_leads.status = 'unsubscribed' then 'pending' else zevanory_leads.status end,
-        unsubscribed_at = null, token_hash = excluded.token_hash, token_expires_at = excluded.token_expires_at`,
-    [email, await sha256Hex(email), name || null, CONSENT_VERSION, tokenHash]);
-  try { await env.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:lead:interest:" + (await sha256Hex(email)), interestFromPage(page), { expirationTtl: 180 * 24 * 3600 }); } catch {}
-  await emitActivity(env, { type: "lead_captured", channel: "web", status: "pending", ref: "lead:" + (await sha256Hex(email)) + ":" + new Date().toISOString().slice(0, 10) }).catch(() => null);
+        unsubscribed_at = null, token_hash = excluded.token_hash, token_expires_at = excluded.token_expires_at, subject_ref = coalesce(zevanory_leads.subject_ref, excluded.subject_ref)`,
+    [email, await sha256Hex(email), name || null, CONSENT_VERSION, tokenHash, ref]);
+  await recordEvent(sql, ref, "consent_given", CONSENT_VERSION);
+  try { if (ref) await env.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:lead:interest:" + ref, interestFromPage(page), { expirationTtl: 45 * 24 * 3600 }); } catch {}
+  await emitActivity(env, { type: "lead_captured", channel: "web", status: "pending", ref: "lead:" + (ref || randomToken()) + ":" + new Date().toISOString().slice(0, 10) }).catch(() => null);
   const sent = await sendEmail(env, { to: email, subject: "Confirme seu e-mail para receber o checklist", text: `${name ? `Olá, ${name}!` : "Olá!"}\n\nFalta um clique: confirme seu e-mail para receber o checklist gratuito.\n${CORE}/material-gratuito/confirmar?t=${token}\n\nSe não foi você, ignore esta mensagem: nada será enviado.\n\nEquipe ZEVANORY · ${SUPPORT_EMAIL}` });
   if (!sent) return { status: 503, body: { ok: false, message: "Não conseguimos enviar agora. Tente de novo em instantes." } };
   return { status: 200, body: { ok: true, message: "Quase lá! Enviamos um link de confirmação para o seu e-mail." } };
@@ -137,14 +209,17 @@ async function confirm(env, sql, token) {
   if (!/^[0-9a-f]{64}$/.test(String(token || ""))) return null;
   await ensureLeadSchema(sql);
   const rows = await sql.query(`update zevanory_leads set status='confirmed', confirmed_at=now(), token_hash=null, token_expires_at=null, nurture_step=1, nurture_at=now()
-      where token_hash=$1 and token_expires_at > now() and status='pending' returning email, name`, [await sha256Hex(token)]);
+      where token_hash=$1 and token_expires_at > now() and status='pending' returning email, name, subject_ref, consent_version`, [await sha256Hex(token)]);
   const lead = rows[0];
   if (!lead) return null;
-  const optOutUrl = await leadOptOutLink(env, lead.email);
+  const ref = lead.subject_ref || null;
+  await recordEvent(sql, ref, "confirmed", lead.consent_version || CONSENT_VERSION);
+  const optOutUrl = await leadOptOutLink(env, lead.email, ref);
   const mail = nurtureEmail(0, { name: lead.name, optOutUrl });
-  await sendEmail(env, { to: lead.email, ...mail, unsubscribeUrl: optOutUrl, idempotencyKey: `zevanory-lead-${await sha256Hex(lead.email)}-d0` });
-  await emitActivity(env, { type: "lead_captured", channel: "web", status: "confirmed", ref: "lead-confirmed:" + (await sha256Hex(lead.email)) }).catch(() => null);
-  await bridge(env, `lead-${(await sha256Hex(lead.email)).slice(0, 12)}`, { kind: "lead", title: `Lead confirmado (material gratuito) · ${maskEmail(lead.email)}`, detail: "Pediu o checklist gratuito e confirmou o e-mail (dupla confirmação, consentimento LGPD registrado).", status: "nurture", channel: "email", sourceKey: `lead-magnet:${(await sha256Hex(lead.email)).slice(0, 24)}`, evidence: ["double-opt-in", CONSENT_VERSION, new Date().toISOString()] });
+  const key = ref || randomToken();
+  await sendEmail(env, { to: lead.email, ...mail, unsubscribeUrl: optOutUrl, idempotencyKey: `zevanory-lead-${key}-d0` });
+  await emitActivity(env, { type: "lead_captured", channel: "web", status: "confirmed", ref: "lead-confirmed:" + key }).catch(() => null);
+  await bridge(env, `lead-${key.slice(0, 12)}`, { kind: "lead", title: "Lead confirmado (material gratuito)", detail: "Pediu o checklist gratuito e confirmou o e-mail (dupla confirmação, consentimento LGPD registrado).", status: "nurture", channel: "email", sourceKey: `lead-magnet:${key.slice(0, 24)}`, evidence: ["double-opt-in", lead.consent_version || CONSENT_VERSION, new Date().toISOString()] });
   return lead;
 }
 
@@ -153,26 +228,93 @@ export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now =
   if (!env.DATABASE_URL || !sqlFactory) return { ok: false, reason: "lead_nurture_unconfigured" };
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureLeadSchema(sql);
-  const due = await sql.query(`select email, name, nurture_step, nurture_at from zevanory_leads
+  // Consent cap in ONE query (not one per lead: the hourly run shares 50 external subrequests).
+  for (const [version, followups] of Object.entries(CONSENT_FOLLOWUPS)) {
+    await sql.query("update zevanory_leads set nurture_step=$1 where status='confirmed' and consent_version=$2 and nurture_step >= $3 and nurture_step < $1", [NURTURE_DONE, version, 1 + followups]);
+  }
+  const due = await sql.query(`select email, name, nurture_step, nurture_at, consent_version, subject_ref from zevanory_leads
       where status='confirmed' and nurture_step < $1 and nurture_at < now() - interval '2 days' order by nurture_at asc limit 50`, [NURTURE_DONE]);
   const out = { ok: true, checked: due.length, sent: 0, held: 0 };
   for (const lead of due) {
     const step = Number(lead.nurture_step);
     const since = now - new Date(lead.nurture_at).getTime();
+    // The consent text bounds the sequence: never send more e-mails than the person agreed to.
+    const cap = 1 + (CONSENT_FOLLOWUPS[lead.consent_version] ?? 0);
+    if (step >= cap) { await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]); out.capped = (out.capped || 0) + 1; continue; }
     if (step >= 2 && !salesOpen) {
       // Offers only go out while customers can actually buy; give up after 30 days.
       if (since > 30 * DAY) await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step < $2", [lead.email, NURTURE_DONE]);
       out.held += 1; continue;
     }
     if (since < (MIN_DAYS_BEFORE[step] || 2) * DAY) continue;
+    const ref = lead.subject_ref || null;
+    // Claim BEFORE sending: the update only succeeds while the lead still exists, is confirmed and
+    // is at the step that was selected. A revocation (row erased) or another run in between makes
+    // it return nothing, and nothing is sent. Same query count as before (the update moved up).
+    const claimed = await sql.query("update zevanory_leads set nurture_step=$2, nurture_at=now() where email=$1 and status='confirmed' and nurture_step=$3 returning email", [lead.email, step + 1, step]);
+    if (!claimed.length) { out.skipped_revoked = (out.skipped_revoked || 0) + 1; continue; }
     let interest = "ia";
-    try { interest = String(await env.ZEVANORY_PRIVATE_ARTIFACTS?.get?.("zpc:lead:interest:" + (await sha256Hex(lead.email))) || "ia"); } catch {}
-    const optOutUrl = await leadOptOutLink(env, lead.email);
+    try {
+      const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+      interest = String((ref && await kv?.get?.("zpc:lead:interest:" + ref)) || await kv?.get?.("zpc:lead:interest:" + (await sha256Hex(lead.email))) || "ia");
+    } catch {}
+    const optOutUrl = await leadOptOutLink(env, lead.email, ref);
     const mail = nurtureEmail(step, { name: lead.name, optOutUrl, interest });
-    const ok = await sendEmail(env, { to: lead.email, ...mail, unsubscribeUrl: optOutUrl, idempotencyKey: `zevanory-lead-${await sha256Hex(lead.email)}-s${step}` });
-    if (ok) { await sql.query("update zevanory_leads set nurture_step=$2, nurture_at=now() where email=$1", [lead.email, step + 1]); out.sent += 1; }
+    // Idempotency key: same value as before for legacy leads would need the plain hash; a keyed one is used now.
+    const ok = await sendEmail(env, { to: lead.email, ...mail, unsubscribeUrl: optOutUrl, idempotencyKey: `zevanory-lead-${ref || (await sha256Hex(lead.email))}-s${step}` });
+    if (ok) out.sent += 1;
+    else await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step=$3", [lead.email, step, step + 1]); // send failed: release the claim
   }
+  try { out.retention = await runLeadRetention(env, sql); } catch (error) { out.retention = { ok: false, reason: error instanceof Error ? error.message.slice(0, 80) : "retention_failed" }; }
   return out;
+}
+
+// Retention (privacy policy):
+//   * unconfirmed requests: erased PENDING_GRACE_DAYS after the confirmation link expired;
+//   * revoked rows left by the pre-T3 code: erased;
+//   * confirmed leads: erased SEQUENCE_END_GRACE_DAYS after the sequence their consent allows has
+//     ended (the purpose is fulfilled); INACTIVE_RETENTION_DAYS remains only as an absolute cap;
+//   * pseudonymised event log: pruned after the event retention period;
+//   * KV deletions that failed earlier (erase_kv_pending) are retried.
+// Once a day (KV marker), with at most four database queries, because the hourly invocation shares
+// the Workers Free budget of 50 external subrequests. KV calls use the separate internal budget.
+export const RETENTION_MARKER = "zpc:lead:retention:v1:last";
+export async function runLeadRetention(env, sql, { now = Date.now(), force = false } = {}) {
+  const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
+  const day = new Date(now).toISOString().slice(0, 10);
+  if (!force) { try { if ((await kv?.get?.(RETENTION_MARKER)) === day) return { ok: true, skipped: "already_ran_today" }; } catch {} }
+  await ensureLeadSchema(sql);
+  const erased = await sql.query(`delete from zevanory_leads where email in (select email from zevanory_leads
+      where (status='pending' and token_expires_at < now() - ($1::int * interval '1 day'))
+         or status='unsubscribed'
+         or (status='confirmed' and nurture_step >= $4 and nurture_at < now() - ($5::int * interval '1 day'))
+         or (status='confirmed' and coalesce(nurture_at, confirmed_at, consent_at) < now() - ($2::int * interval '1 day'))
+      limit $3)
+    returning email, subject_ref, consent_version, status, nurture_step`,
+    [PENDING_GRACE_DAYS, INACTIVE_RETENTION_DAYS, RETENTION_BATCH, NURTURE_DONE, SEQUENCE_END_GRACE_DAYS]);
+  const EVENT = { pending: "erased_unconfirmed", unsubscribed: "erased_revoked" };
+  const refs = [], events = [], versions = [];
+  const counts = { erased_unconfirmed: 0, erased_revoked: 0, erased_sequence_ended: 0, erased_inactive: 0, kv_pending: 0, kv_retried: 0 };
+  const push = (ref, event, version = null) => { refs.push(ref); events.push(event); versions.push(version); };
+  for (const row of erased) {
+    const ref = row.subject_ref || null;
+    const event = EVENT[row.status] || (Number(row.nurture_step) >= NURTURE_DONE ? "erased_sequence_ended" : "erased_inactive");
+    counts[event] += 1; push(ref, event, row.consent_version || null);
+    if (ref) { try { await kv.delete("zpc:lead:interest:" + ref); } catch { counts.kv_pending += 1; push(ref, "erase_kv_pending"); } }
+    try { await kv.delete("zpc:lead:interest:" + (await sha256Hex(normEmail(row.email)))); } catch {} // legacy name: TTL-bound
+  }
+  // Retry KV erasures that failed before (by keyed reference only).
+  const pending = await sql.query(`select distinct p.subject_ref from zevanory_lead_events p where p.event='erase_kv_pending' and p.subject_ref is not null
+      and not exists (select 1 from zevanory_lead_events d where d.subject_ref=p.subject_ref and d.event='erase_kv_done' and d.at >= p.at) limit 100`, []);
+  for (const { subject_ref } of pending) {
+    try { await kv.delete("zpc:lead:interest:" + subject_ref); push(subject_ref, "erase_kv_done"); counts.kv_retried += 1; } catch {}
+  }
+  if (refs.length) await sql.query("insert into zevanory_lead_events (subject_ref, event, consent_version) select * from unnest($1::text[], $2::text[], $3::text[])", [refs, events, versions]);
+  const days = Number(env.LEAD_EVENT_RETENTION_DAYS) > 0 ? Math.floor(Number(env.LEAD_EVENT_RETENTION_DAYS)) : DEFAULT_EVENT_RETENTION_DAYS;
+  await sql.query("delete from zevanory_lead_events where at < now() - ($1::int * interval '1 day')", [days]);
+  // A full batch means more rows are due: leave the marker unset so the next hour continues.
+  if (erased.length < RETENTION_BATCH) { try { await kv?.put?.(RETENTION_MARKER, day, { expirationTtl: 3 * 86400 }); } catch {} }
+  return { ok: true, erased: erased.length, ...counts, eventRetentionDays: days };
 }
 
 export async function handleLeadMagnet(request, env, { sqlFactory } = {}) {
@@ -210,15 +352,26 @@ export async function handleLeadMagnet(request, env, { sqlFactory } = {}) {
   }
 
   if (path === "/material-gratuito/sair") {
+    // New links: r = keyed subject reference. Links already sent: i = legacy id (still honoured).
+    const ref = String(url.searchParams.get("r") || "");
     const id = String(url.searchParams.get("i") || "");
     const t = String(url.searchParams.get("t") || "");
-    const secret = secretFor(env);
-    const valid = Boolean(secret) && /^[0-9a-f]{64}$/.test(id) && /^[0-9a-f]{32}$/.test(t) && (await hmacHex(secret, id)).slice(0, 32) === t;
-    if (request.method === "GET" || request.method === "HEAD") return valid ? html(200, "Parar de receber e-mails?", `<form method="post"><button type="submit">Confirmar descadastro</button></form>`) : html(400, "Link inválido", "<p>Escreva para o suporte que removemos seu e-mail na hora.</p>");
-    if (request.method !== "POST" || !valid) return html(400, "Link inválido", "<p>Escreva para o suporte que removemos seu e-mail na hora.</p>");
+    let match = null;
+    if (/^[0-9a-f]{64}$/.test(ref) && /^[0-9a-f]{32}$/.test(t) && (await optOutTokenValid(env, ref, t))) match = { column: "subject_ref", value: ref };
+    else if (/^[0-9a-f]{64}$/.test(id) && /^[0-9a-f]{32}$/.test(t) && secretFor(env) && (await hmacHex(secretFor(env), id)).slice(0, 32) === t) match = { column: "email_hash", value: id };
+    const invalid = () => html(400, "Link inválido", "<p>Escreva para o suporte que removemos seu e-mail na hora.</p>");
+    if (request.method === "GET" || request.method === "HEAD") return match ? html(200, "Parar de receber e apagar seus dados?", `<p>Você deixa de receber os e-mails do material gratuito e apagamos seu e-mail e seu nome desta lista.</p><form method="post"><button type="submit">Confirmar</button></form>`) : invalid();
+    if (request.method !== "POST" || !match) return invalid();
     await ensureLeadSchema(sql);
-    await sql.query("update zevanory_leads set status='unsubscribed', unsubscribed_at=now(), token_hash=null where email_hash=$1", [id]);
-    return html(200, "Pronto.", "<p>Você não receberá mais e-mails da ZEVANORY sobre o material gratuito.</p>");
+    // Revocation = erasure of the lead data (privacy policy: kept "até você cancelar").
+    const rows = await sql.query(`delete from zevanory_leads where ${match.column}=$1 returning email, subject_ref, consent_version`, [match.value]);
+    const residual = [];
+    for (const row of rows) residual.push(...(await eraseLead(env, sql, row, "revoked_and_erased")).residual);
+    if (!rows.length) await recordEvent(sql, match.column === "subject_ref" ? match.value : null, "revocation_without_record");
+    // The answer states exactly what was erased.
+    const note = residual.includes("interest_keyed") ? "<p>Um dado auxiliar (o tipo de página em que você se cadastrou, sem e-mail nem nome) não pôde ser apagado agora; ele é apagado automaticamente em até 1 dia.</p>"
+      : residual.includes("interest_legacy") ? "<p>Um dado auxiliar (o tipo de página em que você se cadastrou, sem e-mail nem nome) não pôde ser apagado agora; ele expira automaticamente no prazo definido no cadastro (até 180 dias). Se quiser a remoção imediata, escreva para o suporte.</p>" : "";
+    return html(200, "Pronto.", `<p>Você não receberá mais e-mails da ZEVANORY sobre o material gratuito, e seu e-mail e seu nome foram apagados desta lista.</p>${note}`);
   }
   return null;
 }

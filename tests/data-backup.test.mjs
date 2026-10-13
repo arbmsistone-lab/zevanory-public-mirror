@@ -72,9 +72,10 @@ test("identifiers are validated before reaching SQL", () => {
   for (const bad of ['x"; drop table y; --', "Leads", "a b", "", "1abc", "a,b", "a}b"]) assert.equal(validIdent(bad), false);
 });
 
-test("manifest is order independent; prefixes cover ledger, subscribers, leads and the switch", async () => {
+test("manifest is order independent; prefixes cover ledger, subscribers and the switch (not lead interest: T3)", async () => {
   assert.equal(await manifestHash({ x: await sha256("1"), y: "2" }), await manifestHash({ y: "2", x: await sha256("1") }));
-  for (const p of ["zpc:sales:", "zpc:cp:", "zpc:lead:interest:", "sales:open:v1"]) assert.ok(KV_PREFIXES.includes(p));
+  for (const p of ["zpc:sales:", "zpc:cp:", "sales:open:v1"]) assert.ok(KV_PREFIXES.includes(p));
+  assert.ok(!KV_PREFIXES.some((p) => p.startsWith("zpc:lead:")), "erased lead data must not survive in backups");
 });
 
 test("the trigger endpoint is authenticated and never returns data", () => {
