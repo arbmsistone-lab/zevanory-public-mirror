@@ -215,7 +215,12 @@ for key in ("VOICE_TTS_PROVIDER", "VOICE_TTS_PROVIDER_CHAIN"):
 # Do not compact secret bindings or change any sales/financial safety gates.
 # AGENT_AUTONOMY_MODE (12/10): frees the slot for the owner-authorized GEMINI_API_KEY secret.
 # Its code default is "guarded" (the safest mode) if the runtime config were ever unreadable.
-for key in ("ZEVANORY_RELEASE_REF", "ZEVANORY_WHATSAPP_DISPLAY", "AGENT_AUTONOMY_MODE"):
+# AGENT_AI_MAX_RUNS_PER_HOUR (13/10, T3): frees the slot taken by the owner-authorized
+# LEAD_PRIVACY_SECRET (budget 61/60 blocked run 38459418578). Single reader, runAgentOnce:
+# Number(env.AGENT_AI_MAX_RUNS_PER_HOUR) || 100, where env is options.env || process.env (raw
+# bindings, which do NOT see ZEVANORY_RUNTIME_CONFIG). The compacted name is then absent and the
+# default 100 applies, equal to the configured "100": the cap is unchanged either way.
+for key in ("ZEVANORY_RELEASE_REF", "ZEVANORY_WHATSAPP_DISPLAY", "AGENT_AUTONOMY_MODE", "AGENT_AI_MAX_RUNS_PER_HOUR"):
     if key in c["vars"]:
         runtime_config[key] = c["vars"].pop(key)
 
