@@ -1,0 +1,17 @@
+{
+  "schema": "zevanory.p12.instrumentation.v1",
+  "release_sha": "0e0108c2914ec89929cc3f49d78d9b089ea87681",
+  "checks": {
+    "request_context": "PASS",
+    "request_header": "PASS",
+    "structured_log": "PASS",
+    "log_request_id": "PASS",
+    "log_duration": "PASS",
+    "log_sink_dispatch": "PASS",
+    "sink_config": "PASS",
+    "trace_id": "PASS",
+    "span_id": "PASS",
+    "trace_persistence": "PASS"
+  },
+  "source_sha256": "520c03e2e86aa504c0f4ce41a0f9b65cce9d99d775e72528eef1bbb6778a2ced"
+}
