@@ -184,15 +184,15 @@
       "source": "Canais",
       "text": "Pinterest: aguardando aprovação do app",
       "status": "blocked_external",
-      "evidence": null
+      "evidence": "Perfil padronizado com readback público em 12/10/2026: nome ZEVANORY, sobre oficial, site vendas.zevanory.api.br, e-mail suporte@. Avatar oficial pendente (upload manual do dono). Conta sem quadros e sem app autorizado; não criar quadro/autorizar app antes do deploy do PR #774."
     },
     {
       "id": "tiktok-name",
       "kind": "agendado",
       "source": "Canais",
       "text": "Trocar nome de exibição do TikTok para ZEVANORY (liberado a partir de 18/10)",
-      "status": "scheduled",
-      "evidence": null
+      "status": "done",
+      "evidence": "Readback 12/10/2026 22:27 (TikTok Editar Perfil): nome exibido ZEVANORY, usuário @zevanory (perfil público https://www.tiktok.com/@zevanory)."
     },
     {
       "id": "gemini-billing",
@@ -464,7 +464,7 @@
       "source": "TikTok, 11/10",
       "text": "Texto da bio do TikTok (até 80 caracteres) e decisão sobre 'Divulga conteúdo' e verificações automáticas.",
       "status": "owner_reserved",
-      "evidence": null
+      "evidence": "Bio definida pelo dono (ordem 12/10) e publicada com readback em 12/10 22:27: 'IA e vendas na prática para pequenos negócios. Menos improviso. Mais execução.' (78/80). Pendente com o dono só a decisão sobre 'Divulga conteúdo' e verificações automáticas."
     },
     {
       "id": "kit-37",
@@ -609,6 +609,46 @@
       "text": "Reconciliar 273 → 259 → 263 com justificativa por item.",
       "status": "done",
       "evidence": "Dossiê Volume III: −15 retirados com motivo (data/retired-workflows.json), +1 backup, +4 provas; causas dos FAIL/NOT TESTED corrigidas (#755)."
+    },
+    {
+      "id": "zubs-omega",
+      "kind": "ordem",
+      "source": "Dono, 12–13/10 (APEX-Ω ZUBS)",
+      "text": "Padronização universal da identidade ZEVANORY em 19 frentes com fonte única, readback público e certificação por evidência; matriz CANAL→…→RESULTADO.",
+      "status": "in_progress",
+      "evidence": "TikTok (bio) e Pinterest (nome/sobre/site/e-mail) publicados com readback; PRs #774 e #778 abertos."
+    },
+    {
+      "id": "offer-0001-containment",
+      "kind": "ordem",
+      "source": "Dono, 12–13/10",
+      "text": "Nenhum criativo/publicação pode usar oferta fora do catálogo oficial (ARBM SIST/OFFER-0001 bloqueado na geração e na publicação), sem pausa global e sem tocar no checkout.",
+      "status": "in_progress",
+      "evidence": "PR #774: 52/52 checks verdes; aguardando merge do dono (merge sem revisão bloqueado pela sessão do executor). Após deploy: readback de nenhum post com ARBM/1197."
+    },
+    {
+      "id": "brand-seal-removal",
+      "kind": "ordem",
+      "source": "Dono, 12–13/10",
+      "text": "Remover 'CENTRAL OPERACIONAL · REVENUE OPERATIONS' do logotipo e das capas; corrigir OG 404, alt, metadados, páginas de reembolso/reenvio, links sociais e @zevanory3.",
+      "status": "in_progress",
+      "evidence": "PR #778 (PNGs e hashes gerados pelo build-brand-assets.py oficial)."
+    },
+    {
+      "id": "telegram-wrong-posts",
+      "kind": "reservado ao dono",
+      "source": "Dono, 12/10",
+      "text": "Excluir no Telegram os posts t.me/zevanory/4 (oferta ambígua R$ 197) e /5 (ARBM SIST R$ 1.197); evidência preservada antes da exclusão.",
+      "status": "owner_reserved",
+      "evidence": "Varredura 13/10: posts 6–11 corretos (SKUs ZEV); só 4 e 5 a excluir. O bot não tem rota de exclusão."
+    },
+    {
+      "id": "owner-sessions-brand",
+      "kind": "reservado ao dono",
+      "source": "Dono, 12/10",
+      "text": "Avatar oficial no Pinterest; sessões de administrador de YouTube (Studio), Instagram e Facebook no navegador do executor para aplicar bio/capa e fazer readback.",
+      "status": "owner_reserved",
+      "evidence": "YouTube Studio respondeu 'sem permissão' para a conta Google conectada; Instagram/Facebook sem sessão; upload de avatar bloqueado pelo controle da sessão do executor."
     }
   ]
 }
