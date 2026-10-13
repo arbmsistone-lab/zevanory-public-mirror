@@ -19,7 +19,7 @@ import { runVoiceEval, VOICE_EVAL_KEY } from "./voice-eval.mjs";
 import { synthesizeVoice } from "./voice-remote-tts.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
-import { withMeteredKv } from "./kv-meter.mjs";
+import { withMeteredKv, putBeat } from "./kv-meter.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
 import { handleAdminRequest, isAdminAuthorized } from "./admin-console.mjs";
 import { CONTROL_PLANE_VNEXT_JS } from "./control-plane-vnext-source.mjs";
@@ -529,7 +529,7 @@ const wrapped = {
       } catch (error) {
         beat.tasks.funnel = "fail:" + String(error instanceof Error ? error.message : error).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 120);
       }
-      try { await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:cron:v1:funnel", JSON.stringify({ ...beat, finishedAt: new Date().toISOString() }), { expirationTtl: 7 * 86400 }); } catch {}
+      try { await putBeat(normalized.ZEVANORY_PRIVATE_ARTIFACTS, "zpc:cron:v1:funnel", beat); } catch {}
       return new Response(JSON.stringify(beat), { status: beat.tasks.funnel === "ok" ? 200 : 500, headers });
     }
 
@@ -707,7 +707,7 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
       }));
       await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:financial-proof:last-isolated-run:v1", JSON.stringify({at:new Date().toISOString(),ok:proof.ok===true}), {expirationTtl:7*86400});
       iso.tasks.financial_proof = proof.ok === true ? "ok" : "fail:" + String(proof.reason || "unavailable").slice(0, 80);
-      try { await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:cron:v1:isolated", JSON.stringify({ ...iso, finishedAt: new Date().toISOString() }), { expirationTtl: 7 * 86400 }); } catch {}
+      try { await putBeat(normalized.ZEVANORY_PRIVATE_ARTIFACTS, "zpc:cron:v1:isolated", iso); } catch {}
       if (!proof.ok) {
         console.error("commercial_metrics_proof_isolated_failed", String(proof.reason || "unavailable"));
         throw new Error("financial_proof_not_renewed");
@@ -715,7 +715,7 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
     } catch (error) {
       // Only a fixed category, never raw SQL/HTTP errors or account details.
       console.error("commercial_metrics_proof_isolated_failed", "exception");
-      if (!iso.tasks.financial_proof) { iso.tasks.financial_proof = "fail:" + String(error instanceof Error ? error.message : error).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 100); try { await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:cron:v1:isolated", JSON.stringify({ ...iso, finishedAt: new Date().toISOString() }), { expirationTtl: 7 * 86400 }); } catch {} }
+      if (!iso.tasks.financial_proof) { iso.tasks.financial_proof = "fail:" + String(error instanceof Error ? error.message : error).replace(/postgres(ql)?:\/\/\S+/g, "[db]").slice(0, 100); try { await putBeat(normalized.ZEVANORY_PRIVATE_ARTIFACTS, "zpc:cron:v1:isolated", iso); } catch {} }
       throw new Error("commercial_metrics_proof_isolated_failed");
     }
     return;
@@ -748,7 +748,7 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   tasks.push(runPostSale(normalized, { sqlFactory: whatsappProofDatabase, production: true }).then((out) => console.info("post_sale_run", JSON.stringify(out))).catch((error) => console.error("post_sale_run_failed", error instanceof Error ? error.message : String(error))));
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);
-  try { await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:cron:v1:hourly", JSON.stringify({ ...beat, finishedAt: new Date().toISOString() }), { expirationTtl: 7 * 86400 }); } catch {}
+  try { await putBeat(normalized.ZEVANORY_PRIVATE_ARTIFACTS, "zpc:cron:v1:hourly", beat); } catch {}
   // Acquisition (:35) and brand profiles (:05) run in the isolated "5,35" cron.
 };
 if (typeof worker.queue === "function") {

@@ -180,9 +180,13 @@ export async function runAcquisitionEngine(env={},now=new Date(),fetchImpl=fetch
    }
   }catch{outcomes.push({channel,status:"erro",code:"engine_exception",day});}
  }
- await kv.put(ACQUISITION_CALENDAR_KEY,JSON.stringify({updatedAt:now.toISOString(),days:planCalendar(now),timezone:TIMEZONE}),{expirationTtl:86400*2});
+ // KV write budget (account-wide 1,000/day): the calendar changes once a day, not every run.
+ const days=planCalendar(now);
+ let priorCal=null;try{priorCal=JSON.parse(String(await kv.get(ACQUISITION_CALENDAR_KEY)||"null"));}catch{}
+ if(!priorCal||JSON.stringify(priorCal.days)!==JSON.stringify(days))await kv.put(ACQUISITION_CALENDAR_KEY,JSON.stringify({updatedAt:now.toISOString(),days,timezone:TIMEZONE}),{expirationTtl:86400*2});
  const state={day,generatedAt:now.toISOString(),product:entry.product.sku,niche:entry.niche,angle:entry.angle,outcomes};
- await kv.put(ACQUISITION_STATE_PREFIX+day,JSON.stringify(state),{expirationTtl:45*86400});
+ let priorState=null;try{priorState=JSON.parse(String(await kv.get(ACQUISITION_STATE_PREFIX+day)||"null"));}catch{}
+ if(!priorState||JSON.stringify(priorState.outcomes)!==JSON.stringify(outcomes)||priorState.product!==state.product)await kv.put(ACQUISITION_STATE_PREFIX+day,JSON.stringify(state),{expirationTtl:45*86400});
  const ownerDigest=await runOwnerDailyDigest(env,now,fetchImpl);
  return {ok:true,...state,ownerDigest};
 }
