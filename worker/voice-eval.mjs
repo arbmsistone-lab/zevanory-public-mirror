@@ -39,8 +39,20 @@ async function transcribe(ai, bytes) {
   return String(out?.text || out?.transcription_info?.text || "").trim();
 }
 
+// The free Gemini tier limits requests per minute: pace the calls and retry a "quota" refusal
+// once after a pause, instead of counting a rate limit as a voice defect.
+export const FALLBACK_TEXT = "Olá, aqui é o atendimento da ZEVANORY. Posso ajudar com preços, entrega dos produtos digitais e reembolso dentro do prazo de sete dias.";
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+async function paced(fn, { wait = pause, gapMs = 4000, retryMs = 25000 } = {}) {
+  await wait(gapMs);
+  try { return await fn(); }
+  catch (e) { if (!/quota|429|rate/i.test(String(e?.message || e))) throw e; await wait(retryMs); return fn(); }
+}
+
 // deps: { ai, synth(text) -> {bytes, mime, provider, model}, fallbackSynth(text) -> same }
-export async function runVoiceEval({ ai, synth, fallbackSynth }, { now = Date.now() } = {}) {
+export async function runVoiceEval({ ai, synth: rawSynth, fallbackSynth: rawFallback, wait }, { now = Date.now() } = {}) {
+  const synth = rawSynth && ((t) => paced(() => rawSynth(t), wait ? { wait } : {}));
+  const fallbackSynth = rawFallback && ((t) => paced(() => rawFallback(t), wait ? { wait } : {}));
   const report = { schema: "zevanory-voice-eval/v1", generatedAt: new Date(now).toISOString(), samples: [], fallback: null, ok: false, failures: [] };
   if (!ai?.run || !synth) { report.failures.push("unconfigured"); return report; }
   const items = SAMPLE_TAGS.map((t) => BATTERY.find((b) => b.tag === t)).filter(Boolean);
@@ -67,7 +79,7 @@ export async function runVoiceEval({ ai, synth, fallbackSynth }, { now = Date.no
   }
   if (fallbackSynth) {
     try {
-      const text = "Olá, aqui é o atendimento da ZEVANORY.";
+      const text = FALLBACK_TEXT;
       const a = await fallbackSynth(text);
       const w = wer(text, await transcribe(ai, a.bytes));
       report.fallback = { provider: a.provider, model: a.model, bytes: a.bytes.length, wer: w, ok: a.bytes.length > 2000 && w <= MAX_WER };

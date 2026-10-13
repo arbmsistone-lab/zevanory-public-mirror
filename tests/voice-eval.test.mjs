@@ -32,12 +32,12 @@ function fakeAi({ garble = false, wrongPrice = false } = {}) {
 }
 
 test("passes only when audio is understood, the answer is right and our voice is intelligible", async () => {
-  const ok = await runVoiceEval({ ai: fakeAi(), synth: async (t) => audio(t), fallbackSynth: async (t) => audio(t) });
+  const ok = await runVoiceEval({ wait: async () => {}, ai: fakeAi(), synth: async (t) => audio(t), fallbackSynth: async (t) => audio(t) });
   assert.equal(ok.samples.length, SAMPLE_TAGS.length);
   for (const s of ok.samples) { assert.ok(s.werIn <= 0.25, JSON.stringify(s)); assert.ok(s.werOut <= 0.25); }
-  const garbled = await runVoiceEval({ ai: fakeAi({ garble: true }), synth: async (t) => audio(t), fallbackSynth: async (t) => audio(t) });
+  const garbled = await runVoiceEval({ wait: async () => {}, ai: fakeAi({ garble: true }), synth: async (t) => audio(t), fallbackSynth: async (t) => audio(t) });
   assert.equal(garbled.ok, false); assert.equal(garbled.fallback.ok, false);
-  const down = await runVoiceEval({ ai: fakeAi(), synth: async () => { throw new Error("voice_synth_http_404"); }, fallbackSynth: async (t) => audio(t) });
+  const down = await runVoiceEval({ wait: async () => {}, ai: fakeAi(), synth: async () => { throw new Error("voice_synth_http_404"); }, fallbackSynth: async (t) => audio(t) });
   assert.equal(down.ok, false); assert.ok(down.samples.every((s) => /404/.test(s.error)));
 });
 
@@ -46,4 +46,12 @@ test("endpoint is authenticated, uncached and stores only the report", () => {
   const block = src.slice(src.indexOf('"/api/internal/voice-eval/run"'), src.indexOf('"/api/zea10/autonomy"'));
   assert.match(block, /backupTokenOk\(request\.headers\.get\("x-backup-token"\)/);
   assert.match(block, /kv: null/);
+});
+
+test("a free-tier rate limit is retried once after a pause, not reported as a voice defect", async () => {
+  let calls = 0;
+  const flaky = async (t) => { calls++; if (calls === 1) throw new Error("quota"); return audio(t); };
+  const r = await runVoiceEval({ wait: async () => {}, ai: fakeAi(), synth: flaky, fallbackSynth: async (t) => audio(t) });
+  assert.equal(r.samples[0].error, undefined, JSON.stringify(r.samples[0]));
+  assert.ok(r.samples[0].steps.questionAudio.bytes > 2000, "audio produced after the retry");
 });
