@@ -1614,7 +1614,7 @@ var BRAND_PROFILE = Object.freeze({
   site: "https://zevanory.api.br",
   category: "Software / Tecnologia",
   profileImage: "/brand/social/zevanory-social-profile-1080.png",
-  facebookCover: "/brand/social/zevanory-facebook-cover-1640x624.png",
+  facebookCover: "/brand/export/banner-facebook.png",
   coreBio: COMMERCIAL_MESSAGES.zevanory.bio
 });
 var OFFICIAL_WHATSAPP = Object.freeze({ display: "+55 88 99254-5413", e164: "5588992545413", url: "https://wa.me/5588992545413" });
@@ -17706,7 +17706,7 @@ async function handleInternalAuthMailer(request, env) {
   if (product !== PRODUCT || email.length > 254 || !EMAIL_RE.test(email) || !validResetUrl(resetUrl)) return response(400, { error: "invalid_request" });
   const apiKey = String(env.RESEND_API_KEY || "");
   if (!apiKey) return response(503, { error: "mailer_unavailable" });
-  const from = String(env.RESEND_FROM_ADDRESS || "Zevanory <suporte@zevanory.api.br>");
+  const from = String(env.RESEND_FROM_ADDRESS || "ZEVANORY <suporte@zevanory.api.br>");
   const subject = "Redefina sua senha do ARBM Contador";
   const text = `Recebemos uma solicita\xE7\xE3o para redefinir sua senha. Use este link em at\xE9 15 minutos: ${resetUrl}
 
