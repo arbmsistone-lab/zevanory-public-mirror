@@ -143,6 +143,20 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
       if (row.metric === "views") b.views += Number(row.n) || 0; else b.intents += Number(row.n) || 0;
     }
   } catch {}
+  // Clean breakdown (only days after the bot/datacenter filter went live): per page, per source and
+  // per campaign, so the commercial diagnosis never mixes contaminated days with real visitors.
+  const cleanRows = await sql.query(`select page, metric, sum(n)::int as n from zevanory_funnel_daily
+      where day >= $1::date group by page, metric`, [CLEAN_SINCE]).catch(() => []);
+  const clean = { since: CLEAN_SINCE, pages: {}, sources: {}, campaigns: {} };
+  for (const row of cleanRows || []) {
+    const n = Number(row.n) || 0;
+    const m = /^(?:([a-z_]+):)?src:([a-z0-9_-]+)$/.exec(row.metric);
+    if (m) { const s = (clean.sources[m[2]] = clean.sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0 }); s[m[1] || "views"] += n; continue; }
+    const c = /^camp:([a-z0-9_-]+)$/.exec(row.metric);
+    if (c) { clean.campaigns[c[1]] = (clean.campaigns[c[1]] || 0) + n; continue; }
+    const p = (clean.pages[row.page] = clean.pages[row.page] || {});
+    p[row.metric] = (p[row.metric] || 0) + n;
+  }
   const clean7 = await sql.query("select metric, coalesce(sum(n),0)::int as n from zevanory_funnel_daily where day >= greatest(current_date - 6, $1::date) and metric in ('views','visitors') group by metric", [CLEAN_SINCE]).catch(() => []);
   const cleanM = Object.fromEntries((clean7 || []).map(row=>[row.metric,Number(row.n)||0]));
   const metrics7 = Object.fromEntries(traffic7.map(row=>[row.metric,Number(row.n)||0]));
@@ -158,6 +172,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
     products,
     sources,
     productDaily,
+    clean,
     topCampaigns: Object.entries(campaigns).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([campaign, views]) => ({ campaign, views })),
   };
 }
