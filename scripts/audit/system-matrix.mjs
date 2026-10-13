@@ -72,7 +72,7 @@ export async function main() {
   for (const wf of workflows.filter((w) => existsSync(w.path))) {
     const file = wf.path.split("/").pop();
     if (retiredSet.has(file)) { retiredItems.push({ id: "wf:" + file, reason: retiredSet.get(file).reason, since: retiredSet.get(file).since }); continue; }
-    const j = await gh(`repos/${repo}/actions/workflows/${wf.id}/runs?per_page=5`);
+    const j = await gh(`repos/${repo}/actions/workflows/${wf.id}/runs?per_page=30`);
     const c = classifyWorkflow(wf, j.workflow_runs || [], now);
     // Proofs that need a real customer payment cannot be produced artificially: BLOCKED (externo).
     if (awaitingSet.has(file) && c.state !== "PASS") { items.push({ id: "wf:" + file, kind: "rotina", name: wf.name, state: "BLOCKED", owner: "externo", evidence: "aguardando " + awaitingSet.get(file), at: c.at }); continue; }

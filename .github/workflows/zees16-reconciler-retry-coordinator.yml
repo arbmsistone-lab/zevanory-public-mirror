@@ -54,12 +54,17 @@ jobs:
             next=""
             for i in $(seq 1 24); do
               info="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/zees16-control-reconciler.yml/runs?event=workflow_dispatch&per_page=30")"
-              next="$(jq -r --arg sha "$TARGET_SHA" --argjson before "$before" '[.workflow_runs[] | select(.head_sha==$sha and .id>$before)] | sort_by(.id) | last | .id // empty' <<< "$info")"
+              # The dispatch runs on the CURRENT gh-pages head, which may have advanced past
+              # TARGET_SHA (later merges that do not deploy). Observe the run we just created and
+              # say which SHA it ran on, instead of waiting for a run that can never appear.
+              next="$(jq -r --argjson before "$before" '[.workflow_runs[] | select(.id>$before)] | sort_by(.id) | last | .id // empty' <<< "$info")"
               [ -n "$next" ] && break
               sleep 5
             done
             [ -n "$next" ] || { echo "::error title=RETRY_COORDINATOR::RECONCILER_DISPATCH_NOT_OBSERVED"; return 1; }
             echo "RECONCILER_RUN_ID=$next"
+            ran_sha="$(jq -r --argjson id "$next" '.workflow_runs[] | select(.id==$id) | .head_sha' <<< "$info")"
+            [ "$ran_sha" = "$TARGET_SHA" ] || echo "::notice title=RETRY_COORDINATOR::gh-pages advanced: reconciler ran on $ran_sha (deploy target $TARGET_SHA)"
             gh run watch "$next" --exit-status || { echo "::warning title=RETRY_COORDINATOR::reconciler run $next ended $(gh api repos/$GITHUB_REPOSITORY/actions/runs/$next --jq .conclusion)"; return 1; }
           }
           if watch_one; then
