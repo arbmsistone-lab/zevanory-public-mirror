@@ -9,6 +9,7 @@ on:
       - "worker/cloudflare-worker.compat.mjs"
       # Modules bundled into the Worker that used to merge without a deploy (12/10: the KV write
       # budget fix in data-backup.mjs did not reach production).
+      - "worker/*.mjs"
       - "worker/cloudflare-worker.recovered.mjs"
       - "worker/data-backup.mjs"
       - "worker/voice-eval.mjs"
