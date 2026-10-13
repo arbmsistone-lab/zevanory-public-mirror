@@ -7,6 +7,11 @@ on:
         description: Exact zevanory-product-control-edge main SHA
         required: true
         type: string
+      allow_backwards:
+        description: Deliberate rollback to an older panel SHA than the one in production
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
       - gh-pages
@@ -44,6 +49,8 @@ jobs:
 
       - name: Validate exact source SHA
         shell: bash
+        env:
+          ALLOW_BACKWARDS: ${{ inputs.allow_backwards == true && 'true' || 'false' }}
         run: |
           set -euo pipefail
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -63,6 +70,20 @@ jobs:
           # Never move production backwards silently: report how far the source is behind main.
           behind="$(git -C zpc rev-list --count "$SOURCE_SHA"..origin/main)"
           echo "::notice title=SOURCE_VS_MAIN::source=${SOURCE_SHA:0:12} behind_main_by=$behind"
+          # Never move production backwards by accident (13/10: the push deploy of #795 republished
+          # de7c0bcd over c1182c54/#208, which a dispatch had published minutes earlier). If the live
+          # panel already contains this source and more, refuse unless a rollback was asked for.
+          live="$(curl -fsS --max-time 20 "https://controle.zevanory.api.br/version.json?t=$(date +%s)" | jq -r '.sha // empty' 2>/dev/null || true)"
+          echo "::notice title=LIVE_VS_SOURCE::live=${live:0:12} source=${SOURCE_SHA:0:12}"
+          if [[ "$live" =~ ^[0-9a-f]{40}$ ]] && [ "$live" != "$SOURCE_SHA" ] \
+             && git -C zpc cat-file -e "$live^{commit}" 2>/dev/null \
+             && git -C zpc merge-base --is-ancestor "$SOURCE_SHA" "$live"; then
+            if [ "$ALLOW_BACKWARDS" != "true" ]; then
+              echo "::error title=SOURCE_OLDER_THAN_PRODUCTION::source ${SOURCE_SHA:0:12} is an ancestor of live ${live:0:12}; refusing to move production backwards (dispatch with allow_backwards=true for a deliberate rollback)"
+              exit 1
+            fi
+            echo "::warning title=DELIBERATE_ROLLBACK::live ${live:0:12} -> ${SOURCE_SHA:0:12}"
+          fi
 
       - uses: actions/setup-node@v4
         with:
