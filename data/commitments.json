@@ -616,23 +616,23 @@
       "source": "Dono, 12–13/10 (APEX-Ω ZUBS)",
       "text": "Padronização universal da identidade ZEVANORY em 19 frentes com fonte única, readback público e certificação por evidência; matriz CANAL→…→RESULTADO.",
       "status": "in_progress",
-      "evidence": "TikTok (bio) e Pinterest (nome/sobre/site/e-mail) publicados com readback; PRs #774 e #778 abertos."
+      "evidence": "TikTok (bio) e Pinterest (nome/sobre/site/e-mail) publicados com readback; contenção (#774) e identidade (#778, #784) em produção cfad7cd4 com readback. Pendentes: bios auto-sync Telegram/Bluesky (próxima janela :05), posts 4/5 do Telegram, avatar Pinterest, sessões YouTube/Instagram/Facebook."
     },
     {
       "id": "offer-0001-containment",
       "kind": "ordem",
       "source": "Dono, 12–13/10",
       "text": "Nenhum criativo/publicação pode usar oferta fora do catálogo oficial (ARBM SIST/OFFER-0001 bloqueado na geração e na publicação), sem pausa global e sem tocar no checkout.",
-      "status": "in_progress",
-      "evidence": "PR #774: 52/52 checks verdes; aguardando merge do dono (merge sem revisão bloqueado pela sessão do executor). Após deploy: readback de nenhum post com ARBM/1197."
+      "status": "done",
+      "evidence": "PR #774 integrado (0e0108c); produção 5c90452→cfad7cd4 (/api/release). Worker implantado: 1 único OFFER-0001 (config de checkout), 0 defaults de criativo, barreiras assertBrandSafeCreative/brandSafeCreativeViolation presentes; criativo assinado ARBM (link do post t.me/zevanory/5) responde 403 invalid_creative_token; /comprar/ZEV-IA-011 intacto (R$ 197,00, Mercado Pago). Readback 13/10/2026."
     },
     {
       "id": "brand-seal-removal",
       "kind": "ordem",
       "source": "Dono, 12–13/10",
       "text": "Remover 'CENTRAL OPERACIONAL · REVENUE OPERATIONS' do logotipo e das capas; corrigir OG 404, alt, metadados, páginas de reembolso/reenvio, links sociais e @zevanory3.",
-      "status": "in_progress",
-      "evidence": "PR #778 (PNGs e hashes gerados pelo build-brand-assets.py oficial)."
+      "status": "done",
+      "evidence": "PRs #778 (5c90452) e #784 (cfad7cd4) integrados; deploy central e vitrine success. Readback 13/10/2026 08:58: zevanory.api.br e vendas.zevanory.api.br/brand/zevanory-logo-dark.svg sem selo (sha256 e4c7b2e8…, title ZEVANORY, viewBox 0 -34 1400 320); logo light e0d07871…; capas em produção = manifesto (bluesky 95655fa2, facebook 2cc8de84, youtube bc317d5e); capa legada /brand/social/zevanory-facebook-cover-1640x624.png = banner-facebook aprovado (2cc8de84); OG de /quem-criou 200 image/png; meta/OG oficiais; 7 perfis no rodapé; reembolso/reenvio com logo+CNPJ."
     },
     {
       "id": "telegram-wrong-posts",
