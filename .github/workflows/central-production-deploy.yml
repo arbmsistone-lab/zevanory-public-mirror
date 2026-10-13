@@ -7,6 +7,14 @@ on:
       - "worker/live-recovered/control-plane-vnext.js"
       - "worker/control-plane-vnext-source.mjs"
       - "worker/cloudflare-worker.compat.mjs"
+      # Modules bundled into the Worker that used to merge without a deploy (12/10: the KV write
+      # budget fix in data-backup.mjs did not reach production).
+      - "worker/cloudflare-worker.recovered.mjs"
+      - "worker/data-backup.mjs"
+      - "worker/voice-eval.mjs"
+      - "worker/commercial-metrics-projection.mjs"
+      - "worker/internal-financial-audit.mjs"
+      - "worker/whatsapp-*.mjs"
       - "worker/live-runtime-status.mjs"
       - "worker/creative-autonomy.mjs"
       - "worker/multichannel-autonomy.mjs"
