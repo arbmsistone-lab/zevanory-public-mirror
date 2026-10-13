@@ -2,29 +2,45 @@
 
 Plano mestre 3.1. Documento operacional; nenhuma etapa é executada sem a autorização indicada.
 
-## A. Ordem de integração
+## A. Ordem de integração: **#799 primeiro, #210 depois**
 
 | Passo | Ação | Quem | Efeito em produção | Verificação |
 |---|---|---|---|---|
-| 1 | Mesclar **zevanory-product-control-edge #210** | Proprietário | O workflow do repositório do painel vira só build + dry run (**não publica**). Como `scripts/cloudflare-authoritative-repair.mjs` muda, o **reconciliador agendado do mirror** (t2, a cada 15 min) detecta novo commit de runtime e **republica o painel com o mesmo código**, passando pela sua guarda (só avança a partir do live) | `controle.zevanory.api.br/version.json` passa a mostrar o SHA do #210 |
-| 2 | Reexecutar o check `external-repository` do **#799** | Executor | Nenhum (só leitura) | check verde |
-| 3 | Mesclar **zevanory-public-mirror #799** | Proprietário | **Publicam:** `central-production-deploy` (Worker `zevanory`) e `zevanory-sales-public-release` (Worker de vendas). **Só verificam:** `sales-legal-publish`, `t1-publisher-guard`, checks estáticos e de voz, sondas WhatsApp (a prova real está desativada no código). O router **não** dispara | ver C |
-| 4 | Leitura pós-promoção | Executor (relatório) e auditor (parecer) | Nenhum | ver C |
+| 0 | Pré-condição (só leitura): fonte de runtime do `main` do painel = versão efetiva do painel | Executor | Nenhum | `git log -1 -- <runtime paths>` do painel = `version.json.sha` |
+| 1 | Mesclar **zevanory-public-mirror #799** | Proprietário | **Publicam:** `central-production-deploy` (Worker `zevanory`) e `zevanory-sales-public-release` (vendas), com guarda dentro da fila e pós-verificação pelas duas fontes. **Painel: nada publica** (ver A.1). Router não dispara. O check `external-repository` do #799 fica vermelho por desenho até o passo 3 | ver C |
+| 2 | Leitura pós-promoção de central e vendas | Executor | Nenhum | `PROMOTION_GUARD_*`, `POST_PROMOTION_*` = PASS, smokes |
+| 3 | Mesclar **zevanory-product-control-edge #210** | Proprietário | O workflow do repositório do painel vira build + dry run (**não publica**). O script de deploy passa a marcar a versão. O solicitante agendado (t2) vê a fonte à frente do live e **pede** o publicador canônico, que roda a guarda na fila, publica e certifica pelas duas fontes | `POST_PROMOTION_zevanory-product-control-portable` = PASS; `version.json.sha` = SHA do #210 |
+| 4 | Reexecutar `t1-publisher-guard` (só leitura) | Executor | Nenhum | `external-repository` verde |
 
-**Guarda real:** em cada publicação, a guarda pré-promoção roda **dentro da fila**, imediatamente antes de publicar. A prévia do merge (`merge-effect-preview`) é só indicativa: não certifica nada.
+### A.1 Por que a janela entre os merges não tem publicação desprotegida
+
+Inventário de quem pode publicar o painel em cada momento:
+
+| Caminho | Antes do #799 | Entre #799 e #210 | Depois do #210 |
+|---|---|---|---|
+| t2 agendado (mirror) | publicador antigo; fonte = live → não publica | **solicitante** sem credencial Cloudflare; só pede quando a guarda diz `forward_of_live` | solicitante |
+| `zpc-control-worker-deploy` (canônico) | despacho / pin | guarda na fila. **Avanço recusado antes de publicar** se o script da fonte não marca a versão (`SOURCE_WITHOUT_VERSION_TAG`): o `main` do painel antes do #210 não marca, então nenhum avanço é possível | guarda + publicação marcada + pós-verificação pelas duas fontes |
+| `zpc-canonical-worker-promotion` (repositório do painel) | push no `main`; falha no passo de promoção em 0 s, 10/10 execuções (13/10) | inalterado (mesmo estado de hoje) | **removido** pelo #210 (vira dry run) |
+| Rollback do proprietário (canônico) | disponível | **disponível** (a exigência de marcação vale só para avanço) | disponível |
+
+- **Ordem inversa (#210 primeiro), descartada:** o t2 antigo, ainda sem a guarda nova, republicaria o painel com o script do #210. Era essa a janela apontada pelo auditor.
+- **Nenhum experimento em produção:** a prova é estática (testes do inventário, mutação e leitura do estado). A primeira publicação real do painel no passo 3 é a certificação.
+- **Rollback preservado:** um rollback para fonte anterior ao #210 funciona. A pós-verificação dele fica NÃO COMPROVADO, porque essa versão não carrega a marcação: só o readback a confirma. O passo falha e a versão permanece, por decisão do proprietário.
+- **Failover preservado:** central mantém o `wrangler rollback` automático e vendas mantém o snapshot. Ambos disparam também quando a pós-verificação dá FAIL ou NÃO COMPROVADO.
+- **Risco residual da janela:** o publicador do repositório do painel continua existindo até o #210, como hoje. Ele falha no passo de promoção, mas a causa (credencial ausente) está **NÃO COMPROVADA** por log, porque os logs de job não são legíveis daqui. O indício é a duração de 0 s, compatível com `CLOUDFLARE_API_TOKEN_REQUIRED`, que o script verifica antes de qualquer chamada de rede. Mitigação: mesclar o #210 logo após a leitura do passo 2.
 
 ## B. Recuperação preservada
 
 - **Central:** se a verificação pós-deploy falhar, `wrangler rollback` volta para a versão anterior àquela execução (mantido).
 - **Vendas:** se o readback falhar, o snapshot da versão anterior é restaurado (10 disponíveis em 13/10). Sem snapshot, a execução falha alto **sem apagar o script** (mudança do T1).
-- **Painel:** o rollback por despacho (#797) foi mantido. O reconciliador pausa com a variável `ZPC_ROLLBACK_HOLD`.
+- **Painel:** o rollback por despacho (#797) foi mantido e é a única exceção documentada ao caminho de avanço, dentro do próprio publicador canônico (mesma fila, mesma receita, auditoria, pós-verificação). O solicitante t2 pausa com a variável `ZPC_ROLLBACK_HOLD` e nunca pede rollback.
 - **Produção ilegível:** a guarda recusa. Recuperação só por despacho explícito do proprietário, depois de confirmar a versão no painel da Cloudflare.
 
 ## C. Certificação da promoção real (depois do passo 3)
 
 Para cada Worker publicado, gravar no relatório:
 1. o resultado da guarda na execução real (`PROMOTION_GUARD_*`, decisão e motivo);
-2. `POST_PROMOTION_*` = `effective_version_is_candidate`: tag da versão ativa na Cloudflare **e** readback (`/api/release`, `/health`) iguais ao SHA mesclado;
+2. `POST_PROMOTION_*` com estado `PASS`: tag da versão ativa na Cloudflare **e** readback (`/api/release`, `/health`, `version.json`) presentes, iguais entre si e iguais ao SHA mesclado. Fonte ausente = `NAO_COMPROVADO`, divergência = `FAIL`; ambos reprovam o passo;
 3. a verificação pós-deploy existente (smoke, readback, legal) verde.
 
 Sem esses três itens, a promoção é NÃO COMPROVADA, mesmo com o merge feito.

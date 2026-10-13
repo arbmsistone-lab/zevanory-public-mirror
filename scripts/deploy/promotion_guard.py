@@ -144,13 +144,23 @@ def main(argv=None) -> int:
 
 
 def verify_effective(candidate: str, live_http: str | None, live_cf: str | None) -> tuple[bool, str]:
+    """Post-promotion certification. BOTH sources are mandatory.
+
+    PASS only when the Cloudflare active-version tag AND the HTTP readback are
+    present, agree with each other and equal the candidate. A missing source is
+    NAO_COMPROVADO (evidence absent); any disagreement is FAIL. Both are failures.
+    """
     candidate = norm(candidate) or ""
-    if not (live_http or live_cf):
-        return False, "effective_version_unreadable_after_promotion"
+    live_http, live_cf = norm(live_http), norm(live_cf)
+    if live_http and live_cf and live_http != live_cf:
+        return False, f"FAIL:sources_disagree_cloudflare_{live_cf[:12]}_readback_{live_http[:12]}"
     for label, value in (("cloudflare", live_cf), ("readback", live_http)):
         if value and value != candidate:
-            return False, f"{label}_reports_{value[:12]}_not_{candidate[:12]}"
-    return True, "effective_version_is_candidate"
+            return False, f"FAIL:{label}_reports_{value[:12]}_not_{candidate[:12]}"
+    missing = [label for label, value in (("cloudflare", live_cf), ("readback", live_http)) if not value]
+    if missing:
+        return False, "NAO_COMPROVADO:" + "_and_".join(missing) + "_source_unavailable"
+    return True, "PASS:effective_version_is_candidate"
 
 
 def verify_promoted(args) -> int:
@@ -163,9 +173,12 @@ def verify_promoted(args) -> int:
         if ok:
             break
         time.sleep(10)
-    print("POST_PROMOTION=" + json.dumps({"service": args.service, "candidate": args.candidate, "cloudflare": live_cf, "readback": live_http, "ok": ok, "reason": reason}, sort_keys=True))
+    state = reason.split(":", 1)[0]
+    print("POST_PROMOTION=" + json.dumps({"service": args.service, "candidate": args.candidate, "cloudflare": live_cf, "readback": live_http, "ok": ok, "state": state, "reason": reason}, sort_keys=True))
     print(f"::{'notice' if ok else 'error'} title=POST_PROMOTION_{args.service}::{reason}")
-    return 0 if ok else 1
+    if ok:
+        return 0
+    return 2 if state == "NAO_COMPROVADO" else 1
 
 
 if __name__ == "__main__":

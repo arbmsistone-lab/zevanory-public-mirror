@@ -63,12 +63,74 @@ class Decide(unittest.TestCase):
 
 
 class VerifyPromoted(unittest.TestCase):
-    def test_effective_must_be_candidate(self):
-        self.assertTrue(pg.verify_effective(C, C, C)[0])
-        self.assertTrue(pg.verify_effective(C, C, None)[0])
-        self.assertFalse(pg.verify_effective(C, B, C)[0])
-        self.assertFalse(pg.verify_effective(C, C, B)[0])
-        self.assertFalse(pg.verify_effective(C, None, None)[0])
+    """Post-promotion: PASS requires BOTH sources present, equal to each other and to the candidate."""
+
+    def test_both_sources_equal_candidate_passes(self):
+        self.assertEqual(pg.verify_effective(C, C, C), (True, "PASS:effective_version_is_candidate"))
+
+    def test_missing_cloudflare_source_is_not_proven(self):
+        ok, reason = pg.verify_effective(C, C, None)
+        self.assertFalse(ok)
+        self.assertTrue(reason.startswith("NAO_COMPROVADO:cloudflare"), reason)
+
+    def test_missing_readback_source_is_not_proven(self):
+        ok, reason = pg.verify_effective(C, None, C)
+        self.assertFalse(ok)
+        self.assertTrue(reason.startswith("NAO_COMPROVADO:readback"), reason)
+
+    def test_both_sources_missing_is_not_proven(self):
+        ok, reason = pg.verify_effective(C, None, None)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "NAO_COMPROVADO:cloudflare_and_readback_source_unavailable")
+
+    def test_unparseable_source_counts_as_missing(self):
+        self.assertTrue(pg.verify_effective(C, C, "not-a-sha")[1].startswith("NAO_COMPROVADO:"))
+
+    def test_sources_disagree_fails(self):
+        ok, reason = pg.verify_effective(C, B, C)
+        self.assertFalse(ok)
+        self.assertTrue(reason.startswith("FAIL:sources_disagree"), reason)
+        self.assertTrue(pg.verify_effective(C, C, B)[1].startswith("FAIL:sources_disagree"))
+
+    def test_both_agree_on_other_version_fails(self):
+        ok, reason = pg.verify_effective(C, B, B)
+        self.assertFalse(ok)
+        self.assertTrue(reason.startswith("FAIL:cloudflare_reports_"), reason)
+
+    def test_one_source_wrong_other_missing_fails_not_unproven(self):
+        self.assertTrue(pg.verify_effective(C, B, None)[1].startswith("FAIL:readback_reports_"))
+        self.assertTrue(pg.verify_effective(C, None, B)[1].startswith("FAIL:cloudflare_reports_"))
+
+    def _run(self, http, cf):
+        import argparse
+        import contextlib
+        import io
+        args = argparse.Namespace(service="svc", candidate=C, readback_url="https://x", readback_path="sha",
+                                  cloudflare_script="svc")
+        saved = (pg.readback_sha, pg.cloudflare_sha)
+        import time
+        saved_sleep = time.sleep
+        pg.readback_sha, pg.cloudflare_sha = (lambda *a, **k: http), (lambda *a, **k: cf)
+        time.sleep = lambda s: None
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out):
+                code = pg.verify_promoted(args)
+        finally:
+            pg.readback_sha, pg.cloudflare_sha = saved
+            time.sleep = saved_sleep
+        return code, out.getvalue()
+
+    def test_verify_promoted_exit_codes(self):
+        self.assertEqual(self._run(C, C)[0], 0)
+        code, out = self._run(C, None)
+        self.assertEqual(code, 2, "missing Cloudflare source must fail the step (NAO_COMPROVADO)")
+        self.assertIn('"state": "NAO_COMPROVADO"', out)
+        self.assertIn("::error title=POST_PROMOTION_svc::NAO_COMPROVADO", out)
+        self.assertEqual(self._run(None, C)[0], 2, "missing readback must fail the step (NAO_COMPROVADO)")
+        code, out = self._run(B, C)
+        self.assertEqual(code, 1)
+        self.assertIn('"state": "FAIL"', out)
 
 
 class Readers(unittest.TestCase):

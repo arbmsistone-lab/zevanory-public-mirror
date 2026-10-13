@@ -36,11 +36,22 @@
     "zevanory-product-control-portable": {
       "group": "deploy-zevanory-product-control-portable",
       "canonical": "zpc-control-worker-deploy.yml",
-      "guard": "monotonic guard + authorised rollback in the canonical workflow (#796/#797)",
+      "guard": "scripts/deploy/promotion_guard.py (cloudflare tag + version.json) inside the canonical workflow; forward promotion refused when the source cannot be certified by both sources",
       "config_publishers": [
-        "t2-exact-control-worker-promotion.yml",
         "owner-oauth-key-bootstrap.yml"
-      ]
+      ],
+      "config_publisher_notes": {
+        "owner-oauth-key-bootstrap.yml": "Config only (one secret, OWNER_OAUTH_BRIDGE_SECRET); workflow_dispatch with typed BOOTSTRAP; one-time and fail-closed (refuses if the secret exists); same queue. Never publishes code."
+      },
+      "requesters": [
+        "t2-exact-control-worker-promotion.yml"
+      ],
+      "requester_notes": {
+        "t2-exact-control-worker-promotion.yml": "Scheduled reconciler. No build, no secret, no deploy, no Cloudflare write: read-only guard decision, then workflow_dispatch of the canonical publisher with skip_if_live=true (permissions: actions: write only)."
+      },
+      "exceptions": {
+        "rollback": "Single documented backwards path inside the canonical workflow itself (#796/#797): workflow_dispatch with allow_backwards, actor == repository owner, rollback_reason >= 20 chars, audit artifact retained 90 days, same queue, same publish recipe, post-promotion verification. Limitation: the actor check cannot distinguish the owner from an agent using the owner's identity (see ops/t1-activation.md E)."
+      }
     },
     "giro-whatsapp-bridge": {
       "group": "deploy-giro-whatsapp-bridge",

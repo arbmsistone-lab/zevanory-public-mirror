@@ -92,14 +92,41 @@ test("retired and validation-only workflows cannot publish", () => {
   }
 });
 
-test("the scheduled panel reconciler is guarded and never answers pin pushes", () => {
+// Code publication (not config): deploy/rollback/version deploy or the panel deploy script.
+const CODE_PUBLISH = [PUBLISH[0], PUBLISH[3]];
+const publishesCode = (text) => CODE_PUBLISH.some((re) => re.test(text));
+
+test("requesters never publish and only dispatch their service's canonical publisher", () => {
+  for (const [svc, s] of Object.entries(services)) {
+    for (const wf of s.requesters || []) {
+      const text = read(wf);
+      assert.equal(publishes(text), false, `${wf} is a requester of ${svc}: it must not contain any publish command`);
+      assert.doesNotMatch(text, /npm run build|setup-node/, `${wf} must not build an artifact`);
+      assert.match(text, new RegExp(`gh workflow run ${s.canonical.replace(/\./g, "\\.")}\\b`), `${wf} must request ${s.canonical}`);
+      assert.match(text, /-f skip_if_live=true/, `${wf} requests must be idempotent`);
+      assert.doesNotMatch(text, /allow_backwards/, `${wf} must never request a rollback`);
+      assert.doesNotMatch(text, /secrets\.CLOUDFLARE/, `${wf} must hold no Cloudflare credential`);
+      assert.match(text.split(/^jobs:/m)[0], /^permissions:\s*\n\s+contents: read\n\s+actions: write/m, `${wf} gets only actions: write to dispatch`);
+      assert.ok(!owner.has(wf), `${wf} must not also be registered as a publisher`);
+      assert.ok(s.requester_notes?.[wf], `${wf} needs a written role`);
+    }
+  }
+});
+
+test("the panel has exactly one code publisher and it certifies by both sources", () => {
+  const codePublishers = workflows.filter((f) => /zevanory-product-control-portable|cloudflare-authoritative-repair|cf-worker\/wrangler/.test(read(f)) && publishesCode(read(f)));
+  assert.deepEqual(codePublishers, ["zpc-control-worker-deploy.yml"], "only the canonical workflow may publish panel code");
+  const canonical = read("zpc-control-worker-deploy.yml");
+  assert.match(canonical, /promotion_guard\.py --service zevanory-product-control-portable[\s\S]*--repo zpc/, "forward path uses the shared guard");
+  assert.match(canonical, /promotion_guard\.py --verify-promoted --service zevanory-product-control-portable/, "post-promotion by Cloudflare tag + version.json");
+  assert.match(canonical, /SOURCE_WITHOUT_VERSION_TAG/, "an uncertifiable forward promotion is refused before publishing");
+  assert.match(canonical, /skip_if_live/, "reconciler requests are no-ops when already live");
+  assert.match(canonical, /ACTOR" != "\$REPO_OWNER"/, "the documented rollback exception stays owner-dispatched");
   const t2 = read("t2-exact-control-worker-promotion.yml");
   assert.doesNotMatch(t2.split(/^permissions:|^concurrency:|^jobs:/m)[0], /^\s+push:/m, "pin pushes belong to the canonical publisher only");
   assert.match(t2, /ZPC_ROLLBACK_HOLD/, "a deliberate rollback must not be undone by the reconciler");
-  assert.match(t2, /promotion_guard\.py --service zevanory-product-control-portable[\s\S]*--repo \/tmp\/zpc-source/, "reconciler uses the shared pre-promotion guard");
-  assert.match(t2, /promotion_guard\.py --verify-promoted --service zevanory-product-control-portable/, "reconciler verifies the effective version after promotion");
-  assert.match(t2, /EXPECTED_ZPC_SHA="\$SOURCE_SHA" node scripts\/cloudflare-authoritative-repair\.mjs/, "one deploy recipe for the panel");
-  assert.doesNotMatch(t2, /wrangler@[\d.]+ deploy --config cf-worker\/wrangler\.toml/, "no second deploy recipe");
+  assert.match(t2, /promotion_guard\.py --service zevanory-product-control-portable[\s\S]*--repo \/tmp\/zpc-source/, "requests only when the shared guard says forward_of_live");
+  assert.ok(services["zevanory-product-control-portable"].exceptions?.rollback, "the rollback exception is written down");
 });
 
 test("central and sales promotions pass the pre-promotion guard", () => {
