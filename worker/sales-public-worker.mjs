@@ -111,7 +111,18 @@ async function handleBuy(request,env,sku,ctx){
 }
 
 // Lead magnet form (POST, same origin): forwarded to the core Worker through the private binding.
-async function handleLead(request,env){
+// Accepted free-material form -> aggregate lead_submit counter. The source is the utm_source that the
+// form page carried (same-site referer only); nothing about the person is sent.
+export function leadSource(request){
+  try{const ref=new URL(request.headers.get("referer")||"");if(ref.hostname!==new URL(request.url).hostname)return "sem_tag";
+    const v=String(ref.searchParams.get("utm_source")||"").toLowerCase();return /^[a-z0-9_-]{1,24}$/.test(v)?v:"sem_tag";}catch{return "sem_tag"}
+}
+function countLead(request,env,ctx){
+  if(!env?.CORE||typeof env.CORE.fetch!=="function"||!ctx?.waitUntil) return;
+  const body=JSON.stringify({page:"material-gratuito",metric:"lead_submit",src:leadSource(request),camp:"",asn:Number(request.cf?.asn)||0,al:request.headers.get("accept-language")?1:0,cty:String(request.cf?.country||"").slice(0,2),ua:request.headers.get("user-agent")||"",ip:request.headers.get("cf-connecting-ip")||"",purpose:""});
+  ctx.waitUntil(env.CORE.fetch("https://funnel.internal/hit",{method:"POST",headers:{"content-type":"application/json"},body}).catch(()=>null));
+}
+async function handleLead(request,env,ctx){
   if(request.method!=="POST") return new Response(null,{status:303,headers:applySecurityHeaders(new Headers({location:"/material-gratuito"}))});
   const ua=request.headers.get("user-agent")||"";
   if(!ua||BOT_UA.test(ua)) return infoPage(403,"Acesso não permitido","<p>Use um navegador.</p>");
@@ -126,6 +137,7 @@ async function handleLead(request,env){
     const data=await res.json().catch(()=>({}));
     // Only fixed, known messages are rendered (no upstream text in HTML).
     const KNOWN=["Quase lá! Enviamos um link de confirmação para o seu e-mail.","Enviamos o checklist para o seu e-mail.","Confira o e-mail.","Marque a autorização para receber o material.","Não conseguimos enviar agora. Tente de novo em instantes.","Não conseguimos registrar agora. Tente de novo em instantes."];
+    if(res.ok) countLead(request,env,ctx);
     const msg=KNOWN.find(k=>k===String(data?.message||""))||(res.ok?KNOWN[0]:"Tente novamente em instantes.");
     // The checklist is a public (noindex) page, so gating it behind the e-mail confirmation only added two
     // steps between the visitor and what they asked for. It opens right away; the double opt-in still
@@ -200,7 +212,7 @@ export default{async fetch(request,env,ctx){
   if(hm&&(request.method==="GET"||request.method==="HEAD")) return handleHotmart(request,env,hm[1],ctx);
   // Refund form lives on the core domain; the public router sends zevanory.api.br/reembolso* here.
   if(url.pathname==="/reembolso/solicitar"||url.pathname==="/reembolso/solicitar/") return new Response(null,{status:308,headers:applySecurityHeaders(new Headers({location:"https://zevanory.api.br/pedir-reembolso","cache-control":"no-store"}))});
-  if(url.pathname==="/material-gratuito/inscrever") return handleLead(request,env);
+  if(url.pathname==="/material-gratuito/inscrever") return handleLead(request,env,ctx);
   const buy=url.pathname.match(/^\/comprar\/([A-Z0-9-]{6,20})\/?$/i);
   if(buy) return handleBuy(request,env,buy[1].toUpperCase(),ctx);
   if(url.pathname==="/health"&&(request.method==="GET"||request.method==="HEAD")){
