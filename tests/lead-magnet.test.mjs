@@ -19,7 +19,7 @@ function fakeDb() {
     if (/^insert into zevanory_leads/i.test(t)) {
       const [email, email_hash, name, consent_version, token_hash, subject_ref] = params;
       const prev = rows.get(email);
-      rows.set(email, { ...(prev || { nurture_step: 0 }), email, email_hash, name, consent_version, token_hash, subject_ref, consent_at: Date.now(), token_expires_at: Date.now() + 48 * 3600e3, status: prev?.status === "confirmed" ? "confirmed" : "pending" });
+      rows.set(email, { ...(prev || { nurture_step: 0 }), email, email_hash, name, consent_version, token_hash, subject_ref: prev?.subject_ref ?? subject_ref, consent_at: Date.now(), token_expires_at: Date.now() + 48 * 3600e3, status: prev?.status === "confirmed" ? "confirmed" : "pending" });
       return [];
     }
     if (/^insert into zevanory_lead_events \(subject_ref, event, consent_version\) values/i.test(t)) { events.push({ subject_ref: params[0], event: params[1], consent_version: params[2], at: Date.now() }); return []; }
@@ -33,7 +33,18 @@ function fakeDb() {
       return [];
     }
     if (/^select email, name, nurture_step/i.test(t)) return [...rows.values()].filter((r) => r.status === "confirmed" && r.nurture_step < params[0] && Date.parse(r.nurture_at) < Date.now() - 2 * DAY);
-    if (/set nurture_step=\$2, nurture_at=now\(\)/.test(t)) { rows.get(params[0]).nurture_step = params[1]; rows.get(params[0]).nurture_at = new Date().toISOString(); return []; }
+    if (/^update zevanory_leads set nurture_step=\$2, nurture_at=now\(\) where email=\$1 and status='confirmed' and nurture_step=\$3 returning email/.test(t)) {
+      hooks.beforeClaim?.(params[0]);
+      const r = rows.get(params[0]);
+      if (!r || r.status !== "confirmed" || r.nurture_step !== params[2]) return [];
+      r.nurture_step = params[1]; r.nurture_at = new Date().toISOString(); return [{ email: r.email }];
+    }
+    if (/^update zevanory_leads set nurture_step=\$2 where email=\$1 and nurture_step=\$3/.test(t)) { const r = rows.get(params[0]); if (r && r.nurture_step === params[2]) r.nurture_step = params[1]; return []; }
+    if (/^select distinct p.subject_ref from zevanory_lead_events p/.test(t)) {
+      const out = new Set();
+      for (const e of events) if (e.event === "erase_kv_pending" && e.subject_ref && !events.some((d) => d.subject_ref === e.subject_ref && d.event === "erase_kv_done" && d.at >= e.at)) out.add(e.subject_ref);
+      return [...out].map((subject_ref) => ({ subject_ref }));
+    }
     if (/set nurture_step=\$2 where email=\$1/.test(t)) { const r = rows.get(params[0]); if (r && r.nurture_step < params[1]) r.nurture_step = params[1]; return []; }
     if (/^delete from zevanory_leads where (subject_ref|email_hash)=\$1/i.test(t)) {
       const col = t.match(/where (subject_ref|email_hash)=/)[1];
@@ -42,20 +53,23 @@ function fakeDb() {
       return out;
     }
     if (/^delete from zevanory_leads where email in/i.test(t)) {
-      const [grace, inactive, limit] = params;
+      const [grace, inactive, limit, done, endGrace] = params;
       const due = [...rows.values()].filter((r) => (r.status === "pending" && r.token_expires_at < Date.now() - grace * DAY) || r.status === "unsubscribed" ||
+        (r.status === "confirmed" && r.nurture_step >= done && Date.parse(r.nurture_at) < Date.now() - endGrace * DAY) ||
         (r.status === "confirmed" && Date.parse(r.nurture_at || r.confirmed_at || r.consent_at) < Date.now() - inactive * DAY)).slice(0, limit);
       for (const r of due) rows.delete(r.email);
-      return due.map((r) => ({ email: r.email, subject_ref: r.subject_ref, consent_version: r.consent_version, status: r.status }));
+      return due.map((r) => ({ email: r.email, subject_ref: r.subject_ref, consent_version: r.consent_version, status: r.status, nurture_step: r.nurture_step }));
     }
     if (/^delete from zevanory_lead_events where at </i.test(t)) { for (let i = events.length - 1; i >= 0; i--) if (events[i].at < Date.now() - params[0] * DAY) events.splice(i, 1); return []; }
     throw new Error("unexpected sql: " + t.slice(0, 60));
   };
-  return { rows, events, queries, factory: () => ({ query }) };
+  const hooks = {};
+  return { rows, events, queries, hooks, factory: () => ({ query }) };
 }
 const kv = () => { const m = new Map(); return { m, async get(k) { return m.get(k) ?? null; }, async put(k, v) { m.set(k, v); }, async delete(k) { m.delete(k); } }; };
 function mailbox() { const sent = []; globalThis.fetch = async (url, init) => { sent.push(JSON.parse(init.body)); return new Response("{}", { status: 200 }); }; return sent; }
-const env = (store) => ({ DATABASE_URL: "x", RESEND_API_KEY: "re_test_123456789", ZEVANORY_PRIVATE_ARTIFACTS: store });
+const KEY_A = "a".repeat(40), KEY_B = "b".repeat(40);
+const env = (store, extra = {}) => ({ DATABASE_URL: "x", RESEND_API_KEY: "re_test_123456789", LEAD_PRIVACY_SECRET: KEY_A, ZEVANORY_PRIVATE_ARTIFACTS: store, ...extra });
 const subscribeReq = (body) => new Request("https://leads.internal/subscribe", { method: "POST", body: JSON.stringify(body) });
 
 test("public hosts cannot subscribe; consent and e-mail are mandatory", async () => {
@@ -99,8 +113,8 @@ test("nurture holds the catalog e-mail while sales are closed; opt-out stops eve
   assert.equal(held.held, 1); assert.equal(sent.length, 0);
   const open = await runLeadNurture(e, { sqlFactory: db.factory, salesOpen: true });
   assert.equal(open.sent, 1); assert.match(sent[0].text, /IA na Prática \(R\$ 197/); assert.match(sent[0].text, /utm_source=email/);
-  const link = new URL(await leadOptOutLink(e, "x@y.com"));
-  assert.equal(link.searchParams.get("r"), ref, "new links carry the keyed reference, not a plain hash");
+  const link = new URL(await leadOptOutLink(e, "x@y.com", ref));
+  assert.equal(link.searchParams.get("r"), ref, "new links carry the stored keyed reference, not a plain hash");
   assert.notEqual(link.searchParams.get("r"), await sha256("x@y.com"));
   const get = await handleLeadMagnet(new Request(link.toString()), e, { sqlFactory: db.factory });
   assert.equal(get.status, 200); assert.ok(db.rows.has("x@y.com"), "GET never erases (mail scanners)");
@@ -171,7 +185,7 @@ test("legacy opt-out links already sent keep working; forged tokens never erase"
   assert.notEqual(db.events[0].subject_ref, id, "events never store the plain hash");
 });
 
-test("retention erases unconfirmed, revoked and inactive leads once a day, with 3 queries and no e-mail in the audit", async () => {
+test("retention erases unconfirmed, revoked, sequence-ended (30 days) and inactive leads once a day, with bounded queries and no e-mail in the audit", async () => {
   const db = fakeDb(); mailbox(); const store = kv(); const e = env(store);
   const D = 86400e3, ago = (d) => new Date(Date.now() - d * D).toISOString();
   const add = async (email, extra) => db.rows.set(email, { email, email_hash: await sha256(email), subject_ref: await subjectRef(e, email), name: "Nome", consent_version: V1, nurture_step: 0, ...extra });
@@ -179,14 +193,16 @@ test("retention erases unconfirmed, revoked and inactive leads once a day, with 
   await add("pend-new@x.com", { status: "pending", token_expires_at: Date.now() - 2 * D });
   await add("unsub@x.com", { status: "unsubscribed" });
   await add("inactive@x.com", { status: "confirmed", nurture_at: ago(731) });
-  await add("active@x.com", { status: "confirmed", nurture_at: ago(30) });
+  await add("active@x.com", { status: "confirmed", nurture_step: 2, nurture_at: ago(30) });
+  await add("ended@x.com", { status: "confirmed", nurture_step: 5, nurture_at: ago(31) });
+  await add("ended-recent@x.com", { status: "confirmed", nurture_step: 5, nurture_at: ago(10) });
   const sql = db.factory();
   const before = db.queries.length;
   const out = await runLeadRetention(e, sql);
-  assert.deepEqual([out.erased, out.erased_unconfirmed, out.erased_revoked, out.erased_inactive], [3, 1, 1, 1]);
-  assert.deepEqual([...db.rows.keys()].sort(), ["active@x.com", "pend-new@x.com"]);
-  assert.ok(db.queries.slice(before).filter((q) => !/^create|^alter/i.test(q)).length <= 3, "bounded external subrequests");
-  assert.equal(db.events.length, 3);
+  assert.deepEqual([out.erased, out.erased_unconfirmed, out.erased_revoked, out.erased_inactive, out.erased_sequence_ended], [4, 1, 1, 1, 1]);
+  assert.deepEqual([...db.rows.keys()].sort(), ["active@x.com", "ended-recent@x.com", "pend-new@x.com"]);
+  assert.ok(db.queries.slice(before).filter((q) => !/^create|^alter/i.test(q)).length <= 4, "bounded external subrequests");
+  assert.equal(db.events.length, 4);
   assert.doesNotMatch(JSON.stringify(db.events), /@|Nome/);
   for (const ev of db.events) assert.match(ev.subject_ref, /^[0-9a-f]{64}$/);
   assert.equal(store.m.get(RETENTION_MARKER), new Date().toISOString().slice(0, 10));
@@ -204,9 +220,95 @@ test("subscribe stores keyed references only; without a privacy key no identifie
   assert.deepEqual(db.events.map((x) => [x.event, x.consent_version]), [["consent_given", V1]]);
   const db2 = fakeDb(); const store2 = kv();
   globalThis.fetch = async () => new Response("{}", { status: 200 });
-  const noKey = { DATABASE_URL: "x", ZEVANORY_PRIVATE_ARTIFACTS: store2 };
-  assert.equal(await subjectRef(noKey, "a@b.com"), null);
+  const noKey = { DATABASE_URL: "x", RESEND_API_KEY: "re_test_123456789", ZEVANORY_PRIVATE_ARTIFACTS: store2 };
+  assert.equal(await subjectRef(noKey, "a@b.com"), null, "never derived from the e-mail provider key");
+  assert.match(await leadOptOutLink(noKey, "a@b.com"), /sair\?i=[0-9a-f]{64}&t=[0-9a-f]{32}$/, "without the key, unsubscribe keeps working (legacy link)");
   await handleLeadMagnet(subscribeReq({ email: "a@b.com", consent: true }), noKey, { sqlFactory: db2.factory }).catch(() => null);
   assert.equal(db2.events[0]?.subject_ref ?? null, null);
   assert.equal([...store2.m.keys()].some((k) => k.startsWith("zpc:lead:interest:")), false);
+});
+
+test("key rotation: links sent before keep working; the row identity never changes", async () => {
+  const db = fakeDb(); const sent = mailbox(); const store = kv();
+  const eA = env(store);
+  await handleLeadMagnet(subscribeReq({ email: "rot@x.com", consent: true }), eA, { sqlFactory: db.factory });
+  const stored = db.rows.get("rot@x.com").subject_ref;
+  const oldLink = await leadOptOutLink(eA, "rot@x.com", stored);
+  // Rotation: B becomes current, A stays as previous.
+  const eB = env(store, { LEAD_PRIVACY_SECRET: KEY_B, LEAD_PRIVACY_SECRET_PREVIOUS: KEY_A });
+  const newLink = new URL(await leadOptOutLink(eB, "rot@x.com", stored));
+  assert.equal(newLink.searchParams.get("r"), stored, "new links still point to the stored reference");
+  assert.notEqual(newLink.searchParams.get("t"), new URL(oldLink).searchParams.get("t"), "signed with the new key");
+  // Re-subscribing does not replace the stored identity.
+  await handleLeadMagnet(subscribeReq({ email: "rot@x.com", consent: true }), eB, { sqlFactory: db.factory });
+  assert.equal(db.rows.get("rot@x.com").subject_ref, stored);
+  const res = await handleLeadMagnet(new Request(oldLink, { method: "POST" }), eB, { sqlFactory: db.factory });
+  assert.equal(res.status, 200, "a link signed with the previous key still revokes");
+  assert.equal(db.rows.has("rot@x.com"), false);
+  // After PREVIOUS is removed, old tokens stop being accepted (documented end of the rotation).
+  const eOnlyB = env(store, { LEAD_PRIVACY_SECRET: KEY_B });
+  db.rows.set("rot2@x.com", { email: "rot2@x.com", email_hash: "z", subject_ref: stored, consent_version: V1, status: "confirmed", nurture_step: 1 });
+  assert.equal((await handleLeadMagnet(new Request(oldLink, { method: "POST" }), eOnlyB, { sqlFactory: db.factory })).status, 400);
+});
+
+test("KV failure during erasure: the answer says so, the residual is queued and retried", async () => {
+  const db = fakeDb(); mailbox(); const store = kv(); const e = env(store);
+  const ref = await subjectRef(e, "kv@x.com");
+  db.rows.set("kv@x.com", { email: "kv@x.com", email_hash: "h", subject_ref: ref, consent_version: V1, status: "confirmed", nurture_step: 2 });
+  store.m.set("zpc:lead:interest:" + ref, "caixa");
+  const realDelete = store.delete; store.delete = async () => { throw new Error("kv down"); };
+  const res = await handleLeadMagnet(new Request(await leadOptOutLink(e, "kv@x.com", ref), { method: "POST" }), e, { sqlFactory: db.factory });
+  const body = await res.text();
+  assert.equal(res.status, 200);
+  assert.equal(db.rows.has("kv@x.com"), false, "e-mail and name erased");
+  assert.match(body, /não pôde ser apagado agora/, "the person is told about the residual");
+  assert.ok(db.events.some((x) => x.event === "erase_kv_pending" && x.subject_ref === ref));
+  assert.ok(store.m.has("zpc:lead:interest:" + ref), "residual still there");
+  store.delete = realDelete;
+  const out = await runLeadRetention(e, db.factory(), { force: true });
+  assert.equal(out.kv_retried, 1);
+  assert.equal(store.m.has("zpc:lead:interest:" + ref), false, "retried and erased");
+  assert.ok(db.events.some((x) => x.event === "erase_kv_done" && x.subject_ref === ref));
+  assert.equal((await runLeadRetention(e, db.factory(), { force: true })).kv_retried, 0, "not retried again once done");
+  // Without residuals the answer has no residual note.
+  db.rows.set("ok@x.com", { email: "ok@x.com", email_hash: "h2", subject_ref: await subjectRef(e, "ok@x.com"), consent_version: V1, status: "confirmed", nurture_step: 2 });
+  const ok = await handleLeadMagnet(new Request(await leadOptOutLink(e, "ok@x.com", db.rows.get("ok@x.com").subject_ref), { method: "POST" }), e, { sqlFactory: db.factory });
+  assert.doesNotMatch(await ok.text(), /não pôde/);
+});
+
+test("revocation between selection and sending: nothing is sent", async () => {
+  const db = fakeDb(); const sent = mailbox(); const store = kv(); const e = env(store);
+  const old = new Date(Date.now() - 20 * 86400e3).toISOString();
+  for (const email of ["stays@x.com", "leaves@x.com"]) db.rows.set(email, { email, email_hash: "h-" + email, subject_ref: await subjectRef(e, email), consent_version: V1, status: "confirmed", nurture_step: 1, nurture_at: old });
+  // The person revokes right after the batch was selected, before the claim/send.
+  db.hooks.beforeClaim = (email) => { if (email === "leaves@x.com") db.rows.delete("leaves@x.com"); };
+  const out = await runLeadNurture(e, { sqlFactory: db.factory, salesOpen: true });
+  assert.equal(out.sent, 1); assert.equal(out.skipped_revoked, 1);
+  assert.deepEqual(sent.map((m) => m.to[0]), ["stays@x.com"]);
+});
+
+test("a failed send releases the claim so the step is retried later", async () => {
+  const db = fakeDb(); const store = kv(); const e = env(store);
+  globalThis.fetch = async () => new Response("{}", { status: 500 });
+  db.rows.set("f@x.com", { email: "f@x.com", email_hash: "h", subject_ref: await subjectRef(e, "f@x.com"), consent_version: V1, status: "confirmed", nurture_step: 1, nurture_at: new Date(Date.now() - 20 * 86400e3).toISOString() });
+  const out = await runLeadNurture(e, { sqlFactory: db.factory, salesOpen: true });
+  assert.equal(out.sent, 0);
+  assert.equal(db.rows.get("f@x.com").nurture_step, 1);
+});
+
+test("the published privacy policy states exactly the retention the code enforces", async () => {
+  const { readFileSync } = await import("node:fs");
+  const lm = await import("../worker/lead-magnet.mjs");
+  const backup = readFileSync(new URL("../worker/data-backup.mjs", import.meta.url), "utf8");
+  for (const f of ["../privacidade/index.html", "../sales-public/privacidade.html"]) {
+    const page = readFileSync(new URL(f, import.meta.url), "utf8");
+    assert.match(page, new RegExp(`pedidos não confirmados, até ${2 + lm.PENDING_GRACE_DAYS} dias`), f + ": 48 h link + grace"); // 2 days link validity + grace
+    assert.match(page, new RegExp(`até ${lm.SEQUENCE_END_GRACE_DAYS} dias depois do fim da sequência`), f);
+    assert.match(page, /até 2 e-mails de dicas e produtos/, f + ": consent text");
+    assert.equal(lm.CONSENT_FOLLOWUPS["lead-magnet-v1-2026-10-07"], 2);
+    assert.match(page, new RegExp(`por até ${lm.DEFAULT_EVENT_RETENTION_DAYS / 365} anos, para comprovar o consentimento`), f);
+    assert.match(page, /cópias de segurança feitas pela ZEVANORY expiram automaticamente em até 8 dias/, f);
+  }
+  assert.match(backup, /expirationTtl: 8 \* DAY/, "table copies expire in 8 days (KV TTL)");
+  assert.doesNotMatch(backup, /"zpc:lead:interest:"/, "lead data not in the KV->Neon copy");
 });

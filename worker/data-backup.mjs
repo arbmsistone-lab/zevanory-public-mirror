@@ -12,7 +12,9 @@
 //              (1 h TTL), read back, compared and deleted.
 //   4. Report (no PII) at zpc:backup:v1:report.
 export const REPORT_KEY = "zpc:backup:v1:report";
-export const KV_PREFIXES = ["zpc:sales:", "zpc:cp:", "zpc:lead:interest:", "sales:open:v1"];
+// Lead interest keys (personal data, erased on revocation) are deliberately NOT copied: a backup
+// would keep them after the erasure promised by the privacy policy (T3). They are not critical.
+export const KV_PREFIXES = ["zpc:sales:", "zpc:cp:", "sales:open:v1"];
 export const MAX_TABLE_ROWS = 20000;
 export const MAX_DRILL_TABLES = 30; // per invocation: keeps a part under the free plan's 50 subrequests
 export const DEFAULT_PARTS = 3;

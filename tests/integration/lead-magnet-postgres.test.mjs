@@ -36,7 +36,7 @@ test("real PostgreSQL: existing production table (pre-T3 schema) is migrated in 
     insert into zevanory_leads (email, email_hash, consent_version, consent_at, status, confirmed_at, nurture_step, nurture_at)
     values ('legado@x.com', 'h', 'lead-magnet-v1-2026-10-07', now() - interval '5 days', 'confirmed', now() - interval '5 days', 2, now() - interval '3 days');`);
   globalThis.fetch = async () => new Response("{}", { status: 200 });
-  const env = { DATABASE_URL: "x", RESEND_API_KEY: "re_test_123456789", ZEVANORY_PRIVATE_ARTIFACTS: kv() };
+  const env = { DATABASE_URL: "x", RESEND_API_KEY: "re_test_123456789", LEAD_PRIVACY_SECRET: "k".repeat(40), ZEVANORY_PRIVATE_ARTIFACTS: kv() };
   const out = await runLeadNurture(env, { sqlFactory, salesOpen: false });
   assert.equal(out.ok, true);
   assert.equal(out.held, 1, "legacy lead within consent (step 2 = the offer) is held while sales are closed, not erased");
@@ -50,7 +50,7 @@ test("real PostgreSQL: subscribe -> confirm -> cap -> revoke -> retention", { sk
   const sent = [];
   globalThis.fetch = async (url, init) => { sent.push(JSON.parse(init.body)); return new Response("{}", { status: 200 }); };
   const store = kv();
-  const env = { DATABASE_URL: "x", RESEND_API_KEY: "re_test_123456789", ZEVANORY_PRIVATE_ARTIFACTS: store };
+  const env = { DATABASE_URL: "x", RESEND_API_KEY: "re_test_123456789", LEAD_PRIVACY_SECRET: "k".repeat(40), ZEVANORY_PRIVATE_ARTIFACTS: store };
   const sub = (email) => handleLeadMagnet(new Request("https://leads.internal/subscribe", { method: "POST", body: JSON.stringify({ email, consent: true, page: "/calculadora-cmv" }) }), env, { sqlFactory });
 
   assert.equal((await sub("ana@exemplo.com")).status, 200);
@@ -67,7 +67,12 @@ test("real PostgreSQL: subscribe -> confirm -> cap -> revoke -> retention", { sk
   assert.equal(out.retention.ok, true);
 
   // Revocation erases the row in SQL.
-  const link = await leadOptOutLink(env, "ana@exemplo.com");
+  // Rotation before revoking: the link signed with the previous key still works on the real row.
+  const link = await leadOptOutLink(env, "ana@exemplo.com", ref);
+  env.LEAD_PRIVACY_SECRET_PREVIOUS = env.LEAD_PRIVACY_SECRET; env.LEAD_PRIVACY_SECRET = "n".repeat(40);
+  psql("update zevanory_leads set status='pending'"); // forces the insert ... on conflict path
+  assert.equal((await sub("ana@exemplo.com")).status, 200);
+  assert.equal(psql("select subject_ref from zevanory_leads")[0].subject_ref, ref, "re-subscription keeps the stored identity (coalesce)");
   assert.equal((await handleLeadMagnet(new Request(link, { method: "POST" }), env, { sqlFactory })).status, 200);
   assert.equal(psql("select count(*)::int n from zevanory_leads")[0].n, "0");
 
@@ -76,16 +81,35 @@ test("real PostgreSQL: subscribe -> confirm -> cap -> revoke -> retention", { sk
     ('p@x.com','h1','lead-magnet-v1-2026-10-07', now(), 'pending', now() - interval '8 days', null),
     ('u@x.com','h2','lead-magnet-v1-2026-10-07', now(), 'unsubscribed', null, null),
     ('i@x.com','h3','lead-magnet-v1-2026-10-07', now() - interval '800 days', 'confirmed', null, now() - interval '731 days'),
-    ('a@x.com','h4','lead-magnet-v1-2026-10-07', now(), 'confirmed', null, now() - interval '30 days')`);
+    ('a@x.com','h4','lead-magnet-v1-2026-10-07', now(), 'confirmed', null, now() - interval '30 days'),
+    ('e@x.com','h5','lead-magnet-v1-2026-10-07', now(), 'confirmed', null, now() - interval '31 days')`);
+  psql("update zevanory_leads set nurture_step=5 where email='e@x.com'");
   const r = await runLeadRetention(env, sqlFactory(), { force: true });
-  assert.deepEqual([r.erased, r.erased_unconfirmed, r.erased_revoked, r.erased_inactive], [3, 1, 1, 1]);
+  assert.deepEqual([r.erased, r.erased_unconfirmed, r.erased_revoked, r.erased_inactive, r.erased_sequence_ended], [4, 1, 1, 1, 1]);
   assert.deepEqual(psql("select email from zevanory_leads").map((x) => x.email), ["a@x.com"]);
   const events = psql("select subject_ref, event, consent_version from zevanory_lead_events order by id");
-  assert.deepEqual(events.map((e) => e.event), ["consent_given", "confirmed", "revoked_and_erased", "erased_unconfirmed", "erased_revoked", "erased_inactive"]);
+  assert.deepEqual(events.map((e) => e.event), ["consent_given", "confirmed", "consent_given", "revoked_and_erased", "erased_unconfirmed", "erased_revoked", "erased_inactive", "erased_sequence_ended"]);
   assert.doesNotMatch(JSON.stringify(events), /@/, "no e-mail in the audit trail");
   const cols = psql("select column_name from information_schema.columns where table_name='zevanory_lead_events'").map((c) => c.column_name).sort();
   assert.deepEqual(cols, ["at", "consent_version", "event", "id", "subject_ref"], "no e-mail, name or IP column");
   psql("update zevanory_lead_events set at = now() - interval '731 days' where event='consent_given'");
   await runLeadRetention(env, sqlFactory(), { force: true });
   assert.equal(psql("select count(*)::int n from zevanory_lead_events where event='consent_given'")[0].n, "0", "event log pruned after 2 years");
+});
+
+test("real PostgreSQL: revocation between selection and claim sends nothing", { skip: !HOST && "LEAD_PG_HOST not set" }, async () => {
+  psql("truncate zevanory_leads; truncate zevanory_lead_events;");
+  psql(`insert into zevanory_leads (email, email_hash, consent_version, consent_at, status, confirmed_at, nurture_step, nurture_at) values
+    ('fica@x.com','h1','lead-magnet-v1-2026-10-07', now(), 'confirmed', now(), 1, now() - interval '20 days'),
+    ('sai@x.com','h2','lead-magnet-v1-2026-10-07', now(), 'confirmed', now(), 1, now() - interval '20 days')`);
+  const sent = [];
+  globalThis.fetch = async (url, init) => { sent.push(JSON.parse(init.body)); return new Response("{}", { status: 200 }); };
+  const racing = () => ({ query: async (text, params = []) => {
+    if (/^update zevanory_leads set nurture_step=\$2, nurture_at=now\(\)/.test(text.trim()) && params[0] === "sai@x.com") psql("delete from zevanory_leads where email='sai@x.com'");
+    return sqlFactory().query(text, params);
+  } });
+  const env = { DATABASE_URL: "x", RESEND_API_KEY: "re_test_123456789", LEAD_PRIVACY_SECRET: "k".repeat(40), ZEVANORY_PRIVATE_ARTIFACTS: kv() };
+  const out = await runLeadNurture(env, { sqlFactory: racing, salesOpen: true });
+  assert.equal(out.sent, 1); assert.equal(out.skipped_revoked, 1);
+  assert.deepEqual(sent.map((m) => m.to[0]), ["fica@x.com"]);
 });
