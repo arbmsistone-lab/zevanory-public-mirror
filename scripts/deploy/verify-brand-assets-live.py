@@ -19,7 +19,7 @@ MAX_ATTEMPTS = 18
 RETRY_SECONDS = 5
 
 
-def probe(filename):
+def probe(filename, base=None, accept="image/png"):
     with tempfile.TemporaryDirectory(prefix="zevanory-brand-probe-") as directory:
         body = Path(directory) / "response.png"
         headers = Path(directory) / "headers.txt"
@@ -27,9 +27,9 @@ def probe(filename):
             "curl", "--silent", "--show-error", "--max-time", "15",
             "--output", str(body), "--dump-header", str(headers),
             "--write-out", "%{http_code}", "--request", "GET",
-            "--header", "Accept: image/png",
+            "--header", "Accept: " + accept,
             "--header", "Cache-Control: no-cache",
-            BASE + filename,
+            (base or BASE) + filename,
         ]
         try:
             result = subprocess.run(argv, capture_output=True, text=True, timeout=18, check=False)
@@ -90,5 +90,39 @@ def verify():
     print("BRAND_LIVE_ALL_EXACT_DIGESTS=PASS", len(verified))
 
 
+# Owner order 12-13/10/2026 (#784): the apex also serves the vector logos and the legacy
+# Facebook cover path. Read back their EXACT bytes too; a stale copy with the internal seal fails.
+VECTORS = [
+    ("zevanory-logo-dark.svg", ROOT / "sales-public/brand/zevanory-logo-dark.svg", "image/svg+xml"),
+    ("zevanory-logo-light.svg", ROOT / "sales-public/brand/zevanory-logo-light.svg", "image/svg+xml"),
+    ("zevanory-mark.svg", ROOT / "sales-public/brand/zevanory-mark.svg", "image/svg+xml"),
+    ("social/zevanory-facebook-cover-1640x624.png", ROOT / "assets/brand/export/banner-facebook.png", "image/png"),
+]
+
+
+def verify_vectors():
+    for path, source, accept in VECTORS:
+        expected = source.read_bytes()
+        if b"CENTRAL OPERACIONAL" in expected or b"REVENUE OPERATIONS" in expected:
+            raise SystemExit("BRAND_SOURCE_INTERNAL_SEAL " + path)
+        last = None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            response = probe(path, base="https://zevanory.api.br/brand/", accept=accept)
+            raw = response["body"]
+            last = {"file": path, "status": response["status"], "bytes": len(raw), "content_type": response["content_type"],
+                    "sha256_12": hashlib.sha256(raw).hexdigest()[:12], "expected_sha256_12": hashlib.sha256(expected).hexdigest()[:12],
+                    "seal": b"CENTRAL OPERACIONAL" in raw, "attempt": attempt}
+            if response["curl_exit"] == 0 and response["status"] == "200" and response["content_type"].startswith("image/") and raw == expected:
+                print("BRAND_LIVE_VECTOR=PASS", path, len(raw), last["sha256_12"])
+                break
+            if attempt < MAX_ATTEMPTS:
+                time.sleep(RETRY_SECONDS)
+        else:
+            print("BRAND_LIVE_READBACK_DIAGNOSTIC=" + json.dumps(last, sort_keys=True))
+            raise SystemExit("BRAND_LIVE_VECTOR_UNVERIFIED " + path)
+    print("BRAND_LIVE_VECTORS_EXACT=PASS", len(VECTORS))
+
+
 if __name__ == "__main__":
     verify()
+    verify_vectors()
