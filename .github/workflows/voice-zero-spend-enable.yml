@@ -6,6 +6,7 @@ permissions:
 concurrency:
   group: deploy-zevanory
   cancel-in-progress: false
+  queue: max
 jobs:
   enable:
     runs-on: ubuntu-latest

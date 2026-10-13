@@ -38,6 +38,7 @@ for (const [svc, s] of Object.entries(services)) {
   }
 }
 for (const wf of Object.values(registry.isolated || {})) owner.set(wf, { svc: "isolated", group: null });
+for (const wf of Object.keys(registry.unserialized_known || {})) if (!owner.has(wf)) owner.set(wf, { svc: "unserialized", group: null, pending: true });
 
 test("every workflow that can change a production Worker is registered", () => {
   const unregistered = workflows.filter((f) => publishes(read(f)) && !owner.has(f));
@@ -65,6 +66,8 @@ test("each service has one canonical publisher and every publisher of it shares 
         assert.equal(group, s.group, `${wf} must run in concurrency group ${s.group} (service ${svc})`);
       }
       assert.equal(cancelInProgress(text), false, `${wf} must not cancel an in-progress promotion`);
+      // Proven on this repository by t1-queue-max-probe.yml (3 contenders, 0 discarded, no overlap).
+      assert.match(text.split(/^jobs:/m)[0], /^concurrency:[\s\S]*?\n  queue: max\n/m, `${wf} must keep every queued promotion (queue: max); the guard skips the stale ones`);
     }
   }
 });
@@ -73,7 +76,8 @@ test("financial publishers pending owner authorization are reported, never silen
   const pending = [...owner.entries()].filter(([, v]) => v.pending).map(([k]) => k);
   // Listed explicitly so the T1 report shows them as NOT YET SERIALIZED (owner rule: no change to
   // payment workflows without written authorization).
-  assert.deepEqual(pending.sort(), ["financial-e2e-stripe.yml", "mercadopago-exact-sha-recovery.yml", "mercadopago-production-token-rotate.yml"]);
+  assert.deepEqual(pending.sort(), ["financial-e2e-stripe.yml", "mercadopago-exact-sha-recovery.yml", "mercadopago-production-token-rotate.yml", "whatsapp-broker-protocol-v2.yml"]);
+  assert.deepEqual(Object.keys(registry.unserialized_known).sort(), pending.sort(), "every unserialized publisher carries a written reason");
 });
 
 test("retired and validation-only workflows cannot publish", () => {

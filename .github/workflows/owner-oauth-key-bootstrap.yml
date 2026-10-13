@@ -20,6 +20,7 @@ permissions:
 concurrency:
   group: deploy-zevanory-product-control-portable
   cancel-in-progress: false
+  queue: max
 
 jobs:
   bootstrap:

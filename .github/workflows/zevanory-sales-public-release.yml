@@ -65,6 +65,7 @@ permissions:
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.ref) || 'deploy-zevanory-sales-public' }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   verify:

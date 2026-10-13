@@ -44,9 +44,8 @@
     "giro-whatsapp-bridge": {
       "group": "deploy-giro-whatsapp-bridge",
       "canonical": "whatsapp-zero-spend-broker.yml",
-      "config_publishers": [
-        "whatsapp-broker-protocol-v2.yml"
-      ]
+      "config_publishers": [],
+      "note": "Worker giro-whatsapp-bridge is NOT present in the Cloudflare account (workers list 13/10/2026). whatsapp-broker-protocol-v2.yml patches it via the API and fails reading it (exit 22, run on PR #799); left unchanged and listed under unserialized_known."
     }
   },
   "isolated": {
@@ -61,5 +60,11 @@
   ],
   "external_repositories": {
     "arbmsistone-lab/zevanory-product-control-edge": "must not publish production; the panel is published only by zpc-control-worker-deploy.yml in this repository"
+  },
+  "unserialized_known": {
+    "whatsapp-broker-protocol-v2.yml": "target Worker absent from the account; patcher fails before any write",
+    "mercadopago-exact-sha-recovery.yml": "financial workflow: changes need the owner's written authorization",
+    "mercadopago-production-token-rotate.yml": "financial workflow: changes need the owner's written authorization",
+    "financial-e2e-stripe.yml": "financial workflow: changes need the owner's written authorization"
   }
 }
