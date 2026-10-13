@@ -121,7 +121,7 @@ test("Telegram resolves a public t.me URL even when configured with numeric chat
 });
 
 test("Pinterest F1 dynamic editorial is published with the official hashed Z image",async()=>{
-  const creative={creative_id:"f1-test-10",status:"approved_for_autopublish",compliance:100,score:92,asset_url:"https://creative.example/unverified.png",title:"Tema editorial específico",content:"Descrição editorial específica",landing_url:"https://vendas.zevanory.api.br/solucoes"};
+  const creative={creative_id:"f1-test-10",status:"approved_for_autopublish",compliance:100,score:92,offer_id:"ZEV-IA-011",product:"ZEVANORY IA na Prática",price_brl:197,brand:"ZEVANORY",asset_url:"https://creative.example/unverified.png",title:"Tema editorial específico",content:"Descrição editorial específica",landing_url:"https://vendas.zevanory.api.br/ia-na-pratica"};
   const rebranded=brandPinterestCreative(creative);
   assert.equal(rebranded.media_url,PINTEREST_APPROVED_BRAND_PIN_URL);
   assert.equal(rebranded.title,creative.title);

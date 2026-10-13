@@ -10,6 +10,42 @@ const words=v=>String(v||"").trim().split(/\s+/).filter(Boolean);
 const textOf=s=>[s?.hook,s?.body,s?.cta].filter(Boolean).join(" ");
 const money=v=>Number(Number(v||0).toFixed(2));
 
+// Commercial containment (owner order 12-13/10/2026): creatives may only promote the official
+// ZEVANORY catalog. Mirrors data/products.json; tests/creative-offer-containment.test.mjs fails
+// the PR if they diverge. OFFER-0001 (ARBM SIST) and any other offer are rejected at generation
+// and again right before publication.
+export const SALES_ORIGIN="https://vendas.zevanory.api.br";
+export const ZEV_CREATIVE_CATALOG=Object.freeze({
+ "ZEV-IA-011":Object.freeze({slug:"ia-na-pratica",name:"IA na Prática",price_brl:197}),
+ "ZEV-VEN-011":Object.freeze({slug:"vendas-na-pratica",name:"Vendas na Prática",price_brl:197}),
+ "ZEV-LCX-011":Object.freeze({slug:"lucro-e-caixa",name:"Lucro & Caixa",price_brl:247}),
+ "ZEV-CMB-011":Object.freeze({slug:"combo-ia-vendas",name:"Combo IA + Vendas",price_brl:297}),
+ "ZEV-NGC-011":Object.freeze({slug:"negocio-completo",name:"Negócio Completo",price_brl:397})
+});
+export const DEFAULT_CREATIVE_OFFER="ZEV-IA-011";
+const offerKey=v=>String(v||"").trim().toUpperCase();
+export function creativeCatalogEntry(offerId){return ZEV_CREATIVE_CATALOG[offerKey(offerId)]||null;}
+export function creativeLandingUrl(offerId,{source="",campaign=""}={}){
+ const entry=creativeCatalogEntry(offerId)||ZEV_CREATIVE_CATALOG[DEFAULT_CREATIVE_OFFER],q=new URLSearchParams();
+ if(source)q.set("utm_source",String(source).slice(0,40));q.set("utm_medium","organic");if(campaign)q.set("utm_campaign",String(campaign).slice(0,80));
+ return `${SALES_ORIGIN}/${entry.slug}?${q}`;
+}
+const PUBLIC_HOSTS=new Set(["vendas.zevanory.api.br","zevanory.api.br"]);
+// Returns null when the creative is safe to publish, otherwise the precise reason.
+export function brandSafeCreativeViolation(x={}){
+ const id=offerKey(x.offer_id??x.offerId),entry=ZEV_CREATIVE_CATALOG[id];
+ if(!entry)return id?"creative_offer_not_in_zev_catalog":"creative_offer_missing";
+ if(x.brand!=null&&x.brand!=="ZEVANORY")return "creative_brand_invalid";
+ if(x.price_brl!=null&&Number(x.price_brl)!==entry.price_brl)return "creative_price_not_official";
+ const text=[x.product,x.title,x.hook,x.body,x.content,x.text,x.cta].filter(Boolean).join(" ");
+ if(/\bARBM\s*(SIST|ONE)\b|OFFER-0001/i.test(text))return "creative_legacy_product_text";
+ if(mentionedPrices(text).some(p=>p!==entry.price_brl))return "creative_price_not_official";
+ if(x.landing_url){let u;try{u=new URL(String(x.landing_url));}catch{return "creative_link_invalid";}
+  if(u.protocol!=="https:"||!PUBLIC_HOSTS.has(u.hostname))return "creative_link_not_official";}
+ return null;
+}
+export function assertBrandSafeCreative(x={}){const reason=brandSafeCreativeViolation(x);if(reason)throw new Error(reason);return true;}
+
 function mentionedPrices(text){
  return [...String(text||"").matchAll(/R\$\s*([0-9.]+(?:,[0-9]{2})?)/gi)].map(m=>Number(m[1].replaceAll(".","").replace(",","."))).filter(Number.isFinite);
 }
@@ -68,7 +104,7 @@ export async function setCreativeAutopublishPaused(env={},paused=true){
 export async function recordCreativeEvaluation(env={},record={}){
  const kv=env.ZEVANORY_PRIVATE_ARTIFACTS;if(!kv?.put)return false;
  let feed=[];try{feed=JSON.parse(String(await kv.get(CREATIVE_AUTONOMY_FEED_KEY)||"[]"));}catch{}
- const safe={creative_id:String(record.creative_id||"").slice(0,80),channel:String(record.channel||"").slice(0,40),angle:String(record.angle||"default").slice(0,60),format:String(record.format||"default").slice(0,40),hour:Number(record.hour)||0,score:n(record.score),criteria:record.criteria||{},compliance:n(record.compliance),reason:String(record.reason||"").slice(0,240),status:String(record.status||"discarded").slice(0,40),rewrites:Number(record.rewrites)||0,title:String(record.title||"").slice(0,240),content:String(record.content||"").slice(0,4000),asset_url:String(record.asset_url||"").slice(0,4000),landing_url:String(record.landing_url||"").slice(0,4000),performance:record.performance||null,evaluated_at:String(record.evaluated_at||new Date().toISOString())};
+ const safe={creative_id:String(record.creative_id||"").slice(0,80),offer_id:record.offer_id?String(record.offer_id).slice(0,40):null,product:record.product?String(record.product).slice(0,100):null,price_brl:record.price_brl==null?null:Number(record.price_brl),brand:record.brand?String(record.brand).slice(0,40):null,channel:String(record.channel||"").slice(0,40),angle:String(record.angle||"default").slice(0,60),format:String(record.format||"default").slice(0,40),hour:Number(record.hour)||0,score:n(record.score),criteria:record.criteria||{},compliance:n(record.compliance),reason:String(record.reason||"").slice(0,240),status:String(record.status||"discarded").slice(0,40),rewrites:Number(record.rewrites)||0,title:String(record.title||"").slice(0,240),content:String(record.content||"").slice(0,4000),asset_url:String(record.asset_url||"").slice(0,4000),landing_url:String(record.landing_url||"").slice(0,4000),performance:record.performance||null,evaluated_at:String(record.evaluated_at||new Date().toISOString())};
  feed=[safe,...(Array.isArray(feed)?feed:[]).filter(x=>x?.creative_id!==safe.creative_id)].slice(0,100);
  await kv.put(CREATIVE_AUTONOMY_FEED_KEY,JSON.stringify(feed),{expirationTtl:90*DAY});return true;
 }
