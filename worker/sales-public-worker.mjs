@@ -64,6 +64,17 @@ function infoPage(status,title,body){
 // Same automation list as worker/funnel.mjs BOT_RE. "monitor" and "zevanory" were missing here: the
 // live-buy smoke ("ZEVANORY-Monitor") passed this check and its POST created real orders (PR #789).
 // Our own tools always identify themselves with "zevanory"; no real browser sends that.
+// Mercado Pago back_urls land on /solucoes?pagamento=<estado>. The redirect is NOT payment proof:
+// the text never claims confirmation or absence of charge; access depends only on the webhook.
+const PAYMENT_RETURN={
+  aprovado:["Recebemos o seu retorno do pagamento","<p>Assim que o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra. Costuma levar poucos minutos.</p><p>Não chegou? Confira a caixa de spam ou promoções. Você também pode <a href=\"https://zevanory.api.br/entrega/reenviar\">pedir um novo link de acesso</a>.</p>"],
+  pendente:["Pagamento em análise","<p>Pix ou boleto podem levar algum tempo para compensar. Quando o Mercado Pago confirmar, o acesso chega no e-mail informado na compra.</p><p>Se já pagou e nada chegou em 1 dia útil, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente no <a href=\"https://wa.me/5588992545413\">WhatsApp</a>.</p>"],
+  falhou:["O pagamento não foi concluído","<p>O Mercado Pago informou que o pagamento não foi finalizado. Você pode tentar de novo pela página do produto, com outro meio de pagamento.</p><p>Dúvidas? Fale com a gente no <a href=\"https://wa.me/5588992545413\">WhatsApp</a> ou em suporte@zevanory.api.br.</p>"]
+};
+export function paymentReturnPage(state){
+  const entry=Object.prototype.hasOwnProperty.call(PAYMENT_RETURN,state)?PAYMENT_RETURN[state]:null;
+  return entry?infoPage(200,entry[0],entry[1]):null;
+}
 export const BOT_UA=/bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|headless|lighthouse|monitor|uptime|pingdom|semrush|ahrefs|curl|wget|python|node-fetch|go-http|axios|okhttp|zevanory/i;
 const PRICES={"ZEV-IA-011":["IA na Prática",197],"ZEV-VEN-011":["Vendas na Prática",197],"ZEV-LCX-011":["Lucro & Caixa",247],"ZEV-CMB-011":["Combo IA + Vendas",297],"ZEV-NGC-011":["Negócio Completo",397]};
 async function salesOpen(env){
@@ -202,6 +213,10 @@ export default{async fetch(request,env,ctx){
   }
   if(retired.has(url.pathname)) return new Response("Produto retirado da superficie publica ZEVANORY.",{status:410,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"no-store"}))});
   if(url.pathname.startsWith("/api/")||url.pathname.startsWith("/admin")) return new Response("Not found",{status:404,headers:applySecurityHeaders(new Headers())});
+  if((url.pathname==="/solucoes"||url.pathname==="/solucoes/")&&(request.method==="GET"||request.method==="HEAD")&&url.searchParams.has("pagamento")){
+    const back=paymentReturnPage(url.searchParams.get("pagamento"));
+    if(back) return back;
+  }
   let page="";
   if(url.pathname==="/"||url.pathname==="") { url.pathname="/solucoes.html"; page="solucoes"; }
   else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) { url.pathname="/"+key+".html"; page=key; } }
