@@ -43,7 +43,7 @@ jobs:
         run: node --test tests/publisher-inventory.test.mjs
       - name: Promotion guard decisions
         run: python3 -m unittest -v tests/test_promotion_guard.py
-      - name: Integrated #799 -> #210 transition simulation (real workflow scripts, no publish)
+      - name: "Integrated #799 -> #210 transition simulation (real workflow scripts, no publish)"
         run: |
           git fetch --quiet --depth 1 origin gh-pages:refs/remotes/origin/gh-pages || true
           python3 -m unittest -v tests/test_t1_transition.py 2>&1 | tee /tmp/sim.log
