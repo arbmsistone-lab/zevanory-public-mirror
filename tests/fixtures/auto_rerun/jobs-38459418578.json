@@ -1,0 +1,205 @@
+{
+ "total_count": 2,
+ "jobs": [
+  {
+   "name": "guard",
+   "status": "completed",
+   "conclusion": "success",
+   "steps": [
+    {
+     "name": "Set up job",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 1
+    },
+    {
+     "name": "Run actions/checkout@v4",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 2
+    },
+    {
+     "name": "Pre-promotion guard",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 3
+    },
+    {
+     "name": "Post Run actions/checkout@v4",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 6
+    },
+    {
+     "name": "Complete job",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 7
+    }
+   ]
+  },
+  {
+   "name": "deploy",
+   "status": "completed",
+   "conclusion": "failure",
+   "steps": [
+    {
+     "name": "Set up job",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 1
+    },
+    {
+     "name": "Run actions/checkout@v4",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 2
+    },
+    {
+     "name": "Run actions/setup-node@v4",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 3
+    },
+    {
+     "name": "Materialize exact canonical runtime sources",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 4
+    },
+    {
+     "name": "Determine authenticated public-owner deployment authority",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 5
+    },
+    {
+     "name": "Zero-cost guard (owner rule, fail closed before any deploy)",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 6
+    },
+    {
+     "name": "Reconstruct exact production candidate",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 7
+    },
+    {
+     "name": "Authenticate Cloudflare",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 8
+    },
+    {
+     "name": "Verify legacy production bridge route",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 9
+    },
+    {
+     "name": "Discover production KV namespaces",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 10
+    },
+    {
+     "name": "Discover Worker service bindings",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 11
+    },
+    {
+     "name": "Inspect current zevanory bindings",
+     "status": "completed",
+     "conclusion": "failure",
+     "number": 12
+    },
+    {
+     "name": "Verify financial safety boundary without mutating secrets",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 13
+    },
+    {
+     "name": "Require certification secret before production deploy",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 14
+    },
+    {
+     "name": "Deploy repaired production worker",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 15
+    },
+    {
+     "name": "Verify live UTF-8 asset and safety",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 16
+    },
+    {
+     "name": "Verify production API legal surfaces and parity after deploy",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 17
+    },
+    {
+     "name": "Verify live HSTS CSP and Mercado Pago navigation",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 18
+    },
+    {
+     "name": "Post-promotion effective version (T1)",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 19
+    },
+    {
+     "name": "Automatic rollback after failed post-deploy smoke",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 20
+    },
+    {
+     "name": "Certification gate (T1, after rollback decision)",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 21
+    },
+    {
+     "name": "Dispatch exact-production ZEES-16 provider evidence",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 22
+    },
+    {
+     "name": "Fail-closed deployment status",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 23
+    },
+    {
+     "name": "Post Run actions/setup-node@v4",
+     "status": "completed",
+     "conclusion": "skipped",
+     "number": 45
+    },
+    {
+     "name": "Post Run actions/checkout@v4",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 46
+    },
+    {
+     "name": "Complete job",
+     "status": "completed",
+     "conclusion": "success",
+     "number": 47
+    }
+   ]
+  }
+ ]
+}

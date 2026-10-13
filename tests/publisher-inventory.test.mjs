@@ -173,3 +173,30 @@ test("sales pages built from sales-public are released only by the canonical pub
     assert.ok(release.includes(`- "${p}"`), `release must trigger on ${p}`);
   }
 });
+
+test("automatic replays never republish after a post-publish failure nor reuse a stale guard", () => {
+  // Names of every registered production publisher (canonical + config + pending).
+  const publisherNames = new Map();
+  for (const wf of owner.keys()) {
+    if (!existsSync(new URL(wf, wfDir))) continue;
+    const m = read(wf).match(/^name:\s*["']?(.+?)["']?\s*$/m);
+    if (m) publisherNames.set(m[1], wf);
+  }
+  for (const wf of workflows) {
+    const text = read(wf);
+    if (!/rerun-failed-jobs|\/rerun\b/.test(text)) continue;
+    const watched = [...text.matchAll(/^\s+-\s*["']([^"']+)["']\s*$/gm)].map((m) => m[1]).filter((n) => publisherNames.has(n));
+    for (const name of watched) {
+      // Each watched publisher must have its own branch that refuses replays after publishing/rollback
+      // and replays with a FULL rerun (fresh guard), never rerun-failed-jobs.
+      const branch = text.split(`if [ "$NAME" = "${name}" ]; then`)[1];
+      assert.ok(branch, `${wf}: ${name} (${publisherNames.get(name)}) needs a dedicated replay branch`);
+      const body = branch.split(/\n\s+fi\n\s+sleep 90\n\s+curl[^\n]*rerun-failed-jobs/)[0];
+      assert.match(body, /AUTO_RERUN_REFUSED/, `${wf}: ${name} must refuse replay after publishing or rollback`);
+      assert.match(body, /python3 scripts\/deploy\/auto_rerun_decision\.py/, `${wf}: ${name} replay needs the fail-closed decision (positive proof + revalidation)`);
+      assert.match(body, /if \[ "\$rc" = "10" \]/, `${wf}: ${name} replays only on the explicit pre-publish verdict`);
+      assert.match(body, /\$api\/rerun"/, `${wf}: ${name} replay must rerun ALL jobs (fresh guard)`);
+      assert.doesNotMatch(body, /rerun-failed-jobs/, `${wf}: ${name} must never reuse the attempt-1 guard`);
+    }
+  }
+});

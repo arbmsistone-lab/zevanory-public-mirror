@@ -1,0 +1,9 @@
+{
+ "id": 38459418578,
+ "name": "ZEVANORY central production deploy",
+ "status": "completed",
+ "conclusion": "failure",
+ "run_attempt": 1,
+ "head_sha": "4d364561a5206640daad235d2512a5dbcc0b8405",
+ "event": "push"
+}
