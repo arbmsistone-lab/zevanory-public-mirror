@@ -160,7 +160,7 @@ async function kvWritesToday(now = Date.now()) {
   const { CLOUDFLARE_API_TOKEN: tk, CLOUDFLARE_ACCOUNT_ID: ac } = process.env;
   if (!tk || !ac) return null;
   const day = new Date(now).toISOString().slice(0, 10);
-  const query = `query($a:String!,$d:Date!){viewer{accounts(filter:{accountTag:$a}){kvOperationsAdaptiveGroups(limit:100,filter:{date_geq:$d,date_leq:$d}){sum{requests}dimensions{actionType}}}}}`;
+  const query = `query($a:String!,$d:Date!){viewer{accounts(filter:{accountTag:$a}){kvOperationsAdaptiveGroups(limit:100,filter:{date_geq:$d,date_leq:$d}){sum{requests}dimensions{actionType namespaceId}}}}}`;
   try {
     const r = await fetch("https://api.cloudflare.com/client/v4/graphql", { method: "POST", headers: { authorization: "Bearer " + tk, "content-type": "application/json" }, body: JSON.stringify({ query, variables: { a: ac, d: day } }), signal: AbortSignal.timeout(15000) });
     const body = await r.json().catch(() => null);
@@ -168,7 +168,12 @@ async function kvWritesToday(now = Date.now()) {
     if (!Array.isArray(groups)) return { verified: false, reason: String(body?.errors?.[0]?.message || "http_" + r.status).slice(0, 80) };
     const by = (t) => groups.filter((g) => g.dimensions?.actionType === t).reduce((a, g) => a + (g.sum?.requests || 0), 0);
     const writes = by("write") + by("delete");
-    return { verified: true, day, writes, reads: by("read"), limit: KV_DAILY_WRITE_LIMIT, pct: Math.round((writes / KV_DAILY_WRITE_LIMIT) * 100) };
+    // Writes per namespace: the quota is per ACCOUNT, shared with every other project on it.
+    const perNs = {};
+    for (const g of groups) if (["write", "delete"].includes(g.dimensions?.actionType)) { const ns = String(g.dimensions?.namespaceId || "?"); perNs[ns] = (perNs[ns] || 0) + (g.sum?.requests || 0); }
+    const ours = perNs[process.env.KV_NAMESPACE_ID || ""] || 0;
+    const byNamespace = Object.entries(perNs).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([ns, n]) => ({ ns: ns.slice(0, 8), writes: n, zevanory: ns === process.env.KV_NAMESPACE_ID }));
+    return { verified: true, day, writes, reads: by("read"), limit: KV_DAILY_WRITE_LIMIT, pct: Math.round((writes / KV_DAILY_WRITE_LIMIT) * 100), zevanoryWrites: ours, byNamespace };
   } catch (e) { return { verified: false, reason: String(e?.name || "error") }; }
 }
 
