@@ -18,6 +18,7 @@ on:
       - "worker/whatsapp-*.mjs"
       - "worker/live-runtime-status.mjs"
       - "worker/creative-autonomy.mjs"
+      - "tests/creative-offer-containment.test.mjs"
       - "worker/multichannel-autonomy.mjs"
       - "worker/blog-editorial.mjs"
       - "worker/acquisition-engine.mjs"
@@ -212,7 +213,7 @@ jobs:
           node --check worker/whatsapp-neon-store.mjs
           node --test tests/whatsapp-neon-store.test.mjs
           node --test tests/live-runtime-status.test.mjs tests/core-snapshot-memo.test.mjs tests/production-staging-health.test.mjs tests/commercial-metrics-projection.test.mjs
-          node --test tests/creative-autonomy.test.mjs
+          node --test tests/creative-autonomy.test.mjs tests/creative-offer-containment.test.mjs
           node --test tests/multichannel-autonomy.test.mjs tests/blog-editorial.test.mjs
           node --test tests/operational-activity.test.mjs tests/activity-ledger.test.mjs
           node --test tests/instant-status-sales-coherence.test.mjs

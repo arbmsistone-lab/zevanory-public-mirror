@@ -5,7 +5,7 @@ import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-backgr
 import { getWhatsappOpsStore, publishWhatsappOpsStats } from "./whatsapp-neon-store.mjs";
 import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
 import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } from "./mercadopago-webhook-safety.mjs";
-import { chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
+import { DEFAULT_CREATIVE_OFFER, assertBrandSafeCreative, chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, creativeCatalogEntry, creativeLandingUrl, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
 import { appendBlogSitemap, INDEXNOW_PUBLIC_KEY, recordChannelProof, renderBlogArticle, renderBlogIndex, renderChannelsPage, runMultichannelAutonomy } from "./multichannel-autonomy.mjs";
 import { collectAutonomyHealth, runAutonomyHealth } from "./autonomy-health.mjs";
 import { handleMetaSocialInbound, runInboundLifecycle } from "./inbound-autonomy.mjs";
@@ -361,6 +361,12 @@ function resolveCertificationCheckoutOffer(id) {
   return Object.freeze({ id: product.sku, product: product.product, commercial_name: product.commercial_name, brand: product.brand, endorsed_by: product.endorsed_by, brand_signature: product.brand_signature, version: product.version, price_brl: Number(product.table_price_brl), artifact_name: product.artifact_name, artifact_sha256: product.artifact_sha256, certification_only: true });
 }
 __name(resolveCertificationCheckoutOffer, "resolveCertificationCheckoutOffer");
+function resolveCreativeOffer(id) {
+  const entry = creativeCatalogEntry(id), product = entry ? getZevanoryProduct(id) : null;
+  if (!entry || !product || product.artifact_materialized !== true || Number(product.table_price_brl) !== entry.price_brl) return null;
+  return Object.freeze({ id: product.sku, product: product.product, price_brl: entry.price_brl, slug: entry.slug });
+}
+__name(resolveCreativeOffer, "resolveCreativeOffer");
 var ARBM_SIST_OFFER, ZEVANORY_PRODUCTS, ZEVANORY_PORTFOLIO;
 var init_offerCatalog = __esm({
   "src/offerCatalog.mjs"() {
@@ -424,9 +430,9 @@ var init_offerCatalog = __esm({
 
 // src/creativeEngine.mjs
 import { createHash as createHash5, createHmac, timingSafeEqual as timingSafeEqual3 } from "node:crypto";
-function createCreativeSpec({ offerId = "OFFER-0001", channel = "instagram", hook = "", body = "", cta = "", objective = "awareness", width = null, height = null, layout = "editorial", formatName = "default", placement = "", campaignId = "", variantId = "" } = {}) {
-  const offer = resolveCheckoutOffer(offerId);
-  if (!offer) throw new Error("creative_offer_unknown");
+function createCreativeSpec({ offerId = DEFAULT_CREATIVE_OFFER, channel = "instagram", hook = "", body = "", cta = "", objective = "awareness", width = null, height = null, layout = "editorial", formatName = "default", placement = "", campaignId = "", variantId = "" } = {}) {
+  const offer = resolveCreativeOffer(offerId);
+  if (!offer) throw new Error("creative_offer_not_in_zev_catalog");
   const key = String(channel).toLowerCase(), resolved = resolveFormat(key, placement);
   const [defaultWidth, defaultHeight] = resolved.dims;
   const spec = {
@@ -484,6 +490,7 @@ function verifyCreativeToken(payload, sig, env = process.env) {
   }
   if (!parsed?.spec?.creative_id || !["png", "webm"].includes(String(parsed.format))) return null;
   const s = parsed.spec;
+  if (!creativeCatalogEntry(s.offer_id)) return null;
   if (Number(s.version) === 2) {
     const legacy = { ...s };
     delete legacy.creative_id;
@@ -8132,7 +8139,7 @@ function creativeQualityScore(spec = {}) {
   return Number((hook * 0.2 + body * 0.18 + cta * 0.12 + brand * 0.17 + dimensions * 0.12 + layout * 0.11 + placement * 0.1).toFixed(4));
 }
 __name(creativeQualityScore, "creativeQualityScore");
-function buildCreativeVariants({ offerId = "OFFER-0001", channel = "instagram", hook = "", body = "", cta = "", objective = "awareness", placement = "", campaignId = "" } = {}) {
+function buildCreativeVariants({ offerId = DEFAULT_CREATIVE_OFFER, channel = "instagram", hook = "", body = "", cta = "", objective = "awareness", placement = "", campaignId = "" } = {}) {
   const canonical2 = commercialMessageFor(channel, { salesEnabled: false });
   const base = String(hook || canonical2.headline).trim();
   const value = String(body || canonical2.body).trim();
@@ -8979,7 +8986,7 @@ async function handler(req, res) {
   }
   if (view === "creative_sample") {
     const origin = `${String(req.headers?.["x-forwarded-proto"] || "https").split(",")[0]}://${String(req.headers?.["x-forwarded-host"] || req.headers?.host || "zevanory.api.br").split(",")[0]}`;
-    const common = { offerId: "OFFER-0001", hook: "Automa\xE7\xE3o com controle", body: "IA, execu\xE7\xE3o segura e evid\xEAncia real.", cta: "Conhe\xE7a a ZEVANORY" };
+    const common = { offerId: DEFAULT_CREATIVE_OFFER, hook: "Automa\xE7\xE3o com controle", body: "IA, execu\xE7\xE3o segura e evid\xEAncia real.", cta: "Conhe\xE7a a ZEVANORY" };
     const sql = process.env.DATABASE_URL ? cs(process.env.DATABASE_URL) : null;
     const image = await selectCreativeVariantWithVisualEvidence(sql, { ...common, channel: "instagram" }), video = await selectCreativeVariantWithVisualEvidence(sql, { ...common, channel: "youtube" });
     const imageSpec = image.winner.spec, videoSpec = video.winner.spec;
@@ -12144,7 +12151,7 @@ async function executeTool(sql, tool, context, decision, { runId, traceId, env }
   }
   if (tool === "create_creative") {
     const channel = String(decision.channel || lead?.channel || "instagram").toLowerCase();
-    const intelligence = await selectCreativeVariantWithEvidence(sql, { offerId: decision.offer_id || "OFFER-0001", channel, hook: decision.hook || decision.title || decision.content || decision.message, body: decision.body || decision.content || decision.message, cta: decision.cta || "Saiba mais", objective: decision.objective || "awareness", campaignId: decision.campaign_id || "" });
+    const intelligence = await selectCreativeVariantWithEvidence(sql, { offerId: decision.offer_id || DEFAULT_CREATIVE_OFFER, channel, hook: decision.hook || decision.title || decision.content || decision.message, body: decision.body || decision.content || decision.message, cta: decision.cta || "Saiba mais", objective: decision.objective || "awareness", campaignId: decision.campaign_id || "" });
     const spec = intelligence.winner.spec, video = ["youtube", "tiktok"].includes(channel);
     if (intelligence.winner.quality_score < CREATIVE_INTELLIGENCE_POLICY.min_quality_score) throw new Error("creative_quality_below_threshold");
     return { creative_id: spec.creative_id, campaign_id: spec.campaign_id, variant_id: spec.variant_id, spec, image_url: creativeAssetUrl(spec, "png", env), video_url: video ? creativeAssetUrl(spec, "webm", env) : null, publishable: false, selection_basis: intelligence.selection_basis, quality_score: intelligence.winner.quality_score, variants: intelligence.ranking.map((x2) => ({ creative_id: x2.spec.creative_id, variant_id: x2.variant_id, quality_score: x2.quality_score, selection_score: x2.selection_score, observed_ready: x2.observed_ready })) };
@@ -12179,10 +12186,13 @@ async function executeTool(sql, tool, context, decision, { runId, traceId, env }
       payload.filename = String(decision.filename || "").slice(0, 240);
     }
     if (decision.auto_creative === true && ["whatsapp", "email"].includes(String(lead.channel).toLowerCase())) {
-      const intelligence = await selectCreativeVariantWithVisualEvidence(sql, { offerId: decision.offer_id || "OFFER-0001", channel: String(lead.channel).toLowerCase(), hook: decision.hook || decision.title || text, body: decision.body || text, cta: decision.cta || "Saiba mais", objective: decision.objective || "conversion", placement: decision.placement || "", campaignId: decision.campaign_id || "" });
+      const intelligence = await selectCreativeVariantWithVisualEvidence(sql, { offerId: decision.offer_id || DEFAULT_CREATIVE_OFFER, channel: String(lead.channel).toLowerCase(), hook: decision.hook || decision.title || text, body: decision.body || text, cta: decision.cta || "Saiba mais", objective: decision.objective || "conversion", placement: decision.placement || "", campaignId: decision.campaign_id || "" });
       const choice = chooseCreativeForOperation(intelligence, runId), spec = choice.selected.spec;
       if (choice.selected.quality_score < CREATIVE_INTELLIGENCE_POLICY.min_quality_score || choice.selected.perceptual_score < CREATIVE_INTELLIGENCE_POLICY.min_perceptual_score) throw new Error("creative_quality_below_threshold");
       payload.media_url = creativeAssetUrl(spec, "png", env);
+      payload.offer_id = spec.offer_id;
+      payload.price_brl = spec.price_brl;
+      payload.brand = spec.brand;
       payload.creative_id = spec.creative_id;
       payload.campaign_id = spec.campaign_id;
       payload.variant_id = spec.variant_id;
@@ -12198,12 +12208,13 @@ async function executeTool(sql, tool, context, decision, { runId, traceId, env }
     if (!content2) throw new Error("publish_content_required");
     const novelty = await evaluateContentNovelty(sql, { content: content2, channel });
     if (!novelty.allowed) throw new Error(novelty.reason);
-    let mediaUrl = String(decision.media_url || "").trim(), creativeId = null, campaignId = null, variantId = null, selectionBasis = null, qualityScore = null, perceptualScore = null, landingUrl = null;
+    let mediaUrl = String(decision.media_url || "").trim(), creativeOffer = {}, creativeId = null, campaignId = null, variantId = null, selectionBasis = null, qualityScore = null, perceptualScore = null, landingUrl = null;
     if (!mediaUrl && decision.auto_creative === true) {
-      const intelligence = await selectCreativeVariantWithVisualEvidence(sql, { offerId: decision.offer_id || "OFFER-0001", channel, hook: decision.hook || decision.title || content2, body: decision.body || content2, cta: decision.cta || "Saiba mais", objective: decision.objective || "conversion", placement: decision.placement || "", campaignId: decision.campaign_id || "" });
+      const intelligence = await selectCreativeVariantWithVisualEvidence(sql, { offerId: decision.offer_id || DEFAULT_CREATIVE_OFFER, channel, hook: decision.hook || decision.title || content2, body: decision.body || content2, cta: decision.cta || "Saiba mais", objective: decision.objective || "conversion", placement: decision.placement || "", campaignId: decision.campaign_id || "" });
       const choice = chooseCreativeForOperation(intelligence, runId), spec = choice.selected.spec;
       if (choice.selected.quality_score < CREATIVE_INTELLIGENCE_POLICY.min_quality_score || choice.selected.perceptual_score < CREATIVE_INTELLIGENCE_POLICY.min_perceptual_score) throw new Error("creative_quality_below_threshold");
       creativeId = spec.creative_id;
+      creativeOffer = { offer_id: spec.offer_id, product: spec.product, price_brl: spec.price_brl, brand: spec.brand };
       campaignId = spec.campaign_id;
       variantId = spec.variant_id;
       selectionBasis = choice.basis;
@@ -12216,7 +12227,7 @@ async function executeTool(sql, tool, context, decision, { runId, traceId, env }
     const title = String(decision.title || decision.hook || content2).slice(0, 240);
     return enqueueOutbox(sql, { aggregateType: "content", aggregateId: runId, eventType: "publish_content", destination: `channel:${channel}`, payload: { content: content2.slice(0, 8e3), title, description: (landingUrl ? `${String(decision.description || content2).slice(0, 4700)}
 
-${landingUrl}` : String(decision.description || content2)).slice(0, 5e3), media_url: mediaUrl.slice(0, 4e3), creative_id: creativeId, campaign_id: campaignId, variant_id: variantId, landing_url: landingUrl, creative_selection_basis: selectionBasis, creative_quality_score: qualityScore, creative_perceptual_score: perceptualScore, privacy_status: String(decision.privacy_status || "private").slice(0, 20), made_for_kids: decision.made_for_kids === true, organic_only: decision.organic_only === true, commercial_intent: decision.commercial_intent === true, dedup_fingerprint: novelty.fingerprint, dedup_policy: novelty.policy }, idempotencyKey: `agent:${runId}:publish_content`, traceId, runId });
+${landingUrl}` : String(decision.description || content2)).slice(0, 5e3), media_url: mediaUrl.slice(0, 4e3), ...creativeOffer, creative_id: creativeId, campaign_id: campaignId, variant_id: variantId, landing_url: landingUrl, creative_selection_basis: selectionBasis, creative_quality_score: qualityScore, creative_perceptual_score: perceptualScore, privacy_status: String(decision.privacy_status || "private").slice(0, 20), made_for_kids: decision.made_for_kids === true, organic_only: decision.organic_only === true, commercial_intent: decision.commercial_intent === true, dedup_fingerprint: novelty.fingerprint, dedup_policy: novelty.policy }, idempotencyKey: `agent:${runId}:publish_content`, traceId, runId });
   }
   if (tool === "start_checkout") {
     if (!lead?.session_id) throw new Error("checkout_session_unavailable");
@@ -12967,6 +12978,7 @@ var ensureCommercialContactConsent = /* @__PURE__ */ __name((event) => {
 }, "ensureCommercialContactConsent");
 var ensureOutboundAllowed = /* @__PURE__ */ __name((event, env, gateEvaluator = salesGate) => {
   ensureCommercialContactConsent(event);
+  if (event?.payload?.creative_id) assertBrandSafeCreative(event.payload);
   if (gateEvaluator(env).enabled) return;
   if (supportEventAllowed(event)) return;
   if (organicEventAllowed(event, env, gateEvaluator)) return;
@@ -13776,7 +13788,7 @@ async function runNonCommercialAutopilot({ env = process.env, scheduledTime = Da
     for (let round2 = 1; round2 <= AUTOPILOT_POLICY.max_revision_rounds; round2++) {
       const focus = eliteSubjectLabel(subject);
       const angleHook = arm.angle === "practical" ? `${candidate.name} na pr\xE1tica` : arm.angle === "clarity" ? `${candidate.name} com clareza` : candidate.name;
-      const brief = { offerId: "OFFER-0001", channel, hook: round2 === 1 ? angleHook : `Decis\xE3o com evid\xEAncia`, body: round2 === 1 ? `Pesquisa e automa\xE7\xE3o com evid\xEAncia para ${subject}. Garantia de 7 dias.` : `Pesquisa validada, automa\xE7\xE3o pr\xE1tica e decis\xF5es com evid\xEAncia. Garantia de 7 dias.`, cta: "Conhe\xE7a a ZEVANORY", objective: "awareness", campaignId: `${cycleId}-${channel}-r${round2}` };
+      const brief = { offerId: DEFAULT_CREATIVE_OFFER, channel, hook: round2 === 1 ? angleHook : `Decis\xE3o com evid\xEAncia`, body: round2 === 1 ? `Pesquisa e automa\xE7\xE3o com evid\xEAncia para ${subject}. Garantia de 7 dias.` : `Pesquisa validada, automa\xE7\xE3o pr\xE1tica e decis\xF5es com evid\xEAncia. Garantia de 7 dias.`, cta: "Conhe\xE7a a ZEVANORY", objective: "awareness", campaignId: `${cycleId}-${channel}-r${round2}` };
       const selection = await selectCreative(sql, brief), winner = selection?.winner || {}, spec = winner.spec || {};
       const autonomy = evaluateCreativeWithRewrites(spec, { serverPrice: spec.price_brl, visualScore: winner.perceptual_score });
       const elite2 = autonomy.action === "publish";
@@ -13788,7 +13800,7 @@ async function runNonCommercialAutopilot({ env = process.env, scheduledTime = Da
     }
     const item = accepted2 || last || { channel, round: 0, selection: {}, winner: {}, spec: {}, elite: false };
     const status = item.elite ? publicationPaused ? "approved_paused" : "approved_for_autopublish" : "discarded";
-    const row = Object.freeze({ channel, revision_round: item.round, creative_id: item.spec.creative_id || null, variant_id: item.spec.variant_id || null, campaign_id: item.spec.campaign_id || `${cycleId}-${channel}`, title: item.spec.hook || "", content: item.spec.body || "", landing_url: `${String(env.PUBLIC_BASE_URL || "https://zevanory.api.br").replace(/\/$/,"")}/solucoes?utm_source=${encodeURIComponent(channel)}&utm_medium=organic&utm_campaign=${encodeURIComponent(item.spec.campaign_id || cycleId)}`, quality_score: Number(item.winner.quality_score || 0), perceptual_score: Number(item.winner.perceptual_score || 0), score: Number(item.autonomy?.score || 0), criteria: item.autonomy?.criteria || {}, compliance: Number(item.autonomy?.compliance || 0), compliance_checks: item.autonomy?.compliance_checks || {}, reason: item.autonomy?.reason || "creative_unavailable", status, review_board: item.winner.review_board || item.selection?.review_board || null, selection_basis: item.selection?.selection_basis || null, asset_url: item.elite && item.spec.creative_id ? creativeAssetUrl(item.spec, ["youtube", "tiktok"].includes(channel) ? "webm" : "png", env) : null, elite_accepted: item.elite, revision_required: !item.elite, central_ready: item.elite, publishable: item.elite && !publicationPaused, commercial_unlock: false });
+    const row = Object.freeze({ channel, revision_round: item.round, creative_id: item.spec.creative_id || null, variant_id: item.spec.variant_id || null, campaign_id: item.spec.campaign_id || `${cycleId}-${channel}`, title: item.spec.hook || "", content: item.spec.body || "", offer_id: item.spec.offer_id || null, product: item.spec.product || null, price_brl: item.spec.price_brl ?? null, brand: item.spec.brand || null, landing_url: creativeCatalogEntry(item.spec.offer_id) ? creativeLandingUrl(item.spec.offer_id, { source: channel, campaign: item.spec.campaign_id || cycleId }) : null, quality_score: Number(item.winner.quality_score || 0), perceptual_score: Number(item.winner.perceptual_score || 0), score: Number(item.autonomy?.score || 0), criteria: item.autonomy?.criteria || {}, compliance: Number(item.autonomy?.compliance || 0), compliance_checks: item.autonomy?.compliance_checks || {}, reason: item.autonomy?.reason || "creative_unavailable", status, review_board: item.winner.review_board || item.selection?.review_board || null, selection_basis: item.selection?.selection_basis || null, asset_url: item.elite && item.spec.creative_id ? creativeAssetUrl(item.spec, ["youtube", "tiktok"].includes(channel) ? "webm" : "png", env) : null, elite_accepted: item.elite, revision_required: !item.elite, central_ready: item.elite, publishable: item.elite && !publicationPaused, commercial_unlock: false });
     channelCreatives.push(row);
     await recordCreativeEvaluation(env, { ...row, angle: arm.angle, format: arm.format, hour: arm.hour, rewrites: Math.max(0, Number(item.round || 1) - 1), evaluated_at: new Date().toISOString() }).catch(() => false);
   }
