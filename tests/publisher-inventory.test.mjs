@@ -193,6 +193,8 @@ test("automatic replays never republish after a post-publish failure nor reuse a
       assert.ok(branch, `${wf}: ${name} (${publisherNames.get(name)}) needs a dedicated replay branch`);
       const body = branch.split(/\n\s+fi\n\s+sleep 90\n\s+curl[^\n]*rerun-failed-jobs/)[0];
       assert.match(body, /AUTO_RERUN_REFUSED/, `${wf}: ${name} must refuse replay after publishing or rollback`);
+      assert.match(body, /python3 scripts\/deploy\/auto_rerun_decision\.py/, `${wf}: ${name} replay needs the fail-closed decision (positive proof + revalidation)`);
+      assert.match(body, /if \[ "\$rc" = "10" \]/, `${wf}: ${name} replays only on the explicit pre-publish verdict`);
       assert.match(body, /\$api\/rerun"/, `${wf}: ${name} replay must rerun ALL jobs (fresh guard)`);
       assert.doesNotMatch(body, /rerun-failed-jobs/, `${wf}: ${name} must never reuse the attempt-1 guard`);
     }

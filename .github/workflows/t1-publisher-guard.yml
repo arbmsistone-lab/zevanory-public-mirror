@@ -25,6 +25,9 @@ on:
       - "tests/publisher-inventory.test.mjs"
       - "tests/test_promotion_guard.py"
       - "tests/test_t1_transition.py"
+      - "scripts/deploy/auto_rerun_decision.py"
+      - "tests/test_auto_rerun_decision.py"
+      - "tests/fixtures/auto_rerun/**"
       - "scripts/deploy/prepare-central-candidate.py"
       - "tests/test_binding_budget_compaction.py"
       - "scripts/deploy/worker_secret_rotate.py"
@@ -47,6 +50,8 @@ jobs:
         run: node --test tests/publisher-inventory.test.mjs
       - name: Promotion guard decisions
         run: python3 -m unittest -v tests/test_promotion_guard.py
+      - name: Fail-closed replay decision for the production publisher
+        run: python3 -m unittest -v tests/test_auto_rerun_decision.py
       - name: Central binding budget compaction (never a gate; behaviour-neutral)
         run: |
           git fetch --quiet --depth 1 origin 83620c680958d726fc4b0fd16e2574cdcc362a6d || true
