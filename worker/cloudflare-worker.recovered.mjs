@@ -1614,7 +1614,7 @@ var BRAND_PROFILE = Object.freeze({
   site: "https://zevanory.api.br",
   category: "Software / Tecnologia",
   profileImage: "/brand/social/zevanory-social-profile-1080.png",
-  facebookCover: "/brand/social/zevanory-facebook-cover-1640x624.png",
+  facebookCover: "/brand/export/banner-facebook.png",
   coreBio: COMMERCIAL_MESSAGES.zevanory.bio
 });
 var OFFICIAL_WHATSAPP = Object.freeze({ display: "+55 88 99254-5413", e164: "5588992545413", url: "https://wa.me/5588992545413" });
