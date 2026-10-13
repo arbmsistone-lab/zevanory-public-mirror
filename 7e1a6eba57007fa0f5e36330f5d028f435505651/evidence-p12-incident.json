@@ -1,0 +1,13 @@
+{
+  "schema": "zevanory.p12.incident.v1",
+  "release_sha": "7e1a6eba57007fa0f5e36330f5d028f435505651",
+  "checks": {
+    "ERROR_CLASSIFICATION": "PASS",
+    "WARN_CLASSIFICATION": "PASS",
+    "OBSERVABILITY_SINK_FAILURE_VISIBLE": "PASS",
+    "REQUEST_COMPLETION_LOGGED": "PASS",
+    "HEALTH_ENDPOINT_CONTRACT": "PASS",
+    "RECOVERY_EVIDENCE_PRESENT": "PASS"
+  },
+  "verdict": "PASS"
+}
