@@ -351,7 +351,9 @@ export async function main() {
   const day = localDay(now);
   const point = { day, youtube_subs: reach.youtube?.subscribers ?? null, youtube_views: reach.youtube?.views ?? null, telegram: reach.telegram?.members ?? null, bluesky: reach.bluesky?.followers ?? null };
   const nextHistory = [...history.filter((p) => p.day !== day), point].sort((a, b) => a.day.localeCompare(b.day)).slice(-120);
-  await kvPut(REACH_HISTORY_KEY, nextHistory);
+  // KV write budget: rewrite the history only when today's reach point changed.
+  const prevPoint = history.find((p) => p.day === day);
+  if (!prevPoint || JSON.stringify(prevPoint) !== JSON.stringify(point)) await kvPut(REACH_HISTORY_KEY, nextHistory);
   const weekAgo = nextHistory.find((p) => p.day === localDay(now - 7 * DAY)) || nextHistory[0];
   const delta = (k) => (point[k] != null && weekAgo?.[k] != null ? point[k] - weekAgo[k] : null);
 
