@@ -34,20 +34,22 @@ jobs:
           timeout "${secs}s" /tmp/t/node_modules/.bin/wrangler tail zevanory --format json > /tmp/tail.jsonl 2>/tmp/tail.err || true
           node --input-type=module <<'JS'
           import { readFileSync } from "node:fs";
-          const by = new Map(), bySrc = new Map(); let total = 0, events = 0;
-          for (const line of readFileSync("/tmp/tail.jsonl", "utf8").split("\n")) {
-            if (!line.trim()) continue; let ev; try { ev = JSON.parse(line); } catch { continue; } events++;
-            for (const log of ev.logs || []) for (const m of log.message || []) {
-              let o = null; try { o = typeof m === "string" ? JSON.parse(m) : m; } catch {}
-              if (!o || typeof o.kvw !== "string") continue;
-              total++;
-              const k = o.kvw + " (" + o.op + ")"; by.set(k, (by.get(k) || 0) + 1);
-              const s = String(o.src || "?"); bySrc.set(s, (bySrc.get(s) || 0) + 1);
-            }
+          // wrangler tail --format json prints pretty, multi-line events: scan the raw text for the
+          // meter lines (JSON strings with escaped quotes) instead of parsing line by line.
+          const raw = readFileSync("/tmp/tail.jsonl", "utf8");
+          const invocations = (raw.match(/"outcome"\s*:/g) || []).length;
+          const re = /\\"kvw\\":\\"([^"\\]+)\\",\\"op\\":\\"([^"\\]+)\\",\\"src\\":\\"([^"\\]*)\\"/g;
+          const by = new Map(), bySrc = new Map(); let total = 0, shed = 0;
+          for (const m of raw.matchAll(re)) {
+            const [, prefix, op, src] = m;
+            if (op.startsWith("shed:")) { shed++; continue; }
+            total++;
+            by.set(prefix + " (" + op + ")", (by.get(prefix + " (" + op + ")") || 0) + 1);
+            bySrc.set(src, (bySrc.get(src) || 0) + 1);
           }
           const top = (m) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40);
           const minutes = Number("${{ inputs.minutes }}");
-          console.log("::notice title=KV_CENSUS::" + JSON.stringify({ minutes, invocations: events, writes: total, perDayEstimate: Math.round(total * 1440 / minutes) }));
+          console.log("::notice title=KV_CENSUS::" + JSON.stringify({ minutes, invocations, writes: total, shed, perDayEstimate: Math.round(total * 1440 / minutes), bytes: raw.length }));
           console.log("::notice title=KV_CENSUS_PREFIX::" + JSON.stringify(top(by)));
           console.log("::notice title=KV_CENSUS_SOURCE::" + JSON.stringify(top(bySrc)));
           JS
