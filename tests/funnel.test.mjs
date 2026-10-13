@@ -78,3 +78,16 @@ test("each counted view records a traffic class and network (no personal data)",
   assert.deepEqual({ ...s.clean.asn }, { 13335: 9 });
   assert.equal(s.clean.pages.solucoes, undefined);
 });
+
+test("unpaid-checkout diagnosis is aggregate-only and production-only", async () => {
+  const q = (t) => t.includes("group by offer_id, status, provider") ? [{ offer_id: "ZEV-IA-011", status: "checkout_ready", provider: "mercadopago", n: 16 }]
+    : t.includes("count(distinct session_id)") ? [{ orders: 19, sessions: 4, no_session: 0, max_per_session: 12 }]
+    : t.includes("extract(hour") ? [{ h: 21, n: 7 }] : [];
+  const prod = await buildFunnelSummary({ DATABASE_URL: "x", MERCADOPAGO_ENV: "production" }, { sqlFactory: () => ({ query: async (t) => q(t) }) });
+  assert.deepEqual(prod.checkoutDiag.byStatus, [{ offer: "ZEV-IA-011", status: "checkout_ready", provider: "mercadopago", n: 16 }]);
+  assert.deepEqual(prod.checkoutDiag.sessions, { orders: 19, distinctSessions: 4, withoutSession: 0, maxOrdersPerSession: 12 });
+  assert.deepEqual(prod.checkoutDiag.byHourBrt, { 21: 7 });
+  assert.ok(!/order_id|email|phone|payer/.test(JSON.stringify(prod.checkoutDiag)));
+  const test_ = await buildFunnelSummary({ DATABASE_URL: "x", MERCADOPAGO_ENV: "sandbox" }, { sqlFactory: () => ({ query: async (t) => q(t) }) });
+  assert.equal(test_.checkoutDiag, null);
+});

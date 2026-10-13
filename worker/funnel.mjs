@@ -180,6 +180,28 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   clean.campaigns = topN(clean.campaigns, 50);
   clean.asn = topN(clean.asn, 40);
   clean.pages = topN(clean.pages, 60, (v) => v.views || 0);
+  // Unpaid-checkout diagnosis (owner order 13/10): aggregate counts only — no ids, no amounts per
+  // person, no contact data. Status, provider, BRT hour and whether one session retried many times.
+  let checkoutDiag = null;
+  if (production) {
+    const [byStatus, sessions, byHour] = await Promise.all([
+      sql.query(`select offer_id, status, coalesce(provider,'') as provider, count(*)::int as n from orders
+         where created_at > now() - interval '30 days' and coalesce(certification_pilot,false) = false
+         group by offer_id, status, provider`, []),
+      sql.query(`select count(*)::int as orders, count(distinct session_id)::int as sessions,
+              count(*) filter (where session_id is null)::int as no_session,
+              coalesce(max(per),0)::int as max_per_session
+         from (select session_id, count(*) over (partition by session_id) as per from orders
+                where created_at > now() - interval '30 days' and coalesce(certification_pilot,false) = false) t`, []),
+      sql.query(`select extract(hour from created_at at time zone 'America/Sao_Paulo')::int as h, count(*)::int as n from orders
+         where created_at > now() - interval '30 days' and coalesce(certification_pilot,false) = false group by 1`, []),
+    ]).catch(() => [[], [], []]);
+    checkoutDiag = {
+      byStatus: (byStatus || []).map((r) => ({ offer: String(r.offer_id || ""), status: String(r.status || ""), provider: String(r.provider || ""), n: Number(r.n) || 0 })),
+      sessions: sessions?.[0] ? { orders: Number(sessions[0].orders) || 0, distinctSessions: Number(sessions[0].sessions) || 0, withoutSession: Number(sessions[0].no_session) || 0, maxOrdersPerSession: Number(sessions[0].max_per_session) || 0 } : null,
+      byHourBrt: Object.fromEntries((byHour || []).map((r) => [String(r.h), Number(r.n) || 0])),
+    };
+  }
   const clean7 = await sql.query("select metric, coalesce(sum(n),0)::int as n from zevanory_funnel_daily where day >= greatest(current_date - 6, $1::date) and metric in ('views','visitors') group by metric", [CLEAN_SINCE]).catch(() => []);
   const cleanM = Object.fromEntries((clean7 || []).map(row=>[row.metric,Number(row.n)||0]));
   const metrics7 = Object.fromEntries(traffic7.map(row=>[row.metric,Number(row.n)||0]));
@@ -196,6 +218,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
     sources,
     productDaily,
     clean,
+    checkoutDiag,
     topCampaigns: Object.entries(campaigns).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([campaign, views]) => ({ campaign, views })),
   };
 }

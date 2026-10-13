@@ -483,7 +483,7 @@ export async function main() {
       for (const [k, v] of Object.entries(cl.campaigns || {})) { const key = OWN_CAMPAIGNS.test(k) ? k : "outro"; campaigns[key] = (campaigns[key] || 0) + (Number(v) || 0); }
       const pages = Object.fromEntries(Object.entries(cl.pages || {}).sort((a, b) => (b[1]?.views || 0) - (a[1]?.views || 0)).slice(0, 15).map(([k, v]) => [k, { views: v?.views || 0, visitorDays: v?.visitors || 0, intents: (v?.checkout_intent || 0) + (v?.hotmart_view || 0) + (v?.subscribe_click || 0) }]));
       const products30 = Object.fromEntries(Object.entries(funnel?.products || {}).map(([k, v]) => [k, { checkouts: v?.checkouts || 0, paid: v?.paid || 0, checkoutErrors: v?.checkoutErrors || 0 }]));
-      const diag = { at: funnel.generatedAt, since: cl.since, products30, leads7: funnel?.last7Days?.leads ?? null, checkouts7: funnel?.last7Days?.checkouts ?? null, classes: cl.classes || {}, asnTop: Object.entries(cl.asn || {}).sort((a, b) => b[1] - a[1]).slice(0, 12), sources, campaigns: Object.entries(campaigns).sort((a, b) => b[1] - a[1]).slice(0, 10), pages };
+      const diag = { at: funnel.generatedAt, since: cl.since, products30, checkoutDiag: funnel?.checkoutDiag || null, leads7: funnel?.last7Days?.leads ?? null, checkouts7: funnel?.last7Days?.checkouts ?? null, classes: cl.classes || {}, asnTop: Object.entries(cl.asn || {}).sort((a, b) => b[1] - a[1]).slice(0, 12), sources, campaigns: Object.entries(campaigns).sort((a, b) => b[1] - a[1]).slice(0, 10), pages };
       let text = JSON.stringify(diag);
       if (text.length > 3800) { delete diag.pages; text = JSON.stringify(diag); }
       console.log("::notice title=FUNNEL_DIAG::" + text);
