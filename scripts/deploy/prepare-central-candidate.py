@@ -213,7 +213,9 @@ for key in ("VOICE_TTS_PROVIDER", "VOICE_TTS_PROVIDER_CHAIN"):
 # Preserve both preexisting public values without spending standalone Worker
 # variable slots. normalizeEnv reads ZEVANORY_RUNTIME_CONFIG for their old names.
 # Do not compact secret bindings or change any sales/financial safety gates.
-for key in ("ZEVANORY_RELEASE_REF", "ZEVANORY_WHATSAPP_DISPLAY"):
+# AGENT_AUTONOMY_MODE (12/10): frees the slot for the owner-authorized GEMINI_API_KEY secret.
+# Its code default is "guarded" (the safest mode) if the runtime config were ever unreadable.
+for key in ("ZEVANORY_RELEASE_REF", "ZEVANORY_WHATSAPP_DISPLAY", "AGENT_AUTONOMY_MODE"):
     if key in c["vars"]:
         runtime_config[key] = c["vars"].pop(key)
 
