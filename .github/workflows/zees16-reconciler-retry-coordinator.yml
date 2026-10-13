@@ -37,9 +37,10 @@ jobs:
             runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&event=push&per_page=100")"
             total="$(jq --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha==$sha and .event=="push")] | length' <<< "$runs")"
             active="$(jq --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha==$sha and .event=="push" and .status!="completed")] | length' <<< "$runs")"
-            central="$(jq --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha==$sha and .event=="push" and .name=="ZEVANORY central production deploy" and .conclusion=="success")] | length' <<< "$runs")"
+            # The deploy may have been a manual dispatch of the same SHA (not a push): count it too.
+            central="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&per_page=100" | jq --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha==$sha and .name=="ZEVANORY central production deploy" and .conclusion=="success")] | length')"
             echo "EXACT_PUSH_RUNS total=$total active=$active central_success=$central attempt=$attempt"
-            if [ "$total" -gt 0 ] && [ "$active" -eq 0 ] && [ "$central" -ge 1 ]; then ready=1; break; fi
+            if [ "$active" -eq 0 ] && [ "$central" -ge 1 ]; then ready=1; break; fi
             sleep 10
           done
           [ "$ready" = 1 ] || { echo "::error title=RETRY_COORDINATOR::EXACT_PUSH_RUNS_NOT_COMPLETE total=$total active=$active central_success=$central"; exit 1; }
