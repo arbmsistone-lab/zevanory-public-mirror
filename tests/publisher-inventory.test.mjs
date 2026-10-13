@@ -19,6 +19,8 @@ const PUBLISH = [
   /npx(?: --yes)? wrangler(?:@[\d.]+)? secret (?:put|delete|bulk)\b/,
   /-X (?:POST|PUT|PATCH|DELETE)\b[^\n]*workers\/scripts|workers\/scripts[^\n]*-X (?:POST|PUT|PATCH|DELETE)\b/,
   /node [^\n]*cloudflare-authoritative-repair\.mjs/,
+  // Config writer wrapping `wrangler versions secret bulk|delete` + `versions deploy` (T3).
+  /worker_secret_rotate\.py[^\n]*--apply/,
 ];
 export const publishes = (text) => PUBLISH.some((re) => re.test(text));
 
