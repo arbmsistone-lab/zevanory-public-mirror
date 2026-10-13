@@ -1,0 +1,53 @@
+name: KV write census (read-only)
+
+# METACLOUD phase A: tails the production Worker for a window and counts KV writes per key prefix
+# and per trigger (cron or route), from the meter lines {kvw, op, src}. No keys, values or ids.
+# Workers Free allows 1,000 KV writes per day for the whole account.
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Sampling window in minutes (65 covers every cron of an hour)"
+        required: true
+        default: "65"
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Tail and count
+        shell: bash
+        run: |
+          set -uo pipefail
+          npm install --prefix /tmp/t --no-save wrangler@4.143.0 >/dev/null 2>&1
+          secs=$(( ${{ inputs.minutes }} * 60 ))
+          timeout "${secs}s" /tmp/t/node_modules/.bin/wrangler tail zevanory --format json > /tmp/tail.jsonl 2>/tmp/tail.err || true
+          node --input-type=module <<'JS'
+          import { readFileSync } from "node:fs";
+          const by = new Map(), bySrc = new Map(); let total = 0, events = 0;
+          for (const line of readFileSync("/tmp/tail.jsonl", "utf8").split("\n")) {
+            if (!line.trim()) continue; let ev; try { ev = JSON.parse(line); } catch { continue; } events++;
+            for (const log of ev.logs || []) for (const m of log.message || []) {
+              let o = null; try { o = typeof m === "string" ? JSON.parse(m) : m; } catch {}
+              if (!o || typeof o.kvw !== "string") continue;
+              total++;
+              const k = o.kvw + " (" + o.op + ")"; by.set(k, (by.get(k) || 0) + 1);
+              const s = String(o.src || "?"); bySrc.set(s, (bySrc.get(s) || 0) + 1);
+            }
+          }
+          const top = (m) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40);
+          const minutes = Number("${{ inputs.minutes }}");
+          console.log("::notice title=KV_CENSUS::" + JSON.stringify({ minutes, invocations: events, writes: total, perDayEstimate: Math.round(total * 1440 / minutes) }));
+          console.log("::notice title=KV_CENSUS_PREFIX::" + JSON.stringify(top(by)));
+          console.log("::notice title=KV_CENSUS_SOURCE::" + JSON.stringify(top(bySrc)));
+          JS
