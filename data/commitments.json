@@ -649,6 +649,14 @@
       "text": "Avatar oficial no Pinterest; sessões de administrador de YouTube (Studio), Instagram e Facebook no navegador do executor para aplicar bio/capa e fazer readback.",
       "status": "owner_reserved",
       "evidence": "YouTube Studio respondeu 'sem permissão' para a conta Google conectada; Instagram/Facebook sem sessão; upload de avatar bloqueado pelo controle da sessão do executor."
+    },
+    {
+      "id": "checkouts-19-classification",
+      "kind": "diagnóstico",
+      "source": "Dono, 13/10",
+      "text": "Separar os 19 checkouts não pagos (30 dias) entre execuções automatizadas e possíveis ações de clientes, sem inventar conclusões; histórico preservado (nenhum pedido alterado).",
+      "status": "done",
+      "evidence": "FUNNEL_DIAG 13/10 12:36Z (agregado, sem dados pessoais): 19 pedidos, todos checkout_ready/mercadopago, 19 sessões distintas, máx. 1 por sessão; ZEV-IA-011=16, VEN=1, LCX=1, CMB=1. zevanory-live-buy-smoke: 14 execuções com o passo 'One click' = success (10/10 21:59Z a 12/10 03:02Z), clique padrão ZEV-IA-011. Por hora BRT, todas as horas com clique do teste têm pedidos ≥ cliques (0h,8h,11h×2,18h,19h×4,20h×3,21h,22h). Classificação: 14 AUTOMATIZADOS (alta confiança; correlação por hora, não por pedido individual); 5 NÃO ATRIBUÍDOS (2 IA, 1 VEN, 1 LCX, 1 CMB, às 0h, 9h, 15h, 17h, 17h BRT) — possíveis clientes ou testes manuais, sem evidência para distinguir. Nenhum erro técnico de checkout (checkoutErrors=0). Clique removido do teste (PR #789)."
     }
   ]
 }

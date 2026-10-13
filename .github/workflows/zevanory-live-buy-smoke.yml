@@ -1,16 +1,12 @@
 name: ZEVANORY live buy smoke (owner-requested)
 
-# Read-only checks of the public sales surface, plus at most ONE real click on
-# "Ir para o pagamento seguro" for one SKU (what any visitor does): it must
-# redirect to the Mercado Pago production checkout. No payment, no PII, no card.
+# Read-only checks of the public sales surface (GET only). No payment, no PII, no card.
+# Owner decision 13/10/2026: the production click on "Ir para o pagamento seguro" was removed.
+# Each click created a real order and Mercado Pago preference without payment (14 runs on
+# 10-12/10 inflated the funnel's checkouts). Checkout behaviour is proven only in the isolated
+# sandbox workflows, and only when the owner authorizes them.
 on:
   workflow_dispatch:
-    inputs:
-      click_sku:
-        description: SKU to click through to Mercado Pago (empty = no click)
-        required: false
-        default: ZEV-IA-011
-        type: string
 
 permissions:
   contents: read
@@ -20,8 +16,6 @@ jobs:
     if: github.ref == 'refs/heads/gh-pages'
     runs-on: ubuntu-latest
     timeout-minutes: 6
-    env:
-      CLICK_SKU: ${{ inputs.click_sku }}
     steps:
       - name: Public pages and buy pages (GET only)
         shell: bash
@@ -53,20 +47,3 @@ jobs:
           echo "::notice title=HOTMART_WEBHOOK_UNAUTH::http=$code (expect 401 if hottok configured, 503 if not yet)"
           case "$code" in 401|503) ;; *) fail=1;; esac
           exit $fail
-      - name: One click through to Mercado Pago (no payment)
-        if: inputs.click_sku != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$CLICK_SKU" =~ ^ZEV-[A-Z0-9-]{3,16}$ ]]
-          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36 ZEVANORY-Monitor/1.0'
-          hdr=$(curl -sS -A "$UA" -X POST -o /dev/null -D - "https://vendas.zevanory.api.br/comprar/$CLICK_SKU")
-          code=$(echo "$hdr" | head -1 | awk '{print $2}')
-          loc=$(echo "$hdr" | grep -i '^location:' | tr -d '\r' | awk '{print $2}')
-          host=$(echo "$loc" | sed -E 's#^https://([^/]+)/.*#\1#')
-          echo "::notice title=CLICK $CLICK_SKU::http=$code host=$host"
-          [ "$code" = 303 ] && [[ "$host" =~ ^(www\.)?mercadopago\.com(\.br)?$ ]] || { echo "::error title=CLICK::checkout_not_redirected"; exit 1; }
-          mp=$(curl -sS -A "$UA" -o /tmp/mp.html -w '%{http_code}' -L "$loc")
-          title=$(grep -o '<title>[^<]*' /tmp/mp.html | head -1 | sed 's/<title>//')
-          echo "::notice title=MERCADOPAGO::http=$mp title=$title"
-          [ "$mp" = 200 ] || { echo "::error title=MERCADOPAGO::checkout_page_http_$mp"; exit 1; }
