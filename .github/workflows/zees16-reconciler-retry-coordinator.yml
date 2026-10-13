@@ -50,7 +50,13 @@ jobs:
           watch_one() {
             local before next info
             before="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/zees16-control-reconciler.yml/runs?event=workflow_dispatch&per_page=30" --jq '[.workflow_runs[].id] | max // 0')"
-            gh workflow run zees16-control-reconciler.yml --ref gh-pages
+            # Inside "if watch_one" errexit is off: a failed dispatch used to pass silently and the
+            # coordinator then waited for a run that was never created.
+            if ! dispatch_out="$(gh workflow run zees16-control-reconciler.yml --ref gh-pages 2>&1)"; then
+              echo "::error title=RETRY_COORDINATOR::RECONCILER_DISPATCH_FAILED $(echo "$dispatch_out" | tr '\n' ' ' | cut -c1-200)"
+              return 1
+            fi
+            echo "RECONCILER_DISPATCH=$(echo "$dispatch_out" | tr '\n' ' ' | cut -c1-160)"
             next=""
             # Run creation can lag several minutes when Actions is busy: wait up to 5 minutes.
             for i in $(seq 1 60); do
