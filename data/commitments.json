@@ -527,8 +527,8 @@
       "kind": "reservado ao dono",
       "source": "Avaliação de voz, 12/10",
       "text": "Instalar a chave Gemini no Worker 'zevanory' (colar como secret GEMINI_API_KEY ou autorizar por escrito a cópia pela rotina existente); sem isso o WhatsApp não responde por áudio.",
-      "status": "owner_reserved",
-      "evidence": "voice-eval 12/10: geminiEnv=false, vaultRecord=false, router sem provedor"
+      "status": "done",
+      "evidence": "Autorização escrita do dono 12/10 20:12 (\"autorizo copiar a chave Gemini para o Worker\"); cópia pelo workflow gemini-key-to-worker (valor nunca exposto); vaga liberada compactando AGENT_AUTONOMY_MODE (#758). voice-eval 13/10: preço PASS, reserva PASS (WER 0,13); demais amostras recusadas pela cota gratuita diária do Gemini."
     },
     {
       "id": "panel-remediation-order",
@@ -592,7 +592,23 @@
       "source": "Diagnóstico ORD12A 12/10 ~22:00Z",
       "text": "Cota diária gratuita de gravações KV (1.000/conta) estourada em 12/10 por execuções repetidas do backup (≈95 gravações por execução). Efeito: prova financeira pós-deploy não gravava e os deploys voltavam automaticamente.",
       "status": "in_progress",
-      "evidence": "Erro 'KV put limit exceeded for the day' exposto por #747; backup reduzido a ≤10 gravações/dia (#750); prova financeira com cron próprio de novo (#749). Republicar após 00:00Z."
+      "evidence": "Fases: A medição (medidor por prefixo nos 2 Workers + censo; consumo da conta por namespace via analytics), B cortes (backup ≤10/dia, snapshot do painel sem regravação), C degradação a 70% (P2/P3 adiados, P0/P1 reservados). 13/10 03:20Z: 202/1000 (20%), 190 no namespace ZEVANORY. Próximo: censo dos 2 Workers e fase D (mover escrita frequente para Neon)."
+    },
+    {
+      "id": "metacloud-order",
+      "kind": "ordem",
+      "source": "Dono, 12/10 21:27 (APEX-Ω METACLOUD / INTERCLOUD)",
+      "text": "Independência de cotas: auditoria de cotas, KV fora de escrita transacional frequente, orçamento e prioridade P0–P3, fila durável de publicações, recuperação automática, multiprovedor real onde houver alternativa gratuita, custo zero.",
+      "status": "in_progress",
+      "evidence": "Fases A–C em produção (PRs #761, #763, #766, #767; P #204, #205)."
+    },
+    {
+      "id": "matrix-reconciliation",
+      "kind": "ordem",
+      "source": "Dono, 12/10 20:05",
+      "text": "Reconciliar 273 → 259 → 263 com justificativa por item.",
+      "status": "done",
+      "evidence": "Dossiê Volume III: −15 retirados com motivo (data/retired-workflows.json), +1 backup, +4 provas; causas dos FAIL/NOT TESTED corrigidas (#755)."
     }
   ]
 }
