@@ -19,6 +19,7 @@ import { runVoiceEval, VOICE_EVAL_KEY } from "./voice-eval.mjs";
 import { synthesizeVoice } from "./voice-remote-tts.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { normalizeEnv } from "./binding-aliases.mjs";
+import { withMeteredKv } from "./kv-meter.mjs";
 import { buildContinuityPlan, continuityHttpResponse } from "./continuity-router.mjs";
 import { handleAdminRequest, isAdminAuthorized } from "./admin-console.mjs";
 import { CONTROL_PLANE_VNEXT_JS } from "./control-plane-vnext-source.mjs";
@@ -120,7 +121,11 @@ function legacyTrustProjection(body) {
 
 const wrapped = {
   async fetch(request, env, ctx) {
-    return wrapped.processFetch(request, env, ctx);
+    // KV write census (METACLOUD phase A): every write on the shared namespace is logged by prefix.
+    let path = "/";
+    // Only route words: any segment that could carry an id or token becomes "*" (public census).
+    try { path = new URL(request.url).pathname.split("/").slice(0, 4).map((seg) => (seg === "" || /^[a-z][a-z-]{0,23}$/.test(seg) ? seg : "*")).join("/") || "/"; } catch {}
+    return wrapped.processFetch(request, withMeteredKv(env, "fetch:" + path), ctx);
   },
   async processFetch(request, env, ctx) {
     let normalized = normalizeEnv(env);
@@ -628,7 +633,8 @@ const wrapped = {
   }
 };
 
-wrapped.scheduled = async (controller, env, ctx) => {
+wrapped.scheduled = async (controller, rawEnv, ctx) => {
+  const env = withMeteredKv(rawEnv, "cron:" + String(controller?.cron || "?"));
   const normalized = normalizeEnv(env);
   if (controller?.cron === "5,35 * * * *") {
     // Workers Free allows 5 cron triggers per ACCOUNT (all used), so this isolated
