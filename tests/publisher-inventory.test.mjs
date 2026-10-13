@@ -59,7 +59,10 @@ test("each service has one canonical publisher and every publisher of it shares 
       const text = read(wf);
       const group = topLevelGroup(text) || "";
       const hasPr = /^\s+pull_request(?:_target)?:/m.test(text.split(/^permissions:|^concurrency:|^jobs:/m)[0]) || /^on:\s*\[?[^\n]*pull_request/m.test(text);
-      if (hasPr) {
+      if (s.t1_unchanged) {
+        assert.equal(group, s.group, `${wf} must keep its group ${s.group}`);
+        assert.ok(String(s.t1_unchanged).length > 40, "an unchanged service must state its residual risk");
+      } else if (hasPr) {
         // PR validation runs must never share (and so never replace) the production queue.
         assert.ok(group.includes(`'${s.group}'`) && group.includes("github.event_name == 'pull_request'"), `${wf}: PR runs must be separated from group ${s.group} (got ${group})`);
       } else {
@@ -67,7 +70,7 @@ test("each service has one canonical publisher and every publisher of it shares 
       }
       assert.equal(cancelInProgress(text), false, `${wf} must not cancel an in-progress promotion`);
       // Proven on this repository by t1-queue-max-probe.yml (3 contenders, 0 discarded, no overlap).
-      assert.match(text.split(/^jobs:/m)[0], /^concurrency:[\s\S]*?\n  queue: max\n/m, `${wf} must keep every queued promotion (queue: max); the guard skips the stale ones`);
+      if (!s.t1_unchanged) assert.match(text.split(/^jobs:/m)[0], /^concurrency:[\s\S]*?\n  queue: max\n/m, `${wf} must keep every queued promotion (queue: max); the guard skips the stale ones`);
     }
   }
 });

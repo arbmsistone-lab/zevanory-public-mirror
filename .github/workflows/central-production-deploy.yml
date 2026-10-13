@@ -130,9 +130,8 @@ jobs:
         id: guard
         run: |
           set -euo pipefail
-          TIP="$(git ls-remote origin refs/heads/gh-pages | cut -f1)"
           python3 scripts/deploy/promotion_guard.py --service zevanory \
-            --candidate "$GITHUB_SHA" --branch-tip "$TIP" \
+            --candidate "$GITHUB_SHA" \
             --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
             --cloudflare-script zevanory
   deploy:

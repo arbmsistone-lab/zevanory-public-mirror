@@ -264,9 +264,8 @@ jobs:
         id: guard
         run: |
           set -euo pipefail
-          TIP="$(git ls-remote origin refs/heads/gh-pages | cut -f1)"
           python3 scripts/deploy/promotion_guard.py --service zevanory-sales-public \
-            --candidate "$GITHUB_SHA" --branch-tip "$TIP" \
+            --candidate "$GITHUB_SHA" \
             --readback-url https://vendas.zevanory.api.br/health --readback-path release \
             --cloudflare-script "$SCRIPT_NAME"
 
@@ -326,8 +325,10 @@ jobs:
           print("ZEVANORY_SALES_CANONICAL_ROLLBACK=PASS")
           PY
           else
-            curl -fsS -X DELETE               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$SCRIPT_NAME"               -o /tmp/delete-first-failed-release.json || true
-            echo "ZEVANORY_SALES_FAILED_FIRST_RELEASE_REMOVED=PASS"
+            # T1 audit 13/10: the canonical production script is NEVER deleted by automation.
+            # Without a rollback snapshot the failed release stays as is and the run fails loudly
+            # for explicit, owner-authorised recovery.
+            echo "::error title=SALES_NO_ROLLBACK_SNAPSHOT::readback failed and no previous deployment snapshot; production script left untouched (not deleted) — manual recovery required"
           fi
           exit 1
 

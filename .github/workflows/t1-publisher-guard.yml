@@ -30,6 +30,8 @@ jobs:
         run: node --test tests/publisher-inventory.test.mjs
       - name: Promotion guard decisions
         run: python3 -m unittest -v tests/test_promotion_guard.py
+      - name: Code vs config authority and credentials per workflow
+        run: python3 scripts/deploy/credential_inventory.py | tee -a "$GITHUB_STEP_SUMMARY"
 
   external-repository:
     # The panel source repository must never publish production by itself.
@@ -67,3 +69,66 @@ jobs:
             exit 1
           fi
           echo "EXECUTOR_SESSION_GUARD=PASS sessions=${sessions:-none}"
+
+  credential-scope:
+    # Read-only probe of what the shared Cloudflare credentials can reach (names are counted,
+    # never printed with values). A token scoped to "Specified Workers" sees only its Workers;
+    # an account-wide token sees every Worker in the account.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scope of each Cloudflare credential used by publishers
+        env:
+          T_API: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          T_OWNER: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
+          ACCOUNT: 1b26415802588185a86c1d4d3ebf5bdb
+        run: |
+          set -euo pipefail
+          for name in T_API T_OWNER; do
+            tok="${!name:-}"
+            if [ -z "$tok" ]; then echo "::notice title=CREDENTIAL_SCOPE_$name::not configured"; continue; fi
+            v="$(curl -sS -H "Authorization: Bearer $tok" "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/tokens/verify" | jq -r '.result.status // "n/a"')"
+            [ "$v" = "n/a" ] && v="$(curl -sS -H "Authorization: Bearer $tok" https://api.cloudflare.com/client/v4/user/tokens/verify | jq -r '.result.status // "unknown"')"
+            n="$(curl -sS -H "Authorization: Bearer $tok" "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/workers/scripts" | jq -r 'if .success then (.result|length) else "denied" end')"
+            echo "::notice title=CREDENTIAL_SCOPE_$name::status=$v visible_workers=$n (account has 39; >= that means account-wide authority)"
+          done
+
+  merge-effect-preview:
+    # Shows, BEFORE merge, what merging this pull request would do in production: which
+    # publishing workflows fire, and what the pre-promotion guard decides against the LIVE
+    # version right now. The squash merge is a child of the base tip, so the guard is evaluated
+    # with the base tip as candidate (same ancestry). Read-only.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Workflows that would run on merge
+        run: |
+          set -euo pipefail
+          git diff --name-only "$BASE" HEAD > /tmp/changed.txt
+          python3 - <<'PY'
+          import fnmatch, yaml, pathlib
+          changed=[l.strip() for l in open("/tmp/changed.txt") if l.strip()]
+          for f in sorted(pathlib.Path(".github/workflows").glob("*.yml")):
+              y=yaml.load(f.read_text(), Loader=yaml.BaseLoader) or {}
+              on=y.get("on") if isinstance(y.get("on"), dict) else {}
+              push=on.get("push") if isinstance(on.get("push"), dict) else None
+              if push is None or "gh-pages" not in (push.get("branches") or []): continue
+              paths=push.get("paths")
+              if paths is None or any(fnmatch.fnmatch(c,p) for c in changed for p in paths):
+                  print(f"FIRES_ON_MERGE {f.name}")
+          PY
+      - name: Guard decision for central (zevanory) against live
+        run: python3 scripts/deploy/promotion_guard.py --preview --service zevanory --candidate "$BASE" --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha --cloudflare-script zevanory
+      - name: Guard decision for sales against live, and rollback snapshot availability
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/promotion_guard.py --preview --service zevanory-sales-public --candidate "$BASE" --readback-url https://vendas.zevanory.api.br/health --readback-path release --cloudflare-script zevanory-sales-public
+          n="$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory-sales-public/deployments" | jq -r 'if .success then (.result.deployments|length) else "unreadable" end')"
+          echo "::notice title=SALES_ROLLBACK_SNAPSHOT::previous deployments available=$n (the release now never deletes the script either way)"

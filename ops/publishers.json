@@ -28,9 +28,10 @@
       "config_publishers": []
     },
     "zevanory-public-router": {
-      "group": "deploy-zevanory-public-router",
+      "group": "public-router-deploy",
       "canonical": "public-router-deploy.yml",
-      "config_publishers": []
+      "config_publishers": [],
+      "t1_unchanged": "Single publisher, already in its own group. Left byte-identical so merging T1 does not redeploy the router. Known residual risk (pre-existing): its pull-request runs share the deploy group, so with the default queue a PR run can replace a pending deploy; fix (PR-separated group + queue: max + guard with --tag) in a follow-up the owner schedules."
     },
     "zevanory-product-control-portable": {
       "group": "deploy-zevanory-product-control-portable",
@@ -66,5 +67,8 @@
     "mercadopago-exact-sha-recovery.yml": "financial workflow: changes need the owner's written authorization",
     "mercadopago-production-token-rotate.yml": "financial workflow: changes need the owner's written authorization",
     "financial-e2e-stripe.yml": "financial workflow: changes need the owner's written authorization"
-  }
+  },
+  "rollback_policy": "A deliberate rollback is a git revert merged by the owner: a FORWARD promotion whose authorisation trail is the reviewed pull request. promotion_guard.py has no backwards path. Automatic recovery inside a failed release (central wrangler rollback, sales snapshot restore) only returns to the version that was live before that same run; the sales release never deletes the production script.",
+  "recovery_when_production_unreadable": "Not automatic: the guard refuses. The owner dispatches the canonical workflow after confirming the live version manually (Cloudflare dashboard) or after restoring the readback endpoint; the run is recorded.",
+  "credentials": "All 19 publishing workflows use the same account-wide tokens (CLOUDFLARE_API_TOKEN / CLOUDFLARE_PUBLIC_OWNER_API_TOKEN), so credential-level exclusivity does not exist today. Cloudflare supports account-owned API tokens scoped to Specified Workers with the Editor role (changelog 2026-09-15). Target: one token per Worker held only by that Worker's publishers, then revoke the shared tokens. Owner action."
 }

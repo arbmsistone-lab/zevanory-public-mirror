@@ -3,11 +3,10 @@ name: T1 concurrency simulation (default queue)
 # Plan 3.1, T1 — concurrency simulation (no deploy, no credentials). Three contenders compete for
 # one concurrency group inside a single run; the verify job reads the job timestamps and asserts
 # that no two contenders overlapped and how many queued contenders were discarded.
+# Counter-proof of the DEFAULT queue (one queued run is discarded). Dispatch-only, so the
+# intentional cancellation never appears as a pull-request check. Recorded evidence:
+# run 38433366163 (13/10/2026): 2 ran without overlap, 1 discarded.
 on:
-  pull_request:
-    branches: [gh-pages]
-    paths:
-      - ".github/workflows/t1-concurrency-simulation.yml"
   workflow_dispatch:
 
 permissions:

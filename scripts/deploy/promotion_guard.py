@@ -6,8 +6,8 @@ concurrency group, whether the candidate may be published:
 
   promote          candidate is the live SHA or a descendant of it (forward or same)
   skip-superseded  candidate is an ancestor of what is live (an older queued run): do nothing
-  refuse           histories diverged, or production is unreadable and the candidate is not
-                   the current branch tip; also any backwards move without an authorised rollback
+  refuse           histories diverged, the two sources of the live version disagree, or the
+                   effective production version is UNKNOWN (no trustworthy source)
 
 "Live" is read from two independent sources when available:
   1. the Cloudflare active deployment of the script (version annotation workers/tag), and
@@ -15,11 +15,13 @@ concurrency group, whether the candidate may be published:
 If both are readable they must agree, otherwise the decision is refuse (the effective
 deployment is not what the public surface reports).
 
-Rollback is never automatic here: it requires ROLLBACK_AUTHORISED=true plus a reason of at
-least 20 characters, and is reported as `promote-rollback` for the audit trail.
+This guard never moves production backwards. A deliberate rollback is a `git revert` merged by
+the owner, which is a FORWARD promotion with a reviewed pull request as its authorisation trail.
+Recovery when production is unreadable is not automatic: it needs the separate, explicit
+procedure documented in ops/publishers.json (owner-dispatched, audited).
 
 Usage:
-  promotion_guard.py --service zevanory --candidate <sha> --branch-tip <sha>
+  promotion_guard.py --service zevanory --candidate <sha>
                      [--readback-url URL --readback-path deployment.commit_sha]
                      [--cloudflare-script zevanory]
 Writes `decision`, `live_sha` and `reason` to $GITHUB_OUTPUT when present.
@@ -93,8 +95,7 @@ def is_ancestor(older: str, newer: str, repo: str) -> bool:
                           capture_output=True).returncode == 0
 
 
-def decide(candidate: str, branch_tip: str | None, live_http: str | None, live_cf: str | None,
-           ancestor, rollback_ok: bool) -> tuple[str, str | None, str]:
+def decide(candidate: str, live_http: str | None, live_cf: str | None, ancestor) -> tuple[str, str | None, str]:
     candidate = norm(candidate) or ""
     if not candidate:
         return "refuse", None, "candidate_sha_invalid"
@@ -102,21 +103,14 @@ def decide(candidate: str, branch_tip: str | None, live_http: str | None, live_c
         return "refuse", None, f"effective_deployment_mismatch:cloudflare={live_cf[:12]}:readback={live_http[:12]}"
     live = live_cf or live_http
     if not live:
-        # Unreadable production is not permission to move backwards: only the branch tip
-        # (controlled recovery) may be published.
-        if branch_tip and candidate == norm(branch_tip):
-            return "promote", None, "production_unreadable_branch_tip_recovery"
-        return "refuse", None, "production_unreadable_candidate_not_branch_tip"
+        # Unknown effective version: nothing proves the candidate contains what is live.
+        return "refuse", None, "production_version_unknown"
     if candidate == live:
         return "promote", live, "same_as_live_redeploy"
     if ancestor(live, candidate):
         return "promote", live, "forward_of_live"
     if ancestor(candidate, live):
-        if rollback_ok:
-            return "promote-rollback", live, "authorised_rollback"
         return "skip-superseded", live, "candidate_older_than_live"
-    if rollback_ok:
-        return "promote-rollback", live, "authorised_rollback_diverged"
     return "refuse", live, "histories_diverged"
 
 
@@ -124,29 +118,26 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--service", required=True)
     ap.add_argument("--candidate", required=True)
-    ap.add_argument("--branch-tip")
     ap.add_argument("--repo", default=".")
     ap.add_argument("--readback-url")
     ap.add_argument("--readback-path")
     ap.add_argument("--cloudflare-script")
+    ap.add_argument("--preview", action="store_true", help="report the decision without failing (pre-merge evidence)")
     args = ap.parse_args(argv)
 
-    reason_text = os.environ.get("ROLLBACK_REASON", "").strip()
-    rollback_ok = os.environ.get("ROLLBACK_AUTHORISED", "") == "true" and len(reason_text) >= 20
     live_http = readback_sha(args.readback_url, args.readback_path)
     live_cf = cloudflare_sha(args.cloudflare_script)
-    decision, live, reason = decide(args.candidate, args.branch_tip, live_http, live_cf,
-                                    lambda a, b: is_ancestor(a, b, args.repo), rollback_ok)
-    record = {"service": args.service, "candidate": args.candidate, "branch_tip": args.branch_tip,
-              "live_cloudflare": live_cf, "live_readback": live_http, "decision": decision, "reason": reason}
+    decision, live, reason = decide(args.candidate, live_http, live_cf, lambda a, b: is_ancestor(a, b, args.repo))
+    record = {"service": args.service, "candidate": args.candidate, "live_cloudflare": live_cf,
+              "live_readback": live_http, "decision": decision, "reason": reason, "preview": args.preview}
     print("PROMOTION_GUARD=" + json.dumps(record, sort_keys=True))
     out = os.environ.get("GITHUB_OUTPUT")
     if out:
         with open(out, "a", encoding="utf-8") as fh:
             fh.write(f"decision={decision}\nlive_sha={live or ''}\nreason={reason}\n")
-    level = "error" if decision == "refuse" else "notice"
-    print(f"::{level} title=PROMOTION_GUARD_{args.service}::{decision} ({reason})")
-    return 1 if decision == "refuse" else 0
+    level = "error" if decision == "refuse" and not args.preview else "notice"
+    print(f"::{level} title=PROMOTION_GUARD_{args.service}::{decision} ({reason}) cloudflare={live_cf or 'unreadable'} readback={live_http or 'unreadable'}")
+    return 1 if decision == "refuse" and not args.preview else 0
 
 
 if __name__ == "__main__":

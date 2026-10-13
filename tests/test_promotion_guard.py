@@ -24,8 +24,8 @@ def ancestor(older, newer):
 
 
 class Decide(unittest.TestCase):
-    def d(self, cand, tip=C, http=None, cf=None, rb=False):
-        return pg.decide(cand, tip, http, cf, ancestor, rb)
+    def d(self, cand, http=None, cf=None):
+        return pg.decide(cand, http, cf, ancestor)
 
     def test_forward_promotes(self):
         self.assertEqual(self.d(C, http=B, cf=B)[0], "promote")
@@ -45,13 +45,15 @@ class Decide(unittest.TestCase):
         self.assertEqual(decision, "refuse")
         self.assertTrue(reason.startswith("effective_deployment_mismatch"))
 
-    def test_unreadable_production_only_allows_branch_tip(self):
-        self.assertEqual(self.d(C, tip=C)[0], "promote")
-        self.assertEqual(self.d(B, tip=C)[0], "refuse")
+    def test_unknown_production_always_refuses_even_for_branch_tip(self):
+        # Audit 13/10 (P0): unknown effective version is never permission to publish.
+        for cand in (A, B, C):
+            self.assertEqual(self.d(cand), ("refuse", None, "production_version_unknown"))
 
-    def test_rollback_needs_explicit_authorisation(self):
-        self.assertEqual(self.d(A, http=C, rb=False)[0], "skip-superseded")
-        self.assertEqual(self.d(A, http=C, rb=True)[0], "promote-rollback")
+    def test_never_moves_backwards(self):
+        # No rollback path in the guard: a deliberate rollback is a reviewed git revert (forward).
+        self.assertEqual(self.d(A, http=C)[0], "skip-superseded")
+        self.assertNotIn("rollback", " ".join(pg.decide.__code__.co_varnames))
 
     def test_cloudflare_tag_alone_is_enough(self):
         self.assertEqual(self.d(C, cf=B)[0], "promote")
