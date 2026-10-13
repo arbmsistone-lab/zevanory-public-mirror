@@ -29,10 +29,15 @@ try{
  }
  writeFileSync(dir+'/final-closure.json',JSON.stringify(await readFinalClosure(),null,2));
  // Tail is live before requests. Allow delivery of the final telemetry event.
+ // Tail delivery is asynchronous: poll (up to ~60 s) until every audited request has its event.
+ const parseTail=()=>{const raw=readFileSync('/tmp/audit-tail.json','utf8'),out=[];let pos=0;
+  while(pos<raw.length){const start=raw.indexOf('{',pos);if(start<0)break;let matched=false;for(let end=start+1;end<=raw.length;end++){if(raw[end-1]!=='}')continue;try{const e=JSON.parse(raw.slice(start,end));out.push(e);pos=end;matched=true;break;}catch{}}if(!matched)break;}
+  return out;};
+ const auditId=e=>{try{return new URL(e.event?.request?.url).searchParams.get('audit_id');}catch{return null;}};
+ const pending=()=>{const ev=parseTail();return results.filter(x=>!x.skipped).some(r=>!ev.some(e=>auditId(e)===r.id&&typeof e.cpuTime==='number'));};
  await new Promise(r=>setTimeout(r,8000));
- const raw=readFileSync('/tmp/audit-tail.json','utf8'),events=[];
- let pos=0;
- while(pos<raw.length){const start=raw.indexOf('{',pos);if(start<0)break;let matched=false;for(let end=start+1;end<=raw.length;end++){if(raw[end-1]!=='}')continue;try{const e=JSON.parse(raw.slice(start,end));events.push(e);pos=end;matched=true;break;}catch{}}if(!matched)break;}
+ for(let i=0;i<13&&pending();i++)await new Promise(r=>setTimeout(r,4000));
+ const events=parseTail();
  for(const result of results.filter(x=>!x.skipped)){
   const found=events.filter(e=>{try{return new URL(e.event?.request?.url).searchParams.get('audit_id')===result.id;}catch{return false;}});
   if(found.length!==1||typeof found[0].cpuTime!=='number')throw Error(result.id+':correlated_cpu_required');

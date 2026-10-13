@@ -98,15 +98,22 @@ jobs:
           runtime_sha=base["shared_runtime_release"]
           import subprocess
           # Quota-free readback: P12 records each certified release proof on its evidence branch.
-          subprocess.run(["rm","-rf","/tmp/p12-evidence"],check=True)
-          subprocess.run(["git","clone","--quiet","--depth","1","--branch","evidence/p12-observability",
-                          "https://github.com/arbmsistone-lab/zevanory-public-mirror.git","/tmp/p12-evidence"],check=True)
-          d=pathlib.Path("/tmp/p12-evidence")/runtime_sha
+          # A production deploy that lands while this PR runs changes the shared runtime; its P12 proof
+          # is recorded a few minutes later. Wait for that exact proof (same criteria) instead of racing it.
+          import time
           selected=None
-          if (d/"evidence-p12-live-slo.json").is_file() and (d/"run.json").is_file():
-              slo=json.load(open(d/"evidence-p12-live-slo.json")); run=json.load(open(d/"run.json"))
-              if slo.get("verdict")=="PASS" and slo.get("release_sha")==runtime_sha and run.get("release_sha")==runtime_sha:
-                  selected={"run_id":run.get("run_id"),"event":run.get("event"),"evidence":f"evidence/p12-observability/{runtime_sha}"}
+          for attempt in range(21):
+              subprocess.run(["rm","-rf","/tmp/p12-evidence"],check=True)
+              subprocess.run(["git","clone","--quiet","--depth","1","--branch","evidence/p12-observability",
+                              "https://github.com/arbmsistone-lab/zevanory-public-mirror.git","/tmp/p12-evidence"],check=True)
+              d=pathlib.Path("/tmp/p12-evidence")/runtime_sha
+              if (d/"evidence-p12-live-slo.json").is_file() and (d/"run.json").is_file():
+                  slo=json.load(open(d/"evidence-p12-live-slo.json")); run=json.load(open(d/"run.json"))
+                  if slo.get("verdict")=="PASS" and slo.get("release_sha")==runtime_sha and run.get("release_sha")==runtime_sha:
+                      selected={"run_id":run.get("run_id"),"event":run.get("event"),"evidence":f"evidence/p12-observability/{runtime_sha}"}
+                      break
+              if attempt<20:
+                  print(f"P12_PROOF_WAIT runtime={runtime_sha} attempt={attempt+1}/20",flush=True); time.sleep(30)
           assert selected,(slug,"shared_runtime_p12_proof_missing",runtime_sha)
           out={"schema":"zevanory.portfolio.shared-runtime-p12.v1","target":slug,"runtime_sha":runtime_sha,**selected,"verdict":"PASS","false_green":0}
           pathlib.Path(f"evidence/{slug}-shared-runtime-p12.json").write_text(json.dumps(out,indent=2)+"\n")
