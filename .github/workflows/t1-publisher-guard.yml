@@ -161,6 +161,20 @@ jobs:
           done
           exit "${fail:-0}"
 
+  lead-privacy-source:
+    # T3 (#802): the GitHub source secret of the lead privacy key exists and is long enough.
+    # Presence and length only; the value is never printed or written anywhere.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      K: ${{ secrets.LEAD_PRIVACY_SECRET }}
+      P: ${{ secrets.LEAD_PRIVACY_SECRET_PREVIOUS }}
+    steps:
+      - name: Source secret present (length only)
+        run: |
+          if [ "${#K}" -ge 32 ]; then echo "::notice title=LEAD_PRIVACY_SOURCE::PRESENT length_ge_32 previous=$([ -n "$P" ] && echo set || echo unset)"; \
+          else echo "::warning title=LEAD_PRIVACY_SOURCE::$([ -n "$K" ] && echo SHORTER_THAN_32 || echo ABSENT)"; fi
+
   merge-effect-preview:
     # Shows, BEFORE merge, what merging this pull request would do in production: which
     # publishing workflows fire, and what the pre-promotion guard decides against the LIVE
