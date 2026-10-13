@@ -11,6 +11,18 @@ export const VOICE_EVAL_KEY = "zpc:support:v1:voice-eval";
 export const WHISPER = "@cf/openai/whisper-large-v3-turbo";
 export const SAMPLE_TAGS = ["preço", "reembolso", "recomendação"];
 export const MAX_WER = 0.25;
+// Fixed core (price, refund, recommendation) + 2 rotating questions per ISO week from the rest of
+// the support battery (delivery, objections, limits, promises, out-of-catalog, short greetings),
+// so the whole battery is heard by voice over the weeks within the free daily voice budget.
+export const ROTATING_PER_RUN = 2;
+export function voiceSamples(now = Date.now()) {
+  const core = SAMPLE_TAGS.map((t) => BATTERY.find((b) => b.tag === t)).filter(Boolean);
+  const rest = BATTERY.filter((b) => !core.includes(b));
+  const week = Math.floor(now / (7 * 864e5));
+  const picks = [];
+  for (let i = 0; i < Math.min(ROTATING_PER_RUN, rest.length); i++) picks.push(rest[(week * ROTATING_PER_RUN + i) % rest.length]);
+  return [...core, ...picks];
+}
 
 const norm = (s) => String(s || "").replace(/&/g, " e ").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
   .replace(/r\$\s*/g, "").replace(/(\d),(\d{2})\b/g, "$1 $2").replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(Boolean);
@@ -55,9 +67,9 @@ export async function runVoiceEval({ ai, synth: rawSynth, fallbackSynth: rawFall
   const fallbackSynth = rawFallback && ((t) => paced(() => rawFallback(t), wait ? { wait } : {}));
   const report = { schema: "zevanory-voice-eval/v1", generatedAt: new Date(now).toISOString(), samples: [], fallback: null, ok: false, failures: [] };
   if (!ai?.run || !synth) { report.failures.push("unconfigured"); return report; }
-  const items = SAMPLE_TAGS.map((t) => BATTERY.find((b) => b.tag === t)).filter(Boolean);
+  const items = voiceSamples(now);
   for (const item of items) {
-    const s = { tag: item.tag, steps: {} };
+    const s = { tag: item.tag, q: item.q, steps: {} };
     try {
       const qAudio = await synth(item.q);
       s.steps.questionAudio = { bytes: qAudio.bytes.length, provider: qAudio.provider, model: qAudio.model };
