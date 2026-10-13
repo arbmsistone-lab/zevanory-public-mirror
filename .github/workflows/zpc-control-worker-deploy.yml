@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      rollback_reason:
+        description: Required with allow_backwards (min 20 chars) - why production must move back
+        required: false
+        default: ''
+        type: string
   push:
     branches:
       - gh-pages
@@ -51,6 +56,10 @@ jobs:
         shell: bash
         env:
           ALLOW_BACKWARDS: ${{ inputs.allow_backwards == true && 'true' || 'false' }}
+          ROLLBACK_REASON: ${{ inputs.rollback_reason }}
+          ACTOR: ${{ github.actor }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -71,19 +80,67 @@ jobs:
           behind="$(git -C zpc rev-list --count "$SOURCE_SHA"..origin/main)"
           echo "::notice title=SOURCE_VS_MAIN::source=${SOURCE_SHA:0:12} behind_main_by=$behind"
           # Never move production backwards by accident (13/10: the push deploy of #795 republished
-          # de7c0bcd over c1182c54/#208, which a dispatch had published minutes earlier). If the live
-          # panel already contains this source and more, refuse unless a rollback was asked for.
-          live="$(curl -fsS --max-time 20 "https://controle.zevanory.api.br/version.json?t=$(date +%s)" | jq -r '.sha // empty' 2>/dev/null || true)"
-          echo "::notice title=LIVE_VS_SOURCE::live=${live:0:12} source=${SOURCE_SHA:0:12}"
-          if [[ "$live" =~ ^[0-9a-f]{40}$ ]] && [ "$live" != "$SOURCE_SHA" ] \
-             && git -C zpc cat-file -e "$live^{commit}" 2>/dev/null \
-             && git -C zpc merge-base --is-ancestor "$SOURCE_SHA" "$live"; then
-            if [ "$ALLOW_BACKWARDS" != "true" ]; then
-              echo "::error title=SOURCE_OLDER_THAN_PRODUCTION::source ${SOURCE_SHA:0:12} is an ancestor of live ${live:0:12}; refusing to move production backwards (dispatch with allow_backwards=true for a deliberate rollback)"
+          # de7c0bcd over c1182c54/#208). Rollback = explicit, authorised, justified and audited.
+          rollback_requested=false
+          if [ "$ALLOW_BACKWARDS" = "true" ]; then
+            reason="$(printf '%s' "${ROLLBACK_REASON:-}" | tr -d '\r\n' | cut -c1-300)"
+            if [ "$EVENT" != "workflow_dispatch" ] || [ "$ACTOR" != "$REPO_OWNER" ] || [ "${#reason}" -lt 20 ]; then
+              echo "::error title=ROLLBACK_NOT_AUTHORISED::allow_backwards needs workflow_dispatch by the repository owner and rollback_reason >= 20 chars (event=$EVENT actor=$ACTOR reason_len=${#reason})"
               exit 1
             fi
-            echo "::warning title=DELIBERATE_ROLLBACK::live ${live:0:12} -> ${SOURCE_SHA:0:12}"
+            rollback_requested=true
           fi
+          # Read the live panel SHA with retries and two independent sources.
+          live=""
+          for i in 1 2 3; do
+            for path in version.json zpc-build.json; do
+              v="$(curl -fsS --max-time 20 "https://controle.zevanory.api.br/$path?t=$(date +%s%N)" 2>/dev/null | jq -r '.sha // empty' 2>/dev/null || true)"
+              if [[ "$v" =~ ^[0-9a-f]{40}$ ]]; then live="$v"; break 2; fi
+            done
+            sleep 5
+          done
+          main_tip="$(git -C zpc rev-parse origin/main)"
+          echo "::notice title=LIVE_VS_SOURCE::live=${live:-unreadable} source=${SOURCE_SHA:0:12} main=${main_tip:0:12}"
+          backwards=false
+          if [ -z "$live" ]; then
+            # Unreadable production is NOT permission to downgrade: only the current main tip may be
+            # published (controlled recovery); anything else needs an authorised rollback.
+            if [ "$SOURCE_SHA" != "$main_tip" ]; then backwards=unknown; fi
+          elif [ "$live" != "$SOURCE_SHA" ]; then
+            if ! git -C zpc cat-file -e "$live^{commit}" 2>/dev/null; then
+              git -C zpc fetch --quiet origin "$live" 2>/dev/null || true
+            fi
+            if git -C zpc cat-file -e "$live^{commit}" 2>/dev/null; then
+              if git -C zpc merge-base --is-ancestor "$SOURCE_SHA" "$live"; then backwards=true
+              elif ! git -C zpc merge-base --is-ancestor "$live" "$SOURCE_SHA"; then backwards=unknown; fi
+            else
+              backwards=unknown
+            fi
+          fi
+          if [ "$backwards" != "false" ] && [ "$rollback_requested" != "true" ]; then
+            echo "::error title=SOURCE_NOT_FORWARD_OF_PRODUCTION::source ${SOURCE_SHA:0:12} is not a descendant of live ${live:-unreadable} (backwards=$backwards); refusing. Use workflow_dispatch with allow_backwards=true and rollback_reason."
+            exit 1
+          fi
+          if [ "$rollback_requested" = "true" ]; then
+            mkdir -p /tmp/rollback-audit
+            jq -n --arg at "$(date -u +%FT%TZ)" --arg actor "$ACTOR" --arg reason "$reason" --arg live "$live" \
+                  --arg source "$SOURCE_SHA" --arg main "$main_tip" --arg backwards "$backwards" \
+                  --arg run "${{ github.run_id }}" --arg repo "${{ github.repository }}" \
+              '{schema:"zpc-rollback-audit/v1",at:$at,actor:$actor,reason:$reason,live_before:$live,source:$source,main_tip:$main,backwards:$backwards,run:$run,repository:$repo}' \
+              > /tmp/rollback-audit/rollback.json
+            echo "::warning title=DELIBERATE_ROLLBACK::actor=$ACTOR live=${live:-unreadable} -> ${SOURCE_SHA:0:12} reason=$reason"
+            { echo "## Rollback deliberado"; echo; echo '```json'; cat /tmp/rollback-audit/rollback.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            echo "ROLLBACK_AUDIT=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Retain rollback audit record
+        if: env.ROLLBACK_AUDIT == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zpc-rollback-audit-${{ github.run_id }}
+          path: /tmp/rollback-audit/rollback.json
+          retention-days: 90
+          if-no-files-found: error
 
       - uses: actions/setup-node@v4
         with:
