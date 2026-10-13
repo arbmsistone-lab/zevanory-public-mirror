@@ -25,6 +25,8 @@ on:
       - "tests/publisher-inventory.test.mjs"
       - "tests/test_promotion_guard.py"
       - "tests/test_t1_transition.py"
+      - "scripts/deploy/prepare-central-candidate.py"
+      - "tests/test_binding_budget_compaction.py"
       - "scripts/deploy/worker_secret_rotate.py"
       - "tests/test_worker_secret_rotate.py"
       - "tests/t1_sim/**"
@@ -45,6 +47,10 @@ jobs:
         run: node --test tests/publisher-inventory.test.mjs
       - name: Promotion guard decisions
         run: python3 -m unittest -v tests/test_promotion_guard.py
+      - name: Central binding budget compaction (never a gate; behaviour-neutral)
+        run: |
+          git fetch --quiet --depth 1 origin 83620c680958d726fc4b0fd16e2574cdcc362a6d || true
+          python3 -m unittest -v tests/test_binding_budget_compaction.py
       - name: Worker secret key ring writer (one tagged version, rollback, rotation)
         run: python3 -m unittest -v tests/test_worker_secret_rotate.py
       - name: "Integrated #799 -> #210 transition simulation (real workflow scripts, no publish)"
