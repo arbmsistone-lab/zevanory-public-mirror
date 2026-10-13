@@ -31,6 +31,25 @@ export const localDay = (now = new Date()) => new Intl.DateTimeFormat("en-CA", {
 // business types, and a free calculator) plus the product Short. Value content is
 // what short-video feeds distribute to new audiences; the offer converts them.
 export const SLOTS = Object.freeze(["dica", "oferta", "calc"]);
+
+// Commercial calendar (owner order, temporal certification): each slot has a planned Brasília
+// time. A Short is NEVER published before its planned time, and never after its commercial day
+// ends (late publication is allowed only inside the same day). Whatever scheduler fires the run
+// (GitHub cron, the engine dispatcher, a manual dispatch) passes through this same rule.
+export const SLOT_TIMES = Object.freeze({ dica: "10:00", oferta: "15:00", calc: "19:00" });
+export const BRT_OFFSET = "-03:00"; // Brazil has had no daylight saving time since 2019.
+export const LATE_TOLERANCE_MIN = 15;
+export function publicationWindow({ day, slot, now = Date.now() }) {
+  const time = SLOT_TIMES[slot];
+  if (!time || !/^\d{4}-\d{2}-\d{2}$/.test(String(day))) return { action: "reject", reason: "unknown_slot_or_day" };
+  const plannedAt = Date.parse(`${day}T${time}:00${BRT_OFFSET}`);
+  const dayEnd = Date.parse(`${day}T23:59:59${BRT_OFFSET}`);
+  const base = { day, slot, plannedAt: new Date(plannedAt).toISOString() };
+  if (now < plannedAt) return { ...base, action: "wait", reason: "before_planned_time", earlyMin: Math.round((plannedAt - now) / 60000) };
+  if (now > dayEnd) return { ...base, action: "expired", reason: "commercial_day_over", delayMin: Math.round((now - plannedAt) / 60000) };
+  const delayMin = Math.round((now - plannedAt) / 60000);
+  return { ...base, action: "publish", late: delayMin > LATE_TOLERANCE_MIN, delayMin };
+}
 const BANK = JSON.parse(readFileSync(new URL("../../data/short-bank.json", import.meta.url), "utf8"));
 const dayIndex = day => Math.floor(Date.parse(day + "T12:00:00Z") / 86400000);
 const VALUE_RISK = /\b(gr[aá]tis|renda garantida|lucro garantido|ganhe dinheiro|resultado garantido|fature|enrique[cç]a|antes e depois|cura|milagre|voc[eê] sofre)\b/i;
@@ -358,7 +377,7 @@ export async function recordPublication(kv, plan, result, { now = Date.now() } =
   const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv };
   const activity = await emitActivity(env, { type: "post_published", channel: "youtube", status: result.privacy_status === "public" ? "published" : (result.privacy_status === "unlisted" ? "unlisted" : "private"), ref: "youtube:" + plan.day + ":" + (plan.slot && plan.slot !== "oferta" ? plan.slot + ":" : "") + plan.entry.theme_id, link: result.url }, { now });
   // Same per-day outcome key family as the acquisition engine, for the snapshot.
-  await kv.put("zpc:acquisition:daily:" + plan.day + ":youtube" + (plan.slot && plan.slot !== "oferta" ? "_" + plan.slot : ""), JSON.stringify({ channel: "youtube", slot: plan.slot || "oferta", day: plan.day, status: "publicado", provider_post_id: result.video_id, url: result.url, privacy: result.privacy_status, product: plan.entry.product.sku, at: new Date(now).toISOString() }), { expirationTtl: 45 * 86400 });
+  await kv.put("zpc:acquisition:daily:" + plan.day + ":youtube" + (plan.slot && plan.slot !== "oferta" ? "_" + plan.slot : ""), JSON.stringify({ channel: "youtube", slot: plan.slot || "oferta", day: plan.day, status: "publicado", provider_post_id: result.video_id, url: result.url, privacy: result.privacy_status, product: plan.entry.product.sku, at: new Date(now).toISOString(), planned_at: publicationWindow({ day: plan.day, slot: plan.slot || "oferta", now }).plannedAt || null, delay_min: publicationWindow({ day: plan.day, slot: plan.slot || "oferta", now }).delayMin ?? null }), { expirationTtl: 45 * 86400 });
   await kv.put("zpc:multichannel:proof:youtube", JSON.stringify({ channel: "youtube", provider_post_id: result.video_id, url: result.url, publishedAt: new Date(now).toISOString() }), { expirationTtl: 370 * 86400 });
   return activity;
 }
@@ -373,6 +392,9 @@ if (isMain) {
   let failed = 0;
   for (const slot of slots) {
     try {
+      const window = publicationWindow({ day, slot, now: Date.now() });
+      note("notice", "window " + JSON.stringify(window));
+      if (window.action !== "publish" && !dry) { note("notice", slot + ": not published (" + window.reason + ") — " + (window.action === "wait" ? "the planned run publishes it" : "documented as missed for " + day)); continue; }
       const plan = planSlot(day, slot);
       if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85) throw new Error("f1_gate_rejected");
       const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);

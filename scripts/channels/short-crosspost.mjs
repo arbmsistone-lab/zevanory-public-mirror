@@ -5,7 +5,7 @@
 // waiting, never as failure; a provider error fails the step visibly.
 // Usage: node short-crosspost.mjs [--day=YYYY-MM-DD]
 import { readFile } from "node:fs/promises";
-import { planShort, planSlot, localDay, cloudflareKv } from "./youtube-daily-short.mjs";
+import { planShort, planSlot, localDay, cloudflareKv, publicationWindow } from "./youtube-daily-short.mjs";
 import { emitActivity } from "../../worker/activity-ledger.mjs";
 import { getPublisherAccessToken } from "./publisher-access.mjs";
 
@@ -133,6 +133,8 @@ if (isMain) {
   const kv = cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID });
   let errors = 0;
   for (const slot of slotArg === "all" ? ["dica", "oferta", "calc"] : [slotArg]) {
+    const window = publicationWindow({ day, slot, now: Date.now() });
+    if (window.action !== "publish") { console.log(`::notice title=SHORT_CROSSPOST::${slot}=skipped_${window.reason}`); continue; }
     let mp4; try { mp4 = await readFile("/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot) + ".mp4"); } catch { console.log(`::warning title=SHORT_CROSSPOST::${slot}=no_rendered_file`); continue; }
     const report = await crosspost({ day, slot, mp4, kv });
     for (const [ch, v] of Object.entries(report)) { if (v.startsWith("error")) errors++; console.log(`::${v.startsWith("error") ? "error" : "notice"} title=SHORT_CROSSPOST::${slot}:${ch}=${String(v).replace(/[\r\n]+/g, " ")}`); }

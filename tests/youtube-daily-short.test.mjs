@@ -137,3 +137,23 @@ test("audio gate: loudness, peak and dead air", () => {
 test("local voice reads the brand and prices correctly", () => {
   assert.equal(speechForLocalVoice("ZEVANORY por R$ 197"), "Zevanóri por 197 reais");
 });
+
+import { publicationWindow } from "../scripts/channels/youtube-daily-short.mjs";
+test("publication window: never early, late only inside the same commercial day", () => {
+  const at = (iso) => Date.parse(iso);
+  const day = "2026-10-13";
+  // On time and the delays the owner asked to certify.
+  assert.equal(publicationWindow({ day, slot: "dica", now: at("2026-10-13T13:00:00Z") }).action, "publish");
+  const d15 = publicationWindow({ day, slot: "dica", now: at("2026-10-13T13:15:00Z") }); assert.equal(d15.action, "publish"); assert.equal(d15.late, false);
+  const d1h = publicationWindow({ day, slot: "oferta", now: at("2026-10-13T19:00:00Z") }); assert.equal(d1h.action, "publish"); assert.equal(d1h.late, true); assert.equal(d1h.delayMin, 60);
+  assert.equal(publicationWindow({ day, slot: "oferta", now: at("2026-10-13T22:00:00Z") }).action, "publish", "4 h late, same day");
+  assert.equal(publicationWindow({ day, slot: "dica", now: at("2026-10-13T21:00:00Z") }).action, "publish", "8 h late, same day");
+  assert.equal(publicationWindow({ day, slot: "calc", now: at("2026-10-14T06:00:00Z") }).action, "expired", "8 h late crosses midnight: not published");
+  // The 12/10 incident: a backstop starting at 00:44 of 13/10 must not publish 13/10's 10:00 and 15:00 Shorts.
+  const early = publicationWindow({ day, slot: "dica", now: at("2026-10-13T03:44:00Z") });
+  assert.equal(early.action, "wait"); assert.equal(early.reason, "before_planned_time");
+  assert.equal(publicationWindow({ day, slot: "oferta", now: at("2026-10-13T03:44:00Z") }).action, "wait");
+  // And it must not publish the previous day's slots after midnight either.
+  assert.equal(publicationWindow({ day: "2026-10-12", slot: "calc", now: at("2026-10-13T03:44:00Z") }).action, "expired");
+  assert.equal(publicationWindow({ day: "2026-10-12", slot: "calc", now: at("2026-10-13T02:45:00Z") }).action, "publish", "23:45 of the same day is still that day");
+});
