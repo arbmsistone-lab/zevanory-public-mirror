@@ -28,7 +28,7 @@ test("intent and source are stored as aggregate counters only and summarized per
   assert.doesNotMatch(JSON.stringify(calls), /198\.51\.100\.7/);
   const rows = [{ page: "ia-na-pratica", metric: "views", n: 10 }, { page: "ia-na-pratica", metric: "src:youtube", n: 6 }, { page: "ia-na-pratica", metric: "checkout_intent:src:youtube", n: 2 }, { page: "ia-na-pratica", metric: "camp:conteudo_20261012", n: 4 }];
   const s = await buildFunnelSummary({ DATABASE_URL: "x", MERCADOPAGO_ENV: "sandbox" }, { sqlFactory: () => ({ query: async t => (t.includes("group by page, metric") ? rows : []) }) });
-  assert.deepEqual(s.sources.youtube, { views: 6, checkout_intent: 2, hotmart_view: 0, subscribe_click: 0 });
+  assert.deepEqual(s.sources.youtube, { views: 6, checkout_intent: 2, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 });
   assert.deepEqual(s.topCampaigns, [{ campaign: "conteudo_20261012", views: 4 }]);
   assert.equal(s.pages["ia-na-pratica"].views, 10);
 });
@@ -42,4 +42,13 @@ test("visits from cloud/datacenter networks (our audits, monitors, headless brow
   assert.equal(isCountableView({ method: "GET", page: "ia-na-pratica", userAgent: ua, asn: 8075 }), false);  // Microsoft/Azure (GitHub Actions)
   assert.equal(isCountableView({ method: "GET", page: "ia-na-pratica", userAgent: ua, asn: 16509 }), false); // Amazon
   assert.equal(isCountableView({ method: "GET", page: "ia-na-pratica", userAgent: ua, asn: 26599 }), true);  // Brazilian carrier
+});
+test("lead_submit is an aggregate intent counter per source, never tied to the lead", async () => {
+  const calls = []; const factory = () => ({ query: async (t, p) => { calls.push({ t, p }); return []; } });
+  await handleFunnel(new Request("https://funnel.internal/hit", { method: "POST", body: JSON.stringify({ page: "material-gratuito", metric: "lead_submit", src: "youtube", ua: "Mozilla/5.0 Chrome", ip: "198.51.100.7" }) }), { DATABASE_URL: "x", RESEND_API_KEY: "s" }, { sqlFactory: factory });
+  assert.deepEqual(calls.filter(c => c.p?.[2]).map(c => c.p[2]), ["lead_submit", "lead_submit:src:youtube"]);
+  assert.doesNotMatch(JSON.stringify(calls), /198\.51\.100\.7|@/);
+  const rows = [{ page: "material-gratuito", metric: "lead_submit:src:youtube", n: 3 }];
+  const s = await buildFunnelSummary({ DATABASE_URL: "x" }, { sqlFactory: () => ({ query: async t => (t.includes("group by page, metric") ? rows : []) }) });
+  assert.equal(s.sources.youtube.lead_submit, 3);
 });

@@ -16,7 +16,8 @@ export const FUNNEL_PRODUCTS = Object.freeze({
 const TRACKED_PAGES = new Set([...Object.keys(FUNNEL_PRODUCTS), "solucoes", "material-gratuito", "conteudo-pronto", "ferramentas", "ia-por-ramo", "afiliados", "kit-afiliado"]);
 const isTrackedPage = page => TRACKED_PAGES.has(page) || /^(ia-para|calculadora)-[a-z-]{2,60}$/.test(String(page));
 // Intent metrics counted next to views; each also carries the visitor's source.
-export const INTENT_METRICS = Object.freeze(["checkout_intent", "hotmart_view", "subscribe_click"]);
+// lead_submit: a free-material form accepted by the core (aggregate count + source label only, no lead identity).
+export const INTENT_METRICS = Object.freeze(["checkout_intent", "hotmart_view", "subscribe_click", "lead_submit"]);
 const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const label = (v, max) => { const x = String(v || "").toLowerCase(); return new RegExp(`^[a-z0-9_-]{1,${max}}$`).test(x) && !RESERVED_KEYS.has(x) ? x : ""; };
 // Traffic-quality class of a counted view, so human and automated traffic can be told apart
@@ -119,7 +120,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   const sources = Object.create(null), campaigns = Object.create(null);
   for (const row of traffic) {
     const m = /^(?:([a-z_]+):)?src:([a-z0-9_-]+)$/.exec(row.metric);
-    if (m) { const s = (sources[m[2]] = sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0 }); s[m[1] || "views"] += Number(row.n) || 0; continue; }
+    if (m) { const s = (sources[m[2]] = sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 }); s[m[1] || "views"] += Number(row.n) || 0; continue; }
     const c = /^camp:([a-z0-9_-]+)$/.exec(row.metric);
     if (c && !RESERVED_KEYS.has(c[1])) campaigns[c[1]] = (campaigns[c[1]] || 0) + (Number(row.n) || 0);
   }
@@ -166,7 +167,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   for (const row of cleanRows || []) {
     const n = Number(row.n) || 0;
     const m = /^(?:([a-z_]+):)?src:([a-z0-9_-]+)$/.exec(row.metric);
-    if (m) { if (RESERVED_KEYS.has(m[2])) continue; const s = (clean.sources[m[2]] = clean.sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0 }); s[m[1] || "views"] += n; continue; }
+    if (m) { if (RESERVED_KEYS.has(m[2])) continue; const s = (clean.sources[m[2]] = clean.sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 }); s[m[1] || "views"] += n; continue; }
     const c = /^camp:([a-z0-9_-]+)$/.exec(row.metric);
     if (c) { if (!RESERVED_KEYS.has(c[1])) clean.campaigns[c[1]] = (clean.campaigns[c[1]] || 0) + n; continue; }
     const k = /^cls:([a-z_]+)$/.exec(row.metric);

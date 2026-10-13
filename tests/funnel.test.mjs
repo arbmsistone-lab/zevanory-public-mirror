@@ -46,7 +46,7 @@ test("clean breakdown counts only days after the bot filter, split by page, sour
   assert.ok(seen.some((c) => c.t.includes("day >= $1::date group by page, metric") && c.p[0] === "2026-10-12"));
   assert.equal(s.clean.since, "2026-10-12");
   assert.deepEqual({ ...s.clean.pages["ia-na-pratica"] }, { views: 7 });
-  assert.deepEqual(s.clean.sources.youtube, { views: 5, checkout_intent: 1, hotmart_view: 0, subscribe_click: 0 });
+  assert.deepEqual(s.clean.sources.youtube, { views: 5, checkout_intent: 1, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 });
   assert.deepEqual({ ...s.clean.campaigns }, { calc_20261012: 3 });
 });
 
