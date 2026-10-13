@@ -649,6 +649,38 @@
       "text": "Avatar oficial no Pinterest; sessões de administrador de YouTube (Studio), Instagram e Facebook no navegador do executor para aplicar bio/capa e fazer readback.",
       "status": "owner_reserved",
       "evidence": "YouTube Studio respondeu 'sem permissão' para a conta Google conectada; Instagram/Facebook sem sessão; upload de avatar bloqueado pelo controle da sessão do executor."
+    },
+    {
+      "id": "merge-governance",
+      "kind": "regra",
+      "source": "Dono, 13/10 08:48",
+      "text": "PRs do executor só são integrados após a revisão exigida; o executor prepara, resolve checks e para antes do merge. Revisão por agente separado não substitui a aprovação formal.",
+      "status": "active",
+      "evidence": "#785, #786, #787 integrados pelo dono em 13/10 após checks verdes."
+    },
+    {
+      "id": "brand-apex-readback",
+      "kind": "pendência",
+      "source": "Dono, 13/10",
+      "text": "Certificar em produção o logotipo sem o selo no domínio principal (#784).",
+      "status": "done",
+      "evidence": "central-production-deploy 38397436867 (2cf3649, sucesso): leitura byte a byte pós-deploy dos 3 SVGs e da capa legada em zevanory.api.br (#787) + PNGs do manifesto."
+    },
+    {
+      "id": "checkout-abandonment-diagnosis",
+      "kind": "pendência",
+      "source": "Dono, 13/10",
+      "text": "Analisar os 19 checkouts não pagos só com agregados.",
+      "status": "in_progress",
+      "evidence": "FUNNEL_DIAG 13/10 12:39Z: 19 pedidos em 30 dias, todos checkout_ready no Mercado Pago, 19 sessões distintas (máx. 1 por sessão), 16 de IA na Prática, distribuídos 0h-22h BRT (11 entre 17h e 22h); 0 pagos, 0 erros. Próximo: causa do abandono na página do Mercado Pago (sem dados de cliente)."
+    },
+    {
+      "id": "traffic-quality-dimensions",
+      "kind": "pendência",
+      "source": "Dono, 13/10",
+      "text": "Separar tráfego humano, automação e origem desconhecida (sinais auxiliares, não prova).",
+      "status": "in_progress",
+      "evidence": "#786 em produção às 12:25Z (43d3e0f): classe de tráfego e ASN por visita, sem IP; acumulando dados."
     }
   ]
 }
