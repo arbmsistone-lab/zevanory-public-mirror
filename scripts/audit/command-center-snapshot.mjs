@@ -469,6 +469,13 @@ export async function main() {
   };
   await kvPut(SNAPSHOT_KEY, snapshot);
   console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState, unproven: inventory.processes.filter((x) => x.eligible && !x.proven).map((x) => x.id) }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, serverCycle: cronBeat ? { at: cronBeat.finishedAt || null, tasks: cronBeat.tasks || {}, nurture: cronBeat.nurture || null } : null, kvQuota: kvQuota || null, isolatedCycle: isolatedBeat ? { at: isolatedBeat.finishedAt || null, tasks: isolatedBeat.tasks || {} } : null, funnelCycle: funnelBeat ? { at: funnelBeat.finishedAt || null, tasks: funnelBeat.tasks || {} } : null, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.cleanVisitors ?? null, visitors7Raw: funnel?.last7Days?.visitors ?? null, reach: point }));
+  // Aggregate-only commercial diagnosis (no PII): clean page/source/campaign counts since the bot filter.
+  const cl = funnel?.clean;
+  if (cl) {
+    const topPages = Object.entries(cl.pages || {}).sort((a, b) => (b[1].views || 0) - (a[1].views || 0)).slice(0, 15);
+    const products = Object.fromEntries(Object.entries(funnel?.products || {}).map(([k, v]) => [k, { checkouts: v.checkouts || 0, paid: v.paid || 0, checkoutErrors: v.checkoutErrors || 0 }]));
+    console.log("::notice title=FUNNEL_DIAG::" + JSON.stringify({ at: funnel.generatedAt, since: cl.since, pages: Object.fromEntries(topPages), sources: cl.sources, campaigns: Object.entries(cl.campaigns || {}).sort((a, b) => b[1] - a[1]).slice(0, 10), products30: products, leads7: funnel?.last7Days?.leads ?? null, checkouts7: funnel?.last7Days?.checkouts ?? null }).slice(0, 3800));
+  }
 }
 
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
