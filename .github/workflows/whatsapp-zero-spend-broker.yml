@@ -16,7 +16,6 @@ on:
     branches: [gh-pages]
     paths:
       - "worker/whatsapp-credential-broker.mjs"
-      - ".github/workflows/whatsapp-zero-spend-broker.yml"
 
 permissions:
   contents: read

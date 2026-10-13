@@ -9,7 +9,6 @@ on:
     branches: [gh-pages]
     paths:
       - "scripts/patch_whatsapp_broker.py"
-      - ".github/workflows/whatsapp-broker-protocol-v2.yml"
 permissions:
   contents: read
 concurrency:
