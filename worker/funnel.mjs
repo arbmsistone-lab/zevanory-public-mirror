@@ -28,7 +28,9 @@ export function trafficClass({ userAgent = "", acceptLanguage = false, country =
   const cty = c === "BR" ? "br" : /^[A-Z]{2}$/.test(c) ? "ext" : "unk";
   return `${dev}_${al}_${cty}`;
 }
-const BOT_RE = /bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|headless|lighthouse|monitor|curl|wget|python|node-fetch|go-http|axios|okhttp|uptime|pingdom|semrush|ahrefs|zevanory-monitor/i;
+const BOT_RE = /bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|headless|lighthouse|monitor|curl|wget|python|node-fetch|go-http|axios|okhttp|uptime|pingdom|semrush|ahrefs|zevanory/i;
+// "zevanory" (not only "zevanory-monitor"): the hourly command-center probe GETs /comprar/<sku> as
+// "zevanory-command-center" and was counted as checkout_intent whenever its runner left the ASN list.
 const SUMMARY_KEY = "zpc-funnel:v1:summary";
 // Datacenter/bot exclusion went live on 2026-10-12; earlier days are contaminated by our own
 // audits and crawlers, so "clean" figures only count days from this date on.
