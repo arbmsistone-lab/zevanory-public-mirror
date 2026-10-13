@@ -367,7 +367,9 @@ export async function main() {
   const firstSalesDay = Object.keys(sales?.byDay || {}).sort()[0] || null;
 
   const kvQuota = await kvWritesToday(now);
-  if (kvQuota?.verified && kvQuota.writes >= 0.8 * KV_DAILY_WRITE_LIMIT) console.log("::warning title=KV_QUOTA::" + JSON.stringify(kvQuota));
+  if (kvQuota?.verified && kvQuota.writes >= 0.7 * KV_DAILY_WRITE_LIMIT) console.log("::warning title=KV_QUOTA::" + JSON.stringify(kvQuota));
+  // The Worker reads this reading to shed observability writes at 70% (worker/kv-meter.mjs).
+  if (kvQuota?.verified) await kvPut("zpc:kv:v1:budget", { day: kvQuota.day, pct: kvQuota.pct, writes: kvQuota.writes, limit: kvQuota.limit, at: iso(now) }).catch(() => {});
   const snapshot = {
     schema: "zevanory-command-center/v1",
     platform: { kvQuota },
