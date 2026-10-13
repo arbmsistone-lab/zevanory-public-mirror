@@ -33,8 +33,15 @@ test("canonical evaluation incomplete, unbound or fail-closed => BLOCKED", () =>
     { zea10_live: { ...z, fail_closed: true } },
     { zea10_live: { ...z, ready: false } },
     { global_state: "operational_commercial_blocked" },
+    { zea10_live: { ...z, report: { ...z.report, release_sha: undefined } } },
+    { release: undefined, proof_chain: undefined },
   ];
   for (const patch of cases) assert.equal(legacyTrustProjection(live(patch)).state, "BLOCKED", JSON.stringify(patch));
+});
+
+test("SHA comparison is case-insensitive", () => {
+  const z = live().zea10_live;
+  assert.equal(legacyTrustProjection(live({ zea10_live: { ...z, report: { ...z.report, release_sha: SHA.toUpperCase() } } })).state, "UNVERIFIED");
 });
 
 test("vnext dialog does not default a missing quorum to 3 / minimum 2", () => {

@@ -34,7 +34,9 @@ export function legacyTrustProjection(body) {
   const canonical = body?.zea10_live?.report;
   const releaseSha = body?.release?.deployment?.commit_sha || body?.proof_chain?.sha || null;
   const canonicalCounts = canonical?.counts && typeof canonical.counts === "object" ? canonical.counts : null;
-  const canonicalBound = Boolean(canonicalCounts && (!releaseSha || !canonical?.release_sha || canonical.release_sha === releaseSha));
+  const lc = (v) => String(v || "").trim().toLowerCase();
+  // Bound only when both SHAs exist and match: an unbound report never counts (independent review).
+  const canonicalBound = Boolean(canonicalCounts && releaseSha && canonical?.release_sha && lc(canonical.release_sha) === lc(releaseSha));
   const counts = canonicalCounts || body?.policy?.counts || {};
   const totalProven = Number(counts.proven || 0);
   const noneOpen = !canonicalCounts || (Number(counts.partial || 0) === 0 && Number(counts.blocked || 0) === 0 && Number(counts.unknown || 0) === 0);
