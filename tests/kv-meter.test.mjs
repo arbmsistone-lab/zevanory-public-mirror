@@ -42,3 +42,15 @@ test("a reading from a previous UTC day never sheds (quota already reset)", asyn
   await env.ZEVANORY_PRIVATE_ARTIFACTS.put("zpc:cron:v1:hourly", "beat");
   assert.equal(store.get("zpc:cron:v1:hourly"), "beat");
 });
+
+import { putBeat } from "../worker/kv-meter.mjs";
+test("heartbeats are not rewritten when nothing changed within 50 minutes", async () => {
+  const store = new Map(); let puts = 0;
+  const kv = { async put(k, v) { puts++; store.set(k, v); }, async get(k) { return store.get(k) ?? null; } };
+  const t0 = Date.parse("2026-10-13T04:15:00Z");
+  assert.equal(await putBeat(kv, "zpc:cron:v1:isolated", { tasks: { financial_proof: "ok" } }, { now: t0 }), "written");
+  assert.equal(await putBeat(kv, "zpc:cron:v1:isolated", { tasks: { financial_proof: "ok" } }, { now: t0 + 30 * 60e3 }), "unchanged");
+  assert.equal(await putBeat(kv, "zpc:cron:v1:isolated", { tasks: { financial_proof: "fail:x" } }, { now: t0 + 31 * 60e3 }), "written", "a change is written at once");
+  assert.equal(await putBeat(kv, "zpc:cron:v1:isolated", { tasks: { financial_proof: "fail:x" } }, { now: t0 + 90 * 60e3 }), "written", "refreshed after 50 min");
+  assert.equal(puts, 3);
+});

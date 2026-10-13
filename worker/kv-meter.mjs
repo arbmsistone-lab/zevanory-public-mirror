@@ -71,3 +71,18 @@ export function withMeteredKv(env, src, log, opts) {
     },
   });
 }
+
+// Heartbeats (P2): rewrite only when the outcome changed or the last record is older than
+// maxAgeMs (50 min: an hourly beat still lands every cycle, the 30-minute isolated beat every other one,
+// always inside the 2-hour freshness the autonomy inventory requires).
+export async function putBeat(kv, key, beat, { maxAgeMs = 50 * 60 * 1000, now = Date.now(), ttl = 7 * 86400 } = {}) {
+  if (!kv?.put) return "unavailable";
+  const record = { ...beat, finishedAt: new Date(now).toISOString() };
+  try {
+    const prev = JSON.parse(String((await kv.get?.(key)) || "null"));
+    const prevAt = Date.parse(String(prev?.finishedAt || ""));
+    if (prev && JSON.stringify(prev.tasks || {}) === JSON.stringify(record.tasks || {}) && Number.isFinite(prevAt) && now - prevAt < maxAgeMs) return "unchanged";
+  } catch {}
+  await kv.put(key, JSON.stringify(record), { expirationTtl: ttl });
+  return "written";
+}
