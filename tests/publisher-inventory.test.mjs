@@ -18,7 +18,7 @@ const PUBLISH = [
   /npx(?: --yes)? wrangler(?:@[\d.]+)? (?:deploy|rollback|versions deploy)\b(?![^\n]*--dry-run)/,
   /npx(?: --yes)? wrangler(?:@[\d.]+)? secret (?:put|delete|bulk)\b/,
   /-X (?:POST|PUT|PATCH|DELETE)\b[^\n]*workers\/scripts|workers\/scripts[^\n]*-X (?:POST|PUT|PATCH|DELETE)\b/,
-  /cloudflare-authoritative-repair\.mjs/,
+  /node [^\n]*cloudflare-authoritative-repair\.mjs/,
 ];
 export const publishes = (text) => PUBLISH.some((re) => re.test(text));
 

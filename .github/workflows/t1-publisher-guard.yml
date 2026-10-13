@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           git clone --quiet --depth 1 https://github.com/arbmsistone-lab/zevanory-product-control-edge.git zpc
-          hits="$(grep -nE 'npx( --yes)? wrangler(@[0-9.]+)? (deploy|rollback|versions deploy)|secret (put|delete|bulk)|cloudflare-authoritative-repair\.mjs' zpc/.github/workflows/*.yml | grep -v -- '--dry-run' || true)"
+          hits="$(grep -nE 'npx( --yes)? wrangler(@[0-9.]+)? (deploy|rollback|versions deploy)|secret (put|delete|bulk)|node [^ ]*cloudflare-authoritative-repair\.mjs' zpc/.github/workflows/*.yml | grep -v -- '--dry-run' || true)"
           if [ -n "$hits" ]; then
             echo "::error title=EXTERNAL_PUBLISHER::$(printf '%s' "$hits" | head -5 | tr '\n' ' ')"
             exit 1
