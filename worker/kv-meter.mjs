@@ -20,7 +20,7 @@ export function kvPrefix(key) {
 // remaining quota stays for P0/P1 (financial proof, sales switch, orders, OAuth, publications).
 export const BUDGET_KEY = "zpc:kv:v1:budget";
 export const SHED_AT_PCT = 70;
-export const SHEDDABLE = Object.freeze(["zpc:cron:v1", "postsale:lastrun", "refund:watchdog", "zpc:backup:v1", "zpc:restore-drill", "zpc:support:v1", "whatsapp:observation", "whatsapp:instant", "voice-study", "zpc:creative-autonomy"]);
+export const SHEDDABLE = Object.freeze(["zpc:cron:v1", "postsale:lastrun", "refund:watchdog", "zpc:backup:v1", "zpc:restore-drill", "zpc:support:v1", "whatsapp:observation", "whatsapp:instant", "voice-study", "zpc:creative-autonomy", "zpc:autonomy:health"]);
 export const isSheddable = (prefix) => SHEDDABLE.some((p) => prefix === p || prefix.startsWith(p + ":"));
 const BUDGET_TTL_MS = 10 * 60 * 1000;
 const budgetMemo = globalThis.__ZEVANORY_KV_BUDGET__ || (globalThis.__ZEVANORY_KV_BUDGET__ = { at: 0, pct: null });

@@ -2,7 +2,7 @@ import { resolveOwnerPublisherToken } from "./owner-oauth.mjs";
 import { requireBrandedPublication } from "./brand-kit.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
 import { dailyEditorialArticle, trigramSimilarity } from "./blog-editorial.mjs";
-import { CREATIVE_AUTONOMY_FEED_KEY, creativeAutopublishPaused, evaluateCreativeWithRewrites } from "./creative-autonomy.mjs";
+import { CREATIVE_AUTONOMY_FEED_KEY, assertBrandSafeCreative, brandSafeCreativeViolation, creativeAutopublishPaused, evaluateCreativeWithRewrites } from "./creative-autonomy.mjs";
 
 export const CHANNEL_STATE_KEY="zpc:multichannel:state:v1";
 export const BLOG_INDEX_KEY="zpc:blog:index:v1";
@@ -159,7 +159,8 @@ export async function runMultichannelAutonomy(env={},now=new Date(),fetchImpl=fe
   const paused=await creativeAutopublishPaused(env);
   // Pinterest retains the existing approved F1 score/compliance path; no new DM.
   let feed=[];try{feed=JSON.parse(String(await kv?.get?.(CREATIVE_AUTONOMY_FEED_KEY)||"[]"));}catch{}
-  const creative=(Array.isArray(feed)?feed:[]).find(x=>x?.status==="approved_for_autopublish"&&Number(x?.compliance)===100&&Number(x?.score)>=85);
+  // Commercial containment: only official ZEVANORY catalog offers may reach Pinterest (OFFER-0001/ARBM is rejected).
+  const creative=(Array.isArray(feed)?feed:[]).find(x=>x?.status==="approved_for_autopublish"&&Number(x?.compliance)===100&&Number(x?.score)>=85&&brandSafeCreativeViolation(x)===null);
   let pinterestConnected=false;
   try{
     const oauth=JSON.parse(String(await kv?.get?.("zpc:owner:oauth:connection:pinterest:v1")||"null"));
@@ -171,6 +172,7 @@ export async function runMultichannelAutonomy(env={},now=new Date(),fetchImpl=fe
     if(!await kv.get(key)){
       try{
         // Dynamic editorial fields remain unique; the raster comes from the signed brand kit.
+        assertBrandSafeCreative(creative);
         const branded=brandPinterestCreative(creative);
         const result=await publishPinterest({env,payload:branded,fetchImpl});
         const row={channel:"pinterest",creative_id:creative.creative_id,provider_post_id:result.provider_post_id,url:result.url,brand_asset_url:branded.media_url,brand_asset_strategy:branded.brand_asset_strategy,publishedAt:now.toISOString()};
