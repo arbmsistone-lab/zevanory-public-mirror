@@ -23,6 +23,7 @@ on:
       - "assets/brand/export/**"
       - "sales-worker.mjs"
       - "worker/sales-public-worker.mjs"
+      - "tests/automation-traffic-guard.test.mjs"
       - "wrangler.sales.toml"
       - "scripts/build_sales_public.py"
       - "scripts/premerge_product_audit.py"
@@ -49,6 +50,7 @@ on:
       - "assets/brand/export/**"
       - "sales-worker.mjs"
       - "worker/sales-public-worker.mjs"
+      - "tests/automation-traffic-guard.test.mjs"
       - "wrangler.sales.toml"
       - "scripts/build_sales_public.py"
       - "scripts/premerge_product_audit.py"
@@ -87,6 +89,7 @@ jobs:
         run: |
           node --check sales-worker.mjs
           node --check worker/sales-public-worker.mjs
+          node --test tests/automation-traffic-guard.test.mjs tests/attribution.test.mjs
 
       - name: Cloudflare dry-run
         run: npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.sales.toml --outdir /tmp/zevanory-sales-public
