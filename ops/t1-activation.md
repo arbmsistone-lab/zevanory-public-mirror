@@ -24,12 +24,17 @@ Inventário de quem pode publicar o painel em cada momento:
 | Rollback do proprietário (canônico) | disponível | **disponível** (a exigência de marcação vale só para avanço) | disponível |
 
 - **Ordem inversa (#210 primeiro), descartada:** o t2 antigo, ainda sem a guarda nova, republicaria o painel com o script do #210. Era essa a janela apontada pelo auditor.
-- **Nenhum experimento em produção:** a prova é estática (testes do inventário, mutação e leitura do estado). A primeira publicação real do painel no passo 3 é a certificação.
+- **Nenhum experimento em produção:** a prova é a simulação integrada `tests/test_t1_transition.py`, que executa os scripts reais dos workflows contra um repositório-fixture e uma rede simulada (cenários S0–S9), mais os testes do inventário. A primeira publicação real do painel no passo 3 é a certificação.
 - **Rollback preservado:** um rollback para fonte anterior ao #210 funciona. A pós-verificação dele fica NÃO COMPROVADO, porque essa versão não carrega a marcação: só o readback a confirma. O passo falha e a versão permanece, por decisão do proprietário.
 - **Failover preservado:** central mantém o `wrangler rollback` automático e vendas mantém o snapshot. Ambos disparam também quando a pós-verificação dá FAIL ou NÃO COMPROVADO.
 - **Risco residual da janela:** o publicador do repositório do painel continua existindo até o #210, como hoje. Ele falha no passo de promoção, mas a causa (credencial ausente) está **NÃO COMPROVADA** por log, porque os logs de job não são legíveis daqui. O indício é a duração de 0 s, compatível com `CLOUDFLARE_API_TOKEN_REQUIRED`, que o script verifica antes de qualquer chamada de rede. Mitigação: mesclar o #210 logo após a leitura do passo 2.
 
 ## B. Recuperação preservada
+
+**Política após a pós-verificação (T1 v6):**
+- **FAIL** = evidência positiva: uma fonte respondeu com outro SHA, as fontes divergem, o serviço respondeu com erro HTTP, ou a Cloudflare respondeu sem versão única marcada. A recuperação automática roda.
+- **NAO_COMPROVADO** = o observador não alcançou uma fonte (rede, timeout, API da Cloudflare, credencial). **Não há rollback.** Os smokes passaram e não há evidência contrária, então a versão fica no ar. O passo de certificação reprova a execução, e a verificação independente (`t1-publisher-guard`, `workflow_dispatch`, `recheck_service`) decide. Só um FAIL nela autoriza a recuperação, pelo caminho documentado do serviço.
+- **Sem congelamento automático das próximas promoções:** cada promoção seguinte passa pela mesma fila, pela mesma guarda (que recusa divergência) e pela mesma pós-verificação. Um congelamento exigiria estado persistente gravável pelo workflow (variável de repositório), e o `GITHUB_TOKEN` não tem permissão para isso.
 
 - **Central:** se a verificação pós-deploy falhar, `wrangler rollback` volta para a versão anterior àquela execução (mantido).
 - **Vendas:** se o readback falhar, o snapshot da versão anterior é restaurado (10 disponíveis em 13/10). Sem snapshot, a execução falha alto **sem apagar o script** (mudança do T1).

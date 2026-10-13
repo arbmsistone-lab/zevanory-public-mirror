@@ -409,10 +409,14 @@ jobs:
           node scripts/deploy/mercadopago-csp-smoke.mjs > /tmp/mpsmoke.log 2>&1 || { tail -5 /tmp/mpsmoke.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_MP_SMOKE::/'; echo; exit 1; }
           cat /tmp/mpsmoke.log
       - name: Post-promotion effective version (T1)
+        id: postpromo
         if: steps.auth.outputs.available == 'true'
         run: |
           set -euo pipefail
-          python3 scripts/deploy/promotion_guard.py --verify-promoted --service zevanory \
+          # FAIL (positive evidence) fails this step -> automatic rollback below.
+          # NAO_COMPROVADO (observer unreachable) does NOT roll back: --unproven-exit 0 and the
+          # certification gate after the rollback step fails the run instead.
+          python3 scripts/deploy/promotion_guard.py --verify-promoted --unproven-exit 0 --service zevanory \
             --candidate "$TARGET_RUNTIME_SHA" \
             --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
             --cloudflare-script zevanory
@@ -439,6 +443,13 @@ jobs:
             sleep 5
           done
           echo "AUTO_ROLLBACK_HEALTH=FAIL"
+          exit 1
+      - name: Certification gate (T1, after rollback decision)
+        if: always() && steps.postpromo.outputs.state == 'NAO_COMPROVADO'
+        env:
+          POST_REASON: ${{ steps.postpromo.outputs.reason }}
+        run: |
+          echo "::error title=CERTIFICATION_NAO_COMPROVADO::release $TARGET_RUNTIME_SHA kept live (smokes passed, no contrary evidence) but NOT certified: $POST_REASON. No rollback without independent evidence; re-check with t1-publisher-guard (workflow_dispatch: recheck_service=zevanory)."
           exit 1
       - name: Dispatch exact-production ZEES-16 provider evidence
         if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'

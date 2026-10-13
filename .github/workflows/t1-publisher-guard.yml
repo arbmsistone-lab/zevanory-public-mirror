@@ -3,6 +3,17 @@ name: T1 publisher guard
 # Plan 3.1, T1: one serialized publisher per production Worker, across repositories, and one
 # executor session. Read-only: no credentials, no deploy.
 on:
+  workflow_dispatch:
+    inputs:
+      recheck_service:
+        description: Independent post-promotion re-check (read-only) after a NAO_COMPROVADO certification
+        required: true
+        type: choice
+        options: [zevanory, zevanory-sales-public, zevanory-product-control-portable]
+      recheck_sha:
+        description: Exact SHA that the release workflow promoted
+        required: true
+        type: string
   pull_request:
     branches: [gh-pages]
   push:
@@ -13,6 +24,8 @@ on:
       - "scripts/deploy/promotion_guard.py"
       - "tests/publisher-inventory.test.mjs"
       - "tests/test_promotion_guard.py"
+      - "tests/test_t1_transition.py"
+      - "tests/t1_sim/**"
 
 permissions:
   contents: read
@@ -30,6 +43,11 @@ jobs:
         run: node --test tests/publisher-inventory.test.mjs
       - name: Promotion guard decisions
         run: python3 -m unittest -v tests/test_promotion_guard.py
+      - name: Integrated #799 -> #210 transition simulation (real workflow scripts, no publish)
+        run: |
+          git fetch --quiet --depth 1 origin gh-pages:refs/remotes/origin/gh-pages || true
+          python3 -m unittest -v tests/test_t1_transition.py 2>&1 | tee /tmp/sim.log
+          grep '^SIM ' /tmp/sim.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
       - name: Code vs config authority and credentials per workflow
         run: python3 scripts/deploy/credential_inventory.py | tee -a "$GITHUB_STEP_SUMMARY"
 
@@ -178,3 +196,29 @@ jobs:
           python3 scripts/deploy/promotion_guard.py --preview --service zevanory-sales-public --candidate "$BASE" --readback-url https://vendas.zevanory.api.br/health --readback-path release --cloudflare-script zevanory-sales-public
           n="$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory-sales-public/deployments" | jq -r 'if .success then (.result.deployments|length) else "unreadable" end')"
           echo "::notice title=SALES_ROLLBACK_SNAPSHOT::previous deployments available=$n (the release now never deletes the script either way)"
+
+  post-promotion-recheck:
+    # Independent verification after a NAO_COMPROVADO certification (observer unreachable): reads
+    # the Cloudflare active-version tag and the public readback again, in a separate run. It never
+    # publishes and never rolls back; FAIL here is the positive evidence the owner needs to decide
+    # a rollback through the service's documented recovery path.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Re-check effective version by both sources
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+          SERVICE: ${{ inputs.recheck_service }}
+          SHA: ${{ inputs.recheck_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          case "$SERVICE" in
+            zevanory) url=https://zevanory.api.br/api/release; path=deployment.commit_sha ;;
+            zevanory-sales-public) url=https://vendas.zevanory.api.br/health; path=release ;;
+            zevanory-product-control-portable) url=https://controle.zevanory.api.br/version.json; path=sha ;;
+          esac
+          python3 scripts/deploy/promotion_guard.py --verify-promoted --attempts 6 --service "$SERVICE" \
+            --candidate "$SHA" --readback-url "$url" --readback-path "$path" --cloudflare-script "$SERVICE"

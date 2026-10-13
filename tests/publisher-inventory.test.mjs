@@ -136,9 +136,33 @@ test("central and sales promotions pass the pre-promotion guard", () => {
   assert.match(sales, /scripts\/deploy\/promotion_guard\.py --service zevanory-sales-public/);
   assert.match(sales, /--tag="\$GITHUB_SHA"/, "sales versions are tagged with their source SHA");
   // Post-promotion: the effective version must be the candidate (Cloudflare tag + readback).
-  assert.match(central, /promotion_guard\.py --verify-promoted --service zevanory/);
-  assert.match(sales, /promotion_guard\.py --verify-promoted --service zevanory-sales-public/);
+  assert.match(central, /promotion_guard\.py --verify-promoted --unproven-exit 0 --service zevanory /);
+  assert.match(sales, /promotion_guard\.py --verify-promoted --unproven-exit 0 --service zevanory-sales-public /);
   assert.doesNotMatch(read("zevanory-sales-public-release.yml"), /-X DELETE[^\n]*workers\/scripts\/\$SCRIPT_NAME"/, "the production sales script is never deleted");
+});
+
+test("an observability gap (NAO_COMPROVADO) never triggers automatic rollback; positive evidence (FAIL) always does", () => {
+  const steps = (text) => text.split(/\n      - name: /).slice(1).map((b) => ({ name: b.split("\n")[0], body: b }));
+  for (const [wf, rollbackName, verifyStep, stateRef] of [
+    ["central-production-deploy.yml", "Automatic rollback after failed post-deploy smoke", "Post-promotion effective version (T1)", "steps.postpromo.outputs.state"],
+    ["zevanory-sales-public-release.yml", "Roll back canonical deployment on failed readback", "Verify canonical production readback", "steps.readback.outputs.state"],
+  ]) {
+    const list = steps(read(wf));
+    const iVerify = list.findIndex((s) => s.name === verifyStep);
+    const iRollback = list.findIndex((s) => s.name === rollbackName);
+    const iGate = list.findIndex((s) => s.name.startsWith("Certification gate (T1"));
+    assert.ok(iVerify >= 0 && iRollback > iVerify && iGate > iRollback, `${wf}: verify -> rollback -> certification gate`);
+    // FAIL exits 1 (step fails); NAO_COMPROVADO exits 0 (--unproven-exit 0) so the rollback condition stays false.
+    assert.match(list[iVerify].body, /--verify-promoted --unproven-exit 0/);
+    assert.match(list[iRollback].body, /if: failure\(\)|steps\.readback\.outcome != 'success'/, `${wf}: rollback keyed to step failure (FAIL)`);
+    assert.match(list[iGate].body, new RegExp(`if: always\\(\\) && [^\\n]*${stateRef.replace(/\./g, "\\.")}`), `${wf}: gate reads the post-promotion state`);
+    assert.match(list[iGate].body, /exit 1/, `${wf}: an uncertified release fails the run`);
+    assert.doesNotMatch(list[iGate].body, /wrangler|-X POST|rollback --name/, `${wf}: the gate never changes production`);
+  }
+  assert.match(read("zevanory-sales-public-release.yml"), /name: Certify public release\n        if: [^\n]*steps\.readback\.outputs\.state == 'PASS'/, "sales certifies only on PASS");
+  const recheck = read("t1-publisher-guard.yml").split(/\n  post-promotion-recheck:/)[1] || "";
+  assert.match(recheck, /--verify-promoted/, "independent re-check exists");
+  assert.equal(publishes(recheck), false, "the re-check never publishes");
 });
 
 test("sales pages built from sales-public are released only by the canonical publisher", () => {

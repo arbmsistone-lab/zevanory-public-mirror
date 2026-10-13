@@ -81,7 +81,7 @@ class VerifyPromoted(unittest.TestCase):
     def test_both_sources_missing_is_not_proven(self):
         ok, reason = pg.verify_effective(C, None, None)
         self.assertFalse(ok)
-        self.assertEqual(reason, "NAO_COMPROVADO:cloudflare_and_readback_source_unavailable")
+        self.assertEqual(reason, "NAO_COMPROVADO:cloudflare_and_readback_source_unreachable")
 
     def test_unparseable_source_counts_as_missing(self):
         self.assertTrue(pg.verify_effective(C, C, "not-a-sha")[1].startswith("NAO_COMPROVADO:"))
@@ -101,36 +101,72 @@ class VerifyPromoted(unittest.TestCase):
         self.assertTrue(pg.verify_effective(C, B, None)[1].startswith("FAIL:readback_reports_"))
         self.assertTrue(pg.verify_effective(C, None, B)[1].startswith("FAIL:cloudflare_reports_"))
 
-    def _run(self, http, cf):
+    def test_source_that_answered_without_sha_is_failure_not_unproven(self):
+        ok, reason = pg.verify_effective(C, ("answered", None), ("ok", C))
+        self.assertEqual((ok, reason), (False, "FAIL:readback_answered_without_candidate_sha"))
+        self.assertTrue(pg.verify_effective(C, ("ok", C), ("answered", None))[1].startswith("FAIL:cloudflare_answered"))
+
+    def test_unreachable_observer_is_unproven_not_failure(self):
+        ok, reason = pg.verify_effective(C, ("ok", C), ("unreachable", None))
+        self.assertEqual((ok, reason), (False, "NAO_COMPROVADO:cloudflare_source_unreachable"))
+
+    def _run(self, http, cf, unproven_exit=2, sequence=None):
         import argparse
         import contextlib
         import io
+        import os
+        import tempfile
         args = argparse.Namespace(service="svc", candidate=C, readback_url="https://x", readback_path="sha",
-                                  cloudflare_script="svc")
-        saved = (pg.readback_sha, pg.cloudflare_sha)
-        import time
-        saved_sleep = time.sleep
-        pg.readback_sha, pg.cloudflare_sha = (lambda *a, **k: http), (lambda *a, **k: cf)
-        time.sleep = lambda s: None
+                                  cloudflare_script="svc", attempts=4, interval=0, unproven_exit=unproven_exit)
+        saved = (pg.observe_readback, pg.observe_cloudflare)
+        calls = {"n": 0}
+
+        def obs(value):
+            if isinstance(value, tuple):
+                return value
+            return ("ok", value) if value else ("unreachable", None)
+
+        def http_obs(*a, **k):
+            calls["n"] += 1
+            if sequence:
+                return obs(sequence[min(calls["n"], len(sequence)) - 1])
+            return obs(http)
+        pg.observe_readback, pg.observe_cloudflare = http_obs, (lambda *a, **k: obs(cf))
         out = io.StringIO()
+        gh_out = tempfile.NamedTemporaryFile("w+", delete=False)
+        os.environ["GITHUB_OUTPUT"] = gh_out.name
         try:
             with contextlib.redirect_stdout(out):
                 code = pg.verify_promoted(args)
         finally:
-            pg.readback_sha, pg.cloudflare_sha = saved
-            time.sleep = saved_sleep
-        return code, out.getvalue()
+            pg.observe_readback, pg.observe_cloudflare = saved
+            del os.environ["GITHUB_OUTPUT"]
+        return code, out.getvalue(), open(gh_out.name).read()
 
     def test_verify_promoted_exit_codes(self):
         self.assertEqual(self._run(C, C)[0], 0)
-        code, out = self._run(C, None)
-        self.assertEqual(code, 2, "missing Cloudflare source must fail the step (NAO_COMPROVADO)")
+        code, out, gh = self._run(C, None)
+        self.assertEqual(code, 2, "missing Cloudflare source fails the step by default (NAO_COMPROVADO)")
         self.assertIn('"state": "NAO_COMPROVADO"', out)
-        self.assertIn("::error title=POST_PROMOTION_svc::NAO_COMPROVADO", out)
-        self.assertEqual(self._run(None, C)[0], 2, "missing readback must fail the step (NAO_COMPROVADO)")
-        code, out = self._run(B, C)
+        self.assertIn("state=NAO_COMPROVADO", gh)
+        self.assertEqual(self._run(None, C)[0], 2, "unreachable readback fails the step by default (NAO_COMPROVADO)")
+        code, out, gh = self._run(B, C)
         self.assertEqual(code, 1)
         self.assertIn('"state": "FAIL"', out)
+        self.assertIn("state=FAIL", gh)
+
+    def test_unproven_can_be_deferred_but_fail_never_is(self):
+        # Workflows with automatic rollback: NAO_COMPROVADO must not fail the verify step
+        # (rollback is gated on failure()); a later gate fails the run instead.
+        code, _, gh = self._run(C, None, unproven_exit=0)
+        self.assertEqual(code, 0)
+        self.assertIn("state=NAO_COMPROVADO", gh)
+        self.assertEqual(self._run(B, C, unproven_exit=0)[0], 1, "positive evidence always fails -> recovery runs")
+        self.assertEqual(self._run(("answered", None), C, unproven_exit=0)[0], 1)
+
+    def test_propagation_delay_then_pass(self):
+        code, out, _ = self._run(None, C, sequence=[B, B, C])
+        self.assertEqual(code, 0, "old SHA during edge propagation must not fail if the candidate appears within the window")
 
 
 class Readers(unittest.TestCase):
@@ -153,6 +189,30 @@ class Readers(unittest.TestCase):
         def split(url, headers=None):
             return {"result": {"deployments": [{"versions": [{"version_id": "v1", "percentage": 50}, {"version_id": "v2", "percentage": 50}]}]}}
         self.assertIsNone(pg.cloudflare_sha("zevanory", split), "gradual rollout is not a single effective version")
+        self.assertEqual(pg.observe_cloudflare("zevanory", split), ("answered", None))
+
+        def untagged(url, headers=None):
+            if url.endswith("/deployments"):
+                return {"result": {"deployments": [{"versions": [{"version_id": "v1", "percentage": 100}]}]}}
+            return {"result": {"metadata": {"annotations": {}}}}
+        self.assertEqual(pg.observe_cloudflare("zevanory", untagged), ("answered", None), "active version without tag")
+
+        def api_down(url, headers=None):
+            raise OSError("cloudflare api timeout")
+        self.assertEqual(pg.observe_cloudflare("zevanory", api_down), ("unreachable", None))
+        self.assertEqual(pg.observe_cloudflare("zevanory", lambda u, h=None: {"success": False}), ("unreachable", None))
+        del os.environ["CLOUDFLARE_API_TOKEN"]
+        self.assertEqual(pg.observe_cloudflare("zevanory", fetch), ("unreachable", None), "no credential = observer failed")
+
+    def test_readback_observation(self):
+        import urllib.error
+        def http_500(url, headers=None):
+            raise urllib.error.HTTPError(url, 503, "down", {}, None)
+        self.assertEqual(pg.observe_readback("https://x", "sha", http_500), ("answered", None), "service answered with error")
+        def timeout(url, headers=None):
+            raise TimeoutError()
+        self.assertEqual(pg.observe_readback("https://x", "sha", timeout), ("unreachable", None))
+        self.assertEqual(pg.observe_readback("https://x", "sha", lambda u, h=None: {"sha": None}), ("answered", None))
 
 
 if __name__ == "__main__":
