@@ -17706,7 +17706,7 @@ async function handleInternalAuthMailer(request, env) {
   if (product !== PRODUCT || email.length > 254 || !EMAIL_RE.test(email) || !validResetUrl(resetUrl)) return response(400, { error: "invalid_request" });
   const apiKey = String(env.RESEND_API_KEY || "");
   if (!apiKey) return response(503, { error: "mailer_unavailable" });
-  const from = String(env.RESEND_FROM_ADDRESS || "Zevanory <suporte@zevanory.api.br>");
+  const from = String(env.RESEND_FROM_ADDRESS || "ZEVANORY <suporte@zevanory.api.br>");
   const subject = "Redefina sua senha do ARBM Contador";
   const text = `Recebemos uma solicita\xE7\xE3o para redefinir sua senha. Use este link em at\xE9 15 minutos: ${resetUrl}
 
