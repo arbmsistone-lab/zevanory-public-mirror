@@ -538,10 +538,13 @@ const wrapped = {
       const diag = { geminiEnv: Boolean(apiKey), vaultRecord: false, vaultMaster: Boolean(normalized.AI_VAULT_ENCRYPTION_KEY || normalized.ELITE_INTERNAL_TOKEN), vaultDecrypted: false, freeOnly: String(normalized.VOICE_TTS_FREE_ONLY || "") === "true", router: null };
       try { diag.vaultRecord = Boolean(await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.get?.("ai-vault:gemini")); } catch {}
       if (!apiKey) { apiKey = String((await loadAiVaultSecret("gemini", { kv: normalized.ZEVANORY_PRIVATE_ARTIFACTS, master: normalized.AI_VAULT_ENCRYPTION_KEY || normalized.ELITE_INTERNAL_TOKEN }).catch(() => null)) || "").trim(); diag.vaultDecrypted = Boolean(apiKey); }
-      try { const st = voiceProviderStatus({ ...normalized, GEMINI_API_KEY: apiKey }); diag.router = { chain: st.chain, available: st.providers.filter((x) => x.available).map((x) => x.provider) }; } catch {}
+      // Spreading the normalizeEnv proxy drops ZEVANORY_RUNTIME_CONFIG values (e.g.
+      // GEMINI_FREE_TIER_CONFIRMED, VOICE_TTS_PROVIDER_CHAIN): delegate through it instead.
+      const voiceEnv = new Proxy(normalized, { get: (t, p) => (p === "GEMINI_API_KEY" ? apiKey : t[p]) });
+      try { const st = voiceProviderStatus(voiceEnv); diag.router = { chain: st.chain, available: st.providers.filter((x) => x.available).map((x) => x.provider) }; } catch {}
       // Uncached on purpose: a cache hit would hide a broken voice path.
       const synth = (text) => synthesizeVoice(text, { apiKey, env: normalized, kv: null });
-      const fallbackSynth = (text) => ttsBytesWithFailover(text, { ...normalized, GEMINI_API_KEY: apiKey }, fetch);
+      const fallbackSynth = (text) => ttsBytesWithFailover(text, voiceEnv, fetch);
       const report = { ...(await runVoiceEval({ ai: normalized.AI, synth, fallbackSynth })), keySources: diag };
       try { await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.put?.(VOICE_EVAL_KEY, JSON.stringify(report)); } catch {}
       return new Response(JSON.stringify(report), { status: report.ok ? 200 : 500, headers });
