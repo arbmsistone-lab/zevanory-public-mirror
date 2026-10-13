@@ -1,0 +1,172 @@
+{
+  "schema_version": 2,
+  "gate": "ZEA10_AUTONOMY_GREEN_V2",
+  "observed_at": "2026-10-13T07:46:39.853485+00:00",
+  "engine_green": false,
+  "live_sales_green": false,
+  "source_capability_green": true,
+  "commercial_activation_is_separate": true,
+  "pillars": [
+    {
+      "id": "ZEA10-A01",
+      "name": "market_intelligence",
+      "ok": true,
+      "missing": []
+    },
+    {
+      "id": "ZEA10-A02",
+      "name": "product_offer_knowledge",
+      "ok": true,
+      "missing": []
+    },
+    {
+      "id": "ZEA10-A03",
+      "name": "customer_360_memory",
+      "ok": true,
+      "missing": []
+    },
+    {
+      "id": "ZEA10-A04",
+      "name": "strategy_campaign_creatives",
+      "ok": true,
+      "missing": []
+    },
+    {
+      "id": "ZEA10-A05",
+      "name": "omnichannel_orchestration",
+      "ok": true,
+      "missing": []
+    },
+    {
+      "id": "ZEA10-A06",
+      "name": "conversation_qualification_objections",
+      "ok": true,
+      "missing": []
+    },
+    {
+      "id": "ZEA10-A07",
+      "name": "checkout_payment_lifecycle",
+      "ok": true,
+      "missing": []
+    },
+    {
+      "id": "ZEA10-A08",
+      "name": "onboarding_support_success",
+      "ok": true,
+      "missing": []
+    },
+    {
+      "id": "ZEA10-A09",
+      "name": "learning_optimization",
+      "ok": true,
+      "missing": []
+    },
+    {
+      "id": "ZEA10-A10",
+      "name": "safety_governance_resilience",
+      "ok": true,
+      "missing": []
+    }
+  ],
+  "journey_source": {
+    "ok": true,
+    "missing": []
+  },
+  "synthetic_journey": {
+    "ok": true,
+    "visited": [
+      "lead",
+      "nurturing",
+      "objection",
+      "offer",
+      "negotiation",
+      "checkout",
+      "abandonment_recovery",
+      "payment",
+      "reconciliation",
+      "fulfillment",
+      "onboarding",
+      "support",
+      "adoption",
+      "satisfaction",
+      "retention",
+      "repurchase",
+      "upsell",
+      "cross_sell",
+      "referral",
+      "win_back",
+      "churn"
+    ],
+    "stage_count": 21,
+    "authority_model": {
+      "research": "AUTO",
+      "segmentation": "AUTO",
+      "lead_context": "AUTO",
+      "memory": "AUTO",
+      "nurturing": "AUTO",
+      "support": "AUTO",
+      "follow_up": "AUTO",
+      "optimization": "AUTO",
+      "publication": "AUTO_GATED",
+      "offer_delivery": "AUTO_GATED",
+      "recovery": "AUTO_GATED",
+      "checkout_handoff": "AUTO_GATED",
+      "sensitive_creative": "HUMAN_APPROVAL",
+      "material_offer_change": "HUMAN_APPROVAL",
+      "material_price_change": "HUMAN_APPROVAL",
+      "high_impact_campaign": "HUMAN_APPROVAL",
+      "policy_exception": "HUMAN_APPROVAL",
+      "legal_dispute": "HUMAN_ONLY",
+      "fraud": "HUMAN_ONLY",
+      "irreversible_financial_exception": "HUMAN_ONLY",
+      "contractual_exception": "HUMAN_ONLY",
+      "low_confidence_high_risk": "HUMAN_ONLY"
+    },
+    "human_approval_ok": true,
+    "human_only_ok": true
+  },
+  "channels": {
+    "ok": true,
+    "missing": []
+  },
+  "human_approval_boundary": {
+    "ok": true,
+    "missing": []
+  },
+  "safe_default": {
+    "ok": true,
+    "sales_enabled_by_gate": false
+  },
+  "production_engine_foundation": {
+    "ok": false,
+    "sales_machine": {}
+  },
+  "schema_health": {
+    "ok": false,
+    "health": {}
+  },
+  "activation_blockers": [
+    "commercial_autonomy_not_approved",
+    "outbound_execution_not_ready",
+    "sales_not_enabled",
+    "checkout_not_enabled",
+    "financial_not_enabled",
+    "whatsapp_not_enabled"
+  ],
+  "recovery_mode": false,
+  "recovery_target_sha": null,
+  "live": {
+    "status": {
+      "ok": false,
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    "health": {
+      "ok": false,
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    },
+    "control_plane": {
+      "ok": false,
+      "error": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+    }
+  }
+}

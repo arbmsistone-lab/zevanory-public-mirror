@@ -87,7 +87,17 @@ HTML_ROUTES = (
 LEGAL_FOOTER = ('<div class="container footer-legal">'
                 'A. RENAN ALVES MOREIRA BITU LTDA · CNPJ 69.077.233/0001-99 · Rua Francisco de Freitas Neto, 96, Casa Residencial, Alto do Tenente, '
                 'Várzea Alegre/CE, CEP 63540-000 · <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a> · '
-                'WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a></div>')
+                'WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a>'
+                # Official profiles verified by public readback (2026-10-12); rel="me" lets platforms
+                # confirm the site <-> profile link.
+                '<br>Perfis oficiais: '
+                '<a rel="me noopener" href="https://www.youtube.com/@zevanory">YouTube</a> · '
+                '<a rel="me noopener" href="https://www.instagram.com/zevanory_/">Instagram</a> · '
+                '<a rel="me noopener" href="https://www.facebook.com/people/Zevanory/61593970292684/">Facebook</a> · '
+                '<a rel="me noopener" href="https://www.tiktok.com/@zevanory">TikTok</a> · '
+                '<a rel="me noopener" href="https://t.me/zevanory">Telegram</a> · '
+                '<a rel="me noopener" href="https://bsky.app/profile/zevanoryoficial.bsky.social">Bluesky</a> · '
+                '<a rel="me noopener" href="https://www.pinterest.com/zevanory/">Pinterest</a></div>')
 
 COMMERCE = {
     "ia-na-pratica": {"sku": "ZEV-IA-011", "name": "IA na Prática", "price": 197,
@@ -319,6 +329,14 @@ def main() -> int:
     shutil.copy2(portrait, OUT / "assets" / "renan-bitu.webp")
     # Approved social/creative brand assets live in the overlay (2026-10-02).
     shutil.copytree(OVERLAY / "brand", OUT / "brand", dirs_exist_ok=True)
+    # Official exported brand PNGs (link-card for Open Graph, kit de afiliado, avatars, banners).
+    # Pages reference /brand/export/<file>.png on the sales domain; without this copy they 404'd.
+    exports = ROOT / "assets" / "brand" / "export"
+    (OUT / "brand" / "export").mkdir(parents=True, exist_ok=True)
+    for png in sorted(exports.glob("*.png")):
+        shutil.copy2(png, OUT / "brand" / "export" / png.name)
+    if not (OUT / "brand" / "export" / "link-card.png").is_file():
+        raise SystemExit("official link-card export missing from sales build")
 
     # Root is the solutions catalog. Keep a physical index for workers.dev previews
     # even though the worker also rewrites / to /solucoes.html.
