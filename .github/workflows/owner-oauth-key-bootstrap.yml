@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: owner-oauth-key-bootstrap
+  group: deploy-zevanory-product-control-portable
   cancel-in-progress: false
 
 jobs:

@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: public-router-deploy
+  group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.ref) || 'deploy-zevanory-public-router' }}
   cancel-in-progress: false
 
 jobs:

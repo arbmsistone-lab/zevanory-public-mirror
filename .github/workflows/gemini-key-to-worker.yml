@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: gemini-key-to-worker
+  group: deploy-zevanory
   cancel-in-progress: false
 
 jobs:

@@ -21,6 +21,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.ref) || 'deploy-giro-whatsapp-bridge' }}
+  cancel-in-progress: false
+
 jobs:
   validate:
     runs-on: ubuntu-latest

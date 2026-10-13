@@ -12,6 +12,10 @@ on:
       - ".github/workflows/whatsapp-broker-protocol-v2.yml"
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.ref) || 'deploy-giro-whatsapp-bridge' }}
+  cancel-in-progress: false
+
 jobs:
   broker-protocol:
     runs-on: ubuntu-latest

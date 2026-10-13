@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: voice-zero-spend-enable
+  group: deploy-zevanory
   cancel-in-progress: false
 jobs:
   enable:

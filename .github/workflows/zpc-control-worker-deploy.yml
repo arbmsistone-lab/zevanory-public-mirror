@@ -29,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: zpc-control-worker-deploy
+  group: deploy-zevanory-product-control-portable
   cancel-in-progress: false
 
 jobs:

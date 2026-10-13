@@ -1,0 +1,65 @@
+{
+  "schema": "zevanory-publishers/v1",
+  "rule": "Each production Worker has ONE canonical code publisher. Every workflow that can change a Worker (code, rollback, secrets or settings) runs inside that Worker's single concurrency group, so changes are serialized. A workflow with a publish command that is not listed here fails tests/publisher-inventory.test.mjs.",
+  "services": {
+    "zevanory": {
+      "group": "deploy-zevanory",
+      "canonical": "central-production-deploy.yml",
+      "guard": "scripts/deploy/promotion_guard.py (cloudflare tag + /api/release)",
+      "config_publishers": [
+        "channel-credentials-sync.yml",
+        "channel-production-bootstrap.yml",
+        "gemini-key-to-worker.yml",
+        "sandbox-worker-secret-audit.yml",
+        "voice-gemini-auth-key-probe.yml",
+        "voice-gemini-production-provision.yml",
+        "voice-zero-spend-enable.yml"
+      ],
+      "pending_owner_authorization": [
+        "mercadopago-exact-sha-recovery.yml",
+        "mercadopago-production-token-rotate.yml",
+        "financial-e2e-stripe.yml"
+      ]
+    },
+    "zevanory-sales-public": {
+      "group": "deploy-zevanory-sales-public",
+      "canonical": "zevanory-sales-public-release.yml",
+      "guard": "scripts/deploy/promotion_guard.py (cloudflare tag)",
+      "config_publishers": []
+    },
+    "zevanory-public-router": {
+      "group": "deploy-zevanory-public-router",
+      "canonical": "public-router-deploy.yml",
+      "config_publishers": []
+    },
+    "zevanory-product-control-portable": {
+      "group": "deploy-zevanory-product-control-portable",
+      "canonical": "zpc-control-worker-deploy.yml",
+      "guard": "monotonic guard + authorised rollback in the canonical workflow (#796/#797)",
+      "config_publishers": [
+        "t2-exact-control-worker-promotion.yml",
+        "owner-oauth-key-bootstrap.yml"
+      ]
+    },
+    "giro-whatsapp-bridge": {
+      "group": "deploy-giro-whatsapp-bridge",
+      "canonical": "whatsapp-zero-spend-broker.yml",
+      "config_publishers": [
+        "whatsapp-broker-protocol-v2.yml"
+      ]
+    }
+  },
+  "isolated": {
+    "zevanory-certification": "certification-isolated-deploy.yml"
+  },
+  "retired": [
+    "zpc-cloudflare-exact-release.yml",
+    "zpc-owner-promotion-no-portable-health.yml"
+  ],
+  "validation_only": [
+    "sales-legal-publish.yml"
+  ],
+  "external_repositories": {
+    "arbmsistone-lab/zevanory-product-control-edge": "must not publish production; the panel is published only by zpc-control-worker-deploy.yml in this repository"
+  }
+}

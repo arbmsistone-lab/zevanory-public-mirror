@@ -11,6 +11,10 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: deploy-zevanory
+  cancel-in-progress: false
+
 jobs:
   provision:
     runs-on: ubuntu-latest

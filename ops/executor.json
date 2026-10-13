@@ -1,0 +1,6 @@
+{
+  "schema": "zevanory-executor/v1",
+  "rule": "Owner decision 13/10/2026: one Claude session executes; ChatGPT audits; the owner authorises. Pull requests carrying a different Claude session are flagged by .github/workflows/t1-publisher-guard.yml (session-guard). The check is advisory until the owner makes it required in branch protection.",
+  "authorized_claude_sessions": ["session_01BEoZWaBFoF9w15T3McDGya"],
+  "auditor": "ChatGPT (independent review per milestone; PASS / FAIL / NAO COMPROVADO)"
+}

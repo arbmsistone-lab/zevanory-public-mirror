@@ -102,8 +102,41 @@ on:
       - "scripts/financial_e2e_stripe.py"
       - "scripts/financial_e2e_closure.py"
       - ".github/workflows/zpc-cloudflare-route-discovery.yml"
+concurrency:
+  group: deploy-zevanory
+  cancel-in-progress: false
+
 jobs:
+  guard:
+    # T1 (plan 3.1): runs inside the serialized deploy-zevanory group, right before promotion.
+    # An older queued run (candidate is an ancestor of what is live) does nothing; diverged
+    # history, a mismatch between the Cloudflare effective version and /api/release, or an
+    # unreadable production with a candidate that is not the branch tip refuse the promotion.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      decision: ${{ steps.guard.outputs.decision }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Pre-promotion guard
+        id: guard
+        run: |
+          set -euo pipefail
+          TIP="$(git ls-remote origin refs/heads/gh-pages | cut -f1)"
+          python3 scripts/deploy/promotion_guard.py --service zevanory \
+            --candidate "$GITHUB_SHA" --branch-tip "$TIP" \
+            --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
+            --cloudflare-script zevanory
   deploy:
+    needs: guard
+    if: needs.guard.outputs.decision == 'promote'
     permissions:
       contents: read
       actions: write

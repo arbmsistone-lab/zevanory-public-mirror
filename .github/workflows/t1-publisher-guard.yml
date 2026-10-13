@@ -1,0 +1,69 @@
+name: T1 publisher guard
+
+# Plan 3.1, T1: one serialized publisher per production Worker, across repositories, and one
+# executor session. Read-only: no credentials, no deploy.
+on:
+  pull_request:
+    branches: [gh-pages]
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/**"
+      - "ops/**"
+      - "scripts/deploy/promotion_guard.py"
+      - "tests/publisher-inventory.test.mjs"
+      - "tests/test_promotion_guard.py"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Publisher registry and serialization rules
+        run: node --test tests/publisher-inventory.test.mjs
+      - name: Promotion guard decisions
+        run: python3 -m unittest -v tests/test_promotion_guard.py
+
+  external-repository:
+    # The panel source repository must never publish production by itself.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Panel repository has no production publish path
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 https://github.com/arbmsistone-lab/zevanory-product-control-edge.git zpc
+          hits="$(grep -nE 'npx( --yes)? wrangler(@[0-9.]+)? (deploy|rollback|versions deploy)|secret (put|delete|bulk)|cloudflare-authoritative-repair\.mjs' zpc/.github/workflows/*.yml | grep -v -- '--dry-run' || true)"
+          if [ -n "$hits" ]; then
+            echo "::error title=EXTERNAL_PUBLISHER::$(printf '%s' "$hits" | head -5 | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "EXTERNAL_REPOSITORY_PUBLISHERS=0"
+
+  session-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Only the authorised executor session
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          allowed="$(jq -r '.authorized_claude_sessions[]' ops/executor.json)"
+          sessions="$( { gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/commits" --paginate --jq '.[].commit.message'; printf '%s' "$BODY"; } | grep -oE 'session_[A-Za-z0-9]{8,}' | sort -u || true)"
+          bad=""
+          for s in $sessions; do grep -qx "$s" <<<"$allowed" || bad="$bad $s"; done
+          if [ -n "$bad" ]; then
+            echo "::error title=UNAUTHORISED_EXECUTOR_SESSION::PR carries session(s):$bad — owner decision 13/10: single executor session"
+            exit 1
+          fi
+          echo "EXECUTOR_SESSION_GUARD=PASS sessions=${sessions:-none}"
