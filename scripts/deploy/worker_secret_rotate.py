@@ -30,6 +30,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import promotion_guard as pg  # noqa: E402
@@ -74,12 +75,31 @@ def wrangler(args: list[str], run=subprocess.run) -> None:
         raise RuntimeError("wrangler_failed:" + " ".join(args[:3]))
 
 
-def health_ok(fetch=pg._get) -> bool:
+def health_state(fetch=pg._get) -> str:
+    """OK: live and ready. ANSWERED: the Worker answered unhealthy (error status or live/ready not
+    true) = positive evidence. UNREACHABLE: the observer could not reach it = no evidence."""
     try:
         h = fetch(HEALTH_URL)
-        return h.get("live") is True and h.get("ready") is True
+    except urllib.error.HTTPError:
+        return pg.ANSWERED
     except Exception:
-        return False
+        return pg.UNREACHABLE
+    return pg.OK if isinstance(h, dict) and h.get("live") is True and h.get("ready") is True else pg.ANSWERED
+
+
+def health_ok(fetch=pg._get) -> bool:
+    return health_state(fetch) == pg.OK
+
+
+def secret_names_or_none(cf: "Cloudflare"):
+    """Binding names, or None when the API could not be read (no evidence either way)."""
+    try:
+        res = cf.fetch(cf.base + "/secrets", cf.auth)
+    except Exception:
+        return None
+    if not isinstance(res, dict) or res.get("success") is False or not isinstance(res.get("result"), list):
+        return None
+    return {s.get("name") for s in res["result"]}
 
 
 def run(keys: dict[str, str], *, cf: Cloudflare, run_cmd=subprocess.run, fetch=pg._get,
@@ -120,26 +140,30 @@ def run(keys: dict[str, str], *, cf: Cloudflare, run_cmd=subprocess.run, fetch=p
     wrangler(["versions", "deploy", f"{new}@100%", "--name", SCRIPT, "--yes",
               "--message", f"T3 lead privacy key ring on {live[:12]}"], run_cmd)
 
-    # 4. Post-check (same SHA by both sources, health, binding names)
+    # 4. Post-check (same SHA by both sources, health, binding names), classified like the T1 gate:
+    #    FAIL = positive evidence (another SHA, sources disagree, Worker answered unhealthy, API listed
+    #    the bindings and one is missing/still present); NAO_COMPROVADO = an observer was unreachable.
     state, reason = "NAO_COMPROVADO", "not_checked"
     for _ in range(attempts):
         ok, reason = pg.verify_effective(live, pg.observe_readback(RELEASE_URL, RELEASE_PATH, fetch), pg.observe_cloudflare(SCRIPT, fetch))
         state = reason.split(":", 1)[0]
-        healthy = health_ok(fetch)
-        if ok and healthy:
+        health = health_state(fetch)
+        if state == "PASS" and health == pg.ANSWERED:
+            state, reason = "FAIL", "FAIL:health_answered_not_live_ready"
+        elif state == "PASS" and health == pg.UNREACHABLE:
+            state, reason = "NAO_COMPROVADO", "NAO_COMPROVADO:health_unreachable"
+        if state == "PASS":
             break
-        if ok and not healthy:
-            state, reason = "FAIL", "FAIL:health_not_live_ready"
         sleep(interval)
-    names = set()
-    try:
-        names = cf.secret_names()
-    except Exception:
-        pass
-    missing = sorted(set(keys) - names)
-    lingering = sorted(set(drop) & names)
-    if state == "PASS" and (missing or lingering):
-        state, reason = "FAIL", "FAIL:binding_state:" + ",".join(["missing=" + n for n in missing] + ["present=" + n for n in lingering])
+    if state == "PASS":
+        names = secret_names_or_none(cf)
+        if names is None:
+            state, reason = "NAO_COMPROVADO", "NAO_COMPROVADO:secrets_api_unreadable"
+        else:
+            missing = sorted(set(keys) - names)
+            lingering = sorted(set(drop) & names)
+            if missing or lingering:
+                state, reason = "FAIL", "FAIL:binding_state:" + ",".join(["missing=" + n for n in missing] + ["present=" + n for n in lingering])
     print("WORKER_SECRET_POSTCHECK=" + json.dumps({"state": state, "reason": reason, "live": live, "version": new}), flush=True)
     if state == "PASS":
         log("notice", "WORKER_SECRET", f"PASS key ring {sorted(keys)} written, {sorted(drop)} removed, on {SCRIPT} at {live[:12]} (version {new})")
@@ -157,15 +181,13 @@ def verify(cf: Cloudflare, fetch=pg._get) -> int:
     """Read-only certification: binding present, both version sources agree, Worker healthy."""
     obs_http = pg.observe_readback(RELEASE_URL, RELEASE_PATH, fetch)
     obs_cf = pg.observe_cloudflare(SCRIPT, fetch)
-    try:
-        names = cf.secret_names()
-    except Exception:
-        names = None
-    healthy = health_ok(fetch)
+    names = secret_names_or_none(cf)
+    health = health_state(fetch)
+    healthy = health == pg.OK
     record = {"binding": None if names is None else sorted(n for n in names if n.startswith("LEAD_PRIVACY_SECRET")),
               "cloudflare": obs_cf, "readback": obs_http, "healthy": healthy}
     print("WORKER_SECRET_VERIFY=" + json.dumps(record), flush=True)
-    if names is None or obs_http[0] == pg.UNREACHABLE or obs_cf[0] == pg.UNREACHABLE:
+    if names is None or obs_http[0] == pg.UNREACHABLE or obs_cf[0] == pg.UNREACHABLE or health == pg.UNREACHABLE:
         log("error", "WORKER_SECRET_VERIFY", "NAO_COMPROVADO: a source was unreachable")
         return 2
     ok = "LEAD_PRIVACY_SECRET" in names and obs_http[0] == obs_cf[0] == pg.OK and obs_http[1] == obs_cf[1] and healthy

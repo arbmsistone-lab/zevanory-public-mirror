@@ -33,6 +33,8 @@ class World:
         self.readback = L
         self.healthy = True
         self.cf_down = False
+        self.health_mode = "ok"      # ok | timeout | http503
+        self.secrets_mode = "ok"     # ok | down | success_false | hide:<NAME>
         self.calls = []
         self.bulk_files_mode = []
 
@@ -50,10 +52,19 @@ class World:
                 tag = self.versions[vid]["tag"]
                 return {"success": True, "result": {"metadata": {"annotations": ({"workers/tag": tag} if tag else {})}}}
             if url.endswith("/secrets"):
-                return {"success": True, "result": [{"name": n, "type": "secret_text"} for n in sorted(self.versions[self.active]["secrets"])]}
+                if self.secrets_mode == "down":
+                    raise urllib.error.URLError("secrets api timeout")
+                if self.secrets_mode == "success_false":
+                    return {"success": False, "errors": [{"code": 10000}]}
+                hidden = self.secrets_mode.split(":", 1)[1] if self.secrets_mode.startswith("hide:") else None
+                return {"success": True, "result": [{"name": n, "type": "secret_text"} for n in sorted(self.versions[self.active]["secrets"]) if n != hidden]}
         if url.endswith("/api/release"):
             return {"deployment": {"commit_sha": self.readback}}
         if url.endswith("/api/health"):
+            if self.active != "v1" and self.health_mode == "timeout":
+                raise TimeoutError("health timeout")
+            if self.active != "v1" and self.health_mode == "http503":
+                raise urllib.error.HTTPError(url, 503, "unavailable", {}, None)
             return {"live": self.healthy, "ready": self.healthy}
         raise AssertionError("unexpected url " + url)
 
@@ -186,6 +197,46 @@ class Rotate(unittest.TestCase):
         self.w.healthy = False
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(wsr.verify(self.cf, self.w.fetch), 1)
+
+    # --- Observability classification (FAIL = positive evidence; NAO_COMPROVADO = observer failed) ---
+    def test_health_timeout_is_unproven_not_rolled_back(self):
+        self.w.health_mode = "timeout"
+        self.assertEqual(self.go({"LEAD_PRIVACY_SECRET": NEW_KEY}), 2, self.out)
+        self.assertIn('"state": "NAO_COMPROVADO"', self.out); self.assertIn("health_unreachable", self.out)
+        self.assertEqual(self.w.active, "v2", "version preserved")
+        self.assertEqual(sum(1 for c in self.w.calls if c[:2] == ["versions", "deploy"]), 1, "no rollback deploy")
+
+    def test_health_http_error_is_failure_and_rolled_back(self):
+        self.w.health_mode = "http503"
+        self.assertEqual(self.go({"LEAD_PRIVACY_SECRET": NEW_KEY}), 1, self.out)
+        self.assertIn("health_answered_not_live_ready", self.out)
+        self.assertEqual(self.w.active, "v1")
+
+    def test_secrets_api_down_is_unproven_not_rolled_back(self):
+        self.w.secrets_mode = "down"
+        self.assertEqual(self.go({"LEAD_PRIVACY_SECRET": NEW_KEY}), 2, self.out)
+        self.assertIn("secrets_api_unreadable", self.out)
+        self.assertEqual(self.w.active, "v2")
+
+    def test_secrets_api_success_false_is_unproven(self):
+        self.w.secrets_mode = "success_false"
+        self.assertEqual(self.go({"LEAD_PRIVACY_SECRET": NEW_KEY}), 2, self.out)
+        self.assertEqual(self.w.active, "v2")
+
+    def test_binding_listed_and_missing_is_failure_and_rolled_back(self):
+        self.w.secrets_mode = "hide:LEAD_PRIVACY_SECRET"
+        self.assertEqual(self.go({"LEAD_PRIVACY_SECRET": NEW_KEY}), 1, self.out)
+        self.assertIn("missing=LEAD_PRIVACY_SECRET", self.out)
+        self.assertEqual(self.w.active, "v1")
+
+    def test_verify_classifies_unreachable_as_unproven(self):
+        import contextlib, io
+        self.go({"LEAD_PRIVACY_SECRET": NEW_KEY})
+        for mode, attr, expected in [("timeout", "health_mode", 2), ("down", "secrets_mode", 2), ("http503", "health_mode", 1)]:
+            self.w.health_mode, self.w.secrets_mode = "ok", "ok"
+            setattr(self.w, attr, mode)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(wsr.verify(self.cf, self.w.fetch), expected, mode)
 
 
 if __name__ == "__main__":
