@@ -20,3 +20,25 @@ test("metered binding logs puts and deletes and still writes", async () => {
   assert.equal(env.OTHER, 1);
   assert.equal(meterKv(env.ZEVANORY_PRIVATE_ARTIFACTS, "x"), env.ZEVANORY_PRIVATE_ARTIFACTS, "never double-wrapped");
 });
+
+test("above 70% of the daily quota, observability writes are shed and critical ones still land", async () => {
+  const store = new Map(); const lines = [];
+  const day = "2026-10-13";
+  store.set("zpc:kv:v1:budget", JSON.stringify({ day, pct: 82 }));
+  const kv = { async put(k, v) { store.set(k, v); }, async delete(k) { store.delete(k); }, async get(k) { return store.get(k) ?? null; } };
+  const memo = { at: 0, pct: null };
+  const env = withMeteredKv({ ZEVANORY_PRIVATE_ARTIFACTS: kv }, "cron:x", (l) => lines.push(JSON.parse(l)), { memo, now: () => Date.parse(day + "T12:00:00Z") });
+  await env.ZEVANORY_PRIVATE_ARTIFACTS.put("zpc:cron:v1:hourly", "beat");
+  await env.ZEVANORY_PRIVATE_ARTIFACTS.put("zpc:commercial:v1:financial-proof", "proof");
+  assert.equal(store.has("zpc:cron:v1:hourly"), false, "heartbeat shed");
+  assert.equal(store.get("zpc:commercial:v1:financial-proof"), "proof", "P0 write kept");
+  assert.equal(lines[0].op, "shed:put");
+});
+
+test("a reading from a previous UTC day never sheds (quota already reset)", async () => {
+  const store = new Map([["zpc:kv:v1:budget", JSON.stringify({ day: "2026-10-12", pct: 99 })]]);
+  const kv = { async put(k, v) { store.set(k, v); }, async get(k) { return store.get(k) ?? null; } };
+  const env = withMeteredKv({ ZEVANORY_PRIVATE_ARTIFACTS: kv }, "cron:x", () => {}, { memo: { at: 0, pct: null }, now: () => Date.parse("2026-10-13T00:30:00Z") });
+  await env.ZEVANORY_PRIVATE_ARTIFACTS.put("zpc:cron:v1:hourly", "beat");
+  assert.equal(store.get("zpc:cron:v1:hourly"), "beat");
+});
