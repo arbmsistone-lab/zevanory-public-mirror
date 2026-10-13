@@ -82,8 +82,14 @@ jobs:
             "0 13 * * *") SLOT=dica;; "0 18 * * *") SLOT=oferta;; "0 22 * * *") SLOT=calc;; "30 23 * * *") SLOT=all;;
             *) SLOT="${SLOT_INPUT:-oferta}";;
           esac
-          echo "SLOT=$SLOT" >> "$GITHUB_ENV"
-          if [ "$DRY_RUN" = "true" ]; then node scripts/channels/youtube-daily-short.mjs --dry-run --slot="$SLOT"; else node scripts/channels/youtube-daily-short.mjs --slot="$SLOT"; fi
+          # The 20:30 backstop completes ITS OWN day. GitHub delays schedules by hours: on 12/10 it
+          # started at 00:44 of 13/10 and published the next day's dica/oferta at night. Anchor
+          # the backstop to the Brasília day of six hours earlier (covers delays up to 02:30).
+          DAY="$(TZ=America/Sao_Paulo date +%F)"
+          if [ "$SCHEDULE" = "30 23 * * *" ]; then DAY="$(TZ=America/Sao_Paulo date -d '-6 hours' +%F)"; fi
+          echo "SHORT_DAY=$DAY" >> "$GITHUB_ENV"
+          echo "::notice title=SHORT_TARGET::slot=$SLOT day=$DAY schedule=${SCHEDULE:-dispatch}"
+          if [ "$DRY_RUN" = "true" ]; then node scripts/channels/youtube-daily-short.mjs --dry-run --slot="$SLOT" --day="$DAY"; else node scripts/channels/youtube-daily-short.mjs --slot="$SLOT" --day="$DAY"; fi
       - name: Cross-post the Short (TikTok, Instagram Reels, Facebook, Telegram)
         if: ${{ !cancelled() && inputs.dry_run != 'true' }}
         env:
@@ -94,7 +100,7 @@ jobs:
           META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-        run: node scripts/channels/short-crosspost.mjs --slot="$SLOT"
+        run: node scripts/channels/short-crosspost.mjs --slot="$SLOT" --day="${SHORT_DAY:-}"
       - name: Keep the dry-run preview for the owner to watch (3 days)
         if: ${{ inputs.dry_run == 'true' }}
         uses: actions/upload-artifact@v4
