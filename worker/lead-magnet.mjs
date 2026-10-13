@@ -251,9 +251,9 @@ export async function runLeadRetention(env, sql, { now = Date.now(), force = fal
   if (!force) { try { if ((await kv?.get?.(RETENTION_MARKER)) === day) return { ok: true, skipped: "already_ran_today" }; } catch {} }
   await ensureLeadSchema(sql);
   const erased = await sql.query(`delete from zevanory_leads where email in (select email from zevanory_leads
-      where (status='pending' and token_expires_at < now() - make_interval(days => $1))
+      where (status='pending' and token_expires_at < now() - ($1::int * interval '1 day'))
          or status='unsubscribed'
-         or (status='confirmed' and coalesce(nurture_at, confirmed_at, consent_at) < now() - make_interval(days => $2))
+         or (status='confirmed' and coalesce(nurture_at, confirmed_at, consent_at) < now() - ($2::int * interval '1 day'))
       limit $3)
     returning email, subject_ref, consent_version, status`, [PENDING_GRACE_DAYS, INACTIVE_RETENTION_DAYS, RETENTION_BATCH]);
   const EVENT = { pending: "erased_unconfirmed", unsubscribed: "erased_revoked", confirmed: "erased_inactive" };
@@ -268,7 +268,7 @@ export async function runLeadRetention(env, sql, { now = Date.now(), force = fal
   }
   if (erased.length) await sql.query("insert into zevanory_lead_events (subject_ref, event, consent_version) select * from unnest($1::text[], $2::text[], $3::text[])", [refs, events, versions]);
   const days = Number(env.LEAD_EVENT_RETENTION_DAYS) > 0 ? Math.floor(Number(env.LEAD_EVENT_RETENTION_DAYS)) : DEFAULT_EVENT_RETENTION_DAYS;
-  await sql.query("delete from zevanory_lead_events where at < now() - make_interval(days => $1)", [days]);
+  await sql.query("delete from zevanory_lead_events where at < now() - ($1::int * interval '1 day')", [days]);
   // A full batch means more rows are due: leave the marker unset so the next hour continues.
   if (erased.length < RETENTION_BATCH) { try { await kv?.put?.(RETENTION_MARKER, day, { expirationTtl: 3 * 86400 }); } catch {} }
   return { ok: true, erased: erased.length, ...counts, eventRetentionDays: days };
