@@ -469,13 +469,28 @@ export async function main() {
   };
   await kvPut(SNAPSHOT_KEY, snapshot);
   console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState, unproven: inventory.processes.filter((x) => x.eligible && !x.proven).map((x) => x.id) }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, serverCycle: cronBeat ? { at: cronBeat.finishedAt || null, tasks: cronBeat.tasks || {}, nurture: cronBeat.nurture || null } : null, kvQuota: kvQuota || null, isolatedCycle: isolatedBeat ? { at: isolatedBeat.finishedAt || null, tasks: isolatedBeat.tasks || {} } : null, funnelCycle: funnelBeat ? { at: funnelBeat.finishedAt || null, tasks: funnelBeat.tasks || {} } : null, salesSwitch: salesStatus && !salesStatus._http ? salesStatus.open === true : null, sales: t.approved || 0, visitors7: funnel?.last7Days?.cleanVisitors ?? null, visitors7Raw: funnel?.last7Days?.visitors ?? null, reach: point }));
-  // Aggregate-only commercial diagnosis (no PII): clean page/source/campaign counts since the bot filter.
-  const cl = funnel?.clean;
-  if (cl) {
-    const topPages = Object.entries(cl.pages || {}).sort((a, b) => (b[1].views || 0) - (a[1].views || 0)).slice(0, 15);
-    const products = Object.fromEntries(Object.entries(funnel?.products || {}).map(([k, v]) => [k, { checkouts: v.checkouts || 0, paid: v.paid || 0, checkoutErrors: v.checkoutErrors || 0 }]));
-    console.log("::notice title=FUNNEL_DIAG::" + JSON.stringify({ at: funnel.generatedAt, since: cl.since, pages: Object.fromEntries(topPages), sources: cl.sources, campaigns: Object.entries(cl.campaigns || {}).sort((a, b) => b[1] - a[1]).slice(0, 10), products30: products, leads7: funnel?.last7Days?.leads ?? null, checkouts7: funnel?.last7Days?.checkouts ?? null }).slice(0, 3800));
-  }
+  // Aggregate-only commercial diagnosis (no PII): clean page/source/campaign/traffic-class counts since
+  // the bot filter. Visitor-controlled labels (utm) outside our own naming are masked as "outro" because
+  // this notice is public. "visitorDays" = sum of daily uniques (the hash rotates daily), not people.
+  try {
+    const cl = funnel?.clean;
+    if (cl) {
+      const OWN_SOURCES = /^(direto|google|bing|youtube|telegram|bluesky|instagram|facebook|tiktok|pinterest|hotmart|site|interno|outro|guia|ferramentas|blog|email|whatsapp|threads|linkedin)$/;
+      const OWN_CAMPAIGNS = /^(calc|dica|oferta|conteudo|ia-para|ferramentas|guia|short|blog|nurture|material)[a-z0-9_-]*$/;
+      const sources = {};
+      for (const [k, v] of Object.entries(cl.sources || {})) { const key = OWN_SOURCES.test(k) ? k : "outro"; const b = (sources[key] = sources[key] || { views: 0, intents: 0 }); b.views += v?.views || 0; b.intents += (v?.checkout_intent || 0) + (v?.hotmart_view || 0) + (v?.subscribe_click || 0); }
+      const campaigns = {};
+      for (const [k, v] of Object.entries(cl.campaigns || {})) { const key = OWN_CAMPAIGNS.test(k) ? k : "outro"; campaigns[key] = (campaigns[key] || 0) + (Number(v) || 0); }
+      const pages = Object.fromEntries(Object.entries(cl.pages || {}).sort((a, b) => (b[1]?.views || 0) - (a[1]?.views || 0)).slice(0, 15).map(([k, v]) => [k, { views: v?.views || 0, visitorDays: v?.visitors || 0, intents: (v?.checkout_intent || 0) + (v?.hotmart_view || 0) + (v?.subscribe_click || 0) }]));
+      const products30 = Object.fromEntries(Object.entries(funnel?.products || {}).map(([k, v]) => [k, { checkouts: v?.checkouts || 0, paid: v?.paid || 0, checkoutErrors: v?.checkoutErrors || 0 }]));
+      // Public notice: networks with fewer than 3 visits are aggregated as "outros" so a small regional ISP
+      // cannot single out one visitor; the full per-ASN count stays only in the private KV summary.
+      const diag = { at: funnel.generatedAt, since: cl.since, products30, checkoutDiag: funnel?.checkoutDiag || null, leads7: funnel?.last7Days?.leads ?? null, checkouts7: funnel?.last7Days?.checkouts ?? null, classes: cl.classes || {}, asnTop: (() => { const k = Object.entries(cl.asn || {}).sort((a, b) => b[1] - a[1]); const shown = k.filter(([, n]) => n >= 3).slice(0, 12); const rest = k.reduce((t, [, n]) => t + n, 0) - shown.reduce((t, [, n]) => t + n, 0); return rest > 0 ? [...shown, ["outros", rest]] : shown; })(), sources, campaigns: Object.entries(campaigns).sort((a, b) => b[1] - a[1]).slice(0, 10), pages };
+      let text = JSON.stringify(diag);
+      if (text.length > 3800) { delete diag.pages; text = JSON.stringify(diag); }
+      console.log("::notice title=FUNNEL_DIAG::" + text);
+    }
+  } catch (e) { console.log("::warning title=FUNNEL_DIAG::" + String(e?.message || e).slice(0, 200)); }
 }
 
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
