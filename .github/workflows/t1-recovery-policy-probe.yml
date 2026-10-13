@@ -1,0 +1,104 @@
+name: T1 recovery policy probe
+
+# Plan 3.1, T1 v6. Proves on real GitHub Actions runners (not by reading the YAML) how the
+# step conditions of the central and sales release jobs behave after the post-promotion check:
+#   PASS            -> no rollback, no gate failure
+#   FAIL            -> rollback step RUNS, gate skipped
+#   NAO_COMPROVADO  -> rollback step SKIPPED, certification gate fails the run
+# The post-promotion step runs the REAL scripts/deploy/promotion_guard.py; only the network is
+# simulated (tests/t1_sim/sitecustomize.py). No credentials, no Cloudflare, no production.
+# Runs only when a pull request gets the label t1-probe-recovery; red jobs are expected for the
+# FAIL and NAO_COMPROVADO scenarios and are read back step by step.
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  central-structure:
+    if: github.event.label.name == 't1-probe-recovery'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [PASS, FAIL, NAO_COMPROVADO]
+    env:
+      C: "cccccccccccccccccccccccccccccccccccccccc"
+      B: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      CLOUDFLARE_API_TOKEN: sim-token
+      CLOUDFLARE_ACCOUNT_ID: sim-account
+      PYTHONPATH: tests/t1_sim
+      SIM_STATE: /tmp/state.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: Simulated deploy (no-op)
+        id: deployworker
+        run: |
+          case "${{ matrix.scenario }}" in
+            PASS) echo "{\"readback\":\"$C\",\"cf\":\"$C\"}" > /tmp/state.json ;;
+            FAIL) echo "{\"readback\":\"$B\",\"cf\":\"$C\"}" > /tmp/state.json ;;
+            NAO_COMPROVADO) echo "{\"readback\":\"$C\",\"cf\":\"unreachable\"}" > /tmp/state.json ;;
+          esac
+      - name: Post-promotion effective version (T1)
+        id: postpromo
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/promotion_guard.py --verify-promoted --unproven-exit 0 --service zevanory \
+            --candidate "$C" --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
+            --cloudflare-script zevanory
+      - name: Automatic rollback after failed post-deploy smoke
+        if: failure() && steps.deployworker.outcome == 'success'
+        run: echo "PROBE_ROLLBACK_RAN scenario=${{ matrix.scenario }}"
+      - name: Certification gate (T1, after rollback decision)
+        if: always() && steps.postpromo.outputs.state == 'NAO_COMPROVADO'
+        run: |
+          echo "::error title=CERTIFICATION_NAO_COMPROVADO::probe scenario=${{ matrix.scenario }}"
+          exit 1
+
+  sales-structure:
+    if: github.event.label.name == 't1-probe-recovery'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [PASS, FAIL, NAO_COMPROVADO]
+    env:
+      C: "cccccccccccccccccccccccccccccccccccccccc"
+      B: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      CLOUDFLARE_API_TOKEN: sim-token
+      CLOUDFLARE_ACCOUNT_ID: sim-account
+      PYTHONPATH: tests/t1_sim
+      SIM_STATE: /tmp/state.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: Simulated promote (no-op)
+        id: promote
+        run: |
+          case "${{ matrix.scenario }}" in
+            PASS) echo "{\"readback\":\"$C\",\"cf\":\"$C\"}" > /tmp/state.json ;;
+            FAIL) echo "{\"readback\":\"$B\",\"cf\":\"$C\"}" > /tmp/state.json ;;
+            NAO_COMPROVADO) echo "{\"readback\":\"$C\",\"cf\":\"unreachable\"}" > /tmp/state.json ;;
+          esac
+          echo "promoted=true" >> "$GITHUB_OUTPUT"
+      - name: Verify canonical production readback
+        id: readback
+        if: steps.promote.outputs.promoted == 'true'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/promotion_guard.py --verify-promoted --unproven-exit 0 --service zevanory-sales-public --candidate "$C" --readback-url https://vendas.zevanory.api.br/health --readback-path release --cloudflare-script zevanory-sales-public
+      - name: Roll back canonical deployment on failed readback
+        if: steps.promote.outputs.promoted == 'true' && steps.readback.outcome != 'success'
+        run: |
+          echo "PROBE_ROLLBACK_RAN scenario=${{ matrix.scenario }}"
+          exit 1
+      - name: Certification gate (T1, after rollback decision)
+        if: always() && steps.readback.outcome == 'success' && steps.readback.outputs.state != 'PASS'
+        run: |
+          echo "::error title=CERTIFICATION_NAO_COMPROVADO::probe scenario=${{ matrix.scenario }}"
+          exit 1
+      - name: Certify public release
+        if: steps.readback.outcome == 'success' && steps.readback.outputs.state == 'PASS'
+        run: echo "PROBE_CERTIFIED scenario=${{ matrix.scenario }}"

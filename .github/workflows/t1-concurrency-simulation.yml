@@ -1,0 +1,54 @@
+name: T1 concurrency simulation (default queue)
+
+# Plan 3.1, T1 — concurrency simulation (no deploy, no credentials). Three contenders compete for
+# one concurrency group inside a single run; the verify job reads the job timestamps and asserts
+# that no two contenders overlapped and how many queued contenders were discarded.
+# Counter-proof of the DEFAULT queue (one queued run is discarded). Dispatch-only, so the
+# intentional cancellation never appears as a pull-request check. Recorded evidence:
+# run 38433366163 (13/10/2026): 2 ran without overlap, 1 discarded.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  contender:
+    strategy:
+      fail-fast: false
+      matrix:
+        id: [a, b, c]
+    concurrency:
+      group: t1-sim-t1-concurrency-simulation-${{ github.run_id }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "CONTENDER=${{ matrix.id }} start=$(date -u +%FT%TZ)"
+          sleep 25
+          echo "CONTENDER=${{ matrix.id }} end=$(date -u +%FT%TZ)"
+
+  verify:
+    needs: contender
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: No overlap; expected discards = 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --jq '[.jobs[]|select(.name|startswith("contender"))|{n:.name,c:.conclusion,s:.started_at,e:.completed_at}]' > jobs.json
+          cat jobs.json
+          python3 - <<'PY'
+          import json
+          jobs=json.load(open("jobs.json"))
+          ran=sorted([j for j in jobs if j["c"]=="success"], key=lambda j:j["s"])
+          discarded=[j for j in jobs if j["c"]=="cancelled"]
+          for a,b in zip(ran,ran[1:]):
+              assert a["e"]<=b["s"], f"overlap: {a} {b}"
+          print(f"SERIALIZED=PASS ran={len(ran)} discarded={len(discarded)}")
+          assert len(discarded)==1, f"expected 1 discarded, got {len(discarded)}"
+          print("QUEUE_BEHAVIOUR=AS_EXPECTED")
+          PY

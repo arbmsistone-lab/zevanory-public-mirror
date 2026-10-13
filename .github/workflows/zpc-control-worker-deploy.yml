@@ -17,6 +17,11 @@ on:
         required: false
         default: ''
         type: string
+      skip_if_live:
+        description: Do nothing when the source is already live (set by the scheduled reconciler request)
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
       - gh-pages
@@ -29,8 +34,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: zpc-control-worker-deploy
+  group: deploy-zevanory-product-control-portable
   cancel-in-progress: false
+  queue: max
 
 jobs:
   deploy:
@@ -60,6 +66,9 @@ jobs:
           ACTOR: ${{ github.actor }}
           REPO_OWNER: ${{ github.repository_owner }}
           EVENT: ${{ github.event_name }}
+          SKIP_IF_LIVE: ${{ inputs.skip_if_live == true && 'true' || 'false' }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
         run: |
           set -euo pipefail
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -90,37 +99,48 @@ jobs:
             fi
             rollback_requested=true
           fi
-          # Read the live panel SHA with retries and two independent sources.
-          live=""
-          for i in 1 2 3; do
-            for path in version.json zpc-build.json; do
-              v="$(curl -fsS --max-time 20 "https://controle.zevanory.api.br/$path?t=$(date +%s%N)" 2>/dev/null | jq -r '.sha // empty' 2>/dev/null || true)"
-              if [[ "$v" =~ ^[0-9a-f]{40}$ ]]; then live="$v"; break 2; fi
-            done
-            sleep 5
-          done
+          # T1 (plan 3.1): the forward path uses the SAME pre-promotion guard as every other
+          # publisher (scripts/deploy/promotion_guard.py): the effective version (Cloudflare tag of the
+          # active version and version.json) must be known and agree; the source must be the live SHA
+          # or a descendant of it. Unknown production, diverged history => refuse; older => skip.
+          # The only backwards path is the explicit, owner-dispatched rollback below (documented
+          # exception, serialized in this same queue, audited).
           main_tip="$(git -C zpc rev-parse origin/main)"
-          echo "::notice title=LIVE_VS_SOURCE::live=${live:-unreadable} source=${SOURCE_SHA:0:12} main=${main_tip:0:12}"
+          live=""
           backwards=false
-          if [ -z "$live" ]; then
-            # Unreadable production is NOT permission to downgrade: only the current main tip may be
-            # published (controlled recovery); anything else needs an authorised rollback.
-            if [ "$SOURCE_SHA" != "$main_tip" ]; then backwards=unknown; fi
-          elif [ "$live" != "$SOURCE_SHA" ]; then
-            if ! git -C zpc cat-file -e "$live^{commit}" 2>/dev/null; then
-              git -C zpc fetch --quiet origin "$live" 2>/dev/null || true
+          if [ "$rollback_requested" != "true" ]; then
+            python3 scripts/deploy/promotion_guard.py --service zevanory-product-control-portable \
+              --candidate "$SOURCE_SHA" --repo zpc \
+              --readback-url https://controle.zevanory.api.br/version.json --readback-path sha \
+              --cloudflare-script zevanory-product-control-portable > /tmp/guard.txt || { cat /tmp/guard.txt; exit 1; }
+            cat /tmp/guard.txt
+            decision="$(sed -n 's/^PROMOTION_GUARD=//p' /tmp/guard.txt | jq -r .decision)"
+            live="$(sed -n 's/^PROMOTION_GUARD=//p' /tmp/guard.txt | jq -r '.live_cloudflare // .live_readback // empty')"
+            reason_g="$(sed -n 's/^PROMOTION_GUARD=//p' /tmp/guard.txt | jq -r .reason)"
+            if [ "$decision" = "skip-superseded" ]; then
+              echo "::notice title=SUPERSEDED::source ${SOURCE_SHA:0:12} is older than live ${live:0:12}; nothing to publish"
+              echo "PROMOTE=false" >> "$GITHUB_ENV"
+              exit 0
             fi
-            if git -C zpc cat-file -e "$live^{commit}" 2>/dev/null; then
-              if git -C zpc merge-base --is-ancestor "$SOURCE_SHA" "$live"; then backwards=true
-              elif ! git -C zpc merge-base --is-ancestor "$live" "$SOURCE_SHA"; then backwards=unknown; fi
-            else
-              backwards=unknown
+            if [ "$SKIP_IF_LIVE" = "true" ] && [ "$reason_g" = "same_as_live_redeploy" ]; then
+              echo "::notice title=ALREADY_LIVE::source ${SOURCE_SHA:0:12} is already live; reconciler request satisfied"
+              echo "PROMOTE=false" >> "$GITHUB_ENV"
+              exit 0
             fi
+            # Post-promotion certification needs the Cloudflare tag of the active version; the deploy
+            # script tags it only since edge #210. A forward promotion of a source that cannot be
+            # certified by both sources is refused BEFORE any publish (this also closes the window
+            # between mirror #799 and edge #210). Checked after skip decisions, so a stale queued run
+            # is still reported as superseded. The owner rollback path below is not affected.
+            if ! grep -q "'--tag='" zpc/scripts/cloudflare-authoritative-repair.mjs; then
+              echo "::error title=SOURCE_WITHOUT_VERSION_TAG::${SOURCE_SHA:0:12} deploy script does not tag the Cloudflare version (needs edge #210); refusing an uncertifiable forward promotion"
+              exit 1
+            fi
+          else
+            live="$(curl -fsS --max-time 20 "https://controle.zevanory.api.br/version.json?t=$(date +%s%N)" 2>/dev/null | jq -r '.sha // empty' || true)"
+            backwards=deliberate
           fi
-          if [ "$backwards" != "false" ] && [ "$rollback_requested" != "true" ]; then
-            echo "::error title=SOURCE_NOT_FORWARD_OF_PRODUCTION::source ${SOURCE_SHA:0:12} is not a descendant of live ${live:-unreadable} (backwards=$backwards); refusing. Use workflow_dispatch with allow_backwards=true and rollback_reason."
-            exit 1
-          fi
+          echo "PROMOTE=true" >> "$GITHUB_ENV"
           if [ "$rollback_requested" = "true" ]; then
             mkdir -p /tmp/rollback-audit
             jq -n --arg at "$(date -u +%FT%TZ)" --arg actor "$ACTOR" --arg reason "$reason" --arg live "$live" \
@@ -143,10 +163,12 @@ jobs:
           if-no-files-found: error
 
       - uses: actions/setup-node@v4
+        if: env.PROMOTE == 'true'
         with:
           node-version: '24'
 
       - name: Build exact control-plane source
+        if: env.PROMOTE == 'true'
         working-directory: zpc
         env:
           ZPC_BASE_PATH: /
@@ -156,6 +178,7 @@ jobs:
           npm run build
 
       - name: Write build lineage (trust is served live by the worker)
+        if: env.PROMOTE == 'true'
         working-directory: zpc
         shell: bash
         run: |
@@ -169,6 +192,7 @@ jobs:
             "$SOURCE_SHA" "${{ github.run_id }}" > dist/zpc-build.json
 
       - name: Promote exact main SHA and verify production
+        if: env.PROMOTE == 'true'
         working-directory: zpc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
@@ -180,9 +204,17 @@ jobs:
           EXPECTED_ZPC_SHA="$SOURCE_SHA" node scripts/cloudflare-authoritative-repair.mjs
 
       - name: Verify exact trust and artifact readback
+        if: env.PROMOTE == 'true'
         shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
         run: |
           set -euo pipefail
+          # T1: effective version = source, by BOTH the Cloudflare tag and version.json.
+          python3 scripts/deploy/promotion_guard.py --verify-promoted --service zevanory-product-control-portable \
+            --candidate "$SOURCE_SHA" --readback-url https://controle.zevanory.api.br/version.json --readback-path sha \
+            --cloudflare-script zevanory-product-control-portable
           # Wait for the promoted version to propagate (13/10: run 38414945576 read the previous SHA
           # ~15 s after a successful promotion; seconds later the edge served the new one). Same
           # exact-SHA requirement, just polled for up to ~3 minutes before failing.
@@ -229,6 +261,12 @@ jobs:
           fi
           if ! jq -e '.artifacts | length == 5 and all(.integrity == true)' /tmp/artifacts.json >/dev/null; then
             echo "::error title=READBACK_ARTIFACTS::$(jq -c '{count:(.artifacts|length),integrity:[.artifacts[]?|{id,integrity}]}' /tmp/artifacts.json 2>/dev/null || echo invalid_json)"
+            exit 1
+          fi
+          # Authenticated T2 route still guarded (smoke formerly run by the scheduled reconciler).
+          code="$(curl -sS -o /tmp/t2route.json -w '%{http_code}' --max-time 25 -X POST https://controle.zevanory.api.br/api/commercial/creative/factory/tick -H 'content-type: application/json' -d '{}')"
+          if [ "$code" != "401" ] || ! jq -e '.error == "commercial_creative_factory_auth_required"' /tmp/t2route.json >/dev/null; then
+            echo "::error title=READBACK_T2_ROUTE::http=$code"
             exit 1
           fi
           cat /tmp/version.json

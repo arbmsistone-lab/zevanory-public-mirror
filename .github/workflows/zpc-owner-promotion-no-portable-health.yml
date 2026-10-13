@@ -1,154 +1,21 @@
-name: ZPC owner promotion no portable health
+name: RETIRED ZPC owner promotion (no portable health)
+
+# T1 (plan 3.1): retired. This workflow used to publish zevanory-product-control-portable with
+# its own config and no promotion guard, in parallel with the canonical publisher. The panel is
+# published only by zpc-control-worker-deploy.yml (monotonic guard and authorised rollback,
+# #796/#797) and reconciled by t2-exact-control-worker-promotion.yml in the same queue.
+# Kept as a stub, without credentials or publish commands, so the history stays traceable.
 
 on:
-  push:
-    branches: [gh-pages]
-    paths:
-      - ".github/workflows/zpc-owner-promotion-no-portable-health.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  deploy:
+  retired:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
-      ZPC_SHA: 38b1d29cdd2a7a2a01d8bd5fcebac081e4827cf3
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Verify Cloudflare authority
-        run: |
-          set -euo pipefail
-          test -n "${CLOUDFLARE_API_TOKEN:-}"
-          echo "CLOUDFLARE_TOKEN_PRESENT=PASS"
-
-      - name: Build exact Product Control release
-        run: |
-          set -euo pipefail
-          git clone --filter=blob:none https://github.com/arbmsistone-lab/zevanory-product-control-edge.git /tmp/zpc
-          cd /tmp/zpc
-          git checkout --detach "$ZPC_SHA"
-          test "$(git rev-parse HEAD)" = "$ZPC_SHA"
-          npm install --no-audit --no-fund
-          npm run build
-          cat > cf-worker/wrangler.owner-promotion.toml <<'EOF'
-          name = "zevanory-product-control-portable"
-          main = "worker.ts"
-          compatibility_date = "2026-09-19"
-          routes = [
-            { pattern = "controle.zevanory.api.br", custom_domain = true }
-          ]
-          [assets]
-          directory = "../dist"
-          binding = "ASSETS"
-          not_found_handling = "single-page-application"
-          run_worker_first = true
-          [vars]
-          SUPABASE_URL = "https://pvkpkqwdnnpkgvllwqbc.supabase.co"
-          SUPABASE_PUBLISHABLE_KEY = "sb_publishable_IAPNVvyZRbgLjiaEdArk_g_6qd3Dp_-"
-          RENDER_BACKEND_URL = "https://zevanory-product-control-edge.onrender.com"
-          BACKEND_INSTANCE_ID = "cloudflare"
-          EOF
-
-      - name: Capture live global trust
-        continue-on-error: true
-        working-directory: /tmp/zpc
-        shell: bash
-        run: |
-          set -euo pipefail
-          read_core() {
-            local path="$1" out="$2"
-            if curl --fail --silent --show-error --retry 2 --retry-delay 1 --max-time 20 \
-              "https://controle.zevanory.api.br$path" -o "$out"; then
-              echo "CORE_READBACK_SOURCE=canonical path=$path"
-              return 0
-            fi
-            echo "CORE_READBACK_SOURCE=internal-origin-fallback path=$path"
-            curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 25 \
-              "https://zevanory.api.br$path" -o "$out"
-          }
-          read_core /api/core/v1/snapshot /tmp/core-snapshot.json
-          read_core /api/core/v1/decision /tmp/core-decision.json
-
-          jq -e 'type == "object"' /tmp/core-snapshot.json >/dev/null
-          jq -e 'type == "object"' /tmp/core-decision.json >/dev/null
-
-          jq -n \
-            --slurpfile s /tmp/core-snapshot.json \
-            --slurpfile d /tmp/core-decision.json \
-            '($s[0]) as $s | ($d[0]) as $d |
-             ($s.continuity.min_quorum // 3) as $required |
-             (($s.continuity.quorum_ok == true) and
-              (($s.zees16.counts.proven // 0) == 16) and
-              (($s.zees16.counts.partial // 0) == 0) and
-              (($s.zees16.counts.blocked // 0) == 0) and
-              (($s.zea10.counts.proven // 0) == 10) and
-              (($s.zea10.counts.partial // 0) == 0) and
-              (($s.zea10.counts.blocked // 0) == 0) and
-              (($s.zea10.counts.unknown // 0) == 0) and
-              ($d.checks.evidence_integrity_ok == true) and
-              ($d.checks.zees16_complete == true) and
-              ($d.checks.zea10_complete == true) and
-              ($d.decision == "ALLOW") and
-              ($d.eligible_for_critical_promotion == true) and
-              (($d.blockers // []) | length == 0)) as $green |
-             {
-               state: (if $green then "GREEN" else "BLOCKED" end),
-               sha: ($s.release_sha // $d.release_sha // null),
-               evidenceRoot: ($s.zees16.decision_hash // $d.zees16_decision_hash // null),
-               policyVersion: ($s.zea10.evaluator // $s.zea10.framework // "ZEA-10"),
-               quorum: {
-                 passed: (if $s.continuity.quorum_ok == true then $required else 0 end),
-                 total: $required,
-                 required: $required,
-                 conflicts: 0,
-                 independentKeys: 0
-               },
-               zea10: {
-                 proven: ($s.zea10.counts.proven // 0),
-                 partial: ($s.zea10.counts.partial // 0),
-                 blocked: (($s.zea10.counts.blocked // 0) + ($s.zea10.counts.unknown // 0))
-               },
-               engines: [
-                 {id:"zees16-core", state:(if (($s.zees16.counts.proven // 0) == 16 and ($s.zees16.counts.partial // 0) == 0 and ($s.zees16.counts.blocked // 0) == 0) then "GREEN" else "BLOCKED" end)},
-                 {id:"zea10-evaluator", state:(if (($s.zea10.counts.proven // 0) == 10 and ($s.zea10.counts.partial // 0) == 0 and ($s.zea10.counts.blocked // 0) == 0 and ($s.zea10.counts.unknown // 0) == 0) then "GREEN" else "BLOCKED" end)},
-                 {id:"control-core", state:(if ($d.decision == "ALLOW" and $d.eligible_for_critical_promotion == true and (($d.blockers // []) | length == 0)) then "GREEN" else "BLOCKED" end)}
-               ],
-               checkedAt: ($s.generated_at // $d.generated_at // null),
-               snapshotAt: (now | todateiso8601),
-               source: "canonical-control-core-readback"
-             }' > dist/global-trust.json
-          jq -e '.state' dist/global-trust.json >/dev/null && echo GLOBAL_TRUST_STATE=$(jq -r .state dist/global-trust.json)
-
-      - name: Deploy exact Worker
-        run: |
-          set -euo pipefail
-          cd /tmp/zpc
-          npx --yes wrangler@4.135.0 deploy --strict --keep-vars --config cf-worker/wrangler.owner-promotion.toml --var WORKER_COMMIT:"$ZPC_SHA" --message="owner-promotion-$ZPC_SHA"
-
-      - name: Verify version and safe smoke
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 24); do
-            if curl -fsS -H 'Cache-Control: no-cache' https://controle.zevanory.api.br/version.json -o /tmp/version.json; then
-              if jq -e --arg sha "$ZPC_SHA" '.sha == $sha and .runtime == "cloudflare-worker"' /tmp/version.json >/dev/null; then
-                break
-              fi
-            fi
-            sleep 5
-          done
-          jq -e --arg sha "$ZPC_SHA" '.sha == $sha and .runtime == "cloudflare-worker"' /tmp/version.json >/dev/null
-          curl -fsS https://controle.zevanory.api.br/runtime-proof -o /tmp/runtime-proof.json
-          jq -e --arg sha "$ZPC_SHA" '.ok == true and .workerCommit == $sha' /tmp/runtime-proof.json >/dev/null
-          curl -fsS https://controle.zevanory.api.br/api/_healthcheck -o /tmp/health.json
-          jq -e '.ok == true' /tmp/health.json >/dev/null
-          echo "CLOUDFLARE_OWNER_PROMOTION=PASS"
-          echo "WORKER_COMMIT=$ZPC_SHA"
+      - run: |
+          echo "::error title=RETIRED_PUBLISHER::use zpc-control-worker-deploy.yml"
+          exit 1

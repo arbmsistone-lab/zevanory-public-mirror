@@ -102,8 +102,41 @@ on:
       - "scripts/financial_e2e_stripe.py"
       - "scripts/financial_e2e_closure.py"
       - ".github/workflows/zpc-cloudflare-route-discovery.yml"
+concurrency:
+  group: deploy-zevanory
+  cancel-in-progress: false
+  queue: max
+
 jobs:
+  guard:
+    # T1 (plan 3.1): runs inside the serialized deploy-zevanory group, right before promotion.
+    # An older queued run (candidate is an ancestor of what is live) does nothing; diverged
+    # history, a mismatch between the Cloudflare effective version and /api/release, or an
+    # unreadable production with a candidate that is not the branch tip refuse the promotion.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      decision: ${{ steps.guard.outputs.decision }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Pre-promotion guard
+        id: guard
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/promotion_guard.py --service zevanory \
+            --candidate "$GITHUB_SHA" \
+            --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
+            --cloudflare-script zevanory
   deploy:
+    needs: guard
+    if: needs.guard.outputs.decision == 'promote'
     permissions:
       contents: read
       actions: write
@@ -375,6 +408,18 @@ jobs:
           npx playwright install --with-deps chromium >/dev/null 2>&1
           node scripts/deploy/mercadopago-csp-smoke.mjs > /tmp/mpsmoke.log 2>&1 || { tail -5 /tmp/mpsmoke.log | tr '\n' ' ' | cut -c1-900 | sed 's/^/::error title=VERIFY_MP_SMOKE::/'; echo; exit 1; }
           cat /tmp/mpsmoke.log
+      - name: Post-promotion effective version (T1)
+        id: postpromo
+        if: steps.auth.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          # FAIL (positive evidence) fails this step -> automatic rollback below.
+          # NAO_COMPROVADO (observer unreachable) does NOT roll back: --unproven-exit 0 and the
+          # certification gate after the rollback step fails the run instead.
+          python3 scripts/deploy/promotion_guard.py --verify-promoted --unproven-exit 0 --service zevanory \
+            --candidate "$TARGET_RUNTIME_SHA" \
+            --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
+            --cloudflare-script zevanory
       - name: Automatic rollback after failed post-deploy smoke
         if: failure() && steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'
         env:
@@ -398,6 +443,13 @@ jobs:
             sleep 5
           done
           echo "AUTO_ROLLBACK_HEALTH=FAIL"
+          exit 1
+      - name: Certification gate (T1, after rollback decision)
+        if: always() && steps.postpromo.outputs.state == 'NAO_COMPROVADO'
+        env:
+          POST_REASON: ${{ steps.postpromo.outputs.reason }}
+        run: |
+          echo "::error title=CERTIFICATION_NAO_COMPROVADO::release $TARGET_RUNTIME_SHA kept live (smokes passed, no contrary evidence) but NOT certified: $POST_REASON. No rollback without independent evidence; re-check with t1-publisher-guard (workflow_dispatch: recheck_service=zevanory)."
           exit 1
       - name: Dispatch exact-production ZEES-16 provider evidence
         if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'

@@ -1,0 +1,42 @@
+name: ZPC Canonical Worker Promotion
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'cf-worker/**'
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/cloudflare-authoritative-repair.mjs'
+      - '.github/workflows/zpc-canonical-worker-promotion.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zpc-canonical-worker-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build canonical assets
+        run: npm run build
+      - name: Promote exact main SHA and verify production
+        env:
+          EXPECTED_ZPC_SHA: ${{ github.sha }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/cloudflare-authoritative-repair.mjs
