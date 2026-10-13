@@ -3,6 +3,8 @@ name: Auto-rerun transient failures
 # Autorremediação: deploys, reconcilers and engines that fail on the first attempt are often
 # hit by transient provider errors (Cloudflare API 504, deploy-window health checks). This
 # reruns the failed jobs ONCE (attempt 1 only); a second failure stays FAIL in the matrix.
+# Production publisher (central): only a failure BEFORE publishing is replayed, as a FULL rerun
+# (fresh guard). A failure after publishing or a rollback is never replayed automatically (T1).
 on:
   workflow_run:
     workflows:
@@ -26,15 +28,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Wait out the transient window, then rerun failed jobs once
+      - name: Wait out the transient window, then rerun once (publishers - only before any publish)
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           NAME: ${{ github.event.workflow_run.name }}
         run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
+          auth=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json")
+          if [ "$NAME" = "ZEVANORY central production deploy" ]; then
+            # T1 (13/10, run 38461830758): a post-publish safety failure (smoke failed, rollback ran)
+            # must NOT be replayed automatically, and a replay must not reuse the attempt-1 guard
+            # decision. Rerun only when the failure happened BEFORE the Worker was published, and
+            # then rerun ALL jobs so the pre-promotion guard re-reads production.
+            curl -fsS "${auth[@]}" "$api/jobs?per_page=50" -o /tmp/jobs.json
+            published="$(jq -r '[.jobs[].steps[]? | select(.name=="Deploy repaired production worker" or (.name|startswith("Automatic rollback"))) | select(.conclusion=="success")] | length' /tmp/jobs.json)"
+            if [ "$published" != "0" ]; then
+              echo "::warning title=AUTO_RERUN_REFUSED::${NAME} run ${RUN_ID} failed after publishing (or rolled back): owner decision required, no automatic replay"
+              exit 0
+            fi
+            sleep 90
+            curl -fsS -X POST "${auth[@]}" "$api/rerun"
+            echo "::notice title=AUTO_RERUN::${NAME} run ${RUN_ID} failed before publishing: full rerun once (guard re-evaluated)"
+            exit 0
+          fi
           sleep 90
-          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/rerun-failed-jobs"
+          curl -fsS -X POST "${auth[@]}" "$api/rerun-failed-jobs"
           echo "::notice title=AUTO_RERUN::${NAME} run ${RUN_ID} rerun once"
 
   # The reconciler reads the apex gate; when a flaky apex run recovers on its rerun, the
