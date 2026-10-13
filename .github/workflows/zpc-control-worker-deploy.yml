@@ -11,8 +11,9 @@ on:
     branches:
       - gh-pages
     paths:
+      # Only a pin change deploys on push. Editing this workflow used to redeploy whatever the pin
+      # held (13/10: #794 republished panel #185, 21 commits behind main). Use workflow_dispatch.
       - 'zpc-control-worker-source.txt'
-      - '.github/workflows/zpc-control-worker-deploy.yml'
 
 permissions:
   contents: read
@@ -52,6 +53,16 @@ jobs:
           test "$(git -C zpc rev-parse HEAD)" = "$SOURCE_SHA"
           git -C zpc fetch --quiet origin main
           git -C zpc merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          # Fail closed BEFORE promotion: a source without the live trust route would serve the SPA
+          # (or a stale file) at /global-trust.json and could only be caught after it is in production.
+          if ! grep -q 'globalTrustResponse(' zpc/cf-worker/worker.ts \
+             || ! grep -q "'x-zpc-trust-source': 'live-control-core'" zpc/cf-worker/global-trust.ts; then
+            echo "::error title=SOURCE_WITHOUT_LIVE_TRUST::$SOURCE_SHA predates the live /global-trust.json (edge #207); refusing to deploy it"
+            exit 1
+          fi
+          # Never move production backwards silently: report how far the source is behind main.
+          behind="$(git -C zpc rev-list --count "$SOURCE_SHA"..origin/main)"
+          echo "::notice title=SOURCE_VS_MAIN::source=${SOURCE_SHA:0:12} behind_main_by=$behind"
 
       - uses: actions/setup-node@v4
         with:
@@ -94,17 +105,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! curl --fail --silent --show-error --retry 5 --retry-delay 3 --max-time 25 \
-            https://controle.zevanory.api.br/version.json -o /tmp/version.json; then
-            echo "::error title=READBACK_VERSION::HTTP fetch failed"
-            exit 1
-          fi
-          if ! jq -e . /tmp/version.json >/dev/null 2>&1; then
-            echo "::error title=READBACK_VERSION::invalid_json content_prefix=$(head -c 80 /tmp/version.json | tr '\\n' ' ' | tr -cd '[:print:]')"
-            exit 1
-          fi
-          if ! jq -e --arg expected "$SOURCE_SHA" '.sha == $expected' /tmp/version.json >/dev/null; then
-            echo "::error title=READBACK_VERSION::$(jq -c '{sha,repository}' /tmp/version.json)"
+          # Wait for the promoted version to propagate (13/10: run 38414945576 read the previous SHA
+          # ~15 s after a successful promotion; seconds later the edge served the new one). Same
+          # exact-SHA requirement, just polled for up to ~3 minutes before failing.
+          ok=false
+          for i in $(seq 1 36); do
+            if curl --fail --silent --show-error --max-time 25 "https://controle.zevanory.api.br/version.json?t=$(date +%s%N)" -o /tmp/version.json \
+               && jq -e --arg expected "$SOURCE_SHA" '.sha == $expected' /tmp/version.json >/dev/null 2>&1; then ok=true; break; fi
+            sleep 5
+          done
+          if [ "$ok" != "true" ]; then
+            echo "::error title=READBACK_VERSION::$(jq -c '{sha,repository}' /tmp/version.json 2>/dev/null || head -c 80 /tmp/version.json | tr -cd '[:print:]')"
             exit 1
           fi
           if ! curl --fail --silent --show-error --retry 5 --retry-delay 3 --max-time 25 \
