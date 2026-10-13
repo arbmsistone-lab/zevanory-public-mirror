@@ -33,7 +33,7 @@ function fakeAi({ garble = false, wrongPrice = false } = {}) {
 
 test("passes only when audio is understood, the answer is right and our voice is intelligible", async () => {
   const ok = await runVoiceEval({ wait: async () => {}, ai: fakeAi(), synth: async (t) => audio(t), fallbackSynth: async (t) => audio(t) });
-  assert.equal(ok.samples.length, SAMPLE_TAGS.length);
+  assert.equal(ok.samples.length, SAMPLE_TAGS.length + 2, "core + 2 rotating");
   for (const s of ok.samples) { assert.ok(s.werIn <= 0.25, JSON.stringify(s)); assert.ok(s.werOut <= 0.25); }
   const garbled = await runVoiceEval({ wait: async () => {}, ai: fakeAi({ garble: true }), synth: async (t) => audio(t), fallbackSynth: async (t) => audio(t) });
   assert.equal(garbled.ok, false); assert.equal(garbled.fallback.ok, false);
@@ -54,4 +54,12 @@ test("a free-tier rate limit is retried once after a pause, not reported as a vo
   const r = await runVoiceEval({ wait: async () => {}, ai: fakeAi(), synth: flaky, fallbackSynth: async (t) => audio(t) });
   assert.equal(r.samples[0].error, undefined, JSON.stringify(r.samples[0]));
   assert.ok(r.samples[0].steps.questionAudio.bytes > 2000, "audio produced after the retry");
+});
+
+import { voiceSamples } from "../worker/voice-eval.mjs";
+test("voice samples: fixed core plus two rotating questions; the whole battery is covered over the weeks", () => {
+  const week = 7 * 864e5;
+  const seen = new Set();
+  for (let w = 0; w < 12; w++) { const s = voiceSamples(w * week); assert.equal(s.length, 5); assert.deepEqual(s.slice(0, 3).map((x) => x.tag), ["preço", "reembolso", "recomendação"]); s.forEach((x) => seen.add(x.q)); }
+  assert.ok(seen.size >= 15, "battery covered: " + seen.size);
 });
