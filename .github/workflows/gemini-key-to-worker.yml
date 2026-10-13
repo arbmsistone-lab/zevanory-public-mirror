@@ -6,6 +6,13 @@ name: Gemini key to the production Worker (owner-authorized copy)
 # this one secret is written: no other variable, flag or binding changes. Manual dispatch only.
 on:
   workflow_dispatch:
+    inputs:
+      action:
+        description: "copy = write the key; remove = undo the copy (restores the previous state)"
+        required: true
+        default: copy
+        type: choice
+        options: [copy, remove]
 
 permissions:
   contents: read
@@ -26,7 +33,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Undo the copy (removes only GEMINI_API_KEY written by this workflow)
+        if: inputs.action == 'remove'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo y | npx --yes wrangler@4.143.0 secret delete GEMINI_API_KEY --name zevanory > /tmp/out.txt 2>&1 || { tail -3 /tmp/out.txt; echo "::error title=GEMINI_COPY::secret_delete_failed"; exit 1; }
+          echo "::notice title=GEMINI_COPY::GEMINI_API_KEY removed from Worker zevanory (previous state restored)"
       - name: Copy the key (value never printed)
+        if: inputs.action == 'copy'
         shell: bash
         run: |
           set -euo pipefail
