@@ -52,7 +52,8 @@ jobs:
             before="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/zees16-control-reconciler.yml/runs?event=workflow_dispatch&per_page=30" --jq '[.workflow_runs[].id] | max // 0')"
             gh workflow run zees16-control-reconciler.yml --ref gh-pages
             next=""
-            for i in $(seq 1 24); do
+            # Run creation can lag several minutes when Actions is busy: wait up to 5 minutes.
+            for i in $(seq 1 60); do
               info="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/zees16-control-reconciler.yml/runs?event=workflow_dispatch&per_page=30")"
               # The dispatch runs on the CURRENT gh-pages head, which may have advanced past
               # TARGET_SHA (later merges that do not deploy). Observe the run we just created and

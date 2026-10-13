@@ -346,8 +346,15 @@ const wrapped = {
     }
     // Synthetic signed inbound webhooks made the bot send real WhatsApp messages; retired for good
     // (WhatsApp Business account disabled by Meta on 2026-10-10, owner order: no message without opt-in).
-    if (url.pathname === "/api/admin/whatsapp-onboard/delivery-proof") return Response.json({ ok: false, error: "synthetic_whatsapp_proof_retired" }, { status: 410, headers: { "cache-control": "no-store" } });
-    if (false) return handleWhatsappOnboarding(request, normalized, { proofSql: () => whatsappProofDatabase(normalized.DATABASE_URL) });
+    if (url.pathname === "/api/admin/whatsapp-onboard/delivery-proof") {
+      // Only the read-only voice/cache audits stay (no message, no Meta write). Every operation
+      // that built a signed fake inbound or touched the Meta account remains retired.
+      let op = "";
+      try { op = String((await request.clone().json())?.operation || ""); } catch {}
+      const READ_ONLY_AUDITS = new Set(["audit-cache", "audit-encode", "audit-transcribe", "audit-encoder-key", "audit-source", "audit-observe"]);
+      if (!READ_ONLY_AUDITS.has(op)) return Response.json({ ok: false, error: "synthetic_whatsapp_proof_retired" }, { status: 410, headers: { "cache-control": "no-store" } });
+      return handleWhatsappOnboarding(request, normalized, { proofSql: () => whatsappProofDatabase(normalized.DATABASE_URL) });
+    }
     if (url.pathname.startsWith("/admin/whatsapp-onboard") || url.pathname === "/api/admin/whatsapp-onboard/status") {
       if (!isAdminAuthorized(request, normalized)) return handleAdminRequest(request, normalized, ctx, wrapped);
       const response = await handleWhatsappOnboarding(request, normalized);
