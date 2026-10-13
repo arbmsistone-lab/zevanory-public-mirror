@@ -56,7 +56,7 @@ jobs:
           # The tail can take longer than 8 s to attach; requests sent before that are invisible
           # and the CPU correlation fails. Wait for the connection message (max 45 s), then 5 s.
           for i in $(seq 1 45); do grep -qi "connected" /tmp/voice-audit/tail.err 2>/dev/null && break; sleep 1; done
-          grep -qi "connected" /tmp/voice-audit/tail.err 2>/dev/null && echo "TAIL_ATTACHED=1" || echo "::warning title=TAIL_ATTACH::no connection message after 45 s"
+          grep -qi "connected" /tmp/voice-audit/tail.err 2>/dev/null && echo "TAIL_ATTACHED=1" || echo "TAIL_ATTACH=waited_45s"
           sleep 5
           node scripts/whatsapp_cache_audit.mjs
       - uses: actions/upload-artifact@v4
