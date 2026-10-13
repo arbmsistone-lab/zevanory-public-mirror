@@ -36,7 +36,9 @@ test("2. OFFER-0001, ARBM text, foreign prices and foreign links are rejected; o
   assert.equal(brandSafeCreativeViolation({ ...official, landing_url: "http://vendas.zevanory.api.br/x" }), "creative_link_not_official");
   assert.throws(() => assertBrandSafeCreative(arbm), /creative_offer_not_in_zev_catalog/);
   assert.match(creativeLandingUrl("ZEV-CMB-011", { source: "pinterest", campaign: "c1" }), /^https:\/\/vendas\.zevanory\.api\.br\/combo-ia-vendas\?utm_source=pinterest&utm_medium=organic&utm_campaign=c1$/);
-  assert.equal(new URL(creativeLandingUrl("OFFER-0001")).origin, SALES_ORIGIN);
+  // Unknown/legacy/empty offers are rejected explicitly — no silent fallback to another product.
+  for (const bad of ["OFFER-0001", "ZEV-XXX-999", "", undefined, null]) assert.throws(() => creativeLandingUrl(bad, { source: "pinterest" }), /creative_offer_not_in_zev_catalog/);
+  for (const sku of Object.keys(ZEV_CREATIVE_CATALOG)) assert.equal(new URL(creativeLandingUrl(sku)).origin, SALES_ORIGIN);
 });
 
 function kv() { const m = new Map(); return { get: async (k) => m.get(k) ?? null, put: async (k, v) => m.set(k, v), m }; }
@@ -80,7 +82,8 @@ test("5. every creative generation path defaults to the official catalog, checko
   assert.match(worker, /const offer = resolveCreativeOffer\(offerId\);\n  if \(!offer\) throw new Error\("creative_offer_not_in_zev_catalog"\);/);
   assert.match(worker, /function buildCreativeVariants\(\{ offerId = DEFAULT_CREATIVE_OFFER,/);
   assert.match(worker, /const brief = \{ offerId: DEFAULT_CREATIVE_OFFER, channel,/);
-  assert.match(worker, /landing_url: creativeLandingUrl\(item\.spec\.offer_id,/);
+  // Failed/empty creatives get no landing (and are unpublishable); never another product's page, never a crash.
+  assert.match(worker, /landing_url: creativeCatalogEntry\(item\.spec\.offer_id\) \? creativeLandingUrl\(item\.spec\.offer_id, \{ source: channel, campaign: item\.spec\.campaign_id \|\| cycleId \}\) : null,/);
   assert.match(worker, /if \(!creativeCatalogEntry\(s\.offer_id\)\) return null;/, "signed ARBM assets must stop rendering");
   // Checkout resolvers and the project offer are deliberately unchanged (no payment change without owner order).
   assert.match(worker, /function resolveCheckoutOffer\(id\) \{\n  const key = String\(id \|\| PROJECT\.offerId\)/);

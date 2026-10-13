@@ -26,7 +26,8 @@ export const DEFAULT_CREATIVE_OFFER="ZEV-IA-011";
 const offerKey=v=>String(v||"").trim().toUpperCase();
 export function creativeCatalogEntry(offerId){return ZEV_CREATIVE_CATALOG[offerKey(offerId)]||null;}
 export function creativeLandingUrl(offerId,{source="",campaign=""}={}){
- const entry=creativeCatalogEntry(offerId)||ZEV_CREATIVE_CATALOG[DEFAULT_CREATIVE_OFFER],q=new URLSearchParams();
+ // Fail closed: an unknown offer never falls back to another product's page.
+ const entry=creativeCatalogEntry(offerId);if(!entry)throw new Error("creative_offer_not_in_zev_catalog");const q=new URLSearchParams();
  if(source)q.set("utm_source",String(source).slice(0,40));q.set("utm_medium","organic");if(campaign)q.set("utm_campaign",String(campaign).slice(0,80));
  return `${SALES_ORIGIN}/${entry.slug}?${q}`;
 }
