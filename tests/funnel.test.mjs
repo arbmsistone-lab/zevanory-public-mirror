@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isCountableView, handleFunnel, buildFunnelSummary } from "../worker/funnel.mjs";
+import { isCountableView, handleFunnel, buildFunnelSummary, trafficClass } from "../worker/funnel.mjs";
 
 function fakeSql(responder) {
   const calls = [];
@@ -45,7 +45,36 @@ test("clean breakdown counts only days after the bot filter, split by page, sour
   const s = await buildFunnelSummary({ DATABASE_URL: "x", MERCADOPAGO_ENV: "sandbox" }, { sqlFactory: () => ({ query: async (t, p) => { seen.push({ t, p }); return t.includes("day >= $1::date group by page, metric") ? rows : []; } }) });
   assert.ok(seen.some((c) => c.t.includes("day >= $1::date group by page, metric") && c.p[0] === "2026-10-12"));
   assert.equal(s.clean.since, "2026-10-12");
-  assert.deepEqual(s.clean.pages["ia-na-pratica"], { views: 7 });
+  assert.deepEqual({ ...s.clean.pages["ia-na-pratica"] }, { views: 7 });
   assert.deepEqual(s.clean.sources.youtube, { views: 5, checkout_intent: 1, hotmart_view: 0, subscribe_click: 0 });
-  assert.deepEqual(s.clean.campaigns, { calc_20261012: 3 });
+  assert.deepEqual({ ...s.clean.campaigns }, { calc_20261012: 3 });
+});
+
+test("hostile utm labels cannot pollute prototypes or the summary", async () => {
+  const rows = [{ page: "ia-na-pratica", metric: "src:__proto__", n: 3 }, { page: "ia-na-pratica", metric: "camp:constructor", n: 2 }, { page: "ia-na-pratica", metric: "views", n: 1 }];
+  const s = await buildFunnelSummary({ DATABASE_URL: "x", MERCADOPAGO_ENV: "sandbox" }, { sqlFactory: () => ({ query: async (t) => (t.includes("group by page, metric") ? rows : []) }) });
+  assert.equal(({}).views, undefined);
+  assert.equal(Object.keys(s.clean.sources).length, 0);
+  assert.equal(Object.keys(s.clean.campaigns).length, 0);
+  assert.deepEqual(s.topCampaigns, []);
+  const { factory, calls } = fakeSql(() => []);
+  await handleFunnel(new Request("https://funnel.internal/hit", { method: "POST", body: JSON.stringify({ page: "ia-na-pratica", ua: "Mozilla/5.0 Chrome", ip: "203.0.113.9", src: "__proto__", camp: "constructor" }) }), { DATABASE_URL: "x" }, { sqlFactory: factory });
+  assert.ok(calls.some((c) => c.params?.[2] === "src:direto"));
+  assert.ok(!calls.some((c) => String(c.params?.[2] || "").includes("constructor")));
+});
+
+test("each counted view records a traffic class and network (no personal data)", async () => {
+  assert.equal(trafficClass({ userAgent: "Mozilla/5.0 (iPhone) Mobile", acceptLanguage: true, country: "BR" }), "mobile_al_br");
+  assert.equal(trafficClass({ userAgent: "Mozilla/5.0 (Windows NT 10.0) Chrome", acceptLanguage: false, country: "US" }), "desktop_noal_ext");
+  assert.equal(trafficClass({ userAgent: "Mozilla/5.0", country: "" }), "desktop_noal_unk");
+  const { factory, calls } = fakeSql(() => []);
+  await handleFunnel(new Request("https://funnel.internal/hit", { method: "POST", body: JSON.stringify({ page: "lucro-e-caixa", ua: "Mozilla/5.0 (Linux; Android 14) Mobile", ip: "203.0.113.9", asn: 26599, al: 1, cty: "BR" }) }), { DATABASE_URL: "x" }, { sqlFactory: factory });
+  assert.ok(calls.some((c) => c.params?.[2] === "cls:mobile_al_br"));
+  assert.ok(calls.some((c) => c.params?.[2] === "asn:26599"));
+  assert.ok(!calls.some((c) => JSON.stringify(c.params || []).includes("203.0.113.9")));
+  const rows = [{ page: "solucoes", metric: "cls:desktop_noal_unk", n: 9 }, { page: "solucoes", metric: "asn:13335", n: 9 }];
+  const s = await buildFunnelSummary({ DATABASE_URL: "x", MERCADOPAGO_ENV: "sandbox" }, { sqlFactory: () => ({ query: async (t) => (t.includes("day >= $1::date group by page, metric") ? rows : []) }) });
+  assert.deepEqual({ ...s.clean.classes }, { desktop_noal_unk: 9 });
+  assert.deepEqual({ ...s.clean.asn }, { 13335: 9 });
+  assert.equal(s.clean.pages.solucoes, undefined);
 });
