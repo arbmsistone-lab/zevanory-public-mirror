@@ -24,6 +24,8 @@ CODE = [
 ]
 CONFIG = [
     re.compile(r"npx(?: --yes)? wrangler(?:@[\d.]+)? secret (?:put|delete|bulk)\b"),
+    # Config writer that wraps `wrangler versions secret bulk|delete` + `versions deploy` (T3).
+    re.compile(r"worker_secret_rotate\.py[^\n]*--apply"),
     re.compile(r"-X (?:POST|PUT|PATCH|DELETE)\b[^\n]*workers/scripts|workers/scripts[^\n]*-X (?:POST|PUT|PATCH|DELETE)\b"),
 ]
 SECRET = re.compile(r"secrets\.([A-Z0-9_]+)")

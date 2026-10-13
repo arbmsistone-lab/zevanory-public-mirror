@@ -10,6 +10,7 @@
         "channel-credentials-sync.yml",
         "channel-production-bootstrap.yml",
         "gemini-key-to-worker.yml",
+        "lead-privacy-secret-to-worker.yml",
         "sandbox-worker-secret-audit.yml",
         "voice-gemini-auth-key-probe.yml",
         "voice-gemini-production-provision.yml",
