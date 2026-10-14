@@ -308,4 +308,4 @@ a:focus-visible,.button:focus-visible{outline:2px solid var(--brand-3);outline-o
   .site-footer .footer-nav a{display:inline-flex;align-items:center;min-height:44px}
 }
 /* "Por onde começar" (#821): inline links must still offer a 44x44 px touch target (WCAG 2.5.5 / apex gate). */
-.start-guide ol a{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0 4px;vertical-align:middle}
+.start-guide ol a{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0;vertical-align:middle}
