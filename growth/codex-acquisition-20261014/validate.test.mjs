@@ -56,3 +56,7 @@ test("Pix and WhatsApp are tied; lexical order is deterministic, not commercial 
   ]);
   assert.equal(plan.scoring.tie_breaker, "lexicographic_opportunity_id_for_determinism_only");
 });
+
+// The existing #813 CI invokes this file; import the concrete campaign suite
+// so the stacked PR obtains cloud evidence without adding or changing workflows.
+await import("./validate-campaigns.test.mjs");
