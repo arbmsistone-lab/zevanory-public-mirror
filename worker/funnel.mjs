@@ -251,7 +251,10 @@ export async function handleFunnel(request, env, { sqlFactory, ctx } = {}) {
   const page = String(body.page || "");
   const userAgent = String(body.ua || "").slice(0, 300);
   if (!isCountableView({ method: "GET", page, userAgent, purpose: body.purpose, asn: body.asn })) return new Response(null, { status: 204 });
-  const metric = INTENT_METRICS.includes(body.metric) ? body.metric : "views";
+  // A hit without metric is a page view (existing contract). A metric that is present but unknown is
+  // dropped, never counted as a view: an older/newer caller must not inflate visits.
+  const metric = body.metric == null || body.metric === "views" ? "views" : INTENT_METRICS.includes(body.metric) ? body.metric : null;
+  if (!metric) return new Response(null, { status: 204 });
   const work = recordPageView(env, { sqlFactory, page, ip: String(body.ip || ""), userAgent, metric, src: body.src, camp: body.camp, asn: body.asn, acceptLanguage: body.al === 1 || body.al === true, country: String(body.cty || "").slice(0, 2) }).catch((e) => console.error("funnel_hit_failed", e instanceof Error ? e.message : String(e)));
   if (ctx?.waitUntil) ctx.waitUntil(work); else await work;
   return new Response(null, { status: 204 });

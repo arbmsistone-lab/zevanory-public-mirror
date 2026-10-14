@@ -62,3 +62,16 @@ test("lead_submit stores only the counter: user agent, ASN, country and IP are d
   assert.equal(writes.length, 2);
   assert.doesNotMatch(JSON.stringify(writes), /UniqueAgent|28573|203\.0\.113\.5|"BR"/);
 });
+test("unknown metric is dropped, never counted as a view; absent metric keeps the view contract", async () => {
+  const run = async (body) => { const calls = []; const factory = () => ({ query: async (t, p) => { calls.push({ t, p }); return t.includes("returning vhash") ? [{ vhash: "x" }] : []; } });
+    const r = await handleFunnel(new Request("https://funnel.internal/hit", { method: "POST", body: JSON.stringify(body) }), { DATABASE_URL: "x", RESEND_API_KEY: "s" }, { sqlFactory: factory });
+    return { status: r.status, metrics: calls.filter(c => /insert/i.test(c.t) && c.p?.[2]).map(c => c.p[2]) }; };
+  const base = { page: "material-gratuito", ua: "Mozilla/5.0 Chrome", ip: "198.51.100.7", src: "youtube" };
+  for (const metric of ["lead_qualified", "future_metric", "VIEWS", 1, {}]) {
+    const r = await run({ ...base, metric });
+    assert.equal(r.status, 204); assert.deepEqual(r.metrics, [], String(metric));
+  }
+  assert.ok((await run({ ...base })).metrics.includes("src:youtube"), "absent metric = view");
+  assert.ok((await run({ ...base, metric: "views" })).metrics.includes("src:youtube"), "explicit views = view");
+  assert.deepEqual((await run({ ...base, metric: "lead_submit" })).metrics, ["lead_submit", "lead_submit:src:youtube"]);
+});
