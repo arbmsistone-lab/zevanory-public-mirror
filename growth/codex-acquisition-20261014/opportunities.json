@@ -6,7 +6,12 @@
     "language": "pt-BR",
     "owner": "Codex acquisition workstream",
     "methodology": "Demand signals from authoritative national sources plus repository asset reuse. Scores are prioritization aids, not search-volume or revenue forecasts.",
-    "publication_allowed": false
+    "publication_allowed": false,
+    "limitations": [
+      "O score não mede volume de busca, conversão, receita ou causalidade.",
+      "A TIC Empresas representa empresas formais com 10 ou mais pessoas ocupadas; não representa diretamente MEI ou negócios menores.",
+      "Empates são resolvidos apenas por ordem lexicográfica do identificador para produzir saída determinística."
+    ]
   },
   "sources": [
     {
@@ -16,9 +21,15 @@
       "url": "https://www.cetic.br/pt/publicacao/pesquisa-sobre-o-uso-das-tecnologias-de-informacao-e-comunicacao-nas-empresas-brasileiras-tic-empresas-2024/",
       "published": "2025-05-13",
       "signals": [
-        "74% das empresas usaram WhatsApp ou Telegram em 2024",
-        "84% das pequenas empresas que venderam online usaram mensagens como canal de venda",
-        "13% das empresas declararam uso de IA"
+        "74% das empresas formais com 10 ou mais pessoas ocupadas usaram WhatsApp ou Telegram em 2024",
+        "84% das empresas de 10 a 49 pessoas ocupadas que venderam online usaram mensagens de WhatsApp, Skype ou chat do Facebook como canal",
+        "13% das empresas formais com 10 ou mais pessoas ocupadas declararam uso de IA; H9 foi coletado entre empresas com especialista/área de TI e apresentado para o total"
+      ],
+      "population": "Empresas formais com 10 ou mais pessoas ocupadas; porte pequeno = 10 a 49.",
+      "indicator_urls": [
+        "https://cetic.br/pt/tics/pesquisa/2024/empresas/E2C/expandido/",
+        "https://cetic.br/pt/tics/pesquisa/2024/empresas/H9/",
+        "https://www.cetic.br/pt/arquivos/pesquisa/2024/empresas/"
       ]
     },
     {
@@ -38,9 +49,10 @@
       "url": "https://www.bcb.gov.br/detalhenoticia/21227/noticia",
       "published": "2026",
       "signals": [
-        "12,8 milhões de empresas haviam usado Pix ao final de 2025",
-        "quase 80 bilhões de transações ocorreram em 2025"
-      ]
+        "12,8 milhões de empresas haviam enviado ou recebido ao menos um Pix ao final de 2025",
+        "quase 80 bilhões de transações Pix ocorreram em 2025 no conjunto do sistema, não apenas em pagamentos empresariais"
+      ],
+      "population": "Pessoas jurídicas que haviam enviado ou recebido ao menos um Pix ao final de 2025; sem recorte de porte."
     },
     {
       "id": "sebrae-fluxo-caixa",
@@ -106,7 +118,9 @@
       "product_fit",
       "owned_asset_reuse"
     ],
-    "note": "Total de 0 a 12; não representa volume de busca, conversão ou receita."
+    "note": "Total de 0 a 12; não representa volume de busca, conversão ou receita.",
+    "tie_breaker": "lexicographic_opportunity_id_for_determinism_only",
+    "tie_interpretation": "Empate não comprova superioridade comercial; Pix e WhatsApp são hipóteses equivalentes no score atual."
   },
   "opportunities": [
     {
