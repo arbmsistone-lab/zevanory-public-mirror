@@ -2,14 +2,15 @@ name: ZEVANORY Gemini production provision
 
 on:
   workflow_dispatch:
-  push:
-    branches: [gh-pages]
-    paths:
-      - '.github/workflows/voice-gemini-production-provision.yml'
 
 permissions:
   contents: read
   id-token: write
+
+concurrency:
+  group: deploy-zevanory
+  cancel-in-progress: false
+  queue: max
 
 jobs:
   provision:

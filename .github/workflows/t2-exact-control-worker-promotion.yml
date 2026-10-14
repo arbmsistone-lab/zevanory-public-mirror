@@ -4,99 +4,74 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "*/15 * * * *"
-  push:
-    branches: [gh-pages]
-    paths:
-      - ".github/workflows/t2-exact-control-worker-promotion.yml"
-      - "zpc-control-worker-source.txt"
 
 permissions:
   contents: read
+  actions: write   # only to REQUEST the canonical publisher (workflow_dispatch); no Cloudflare credential here
 
+# T1 (plan 3.1): this scheduled reconciler is a REQUESTER, not a publisher. It never builds,
+# never writes secrets and never deploys. When the panel's runtime source on main is ahead of
+# production it dispatches the single canonical publisher (zpc-control-worker-deploy.yml), which
+# re-runs the guard inside the panel queue, publishes and certifies by both sources.
 concurrency:
-  group: t2-exact-control-worker-promotion
+  group: deploy-zevanory-product-control-portable
   cancel-in-progress: false
+  queue: max
 
 jobs:
-  deploy:
+  request:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Resolve exact T2 source SHA
+      - name: Decide whether the canonical publisher must be requested
         id: source
         shell: bash
+        env:
+          ZPC_ROLLBACK_HOLD: ${{ vars.ZPC_ROLLBACK_HOLD }}
         run: |
           set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            SOURCE_SHA="$(tr -d '\r\n ' < zpc-control-worker-source.txt)"
-            SOURCE_MODE="pinned-pointer"
-          else
-            rm -rf /tmp/zpc-source
-            git clone --quiet --filter=blob:none https://github.com/arbmsistone-lab/zevanory-product-control-edge.git /tmp/zpc-source
-            git -C /tmp/zpc-source fetch --quiet origin main
-            git -C /tmp/zpc-source checkout --quiet --detach origin/main
-            SOURCE_SHA="$(git -C /tmp/zpc-source log -1 --format=%H -- cf-worker src public index.html package.json package-lock.json scripts/cloudflare-authoritative-repair.mjs)"
-            SOURCE_MODE="latest-runtime-commit"
-          fi
+          rm -rf /tmp/zpc-source
+          git clone --quiet --filter=blob:none https://github.com/arbmsistone-lab/zevanory-product-control-edge.git /tmp/zpc-source
+          git -C /tmp/zpc-source fetch --quiet origin main
+          git -C /tmp/zpc-source checkout --quiet --detach origin/main
+          SOURCE_SHA="$(git -C /tmp/zpc-source log -1 --format=%H -- cf-worker src public index.html package.json package-lock.json scripts/cloudflare-authoritative-repair.mjs)"
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          LIVE_SHA="$(curl -fsS --retry 3 --retry-delay 2 --max-time 20 https://controle.zevanory.api.br/version.json | jq -r '.sha // empty' || true)"
-          NEEDS_PROMOTION=true
-          if [ "$LIVE_SHA" = "$SOURCE_SHA" ]; then NEEDS_PROMOTION=false; fi
+          NEEDS=false
+          if [ -n "$ZPC_ROLLBACK_HOLD" ]; then
+            echo "::notice title=ZPC_ROLLBACK_HOLD::reconciler paused: ${ZPC_ROLLBACK_HOLD:0:120}"
+          else
+            # Read-only pre-check from version.json; this job holds NO Cloudflare credential. The
+            # canonical publisher decides again inside the queue with BOTH sources and refuses a mismatch.
+            python3 scripts/deploy/promotion_guard.py --service zevanory-product-control-portable \
+              --candidate "$SOURCE_SHA" --repo /tmp/zpc-source \
+              --readback-url https://controle.zevanory.api.br/version.json --readback-path sha > /tmp/guard.txt || { cat /tmp/guard.txt; exit 1; }
+            cat /tmp/guard.txt
+            decision="$(sed -n 's/^PROMOTION_GUARD=//p' /tmp/guard.txt | jq -r .decision)"
+            reason="$(sed -n 's/^PROMOTION_GUARD=//p' /tmp/guard.txt | jq -r .reason)"
+            if [ "$decision" = promote ] && [ "$reason" = forward_of_live ]; then NEEDS=true; fi
+          fi
           echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
-          echo "SOURCE_MODE=$SOURCE_MODE" >> "$GITHUB_ENV"
-          echo "needs_promotion=$NEEDS_PROMOTION" >> "$GITHUB_OUTPUT"
-          echo "ZPC_RECONCILE source=$SOURCE_SHA live=${LIVE_SHA:-unavailable} mode=$SOURCE_MODE needs_promotion=$NEEDS_PROMOTION"
+          echo "needs_promotion=$NEEDS" >> "$GITHUB_OUTPUT"
+          echo "ZPC_RECONCILE source=$SOURCE_SHA needs_promotion=$NEEDS"
       - name: Already synchronized
         if: steps.source.outputs.needs_promotion != 'true'
-        run: |
-          echo "ZPC_PUBLIC_OWNER_RECONCILER=PASS already_synced=$SOURCE_SHA"
-      - name: Checkout exact product-control SHA
+        run: echo "ZPC_PUBLIC_OWNER_RECONCILER=PASS already_synced=$SOURCE_SHA"
+      - name: Request the canonical publisher
         if: steps.source.outputs.needs_promotion == 'true'
         shell: bash
-        run: |
-          set -euo pipefail
-          git clone --quiet --filter=blob:none https://github.com/arbmsistone-lab/zevanory-product-control-edge.git zpc
-          git -C zpc fetch --quiet origin "$SOURCE_SHA"
-          git -C zpc checkout --quiet --detach "$SOURCE_SHA"
-          test "$(git -C zpc rev-parse HEAD)" = "$SOURCE_SHA"
-          git -C zpc fetch --quiet origin main
-          git -C zpc merge-base --is-ancestor "$SOURCE_SHA" origin/main
-      - uses: actions/setup-node@v4
-        if: steps.source.outputs.needs_promotion == 'true'
-        with:
-          node-version: '24'
-      - name: Build exact Worker
-        if: steps.source.outputs.needs_promotion == 'true'
-        working-directory: zpc
-        run: |
-          set -euo pipefail
-          npm install --no-audit --no-fund
-          npm run build
-      - name: Deploy exact Worker using public-owner authority
-        if: steps.source.outputs.needs_promotion == 'true'
-        working-directory: zpc
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
-          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
-        shell: bash
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test -n "${CLOUDFLARE_API_TOKEN:-}"
-          test -n "${CERTIFICATION_E2E_TOKEN:-}"
-          printf '%s' "$CERTIFICATION_E2E_TOKEN" | npx --yes wrangler@4.143.0 secret put CERTIFICATION_E2E_TOKEN --config cf-worker/wrangler.toml
-          npx --yes wrangler@4.143.0 deploy --config cf-worker/wrangler.toml --var WORKER_COMMIT:"$SOURCE_SHA"
-      - name: Verify exact SHA and authenticated T2 route
-        if: steps.source.outputs.needs_promotion == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsS --retry 5 --retry-delay 3 https://controle.zevanory.api.br/version.json -o /tmp/version.json
-          test "$(jq -r '.sha' /tmp/version.json)" = "$SOURCE_SHA"
-          code="$(curl -sS -o /tmp/t2route.json -w '%{http_code}' -X POST https://controle.zevanory.api.br/api/commercial/creative/factory/tick -H 'content-type: application/json' -d '{}')"
-          test "$code" = "401"
-          jq -e '.error == "commercial_creative_factory_auth_required"' /tmp/t2route.json >/dev/null
-          echo "T2_WORKER_PROMOTION=PASS"
-          cat /tmp/version.json
-          cat /tmp/t2route.json
+          # One request at a time: if a canonical run is already queued or running, it will publish
+          # (or the next tick re-evaluates). skip_if_live makes a duplicate request a no-op.
+          pending="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow zpc-control-worker-deploy.yml --limit 20 \
+            --json status --jq '[.[] | select(.status != "completed")] | length')"
+          if [ "$pending" != "0" ]; then
+            echo "::notice title=ZPC_REQUEST_PENDING::$pending canonical run(s) not completed; not requesting again"
+            exit 0
+          fi
+          gh workflow run zpc-control-worker-deploy.yml --repo "$GITHUB_REPOSITORY" --ref gh-pages \
+            -f source_sha="$SOURCE_SHA" -f skip_if_live=true
+          echo "::notice title=ZPC_PUBLISH_REQUESTED::canonical publisher requested for ${SOURCE_SHA:0:12}"

@@ -1,15 +1,12 @@
 name: ZEVANORY voice zero-spend enable
 on:
-  push:
-    branches: [gh-pages]
-    paths:
-      - ".github/workflows/voice-zero-spend-enable.yml"
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: voice-zero-spend-enable
+  group: deploy-zevanory
   cancel-in-progress: false
+  queue: max
 jobs:
   enable:
     runs-on: ubuntu-latest

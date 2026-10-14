@@ -1,0 +1,253 @@
+name: T1 publisher guard
+
+# Plan 3.1, T1: one serialized publisher per production Worker, across repositories, and one
+# executor session. Read-only: no credentials, no deploy.
+on:
+  workflow_dispatch:
+    inputs:
+      recheck_service:
+        description: Independent post-promotion re-check (read-only) after a NAO_COMPROVADO certification
+        required: true
+        type: choice
+        options: [zevanory, zevanory-sales-public, zevanory-product-control-portable]
+      recheck_sha:
+        description: Exact SHA that the release workflow promoted
+        required: true
+        type: string
+  pull_request:
+    branches: [gh-pages]
+  push:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/**"
+      - "ops/**"
+      - "scripts/deploy/promotion_guard.py"
+      - "tests/publisher-inventory.test.mjs"
+      - "tests/test_promotion_guard.py"
+      - "tests/test_t1_transition.py"
+      - "scripts/deploy/auto_rerun_decision.py"
+      - "tests/test_auto_rerun_decision.py"
+      - "tests/fixtures/auto_rerun/**"
+      - "scripts/deploy/prepare-central-candidate.py"
+      - "tests/test_binding_budget_compaction.py"
+      - "scripts/deploy/worker_secret_rotate.py"
+      - "tests/test_worker_secret_rotate.py"
+      - "tests/t1_sim/**"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Publisher registry and serialization rules
+        run: node --test tests/publisher-inventory.test.mjs
+      - name: Promotion guard decisions
+        run: python3 -m unittest -v tests/test_promotion_guard.py
+      - name: Fail-closed replay decision for the production publisher
+        run: python3 -m unittest -v tests/test_auto_rerun_decision.py
+      - name: Central binding budget compaction (never a gate; behaviour-neutral)
+        run: |
+          git fetch --quiet --depth 1 origin 83620c680958d726fc4b0fd16e2574cdcc362a6d || true
+          python3 -m unittest -v tests/test_binding_budget_compaction.py
+      - name: Worker secret key ring writer (one tagged version, rollback, rotation)
+        run: python3 -m unittest -v tests/test_worker_secret_rotate.py
+      - name: "Integrated #799 -> #210 transition simulation (real workflow scripts, no publish)"
+        run: |
+          git fetch --quiet --depth 1 origin gh-pages:refs/remotes/origin/gh-pages || true
+          python3 -m unittest -v tests/test_t1_transition.py 2>&1 | tee /tmp/sim.log
+          grep '^SIM ' /tmp/sim.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+      - name: Code vs config authority and credentials per workflow
+        run: python3 scripts/deploy/credential_inventory.py | tee -a "$GITHUB_STEP_SUMMARY"
+
+  external-repository:
+    # The panel source repository must never publish production by itself.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Panel repository has no production publish path
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 https://github.com/arbmsistone-lab/zevanory-product-control-edge.git zpc
+          hits="$(grep -nE 'npx( --yes)? wrangler(@[0-9.]+)? (deploy|rollback|versions deploy)|secret (put|delete|bulk)|node [^ ]*cloudflare-authoritative-repair\.mjs' zpc/.github/workflows/*.yml | grep -v -- '--dry-run' || true)"
+          if [ -n "$hits" ]; then
+            echo "::error title=EXTERNAL_PUBLISHER::$(printf '%s' "$hits" | head -5 | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "EXTERNAL_REPOSITORY_PUBLISHERS=0"
+
+  session-guard:
+    # WHAT THIS CHECK CAN AND CANNOT DO (audit T1 v2):
+    #  - It reads session identifiers DECLARED in commit messages and in the PR body. A declaration
+    #    is text, not authentication: anyone with push access can write any identifier.
+    #  - It FAILS when no identifier is declared (identity not established) and when any declared
+    #    identifier is not in ops/executor.json (foreign session). It never passes on absence.
+    #  - It cannot prove who produced the code. Every agent pushes with the owner's GitHub identity,
+    #    so GitHub actor/author fields do not distinguish owner from agents either.
+    #  - The decisive control is outside this check: only the owner merges (pull-request review),
+    #    and making this check required is a branch-protection decision of the owner.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Declared executor session must be present and authorised
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          allowed="$(jq -r '.authorized_claude_sessions[]' ops/executor.json)"
+          sessions="$( { gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/commits" --paginate --jq '.[].commit.message'; printf '%s' "$BODY"; } | grep -oE 'session_[A-Za-z0-9]{8,}' | sort -u || true)"
+          if [ -z "$sessions" ]; then
+            echo "::error title=EXECUTOR_IDENTITY_NOT_ESTABLISHED::no executor session declared in commits or PR body; absence is never treated as authorised"
+            exit 1
+          fi
+          bad=""
+          for s in $sessions; do grep -qx "$s" <<<"$allowed" || bad="$bad $s"; done
+          if [ -n "$bad" ]; then
+            echo "::error title=UNAUTHORISED_EXECUTOR_SESSION::declared session(s):$bad"
+            exit 1
+          fi
+          echo "::notice title=EXECUTOR_SESSION_DECLARED::authorised declaration only (not authentication): $sessions"
+
+  credential-scope:
+    # Read-only. Distinguishes READ REACH (what a token can list) from EDIT PERMISSION (what its
+    # policies grant). Edit permission is reported as proven only when the token's own policies
+    # are readable; otherwise NAO_COMPROVADO. No write call is ever made.
+    # Also certifies optional per-Worker tokens (CF_TOKEN_<SERVICE>) BEFORE any workflow uses
+    # them: each must see exactly its Worker and read its deployments and settings.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      ACCOUNT: 1b26415802588185a86c1d4d3ebf5bdb
+      T_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      T_CLOUDFLARE_PUBLIC_OWNER_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN }}
+      T_CF_TOKEN_ZEVANORY: ${{ secrets.CF_TOKEN_ZEVANORY }}
+      T_CF_TOKEN_SALES: ${{ secrets.CF_TOKEN_SALES }}
+      T_CF_TOKEN_ROUTER: ${{ secrets.CF_TOKEN_ROUTER }}
+      T_CF_TOKEN_PANEL: ${{ secrets.CF_TOKEN_PANEL }}
+    steps:
+      - name: Read reach vs edit permission of each credential
+        run: |
+          set -uo pipefail
+          api() { curl -sS -H "Authorization: Bearer $1" "https://api.cloudflare.com/client/v4$2"; }
+          declare -A WORKER=([CF_TOKEN_ZEVANORY]=zevanory [CF_TOKEN_SALES]=zevanory-sales-public [CF_TOKEN_ROUTER]=zevanory-public-router [CF_TOKEN_PANEL]=zevanory-product-control-portable)
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_PUBLIC_OWNER_API_TOKEN CF_TOKEN_ZEVANORY CF_TOKEN_SALES CF_TOKEN_ROUTER CF_TOKEN_PANEL; do
+            var="T_$name"; tok="${!var:-}"
+            if [ -z "$tok" ]; then echo "::notice title=CRED_$name::not configured"; continue; fi
+            av="$(api "$tok" "/accounts/$ACCOUNT/tokens/verify")"; uv="$(api "$tok" /user/tokens/verify)"
+            id="$(jq -r '.result.id // empty' <<<"$av")"; scope=account
+            [ -z "$id" ] && { id="$(jq -r '.result.id // empty' <<<"$uv")"; scope=user; }
+            status="$(jq -r '.result.status // empty' <<<"$av")"; [ -z "$status" ] && status="$(jq -r '.result.status // "unknown"' <<<"$uv")"
+            # Read reach: how many Workers it can list.
+            reach="$(api "$tok" "/accounts/$ACCOUNT/workers/scripts" | jq -r 'if .success then ([.result[].id]|length|tostring) else "denied" end')"
+            names="$(api "$tok" "/accounts/$ACCOUNT/workers/scripts" | jq -r 'if .success then ([.result[].id]|sort|join(",")) else "" end')"
+            # Edit permission: only provable from the token's own policies.
+            if [ "$scope" = account ]; then pol="$(api "$tok" "/accounts/$ACCOUNT/tokens/$id")"; else pol="$(api "$tok" "/user/tokens/$id")"; fi
+            if jq -e '.success == true and (.result.policies|type=="array")' <<<"$pol" >/dev/null 2>&1; then
+              edit="$(jq -r '[.result.policies[]|select(.effect=="allow")|.permission_groups[]?.name|select(test("Edit|Write|Admin|Editor";"i"))]|unique|join("; ")' <<<"$pol")"
+              res="$(jq -r '[.result.policies[]|select(.effect=="allow")|.resources|keys[]]|unique|join("; ")' <<<"$pol")"
+              echo "::notice title=CRED_$name::status=$status reach=$reach EDIT_PROVEN groups=[${edit:-none}] resources=[$res]"
+            else
+              echo "::notice title=CRED_$name::status=$status reach=$reach edit_permission=NAO_COMPROVADO (token policies not readable with this token)"
+            fi
+            # Per-Worker tokens: certify scope before any workflow uses them.
+            if [ -n "${WORKER[$name]:-}" ]; then
+              w="${WORKER[$name]}"
+              dep="$(api "$tok" "/accounts/$ACCOUNT/workers/scripts/$w/deployments" | jq -r '.success')"
+              set_="$(api "$tok" "/accounts/$ACCOUNT/workers/scripts/$w/settings" | jq -r '.success')"
+              if [ "$names" = "$w" ] && [ "$dep" = true ] && [ "$set_" = true ]; then
+                echo "::notice title=CRED_$name::SCOPE_READY only=$w deployments=read settings=read"
+              else
+                echo "::error title=CRED_$name::SCOPE_NOT_READY visible=[$names] expected=[$w] deployments=$dep settings=$set_"
+                fail=1
+              fi
+            fi
+          done
+          exit "${fail:-0}"
+
+  lead-privacy-source:
+    # T3 (#802): the GitHub source secret of the lead privacy key exists and is long enough.
+    # Presence and length only; the value is never printed or written anywhere.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      K: ${{ secrets.LEAD_PRIVACY_SECRET }}
+      P: ${{ secrets.LEAD_PRIVACY_SECRET_PREVIOUS }}
+    steps:
+      - name: Source secret present (length only)
+        run: |
+          if [ "${#K}" -ge 32 ]; then echo "::notice title=LEAD_PRIVACY_SOURCE::PRESENT length_ge_32 previous=$([ -n "$P" ] && echo set || echo unset)"; \
+          else echo "::warning title=LEAD_PRIVACY_SOURCE::$([ -n "$K" ] && echo SHORTER_THAN_32 || echo ABSENT)"; fi
+
+  merge-effect-preview:
+    # Shows, BEFORE merge, what merging this pull request would do in production: which
+    # publishing workflows fire, and what the pre-promotion guard decides against the LIVE
+    # version right now. The squash merge is a child of the base tip, so the guard is evaluated
+    # with the base tip as candidate (same ancestry). Read-only.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Workflows that would run on merge
+        run: |
+          set -euo pipefail
+          git diff --name-only "$BASE" HEAD > /tmp/changed.txt
+          python3 - <<'PY'
+          import fnmatch, yaml, pathlib
+          changed=[l.strip() for l in open("/tmp/changed.txt") if l.strip()]
+          for f in sorted(pathlib.Path(".github/workflows").glob("*.yml")):
+              y=yaml.load(f.read_text(), Loader=yaml.BaseLoader) or {}
+              on=y.get("on") if isinstance(y.get("on"), dict) else {}
+              push=on.get("push") if isinstance(on.get("push"), dict) else None
+              if push is None or "gh-pages" not in (push.get("branches") or []): continue
+              paths=push.get("paths")
+              if paths is None or any(fnmatch.fnmatch(c,p) for c in changed for p in paths):
+                  print(f"FIRES_ON_MERGE {f.name}")
+          PY
+      - name: Guard decision for central (zevanory) against live
+        run: python3 scripts/deploy/promotion_guard.py --preview --service zevanory --candidate "$BASE" --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha --cloudflare-script zevanory
+      - name: Guard decision for sales against live, and rollback snapshot availability
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/promotion_guard.py --preview --service zevanory-sales-public --candidate "$BASE" --readback-url https://vendas.zevanory.api.br/health --readback-path release --cloudflare-script zevanory-sales-public
+          n="$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory-sales-public/deployments" | jq -r 'if .success then (.result.deployments|length) else "unreadable" end')"
+          echo "::notice title=SALES_ROLLBACK_SNAPSHOT::previous deployments available=$n (the release now never deletes the script either way)"
+
+  post-promotion-recheck:
+    # Independent verification after a NAO_COMPROVADO certification (observer unreachable): reads
+    # the Cloudflare active-version tag and the public readback again, in a separate run. It never
+    # publishes and never rolls back; FAIL here is the positive evidence the owner needs to decide
+    # a rollback through the service's documented recovery path.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Re-check effective version by both sources
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "1b26415802588185a86c1d4d3ebf5bdb"
+          SERVICE: ${{ inputs.recheck_service }}
+          SHA: ${{ inputs.recheck_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          case "$SERVICE" in
+            zevanory) url=https://zevanory.api.br/api/release; path=deployment.commit_sha ;;
+            zevanory-sales-public) url=https://vendas.zevanory.api.br/health; path=release ;;
+            zevanory-product-control-portable) url=https://controle.zevanory.api.br/version.json; path=sha ;;
+          esac
+          python3 scripts/deploy/promotion_guard.py --verify-promoted --attempts 6 --service "$SERVICE" \
+            --candidate "$SHA" --readback-url "$url" --readback-path "$path" --cloudflare-script "$SERVICE"

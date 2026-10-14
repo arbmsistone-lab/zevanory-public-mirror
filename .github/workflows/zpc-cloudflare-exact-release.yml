@@ -1,110 +1,21 @@
-name: ZPC Cloudflare exact release
+name: RETIRED ZPC Cloudflare exact release
+
+# T1 (plan 3.1): retired. This workflow used to publish zevanory-product-control-portable with
+# its own config and no promotion guard, in parallel with the canonical publisher. The panel is
+# published only by zpc-control-worker-deploy.yml (monotonic guard and authorised rollback,
+# #796/#797) and reconciled by t2-exact-control-worker-promotion.yml in the same queue.
+# Kept as a stub, without credentials or publish commands, so the history stays traceable.
+
 on:
   workflow_dispatch:
-  push:
-    branches: [gh-pages]
-    paths:
-      - ".github/workflows/zpc-cloudflare-exact-release.yml"
+
 permissions:
   contents: read
+
 jobs:
-  deploy:
+  retired:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
-      ZPC_SHA: e4ae2b865a5c66766425974f90120402c1690e78
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Determine authenticated Cloudflare authority
-        id: authority
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
-          if test -n "${CLOUDFLARE_API_TOKEN:-}" && npx --yes wrangler@4.135.0 whoami 2>&1 | tee /tmp/whoami.txt | grep -F "${CLOUDFLARE_ACCOUNT_ID}"; then
-            echo "can_deploy=true" >> "$GITHUB_OUTPUT"
-            echo "CLOUDFLARE_CANONICAL_AUTHORITY=PASS"
-          else
-            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
-            echo "CLOUDFLARE_CANONICAL_AUTHORITY=READBACK_ONLY"
-          fi
-      - name: Fetch exact Product Control release
-        shell: bash
-        run: |
-          set -euo pipefail
-          git clone --filter=blob:none https://github.com/arbmsistone-lab/zevanory-product-control-edge.git /tmp/zpc
-          cd /tmp/zpc
-          git checkout --detach "$ZPC_SHA"
-          test "$(git rev-parse HEAD)" = "$ZPC_SHA"
-          npm install --ignore-scripts
-          npm run build
-          cat > cf-worker/wrangler.release.toml <<'EOF'
-          name = "zevanory-product-control-portable"
-          main = "worker.ts"
-          compatibility_date = "2026-09-19"
-          routes = [
-            { pattern = "controle.zevanory.api.br", custom_domain = true }
-          ]
-          [assets]
-          directory = "../dist"
-          binding = "ASSETS"
-          not_found_handling = "single-page-application"
-          run_worker_first = true
-          [vars]
-          SUPABASE_URL = "https://pvkpkqwdnnpkgvllwqbc.supabase.co"
-          SUPABASE_PUBLISHABLE_KEY = "sb_publishable_IAPNVvyZRbgLjiaEdArk_g_6qd3Dp_-"
-          RENDER_BACKEND_URL = "https://zevanory-product-control-edge.onrender.com"
-          BACKEND_INSTANCE_ID = "cloudflare"
-          EOF
-          grep -F 'name = "zevanory-product-control-portable"' cf-worker/wrangler.release.toml
-          grep -F 'controle.zevanory.api.br' cf-worker/wrangler.release.toml
-      - name: Deploy exact Cloudflare Worker
-        if: steps.authority.outputs.can_deploy == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd /tmp/zpc
-          npx --yes wrangler@4.135.0 deploy --strict --config cf-worker/wrangler.release.toml --var WORKER_COMMIT:"$ZPC_SHA" --message="ZPC-control-SSE-alias-$ZPC_SHA"
-      - name: Verify production readback
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json,os,time,urllib.request
-          sha=os.environ["ZPC_SHA"]
-          def get(url, accept="application/json"):
-              req=urllib.request.Request(url,headers={"User-Agent":"ZPC-Exact-Readback/1.0","Accept":accept,"Cache-Control":"no-cache"})
-              with urllib.request.urlopen(req,timeout=25) as r:
-                  return r.status,r.headers.get("content-type",""),r.read(2048).decode("utf-8","replace")
-          def get_stream(url):
-              req=urllib.request.Request(url,headers={"User-Agent":"ZPC-Exact-Readback/1.0","Accept":"text/event-stream","Cache-Control":"no-cache"})
-              with urllib.request.urlopen(req,timeout=10) as r:
-                  parts=[]
-                  for _ in range(32):
-                      line=r.readline().decode("utf-8","replace")
-                      if not line: break
-                      parts.append(line)
-                      if "event: commercial-update" in "".join(parts): break
-                  return r.status,r.headers.get("content-type",""),"".join(parts)
-          health=None
-          for _ in range(24):
-              try:
-                  status,ct,body=get("https://controle.zevanory.api.br/portable-health")
-                  health=json.loads(body)
-                  if status==200 and health.get("workerCommit")==sha: break
-              except Exception: pass
-              time.sleep(5)
-          assert health and health.get("workerCommit")==sha,health
-          for path in ["/api/commercial/stream","/control/api/commercial/stream"]:
-              status,ct,body=get_stream("https://controle.zevanory.api.br"+path)
-              assert status==200,(path,status)
-              assert "text/event-stream" in ct,(path,ct)
-              assert "event: commercial-update" in body,(path,body[:300])
-          print("ZPC_PRODUCTION_READBACK_4_OF_4=PASS")
-          print("WORKER_COMMIT="+sha)
-          PY
+      - run: |
+          echo "::error title=RETIRED_PUBLISHER::use zpc-control-worker-deploy.yml"
+          exit 1

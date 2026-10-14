@@ -25,6 +25,7 @@ on:
       - "worker/sales-public-worker.mjs"
       - "tests/automation-traffic-guard.test.mjs"
       - "wrangler.sales.toml"
+      - "sales-public/**"
       - "scripts/build_sales_public.py"
       - "scripts/premerge_product_audit.py"
       - ".github/workflows/zevanory-sales-public-release.yml"
@@ -52,6 +53,7 @@ on:
       - "worker/sales-public-worker.mjs"
       - "tests/automation-traffic-guard.test.mjs"
       - "wrangler.sales.toml"
+      - "sales-public/**"
       - "scripts/build_sales_public.py"
       - "scripts/premerge_product_audit.py"
       - ".github/workflows/zevanory-sales-public-release.yml"
@@ -61,8 +63,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: zevanory-sales-public-production
+  group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.ref) || 'deploy-zevanory-sales-public' }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   verify:
@@ -120,6 +123,8 @@ jobs:
       SCRIPT_NAME: "zevanory-sales-public"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -255,15 +260,26 @@ jobs:
           print("ZEVANORY_SALES_CANDIDATE_SMOKE=PASS")
           PY
 
-      - name: Promote exact candidate source to canonical domain
-        id: promote
+      - name: Pre-promotion guard (T1, inside the serialized deploy group)
+        id: guard
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.143.0 deploy --config wrangler.sales.deploy.toml
+          python3 scripts/deploy/promotion_guard.py --service zevanory-sales-public \
+            --candidate "$GITHUB_SHA" \
+            --readback-url https://vendas.zevanory.api.br/health --readback-path release \
+            --cloudflare-script "$SCRIPT_NAME"
+
+      - name: Promote exact candidate source to canonical domain
+        id: promote
+        if: steps.guard.outputs.decision == 'promote'
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.143.0 deploy --config wrangler.sales.deploy.toml --tag="$GITHUB_SHA" --message="ZEVANORY-sales-exact-SHA-$GITHUB_SHA"
           echo "promoted=true" >> "$GITHUB_OUTPUT"
 
       - name: Verify canonical production readback
         id: readback
+        if: steps.promote.outputs.promoted == 'true'
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -290,7 +306,15 @@ jobs:
           done
           test "$ok" = "true"
           bash scripts/ci/verify-founder-and-products.sh
-          echo "ZEVANORY_SALES_CANONICAL_READBACK=PASS"
+          # Legal seller text readback (moved here from sales-legal-publish.yml, now validation-only).
+          curl -fsS "$BASE/termos" -o /tmp/termos.html
+          grep -Fq 'inscrita no CNPJ sob o nº 69.077.233/0001-99' /tmp/termos.html
+          echo "PUBLIC_LEGAL_READBACK=PASS"
+          # T1: the effective version (Cloudflare tag + /health) must be exactly this SHA.
+          # FAIL fails this step -> rollback. NAO_COMPROVADO (observer unreachable) does not roll back:
+          # exit 0 here, then the certification gate after the rollback step fails the run.
+          python3 scripts/deploy/promotion_guard.py --verify-promoted --unproven-exit 0 --service zevanory-sales-public --candidate "$GITHUB_SHA" --readback-url "$BASE/health" --readback-path release --cloudflare-script "$SCRIPT_NAME"
+          echo "ZEVANORY_SALES_CANONICAL_READBACK=DONE"
 
       - name: Roll back canonical deployment on failed readback
         if: steps.promote.outputs.promoted == 'true' && steps.readback.outcome != 'success'
@@ -305,9 +329,20 @@ jobs:
           print("ZEVANORY_SALES_CANONICAL_ROLLBACK=PASS")
           PY
           else
-            curl -fsS -X DELETE               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               "https://api.cloudflare.com/client/v4/accounts/$PUBLIC_OWNER_ACCOUNT_ID/workers/scripts/$SCRIPT_NAME"               -o /tmp/delete-first-failed-release.json || true
-            echo "ZEVANORY_SALES_FAILED_FIRST_RELEASE_REMOVED=PASS"
+            # T1 audit 13/10: the canonical production script is NEVER deleted by automation.
+            # Without a rollback snapshot the failed release stays as is and the run fails loudly
+            # for explicit, owner-authorised recovery.
+            echo "::error title=SALES_NO_ROLLBACK_SNAPSHOT::readback failed and no previous deployment snapshot; production script left untouched (not deleted) — manual recovery required"
           fi
+          exit 1
+
+      - name: Certification gate (T1, after rollback decision)
+        if: always() && steps.readback.outcome == 'success' && steps.readback.outputs.state != 'PASS'
+        env:
+          POST_STATE: ${{ steps.readback.outputs.state }}
+          POST_REASON: ${{ steps.readback.outputs.reason }}
+        run: |
+          echo "::error title=CERTIFICATION_NAO_COMPROVADO::release $GITHUB_SHA kept live (readbacks passed, no contrary evidence) but NOT certified: state=${POST_STATE:-missing} $POST_REASON. No rollback without independent evidence; re-check with t1-publisher-guard (workflow_dispatch: recheck_service=zevanory-sales-public)."
           exit 1
 
       - name: Delete isolated candidate
@@ -320,7 +355,7 @@ jobs:
           fi
 
       - name: Certify public release
-        if: steps.readback.outcome == 'success'
+        if: steps.readback.outcome == 'success' && steps.readback.outputs.state == 'PASS'
         run: |
           echo "ZEVANORY_SALES_PUBLIC_RELEASE=PASS"
           echo "RELEASE_SHA=$GITHUB_SHA"
