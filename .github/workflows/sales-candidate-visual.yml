@@ -1,0 +1,48 @@
+name: ZEVANORY sales candidate visual gate (PR)
+# The apex gate measures the PUBLISHED apex domain, so a layout regression is
+# only caught after publication (#821). This gate builds the candidate from the PR, serves it on
+# localhost and applies the same assertions before merge. Read-only: no secrets, no network writes.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "sales-public/**"
+      - "product.css"
+      - "legal.css"
+      - "solucoes/**"
+      - "scripts/build_sales_public.py"
+      - "scripts/audit/sales-visual-gate.mjs"
+      - ".github/workflows/sales-candidate-visual.yml"
+permissions:
+  contents: read
+concurrency:
+  group: sales-candidate-visual-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the sales candidate and require it to match the committed build
+        run: |
+          set -euo pipefail
+          python3 scripts/build_sales_public.py
+          git diff --exit-code -- sales-public
+      - name: Install Playwright (same version as the apex gate)
+        run: |
+          set -euo pipefail
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Visual gate on the candidate (localhost only)
+        run: |
+          set -euo pipefail
+          (cd sales-public && python3 -m http.server 8787 >/dev/null 2>&1 &)
+          for i in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8787/solucoes.html && break; sleep 0.5; done
+          node scripts/audit/sales-visual-gate.mjs http://127.0.0.1:8787 "$GITHUB_WORKSPACE/node_modules/playwright/index.js" solucoes.html
