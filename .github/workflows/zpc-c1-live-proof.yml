@@ -1,0 +1,151 @@
+name: ZEVANORY C1 live runtime proof read only
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths: [".github/workflows/zpc-c1-live-proof.yml"]
+permissions:
+  contents: read
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+      MERCADOPAGO_PROD_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_PROD_ACCESS_TOKEN }}
+    steps:
+      - name: Verify exact released SHA and worker production account with GET only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os,json,hashlib,urllib.request,urllib.error,time,datetime
+          from pathlib import Path
+          expected="24de54a0ada3891356c92542901f5dae17886042"
+          root="https://zevanory.api.br"
+          report={"schema":"zevanory.c1.live.proof/v1","sha_expected":expected,"checks":{},"commercial_release_allowed":False}
+          token=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
+          prod=os.environ.get("MERCADOPAGO_PROD_ACCESS_TOKEN","").strip()
+          def get(url,headers=None):
+              req=urllib.request.Request(url,headers={"Accept":"application/json","User-Agent":"ZEVANORY-AuditReadOnly/1.0",**(headers or {})},method="GET")
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as x:return x.status,json.loads(x.read(200000))
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.loads(e.read(200000))
+                  except:return e.code,{}
+              except Exception:return 0,{}
+          def notice(k,v):print("::notice title=C1_"+k+"::"+str(v),flush=True)
+          def stop(code):
+              report["state"]="NO_GO"
+              Path("c1-live-proof-sanitized.json").write_text(json.dumps(report,indent=2)+"\n")
+              print("::error title=C1_LIVE_PROOF::"+code,flush=True)
+              raise SystemExit(2)
+          if not token or not prod:stop("AUDIT_OR_PRODUCTION_TOKEN_MISSING")
+          release_ok=False
+          for _ in range(8):
+              code,release=get(root+"/api/control-plane")
+              current=(release.get("release") or {}).get("deployment") or {}
+              if code==200 and current.get("commit_sha")==expected:release_ok=True;break
+              time.sleep(12)
+          report["checks"]["release_probe_http"]=code
+          notice("RELEASE_PROBE_HTTP",code)
+          report["checks"]["exact_release"]=release_ok
+          notice("EXACT_RELEASE",release_ok)
+          if not release_ok:stop("RELEASE_SHA_NOT_VERIFIED")
+          headers={"x-certification-e2e-token":token}
+          for path in ["/api/internal/audit/runtime-identity","/api/internal/audit/financial-classification"]:
+              plain,body=get(root+path)
+              report["checks"]["anonymous_"+path.rsplit("/",1)[-1]]=plain
+              notice("ANONYMOUS_"+path.rsplit("/",1)[-1]+"_HTTP",plain)
+              if plain!=401:stop("ANONYMOUS_NOT_DENIED")
+              code,data=get(root+path,headers)
+              kind=path.rsplit("/",1)[-1]
+              report["checks"][kind+"_http"]=code
+              notice(kind.upper()+"_HTTP",code)
+              safe=json.dumps(data)
+              if any(field in safe.lower() for field in ['database_url','access_token','password','payer_email','authorization']):
+                  stop("SENSITIVE_RESPONSE_FIELD")
+              if kind=="runtime-identity":
+                  identity=data.get("identity") or {};db=data.get("database") or {}
+                  report["checks"]["worker_env"]=identity.get("environment")
+                  report["checks"]["db_suffix"]=db.get("provider_host_suffix")
+                  report["checks"]["db_size_known"]=isinstance(db.get("size_bytes"),int)
+                  notice("WORKER_ENV",identity.get("environment"))
+                  notice("DB_HOST_SUFFIX",db.get("provider_host_suffix"))
+                  notice("DB_SIZE_KNOWN",report["checks"]["db_size_known"])
+                  gcode,ghuser=get("https://api.mercadopago.com/users/me",{"Authorization":"Bearer "+prod})
+                  gh_hash=hashlib.sha256(str(ghuser.get("id") or "").encode()).hexdigest()[:16] if gcode==200 else ""
+                  same=bool(gh_hash) and gh_hash==identity.get("user_id_sha256_16")
+                  report["checks"]["same_mp_account_hash"]=same
+                  notice("SAME_ACCOUNT_HASH",same)
+              else:
+                  report["checks"]["financial_ambiguous"]=data.get("ambiguous")
+                  report["checks"]["production_confirmed"]=data.get("production_confirmed")
+                  notice("FINANCIAL_AMBIGUOUS",data.get("ambiguous"))
+                  notice("FINANCIAL_PRODUCTION_CONFIRMED",data.get("production_confirmed"))
+                  asa=data.get("asaas_sandbox") or {}
+                  asa_env=asa.get("environment")
+                  asa_key=asa.get("credential_configured")
+                  asa_n=asa.get("ids_queried")
+                  if asa and (asa_env not in ("sandbox","production","unknown") or type(asa_key) is not bool or type(asa_n) is not int or not 0<=asa_n<=40):stop("UNSAFE_ASAAS_PROOF_METADATA")
+                  notice("ASAAS_SANDBOX_ENV",asa_env)
+                  notice("ASAAS_KEY_CONFIGURED_BOOLEAN",asa_key)
+                  notice("ASAAS_SANDBOX_PAYMENT_GET_COUNT",asa_n)
+                  report["checks"]["asaas_sandbox"]={"environment":asa_env,"credential_configured":asa_key,"ids_queried":asa_n}
+                  report["checks"]["financial_test_pilot"]=data.get("certification_events")
+                  report["checks"]["financial_not_in_production"]=data.get("not_in_production")
+                  report["checks"]["orders_aggregates"]=data.get("orders") if isinstance(data.get("orders"),dict) else {}
+                  notice("FINANCIAL_TEST_PILOT",data.get("certification_events"))
+                  notice("FINANCIAL_NOT_IN_PRODUCTION",data.get("not_in_production"))
+                  for item in data.get("evidence_reasons") or []:
+                      reason=str(item.get("reason") or "")
+                      count=item.get("count")
+                      if not reason or len(reason)>95 or not all(c.islower() or c.isdigit() or c in ":_" for c in reason) or type(count) is not int:stop("UNSAFE_EVIDENCE_REASON")
+                      notice("AGGREGATE_REASON",reason+" count="+str(count))
+                      report.setdefault("sanitized_reasons",[]).append({"reason":reason,"count":count})
+                  allowed={
+                      "provider":{"mercadopago","asaas","stripe","other_or_missing"},
+                      "event":{"payment_confirmed","refund_confirmed","other_event"},
+                      "pilot":{"pilot_true","pilot_false","pilot_unknown"},
+                      "id_format":{"missing","mercadopago_numeric","other_format"},
+                      "marker_hint":{"mp_test_prefix","fixture_or_seed_prefix","pilot_or_test_prefix","not_classifiable_from_prefix"},
+                      "classification":{"ambiguo","teste_certificacao","nao_existe_em_producao","producao_confirmado"}
+                  }
+                  for dim in data.get("evidence_breakdown") or []:
+                      selected={k:dim.get(k) for k in allowed}
+                      count=dim.get("count")
+                      reason=str(dim.get("reason") or "")
+                      if any(v not in allowed[k] for k,v in selected.items()) or type(count) is not int or not reason or not all(c.islower() or c.isdigit() or c=="_" for c in reason):stop("UNSAFE_BREAKDOWN_DIMENSIONS")
+                      line="|".join(str(selected[k]) for k in ["classification","provider","event","pilot","id_format","marker_hint"])+":reason="+reason+":count="+str(count)
+                      notice("EVENT_ORIGIN_BREAKDOWN",line)
+                      report.setdefault("sanitized_breakdown",[]).append({**selected,"reason":reason,"count":count})
+              if code!=200:stop(kind.upper()+"_NOT_PROVEN")
+          if not report["checks"].get("same_mp_account_hash"):stop("COLLECTOR_ACCOUNT_MISMATCH")
+          if report["checks"].get("financial_ambiguous")!=0:stop("AMBIGUOUS_PAYMENT_RECORDS")
+          # C2: public commercial status must not count certified pilots as sales.
+          status_code,public_status=get(root+"/api/status")
+          metrics=public_status.get("metrics") or {}
+          safe_keys=["orders","payments_confirmed","refunds_confirmed","checkouts_started"]
+          counts={}
+          if status_code==200:
+              for field in safe_keys:
+                  value=metrics.get(field)
+                  counts[field]=value if isinstance(value,int) and not isinstance(value,bool) and 0<=value<=1000000 else None
+          report["checks"]["public_status_http"]=status_code
+          report["checks"]["public_commercial_metrics"]=counts
+          notice("PUBLIC_STATUS_HTTP",status_code)
+          for field,value in counts.items():
+              notice("PUBLIC_"+field.upper(),value)
+          if status_code!=200:stop("PUBLIC_STATUS_READ_FAILED")
+          if report["checks"]["production_confirmed"]==0 and (counts.get("orders") or counts.get("payments_confirmed") or counts.get("refunds_confirmed")):
+              stop("COMMERCIAL_STATUS_MIXES_CERTIFICATION_AND_PRODUCTION")
+          report["state"]="CLASSIFICATION_PROVEN_NOT_COMMERCIAL_GO"
+          Path("c1-live-proof-sanitized.json").write_text(json.dumps(report,indent=2)+"\n")
+          notice("STATE",report["state"])
+          PY
+      - name: Preserve summarized proof for one day
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c1-live-proof-sanitized
+          path: c1-live-proof-sanitized.json
+          retention-days: 1
+          if-no-files-found: warn
