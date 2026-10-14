@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "as_of": "2026-10-14",
+    "market": "BR",
+    "language": "pt-BR",
+    "status": "draft_not_published",
+    "publication_allowed": false,
+    "paid_media_allowed": false,
+    "outbound_messages_allowed": false,
+    "experiment_window_days": 14,
+    "purpose": "Duas campanhas orgânicas comparáveis, prontas para revisão humana, sem execução ou promessa de resultado."
+  },
+  "shared_design": {
+    "channels": ["seo", "youtube", "tiktok", "telegram", "bluesky"],
+    "assets_per_channel": 1,
+    "utm_medium": "organic",
+    "measurement_system": "worker/funnel.mjs",
+    "start_condition": "Aprovação explícita do proprietário e publicação pela esteira canônica fora deste PR.",
+    "stop_conditions": [
+      "link de destino indisponível",
+      "alegação não comprovada",
+      "conteúdo duplicado acima do limite",
+      "métrica sem proveniência",
+      "qualquer pedido de pagamento, credencial ou mensagem direta"
+    ],
+    "comparison_rule": "Mesma janela, mesmos canais e mesma quantidade de peças. Comparar visitas por campanha; interpretar intenções apenas com as limitações documentadas do funil."
+  },
+  "campaigns": [
+    {
+      "id": "fluxo-caixa-pix-lucro-caixa",
+      "product": {"id": "lucro-e-caixa", "sku": "ZEV-LCX-011", "name": "Lucro & Caixa"},
+      "audience": {
+        "primary": "MEI, comércio e prestadores brasileiros que recebem por Pix e fecham o caixa manualmente",
+        "problem": "misturar saldo bancário, recebimentos por Pix e contas do negócio sem uma rotina diária",
+        "exclusions": ["promessa de renda", "aconselhamento contábil", "usuários fora do Brasil"]
+      },
+      "hypothesis": "Uma entrada gratuita baseada em rotina diária e calculadora pode atrair pessoas com problema operacional de caixa antes de apresentar o produto.",
+      "value_proposition": "Organizar entradas, saídas e Pix em uma rotina curta, com cálculo gratuito e sem promessa de sobra ou lucro.",
+      "entry_material": {
+        "primary": "/calculadora-fluxo-de-caixa",
+        "secondary": "/material-gratuito",
+        "reused_assets": [
+          "Calculadora de fluxo de caixa grátis",
+          "Checklist gratuito de 15 minutos",
+          "Página existente do produto Lucro & Caixa"
+        ]
+      },
+      "utm": {"campaign": "c3_fluxo_caixa_pix", "medium": "organic"},
+      "assets": [
+        {
+          "channel": "seo",
+          "source": "blog",
+          "destination": "/calculadora-fluxo-de-caixa",
+          "format": "brief_de_interligacao",
+          "hook": "Pix recebido não é o mesmo que dinheiro livre no caixa.",
+          "body": "Use a calculadora já disponível para somar saldo, entradas e saídas previstas. Depois registre a rotina no checklist de 15 minutos.",
+          "cta": "Calcule o saldo do mês gratuitamente."
+        },
+        {
+          "channel": "youtube",
+          "source": "youtube",
+          "destination": "/calculadora-fluxo-de-caixa",
+          "format": "short_45s",
+          "hook": "Entrou Pix hoje: quanto realmente pode sair do caixa?",
+          "body": "Mostre três linhas: saldo atual, entradas previstas e saídas previstas. Explique que o resultado é uma projeção para decidir o que conferir, não uma garantia financeira.",
+          "cta": "Teste a calculadora gratuita no link do canal."
+        },
+        {
+          "channel": "tiktok",
+          "source": "tiktok",
+          "destination": "/material-gratuito",
+          "format": "video_30s",
+          "hook": "O fechamento de caixa que cabe em três blocos de cinco minutos.",
+          "body": "Cena 1: conferir Pix e outras entradas. Cena 2: anotar contas e saídas. Cena 3: comparar o saldo projetado e separar pendências.",
+          "cta": "Abra o checklist gratuito de 15 minutos."
+        },
+        {
+          "channel": "telegram",
+          "source": "telegram",
+          "destination": "/calculadora-fluxo-de-caixa",
+          "format": "post_curto",
+          "hook": "Antes de usar o saldo do Pix, feche a conta do dia.",
+          "body": "Some saldo atual, entradas previstas e saídas. A calculadora gratuita ajuda a visualizar o saldo final; os números continuam dependendo dos registros informados.",
+          "cta": "Calcular o fluxo de caixa."
+        },
+        {
+          "channel": "bluesky",
+          "source": "bluesky",
+          "destination": "/calculadora-fluxo-de-caixa",
+          "format": "post_curto",
+          "hook": "Saldo na conta não responde sozinho se o caixa está saudável.",
+          "body": "Organize saldo, entradas e saídas previstas em uma projeção simples. Sem cadastro e sem promessa de resultado.",
+          "cta": "Use a calculadora gratuita."
+        }
+      ],
+      "measurement": {
+        "primary": {
+          "name": "visitas atribuídas à campanha",
+          "source": "clean.campaigns.c3_fluxo_caixa_pix",
+          "baseline": null,
+          "target": null
+        },
+        "secondary": [
+          {"name": "visitas à calculadora", "source": "clean.pages.calculadora-fluxo-de-caixa.views", "baseline": null, "target": null},
+          {"name": "cliques de inscrição por origem", "source": "clean.sources.<source>.subscribe_click", "baseline": null, "target": null},
+          {"name": "intenção no produto Lucro & Caixa", "source": "clean.sources.<source>.checkout_intent", "baseline": null, "target": null}
+        ],
+        "limitations": [
+          "O funil atual associa campanha às visualizações, mas intenções somente à origem.",
+          "Não há meta numérica sem baseline limpo.",
+          "A classificação BR é agregada e não cruza campanha com país."
+        ]
+      }
+    },
+    {
+      "id": "whatsapp-clientes-vendas-pratica",
+      "product": {"id": "vendas-na-pratica", "sku": "ZEV-VEN-011", "name": "Vendas na Prática"},
+      "audience": {
+        "primary": "MEI, lojas e prestadores brasileiros que atendem clientes pelo WhatsApp",
+        "problem": "perder continuidade entre orçamento, cobrança respeitosa e retomada de conversas",
+        "exclusions": ["spam", "disparo frio", "promessa de conversão", "aconselhamento jurídico"]
+      },
+      "hypothesis": "Guias práticos já existentes para três momentos da conversa podem qualificar visitantes antes de apresentar o produto.",
+      "value_proposition": "Acompanhar conversas comerciais com próximos passos claros e mensagens revisáveis, sem automação de envio ou promessa de venda.",
+      "entry_material": {
+        "primary": "/mensagem-para-cliente-que-sumiu",
+        "secondary": "/material-gratuito",
+        "reused_assets": [
+          "Guia mensagem para cliente que sumiu",
+          "Guia como cobrar cliente pelo WhatsApp",
+          "Guia como mandar orçamento pelo WhatsApp",
+          "Checklist gratuito de 15 minutos",
+          "Página existente do produto Vendas na Prática"
+        ]
+      },
+      "utm": {"campaign": "c3_whatsapp_clientes", "medium": "organic"},
+      "assets": [
+        {
+          "channel": "seo",
+          "source": "blog",
+          "destination": "/mensagem-para-cliente-que-sumiu",
+          "format": "cluster_existente",
+          "hook": "Três momentos do acompanhamento: orçamento, retorno e cobrança.",
+          "body": "Interligar os três guias existentes sem criar outro artigo: cada página aponta para o próximo passo pertinente e para o checklist gratuito.",
+          "cta": "Escolha o guia correspondente à conversa."
+        },
+        {
+          "channel": "youtube",
+          "source": "youtube",
+          "destination": "/como-mandar-orcamento-pelo-whatsapp",
+          "format": "short_45s",
+          "hook": "Orçamento enviado não encerra o acompanhamento.",
+          "body": "Mostre uma sequência simples: confirmar recebimento, combinar quando retomar e registrar a próxima ação. Use exemplos fictícios e revise antes de enviar.",
+          "cta": "Veja o guia de orçamento pelo WhatsApp."
+        },
+        {
+          "channel": "tiktok",
+          "source": "tiktok",
+          "destination": "/mensagem-para-cliente-que-sumiu",
+          "format": "video_30s",
+          "hook": "Cliente parou de responder? Evite repetir a mesma mensagem.",
+          "body": "Apresente três opções: confirmar se ainda precisa, oferecer um próximo passo objetivo e encerrar com respeito quando não houver retorno.",
+          "cta": "Abra os exemplos gratuitos do guia."
+        },
+        {
+          "channel": "telegram",
+          "source": "telegram",
+          "destination": "/como-cobrar-cliente-pelo-whatsapp",
+          "format": "post_curto",
+          "hook": "Cobrança pelo WhatsApp precisa ser clara e respeitosa.",
+          "body": "Confirme o valor e o vencimento, ofereça um canal para corrigir divergências e evite exposição ou ameaça. O guia é informativo e não substitui orientação jurídica.",
+          "cta": "Leia o guia gratuito de cobrança."
+        },
+        {
+          "channel": "bluesky",
+          "source": "bluesky",
+          "destination": "/mensagem-para-cliente-que-sumiu",
+          "format": "post_curto",
+          "hook": "Follow-up não precisa virar insistência.",
+          "body": "Registre o contexto, proponha uma ação concreta e respeite a decisão do cliente. A consistência vem do processo, não de uma frase milagrosa.",
+          "cta": "Veja exemplos para adaptar."
+        }
+      ],
+      "measurement": {
+        "primary": {
+          "name": "visitas atribuídas à campanha",
+          "source": "clean.campaigns.c3_whatsapp_clientes",
+          "baseline": null,
+          "target": null
+        },
+        "secondary": [
+          {"name": "visitas ao produto Vendas na Prática", "source": "clean.pages.vendas-na-pratica.views", "baseline": null, "target": null},
+          {"name": "cliques de inscrição por origem", "source": "clean.sources.<source>.subscribe_click", "baseline": null, "target": null},
+          {"name": "intenção no produto Vendas na Prática", "source": "clean.sources.<source>.checkout_intent", "baseline": null, "target": null}
+        ],
+        "limitations": [
+          "As páginas como-* e mensagem-* não são páginas rastreadas individualmente pelo funil atual.",
+          "O funil atual associa campanha às visualizações rastreadas, mas intenções somente à origem.",
+          "Não há meta numérica sem baseline limpo."
+        ]
+      }
+    }
+  ]
+}
