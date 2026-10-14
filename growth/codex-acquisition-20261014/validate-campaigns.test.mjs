@@ -38,26 +38,24 @@ test("a WhatsApp guide on the main domain fails closed",async()=>{
 });
 
 test("live destinations return HTML content at the certified final URL",{timeout:45000},async()=>{
-  const plan=await load(),proof=[];
-  for(const item of destinationMatrix(plan)){
-    const response=await fetch(item.url,{redirect:"follow",headers:{
-      "user-agent":"ZEVANORY-Codex-Acquisition-Audit/1.0",
-      "accept":"text/html"
-    }});
+  const plan=await load(),matrix=destinationMatrix(plan);
+  const paths=[...new Set(matrix.map(item=>new URL(item.url).pathname))];
+  const candidates=paths.flatMap(path=>["zevanory.api.br","vendas.zevanory.api.br"].map(host=>"https://"+host+path));
+  const candidateProof=await Promise.all(candidates.map(async url=>{
+    const response=await fetch(url,{redirect:"follow",headers:{"user-agent":"ZEVANORY-Codex-Acquisition-Audit/1.0","accept":"text/html"}});
     const body=await response.text();
-    const observed={
-      id:item.id,requested_url:item.url,status:response.status,
-      redirected:response.redirected,final_url:response.url,
-      content_marker_found:body.includes(item.content_marker),
-      content_type:response.headers.get("content-type")
-    };
-    proof.push(observed);
-    assert.equal(response.status,200,"http_status:"+item.id);
-    assert.equal(normalizeUrl(response.url),normalizeUrl(item.expected_final_url),"final_url:"+item.id);
-    assert.match(response.headers.get("content-type")||"",/text\/html/i,"content_type:"+item.id);
-    assert.equal(observed.content_marker_found,true,"content_marker:"+item.id);
+    return {requested_url:url,status:response.status,redirected:response.redirected,final_url:response.url,title:(body.match(/<title>([^<]+)/i)||[])[1]||null,content_type:response.headers.get("content-type")};
+  }));
+  console.log("LIVE_CANDIDATE_PROOF "+JSON.stringify(candidateProof));
+  const byRequested=new Map(candidateProof.map(item=>[item.requested_url,item]));
+  for(const item of matrix){
+    const observed=byRequested.get(item.url);
+    assert.equal(observed.status,200,"http_status:"+item.id);
+    assert.equal(normalizeUrl(observed.final_url),normalizeUrl(item.expected_final_url),"final_url:"+item.id);
+    assert.match(observed.content_type||"",/text\/html/i,"content_type:"+item.id);
+    const response=await fetch(item.url,{redirect:"follow",headers:{"user-agent":"ZEVANORY-Codex-Acquisition-Audit/1.0","accept":"text/html"}});
+    assert.equal((await response.text()).includes(item.content_marker),true,"content_marker:"+item.id);
   }
-  console.log("LIVE_DESTINATION_PROOF "+JSON.stringify(proof));
 });
 
 test("publication, paid media and outbound messages fail closed",async()=>{
