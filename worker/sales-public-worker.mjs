@@ -76,6 +76,18 @@ export function paymentReturnPage(state){
   return entry?infoPage(200,entry[0],entry[1]):null;
 }
 export const BOT_UA=/bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|headless|lighthouse|monitor|uptime|pingdom|semrush|ahrefs|curl|wget|python|node-fetch|go-http|axios|okhttp|zevanory/i;
+// Telegram's in-app browser on Android appends "Telegram-Android/<ver> (<device>)" to a normal mobile
+// Chrome UA, so the word "telegram" blocked real people opening our Telegram links. The token is removed
+// ONLY when the rest is a mobile browser UA; the result still goes through the full automation list
+// (TelegramBot previews, headless, curl, python... stay blocked). A UA never proves a human: rate limits,
+// honeypot and the datacenter-ASN filter remain the abuse controls.
+const INAPP_TOKEN=/\s*\bTelegram-Android\/[\d.]+(?:\s*\([^)]*\))?/g;
+const MOBILE_BROWSER=/^Mozilla\/5\.0 \((?:Linux; Android [^)]*|iPhone;[^)]*|iPad;[^)]*)\) AppleWebKit\/[\d.]+ \(KHTML, like Gecko\)/;
+export function isAutomationUA(ua){
+  const s=String(ua||"");
+  if(!s)return true;
+  return BOT_UA.test(MOBILE_BROWSER.test(s)?s.replace(INAPP_TOKEN,""):s);
+}
 const PRICES={"ZEV-IA-011":["IA na Prática",197],"ZEV-VEN-011":["Vendas na Prática",197],"ZEV-LCX-011":["Lucro & Caixa",247],"ZEV-CMB-011":["Combo IA + Vendas",297],"ZEV-NGC-011":["Negócio Completo",397]};
 async function salesOpen(env){
   try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/status");return (await st.json())?.open===true}catch{return false}
@@ -97,7 +109,7 @@ async function handleBuy(request,env,sku,ctx){
     return infoPage(200,`Comprar ${name}`,`<p><strong>${name}</strong> · R$ ${price},00 · pagamento único, Pix ou cartão.</p><p>Você será levado ao ambiente seguro do Mercado Pago. Depois da aprovação, o link de download chega no seu e-mail (válido por 72 horas). Garantia de 7 dias.</p><form method="post" action="/comprar/${sku}"><button class="button primary" type="submit">Ir para o pagamento seguro</button></form><p class="small">Ao continuar você concorda com os <a href="/termos">Termos</a> e a <a href="/privacidade">Política de Privacidade</a>.</p>`);
   }
   const ua=request.headers.get("user-agent")||"";
-  if(!ua||BOT_UA.test(ua)) return infoPage(403,"Acesso não permitido","<p>Use um navegador para comprar.</p>");
+  if(isAutomationUA(ua)) return infoPage(403,"Acesso não permitido","<p>Use um navegador para comprar.</p>");
   const ip=request.headers.get("cf-connecting-ip")||"unknown";
   if(await overLimit(env,ip)) return infoPage(429,"Muitas tentativas","<p>Aguarde um minuto e tente de novo.</p>");
   try{
@@ -129,7 +141,7 @@ function countLead(request,env,ctx){
 async function handleLead(request,env,ctx){
   if(request.method!=="POST") return new Response(null,{status:303,headers:applySecurityHeaders(new Headers({location:"/material-gratuito"}))});
   const ua=request.headers.get("user-agent")||"";
-  if(!ua||BOT_UA.test(ua)) return infoPage(403,"Acesso não permitido","<p>Use um navegador.</p>");
+  if(isAutomationUA(ua)) return infoPage(403,"Acesso não permitido","<p>Use um navegador.</p>");
   const ip=request.headers.get("cf-connecting-ip")||"unknown";
   if(await overLimit(env,"lead:"+ip)) return infoPage(429,"Muitas tentativas","<p>Aguarde um minuto e tente de novo.</p>");
   let form;try{form=await request.formData()}catch{form=new FormData()}
