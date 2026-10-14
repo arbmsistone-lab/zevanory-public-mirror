@@ -1,0 +1,63 @@
+name: ZEVANORY WAF 403 evidence read only
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/waf-403-evidence-readonly.yml"
+permissions:
+  contents: read
+jobs:
+  cloudflare-diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Inspect public GET responses and Cloudflare zone settings only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error
+          from pathlib import Path
+          evidence={"routes":[],"zone":{"found":False,"ruleset_http":[],"bot_setting_http":None},"read_only":True}
+          def get(url,token=""):
+            headers={"Accept":"application/json","User-Agent":"ZEVANORY-SafeReadOnlyProbe/1.0"}
+            if token:headers["Authorization"]="Bearer "+token
+            request=urllib.request.Request(url,headers=headers,method="GET")
+            try:
+              with urllib.request.urlopen(request,timeout=20) as r:return r.status,r.headers,json.loads(r.read(200000))
+            except urllib.error.HTTPError as e:return e.code,e.headers,{}
+            except Exception:return 0,{},{}
+          for path in ["/api/status","/api/release","/api/health","/api/provider-health","/api/sales/status"]:
+            code,h,_=get("https://zevanory.api.br"+path)
+            entry={"route":path,"http":code,"cf_ray":bool(h.get("cf-ray")),"cf_mitigated":bool(h.get("cf-mitigated"))}
+            evidence["routes"].append(entry)
+            print("::notice title=WAF_ROUTE::"+path+" HTTP="+str(code)+" cf_ray="+str(entry["cf_ray"])+" cf_mitigated="+str(entry["cf_mitigated"]))
+          token=os.environ.get("CF_TOKEN","").strip()
+          if token:
+            code,_,data=get("https://api.cloudflare.com/client/v4/zones?name=api.br",token)
+            zones=data.get("result") or []
+            if code==200 and zones:
+              zid=str(zones[0].get("id") or "")
+              if zid:
+                evidence["zone"]["found"]=True
+                print("::notice title=WAF_ZONE::found=true")
+                for phase in ["http_request_firewall_custom","http_request_firewall_managed","http_ratelimit"]:
+                  code,_,data=get("https://api.cloudflare.com/client/v4/zones/"+zid+"/rulesets/phases/"+phase+"/entrypoint",token)
+                  evidence["zone"]["ruleset_http"].append({"phase":phase,"http":code,"rule_count":len((data.get("result") or {}).get("rules") or [])})
+                  print("::notice title=WAF_RULESET::phase="+phase+" http="+str(code))
+                code,_,_=get("https://api.cloudflare.com/client/v4/zones/"+zid+"/settings/bot_management",token)
+                evidence["zone"]["bot_setting_http"]=code
+                print("::notice title=WAF_BOT_SETTING::HTTP="+str(code))
+          Path("waf-403-sanitized.json").write_text(json.dumps(evidence,indent=2)+"\n")
+          if any(x["http"]!=200 for x in evidence["routes"]):
+            print("::error title=WAF_403_NO_GO::Public read-only routes not accessible to audit runner")
+            raise SystemExit(2)
+          PY
+      - name: Store sanitized evidence for one day
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: waf-403-sanitized
+          path: waf-403-sanitized.json
+          retention-days: 1
