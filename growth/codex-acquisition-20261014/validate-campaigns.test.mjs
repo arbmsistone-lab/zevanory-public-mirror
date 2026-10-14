@@ -20,13 +20,12 @@ test("two organic campaign proposals are safe but not declared distribution-read
   assert.match(result.links["whatsapp-clientes-vendas-pratica"].youtube,/^https:\/\/vendas\.zevanory\.api\.br\//);
 });
 
-test("destination registry assigns main assets and sales guides to certified hosts",async()=>{
+test("destination registry assigns every live asset to the certified sales host",async()=>{
   const result=validateCampaigns(await load());
   const destinations=Object.fromEntries(result.destinations.map(item=>[item.id,item]));
-  assert.equal(new URL(destinations.cashflow_calculator.url).hostname,"zevanory.api.br");
-  for(const id of ["whatsapp_reengagement_guide","whatsapp_collection_guide","whatsapp_quote_guide"]){
+  for(const id of ["cashflow_calculator","free_checklist","whatsapp_reengagement_guide","whatsapp_collection_guide","whatsapp_quote_guide"]){
     assert.equal(new URL(destinations[id].url).hostname,"vendas.zevanory.api.br");
-    assert.equal(destinations[id].campaign_visits_tracked,false);
+    if(id.startsWith("whatsapp_"))assert.equal(destinations[id].campaign_visits_tracked,false);
   }
 });
 
