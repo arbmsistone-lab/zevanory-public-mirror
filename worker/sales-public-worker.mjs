@@ -111,16 +111,20 @@ async function handleBuy(request,env,sku,ctx){
 }
 
 // Lead magnet form (POST, same origin): forwarded to the core Worker through the private binding.
-// Accepted free-material form -> aggregate lead_submit counter. The source is the utm_source that the
-// form page carried (same-site referer only); nothing about the person is sent.
+// New free-material sign-up accepted by the core -> aggregate lead_submit counter by source. The source
+// is the utm_source the form page carried (same-site referer only). Minimum data: user agent and ASN go
+// only so the core can apply the same bot/datacenter filter as page views, and the core drops them for
+// intent metrics (tests/attribution.test.mjs). No IP, country, e-mail or name is sent.
 export function leadSource(request){
   try{const ref=new URL(request.headers.get("referer")||"");if(ref.hostname!==new URL(request.url).hostname)return "sem_tag";
     const v=String(ref.searchParams.get("utm_source")||"").toLowerCase();return /^[a-z0-9_-]{1,24}$/.test(v)?v:"sem_tag";}catch{return "sem_tag"}
 }
+export function leadHitBody(request){
+  return {page:"material-gratuito",metric:"lead_submit",src:leadSource(request),ua:request.headers.get("user-agent")||"",asn:Number(request.cf?.asn)||0};
+}
 function countLead(request,env,ctx){
   if(!env?.CORE||typeof env.CORE.fetch!=="function"||!ctx?.waitUntil) return;
-  const body=JSON.stringify({page:"material-gratuito",metric:"lead_submit",src:leadSource(request),camp:"",asn:Number(request.cf?.asn)||0,al:request.headers.get("accept-language")?1:0,cty:String(request.cf?.country||"").slice(0,2),ua:request.headers.get("user-agent")||"",ip:request.headers.get("cf-connecting-ip")||"",purpose:""});
-  ctx.waitUntil(env.CORE.fetch("https://funnel.internal/hit",{method:"POST",headers:{"content-type":"application/json"},body}).catch(()=>null));
+  ctx.waitUntil(env.CORE.fetch("https://funnel.internal/hit",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(leadHitBody(request))}).catch(()=>null));
 }
 async function handleLead(request,env,ctx){
   if(request.method!=="POST") return new Response(null,{status:303,headers:applySecurityHeaders(new Headers({location:"/material-gratuito"}))});
@@ -137,8 +141,9 @@ async function handleLead(request,env,ctx){
     const data=await res.json().catch(()=>({}));
     // Only fixed, known messages are rendered (no upstream text in HTML).
     const KNOWN=["Quase lá! Enviamos um link de confirmação para o seu e-mail.","Enviamos o checklist para o seu e-mail.","Confira o e-mail.","Marque a autorização para receber o material.","Não conseguimos enviar agora. Tente de novo em instantes.","Não conseguimos registrar agora. Tente de novo em instantes."];
-    if(res.ok) countLead(request,env,ctx);
     const msg=KNOWN.find(k=>k===String(data?.message||""))||(res.ok?KNOWN[0]:"Tente novamente em instantes.");
+    // Only a new (or re-requested, pending) sign-up counts; a resend to an already confirmed address does not.
+    if(res.ok&&String(data?.message||"")===KNOWN[0]) countLead(request,env,ctx);
     // The checklist is a public (noindex) page, so gating it behind the e-mail confirmation only added two
     // steps between the visitor and what they asked for. It opens right away; the double opt-in still
     // guards every marketing e-mail.
