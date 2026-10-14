@@ -1,67 +1,92 @@
 # Proposta mínima — governança multiprovedor v2
 
-Status: **proposta inativa**. Este diretório não altera `ops/executor.json`, `.github/workflows/t1-publisher-guard.yml`, branch protection, ambientes, secrets ou publicação.
+Status: **proposta inativa**. Este diretório e seu CI não alteram `ops/executor.json`, `.github/workflows/t1-publisher-guard.yml`, proteções, ambientes, secrets, merge ou publicação.
 
-## Problema comprovado
+## Decisão corrigida
 
-O gate atual procura texto `session_...` e compara com `authorized_claude_sessions`. Isso identifica uma declaração, mas não autentica o executor. Como Claude, Codex e ChatGPT atualmente aparecem no GitHub por meio da identidade do proprietário, `github.actor`, autor do commit e corpo do PR não distinguem o humano dos agentes.
+A função `authorize` agora recebe somente um envelope produzido por coletor confiável. Ela não aceita `authenticated_principal`, permissões ou aprovação enviados livremente pelo executor. Ausência, erro, escopo desconhecido ou prova incompleta resulta em **NOT_PROVEN** ou **DENY**, nunca em autorização.
 
-Consequência: adicionar `Codex-Session` ao mesmo arquivo apenas ampliaria uma lista documental. Não resolveria autenticação e poderia criar uma falsa sensação de controle.
+O coletor proposto é separado em `collector.mjs`. Ele consulta PR, arquivos, reviews, permissões, branch e ambiente por interfaces somente leitura. O arquivo deste PR é apenas especificação testável: código vindo do próprio PR não pode ser sua própria raiz de confiança.
 
-## Modelo proposto
+## Fronteira de confiança
 
-| Papel | Pode | Não pode |
+O coletor ativo deverá:
+
+1. ser instalado pelo proprietário em PR de bootstrap separado;
+2. viver na branch padrão protegida e ter SHA fixado na política;
+3. executar por `pull_request_target` sem checkout nem execução de código do PR;
+4. usar apenas `contents: read`, `pull-requests: read` e `metadata: read`;
+5. obter PR, arquivos, reviews e configurações diretamente das APIs;
+6. obter o vínculo executor–principal–sessão de registro externo controlado pelo proprietário e de atestado confiável do provedor;
+7. propagar erro de API como evidência incompleta.
+
+Um login GitHub App e um installation ID autenticam o principal GitHub, mas **não provam por si sós qual modelo ou sessão operou esse principal**. Sem atestado externo verificável, a identidade do modelo é `NOT_PROVEN`.
+
+## Permissões e caminhos
+
+Cada papel possui `permission_allowlist` e `required_permissions`. A fotografia deve ser exaustiva. O decisor rejeita:
+
+- qualquer permissão não listada;
+- nível desconhecido ou superior ao máximo;
+- permissão obrigatória ausente;
+- fotografia parcial ou não proveniente da API.
+
+Codex normal fica limitado a `growth/**`. `governance/**` e `.github/workflows/**` são proibidos. Portanto, este #814 é um documento excepcional de proposta e **não é elegível para autoativação**. O bootstrap será outro PR, criado/revisado sob controle do proprietário.
+
+## Aprovação real
+
+Auditoria técnica do ChatGPT não equivale a autorização GitHub. Merge requer:
+
+- autor do PR diferente do proprietário;
+- review `APPROVED` do proprietário no SHA atual;
+- review não descartado;
+- branch protection comprovada com PR obrigatório, CODEOWNER e stale reviews descartadas.
+
+Publicação acrescenta workflow canônico e ambiente `production` comprovado, com prevenção de autoaprovação e branch protegida. A regra não presume que o autor consiga aprovar o próprio PR.
+
+## Estado observado em 2026-10-14
+
+| Controle | Evidência disponível | Veredito |
 |---|---|---|
-| Claude | propor mudanças operacionais, testar e solicitar publicação pela esteira existente | merge, aprovação final, gestão de credenciais ou publicação fora da esteira |
-| Codex | propor aquisição somente em `growth/**` e executar testes isolados | workflows, Worker, checkout, financeiro, secrets, merge, deploy ou mensagens |
-| ChatGPT | auditar e registrar PASS/FAIL/NÃO COMPROVADO | push, merge, deploy ou credenciais |
-| Proprietário | aprovar, fazer merge, aprovar ambiente de produção e gerir credenciais | delegação implícita por texto em PR |
-| GitHub Actions | publicar somente pelos workflows canônicos após aprovação do ambiente | ampliar escopo, alterar secrets ou contornar revisão |
+| Branch `gh-pages` | endpoint de protection respondeu 403 à integração disponível | **NOT_PROVEN** |
+| Rulesets | API retornou lista vazia | nenhum ruleset observado |
+| Ambiente `production` | endpoint não disponível pela integração atual | **NOT_PROVEN** |
+| Permissões de Actions | endpoint não disponível pela integração atual | **NOT_PROVEN** |
+| Vínculo app → modelo/sessão | não há atestado externo verificável | **NOT_PROVEN** |
 
-## Autenticação e autorização
+Disponibilidade de produto não é configuração comprovada. A documentação oficial informa que protected branches existem para repositórios públicos no GitHub Free e que ambientes/protection rules também existem para repositórios públicos; isso apenas indica viabilidade no plano, não prova que estejam ativados aqui:
 
-1. **Principal distinto:** cada executor usa uma instalação GitHub App própria. O login do bot e o installation ID são obtidos pela API do GitHub e registrados; não são escolhidos pelo executor.
-2. **Sem credencial humana compartilhada:** o token/sessão do proprietário é removido dos agentes. Enquanto isso não for comprovado, o v2 permanece inativo e toda identidade de provedor é NÃO COMPROVADA.
-3. **Permissão efetiva:** um job somente leitura confere, pela API, a instalação associada ao PR e suas permissões. Codex pode escrever conteúdo e PR, mas não administração, Actions, ambientes ou secrets.
-4. **Escopo por arquivo:** Codex é aceito somente em `growth/**`. Qualquer arquivo operacional falha fechado, mesmo com identidade válida.
-5. **Aprovação do proprietário:** merge exige review APPROVED do proprietário no SHA atual, branch protegida e descarte automático de aprovação após novo commit.
-6. **Publicação:** secrets ficam no ambiente protegido `production`. Apenas workflows canônicos entram nesse ambiente, com aprovação manual do proprietário, prevenção de autoaprovação e restrição à branch protegida.
-7. **Proveniência textual:** IDs de sessão podem continuar no relatório, mas nunca contam como autenticação ou autorização.
+- https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches
+- https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/review-deployments
 
-## Verificação pelo GitHub
+## Migração v1 → v2
 
-A implementação futura deve consultar e comparar:
+Opinião: **não migrar ainda**. Manter o `session-guard` v1 inalterado até todos os itens abaixo serem verificáveis:
 
-- autor autenticado do PR e instalação GitHub App;
-- permissões concedidas à instalação no repositório;
-- arquivos alterados no PR;
-- review do proprietário ancorado ao `head.sha` atual;
-- regras da branch: PR obrigatório, checks obrigatórios, CODEOWNERS e stale reviews;
-- configuração do ambiente `production`: revisor obrigatório, prevenção de self-review e branches permitidas;
-- workflow solicitante contra allowlist canônica.
+1. principals separados para Claude, Codex, auditor e proprietário;
+2. sessão humana do proprietário indisponível aos agentes;
+3. registro externo e atestado de vínculo do executor ativos;
+4. permissões efetivas completas dentro das allowlists;
+5. collector instalado na branch protegida, revisado, fixado por SHA e sem executar código do PR;
+6. branch protection e ambiente `production` legíveis e conformes;
+7. testes adversariais e checks obrigatórios verdes;
+8. aprovação distinta do proprietário sobre o SHA exato do PR de ativação;
+9. publicação possível apenas pelos workflows canônicos.
 
-Se a API não permitir provar qualquer item, o resultado é **NÃO AUTORIZADO / NÃO COMPROVADO**, nunca PASS por ausência.
+Após isso, um PR do proprietário pode executar fase de observação em modo `report-only`; outro PR, após auditoria, pode tornar v2 obrigatório. O v1 só deve ser removido em mudança posterior, quando a equivalência operacional estiver demonstrada.
 
-## Migração segura
+## Impacto sobre #813
 
-1. Proprietário cria ou instala os três principals separados sem fornecer sua sessão pessoal.
-2. Auditor lê logins, installation IDs e permissões efetivas; substitui os placeholders em `policy.proposal.json`.
-3. Proprietário configura branch e ambiente protegido.
-4. Um PR separado, feito pelo principal correto, propõe a ativação do schema v2 e a adaptação do gate.
-5. Testes negativos são obrigatórios; o gate v1 continua ativo até o v2 passar e ser aprovado.
-6. Só depois o proprietário decide merge. Não há exceção automática para o #813.
+O #813 continua draft e sem merge. Para ficar compatível com v2:
 
-## Testes incluídos
+- a operação normal do Codex deve conter somente `growth/**`;
+- o workflow específico incluído no #813 deve ser removido depois que um workflow genérico confiável for instalado pelo bootstrap;
+- sua autoria precisa vir de principal Codex separado com vínculo externo verificável;
+- qualquer novo commit invalida aprovação anterior;
+- não existe exceção de publicação ou merge.
 
-`authorize.test.mjs` demonstra fail-closed para:
+## Testes adversariais
 
-- política ainda inativa;
-- declaração sem principal autenticado;
-- Codex usando a identidade compartilhada do proprietário;
-- Codex tocando Worker;
-- permissão excessiva;
-- aprovação do proprietário em SHA antigo;
-- workflow de publicação fora da allowlist;
-- caminho válido de aquisição e caminho canônico de deploy protegido.
+`authorize.test.mjs` cobre política inativa, resposta de API forjada, SHA divergente, proveniência do chamador, execução de código do PR, vínculo externo ausente, permissões desconhecidas/excessivas/incompletas, caminho fora de `growth/**`, aprovação velha, descartada ou do próprio autor e proteção de branch indisponível.
 
-O workflow deste PR executa somente esses testes com dados fictícios. Ele não usa secrets, não consulta produção e não publica.
+O workflow deste PR apenas executa testes com fixtures. Não coleta evidência real, não usa secrets e não publica.
