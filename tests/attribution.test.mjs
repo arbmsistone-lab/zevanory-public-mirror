@@ -51,4 +51,14 @@ test("lead_submit is an aggregate intent counter per source, never tied to the l
   const rows = [{ page: "material-gratuito", metric: "lead_submit:src:youtube", n: 3 }];
   const s = await buildFunnelSummary({ DATABASE_URL: "x" }, { sqlFactory: () => ({ query: async t => (t.includes("group by page, metric") ? rows : []) }) });
   assert.equal(s.sources.youtube.lead_submit, 3);
+  // Accepted form != confirmed e-mail != qualified lead: the summary says so explicitly.
+  assert.match(s.definitions.lead_submit, /não é e-mail confirmado nem lead qualificado/);
+  assert.ok(s.definitions.leads_qualified && s.definitions["last7Days.leads"]);
+});
+test("lead_submit stores only the counter: user agent, ASN, country and IP are dropped", async () => {
+  const calls = []; const factory = () => ({ query: async (t, p) => { calls.push({ t, p }); return []; } });
+  await handleFunnel(new Request("https://funnel.internal/hit", { method: "POST", body: JSON.stringify({ page: "material-gratuito", metric: "lead_submit", src: "telegram", ua: "Mozilla/5.0 UniqueAgent/9", asn: 28573, cty: "BR", al: 1, ip: "203.0.113.5" }) }), { DATABASE_URL: "x", RESEND_API_KEY: "s" }, { sqlFactory: factory });
+  const writes = calls.filter(c => /insert|update/i.test(c.t));
+  assert.equal(writes.length, 2);
+  assert.doesNotMatch(JSON.stringify(writes), /UniqueAgent|28573|203\.0\.113\.5|"BR"/);
 });

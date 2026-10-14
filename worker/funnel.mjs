@@ -17,6 +17,12 @@ const TRACKED_PAGES = new Set([...Object.keys(FUNNEL_PRODUCTS), "solucoes", "mat
 const isTrackedPage = page => TRACKED_PAGES.has(page) || /^(ia-para|calculadora)-[a-z-]{2,60}$/.test(String(page));
 // Intent metrics counted next to views; each also carries the visitor's source.
 // lead_submit: a free-material form accepted by the core (aggregate count + source label only, no lead identity).
+// It is NOT a confirmed e-mail (double opt-in) nor a qualified lead; reports must keep the three apart.
+export const METRIC_DEFINITIONS = Object.freeze({
+  lead_submit: "formulário do material gratuito aceito (contagem agregada por origem); não é e-mail confirmado nem lead qualificado; não deduplicado por pessoa",
+  "last7Days.leads": "inscrições registradas na tabela de leads nos últimos 7 dias (pendentes e confirmadas)",
+  leads_qualified: "evento lead_qualified da telemetria; não é alimentado pelo material gratuito",
+});
 export const INTENT_METRICS = Object.freeze(["checkout_intent", "hotmart_view", "subscribe_click", "lead_submit"]);
 const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const label = (v, max) => { const x = String(v || "").toLowerCase(); return new RegExp(`^[a-z0-9_-]{1,${max}}$`).test(x) && !RESERVED_KEYS.has(x) ? x : ""; };
@@ -211,6 +217,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   const last7Days = {windowDays:7, views:metrics7.views||0, visitors:metrics7.visitors||0, cleanSince:CLEAN_SINCE, cleanViews:cleanM.views||0, cleanVisitors:cleanM.visitors||0, leads:Number(leads7[0]?.n)||0, checkouts:Number(checkouts7[0]?.n)||0, mode:production?"production":"test"};
   return {
     schema: "zevanory-funnel/v1",
+    definitions: METRIC_DEFINITIONS,
     generatedAt: new Date(now).toISOString(),
     windowDays: 30,
     last7Days,
