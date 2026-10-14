@@ -91,6 +91,7 @@ async function asaasSandboxGet(id,env,budget) {
 
 // Shared per-invocation budget: 46 outbound provider GETs max, leaving Worker Free
 // subrequests for Neon SQL and internal infrastructure. Retries max six in total.
+export const TRANSIENT_LOOKUP_REASONS=new Set(["production_provider_unavailable_or_unexpected_http","pilot_payment_lookup_unverified"]);
 const auditBudget=()=>({remaining:46,retries:6});
 export async function mpGet(path,token,budget=auditBudget(),{fetchImpl=fetch,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}) {
   if(!token||token.startsWith("TEST-"))return {status:0,body:null};
@@ -179,7 +180,7 @@ export function safeFinancialAuditDimensions(row={}) {
 
 async function financialClassification(env,sqlFactory){
   const result={schema:"zevanory.audit.financial-classification/v1",production_confirmed:0,
-    not_in_production:0,ambiguous:0,orders:{total:0,certification:0,noncertified_unverified:0},
+    not_in_production:0,ambiguous:0,ambiguous_transient:0,orders:{total:0,certification:0,noncertified_unverified:0},
     payment_ids:{producao_confirmado:[],ambiguo:[]},production_payment_events:0,production_refund_events:0,production_paid_orders:0,evidence_reasons:[],evidence_breakdown:[],certification_events:0,asaas_sandbox:{environment:"unknown",credential_configured:false,ids_queried:0},complete:false,commercial_release_allowed:false};
   if(!env.DATABASE_URL||!sqlFactory)return {code:503,result:{error:"database_unavailable"}};
   const token=String(env.MERCADOPAGO_ACCESS_TOKEN||"");
@@ -238,7 +239,14 @@ async function financialClassification(env,sqlFactory){
     }
     else if(label==="nao_existe_em_producao")result.not_in_production++;
     else if(label==="teste_certificacao")result.certification_events++;
-    else{result.ambiguous++;result.payment_ids.ambiguo.push(String(row.id||"unknown"));}
+    else{
+      result.ambiguous++;result.payment_ids.ambiguo.push(String(row.id||"unknown"));
+      // Diagnostic count only (does not change the 409 or its effect): how many ambiguous payments are
+      // ambiguous solely because the provider lookup was unavailable (network error, 429 or 5xx).
+      const lookup=row.provider==="asaas"&&row.pilot===true?null:ids.get(String(row.id));
+      const st=Number(lookup?.status||0);
+      if(TRANSIENT_LOOKUP_REASONS.has(evidence.reason)&&lookup&&(st===0||st===429||st>=500))result.ambiguous_transient++;
+    }
   }
   result.production_paid_orders=productionOrderIds.size;
   result.payment_ids.producao_confirmado=[...new Set(result.payment_ids.producao_confirmado)];
