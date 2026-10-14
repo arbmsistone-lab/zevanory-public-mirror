@@ -7,8 +7,8 @@ const EXPECTED_CAMPAIGNS=new Map([
   ["whatsapp-clientes-vendas-pratica",{product:"vendas-na-pratica",sku:"ZEV-VEN-011"}]
 ]);
 const EXPECTED_DESTINATIONS={
-  cashflow_calculator:{host:"zevanory.api.br",path:"/calculadora-fluxo-de-caixa",tracked:true},
-  free_checklist:{host:"zevanory.api.br",path:"/material-gratuito",tracked:true},
+  cashflow_calculator:{host:"vendas.zevanory.api.br",path:"/calculadora-fluxo-de-caixa",tracked:true},
+  free_checklist:{host:"vendas.zevanory.api.br",path:"/material-gratuito",tracked:true},
   whatsapp_reengagement_guide:{host:"vendas.zevanory.api.br",path:"/mensagem-para-cliente-que-sumiu",tracked:false},
   whatsapp_collection_guide:{host:"vendas.zevanory.api.br",path:"/como-cobrar-cliente-pelo-whatsapp",tracked:false},
   whatsapp_quote_guide:{host:"vendas.zevanory.api.br",path:"/como-mandar-orcamento-pelo-whatsapp",tracked:false}
