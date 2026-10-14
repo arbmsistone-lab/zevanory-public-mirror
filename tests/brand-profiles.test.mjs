@@ -96,9 +96,9 @@ test("historical v1 approval cannot skip the new official v2 profile readback", 
  assert.equal(JSON.parse(await store.get("zpc:brand:profile:bluesky:v1")).provider_record,"legacy");
 });
 
-test("brand cycle runs in the isolated 5,35 cron, before activity sync, with independent failure telemetry",()=>{
+test("brand cycle runs in the isolated 16,46 cron, before activity sync, with independent failure telemetry",()=>{
   const source=readFileSync(new URL("../worker/cloudflare-worker.compat.mjs",import.meta.url),"utf8");
-  const start=source.indexOf('if (controller?.cron === "5,35 * * * *")');
+  const start=source.indexOf('if (controller?.cron === "16,46 * * * *")');
   const end=source.indexOf('if (controller?.cron === "15,45 * * * *")',start);
   assert.ok(start>=0&&end>start);
   const cron=source.slice(start,end);
@@ -107,7 +107,8 @@ test("brand cycle runs in the isolated 5,35 cron, before activity sync, with ind
   const activity=cron.indexOf('syncProductionActivity');
   assert.ok(brandSync>0&&brandFailure>brandSync&&activity>brandFailure);
   // Not duplicated in the subrequest-exhausted hourly invocation.
-  const hourly=source.slice(source.indexOf('if (controller?.cron === "0 * * * *")'));
+  const hourly=source.slice(source.indexOf('const beat = { at: new Date().toISOString(), cron: String(controller?.cron'));
+  assert.ok(source.indexOf('const beat = { at: new Date().toISOString(), cron: String(controller?.cron')>0);
   assert.equal(hourly.indexOf('await syncBrandProfiles(normalized)'),-1);
 });
 

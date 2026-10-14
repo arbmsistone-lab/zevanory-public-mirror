@@ -81,9 +81,9 @@ test("WhatsApp reply path itself is untouched (KV write budget: dedup put only)"
   const rec = readFileSync(new URL("../worker/cloudflare-worker.recovered.mjs", import.meta.url), "utf8");
   assert.equal(rec.includes("emitActivity"), false);
 });
-test("wiring: operational sync in the isolated 5,35 cron; inline emits for leads and alerts", () => {
+test("wiring: operational sync in the isolated 16,46 cron; inline emits for leads and alerts", () => {
   const compat = readFileSync(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url), "utf8");
-  const s = compat.indexOf('if (controller?.cron === "5,35 * * * *")'), e = compat.indexOf('if (controller?.cron === "15,45 * * * *")', s);
+  const s = compat.indexOf('if (controller?.cron === "16,46 * * * *")'), e = compat.indexOf('if (controller?.cron === "15,45 * * * *")', s);
   assert.ok(compat.slice(s, e).includes("syncOperationalActivity(normalized"));
   for (const f of ["lead-magnet", "owner-alerts"]) assert.match(readFileSync(new URL("../worker/" + f + ".mjs", import.meta.url), "utf8"), /emitActivity\(env, \{ type: "(lead_captured|email_sent|owner_alert_sent)"/);
 });

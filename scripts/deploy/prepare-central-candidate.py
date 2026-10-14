@@ -5,22 +5,27 @@ p="wrangler.central-fix.jsonc"
 c=json.load(open(p))
 c["account_id"]=os.environ["PUBLIC_OWNER_ACCOUNT_ID"]
 c["main"]="worker/cloudflare-worker.compat.mjs"
-# Keep the existing hourly maintenance cron; the financial-only cron runs at
-# minute 15 and 45, each in a separate Cloudflare Worker invocation.
+# Neon compute (Free: 100 CU-h/month, scale to zero after 5 min idle). Every database-touching
+# cron is clustered next to the financial proof so the database can suspend between clusters:
+#   "15,45" financial proof (unchanged cadence: every 30 min, TTL 65 min untouched)
+#   "16,46" isolated producer (:16 brand profiles, :46 acquisition) + activity sync
+#   "17"    hourly maintenance (post-sale, nurture, refunds, watchdogs)
+# Before (0 / 5,35 / 15,45) the database stayed awake ~30 min of every hour.
+# The base wrangler.jsonc is pinned (git show 83620c68). Its cron list is REPLACED, never merged,
+# and only from a known shape: anything else stops the deploy instead of being silently dropped.
+CENTRAL_CRONS=["15,45 * * * *","16,46 * * * *","17 * * * *"]
+KNOWN_BASE_CRONS=([], ["0 * * * *"], CENTRAL_CRONS)  # minimal fixtures / pinned base / already prepared
 triggers=c.setdefault("triggers",{})
-crons=triggers.setdefault("crons",[])
-if "0 * * * *" not in crons:
-    # Minimal test fixtures have no inherited cron; restore canonical hourly
-    # task scheduling instead of aborting before launch authorization checks.
-    crons.insert(0,"0 * * * *")
-if "15,45 * * * *" not in crons:
-    crons.append("15,45 * * * *")
-# Fase 0 is read-only producer, separate from both financial proof crons.
-if "5,35 * * * *" not in crons:
-    crons.append("5,35 * * * *")
-# Workers Free: 5 cron triggers per ACCOUNT (shared with other Workers). Never add
-# a trigger here; acquisition shares the isolated "5,35" invocation (:35 tick).
-if len(crons)>5:
+if not isinstance(triggers,dict):
+    raise SystemExit("CRON_BASE_UNEXPECTED: triggers is not an object")
+base=triggers.get("crons",[])
+if not isinstance(base,list) or base not in KNOWN_BASE_CRONS:
+    raise SystemExit("CRON_BASE_UNEXPECTED: "+json.dumps(base)[:200])
+if set(triggers)-{"crons"}:
+    raise SystemExit("CRON_BASE_UNEXPECTED: extra trigger keys "+",".join(sorted(set(triggers)-{"crons"})))
+triggers["crons"]=list(CENTRAL_CRONS)
+# Workers Free: 5 cron triggers per ACCOUNT (shared with other Workers). Central keeps exactly 3.
+if len(triggers["crons"])!=3:
     raise SystemExit("CRON_TRIGGER_FREE_LIMIT_EXCEEDED")
 c.pop("secrets",None)
 c["services"]=[

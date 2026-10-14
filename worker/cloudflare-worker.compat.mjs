@@ -608,11 +608,13 @@ const wrapped = {
 wrapped.scheduled = async (controller, rawEnv, ctx) => {
   const env = withMeteredKv(rawEnv, "cron:" + String(controller?.cron || "?"));
   const normalized = normalizeEnv(env);
-  if (controller?.cron === "5,35 * * * *") {
+  if (controller?.cron === "16,46 * * * *") {
     // Workers Free allows 5 cron triggers per ACCOUNT (all used), so this isolated
     // invocation is shared by tick minute, each with its own subrequest budget:
-    //  :05 -> brand profiles (GET readbacks; writes only on verified drift)
-    //  :35 -> acquisition (blog 09:35, Telegram 12:35, Bluesky 19:35 Sao Paulo).
+    //  :16 -> brand profiles (GET readbacks; writes only on verified drift)
+    //  :46 -> acquisition (blog 09h, Telegram 12h, Bluesky 19h Sao Paulo, by local hour).
+    // It runs one minute after the financial proof (:15/:45) so Neon stays awake only in two
+    // short clusters per hour (scale to zero after 5 min idle).
     // Acquisition used to run last in the hourly invocation, after nine
     // maintenance tasks had exhausted the 50-subrequest budget.
     const tickMinute = new Date(Number(controller?.scheduledTime) || Date.now()).getUTCMinutes();
@@ -721,7 +723,7 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   if (typeof worker.scheduled === "function") tasks.push(worker.scheduled(controller, normalized, ctx));
   await Promise.all(tasks);
   try { await putBeat(normalized.ZEVANORY_PRIVATE_ARTIFACTS, "zpc:cron:v1:hourly", beat); } catch {}
-  // Acquisition (:35) and brand profiles (:05) run in the isolated "5,35" cron.
+  // Acquisition (:46) and brand profiles (:16) run in the isolated "16,46" cron; this hourly one fires at :17.
 };
 if (typeof worker.queue === "function") {
   wrapped.queue = async (batch, env, ctx) => worker.queue(batch, normalizeEnv(env), ctx);

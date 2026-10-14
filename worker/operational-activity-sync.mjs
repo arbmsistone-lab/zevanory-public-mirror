@@ -1,5 +1,5 @@
 // P1-4: full panel visibility. Read-only projection of operational facts into the
-// shared activity outbox (Comercial -> Atividade), in the isolated 5,35 cron.
+// shared activity outbox (Comercial -> Atividade), in the isolated 16,46 cron (next to the financial proof, Neon window).
 // Never writes orders, payments, refunds, the sales switch or secrets; refs are
 // hashed by emitActivity and no PII, email, token or order id is stored.
 import { emitActivity } from "./activity-ledger.mjs";
