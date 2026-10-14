@@ -1,0 +1,68 @@
+name: ZEVANORY central candidate dry-run (PR)
+# Pre-merge twin of the "Reconstruct exact production candidate" step of
+# central-production-deploy.yml: same pinned base (83620c68), same scripts, then
+# `wrangler deploy --dry-run --strict`. No secrets, no Cloudflare authentication, no
+# publication: the dry-run only bundles and validates the configuration (crons included).
+# The canonical publisher is untouched and still runs its own dry-run before deploying.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/**"
+      - "scripts/deploy/**"
+      - "public/**"
+      - "admin.css"
+      - ".github/workflows/central-candidate-dryrun.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: central-candidate-dryrun-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  dryrun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reconstruct the candidate exactly like the publisher (placeholders, sales closed)
+        env:
+          PUBLIC_OWNER_ACCOUNT_ID: "00000000000000000000000000000000"
+          TARGET_RUNTIME_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          ZEVANORY_LAUNCH_AUTHORIZATION: ""
+          MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16: ""
+          MERCADOPAGO_PRODUCTION_WEBHOOK_VERIFIED: ""
+        run: |
+          set -euo pipefail
+          git fetch origin final-83620c6 || true
+          mv public public.checkout-original 2>/dev/null || true
+          git archive 83620c680958d726fc4b0fd16e2574cdcc362a6d public | tar -x
+          node scripts/deploy/materialize-control-plane.mjs
+          cmp -s worker/live-recovered/control-plane-vnext.js public/control-plane-vnext.js
+          cp admin.css public/admin.css
+          python3 scripts/deploy/write-build-info.py
+          git show 83620c680958d726fc4b0fd16e2574cdcc362a6d:wrangler.jsonc > wrangler.central-fix.jsonc
+          python3 scripts/deploy/prepare-central-candidate.py
+          python3 scripts/deploy/copy-brand-export.py
+          node --check worker/cloudflare-worker.compat.mjs
+      - name: Crons of the candidate (declared list, at most 5 per account)
+        run: |
+          python3 - <<'PY'
+          import json, re, pathlib
+          crons = json.load(open("wrangler.central-fix.jsonc")).get("triggers", {}).get("crons", [])
+          print("CENTRAL_CANDIDATE_CRONS=" + json.dumps(crons))
+          src = pathlib.Path("scripts/deploy/prepare-central-candidate.py").read_text(encoding="utf-8")
+          m = re.search(r"CENTRAL_CRONS=(\[[^\]]+\])", src)
+          if m: assert crons == json.loads(m.group(1)), ("candidate crons differ from CENTRAL_CRONS", crons)
+          assert 0 < len(crons) <= 5, crons
+          PY
+      - name: Wrangler dry-run (strict, no authentication, no publication)
+        run: npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir "$RUNNER_TEMP/central-dryrun"
