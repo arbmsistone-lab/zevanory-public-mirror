@@ -42,3 +42,20 @@ test("run: failures become a warning and exit cleanly (no exception, no retry st
   assert.equal(await run({ env: { KV_FORECAST_OUT: "/missing" }, fetchImpl: async () => { throw new Error("must not call"); }, log: () => {}, readFile: () => { throw new Error("ENOENT"); } }), "skip");
   assert.equal(await h.go({ ...F, level: "ok" }), "skip"); assert.equal(h.calls.length, 0);
 });
+
+import { readFileSync } from "node:fs";
+test("workflow contract: the notify step receives GITHUB_TOKEN from the job env and runs even if the snapshot failed", () => {
+  const wf = readFileSync(new URL("../.github/workflows/command-center-snapshot.yml", import.meta.url), "utf8");
+  assert.match(wf, /\n {2}issues: write\n/, "minimal permission present");
+  // Job-level env applies to every step (GitHub Actions merges step env over job env, it never replaces it).
+  assert.match(wf, /\n {4}env:\n {6}GITHUB_TOKEN: \$\{\{ github\.token \}\}\n/, "job env injects the workflow token");
+  const step = wf.slice(wf.indexOf("- name: Notify owner when the KV write quota"));
+  assert.match(step, /if: always\(\)/);
+  assert.match(step, /run: node scripts\/audit\/kv-quota-issue\.mjs/);
+  assert.doesNotMatch(step.split("\n      - name:")[0], /GITHUB_TOKEN:/, "the step does not override/blank the token");
+});
+test("run: without a token it warns and returns, never throws", async () => {
+  const logs = [];
+  const r = await run({ env: { KV_FORECAST_OUT: "/f", GITHUB_REPOSITORY: "o/r" }, fetchImpl: async () => { throw new Error("must not call"); }, log: (l) => logs.push(l), readFile: () => JSON.stringify(F) });
+  assert.equal(r, "error"); assert.match(logs[0], /::warning title=KV_QUOTA_ISSUE::missing repository or token/);
+});
