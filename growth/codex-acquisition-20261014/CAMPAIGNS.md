@@ -15,13 +15,13 @@ As duas mantêm o mesmo desenho editorial: janela proposta de 14 dias, cinco can
 
 | ID | URL certificada esperada | Conteúdo conferido | Rastreado por `clean.campaigns` |
 |---|---|---|---|
-| `cashflow_calculator` | `https://zevanory.api.br/calculadora-fluxo-de-caixa` | Calculadora de fluxo de caixa | sim |
-| `free_checklist` | `https://zevanory.api.br/material-gratuito` | Checklist de 15 minutos | sim |
+| `cashflow_calculator` | `https://vendas.zevanory.api.br/calculadora-fluxo-de-caixa` | Calculadora de fluxo de caixa | sim |
+| `free_checklist` | `https://vendas.zevanory.api.br/material-gratuito` | Checklist de 15 minutos | sim |
 | `whatsapp_reengagement_guide` | `https://vendas.zevanory.api.br/mensagem-para-cliente-que-sumiu` | Mensagem para cliente que sumiu | não |
 | `whatsapp_collection_guide` | `https://vendas.zevanory.api.br/como-cobrar-cliente-pelo-whatsapp` | Como cobrar sem constranger | não |
 | `whatsapp_quote_guide` | `https://vendas.zevanory.api.br/como-mandar-orcamento-pelo-whatsapp` | Como mandar orçamento | não |
 
-O domínio não é inferido por uma base comum. Cada destino possui URL absoluta, URL final esperada, marcador de conteúdo e estado de rastreamento. O teste em nuvem lê cada rota com redirecionamento habilitado e exige HTTP 200, `text/html`, URL final correta e marcador presente.
+A prova em nuvem mostrou que as cinco rotas retornam 404 no domínio principal e 200 sem redirecionamento no domínio de vendas. O domínio não é inferido por uma base comum. Cada destino possui URL absoluta, URL final esperada, marcador de conteúdo e estado de rastreamento. O teste em nuvem lê cada rota com redirecionamento habilitado e exige HTTP 200, `text/html`, URL final correta e marcador presente.
 
 ## Lacuna de medição
 
