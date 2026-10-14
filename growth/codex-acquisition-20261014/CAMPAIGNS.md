@@ -1,68 +1,74 @@
 # C1–C3 — Experimentos orgânicos comparáveis
 
-Status: **rascunho não publicado**. Esta entrega prepara duas campanhas e não publica, envia mensagens, compra mídia, altera produção ou acessa credenciais.
+Status: **propostas editoriais não publicadas e não prontas para distribuição**. Não há vídeos produzidos ou certificados. Esta entrega não publica, envia mensagens, compra mídia, altera produção ou acessa credenciais.
 
-## Campanhas
+## Campanhas preservadas
 
-| Campanha | Produto | Problema | Entrada gratuita |
+| Campanha | Produto | Problema | Entrada |
 |---|---|---|---|
-| Fluxo de caixa diário e Pix | Lucro & Caixa | separar saldo, entradas Pix e contas numa rotina diária | `/calculadora-fluxo-de-caixa` + checklist de 15 minutos |
-| Acompanhamento pelo WhatsApp | Vendas na Prática | organizar orçamento, retorno e cobrança sem spam | três guias existentes + checklist de 15 minutos |
+| Fluxo de caixa diário e Pix | Lucro & Caixa | separar saldo, entradas Pix e contas numa rotina diária | calculadora gratuita |
+| Acompanhamento pelo WhatsApp | Vendas na Prática | organizar orçamento, retorno e cobrança sem spam | três guias existentes |
 
-As duas usam a mesma janela proposta de 14 dias, os mesmos cinco canais orgânicos e uma peça por canal. Não há previsão de receita, tráfego ou conversão.
+As duas mantêm o mesmo desenho editorial: janela proposta de 14 dias, cinco canais orgânicos e uma proposta por canal. Isso não significa que seus resultados de tráfego sejam hoje comparáveis.
 
-## Reaproveitamento verificado
+## Matriz de destinos reais
 
-Na branch canônica já existem:
+| ID | URL certificada esperada | Conteúdo conferido | Rastreado por `clean.campaigns` |
+|---|---|---|---|
+| `cashflow_calculator` | `https://zevanory.api.br/calculadora-fluxo-de-caixa` | Calculadora de fluxo de caixa | sim |
+| `free_checklist` | `https://zevanory.api.br/material-gratuito` | Checklist de 15 minutos | sim |
+| `whatsapp_reengagement_guide` | `https://vendas.zevanory.api.br/mensagem-para-cliente-que-sumiu` | Mensagem para cliente que sumiu | não |
+| `whatsapp_collection_guide` | `https://vendas.zevanory.api.br/como-cobrar-cliente-pelo-whatsapp` | Como cobrar sem constranger | não |
+| `whatsapp_quote_guide` | `https://vendas.zevanory.api.br/como-mandar-orcamento-pelo-whatsapp` | Como mandar orçamento | não |
 
-- calculadora gratuita de fluxo de caixa;
-- checklist gratuito de 15 minutos;
-- páginas de Lucro & Caixa e Vendas na Prática;
-- guias `/mensagem-para-cliente-que-sumiu`, `/como-cobrar-cliente-pelo-whatsapp` e `/como-mandar-orcamento-pelo-whatsapp`;
-- canais editoriais no motor existente: blog, Telegram e Bluesky;
-- canais já configurados pelo proprietário: YouTube e TikTok;
-- funil agregado em `worker/funnel.mjs`, com páginas, origem, campanha e sinais de intenção.
+O domínio não é inferido por uma base comum. Cada destino possui URL absoluta, URL final esperada, marcador de conteúdo e estado de rastreamento. O teste em nuvem lê cada rota com redirecionamento habilitado e exige HTTP 200, `text/html`, URL final correta e marcador presente.
 
-Nenhum desses arquivos foi alterado. Os materiais são referenciados, não duplicados.
+## Lacuna de medição
 
-## Limites de medição
+O funil existente rastreia `calculadora-*` e `material-gratuito`, mas não inclui as rotas `mensagem-*` ou `como-*`.
 
-O funil atual permite observar `clean.campaigns.<utm_campaign>` para visualizações rastreadas. Intenções como inscrição e checkout são agregadas por origem, não por campanha. A classificação brasileira também não é cruzada com campanha.
+Consequências:
 
-Por isso:
+- campanha de caixa: cobertura de visitas 5/5 nos destinos propostos;
+- campanha de WhatsApp: cobertura 0/5 nos destinos propostos;
+- `clean.campaigns.c3_whatsapp_clientes` não pode ser usado como prova de visitas;
+- nenhuma comparação de tráfego ou conversão entre as duas campanhas é autorizada;
+- intenções continuam agregadas por origem, não por campanha;
+- baselines e metas permanecem `null`.
 
-- campanha pode ser comparada por visitas atribuídas;
-- intenção por campanha não pode ser alegada causalmente;
-- baselines e metas permanecem `null` até existir observação limpa;
-- as páginas de guia `como-*` e `mensagem-*` não são rastreadas individualmente no funil atual;
-- qualquer ampliação do funil exige outro PR operacional e não faz parte desta entrega.
+Corrigir o funil exigiria outro PR operacional. Isso foi deliberadamente mantido fora desta rodada.
 
-## Arquivos
+## Prontidão editorial
 
-- `campaigns.json`: públicos, proposta de valor, canais, UTMs, materiais, peças prontas para revisão e indicadores.
-- `validate-campaigns.mjs`: validação fail-closed.
-- `validate-campaigns.test.mjs`: testes positivos e adversariais.
-- `validate.test.mjs`: importa a nova suíte para reaproveitar o CI somente leitura já existente no #813.
+| Canal | Artefato existente | Estado real |
+|---|---|---|
+| SEO | brief de interligação/cluster | não produzido nem certificado |
+| YouTube | roteiro resumido | vídeo não produzido nem certificado |
+| TikTok | roteiro resumido | vídeo não produzido nem certificado |
+| Telegram | texto em rascunho | não aprovado e não publicado |
+| Bluesky | texto em rascunho | não aprovado e não publicado |
 
-## Proteções
+Todas as dez propostas carregam `ready_for_distribution: false`. “Roteiro” não é “vídeo” e “texto em rascunho” não é publicação autorizada.
+
+## Proteções automáticas
 
 O validador bloqueia:
 
+- guia de vendas associado a domínio diferente de `vendas.zevanory.api.br`;
+- rota, redirecionamento final, status, tipo de conteúdo ou marcador incorretos;
+- declaração de medição para destino fora do funil;
+- classificação editorial superior ao artefato realmente existente;
 - publicação, mídia paga ou mensagens diretas;
 - promessas de lucro, renda, faturamento, vendas ou conversão;
 - baseline ou meta inventada;
 - campo com aparência de segredo;
-- destino não aprovado;
-- UTM inválida ou duplicada;
-- troca de produto;
-- canais/janelas não comparáveis;
-- conteúdo com similaridade de trigramas igual ou superior a 50%.
+- conteúdo duplicado, UTM ou destino inválido e troca de produto.
 
-## Verificação
+## Verificação em nuvem
 
 ```bash
 node --test growth/codex-acquisition-20261014/validate.test.mjs
 node growth/codex-acquisition-20261014/validate-campaigns.mjs growth/codex-acquisition-20261014/campaigns.json
 ```
 
-A branch foi criada sobre o SHA aprovado do #813. O PR novo deve usar o #813 como base, de modo que seu diff contenha exclusivamente `growth/**`. Isso preserva o isolamento do Marco A e não altera o workflow existente.
+O PR permanece empilhado sobre o #813. Seu diff continua limitado a `growth/**`; nenhum workflow foi criado ou modificado.
