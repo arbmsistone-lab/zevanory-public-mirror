@@ -177,6 +177,19 @@ async function kvWritesToday(now = Date.now()) {
   } catch (e) { return { verified: false, reason: String(e?.name || "error") }; }
 }
 
+// Early warning (Marco B / P0): 60% of the daily write quota, or a linear projection to midnight UTC
+// that would cross 90%, is flagged BEFORE the Worker starts shedding at 70% and long before a full
+// quota stops the financial proof (sales close, as on 12/10). Pure function: no writes, no network.
+export function kvQuotaForecast(q, now = Date.now()) {
+  if (!q?.verified || !Number.isFinite(q.writes) || !q.limit) return null;
+  const d = new Date(now), midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const elapsedH = Math.max((now - midnight) / 3600e3, 1);
+  const projected = Math.round((q.writes / elapsedH) * 24);
+  const pct = q.writes / q.limit, projPct = projected / q.limit;
+  const level = pct >= 0.9 || projPct >= 1 ? "critical" : pct >= 0.7 ? "shedding" : pct >= 0.6 || projPct >= 0.9 ? "early" : "ok";
+  return { level, writes: q.writes, limit: q.limit, pct: Math.round(pct * 100), projectedEndOfDay: projected, projectedPct: Math.round(projPct * 100), hoursElapsedUtc: Math.round(elapsedH * 10) / 10 };
+}
+
 async function probe(url) {
   const t0 = Date.now();
   try { const r = await fetch(url, { signal: AbortSignal.timeout(10000), headers: { "user-agent": "zevanory-command-center/1" } }); return { url, http: r.status, ms: Date.now() - t0, ok: r.ok }; }
@@ -374,12 +387,14 @@ export async function main() {
   const firstSalesDay = Object.keys(sales?.byDay || {}).sort()[0] || null;
 
   const kvQuota = await kvWritesToday(now);
+  const kvForecast = kvQuotaForecast(kvQuota, now);
+  if (kvForecast && kvForecast.level !== "ok") console.log("::warning title=KV_QUOTA_" + kvForecast.level.toUpperCase() + "::" + JSON.stringify(kvForecast));
   if (kvQuota?.verified && kvQuota.writes >= 0.7 * KV_DAILY_WRITE_LIMIT) console.log("::warning title=KV_QUOTA::" + JSON.stringify(kvQuota));
   // The Worker reads this reading to shed observability writes at 70% (worker/kv-meter.mjs).
   if (kvQuota?.verified) await kvPut("zpc:kv:v1:budget", { day: kvQuota.day, pct: kvQuota.pct, writes: kvQuota.writes, limit: kvQuota.limit, at: iso(now) }).catch(() => {});
   const snapshot = {
     schema: "zevanory-command-center/v1",
-    platform: { kvQuota },
+    platform: { kvQuota, kvForecast },
     generatedAt: iso(now),
     day,
     goals: [

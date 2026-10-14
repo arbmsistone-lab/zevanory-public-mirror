@@ -65,3 +65,19 @@ test("uptime: appends each run, keeps 7 days and reports availability with its d
   assert.equal(later.history.length, 1, "older than 7 days dropped");
   assert.deepEqual(later.last7d.a, { ok: 1, total: 1, pct: 100 });
 });
+import { kvQuotaForecast } from "../scripts/audit/command-center-snapshot.mjs";
+test("KV quota early warning: 60% or a projection over 90% warns before the 70% shedding line", () => {
+  const at = (h) => Date.parse("2026-10-14T00:00:00Z") + h * 3600e3;
+  const q = (writes) => ({ verified: true, writes, limit: 1000 });
+  // Real 14/10 readings: 300 at 11:44 (ok), 564 at 16:57 (projection ~800 -> ok), 600+ -> early.
+  assert.equal(kvQuotaForecast(q(300), at(11.73)).level, "ok");
+  assert.equal(kvQuotaForecast(q(564), at(16.95)).level, "ok");
+  assert.equal(kvQuotaForecast(q(564), at(16.95)).projectedEndOfDay, 799);
+  assert.equal(kvQuotaForecast(q(600), at(20)).level, "early");
+  assert.equal(kvQuotaForecast(q(400), at(10)).level, "early", "projected 960 (>90%) warns early");
+  assert.equal(kvQuotaForecast(q(720), at(22)).level, "shedding");
+  assert.equal(kvQuotaForecast(q(910), at(23)).level, "critical");
+  assert.equal(kvQuotaForecast(q(500), at(11)).level, "critical", "projected 1090 would close sales");
+  assert.equal(kvQuotaForecast(q(5), at(0.1)).level, "ok", "first hour is not extrapolated from minutes");
+  assert.equal(kvQuotaForecast({ verified: false }), null);
+});
