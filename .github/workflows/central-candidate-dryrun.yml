@@ -12,6 +12,9 @@ on:
       - "scripts/deploy/**"
       - "public/**"
       - "admin.css"
+      - "assets/brand/**"
+      - "sales-public/brand/**"
+      - ".github/workflows/central-production-deploy.yml"
       - ".github/workflows/central-candidate-dryrun.yml"
   workflow_dispatch:
 permissions:
@@ -63,6 +66,17 @@ jobs:
           m = re.search(r"CENTRAL_CRONS=(\[[^\]]+\])", src)
           if m: assert crons == json.loads(m.group(1)), ("candidate crons differ from CENTRAL_CRONS", crons)
           assert 0 < len(crons) <= 5, crons
+          assert len(set(crons)) == len(crons), ("duplicate cron", crons)
+          assert all(len(c.split()) == 5 for c in crons), ("cron must have 5 fields", crons)
+          open("central-crons.json", "w").write(json.dumps(crons))
           PY
       - name: Wrangler dry-run (strict, no authentication, no publication)
         run: npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir "$RUNNER_TEMP/central-dryrun"
+      - name: Evidence of the bundled candidate (fails if nothing was built)
+        run: |
+          set -euo pipefail
+          bundle="$(find "$RUNNER_TEMP/central-dryrun" -maxdepth 1 -type f \( -name '*.js' -o -name '*.mjs' \) -printf '%s %p\n' | sort -nr | head -1)"
+          test -n "$bundle"
+          bytes="${bundle%% *}"
+          test "$bytes" -gt 100000
+          echo "::notice title=CENTRAL_DRYRUN::{\"sha\":\"${{ github.event.pull_request.head.sha || github.sha }}\",\"crons\":$(cat central-crons.json),\"bundleBytes\":$bytes,\"bundle\":\"$(basename "${bundle#* }")\"}"
