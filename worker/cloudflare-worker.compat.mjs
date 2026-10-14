@@ -41,7 +41,7 @@ import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitch
 import { syncOperationalActivity } from "./operational-activity-sync.mjs";
 import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
 import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
-import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinancialProofSnapshot, persistClassificationSnapshot, describeFinancialProofSnapshot, recordLaunchEpoch } from "./commercial-metrics-projection.mjs";
+import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinancialProofSnapshot, persistClassificationSnapshot, describeFinancialProofSnapshot, recordLaunchEpoch, PROOF_INVALIDATION_KV_KEY, PROOF_INVALIDATION_REASONS } from "./commercial-metrics-projection.mjs";
 import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
 import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlocked, requiresPilotDenial } from "./commercial-checkout-guard.mjs";
 
@@ -557,6 +557,10 @@ const wrapped = {
         const evidence = JSON.parse(String(raw || "null"));
         if (evidence && typeof evidence.at === "string" && typeof evidence.ok === "boolean" && !Number.isNaN(Date.parse(evidence.at))) {
           projected.financial_proof = { last_isolated_run: { at: evidence.at, ok: evidence.ok } };
+        }
+        const inv = JSON.parse(String((await normalized.ZEVANORY_PRIVATE_ARTIFACTS?.get?.(PROOF_INVALIDATION_KV_KEY)) || "null"));
+        if (inv && typeof inv.at === "string" && !Number.isNaN(Date.parse(inv.at)) && PROOF_INVALIDATION_REASONS.includes(inv.reason)) {
+          projected.financial_proof = { ...(projected.financial_proof || {}), last_invalidation: { at: inv.at, reason: inv.reason } };
         }
       } catch { /* Missing evidence is never a synthetic success. */ }
       const headers = new Headers(response.headers);

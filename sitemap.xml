@@ -71,4 +71,7 @@
   <url><loc>https://zevanory.api.br/calculadora-preco-hora-servico</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://zevanory.api.br/calculadora-taxa-maquininha</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://zevanory.api.br/calculadora-cmv</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zevanory.api.br/mensagem-para-cliente-que-sumiu</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/como-cobrar-cliente-pelo-whatsapp</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zevanory.api.br/como-mandar-orcamento-pelo-whatsapp</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
 </urlset>
