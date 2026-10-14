@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "as_of": "2026-10-14",
+    "market": "BR",
+    "language": "pt-BR",
+    "status": "editorial_package_for_review",
+    "stacked_on_pr": 815,
+    "stacked_on_sha": "362d7372b7bd36fa4fb649ef00f55a1756c5a7ca",
+    "publication_allowed": false,
+    "distribution_executed": false,
+    "paid_media_allowed": false,
+    "outbound_messages_allowed": false,
+    "owner_approval_required": true
+  },
+  "campaigns": [
+    {
+      "id": "fluxo-caixa-pix-lucro-caixa",
+      "product": "lucro-e-caixa",
+      "utm_campaign": "c3_fluxo_caixa_pix",
+      "measurement_state": "measurable_5_of_5",
+      "editorial_file": "editorial-fluxo-caixa-pix.md"
+    },
+    {
+      "id": "whatsapp-clientes-vendas-pratica",
+      "product": "vendas-na-pratica",
+      "utm_campaign": "c3_whatsapp_clientes",
+      "measurement_state": "blocked_0_of_5_until_operational_handoff",
+      "editorial_file": "editorial-whatsapp-clientes.md"
+    }
+  ],
+  "assets": [
+    {
+      "id": "fluxo-seo-01",
+      "campaign_id": "fluxo-caixa-pix-lucro-caixa",
+      "channel": "seo",
+      "source": "blog",
+      "deliverable_kind": "final_editorial_brief",
+      "editorial_state": "final_for_owner_review",
+      "production_state": "brief_only_no_site_change",
+      "destination_id": "cashflow_calculator",
+      "visual_reference": "assets/brand/export/blog-card.png",
+      "owner_approved": false,
+      "ready_for_distribution": false,
+      "published": false
+    },
+    {
+      "id": "fluxo-youtube-01",
+      "campaign_id": "fluxo-caixa-pix-lucro-caixa",
+      "channel": "youtube",
+      "source": "youtube",
+      "deliverable_kind": "final_production_script",
+      "editorial_state": "final_for_owner_review",
+      "production_state": "media_not_produced_not_certified",
+      "destination_id": "cashflow_calculator",
+      "visual_reference": "assets/brand/export/short.png",
+      "owner_approved": false,
+      "ready_for_distribution": false,
+      "published": false
+    },
+    {
+      "id": "fluxo-tiktok-01",
+      "campaign_id": "fluxo-caixa-pix-lucro-caixa",
+      "channel": "tiktok",
+      "source": "tiktok",
+      "deliverable_kind": "final_production_script",
+      "editorial_state": "final_for_owner_review",
+      "production_state": "media_not_produced_not_certified",
+      "destination_id": "free_checklist",
+      "visual_reference": "assets/brand/export/short.png",
+      "owner_approved": false,
+      "ready_for_distribution": false,
+      "published": false
+    },
+    {
+      "id": "fluxo-telegram-01",
+      "campaign_id": "fluxo-caixa-pix-lucro-caixa",
+      "channel": "telegram",
+      "source": "telegram",
+      "deliverable_kind": "final_channel_text",
+      "editorial_state": "final_for_owner_review",
+      "production_state": "text_complete_visual_not_adapted",
+      "destination_id": "cashflow_calculator",
+      "visual_reference": "assets/brand/export/post-01.png",
+      "owner_approved": false,
+      "ready_for_distribution": false,
+      "published": false
+    },
+    {
+      "id": "fluxo-bluesky-01",
+      "campaign_id": "fluxo-caixa-pix-lucro-caixa",
+      "channel": "bluesky",
+      "source": "bluesky",
+      "deliverable_kind": "final_channel_text",
+      "editorial_state": "final_for_owner_review",
+      "production_state": "text_complete_link_card_not_adapted",
+      "destination_id": "cashflow_calculator",
+      "visual_reference": "assets/brand/export/link-card.png",
+      "owner_approved": false,
+      "ready_for_distribution": false,
+      "published": false
+    },
+    {
+      "id": "whatsapp-seo-01",
+      "campaign_id": "whatsapp-clientes-vendas-pratica",
+      "channel": "seo",
+      "source": "blog",
+      "deliverable_kind": "final_editorial_brief",
+      "editorial_state": "final_for_owner_review",
+      "production_state": "brief_only_no_site_change",
+      "destination_id": "whatsapp_reengagement_guide",
+      "visual_reference": "assets/brand/export/blog-card.png",
+      "owner_approved": false,
+      "ready_for_distribution": false,
+      "published": false
+    },
+    {
+      "id": "whatsapp-youtube-01",
+      "campaign_id": "whatsapp-clientes-vendas-pratica",
+      "channel": "youtube",
+      "source": "youtube",
+      "deliverable_kind": "final_production_script",
+      "editorial_state": "final_for_owner_review",
+      "production_state": "media_not_produced_not_certified",
+      "destination_id": "whatsapp_quote_guide",
+      "visual_reference": "assets/brand/export/short.png",
+      "owner_approved": false,
+      "ready_for_distribution": false,
+      "published": false
+    },
+    {
+      "id": "whatsapp-tiktok-01",
+      "campaign_id": "whatsapp-clientes-vendas-pratica",
+      "channel": "tiktok",
+      "source": "tiktok",
+      "deliverable_kind": "final_production_script",
+      "editorial_state": "final_for_owner_review",
+      "production_state": "media_not_produced_not_certified",
+      "destination_id": "whatsapp_reengagement_guide",
+      "visual_reference": "assets/brand/export/short.png",
+      "owner_approved": false,
+      "ready_for_distribution": false,
+      "published": false
+    },
+    {
+      "id": "whatsapp-telegram-01",
+      "campaign_id": "whatsapp-clientes-vendas-pratica",
+      "channel": "telegram",
+      "source": "telegram",
+      "deliverable_kind": "final_channel_text",
+      "editorial_state": "final_for_owner_review",
+      "production_state": "text_complete_visual_not_adapted",
+      "destination_id": "whatsapp_collection_guide",
+      "visual_reference": "assets/brand/export/post-01.png",
+      "owner_approved": false,
+      "ready_for_distribution": false,
+      "published": false
+    },
+    {
+      "id": "whatsapp-bluesky-01",
+      "campaign_id": "whatsapp-clientes-vendas-pratica",
+      "channel": "bluesky",
+      "source": "bluesky",
+      "deliverable_kind": "final_channel_text",
+      "editorial_state": "final_for_owner_review",
+      "production_state": "text_complete_link_card_not_adapted",
+      "destination_id": "whatsapp_reengagement_guide",
+      "visual_reference": "assets/brand/export/link-card.png",
+      "owner_approved": false,
+      "ready_for_distribution": false,
+      "published": false
+    }
+  ],
+  "publication_criteria": [
+    "owner_approval",
+    "destination_readback",
+    "claims_review",
+    "brand_validation",
+    "channel_limits",
+    "measurement_ready",
+    "human_preview",
+    "canonical_pipeline"
+  ],
+  "approved_visual_references": [
+    "assets/brand/export/blog-card.png",
+    "assets/brand/export/short.png",
+    "assets/brand/export/post-01.png",
+    "assets/brand/export/link-card.png"
+  ],
+  "notes": [
+    "Textos podem estar editorialmente finais sem estarem aprovados ou distribuíveis.",
+    "Imagens oficiais são referências; nenhuma arte específica foi renderizada ou certificada.",
+    "Campanha WhatsApp fica bloqueada até instrumentação operacional separada e auditada."
+  ]
+}
