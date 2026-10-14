@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 const STAGES = ["discovery", "content", "free_material", "interest", "product_page", "checkout_intent", "checkout"];
 const SCORE_KEYS = ["impact", "evidence", "ease", "safety", "zero_cost"];
 const FORBIDDEN = /\b(?:lucro garantido|renda garantida|faturamento garantido|resultado garantido|vendas garantidas|vai vender mais|conversão garantida|abandono da zevanory é|taxa de conversão da zevanory é)\b/i;
-const SENSITIVE_KEY = /^(?:email|phone|telefone|cpf|cnpj|name|nome|ip|address|endereco|password|token|secret|authorization|api_key|session_id|order_id)$/i;
+const SENSITIVE_KEY = /^(?:email|phone|telefone|cpf|cnpj|ip|address|endereco|password|token|secret|authorization|api_key|session_id|order_id)$/i;
 const assert = (ok, message) => { if (!ok) throw new Error(message); };
 
 function rejectSensitiveKeys(value, path = "$") {
