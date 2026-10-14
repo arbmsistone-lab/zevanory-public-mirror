@@ -100,4 +100,26 @@ Não existem evidências acessíveis de consumo de IA, tempo de revisão, suport
 - Os PRs #815, #816 e #818 não foram modificados.
 - Implementação e publicação exigem auditoria separada e autorização do proprietário.
 
-Arquivos verificáveis: `sources.json`, `opportunities.json`, `validate.mjs` e `validate.test.mjs`.
+Arquivos verificáveis: `sources.json`, `opportunities.json`, `simulation-protocol.json`, `validate.mjs` e `validate.test.mjs`.
+
+
+## Protocolo pré-registrado após auditoria
+
+O arquivo `simulation-protocol.json` fecha as três lacunas apontadas pela auditoria sem iniciar execução:
+
+- três pacotes fictícios: salão de beleza, lanchonete e loja de roupas;
+- custos de geração, revisão, retrabalho, suporte e entrega começam obrigatoriamente como `null`;
+- qualidade mínima de 85/100 por pacote, nenhuma dimensão abaixo de 3/5 e zero falha crítica;
+- teto operacional hipotético de R$ 49,25 por entrega (25% do preço atual), revisão + retrabalho até 75 minutos e suporte estimado até 30 minutos/mês;
+- qualquer custo desconhecido torna sustentabilidade **inconclusiva**, nunca zero;
+- teste de interesse continua bloqueado até PASS das simulações e nova autorização.
+
+Critérios pré-registrados do futuro teste agregado, sem cobrança:
+
+- **sucesso:** 200 visualizações qualificadas e pelo menos 10 cliques “Tenho interesse por R$ 197/mês” (5%);
+- **insucesso:** 200 visualizações e no máximo 5 cliques (2,5%);
+- **inconclusivo:** 6–9 cliques, menos de 200 visualizações em 28 dias ou perda de medição.
+
+Esses limiares são critérios gerenciais para decisão, não benchmarks de mercado. Clique de interesse não prova compra, renovação ou lucro.
+
+O protocolo está apenas preparado. Nenhum conteúdo foi gerado, nenhuma simulação foi executada e nenhum teste foi publicado.
