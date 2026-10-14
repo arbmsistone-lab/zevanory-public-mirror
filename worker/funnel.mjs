@@ -16,7 +16,14 @@ export const FUNNEL_PRODUCTS = Object.freeze({
 const TRACKED_PAGES = new Set([...Object.keys(FUNNEL_PRODUCTS), "solucoes", "material-gratuito", "conteudo-pronto", "ferramentas", "ia-por-ramo", "afiliados", "kit-afiliado"]);
 const isTrackedPage = page => TRACKED_PAGES.has(page) || /^(ia-para|calculadora)-[a-z-]{2,60}$/.test(String(page));
 // Intent metrics counted next to views; each also carries the visitor's source.
-export const INTENT_METRICS = Object.freeze(["checkout_intent", "hotmart_view", "subscribe_click"]);
+// lead_submit: a free-material form accepted by the core (aggregate count + source label only, no lead identity).
+// It is NOT a confirmed e-mail (double opt-in) nor a qualified lead; reports must keep the three apart.
+export const METRIC_DEFINITIONS = Object.freeze({
+  lead_submit: "formulário do material gratuito aceito (contagem agregada por origem); não é e-mail confirmado nem lead qualificado; não deduplicado por pessoa",
+  "last7Days.leads": "inscrições registradas na tabela de leads nos últimos 7 dias (pendentes e confirmadas)",
+  leads_qualified: "evento lead_qualified da telemetria; não é alimentado pelo material gratuito",
+});
+export const INTENT_METRICS = Object.freeze(["checkout_intent", "hotmart_view", "subscribe_click", "lead_submit"]);
 const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const label = (v, max) => { const x = String(v || "").toLowerCase(); return new RegExp(`^[a-z0-9_-]{1,${max}}$`).test(x) && !RESERVED_KEYS.has(x) ? x : ""; };
 // Traffic-quality class of a counted view, so human and automated traffic can be told apart
@@ -119,7 +126,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   const sources = Object.create(null), campaigns = Object.create(null);
   for (const row of traffic) {
     const m = /^(?:([a-z_]+):)?src:([a-z0-9_-]+)$/.exec(row.metric);
-    if (m) { const s = (sources[m[2]] = sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0 }); s[m[1] || "views"] += Number(row.n) || 0; continue; }
+    if (m) { const s = (sources[m[2]] = sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 }); s[m[1] || "views"] += Number(row.n) || 0; continue; }
     const c = /^camp:([a-z0-9_-]+)$/.exec(row.metric);
     if (c && !RESERVED_KEYS.has(c[1])) campaigns[c[1]] = (campaigns[c[1]] || 0) + (Number(row.n) || 0);
   }
@@ -166,7 +173,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   for (const row of cleanRows || []) {
     const n = Number(row.n) || 0;
     const m = /^(?:([a-z_]+):)?src:([a-z0-9_-]+)$/.exec(row.metric);
-    if (m) { if (RESERVED_KEYS.has(m[2])) continue; const s = (clean.sources[m[2]] = clean.sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0 }); s[m[1] || "views"] += n; continue; }
+    if (m) { if (RESERVED_KEYS.has(m[2])) continue; const s = (clean.sources[m[2]] = clean.sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 }); s[m[1] || "views"] += n; continue; }
     const c = /^camp:([a-z0-9_-]+)$/.exec(row.metric);
     if (c) { if (!RESERVED_KEYS.has(c[1])) clean.campaigns[c[1]] = (clean.campaigns[c[1]] || 0) + n; continue; }
     const k = /^cls:([a-z_]+)$/.exec(row.metric);
@@ -210,6 +217,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   const last7Days = {windowDays:7, views:metrics7.views||0, visitors:metrics7.visitors||0, cleanSince:CLEAN_SINCE, cleanViews:cleanM.views||0, cleanVisitors:cleanM.visitors||0, leads:Number(leads7[0]?.n)||0, checkouts:Number(checkouts7[0]?.n)||0, mode:production?"production":"test"};
   return {
     schema: "zevanory-funnel/v1",
+    definitions: METRIC_DEFINITIONS,
     generatedAt: new Date(now).toISOString(),
     windowDays: 30,
     last7Days,
@@ -243,7 +251,10 @@ export async function handleFunnel(request, env, { sqlFactory, ctx } = {}) {
   const page = String(body.page || "");
   const userAgent = String(body.ua || "").slice(0, 300);
   if (!isCountableView({ method: "GET", page, userAgent, purpose: body.purpose, asn: body.asn })) return new Response(null, { status: 204 });
-  const metric = INTENT_METRICS.includes(body.metric) ? body.metric : "views";
+  // A hit without metric is a page view (existing contract). A metric that is present but unknown is
+  // dropped, never counted as a view: an older/newer caller must not inflate visits.
+  const metric = body.metric == null || body.metric === "views" ? "views" : INTENT_METRICS.includes(body.metric) ? body.metric : null;
+  if (!metric) return new Response(null, { status: 204 });
   const work = recordPageView(env, { sqlFactory, page, ip: String(body.ip || ""), userAgent, metric, src: body.src, camp: body.camp, asn: body.asn, acceptLanguage: body.al === 1 || body.al === true, country: String(body.cty || "").slice(0, 2) }).catch((e) => console.error("funnel_hit_failed", e instanceof Error ? e.message : String(e)));
   if (ctx?.waitUntil) ctx.waitUntil(work); else await work;
   return new Response(null, { status: 204 });
