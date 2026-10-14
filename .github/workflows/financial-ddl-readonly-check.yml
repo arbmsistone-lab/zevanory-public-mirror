@@ -1,0 +1,32 @@
+name: T4 financial DDL read-only check
+
+# Reads only catalog metadata (unique keys) of the financial tables inside a READ ONLY transaction and
+# compares it with the idempotency the code relies on. Never reads rows, never writes, prints verdicts
+# only. Manual dispatch only: each run is authorized by the owner.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: financial-ddl-readonly-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test tests/financial-ddl-readonly.test.mjs
+      - run: npm install --no-save --no-audit --no-fund pg@8.16.3
+      - name: Read-only DDL check
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/audit/financial-ddl-readonly.mjs

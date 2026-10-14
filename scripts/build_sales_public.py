@@ -81,6 +81,9 @@ HTML_ROUTES = (
     "calculadora-preco-hora-servico",
     "calculadora-taxa-maquininha",
     "calculadora-cmv",
+    "mensagem-para-cliente-que-sumiu",
+    "como-cobrar-cliente-pelo-whatsapp",
+    "como-mandar-orcamento-pelo-whatsapp",
 )
 
 

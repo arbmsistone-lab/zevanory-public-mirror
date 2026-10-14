@@ -1,5 +1,7 @@
 import { collectFinancialProvenanceReadOnly } from "./internal-financial-audit.mjs";
 export const COMMERCIAL_PROOF_KV_KEY="zpc-production-financial-metrics:v1";
+export const PROOF_INVALIDATION_KV_KEY="zpc:financial-proof:last-invalidation:v1";
+export const PROOF_INVALIDATION_REASONS=Object.freeze(["ambiguous","ambiguous_transient","audit_unavailable","unverified"]);
 const MAX_AGE_MS=65*60*1000;
 const MIN_REFRESH_MS=50*60*1000;
 const isCount=n=>Number.isInteger(n)&&n>=0&&n<=100000000;
@@ -100,10 +102,17 @@ export async function refreshFinancialProofSnapshot(env,{
   if(!snapshot.verified){
     // Transient provider/DB 503 must not erase still-valid proof. A positive
     // ambiguity (409) DOES invalidate immediately. Never synthesize a PASS.
-    if(audited?.code===409||!verifyFinancialProofSnapshot(prior,env,{now}))
+    const priorValid=verifyFinancialProofSnapshot(prior,env,{now});
+    const ambiguousN=Number(audited?.result?.ambiguous)||0;
+    // Diagnostic label only: "ambiguous_transient" = every ambiguous payment was a provider lookup
+    // failure (network/429/5xx). The invalidation rule below is unchanged.
+    const reason=audited?.code===409?(ambiguousN>0&&Number(audited?.result?.ambiguous_transient)===ambiguousN?"ambiguous_transient":"ambiguous"):audited?.code===503?"audit_unavailable":"unverified";
+    if(audited?.code===409||!priorValid){
       await kv.put(COMMERCIAL_PROOF_KV_KEY,JSON.stringify(snapshot),{expirationTtl:2*3600});
-    return {ok:false,ambiguous:snapshot.ambiguous,
-      reason:audited?.code===409?"ambiguous":audited?.code===503?"audit_unavailable":"unverified"};
+      // Evidence of WHEN and WHY a valid proof was replaced (fixed category, no ids or counts).
+      if(priorValid)try{await kv.put(PROOF_INVALIDATION_KV_KEY,JSON.stringify({at:new Date(now).toISOString(),reason}),{expirationTtl:7*86400});}catch{}
+    }
+    return {ok:false,ambiguous:snapshot.ambiguous,reason:reason==="ambiguous_transient"?"ambiguous":reason,diagnostic:reason};
   }
   await kv.put(COMMERCIAL_PROOF_KV_KEY,JSON.stringify(snapshot),{expirationTtl:2*3600});
   return {ok:true,ambiguous:0,reason:"proven"};
