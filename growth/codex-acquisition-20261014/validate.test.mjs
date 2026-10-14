@@ -60,3 +60,7 @@ test("Pix and WhatsApp are tied; lexical order is deterministic, not commercial 
 // The existing #813 CI invokes this file; import the concrete campaign suite
 // so the stacked PR obtains cloud evidence without adding or changing workflows.
 await import("./validate-campaigns.test.mjs");
+
+// Reuse the same cloud-only entry point for the editorial package.
+// No workflow or operational module is changed by this stacked PR.
+await import("./validate-editorial.test.mjs");
