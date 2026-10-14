@@ -1,0 +1,153 @@
+{
+  "schema": "zevanory-executor-governance/v2-proposal",
+  "status": "proposed_not_active",
+  "principle": "A declared identifier is provenance only. Authorization requires a distinct authenticated GitHub principal, least privilege, path scope, and owner-controlled protected gates.",
+  "activation_prerequisites": [
+    "Replace every placeholder principal and installation_id with values observed from GitHub APIs.",
+    "Revoke agent access to the owner's human credential and verify that agents authenticate only as distinct GitHub Apps.",
+    "Protect gh-pages with required checks, stale-review dismissal and owner CODEOWNER approval.",
+    "Protect the production environment with the owner as required reviewer and prevent self-review.",
+    "Move production credentials to the protected environment and keep them unavailable to acquisition CI.",
+    "Audit and approve the canonical publisher workflow allowlist."
+  ],
+  "repository": "arbmsistone-lab/zevanory-public-mirror",
+  "roles": {
+    "claude": {
+      "principal": {
+        "type": "github_app_installation",
+        "login": "REPLACE_WITH_CLAUDE_APP_BOT",
+        "installation_id": "REPLACE"
+      },
+      "actions": [
+        "propose_operational_change",
+        "run_tests",
+        "request_deploy"
+      ],
+      "allowed_path_prefixes": [
+        "worker/",
+        "tests/",
+        "scripts/",
+        "ops/"
+      ],
+      "never": [
+        "merge",
+        "deploy",
+        "manage_credentials"
+      ]
+    },
+    "codex": {
+      "principal": {
+        "type": "github_app_installation",
+        "login": "REPLACE_WITH_CODEX_APP_BOT",
+        "installation_id": "REPLACE"
+      },
+      "actions": [
+        "propose_acquisition_change",
+        "run_tests"
+      ],
+      "allowed_path_prefixes": [
+        "growth/"
+      ],
+      "never": [
+        "merge",
+        "deploy",
+        "request_deploy",
+        "manage_credentials"
+      ]
+    },
+    "chatgpt": {
+      "principal": {
+        "type": "github_app_installation",
+        "login": "REPLACE_WITH_CHATGPT_AUDITOR_BOT",
+        "installation_id": "REPLACE"
+      },
+      "actions": [
+        "audit",
+        "submit_review"
+      ],
+      "allowed_path_prefixes": [],
+      "never": [
+        "push",
+        "merge",
+        "deploy",
+        "manage_credentials"
+      ]
+    },
+    "owner": {
+      "principal": {
+        "type": "human_github_account",
+        "login": "arbmsistone-lab"
+      },
+      "actions": [
+        "approve",
+        "merge",
+        "approve_deploy",
+        "manage_credentials"
+      ],
+      "allowed_path_prefixes": [
+        ""
+      ],
+      "never": []
+    },
+    "publisher": {
+      "principal": {
+        "type": "github_actions_oidc",
+        "login": "github-actions[bot]"
+      },
+      "actions": [
+        "deploy"
+      ],
+      "allowed_path_prefixes": [],
+      "never": [
+        "push",
+        "merge",
+        "manage_credentials"
+      ]
+    }
+  },
+  "codex_forbidden_paths": [
+    ".github/workflows/",
+    "ops/",
+    "worker/",
+    "scripts/deploy/",
+    "sales-public/",
+    "checkout",
+    "payment",
+    "financial",
+    "secret",
+    "credential"
+  ],
+  "least_privilege": {
+    "required_for_agents": {
+      "contents": "write",
+      "pull_requests": "write",
+      "metadata": "read"
+    },
+    "forbidden_for_codex": {
+      "administration": "write",
+      "actions": "write",
+      "environments": "write",
+      "secrets": "write",
+      "members": "write"
+    }
+  },
+  "owner_authorization": {
+    "merge": "APPROVED review by owner login on the exact current head SHA, enforced by protected branch with stale approvals dismissed",
+    "deploy": "manual approval in protected production environment by owner; self-review disabled; branch restricted",
+    "credentials": "owner-only UI or owner-only principal; never an agent token"
+  },
+  "publication": {
+    "environment": "production",
+    "canonical_workflows": [
+      ".github/workflows/central-production-deploy.yml",
+      ".github/workflows/sales-public-release.yml"
+    ],
+    "secrets_scope": "production environment only",
+    "acquisition_access": false
+  },
+  "current_limitations": [
+    "All current agent writes appear under the owner's GitHub identity, so provider identity is not authenticated.",
+    "session_ declarations remain documentary provenance and cannot authorize an executor.",
+    "This proposal must fail closed until distinct principals and protected controls are observable."
+  ]
+}
