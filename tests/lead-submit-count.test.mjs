@@ -39,3 +39,12 @@ test("source label: same-site utm only, sanitized, else sem_tag; body builder ha
   assert.equal(leadSource(r("")),"sem_tag");
   assert.equal("ip" in leadHitBody(r(REF)),false);
 });
+test("contract with the live central funnel: the vendas payload is stored as lead_submit by source, never as a view", async () => {
+  const { handleFunnel } = await import("../worker/funnel.mjs");
+  const { env, ctx, hits } = setup(200);
+  await worker.fetch(post(REF), env, ctx); await ctx.p;
+  const calls = []; const factory = () => ({ query: async (t, p) => { calls.push({ t, p }); return []; } });
+  const r = await handleFunnel(new Request("https://funnel.internal/hit", { method: "POST", body: JSON.stringify({ ...hits[0], asn: 28573 }) }), { DATABASE_URL: "x", RESEND_API_KEY: "s" }, { sqlFactory: factory });
+  assert.equal(r.status, 204);
+  assert.deepEqual(calls.filter(c => /insert/i.test(c.t) && c.p?.[2]).map(c => c.p[2]), ["lead_submit", "lead_submit:src:youtube"]);
+});
