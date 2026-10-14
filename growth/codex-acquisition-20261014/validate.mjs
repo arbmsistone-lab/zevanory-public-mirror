@@ -47,6 +47,7 @@ export function validatePlan(plan) {
   assert(new Set(plan.products.map(product => product.id)).size === PRODUCT_IDS.size, "product_duplicate");
   for (const product of plan.products) assert(PRODUCT_IDS.has(product.id), "unknown_product:" + product.id);
 
+  assert(plan.scoring?.tie_breaker === "lexicographic_opportunity_id_for_determinism_only", "tie_breaker");
   assert(Array.isArray(plan.opportunities) && plan.opportunities.length >= 5, "opportunities_minimum");
   const opportunityIds = new Set();
   for (const item of plan.opportunities) {
@@ -76,7 +77,8 @@ export function validatePlan(plan) {
     products: plan.products.length,
     opportunities: plan.opportunities.length,
     priority_order: plan.priority_order,
-    scores: Object.fromEntries(plan.opportunities.map(item => [item.id, scoreOf(item)]))
+    scores: Object.fromEntries(plan.opportunities.map(item => [item.id, scoreOf(item)])),
+    ties: Object.entries(Object.groupBy(plan.opportunities, scoreOf)).filter(([, items]) => items.length > 1).map(([score, items]) => ({ score: Number(score), ids: items.map(item => item.id).sort() }))
   };
 }
 
