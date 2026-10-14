@@ -62,12 +62,24 @@ export async function ensureFunnelSchema(sql) {
 
 // Cloud/datacenter networks (our own audits, monitors and headless browsers run
 // there with ordinary-looking user agents). Real buyers browse from ISPs/carriers.
+// Telegram's in-app browser on Android appends "Telegram-Android/<ver> (<device>)" to a normal mobile
+// Chrome UA, so the word "telegram" blocked real people opening our Telegram links. The token is removed
+// ONLY when the rest is a mobile browser UA; the result still goes through the full automation list
+// (TelegramBot previews, headless, curl, python... stay blocked). A UA never proves a human: rate limits,
+// honeypot and the datacenter-ASN filter remain the abuse controls.
+const INAPP_TOKEN = /\s*\bTelegram-Android\/[\d.]+(?:\s*\([^)]*\))?/g;
+const MOBILE_BROWSER = /^Mozilla\/5\.0 \((?:Linux; Android [^)]*|iPhone;[^)]*|iPad;[^)]*)\) AppleWebKit\/[\d.]+ \(KHTML, like Gecko\)/;
+export function isAutomationUA(ua) {
+  const s = String(ua || "");
+  if (!s) return true;
+  return BOT_RE.test(MOBILE_BROWSER.test(s) ? s.replace(INAPP_TOKEN, "") : s);
+}
 export const DATACENTER_ASNS = Object.freeze(new Set([8075, 16509, 14618, 15169, 396982, 14061, 16276, 24940, 63949, 20473, 36351, 45102, 132203, 31898, 8987, 19527]));
 export function isCountableView({ method, page, userAgent, purpose, asn = 0 }) {
   if (DATACENTER_ASNS.has(Number(asn))) return false;
   if (method !== "GET") return false;
   if (!isTrackedPage(page)) return false;
-  if (!userAgent || BOT_RE.test(userAgent)) return false;
+  if (isAutomationUA(userAgent)) return false;
   if (/prefetch|prerender/i.test(String(purpose || ""))) return false;
   return true;
 }
