@@ -43,6 +43,18 @@ Fontes:
 - [Como controlar o fluxo de caixa — Sebrae](https://sebrae.com.br/sites/PortalSebrae/cursosonline/como-controlar-o-fluxo-de-caixa%2C45b0b8a6a28bb610VgnVCM1000004c00210aRCRD)
 - [IA na prática para pequenos negócios — Sebrae](https://pa.loja.sebrae.com.br/ia-na-pratica-para-pequenos-negocios-1-372000104947)
 
+## Verificação dos números e universos
+
+| Número citado | Período e indicador | Universo correto | Limite de interpretação |
+|---|---|---|---|
+| 74% usaram WhatsApp ou Telegram | TIC Empresas 2024, presença online | Empresas formais brasileiras com 10 ou mais pessoas ocupadas | Não representa MEI ou empresa com menos de 10 pessoas; agrega as duas plataformas |
+| 84% venderam por mensagens | TIC Empresas 2024, E2C | Empresas de 10 a 49 pessoas ocupadas que venderam pela Internet nos 12 meses anteriores | O canal agrega WhatsApp, Skype e chat do Facebook; não mede conversão |
+| 13% usaram IA | TIC Empresas 2024, H9 | Empresas formais com 10 ou mais pessoas ocupadas; pergunta coletada entre empresas com especialista/área de TI e resultado apresentado para o total | Não deve ser extrapolado para MEI; a edição 2025 registra 17%, mas o snapshot deste plano permanece 2024 |
+| 12,8 milhões de empresas usaram Pix | Relatório de Gestão do Pix 2023–2025 | Pessoas jurídicas que haviam enviado ou recebido ao menos um Pix ao final do período | Não identifica porte nem prova demanda pelo produto |
+| Quase 80 bilhões de transações Pix | Ano de 2025 | Total de transações Pix informado pelo Banco Central | Não corresponde apenas a pagamentos empresariais |
+
+Indicadores diretos: [E2C — canais de venda online](https://cetic.br/pt/tics/pesquisa/2024/empresas/E2C/expandido/), [H9 — uso de IA](https://cetic.br/pt/tics/pesquisa/2024/empresas/H9/), [metodologia e população-alvo](https://www.cetic.br/pt/arquivos/pesquisa/2024/empresas/) e [atualização TIC Empresas 2025](https://www.cetic.br/pt/noticia/uso-de-inteligencia-artificial-por-empresas-brasileiras-avanca-e-atinge-17-aponta-pesquisa-do-cetic-br/).
+
 ## Avaliação dos cinco produtos
 
 | Produto | Evidência de dor | Pressão competitiva | Papel recomendado |
@@ -53,7 +65,7 @@ Fontes:
 | Combo IA + Vendas | Interseção coerente entre IA e WhatsApp | Precisa provar utilidade, não receita | Usar como próxima etapa após conteúdo específico, não como tema genérico |
 | Negócio Completo | Dor integrada plausível, intenção menos específica | Maior complexidade de mensagem | Tratar como consolidação para audiência já engajada |
 
-Nenhum potencial de receita foi estimado. A ordem operacional está em `opportunities.json`, com rubrica reproduzível de 0 a 12.
+Nenhum potencial de receita foi estimado. A ordem operacional está em `opportunities.json`, com rubrica reproduzível de 0 a 12. **Pix e WhatsApp empataram em 12 pontos.** Pix aparece primeiro exclusivamente porque o desempate técnico ordena o identificador em ordem lexicográfica; isso não demonstra procura, conversão ou potencial comercial superior. Os dois são hipóteses equivalentes para um teste controlado.
 
 ## Arquitetura mínima
 
