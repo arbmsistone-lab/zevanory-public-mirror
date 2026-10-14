@@ -307,15 +307,15 @@
   ],
   "destination_registry": {
     "cashflow_calculator": {
-      "url": "https://zevanory.api.br/calculadora-fluxo-de-caixa",
-      "expected_final_url": "https://zevanory.api.br/calculadora-fluxo-de-caixa",
+      "url": "https://vendas.zevanory.api.br/calculadora-fluxo-de-caixa",
+      "expected_final_url": "https://vendas.zevanory.api.br/calculadora-fluxo-de-caixa",
       "content_marker": "Calculadora de fluxo de caixa",
       "funnel_page": "calculadora-fluxo-de-caixa",
       "campaign_visits_tracked": true
     },
     "free_checklist": {
-      "url": "https://zevanory.api.br/material-gratuito",
-      "expected_final_url": "https://zevanory.api.br/material-gratuito",
+      "url": "https://vendas.zevanory.api.br/material-gratuito",
+      "expected_final_url": "https://vendas.zevanory.api.br/material-gratuito",
       "content_marker": "15 minutos por dia para organizar caixa, vendas e IA",
       "funnel_page": "material-gratuito",
       "campaign_visits_tracked": true
