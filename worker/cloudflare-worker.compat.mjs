@@ -32,6 +32,7 @@ import { handleSandboxProofV2, handleSandboxInboundEmail } from "./sandbox-proof
 import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
+import { apexSeoResponse } from "./apex-seo.mjs";
 import { runOwnerAlertDigest, alertFinancialProofStale } from "./owner-alerts.mjs";
 import { handleLeadMagnet, runLeadNurture } from "./lead-magnet.mjs";
 import { runSupportEvalIfDue } from "./support-eval.mjs";
@@ -284,6 +285,9 @@ const wrapped = {
       if (matched) return new Response(challenge, { status: 200, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
       return new Response(JSON.stringify({ error: "webhook_verification_failed" }), { status: 403, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
     }
+
+    const apexSeo = await apexSeoResponse(request, url, normalized);
+    if (apexSeo) return apexSeo;
 
     const canonicalRedirect = canonicalizePublicPath(request, url);
     if (canonicalRedirect) return canonicalRedirect;

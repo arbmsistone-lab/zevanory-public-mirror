@@ -187,3 +187,40 @@ test("blog article: every link reaches a real destination and every campaign sur
     }
   }
 });
+
+// Apex SEO surface (Marco B / C2): one owner per URL.
+import { apexSeoResponse, SALES_CATALOGUE } from "../worker/apex-seo.mjs";
+
+
+const apexKv = (articles) => ({ get: async (k) => (k === "zpc:blog:index:v1" ? JSON.stringify({ articles }) : null) });
+const apexEnv = (articles = []) => ({ ZEVANORY_PRIVATE_ARTIFACTS: apexKv(articles) });
+const apexReq = (u, method = "GET") => [new Request(u, { method }), new URL(u)];
+
+test("apex root is a permanent redirect to the canonical catalogue, keeping the query", async () => {
+  const r = await apexSeoResponse(...apexReq("https://zevanory.api.br/?utm_source=x"), apexEnv());
+  assert.equal(r.status, 301);
+  assert.equal(r.headers.get("location"), SALES_CATALOGUE + "?utm_source=x");
+  assert.equal((await apexSeoResponse(...apexReq("https://zevanory.api.br/", "HEAD"), apexEnv())).status, 301);
+});
+
+test("apex sitemap lists only apex-owned URLs (blog) — no entry redirects to vendas", async () => {
+  const arts = [{ url: "https://zevanory.api.br/blog/a-2026-10-14", publishedAt: "2026-10-14T12:00:00Z" }, { url: "https://zevanory.api.br/blog/ia-pratica-pequenos-negocios", publishedAt: "2026-10-07T12:00:00Z" }];
+  const r = await apexSeoResponse(...apexReq("https://zevanory.api.br/sitemap.xml"), apexEnv(arts));
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get("content-type"), /application\/xml/);
+  const xml = await r.text();
+  const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  assert.deepEqual(locs, ["https://zevanory.api.br/blog", ...arts.map((a) => a.url)]);
+  for (const l of locs) assert.match(l, /^https:\/\/zevanory\.api\.br\/blog(\/|$)/);
+  assert.doesNotMatch(xml, /solucoes|ia-na-pratica|privacidade|arbm|vendas\./);
+  const empty = await (await apexSeoResponse(...apexReq("https://zevanory.api.br/sitemap.xml"), {})).text();
+  assert.match(empty, /<loc>https:\/\/zevanory\.api\.br\/blog<\/loc>/, "KV unavailable still yields a valid sitemap");
+});
+
+test("everything else is untouched: other hosts, other paths, other methods", async () => {
+  assert.equal(await apexSeoResponse(...apexReq("https://controle.zevanory.api.br/"), apexEnv()), null);
+  assert.equal(await apexSeoResponse(...apexReq("https://vendas.zevanory.api.br/sitemap.xml"), apexEnv()), null);
+  assert.equal(await apexSeoResponse(...apexReq("https://zevanory.api.br/blog"), apexEnv()), null);
+  assert.equal(await apexSeoResponse(...apexReq("https://zevanory.api.br/api/status"), apexEnv()), null);
+  assert.equal(await apexSeoResponse(...apexReq("https://zevanory.api.br/", "POST"), apexEnv()), null);
+});
