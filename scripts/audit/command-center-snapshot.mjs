@@ -7,7 +7,7 @@
 // Writes KV zpc:command:v1:snapshot (shared with the panel) and keeps daily history of
 // reach in zpc:command:v1:reach-history. Never publishes, charges or changes anything.
 import { getYoutubeAccessToken } from "../channels/youtube-access.mjs";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { evaluateExperiments } from "./experiments.mjs";
 import { evaluateInventory } from "./autonomy-inventory.mjs";
 
@@ -389,6 +389,8 @@ export async function main() {
   const kvQuota = await kvWritesToday(now);
   const kvForecast = kvQuotaForecast(kvQuota, now);
   if (kvForecast && kvForecast.level !== "ok") console.log("::warning title=KV_QUOTA_" + kvForecast.level.toUpperCase() + "::" + JSON.stringify(kvForecast));
+  // Hand-off to the owner-notification step (scripts/audit/kv-quota-issue.mjs); file only, no KV write.
+  if (kvForecast && process.env.KV_FORECAST_OUT) { try { writeFileSync(process.env.KV_FORECAST_OUT, JSON.stringify({ day: kvQuota.day, ...kvForecast })); } catch {} }
   if (kvQuota?.verified && kvQuota.writes >= 0.7 * KV_DAILY_WRITE_LIMIT) console.log("::warning title=KV_QUOTA::" + JSON.stringify(kvQuota));
   // The Worker reads this reading to shed observability writes at 70% (worker/kv-meter.mjs).
   if (kvQuota?.verified) await kvPut("zpc:kv:v1:budget", { day: kvQuota.day, pct: kvQuota.pct, writes: kvQuota.writes, limit: kvQuota.limit, at: iso(now) }).catch(() => {});

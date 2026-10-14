@@ -16,6 +16,8 @@ concurrency:
 permissions:
   contents: read
   actions: read
+  # Only for the daily KV-quota alert issue (deduplicated, one per UTC day).
+  issues: write
 
 jobs:
   snapshot:
@@ -39,7 +41,7 @@ jobs:
         with:
           node-version: "22"
       - name: Unit tests
-        run: node --test tests/command-center-snapshot.test.mjs tests/command-center-main.test.mjs tests/experiments.test.mjs tests/autonomy-inventory.test.mjs tests/market-weekly.test.mjs tests/sales-ledger.test.mjs
+        run: node --test tests/command-center-snapshot.test.mjs tests/kv-quota-issue.test.mjs tests/command-center-main.test.mjs tests/experiments.test.mjs tests/autonomy-inventory.test.mjs tests/market-weekly.test.mjs tests/sales-ledger.test.mjs
       - name: Consolidate the funnel in its own Worker invocation
         env:
           CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
@@ -47,4 +49,12 @@ jobs:
           code=$(curl -sS -o /tmp/funnel.json -w '%{http_code}' -X POST -H "x-backup-token: $CERTIFICATION_E2E_TOKEN" --max-time 120 https://zevanory.api.br/api/internal/funnel/run || true)
           echo "::notice title=FUNNEL_RUN::http=$code $(head -c 300 /tmp/funnel.json 2>/dev/null)"
       - name: Build and store the snapshot
+        env:
+          KV_FORECAST_OUT: ${{ runner.temp }}/kv-forecast.json
         run: node scripts/audit/command-center-snapshot.mjs
+      - name: Notify owner when the KV write quota is at risk (one issue per day)
+        if: always()
+        env:
+          KV_FORECAST_OUT: ${{ runner.temp }}/kv-forecast.json
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/audit/kv-quota-issue.mjs
