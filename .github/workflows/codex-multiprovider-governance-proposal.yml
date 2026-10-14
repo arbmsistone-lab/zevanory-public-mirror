@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  fail-closed-model:
+  proposal-tests-only:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -22,9 +22,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Authorization model tests
-        run: node --test governance/proposals/multiprovider-v2/authorize.test.mjs
+      - name: Authorization and collector model tests
+        run: node --test governance/proposals/multiprovider-v2/*.test.mjs
       - name: Confirm proposal cannot activate itself
         run: |
           node -e "const p=require('./governance/proposals/multiprovider-v2/policy.proposal.json'); if(p.status!=='proposed_not_active') process.exit(1)"
           git diff --exit-code origin/gh-pages -- ops/executor.json .github/workflows/t1-publisher-guard.yml
+      - name: Explain trust boundary
+        run: echo "This PR workflow tests fixtures only; it is not an authorization collector."
