@@ -2,6 +2,20 @@
 
 Plano mestre 3.1. Documento operacional; nenhuma etapa é executada sem a autorização indicada.
 
+## Estado (13/10/2026, parecer do auditor independente)
+
+| Item | Estado | Evidência |
+|---|---|---|
+| Ativação técnica do T1 (central, vendas, painel) | **PASS** | merges #799 `82166477` e edge #210 `f501904e`; runs 38445395191, 38445395157, 38447421653 → 38447454947; `external-repository` verde (38445395184, tentativa 2) |
+| **T1 integral** | **NÃO COMPROVADO** | pendência única de credenciais, abaixo |
+| Autenticação da identidade executora | BLOQUEADO | identidade GitHub compartilhada (seção E) |
+
+**Pendência aberta: exclusividade efetiva das credenciais Cloudflare**
+- Responsável: o proprietário cria os tokens; o executor certifica e faz a transição.
+- Critério de encerramento: os quatro `CF_TOKEN_*` passam por `SCOPE_READY` no `credential-scope`; cada publicador usa o token do seu Worker e é certificado por uma publicação real **já prevista** (nenhuma publicação só para gerar evidência); depois disso, revogação do token de conta inteira com confirmação de continuidade. O procedimento está na seção D.
+- **Proibido antes disso:** revogar o token atual.
+- Limites da evidência: uma publicação bem-sucedida não prova ausência de concorrência em todos os cenários, e a ausência de rollback não prova recuperação real.
+
 ## A. Ordem de integração: **#799 primeiro, #210 depois**
 
 | Passo | Ação | Quem | Efeito em produção | Verificação |
