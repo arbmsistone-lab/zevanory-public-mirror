@@ -149,3 +149,41 @@ test("Pinterest F1 dynamic editorial is published with the official hashed Z ima
   assert.equal(pin?.provider_post_id,"pin-brand-test");
   assert.equal(pin?.brand_asset_strategy,"approved_official_pin");
 });
+// Blog article links (re-authored fix for the issue first reported in #798). Original defect: the
+// free-material link was relative ("/material-gratuito"), which 404s on the apex where the blog lives,
+// and utm_campaign carried the full slug (~100 chars), which the funnel drops (^[a-z0-9_-]{1,48}$).
+test("blog article: every link reaches a real destination and every campaign survives the funnel",async()=>{
+  const { attribution } = await import("../worker/sales-public-worker.mjs");
+  const salesPages = new Set(["material-gratuito","ia-por-ramo","conteudo-pronto"]);
+  const apexPaths = new Set(["/blog"]);
+  const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};
+  const out=await ensureDailyBlog(env,new Date("2026-10-14T12:00:00Z"));
+  const real=JSON.parse(await store.get("zpc:blog:article:"+out.latest.slug));
+  assert.ok(real.slug.length>48,"fixture must reproduce a slug longer than the funnel limit");
+  const legacy={...real,slug:"artigo-antigo-sem-dia-"+"x".repeat(80)+"-\"><script>",day:undefined};
+  await store.put("zpc:blog:article:legacy",JSON.stringify(legacy));
+  for (const [slug, expectCamp] of [[real.slug,"blog_20261014"],["legacy",null]]) {
+    const html=await renderBlogArticle(env,slug);
+    assert.doesNotMatch(html,/<script>/,"slug content never reaches markup unescaped");
+    const hrefs=[...html.matchAll(/href="([^"]+)"/g)].map(m=>m[1].replace(/&amp;/g,"&"));
+    const material=hrefs.filter(h=>h.includes("material-gratuito"));
+    assert.equal(material.length,1);
+    assert.match(material[0],/^https:\/\/vendas\.zevanory\.api\.br\/material-gratuito\?/,"free material must point at the sales host");
+    for (const h of hrefs) {
+      if (h.startsWith("/")) { assert.ok(apexPaths.has(h)||h.startsWith("/brand/export/"),"unexpected relative link "+h); continue; }
+      if (/^(mailto:|https:\/\/wa\.me\/)/.test(h)) continue;
+      const u=new URL(h);
+      assert.ok(["zevanory.api.br","vendas.zevanory.api.br"].includes(u.hostname),h);
+      if (u.hostname==="vendas.zevanory.api.br") {
+        const page=u.pathname.slice(1);
+        assert.ok(salesPages.has(page)||/^comprar\/ZEV-[A-Z0-9-]+$/.test(page),"sales destination "+page);
+      }
+      const camp=u.searchParams.get("utm_campaign");
+      if (camp!==null) {
+        assert.match(camp,/^[a-z0-9_-]{1,48}$/,"campaign "+camp);
+        assert.equal(attribution(new Request(h),u).camp,camp,"funnel keeps the campaign");
+        if (expectCamp) assert.equal(camp,expectCamp);
+      }
+    }
+  }
+});
