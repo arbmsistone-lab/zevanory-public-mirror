@@ -44,3 +44,15 @@ test("priority cannot diverge from the transparent score", async () => {
   plan.priority_order.reverse();
   assert.throws(() => validatePlan(plan), /priority_order/);
 });
+
+test("Pix and WhatsApp are tied; lexical order is deterministic, not commercial evidence", async () => {
+  const plan = await load();
+  const result = validatePlan(plan);
+  assert.equal(result.scores["fluxo-caixa-diario-pix"], 12);
+  assert.equal(result.scores["vendas-whatsapp-follow-up"], 12);
+  assert.deepEqual(result.ties.find(item => item.score === 12).ids, [
+    "fluxo-caixa-diario-pix",
+    "vendas-whatsapp-follow-up"
+  ]);
+  assert.equal(plan.scoring.tie_breaker, "lexicographic_opportunity_id_for_determinism_only");
+});
