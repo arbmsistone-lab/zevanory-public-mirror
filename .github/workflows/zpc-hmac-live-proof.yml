@@ -1,0 +1,77 @@
+name: ZEVANORY signed audit live proof read only
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths: [".github/workflows/zpc-hmac-live-proof.yml"]
+permissions:
+  contents: read
+jobs:
+  live-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+    steps:
+      - name: Prove HMAC status and audit routes on exact canonical SHA
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hmac,hashlib,urllib.request,urllib.error,json,os,time
+          from pathlib import Path
+          expected="adc96d29c26c170218eb8c2ff1f59e8282a8dc49"
+          key=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
+          proof={"sha_expected":expected,"checks":{},"read_only":True}
+          def save_fail(name):
+            proof["state"]="NO_GO"
+            Path("hmac-live-sanitized.json").write_text(json.dumps(proof,indent=2)+"\n")
+            print("::error title=HMAC_LIVE::"+name)
+            raise SystemExit(2)
+          def get(path,ts=None):
+            headers={"Accept":"application/json","User-Agent":"ZEVANORY-AuditReadOnly/1.0"}
+            if ts is not None:
+              stamp=str(ts)
+              mac=hmac.new(key.encode(),("GET\n"+path+"\n"+stamp).encode(),hashlib.sha256).hexdigest()
+              headers.update({"x-zevanory-audit-ts":stamp,"x-zevanory-audit-signature":mac})
+            req=urllib.request.Request("https://zevanory.api.br"+path,headers=headers,method="GET")
+            try:
+              with urllib.request.urlopen(req,timeout=15) as resp:return resp.status,json.load(resp)
+            except urllib.error.HTTPError as e:return e.code,{}
+            except Exception:return 0,{}
+          if len(key)<32:save_fail("EXISTING_AUDIT_SECRET_MISSING")
+          live=False
+          for _ in range(7):
+            code,body=get("/api/control-plane")
+            if code==200 and ((body.get("release") or {}).get("deployment") or {}).get("commit_sha")==expected:
+              live=True;break
+            time.sleep(10)
+          proof["checks"]["exact_sha"]=live
+          print("::notice title=HMAC_SHA::"+str(live).lower())
+          if not live:save_fail("EXACT_SHA_NOT_VISIBLE")
+          ts=int(time.time())
+          for p in ["/api/status","/api/internal/audit/runtime-identity"]:
+            code,body=get(p,ts)
+            label=p.rsplit("/",1)[-1]
+            proof["checks"]["signed_"+label]=code
+            print("::notice title=HMAC_SIGNED_GET::path="+p+" http="+str(code))
+            if code!=200:save_fail("SIGNED_READ_REJECTED_"+label)
+            dump=json.dumps(body).lower()
+            if any(v in dump for v in ["database_url","mercadopago_access_token","password","authorization"]):
+              save_fail("SENSITIVE_FIELD_IN_RESPONSE")
+          old, _=get("/api/internal/audit/runtime-identity",ts-301)
+          anon,_=get("/api/internal/audit/runtime-identity")
+          proof["checks"]["stale_http"]=old
+          proof["checks"]["anonymous_http"]=anon
+          print("::notice title=HMAC_STALE::HTTP="+str(old))
+          print("::notice title=HMAC_ANONYMOUS::HTTP="+str(anon))
+          if old!=401 or anon!=401:save_fail("AUTHORIZATION_NEGATIVE_PROOF_FAILED")
+          proof["state"]="HMAC_AUTH_READONLY_PROVEN_NOT_COMMERCIAL_GO"
+          Path("hmac-live-sanitized.json").write_text(json.dumps(proof,indent=2)+"\n")
+          PY
+      - name: Keep sanitized evidence for one day
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hmac-live-sanitized
+          path: hmac-live-sanitized.json
+          retention-days: 1
+          if-no-files-found: warn
