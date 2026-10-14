@@ -9,10 +9,17 @@
     "paid_media_allowed": false,
     "outbound_messages_allowed": false,
     "experiment_window_days": 14,
-    "purpose": "Duas campanhas orgânicas comparáveis, prontas para revisão humana, sem execução ou promessa de resultado."
+    "purpose": "Duas campanhas orgânicas comparáveis, prontas para revisão humana, sem execução ou promessa de resultado.",
+    "editorial_readiness": "proposals_only_not_ready_for_distribution"
   },
   "shared_design": {
-    "channels": ["seo", "youtube", "tiktok", "telegram", "bluesky"],
+    "channels": [
+      "seo",
+      "youtube",
+      "tiktok",
+      "telegram",
+      "bluesky"
+    ],
     "assets_per_channel": 1,
     "utm_medium": "organic",
     "measurement_system": "worker/funnel.mjs",
@@ -24,74 +31,100 @@
       "métrica sem proveniência",
       "qualquer pedido de pagamento, credencial ou mensagem direta"
     ],
-    "comparison_rule": "Mesma janela, mesmos canais e mesma quantidade de peças. Comparar visitas por campanha; interpretar intenções apenas com as limitações documentadas do funil."
+    "comparison_rule": "As campanhas são comparáveis em desenho editorial (janela, canais e quantidade), mas não em visitas totais enquanto os guias de WhatsApp estiverem fora do funil. Nenhuma conclusão de desempenho entre campanhas é autorizada."
   },
   "campaigns": [
     {
       "id": "fluxo-caixa-pix-lucro-caixa",
-      "product": {"id": "lucro-e-caixa", "sku": "ZEV-LCX-011", "name": "Lucro & Caixa"},
+      "product": {
+        "id": "lucro-e-caixa",
+        "sku": "ZEV-LCX-011",
+        "name": "Lucro & Caixa"
+      },
       "audience": {
         "primary": "MEI, comércio e prestadores brasileiros que recebem por Pix e fecham o caixa manualmente",
         "problem": "misturar saldo bancário, recebimentos por Pix e contas do negócio sem uma rotina diária",
-        "exclusions": ["promessa de renda", "aconselhamento contábil", "usuários fora do Brasil"]
+        "exclusions": [
+          "promessa de renda",
+          "aconselhamento contábil",
+          "usuários fora do Brasil"
+        ]
       },
       "hypothesis": "Uma entrada gratuita baseada em rotina diária e calculadora pode atrair pessoas com problema operacional de caixa antes de apresentar o produto.",
       "value_proposition": "Organizar entradas, saídas e Pix em uma rotina curta, com cálculo gratuito e sem promessa de sobra ou lucro.",
       "entry_material": {
-        "primary": "/calculadora-fluxo-de-caixa",
-        "secondary": "/material-gratuito",
+        "primary": "cashflow_calculator",
+        "secondary": "free_checklist",
         "reused_assets": [
           "Calculadora de fluxo de caixa grátis",
           "Checklist gratuito de 15 minutos",
           "Página existente do produto Lucro & Caixa"
         ]
       },
-      "utm": {"campaign": "c3_fluxo_caixa_pix", "medium": "organic"},
+      "utm": {
+        "campaign": "c3_fluxo_caixa_pix",
+        "medium": "organic"
+      },
       "assets": [
         {
           "channel": "seo",
           "source": "blog",
-          "destination": "/calculadora-fluxo-de-caixa",
           "format": "brief_de_interligacao",
           "hook": "Pix recebido não é o mesmo que dinheiro livre no caixa.",
           "body": "Use a calculadora já disponível para somar saldo, entradas e saídas previstas. Depois registre a rotina no checklist de 15 minutos.",
-          "cta": "Calcule o saldo do mês gratuitamente."
+          "cta": "Calcule o saldo do mês gratuitamente.",
+          "destination_id": "cashflow_calculator",
+          "artifact_stage": "seo_brief",
+          "production_status": "not_produced_not_certified",
+          "ready_for_distribution": false
         },
         {
           "channel": "youtube",
           "source": "youtube",
-          "destination": "/calculadora-fluxo-de-caixa",
           "format": "short_45s",
           "hook": "Entrou Pix hoje: quanto realmente pode sair do caixa?",
           "body": "Mostre três linhas: saldo atual, entradas previstas e saídas previstas. Explique que o resultado é uma projeção para decidir o que conferir, não uma garantia financeira.",
-          "cta": "Teste a calculadora gratuita no link do canal."
+          "cta": "Teste a calculadora gratuita no link do canal.",
+          "destination_id": "cashflow_calculator",
+          "artifact_stage": "video_script",
+          "production_status": "not_produced_not_certified",
+          "ready_for_distribution": false
         },
         {
           "channel": "tiktok",
           "source": "tiktok",
-          "destination": "/material-gratuito",
           "format": "video_30s",
           "hook": "O fechamento de caixa que cabe em três blocos de cinco minutos.",
           "body": "Cena 1: conferir Pix e outras entradas. Cena 2: anotar contas e saídas. Cena 3: comparar o saldo projetado e separar pendências.",
-          "cta": "Abra o checklist gratuito de 15 minutos."
+          "cta": "Abra o checklist gratuito de 15 minutos.",
+          "destination_id": "free_checklist",
+          "artifact_stage": "video_script",
+          "production_status": "not_produced_not_certified",
+          "ready_for_distribution": false
         },
         {
           "channel": "telegram",
           "source": "telegram",
-          "destination": "/calculadora-fluxo-de-caixa",
           "format": "post_curto",
           "hook": "Antes de usar o saldo do Pix, feche a conta do dia.",
           "body": "Some saldo atual, entradas previstas e saídas. A calculadora gratuita ajuda a visualizar o saldo final; os números continuam dependendo dos registros informados.",
-          "cta": "Calcular o fluxo de caixa."
+          "cta": "Calcular o fluxo de caixa.",
+          "destination_id": "cashflow_calculator",
+          "artifact_stage": "text_draft",
+          "production_status": "not_approved_not_published",
+          "ready_for_distribution": false
         },
         {
           "channel": "bluesky",
           "source": "bluesky",
-          "destination": "/calculadora-fluxo-de-caixa",
           "format": "post_curto",
           "hook": "Saldo na conta não responde sozinho se o caixa está saudável.",
           "body": "Organize saldo, entradas e saídas previstas em uma projeção simples. Sem cadastro e sem promessa de resultado.",
-          "cta": "Use a calculadora gratuita."
+          "cta": "Use a calculadora gratuita.",
+          "destination_id": "cashflow_calculator",
+          "artifact_stage": "text_draft",
+          "production_status": "not_approved_not_published",
+          "ready_for_distribution": false
         }
       ],
       "measurement": {
@@ -102,30 +135,59 @@
           "target": null
         },
         "secondary": [
-          {"name": "visitas à calculadora", "source": "clean.pages.calculadora-fluxo-de-caixa.views", "baseline": null, "target": null},
-          {"name": "cliques de inscrição por origem", "source": "clean.sources.<source>.subscribe_click", "baseline": null, "target": null},
-          {"name": "intenção no produto Lucro & Caixa", "source": "clean.sources.<source>.checkout_intent", "baseline": null, "target": null}
+          {
+            "name": "visitas à calculadora",
+            "source": "clean.pages.calculadora-fluxo-de-caixa.views",
+            "baseline": null,
+            "target": null
+          },
+          {
+            "name": "cliques de inscrição por origem",
+            "source": "clean.sources.<source>.subscribe_click",
+            "baseline": null,
+            "target": null
+          },
+          {
+            "name": "intenção no produto Lucro & Caixa",
+            "source": "clean.sources.<source>.checkout_intent",
+            "baseline": null,
+            "target": null
+          }
         ],
         "limitations": [
           "O funil atual associa campanha às visualizações, mas intenções somente à origem.",
           "Não há meta numérica sem baseline limpo.",
           "A classificação BR é agregada e não cruza campanha com país."
-        ]
+        ],
+        "coverage": {
+          "status": "complete_for_listed_assets",
+          "tracked_asset_destinations": 5,
+          "total_asset_destinations": 5
+        }
       }
     },
     {
       "id": "whatsapp-clientes-vendas-pratica",
-      "product": {"id": "vendas-na-pratica", "sku": "ZEV-VEN-011", "name": "Vendas na Prática"},
+      "product": {
+        "id": "vendas-na-pratica",
+        "sku": "ZEV-VEN-011",
+        "name": "Vendas na Prática"
+      },
       "audience": {
         "primary": "MEI, lojas e prestadores brasileiros que atendem clientes pelo WhatsApp",
         "problem": "perder continuidade entre orçamento, cobrança respeitosa e retomada de conversas",
-        "exclusions": ["spam", "disparo frio", "promessa de conversão", "aconselhamento jurídico"]
+        "exclusions": [
+          "spam",
+          "disparo frio",
+          "promessa de conversão",
+          "aconselhamento jurídico"
+        ]
       },
       "hypothesis": "Guias práticos já existentes para três momentos da conversa podem qualificar visitantes antes de apresentar o produto.",
       "value_proposition": "Acompanhar conversas comerciais com próximos passos claros e mensagens revisáveis, sem automação de envio ou promessa de venda.",
       "entry_material": {
-        "primary": "/mensagem-para-cliente-que-sumiu",
-        "secondary": "/material-gratuito",
+        "primary": "whatsapp_reengagement_guide",
+        "secondary": "free_checklist",
         "reused_assets": [
           "Guia mensagem para cliente que sumiu",
           "Guia como cobrar cliente pelo WhatsApp",
@@ -134,72 +196,150 @@
           "Página existente do produto Vendas na Prática"
         ]
       },
-      "utm": {"campaign": "c3_whatsapp_clientes", "medium": "organic"},
+      "utm": {
+        "campaign": "c3_whatsapp_clientes",
+        "medium": "organic"
+      },
       "assets": [
         {
           "channel": "seo",
           "source": "blog",
-          "destination": "/mensagem-para-cliente-que-sumiu",
           "format": "cluster_existente",
           "hook": "Três momentos do acompanhamento: orçamento, retorno e cobrança.",
           "body": "Interligar os três guias existentes sem criar outro artigo: cada página aponta para o próximo passo pertinente e para o checklist gratuito.",
-          "cta": "Escolha o guia correspondente à conversa."
+          "cta": "Escolha o guia correspondente à conversa.",
+          "destination_id": "whatsapp_reengagement_guide",
+          "artifact_stage": "seo_brief",
+          "production_status": "not_produced_not_certified",
+          "ready_for_distribution": false
         },
         {
           "channel": "youtube",
           "source": "youtube",
-          "destination": "/como-mandar-orcamento-pelo-whatsapp",
           "format": "short_45s",
           "hook": "Orçamento enviado não encerra o acompanhamento.",
           "body": "Mostre uma sequência simples: confirmar recebimento, combinar quando retomar e registrar a próxima ação. Use exemplos fictícios e revise antes de enviar.",
-          "cta": "Veja o guia de orçamento pelo WhatsApp."
+          "cta": "Veja o guia de orçamento pelo WhatsApp.",
+          "destination_id": "whatsapp_quote_guide",
+          "artifact_stage": "video_script",
+          "production_status": "not_produced_not_certified",
+          "ready_for_distribution": false
         },
         {
           "channel": "tiktok",
           "source": "tiktok",
-          "destination": "/mensagem-para-cliente-que-sumiu",
           "format": "video_30s",
           "hook": "Cliente parou de responder? Evite repetir a mesma mensagem.",
           "body": "Apresente três opções: confirmar se ainda precisa, oferecer um próximo passo objetivo e encerrar com respeito quando não houver retorno.",
-          "cta": "Abra os exemplos gratuitos do guia."
+          "cta": "Abra os exemplos gratuitos do guia.",
+          "destination_id": "whatsapp_reengagement_guide",
+          "artifact_stage": "video_script",
+          "production_status": "not_produced_not_certified",
+          "ready_for_distribution": false
         },
         {
           "channel": "telegram",
           "source": "telegram",
-          "destination": "/como-cobrar-cliente-pelo-whatsapp",
           "format": "post_curto",
           "hook": "Cobrança pelo WhatsApp precisa ser clara e respeitosa.",
           "body": "Confirme o valor e o vencimento, ofereça um canal para corrigir divergências e evite exposição ou ameaça. O guia é informativo e não substitui orientação jurídica.",
-          "cta": "Leia o guia gratuito de cobrança."
+          "cta": "Leia o guia gratuito de cobrança.",
+          "destination_id": "whatsapp_collection_guide",
+          "artifact_stage": "text_draft",
+          "production_status": "not_approved_not_published",
+          "ready_for_distribution": false
         },
         {
           "channel": "bluesky",
           "source": "bluesky",
-          "destination": "/mensagem-para-cliente-que-sumiu",
           "format": "post_curto",
           "hook": "Follow-up não precisa virar insistência.",
           "body": "Registre o contexto, proponha uma ação concreta e respeite a decisão do cliente. A consistência vem do processo, não de uma frase milagrosa.",
-          "cta": "Veja exemplos para adaptar."
+          "cta": "Veja exemplos para adaptar.",
+          "destination_id": "whatsapp_reengagement_guide",
+          "artifact_stage": "text_draft",
+          "production_status": "not_approved_not_published",
+          "ready_for_distribution": false
         }
       ],
       "measurement": {
         "primary": {
-          "name": "visitas atribuídas à campanha",
-          "source": "clean.campaigns.c3_whatsapp_clientes",
+          "name": "visitas totais atribuídas à campanha",
+          "source": null,
+          "status": "not_measurable_current_funnel",
           "baseline": null,
           "target": null
         },
         "secondary": [
-          {"name": "visitas ao produto Vendas na Prática", "source": "clean.pages.vendas-na-pratica.views", "baseline": null, "target": null},
-          {"name": "cliques de inscrição por origem", "source": "clean.sources.<source>.subscribe_click", "baseline": null, "target": null},
-          {"name": "intenção no produto Vendas na Prática", "source": "clean.sources.<source>.checkout_intent", "baseline": null, "target": null}
+          {
+            "name": "visitas ao produto Vendas na Prática",
+            "source": "clean.pages.vendas-na-pratica.views",
+            "baseline": null,
+            "target": null
+          },
+          {
+            "name": "cliques de inscrição por origem",
+            "source": "clean.sources.<source>.subscribe_click",
+            "baseline": null,
+            "target": null
+          },
+          {
+            "name": "intenção no produto Vendas na Prática",
+            "source": "clean.sources.<source>.checkout_intent",
+            "baseline": null,
+            "target": null
+          }
         ],
         "limitations": [
+          "Os cinco destinos editoriais desta campanha são guias fora de TRACKED_PAGES; clean.campaigns não registra suas visitas.",
           "As páginas como-* e mensagem-* não são páginas rastreadas individualmente pelo funil atual.",
           "O funil atual associa campanha às visualizações rastreadas, mas intenções somente à origem.",
-          "Não há meta numérica sem baseline limpo."
-        ]
+          "Não há meta numérica sem baseline limpo.",
+          "Esta campanha não pode ser comparada à campanha de caixa por visitas até existir rastreamento operacional aprovado em outro PR."
+        ],
+        "coverage": {
+          "status": "gap",
+          "tracked_asset_destinations": 0,
+          "total_asset_destinations": 5
+        }
       }
     }
-  ]
+  ],
+  "destination_registry": {
+    "cashflow_calculator": {
+      "url": "https://zevanory.api.br/calculadora-fluxo-de-caixa",
+      "expected_final_url": "https://zevanory.api.br/calculadora-fluxo-de-caixa",
+      "content_marker": "Calculadora de fluxo de caixa",
+      "funnel_page": "calculadora-fluxo-de-caixa",
+      "campaign_visits_tracked": true
+    },
+    "free_checklist": {
+      "url": "https://zevanory.api.br/material-gratuito",
+      "expected_final_url": "https://zevanory.api.br/material-gratuito",
+      "content_marker": "15 minutos por dia para organizar caixa, vendas e IA",
+      "funnel_page": "material-gratuito",
+      "campaign_visits_tracked": true
+    },
+    "whatsapp_reengagement_guide": {
+      "url": "https://vendas.zevanory.api.br/mensagem-para-cliente-que-sumiu",
+      "expected_final_url": "https://vendas.zevanory.api.br/mensagem-para-cliente-que-sumiu",
+      "content_marker": "Mensagem para cliente que sumiu no WhatsApp",
+      "funnel_page": null,
+      "campaign_visits_tracked": false
+    },
+    "whatsapp_collection_guide": {
+      "url": "https://vendas.zevanory.api.br/como-cobrar-cliente-pelo-whatsapp",
+      "expected_final_url": "https://vendas.zevanory.api.br/como-cobrar-cliente-pelo-whatsapp",
+      "content_marker": "Como cobrar cliente pelo WhatsApp sem constranger",
+      "funnel_page": null,
+      "campaign_visits_tracked": false
+    },
+    "whatsapp_quote_guide": {
+      "url": "https://vendas.zevanory.api.br/como-mandar-orcamento-pelo-whatsapp",
+      "expected_final_url": "https://vendas.zevanory.api.br/como-mandar-orcamento-pelo-whatsapp",
+      "content_marker": "Como mandar orçamento pelo WhatsApp",
+      "funnel_page": null,
+      "campaign_visits_tracked": false
+    }
+  }
 }
