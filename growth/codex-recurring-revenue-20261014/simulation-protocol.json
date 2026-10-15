@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "as_of": "2026-10-14",
+    "status": "prepared_not_executed",
+    "product": "Conteúdo Pronto setorial",
+    "current_list_price_brl_month": 197,
+    "price_validation_status": "not_validated",
+    "customer_data_allowed": false,
+    "production_allowed": false,
+    "publication_allowed": false,
+    "payment_allowed": false,
+    "owner_approval_required_before_execution": true
+  },
+  "purpose": "determine whether three fictitious sector packages can be delivered with acceptable quality and provisionally sustainable fulfillment cost before any demand test",
+  "simulations": [
+    {
+      "id": "sim-salao",
+      "sector": "salão de beleza",
+      "fictional_context": "salão de bairro com agenda por WhatsApp; no name, location, customer or real promotion",
+      "required_output": [
+        "12 complete posts",
+        "4 WhatsApp sales/follow-up messages",
+        "30-day publishing calendar",
+        "4-theme outline for the next monthly cycle"
+      ]
+    },
+    {
+      "id": "sim-lanchonete",
+      "sector": "lanchonete",
+      "fictional_context": "local takeaway business with evening demand; no name, location, menu price or real promotion",
+      "required_output": [
+        "12 complete posts",
+        "4 WhatsApp sales/follow-up messages",
+        "30-day publishing calendar",
+        "4-theme outline for the next monthly cycle"
+      ]
+    },
+    {
+      "id": "sim-loja-roupas",
+      "sector": "loja de roupas",
+      "fictional_context": "small local apparel store; no name, location, inventory, discount or real promotion",
+      "required_output": [
+        "12 complete posts",
+        "4 WhatsApp sales/follow-up messages",
+        "30-day publishing calendar",
+        "4-theme outline for the next monthly cycle"
+      ]
+    }
+  ],
+  "execution_controls": {
+    "synthetic_inputs_only": true,
+    "real_customer_data": false,
+    "customer_contact": false,
+    "external_publication": false,
+    "checkout_or_payment": false,
+    "account_access": false,
+    "secrets": false,
+    "outputs_are_internal_evidence_only": true
+  },
+  "measurement_record_per_simulation": {
+    "initial_values_must_be_null": true,
+    "fields": [
+      {
+        "id": "generation_wall_seconds",
+        "unit": "seconds",
+        "value": null,
+        "method": "monotonic start/end timestamps around generation"
+      },
+      {
+        "id": "generation_variable_cost_brl",
+        "unit": "BRL",
+        "value": null,
+        "method": "provider usage record attributable to this dry run; if unavailable mark inconclusive"
+      },
+      {
+        "id": "first_review_minutes",
+        "unit": "minutes",
+        "value": null,
+        "method": "reviewer timer"
+      },
+      {
+        "id": "rework_minutes",
+        "unit": "minutes",
+        "value": null,
+        "method": "editor timer after first review"
+      },
+      {
+        "id": "second_review_minutes",
+        "unit": "minutes",
+        "value": null,
+        "method": "independent final review timer"
+      },
+      {
+        "id": "support_estimate_minutes",
+        "unit": "minutes/month",
+        "value": null,
+        "method": "time five scripted questions: tone change, calendar clarification, one rewrite, delivery issue and cancellation guidance"
+      },
+      {
+        "id": "labor_rate_brl_hour",
+        "unit": "BRL/hour",
+        "value": null,
+        "method": "owner-defined opportunity-cost input fixed before execution"
+      },
+      {
+        "id": "delivery_overhead_brl",
+        "unit": "BRL",
+        "value": null,
+        "method": "email/storage/runtime directly attributable to one delivery; unknown remains null"
+      },
+      {
+        "id": "total_fulfillment_cost_brl",
+        "unit": "BRL",
+        "value": null,
+        "formula": "generation_variable_cost_brl + delivery_overhead_brl + ((first_review_minutes + rework_minutes + second_review_minutes + support_estimate_minutes) / 60 * labor_rate_brl_hour)"
+      }
+    ],
+    "missing_value_rule": "any required null remaining after the dry run makes sustainability inconclusive; it must not be replaced by zero"
+  },
+  "quality_rubric": {
+    "score_range_each_dimension": "0_to_5",
+    "weighted_total_100": [
+      {
+        "dimension": "structural_completeness",
+        "weight": 20,
+        "objective_check": "exactly 12 posts, 4 messages, 30 populated calendar days and 4 next-cycle themes"
+      },
+      {
+        "dimension": "sector_specificity",
+        "weight": 20,
+        "objective_check": "at least 10 of 12 posts and all 4 messages contain a genuine sector action or situation, without invented business facts"
+      },
+      {
+        "dimension": "actionability",
+        "weight": 15,
+        "objective_check": "every item states a clear customer-facing action or publishing purpose"
+      },
+      {
+        "dimension": "clarity_pt_br",
+        "weight": 15,
+        "objective_check": "no unresolved placeholder, broken sentence or unexplained jargon"
+      },
+      {
+        "dimension": "safety_and_truthfulness",
+        "weight": 20,
+        "objective_check": "no guarantee, fabricated testimonial, fabricated discount, legal/medical claim, personal data or unsupported fact"
+      },
+      {
+        "dimension": "monthly_freshness",
+        "weight": 10,
+        "objective_check": "no exact duplicated post body within a package; next-cycle themes do not repeat the 12 current themes"
+      }
+    ],
+    "critical_failures": [
+      "personal or real customer data",
+      "financial or sales guarantee",
+      "fabricated testimonial, price, discount, inventory or local fact",
+      "instructions to publish or contact customers",
+      "missing required deliverable",
+      "unsafe or discriminatory content"
+    ],
+    "acceptance": {
+      "per_package_minimum_total": 85,
+      "every_dimension_minimum": 3,
+      "critical_failures_allowed": 0,
+      "all_three_packages_must_pass": true,
+      "reviewer_rule": "two review passes; the final pass cannot reuse the first reviewer's score without independent inspection"
+    }
+  },
+  "sustainability_pre_registration": {
+    "nature": "management hypothesis, not an industry benchmark",
+    "current_price_brl": 197,
+    "fulfillment_cost_ceiling_brl": 49.25,
+    "fulfillment_cost_ceiling_percent_of_price": 25,
+    "review_plus_rework_ceiling_minutes_per_package": 75,
+    "support_estimate_ceiling_minutes_per_month": 30,
+    "success": [
+      "all three packages pass quality",
+      "each measured total_fulfillment_cost_brl is at or below 49.25",
+      "each first_review_minutes + rework_minutes is at or below 75",
+      "each support_estimate_minutes is at or below 30",
+      "all required cost fields are known"
+    ],
+    "failure": [
+      "any critical quality failure",
+      "two or more packages score below 85",
+      "two or more packages exceed any cost or time ceiling"
+    ],
+    "inconclusive": [
+      "any required cost input remains unknown",
+      "exactly one package misses a noncritical quality, cost or time threshold",
+      "execution environment or rubric changes after the first simulation"
+    ],
+    "margin_caveat": "passing this operational ceiling does not prove profit; taxes, payment fees, refunds, acquisition cost and real support must be measured before a margin claim"
+  },
+  "interest_test_after_simulation_only": {
+    "status": "blocked_until_simulation_pass_and_separate_owner_authorization",
+    "no_charge": true,
+    "no_personal_data_required": true,
+    "primary_metric": "price-qualified intent clicks divided by qualified unique views",
+    "price_qualified_action_label": "Tenho interesse por R$ 197/mês",
+    "exposure_target": 200,
+    "maximum_days": 28,
+    "success": {
+      "rule": "at least 200 qualified unique views and at least 10 price-qualified intent clicks",
+      "rate_threshold_percent": 5,
+      "count_threshold": 10
+    },
+    "failure": {
+      "rule": "at least 200 qualified unique views and at most 5 price-qualified intent clicks",
+      "rate_ceiling_percent": 2.5,
+      "count_ceiling": 5
+    },
+    "inconclusive": [
+      "6 to 9 price-qualified intent clicks after 200 qualified unique views",
+      "fewer than 200 qualified unique views after 28 days",
+      "measurement loss, duplicated traffic or material audience mismatch",
+      "any checkout, payment path or personal-data requirement becomes reachable"
+    ],
+    "secondary_aggregate_metrics": [
+      "sector selected",
+      "main objection category",
+      "return visit within 14 days"
+    ],
+    "interpretation_limits": [
+      "an intent click is not a purchase",
+      "this test cannot prove renewal or lifetime value",
+      "thresholds are pre-registered management criteria, not market benchmarks"
+    ]
+  },
+  "decision_after_measurement": {
+    "simulate_first": true,
+    "if_simulation_success": "request separate authorization for the no-charge aggregate interest test",
+    "if_simulation_failure": "reject or redesign the delivery before any market exposure",
+    "if_simulation_inconclusive": "resolve missing cost or quality evidence; do not launch",
+    "recurring_revenue_claim_allowed": false
+  }
+}

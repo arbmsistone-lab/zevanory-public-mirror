@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "as_of": "2026-10-14",
+    "market": "BR",
+    "base_sha": "881933399228abf15820f743bfe1bd1f6df28128",
+    "evidence_policy": "market evidence is distinct from ZEVANORY hypotheses",
+    "contains_personal_data": false,
+    "publication_allowed": false
+  },
+  "sources": [
+    {
+      "id": "internal-catalog",
+      "kind": "internal_code",
+      "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/881933399228abf15820f743bfe1bd1f6df28128/sales-public/index.html",
+      "observed": [
+        "five one-time digital products",
+        "Conteúdo Pronto listed at R$197/month",
+        "free guides and calculators",
+        "three software products marked coming soon"
+      ],
+      "limitation": "catalog presence and price do not prove demand, payment or retention"
+    },
+    {
+      "id": "internal-conteudo-pronto",
+      "kind": "internal_code",
+      "url": "https://github.com/arbmsistone-lab/zevanory-public-mirror/blob/881933399228abf15820f743bfe1bd1f6df28128/sales-public/conteudo-pronto.html",
+      "observed": [
+        "12 posts, 4 WhatsApp sales messages and a 30-day calendar per month",
+        "automatic monthly renewal is described",
+        "delivery is described as automatic by email",
+        "customer reviews and publishes"
+      ],
+      "limitation": "page claims describe the offer; no subscriber, fulfillment-cost or churn data was accessed"
+    },
+    {
+      "id": "cetic-empresas-2024",
+      "kind": "official_national_research",
+      "url": "https://www.cetic.br/media/docs/publicacoes/2/20250512122204/tic_empresas_2024_livro_eletronico.pdf",
+      "observed": [
+        "WhatsApp or Telegram and image/social platforms each reached 74% of companies in the report",
+        "among small companies that sold online, 84% used messaging as a sales channel"
+      ],
+      "limitation": "population covers formal companies with 10 or more employed people; it is not a MEI or ZEVANORY customer survey"
+    },
+    {
+      "id": "cetic-methodology-2024",
+      "kind": "official_methodology",
+      "url": "https://www.cetic.br/pt/arquivos/pesquisa/2024/empresas/",
+      "observed": [
+        "national probability-sample research",
+        "target population is companies with 10 or more employed people"
+      ],
+      "limitation": "microbusinesses with 1 to 9 employed people are outside the regular 2024 population"
+    },
+    {
+      "id": "sebrae-mei-marketing",
+      "kind": "official_small_business_guidance",
+      "url": "https://blog.rn.sebrae.com.br/marketing-de-baixo-custo-para-mei/",
+      "observed": [
+        "Sebrae reports that 76% of MEIs in the cited Pulso survey use social networks and messaging apps to increase sales"
+      ],
+      "limitation": "secondary presentation of the Pulso result; use as demand signal, not willingness-to-pay evidence"
+    },
+    {
+      "id": "sebrae-cash-routine",
+      "kind": "official_small_business_guidance",
+      "url": "https://meuatendimento.sebrae.com.br/sites/PortalSebrae/mei/jornadamei/controle-seu-caixa-em-15-minutos-por-dia%2C216f3256199e6910VgnVCM1000001b00320aRCRD",
+      "observed": [
+        "Sebrae frames cash control as a recurring daily routine for MEIs",
+        "the routine supports working-capital and pricing decisions"
+      ],
+      "limitation": "guidance establishes recurring need, not demand for a paid ZEVANORY subscription"
+    },
+    {
+      "id": "cetic-ai-2025",
+      "kind": "official_national_research",
+      "url": "https://www.cetic.br/es/noticia/uso-de-inteligencia-artificial-por-empresas-brasileiras-avanca-e-atinge-17-aponta-pesquisa-do-cetic-br/",
+      "observed": [
+        "AI adoption among companies with 10 to 49 employed people rose from 10% in 2024 to 15% in 2025"
+      ],
+      "limitation": "does not cover MEIs and does not prove demand for a specific AI product"
+    },
+    {
+      "id": "mlabs-subscription",
+      "kind": "official_competitor_pricing",
+      "url": "https://ajuda.mlabs.com.br/pt-BR/articles/5120283-como-funciona-a-assinatura-da-mlabs",
+      "observed": [
+        "monthly social-management software subscription listed at R$49.90 for one profile",
+        "annual equivalent listed at R$34.90/month"
+      ],
+      "limitation": "software for scheduling/management is not equivalent to a done-for-you content service"
+    },
+    {
+      "id": "mlabs-service-benchmark",
+      "kind": "competitor_market_research",
+      "url": "https://www.mlabs.com.br/?p=621425",
+      "observed": [
+        "mLabs reports surveyed social-media service ranges from R$500 to R$3000/month for 12 posts with broader work"
+      ],
+      "limitation": "vendor-published survey, older observation and broader service scope; not a price recommendation"
+    },
+    {
+      "id": "rd-crm-pricing",
+      "kind": "official_competitor_pricing",
+      "url": "https://www.rdstation.com/planos/crm/",
+      "observed": [
+        "free plan exists",
+        "Basic listed at R$73/user/month and Pro at R$131/user/month",
+        "WhatsApp extension and follow-up features are included in the comparison"
+      ],
+      "limitation": "full CRM scope exceeds a lightweight follow-up playbook; listed prices do not prove ZEVANORY willingness to pay"
+    },
+    {
+      "id": "rd-conversas-pricing",
+      "kind": "official_competitor_pricing",
+      "url": "https://www.rdstation.com/planos/conversas/",
+      "observed": [
+        "Basic listed at R$989/month on annual billing",
+        "WhatsApp API messaging credits can add variable cost"
+      ],
+      "limitation": "enterprise conversational platform, not directly comparable to a no-send assistant"
+    },
+    {
+      "id": "nibo-pricing",
+      "kind": "official_competitor_pricing",
+      "url": "https://www.nibo.com.br/empresa/planos-e-precos",
+      "observed": [
+        "monthly Light listed at R$208, Plus at R$312 and Premium at R$479",
+        "cash flow, payables and reconciliation are included"
+      ],
+      "limitation": "full financial SaaS with operational features; not equivalent to educational routines or templates"
+    },
+    {
+      "id": "granatum-pricing",
+      "kind": "official_competitor_pricing",
+      "url": "https://www.granatum.com.br/financeiro/precos-planos",
+      "observed": [
+        "financial-management plan listed at R$396/month",
+        "includes cash flow, payables, receivables and reports"
+      ],
+      "limitation": "full SaaS scope; not evidence for a lightweight ZEVANORY subscription price"
+    },
+    {
+      "id": "mapa-empresas",
+      "kind": "official_market_size",
+      "url": "https://www.gov.br/empresas-e-negocios/pt-br/mapa-de-empresas",
+      "observed": [
+        "government dashboard showed 25.7 million active companies at the observation date"
+      ],
+      "limitation": "market size is not addressable demand and includes businesses outside the target profile"
+    }
+  ]
+}
