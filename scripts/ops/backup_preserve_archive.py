@@ -207,7 +207,9 @@ def restore_into_postgres(tables_json):
         sql = (f'drop table if exists restore_check."{name}"; create table restore_check."{name}"(doc jsonb not null); '
                f'insert into restore_check."{name}"(doc) select value from jsonb_array_elements(${tag}${js}${tag}$::jsonb); '
                f'select count(*) from restore_check."{name}";')
-        r = subprocess.run(["psql", "-v", "ON_ERROR_STOP=1", "-qtA", "-c", "create schema if not exists restore_check;", "-c", sql],
+        # SQL via stdin: a single command-line argument is capped at 128 KiB on Linux (MAX_ARG_STRLEN),
+        # and real tables are larger; stdin also keeps the data out of the process list.
+        r = subprocess.run(["psql", "-v", "ON_ERROR_STOP=1", "-qtA", "-f", "-"], input="create schema if not exists restore_check;\n" + sql,
                            capture_output=True, text=True, timeout=300)
         if r.returncode != 0:
             fail(f"restore_failed {name}")

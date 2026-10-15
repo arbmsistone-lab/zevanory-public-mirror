@@ -34,6 +34,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: backup-preserve
@@ -59,11 +60,14 @@ jobs:
         run: python -m unittest tests/test_backup_preserve_archive.py
       - name: Inspect (metadata only)
         if: inputs.mode == 'inspect'
-        run: python scripts/ops/backup_preserve_archive.py inspect --day "${{ inputs.day }}"
+        env: { IN_DAY: "${{ inputs.day }}" }
+        run: python scripts/ops/backup_preserve_archive.py inspect --day "$IN_DAY"
       - name: Archive (encrypt + manifest)
         if: inputs.mode == 'archive'
-        run: python scripts/ops/backup_preserve_archive.py archive --day "${{ inputs.day }}" --expected-tables "${{ inputs.expected_tables }}" --expected-rows "${{ inputs.expected_rows }}" --out preserve-out
+        env: { IN_DAY: "${{ inputs.day }}", IN_TABLES: "${{ inputs.expected_tables }}", IN_ROWS: "${{ inputs.expected_rows }}" }
+        run: python scripts/ops/backup_preserve_archive.py archive --day "$IN_DAY" --expected-tables "$IN_TABLES" --expected-rows "$IN_ROWS" --out preserve-out
       - name: Upload encrypted archive (90 days)
+        id: upload
         if: inputs.mode == 'archive'
         uses: actions/upload-artifact@v4
         with:
@@ -73,9 +77,21 @@ jobs:
             preserve-out/manifest.json
           retention-days: 90
           if-no-files-found: error
+      - name: Retention must outlive the Neon reset (01/11) with margin (repo setting may cap it)
+        if: inputs.mode == 'archive'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+        run: |
+          set -euo pipefail
+          exp=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" --jq .expires_at)
+          echo "::notice title=BACKUP_PRESERVE_RETENTION::artifact=$ARTIFACT_ID expires_at=$exp"
+          python3 -c "import sys,datetime as d; e=d.datetime.fromisoformat(sys.argv[1].replace('Z','+00:00')); sys.exit(0 if e>=d.datetime(2026,12,1,tzinfo=d.timezone.utc) else 1)" "$exp" \
+            || { echo "::error title=BACKUP_PRESERVE_RETENTION::expires before 2026-12-01; raise the repository artifact retention to 90 days"; exit 1; }
       - name: KV copy with extended retention (WRITE, confirmation phrase required)
         if: inputs.mode == 'kv-extend'
-        run: python scripts/ops/backup_preserve_archive.py kv-extend --day "${{ inputs.day }}" --ttl-days 75 --confirm "${{ inputs.kv_extend_confirm }}"
+        env: { IN_DAY: "${{ inputs.day }}", IN_CONFIRM: "${{ inputs.kv_extend_confirm }}" }
+        run: python scripts/ops/backup_preserve_archive.py kv-extend --day "$IN_DAY" --ttl-days 75 --confirm "$IN_CONFIRM"
 
   verify-restore:
     needs: preserve
@@ -109,5 +125,7 @@ jobs:
         with:
           name: zevanory-backup-${{ inputs.day }}-encrypted
           path: preserve-out
+      - name: Scale rehearsal on synthetic data (51 tables / 18,142 rows) in the same Postgres
+        run: python -m unittest -v tests/test_backup_preserve_scale.py
       - name: Decrypt, check hashes and restore into ephemeral Postgres
         run: python scripts/ops/backup_preserve_archive.py verify --out preserve-out
