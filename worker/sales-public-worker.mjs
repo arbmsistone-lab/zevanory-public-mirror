@@ -90,7 +90,7 @@ export function isAutomationUA(ua){
 }
 const PRICES={"ZEV-IA-011":["IA na Prática",197],"ZEV-VEN-011":["Vendas na Prática",197],"ZEV-LCX-011":["Lucro & Caixa",247],"ZEV-CMB-011":["Combo IA + Vendas",297],"ZEV-NGC-011":["Negócio Completo",397]};
 async function salesOpen(env){
-  try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/status");return (await st.json())?.open===true}catch{return false}
+  try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/status");if(!st.ok)return false;return (await st.json())?.open===true}catch{return false}  // only an OK response with open===true opens; anything else is closed
 }
 async function overLimit(env,ip){
   if(env?.BUY_LIMITER?.limit){try{const r=await env.BUY_LIMITER.limit({key:"buy:"+ip});return !r.success}catch{}}
@@ -217,7 +217,7 @@ async function handleHotmart(request,env,slug,ctx){
     return new Response(null,{status:302,headers:applySecurityHeaders(new Headers({location:"/"+slug,"cache-control":"no-store"}))});
   const page=await env.ASSETS.fetch(new Request(new URL("/"+slug+".html",request.url),{method:"GET"}));
   if(page.status!==200)return page;
-  const headers=applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=300","x-robots-tag":"noindex, follow"}));
+  const headers=applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex, follow"}));  // never cache a purchase link past a switch change
   return new Response(hotmartPage(await page.text(),slug,checkout),{status:200,headers});
 }
 
@@ -227,6 +227,7 @@ export default{async fetch(request,env,ctx){
   if(url.pathname==="/4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922.txt"&&(request.method==="GET"||request.method==="HEAD"))
     return new Response(request.method==="HEAD"?null:"4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922",{status:200,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"public, max-age=86400"}))});
   if(url.pathname==="/assinar/conteudo-pronto"){
+    if(request.method!=="GET"&&request.method!=="HEAD")return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers({allow:"GET, HEAD","cache-control":"no-store"}))});
     if(!(await salesOpen(env)))return infoPage(200,"Assinaturas pausadas",`<p>Novas assinaturas do Conteúdo Pronto estão pausadas no momento. Quem já é assinante continua recebendo normalmente.</p><p><a class="button" href="/conteudo-pronto">Ver detalhes do serviço</a></p><p><a class="button primary" href="https://wa.me/5588992545413?text=${encodeURIComponent("Olá! Quero ser avisado quando o Conteúdo Pronto voltar a aceitar assinaturas.")}">Avise-me pelo WhatsApp</a></p>`);
     countView(request,env,ctx,"conteudo-pronto","subscribe_click");
     const svc=SERVICE_CHECKOUT+"&src="+attribution(request,url).src;
