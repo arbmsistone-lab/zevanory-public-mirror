@@ -1,0 +1,113 @@
+name: Backup preservation (encrypted archive + verified restore)
+
+# Ordem P0 de 15/10/2026 (incidente Neon HTTP 402). Preserva FORA do provedor de origem o backup
+# íntegro do dia informado (padrão 14/10/2026), cifrado com a senha do proprietário, com manifesto
+# de hashes e restauração verificada num Postgres efêmero. Repositório público: nenhum dado em log;
+# o artefato é cifrado (AES-256-GCM, scrypt). Somente disparo manual na gh-pages.
+# Modos: inspect (leitura de metadados), archive (lê valores, cifra, verifica), kv-extend (ESCRITA no
+# KV: cópia com retenção estendida, exige frase de confirmação). Nenhum modo altera a cópia original.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "inspect | archive | kv-extend"
+        required: true
+        default: inspect
+        type: choice
+        options: [inspect, archive, kv-extend]
+      day:
+        description: "Dia do backup (AAAA-MM-DD)"
+        required: true
+        default: "2026-10-14"
+      expected_tables:
+        description: "Tabelas esperadas (run 38547624427)"
+        required: true
+        default: "51"
+      expected_rows:
+        description: "Linhas esperadas (run 38547624427)"
+        required: true
+        default: "18142"
+      kv_extend_confirm:
+        description: "Só para kv-extend: digite exatamente PRESERVAR <dia>"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-preserve
+  cancel-in-progress: false
+
+jobs:
+  preserve:
+    if: github.ref == 'refs/heads/gh-pages'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      BACKUP_ARCHIVE_PASSPHRASE: ${{ secrets.BACKUP_ARCHIVE_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check cryptography==43.0.3
+      - name: Unit tests (synthetic data only)
+        run: python -m unittest tests/test_backup_preserve_archive.py
+      - name: Inspect (metadata only)
+        if: inputs.mode == 'inspect'
+        run: python scripts/ops/backup_preserve_archive.py inspect --day "${{ inputs.day }}"
+      - name: Archive (encrypt + manifest)
+        if: inputs.mode == 'archive'
+        run: python scripts/ops/backup_preserve_archive.py archive --day "${{ inputs.day }}" --expected-tables "${{ inputs.expected_tables }}" --expected-rows "${{ inputs.expected_rows }}" --out preserve-out
+      - name: Upload encrypted archive (90 days)
+        if: inputs.mode == 'archive'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zevanory-backup-${{ inputs.day }}-encrypted
+          path: |
+            preserve-out/archive.enc
+            preserve-out/manifest.json
+          retention-days: 90
+          if-no-files-found: error
+      - name: KV copy with extended retention (WRITE, confirmation phrase required)
+        if: inputs.mode == 'kv-extend'
+        run: python scripts/ops/backup_preserve_archive.py kv-extend --day "${{ inputs.day }}" --ttl-days 75 --confirm "${{ inputs.kv_extend_confirm }}"
+
+  verify-restore:
+    needs: preserve
+    if: github.ref == 'refs/heads/gh-pages' && inputs.mode == 'archive'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: restore-check-local-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      BACKUP_ARCHIVE_PASSPHRASE: ${{ secrets.BACKUP_ARCHIVE_PASSPHRASE }}
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: restore-check-local-only
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check cryptography==43.0.3
+      - uses: actions/download-artifact@v4
+        with:
+          name: zevanory-backup-${{ inputs.day }}-encrypted
+          path: preserve-out
+      - name: Decrypt, check hashes and restore into ephemeral Postgres
+        run: python scripts/ops/backup_preserve_archive.py verify --out preserve-out
