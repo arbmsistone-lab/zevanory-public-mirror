@@ -23,13 +23,18 @@ jobs:
           set -euo pipefail
           UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36 ZEVANORY-Monitor/1.0'
           fail=0
+          # Expected state comes from the owner switch (fail-closed): closed sales must expose NO purchase path.
+          open=$(curl -sS -A "$UA" https://zevanory.api.br/api/sales/status | python3 -c 'import json,sys;print("OPEN" if json.load(sys.stdin).get("open") is True else "CLOSED")' 2>/dev/null || echo CLOSED)
+          expect=$open
+          echo "::notice title=SALES_SWITCH::$expect"
           for path in / /solucoes /termos /privacidade; do
             code=$(curl -sS -A "$UA" -o /dev/null -w '%{http_code}' "https://vendas.zevanory.api.br$path")
             echo "::notice title=PAGE $path::$code"; [ "$code" = 200 ] || fail=1
           done
           for sku in ZEV-IA-011 ZEV-VEN-011 ZEV-LCX-011 ZEV-NGC-011 ZEV-CMB-011; do
             body=$(curl -sS -A "$UA" "https://vendas.zevanory.api.br/comprar/$sku")
-            if echo "$body" | grep -q 'Ir para o pagamento seguro'; then st=OPEN; elif echo "$body" | grep -q 'Vendas abrem em breve'; then st=CLOSED; fail=1; else st=UNKNOWN; fail=1; fi
+            if echo "$body" | grep -q 'Ir para o pagamento seguro'; then st=OPEN; elif echo "$body" | grep -q 'Vendas abrem em breve'; then st=CLOSED; else st=UNKNOWN; fi
+            [ "$st" = "$expect" ] || fail=1
             price=$(echo "$body" | grep -o 'R\$ [0-9.,]*' | head -1)
             echo "::notice title=BUY $sku::$st $price"
           done
@@ -37,12 +42,14 @@ jobs:
             body=$(curl -sS -A "$UA" "https://vendas.zevanory.api.br/hotmart/$slug")
             link=$(echo "$body" | grep -o 'href="https://pay.hotmart.com/[^"]*"' | head -1)
             own=$(echo "$body" | grep -c 'href="/comprar/' || true)
-            echo "::notice title=HOTMART $slug::link=${link:-NONE} own_checkout_links=$own"
-            [ -n "$link" ] && [ "$own" = 0 ] || fail=1
+            echo "::notice title=HOTMART $slug::expect=$expect link=${link:-NONE} own_checkout_links=$own"
+            if [ "$expect" = OPEN ]; then [ -n "$link" ] && [ "$own" = 0 ] || fail=1
+            else [ -z "$link" ] && [ "$own" = 0 ] && echo "$body" | grep -q 'Vendas pausadas' || fail=1; fi
           done
           loc=$(curl -sS -A "$UA" -o /dev/null -w '%{redirect_url}' https://vendas.zevanory.api.br/assinar/conteudo-pronto)
           echo "::notice title=SERVICE_SUBSCRIBE::$loc"
-          case "$loc" in https://pay.hotmart.com/*) ;; *) fail=1;; esac
+          if [ "$expect" = OPEN ]; then case "$loc" in https://pay.hotmart.com/*) ;; *) fail=1;; esac
+          else [ -z "$loc" ] || fail=1; fi
           code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' https://zevanory.api.br/api/webhooks/hotmart)
           echo "::notice title=HOTMART_WEBHOOK_UNAUTH::http=$code (expect 401 if hottok configured, 503 if not yet)"
           case "$code" in 401|503) ;; *) fail=1;; esac

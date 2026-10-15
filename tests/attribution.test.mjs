@@ -33,7 +33,7 @@ test("intent and source are stored as aggregate counters only and summarized per
   assert.equal(s.pages["ia-na-pratica"].views, 10);
 });
 test("subscribe redirect keeps the source for Hotmart's sale report", async () => {
-  const r = await worker.fetch(new Request("https://vendas.zevanory.api.br/assinar/conteudo-pronto?utm_source=telegram"), {}, { waitUntil() {} });
+  const r = await worker.fetch(new Request("https://vendas.zevanory.api.br/assinar/conteudo-pronto?utm_source=telegram"), { CORE: { fetch: async () => new Response(JSON.stringify({ open: true })) } }, { waitUntil() {} }); // sales open (owner switch); closed is covered in hotmart-paused.test.mjs
   assert.equal(r.status, 302);
   assert.match(r.headers.get("location"), /^https:\/\/pay\.hotmart\.com\/X107980075B\?off=4ydutio7&src=telegram$/);
 });
