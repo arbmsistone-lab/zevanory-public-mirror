@@ -317,6 +317,20 @@ jobs:
           jq -e 'map(.name) | index("CERTIFICATION_E2E_TOKEN") != null' /tmp/zevanory-secrets.json >/dev/null
           echo "CERTIFICATION_E2E_TOKEN_PRESENT=PASS"
 
+      - name: Record pre-deploy production state (read-only)
+        if: steps.auth.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          # C-2026-10-15-40: evidence captured BEFORE promotion, used only to classify a later rollback.
+          prev="$(curl -fsS --max-time 20 https://zevanory.api.br/api/release 2>/dev/null | python3 -c 'import json,sys;print(str(json.load(sys.stdin).get("deployment",{}).get("commit_sha","")).lower())' 2>/dev/null || true)"
+          : > /tmp/predeploy-health.json
+          code="$(curl -sS --max-time 20 -o /tmp/predeploy-health.json -w '%{http_code}' https://zevanory.api.br/api/health 2>/dev/null || true)"
+          # C-45 D3: DEGRADED_PREEXISTING only with 503 + readable ready:false; a failed probe is UNKNOWN.
+          state="$(python3 scripts/deploy/verify-rollback-state.py --predeploy "${code:-000}" /tmp/predeploy-health.json 2>/dev/null || true)"
+          case "$state" in HEALTHY|DEGRADED_PREEXISTING) ;; *) state=UNKNOWN ;; esac
+          echo "PREVIOUS_RUNTIME_SHA=$prev" >> "$GITHUB_ENV"
+          echo "PREDEPLOY_HEALTH=$state" >> "$GITHUB_ENV"
+          echo "::notice title=PREDEPLOY_STATE::previous=${prev:-unknown} health=$state http=$code"
       - name: Deploy repaired production worker
         id: deployworker
         if: steps.auth.outputs.available == 'true'
@@ -443,6 +457,22 @@ jobs:
             sleep 5
           done
           echo "AUTO_ROLLBACK_HEALTH=FAIL"
+          # C-2026-10-15-40: report the rollback (A) and the health (B) separately. Read-only. This
+          # branch never exits 0 and never renews the financial proof (renewal stays only above,
+          # after verified health). A rollback is COMPLETE only with Cloudflare (one version, 100%,
+          # previous tag) and /api/release agreeing; anything else is INCOMPLETE/DIVERGENT/UNVERIFIED.
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory"
+          curl -fsS --max-time 20 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/deployments" -o /tmp/rb-deployments.json || : > /tmp/rb-deployments.json
+          python3 scripts/deploy/verify-rollback-state.py --active-versions /tmp/rb-deployments.json > /tmp/rb-vids.txt 2>/dev/null || : > /tmp/rb-vids.txt
+          echo '{}' > /tmp/rb-tags.json
+          while read -r vid; do
+            [ -n "$vid" ] || continue
+            rm -f /tmp/rb-version.json
+            curl -fsS --max-time 20 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api/versions/$vid" -o /tmp/rb-version.json || continue
+            python3 -c 'import json,sys;t=json.load(open("/tmp/rb-tags.json"));r=json.load(open("/tmp/rb-version.json")).get("result") or {};a=r.get("annotations") or (r.get("metadata") or {}).get("annotations") or {};t[sys.argv[1]]=a.get("workers/tag","");json.dump(t,open("/tmp/rb-tags.json","w"))' "$vid" || true
+          done < /tmp/rb-vids.txt
+          curl -fsS --max-time 20 https://zevanory.api.br/api/release -o /tmp/rb-release.json || : > /tmp/rb-release.json
+          python3 scripts/deploy/verify-rollback-state.py "${PREVIOUS_RUNTIME_SHA:-}" "$TARGET_RUNTIME_SHA" /tmp/rb-deployments.json /tmp/rb-tags.json /tmp/rb-release.json "${code:-000}" /tmp/rollback-health.json "${PREDEPLOY_HEALTH:-UNKNOWN}" || true
           exit 1
       - name: Certification gate (T1, after rollback decision)
         if: always() && steps.postpromo.outputs.state == 'NAO_COMPROVADO'
