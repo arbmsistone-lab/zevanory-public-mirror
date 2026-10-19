@@ -40,6 +40,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
