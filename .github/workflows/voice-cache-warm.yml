@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   warm:
-    if: github.run_attempt == 1
+    if: ${{ github.ref == 'refs/heads/gh-pages' && (github.run_attempt == 1) }}  # B01 patch 05b
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

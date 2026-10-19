@@ -12,7 +12,7 @@ permissions:
   contents: read
 jobs:
   proof:
-    if: ${{ inputs.confirm == 'ENVIAR_PROVA_PRIVADA' }}
+    if: ${{ github.ref == 'refs/heads/gh-pages' && (inputs.confirm == 'ENVIAR_PROVA_PRIVADA') }}  # B01 patch 05b
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:

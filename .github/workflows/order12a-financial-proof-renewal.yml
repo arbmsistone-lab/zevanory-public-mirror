@@ -32,7 +32,7 @@ jobs:
 
   signed-renewal:
     name: Renew signed financial snapshot and assert G3
-    if: github.event_name != 'pull_request'
+    if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name != 'pull_request') }}  # B01 patch 05b
     needs: contract
     runs-on: ubuntu-latest
     timeout-minutes: 10

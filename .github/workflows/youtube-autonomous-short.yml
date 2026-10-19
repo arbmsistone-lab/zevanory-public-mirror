@@ -39,6 +39,7 @@ permissions:
 
 jobs:
   short:
+    if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:

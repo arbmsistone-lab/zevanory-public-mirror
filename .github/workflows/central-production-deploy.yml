@@ -109,6 +109,7 @@ concurrency:
 
 jobs:
   guard:
+    if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
     # T1 (plan 3.1): runs inside the serialized deploy-zevanory group, right before promotion.
     # An older queued run (candidate is an ancestor of what is live) does nothing; diverged
     # history, a mismatch between the Cloudflare effective version and /api/release, or an
@@ -136,7 +137,7 @@ jobs:
             --cloudflare-script zevanory
   deploy:
     needs: guard
-    if: needs.guard.outputs.decision == 'promote'
+    if: ${{ github.ref == 'refs/heads/gh-pages' && (needs.guard.outputs.decision == 'promote') }}  # B01 patch 05b
     permissions:
       contents: read
       actions: write

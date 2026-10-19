@@ -122,7 +122,7 @@ jobs:
     # are readable; otherwise NAO_COMPROVADO. No write call is ever made.
     # Also certifies optional per-Worker tokens (CF_TOKEN_<SERVICE>) BEFORE any workflow uses
     # them: each must see exactly its Worker and read its deployments and settings.
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}  # B01 patch 05b: pós-merge com credencial (antes: só PR)
     runs-on: ubuntu-latest
     env:
       ACCOUNT: 1b26415802588185a86c1d4d3ebf5bdb
@@ -175,7 +175,7 @@ jobs:
   lead-privacy-source:
     # T3 (#802): the GitHub source secret of the lead privacy key exists and is long enough.
     # Presence and length only; the value is never printed or written anywhere.
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}  # B01 patch 05b: pós-merge com credencial (antes: só PR)
     runs-on: ubuntu-latest
     env:
       K: ${{ secrets.LEAD_PRIVACY_SECRET }}
@@ -191,7 +191,7 @@ jobs:
     # publishing workflows fire, and what the pre-promotion guard decides against the LIVE
     # version right now. The squash merge is a child of the base tip, so the guard is evaluated
     # with the base tip as candidate (same ancestry). Read-only.
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}  # B01 patch 05b: pós-merge com credencial (antes: só PR)
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
@@ -231,7 +231,7 @@ jobs:
     # the Cloudflare active-version tag and the public readback again, in a separate run. It never
     # publishes and never rolls back; FAIL here is the positive evidence the owner needs to decide
     # a rollback through the service's documented recovery path.
-    if: github.event_name == 'workflow_dispatch'
+    if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'workflow_dispatch') }}  # B01 patch 05b
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -251,3 +251,26 @@ jobs:
           esac
           python3 scripts/deploy/promotion_guard.py --verify-promoted --attempts 6 --service "$SERVICE" \
             --candidate "$SHA" --readback-url "$url" --readback-path "$path" --cloudflare-script "$SERVICE"
+
+  verificacao-com-credencial-pendente:
+    # B01 patch 05b: em PR nenhuma credencial é carregada. Se o PR altera caminhos sensíveis, este job FALHA de forma
+    # visível (NAO_COMPROVADO) em vez de um "skipped" verde; a verificação real roda pós-merge em gh-pages.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Mudanças sensíveis exigem verificação pós-merge
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git diff --name-only "$BASE"...HEAD > /tmp/alterados.txt
+          if grep -E '^(\.github/workflows/|ops/|scripts/deploy/)' /tmp/alterados.txt; then
+            echo "::error title=NAO_COMPROVADO::credential-scope, lead-privacy-source e merge-effect-preview exigem credencial e rodam apenas pós-merge em gh-pages. Revisar estes arquivos antes de mesclar."
+            exit 1
+          fi
+          echo "Nenhum caminho sensível alterado; verificações com credencial não aplicáveis a este PR."
