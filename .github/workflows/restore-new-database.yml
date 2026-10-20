@@ -80,7 +80,9 @@ jobs:
         run: |
           set -eo pipefail
           psql -v ON_ERROR_STOP=1 -c "create database ensaio_real"
-          PGDATABASE=ensaio_real python scripts/ops/restore_new_database.py rehearse --out preserve-out > /dev/null
+          # Saída do script = só metadados (anotações ::notice/::error, nomes de tabela e contagens); nunca dados.
+          # Antes ia para /dev/null e engolia a anotação de erro (run 39496981473 falhou sem diagnóstico).
+          PGDATABASE=ensaio_real python scripts/ops/restore_new_database.py rehearse --out preserve-out
 
   restore:
     needs: rehearse
@@ -112,4 +114,4 @@ jobs:
           IN_CONFIRM: ${{ inputs.confirm }}
         run: |
           set -eo pipefail
-          python scripts/ops/restore_new_database.py restore --out preserve-out --confirm "$IN_CONFIRM" > /dev/null
+          python scripts/ops/restore_new_database.py restore --out preserve-out --confirm "$IN_CONFIRM"
