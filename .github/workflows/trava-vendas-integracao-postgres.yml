@@ -13,6 +13,7 @@ on:
       - "worker/**"
       - "tests/integration/**"
       - "tests/t4_sim/**"
+      - "tests/trava-vendas-gate-paths.test.mjs"
       - "wrangler*.toml"
       - "package.json"
       - "package-lock.json"
@@ -41,7 +42,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Webhook Mercado Pago (M1–M12, vendas fechadas incluídas)
+      - name: Webhook Mercado Pago (M1–M13, vendas fechadas incluídas)
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
@@ -50,7 +51,7 @@ jobs:
           node --import ./tests/t4_sim/register.mjs --test tests/integration/mercadopago-webhook-postgres.test.mjs | tee m.txt
           # Quantidade EXATA: remoção ou omissão silenciosa de teste derruba o gate. Ao adicionar
           # testes, atualizar o número no mesmo PR (revisão explícita).
-          grep -qx "# tests 16" m.txt && grep -qx "# pass 16" m.txt && grep -qx "# skipped 0" m.txt && grep -qx "# fail 0" m.txt
+          grep -qx "# tests 17" m.txt && grep -qx "# pass 17" m.txt && grep -qx "# skipped 0" m.txt && grep -qx "# fail 0" m.txt
       - name: Invalidação de links no fechamento (P1–P7)
         env:
           T4_PG_HOST: localhost
@@ -59,3 +60,16 @@ jobs:
           set -eo pipefail
           node --test tests/integration/close-invalidation-postgres.test.mjs | tee p.txt
           grep -qx "# tests 7" p.txt && grep -qx "# pass 7" p.txt && grep -qx "# skipped 0" p.txt && grep -qx "# fail 0" p.txt
+      - name: Compare-and-swap da evidência com conexões simultâneas reais (text e jsonb)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/delivery-evidence-cas-postgres.test.mjs | tee c.txt
+          grep -qx "# tests 6" c.txt && grep -qx "# pass 6" c.txt && grep -qx "# skipped 0" c.txt && grep -qx "# fail 0" c.txt
+      - name: Cobertura do filtro de caminhos (fecho de importações e leituras)
+        run: |
+          set -eo pipefail
+          node --test tests/trava-vendas-gate-paths.test.mjs | tee g.txt
+          grep -qx "# tests 3" g.txt && grep -qx "# pass 3" g.txt && grep -qx "# skipped 0" g.txt && grep -qx "# fail 0" g.txt

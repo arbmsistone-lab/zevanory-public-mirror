@@ -349,3 +349,15 @@ test("M12 entrega pendente com link expirado: novo link => nova chave => e-mail 
   assert.equal(world.emails.length - before, 2, "o cliente recebe o link válido");
   assert.equal(events(o.id), 1, "sem segunda cobrança");
 });
+
+test("M13 resposta perdida após o aceite, link ainda válido: reprocesso usa a MESMA chave => um único e-mail", { skip: SKIP }, async () => {
+  const o = newOrder(); const id = pay(o); const before = world.emails.length;
+  world.dropResponse = true; const r1 = await webhook(id); world.dropResponse = false;
+  assert.equal(r1.status, 503); assert.equal(world.emails.length - before, 1, "o provedor aceitou um envio");
+  const k1 = world.emails.at(-1).idem;
+  const r2 = await webhook(id);
+  assert.equal(r2.status, 200, JSON.stringify(r2.body));
+  assert.equal(fulfillment(o.id)[0], "delivered");
+  assert.equal(world.emails.length - before, 1, "reprocesso deduplicado pelo provedor: nenhum segundo envio");
+  assert.equal(world.idem.get(k1)?.id !== undefined, true);
+});
