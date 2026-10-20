@@ -69,8 +69,15 @@ jobs:
       - name: Emit immutable ZEES gate evidence
         if: always()
         shell: bash
+        env:
+          # A evidência registra o resultado REAL do job: "proved" só quando todos os passos anteriores passaram.
+          # Antes era "proved" fixo com if: always(), gravando "provado" também nas execuções que falharam.
+          JOB_STATUS: ${{ job.status }}
         run: |
-          jq -n --arg sha "$EXPECTED_SHA" --arg run "$GITHUB_RUN_ID" '{schema:"zevanory.p06.zees-gate.v1",release_sha:$sha,run_id:$run,status:"proved"}' > p06-zees-gate.json
+          set -euo pipefail
+          if [ "$JOB_STATUS" = "success" ]; then status=proved; else status=failed; fi
+          jq -n --arg sha "$EXPECTED_SHA" --arg run "$GITHUB_RUN_ID" --arg status "$status" --arg job "$JOB_STATUS" '{schema:"zevanory.p06.zees-gate.v1",release_sha:$sha,run_id:$run,status:$status,job_status:$job}' > p06-zees-gate.json
+          echo "P06_ZEES_GATE_EVIDENCE_STATUS=$status"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
