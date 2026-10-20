@@ -9,6 +9,7 @@ concurrency:
   queue: max
 jobs:
   enable:
+    environment: producao-critica  # B01 M1: efeito em produção comprovado no conteúdo do job; revisor obrigatório
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

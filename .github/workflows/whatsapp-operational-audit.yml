@@ -28,6 +28,7 @@ jobs:
         with: {node-version: '22'}
       - run: node scripts/whatsapp_operational_audit_test.mjs || { echo "::error title=CACHE_CONTRACT::Cache-only contract regression failed; see assertion above"; exit 1; }
   audit:
+    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && !contains(github.event.workflow_run.head_commit.message, '[cache-audit-'))) }}  # B01 patch 05b
     needs: validate
     runs-on: ubuntu-latest

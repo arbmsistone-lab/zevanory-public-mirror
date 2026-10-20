@@ -23,6 +23,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   owner-open:
+    environment: producao-critica  # B01 M1: efeito em produção comprovado no conteúdo do job; revisor obrigatório
     if: github.ref == 'refs/heads/gh-pages'
     runs-on: ubuntu-latest
     timeout-minutes: 8

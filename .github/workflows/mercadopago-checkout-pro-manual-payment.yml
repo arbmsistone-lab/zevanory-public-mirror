@@ -12,6 +12,7 @@ concurrency:
 
 jobs:
   create-clean-order-and-preference:
+    environment: producao-critica  # B01 M1: efeito em produção comprovado no conteúdo do job; revisor obrigatório
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:

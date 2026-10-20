@@ -13,6 +13,7 @@ permissions:
   contents: read
 jobs:
   apex:
+    environment: producao-critica  # B01 M1: wrangler preview remoto autenticado (achado na revarredura de Claude); exige revisão do titular
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
     runs-on: ubuntu-latest
     timeout-minutes: 18

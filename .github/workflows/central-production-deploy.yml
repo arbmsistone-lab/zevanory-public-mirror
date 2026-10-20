@@ -109,6 +109,7 @@ concurrency:
 
 jobs:
   guard:
+    environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
     # T1 (plan 3.1): runs inside the serialized deploy-zevanory group, right before promotion.
     # An older queued run (candidate is an ancestor of what is live) does nothing; diverged
@@ -136,6 +137,7 @@ jobs:
             --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha \
             --cloudflare-script zevanory
   deploy:
+    environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     needs: guard
     if: ${{ github.ref == 'refs/heads/gh-pages' && (needs.guard.outputs.decision == 'promote') }}  # B01 patch 05b
     permissions:

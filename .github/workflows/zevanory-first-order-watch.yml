@@ -34,6 +34,7 @@ jobs:
           node --test tests/first-order-watch-audit.test.mjs
 
   first-order-watch:
+    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     name: Signed read-only audit; close only on proven delivery breach
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/gh-pages'
     needs: contract

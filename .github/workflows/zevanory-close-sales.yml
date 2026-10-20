@@ -8,6 +8,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   emergency-close:
+    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     if: github.ref == 'refs/heads/gh-pages'
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -31,6 +31,7 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_financial_proof_renewal.py' -v
 
   signed-renewal:
+    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     name: Renew signed financial snapshot and assert G3
     if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name != 'pull_request') }}  # B01 patch 05b
     needs: contract

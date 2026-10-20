@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   recover-and-certify:
+    environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ false }} # Permanently retired: it used sandbox credentials in production secret names.
     runs-on: ubuntu-latest
     timeout-minutes: 20

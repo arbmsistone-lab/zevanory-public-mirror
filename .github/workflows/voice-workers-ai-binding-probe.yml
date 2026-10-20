@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   cleanup:
+    environment: producao-critica  # B01 M1: wrangler delete apaga Worker remoto (achado do Sol); exige revisão do titular
     if: ${{ github.ref == 'refs/heads/gh-pages' }}  # B01 patch 05b
     runs-on: ubuntu-latest
     timeout-minutes: 10
