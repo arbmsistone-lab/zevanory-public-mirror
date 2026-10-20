@@ -4,6 +4,7 @@ import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
 import { getWhatsappOpsStore, publishWhatsappOpsStats } from "./whatsapp-neon-store.mjs";
 import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
+import { mercadoPagoExpiryWindow } from "./payment-link-expiry.mjs";
 import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } from "./mercadopago-webhook-safety.mjs";
 import { DEFAULT_CREATIVE_OFFER, assertBrandSafeCreative, chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, creativeCatalogEntry, creativeLandingUrl, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
 import { appendBlogSitemap, INDEXNOW_PUBLIC_KEY, recordChannelProof, renderBlogArticle, renderBlogIndex, renderChannelsPage, runMultichannelAutonomy } from "./multichannel-autonomy.mjs";
@@ -14263,7 +14264,10 @@ function buildMercadoPagoPreference(orderId, publicBaseUrl, offer = resolveCheck
     external_reference: externalReference,
     notification_url: `${base}${notificationPath}`,
     statement_descriptor: "ZEVANORY",
-    metadata: { zevanory_order_id: String(orderId).toLowerCase(), offer_id: offer.id }
+    metadata: { zevanory_order_id: String(orderId).toLowerCase(), offer_id: offer.id },
+    // Trava comercial: link de pagamento expira em 24 h no próprio Mercado Pago. Um link antigo
+    // (e-mail, histórico, captura de tela) não continua pagável depois que as vendas fecham.
+    ...mercadoPagoExpiryWindow(options.now)
   });
 }
 __name(buildMercadoPagoPreference, "buildMercadoPagoPreference");
