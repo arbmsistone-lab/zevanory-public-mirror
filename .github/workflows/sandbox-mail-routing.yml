@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   routing:
-    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
+    environment: producao-critica  # B01 M1: modifica roteamento de e-mail/DNS da zona de produção (achado do Sol); exige revisão do titular
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 5
