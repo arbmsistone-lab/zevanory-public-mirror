@@ -14881,14 +14881,36 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
       artifact_sha256: String(issued.artifact?.sha256 || ""),
       expires_at: issued.expires_at
     };
-    await sql.query(`update service_fulfillment set evidence_ref=$2,updated_at=now() where order_id=$1`, [orderId, JSON.stringify(evidence)]);
+    // Compare-and-swap: só grava se ninguém gravou outra evidência desde a leitura. Em corrida, quem
+    // perde relê e usa a evidência vencedora => mesmo conteúdo => mesma chave => o Resend deduplica.
+    // Independe do tipo da coluna (text com JSON ou jsonb): compara semanticamente como jsonb; evidência
+    // anterior não-JSON (legado corrompido) é comparada como texto.
+    const prevRaw = existing.evidence_ref;
+    const prevText = prevRaw && typeof prevRaw === "object" ? JSON.stringify(prevRaw) : String(prevRaw ?? "");
+    let prevIsJson = true;
+    try { if (prevText.trim()) JSON.parse(prevText); } catch { prevIsJson = false; }
+    const swapped = prevIsJson
+      ? await sql.query(`update service_fulfillment set evidence_ref=$2,updated_at=now() where order_id=$1 and coalesce(evidence_ref::text::jsonb,'null'::jsonb)=coalesce(nullif($3,'')::jsonb,'null'::jsonb) returning order_id`, [orderId, JSON.stringify(evidence), prevText])
+      : await sql.query(`update service_fulfillment set evidence_ref=$2,updated_at=now() where order_id=$1 and evidence_ref::text=$3 returning order_id`, [orderId, JSON.stringify(evidence), prevText]);
+    if (swapped.length !== 1) {
+      const winner = (await sql.query(`select evidence_ref from service_fulfillment where order_id=$1 limit 1`, [orderId]))[0] || {};
+      let stored = {};
+      try { stored = winner.evidence_ref && typeof winner.evidence_ref === "object" ? winner.evidence_ref : JSON.parse(String(winner.evidence_ref || "{}")); } catch { stored = {}; }
+      const fresh = Date.parse(String(stored.expires_at || "")) > Date.now() + 10 * 60 * 1e3;
+      if (!String(stored.download_url || "").startsWith("https://") || !fresh) throw new Error("delivery_evidence_race_unresolved");
+      evidence = stored;
+    }
   }
+  // Chave de idempotência = pagamento + conteúdo persistido (link). Repetição do mesmo conteúdo => mesma
+  // chave (Resend devolve a resposta original, 24 h); link legitimamente renovado => chave nova, nunca
+  // preso em 409 invalid_idempotent_request.
+  const deliveryKey = `zevanory-delivery-${String(payment?.id || "")}-${createHash("sha256").update(String(evidence.download_url || "")).digest("hex").slice(0, 16)}`;
   const response2 = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       "content-type": "application/json",
-      "Idempotency-Key": `zevanory-delivery-${String(payment?.id || "")}`
+      "Idempotency-Key": deliveryKey
     },
     body: JSON.stringify({
       from: process.env.RESEND_FROM_ADDRESS || "ZEVANORY <contato@zevanory.api.br>",

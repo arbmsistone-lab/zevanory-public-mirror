@@ -48,7 +48,7 @@ function runQuery(query, params = []) {
 }
 
 // ---------- fakes ----------
-export const world = { payments: new Map(), mpCalls: [], emails: [], resendStatus: 200, dbDown: false };
+export const world = { payments: new Map(), mpCalls: [], emails: [], idem: new Map(), resendStatus: 200, dbDown: false };
 const kvStore = new Map();
 const kv = { async get(k) { return kvStore.get(k) ?? null; }, async put(k, v) { kvStore.set(k, String(v)); }, async delete(k) { kvStore.delete(k); },
   async list({ prefix = "" } = {}) { return { keys: [...kvStore.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true }; } };
@@ -74,7 +74,17 @@ function fakeFetch(input, init = {}) {
   }
   if (url.hostname === "api.resend.com") {
     const b = JSON.parse(init.body);
-    world.emails.push({ to: b.to, subject: b.subject, idem: init.headers?.["Idempotency-Key"] });
+    // Semântica documentada do Resend (idempotência 24 h): mesma chave + mesmo corpo => resposta original
+    // sem novo envio; mesma chave + corpo diferente => 409 invalid_idempotent_request.
+    const key = init.headers?.["Idempotency-Key"];
+    if (key && world.resendStatus === 200 && world.idem.has(key)) {
+      const prev = world.idem.get(key);
+      if (prev.body !== init.body) return Promise.resolve(new Response(JSON.stringify({ name: "invalid_idempotent_request" }), { status: 409 }));
+      return Promise.resolve(new Response(JSON.stringify({ id: prev.id }), { status: 200 }));
+    }
+    world.emails.push({ to: b.to, subject: b.subject, idem: key, text: b.text });
+    if (world.resendStatus === 200 && key) world.idem.set(key, { body: init.body, id: "sim-" + world.emails.length });
+    if (world.dropResponse) return Promise.reject(new Error("synthetic lost response after provider accepted"));
     return Promise.resolve(new Response(JSON.stringify(world.resendStatus === 200 ? { id: "sim-" + world.emails.length } : {}), { status: world.resendStatus }));
   }
   return Promise.reject(new Error("T4: unexpected external call blocked: " + url.hostname));
@@ -152,7 +162,7 @@ test("M3+M8 approved: paid once, delivered once (one e-mail), duplicates are ide
   assert.equal(orderStatus(o.id), "paid");
   assert.equal(fulfillment(o.id)[0], "delivered");
   assert.equal(world.emails.length - mails, 1); assert.equal(world.emails.at(-1).to[0], "comprador.sintetico@example.com");
-  assert.equal(world.emails.at(-1).idem, `zevanory-delivery-${id}`);
+  assert.match(world.emails.at(-1).idem, new RegExp(`^zevanory-delivery-${id}-[0-9a-f]{16}$`));
   const t = tokens(o.id);
   for (let i = 0; i < 3; i++) { const r = await webhook(id); assert.equal(r.status, 200); assert.equal(r.body.duplicate, true); }
   assert.equal(events(o.id), 1, "one financial event"); assert.equal(world.emails.length - mails, 1, "no second e-mail");
@@ -165,7 +175,7 @@ test("M3 concurrent duplicates: parallel deliveries of the same approval insert 
   const rs = await Promise.all([webhook(id), webhook(id), webhook(id)]);
   const sent = world.emails.slice(mails);
   console.log("T4_M3_CONCURRENT", JSON.stringify({ statuses: rs.map((r) => r.status), emails_attempted: sent.length, tokens: tokens(o.id) }));
-  assert.ok(sent.length >= 1 && sent.every((m) => m.idem === `zevanory-delivery-${id}`), "every send carries the same provider idempotency key");
+  assert.ok(sent.length >= 1 && sent.every((m) => m.idem === sent[0].idem && m.idem.startsWith(`zevanory-delivery-${id}-`)), "every send carries the same provider idempotency key");
   assert.ok(rs.every((r) => r.status === 200 || r.status === 503), JSON.stringify(rs.map((r) => r.status)));
   assert.equal(events(o.id), 1); assert.equal(orderStatus(o.id), "paid");
   assert.equal(rs.filter((r) => r.body.duplicate === false).length, 1);
@@ -315,4 +325,27 @@ test("M11d vendas fechadas: pendente, recusado ou valor divergente NUNCA viram p
     await webhook(id);
     assert.equal(orderStatus(o.id), "checkout_ready", JSON.stringify(over)); assert.equal(tokens(o.id), 0); assert.equal(world.emails.length, mails);
   }
+});
+
+// ---------- M12: renovação legítima do link de entrega não pode travar no 409 do Resend ----------
+test("M12 entrega pendente com link expirado: novo link => nova chave => e-mail enviado (sem 409 preso)", { skip: SKIP }, async () => {
+  const o = newOrder(); const id = pay(o);
+  // 1ª tentativa: o Resend ACEITA a chave mas a resposta se perde (registra a chave sem confirmar ao chamador).
+  const before = world.emails.length;
+  world.resendStatus = 200; world.dropResponse = true;
+  const r1 = await webhook(id);
+  world.dropResponse = false;
+  assert.equal(r1.status, 503, JSON.stringify(r1.body));
+  assert.equal(orderStatus(o.id), "paid"); assert.notEqual(fulfillment(o.id)[0], "delivered");
+  const k1 = world.emails.at(-1).idem;
+  // O link guardado expira antes do reprocesso (ex.: fila parada): a recuperação gera link novo.
+  const ev = JSON.parse(fulfillment(o.id)[1]); ev.expires_at = new Date(Date.now() - 60000).toISOString();
+  runQuery("update service_fulfillment set evidence_ref=$2 where order_id=$1", [o.id, JSON.stringify(ev)]);
+  const r2 = await webhook(id);
+  assert.equal(r2.status, 200, JSON.stringify(r2.body));
+  assert.equal(fulfillment(o.id)[0], "delivered");
+  const k2 = world.emails.at(-1).idem;
+  assert.notEqual(k1, k2, "conteúdo renovado usa chave nova");
+  assert.equal(world.emails.length - before, 2, "o cliente recebe o link válido");
+  assert.equal(events(o.id), 1, "sem segunda cobrança");
 });

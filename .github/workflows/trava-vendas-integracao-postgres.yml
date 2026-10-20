@@ -3,13 +3,10 @@ name: trava-vendas-integracao-postgres
 # contra PostgreSQL EFÊMERO com dados sintéticos. Sem segredos, sem rede externa (fetch falso bloqueia
 # qualquer host não simulado), sem deploy, somente leitura do repositório.
 on:
+  # Sem filtro de caminhos (contestação GPT-6 016-D): roda em TODO PR para gh-pages, para que mudanças em
+  # bibliotecas, configuração ou outros testes não escapem do gate.
   pull_request:
     branches: [gh-pages]
-    paths:
-      - "worker/**"
-      - "tests/integration/**"
-      - "tests/t4_sim/**"
-      - ".github/workflows/trava-vendas-integracao-postgres.yml"
 permissions:
   contents: read
 concurrency:
@@ -34,14 +31,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Webhook Mercado Pago (M1–M11, vendas fechadas incluídas)
+      - name: Webhook Mercado Pago (M1–M12, vendas fechadas incluídas)
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
         run: |
           set -eo pipefail
           node --import ./tests/t4_sim/register.mjs --test tests/integration/mercadopago-webhook-postgres.test.mjs | tee m.txt
-          grep -q "^# skipped 0" m.txt && grep -q "^# fail 0" m.txt
+          # Quantidade EXATA: remoção ou omissão silenciosa de teste derruba o gate. Ao adicionar
+          # testes, atualizar o número no mesmo PR (revisão explícita).
+          grep -qx "# tests 16" m.txt && grep -qx "# pass 16" m.txt && grep -qx "# skipped 0" m.txt && grep -qx "# fail 0" m.txt
       - name: Invalidação de links no fechamento (P1–P7)
         env:
           T4_PG_HOST: localhost
@@ -49,4 +48,4 @@ jobs:
         run: |
           set -eo pipefail
           node --test tests/integration/close-invalidation-postgres.test.mjs | tee p.txt
-          grep -q "^# skipped 0" p.txt && grep -q "^# fail 0" p.txt
+          grep -qx "# tests 7" p.txt && grep -qx "# pass 7" p.txt && grep -qx "# skipped 0" p.txt && grep -qx "# fail 0" p.txt
