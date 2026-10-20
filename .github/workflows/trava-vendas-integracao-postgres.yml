@@ -1,0 +1,52 @@
+name: trava-vendas-integracao-postgres
+# Gate de regressão (Ordem 016-C, GPT-6): handler REAL do webhook Mercado Pago + invalidação de links
+# contra PostgreSQL EFÊMERO com dados sintéticos. Sem segredos, sem rede externa (fetch falso bloqueia
+# qualquer host não simulado), sem deploy, somente leitura do repositório.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/**"
+      - "tests/integration/**"
+      - "tests/t4_sim/**"
+      - ".github/workflows/trava-vendas-integracao-postgres.yml"
+permissions:
+  contents: read
+concurrency:
+  group: trava-vendas-integracao-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  integracao:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Webhook Mercado Pago (M1–M11, vendas fechadas incluídas)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --import ./tests/t4_sim/register.mjs --test tests/integration/mercadopago-webhook-postgres.test.mjs | tee m.txt
+          grep -q "^# skipped 0" m.txt && grep -q "^# fail 0" m.txt
+      - name: Invalidação de links no fechamento (P1–P7)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/close-invalidation-postgres.test.mjs | tee p.txt
+          grep -q "^# skipped 0" p.txt && grep -q "^# fail 0" p.txt

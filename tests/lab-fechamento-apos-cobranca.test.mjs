@@ -36,7 +36,7 @@ function bancoComFila(ordens) {
   return { consultas: 0, query: async function (_q, [at, id, lim]) {
     this.consultas++;
     return fila.filter((o) => o.updated_at > at || (o.updated_at === at && o.order_id > id)).slice(0, lim)
-      .map((o) => ({ ...o, updated_at: o.updated_at }));
+      .map((o) => ({ ...o, cursor_at: o.updated_at }));
   } };
 }
 const T0 = Date.parse("2026-10-20T16:00:00.000Z"), HORA = 3600 * 1000;

@@ -49,12 +49,14 @@ export async function invalidatePendingMercadoPagoCheckouts(sql, { accessToken, 
   const report = { ok: true, dry_run: dryRun === true, checked: 0, invalidated: 0, failed: [], pending: [], pages: 0, exhausted: false };
   let cursor = { at: "1970-01-01T00:00:00Z", id: "00000000-0000-0000-0000-000000000000" };
   while (report.checked < cap) {
+    // Nunca ultrapassa o teto: a página é reduzida ao que resta de maxTotal.
+    const want = Math.min(size, cap - report.checked);
     const rows = await sql.query(
-      `select order_id, provider_checkout_id, updated_at from orders
+      `select order_id, provider_checkout_id, updated_at::text as cursor_at from orders
         where provider='mercadopago' and status in ('checkout_ready','checkout_uncertain')
           and provider_checkout_id is not null
           and (updated_at, order_id::text) > ($1::timestamptz, $2::text)
-        order by updated_at asc, order_id::text asc limit $3`, [cursor.at, cursor.id, size]);
+        order by updated_at asc, order_id::text asc limit $3`, [cursor.at, cursor.id, want]);
     report.pages++;
     for (const row of rows) {
       report.checked++;
@@ -64,9 +66,21 @@ export async function invalidatePendingMercadoPagoCheckouts(sql, { accessToken, 
       const result = await closeOne(id, { accessToken, fetchImpl, now });
       if (result === "closed") report.invalidated++; else report.failed.push({ order_id: String(row.order_id), reason: result });
     }
-    if (rows.length < size) { report.exhausted = true; break; }
+    // Página incompleta = fila esgotada. Página cheia exige nova consulta para provar o esgotamento.
+    if (rows.length < want) { report.exhausted = true; break; }
     const last = rows[rows.length - 1];
-    cursor = { at: new Date(last.updated_at).toISOString(), id: String(last.order_id) };
+    // Cursor com a precisão do banco (microssegundos, texto); Date do JS truncaria e repetiria linhas.
+    cursor = { at: String(last.cursor_at), id: String(last.order_id) };
+  }
+  // Teto atingido com página cheia: uma consulta de 1 registro decide se ainda há pendentes.
+  if (!report.exhausted && report.checked >= cap) {
+    const more = await sql.query(
+      `select order_id from orders
+        where provider='mercadopago' and status in ('checkout_ready','checkout_uncertain')
+          and provider_checkout_id is not null
+          and (updated_at, order_id::text) > ($1::timestamptz, $2::text)
+        order by updated_at asc, order_id::text asc limit $3`, [cursor.at, cursor.id, 1]);
+    report.exhausted = more.length === 0;
   }
   if (report.failed.length || !report.exhausted) report.ok = false;
   return report;
