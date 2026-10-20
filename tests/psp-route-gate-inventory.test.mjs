@@ -24,6 +24,13 @@ const HANDLER_GATES = Object.freeze({
   handleStripeCheckout: Object.freeze({ name: "salesGate", blocksClosedSales: false })
 });
 const ROUTE_PREFIXES = Object.freeze(["/api/checkout", "/api/checkout/"]);
+const ROUTE_DISPATCH = Object.freeze({
+  "/api/checkout": "handler13",
+  "/api/checkout/asaas": "handler13",
+  "/api/checkout/mercadopago": "handler13",
+  "/api/checkout/stripe": "handler13",
+  "/api/subscriptions/arbm-contador": "handler14"
+});
 
 function findExplicitChargeRoutes(source) {
   const routes = new Set();
@@ -54,6 +61,11 @@ function functionBody(source, name) {
   return match[1];
 }
 
+function directHandler(source, route) {
+  const escapedRoute = route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return source.match(new RegExp(`\\[\\s*["']${escapedRoute}["']\\s*,\\s*(handler\\w+)\\s*\\]`))?.[1] || null;
+}
+
 test("inventário congelado cobre todas as rotas explícitas de cobrança encontradas no Worker", () => {
   const sources = [recovered, compat];
   const discovered = [...new Set(sources.flatMap(findExplicitChargeRoutes))].sort();
@@ -62,6 +74,24 @@ test("inventário congelado cobre todas as rotas explícitas de cobrança encont
   const prefixes = [...new Set(sources.flatMap(findChargeRoutePrefixes))].sort();
   assert.deepEqual(prefixes, [...ROUTE_PREFIXES].sort(),
     "nova família de rotas de cobrança exige atualização explícita do inventário");
+});
+
+test("as rotas congeladas continuam despachando para os handlers comerciais inventariados", () => {
+  for (const [route, handler] of Object.entries(ROUTE_DISPATCH)) {
+    if (route === "/api/checkout" || route === "/api/subscriptions/arbm-contador") {
+      assert.equal(directHandler(recovered, route), handler, `${route} precisa manter o despacho para ${handler}`);
+      continue;
+    }
+    const escapedRoute = route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const provider = route.slice("/api/checkout/".length);
+    const alias = recovered.match(new RegExp(`if \\(url\\.pathname === "${escapedRoute}"\\) \\{([\\s\\S]*?)\\n  \\}`))?.[1] || "";
+    assert.match(alias, new RegExp(`req\\.url = "/api/checkout\\?provider=${provider}"`));
+    assert.match(alias, new RegExp(`return ${handler}`));
+  }
+  const checkoutHandler = functionBody(recovered, "handler13");
+  assert.match(checkoutHandler, /selected\.provider === "asaas".*handler11/);
+  assert.match(checkoutHandler, /selected\.provider === "mercadopago".*handler12/);
+  assert.match(checkoutHandler, /selected\.provider === "stripe".*handleStripeCheckout/);
 });
 
 test("cada rota congelada tem trava pré-roteamento e/ou barreira comercial no handler", () => {
@@ -74,6 +104,7 @@ test("cada rota congelada tem trava pré-roteamento e/ou barreira comercial no h
   const internalDispatch = compat.indexOf('if (url.hostname === "checkout.internal")', matcherStart);
   assert.ok(matcherStart >= 0 && evaluateCall > matcherStart && internalDispatch > evaluateCall,
     "a trava pré-roteamento precisa executar antes da entrada checkout.internal");
+  assert.match(compat.slice(matcherStart, internalDispatch), /if \(!gate\.allowed\) return denyCheckout\(\)/);
 
   for (const entry of INVENTORY) {
     assert.ok(entry.preRouting || entry.handlers.length > 0,
