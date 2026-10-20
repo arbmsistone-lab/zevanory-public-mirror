@@ -67,7 +67,7 @@ test("nenhuma entrada que escape da prova estática: import dinâmico calculado,
 });
 
 test("o gate exige contagem exata, roda este teste e nunca aceita teste pulado nem segredo", () => {
-  for (const [file, n] of [["m", 17], ["p", 7], ["c", 6], ["g", 3]]) {
+  for (const [file, n] of [["m", 20], ["p", 7], ["c", 6], ["g", 3]]) {
     assert.match(WF, new RegExp(`grep -qx "# tests ${n}" ${file}\\.txt && grep -qx "# pass ${n}" ${file}\\.txt && grep -qx "# skipped 0" ${file}\\.txt && grep -qx "# fail 0" ${file}\\.txt`), file);
   }
   assert.doesNotMatch(WF, /secrets\./);

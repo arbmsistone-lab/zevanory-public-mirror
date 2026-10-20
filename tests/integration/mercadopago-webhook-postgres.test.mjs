@@ -73,6 +73,7 @@ function fakeFetch(input, init = {}) {
     return Promise.resolve(p ? new Response(JSON.stringify(p), { status: 200 }) : new Response("{}", { status: 404 }));
   }
   if (url.hostname === "api.resend.com") {
+    if (world.failBeforeAccept) return Promise.reject(new Error("synthetic crash before the provider accepted"));
     const b = JSON.parse(init.body);
     // Semântica documentada do Resend (idempotência 24 h): mesma chave + mesmo corpo => resposta original
     // sem novo envio; mesma chave + corpo diferente => 409 invalid_idempotent_request.
@@ -360,4 +361,47 @@ test("M13 resposta perdida após o aceite, link ainda válido: reprocesso usa a 
   assert.equal(fulfillment(o.id)[0], "delivered");
   assert.equal(world.emails.length - before, 1, "reprocesso deduplicado pelo provedor: nenhum segundo envio");
   assert.equal(world.idem.get(k1)?.id !== undefined, true);
+});
+
+// ---------- M14–M16: cenários de falha do processo de entrega (contestação GPT-6 016-F) ----------
+test("M14 falha após CAS vencedor e antes do aceite do provedor: reprocesso reaproveita o MESMO link persistido e entrega", { skip: SKIP }, async () => {
+  const o = newOrder(); const id = pay(o); const before = world.emails.length;
+  world.failBeforeAccept = true; const r1 = await webhook(id); world.failBeforeAccept = false;
+  assert.equal(r1.status, 503); assert.equal(world.emails.length, before, "nada foi aceito pelo provedor");
+  const link1 = JSON.parse(fulfillment(o.id)[1]).download_url;
+  assert.match(link1, /^https:\/\//, "evidência persistida pelo vencedor");
+  const r2 = await webhook(id);
+  assert.equal(r2.status, 200, JSON.stringify(r2.body));
+  assert.equal(fulfillment(o.id)[0], "delivered");
+  assert.equal(JSON.parse(fulfillment(o.id)[1]).download_url, link1, "link persistido não foi perdido nem trocado");
+  assert.ok(world.emails.at(-1).text.includes(link1), "o e-mail leva o link persistido");
+  assert.equal(world.emails.length - before, 1); assert.equal(events(o.id), 1);
+});
+
+test("M15 fronteira de vencimento: link com > 10 min é reaproveitado; com < 10 min é renovado — o e-mail nunca leva link prestes a vencer", { skip: SKIP }, async () => {
+  for (const [minutos, renova] of [[11, false], [9, true]]) {
+    const o = newOrder(); const id = pay(o);
+    world.failBeforeAccept = true; await webhook(id); world.failBeforeAccept = false;
+    const ev = JSON.parse(fulfillment(o.id)[1]); const antigo = ev.download_url;
+    ev.expires_at = new Date(Date.now() + minutos * 60000).toISOString();
+    runQuery("update service_fulfillment set evidence_ref=$2 where order_id=$1", [o.id, JSON.stringify(ev)]);
+    assert.equal((await webhook(id)).status, 200);
+    const final = JSON.parse(fulfillment(o.id)[1]);
+    assert.equal(final.download_url !== antigo, renova, `${minutos} min`);
+    assert.ok(Date.parse(final.expires_at) > Date.now() + 10 * 60000, "link enviado tem pelo menos 10 min de validade");
+    assert.ok(world.emails.at(-1).text.includes(final.download_url));
+  }
+});
+
+test("M16 resposta perdida e recuperação DEPOIS da janela de 24 h do provedor: entrega concluída (e-mail idêntico pode repetir), nunca pendente para sempre", { skip: SKIP }, async () => {
+  const o = newOrder(); const id = pay(o); const before = world.emails.length;
+  world.dropResponse = true; await webhook(id); world.dropResponse = false;
+  const k1 = world.emails.at(-1).idem, t1 = world.emails.at(-1).text;
+  world.idem.clear();                                    // provedor esqueceu a chave (> 24 h)
+  const r2 = await webhook(id);
+  assert.equal(r2.status, 200, JSON.stringify(r2.body));
+  assert.equal(fulfillment(o.id)[0], "delivered", "não fica pendente");
+  assert.equal(world.emails.length - before, 2, "política: no máximo um e-mail idêntico repetido após 24 h");
+  assert.equal(world.emails.at(-1).idem, k1); assert.equal(world.emails.at(-1).text, t1, "mesmo conteúdo, mesmo link");
+  assert.equal(events(o.id), 1, "sem segunda cobrança");
 });

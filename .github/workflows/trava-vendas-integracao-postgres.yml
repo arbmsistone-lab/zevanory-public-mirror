@@ -42,7 +42,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Webhook Mercado Pago (M1–M13, vendas fechadas incluídas)
+      - name: Webhook Mercado Pago (M1–M16, vendas fechadas e cenários de falha da entrega)
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
@@ -51,7 +51,7 @@ jobs:
           node --import ./tests/t4_sim/register.mjs --test tests/integration/mercadopago-webhook-postgres.test.mjs | tee m.txt
           # Quantidade EXATA: remoção ou omissão silenciosa de teste derruba o gate. Ao adicionar
           # testes, atualizar o número no mesmo PR (revisão explícita).
-          grep -qx "# tests 17" m.txt && grep -qx "# pass 17" m.txt && grep -qx "# skipped 0" m.txt && grep -qx "# fail 0" m.txt
+          grep -qx "# tests 20" m.txt && grep -qx "# pass 20" m.txt && grep -qx "# skipped 0" m.txt && grep -qx "# fail 0" m.txt
       - name: Invalidação de links no fechamento (P1–P7)
         env:
           T4_PG_HOST: localhost
