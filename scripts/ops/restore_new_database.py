@@ -63,12 +63,17 @@ def pg_env_from_url(url):
     return env
 
 
+SQLSTATE = re.compile(r"ERROR:\s+([0-9A-Z]{5})\b")
+
+
 def psql(sql, env, timeout=600):
-    r = subprocess.run(["psql", "-v", "ON_ERROR_STOP=1", "-X", "-qtA", "-f", "-"], input=sql, capture_output=True, text=True, timeout=timeout, env=env)
+    # VERBOSITY sqlstate: o servidor devolve só o código SQLSTATE, nunca a mensagem (que pode citar valores
+    # de linha, ex.: chave duplicada). E mesmo assim só o código de 5 caracteres é repassado ao log.
+    r = subprocess.run(["psql", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=sqlstate", "-X", "-qtA", "-f", "-"],
+                       input="\\set VERBOSITY sqlstate\n" + sql.lstrip("\ufeff"), capture_output=True, text=True, timeout=timeout, env=env)
     if r.returncode != 0:
-        # Nunca ecoar o SQL (contém dados); só a primeira linha do erro do servidor, sem valores.
-        first = (r.stderr.strip().splitlines() or ["?"])[0]
-        fail("psql_error " + re.sub(r"DETAIL:.*", "", first)[:200])
+        m = SQLSTATE.search(r.stderr or "")
+        fail("psql_error sqlstate=" + (m.group(1) if m else "unknown"))
     return r.stdout
 
 

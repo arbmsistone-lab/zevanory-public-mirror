@@ -97,5 +97,19 @@ class T(unittest.TestCase):
     def test_5_confirmacao_exata_para_banco_real(self):
         with self.assertRaises(SystemExit): rnd.main(["restore", "--out", self.dir, "--confirm", "restaurar"])
 
+    def test_6_erro_do_banco_nunca_vaza_dado_para_o_log(self):
+        import contextlib, io
+        db = fresh("rnd_vazamento"); sh(db, "create table t(v text primary key); insert into t values ('SEGREDO-DE-LINHA-123');")
+        env = dict(os.environ, PGDATABASE=db); buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), self.assertRaises(SystemExit):
+            rnd.psql("insert into t values ('SEGREDO-DE-LINHA-123');", env)
+        out = buf.getvalue()
+        self.assertIn("sqlstate=23505", out)
+        self.assertNotIn("SEGREDO", out); self.assertNotIn("duplicate", out.lower())
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), self.assertRaises(SystemExit):
+            rnd.psql("select 1/0 from t where v = 'OUTRO-SEGREDO';", env)
+        self.assertNotIn("SEGREDO", buf.getvalue()); self.assertIn("sqlstate=22012", buf.getvalue())
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
