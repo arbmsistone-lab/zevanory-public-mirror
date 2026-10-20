@@ -38,6 +38,7 @@ def build_source(db):
         values ('mp:1:approved:0','mercadopago','1','payment_confirmed','payment.updated','approved','ref-{o1}',47,'{o1}');
       insert into service_fulfillment(fulfillment_id,order_id,status,delivery_mode,evidence_ref) values ('{uuid.uuid4()}','{o1}','delivered','digital','{{"email_status":"sent","nota":"acentuação ç \\" aspas"}}');
       insert into inbound_followups(followup_key,kind,subject_ref,recipient_hash) values ('cart:x','cart_recovery','x','h');
+      insert into knowledge_documents(document_id,namespace,title,content) values (gen_random_uuid(),'suporte','Guia de preços','Conteúdo ç');
       insert into whatsapp_stage_events(store_key,store_value) values ('whatsapp:instant:1','{{"sent":true}}');
       insert into zevanory_kv_backup(snapshot_day,key,value,sha256) values ('2026-10-14','sales:open:v1','{{"enabled":false}}','abc');""")
     # Exportação idêntica à do Worker (data-backup.mjs): json_agg por tabela, 3 partes, sem tabelas sensíveis.
@@ -46,6 +47,11 @@ def build_source(db):
     parts = {0: {}, 1: {}, 2: {}}
     for i, t in enumerate(names):
         js = sh(db, f"select coalesce(json_agg(x), '[]'::json)::text from public.\"{t}\" x").strip()
+        if t == "knowledge_documents":
+            # Simula produção: tsvector gerado por outra versão do dicionário (run real 39500283679).
+            rows = json.loads(js)
+            for r in rows: r["search_vector"] = "'outra':1 'versao':2"
+            js = json.dumps(rows, ensure_ascii=False)
         parts[i % 3][t] = js
     raw = {p: json.dumps(v, separators=(",", ":")).encode() for p, v in parts.items()}
     return raw
@@ -82,6 +88,7 @@ class T(unittest.TestCase):
         self.assertIn("aspas", sh(db, "select evidence_ref from service_fulfillment").strip())
         self.assertEqual(sh(db, "select count(*) from schema_migrations").strip(), "30")
         self.assertEqual(sh(db, "select count(*) from public.whatsapp_stage_events").strip(), "1", "DDL dinâmico do Worker")
+        self.assertNotIn("outra", sh(db, "select search_vector::text from knowledge_documents"), "coluna gerada recalculada, não copiada")
         self.assertEqual(sh(db, "select count(*) from zevanory_restore_preservado.zpc_records").strip(), "2", "legado preservado")
         self.assertEqual(sh(db, "select count(*) from information_schema.tables where table_schema='public' and table_name='zpc_records'").strip(), "0")
 

@@ -160,8 +160,12 @@ def fk_order(env, tables):
     return order
 
 
-def row_hash_sql(source):
-    return f"(select md5(coalesce(string_agg(r, '|' order by r), '')) from (select row_to_json(x)::text r from {source} x) a)"
+def row_hash_sql(source, cols=None):
+    # Hash sobre as colunas ARMAZENADAS (cols). Colunas geradas são derivadas e recalculadas pelo banco
+    # novo (ex.: tsvector de knowledge_documents depende da versão do dicionário): ficam fora do hash,
+    # porque não são dado de origem e já não são inseridas.
+    proj = f"select {cols} from {source} y" if cols else f"select * from {source} y"
+    return f"(select md5(coalesce(string_agg(r, '|' order by r), '')) from (select row_to_json(x)::text r from ({proj}) x) a)"
 
 
 def restore_full(env, tables_json, manifest_tables):
@@ -210,7 +214,7 @@ def restore_full(env, tables_json, manifest_tables):
             fail(f"no_insertable_columns {t}")
         cl = ",".join(f'"{c}"' for c in cols)
         out = psql(f'insert into public."{t}" ({cl}) overriding system value select {cl} from {src};\n'
-                   f'select count(*) from public."{t}";\nselect {row_hash_sql(src)} = {row_hash_sql(f"public.{chr(34)}{t}{chr(34)}")};', env).split()
+                   f'select count(*) from public."{t}";\nselect {row_hash_sql(src, cl)} = {row_hash_sql(f"public.{chr(34)}{t}{chr(34)}", cl)};', env).split()
         count, same = int(out[-2]), out[-1] == "t"
         expected = manifest_tables[t]["rows"]
         if count != expected:
