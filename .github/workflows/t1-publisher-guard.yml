@@ -117,6 +117,7 @@ jobs:
           echo "::notice title=EXECUTOR_SESSION_DECLARED::authorised declaration only (not authentication): $sessions"
 
   credential-scope:
+    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     # Read-only. Distinguishes READ REACH (what a token can list) from EDIT PERMISSION (what its
     # policies grant). Edit permission is reported as proven only when the token's own policies
     # are readable; otherwise NAO_COMPROVADO. No write call is ever made.
@@ -173,6 +174,7 @@ jobs:
           exit "${fail:-0}"
 
   lead-privacy-source:
+    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     # T3 (#802): the GitHub source secret of the lead privacy key exists and is long enough.
     # Presence and length only; the value is never printed or written anywhere.
     if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}  # B01 patch 05b: pós-merge com credencial (antes: só PR)
@@ -187,6 +189,7 @@ jobs:
           else echo "::warning title=LEAD_PRIVACY_SOURCE::$([ -n "$K" ] && echo SHORTER_THAN_32 || echo ABSENT)"; fi
 
   post-promotion-recheck:
+    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     # Independent verification after a NAO_COMPROVADO certification (observer unreachable): reads
     # the Cloudflare active-version tag and the public readback again, in a separate run. It never
     # publishes and never rolls back; FAIL here is the positive evidence the owner needs to decide

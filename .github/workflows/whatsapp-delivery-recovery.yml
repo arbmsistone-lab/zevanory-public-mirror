@@ -38,6 +38,7 @@ jobs:
           node --check worker/whatsapp-onboarding.mjs
           node --check worker/voice-provider-router.mjs
   production-proof:
+    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     # Real synthesis spends quota; pushes run validation only.
     # DISABLED 12/10: forged signed inbound -> real outbound WhatsApp to a real number (policy risk;
     # account disabled by Meta on 10/10). Delivery is proven only by genuine inbound conversations.

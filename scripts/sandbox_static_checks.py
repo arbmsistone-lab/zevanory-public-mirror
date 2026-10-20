@@ -27,8 +27,8 @@ ALLOWED_SECRETS = {'MERCADOPAGO_TEST_PUBLIC_KEY', 'MERCADOPAGO_TEST_ACCESS_TOKEN
 HOSTS = {'api.mercadopago.com', 'zevanory-certification.fixture.workers.dev'}
 REGISTERED_EXCEPTION = {
     'filename': 'zees16-control-reconciler.yml',
-    'blob': '2b276547c1593aaff60c9c9f0eb9327a7b71beef',
-    'justification': 'T7 não financeiro; execuções serializadas, readback de fidelidade exata e aceitação 16/16 permanece fail-closed; 2026-10-08: grava no KV só quando o estado semântico muda (orçamento de 1.000 escritas/dia do Workers Free); 2026-10-10: concurrency por head_sha com cancel-in-progress, filtro gh-pages e nome real do quorum (open-provider); gatilhos preservados (Ordem 38); 2026-10-10: concurrency no nível do job, sem cancelamento (Ordem 48); 2026-10-19: B01 patch 05b — job só executa em refs/heads/gh-pages (PR #833)',
+    'blob': '90a34037f7bf47b4d2937a94a46f4a1ba794b0e2',
+    'justification': 'T7 não financeiro; execuções serializadas, readback de fidelidade exata e aceitação 16/16 permanece fail-closed; 2026-10-08: grava no KV só quando o estado semântico muda (orçamento de 1.000 escritas/dia do Workers Free); 2026-10-10: concurrency por head_sha com cancel-in-progress, filtro gh-pages e nome real do quorum (open-provider); gatilhos preservados (Ordem 38); 2026-10-10: concurrency no nível do job, sem cancelamento (Ordem 48); 2026-10-19: B01 patch 05b — job só executa em refs/heads/gh-pages (PR #833); 2026-10-20: B01 M1 — job usa o Environment gh-pages-automacao (segredos só na branch gh-pages)',
 }
 
 

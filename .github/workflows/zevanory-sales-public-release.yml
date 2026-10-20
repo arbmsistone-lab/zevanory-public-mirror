@@ -111,6 +111,7 @@ jobs:
           echo "ZEVANORY_SALES_PUBLIC_VERIFY=PASS"
 
   deploy:
+    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}  # B01 patch 05b
     needs: verify
     runs-on: ubuntu-latest

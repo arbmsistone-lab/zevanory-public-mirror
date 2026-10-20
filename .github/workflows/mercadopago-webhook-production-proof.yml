@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   prove-signature:
+    environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:

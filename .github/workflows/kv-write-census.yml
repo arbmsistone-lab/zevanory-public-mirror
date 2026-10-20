@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   census:
+    environment: gh-pages-automacao  # B01 M1: segredos só no Environment (gh-pages)
     runs-on: ubuntu-latest
     timeout-minutes: 150
     env:
