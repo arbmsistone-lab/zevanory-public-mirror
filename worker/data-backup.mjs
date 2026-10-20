@@ -87,9 +87,38 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     for (const w of wanted.slice(MAX_DRILL_TABLES)) { skipped.push({ table: w.table, rows: w.rows, reason: "over_table_budget" }); fail("not_backed_up:" + w.table); }
     report.totalTables = stats.length;
     const names = drillSet.map((w) => w.table);
-    const dumps = names.length ? await sql.query(
-      `select t, (xpath('/row/j/text()', query_to_xml(format('select coalesce(json_agg(x), ''[]''::json)::text as j from public.%I x', t), false, true, '')))[1]::text as j
+    // Incremental (raiz do incidente Neon de 15/10: cada backup exportava o banco inteiro e estourou os 5 GB/mês de
+    // transferência do plano Free). A impressão digital de cada tabela é calculada DENTRO do banco (md5 de 32 bytes por
+    // tabela, transferência desprezível); só as tabelas que mudaram desde a última cópia válida são exportadas. As
+    // inalteradas são copiadas do bundle anterior no KV (sem tráfego do banco), o que também renova a validade da cópia.
+    // As impressões da última execução ficam no relatório da própria parte (já gravado a cada execução, validade de 3
+    // dias): nenhuma escrita extra no KV (cota do Workers Free: 1.000 escritas/dia). Sem relatório válido: exportação completa.
+    let prev = {};
+    try { prev = (JSON.parse(String(await kv.get(`${REPORT_KEY}:part:${part}`) || "{}")) || {}).fp || {}; } catch { prev = {}; }
+    const fps = names.length ? await sql.query(
+      `select t, (xpath('/row/h/text()', query_to_xml(format('select md5(coalesce(string_agg(r, ''|'' order by r), '''')) as h from (select row_to_json(x)::text r from public.%I x) s', t), false, true, '')))[1]::text as fp
          from unnest($1::text[]) as t`, [names]) : [];
+    const fpOf = Object.fromEntries((fps || []).filter((r) => r && typeof r.fp === "string" && /^[0-9a-f]{32}$/.test(r.fp)).map((r) => [r.t, r.fp]));
+    let prevBundle = null;
+    const reused = {};
+    for (const t of names) {
+      const p = prev.tables && prev.tables[t];
+      if (!fpOf[t] || !p || p.fp !== fpOf[t] || !prev.bundleKey) continue;
+      if (prevBundle === null) { try { prevBundle = JSON.parse(String(await kv.get(prev.bundleKey) || "{}")) || {}; } catch { prevBundle = {}; } }
+      const j = prevBundle[t];
+      if (typeof j === "string" && (await sha256(j)) === p.sha) reused[t] = j;
+    }
+    const toDump = names.filter((t) => !(t in reused));
+    const fresh = toDump.length ? await sql.query(
+      `select t, (xpath('/row/j/text()', query_to_xml(format('select coalesce(json_agg(x), ''[]''::json)::text as j from public.%I x', t), false, true, '')))[1]::text as j
+         from unnest($1::text[]) as t`, [toDump]) : [];
+    const dumps = [...fresh, ...Object.entries(reused).map(([t, j]) => ({ t, j }))];
+    const dumpBytes = fresh.reduce((s, r) => s + String(r.j ?? "").length, 0);
+    // Ensaio de restauração (contestação T2 do Sol, Ordem 008): completo aos domingos (UTC) ou sem cópia anterior;
+    // nos demais dias, só as tabelas exportadas agora. As reaproveitadas têm SHA-256 idêntico a uma cópia já ensaiada.
+    const ultimoCompleto = Date.parse(String(prev.lastFullDrill || ""));
+    const drillAll = new Date(now).getUTCDay() === 0 || !prev.bundleKey || !Number.isFinite(ultimoCompleto) || now - ultimoCompleto >= 7 * DAY * 1000;
+    const drillNames = drillAll ? names : names.filter((t) => toDump.includes(t));
     // ONE KV write per part (Workers Free: 1,000 KV writes per day for the whole account; one key
     // per table spent ~50 writes per backup and exhausted the quota on 12/10).
     const exported = [];
@@ -101,19 +130,25 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     }
     const bundleKey = `zpc:backup:v1:neon:${day}:part:${part}`;
     if (exported.length) await kv.put(bundleKey, JSON.stringify(bundle), { expirationTtl: 8 * DAY });
+    {
+      const tablesFp = {};
+      for (const e of exported) if (fpOf[e.table]) tablesFp[e.table] = { fp: fpOf[e.table], sha: e.sha };
+      report.fp = { bundleKey, tables: tablesFp };
+    }
+    report.transfer = { dumped: toDump.length, reused: Object.keys(reused).length, dumpBytes };
     report.neon = { tables: exported.length, rows: exported.reduce((s, e) => s + e.rows, 0), skipped, excluded, manifest: (await manifestHash(Object.fromEntries(exported.map((e) => [e.table, e.sha])))).slice(0, 16) };
 
     // 3a. Neon restore drill from the KV copy, inside the isolated schema.
     await sql.query(`do $$ declare t text; begin
         create schema if not exists ${DRILL};
-        foreach t in array $arr$${"{" + names.join(",") + "}"}$arr$::text[] loop
+        foreach t in array $arr$${"{" + drillNames.join(",") + "}"}$arr$::text[] loop
           execute format('drop table if exists ${DRILL}.%I', t);
           execute format('create table ${DRILL}.%I (like public.%I)', t, t);
         end loop; end $$`);
     const neonDrill = [];
     let storedBundle = {};
     try { storedBundle = exported.length ? JSON.parse(String(await kv.get(bundleKey) || "{}")) : {}; } catch { storedBundle = {}; }
-    for (const e of exported) {
+    for (const e of exported.filter((x) => drillNames.includes(x.table))) {
       const stored = typeof storedBundle[e.table] === "string" ? storedBundle[e.table] : null;
       if (stored == null || (await sha256(stored)) !== e.sha) { fail("neon_copy_integrity:" + e.table); neonDrill.push({ table: e.table, ok: false }); continue; }
       const [r] = await sql.query(
@@ -127,7 +162,9 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
       neonDrill.push({ table: e.table, rows: e.rows, restored: r?.n ?? null, ok });
     }
     await sql.query(`do $$ declare t text; begin
-        foreach t in array $arr$${"{" + names.join(",") + "}"}$arr$::text[] loop execute format('drop table if exists ${DRILL}.%I', t); end loop; end $$`);
+        foreach t in array $arr$${"{" + drillNames.join(",") + "}"}$arr$::text[] loop execute format('drop table if exists ${DRILL}.%I', t); end loop; end $$`);
+    // Garantia de cobertura: nenhum intervalo maior que 7 dias sem um ensaio completo aprovado.
+    if (report.fp) report.fp.lastFullDrill = drillAll && neonDrill.length === exported.length && neonDrill.every((d) => d.ok) ? new Date(now).toISOString() : (prev.lastFullDrill || null);
 
     // 3b. KV restore drill from the Neon copy (first part only).
     const backed = kvPart ? await sql.query(`select key, value, sha256 from ${BACKUP_TABLE} where snapshot_day = $1::date`, [day]) : [];
@@ -148,7 +185,7 @@ export async function runDataBackup(env = {}, { sqlFactory, now = Date.now(), pa
     }
     if (!sampleOk) fail("kv_restore_drill");
     report.restore = {
-      neon: { tables: neonDrill.length, ok: neonDrill.filter((d) => d.ok).length, rows: neonDrill.reduce((s, d) => s + (d.restored || 0), 0), isolatedSchema: DRILL },
+      neon: { mode: drillAll ? "completo" : "alteradas", tables: neonDrill.length, ok: neonDrill.filter((d) => d.ok).length, rows: neonDrill.reduce((s, d) => s + (d.restored || 0), 0), isolatedSchema: DRILL },
       kv: { verified: backed.length, mismatch, missing, sampleRestored: sample.length, sampleOk },
     };
     report.ok = report.failures.length === 0;
@@ -180,7 +217,7 @@ export async function finalizeBackup(env = {}, { parts = DEFAULT_PARTS, now = Da
     failures,
   };
   report.coverage = report.totalTables ? `${report.neon.tables} de ${report.totalTables - report.neon.excluded.length} tabelas (credenciais fora por política: ${report.neon.excluded.length})` : null;
-  report.ok = failures.length === 0 && valid.length === parts && report.restore.neon.ok === report.neon.tables && report.totalTables != null && report.neon.tables === report.totalTables - report.neon.excluded.length;
+  report.ok = failures.length === 0 && valid.length === parts && report.restore.neon.ok === report.restore.neon.tables && report.totalTables != null && report.neon.tables === report.totalTables - report.neon.excluded.length;
   await kv.put(REPORT_KEY, JSON.stringify(report));
   return report;
 }

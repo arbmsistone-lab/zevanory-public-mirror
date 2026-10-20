@@ -38,6 +38,8 @@ import { runSupportEvalIfDue } from "./support-eval.mjs";
 import { runDataBackup, finalizeBackup, tokenOk as backupTokenOk } from "./data-backup.mjs";
 import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
+import { dbEconomySkip as dbEconomySkipBase } from "./db-economy.mjs";
+const dbEconomySkip = (normalized, controller) => dbEconomySkipBase(normalized, controller, { readSwitch: readSalesSwitch, isOpen: applySalesSwitch, resetCache: resetSalesSwitchCache });
 import { syncOperationalActivity } from "./operational-activity-sync.mjs";
 import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
 import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
@@ -637,6 +639,8 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
       console.error("content_service_retry_failed");
     }
     }
+    const economia = await dbEconomySkip(normalized, controller);
+    if (economia) { console.info("db_economy_skip", JSON.stringify({ cron: "5,35", reason: economia })); return; }
     try {
       const out = await syncProductionActivity(normalized, {sqlFactory:whatsappProofDatabase});
       console.info("order13_activity_sync", JSON.stringify({
@@ -669,6 +673,14 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
     // stopped renewing and sales/status went fail-closed. The funnel now runs in its own HTTP
     // invocation (/api/internal/funnel/run, called by the hourly Command Center snapshot).
     const iso = { at: new Date().toISOString(), cron: "15,45 * * * *", tasks: {} };
+    const economiaProva = await dbEconomySkip(normalized, controller);
+    if (economiaProva) {
+      // Batimento continua sendo gravado: o painel distingue "pulado por economia" de "parado".
+      iso.tasks.financial_proof = "skipped:" + economiaProva;
+      try { await putBeat(normalized.ZEVANORY_PRIVATE_ARTIFACTS, "zpc:cron:v1:isolated", iso); } catch {}
+      console.info("db_economy_skip", JSON.stringify({ cron: "15,45", reason: economiaProva }));
+      return;
+    }
     try {
       const proof = await refreshFinancialProofSnapshot(normalized, {
         sqlFactory: whatsappProofDatabase, force: true
