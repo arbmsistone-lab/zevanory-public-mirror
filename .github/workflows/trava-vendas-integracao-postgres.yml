@@ -3,10 +3,20 @@ name: trava-vendas-integracao-postgres
 # contra PostgreSQL EFÊMERO com dados sintéticos. Sem segredos, sem rede externa (fetch falso bloqueia
 # qualquer host não simulado), sem deploy, somente leitura do repositório.
 on:
-  # Sem filtro de caminhos (contestação GPT-6 016-D): roda em TODO PR para gh-pages, para que mudanças em
-  # bibliotecas, configuração ou outros testes não escapem do gate.
+  # Filtro = fecho completo de importações do código testado (verificado por
+  # tests/trava-vendas-gate-paths.test.mjs) + configuração de runtime. Sem filtro, o guard
+  # AUTOMATIC_NO_FINANCIAL_SCRIPT (sandbox_static_checks.py) bloqueia, com razão, workflow automático
+  # que alcance os 5 arquivos do escopo sandbox financeiro — que não são entradas deste gate.
   pull_request:
     branches: [gh-pages]
+    paths:
+      - "worker/**"
+      - "tests/integration/**"
+      - "tests/t4_sim/**"
+      - "wrangler*.toml"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/trava-vendas-integracao-postgres.yml"
 permissions:
   contents: read
 concurrency:
