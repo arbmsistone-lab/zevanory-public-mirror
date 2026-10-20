@@ -12,6 +12,7 @@ test("janela expira em 24 h, formato aceito pelo provedor", () => {
   assert.equal(MERCADOPAGO_PREFERENCE_TTL_MS, 24 * 3600 * 1000);
   assert.equal(Date.parse(w.expiration_date_to) - NOW, MERCADOPAGO_PREFERENCE_TTL_MS);
   assert.ok(Date.parse(w.expiration_date_from) < NOW);
+  assert.equal(w.date_of_expiration, w.expiration_date_to);
   assert.match(w.expiration_date_to, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+00:00$/);
 });
 
