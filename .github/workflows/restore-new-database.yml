@@ -1,0 +1,115 @@
+name: Restore to NEW database (Neon zero-cost recovery)
+
+# Decisão do proprietário (20/10/2026): o projeto Neon de produção está suspenso por cota de transferência
+# (plano gratuito). Recuperação de custo zero: projeto Neon NOVO, restaurado do arquivo cifrado preservado.
+# Somente disparo manual na gh-pages; os dois jobs exigem aprovação no Environment producao-critica.
+#   rehearse : decifra o arquivo real e restaura num Postgres EFÊMERO do runner (esquema completo + dados),
+#              conferindo contagem e hash de conteúdo por tabela. Não toca nenhum banco real.
+#   restore  : só depois do ensaio verde, e com a frase exata; grava no banco NOVO apontado pelo segredo
+#              RESTORE_TARGET_DATABASE_URL (Environment producao-critica). Recusa alvo que não esteja vazio.
+# Nenhum dado é impresso em log (repositório público): só contagens, hashes e nomes de tabela.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "rehearse | restore"
+        required: true
+        default: rehearse
+        type: choice
+        options: [rehearse, restore]
+      day:
+        description: "Dia do backup (AAAA-MM-DD)"
+        required: true
+        default: "2026-10-14"
+      artifact_run_id:
+        description: "Run que gerou o arquivo cifrado (Backup preservation)"
+        required: true
+        default: "38751946247"
+      confirm:
+        description: "Só para restore: digite exatamente RESTAURAR <dia> EM BANCO NOVO"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: restore-new-database
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
+    if: github.ref == 'refs/heads/gh-pages'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: restore-rehearsal-local-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      BACKUP_ARCHIVE_PASSPHRASE: ${{ secrets.BACKUP_ARCHIVE_PASSPHRASE }}
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: restore-rehearsal-local-only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check cryptography==43.0.3
+      - name: Synthetic rehearsal (no real data)
+        run: python -m unittest -v tests/test_restore_new_database.py
+      - uses: actions/download-artifact@v4
+        with:
+          name: zevanory-backup-${{ inputs.day }}-encrypted
+          path: preserve-out
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+      - name: Full restore of the REAL archive into an ephemeral Postgres (counts + content hashes)
+        env:
+          PGDATABASE: postgres
+        run: |
+          set -eo pipefail
+          psql -v ON_ERROR_STOP=1 -c "create database ensaio_real"
+          PGDATABASE=ensaio_real python scripts/ops/restore_new_database.py rehearse --out preserve-out > /dev/null
+
+  restore:
+    needs: rehearse
+    environment: producao-critica  # aprovação do proprietário obrigatória
+    if: github.ref == 'refs/heads/gh-pages' && inputs.mode == 'restore'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BACKUP_ARCHIVE_PASSPHRASE: ${{ secrets.BACKUP_ARCHIVE_PASSPHRASE }}
+      RESTORE_TARGET_DATABASE_URL: ${{ secrets.RESTORE_TARGET_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check cryptography==43.0.3
+      - name: Install psql client
+        run: sudo apt-get install -y -qq postgresql-client > /dev/null
+      - uses: actions/download-artifact@v4
+        with:
+          name: zevanory-backup-${{ inputs.day }}-encrypted
+          path: preserve-out
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+      - name: Restore into the NEW database (refuses a non-empty target)
+        env:
+          IN_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -eo pipefail
+          python scripts/ops/restore_new_database.py restore --out preserve-out --confirm "$IN_CONFIRM" > /dev/null
