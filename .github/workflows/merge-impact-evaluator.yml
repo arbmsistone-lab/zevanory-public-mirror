@@ -1,0 +1,90 @@
+name: Merge impact evaluator
+
+# B01 patch 05f (substitui 05d/05e): avaliador de impacto de merge executado a partir de código CONFIÁVEL (branch base), fora do controle do PR.
+# pull_request_target roda a definição e o checkout da base. O conteúdo do PR é tratado só como DADO (lista de arquivos e
+# YAML dos workflows alterados, lidos via API e parseados com BaseLoader). NUNCA fazer checkout do head do PR aqui.
+# Sem segredos: usa apenas o GITHUB_TOKEN de leitura e leituras públicas da versão viva.
+on:
+  pull_request_target:
+    branches: [gh-pages]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: merge-impact-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  impacto:
+    name: merge-impact / evaluate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout da base (código confiável)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+      - name: Coletar arquivos alterados e YAML do PR como dado
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/head-wf /tmp/lists
+          gh api --paginate --slurp "repos/$REPO/pulls/$PR/files?per_page=100" > /tmp/files.json
+          # 05f: renomeados tiram o nome antigo da definição efetiva; nomes inesperados abortam
+          python3 scripts/ci/pr_files_to_lists.py /tmp/files.json /tmp/lists
+          cp /tmp/lists/changed.txt /tmp/changed.txt; cp /tmp/lists/removed.txt /tmp/removed.txt
+          while IFS= read -r f; do
+            gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/$f?ref=$HEAD_SHA" > "/tmp/head-wf/$(basename -- "$f")"
+          done < /tmp/lists/workflows_head.txt
+          wc -l < /tmp/changed.txt
+      - name: Avaliar disparos diretos e indiretos (classe A ou B)
+        id: avaliar
+        run: |
+          set +e
+          python3 scripts/ci/merge_impact.py --base-workflows .github/workflows --changed /tmp/changed.txt \
+            --head-workflows /tmp/head-wf --removed /tmp/removed.txt > /tmp/impacto.json
+          rc=$?
+          set -e
+          cat /tmp/impacto.json
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          r = json.load(open("/tmp/impacto.json"))
+          print(f"## Impacto do merge — classe {r['classe']}")
+          print("| Disparo | Workflow | Riscos |\n|---|---|---|")
+          for x in r["disparos_diretos"]: print(f"| direto | {x['workflow']} | {', '.join(x['riscos']) or '—'} |")
+          for x in r["disparos_indiretos_workflow_run"]: print(f"| indireto (via {x['acionado_por']}) | {x['workflow']} | {', '.join(x['riscos']) or '—'} |")
+          for e in r.get("efeitos_fora_dos_yaml", []): print(f"| sempre | {e} | publicação estática |")
+          if r.get("conteudo_publicado_alterado"): print(f"| Pages | {len(r['conteudo_publicado_alterado'])} arquivo(s) publicado(s) alterado(s) | eleva classe |")
+          PY
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
+      - name: Versão viva, trava comercial e proveniência (leitura pública, FAIL-CLOSED)
+        # 05f: sem caminho de aviso. Bloqueia em leitura falha, JSON inválido ou ambíguo (chave duplicada), commit ausente,
+        # sales_mode diferente de "globally-blocked" ou commit vivo que não seja ancestral de gh-pages.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set +e
+          curl -fsS --max-time 20 -o /tmp/release.json https://zevanory.api.br/api/release
+          crc=$?
+          # pipefail obrigatório: o shell padrão do Actions (bash -e) devolveria o código do tee e mascararia a falha
+          set -eo pipefail
+          sha="$(python3 scripts/ci/live_lock_check.py --curl-rc "$crc" /tmp/release.json --print-sha)"
+          gh api "repos/$REPO/compare/$sha...gh-pages" > /tmp/compare.json
+          python3 scripts/ci/live_lock_check.py --curl-rc "$crc" /tmp/release.json --compare-json /tmp/compare.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Resultado
+        run: |
+          if [ "${{ steps.avaliar.outputs.rc }}" = "3" ]; then
+            echo "::error title=MERGE_CLASSE_B::o merge dispara workflows com segredos, permissão de escrita, deploy ou fluxo financeiro. Anexar o resumo deste job ao pedido de autorização do proprietário (com SHA)."
+            exit 1
+          fi
+          echo "Classe A: nenhum workflow com risco dispara no merge."
