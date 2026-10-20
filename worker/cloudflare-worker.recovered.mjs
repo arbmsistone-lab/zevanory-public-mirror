@@ -14030,12 +14030,18 @@ function normalizeCheckoutRequest(body, { certification = false } = {}) {
   return Object.freeze({ requestId: String(body.request_id).toLowerCase(), sessionId: String(body.session_id).toLowerCase(), offer });
 }
 __name(normalizeCheckoutRequest, "normalizeCheckoutRequest");
+var MERCADOPAGO_REUSE_MAX_AGE_MS = 23 * 3600 * 1e3;
 function checkoutReplayDecision(order, sessionId, offerId = "") {
   if (!order || typeof order !== "object") return Object.freeze({ action: "lookup_failed" });
   if (String(order.session_id || "").toLowerCase() !== String(sessionId || "").toLowerCase()) return Object.freeze({ action: "conflict" });
   if (offerId && String(order.offer_id || "").toUpperCase() !== String(offerId).toUpperCase()) return Object.freeze({ action: "offer_conflict" });
   const status = String(order.status || "");
-  if (status === "checkout_ready" && order.checkout_url) return Object.freeze({ action: "reuse", checkoutUrl: String(order.checkout_url) });
+  if (status === "checkout_ready" && order.checkout_url) {
+    // Preferência Mercado Pago expira em 24 h no provedor (payment-link-expiry.mjs): não devolver link vencido.
+    const age = Date.now() - Date.parse(String(order.updated_at || ""));
+    if (String(order.provider || "") === "mercadopago" && !(age >= 0 && age < MERCADOPAGO_REUSE_MAX_AGE_MS)) return Object.freeze({ action: "expired", status: "checkout_expired" });
+    return Object.freeze({ action: "reuse", checkoutUrl: String(order.checkout_url) });
+  }
   if (status === "created") return Object.freeze({ action: "create" });
   if (status === "checkout_creating") return Object.freeze({ action: "in_progress" });
   return Object.freeze({ action: "blocked", status });
@@ -14405,7 +14411,7 @@ async function handler12(req, res) {
   const externalReference = String(orderId).toLowerCase();
   try {
     const inserted = await sql.query(`INSERT INTO orders (order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status,certification_pilot,certification_pilot_invite_id) VALUES ($1,$2,$3,$4,$5,$6,'BRL','mercadopago',$7,'created',$8,$9) ON CONFLICT (request_id) DO NOTHING RETURNING order_id`, [orderId, input.requestId, input.sessionId, PROJECT.experimentId, input.offer.id, effectiveOffer.price_brl, externalReference, Boolean(pilot?.authorized), pilot?.invite_id || null]);
-    let order = inserted.length ? { order_id: orderId, external_reference: externalReference, status: "created" } : (await sql.query(`SELECT order_id,session_id,offer_id,external_reference,status,checkout_url,provider FROM orders WHERE request_id=$1`, [input.requestId]))[0];
+    let order = inserted.length ? { order_id: orderId, external_reference: externalReference, status: "created" } : (await sql.query(`SELECT order_id,session_id,offer_id,external_reference,status,checkout_url,provider,updated_at::text AS updated_at FROM orders WHERE request_id=$1`, [input.requestId]))[0];
     if (!order) return json9(res, 503, { error: "order_lookup_failed" });
     if (order.provider && order.provider !== "mercadopago") return json9(res, 409, { error: "request_id_provider_conflict" });
     if (!inserted.length) {
@@ -14835,7 +14841,9 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
   const existing = (await sql.query(`select status,evidence_ref from service_fulfillment where order_id=$1 limit 1`, [orderId]))[0] || {};
   let evidence = {};
   try {
-    evidence = existing.evidence_ref && String(existing.evidence_ref).trim().startsWith("{") ? JSON.parse(existing.evidence_ref) : {};
+    // Coluna jsonb chega como objeto pelo driver; text chega como string. Os dois precisam ser lidos,
+    // senão o teste "já entregue" é pulado e uma duplicata gera link e e-mail novos.
+    evidence = existing.evidence_ref && typeof existing.evidence_ref === "object" ? { ...existing.evidence_ref } : existing.evidence_ref && String(existing.evidence_ref).trim().startsWith("{") ? JSON.parse(existing.evidence_ref) : {};
   } catch {
     evidence = {};
   }
@@ -14887,10 +14895,12 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
     // anterior não-JSON (legado corrompido) é comparada como texto.
     const prevRaw = existing.evidence_ref;
     const prevText = prevRaw && typeof prevRaw === "object" ? JSON.stringify(prevRaw) : String(prevRaw ?? "");
-    let prevIsJson = true;
-    try { if (prevText.trim()) JSON.parse(prevText); } catch { prevIsJson = false; }
+    // SQL NULL => ramo JSON (coalesce para 'null'); texto vazio/brancos ou não-JSON => ramo texto
+    // ('' ou '  '::jsonb seria rejeitado pelo PostgreSQL e travaria a entrega em todo reprocesso).
+    let prevIsJson = prevRaw === null || prevRaw === void 0 || typeof prevRaw === "object";
+    if (!prevIsJson && prevText.trim()) { try { JSON.parse(prevText); prevIsJson = true; } catch { prevIsJson = false; } }
     const swapped = prevIsJson
-      ? await sql.query(`update service_fulfillment set evidence_ref=$2,updated_at=now() where order_id=$1 and coalesce(evidence_ref::text::jsonb,'null'::jsonb)=coalesce(nullif($3,'')::jsonb,'null'::jsonb) returning order_id`, [orderId, JSON.stringify(evidence), prevText])
+      ? await sql.query(`update service_fulfillment set evidence_ref=$2,updated_at=now() where order_id=$1 and coalesce(nullif(btrim(evidence_ref::text),'')::jsonb,'null'::jsonb)=coalesce(nullif(btrim($3),'')::jsonb,'null'::jsonb) returning order_id`, [orderId, JSON.stringify(evidence), prevText])
       : await sql.query(`update service_fulfillment set evidence_ref=$2,updated_at=now() where order_id=$1 and evidence_ref::text=$3 returning order_id`, [orderId, JSON.stringify(evidence), prevText]);
     if (swapped.length !== 1) {
       const winner = (await sql.query(`select evidence_ref from service_fulfillment where order_id=$1 limit 1`, [orderId]))[0] || {};

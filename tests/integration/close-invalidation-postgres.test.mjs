@@ -106,3 +106,22 @@ test("P7 só pendentes do Mercado Pago: pago, reembolsado e outros provedores n�
   const out = await invalidatePendingMercadoPagoCheckouts(adaptador(), { accessToken: "x", fetchImpl: mp.fetch, now: T, dryRun: false });
   assert.equal(out.checked, 3); assert.ok(pagos.every((p) => !preferenceIsClosed(mp.prefs.get(p.pref), T)));
 });
+
+test("P8 (revisão Copilot) inserção tardia após página PARCIAL: só página vazia encerra; o pedido tardio é alcançado", { skip: SKIP }, async () => {
+  limpar(); const mp = provedor(); semear(mp, 5, { at: "2026-10-20 10:00:00+00" });
+  let tardio = null;
+  const db = adaptador({ aoConsultar: (n) => { if (n === 1) tardio = semear(mp, 1, { at: "2026-10-20 12:00:00+00" })[0]; } });
+  const out = await invalidatePendingMercadoPagoCheckouts(db, { accessToken: "x", fetchImpl: mp.fetch, now: T, dryRun: false, pageSize: 10 });
+  assert.deepEqual([out.ok, out.checked, out.exhausted], [true, 6, true]);
+  assert.ok(preferenceIsClosed(mp.prefs.get(tardio.pref), T));
+});
+
+test("P9 (revisão Copilot) execução limitada devolve next_cursor e a seguinte RETOMA sem reprocessar", { skip: SKIP }, async () => {
+  limpar(); const mp = provedor(); semear(mp, 3);
+  const puts = []; const f = async (url, init) => { if (init?.method === "PUT") puts.push(String(url)); return mp.fetch(url, init); };
+  const a = await invalidatePendingMercadoPagoCheckouts(adaptador(), { accessToken: "x", fetchImpl: f, now: T, dryRun: false, maxTotal: 2 });
+  assert.deepEqual([a.ok, a.checked, a.exhausted], [false, 2, false]); assert.ok(a.next_cursor);
+  const b = await invalidatePendingMercadoPagoCheckouts(adaptador(), { accessToken: "x", fetchImpl: f, now: T, dryRun: false, maxTotal: 2, startAfter: a.next_cursor });
+  assert.deepEqual([b.ok, b.checked, b.exhausted, b.next_cursor], [true, 1, true, null]);
+  assert.equal(new Set(puts).size, 3, "cada preferência fechada uma única vez"); assert.equal(puts.length, 3);
+});

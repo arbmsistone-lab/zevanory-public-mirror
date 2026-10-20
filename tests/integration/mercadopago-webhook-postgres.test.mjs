@@ -405,3 +405,20 @@ test("M16 resposta perdida e recuperação DEPOIS da janela de 24 h do provedor:
   assert.equal(world.emails.at(-1).idem, k1); assert.equal(world.emails.at(-1).text, t1, "mesmo conteúdo, mesmo link");
   assert.equal(events(o.id), 1, "sem segunda cobrança");
 });
+
+// ---------- M17–M18: achados da revisão do GitHub Copilot no #838 ----------
+test("M17 evidência em branco ('' ou espaços) não trava a entrega (ramo texto, sem cast inválido para jsonb)", { skip: SKIP }, async () => {
+  for (const branco of ["", "   "]) {
+    const o = newOrder(); const id = pay(o);
+    world.failBeforeAccept = true; await webhook(id); world.failBeforeAccept = false;
+    runQuery("update service_fulfillment set evidence_ref=$2 where order_id=$1", [o.id, branco]);
+    const r = await webhook(id);
+    assert.equal(r.status, 200, JSON.stringify([branco, r.body]));
+    assert.equal(fulfillment(o.id)[0], "delivered");
+  }
+});
+
+// M18 (achado Copilot "coluna jsonb") NÃO tem teste comportamental: o próprio webhook grava evidence_ref
+// com expressão text (INSERT ... service_fulfillment), e com coluna jsonb o PostgreSQL rejeita esse INSERT
+// ("column evidence_ref is of type jsonb but expression is of type text") — verificado neste harness.
+// Logo a coluna em uso é text; a leitura de objeto foi mantida apenas como defesa.

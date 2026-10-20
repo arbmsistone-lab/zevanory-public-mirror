@@ -18,7 +18,7 @@ const psqlAsync = (sql) => new Promise((ok, ko) => execFile("psql", [...args(DB)
 
 const SRC = readFileSync(new URL("../../worker/cloudflare-worker.recovered.mjs", import.meta.url), "utf8");
 const pick = (re) => { const m = SRC.match(re); if (!m) throw new Error("SQL do Worker não encontrado: " + re); return m[1]; };
-const CAS_JSON = pick(/\? await sql\.query\(`(update service_fulfillment set evidence_ref=\$2,updated_at=now\(\) where order_id=\$1 and coalesce\(evidence_ref::text::jsonb[^`]+)`/);
+const CAS_JSON = pick(/\? await sql\.query\(`(update service_fulfillment set evidence_ref=\$2,updated_at=now\(\) where order_id=\$1 and coalesce\(nullif\(btrim\(evidence_ref::text\),''\)::jsonb[^`]+)`/);
 const CAS_TEXT = pick(/: await sql\.query\(`(update service_fulfillment set evidence_ref=\$2,updated_at=now\(\) where order_id=\$1 and evidence_ref::text=\$3[^`]*)`/);
 const inline = (q, p) => q.replace(/\$(\d+)/g, (_, n) => lit(p[Number(n) - 1]));
 const ev = (n) => JSON.stringify({ download_url: `https://zevanory.api.br/private/artifacts/download?token=t${n}`, expires_at: new Date(Date.now() + 3 * 864e5).toISOString() });
@@ -63,4 +63,12 @@ test("CAS jsonb: formatação diferente do mesmo JSON ainda casa (comparação s
   const oid = novo('{"b": 1, "a": 2}', "jsonb");
   const out = psql(inline(CAS_JSON.replace("service_fulfillment", "f_jsonb"), [oid, ev(9), '{"a":2,"b":1}']));
   assert.equal(out, oid);
+});
+
+test("CAS text com evidência em BRANCO no banco ('' e espaços): ramo JSON trata como vazio, sem erro de cast; 1 vence", { skip: SKIP }, async () => {
+  for (const branco of ["", "   "]) {
+    const oid = novo(branco, "text");
+    const outs = await Promise.all(Array.from({ length: 8 }, (_, i) => psqlAsync(inline(CAS_JSON.replace("service_fulfillment", "f_text"), [oid, ev(i + 1), ""]))));
+    assert.equal(outs.filter((o) => o === oid).length, 1, JSON.stringify([branco, outs]));
+  }
 });

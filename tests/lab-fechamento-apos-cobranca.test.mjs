@@ -76,7 +76,7 @@ test("LAB 4: provedor responde 2xx mas não aplica — leitura posterior detecta
 test("LAB 5: fila maior que a página é esgotada por cursor (230 pendentes, página 50)", async () => {
   const mp = provedorSimulado(); const db = bancoComFila(Array.from({ length: 230 }, (_, i) => ordem(i + 1, mp.criar({}))));
   const out = await invalidatePendingMercadoPagoCheckouts(db, { accessToken: "x", fetchImpl: mp.fetch, now: T0, dryRun: false, pageSize: 50 });
-  assert.deepEqual([out.ok, out.checked, out.invalidated, out.exhausted, out.pages], [true, 230, 230, true, 5]);
+  assert.deepEqual([out.ok, out.checked, out.invalidated, out.exhausted, out.pages], [true, 230, 230, true, 6]);
   assert.ok([...mp.prefs.values()].every((p) => preferenceIsClosed(p, T0)));
 });
 
