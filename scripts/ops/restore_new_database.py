@@ -10,7 +10,8 @@ O que faz, em ordem, e PARA na primeira divergência (fail-closed):
   2. recusa alvo que já tenha tabelas em public (nunca sobrescreve);
   3. aplica as 30 migrações de db/migrations (esquema exigido pelo Worker: 40 tabelas, 29 migrações);
   4. cria as tabelas que o Worker cria em tempo de execução, com o DDL LIDO do próprio código do Worker
-     (fonte única; nada copiado à mão);
+     ou capturado EXECUTANDO o módulo que o monta (fonte única; nada copiado à mão); tabelas legadas que
+     nenhum código atual cria são preservadas como jsonb no esquema zevanory_restore_preservado;
   5. remove as linhas-semente das migrações nas tabelas do backup (o backup é a autoridade) e carrega cada tabela em ordem de chave estrangeira (jsonb_populate_recordset, OVERRIDING SYSTEM VALUE);
   6. ajusta sequências ao maior valor carregado;
   7. confere cada tabela: contagem igual ao manifesto E hash de conteúdo independente de ordem
@@ -116,6 +117,30 @@ def runtime_ddl(worker_dir=None):
     return names, stmts
 
 
+DYNAMIC_DDL_JS = """
+import { createWhatsappNeonStore } from "./worker/whatsapp-neon-store.mjs";
+const q = [];
+const s = createWhatsappNeonStore({ query: async (x) => { q.push(String(x)); return []; } });
+await s.put("whatsapp:instant:restore-ddl-probe", "x");
+process.stdout.write(JSON.stringify(q.filter((x) => /^create /i.test(x))));
+"""
+
+
+def dynamic_ddl():
+    """DDL que o Worker monta em tempo de execução (nome de tabela concatenado), capturado EXECUTANDO o
+    próprio módulo com um banco falso que só registra os comandos. Fonte única, sem cópia manual."""
+    r = subprocess.run(["node", "--input-type=module", "-e", DYNAMIC_DDL_JS], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        fail("dynamic_ddl_capture_failed")
+    stmts = json.loads(r.stdout or "[]")
+    if not stmts:
+        fail("dynamic_ddl_empty")
+    return [s + ";" for s in stmts]
+
+
+PRESERVE_SCHEMA = "zevanory_restore_preservado"
+
+
 def fk_order(env, tables):
     rows = psql("""select tc.table_name, ccu.table_name from information_schema.table_constraints tc
       join information_schema.constraint_column_usage ccu on ccu.constraint_name = tc.constraint_name and ccu.table_schema = tc.table_schema
@@ -148,13 +173,28 @@ def restore_full(env, tables_json, manifest_tables):
     for m in migrations:
         psql(open(m, encoding="utf-8").read(), env)
     names, ddl = runtime_ddl()
-    psql("\n".join(ddl), env)
+    psql("\n".join(ddl + dynamic_ddl()), env)
     present = set(psql("select table_name from information_schema.tables where table_schema='public';", env).split())
-    missing = sorted(set(tables_json) - present)
-    if missing:
-        fail("backup_tables_without_schema " + ",".join(missing)[:300])
-    report = {"tables": {}, "runtime_tables": names}
-    order = fk_order(env, sorted(tables_json))
+    # Tabelas do backup que nenhum código atual cria (legado): os dados são PRESERVADOS, sem inventar
+    # esquema, como linhas jsonb num esquema separado, com contagem e hash conferidos.
+    orphans = sorted(set(tables_json) - present)
+    report = {"tables": {}, "runtime_tables": names, "preserved_without_schema": orphans}
+    for t in orphans:
+        if not IDENT.match(t):
+            fail("table_name_invalid")
+        js = tables_json[t]
+        out = psql(f'create schema if not exists {PRESERVE_SCHEMA};\n'
+                   f'create table {PRESERVE_SCHEMA}."{t}" (doc jsonb not null);\n'
+                   f'insert into {PRESERVE_SCHEMA}."{t}"(doc) select value from jsonb_array_elements({dollar(js)}::jsonb);\n'
+                   f'select count(*) from {PRESERVE_SCHEMA}."{t}";\n'
+                   f"select (select md5(coalesce(string_agg(v::text, '|' order by v::text), '')) from jsonb_array_elements({dollar(js)}::jsonb) v)"
+                   f" = (select md5(coalesce(string_agg(doc::text, '|' order by doc::text), '')) from {PRESERVE_SCHEMA}.\"{t}\");", env).split()
+        if int(out[-2]) != manifest_tables[t]["rows"]:
+            fail(f"count_mismatch {t}")
+        if out[-1] != "t":
+            fail(f"content_hash_mismatch {t}")
+        report["tables"][t] = {"rows": int(out[-2]), "content_hash": "ok", "schema": PRESERVE_SCHEMA}
+    order = fk_order(env, sorted(set(tables_json) - set(orphans)))
     # O alvo estava vazio: qualquer linha agora presente veio das migrações (sementes). O backup é a
     # autoridade sobre o conteúdo, então as sementes das tabelas do backup saem (ordem inversa de FK).
     psql("\n".join(f'delete from public."{t}";' for t in reversed(order)), env)

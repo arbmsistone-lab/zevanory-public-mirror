@@ -26,7 +26,10 @@ def build_source(db):
     rnd.restore_full.__globals__  # garante import
     for m in sorted(os.listdir(os.path.join(ROOT, "db", "migrations"))):
         sh(db, open(os.path.join(ROOT, "db", "migrations", m)).read())
-    sh(db, "\n".join(rnd.runtime_ddl()[1]))
+    sh(db, "\n".join(rnd.runtime_ddl()[1] + rnd.dynamic_ddl()))
+    # Tabela LEGADA que nenhum código atual cria (como zpc_records em produção): deve ser preservada.
+    sh(db, "create table zpc_records(id text primary key, payload jsonb, at timestamptz default now()); "
+           "insert into zpc_records(id,payload) values ('a','{\"k\":1}'),('b','{\"k\":\"ç\"}');")
     o1, o2 = str(uuid.uuid4()), str(uuid.uuid4())
     sh(db, f"""insert into orders(order_id,request_id,session_id,experiment_id,offer_id,amount,currency,provider,external_reference,status) values
       ('{o1}','{uuid.uuid4()}','{uuid.uuid4()}','exp','ZEV-1',47,'BRL','mercadopago','ref-{o1}','paid'),
@@ -35,6 +38,7 @@ def build_source(db):
         values ('mp:1:approved:0','mercadopago','1','payment_confirmed','payment.updated','approved','ref-{o1}',47,'{o1}');
       insert into service_fulfillment(fulfillment_id,order_id,status,delivery_mode,evidence_ref) values ('{uuid.uuid4()}','{o1}','delivered','digital','{{"email_status":"sent","nota":"acentuação ç \\" aspas"}}');
       insert into inbound_followups(followup_key,kind,subject_ref,recipient_hash) values ('cart:x','cart_recovery','x','h');
+      insert into whatsapp_stage_events(store_key,store_value) values ('whatsapp:instant:1','{{"sent":true}}');
       insert into zevanory_kv_backup(snapshot_day,key,value,sha256) values ('2026-10-14','sales:open:v1','{{"enabled":false}}','abc');""")
     # Exportação idêntica à do Worker (data-backup.mjs): json_agg por tabela, 3 partes, sem tabelas sensíveis.
     names = sh(db, "select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE' and table_name <> 'zevanory_kv_backup_unused' order by 1").split()
@@ -73,9 +77,13 @@ class T(unittest.TestCase):
         db = fresh("rnd_alvo1")
         self.assertEqual(self.run_rehearse(db, self.dir), 0)
         for t, meta in self.tables.items():
-            self.assertEqual(int(sh(db, f'select count(*) from public."{t}"').strip()), meta["rows"], t)
+            schema = "zevanory_restore_preservado" if t == "zpc_records" else "public"
+            self.assertEqual(int(sh(db, f'select count(*) from {schema}."{t}"').strip()), meta["rows"], t)
         self.assertIn("aspas", sh(db, "select evidence_ref from service_fulfillment").strip())
         self.assertEqual(sh(db, "select count(*) from schema_migrations").strip(), "30")
+        self.assertEqual(sh(db, "select count(*) from public.whatsapp_stage_events").strip(), "1", "DDL dinâmico do Worker")
+        self.assertEqual(sh(db, "select count(*) from zevanory_restore_preservado.zpc_records").strip(), "2", "legado preservado")
+        self.assertEqual(sh(db, "select count(*) from information_schema.tables where table_schema='public' and table_name='zpc_records'").strip(), "0")
 
     def test_2_recusa_alvo_nao_vazio(self):
         db = fresh("rnd_alvo2"); sh(db, "create table qualquer(x int);")
@@ -87,6 +95,11 @@ class T(unittest.TestCase):
         db = fresh("rnd_alvo3")
         with self.assertRaises(SystemExit): self.run_rehearse(db, d)
         self.assertEqual(sh(db, "select count(*) from information_schema.tables where table_schema='public'").strip(), "0")
+
+    def test_4b_ddl_dinamico_capturado_executando_o_modulo(self):
+        stmts = rnd.dynamic_ddl()
+        for t in ["whatsapp_stage_events", "whatsapp_observations", "whatsapp_evidence", "whatsapp_history"]:
+            self.assertTrue(any(s.startswith(f"create table if not exists {t} (") for s in stmts), t)
 
     def test_4_ddl_de_tempo_de_execucao_vem_do_codigo_do_worker(self):
         names, stmts = rnd.runtime_ddl()
