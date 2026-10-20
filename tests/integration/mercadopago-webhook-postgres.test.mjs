@@ -271,3 +271,48 @@ test("M10 segregation: the production route never uses the test credential; no u
   assert.ok(world.mpCalls.filter((c) => c.path.endsWith(id)).every((c) => c.auth === "Bearer APP_USR"), JSON.stringify(world.mpCalls.slice(-2)));
   assert.ok(world.mpCalls.every((c) => c.method === "GET"), "the webhook path only reads the provider");
 });
+
+// ---------- M11: política do proprietário (20/10/2026): HONRAR pagamento aprovado com VENDAS FECHADAS ----------
+// Comportamental (handler real + PostgreSQL descartável): interruptor explicitamente fechado.
+function fecharVendas() {
+  globalThis.__ZEVANORY_SALES_SWITCH__ = false;
+  process.env.SALE_GLOBALLY_ENABLED = "false";
+  kvStore.set("sales:open:v1", JSON.stringify({ enabled: false, at: new Date().toISOString() }));
+}
+test("M11a vendas fechadas: pagamento aprovado vira pago e é entregue uma única vez", { skip: SKIP }, async () => {
+  fecharVendas();
+  const o = newOrder(); const id = pay(o); const mails = world.emails.length;
+  const r = await webhook(id);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(globalThis.__ZEVANORY_SALES_SWITCH__, false, "o webhook não abre vendas");
+  assert.equal(orderStatus(o.id), "paid"); assert.equal(fulfillment(o.id)[0], "delivered");
+  assert.equal(world.emails.length - mails, 1); assert.ok(tokens(o.id) >= 1);
+  for (let i = 0; i < 2; i++) assert.equal((await webhook(id)).body.duplicate, true);
+  assert.equal(events(o.id), 1); assert.equal(world.emails.length - mails, 1, "duplicata não reenvia");
+});
+test("M11b vendas fechadas: falha de e-mail -> pago, entrega pendente -> reprocesso entrega sem segunda cobrança", { skip: SKIP }, async () => {
+  fecharVendas();
+  const o = newOrder(); const id = pay(o);
+  world.resendStatus = 500; const r = await webhook(id); world.resendStatus = 200;
+  assert.equal(r.status, 503); assert.equal(r.body.error, "paid_order_delivery_pending");
+  assert.equal(orderStatus(o.id), "paid"); assert.notEqual(fulfillment(o.id)[0], "delivered");
+  assert.equal((await webhook(id)).status, 200);
+  assert.equal(fulfillment(o.id)[0], "delivered"); assert.equal(events(o.id), 1);
+});
+test("M11c vendas fechadas: webhook atrasado/perdido (assinatura inválida) é recuperado pelo watchdog e entregue", { skip: SKIP }, async () => {
+  fecharVendas();
+  const a = newOrder(); const aid = pay(a);
+  assert.equal((await webhook(aid, { signature: "ts=1,v1=" + "0".repeat(64) })).status, 401);
+  assert.equal(orderStatus(a.id), "checkout_ready", "nada muda sem autenticidade");
+  const out = await bundle.runPaidDeliveryWatchdog({ ...process.env, ZEVANORY_PRIVATE_ARTIFACTS: kv });
+  assert.equal(out.ok, true, JSON.stringify(out));
+  assert.equal(orderStatus(a.id), "paid"); assert.equal(fulfillment(a.id)[0], "delivered"); assert.equal(events(a.id), 1);
+});
+test("M11d vendas fechadas: pendente, recusado ou valor divergente NUNCA viram pago", { skip: SKIP }, async () => {
+  fecharVendas();
+  for (const over of [{ status: "pending" }, { status: "rejected" }, { status: "in_process" }, { transaction_amount: 1.97 }]) {
+    const o = newOrder(); const id = pay(o, over); const mails = world.emails.length;
+    await webhook(id);
+    assert.equal(orderStatus(o.id), "checkout_ready", JSON.stringify(over)); assert.equal(tokens(o.id), 0); assert.equal(world.emails.length, mails);
+  }
+});
