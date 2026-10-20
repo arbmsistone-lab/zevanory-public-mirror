@@ -186,46 +186,6 @@ jobs:
           if [ "${#K}" -ge 32 ]; then echo "::notice title=LEAD_PRIVACY_SOURCE::PRESENT length_ge_32 previous=$([ -n "$P" ] && echo set || echo unset)"; \
           else echo "::warning title=LEAD_PRIVACY_SOURCE::$([ -n "$K" ] && echo SHORTER_THAN_32 || echo ABSENT)"; fi
 
-  merge-effect-preview:
-    # Shows, BEFORE merge, what merging this pull request would do in production: which
-    # publishing workflows fire, and what the pre-promotion guard decides against the LIVE
-    # version right now. The squash merge is a child of the base tip, so the guard is evaluated
-    # with the base tip as candidate (same ancestry). Read-only.
-    if: ${{ github.ref == 'refs/heads/gh-pages' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}  # B01 patch 05b: pós-merge com credencial (antes: só PR)
-    runs-on: ubuntu-latest
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
-      BASE: ${{ github.event.pull_request.base.sha }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Workflows that would run on merge
-        run: |
-          set -euo pipefail
-          git diff --name-only "$BASE" HEAD > /tmp/changed.txt
-          python3 - <<'PY'
-          import fnmatch, yaml, pathlib
-          changed=[l.strip() for l in open("/tmp/changed.txt") if l.strip()]
-          for f in sorted(pathlib.Path(".github/workflows").glob("*.yml")):
-              y=yaml.load(f.read_text(), Loader=yaml.BaseLoader) or {}
-              on=y.get("on") if isinstance(y.get("on"), dict) else {}
-              push=on.get("push") if isinstance(on.get("push"), dict) else None
-              if push is None or "gh-pages" not in (push.get("branches") or []): continue
-              paths=push.get("paths")
-              if paths is None or any(fnmatch.fnmatch(c,p) for c in changed for p in paths):
-                  print(f"FIRES_ON_MERGE {f.name}")
-          PY
-      - name: Guard decision for central (zevanory) against live
-        run: python3 scripts/deploy/promotion_guard.py --preview --service zevanory --candidate "$BASE" --readback-url https://zevanory.api.br/api/release --readback-path deployment.commit_sha --cloudflare-script zevanory
-      - name: Guard decision for sales against live, and rollback snapshot availability
-        run: |
-          set -euo pipefail
-          python3 scripts/deploy/promotion_guard.py --preview --service zevanory-sales-public --candidate "$BASE" --readback-url https://vendas.zevanory.api.br/health --readback-path release --cloudflare-script zevanory-sales-public
-          n="$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory-sales-public/deployments" | jq -r 'if .success then (.result.deployments|length) else "unreadable" end')"
-          echo "::notice title=SALES_ROLLBACK_SNAPSHOT::previous deployments available=$n (the release now never deletes the script either way)"
-
   post-promotion-recheck:
     # Independent verification after a NAO_COMPROVADO certification (observer unreachable): reads
     # the Cloudflare active-version tag and the public readback again, in a separate run. It never
@@ -270,7 +230,7 @@ jobs:
           set -euo pipefail
           git diff --name-only "$BASE"...HEAD > /tmp/alterados.txt
           if grep -E '^(\.github/workflows/|ops/|scripts/deploy/)' /tmp/alterados.txt; then
-            echo "::error title=NAO_COMPROVADO::credential-scope, lead-privacy-source e merge-effect-preview exigem credencial e rodam apenas pós-merge em gh-pages. Revisar estes arquivos antes de mesclar."
+            echo "::error title=NAO_COMPROVADO::credential-scope e lead-privacy-source exigem credencial e rodam apenas pós-merge em gh-pages; o impacto do merge é avaliado pelo workflow merge-impact-evaluator (código da base). Revisar estes arquivos antes de mesclar."
             exit 1
           fi
           echo "Nenhum caminho sensível alterado; verificações com credencial não aplicáveis a este PR."

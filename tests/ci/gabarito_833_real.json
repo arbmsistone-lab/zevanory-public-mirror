@@ -1,0 +1,39 @@
+{
+ "fonte": "GET actions/runs?head_sha=be47edb3b6636291cb7f89ea70ca8412f4a1572f (merge do PR #833), 19/10/2026",
+ "push": [
+  "central-production-deploy.yml",
+  "cloudflare-zero-spend-auth-probe.yml",
+  "financial-e2e-closure.yml",
+  "financial-e2e-stripe.yml",
+  "sandbox-credential-isolation.yml",
+  "sandbox-static-checks.yml",
+  "t1-publisher-guard.yml",
+  "t2-regenerate-ia-clean.yml",
+  "t2-workers-ai-creative-factory.yml",
+  "voice-naturality.yml",
+  "voice-support-engine.yml",
+  "voice-workers-ai-binding-probe.yml",
+  "whatsapp-broker-protocol-v2.yml",
+  "whatsapp-delivery-recovery.yml",
+  "zees16-control-reconciler.yml",
+  "zero-cost-guard.yml",
+  "zevanory-final-standard-readonly.yml",
+  "zevanory-sales-public-release.yml"
+ ],
+ "workflow_run": [
+  "auto-rerun-transient.yml",
+  "engine-dispatcher.yml",
+  "voice-render-proof.yml",
+  "voice-sandbox-cycle.yml",
+  "whatsapp-operational-audit.yml",
+  "zees16-control-reconciler.yml",
+  "zees16-reconciler-retry-coordinator.yml",
+  "zevanory-p07-app-security.yml",
+  "zevanory-p08-supply-chain.yml",
+  "zevanory-p12-observability-exact-release.yml",
+  "zevanory-p16-deterministic-exact-release.yml"
+ ],
+ "dynamic": [
+  "pages-build-deployment"
+ ]
+}

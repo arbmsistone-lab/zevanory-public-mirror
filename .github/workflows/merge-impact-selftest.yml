@@ -1,0 +1,59 @@
+name: Merge impact self-test
+
+# B01 patch 05f: reprodução independente da suíte do avaliador de impacto, executada pelo GitHub sobre o repositório
+# completo (176 workflows), sem segredos e com token só de leitura. Também calcula a FIRES_ON_MERGE do próprio PR.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/ci/merge_impact.py"
+      - "scripts/ci/live_lock_check.py"
+      - "scripts/ci/pr_files_to_lists.py"
+      - ".github/workflows/merge-impact-evaluator.yml"
+      - ".github/workflows/merge-impact-selftest.yml"
+      - "tests/ci/**"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  selftest:
+    name: merge-impact / selftest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Suíte integral (35 testes) sobre o repositório completo
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml" 2>/dev/null || python3 -m pip install --user pyyaml
+          sha256sum scripts/ci/merge_impact.py scripts/ci/live_lock_check.py scripts/ci/pr_files_to_lists.py \
+            .github/workflows/merge-impact-evaluator.yml tests/ci/test_merge_impact_gate.py tests/ci/lista_833.txt \
+            tests/ci/gabarito_833_real.json | tee -a "$GITHUB_STEP_SUMMARY"
+          ls .github/workflows/*.y*ml | wc -l | sed 's/^/workflows no checkout: /' | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 -I tests/ci/test_merge_impact_gate.py . tests/ci/lista_833.txt tests/ci/gabarito_833_real.json
+      - name: FIRES_ON_MERGE deste PR (avaliador sobre a base, PR como dado)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/lists /tmp/base-wf
+          gh api --paginate --slurp "repos/$REPO/pulls/$PR/files?per_page=100" > /tmp/files.json
+          python3 scripts/ci/pr_files_to_lists.py /tmp/files.json /tmp/lists
+          git fetch -q --depth 1 origin "$BASE_SHA"
+          git archive "$BASE_SHA" .github/workflows | tar -x -C /tmp/base-wf
+          mkdir -p /tmp/head-wf
+          while IFS= read -r f; do cp "$f" /tmp/head-wf/; done < /tmp/lists/workflows_head.txt
+          set +e
+          python3 scripts/ci/merge_impact.py --base-workflows /tmp/base-wf/.github/workflows --changed /tmp/lists/changed.txt \
+            --head-workflows /tmp/head-wf --removed /tmp/lists/removed.txt | tee /tmp/fires.json
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "rc=$rc (3 = classe B)" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
