@@ -23,6 +23,7 @@ const HANDLER_GATES = Object.freeze({
   handler14: Object.freeze({ name: "salesGate", blocksClosedSales: true }),
   handleStripeCheckout: Object.freeze({ name: "salesGate", blocksClosedSales: false })
 });
+const ROUTE_PREFIXES = Object.freeze(["/api/checkout", "/api/checkout/"]);
 
 function findExplicitChargeRoutes(source) {
   const routes = new Set();
@@ -37,6 +38,15 @@ function findExplicitChargeRoutes(source) {
   return [...routes].sort();
 }
 
+function findChargeRoutePrefixes(source) {
+  const prefixes = new Set();
+  const relevant = /\/(?:checkout|subscriptions?|payments?|comprar|billing)(?:\/|$)/i;
+  for (const match of source.matchAll(/url\.pathname\.startsWith\(["']([^"']+)["']\)/g)) {
+    if (relevant.test(match[1])) prefixes.add(match[1]);
+  }
+  return [...prefixes].sort();
+}
+
 function functionBody(source, name) {
   const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = source.match(new RegExp(`(?:async )?function ${escapedName}\\([^\\n]*\\) \\{([\\s\\S]*?)\\n\\}`));
@@ -45,12 +55,13 @@ function functionBody(source, name) {
 }
 
 test("inventário congelado cobre todas as rotas explícitas de cobrança encontradas no Worker", () => {
-  const discovered = [...new Set([
-    ...findExplicitChargeRoutes(recovered),
-    ...findExplicitChargeRoutes(compat)
-  ])].sort();
+  const sources = [recovered, compat];
+  const discovered = [...new Set(sources.flatMap(findExplicitChargeRoutes))].sort();
   assert.deepEqual(discovered, INVENTORY.filter(({ route }) => route.startsWith("/")).map(({ route }) => route).sort(),
     "nova rota de checkout/assinatura exige atualização explícita do inventário");
+  const prefixes = [...new Set(sources.flatMap(findChargeRoutePrefixes))].sort();
+  assert.deepEqual(prefixes, [...ROUTE_PREFIXES].sort(),
+    "nova família de rotas de cobrança exige atualização explícita do inventário");
 });
 
 test("cada rota congelada tem trava pré-roteamento e/ou barreira comercial no handler", () => {
