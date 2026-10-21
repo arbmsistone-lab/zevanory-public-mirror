@@ -160,7 +160,31 @@ jobs:
           sha=os.environ["GITHUB_SHA"]
           source=Path("wrangler.sales.toml").read_text(encoding="utf-8")
           source=source.replace("SOURCE_SHA_REPLACED_AT_DEPLOY",sha)
-          Path("wrangler.sales.deploy.toml").write_text(source,encoding="utf-8")
+
+          def strip_routes(text):
+              out=[];skipping=False
+              for line in text.splitlines():
+                  if line.strip().startswith("routes = ["):
+                      skipping=True;continue
+                  if skipping:
+                      if line.strip()=="]":skipping=False
+                      continue
+                  out.append(line)
+              return out
+
+          # Menor privilégio (diagnóstico Sol 21/10, run 39601904471): o custom domain vendas.zevanory.api.br já existe.
+          # Pela documentação Cloudflare (Workers > Authorization > Routes and Custom Domains), um deploy que não
+          # adiciona/altera/remove rota só precisa de Editor no Worker; sem a chave routes o wrangler não sincroniza
+          # rotas da zona. workers_dev = false mantém o domínio próprio como única entrada pública.
+          # A conferência pós-deploy (/health release == SHA no domínio canônico) prova que o domínio segue ligado.
+          deploy=[]
+          inserted=False
+          for line in strip_routes(source):
+              if line.strip()=="[assets]" and not inserted:
+                  deploy.append("workers_dev = false");inserted=True
+              deploy.append(line)
+          assert inserted and not any(l.strip().startswith("routes") for l in deploy), "deploy config must not manage routes"
+          Path("wrangler.sales.deploy.toml").write_text("\n".join(deploy)+"\n",encoding="utf-8")
 
           candidate=f"zevanory-sales-candidate-{os.environ['GITHUB_RUN_ID']}"
           lines=[]
