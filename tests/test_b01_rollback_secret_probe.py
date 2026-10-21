@@ -252,9 +252,17 @@ class StaticContractTests(unittest.TestCase):
     def test_workflow_is_manual_and_least_privilege(self):
         workflow = json.loads(WORKFLOW.read_text(encoding="utf-8"))
         self.assertEqual(workflow["on"], {"workflow_dispatch": {}})
+        self.assertEqual(workflow["concurrency"], {
+            "group": "b01-rollback-secret-probe",
+            "cancel-in-progress": False,
+        })
         # actions: read só para o guard de execução única ler os runs deste workflow (Sol 028.6).
         self.assertEqual(workflow["permissions"], {"contents": "read", "actions": "read"})
         job = workflow["jobs"]["probe"]
+        self.assertEqual(
+            job["if"],
+            "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1",
+        )
         self.assertEqual(job["environment"], {"name": "sandbox-financial-approved"})
         self.assertEqual(set(job["env"]), {"CLOUDFLARE_SANDBOX_PROBE_TOKEN", "CLOUDFLARE_ACCOUNT_ID"})
         self.assertEqual(job["env"]["CLOUDFLARE_SANDBOX_PROBE_TOKEN"],
