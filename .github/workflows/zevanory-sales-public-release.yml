@@ -25,6 +25,7 @@ on:
       - "worker/sales-public-worker.mjs"
       - "tests/automation-traffic-guard.test.mjs"
       - "wrangler.sales.toml"
+      - "scripts/ci/materialize_sales_configs.py"
       - "sales-public/**"
       - "scripts/build_sales_public.py"
       - "scripts/premerge_product_audit.py"
@@ -53,6 +54,7 @@ on:
       - "worker/sales-public-worker.mjs"
       - "tests/automation-traffic-guard.test.mjs"
       - "wrangler.sales.toml"
+      - "scripts/ci/materialize_sales_configs.py"
       - "sales-public/**"
       - "scripts/build_sales_public.py"
       - "scripts/premerge_product_audit.py"
@@ -96,6 +98,17 @@ jobs:
 
       - name: Cloudflare dry-run
         run: npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.sales.toml --outdir /tmp/zevanory-sales-public
+
+      - name: Cloudflare dry-run of the exact canonical deploy config (no routes)
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/materialize_sales_configs.py
+          # Sem "!": em bash, set -e ignora comando negado com "!". Falha explícita.
+          if grep -Eq '^[[:space:]]*routes?[[:space:]]*=' wrangler.sales.deploy.toml; then echo "::error::canonical config manages routes"; exit 1; fi
+          grep -qx 'workers_dev = false' wrangler.sales.deploy.toml
+          npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.sales.deploy.toml --outdir /tmp/zevanory-sales-canonical | tee /tmp/canonical-dry-run.txt
+          if grep -Eiq 'vendas\.zevanory\.api\.br|custom domain' /tmp/canonical-dry-run.txt; then echo "::error::dry-run touches the custom domain"; exit 1; fi
+          echo "CANONICAL_DEPLOY_CONFIG_DRY_RUN=PASS"
 
       - name: Verify generated surface
         run: |
@@ -152,39 +165,7 @@ jobs:
         run: python3 scripts/build_sales_public.py
 
       - name: Materialize release configs
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          sha=os.environ["GITHUB_SHA"]
-          source=Path("wrangler.sales.toml").read_text(encoding="utf-8")
-          source=source.replace("SOURCE_SHA_REPLACED_AT_DEPLOY",sha)
-          Path("wrangler.sales.deploy.toml").write_text(source,encoding="utf-8")
-
-          candidate=f"zevanory-sales-candidate-{os.environ['GITHUB_RUN_ID']}"
-          lines=[]
-          skipping_routes=False
-          inserted_workers_dev=False
-          for line in source.splitlines():
-              if line.startswith('name = "zevanory-sales-public"'):
-                  lines.append(f'name = "{candidate}"')
-                  continue
-              if line.strip().startswith("routes = ["):
-                  skipping_routes=True
-                  continue
-              if skipping_routes:
-                  if line.strip()=="]":
-                      skipping_routes=False
-                  continue
-              if line.strip()=="[assets]" and not inserted_workers_dev:
-                  lines.append("workers_dev = true")
-                  inserted_workers_dev=True
-              lines.append(line)
-          Path("wrangler.sales.preview.toml").write_text("\n".join(lines)+"\n",encoding="utf-8")
-          Path("/tmp/candidate-name").write_text(candidate,encoding="utf-8")
-          print("CANDIDATE="+candidate)
-          PY
+        run: python3 scripts/ci/materialize_sales_configs.py
 
       - name: Snapshot active canonical deployment
         run: |
