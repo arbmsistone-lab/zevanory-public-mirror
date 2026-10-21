@@ -140,6 +140,11 @@ open(out, 'w').write('{}'); print('404', end='')
     @unittest.skipUnless(shutil.which("jq"), "jq ausente")
     def test_mp02_each_response_is_validated_on_its_own(self):
         needle = "/v1/payment_methods"
+        run = self.steps[step_index(self.steps, needle)]["run"]
+        outputs = re.findall(r'mp_read\s+"[^"]+"\s+(\S+)', run)
+        self.assertEqual(len(outputs), 2)
+        self.assertEqual(len(set(outputs)), 2, "cada leitura operacional precisa de arquivo próprio")
+        self.assertNotIn("/tmp/mercadopago-user.json", outputs)
         ok = {"/users/me": self.USERS_OK, "/v1/payments/search": self.SEARCH_OK, "/v1/payment_methods": self.METHODS_OK}
         rc, out, _ = self._run_step(needle, ok, {})
         self.assertEqual(rc, 0, out)
