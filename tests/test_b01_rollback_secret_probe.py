@@ -286,6 +286,23 @@ class ProbeExecutionTests(unittest.TestCase):
         self.assertIn("B01_CLEANUP_CERTIFIED=probe_503", completed.stdout + completed.stderr)
         self.assertFalse((state / "current-secret").exists())
 
+    def test_malformed_token_is_diagnosed_by_metadata_only_before_any_call(self):
+        cases = {"Bearer abc123": "bearer_prefix=yes", '"abc123"': "quotes=yes", "abc.123": "charset_ok=no"}
+        for value, marker in cases.items():
+            completed, state, calls = self.run_probe(token=value)
+            self.assertNotEqual(completed.returncode, 0, value)
+            self.assertIn(marker, completed.stdout, value)
+            self.assertIn("CLOUDFLARE_SANDBOX_PROBE_TOKEN_MALFORMED", completed.stderr, value)
+            self.assertNotIn("abc", completed.stdout + completed.stderr.replace("CLOUDFLARE", ""), "o valor nunca aparece")
+            self.assertEqual(calls, "", value)
+            self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout, value)
+
+    def test_well_formed_token_reports_only_lengths_and_flags(self):
+        completed, _, _ = self.run_probe("pass", token="  offline-token_42\n")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("TOKEN_DIAG length=16 raw_length=19 bearer_prefix=no quotes=no charset_ok=yes", completed.stdout)
+        self.assertNotIn("offline-token_42", completed.stdout + completed.stderr)
+
     def test_invalid_worker_name_is_refused_before_write(self):
         completed, state, calls = self.run_probe(worker_name="zevanory")
         self.assertNotEqual(completed.returncode, 0)
@@ -406,12 +423,12 @@ class SingleRunGuardTests(unittest.TestCase):
         self.assertIn("SINGLE_RUN_GUARD=PASS prior_runs=0", p.stdout)
 
     def test_one_authorized_rerun_then_refused(self):
-        # ALLOWED_PRIOR_RUNS=1 (após o run 39639303995 INCONCLUSIVE): o 2º run passa, o 3º é recusado.
-        p = self.guard(json.dumps({"total_count": 2, "workflow_runs": [{"id": 100}, {"id": 99}]}))
-        self.assertEqual(p.returncode, 0, p.stderr)
+        # ALLOWED_PRIOR_RUNS=2 (após os runs 39639303995 e 39640830146): o 3º run passa, o 4º é recusado.
         p = self.guard(json.dumps({"total_count": 3, "workflow_runs": [{"id": 100}, {"id": 99}, {"id": 98}]}))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        p = self.guard(json.dumps({"total_count": 4, "workflow_runs": [{"id": 100}, {"id": 99}, {"id": 98}, {"id": 97}]}))
         self.assertNotEqual(p.returncode, 0)
-        self.assertIn("SINGLE_RUN_GUARD_REFUSED prior_runs=2 allowed=1", p.stderr)
+        self.assertIn("SINGLE_RUN_GUARD_REFUSED prior_runs=3 allowed=2", p.stderr)
 
     def test_api_failure_and_bad_or_truncated_response_fail_closed(self):
         # HTTP != 200 falha mesmo com corpo que, sozinho, passaria.
