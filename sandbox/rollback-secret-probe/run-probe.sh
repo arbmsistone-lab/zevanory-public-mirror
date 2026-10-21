@@ -32,9 +32,15 @@ cleanup() {
       echo "CLEANUP_REFUSED_INVALID_WORKER_NAME" >&2
       return 1
     fi
-    CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
+    if CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
       "$NPX_BIN" --yes "$WRANGLER" delete "$WORKER_NAME" --config "$CONFIG" --force \
-      >/dev/null 2>&1 || cleanup_status=1
+      >/dev/null 2>&1; then
+      if [[ -n "${GITHUB_ENV:-}" ]]; then
+        printf 'B01_CLEANUP_DONE=1\n' >> "$GITHUB_ENV"
+      fi
+    else
+      cleanup_status=1
+    fi
   fi
   rm -rf -- "$TMP_DIR"
   return "$cleanup_status"

@@ -211,6 +211,9 @@ class StaticContractTests(unittest.TestCase):
         self.assertEqual(set(job["env"]), {"CLOUDFLARE_SANDBOX_PROBE_TOKEN", "CLOUDFLARE_ACCOUNT_ID"})
         self.assertEqual(job["env"]["CLOUDFLARE_SANDBOX_PROBE_TOKEN"],
                          "${{ secrets.CLOUDFLARE_SANDBOX_PROBE_TOKEN }}")
+        cleanup = job["steps"][-1]
+        self.assertEqual(cleanup["if"], "${{ always() }}")
+        self.assertEqual(cleanup["run"], "bash sandbox/rollback-secret-probe/cleanup-only.sh")
 
     def test_worker_has_only_probe_digest_and_no_routes(self):
         worker = WORKER.read_text(encoding="utf-8")
