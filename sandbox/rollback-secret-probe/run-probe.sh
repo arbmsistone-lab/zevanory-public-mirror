@@ -33,6 +33,21 @@ validate_worker_name() {
   [[ "$WORKER_NAME" == "$PROBE_WORKER" ]]
 }
 
+# Melhoria Sol 031: sucesso do "secret delete" não prova que o segredo deixou de ser servido.
+# Certifica-se pela leitura: /probe tem de responder 503 ("probe secret unavailable").
+cleanup_certified() {
+  [[ -n "${WORKER_URL:-}" ]] || return 1
+  local attempt code
+  for ((attempt=1; attempt<=ATTEMPTS; attempt++)); do
+    code="$("$CURL_BIN" --silent --show-error --output "$TMP_DIR/probe-cleanup.txt" --write-out '%{http_code}' \
+      --connect-timeout 10 --max-time 30 "${WORKER_URL}/probe" || true)"
+    [[ "$code" == "503" ]] && { echo "B01_CLEANUP_CERTIFIED=probe_503"; return 0; }
+    sleep "$SLEEP_SECONDS"
+  done
+  echo "B01_CLEANUP_NOT_CERTIFIED last_http=${code:-none}" >&2
+  return 1
+}
+
 cleanup() {
   local cleanup_status=0
   # Limpeza = neutralizar: apagar o segredo de prova (Editor do Worker basta). O Worker fica, sem segredo,
@@ -44,7 +59,7 @@ cleanup() {
     fi
     if CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
       "$NPX_BIN" --yes "$WRANGLER" secret delete PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" \
-      >/dev/null 2>&1 </dev/null; then
+      >/dev/null 2>&1 </dev/null && cleanup_certified; then
       if [[ -n "${GITHUB_ENV:-}" ]]; then
         printf 'B01_CLEANUP_DONE=1\n' >> "$GITHUB_ENV"
       fi
@@ -66,7 +81,7 @@ finalize() {
   cleanup_status=$?
   if [[ "$status" == "0" && "$cleanup_status" == "0" && "$RESULT" == "YES" ]]; then
     final="YES"
-  elif [[ "$RESULT" == "NO" ]]; then
+  elif [[ "$RESULT" == "NO" && "$cleanup_status" == "0" ]]; then
     # Resposta negativa provada (versão A ativa servindo o digest de B); a limpeza não altera a resposta.
     final="NO"
     status=1
@@ -159,6 +174,10 @@ precheck="$("$CURL_BIN" --silent --show-error --output "$TMP_DIR/precheck.json" 
   --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $TOKEN" \
   "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/deployments")"
 [[ "$precheck" == "200" ]] || fail "PROBE_WORKER_NOT_PRECREATED_OR_NO_ACCESS_HTTP_${precheck}"
+# Melhoria Sol 031: HTTP 200 não basta. Uma lista de deployments vazia ou malformada também passaria.
+# Exige-se a mesma estrutura estrita da versão ativa (deployments[0], uma versão a 100%) ANTES de qualquer escrita.
+INITIAL_VERSION="$(read_active_version "$TMP_DIR/precheck-structure.json")" || fail "PROBE_WORKER_PRECHECK_STRUCTURE_INVALID"
+[[ -n "$INITIAL_VERSION" ]] || fail "PROBE_WORKER_PRECHECK_STRUCTURE_INVALID"
 
 CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
   "$NPX_BIN" --yes "$WRANGLER" deploy --name "$WORKER_NAME" --config "$CONFIG" \

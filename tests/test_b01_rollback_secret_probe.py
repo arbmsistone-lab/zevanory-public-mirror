@@ -73,6 +73,8 @@ elif [[ "$args" == *" create "* || "$args" == *" delete --force"* || "$args" == 
 elif [[ "$args" == *" secret delete PROBE_SECRET "* ]]; then
   [[ "$FAKE_SCENARIO" != "cleanup_error" ]] || exit 23
   touch "$FAKE_STATE/cleaned"
+  # cleanup_ghost: o comando diz sucesso, mas o segredo continua sendo servido.
+  [[ "$FAKE_SCENARIO" == "cleanup_ghost" ]] || rm -f "$FAKE_STATE/current-secret"
 else
   echo "UNEXPECTED_NPX:$*" >&2
   exit 90
@@ -98,6 +100,9 @@ if [[ "$url" == *"/deployments" ]]; then
     printf '{"success":false}' > "$output"; printf '404'; exit 0
   fi
   version="$(cat "$FAKE_STATE/current-version")"
+  if [[ "$FAKE_SCENARIO" == "precheck_empty" && "$version" == "version-0" ]]; then
+    printf '{"success":true,"result":{"deployments":[]}}' > "$output"; printf '200'; exit 0
+  fi
   case "${FAKE_DEPLOY_SHAPE:-ok}" in
     ok) printf '{"result":{"deployments":[{"versions":[{"version_id":"%s","percentage":100}]}]}}' "$version" > "$output" ;;
     no_percentage) printf '{"result":{"deployments":[{"versions":[{"version_id":"%s"}]}]}}' "$version" > "$output" ;;
@@ -108,6 +113,9 @@ if [[ "$url" == *"/deployments" ]]; then
 elif [[ "$url" == *"/probe" ]]; then
   if [[ "$FAKE_SCENARIO" == "http_error" ]]; then
     printf 'unavailable' > "$output"
+    printf '503'
+  elif [[ ! -f "$FAKE_STATE/current-secret" ]]; then
+    printf 'probe secret unavailable' > "$output"
     printf '503'
   else
     secret="$(cat "$FAKE_STATE/current-secret")"
@@ -182,8 +190,12 @@ class ProbeExecutionTests(unittest.TestCase):
         self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=NO", completed.stdout)
         self.assertNotIn("INCONCLUSIVE", completed.stdout)
         self.assertEqual((state / "current-version").read_text(), "version-a")
-        self.assertEqual((state / "current-secret").read_text(), (state / "secret-b").read_text())
+        import re as _re
+        b = _re.search(r"PROBE_B_DIGEST=([0-9a-f]{64})", completed.stdout).group(1)
+        after = _re.search(r"PROBE_AFTER_ROLLBACK_DIGEST=([0-9a-f]{64})", completed.stdout).group(1)
+        self.assertEqual(after, b, "depois do rollback para A, o digest servido ainda é o de B")
         self.assertTrue((state / "cleaned").exists())
+        self.assertFalse((state / "current-secret").exists(), "limpeza certificada removeu o segredo de prova")
 
     def test_non_200_probe_fails_closed(self):
         completed, state, _ = self.run_probe("http_error")
@@ -243,6 +255,28 @@ class ProbeExecutionTests(unittest.TestCase):
         self.assertIn("PROBE_WORKER_NOT_PRECREATED_OR_NO_ACCESS_HTTP_404", completed.stderr)
         self.assertEqual(calls, "", "nenhum comando wrangler pode rodar")
         self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout)
+
+    def test_precheck_200_with_empty_deployments_is_refused_before_any_write(self):
+        # Melhoria Sol 031: HTTP 200 sozinho não comprova Worker com deployment válido.
+        completed, state, calls = self.run_probe("precheck_empty")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("PROBE_WORKER_PRECHECK_STRUCTURE_INVALID", completed.stderr)
+        self.assertEqual(calls, "", "nenhum comando wrangler antes da pré-checagem estrutural")
+        self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout)
+
+    def test_cleanup_success_message_without_probe_503_is_not_certified(self):
+        # Melhoria Sol 031: "secret delete" com sucesso, mas o segredo segue servido => não certificado.
+        for scenario in ("cleanup_ghost",):
+            completed, _, _ = self.run_probe(scenario)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("B01_CLEANUP_NOT_CERTIFIED", completed.stderr)
+            self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout)
+
+    def test_pass_certifies_cleanup_by_probe_503(self):
+        completed, state, _ = self.run_probe("pass")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("B01_CLEANUP_CERTIFIED=probe_503", completed.stdout + completed.stderr)
+        self.assertFalse((state / "current-secret").exists())
 
     def test_invalid_worker_name_is_refused_before_write(self):
         completed, state, calls = self.run_probe(worker_name="zevanory")
