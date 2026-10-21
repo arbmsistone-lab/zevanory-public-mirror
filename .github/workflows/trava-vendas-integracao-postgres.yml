@@ -68,6 +68,12 @@ jobs:
           set -eo pipefail
           node --test tests/integration/delivery-evidence-cas-postgres.test.mjs | tee c.txt
           grep -qx "# tests 7" c.txt && grep -qx "# pass 7" c.txt && grep -qx "# skipped 0" c.txt && grep -qx "# fail 0" c.txt
+      - name: Suíte Node completa no SHA do PR (prova Linux independente, Ordem Sol 024)
+        run: |
+          set -eo pipefail
+          node --test tests/*.test.mjs | tee all.txt
+          # Contagem EXATA (protocolo): teste removido, pulado ou falho derruba o gate.
+          grep -qx "# tests 539" all.txt && grep -qx "# pass 539" all.txt && grep -qx "# skipped 0" all.txt && grep -qx "# fail 0" all.txt && grep -qx "# cancelled 0" all.txt
       - name: Cobertura do filtro de caminhos (fecho de importações e leituras)
         run: |
           set -eo pipefail
