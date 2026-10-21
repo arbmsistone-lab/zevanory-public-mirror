@@ -7,7 +7,10 @@ readonly WRANGLER="wrangler@4.143.0"
 readonly NPX_BIN="${NPX_BIN:-npx}"
 readonly CURL_BIN="${CURL_BIN:-curl}"
 readonly PYTHON_BIN="${PYTHON_BIN:-python3}"
-readonly ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-1b26415802588185a86c1d4d3ebf5bdb}"
+readonly ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
+# Recomendação Sol 029: o ensaio roda numa conta Cloudflare de SANDBOX separada. A conta de produção
+# Zevanory é RECUSADA, então nem um token Admin de Workers dessa conta alcança produção.
+readonly PRODUCTION_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb"
 readonly CONFIG="sandbox/rollback-secret-probe/wrangler.toml"
 readonly WORKER_NAME="${WORKER_NAME:-${PREFIX}${GITHUB_RUN_ID:-}}"
 readonly TOKEN="${CLOUDFLARE_SANDBOX_PROBE_TOKEN:-}"
@@ -137,7 +140,8 @@ read_probe() {
 
 validate_worker_name || fail "WORKER_NAME_REFUSED"
 [[ -n "$TOKEN" ]] || fail "CLOUDFLARE_SANDBOX_PROBE_TOKEN_MISSING"
-[[ "$ACCOUNT_ID" == "1b26415802588185a86c1d4d3ebf5bdb" ]] || fail "CLOUDFLARE_ACCOUNT_ID_REFUSED"
+[[ "$ACCOUNT_ID" =~ ^[0-9a-f]{32}$ ]] || fail "CLOUDFLARE_SANDBOX_ACCOUNT_ID_INVALID"
+[[ "$ACCOUNT_ID" != "$PRODUCTION_ACCOUNT_ID" ]] || fail "CLOUDFLARE_PRODUCTION_ACCOUNT_REFUSED"
 [[ "$ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || fail "PROBE_ATTEMPTS_INVALID"
 
 VALUE_A="$(openssl rand -hex 32)"

@@ -117,7 +117,7 @@ fi
 
 
 class ProbeExecutionTests(unittest.TestCase):
-    def run_probe(self, scenario="pass", *, token="offline-token", worker_name=None, deploy_shape="ok"):
+    def run_probe(self, scenario="pass", *, token="offline-token", worker_name=None, deploy_shape="ok", account_id="0123456789abcdef0123456789abcdef"):
         # Keep Windows sandbox tests inside the writable checkout instead of the
         # host-wide TEMP directory, which may be read-only to the test process.
         temporary = tempfile.TemporaryDirectory(dir=ROOT)
@@ -143,7 +143,7 @@ class ProbeExecutionTests(unittest.TestCase):
             "FAKE_DEPLOY_SHAPE": deploy_shape,
             "GITHUB_RUN_ID": "4242",
             "CLOUDFLARE_SANDBOX_PROBE_TOKEN": token,
-            "CLOUDFLARE_ACCOUNT_ID": "1b26415802588185a86c1d4d3ebf5bdb",
+            "CLOUDFLARE_ACCOUNT_ID": account_id,
             "PROBE_ATTEMPTS": "1",
             "PROBE_SLEEP_SECONDS": "0",
             "RUNNER_TEMP": str(runner_tmp),
@@ -218,6 +218,18 @@ class ProbeExecutionTests(unittest.TestCase):
             self.assertNotEqual(completed.returncode, 0, shape)
             self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout, shape)
 
+    def test_production_or_invalid_account_is_refused_before_any_write(self):
+        # Recomendação Sol 029: a conta de produção Zevanory nunca recebe o ensaio.
+        for account, marker in (("1b26415802588185a86c1d4d3ebf5bdb", "CLOUDFLARE_PRODUCTION_ACCOUNT_REFUSED"),
+                                ("", "CLOUDFLARE_SANDBOX_ACCOUNT_ID_INVALID"),
+                                ("not-an-account", "CLOUDFLARE_SANDBOX_ACCOUNT_ID_INVALID")):
+            completed, state, calls = self.run_probe(account_id=account)
+            self.assertNotEqual(completed.returncode, 0, account)
+            self.assertIn(marker, completed.stderr, account)
+            self.assertEqual(calls, "", account)
+            self.assertFalse((state / "worker-created").exists(), account)
+            self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout, account)
+
     def test_invalid_worker_name_is_refused_before_write(self):
         completed, state, calls = self.run_probe(worker_name="zevanory")
         self.assertNotEqual(completed.returncode, 0)
@@ -265,6 +277,8 @@ class StaticContractTests(unittest.TestCase):
         )
         self.assertEqual(job["environment"], {"name": "sandbox-financial-approved"})
         self.assertEqual(set(job["env"]), {"CLOUDFLARE_SANDBOX_PROBE_TOKEN", "CLOUDFLARE_ACCOUNT_ID"})
+        self.assertEqual(job["env"]["CLOUDFLARE_ACCOUNT_ID"], "${{ vars.CLOUDFLARE_SANDBOX_ACCOUNT_ID }}")
+        self.assertNotIn("1b26415802588185a86c1d4d3ebf5bdb", WORKFLOW.read_text(encoding="utf-8"))
         self.assertEqual(job["env"]["CLOUDFLARE_SANDBOX_PROBE_TOKEN"],
                          "${{ secrets.CLOUDFLARE_SANDBOX_PROBE_TOKEN }}")
         guard = job["steps"][1]
@@ -341,3 +355,23 @@ class SingleRunGuardTests(unittest.TestCase):
         self.assertIn("SINGLE_RUN_GUARD_HTTP_403", p.stderr)
         self.assertNotEqual(self.guard(json.dumps({"workflow_runs": []})).returncode, 0)
         self.assertNotEqual(self.guard(json.dumps({"total_count": 150, "workflow_runs": [{"id": 100}]})).returncode, 0)
+
+
+class CleanupOnlyAccountGuardTests(unittest.TestCase):
+    def test_cleanup_never_touches_the_production_account(self):
+        tmp = tempfile.TemporaryDirectory(dir=ROOT)
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        log = base / "npx.log"
+        npx = base / "npx"
+        npx.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$FAKE_LOG"\n', encoding="utf-8", newline="\n")
+        npx.chmod(0o755)
+        for account, marker in (("1b26415802588185a86c1d4d3ebf5bdb", "CLOUDFLARE_PRODUCTION_ACCOUNT_REFUSED"),
+                                ("", "CLOUDFLARE_SANDBOX_ACCOUNT_ID_INVALID")):
+            env = dict(os.environ, PATH=str(base) + os.pathsep + os.environ.get("PATH", ""), FAKE_LOG=str(log),
+                       GITHUB_RUN_ID="4242", CLOUDFLARE_SANDBOX_PROBE_TOKEN="offline", CLOUDFLARE_ACCOUNT_ID=account)
+            p = subprocess.run([bash_path(), str(ROOT / "sandbox/rollback-secret-probe/cleanup-only.sh")],
+                               cwd=ROOT, env=env, text=True, capture_output=True, timeout=30)
+            self.assertNotEqual(p.returncode, 0, account)
+            self.assertIn(marker, p.stderr, account)
+            self.assertFalse(log.exists(), "npx não pode ser chamado")
