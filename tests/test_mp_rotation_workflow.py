@@ -47,8 +47,7 @@ class MpRotationWorkflow(unittest.TestCase):
         for path in ("/v1/payments/search?limit=1", "/v1/payment_methods"):
             self.assertLess(step_index(self.steps, path), put, f"{path} tem de rodar antes do secret put")
         check = self.steps[step_index(self.steps, "/v1/payment_methods")]["run"]
-        loop = check[check.index('for path in'):check.index('done', check.index('for path in'))]
-        self.assertRegex(loop, r'test "\$code" = "200" \|\| \{ echo "::error title=MP_OPERATIONAL_CHECK::[^}]*exit 1; \}')
+        self.assertRegex(check, r'test "\$code" = "200" \|\| \{ echo "::error title=MP_OPERATIONAL_CHECK::[^}]*exit 1; \}')
         # Só leitura: nenhum método de escrita contra a API do Mercado Pago.
         self.assertNotRegex(self.text, r"-X\s*(POST|PUT|DELETE|PATCH)[^\n]*mercadopago")
 
@@ -62,13 +61,15 @@ class MpRotationWorkflow(unittest.TestCase):
     def test_mp03_rollback_runs_only_after_a_post_write_failure(self):
         last = self.steps[-1]
         cond = last.get("if", "")
-        for token in ("failure()", "env.ROTATED_AT != ''", "env.PREV_VERSION_ID != ''"):
+        for token in ("failure()", "env.WRITE_ATTEMPTED_AT != ''", "env.PREV_VERSION_ID != ''"):
             self.assertIn(token, cond)
         self.assertRegex(last["run"], r'wrangler@4\.143\.0 rollback "\$PREV_VERSION_ID" --name zevanory')
         self.assertRegex(last["run"], r'echo "::warning title=MP_ROTATION_ROLLED_BACK::[^"]*NAO_COMPROVADO',
                          "o limite (restauração do valor do segredo) tem de aparecer no resultado do run")
         put = self.steps[step_index(self.steps, "secret put MERCADOPAGO_ACCESS_TOKEN")]["run"]
-        self.assertLess(put.index("secret put"), put.index("ROTATED_AT="), "ROTATED_AT só depois da gravação")
+        self.assertLess(put.index("secret put"), put.index("echo \"ROTATED_AT="), "ROTATED_AT só depois da gravação")
+        # Falha ambígua (Sol 21/10): a tentativa é marcada ANTES da gravação.
+        self.assertLess(put.index("WRITE_ATTEMPTED_AT="), put.index("secret put"))
 
     def test_every_cloudflare_step_strips_whitespace_from_the_token(self):
         for s in self.steps:
@@ -104,6 +105,86 @@ class MpRotationWorkflow(unittest.TestCase):
         for name, (payload, want) in cases.items():
             got = subprocess.run(["jq", "-r", expr], input=json.dumps(payload), capture_output=True, text=True, check=True).stdout.strip()
             self.assertEqual(got, want, name)
+
+
+    # ---- Execução real dos passos com curl/npx substituídos (sem rede, sem credencial) ----
+    def _run_step(self, needle, fixtures, env_extra, npx_rc=0):
+        import tempfile
+        run = self.steps[step_index(self.steps, needle)]["run"]
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "fx.json").write_text(json.dumps(fixtures))
+            (d / "curl").write_text("""#!/usr/bin/env python3
+import json, sys
+a = sys.argv[1:]; out = a[a.index('-o') + 1]; url = a[-1]
+fx = json.load(open(%r))
+for key, (code, body) in fx.items():
+    if key in url:
+        open(out, 'w').write(json.dumps(body)); print(code, end=''); sys.exit(0)
+open(out, 'w').write('{}'); print('404', end='')
+""" % str(d / "fx.json"))
+            (d / "npx").write_text("#!/bin/sh\necho \"npx $*\" >> %s/npx.log\nexit %d\n" % (d, npx_rc))
+            for f in ("curl", "npx"):
+                (d / f).chmod(0o755)
+            env = {"PATH": f"{d}:{os.environ['PATH']}", "GITHUB_ENV": str(d / "ghenv"),
+                   "MERCADOPAGO_PROD_ACCESS_TOKEN": "stub-not-a-secret", "CLOUDFLARE_API_TOKEN": "stub\n",
+                   "CLOUDFLARE_ACCOUNT_ID": "acc", **env_extra}
+            p = subprocess.run(["bash", "-c", run], env=env, capture_output=True, text=True)
+            npx_log = (d / "npx.log").read_text() if (d / "npx.log").exists() else ""
+            return p.returncode, p.stdout + p.stderr, npx_log
+
+    USERS_OK = ["200", {"site_id": "MLB", "tags": []}]
+    SEARCH_OK = ["200", {"results": [], "paging": {"total": 0}}]
+    METHODS_OK = ["200", [{"id": "pix"}, {"id": "visa"}]]
+
+    @unittest.skipUnless(shutil.which("jq"), "jq ausente")
+    def test_mp02_each_response_is_validated_on_its_own(self):
+        needle = "/v1/payment_methods"
+        ok = {"/users/me": self.USERS_OK, "/v1/payments/search": self.SEARCH_OK, "/v1/payment_methods": self.METHODS_OK}
+        rc, out, _ = self._run_step(needle, ok, {})
+        self.assertEqual(rc, 0, out)
+        self.assertIn("MERCADOPAGO_OPERATIONAL_READ=PASS", out)
+        bad = {
+            "search_200_bad_body": {**ok, "/v1/payments/search": ["200", {"error": "x"}]},
+            "search_403": {**ok, "/v1/payments/search": ["403", {"results": []}]},
+            "methods_200_empty": {**ok, "/v1/payment_methods": ["200", []]},
+            "methods_200_object": {**ok, "/v1/payment_methods": ["200", {"results": []}]},
+            "methods_401": {**ok, "/v1/payment_methods": ["401", [{"id": "pix"}]]},
+        }
+        for name, fx in bad.items():
+            rc, out, _ = self._run_step(needle, fx, {})
+            self.assertNotEqual(rc, 0, name)
+            self.assertIn("MP_OPERATIONAL_CHECK", out, name)
+            self.assertNotIn("MERCADOPAGO_OPERATIONAL_READ=PASS", out, name)
+
+    @unittest.skipUnless(shutil.which("jq"), "jq ausente")
+    def test_mp03_rollback_certifies_by_readback(self):
+        prev, other = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
+        dep = lambda v: ["200", {"result": {"deployments": [{"versions": [{"version_id": v, "percentage": 100}]}]}}]
+        needle = 'rollback "$PREV_VERSION_ID"'
+        rc, out, npx = self._run_step(needle, {"/deployments": dep(prev)}, {"PREV_VERSION_ID": prev, "ROTATED_AT": "x"})
+        self.assertEqual(rc, 0, out)
+        self.assertIn(f"rollback {prev} --name zevanory", npx)
+        self.assertIn("ROLLBACK_READBACK=PASS", out)
+        self.assertNotIn("MP_WRITE_UNCERTAIN", out)
+        # Gravação ambígua: ROTATED_AT ausente => estado explícito de incidente, e o retorno ainda roda.
+        rc, out, npx = self._run_step(needle, {"/deployments": dep(prev)}, {"PREV_VERSION_ID": prev})
+        self.assertEqual(rc, 0, out)
+        self.assertIn("MP_WRITE_UNCERTAIN", out)
+        self.assertIn("rollback", npx)
+        # Leitura mostra outra versão ativa => falha, incidente aberto.
+        rc, out, _ = self._run_step(needle, {"/deployments": dep(other)}, {"PREV_VERSION_ID": prev, "ROTATED_AT": "x"})
+        self.assertNotEqual(rc, 0)
+        self.assertIn("MP_ROLLBACK_READBACK_FAIL", out)
+        # Leitura com HTTP != 200 não certifica, mesmo que o corpo pareça certo.
+        bad_http = ["500", dep(prev)[1]]
+        rc, out, _ = self._run_step(needle, {"/deployments": bad_http}, {"PREV_VERSION_ID": prev, "ROTATED_AT": "x"})
+        self.assertNotEqual(rc, 0)
+        self.assertIn("MP_ROLLBACK_READBACK_FAIL", out)
+        # Comando de rollback falhou e a leitura confirma que nada voltou => falha.
+        rc, out, _ = self._run_step(needle, {"/deployments": dep(other)}, {"PREV_VERSION_ID": prev}, npx_rc=1)
+        self.assertNotEqual(rc, 0)
+        self.assertIn("MP_ROLLBACK_READBACK_FAIL", out)
 
 
 if __name__ == "__main__":
