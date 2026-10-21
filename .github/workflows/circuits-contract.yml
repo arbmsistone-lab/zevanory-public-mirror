@@ -1,0 +1,42 @@
+name: circuits-contract
+
+# B04 "Circuitos A/B": testes adversariais (fail-open/fail-close) da lógica local de circuito e seleção de rota
+# (chave de vendas, portão de checkout, roteador de continuidade, disjuntor de voz, prontidão).
+# Só pull_request: nunca dispara no merge, nunca usa segredo, sem rede além do checkout.
+# B04 só fecha com B03 (segundo provedor independente); estes testes não medem transferência real entre provedores.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/circuits-contract.yml"
+      - "tests/circuits-adversarial.test.mjs"
+      - "worker/sales-control.mjs"
+      - "worker/commercial-checkout-guard.mjs"
+      - "worker/continuity-router.mjs"
+      - "worker/voice-provider-router.mjs"
+      - "worker/production-health-safety.mjs"
+      - "worker/commercial-metrics-projection.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Circuitos A/B — contrato adversarial (offline)
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v node >/dev/null || { echo "::error::node ausente"; exit 1; }
+          node --version
+          node --test tests/circuits-adversarial.test.mjs 2>&1 | tee /tmp/circuits.txt
+          # Contagem exata: teste removido, pulado ou pendente não pode passar despercebido.
+          grep -qx "# tests 31" /tmp/circuits.txt || { echo "::error::contagem de testes diferente de 31"; exit 1; }
+          grep -qx "# pass 31" /tmp/circuits.txt || { echo "::error::nem todos os 31 testes passaram"; exit 1; }
+          grep -qx "# fail 0" /tmp/circuits.txt || { echo "::error::há testes falhando"; exit 1; }
+          grep -qx "# skipped 0" /tmp/circuits.txt || { echo "::error::testes pulados"; exit 1; }
+          grep -qx "# todo 0" /tmp/circuits.txt || { echo "::error::testes pendentes (todo)"; exit 1; }
