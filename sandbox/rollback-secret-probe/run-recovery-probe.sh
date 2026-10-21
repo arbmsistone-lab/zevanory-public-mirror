@@ -56,6 +56,17 @@ read_active_version() {
       end' "$out"
 }
 
+read_latest_version() {
+  local out="$1" code
+  code="$("$CURL_BIN" --silent --show-error --output "$out" --write-out '%{http_code}' \
+    --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $TOKEN" \
+    "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/versions")"
+  [[ "$code" == "200" ]] || fail "VERSIONS_READBACK_HTTP_${code}"
+  jq -r '(.result.items // []) as $v
+    | if ($v|length)==0 or ([$v[]|.number|(type=="number" and . >= 0 and . == floor)]|all|not) then empty
+      else ($v|max_by(.number)) as $m | if ([$v[]|select(.number==$m.number)]|length)!=1 then empty else $m.id end end // empty' "$out"
+}
+
 read_probe() {
   local out="$1" code
   code="$("$CURL_BIN" --silent --show-error --output "$out" --write-out '%{http_code}' \
@@ -74,6 +85,13 @@ wait_digest() {
   done
   echo "PROBE_${tag}_NOT_OBSERVED last=${seen:-none}" >&2
   return 1
+}
+
+# Diagnóstico seguro de uma saída externa: só os códigos numéricos de erro da Cloudflare, nunca o texto.
+safe_codes() {
+  local codes
+  codes="$(grep -oE '\[code: [0-9]{1,6}\]' "$1" 2>/dev/null | grep -oE '[0-9]+' | sort -u | paste -sd, - || true)"
+  printf '%s' "${codes:-none}"
 }
 
 sha256_value() { printf '%s' "$NONCE$1" | openssl dgst -sha256 -r | awk '{print $1}'; }
@@ -96,10 +114,21 @@ cleanup() {
   local status=0
   if [[ "$SECRET_WRITTEN" == "1" ]]; then
     [[ "$WORKER_NAME" == "$PROBE_WORKER" ]] || return 1
-    if wr secret delete PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" >/dev/null 2>&1 </dev/null && cleanup_certified; then
+    local deleted=0
+    if wr secret delete PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" >/dev/null 2>&1 </dev/null; then
+      deleted=1
+    else
+      # Run 39674768070: com a recuperação interrompida, a mais recente não está ativa e o delete recebe 10215.
+      # Um deploy do código do Worker de prova implanta a mais recente (o segredo continua vinculado) e libera o delete.
+      echo "B01R_CLEANUP_RETRY_AFTER_DEPLOY=1"
+      if wr deploy --name "$WORKER_NAME" --config "$CONFIG" >/dev/null 2>&1 </dev/null \
+        && wr secret delete PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" >/dev/null 2>&1 </dev/null; then
+        deleted=1
+      fi
+    fi
+    if [[ "$deleted" == "1" ]] && cleanup_certified; then
       [[ -z "${GITHUB_ENV:-}" ]] || printf 'B01_CLEANUP_DONE=1\n' >> "$GITHUB_ENV"
     else
-      # 10215 na limpeza (o alvo não ficou ativo): o passo always() avisa; limpeza manual pelo Codex.
       status=1
     fi
   fi
@@ -133,6 +162,10 @@ trap finalize EXIT
 [[ "$ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || fail "PROBE_ATTEMPTS_INVALID"
 
 VALUE_A="$(openssl rand -hex 32)"; VALUE_B="$(openssl rand -hex 32)"; VALUE_C="$(openssl rand -hex 32)"
+# Defesa em profundidade (GitHub Actions): os valores de prova são mascarados no log antes de qualquer uso.
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  for v in "$VALUE_A" "$VALUE_B" "$VALUE_C"; do echo "::add-mask::$v"; done
+fi
 HASH_A="$(sha256_value "$VALUE_A")"; HASH_B="$(sha256_value "$VALUE_B")"
 [[ "$HASH_A" != "$HASH_B" ]] || fail "PROBE_VALUES_COLLIDED"
 
@@ -141,24 +174,28 @@ INITIAL="$(read_active_version "$TMP_DIR/precheck.json")" || fail "PROBE_WORKER_
 [[ -n "$INITIAL" ]] || fail "PROBE_WORKER_PRECHECK_STRUCTURE_INVALID"
 
 # Deploy do código: cria e implanta a versão mais recente (remove qualquer 10215 herdado do ensaio anterior).
-wr deploy --name "$WORKER_NAME" --config "$CONFIG" > "$TMP_DIR/deploy.log" 2>&1
+wr deploy --name "$WORKER_NAME" --config "$CONFIG" > "$TMP_DIR/deploy.log" 2>&1 </dev/null \
+  || fail "PROBE_DEPLOY_FAILED codes=$(safe_codes "$TMP_DIR/deploy.log")"
 WORKER_URL="$(grep -Eo "https://${WORKER_NAME}\.[A-Za-z0-9-]+\.workers\.dev" "$TMP_DIR/deploy.log" | tail -1)"
 [[ -n "$WORKER_URL" ]] || fail "WORKER_URL_MISSING"
 
 SECRET_WRITTEN=1
 [[ -z "${GITHUB_ENV:-}" ]] || printf 'B01_SECRET_WRITTEN=1\n' >> "$GITHUB_ENV"
-printf '%s' "$VALUE_A" | wr secret put PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" >/dev/null
+printf '%s' "$VALUE_A" | wr secret put PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" > "$TMP_DIR/put-a.log" 2>&1 \
+  || fail "PUT_A_FAILED codes=$(safe_codes "$TMP_DIR/put-a.log")"
 VA="$(read_active_version "$TMP_DIR/dep-a.json")"; [[ -n "$VA" ]] || fail "VERSION_A_MISSING"
 wait_digest "$HASH_A" A || fail "PROBE_A_NOT_OBSERVED"
 
-printf '%s' "$VALUE_B" | wr secret put PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" >/dev/null
+printf '%s' "$VALUE_B" | wr secret put PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" > "$TMP_DIR/put-b.log" 2>&1 \
+  || fail "PUT_B_FAILED codes=$(safe_codes "$TMP_DIR/put-b.log")"
 VB="$(read_active_version "$TMP_DIR/dep-b.json")"; [[ -n "$VB" && "$VB" != "$VA" ]] || fail "VERSION_B_MISSING"
 wait_digest "$HASH_B" B || fail "PROBE_B_NOT_OBSERVED"
 echo "VERSION_A=$VA"
 echo "VERSION_B=$VB"
 
 # Retorno automático (o mesmo comando do workflow de produção).
-wr rollback "$VA" --name "$WORKER_NAME" --config "$CONFIG" --message "B01-R rollback to A" --yes >/dev/null
+wr rollback "$VA" --name "$WORKER_NAME" --config "$CONFIG" --message "B01-R rollback to A" --yes > "$TMP_DIR/rollback.log" 2>&1 </dev/null \
+  || fail "ROLLBACK_FAILED codes=$(safe_codes "$TMP_DIR/rollback.log")"
 [[ "$(read_active_version "$TMP_DIR/dep-rb.json")" == "$VA" ]] || fail "ROLLBACK_NOT_ACTIVE"
 wait_digest "$HASH_A" ROLLBACK || fail "ROLLBACK_DIGEST_NOT_A"
 
@@ -166,8 +203,24 @@ wait_digest "$HASH_A" ROLLBACK || fail "ROLLBACK_DIGEST_NOT_A"
 if printf '%s' "$VALUE_C" | wr secret put PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" > "$TMP_DIR/put-c.log" 2>&1; then
   fail "CONDITION_10215_NOT_REPRODUCED (secret put aceito depois do rollback; ensaio não representa produção)"
 fi
-grep -q "10215" "$TMP_DIR/put-c.log" || fail "CONDITION_10215_NOT_REPRODUCED (recusa sem o código 10215)"
-echo "CONDITION_10215=observed"
+# Contestação Sol 051-F1: texto externo do wrangler NUNCA vai para o log. Só um diagnóstico por lista permitida:
+# os códigos numéricos "[code: N]" (apenas dígitos) e a contagem de linhas. A classificação abaixo imprime só a categoria.
+echo "PUT_C_REFUSAL_CODES=$(safe_codes "$TMP_DIR/put-c.log") lines=$(wc -l < "$TMP_DIR/put-c.log" | tr -d ' ')"
+# A recusa tem de ser a 10215: código numérico OU o texto oficial da Cloudflare para esse erro (o mesmo que o
+# delete devolveu no passo de limpeza daquele run). Qualquer outra recusa (autenticação, rede) => INCONCLUSIVE.
+if grep -q "10215" "$TMP_DIR/put-c.log"; then
+  refusal="code"
+elif grep -qi "latest version of your Worker isn't currently deployed" "$TMP_DIR/put-c.log"; then
+  refusal="official_text"
+else
+  fail "CONDITION_10215_NOT_REPRODUCED (recusa sem o código 10215 nem o texto oficial)"
+fi
+# Prova pelo estado, independente do texto: ativa = VA, mais recente = VB, e o Worker continua servindo A.
+[[ "$(read_active_version "$TMP_DIR/dep-c.json")" == "$VA" ]] || fail "CONDITION_10215_STATE_ACTIVE_NOT_A"
+LATEST_AFTER_REFUSAL="$(read_latest_version "$TMP_DIR/versions-c.json")"
+[[ "$LATEST_AFTER_REFUSAL" == "$VB" ]] || fail "CONDITION_10215_STATE_LATEST_NOT_B latest=${LATEST_AFTER_REFUSAL:-none}"
+wait_digest "$HASH_A" AFTER_REFUSAL || fail "CONDITION_10215_STATE_DIGEST_CHANGED"
+echo "CONDITION_10215=observed refusal=${refusal} active=VA latest=VB digest=A"
 
 # Recuperação: o MESMO script do modo recover de produção, com o alvo = versão do "token novo".
 env RECOVER_WORKER_NAME="$WORKER_NAME" RECOVER_TARGET_VERSION="$VB" RECOVER_EXPECTED_ACTIVE="$VA" \
