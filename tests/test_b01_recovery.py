@@ -49,6 +49,10 @@ def new_version(secret):
     v = {"id": "%08x-0000-4000-8000-000000000000" % n, "number": n, "secret": secret}
     st["versions"].append(v); st["active"] = v["id"]; save()
 def refuse_10215():
+    if SC == "put_c_text_only" and a[:2] == ["secret", "put"]:
+        # Forma observada no run 39674768070: o put recusado não trouxe o código numérico.
+        print("X [ERROR] Secret edit failed. You attempted to modify a secret, but the latest version of your Worker isn't currently deployed.", file=sys.stderr)
+        sys.exit(1)
     print("X [ERROR] A request to the Cloudflare API failed. Secret edit not allowed while latest version is not deployed [code: 10215]", file=sys.stderr)
     sys.exit(1)
 a = args[args.index("wrangler@4.143.0") + 1:] if "wrangler@4.143.0" in args else args
@@ -56,6 +60,10 @@ if a[:1] == ["deploy"]:
     new_version(active()["secret"]); print("https://zevanory-rollback-secret-probe.unit.workers.dev")
 elif a[:2] == ["secret", "put"]:
     value = sys.stdin.read()
+    if st["active"] != latest()["id"] and SC == "put_c_refused_but_applied":
+        prev = st["active"]; new_version(value); st["active"] = prev; save(); refuse_10215()
+    if st["active"] != latest()["id"] and SC == "put_c_refused_digest_changed":
+        active()["secret"] = value; save(); refuse_10215()
     if SC == "put_c_other_error" and st["active"] != latest()["id"]:
         print("X [ERROR] Authentication error [code: 10000]", file=sys.stderr); sys.exit(1)
     if st["active"] != latest()["id"] and SC != "put_c_accepted":
@@ -261,6 +269,37 @@ class RecoveryProbeTests(unittest.TestCase):
         self.assertIn(f"versions deploy {vb}@100", calls)
         self.assertNotIn("create", calls)
 
+    def test_official_10215_text_without_code_is_accepted_and_printed(self):
+        p, cf = self.probe("put_c_text_only")
+        out = p.stdout + p.stderr
+        self.assertEqual(p.returncode, 0, out)
+        self.assertIn("PUT_C_REFUSAL: X [ERROR] Secret edit failed.", out, "a recusa tem de aparecer no log")
+        self.assertIn("CONDITION_10215=observed refusal=official_text active=VA latest=VB digest=A", out)
+        self.assertTrue(out.rstrip().endswith("RECOVERY_CERTIFIED=YES"), out)
+        p, _ = self.probe()
+        self.assertIn("refusal=code", p.stdout)
+
+    def test_probe_cleanup_recovers_from_10215_when_recovery_did_not_happen(self):
+        # Run 39674768070: recuperação interrompida => a limpeza do próprio ensaio recebia 10215.
+        p, cf = self.probe("put_c_other_error")
+        out = p.stdout + p.stderr
+        self.assertIn("B01R_CLEANUP_RETRY_AFTER_DEPLOY=1", out)
+        self.assertIn("B01R_CLEANUP_CERTIFIED=probe_503", out)
+        self.assertNotIn("B01R_CLEANUP_FAILED", out)
+        self.assertIn("RECOVERY_CERTIFIED=INCONCLUSIVE", out)
+
+    def test_refusal_text_is_not_enough_the_state_must_prove_it(self):
+        # Recusa com 10215 no texto, mas o estado mudou: a mais recente deixou de ser VB, ou o Worker passou a
+        # servir outro valor. Em ambos, a condição não está provada => INCONCLUSIVE, sem recuperação.
+        for scenario, marker in (("put_c_refused_but_applied", "CONDITION_10215_STATE_"),
+                                 ("put_c_refused_digest_changed", "CONDITION_10215_STATE_DIGEST_CHANGED")):
+            p, cf = self.probe(scenario)
+            out = p.stdout + p.stderr
+            self.assertNotEqual(p.returncode, 0, scenario)
+            self.assertIn(marker, out, scenario)
+            self.assertNotIn("versions deploy", cf.calls, scenario)
+            self.assertIn("RECOVERY_CERTIFIED=INCONCLUSIVE", out, scenario)
+
     def test_without_the_real_10215_condition_it_is_inconclusive(self):
         for scenario in ("put_c_accepted", "put_c_other_error"):
             p, _ = self.probe(scenario)
@@ -317,9 +356,12 @@ class GuardAndWorkflowTests(unittest.TestCase):
         p, url = self.guard("b01-recovery-probe.yml", [100])
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertIn("/actions/workflows/b01-recovery-probe.yml/runs", url)
+        # Cota 1: uma segunda execução depois do run 39674768070 (INCONCLUSIVE); a terceira é recusada.
         p, _ = self.guard("b01-recovery-probe.yml", [100, 99])
+        self.assertEqual(p.returncode, 0, p.stderr)
+        p, _ = self.guard("b01-recovery-probe.yml", [100, 99, 98])
         self.assertNotEqual(p.returncode, 0)
-        self.assertIn("SINGLE_RUN_GUARD_REFUSED prior_runs=1 allowed=0", p.stderr)
+        self.assertIn("SINGLE_RUN_GUARD_REFUSED prior_runs=2 allowed=1", p.stderr)
 
     def test_original_probe_quota_is_unchanged_and_unknown_workflows_are_refused(self):
         p, url = self.guard(None, [100, 99, 98])

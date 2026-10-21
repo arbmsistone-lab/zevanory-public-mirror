@@ -13,7 +13,10 @@ set -Eeuo pipefail
 readonly WORKFLOW_FILE="${1:-b01-rollback-secret-probe.yml}"
 case "$WORKFLOW_FILE" in
   b01-rollback-secret-probe.yml) readonly ALLOWED_PRIOR_RUNS=2 ;;
-  b01-recovery-probe.yml) readonly ALLOWED_PRIOR_RUNS=0 ;;
+  # 1 = autoriza UMA segunda execução depois do run 39674768070 (INCONCLUSIVE: a recusa do put foi real, mas
+  # o script exigia o texto "10215" e descartou a mensagem; nada de produção foi tocado). Só vale com o merge
+  # desta PR, que exige a frase literal do proprietário.
+  b01-recovery-probe.yml) readonly ALLOWED_PRIOR_RUNS=1 ;;
   *) echo "SINGLE_RUN_GUARD_WORKFLOW_REFUSED" >&2; exit 1 ;;
 esac
 readonly CURL_BIN="${CURL_BIN:-curl}"
