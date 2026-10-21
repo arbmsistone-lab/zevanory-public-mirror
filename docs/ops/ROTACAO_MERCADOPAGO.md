@@ -14,10 +14,19 @@ e no Environment `producao-critica`, que exige revisor.
 | 1 | `/users/me` responde 200, com conta MLB e sem a tag `test_user` | Para. O Worker continua com o token atual. |
 | 2 | **MP-02:** `/v1/payments/search?limit=1` e `/v1/payment_methods` respondem 200 (só leitura) | Para. Nada foi gravado. |
 | 3 | **MP-03:** captura a versão ativa do Worker, que tem de estar a 100% (ponto de retorno) | Para. Nada foi gravado. Em implantação gradual, recusa (fail-closed). |
-| 4 | `wrangler secret put` grava o novo valor e registra `ROTATED_AT` | Se a própria gravação falhar, não há o que desfazer. |
+| 4 | Registra `WRITE_ATTEMPTED_AT`, depois `wrangler secret put` grava o novo valor e registra `ROTATED_AT` | Mesmo que a gravação falhe, ela PODE ter sido aplicada com a resposta perdida (gravação ambígua): `MP_WRITE_UNCERTAIN`, retorno automático para a versão anterior e leitura de confirmação (passo 6). Não presuma "nada a desfazer". |
 | 5 | Espera o preflight do Worker, mais novo que `ROTATED_AT`, com `mercadopago_production_token` ok (até 40 min; antes eram 70) | Executa o passo 6. |
 | 6 | `wrangler rollback <versão anterior>` + leitura da versão ativa (tem de ser a anterior) | Leitura diferente => `MP_ROLLBACK_READBACK_FAIL`, incidente aberto. |
 
+- **Perda do runner (risco Sol 038-R4):** se a máquina do GitHub morrer entre a gravação e o passo de
+  retorno, nenhum passo do mesmo job roda. Protocolo:
+  1. o preflight periódico do Worker alerta quando `mercadopago_production_token` não opera;
+  2. o proprietário confere em Cloudflare → Workers → zevanory → Deployments a versão ativa e a anterior
+     (`ROLLBACK_POINT` no log do run);
+  3. com autorização expressa, faz rollback para `ROLLBACK_POINT` pelo painel ou por `wrangler rollback`;
+  4. confirma pelo preflight seguinte; as vendas continuam fechadas o tempo todo.
+- **Execução única e concorrência (risco Sol 038-R5):** o workflow só roda por dispatch manual no gh-pages,
+  nunca por re-run (`run_attempt == 1`), e dois dispatches nunca rodam juntos (`concurrency`).
 - **MP-01:** o token Cloudflare vem só de `secrets.CLOUDFLARE_API_TOKEN` (o do Environment). O nome antigo
   `…PUBLIC_OWNER…` não é mais lido. Espaços e quebras de linha são removidos do valor, como no #851.
 - **Falha ambígua (contestação Sol 21/10) — BLOQUEANTE para a troca real:** a tentativa de gravação é

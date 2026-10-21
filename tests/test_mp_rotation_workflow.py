@@ -198,15 +198,15 @@ open(out, 'w').write('{}'); print('404', end='')
         a, b = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
         dep = ["200", {"result": {"deployments": [{"versions": [{"version_id": a, "percentage": 100}]}]}}]
         needle = "MP_LATEST_VERSION_NOT_DEPLOYED_10215"
-        ok = {"/deployments": dep, "/versions": ["200", {"result": {"items": [{"id": a}, {"id": b}]}}]}
+        ok = {"/deployments": dep, "/versions": ["200", {"result": {"items": [{"id": a, "number": 2}, {"id": b, "number": 1}]}}]}
         rc, out, _ = self._run_step(needle, ok, {})
         self.assertEqual(rc, 0, out)
         self.assertIn(f"ROLLBACK_POINT={a}", out)
         bad = {
-            "latest_not_deployed": {**ok, "/versions": ["200", {"result": {"items": [{"id": b}, {"id": a}]}}]},
+            "latest_not_deployed": {**ok, "/versions": ["200", {"result": {"items": [{"id": b, "number": 2}, {"id": a, "number": 1}]}}]},
             # HTTP != 200 falha mesmo com corpo que, sozinho, passaria.
-            "versions_http_500": {**ok, "/versions": ["500", {"result": {"items": [{"id": a}]}}]},
-            "versions_unparseable": {**ok, "/versions": ["200", {"result": {"items": [{"id": "not-a-uuid"}]}}]},
+            "versions_http_500": {**ok, "/versions": ["500", {"result": {"items": [{"id": a, "number": 1}]}}]},
+            "versions_unparseable": {**ok, "/versions": ["200", {"result": {"items": [{"id": "not-a-uuid", "number": 1}]}}]},
         }
         for name, fx in bad.items():
             rc, out, _ = self._run_step(needle, fx, {})
@@ -218,6 +218,32 @@ open(out, 'w').write('{}'); print('404', end='')
         self.assertIn("MP_VERSIONS_READ::http=500", out)
         rc, out, _ = self._run_step(needle, bad["versions_unparseable"], {})
         self.assertIn("MP_LATEST_VERSION::not resolvable", out)
+
+    @unittest.skipUnless(shutil.which("jq"), "jq ausente")
+    def test_10215_latest_is_chosen_by_number_not_by_list_order(self):
+        # Contestação Sol 038-F1: lista fora de ordem não pode gerar falso PASS.
+        a, b = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
+        dep = ["200", {"result": {"deployments": [{"versions": [{"version_id": a, "percentage": 100}]}]}}]
+        needle = "MP_LATEST_VERSION_NOT_DEPLOYED_10215"
+        # a ativa (A, number 7) aparece primeiro, mas B (number 8) é a mais recente => tem de bloquear.
+        out_of_order = {"/deployments": dep, "/versions": ["200", {"result": {"items": [{"id": a, "number": 7}, {"id": b, "number": 8}]}}]}
+        rc, out, _ = self._run_step(needle, out_of_order, {})
+        self.assertNotEqual(rc, 0)
+        self.assertIn("MP_LATEST_VERSION_NOT_DEPLOYED_10215", out)
+        # sem number, ou com empate => falha fechada (not resolvable)
+        for items in ([{"id": a}], [{"id": a, "number": 8}, {"id": b, "number": 8}], []):
+            rc, out, _ = self._run_step(needle, {"/deployments": dep, "/versions": ["200", {"result": {"items": items}}]}, {})
+            self.assertNotEqual(rc, 0, items)
+            self.assertIn("MP_LATEST_VERSION::not resolvable", out, items)
+        # ordem normal com number: passa
+        ok = {"/deployments": dep, "/versions": ["200", {"result": {"items": [{"id": a, "number": 9}, {"id": b, "number": 8}]}}]}
+        rc, out, _ = self._run_step(needle, ok, {})
+        self.assertEqual(rc, 0, out)
+
+    def test_single_dispatch_on_gh_pages_and_no_concurrency(self):
+        doc = yaml.safe_load(self.text)
+        self.assertEqual(doc["concurrency"], {"group": "mercadopago-production-token-rotate", "cancel-in-progress": False})
+        self.assertEqual(self.job["if"], "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1")
 
     def test_10215_precondition_runs_before_the_write(self):
         put = step_index(self.steps, "secret put MERCADOPAGO_ACCESS_TOKEN")

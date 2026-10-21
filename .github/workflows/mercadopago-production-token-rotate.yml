@@ -6,8 +6,15 @@ on:
 permissions:
   contents: read
 
+# Risco Sol 038-R5: nunca duas rotações ao mesmo tempo; a segunda espera, não cancela a primeira.
+concurrency:
+  group: mercadopago-production-token-rotate
+  cancel-in-progress: false
+
 jobs:
   rotate-and-preflight:
+    # Risco Sol 038-R5: só pelo branch protegido, por dispatch manual, e nunca por "re-run" do mesmo run.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     runs-on: ubuntu-latest
     timeout-minutes: 55
@@ -72,7 +79,14 @@ jobs:
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/versions")"
           test "$code" = "200" || { echo "::error title=MP_VERSIONS_READ::http=$code"; exit 1; }
-          latest="$(jq -r '(.result.items // .result // [])[0].id // empty' /tmp/versions.json)"
+          # Contestação Sol 038-F1: não depender da ordem da lista. A documentação diz que o primeiro item é o mais
+          # recente (CODEX-006), mas a mais recente é escolhida pelo MAIOR "number" (sequencial por Worker).
+          # Lista vazia, number ausente/não inteiro ou empate => falha fechada.
+          latest="$(jq -r '(.result.items // []) as $v
+            | if ($v|length)==0 or ([$v[]|.number|type=="number"]|all|not) then empty
+              else ($v|max_by(.number)) as $m
+                | if ([$v[]|select(.number==$m.number)]|length)!=1 then empty else $m.id end
+              end // empty' /tmp/versions.json)"
           [[ "$latest" =~ ^[0-9a-f-]{36}$ ]] || { echo "::error title=MP_LATEST_VERSION::not resolvable"; exit 1; }
           if [ "$latest" != "$prev" ]; then
             echo "::error title=MP_LATEST_VERSION_NOT_DEPLOYED_10215::active=$prev latest=$latest — implante a versão mais recente (deploy central) antes de trocar o segredo"
