@@ -101,16 +101,25 @@ read_active_version() {
 import json
 import sys
 
+# Contestação Sol 028.5: só vale o deployment mais recente (deployments[0], documentação Cloudflare),
+# com EXATAMENTE uma versão, a 100%, e version_id presente. Qualquer outra forma => sem versão ativa
+# comprovada => o script falha => INCONCLUSIVE.
 data = json.load(open(sys.argv[1], encoding="utf-8"))
-deployments = data.get("result", {}).get("deployments", [])
-for deployment in deployments:
-    for version in deployment.get("versions", []):
-        if version.get("percentage") in (None, 100):
-            value = version.get("version_id")
-            if value:
-                print(value)
-                raise SystemExit(0)
-raise SystemExit("ACTIVE_VERSION_MISSING")
+if data.get("success") is False:
+    raise SystemExit("DEPLOYMENTS_SUCCESS_FALSE")
+deployments = (data.get("result") or {}).get("deployments") or []
+if not deployments:
+    raise SystemExit("ACTIVE_VERSION_MISSING")
+versions = deployments[0].get("versions") or []
+if len(versions) != 1:
+    raise SystemExit("ACTIVE_VERSION_NOT_SINGLE")
+only = versions[0]
+if only.get("percentage") != 100 or isinstance(only.get("percentage"), bool):
+    raise SystemExit("ACTIVE_VERSION_NOT_100")
+value = only.get("version_id")
+if not isinstance(value, str) or not value:
+    raise SystemExit("ACTIVE_VERSION_ID_MISSING")
+print(value)
 PY
 }
 
