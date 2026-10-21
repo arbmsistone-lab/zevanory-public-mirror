@@ -160,6 +160,8 @@ class FakeCloudflare:
             "FAKE_STATE": str(self.state), "FAKE_LOG": str(self.log), "FAKE_SCENARIO": self.scenario,
             "NPX_BIN": str(self.bin / "npx"), "CURL_BIN": str(self.bin / "curl"),
             "CLOUDFLARE_ACCOUNT_ID": ACCOUNT, "RUNNER_TEMP": str(self.base), "GITHUB_RUN_ID": "4242",
+            # Fora do Actions por padrão (a CI herda GITHUB_ACTIONS=true); o caso Actions tem teste próprio.
+            "GITHUB_ACTIONS": "false",
         })
         env.update(extra)
         return env
@@ -328,6 +330,23 @@ class RecoveryProbeTests(unittest.TestCase):
         p, _ = self.probe("put_c_other_error")
         self.assertIn("PUT_C_REFUSAL_CODES=10000", p.stdout)
         self.assertIn("recusa sem o código 10215 nem o texto oficial", p.stderr)
+
+    def test_in_github_actions_values_appear_only_in_leading_mask_commands(self):
+        # No Actions, "::add-mask::<valor>" é consumido pelo runner e não aparece no log. O valor só pode estar
+        # nessas linhas, e elas vêm ANTES de qualquer outra saída (nada é impresso antes do mascaramento).
+        cf = FakeCloudflare(self, [{"id": vid(10), "number": 10, "secret": None}], vid(10), "put_c_text_only")
+        p = cf.run(PROBE, CLOUDFLARE_SANDBOX_PROBE_TOKEN="probe-token", PROBE_ATTEMPTS="1", PROBE_SLEEP_SECONDS="0",
+                   GITHUB_ACTIONS="true")
+        lines = (p.stdout + p.stderr).splitlines()
+        self.assertTrue(lines[-1].endswith("RECOVERY_CERTIFIED=YES"), p.stdout + p.stderr)
+        masks = [l for l in lines if l.startswith("::add-mask::")]
+        self.assertEqual(len(masks), 3)
+        self.assertEqual(lines[:3], masks, "o mascaramento vem antes de qualquer saída")
+        seen = Path(str(cf.state) + ".seen").read_text().split()
+        self.assertEqual(sorted(m.split("::add-mask::", 1)[1] for m in masks), sorted(seen))
+        for line in lines[3:]:
+            for value in seen:
+                self.assertNotIn(value, line)
 
     def test_refusal_text_is_not_enough_the_state_must_prove_it(self):
         # Recusa com 10215 no texto, mas o estado mudou: a mais recente deixou de ser VB, ou o Worker passou a

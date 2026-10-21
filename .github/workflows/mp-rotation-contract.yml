@@ -36,5 +36,5 @@ jobs:
           for t in jq node openssl; do command -v "$t" >/dev/null || { echo "::error::$t ausente"; exit 1; }; done
           python3 -m unittest tests.test_mp_rotation_workflow tests.test_b01_rollback_secret_probe tests.test_b01_recovery -v 2>&1 | tee /tmp/contract.txt
           # Contagem exata: um teste pulado (ferramenta ausente) não pode passar despercebido.
-          grep -qx "Ran 69 tests in .*" /tmp/contract.txt || { echo "::error::contagem de testes diferente de 69"; exit 1; }
+          grep -qx "Ran 70 tests in .*" /tmp/contract.txt || { echo "::error::contagem de testes diferente de 70"; exit 1; }
           if grep -q "skipped" /tmp/contract.txt; then echo "::error::testes pulados"; exit 1; fi
