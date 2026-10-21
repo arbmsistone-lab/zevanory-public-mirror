@@ -104,7 +104,8 @@ class MpRotationWorkflow(unittest.TestCase):
                 pf = Path(d) / "p.json"
                 pf.write_text(json.dumps({"generatedAt": generated}))
                 code = snippet.replace("/tmp/zpc-sales-preflight.json", str(pf))
-                return subprocess.run(["node", "--input-type=module", "-e", code], env={**os.environ, "PREFLIGHT_AFTER": after}).returncode == 0
+                return subprocess.run(["node", "--input-type=module", "-e", code], env={**os.environ, "PREFLIGHT_AFTER": after},
+                                      stdin=subprocess.DEVNULL, timeout=60).returncode == 0
         self.assertTrue(fresh("2026-10-21T19:59:30Z", "2026-10-21T20:00:49.750Z"), "virada de hora")
         self.assertTrue(fresh("2026-10-21T23:58:00Z", "2026-10-22T00:00:41.000Z"), "virada de dia")
         self.assertFalse(fresh("2026-10-21T19:59:30Z", "2026-10-21T19:00:49.750Z"), "preflight anterior à gravação")
@@ -137,7 +138,7 @@ class MpRotationWorkflow(unittest.TestCase):
 
 
     # ---- Execução real dos passos com curl/npx substituídos (sem rede, sem credencial) ----
-    def _run_step(self, needle, fixtures, env_extra, npx_rc=0):
+    def _run_step(self, needle, fixtures, env_extra, npx_rc=0, npx_leak=False):
         import tempfile
         run = self.steps[step_index(self.steps, needle)]["run"]
         with tempfile.TemporaryDirectory() as d:
@@ -152,13 +153,21 @@ for key, (code, body) in fx.items():
         open(out, 'w').write(json.dumps(body)); print(code, end=''); sys.exit(0)
 open(out, 'w').write('{}'); print('404', end='')
 """ % str(d / "fx.json"))
-            (d / "npx").write_text("#!/bin/sh\necho \"npx $*\" >> %s/npx.log\nexit %d\n" % (d, npx_rc))
+            leak = ""
+            if npx_leak:
+                # Adversarial (Sol 051-F1): wrangler hostil ecoa stdin, o token do ambiente e um Bearer falso.
+                leak = ('v="$(cat 2>/dev/null || true)"; echo "stdin=$v env=$CLOUDFLARE_API_TOKEN Authorization: Bearer FAKE_TOKEN_CANARY_7f3a"; '
+                        'echo "X [ERROR] boom [code: 10215]" >&2\n')
+            (d / "npx").write_text("#!/bin/sh\necho \"npx $*\" >> %s/npx.log\n%sexit %d\n" % (d, leak, npx_rc))
             for f in ("curl", "npx"):
                 (d / f).chmod(0o755)
             env = {"PATH": f"{d}:{os.environ['PATH']}", "GITHUB_ENV": str(d / "ghenv"),
                    "MERCADOPAGO_PROD_ACCESS_TOKEN": "stub-not-a-secret", "CLOUDFLARE_API_TOKEN": "stub\n",
                    "CLOUDFLARE_ACCOUNT_ID": "acc", **env_extra}
-            p = subprocess.run(["bash", "-c", run], env=env, capture_output=True, text=True)
+            # stdin fechado e limite por passo: um comando que leia a entrada padrão nunca prende a suíte
+            # (travamento observado no ambiente do Sol, Ordem 049, e no npx adversarial).
+            p = subprocess.run(["bash", "-c", run], env=env, capture_output=True, text=True,
+                               stdin=subprocess.DEVNULL, timeout=120)
             npx_log = (d / "npx.log").read_text() if (d / "npx.log").exists() else ""
             return p.returncode, p.stdout + p.stderr, npx_log
 
@@ -389,6 +398,31 @@ open(out, 'w').write('{}'); print('404', end='')
         # Nenhuma versão nova (a gravação não aconteceu) => nada a recuperar.
         rc, out, _ = self._run_step(needle, {**base, "/versions": versions([{"id": self.A, "number": 681}])}, {"PREV_VERSION_ID": self.A})
         self.assertIn("RECOVERY_TARGET_VERSION=none", out)
+
+    @unittest.skipUnless(shutil.which("jq"), "jq ausente")
+    def test_wrangler_output_never_reaches_the_production_log(self):
+        # Sol 051-F1: a saída do wrangler (secret put e rollback) fica em arquivo; no log só códigos numéricos.
+        secret = "MP-PROD-CANARY-1234567890"
+        put = "secret put MERCADOPAGO_ACCESS_TOKEN"
+        rc, out, _ = self._run_step(put, {"/deployments": self.dep(self.N)}, {"PREV_VERSION_ID": self.A,
+                                    "MERCADOPAGO_PROD_ACCESS_TOKEN": secret}, npx_rc=1, npx_leak=True)
+        self.assertNotEqual(rc, 0, "falha do secret put continua falhando")
+        self.assertIn("MP_SECRET_PUT_FAILED::codes=10215", out)
+        self.assertNotIn("ROTATED_AT", out)
+        for canary in (secret, "FAKE_TOKEN_CANARY_7f3a", "stdin="):
+            self.assertNotIn(canary, out)
+        rc, out, _ = self._run_step(put, {"/deployments": self.dep(self.N)}, {"PREV_VERSION_ID": self.A,
+                                    "MERCADOPAGO_PROD_ACCESS_TOKEN": secret}, npx_leak=True)
+        self.assertEqual(rc, 0, out)
+        for canary in (secret, "FAKE_TOKEN_CANARY_7f3a", "stdin="):
+            self.assertNotIn(canary, out)
+        rb = 'rollback "$PREV_VERSION_ID"'
+        rc, out, _ = self._run_step(rb, {"/deployments": self.dep(self.A)}, {"PREV_VERSION_ID": self.A, "ROTATED_AT": "x"},
+                                    npx_rc=1, npx_leak=True)
+        self.assertIn("ROLLBACK_COMMAND_FAILED=1 codes=10215", out)
+        self.assertIn("ROLLBACK_READBACK=PASS", out, "a leitura continua decidindo")
+        for canary in ("FAKE_TOKEN_CANARY_7f3a", "stdin=", "env=stub"):
+            self.assertNotIn(canary, out)
 
     def test_r2_recover_mode_uses_the_rehearsed_script_and_never_auto_returns(self):
         rec = [s for s in self.steps if "worker-version-recover.sh" in str(s.get("run", ""))]

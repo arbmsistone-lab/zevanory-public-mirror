@@ -48,7 +48,13 @@ def new_version(secret):
     n = latest()["number"] + 1
     v = {"id": "%08x-0000-4000-8000-000000000000" % n, "number": n, "secret": secret}
     st["versions"].append(v); st["active"] = v["id"]; save()
-def refuse_10215():
+CANARY = "Authorization: Bearer FAKE_TOKEN_CANARY_7f3a"
+def leak(value=""):
+    # Adversarial (Sol 051-F1): um wrangler hostil ecoa o valor recebido e um cabeçalho de autorização.
+    print("debug stdin=" + value + " " + CANARY, file=sys.stderr)
+    print("env CLOUDFLARE_API_TOKEN=" + os.environ.get("CLOUDFLARE_API_TOKEN", ""))
+def refuse_10215(value=""):
+    leak(value)
     if SC == "put_c_text_only" and a[:2] == ["secret", "put"]:
         # Forma observada no run 39674768070: o put recusado não trouxe o código numérico.
         print("X [ERROR] Secret edit failed. You attempted to modify a secret, but the latest version of your Worker isn't currently deployed.", file=sys.stderr)
@@ -60,14 +66,17 @@ if a[:1] == ["deploy"]:
     new_version(active()["secret"]); print("https://zevanory-rollback-secret-probe.unit.workers.dev")
 elif a[:2] == ["secret", "put"]:
     value = sys.stdin.read()
+    open(STATE + ".seen", "a").write(value + "\n")
     if st["active"] != latest()["id"] and SC == "put_c_refused_but_applied":
-        prev = st["active"]; new_version(value); st["active"] = prev; save(); refuse_10215()
+        prev = st["active"]; new_version(value); st["active"] = prev; save(); refuse_10215(value)
     if st["active"] != latest()["id"] and SC == "put_c_refused_digest_changed":
-        active()["secret"] = value; save(); refuse_10215()
+        active()["secret"] = value; save(); refuse_10215(value)
+    if SC == "put_a_fails_noisily":
+        leak(value); print("X [ERROR] auth [code: 10000]", file=sys.stderr); sys.exit(1)
     if SC == "put_c_other_error" and st["active"] != latest()["id"]:
-        print("X [ERROR] Authentication error [code: 10000]", file=sys.stderr); sys.exit(1)
+        leak(value); print("X [ERROR] Authentication error [code: 10000]", file=sys.stderr); sys.exit(1)
     if st["active"] != latest()["id"] and SC != "put_c_accepted":
-        refuse_10215()
+        refuse_10215(value)
     new_version(value)
 elif a[:2] == ["secret", "delete"]:
     if st["active"] != latest()["id"]:
@@ -84,7 +93,7 @@ elif a[:2] == ["versions", "deploy"]:
         st["active"] = st["versions"][0]["id"]; save(); sys.exit(0)
     st["active"] = target; save()
     if SC == "deploy_fails_but_applied":
-        sys.exit(1)
+        leak(); print("X [ERROR] transient [code: 7003]", file=sys.stderr); sys.exit(1)
 else:
     print("UNEXPECTED_NPX " + " ".join(args), file=sys.stderr); sys.exit(90)
 '''
@@ -156,7 +165,8 @@ class FakeCloudflare:
         return env
 
     def run(self, script, **extra):
-        return subprocess.run([bash(), str(script)], cwd=ROOT, env=self.env(**extra), text=True, capture_output=True, timeout=60)
+        return subprocess.run([bash(), str(script)], cwd=ROOT, env=self.env(**extra), text=True, capture_output=True,
+                              stdin=subprocess.DEVNULL, timeout=60)
 
     @property
     def st(self):
@@ -194,7 +204,9 @@ class RecoverScriptTests(unittest.TestCase):
         cf = self.cf("deploy_fails_but_applied")
         p = self.recover(cf)
         self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertIn("RECOVER_DEPLOY_COMMAND_FAILED=1", p.stdout)
+        self.assertIn("RECOVER_DEPLOY_COMMAND_FAILED=1 codes=7003", p.stdout)
+        self.assertNotIn("FAKE_TOKEN_CANARY_7f3a", p.stdout + p.stderr)
+        self.assertNotIn("tok", (p.stdout + p.stderr).replace("token", ""), "o token nunca aparece")
         self.assertIn("RECOVER_READBACK=PASS", p.stdout)
 
     def test_refusals_before_any_write(self):
@@ -273,7 +285,8 @@ class RecoveryProbeTests(unittest.TestCase):
         p, cf = self.probe("put_c_text_only")
         out = p.stdout + p.stderr
         self.assertEqual(p.returncode, 0, out)
-        self.assertIn("PUT_C_REFUSAL: X [ERROR] Secret edit failed.", out, "a recusa tem de aparecer no log")
+        self.assertIn("PUT_C_REFUSAL_CODES=none lines=", out, "diagnóstico só por lista permitida")
+        self.assertNotIn("Secret edit failed", out, "texto externo do wrangler nunca vai para o log")
         self.assertIn("CONDITION_10215=observed refusal=official_text active=VA latest=VB digest=A", out)
         self.assertTrue(out.rstrip().endswith("RECOVERY_CERTIFIED=YES"), out)
         p, _ = self.probe()
@@ -287,6 +300,34 @@ class RecoveryProbeTests(unittest.TestCase):
         self.assertIn("B01R_CLEANUP_CERTIFIED=probe_503", out)
         self.assertNotIn("B01R_CLEANUP_FAILED", out)
         self.assertIn("RECOVERY_CERTIFIED=INCONCLUSIVE", out)
+
+    def test_adversarial_wrangler_output_never_reaches_the_log(self):
+        # Sol 051-F1: em TODOS os cenários, um wrangler hostil ecoa o valor do segredo e um Bearer falso.
+        # Nada disso pode aparecer; a decisão (YES ou INCONCLUSIVE) continua a mesma.
+        expected = {"pass": "YES", "put_c_text_only": "YES", "put_c_other_error": "INCONCLUSIVE",
+                    "put_c_refused_but_applied": "INCONCLUSIVE", "put_c_refused_digest_changed": "INCONCLUSIVE"}
+        for scenario, final in expected.items():
+            p, cf = self.probe(scenario, token="probe-token-CANARY9")
+            out = p.stdout + p.stderr
+            self.assertIn(f"RECOVERY_CERTIFIED={final}", out, scenario)
+            seen = Path(str(cf.state) + ".seen").read_text().split()
+            self.assertEqual(len(seen), 3, scenario)
+            for value in seen:
+                self.assertNotIn(value, out, f"{scenario}: valor de segredo no log")
+            self.assertNotIn("FAKE_TOKEN_CANARY_7f3a", out, scenario)
+            self.assertNotIn("probe-token-CANARY9", out, scenario)
+            self.assertNotIn("debug stdin=", out, scenario)
+        p, cf = self.probe("put_a_fails_noisily", token="probe-token-CANARY9")
+        out = p.stdout + p.stderr
+        self.assertIn("PUT_A_FAILED codes=10000", out)
+        self.assertIn("RECOVERY_CERTIFIED=INCONCLUSIVE", out)
+        for value in Path(str(cf.state) + ".seen").read_text().split():
+            self.assertNotIn(value, out)
+        for canary in ("FAKE_TOKEN_CANARY_7f3a", "probe-token-CANARY9", "debug stdin="):
+            self.assertNotIn(canary, out)
+        p, _ = self.probe("put_c_other_error")
+        self.assertIn("PUT_C_REFUSAL_CODES=10000", p.stdout)
+        self.assertIn("recusa sem o código 10215 nem o texto oficial", p.stderr)
 
     def test_refusal_text_is_not_enough_the_state_must_prove_it(self):
         # Recusa com 10215 no texto, mas o estado mudou: a mais recente deixou de ser VB, ou o Worker passou a
@@ -330,6 +371,9 @@ class RecoveryProbeTests(unittest.TestCase):
         p = cf.run(CLEANUP, CLOUDFLARE_SANDBOX_PROBE_TOKEN="t", B01_SECRET_WRITTEN="1")
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("B01_CLEANUP_RETRY_AFTER_DEPLOY=1", p.stdout)
+        self.assertIn("B01_CLEANUP_DELETE_FAILED codes=10215", p.stdout)
+        self.assertNotIn("FAKE_TOKEN_CANARY_7f3a", p.stdout + p.stderr)
+        self.assertNotIn("Secret edit", p.stdout + p.stderr)
         self.assertIn("B01_CLEANUP_DONE=YES", p.stdout)
         st = cf.st
         active = next(v for v in st["versions"] if v["id"] == st["active"])
@@ -348,7 +392,7 @@ class GuardAndWorkflowTests(unittest.TestCase):
             env = {**os.environ, "CURL_BIN": str(d / "curl"), "PYTHON_BIN": sys.executable,
                    "GITHUB_TOKEN": "t", "GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "100"}
             args = [bash(), str(GUARD)] + ([workflow] if workflow else [])
-            p = subprocess.run(args, env=env, text=True, capture_output=True)
+            p = subprocess.run(args, env=env, text=True, capture_output=True, stdin=subprocess.DEVNULL, timeout=30)
             url = (d / "url").read_text() if (d / "url").exists() else ""
             return p, url
 

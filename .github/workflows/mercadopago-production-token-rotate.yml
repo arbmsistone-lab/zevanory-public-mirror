@@ -182,8 +182,13 @@ jobs:
           # Contestação Sol 21/10 (falha ambígua): a tentativa é registrada ANTES da gravação. Se o wrangler
           # falhar depois de a Cloudflare aplicar o segredo, o retorno automático ainda é acionado.
           echo "WRITE_ATTEMPTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
-          printf '%s' "$MERCADOPAGO_PROD_ACCESS_TOKEN" | \
-            npx --yes wrangler@4.143.0 secret put MERCADOPAGO_ACCESS_TOKEN --name zevanory
+          # Contestação Sol 051-F1: a saída do wrangler nunca vai para o log; só códigos numéricos se falhar.
+          if ! printf '%s' "$MERCADOPAGO_PROD_ACCESS_TOKEN" | \
+            npx --yes wrangler@4.143.0 secret put MERCADOPAGO_ACCESS_TOKEN --name zevanory > /tmp/mp-secret-put.log 2>&1; then
+            codes="$(grep -oE '\[code: [0-9]{1,6}\]' /tmp/mp-secret-put.log | grep -oE '[0-9]+' | sort -u | paste -sd, - || true)"
+            echo "::error title=MP_SECRET_PUT_FAILED::codes=${codes:-none}"
+            exit 1
+          fi
           now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo "ROTATED_AT=$now" >> "$GITHUB_ENV"
           echo "PREFLIGHT_AFTER=$now" >> "$GITHUB_ENV"
@@ -272,7 +277,10 @@ jobs:
           if [ -z "${ROTATED_AT:-}" ]; then
             echo "::error title=MP_WRITE_UNCERTAIN::secret put falhou sem confirmação; a gravação pode ter sido aplicada. Estado tratado como incidente até a certificação abaixo."
           fi
-          npx --yes wrangler@4.143.0 rollback "$PREV_VERSION_ID" --name zevanory --message "MP rotation failed after write attempt; return to $PREV_VERSION_ID" -y || echo "ROLLBACK_COMMAND_FAILED=1"
+          if ! npx --yes wrangler@4.143.0 rollback "$PREV_VERSION_ID" --name zevanory --message "MP rotation failed after write attempt; return to $PREV_VERSION_ID" -y > /tmp/mp-rollback.log 2>&1; then
+            codes="$(grep -oE '\[code: [0-9]{1,6}\]' /tmp/mp-rollback.log | grep -oE '[0-9]+' | sort -u | paste -sd, - || true)"
+            echo "ROLLBACK_COMMAND_FAILED=1 codes=${codes:-none}"
+          fi
           # Certificação por leitura: a versão a 100% tem de ser exatamente a anterior.
           code="$(curl -sS -o /tmp/deployments-after.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/deployments")"

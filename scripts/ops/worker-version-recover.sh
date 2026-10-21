@@ -83,10 +83,13 @@ echo "RECOVER_LATEST=$latest"
 [[ "$before" != "$TARGET" ]] || fail RECOVER_NOTHING_TO_DO "o alvo já está ativo"
 [[ "$before" == "$EXPECTED_ACTIVE" ]] || fail RECOVER_ACTIVE_NOT_ROLLBACK_POINT "active=$before rollback_point=$EXPECTED_ACTIVE — o estado mudou desde o incidente; parar e decidir com o proprietário"
 
-CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
+# Contestação Sol 051-F1: a saída do wrangler fica em arquivo; no log, só códigos numéricos.
+if ! CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
   "$NPX_BIN" --yes "$WRANGLER" versions deploy "${TARGET}@100" --name "$WORKER_NAME" \
-  --message "B01 recovery: deploy latest version $TARGET (10215)" --yes </dev/null \
-  || echo "RECOVER_DEPLOY_COMMAND_FAILED=1 (a leitura abaixo decide)"
+  --message "B01 recovery: deploy latest version $TARGET (10215)" --yes </dev/null > "$TMP/deploy.log" 2>&1; then
+  codes="$(grep -oE '\[code: [0-9]{1,6}\]' "$TMP/deploy.log" | grep -oE '[0-9]+' | sort -u | paste -sd, - || true)"
+  echo "RECOVER_DEPLOY_COMMAND_FAILED=1 codes=${codes:-none} (a leitura abaixo decide)"
+fi
 
 after="$(active_version)"
 if [[ "$after" != "$TARGET" ]]; then
