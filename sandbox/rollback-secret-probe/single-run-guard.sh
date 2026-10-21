@@ -4,7 +4,9 @@
 # Nova execução exige PR que aumente ALLOWED_PRIOR_RUNS, e o merge dessa PR exige a frase literal
 # do proprietário. Assim, a autorização é consumida por execução.
 set -Eeuo pipefail
-readonly ALLOWED_PRIOR_RUNS=0
+# 1 = autoriza UMA nova execução depois do run 39639303995 (INCONCLUSIVE: token com formato inválido,
+# nada gravado). Este aumento só vale com o merge desta PR, que exige a frase literal do proprietário.
+readonly ALLOWED_PRIOR_RUNS=1
 readonly CURL_BIN="${CURL_BIN:-curl}"
 readonly PYTHON_BIN="${PYTHON_BIN:-python3}"
 : "${GITHUB_TOKEN:?SINGLE_RUN_GUARD_TOKEN_MISSING}"
