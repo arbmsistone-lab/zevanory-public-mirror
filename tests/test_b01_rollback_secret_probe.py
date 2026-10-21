@@ -324,6 +324,10 @@ class StaticContractTests(unittest.TestCase):
         self.assertNotIn(" delete \"$WORKER_NAME\"", source)
         self.assertIn("secret delete PROBE_SECRET", source)
         self.assertLess(source.index("PROBE_WORKER_NOT_PRECREATED"), first_deploy, "pré-checagem de existência antes do deploy")
+        deployments_endpoint = "/workers/scripts/${WORKER_NAME}/deployments"
+        precheck_block = source[source.index("# Pré-condição"):first_deploy]
+        self.assertIn(deployments_endpoint, precheck_block,
+                      "a pré-checagem anterior ao deploy deve consultar exatamente /deployments")
 
 
 if __name__ == "__main__":
@@ -392,3 +396,22 @@ class CleanupOnlyAccountGuardTests(unittest.TestCase):
             self.assertNotEqual(p.returncode, 0, account)
             self.assertIn(marker, p.stderr, account)
             self.assertFalse(log.exists(), "npx não pode ser chamado")
+
+    def test_cleanup_neutralizes_secret_without_deleting_worker(self):
+        tmp = tempfile.TemporaryDirectory(dir=ROOT)
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        log = base / "npx.log"
+        npx = base / "npx"
+        npx.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$FAKE_LOG"\n',
+                       encoding="utf-8", newline="\n")
+        npx.chmod(0o755)
+        env = dict(os.environ, PATH=str(base) + os.pathsep + os.environ.get("PATH", ""), FAKE_LOG=str(log),
+                   GITHUB_RUN_ID="4242", CLOUDFLARE_SANDBOX_PROBE_TOKEN="offline",
+                   CLOUDFLARE_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb")
+        p = subprocess.run([bash_path(), str(ROOT / "sandbox/rollback-secret-probe/cleanup-only.sh")],
+                           cwd=ROOT, env=env, text=True, capture_output=True, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        calls = log.read_text(encoding="utf-8")
+        self.assertIn("secret delete PROBE_SECRET", calls)
+        self.assertNotIn(" delete zevanory-rollback-secret-probe ", " " + calls + " ")
