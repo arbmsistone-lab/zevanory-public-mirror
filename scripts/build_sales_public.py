@@ -327,7 +327,7 @@ def main() -> int:
     shutil.copytree(ROOT / "brand", OUT / "brand")
     (OUT / "assets").mkdir(exist_ok=True)
     portrait = ROOT / "assets" / "renan-bitu.webp"
-    if not portrait.is_file() or portrait.stat().st_size != 16232:
+    if not portrait.is_file() or portrait.stat().st_size != 22838:
         raise SystemExit("founder portrait missing or unexpected size")
     shutil.copy2(portrait, OUT / "assets" / "renan-bitu.webp")
     # Approved social/creative brand assets live in the overlay (2026-10-02).
