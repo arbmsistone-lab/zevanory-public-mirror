@@ -309,3 +309,7 @@ a:focus-visible,.button:focus-visible{outline:2px solid var(--brand-3);outline-o
 }
 /* "Por onde começar" (#821): inline links must still offer a 44x44 px touch target (WCAG 2.5.5 / apex gate). */
 .start-guide ol a{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0;vertical-align:middle}
+/* P03: a long word in the hero h1 (e.g. "odontológica") must wrap instead of widening the grid column
+   past the viewport, where main{overflow-x:hidden} would clip it. No effect when the text already fits. */
+.hero>*{min-width:0}
+h1{overflow-wrap:anywhere}
