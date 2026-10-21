@@ -59,8 +59,10 @@ e no Environment `producao-critica`, que exige revisor.
      `RECOVERY_TARGET_VERSION` (a mais recente por `number`). Se as duas divergirem: `MP_RECOVERY_TARGET_MISMATCH`,
      parar e decidir com o proprietário.
   2. Recuperação, com autorização literal do proprietário: dispatch `mode=recover` com
-     `target_version=<RECOVERY_TARGET_VERSION>`, e o proprietário aprova `producao-critica`. O passo roda
-     `scripts/ops/worker-version-recover.sh`. Ele recusa se o alvo não for a mais recente ou já estiver ativo,
+     `target_version=<RECOVERY_TARGET_VERSION>` e `rollback_point=<ROLLBACK_POINT do mesmo run>`, e o
+     proprietário aprova `producao-critica`. O passo roda `scripts/ops/worker-version-recover.sh`. Ele recusa se a
+     versão ativa não for exatamente o ROLLBACK_POINT do incidente (Sol 047), se o alvo não for a mais recente ou
+     se o alvo já estiver ativo,
      implanta o alvo a 100% e certifica por leitura. Depois espera um preflight novo com o token ok. O modo
      recover nunca faz retorno automático para o token antigo.
   3. Esse mesmo script é certificado pelo ensaio B01-R (`b01-recovery-probe.yml`), no Worker descartável. O
