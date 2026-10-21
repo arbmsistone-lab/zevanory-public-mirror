@@ -170,6 +170,47 @@ class VerifyPromoted(unittest.TestCase):
 
 
 class Readers(unittest.TestCase):
+    def test_cloudflare_token_surrounding_whitespace(self):
+        import http.client
+        import os
+        from unittest.mock import patch
+
+        for token in ("synthetic-token", "synthetic-token\n", "synthetic-token\r\n",
+                      " \tsynthetic-token \t"):
+            with self.subTest(token=token), patch.dict(os.environ, {
+                "CLOUDFLARE_API_TOKEN": token, "CLOUDFLARE_ACCOUNT_ID": "acc",
+            }, clear=True):
+                requests = []
+
+                def fetch(url, headers=None):
+                    requests.append((url, headers))
+                    # Exercise Python's real header validation without opening a connection.
+                    conn = http.client.HTTPSConnection("example.invalid")
+                    conn.putrequest("GET", "/")
+                    conn.putheader("Authorization", headers["Authorization"])
+                    if url.endswith("/deployments"):
+                        return {"success": True, "result": {"deployments": [
+                            {"versions": [{"version_id": "v1", "percentage": 100}]}]}}
+                    return {"success": True, "result": {"metadata": {"annotations": {"workers/tag": C}}}}
+
+                self.assertEqual(pg.observe_cloudflare("zevanory", fetch), (pg.OK, C))
+                base = "https://api.cloudflare.com/client/v4/accounts/acc/workers/scripts/zevanory"
+                self.assertEqual(requests, [
+                    (base + "/deployments", {"Authorization": "Bearer " + "synthetic-token"}),
+                    (base + "/versions/v1", {"Authorization": "Bearer " + "synthetic-token"}),
+                ])
+
+    def test_cloudflare_whitespace_only_token_does_not_fetch(self):
+        import os
+        from unittest.mock import Mock, patch
+
+        with patch.dict(os.environ, {
+            "CLOUDFLARE_API_TOKEN": " \t\r\n", "CLOUDFLARE_ACCOUNT_ID": "acc",
+        }, clear=True):
+            fetch = Mock()
+            self.assertEqual(pg.observe_cloudflare("zevanory", fetch), (pg.UNREACHABLE, None))
+            fetch.assert_not_called()
+
     def test_readback_path(self):
         fetch = lambda url, headers=None: {"deployment": {"commit_sha": B.upper()}}
         self.assertEqual(pg.readback_sha("https://x", "deployment.commit_sha", fetch), B)

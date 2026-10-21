@@ -92,7 +92,7 @@ def cloudflare_sha(script: str | None, fetch=_get) -> str | None:
 
 
 def observe_cloudflare(script: str | None, fetch=_get) -> tuple[str, str | None]:
-    token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+    token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
     account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
     if not script or not token or not account:
         return UNREACHABLE, None
