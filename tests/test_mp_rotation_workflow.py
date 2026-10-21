@@ -291,13 +291,17 @@ open(out, 'w').write('{}'); print('404', end='')
         self.assertIn("MP_SECRET_SCOPE=UNVERIFIED", out)
         rc2, out2, _ = self._run_step("CHECK_ONLY=PASS", {**ok, "zpc-sales-preflight": kv(ago(100))}, env)
         self.assertEqual(rc2, 0, "100 min ainda está dentro do limite de 120")
+        rc3, out3, _ = self._run_step("CHECK_ONLY=PASS", {**ok, "zpc-sales-preflight": kv(ago(120))}, env)
+        self.assertEqual(rc3, 0, "120 min exatos ainda estão dentro do limite")
         self.assertEqual(npx, "", "check-only nunca chama wrangler")
         bad = {
             "token_not_ok": {**ok, "zpc-sales-preflight": ["200", {"generatedAt": now, "checks": [{"id": "mercadopago_production_token", "ok": False}]}]},
             "sales_open": {**ok, "/api/sales/status": ["200", {"open": True}]},
             "kv_403": {**ok, "zpc-sales-preflight": ["403", {}]},
             "health_500": {**ok, "/api/health": ["500", {}]},
+            "health_500_with_ready_body": {**ok, "/api/health": ["500", health]},
             # 044-F1: preflight velho, no futuro ou com data inválida
+            "preflight_stale_121m": {**ok, "zpc-sales-preflight": kv(ago(121))},
             "preflight_stale_3h": {**ok, "zpc-sales-preflight": kv(ago(180))},
             "preflight_future": {**ok, "zpc-sales-preflight": kv(ago(-60))},
             "preflight_bad_date": {**ok, "zpc-sales-preflight": kv("not-a-date")},
@@ -305,6 +309,7 @@ open(out, 'w').write('{}'); print('404', end='')
             "health_200_db_down": {**ok, "/api/health": ["200", {**health, "checks": {**health["checks"], "database_reachable": False}}]},
             "health_200_not_ready": {**ok, "/api/health": ["200", {**health, "ready": False}]},
             "status_open": {**ok, "/api/status": ["200", {**status, "sales_authorization": {"state": "open"}}]},
+            "status_runtime_not_blocked": {**ok, "/api/status": ["200", {**status, "runtime": {"sales": "open"}}]},
             "status_500": {**ok, "/api/status": ["500", status]},
         }
         for name, fx in bad.items():
