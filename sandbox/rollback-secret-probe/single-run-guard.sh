@@ -6,7 +6,9 @@
 set -Eeuo pipefail
 # 1 = autoriza UMA nova execução depois do run 39639303995 (INCONCLUSIVE: token com formato inválido,
 # nada gravado). Este aumento só vale com o merge desta PR, que exige a frase literal do proprietário.
-readonly ALLOWED_PRIOR_RUNS=1
+# 2 = autoriza UMA terceira execução, depois dos runs 39639303995 e 39640830146 (ambos INCONCLUSIVE,
+# token com formato inválido, nada gravado). Só vale com o merge desta PR (frase do proprietário).
+readonly ALLOWED_PRIOR_RUNS=2
 readonly CURL_BIN="${CURL_BIN:-curl}"
 readonly PYTHON_BIN="${PYTHON_BIN:-python3}"
 : "${GITHUB_TOKEN:?SINGLE_RUN_GUARD_TOKEN_MISSING}"

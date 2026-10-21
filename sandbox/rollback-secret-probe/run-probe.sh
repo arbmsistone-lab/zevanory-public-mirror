@@ -165,6 +165,17 @@ read_probe() {
 
 validate_worker_name || fail "WORKER_NAME_REFUSED"
 [[ -n "$TOKEN" ]] || fail "CLOUDFLARE_SANDBOX_PROBE_TOKEN_MISSING"
+# Diagnóstico (runs 39639303995 e 39640830146: HTTP 400/6111 mesmo com o valor saneado). Mostra SÓ
+# metadados do formato, nunca o valor: comprimento, prefixo "Bearer", aspas e conjunto de caracteres.
+token_diag() {
+  local raw="${CLOUDFLARE_SANDBOX_PROBE_TOKEN:-}" bearer=no quotes=no charset=yes
+  [[ "${TOKEN,,}" == bearer* ]] && bearer=yes
+  [[ "$raw" == *\"* || "$raw" == *"'"* ]] && quotes=yes
+  [[ "$TOKEN" =~ ^[A-Za-z0-9_-]+$ ]] || charset=no
+  echo "TOKEN_DIAG length=${#TOKEN} raw_length=${#raw} bearer_prefix=${bearer} quotes=${quotes} charset_ok=${charset}"
+  [[ "$bearer" == "no" && "$quotes" == "no" && "$charset" == "yes" ]]
+}
+token_diag || fail "CLOUDFLARE_SANDBOX_PROBE_TOKEN_MALFORMED"
 [[ "$ACCOUNT_ID" == "$ZEVANORY_ACCOUNT_ID" ]] || fail "CLOUDFLARE_ACCOUNT_ID_REFUSED"
 [[ "$ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || fail "PROBE_ATTEMPTS_INVALID"
 
