@@ -50,7 +50,8 @@ class Cloudflare:
     def __init__(self, fetch=pg._get):
         self.fetch = fetch
         self.base = API.format(account=os.environ.get("CLOUDFLARE_ACCOUNT_ID", ""), script=SCRIPT)
-        self.auth = {"Authorization": "Bearer " + os.environ.get("CLOUDFLARE_API_TOKEN", "")}
+        # .strip(): segredo com quebra de linha quebra o cabeçalho HTTP no urllib (issue #849).
+        self.auth = {"Authorization": "Bearer " + os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()}
 
     def active_version_id(self) -> str | None:
         deps = (self.fetch(self.base + "/deployments", self.auth).get("result") or {}).get("deployments") or []
@@ -201,6 +202,11 @@ def main() -> int:
     ap.add_argument("--drop-previous", action="store_true", help="end of rotation: remove LEAD_PRIVACY_SECRET_PREVIOUS only")
     ap.add_argument("--verify", action="store_true", help="read-only certification")
     args = ap.parse_args()
+    # Fail-closed (contestação Sol, Ordem 019): credencial ausente, vazia ou só com espaços não chega a
+    # montar "Authorization: Bearer " nem a tocar a API; nenhum modo segue sem token e conta.
+    if not os.environ.get("CLOUDFLARE_API_TOKEN", "").strip() or not os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip():
+        log("error", "WORKER_SECRET", "cloudflare_credentials_missing")
+        return 1
     if args.verify:
         return verify(Cloudflare())
     if args.drop_previous:

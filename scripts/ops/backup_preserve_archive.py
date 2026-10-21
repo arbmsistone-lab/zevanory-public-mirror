@@ -277,7 +277,8 @@ def main(argv=None):
         fail("invalid_day")
     if args.mode == "verify":
         return mode_verify(args)
-    token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+    # .strip(): segredo salvo com quebra de linha quebrava o cabeçalho HTTP no urllib (issue #849).
+    token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
     if not token:
         fail("cloudflare_token_missing")
     return {"inspect": mode_inspect, "archive": mode_archive, "kv-extend": mode_kv_extend}[args.mode](args, token)
