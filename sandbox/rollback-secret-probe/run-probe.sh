@@ -11,10 +11,12 @@ readonly ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-1b26415802588185a86c1d4d3ebf5bdb}"
 readonly CONFIG="sandbox/rollback-secret-probe/wrangler.toml"
 readonly WORKER_NAME="${WORKER_NAME:-${PREFIX}${GITHUB_RUN_ID:-}}"
 readonly TOKEN="${CLOUDFLARE_SANDBOX_PROBE_TOKEN:-}"
-readonly ATTEMPTS="${PROBE_ATTEMPTS:-10}"
+readonly ATTEMPTS="${PROBE_ATTEMPTS:-30}"
 readonly SLEEP_SECONDS="${PROBE_SLEEP_SECONDS:-2}"
 
-RESULT="NO"
+# Contestação Claude (21/10): falha de infraestrutura NÃO pode virar resposta negativa.
+# RESULT só vira YES ou NO quando a comparação final rodou com leituras válidas; qualquer outra saída é INCONCLUSIVE.
+RESULT="INCONCLUSIVE"
 WORKER_CREATED=0
 TMP_BASE="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 TMP_DIR="${TMP_BASE}/b01-rollback-secret-probe-${GITHUB_RUN_ID:-unknown}-$$"
@@ -49,15 +51,22 @@ cleanup() {
 finalize() {
   local status=$?
   local cleanup_status=0
-  local final="NO"
+  local final="INCONCLUSIVE"
   trap - EXIT
   set +e
   cleanup
   cleanup_status=$?
   if [[ "$status" == "0" && "$cleanup_status" == "0" && "$RESULT" == "YES" ]]; then
     final="YES"
+  elif [[ "$RESULT" == "NO" ]]; then
+    # Resposta negativa provada (versão A ativa servindo o digest de B); a limpeza não altera a resposta.
+    final="NO"
+    status=1
   else
     status=1
+  fi
+  if [[ "$cleanup_status" != "0" ]]; then
+    echo "B01_CLEANUP_FAILED=1 (o Worker descartável pode ter ficado; o passo always() tenta de novo)" >&2
   fi
   printf 'ROLLBACK_SECRET_VALUE_RESTORED=%s\n' "$final"
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
@@ -163,8 +172,9 @@ CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
 ACTIVE_VERSION="$(read_active_version "$TMP_DIR/deployments-rollback.json")"
 observed_a=""
 for ((attempt=1; attempt<=ATTEMPTS; attempt++)); do
-  if observed_a="$(read_probe "$TMP_DIR/probe-a.txt")" && [[ "$observed_a" == "$HASH_A" ]]; then
-    break
+  if candidate="$(read_probe "$TMP_DIR/probe-a.txt")"; then
+    observed_a="$candidate"
+    [[ "$observed_a" == "$HASH_A" ]] && break
   fi
   sleep "$SLEEP_SECONDS"
 done
@@ -175,5 +185,8 @@ echo "ROLLBACK_ACTIVE_VERSION=${ACTIVE_VERSION}"
 if [[ "$ACTIVE_VERSION" == "$VERSION_A" && "$observed_a" == "$HASH_A" ]]; then
   RESULT="YES"
   exit 0
+fi
+if [[ "$ACTIVE_VERSION" == "$VERSION_A" && "$observed_a" == "$HASH_B" ]]; then
+  RESULT="NO"
 fi
 exit 1

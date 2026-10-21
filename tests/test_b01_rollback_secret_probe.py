@@ -60,11 +60,16 @@ elif [[ "$args" == *" secret put "* ]]; then
     printf 'version-b' > "$FAKE_STATE/current-version"
   fi
 elif [[ "$args" == *" rollback version-a "* ]]; then
+  [[ "$FAKE_SCENARIO" != "rollback_noop" ]] || exit 0
+  if [[ "$FAKE_SCENARIO" == "version_mismatch" ]]; then
+    cp "$FAKE_STATE/secret-a" "$FAKE_STATE/current-secret"; exit 0
+  fi
   printf 'version-a' > "$FAKE_STATE/current-version"
-  if [[ "$FAKE_SCENARIO" == "pass" ]]; then
+  if [[ "$FAKE_SCENARIO" == "pass" || "$FAKE_SCENARIO" == "cleanup_error" ]]; then
     cp "$FAKE_STATE/secret-a" "$FAKE_STATE/current-secret"
   fi
 elif [[ "$args" == *" delete "* ]]; then
+  [[ "$FAKE_SCENARIO" != "cleanup_error" ]] || exit 23
   touch "$FAKE_STATE/cleaned"
 else
   echo "UNEXPECTED_NPX:$*" >&2
@@ -162,6 +167,7 @@ class ProbeExecutionTests(unittest.TestCase):
         completed, state, _ = self.run_probe("no")
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=NO", completed.stdout)
+        self.assertNotIn("INCONCLUSIVE", completed.stdout)
         self.assertEqual((state / "current-version").read_text(), "version-a")
         self.assertEqual((state / "current-secret").read_text(), (state / "secret-b").read_text())
         self.assertTrue((state / "cleaned").exists())
@@ -170,8 +176,34 @@ class ProbeExecutionTests(unittest.TestCase):
         completed, state, _ = self.run_probe("http_error")
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("PROBE_HTTP_STATUS=503", completed.stderr)
-        self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=NO", completed.stdout)
+        # Falha de infraestrutura não é resposta negativa (contestação Claude 21/10).
+        self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout)
+        self.assertNotIn("ROLLBACK_SECRET_VALUE_RESTORED=NO", completed.stdout)
         self.assertTrue((state / "cleaned").exists())
+
+    def test_rollback_that_did_not_take_effect_is_inconclusive_not_no(self):
+        # Versão ativa continua B servindo digest B: o rollback não aconteceu, então não há resposta.
+        completed, state, _ = self.run_probe("rollback_noop")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout)
+        self.assertEqual((state / "current-version").read_text(), "version-b")
+
+    def test_digest_a_without_version_a_is_not_yes(self):
+        completed, _, _ = self.run_probe("version_mismatch")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout)
+
+    def test_default_wait_covers_first_workers_dev_propagation(self):
+        import re as _re
+        m = _re.search(r'PROBE_ATTEMPTS:-(\d+)', RUNNER.read_text(encoding="utf-8"))
+        self.assertIsNotNone(m)
+        self.assertGreaterEqual(int(m.group(1)), 30)
+
+    def test_cleanup_failure_never_reports_yes(self):
+        completed, _, _ = self.run_probe("cleanup_error")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertNotIn("ROLLBACK_SECRET_VALUE_RESTORED=YES", completed.stdout)
+        self.assertIn("B01_CLEANUP_FAILED=1", completed.stderr)
 
     def test_invalid_worker_name_is_refused_before_write(self):
         completed, state, calls = self.run_probe(worker_name="zevanory")
@@ -184,6 +216,7 @@ class ProbeExecutionTests(unittest.TestCase):
         completed, state, calls = self.run_probe(token="")
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("CLOUDFLARE_SANDBOX_PROBE_TOKEN_MISSING", completed.stderr)
+        self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout)
         self.assertEqual(calls, "")
         self.assertFalse((state / "worker-created").exists())
 
@@ -196,6 +229,7 @@ class ProbeExecutionTests(unittest.TestCase):
     def test_cleanup_runs_after_ambiguous_deploy_failure(self):
         completed, state, calls = self.run_probe("deploy_error")
         self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout)
         self.assertTrue((state / "worker-created").exists())
         self.assertTrue((state / "cleaned").exists())
         self.assertIn(" delete ", " " + calls)
