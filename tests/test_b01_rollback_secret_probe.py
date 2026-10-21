@@ -114,6 +114,9 @@ elif [[ "$url" == *"/probe" ]]; then
   if [[ "$FAKE_SCENARIO" == "http_error" ]]; then
     printf 'unavailable' > "$output"
     printf '503'
+  elif [[ "$FAKE_SCENARIO" == "cleanup_edge_503" && ! -f "$FAKE_STATE/current-secret" ]]; then
+    printf '<html>error 503 service unavailable</html>' > "$output"
+    printf '503'
   elif [[ "$FAKE_SCENARIO" == "cleanup_bad_gateway" && ! -f "$FAKE_STATE/current-secret" ]]; then
     printf 'upstream failure' > "$output"
     printf '502'
@@ -270,7 +273,8 @@ class ProbeExecutionTests(unittest.TestCase):
     def test_cleanup_success_message_without_probe_503_is_not_certified(self):
         # Melhoria Sol 031: "secret delete" com sucesso, mas o segredo segue servido => não certificado.
         # Um erro 5xx genérico também não comprova segredo ausente: apenas o 503 contratual certifica.
-        for scenario in ("cleanup_ghost", "cleanup_bad_gateway"):
+        # E um 503 genérico da borda (sem o corpo do worker) também não certifica.
+        for scenario in ("cleanup_ghost", "cleanup_bad_gateway", "cleanup_edge_503"):
             completed, _, _ = self.run_probe(scenario)
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("B01_CLEANUP_NOT_CERTIFIED", completed.stderr)

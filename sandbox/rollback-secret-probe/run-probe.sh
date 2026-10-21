@@ -41,7 +41,10 @@ cleanup_certified() {
   for ((attempt=1; attempt<=ATTEMPTS; attempt++)); do
     code="$("$CURL_BIN" --silent --show-error --output "$TMP_DIR/probe-cleanup.txt" --write-out '%{http_code}' \
       --connect-timeout 10 --max-time 30 "${WORKER_URL}/probe" || true)"
-    [[ "$code" == "503" ]] && { echo "B01_CLEANUP_CERTIFIED=probe_503"; return 0; }
+    # Só o 503 DO PRÓPRIO WORKER certifica (corpo exato do worker.mjs). Um 503 genérico da borda não prova nada.
+    if [[ "$code" == "503" ]] && grep -qx "probe secret unavailable" "$TMP_DIR/probe-cleanup.txt"; then
+      echo "B01_CLEANUP_CERTIFIED=probe_503"; return 0
+    fi
     sleep "$SLEEP_SECONDS"
   done
   echo "B01_CLEANUP_NOT_CERTIFIED last_http=${code:-none}" >&2
