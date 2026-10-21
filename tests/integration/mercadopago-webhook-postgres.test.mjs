@@ -48,7 +48,7 @@ function runQuery(query, params = []) {
 }
 
 // ---------- fakes ----------
-export const world = { payments: new Map(), mpCalls: [], emails: [], resendStatus: 200, dbDown: false };
+export const world = { payments: new Map(), mpCalls: [], emails: [], idem: new Map(), resendStatus: 200, dbDown: false };
 const kvStore = new Map();
 const kv = { async get(k) { return kvStore.get(k) ?? null; }, async put(k, v) { kvStore.set(k, String(v)); }, async delete(k) { kvStore.delete(k); },
   async list({ prefix = "" } = {}) { return { keys: [...kvStore.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true }; } };
@@ -73,8 +73,19 @@ function fakeFetch(input, init = {}) {
     return Promise.resolve(p ? new Response(JSON.stringify(p), { status: 200 }) : new Response("{}", { status: 404 }));
   }
   if (url.hostname === "api.resend.com") {
+    if (world.failBeforeAccept) return Promise.reject(new Error("synthetic crash before the provider accepted"));
     const b = JSON.parse(init.body);
-    world.emails.push({ to: b.to, subject: b.subject, idem: init.headers?.["Idempotency-Key"] });
+    // Semântica documentada do Resend (idempotência 24 h): mesma chave + mesmo corpo => resposta original
+    // sem novo envio; mesma chave + corpo diferente => 409 invalid_idempotent_request.
+    const key = init.headers?.["Idempotency-Key"];
+    if (key && world.resendStatus === 200 && world.idem.has(key)) {
+      const prev = world.idem.get(key);
+      if (prev.body !== init.body) return Promise.resolve(new Response(JSON.stringify({ name: "invalid_idempotent_request" }), { status: 409 }));
+      return Promise.resolve(new Response(JSON.stringify({ id: prev.id }), { status: 200 }));
+    }
+    world.emails.push({ to: b.to, subject: b.subject, idem: key, text: b.text });
+    if (world.resendStatus === 200 && key) world.idem.set(key, { body: init.body, id: "sim-" + world.emails.length });
+    if (world.dropResponse) return Promise.reject(new Error("synthetic lost response after provider accepted"));
     return Promise.resolve(new Response(JSON.stringify(world.resendStatus === 200 ? { id: "sim-" + world.emails.length } : {}), { status: world.resendStatus }));
   }
   return Promise.reject(new Error("T4: unexpected external call blocked: " + url.hostname));
@@ -152,7 +163,7 @@ test("M3+M8 approved: paid once, delivered once (one e-mail), duplicates are ide
   assert.equal(orderStatus(o.id), "paid");
   assert.equal(fulfillment(o.id)[0], "delivered");
   assert.equal(world.emails.length - mails, 1); assert.equal(world.emails.at(-1).to[0], "comprador.sintetico@example.com");
-  assert.equal(world.emails.at(-1).idem, `zevanory-delivery-${id}`);
+  assert.match(world.emails.at(-1).idem, new RegExp(`^zevanory-delivery-${id}-[0-9a-f]{16}$`));
   const t = tokens(o.id);
   for (let i = 0; i < 3; i++) { const r = await webhook(id); assert.equal(r.status, 200); assert.equal(r.body.duplicate, true); }
   assert.equal(events(o.id), 1, "one financial event"); assert.equal(world.emails.length - mails, 1, "no second e-mail");
@@ -165,7 +176,7 @@ test("M3 concurrent duplicates: parallel deliveries of the same approval insert 
   const rs = await Promise.all([webhook(id), webhook(id), webhook(id)]);
   const sent = world.emails.slice(mails);
   console.log("T4_M3_CONCURRENT", JSON.stringify({ statuses: rs.map((r) => r.status), emails_attempted: sent.length, tokens: tokens(o.id) }));
-  assert.ok(sent.length >= 1 && sent.every((m) => m.idem === `zevanory-delivery-${id}`), "every send carries the same provider idempotency key");
+  assert.ok(sent.length >= 1 && sent.every((m) => m.idem === sent[0].idem && m.idem.startsWith(`zevanory-delivery-${id}-`)), "every send carries the same provider idempotency key");
   assert.ok(rs.every((r) => r.status === 200 || r.status === 503), JSON.stringify(rs.map((r) => r.status)));
   assert.equal(events(o.id), 1); assert.equal(orderStatus(o.id), "paid");
   assert.equal(rs.filter((r) => r.body.duplicate === false).length, 1);
@@ -271,3 +282,143 @@ test("M10 segregation: the production route never uses the test credential; no u
   assert.ok(world.mpCalls.filter((c) => c.path.endsWith(id)).every((c) => c.auth === "Bearer APP_USR"), JSON.stringify(world.mpCalls.slice(-2)));
   assert.ok(world.mpCalls.every((c) => c.method === "GET"), "the webhook path only reads the provider");
 });
+
+// ---------- M11: política do proprietário (20/10/2026): HONRAR pagamento aprovado com VENDAS FECHADAS ----------
+// Comportamental (handler real + PostgreSQL descartável): interruptor explicitamente fechado.
+function fecharVendas() {
+  globalThis.__ZEVANORY_SALES_SWITCH__ = false;
+  process.env.SALE_GLOBALLY_ENABLED = "false";
+  kvStore.set("sales:open:v1", JSON.stringify({ enabled: false, at: new Date().toISOString() }));
+}
+test("M11a vendas fechadas: pagamento aprovado vira pago e é entregue uma única vez", { skip: SKIP }, async () => {
+  fecharVendas();
+  const o = newOrder(); const id = pay(o); const mails = world.emails.length;
+  const r = await webhook(id);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(globalThis.__ZEVANORY_SALES_SWITCH__, false, "o webhook não abre vendas");
+  assert.equal(orderStatus(o.id), "paid"); assert.equal(fulfillment(o.id)[0], "delivered");
+  assert.equal(world.emails.length - mails, 1); assert.ok(tokens(o.id) >= 1);
+  for (let i = 0; i < 2; i++) assert.equal((await webhook(id)).body.duplicate, true);
+  assert.equal(events(o.id), 1); assert.equal(world.emails.length - mails, 1, "duplicata não reenvia");
+});
+test("M11b vendas fechadas: falha de e-mail -> pago, entrega pendente -> reprocesso entrega sem segunda cobrança", { skip: SKIP }, async () => {
+  fecharVendas();
+  const o = newOrder(); const id = pay(o);
+  world.resendStatus = 500; const r = await webhook(id); world.resendStatus = 200;
+  assert.equal(r.status, 503); assert.equal(r.body.error, "paid_order_delivery_pending");
+  assert.equal(orderStatus(o.id), "paid"); assert.notEqual(fulfillment(o.id)[0], "delivered");
+  assert.equal((await webhook(id)).status, 200);
+  assert.equal(fulfillment(o.id)[0], "delivered"); assert.equal(events(o.id), 1);
+});
+test("M11c vendas fechadas: webhook atrasado/perdido (assinatura inválida) é recuperado pelo watchdog e entregue", { skip: SKIP }, async () => {
+  fecharVendas();
+  const a = newOrder(); const aid = pay(a);
+  assert.equal((await webhook(aid, { signature: "ts=1,v1=" + "0".repeat(64) })).status, 401);
+  assert.equal(orderStatus(a.id), "checkout_ready", "nada muda sem autenticidade");
+  const out = await bundle.runPaidDeliveryWatchdog({ ...process.env, ZEVANORY_PRIVATE_ARTIFACTS: kv });
+  assert.equal(out.ok, true, JSON.stringify(out));
+  assert.equal(orderStatus(a.id), "paid"); assert.equal(fulfillment(a.id)[0], "delivered"); assert.equal(events(a.id), 1);
+});
+test("M11d vendas fechadas: pendente, recusado ou valor divergente NUNCA viram pago", { skip: SKIP }, async () => {
+  fecharVendas();
+  for (const over of [{ status: "pending" }, { status: "rejected" }, { status: "in_process" }, { transaction_amount: 1.97 }]) {
+    const o = newOrder(); const id = pay(o, over); const mails = world.emails.length;
+    await webhook(id);
+    assert.equal(orderStatus(o.id), "checkout_ready", JSON.stringify(over)); assert.equal(tokens(o.id), 0); assert.equal(world.emails.length, mails);
+  }
+});
+
+// ---------- M12: renovação legítima do link de entrega não pode travar no 409 do Resend ----------
+test("M12 entrega pendente com link expirado: novo link => nova chave => e-mail enviado (sem 409 preso)", { skip: SKIP }, async () => {
+  const o = newOrder(); const id = pay(o);
+  // 1ª tentativa: o Resend ACEITA a chave mas a resposta se perde (registra a chave sem confirmar ao chamador).
+  const before = world.emails.length;
+  world.resendStatus = 200; world.dropResponse = true;
+  const r1 = await webhook(id);
+  world.dropResponse = false;
+  assert.equal(r1.status, 503, JSON.stringify(r1.body));
+  assert.equal(orderStatus(o.id), "paid"); assert.notEqual(fulfillment(o.id)[0], "delivered");
+  const k1 = world.emails.at(-1).idem;
+  // O link guardado expira antes do reprocesso (ex.: fila parada): a recuperação gera link novo.
+  const ev = JSON.parse(fulfillment(o.id)[1]); ev.expires_at = new Date(Date.now() - 60000).toISOString();
+  runQuery("update service_fulfillment set evidence_ref=$2 where order_id=$1", [o.id, JSON.stringify(ev)]);
+  const r2 = await webhook(id);
+  assert.equal(r2.status, 200, JSON.stringify(r2.body));
+  assert.equal(fulfillment(o.id)[0], "delivered");
+  const k2 = world.emails.at(-1).idem;
+  assert.notEqual(k1, k2, "conteúdo renovado usa chave nova");
+  assert.equal(world.emails.length - before, 2, "o cliente recebe o link válido");
+  assert.equal(events(o.id), 1, "sem segunda cobrança");
+});
+
+test("M13 resposta perdida após o aceite, link ainda válido: reprocesso usa a MESMA chave => um único e-mail", { skip: SKIP }, async () => {
+  const o = newOrder(); const id = pay(o); const before = world.emails.length;
+  world.dropResponse = true; const r1 = await webhook(id); world.dropResponse = false;
+  assert.equal(r1.status, 503); assert.equal(world.emails.length - before, 1, "o provedor aceitou um envio");
+  const k1 = world.emails.at(-1).idem;
+  const r2 = await webhook(id);
+  assert.equal(r2.status, 200, JSON.stringify(r2.body));
+  assert.equal(fulfillment(o.id)[0], "delivered");
+  assert.equal(world.emails.length - before, 1, "reprocesso deduplicado pelo provedor: nenhum segundo envio");
+  assert.equal(world.idem.get(k1)?.id !== undefined, true);
+});
+
+// ---------- M14–M16: cenários de falha do processo de entrega (contestação GPT-6 016-F) ----------
+test("M14 falha após CAS vencedor e antes do aceite do provedor: reprocesso reaproveita o MESMO link persistido e entrega", { skip: SKIP }, async () => {
+  const o = newOrder(); const id = pay(o); const before = world.emails.length;
+  world.failBeforeAccept = true; const r1 = await webhook(id); world.failBeforeAccept = false;
+  assert.equal(r1.status, 503); assert.equal(world.emails.length, before, "nada foi aceito pelo provedor");
+  const link1 = JSON.parse(fulfillment(o.id)[1]).download_url;
+  assert.match(link1, /^https:\/\//, "evidência persistida pelo vencedor");
+  const r2 = await webhook(id);
+  assert.equal(r2.status, 200, JSON.stringify(r2.body));
+  assert.equal(fulfillment(o.id)[0], "delivered");
+  assert.equal(JSON.parse(fulfillment(o.id)[1]).download_url, link1, "link persistido não foi perdido nem trocado");
+  assert.ok(world.emails.at(-1).text.includes(link1), "o e-mail leva o link persistido");
+  assert.equal(world.emails.length - before, 1); assert.equal(events(o.id), 1);
+});
+
+test("M15 fronteira de vencimento: link com > 10 min é reaproveitado; com < 10 min é renovado — o e-mail nunca leva link prestes a vencer", { skip: SKIP }, async () => {
+  for (const [minutos, renova] of [[11, false], [9, true]]) {
+    const o = newOrder(); const id = pay(o);
+    world.failBeforeAccept = true; await webhook(id); world.failBeforeAccept = false;
+    const ev = JSON.parse(fulfillment(o.id)[1]); const antigo = ev.download_url;
+    ev.expires_at = new Date(Date.now() + minutos * 60000).toISOString();
+    runQuery("update service_fulfillment set evidence_ref=$2 where order_id=$1", [o.id, JSON.stringify(ev)]);
+    assert.equal((await webhook(id)).status, 200);
+    const final = JSON.parse(fulfillment(o.id)[1]);
+    assert.equal(final.download_url !== antigo, renova, `${minutos} min`);
+    assert.ok(Date.parse(final.expires_at) > Date.now() + 10 * 60000, "link enviado tem pelo menos 10 min de validade");
+    assert.ok(world.emails.at(-1).text.includes(final.download_url));
+  }
+});
+
+test("M16 resposta perdida e recuperação DEPOIS da janela de 24 h do provedor: entrega concluída (e-mail idêntico pode repetir), nunca pendente para sempre", { skip: SKIP }, async () => {
+  const o = newOrder(); const id = pay(o); const before = world.emails.length;
+  world.dropResponse = true; await webhook(id); world.dropResponse = false;
+  const k1 = world.emails.at(-1).idem, t1 = world.emails.at(-1).text;
+  world.idem.clear();                                    // provedor esqueceu a chave (> 24 h)
+  const r2 = await webhook(id);
+  assert.equal(r2.status, 200, JSON.stringify(r2.body));
+  assert.equal(fulfillment(o.id)[0], "delivered", "não fica pendente");
+  assert.equal(world.emails.length - before, 2, "política: no máximo um e-mail idêntico repetido após 24 h");
+  assert.equal(world.emails.at(-1).idem, k1); assert.equal(world.emails.at(-1).text, t1, "mesmo conteúdo, mesmo link");
+  assert.equal(events(o.id), 1, "sem segunda cobrança");
+});
+
+// ---------- M17–M18: achados da revisão do GitHub Copilot no #838 ----------
+test("M17 evidência em branco ('' ou espaços) não trava a entrega (ramo texto, sem cast inválido para jsonb)", { skip: SKIP }, async () => {
+  for (const branco of ["", "   "]) {
+    const o = newOrder(); const id = pay(o);
+    world.failBeforeAccept = true; await webhook(id); world.failBeforeAccept = false;
+    runQuery("update service_fulfillment set evidence_ref=$2 where order_id=$1", [o.id, branco]);
+    const r = await webhook(id);
+    assert.equal(r.status, 200, JSON.stringify([branco, r.body]));
+    assert.equal(fulfillment(o.id)[0], "delivered");
+  }
+});
+
+// M18 (achado Copilot "coluna jsonb") NÃO tem teste comportamental: o próprio webhook grava evidence_ref
+// com expressão text (INSERT ... service_fulfillment), e com coluna jsonb o PostgreSQL rejeita esse INSERT
+// ("column evidence_ref is of type jsonb but expression is of type text") — verificado neste harness.
+// Logo a coluna em uso é text; a leitura de objeto foi mantida apenas como defesa.
