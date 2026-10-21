@@ -16,10 +16,15 @@ e no Environment `producao-critica`, que exige revisor.
 | 3 | **MP-03:** captura a versão ativa do Worker, que tem de estar a 100% (ponto de retorno) | Para. Nada foi gravado. Em implantação gradual, recusa (fail-closed). |
 | 4 | `wrangler secret put` grava o novo valor e registra `ROTATED_AT` | Se a própria gravação falhar, não há o que desfazer. |
 | 5 | Espera o preflight do Worker, mais novo que `ROTATED_AT`, com `mercadopago_production_token` ok (até 40 min; antes eram 70) | Executa o passo 6. |
-| 6 | `wrangler rollback <versão anterior>` | Ver o limite abaixo. |
+| 6 | `wrangler rollback <versão anterior>` + leitura da versão ativa (tem de ser a anterior) | Leitura diferente => `MP_ROLLBACK_READBACK_FAIL`, incidente aberto. |
 
 - **MP-01:** o token Cloudflare vem só de `secrets.CLOUDFLARE_API_TOKEN` (o do Environment). O nome antigo
   `…PUBLIC_OWNER…` não é mais lido. Espaços e quebras de linha são removidos do valor, como no #851.
+- **Falha ambígua (contestação Sol 21/10) — BLOQUEANTE para a troca real:** a tentativa de gravação é
+  registrada (`WRITE_ATTEMPTED_AT`) antes do `secret put`. Se o wrangler falhar sem confirmar, o run publica
+  `MP_WRITE_UNCERTAIN`, executa o retorno e só aceita a versão anterior confirmada por leitura. A troca real
+  continua bloqueada até o Sol reproduzir os testes e aceitar esse tratamento. Caso real do mesmo padrão em
+  21/10: o deploy do site de vendas subiu a versão e falhou depois, na etapa de rotas.
 - **Limite declarado:** a documentação de rollbacks da Cloudflare diz apenas que "recursos conectados" não
   mudam. Ela não afirma se o *valor* de um segredo volta com a versão anterior. Por isso o passo 6 publica
   `NAO_COMPROVADO`.
@@ -40,8 +45,9 @@ Comportamento verificado no código (gh-pages):
   (mercadopago-webhook-safety.mjs) põe o pagamento numa fila de reconciliação no KV, com validade de 7 dias,
   e alerta o proprietário.
 - A cada tick do cron, `runPaidDeliveryWatchdog` esvazia até 10 itens da fila. Ele consulta o pagamento
-  direto na API do Mercado Pago (`trustedRecovery`, com o token de acesso), então nenhum pagamento aprovado
-  se perde na janela em que painel e Worker têm segredos diferentes.
+  direto na API do Mercado Pago (`trustedRecovery`, com o token de acesso). Isso REDUZ o risco de perda na janela
+  de segredos diferentes, mas NÃO está provado que elimina: falta provar persistência da fila, capacidade de
+  drenagem, o que acontece após os 7 dias de validade e falhas simultâneas do KV ou da API do provedor (contestação Sol 21/10).
 - A cadência do cron fica no painel e não foi determinada aqui.
 
 Procedimento (o proprietário executa, depois de autorizar):
