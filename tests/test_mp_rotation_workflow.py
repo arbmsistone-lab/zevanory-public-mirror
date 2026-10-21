@@ -77,11 +77,40 @@ class MpRotationWorkflow(unittest.TestCase):
             if "CLOUDFLARE_API_TOKEN" in run or "wrangler" in run:
                 self.assertIn("tr -d '[:space:]'", run, s.get("name"))
 
-    def test_wait_is_bounded_below_previous_70_minutes(self):
+    def test_r1_wait_covers_a_full_hourly_preflight_cycle_at_any_write_minute(self):
+        # Ordem 046 R1: o preflight roda só no minuto :00 (cron horário). Para QUALQUER minuto de gravação,
+        # o próximo preflight, com até 15 min de atraso do cron/runner e mais uma volta de sondagem (60 s), cai
+        # dentro da espera; e o timeout do job cobre a espera + validação + retorno automático.
         m = re.search(r"deadline=\$\(\(SECONDS \+ (\d+)\)\)", self.text)
         self.assertIsNotNone(m)
-        self.assertLessEqual(int(m.group(1)), 2400)
-        self.assertLessEqual(int(self.job["timeout-minutes"]), 55)
+        wait = int(m.group(1))
+        self.assertEqual(wait, 4800)
+        cron_delay, poll = 15 * 60, 60
+        for write_second in range(0, 3600, 30):
+            next_tick = 3600 - write_second + cron_delay
+            self.assertLessEqual(next_tick + poll, wait, f"gravação no segundo {write_second} da hora")
+        timeout = int(self.job["timeout-minutes"])
+        self.assertGreaterEqual(timeout * 60, wait + 15 * 60, "timeout do job < espera + 15 min de validação/retorno")
+        self.assertLessEqual(timeout, 120, "limite de custo")
+
+    @unittest.skipUnless(shutil.which("node"), "node ausente")
+    def test_r1_freshness_crosses_the_hour_boundary(self):
+        run = self.steps[step_index(self.steps, "deadline=$((SECONDS")]["run"]
+        snippet = re.search(r"<<'NODE'\n(.*?)\n\s*NODE", run, re.S).group(1)
+        snippet = "\n".join(line.strip() for line in snippet.splitlines())
+        def fresh(after, generated):
+            import tempfile
+            with tempfile.TemporaryDirectory() as d:
+                pf = Path(d) / "p.json"
+                pf.write_text(json.dumps({"generatedAt": generated}))
+                code = snippet.replace("/tmp/zpc-sales-preflight.json", str(pf))
+                return subprocess.run(["node", "--input-type=module", "-e", code], env={**os.environ, "PREFLIGHT_AFTER": after}).returncode == 0
+        self.assertTrue(fresh("2026-10-21T19:59:30Z", "2026-10-21T20:00:49.750Z"), "virada de hora")
+        self.assertTrue(fresh("2026-10-21T23:58:00Z", "2026-10-22T00:00:41.000Z"), "virada de dia")
+        self.assertFalse(fresh("2026-10-21T19:59:30Z", "2026-10-21T19:00:49.750Z"), "preflight anterior à gravação")
+        self.assertFalse(fresh("2026-10-21T19:59:30Z", "2026-10-21T19:59:30Z"), "igual não é mais novo")
+        self.assertFalse(fresh("2026-10-21T19:59:30Z", "not-a-date"))
+        self.assertFalse(fresh("", "2026-10-21T20:00:49.750Z"), "referência ausente => não fresco")
 
     def test_secret_value_is_never_printed(self):
         self.assertNotRegex(self.text, r"echo[^\n]*\$\{?MERCADOPAGO_PROD_ACCESS_TOKEN")
@@ -258,13 +287,13 @@ open(out, 'w').write('{}'); print('404', end='')
         on = doc.get("on", doc.get(True))
         inp = on["workflow_dispatch"]["inputs"]["mode"]
         self.assertEqual(inp["default"], "check-only")
-        self.assertEqual(inp["options"], ["check-only", "rotate"])
+        self.assertEqual(inp["options"], ["check-only", "rotate", "recover"])
         put = self.steps[step_index(self.steps, "secret put MERCADOPAGO_ACCESS_TOKEN")]
         self.assertEqual(put.get("if"), "inputs.mode == 'rotate'")
         wait = self.steps[step_index(self.steps, "deadline=$((SECONDS")]
-        self.assertEqual(wait.get("if"), "inputs.mode == 'rotate'")
+        self.assertEqual(wait.get("if"), "inputs.mode == 'rotate' || inputs.mode == 'recover'")
         base = self.steps[step_index(self.steps, "CHECK_ONLY=PASS")]
-        self.assertEqual(base.get("if"), "inputs.mode != 'rotate'")
+        self.assertEqual(base.get("if"), "inputs.mode == 'check-only'")
         self.assertNotIn("wrangler", base["run"])
         self.assertNotRegex(base["run"], r"-X\s*(PUT|POST|DELETE|PATCH)")
         # o retorno automático depende de WRITE_ATTEMPTED_AT, que só o passo de troca grava
@@ -316,6 +345,69 @@ open(out, 'w').write('{}'); print('404', end='')
             rc, out, _ = self._run_step("CHECK_ONLY=PASS", fx, env)
             self.assertNotEqual(rc, 0, name)
             self.assertNotIn("CHECK_ONLY=PASS (nada", out, name)
+
+    # ---- Ordem 046 R2: alvo da recuperação e modo recover ----
+    A = "11111111-1111-1111-1111-111111111111"
+    N = "33333333-3333-3333-3333-333333333333"
+
+    @classmethod
+    def dep(cls, v):
+        return ["200", {"result": {"deployments": [{"versions": [{"version_id": v, "percentage": 100}]}]}}]
+
+    @unittest.skipUnless(shutil.which("jq"), "jq ausente")
+    def test_r2_rotate_records_the_version_that_holds_the_new_token(self):
+        needle = "secret put MERCADOPAGO_ACCESS_TOKEN"
+        rc, out, npx = self._run_step(needle, {"/deployments": self.dep(self.N)}, {"PREV_VERSION_ID": self.A})
+        self.assertEqual(rc, 0, out)
+        self.assertIn(f"NEW_SECRET_VERSION={self.N}", out)
+        self.assertIn("secret put MERCADOPAGO_ACCESS_TOKEN --name zevanory", npx)
+        # Leitura que não mostra versão nova não derruba a rotação (não é motivo de retorno), só avisa.
+        for name, fx in {"same_as_prev": {"/deployments": self.dep(self.A)}, "http_500": {"/deployments": ["500", {}]}}.items():
+            rc, out, _ = self._run_step(needle, fx, {"PREV_VERSION_ID": self.A})
+            self.assertEqual(rc, 0, name)
+            self.assertIn("NEW_SECRET_VERSION_UNREAD", out, name)
+            self.assertNotIn("NEW_SECRET_VERSION=", out.replace("NEW_SECRET_VERSION_UNREAD", ""), name)
+
+    @unittest.skipUnless(shutil.which("jq"), "jq ausente")
+    def test_r2_automatic_return_prints_the_recovery_target(self):
+        needle = 'rollback "$PREV_VERSION_ID"'
+        versions = lambda items: ["200", {"result": {"items": items}}]
+        base = {"/deployments": self.dep(self.A)}
+        ok = {**base, "/versions": versions([{"id": self.N, "number": 682}, {"id": self.A, "number": 681}])}
+        rc, out, _ = self._run_step(needle, ok, {"PREV_VERSION_ID": self.A, "ROTATED_AT": "x", "NEW_SECRET_VERSION": self.N})
+        self.assertEqual(rc, 0, out)
+        self.assertIn(f"RECOVERY_TARGET_VERSION={self.N}", out)
+        self.assertIn(f"mode=recover target_version={self.N} rollback_point={self.A}", out)
+        # Gravação ambígua (sem NEW_SECRET_VERSION): o alvo vem da mais recente por number.
+        rc, out, _ = self._run_step(needle, ok, {"PREV_VERSION_ID": self.A})
+        self.assertIn(f"RECOVERY_TARGET_VERSION={self.N}", out)
+        # Divergência entre a mais recente e a versão registrada => erro explícito, nenhum alvo sugerido.
+        other = "44444444-4444-4444-4444-444444444444"
+        rc, out, _ = self._run_step(needle, ok, {"PREV_VERSION_ID": self.A, "ROTATED_AT": "x", "NEW_SECRET_VERSION": other})
+        self.assertIn("MP_RECOVERY_TARGET_MISMATCH", out)
+        self.assertNotIn("RECOVERY_TARGET_VERSION=" + self.N, out)
+        # Nenhuma versão nova (a gravação não aconteceu) => nada a recuperar.
+        rc, out, _ = self._run_step(needle, {**base, "/versions": versions([{"id": self.A, "number": 681}])}, {"PREV_VERSION_ID": self.A})
+        self.assertIn("RECOVERY_TARGET_VERSION=none", out)
+
+    def test_r2_recover_mode_uses_the_rehearsed_script_and_never_auto_returns(self):
+        rec = [s for s in self.steps if "worker-version-recover.sh" in str(s.get("run", ""))]
+        self.assertEqual(len(rec), 1)
+        rec = rec[0]
+        self.assertEqual(rec.get("if"), "inputs.mode == 'recover'")
+        self.assertEqual(rec["env"], {"RECOVER_WORKER_NAME": "zevanory", "RECOVER_TARGET_VERSION": "${{ inputs.target_version }}",
+                                      "RECOVER_EXPECTED_ACTIVE": "${{ inputs.rollback_point }}"})
+        self.assertIn("bash scripts/ops/worker-version-recover.sh", rec["run"])
+        checkout = self.steps[0]
+        self.assertEqual(checkout.get("if"), "inputs.mode == 'recover'")
+        self.assertEqual(checkout["with"], {"persist-credentials": False})
+        # O passo do ponto de retorno (que recusa 10215) não roda no recover; o retorno automático depende de
+        # WRITE_ATTEMPTED_AT, que só o rotate grava => nunca volta para o token antigo depois de recuperar.
+        point = self.steps[step_index(self.steps, 'PREV_VERSION_ID=$prev')]
+        self.assertEqual(point.get("if"), "inputs.mode != 'recover'")
+        self.assertNotIn("WRITE_ATTEMPTED_AT", rec["run"])
+        self.assertLess(self.steps.index(rec), step_index(self.steps, "deadline=$((SECONDS"))
+        self.assertIn("PREFLIGHT_AFTER=", rec["run"])
 
 
 if __name__ == "__main__":

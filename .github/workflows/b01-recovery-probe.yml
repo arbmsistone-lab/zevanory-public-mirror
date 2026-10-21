@@ -1,0 +1,56 @@
+{
+  "name": "B01-R recovery after rollback probe",
+  "on": {
+    "workflow_dispatch": {}
+  },
+  "permissions": {
+    "contents": "read",
+    "actions": "read"
+  },
+  "concurrency": {
+    "group": "b01-rollback-secret-probe",
+    "cancel-in-progress": false
+  },
+  "jobs": {
+    "recovery-probe": {
+      "if": "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1",
+      "environment": {
+        "name": "sandbox-financial-approved"
+      },
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 20,
+      "env": {
+        "CLOUDFLARE_SANDBOX_PROBE_TOKEN": "${{ secrets.CLOUDFLARE_SANDBOX_PROBE_TOKEN }}",
+        "CLOUDFLARE_ACCOUNT_ID": "1b26415802588185a86c1d4d3ebf5bdb"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Single-run guard (global, consumes the owner's authorization)",
+          "shell": "bash",
+          "env": {
+            "GITHUB_TOKEN": "${{ github.token }}"
+          },
+          "run": "bash sandbox/rollback-secret-probe/single-run-guard.sh b01-recovery-probe.yml"
+        },
+        {
+          "name": "Reproduce rollback + 10215 on the probe Worker, recover with the production recovery script",
+          "id": "probe",
+          "shell": "bash",
+          "run": "bash sandbox/rollback-secret-probe/run-recovery-probe.sh"
+        },
+        {
+          "name": "Always retry cleanup if the probe did not finish it",
+          "if": "${{ always() }}",
+          "shell": "bash",
+          "run": "bash sandbox/rollback-secret-probe/cleanup-only.sh"
+        }
+      ]
+    }
+  }
+}

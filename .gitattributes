@@ -1,0 +1,3 @@
+# Contestação Codex 010: no Windows, checkout com CRLF quebra os scripts bash (set: pipefail\r).
+scripts/ops/*.sh text eol=lf
+sandbox/rollback-secret-probe/*.sh text eol=lf

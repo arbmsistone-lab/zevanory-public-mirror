@@ -1,0 +1,40 @@
+name: mp-rotation-contract
+
+# Ordem 046: os testes da rotação Mercado Pago, do ensaio B01 e da recuperação (10215) rodam em toda PR que
+# toca nesses arquivos. Só pull_request: nunca dispara no merge, nunca usa segredo, sem rede além do checkout.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/mercadopago-production-token-rotate.yml"
+      - ".github/workflows/b01-rollback-secret-probe.yml"
+      - ".github/workflows/b01-recovery-probe.yml"
+      - ".github/workflows/mp-rotation-contract.yml"
+      - "scripts/ops/worker-version-recover.sh"
+      - "sandbox/rollback-secret-probe/**"
+      - "tests/test_mp_rotation_workflow.py"
+      - "tests/test_b01_rollback_secret_probe.py"
+      - "tests/test_b01_recovery.py"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Rotation, B01 probe and recovery contract (offline)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml" 2>/dev/null || python3 -m pip install --quiet --user --break-system-packages "pyyaml==6.0.2"
+          for t in jq node openssl; do command -v "$t" >/dev/null || { echo "::error::$t ausente"; exit 1; }; done
+          python3 -m unittest tests.test_mp_rotation_workflow tests.test_b01_rollback_secret_probe tests.test_b01_recovery -v 2>&1 | tee /tmp/contract.txt
+          # Contagem exata: um teste pulado (ferramenta ausente) não pode passar despercebido.
+          grep -qx "Ran 64 tests in .*" /tmp/contract.txt || { echo "::error::contagem de testes diferente de 64"; exit 1; }
+          if grep -q "skipped" /tmp/contract.txt; then echo "::error::testes pulados"; exit 1; fi
