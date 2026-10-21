@@ -231,7 +231,9 @@ open(out, 'w').write('{}'); print('404', end='')
         self.assertNotEqual(rc, 0)
         self.assertIn("MP_LATEST_VERSION_NOT_DEPLOYED_10215", out)
         # sem number, ou com empate => falha fechada (not resolvable)
-        for items in ([{"id": a}], [{"id": a, "number": 8}, {"id": b, "number": 8}], []):
+        for items in ([{"id": a}], [{"id": a, "number": 8}, {"id": b, "number": 8}], [],
+                      [{"id": a, "number": 7.9}, {"id": b, "number": 7.1}],   # contestação Codex A1
+                      [{"id": a, "number": -1}], [{"id": a, "number": "9"}]):
             rc, out, _ = self._run_step(needle, {"/deployments": dep, "/versions": ["200", {"result": {"items": items}}]}, {})
             self.assertNotEqual(rc, 0, items)
             self.assertIn("MP_LATEST_VERSION::not resolvable", out, items)

@@ -81,9 +81,9 @@ jobs:
           test "$code" = "200" || { echo "::error title=MP_VERSIONS_READ::http=$code"; exit 1; }
           # Contestação Sol 038-F1: não depender da ordem da lista. A documentação diz que o primeiro item é o mais
           # recente (CODEX-006), mas a mais recente é escolhida pelo MAIOR "number" (sequencial por Worker).
-          # Lista vazia, number ausente/não inteiro ou empate => falha fechada.
+          # Lista vazia, number ausente, negativo ou fracionário (contestação Codex A1: 7.1/7.9) ou empate => falha fechada.
           latest="$(jq -r '(.result.items // []) as $v
-            | if ($v|length)==0 or ([$v[]|.number|type=="number"]|all|not) then empty
+            | if ($v|length)==0 or ([$v[]|.number|(type=="number" and . >= 0 and . == floor)]|all|not) then empty
               else ($v|max_by(.number)) as $m
                 | if ([$v[]|select(.number==$m.number)]|length)!=1 then empty else $m.id end
               end // empty' /tmp/versions.json)"
