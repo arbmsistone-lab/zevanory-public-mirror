@@ -13,6 +13,15 @@ class T(unittest.TestCase):
             with mock.patch.dict(os.environ, {"CLOUDFLARE_API_TOKEN": raw, "CLOUDFLARE_ACCOUNT_ID": "acc"}):
                 self.assertEqual(wsr.Cloudflare(fetch=lambda *a, **k: {}).auth["Authorization"], "Bearer tok-ficticio", repr(raw))
 
+    def test_worker_secret_rotate_token_vazio_ou_so_espacos_falha_antes_da_api(self):
+        chamadas = []
+        for raw, conta in [(" \n ", "acc"), ("", "acc"), ("tok-ficticio", "  ")]:
+            with mock.patch.dict(os.environ, {"CLOUDFLARE_API_TOKEN": raw, "CLOUDFLARE_ACCOUNT_ID": conta}), \
+                 mock.patch.object(wsr, "Cloudflare", lambda *a, **k: chamadas.append(1)), \
+                 mock.patch.object(sys, "argv", ["worker_secret_rotate.py", "--verify"]):
+                self.assertEqual(wsr.main(), 1, repr((raw, conta)))
+        self.assertEqual(chamadas, [], "nenhuma chamada à API com credencial inválida")
+
     def test_backup_preserve_repassa_token_limpo_e_vazio_falha(self):
         seen = {}
         with mock.patch.dict(os.environ, {"CLOUDFLARE_API_TOKEN": "tok-ficticio\r\n"}), \

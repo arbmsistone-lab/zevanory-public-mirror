@@ -202,6 +202,11 @@ def main() -> int:
     ap.add_argument("--drop-previous", action="store_true", help="end of rotation: remove LEAD_PRIVACY_SECRET_PREVIOUS only")
     ap.add_argument("--verify", action="store_true", help="read-only certification")
     args = ap.parse_args()
+    # Fail-closed (contestação Sol, Ordem 019): credencial ausente, vazia ou só com espaços não chega a
+    # montar "Authorization: Bearer " nem a tocar a API; nenhum modo segue sem token e conta.
+    if not os.environ.get("CLOUDFLARE_API_TOKEN", "").strip() or not os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip():
+        log("error", "WORKER_SECRET", "cloudflare_credentials_missing")
+        return 1
     if args.verify:
         return verify(Cloudflare())
     if args.drop_previous:
