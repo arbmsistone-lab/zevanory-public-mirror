@@ -15,7 +15,7 @@ e no Environment `producao-critica`, que exige revisor.
 | 2 | **MP-02:** `/v1/payments/search?limit=1` e `/v1/payment_methods` respondem 200 (só leitura) | Para. Nada foi gravado. |
 | 3 | **MP-03:** captura a versão ativa do Worker, que tem de estar a 100% (ponto de retorno) | Para. Nada foi gravado. Em implantação gradual, recusa (fail-closed). |
 | 4 | Registra `WRITE_ATTEMPTED_AT`, depois `wrangler secret put` grava o novo valor e registra `ROTATED_AT` | Mesmo que a gravação falhe, ela PODE ter sido aplicada com a resposta perdida (gravação ambígua): `MP_WRITE_UNCERTAIN`, retorno automático para a versão anterior e leitura de confirmação (passo 6). Não presuma "nada a desfazer". |
-| 5 | Espera o preflight do Worker, mais novo que `ROTATED_AT`, com `mercadopago_production_token` ok (até 40 min; antes eram 70) | Executa o passo 6. |
+| 5 | Espera o preflight do Worker, mais novo que `ROTATED_AT`, com `mercadopago_production_token` ok (até 80 min, Ordem 046 R1; antes eram 40) | Executa o passo 6. |
 | 6 | `wrangler rollback <versão anterior>` + leitura da versão ativa (tem de ser a anterior) | Leitura diferente => `MP_ROLLBACK_READBACK_FAIL`, incidente aberto. |
 
 - **Perda do runner (risco Sol 038-R4):** se a máquina do GitHub morrer entre a gravação e o passo de
@@ -48,6 +48,27 @@ e no Environment `producao-critica`, que exige revisor.
     trocar; ou (2) `wrangler versions secret put MERCADOPAGO_ACCESS_TOKEN --name zevanory`, seguido de
     `wrangler versions deploy <nova-versão>@100 --name zevanory`. Isso exige autorização do proprietário.
   - Documentação: https://developers.cloudflare.com/workers/observability/errors/#secret-modification-with-worker-versions-10215
+- **Espera do preflight (Ordem 046 R1):** o preflight do Worker roda só no cron horário (minuto :00). A espera
+  passou de 40 min para 80 min (4800 s), o que cobre uma hora inteira mais 15 min de atraso, qualquer que seja o
+  minuto da gravação. O timeout do job passou de 55 para 100 min. Um teste percorre todos os minutos da hora
+  e a virada de hora e de dia.
+- **Falha depois da renovação no Mercado Pago (Ordem 046 R2):** a renovação não tem volta, porque o token antigo
+  morre 12 h depois. Se a rotação falhar depois de gravar, o retorno automático deixa o Worker com o token
+  ANTIGO, e a versão com o token NOVO fica como a mais recente, não implantada (10215).
+  1. O run da rotação imprime `NEW_SECRET_VERSION` (logo depois da gravação) e, no retorno,
+     `RECOVERY_TARGET_VERSION` (a mais recente por `number`). Se as duas divergirem: `MP_RECOVERY_TARGET_MISMATCH`,
+     parar e decidir com o proprietário.
+  2. Recuperação, com autorização literal do proprietário: dispatch `mode=recover` com
+     `target_version=<RECOVERY_TARGET_VERSION>`, e o proprietário aprova `producao-critica`. O passo roda
+     `scripts/ops/worker-version-recover.sh`. Ele recusa se o alvo não for a mais recente ou já estiver ativo,
+     implanta o alvo a 100% e certifica por leitura. Depois espera um preflight novo com o token ok. O modo
+     recover nunca faz retorno automático para o token antigo.
+  3. Esse mesmo script é certificado pelo ensaio B01-R (`b01-recovery-probe.yml`), no Worker descartável. O
+     ensaio reproduz A → B → rollback, exige a recusa real 10215 (controle negativo), recupera com o script e
+     confirma que o Worker voltou a servir o digest de B. Resultado: `RECOVERY_CERTIFIED=YES`.
+  4. Enquanto o B01-R não for YES, a rotação real continua NO-GO (Sol, Ordem 046).
+  - Impacto se nada for feito em 12 h: consulta de pagamentos, reconciliação, watchdog, entrega, estornos e
+    reclamações ficam sem token. Vendas fechadas não eliminam as obrigações pós-venda.
 - **Recomendação ao proprietário:** mover `MERCADOPAGO_PROD_ACCESS_TOKEN` para o Environment
   `producao-critica`. Como segredo de repositório, ele fica disponível a qualquer workflow do repositório.
 

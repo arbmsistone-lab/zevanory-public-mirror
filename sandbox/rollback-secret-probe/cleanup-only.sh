@@ -32,7 +32,19 @@ if [[ "${B01_CLEANUP_DONE:-}" == "1" ]]; then
   exit 0
 fi
 
-CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
-  npx --yes wrangler@4.143.0 secret delete PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" \
-  >/dev/null </dev/null
+delete_secret() {
+  CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
+    npx --yes wrangler@4.143.0 secret delete PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" \
+    >/dev/null </dev/null
+}
+
+if ! delete_secret; then
+  # Ensaio 3 (run 39643799156): depois de um rollback, secret delete é recusado (Cloudflare 10215) até a
+  # versão mais recente estar implantada. Um deploy do código do Worker de prova cria e implanta a mais
+  # recente (o segredo continua vinculado) e libera a remoção. Só no Worker de prova; nunca cria Worker.
+  echo "B01_CLEANUP_RETRY_AFTER_DEPLOY=1 (possível 10215)"
+  CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
+    npx --yes wrangler@4.143.0 deploy --name "$WORKER_NAME" --config "$CONFIG" >/dev/null </dev/null
+  delete_secret
+fi
 echo "B01_CLEANUP_DONE=YES"

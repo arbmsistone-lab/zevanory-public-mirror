@@ -6,10 +6,16 @@ on:
       mode:
         # Gate G1/G2 do Sol (Ordem 043): verificar ANTES de renovar o token no Mercado Pago, com o mesmo código.
         # O padrão é o modo seguro: check-only nunca grava nada. Para trocar, é preciso escolher "rotate".
-        description: "check-only (padrão: só leitura, nada é gravado) ou rotate (troca real, autorização do proprietário)"
+        description: "check-only (padrão: só leitura, nada é gravado), rotate (troca real) ou recover (implanta a versão mais recente depois de um retorno automático; 10215)"
         type: choice
-        options: [check-only, rotate]
+        options: [check-only, rotate, recover]
         default: check-only
+      target_version:
+        # Ordem 046 R2: só no modo recover. É o RECOVERY_TARGET_VERSION impresso pelo run de rotação que voltou.
+        description: "recover: id da versão a implantar (RECOVERY_TARGET_VERSION do run que voltou). Ignorado nos outros modos."
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -25,7 +31,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    # Ordem 046 R1: espera do preflight de até 80 min (passo Wait) + validação + retorno automático + folga.
+    timeout-minutes: 100
     env:
       # MP-01 (Sol, 21/10): fonte única. O nome antigo (PUBLIC_OWNER) não é mais lido aqui,
       # para que uma cópia antiga em algum escopo nunca tenha precedência sobre o token do Environment.
@@ -34,6 +41,13 @@ jobs:
       KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
       MERCADOPAGO_PROD_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_PROD_ACCESS_TOKEN }}
     steps:
+      # Só o modo recover precisa do repositório (scripts/ops/worker-version-recover.sh, o script ensaiado).
+      - name: Checkout the recovery script (recover only)
+        if: inputs.mode == 'recover'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
       - name: Require and validate the production credential
         shell: bash
         run: |
@@ -67,6 +81,7 @@ jobs:
           echo "MERCADOPAGO_OPERATIONAL_READ=PASS"
 
       - name: Record the Worker version active before the rotation (rollback point)
+        if: inputs.mode != 'recover'
         shell: bash
         run: |
           set -euo pipefail
@@ -106,7 +121,7 @@ jobs:
           echo "CONDITION_10215=absent"
 
       - name: Check-only baseline (no write) — preflight freshness and public health
-        if: inputs.mode != 'rotate'
+        if: inputs.mode == 'check-only'
         shell: bash
         run: |
           set -euo pipefail
@@ -162,28 +177,58 @@ jobs:
           echo "WRITE_ATTEMPTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           printf '%s' "$MERCADOPAGO_PROD_ACCESS_TOKEN" | \
             npx --yes wrangler@4.143.0 secret put MERCADOPAGO_ACCESS_TOKEN --name zevanory
-          echo "ROTATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "ROTATED_AT=$now" >> "$GITHUB_ENV"
+          echo "PREFLIGHT_AFTER=$now" >> "$GITHUB_ENV"
           echo "WORKER_SECRET_ROTATION=PASS"
           echo "WORKER_SECRET_NAME=MERCADOPAGO_ACCESS_TOKEN"
+          # Ordem 046 R2: a versão criada pelo secret put é a que contém o token novo. Ela é o alvo de uma
+          # eventual recuperação. Uma falha nesta leitura não é motivo para voltar: só fica sem o registro.
+          code="$(curl -sS -o /tmp/deployments-new.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/deployments" || true)"
+          newv="$(jq -r '[.result.deployments[0].versions[]?|select(.percentage==100)][0].version_id // empty' /tmp/deployments-new.json 2>/dev/null || true)"
+          if [ "$code" = "200" ] && [[ "$newv" =~ ^[0-9a-f-]{36}$ ]] && [ "$newv" != "$PREV_VERSION_ID" ]; then
+            echo "NEW_SECRET_VERSION=$newv" >> "$GITHUB_ENV"
+            echo "NEW_SECRET_VERSION=$newv"
+          else
+            echo "::warning title=NEW_SECRET_VERSION_UNREAD::http=$code active=${newv:-none}"
+          fi
+
+      - name: Recover — deploy the latest Worker version after an automatic return (Cloudflare 10215)
+        if: inputs.mode == 'recover'
+        shell: bash
+        env:
+          RECOVER_WORKER_NAME: zevanory
+          RECOVER_TARGET_VERSION: ${{ inputs.target_version }}
+        run: |
+          set -euo pipefail
+          # Ordem 046 R2: o MESMO script ensaiado no Worker descartável (b01-recovery-probe). Ele exige que o alvo seja
+          # a versão mais recente e que não esteja ativo; implanta a 100% e certifica por leitura.
+          bash scripts/ops/worker-version-recover.sh
+          echo "PREFLIGHT_AFTER=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Wait for the authoritative Worker preflight
-        if: inputs.mode == 'rotate'
+        if: inputs.mode == 'rotate' || inputs.mode == 'recover'
         shell: bash
         run: |
           set -euo pipefail
           # Mesmo saneamento do #851: um token salvo com quebra de linha não pode quebrar a chamada.
           CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
           endpoint="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values/zpc-sales-preflight:v1"
-          deadline=$((SECONDS + 2400))
+          # Ordem 046 R1: o preflight roda só no cron horário (minuto :00). 4800 s = 80 min cobrem uma hora inteira
+          # mais 15 min de atraso do cron/runner e uma volta de sondagem, qualquer que seja o minuto da gravação (antes: 2400 s = 40 min,
+          # que expirava se a gravação acontecesse antes do minuto :20).
+          deadline=$((SECONDS + 4800))
           fresh=0
           while (( SECONDS < deadline )); do
             code="$(curl -sS -o /tmp/zpc-sales-preflight.json -w '%{http_code}' \
               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$endpoint")"
-            if [ "$code" = "200" ] && ROTATED_AT="$ROTATED_AT" node --input-type=module <<'NODE'
+            if [ "$code" = "200" ] && PREFLIGHT_AFTER="$PREFLIGHT_AFTER" node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const raw=JSON.parse(fs.readFileSync('/tmp/zpc-sales-preflight.json','utf8'));
           const generatedAt=String(raw?.generatedAt??raw?.generated_at??raw?.at??'');
-          process.exit(Date.parse(generatedAt)>Date.parse(process.env.ROTATED_AT)?0:1);
+          const g=Date.parse(generatedAt), ref=Date.parse(process.env.PREFLIGHT_AFTER);
+          process.exit(Number.isFinite(g)&&Number.isFinite(ref)&&g>ref?0:1);
           NODE
             then
               fresh=1
@@ -229,4 +274,21 @@ jobs:
             exit 1
           fi
           echo "ROLLBACK_READBACK=PASS active=$now"
+          # Ordem 046 R2: alvo da recuperação = versão MAIS RECENTE (a do secret put, com o token novo).
+          vcode="$(curl -sS -o /tmp/versions-after.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/versions" || true)"
+          target="$(jq -r '(.result.items // []) as $v
+            | if ($v|length)==0 or ([$v[]|.number|(type=="number" and . >= 0 and . == floor)]|all|not) then empty
+              else ($v|max_by(.number)) as $m | if ([$v[]|select(.number==$m.number)]|length)!=1 then empty else $m.id end end // empty' \
+            /tmp/versions-after.json 2>/dev/null || true)"
+          if [ "$vcode" = "200" ] && [[ "$target" =~ ^[0-9a-f-]{36}$ ]] && [ "$target" != "$PREV_VERSION_ID" ]; then
+            if [ -n "${NEW_SECRET_VERSION:-}" ] && [ "$target" != "$NEW_SECRET_VERSION" ]; then
+              echo "::error title=MP_RECOVERY_TARGET_MISMATCH::latest=$target new_secret_version=$NEW_SECRET_VERSION — decidir com o proprietário"
+            else
+              echo "RECOVERY_TARGET_VERSION=$target"
+              echo "::warning title=MP_RECOVERY_AVAILABLE::com autorização do proprietário, dispatch mode=recover target_version=$target (docs/ops/ROTACAO_MERCADOPAGO.md)"
+            fi
+          else
+            echo "RECOVERY_TARGET_VERSION=none (nenhuma versão nova; nada a recuperar) http=$vcode"
+          fi
           echo "::warning title=MP_ROTATION_ROLLED_BACK::worker returned to $PREV_VERSION_ID; secret value restoration OBSERVED_IN_B01_PROBE (run 39643799156) — CONFIRM via the next preflight; further secret changes need versions secret put (Cloudflare 10215)"
