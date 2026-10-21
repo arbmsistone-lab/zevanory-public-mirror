@@ -50,7 +50,8 @@ class Cloudflare:
     def __init__(self, fetch=pg._get):
         self.fetch = fetch
         self.base = API.format(account=os.environ.get("CLOUDFLARE_ACCOUNT_ID", ""), script=SCRIPT)
-        self.auth = {"Authorization": "Bearer " + os.environ.get("CLOUDFLARE_API_TOKEN", "")}
+        # .strip(): segredo com quebra de linha quebra o cabeçalho HTTP no urllib (issue #849).
+        self.auth = {"Authorization": "Bearer " + os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()}
 
     def active_version_id(self) -> str | None:
         deps = (self.fetch(self.base + "/deployments", self.auth).get("result") or {}).get("deployments") or []
