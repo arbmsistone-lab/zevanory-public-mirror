@@ -16,7 +16,9 @@ readonly ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
 readonly ZEVANORY_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb"
 readonly CONFIG="sandbox/rollback-secret-probe/wrangler.toml"
 readonly WORKER_NAME="${WORKER_NAME:-$PROBE_WORKER}"
-readonly TOKEN="${CLOUDFLARE_SANDBOX_PROBE_TOKEN:-}"
+# Run 39639303995 (21/10): a Cloudflare respondeu "Invalid format for Authorization header" (6111),
+# assinatura de espaço ou quebra de linha colados no segredo, como no #850/#851. O valor é saneado antes do uso.
+readonly TOKEN="$(printf '%s' "${CLOUDFLARE_SANDBOX_PROBE_TOKEN:-}" | tr -d '[:space:]')"
 readonly ATTEMPTS="${PROBE_ATTEMPTS:-30}"
 readonly SLEEP_SECONDS="${PROBE_SLEEP_SECONDS:-2}"
 
@@ -189,6 +191,7 @@ WORKER_URL="$(grep -Eo "https://${WORKER_NAME}\.[A-Za-z0-9-]+\.workers\.dev" "$T
 [[ -n "$WORKER_URL" ]] || fail "WORKER_URL_MISSING"
 
 SECRET_WRITTEN=1
+[[ -z "${GITHUB_ENV:-}" ]] || printf 'B01_SECRET_WRITTEN=1\n' >> "$GITHUB_ENV"
 printf '%s' "$VALUE_A" | CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
   "$NPX_BIN" --yes "$WRANGLER" secret put PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" \
   >/dev/null

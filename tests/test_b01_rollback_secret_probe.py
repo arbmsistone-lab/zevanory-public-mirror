@@ -405,10 +405,13 @@ class SingleRunGuardTests(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertIn("SINGLE_RUN_GUARD=PASS prior_runs=0", p.stdout)
 
-    def test_second_manual_dispatch_is_refused(self):
+    def test_one_authorized_rerun_then_refused(self):
+        # ALLOWED_PRIOR_RUNS=1 (após o run 39639303995 INCONCLUSIVE): o 2º run passa, o 3º é recusado.
         p = self.guard(json.dumps({"total_count": 2, "workflow_runs": [{"id": 100}, {"id": 99}]}))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        p = self.guard(json.dumps({"total_count": 3, "workflow_runs": [{"id": 100}, {"id": 99}, {"id": 98}]}))
         self.assertNotEqual(p.returncode, 0)
-        self.assertIn("SINGLE_RUN_GUARD_REFUSED prior_runs=1", p.stderr)
+        self.assertIn("SINGLE_RUN_GUARD_REFUSED prior_runs=2 allowed=1", p.stderr)
 
     def test_api_failure_and_bad_or_truncated_response_fail_closed(self):
         # HTTP != 200 falha mesmo com corpo que, sozinho, passaria.
@@ -450,10 +453,45 @@ class CleanupOnlyAccountGuardTests(unittest.TestCase):
         npx.chmod(0o755)
         env = dict(os.environ, PATH=str(base) + os.pathsep + os.environ.get("PATH", ""), FAKE_LOG=str(log),
                    GITHUB_RUN_ID="4242", CLOUDFLARE_SANDBOX_PROBE_TOKEN="offline",
-                   CLOUDFLARE_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb")
+                   CLOUDFLARE_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb", B01_SECRET_WRITTEN="1")
         p = subprocess.run([bash_path(), str(ROOT / "sandbox/rollback-secret-probe/cleanup-only.sh")],
                            cwd=ROOT, env=env, text=True, capture_output=True, timeout=30)
         self.assertEqual(p.returncode, 0, p.stderr)
         calls = log.read_text(encoding="utf-8")
         self.assertIn("secret delete PROBE_SECRET", calls)
         self.assertNotIn(" delete zevanory-rollback-secret-probe ", " " + calls + " ")
+
+
+class TokenFormatAndCleanupNeedTests(unittest.TestCase):
+    def _npx(self, base):
+        log = base / "npx.log"
+        npx = base / "npx"
+        npx.write_text('#!/usr/bin/env bash\nprintf "%s|%s\\n" "$CLOUDFLARE_API_TOKEN" "$*" >> "$FAKE_LOG"\n', encoding="utf-8", newline="\n")
+        npx.chmod(0o755)
+        return log
+
+    def test_cleanup_skips_when_no_secret_was_written(self):
+        tmp = tempfile.TemporaryDirectory(dir=ROOT); self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name); log = self._npx(base)
+        env = dict(os.environ, PATH=str(base) + os.pathsep + os.environ.get("PATH", ""), FAKE_LOG=str(log),
+                   CLOUDFLARE_SANDBOX_PROBE_TOKEN="offline", CLOUDFLARE_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb")
+        env.pop("B01_SECRET_WRITTEN", None)
+        p = subprocess.run([bash_path(), str(ROOT / "sandbox/rollback-secret-probe/cleanup-only.sh")], cwd=ROOT, env=env,
+                           text=True, capture_output=True, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("B01_CLEANUP_NOT_NEEDED=no_secret_written", p.stdout)
+        self.assertFalse(log.exists())
+
+    def test_token_with_newline_and_spaces_is_sanitized_before_use(self):
+        # Run 39639303995: "Invalid format for Authorization header" (6111).
+        tmp = tempfile.TemporaryDirectory(dir=ROOT); self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name); log = self._npx(base)
+        env = dict(os.environ, PATH=str(base) + os.pathsep + os.environ.get("PATH", ""), FAKE_LOG=str(log),
+                   CLOUDFLARE_SANDBOX_PROBE_TOKEN="  abc123\r\n", CLOUDFLARE_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb",
+                   B01_SECRET_WRITTEN="1")
+        p = subprocess.run([bash_path(), str(ROOT / "sandbox/rollback-secret-probe/cleanup-only.sh")], cwd=ROOT, env=env,
+                           text=True, capture_output=True, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue(log.read_text(encoding="utf-8").startswith("abc123|"), "token sem espaço nem quebra de linha")
+        source = RUNNER.read_text(encoding="utf-8")
+        self.assertIn("readonly TOKEN=\"$(printf '%s' \"${CLOUDFLARE_SANDBOX_PROBE_TOKEN:-}\" | tr -d '[:space:]')\"", source)
