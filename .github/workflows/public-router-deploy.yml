@@ -24,6 +24,22 @@ concurrency:
   group: public-router-deploy
   cancel-in-progress: false
 
+# B02 "Conta e rota comercial": guarda de conta, ponto de retorno, deploy marcado com o SHA,
+# leitura de volta (versão + rota pública) e retorno automático com certificação por leitura.
+# Referências oficiais (Cloudflare):
+#  - GET /accounts/{account_id} (Account Details; result.id):
+#    https://developers.cloudflare.com/api/operations/accounts-account-details
+#  - GET /accounts/{account_id}/workers/scripts/{script_name}/deployments ("The first deployment in the
+#    list is the latest deployment actively serving traffic"; versions[].version_id/percentage; annotations
+#    workers/message): https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/deployments/methods/list
+#  - GET /accounts/{account_id}/workers/scripts/{script_name}/versions:
+#    https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/versions/index.md
+#  - wrangler deploy --tag/--message ("The message is also applied to the deployment") e
+#    wrangler rollback [<VERSION_ID>] --name --message ("interactive prompts ... are skipped"):
+#    https://developers.cloudflare.com/workers/wrangler/commands/workers/
+#  - Limites do rollback (100 versões; bindings; rotas não são versionadas):
+#    https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/index.md
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -40,28 +56,192 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/gh-pages'
     needs: validate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # B02: conta canônica fixa (CLOUDFLARE_DEPLOY_AUTHORITY.md). Nunca vem de segredo/variável.
+      ROUTER_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      ROUTER_SCRIPT: zevanory-public-router
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Deploy public router Worker
-        run: npx --yes wrangler@4.135.0 deploy --config wrangler.public-router.toml
-      - name: Live readback (apex home -> storefront, panel not indexable)
+
+      - name: Account guard (fail closed before any deploy)
         shell: bash
         run: |
           set -euo pipefail
+          T="${RUNNER_TEMP:?}"
+          # Mesmo saneamento do #851: um token salvo com quebra de linha não pode quebrar a chamada.
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error title=ROUTER_ACCOUNT_GUARD::token ausente — deploy recusado"
+            exit 1
+          fi
+          # A conta do arquivo de configuração tem de ser exatamente a canônica.
+          cfg="$(sed -nE 's/^account_id[[:space:]]*=[[:space:]]*"([0-9a-f]{32})"[[:space:]]*$/\1/p' wrangler.public-router.toml)"
+          if [ "$cfg" != "$ROUTER_ACCOUNT_ID" ]; then
+            echo "::error title=ROUTER_ACCOUNT_GUARD::wrangler.public-router.toml account_id=${cfg:-ausente} esperado=$ROUTER_ACCOUNT_ID"
+            exit 1
+          fi
+          # O token tem de LER a conta canônica (Account Details: result.id igual à conta esperada).
+          code="$(curl -sS -o "$T/router-account.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$ROUTER_ACCOUNT_ID" || true)"
+          if [ "$code" != "200" ]; then
+            echo "::error title=ROUTER_ACCOUNT_GUARD::GET /accounts/$ROUTER_ACCOUNT_ID http=$code — deploy recusado"
+            exit 1
+          fi
+          if ! python3 - "$T/router-account.json" "$ROUTER_ACCOUNT_ID" <<'PY'
+          import json, sys
+          try:
+              d = json.load(open(sys.argv[1]))
+          except Exception:
+              sys.exit(1)
+          r = d.get("result") if isinstance(d, dict) else None
+          sys.exit(0 if isinstance(d, dict) and d.get("success") is True and isinstance(r, dict) and r.get("id") == sys.argv[2] else 1)
+          PY
+          then
+            echo "::error title=ROUTER_ACCOUNT_GUARD::resposta não comprova a conta $ROUTER_ACCOUNT_ID — deploy recusado"
+            exit 1
+          fi
+          echo "ROUTER_ACCOUNT_GUARD=PASS account=$ROUTER_ACCOUNT_ID"
+
+      - name: Record the active router version before deploy (rollback point)
+        shell: bash
+        run: |
+          set -euo pipefail
+          T="${RUNNER_TEMP:?}"
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
+          code="$(curl -sS -o "$T/router-deployments-before.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$ROUTER_ACCOUNT_ID/workers/scripts/$ROUTER_SCRIPT/deployments" || true)"
+          if [ "$code" != "200" ]; then
+            echo "::error title=ROUTER_ROLLBACK_POINT::GET deployments http=$code — sem ponto de retorno, deploy recusado"
+            exit 1
+          fi
+          # Primeira implantação da lista = a que serve o tráfego; a versão a 100% é o ponto de retorno.
+          prev="$(python3 - "$T/router-deployments-before.json" <<'PY'
+          import json, re, sys
+          d = {}
+          try:
+              d = json.load(open(sys.argv[1]))
+              deps = (d.get("result") or {}).get("deployments") or []
+              vs = [v for v in (deps[0].get("versions") or []) if float(v.get("percentage", 0)) == 100.0] if deps else []
+              vid = str(vs[0].get("version_id", "")) if vs else ""
+          except Exception:
+              vid = ""
+          print(vid if isinstance(d, dict) and d.get("success") is True and re.fullmatch(r"[0-9a-f-]{36}", vid) else "")
+          PY
+          )"
+          if [ -z "$prev" ]; then
+            echo "::error title=ROUTER_ROLLBACK_POINT::versão ativa a 100% não resolvida — deploy recusado"
+            exit 1
+          fi
+          echo "PREV_VERSION_ID=$prev" >> "$GITHUB_ENV"
+          echo "ROLLBACK_POINT=$prev"
+
+      - name: Deploy public router Worker (tagged with the release SHA)
+        shell: bash
+        run: |
+          set -euo pipefail
+          T="${RUNNER_TEMP:?}"
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
+          if [[ ! "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error title=ROUTER_DEPLOY::GITHUB_SHA inválido"
+            exit 1
+          fi
+          # Registrado ANTES do deploy: uma falha ambígua (wrangler cai depois de aplicar) ainda aciona o retorno.
+          echo "DEPLOY_ATTEMPTED=1" >> "$GITHUB_ENV"
+          # Regra de auditoria: a saída do wrangler nunca vai para o log; só códigos numéricos se falhar.
+          if ! npx --yes wrangler@4.135.0 deploy --config wrangler.public-router.toml \
+            --tag "$GITHUB_SHA" --message "ZEVANORY public router $GITHUB_SHA" > "$T/router-deploy.log" 2>&1; then
+            codes="$(grep -oE '\[code: [0-9]{1,6}\]' "$T/router-deploy.log" | grep -oE '[0-9]+' | sort -u | paste -sd, - || true)"
+            echo "::error title=ROUTER_DEPLOY_FAILED::codes=${codes:-none}"
+            exit 1
+          fi
+          echo "ROUTER_DEPLOY=DONE tag=$GITHUB_SHA"
+
+      - name: Readback — new version at 100% and live public route
+        shell: bash
+        run: |
+          set -euo pipefail
+          T="${RUNNER_TEMP:?}"
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
           UA="ZEVANORY-Monitor/1.0 (+public-router-deploy)"
-          for i in {1..12}; do
-            loc=$(curl -sS -o /dev/null -A "$UA" -w '%{http_code} %{redirect_url}' https://zevanory.api.br/ || true)
-            echo "apex: $loc"
-            if [[ "$loc" == "308 https://vendas.zevanory.api.br/solucoes" ]]; then
+          active="" apex="" final="" code=""
+          for i in $(seq 1 12); do
+            code="$(curl -sS -o "$T/router-deployments-after.json" -w '%{http_code}' \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/$ROUTER_ACCOUNT_ID/workers/scripts/$ROUTER_SCRIPT/deployments" || true)"
+            active=""
+            if [ "$code" = "200" ]; then
+              # Nova versão a 100%, diferente do ponto de retorno, e a implantação traz o SHA na mensagem.
+              active="$(python3 - "$T/router-deployments-after.json" "$PREV_VERSION_ID" "$GITHUB_SHA" <<'PY'
+          import json, re, sys
+          try:
+              d = json.load(open(sys.argv[1]))
+              dep = ((d.get("result") or {}).get("deployments") or [])[0]
+              vs = dep.get("versions") or []
+              msg = str((dep.get("annotations") or {}).get("workers/message", ""))
+              vid = str(vs[0].get("version_id", "")) if len(vs) == 1 and float(vs[0].get("percentage", 0)) == 100.0 else ""
+              ok = d.get("success") is True and re.fullmatch(r"[0-9a-f-]{36}", vid) and vid != sys.argv[2] and sys.argv[3] in msg
+          except Exception:
+              ok = False
+          print(vid if ok else "")
+          PY
+          )"
+            fi
+            # Prova do próprio router: a home do apex responde 308 para a vitrine.
+            apex="$(curl -sS -o /dev/null -A "$UA" -w '%{http_code} %{redirect_url}' https://zevanory.api.br/ || true)"
+            # Rota pública ponta a ponta (GET seguro, sem efeito colateral): /solucoes -> vendas, 200 final.
+            final="$(curl -sS -L --max-redirs 3 -o /dev/null -A "$UA" -w '%{http_code} %{url_effective}' https://zevanory.api.br/solucoes || true)"
+            if [ -n "$active" ] && [ "$apex" = "308 https://vendas.zevanory.api.br/solucoes" ] && [ "$final" = "200 https://vendas.zevanory.api.br/solucoes" ]; then
+              echo "ROUTER_ACTIVE_VERSION=$active (anterior=$PREV_VERSION_ID) tag=$GITHUB_SHA"
               echo "APEX_HOME_STOREFRONT=PASS"
+              echo "PUBLIC_ROUTE_READBACK=PASS"
               exit 0
             fi
             sleep 5
           done
-          echo "APEX_HOME_STOREFRONT=FAIL"
+          echo "::error title=ROUTER_READBACK_FAIL::deployments_http=$code active=${active:-none} apex=[$apex] final=[$final]"
           exit 1
+
+      - name: Automatic rollback to the recorded version (certified by readback)
+        if: failure() && env.DEPLOY_ATTEMPTED == '1' && env.PREV_VERSION_ID != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          T="${RUNNER_TEMP:?}"
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
+          # Rotas não são versionadas: o rollback devolve o CÓDIGO; uma mudança de rotas no toml não é desfeita.
+          if ! npx --yes wrangler@4.135.0 rollback "$PREV_VERSION_ID" --name "$ROUTER_SCRIPT" \
+            --message "ZEVANORY public router: retorno automático após falha de ${GITHUB_SHA:-?}" > "$T/router-rollback.log" 2>&1; then
+            codes="$(grep -oE '\[code: [0-9]{1,6}\]' "$T/router-rollback.log" | grep -oE '[0-9]+' | sort -u | paste -sd, - || true)"
+            echo "ROLLBACK_COMMAND_FAILED=1 codes=${codes:-none}"
+          fi
+          # Certificação por leitura: a versão a 100% tem de ser exatamente o ponto de retorno.
+          code="$(curl -sS -o "$T/router-deployments-rollback.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$ROUTER_ACCOUNT_ID/workers/scripts/$ROUTER_SCRIPT/deployments" || true)"
+          now=""
+          if [ "$code" = "200" ]; then
+            now="$(python3 - "$T/router-deployments-rollback.json" <<'PY'
+          import json, sys
+          try:
+              d = json.load(open(sys.argv[1]))
+              vs = ((d.get("result") or {}).get("deployments") or [])[0].get("versions") or []
+              print(str(vs[0].get("version_id", "")) if d.get("success") is True and len(vs) == 1 and float(vs[0].get("percentage", 0)) == 100.0 else "")
+          except Exception:
+              print("")
+          PY
+          )"
+          fi
+          if [ "$code" != "200" ] || [ "$now" != "$PREV_VERSION_ID" ]; then
+            echo "::error title=ROUTER_ROLLBACK_READBACK_FAIL::active=${now:-none} expected=$PREV_VERSION_ID http=$code — incidente aberto; ação manual do proprietário"
+            exit 1
+          fi
+          echo "ROLLBACK_READBACK=PASS active=$now"
+          echo "::warning title=ROUTER_ROLLED_BACK::router voltou para $PREV_VERSION_ID; o release ${GITHUB_SHA:-?} não ficou ativo"
