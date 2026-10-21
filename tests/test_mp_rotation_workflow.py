@@ -377,7 +377,7 @@ open(out, 'w').write('{}'); print('404', end='')
         rc, out, _ = self._run_step(needle, ok, {"PREV_VERSION_ID": self.A, "ROTATED_AT": "x", "NEW_SECRET_VERSION": self.N})
         self.assertEqual(rc, 0, out)
         self.assertIn(f"RECOVERY_TARGET_VERSION={self.N}", out)
-        self.assertIn(f"mode=recover target_version={self.N}", out)
+        self.assertIn(f"mode=recover target_version={self.N} rollback_point={self.A}", out)
         # Gravação ambígua (sem NEW_SECRET_VERSION): o alvo vem da mais recente por number.
         rc, out, _ = self._run_step(needle, ok, {"PREV_VERSION_ID": self.A})
         self.assertIn(f"RECOVERY_TARGET_VERSION={self.N}", out)
@@ -395,7 +395,8 @@ open(out, 'w').write('{}'); print('404', end='')
         self.assertEqual(len(rec), 1)
         rec = rec[0]
         self.assertEqual(rec.get("if"), "inputs.mode == 'recover'")
-        self.assertEqual(rec["env"], {"RECOVER_WORKER_NAME": "zevanory", "RECOVER_TARGET_VERSION": "${{ inputs.target_version }}"})
+        self.assertEqual(rec["env"], {"RECOVER_WORKER_NAME": "zevanory", "RECOVER_TARGET_VERSION": "${{ inputs.target_version }}",
+                                      "RECOVER_EXPECTED_ACTIVE": "${{ inputs.rollback_point }}"})
         self.assertIn("bash scripts/ops/worker-version-recover.sh", rec["run"])
         checkout = self.steps[0]
         self.assertEqual(checkout.get("if"), "inputs.mode == 'recover'")

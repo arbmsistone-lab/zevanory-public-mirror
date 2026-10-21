@@ -170,7 +170,7 @@ grep -q "10215" "$TMP_DIR/put-c.log" || fail "CONDITION_10215_NOT_REPRODUCED (re
 echo "CONDITION_10215=observed"
 
 # Recuperação: o MESMO script do modo recover de produção, com o alvo = versão do "token novo".
-env RECOVER_WORKER_NAME="$WORKER_NAME" RECOVER_TARGET_VERSION="$VB" \
+env RECOVER_WORKER_NAME="$WORKER_NAME" RECOVER_TARGET_VERSION="$VB" RECOVER_EXPECTED_ACTIVE="$VA" \
   CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
   NPX_BIN="$NPX_BIN" CURL_BIN="$CURL_BIN" bash "$RECOVER_SCRIPT"
 [[ "$(read_active_version "$TMP_DIR/dep-rec.json")" == "$VB" ]] || fail "RECOVERED_VERSION_NOT_ACTIVE"

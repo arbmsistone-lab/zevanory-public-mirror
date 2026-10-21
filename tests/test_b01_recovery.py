@@ -93,6 +93,8 @@ def emit(code, body):
 if url.endswith("/deployments"):
     if SC == "gradual":
         emit("200", {"result": {"deployments": [{"versions": [{"version_id": st["active"], "percentage": 60}, {"version_id": "x", "percentage": 40}]}]}})
+    elif SC == "ninety_nine":
+        emit("200", {"result": {"deployments": [{"versions": [{"version_id": st["active"], "percentage": 99}]}]}})
     else:
         emit("200", {"result": {"deployments": [{"versions": [{"version_id": st["active"], "percentage": 100}]}]}})
 elif url.endswith("/versions"):
@@ -168,6 +170,7 @@ class RecoverScriptTests(unittest.TestCase):
 
     def recover(self, cf, target=None, worker="zevanory", **extra):
         extra.setdefault("CLOUDFLARE_API_TOKEN", " tok\n")
+        extra.setdefault("RECOVER_EXPECTED_ACTIVE", self.P)
         return cf.run(RECOVER, RECOVER_WORKER_NAME=worker, RECOVER_TARGET_VERSION=target or self.N, **extra)
 
     def test_deploys_the_latest_version_and_certifies_by_readback(self):
@@ -188,11 +191,16 @@ class RecoverScriptTests(unittest.TestCase):
 
     def test_refusals_before_any_write(self):
         cases = {
-            "target_not_latest": (dict(target=self.P), "RECOVER_TARGET_NOT_LATEST"),
+            "target_not_latest": (dict(target=vid(679)), "RECOVER_TARGET_NOT_LATEST"),
             "invalid_target": (dict(target="abc"), "RECOVER_TARGET_INVALID"),
             "worker_not_allowed": (dict(worker="zevanory-sales-public"), "RECOVER_WORKER_REFUSED"),
             "wrong_account": (dict(CLOUDFLARE_ACCOUNT_ID="0" * 32), "RECOVER_ACCOUNT_REFUSED"),
             "no_token": (dict(CLOUDFLARE_API_TOKEN=""), "RECOVER_TOKEN_MISSING"),
+            # Contestação bloqueante Sol 047: a recuperação fica presa ao ROLLBACK_POINT do incidente.
+            "rollback_point_missing": (dict(RECOVER_EXPECTED_ACTIVE=""), "RECOVER_ROLLBACK_POINT_INVALID"),
+            "rollback_point_invalid": (dict(RECOVER_EXPECTED_ACTIVE="681"), "RECOVER_ROLLBACK_POINT_INVALID"),
+            "target_equals_rollback_point": (dict(RECOVER_EXPECTED_ACTIVE=vid(682)), "RECOVER_TARGET_EQUALS_ROLLBACK_POINT"),
+            "active_is_not_the_incident_rollback_point": (dict(RECOVER_EXPECTED_ACTIVE=vid(680)), "RECOVER_ACTIVE_NOT_ROLLBACK_POINT"),
         }
         for name, (kw, marker) in cases.items():
             cf = self.cf()
@@ -203,7 +211,8 @@ class RecoverScriptTests(unittest.TestCase):
             self.assertEqual(cf.st["active"], self.P, name)
 
     def test_unprovable_state_is_refused_before_any_write(self):
-        for scenario, marker in (("gradual", "RECOVER_ACTIVE_NOT_RESOLVABLE"), ("versions_500", "RECOVER_VERSIONS_HTTP")):
+        for scenario, marker in (("gradual", "RECOVER_ACTIVE_NOT_RESOLVABLE"), ("ninety_nine", "RECOVER_ACTIVE_NOT_RESOLVABLE"),
+                                 ("versions_500", "RECOVER_VERSIONS_HTTP")):
             cf = self.cf(scenario)
             p = self.recover(cf)
             self.assertNotEqual(p.returncode, 0, scenario)
@@ -258,6 +267,8 @@ class RecoveryProbeTests(unittest.TestCase):
             out = p.stdout + p.stderr
             self.assertNotEqual(p.returncode, 0, scenario)
             self.assertIn("CONDITION_10215_NOT_REPRODUCED", out, scenario)
+            if scenario == "put_c_accepted":
+                self.assertIn("secret put aceito depois do rollback", out)
             self.assertIn("RECOVERY_CERTIFIED=INCONCLUSIVE", out, scenario)
 
     def test_failed_recovery_or_rollback_is_never_yes(self):

@@ -16,6 +16,13 @@ on:
         type: string
         required: false
         default: ""
+      rollback_point:
+        # Contestação bloqueante Sol 047: a recuperação fica presa ao incidente. É o ROLLBACK_POINT do run que voltou;
+        # se a versão ativa não for exatamente essa, o script recusa antes de implantar.
+        description: "recover: ROLLBACK_POINT impresso pelo run de rotação que voltou (versão ativa esperada). Ignorado nos outros modos."
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -200,6 +207,7 @@ jobs:
         env:
           RECOVER_WORKER_NAME: zevanory
           RECOVER_TARGET_VERSION: ${{ inputs.target_version }}
+          RECOVER_EXPECTED_ACTIVE: ${{ inputs.rollback_point }}
         run: |
           set -euo pipefail
           # Ordem 046 R2: o MESMO script ensaiado no Worker descartável (b01-recovery-probe). Ele exige que o alvo seja
@@ -286,7 +294,7 @@ jobs:
               echo "::error title=MP_RECOVERY_TARGET_MISMATCH::latest=$target new_secret_version=$NEW_SECRET_VERSION — decidir com o proprietário"
             else
               echo "RECOVERY_TARGET_VERSION=$target"
-              echo "::warning title=MP_RECOVERY_AVAILABLE::com autorização do proprietário, dispatch mode=recover target_version=$target (docs/ops/ROTACAO_MERCADOPAGO.md)"
+              echo "::warning title=MP_RECOVERY_AVAILABLE::com autorização do proprietário, dispatch mode=recover target_version=$target rollback_point=$PREV_VERSION_ID (docs/ops/ROTACAO_MERCADOPAGO.md)"
             fi
           else
             echo "RECOVERY_TARGET_VERSION=none (nenhuma versão nova; nada a recuperar) http=$vcode"

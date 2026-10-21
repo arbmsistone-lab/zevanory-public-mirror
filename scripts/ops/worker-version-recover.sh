@@ -11,7 +11,10 @@
 # Regras (falha fechada; nenhuma escrita antes de todas valerem):
 #   1. Worker só da lista permitida; conta só a Zevanory.
 #   2. TARGET_VERSION tem de ser a versão MAIS RECENTE (maior "number", inteiro, único).
-#   3. A versão ativa (deployments[0], uma versão a 100%) tem de ser DIFERENTE do alvo.
+#   3. A versão ativa (deployments[0], uma versão a 100%) tem de ser EXATAMENTE o ROLLBACK_POINT do incidente
+#      (RECOVER_EXPECTED_ACTIVE, impresso pelo run de rotação que voltou). Contestação bloqueante Sol 047:
+#      sem esse vínculo, a recuperação poderia promover uma versão sobre um estado diferente do incidente.
+#      O alvo nunca é igual ao ROLLBACK_POINT.
 #   4. Implanta o alvo a 100% e certifica por leitura: a versão ativa passa a ser exatamente o alvo.
 # Nunca lê, imprime ou grava valor de segredo.
 set -Eeuo pipefail
@@ -22,6 +25,7 @@ readonly CURL_BIN="${CURL_BIN:-curl}"
 readonly ZEVANORY_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb"
 readonly WORKER_NAME="${RECOVER_WORKER_NAME:-}"
 readonly TARGET="${RECOVER_TARGET_VERSION:-}"
+readonly EXPECTED_ACTIVE="${RECOVER_EXPECTED_ACTIVE:-}"
 readonly ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
 TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"
 readonly TOKEN
@@ -34,7 +38,10 @@ case "$WORKER_NAME" in
 esac
 [[ "$ACCOUNT_ID" == "$ZEVANORY_ACCOUNT_ID" ]] || fail RECOVER_ACCOUNT_REFUSED
 [[ -n "$TOKEN" ]] || fail RECOVER_TOKEN_MISSING
-[[ "$TARGET" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || fail RECOVER_TARGET_INVALID
+readonly UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+[[ "$TARGET" =~ $UUID_RE ]] || fail RECOVER_TARGET_INVALID
+[[ "$EXPECTED_ACTIVE" =~ $UUID_RE ]] || fail RECOVER_ROLLBACK_POINT_INVALID "RECOVER_EXPECTED_ACTIVE ausente ou inválido"
+[[ "$EXPECTED_ACTIVE" != "$TARGET" ]] || fail RECOVER_TARGET_EQUALS_ROLLBACK_POINT
 
 TMP="$(mktemp -d)"
 trap 'rm -rf -- "$TMP"' EXIT
@@ -74,6 +81,7 @@ echo "RECOVER_ACTIVE_BEFORE=$before"
 echo "RECOVER_LATEST=$latest"
 [[ "$latest" == "$TARGET" ]] || fail RECOVER_TARGET_NOT_LATEST "target=$TARGET latest=$latest — outra versão foi criada depois; parar e decidir com o proprietário"
 [[ "$before" != "$TARGET" ]] || fail RECOVER_NOTHING_TO_DO "o alvo já está ativo"
+[[ "$before" == "$EXPECTED_ACTIVE" ]] || fail RECOVER_ACTIVE_NOT_ROLLBACK_POINT "active=$before rollback_point=$EXPECTED_ACTIVE — o estado mudou desde o incidente; parar e decidir com o proprietário"
 
 CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
   "$NPX_BIN" --yes "$WRANGLER" versions deploy "${TARGET}@100" --name "$WORKER_NAME" \
