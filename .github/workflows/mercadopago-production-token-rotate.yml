@@ -2,6 +2,14 @@ name: Mercado Pago production token rotate
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        # Gate G1/G2 do Sol (Ordem 043): verificar ANTES de renovar o token no Mercado Pago, com o mesmo código.
+        # O padrão é o modo seguro: check-only nunca grava nada. Para trocar, é preciso escolher "rotate".
+        description: "check-only (padrão: só leitura, nada é gravado) ou rotate (troca real, autorização do proprietário)"
+        type: choice
+        options: [check-only, rotate]
+        default: check-only
 
 permissions:
   contents: read
@@ -94,8 +102,55 @@ jobs:
           fi
           echo "PREV_VERSION_ID=$prev" >> "$GITHUB_ENV"
           echo "ROLLBACK_POINT=$prev"
+          echo "LATEST_VERSION=$latest number=$(jq -r --arg id "$latest" '(.result.items // [])[]|select(.id==$id)|.number' /tmp/versions.json)"
+          echo "CONDITION_10215=absent"
+
+      - name: Check-only baseline (no write) — preflight freshness and public health
+        if: inputs.mode != 'rotate'
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
+          endpoint="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values/zpc-sales-preflight:v1"
+          code="$(curl -sS -o /tmp/zpc-sales-preflight.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$endpoint")"
+          test "$code" = "200" || { echo "::error title=MP_BASELINE_PREFLIGHT_READ::http=$code"; exit 1; }
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const raw=JSON.parse(fs.readFileSync('/tmp/zpc-sales-preflight.json','utf8'));
+          const generatedAt=String(raw?.generatedAt??raw?.generated_at??raw?.at??'');
+          const rows=Array.isArray(raw?.checks)?raw.checks:[];
+          const token=rows.find(r=>r?.id==='mercadopago_production_token');
+          // Contestação Sol 044-F1: o preflight precisa ser RECENTE. Limite de 120 min: a rotação original
+          // esperava até 70 min por um preflight novo (cron do Worker <= 1 h), então 120 min tolera um tick perdido
+          // sem aceitar registro velho. Data inválida, no futuro (mais de 5 min de folga) ou velha => falha fechada.
+          const t=Date.parse(generatedAt);
+          const ageMin=Number.isFinite(t)?Math.round((Date.now()-t)/60000):null;
+          console.log(JSON.stringify({preflight_generatedAt:generatedAt,age_minutes:ageMin,mercadopago_production_token_ok:token?.ok===true}));
+          if(!Number.isFinite(t)) throw new Error('baseline_preflight_date_invalid');
+          if(ageMin < -5) throw new Error('baseline_preflight_in_future');
+          if(ageMin > 120) throw new Error('baseline_preflight_stale');
+          if(token?.ok!==true) throw new Error('baseline_mercadopago_production_token_not_ok');
+          NODE
+          h="$(curl -sS -o /tmp/health.json -w '%{http_code}' https://zevanory.api.br/api/health)"
+          s="$(curl -sS -o /tmp/sales.json -w '%{http_code}' https://zevanory.api.br/api/sales/status)"
+          st="$(curl -sS -o /tmp/status.json -w '%{http_code}' https://zevanory.api.br/api/status)"
+          # Sem "a && b": em bash, set -e ignora a falha do primeiro termo de uma lista &&.
+          [ "$h" = "200" ] || { echo "::error title=MP_BASELINE_HEALTH::http=$h"; exit 1; }
+          [ "$s" = "200" ] || { echo "::error title=MP_BASELINE_SALES_STATUS::http=$s"; exit 1; }
+          [ "$st" = "200" ] || { echo "::error title=MP_BASELINE_STATUS::http=$st"; exit 1; }
+          jq -e '.open == false' /tmp/sales.json >/dev/null || { echo "::error title=MP_BASELINE_SALES_NOT_CLOSED"; exit 1; }
+          # Contestação Sol 044-F3: saúde SUBSTANTIVA, não só HTTP 200.
+          jq -e '.live == true and .ready == true and .checks.database_reachable == true and .checks.schema_ready == true and .checks.commercial_safety_locked == true' /tmp/health.json >/dev/null \
+            || { echo "::error title=MP_BASELINE_HEALTH_NOT_READY"; exit 1; }
+          jq -e '.sales_authorization.state == "closed" and .runtime.sales == "globally-blocked"' /tmp/status.json >/dev/null \
+            || { echo "::error title=MP_BASELINE_STATUS_NOT_CLOSED"; exit 1; }
+          echo "BASELINE_HEALTH=ready DB=reachable SCHEMA=ready COMMERCIAL_LOCK=on SALES_OPEN=false STATUS=globally-blocked"
+          # Contestação Sol 044-F2: o job não distingue segredo de Environment de segredo de repositório.
+          echo "MP_SECRET_SCOPE=UNVERIFIED (hoje a credencial está no repositório; o token novo vai SÓ para o Environment)"
+          echo "CHECK_ONLY=PASS (nada foi gravado)"
 
       - name: Rotate the exact production Worker secret
+        if: inputs.mode == 'rotate'
         shell: bash
         run: |
           set -euo pipefail
@@ -112,6 +167,7 @@ jobs:
           echo "WORKER_SECRET_NAME=MERCADOPAGO_ACCESS_TOKEN"
 
       - name: Wait for the authoritative Worker preflight
+        if: inputs.mode == 'rotate'
         shell: bash
         run: |
           set -euo pipefail

@@ -252,5 +252,71 @@ open(out, 'w').write('{}'); print('404', end='')
         self.assertLess(step_index(self.steps, "MP_LATEST_VERSION_NOT_DEPLOYED_10215"), put)
 
 
+    # ---- Modo check-only (gate G1/G2 do Sol, Ordem 043) ----
+    def test_check_only_is_the_default_and_never_writes(self):
+        doc = yaml.safe_load(self.text)
+        on = doc.get("on", doc.get(True))
+        inp = on["workflow_dispatch"]["inputs"]["mode"]
+        self.assertEqual(inp["default"], "check-only")
+        self.assertEqual(inp["options"], ["check-only", "rotate"])
+        put = self.steps[step_index(self.steps, "secret put MERCADOPAGO_ACCESS_TOKEN")]
+        self.assertEqual(put.get("if"), "inputs.mode == 'rotate'")
+        wait = self.steps[step_index(self.steps, "deadline=$((SECONDS")]
+        self.assertEqual(wait.get("if"), "inputs.mode == 'rotate'")
+        base = self.steps[step_index(self.steps, "CHECK_ONLY=PASS")]
+        self.assertEqual(base.get("if"), "inputs.mode != 'rotate'")
+        self.assertNotIn("wrangler", base["run"])
+        self.assertNotRegex(base["run"], r"-X\s*(PUT|POST|DELETE|PATCH)")
+        # o retorno automático depende de WRITE_ATTEMPTED_AT, que só o passo de troca grava
+        self.assertIn("env.WRITE_ATTEMPTED_AT != ''", self.steps[-1]["if"])
+
+    @unittest.skipUnless(shutil.which("jq") and shutil.which("node"), "jq/node ausentes")
+    def test_check_only_baseline_requires_fresh_token_ok_and_sales_closed(self):
+        import datetime as _dt
+        now = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        kv_ok = ["200", {"generatedAt": now, "checks": [{"id": "mercadopago_production_token", "ok": True}]}]
+        health = {"live": True, "ready": True, "checks": {"database_reachable": True, "schema_ready": True, "commercial_safety_locked": True}}
+        status = {"sales_authorization": {"state": "closed"}, "runtime": {"sales": "globally-blocked"}}
+        ok = {"zpc-sales-preflight": kv_ok, "/api/health": ["200", health], "/api/sales/status": ["200", {"open": False}],
+              "/api/status": ["200", status]}
+        def ago(minutes):
+            return (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        def kv(gen):
+            return ["200", {"generatedAt": gen, "checks": [{"id": "mercadopago_production_token", "ok": True}]}]
+        env = {"KV_NAMESPACE_ID": "kv"}
+        rc, out, npx = self._run_step("CHECK_ONLY=PASS", ok, env)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("CHECK_ONLY=PASS", out)
+        self.assertIn('"mercadopago_production_token_ok":true', out)
+        self.assertIn("MP_SECRET_SCOPE=UNVERIFIED", out)
+        rc2, out2, _ = self._run_step("CHECK_ONLY=PASS", {**ok, "zpc-sales-preflight": kv(ago(100))}, env)
+        self.assertEqual(rc2, 0, "100 min ainda está dentro do limite de 120")
+        rc3, out3, _ = self._run_step("CHECK_ONLY=PASS", {**ok, "zpc-sales-preflight": kv(ago(120))}, env)
+        self.assertEqual(rc3, 0, "120 min exatos ainda estão dentro do limite")
+        self.assertEqual(npx, "", "check-only nunca chama wrangler")
+        bad = {
+            "token_not_ok": {**ok, "zpc-sales-preflight": ["200", {"generatedAt": now, "checks": [{"id": "mercadopago_production_token", "ok": False}]}]},
+            "sales_open": {**ok, "/api/sales/status": ["200", {"open": True}]},
+            "kv_403": {**ok, "zpc-sales-preflight": ["403", {}]},
+            "health_500": {**ok, "/api/health": ["500", {}]},
+            "health_500_with_ready_body": {**ok, "/api/health": ["500", health]},
+            # 044-F1: preflight velho, no futuro ou com data inválida
+            "preflight_stale_121m": {**ok, "zpc-sales-preflight": kv(ago(121))},
+            "preflight_stale_3h": {**ok, "zpc-sales-preflight": kv(ago(180))},
+            "preflight_future": {**ok, "zpc-sales-preflight": kv(ago(-60))},
+            "preflight_bad_date": {**ok, "zpc-sales-preflight": kv("not-a-date")},
+            # 044-F3: HTTP 200 com conteúdo ruim
+            "health_200_db_down": {**ok, "/api/health": ["200", {**health, "checks": {**health["checks"], "database_reachable": False}}]},
+            "health_200_not_ready": {**ok, "/api/health": ["200", {**health, "ready": False}]},
+            "status_open": {**ok, "/api/status": ["200", {**status, "sales_authorization": {"state": "open"}}]},
+            "status_runtime_not_blocked": {**ok, "/api/status": ["200", {**status, "runtime": {"sales": "open"}}]},
+            "status_500": {**ok, "/api/status": ["500", status]},
+        }
+        for name, fx in bad.items():
+            rc, out, _ = self._run_step("CHECK_ONLY=PASS", fx, env)
+            self.assertNotEqual(rc, 0, name)
+            self.assertNotIn("CHECK_ONLY=PASS (nada", out, name)
+
+
 if __name__ == "__main__":
     unittest.main()
