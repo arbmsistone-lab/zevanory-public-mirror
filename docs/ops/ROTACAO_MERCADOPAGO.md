@@ -25,13 +25,20 @@ e no Environment `producao-critica`, que exige revisor.
   `MP_WRITE_UNCERTAIN`, executa o retorno e só aceita a versão anterior confirmada por leitura. A troca real
   continua bloqueada até o Sol reproduzir os testes e aceitar esse tratamento. Caso real do mesmo padrão em
   21/10: o deploy do site de vendas subiu a versão e falhou depois, na etapa de rotas.
-- **Limite declarado:** a documentação de rollbacks da Cloudflare diz apenas que "recursos conectados" não
-  mudam. Ela não afirma se o *valor* de um segredo volta com a versão anterior. Por isso o passo 6 publica
-  `NAO_COMPROVADO`.
-  - Contingência manual: o proprietário recoloca o token anterior, se ainda válido, pelo mesmo workflow.
-  - Para eliminar o limite: teste empírico num Worker descartável de sandbox (segredo A → versão 1;
-    segredo B → versão 2; rollback para a versão 1; ler qual valor o código vê). Esse teste precisa de
-    autorização específica, porque grava um segredo de teste numa conta Cloudflare.
+- **Restauração do valor do segredo pelo rollback: YES_OBSERVED.** Ensaio B01, run 39643799156, num Worker
+  descartável da conta Zevanory: segredo A → B → rollback. Depois do rollback, o Worker voltou a servir
+  exatamente o digest de A. Classificação do Sol (Ordens 036/037): YES observado, com uma lacuna declarada
+  (o id da versão A não foi impresso); resultado literal do workflow INCONCLUSIVE, porque a limpeza
+  automática falhou; limpeza manual certificada pelo CODEX-005. Em produção, o preflight continua sendo a
+  confirmação.
+- **Restrição da plataforma (Cloudflare 10215):** quando a versão mais recente do Worker NÃO está implantada
+  (por exemplo, logo depois de um rollback), `wrangler secret put` e `secret delete` são recusados.
+  - O workflow agora para ANTES de gravar se a versão ativa não for a mais recente
+    (`MP_LATEST_VERSION_NOT_DEPLOYED_10215`).
+  - Para mudar um segredo nessa situação: (1) implantar a versão mais recente pelo deploy central e depois
+    trocar; ou (2) `wrangler versions secret put MERCADOPAGO_ACCESS_TOKEN --name zevanory`, seguido de
+    `wrangler versions deploy <nova-versão>@100 --name zevanory`. Isso exige autorização do proprietário.
+  - Documentação: https://developers.cloudflare.com/workers/observability/errors/#secret-modification-with-worker-versions-10215
 - **Recomendação ao proprietário:** mover `MERCADOPAGO_PROD_ACCESS_TOKEN` para o Environment
   `producao-critica`. Como segredo de repositório, ele fica disponível a qualquer workflow do repositório.
 

@@ -64,7 +64,7 @@ class MpRotationWorkflow(unittest.TestCase):
         for token in ("failure()", "env.WRITE_ATTEMPTED_AT != ''", "env.PREV_VERSION_ID != ''"):
             self.assertIn(token, cond)
         self.assertRegex(last["run"], r'wrangler@4\.143\.0 rollback "\$PREV_VERSION_ID" --name zevanory')
-        self.assertRegex(last["run"], r'echo "::warning title=MP_ROTATION_ROLLED_BACK::[^"]*NAO_COMPROVADO',
+        self.assertRegex(last["run"], r'echo "::warning title=MP_ROTATION_ROLLED_BACK::[^"]*OBSERVED_IN_B01_PROBE[^"]*CONFIRM via the next preflight[^"]*10215',
                          "o limite (restauração do valor do segredo) tem de aparecer no resultado do run")
         put = self.steps[step_index(self.steps, "secret put MERCADOPAGO_ACCESS_TOKEN")]["run"]
         self.assertLess(put.index("secret put"), put.index("echo \"ROTATED_AT="), "ROTATED_AT só depois da gravação")
@@ -190,6 +190,38 @@ open(out, 'w').write('{}'); print('404', end='')
         rc, out, _ = self._run_step(needle, {"/deployments": dep(other)}, {"PREV_VERSION_ID": prev}, npx_rc=1)
         self.assertNotEqual(rc, 0)
         self.assertIn("MP_ROLLBACK_READBACK_FAIL", out)
+
+
+    @unittest.skipUnless(shutil.which("jq"), "jq ausente")
+    def test_10215_precondition_latest_version_must_be_the_deployed_one(self):
+        # Achado do ensaio B01 (run 39643799156): depois de um rollback, secret put => Cloudflare 10215.
+        a, b = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
+        dep = ["200", {"result": {"deployments": [{"versions": [{"version_id": a, "percentage": 100}]}]}}]
+        needle = "MP_LATEST_VERSION_NOT_DEPLOYED_10215"
+        ok = {"/deployments": dep, "/versions": ["200", {"result": {"items": [{"id": a}, {"id": b}]}}]}
+        rc, out, _ = self._run_step(needle, ok, {})
+        self.assertEqual(rc, 0, out)
+        self.assertIn(f"ROLLBACK_POINT={a}", out)
+        bad = {
+            "latest_not_deployed": {**ok, "/versions": ["200", {"result": {"items": [{"id": b}, {"id": a}]}}]},
+            # HTTP != 200 falha mesmo com corpo que, sozinho, passaria.
+            "versions_http_500": {**ok, "/versions": ["500", {"result": {"items": [{"id": a}]}}]},
+            "versions_unparseable": {**ok, "/versions": ["200", {"result": {"items": [{"id": "not-a-uuid"}]}}]},
+        }
+        for name, fx in bad.items():
+            rc, out, _ = self._run_step(needle, fx, {})
+            self.assertNotEqual(rc, 0, name)
+            self.assertNotIn("ROLLBACK_POINT=", out, name)
+        rc, out, _ = self._run_step(needle, bad["latest_not_deployed"], {})
+        self.assertIn("MP_LATEST_VERSION_NOT_DEPLOYED_10215", out)
+        rc, out, _ = self._run_step(needle, bad["versions_http_500"], {})
+        self.assertIn("MP_VERSIONS_READ::http=500", out)
+        rc, out, _ = self._run_step(needle, bad["versions_unparseable"], {})
+        self.assertIn("MP_LATEST_VERSION::not resolvable", out)
+
+    def test_10215_precondition_runs_before_the_write(self):
+        put = step_index(self.steps, "secret put MERCADOPAGO_ACCESS_TOKEN")
+        self.assertLess(step_index(self.steps, "MP_LATEST_VERSION_NOT_DEPLOYED_10215"), put)
 
 
 if __name__ == "__main__":
