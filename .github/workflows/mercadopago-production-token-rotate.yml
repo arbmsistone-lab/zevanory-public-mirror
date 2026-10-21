@@ -6,13 +6,22 @@ on:
 permissions:
   contents: read
 
+# Risco Sol 038-R5: nunca duas rotações ao mesmo tempo; a segunda espera, não cancela a primeira.
+concurrency:
+  group: mercadopago-production-token-rotate
+  cancel-in-progress: false
+
 jobs:
   rotate-and-preflight:
+    # Risco Sol 038-R5: só pelo branch protegido, por dispatch manual, e nunca por "re-run" do mesmo run.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 55
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PUBLIC_OWNER_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      # MP-01 (Sol, 21/10): fonte única. O nome antigo (PUBLIC_OWNER) não é mais lido aqui,
+      # para que uma cópia antiga em algum escopo nunca tenha precedência sobre o token do Environment.
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
       KV_NAMESPACE_ID: 728a45738e4047f29bcb89934fd533c1
       MERCADOPAGO_PROD_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_PROD_ACCESS_TOKEN }}
@@ -30,12 +39,72 @@ jobs:
           jq -e '.site_id == "MLB" and ((.tags // []) | index("test_user") | not)' \
             /tmp/mercadopago-user.json >/dev/null
           echo "MERCADOPAGO_PRODUCTION_CREDENTIAL=PASS"
+          # MP-02 (Sol, 21/10): além da identidade, provar leitura das operações financeiras que o Worker usa,
+          # SEM criar nada: busca de pagamentos e meios de pagamento. Qualquer código diferente de 200 => para
+          # antes de gravar o segredo (o Worker mantém o valor atual).
+          # Contestação Sol 21/10: cada resposta em arquivo próprio e validada separadamente.
+          mp_read() {
+            local path="$1" out="$2" code
+            code="$(curl -sS -o "$out" -w '%{http_code}' \
+              -H "Authorization: Bearer $MERCADOPAGO_PROD_ACCESS_TOKEN" -H 'accept: application/json' \
+              "https://api.mercadopago.com$path")"
+            test "$code" = "200" || { echo "::error title=MP_OPERATIONAL_CHECK::$path http=$code"; exit 1; }
+          }
+          mp_read "/v1/payments/search?limit=1&sort=date_created&criteria=desc" /tmp/mp-payments-search.json
+          jq -e '(.results|type)=="array" and (.paging|type)=="object"' /tmp/mp-payments-search.json >/dev/null \
+            || { echo "::error title=MP_OPERATIONAL_CHECK::payments_search_unexpected_body"; exit 1; }
+          mp_read "/v1/payment_methods" /tmp/mp-payment-methods.json
+          jq -e 'type=="array" and length>0 and all(.[]; (.id|type)=="string")' /tmp/mp-payment-methods.json >/dev/null \
+            || { echo "::error title=MP_OPERATIONAL_CHECK::payment_methods_unexpected_body"; exit 1; }
+          echo "MERCADOPAGO_OPERATIONAL_READ=PASS"
+
+      - name: Record the Worker version active before the rotation (rollback point)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Mesmo saneamento do #851: um token salvo com quebra de linha não pode quebrar a chamada.
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          # MP-03 (Sol, 21/10): ponto de retorno capturado ANTES do secret put.
+          code="$(curl -sS -o /tmp/deployments.json -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/deployments")"
+          test "$code" = "200"
+          prev="$(jq -r '[.result.deployments[0].versions[]?|select(.percentage==100)][0].version_id // empty' /tmp/deployments.json)"
+          [[ "$prev" =~ ^[0-9a-f-]{36}$ ]] || { echo "::error title=ROLLBACK_POINT::active version not resolvable"; exit 1; }
+          # Achado do ensaio B01 (run 39643799156, Cloudflare 10215): se a versão mais recente do Worker NÃO
+          # estiver implantada (por exemplo, depois de um rollback anterior), o secret put é recusado. Parar
+          # ANTES de gravar e pedir que a versão mais recente seja implantada primeiro, pelo deploy central.
+          code="$(curl -sS -o /tmp/versions.json -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/versions")"
+          test "$code" = "200" || { echo "::error title=MP_VERSIONS_READ::http=$code"; exit 1; }
+          # Contestação Sol 038-F1: não depender da ordem da lista. A documentação diz que o primeiro item é o mais
+          # recente (CODEX-006), mas a mais recente é escolhida pelo MAIOR "number" (sequencial por Worker).
+          # Lista vazia, number ausente, negativo ou fracionário (contestação Codex A1: 7.1/7.9) ou empate => falha fechada.
+          latest="$(jq -r '(.result.items // []) as $v
+            | if ($v|length)==0 or ([$v[]|.number|(type=="number" and . >= 0 and . == floor)]|all|not) then empty
+              else ($v|max_by(.number)) as $m
+                | if ([$v[]|select(.number==$m.number)]|length)!=1 then empty else $m.id end
+              end // empty' /tmp/versions.json)"
+          [[ "$latest" =~ ^[0-9a-f-]{36}$ ]] || { echo "::error title=MP_LATEST_VERSION::not resolvable"; exit 1; }
+          if [ "$latest" != "$prev" ]; then
+            echo "::error title=MP_LATEST_VERSION_NOT_DEPLOYED_10215::active=$prev latest=$latest — implante a versão mais recente (deploy central) antes de trocar o segredo"
+            exit 1
+          fi
+          echo "PREV_VERSION_ID=$prev" >> "$GITHUB_ENV"
+          echo "ROLLBACK_POINT=$prev"
 
       - name: Rotate the exact production Worker secret
         shell: bash
         run: |
           set -euo pipefail
+          # Mesmo saneamento do #851: um token salvo com quebra de linha não pode quebrar a chamada.
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
           test -n "${CLOUDFLARE_API_TOKEN:-}"
+          # Contestação Sol 21/10 (falha ambígua): a tentativa é registrada ANTES da gravação. Se o wrangler
+          # falhar depois de a Cloudflare aplicar o segredo, o retorno automático ainda é acionado.
+          echo "WRITE_ATTEMPTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           printf '%s' "$MERCADOPAGO_PROD_ACCESS_TOKEN" | \
             npx --yes wrangler@4.143.0 secret put MERCADOPAGO_ACCESS_TOKEN --name zevanory
           echo "ROTATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
@@ -46,8 +115,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Mesmo saneamento do #851: um token salvo com quebra de linha não pode quebrar a chamada.
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
           endpoint="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values/zpc-sales-preflight:v1"
-          deadline=$((SECONDS + 4200))
+          deadline=$((SECONDS + 2400))
           fresh=0
           while (( SECONDS < deadline )); do
             code="$(curl -sS -o /tmp/zpc-sales-preflight.json -w '%{http_code}' \
@@ -76,3 +147,30 @@ jobs:
           const token=rows.find(row=>row?.id==='mercadopago_production_token');
           if(token?.ok!==true)throw new Error('mercadopago_production_token_not_ready');
           NODE
+
+      - name: Automatic return to the previous Worker version after a post-write failure
+        if: failure() && env.WRITE_ATTEMPTED_AT != '' && env.PREV_VERSION_ID != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          # MP-03 (Sol, 21/10): falha DEPOIS do secret put => volta para a versão ativa antes da troca.
+          # Ensaio B01 (run 39643799156, Worker descartável, Sol 036/037): o rollback de versão restaurou o VALOR
+          # do segredo anterior (YES_OBSERVED). Em produção, isso continua sendo confirmado pelo preflight.
+          # ATENÇÃO (10215): depois deste rollback, um novo "secret put" é recusado até a versão mais recente
+          # ser implantada ou até usar "wrangler versions secret put" + "wrangler versions deploy".
+          # Mesmo saneamento do #851: um token salvo com quebra de linha não pode quebrar a chamada.
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
+          if [ -z "${ROTATED_AT:-}" ]; then
+            echo "::error title=MP_WRITE_UNCERTAIN::secret put falhou sem confirmação; a gravação pode ter sido aplicada. Estado tratado como incidente até a certificação abaixo."
+          fi
+          npx --yes wrangler@4.143.0 rollback "$PREV_VERSION_ID" --name zevanory --message "MP rotation failed after write attempt; return to $PREV_VERSION_ID" -y || echo "ROLLBACK_COMMAND_FAILED=1"
+          # Certificação por leitura: a versão a 100% tem de ser exatamente a anterior.
+          code="$(curl -sS -o /tmp/deployments-after.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/deployments")"
+          now="$(jq -r '[.result.deployments[0].versions[]?|select(.percentage==100)][0].version_id // empty' /tmp/deployments-after.json)"
+          if [ "$code" != "200" ] || [ "$now" != "$PREV_VERSION_ID" ]; then
+            echo "::error title=MP_ROLLBACK_READBACK_FAIL::active=$now expected=$PREV_VERSION_ID http=$code — incidente aberto; ação manual do proprietário"
+            exit 1
+          fi
+          echo "ROLLBACK_READBACK=PASS active=$now"
+          echo "::warning title=MP_ROTATION_ROLLED_BACK::worker returned to $PREV_VERSION_ID; secret value restoration OBSERVED_IN_B01_PROBE (run 39643799156) — CONFIRM via the next preflight; further secret changes need versions secret put (Cloudflare 10215)"
