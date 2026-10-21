@@ -41,8 +41,8 @@ set -eu
 printf '%s\n' "$*" >> "$FAKE_LOG"
 args=" $* "
 if [[ "$args" == *" deploy "* ]]; then
-  touch "$FAKE_STATE/worker-created"
-  printf 'https://zevanory-rollback-secret-probe-%s.unit.workers.dev\n' "$GITHUB_RUN_ID"
+  touch "$FAKE_STATE/code-deployed"
+  printf 'https://zevanory-rollback-secret-probe.unit.workers.dev\n'
   [[ "$FAKE_SCENARIO" != "deploy_error" ]] || exit 17
 elif [[ "$args" == *" secret put "* ]]; then
   value="$(cat)"
@@ -68,7 +68,9 @@ elif [[ "$args" == *" rollback version-a "* ]]; then
   if [[ "$FAKE_SCENARIO" == "pass" || "$FAKE_SCENARIO" == "cleanup_error" ]]; then
     cp "$FAKE_STATE/secret-a" "$FAKE_STATE/current-secret"
   fi
-elif [[ "$args" == *" delete "* ]]; then
+elif [[ "$args" == *" create "* || "$args" == *" delete --force"* || "$args" == *"delete zevanory"* ]]; then
+  echo "FORBIDDEN_WORKER_CREATE_OR_DELETE:$*" >&2; exit 92
+elif [[ "$args" == *" secret delete PROBE_SECRET "* ]]; then
   [[ "$FAKE_SCENARIO" != "cleanup_error" ]] || exit 23
   touch "$FAKE_STATE/cleaned"
 else
@@ -92,6 +94,9 @@ while [[ "$#" -gt 0 ]]; do
 done
 [[ -n "$output" && -n "$url" ]]
 if [[ "$url" == *"/deployments" ]]; then
+  if [[ "$FAKE_SCENARIO" == "not_precreated" ]]; then
+    printf '{"success":false}' > "$output"; printf '404'; exit 0
+  fi
   version="$(cat "$FAKE_STATE/current-version")"
   case "${FAKE_DEPLOY_SHAPE:-ok}" in
     ok) printf '{"result":{"deployments":[{"versions":[{"version_id":"%s","percentage":100}]}]}}' "$version" > "$output" ;;
@@ -117,7 +122,7 @@ fi
 
 
 class ProbeExecutionTests(unittest.TestCase):
-    def run_probe(self, scenario="pass", *, token="offline-token", worker_name=None, deploy_shape="ok", account_id="0123456789abcdef0123456789abcdef"):
+    def run_probe(self, scenario="pass", *, token="offline-token", worker_name=None, deploy_shape="ok", account_id="1b26415802588185a86c1d4d3ebf5bdb"):
         # Keep Windows sandbox tests inside the writable checkout instead of the
         # host-wide TEMP directory, which may be read-only to the test process.
         temporary = tempfile.TemporaryDirectory(dir=ROOT)
@@ -129,6 +134,8 @@ class ProbeExecutionTests(unittest.TestCase):
         fake_bin.mkdir()
         state.mkdir()
         runner_tmp.mkdir()
+        # O Worker de prova já existe (criado pelo proprietário no painel), servindo a versão inicial.
+        (state / "current-version").write_text("version-0", encoding="utf-8")
         for name, source in (("npx", NPX), ("curl", CURL)):
             path = fake_bin / name
             path.write_text(textwrap.dedent(source), encoding="utf-8", newline="\n")
@@ -220,22 +227,29 @@ class ProbeExecutionTests(unittest.TestCase):
 
     def test_production_or_invalid_account_is_refused_before_any_write(self):
         # Recomendação Sol 029: a conta de produção Zevanory nunca recebe o ensaio.
-        for account, marker in (("1b26415802588185a86c1d4d3ebf5bdb", "CLOUDFLARE_PRODUCTION_ACCOUNT_REFUSED"),
-                                ("", "CLOUDFLARE_SANDBOX_ACCOUNT_ID_INVALID"),
-                                ("not-an-account", "CLOUDFLARE_SANDBOX_ACCOUNT_ID_INVALID")):
+        # Determinação do proprietário 21/10 13:06: só a conta Zevanory; qualquer outra é recusada.
+        for account, marker in (("0123456789abcdef0123456789abcdef", "CLOUDFLARE_ACCOUNT_ID_REFUSED"),
+                                ("", "CLOUDFLARE_ACCOUNT_ID_REFUSED")):
             completed, state, calls = self.run_probe(account_id=account)
             self.assertNotEqual(completed.returncode, 0, account)
             self.assertIn(marker, completed.stderr, account)
             self.assertEqual(calls, "", account)
-            self.assertFalse((state / "worker-created").exists(), account)
+            self.assertFalse((state / "code-deployed").exists(), account)
             self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout, account)
+
+    def test_missing_precreated_worker_is_refused_without_creating_one(self):
+        completed, state, calls = self.run_probe("not_precreated")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("PROBE_WORKER_NOT_PRECREATED_OR_NO_ACCESS_HTTP_404", completed.stderr)
+        self.assertEqual(calls, "", "nenhum comando wrangler pode rodar")
+        self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout)
 
     def test_invalid_worker_name_is_refused_before_write(self):
         completed, state, calls = self.run_probe(worker_name="zevanory")
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("WORKER_NAME_REFUSED", completed.stderr)
         self.assertEqual(calls, "")
-        self.assertFalse((state / "worker-created").exists())
+        self.assertFalse((state / "code-deployed").exists())
 
     def test_missing_token_fails_closed_before_write(self):
         completed, state, calls = self.run_probe(token="")
@@ -243,21 +257,21 @@ class ProbeExecutionTests(unittest.TestCase):
         self.assertIn("CLOUDFLARE_SANDBOX_PROBE_TOKEN_MISSING", completed.stderr)
         self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout)
         self.assertEqual(calls, "")
-        self.assertFalse((state / "worker-created").exists())
+        self.assertFalse((state / "code-deployed").exists())
 
     def test_cleanup_runs_after_post_deploy_failure(self):
         completed, state, calls = self.run_probe("http_error")
         self.assertNotEqual(completed.returncode, 0)
         self.assertTrue((state / "cleaned").exists())
-        self.assertIn(" delete ", " " + calls)
+        self.assertIn(" secret delete PROBE_SECRET ", " " + calls)
 
     def test_cleanup_runs_after_ambiguous_deploy_failure(self):
         completed, state, calls = self.run_probe("deploy_error")
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("ROLLBACK_SECRET_VALUE_RESTORED=INCONCLUSIVE", completed.stdout)
-        self.assertTrue((state / "worker-created").exists())
-        self.assertTrue((state / "cleaned").exists())
-        self.assertIn(" delete ", " " + calls)
+        # deploy de código falhou antes de qualquer segredo: nada a neutralizar, e nunca apagar o Worker.
+        self.assertNotIn("delete", calls)
+        self.assertNotIn("FORBIDDEN", completed.stderr)
 
 
 class StaticContractTests(unittest.TestCase):
@@ -277,8 +291,7 @@ class StaticContractTests(unittest.TestCase):
         )
         self.assertEqual(job["environment"], {"name": "sandbox-financial-approved"})
         self.assertEqual(set(job["env"]), {"CLOUDFLARE_SANDBOX_PROBE_TOKEN", "CLOUDFLARE_ACCOUNT_ID"})
-        self.assertEqual(job["env"]["CLOUDFLARE_ACCOUNT_ID"], "${{ vars.CLOUDFLARE_SANDBOX_ACCOUNT_ID }}")
-        self.assertNotIn("1b26415802588185a86c1d4d3ebf5bdb", WORKFLOW.read_text(encoding="utf-8"))
+        self.assertEqual(job["env"]["CLOUDFLARE_ACCOUNT_ID"], "1b26415802588185a86c1d4d3ebf5bdb")
         self.assertEqual(job["env"]["CLOUDFLARE_SANDBOX_PROBE_TOKEN"],
                          "${{ secrets.CLOUDFLARE_SANDBOX_PROBE_TOKEN }}")
         guard = job["steps"][1]
@@ -304,9 +317,13 @@ class StaticContractTests(unittest.TestCase):
         source = RUNNER.read_text(encoding="utf-8")
         first_deploy = source.index('"$NPX_BIN" --yes "$WRANGLER" deploy')
         self.assertLess(source.index('validate_worker_name || fail "WORKER_NAME_REFUSED"'), first_deploy)
-        self.assertIn("^zevanory-rollback-secret-probe-[0-9]+$", source)
-        self.assertIn('delete "$WORKER_NAME" --config "$CONFIG" --force', source)
-        self.assertNotIn('delete --name "$WORKER_NAME"', source)
+        self.assertIn('[[ "$WORKER_NAME" == "$PROBE_WORKER" ]]', source)
+        self.assertIn('readonly PROBE_WORKER="zevanory-rollback-secret-probe"', source)
+        # Nunca cria nem apaga Worker: só neutraliza o segredo de prova.
+        self.assertNotRegex(source, r'wrangler[^\n]*"?\$WRANGLER"? delete')
+        self.assertNotIn(" delete \"$WORKER_NAME\"", source)
+        self.assertIn("secret delete PROBE_SECRET", source)
+        self.assertLess(source.index("PROBE_WORKER_NOT_PRECREATED"), first_deploy, "pré-checagem de existência antes do deploy")
 
 
 if __name__ == "__main__":
@@ -358,7 +375,7 @@ class SingleRunGuardTests(unittest.TestCase):
 
 
 class CleanupOnlyAccountGuardTests(unittest.TestCase):
-    def test_cleanup_never_touches_the_production_account(self):
+    def test_cleanup_only_acts_on_the_zevanory_account(self):
         tmp = tempfile.TemporaryDirectory(dir=ROOT)
         self.addCleanup(tmp.cleanup)
         base = Path(tmp.name)
@@ -366,8 +383,8 @@ class CleanupOnlyAccountGuardTests(unittest.TestCase):
         npx = base / "npx"
         npx.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$FAKE_LOG"\n', encoding="utf-8", newline="\n")
         npx.chmod(0o755)
-        for account, marker in (("1b26415802588185a86c1d4d3ebf5bdb", "CLOUDFLARE_PRODUCTION_ACCOUNT_REFUSED"),
-                                ("", "CLOUDFLARE_SANDBOX_ACCOUNT_ID_INVALID")):
+        for account, marker in (("0123456789abcdef0123456789abcdef", "CLOUDFLARE_ACCOUNT_ID_REFUSED"),
+                                ("", "CLOUDFLARE_ACCOUNT_ID_REFUSED")):
             env = dict(os.environ, PATH=str(base) + os.pathsep + os.environ.get("PATH", ""), FAKE_LOG=str(log),
                        GITHUB_RUN_ID="4242", CLOUDFLARE_SANDBOX_PROBE_TOKEN="offline", CLOUDFLARE_ACCOUNT_ID=account)
             p = subprocess.run([bash_path(), str(ROOT / "sandbox/rollback-secret-probe/cleanup-only.sh")],

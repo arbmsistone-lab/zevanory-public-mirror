@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly PREFIX="zevanory-rollback-secret-probe-"
+readonly PROBE_WORKER="zevanory-rollback-secret-probe"
 readonly NONCE="zevanory-b01-rollback-secret-probe-v1:"
 readonly WRANGLER="wrangler@4.143.0"
 readonly NPX_BIN="${NPX_BIN:-npx}"
 readonly CURL_BIN="${CURL_BIN:-curl}"
 readonly PYTHON_BIN="${PYTHON_BIN:-python3}"
 readonly ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
-# Recomendação Sol 029: o ensaio roda numa conta Cloudflare de SANDBOX separada. A conta de produção
-# Zevanory é RECUSADA, então nem um token Admin de Workers dessa conta alcança produção.
-readonly PRODUCTION_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb"
+# Determinação do proprietário (21/10 13:06): o ensaio roda na conta CERTA, a Zevanory. Para não dar ao
+# token poder sobre produção, o Worker de prova é CRIADO PREVIAMENTE pelo proprietário no painel, e o
+# token tem só o papel "Editor" ESCOPADO a esse único Worker (documentação Cloudflare, Workers >
+# Authorization: deploy de Worker existente, secret put e rollback exigem só Editor daquele Worker).
+# O script nunca cria nem apaga Worker.
+readonly ZEVANORY_ACCOUNT_ID="1b26415802588185a86c1d4d3ebf5bdb"
 readonly CONFIG="sandbox/rollback-secret-probe/wrangler.toml"
-readonly WORKER_NAME="${WORKER_NAME:-${PREFIX}${GITHUB_RUN_ID:-}}"
+readonly WORKER_NAME="${WORKER_NAME:-$PROBE_WORKER}"
 readonly TOKEN="${CLOUDFLARE_SANDBOX_PROBE_TOKEN:-}"
 readonly ATTEMPTS="${PROBE_ATTEMPTS:-30}"
 readonly SLEEP_SECONDS="${PROBE_SLEEP_SECONDS:-2}"
@@ -20,26 +23,28 @@ readonly SLEEP_SECONDS="${PROBE_SLEEP_SECONDS:-2}"
 # Contestação Claude (21/10): falha de infraestrutura NÃO pode virar resposta negativa.
 # RESULT só vira YES ou NO quando a comparação final rodou com leituras válidas; qualquer outra saída é INCONCLUSIVE.
 RESULT="INCONCLUSIVE"
-WORKER_CREATED=0
+SECRET_WRITTEN=0
 TMP_BASE="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 TMP_DIR="${TMP_BASE}/b01-rollback-secret-probe-${GITHUB_RUN_ID:-unknown}-$$"
 mkdir -p "$TMP_DIR"
 chmod 700 "$TMP_DIR"
 
 validate_worker_name() {
-  [[ "$WORKER_NAME" =~ ^zevanory-rollback-secret-probe-[0-9]+$ ]]
+  [[ "$WORKER_NAME" == "$PROBE_WORKER" ]]
 }
 
 cleanup() {
   local cleanup_status=0
-  if [[ "$WORKER_CREATED" == "1" ]]; then
+  # Limpeza = neutralizar: apagar o segredo de prova (Editor do Worker basta). O Worker fica, sem segredo,
+  # para o proprietário apagar no painel ou reaproveitar.
+  if [[ "$SECRET_WRITTEN" == "1" ]]; then
     if ! validate_worker_name; then
       echo "CLEANUP_REFUSED_INVALID_WORKER_NAME" >&2
       return 1
     fi
     if CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
-      "$NPX_BIN" --yes "$WRANGLER" delete "$WORKER_NAME" --config "$CONFIG" --force \
-      >/dev/null 2>&1; then
+      "$NPX_BIN" --yes "$WRANGLER" secret delete PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" \
+      >/dev/null 2>&1 </dev/null; then
       if [[ -n "${GITHUB_ENV:-}" ]]; then
         printf 'B01_CLEANUP_DONE=1\n' >> "$GITHUB_ENV"
       fi
@@ -69,7 +74,7 @@ finalize() {
     status=1
   fi
   if [[ "$cleanup_status" != "0" ]]; then
-    echo "B01_CLEANUP_FAILED=1 (o Worker descartável pode ter ficado; o passo always() tenta de novo)" >&2
+    echo "B01_CLEANUP_FAILED=1 (o segredo de prova pode ter ficado; o passo always() tenta de novo)" >&2
   fi
   printf 'ROLLBACK_SECRET_VALUE_RESTORED=%s\n' "$final"
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
@@ -140,8 +145,7 @@ read_probe() {
 
 validate_worker_name || fail "WORKER_NAME_REFUSED"
 [[ -n "$TOKEN" ]] || fail "CLOUDFLARE_SANDBOX_PROBE_TOKEN_MISSING"
-[[ "$ACCOUNT_ID" =~ ^[0-9a-f]{32}$ ]] || fail "CLOUDFLARE_SANDBOX_ACCOUNT_ID_INVALID"
-[[ "$ACCOUNT_ID" != "$PRODUCTION_ACCOUNT_ID" ]] || fail "CLOUDFLARE_PRODUCTION_ACCOUNT_REFUSED"
+[[ "$ACCOUNT_ID" == "$ZEVANORY_ACCOUNT_ID" ]] || fail "CLOUDFLARE_ACCOUNT_ID_REFUSED"
 [[ "$ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || fail "PROBE_ATTEMPTS_INVALID"
 
 VALUE_A="$(openssl rand -hex 32)"
@@ -150,13 +154,19 @@ VALUE_B="$(openssl rand -hex 32)"
 HASH_A="$(sha256_value "$VALUE_A")"
 HASH_B="$(sha256_value "$VALUE_B")"
 
-WORKER_CREATED=1
+# Pré-condição: o Worker de prova já existe (criado pelo proprietário). Nunca criar.
+precheck="$("$CURL_BIN" --silent --show-error --output "$TMP_DIR/precheck.json" --write-out '%{http_code}' \
+  --connect-timeout 10 --max-time 30 --header "Authorization: Bearer $TOKEN" \
+  "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/deployments")"
+[[ "$precheck" == "200" ]] || fail "PROBE_WORKER_NOT_PRECREATED_OR_NO_ACCESS_HTTP_${precheck}"
+
 CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
   "$NPX_BIN" --yes "$WRANGLER" deploy --name "$WORKER_NAME" --config "$CONFIG" \
   > "$TMP_DIR/deploy.log" 2>&1
 WORKER_URL="$(grep -Eo "https://${WORKER_NAME}\.[A-Za-z0-9-]+\.workers\.dev" "$TMP_DIR/deploy.log" | tail -1)"
 [[ -n "$WORKER_URL" ]] || fail "WORKER_URL_MISSING"
 
+SECRET_WRITTEN=1
 printf '%s' "$VALUE_A" | CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" \
   "$NPX_BIN" --yes "$WRANGLER" secret put PROBE_SECRET --name "$WORKER_NAME" --config "$CONFIG" \
   >/dev/null
