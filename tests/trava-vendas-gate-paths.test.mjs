@@ -19,6 +19,7 @@ const ENTRIES = [
   "tests/integration/mercadopago-webhook-postgres.test.mjs",
   "tests/integration/close-invalidation-postgres.test.mjs",
   "tests/integration/delivery-evidence-cas-postgres.test.mjs",
+  "tests/integration/mercadopago-payment-dedupe-postgres.test.mjs",
   "tests/t4_sim/register.mjs",
   "tests/trava-vendas-gate-paths.test.mjs"
 ];
@@ -67,7 +68,7 @@ test("nenhuma entrada que escape da prova estática: import dinâmico calculado,
 });
 
 test("o gate exige contagem exata, roda este teste e nunca aceita teste pulado nem segredo", () => {
-  for (const [file, n] of [["m", 21], ["p", 9], ["c", 7], ["g", 3]]) {
+  for (const [file, n] of [["m", 25], ["p", 9], ["c", 7], ["d", 4], ["g", 3]]) {
     assert.match(WF, new RegExp(`grep -qx "# tests ${n}" ${file}\\.txt && grep -qx "# pass ${n}" ${file}\\.txt && grep -qx "# skipped 0" ${file}\\.txt && grep -qx "# fail 0" ${file}\\.txt`), file);
   }
   assert.doesNotMatch(WF, /secrets\./);

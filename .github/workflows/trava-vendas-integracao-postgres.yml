@@ -49,7 +49,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Webhook Mercado Pago (M1–M17, vendas fechadas, falhas da entrega e achados Copilot)
+      - name: Webhook Mercado Pago (M1–M22, vendas fechadas, falhas da entrega, achados Copilot e assinatura/idempotência B05)
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
@@ -58,7 +58,7 @@ jobs:
           node --import ./tests/t4_sim/register.mjs --test tests/integration/mercadopago-webhook-postgres.test.mjs | tee m.txt
           # Quantidade EXATA: remoção ou omissão silenciosa de teste derruba o gate. Ao adicionar
           # testes, atualizar o número no mesmo PR (revisão explícita).
-          grep -qx "# tests 21" m.txt && grep -qx "# pass 21" m.txt && grep -qx "# skipped 0" m.txt && grep -qx "# fail 0" m.txt
+          grep -qx "# tests 25" m.txt && grep -qx "# pass 25" m.txt && grep -qx "# skipped 0" m.txt && grep -qx "# fail 0" m.txt
       - name: Invalidação de links no fechamento (P1–P9)
         env:
           T4_PG_HOST: localhost
@@ -75,6 +75,14 @@ jobs:
           set -eo pipefail
           node --test tests/integration/delivery-evidence-cas-postgres.test.mjs | tee c.txt
           grep -qx "# tests 7" c.txt && grep -qx "# pass 7" c.txt && grep -qx "# skipped 0" c.txt && grep -qx "# fail 0" c.txt
+      - name: Idempotência do pagamento confirmado com conexões simultâneas reais (B05/G9, D1–D4)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/mercadopago-payment-dedupe-postgres.test.mjs | tee d.txt
+          grep -qx "# tests 4" d.txt && grep -qx "# pass 4" d.txt && grep -qx "# skipped 0" d.txt && grep -qx "# fail 0" d.txt
       - name: Suíte Node completa no SHA do PR (prova Linux independente, Ordem Sol 024)
         run: |
           set -eo pipefail
