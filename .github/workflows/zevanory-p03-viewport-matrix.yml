@@ -1,0 +1,52 @@
+name: zevanory-p03-viewport-matrix
+# P03 (Ordem 013 quadro F2 + Roteiro §6): every in-repo public page (sales-public/*.html, exact count
+# asserted) x 5 viewports (1536x730, 1280x720, 1366x768, 1024x768, 390x844) x light/dark.
+# Fails on document-level scroll, internal scrollers, horizontally clipped content or any axe-core
+# WCAG 2.x A/AA violation, except the exact known gaps listed in the script. Localhost only:
+# no secrets, no production network, read-only token.
+on:
+  pull_request:
+    branches: [gh-pages]
+permissions:
+  contents: read
+concurrency:
+  group: p03-viewport-matrix-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  viewport-matrix:
+    name: p03 / viewport-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EXPECTED_PAGES: "71"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned tools (outside the repo tree)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/p03 && cd /tmp/p03
+          npm init -y >/dev/null
+          npm install --no-save playwright@1.55.0 axe-core@4.10.2 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Serve candidate sales-public on localhost
+        run: |
+          set -euo pipefail
+          (python3 -m http.server 8790 --bind 127.0.0.1 --directory sales-public >/tmp/p03-http.log 2>&1 &)
+          for i in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8790/solucoes.html && exit 0; sleep 0.5; done
+          cat /tmp/p03-http.log; exit 1
+      - name: 5x2 viewport matrix (scroll, clipping, axe)
+        working-directory: /tmp/p03
+        run: node "$GITHUB_WORKSPACE/scripts/audit/p03-viewport-matrix.mjs" http://127.0.0.1:8790 "$GITHUB_WORKSPACE/sales-public" "$EXPECTED_PAGES" /tmp/p03/p03-viewport-matrix
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p03-viewport-matrix
+          path: |
+            /tmp/p03/p03-viewport-matrix.json
+            /tmp/p03/p03-viewport-matrix.csv
+          retention-days: 30
