@@ -1,0 +1,32 @@
+name: Codex multiprovider governance proposal CI
+
+on:
+  pull_request:
+    paths:
+      - 'governance/proposals/multiprovider-v2/**'
+      - '.github/workflows/codex-multiprovider-governance-proposal.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  proposal-tests-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Authorization and collector model tests
+        run: node --test governance/proposals/multiprovider-v2/*.test.mjs
+      - name: Confirm proposal cannot activate itself
+        run: |
+          node -e "const p=require('./governance/proposals/multiprovider-v2/policy.proposal.json'); if(p.status!=='proposed_not_active') process.exit(1)"
+          git diff --exit-code origin/gh-pages -- ops/executor.json .github/workflows/t1-publisher-guard.yml
+      - name: Explain trust boundary
+        run: echo "This PR workflow tests fixtures only; it is not an authorization collector."

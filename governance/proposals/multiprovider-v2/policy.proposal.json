@@ -1,0 +1,94 @@
+{
+  "schema": "zevanory-executor-governance/v2-proposal",
+  "status": "proposed_not_active",
+  "principle": "Evidence is collected by an owner-controlled read-only workflow; executor-supplied identity, permission or approval fields are never authoritative.",
+  "repository": "arbmsistone-lab/zevanory-public-mirror",
+  "trusted_collector": {
+    "event": "pull_request_target",
+    "workflow_ref": ".github/workflows/multiprovider-authorizer.yml@refs/heads/gh-pages",
+    "workflow_sha": "REPLACE_AFTER_OWNER_BOOTSTRAP",
+    "must_run_from_protected_default_branch": true,
+    "must_not_checkout_or_execute_pr_code": true,
+    "github_token_permissions": {
+      "contents": "read",
+      "pull_requests": "read",
+      "metadata": "read"
+    }
+  },
+  "activation_prerequisites": [
+    "Owner-controlled bootstrap PR installs the collector on the protected default branch; this proposal cannot activate itself.",
+    "Replace every placeholder with principals and installation identifiers independently observed from APIs.",
+    "Create an owner-controlled executor registry plus provider-signed or equivalent external attestation binding principal, installation and session to a role.",
+    "Prove effective GitHub App permissions exhaustively; unavailable, unknown or incomplete permission evidence fails closed.",
+    "Prove protected branch review rules and protected production environment settings through readable API evidence.",
+    "Separate PR author, technical auditor and owner approver principals; no self-approval.",
+    "Keep session-guard v1 active until v2 passes adversarial tests and the owner separately approves migration."
+  ],
+  "roles": {
+    "claude": {
+      "principal": {"type":"github_app_installation","login":"REPLACE_WITH_CLAUDE_APP_BOT","installation_id":"REPLACE"},
+      "actions": ["propose_operational_change","run_tests","request_deploy"],
+      "allowed_path_prefixes": ["worker/","tests/","scripts/","ops/"],
+      "permission_allowlist": {"metadata":"read","contents":"write","pull_requests":"write"},
+      "required_permissions": {"metadata":"read","contents":"write","pull_requests":"write"},
+      "never": ["merge","deploy","manage_credentials"]
+    },
+    "codex": {
+      "principal": {"type":"github_app_installation","login":"REPLACE_WITH_CODEX_APP_BOT","installation_id":"REPLACE"},
+      "actions": ["propose_acquisition_change","run_tests"],
+      "allowed_path_prefixes": ["growth/"],
+      "permission_allowlist": {"metadata":"read","contents":"write","pull_requests":"write"},
+      "required_permissions": {"metadata":"read","contents":"write","pull_requests":"write"},
+      "never": ["merge","deploy","request_deploy","manage_credentials"]
+    },
+    "chatgpt": {
+      "principal": {"type":"github_app_installation","login":"REPLACE_WITH_CHATGPT_AUDITOR_BOT","installation_id":"REPLACE"},
+      "actions": ["audit","submit_review"],
+      "allowed_path_prefixes": [],
+      "permission_allowlist": {"metadata":"read","contents":"read","pull_requests":"write"},
+      "required_permissions": {"metadata":"read","contents":"read","pull_requests":"write"},
+      "never": ["push","merge","deploy","manage_credentials"]
+    },
+    "owner": {
+      "principal": {"type":"human_github_account","login":"REPLACE_WITH_DISTINCT_OWNER_LOGIN"},
+      "actions": ["approve","merge","approve_deploy","manage_credentials"],
+      "allowed_path_prefixes": [""],
+      "permission_allowlist": {},
+      "required_permissions": {},
+      "never": []
+    },
+    "publisher": {
+      "principal": {"type":"github_actions_oidc","login":"github-actions[bot]","installation_id":"actions"},
+      "actions": ["deploy"],
+      "allowed_path_prefixes": [],
+      "permission_allowlist": {"metadata":"read","contents":"read","id-token":"write"},
+      "required_permissions": {"metadata":"read","contents":"read","id-token":"write"},
+      "never": ["push","merge","manage_credentials"]
+    }
+  },
+  "codex_forbidden_paths": [".github/workflows/","governance/","ops/","worker/","scripts/deploy/","sales-public/","checkout","payment","financial","secret","credential"],
+  "owner_authorization": {
+    "merge": "A distinct owner login must submit APPROVED on the exact current head SHA; author cannot approve own PR.",
+    "deploy": "A distinct owner approves a protected production environment; self-review disabled and protected branch required.",
+    "technical_audit": "ChatGPT PASS is advisory evidence, never GitHub authorization."
+  },
+  "publication": {
+    "environment": "production",
+    "canonical_workflows": [".github/workflows/central-production-deploy.yml",".github/workflows/sales-public-release.yml"],
+    "secrets_scope": "production environment only",
+    "acquisition_access": false
+  },
+  "current_observations": {
+    "branch_protection": "NOT_PROVEN_API_403",
+    "repository_rulesets": "OBSERVED_EMPTY",
+    "production_environment": "NOT_PROVEN_CONNECTOR_ENDPOINT_UNAVAILABLE",
+    "actions_permissions": "NOT_PROVEN_CONNECTOR_ENDPOINT_UNAVAILABLE",
+    "provider_model_binding": "NOT_PROVEN"
+  },
+  "current_limitations": [
+    "Current writes appear under a shared owner-linked identity, so provider identity is not authenticated.",
+    "A GitHub App login or session declaration alone does not prove the model or runtime that operated it.",
+    "This proposal and its CI are untrusted PR code and cannot collect production authorization evidence.",
+    "The policy must fail closed until all activation prerequisites are independently observable."
+  ]
+}
