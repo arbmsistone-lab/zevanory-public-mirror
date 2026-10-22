@@ -547,7 +547,8 @@ def evaluate(res, thr):
                 continue
             D = G.decide(c["M"], thr, profile="controls", disable=m.get("disable", ()), overrides=m.get("overrides"), policy=m.get("policy"))
             neg = c["expect"] != "PASS"
-            if (neg and D["verdict"] == "PASS") or (not neg and D["verdict"] != "PASS"):
+            # killed only by a control that was correctly classified at baseline and is misclassified under the mutant
+            if c["correct"] and ((neg and D["verdict"] == "PASS") or (not neg and D["verdict"] != "PASS")):
                 flips.append(f'{c["id"]}:{base.get(c["id"])}->{D["verdict"]}')
         res["mutants"].append({"id": m["id"], "desc": m["desc"], "killed": bool(flips), "killed_by": flips})
     cs = res["controls"]
