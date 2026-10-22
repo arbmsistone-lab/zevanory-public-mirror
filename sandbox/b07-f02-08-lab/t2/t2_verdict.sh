@@ -11,14 +11,14 @@ sha(){ sha256sum "$1" | cut -d' ' -f1; }
 [ -s "$W/obs.txt" ] || { echo "OBS_DONE=0" > "$W/obs.txt"; echo "INFRA_FAIL=orquestrador sem observação" >> "$W/obs.txt"; }
 out=$(bash "$CL" "$W/obs.txt" "$SCEN"); verdict=$(sed -n 's/^VERDICT=//p' <<< "$out")
 note "T2_${SCEN}_VERDICT" "$out"
-keys='INFRA_FAIL|PS_CONFIG_PERM_ANTES|FROZEN|UNFROZEN|T2A_SENT|T2B_SENT|T2B_WAIT_BEFORE_HEAL|C1_VERSION|OP1|OP1_RAW|TERM0|SK_TERMS_AFTER_OP1|M9_[A-Z0-9_]+|S1|PARTITION|C1_REACH_SK_DURING_PARTITION|M8_BRANCH|SK_TERMS_C2_TIMELINE|FAILOVER_ELECTED|C2_TIMELINE|PROMOTE|C2_FENCE|T2A|T2A_RAW|T2A_C1_STATE|OP2_W2|OP2_W2_RAW|T2C|T2C_[A-Z_]+|PARTITION_HEALED|T2B|T2B_RAW|T2B_C1_STATE|ORACLE_[A-Z]+|SK_TERMS_FINAL|SK_COMMIT_FINAL|SK_EQUAL|SK_TERM_FINAL|M14_[A-Z]+'
+keys='INFRA_FAIL|PS_CONFIG_PERM_ANTES|CONFIG_B07|C1_SHARED_BUFFERS|FROZEN|UNFROZEN|T2A_SENT|T2B_SENT|T2B_WAIT_BEFORE_HEAL|C1_VERSION|OP1|OP1_RAW|TERM0|SK_TERMS_AFTER_OP1|M9_[A-Z0-9_]+|S1|PARTITION|C1_REACH_SK_DURING_PARTITION|M8_BRANCH|SK_TERMS_C2_TIMELINE|FAILOVER_ELECTED|C2_TIMELINE|PROMOTE|C2_FENCE|T2A|T2A_RAW|T2A_C1_STATE|OP2_W2|OP2_W2_RAW|T2C|T2C_[A-Z_]+|PARTITION_HEALED|T2B|T2B_RAW|T2B_C1_STATE|ORACLE_[A-Z]+|SK_TERMS_FINAL|SK_COMMIT_FINAL|SK_EQUAL|SK_TERM_FINAL|M14_[A-Z]+'
 note "T2_${SCEN}_OBS" "$(grep -E "^($keys)=" "$W/obs.txt" | cut -c1-420)"
 note "T2_${SCEN}_PROVENIENCIA" "$(grep -E '^(IMAGE_|IDS=|S3_SUBSTITUTO|DOCKERFILE_B07)' "$W/obs.txt" | cut -c1-300)"
 for c in compute1 compute2 compute3; do
   [ -s "$W/$c.log" ] || continue
   echo "== $c"
-  grep -E 'PANIC|FATAL|ERROR|WARNING|elected in term|rejects|rejected|exited|terminat|compute_ctl' "$W/$c.log" | grep -v -E '^\+|connection authorized|BatchSpanProcessor' | tail -15 | cut -c1-300
-  echo "-- cauda"; grep -v -E 'connection authorized|BatchSpanProcessor' "$W/$c.log" | tail -8 | cut -c1-300
+  grep -E 'PANIC|FATAL|ERROR|WARNING|elected in term|rejects|rejected|exited|terminat|compute_ctl' "$W/$c.log" | grep -v -E '^\+|connection authorized|BatchSpanProcessor' | tail -10 | cut -c1-240
+  echo "-- cauda"; grep -v -E 'connection authorized|BatchSpanProcessor|skipping missing configuration' "$W/$c.log" | tail -6 | cut -c1-240
 done > "$W/ctails.txt" 2>/dev/null
 [ -s "$W/ctails.txt" ] && note "T2_${SCEN}_COMPUTES" "$(head -c 14000 "$W/ctails.txt")"
 [ -s "$W/notes.txt" ] && note "T2_${SCEN}_DIAG" "$(grep -v '^$' "$W/notes.txt" | grep -E '^(PS_A|LOG_|PULL_FALHOU|M10 |TENANT_CREATE|TIMELINE_CREATE|SK_RAW1|M10_ORACLE_OUT|COMPOSE_NETS|S3_BUCKETS|BUILD_B07)' | cut -c1-1500 | head -c 12000)"

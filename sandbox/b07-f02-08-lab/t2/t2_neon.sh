@@ -117,6 +117,12 @@ docker build --progress=plain -f "$W/Dockerfile.b07" -t built-compute "$CTX" > "
   || infra_fail "build compute_wrapper: $(grep -Ei 'error|failed' "$W/build.log" | tail -5 | tr '\n' ' ' | cut -c1-600)"
 note "BUILD_B07: $(grep -E 'b07:|jq-1' "$W/build.log" | tr '\n' ' ' | cut -c1-300)"
 
+# config.json das computes: o oficial com shared_buffers 1MB -> 128MB (única diferença; SHA-256 dos dois registrados).
+mkdir -p "$W/configs_b07"
+jq '(.spec.cluster.settings[] | select(.name=="shared_buffers") | .value) = "128MB"' \
+  "$NEON_DIR/compute_wrapper/var/db/postgres/configs/config.json" > "$W/configs_b07/config.json" || infra_fail "config_b07"
+chmod -R a+rX "$W/configs_b07"; export B07_CONFIGS="$W/configs_b07/"
+obs CONFIG_B07 "shared_buffers=$(jq -r '.spec.cluster.settings[]|select(.name=="shared_buffers").value' "$W/configs_b07/config.json") sha_oficial=$(sha256sum "$NEON_DIR/compute_wrapper/var/db/postgres/configs/config.json" | cut -d' ' -f1) sha_b07=$(sha256sum "$W/configs_b07/config.json" | cut -d' ' -f1) diff=$(diff <(jq -S . "$NEON_DIR/compute_wrapper/var/db/postgres/configs/config.json") <(jq -S . "$W/configs_b07/config.json") | grep '^[<>]' | tr -s ' ' | tr '\n' ' ')"
 export TENANT_ID=$(openssl rand -hex 16) TIMELINE_ID=$(openssl rand -hex 16)
 IDENT=$(cat /proc/sys/kernel/random/uuid)
 obs IDS "tenant=$TENANT_ID timeline=$TIMELINE_ID db_identity=$IDENT"
@@ -148,6 +154,7 @@ case "$r" in *http=201*|*http=200*|*http=409*) ;; *) infra_fail "timeline não c
 "${DC[@]}" up -d --no-build --no-deps compute1 >> "$W/up.log" 2>&1 || infra_fail "compute1 up"
 wait_ready compute1 240 || infra_fail "compute1 não ficou pronta em 240s"
 obs C1_VERSION "$(q compute1 'SELECT version()' | cut -c1-80)"
+obs C1_SHARED_BUFFERS "$(q compute1 "SHOW shared_buffers")"
 
 # ---------- passo 1: fence + op1 em compute1 ----------
 q compute1 "$(cat "$LAB/t1/fence_worker.sql")" > "$W/fence_apply.out" || infra_fail "fence_worker.sql: $(head -c 300 "$W/fence_apply.out")"
@@ -160,10 +167,10 @@ TERM0=$(sk_terms "$TIMELINE_ID"); obs SK_TERMS_AFTER_OP1 "$TERM0"; obs TERM0 "$(
 
 if [ "$SCEN" = m9 ]; then
   # M9: compute1 reinicia apontando para OUTRO conjunto de safekeepers (segundo escritor autogerido).
-  mkdir -p "$W/configs_m9"; cp "$NEON_DIR/compute_wrapper/var/db/postgres/configs/config.json" "$W/configs_m9/"
+  mkdir -p "$W/configs_m9"; cp "$W/configs_b07/config.json" "$W/configs_m9/"
   sed -i 's/safekeeper1:5454,safekeeper2:5454,safekeeper3:5454/safekeeper4:5454,safekeeper5:5454,safekeeper6:5454/' "$W/configs_m9/config.json"
   obs M9_CONFIG "$(grep -o 'safekeeper[0-9]:5454[^"]*' "$W/configs_m9/config.json" | head -1)"
-  obs M9_SHA "original=$(sha256sum "$NEON_DIR/compute_wrapper/var/db/postgres/configs/config.json" | cut -d' ' -f1) mutado=$(sha256sum "$W/configs_m9/config.json" | cut -d' ' -f1)"
+  obs M9_SHA "original=$(sha256sum "$W/configs_b07/config.json" | cut -d' ' -f1) mutado=$(sha256sum "$W/configs_m9/config.json" | cut -d' ' -f1)"
   "${DC[@]}" stop -t 10 compute1 > /dev/null 2>&1
   COMPUTE1_CONFIGS="$W/configs_m9/" "${DC[@]}" up -d --no-build --no-deps --force-recreate compute1 >> "$W/up.log" 2>&1 || infra_fail "M9 compute1 recreate"
   export COMPUTE1_CONFIGS="$W/configs_m9/"
@@ -345,5 +352,5 @@ if [ "$SCEN" = base_a ]; then
   kill $P4 2>/dev/null
 fi
 dump_logs
-[ "$SCEN" = m9 ] && obs M9_SHA_RESTAURADO "original_apos=$(sha256sum "$NEON_DIR/compute_wrapper/var/db/postgres/configs/config.json" | cut -d' ' -f1)"
+[ "$SCEN" = m9 ] && obs M9_SHA_RESTAURADO "original_apos=$(sha256sum "$W/configs_b07/config.json" | cut -d' ' -f1)"
 echo "OBS_DONE=1" >> "$OBS"

@@ -5,6 +5,9 @@
 #   safekeepers sem cortar o pageserver (a compute continua lendo páginas; só o quórum de WAL some);
 # - computes sem reinício automático (uma compute cercada não volta sozinha e reelege por cima da nova);
 # - compute2 (failover) e compute3 (oráculo) são cópias da compute1 na MESMA tenant/timeline;
+# - config.json das computes = o oficial com shared_buffers 1MB -> 128MB (B07_CONFIGS, gerado e com SHA-256 no
+#   t2_neon.sh). Com 1MB, sem quórum, a compute não pode despejar página suja além do LSN confirmado ("xlog flush
+#   request ... is not satisfied") e as leituras de T2-c travavam ou falhavam ao acaso (rodada 4 da PR);
 # - safekeeper4–6 (perfil m9): segundo conjunto, usado só pelo mutante M9.
 networks:
   sknet: {}
@@ -14,7 +17,7 @@ x-compute: &compute
   restart: "no"
   entrypoint: ["/shell/compute.sh"]
   volumes:
-    - ./compute_wrapper/var/db/postgres/configs/:/var/db/postgres/configs/
+    - ${B07_CONFIGS:?B07_CONFIGS}:/var/db/postgres/configs/
     - ./compute_wrapper/shell/:/shell/
   networks: [default, sknet]
   depends_on: [pageserver]
@@ -53,7 +56,7 @@ services:
     networks:
       sknet: {}
     volumes:
-      - ${COMPUTE1_CONFIGS:-./compute_wrapper/var/db/postgres/configs/}:/var/db/postgres/configs/
+      - ${COMPUTE1_CONFIGS:-${B07_CONFIGS:?B07_CONFIGS}}:/var/db/postgres/configs/
   compute2:
     <<: *compute
     environment:
