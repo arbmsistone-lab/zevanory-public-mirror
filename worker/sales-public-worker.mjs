@@ -26,8 +26,10 @@ export const isFunnelPage=page=>FUNNEL_PAGES.has(page)||/^(ia-para|calculadora)-
 function instrumentFunnelPage(response,page){
   const slug=String(page||"");
   if(!response||response.status!==200||!response.body||typeof HTMLRewriter==="undefined"||!isFunnelPage(slug)||!/^[a-z0-9_-]{1,70}$/.test(slug))return response;
+  const headers=new Headers(response.headers);
+  headers.delete("content-length");
   return new HTMLRewriter().on("body",{element(el){el.append(`<script src="/funnel-beacon.js" data-page="${slug}" defer></script>`,{html:true})}})
-    .transform(new Response(response.body,{status:response.status,statusText:response.statusText,headers:response.headers}));
+    .transform(new Response(response.body,{status:response.status,statusText:response.statusText,headers}));
 }
 // Source attribution without cookies or personal data: the utm_source the link
 // carried (our own channels always tag links) or, failing that, the referrer's
