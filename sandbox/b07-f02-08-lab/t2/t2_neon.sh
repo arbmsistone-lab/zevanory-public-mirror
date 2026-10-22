@@ -265,6 +265,13 @@ old_writer(){ # $1 rótulo (T2A|T2B): op2 W1@1 pela sessão S1 aberta antes do f
   if [ "${2:-}" = unpause ]; then
     docker unpause "$(cid compute1)" > /dev/null || infra_fail "docker unpause compute1"
     obs UNFROZEN "compute1 retomada com op2(W1@1) já enfileirada em S1"
+  elif [ "${2:-}" = heal ]; then
+    # Escrita do escritor antigo em voo durante a partição (sem quórum: espera em SyncRep); a partição é
+    # desfeita com a escrita ainda pendente — o retorno do primário antigo (item 8) com a escrita viva.
+    sleep 3
+    obs "${label}_WAIT_BEFORE_HEAL" "$(QT=10 q compute1 "SELECT string_agg(coalesce(wait_event_type,'-')||':'||coalesce(wait_event,'-'),',') FROM pg_stat_activity WHERE query LIKE 'INSERT INTO ledger%op2%'")"
+    docker network connect "$SKNET" "$(cid compute1)" || infra_fail "network connect"
+    obs PARTITION_HEALED "compute1 reconectada a $SKNET com op2(W1@1) pendente em S1"
   fi
   local done=0
   for i in $(seq 1 "$CLIENT_TIMEOUT"); do
@@ -291,10 +298,7 @@ case "$SCEN" in
   base_b)
     op2w2
     t2c                                   # durante a partição: commit preso em SyncRep, cancelado
-    docker network connect "$SKNET" "$(cid compute1)" || infra_fail "network connect"
-    obs PARTITION_HEALED "compute1 reconectada a $SKNET"
-    sleep 5
-    old_writer T2B ;;
+    old_writer T2B heal ;;                # escrita do escritor antigo pendente quando a partição se desfaz
 esac
 exec 7>&-
 
