@@ -59,7 +59,7 @@ jobs:
         run: |
           set -eo pipefail
           node --test tests/*.test.mjs 2>&1 | tr -d '\r' | tee all.txt || true
-          echo "::notice title=COUNTS_ALL (Windows host + Git Bash, esperado 573)::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' all.txt | paste -sd' ' -)"
+          echo "::notice title=COUNTS_ALL (Windows host + Git Bash - esperado 573)::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' all.txt | paste -sd' ' -)"
           # Sem falhas o grep sai 1; com pipefail isso derrubaria o passo antes da verificação de contagem.
           { grep -E '^not ok ' all.txt || true; } | while IFS= read -r l; do echo "::error title=FAIL (Windows host + Git Bash)::$l"; done
           { grep -oE 'TOOL_MISSING: [^ ]+' all.txt || true; } | sort -u | while IFS= read -r l; do echo "::error title=TOOL_MISSING (Windows host + Git Bash)::$l"; done
@@ -69,5 +69,5 @@ jobs:
         run: |
           set -eo pipefail
           node --test tests/guards/*.test.mjs 2>&1 | tr -d '\r' | tee guards.txt
-          echo "::notice title=COUNTS_GUARDS (Windows host + Git Bash, esperado 3)::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' guards.txt | paste -sd' ' -)"
+          echo "::notice title=COUNTS_GUARDS (Windows host + Git Bash - esperado 3)::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' guards.txt | paste -sd' ' -)"
           grep -qx "# tests 3" guards.txt && grep -qx "# pass 3" guards.txt && grep -qx "# skipped 0" guards.txt && grep -qx "# fail 0" guards.txt && grep -qx "# cancelled 0" guards.txt
