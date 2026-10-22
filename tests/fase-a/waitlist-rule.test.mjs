@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { wilson, decide, RULE, normalizeContact, isEligibleTraffic } from "../../worker/waitlist.mjs";
+import { wilson, decide, RULE, normalizeContact, isEligibleTraffic, visitorSecret, windowOf, personFromCookie } from "../../worker/waitlist.mjs";
 
 const near = (a, b, eps = 5e-4) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
 
@@ -26,11 +26,27 @@ test("regra: <300 visitantes é INCONCLUSIVO (nunca NO-GO); GO exige conversão 
   // Wilson inferior < 5% com conversão >= 8% só ocorre com n pequeno, que já é INCONCLUSIVO (< 300);
   // com >= 300 visitantes e 8%, o limite inferior é >= 5,4%: os critérios são coerentes.
   assert.ok(wilson(24, 300).low >= RULE.minWilsonLow);
+  for (const b of ["segredo_de_visitante_ausente", "identificador_nao_estabelecido", "inscricao_sem_identificador", "oraculo_divergente"])
+    assert.equal(decide({ visitors: 1000, signups: 200, blockers: [b] }), "INCONCLUSIVO", b);
+});
+
+test("segredo de visitante: dedicado, >= 32 bytes, sem fallback; janela válida limita o cookie a 60 dias e vence no fim", async () => {
+  assert.equal(visitorSecret({ RESEND_API_KEY: "r".repeat(60), DATABASE_URL: "postgres://" + "d".repeat(60), LEAD_PRIVACY_SECRET: "l".repeat(60) }), null);
+  assert.equal(visitorSecret({ WAITLIST_VISITOR_SECRET: "x".repeat(31) }), null);
+  assert.equal(visitorSecret({ WAITLIST_VISITOR_SECRET: "x".repeat(32) }), "x".repeat(32));
+  const now = Date.parse("2026-11-02T12:00:00Z");
+  assert.equal(windowOf({ FASE_A_WINDOW_ID: "fa1" }, now), null);
+  assert.equal(windowOf({ FASE_A_WINDOW_ID: "FA 1", FASE_A_WINDOW_END: "2026-11-30" }, now), null);
+  assert.equal(windowOf({ FASE_A_WINDOW_ID: "fa1", FASE_A_WINDOW_END: "2026-11-01" }, now), null);
+  assert.equal(windowOf({ FASE_A_WINDOW_ID: "fa1", FASE_A_WINDOW_END: "2027-06-30" }, now).maxAge, 60 * 86400);
+  const env = { WAITLIST_VISITOR_SECRET: "v".repeat(40), FASE_A_WINDOW_ID: "fa1", FASE_A_WINDOW_END: "2026-11-30" };
+  assert.equal(await personFromCookie(env, "a".repeat(32) + "." + "b".repeat(32), now), null, "assinatura forjada");
+  assert.equal(await personFromCookie({ ...env, WAITLIST_VISITOR_SECRET: "" }, "a".repeat(65), now), null);
 });
 
 test("protocolo registrado contém exatamente os limiares implementados", () => {
   const doc = fs.readFileSync(new URL("../../docs/p01/FASE_A_PROTOCOLO.md", import.meta.url), "utf8");
-  for (const s of ["300 visitantes elegíveis", "≥ 8%", "≥ 5%", "≥ 20", "INCONCLUSIVO", "R$ 27", "R$ 47", "Wilson"]) assert.ok(doc.includes(s), s);
+  for (const s of ["300 pessoas experimentais", "≥ 8%", "≥ 5%", "≥ 20", "INCONCLUSIVO", "R$ 27", "R$ 47", "Wilson", "WAITLIST_VISITOR_SECRET", "M-SOL-085", "sensibilidade", "oráculo", "30 dias após a decisão", "180 dias", "8 dias"]) assert.ok(doc.includes(s), s);
 });
 
 test("contato: e-mail e WhatsApp brasileiro normalizados; outros formatos recusados", () => {

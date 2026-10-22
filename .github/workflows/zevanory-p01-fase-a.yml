@@ -1,7 +1,7 @@
 name: zevanory-p01-fase-a
-# P01 Fase A (Ordem 080 AVAL; aprovação do proprietário 22/10/2026 18:09): lista de espera SEM cobrança em
-# 3 nichos, desligada por padrão. Somente pull_request: sem segredos, sem deploy, sem rede de produção,
-# PostgreSQL efêmero com dados sintéticos, páginas servidas em localhost. Contagens EXATAS (teste removido,
+# P01 Fase A (Ordem 080 AVAL; correções da AVAL 085): lista de espera SEM cobrança em 3 nichos, desligada por
+# padrão. Somente pull_request: sem segredos, sem deploy, sem rede de produção, PostgreSQL efêmero com dados
+# sintéticos, páginas servidas em localhost. Linux E Windows (Git Bash). Contagens EXATAS (teste removido,
 # pulado ou falho derruba o gate); ao mudar testes, atualizar os números no mesmo PR.
 on:
   pull_request:
@@ -12,6 +12,10 @@ on:
       - "worker/sales-public-worker.mjs"
       - "worker/cloudflare-worker.compat.mjs"
       - "worker/funnel.mjs"
+      - "worker/data-backup.mjs"
+      - "db/**"
+      - "scripts/ops/restore_new_database.py"
+      - "tests/test_restore_new_database.py"
       - "data/fase-a-nichos.json"
       - "scripts/fase_a/**"
       - "tests/fase-a/**"
@@ -27,74 +31,103 @@ concurrency:
   cancel-in-progress: true
 env:
   PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONIOENCODING: "utf-8"
+  PYTHONUTF8: "1"
+defaults:
+  run:
+    shell: bash
 jobs:
   backend:
-    name: p01 / estatico-backend-mutantes
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    name: p01 / estatico-backend-mutantes (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     env:
       WAITLIST_PG_HOST: localhost
       WAITLIST_PG_PORT: "5432"
     steps:
+      - name: Sem conversão de fim de linha (Windows)
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Sintaxe dos módulos e do Worker de vendas
+      - name: PostgreSQL efêmero (Linux, contêiner)
+        if: runner.os == 'Linux'
         run: |
           set -euo pipefail
-          for f in worker/waitlist.mjs worker/waitlist-public.mjs worker/sales-public-worker.mjs worker/cloudflare-worker.compat.mjs scripts/fase_a/resumo.mjs scripts/fase_a/mutants.mjs; do node --check "$f"; done
+          docker run -d --name pg -e POSTGRES_HOST_AUTH_METHOD=trust -p 5432:5432 postgres:16 >/dev/null
+          for i in $(seq 1 60); do docker exec pg pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
+          docker exec pg pg_isready -U postgres
+      - name: PostgreSQL efêmero (Windows, serviço pré-instalado da imagem)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $svc = Get-Service -Name postgresql*
+          Set-Service -InputObject $svc -Status running -StartupType manual
+          "PGPASSWORD=root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$env:PGBIN" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: Ferramentas (python3 -> python -> py -3; psql) com TOOL_MISSING explícito
+        run: |
+          set -euo pipefail
+          . scripts/fase_a/tools.sh; need_psql
+          echo "::notice title=P01_TOOLS_${{ runner.os }}::python='$PY' ($($PY --version 2>&1)); psql='$PSQL' ($("$PSQL" --version))"
+      - name: Sintaxe dos módulos
+        run: |
+          set -euo pipefail
+          for f in worker/waitlist.mjs worker/waitlist-public.mjs worker/sales-public-worker.mjs worker/cloudflare-worker.compat.mjs scripts/fase_a/resumo.mjs scripts/fase_a/mutants.mjs scripts/fase_a/tools.mjs; do node --check "$f"; done
       - name: Gerador (bandeira desligada não escreve; preview audita as 3 páginas)
         run: |
           set -euo pipefail
-          off=$(mktemp -d); python3 scripts/fase_a/build_fase_a.py --out "$off" | tee /tmp/off.txt
-          grep -qx "FASE_A_PAGES=OFF (ZEVANORY_FASE_A_PAGES != on): nada foi gerado" /tmp/off.txt
+          . scripts/fase_a/tools.sh
+          off=$(mktemp -d); $PY scripts/fase_a/build_fase_a.py --out "$off" | tee "$RUNNER_TEMP/off.txt"
+          grep -q "^FASE_A_PAGES=OFF (ZEVANORY_FASE_A_PAGES != on): nada foi gerado" "$RUNNER_TEMP/off.txt"
           test -z "$(ls -A "$off")"
-          prev=$(mktemp -d); python3 scripts/fase_a/build_fase_a.py --out "$prev" --preview | tee /tmp/prev.txt
-          grep -qx "FASE_A_STATIC_AUDIT=PASS" /tmp/prev.txt
+          prev=$(mktemp -d); $PY scripts/fase_a/build_fase_a.py --out "$prev" --preview | tee "$RUNNER_TEMP/prev.txt"
+          grep -q "^FASE_A_STATIC_AUDIT=PASS" "$RUNNER_TEMP/prev.txt"
           test "$(ls "$prev"/*.html | wc -l)" -eq 3
           if ls sales-public/lista-de-espera-* >/dev/null 2>&1; then echo "::error::páginas da Fase A dentro de sales-public/"; exit 1; fi
-          echo "::notice title=P01_GERADOR::bandeira desligada = 0 arquivos; preview = 3 páginas, auditoria PASS; sales-public sem páginas da Fase A"
-      - name: Auditoria estática (8 testes)
+          echo "::notice title=P01_GERADOR_${{ runner.os }}::bandeira desligada = 0 arquivos; preview = 3 páginas, auditoria PASS"
+      - name: Suítes Node da Fase A (contagens exatas)
         run: |
           set -eo pipefail
-          node --test tests/fase-a/fase-a-static.test.mjs | tee /tmp/s.txt
-          grep -qx "# tests 8" /tmp/s.txt && grep -qx "# pass 8" /tmp/s.txt && grep -qx "# skipped 0" /tmp/s.txt && grep -qx "# fail 0" /tmp/s.txt && grep -qx "# cancelled 0" /tmp/s.txt
-          echo "::notice title=P01_ESTATICO::8/8 (sem /comprar/, sem InStock, consentimento desmarcado, política e saída, mesmo modelo, sem promessas, desligado por padrão)"
-      - name: Rotas públicas no Worker de vendas (7 testes)
+          check() { # arquivo esperado
+            node --test "tests/fase-a/$1" | tee "$RUNNER_TEMP/$1.txt" | tail -9
+            f="$RUNNER_TEMP/$1.txt"; sed -i 's/\r$//' "$f"
+            grep -qx "# tests $2" "$f" && grep -qx "# pass $2" "$f" && grep -qx "# skipped 0" "$f" && grep -qx "# fail 0" "$f" && grep -qx "# cancelled 0" "$f" || { echo "::error title=P01_COUNT::$1 esperado $2"; exit 1; }
+            echo "::notice title=P01_${{ runner.os }}_$1::$2/$2"
+          }
+          check fase-a-static.test.mjs 9
+          check waitlist-public.test.mjs 9
+          check waitlist-rule.test.mjs 6
+          check fase-a-inventory.test.mjs 2
+          check waitlist-postgres.test.mjs 17
+      - name: Restauração com o manifesto de migrações e reversão da 030 (9 testes)
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: postgres
         run: |
           set -eo pipefail
-          node --test tests/fase-a/waitlist-public.test.mjs | tee /tmp/p.txt
-          grep -qx "# tests 7" /tmp/p.txt && grep -qx "# pass 7" /tmp/p.txt && grep -qx "# skipped 0" /tmp/p.txt && grep -qx "# fail 0" /tmp/p.txt && grep -qx "# cancelled 0" /tmp/p.txt
-          echo "::notice title=P01_ROTAS::7/7 (bandeira, robô 403, honeypot, limite 429, consentimento estrito, mensagens fixas, saída)"
-      - name: Regra pré-registrada e Wilson (5 testes)
+          . scripts/fase_a/tools.sh; need_psql
+          $PY -W ignore -m unittest -v tests/test_restore_new_database.py 2>&1 | tee "$RUNNER_TEMP/rnd.txt" | tail -5
+          sed -i 's/\r$//' "$RUNNER_TEMP/rnd.txt"
+          grep -q "^Ran 9 tests in " "$RUNNER_TEMP/rnd.txt"
+          grep -qx "OK" "$RUNNER_TEMP/rnd.txt"
+          if grep -q "skipped" "$RUNNER_TEMP/rnd.txt"; then echo "::error::restauração pulada"; exit 1; fi
+          echo "::notice title=P01_RESTORE_${{ runner.os }}::9/9 (manifesto exato 31, tabelas da 030 restauradas, 030 aplica/reverte/reaplica)"
+      - name: Mutantes (controle passa; 10 mutantes mortos por asserção, inclusive M-SOL-085)
         run: |
           set -eo pipefail
-          node --test tests/fase-a/waitlist-rule.test.mjs | tee /tmp/r.txt
-          grep -qx "# tests 5" /tmp/r.txt && grep -qx "# pass 5" /tmp/r.txt && grep -qx "# skipped 0" /tmp/r.txt && grep -qx "# fail 0" /tmp/r.txt && grep -qx "# cancelled 0" /tmp/r.txt
-          echo "::notice title=P01_REGRA::5/5 (<300 INCONCLUSIVO; GO = conv>=8% e Wilson>=5% e >=20 leads e sem violação)"
-      - name: Backend contra PostgreSQL real (10 testes)
-        run: |
-          set -eo pipefail
-          node --test tests/fase-a/waitlist-postgres.test.mjs | tee /tmp/g.txt
-          grep -qx "# tests 10" /tmp/g.txt && grep -qx "# pass 10" /tmp/g.txt && grep -qx "# skipped 0" /tmp/g.txt && grep -qx "# fail 0" /tmp/g.txt && grep -qx "# cancelled 0" /tmp/g.txt
-          echo "::notice title=P01_BACKEND::10/10 (idempotência, consentimento obrigatório, saída, robôs fora, métricas sem PII, retenção, script somente leitura)"
-      - name: Mutantes (controle passa; 5 mutantes mortos por asserção)
-        run: |
-          set -eo pipefail
-          node scripts/fase_a/mutants.mjs | tee /tmp/m.txt
-          grep -qx "P01_MUTANTS killed=5/5" /tmp/m.txt
-          test "$(grep -c '^::notice title=P01_MUTANT_CONTROL::.*"ok":true' /tmp/m.txt)" -eq 2
+          node scripts/fase_a/mutants.mjs | tee "$RUNNER_TEMP/m.txt"
+          sed -i 's/\r$//' "$RUNNER_TEMP/m.txt"
+          grep -qx "P01_MUTANTS killed=10/10" "$RUNNER_TEMP/m.txt"
+          test "$(grep -c '^::notice title=P01_MUTANT_CONTROL::.*"ok":true' "$RUNNER_TEMP/m.txt")" -eq 2
       - name: Sem bytecode nem arquivos gerados no checkout
         run: |
           set -euo pipefail
@@ -103,72 +136,76 @@ jobs:
           # Só o que ESTE PR muda (a base ainda rastreia bytecode antigo; limpeza na #873).
           git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
           if git diff --name-only --diff-filter=AMR FETCH_HEAD HEAD | grep -E '\.pyc$|__pycache__/'; then echo "::error::bytecode adicionado por este PR"; exit 1; fi
-          echo "::notice title=P01_HIGIENE::checkout limpo após os testes; 0 bytecode adicionado pelo PR"
+          echo "::notice title=P01_HIGIENE_${{ runner.os }}::checkout limpo após os testes; 0 bytecode adicionado pelo PR"
 
   p03:
-    name: p01 / p03-matriz-3-paginas
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    name: p01 / p03-matriz-3-paginas (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     env:
-      # Commit fixado da PR #867 (P03) enquanto ela não estiver integrada; depois disso, os arquivos do
-      # próprio checkout são usados (mesmos caminhos).
+      # Commit fixado da PR #867 (P03) enquanto ela não estiver integrada; depois, os arquivos do checkout.
       P03_PIN: f871ac1a27783f5ba5033b54298bb57155e4eb98
       P03_WORKERS: "3"
     steps:
+      - name: Sem conversão de fim de linha (Windows)
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install pinned tools (outside the repo tree)
+      - name: Ferramentas fixadas (fora do repositório)
         run: |
           set -euo pipefail
-          mkdir -p /tmp/p03 && cd /tmp/p03
+          mkdir -p "$RUNNER_TEMP/p03/gate" && cd "$RUNNER_TEMP/p03"
           npm init -y >/dev/null
           npm install --no-save playwright@1.55.0 axe-core@4.10.2 >/dev/null 2>&1
           npx playwright install --with-deps chromium >/dev/null
-      - name: Montar as 3 páginas com os assets da P03 (paginação, product.css) em pasta temporária
+      - name: Montar as 3 páginas com os assets da P03, servir em localhost e rodar matriz + reflow/foco
         run: |
           set -euo pipefail
-          S=/tmp/p01-site; mkdir -p "$S" /tmp/p03/gate
+          . scripts/fase_a/tools.sh
+          S="$RUNNER_TEMP/p01-site"; G="$RUNNER_TEMP/p03/gate"; mkdir -p "$S/lista-de-espera/c"
           if [ -f sales-public/paginacao.js ] && [ -f scripts/audit/p03-viewport-matrix.mjs ]; then
             src="checkout"
             cp sales-public/product.css sales-public/paginacao.js sales-public/paginacao.css "$S/"
-            cp scripts/audit/p03-viewport-matrix.mjs scripts/audit/p03-reflow-focus.mjs /tmp/p03/gate/
+            cp scripts/audit/p03-viewport-matrix.mjs scripts/audit/p03-reflow-focus.mjs "$G/"
           else
             src="pin:$P03_PIN"
             git fetch --no-tags --depth=1 origin "$P03_PIN"
             for f in sales-public/product.css sales-public/paginacao.js sales-public/paginacao.css; do git show "$P03_PIN:$f" > "$S/$(basename "$f")"; done
-            for f in scripts/audit/p03-viewport-matrix.mjs scripts/audit/p03-reflow-focus.mjs; do git show "$P03_PIN:$f" > "/tmp/p03/gate/$(basename "$f")"; done
+            for f in scripts/audit/p03-viewport-matrix.mjs scripts/audit/p03-reflow-focus.mjs; do git show "$P03_PIN:$f" > "$G/$(basename "$f")"; done
           fi
           cp -r sales-public/brand "$S/"; cp sales-public/whatsapp-contact.js "$S/"
-          python3 scripts/fase_a/build_fase_a.py --out "$S" --preview
+          for n in confeitaria loja-de-roupas salao-e-barbearia; do printf '/* fase-a */\n' > "$S/lista-de-espera/c/$n.css"; done
+          $PY scripts/fase_a/build_fase_a.py --out "$S" --preview
           test "$(ls "$S"/*.html | wc -l)" -eq 3
-          echo "::notice title=P01_P03_ASSETS::origem dos assets/gate P03 = $src"
-          (python3 -m http.server 8791 --bind 127.0.0.1 --directory "$S" >/tmp/p01-http.log 2>&1 &)
-          for i in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8791/lista-de-espera-confeitaria.html && exit 0; sleep 0.5; done
-          cat /tmp/p01-http.log; exit 1
-      - name: Matriz P03 (3 páginas x 5 viewports x 2 temas, axe A/AA, sem rolagem)
-        working-directory: /tmp/p03
-        run: |
-          set -eo pipefail
-          node gate/p03-viewport-matrix.mjs http://127.0.0.1:8791 /tmp/p01-site 3 /tmp/p03/p01-matrix | tee mx.txt
+          echo "::notice title=P01_P03_ASSETS_${{ runner.os }}::origem dos assets/gate P03 = $src"
+          $PY -m http.server 8791 --bind 127.0.0.1 --directory "$S" > "$RUNNER_TEMP/p01-http.log" 2>&1 &
+          SRV=$!
+          for i in $(seq 1 40); do curl -fsS -o /dev/null http://127.0.0.1:8791/lista-de-espera-confeitaria.html && break; sleep 0.5; done
+          curl -fsS -o /dev/null http://127.0.0.1:8791/lista-de-espera-confeitaria.html
+          cd "$RUNNER_TEMP/p03"
+          node gate/p03-viewport-matrix.mjs http://127.0.0.1:8791 "$S" 3 p01-matrix | tee mx.txt
+          sed -i 's/\r$//' mx.txt
           grep -qx "P03_VIEWPORT_MATRIX=PASS" mx.txt
           grep -q '"cells":30,"cells_pass":30,"failures":0' mx.txt
-      - name: Reflow/zoom, foco, links profundos e details (P03)
-        working-directory: /tmp/p03
-        run: |
-          set -eo pipefail
-          node gate/p03-reflow-focus.mjs http://127.0.0.1:8791 /tmp/p01-site 3 /tmp/p03/p01-reflow | tee rf.txt
+          node gate/p03-reflow-focus.mjs http://127.0.0.1:8791 "$S" 3 p01-reflow | tee rf.txt
+          sed -i 's/\r$//' rf.txt
           grep -qx "P03_REFLOW_FOCUS=PASS" rf.txt
+          kill "$SRV" 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p01-p03-matrix
+          name: p01-p03-matrix-${{ matrix.os }}
           path: |
-            /tmp/p03/p01-matrix.json
-            /tmp/p03/p01-matrix.csv
-            /tmp/p03/p01-reflow.json
-            /tmp/p03/p01-reflow.csv
+            ${{ runner.temp }}/p03/p01-matrix.json
+            ${{ runner.temp }}/p03/p01-matrix.csv
+            ${{ runner.temp }}/p03/p01-reflow.json
+            ${{ runner.temp }}/p03/p01-reflow.csv
           retention-days: 30

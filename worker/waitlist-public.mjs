@@ -1,8 +1,11 @@
 // P01 Fase A: rotas públicas da lista de espera no Worker de vendas (vendas.zevanory.api.br).
 // Bandeira FASE_A_WAITLIST="on" obrigatória (padrão: ausente = DESLIGADO -> 404 em todas as rotas).
 // Mesmas proteções do formulário do material gratuito: agente de automação recusado, limite por IP
-// (BUY_LIMITER, chave própria), honeypot "website". O IP nunca vai ao núcleo para inscrições; para
-// visitas vai só para o hash diário do funil (como worker/funnel.mjs), nunca é gravado.
+// (BUY_LIMITER, chave própria), honeypot "website". O IP nunca vai ao núcleo para inscrições; nas
+// visitas, IP e navegador vão ao núcleo só para o código pseudônimo diário (HMAC com segredo dedicado),
+// processados de forma transitória e nunca gravados em claro. Identificador da pessoa experimental:
+// cookie próprio "zvfa" (aleatório, assinado pelo núcleo, Path=/lista-de-espera, expira no fim da janela,
+// no máximo 60 dias), confirmado quando o navegador o devolve (folha de estilo /lista-de-espera/c/<nicho>.css).
 // Páginas: noindex, fora da navegação e do sitemap; só existem nos assets se o build da Fase A rodou
 // com ZEVANORY_FASE_A_PAGES=on (scripts/fase_a/build_fase_a.py). Sem link /comprar/, sem Offer.
 export const WAITLIST_PAGES = Object.freeze({ "confeitaria": "lista-de-espera-confeitaria", "loja-de-roupas": "lista-de-espera-loja-de-roupas", "salao-e-barbearia": "lista-de-espera-salao-e-barbearia" });
@@ -28,6 +31,15 @@ export const MESSAGES = Object.freeze({
 function page(applySecurityHeaders, status, title, body) {
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${esc(title)} | ZEVANORY</title><link rel="stylesheet" href="/product.css"></head><body><main class="wrap" id="conteudo"><h1>${esc(title)}</h1>${body}<p><a href="/privacidade">Política de Privacidade</a> · <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a></p></main></body></html>`;
   return new Response(html, { status, headers: applySecurityHeaders(new Headers({ "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow" })) });
+}
+export const COOKIE = "zvfa";
+const COOKIE_VALUE = /^[0-9a-f]{32}\.[0-9a-f]{32}$/;
+export function readCookie(request) {
+  for (const part of String(request.headers.get("cookie") || "").split(";")) {
+    const [k, ...v] = part.trim().split("=");
+    if (k === COOKIE && COOKIE_VALUE.test(v.join("="))) return v.join("=");
+  }
+  return "";
 }
 const OPTOUT_RE = /^https:\/\/vendas\.zevanory\.api\.br\/lista-de-espera\/sair\?r=[0-9a-f]{64}&t=[0-9a-f]{32}$/;
 const SOURCE_RE = /^[a-z0-9_-]{1,24}$/;
@@ -55,7 +67,8 @@ export async function handleWaitlistPublic(request, env, ctx, { applySecurityHea
     const nicho = String(form.get("nicho") || "");
     const src = String(form.get("origem") || "").toLowerCase();
     const payload = { nicho, contato: String(form.get("contato") || ""), nome: String(form.get("nome") || ""), q1: String(form.get("q1") || ""), q2: String(form.get("q2") || ""),
-      consent: String(form.get("consentimento") || "") === "sim", src: SOURCE_RE.test(src) ? src : "sem_tag", ua, asn: Number(request.cf?.asn) || 0 };
+      consent: String(form.get("consentimento") || "") === "sim", interview: String(form.get("entrevista") || "") === "sim",
+      src: SOURCE_RE.test(src) ? src : "sem_tag", ua, asn: Number(request.cf?.asn) || 0, vid: readCookie(request) };
     try {
       const { res, data } = await core(env, "/inscrever", payload);
       const code = Object.prototype.hasOwnProperty.call(MESSAGES, data?.code) ? data.code : "indisponivel";
@@ -90,6 +103,15 @@ export async function handleWaitlistPublic(request, env, ctx, { applySecurityHea
     } catch { return page(applySecurityHeaders, 503, MESSAGES.indisponivel[0], how); }
   }
 
+  // Confirmação do identificador: a folha de estilo vazia é pedida pelo navegador com o cookie; só quem
+  // devolve o cookie vira pessoa experimental confirmada (navegador sem cookie = só exposição pessoa-dia).
+  const c = path.match(/^\/lista-de-espera\/c\/([a-z-]{3,40})\.css$/);
+  if (c) {
+    if (!Object.prototype.hasOwnProperty.call(WAITLIST_PAGES, c[1]) || request.method !== "GET") return notFound();
+    const vid = readCookie(request);
+    if (vid && ctx?.waitUntil) ctx.waitUntil(env.CORE.fetch("https://waitlist.internal/confirmar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nicho: c[1], vid }) }).catch(() => null));
+    return new Response("/* fase-a */\n", { status: 200, headers: applySecurityHeaders(new Headers({ "content-type": "text/css; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow" })) });
+  }
   const m = path.match(/^\/lista-de-espera\/([a-z-]{3,40})$/);
   const slug = m && Object.prototype.hasOwnProperty.call(WAITLIST_PAGES, m[1]) ? m[1] : null;
   if (!slug || (request.method !== "GET" && request.method !== "HEAD")) return notFound();
@@ -99,9 +121,17 @@ export async function handleWaitlistPublic(request, env, ctx, { applySecurityHea
   // Origem (utm_source/referer) vai num campo oculto para a inscrição; rótulo curto, sem dado pessoal.
   const { src } = attribution(request, url);
   html = html.replace('name="origem" value="sem_tag"', `name="origem" value="${esc(SOURCE_RE.test(src) ? src : "sem_tag")}"`);
-  if (request.method === "GET" && ctx?.waitUntil) {
-    const body = JSON.stringify({ nicho: slug, method: "GET", ua: request.headers.get("user-agent") || "", ip: request.headers.get("cf-connecting-ip") || "", asn: Number(request.cf?.asn) || 0, purpose: request.headers.get("sec-purpose") || request.headers.get("purpose") || "" });
-    ctx.waitUntil(env.CORE.fetch("https://waitlist.internal/visita", { method: "POST", headers: { "content-type": "application/json" }, body }).catch(() => null));
+  const headers = applySecurityHeaders(new Headers({ "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow" }));
+  if (request.method === "GET") {
+    // A visita é registrada ANTES da resposta, porque o núcleo pode emitir o identificador (cookie).
+    // IP e navegador seguem só para o código pseudônimo; nunca são gravados em claro.
+    const body = { nicho: slug, method: "GET", ua: request.headers.get("user-agent") || "", ip: request.headers.get("cf-connecting-ip") || "", asn: Number(request.cf?.asn) || 0, purpose: request.headers.get("sec-purpose") || request.headers.get("purpose") || "", vid: readCookie(request) };
+    try {
+      const { data } = await core(env, "/visita", body);
+      const ck = data?.cookie;
+      if (ck && ck.name === COOKIE && COOKIE_VALUE.test(String(ck.value)) && Number.isInteger(ck.maxAge) && ck.maxAge > 0 && ck.maxAge <= 60 * 86400)
+        headers.append("set-cookie", `${COOKIE}=${ck.value}; Path=/lista-de-espera; Max-Age=${ck.maxAge}; Secure; HttpOnly; SameSite=Lax`);
+    } catch {}
   }
-  return new Response(request.method === "HEAD" ? null : html, { status: 200, headers: applySecurityHeaders(new Headers({ "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow" })) });
+  return new Response(request.method === "HEAD" ? null : html, { status: 200, headers });
 }

@@ -1,20 +1,24 @@
-// P01 Fase A: SQL REAL de worker/waitlist.mjs contra PostgreSQL efêmero (dados sintéticos, sem rede).
-// Pulado sem WAITLIST_PG_HOST; o workflow da Fase A exige "# skipped 0", então no CI nada é pulado.
-// WAITLIST_MODULE permite ao executor de mutantes (scripts/fase_a/mutants.mjs) trocar o módulo testado.
+// P01 Fase A (AVAL 085): SQL REAL de worker/waitlist.mjs + migração 030 contra PostgreSQL efêmero
+// (dados sintéticos, sem rede). Pulado sem WAITLIST_PG_HOST; o workflow exige "# skipped 0".
+// WAITLIST_MODULE / WAITLIST_MIGRATION permitem ao executor de mutantes trocar módulo e migração.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
+import { resolvePsql, parseCsv } from "../../scripts/fase_a/tools.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..");
-const MOD = process.env.WAITLIST_MODULE ? pathToFileURL(path.resolve(process.env.WAITLIST_MODULE)).href : pathToFileURL(path.join(ROOT, "worker", "waitlist.mjs")).href;
+const MOD = pathToFileURL(path.resolve(process.env.WAITLIST_MODULE || path.join(ROOT, "worker", "waitlist.mjs"))).href;
+const MIGRATION = path.resolve(process.env.WAITLIST_MIGRATION || path.join(ROOT, "db", "migrations", "030_waitlist_fase_a.sql"));
 const W = await import(MOD);
 const HOST = process.env.WAITLIST_PG_HOST;
 const PORT = process.env.WAITLIST_PG_PORT || "5432";
 const DB = process.env.WAITLIST_PG_DB || "postgres";
 const skip = !HOST && "WAITLIST_PG_HOST not set";
+const PSQL = HOST ? resolvePsql() : "psql";
 
 const lit = (v) => {
   if (v === null || v === undefined) return "NULL";
@@ -22,178 +26,309 @@ const lit = (v) => {
   if (Array.isArray(v)) return "'{" + v.map((x) => (x === null ? "NULL" : '"' + String(x).replace(/["\\]/g, "\\$&") + '"')).join(",") + "}'";
   return "'" + String(v).replace(/'/g, "''") + "'";
 };
-function psql(sqlText) {
-  const out = execFileSync("psql", ["-h", HOST, "-p", PORT, "-U", "postgres", "-d", DB, "-X", "-v", "ON_ERROR_STOP=1", "--csv", "-c", sqlText], { encoding: "utf8" });
-  const lines = out.trim().split("\n").filter(Boolean);
-  if (!lines.length || /^(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE) /.test(lines[0]) || /^(DROP|CREATE|TRUNCATE) [A-Z]+$/.test(lines[0])) return [];
-  const parse = (line) => { const cells = []; let cur = "", q = false; for (let i = 0; i < line.length; i++) { const c = line[i]; if (q) { if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; } else if (c === '"') q = false; else cur += c; } else if (c === '"') q = true; else if (c === ",") { cells.push(cur); cur = ""; } else cur += c; } cells.push(cur); return cells; };
-  const [head, ...rows] = lines;
-  const cols = parse(head);
-  return rows.filter((r) => !/^(INSERT|UPDATE|DELETE) /.test(r)).map((r) => Object.fromEntries(parse(r).map((v, i) => [cols[i], v === "" ? null : v])));
+function psql(sqlText, { file = false } = {}) {
+  const args = ["-h", HOST, "-p", PORT, "-U", "postgres", "-d", DB, "-X", "-q", "-v", "ON_ERROR_STOP=1", "--csv", ...(file ? ["-f", sqlText] : ["-c", sqlText])];
+  const r = spawnSync(PSQL, args, { encoding: "utf8", env: { ...process.env, PGCLIENTENCODING: "UTF8" } });
+  if (r.status !== 0) throw new Error("psql: " + String(r.stderr).slice(0, 400));
+  return parseCsv(r.stdout).map((row) => Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v === "" ? null : v])));
 }
 const sqlFactory = () => ({ query: async (text, params = []) => psql(text.replace(/\$(\d+)/g, (_, n) => lit(params[Number(n) - 1]))) });
 const kv = () => { const m = new Map(); return { m, async get(k) { return m.get(k) ?? null; }, async put(k, v) { m.set(k, v); }, async delete(k) { m.delete(k); } }; };
-const ENV = () => ({ DATABASE_URL: "postgres://synthetic", FASE_A_WAITLIST: "on", LEAD_PRIVACY_SECRET: "k".repeat(40), RESEND_API_KEY: "salt-sintetico", ZEVANORY_PRIVATE_ARTIFACTS: kv() });
+const T0 = Date.parse("2026-11-02T12:00:00Z"), DAY = 86_400_000;
+const ENV = (o = {}) => ({ DATABASE_URL: "postgres://synthetic", FASE_A_WAITLIST: "on", LEAD_PRIVACY_SECRET: "k".repeat(40), WAITLIST_VISITOR_SECRET: "v".repeat(40),
+  FASE_A_WINDOW_ID: "fa1", FASE_A_WINDOW_END: "2026-11-30", RESEND_API_KEY: "re_nao_e_fallback_123456789012345678901234", ZEVANORY_PRIVATE_ARTIFACTS: kv(), ...o });
 const HUMAN = "Mozilla/5.0 (Linux; Android 14; SM-A146M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36";
-const call = async (env, p, body) => { const r = await W.handleWaitlist(new Request("https://waitlist.internal" + p, { method: "POST", body: JSON.stringify(body) }), env, { sqlFactory }); return { status: r.status, body: r.status === 204 ? null : await r.json() }; };
-const sub = (env, o = {}) => call(env, "/inscrever", { nicho: "confeitaria", contato: "ana@exemplo.com", q1: "sim", q2: "sim", consent: true, ua: HUMAN, asn: 28573, src: "youtube", ...o });
-const visit = (env, o = {}) => call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.1", asn: 28573, ...o });
-function reset() { psql("drop table if exists waitlist_signups, waitlist_events, waitlist_visitors"); W.resetWaitlistSchemaCache(); }
-const count = (where = "true") => Number(psql(`select count(*)::int as n from waitlist_signups where ${where}`)[0].n);
+const call = async (env, p, body, now = T0) => { const r = await W.handleWaitlist(new Request("https://waitlist.internal" + p, { method: "POST", body: JSON.stringify(body) }), env, { sqlFactory, now }); return { status: r.status, body: r.status === 204 ? null : await r.json() }; };
+// Visita: devolve o valor do cookie em uso (o recebido ou o novo emitido).
+async function visit(env, o = {}, now = T0) {
+  const r = await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.1", asn: 28573, ...o }, now);
+  assert.equal(r.status, 200);
+  return r.body.cookie ? r.body.cookie.value : o.vid || null;
+}
+const confirm = (env, vid, nicho = "confeitaria", now = T0) => call(env, "/confirmar", { nicho, vid }, now);
+async function person(env, o = {}, now = T0) { const vid = await visit(env, o, now); await confirm(env, vid, o.nicho || "confeitaria", now); return vid; }
+const sub = (env, o = {}, now = T0) => call(env, "/inscrever", { nicho: "confeitaria", contato: "ana@exemplo.com", q1: "sim", q2: "sim", consent: true, ua: HUMAN, asn: 28573, src: "youtube", ...o }, now);
+const summary = (o = {}) => W.buildWaitlistSummary(sqlFactory(), { windowId: "fa1", ...o });
+const TABLES = ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_person_days", "waitlist_raw_daily"];
+function reset({ migrate = true } = {}) {
+  psql("drop table if exists " + TABLES.join(", "));
+  psql("create table if not exists schema_migrations (migration_id text primary key, applied_at timestamptz not null default now())");
+  psql("delete from schema_migrations where migration_id = '030_waitlist_fase_a'");
+  if (migrate) psql(MIGRATION, { file: true });
+  W.resetWaitlistState?.();
+}
+const n = (q) => Number(psql(q)[0].n);
 
-test("flag desligada: 404 e nenhuma tabela criada nem dado gravado", { skip }, async () => {
+test("bandeira desligada: 404 e nada gravado", { skip }, async () => {
   reset();
-  const env = { ...ENV(), FASE_A_WAITLIST: undefined };
+  const env = ENV({ FASE_A_WAITLIST: undefined });
+  assert.equal((await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN })).status, 404);
   assert.equal((await sub(env)).status, 404);
-  assert.equal((await visit(env)).status, 404);
-  assert.equal(psql("select to_regclass('waitlist_signups') is null as ausente")[0].ausente, "t");
+  for (const t of TABLES) assert.equal(n(`select count(*)::int as n from ${t}`), 0, t);
 });
 
-test("sem chave de privacidade: 503 (fail-closed), nada gravado", { skip }, async () => {
+test("fail-closed: sem migração 030 -> 503; sem chave de contato -> 503; o módulo não cria tabelas", { skip }, async () => {
+  reset({ migrate: false });
+  assert.equal((await sub(ENV())).status, 503);
+  assert.equal((await call(ENV(), "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "1.1.1.1" })).status, 503);
+  assert.equal(psql("select to_regclass('waitlist_signups') is null as ausente")[0].ausente, "t", "módulo não cria esquema");
   reset();
-  const env = { ...ENV(), LEAD_PRIVACY_SECRET: "" };
-  const r = await sub(env);
-  assert.equal(r.status, 503);
-  assert.equal(r.body.code, "indisponivel");
-  assert.equal(psql("select to_regclass('waitlist_signups') is null as ausente")[0].ausente, "t");
+  assert.equal((await sub(ENV({ LEAD_PRIVACY_SECRET: "" }))).status, 503);
+  assert.equal(n("select count(*)::int as n from waitlist_signups"), 0);
 });
 
-test("consentimento obrigatório e validação: sem consentimento, contato ou respostas -> 400 e 0 linhas", { skip }, async () => {
-  reset();
-  const env = ENV();
-  for (const [o, code] of [[{ consent: false }, "consentimento"], [{ consent: "sim" }, "consentimento"], [{ consent: undefined }, "consentimento"], [{ contato: "nao-e-contato" }, "contato"], [{ contato: "123" }, "contato"], [{ q1: "" }, "perguntas"], [{ q2: "talvez" }, "perguntas"], [{ nicho: "academia" }, "nicho"]]) {
-    const r = await sub(env, o);
-    assert.equal(r.status, 400, JSON.stringify(o));
-    assert.equal(r.body.code, code, JSON.stringify(o));
+test("segredo de visitante dedicado: ausente ou < 32 bytes NÃO usa fallback (RESEND/DATABASE_URL), nada é contado e a decisão é INCONCLUSIVO", { skip }, async () => {
+  for (const secret of [undefined, "", "x".repeat(31)]) {
+    reset();
+    const env = ENV({ WAITLIST_VISITOR_SECRET: secret });
+    const r = await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.1" });
+    assert.equal(r.body.cookie, null, "sem cookie");
+    assert.equal(n("select count(*)::int as n from waitlist_persons"), 0);
+    assert.equal(n("select count(*)::int as n from waitlist_person_days"), 0);
+    const c = (await summary()).niches.confeitaria;
+    assert.ok(c.blockers.includes("segredo_de_visitante_ausente"));
+    assert.equal(c.decision, "INCONCLUSIVO");
+    assert.equal(c.excluded.no_secret, 1);
   }
-  assert.equal(psql("select to_regclass('waitlist_signups') is null as ausente")[0].ausente, "t", "nenhuma tabela criada por pedido inválido");
 });
 
-test("idempotência por contato + nicho: repetição (inclusive com outra grafia) não duplica nem conta duas vezes", { skip }, async () => {
+test("sem janela configurada: visita vira só exposição pessoa-dia, sem identificador, e a decisão é INCONCLUSIVO", { skip }, async () => {
   reset();
-  const env = ENV();
-  const a = await sub(env, { contato: " Ana@Exemplo.COM ", nome: "Ana" });
-  assert.equal(a.status, 200); assert.equal(a.body.code, "inscrito");
-  const b = await sub(env, { contato: "ana@exemplo.com", q1: "nao" });
-  assert.equal(b.status, 200); assert.equal(b.body.code, "ja_inscrito");
-  assert.equal(b.body.optout, a.body.optout, "mesmo link de saída");
-  const w1 = await sub(env, { contato: "(88) 99254-0000" });
-  const w2 = await sub(env, { contato: "+55 88 99254-0000" });
-  assert.equal(w1.body.code, "inscrito"); assert.equal(w2.body.code, "ja_inscrito");
-  const other = await sub(env, { contato: "ana@exemplo.com", nicho: "loja-de-roupas" });
-  assert.equal(other.body.code, "inscrito", "outro nicho é outra inscrição");
-  assert.equal(count("niche='confeitaria'"), 2);
-  assert.equal(count(), 3);
-  assert.deepEqual(psql("select q_recurring, contact, contact_kind, consent_version from waitlist_signups where niche='confeitaria' and contact_kind='email'"), [{ q_recurring: "t", contact: "ana@exemplo.com", contact_kind: "email", consent_version: W.CONSENT_VERSION }], "primeira inscrição preservada");
-  assert.equal(psql("select contact from waitlist_signups where contact_kind='whatsapp'")[0].contact, "5588992540000");
-  assert.equal(Number(psql("select count(*)::int as n from waitlist_events where event='consent_given'")[0].n), 3);
-  const s = await W.buildWaitlistSummary(sqlFactory());
-  assert.equal(s.niches.confeitaria.signups, 2);
-  assert.equal(s.niches["loja-de-roupas"].signups, 1);
+  const env = ENV({ FASE_A_WINDOW_END: undefined });
+  const r = await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.1" });
+  assert.equal(r.body.cookie, null);
+  assert.equal(n("select count(*)::int as n from waitlist_persons"), 0);
+  assert.equal(n("select count(*)::int as n from waitlist_person_days"), 1);
+  const c = (await summary()).niches.confeitaria;
+  assert.equal(c.exposure_person_days, 1);
+  assert.ok(c.blockers.includes("identificador_nao_estabelecido"));
+  assert.equal(c.decision, "INCONCLUSIVO");
+  const expired = await call(ENV({ FASE_A_WINDOW_END: "2026-11-01" }), "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.2" });
+  assert.equal(expired.body.cookie, null, "janela vencida não emite identificador");
 });
 
-test("opt-out: link assinado apaga o contato em todos os nichos; token errado não apaga nada", { skip }, async () => {
+test("M-SOL-085: a MESMA pessoa (mesmo IP+navegador) em dois dias conta UMA vez; pessoas distintas contam separadas", { skip }, async () => {
   reset();
   const env = ENV();
-  const a = await sub(env, { contato: "bia@exemplo.com" });
-  await sub(env, { contato: "bia@exemplo.com", nicho: "salao-e-barbearia" });
-  await sub(env, { contato: "caio@exemplo.com" });
-  const u = new URL(a.body.optout);
-  assert.equal(u.origin + u.pathname, "https://vendas.zevanory.api.br/lista-de-espera/sair");
-  const r = u.searchParams.get("r"), t = u.searchParams.get("t");
-  assert.equal((await call(env, "/sair/verificar", { r, t })).status, 200);
-  const wrong = t.replace(/^./, (c) => (c === "0" ? "1" : "0"));
-  assert.equal((await call(env, "/sair/verificar", { r, t: wrong })).status, 400);
-  assert.equal((await call(env, "/sair", { r, t: wrong })).status, 400);
-  assert.equal(count(), 3, "token inválido não apaga");
-  const ok = await call(env, "/sair", { r, t });
-  assert.equal(ok.status, 200); assert.equal(ok.body.erased, 2);
-  assert.deepEqual(psql("select contact from waitlist_signups"), [{ contact: "caio@exemplo.com" }]);
-  assert.equal(Number(psql(`select count(*)::int as n from waitlist_events where event='revoked_and_erased' and contact_ref=${lit(r)}`)[0].n), 2);
-  assert.equal(psql("select count(*)::int as n from waitlist_events where contact_ref is not null and contact_ref !~ '^[0-9a-f]{64}$'")[0].n, "0", "auditoria só com referência pseudonimizada");
-  const again = await call(env, "/sair", { r, t });
-  assert.equal(again.status, 200); assert.equal(again.body.erased, 0);
-  const s = await W.buildWaitlistSummary(sqlFactory());
-  assert.equal(s.niches.confeitaria.signups, 1); assert.equal(s.niches.confeitaria.revoked, 1);
+  // O navegador guarda o último cookie recebido e o devolve em cada pedido (como um navegador real).
+  let vid = await person(env, {}, T0);
+  assert.match(vid, /^[0-9a-f]{32}\.[0-9a-f]{32}$/);
+  vid = await visit(env, { vid }, T0 + 3600_000);
+  await confirm(env, vid, "confeitaria", T0 + 3600_000);
+  vid = await visit(env, { vid }, T0 + DAY);
+  await confirm(env, vid, "confeitaria", T0 + DAY);
+  await person(env, { ip: "200.2.2.2" }, T0 + DAY);
+  const c = (await summary()).niches.confeitaria;
+  assert.equal(c.eligible_visitors, 2, "2 pessoas, não 3 pessoas-dia");
+  assert.equal(c.multi_day_persons, 1);
+  assert.equal(c.exposure_person_days, 3, "pessoa-dia é só descritiva");
+  assert.deepEqual(psql("select days from waitlist_persons where days > 1"), [{ days: "2" }]);
+  assert.ok(c.oracle.ok, JSON.stringify(c.oracle.checks));
 });
 
-test("robôs fora das métricas: visitas automatizadas/datacenter/prefetch não contam; inscrição de datacenter fica fora", { skip }, async () => {
+test("pessoa-dia não infla o denominador: mesmo IP+navegador em 10 dias sem devolver o cookie não vira pessoa confirmada", { skip }, async () => {
   reset();
   const env = ENV();
-  for (const v of [{}, { ip: "200.2.2.2" }, {}, { ua: "Googlebot/2.1 (+http://www.google.com/bot.html)", ip: "66.249.66.1" }, { asn: 16509, ip: "3.3.3.3" }, { purpose: "prefetch", ip: "200.9.9.9" }, { ua: "", ip: "200.8.8.8" }, { ua: "curl/8.5.0", ip: "200.7.7.7" }, { method: "POST", ip: "200.6.6.6" }, { nicho: "inexistente" }])
-    assert.equal((await visit(env, v)).status, 204);
-  await sub(env, { contato: "humana@exemplo.com" });
-  await sub(env, { contato: "dc@exemplo.com", asn: 14061 });
-  await sub(env, { contato: "bot@exemplo.com", ua: "python-requests/2.32" });
-  const s = await W.buildWaitlistSummary(sqlFactory());
-  assert.equal(s.niches.confeitaria.eligible_visitors, 2, "2 humanos distintos no dia (repetição deduplicada)");
-  assert.equal(s.niches.confeitaria.signups, 1);
-  assert.equal(s.niches.confeitaria.excluded_automation, 2);
-  assert.equal(count("counted"), 1);
+  for (let d = 0; d < 10; d++) await visit(env, {}, T0 + d * DAY);
+  const c = (await summary()).niches.confeitaria;
+  assert.equal(c.eligible_visitors, 0);
+  assert.equal(c.unconfirmed_ids, 10);
+  assert.equal(c.exposure_person_days, 10);
+  assert.equal(c.decision, "INCONCLUSIVO");
+  assert.equal(n("select count(*)::int as n from waitlist_persons where confirmed"), 0);
 });
 
-test("métricas: números corretos, qualificadas = as duas respostas sim, e NENHUM dado pessoal na saída", { skip }, async () => {
+test("entre aparelhos: o mesmo contato inscrito de dois identificadores é UMA pessoa (alias) e UMA inscrição", { skip }, async () => {
   reset();
   const env = ENV();
-  const contacts = ["d1@exemplo.com", "d2@exemplo.com", "(11) 98888-7777", "d4@exemplo.com"];
-  await sub(env, { contato: contacts[0], nome: "Daniela Souza", q1: "sim", q2: "sim" });
-  await sub(env, { contato: contacts[1], nome: "Eduardo", q1: "sim", q2: "nao" });
-  await sub(env, { contato: contacts[2], q1: "nao", q2: "sim" });
-  await sub(env, { contato: contacts[3], nicho: "salao-e-barbearia", q1: "sim", q2: "sim" });
-  for (let i = 0; i < 10; i++) await visit(env, { ip: "201.0.0." + i });
-  const s = await W.buildWaitlistSummary(sqlFactory());
+  const phone = await person(env, { ip: "200.3.3.3" });
+  const laptop = await person(env, { ip: "200.4.4.4", ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36" });
+  assert.equal((await sub(env, { contato: "dois@exemplo.com", vid: phone })).body.code, "inscrito");
+  assert.equal((await sub(env, { contato: "dois@exemplo.com", vid: laptop })).body.code, "ja_inscrito");
+  const c = (await summary()).niches.confeitaria;
+  assert.equal(c.aliases, 1);
+  assert.equal(c.eligible_visitors, 1);
+  assert.equal(c.signups, 1);
+  assert.ok(c.oracle.ok, JSON.stringify(c.oracle.checks));
+});
+
+test("consentimento separado: a lista exige só o aviso; o convite para entrevista é opcional e gravado à parte", { skip }, async () => {
+  reset();
+  const env = ENV();
+  const a = await person(env, { ip: "200.5.5.5" });
+  const b = await person(env, { ip: "200.6.6.6" });
+  assert.equal((await sub(env, { contato: "semconvite@exemplo.com", vid: a })).body.code, "inscrito");
+  assert.equal((await sub(env, { contato: "comconvite@exemplo.com", vid: b, interview: true })).body.code, "inscrito");
+  assert.deepEqual(psql("select contact, interview_ok, consent_version from waitlist_signups order by contact"), [
+    { contact: "comconvite@exemplo.com", interview_ok: "t", consent_version: W.CONSENT_VERSION },
+    { contact: "semconvite@exemplo.com", interview_ok: "f", consent_version: W.CONSENT_VERSION }]);
+  for (const consent of [false, "sim", undefined]) assert.equal((await sub(env, { contato: "x@exemplo.com", consent, interview: true })).body.code, "consentimento");
+  for (const [o, code] of [[{ contato: "123" }, "contato"], [{ q1: "" }, "perguntas"], [{ nicho: "academia" }, "nicho"]]) assert.equal((await sub(env, o)).body.code, code);
+  assert.equal(n("select count(*)::int as n from waitlist_signups"), 2);
+  assert.equal((await summary()).niches.confeitaria.interview_ok, 1);
+});
+
+test("idempotência por contato + nicho: repetição (outra grafia) não duplica nem conta duas vezes", { skip }, async () => {
+  reset();
+  const env = ENV();
+  const vid = await person(env);
+  assert.equal((await sub(env, { contato: " Ana@Exemplo.COM ", vid })).body.code, "inscrito");
+  assert.equal((await sub(env, { contato: "ana@exemplo.com", vid, q1: "nao" })).body.code, "ja_inscrito");
+  const w = await person(env, { ip: "200.7.7.7" });
+  assert.equal((await sub(env, { contato: "(88) 99254-0000", vid: w })).body.code, "inscrito");
+  assert.equal((await sub(env, { contato: "+55 88 99254-0000", vid: w })).body.code, "ja_inscrito");
+  assert.equal(n("select count(*)::int as n from waitlist_signups"), 2);
+  assert.equal(psql("select q_recurring from waitlist_signups where contact_kind='email'")[0].q_recurring, "t", "primeira inscrição preservada");
+  const c = (await summary()).niches.confeitaria;
+  assert.equal(c.signups, 2);
+  assert.ok(c.oracle.ok, JSON.stringify(c.oracle.checks));
+});
+
+test("inscrição sem identificador: guardada para o aviso, fora do numerador, e a decisão vira INCONCLUSIVO", { skip }, async () => {
+  reset();
+  const env = ENV();
+  await person(env);
+  assert.equal((await sub(env, { contato: "semcookie@exemplo.com" })).body.code, "inscrito");
+  assert.equal((await sub(env, { contato: "forjado@exemplo.com", vid: "a".repeat(32) + "." + "b".repeat(32) })).body.code, "inscrito");
+  const c = (await summary()).niches.confeitaria;
+  assert.equal(c.signups, 0);
+  assert.equal(c.signups_without_id, 2);
+  assert.ok(c.blockers.includes("inscricao_sem_identificador"));
+  assert.equal(c.decision, "INCONCLUSIVO");
+});
+
+test("robôs fora do denominador e do numerador, com análise de sensibilidade com/sem filtros de ASN e UA", { skip }, async () => {
+  reset();
+  const env = ENV();
+  const human = await person(env);
+  const dc = await person(env, { ip: "3.3.3.3", asn: 16509 });
+  const bot = await person(env, { ip: "66.249.66.1", ua: "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" });
+  assert.equal((await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "9.9.9.9", purpose: "prefetch" })).body.cookie, null, "prefetch sem identificador");
+  await sub(env, { contato: "humano@exemplo.com", vid: human });
+  await sub(env, { contato: "dc@exemplo.com", vid: dc, asn: 16509 });
+  await sub(env, { contato: "bot@exemplo.com", vid: bot, ua: "python-requests/2.32" });
+  const c = (await summary()).niches.confeitaria;
+  assert.deepEqual([c.eligible_visitors, c.signups], [1, 1]);
+  assert.deepEqual(c.sensitivity.with_filters, { persons: 1, signups: 1, conversion: 1 });
+  assert.deepEqual([c.sensitivity.without_asn_filter.persons, c.sensitivity.without_asn_filter.signups], [2, 2]);
+  assert.deepEqual([c.sensitivity.without_ua_filter.persons, c.sensitivity.without_ua_filter.signups], [2, 2]);
+  assert.deepEqual([c.sensitivity.without_filters.persons, c.sensitivity.without_filters.signups], [3, 3]);
+  assert.deepEqual([c.excluded.asn, c.excluded.ua, c.excluded.prefetch], [1, 1, 1]);
+  assert.ok(c.oracle.ok, JSON.stringify(c.oracle.checks));
+});
+
+test("oráculo independente: contadores agregados reconciliam com as linhas; qualquer divergência vira INCONCLUSIVO", { skip }, async () => {
+  reset();
+  const env = ENV();
+  const vids = [];
+  for (let i = 0; i < 3; i++) vids.push(await person(env, { ip: "201.0.0." + i }));
+  await sub(env, { contato: "o1@exemplo.com", vid: vids[0] });
+  let c = (await summary()).niches.confeitaria;
+  assert.ok(c.oracle.ok, JSON.stringify(c.oracle.checks));
+  assert.equal(Object.keys(c.oracle.checks).length, 7);
+  psql("delete from waitlist_persons where person_id = (select person_id from waitlist_persons where confirmed limit 1 offset 2)");
+  c = (await summary()).niches.confeitaria;
+  assert.equal(c.oracle.ok, false);
+  assert.equal(c.oracle.checks.pessoas_linhas_igual_criadas, false);
+  assert.ok(c.blockers.includes("oraculo_divergente"));
+  assert.equal(c.decision, "INCONCLUSIVO");
+});
+
+test("métricas: números corretos na mesma unidade, qualificadas = duas respostas sim, e NENHUM dado pessoal na saída", { skip }, async () => {
+  reset();
+  const env = ENV();
+  const v = [];
+  for (let i = 0; i < 10; i++) v.push(await person(env, { ip: "202.0.0." + i }));
+  await sub(env, { contato: "d1@exemplo.com", nome: "Daniela Souza", vid: v[0], q1: "sim", q2: "sim" });
+  await sub(env, { contato: "d2@exemplo.com", nome: "Eduardo", vid: v[1], q1: "sim", q2: "nao" });
+  await sub(env, { contato: "(11) 98888-7777", vid: v[2], q1: "nao", q2: "sim" });
+  const s = await summary();
   const c = s.niches.confeitaria;
-  assert.deepEqual([c.eligible_visitors, c.signups, c.qualified], [10, 3, 1]);
+  assert.deepEqual([c.unit, c.eligible_visitors, c.signups, c.qualified], ["pessoa_experimental_confirmada", 10, 3, 1]);
   assert.equal(c.conversion, 0.3);
-  assert.equal(c.decision, "INCONCLUSIVO", "menos de 300 visitantes nunca é NO-GO");
-  assert.deepEqual(Object.keys(s.niches).sort(), [...W.WAITLIST_NICHES].sort());
+  assert.equal(c.decision, "INCONCLUSIVO", "menos de 300 pessoas nunca é NO-GO");
   const out = JSON.stringify(s);
-  const refs = psql("select contact_ref, contact from waitlist_signups");
-  for (const needle of [...refs.map((x) => x.contact_ref), ...refs.map((x) => x.contact), "Daniela", "Eduardo", "exemplo.com", "98888", "@"]) assert.ok(!out.includes(needle), "vazou: " + needle);
-  const allowed = new Set(["eligible_visitors", "signups", "qualified", "excluded_automation", "revoked", "conversion", "wilson95", "qualified_conversion", "qualified_wilson95", "decision"]);
-  for (const n of Object.values(s.niches)) assert.deepEqual(Object.keys(n).filter((k) => !allowed.has(k)), [], "só campos agregados");
+  const rows = psql("select contact_ref, contact, person_id from waitlist_signups");
+  for (const needle of [...rows.map((x) => x.contact_ref), ...rows.map((x) => x.contact), ...rows.map((x) => x.person_id), ...v.map((x) => x.slice(0, 32)), "Daniela", "Eduardo", "exemplo.com", "98888", "@"])
+    assert.ok(!out.includes(needle), "vazou: " + needle);
 });
 
-test("retenção: inscrição com mais de 12 meses é apagada (com evento), recente fica; roda 1x por dia", { skip }, async () => {
+test("saída: link assinado apaga TODAS as inscrições do contato numa instrução; nenhuma tabela guarda o contato ou sua referência depois", { skip }, async () => {
   reset();
   const env = ENV();
-  await sub(env, { contato: "velha@exemplo.com" });
-  await sub(env, { contato: "nova@exemplo.com" });
+  const a = await person(env, { ip: "203.0.0.1" });
+  const b = await person(env, { ip: "203.0.0.2", nicho: "salao-e-barbearia" });
+  const first = await sub(env, { contato: "bia@exemplo.com", vid: a });
+  await sub(env, { contato: "bia@exemplo.com", vid: b, nicho: "salao-e-barbearia" });
+  await sub(env, { contato: "caio@exemplo.com" });
+  const u = new URL(first.body.optout), r = u.searchParams.get("r"), t = u.searchParams.get("t");
+  assert.equal((await call(env, "/sair", { r, t: t.replace(/^./, (x) => (x === "0" ? "1" : "0")) })).status, 400);
+  assert.equal(n("select count(*)::int as n from waitlist_signups"), 3, "token inválido não apaga");
+  const ok = await call(env, "/sair", { r, t });
+  assert.deepEqual([ok.status, ok.body.erased], [200, 2]);
+  assert.deepEqual(psql("select contact from waitlist_signups"), [{ contact: "caio@exemplo.com" }]);
+  const refCols = psql("select table_name from information_schema.columns where table_schema='public' and column_name in ('contact','contact_ref','name') and table_name like 'waitlist%' group by table_name order by 1");
+  assert.deepEqual(refCols, [{ table_name: "waitlist_signups" }], "só a tabela de inscrições tem colunas ligadas ao contato");
+  for (const tbl of ["waitlist_raw_daily", "waitlist_persons", "waitlist_person_alias", "waitlist_person_days"]) {
+    const dump = JSON.stringify(psql(`select * from ${tbl}`));
+    assert.ok(!dump.includes(r) && !dump.includes("bia@"), tbl);
+  }
+  assert.equal(n("select coalesce(sum(n),0)::int as n from waitlist_raw_daily where metric='inscricao:revogada'"), 2, "contagem agregada = linhas apagadas");
+  assert.equal((await call(env, "/sair", { r, t })).body.erased, 0);
+  assert.ok((await summary()).niches.confeitaria.oracle.ok);
+});
+
+test("retenção por finalidade: 30 dias após a decisão apaga contatos e medição (só agregados ficam); limites de 12 meses e 180 dias; sem uso, nenhuma consulta", { skip }, async () => {
+  reset();
+  const env = ENV({ FASE_A_DECISION_DATE: "2026-11-10" });
+  const vid = await person(env);
+  await sub(env, { contato: "ret@exemplo.com", vid });
+  assert.deepEqual(await W.runWaitlistRetention(env, { sqlFactory, now: Date.parse("2026-12-09T12:00:00Z"), force: true }), { ok: true, erased: 0, measurement_erased: 0, purpose_over: false }, "29 dias depois: mantém");
+  const done = await W.runWaitlistRetention(env, { sqlFactory, now: Date.parse("2026-12-10T12:00:00Z"), force: true });
+  assert.deepEqual([done.erased, done.purpose_over], [1, true]);
+  assert.ok(done.measurement_erased >= 2);
+  for (const t of ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_person_days"]) assert.equal(n(`select count(*)::int as n from ${t}`), 0, t);
+  assert.ok(n("select count(*)::int as n from waitlist_raw_daily") > 0, "contagens agregadas permanecem");
+  assert.equal(n("select coalesce(sum(n),0)::int as n from waitlist_raw_daily where metric='inscricao:apagada_retencao'"), 1);
+  // Sem data de decisão: limites absolutos.
+  reset();
+  const env2 = ENV();
+  const v2 = await person(env2);
+  await sub(env2, { contato: "velha@exemplo.com", vid: v2 });
+  await sub(env2, { contato: "nova@exemplo.com", vid: v2 });
   psql("update waitlist_signups set created_at = now() - interval '13 months' where contact='velha@exemplo.com'");
-  const out = await W.runWaitlistRetention(env, { sqlFactory });
-  assert.deepEqual(out, { ok: true, erased: 1 });
+  psql("update waitlist_persons set last_day = current_date - 181");
+  const caps = await W.runWaitlistRetention(env2, { sqlFactory, now: Date.now(), force: true });
+  assert.equal(caps.erased, 1);
   assert.deepEqual(psql("select contact from waitlist_signups"), [{ contact: "nova@exemplo.com" }]);
-  assert.equal(Number(psql("select count(*)::int as n from waitlist_events where event='erased_retention'")[0].n), 1);
-  assert.equal((await W.runWaitlistRetention(env, { sqlFactory })).skipped, "already_ran_today");
-  assert.equal(await env.ZEVANORY_PRIVATE_ARTIFACTS.get(W.SEEN_MARKER), "1", "uso marcado no KV");
-  // Bandeira desligada e lista nunca ligada: nenhuma consulta ao banco (merge sem efeito em produção).
+  assert.equal(n("select count(*)::int as n from waitlist_persons"), 0);
+  assert.equal(await env2.ZEVANORY_PRIVATE_ARTIFACTS.get(W.SEEN_MARKER), "1");
   let queries = 0;
-  const counting = () => ({ query: async () => { queries++; return []; } });
-  const never = await W.runWaitlistRetention({ DATABASE_URL: "x", ZEVANORY_PRIVATE_ARTIFACTS: kv() }, { sqlFactory: counting, force: true });
+  const never = await W.runWaitlistRetention({ DATABASE_URL: "x", ZEVANORY_PRIVATE_ARTIFACTS: kv() }, { sqlFactory: () => ({ query: async () => { queries++; return []; } }), force: true });
   assert.deepEqual([never.skipped, queries], ["never_enabled", 0]);
-  // Desligada DEPOIS de ter sido usada: a retenção continua (dados apagados em 12 meses mesmo após a Fase A).
-  const store = kv(); await store.put(W.SEEN_MARKER, "1");
-  const after = await W.runWaitlistRetention({ DATABASE_URL: "x", ZEVANORY_PRIVATE_ARTIFACTS: store }, { sqlFactory, force: true });
-  assert.deepEqual(after, { ok: true, erased: 0 });
 });
 
-test("restrições do esquema: nicho fora da lista e referência fora do formato são recusados pelo banco", { skip }, async () => {
-  reset();
-  await W.ensureWaitlistSchema(sqlFactory());
-  assert.throws(() => psql("insert into waitlist_signups (niche, contact_kind, contact, contact_ref, q_recurring, q_digital, consent_version, consent_at) values ('academia','email','x@y.com','" + "a".repeat(64) + "',true,true,'v',now())"));
-  assert.throws(() => psql("insert into waitlist_signups (niche, contact_kind, contact, contact_ref, q_recurring, q_digital, consent_version, consent_at) values ('confeitaria','email','x@y.com','nao-hex',true,true,'v',now())"));
-});
-
-test("script de resumo (somente leitura) imprime agregados sem dado pessoal", { skip }, async () => {
+test("script de resumo (somente leitura) reproduz o resumo do Worker sem dado pessoal", { skip }, async () => {
   reset();
   const env = ENV();
-  await sub(env, { contato: "script@exemplo.com", nome: "Fernanda" });
-  await visit(env, { ip: "202.0.0.1" });
+  const vid = await person(env);
+  await sub(env, { contato: "script@exemplo.com", nome: "Fernanda", vid });
   const url = `postgresql://postgres@/${DB}?host=${encodeURIComponent(HOST)}&port=${PORT}`;
-  const out = execFileSync(process.execPath, [path.join(ROOT, "scripts", "fase_a", "resumo.mjs"), "--since", "2026-01-01", "--until", "2999-12-31"], { encoding: "utf8", env: { ...process.env, DATABASE_URL: url } });
-  const j = JSON.parse(out);
+  const r = spawnSync(process.execPath, [path.join(ROOT, "scripts", "fase_a", "resumo.mjs"), "--janela", "fa1", "--since", "2026-01-01", "--until", "2999-12-31"], { encoding: "utf8", env: { ...process.env, DATABASE_URL: url } });
+  assert.equal(r.status, 0, r.stderr);
+  const j = JSON.parse(r.stdout);
+  const w = await summary();
+  assert.deepEqual(j.niches, w.niches);
   assert.equal(j.niches.confeitaria.signups, 1);
-  assert.equal(j.niches.confeitaria.eligible_visitors, 1);
-  for (const needle of ["script@", "Fernanda", "exemplo.com", psql("select contact_ref from waitlist_signups")[0].contact_ref]) assert.ok(!out.includes(needle), "vazou: " + needle);
-  assert.equal(count(), 1, "o script não altera dados");
+  for (const needle of ["script@", "Fernanda", "exemplo.com", psql("select contact_ref from waitlist_signups")[0].contact_ref]) assert.ok(!r.stdout.includes(needle), "vazou: " + needle);
+  assert.equal(n("select count(*)::int as n from waitlist_signups"), 1, "o script não altera dados");
+});
+
+test("restrições do esquema (migração 030): nicho fora da lista e identificadores fora do formato são recusados", { skip }, async () => {
+  reset();
+  const base = "insert into waitlist_signups (window_id, niche, contact_kind, contact, contact_ref, q_recurring, q_digital, consent_version, consent_at) values ";
+  assert.throws(() => psql(base + "('fa1','academia','email','x@y.com','" + "a".repeat(64) + "',true,true,'v',now())"));
+  assert.throws(() => psql(base + "('fa1','confeitaria','email','x@y.com','nao-hex',true,true,'v',now())"));
+  assert.throws(() => psql("insert into waitlist_persons (window_id, niche, person_id, first_day, last_day) values ('fa1','confeitaria','curto',current_date,current_date)"));
+  assert.equal(psql("select count(*)::int as n from schema_migrations where migration_id='030_waitlist_fase_a'")[0].n, "1");
 });

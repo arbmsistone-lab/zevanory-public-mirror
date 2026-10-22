@@ -3,7 +3,7 @@
 // consentimento repassado, mensagens fixas e contagem de visita só pelo binding privado.
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { pythonOk } from "../../scripts/fase_a/tools.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,7 +13,7 @@ import { resetWaitlistLimiter, MESSAGES } from "../../worker/waitlist-public.mjs
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const OUT = fs.mkdtempSync(path.join(os.tmpdir(), "fase-a-pub-"));
-execFileSync("python3", [path.join(ROOT, "scripts", "fase_a", "build_fase_a.py"), "--out", OUT, "--preview"], { env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
+pythonOk([path.join(ROOT, "scripts", "fase_a", "build_fase_a.py"), "--out", OUT, "--preview"]);
 const HUMAN = "Mozilla/5.0 (Linux; Android 14; SM-A146M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36";
 const OPTOUT = "https://vendas.zevanory.api.br/lista-de-espera/sair?r=" + "a".repeat(64) + "&t=" + "b".repeat(32);
 
@@ -21,7 +21,7 @@ function setup({ flag = "on", reply = { status: 200, body: { ok: true, code: "in
   const calls = [], waits = [];
   const env = {
     ...(flag ? { FASE_A_WAITLIST: flag } : {}),
-    CORE: { async fetch(url, init = {}) { calls.push({ url: String(url), body: init.body ? JSON.parse(init.body) : null }); return new Response(JSON.stringify(reply.body), { status: reply.status }); } },
+    CORE: { async fetch(url, init = {}) { const body = init.body ? JSON.parse(init.body) : null; calls.push({ url: String(url), body }); const rp = typeof reply === "function" ? reply(String(url), body) : reply; return new Response(JSON.stringify(rp.body), { status: rp.status }); } },
     ASSETS: { async fetch(req) { const f = path.join(OUT, new URL(req.url).pathname.slice(1)); return fs.existsSync(f) ? new Response(fs.readFileSync(f, "utf8"), { status: 200 }) : new Response("nf", { status: 404 }); } },
     ...(limiter ? { BUY_LIMITER: limiter } : {}),
   };
@@ -45,23 +45,52 @@ test("bandeira ausente ou diferente de 'on': todas as rotas da lista dão 404 e 
   }
 });
 
-test("página servida só com a bandeira: 200, noindex, CSP, origem da visita no campo oculto, visita contada pelo binding privado", async () => {
-  const s = setup();
+const VID = "c".repeat(32) + "." + "d".repeat(32);
+test("página servida só com a bandeira: 200, noindex, CSP, origem no campo oculto, visita registrada ANTES da resposta pelo binding", async () => {
+  const s = setup({ reply: { status: 200, body: { ok: true, cookie: null } } });
   const r = await get(s, "/lista-de-espera/confeitaria?utm_source=youtube&utm_campaign=c1");
   assert.equal(r.status, 200);
   assert.equal(r.headers.get("x-robots-tag"), "noindex, nofollow");
   assert.match(r.headers.get("content-security-policy") || "", /form-action 'self'/);
+  assert.equal(r.headers.get("set-cookie"), null, "núcleo não emitiu identificador");
   const html = await r.text();
   assert.match(html, /name="origem" value="youtube"/);
-  await Promise.all(s.waits);
   assert.equal(s.calls.length, 1);
   assert.equal(s.calls[0].url, "https://waitlist.internal/visita");
-  assert.deepEqual(Object.keys(s.calls[0].body).sort(), ["asn", "ip", "method", "nicho", "purpose", "ua"]);
-  assert.equal(s.calls[0].body.nicho, "confeitaria");
+  assert.deepEqual(Object.keys(s.calls[0].body).sort(), ["asn", "ip", "method", "nicho", "purpose", "ua", "vid"]);
+  assert.equal(s.calls[0].body.vid, "");
   const h = await worker.fetch(new Request("https://vendas.zevanory.api.br/lista-de-espera/loja-de-roupas", { method: "HEAD", headers: { "user-agent": HUMAN } }), s.env, s.ctx);
   assert.equal(h.status, 200); assert.equal(s.calls.length, 1, "HEAD não conta visita");
   assert.equal((await get(s, "/lista-de-espera/academia")).status, 404);
-  assert.equal((await get(s, "/lista-de-espera/confeitaria?utm_source=%3Cscript%3E")).status, 200);
+});
+
+test("identificador da pessoa: cookie próprio emitido pelo núcleo com escopo, validade e flags; valor fora do padrão é recusado; cookie existente é repassado", async () => {
+  const s = setup({ reply: { status: 200, body: { ok: true, cookie: { name: "zvfa", value: VID, maxAge: 86400 * 10 } } } });
+  const r = await get(s, "/lista-de-espera/confeitaria");
+  assert.equal(r.headers.get("set-cookie"), `zvfa=${VID}; Path=/lista-de-espera; Max-Age=864000; Secure; HttpOnly; SameSite=Lax`);
+  for (const cookie of [{ name: "zvfa", value: "x; Domain=evil", maxAge: 10 }, { name: "outro", value: VID, maxAge: 10 }, { name: "zvfa", value: VID, maxAge: 61 * 86400 }]) {
+    const b = setup({ reply: { status: 200, body: { ok: true, cookie } } });
+    assert.equal((await get(b, "/lista-de-espera/confeitaria")).headers.get("set-cookie"), null, JSON.stringify(cookie));
+  }
+  const back = setup({ reply: { status: 200, body: { ok: true, cookie: null } } });
+  await get(back, "/lista-de-espera/confeitaria", { cookie: `x=1; zvfa=${VID}` });
+  assert.equal(back.calls[0].body.vid, VID);
+  await get(back, "/lista-de-espera/confeitaria", { cookie: "zvfa=forjado" });
+  assert.equal(back.calls[1].body.vid, "", "cookie fora do formato não é repassado");
+});
+
+test("confirmação: a folha de estilo do nicho repassa o cookie ao núcleo (sem cookie nada é chamado) e responde CSS sem cache", async () => {
+  const s = setup({ reply: { status: 204, body: {} } });
+  const r = await get(s, "/lista-de-espera/c/confeitaria.css", { cookie: `zvfa=${VID}` });
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get("content-type"), /text\/css/);
+  assert.equal(r.headers.get("cache-control"), "no-store");
+  await Promise.all(s.waits);
+  assert.deepEqual(s.calls, [{ url: "https://waitlist.internal/confirmar", body: { nicho: "confeitaria", vid: VID } }]);
+  const none = setup();
+  assert.equal((await get(none, "/lista-de-espera/c/confeitaria.css")).status, 200);
+  assert.equal(none.calls.length, 0);
+  assert.equal((await get(none, "/lista-de-espera/c/academia.css")).status, 404);
 });
 
 test("inscrição: robô recusado (403) e honeypot aceito em silêncio, ambos sem chamar o núcleo", async () => {
@@ -83,8 +112,12 @@ test("inscrição: consentimento repassado como booleano estrito, sem IP no payl
   assert.equal(s.calls[0].url, "https://waitlist.internal/inscrever");
   const b = s.calls[0].body;
   assert.equal(b.consent, true);
+  assert.equal(b.interview, false, "convite para entrevista é opcional e separado");
   assert.equal(b.src, "youtube");
   assert.ok(!("ip" in b) && !JSON.stringify(b).includes("200.1.1.1"), "IP não vai ao núcleo na inscrição");
+  await post(s, form({ entrevista: "sim" }), { cookie: `zvfa=${VID}` });
+  assert.equal(s.calls[1].body.interview, true); assert.equal(s.calls[1].body.consent, true); assert.equal(s.calls[1].body.vid, VID);
+  s.calls.splice(1, 1);
   await post(s, form({ consentimento: "" }));
   await post(s, form({ consentimento: "on" }));
   assert.equal(s.calls[1].body.consent, false); assert.equal(s.calls[2].body.consent, false);

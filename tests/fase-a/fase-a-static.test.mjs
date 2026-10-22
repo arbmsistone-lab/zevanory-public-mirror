@@ -3,21 +3,21 @@
 // ZEVANORY_FASE_A_TPL (mutantes) troca o modelo usado pelo gerador.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { pythonOk, runPython } from "../../scripts/fase_a/tools.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { WAITLIST_NICHES, CONSENT_VERSION } from "../../worker/waitlist.mjs";
+import { WAITLIST_NICHES, CONSENT_VERSION, RETENTION } from "../../worker/waitlist.mjs";
 import { WAITLIST_PAGES } from "../../worker/waitlist-public.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DATA = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "fase-a-nichos.json"), "utf8"));
 const OUT = fs.mkdtempSync(path.join(os.tmpdir(), "fase-a-static-"));
-const build = execFileSync("python3", [path.join(ROOT, "scripts", "fase_a", "build_fase_a.py"), "--out", OUT, "--preview", "--no-audit"], { encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
+const build = pythonOk([path.join(ROOT, "scripts", "fase_a", "build_fase_a.py"), "--out", OUT, "--preview", "--no-audit"]);
 const PAGES = Object.fromEntries(DATA.nichos.map((n) => [n.slug, fs.readFileSync(path.join(OUT, n.page + ".html"), "utf8")]));
 const mainText = (html) => (html.match(/<main[\s\S]*<\/main>/) || [""])[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-const skeleton = (html) => (html.match(/<[^>]+>/g) || []).map((t) => t.replace(/\s(content|value|data-fase-a-nicho|data-consent-version)="[^"]*"/g, ' $1=""')).join("");
+const skeleton = (html, slug) => (html.split("/" + slug + ".css").join("/{nicho}.css").match(/<[^>]+>/g) || []).map((t) => t.replace(/\s(content|value|data-fase-a-nicho|data-consent-version)="[^"]*"/g, ' $1=""')).join("");
 
 test("gera exatamente as 3 páginas dos nichos aprovados, com os mesmos slugs no backend e nas rotas", () => {
   assert.match(build, /FASE_A_PAGES=PREVIEW/);
@@ -36,19 +36,37 @@ test("NO-GO (P13): nenhum link /comprar/ e nenhum schema.org InStock/Offer", () 
   }
 });
 
-test("consentimento LGPD: uma caixa, obrigatória, DESMARCADA, com finalidade, controlador, retenção, saída e política", () => {
+test("consentimento LGPD: caixa da lista obrigatória e DESMARCADA; convite para entrevista separado, OPCIONAL e desmarcado", () => {
   for (const [slug, html] of Object.entries(PAGES)) {
     const boxes = html.match(/<input[^>]*type="checkbox"[^>]*>/g) || [];
-    assert.equal(boxes.length, 1, slug);
-    assert.match(boxes[0], /name="consentimento"/);
-    assert.match(boxes[0], /\brequired\b/);
-    assert.doesNotMatch(boxes[0], /\bchecked\b/, slug + ": consentimento pré-marcado");
+    assert.equal(boxes.length, 2, slug);
+    const [consentBox] = boxes.filter((b) => /name="consentimento"/.test(b));
+    const [interviewBox] = boxes.filter((b) => /name="entrevista"/.test(b));
+    assert.ok(consentBox && interviewBox, slug);
+    assert.match(consentBox, /\brequired\b/);
+    assert.doesNotMatch(interviewBox, /\brequired\b/, slug + ": entrevista não pode ser obrigatória");
+    for (const b of boxes) assert.doesNotMatch(b, /\bchecked\b/, slug + ": caixa pré-marcada");
     assert.doesNotMatch(html, /<input[^>]*\bchecked\b/, slug + ": algum campo pré-marcado");
-    const consent = (html.match(/<label class="lead-consent"[\s\S]*?<\/label>/) || [""])[0];
-    for (const must of ["A. Renan Alves Moreira Bitu Ltda", "CNPJ 69.077.233/0001-99", "avisar se as vendas deste kit abrirem", "12 meses", "pedir para sair", 'href="/lista-de-espera/sair"', 'href="/privacidade"'])
+    const labels = html.match(/<label class="lead-consent[^"]*"[\s\S]*?<\/label>/g) || [];
+    assert.equal(labels.length, 2);
+    const [consent, interview] = labels;
+    for (const must of ["A. Renan Alves Moreira Bitu Ltda", "CNPJ 69.077.233/0001-99", "avisado(a) se as vendas deste kit abrirem", "só para esse aviso", "30 dias após a decisão deste teste", "no máximo 12 meses", "8 dias", 'href="/lista-de-espera/sair"', 'href="/privacidade"'])
       assert.ok(consent.includes(must), `${slug}: consentimento sem "${must}"`);
+    assert.doesNotMatch(consent, /conversa|entrevista/, slug + ": a finalidade da lista não pode incluir a entrevista");
+    assert.ok(interview.includes("Opcional") && interview.includes("não depende disso"), slug);
     assert.ok(consent.includes(`data-consent-version="${CONSENT_VERSION}"`), slug + ": versão do texto diferente da gravada pelo backend");
   }
+});
+
+test("aviso de medição fiel ao código: cookie próprio, IP/navegador transitórios em código pseudônimo, finalidade, base legal, retenção", () => {
+  for (const [slug, html] of Object.entries(PAGES)) {
+    const aviso = (html.match(/<p class="lead-note wl-aviso">[\s\S]*?<\/p>/) || [""])[0];
+    for (const must of ["identificador aleatório", "cookie próprio", "no máximo em 60 dias", "contar cada pessoa uma vez", "IP e os dados do navegador são processados de forma transitória", "código pseudônimo diário", "não são guardados em claro", "Finalidade: medir a demanda", "legítimo interesse (LGPD, art. 7º, IX)", "30 dias após a decisão do teste, no máximo em 180 dias"])
+      assert.ok(aviso.includes(must), `${slug}: aviso sem "${must}"`);
+    assert.doesNotMatch(html, /sem IP|sem cookie/i, slug);
+    assert.ok(html.includes(`<link rel="stylesheet" href="/lista-de-espera/c/${slug}.css">`), slug + ": confirmação do identificador");
+  }
+  assert.deepEqual({ ...RETENTION }, { afterDecisionDays: 30, signupMaxMonths: 12, measurementMaxDays: 180, cookieMaxDays: 60 }, "texto e código com os mesmos prazos");
 });
 
 test("formulário: só lista de espera (contato obrigatório, nome opcional, nicho fixo, 2 perguntas sim/não, honeypot)", () => {
@@ -68,7 +86,7 @@ test("formulário: só lista de espera (contato obrigatório, nome opcional, nic
 });
 
 test("mesmo modelo nos 3 nichos: estrutura idêntica, mesmas contagens e textos de tamanho equivalente (±10%)", () => {
-  const sk = Object.values(PAGES).map(skeleton);
+  const sk = Object.entries(PAGES).map(([slug, h]) => skeleton(h, slug));
   assert.equal(new Set(sk).size, 1, "estrutura HTML diferente entre nichos");
   for (const n of DATA.nichos) assert.equal(n.items.length, 4, n.slug);
   const own = DATA.nichos.map((n) => [n.product, n.h1, n.intro, n.q_recurring, ...n.items].join(" ").length);
@@ -101,10 +119,10 @@ test("fora do ar por padrão: noindex, fora da navegação/sitemap/rotas fixas, 
   for (const f of fs.readdirSync(ROOT).filter((x) => /^wrangler.*\.toml$/.test(x))) assert.doesNotMatch(fs.readFileSync(path.join(ROOT, f), "utf8"), /FASE_A_WAITLIST/, f + " liga a bandeira");
   const off = fs.mkdtempSync(path.join(os.tmpdir(), "fase-a-off-"));
   const env = { ...process.env, PYTHONDONTWRITEBYTECODE: "1" }; delete env.ZEVANORY_FASE_A_PAGES;
-  assert.match(execFileSync("python3", [path.join(ROOT, "scripts", "fase_a", "build_fase_a.py"), "--out", off], { encoding: "utf8", env }), /FASE_A_PAGES=OFF/);
+  assert.match(pythonOk([path.join(ROOT, "scripts", "fase_a", "build_fase_a.py"), "--out", off], { env }), /FASE_A_PAGES=OFF/);
   assert.deepEqual(fs.readdirSync(off), []);
-  assert.throws(() => execFileSync("python3", [path.join(ROOT, "scripts", "fase_a", "build_fase_a.py"), "--out", sp, "--preview"], { stdio: "pipe", env }), "preview nunca escreve em sales-public/");
-  assert.throws(() => execFileSync("python3", [path.join(ROOT, "scripts", "fase_a", "build_fase_a.py"), "--out", off], { stdio: "pipe", env: { ...env, ZEVANORY_FASE_A_PAGES: "on" } }), "lançamento sem a seção da política é bloqueado");
+  assert.notEqual(runPython([path.join(ROOT, "scripts", "fase_a", "build_fase_a.py"), "--out", sp, "--preview"], { env }).status, 0, "preview nunca escreve em sales-public/");
+  assert.notEqual(runPython([path.join(ROOT, "scripts", "fase_a", "build_fase_a.py"), "--out", off], { env: { ...env, ZEVANORY_FASE_A_PAGES: "on" } }).status, 0, "lançamento sem a seção da política é bloqueado");
 });
 
 test("CSP e acessibilidade básica: sem script/estilo inline, lang pt-BR, rótulos para todos os campos, paginação P03", () => {

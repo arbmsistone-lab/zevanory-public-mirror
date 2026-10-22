@@ -49,18 +49,20 @@ def render(niche: dict, data: dict, version: str) -> str:
     return out
 
 
-def skeleton(page: str) -> str:
+def skeleton(page: str, slug: str = "") -> str:
     """Estrutura sem os textos do nicho: sequência de tags com nomes de atributos, valores vazios
     exceto os que definem comportamento (type, name, required/checked como atributos booleanos)."""
     keep = re.compile(r'^(type|name|method|action|href|src|rel|class|id|for|autocomplete|maxlength|tabindex|aria-[a-z]+)$')
     def norm(tag: str) -> str:
         return re.sub(r'([a-zA-Z-]+)="([^"]*)"', lambda m: m.group(1) + '="' + (m.group(2) if keep.match(m.group(1)) and not (m.group(1) == "value") else "") + '"', tag)
+    if slug:
+        page = page.replace("/" + slug + ".css", "/{nicho}.css")
     return "".join(norm(t) for t in re.findall(r"<[^>]+>", page))
 
 
 def audit(pages: dict[str, str], data: dict, version: str) -> list[str]:
     problems: list[str] = []
-    skel = {slug: skeleton(p) for slug, p in pages.items()}
+    skel = {slug: skeleton(p, slug) for slug, p in pages.items()}
     if len(set(skel.values())) != 1:
         problems.append("os 3 nichos não usam o mesmo modelo (estrutura diferente)")
     for slug, p in pages.items():
@@ -72,15 +74,21 @@ def audit(pages: dict[str, str], data: dict, version: str) -> list[str]:
         if 'name="robots" content="noindex,nofollow"' not in p:
             problems.append(f"{slug}: falta noindex")
         boxes = re.findall(r'<input[^>]*type="checkbox"[^>]*>', p)
-        if len(boxes) != 1 or "checked" in boxes[0] or 'name="consentimento"' not in boxes[0] or "required" not in boxes[0]:
-            problems.append(f"{slug}: consentimento ausente, opcional ou pré-marcado")
+        consent = [b for b in boxes if 'name="consentimento"' in b]
+        interview = [b for b in boxes if 'name="entrevista"' in b]
+        if len(boxes) != 2 or len(consent) != 1 or "required" not in consent[0]:
+            problems.append(f"{slug}: consentimento da lista ausente ou opcional")
+        if len(interview) != 1 or "required" in interview[0]:
+            problems.append(f"{slug}: convite para entrevista ausente ou obrigatório")
+        if any(re.search(r"\bchecked\b", b) for b in boxes):
+            problems.append(f"{slug}: caixa pré-marcada")
         if re.search(r"<input[^>]*\bchecked\b", p):
             problems.append(f"{slug}: campo pré-marcado")
         if 'href="/privacidade"' not in p or 'href="/lista-de-espera/sair"' not in p:
             problems.append(f"{slug}: falta link da Política de Privacidade ou de saída")
         if f'data-consent-version="{version}"' not in p:
             problems.append(f"{slug}: versão do consentimento diferente da do backend")
-        for must in ("CNPJ 69.077.233/0001-99", "12 meses", data["price_label"]):
+        for must in ("CNPJ 69.077.233/0001-99", "12 meses", "30 dias após a decisão", "legítimo interesse", "não são guardados em claro", "180 dias", "8 dias", data["price_label"]):
             if must not in p:
                 problems.append(f"{slug}: falta '{must}'")
     return problems
