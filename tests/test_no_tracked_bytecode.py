@@ -2,7 +2,11 @@
 
 Cada mutante monta um repositório git temporário (sem rede, sem commit, sem identidade) e prova que o guarda
 falha quando deveria. O último teste roda o guarda contra este próprio repositório.
+Portável (AVAL Sol): roda igual em Linux e Windows (o CI repo-hygiene-bytecode roda em ubuntu-latest e
+windows-latest com contagem exata); nenhum teste aqui é Linux-only.
 """
+import os
+import stat
 import shutil
 import subprocess
 import sys
@@ -17,8 +21,15 @@ GUARD = ROOT / "scripts/ci/no_tracked_bytecode.py"
 WORKFLOW = ROOT / ".github/workflows/repo-hygiene-bytecode.yml"
 
 
-def run(*args, cwd=None):
-    return subprocess.run(list(args), cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL, check=False)
+def run(*args, cwd=None, env=None):
+    return subprocess.run(list(args), cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          stdin=subprocess.DEVNULL, check=False, env={**os.environ, **(env or {})})
+
+
+def _force_remove(func, path, _exc):
+    # Windows: objetos do .git são somente leitura; tira o atributo e tenta de novo.
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
 
 
 class NoTrackedBytecode(unittest.TestCase):
@@ -30,7 +41,10 @@ class NoTrackedBytecode(unittest.TestCase):
         self.add(".gitignore", "ok.py")
 
     def tearDown(self):
-        shutil.rmtree(self.tmp, ignore_errors=True)
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(self.tmp, onexc=_force_remove)
+        else:
+            shutil.rmtree(self.tmp, onerror=_force_remove)
 
     def add(self, *paths, force=False):
         r = run("git", "add", *(["-f"] if force else []), "--", *paths, cwd=self.tmp)
@@ -78,8 +92,11 @@ class NoTrackedBytecode(unittest.TestCase):
         self.assertEqual(self.guard().returncode, 0)
 
     def test_not_a_git_repo_fails_closed(self):
+        # GIT_CEILING_DIRECTORIES: mesmo que o diretório temporário esteja dentro de outro repositório (comum em
+        # máquinas de desenvolvimento), o git não sobe além dele => "não é repositório" de verdade.
         with tempfile.TemporaryDirectory() as d:
-            self.assertEqual(run(sys.executable, str(GUARD), "--repo", d).returncode, 1)
+            r = run(sys.executable, str(GUARD), "--repo", d, env={"GIT_CEILING_DIRECTORIES": str(Path(d).parent)})
+            self.assertEqual(r.returncode, 1, r.stdout)
 
     def test_workflow_runs_on_every_pull_request_without_secrets(self):
         text = WORKFLOW.read_text(encoding="utf-8")
@@ -89,7 +106,8 @@ class NoTrackedBytecode(unittest.TestCase):
         self.assertFalse((on["pull_request"] or {}).get("paths"), "sem filtro de caminho: o guarda roda em toda PR")
         self.assertEqual(doc["permissions"], {"contents": "read"})
         self.assertNotIn("secrets.", text)
-        self.assertIn("python3 scripts/ci/no_tracked_bytecode.py", text)
+        self.assertEqual(doc["jobs"]["no-tracked-bytecode"]["strategy"]["matrix"]["os"], ["ubuntu-latest", "windows-latest"])
+        self.assertIn("python scripts/ci/no_tracked_bytecode.py", text)
         self.assertIn("tests.test_no_tracked_bytecode", text)
 
     def test_this_repository_is_clean(self):

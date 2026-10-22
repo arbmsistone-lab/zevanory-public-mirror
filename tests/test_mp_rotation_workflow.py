@@ -9,12 +9,22 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# AVAL Sol (portabilidade, #873): os testes que EXECUTAM os passos bash do workflow com curl/npx falsos são
+# Linux-only por natureza: os falsos são scripts com shebang POSIX, dependem de bash/jq/node como no runner e o
+# workflow real só roda em ubuntu-latest. No Linux eles rodam sempre (o mp-rotation-contract exige 71 e zero
+# pulados); fora do Linux aparecem como pulados com esta razão explícita, nunca como verde silencioso.
+LINUX_ONLY = unittest.skipUnless(
+    sys.platform.startswith("linux"),
+    "LINUX_ONLY: executa o passo bash do workflow com curl/npx falsos (shebang POSIX, bash); o workflow roda só em ubuntu-latest",
+)
 WORKFLOW = Path(os.environ.get("MP_ROTATION_WORKFLOW", ROOT / ".github/workflows/mercadopago-production-token-rotate.yml"))
 
 
@@ -158,7 +168,10 @@ open(out, 'w').write('{}'); print('404', end='')
                 # Adversarial (Sol 051-F1): wrangler hostil ecoa stdin, o token do ambiente e um Bearer falso.
                 leak = ('v="$(cat 2>/dev/null || true)"; echo "stdin=$v env=$CLOUDFLARE_API_TOKEN Authorization: Bearer FAKE_TOKEN_CANARY_7f3a"; '
                         'echo "X [ERROR] boom [code: 10215]" >&2\n')
-            (d / "npx").write_text("#!/bin/sh\necho \"npx $*\" >> %s/npx.log\n%sexit %d\n" % (d, leak, npx_rc))
+            # O wrangler real lê o segredo da entrada padrão; o falso também consome a entrada. Sem isso,
+            # "printf token | npx" sob pipefail falhava às vezes com SIGPIPE (corrida: o falso saía antes do printf).
+            drain = "" if npx_leak else "cat >/dev/null 2>&1 || true\n"
+            (d / "npx").write_text("#!/bin/sh\n%secho \"npx $*\" >> %s/npx.log\n%sexit %d\n" % (drain, d, leak, npx_rc))
             for f in ("curl", "npx"):
                 (d / f).chmod(0o755)
             env = {"PATH": f"{d}:{os.environ['PATH']}", "GITHUB_ENV": str(d / "ghenv"),
@@ -166,6 +179,9 @@ open(out, 'w').write('{}'); print('404', end='')
                    "CLOUDFLARE_ACCOUNT_ID": "acc", **env_extra}
             # stdin fechado e limite por passo: um comando que leia a entrada padrão nunca prende a suíte
             # (travamento observado no ambiente do Sol, Ordem 049, e no npx adversarial).
+            # Isolamento: os passos usam caminhos fixos em /tmp; cada execução usa o próprio diretório temporário,
+            # senão execuções simultâneas da suíte (outros worktrees/agentes) disputam /tmp/deployments-new.json.
+            run = run.replace("/tmp/", f"{d}/")
             p = subprocess.run(["bash", "-c", run], env=env, capture_output=True, text=True,
                                stdin=subprocess.DEVNULL, timeout=120)
             npx_log = (d / "npx.log").read_text() if (d / "npx.log").exists() else ""
@@ -175,6 +191,7 @@ open(out, 'w').write('{}'); print('404', end='')
     SEARCH_OK = ["200", {"results": [], "paging": {"total": 0}}]
     METHODS_OK = ["200", [{"id": "pix"}, {"id": "visa"}]]
 
+    @LINUX_ONLY
     @unittest.skipUnless(shutil.which("jq"), "jq ausente")
     def test_mp02_each_response_is_validated_on_its_own(self):
         needle = "/v1/payment_methods"
@@ -200,6 +217,7 @@ open(out, 'w').write('{}'); print('404', end='')
             self.assertIn("MP_OPERATIONAL_CHECK", out, name)
             self.assertNotIn("MERCADOPAGO_OPERATIONAL_READ=PASS", out, name)
 
+    @LINUX_ONLY
     @unittest.skipUnless(shutil.which("jq"), "jq ausente")
     def test_mp03_rollback_certifies_by_readback(self):
         prev, other = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
@@ -230,6 +248,7 @@ open(out, 'w').write('{}'); print('404', end='')
         self.assertIn("MP_ROLLBACK_READBACK_FAIL", out)
 
 
+    @LINUX_ONLY
     @unittest.skipUnless(shutil.which("jq"), "jq ausente")
     def test_10215_precondition_latest_version_must_be_the_deployed_one(self):
         # Achado do ensaio B01 (run 39643799156): depois de um rollback, secret put => Cloudflare 10215.
@@ -257,6 +276,7 @@ open(out, 'w').write('{}'); print('404', end='')
         rc, out, _ = self._run_step(needle, bad["versions_unparseable"], {})
         self.assertIn("MP_LATEST_VERSION::not resolvable", out)
 
+    @LINUX_ONLY
     @unittest.skipUnless(shutil.which("jq"), "jq ausente")
     def test_10215_latest_is_chosen_by_number_not_by_list_order(self):
         # Contestação Sol 038-F1: lista fora de ordem não pode gerar falso PASS.
@@ -326,6 +346,7 @@ open(out, 'w').write('{}'); print('404', end='')
         doc = yaml.safe_load(self.text)
         self.assertEqual(doc["permissions"], {"contents": "read"})
 
+    @LINUX_ONLY
     @unittest.skipUnless(shutil.which("jq") and shutil.which("node"), "jq/node ausentes")
     def test_check_only_baseline_requires_fresh_token_ok_and_sales_closed(self):
         import datetime as _dt
@@ -381,6 +402,7 @@ open(out, 'w').write('{}'); print('404', end='')
     def dep(cls, v):
         return ["200", {"result": {"deployments": [{"versions": [{"version_id": v, "percentage": 100}]}]}}]
 
+    @LINUX_ONLY
     @unittest.skipUnless(shutil.which("jq"), "jq ausente")
     def test_r2_rotate_records_the_version_that_holds_the_new_token(self):
         needle = "secret put MERCADOPAGO_ACCESS_TOKEN"
@@ -395,6 +417,7 @@ open(out, 'w').write('{}'); print('404', end='')
             self.assertIn("NEW_SECRET_VERSION_UNREAD", out, name)
             self.assertNotIn("NEW_SECRET_VERSION=", out.replace("NEW_SECRET_VERSION_UNREAD", ""), name)
 
+    @LINUX_ONLY
     @unittest.skipUnless(shutil.which("jq"), "jq ausente")
     def test_r2_automatic_return_prints_the_recovery_target(self):
         needle = 'rollback "$PREV_VERSION_ID"'
@@ -417,6 +440,7 @@ open(out, 'w').write('{}'); print('404', end='')
         rc, out, _ = self._run_step(needle, {**base, "/versions": versions([{"id": self.A, "number": 681}])}, {"PREV_VERSION_ID": self.A})
         self.assertIn("RECOVERY_TARGET_VERSION=none", out)
 
+    @LINUX_ONLY
     @unittest.skipUnless(shutil.which("jq"), "jq ausente")
     def test_wrangler_output_never_reaches_the_production_log(self):
         # Sol 051-F1: a saída do wrangler (secret put e rollback) fica em arquivo; no log só códigos numéricos.
