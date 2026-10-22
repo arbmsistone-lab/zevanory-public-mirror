@@ -5,7 +5,7 @@
 //   linked across days.
 // * Every hour the summary (last 30 days, per product) is written to the shared KV where the
 //   control panel reads it to compute the paid-ads readiness metric.
-import { createSqlFunnelEventStore, emitFunnelEvent, FUNNEL_EVENT_NAMES } from "./funnel-events.mjs";
+import { createSqlFunnelEventStore, emitFunnelEvent, FUNNEL_EVENT_NAMES, hashFunnelVisitor } from "./funnel-events.mjs";
 
 export const FUNNEL_PRODUCTS = Object.freeze({
   "ia-na-pratica": { sku: "ZEV-IA-011", name: "IA na Prática" },
@@ -64,6 +64,9 @@ export async function ensureFunnelSchema(sql) {
     occurred_at timestamptz not null, page text not null, product text, source text,
     visitor_hash text not null, is_test boolean not null default false, received_at timestamptz not null default now())`, []);
   await sql.query("create index if not exists zevanory_funnel_events_visitor_idx on zevanory_funnel_events (visitor_hash, is_test, occurred_at)", []);
+  await sql.query(`create table if not exists zevanory_funnel_event_rate (
+    visitor_hash text not null, bucket bigint not null, event_count integer not null,
+    primary key (visitor_hash, bucket))`, []);
   schemaReady = true;
 }
 
@@ -275,12 +278,14 @@ export async function handleFunnel(request, env, { sqlFactory, ctx } = {}) {
     try { body = await request.json(); } catch { return new Response(null, { status: 400 }); }
     const event = body?.event;
     if (!event || !isTrackedPage(event.page) || !sqlFactory) return new Response(null, { status: 204 });
+    if (typeof env.EVENT_HASH_SECRET !== "string" || env.EVENT_HASH_SECRET.length < 32) {
+      return new Response(null, { status: 503, headers: { "cache-control": "no-store" } });
+    }
     const userAgent = String(body.ua || "").slice(0, 300);
     const ip = String(body.ip || "").slice(0, 128);
     const now = Date.now();
     const day = new Date(now).toISOString().slice(0, 10);
-    const salt = String(env.RESEND_API_KEY || env.DATABASE_URL || "zevanory");
-    const visitorHash = await sha256Hex(`${day}|${ip}|${userAgent}|${salt}`);
+    const visitorHash = await hashFunnelVisitor(day, ip, userAgent, env.EVENT_HASH_SECRET);
     const production = String(env.MERCADOPAGO_ENV || "").toLowerCase() === "production";
     const testMode = !production;
     const sql = sqlFactory(env.DATABASE_URL);

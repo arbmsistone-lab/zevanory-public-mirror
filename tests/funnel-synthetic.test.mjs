@@ -28,13 +28,20 @@ function event(name, index, extra = {}) {
 function memoryStore() {
   const events = new Map();
   const metrics = Object.create(null);
+  const rates = new Map();
   return {
     events,
     metrics,
     async hasEvent(id) { return events.has(id); },
     async latestEvent(hash, testMode) {
-      return [...events.values()].reverse()
-        .find((entry) => entry.visitorHash === hash && entry.testMode === testMode)?.event || null;
+      const accepted = [...events.values()].filter((entry) => entry.visitorHash === hash && entry.testMode === testMode);
+      return accepted.sort((a, b) => FUNNEL_EVENT_NAMES.indexOf(b.event.name) - FUNNEL_EVENT_NAMES.indexOf(a.event.name))[0]?.event || null;
+    },
+    async consumeRateLimit(hash, bucket, limit) {
+      const key = `${hash}:${bucket}`;
+      const count = (rates.get(key) || 0) + 1;
+      rates.set(key, count);
+      return count <= limit;
     },
     async insertEvent(value, visitorHash, testMode) {
       if (events.has(value.event_id)) return false;
@@ -107,6 +114,16 @@ test("traffic without JavaScript and anomalous event rates are rejected", async 
   }
   assert.deepEqual(last, { accepted: false, reason: "rate_limited" });
   assert.equal(store.events.size, 20);
+});
+
+test("repeated visits do not regress the funnel stage or block checkout", async () => {
+  const store = memoryStore();
+  const hash = "1".repeat(64);
+  assert.equal((await emit(store, event("visit", 80), hash)).accepted, true);
+  assert.equal((await emit(store, event("lead", 81), hash)).accepted, true);
+  assert.equal((await emit(store, event("visit", 82), hash)).accepted, true);
+  assert.equal((await emit(store, event("checkout_started", 83), hash)).accepted, true);
+  assert.equal((await store.latestEvent(hash, true)).name, "checkout_started");
 });
 
 test("production checkout and payment events stay disabled while sales are closed", async () => {

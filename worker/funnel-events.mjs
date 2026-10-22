@@ -11,12 +11,23 @@ const EVENT_FIELDS = new Set(FUNNEL_EVENT_SCHEMA.properties);
 const BOT_UA = /bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|headless|lighthouse|monitor|curl|wget|python|node-fetch|go-http|axios|okhttp|uptime|pingdom|semrush|ahrefs|zevanory/i;
 const RATE_WINDOW_MS = 60_000;
 const MAX_EVENTS_PER_WINDOW = 20;
-const rateWindows = new Map();
-let lastRateCleanup = -1;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const LABEL = /^[a-z0-9_-]{1,70}$/;
 const DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+export async function hashFunnelVisitor(day, ip, userAgent, secret) {
+  if (typeof secret !== "string" || secret.length < 32) throw new Error("event_hash_secret_unavailable");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${day}|${ip}|${userAgent}`));
+  return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 export function validateFunnelEvent(event) {
   if (!event || typeof event !== "object" || Array.isArray(event)) return false;
@@ -33,7 +44,7 @@ export function validateFunnelEvent(event) {
   return true;
 }
 
-function isNextStage(previous, current) {
+export function isNextStage(previous, current) {
   if (current === "visit") return true;
   return FUNNEL_EVENT_ORDER[FUNNEL_EVENT_ORDER.indexOf(previous) + 1] === current;
 }
@@ -59,16 +70,7 @@ export async function emitFunnelEvent(event, {
   if (await store.hasEvent(event.event_id)) return { accepted: false, reason: "duplicate" };
 
   const bucket = Math.floor(now / RATE_WINDOW_MS);
-  const rateKey = `${visitorHash}:${bucket}`;
-  if (bucket > lastRateCleanup) {
-    for (const [key, window] of rateWindows) if (window.bucket < bucket - 1) rateWindows.delete(key);
-    lastRateCleanup = bucket;
-  }
-  const current = rateWindows.get(rateKey) || { bucket, count: 0 };
-  current.count += 1;
-  rateWindows.set(rateKey, current);
-  if (rateWindows.size > 50_000) rateWindows.delete(rateWindows.keys().next().value);
-  if (current.count > MAX_EVENTS_PER_WINDOW) return { accepted: false, reason: "rate_limited" };
+  if (!await store.consumeRateLimit(visitorHash, bucket, MAX_EVENTS_PER_WINDOW)) return { accepted: false, reason: "rate_limited" };
 
   const previous = await store.latestEvent(visitorHash, testMode);
   if (!isNextStage(previous?.name, event.name)) return { accepted: false, reason: "invalid_order" };
@@ -85,10 +87,23 @@ export function createSqlFunnelEventStore(sql) {
     },
     async latestEvent(visitorHash, testMode) {
       const rows = await sql.query(
-        "select event_name as name from zevanory_funnel_events where visitor_hash=$1 and is_test=$2 order by received_at desc limit 1",
+        `select event_name as name from zevanory_funnel_events where visitor_hash=$1 and is_test=$2
+         order by case event_name when 'visit' then 0 when 'lead' then 1 when 'checkout_started' then 2
+           when 'paid' then 3 when 'delivered' then 4 when 'refunded' then 5 else -1 end desc limit 1`,
         [visitorHash, testMode],
       );
       return rows?.[0] || null;
+    },
+    async consumeRateLimit(visitorHash, bucket, limit) {
+      const rows = await sql.query(
+        `insert into zevanory_funnel_event_rate (visitor_hash, bucket, event_count) values ($1, $2, 1)
+         on conflict (visitor_hash, bucket) do update
+           set event_count = zevanory_funnel_event_rate.event_count + 1
+         where zevanory_funnel_event_rate.event_count < $3 returning event_count`,
+        [visitorHash, bucket, limit],
+      );
+      await sql.query("delete from zevanory_funnel_event_rate where bucket < $1", [bucket - 1]);
+      return Boolean(rows?.length);
     },
     async insertEvent(event, visitorHash, testMode) {
       const rows = await sql.query(
