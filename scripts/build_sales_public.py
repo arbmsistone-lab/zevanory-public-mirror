@@ -269,11 +269,20 @@ def apply_approved_overlay() -> None:
         html = re.sub(r"suporte@zevanory\.api\.br( ou | or |, | e )suporte@zevanory\.api\.br", "suporte@zevanory.api.br", html)
         if 'src="/whatsapp-contact.js"' not in html:
             html = html.replace("</body>", '<script src="/whatsapp-contact.js" defer></script></body>', 1)
+        # P03 (decisão do proprietário 22/10/2026 09:06): nenhuma barra de rolagem em nenhuma página
+        # pública, inclusive as jurídicas, por paginação em blocos. Script externo (CSP script-src
+        # 'self'), depois do whatsapp-contact.js para paginar o DOM já completo; sem JS a página rola.
+        if 'href="/paginacao.css"' not in html:
+            html = html.replace("</head>", '<link rel="stylesheet" href="/paginacao.css"></head>', 1)
+        if 'src="/paginacao.js"' not in html:
+            html = html.replace("</body>", '<script src="/paginacao.js" defer></script></body>', 1)
         path.write_text(html, encoding="utf-8")
     shutil.copy2(ROOT / "legal.css", OUT / "legal.css")
     for asset in ("robots.txt", "whatsapp-contact.js"):
         shutil.copy2(OVERLAY / asset, OUT / asset)
     shutil.copy2(ROOT / "ferramentas.js", OUT / "ferramentas.js")
+    for asset in ("paginacao.js", "paginacao.css"):
+        shutil.copy2(ROOT / asset, OUT / asset)
     shutil.copy2(OVERLAY / "llms.txt", OUT / "llms.txt")
 
     controller = (OUT / "privacidade.html").read_text(encoding="utf-8")
@@ -287,6 +296,10 @@ def apply_approved_overlay() -> None:
             problems.append(f"{html_file.name}: inline style blocked by CSP")
         if re.search(r"<script(?![^>]*\bsrc=)(?![^>]*application/ld\+json)[^>]*>", text):
             problems.append(f"{html_file.name}: inline script blocked by CSP")
+    for slug in HTML_ROUTES:
+        page = (OUT / f"{slug}.html").read_text(encoding="utf-8")
+        if page.count('src="/paginacao.js"') != 1 or page.count('href="/paginacao.css"') != 1:
+            problems.append(f"{slug}: P03 pagination assets missing")
     for slug in PRODUCTS:
         page = (OUT / f"{slug}.html").read_text(encoding="utf-8")
         if not re.search(r"Preço de tabela: R\$ \d+", page):

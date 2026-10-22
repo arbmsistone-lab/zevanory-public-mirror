@@ -1,0 +1,75 @@
+/* ZEVANORY P03: layout paginado (sem nenhuma barra de rolagem). Só vale com html.pg, classe que
+   paginacao.js coloca depois de montar os blocos; sem JavaScript a página segue rolável como antes.
+   Nada aqui altera texto: apenas estrutura visual dos blocos e dos controles. */
+html.pg,html.pg body{height:100%;max-height:100vh;overflow:hidden!important}
+html.pg body{overflow:clip!important;display:flex!important;flex-direction:column;height:100vh;height:100dvh}
+html.pg body>*{flex:none}
+html.pg body>main{flex:1 1 0;min-height:0;width:100%;display:flex;flex-direction:column;overflow:clip!important;padding-bottom:0;scrollbar-gutter:auto}
+/* Palco: área visível do bloco. overflow:clip não cria contêiner de rolagem (nem por script/foco). */
+html.pg .pg-palco{flex:1 1 0;min-height:0;position:relative;overflow:clip;overflow-clip-margin:6px}
+html.pg .pg-palco:focus{outline:none}
+html.pg [data-pg-fora]{visibility:hidden}
+html.pg .pg-sem-transicao,html.pg .pg-sem-transicao *{transition:none!important}
+/* Montagem/troca de modo: sem transições herdadas (o modo prefers-reduced-motion do product.css usa
+   "transition: all .01ms", que deixava o <main> com altura 0 na primeira medição e quebrava #bloco-N). */
+html.pg-montando,html.pg-montando *{transition:none!important}
+/* Sem rolagem não há "grudar": elementos sticky voltam ao fluxo normal para a medição ser exata. */
+html.pg .pg-trilho *{scroll-margin:0}
+html.pg .pg-trilho .problem-copy{position:static}
+/* Mais altura útil por bloco: o hero não precisa de 690px mínimos e o rodapé fica compacto. */
+html.pg .pg-trilho .hero{min-height:0;align-items:start}
+/* Título do hero e imagens nunca mais altos que a área útil do bloco (--pg-util, medida pelo script):
+   em 1536x730 o h1 de 6 linhas a 6,6rem passava de 600px. A imagem é contida sem distorção. */
+/* Piso de 2,5rem só cai em tela com menos de 400 px de altura (10vh < 40 px: zoom 200%, paisagem). */
+html.pg .pg-trilho .hero h1,html.pg .pg-trilho .catalog-hero h1{font-size:clamp(min(2.5rem,10vh),min(7vw,10vh),6.6rem)}
+html.pg .pg-trilho img{max-height:var(--pg-util,70vh);object-fit:contain}
+/* content-visibility:auto usa altura estimada (700px) fora da tela e muda de tamanho ao aparecer:
+   a paginação precisa da altura real desde o início. Espaçamento vertical menor entre seções. */
+html.pg .pg-trilho .section{content-visibility:visible;contain-intrinsic-size:none;padding-top:40px;padding-bottom:40px}
+html.pg .site-footer .footer-inner{min-height:0;padding-top:8px;padding-bottom:8px}
+html.pg .pg-fixos{flex:none}
+html.pg .pg-fixos .buy-bar{position:static}
+/* Modo corpo (tela baixa, ver paginacao.js): cabeçalho, <main> e rodapé dentro do trilho. Sem rolagem
+   nada "gruda": cabeçalho e barra de compra voltam ao fluxo; o <main> recorta sem virar contêiner de rolagem. */
+html.pg .pg-trilho .site-header,html.pg .pg-trilho .buy-bar{position:static}
+html.pg .pg-trilho>main{overflow:clip}
+.pg-controles{display:none}
+html.pg .pg-controles{flex:none;display:flex;flex-wrap:nowrap;align-items:center;justify-content:center;gap:8px;padding:4px 12px;border-top:1px solid var(--line,#16304a);position:relative}
+.pg-botao,.pg-resumo{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;min-width:44px;padding:0 16px;border-radius:12px;border:1px solid var(--line-strong,#2a4a6a);background:var(--surface,#07111d);color:var(--text,#f5f8fc);font:inherit;font-weight:700;font-size:.92rem;white-space:nowrap;cursor:pointer}
+/* Botões não encolhem abaixo do rótulo: se não cabe, o <nav> transborda e paginacao.js troca para o rótulo curto. */
+.pg-botao{flex:none}
+.pg-botao[aria-disabled="true"]{opacity:.55;cursor:default}
+.pg-botao:focus-visible,.pg-resumo:focus-visible,.pg-lista a:focus-visible,.pg-janela:focus-visible{outline:2px solid var(--brand-3,#21e6f3);outline-offset:2px}
+/* O índice se posiciona pelo <nav> inteiro (não pelo botão), para usar toda a largura da tela. */
+.pg-indice{position:static}
+.pg-resumo{list-style:none;white-space:nowrap}
+.pg-resumo::-webkit-details-marker{display:none}
+.pg-lista{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);z-index:40;box-sizing:border-box;width:min(calc(100% - 16px),400px);display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:4px;margin:0;padding:8px;list-style:none;border:1px solid var(--line-strong,#2a4a6a);border-radius:12px;background:var(--surface,#07111d);box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.pg-lista a,.pg-janela{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;border-radius:8px;color:var(--text,#f5f8fc);text-decoration:none;font-weight:700}
+.pg-janela{width:100%;padding:0;border:1px solid var(--line-strong,#2a4a6a);background:transparent;font:inherit;font-size:1.2rem;cursor:pointer}
+.pg-janela[aria-disabled="true"]{opacity:.45;cursor:default}
+.pg-lista a[aria-current="true"]{background:var(--line-strong,#2a4a6a)}
+.pg-sr{position:absolute!important;width:4px!important;height:4px!important;padding:0!important;margin:0!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}
+@media(max-width:420px){.pg-botao{padding:0 8px}.pg-controles{gap:4px}}
+/* Rótulos adaptativos (paginacao.js mede se cabem; sem breakpoint): por extenso por padrão; com
+   .pg-curtos, a forma curta visível ("Ant"/"Próx", prefixo do nome acessível) e o resumo pode quebrar em
+   2 linhas dentro dos 44 px. Nunca só ícone. */
+/* Sem transição nos controles: com "transition: all" (modo reduced-motion do product.css) a medição logo
+   após trocar .pg-curtos leria o padding antigo e alternaria rótulo longo/curto a cada bloco. */
+.pg-controles,.pg-controles *{transition:none!important}
+.pg-curto{display:none}
+.pg-controles.pg-curtos .pg-curto{display:inline}
+.pg-controles.pg-curtos .pg-longo{position:absolute!important;width:4px!important;height:4px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important}
+.pg-controles.pg-curtos{padding:4px;gap:4px}
+.pg-controles.pg-curtos .pg-botao{padding:0 4px;gap:4px}
+.pg-controles.pg-curtos .pg-indice{min-width:0;flex:0 1 auto}
+.pg-controles.pg-curtos .pg-resumo{padding:0 8px;min-width:0;white-space:normal;text-align:center;line-height:1.1}
+/* Impressão: todo o conteúdo, sem paginação nem controles (também sem JavaScript). */
+@media print{
+  html,body,html.pg,html.pg body{height:auto!important;max-height:none!important;overflow:visible!important;display:block!important}
+  main,html.pg body>main{display:block!important;overflow:visible!important;height:auto!important;min-height:0!important}
+  html.pg .pg-palco{overflow:visible!important}
+  html.pg .pg-trilho{transform:none!important;clip-path:none!important}
+  html.pg [data-pg-fora]{visibility:visible!important}
+  .pg-controles,html.pg .pg-controles,.pg-sr{display:none!important}
+}
