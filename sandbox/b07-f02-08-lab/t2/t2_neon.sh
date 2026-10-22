@@ -88,9 +88,12 @@ services:
 YML
 DC+=(-f "$NEON_DIR/docker-compose.s3.yml")
 obs S3_SUBSTITUTO "minio=$MINIO_IMAGE sha256(docker-compose.s3.yml)=$(sha256sum "$NEON_DIR/docker-compose.s3.yml" | cut -d' ' -f1)"
-docker tag "$(lock COMPUTE)" ghcr.io/neondatabase/compute-node-v16:b07pinned
-docker build -q --build-arg REPOSITORY=ghcr.io/neondatabase --build-arg COMPUTE_IMAGE=compute-node-v16 \
-  --build-arg TAG=b07pinned -t built-compute "$NEON_DIR/compute_wrapper" > /dev/null || infra_fail "build compute_wrapper"
+# Dockerfile do compute_wrapper oficial, só com o FROM trocado pelo digest fixado (ARG TAG não aceita digest).
+sed "s#^FROM \$REPOSITORY/\${COMPUTE_IMAGE}:\$TAG#FROM $(lock COMPUTE)#" "$NEON_DIR/compute_wrapper/Dockerfile" > "$W/Dockerfile.b07"
+grep -q "^FROM $(lock COMPUTE)\$" "$W/Dockerfile.b07" || infra_fail "Dockerfile.b07 sem FROM fixado"
+obs DOCKERFILE_B07 "sha256 original=$(sha256sum "$NEON_DIR/compute_wrapper/Dockerfile" | cut -d' ' -f1) b07=$(sha256sum "$W/Dockerfile.b07" | cut -d' ' -f1)"
+docker build --progress=plain -f "$W/Dockerfile.b07" -t built-compute "$NEON_DIR/compute_wrapper" > "$W/build.log" 2>&1 \
+  || infra_fail "build compute_wrapper: $(grep -Ei 'error|failed' "$W/build.log" | tail -5 | tr '\n' ' ' | cut -c1-600)"
 
 export TENANT_ID=$(openssl rand -hex 16) TIMELINE_ID=$(openssl rand -hex 16)
 IDENT=$(cat /proc/sys/kernel/random/uuid)
