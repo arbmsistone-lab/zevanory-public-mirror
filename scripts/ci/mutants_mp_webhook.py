@@ -12,8 +12,9 @@ Classificação (exigência do auditor Sol): a saída TAP de cada suíte é anal
   * INCONCLUSIVE — qualquer outra coisa: erro de transporte/infra (ECONNRESET, fetch failed, ECONNREFUSED, EPIPE,
                    conexão psql recusada, timeout, hook falho, cancelamento) em QUALQUER suíte, só falhas sem
                    asserção, código de saída != 0 sem falha TAP, contagem incompleta, ou asserção apenas fora dos
-                   testes esperados. (Falhas funcionais sem asserção — p.ex. TypeError do handler mutado ou violação
-                   de chave única do PostgreSQL — são relatadas, mas sozinhas não matam o mutante.)
+                   testes esperados, ou QUALQUER falha sem asserção que não esteja na allowlist causal OTHER_ALLOW
+                   (mutante, suíte, teste, regex da assinatura do erro) — uma falha não prevista pode ser defeito novo
+                   do harness e não pode ser mascarada por uma asserção esperada em outro teste (auditoria Sol B05-B).
                    É repetido até RETRIES vezes; se continuar INCONCLUSIVE o job FALHA (nunca conta como KILLED).
 A linha de base (código sem mutação) precisa passar com as contagens exatas e SEM assinatura de infra.
 Saída por mutante: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE reason=... unit_fail= dedupe_pg_fail= http_pg_fail=`
@@ -26,6 +27,11 @@ Modos:
       Meta-teste: NENHUMA mutação; o harness HTTP injeta um ECONNRESET real (T4_INJECT_ECONNRESET=1).
       Passa (rc 0) somente se a classificação for INCONCLUSIVE em todas as tentativas (nunca KILLED) e a
       injeção tiver de fato ocorrido.
+  python3 scripts/ci/mutants_mp_webhook.py --self-check-other
+      Meta-teste: mutante REAL M2_janela_60min (asserção esperada S4/M20) + TypeError injetado no teste "M10 "
+      (T4_INJECT_TYPEERROR=M10), fora da allowlist. Passa só se INCONCLUSIVE 3/3 (motivo falha_nao_prevista).
+  python3 scripts/ci/mutants_mp_webhook.py --self-check-allowlist
+      Meta-teste: M6b e M4b (cujas falhas sem asserção estão na allowlist) continuam KILLED, citando a entrada usada.
 Requer T4_PG_HOST (sem ele as suítes PG pulariam e um mutante "sobreviveria" sem ter sido testado).
 """
 import hashlib, os, re, subprocess, sys
@@ -78,6 +84,48 @@ EXPECT = {
     "M9_comparacao_nao_constante": {"unit": ("S11 ",)},
     "M10_dedupe_vira_upsert": {"dedupe_pg": ("D1 ", "D2 ", "D3 "), "http_pg": ("M3+M8 ", "M3 ", "M22 ", "M11a ")},
 }
+
+
+# Allowlist CAUSAL de falhas sem asserção (nem infra). Cada entrada vale só para (mutante, suíte, prefixo do teste)
+# e só se o bloco TAP da falha casar com a regex — e é justificada pelo MECANISMO da mutação. Qualquer falha sem
+# asserção fora desta lista => INCONCLUSIVE (repetido; persistente => job falha). Observadas no runner (run
+# 39825254633) e localmente (PostgreSQL 16.15) com o mesmo texto.
+OTHER_ALLOW = [
+    {
+        "id": "AL1_M4b_http_M15_TypeError",
+        "mutant": "M4b_manifesto_ignora_request_id", "suite": "http_pg", "test": "M15 ",
+        "regex": r"error: \"Cannot read properties of undefined \(reading '1'\)\"[\s\S]*name: 'TypeError'",
+        # M4b tira o request-id do manifesto do Worker; o harness assina o manifesto oficial (com request-id), então
+        # todo webhook válido vira 401. O M15 lê `fulfillment(o.id)[1]` logo após o 1º webhook SEM asserção antes
+        # (o 1º webhook simula falha do provedor e o status não é verificado): sem linha em service_fulfillment,
+        # `fulfillment()` é undefined e o acesso `[1]` lança exatamente este TypeError.
+        "why": "401 em todo webhook valido => nenhuma linha service_fulfillment => fulfillment(o.id)[1] em undefined",
+    },
+    {
+        "id": "AL2_M6b_dedupe_D3_duplicate_key",
+        "mutant": "M6b_sem_on_conflict", "suite": "dedupe_pg", "test": "D3 ",
+        "regex": r"Command failed: psql [\s\S]*duplicate key value violates unique constraint \\?\"financial_events_pkey",
+        # M6b remove o ON CONFLICT DO NOTHING do INSERT em financial_events. O D3 reenvia a MESMA confirmação em
+        # sequência via psql síncrono (execFileSync, ON_ERROR_STOP=1): a 2ª inserção viola a chave primária
+        # provider_event_id e o psql sai != 0, lançando o erro (não é asserção) com essa violação no stderr.
+        "why": "sem ON CONFLICT a reentrega sequencial viola financial_events_pkey e o psql sincrono lanca",
+    },
+]
+for _e in OTHER_ALLOW:
+    _e["re"] = re.compile(_e["regex"])
+
+
+def allow_entry(mid, suite, test_name, body):
+    for e in OTHER_ALLOW:
+        if e["mutant"] == mid and e["suite"] == suite and test_name.startswith(e["test"]) and e["re"].search(body):
+            return e
+    return None
+
+
+def err_sig(body):
+    nm = re.search(r"^\s*name: '?([\w.]+)'?", body, re.M)
+    er = re.search(r"^\s*error: (?:\|-\n\s*)?(.*)$", body, re.M)
+    return re.sub(r"[\s;|]+", "_", f"{nm.group(1) if nm else '?'}:{(er.group(1) if er else '?')[:60]}")
 
 
 def sub_global(old, new):
@@ -137,7 +185,8 @@ def counts(out):
 def analyse(name, rc, out, err):
     """Uma suíte -> dicionário com contagens, falhas de asserção, falhas de infra e outras."""
     c = counts(out)
-    c.update(rc=rc, assertion=[], infra=[], other=[], infra_noise=[])
+    c.update(rc=rc, assertion=[], infra=[], other=[], other_blocks=[], infra_noise=[],
+             markers=sorted(set(re.findall(r"T4_INJECTED_[A-Z]+", out))))
     for m in FAIL_BLOCK.finditer(out):
         test_name, body = m.group("name").strip(), m.group("body")
         if m.group("ind"):  # subteste aninhado: a falha relevante é a do teste de topo
@@ -148,6 +197,7 @@ def analyse(name, rc, out, err):
             c["assertion"].append(test_name)
         else:
             c["other"].append(test_name)
+            c["other_blocks"].append((test_name, body))
     for sig in sorted({x.group(0) for x in INFRA_RE.finditer(out + "\n" + err)}):
         c["infra_noise"].append(sig)
     return c
@@ -184,6 +234,16 @@ def classify(mid, r):
             return "INCONCLUSIVE", f"rc_{c['rc']}_sem_falha_tap:{n}"
         if c["rc"] == 0 and c["assertion"]:
             return "INCONCLUSIVE", f"assercao_com_rc0:{n}"
+    used, unexpected = [], []
+    for n, c in r.items():
+        for test_name, body in c["other_blocks"]:
+            e = allow_entry(mid, n, test_name, body)
+            if e:
+                used.append(e["id"])
+            else:
+                unexpected.append(f"{n}:{test_name.split(' ')[0]}:{err_sig(body)}")
+    if unexpected:
+        return "INCONCLUSIVE", "falha_nao_prevista:" + ";".join(unexpected)[:240]
     if not any(c["assertion"] or c["other"] for c in r.values()):
         return "SURVIVED", "todas_as_suites_passaram"
     if not any(c["assertion"] for c in r.values()):
@@ -194,8 +254,7 @@ def classify(mid, r):
     if not hits:
         got = ";".join(f"{n}:{','.join(t.split(' ')[0] for t in c['assertion'])}" for n, c in r.items() if c["assertion"])
         return "INCONCLUSIVE", f"assercao_fora_dos_testes_esperados:{got}"
-    others = sum(len(c["other"]) for c in r.values())
-    return "KILLED", "assercao:" + ",".join(hits)[:200] + (f";outras_falhas_funcionais={others}" if others else "")
+    return "KILLED", "assercao:" + ",".join(hits)[:200] + f" allowlist={','.join(sorted(set(used))) or 'none'}"
 
 
 def report(mid, cls, reason, r, attempt):
@@ -245,8 +304,29 @@ def main():
     if not os.environ.get("T4_PG_HOST"):
         print("MUTANT ERROR T4_PG_HOST ausente: as suítes PostgreSQL pulariam")
         return 2
-    self_check = "--self-check-infra" in sys.argv[1:]
-    if self_check:
+    args = sys.argv[1:]
+    if "--self-check-other" in args:
+        # Meta-teste B05-B: mutante real + falha sem asserção NÃO prevista (TypeError injetado em outro teste).
+        mid = "M2_janela_60min"
+        final, hist = evaluate(mid, M[mid](ORIG), env_by_suite={"http_pg": {"T4_INJECT_TYPEERROR": "M10"}})
+        injected = all("T4_INJECTED_TYPEERROR" in h[2]["http_pg"]["markers"] for h in hist)
+        has_expected = all(any(t.startswith(p) for t in h[2]["unit"]["assertion"] for p in EXPECT[mid]["unit"]) for h in hist)
+        ok = (final == "INCONCLUSIVE" and len(hist) == RETRIES + 1 and injected and has_expected
+              and all(h[0] == "INCONCLUSIVE" and h[1].startswith("falha_nao_prevista:http_pg:M10:TypeError") for h in hist))
+        print(f"SELF_CHECK_OTHER mutant={mid} attempts={len(hist)} classes={','.join(h[0] for h in hist)} "
+              f"injected={injected} expected_assertion_present={has_expected} {'PASS' if ok else 'FAIL'}", flush=True)
+        return 0 if ok else 1
+    if "--self-check-allowlist" in args:
+        # Meta-teste B05-B: falha sem asserção PREVISTA na allowlist não impede KILLED (e a entrada é citada).
+        oks = []
+        for mid, entry in (("M6b_sem_on_conflict", "AL2_M6b_dedupe_D3_duplicate_key"),
+                           ("M4b_manifesto_ignora_request_id", "AL1_M4b_http_M15_TypeError")):
+            final, hist = evaluate(mid, M[mid](ORIG))
+            ok = final == "KILLED" and hist[-1][1].endswith(f"allowlist={entry}")
+            print(f"SELF_CHECK_ALLOWLIST mutant={mid} final={final} entry={entry} {'PASS' if ok else 'FAIL'}", flush=True)
+            oks.append(ok)
+        return 0 if all(oks) else 1
+    if "--self-check-infra" in args:
         # Meta-teste: código ORIGINAL (sem mutação) + ECONNRESET real injetado pelo harness na 1ª requisição POST.
         final, hist = evaluate("M0_sem_mutacao_econnreset_injetado", ORIG,
                                env_by_suite={"http_pg": {"T4_INJECT_ECONNRESET": "1"}})

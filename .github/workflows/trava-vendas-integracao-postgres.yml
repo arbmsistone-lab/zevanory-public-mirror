@@ -149,6 +149,35 @@ jobs:
           if grep -q '^MUTANT [^ ]* KILLED' self.txt; then echo "::error::ECONNRESET sem mutação contado como KILLED"; exit 1; fi
           echo "::notice title=SELF_CHECK_INFRA::$(grep -E '^(MUTANT|SELF_CHECK_INFRA)' self.txt | paste -sd'|' - | sed 's/|/%0A/g')"
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado"; exit 1; fi
+      # Meta-testes da allowlist causal (auditoria Sol B05-B): falha sem asserção NÃO prevista mascara defeito novo
+      # do harness => INCONCLUSIVE mesmo com a asserção esperada falhando; falha PREVISTA (allowlist) => KILLED.
+      - name: Autoverificação do executor — mutante real + TypeError não previsto => INCONCLUSIVE 3/3
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/ci/mutants_mp_webhook.py --self-check-other < /dev/null | tee other.txt || rc=$?
+          echo "::notice title=SELF_CHECK_OTHER::$(grep -E '^(MUTANT|SELF_CHECK_OTHER)' other.txt | paste -sd'|' - | sed 's/|/%0A/g')"
+          [ "$rc" = 0 ] || { echo "::error::autoverificação (falha não prevista) saiu com $rc"; exit 1; }
+          grep -qx 'SELF_CHECK_OTHER mutant=M2_janela_60min attempts=3 classes=INCONCLUSIVE,INCONCLUSIVE,INCONCLUSIVE injected=True expected_assertion_present=True PASS' other.txt
+          if grep -q '^MUTANT [^ ]* KILLED' other.txt; then echo "::error::falha não prevista contada como KILLED"; exit 1; fi
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado"; exit 1; fi
+      - name: Autoverificação do executor — falha prevista na allowlist (M6b, M4b) => KILLED
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/ci/mutants_mp_webhook.py --self-check-allowlist < /dev/null | tee allow.txt || rc=$?
+          echo "::notice title=SELF_CHECK_ALLOWLIST::$(grep -E '^(MUTANT|SELF_CHECK_ALLOWLIST)' allow.txt | paste -sd'|' - | sed 's/|/%0A/g')"
+          [ "$rc" = 0 ] || { echo "::error::autoverificação (allowlist) saiu com $rc"; exit 1; }
+          [ "$(grep -c '^SELF_CHECK_ALLOWLIST .* final=KILLED .* PASS$' allow.txt)" = 2 ]
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado"; exit 1; fi
       - name: Mutantes B05 (assinatura e idempotência; 13, cada um morto por falha FUNCIONAL de asserção)
         env:
           T4_PG_HOST: localhost
@@ -162,7 +191,7 @@ jobs:
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
           grep -qx 'MUTANTS_TOTAL=13 KILLED=13 SURVIVED=0 INCONCLUSIVE=0 RETRIES=2' mut.txt || { echo "::error::resumo inesperado"; exit 1; }
           # Uma linha FINAL por mutante: KILLED com motivo de asserção (o executor nunca conta código de saída != 0).
-          n="$(grep -cE '^MUTANT M[0-9][0-9a-z]*_[^ ]* KILLED reason=assercao:' mut.txt || true)"
+          n="$(grep -cE '^MUTANT M[0-9][0-9a-z]*_[^ ]* KILLED reason=assercao:[^ ]* allowlist=[^ ]+ ' mut.txt || true)"
           [ "$n" = "13" ] || { echo "::error::esperados 13 mutantes mortos por asserção, obtidos $n"; exit 1; }
           if grep -qE '^MUTANT [^ ]* SURVIVED' mut.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
           for b in unit dedupe_pg http_pg; do grep -qE "^MUTANT BASELINE $b .* infra=none PASS$" mut.txt || { echo "::error::linha de base $b"; exit 1; }; done

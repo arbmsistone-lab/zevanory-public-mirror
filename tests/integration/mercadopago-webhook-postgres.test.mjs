@@ -4,7 +4,7 @@
 //   * Mercado Pago API: a local fixture (no call leaves the machine); Resend: recorded, never sent;
 //   * KV: in-memory. No credentials, no payments, no e-mails, no cost.
 // Run: T4_PG_HOST=/tmp/pgt T4_PG_PORT=55432 node --import ./tests/t4_sim/register.mjs --test tests/integration/mercadopago-webhook-postgres.test.mjs
-import { test, before, after } from "node:test";
+import { test as nodeTest, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import http from "node:http";
@@ -48,6 +48,18 @@ http.createServer = function createServerT4(...args) {
   server.headersTimeout = 125_000;
   return server;
 };
+// Meta-teste do executor (auditoria Sol, B05-B): T4_INJECT_TYPEERROR=<prefixo> troca o corpo do teste cujo nome
+// começa com "<prefixo> " por um TypeError real (falha NÃO-asserção, NÃO-infra), para provar que uma falha não
+// prevista na allowlist causal deixa o mutante INCONCLUSIVE mesmo com a asserção esperada falhando em outro teste.
+const INJECT_TYPEERROR = String(process.env.T4_INJECT_TYPEERROR || "");
+function test(name, opts, fn) {
+  if (!INJECT_TYPEERROR || !String(name).startsWith(INJECT_TYPEERROR + " ")) return nodeTest(name, opts, fn);
+  return nodeTest(name, opts, async () => {
+    console.log("T4_INJECTED_TYPEERROR", JSON.stringify({ test: String(name).slice(0, 60) }));
+    const ausente = undefined;
+    return ausente.t4_injected_type_error;
+  });
+}
 async function localFetch(input, init = {}) {
   const headers = new Headers(init.headers || {});
   headers.set("connection", "close");
