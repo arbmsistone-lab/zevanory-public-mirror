@@ -71,7 +71,7 @@ jobs:
       - name: Suíte Node completa no SHA do PR (prova Linux independente, Ordem Sol 024)
         run: |
           set -eo pipefail
-          node --test tests/*.test.mjs | tee all.txt
+          { node --test tests/*.test.mjs || true; } | tee all.txt  # o veredito é a contagem exata abaixo
           # Contagem EXATA (protocolo): teste removido, pulado ou falho derruba o gate.
           grep -qx "# tests 545" all.txt && grep -qx "# pass 545" all.txt && grep -qx "# skipped 0" all.txt && grep -qx "# fail 0" all.txt && grep -qx "# cancelled 0" all.txt \
             || { grep -E "^# (tests|pass|fail|skipped|cancelled) |^not ok" all.txt | sed "s/^/::error::/"; exit 1; }
