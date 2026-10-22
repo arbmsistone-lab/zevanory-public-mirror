@@ -8,7 +8,7 @@ arquivo cifrado preservado (backup íntegro de 14/10/2026).
 O que faz, em ordem, e PARA na primeira divergência (fail-closed):
   1. decifra e confere o arquivo contra o manifesto (mesma rotina do backup_preserve_archive.py);
   2. recusa alvo que já tenha tabelas em public (nunca sobrescreve);
-  3. aplica as 30 migrações de db/migrations (esquema exigido pelo Worker: 40 tabelas, 29 migrações);
+  3. aplica as 31 migrações de db/migrations (esquema exigido pelo Worker: 40 tabelas, 30 migrações);
   4. cria as tabelas que o Worker cria em tempo de execução, com o DDL LIDO do próprio código do Worker
      ou capturado EXECUTANDO o módulo que o monta (fonte única; nada copiado à mão); tabelas legadas que
      nenhum código atual cria são preservadas como jsonb no esquema zevanory_restore_preservado;
@@ -172,8 +172,8 @@ def restore_full(env, tables_json, manifest_tables):
     if psql("select count(*) from information_schema.tables where table_schema='public';", env).strip() != "0":
         fail("target_not_empty")
     migrations = sorted(glob.glob(os.path.join(ROOT, "db", "migrations", "*.sql")))
-    if len(migrations) != 30:
-        fail(f"migrations_expected_30_found_{len(migrations)}")
+    if len(migrations) != 31:
+        fail(f"migrations_expected_31_found_{len(migrations)}")
     for m in migrations:
         psql(open(m, encoding="utf-8").read(), env)
     names, ddl = runtime_ddl()

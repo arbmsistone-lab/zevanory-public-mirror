@@ -9485,7 +9485,8 @@ var REQUIRED_MIGRATIONS = Object.freeze([
   "025_commercial_engine_v2",
   "026_media_investment_telemetry",
   "028_elite_product_support",
-  "029_certification_pilot_interest"
+  "029_certification_pilot_interest",
+  "030_lead_consent"
 ]);
 function assessSchemaIntegrity({ tableNames = [], migrationIds = [] } = {}) {
   const tables = new Set(tableNames.map(String));

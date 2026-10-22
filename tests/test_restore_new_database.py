@@ -86,7 +86,7 @@ class T(unittest.TestCase):
             schema = "zevanory_restore_preservado" if t == "zpc_records" else "public"
             self.assertEqual(int(sh(db, f'select count(*) from {schema}."{t}"').strip()), meta["rows"], t)
         self.assertIn("aspas", sh(db, "select evidence_ref from service_fulfillment").strip())
-        self.assertEqual(sh(db, "select count(*) from schema_migrations").strip(), "30")
+        self.assertEqual(sh(db, "select count(*) from schema_migrations").strip(), "31")
         self.assertEqual(sh(db, "select count(*) from public.whatsapp_stage_events").strip(), "1", "DDL dinâmico do Worker")
         self.assertNotIn("outra", sh(db, "select search_vector::text from knowledge_documents"), "coluna gerada recalculada, não copiada")
         self.assertEqual(sh(db, "select count(*) from zevanory_restore_preservado.zpc_records").strip(), "2", "legado preservado")
@@ -110,9 +110,12 @@ class T(unittest.TestCase):
 
     def test_4_ddl_de_tempo_de_execucao_vem_do_codigo_do_worker(self):
         names, stmts = rnd.runtime_ddl()
-        for t in ["inbound_followups", "zevanory_leads", "zevanory_funnel_daily", "zevanory_kv_backup", "refund_provider_claims"]:
+        for t in ["inbound_followups", "zevanory_funnel_daily", "zevanory_kv_backup", "refund_provider_claims"]:
             self.assertIn(t, names)
-        self.assertTrue(any("subject_ref" in s and s.lower().startswith("alter table zevanory_leads") for s in stmts))
+        self.assertNotIn("zevanory_leads", names, "o esquema de leads vem da migração versionada")
+        migration = open(os.path.join(ROOT, "db", "migrations", "030_lead_consent.sql"), encoding="utf-8").read()
+        self.assertIn("CREATE TABLE IF NOT EXISTS zevanory_leads", migration)
+        self.assertIn("CREATE TABLE IF NOT EXISTS zevanory_lead_events", migration)
 
     def test_5_confirmacao_exata_para_banco_real(self):
         with self.assertRaises(SystemExit): rnd.main(["restore", "--out", self.dir, "--confirm", "restaurar"])
