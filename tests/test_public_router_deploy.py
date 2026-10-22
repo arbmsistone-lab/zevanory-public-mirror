@@ -10,6 +10,7 @@ pela Cloudflare:
 """
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -31,6 +32,10 @@ ACCOUNT_URL = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT}"
 APEX = "https://zevanory.api.br/"
 SOLUCOES = "https://zevanory.api.br/solucoes"
 STORE = "https://vendas.zevanory.api.br/solucoes"
+# Limite por passo (s). Cada passo termina em < 2 s; o limite só existe para que nada prenda a suíte.
+STEP_TIMEOUT = int(os.environ.get("ROUTER_TEST_STEP_TIMEOUT", "30"))
+# Último registro do `sleep` falso (argumentos de cada chamada), lido pelos testes de nova tentativa.
+LAST = {"sleep": ""}
 
 CURL_STUB = r'''#!/usr/bin/env python3
 import json, sys
@@ -86,7 +91,8 @@ def run_step(script, fixtures, env_extra=None, npx_rc=0, npx_leak=False):
             leak = ('v="$(cat 2>/dev/null || true)"; echo "stdin=$v env=$CLOUDFLARE_API_TOKEN %s"; '
                     'echo "X [ERROR] boom [code: 10021]" >&2\n' % CANARY)
         (d / "npx").write_text("#!/bin/sh\necho \"npx $*\" >> %s/npx.log\n%sexit %d\n" % (d, leak, npx_rc))
-        (d / "sleep").write_text("#!/bin/sh\nexit 0\n")
+        # `sleep` falso: registra o argumento e volta na hora (nenhuma espera real na suíte).
+        (d / "sleep").write_text("#!/bin/sh\necho \"$*\" >> %s/sleep.log\nexit 0\n" % d)
         for f in ("curl", "npx", "sleep"):
             (d / f).chmod(0o755)
         (d / "ghenv").write_text("")
@@ -94,11 +100,17 @@ def run_step(script, fixtures, env_extra=None, npx_rc=0, npx_leak=False):
                "GITHUB_OUTPUT": str(d / "ghout"), "RUNNER_TEMP": str(d),
                "CLOUDFLARE_API_TOKEN": " stub-token\n", "ROUTER_ACCOUNT_ID": ACCOUNT,
                "CLOUDFLARE_ACCOUNT_ID": ACCOUNT, "EXPECTED_ACCOUNT_ID": ACCOUNT,
-               "ROUTER_SCRIPT": "zevanory-public-router", "GITHUB_SHA": SHA, **(env_extra or {})}
+               "ROUTER_SCRIPT": "zevanory-public-router", "GITHUB_SHA": SHA,
+               # Leitura de volta: 2 tentativas sem intervalo (produção: 12 x 5 s, padrão do próprio passo).
+               "ROUTER_READBACK_ATTEMPTS": "2", "ROUTER_READBACK_SLEEP_SECONDS": "0", **(env_extra or {})}
+        # Os falsos têm de vir primeiro no PATH; senão o `sleep` real (5 s por tentativa) entraria.
+        for f in ("curl", "npx", "sleep"):
+            assert shutil.which(f, path=env["PATH"]) == str(d / f), f"{f} falso não está primeiro no PATH"
         # stdin fechado e limite por passo: nada que leia a entrada padrão prende a suíte.
         p = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True,
-                           stdin=subprocess.DEVNULL, timeout=120, cwd=str(ROOT))
+                           stdin=subprocess.DEVNULL, timeout=STEP_TIMEOUT, cwd=str(ROOT))
         read = lambda n: (d / n).read_text() if (d / n).exists() else ""
+        LAST["sleep"] = read("sleep.log")
         return p.returncode, p.stdout + p.stderr, read("npx.log"), read("curl.log"), read("ghenv")
 
 
@@ -258,6 +270,31 @@ class PublicRouterDeploy(unittest.TestCase):
             self.assertNotEqual(rc, 0, name)
             self.assertIn("ROUTER_READBACK_FAIL", out, name)
             self.assertNotIn("PUBLIC_ROUTE_READBACK=PASS", out, name)
+
+    def test_readback_retry_defaults_and_injected_interval(self):
+        # Padrão de produção fixo no passo: 12 tentativas, 5 s entre elas.
+        self.assertIn('attempts="${ROUTER_READBACK_ATTEMPTS:-12}"', self.readback)
+        self.assertIn('pause="${ROUTER_READBACK_SLEEP_SECONDS:-5}"', self.readback)
+        # Com 3 tentativas: 3 leituras da API, 2 pausas com o intervalo injetado, nenhuma após a última.
+        rc, out, _, curl, _ = run_step(self.readback, self._rb(dep=deployments(PREV)),
+                                       {"PREV_VERSION_ID": PREV, "ROUTER_READBACK_ATTEMPTS": "3",
+                                        "ROUTER_READBACK_SLEEP_SECONDS": "7"})
+        self.assertNotEqual(rc, 0)
+        self.assertIn("ROUTER_READBACK_FAIL::attempts=3", out)
+        self.assertEqual(curl.count("/deployments"), 3)
+        self.assertEqual(LAST["sleep"].split(), ["7", "7"])
+        # Sucesso na primeira tentativa: nenhuma pausa.
+        rc, out, _, _, _ = run_step(self.readback, self._rb(), {"PREV_VERSION_ID": PREV})
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(LAST["sleep"], "")
+
+    def test_readback_rejects_invalid_retry_settings(self):
+        for env in ({"ROUTER_READBACK_ATTEMPTS": "0"}, {"ROUTER_READBACK_ATTEMPTS": "x"},
+                    {"ROUTER_READBACK_SLEEP_SECONDS": "-1"}, {"ROUTER_READBACK_ATTEMPTS": "999"}):
+            rc, out, _, curl, _ = run_step(self.readback, self._rb(), {"PREV_VERSION_ID": PREV, **env})
+            self.assertNotEqual(rc, 0, env)
+            self.assertIn("ROUTER_READBACK_FAIL", out, env)
+            self.assertEqual(curl, "", env)
 
     # --- retorno automático -----------------------------------------------------------------------------
     def test_failed_readback_triggers_rollback_and_it_is_readback_verified(self):
