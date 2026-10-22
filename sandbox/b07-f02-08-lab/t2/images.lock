@@ -1,0 +1,4 @@
+NEON=ghcr.io/neondatabase/neon:latest
+COMPUTE=ghcr.io/neondatabase/compute-node-v16:latest
+MINIO=quay.io/minio/minio:RELEASE.2022-10-20T00-55-09Z
+MC=docker.io/minio/mc:latest
