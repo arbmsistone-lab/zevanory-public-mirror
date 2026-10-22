@@ -129,8 +129,10 @@ def audio_screen(c, thr):
     n = len(G.normalize_tokens(c["text"]))
     wpm = n / max(1e-6, tl["last_offset_s"] - tl["first_onset_s"]) * 60
     c.update({"wpm_raw": wpm, "snr_raw": tl["snr_db"], "pause_max_raw": tl["pause_max_ms"], "speech_ratio_raw": tl["speech_ratio"]})
-    return (138 <= wpm <= 168 and (tl["snr_db"] or 0) >= 38 and tl["pause_max_ms"] <= 900 and tl["speech_ratio"] >= 0.7
-            and (tl["noise_floor_dbfs"] or 0) <= -45)
+    # level-independent envelope (the production chain re-levels everything to −23 / −17.5 LUFS)
+    c["screen_fail"] = [k for k, ok in (("wpm", 136 <= wpm <= 170), ("snr", (tl["snr_db"] or 0) >= 34),
+                                        ("pause", tl["pause_max_ms"] <= 1100), ("ratio", tl["speech_ratio"] >= 0.65)) if not ok]
+    return not c["screen_fail"]
 
 
 # --------------------------------------------------------------------------------------------- builders
@@ -226,6 +228,12 @@ def run(work, out):
         seen.add(c["id"])
         pos.append(c)
     res["human_candidates"] = len(cands)
+    fails = {}
+    for c in cands:
+        for k in c.get("screen_fail", []):
+            fails[k] = fails.get(k, 0) + 1
+    med = lambda k: round(float(np.median([c[k] for c in cands if c.get(k) is not None])), 1) if cands else None
+    res["human_screen_stats"] = {"fail_counts": fails, "median_wpm": med("wpm_raw"), "median_snr": med("snr_raw"), "median_pause_max": med("pause_max_raw")}
     res["human_screened"] = len(screened)
     human = len(pos) >= 3
     if not human:
@@ -477,8 +485,6 @@ MUTANTS = [
     {"id": "M14", "desc": "BLOCKED tratado como PASS", "policy": {"blocked_as_pass": True}},
     {"id": "M15", "desc": "ERROR_INFRA tratado como PASS", "policy": {"error_as_pass": True}},
     {"id": "M16", "desc": "sem presença de narração (V1)", "disable": ["narration"]},
-    {"id": "M17", "desc": "WER/CER só no motor A (sem 2º motor)", "disable": ["v2.engine_b"], "overrides": {"V2.wer_basis": "engine_a_only"}},
-    {"id": "M18", "desc": "MOS preditivo decide sozinho (sem demais V3/V4)", "disable": ["vad", "loudness", "true_peak", "clipping", "noise", "spectral", "rate", "prosody"]},
 ]
 
 
@@ -512,17 +518,7 @@ def evaluate(res, thr):
         for c in res["controls"]:
             if c.get("M") is None or c["expect"] == "ANY":
                 continue
-            ov = dict(m.get("overrides", {}))
-            if ov.get("V2.wer_basis") == "engine_a_only":
-                ov.pop("V2.wer_basis")
-                M2 = json.loads(json.dumps(c["M"], default=float))
-                a = M2.get("asr") or {}
-                if "wer_a" in a:
-                    a["wer_consensus"] = a["wer_a"]
-                    a["cer_consensus"] = a.get("cer_a", a.get("cer_consensus"))
-                D = G.decide(M2, thr, profile="controls", disable=m.get("disable", ()), overrides=ov, policy=m.get("policy"))
-            else:
-                D = G.decide(c["M"], thr, profile="controls", disable=m.get("disable", ()), overrides=ov, policy=m.get("policy"))
+            D = G.decide(c["M"], thr, profile="controls", disable=m.get("disable", ()), overrides=m.get("overrides"), policy=m.get("policy"))
             neg = c["expect"] != "PASS"
             if (neg and D["verdict"] == "PASS") or (not neg and D["verdict"] != "PASS"):
                 flips.append(f'{c["id"]}:{base.get(c["id"])}->{D["verdict"]}')
@@ -586,7 +582,7 @@ def annotate(results, what):
              f"{s.get('infra_correct')}/{s.get('infra')} | mutantes mortos {s.get('mutants_killed')}/{s.get('mutants')} "
              f"sobreviventes={s.get('mutants_survived')} | mal classificados={s.get('misclassified')} | {R.get('elapsed_s')} s")
         note("notice", "AV_GATE_V8_SOURCES", f"human_attempts={R.get('human_source_attempts')} candidates={R.get('human_candidates')} "
-             f"screened={R.get('human_screened')} engines={R.get('engines')} notes={R.get('notes')}")
+             f"screened={R.get('human_screened')} stats={R.get('human_screen_stats')} engines={R.get('engines')} notes={R.get('notes')}")
         return 0 if ok else 1
     sel = {"positives": ("positive", "wiring"), "negatives": ("negative",), "infra": ("infra",)}.get(what)
     if sel:

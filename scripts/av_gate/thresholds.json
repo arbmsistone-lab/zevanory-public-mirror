@@ -18,7 +18,7 @@
     "master_lufs": -23.0, "master_lufs_tol": 0.5, "master_tp_max": -1.0,
     "stream_lufs_min": -20.0, "stream_lufs_max": -16.0, "stream_tp_max": -2.0,
     "clipped_samples_max": 0, "clip_level": 0.9999,
-    "plateau_ratio_max": 0.002,
+    "clip_spike_max": 3.0,
     "noise_floor_max_dbfs": -50.0, "snr_min_db": 30.0,
     "speech_ratio_min": 0.55, "leading_silence_max_s": 0.5,
     "spectral_flatness_max": 0.30, "tonal_ratio_max": 0.35, "voiced_fraction_min": 0.25

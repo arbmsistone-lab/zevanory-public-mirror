@@ -513,10 +513,22 @@ def m_spectral(x16, sp):
         specs.append(p)
     if not specs:
         return None
-    ltas = np.mean(specs, axis=0)
+    # Tonality on a LONG-window LTAS (4096 pt ≈ 3.9 Hz bins): a steady tone/beep keeps its energy in a few bins,
+    # natural speech (moving F0, formants) smears it. Ratio = energy of the 5 strongest peaks (±1 bin) / total.
+    sx = np.concatenate([x16[i * hop:(i + 1) * hop] for i in np.nonzero(sp)[0]])
+    N = 4096
+    if len(sx) < N:
+        sx = np.pad(sx, (0, N - len(sx)))
+    w4 = np.hanning(N)
+    f4 = np.fft.rfftfreq(N, 1 / SR)
+    b4 = (f4 >= 80) & (f4 <= 7600)
+    acc = np.zeros(int(np.sum(b4)))
+    for k in range(0, len(sx) - N + 1, N // 2):
+        acc += (np.abs(np.fft.rfft(sx[k:k + N] * w4)) ** 2)[b4]
+    ltas = acc + 1e-12
     peaks = [k for k in range(1, len(ltas) - 1) if ltas[k] >= ltas[k - 1] and ltas[k] >= ltas[k + 1]]
     peaks = sorted(peaks, key=lambda k: ltas[k], reverse=True)[:5]
-    tonal = sum(float(np.sum(ltas[max(0, k - 2):k + 3])) for k in peaks) / float(np.sum(ltas))
+    tonal = sum(float(np.sum(ltas[max(0, k - 1):k + 2])) for k in peaks) / float(np.sum(ltas))
     return {"spectral_flatness": float(np.median(flats)), "tonal_ratio": float(min(1.0, tonal))}
 
 
@@ -593,12 +605,19 @@ def m_rate(n_words, times, on, off, window):
 
 
 def clip_metrics(x, level):
+    """(samples at/over `level`, clipping spike score). Natural speech has a monotonically decaying amplitude
+    histogram; clipped-then-rescaled audio shows a SPIKE at the old plateau even after resampling/limiting."""
     a = np.abs(x)
     peak = float(a.max()) if len(a) else 0.0
     clipped = int(np.sum(a >= level))
-    active = a >= 0.01 * peak if peak > 0 else np.zeros_like(a, dtype=bool)
-    density = float(np.sum(a >= 0.95 * peak) / max(1, int(np.sum(active)))) if peak > 0 else 0.0
-    return clipped, density
+    if peak <= 0:
+        return clipped, 0.0
+    h, _ = np.histogram(a[a >= 0.05 * peak], bins=200, range=(0, peak))
+    score = 0.0
+    for i in range(60, 200):
+        if h[i] >= 20:
+            score = max(score, float(h[i]) / (float(np.mean(h[i - 8:i - 2])) + 1.0))
+    return clipped, score
 
 
 def wcag_contrast(c1, c2):
@@ -775,25 +794,39 @@ def measure(mp4, manifest_path, engines, thr):
             if times and M["timeline"].get("speech_s", 0) > 0:
                 M["rate"] = m_rate(len(ref), times, M["timeline"]["first_onset_s"], M["timeline"]["last_offset_s"],
                                    thr["V4"]["window_s"])
-            # captions vs speech timing (engine-B word timings re-measured on the FINAL mp4)
-            if M["captions_present"] and times:
-                cues = parse_captions(cap_p)
-                off = M["container_offset_ms"] / 1000.0
-                idx, deltas, measurable = 0, [], 0
-                for c in cues:
-                    ct = normalize_tokens(c["text"], lex)
-                    if not ct:
-                        continue
-                    if idx < len(ref) and direct[idx]:
-                        deltas.append((c["start"] - (times[idx][0] + off)) * 1000)
-                        measurable += 1
-                    idx += len(ct)
-                M["captions"] = {"cues": len(cues), "measurable": measurable,
-                                 "deltas_ms": [round(d) for d in deltas]}
+            # V6/V7 timing. Captions were aligned on the MASTER; the gate re-runs engine B on the master AND on the
+            # FINAL mp4. Drift per cue = (cue start − master time of its first word) + (final − master) offset of the
+            # words of that cue, including the container offset (audio start_time − video start_time).
+            if M["captions_present"] and M["master_present"] and times:
+                def sync():
+                    _, wm = engines.asr_b(decode(master_p, sr=SR))
+                    tm, dm = script_word_times(ref, wm)
+                    if tm is None:
+                        return {"cues": len(parse_captions(cap_p)), "measurable": 0, "deltas_ms": []}
+                    off = M["container_offset_ms"] / 1000.0
+                    offs = {i: times[i][0] + off - tm[i][0] for i in range(len(ref)) if direct[i] and dm[i]}
+                    cues = parse_captions(cap_p)
+                    if len(offs) < 3:
+                        return {"cues": len(cues), "measurable": 0, "deltas_ms": [], "matched_both": len(offs)}
+                    glob = float(np.median(list(offs.values())))
+                    idx, deltas, local_n = 0, [], 0
+                    for c in cues:
+                        ct = normalize_tokens(c["text"], lex)
+                        if not ct or idx >= len(ref):
+                            idx += len(ct)
+                            continue
+                        loc = [offs[k] for k in range(idx, min(len(ref), idx + len(ct))) if k in offs]
+                        local_n += bool(loc)
+                        deltas.append((c["start"] - tm[idx][0] + (float(np.median(loc)) if loc else glob)) * 1000)
+                        idx += len(ct)
+                    return {"cues": len(cues), "measurable": len(deltas), "local": local_n, "matched_both": len(offs),
+                            "offset_ms": round(glob * 1000), "deltas_ms": [round(d) for d in deltas]}
+                M["captions"] = guard("sync", sync)
     # captions content / format
     if M["captions_present"]:
         cues = parse_captions(cap_p)
-        c = M.setdefault("captions", {"cues": len(cues)})
+        c = M.get("captions") or {"cues": len(cues)}
+        M["captions"] = c
         cap_tokens = normalize_tokens(" ".join(q["text"] for q in cues), lex)
         if script is not None:
             c["script_wer"] = wer(normalize_tokens(script, lex), cap_tokens)
@@ -896,7 +929,7 @@ def decide(M, thr, profile="production", disable=(), overrides=None, policy=None
             need("v3.master_lufs", ml.get("lufs"), lambda v: abs(v - T["V3"]["master_lufs"]) <= T["V3"]["master_lufs_tol"],
                  f'{T["V3"]["master_lufs"]}±{T["V3"]["master_lufs_tol"]}', ["ebur128_master"])
             need("v3.master_tp", ml.get("tp"), lambda v: v <= T["V3"]["master_tp_max"], T["V3"]["master_tp_max"], ["ebur128_master"])
-            need("v3.clip_density", M.get("master_clip_density"), lambda v: v <= T["V3"]["plateau_ratio_max"], T["V3"]["plateau_ratio_max"], ["decode_master"])
+            need("v3.clip_density", M.get("master_clip_density"), lambda v: v <= T["V3"]["clip_spike_max"], T["V3"]["clip_spike_max"], ["decode_master"])
         s = M.get("stream_loudness") or {}
         need("v3.stream_lufs", s.get("lufs"), lambda v: T["V3"]["stream_lufs_min"] <= v <= T["V3"]["stream_lufs_max"],
              [T["V3"]["stream_lufs_min"], T["V3"]["stream_lufs_max"]], ["ebur128_stream"])
@@ -956,9 +989,9 @@ def decide(M, thr, profile="production", disable=(), overrides=None, policy=None
             dl = c.get("deltas_ms")
             enough = dl is not None and c.get("cues") and c.get("measurable", 0) >= T["V6"]["measurable_cues_min_ratio"] * c["cues"]
             vals = [abs(x) for x in dl] if enough else None
-            need("v6.drift_p95", float(np.percentile(vals, 95)) if vals else None, lambda v: v <= T["V6"]["drift_p95_ms"], T["V6"]["drift_p95_ms"], ["engine_b"])
-            need("v6.drift_max", max(vals) if vals else None, lambda v: v <= T["V6"]["drift_max_ms"], T["V6"]["drift_max_ms"], ["engine_b"])
-            need("v7.caption_timing", max(vals) if vals else None, lambda v: v <= T["V6"]["caption_delta_max_ms"], T["V6"]["caption_delta_max_ms"], ["engine_b"])
+            need("v6.drift_p95", float(np.percentile(vals, 95)) if vals else None, lambda v: v <= T["V6"]["drift_p95_ms"], T["V6"]["drift_p95_ms"], ["engine_b", "sync"])
+            need("v6.drift_max", max(vals) if vals else None, lambda v: v <= T["V6"]["drift_max_ms"], T["V6"]["drift_max_ms"], ["engine_b", "sync"])
+            need("v7.caption_timing", max(vals) if vals else None, lambda v: v <= T["V6"]["caption_delta_max_ms"], T["V6"]["caption_delta_max_ms"], ["engine_b", "sync"])
     # V7 visual / captions
     v = M.get("video")
     add("v7.frame", "PASS" if v and [v["width"], v["height"]] == T["V7"]["frame"] else "FAIL", v and [v["width"], v["height"]], T["V7"]["frame"])
@@ -985,7 +1018,7 @@ def decide(M, thr, profile="production", disable=(), overrides=None, policy=None
         add("v2.sales_closed_text", "PASS" if not M.get("sales_text_hits") else "FAIL", M.get("sales_text_hits"))
     # Any measurement error that no check consumed still blocks the PASS.
     consumed = {"probe", "blackdetect", "ebur128_stream", "ebur128_master", "probe_master", "decode_master", "decode_native",
-                "decode_16k", "vad", "spectral", "prosody", "dnsmos", "engine_a", "engine_b", "speaker", "manifest"}
+                "decode_16k", "vad", "spectral", "prosody", "dnsmos", "engine_a", "engine_b", "speaker", "manifest", "sync"}
     for k, e in E.items():
         if k not in consumed:
             add("infra." + k, "ERROR_INFRA", None, None, e)

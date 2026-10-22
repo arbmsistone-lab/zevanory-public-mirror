@@ -7,12 +7,11 @@ MD="${AV_GATE_MODELS:?defina AV_GATE_MODELS}"
 mkdir -p "$MD/dnsmos" "$MD/whisper"
 pin() {  # pin <arquivo> <sha256 esperado>
   local got; got=$(sha256sum "$1" | cut -d' ' -f1)
-  if [[ "$2" == __* ]]; then echo "::warning title=AV_GATE_MODELS_UNPINNED::$(basename "$1") sha256=$got"; return 0; fi
   if [ "$got" != "$2" ]; then echo "::error title=AV_GATE_MODELS::sha256 divergente em $(basename "$1"): $got"; exit 1; fi
 }
-VOSK_PT_SHA=__VOSK_PT_SHA__
-VOSK_SPK_SHA=__VOSK_SPK_SHA__
-DNSMOS_SHA=__DNSMOS_SHA__
+VOSK_PT_SHA=6e1ce909032e1afa7a88e68a3d628ecafff302bdf195befab308826c395e93b7
+VOSK_SPK_SHA=a74d8f51144484813e16af689bb0f916b7a111e2347f467c4933c1166097b5a7
+DNSMOS_SHA=269fbebdb513aa23cddfbb593542ecc540284a91849ac50516870e1ac78f6edd
 get_zip() {  # get_zip <url> <dir-name> <sha>
   if [ ! -d "$MD/$2" ]; then
     curl -fsSL --retry 3 -o "$MD/$2.zip" "$1"
@@ -39,6 +38,6 @@ for root, _, files in sorted(os.walk("$MD/whisper")):
     for f in sorted(files):
         if f == "model.bin":
             h.update(open(os.path.join(root, f), "rb").read())
-print("whisper model.bin sha256", h.hexdigest())
+print("::notice title=AV_GATE_WHISPER::model.bin sha256=" + h.hexdigest())
 PY
 echo "::notice title=AV_GATE_MODELS::ok vosk-pt=$VOSK_PT_SHA spk=$VOSK_SPK_SHA dnsmos=$DNSMOS_SHA"
