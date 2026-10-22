@@ -184,6 +184,14 @@ grep -q S1_OPEN "$W/s1.out" || infra_fail "S1 não abriu: $(head -c 200 "$W/s1.o
 obs S1 "$(grep S1_OPEN "$W/s1.out")"
 
 SKNET=$(docker network ls --format '{{.Name}}' | grep -E '^b07_sknet$')
+if [ "$SCEN" = base_a ] || [ "$SCEN" = m8 ]; then
+  # Escritor antigo "congelado" (pausa de processo/VM): compute1 e a sessão S1 ficam suspensas durante todo o
+  # failover; a escrita do escritor antigo é enfileirada em S1 ainda congelada e executa no instante do retorno.
+  # Sem isso a compute1 é derrubada pelo próprio walproposer antes de o escritor antigo chegar a tentar (rodada
+  # anterior: T2A "S1 já encerrada antes do envio"), e o cenário não é atingido.
+  docker pause "$(cid compute1)" > /dev/null || infra_fail "docker pause compute1"
+  obs FROZEN "compute1 pausada (docker pause) antes do failover; S1 aberta"
+fi
 if [ "$SCEN" = base_b ]; then
   docker network disconnect "$SKNET" "$(cid compute1)" || infra_fail "network disconnect"
   obs PARTITION "compute1 desconectada de $SKNET (safekeepers); pageserver segue acessível"
@@ -238,7 +246,9 @@ t2c(){ # commit local preso em SyncRep na compute1, depois pg_cancel_backend
     kill -0 $P3 2>/dev/null && { kill $P3; obs T2C NOT_REACHED; obs T2C_REASON "INSERT não retornou após cancelamento"; return; }
     obs T2C "$(classify_out "$W/op3.out" 1)"
     obs T2C_RAW "$(tr '\n' ' ' < "$W/op3.out" | cut -c1-400)"
-    obs T2C_VISIBLE_OTHER_SESSION "$(QT=15 q compute1 "SELECT count(*) FROM ledger WHERE op_id='op3'")"
+    local vis="" k
+    for k in 1 2 3 4 5; do vis=$(QT=15 q compute1 "SELECT count(*) FROM ledger WHERE op_id='op3'"); [[ "$vis" =~ ^[0-9]+$ ]] && break; sleep 2; done
+    obs T2C_VISIBLE_OTHER_SESSION "$vis (tentativas=$k)"
   else
     kill $P3 2>/dev/null; obs T2C NOT_REACHED; obs T2C_REASON "INSERT op3 não chegou a SyncRep (n=$n) saída=$(tr '\n' ' ' < "$W/op3.out" | cut -c1-200)"
   fi
@@ -247,9 +257,15 @@ t2c(){ # commit local preso em SyncRep na compute1, depois pg_cancel_backend
 old_writer(){ # $1 rótulo (T2A|T2B): op2 W1@1 pela sessão S1 aberta antes do failover; timeout de cliente
   local label=$1
   if ! kill -0 $S1PID 2>/dev/null; then
-    obs "$label" CONN_LOST; obs "${label}_RAW" "S1 já encerrada antes do envio: $(tr '\n' ' ' < "$W/s1.out" | cut -c1-300)"; return; fi
-  : > "$W/s1.mark"; local start; start=$(wc -l < "$W/s1.out")
-  { echo "$(SQL_INS op2 W1 1)"; echo '\echo S1_OP2_DONE'; } >&7 2>/dev/null
+    # O escritor antigo não chegou a tentar: cenário não atingido (PROPOSTA §7 passo 7), nunca contado como cerca.
+    obs "$label" NOT_REACHED; obs "${label}_RAW" "S1 já encerrada antes do envio: $(tr '\n' ' ' < "$W/s1.out" | cut -c1-300)"; return; fi
+  local start; start=$(wc -l < "$W/s1.out")
+  { echo "$(SQL_INS op2 W1 1)"; echo '\echo S1_OP2_DONE'; } >&7 2>/dev/null || { obs "$label" NOT_REACHED; obs "${label}_RAW" "envio para S1 falhou"; return; }
+  obs "${label}_SENT" "1 (S1 viva no envio; c1=$(docker inspect -f '{{.State.Status}}' "$(cid compute1)"))"
+  if [ "${2:-}" = unpause ]; then
+    docker unpause "$(cid compute1)" > /dev/null || infra_fail "docker unpause compute1"
+    obs UNFROZEN "compute1 retomada com op2(W1@1) já enfileirada em S1"
+  fi
   local done=0
   for i in $(seq 1 "$CLIENT_TIMEOUT"); do
     grep -q S1_OP2_DONE "$W/s1.out" && { done=1; break; }
@@ -263,7 +279,12 @@ old_writer(){ # $1 rótulo (T2A|T2B): op2 W1@1 pela sessão S1 aberta antes do f
 }
 
 case "$SCEN" in
-  base_a|m8|m9)
+  base_a|m8)
+    op2w2                                 # failover completo com compute1 congelada
+    old_writer T2A unpause
+    sleep 3
+    t2c ;;
+  m9)
     old_writer T2A
     op2w2
     t2c ;;
@@ -297,10 +318,7 @@ sleep 2
 wait_ready compute3 240 || infra_fail "compute3 (oráculo) não ficou pronta em 240s"
 DCQ="${DC[*]}" bash "$ORA" "$W" > "$W/oracle.out" 2>&1
 while IFS= read -r l; do obs "${l%%=*}" "${l#*=}"; done < "$W/oracle.out"
-if [ "$SCEN" = base_b ]; then
-  # M10 completo: observação com o oráculo mutado (compute1) no lugar do verdadeiro
-  { grep -v '^ORACLE_' "$OBS"; grep '^ORACLE_' "$W/oracle_m10.out"; } > "$W/obs_m10.txt"
-fi
+# M10: a observação mutada (oráculo lendo compute1) é montada no veredito sobre a observação final completa.
 
 # ---------- safekeepers: term e commit_lsn iguais nos três ----------
 eq=0

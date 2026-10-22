@@ -14,6 +14,8 @@ note "T2_${SCEN}_VERDICT" "$out"
 keys='INFRA_FAIL|PS_CONFIG_PERM_ANTES|C1_VERSION|OP1|OP1_RAW|TERM0|SK_TERMS_AFTER_OP1|M9_[A-Z0-9_]+|S1|PARTITION|C1_REACH_SK_DURING_PARTITION|M8_BRANCH|SK_TERMS_C2_TIMELINE|FAILOVER_ELECTED|C2_TIMELINE|PROMOTE|C2_FENCE|T2A|T2A_RAW|T2A_C1_STATE|OP2_W2|OP2_W2_RAW|T2C|T2C_[A-Z_]+|PARTITION_HEALED|T2B|T2B_RAW|T2B_C1_STATE|ORACLE_[A-Z]+|SK_TERMS_FINAL|SK_COMMIT_FINAL|SK_EQUAL|SK_TERM_FINAL|M14_[A-Z]+'
 note "T2_${SCEN}_OBS" "$(grep -E "^($keys)=" "$W/obs.txt" | cut -c1-420)"
 note "T2_${SCEN}_PROVENIENCIA" "$(grep -E '^(IMAGE_|IDS=|S3_SUBSTITUTO|DOCKERFILE_B07)' "$W/obs.txt" | cut -c1-300)"
+for c in compute1 compute2 compute3; do [ -s "$W/$c.log" ] && echo "== $c" && grep -E 'PANIC|FATAL|ERROR|WARNING|elected in term|rejects|rejected|exited|terminat|compute_ctl' "$W/$c.log" | grep -v '^+' | tail -15 | cut -c1-300; done > "$W/ctails.txt" 2>/dev/null
+[ -s "$W/ctails.txt" ] && note "T2_${SCEN}_COMPUTES" "$(head -c 14000 "$W/ctails.txt")"
 [ -s "$W/notes.txt" ] && note "T2_${SCEN}_DIAG" "$(grep -v '^$' "$W/notes.txt" | grep -E '^(PS_A|LOG_|PULL_FALHOU|M10 |TENANT_CREATE|TIMELINE_CREATE|SK_RAW1|M10_ORACLE_OUT|COMPOSE_NETS|S3_BUCKETS|BUILD_B07)' | cut -c1-1500 | head -c 12000)"
 rc=0
 case "$SCEN" in
@@ -37,14 +39,17 @@ cmut(){ # $1 nome  $2 sed  $3 obs
   [ "$s0" = "$s2" ] || res="$res RESTAURACAO_FALHOU"
   note "T2_${SCEN}_$1" "$1 $res sha_antes=$s0 sha_mutado=$s1 sha_restaurado=$s2 | $(grep '^REASON' <<< "$o" | head -3 | tr '\n' ' ')"
 }
+# Cada mutante do classificador é aplicado onde a observação que ele corrompe existe: M11 (WARNING de commit
+# local como sucesso) onde T2C foi atingido = base_b; M14 (timeout sem quórum como sucesso) onde a parada de
+# safekeeper2/3 foi executada = base_a.
 case "$SCEN" in
-  base_a|base_b)
-    cmut M11_warning_como_sucesso 's/ACK_CLEAN) return 0;;/ACK_CLEAN|ACK_WARNING) return 0;;/' "$W/obs.txt"
-    cmut M14_timeout_como_sucesso 's/ACK_CLEAN) return 0;;/ACK_CLEAN|TIMEOUT) return 0;;/' "$W/obs.txt" ;;
+  base_b) cmut M11_warning_como_sucesso 's/ACK_CLEAN) return 0;;/ACK_CLEAN|ACK_WARNING) return 0;;/' "$W/obs.txt" ;;
+  base_a) cmut M14_timeout_como_sucesso 's/ACK_CLEAN) return 0;;/ACK_CLEAN|TIMEOUT) return 0;;/' "$W/obs.txt" ;;
 esac
 if [ "$SCEN" = base_b ]; then
-  if [ -s "$W/obs_m10.txt" ]; then
-    echo "OBS_DONE=1" >> "$W/obs_m10.txt"
+  if [ -s "$W/oracle_m10.out" ] && grep -q '^OBS_DONE=1' "$W/obs.txt"; then
+    # Observação final completa com as linhas do oráculo trocadas pelas do oráculo mutado (lê compute1).
+    { grep -v '^ORACLE_' "$W/obs.txt"; grep '^ORACLE_' "$W/oracle_m10.out"; } > "$W/obs_m10.txt"
     o=$(bash "$CL" "$W/obs_m10.txt" "$SCEN"); vm=$(sed -n 's/^VERDICT=//p' <<< "$o")
     if [ "$verdict" != PASS ]; then res="INCONCLUSIVO(base=$verdict, mutante=$vm)"
     elif [ "$vm" = ERROR_INFRA ]; then res="KILLED(veredito=ERROR_INFRA)"; elif [ "$vm" = PASS ]; then res=SURVIVED; else res="KILLED(veredito=$vm)"; fi
