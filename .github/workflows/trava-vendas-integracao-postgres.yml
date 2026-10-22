@@ -112,7 +112,7 @@ jobs:
           set -eo pipefail
           node --test tests/trava-vendas-gate-paths.test.mjs | tee g.txt
           grep -qx "# tests 3" g.txt && grep -qx "# pass 3" g.txt && grep -qx "# skipped 0" g.txt && grep -qx "# fail 0" g.txt
-  # B05 (PR #868): os 12 mutantes de assinatura/idempotência rodam no runner contra o PostgreSQL efêmero,
+  # B05 (PR #868): os 13 mutantes de assinatura/idempotência rodam no runner contra o PostgreSQL efêmero,
   # independente de quem escreveu a PR. Cada linha MUTANT fica no log e o resumo vira anotação do check-run.
   mutantes:
     runs-on: ubuntu-latest
@@ -132,7 +132,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Mutantes B05 (assinatura e idempotência; 12, cada um precisa ser morto)
+      - name: Mutantes B05 (assinatura e idempotência; 13, cada um precisa ser morto)
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
@@ -144,6 +144,6 @@ jobs:
           echo "::notice title=MUTANTS_MP_WEBHOOK::$(grep '^MUTANT' mut.txt | paste -sd'|' - | sed 's/|/%0A/g')%0Arc=$rc"
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
           n="$(grep -c '^MUTANT M[0-9][0-9a-z]*_[^ ]* KILLED' mut.txt || true)"
-          [ "$n" = "12" ] || { echo "::error::esperados 12 mutantes mortos, obtidos $n"; exit 1; }
+          [ "$n" = "13" ] || { echo "::error::esperados 13 mutantes mortos, obtidos $n"; exit 1; }
           if grep -q '^MUTANT [^ ]* SURVIVED' mut.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi

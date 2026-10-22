@@ -60,6 +60,12 @@ M = {
     "M7_processa_assinatura_invalida": sub_global('  if (!signatureValid) return json12(res, 401, { error: "webhook_auth_failed", accepted: false });\n', ""),
     "M8_nao_enfileira_recuperacao": sub_global("if (!trustedRecovery) await recordMercadoPagoWebhookSignature(", "if (false) await recordMercadoPagoWebhookSignature("),
     "M9_comparacao_nao_constante": sub_global("return a2.length === b2.length && crypto5.timingSafeEqual(a2, b2);", "return expected === v1.toLowerCase();"),
+    # Mutante independente (pedido do auditor; autor distinto dos 12 acima): a deduplicação vira "upsert" — a chave
+    # única continua lá, mas a duplicata ATUALIZA a linha e o RETURNING devolve a linha também para a duplicata,
+    # então a transição para pago e a entrega rodam de novo em cada reentrega/concorrente (difere de M6b, que remove
+    # o ON CONFLICT e faz a duplicata falhar com violação de chave).
+    "M10_dedupe_vira_upsert": sub_after("        ON CONFLICT DO NOTHING\n        RETURNING order_id,normalized_event,refunded_total",
+                                        "        ON CONFLICT (provider_event_id) DO UPDATE SET provider_status=EXCLUDED.provider_status\n        RETURNING order_id,normalized_event,refunded_total", H),
 }
 
 
