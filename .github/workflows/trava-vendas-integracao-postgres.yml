@@ -147,7 +147,7 @@ jobs:
           [ "$rc" = 0 ] || { echo "::error::autoverificação do executor saiu com $rc"; exit 1; }
           grep -q '^SELF_CHECK_INFRA attempts=3 classes=INCONCLUSIVE,INCONCLUSIVE,INCONCLUSIVE injected=True PASS$' self.txt
           if grep -q '^MUTANT [^ ]* KILLED' self.txt; then echo "::error::ECONNRESET sem mutação contado como KILLED"; exit 1; fi
-          echo "::notice title=SELF_CHECK_INFRA::$(grep '^SELF_CHECK_INFRA' self.txt)"
+          echo "::notice title=SELF_CHECK_INFRA::$(grep -E '^(MUTANT|SELF_CHECK_INFRA)' self.txt | paste -sd'|' - | sed 's/|/%0A/g')"
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado"; exit 1; fi
       - name: Mutantes B05 (assinatura e idempotência; 13, cada um morto por falha FUNCIONAL de asserção)
         env:
@@ -167,3 +167,18 @@ jobs:
           if grep -qE '^MUTANT [^ ]* SURVIVED' mut.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
           for b in unit dedupe_pg http_pg; do grep -qE "^MUTANT BASELINE $b .* infra=none PASS$" mut.txt || { echo "::error::linha de base $b"; exit 1; }; done
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi
+      # Uma anotação por mutante (linha FINAL, após repetições). O GitHub aceita no máximo 10 anotações
+      # ::notice:: por etapa, então as 13 + linha de base + resumo saem em duas etapas.
+      - name: Anotações MUTANT (linha de base e M1–M6a)
+        if: always()
+        run: |
+          [ -f mut.txt ] || exit 0
+          grep '^MUTANT BASELINE' mut.txt | while IFS= read -r l; do echo "::notice title=$(cut -d' ' -f1-3 <<<"$l")::$l"; done
+          awk '/^MUTANT M[0-9]/{if(!($2 in s)){o[++n]=$2;s[$2]=1} f[$2]=$0} END{for(i=1;i<=n;i++)print f[o[i]]}' mut.txt > final.txt
+          head -n 7 final.txt | while IFS= read -r l; do echo "::notice title=MUTANT $(cut -d' ' -f2 <<<"$l")::$l"; done
+      - name: Anotações MUTANT (M6b–M10 e resumo)
+        if: always()
+        run: |
+          [ -f final.txt ] || exit 0
+          tail -n +8 final.txt | while IFS= read -r l; do echo "::notice title=MUTANT $(cut -d' ' -f2 <<<"$l")::$l"; done
+          echo "::notice title=MUTANTS_TOTAL::$(grep '^MUTANTS_TOTAL' mut.txt || echo ausente)"

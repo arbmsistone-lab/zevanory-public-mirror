@@ -17,7 +17,8 @@ Classificação (exigência do auditor Sol): a saída TAP de cada suíte é anal
                    É repetido até RETRIES vezes; se continuar INCONCLUSIVE o job FALHA (nunca conta como KILLED).
 A linha de base (código sem mutação) precisa passar com as contagens exatas e SEM assinatura de infra.
 Saída por mutante: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE reason=... unit_fail= dedupe_pg_fail= http_pg_fail=`
-(também como anotação ::notice:: quando GITHUB_ACTIONS=true).
+(o workflow transforma a linha FINAL de cada mutante em anotação ::notice::; o GitHub limita a 10 anotações
+por etapa, por isso elas são emitidas em etapas separadas, não por este script).
 
 Modos:
   python3 scripts/ci/mutants_mp_webhook.py                 # linha de base + 13 mutantes
@@ -36,7 +37,6 @@ ORIG = W.read_text(encoding="utf-8")
 ORIG_SHA = hashlib.sha256(ORIG.encode()).hexdigest()
 H = ORIG.index("async function handleMercadoPagoWebhook(")
 RETRIES = 2  # repetições controladas após um INCONCLUSIVE (total de tentativas = 1 + RETRIES)
-GHA = os.environ.get("GITHUB_ACTIONS") == "true"
 
 TAP = ["--test-reporter=tap", "--test-reporter-destination=stdout"]
 SUITES = {  # nome -> (comando, contagem exata na linha de base)
@@ -202,8 +202,6 @@ def report(mid, cls, reason, r, attempt):
     fails = " ".join(f"{n}_fail={c['fail']}" for n, c in r.items())
     line = f"MUTANT {mid} {cls} reason={reason} {fails} attempt={attempt}"
     print(line, flush=True)
-    if GHA:
-        print(f"::notice title=MUTANT {mid}::{line}", flush=True)
 
 
 def restore():
@@ -239,8 +237,6 @@ def baseline():
         line = (f"MUTANT BASELINE {name} tests={c['tests']} pass={c['pass']} fail={c['fail']} skipped={c['skipped']} "
                 f"infra={'/'.join(sorted(set(noise))) or 'none'} {'PASS' if ok else 'FAIL'}")
         print(line, flush=True)
-        if GHA:
-            print(f"::notice title=MUTANT BASELINE {name}::{line}", flush=True)
         ok_all &= ok
     return ok_all
 
