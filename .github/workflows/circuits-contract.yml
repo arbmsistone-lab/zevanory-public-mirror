@@ -9,6 +9,7 @@ on:
     paths:
       - ".github/workflows/circuits-contract.yml"
       - "tests/circuits-adversarial.test.mjs"
+      - "scripts/ci/mutants_circuits.py"
       - "worker/sales-control.mjs"
       - "worker/commercial-checkout-guard.mjs"
       - "worker/continuity-router.mjs"
@@ -40,3 +41,24 @@ jobs:
           grep -qx "# fail 0" /tmp/circuits.txt || { echo "::error::há testes falhando"; exit 1; }
           grep -qx "# skipped 0" /tmp/circuits.txt || { echo "::error::testes pulados"; exit 1; }
           grep -qx "# todo 0" /tmp/circuits.txt || { echo "::error::testes pendentes (todo)"; exit 1; }
+
+  # Os 20 mutantes da PR rodam no runner (independente de quem escreveu a PR); cada linha MUTANT fica no log.
+  mutants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Circuitos A/B — 20 mutantes (cada um precisa ser morto)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          node --version
+          python3 scripts/ci/mutants_circuits.py < /dev/null | tee /tmp/mutants.txt
+          n="$(grep -c '^MUTANT M[0-9][0-9] KILLED' /tmp/mutants.txt || true)"
+          [ "$n" = "20" ] || { echo "::error::esperados 20 mutantes mortos, obtidos $n"; exit 1; }
+          if grep -q '^MUTANT M[0-9][0-9] SURVIVED' /tmp/mutants.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi
