@@ -8,16 +8,26 @@ set -u
 SCEN=${1:?base_a|base_b|m8|m9}; W=${2:?workdir}
 HERE=$(cd "$(dirname "$0")" && pwd); LAB=$(cd "$HERE/.." && pwd)
 NEON_DIR=${NEON_DIR:?NEON_DIR}
-mkdir -p "$W"; OBS=$W/obs.txt; : > "$OBS"
+mkdir -p "$W"; OBS=$W/obs.txt; : > "$OBS"; : > "$W/notes.txt"
 export COMPOSE_PROJECT_NAME=b07
 DC=(docker compose -f "$NEON_DIR/docker-compose.yml" -f "$NEON_DIR/docker-compose.b07.yml")
 [ "$SCEN" = m9 ] && DC+=(--profile m9)
 CLIENT_TIMEOUT=${CLIENT_TIMEOUT:-30}
 
 enc(){ sed 's/%/%25/g' | tr '\n' '|' | sed 's/|$//; s/|/%0A/g'; }
-note(){ echo "T2[$SCEN] $*"; echo "::notice title=T2_${SCEN}::$(printf '%s' "$*" | enc)"; }
-obs(){ echo "$1=$2" >> "$OBS"; note "$1=$2"; }
-infra_fail(){ obs INFRA_FAIL "$1"; dump_logs; exit 0; }
+# O GitHub guarda no máximo 10 anotações notice por passo: aqui só se grava em notes.txt/obs.txt e o passo do
+# veredito publica anotações agregadas (observação, diagnóstico, mutantes).
+note(){ echo "T2[$SCEN] $*"; printf '%s\n' "$*" | tr '\n' ' ' | sed 's/ *$//' >> "$W/notes.txt"; echo >> "$W/notes.txt"; }
+obs(){ echo "$1=$(printf '%s' "$2" | tr '\n' ' ')" >> "$OBS"; echo "T2[$SCEN] $1=$2"; }
+infra_fail(){ obs INFRA_FAIL "$1"; dump_storage; dump_logs; exit 0; }
+dump_storage(){ # estado e cauda dos logs da camada de armazenamento (o log do job não é baixável; vai como anotação)
+  note "PS_A: $("${DC[@]}" ps -a --format '{{.Service}} {{.State}} {{.Status}}' 2>&1 | tr '\n' ';')"
+  local s id; for s in pageserver safekeeper1 storage_broker minio compute1 compute2 compute3; do
+    id=$("${DC[@]}" ps -a -q "$s" 2>/dev/null); [ -n "$id" ] || continue
+    docker logs "$id" > "$W/$s.tail.log" 2>&1
+    note "LOG_${s}: $(grep -v '^\s*$' "$W/$s.tail.log" | tail -25 | cut -c1-260)"
+  done
+}
 dump_logs(){
   for c in compute1 compute2 compute3; do
     local id; id=$("${DC[@]}" ps -a -q "$c" 2>/dev/null)
@@ -114,6 +124,11 @@ obs IDS "tenant=$TENANT_ID timeline=$TIMELINE_ID db_identity=$IDENT"
 note "COMPOSE_NETS: $(for s in safekeeper1 pageserver compute1 compute2 compute3; do printf '%s=%s ' "$s" "$(docker compose -f "$W/compose.resolved.yml" config --format json 2>/dev/null | jq -c --arg s "$s" '.services[$s].networks|keys' 2>/dev/null)"; done)"
 
 # ---------- pilha ----------
+# pageserver_config/ é montado em /data/.neon (diretório de trabalho do pageserver, que roda como usuário sem
+# privilégio na imagem). No runner o checkout pertence ao uid do runner com modo 755: o pageserver não consegue
+# criar tenants/ nem o pid. Abrir a escrita só neste diretório descartável (conteúdo do Neon inalterado).
+obs PS_CONFIG_PERM_ANTES "$(stat -c '%a %u:%g' "$NEON_DIR/pageserver_config") neon_uid=$(docker run --rm --entrypoint id "$(lock NEON)" -u 2>/dev/null || echo ?)"
+chmod 0777 "$NEON_DIR/pageserver_config"; chmod 0666 "$NEON_DIR/pageserver_config"/*
 SVC=(minio minio_create_buckets storage_broker pageserver safekeeper1 safekeeper2 safekeeper3)
 [ "$SCEN" = m9 ] && SVC+=(safekeeper4 safekeeper5 safekeeper6)
 "${DC[@]}" up -d --no-build "${SVC[@]}" > "$W/up.log" 2>&1 || infra_fail "compose up storage: $(tail -c 400 "$W/up.log")"
