@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { handleLeadMagnet, runLeadNurture, runLeadRetention, leadOptOutLink, subjectRef } from "../../worker/lead-magnet.mjs";
 
 const HOST = process.env.LEAD_PG_HOST;
@@ -28,13 +29,15 @@ const sqlFactory = () => ({ query: async (text, params = []) => psql(text.replac
 const kv = () => { const m = new Map(); return { m, async get(k) { return m.get(k) ?? null; }, async put(k, v) { m.set(k, v); }, async delete(k) { m.delete(k); } }; };
 
 test("real PostgreSQL: existing production table (pre-T3 schema) is migrated in place, rows kept", { skip: !HOST && "LEAD_PG_HOST not set" }, async () => {
-  psql("drop table if exists zevanory_leads; drop table if exists zevanory_lead_events;");
+  psql("drop table if exists zevanory_leads; drop table if exists zevanory_lead_events; drop table if exists schema_migrations;");
+  psql(readFileSync(new URL("../../db/migrations/001_telemetry_events.sql", import.meta.url), "utf8"));
   // Exact pre-T3 DDL (gh-pages 82166477) with one legacy confirmed lead.
   psql(`create table zevanory_leads (email text primary key, email_hash text not null, name text, source text not null default 'material-gratuito',
     consent_version text not null, consent_at timestamptz not null, status text not null default 'pending', token_hash text, token_expires_at timestamptz,
     created_at timestamptz not null default now(), confirmed_at timestamptz, unsubscribed_at timestamptz, nurture_step integer not null default 0, nurture_at timestamptz);
     insert into zevanory_leads (email, email_hash, consent_version, consent_at, status, confirmed_at, nurture_step, nurture_at)
     values ('legado@x.com', 'h', 'lead-magnet-v1-2026-10-07', now() - interval '5 days', 'confirmed', now() - interval '5 days', 2, now() - interval '3 days');`);
+  psql(readFileSync(new URL("../../db/migrations/030_lead_consent.sql", import.meta.url), "utf8"));
   globalThis.fetch = async () => new Response("{}", { status: 200 });
   const env = { DATABASE_URL: "x", RESEND_API_KEY: "re_test_123456789", LEAD_PRIVACY_SECRET: "k".repeat(40), ZEVANORY_PRIVATE_ARTIFACTS: kv() };
   const out = await runLeadNurture(env, { sqlFactory, salesOpen: false });
@@ -42,6 +45,7 @@ test("real PostgreSQL: existing production table (pre-T3 schema) is migrated in 
   assert.equal(out.held, 1, "legacy lead within consent (step 2 = the offer) is held while sales are closed, not erased");
   assert.deepEqual(psql("select email, subject_ref from zevanory_leads"), [{ email: "legado@x.com", subject_ref: null }]);
   assert.ok(psql("select 1 from information_schema.tables where table_name='zevanory_lead_events'").length === 1);
+  assert.deepEqual(psql("select column_name from information_schema.columns where table_name='zevanory_leads' and column_name in ('consent_text','subject_ref') order by column_name"), [{ column_name: "consent_text" }, { column_name: "subject_ref" }]);
 });
 
 test("real PostgreSQL: subscribe -> confirm -> cap -> revoke -> retention", { skip: !HOST && "LEAD_PG_HOST not set" }, async () => {

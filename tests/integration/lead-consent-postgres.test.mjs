@@ -1,6 +1,8 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { handleLeadMagnet, runLeadNurture } from "../../worker/lead-magnet.mjs";
 import salesPublicWorker from "../../worker/sales-public-worker.mjs";
 
@@ -103,6 +105,10 @@ const reset = () => psql("truncate zevanory_leads, zevanory_lead_events");
 before(() => {
   try { psql("drop database if exists " + DB + " with (force)", "postgres"); } catch {}
   psql("create database " + DB, "postgres");
+  const migrations = resolve("db/migrations");
+  for (const filename of readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort()) {
+    psql(readFileSync(resolve(migrations, filename), "utf8").replace(/^\uFEFF/, ""));
+  }
 });
 
 test("registra data/hora, texto aceito, versão e origem do consentimento no PostgreSQL", async () => {
@@ -117,6 +123,7 @@ test("registra data/hora, texto aceito, versão e origem do consentimento no Pos
   assert.equal(lead.status, "pending");
   assert.equal(sent.length, 1, "antes da confirmação só sai o pedido de double opt-in");
   assert.deepEqual(psql("select event, consent_version from zevanory_lead_events"), [{ event: "consent_given", consent_version: CONSENT_VERSION }]);
+  assert.deepEqual(psql("select migration_id from schema_migrations where migration_id='030_lead_consent'"), [{ migration_id: "030_lead_consent" }]);
 });
 
 test("double opt-in inicia a sequência uma vez; GET não confirma e token não reutiliza", async () => {

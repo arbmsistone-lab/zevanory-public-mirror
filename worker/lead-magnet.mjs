@@ -38,7 +38,6 @@ export const DEFAULT_EVENT_RETENTION_DAYS = 730;
 const RETENTION_BATCH = 200;
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/;
 const DAY = 86_400_000;
-let schemaReady = false;
 
 const HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: HEADERS });
@@ -117,21 +116,6 @@ async function eraseLead(env, sql, row, event) {
   return { residual };
 }
 
-export async function ensureLeadSchema(sql) {
-  if (schemaReady) return;
-  await sql.query(`create table if not exists zevanory_leads (
-    email text primary key, email_hash text not null, name text, source text not null default 'material-gratuito',
-    consent_version text not null, consent_text text, consent_at timestamptz not null, status text not null default 'pending',
-    token_hash text, token_expires_at timestamptz, created_at timestamptz not null default now(),
-    confirmed_at timestamptz, unsubscribed_at timestamptz, nurture_step integer not null default 0, nurture_at timestamptz)`, []);
-  await sql.query("alter table zevanory_leads add column if not exists subject_ref text", []);
-  await sql.query("alter table zevanory_leads add column if not exists consent_text text", []);
-  // Audit trail without e-mail, name or IP (pseudonymised subject reference only).
-  await sql.query(`create table if not exists zevanory_lead_events (id bigserial primary key, subject_ref text, event text not null,
-    consent_version text, at timestamptz not null default now())`, []);
-  schemaReady = true;
-}
-
 async function sendEmail(env, { to, subject, text, unsubscribeUrl, idempotencyKey }) {
   if (!env.RESEND_API_KEY) return false;
   const headers = { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" };
@@ -183,7 +167,6 @@ async function subscribe(env, sql, { email, name, consent, page }) {
   name = String(name || "").trim().replace(/[\r\n<>]/g, " ").slice(0, 60);
   if (!EMAIL_RE.test(email) || email.length > 254) return { status: 400, body: { ok: false, message: "Confira o e-mail." } };
   if (consent !== true) return { status: 400, body: { ok: false, message: "Marque a autorização para receber o material." } };
-  await ensureLeadSchema(sql);
   const existing = (await sql.query("select status, confirmed_at, subject_ref from zevanory_leads where email=$1", [email]))[0];
   if (existing?.status === "confirmed") {
     const link = await leadOptOutLink(env, email, existing.subject_ref);
@@ -209,7 +192,6 @@ async function subscribe(env, sql, { email, name, consent, page }) {
 
 async function confirm(env, sql, token) {
   if (!/^[0-9a-f]{64}$/.test(String(token || ""))) return null;
-  await ensureLeadSchema(sql);
   const rows = await sql.query(`update zevanory_leads set status='confirmed', confirmed_at=now(), token_hash=null, token_expires_at=null, nurture_step=1, nurture_at=now()
       where token_hash=$1 and token_expires_at > now() and status='pending' returning email, name, subject_ref, consent_version`, [await sha256Hex(token)]);
   const lead = rows[0];
@@ -229,7 +211,6 @@ const MIN_DAYS_BEFORE = { 1: 2, 2: 5, 3: 3, 4: 4 };
 export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now = Date.now() } = {}) {
   if (!env.DATABASE_URL || !sqlFactory) return { ok: false, reason: "lead_nurture_unconfigured" };
   const sql = sqlFactory(env.DATABASE_URL);
-  await ensureLeadSchema(sql);
   // Consent cap in ONE query (not one per lead: the hourly run shares 50 external subrequests).
   for (const [version, followups] of Object.entries(CONSENT_FOLLOWUPS)) {
     await sql.query("update zevanory_leads set nurture_step=$1 where status='confirmed' and consent_version=$2 and nurture_step >= $3 and nurture_step < $1", [NURTURE_DONE, version, 1 + followups]);
@@ -285,7 +266,6 @@ export async function runLeadRetention(env, sql, { now = Date.now(), force = fal
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const day = new Date(now).toISOString().slice(0, 10);
   if (!force) { try { if ((await kv?.get?.(RETENTION_MARKER)) === day) return { ok: true, skipped: "already_ran_today" }; } catch {} }
-  await ensureLeadSchema(sql);
   const erased = await sql.query(`delete from zevanory_leads where email in (select email from zevanory_leads
       where (status='pending' and token_expires_at < now() - ($1::int * interval '1 day'))
          or status='unsubscribed'
@@ -364,7 +344,6 @@ export async function handleLeadMagnet(request, env, { sqlFactory } = {}) {
     const invalid = () => html(400, "Link inválido", "<p>Escreva para o suporte que removemos seu e-mail na hora.</p>");
     if (request.method === "GET" || request.method === "HEAD") return match ? html(200, "Parar de receber e apagar seus dados?", `<p>Você deixa de receber os e-mails do material gratuito e apagamos seu e-mail e seu nome desta lista.</p><form method="post"><button type="submit">Confirmar</button></form>`) : invalid();
     if (request.method !== "POST" || !match) return invalid();
-    await ensureLeadSchema(sql);
     // Revocation = erasure of the lead data (privacy policy: kept "até você cancelar").
     const rows = await sql.query(`delete from zevanory_leads where ${match.column}=$1 returning email, subject_ref, consent_version`, [match.value]);
     const residual = [];

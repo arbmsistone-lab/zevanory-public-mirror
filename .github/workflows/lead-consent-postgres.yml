@@ -6,8 +6,14 @@ on:
     paths:
       - "worker/lead-magnet.mjs"
       - "worker/sales-public-worker.mjs"
+      - "worker/cloudflare-worker.recovered.mjs"
+      - "db/migrations/**"
       - "tests/integration/lead-consent-postgres.test.mjs"
+      - "tests/integration/lead-magnet-postgres.test.mjs"
       - "tests/lead-magnet.test.mjs"
+      - "scripts/ci/verify_lead_consent_mutants.py"
+      - "scripts/ops/restore_new_database.py"
+      - "tests/test_restore_new_database.py"
       - "sales-public/material-gratuito.html"
       - "material-gratuito/index.html"
       - ".github/workflows/lead-consent-postgres.yml"
@@ -46,6 +52,7 @@ jobs:
           set -euo pipefail
           node --check worker/lead-magnet.mjs
           node --check worker/sales-public-worker.mjs
+          python scripts/ci/verify_lead_consent_mutants.py
           node --test --test-reporter=tap tests/integration/lead-consent-postgres.test.mjs | tee p08.txt
           grep -qx "# tests 5" p08.txt
           grep -qx "# pass 5" p08.txt
