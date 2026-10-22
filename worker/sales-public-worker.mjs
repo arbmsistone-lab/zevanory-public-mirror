@@ -95,17 +95,23 @@ async function salesOpen(env){
 // P13 (NO-GO): the static HTML is always built closed (waiting-list CTAs, no /comprar/ link, no
 // schema.org Offer). Only when the owner switch is open (same /api/sales/status, fail-closed: KV
 // sales:open:v1 + "LIBERAR VENDAS" + green preflight) the page is restored at request time.
-const SALES_TOGGLE_PAGES=new Set(["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","solucoes"]);
+const SALES_TOGGLE_PAGES=new Set(["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","solucoes","conteudo-pronto"]);
+const SUBSCRIPTION_PATHS=Object.freeze({"conteudo-pronto":"/assinar/conteudo-pronto"});
 const SALES_ORIGIN="https://vendas.zevanory.api.br";
 export function openSalesHtml(html,slug){
   let out=String(html);
   out=out.replace(/<a ([^>]*?)href="[^"]*" data-zev-sku="(ZEV-[A-Z0-9-]+)" data-zev-open-text="([^"]*)">[^<]*<\/a>/g,(m,pre,sku,label)=>PRICES[sku]?`<a ${pre}href="/comprar/${sku}" rel="nofollow">${label}</a>`:m);
+  out=out.replace(/<a ([^>]*?)href="[^"]*" data-zev-sub="([a-z-]+)" data-zev-open-text="([^"]*)">[^<]*<\/a>/g,(m,pre,sub,label)=>Object.prototype.hasOwnProperty.call(SUBSCRIPTION_PATHS,sub)?`<a ${pre}href="${SUBSCRIPTION_PATHS[sub]}">${label}</a>`:m);
   out=out.replace(/<(span|p)([^>]*?) data-zev-open-text="([^"]*)">[^<]*<\/\1>/g,"<$1$2>$3</$1>");
   out=out.replace(/<(p|span)\b[^>]*\sdata-zev-closed[^>]*>[^<]*<\/\1>/g,"");
   const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===slug);
   if(sku)out=out.replace(/(<script type="application\/ld\+json">)([\s\S]*?)(<\/script>)/,(m,a,body,c)=>{
     try{const d=JSON.parse(body);
       for(const n of d["@graph"]||[])if(n&&n["@type"]==="Product")n.offers={"@type":"Offer",price:PRICES[sku][1]+".00",priceCurrency:"BRL",availability:"https://schema.org/InStock",url:SALES_ORIGIN+"/"+slug,seller:{"@type":"Organization",name:"A. RENAN ALVES MOREIRA BITU LTDA"}};
+      return a+JSON.stringify(d)+c;}catch{return m}});
+  if(slug==="conteudo-pronto")out=out.replace(/(<script type="application\/ld\+json">)([\s\S]*?)(<\/script>)/,(m,a,body,c)=>{
+    try{const d=JSON.parse(body);
+      for(const n of d["@graph"]||[])if(n&&n["@type"]==="Service")n.offers={"@type":"Offer",price:"197.00",priceCurrency:"BRL",url:SALES_ORIGIN+"/conteudo-pronto"};
       return a+JSON.stringify(d)+c;}catch{return m}});
   return out;
 }

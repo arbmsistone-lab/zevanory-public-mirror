@@ -38,9 +38,19 @@ POLICY_ANCHOR = _DATA["policy_anchor"]
 BANNED_POLICY_PHRASES = tuple(_DATA["banned_policy_phrases"])
 LEGAL_SURFACES = tuple(_DATA["policy_surfaces"]["legal"])
 PRODUCT_SURFACES = tuple(_DATA["policy_surfaces"]["products"])
+SUBSCRIPTION_SURFACES = tuple(_DATA["policy_surfaces"].get("subscription", ()))
+CHECKOUT_HREF_PATHS = tuple(_DATA["checkout_href_paths"])
+CHECKOUT_HOSTS = tuple(_DATA["checkout_hosts"])
 
 for _part in (RULE_7D, DELIVERY_72H):
     assert _part in SOL_TEXT, _part
+
+SUBSCRIPTION_SUMMARY = (
+    '<p class="policy-summary">Entrega: após a confirmação do pagamento, por e-mail (formulário curto e, depois, o pacote do mês em link privado). '
+    f'Arrependimento: {RULE_7D}, com devolução integral (se as datas forem diferentes, vale a mais recente). '
+    'Sem fidelidade: a renovação pode ser cancelada a qualquer momento. '
+    f'<a href="/termos#{POLICY_ANCHOR}">Termos completos</a> · <a href="/reembolso">Reembolso</a></p>'
+)
 
 POLICY_SUMMARY = (
     f'<p class="policy-summary">Entrega: após a confirmação do pagamento, por e-mail, em {DELIVERY_72H}; '
@@ -58,7 +68,9 @@ def build_mode() -> str:
     return raw
 
 
-CHECKOUT_HREF_RE = re.compile(r"""href\s*=\s*["']?[^"'\s>]*/comprar/""", re.I)
+_ALT = "|".join([re.escape(p) for p in CHECKOUT_HREF_PATHS] + [re.escape(h) for h in CHECKOUT_HOSTS])
+# Qualquer href (relativo ou absoluto) para caminho/host de checkout ou assinatura.
+CHECKOUT_HREF_RE = re.compile(r"""href\s*=\s*["']?[^"'\s>]*(?:""" + _ALT + ")", re.I)
 INSTOCK_RE = re.compile(r"schema\.org/InStock", re.I)
 
 
@@ -68,7 +80,7 @@ def audit_closed(out_dir: Path) -> list[str]:
     for f in sorted(out_dir.glob("*.html")):
         text = f.read_text(encoding="utf-8")
         if CHECKOUT_HREF_RE.search(text):
-            problems.append(f"{f.name}: href /comprar/ em modo fechado")
+            problems.append(f"{f.name}: href de checkout/assinatura ({CHECKOUT_HREF_RE.search(text).group(0)[-40:]}) em modo fechado")
         if INSTOCK_RE.search(text):
             problems.append(f"{f.name}: schema.org/InStock em modo fechado")
     return problems
@@ -85,6 +97,21 @@ def audit_policy(out_dir: Path, products=PRODUCT_SURFACES, legal=LEGAL_SURFACES)
         for bad in BANNED_POLICY_PHRASES:
             if bad in text:
                 problems.append(f"{slug}: formulacao divergente '{bad}'")
+    for slug in SUBSCRIPTION_SURFACES:
+        text = (out_dir / f"{slug}.html").read_text(encoding="utf-8")
+        if RULE_7D not in text:
+            problems.append(f"{slug}: falta '{RULE_7D}'")
+        if f"/termos#{POLICY_ANCHOR}" not in text:
+            problems.append(f"{slug}: falta o resumo da politica junto ao CTA")
+    # Nenhuma pagina publicada pode manter formulacao divergente (calculadoras, catalogo, kit etc.).
+    checked = set(legal) | set(products) | set(SUBSCRIPTION_SURFACES)
+    for f in sorted(out_dir.glob("*.html")):
+        if f.stem in checked:
+            continue
+        text = f.read_text(encoding="utf-8")
+        for bad in BANNED_POLICY_PHRASES:
+            if bad in text:
+                problems.append(f"{f.stem}: formulacao divergente '{bad}'")
     for slug in legal:
         text = (out_dir / f"{slug}.html").read_text(encoding="utf-8")
         if SOL_TEXT not in text:

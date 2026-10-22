@@ -231,9 +231,33 @@ def apply_catalog(html: str) -> str:
     for slug, c in COMMERCE.items():
         tag = mode_text(f'R$ {c["price"]} · {policy.CLOSED_LABEL}', f'R$ {c["price"]} · link de 72 h, um download', cls="catalog-type")
         html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', lambda m: m.group(1) + tag, html, count=1, flags=re.S)
-    html = re.sub(r'(<a class="catalog-card" href="/conteudo-pronto">.*?<p>[^<]*</p>)', r'\g<1><span class="catalog-type">R$ 197/mês · entrega automática por e-mail</span>', html, count=1, flags=re.S)
+    sub_tag = mode_text(f"R$ 197/mês · {policy.CLOSED_LABEL}", "R$ 197/mês · entrega automática por e-mail", cls="catalog-type")
+    html = re.sub(r'(<a class="catalog-card" href="/conteudo-pronto">.*?<p>[^<]*</p>)', lambda m: m.group(1) + sub_tag, html, count=1, flags=re.S)
     for slug in ("zevanory-sales", "zevanory-cfo", "arbm-contador-saloes"):
         html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', r'\g<1><span class="catalog-type">Em breve</span>', html, count=1, flags=re.S)
+    return html
+
+SUBSCRIPTION_OFFER = {"@type": "Offer", "price": "197.00", "priceCurrency": "BRL", "url": f"{SALES_ORIGIN}/conteudo-pronto"}
+
+def apply_subscription(html: str) -> str:
+    """P13: Conteudo Pronto. A fonte ja vem fechada (CTA de espera com data-zev-sub, sem Offer);
+    aqui entram o resumo da politica e o rotulo ao lado do CTA, e o modo aberto (preview)."""
+    if html.count('data-zev-sub="conteudo-pronto"') < 1 or "/assinar/" in html:
+        raise SystemExit("conteudo-pronto: fonte fora do modo fechado")
+    html = re.sub(r'(<a class="button primary" [^>]*data-zev-sub="conteudo-pronto"[^>]*>[^<]*</a></p><p class="microcopy">[^<]*</p>)',
+                  lambda m: m.group(1) + policy.SUBSCRIPTION_SUMMARY + closed_note(), html, count=1)
+    if policy.SUBSCRIPTION_SUMMARY not in html:
+        raise SystemExit("conteudo-pronto: ancora do CTA principal nao encontrada")
+    if MODE == policy.OPEN:
+        html = re.sub(r'<a class="button primary" href="[^"]*" data-zev-sub="conteudo-pronto" data-zev-open-text="([^"]*)">[^<]*</a>',
+                      r'<a class="button primary" href="/assinar/conteudo-pronto">\1</a>', html)
+        def add_offer(m):
+            data = json.loads(m.group(2))
+            for node in data.get("@graph", []):
+                if node.get("@type") == "Service":
+                    node["offers"] = dict(SUBSCRIPTION_OFFER)
+            return m.group(1) + json.dumps(data, ensure_ascii=False) + m.group(3)
+        html = re.sub(r'(<script type="application/ld\+json">)(.*?)(</script>)', add_offer, html, count=1, flags=re.S)
     return html
 
 def add_legal_footer(html: str) -> str:
@@ -297,6 +321,8 @@ def apply_approved_overlay() -> None:
             html = apply_commerce(slug, html)
         if slug == "solucoes":
             html = apply_catalog(html)
+        if slug == "conteudo-pronto":
+            html = apply_subscription(html)
         html = add_legal_footer(html).replace("contato@zevanory.api.br", "suporte@zevanory.api.br")
         # Source pages may list both addresses ("contato@ ou suporte@"); after the public
         # canonicalization they would read "suporte@ ou suporte@". Collapse the duplicate.

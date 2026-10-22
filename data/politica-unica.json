@@ -30,6 +30,18 @@
       "lucro-e-caixa",
       "combo-ia-vendas",
       "negocio-completo"
+    ],
+    "subscription": [
+      "conteudo-pronto"
     ]
-  }
+  },
+  "checkout_href_paths": [
+    "/comprar/",
+    "/assinar/",
+    "/hotmart/"
+  ],
+  "checkout_hosts": [
+    "pay.hotmart.com"
+  ],
+  "nota_assinatura": "Conteúdo Pronto (assinatura) não é entregue por link de 72 h/um download (briefing + pacote mensal em link privado): recebe a mesma regra dos 7 dias e um resumo de entrega fiel ao serviço."
 }

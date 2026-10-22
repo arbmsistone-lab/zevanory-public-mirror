@@ -19,15 +19,18 @@ const P = JSON.parse(readFileSync(join(ROOT, "data/politica-unica.json"), "utf8"
 const PRODUCTS = P.policy_surfaces.products;
 const LEGAL = P.policy_surfaces.legal;
 const SKUS = { "ia-na-pratica": "ZEV-IA-011", "vendas-na-pratica": "ZEV-VEN-011", "lucro-e-caixa": "ZEV-LCX-011", "combo-ia-vendas": "ZEV-CMB-011", "negocio-completo": "ZEV-NGC-011" };
-const CHECKOUT_HREF = /href\s*=\s*["']?[^"'\s>]*\/comprar\//i;
+const CHECKOUT_HREF = /href\s*=\s*["']?[^"'\s>]*(?:\/comprar\/|\/assinar\/|\/hotmart\/|pay\.hotmart\.com)/i;
+const SUBS = P.policy_surfaces.subscription;
 const read = (dir, slug) => readFileSync(join(dir, slug + ".html"), "utf8");
 const env = { ...process.env, PYTHONDONTWRITEBYTECODE: "1" };
 const audit = (dir, mode = "closed") => spawnSync("python3", [join(ROOT, "scripts/sales_policy.py"), "--audit", dir, "--mode", mode], { encoding: "utf8", env });
 const ld = (html) => JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
 const productOffer = (html) => (ld(html)["@graph"] || []).find((n) => n["@type"] === "Product")?.offers;
+const serviceOffer = (html) => (ld(html)["@graph"] || []).find((n) => n["@type"] === "Service")?.offers;
+const subAnchors = (html) => [...html.matchAll(/<a [^>]*href="\/assinar\/[^"]*"[^>]*>[^<]*<\/a>/g)].map((m) => m[0]);
 const buyAnchors = (html) => [...html.matchAll(/<a [^>]*href="\/comprar\/[^"]*"[^>]*>[^<]*<\/a>/g)].map((m) => m[0]);
 
-test("(a) modo fechado: nenhum HTML publicado tem href /comprar/ nem schema.org/InStock", () => {
+test("(a) modo fechado: nenhum HTML publicado tem href /comprar/, /assinar/, /hotmart/ ou pay.hotmart, nem schema.org/InStock", () => {
   const files = readdirSync(PUB).filter((f) => f.endsWith(".html"));
   assert.ok(files.length > 60, "superfície completa");
   for (const f of files) {
@@ -42,7 +45,26 @@ test("(a) modo fechado: nenhum HTML publicado tem href /comprar/ nem schema.org/
     assert.ok(html.includes(P.closed_label), "rótulo vendas fechadas: " + slug);
     assert.match(html, /Preço de tabela: R\$ \d+/, "preço mantido como informação: " + slug);
   }
+  for (const slug of SUBS) {
+    const html = read(PUB, slug);
+    assert.equal(serviceOffer(html), undefined, "assinatura sem Offer enquanto fechada: " + slug);
+    assert.ok(html.includes(P.waitlist_label) && html.includes(P.closed_label), "assinatura: espera + rótulo: " + slug);
+    assert.match(html, /R\$ 197/, "preço da assinatura como informação");
+  }
   assert.equal(audit(PUB).status, 0, "auditoria CLI do modo fechado");
+});
+
+test("(b) assinatura e demais páginas: mesma regra de 7 dias junto ao CTA e nenhuma formulação divergente no site", () => {
+  for (const slug of SUBS) {
+    const html = read(PUB, slug);
+    const hero = html.match(/data-zev-sub="conteudo-pronto"[\s\S]*?<p class="policy-summary">[\s\S]*?<\/p>/)[0];
+    assert.ok(hero.length < 1200 && hero.includes(P.rule_7d) && hero.includes(`/termos#${P.policy_anchor}`), "resumo ao lado do CTA: " + slug);
+    assert.ok(!html.includes("72 horas"), "assinatura não promete link de 72 h (entrega é por link privado mensal)");
+  }
+  for (const f of readdirSync(PUB).filter((x) => x.endsWith(".html"))) {
+    const html = readFileSync(join(PUB, f), "utf8");
+    for (const bad of P.banned_policy_phrases) assert.ok(!html.includes(bad), `${f}: '${bad}'`);
+  }
 });
 
 test("(b) mesma regra de 7 dias e mesma divulgação 72 h / um download em todas as superfícies", () => {
@@ -84,6 +106,17 @@ test("(c) modo aberto: build de preview e restauração em tempo de execução d
       assert.deepEqual(productOffer(runtime), productOffer(opened), "Offer runtime == build aberto: " + slug);
       assert.ok(!runtime.includes("data-zev-") && !runtime.includes(P.closed_label), "runtime sem marcadores: " + slug);
     }
+    for (const slug of SUBS) {
+      const opened = read(out, slug), closed = read(PUB, slug);
+      const anchors = subAnchors(opened);
+      assert.equal(anchors.length, (closed.match(/data-zev-sub=/g) || []).length, "CTA de assinatura restaurado: " + slug);
+      assert.ok(anchors.length >= 2);
+      assert.equal(serviceOffer(opened).price, "197.00");
+      const runtime = openSalesHtml(closed, slug);
+      assert.deepEqual(subAnchors(runtime), anchors, "assinatura runtime == build aberto");
+      assert.deepEqual(serviceOffer(runtime), serviceOffer(opened), "Offer da assinatura runtime == build aberto");
+      assert.ok(!runtime.includes("data-zev-") && !runtime.includes(P.closed_label));
+    }
     const bad = spawnSync("python3", [join(ROOT, "scripts/build_sales_public.py")], { encoding: "utf8", env: { ...env, ZEVANORY_SALES_PUBLIC_MODE: "aberto", ZEVANORY_SALES_PUBLIC_OUT: out } });
     assert.notEqual(bad.status, 0, "modo desconhecido nunca abre");
   } finally { rmSync(out, { recursive: true, force: true }); }
@@ -113,6 +146,10 @@ test("(c) Worker: CTAs só voltam com o interruptor do proprietário aberto (mes
       assert.ok(body.includes(P.delivery_72h), "72 h sempre ao lado da oferta");
     }
     resetPageSwitchCache();
+    const sub = await (await worker.fetch(get("/conteudo-pronto"), pageEnv(status), ctx)).text();
+    assert.equal(/href="\/assinar\/conteudo-pronto"/.test(sub), open, "assinatura status=" + status);
+    assert.equal(sub.includes(P.waitlist_label), !open, "assinatura lista de espera status=" + status);
+    resetPageSwitchCache();
     const cat = await (await worker.fetch(get("/solucoes"), pageEnv(status), ctx)).text();
     assert.equal(cat.includes(P.closed_label), !open, "catálogo status=" + status);
   }
@@ -133,6 +170,11 @@ test("mutantes: /comprar/ remanescente, InStock remanescente e 'após o pagament
     "M3b produto troca a regra por 'após a compra'": (d) => mutate(d, "vendas-na-pratica", (h) => h.split(P.rule_7d).join("até 7 dias após a compra")),
     "M4 reembolso mantém 'em até 2 dias úteis'": (d) => mutate(d, "reembolso", (h) => h.replace("</main>", "<p>Reembolso em até 2 dias úteis.</p></main>")),
     "M5 produto sem 72 h ao lado da oferta": (d) => mutate(d, "combo-ia-vendas", (h) => h.split(P.delivery_72h).join("link pessoal")),
+    "M7 assinatura mantém href /assinar/": (d) => mutate(d, "conteudo-pronto", (h) => h.replace(/href="https:\/\/wa\.me\/[^"]*" data-zev-sub="conteudo-pronto"/, 'href="/assinar/conteudo-pronto" data-zev-sub="conteudo-pronto"')),
+    "M7b página com link /hotmart/": (d) => mutate(d, "ia-por-ramo", (h) => h.replace("</main>", '<a href="/hotmart/ia-na-pratica">x</a></main>')),
+    "M7c página com checkout pay.hotmart.com": (d) => mutate(d, "kit-afiliado", (h) => h.replace("</main>", '<a href="https://pay.hotmart.com/F107979716H?off=g9knd34r">x</a></main>')),
+    "M8 calculadora mantém 'garantia de 7 dias'": (d) => mutate(d, "calculadora-cmv", (h) => h.replace("direito de arrependimento de 7 dias", "garantia de 7 dias")),
+    "M8b assinatura sem a regra dos 7 dias": (d) => mutate(d, "conteudo-pronto", (h) => h.split(P.rule_7d).join("7 dias")),
     "M6 texto único alterado em termos": (d) => mutate(d, "termos", (h) => h.replace(P.sol_text, P.sol_text.replace("receberá imediatamente a confirmação", "receberá a confirmação em 48 horas"))),
   };
   const report = [];

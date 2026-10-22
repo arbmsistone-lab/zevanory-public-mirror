@@ -99,11 +99,11 @@ jobs:
       - name: Build exact sales-domain assets
         run: python3 scripts/build_sales_public.py
 
-      - name: P13 NO-GO grep-gate (closed build has no checkout link nor InStock)
+      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)
         run: |
           set -euo pipefail
           test "$ZEVANORY_SALES_PUBLIC_MODE" = closed
-          if grep -RIlE "href[[:space:]]*=[[:space:]]*[\"']?[^\"' >]*/comprar/" sales-public --include='*.html'; then echo "::error::/comprar/ href in closed build"; exit 1; fi
+          if grep -RIlE "href[[:space:]]*=[[:space:]]*[\"']?[^\"' >]*(/comprar/|/assinar/|/hotmart/|pay\.hotmart\.com)" sales-public --include='*.html'; then echo "::error::checkout/subscription href in closed build"; exit 1; fi
           if grep -RIl 'schema.org/InStock' sales-public --include='*.html'; then echo "::error::InStock in closed build"; exit 1; fi
           python3 scripts/sales_policy.py --audit sales-public --mode closed
           echo "P13_NOGO_GREP_GATE=PASS"
@@ -185,11 +185,11 @@ jobs:
       - name: Build exact release assets
         run: python3 scripts/build_sales_public.py
 
-      - name: P13 NO-GO grep-gate (closed build has no checkout link nor InStock)
+      - name: P13 NO-GO grep-gate (closed build has no checkout/subscription link nor InStock)
         run: |
           set -euo pipefail
           test "$ZEVANORY_SALES_PUBLIC_MODE" = closed
-          if grep -RIlE "href[[:space:]]*=[[:space:]]*[\"']?[^\"' >]*/comprar/" sales-public --include='*.html'; then echo "::error::/comprar/ href in closed build"; exit 1; fi
+          if grep -RIlE "href[[:space:]]*=[[:space:]]*[\"']?[^\"' >]*(/comprar/|/assinar/|/hotmart/|pay\.hotmart\.com)" sales-public --include='*.html'; then echo "::error::checkout/subscription href in closed build"; exit 1; fi
           if grep -RIl 'schema.org/InStock' sales-public --include='*.html'; then echo "::error::InStock in closed build"; exit 1; fi
           python3 scripts/sales_policy.py --audit sales-public --mode closed
           echo "P13_NOGO_GREP_GATE=PASS"
