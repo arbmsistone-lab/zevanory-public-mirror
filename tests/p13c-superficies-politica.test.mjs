@@ -80,6 +80,24 @@ function checkCaptions(cross, yt) {
   assert.ok(cross.captionFor(open, "facebook", { salesOpen: true }).includes(W.short), "aberto: regra curta da política");
 }
 
+// Blog (artigos renderizados pelo Worker): entra no grep-gate do modo fechado.
+async function checkBlog(mc) {
+  const m = new Map(), kv = { get: async (k) => m.get(k) ?? null, put: async (k, v) => { m.set(k, v); } };
+  const env = { ZEVANORY_PRIVATE_ARTIFACTS: kv, PUBLIC_BASE_URL: "https://zevanory.api.br" };
+  const products = ["ZEV-IA-011", "ZEV-VEN-011", "ZEV-LCX-011", "ZEV-CMB-011", "ZEV-NGC-011", "ZEV-DESCONHECIDO"];
+  for (const product of products) {
+    m.set("zpc:blog:article:t-" + product, JSON.stringify({ slug: "t-" + product, title: "Teste", description: "Guia", body: "Texto do guia.", product, day: "2026-10-14", publishedAt: "2026-10-14T12:00:00Z", faq: [] }));
+    const closed = await mc.renderBlogArticle(env, "t-" + product);
+    const hrefs = [...closed.matchAll(/href="([^"]+)"/g)].map((x) => x[1]);
+    assert.ok(hrefs.length > 2, "artigo renderizado: " + product);
+    for (const h of hrefs) assert.equal(POL.hasCheckoutCta(h), false, `blog fechado com chamada de compra: ${product} ${h}`);
+    assert.ok(closed.includes(P.closed_label), "blog fechado avisa: " + product);
+    assert.deepEqual(POL.bannedPolicyHits(closed), [], product);
+    const open = await mc.renderBlogArticle(env, "t-" + product, { salesOpen: true });
+    assert.match(open, /\/comprar\/ZEV-/, "aberto mantém o checkout: " + product);
+  }
+}
+
 const SCAN_DIRS = ["worker", "scripts/channels", "data"];
 const TEXT = /\.(m?js|json|html|txt|md|py|toml|ya?ml|css|svg)$/i;
 function walk(dir, out = []) {
@@ -114,6 +132,27 @@ function guardHits(root) {
     for (const h of POL.bannedPolicyHits(text)) hits.push(`${r}: ${h}`);
   }
   return { hits, files: files.length };
+}
+
+// Endereço único: toda menção à rua em código e páginas publicadas usa o valor do JSON.
+const F = P.resumo_oferta.fornecedor;
+const ADDRESS = `${F.endereco_fisico}, CEP ${F.cep}`;
+function addressHits(root) {
+  const hits = [];
+  const files = [...["worker", "scripts", "sales-overlay"].flatMap((d) => walk(join(root, d))), ...publishedPages(root)];
+  for (const f of files) {
+    const r = relative(root, f).split(sep).join("/");
+    if (r === "data/politica-unica.json") continue;
+    const text = readFileSync(f, "utf8");
+    for (const m of text.matchAll(/Rua Francisco de Freitas Neto[^"<`'\n]{0,90}/g)) if (!m[0].startsWith(F.endereco_fisico) && !(m[0].length >= 40 && F.endereco_fisico.startsWith(m[0]))) hits.push(`${r}: ${m[0].slice(0, 70)}`);
+    if (/Casa Residencial/.test(text)) hits.push(`${r}: 'Casa Residencial'`);
+    if (/CNPJ 69\.077\.233\/0001-99 · Várzea Alegre\/CE/.test(text)) hits.push(`${r}: identificação sem o endereço único`);
+  }
+  for (const slug of ["termos", "privacidade", "reembolso", ...PRODUCTS, "conteudo-pronto", "solucoes"]) {
+    const f = join(root, "sales-public", slug + ".html");
+    if (existsSync(f) && !readFileSync(f, "utf8").includes(ADDRESS)) hits.push(`sales-public/${slug}.html: sem o endereço único`);
+  }
+  return hits;
 }
 
 // ---------- testes ----------
@@ -171,6 +210,10 @@ test("P13c mutantes: suporte com redação antiga, e-mail com /comprar fechado, 
     "M-C2 legenda volta a 'garantia de 7 dias'": ["scripts/channels/short-crosspost.mjs", (s) => s.replace("(open ? SHORT_RULE : CLOSED_LABEL)", '"garantia de 7 dias"'), "captions"],
     "M-G1 reviews volta a '7 dias de garantia a partir da compra'": ["worker/reviews.mjs", (s) => s.replace("Lembre: você pode desistir em", "Lembre: você tem 7 dias de garantia a partir da compra. Ou desista em"), "guard"],
     "M-G2 recibo de entrega com 'após a compra' no prazo": ["worker/cloudflare-worker.recovered.mjs", (s) => s.replace("Arrependimento: voce pode desistir em ${CUSTOMER_RULE_7D}", "Reembolso: ate 7 dias após a compra"), "guard"],
+    "M-B1 blog volta a /comprar/ com vendas fechadas": ["worker/multichannel-autonomy.mjs", (s) => s.replace("return open?`<p><a href", "return true?`<p><a href"), "blog"],
+    "M-B2 blog fechado sem aviso": ["worker/multichannel-autonomy.mjs", (s) => s.replace('<p class="sales-closed">Preço informativo: ${esc(CLOSED_LABEL)}.</p>', ""), "blog"],
+    "M-A1 rodapé de e-mail volta a 'Casa Residencial'": ["worker/brand-email.mjs", (s) => s.replace("${LEGAL_IDENTITY}", "A. RENAN ALVES MOREIRA BITU LTDA · CNPJ 69.077.233/0001-99 · Rua Francisco de Freitas Neto, 96, Casa Residencial, Alto do Tenente, Várzea Alegre/CE, CEP 63540-000"), "address"],
+    "M-A2 termos com endereço antigo": ["sales-public/termos.html", (s) => s.replace(ADDRESS, "Rua Francisco de Freitas Neto, 96, Casa Residencial, Alto do Tenente, Várzea Alegre/CE, CEP 63540-000"), "address"],
     "M-G3 página publicada com 'download imediato'": ["sales-public/solucoes.html", (s) => s.replace("</main>", "<p>Download imediato.</p></main>"), "guard"],
   };
   const report = [];
@@ -178,7 +221,7 @@ test("P13c mutantes: suporte com redação antiga, e-mail com /comprar fechado, 
     const dir = mkdtempSync(join(tmpdir(), "p13c-mut-"));
     try {
       for (const d of ["worker", "data", "scripts/channels"]) cpSync(join(ROOT, d), join(dir, d), { recursive: true });
-      if (kind === "guard") cpSync(join(ROOT, "sales-public"), join(dir, "sales-public"), { recursive: true, filter: (s) => !/[\\/](brand|assets)([\\/]|$)/.test(s) });
+      if (kind === "guard" || kind === "address") cpSync(join(ROOT, "sales-public"), join(dir, "sales-public"), { recursive: true, filter: (s) => !/[\\/](brand|assets)([\\/]|$)/.test(s) });
       const target = join(dir, file), before = readFileSync(target, "utf8"), after = fn(before);
       assert.notEqual(after, before, "mutação não aplicada: " + name);
       writeFileSync(target, after);
@@ -187,6 +230,8 @@ test("P13c mutantes: suporte com redação antiga, e-mail com /comprar fechado, 
       try {
         if (kind === "support") checkSupport(await load("worker/support-knowledge.mjs"));
         else if (kind === "nurture") checkNurture(await load("worker/lead-magnet.mjs"));
+        else if (kind === "blog") await checkBlog(await load("worker/multichannel-autonomy.mjs"));
+        else if (kind === "address") assert.deepEqual(addressHits(dir), []);
         else if (kind === "captions") checkCaptions(await load("scripts/channels/short-crosspost.mjs"), await load("scripts/channels/youtube-daily-short.mjs"));
         else assert.deepEqual(guardHits(dir).hits, []);
       } catch (e) { killed = true; why = String(e.message).split("\n")[0].slice(0, 110); }
@@ -195,4 +240,16 @@ test("P13c mutantes: suporte com redação antiga, e-mail com /comprar fechado, 
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }
   console.log(report.join("\n"));
+});
+
+test("P13c endereço único: rodapés, termos, privacidade, reembolso, e-mails e blog usam o endereço de data/politica-unica.json", async () => {
+  assert.equal(ADDRESS, "Rua Francisco de Freitas Neto, nº 96, Alto do Tenente, Várzea Alegre – CE, CEP 63540-000");
+  assert.deepEqual(addressHits(ROOT), []);
+  const { OFFICIAL_LEGAL_FOOTER } = await import("../worker/brand-email.mjs");
+  assert.ok(OFFICIAL_LEGAL_FOOTER.includes(ADDRESS) && OFFICIAL_LEGAL_FOOTER.includes(F.cnpj));
+  for (const slug of ["termos", "privacidade", "reembolso"]) assert.ok(readFileSync(join(ROOT, slug, "index.html"), "utf8").includes(ADDRESS), "fonte " + slug);
+});
+
+test("P13c blog no grep-gate: com vendas fechadas o artigo leva à página do produto com aviso, nunca a /comprar/", async () => {
+  await checkBlog(await import("../worker/multichannel-autonomy.mjs"));
 });

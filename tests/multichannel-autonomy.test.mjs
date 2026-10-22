@@ -34,7 +34,10 @@ test("one SEO article per Fortaleza calendar day for two consecutive dates",asyn
   assert.equal(index.articles.length,2);
   const html=await renderBlogArticle(env,next.latest.slug);
   assert.match(html,/utm_source=blog/);
-  assert.match(html,new RegExp("https://vendas\\.zevanory\\.api\\.br/comprar/"+next.latest.product+"\\?utm_source=blog"));
+  // P13c: vendas fechadas (padrão) => página do produto + aviso; aberto => /comprar/.
+  assert.doesNotMatch(html,/\/comprar\//); assert.match(html,/vendas temporariamente fechadas/);
+  const openHtml=await renderBlogArticle(env,next.latest.slug,{salesOpen:true});
+  assert.match(openHtml,new RegExp("https://vendas\\.zevanory\\.api\\.br/comprar/"+next.latest.product+"\\?utm_source=blog"));
   assert.match(html,/<h2>Perguntas frequentes<\/h2>/);
 });
 test("regression: production index with legacy articles keeps publishing past the old repeat (2026-10-15)",async()=>{
@@ -154,7 +157,7 @@ test("Pinterest F1 dynamic editorial is published with the official hashed Z ima
 // and utm_campaign carried the full slug (~100 chars), which the funnel drops (^[a-z0-9_-]{1,48}$).
 test("blog article: every link reaches a real destination and every campaign survives the funnel",async()=>{
   const { attribution } = await import("../worker/sales-public-worker.mjs");
-  const salesPages = new Set(["material-gratuito","ia-por-ramo","conteudo-pronto"]);
+  const salesPages = new Set(["material-gratuito","ia-por-ramo","conteudo-pronto","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo"]);
   const apexPaths = new Set(["/blog"]);
   const store=kv(),env={ZEVANORY_PRIVATE_ARTIFACTS:store,PUBLIC_BASE_URL:"https://zevanory.api.br"};
   const out=await ensureDailyBlog(env,new Date("2026-10-14T12:00:00Z"));

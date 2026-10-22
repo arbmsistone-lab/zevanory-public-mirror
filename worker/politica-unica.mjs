@@ -16,6 +16,10 @@ export const BANNED_POLICY_PHRASES = Object.freeze([...POLICY.banned_policy_phra
 export const CHECKOUT_HREF_PATHS = Object.freeze([...POLICY.checkout_href_paths]);
 export const CHECKOUT_HOSTS = Object.freeze([...POLICY.checkout_hosts]);
 export const RESUMO_OFERTA = POLICY.resumo_oferta;
+// Identificação e endereço únicos do fornecedor (rodapés, e-mails, blog, páginas).
+export const SUPPLIER = POLICY.resumo_oferta.fornecedor;
+export const ADDRESS_FULL = `${SUPPLIER.endereco_fisico}, CEP ${SUPPLIER.cep}`;
+export const LEGAL_IDENTITY = `${SUPPLIER.razao_social} · CNPJ ${SUPPLIER.cnpj} · ${ADDRESS_FULL}`;
 
 // Redação ao cliente (derivada do sol_text; ver customer_wording.fragmentos_sol).
 export const CUSTOMER_RULE_7D = W.rule_7d;
@@ -61,4 +65,25 @@ export function bannedPolicyHits(text) {
     if (CTX.context.some((c) => around.includes(c.toLowerCase()))) { hits.push(CTX.phrase + " (prazo/reembolso)"); break; }
   }
   return hits;
+}
+
+// Prazo de arrependimento (refund_window): início = a data mais recente entre a contratação
+// (confirmação do pagamento) e o primeiro recebimento (entrega por e-mail bem-sucedida ou primeiro
+// download); fim = último instante do N-ésimo dia corrido seguinte no fuso da política. Nunca é mais
+// curto que N x 24 h. Sem recebimento registrado o prazo ainda não começou (pedido aceito).
+export const REFUND_WINDOW = Object.freeze({ ...POLICY.refund_window });
+const DAY_MS = 86_400_000;
+const toMs = (v) => { if (v == null || v === "") return null; const t = v instanceof Date ? v.getTime() : typeof v === "number" ? v : Date.parse(String(v)); return Number.isFinite(t) ? t : null; };
+export function refundWindow({ paidAt, deliveredAt, firstDownloadAt, now = Date.now() } = {}) {
+  const paid = toMs(paidAt);
+  if (paid == null) return { eligible: false, started: false, reason: "sem_confirmacao_de_pagamento" };
+  const receipts = [toMs(deliveredAt), toMs(firstDownloadAt)].filter((t) => t != null);
+  if (!receipts.length) return { eligible: true, started: false, reason: "recebimento_pendente", paid_at: new Date(paid).toISOString() };
+  const receipt = Math.min(...receipts);
+  const start = Math.max(paid, receipt);
+  const off = Number(REFUND_WINDOW.utc_offset_minutes) * 60_000;
+  const localDay = Math.floor((start + off) / DAY_MS);
+  const deadline = (localDay + Number(REFUND_WINDOW.days) + 1) * DAY_MS - 1 - off;
+  return { eligible: toMs(now) <= deadline, started: true, reason: toMs(now) <= deadline ? "dentro_do_prazo" : "fora_do_prazo",
+    paid_at: new Date(paid).toISOString(), received_at: new Date(receipt).toISOString(), starts_at: new Date(start).toISOString(), ends_at: new Date(deadline).toISOString() };
 }

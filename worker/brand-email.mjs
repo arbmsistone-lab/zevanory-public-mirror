@@ -1,6 +1,7 @@
+import { LEGAL_IDENTITY } from "./politica-unica.mjs";
 // Canonical visual shell for permitted ZEVANORY transactional and opt-in emails.
 export const OFFICIAL_EMAIL_IMAGE="https://zevanory.api.br/brand/export/email-card.png";
-export const OFFICIAL_LEGAL_FOOTER="A. RENAN ALVES MOREIRA BITU LTDA · CNPJ 69.077.233/0001-99 · Rua Francisco de Freitas Neto, 96, Casa Residencial, Alto do Tenente, Várzea Alegre/CE, CEP 63540-000 · suporte@zevanory.api.br · WhatsApp +55 88 99254-5413";
+export const OFFICIAL_LEGAL_FOOTER=`${LEGAL_IDENTITY} · suporte@zevanory.api.br · WhatsApp +55 88 99254-5413`;
 const escape=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
 export function brandedEmailHtml(text,{unsubscribeUrl}={}){
  const optOut=unsubscribeUrl?'<p><a href="'+escape(unsubscribeUrl)+'">Descadastrar-se destes e-mails</a></p>':"";

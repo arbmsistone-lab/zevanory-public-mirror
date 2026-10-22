@@ -9,6 +9,9 @@ on:
       - "tests/p13-politica-nogo.test.mjs"
       - "tests/p13c-superficies-politica.test.mjs"
       - "tests/p13-decreto-oferta-cache.test.mjs"
+      - "tests/p13c-prazo-reembolso.test.mjs"
+      - "worker/refund-flow.mjs"
+      - "worker/multichannel-autonomy.mjs"
       - "data/politica-unica.json"
       - "worker/politica-unica.mjs"
       - "worker/sales-public-worker.mjs"
@@ -41,6 +44,6 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
           set -eo pipefail
-          { node --test tests/p13-politica-nogo.test.mjs tests/p13c-superficies-politica.test.mjs tests/p13-decreto-oferta-cache.test.mjs || true; } | tee w.txt
-          grep -qx "# tests 16" w.txt && grep -qx "# pass 16" w.txt && grep -qx "# skipped 0" w.txt && grep -qx "# fail 0" w.txt \
+          { node --test tests/p13-politica-nogo.test.mjs tests/p13c-superficies-politica.test.mjs tests/p13-decreto-oferta-cache.test.mjs tests/p13c-prazo-reembolso.test.mjs || true; } | tee w.txt
+          grep -qx "# tests 21" w.txt && grep -qx "# pass 21" w.txt && grep -qx "# skipped 0" w.txt && grep -qx "# fail 0" w.txt \
             || { grep -E "^# (tests|pass|fail|skipped|cancelled) |^not ok" w.txt | sed "s/^/::error::/"; exit 1; }

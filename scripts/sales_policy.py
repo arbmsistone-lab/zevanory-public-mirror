@@ -45,6 +45,8 @@ CHECKOUT_HOSTS = tuple(_DATA["checkout_hosts"])
 # Decreto 7.962/2013, art. 2o: dados do "Resumo da oferta" (fonte unica, data/politica-unica.json).
 RESUMO_OFERTA = _DATA["resumo_oferta"]
 CUSTOMER_RULE_7D = _DATA["customer_wording"]["rule_7d"]
+SUPPLIER = RESUMO_OFERTA["fornecedor"]
+ADDRESS_FULL = f'{SUPPLIER["endereco_fisico"]}, CEP {SUPPLIER["cep"]}'
 PENDING_MARKERS = ("PENDENTE", "PREENCHER", "A CONFIRMAR", "XXX", "PLACEHOLDER")
 
 for _part in (RULE_7D, DELIVERY_72H):

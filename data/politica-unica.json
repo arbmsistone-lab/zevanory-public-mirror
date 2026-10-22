@@ -183,5 +183,11 @@
       "pagamento": "Pix, cartão ou boleto, pela Hotmart. A compra só é confirmada após a aprovação do pagamento.",
       "entrega": "Por e-mail, após a confirmação do pagamento, pela Hotmart; o produto também fica em Minhas compras, na sua conta Hotmart."
     }
+  },
+  "refund_window": {
+    "nota": "P13c (financeiro, para revisão do Sol): prazo de arrependimento aplicado por worker/refund-flow.mjs. Começa na data mais recente entre a contratação (confirmação do pagamento) e o recebimento (primeiro evento de entrega bem-sucedida: e-mail de entrega enviado ou primeiro download); termina no fim do 7º dia corrido seguinte, no horário de Brasília. Sem recebimento registrado o prazo não começou e o pedido é aceito. Fora do prazo o pedido não é registrado como reembolso: vai para o suporte.",
+    "days": 7,
+    "utc_offset_minutes": -180,
+    "fragmento_sol": "se as datas forem diferentes, a ZEVANORY adotará a mais recente"
   }
 }

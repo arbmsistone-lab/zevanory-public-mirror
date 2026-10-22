@@ -92,8 +92,9 @@ HTML_ROUTES = (
 
 
 LEGAL_FOOTER = ('<div class="container footer-legal">'
-                'A. RENAN ALVES MOREIRA BITU LTDA · CNPJ 69.077.233/0001-99 · Rua Francisco de Freitas Neto, 96, Casa Residencial, Alto do Tenente, '
-                'Várzea Alegre/CE, CEP 63540-000 · <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a> · '
+                # P13c: identificação e endereço únicos (data/politica-unica.json, resumo_oferta.fornecedor).
+                f'{policy.SUPPLIER["razao_social"]} · CNPJ {policy.SUPPLIER["cnpj"]} · {policy.ADDRESS_FULL} · '
+                '<a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a> · '
                 'WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a>'
                 # Official profiles verified by public readback (2026-10-12); rel="me" lets platforms
                 # confirm the site <-> profile link.
