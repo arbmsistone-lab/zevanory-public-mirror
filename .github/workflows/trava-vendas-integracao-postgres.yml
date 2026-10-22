@@ -113,7 +113,8 @@ jobs:
           node --test tests/trava-vendas-gate-paths.test.mjs | tee g.txt
           grep -qx "# tests 3" g.txt && grep -qx "# pass 3" g.txt && grep -qx "# skipped 0" g.txt && grep -qx "# fail 0" g.txt
   # B05 (PR #868): os 13 mutantes de assinatura/idempotência rodam no runner contra o PostgreSQL efêmero,
-  # independente de quem escreveu a PR. Cada linha MUTANT fica no log e o resumo vira anotação do check-run.
+  # independente de quem escreveu a PR. Cada linha MUTANT fica no log e vira anotação do check-run. KILLED exige
+  # falha de ASSERÇÃO em teste esperado e nenhuma assinatura de infra; infra => INCONCLUSIVE + repetição; job falha.
   mutantes:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -132,7 +133,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Mutantes B05 (assinatura e idempotência; 13, cada um precisa ser morto)
+      # Meta-teste do executor (auditoria Sol): SEM mutação, o harness injeta um ECONNRESET real na 1ª requisição
+      # de webhook. O executor precisa classificar como INCONCLUSIVE (com as repetições controladas), nunca KILLED.
+      - name: Autoverificação do executor — ECONNRESET injetado sem mutação => INCONCLUSIVE, nunca KILLED
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/ci/mutants_mp_webhook.py --self-check-infra < /dev/null | tee self.txt || rc=$?
+          [ "$rc" = 0 ] || { echo "::error::autoverificação do executor saiu com $rc"; exit 1; }
+          grep -q '^SELF_CHECK_INFRA attempts=3 classes=INCONCLUSIVE,INCONCLUSIVE,INCONCLUSIVE injected=True PASS$' self.txt
+          if grep -q '^MUTANT [^ ]* KILLED' self.txt; then echo "::error::ECONNRESET sem mutação contado como KILLED"; exit 1; fi
+          echo "::notice title=SELF_CHECK_INFRA::$(grep '^SELF_CHECK_INFRA' self.txt)"
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado"; exit 1; fi
+      - name: Mutantes B05 (assinatura e idempotência; 13, cada um morto por falha FUNCIONAL de asserção)
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
@@ -141,9 +158,12 @@ jobs:
           set -euo pipefail
           rc=0
           python3 scripts/ci/mutants_mp_webhook.py < /dev/null | tee mut.txt || rc=$?
-          echo "::notice title=MUTANTS_MP_WEBHOOK::$(grep '^MUTANT' mut.txt | paste -sd'|' - | sed 's/|/%0A/g')%0Arc=$rc"
+          echo "::notice title=MUTANTS_MP_WEBHOOK::$(grep -E '^MUTANT(S_TOTAL)?' mut.txt | paste -sd'|' - | sed 's/|/%0A/g')%0Arc=$rc"
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
-          n="$(grep -c '^MUTANT M[0-9][0-9a-z]*_[^ ]* KILLED' mut.txt || true)"
-          [ "$n" = "13" ] || { echo "::error::esperados 13 mutantes mortos, obtidos $n"; exit 1; }
-          if grep -q '^MUTANT [^ ]* SURVIVED' mut.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
+          grep -qx 'MUTANTS_TOTAL=13 KILLED=13 SURVIVED=0 INCONCLUSIVE=0 RETRIES=2' mut.txt || { echo "::error::resumo inesperado"; exit 1; }
+          # Uma linha FINAL por mutante: KILLED com motivo de asserção (o executor nunca conta código de saída != 0).
+          n="$(grep -cE '^MUTANT M[0-9][0-9a-z]*_[^ ]* KILLED reason=assercao:' mut.txt || true)"
+          [ "$n" = "13" ] || { echo "::error::esperados 13 mutantes mortos por asserção, obtidos $n"; exit 1; }
+          if grep -qE '^MUTANT [^ ]* SURVIVED' mut.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
+          for b in unit dedupe_pg http_pg; do grep -qE "^MUTANT BASELINE $b .* infra=none PASS$" mut.txt || { echo "::error::linha de base $b"; exit 1; }; done
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi
