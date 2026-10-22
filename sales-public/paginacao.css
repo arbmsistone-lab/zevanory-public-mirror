@@ -50,8 +50,9 @@ html.pg .pg-controles{flex:none;display:flex;flex-wrap:nowrap;align-items:center
 .pg-sr{position:absolute!important;width:4px!important;height:4px!important;padding:0!important;margin:0!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}
 @media(max-width:420px){.pg-botao{padding:0 8px}.pg-controles{gap:4px}}
 /* Abaixo de 300 px (ex.: 240 px de largura) os rótulos viram só leitura de tela e os botões ficam com
-   o ícone ‹ › em alvo de 44x44: "Bloco 10 de 37" + os dois rótulos passavam 1 px da largura. */
-@media(max-width:300px){.pg-botao{padding:0}.pg-controles{padding:4px 6px}.pg-resumo{padding:0 10px}.pg-rot{position:absolute!important;width:4px!important;height:4px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important}}
+   o ícone ‹ › em alvo de 44x44: "Bloco 10 de 37" + os dois rótulos passavam da largura. O resumo pode
+   quebrar em 2 linhas dentro dos 44 px (independe da fonte do sistema: no CI ela é mais larga). */
+@media(max-width:300px){.pg-botao{padding:0;flex:none}.pg-controles{padding:4px}.pg-indice{min-width:0;flex:0 1 auto}.pg-resumo{padding:0 8px;min-width:0;white-space:normal;text-align:center;line-height:1.1}.pg-rot{position:absolute!important;width:4px!important;height:4px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important}}
 /* Impressão: todo o conteúdo, sem paginação nem controles (também sem JavaScript). */
 @media print{
   html,body,html.pg,html.pg body{height:auto!important;max-height:none!important;overflow:visible!important;display:block!important}
