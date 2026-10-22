@@ -55,7 +55,7 @@ maxterm(){ tr ',' '\n' <<< "$1" | grep -E '^[0-9]+$' | sort -n | tail -1; }
 # images.lock: uma linha por imagem; candidatos separados por "|" (o primeiro que baixar é usado e registrado).
 declare -A PICK
 lock(){ echo "${PICK[$1]}"; }
-for k in NEON COMPUTE MINIO MC; do
+for k in NEON COMPUTE MINIO; do
   ok=0
   IFS='|' read -r -a cands <<< "$(sed -n "s/^$k=//p" "$HERE/images.lock")"
   for ref in "${cands[@]}"; do
@@ -69,7 +69,25 @@ for k in NEON COMPUTE MINIO MC; do
   obs "IMAGE_$k" "$ref => $dig"
   case "$ref" in *@sha256:*) ;; *) obs IMAGES_UNPINNED "$k";; esac
 done
-export NEON_IMAGE=$(lock NEON) MINIO_IMAGE=$(lock MINIO) MC_IMAGE=$(lock MC)
+# As imagens quay.io/minio/* do compose oficial deixaram de ser públicas (pull "unauthorized", registrado na
+# PR). O S3 local passa a ser o MinIO empacotado pela Bitnami (mesmo servidor MinIO); o bucket "neon" é criado
+# pelo próprio entrypoint (MINIO_DEFAULT_BUCKETS) e conferido pelo mc embutido na imagem.
+export NEON_IMAGE=$(lock NEON) MINIO_IMAGE=$(lock MINIO) MC_IMAGE=$(lock MINIO)
+cat > "$NEON_DIR/docker-compose.s3.yml" <<'YML'
+services:
+  minio:
+    command: ["/opt/bitnami/scripts/minio/run.sh"]
+    environment:
+      - MINIO_DEFAULT_BUCKETS=neon
+      - MINIO_API_PORT_NUMBER=9000
+      - MINIO_CONSOLE_PORT_NUMBER=9001
+  minio_create_buckets:
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "for i in $$(seq 1 60); do /opt/bitnami/minio-client/bin/mc alias set m http://minio:9000 minio password >/dev/null 2>&1 && break; sleep 1; done; /opt/bitnami/minio-client/bin/mc mb --ignore-existing --region=eu-north-1 m/neon; /opt/bitnami/minio-client/bin/mc ls m; exit 0"
+YML
+DC+=(-f "$NEON_DIR/docker-compose.s3.yml")
+obs S3_SUBSTITUTO "minio=$MINIO_IMAGE sha256(docker-compose.s3.yml)=$(sha256sum "$NEON_DIR/docker-compose.s3.yml" | cut -d' ' -f1)"
 docker tag "$(lock COMPUTE)" ghcr.io/neondatabase/compute-node-v16:b07pinned
 docker build -q --build-arg REPOSITORY=ghcr.io/neondatabase --build-arg COMPUTE_IMAGE=compute-node-v16 \
   --build-arg TAG=b07pinned -t built-compute "$NEON_DIR/compute_wrapper" > /dev/null || infra_fail "build compute_wrapper"
@@ -85,6 +103,7 @@ SVC=(minio minio_create_buckets storage_broker pageserver safekeeper1 safekeeper
 [ "$SCEN" = m9 ] && SVC+=(safekeeper4 safekeeper5 safekeeper6)
 "${DC[@]}" up -d --no-build "${SVC[@]}" > "$W/up.log" 2>&1 || infra_fail "compose up storage: $(tail -c 400 "$W/up.log")"
 for i in $(seq 1 90); do curl -sf -m 3 http://localhost:9898/v1/status > /dev/null && break; sleep 2; done
+sleep 5; note "S3_BUCKETS: $(docker logs "$(cid minio_create_buckets)" 2>&1 | tail -3 | tr '\n' ' ')"
 curl -sf -m 3 http://localhost:9898/v1/status > /dev/null || infra_fail "pageserver http não respondeu"
 r=$(curl -s -m 20 -X PUT -H 'Content-Type: application/json' -d '{"mode":"AttachedSingle","generation":1,"tenant_conf":{}}' \
     "http://localhost:9898/v1/tenant/$TENANT_ID/location_config"); note "TENANT_CREATE: $(echo "$r" | head -c 200)"
