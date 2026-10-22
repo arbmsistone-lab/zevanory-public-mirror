@@ -73,7 +73,7 @@ jobs:
           set -eo pipefail
           node --test tests/*.test.mjs | tee all.txt
           # Contagem EXATA (protocolo): teste removido, pulado ou falho derruba o gate.
-          grep -qx "# tests 539" all.txt && grep -qx "# pass 539" all.txt && grep -qx "# skipped 0" all.txt && grep -qx "# fail 0" all.txt && grep -qx "# cancelled 0" all.txt
+          grep -qx "# tests 545" all.txt && grep -qx "# pass 545" all.txt && grep -qx "# skipped 0" all.txt && grep -qx "# fail 0" all.txt && grep -qx "# cancelled 0" all.txt
       - name: Cobertura do filtro de caminhos (fecho de importações e leituras)
         run: |
           set -eo pipefail
