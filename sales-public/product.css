@@ -311,8 +311,8 @@ a:focus-visible,.button:focus-visible{outline:2px solid var(--brand-3);outline-o
 .start-guide ol a{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0;vertical-align:middle}
 .offer-summary{margin:16px 0 8px;border-top:1px solid var(--line);padding-top:12px}
 .offer-summary h3{margin:0 0 8px;font-size:1.05rem}
-.offer-summary dl{margin:0;display:grid;gap:6px}
+.offer-summary dl{margin:0;display:grid;gap:8px}
 .offer-summary div{display:grid;grid-template-columns:minmax(0,38%) minmax(0,1fr);gap:8px;font-size:.88rem}
 .offer-summary dt{font-weight:700;color:var(--text,inherit)}
 .offer-summary dd{margin:0;color:var(--muted);overflow-wrap:anywhere}
-@media (max-width:560px){.offer-summary div{grid-template-columns:1fr;gap:2px}}
+@media (max-width:560px){.offer-summary div{grid-template-columns:1fr;gap:4px}}
