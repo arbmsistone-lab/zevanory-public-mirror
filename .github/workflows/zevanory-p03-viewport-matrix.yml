@@ -1,9 +1,11 @@
 name: zevanory-p03-viewport-matrix
-# P03 (Ordem 013 quadro F2 + Roteiro §6): every in-repo public page (sales-public/*.html, exact count
-# asserted) x 5 viewports (1536x730, 1280x720, 1366x768, 1024x768, 390x844) x light/dark.
-# Fails on document-level scroll, internal scrollers, horizontally clipped content or any axe-core
-# WCAG 2.x A/AA violation, except the exact known gaps listed in the script. Localhost only:
-# no secrets, no production network, read-only token.
+# P03 (Ordem 013 quadro F2 + Roteiro §6), regra ESTRITA por decisão do proprietário (22/10/2026 09:06,
+# "páginas jurídicas por paginação"): nenhuma barra de rolagem, global ou interna, em nenhuma página
+# pública (sales-public/*.html, contagem exata) x 5 viewports (1536x730, 1280x720, 1366x768, 1024x768,
+# 390x844) x light/dark. Sem lista de exceções: falha com qualquer rolagem/contêiner de rolagem,
+# conteúdo recortado (H ou V), violação axe WCAG 2.x A/AA em qualquer bloco, texto inalcançável pela
+# paginação, texto diferente da página sem paginação, ou navegação por teclado quebrada.
+# Somente localhost: sem segredos, sem rede de produção, token só leitura.
 on:
   pull_request:
     branches: [gh-pages]
@@ -16,9 +18,10 @@ jobs:
   viewport-matrix:
     name: p03 / viewport-matrix
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
     env:
       EXPECTED_PAGES: "71"
+      P03_WORKERS: "4"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,7 +42,7 @@ jobs:
           (python3 -m http.server 8790 --bind 127.0.0.1 --directory sales-public >/tmp/p03-http.log 2>&1 &)
           for i in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8790/solucoes.html && exit 0; sleep 0.5; done
           cat /tmp/p03-http.log; exit 1
-      - name: 5x2 viewport matrix (scroll, clipping, axe)
+      - name: Matriz 5x2 paginada (rolagem, recorte, axe, alcance, teclado)
         working-directory: /tmp/p03
         run: node "$GITHUB_WORKSPACE/scripts/audit/p03-viewport-matrix.mjs" http://127.0.0.1:8790 "$GITHUB_WORKSPACE/sales-public" "$EXPECTED_PAGES" /tmp/p03/p03-viewport-matrix
       - uses: actions/upload-artifact@v4
