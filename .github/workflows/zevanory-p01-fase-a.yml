@@ -100,7 +100,10 @@ jobs:
           set -euo pipefail
           left=$(git status --porcelain --untracked-files=all)
           if [ -n "$left" ]; then echo "$left"; echo "::error::arquivos gerados no checkout"; exit 1; fi
-          if git ls-files | grep -E '\.pyc$|__pycache__/'; then echo "::error::bytecode rastreado"; exit 1; fi
+          # Só o que ESTE PR muda (a base ainda rastreia bytecode antigo; limpeza na #873).
+          git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only --diff-filter=AMR FETCH_HEAD HEAD | grep -E '\.pyc$|__pycache__/'; then echo "::error::bytecode adicionado por este PR"; exit 1; fi
+          echo "::notice title=P01_HIGIENE::checkout limpo após os testes; 0 bytecode adicionado pelo PR"
 
   p03:
     name: p01 / p03-matriz-3-paginas

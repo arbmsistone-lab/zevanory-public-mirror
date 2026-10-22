@@ -5,8 +5,8 @@
 .wl-form{grid-template-columns:minmax(0,1fr)}
 .wl-form>*{min-width:0}
 .wl-form input[type=text]{min-width:0;max-width:100%}
-.wl-pergunta{margin:0;min-width:0;border:1px solid var(--line-strong);border-radius:12px;padding:8px 14px 6px}
-.wl-pergunta legend{padding:0 6px;font-weight:700;color:var(--text)}
+.wl-pergunta{margin:0;min-width:0;border:1px solid var(--line-strong);border-radius:12px;padding:8px 12px 4px}
+.wl-pergunta legend{padding:0 4px;font-weight:700;color:var(--text)}
 .wl-pergunta label{display:inline-flex;align-items:center;gap:8px;min-height:44px;min-width:44px;margin-right:20px;font-weight:600}
-.wl-pergunta input{width:22px;height:22px;margin:0;accent-color:var(--brand-2)}
+.wl-pergunta input{width:24px;height:24px;margin:0;accent-color:var(--brand-2)}
 .wl-pergunta input:focus-visible{outline:2px solid var(--brand-3);outline-offset:2px}
