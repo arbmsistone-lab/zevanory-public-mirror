@@ -9,6 +9,8 @@ on:
       - "worker/funnel-events.mjs"
       - "tests/funnel-synthetic.test.mjs"
       - "worker/funnel.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "sales-public/funnel-beacon.js"
 
 permissions:
   contents: read
@@ -29,5 +31,5 @@ jobs:
         run: |
           set -euo pipefail
           node --test --test-reporter=tap tests/funnel-synthetic.test.mjs | tee /tmp/p15-funnel.tap
-          grep -Fx '# tests 7' /tmp/p15-funnel.tap
+          grep -Fx '# tests 8' /tmp/p15-funnel.tap
           grep -Fx '# skipped 0' /tmp/p15-funnel.tap

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import salesWorker from "../worker/sales-public-worker.mjs";
 import {
   FUNNEL_EVENT_NAMES,
   emitFunnelEvent,
@@ -115,4 +116,24 @@ test("production checkout and payment events stay disabled while sales are close
   });
   assert.deepEqual(result, { accepted: false, reason: "sales_closed" });
   assert.equal(store.events.size, 0);
+});
+
+test("sales browser beacon forwards same-origin JavaScript visits to the internal funnel", async () => {
+  const sent = [];
+  const env = { CORE: { async fetch(input, init) { sent.push({ url: String(input), body: JSON.parse(init.body) }); return new Response(null, { status: 202 }); } } };
+  const payload = { event: event("visit", 60), js: true };
+  const request = (origin) => new Request("https://vendas.zevanory.api.br/__funnel/event", {
+    method: "POST",
+    headers: { origin, "content-type": "application/json", "user-agent": HUMAN },
+    body: JSON.stringify(payload),
+  });
+  assert.equal((await salesWorker.fetch(request("https://vendas.zevanory.api.br"), env, {})).status, 204);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].url, /^https:\/\/funnel\.internal\/event$/);
+  assert.equal(sent[0].body.js, true);
+  assert.equal(sent[0].body.event.name, "visit");
+  assert.equal((await salesWorker.fetch(request("https://attacker.invalid"), env, {})).status, 204);
+  assert.equal(sent.length, 1);
+  const beacon = readFileSync(new URL("../sales-public/funnel-beacon.js", import.meta.url), "utf8");
+  assert.match(beacon, /fetch\("\/__funnel\/event"/);
 });
