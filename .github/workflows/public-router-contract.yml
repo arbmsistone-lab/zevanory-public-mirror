@@ -54,6 +54,6 @@ jobs:
           echo "::notice title=MUTANTS_PUBLIC_ROUTER::$(grep '^MUTANT' /tmp/mutants.txt | sed 's/ — .*//' | paste -sd'|' - | sed 's/|/%0A/g')%0Arc=$rc"
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
           n="$(grep -c '^MUTANT M[0-9]*[a-z]* KILLED' /tmp/mutants.txt || true)"
-          [ "$n" = "18" ] || { echo "::error::esperados 18 mutantes mortos, obtidos $n"; exit 1; }
+          [ "$n" = "19" ] || { echo "::error::esperados 19 mutantes mortos, obtidos $n"; exit 1; }
           if grep -q '^MUTANT [^ ]* SURVIVED' /tmp/mutants.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi

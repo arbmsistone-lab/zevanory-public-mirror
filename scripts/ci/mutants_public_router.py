@@ -46,6 +46,11 @@ M = {
     "M9 no rollback point captured": ("R", lambda: sub(R, 'echo "PREV_VERSION_ID=$prev" >> "$GITHUB_ENV"', 'true')),
     "M10 readback default with a single attempt": ("R", lambda: sub(R, '${ROUTER_READBACK_ATTEMPTS:-12}', '${ROUTER_READBACK_ATTEMPTS:-1}')),
     "M11 readback ignores injected interval": ("R", lambda: sub(R, 'sleep "$pause"', 'sleep 5')),
+    # Mutante independente (pedido do auditor, autor distinto dos 18 acima): a leitura de volta do deploy consulta
+    # as implantações de OUTRA conta (a antiga e3caca88…). Só a linha do passo Readback (indentação de 14 espaços).
+    "M12 deploy readback reads deployments of another account": ("R", lambda: sub(R,
+        '              "https://api.cloudflare.com/client/v4/accounts/$ROUTER_ACCOUNT_ID/workers/scripts/$ROUTER_SCRIPT/deployments"',
+        '              "https://api.cloudflare.com/client/v4/accounts/e3caca88f4343c3cdfcf66eebe6ac124/workers/scripts/$ROUTER_SCRIPT/deployments"')),
 }
 
 
