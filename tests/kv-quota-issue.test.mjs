@@ -45,7 +45,7 @@ test("run: failures become a warning and exit cleanly (no exception, no retry st
 
 import { readFileSync } from "node:fs";
 test("workflow contract: the notify step receives GITHUB_TOKEN from the job env and runs even if the snapshot failed", () => {
-  const wf = readFileSync(new URL("../.github/workflows/command-center-snapshot.yml", import.meta.url), "utf8");
+  const wf = readFileSync(new URL("../.github/workflows/command-center-snapshot.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   assert.match(wf, /\n {2}issues: write\n/, "minimal permission present");
   // Job-level env applies to every step (GitHub Actions merges step env over job env, it never replaces it).
   assert.match(wf, /\n {4}env:\n {6}GITHUB_TOKEN: \$\{\{ github\.token \}\}\n/, "job env injects the workflow token");

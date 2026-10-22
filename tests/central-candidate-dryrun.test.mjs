@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const wf = readFileSync(new URL("../.github/workflows/central-candidate-dryrun.yml", import.meta.url), "utf8");
-const canonical = readFileSync(new URL("../.github/workflows/central-production-deploy.yml", import.meta.url), "utf8");
+const wf = readFileSync(new URL("../.github/workflows/central-candidate-dryrun.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const canonical = readFileSync(new URL("../.github/workflows/central-production-deploy.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const triggerPaths = [...wf.slice(wf.indexOf("paths:"), wf.indexOf("workflow_dispatch:")).matchAll(/- "([^"]+)"/g)].map((m) => m[1]);
 const covered = (file) => triggerPaths.some((p) => (p.endsWith("/**") ? file.startsWith(p.slice(0, -3) + "/") : p === file));
 

@@ -1,0 +1,41 @@
+name: node-suite-windows
+
+# Evidência de portabilidade (auditoria Sol #865): a suíte Node completa (mesmo comando do gate Linux
+# trava-vendas-integracao-postgres) roda também no Windows, onde o checkout padrão converte texto para CRLF
+# (core.autocrlf=true) e caminhos usam "\". Só pull_request: nunca dispara no merge, sem segredos, sem rede
+# além do checkout e da instalação do Node. Contagem literal 573 = a mesma do gate Linux; ao rebasear sobre
+# o #874 (manifesto tests/node-suite.manifest) este literal passa a ser derivado do manifesto.
+on:
+  pull_request:
+    paths:
+      - "tests/*.test.mjs"
+      - "worker/**"
+      - "scripts/**"
+      - ".github/workflows/**"
+      - ".gitattributes"
+
+permissions:
+  contents: read
+
+jobs:
+  node-suite:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Suíte Node completa no Windows (contagem exata 573)
+        shell: bash
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eo pipefail
+          echo "::notice title=SHA_TESTADO (Windows)::ref=$GITHUB_REF tested=$(git rev-parse HEAD) pr.head=$PR_HEAD_SHA autocrlf=$(git config --get core.autocrlf || echo unset) node=$(node --version)"
+          node --test tests/*.test.mjs 2>&1 | tr -d '\r' | tee all.txt || true
+          echo "::notice title=COUNTS_ALL_WINDOWS (esperado 573)::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' all.txt | paste -sd' ' -)"
+          grep -E '^not ok ' all.txt | while IFS= read -r l; do echo "::error title=WINDOWS_FAIL::$l"; done
+          grep -qx "# tests 573" all.txt && grep -qx "# pass 573" all.txt && grep -qx "# skipped 0" all.txt && grep -qx "# fail 0" all.txt && grep -qx "# cancelled 0" all.txt

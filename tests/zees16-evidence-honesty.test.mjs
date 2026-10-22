@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
-const wf = readFileSync(new URL("../.github/workflows/zees16-evidence-gate.yml", import.meta.url), "utf8");
+const wf = readFileSync(new URL("../.github/workflows/zees16-evidence-gate.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const step = wf.slice(wf.indexOf("- name: Emit immutable ZEES gate evidence"), wf.indexOf("- uses: actions/upload-artifact@v4", wf.indexOf("- name: Emit immutable ZEES gate evidence")));
 
 test("ZEES-16: a evidência não grava 'proved' fixo", () => {

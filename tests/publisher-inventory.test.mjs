@@ -9,7 +9,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 const root = new URL("../", import.meta.url);
 const wfDir = new URL(".github/workflows/", root);
 const registry = JSON.parse(readFileSync(new URL("ops/publishers.json", root), "utf8"));
-const read = (name) => readFileSync(new URL(name, wfDir), "utf8");
+const read = (name) => readFileSync(new URL(name, wfDir), "utf8").replace(/\r\n/g, "\n");
 const workflows = readdirSync(wfDir).filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"));
 
 // A command that changes a Worker in production: code deploy/rollback/version deploy,

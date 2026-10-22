@@ -47,5 +47,5 @@ test("SHA comparison is case-insensitive", () => {
 test("vnext dialog does not default a missing quorum to 3 / minimum 2", () => {
   assert.doesNotMatch(CONTROL_PLANE_VNEXT_JS, /t\?\.total\|\|3|t\?\.required\|\|2/);
   assert.match(CONTROL_PLANE_VNEXT_JS, /SEM QUORUM INDEPENDENTE PROVADO/);
-  assert.equal(readFileSync(new URL("../worker/live-recovered/control-plane-vnext.js", import.meta.url), "utf8"), CONTROL_PLANE_VNEXT_JS);
+  assert.equal(readFileSync(new URL("../worker/live-recovered/control-plane-vnext.js", import.meta.url), "utf8").replace(/\r\n/g, "\n"), CONTROL_PLANE_VNEXT_JS);
 });
