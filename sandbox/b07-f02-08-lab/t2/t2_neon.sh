@@ -52,11 +52,19 @@ sk_commits(){ local p out=""; for p in $(sk_ports); do out="$out$(sk_json "$p" "
 maxterm(){ tr ',' '\n' <<< "$1" | grep -E '^[0-9]+$' | sort -n | tail -1; }
 
 # ---------- imagens fixadas ----------
-lock(){ sed -n "s/^$1=//p" "$HERE/images.lock"; }
+# images.lock: uma linha por imagem; candidatos separados por "|" (o primeiro que baixar é usado e registrado).
+declare -A PICK
+lock(){ echo "${PICK[$1]}"; }
 for k in NEON COMPUTE MINIO MC; do
-  ref=$(lock $k); ok=0
-  for t in 1 2 3; do docker pull -q "$ref" > "$W/pull_$k.log" 2>&1 && { ok=1; break; }; sleep 10; done
-  [ $ok = 1 ] || infra_fail "pull $k $ref: $(tail -c 300 "$W/pull_$k.log")"
+  ok=0
+  IFS='|' read -r -a cands <<< "$(sed -n "s/^$k=//p" "$HERE/images.lock")"
+  for ref in "${cands[@]}"; do
+    for t in 1 2; do docker pull -q "$ref" > "$W/pull_$k.log" 2>&1 && { ok=1; break; }; sleep 5; done
+    [ $ok = 1 ] && break
+    note "PULL_FALHOU $k $ref: $(tail -c 250 "$W/pull_$k.log" | tr '\n' ' ')"
+  done
+  [ $ok = 1 ] || infra_fail "pull $k: nenhum candidato baixou"
+  PICK[$k]=$ref
   dig=$(docker image inspect --format '{{index .RepoDigests 0}}' "$ref")
   obs "IMAGE_$k" "$ref => $dig"
   case "$ref" in *@sha256:*) ;; *) obs IMAGES_UNPINNED "$k";; esac
