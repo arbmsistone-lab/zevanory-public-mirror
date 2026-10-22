@@ -1,0 +1,33 @@
+name: P15 funnel synthetic test
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/p15-funnel-synthetic.yml"
+      - "schemas/funnel-event.v1.schema.json"
+      - "worker/funnel-events.mjs"
+      - "tests/funnel-synthetic.test.mjs"
+      - "worker/funnel.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Teste sintético com contagem exata e zero pulados
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap tests/funnel-synthetic.test.mjs | tee /tmp/p15-funnel.tap
+          grep -Fx '# tests 7' /tmp/p15-funnel.tap
+          grep -Fx '# skipped 0' /tmp/p15-funnel.tap

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zevanory.api.br/schemas/funnel-event.v1.schema.json",
+  "title": "ZEVANORY funnel event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "version", "name", "occurred_at", "page"],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "version": {
+      "const": "1.0.0"
+    },
+    "name": {
+      "enum": ["visit", "lead", "checkout_started", "paid", "delivered", "refunded"]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "page": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{1,70}$"
+    },
+    "product": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{1,70}$"
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{1,24}$"
+    }
+  }
+}

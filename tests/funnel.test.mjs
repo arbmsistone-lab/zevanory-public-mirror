@@ -27,6 +27,29 @@ test("public hosts cannot reach the counter; internal host stores hashed visitor
   assert.ok(calls.some((c) => /'visitors'/.test(c.text)), "unique visitor counted");
 });
 
+test("versioned funnel events are validated and stored without a raw IP", async () => {
+  const { calls, factory } = fakeSql((text, params) => {
+    if (text.includes("insert into zevanory_funnel_events")) return [{ event_id: params[0] }];
+    return [];
+  });
+  const event = {
+    event_id: "00000000-0000-4000-8000-000000000042",
+    version: "1.0.0",
+    name: "visit",
+    occurred_at: "2026-10-22T12:00:00.000Z",
+    page: "ia-na-pratica",
+  };
+  const env = { DATABASE_URL: "postgres://x", MERCADOPAGO_ENV: "sandbox" };
+  const request = (value) => new Request("https://funnel.internal/event", {
+    method: "POST",
+    body: JSON.stringify({ event: value, ua: "Mozilla/5.0 Chrome", ip: "203.0.113.9", js: true }),
+  });
+  assert.equal((await handleFunnel(request(event), env, { sqlFactory: factory })).status, 202);
+  assert.equal((await handleFunnel(request({ ...event, event_id: "00000000-0000-4000-8000-000000000043", version: undefined }), env, { sqlFactory: factory })).status, 204);
+  assert.ok(!JSON.stringify(calls.map((call) => call.params)).includes("203.0.113.9"));
+  assert.ok(calls.some((call) => call.text.includes("insert into zevanory_funnel_events")));
+});
+
 test("test-mode sales never mix sandbox orders into the funnel", async () => {
   const { calls, factory } = fakeSql((text) => (text.includes("zevanory_funnel_daily where") || text.includes("from zevanory_funnel_daily") ? [{ page: "ia-na-pratica", metric: "views", n: 40 }, { page: "ia-na-pratica", metric: "visitors", n: 30 }] : []));
   const summary = await buildFunnelSummary({ DATABASE_URL: "x", MERCADOPAGO_ENV: "sandbox" }, { sqlFactory: factory });

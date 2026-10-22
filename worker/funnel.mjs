@@ -5,6 +5,7 @@
 //   linked across days.
 // * Every hour the summary (last 30 days, per product) is written to the shared KV where the
 //   control panel reads it to compute the paid-ads readiness metric.
+import { createSqlFunnelEventStore, emitFunnelEvent, FUNNEL_EVENT_NAMES } from "./funnel-events.mjs";
 
 export const FUNNEL_PRODUCTS = Object.freeze({
   "ia-na-pratica": { sku: "ZEV-IA-011", name: "IA na Prática" },
@@ -57,6 +58,12 @@ export async function ensureFunnelSchema(sql) {
   await sql.query(`create table if not exists zevanory_funnel_visitors (
     day date not null, page text not null, vhash text not null,
     primary key (day, page, vhash))`, []);
+  await sql.query(`create table if not exists zevanory_funnel_events (
+    event_id uuid primary key, version text not null, event_name text not null
+      check (event_name in ('visit','lead','checkout_started','paid','delivered','refunded')),
+    occurred_at timestamptz not null, page text not null, product text, source text,
+    visitor_hash text not null, is_test boolean not null default false, received_at timestamptz not null default now())`, []);
+  await sql.query("create index if not exists zevanory_funnel_events_visitor_idx on zevanory_funnel_events (visitor_hash, is_test, occurred_at)", []);
   schemaReady = true;
 }
 
@@ -123,6 +130,11 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   const traffic = await sql.query(
     `select page, metric, sum(n)::int as n from zevanory_funnel_daily
       where day > current_date - 30 group by page, metric`, []);
+  const eventCounts = Object.fromEntries(FUNNEL_EVENT_NAMES.map((name) => [name, 0]));
+  const eventRows = await sql.query(
+    "select event_name, count(*)::int as n from zevanory_funnel_events where occurred_at > now() - interval '30 days' and is_test = false group by event_name", [],
+  ).catch(() => []);
+  for (const row of eventRows || []) if (Object.hasOwn(eventCounts, row.event_name)) eventCounts[row.event_name] = Number(row.n) || 0;
   const commerce = production ? await sql.query(
     `select o.offer_id,
             count(*)::int as checkouts,
@@ -237,6 +249,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
     salesOpen,
     pages,
     products,
+    funnelEvents: eventCounts,
     sources,
     productDaily,
     clean,
@@ -257,6 +270,33 @@ export async function publishFunnelSummary(env, deps) {
 export async function handleFunnel(request, env, { sqlFactory, ctx } = {}) {
   const url = new URL(request.url);
   if (url.hostname !== "funnel.internal") return null;
+  if (url.pathname === "/event" && request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return new Response(null, { status: 400 }); }
+    const event = body?.event;
+    if (!event || !isTrackedPage(event.page) || !sqlFactory) return new Response(null, { status: 204 });
+    const userAgent = String(body.ua || "").slice(0, 300);
+    const ip = String(body.ip || "").slice(0, 128);
+    const day = String(event.occurred_at || "").slice(0, 10);
+    const salt = String(env.RESEND_API_KEY || env.DATABASE_URL || "zevanory");
+    const visitorHash = await sha256Hex(`${day}|${ip}|${userAgent}|${salt}`);
+    const production = String(env.MERCADOPAGO_ENV || "").toLowerCase() === "production";
+    const testMode = !production;
+    const sql = sqlFactory(env.DATABASE_URL);
+    await ensureFunnelSchema(sql);
+    const result = await emitFunnelEvent(event, {
+      store: createSqlFunnelEventStore(sql),
+      visitorHash,
+      userAgent,
+      hasJavaScript: body.js === true,
+      now: Date.now(),
+      production,
+      salesOpen: String(env.SALE_GLOBALLY_ENABLED || "").toLowerCase() === "true",
+      testMode,
+      isBot: (ua) => isAutomationUA(ua) || DATACENTER_ASNS.has(Number(body.asn)),
+    });
+    return new Response(null, { status: result.accepted ? 202 : 204 });
+  }
   if (url.pathname !== "/hit" || request.method !== "POST") return new Response("not_found", { status: 404 });
   let body = {};
   try { body = await request.json(); } catch {}
