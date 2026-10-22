@@ -27,6 +27,7 @@ const SALES = "https://vendas.zevanory.api.br";
 const CHECKLIST_URL = `${SALES}/checklist-15-minutos`;
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
 const CONSENT_VERSION = "lead-magnet-v1-2026-10-07";
+const CONSENT_TEXT = "Quero receber o checklist e até 2 e-mails com dicas e os produtos da ZEVANORY. Posso cancelar a qualquer momento. Li a Política de Privacidade.";
 // E-mails after the checklist that each consent text allows ("até 2 e-mails de dicas e produtos").
 export const CONSENT_FOLLOWUPS = { [CONSENT_VERSION]: 2 };
 export const PENDING_GRACE_DAYS = 7;
@@ -120,10 +121,11 @@ export async function ensureLeadSchema(sql) {
   if (schemaReady) return;
   await sql.query(`create table if not exists zevanory_leads (
     email text primary key, email_hash text not null, name text, source text not null default 'material-gratuito',
-    consent_version text not null, consent_at timestamptz not null, status text not null default 'pending',
+    consent_version text not null, consent_text text, consent_at timestamptz not null, status text not null default 'pending',
     token_hash text, token_expires_at timestamptz, created_at timestamptz not null default now(),
     confirmed_at timestamptz, unsubscribed_at timestamptz, nurture_step integer not null default 0, nurture_at timestamptz)`, []);
   await sql.query("alter table zevanory_leads add column if not exists subject_ref text", []);
+  await sql.query("alter table zevanory_leads add column if not exists consent_text text", []);
   // Audit trail without e-mail, name or IP (pseudonymised subject reference only).
   await sql.query(`create table if not exists zevanory_lead_events (id bigserial primary key, subject_ref text, event text not null,
     consent_version text, at timestamptz not null default now())`, []);
@@ -191,12 +193,12 @@ async function subscribe(env, sql, { email, name, consent, page }) {
   const token = randomToken();
   const tokenHash = await sha256Hex(token);
   const ref = await subjectRef(env, email);
-  await sql.query(`insert into zevanory_leads (email, email_hash, name, consent_version, consent_at, status, token_hash, token_expires_at, subject_ref)
-      values ($1, $2, $3, $4, now(), 'pending', $5, now() + interval '48 hours', $6)
-      on conflict (email) do update set name = excluded.name, consent_version = excluded.consent_version, consent_at = now(),
+  await sql.query(`insert into zevanory_leads (email, email_hash, name, consent_version, consent_text, consent_at, status, token_hash, token_expires_at, subject_ref)
+      values ($1, $2, $3, $4, $5, now(), 'pending', $6, now() + interval '48 hours', $7)
+      on conflict (email) do update set name = excluded.name, consent_version = excluded.consent_version, consent_text = excluded.consent_text, consent_at = now(),
         status = case when zevanory_leads.status = 'unsubscribed' then 'pending' else zevanory_leads.status end,
         unsubscribed_at = null, token_hash = excluded.token_hash, token_expires_at = excluded.token_expires_at, subject_ref = coalesce(zevanory_leads.subject_ref, excluded.subject_ref)`,
-    [email, await sha256Hex(email), name || null, CONSENT_VERSION, tokenHash, ref]);
+    [email, await sha256Hex(email), name || null, CONSENT_VERSION, CONSENT_TEXT, tokenHash, ref]);
   await recordEvent(sql, ref, "consent_given", CONSENT_VERSION);
   try { if (ref) await env.ZEVANORY_PRIVATE_ARTIFACTS?.put?.("zpc:lead:interest:" + ref, interestFromPage(page), { expirationTtl: 45 * 24 * 3600 }); } catch {}
   await emitActivity(env, { type: "lead_captured", channel: "web", status: "pending", ref: "lead:" + (ref || randomToken()) + ":" + new Date().toISOString().slice(0, 10) }).catch(() => null);
