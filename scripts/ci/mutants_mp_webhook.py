@@ -31,7 +31,7 @@ Modos:
       Meta-teste: mutante REAL M2_janela_60min (asserção esperada S4/M20) + TypeError injetado no teste "M10 "
       (T4_INJECT_TYPEERROR=M10), fora da allowlist. Passa só se INCONCLUSIVE 3/3 (motivo falha_nao_prevista).
   python3 scripts/ci/mutants_mp_webhook.py --self-check-allowlist
-      Meta-teste: M6b e M4b (cujas falhas sem asserção estão na allowlist) continuam KILLED, citando a entrada usada.
+      Meta-teste: M6b (falha sem asserção prevista na allowlist, AL2) continua KILLED, citando a entrada usada.
 Requer T4_PG_HOST (sem ele as suítes PG pulariam e um mutante "sobreviveria" sem ter sido testado).
 """
 import hashlib, os, re, subprocess, sys
@@ -74,7 +74,7 @@ EXPECT = {
     "M2_janela_60min": {"unit": ("S4 ",), "http_pg": ("M20 ",)},
     "M3_aceita_ts_futuro": {"unit": ("S4 ",), "http_pg": ("M20 ",)},
     "M4a_nao_exige_request_id": {"unit": ("S5 ",), "http_pg": SIG_HTTP_401},
-    "M4b_manifesto_ignora_request_id": {"unit": ("S1 ", "S3 ", "S6 ", "S11 "), "http_pg": ("M3+M8 ", "M19 ", "M20 ")},
+    "M4b_manifesto_ignora_request_id": {"unit": ("S1 ", "S3 ", "S6 ", "S11 "), "http_pg": ("M3+M8 ", "M15 ", "M19 ", "M20 ")},
     "M5_aceita_ts_ausente": {"unit": ("S5 ",), "http_pg": SIG_HTTP_401},
     "M6a_chave_evento_aleatoria": {"dedupe_pg": ("D1 ",), "http_pg": ("M3+M8 ", "M3 ", "M22 ", "M11a ")},
     "M6b_sem_on_conflict": {"dedupe_pg": ("D1 ", "D2 ", "D3 "), "http_pg": ("M3+M8 ", "M3 ", "M22 ")},
@@ -89,18 +89,10 @@ EXPECT = {
 # Allowlist CAUSAL de falhas sem asserção (nem infra). Cada entrada vale só para (mutante, suíte, prefixo do teste)
 # e só se o bloco TAP da falha casar com a regex — e é justificada pelo MECANISMO da mutação. Qualquer falha sem
 # asserção fora desta lista => INCONCLUSIVE (repetido; persistente => job falha). Observadas no runner (run
-# 39825254633) e localmente (PostgreSQL 16.15) com o mesmo texto.
+# 39825254633) e localmente (PostgreSQL 16.15) com o mesmo texto. Hoje só AL2.
 OTHER_ALLOW = [
-    {
-        "id": "AL1_M4b_http_M15_TypeError",
-        "mutant": "M4b_manifesto_ignora_request_id", "suite": "http_pg", "test": "M15 ",
-        "regex": r"error: \"Cannot read properties of undefined \(reading '1'\)\"[\s\S]*name: 'TypeError'",
-        # M4b tira o request-id do manifesto do Worker; o harness assina o manifesto oficial (com request-id), então
-        # todo webhook válido vira 401. O M15 lê `fulfillment(o.id)[1]` logo após o 1º webhook SEM asserção antes
-        # (o 1º webhook simula falha do provedor e o status não é verificado): sem linha em service_fulfillment,
-        # `fulfillment()` é undefined e o acesso `[1]` lança exatamente este TypeError.
-        "why": "401 em todo webhook valido => nenhuma linha service_fulfillment => fulfillment(o.id)[1] em undefined",
-    },
+    # (AL1 — TypeError do M15 sob M4b — foi REMOVIDA por exigência do Sol: o M15 agora verifica status e efeito do
+    # 1º webhook antes de indexar a linha, então M4b falha ali por ASSERÇÃO e nenhuma exceção genérica é aceita.)
     {
         "id": "AL2_M6b_dedupe_D3_duplicate_key",
         "mutant": "M6b_sem_on_conflict", "suite": "dedupe_pg", "test": "D3 ",
@@ -319,8 +311,7 @@ def main():
     if "--self-check-allowlist" in args:
         # Meta-teste B05-B: falha sem asserção PREVISTA na allowlist não impede KILLED (e a entrada é citada).
         oks = []
-        for mid, entry in (("M6b_sem_on_conflict", "AL2_M6b_dedupe_D3_duplicate_key"),
-                           ("M4b_manifesto_ignora_request_id", "AL1_M4b_http_M15_TypeError")):
+        for mid, entry in (("M6b_sem_on_conflict", "AL2_M6b_dedupe_D3_duplicate_key"),):
             final, hist = evaluate(mid, M[mid](ORIG))
             ok = final == "KILLED" and hist[-1][1].endswith(f"allowlist={entry}")
             print(f"SELF_CHECK_ALLOWLIST mutant={mid} final={final} entry={entry} {'PASS' if ok else 'FAIL'}", flush=True)

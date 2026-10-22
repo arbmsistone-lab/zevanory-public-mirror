@@ -165,7 +165,7 @@ jobs:
           grep -qx 'SELF_CHECK_OTHER mutant=M2_janela_60min attempts=3 classes=INCONCLUSIVE,INCONCLUSIVE,INCONCLUSIVE injected=True expected_assertion_present=True PASS' other.txt
           if grep -q '^MUTANT [^ ]* KILLED' other.txt; then echo "::error::falha não prevista contada como KILLED"; exit 1; fi
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado"; exit 1; fi
-      - name: Autoverificação do executor — falha prevista na allowlist (M6b, M4b) => KILLED
+      - name: Autoverificação do executor — falha prevista na allowlist (M6b/AL2) => KILLED
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
@@ -176,7 +176,8 @@ jobs:
           python3 scripts/ci/mutants_mp_webhook.py --self-check-allowlist < /dev/null | tee allow.txt || rc=$?
           echo "::notice title=SELF_CHECK_ALLOWLIST::$(grep -E '^(MUTANT|SELF_CHECK_ALLOWLIST)' allow.txt | paste -sd'|' - | sed 's/|/%0A/g')"
           [ "$rc" = 0 ] || { echo "::error::autoverificação (allowlist) saiu com $rc"; exit 1; }
-          [ "$(grep -c '^SELF_CHECK_ALLOWLIST .* final=KILLED .* PASS$' allow.txt)" = 2 ]
+          grep -qx 'SELF_CHECK_ALLOWLIST mutant=M6b_sem_on_conflict final=KILLED entry=AL2_M6b_dedupe_D3_duplicate_key PASS' allow.txt
+          [ "$(grep -c '^SELF_CHECK_ALLOWLIST ' allow.txt)" = 1 ]
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado"; exit 1; fi
       - name: Mutantes B05 (assinatura e idempotência; 13, cada um morto por falha FUNCIONAL de asserção)
         env:

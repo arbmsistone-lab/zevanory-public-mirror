@@ -437,8 +437,13 @@ test("M14 falha após CAS vencedor e antes do aceite do provedor: reprocesso rea
 test("M15 fronteira de vencimento: link com > 10 min é reaproveitado; com < 10 min é renovado — o e-mail nunca leva link prestes a vencer", { skip: SKIP }, async () => {
   for (const [minutos, renova] of [[11, false], [9, true]]) {
     const o = newOrder(); const id = pay(o);
-    world.failBeforeAccept = true; await webhook(id); world.failBeforeAccept = false;
-    const ev = JSON.parse(fulfillment(o.id)[1]); const antigo = ev.download_url;
+    world.failBeforeAccept = true; const r1 = await webhook(id); world.failBeforeAccept = false;
+    // 1º webhook verificado ANTES de indexar a linha (AVAL Sol: sem isso um TypeError genérico mascara defeito):
+    // falha do provedor antes do aceite => 503 e a linha de entrega com a evidência já persistida.
+    assert.equal(r1.status, 503, JSON.stringify([minutos, r1.body]));
+    const f1 = fulfillment(o.id);
+    assert.ok(f1 && typeof f1[1] === "string" && f1[1].length > 0, `${minutos} min: 1º webhook persiste a linha de entrega com evidência`);
+    const ev = JSON.parse(f1[1]); const antigo = ev.download_url;
     ev.expires_at = new Date(Date.now() + minutos * 60000).toISOString();
     runQuery("update service_fulfillment set evidence_ref=$2 where order_id=$1", [o.id, JSON.stringify(ev)]);
     assert.equal((await webhook(id)).status, 200);
