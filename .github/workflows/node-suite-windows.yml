@@ -37,5 +37,6 @@ jobs:
           echo "::notice title=SHA_TESTADO (Windows)::ref=$GITHUB_REF tested=$(git rev-parse HEAD) pr.head=$PR_HEAD_SHA autocrlf=$(git config --get core.autocrlf || echo unset) node=$(node --version)"
           node --test tests/*.test.mjs 2>&1 | tr -d '\r' | tee all.txt || true
           echo "::notice title=COUNTS_ALL_WINDOWS (esperado 573)::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' all.txt | paste -sd' ' -)"
-          grep -E '^not ok ' all.txt | while IFS= read -r l; do echo "::error title=WINDOWS_FAIL::$l"; done
+          # Sem falhas o grep sai 1; com pipefail isso derrubaria o passo antes da verificação de contagem.
+          { grep -E '^not ok ' all.txt || true; } | while IFS= read -r l; do echo "::error title=WINDOWS_FAIL::$l"; done
           grep -qx "# tests 573" all.txt && grep -qx "# pass 573" all.txt && grep -qx "# skipped 0" all.txt && grep -qx "# fail 0" all.txt && grep -qx "# cancelled 0" all.txt
