@@ -36,7 +36,7 @@ html.pg .pg-controles{flex:none;display:flex;flex-wrap:nowrap;align-items:center
 .pg-lista{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);z-index:40;display:grid;grid-template-columns:repeat(5,44px);gap:4px;margin:0;padding:8px;list-style:none;border:1px solid var(--line-strong,#2a4a6a);border-radius:12px;background:var(--surface,#07111d);box-shadow:0 12px 40px rgba(0,0,0,.45)}
 .pg-lista a{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;border-radius:8px;color:var(--text,#f5f8fc);text-decoration:none;font-weight:700}
 .pg-lista a[aria-current="true"]{background:var(--line-strong,#2a4a6a)}
-.pg-sr{position:absolute!important;width:4px!important;height:4px!important;padding:0!important;margin:-4px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}
+.pg-sr{position:absolute!important;width:4px!important;height:4px!important;padding:0!important;margin:0!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}
 @media(max-width:420px){.pg-botao{padding:0 8px}.pg-controles{gap:4px}}
 /* Impressão: todo o conteúdo, sem paginação nem controles (também sem JavaScript). */
 @media print{
