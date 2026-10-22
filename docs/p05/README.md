@@ -29,10 +29,10 @@ Código: `scripts/av_gate/zevanory_av_gate.py` · limiares: `scripts/av_gate/thr
 
 | Critério | Medição | Limiar (FAIL fora dele) |
 |---|---|---|
-| V1 | presença de MP4, áudio, master, legendas, roteiro e manifesto; SHA-256; voz = voz da marca; taxa do master; duração master × MP4; **narração presente** (fala por VAD ≥ 1 s e loudness > −50) | qualquer item ausente = FAIL (vídeo mudo = FAIL) |
+| V1 | presença de MP4, áudio, master, legendas, roteiro e manifesto; SHA-256; voz = voz da marca; taxa do master; duração master × MP4; **narração presente** (fala por VAD ≥ 1 s e loudness > −50) e **cobrindo o vídeo** (≤ 2 s de silêncio após a última palavra) | qualquer item ausente = FAIL (vídeo mudo = FAIL) |
 | V2 | **2 motores de famílias diferentes**: A = faster-whisper `small` (Whisper/CTranslate2), B = Vosk pt-BR (Kaldi). Normalização pt-BR (números, R$, %, URL, acentos, léxico da marca) | WER ≤ 3%, CER ≤ 1% (base consenso, ver abaixo); **0 erro** em número, preço, marca, negação e termos críticos; vazamento de instrução de estilo = FAIL; CTA de compra falado com vendas fechadas = FAIL |
 | V3 | ffmpeg `ebur128=peak=true` (BS.1770) no master e no **MP4 final**; amostras clipadas; densidade de clipping no master; piso de ruído e SNR (VAD); proporção de fala; silêncio inicial; planura espectral, razão tonal, fração vozeada | master −23 ±0,5 LUFS e TP ≤ −1; derivado −20…−16 LUFS e TP ≤ −2; 0 amostras clipadas; ruído ≤ −50 dBFS; SNR ≥ 30 dB |
-| V4 | ppm global e por janela de 10 s (tempos do motor B); pausas (VAD); desvio de F0 em semitons e energia (parselmouth); HNR; **x-vector** do locutor contra a referência da marca | 130–175 ppm; janelas 105–195; nenhuma pausa > 1,5 s; mediana das pausas entre 150 e 900 ms; F0 entre 1,5 e 8 st; cosseno do locutor ≥ limiar `provisional` |
+| V4 | ppm global e por janela de 10 s (tempos do motor B); pausas (VAD); desvio de F0 em semitons e energia (parselmouth); HNR; **x-vector** do locutor contra a referência da marca | 130–175 ppm; janelas 105–195; nenhuma pausa > 1,5 s; mediana das pausas entre 150 e 900 ms; F0 entre 1,5 e 8 st; cosseno do x-vector ≥ 0,75 (`provisional`: no CI, dois locutores masculinos diferentes deram 0,65 e a autorreferência 0,99–1,0) |
 | V5 | DNSMOS P.835 (OVRL/SIG), **só como filtro** | limiar `provisional`. Quem decide é o painel humano cego (`prova-cega/`) |
 | V6 | offset de contêiner (start_time áudio × vídeo) + deriva legenda × fala (re-medida no MP4 final) | p95 ≤ 80 ms, máximo ≤ 120 ms |
 | V7 | legenda = roteiro, formato (≤ 42 caracteres/linha, ≤ 2 linhas, ≤ 20 cps), tempo de legenda ≤ 100 ms, contraste WCAG ≥ 4,5, caixa da legenda dentro da área segura, quadros pretos, 1080×1920 | qualquer violação = FAIL |
@@ -54,7 +54,8 @@ motor e nenhum número ou negação a mais. **Em produção, o motor B deve migr
   alcançável, os positivos ficam BLOCKED, o espeak-ng só testa a fiação e o job falha.
 - **Negativos:** cada um carrega **um** defeito, injetado no estágio em que ele acontece. Todos passam pela mesma cadeia de produção:
   tom puro, ruído branco, ruído rosa modulado, bipes, fala clipada, loudness fora, TP entre −2 e −0,3, TP grosseiro, silêncio,
-  MP4 sem áudio, pausa longa, prosódia achatada (PSOLA), número trocado, marca não falada, instrução de estilo lida em voz alta,
+  MP4 sem áudio, pausa longa, prosódia achatada (PSOLA), prosódia comprimida (F0 × 0,2), apito tonal só durante a fala,
+  narração curta com 6 s de silêncio final, número trocado, marca não falada, instrução de estilo lida em voz alta,
   fala 1,4×, fala 0,7×, A/V +200 ms (contêiner), A/V +200 ms (embutido), legendas ausentes, CTA de compra com vendas fechadas,
   voz trocada, ruído de fundo (SNR 18 dB), voz robótica (espeak-ng).
 - **Infra:** referência da voz ausente (precisa dar BLOCKED); motor B indisponível (precisa dar ERROR_INFRA).

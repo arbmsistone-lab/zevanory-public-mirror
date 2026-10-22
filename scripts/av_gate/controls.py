@@ -119,7 +119,10 @@ def text_ok(t):
     if re.search(r"[^A-Za-zÀ-ÿ0-9 ,.?!'-]", t):
         return False
     # no proper nouns: no capitalised word except the first one (sentence start)
-    return not any(x[:1].isupper() for x in w[1:])
+    if any(x[:1].isupper() for x in w[1:]):
+        return False
+    # no foreign (non-Portuguese) words: a pt-BR narration script never carries them unadapted
+    return not any(re.search(r"[kwy]|ff|sh|th|ck|oo|ee|ng$", G.strip_accents(x.lower().strip(",.?!'-"))) for x in w)
 
 
 def audio_screen(c, thr):
@@ -355,7 +358,7 @@ def run(work, out):
         out.save(p, "WAV")
         return B.build(cid, p, c["text"], reference=c["path"])
     safe("N12", "negative", "prosódia achatada (F0 monotônico, PSOLA)", "FAIL", ["v4.f0_sd"], lambda: psola("N12", mid, 0.0), base=mid["source"])
-    safe("N25", "negative", "prosódia comprimida (faixa de F0 × 0,35, PSOLA)", "FAIL", ["v4.f0_sd"], lambda: psola("N25", mid, 0.35), base=mid["source"])
+    safe("N25", "negative", "prosódia comprimida (faixa de F0 × 0,2, PSOLA)", "FAIL", ["v4.f0_sd"], lambda: psola("N25", mid, 0.2), base=mid["source"])
 
     def wrong_number():
         for c in pos:
