@@ -51,9 +51,11 @@
 
   const nav = novo("nav", "pg-controles", { "aria-label": "Blocos de conteúdo", "data-pg-ui": "" });
   const btnAnt = novo("button", "pg-botao pg-ant", { type: "button" });
-  btnAnt.innerHTML = '<span aria-hidden="true">‹</span> <span class="pg-rot">Anterior</span>';
+  // Rótulo adaptativo (sem breakpoint): por extenso quando cabe; senão a forma curta visível ("Ant",
+  // "Próx"), que é prefixo do nome acessível ("Anterior", "Próxima"; WCAG 2.5.3). Nunca só ícone.
+  btnAnt.innerHTML = '<span aria-hidden="true">‹</span> <span class="pg-rot"><span class="pg-longo">Anterior</span><span class="pg-curto" aria-hidden="true">Ant</span></span>';
   const btnProx = novo("button", "pg-botao pg-prox", { type: "button" });
-  btnProx.innerHTML = '<span class="pg-rot">Próxima</span> <span aria-hidden="true">›</span>';
+  btnProx.innerHTML = '<span class="pg-rot"><span class="pg-longo">Próxima</span><span class="pg-curto" aria-hidden="true">Próx</span></span> <span aria-hidden="true">›</span>';
   const indice = novo("details", "pg-indice");
   const resumo = novo("summary", "pg-resumo");
   const lista = novo("ol", "pg-lista", { "aria-label": "Ir para o bloco" });
@@ -243,11 +245,27 @@
     trilho.classList.remove("pg-sem-transicao");
     const n = blocos.length;
     resumo.textContent = `Bloco ${atual + 1} de ${n}`;
+    ajustarRotulos(n);
     btnAnt.setAttribute("aria-disabled", String(atual === 0));
     btnProx.setAttribute("aria-disabled", String(atual === n - 1));
     montarLista();
     main.setAttribute("data-pg-atual", String(atual + 1));
     main.setAttribute("data-pg-total", String(n));
+  }
+
+  // Mede se os controles cabem com os rótulos por extenso (pior caso do resumo: "Bloco N de N"); se
+  // não cabem, usa os rótulos curtos. Decisão por medição real da fonte/largura, não por breakpoint.
+  function ajustarRotulos(n) {
+    const texto = resumo.textContent;
+    nav.classList.remove("pg-curtos");
+    resumo.textContent = `Bloco ${n} de ${n}`;
+    const r = nav.getBoundingClientRect();
+    const cs = getComputedStyle(nav);
+    const esq = r.left + parseFloat(cs.paddingLeft) - 0.5, dir = r.right - parseFloat(cs.paddingRight) + 0.5;
+    const cabe = nav.scrollWidth <= nav.clientWidth && [btnAnt, resumo, btnProx].every((e) => e.scrollWidth <= e.clientWidth) &&
+      [btnAnt, resumo, btnProx].every((e) => { const b = e.getBoundingClientRect(); return b.left >= esq && b.right <= dir; });
+    if (!cabe) nav.classList.add("pg-curtos");
+    resumo.textContent = texto;
   }
 
   // Quantos alvos de 44 px cabem no índice: colunas pela largura (mesma conta do auto-fill do CSS:

@@ -206,6 +206,49 @@ function msDiff(a, b) {
 const CONTROLS = "[data-pg-ui] .pg-ant, [data-pg-ui] .pg-prox, [data-pg-ui] .pg-resumo";
 const INDEX_ITEMS = "[data-pg-ui] .pg-lista a, [data-pg-ui] .pg-lista button";
 
+// Rótulos de Anterior/Próxima (AVAL 086 do Sol): texto VISÍVEL (não só ícone, >= 3 letras, dentro do
+// botão e da tela) e contido no nome acessível (WCAG 2.5.3 Label in Name; nome lido do ariaSnapshot).
+function visibleLabel(sel) {
+  const b = document.querySelector(sel);
+  if (!b) return null;
+  const br = b.getBoundingClientRect();
+  const ok = (el) => { for (let e = el; e && e !== b.parentElement; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.display === "none" || cs.visibility !== "visible" || Number(cs.opacity) === 0 || (cs.clip && cs.clip !== "auto") || cs.clipPath !== "none") return false; } return true; };
+  let txt = "";
+  const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode(); n; n = w.nextNode()) {
+    if (!n.textContent.trim() || !ok(n.parentElement)) continue;
+    const rg = document.createRange(); rg.selectNodeContents(n);
+    const r = rg.getBoundingClientRect();
+    if (r.width < 2 || r.height < 6 || r.left < br.left - 1 || r.right > br.right + 1 || r.left < 0 || r.right > innerWidth) continue;
+    txt += n.textContent;
+  }
+  // Oráculo independente: com rótulos curtos, a forma por extenso (com o resumo no pior caso "Bloco N de N")
+  // realmente não caberia? Mede tirando .pg-curtos e restaura em seguida.
+  const nav = b.closest(".pg-curtos");
+  let fullFits = null;
+  if (nav) {
+    const rs = nav.querySelector(".pg-resumo"), t0 = rs.textContent, n = document.querySelector("main")?.dataset.pgTotal || "1";
+    nav.classList.remove("pg-curtos"); rs.textContent = `Bloco ${n} de ${n}`;
+    const nr = nav.getBoundingClientRect(), cs = getComputedStyle(nav);
+    fullFits = nav.scrollWidth <= nav.clientWidth && [...nav.querySelectorAll(".pg-ant,.pg-resumo,.pg-prox")].every((e) => { const r = e.getBoundingClientRect(); return e.scrollWidth <= e.clientWidth && r.left >= nr.left + parseFloat(cs.paddingLeft) - 0.5 && r.right <= nr.right - parseFloat(cs.paddingRight) + 0.5 && r.right <= innerWidth; });
+    nav.classList.add("pg-curtos"); rs.textContent = t0;
+  }
+  return { visible: txt.replace(/[^\p{L}]/gu, ""), curtos: !!nav, fullFits };
+}
+async function labelCheck(page, problems, tag, stats) {
+  for (const [sel, full] of [["[data-pg-ui] .pg-ant", "Anterior"], ["[data-pg-ui] .pg-prox", "Próxima"]]) {
+    const v = await page.evaluate(visibleLabel, sel);
+    if (!v) { problems.push(`${tag}label_missing_button:${full}`); continue; }
+    const snap = await page.locator(sel).ariaSnapshot().catch(() => "");
+    const name = (snap.match(/button "([^"]*)"/) || [])[1] || "";
+    if (v.visible.length < 3) problems.push(`${tag}label_icon_only:${full}:"${v.visible}"`);
+    if (!name.toLowerCase().includes(v.visible.toLowerCase()) || !v.visible) problems.push(`${tag}label_not_in_name:${full}:visible="${v.visible}":name="${name}"`);
+    if (v.fullFits) problems.push(`${tag}label_short_but_full_fits:${full}`);
+    if (name !== full) problems.push(`${tag}label_name:${full}:"${name}"`);
+    if (stats) { stats.checked++; stats[v.curtos ? "short" : "full"]++; }
+  }
+}
+
 // ---------------- suíte reflow ----------------
 async function indexCheck(page, N, problems, tag) {
   await page.locator("[data-pg-ui] .pg-resumo").click({ timeout: 3000 });
@@ -262,6 +305,8 @@ async function reflowTask(browser, file, [w, h, dsf]) {
   const d = msDiff(refTexts, st0.texts);
   if (d.miss.length || d.extra.length) problems.push(`text_mismatch:miss=${d.miss.length}:extra=${d.extra.length}:${[...d.miss, ...d.extra].slice(0, 2).join("|")}`);
   const seen = new Map(st0.keys.map((k) => [k, false]));
+  const labels = { checked: 0, full: 0, short: 0 };
+  await labelCheck(page, problems, "b1:", labels);
   let partialAll = 0, partialEx = [], clicks = 0, minPalco = Infinity;
   for (let k = 1; k <= N; k++) {
     const st = k === 1 ? st0 : await page.evaluate(measureLines, false);
@@ -295,11 +340,12 @@ async function reflowTask(browser, file, [w, h, dsf]) {
   if (N > 1) {
     try { await page.locator("[data-pg-ui] .pg-ant").click({ timeout: 3000 }); await settle(page); if ((await atual(page)) !== N - 1) problems.push("click_prev"); } catch (e) { problems.push("click_prev:" + String(e.message).split("\n")[0].slice(0, 60)); }
   }
+  await labelCheck(page, problems, "last:", labels);
   if (minPalco < 120) problems.push(`stage_too_small:${minPalco}px`);
   const idx = await indexCheck(page, N, problems, "");
   for (const e of errors) problems.push("pageerror:" + e.slice(0, 80));
   await ctx.close();
-  return { problems, blocks: N, modo: st0.pg.modo, clicks, lines: seen.size, unreached, palco: minPalco, index_windows: idx.windows, index_items: idx.items };
+  return { problems, blocks: N, modo: st0.pg.modo, clicks, lines: seen.size, unreached, palco: minPalco, index_windows: idx.windows, index_items: idx.items, labels };
 }
 
 // ---------------- suíte focus ----------------
@@ -583,7 +629,7 @@ const sum = (arr, k) => arr.reduce((a, r) => a + (Number(r[k]) || 0), 0);
 const failures = rows.filter((r) => r.problems.length);
 const summary = {
   schema: "zevanory.p03.reflow-focus.v1", pages: pages.length, expected_pages: expected, suites: SUITES, tasks: rows.length, tasks_pass: rows.length - failures.length, failures: failures.length,
-  reflow: { viewports: REFLOW_VIEWPORTS.map((v) => `${v[0]}x${v[1]}${v[2] !== 1 ? "@" + v[2] : ""}`), cells: by("reflow").length, pass: by("reflow").filter((r) => !r.problems.length).length, blocks: sum(by("reflow"), "blocks"), next_clicks: sum(by("reflow"), "clicks"), lines: sum(by("reflow"), "lines"), index_items_checked: sum(by("reflow"), "index_items"), min_stage_px: Math.min(...by("reflow").map((r) => r.palco ?? Infinity)), modes: [...new Set(by("reflow").map((r) => r.modo))] },
+  reflow: { viewports: REFLOW_VIEWPORTS.map((v) => `${v[0]}x${v[1]}${v[2] !== 1 ? "@" + v[2] : ""}`), cells: by("reflow").length, pass: by("reflow").filter((r) => !r.problems.length).length, blocks: sum(by("reflow"), "blocks"), next_clicks: sum(by("reflow"), "clicks"), lines: sum(by("reflow"), "lines"), index_items_checked: sum(by("reflow"), "index_items"), labels_checked: by("reflow").reduce((a, r) => a + (r.labels?.checked || 0), 0), labels_full: by("reflow").reduce((a, r) => a + (r.labels?.full || 0), 0), labels_short: by("reflow").reduce((a, r) => a + (r.labels?.short || 0), 0), labels_short_by_viewport: Object.fromEntries(REFLOW_VIEWPORTS.map((v) => { const k = `${v[0]}x${v[1]}${v[2] !== 1 ? "@" + v[2] : ""}`; return [k, by("reflow").filter((r) => r.viewport === k).reduce((a, r) => a + (r.labels?.short || 0), 0)]; })), min_stage_px: Math.min(...by("reflow").map((r) => r.palco ?? Infinity)), modes: [...new Set(by("reflow").map((r) => r.modo))] },
   focus: { cells: by("focus").length, pass: by("focus").filter((r) => !r.problems.length).length, tab_stops: sum(by("focus"), "tab_stops"), order_drops: sum(by("focus"), "order_drops") },
   hash: { cells: by("hash").length, pass: by("hash").filter((r) => !r.problems.length).length, targets: by("hash").reduce((a, r) => a + (r.targets?.length || 0), 0) },
   details: { cells: by("details").length, pass: by("details").filter((r) => !r.problems.length).length, opened: by("details").reduce((a, r) => a + (r.opened?.length || 0), 0) },
@@ -596,5 +642,7 @@ let bad = false;
 if (pages.length !== expected) { console.log(`::error title=P03RF_PAGE_COUNT::expected ${expected} pages, found ${pages.length}`); bad = true; }
 for (const f of failures.slice(0, 40)) console.log("::error title=P03RF_FAIL::" + JSON.stringify({ suite: f.suite, page: f.page, viewport: f.viewport, problems: f.problems.slice(0, 6) }));
 if (failures.length) bad = true;
+// Rótulos: 4 checagens (Anterior/Próxima x bloco 1/último) por célula de reflow, sem exceção.
+if (SUITES.includes("reflow") && summary.reflow.labels_checked !== 4 * summary.reflow.cells) { console.log(`::error title=P03RF_LABELS::labels_checked=${summary.reflow.labels_checked} expected=${4 * summary.reflow.cells}`); bad = true; }
 console.log(bad ? "P03_REFLOW_FOCUS=FAIL" : "P03_REFLOW_FOCUS=PASS");
 if (bad) process.exit(1);

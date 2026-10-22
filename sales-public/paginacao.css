@@ -36,6 +36,8 @@ html.pg .pg-trilho>main{overflow:clip}
 .pg-controles{display:none}
 html.pg .pg-controles{flex:none;display:flex;flex-wrap:nowrap;align-items:center;justify-content:center;gap:8px;padding:4px 12px;border-top:1px solid var(--line,#16304a);position:relative}
 .pg-botao,.pg-resumo{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;min-width:44px;padding:0 16px;border-radius:12px;border:1px solid var(--line-strong,#2a4a6a);background:var(--surface,#07111d);color:var(--text,#f5f8fc);font:inherit;font-weight:700;font-size:.92rem;white-space:nowrap;cursor:pointer}
+/* Botões não encolhem abaixo do rótulo: se não cabe, o <nav> transborda e paginacao.js troca para o rótulo curto. */
+.pg-botao{flex:none}
 .pg-botao[aria-disabled="true"]{opacity:.55;cursor:default}
 .pg-botao:focus-visible,.pg-resumo:focus-visible,.pg-lista a:focus-visible,.pg-janela:focus-visible{outline:2px solid var(--brand-3,#21e6f3);outline-offset:2px}
 /* O índice se posiciona pelo <nav> inteiro (não pelo botão), para usar toda a largura da tela. */
@@ -49,10 +51,19 @@ html.pg .pg-controles{flex:none;display:flex;flex-wrap:nowrap;align-items:center
 .pg-lista a[aria-current="true"]{background:var(--line-strong,#2a4a6a)}
 .pg-sr{position:absolute!important;width:4px!important;height:4px!important;padding:0!important;margin:0!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}
 @media(max-width:420px){.pg-botao{padding:0 8px}.pg-controles{gap:4px}}
-/* Abaixo de 300 px (ex.: 240 px de largura) os rótulos viram só leitura de tela e os botões ficam com
-   o ícone ‹ › em alvo de 44x44: "Bloco 10 de 37" + os dois rótulos passavam da largura. O resumo pode
-   quebrar em 2 linhas dentro dos 44 px (independe da fonte do sistema: no CI ela é mais larga). */
-@media(max-width:300px){.pg-botao{padding:0;flex:none}.pg-controles{padding:4px}.pg-indice{min-width:0;flex:0 1 auto}.pg-resumo{padding:0 8px;min-width:0;white-space:normal;text-align:center;line-height:1.1}.pg-rot{position:absolute!important;width:4px!important;height:4px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important}}
+/* Rótulos adaptativos (paginacao.js mede se cabem; sem breakpoint): por extenso por padrão; com
+   .pg-curtos, a forma curta visível ("Ant"/"Próx", prefixo do nome acessível) e o resumo pode quebrar em
+   2 linhas dentro dos 44 px. Nunca só ícone. */
+/* Sem transição nos controles: com "transition: all" (modo reduced-motion do product.css) a medição logo
+   após trocar .pg-curtos leria o padding antigo e alternaria rótulo longo/curto a cada bloco. */
+.pg-controles,.pg-controles *{transition:none!important}
+.pg-curto{display:none}
+.pg-controles.pg-curtos .pg-curto{display:inline}
+.pg-controles.pg-curtos .pg-longo{position:absolute!important;width:4px!important;height:4px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important}
+.pg-controles.pg-curtos{padding:4px;gap:4px}
+.pg-controles.pg-curtos .pg-botao{padding:0 4px;gap:4px}
+.pg-controles.pg-curtos .pg-indice{min-width:0;flex:0 1 auto}
+.pg-controles.pg-curtos .pg-resumo{padding:0 8px;min-width:0;white-space:normal;text-align:center;line-height:1.1}
 /* Impressão: todo o conteúdo, sem paginação nem controles (também sem JavaScript). */
 @media print{
   html,body,html.pg,html.pg body{height:auto!important;max-height:none!important;overflow:visible!important;display:block!important}

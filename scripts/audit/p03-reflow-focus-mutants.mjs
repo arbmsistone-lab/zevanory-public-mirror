@@ -35,6 +35,12 @@ const MUTANTS = [
     edit("paginacao.css", "box-sizing:border-box;width:min(calc(100% - 16px),400px);display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr))", "display:grid;grid-template-columns:repeat(5,44px)")(s);
   }],
   // Mutantes das correções/checagens novas
+  // AVAL 086 do Sol: botões só com ícone abaixo de 300 px (o comportamento anterior) tem de morrer.
+  ["MM_sol_so_icone_abaixo_de_300px", "reflow", (s) => fs.appendFileSync(path.join(s, "paginacao.css"), "\n@media(max-width:300px){.pg-rot{position:absolute!important;width:4px!important;height:4px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important}}\n")],
+  // Rótulo curto que não é parte do nome acessível (viola 2.5.3).
+  ["MN_rotulo_curto_fora_do_nome", "reflow", (s) => { edit("paginacao.js", ">Ant</span>", ">Volta</span>")(s); edit("paginacao.js", ">Próx</span>", ">Segue</span>")(s); }],
+  // Rótulo curto sempre (sem medir): a forma por extenso nunca aparece quando cabe.
+  ["MO_rotulo_curto_sem_medir", "reflow", edit("paginacao.js", "    if (!cabe) nav.classList.add(\"pg-curtos\");", "    nav.classList.add(\"pg-curtos\");")],
   ["MD_sem_modo_corpo_tela_baixa", "reflow", edit("paginacao.js", 'const m = querCorpo() ? "corpo" : "main";', 'const m = "main";')],
   ["ME_indice_sem_janela", "reflow", edit("paginacao.js", "return Math.max(3, cols * linhasCabem);", "return Infinity;")],
   ["MF_folga_revela_linha_vizinha", "reflow", edit("paginacao.js", "const topo = ant ? Math.max(ini, Math.min(b.ini, ant.fim)) : ini;", "const topo = ini;")],
