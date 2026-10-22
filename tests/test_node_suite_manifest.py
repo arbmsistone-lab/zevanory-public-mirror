@@ -3,6 +3,8 @@
 Cada mutante monta uma mini-suíte REAL num diretório temporário, roda `node --test` com os mesmos dois
 reporters do gate (TAP + scripts/ci/node-suite-reporter.mjs) e prova que o verificador falha. Sem rede,
 sem segredos, sem PostgreSQL. node ausente => falha (nunca pula).
+Portável (AVAL Sol, Windows): caminhos sempre em forma POSIX (Path.as_posix), saída lida em UTF-8, e o CI roda
+estes testes em ubuntu-latest E windows-latest (node-suite-manifest-portability.yml) com contagem exata.
 """
 import json
 import os
@@ -24,8 +26,13 @@ A = 'import test from "node:test";\ntest("a1", () => {});\ntest("a2", async (t) 
 B = 'import test, { describe, it } from "node:test";\ndescribe("grupo", () => { it("b1", () => {}); it("b2", () => {}); });\n'
 
 
+PORTABILITY_WF = ROOT / ".github/workflows/node-suite-manifest-portability.yml"
+
+
 def run(args, cwd):
-    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=120)
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONDONTWRITEBYTECODE": "1"}
+    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          stdin=subprocess.DEVNULL, timeout=120, env=env)
 
 
 class NodeSuiteManifest(unittest.TestCase):
@@ -47,7 +54,7 @@ class NodeSuiteManifest(unittest.TestCase):
         self.write("tests/node-suite.manifest", "# comentário\n" + "\n".join(lines) + "\n")
 
     def suite(self, files=None):
-        files = files or sorted(str(p.relative_to(self.tmp)) for p in (self.tmp / "tests").glob("*.test.mjs"))
+        files = files or sorted(p.relative_to(self.tmp).as_posix() for p in (self.tmp / "tests").glob("*.test.mjs"))
         p = run(["node", "--test", "--test-reporter=tap", "--test-reporter-destination=all.txt",
                  f"--test-reporter={REPORTER.as_uri()}", "--test-reporter-destination=per-file.json", *files], self.tmp)
         return p
@@ -135,6 +142,34 @@ class NodeSuiteManifest(unittest.TestCase):
             self.assertIn(f'      - "{p}"\n', wf, p)
         self.assertIn("python3 -m unittest tests.test_node_suite_manifest", wf)
         self.assertNotIn("secrets.", wf)
+        # o mesmo arquivo de testes roda também no Windows, só em pull_request, com contagem exata
+        pw = PORTABILITY_WF.read_text(encoding="utf-8")
+        self.assertRegex(pw, r"(?m)^on:\n  pull_request:\n")
+        self.assertNotRegex(pw, r"(?m)^  (push|workflow_dispatch|schedule|workflow_run|pull_request_target):")
+        self.assertIn("os: [ubuntu-latest, windows-latest]", pw)
+        self.assertIn("python -m unittest tests.test_node_suite_manifest -v", pw)
+        self.assertIn('grep -qx "Ran 14 tests in .*" nm.txt', pw)
+        self.assertIn('grep -qx "Ran 14 tests in .*" nm.txt', wf)
+        self.assertNotIn("secrets.", pw)
+
+    def test_file_level_detection_is_separator_independent(self):
+        # O nome do resultado de arquivo vem com "\\" no Windows e "/" no Linux; os dois têm de ser detectados,
+        # e nomes comuns de teste não. Roda a função REAL do reporter com entradas das duas plataformas.
+        code = (
+            "const m = await import(process.argv[1]);"
+            "const cwd = process.platform === 'win32' ? 'C:\\\\r' : '/r';"
+            "const f = process.platform === 'win32' ? 'C:\\\\r\\\\tests\\\\c.test.mjs' : '/r/tests/c.test.mjs';"
+            "const cases = [[{nesting:0,name:'tests/c.test.mjs',file:f},true],[{nesting:0,name:'tests\\\\c.test.mjs',file:f},true],"
+            "[{nesting:0,name:'./tests/c.test.mjs',file:f},true],[{nesting:0,name:'tests\\\\c.test.mjs'},true],"
+            "[{nesting:0,name:'c1',file:f},false],[{nesting:1,name:'tests/c.test.mjs',file:f},false],"
+            "[{nesting:0,name:'lê config.mjs',file:f},false]];"
+            "const bad = cases.filter(([d,w]) => m.isFileLevel(d, cwd) !== w);"
+            "const rel = m.relPosix(f, cwd);"
+            "console.log(JSON.stringify({bad: bad.length, rel}));"
+        )
+        p = run(["node", "--input-type=module", "-e", code, REPORTER.as_uri()], ROOT)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(json.loads(p.stdout.strip().splitlines()[-1]), {"bad": 0, "rel": "tests/c.test.mjs"})
 
     def test_repository_manifest_lists_exactly_the_suite_files(self):
         lines = [l for l in MANIFEST.read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")]
@@ -142,7 +177,7 @@ class NodeSuiteManifest(unittest.TestCase):
         self.assertEqual(names, sorted(names), "manifesto em ordem alfabética (PRs paralelas não disputam linhas)")
         for l in lines:
             self.assertRegex(l, r"^tests/[A-Za-z0-9._-]+\.test\.mjs [1-9][0-9]*$")
-        disk = sorted(str(p.relative_to(ROOT)) for p in (ROOT / "tests").glob("*.test.mjs"))
+        disk = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "tests").glob("*.test.mjs"))
         self.assertEqual(names, disk)
 
 

@@ -78,7 +78,9 @@ def check(manifest, tap, per_file, pattern, root):
         files = None; problems.append(('PER_FILE_UNREADABLE', f'{per_file}: {e}'))
     if entries is None or not entries or files is None or summary is None:
         return problems, None
-    on_disk = {os.path.relpath(p, root).replace(os.sep, '/') for p in glob.glob(os.path.join(root, pattern))}
+    # Caminhos sempre em forma POSIX relativa (o manifesto só aceita "/"; no Windows os.sep é "\\").
+    on_disk = {os.path.relpath(p, root).replace(os.sep, '/').replace('\\', '/')
+               for p in glob.glob(os.path.join(root, *pattern.split('/')))}
     for name in sorted(on_disk - entries.keys()):
         problems.append(('MANIFEST_UNLISTED_FILE', f'{name} existe no disco e não está no manifesto'))
     for name in sorted(entries.keys() - on_disk):
@@ -109,6 +111,12 @@ def check(manifest, tap, per_file, pattern, root):
 
 
 def main(argv=None):
+    # Portável (AVAL Sol, Windows): saída sempre UTF-8, qualquer que seja a página de código do console.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser()
     ap.add_argument('--manifest', default='tests/node-suite.manifest')
     ap.add_argument('--tap', default='all.txt')
