@@ -14,6 +14,13 @@ on:
       - "tests/integration/**"
       - "tests/t4_sim/**"
       - "tests/trava-vendas-gate-paths.test.mjs"
+      # C071-3: a suíte Node completa e o manifesto que deriva a contagem esperada (antes, testes novos em
+      # tests/*.test.mjs entravam sem disparar este gate e o literal ficava defasado: 539 vs 542 reais).
+      - "tests/*.test.mjs"
+      - "tests/node-suite.manifest"
+      - "tests/test_node_suite_manifest.py"
+      - "scripts/ci/node_suite_check.py"
+      - "scripts/ci/node-suite-reporter.mjs"
       - "wrangler*.toml"
       - "package.json"
       - "package-lock.json"
@@ -71,9 +78,23 @@ jobs:
       - name: Suíte Node completa no SHA do PR (prova Linux independente, Ordem Sol 024)
         run: |
           set -eo pipefail
-          node --test tests/*.test.mjs | tee all.txt
-          # Contagem EXATA (protocolo): teste removido, pulado ou falho derruba o gate.
-          grep -qx "# tests 539" all.txt && grep -qx "# pass 539" all.txt && grep -qx "# skipped 0" all.txt && grep -qx "# fail 0" all.txt && grep -qx "# cancelled 0" all.txt
+          node --test --test-reporter=tap --test-reporter-destination=stdout \
+            --test-reporter=./scripts/ci/node-suite-reporter.mjs --test-reporter-destination=per-file.json \
+            tests/*.test.mjs | tee all.txt
+          echo "::notice title=COUNTS_ALL::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' all.txt | paste -sd' ' -)"
+          # Contagem EXATA (protocolo; contestação Sol C071-3): o esperado é a SOMA de tests/node-suite.manifest,
+          # nunca um literal neste arquivo. Arquivo fora do manifesto ou descartado, contagem por arquivo
+          # diferente, skipped/todo/fail/cancelled > 0 ou manifesto ausente derrubam o gate.
+          python3 scripts/ci/node_suite_check.py --manifest tests/node-suite.manifest --tap all.txt --per-file per-file.json
+      - name: Mutantes do verificador do manifesto (offline, sem PostgreSQL)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -m unittest tests.test_node_suite_manifest -v < /dev/null 2>&1 | tee nm.txt
+          grep -qx "Ran 13 tests in .*" nm.txt || { echo "::error::contagem de testes diferente de 13"; exit 1; }
+          if grep -q "skipped" nm.txt; then echo "::error::testes pulados"; exit 1; fi
+          grep -qx "OK" nm.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
       - name: Cobertura do filtro de caminhos (fecho de importações e leituras)
         run: |
           set -eo pipefail
