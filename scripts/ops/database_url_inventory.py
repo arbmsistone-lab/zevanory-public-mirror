@@ -41,6 +41,13 @@ CONSUMERS = {
         "CERTIFICATION_DATABASE_URL": (("certification-isolated-deploy.yml",), "isolated"),
     },
 }
+# Contagem verificada (conferida por tests/test_database_url_inventory.py contra TODOS os workflows):
+#   5 vínculos de segredo  = 4 pares (Environment, segredo) da tabela + DATABASE_URL do Worker `zevanory`;
+#   7 consumidores efetivos = 6 workflows (central-production-deploy, financial-ddl-readonly-check,
+#     production-secret-readiness, restore-new-database, plan-probe, certification-isolated-deploy) + o Worker.
+WORKER_CONSUMER = "worker:zevanory"
+SECRET_BINDINGS = sum(len(t) for t in CONSUMERS.values()) + 1
+EFFECTIVE_CONSUMERS = sum(len(w) for t in CONSUMERS.values() for w, _ in t.values()) + 1
 HEALTH_URL = "https://zevanory.api.br/api/health"
 HEX64 = re.compile(r"[0-9a-f]{64}")
 GHA = os.environ.get("GITHUB_ACTIONS") == "true"
@@ -116,7 +123,8 @@ def cmd_consumers(env_name):
             bad.append(f"{secret}[{','.join(workflows)}]={status}")
     if bad:
         return fail("DBURL_INVENTORY_FAIL", f"env={env_name} " + " ".join(bad))
-    say(f"DBURL_INVENTORY=PASS env={env_name} consumers={len(CONSUMERS[env_name])}")
+    say(f"DBURL_INVENTORY=PASS env={env_name} secret_bindings={len(CONSUMERS[env_name])} "
+        f"effective_consumers={sum(len(w) for w, _ in CONSUMERS[env_name].values())}")
     return 0
 
 
@@ -149,7 +157,7 @@ def cmd_worker():
         f"host_sha256={shown} endpoint_sha256=n/a pooled=n/a status={status}")
     if status != "MATCH":
         return fail("DBURL_INVENTORY_FAIL", f"env=cloudflare-worker DATABASE_URL[worker:zevanory]={status}")
-    say("DBURL_INVENTORY=PASS env=cloudflare-worker consumers=1")
+    say("DBURL_INVENTORY=PASS env=cloudflare-worker secret_bindings=1 effective_consumers=1")
     return 0
 
 

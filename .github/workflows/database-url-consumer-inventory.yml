@@ -107,4 +107,5 @@ jobs:
             echo "::error title=DBURL_VERDICT::FAIL — ver o job com falha (consumidor nomeado na anotação)"
             exit 1
           fi
-          echo "DBURL_VERDICT=PASS consumers=5"
+          # 5 vínculos de segredo (4 Environment/segredo + Worker) e 7 consumidores efetivos (6 workflows + Worker).
+          echo "DBURL_VERDICT=PASS secret_bindings=5 effective_consumers=7"

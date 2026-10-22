@@ -103,7 +103,8 @@ class Consumers(unittest.TestCase):
             rc, out, _ = run(["consumers", env], secrets)
             self.assertEqual(rc, 0, out)
             self.assertEqual([(r["secret"], r["workflows"], r["status"]) for r in rows(out)], want[env])
-            self.assertIn(f"DBURL_INVENTORY=PASS env={env} consumers={len(want[env])}", out)
+            n_wf = sum(len(w.split(",")) for _, w, _ in want[env])
+            self.assertIn(f"DBURL_INVENTORY=PASS env={env} secret_bindings={len(want[env])} effective_consumers={n_wf}", out)
             for s in SECRETS:
                 self.assertNotIn(s, out)
 
@@ -198,6 +199,14 @@ class WorkflowContract(unittest.TestCase):
                     found.setdefault(env, {}).setdefault(s, set()).add(wf.name)
         table = {env: {s: set(w) for s, (w, _) in t.items()} for env, t in m.CONSUMERS.items()}
         self.assertEqual(found, table)
+        # Números exatos (auditoria Sol): 5 vínculos de segredo e 7 consumidores efetivos, contando o Worker.
+        bindings = sum(len(t) for t in found.values()) + 1
+        consumers = len({w for t in found.values() for ws in t.values() for w in ws}) + 1
+        self.assertEqual((bindings, consumers), (5, 7))
+        self.assertEqual((m.SECRET_BINDINGS, m.EFFECTIVE_CONSUMERS), (5, 7))
+        verdict = (ROOT / ".github/workflows/database-url-consumer-inventory.yml").read_text()
+        self.assertIn('echo "DBURL_VERDICT=PASS secret_bindings=5 effective_consumers=7"', verdict)
+        self.assertNotRegex(verdict, r"DBURL_VERDICT=PASS consumers=")
 
 
 if __name__ == "__main__":
