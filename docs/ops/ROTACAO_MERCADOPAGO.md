@@ -71,8 +71,11 @@ e no Environment `producao-critica`, que exige revisor.
   4. Enquanto o B01-R não for YES, a rotação real continua NO-GO (Sol, Ordem 046).
   - Impacto se nada for feito em 12 h: consulta de pagamentos, reconciliação, watchdog, entrega, estornos e
     reclamações ficam sem token. Vendas fechadas não eliminam as obrigações pós-venda.
-- **Recomendação ao proprietário:** mover `MERCADOPAGO_PROD_ACCESS_TOKEN` para o Environment
-  `producao-critica`. Como segredo de repositório, ele fica disponível a qualquer workflow do repositório.
+- **Escopo do segredo (concluído, B01 certificado pelo Sol):** `MERCADOPAGO_PROD_ACCESS_TOKEN` existe só no
+  Environment `producao-critica`; a cópia antiga como segredo de repositório foi removida. O modo check-only
+  imprime `MP_SECRET_SCOPE=NOT_CHECKED_IN_WORKFLOW`: o job não consegue verificar isso sozinho, porque listar
+  os nomes dos segredos do repositório exige a permissão "Secrets", que o `GITHUB_TOKEN` não pode receber.
+  A verificação é feita fora do workflow, por quem administra o repositório (Settings → Secrets, só nomes).
 
 ## 2. Segredo do webhook (`MERCADOPAGO_WEBHOOK_SECRET`)
 

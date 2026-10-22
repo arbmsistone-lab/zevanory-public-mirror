@@ -167,8 +167,13 @@ jobs:
           jq -e '.sales_authorization.state == "closed" and .runtime.sales == "globally-blocked"' /tmp/status.json >/dev/null \
             || { echo "::error title=MP_BASELINE_STATUS_NOT_CLOSED"; exit 1; }
           echo "BASELINE_HEALTH=ready DB=reachable SCHEMA=ready COMMERCIAL_LOCK=on SALES_OPEN=false STATUS=globally-blocked"
-          # Contestação Sol 044-F2: o job não distingue segredo de Environment de segredo de repositório.
-          echo "MP_SECRET_SCOPE=UNVERIFIED (hoje a credencial está no repositório; o token novo vai SÓ para o Environment)"
+          # Contestação Sol 044-F2 / B01: dentro do job, um segredo do Environment e um do repositório têm o mesmo nome
+          # e o do Environment prevalece; o job não consegue distinguir os dois pelo valor. Listar os NOMES dos segredos
+          # do repositório (GET /repos/{o}/{r}/actions/secrets) exige a permissão "Secrets", que o GITHUB_TOKEN não
+          # pode receber (não existe "secrets:" em permissions). Por isso aqui não se afirma nada que não foi verificado.
+          # Estado certificado FORA deste workflow (B01, Sol): o segredo de repositório foi removido; a credencial
+          # MERCADOPAGO_PROD_ACCESS_TOKEN existe só no Environment producao-critica. Ver docs/ops/ROTACAO_MERCADOPAGO.md.
+          echo "MP_SECRET_SCOPE=NOT_CHECKED_IN_WORKFLOW (o GITHUB_TOKEN não lista segredos; certificação externa B01/Sol: só no Environment producao-critica, sem cópia no repositório)"
           echo "CHECK_ONLY=PASS (nada foi gravado)"
 
       - name: Rotate the exact production Worker secret

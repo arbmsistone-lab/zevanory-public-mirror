@@ -1,0 +1,31 @@
+name: repo-hygiene-bytecode
+
+# Higiene: nenhum bytecode Python (*.pyc, *.pyo, __pycache__/) pode ser rastreado, e o .gitignore tem de
+# continuar impedindo a volta. Só pull_request: nunca dispara no merge, sem segredos, sem rede além do checkout.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  no-tracked-bytecode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Fail if bytecode is tracked or the ignore rules are gone
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/no_tracked_bytecode.py
+          python3 -c "import yaml" 2>/dev/null || python3 -m pip install --quiet --user --break-system-packages "pyyaml==6.0.2"
+          python3 -m unittest tests.test_no_tracked_bytecode -v 2>&1 | tee /tmp/hygiene.txt
+          # Contagem exata (mutantes inclusos): um teste pulado ou removido não passa despercebido.
+          grep -qx "Ran 9 tests in .*" /tmp/hygiene.txt || { echo "::error::contagem de testes diferente de 9"; exit 1; }
+          if grep -q "skipped" /tmp/hygiene.txt; then echo "::error::testes pulados"; exit 1; fi
+          grep -qx "OK" /tmp/hygiene.txt || { echo "::error::suíte não terminou em OK"; exit 1; }

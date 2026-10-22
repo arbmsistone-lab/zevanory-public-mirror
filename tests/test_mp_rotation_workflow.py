@@ -308,6 +308,24 @@ open(out, 'w').write('{}'); print('404', end='')
         # o retorno automático depende de WRITE_ATTEMPTED_AT, que só o passo de troca grava
         self.assertIn("env.WRITE_ATTEMPTED_AT != ''", self.steps[-1]["if"])
 
+    def test_secret_scope_line_is_honest_and_not_stale(self):
+        # Hygiene (B01 certificado pelo Sol): o segredo de repositório foi removido. A frase antiga afirmava o
+        # contrário ("hoje a credencial está no repositório"). O GITHUB_TOKEN não pode listar segredos, então o
+        # job só pode dizer que NÃO verificou; nunca PASS/ABSENT inventado, nunca a frase velha.
+        base = self.steps[step_index(self.steps, "CHECK_ONLY=PASS")]["run"]
+        self.assertNotIn("credencial está no repositório", self.text)
+        self.assertNotIn("MP_SECRET_SCOPE=UNVERIFIED", self.text)
+        lines = [l.strip() for l in base.splitlines() if "MP_SECRET_SCOPE=" in l and not l.strip().startswith("#")]
+        self.assertEqual(len(lines), 1, lines)
+        self.assertTrue(lines[0].startswith('echo "MP_SECRET_SCOPE=NOT_CHECKED_IN_WORKFLOW '), lines[0])
+        self.assertIn("producao-critica", lines[0])
+        self.assertNotRegex(base, r"MP_SECRET_SCOPE=(PASS|ABSENT|VERIFIED|ENVIRONMENT_ONLY)")
+        # nenhuma tentativa de ler segredos pela API dentro do job, e nenhuma permissão extra
+        self.assertNotIn("api.github.com", self.text)
+        self.assertNotRegex(self.text, r"\bgh\s+(api|secret)\b")
+        doc = yaml.safe_load(self.text)
+        self.assertEqual(doc["permissions"], {"contents": "read"})
+
     @unittest.skipUnless(shutil.which("jq") and shutil.which("node"), "jq/node ausentes")
     def test_check_only_baseline_requires_fresh_token_ok_and_sales_closed(self):
         import datetime as _dt
@@ -326,7 +344,7 @@ open(out, 'w').write('{}'); print('404', end='')
         self.assertEqual(rc, 0, out)
         self.assertIn("CHECK_ONLY=PASS", out)
         self.assertIn('"mercadopago_production_token_ok":true', out)
-        self.assertIn("MP_SECRET_SCOPE=UNVERIFIED", out)
+        self.assertIn("MP_SECRET_SCOPE=NOT_CHECKED_IN_WORKFLOW", out)
         rc2, out2, _ = self._run_step("CHECK_ONLY=PASS", {**ok, "zpc-sales-preflight": kv(ago(100))}, env)
         self.assertEqual(rc2, 0, "100 min ainda está dentro do limite de 120")
         rc3, out3, _ = self._run_step("CHECK_ONLY=PASS", {**ok, "zpc-sales-preflight": kv(ago(120))}, env)
