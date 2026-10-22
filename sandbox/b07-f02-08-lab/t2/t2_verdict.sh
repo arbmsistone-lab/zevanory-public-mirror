@@ -14,7 +14,12 @@ note "T2_${SCEN}_VERDICT" "$out"
 rc=0
 case "$SCEN" in
   base_a|base_b) [ "$verdict" = PASS ] || rc=1 ;;
-  m8|m9) if [ "$verdict" = PASS ]; then note "T2_${SCEN}_MUTANT" "$SCEN SURVIVED"; rc=1; else note "T2_${SCEN}_MUTANT" "$SCEN KILLED (veredito=$verdict)"; fi ;;
+  # Mutante de infraestrutura só conta como morto se detectado como FAIL; ERROR_INFRA é inconclusivo (job falha).
+  m8|m9) case "$verdict" in
+           FAIL) note "T2_${SCEN}_MUTANT" "$SCEN KILLED (veredito=FAIL)" ;;
+           PASS) note "T2_${SCEN}_MUTANT" "$SCEN SURVIVED"; rc=1 ;;
+           *) note "T2_${SCEN}_MUTANT" "$SCEN INCONCLUSIVO (veredito=$verdict)"; rc=1 ;;
+         esac ;;
 esac
 cmut(){ # $1 nome  $2 sed  $3 obs
   cp "$CL" "$W/cl.bak"; local s0 s1 s2 o vm; s0=$(sha "$CL")

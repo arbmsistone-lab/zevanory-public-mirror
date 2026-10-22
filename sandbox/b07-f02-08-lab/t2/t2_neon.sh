@@ -54,7 +54,9 @@ maxterm(){ tr ',' '\n' <<< "$1" | grep -E '^[0-9]+$' | sort -n | tail -1; }
 # ---------- imagens fixadas ----------
 lock(){ sed -n "s/^$1=//p" "$HERE/images.lock"; }
 for k in NEON COMPUTE MINIO MC; do
-  ref=$(lock $k); docker pull -q "$ref" > /dev/null || infra_fail "pull $k $ref"
+  ref=$(lock $k); ok=0
+  for t in 1 2 3; do docker pull -q "$ref" > "$W/pull_$k.log" 2>&1 && { ok=1; break; }; sleep 10; done
+  [ $ok = 1 ] || infra_fail "pull $k $ref: $(tail -c 300 "$W/pull_$k.log")"
   dig=$(docker image inspect --format '{{index .RepoDigests 0}}' "$ref")
   obs "IMAGE_$k" "$ref => $dig"
   case "$ref" in *@sha256:*) ;; *) obs IMAGES_UNPINNED "$k";; esac
