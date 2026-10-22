@@ -1,0 +1,53 @@
+{
+  "schema": "zevanory-fase-a-nichos/v1",
+  "_doc": "P01 Fase A (Ordem 080 AVAL). Mesmo modelo para os 3 nichos: mesmos campos, mesma quantidade de itens e textos de tamanho equivalente (auditado em tests/fase-a/fase-a-static.test.mjs). Sem promessa de faturamento/resultado, sem urgência/escassez, sem alegação médica ou regulada.",
+  "price_label": "R$ 37 (pré-lançamento — vendas ainda fechadas)",
+  "q_digital": "Já comprou algum produto digital (planilha, curso, e-book)?",
+  "nichos": [
+    {
+      "slug": "confeitaria",
+      "page": "lista-de-espera-confeitaria",
+      "eyebrow": "Lista de espera · confeitaria e doceiras",
+      "product": "Preço Certo na Confeitaria",
+      "h1": "Preço Certo na Confeitaria: um kit para calcular o preço de cada encomenda.",
+      "intro": "Estamos avaliando lançar um kit para quem faz bolos e doces por encomenda. Antes de produzir, queremos saber se ele é útil para você.",
+      "items": [
+        "Ficha técnica que soma ingredientes, embalagem, seu tempo e as taxas da maquininha e do iFood.",
+        "Tabela de preços editável, para atualizar quando o custo dos ingredientes mudar.",
+        "Mensagens prontas para responder pedidos de orçamento pelo WhatsApp com clareza.",
+        "Guia curto que explica cada campo, com um exemplo preenchido do começo ao fim."
+      ],
+      "q_recurring": "Você refaz seus preços pelo menos 1 vez por mês?"
+    },
+    {
+      "slug": "loja-de-roupas",
+      "page": "lista-de-espera-loja-de-roupas",
+      "eyebrow": "Lista de espera · loja de roupas de bairro",
+      "product": "Preço e Estoque na Loja de Roupas",
+      "h1": "Preço e Estoque na Loja de Roupas: um kit para precificar e controlar as peças.",
+      "intro": "Estamos avaliando lançar um kit para quem tem loja de roupas no bairro. Antes de produzir, queremos saber se ele é útil para você.",
+      "items": [
+        "Planilha de precificação que mostra o markup e a margem de cada peça vendida na loja.",
+        "Controle de estoque simples, por peça, tamanho e cor, para saber o que repor.",
+        "Mensagens prontas para atender e apresentar as peças pelo WhatsApp com clareza.",
+        "Guia curto que explica cada campo, com um exemplo preenchido do começo ao fim."
+      ],
+      "q_recurring": "Você revisa o preço ou o estoque das peças pelo menos 1 vez por mês?"
+    },
+    {
+      "slug": "salao-e-barbearia",
+      "page": "lista-de-espera-salao-e-barbearia",
+      "eyebrow": "Lista de espera · salão e barbearia",
+      "product": "Agenda e WhatsApp no Salão e na Barbearia",
+      "h1": "Agenda e WhatsApp no Salão e na Barbearia: um kit para organizar os horários.",
+      "intro": "Estamos avaliando lançar um kit para quem atende com hora marcada em salão ou barbearia. Antes de produzir, queremos saber se ele é útil.",
+      "items": [
+        "Mensagens prontas de confirmação, remarcação e falta, para enviar pelo WhatsApp.",
+        "Ficha de atendimento para registrar o serviço feito e as preferências de cada cliente.",
+        "Planilha de agenda e de retorno, para ver quais clientes estão na época de voltar.",
+        "Guia curto que explica cada campo, com um exemplo preenchido do começo ao fim."
+      ],
+      "q_recurring": "Você confirma os horários com os clientes pelo WhatsApp toda semana?"
+    }
+  ]
+}

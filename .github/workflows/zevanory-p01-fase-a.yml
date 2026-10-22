@@ -1,0 +1,171 @@
+name: zevanory-p01-fase-a
+# P01 Fase A (Ordem 080 AVAL; aprovação do proprietário 22/10/2026 18:09): lista de espera SEM cobrança em
+# 3 nichos, desligada por padrão. Somente pull_request: sem segredos, sem deploy, sem rede de produção,
+# PostgreSQL efêmero com dados sintéticos, páginas servidas em localhost. Contagens EXATAS (teste removido,
+# pulado ou falho derruba o gate); ao mudar testes, atualizar os números no mesmo PR.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/waitlist.mjs"
+      - "worker/waitlist-public.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "worker/funnel.mjs"
+      - "data/fase-a-nichos.json"
+      - "scripts/fase_a/**"
+      - "tests/fase-a/**"
+      - "docs/p01/**"
+      - "sales-public/**"
+      - "sitemap.xml"
+      - "wrangler*.toml"
+      - ".github/workflows/zevanory-p01-fase-a.yml"
+permissions:
+  contents: read
+concurrency:
+  group: p01-fase-a-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+jobs:
+  backend:
+    name: p01 / estatico-backend-mutantes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      WAITLIST_PG_HOST: localhost
+      WAITLIST_PG_PORT: "5432"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Sintaxe dos módulos e do Worker de vendas
+        run: |
+          set -euo pipefail
+          for f in worker/waitlist.mjs worker/waitlist-public.mjs worker/sales-public-worker.mjs worker/cloudflare-worker.compat.mjs scripts/fase_a/resumo.mjs scripts/fase_a/mutants.mjs; do node --check "$f"; done
+      - name: Gerador (bandeira desligada não escreve; preview audita as 3 páginas)
+        run: |
+          set -euo pipefail
+          off=$(mktemp -d); python3 scripts/fase_a/build_fase_a.py --out "$off" | tee /tmp/off.txt
+          grep -qx "FASE_A_PAGES=OFF (ZEVANORY_FASE_A_PAGES != on): nada foi gerado" /tmp/off.txt
+          test -z "$(ls -A "$off")"
+          prev=$(mktemp -d); python3 scripts/fase_a/build_fase_a.py --out "$prev" --preview | tee /tmp/prev.txt
+          grep -qx "FASE_A_STATIC_AUDIT=PASS" /tmp/prev.txt
+          test "$(ls "$prev"/*.html | wc -l)" -eq 3
+          if ls sales-public/lista-de-espera-* >/dev/null 2>&1; then echo "::error::páginas da Fase A dentro de sales-public/"; exit 1; fi
+          echo "::notice title=P01_GERADOR::bandeira desligada = 0 arquivos; preview = 3 páginas, auditoria PASS; sales-public sem páginas da Fase A"
+      - name: Auditoria estática (8 testes)
+        run: |
+          set -eo pipefail
+          node --test tests/fase-a/fase-a-static.test.mjs | tee /tmp/s.txt
+          grep -qx "# tests 8" /tmp/s.txt && grep -qx "# pass 8" /tmp/s.txt && grep -qx "# skipped 0" /tmp/s.txt && grep -qx "# fail 0" /tmp/s.txt && grep -qx "# cancelled 0" /tmp/s.txt
+          echo "::notice title=P01_ESTATICO::8/8 (sem /comprar/, sem InStock, consentimento desmarcado, política e saída, mesmo modelo, sem promessas, desligado por padrão)"
+      - name: Rotas públicas no Worker de vendas (7 testes)
+        run: |
+          set -eo pipefail
+          node --test tests/fase-a/waitlist-public.test.mjs | tee /tmp/p.txt
+          grep -qx "# tests 7" /tmp/p.txt && grep -qx "# pass 7" /tmp/p.txt && grep -qx "# skipped 0" /tmp/p.txt && grep -qx "# fail 0" /tmp/p.txt && grep -qx "# cancelled 0" /tmp/p.txt
+          echo "::notice title=P01_ROTAS::7/7 (bandeira, robô 403, honeypot, limite 429, consentimento estrito, mensagens fixas, saída)"
+      - name: Regra pré-registrada e Wilson (5 testes)
+        run: |
+          set -eo pipefail
+          node --test tests/fase-a/waitlist-rule.test.mjs | tee /tmp/r.txt
+          grep -qx "# tests 5" /tmp/r.txt && grep -qx "# pass 5" /tmp/r.txt && grep -qx "# skipped 0" /tmp/r.txt && grep -qx "# fail 0" /tmp/r.txt && grep -qx "# cancelled 0" /tmp/r.txt
+          echo "::notice title=P01_REGRA::5/5 (<300 INCONCLUSIVO; GO = conv>=8% e Wilson>=5% e >=20 leads e sem violação)"
+      - name: Backend contra PostgreSQL real (10 testes)
+        run: |
+          set -eo pipefail
+          node --test tests/fase-a/waitlist-postgres.test.mjs | tee /tmp/g.txt
+          grep -qx "# tests 10" /tmp/g.txt && grep -qx "# pass 10" /tmp/g.txt && grep -qx "# skipped 0" /tmp/g.txt && grep -qx "# fail 0" /tmp/g.txt && grep -qx "# cancelled 0" /tmp/g.txt
+          echo "::notice title=P01_BACKEND::10/10 (idempotência, consentimento obrigatório, saída, robôs fora, métricas sem PII, retenção, script somente leitura)"
+      - name: Mutantes (controle passa; 5 mutantes mortos por asserção)
+        run: |
+          set -eo pipefail
+          node scripts/fase_a/mutants.mjs | tee /tmp/m.txt
+          grep -qx "P01_MUTANTS killed=5/5" /tmp/m.txt
+          test "$(grep -c '^::notice title=P01_MUTANT_CONTROL::.*"ok":true' /tmp/m.txt)" -eq 2
+      - name: Sem bytecode nem arquivos gerados no checkout
+        run: |
+          set -euo pipefail
+          left=$(git status --porcelain --untracked-files=all)
+          if [ -n "$left" ]; then echo "$left"; echo "::error::arquivos gerados no checkout"; exit 1; fi
+          if git ls-files | grep -E '\.pyc$|__pycache__/'; then echo "::error::bytecode rastreado"; exit 1; fi
+
+  p03:
+    name: p01 / p03-matriz-3-paginas
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Commit fixado da PR #867 (P03) enquanto ela não estiver integrada; depois disso, os arquivos do
+      # próprio checkout são usados (mesmos caminhos).
+      P03_PIN: f871ac1a27783f5ba5033b54298bb57155e4eb98
+      P03_WORKERS: "3"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned tools (outside the repo tree)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/p03 && cd /tmp/p03
+          npm init -y >/dev/null
+          npm install --no-save playwright@1.55.0 axe-core@4.10.2 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Montar as 3 páginas com os assets da P03 (paginação, product.css) em pasta temporária
+        run: |
+          set -euo pipefail
+          S=/tmp/p01-site; mkdir -p "$S" /tmp/p03/gate
+          if [ -f sales-public/paginacao.js ] && [ -f scripts/audit/p03-viewport-matrix.mjs ]; then
+            src="checkout"
+            cp sales-public/product.css sales-public/paginacao.js sales-public/paginacao.css "$S/"
+            cp scripts/audit/p03-viewport-matrix.mjs scripts/audit/p03-reflow-focus.mjs /tmp/p03/gate/
+          else
+            src="pin:$P03_PIN"
+            git fetch --no-tags --depth=1 origin "$P03_PIN"
+            for f in sales-public/product.css sales-public/paginacao.js sales-public/paginacao.css; do git show "$P03_PIN:$f" > "$S/$(basename "$f")"; done
+            for f in scripts/audit/p03-viewport-matrix.mjs scripts/audit/p03-reflow-focus.mjs; do git show "$P03_PIN:$f" > "/tmp/p03/gate/$(basename "$f")"; done
+          fi
+          cp -r sales-public/brand "$S/"; cp sales-public/whatsapp-contact.js "$S/"
+          python3 scripts/fase_a/build_fase_a.py --out "$S" --preview
+          test "$(ls "$S"/*.html | wc -l)" -eq 3
+          echo "::notice title=P01_P03_ASSETS::origem dos assets/gate P03 = $src"
+          (python3 -m http.server 8791 --bind 127.0.0.1 --directory "$S" >/tmp/p01-http.log 2>&1 &)
+          for i in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8791/lista-de-espera-confeitaria.html && exit 0; sleep 0.5; done
+          cat /tmp/p01-http.log; exit 1
+      - name: Matriz P03 (3 páginas x 5 viewports x 2 temas, axe A/AA, sem rolagem)
+        working-directory: /tmp/p03
+        run: |
+          set -eo pipefail
+          node gate/p03-viewport-matrix.mjs http://127.0.0.1:8791 /tmp/p01-site 3 /tmp/p03/p01-matrix | tee mx.txt
+          grep -qx "P03_VIEWPORT_MATRIX=PASS" mx.txt
+          grep -q '"cells":30,"cells_pass":30,"failures":0' mx.txt
+      - name: Reflow/zoom, foco, links profundos e details (P03)
+        working-directory: /tmp/p03
+        run: |
+          set -eo pipefail
+          node gate/p03-reflow-focus.mjs http://127.0.0.1:8791 /tmp/p01-site 3 /tmp/p03/p01-reflow | tee rf.txt
+          grep -qx "P03_REFLOW_FOCUS=PASS" rf.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p01-p03-matrix
+          path: |
+            /tmp/p03/p01-matrix.json
+            /tmp/p03/p01-matrix.csv
+            /tmp/p03/p01-reflow.json
+            /tmp/p03/p01-reflow.csv
+          retention-days: 30
