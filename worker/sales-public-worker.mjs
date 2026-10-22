@@ -92,6 +92,29 @@ const PRICES={"ZEV-IA-011":["IA na Prática",197],"ZEV-VEN-011":["Vendas na Prá
 async function salesOpen(env){
   try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/status");if(!st.ok)return false;return (await st.json())?.open===true}catch{return false}  // only an OK response with open===true opens; anything else is closed
 }
+// P13 (NO-GO): the static HTML is always built closed (waiting-list CTAs, no /comprar/ link, no
+// schema.org Offer). Only when the owner switch is open (same /api/sales/status, fail-closed: KV
+// sales:open:v1 + "LIBERAR VENDAS" + green preflight) the page is restored at request time.
+const SALES_TOGGLE_PAGES=new Set(["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","solucoes"]);
+const SALES_ORIGIN="https://vendas.zevanory.api.br";
+export function openSalesHtml(html,slug){
+  let out=String(html);
+  out=out.replace(/<a ([^>]*?)href="[^"]*" data-zev-sku="(ZEV-[A-Z0-9-]+)" data-zev-open-text="([^"]*)">[^<]*<\/a>/g,(m,pre,sku,label)=>PRICES[sku]?`<a ${pre}href="/comprar/${sku}" rel="nofollow">${label}</a>`:m);
+  out=out.replace(/<(span|p)([^>]*?) data-zev-open-text="([^"]*)">[^<]*<\/\1>/g,"<$1$2>$3</$1>");
+  out=out.replace(/<(p|span)\b[^>]*\sdata-zev-closed[^>]*>[^<]*<\/\1>/g,"");
+  const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===slug);
+  if(sku)out=out.replace(/(<script type="application\/ld\+json">)([\s\S]*?)(<\/script>)/,(m,a,body,c)=>{
+    try{const d=JSON.parse(body);
+      for(const n of d["@graph"]||[])if(n&&n["@type"]==="Product")n.offers={"@type":"Offer",price:PRICES[sku][1]+".00",priceCurrency:"BRL",availability:"https://schema.org/InStock",url:SALES_ORIGIN+"/"+slug,seller:{"@type":"Organization",name:"A. RENAN ALVES MOREIRA BITU LTDA"}};
+      return a+JSON.stringify(d)+c;}catch{return m}});
+  return out;
+}
+let pageSwitch={at:0,open:false};
+export function resetPageSwitchCache(){pageSwitch={at:0,open:false}}
+async function salesOpenForPages(env){
+  const now=Date.now();if(now-pageSwitch.at<10000)return pageSwitch.open;
+  const open=await salesOpen(env);pageSwitch={at:now,open};return open;
+}
 async function overLimit(env,ip){
   if(env?.BUY_LIMITER?.limit){try{const r=await env.BUY_LIMITER.limit({key:"buy:"+ip});return !r.success}catch{}}
   return buyLimited(ip);
@@ -185,15 +208,15 @@ export const HOTMART_CHECKOUT=Object.freeze({
 export const SERVICE_CHECKOUT="https://pay.hotmart.com/X107980075B?off=4ydutio7";
 const SERVICE_WA="https://wa.me/5588992545413?text=Ol%C3%A1!%20Quero%20assinar%20o%20Conte%C3%BAdo%20Pronto.";
 const HOTMART_TEXT=[
-  ["Pagamento seguro pelo Mercado Pago (Pix ou cartão) · download logo após a confirmação · garantia de 7 dias.","Pagamento seguro pela Hotmart (Pix, cartão ou boleto) · acesso logo após a confirmação · garantia de 7 dias."],
-  ["Download logo após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago). Link pessoal enviado ao seu e-mail.","Acesso logo após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail."],
-  ["Logo após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um link pessoal para baixar o arquivo .zip com todo o material. Se o link se perder, peça outro em zevanory.api.br/entrega/reenviar.","Logo após a confirmação do pagamento, a Hotmart envia ao seu e-mail o acesso para baixar todo o material. Você também encontra o produto em Minhas compras, na sua conta Hotmart."],
-  ["Você tem 7 dias de garantia: peça o reembolso integral em zevanory.api.br/pedir-reembolso, sem precisar explicar o motivo.","Você tem 7 dias de garantia: peça o reembolso integral pela Hotmart, em Minhas compras, sem precisar explicar o motivo."],
+  ["Pagamento pelo Mercado Pago (Pix ou cartão) · entrega por e-mail em link pessoal válido por 72 horas e para um download · arrependimento em 7 dias corridos.","Pagamento pela Hotmart (Pix, cartão ou boleto) · acesso por e-mail após a confirmação · arrependimento em 7 dias corridos."],
+  ["Entrega por e-mail após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago), em link pessoal válido por 72 horas e para um download.","Acesso após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail."],
+  ["Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um link pessoal válido por 72 horas e para um download do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.","Após a confirmação do pagamento, a Hotmart envia ao seu e-mail o acesso para baixar todo o material. Você também encontra o produto em Minhas compras, na sua conta Hotmart."],
+  ["Você pode desistir em 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço, sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.","Você pode desistir em 7 dias corridos contado da assinatura do contrato ou do recebimento do produto ou serviço, sem justificativa e com devolução integral: peça pela Hotmart, em Minhas compras."],
   ["Pix ou cartão pelo Mercado Pago.","Pix, cartão ou boleto pela Hotmart."],
-  ["Link por e-mail logo após a confirmação do pagamento.","Acesso por e-mail logo após a confirmação do pagamento."],
+  ["Por e-mail após a confirmação do pagamento: válido por 72 horas e para um download.","Acesso por e-mail logo após a confirmação do pagamento."],
 ];
 export function hotmartPage(html,slug,checkout){
-  let out=String(html);
+  let out=openSalesHtml(html,slug);  // only served while sales are open (handleHotmart)
   for(const [from,to] of HOTMART_TEXT)out=out.split(from).join(to);
   out=out.replace(/href="\/comprar\/ZEV-[A-Z0-9-]+"/g,'href="'+checkout+'" rel="noopener"');
   // Avoid duplicate-content SEO: the canonical stays on the main page; this variant is not indexed.
@@ -258,7 +281,9 @@ export default{async fetch(request,env,ctx){
   let page="";
   if(url.pathname==="/"||url.pathname==="") { url.pathname="/solucoes.html"; page="solucoes"; }
   else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) { url.pathname="/"+key+".html"; page=key; } }
-  const response=await env.ASSETS.fetch(new Request(url,request));
+  let response=await env.ASSETS.fetch(new Request(url,request));
+  if(response.status===200&&request.method==="GET"&&SALES_TOGGLE_PAGES.has(page)&&await salesOpenForPages(env))
+    {const h=new Headers(response.headers);h.delete("content-length");response=new Response(openSalesHtml(await response.text(),page),{status:200,statusText:response.statusText,headers:h});}
   if(response.status===200&&page) countView(request,env,ctx,page);
   const headers=new Headers(response.headers);
   headers.set("x-robots-tag","index,follow");

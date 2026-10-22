@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from pathlib import Path
+from urllib.parse import quote
+
+import sales_policy as policy
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "sales-public"
+OUT = Path(os.environ.get("ZEVANORY_SALES_PUBLIC_OUT") or ROOT / "sales-public")  # P13: preview/teste do modo aberto fora do repo
 OVERLAY = ROOT / "sales-overlay"
 SALES_ORIGIN = "https://vendas.zevanory.api.br"
 PRODUCTS = ("ia-na-pratica", "vendas-na-pratica", "lucro-e-caixa", "combo-ia-vendas", "negocio-completo")
@@ -120,23 +124,47 @@ COMMERCE = {
         "faq_q": ("Inclui os três produtos separados?", "Sim. Inclui IA na Prática, Vendas na Prática e Lucro & Caixa completos, mais o Plano integrado de 30 dias e o Painel de decisão integrada.")},
 }
 FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a dia, sem curso longo', 'Quem já testou o ChatGPT mas não sabe aplicar em atendimento, conteúdo e rotina', 'Quem quer comandos prontos e uma planilha para medir o que mudou'], ['Quem procura automação técnica com programação', 'Quem espera resultado sem aplicar o método']), 'vendas-na-pratica': (['Quem vende pelo WhatsApp e Instagram e perde clientes no acompanhamento', 'Quem não tem roteiro de mensagens nem de conteúdo', 'Quem quer acompanhar oportunidades em uma planilha simples'], ['Quem busca anúncios pagos', 'Quem quer lista de contatos ou disparo em massa']), 'lucro-e-caixa': (['Quem fatura, mas não sabe quanto sobra no fim do mês', 'Quem mistura o dinheiro da empresa com o pessoal', 'Quem quer uma rotina semanal curta de caixa e margem'], ['Quem precisa de contabilidade ou obrigações fiscais', 'Quem procura recomendação de investimento']), 'combo-ia-vendas': (['Quem quer usar IA para vender mais no WhatsApp e nas redes', 'Quem quer os dois métodos com economia de R$ 97', 'Quem está organizando atendimento e conteúdo agora'], ['Quem só precisa organizar as finanças (veja Lucro & Caixa)', 'Quem busca anúncios pagos']), 'negocio-completo': (['Quem quer organizar IA, vendas e caixa de uma vez', 'Quem prefere um plano de 30 dias com começo, meio e fim', 'Quem quer a maior economia: R$ 244'], ['Quem quer resolver só um problema específico agora', 'Quem precisa de consultoria individual'])}
-DELIVERY_Q = ("Como recebo o produto?", "Logo após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um link pessoal para baixar o arquivo .zip com todo o material. Se o link se perder, peça outro em zevanory.api.br/entrega/reenviar.")
-GUARANTEE_Q = ("E se não for para mim?", "Você tem 7 dias de garantia: peça o reembolso integral em zevanory.api.br/pedir-reembolso, sem precisar explicar o motivo.")
+DELIVERY_Q = ("Como recebo o produto?", "Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um " + policy.DELIVERY_72H + " do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.")
+GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RULE_7D + ", sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.")
+# P13: modo comercial do HTML estatico (padrao fechado; ver scripts/sales_policy.py).
+MODE = policy.build_mode()
 
 def _faq_html(q, a):
     return f"<details><summary>{q}</summary><p>{a}</p></details>"
 
+def _attr(text: str) -> str:
+    return text.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
+
+def sales_cta(c: dict, open_label: str, cls: str = "button primary") -> str:
+    """CTA de compra. Fechado: lista de espera, sem link de checkout; o Worker restaura o CTA
+    original (data-zev-sku + data-zev-open-text) somente quando /api/sales/status abre."""
+    if MODE == policy.OPEN:
+        return f'<a class="{cls}" href="/comprar/{c["sku"]}" rel="nofollow">{open_label}</a>'
+    wa = "https://wa.me/5588992545413?text=" + quote("Olá! Quero entrar na lista de espera do " + c["name"] + ".")
+    return (f'<a class="{cls}" href="{_attr(wa)}" data-zev-sku="{c["sku"]}" '
+            f'data-zev-open-text="{_attr(open_label)}">{policy.WAITLIST_LABEL}</a>')
+
+def mode_text(closed_text: str, open_text: str, tag: str = "span", cls: str = "") -> str:
+    klass = f' class="{cls}"' if cls else ""
+    if MODE == policy.OPEN:
+        return f"<{tag}{klass}>{open_text}</{tag}>"
+    return f'<{tag}{klass} data-zev-open-text="{_attr(open_text)}">{closed_text}</{tag}>'
+
+def closed_note(tag: str = "p", cls: str = "microcopy sales-closed") -> str:
+    if MODE == policy.OPEN:
+        return ""
+    return f'<{tag} class="{cls}" data-zev-closed>Preço informativo: {policy.CLOSED_LABEL}.</{tag}>'
+
 def apply_commerce(slug: str, html: str) -> str:
     c = COMMERCE[slug]
-    buy = f"/comprar/{c['sku']}"
     label = f"Comprar agora · R$ {c['price']}"
     html = re.sub(r'<a class="nav-cta" href="mailto:[^"]*">', '<a class="nav-cta" href="https://wa.me/5588992545413">', html)
-    # Every primary CTA buys.
-    html = re.sub(r'<a class="button primary" href="mailto:[^"]*">[^<]*</a>', f'<a class="button primary" href="{buy}" rel="nofollow">{label}</a>', html)
-    html = re.sub(r'<p class="microcopy">[^<]*</p>', '<p class="microcopy">Pagamento seguro pelo Mercado Pago (Pix ou cartão) · download logo após a confirmação · garantia de 7 dias.</p>', html)
+    # Every primary CTA buys (open) or joins the waiting list (closed).
+    html = re.sub(r'<a class="button primary" href="mailto:[^"]*">[^<]*</a>', lambda m: sales_cta(c, label), html)
+    html = re.sub(r'<p class="microcopy">[^<]*</p>', '<p class="microcopy">Pagamento pelo Mercado Pago (Pix ou cartão) · entrega por e-mail em ' + policy.DELIVERY_72H + ' · arrependimento em 7 dias corridos.</p>', html)
     trust = {
-        ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Download imediato", "Link por e-mail logo após a confirmação do pagamento."),
-        ("Gate antes da venda", "Checkout só após validação completa."): ("Garantia de 7 dias", "Não gostou? Reembolso integral, sem burocracia."),
+        ("Performance primeiro", "HTML semântico e zero dependência de JS para renderizar."): ("Entrega por link pessoal", "Por e-mail após a confirmação do pagamento: válido por 72 horas e para um download."),
+        ("Gate antes da venda", "Checkout só após validação completa."): ("Arrependimento em 7 dias", "Contado da assinatura ou do recebimento, com devolução integral."),
         ("Transparência comercial", "Escopo e limites antes da contratação."): ("Pagamento seguro", "Pix ou cartão pelo Mercado Pago."),
     }
     for (old_t, old_s), (new_t, new_s) in trust.items():
@@ -144,12 +172,12 @@ def apply_commerce(slug: str, html: str) -> str:
     items = "".join(f"<li>{i}</li>" for i in c["items"])
     aside = (f'<aside class="offer-side"><div><span class="status-pill">R$ {c["price"]} · pagamento único</span>'
              f'<h3>O que você recebe</h3><ul>{items}</ul>'
-             '<p>Entrega por download (.zip) no seu e-mail, logo após a confirmação do pagamento. Garantia de 7 dias.</p></div>'
-             f'<a class="button primary" href="{buy}" rel="nofollow">{label}</a></aside>')
-    html = re.sub(r'<aside class="offer-side">.*?</aside>', aside, html, count=1, flags=re.S)
+             + policy.POLICY_SUMMARY + closed_note() +
+             '</div>' + sales_cta(c, label) + '</aside>')
+    html = re.sub(r'<aside class="offer-side">.*?</aside>', lambda m: aside, html, count=1, flags=re.S)
     # Conversion: what the buyer gets, right under the first call to action.
     chips = "".join(f"<li>{i}</li>" for i in c["items"][:4])
-    includes = (f'<ul class="hero-includes" aria-label="O que está incluído">{chips}</ul>'
+    includes = (closed_note() + f'<ul class="hero-includes" aria-label="O que está incluído">{chips}</ul>'
                 '<p class="microcopy hero-trust">Empresa brasileira com CNPJ · criada por <a href="/quem-criou">Renan Bitu</a> · suporte humano no <a href="https://wa.me/5588992545413">WhatsApp</a></p>')
     html = re.sub(r'(<section class="container hero".*?<p class="microcopy">[^<]*</p>)', lambda m: m.group(1) + includes, html, count=1, flags=re.S)
     # Conversion: who it is for (and who it is not for), right after the trust strip.
@@ -163,23 +191,28 @@ def apply_commerce(slug: str, html: str) -> str:
                 + "".join(f"<li>{x}</li>" for x in no) +
                 '</ul></div></div></section>')
     html = re.sub(r'(<section class="trust-strip".*?</section>)', lambda m: m.group(1) + fit_html, html, count=1, flags=re.S)
-    # Conversion: a compact buy bar that follows the reader on phones.
-    bar = (f'<div class="buy-bar" role="region" aria-label="Comprar {c["name"]}"><div><strong>{c["name"]}</strong>'
-           f'<span>R$ {c["price"]} · garantia de 7 dias</span></div><a class="button primary" href="{buy}" rel="nofollow">Comprar</a></div>')
+    # Conversion: a compact bar that follows the reader on phones (72 h / um download beside the CTA).
+    bar = (f'<div class="buy-bar" role="region" aria-label="Oferta {c["name"]}"><div><strong>{c["name"]}</strong>'
+           + mode_text(f'R$ {c["price"]} · {policy.CLOSED_LABEL}', f'R$ {c["price"]} · link de 72 h, um download')
+           + '</div>' + sales_cta(c, "Comprar") + '</div>')
     html = html.replace("</main>", bar + "</main>", 1)
-    # FAQ: drop "when will sales open" and fix composition answers; add delivery + guarantee.
+    # FAQ: drop "when will sales open" and fix composition answers; add delivery + withdrawal.
     html = re.sub(r'<details><summary>Quando (a compra|o checkout) será liberad[ao]\?</summary><p>[^<]*</p></details>', _faq_html(*DELIVERY_Q) + _faq_html(*GUARANTEE_Q), html)
     if c["faq_q"]:
         q, a = c["faq_q"]
         html = re.sub(rf'(<summary>{re.escape(q)}</summary><p>)[^<]*(</p>)', rf'\g<1>{a}\g<2>', html)
-    # Structured data: price offer + matching FAQ.
+    # Structured data. Fechado: sem Offer (nao se anuncia disponibilidade nem pre-venda que nao
+    # existe). Aberto: Offer InStock — o Worker gera a mesma Offer em tempo de execucao.
     def fix_ld(m):
         import json as _json
         data = _json.loads(m.group(2))
         for node in data.get("@graph", []):
             if node.get("@type") == "Product":
-                node["offers"] = {"@type": "Offer", "price": f"{c['price']}.00", "priceCurrency": "BRL", "availability": "https://schema.org/InStock",
-                                  "url": f"{SALES_ORIGIN}/{slug}", "seller": {"@type": "Organization", "name": "A. RENAN ALVES MOREIRA BITU LTDA"}}
+                if MODE == policy.OPEN:
+                    node["offers"] = {"@type": "Offer", "price": f"{c['price']}.00", "priceCurrency": "BRL", "availability": "https://schema.org/InStock",
+                                      "url": f"{SALES_ORIGIN}/{slug}", "seller": {"@type": "Organization", "name": "A. RENAN ALVES MOREIRA BITU LTDA"}}
+                else:
+                    node.pop("offers", None)
             if node.get("@type") == "FAQPage":
                 kept = [q for q in node.get("mainEntity", []) if "liberad" not in q.get("name", "")]
                 if c["faq_q"]:
@@ -194,9 +227,10 @@ def apply_commerce(slug: str, html: str) -> str:
     return html
 
 def apply_catalog(html: str) -> str:
-    html = html.replace("com escopo explícito e venda condicionada a gates reais.", "com escopo explícito, pagamento seguro e garantia de 7 dias.")
+    html = html.replace("com escopo explícito e venda condicionada a gates reais.", "com escopo explícito, pagamento seguro e arrependimento em 7 dias.")
     for slug, c in COMMERCE.items():
-        html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', rf'\g<1><span class="catalog-type">R$ {c["price"]} · download imediato</span>', html, count=1, flags=re.S)
+        tag = mode_text(f'R$ {c["price"]} · {policy.CLOSED_LABEL}', f'R$ {c["price"]} · link de 72 h, um download', cls="catalog-type")
+        html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', lambda m: m.group(1) + tag, html, count=1, flags=re.S)
     html = re.sub(r'(<a class="catalog-card" href="/conteudo-pronto">.*?<p>[^<]*</p>)', r'\g<1><span class="catalog-type">R$ 197/mês · entrega automática por e-mail</span>', html, count=1, flags=re.S)
     for slug in ("zevanory-sales", "zevanory-cfo", "arbm-contador-saloes"):
         html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', r'\g<1><span class="catalog-type">Em breve</span>', html, count=1, flags=re.S)
@@ -293,15 +327,17 @@ def apply_approved_overlay() -> None:
             problems.append(f"{slug}: approved price missing")
         if f'href="{SALES_ORIGIN}/{slug}"' not in page:
             problems.append(f"{slug}: canonical not on sales domain")
-        if f'href="/comprar/{COMMERCE[slug]["sku"]}"' not in page:
+        if MODE == policy.OPEN and f'href="/comprar/{COMMERCE[slug]["sku"]}"' not in page:
             problems.append(f"{slug}: buy button missing")
+        if MODE == policy.CLOSED and (f'data-zev-sku="{COMMERCE[slug]["sku"]}"' not in page or policy.CLOSED_LABEL not in page):
+            problems.append(f"{slug}: waiting-list CTA or closed label missing")
         for banned in ("gates oficiais", "Gate antes da venda", "será liberad", "pagamento reconciliado", "mailto:contato@"):
             if banned in page:
                 problems.append(f"{slug}: banned pre-sale copy '{banned}'")
         if "CNPJ 69.077.233/0001-99" not in page:
             problems.append(f"{slug}: supplier identification missing")
-        if '"offers"' not in page:
-            problems.append(f"{slug}: structured offer missing")
+        if (MODE == policy.OPEN) != ('"offers"' in page):
+            problems.append(f"{slug}: structured offer does not match mode {MODE}")
     if problems:
         raise SystemExit("approved sales overlay contract failed: " + "; ".join(problems))
     print("ZEVANORY_SALES_APPROVED_OVERLAY=PASS")
@@ -360,6 +396,14 @@ def main() -> int:
         raise SystemExit(f"sales build contract missing: {missing}")
     if "/zevanory-public-mirror/" in sales:
         raise SystemExit("sales build still contains mirror path prefix")
+
+    # P13: politica unica em todas as superficies e grep-gate do modo fechado (NO-GO).
+    p13 = policy.audit_policy(OUT, PRODUCTS)
+    if MODE == policy.CLOSED:
+        p13 += policy.audit_closed(OUT)
+    if p13:
+        raise SystemExit("P13 policy/NO-GO contract failed: " + "; ".join(p13))
+    print("ZEVANORY_SALES_MODE=" + MODE)
 
     built = sorted(p.name for p in OUT.glob("*.html"))
     print("ZEVANORY_SALES_PUBLIC_BUILD=PASS")

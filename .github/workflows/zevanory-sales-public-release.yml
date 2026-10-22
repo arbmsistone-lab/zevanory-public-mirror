@@ -28,6 +28,9 @@ on:
       - "scripts/ci/materialize_sales_configs.py"
       - "sales-public/**"
       - "scripts/build_sales_public.py"
+      - "scripts/sales_policy.py"
+      - "data/politica-unica.json"
+      - "tests/p13-politica-nogo.test.mjs"
       - "scripts/premerge_product_audit.py"
       - ".github/workflows/zevanory-sales-public-release.yml"
   push:
@@ -57,12 +60,21 @@ on:
       - "scripts/ci/materialize_sales_configs.py"
       - "sales-public/**"
       - "scripts/build_sales_public.py"
+      - "scripts/sales_policy.py"
+      - "data/politica-unica.json"
+      - "tests/p13-politica-nogo.test.mjs"
       - "scripts/premerge_product_audit.py"
       - ".github/workflows/zevanory-sales-public-release.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# P13 (NO-GO): o HTML estático é sempre publicado fechado (sem link de checkout, sem Offer InStock).
+# A reabertura acontece só em tempo de execução, pelo interruptor do proprietário ("LIBERAR VENDAS",
+# KV sales:open:v1 lido via /api/sales/status) — nunca por este build.
+env:
+  ZEVANORY_SALES_PUBLIC_MODE: closed
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.ref) || 'deploy-zevanory-sales-public' }}
@@ -87,6 +99,15 @@ jobs:
       - name: Build exact sales-domain assets
         run: python3 scripts/build_sales_public.py
 
+      - name: P13 NO-GO grep-gate (closed build has no checkout link nor InStock)
+        run: |
+          set -euo pipefail
+          test "$ZEVANORY_SALES_PUBLIC_MODE" = closed
+          if grep -RIlE "href[[:space:]]*=[[:space:]]*[\"']?[^\"' >]*/comprar/" sales-public --include='*.html'; then echo "::error::/comprar/ href in closed build"; exit 1; fi
+          if grep -RIl 'schema.org/InStock' sales-public --include='*.html'; then echo "::error::InStock in closed build"; exit 1; fi
+          python3 scripts/sales_policy.py --audit sales-public --mode closed
+          echo "P13_NOGO_GREP_GATE=PASS"
+
       - name: Validate product contract
         run: python3 scripts/premerge_product_audit.py
 
@@ -94,7 +115,7 @@ jobs:
         run: |
           node --check sales-worker.mjs
           node --check worker/sales-public-worker.mjs
-          node --test tests/automation-traffic-guard.test.mjs tests/attribution.test.mjs
+          node --test tests/automation-traffic-guard.test.mjs tests/attribution.test.mjs tests/p13-politica-nogo.test.mjs tests/product-consistency.test.mjs tests/hotmart-pages.test.mjs
 
       - name: Cloudflare dry-run
         run: npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.sales.toml --outdir /tmp/zevanory-sales-public
@@ -163,6 +184,15 @@ jobs:
 
       - name: Build exact release assets
         run: python3 scripts/build_sales_public.py
+
+      - name: P13 NO-GO grep-gate (closed build has no checkout link nor InStock)
+        run: |
+          set -euo pipefail
+          test "$ZEVANORY_SALES_PUBLIC_MODE" = closed
+          if grep -RIlE "href[[:space:]]*=[[:space:]]*[\"']?[^\"' >]*/comprar/" sales-public --include='*.html'; then echo "::error::/comprar/ href in closed build"; exit 1; fi
+          if grep -RIl 'schema.org/InStock' sales-public --include='*.html'; then echo "::error::InStock in closed build"; exit 1; fi
+          python3 scripts/sales_policy.py --audit sales-public --mode closed
+          echo "P13_NOGO_GREP_GATE=PASS"
 
       - name: Materialize release configs
         run: python3 scripts/ci/materialize_sales_configs.py
