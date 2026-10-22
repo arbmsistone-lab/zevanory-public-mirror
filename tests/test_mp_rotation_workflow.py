@@ -175,7 +175,9 @@ open(out, 'w').write('{}'); print('404', end='')
             (d / "npx").write_text("#!/bin/sh\n%secho \"npx $*\" >> %s/npx.log\n%sexit %d\n" % (drain, d, leak, npx_rc))
             for f in ("curl", "npx"):
                 (d / f).chmod(0o755)
-            env = {"PATH": f"{d}:{os.environ['PATH']}", "GITHUB_ENV": str(d / "ghenv"),
+            # $RUNNER_TEMP isolado por chamada: nenhum arquivo de trabalho do passo é compartilhado entre testes.
+            (d / "runner-temp").mkdir()
+            env = {"PATH": f"{d}:{os.environ['PATH']}", "GITHUB_ENV": str(d / "ghenv"), "RUNNER_TEMP": str(d / "runner-temp"),
                    "MERCADOPAGO_PROD_ACCESS_TOKEN": "stub-not-a-secret", "CLOUDFLARE_API_TOKEN": "stub\n",
                    "CLOUDFLARE_ACCOUNT_ID": "acc", **env_extra}
             # stdin fechado e limite por passo: um comando que leia a entrada padrão nunca prende a suíte

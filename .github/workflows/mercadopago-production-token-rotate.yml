@@ -184,13 +184,16 @@ jobs:
           # Mesmo saneamento do #851: um token salvo com quebra de linha não pode quebrar a chamada.
           CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
           test -n "${CLOUDFLARE_API_TOKEN:-}"
+          # Arquivos de trabalho num diretório próprio desta execução ($RUNNER_TEMP no Actions; mktemp fora dele):
+          # caminho fixo em /tmp seria compartilhado entre execuções simultâneas (e entre testes em paralelo).
+          T="$(mktemp -d "${RUNNER_TEMP:-/tmp}/mp-rotate.XXXXXX")"
           # Contestação Sol 21/10 (falha ambígua): a tentativa é registrada ANTES da gravação. Se o wrangler
           # falhar depois de a Cloudflare aplicar o segredo, o retorno automático ainda é acionado.
           echo "WRITE_ATTEMPTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           # Contestação Sol 051-F1: a saída do wrangler nunca vai para o log; só códigos numéricos se falhar.
           if ! printf '%s' "$MERCADOPAGO_PROD_ACCESS_TOKEN" | \
-            npx --yes wrangler@4.143.0 secret put MERCADOPAGO_ACCESS_TOKEN --name zevanory > /tmp/mp-secret-put.log 2>&1; then
-            codes="$(grep -oE '\[code: [0-9]{1,6}\]' /tmp/mp-secret-put.log | grep -oE '[0-9]+' | sort -u | paste -sd, - || true)"
+            npx --yes wrangler@4.143.0 secret put MERCADOPAGO_ACCESS_TOKEN --name zevanory > "$T/mp-secret-put.log" 2>&1; then
+            codes="$(grep -oE '\[code: [0-9]{1,6}\]' "$T/mp-secret-put.log" | grep -oE '[0-9]+' | sort -u | paste -sd, - || true)"
             echo "::error title=MP_SECRET_PUT_FAILED::codes=${codes:-none}"
             exit 1
           fi
@@ -201,9 +204,9 @@ jobs:
           echo "WORKER_SECRET_NAME=MERCADOPAGO_ACCESS_TOKEN"
           # Ordem 046 R2: a versão criada pelo secret put é a que contém o token novo. Ela é o alvo de uma
           # eventual recuperação. Uma falha nesta leitura não é motivo para voltar: só fica sem o registro.
-          code="$(curl -sS -o /tmp/deployments-new.json -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+          code="$(curl -sS -o "$T/deployments-new.json" -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/zevanory/deployments" || true)"
-          newv="$(jq -r '[.result.deployments[0].versions[]?|select(.percentage==100)][0].version_id // empty' /tmp/deployments-new.json 2>/dev/null || true)"
+          newv="$(jq -r '[.result.deployments[0].versions[]?|select(.percentage==100)][0].version_id // empty' "$T/deployments-new.json" 2>/dev/null || true)"
           if [ "$code" = "200" ] && [[ "$newv" =~ ^[0-9a-f-]{36}$ ]] && [ "$newv" != "$PREV_VERSION_ID" ]; then
             echo "NEW_SECRET_VERSION=$newv" >> "$GITHUB_ENV"
             echo "NEW_SECRET_VERSION=$newv"
