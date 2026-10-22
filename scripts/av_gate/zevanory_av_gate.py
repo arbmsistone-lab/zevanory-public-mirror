@@ -809,6 +809,8 @@ def measure(mp4, manifest_path, engines, thr):
                     if len(offs) < 3:
                         return {"cues": len(cues), "measurable": 0, "deltas_ms": [], "matched_both": len(offs)}
                     glob = float(np.median(list(offs.values())))
+                    # a word matched to a different occurrence in one of the two alignments is an outlier, not drift
+                    offs = {i: v for i, v in offs.items() if abs(v - glob) <= 0.3}
                     idx, deltas, local_n = 0, [], 0
                     for c in cues:
                         ct = normalize_tokens(c["text"], lex)

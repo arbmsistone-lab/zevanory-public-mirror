@@ -39,11 +39,11 @@ def http(url, timeout=60):
 
 
 # ------------------------------------------------------------------------------------- human references
-def fetch_fleurs(dest, want=60):
+def fetch_fleurs(dest, want=400):
     """Stream FLEURS pt_br (test, then dev) and keep up to `want` clips that pass the TEXT filter.
     Returns list of dicts {path, text, gender, id, source}."""
     os.makedirs(dest, exist_ok=True)
-    tried = []
+    tried, acc = [], []
     for split in ("test", "dev"):
         try:
             rows = {}
@@ -67,13 +67,16 @@ def fetch_fleurs(dest, want=60):
                             with open(p, "wb") as f:
                                 f.write(tf.extractfile(m).read())
                             out.append({"path": p, **ok[b], "source": f"google/fleurs pt_br {split} (CC BY 4.0) {b}"})
-                            if len(out) >= want:
+                            if len(out) + len(acc) >= want:
                                 break
-            if out:
-                return out, tried + [f"tar:{split}:ok:{len(out)}/{len(ok)}"]
-            tried.append(f"tar:{split}:empty")
+            acc += out
+            tried.append(f"tar:{split}:ok:{len(out)}/{len(ok)}")
+            if len(acc) >= want:
+                break
         except Exception as e:
             tried.append(f"tar:{split}:{type(e).__name__}:{str(e)[:80]}")
+    if acc:
+        return acc, tried
     # fallback: parquet conversion served by the Hub
     for split in ("test", "validation"):
         try:
@@ -130,7 +133,7 @@ def audio_screen(c, thr):
     wpm = n / max(1e-6, tl["last_offset_s"] - tl["first_onset_s"]) * 60
     c.update({"wpm_raw": wpm, "snr_raw": tl["snr_db"], "pause_max_raw": tl["pause_max_ms"], "speech_ratio_raw": tl["speech_ratio"]})
     # level-independent envelope (the production chain re-levels everything to −23 / −17.5 LUFS)
-    c["screen_fail"] = [k for k, ok in (("wpm", 136 <= wpm <= 170), ("snr", (tl["snr_db"] or 0) >= 34),
+    c["screen_fail"] = [k for k, ok in (("wpm", 134 <= wpm <= 171), ("snr", (tl["snr_db"] or 0) >= 33),
                                         ("pause", tl["pause_max_ms"] <= 1100), ("ratio", tl["speech_ratio"] >= 0.65)) if not ok]
     return not c["screen_fail"]
 
