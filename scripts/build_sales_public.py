@@ -155,6 +155,42 @@ def closed_note(tag: str = "p", cls: str = "microcopy sales-closed") -> str:
         return ""
     return f'<{tag} class="{cls}" data-zev-closed>Preço informativo: {policy.CLOSED_LABEL}.</{tag}>'
 
+def _esc(text: str) -> str:
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+def offer_summary(slug: str, kind: str, characteristics: str, price: int | None = None) -> str:
+    """Decreto 7.962/2013, art. 2o: 'Resumo da oferta' estruturado (dl com data-field por item), em
+    posicao ostensiva junto a oferta. Todos os dados vem de data/politica-unica.json (resumo_oferta)
+    e do catalogo do build; nenhum campo pode ficar vazio ou com marcador de pendencia."""
+    r = policy.RESUMO_OFERTA
+    f = r["fornecedor"]
+    terms = r[kind]
+    values = {
+        "fornecedor": f'{f["razao_social"]} (nome fantasia {f["nome_fantasia"]})',
+        "cnpj": f["cnpj"],
+        "endereco_fisico": f'{f["endereco_fisico"]}, CEP {f["cep"]}',
+        "endereco_eletronico": f'{f["email"]} · WhatsApp {f["whatsapp"]} · {f["site"]}',
+        "caracteristicas": characteristics,
+        "preco_total": terms["preco_total"].replace("{price}", str(price)),
+        "pagamento": terms["pagamento"],
+        "disponibilidade": None,
+        "entrega": terms["entrega"].replace("{delivery_72h}", policy.DELIVERY_72H),
+        "restricoes": terms["restricoes"],
+        "arrependimento": policy.CUSTOMER_RULE_7D + ", com devolução integral.",
+    }
+    rows = []
+    for key, label in r["campos"]:
+        if key == "disponibilidade":
+            dd = mode_text(_esc(r["disponibilidade"]["closed"]), _esc(r["disponibilidade"]["open"]))
+        else:
+            val = values[key]
+            if not str(val or "").strip() or any(m in str(val).upper() for m in policy.PENDING_MARKERS) or "{" in str(val):
+                raise SystemExit(f"{slug}: resumo da oferta com campo '{key}' vazio ou pendente")
+            dd = _esc(val)
+        rows.append(f'<div data-field="{key}"><dt>{label}</dt><dd>{dd}</dd></div>')
+    return (f'<section class="offer-summary" data-offer-summary="{slug}" aria-label="Resumo da oferta">'
+            f'<h3>Resumo da oferta</h3><dl>{"".join(rows)}</dl></section>')
+
 def apply_commerce(slug: str, html: str) -> str:
     c = COMMERCE[slug]
     label = f"Comprar agora · R$ {c['price']}"
@@ -172,7 +208,8 @@ def apply_commerce(slug: str, html: str) -> str:
     items = "".join(f"<li>{i}</li>" for i in c["items"])
     aside = (f'<aside class="offer-side"><div><span class="status-pill">R$ {c["price"]} · pagamento único</span>'
              f'<h3>O que você recebe</h3><ul>{items}</ul>'
-             + policy.POLICY_SUMMARY + closed_note() +
+             + policy.POLICY_SUMMARY + closed_note()
+             + offer_summary(slug, "produto_digital", "; ".join(c["items"]) + ".", c["price"]) +
              '</div>' + sales_cta(c, label) + '</aside>')
     html = re.sub(r'<aside class="offer-side">.*?</aside>', lambda m: aside, html, count=1, flags=re.S)
     # Conversion: what the buyer gets, right under the first call to action.
@@ -245,7 +282,8 @@ def apply_subscription(html: str) -> str:
     if html.count('data-zev-sub="conteudo-pronto"') < 1 or "/assinar/" in html:
         raise SystemExit("conteudo-pronto: fonte fora do modo fechado")
     html = re.sub(r'(<a class="button primary" [^>]*data-zev-sub="conteudo-pronto"[^>]*>[^<]*</a></p><p class="microcopy">[^<]*</p>)',
-                  lambda m: m.group(1) + policy.SUBSCRIPTION_SUMMARY + closed_note(), html, count=1)
+                  lambda m: m.group(1) + policy.SUBSCRIPTION_SUMMARY + closed_note()
+                  + offer_summary("conteudo-pronto", "assinatura", policy.RESUMO_OFERTA["assinatura"]["caracteristicas"]), html, count=1)
     if policy.SUBSCRIPTION_SUMMARY not in html:
         raise SystemExit("conteudo-pronto: ancora do CTA principal nao encontrada")
     if MODE == policy.OPEN:

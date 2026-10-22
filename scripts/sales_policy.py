@@ -42,6 +42,11 @@ SUBSCRIPTION_SURFACES = tuple(_DATA["policy_surfaces"].get("subscription", ()))
 CHECKOUT_HREF_PATHS = tuple(_DATA["checkout_href_paths"])
 CHECKOUT_HOSTS = tuple(_DATA["checkout_hosts"])
 
+# Decreto 7.962/2013, art. 2o: dados do "Resumo da oferta" (fonte unica, data/politica-unica.json).
+RESUMO_OFERTA = _DATA["resumo_oferta"]
+CUSTOMER_RULE_7D = _DATA["customer_wording"]["rule_7d"]
+PENDING_MARKERS = ("PENDENTE", "PREENCHER", "A CONFIRMAR", "XXX", "PLACEHOLDER")
+
 for _part in (RULE_7D, DELIVERY_72H):
     assert _part in SOL_TEXT, _part
 
@@ -74,8 +79,59 @@ CHECKOUT_HREF_RE = re.compile(r"""href\s*=\s*["']?[^"'\s>]*(?:""" + _ALT + ")", 
 INSTOCK_RE = re.compile(r"schema\.org/InStock", re.I)
 
 
+LD_RE = re.compile(r'<script[^>]*type\s*=\s*["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.I | re.S)
+OFFER_TYPES = {"offer", "aggregateoffer"}
+MICRODATA_OFFER_RE = re.compile(r'itemtype\s*=\s*["\']?https?://schema\.org/(?:Aggregate)?Offer\b', re.I)
+PRICE_KEYS = ("price", "lowPrice", "highPrice")
+
+
+def _types(node: dict) -> set[str]:
+    t = node.get("@type")
+    return {str(x).lower() for x in (t if isinstance(t, list) else [t]) if x}
+
+
+def _offers(node, under_offers: bool = False):
+    """Todos os nos Offer/AggregateOffer (inclusive aninhados e os sem @type sob a chave "offers")."""
+    if isinstance(node, list):
+        for x in node:
+            yield from _offers(x, under_offers)
+    elif isinstance(node, dict):
+        if _types(node) & OFFER_TYPES or (under_offers and not node.get("@type")):
+            yield node
+        for k, v in node.items():
+            yield from _offers(v, k == "offers")
+
+
+def _price_values(offer: dict) -> list:
+    vals = [offer.get(k) for k in PRICE_KEYS if offer.get(k) not in (None, "")]
+    spec = offer.get("priceSpecification")
+    for sp in (spec if isinstance(spec, list) else [spec]):
+        if isinstance(sp, dict) and sp.get("price") not in (None, ""):
+            vals.append(sp["price"])
+    return vals
+
+
+def paid_offer(offer: dict) -> bool:
+    """Oferta paga = qualquer preco > 0, ou preco ausente/ilegivel (fail-closed). So preco 0 explicito
+    (calculadoras gratuitas) e livre. A disponibilidade nao importa: InStock, PreOrder, PreSale,
+    LimitedAvailability ou nenhuma, tudo e anuncio de venda."""
+    vals = _price_values(offer)
+    if not vals:
+        return True
+    for v in vals:
+        try:
+            if float(str(v).replace("R$", "").replace(",", ".").strip()) != 0:
+                return True
+        except ValueError:
+            return True
+    return False
+
+
 def audit_closed(out_dir: Path) -> list[str]:
-    """Grep-gate do modo fechado: zero href para /comprar/ e zero InStock em qualquer HTML."""
+    """Gate do modo fechado (AVAL 084): em qualquer HTML publicado, zero href de checkout/assinatura
+    (/comprar/, /assinar/, /hotmart/, pay.hotmart.com e outros checkouts externos), zero Offer paga
+    em JSON-LD (qualquer disponibilidade, inclusive PreOrder/PreSale ou sem availability), zero Offer
+    em microdata e zero schema.org/InStock. JSON-LD ilegivel tambem falha (nao da para provar)."""
     problems = []
     for f in sorted(out_dir.glob("*.html")):
         text = f.read_text(encoding="utf-8")
@@ -83,6 +139,17 @@ def audit_closed(out_dir: Path) -> list[str]:
             problems.append(f"{f.name}: href de checkout/assinatura ({CHECKOUT_HREF_RE.search(text).group(0)[-40:]}) em modo fechado")
         if INSTOCK_RE.search(text):
             problems.append(f"{f.name}: schema.org/InStock em modo fechado")
+        if MICRODATA_OFFER_RE.search(text):
+            problems.append(f"{f.name}: Offer em microdata em modo fechado")
+        for block in LD_RE.findall(text):
+            try:
+                data = json.loads(block)
+            except ValueError:
+                problems.append(f"{f.name}: JSON-LD ilegivel (nao da para provar ausencia de oferta paga)")
+                continue
+            for offer in _offers(data):
+                if paid_offer(offer):
+                    problems.append(f"{f.name}: Offer paga em modo fechado (price={offer.get('price')!r}, availability={offer.get('availability')!r})")
     return problems
 
 

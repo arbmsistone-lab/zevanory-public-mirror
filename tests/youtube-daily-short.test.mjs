@@ -12,7 +12,9 @@ test("daily plan follows the calendar, passes the F1 gate and is public with an 
     assert.equal(p.privacyStatus, "public");
     assert.match(p.marker, /^zevanory-short-key:[0-9a-f]{16}$/);
     assert.ok(p.description.includes(p.marker));
-    assert.match(p.link, new RegExp("^https://vendas\\.zevanory\\.api\\.br/comprar/" + e.product.sku + "\\?utm_source=youtube"));
+    // P13c: vendas fechadas (padrão) => página do produto; aberto => checkout /comprar/.
+    assert.match(p.link, /^https:\/\/vendas\.zevanory\.api\.br\/[a-z-]+\?utm_source=youtube/); assert.doesNotMatch(p.link, /\/comprar\//);
+    assert.match(planShort(day, { salesOpen: true }).link, new RegExp("^https://vendas\\.zevanory\\.api\\.br/comprar/" + e.product.sku + "\\?utm_source=youtube"));
     assert.ok(p.title.length <= 95 && p.title.includes(e.product.name));
     assert.doesNotMatch(p.description + p.speech, /lucro garantido|renda garantida|ganhe dinheiro|resultado garantido/i);
   }
@@ -91,7 +93,7 @@ test("Short lasts as long as the narration (no dead air) and reveals every line 
 });
 
 test("beats snap to the real pauses of the voice and keep their order", () => {
-  const said = [["Sem tempo para organizar?", "Isso é para salões de beleza."], ["Comece com 15 minutos por semana."], ["Vendas na Prática, com garantia de sete dias."], ["Veja o guia no link da descrição."]];
+  const said = [["Sem tempo para organizar?", "Isso é para salões de beleza."], ["Comece com 15 minutos por semana."], ["Vendas na Prática, com arrependimento em sete dias corridos."], ["Veja o guia no link da descrição."]];
   const starts = beatTimes(said, 12, [1.4, 3.9, 6.6, 9.2], 13.2);
   assert.deepEqual(starts, [0, 3.9, 6.6, 9.2]);
   const fallback = beatTimes(said, 12, [], 13.2);
@@ -103,7 +105,7 @@ test("every calendar day has a full on-screen script that wraps within the frame
     assert.equal(p.said.length, 4);
     for (const k of ["hook", "niche", "tip", "product", "offer", "cta", "url"]) assert.ok(String(p.screen[k] || "").trim(), k);
     assert.ok(wrapText(p.screen.hook, 14, 3), "hook fits in 3 lines");
-    assert.match(p.speech, /garantia de sete dias/);
+    assert.match(p.speech, /arrependimento em sete dias corridos/); assert.doesNotMatch(p.speech + p.description, /garantia/i);
   }
 });
 

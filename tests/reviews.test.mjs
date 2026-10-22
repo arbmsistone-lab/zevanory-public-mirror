@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { handleReviews, reviewLinks } from "../worker/reviews.mjs";
+import { CUSTOMER_RULE_7D, bannedPolicyHits } from "../worker/politica-unica.mjs";
 
 const OID = "11111111-1111-4111-8111-111111111111";
 function fakeDb(orderStatus = "paid") {
@@ -34,6 +35,10 @@ test("only HMAC links from the paid order can rate; GET never stores", async () 
   const post = await handleReviews(new Request(links[1], { method: "POST", body }), e, { sqlFactory: db.factory });
   assert.equal(post.status, 200);
   assert.equal(db.reviews.get(OID).rating, 2);
+  // P13c: nota baixa lembra a regra única dos 7 dias (data/politica-unica.json), nunca "garantia a partir da compra".
+  const page = await post.text();
+  assert.ok(page.includes(CUSTOMER_RULE_7D), "regra única na página de nota baixa");
+  assert.deepEqual(bannedPolicyHits(page), []);
   const panel = [...e._kv.entries()].find(([k]) => k.startsWith("zpc-activity:v1:support:"));
   assert.ok(panel && /ATENÇÃO/.test(panel[1]) && !/99999/.test(panel[1]), "low score flagged, phone masked");
 });

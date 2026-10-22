@@ -11,6 +11,7 @@ on:
     branches: [gh-pages]
     paths:
       - "worker/**"
+      - "data/politica-unica.json"
       - "tests/integration/**"
       - "tests/t4_sim/**"
       - "tests/trava-vendas-gate-paths.test.mjs"
@@ -73,7 +74,9 @@ jobs:
           set -eo pipefail
           { node --test tests/*.test.mjs || true; } | tee all.txt  # o veredito é a contagem exata abaixo
           # Contagem EXATA (protocolo): teste removido, pulado ou falho derruba o gate.
-          grep -qx "# tests 549" all.txt && grep -qx "# pass 549" all.txt && grep -qx "# skipped 0" all.txt && grep -qx "# fail 0" all.txt && grep -qx "# cancelled 0" all.txt \
+          # P13c/AVAL 084: 549 -> 560 (+5 tests/p13c-superficies-politica, +4 tests/p13-decreto-oferta-cache,
+          # +1 lead-magnet fechado, +1 short-crosspost fechado).
+          grep -qx "# tests 560" all.txt && grep -qx "# pass 560" all.txt && grep -qx "# skipped 0" all.txt && grep -qx "# fail 0" all.txt && grep -qx "# cancelled 0" all.txt \
             || { grep -E "^# (tests|pass|fail|skipped|cancelled) |^not ok" all.txt | sed "s/^/::error::/"; exit 1; }
       - name: Cobertura do filtro de caminhos (fecho de importações e leituras)
         run: |

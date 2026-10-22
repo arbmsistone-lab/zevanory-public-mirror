@@ -3,6 +3,7 @@
 // price, link and policy it states is validated against the published facts; any
 // reply that fails validation is replaced by the deterministic grounded answer.
 import { SUPPORT_PRODUCTS, answerSupportQuestion } from "./support-knowledge.mjs";
+import { ALLOWED_DAY_COUNTS, CONFIRMATION_TEXT, DELIVERY_TEXT, REFUND_TEXT, SLA_TEXT, SUBSCRIPTION_DELIVERY_TEXT, bannedPolicyHits } from "./politica-unica.mjs";
 
 const SALES_ORIGIN = "https://vendas.zevanory.api.br";
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
@@ -25,10 +26,12 @@ export function catalogFacts({ salesOpen = false } = {}) {
     ...lines,
     "",
     "POLÍTICAS OFICIAIS:",
-    "- Produtos 100% digitais. Após o pagamento confirmado pelo Mercado Pago, o cliente recebe por e-mail um link seguro (válido por 72 horas) para baixar o material. Novo link: https://zevanory.api.br/entrega/reenviar (código do pedido + e-mail da compra).",
-    "- Direito de arrependimento: até 7 dias após a compra, reembolso integral pelo mesmo meio de pagamento (art. 49 do CDC). Pedido pelo link https://zevanory.api.br/pedir-reembolso, com o código do pedido e o e-mail do pagamento.",
+    // P13c: texto único (data/politica-unica.json via worker/politica-unica.mjs), nunca escrito aqui.
+    `- Produtos 100% digitais. ${DELIVERY_TEXT} ${CONFIRMATION_TEXT}`,
+    `- ${REFUND_TEXT}`,
+    `- ${SUBSCRIPTION_DELIVERY_TEXT}`,
+    `- ${SLA_TEXT}`,
     `- Suporte humano: ${SUPPORT_EMAIL}.`,
-    "- Compras feitas pela Hotmart: o acesso chega pelo e-mail da Hotmart e fica em Minhas compras; o reembolso (7 dias) também é pedido lá.",
     "- Combo IA + Vendas reúne IA na Prática + Vendas na Prática. Negócio Completo reúne IA, vendas e Lucro & Caixa.",
     salesOpen
       ? "- COMPRA: as vendas estão abertas. Informe o link /comprar/SKU do produto exato, fornecido no catálogo, somente na resposta à pessoa que chamou."
@@ -74,8 +77,11 @@ export function validateReply(text) {
   if (/\b(\d{1,3})\s*%\s*(de\s+)?(desconto|off)\b/i.test(body) || /\b(cupom|desconto|promo[cç][aã]o|gr[aá]tis|de gra[cç]a|brinde|b[oô]nus)\b/i.test(body)) issues.push("discount");
   // Prices only as "R$ <catalog value>" (checked above); any other money amount is invented.
   if (/\b\d+([.,]\d+)?\s*(reais|conto|pila)\b/i.test(body)) issues.push("money_outside_catalog");
-  // The only guarantee/refund window is 7 days; never claim a refund was approved/done.
-  for (const m of body.matchAll(/\b(\d{1,3})\s*dias?\b/gi)) { const around = body.slice(Math.max(0, m.index - 45), m.index + m[0].length + 45); if (Number(m[1]) !== 7 && /garant|reembols|arrepend|devolu/i.test(around)) issues.push(`days:${m[1]}`); }
+  // Refund windows only as in the single policy; never claim a refund was approved/done.
+  // Allowed counts come from the single policy (7 = arrependimento, 5 = resposta conclusiva).
+  for (const m of body.matchAll(/\b(\d{1,3})\s*dias?\b/gi)) { const around = body.slice(Math.max(0, m.index - 45), m.index + m[0].length + 45); if (!ALLOWED_DAY_COUNTS.includes(Number(m[1])) && /garant|reembols|arrepend|devolu/i.test(around)) issues.push(`days:${m[1]}`); }
+  // Divergent policy wording (e.g. a guarantee counted from the purchase) never reaches the customer.
+  for (const hit of bannedPolicyHits(body)) issues.push(`policy:${hit}`);
   if (/reembolso\s+(j[aá]\s+)?(foi\s+)?(aprovado|feito|liberado|realizado|conclu[ií]do)/i.test(body)) issues.push("refund_promise");
   // Only official contacts.
   for (const m of body.matchAll(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi)) if (!/^(suporte|contato)@zevanory\.api\.br$/i.test(m[0].replace(/[.,;!?]+$/, ""))) issues.push("email");

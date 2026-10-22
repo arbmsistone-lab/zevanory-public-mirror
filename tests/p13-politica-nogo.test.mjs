@@ -10,10 +10,12 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, mkdtempSync, cpSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import worker, { openSalesHtml, resetPageSwitchCache } from "../worker/sales-public-worker.mjs";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+// AVAL 084 (portabilidade): fileURLToPath, não a propriedade pathname da URL (no Windows vira "/C:/...").
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PUB = join(ROOT, "sales-public");
 const P = JSON.parse(readFileSync(join(ROOT, "data/politica-unica.json"), "utf8"));
 const PRODUCTS = P.policy_surfaces.products;
@@ -22,8 +24,9 @@ const SKUS = { "ia-na-pratica": "ZEV-IA-011", "vendas-na-pratica": "ZEV-VEN-011"
 const CHECKOUT_HREF = /href\s*=\s*["']?[^"'\s>]*(?:\/comprar\/|\/assinar\/|\/hotmart\/|pay\.hotmart\.com)/i;
 const SUBS = P.policy_surfaces.subscription;
 const read = (dir, slug) => readFileSync(join(dir, slug + ".html"), "utf8");
-const env = { ...process.env, PYTHONDONTWRITEBYTECODE: "1" };
-const audit = (dir, mode = "closed") => spawnSync("python3", [join(ROOT, "scripts/sales_policy.py"), "--audit", dir, "--mode", mode], { encoding: "utf8", env });
+const env = { ...process.env, PYTHONDONTWRITEBYTECODE: "1", PYTHONIOENCODING: "utf-8" };
+const PY = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
+const audit = (dir, mode = "closed") => spawnSync(PY, [join(ROOT, "scripts/sales_policy.py"), "--audit", dir, "--mode", mode], { encoding: "utf8", env });
 const ld = (html) => JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
 const productOffer = (html) => (ld(html)["@graph"] || []).find((n) => n["@type"] === "Product")?.offers;
 const serviceOffer = (html) => (ld(html)["@graph"] || []).find((n) => n["@type"] === "Service")?.offers;
@@ -88,7 +91,7 @@ test("(b) mesma regra de 7 dias e mesma divulgação 72 h / um download em todas
 test("(c) modo aberto: build de preview e restauração em tempo de execução devolvem CTAs e Offer", () => {
   const out = mkdtempSync(join(tmpdir(), "p13-open-"));
   try {
-    const r = spawnSync("python3", [join(ROOT, "scripts/build_sales_public.py")], { encoding: "utf8", env: { ...env, ZEVANORY_SALES_PUBLIC_MODE: "open", ZEVANORY_SALES_PUBLIC_OUT: out } });
+    const r = spawnSync(PY, [join(ROOT, "scripts/build_sales_public.py")], { encoding: "utf8", env: { ...env, ZEVANORY_SALES_PUBLIC_MODE: "open", ZEVANORY_SALES_PUBLIC_OUT: out } });
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /ZEVANORY_SALES_MODE=open/);
     assert.equal(audit(out, "open").status, 0, "política única também no modo aberto");
@@ -117,7 +120,7 @@ test("(c) modo aberto: build de preview e restauração em tempo de execução d
       assert.deepEqual(serviceOffer(runtime), serviceOffer(opened), "Offer da assinatura runtime == build aberto");
       assert.ok(!runtime.includes("data-zev-") && !runtime.includes(P.closed_label));
     }
-    const bad = spawnSync("python3", [join(ROOT, "scripts/build_sales_public.py")], { encoding: "utf8", env: { ...env, ZEVANORY_SALES_PUBLIC_MODE: "aberto", ZEVANORY_SALES_PUBLIC_OUT: out } });
+    const bad = spawnSync(PY, [join(ROOT, "scripts/build_sales_public.py")], { encoding: "utf8", env: { ...env, ZEVANORY_SALES_PUBLIC_MODE: "aberto", ZEVANORY_SALES_PUBLIC_OUT: out } });
     assert.notEqual(bad.status, 0, "modo desconhecido nunca abre");
   } finally { rmSync(out, { recursive: true, force: true }); }
 });
@@ -181,7 +184,7 @@ test("mutantes: /comprar/ remanescente, InStock remanescente e 'após o pagament
   for (const [name, apply] of Object.entries(mutants)) {
     const dir = mkdtempSync(join(tmpdir(), "p13-mut-"));
     try {
-      cpSync(PUB, dir, { recursive: true, filter: (s) => !s.includes("/brand") && !s.includes("/assets") });
+      cpSync(PUB, dir, { recursive: true, filter: (s) => !/[\\/](brand|assets)([\\/]|$)/.test(s) });
       apply(dir);
       const r = audit(dir);
       report.push(`${name}: ${r.status === 1 ? "KILLED" : "SURVIVED"} ${(r.stdout.match(/P13_FAIL [^\n]*/) || [""])[0]}`);
