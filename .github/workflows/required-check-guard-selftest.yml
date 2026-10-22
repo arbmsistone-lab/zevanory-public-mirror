@@ -1,0 +1,37 @@
+name: required-check-guard-selftest
+
+# G4: reprodução da suíte (23 testes) e dos 20 mutantes do guarda. INFORMATIVO: roda a versão do PR (pull_request),
+# portanto não é evidência de controle. O controle é o job required-check-guard / protected-paths (pull_request_target).
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "scripts/ci/required_check_guard.py"
+      - "scripts/ci/pr_files_to_lists.py"
+      - ".github/workflows/required-check-guard.yml"
+      - ".github/workflows/required-check-guard-selftest.yml"
+      - ".github/workflows/product-pages-premerge.yml"
+      - ".github/workflows/required-status-compat.yml"
+      - ".github/CODEOWNERS"
+      - "tests/ci/test_required_check_guard.py"
+      - "tests/ci/mutants_required_check_guard.py"
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    name: required-check-guard / selftest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Suíte e mutantes
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml"
+          sha256sum scripts/ci/required_check_guard.py .github/workflows/required-check-guard.yml | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 -I -B tests/ci/test_required_check_guard.py .
+          python3 -I -B tests/ci/mutants_required_check_guard.py . | tee -a "$GITHUB_STEP_SUMMARY"
