@@ -1,0 +1,58 @@
+name: B02 sandbox route probe
+
+# B02 — prova REAL do caminho de rotas do router (foto, mutação tripla, retorno + restauração, prova negativa sem
+# Workers Routes Write, janela de roteamento errado), pedida pelo auditor Sol. SOMENTE na zona descartável
+# girolocal.api.br (domínio sem uso do proprietário, conta ZEVANORY). zevanory.api.br é recusada no script da prova e
+# em scripts/ops/router_routes.py (modo sandbox); tests/test_sandbox_route_probe.py prova as recusas.
+# Só workflow_dispatch; environment próprio `sandbox-route-probe` (revisor obrigatório), execução ÚNICA global
+# (single-run-guard, cota 0) e frase literal no input. Nunca dispara no merge.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmacao:
+        description: "Frase literal exigida: PROVA ROTAS GIROLOCAL UMA VEZ"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sandbox-route-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/gh-pages' && github.run_attempt == 1 && inputs.confirmacao == 'PROVA ROTAS GIROLOCAL UMA VEZ'
+    environment: sandbox-route-probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Single-run guard (global, consumes the owner's authorization)
+        id: guard
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash sandbox/rollback-secret-probe/single-run-guard.sh sandbox-route-probe.yml
+      - name: Route probe on girolocal.api.br (snapshot, triple mutation, rollback + restore, negative proof)
+        shell: bash
+        env:
+          CF_PROBE_TOKEN: ${{ secrets.CF_PROBE_TOKEN }}
+          CF_PROBE_TOKEN_NO_ROUTES: ${{ secrets.CF_PROBE_TOKEN_NO_ROUTES }}
+        run: python3 sandbox/route-probe/run_route_probe.py probe
+      - name: Always clean up (delete probe routes and both Workers; re-read zero leftovers)
+        if: ${{ always() && steps.guard.outcome == 'success' }}
+        shell: bash
+        env:
+          CF_PROBE_TOKEN: ${{ secrets.CF_PROBE_TOKEN }}
+        run: python3 sandbox/route-probe/run_route_probe.py cleanup

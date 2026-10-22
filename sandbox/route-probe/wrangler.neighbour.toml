@@ -1,0 +1,11 @@
+# B02 sandbox: Worker vizinho descartável zevanory-route-neighbour, SÓ na zona descartável girolocal.api.br.
+name = "zevanory-route-neighbour"
+main = "neighbour-worker.mjs"
+compatibility_date = "2026-10-21"
+account_id = "1b26415802588185a86c1d4d3ebf5bdb"
+workers_dev = false
+preview_urls = false
+routes = [
+  { pattern = "neighbour.girolocal.api.br/*", zone_name = "girolocal.api.br" },
+  { pattern = "neighbour.girolocal.api.br/n*", zone_name = "girolocal.api.br" },
+]
