@@ -5,7 +5,7 @@
 // waiting, never as failure; a provider error fails the step visibly.
 // Usage: node short-crosspost.mjs [--day=YYYY-MM-DD]
 import { readFile } from "node:fs/promises";
-import { planShort, planSlot, localDay, cloudflareKv, publicationWindow } from "./youtube-daily-short.mjs";
+import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, avGateSealed } from "./youtube-daily-short.mjs";
 import { emitActivity } from "../../worker/activity-ledger.mjs";
 import { getPublisherAccessToken } from "./publisher-access.mjs";
 
@@ -13,7 +13,8 @@ const GRAPH = "https://graph.facebook.com/v21.0";
 const sleepMs = ms => new Promise(r => setTimeout(r, ms));
 export function captionFor(plan, channel) {
   const tags = "#pequenosnegocios #empreendedorismo #ia #zevanory";
-  const offer = plan.slot && plan.slot !== "oferta" ? plan.screen.product + " · " + plan.screen.offer + "." : plan.entry.product.name + " · garantia de 7 dias.";
+  // Sales are CLOSED: every slot (oferta included) advertises only free material, never a price or guarantee.
+  const offer = plan.screen.product + " · " + plan.screen.offer + ".";
   const base = plan.title.replace(/ #shorts$/i, "") + "\n\n" + plan.screen.tip + "\n\n" + offer;
   if (channel === "tiktok") return (base + "\n" + (plan.slot && plan.slot !== "oferta" ? "No site: vendas.zevanory.api.br" : "Guia completo: vendas.zevanory.api.br") + "\n\n" + tags).slice(0, 2200);
   return (base + "\nGuia completo: " + plan.link.replace("utm_source=youtube", "utm_source=" + channel) + "\n\n" + tags).slice(0, 2200);
@@ -135,7 +136,10 @@ if (isMain) {
   for (const slot of slotArg === "all" ? ["dica", "oferta", "calc"] : [slotArg]) {
     const window = publicationWindow({ day, slot, now: Date.now() });
     if (window.action !== "publish") { console.log(`::notice title=SHORT_CROSSPOST::${slot}=skipped_${window.reason}`); continue; }
-    let mp4; try { mp4 = await readFile("/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot) + ".mp4"); } catch { console.log(`::warning title=SHORT_CROSSPOST::${slot}=no_rendered_file`); continue; }
+    const file = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot) + ".mp4";
+    // P05: only a file sealed by a PASS of zevanory-av-gate for exactly these bytes may be cross-posted.
+    if (!(await avGateSealed(file))) { console.log(`::warning title=SHORT_CROSSPOST::${slot}=not_sealed_by_av_gate (not posted)`); continue; }
+    let mp4; try { mp4 = await readFile(file); } catch { console.log(`::warning title=SHORT_CROSSPOST::${slot}=no_rendered_file`); continue; }
     const report = await crosspost({ day, slot, mp4, kv });
     for (const [ch, v] of Object.entries(report)) { if (v.startsWith("error")) errors++; console.log(`::${v.startsWith("error") ? "error" : "notice"} title=SHORT_CROSSPOST::${slot}:${ch}=${String(v).replace(/[\r\n]+/g, " ")}`); }
   }

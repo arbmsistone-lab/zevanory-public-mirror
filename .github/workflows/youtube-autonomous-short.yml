@@ -25,10 +25,6 @@ on:
         description: "dica | oferta | calc | all"
         required: false
         default: "oferta"
-      force_local_voice:
-        description: "true = skip Gemini and narrate with the free local voice (test)"
-        required: false
-        default: "false"
 
 concurrency:
   group: youtube-autonomous-short
@@ -60,22 +56,23 @@ jobs:
           node-version: "22"
       - name: Install media tools
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-inter && fc-match -f "%{file}\n" "Inter:style=ExtraBold"
-      - name: Free local voice (Piper, open source) for the zero-cost fallback
-        continue-on-error: true
+      # P05: no fallback voice. The brand voice is the only voice; the FINAL MP4 must pass zevanory-av-gate.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: zevanory-av-gate (pinned deps + pinned models)
         run: |
-          python3 -m pip install --quiet --user piper-tts
-          mkdir -p "$HOME/piper" && cd "$HOME/piper"
-          base=https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium
-          curl -fsSL -o pt_BR-faber-medium.onnx "$base/pt_BR-faber-medium.onnx"
-          curl -fsSL -o pt_BR-faber-medium.onnx.json "$base/pt_BR-faber-medium.onnx.json"
-          echo "PIPER_MODEL=$HOME/piper/pt_BR-faber-medium.onnx" >> "$GITHUB_ENV"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet -r scripts/av_gate/requirements.txt
+          echo "AV_GATE_MODELS=$RUNNER_TEMP/av-models" >> "$GITHUB_ENV"
+          AV_GATE_MODELS="$RUNNER_TEMP/av-models" bash scripts/av_gate/fetch_models.sh
       - name: Unit tests (plan, idempotency, recording)
-        run: node --test tests/youtube-daily-short.test.mjs tests/short-crosspost.test.mjs
+        run: node --test tests/youtube-daily-short.test.mjs tests/short-crosspost.test.mjs tests/av-gate-wiring.test.mjs
       - name: Render, gate and publish today's Short
         env:
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
-          FORCE_LOCAL_VOICE: ${{ inputs.force_local_voice || 'false' }}
+          # Owner-recorded reference of the approved brand voice (V4 identity). Absent => gate BLOCKED => no publish.
+          AV_GATE_BRAND_REFERENCE: ${{ github.workspace }}/assets/brand/voice/brand-reference.wav
           SCHEDULE: ${{ github.event.schedule }}
           SLOT_INPUT: ${{ inputs.slot }}
         run: |
@@ -110,6 +107,7 @@ jobs:
           name: short-preview
           path: |
             /tmp/zevanory-daily-short*.mp4
-            /tmp/zevanory-daily-short*.mp3
+            /tmp/zevanory-daily-short*.av-gate.json
+            /tmp/zevanory-daily-short*.av/av-gate.json
           if-no-files-found: warn
           retention-days: 3

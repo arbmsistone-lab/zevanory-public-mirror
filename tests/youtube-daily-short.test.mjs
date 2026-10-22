@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { planShort, publishShort, recordPublication, cloudflareKv, TARGET_CHANNEL, localDay, shortTiming, beatTimes, wrapText } from "../scripts/channels/youtube-daily-short.mjs";
 import { calendarEntry } from "../worker/acquisition-engine.mjs";
 
-test("daily plan follows the calendar, passes the F1 gate and is public with an idempotency marker", () => {
+test("daily plan follows the calendar, passes the gate with SALES CLOSED (no price/CTA) and is public with an idempotency marker", () => {
   for (const day of ["2026-10-11", "2026-10-12", "2026-10-30"]) {
     const p = planShort(day), e = calendarEntry(day);
     assert.equal(p.entry.theme_id, e.theme_id);
@@ -12,8 +12,10 @@ test("daily plan follows the calendar, passes the F1 gate and is public with an 
     assert.equal(p.privacyStatus, "public");
     assert.match(p.marker, /^zevanory-short-key:[0-9a-f]{16}$/);
     assert.ok(p.description.includes(p.marker));
-    assert.match(p.link, new RegExp("^https://vendas\\.zevanory\\.api\\.br/comprar/" + e.product.sku + "\\?utm_source=youtube"));
-    assert.ok(p.title.length <= 95 && p.title.includes(e.product.name));
+    assert.match(p.link, /^https:\/\/vendas\.zevanory\.api\.br\/material-gratuito\?utm_source=youtube&utm_medium=short&utm_campaign=oferta_/);
+    assert.equal(p.price, null);
+    assert.ok(p.title.length <= 95);
+    assert.doesNotMatch(JSON.stringify([p.title, p.description, p.speech, p.screen, p.link]), /\/comprar|R\$|garantia de (7|sete) dias|compre/i);
     assert.doesNotMatch(p.description + p.speech, /lucro garantido|renda garantida|ganhe dinheiro|resultado garantido/i);
   }
   assert.notEqual(planShort("2026-10-11").marker, planShort("2026-10-12").marker);
@@ -103,7 +105,7 @@ test("every calendar day has a full on-screen script that wraps within the frame
     assert.equal(p.said.length, 4);
     for (const k of ["hook", "niche", "tip", "product", "offer", "cta", "url"]) assert.ok(String(p.screen[k] || "").trim(), k);
     assert.ok(wrapText(p.screen.hook, 14, 3), "hook fits in 3 lines");
-    assert.match(p.speech, /garantia de sete dias/);
+    assert.doesNotMatch(p.speech, /garantia de sete dias|reais/);
   }
 });
 
@@ -124,18 +126,6 @@ test("reach mix: value Shorts rotate across the 40 guides and 7 calculators, saf
   }
   assert.equal(seen.size, 40); assert.equal(calcs.size, 7);
   assert.equal(planSlot("2026-10-11", "oferta").marker, planShort("2026-10-11").marker);
-});
-
-import { audioQuality, speechForLocalVoice } from "../scripts/channels/youtube-daily-short.mjs";
-test("audio gate: loudness, peak and dead air", () => {
-  const good = "  Integrated loudness:\n    I:         -16.1 LUFS\n  True peak:\n    Peak:       -1.6 dBFS";
-  assert.equal(audioQuality(good, [3.4], [3.0], 12).ok, true);
-  assert.equal(audioQuality(good, [6.0], [3.0], 12).ok, false);
-  assert.equal(audioQuality(good.replace("-16.1", "-27.0"), [], [], 12).ok, false);
-  assert.equal(audioQuality(good.replace("-1.6", "0.2"), [], [], 12).ok, false);
-});
-test("local voice reads the brand and prices correctly", () => {
-  assert.equal(speechForLocalVoice("ZEVANORY por R$ 197"), "Zevanóri por 197 reais");
 });
 
 import { publicationWindow } from "../scripts/channels/youtube-daily-short.mjs";

@@ -42,12 +42,12 @@ test("Instagram Reel publishes only after the container is FINISHED", async () =
   assert.equal(r.provider_post_id, "ig9"); assert.equal(polls, 3);
 });
 
-test("captions carry the product, guarantee and channel UTM; TikTok avoids dead links", () => {
+test("captions carry the free material and channel UTM (sales closed: no price, no guarantee, no /comprar); TikTok avoids dead links", () => {
   const p = planShort("2026-10-12");
   assert.match(captionFor(p, "instagram"), /utm_source=instagram/);
   assert.match(captionFor(p, "tiktok"), /vendas\.zevanory\.api\.br/);
   assert.doesNotMatch(captionFor(p, "tiktok"), /utm_source/);
-  assert.match(captionFor(p, "facebook"), /garantia de 7 dias/);
+  for (const ch of ["facebook", "instagram", "tiktok"]) { assert.match(captionFor(p, ch), /Material gratuito/); assert.doesNotMatch(captionFor(p, ch), /garantia de 7 dias|R\$|\/comprar/i); }
 });
 
 test("pack renders the tip and the offer for each day with ready captions", async () => {
@@ -56,16 +56,16 @@ test("pack renders the tip and the offer for each day with ready captions", asyn
   const out = "/tmp/zevanory-pack-test";
   await rm(out, { recursive: true, force: true });
   const n = await buildPack({ start: "2026-10-12", days: 3, out, render: async (plan, base) => ({ duration: 14.2, voice: "test", file: base + ".mp4" }) });
-  assert.equal(n, 6);
+  assert.equal(n.produced.length, 6);
   const txt = await readFile(out + "/legendas.txt", "utf8");
   for (const d of ["2026-10-12", "2026-10-13", "2026-10-14"]) { assert.match(txt, new RegExp(d + "\\.mp4")); assert.match(txt, new RegExp(d + "-dica\\.mp4")); }
-  assert.match(txt, /garantia de 7 dias/); assert.match(txt, /Guia gratuito/);
+  assert.doesNotMatch(txt, /garantia de 7 dias|R\$ ?\d|\/comprar/i); assert.match(txt, /Guia gratuito/); assert.match(txt, /Material gratuito/);
 });
 test("Telegram channel receives the day's video once, with caption and a provider-confirmed message id", async () => {
   const kv = memKv(); let sent = 0;
   const fetchImpl = async (url, o = {}) => {
     if (url.includes("tiktok-access")) return ok({ connected: false });
-    if (url.includes("/sendVideo")) { sent++; assert.ok(o.body instanceof FormData); assert.match(o.body.get("caption"), /garantia de 7 dias/); return ok({ ok: true, result: { message_id: 42, chat: { username: "zevanory" } } }); }
+    if (url.includes("/sendVideo")) { sent++; assert.ok(o.body instanceof FormData); assert.match(o.body.get("caption"), /Material gratuito/); assert.doesNotMatch(o.body.get("caption"), /garantia de 7 dias/); return ok({ ok: true, result: { message_id: 42, chat: { username: "zevanory" } } }); }
     return ok({});
   };
   const env = { TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHANNEL_ID: "@zevanory" };
@@ -81,4 +81,21 @@ test("pack produces the executor command ZEVANORY e-mails to the owner: 2 per da
   const cmd = executorCommand("2026-10-22", 10);
   for (let d = 22; d <= 31; d++) { assert.match(cmd, new RegExp(`media/short/2026-10-${d}-dica\\.mp4`)); assert.match(cmd, new RegExp(`media/short/2026-10-${d}\\.mp4`)); assert.match(cmd, new RegExp(`--- ${d}/10 às 12:00`)); assert.match(cmd, new RegExp(`--- ${d}/10 às 19:00`)); }
   assert.match(cmd, /A tua marca/); assert.match(cmd, /Conteúdo gerado por IA/); assert.match(cmd, /Nunca publique na hora/);
+});
+test("P05: a video rejected by zevanory-av-gate is left out of the pack and of the executor command", async () => {
+  const { buildPack } = await import("../scripts/channels/short-pack.mjs");
+  const { readFile, rm } = await import("node:fs/promises");
+  const out = "/tmp/zevanory-pack-test-gate";
+  await rm(out, { recursive: true, force: true });
+  const r = await buildPack({ start: "2026-10-12", days: 2, out, render: async (plan, base) => {
+    if (plan.slot === "dica" && plan.day === "2026-10-13") throw new Error("av_gate_FAIL:v3.stream_tp");
+    if (plan.slot === "oferta" && plan.day === "2026-10-12") throw new Error("brand_voice_BLOCKED:brand_voice_key_missing");
+    return { duration: 14, voice: "test", file: base + ".mp4" };
+  } });
+  assert.deepEqual(r.produced.sort(), ["2026-10-12-dica", "2026-10-13"]);
+  assert.equal(r.rejected.length, 2);
+  const cmd = await readFile(out + "/comando-executor.txt", "utf8");
+  assert.match(cmd, /2026-10-12-dica\.mp4/); assert.match(cmd, /media\/short\/2026-10-13\.mp4/);
+  assert.doesNotMatch(cmd, /2026-10-13-dica\.mp4/); assert.doesNotMatch(cmd, /media\/short\/2026-10-12\.mp4/);
+  assert.match(await readFile(out + "/legendas.txt", "utf8"), /PULADO \(zevanory-av-gate: av_gate_FAIL:v3.stream_tp\)/);
 });

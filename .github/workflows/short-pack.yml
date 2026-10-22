@@ -1,5 +1,6 @@
 name: Short pack for native schedulers (TikTok/Kwai)
 
+# P05: every video must PASS zevanory-av-gate (single brand voice, fail-closed); rejected videos are not hosted.
 # Renders the next days of Shorts with voice and captions, kept as a 7-day
 # artifact for upload in TikTok Studio / Kwai schedulers (API posting by
 # own-account tools is not allowed by TikTok's content sharing guidelines).
@@ -54,15 +55,28 @@ jobs:
       - name: Install media tools
         if: steps.already.outputs.done != 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-inter
-      - name: Render pack
+      - uses: actions/setup-python@v5
         if: steps.already.outputs.done != 'true'
+        with:
+          python-version: "3.12"
+      - name: zevanory-av-gate (pinned deps + pinned models)
+        if: steps.already.outputs.done != 'true'
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet -r scripts/av_gate/requirements.txt
+          echo "AV_GATE_MODELS=$RUNNER_TEMP/av-models" >> "$GITHUB_ENV"
+          AV_GATE_MODELS="$RUNNER_TEMP/av-models" bash scripts/av_gate/fetch_models.sh
+      - name: Render pack (each video must PASS zevanory-av-gate; rejected ones are left out)
+        if: steps.already.outputs.done != 'true'
+        env:
+          AV_GATE_BRAND_REFERENCE: ${{ github.workspace }}/assets/brand/voice/brand-reference.wav
         run: |
           set -euo pipefail
           args=(--days="${{ inputs.days || '10' }}")
           if [ -n "${{ inputs.start }}" ]; then args+=(--start="${{ inputs.start }}"); fi
           node scripts/channels/short-pack.mjs "${args[@]}"
           ls -la /tmp/short-pack
-          rm -f /tmp/short-pack/*.pcm /tmp/short-pack/*.txt.* /tmp/short-pack/*.t*.txt /tmp/short-pack/*.mp3
+          rm -rf /tmp/short-pack/*.av /tmp/short-pack/*.t*.txt
       - name: Host each video at https://zevanory.api.br/media/short/<day>.mp4 (30 days)
         if: steps.already.outputs.done != 'true'
         run: |
