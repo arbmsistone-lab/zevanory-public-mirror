@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import {
-  PSP_FALLBACK_ORDER, breakerConfigFromEnv, classifyCheckoutOutcome, breakerFailureKind, constantTimeEqual, createCircuitBreaker,
+  PSP_FALLBACK_ORDER, breakerConfigFromEnv, classifyCheckoutOutcome, createMemoryProbeLease, breakerFailureKind, constantTimeEqual, createCircuitBreaker,
   idempotencyKeyForOrder, planPspOrder, pspCommercialLockOpen, pspContinuityPlan, runCheckoutWithFailover,
 } from "../../worker/psp-failover.mjs";
 
@@ -21,7 +21,7 @@ function clock(start = 1_800_000_000_000) {
 }
 function harness({ responses = {}, lock = true, candidates = READY, breakerOpts = {} } = {}) {
   const c = clock();
-  const breaker = createCircuitBreaker({ store: memStore(), now: c.now, threshold: 3, windowMs: 60_000, cooldownMs: 30_000, ...breakerOpts });
+  const breaker = createCircuitBreaker({ store: memStore(), now: c.now, threshold: 3, windowMs: 60_000, cooldownMs: 30_000, probeLease: createMemoryProbeLease({ now: c.now }), logger: { error() {} }, ...breakerOpts });
   const calls = [];
   const lockState = { open: lock };
   const invoke = async (provider) => {
@@ -296,12 +296,106 @@ test("F23 saúde explícita: MP marcado fora (env) => Asaas direto, MP nunca cha
 test("F24 saúde explícita por KV (psp:health:v1:<p>) e retorno ao normal quando removida", async () => {
   const store = memStore();
   const c = clock();
-  const b = createCircuitBreaker({ store, now: c.now });
+  const b = createCircuitBreaker({ store, now: c.now, logger: { error() {} } });
   await store.put("psp:health:v1:mercadopago", JSON.stringify({ status: "down" }));
   assert.equal((await b.state("mercadopago")).state, "forced_down");
   assert.equal((await b.state("asaas")).state, "closed");
   await store.put("psp:health:v1:mercadopago", JSON.stringify({ status: "up" }));
   assert.equal((await b.state("mercadopago")).state, "closed");
   await store.put("psp:health:v1:mercadopago", "não-json");
-  assert.equal((await b.state("mercadopago")).state, "closed", "valor ilegível não derruba (o disjuntor automático continua valendo)");
+  assert.equal((await b.state("mercadopago")).state, "unknown", "valor ilegível = saúde desconhecida (AVAL 083), nunca 'fechado' silencioso");
+});
+
+// ---------- Sol AVAL 083: sondagem única e erros de armazenamento explícitos ----------
+function faultyStore({ failGet = () => false, failPut = () => false } = {}) {
+  const map = new Map();
+  return { map, async get(k) { if (failGet(k)) throw new Error("kv read outage"); return map.has(k) ? map.get(k) : null; },
+    async put(k, v) { if (failPut(k)) throw new Error("kv write outage"); map.set(k, String(v)); } };
+}
+const capture = () => { const lines = []; return { lines, error: (tag, json) => lines.push([tag, JSON.parse(json)]) }; };
+
+test("F25 meia-abertura: dois isolates (KV compartilhado e defasado) disputam a sondagem — o coordenador admite UMA", async () => {
+  const c = clock();
+  const store = memStore();
+  const lease = createMemoryProbeLease({ now: c.now });
+  const a = createCircuitBreaker({ store, now: c.now, threshold: 1, cooldownMs: 30_000, probeLease: lease, owner: "isolate-a" });
+  const b = createCircuitBreaker({ store, now: c.now, threshold: 1, cooldownMs: 30_000, probeLease: lease, owner: "isolate-b" });
+  await a.recordFailure("mercadopago", "5xx");
+  c.advance(30_001);
+  assert.equal((await a.state("mercadopago")).state, "half_open");
+  const results = await Promise.all([a.admit("mercadopago"), b.admit("mercadopago"), a.admit("mercadopago"), b.admit("mercadopago")]);
+  assert.equal(results.filter((r) => r.admitted).length, 1, JSON.stringify(results));
+  assert.ok(results.filter((r) => !r.admitted).every((r) => r.reason === "probe_in_flight"));
+});
+
+test("F26 meia-abertura sem coordenador ou com coordenador falhando => sondagem NEGADA (provedor segue aberto) e erro contado", async () => {
+  const c = clock();
+  const store = memStore();
+  const none = createCircuitBreaker({ store, now: c.now, threshold: 1, cooldownMs: 30_000 });
+  await none.recordFailure("mercadopago", "5xx");
+  c.advance(30_001);
+  assert.deepEqual([(await none.admit("mercadopago")).admitted, (await none.admit("mercadopago")).reason], [false, "probe_coordinator_unavailable"]);
+  const log = capture();
+  const broken = createCircuitBreaker({ store, now: c.now, threshold: 1, cooldownMs: 30_000, logger: log, probeLease: { async acquire() { throw new Error("db down"); } } });
+  const r = await broken.admit("mercadopago");
+  assert.equal(r.admitted, false);
+  assert.equal(r.reason, "probe_lease_error");
+  assert.equal(broken.stats().store_errors.lease, 1);
+  assert.equal(log.lines[0][0], "psp_breaker_store_error");
+  assert.equal(log.lines[0][1].op, "lease");
+});
+
+test("F27 leitura do disjuntor falha => estado 'unknown', logado e contado (nunca 'fechado' silencioso)", async () => {
+  const log = capture();
+  const b = createCircuitBreaker({ store: faultyStore({ failGet: (k) => k === "psp:circuit:v1:mercadopago" }), logger: log });
+  const s = await b.state("mercadopago");
+  assert.equal(s.state, "unknown");
+  assert.equal(s.allow, false);
+  assert.equal(b.stats().store_errors.read, 1);
+  assert.deepEqual(log.lines.map(([t, j]) => [t, j.op, j.provider]), [["psp_breaker_store_error", "read", "mercadopago"]]);
+  const corrupt = memStore(); await corrupt.put("psp:circuit:v1:asaas", "{não json");
+  const b2 = createCircuitBreaker({ store: corrupt, logger: { error() {} } });
+  assert.equal((await b2.state("asaas")).state, "unknown");
+  assert.equal(b2.stats().store_errors.read, 1);
+});
+
+test("F28 saúde desconhecida: primário desconhecido ainda é tentado; fallback desconhecido NUNCA é aberto às cegas (503)", async () => {
+  // MP (primário) ilegível: é tentado normalmente (o que aconteceria sem failover).
+  const h1 = harness({ breakerOpts: { store: faultyStore({ failGet: (k) => k.endsWith(":mercadopago") }) } });
+  const out1 = await h1.run();
+  assert.equal(out1.body.provider, "mercadopago");
+  assert.deepEqual(h1.calls, ["mercadopago"]);
+  // MP fora (forçado) e estado do Asaas ilegível: NÃO abre o Asaas => 503 fail-closed, nenhum provedor chamado.
+  const h2 = harness({ breakerOpts: { forcedDown: ["mercadopago"], store: faultyStore({ failGet: (k) => k.endsWith(":asaas") }) } });
+  const out2 = await h2.run();
+  assert.equal(out2.status, 503);
+  assert.equal(out2.body.error, "payment_capacity_unavailable");
+  assert.deepEqual(h2.calls, []);
+  assert.deepEqual(out2.body.skipped.map((x) => x.reason), ["forced_down", "unknown_fallback_not_opened"]);
+  // MP 'não tentado' e Asaas ilegível: também não abre o fallback.
+  const h3 = harness({ responses: { mercadopago: { status: 503, body: { error: "checkout_provider_unavailable" } } }, breakerOpts: { store: faultyStore({ failGet: (k) => k.endsWith(":asaas") }) } });
+  const out3 = await h3.run();
+  assert.equal(out3.body.error, "payment_capacity_unavailable");
+  assert.deepEqual(h3.calls, ["mercadopago"]);
+});
+
+test("F29 escrita do disjuntor falha => resultado da tentativa inalterado, persisted=false, erro logado e contado", async () => {
+  const log = capture();
+  const h = harness({ responses: { mercadopago: uncertain({ provider_error: "mercadopago_preference_503_x" }) }, breakerOpts: { store: faultyStore({ failPut: () => true }), logger: log } });
+  const out = await h.run();
+  assert.equal(out.body.fallback_suppressed, true, "ambíguo continua sem failover");
+  assert.deepEqual(h.calls, ["mercadopago"]);
+  assert.equal(h.breaker.stats().store_errors.write, 1);
+  assert.equal(log.lines.filter(([, j]) => j.op === "write").length, 1);
+  const r = await h.breaker.recordFailure("asaas", "5xx");
+  assert.equal(r.persisted, false);
+});
+
+test("F30 leitura da saúde explícita falha => 'unknown' contado; plano de continuidade expõe os contadores", async () => {
+  const b = createCircuitBreaker({ store: faultyStore({ failGet: (k) => k.startsWith("psp:health:v1:asaas") }), logger: { error() {} } });
+  assert.equal((await b.state("asaas")).state, "unknown");
+  const plan = await pspContinuityPlan({ candidates: READY, breaker: b, lockOpen: true });
+  assert.deepEqual(plan.usable_providers, ["mercadopago"]);
+  assert.equal(plan.circuits.asaas, "unknown");
+  assert.ok(plan.store_errors.health >= 1);
 });

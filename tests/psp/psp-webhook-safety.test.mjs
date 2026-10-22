@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   ASAAS_WEBHOOK_DEDUPE_PREFIX, ASAAS_WEBHOOK_REVIEW_PREFIX, asaasWebhookAlreadyProcessed, authorizeAsaasWebhook, classifyAsaasEventShape,
   extractAsaasPathSecret, logAsaasWebhook, markAsaasWebhookProcessed, queueAsaasWebhookReview,
+  ASAAS_WEBHOOK_DLQ_PREFIX, asaasWebhookKvErrors, drainAsaasWebhookReview,
 } from "../../worker/asaas-webhook-safety.mjs";
 
 const PATH = "p".repeat(20) + "A1_-" + "q".repeat(20);
@@ -88,7 +89,99 @@ test("W09 fila de revisão guarda só identificadores", async () => {
   const store = kv();
   assert.equal(await queueAsaasWebhookReview(store, { eventId: "evt_abcdef123", paymentId: "pay_abcdef1", orderId: "0F8FAD5B-D9CB-469F-A165-70867728950E", reason: "refund_before_payment_recorded" }), true);
   const rec = JSON.parse(store.m.get(ASAAS_WEBHOOK_REVIEW_PREFIX + "evt_abcdef123"));
-  assert.deepEqual(Object.keys(rec).sort(), ["event_id", "order_id", "payment_id", "queued_at", "reason"]);
+  assert.deepEqual(Object.keys(rec).sort(), ["attempts", "event", "event_id", "first_queued_ms", "order_id", "payment_id", "queued_at", "reason"]);
   assert.equal(rec.order_id, "0f8fad5b-d9cb-469f-a165-70867728950e");
   assert.equal(await queueAsaasWebhookReview(store, { eventId: "nao-e-evento" }), false);
+});
+
+// ---------- Sol AVAL 083: drenagem da fila de revisão e fila morta (DLQ) ----------
+const fullKv = ({ failDelete = () => false, failList = false } = {}) => {
+  const m = new Map();
+  return { m, async get(k) { return m.get(k) ?? null; }, async put(k, v) { m.set(k, String(v)); },
+    async delete(k) { if (failDelete(k)) throw new Error("kv delete outage"); m.delete(k); },
+    async list({ prefix = "" } = {}) { if (failList) throw new Error("kv list outage"); return { keys: [...m.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })) }; } };
+};
+const T0 = 1_800_000_000_000;
+const queue = (store, id = "evt_early0001", extra = {}) => queueAsaasWebhookReview(store, { eventId: id, event: "PAYMENT_PARTIALLY_REFUNDED", paymentId: "pay_abcdef1", orderId: "0f8fad5b-d9cb-469f-a165-70867728950e", reason: "refund_before_payment_recorded", now: T0, ...extra });
+const unresolved = async () => ({ status: 200, body: { accepted: true, ignored: true, reason: "refund_before_payment_recorded" } });
+const quiet = { error() {}, info() {} };
+
+test("W10 drenagem: quando a confirmação chegou, o replay aplica o estorno e o item SAI da fila", async () => {
+  const store = fullKv();
+  await queue(store);
+  const seen = [];
+  const out = await drainAsaasWebhookReview(store, { now: T0 + 60_000, logger: quiet, replay: async (rec) => { seen.push(rec); return { status: 200, body: { accepted: true, event: "refund_confirmed", duplicate: false } }; }, alert: async () => ({ sent: true }) });
+  assert.deepEqual({ resolved: out.resolved, pending: out.pending, dlq: out.dead_lettered }, { resolved: 1, pending: 0, dlq: 0 });
+  assert.equal(seen[0].event, "PAYMENT_PARTIALLY_REFUNDED", "replay leva o nome do evento original");
+  assert.equal([...store.m.keys()].filter((k) => k.startsWith(ASAAS_WEBHOOK_REVIEW_PREFIX)).length, 0);
+  // Idempotente: drenar de novo não faz nada.
+  assert.equal((await drainAsaasWebhookReview(store, { now: T0, logger: quiet, replay: unresolved })).checked, 0);
+});
+
+test("W11 item preso: tentativas acumulam e, no limite, vai para a DLQ com UM alerta ao proprietário", async () => {
+  const store = fullKv();
+  await queue(store);
+  const alerts = [];
+  const alert = async (a) => { alerts.push(a); return { sent: true }; };
+  for (let i = 1; i <= 5; i++) {
+    const out = await drainAsaasWebhookReview(store, { now: T0 + i * 1000, maxAttempts: 6, logger: quiet, replay: unresolved, alert });
+    assert.equal(out.pending, 1, `tentativa ${i}`);
+    assert.equal(JSON.parse(store.m.get(ASAAS_WEBHOOK_REVIEW_PREFIX + "evt_early0001")).attempts, i);
+  }
+  const last = await drainAsaasWebhookReview(store, { now: T0 + 6000, maxAttempts: 6, logger: quiet, replay: unresolved, alert });
+  assert.deepEqual({ dlq: last.dead_lettered, alerted: last.alerted, pending: last.pending }, { dlq: 1, alerted: 1, pending: 0 });
+  const dlq = JSON.parse(store.m.get(ASAAS_WEBHOOK_DLQ_PREFIX + "evt_early0001"));
+  assert.equal(dlq.cause, "max_attempts");
+  assert.equal(dlq.attempts, 6);
+  assert.equal(alerts.length, 1);
+  assert.deepEqual(Object.keys(alerts[0]).sort(), ["attempts", "cause", "event_id", "order_id", "payment_id"]);
+  assert.equal(store.m.has(ASAAS_WEBHOOK_REVIEW_PREFIX + "evt_early0001"), false);
+});
+
+test("W12 item velho (idade >= limite) vai para a DLQ mesmo com poucas tentativas", async () => {
+  const store = fullKv();
+  await queue(store);
+  const out = await drainAsaasWebhookReview(store, { now: T0 + 72 * 3600 * 1000, logger: quiet, replay: unresolved, alert: async () => ({ sent: true }) });
+  assert.equal(out.dead_lettered, 1);
+  assert.equal(JSON.parse(store.m.get(ASAAS_WEBHOOK_DLQ_PREFIX + "evt_early0001")).cause, "max_age");
+});
+
+test("W13 idempotência: se a remoção da fila falhar após a DLQ, a próxima drenagem NÃO repete DLQ nem alerta", async () => {
+  let failDel = true;
+  const store = fullKv({ failDelete: () => failDel });
+  await queue(store);
+  const alerts = [];
+  const opts = { now: T0 + 1000, maxAttempts: 1, logger: quiet, replay: unresolved, alert: async (a) => { alerts.push(a); return { sent: true }; } };
+  const a = await drainAsaasWebhookReview(store, opts);
+  assert.deepEqual({ dlq: a.dead_lettered, errors: a.errors }, { dlq: 1, errors: 1 });
+  assert.equal(store.m.has(ASAAS_WEBHOOK_REVIEW_PREFIX + "evt_early0001"), true, "remoção falhou: item continua");
+  failDel = false;
+  const b = await drainAsaasWebhookReview(store, opts);
+  assert.equal(b.dead_lettered, 0);
+  assert.equal(alerts.length, 1, "um único alerta por item");
+  assert.equal(store.m.has(ASAAS_WEBHOOK_REVIEW_PREFIX + "evt_early0001"), false);
+});
+
+test("W14 registro inválido ou replay que lança => DLQ (invalid_record) ou nova tentativa; falha de listagem é explícita", async () => {
+  const store = fullKv();
+  store.m.set(ASAAS_WEBHOOK_REVIEW_PREFIX + "evt_lixo00001", "{não json");
+  const out = await drainAsaasWebhookReview(store, { now: T0, logger: quiet, replay: unresolved, alert: async () => ({ sent: false }) });
+  assert.deepEqual({ dlq: out.dead_lettered, alerted: out.alerted }, { dlq: 1, alerted: 0 });
+  assert.equal(JSON.parse(store.m.get(ASAAS_WEBHOOK_DLQ_PREFIX + "evt_lixo00001")).cause, "invalid_record");
+  await queue(store, "evt_throws0001");
+  const t = await drainAsaasWebhookReview(store, { now: T0, logger: quiet, replay: async () => { throw new Error("x"); }, alert: async () => ({ sent: true }) });
+  assert.equal(t.pending, 1);
+  const broken = await drainAsaasWebhookReview(fullKv({ failList: true }), { logger: quiet, replay: unresolved });
+  assert.deepEqual({ list_failed: broken.list_failed, errors: broken.errors }, { list_failed: true, errors: 1 });
+});
+
+test("W15 falha do KV de deduplicação é logada e contada; leitura falha => segue ao banco (não marca duplicata)", async () => {
+  const lines = [];
+  const logger = { error: (t, j) => lines.push([t, JSON.parse(j)]) };
+  const before = asaasWebhookKvErrors.dedupe_read;
+  const bad = { async get() { throw new Error("down"); }, async put() { throw new Error("down"); } };
+  assert.equal(await asaasWebhookAlreadyProcessed(bad, "evt_abcdef123", { logger }), false);
+  assert.equal(await markAsaasWebhookProcessed(bad, "evt_abcdef123", "x", { logger }), false);
+  assert.equal(asaasWebhookKvErrors.dedupe_read, before + 1);
+  assert.deepEqual(lines.map(([t, j]) => [t, j.op]), [["asaas_webhook_kv_error", "dedupe_read"], ["asaas_webhook_kv_error", "dedupe_write"]]);
 });

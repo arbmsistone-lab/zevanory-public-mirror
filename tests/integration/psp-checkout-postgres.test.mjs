@@ -24,11 +24,13 @@ const BASE = "http://127.0.0.1:8788";
 
 // ---------- mundo falso ----------
 const world = {
-  mp: { mode: "ok", calls: [], createdServerSide: 0 },
+  emails: [],
+  mp: { mode: "ok", calls: [], createdServerSide: 0, delayMs: 0 },
   asaas: { checkoutMode: "ok", paymentMode: "ok", calls: [], payments: new Map(), customers: [] },
 };
 const kvStore = new Map();
-const kv = { async get(k) { return kvStore.get(k) ?? null; }, async put(k, v) { kvStore.set(k, String(v)); }, async delete(k) { kvStore.delete(k); },
+let kvFault = () => false; // injeção de falha de leitura do KV (Sol AVAL 083)
+const kv = { async get(k) { if (kvFault(k)) throw new Error("synthetic kv read outage"); return kvStore.get(k) ?? null; }, async put(k, v) { kvStore.set(k, String(v)); }, async delete(k) { kvStore.delete(k); },
   async list({ prefix = "" } = {}) { return { keys: [...kvStore.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true }; } };
 const json = (status, body) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
 const hang = (init) => new Promise((_, reject) => {
@@ -55,6 +57,7 @@ function fakeFetch(input, init = {}) {
     if (method === "POST" && url.pathname === "/checkout/preferences") {
       if (world.mp.mode === "timeout") { world.mp.createdServerSide++; return hang(init); } // o MP CRIOU e a resposta nunca chegou
       if (world.mp.mode === "5xx") return json(503, { message: "service unavailable" });
+      if (world.mp.delayMs) return new Promise((r) => setTimeout(r, world.mp.delayMs)).then(() => json(201, { id: `pref-${world.mp.calls.length}`, external_reference: body.external_reference, init_point: `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${world.mp.calls.length}` }));
       return json(201, { id: `pref-${world.mp.calls.length}`, external_reference: body.external_reference, init_point: `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${world.mp.calls.length}` });
     }
     return Promise.reject(new Error("T4: unexpected MP call " + url.pathname));
@@ -96,6 +99,11 @@ function fakeFetch(input, init = {}) {
     }
     return Promise.reject(new Error("T4: unexpected Asaas call " + method + " " + url.pathname));
   }
+  if (url.hostname === "api.resend.com" && method === "POST") {
+    const b = JSON.parse(init.body);
+    world.emails.push({ to: b.to, subject: b.subject, text: b.text });
+    return json(200, { id: "sim-" + world.emails.length });
+  }
   return Promise.reject(new Error("T4: unexpected external call blocked: " + url.hostname));
 }
 
@@ -129,6 +137,8 @@ before(async () => {
   psqlRaw(readFileSync(new URL("../t4_sim/schema.sql", import.meta.url), "utf8"));
   // Colunas/índice que o checkout real usa e o esquema T4 (só do webhook) não tinha.
   psqlRaw("alter table orders add column if not exists checkout_url text; create unique index if not exists orders_request_id_uq on orders(request_id);\n");
+  psqlRaw("drop table if exists psp_circuit_probes;\n");
+  psqlRaw(readFileSync(new URL("../../db/b05/psp_circuit_probes.sql", import.meta.url), "utf8"));
   Object.assign(process.env, ENV);
   globalThis.__ZEVANORY_PRIVATE_KV__ = kv;
   globalThis.fetch = fakeFetch;
@@ -139,7 +149,8 @@ beforeEach(() => {
   Object.assign(process.env, ENV);
   delete process.env.PSP_FORCE_DOWN;
   for (const k of [...kvStore.keys()]) if (k.startsWith("psp:")) kvStore.delete(k);
-  world.mp.mode = "ok"; world.asaas.checkoutMode = "ok"; world.asaas.paymentMode = "ok";
+  world.mp.mode = "ok"; world.mp.delayMs = 0; world.asaas.checkoutMode = "ok"; world.asaas.paymentMode = "ok";
+  kvFault = () => false;
 });
 after(() => { if (!SKIP) setTimeout(() => process.exit(process.exitCode || 0), 50); });
 
@@ -260,6 +271,34 @@ test("C7 seleção de provedor sem hash: a ordem fixa não depende da chave da o
   process.env.PSP_FORCE_DOWN = "";
   delete process.env.MERCADOPAGO_ACCESS_TOKEN;
   assert.equal(selectPaymentProvider(process.env, { production: true, operationKey: "zzzz" }).provider, "asaas", "MP sem credencial => Asaas");
+});
+
+test("C8 meia-abertura entre requests concorrentes: o PostgreSQL admite UMA sondagem ao MP; os demais vão ao Asaas", { skip: SKIP }, async () => {
+  psqlRaw("delete from psp_circuit_probes;\n");
+  await kv.put("psp:circuit:v1:mercadopago", JSON.stringify({ failures: [], opened_at: Date.now() - 121_000 })); // resfriamento (120 s) vencido
+  world.mp.delayMs = 6000; // a sondagem fica em voo enquanto os outros chegam (o psql síncrono do harness serializa os requests)
+  const mp0 = mpPrefCalls();
+  const outs = await Promise.all([checkout(), checkout(), checkout(), checkout()]);
+  assert.ok(outs.every((o) => o.status === 201), JSON.stringify(outs.map((o) => o.body)));
+  assert.equal(outs.filter((o) => o.body.provider === "mercadopago").length, 1, "exatamente uma sondagem ao MP");
+  assert.equal(outs.filter((o) => o.body.provider === "asaas").length, 3);
+  assert.equal(mpPrefCalls() - mp0, 1);
+  assert.equal(rowsSync("select count(*)::int as n from psp_circuit_probes where provider='mercadopago' and lease_until > now()")[0].n, "1");
+  const plan = await (await realFetch(BASE + "/api/payments/continuity")).json();
+  assert.equal(plan.circuits.mercadopago, "closed", "sondagem bem-sucedida fecha o disjuntor");
+});
+
+test("C9 falha de leitura do KV do disjuntor do Asaas com o MP fora: fallback NÃO é aberto às cegas (503, Asaas não chamado)", { skip: SKIP }, async () => {
+  process.env.PSP_FORCE_DOWN = "mercadopago";
+  kvFault = (k) => k === "psp:circuit:v1:asaas";
+  const as0 = world.asaas.calls.length;
+  const out = await checkout();
+  assert.equal(out.status, 503);
+  assert.equal(out.body.error, "payment_capacity_unavailable");
+  assert.deepEqual(out.body.skipped.map((x) => x.reason), ["forced_down", "unknown_fallback_not_opened"]);
+  assert.equal(world.asaas.calls.length - as0, 0);
+  kvFault = () => false;
+  delete process.env.PSP_FORCE_DOWN;
 });
 
 // ---------- boleto ----------
@@ -398,4 +437,54 @@ test("W5 evento autenticado não tratado => 200 ignorado (a fila do Asaas não p
   assert.equal(r.status, 200);
   assert.equal(r.body.ignored, true);
   assert.equal((await hook({ id: "nope", event: "PAYMENT_RECEIVED" })).status, 400);
+});
+
+const clearReview = () => { for (const k of [...kvStore.keys()]) if (k.startsWith("asaas:webhook:review:v1:") || k.startsWith("asaas:webhook:dlq:v1:")) kvStore.delete(k); };
+
+test("W6 estorno parcial antes da confirmação: fica na fila; a confirmação paga; o watchdog DRENA e aplica o estorno (uma vez)", { skip: SKIP }, async () => {
+  clearReview();
+  const { o, p } = await asaasPaidSetup();
+  p.status = "RECEIVED"; p.refunds = [{ status: "DONE", value: 50 }];
+  const early = evt("PAYMENT_PARTIALLY_REFUNDED", p.id);
+  const r1 = await hook(early);
+  assert.equal(r1.body.reason, "refund_before_payment_recorded", JSON.stringify(r1.body));
+  assert.ok(kvStore.has("asaas:webhook:review:v1:" + early.id));
+  assert.equal(kvStore.has("asaas:webhook:done:v1:" + early.id), false, "evento antecipado não é marcado como processado");
+  const r2 = await hook(evt("PAYMENT_RECEIVED", p.id));
+  assert.equal(r2.status, 200, JSON.stringify(r2.body));
+  assert.equal(order(o.order_id).status, "paid");
+  const { runPaidDeliveryWatchdog } = await import("../../worker/cloudflare-worker.recovered.mjs");
+  const wd = await runPaidDeliveryWatchdog(process.env);
+  assert.equal(wd.asaas_review.resolved, 1, JSON.stringify(wd));
+  assert.equal(order(o.order_id).status, "partially_refunded");
+  assert.equal(countEvents(o.order_id), 2);
+  assert.equal(kvStore.has("asaas:webhook:review:v1:" + early.id), false, "item drenado");
+  const again = await runPaidDeliveryWatchdog(process.env);
+  assert.equal(again.asaas_review.checked, 0);
+  assert.equal(countEvents(o.order_id), 2, "idempotente");
+});
+
+test("W7 estorno total antes da confirmação (nunca pago): tentativas esgotam => DLQ + UM e-mail ao proprietário; nada é pago", { skip: SKIP }, async () => {
+  clearReview();
+  process.env.RESEND_API_KEY = "re_synthetic";
+  const { o, p } = await asaasPaidSetup();
+  p.status = "REFUNDED"; p.refunds = [{ status: "DONE", value: 197 }];
+  const early = evt("PAYMENT_REFUNDED", p.id);
+  assert.equal((await hook(early)).body.reason, "refund_before_payment_recorded");
+  assert.equal((await hook(evt("PAYMENT_RECEIVED", p.id))).body.reason, "superseded_payment_event");
+  const { drainAsaasReviewQueue } = await import("../../worker/cloudflare-worker.recovered.mjs");
+  const e0 = world.emails.length;
+  const d1 = await drainAsaasReviewQueue(process.env, { maxAttempts: 2 });
+  assert.deepEqual({ pending: d1.pending, dlq: d1.dead_lettered }, { pending: 1, dlq: 0 });
+  const d2 = await drainAsaasReviewQueue(process.env, { maxAttempts: 2 });
+  assert.deepEqual({ dlq: d2.dead_lettered, alerted: d2.alerted }, { dlq: 1, alerted: 1 }, JSON.stringify(d2));
+  assert.ok(kvStore.has("asaas:webhook:dlq:v1:" + early.id));
+  assert.equal(world.emails.length - e0, 1);
+  assert.match(world.emails.at(-1).subject, /asaas-webhook/);
+  assert.match(world.emails.at(-1).text, new RegExp(early.id));
+  const d3 = await drainAsaasReviewQueue(process.env, { maxAttempts: 2 });
+  assert.equal(d3.checked, 0);
+  assert.equal(world.emails.length - e0, 1, "um único alerta");
+  assert.notEqual(order(o.order_id).status, "paid");
+  assert.equal(countEvents(o.order_id), 0);
 });

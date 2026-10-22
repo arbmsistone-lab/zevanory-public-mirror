@@ -6,9 +6,9 @@ import { getWhatsappOpsStore, publishWhatsappOpsStats } from "./whatsapp-neon-st
 import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
 import { mercadoPagoExpiryWindow } from "./payment-link-expiry.mjs";
 import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } from "./mercadopago-webhook-safety.mjs";
-import { PSP_FALLBACK_ORDER, breakerConfigFromEnv, createCircuitBreaker, idempotencyKeyForOrder, pspCommercialLockOpen, pspContinuityPlan, runCheckoutWithFailover } from "./psp-failover.mjs";
+import { PSP_FALLBACK_ORDER, breakerConfigFromEnv, createCircuitBreaker, createPgProbeLease, idempotencyKeyForOrder, pspCommercialLockOpen, pspContinuityPlan, runCheckoutWithFailover } from "./psp-failover.mjs";
 import { BoletoError, createAsaasBoletoCharge, normalizeBoletoPayer } from "./asaas-boleto.mjs";
-import { asaasWebhookAlreadyProcessed, authorizeAsaasWebhook, classifyAsaasEventShape, extractAsaasPathSecret, logAsaasWebhook, markAsaasWebhookProcessed, queueAsaasWebhookReview } from "./asaas-webhook-safety.mjs";
+import { asaasWebhookAlreadyProcessed, authorizeAsaasWebhook, drainAsaasWebhookReview, classifyAsaasEventShape, extractAsaasPathSecret, logAsaasWebhook, markAsaasWebhookProcessed, queueAsaasWebhookReview } from "./asaas-webhook-safety.mjs";
 import { DEFAULT_CREATIVE_OFFER, assertBrandSafeCreative, chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, creativeCatalogEntry, creativeLandingUrl, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
 import { appendBlogSitemap, INDEXNOW_PUBLIC_KEY, recordChannelProof, renderBlogArticle, renderBlogIndex, renderChannelsPage, runMultichannelAutonomy } from "./multichannel-autonomy.mjs";
 import { collectAutonomyHealth, runAutonomyHealth } from "./autonomy-health.mjs";
@@ -14657,9 +14657,12 @@ __name(handleStripeCheckout, "handleStripeCheckout");
 
 // api/checkout.mjs
 // B05/B08: disjuntor por provedor com estado em KV privada (ou memória do isolate, sem KV).
+// Meia-abertura: sondagem única entre isolates coordenada pelo PostgreSQL (tabela psp_circuit_probes,
+// db/b05/psp_circuit_probes.sql). Sem banco, nenhuma sondagem é admitida (o provedor segue aberto).
 function pspBreaker(env = process.env) {
   const kv = globalThis.__ZEVANORY_PRIVATE_KV__;
-  return createCircuitBreaker({ store: kv && typeof kv.get === "function" && typeof kv.put === "function" ? kv : void 0, ...breakerConfigFromEnv(env) });
+  const probeLease = env.DATABASE_URL ? createPgProbeLease(cs(env.DATABASE_URL)) : null;
+  return createCircuitBreaker({ store: kv && typeof kv.get === "function" && typeof kv.put === "function" ? kv : void 0, probeLease, ...breakerConfigFromEnv(env) });
 }
 __name(pspBreaker, "pspBreaker");
 async function invokeCheckoutHandler(handler, req) {
@@ -14727,6 +14730,19 @@ async function handlePspContinuity(req, res) {
   return res.end(JSON.stringify(plan));
 }
 __name(handlePspContinuity, "handlePspContinuity");
+// Sol AVAL 083: drenagem da fila de revisão do webhook Asaas (estorno que chegou antes da confirmação).
+// Replay pelo PRÓPRIO handler (autenticado com os segredos do ambiente; só ids — a verdade vem da re-consulta).
+// Item preso => DLQ + alerta ao proprietário (categoria "refund"), uma vez por item.
+async function drainAsaasReviewQueue(env = process.env, opts = {}) {
+  const kv = globalThis.__ZEVANORY_PRIVATE_KV__ || env.ZEVANORY_PRIVATE_ARTIFACTS;
+  if (!process.env.ASAAS_API_KEY || !process.env.ASAAS_WEBHOOK_TOKEN || !process.env.ASAAS_WEBHOOK_PATH_SECRET) return { skipped: "asaas_unconfigured" };
+  return drainAsaasWebhookReview(kv, {
+    ...opts,
+    replay: (rec) => invokeCheckoutHandler(handler15, { method: "POST", url: "/api/webhooks?provider=asaas", asaasPathSecret: process.env.ASAAS_WEBHOOK_PATH_SECRET, headers: { "asaas-access-token": process.env.ASAAS_WEBHOOK_TOKEN }, parsedBody: { id: rec.event_id, event: rec.event, payment: { id: rec.payment_id } }, body: null }),
+    alert: opts.alert || ((item) => alertOwnerNow({ ...env, ...process.env, ZEVANORY_PRIVATE_ARTIFACTS: kv }, { channel: "asaas-webhook", contact: item.event_id, category: "refund", excerpt: `evento ${item.event_id} pagamento ${item.payment_id} pedido ${item.order_id} tentativas ${item.attempts}`, reason: `Estorno Asaas recebido antes da confirmação não foi reconciliado (${item.cause}). Item na fila morta: conferir no painel Asaas e reconciliar manualmente.` }))
+  });
+}
+__name(drainAsaasReviewQueue, "drainAsaasReviewQueue");
 async function handler13(req, res) {
   // Sem provedor explícito e sem token de piloto: failover real (ordem fixa + disjuntor + trava por tentativa).
   // Rotas explícitas (/api/checkout/mercadopago, /api/checkout/asaas) e o piloto de certificação seguem iguais.
@@ -14913,9 +14929,12 @@ async function handler15(req, res) {
       paymentMatchesOrderWebhook(webhook, payment, orders[0])
     ) {
       const recovery = await preserveFinancialReconciliation({ provider: "asaas", eventId: webhook.providerEventId, kind: "webhook_refund_before_payment_recorded", orderId: String(orders[0].order_id), payload: snapshot }).catch(() => ({ preserved: false }));
-      const queued = await queueAsaasWebhookReview(dedupeKv, { eventId: webhook.providerEventId, paymentId: webhook.paymentId, orderId: String(orders[0].order_id), reason: "refund_before_payment_recorded" });
+      const queued = await queueAsaasWebhookReview(dedupeKv, { eventId: webhook.providerEventId, event: webhook.eventName, paymentId: webhook.paymentId, orderId: String(orders[0].order_id), reason: "refund_before_payment_recorded" });
       if (!recovery.preserved && !queued) return json11(res, 503, { error: "financial_reconciliation_unavailable", accepted: false, reconciliation_required: true });
-      return done(200, { accepted: true, ignored: true, reason: "refund_before_payment_recorded", reconciliation_required: true, order_id: String(orders[0].order_id) }, "refund_before_payment_recorded");
+      // NÃO marca o evento como processado no dedupe: a drenagem (drainAsaasReviewQueue) precisa reprocessá-lo quando a
+      // confirmação chegar; reentregas do Asaas só atualizam o mesmo item da fila (idempotente).
+      logAsaasWebhook(console, { ...logFields, outcome: "refund_before_payment_recorded" });
+      return json11(res, 200, { accepted: true, ignored: true, reason: "refund_before_payment_recorded", reconciliation_required: true, order_id: String(orders[0].order_id) });
     }
     if (orders.length !== 1 || !paymentMatchesOrderWebhook(webhook, payment, orders[0])) {
       logAsaasWebhook(console, { ...logFields, outcome: "payment_reconciliation_failed" });
@@ -18794,7 +18813,9 @@ var cloudflare_worker_default = {
 // Mercado Pago payment; if that still fails, the owner is alerted once per order.
 async function runPaidDeliveryWatchdog(env) {
   hydrateRuntimeConfig(env);
-  if (!process.env.DATABASE_URL || !process.env.MERCADOPAGO_ACCESS_TOKEN) return { ok: false, reason: "watchdog_unconfigured" };
+  const asaasReview = await drainAsaasReviewQueue(env).catch((error) => ({ error: String(error?.name || "drain_failed") }));
+  if (asaasReview && !asaasReview.skipped) console.info("asaas_webhook_review_drain", JSON.stringify(asaasReview));
+  if (!process.env.DATABASE_URL || !process.env.MERCADOPAGO_ACCESS_TOKEN) return { ok: false, reason: "watchdog_unconfigured", asaas_review: asaasReview };
   const sql = cs(process.env.DATABASE_URL);
   const kv = globalThis.__ZEVANORY_PRIVATE_KV__ || env.ZEVANORY_PRIVATE_ARTIFACTS;
   const recoveredWebhooks = await drainMercadoPagoWebhookRecovery({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv }, async (paymentId) => {
@@ -18815,7 +18836,7 @@ async function runPaidDeliveryWatchdog(env) {
      where o.status = 'paid' and sf.status = 'pending' and coalesce(o.certification_pilot, false) = false
        and fe.received_at < now() - interval '15 minutes' and fe.received_at > now() - interval '7 days'
      order by fe.received_at asc limit 10`, []);
-  const out = { ok: true, checked: rows.length, delivered: 0, failed: 0, webhook_recovery: recoveredWebhooks };
+  const out = { ok: true, checked: rows.length, delivered: 0, failed: 0, webhook_recovery: recoveredWebhooks, asaas_review: asaasReview };
   for (const row of rows) {
     const orderId = String(row.order_id);
     if (kv?.get && await kv.get(`sandbox-proof-v2:order:${orderId}`).catch(() => null)) continue;
@@ -18883,6 +18904,7 @@ export {
   cs as whatsappProofDatabase,
   paymentProviderCandidates,
   selectPaymentProvider,
+  drainAsaasReviewQueue,
   runPaidDeliveryWatchdog,
   runSalesPreflight,
   replyWhatsappConversation,

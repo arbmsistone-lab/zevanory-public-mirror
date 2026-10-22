@@ -53,17 +53,72 @@ export function breakerConfigFromEnv(env = {}) {
   });
 }
 
-export function createCircuitBreaker({ store, now = () => Date.now(), threshold = BREAKER_DEFAULTS.threshold, windowMs = BREAKER_DEFAULTS.windowMs, cooldownMs = BREAKER_DEFAULTS.cooldownMs, forcedDown = [] } = {}) {
+// Erros do armazenamento do disjuntor/saúde (KV) NUNCA são engolidos: viram estado "unknown", log estruturado
+// `psp_breaker_store_error` e contador (stats()). Semântica fail-safe (decisão conservadora, Sol AVAL 083):
+//  * leitura falhou (ou registro ilegível) => saúde DESCONHECIDA. Provedor desconhecido só é tentado se for o
+//    PRIMEIRO do plano (o que aconteceria sem failover). Nunca se abre o fallback às cegas: fallback desconhecido
+//    é pulado => sem provedor utilizável => 503 fail-closed. Dupla cobrança continua impossível (regra do ambíguo).
+//  * escrita falhou => o resultado da tentativa não muda (nada é refeito); erro registrado/contado.
+// Meia-abertura: a sondagem ÚNICA entre isolates é garantida por um coordenador FORTEMENTE consistente
+// (probeLease; em produção, linha do PostgreSQL com INSERT ... ON CONFLICT DO UPDATE ... WHERE lease vencido).
+// Sem coordenador, ou se ele falhar, a sondagem é NEGADA (o provedor segue tratado como aberto).
+export const PROBE_LEASE_MS = 30_000;
+export const PROBE_LEASE_SQL = `INSERT INTO psp_circuit_probes (provider, lease_owner, lease_until, updated_at)
+VALUES ($1::text, $2::text, now() + ($3::int * interval '1 millisecond'), now())
+ON CONFLICT (provider) DO UPDATE SET lease_owner = EXCLUDED.lease_owner, lease_until = EXCLUDED.lease_until, updated_at = now()
+WHERE psp_circuit_probes.lease_until <= now()
+RETURNING lease_owner`;
+
+export function createPgProbeLease(sql, { ttlMs = PROBE_LEASE_MS } = {}) {
+  return Object.freeze({
+    async acquire(provider, owner) {
+      const rows = await sql.query(PROBE_LEASE_SQL, [String(provider), String(owner), ttlMs]);
+      return Array.isArray(rows) && rows.length === 1 && String(rows[0].lease_owner) === String(owner);
+    },
+  });
+}
+
+// Só para testes de unidade/isolate único (NÃO é coordenação entre isolates).
+export function createMemoryProbeLease({ now = () => Date.now(), ttlMs = PROBE_LEASE_MS } = {}) {
+  const leases = new Map();
+  return Object.freeze({
+    async acquire(provider, owner) {
+      const t = now();
+      const cur = leases.get(provider);
+      if (cur && cur.until > t) return false;
+      leases.set(provider, { owner, until: t + ttlMs });
+      return true;
+    },
+  });
+}
+
+const errorClass = (error) => String(error?.name || "Error").replace(/[^A-Za-z0-9_]/g, "").slice(0, 40) || "Error";
+
+export function createCircuitBreaker({ store, now = () => Date.now(), threshold = BREAKER_DEFAULTS.threshold, windowMs = BREAKER_DEFAULTS.windowMs, cooldownMs = BREAKER_DEFAULTS.cooldownMs, forcedDown = [], probeLease = null, logger = console, owner = "" } = {}) {
   const kv = store && typeof store.get === "function" && typeof store.put === "function" ? store : memoryStore();
+  const errors = { read: 0, write: 0, health: 0, lease: 0 };
+  const leaseOwner = owner || crypto.randomUUID();
+  function storeError(op, provider, error) {
+    errors[op] += 1;
+    try { logger.error("psp_breaker_store_error", JSON.stringify({ op, provider, error: errorClass(error), count: errors[op] })); } catch {}
+  }
   async function load(provider) {
-    let rec = null;
-    try { rec = JSON.parse(String((await kv.get(BREAKER_KEY_PREFIX + provider)) || "null")); } catch { rec = null; }
-    const failures = Array.isArray(rec?.failures) ? rec.failures.filter((t) => Number.isFinite(t)) : [];
-    const openedAt = Number.isFinite(rec?.opened_at) ? rec.opened_at : null;
-    return { failures, opened_at: openedAt };
+    let raw;
+    try { raw = await kv.get(BREAKER_KEY_PREFIX + provider); } catch (error) { storeError("read", provider, error); return { error: "read_failed" }; }
+    if (raw === null || raw === undefined || raw === "") return { failures: [], opened_at: null };
+    let rec;
+    try { rec = JSON.parse(String(raw)); } catch (error) { storeError("read", provider, error); return { error: "record_unreadable" }; }
+    if (!rec || typeof rec !== "object" || !Array.isArray(rec.failures)) { storeError("read", provider, new TypeError("record_shape")); return { error: "record_unreadable" }; }
+    return { failures: rec.failures.filter((t) => Number.isFinite(t)), opened_at: Number.isFinite(rec.opened_at) ? rec.opened_at : null };
   }
   async function save(provider, rec) {
-    try { await kv.put(BREAKER_KEY_PREFIX + provider, JSON.stringify(rec), { expirationTtl: Math.max(60, Math.ceil((windowMs + cooldownMs) / 1000) * 4) }); } catch {}
+    try {
+      await kv.put(BREAKER_KEY_PREFIX + provider, JSON.stringify(rec), { expirationTtl: Math.max(60, Math.ceil((windowMs + cooldownMs) / 1000) * 4) });
+      return true;
+    } catch (error) {
+      storeError("write", provider, error);
+      return false;
+    }
   }
   function view(provider, rec, t) {
     const failures = rec.failures.filter((x) => t - x < windowMs);
@@ -73,24 +128,45 @@ export function createCircuitBreaker({ store, now = () => Date.now(), threshold 
     }
     return { provider, state: "closed", allow: true, failures: failures.length, opened_at: null };
   }
-  async function explicitDown(provider) {
+  async function explicitHealth(provider) {
     if (forcedDown.includes(provider)) return "env";
+    let raw;
+    try { raw = await kv.get(HEALTH_KEY_PREFIX + provider); } catch (error) { storeError("health", provider, error); return "unknown"; }
+    if (raw === null || raw === undefined || raw === "") return "";
     try {
-      const raw = await kv.get(HEALTH_KEY_PREFIX + provider);
-      if (raw && String(JSON.parse(String(raw))?.status || "").toLowerCase() === "down") return "kv";
+      const status = String(JSON.parse(String(raw))?.status || "").toLowerCase();
+      if (status === "down") return "kv";
+      if (status === "up") return "";
     } catch {}
-    return "";
+    storeError("health", provider, new TypeError("health_unreadable"));
+    return "unknown";
+  }
+  async function state(provider) {
+    const rec = await load(provider);
+    const health = await explicitHealth(provider);
+    if (health === "env" || health === "kv") return { provider, state: "forced_down", allow: false, source: health };
+    if (rec.error || health === "unknown") return { provider, state: "unknown", allow: false, reason: rec.error || "health_unreadable" };
+    return view(provider, rec, now());
   }
   return Object.freeze({
-    async state(provider) {
-      const rec = await load(provider);
-      const forced = await explicitDown(provider);
-      if (forced) return { provider, state: "forced_down", allow: false, failures: rec.failures.length, opened_at: rec.opened_at, source: forced };
-      return view(provider, rec, now());
+    state,
+    // Decide se ESTA tentativa pode chamar o provedor. primary = é o primeiro provedor do plano.
+    async admit(provider, { primary = false } = {}) {
+      const s = await state(provider);
+      if (s.state === "closed") return { ...s, admitted: true };
+      if (s.state === "unknown") return { ...s, admitted: primary === true, reason: primary === true ? "unknown_primary_attempted" : "unknown_fallback_not_opened" };
+      if (s.state === "half_open") {
+        if (!probeLease || typeof probeLease.acquire !== "function") return { ...s, admitted: false, reason: "probe_coordinator_unavailable" };
+        let got = false;
+        try { got = (await probeLease.acquire(provider, leaseOwner)) === true; } catch (error) { storeError("lease", provider, error); return { ...s, admitted: false, reason: "probe_lease_error" }; }
+        return { ...s, admitted: got, probe: got, reason: got ? "half_open_probe" : "probe_in_flight" };
+      }
+      return { ...s, admitted: false, reason: s.state };
     },
     async recordFailure(provider, kind) {
       const t = now();
       const rec = await load(provider);
+      if (rec.error) return { provider, state: "unknown", persisted: false, reason: rec.error };
       const before = view(provider, rec, t);
       if (!BREAKER_FAILURE_KINDS.includes(kind)) return before;
       const failures = [...rec.failures.filter((x) => t - x < windowMs), t];
@@ -98,16 +174,18 @@ export function createCircuitBreaker({ store, now = () => Date.now(), threshold 
       if (before.state === "half_open") openedAt = t;
       else if (before.state === "closed" && failures.length >= threshold) openedAt = t;
       const next = { failures, opened_at: openedAt };
-      await save(provider, next);
-      return view(provider, next, t);
+      const persisted = await save(provider, next);
+      return { ...view(provider, next, t), persisted };
     },
     async recordSuccess(provider) {
       const rec = await load(provider);
+      if (rec.error) return { provider, state: "unknown", persisted: false, reason: rec.error };
       if (rec.failures.length === 0 && rec.opened_at === null) return view(provider, rec, now());
       const next = { failures: [], opened_at: null };
-      await save(provider, next);
-      return view(provider, next, now());
+      const persisted = await save(provider, next);
+      return { ...view(provider, next, now()), persisted };
     },
+    stats() { return Object.freeze({ store_errors: Object.freeze({ ...errors }) }); },
   });
 }
 
@@ -161,15 +239,15 @@ export async function runCheckoutWithFailover({ lockOpen, candidates, breaker, i
   const called = [];
   const skipped = [];
   let locked = false;
-  for (const provider of plan) {
+  for (const [index, provider] of plan.entries()) {
     const open = (await lockOpen()) === true;
     if (!open) { locked = true; break; }
-    const health = await breaker.state(provider);
-    if (!health.allow) { skipped.push({ provider, reason: health.state === "forced_down" ? "forced_down" : "circuit_open" }); continue; }
+    const health = await breaker.admit(provider, { primary: index === 0 });
+    if (!health.admitted) { skipped.push({ provider, reason: health.state === "forced_down" ? "forced_down" : health.state === "open" ? "circuit_open" : String(health.reason || health.state) }); continue; }
     called.push(provider);
     const out = await invoke(provider);
     const verdict = classifyCheckoutOutcome(out);
-    log({ event: "psp_attempt", provider, circuit: health.state, outcome: verdict.class, breaker_failure: verdict.breakerFailure, http_status: Number(out?.status || 0) });
+    log({ event: "psp_attempt", provider, circuit: health.state, probe: health.probe === true, outcome: verdict.class, breaker_failure: verdict.breakerFailure, http_status: Number(out?.status || 0) });
     if (verdict.class === "success") {
       await breaker.recordSuccess(provider);
       return { status: out.status, body: { ...out.body, provider, failover: plan[0] !== provider, providers_called: called } };
@@ -209,6 +287,7 @@ export async function pspContinuityPlan({ candidates = [], breaker, lockOpen = f
     sales_locked: lockOpen !== true,
     mode: lockOpen !== true ? "sales_locked" : usable.length === 0 ? "fail_closed" : usable.length < minQuorum ? "degraded" : "redundant",
     ambiguous_never_fails_over: true,
+    store_errors: typeof breaker.stats === "function" ? breaker.stats().store_errors : null,
   });
 }
 

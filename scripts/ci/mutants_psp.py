@@ -6,6 +6,7 @@ conferido a cada mutante e no fim):
   unit      node --test tests/psp/*.test.mjs                                       (módulos, sem rede)
   checkout  bundle REAL + PostgreSQL efêmero: tests/integration/psp-checkout-postgres.test.mjs
   refund    PostgreSQL efêmero, conexões concorrentes reais: tests/integration/psp-refund-intent-postgres.test.mjs
+  breaker   PostgreSQL efêmero, sondagem única na meia-abertura: tests/integration/psp-breaker-postgres.test.mjs
 
 Classificação (mesma regra do auditor Sol aplicada no #868), falha a falha na saída TAP:
   * KILLED       — pelo menos uma falha de ASSERÇÃO (AssertionError / ERR_ASSERTION) num teste ESPERADO para o mutante,
@@ -15,7 +16,7 @@ Classificação (mesma regra do auditor Sol aplicada no #868), falha a falha na 
   * INCONCLUSIVE — qualquer outra coisa (infra/transporte, timeout, hook, cancelamento, contagem incompleta, rc != 0 sem
                    falha TAP, asserção só fora dos testes esperados, falha sem asserção não prevista). Repetido até
                    RETRIES vezes; persistindo, o job FALHA (nunca conta como KILLED).
-Saída: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE reason=... unit_fail= checkout_fail= refund_fail= attempt=`
+Saída: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE reason=... unit_fail= checkout_fail= refund_fail= breaker_fail= attempt=`
 e `MUTANTS_TOTAL=N KILLED=k SURVIVED=s INCONCLUSIVE=i`.
 
 Modos:
@@ -41,9 +42,10 @@ RETRIES = 2
 TAP = ["--test-reporter=tap", "--test-reporter-destination=stdout"]
 UNIT_FILES = sorted(os.path.relpath(p, REPO) for p in glob.glob(str(REPO / "tests/psp/*.test.mjs")))
 SUITES = {  # nome -> (comando, contagem exata)
-    "unit": (["node", "--test", *TAP, *UNIT_FILES], 57),
-    "checkout": (["node", "--import", "./tests/t4_sim/register.mjs", "--test", *TAP, "tests/integration/psp-checkout-postgres.test.mjs"], 16),
+    "unit": (["node", "--test", *TAP, *UNIT_FILES], 69),
+    "checkout": (["node", "--import", "./tests/t4_sim/register.mjs", "--test", *TAP, "tests/integration/psp-checkout-postgres.test.mjs"], 20),
     "refund": (["node", "--test", *TAP, "tests/integration/psp-refund-intent-postgres.test.mjs"], 9),
+    "breaker": (["node", "--test", *TAP, "tests/integration/psp-breaker-postgres.test.mjs"], 3),
 }
 SUITE_TIMEOUT = 600
 
@@ -113,6 +115,24 @@ M = {
         sub("refund", "AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now()\nRETURNING", "RETURNING")),
     "R06_token_do_asaas_ignorado": sub("refund", '  if (!constantTimeEqual(expected, Array.isArray(token) ? "" : String(token || ""))) return Object.freeze({ status: "REFUSED", refuseReason: "authorization_token_invalid", http: 401 });\n', ""),
     "R07_intencao_sem_pagamento_confirmado": sub("refund", "  AND EXISTS (SELECT 1 FROM financial_events fe WHERE fe.order_id = o.order_id AND fe.provider = 'asaas'\n              AND fe.provider_payment_id = $3::text AND fe.normalized_event = 'payment_confirmed')\n", ""),
+    # --- Sol AVAL 083: sondagem única (coordenador forte) e erros de armazenamento explícitos ---
+    "B01_lease_nao_exclusivo": sub("failover", "WHERE psp_circuit_probes.lease_until <= now()\n", ""),
+    "B02_meia_abertura_ignora_coordenador": sub("failover", 'return { ...s, admitted: got, probe: got, reason: got ? "half_open_probe" : "probe_in_flight" };',
+                                                 'return { ...s, admitted: true, probe: true, reason: "half_open_probe" };'),
+    "B03_fallback_desconhecido_aberto": sub("failover", 'admitted: primary === true, reason: primary === true ?', 'admitted: true, reason: primary === true ?'),
+    "B04_leitura_falha_vira_fechado": sub("failover", 'catch (error) { storeError("read", provider, error); return { error: "read_failed" }; }',
+                                           "catch (error) { return { failures: [], opened_at: null }; }"),
+    "B05_erro_de_escrita_engolido": sub("failover", 'storeError("write", provider, error);\n      return false;', "return false;"),
+    "B06_sem_coordenador_admite_sondagem": sub("failover", 'return { ...s, admitted: false, reason: "probe_coordinator_unavailable" };',
+                                                'return { ...s, admitted: true, reason: "probe_coordinator_unavailable" };'),
+    # --- Sol AVAL 083: fila de revisão (drenagem, DLQ, alerta, idempotência) ---
+    "Q01_fila_nunca_vai_para_dlq": sub("hook", "if (!valid || attempts >= maxAttempts || age >= maxAgeMs) {", "if (!valid) {"),
+    "Q02_dlq_sem_alerta": sub("hook", "try { sent = (await alert?.({", "try { sent = false && (await alert?.({"),
+    "Q03_antecipado_marcado_processado": sub("bundle",
+        '      logAsaasWebhook(console, { ...logFields, outcome: "refund_before_payment_recorded" });\n      return json11(res, 200, { accepted: true, ignored: true, reason: "refund_before_payment_recorded", reconciliation_required: true, order_id: String(orders[0].order_id) });',
+        '      return done(200, { accepted: true, ignored: true, reason: "refund_before_payment_recorded", reconciliation_required: true, order_id: String(orders[0].order_id) }, "refund_before_payment_recorded");'),
+    "Q04_alerta_repetido": sub("hook", "if (!already) {", "if (true) {"),
+    "Q05_erro_do_dedupe_engolido": sub("hook", 'catch (error) { kvError("dedupe_read", error, logger); return false; }', "catch { return false; }"),
 }
 
 # Testes que DEVEM falhar por asserção (prefixo do nome TAP, com espaço) — derivados do comportamento quebrado.
@@ -138,6 +158,17 @@ EXPECT = {
     "R05_consumo_nao_atomico": {"refund": ("R6 ", "R7 ")},
     "R06_token_do_asaas_ignorado": {"unit": ("U3 ",), "refund": ("R9 ",)},
     "R07_intencao_sem_pagamento_confirmado": {"refund": ("R8 ",)},
+    "B01_lease_nao_exclusivo": {"breaker": ("P1 ", "P2 "), "checkout": ("C8 ",)},
+    "B02_meia_abertura_ignora_coordenador": {"unit": ("F25 ",), "breaker": ("P2 ",), "checkout": ("C8 ",)},
+    "B03_fallback_desconhecido_aberto": {"unit": ("F28 ",), "checkout": ("C9 ",)},
+    "B04_leitura_falha_vira_fechado": {"unit": ("F27 ", "F28 "), "checkout": ("C9 ",)},
+    "B05_erro_de_escrita_engolido": {"unit": ("F29 ",)},
+    "B06_sem_coordenador_admite_sondagem": {"unit": ("F26 ",)},
+    "Q01_fila_nunca_vai_para_dlq": {"unit": ("W11 ", "W12 "), "checkout": ("W7 ",)},
+    "Q02_dlq_sem_alerta": {"unit": ("W11 ",), "checkout": ("W7 ",)},
+    "Q03_antecipado_marcado_processado": {"checkout": ("W6 ",)},
+    "Q04_alerta_repetido": {"unit": ("W13 ",)},
+    "Q05_erro_do_dedupe_engolido": {"unit": ("W15 ",)},
 }
 assert set(M) == set(EXPECT), "cada mutante precisa da lista de testes esperados"
 
