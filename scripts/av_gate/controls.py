@@ -225,9 +225,6 @@ def run(work, out):
     for c in (numeric[:1] + [x for x in screened if x["gender"] == "FEMALE"] + [x for x in screened if x["gender"] == "MALE"] + screened):
         if c["id"] in seen or len(pos) >= 6:
             continue
-        g = c["gender"]
-        if sum(1 for p in pos if p["gender"] == g) >= 3 and len(screened) > 6:
-            continue
         seen.add(c["id"])
         pos.append(c)
     res["human_candidates"] = len(cands)
@@ -276,7 +273,7 @@ def run(work, out):
     P = pos[0]
     fast = max(pos, key=lambda c: c.get("wpm_raw", 0))
     mid = sorted(pos, key=lambda c: c.get("wpm_raw", 0))[len(pos) // 2]
-    other = next((c for c in pos if c["gender"] != P["gender"]), pos[-1])
+    other = next((c for c in pos if c["gender"] != P["gender"]), pos[-1] if pos[-1] is not P else P)
     tmp = os.path.join(work, "raw")
     os.makedirs(tmp, exist_ok=True)
     x16 = lambda c: G.decode(c["path"], sr=16000)
@@ -299,8 +296,10 @@ def run(work, out):
     def from_raw(cid, xmod, sr=16000, script=None, **kw):
         return lambda: B.build(cid, write_raw(os.path.join(tmp, cid + ".wav"), xmod, sr), script or P["text"], reference=kw.pop("reference", P["path"]), **kw)
     xp = x16(P)
-    safe("N05", "negative", "fala clipada (+18 dB, corte) e renormalizada", "FAIL", ["v3.clip_density"],
-         from_raw("N05", np.clip(xp * 10 ** (18 / 20), -1, 1)), base=P["source"])
+    # hard clipping of the SPEECH at −18 dB below its peak (the noise floor stays where it was), then re-levelled
+    pk_ = float(np.max(np.abs(xp)))
+    safe("N05", "negative", "fala clipada (corte a −18 dB do pico) e renormalizada", "FAIL", ["v3.clip_density"],
+         from_raw("N05", np.clip(xp, -pk_ * 10 ** (-18 / 20), pk_ * 10 ** (-18 / 20))), base=P["source"])
     safe("N06", "negative", "loudness fora (derivado −30 LUFS)", "FAIL", ["v3.stream_lufs"],
          lambda: B.build("N06", P["path"], P["text"], reference=P["path"], pkg={"stream_lufs": -30.0}), base=P["source"])
 
@@ -334,22 +333,29 @@ def run(work, out):
         return B.build("N11", write_raw(os.path.join(tmp, "N11.wav"), y, 16000), fast["text"], reference=fast["path"])
     safe("N11", "negative", "pausa longa inserida (1,8 s)", "FAIL", ["v4.pause_max"], long_pause, base=fast["source"])
 
-    def flat():
+    def psola(cid, c, k):
+        """Resynthesise with F0 compressed around the median: f' = med·(f/med)^k (k=0 → monotone)."""
         import parselmouth
         from parselmouth.praat import call
-        snd = parselmouth.Sound(mid["path"])
+        snd = parselmouth.Sound(c["path"])
         man = call(snd, "To Manipulation", 0.01, 75, 500)
         pt = call(man, "Extract pitch tier")
-        f0 = snd.to_pitch(time_step=0.01, pitch_floor=75, pitch_ceiling=500).selected_array["frequency"]
-        med = float(np.median(f0[f0 > 0]))
+        n = int(call(pt, "Get number of points"))
+        pts = [(call(pt, "Get time from index", i), call(pt, "Get value at index", i)) for i in range(1, n + 1)]
+        med = float(np.median([v for _, v in pts])) if pts else 120.0
         call(pt, "Remove points between", 0, snd.duration)
-        call(pt, "Add point", snd.duration / 2, med)
+        if k == 0 or not pts:
+            call(pt, "Add point", snd.duration / 2, med)
+        else:
+            for t, v in pts:
+                call(pt, "Add point", t, med * (v / med) ** k)
         call([pt, man], "Replace pitch tier")
         out = call(man, "Get resynthesis (overlap-add)")
-        p = os.path.join(tmp, "N12.wav")
+        p = os.path.join(tmp, cid + ".wav")
         out.save(p, "WAV")
-        return B.build("N12", p, mid["text"], reference=mid["path"])
-    safe("N12", "negative", "prosódia achatada (F0 monotônico, PSOLA)", "FAIL", ["v4.f0_sd"], flat, base=mid["source"])
+        return B.build(cid, p, c["text"], reference=c["path"])
+    safe("N12", "negative", "prosódia achatada (F0 monotônico, PSOLA)", "FAIL", ["v4.f0_sd"], lambda: psola("N12", mid, 0.0), base=mid["source"])
+    safe("N25", "negative", "prosódia comprimida (faixa de F0 × 0,35, PSOLA)", "FAIL", ["v4.f0_sd"], lambda: psola("N25", mid, 0.35), base=mid["source"])
 
     def wrong_number():
         for c in pos:
@@ -425,6 +431,21 @@ def run(work, out):
         y = x + rng.standard_normal(len(x)) * rms / 10 ** (18 / 20)
         return B.build("N23", write_raw(os.path.join(tmp, "N23.wav"), y, 16000), P["text"], reference=P["path"])
     safe("N23", "negative", "ruído de fundo (SNR 18 dB)", "FAIL", ["v3.snr", "v3.noise_floor"], noise_bed, base=P["source"])
+
+    def whine():
+        x = x16(P)
+        sp, _ = G.vad_frames(x)
+        n = int(G.FRAME * 16000)
+        gate = np.repeat(sp.astype(float), n)[:len(x)]
+        gate = np.pad(gate, (0, len(x) - len(gate)))
+        gate = np.convolve(gate, np.ones(160) / 160, mode="same")  # 10 ms ramps
+        rms = np.sqrt(np.mean(np.concatenate([x[i * n:(i + 1) * n] for i in np.nonzero(sp)[0]]) ** 2))
+        t = np.arange(len(x)) / 16000
+        y = x + gate * np.sqrt(2) * rms * 10 ** (-4 / 20) * np.sin(2 * np.pi * 2000 * t)
+        return B.build("N26", write_raw(os.path.join(tmp, "N26.wav"), y, 16000), P["text"], reference=P["path"])
+    safe("N26", "negative", "artefato tonal (apito 2 kHz só durante a fala)", "FAIL", ["v3.tonal_ratio"], whine, base=P["source"])
+    safe("N27", "negative", "narração curta e 6 s de silêncio no fim do vídeo", "FAIL", ["v1.narration_coverage"],
+         lambda: B.build("N27", P["path"], P["text"], reference=P["path"], pkg={"tail_s": 6.0}), base=P["source"])
 
     def espeak_swap():
         p = os.path.join(tmp, "N24.wav")

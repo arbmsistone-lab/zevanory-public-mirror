@@ -245,7 +245,7 @@ export async function writeAvManifest(plan, dir, mp4, pkg, { reference = process
 }
 
 export async function renderVideo(plan, pkg, out) {
-  const duration = Math.min(60, Math.max(8, Math.ceil(pkg.duration * 10) / 10));
+  const duration = Math.min(60, Math.max(3, Math.ceil(pkg.duration * 10) / 10));  // video = narration (+1 s tail), no dead air
   const XB = fontFile("ExtraBold", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf");
   const SB = fontFile("SemiBold", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf");
   const R = /inter/i.test(XB) ? { xb: 0.58, sb: 0.54 } : { xb: 0.68, sb: 0.64 };

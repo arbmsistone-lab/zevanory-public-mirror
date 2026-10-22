@@ -97,6 +97,8 @@ class Decision(unittest.TestCase):
             "v1.voice_single_brand": lambda M: M["manifest"].update(voice={"provider": "piper", "model": "pt_BR-faber-medium", "voice": "x"}),
             "v1.audio_stream": lambda M: M.update(audio_stream=False),
             "v1.captions_present": lambda M: M.update(captions_present=False),
+            "v1.narration_coverage": lambda M: M["timeline"].update(last_offset_s=5.0),
+            "v3.clip_density": lambda M: M.update(master_clip_density=8.0),
         }
         for cid, mut in cases.items():
             M = good_M()

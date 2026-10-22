@@ -739,7 +739,9 @@ def measure(mp4, manifest_path, engines, thr):
     if M["timeline"]["speech_s"] > 0:
         M["spectral"] = guard("spectral", lambda: m_spectral(x16, sp))
         M["prosody"] = guard("prosody", lambda: m_prosody(x16, sp))
-    M["dnsmos"] = guard("dnsmos", lambda: engines.dnsmos(x16))
+    tl0 = M["timeline"]
+    seg = x16[int(tl0["first_onset_s"] * SR):int(tl0["last_offset_s"] * SR)] if tl0.get("speech_s", 0) > 0 else x16
+    M["dnsmos"] = guard("dnsmos", lambda: engines.dnsmos(seg))  # MOS of the narrated span only
     # ASR (two independent engine families)
     hyp_a = guard("engine_a", lambda: engines.asr_a(x16))
     rb = guard("engine_b", lambda: engines.asr_b(x16))
@@ -854,7 +856,7 @@ def measure(mp4, manifest_path, engines, thr):
 
 # -------------------------------------------------------------------------------------------------- decide
 GROUPS = {
-    "narration": ["v1.narration_present"],
+    "narration": ["v1.narration_present", "v1.narration_coverage"],
     "vad": ["v3.speech_ratio", "v3.leading_silence", "v4.pause_max", "v4.pause_median"],
     "asr": ["v2.engine_a", "v2.engine_b", "v2.consensus_wer", "v2.consensus_cer", "v2.critical_terms",
             "v2.instruction_leak", "v2.sales_closed_spoken"],
@@ -925,6 +927,9 @@ def decide(M, thr, profile="production", disable=(), overrides=None, policy=None
         sl = (M.get("stream_loudness") or {}).get("lufs")
         pres = None if not tl or sl is None else (tl.get("speech_s", 0) >= 1.0 and sl > -50)
         need("v1.narration_present", pres, lambda v: v is True, "speech>=1s and lufs>-50", ["vad", "ebur128_stream"])
+        # the narration must cover the video: no dead air after the last word (old renderShort padded to 20 s)
+        cov = None if not tl or not tl.get("speech_s") or M.get("audio_duration_s") is None else max(M["audio_duration_s"], M.get("duration_s") or 0.0) - tl["last_offset_s"]
+        need("v1.narration_coverage", cov, lambda v: v <= T["V1"]["trailing_silence_max_s"], T["V1"]["trailing_silence_max_s"], ["vad", "decode_16k"])
         # V3
         ml = M.get("master_loudness") or {}
         if M.get("master_present"):
