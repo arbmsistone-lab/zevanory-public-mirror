@@ -46,7 +46,7 @@ jobs:
           set -euo pipefail
           node --check worker/lead-magnet.mjs
           node --check worker/sales-public-worker.mjs
-          node --test tests/integration/lead-consent-postgres.test.mjs | tee p08.txt
+          node --test --test-reporter=tap tests/integration/lead-consent-postgres.test.mjs | tee p08.txt
           grep -qx "# tests 5" p08.txt
           grep -qx "# pass 5" p08.txt
           grep -qx "# skipped 0" p08.txt
