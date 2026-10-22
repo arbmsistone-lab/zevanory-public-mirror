@@ -11,6 +11,8 @@ on:
       - ".github/workflows/public-router-contract.yml"
       - "tests/test_public_router_deploy.py"
       - "scripts/ci/mutants_public_router.py"
+      - "scripts/ops/router_routes.py"
+      - "wrangler.public-router.toml"
 
 permissions:
   contents: read
@@ -18,7 +20,7 @@ permissions:
 jobs:
   contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -38,10 +40,10 @@ jobs:
           echo "::notice title=CONTRACT_TESTS::$(grep -E '^Ran [0-9]+ tests in ' /tmp/contract.txt || echo 'sem linha Ran') | $(tail -n 1 /tmp/contract.txt) | rc=$rc | SUITE_SECONDS=$secs"
           [ "$rc" = 0 ] || { echo "::error::suíte falhou (rc=$rc)"; exit 1; }
           # Contagem exata: um teste pulado ou ausente não pode passar despercebido.
-          grep -qx "Ran 19 tests in .*" /tmp/contract.txt || { echo "::error::contagem de testes diferente de 19"; exit 1; }
+          grep -qx "Ran 31 tests in .*" /tmp/contract.txt || { echo "::error::contagem de testes diferente de 31"; exit 1; }
           grep -qx "OK" /tmp/contract.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
           if grep -q "skipped" /tmp/contract.txt; then echo "::error::testes pulados"; exit 1; fi
-          echo "CONTRACT_TESTS=19 OK"
+          echo "CONTRACT_TESTS=31 OK"
       - name: Mutantes B02 (cada um precisa ser morto)
         if: always()
         shell: bash
@@ -51,9 +53,10 @@ jobs:
           set -euo pipefail
           rc=0
           python3 scripts/ci/mutants_public_router.py < /dev/null | tee /tmp/mutants.txt || rc=$?
-          echo "::notice title=MUTANTS_PUBLIC_ROUTER::$(grep '^MUTANT' /tmp/mutants.txt | sed 's/ — .*//' | paste -sd'|' - | sed 's/|/%0A/g')%0Arc=$rc"
+          # Tabela completa (id, resultado, descrição) como anotação: legível pela API de check-runs sem baixar o log.
+          echo "::notice title=MUTANTS_PUBLIC_ROUTER::$(grep -E '^MUTANTS?_|^MUTANT ' /tmp/mutants.txt | paste -sd'|' - | sed 's/%/%25/g; s/|/%0A/g')%0Arc=$rc"
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
           n="$(grep -c '^MUTANT M[0-9]*[a-z]* KILLED' /tmp/mutants.txt || true)"
-          [ "$n" = "19" ] || { echo "::error::esperados 19 mutantes mortos, obtidos $n"; exit 1; }
+          [ "$n" = "36" ] || { echo "::error::esperados 36 mutantes mortos, obtidos $n"; exit 1; }
           if grep -q '^MUTANT [^ ]* SURVIVED' /tmp/mutants.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi
