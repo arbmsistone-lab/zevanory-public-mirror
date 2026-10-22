@@ -271,6 +271,20 @@ class PublicRouterDeploy(unittest.TestCase):
             self.assertIn("ROUTER_READBACK_FAIL", out, name)
             self.assertNotIn("PUBLIC_ROUTE_READBACK=PASS", out, name)
 
+    def test_readbacks_query_only_the_canonical_account(self):
+        # Fixture pela URL COMPLETA da conta canônica: uma leitura em outra conta cai no 404 do stub e não passa.
+        dep_url = f"{ACCOUNT_URL}/workers/scripts/zevanory-public-router/deployments"
+        rc, out, _, curl, _ = run_step(self.readback, {dep_url: deployments(NEW), APEX: APEX_OK, SOLUCOES: SOLUCOES_OK},
+                                       {"PREV_VERSION_ID": PREV})
+        self.assertEqual(rc, 0, out)
+        self.assertIn(dep_url, curl)
+        self.assertNotIn(OTHER, curl)
+        rc, out, _, curl, _ = run_step(self.rollback, {dep_url: deployments(PREV)}, {"PREV_VERSION_ID": PREV})
+        self.assertEqual(rc, 0, out)
+        self.assertIn("ROLLBACK_READBACK=PASS", out)
+        self.assertIn(dep_url, curl)
+        self.assertNotIn(OTHER, curl)
+
     def test_readback_retry_defaults_and_injected_interval(self):
         # Padrão de produção fixo no passo: 12 tentativas, 5 s entre elas.
         self.assertIn('attempts="${ROUTER_READBACK_ATTEMPTS:-12}"', self.readback)

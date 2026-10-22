@@ -38,10 +38,10 @@ jobs:
           echo "::notice title=CONTRACT_TESTS::$(grep -E '^Ran [0-9]+ tests in ' /tmp/contract.txt || echo 'sem linha Ran') | $(tail -n 1 /tmp/contract.txt) | rc=$rc | SUITE_SECONDS=$secs"
           [ "$rc" = 0 ] || { echo "::error::suíte falhou (rc=$rc)"; exit 1; }
           # Contagem exata: um teste pulado ou ausente não pode passar despercebido.
-          grep -qx "Ran 18 tests in .*" /tmp/contract.txt || { echo "::error::contagem de testes diferente de 18"; exit 1; }
+          grep -qx "Ran 19 tests in .*" /tmp/contract.txt || { echo "::error::contagem de testes diferente de 19"; exit 1; }
           grep -qx "OK" /tmp/contract.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
           if grep -q "skipped" /tmp/contract.txt; then echo "::error::testes pulados"; exit 1; fi
-          echo "CONTRACT_TESTS=18 OK"
+          echo "CONTRACT_TESTS=19 OK"
       - name: Mutantes B02 (cada um precisa ser morto)
         if: always()
         shell: bash
