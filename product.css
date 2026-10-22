@@ -313,3 +313,12 @@ a:focus-visible,.button:focus-visible{outline:2px solid var(--brand-3);outline-o
    past the viewport, where main{overflow-x:hidden} would clip it. No effect when the text already fits. */
 .hero>*{min-width:0}
 h1{overflow-wrap:anywhere}
+/* P03 reflow (WCAG 1.4.10, teste executado em 320x568/320x256/640x400@2 e além, 256 e 240 px): campos de
+   formulário têm largura intrínseca (~282 px) e esticavam a coluna da grade além da tela; itens de grade
+   e flex podem encolher; palavras/URLs longas quebram em vez de alargar a página. Sem efeito quando cabe. */
+.lead-form{grid-template-columns:minmax(0,1fr)}
+.lead-form>*,.outcome-list>*,.offer>*,.problem-grid>*,.trust-grid>*,.card-grid>*,.fit-grid>*,.feature-grid>*,.catalog-grid>*,.process article>*{min-width:0}
+@media(max-width:300px){.header-inner{flex-wrap:wrap;row-gap:6px;padding-top:6px;padding-bottom:6px}.nav-cta{white-space:normal}}
+.lead-form input,.lead-form select,.lead-form textarea{min-width:0;max-width:100%}
+.status-pill{max-width:100%}
+main,.site-header,.site-footer{overflow-wrap:break-word}

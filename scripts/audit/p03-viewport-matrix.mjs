@@ -126,14 +126,17 @@ function measureLines(withTexts) {
 function focusState() {
   const main = document.querySelector("main");
   const a = document.activeElement;
-  const st = document.querySelector("main [role=status]");
+  const st = document.querySelector("[data-pg-ui][role=status]") || document.querySelector("main [role=status]");
   let visible = false;
-  if (a && main && main.contains(a)) {
+  // Modo corpo (tela baixa, ver paginacao.js): o palco envolve cabeçalho/<main>/rodapé, fora do <main>.
+  const palco = document.querySelector(".pg-palco");
+  const dentro = (el) => !!el && ((main && main.contains(el)) || (palco && palco.contains(el)));
+  if (dentro(a)) {
     const r = a.getBoundingClientRect();
     const hit = r.width && r.height ? document.elementFromPoint(r.left + Math.min(8, r.width / 2), r.top + Math.min(8, r.height / 2)) : null;
     visible = !!hit && (hit === a || a.contains(hit));
   }
-  return { inMain: !!(a && main && main.contains(a)), tag: a ? a.tagName : "", heading: !!(a && /^H[1-6]$/.test(a.tagName)), visible,
+  return { inMain: dentro(a), tag: a ? a.tagName : "", heading: !!(a && /^H[1-6]$/.test(a.tagName)), visible,
     status: st ? st.textContent : "", atual: main ? Number(main.dataset.pgAtual) : 0, total: main ? Number(main.dataset.pgTotal) : 0 };
 }
 
@@ -209,7 +212,7 @@ async function keyboardExtras(page, N, problems) {
     if ((await press("Home")) !== 1) problems.push("kbd_home");
     if ((await press("End")) !== N) problems.push("kbd_end");
     await press("Home");
-    const ok = await page.evaluate(() => { const b = document.querySelector("main .pg-prox, main [data-pg-ui] button:last-of-type"); if (!b) return false; b.focus(); return document.activeElement === b; });
+    const ok = await page.evaluate(() => { const b = document.querySelector("[data-pg-ui] .pg-prox, main [data-pg-ui] button:last-of-type"); if (!b) return false; b.focus(); return document.activeElement === b; });
     if (!ok) problems.push("kbd_button_not_focusable");
     else if ((await press("Enter")) !== 2) problems.push("kbd_button_enter");
   } else {

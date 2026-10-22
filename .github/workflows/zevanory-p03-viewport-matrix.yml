@@ -53,3 +53,54 @@ jobs:
             /tmp/p03/p03-viewport-matrix.json
             /tmp/p03/p03-viewport-matrix.csv
           retention-days: 30
+  # Auditoria adversarial (Sol): testes que ele pediu e não pôde executar, agora executados no CI.
+  # Reflow/zoom WCAG 1.4.10 (320x568, 320x256, 640x400@2 = 1280x800 a 200%, 256x568, 240x568) em TODAS
+  # as páginas; foco 2.4.3/2.4.7/2.4.11; <details> aberto no meio do bloco; #bloco-N e #id na carga;
+  # proxy de leitor de tela (árvore de acessibilidade do Chromium; NVDA/VoiceOver reais não rodam aqui).
+  # Depois, mutantes (inclusive os do Sol) que o gate tem de matar; o controle sem mutação tem de passar.
+  reflow-focus:
+    name: p03 / reflow-focus-mutants
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EXPECTED_PAGES: "71"
+      P03_WORKERS: "4"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned tools (outside the repo tree)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/p03 && cd /tmp/p03
+          npm init -y >/dev/null
+          npm install --no-save playwright@1.55.0 axe-core@4.10.2 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Serve candidate sales-public on localhost
+        run: |
+          set -euo pipefail
+          (python3 -m http.server 8790 --bind 127.0.0.1 --directory sales-public >/tmp/p03-http.log 2>&1 &)
+          for i in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8790/solucoes.html && exit 0; sleep 0.5; done
+          cat /tmp/p03-http.log; exit 1
+      - name: Reflow/zoom, foco, details, links profundos e proxy ARIA
+        working-directory: /tmp/p03
+        run: node "$GITHUB_WORKSPACE/scripts/audit/p03-reflow-focus.mjs" http://127.0.0.1:8790 "$GITHUB_WORKSPACE/sales-public" "$EXPECTED_PAGES" /tmp/p03/p03-reflow-focus
+      - name: Mutantes do gate (controle passa, mutantes falham)
+        if: always()
+        working-directory: /tmp/p03
+        run: node "$GITHUB_WORKSPACE/scripts/audit/p03-reflow-focus-mutants.mjs" "$GITHUB_WORKSPACE/sales-public" /tmp/p03/p03-reflow-focus-mutants.json
+      - name: Leitor de tela real
+        if: always()
+        run: echo "::notice title=P03_SCREEN_READER::NVDA/VoiceOver reais NAO executados (indisponiveis no CI em nuvem). A suite aria e PROXY (Playwright ariaSnapshot da arvore de acessibilidade do Chromium)."
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p03-reflow-focus
+          path: |
+            /tmp/p03/p03-reflow-focus.json
+            /tmp/p03/p03-reflow-focus.csv
+            /tmp/p03/p03-reflow-focus-mutants.json
+          retention-days: 30

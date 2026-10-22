@@ -16,11 +16,20 @@
 // - Teclado: PageDown/ArrowRight avançam, PageUp/ArrowLeft voltam, Home/End vão ao primeiro/último.
 //   Na troca, o foco vai ao título do bloco e um aria-live="polite" anuncia "Bloco X de N".
 // - Links profundos: #bloco-3 abre o bloco 3; #qualquer-id abre o bloco que contém o alvo.
+// - Reflow/zoom (WCAG 1.4.10, auditoria do Sol): em tela baixa (altura <= 600 px CSS, ex.: 320x256,
+//   1280x800 a 200% = 640x400) ou quando cabeçalho + rodapé + barra de compra + controles ocupariam
+//   mais da metade da altura, a paginação passa a valer para o <body> inteiro ("modo corpo"): cabeçalho,
+//   <main> e rodapé entram no fluxo paginado (continuam fora do <main>, landmarks preservados) e só
+//   os controles ficam fixos. Os nós são devolvidos aos seus lugares ao voltar ao modo normal.
+// - Índice de blocos: grade que se ajusta à largura (auto-fill, alvos de 44 px) e nunca passa da
+//   altura disponível; com mais blocos do que cabem, mostra uma janela de blocos com botões
+//   "anteriores/seguintes" (sem rolagem nem recorte em 320, 256 ou 240 px de largura).
 // - Impressão: paginacao.css mostra todo o conteúdo sem paginação.
 (() => {
   "use strict";
   const main = document.querySelector("main");
   if (!main || main.hasAttribute("data-pg-total")) return;
+  const corpo = document.body;
   const raiz = document.documentElement;
   const FOLGA = 8; // px livres acima/abaixo do bloco (contorno de foco não encosta na borda)
   const PREFIXO = "bloco-";
@@ -33,28 +42,25 @@
     return el;
   };
 
-  // Estrutura: os nós existentes são MOVIDOS (nunca clonados) para dentro do trilho, na mesma ordem.
+  // Estrutura: os nós existentes são MOVIDOS (nunca clonados) para dentro do trilho, na mesma ordem;
+  // um comentário marca o lugar de origem de cada um para a desmontagem (troca de modo).
   const palco = novo("div", "pg-palco", { role: "group", "aria-label": "Conteúdo paginado" });
   const trilho = novo("div", "pg-trilho");
   const fixos = novo("div", "pg-fixos");
-  const fixar = [...main.querySelectorAll(":scope > .buy-bar")];
-  while (main.firstChild) trilho.appendChild(main.firstChild);
-  for (const el of fixar) fixos.appendChild(el);
   palco.appendChild(trilho);
 
   const nav = novo("nav", "pg-controles", { "aria-label": "Blocos de conteúdo", "data-pg-ui": "" });
   const btnAnt = novo("button", "pg-botao pg-ant", { type: "button" });
-  btnAnt.innerHTML = '<span aria-hidden="true">‹</span> Anterior';
+  btnAnt.innerHTML = '<span aria-hidden="true">‹</span> <span class="pg-rot">Anterior</span>';
   const btnProx = novo("button", "pg-botao pg-prox", { type: "button" });
-  btnProx.innerHTML = 'Próxima <span aria-hidden="true">›</span>';
+  btnProx.innerHTML = '<span class="pg-rot">Próxima</span> <span aria-hidden="true">›</span>';
   const indice = novo("details", "pg-indice");
   const resumo = novo("summary", "pg-resumo");
   const lista = novo("ol", "pg-lista", { "aria-label": "Ir para o bloco" });
   indice.append(resumo, lista);
-  nav.append(btnAnt, indice, btnProx);
+  // O anúncio fica dentro do <nav> (landmark) para estar sempre numa região, em qualquer modo.
   const anuncio = novo("p", "pg-sr", { role: "status", "aria-live": "polite", "aria-atomic": "true", "data-pg-ui": "" });
-  main.append(palco, fixos, nav, anuncio);
-  raiz.classList.add("pg");
+  nav.append(btnAnt, indice, btnProx, anuncio);
 
   let atomos = []; // elementos indivisíveis (ou divididos por linhas), em ordem
   let blocosDe = new Map(); // átomo -> Set de índices de bloco (0-based)
@@ -62,6 +68,48 @@
   let atual = 0;
   let versao = 0;
   let intencao = null; // bloco pedido por #bloco-N na carga, até o leitor navegar
+  let modo = null; // "main" (cabeçalho/rodapé fixos) ou "corpo" (tudo paginado, tela baixa)
+  let lugares = []; // [comentário no lugar de origem, nó movido]
+  let hashPendente = false; // #bloco-N / #id da carga ainda sem blocos medidos
+  let janela = null; // início da janela do índice escolhido pelos botões anteriores/seguintes
+
+  const guardar = (n) => { const c = document.createComment("pg"); n.replaceWith(c); lugares.push([c, n]); return n; };
+  function montar(m) {
+    modo = m;
+    const cont = m === "corpo" ? corpo : main;
+    const fica = (n) => n.nodeType === 1 && (n.matches("script,style,link,template,noscript,.skip-link,[data-pg-ui]") || getComputedStyle(n).position === "fixed");
+    for (const n of [...cont.childNodes]) if (!fica(n)) trilho.appendChild(guardar(n));
+    // Barra de compra do celular: fixa no modo normal; no modo corpo volta ao fluxo (mais altura útil).
+    if (m === "main") for (const el of [...trilho.querySelectorAll(":scope > .buy-bar")]) fixos.appendChild(guardar(el));
+    const ultimo = lugares.length ? lugares[lugares.length - 1][0] : null;
+    if (m === "main") main.append(palco, fixos, nav);
+    else if (ultimo && ultimo.parentNode === corpo) ultimo.after(palco, fixos, nav);
+    else corpo.append(palco, fixos, nav);
+    raiz.classList.add("pg", "pg-montando");
+    raiz.classList.toggle("pg-corpo", m === "corpo");
+    main.setAttribute("data-pg-modo", m);
+    requestAnimationFrame(() => requestAnimationFrame(() => raiz.classList.remove("pg-montando")));
+  }
+  function desmontar() {
+    for (const a of atomos) a.removeAttribute("data-pg-fora");
+    atomos = [];
+    blocosDe = new Map();
+    trilho.style.transform = "";
+    trilho.style.clipPath = "";
+    // Ordem inversa: um nó movido duas vezes (barra de compra) volta primeiro ao trilho e depois ao lugar.
+    for (const [c, n] of lugares.reverse()) c.replaceWith(n);
+    lugares = [];
+    palco.remove(); fixos.remove(); nav.remove();
+  }
+  // Tela baixa: altura <= 600 px CSS, ou cabeçalho + rodapé + barra de compra + controles ocupando
+  // mais de 50% da altura (volta ao normal só abaixo de 40%: histerese, sem alternar a cada medida).
+  function querCorpo() {
+    const vh = window.innerHeight;
+    if (vh <= 600) return true;
+    let extra = nav.offsetHeight;
+    for (const e of corpo.querySelectorAll(".site-header,.site-footer,.buy-bar")) if (!e.closest("[data-pg-ui]")) extra += e.offsetHeight;
+    return extra > (modo === "corpo" ? 0.4 : 0.5) * vh;
+  }
 
   // Títulos e rótulos de campo ficam no mesmo bloco do que introduzem (nunca órfãos no fim).
   const ehTitulo = (el) => /^H[1-6]$/.test(el.tagName) || el.matches("label,.section-kicker,.eyebrow,.hero-panel-label,.section-head");
@@ -85,7 +133,11 @@
     const out = [];
     for (const r of rs) {
       const u = out[out.length - 1];
-      if (u && r.top < u.bot - 1) u.bot = Math.max(u.bot, r.bot);
+      // Mesma linha = sobreposição de mais da metade da menor altura. Linhas consecutivas cujos
+      // retângulos de tinta se sobrepõem um pouco (line-height < 1, ex.: título do hero) continuam
+      // linhas separadas; antes viravam uma unidade só, maior que a tela, e as últimas linhas nunca
+      // apareciam inteiras (teste de reflow em 320x256).
+      if (u && Math.min(u.bot, r.bot) - r.top > 0.5 * Math.min(u.bot - u.top, r.bot - r.top)) u.bot = Math.max(u.bot, r.bot);
       else out.push({ ...r });
     }
     return out.length ? out : [{ top: el.getBoundingClientRect().top - base, bot: el.getBoundingClientRect().bottom - base }];
@@ -168,6 +220,7 @@
   };
 
   function aplicar() {
+    janela = null;
     const b = blocos[atual];
     const H = palco.clientHeight;
     const ini = Math.max(0, b.ini - FOLGA);
@@ -176,8 +229,14 @@
     // prefers-reduced-motion do product.css), senão o foco iria para um título ainda "hidden".
     trilho.classList.add("pg-sem-transicao");
     trilho.style.transform = `translateY(${-ini}px)`;
-    const baixo = Math.max(0, altura - Math.min(b.fim + FOLGA, ini + H));
-    trilho.style.clipPath = `inset(${ini}px -16px ${baixo}px -16px)`;
+    // Recorte nas bordas do bloco com FOLGA, mas sem mostrar pedaço de linha do bloco vizinho: um
+    // elemento dividido entre linhas fica visível nos dois blocos, e a FOLGA revelaria 8 px da linha
+    // anterior/seguinte (linha parcialmente recortada, achado do teste de reflow em 320x256).
+    const ant = blocos[atual - 1], seg = blocos[atual + 1];
+    const topo = ant ? Math.max(ini, Math.min(b.ini, ant.fim)) : ini;
+    const fimVis = Math.min(seg ? Math.min(b.fim + FOLGA, Math.max(b.fim, seg.ini)) : b.fim + FOLGA, ini + H);
+    const baixo = Math.max(0, altura - fimVis);
+    trilho.style.clipPath = `inset(${topo}px -16px ${baixo}px -16px)`;
     for (const a of atomos) a.toggleAttribute("data-pg-fora", !blocosDe.get(a).has(atual));
     void getComputedStyle(trilho).transform; // aplica o estilo já sem transição
     for (const a of atomos) void getComputedStyle(a).visibility;
@@ -186,16 +245,43 @@
     resumo.textContent = `Bloco ${atual + 1} de ${n}`;
     btnAnt.setAttribute("aria-disabled", String(atual === 0));
     btnProx.setAttribute("aria-disabled", String(atual === n - 1));
-    for (const [i, a] of [...lista.querySelectorAll("a")].entries()) {
-      if (i === atual) a.setAttribute("aria-current", "true"); else a.removeAttribute("aria-current");
-    }
+    montarLista();
     main.setAttribute("data-pg-atual", String(atual + 1));
     main.setAttribute("data-pg-total", String(n));
   }
 
+  // Quantos alvos de 44 px cabem no índice: colunas pela largura (mesma conta do auto-fill do CSS:
+  // largura min(100% - 16px, 400px), padding 8, borda 1, vão 4) e linhas pela altura acima dos controles.
+  function capacidade() {
+    const r = nav.getBoundingClientRect();
+    const larg = Math.min(r.width - 16, 400);
+    const cols = Math.max(1, Math.floor((larg - 18 + 4) / 48));
+    const linhasCabem = Math.max(1, Math.floor((r.top - 6 - 8 - 18 + 4) / 48));
+    return Math.max(3, cols * linhasCabem);
+  }
   function montarLista() {
+    const ativo = document.activeElement;
+    const focoJanela = ativo && lista.contains(ativo) && ativo.matches(".pg-janela") ? ativo.dataset.pgDir : null;
     lista.textContent = "";
-    blocos.forEach((_, i) => {
+    const n = blocos.length, cap = capacidade();
+    const vagas = n <= cap ? n : cap - 2;
+    let ini = 0;
+    if (n > cap) {
+      ini = janela !== null ? janela : Math.floor(atual / vagas) * vagas;
+      ini = Math.min(Math.max(ini, 0), Math.max(0, n - vagas));
+    }
+    const fim = Math.min(n, ini + vagas);
+    const botaoJanela = (dir, de, ate, ativoB) => {
+      const li = novo("li");
+      const b = novo("button", "pg-janela", { type: "button", "data-pg-dir": dir, "aria-disabled": String(!ativoB),
+        "aria-label": ativoB ? `Blocos ${de} a ${ate}` : (dir < 0 ? "Sem blocos anteriores" : "Sem blocos seguintes") });
+      b.innerHTML = `<span aria-hidden="true">${dir < 0 ? "‹" : "›"}</span>`;
+      li.appendChild(b);
+      lista.appendChild(li);
+      return b;
+    };
+    if (n > cap) botaoJanela("-1", Math.max(1, ini - vagas + 1), ini, ini > 0);
+    for (let i = ini; i < fim; i++) {
       const li = novo("li");
       const a = novo("a", "", { href: `#${PREFIXO}${i + 1}` });
       const h = tituloDo(i);
@@ -203,26 +289,39 @@
       const sr = novo("span", "pg-sr");
       sr.textContent = `Bloco ${i + 1}${h ? ": " + h.textContent.trim().replace(/\s+/g, " ") : ""}`;
       a.appendChild(sr);
+      if (i === atual) a.setAttribute("aria-current", "true");
       li.appendChild(a);
       lista.appendChild(li);
-    });
+    }
+    if (n > cap) botaoJanela("1", fim + 1, Math.min(n, fim + vagas), fim < n);
+    if (focoJanela) lista.querySelector(`.pg-janela[data-pg-dir="${focoJanela}"]`)?.focus({ preventScroll: true });
+    lista.dataset.pgIni = String(ini + 1);
+    lista.dataset.pgFim = String(fim);
   }
 
   // Recalcula mantendo na tela o elemento em foco (ou o primeiro átomo visível).
   function paginar() {
     const ativo = document.activeElement;
     let ancora = ativo && trilho.contains(ativo) ? ativo : atomos.find((a) => blocosDe.get(a)?.has(atual));
+    const m = querCorpo() ? "corpo" : "main";
+    if (m !== modo) {
+      if (modo !== null) desmontar();
+      montar(m);
+      // Mover nós tira o foco: devolve ao mesmo elemento, sem rolar.
+      if (ativo && ativo !== document.body && ativo.isConnected && document.activeElement !== ativo) ativo.focus({ preventScroll: true });
+    }
     const H = palco.clientHeight - 2 * FOLGA;
-    if (H <= 0) return;
+    if (H <= 0) return; // sem altura ainda: o ResizeObserver chama de novo quando houver
     main.style.setProperty("--pg-util", H + "px");
     medir(H);
     versao++;
     // Link profundo #bloco-N ainda não "consumido" pelo leitor: continua valendo após o reflow.
     const i = intencao !== null ? intencao : blocoDe(ancora);
     atual = Math.min(Math.max(i >= 0 ? i : atual, 0), blocos.length - 1);
-    montarLista();
     aplicar();
     main.setAttribute("data-pg-versao", String(versao));
+    // Link profundo da carga que chegou antes da primeira medição válida: aplica agora.
+    if (hashPendente) { hashPendente = false; irParaHash(false); }
   }
 
   function focar(el) {
@@ -233,6 +332,7 @@
 
   function ir(i, { foco = true, hash = true, alvo = null } = {}) {
     intencao = null;
+    if (!blocos.length) return;
     const n = blocos.length;
     i = Math.min(Math.max(i, 0), n - 1);
     const mudou = i !== atual;
@@ -253,6 +353,7 @@
   function irParaHash(foco) {
     const id = decodeURIComponent(location.hash.slice(1));
     if (!id) return false;
+    if (!blocos.length) { hashPendente = true; return false; }
     const m = id.match(/^bloco-(\d+)$/);
     if (m) { ir(Number(m[1]) - 1, { foco, hash: false }); if (!foco) intencao = Number(m[1]) - 1; return true; }
     const alvo = document.getElementById(id);
@@ -266,12 +367,22 @@
   btnAnt.addEventListener("click", () => { if (atual > 0) ir(atual - 1); });
   btnProx.addEventListener("click", () => { if (atual < blocos.length - 1) ir(atual + 1); });
   lista.addEventListener("click", (e) => {
+    const b = e.target.closest(".pg-janela");
+    if (b) {
+      if (b.getAttribute("aria-disabled") === "true") return;
+      const n = blocos.length, vagas = capacidade() - 2;
+      const ini = Number(lista.dataset.pgIni) - 1;
+      janela = Math.min(Math.max(ini + Number(b.dataset.pgDir) * vagas, 0), Math.max(0, n - vagas));
+      montarLista();
+      return;
+    }
     const a = e.target.closest("a[href^='#']");
     if (!a) return;
     e.preventDefault();
     indice.open = false;
     ir(Number(a.getAttribute("href").slice(1 + PREFIXO.length)) - 1);
   });
+  indice.addEventListener("toggle", () => { if (indice.open) { janela = null; montarLista(); } });
   indice.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && indice.open) { indice.open = false; resumo.focus(); e.stopPropagation(); }
   });
