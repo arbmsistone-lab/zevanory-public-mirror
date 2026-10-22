@@ -1,0 +1,54 @@
+name: P08 lead consent E2E
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/lead-magnet.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "tests/integration/lead-consent-postgres.test.mjs"
+      - "tests/lead-magnet.test.mjs"
+      - "sales-public/material-gratuito.html"
+      - "material-gratuito/index.html"
+      - ".github/workflows/lead-consent-postgres.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lead-consent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Instalar cliente PostgreSQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: E2E sintético de consentimento e descadastro (5 testes)
+        env:
+          P08_PG_HOST: localhost
+          P08_PG_PORT: "5432"
+        run: |
+          set -euo pipefail
+          node --check worker/lead-magnet.mjs
+          node --check worker/sales-public-worker.mjs
+          node --test tests/integration/lead-consent-postgres.test.mjs | tee p08.txt
+          grep -qx "# tests 5" p08.txt
+          grep -qx "# pass 5" p08.txt
+          grep -qx "# skipped 0" p08.txt
+          grep -qx "# fail 0" p08.txt
+          grep -qx "# cancelled 0" p08.txt
