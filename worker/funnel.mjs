@@ -277,7 +277,8 @@ export async function handleFunnel(request, env, { sqlFactory, ctx } = {}) {
     if (!event || !isTrackedPage(event.page) || !sqlFactory) return new Response(null, { status: 204 });
     const userAgent = String(body.ua || "").slice(0, 300);
     const ip = String(body.ip || "").slice(0, 128);
-    const day = String(event.occurred_at || "").slice(0, 10);
+    const now = Date.now();
+    const day = new Date(now).toISOString().slice(0, 10);
     const salt = String(env.RESEND_API_KEY || env.DATABASE_URL || "zevanory");
     const visitorHash = await sha256Hex(`${day}|${ip}|${userAgent}|${salt}`);
     const production = String(env.MERCADOPAGO_ENV || "").toLowerCase() === "production";
@@ -289,7 +290,7 @@ export async function handleFunnel(request, env, { sqlFactory, ctx } = {}) {
       visitorHash,
       userAgent,
       hasJavaScript: body.js === true,
-      now: Date.now(),
+      now,
       production,
       salesOpen: String(env.SALE_GLOBALLY_ENABLED || "").toLowerCase() === "true",
       testMode,
