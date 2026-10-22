@@ -1,0 +1,62 @@
+name: public-router-contract
+
+# B02 (PR #866): contrato do deploy do router público e da descoberta de rotas, executado em runner do GitHub
+# (independente de quem escreveu a PR), com contagem exata e o conjunto de mutantes impresso no log.
+# Só pull_request: nunca dispara no merge, nunca usa segredo, sem rede além do checkout.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/public-router-deploy.yml"
+      - ".github/workflows/zpc-cloudflare-route-discovery.yml"
+      - ".github/workflows/public-router-contract.yml"
+      - "tests/test_public_router_deploy.py"
+      - "scripts/ci/mutants_public_router.py"
+      - "scripts/ops/router_routes.py"
+      - "wrangler.public-router.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Router deploy contract (offline, contagem exata)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml" 2>/dev/null || python3 -m pip install --quiet --user --break-system-packages "pyyaml==6.0.2"
+          start=$(date +%s); rc=0
+          python3 -m unittest tests.test_public_router_deploy -v 2>&1 < /dev/null | tee /tmp/contract.txt || rc=$?
+          secs=$(( $(date +%s) - start ))
+          echo "SUITE_SECONDS=$secs rc=$rc"
+          # Resumo também como anotação (legível pela API de check-runs sem baixar o log).
+          echo "::notice title=CONTRACT_TESTS::$(grep -E '^Ran [0-9]+ tests in ' /tmp/contract.txt || echo 'sem linha Ran') | $(tail -n 1 /tmp/contract.txt) | rc=$rc | SUITE_SECONDS=$secs"
+          [ "$rc" = 0 ] || { echo "::error::suíte falhou (rc=$rc)"; exit 1; }
+          # Contagem exata: um teste pulado ou ausente não pode passar despercebido.
+          grep -qx "Ran 33 tests in .*" /tmp/contract.txt || { echo "::error::contagem de testes diferente de 33"; exit 1; }
+          grep -qx "OK" /tmp/contract.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
+          if grep -q "skipped" /tmp/contract.txt; then echo "::error::testes pulados"; exit 1; fi
+          echo "CONTRACT_TESTS=33 OK"
+      - name: Mutantes B02 (cada um precisa ser morto)
+        if: always()
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/ci/mutants_public_router.py < /dev/null | tee /tmp/mutants.txt || rc=$?
+          # Tabela completa (id, resultado, descrição) como anotação: legível pela API de check-runs sem baixar o log.
+          echo "::notice title=MUTANTS_PUBLIC_ROUTER::$(grep -E '^MUTANTS?_|^MUTANT ' /tmp/mutants.txt | paste -sd'|' - | sed 's/%/%25/g; s/|/%0A/g')%0Arc=$rc"
+          [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
+          n="$(grep -c '^MUTANT M[0-9]*[a-z]* KILLED' /tmp/mutants.txt || true)"
+          [ "$n" = "40" ] || { echo "::error::esperados 40 mutantes mortos, obtidos $n"; exit 1; }
+          if grep -q '^MUTANT [^ ]* SURVIVED' /tmp/mutants.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi

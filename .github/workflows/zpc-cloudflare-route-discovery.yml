@@ -14,13 +14,27 @@ jobs:
     timeout-minutes: 5
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'e3caca88f4343c3cdfcf66eebe6ac124' }}
+      # B02: conta canônica ZEVANORY fixa (CLOUDFLARE_DEPLOY_AUTHORITY.md). Antes: segredo com padrão de outra conta (não a ZEVANORY),
+      # e a saída não provava a conta proprietária. Qualquer outra conta é recusada abaixo.
+      EXPECTED_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
+      CLOUDFLARE_ACCOUNT_ID: 1b26415802588185a86c1d4d3ebf5bdb
     steps:
+      - name: Refuse any account other than the canonical ZEVANORY account
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${CLOUDFLARE_ACCOUNT_ID:-}" != "$EXPECTED_ACCOUNT_ID" ] || [ "$EXPECTED_ACCOUNT_ID" != "1b26415802588185a86c1d4d3ebf5bdb" ]; then
+            echo "::error title=ROUTE_DISCOVERY_ACCOUNT::conta=${CLOUDFLARE_ACCOUNT_ID:-ausente} recusada; só 1b26415802588185a86c1d4d3ebf5bdb"
+            exit 1
+          fi
+          echo "ROUTE_DISCOVERY_ACCOUNT=1b26415802588185a86c1d4d3ebf5bdb"
+
       - name: Probe authenticated route-discovery scope
         id: auth
         shell: bash
         run: |
           set -euo pipefail
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
             echo "route_scope=false" >> "$GITHUB_OUTPUT"
             echo "CLOUDFLARE_ZONE_DISCOVERY=CREDENTIAL_ABSENT"
@@ -40,6 +54,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
           auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN")
           ZONE_ID="$(python3 -c "import json; d=json.load(open('/tmp/zones.json')); print(d['result'][0]['id'])")"
           curl -fsS "${auth[@]}" "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/workers/routes" -o /tmp/routes.json
@@ -50,6 +65,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
           curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts" -o /tmp/scripts.json
           python3 -c "import json; d=json.load(open('/tmp/scripts.json')); assert d.get('success') is True, d.get('errors'); ids=[s.get('id') for s in d.get('result',[]) if s.get('id')]; assert 'zevanory' in ids, ids; print('CF_WORKER_ZEVANORY_VISIBLE=PASS')"
 
