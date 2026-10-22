@@ -83,10 +83,19 @@ jobs:
           enc(){ sed 's/%/%25/g' | tr '\n' '|' | sed 's/|$//; s/|/%0A/g'; }
           echo "::notice title=T2_${{ matrix.scenario }}_NEON_SRC::commit=$(git rev-parse HEAD) $( (cd docker-compose && sha256sum docker-compose.yml compute_wrapper/shell/compute.sh compute_wrapper/Dockerfile compute_wrapper/var/db/postgres/configs/config.json pageserver_config/pageserver.toml docker-compose.b07.yml) | enc)"
           docker version --format 'docker {{.Server.Version}}'; docker compose version; df -h / | tail -1
+      - name: jq estático oficial (jqlang 1.7.1, SHA-256 fixado)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/jq-linux-amd64" https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64
+          got=$(sha256sum "$RUNNER_TEMP/jq-linux-amd64" | cut -d' ' -f1)
+          echo "::notice title=T2_${{ matrix.scenario }}_JQ::jq-1.7.1 linux-amd64 sha256=$got"
+          test "$got" = 5942c9b0934e510ee61eb3e30273f1b3fe2590df93933a93d7c58b81d19c8ff5
       - name: T2 ${{ matrix.scenario }} (pilha Neon local)
         shell: bash
         env:
           NEON_DIR: ${{ runner.temp }}/neon/docker-compose
+          JQ_STATIC: ${{ runner.temp }}/jq-linux-amd64
         run: |
           set -uo pipefail
           bash sandbox/b07-f02-08-lab/t2/t2_neon.sh "${{ matrix.scenario }}" "$RUNNER_TEMP/t2" 2>&1 | tee "$RUNNER_TEMP/t2.log"

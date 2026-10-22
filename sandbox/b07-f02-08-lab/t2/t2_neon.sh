@@ -88,12 +88,24 @@ services:
 YML
 DC+=(-f "$NEON_DIR/docker-compose.s3.yml")
 obs S3_SUBSTITUTO "minio=$MINIO_IMAGE sha256(docker-compose.s3.yml)=$(sha256sum "$NEON_DIR/docker-compose.s3.yml" | cut -d' ' -f1)"
-# Dockerfile do compute_wrapper oficial, só com o FROM trocado pelo digest fixado (ARG TAG não aceita digest).
-sed "s#^FROM \$REPOSITORY/\${COMPUTE_IMAGE}:\$TAG#FROM $(lock COMPUTE)#" "$NEON_DIR/compute_wrapper/Dockerfile" > "$W/Dockerfile.b07"
-grep -q "^FROM $(lock COMPUTE)\$" "$W/Dockerfile.b07" || infra_fail "Dockerfile.b07 sem FROM fixado"
-obs DOCKERFILE_B07 "sha256 original=$(sha256sum "$NEON_DIR/compute_wrapper/Dockerfile" | cut -d' ' -f1) b07=$(sha256sum "$W/Dockerfile.b07" | cut -d' ' -f1)"
-docker build --progress=plain -f "$W/Dockerfile.b07" -t built-compute "$NEON_DIR/compute_wrapper" > "$W/build.log" 2>&1 \
+# compute_wrapper: o Dockerfile oficial faz apt-get install curl jq netcat-openbsd sobre a imagem da compute, que é
+# Debian 11; os índices de segurança do bullseye já devolvem 404 (registrado na PR). Com TENANT_ID/TIMELINE_ID
+# fornecidos, o compute.sh oficial (inalterado) só precisa de `jq` e de `nc -z host porta`. Sem apt: jq estático
+# oficial (jqlang, SHA-256 conferido no workflow) e um nc mínimo em bash (/dev/tcp) — só se a imagem não tiver.
+CTX=$W/ctx; mkdir -p "$CTX"; cp -r "$NEON_DIR/compute_wrapper/." "$CTX/"
+cp "${JQ_STATIC:?JQ_STATIC}" "$CTX/b07-jq"; cp "$HERE/nc-shim.sh" "$CTX/b07-nc"
+cat > "$W/Dockerfile.b07" <<DOCKER
+FROM $(lock COMPUTE)
+USER root
+COPY b07-jq b07-nc /tmp/b07/
+RUN for t in jq nc; do command -v \$t >/dev/null 2>&1 && echo "b07: \$t da imagem" || { install -m 0755 /tmp/b07/b07-\$t /usr/local/bin/\$t; echo "b07: \$t instalado"; }; done; jq --version; command -v curl || echo "b07: sem curl (não usado com TENANT_ID/TIMELINE_ID)"
+RUN mkdir -p /ext-src/pg_hint_plan-src /postgres/contrib/file_fdw /ext-src/postgis-src/ && chown postgres /ext-src/pg_hint_plan-src /postgres/contrib/file_fdw /ext-src/postgis-src
+USER postgres
+DOCKER
+obs DOCKERFILE_B07 "sha256 oficial=$(sha256sum "$NEON_DIR/compute_wrapper/Dockerfile" | cut -d' ' -f1) b07=$(sha256sum "$W/Dockerfile.b07" | cut -d' ' -f1) jq=$(sha256sum "$CTX/b07-jq" | cut -d' ' -f1) nc=$(sha256sum "$CTX/b07-nc" | cut -d' ' -f1)"
+docker build --progress=plain -f "$W/Dockerfile.b07" -t built-compute "$CTX" > "$W/build.log" 2>&1 \
   || infra_fail "build compute_wrapper: $(grep -Ei 'error|failed' "$W/build.log" | tail -5 | tr '\n' ' ' | cut -c1-600)"
+note "BUILD_B07: $(grep -E 'b07:|jq-1' "$W/build.log" | tr '\n' ' ' | cut -c1-300)"
 
 export TENANT_ID=$(openssl rand -hex 16) TIMELINE_ID=$(openssl rand -hex 16)
 IDENT=$(cat /proc/sys/kernel/random/uuid)
