@@ -162,6 +162,16 @@ jobs:
           python3 scripts/ops/router_routes.py snapshot "$T/router-routes-before.json"
           echo "ROUTES_SNAPSHOT=$T/router-routes-before.json" >> "$GITHUB_ENV"
 
+      - name: Preflight — prove Workers Routes Write before any upload (fail closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "${CLOUDFLARE_API_TOKEN:-}" | tr -d '[:space:]')"; export CLOUDFLARE_API_TOKEN
+          # Um token com Workers Scripts Write mas sem Zone > Workers Routes Write deixaria o wrangler subir o código e
+          # só então falhar nas rotas. Prova de escrita ANTES do upload: PUT idempotente de uma rota do próprio router
+          # com os MESMOS valores da foto (padrão e script) e releitura igual à foto. 403 ou qualquer erro -> sem deploy.
+          python3 scripts/ops/router_routes.py preflight "${ROUTES_SNAPSHOT:?foto ausente}"
+
       - name: Deploy public router Worker (tagged with the release SHA)
         shell: bash
         run: |

@@ -40,10 +40,10 @@ jobs:
           echo "::notice title=CONTRACT_TESTS::$(grep -E '^Ran [0-9]+ tests in ' /tmp/contract.txt || echo 'sem linha Ran') | $(tail -n 1 /tmp/contract.txt) | rc=$rc | SUITE_SECONDS=$secs"
           [ "$rc" = 0 ] || { echo "::error::suíte falhou (rc=$rc)"; exit 1; }
           # Contagem exata: um teste pulado ou ausente não pode passar despercebido.
-          grep -qx "Ran 31 tests in .*" /tmp/contract.txt || { echo "::error::contagem de testes diferente de 31"; exit 1; }
+          grep -qx "Ran 33 tests in .*" /tmp/contract.txt || { echo "::error::contagem de testes diferente de 33"; exit 1; }
           grep -qx "OK" /tmp/contract.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
           if grep -q "skipped" /tmp/contract.txt; then echo "::error::testes pulados"; exit 1; fi
-          echo "CONTRACT_TESTS=31 OK"
+          echo "CONTRACT_TESTS=33 OK"
       - name: Mutantes B02 (cada um precisa ser morto)
         if: always()
         shell: bash
@@ -57,6 +57,6 @@ jobs:
           echo "::notice title=MUTANTS_PUBLIC_ROUTER::$(grep -E '^MUTANTS?_|^MUTANT ' /tmp/mutants.txt | paste -sd'|' - | sed 's/%/%25/g; s/|/%0A/g')%0Arc=$rc"
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
           n="$(grep -c '^MUTANT M[0-9]*[a-z]* KILLED' /tmp/mutants.txt || true)"
-          [ "$n" = "36" ] || { echo "::error::esperados 36 mutantes mortos, obtidos $n"; exit 1; }
+          [ "$n" = "40" ] || { echo "::error::esperados 40 mutantes mortos, obtidos $n"; exit 1; }
           if grep -q '^MUTANT [^ ]* SURVIVED' /tmp/mutants.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi

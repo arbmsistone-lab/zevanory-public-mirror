@@ -21,6 +21,9 @@ contagens e códigos HTTP; sob GITHUB_ACTIONS=true os ids de zona e o token sane
   snapshot SAIDA   só leitura; grava a foto normalizada (todas as rotas de todos os scripts nas zonas envolvidas)
   verify   FOTO    depois do deploy: zona == (rotas de outros scripts da foto, intactas) + (padrões do toml -> router)
   restore  FOTO    no retorno: cria as que faltam, reverte as alteradas, apaga as acrescentadas; relê e exige igualdade
+  preflight FOTO   antes do deploy: prova que o token ESCREVE rotas (PUT idempotente de uma rota do próprio script, mesmo
+                   padrão e script) e relê a zona igual à foto; sem Workers Routes Write -> 403 e o deploy é recusado
+                   antes de qualquer upload (o wrangler subiria o código e só falharia nas rotas)
 """
 import hashlib
 import json
@@ -287,14 +290,40 @@ def cmd_restore(tok, script, path):
     say(f"ROUTES_RESTORE_READBACK=PASS routes={sum(len(z['routes']) for z in snap['zones'].values())}")
 
 
+def cmd_preflight(tok, script, path):
+    snap = load_snapshot(path, script)
+    probed = 0
+    for zid, z in snap["zones"].items():
+        reverify_zone(tok, zid, z["name"])
+        target = {r["pattern"]: r["script"] for r in z["routes"]}
+        live = inventory(tok, zid)
+        if any(diff({p: r["script"] for p, r in live.items()}, target)):
+            raise Fail("zona diverge da foto antes da prova de escrita")
+        own = sorted(p for p in target if target[p] == script)
+        if own and not probed:
+            pat = own[0]
+            ok, code, _ = call(tok, "PUT", f"{API}/zones/{zid}/workers/routes/{live[pat]['id']}",
+                               {"pattern": pat, "script": script})
+            if not ok:
+                raise Fail(f"token sem escrita de rotas (PUT http={code}) — deploy recusado")
+            probed = 1
+            if any(diff({p: r["script"] for p, r in inventory(tok, zid).items()}, target)):
+                raise Fail("zona mudou com a prova de escrita")
+    if not probed:
+        raise Fail("nenhuma rota do script para a prova de escrita — deploy recusado")
+    say(f"ROUTES_PREFLIGHT=PASS write_probe={probed} zones={len(snap['zones'])}")
+
+
 def main(argv):
-    if len(argv) != 3 or argv[1] not in ("snapshot", "verify", "restore"):
-        err("ROUTES_USAGE", "uso: router_routes.py snapshot|verify|restore ARQUIVO")
+    if len(argv) != 3 or argv[1] not in ("snapshot", "verify", "restore", "preflight"):
+        err("ROUTES_USAGE", "uso: router_routes.py snapshot|verify|restore|preflight ARQUIVO")
         return 2
-    title = {"snapshot": "ROUTES_SNAPSHOT_FAIL", "verify": "ROUTES_VERIFY_FAIL", "restore": "ROUTES_RESTORE_FAIL"}[argv[1]]
+    title = {"snapshot": "ROUTES_SNAPSHOT_FAIL", "verify": "ROUTES_VERIFY_FAIL", "restore": "ROUTES_RESTORE_FAIL",
+             "preflight": "ROUTES_PREFLIGHT_FAIL"}[argv[1]]
     try:
         tok, script = setup()
-        {"snapshot": cmd_snapshot, "verify": cmd_verify, "restore": cmd_restore}[argv[1]](tok, script, argv[2])
+        {"snapshot": cmd_snapshot, "verify": cmd_verify, "restore": cmd_restore,
+         "preflight": cmd_preflight}[argv[1]](tok, script, argv[2])
         return 0
     except Fail as e:
         err(title, f"{e} | http={','.join(sorted(set(CODES))) or 'none'}")

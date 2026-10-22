@@ -197,6 +197,7 @@ if os.path.exists(st_path):
                     st["seq"] = st.get("seq", 0) + 1
                     z["routes"].append({"id": "%%032x" %% (0xadd00000 + st["seq"]), "pattern": op[1], "script": op[2]})
         st["active"] = st.get("deploy_version", "22222222-2222-2222-2222-222222222222")
+        st.update(st.pop("after_deploy", {}))  # mudança injetada pelo teste só depois do upload (ex.: escrita 403)
         st["message"] = "ZEVANORY public router " + os.environ.get("GITHUB_SHA", "")
     elif "rollback" in a and not st.get("rollback_noop"):
         st["active"] = a[a.index("rollback") + 1]  # como o real: só a versão; rotas ficam como estão
@@ -297,7 +298,7 @@ def run_step(script, fixtures, env_extra=None, npx_rc=0, npx_leak=False, state=N
 
 class Job:
     """Simula o job `deploy` passo a passo num mesmo runner: $GITHUB_ENV acumulado, `failure()` e o `if` do retorno."""
-    ORDER = ("Account guard", "rollback point", "Snapshot Worker routes", "Deploy public router Worker",
+    ORDER = ("Account guard", "rollback point", "Snapshot Worker routes", "Preflight", "Deploy public router Worker",
              "Verify full route inventory", "Readback", "Automatic rollback")
 
     def __init__(self, steps, state, gha=False):
@@ -307,7 +308,8 @@ class Job:
         fx = {ACCOUNT_URL: ACCOUNT_OK}
         with tempfile.TemporaryDirectory() as d:
             failed, first = False, True
-            for name in self.ORDER:
+            # Na ordem do WORKFLOW (não na de ORDER): um passo movido de lugar muda o comportamento simulado.
+            for name in sorted(self.ORDER, key=lambda n: self.steps.index(step(self.steps, n))):
                 s = step(self.steps, name)
                 if name == "Automatic rollback":
                     envs = dict(l.split("=", 1) for l in (Path(d) / "ghenv").read_text().splitlines() if "=" in l)
@@ -353,13 +355,14 @@ class PublicRouterDeploy(unittest.TestCase):
         self.assertLess(idx("Account guard"), idx("rollback point"))
         self.assertLess(idx("rollback point"), idx("Deploy public router Worker"))
         self.assertLess(idx("rollback point"), idx("Snapshot Worker routes"))
-        self.assertLess(idx("Snapshot Worker routes"), idx("Deploy public router Worker"))
+        self.assertLess(idx("Snapshot Worker routes"), idx("Preflight"))
+        self.assertLess(idx("Preflight"), idx("Deploy public router Worker"))
         self.assertLess(idx("Deploy public router Worker"), idx("Verify full route inventory"))
         self.assertLess(idx("Verify full route inventory"), idx("Readback"))
         self.assertLess(idx("Readback"), idx("Automatic rollback"))
         self.assertEqual(idx("Automatic rollback"), len(names) - 1)
         # Foto e verificação não têm `if`: rodam sempre que os anteriores passam (failure() padrão encerra o resto).
-        for n in ("Snapshot Worker routes", "Verify full route inventory"):
+        for n in ("Snapshot Worker routes", "Preflight", "Verify full route inventory"):
             self.assertNotIn("if", self.steps[idx(n)], n)
         cond = self.rollback_step["if"]
         for part in ("failure()", "env.DEPLOY_ATTEMPTED == '1'", "env.PREV_VERSION_ID != ''"):
@@ -578,6 +581,7 @@ class RouteInventory(unittest.TestCase):
     def setUp(self):
         self.steps = load(ROUTER_WF)["jobs"]["deploy"]["steps"]
         self.snapshot = step(self.steps, "Snapshot Worker routes")["run"]
+        self.preflight = step(self.steps, "Preflight")["run"]
         self.verify = step(self.steps, "Verify full route inventory")["run"]
         self.rollback = step(self.steps, "Automatic rollback")["run"]
 
@@ -610,6 +614,8 @@ class RouteInventory(unittest.TestCase):
         self.assertIn('python3 scripts/ops/router_routes.py snapshot "$T/router-routes-before.json"', self.snapshot)
         self.assertIn('echo "ROUTES_SNAPSHOT=$T/router-routes-before.json" >> "$GITHUB_ENV"', self.snapshot)
         self.assertNotRegex(self.snapshot, r"\|\|\s*true|wrangler")
+        self.assertIn('python3 scripts/ops/router_routes.py preflight "${ROUTES_SNAPSHOT:?', self.preflight)
+        self.assertNotRegex(self.preflight, r"\|\|\s*true|npx")
         self.assertIn('python3 scripts/ops/router_routes.py verify "${ROUTES_SNAPSHOT:?', self.verify)
         self.assertIn('python3 scripts/ops/router_routes.py restore "$ROUTES_SNAPSHOT"', self.rollback)
         src = ROUTES_SCRIPT.read_text()
@@ -751,7 +757,8 @@ class RouteInventory(unittest.TestCase):
 
     def test_restore_is_certified_by_reread_not_by_write_status(self):
         # Escritas "com sucesso" que não aplicam nada (API mentirosa) e escritas recusadas (token sem permissão).
-        for name, extra in (("lying_writes", {"lie_writes": True}), ("write_403", {"fail": {"write": "403"}})):
+        # write_403 só depois do upload: antes dele a prova de escrita (preflight) já recusaria o deploy.
+        for name, extra in (("lying_writes", {"lie_writes": True}), ("write_403", {"after_deploy": {"fail": {"write": "403"}}})):
             st = cf_state(on_deploy=[["remove", "zevanory.api.br/api/*"]], **extra)
             job = Job(self.steps, st).run()
             rc, out, _, _ = job.res["Automatic rollback"]
@@ -806,8 +813,57 @@ class RouteInventory(unittest.TestCase):
                 self.assertEqual(job.res[name][0], 0, (name, job.res[name][1]))
             self.assertNotIn("Automatic rollback", job.res)
             self.assertIn("ROUTES_VERIFY=PASS", job.res["Verify full route inventory"][1])
-            self.assertNotIn("writes", job.final, "o fluxo de sucesso nunca escreve rotas pela API")
+            self.assertIn("ROUTES_PREFLIGHT=PASS write_probe=1 zones=1", job.res["Preflight"][1])
+            # Única escrita pela API no fluxo de sucesso: a prova idempotente do preflight (mesmos valores).
+            self.assertEqual(job.final["writes"], [["PUT", ZONE]])
             self.assertEqual(inv(job.final), inv(cf_state()))
+
+    # --- prova de escrita de rotas antes do upload (preflight) ---------------------------------------------
+    def test_token_without_routes_write_never_uploads_the_worker(self):
+        # Token com Workers Scripts Write mas sem Zone > Workers Routes Write: toda escrita de rota responde 403.
+        for gha in (False, True):
+            for fail in ("403", "500"):
+                job = Job(self.steps, cf_state(fail={"write": fail}), gha=gha).run()
+                self.assertEqual(job.res["Snapshot Worker routes"][0], 0)
+                rc, out, npx, _ = job.res["Preflight"]
+                self.assertNotEqual(rc, 0)
+                self.assertIn("ROUTES_PREFLIGHT_FAIL", out)
+                self.assertIn(f"PUT http={fail}", out)
+                self.assertNotIn("ROUTES_PREFLIGHT=PASS", out)
+                self.assertEqual(npx, "", "nenhuma chamada ao wrangler")
+                self.assertNotIn("Deploy public router Worker", job.res)
+                self.assertNotIn("Automatic rollback", job.res, "nada foi tentado: não há retorno")
+                self.assertNotIn("deploys", job.final, "zero wrangler deploy")
+                self.assertEqual(job.final["active"], PREV)
+                self.assertEqual(inv(job.final), inv(cf_state()))
+                self._no_leak(out, gha)
+
+    def test_preflight_rewrites_one_own_route_with_identical_values(self):
+        before = cf_state()
+        with tempfile.TemporaryDirectory() as d:
+            rc, out, _, _, _ = run_step(self.snapshot, {}, state=cf_state(), workdir=d)
+            self.assertEqual(rc, 0, out)
+            rc, out, _, curl, _ = run_step(self.preflight, {}, workdir=d)
+            self.assertEqual(rc, 0, out)
+            calls = [json.loads(l) for l in curl.splitlines()]
+            writes = [c for c in calls if c[c.index("-X") + 1] != "GET"]
+            self.assertEqual(len(writes), 1, "uma única escrita")
+            own = sorted(PATTERNS)[0]
+            rid = next(r["id"] for r in self._routes(before) if r["pattern"] == own)
+            w = writes[0]
+            self.assertEqual(w[w.index("-X") + 1], "PUT")
+            self.assertEqual(w[-1], f"https://api.cloudflare.com/client/v4/zones/{ZONE}/workers/routes/{rid}")
+            self.assertEqual(json.loads(w[w.index("--data") + 1]), {"pattern": own, "script": ROUTER})
+            self.assertEqual(LAST["state"]["zones"][ZONE]["routes"], self._routes(before), "zona idêntica (ids inclusive)")
+            # Zona já diverge da foto: recusa sem escrever nada.
+            st = json.loads((Path(d) / "st.json").read_text())
+            st.pop("writes")
+            self._routes(st).pop()
+            (Path(d) / "st.json").write_text(json.dumps(st))
+            rc, out, _, _, _ = run_step(self.preflight, {}, workdir=d)
+            self.assertNotEqual(rc, 0)
+            self.assertIn("diverge da foto antes da prova", out)
+            self.assertNotIn("writes", LAST["state"])
 
 class RouteDiscoveryAccount(unittest.TestCase):
     def setUp(self):

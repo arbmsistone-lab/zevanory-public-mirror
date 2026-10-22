@@ -12,6 +12,7 @@ REPO = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().paren
 R = (REPO / ".github/workflows/public-router-deploy.yml").read_text()
 D = (REPO / ".github/workflows/zpc-cloudflare-route-discovery.yml").read_text()
 S = (REPO / "scripts/ops/router_routes.py").read_text()
+PREFLIGHT = "Preflight — prove Workers Routes Write before any upload (fail closed)"
 TARGET = {"R": ("ROUTER_WORKFLOW", "wf.yml"), "D": ("DISCOVERY_WORKFLOW", "wf.yml"), "S": ("ROUTER_ROUTES_SCRIPT", "router_routes.py")}
 
 
@@ -22,6 +23,21 @@ def drop_step(text, name):
     while j < len(lines) and not lines[j].startswith("      - ") and not re.match(r"^\S", lines[j]):
         j += 1
     return "\n".join(lines[:i] + lines[j:])
+
+
+def move_after(text, name, after):
+    """Move o passo `name` para logo depois do passo `after` (mesmo conteúdo, outra posição)."""
+    lines = text.split("\n")
+    i = next(k for k, l in enumerate(lines) if l.strip() == f"- name: {name}")
+    j = i + 1
+    while j < len(lines) and not lines[j].startswith("      - ") and not re.match(r"^\S", lines[j]):
+        j += 1
+    block, rest = lines[i:j], lines[:i] + lines[j:]
+    a = next(k for k, l in enumerate(rest) if l.strip() == f"- name: {after}")
+    b = a + 1
+    while b < len(rest) and not rest[b].startswith("      - ") and not re.match(r"^\S", rest[b]):
+        b += 1
+    return "\n".join(rest[:b] + block + rest[b:])
 
 
 def sub(text, old, new):
@@ -72,6 +88,11 @@ M = {
     "M27 snapshot allows conflicts and router drift": ("S", lambda: sub(S, 'if conflicts or drift:', 'if False:')),
     "M28 restore skips zone ownership re-check": ("S", lambda: sub(S, '        reverify_zone(tok, zid, z["name"])\n        target = {r["pattern"]: r["script"] for r in z["routes"]}\n        live', '        target = {r["pattern"]: r["script"] for r in z["routes"]}\n        live')),
     "M29 add-mask echoed outside Actions": ("S", lambda: sub(S, 'if GHA and value:', 'if value:')),
+    # --- Prova de escrita de rotas antes do upload (token sem Workers Routes Write não pode subir o código) ---
+    "M30 skip the routes-write preflight": ("R", lambda: drop_step(R, PREFLIGHT)),
+    "M31 preflight runs after the deploy": ("R", lambda: move_after(R, PREFLIGHT, "Deploy public router Worker (tagged with the release SHA)")),
+    "M32 preflight writes a different value": ("S", lambda: sub(S, '{"pattern": pat, "script": script})', '{"pattern": pat, "script": "zevanory"})')),
+    "M33 preflight failure tolerated": ("R", lambda: sub(R, 'python3 scripts/ops/router_routes.py preflight "${ROUTES_SNAPSHOT:?foto ausente}"', 'python3 scripts/ops/router_routes.py preflight "${ROUTES_SNAPSHOT:?foto ausente}" || true')),
 }
 
 
