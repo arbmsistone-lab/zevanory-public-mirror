@@ -1,0 +1,89 @@
+# B07/F02-08 T2: sobreposição ao docker-compose oficial do neondatabase/neon (commit fixado no workflow).
+# Copiada para o diretório docker-compose/ do checkout do Neon e usada com `-f docker-compose.yml -f este`.
+# - imagens por digest (variáveis exportadas pelo t2_neon.sh a partir de images.lock);
+# - rede `sknet` só para os safekeepers: `docker network disconnect` da compute1 nela corta a compute dos
+#   safekeepers sem cortar o pageserver (a compute continua lendo páginas; só o quórum de WAL some);
+# - computes sem reinício automático (uma compute cercada não volta sozinha e reelege por cima da nova);
+# - compute2 (failover) e compute3 (oráculo) são cópias da compute1 na MESMA tenant/timeline;
+# - config.json das computes = o oficial com shared_buffers 1MB -> 128MB (B07_CONFIGS, gerado e com SHA-256 no
+#   t2_neon.sh). Com 1MB, sem quórum, a compute não pode despejar página suja além do LSN confirmado ("xlog flush
+#   request ... is not satisfied") e as leituras de T2-c travavam ou falhavam ao acaso (rodada 4 da PR);
+# - safekeeper4–6 (perfil m9): segundo conjunto, usado só pelo mutante M9.
+networks:
+  sknet: {}
+
+x-compute: &compute
+  image: built-compute
+  restart: "no"
+  entrypoint: ["/shell/compute.sh"]
+  volumes:
+    - ${B07_CONFIGS:?B07_CONFIGS}:/var/db/postgres/configs/
+    - ./compute_wrapper/shell/:/shell/
+  networks: [default, sknet]
+  depends_on: [pageserver]
+
+x-sk: &sk
+  image: ${NEON_IMAGE:?NEON_IMAGE}
+  restart: always
+  networks: [sknet]
+  entrypoint: ["/bin/sh", "-c"]
+  depends_on: [storage_broker, minio_create_buckets]
+
+services:
+  minio:
+    image: ${MINIO_IMAGE:?MINIO_IMAGE}
+    networks: [default, sknet]
+  minio_create_buckets:
+    image: ${MC_IMAGE:?MC_IMAGE}
+    networks: [default, sknet]
+  storage_broker:
+    image: ${NEON_IMAGE:?NEON_IMAGE}
+    networks: [default, sknet]
+  pageserver:
+    image: ${NEON_IMAGE:?NEON_IMAGE}
+    networks: [default, sknet]
+  safekeeper1:
+    image: ${NEON_IMAGE:?NEON_IMAGE}
+    networks: [sknet]
+  safekeeper2:
+    image: ${NEON_IMAGE:?NEON_IMAGE}
+    networks: [sknet]
+  safekeeper3:
+    image: ${NEON_IMAGE:?NEON_IMAGE}
+    networks: [sknet]
+  compute1:
+    restart: "no"
+    networks:
+      sknet: {}
+    volumes:
+      - ${COMPUTE1_CONFIGS:-${B07_CONFIGS:?B07_CONFIGS}}:/var/db/postgres/configs/
+  compute2:
+    <<: *compute
+    environment:
+      - PG_VERSION=16
+      - TENANT_ID=${TENANT_ID:?TENANT_ID}
+      - TIMELINE_ID=${TIMELINE_ID2:-${TIMELINE_ID}}
+  compute3:
+    <<: *compute
+    environment:
+      - PG_VERSION=16
+      - TENANT_ID=${TENANT_ID:?TENANT_ID}
+      - TIMELINE_ID=${TIMELINE_ID:?TIMELINE_ID}
+  safekeeper4:
+    <<: *sk
+    profiles: ["m9"]
+    environment: [SAFEKEEPER_ID=4, AWS_ACCESS_KEY_ID=minio, AWS_SECRET_ACCESS_KEY=password]
+    command:
+      - "safekeeper --listen-pg=safekeeper4:5454 --listen-http='0.0.0.0:7676' --id=4 --broker-endpoint=http://storage_broker:50051 -D /data --remote-storage=\"{endpoint='http://minio:9000', bucket_name='neon', bucket_region='eu-north-1', prefix_in_bucket='/safekeeper_m9/'}\""
+  safekeeper5:
+    <<: *sk
+    profiles: ["m9"]
+    environment: [SAFEKEEPER_ID=5, AWS_ACCESS_KEY_ID=minio, AWS_SECRET_ACCESS_KEY=password]
+    command:
+      - "safekeeper --listen-pg=safekeeper5:5454 --listen-http='0.0.0.0:7676' --id=5 --broker-endpoint=http://storage_broker:50051 -D /data --remote-storage=\"{endpoint='http://minio:9000', bucket_name='neon', bucket_region='eu-north-1', prefix_in_bucket='/safekeeper_m9/'}\""
+  safekeeper6:
+    <<: *sk
+    profiles: ["m9"]
+    environment: [SAFEKEEPER_ID=6, AWS_ACCESS_KEY_ID=minio, AWS_SECRET_ACCESS_KEY=password]
+    command:
+      - "safekeeper --listen-pg=safekeeper6:5454 --listen-http='0.0.0.0:7676' --id=6 --broker-endpoint=http://storage_broker:50051 -D /data --remote-storage=\"{endpoint='http://minio:9000', bucket_name='neon', bucket_region='eu-north-1', prefix_in_bucket='/safekeeper_m9/'}\""

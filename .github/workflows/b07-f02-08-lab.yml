@@ -1,0 +1,68 @@
+name: b07-f02-08-lab
+
+# B07/F02-08: reprodução do laboratório de cerca (época + dono) em runner do GitHub, independente de quem
+# escreveu a PR. Dois clusters PostgreSQL 16 locais (initdb/pg_ctl, socket Unix, portas distintas) simulam a
+# partição; o job FALHA se o comportamento observado divergir da conclusão documentada ("F02-08 FAIL
+# arquitetural"). Só pull_request: nunca dispara no merge, sem segredos, sem rede além do checkout/apt.
+on:
+  pull_request:
+    paths:
+      - "sandbox/b07-f02-08-lab/**"
+      - ".github/workflows/b07-f02-08-lab.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: PostgreSQL 16 (binários locais, sem serviço)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x /usr/lib/postgresql/16/bin/postgres ]; then
+            sudo apt-get update -q
+            sudo apt-get install -y -q postgresql-16
+          fi
+          id postgres
+          /usr/lib/postgresql/16/bin/postgres --version | tee /tmp/pgver.txt
+          grep -Eq '^postgres \(PostgreSQL\) 16\.' /tmp/pgver.txt || { echo "::error::PostgreSQL 16 ausente"; exit 1; }
+      - name: Laboratório F02-08 (cenários 1, 2 e 3)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo bash sandbox/b07-f02-08-lab/f02_08_lab.sh /var/tmp/zev-b07-f0208 < /dev/null 2>&1 | tee "$RUNNER_TEMP/lab.log"
+      - name: Mutantes da cerca em ponto único
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo bash sandbox/b07-f02-08-lab/mutantes.sh /var/tmp/zev-b07-mut < /dev/null 2>&1 | tee "$RUNNER_TEMP/mut.log"
+      - name: O verificador recusa um log adulterado (asserção viva)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Se o primário antigo tivesse RECUSADO o escritor antigo, a conclusão cairia: o verificador tem de falhar.
+          sed 's/^escritor antigo W1 epoch=1 op2 em A: INSERT 0 1$/escritor antigo W1 epoch=1 op2 em A: ERROR:  FENCED/' \
+            "$RUNNER_TEMP/lab.log" > "$RUNNER_TEMP/neg.log"
+          if bash sandbox/b07-f02-08-lab/verificar.sh "$RUNNER_TEMP/neg.log" "$RUNNER_TEMP/mut.log" > "$RUNNER_TEMP/neg.out"; then
+            echo "::error::verificador aceitou log adulterado"; exit 1
+          fi
+          grep -E 'DIVERGE C2_A_aceita_antigo|CONCLUSAO_DIVERGE' "$RUNNER_TEMP/neg.out"
+          echo "VERIFICADOR_NEGATIVO=OK"
+      - name: Conclusão F02-08 conferida contra o observado
+        shell: bash
+        run: |
+          set -euo pipefail
+          rc=0
+          bash sandbox/b07-f02-08-lab/verificar.sh "$RUNNER_TEMP/lab.log" "$RUNNER_TEMP/mut.log" | tee "$RUNNER_TEMP/ver.txt" || rc=$?
+          # Resumo como anotações (legíveis pela API de check-runs sem baixar o log).
+          enc(){ paste -sd'|' - | sed 's/%/%25/g; s/|/%0A/g'; }
+          echo "::notice title=F02_08_OBSERVADO::$(grep -E '^(OK|DIVERGE)' "$RUNNER_TEMP/ver.txt" | enc)"
+          echo "::notice title=F02_08_MUTANTES::$(grep '^MUTANT' "$RUNNER_TEMP/ver.txt" | tr -s ' ' | enc)"
+          echo "::notice title=F02_08_CONCLUSAO::$(grep '^CONCLUSAO' "$RUNNER_TEMP/ver.txt" | enc) rc=$rc"
+          exit "$rc"

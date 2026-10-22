@@ -1,0 +1,112 @@
+name: b07-f02-08-t1-t2
+
+# B07/F02-08 (PROPOSTA_B07 §7–8). Só pull_request: nunca dispara no merge, sem segredos, sem recurso em nuvem.
+# T1: instrução exata do Worker (época, dono, db_identity) contra PostgreSQL 16 efêmero + mutantes M1–M7, M12.
+# T2: pilha Neon de código aberto (docker compose oficial do neondatabase/neon, commit fixado; imagens em
+#     images.lock): failover com compute2 na mesma timeline, escritor antigo depois do failover (T2-a),
+#     partição e retorno (T2-b), commit local cancelado (T2-c), oráculo independente compute3 + safekeepers.
+#     Mutantes M8 e M9 em jobs próprios; M10, M11 e M14 no veredito. Cenário não atingido => ERROR_INFRA (falha).
+on:
+  pull_request:
+    paths:
+      - "sandbox/b07-f02-08-lab/**"
+      - ".github/workflows/b07-f02-08-t1-t2.yml"
+
+permissions:
+  contents: read
+
+env:
+  NEON_COMMIT: fa504217c61bbcaf5c512d75830564541f917f8f
+
+jobs:
+  t1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: PostgreSQL 16 (binários locais, sem serviço)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x /usr/lib/postgresql/16/bin/postgres ]; then sudo apt-get update -q; sudo apt-get install -y -q postgresql-16; fi
+          /usr/lib/postgresql/16/bin/postgres --version
+          node --version
+      - name: T1 + mutantes (node --test contra PG16 efêmero)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo chmod -R a+rX sandbox/b07-f02-08-lab
+          sudo env "PATH=$PATH" bash sandbox/b07-f02-08-lab/t1/run_t1.sh /var/tmp/zev-b07-t1 < /dev/null 2>&1 | tee "$RUNNER_TEMP/t1.log"
+          enc(){ sed 's/%/%25/g' | tr '\n' '|' | sed 's/|$//; s/|/%0A/g'; }
+          echo "::notice title=T1_SUITE::$(grep -E '^(T1_PG|== original|   # pass)' "$RUNNER_TEMP/t1.log" | head -3 | enc)"
+          echo "::notice title=T1_MUTANTES::$(grep -E '^(== M|RESULT)' "$RUNNER_TEMP/t1.log" | enc)"
+          esperado="original PASS
+          M1_sem_epoca KILLED
+          M2_comparacao_frouxa KILLED
+          M3a_null_no_trigger SURVIVED
+          M3b_null_trigger_e_coluna KILLED
+          M4_sem_dono KILLED
+          M5_trigger_nao_bloqueante KILLED
+          M6_promocao_sem_cas KILLED
+          M7_sem_update KILLED
+          M12_worker_ignora_identidade KILLED"
+          esperado=$(sed 's/^ *//' <<< "$esperado")
+          obtido=$(sed -n 's/^RESULT //p' "$RUNNER_TEMP/t1.log")
+          if grep -Eq 'MUTANTE NÃO APLICADO|RESTAURACAO FALHOU' "$RUNNER_TEMP/t1.log"; then echo "::error::mutante não aplicado/restaurado"; exit 1; fi
+          if [ "$obtido" = "$esperado" ]; then echo "::notice title=T1_CONCLUSAO::T1 PASS (M3a sobrevive: equivalente, coluna epoch NOT NULL)"; else
+            echo "::error title=T1_CONCLUSAO::tabela de mutantes difere do esperado"; exit 1; fi
+
+  t2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [base_a, base_b, m8, m9]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Neon docker-compose no commit fixado
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/neon" && cd "$RUNNER_TEMP/neon"
+          git init -q && git remote add origin https://github.com/neondatabase/neon.git
+          git sparse-checkout set docker-compose
+          git fetch -q --depth 1 --filter=blob:none origin "$NEON_COMMIT"
+          git checkout -q FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$NEON_COMMIT"
+          cp "$GITHUB_WORKSPACE/sandbox/b07-f02-08-lab/t2/docker-compose.b07.yml" docker-compose/
+          enc(){ sed 's/%/%25/g' | tr '\n' '|' | sed 's/|$//; s/|/%0A/g'; }
+          echo "::notice title=T2_${{ matrix.scenario }}_NEON_SRC::commit=$(git rev-parse HEAD) $( (cd docker-compose && sha256sum docker-compose.yml compute_wrapper/shell/compute.sh compute_wrapper/Dockerfile compute_wrapper/var/db/postgres/configs/config.json pageserver_config/pageserver.toml docker-compose.b07.yml) | enc)"
+          docker version --format 'docker {{.Server.Version}}'; docker compose version; df -h / | tail -1
+      - name: jq estático oficial (jqlang 1.7.1, SHA-256 fixado)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/jq-linux-amd64" https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64
+          got=$(sha256sum "$RUNNER_TEMP/jq-linux-amd64" | cut -d' ' -f1)
+          echo "::notice title=T2_${{ matrix.scenario }}_JQ::jq-1.7.1 linux-amd64 sha256=$got"
+          test "$got" = 5942c9b0934e510ee61eb3e30273f1b3fe2590df93933a93d7c58b81d19c8ff5
+      - name: T2 ${{ matrix.scenario }} (pilha Neon local)
+        shell: bash
+        env:
+          NEON_DIR: ${{ runner.temp }}/neon/docker-compose
+          JQ_STATIC: ${{ runner.temp }}/jq-linux-amd64
+        run: |
+          set -uo pipefail
+          bash sandbox/b07-f02-08-lab/t2/t2_neon.sh "${{ matrix.scenario }}" "$RUNNER_TEMP/t2" 2>&1 | tee "$RUNNER_TEMP/t2.log"
+          echo "orquestrador rc=${PIPESTATUS[0]}"
+      - name: Veredito T2 ${{ matrix.scenario }} + mutantes do classificador/oráculo
+        shell: bash
+        run: bash sandbox/b07-f02-08-lab/t2/t2_verdict.sh "${{ matrix.scenario }}" "$RUNNER_TEMP/t2"
+      - name: Diagnóstico (sempre)
+        if: always()
+        shell: bash
+        run: |
+          docker ps -a --format '{{.Names}} {{.Status}}' || true
+          for f in "$RUNNER_TEMP"/t2/compute*.log; do [ -f "$f" ] && { echo "== $f"; tail -60 "$f"; }; done
+          for c in b07-pageserver-1 b07-safekeeper1-1; do echo "== $c"; docker logs --tail 40 "$c" 2>&1 || true; done
