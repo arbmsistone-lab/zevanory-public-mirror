@@ -21,6 +21,8 @@ on:
       - "tests/test_node_suite_manifest.py"
       - "scripts/ci/node_suite_check.py"
       - "scripts/ci/node-suite-reporter.mjs"
+      - "tests/helpers/**"
+      - "tests/guards/**"
       - "wrangler*.toml"
       - "package.json"
       - "package-lock.json"
@@ -121,6 +123,13 @@ jobs:
           grep -qx "Ran 14 tests in .*" nm.txt || { echo "::error::contagem de testes diferente de 14"; exit 1; }
           if grep -q "skipped" nm.txt; then echo "::error::testes pulados"; exit 1; fi
           grep -qx "OK" nm.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
+      - name: Guarda de portabilidade da suíte (fora do manifesto; contagem exata própria)
+        run: |
+          set -eo pipefail
+          # tests/guards/portability.test.mjs: helper de texto CRLF, preflight TOOL_MISSING e tmp único (AVAL Sol 081).
+          node --test tests/guards/*.test.mjs | tee guards.txt
+          echo "::notice title=COUNTS_GUARDS (esperado 3)::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' guards.txt | paste -sd' ' -)"
+          grep -qx "# tests 3" guards.txt && grep -qx "# pass 3" guards.txt && grep -qx "# skipped 0" guards.txt && grep -qx "# fail 0" guards.txt && grep -qx "# cancelled 0" guards.txt
       - name: Head do PR (mesma árvore do merge, ou suíte Node também no head)
         if: github.event_name == 'pull_request'
         env:

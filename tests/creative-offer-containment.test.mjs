@@ -4,6 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import {
   ZEV_CREATIVE_CATALOG, DEFAULT_CREATIVE_OFFER, SALES_ORIGIN,
   brandSafeCreativeViolation, assertBrandSafeCreative, creativeLandingUrl,
@@ -11,7 +12,7 @@ import {
 } from "../worker/creative-autonomy.mjs";
 import { runMultichannelAutonomy, PINTEREST_APPROVED_BRAND_PIN_URL } from "../worker/multichannel-autonomy.mjs";
 
-const read = (p) => readFileSync(new URL(p, import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const read = (p) => readTextNormalized(new URL(p, import.meta.url));
 const worker = read("../worker/cloudflare-worker.recovered.mjs");
 const products = JSON.parse(read("../data/products.json"));
 const official = { creative_id: "c-zev", offer_id: "ZEV-LCX-011", product: "ZEVANORY Lucro & Caixa", price_brl: 247, brand: "ZEVANORY", title: "Passo a passo para salão", content: "Lucro & Caixa · garantia de 7 dias.", landing_url: "https://vendas.zevanory.api.br/lucro-e-caixa?utm_source=pinterest" };

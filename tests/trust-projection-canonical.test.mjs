@@ -3,7 +3,7 @@
 // UNVERIFIED ceiling of #792, and the vnext dialog must not invent quorum numbers.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { legacyTrustProjection } from "../worker/trust-projection.mjs";
 import { CONTROL_PLANE_VNEXT_JS } from "../worker/control-plane-vnext-source.mjs";
 
@@ -47,5 +47,5 @@ test("SHA comparison is case-insensitive", () => {
 test("vnext dialog does not default a missing quorum to 3 / minimum 2", () => {
   assert.doesNotMatch(CONTROL_PLANE_VNEXT_JS, /t\?\.total\|\|3|t\?\.required\|\|2/);
   assert.match(CONTROL_PLANE_VNEXT_JS, /SEM QUORUM INDEPENDENTE PROVADO/);
-  assert.equal(readFileSync(new URL("../worker/live-recovered/control-plane-vnext.js", import.meta.url), "utf8").replace(/\r\n/g, "\n"), CONTROL_PLANE_VNEXT_JS);
+  assert.equal(readTextNormalized(new URL("../worker/live-recovered/control-plane-vnext.js", import.meta.url)), CONTROL_PLANE_VNEXT_JS);
 });
