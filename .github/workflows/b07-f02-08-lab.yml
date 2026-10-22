@@ -58,4 +58,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash sandbox/b07-f02-08-lab/verificar.sh "$RUNNER_TEMP/lab.log" "$RUNNER_TEMP/mut.log"
+          rc=0
+          bash sandbox/b07-f02-08-lab/verificar.sh "$RUNNER_TEMP/lab.log" "$RUNNER_TEMP/mut.log" | tee "$RUNNER_TEMP/ver.txt" || rc=$?
+          # Resumo como anotações (legíveis pela API de check-runs sem baixar o log).
+          enc(){ paste -sd'|' - | sed 's/%/%25/g; s/|/%0A/g'; }
+          echo "::notice title=F02_08_OBSERVADO::$(grep -E '^(OK|DIVERGE)' "$RUNNER_TEMP/ver.txt" | enc)"
+          echo "::notice title=F02_08_MUTANTES::$(grep '^MUTANT' "$RUNNER_TEMP/ver.txt" | tr -s ' ' | enc)"
+          echo "::notice title=F02_08_CONCLUSAO::$(grep '^CONCLUSAO' "$RUNNER_TEMP/ver.txt" | enc) rc=$rc"
+          exit "$rc"
