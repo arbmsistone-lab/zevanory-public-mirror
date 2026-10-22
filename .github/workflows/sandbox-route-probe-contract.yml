@@ -1,0 +1,57 @@
+name: sandbox-route-probe-contract
+
+# B02 sandbox (sandbox-route-probe.yml): contrato offline da prova real de rotas em girolocal.api.br — Cloudflare falsa
+# com estado e permissões por token, contagem exata e mutantes impressos no log. Só pull_request: nunca dispara no merge,
+# nunca usa segredo, sem rede além do checkout.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/sandbox-route-probe.yml"
+      - ".github/workflows/sandbox-route-probe-contract.yml"
+      - "sandbox/route-probe/**"
+      - "sandbox/rollback-secret-probe/single-run-guard.sh"
+      - "scripts/ops/router_routes.py"
+      - "scripts/ci/mutants_sandbox_route_probe.py"
+      - "tests/test_sandbox_route_probe.py"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Sandbox route probe contract (offline, exact count)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml" 2>/dev/null || python3 -m pip install --quiet --user --break-system-packages "pyyaml==6.0.2"
+          rc=0
+          python3 -m unittest tests.test_sandbox_route_probe -v 2>&1 < /dev/null | tee /tmp/contract.txt || rc=$?
+          echo "::notice title=CONTRACT_TESTS::$(grep -E '^Ran [0-9]+ tests in ' /tmp/contract.txt || echo 'sem linha Ran') | $(tail -n 1 /tmp/contract.txt) | rc=$rc"
+          [ "$rc" = 0 ] || { echo "::error::suíte falhou (rc=$rc)"; exit 1; }
+          grep -qx "Ran 24 tests in .*" /tmp/contract.txt || { echo "::error::contagem de testes diferente de 24"; exit 1; }
+          grep -qx "OK" /tmp/contract.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
+          if grep -q "skipped" /tmp/contract.txt; then echo "::error::testes pulados"; exit 1; fi
+          echo "CONTRACT_TESTS=24 OK"
+      - name: Mutants (each must be killed)
+        if: always()
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/ci/mutants_sandbox_route_probe.py < /dev/null | tee /tmp/mutants.txt || rc=$?
+          echo "::notice title=MUTANTS_SANDBOX_ROUTE_PROBE::$(grep -E '^MUTANTS?_|^MUTANT ' /tmp/mutants.txt | paste -sd'|' - | sed 's/%/%25/g; s/|/%0A/g')%0Arc=$rc"
+          [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
+          n="$(grep -c '^MUTANT [A-Z][0-9]* KILLED' /tmp/mutants.txt || true)"
+          [ "$n" = "41" ] || { echo "::error::esperados 41 mutantes mortos, obtidos $n"; exit 1; }
+          if grep -q '^MUTANT [^ ]* SURVIVED' /tmp/mutants.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then echo "::error::arquivo modificado/criado pelos mutantes"; exit 1; fi
