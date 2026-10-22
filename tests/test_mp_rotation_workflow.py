@@ -113,7 +113,8 @@ class MpRotationWorkflow(unittest.TestCase):
             with tempfile.TemporaryDirectory() as d:
                 pf = Path(d) / "p.json"
                 pf.write_text(json.dumps({"generatedAt": generated}))
-                code = snippet.replace("/tmp/zpc-sales-preflight.json", str(pf))
+                # as_posix: no Windows str(pf) tem "\\", que dentro do literal JS vira escape e quebra o caminho.
+                code = snippet.replace("/tmp/zpc-sales-preflight.json", pf.as_posix())
                 return subprocess.run(["node", "--input-type=module", "-e", code], env={**os.environ, "PREFLIGHT_AFTER": after},
                                       stdin=subprocess.DEVNULL, timeout=60).returncode == 0
         self.assertTrue(fresh("2026-10-21T19:59:30Z", "2026-10-21T20:00:49.750Z"), "virada de hora")

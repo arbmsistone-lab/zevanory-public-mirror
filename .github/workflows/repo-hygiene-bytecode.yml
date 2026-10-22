@@ -52,7 +52,12 @@ jobs:
           # No Linux, o mp-rotation-contract roda os 22 testes sem pular nenhum. Aqui os 8 que executam os passos
           # bash do workflow (curl/npx falsos com shebang POSIX, bash) são pulados COM razão LINUX_ONLY;
           # qualquer outro pulo (ex.: jq/node ausentes) ou falha derruba o job.
-          python -m unittest tests.test_mp_rotation_workflow -v < /dev/null 2>&1 | tr -d '\r' | tee /tmp/mp.txt
+          rc=0
+          python -m unittest tests.test_mp_rotation_workflow -v < /dev/null 2>&1 | tr -d '\r' > /tmp/mp.txt || rc=$?
+          cat /tmp/mp.txt
+          # Diagnóstico legível sem baixar o log: cada falha, erro ou pulo vira anotação.
+          grep -E "^(FAIL|ERROR):| \.\.\. (FAIL|ERROR|skipped)|Error:" /tmp/mp.txt | head -20 | while IFS= read -r l; do echo "::warning title=MP_ROTATION_WINDOWS::$l"; done
+          [ "$rc" = 0 ] || { echo "::error::unittest saiu com $rc"; exit 1; }
           grep -qx "Ran 22 tests in .*" /tmp/mp.txt || { echo "::error::contagem diferente de 22"; exit 1; }
           grep -qx "OK (skipped=8)" /tmp/mp.txt || { echo "::error::esperado OK (skipped=8)"; exit 1; }
           n="$(grep -c "skipped 'LINUX_ONLY: " /tmp/mp.txt || true)"
