@@ -165,6 +165,16 @@ test("retenção: inscrição com mais de 12 meses é apagada (com evento), rece
   assert.deepEqual(psql("select contact from waitlist_signups"), [{ contact: "nova@exemplo.com" }]);
   assert.equal(Number(psql("select count(*)::int as n from waitlist_events where event='erased_retention'")[0].n), 1);
   assert.equal((await W.runWaitlistRetention(env, { sqlFactory })).skipped, "already_ran_today");
+  assert.equal(await env.ZEVANORY_PRIVATE_ARTIFACTS.get(W.SEEN_MARKER), "1", "uso marcado no KV");
+  // Bandeira desligada e lista nunca ligada: nenhuma consulta ao banco (merge sem efeito em produção).
+  let queries = 0;
+  const counting = () => ({ query: async () => { queries++; return []; } });
+  const never = await W.runWaitlistRetention({ DATABASE_URL: "x", ZEVANORY_PRIVATE_ARTIFACTS: kv() }, { sqlFactory: counting, force: true });
+  assert.deepEqual([never.skipped, queries], ["never_enabled", 0]);
+  // Desligada DEPOIS de ter sido usada: a retenção continua (dados apagados em 12 meses mesmo após a Fase A).
+  const store = kv(); await store.put(W.SEEN_MARKER, "1");
+  const after = await W.runWaitlistRetention({ DATABASE_URL: "x", ZEVANORY_PRIVATE_ARTIFACTS: store }, { sqlFactory, force: true });
+  assert.deepEqual(after, { ok: true, erased: 0 });
 });
 
 test("restrições do esquema: nicho fora da lista e referência fora do formato são recusados pelo banco", { skip }, async () => {

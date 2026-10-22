@@ -22,7 +22,11 @@ export const VISITOR_RETENTION_DAYS = 400;
 const SALES = "https://vendas.zevanory.api.br";
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/;
 const RETENTION_MARKER = "zpc:waitlist:retention:v1:last";
+// Marca (KV, sem dado pessoal) de que a lista já foi ligada alguma vez: com a bandeira desligada e sem
+// esta marca, a retenção horária não faz NENHUMA consulta ao banco (merge sem efeito em produção).
+export const SEEN_MARKER = "zpc:waitlist:seen:v1";
 let schemaReady = false;
+let seenMarked = false;
 
 const HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: HEADERS });
@@ -109,7 +113,7 @@ export async function ensureWaitlistSchema(sql) {
   for (const ddl of WAITLIST_DDL) await sql.query(ddl, []);
   schemaReady = true;
 }
-export function resetWaitlistSchemaCache() { schemaReady = false; }
+export function resetWaitlistSchemaCache() { schemaReady = false; seenMarked = false; }
 
 async function recordEvent(sql, ref, niche, event, version = null) {
   await sql.query("insert into waitlist_events (contact_ref, niche, event, consent_version) values ($1, $2, $3, $4)", [ref || null, niche || null, event, version]);
@@ -212,6 +216,7 @@ export async function runWaitlistRetention(env, { sqlFactory, now = Date.now(), 
   if (!env?.DATABASE_URL || !sqlFactory) return { ok: false, reason: "waitlist_retention_unconfigured" };
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
   const day = new Date(now).toISOString().slice(0, 10);
+  if (!flagOn(env)) { let seen = null; try { seen = await kv?.get?.(SEEN_MARKER); } catch {} if (!seen) return { ok: true, skipped: "never_enabled" }; }
   if (!force) { try { if ((await kv?.get?.(RETENTION_MARKER)) === day) return { ok: true, skipped: "already_ran_today" }; } catch {} }
   const sql = sqlFactory(env.DATABASE_URL);
   const exists = await sql.query("select to_regclass('waitlist_signups') is not null as present", []);
@@ -236,6 +241,7 @@ export async function handleWaitlist(request, env, { sqlFactory, ctx } = {}) {
   if (!sqlFactory || !env.DATABASE_URL) return json(503, { ok: false, code: "indisponivel" });
   const sql = sqlFactory(env.DATABASE_URL);
   if (request.method !== "POST") return json(405, { ok: false });
+  if (!seenMarked) { seenMarked = true; try { await env.ZEVANORY_PRIVATE_ARTIFACTS?.put?.(SEEN_MARKER, "1"); } catch {} }
   let body = {};
   try { body = await request.json(); } catch {}
   try {
