@@ -50,14 +50,17 @@ test("captions carry the free material and channel UTM (sales closed: no price, 
   for (const ch of ["facebook", "instagram", "tiktok"]) { assert.match(captionFor(p, ch), /Material gratuito/); assert.doesNotMatch(captionFor(p, ch), /garantia de 7 dias|R\$|\/comprar/i); }
 });
 
-test("pack renders the tip and the offer for each day with ready captions", async () => {
+test("pack renders the tip and the offer for each day with ready captions", async (t) => {
   const { buildPack } = await import("../scripts/channels/short-pack.mjs");
-  const { readFile, rm } = await import("node:fs/promises");
-  const out = "/tmp/zevanory-pack-test";
-  await rm(out, { recursive: true, force: true });
+  const { readFile, rm, mkdtemp } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  // Diretório único por processo sob os.tmpdir() (antes caminho fixo em /tmp: EPERM ou inexistente no Windows).
+  const out = await mkdtemp(join(tmpdir(), "zevanory-pack-"));
+  t.after(() => rm(out, { recursive: true, force: true }));
   const n = await buildPack({ start: "2026-10-12", days: 3, out, render: async (plan, base) => ({ duration: 14.2, voice: "test", file: base + ".mp4" }) });
   assert.equal(n.produced.length, 6);
-  const txt = await readFile(out + "/legendas.txt", "utf8");
+  const txt = await readFile(join(out, "legendas.txt"), "utf8");
   for (const d of ["2026-10-12", "2026-10-13", "2026-10-14"]) { assert.match(txt, new RegExp(d + "\\.mp4")); assert.match(txt, new RegExp(d + "-dica\\.mp4")); }
   assert.doesNotMatch(txt, /garantia de 7 dias|R\$ ?\d|\/comprar/i); assert.match(txt, /Guia gratuito/); assert.match(txt, /Material gratuito/);
 });
@@ -82,11 +85,13 @@ test("pack produces the executor command ZEVANORY e-mails to the owner: 2 per da
   for (let d = 22; d <= 31; d++) { assert.match(cmd, new RegExp(`media/short/2026-10-${d}-dica\\.mp4`)); assert.match(cmd, new RegExp(`media/short/2026-10-${d}\\.mp4`)); assert.match(cmd, new RegExp(`--- ${d}/10 às 12:00`)); assert.match(cmd, new RegExp(`--- ${d}/10 às 19:00`)); }
   assert.match(cmd, /A tua marca/); assert.match(cmd, /Conteúdo gerado por IA/); assert.match(cmd, /Nunca publique na hora/);
 });
-test("P05: a video rejected by zevanory-av-gate is left out of the pack and of the executor command", async () => {
+test("P05: a video rejected by zevanory-av-gate is left out of the pack and of the executor command", async (t) => {
   const { buildPack } = await import("../scripts/channels/short-pack.mjs");
-  const { readFile, rm } = await import("node:fs/promises");
-  const out = "/tmp/zevanory-pack-test-gate";
-  await rm(out, { recursive: true, force: true });
+  const { readFile, rm, mkdtemp } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const out = await mkdtemp(join(tmpdir(), "zevanory-pack-gate-"));
+  t.after(() => rm(out, { recursive: true, force: true }));
   const r = await buildPack({ start: "2026-10-12", days: 2, out, render: async (plan, base) => {
     if (plan.slot === "dica" && plan.day === "2026-10-13") throw new Error("av_gate_FAIL:v3.stream_tp");
     if (plan.slot === "oferta" && plan.day === "2026-10-12") throw new Error("brand_voice_BLOCKED:brand_voice_key_missing");
@@ -94,8 +99,8 @@ test("P05: a video rejected by zevanory-av-gate is left out of the pack and of t
   } });
   assert.deepEqual(r.produced.sort(), ["2026-10-12-dica", "2026-10-13"]);
   assert.equal(r.rejected.length, 2);
-  const cmd = await readFile(out + "/comando-executor.txt", "utf8");
+  const cmd = await readFile(join(out, "comando-executor.txt"), "utf8");
   assert.match(cmd, /2026-10-12-dica\.mp4/); assert.match(cmd, /media\/short\/2026-10-13\.mp4/);
   assert.doesNotMatch(cmd, /2026-10-13-dica\.mp4/); assert.doesNotMatch(cmd, /media\/short\/2026-10-12\.mp4/);
-  assert.match(await readFile(out + "/legendas.txt", "utf8"), /PULADO \(zevanory-av-gate: av_gate_FAIL:v3.stream_tp\)/);
+  assert.match(await readFile(join(out, "legendas.txt"), "utf8"), /PULADO \(zevanory-av-gate: av_gate_FAIL:v3.stream_tp\)/);
 });

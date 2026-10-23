@@ -308,15 +308,23 @@ export async function renderVideo(plan, pkg, out) {
   return { duration };
 }
 
+// PCM s16le mono → WAV (RIFF header written in JS; no external tool needed for this step).
+export function wavFromPcm(pcm, rate) {
+  const h = Buffer.alloc(44);
+  h.write("RIFF", 0); h.writeUInt32LE(36 + pcm.length, 4); h.write("WAVE", 8); h.write("fmt ", 12);
+  h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22); h.writeUInt32LE(rate, 24);
+  h.writeUInt32LE(rate * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write("data", 36); h.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([h, pcm]);
+}
+
 export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { geminiKey = process.env.GEMINI_API_KEY, voice = brandVoice, pack = packageNarration, video = renderVideo, gate = avGate, manifest = writeAvManifest, onVoice = null } = {}) {
   const v = await voice(plan.speech, geminiKey);
   if (v?.pcm && onVoice) await onVoice(v);  // usage is counted even when the gate later rejects the take
   if (!v || v.blocked || !v.pcm || v.pcm.length < v.rate) throw new Error("brand_voice_BLOCKED:" + String(v?.blocked || "no_audio").replace(/[^a-z0-9_]/gi, "_"));
   const dir = base + ".av";
   await mkdir(dir, { recursive: true });
-  await writeFile(dir + "/raw.pcm", v.pcm);
   await writeFile(dir + "/script.txt", plan.speech + "\n");
-  run("ffmpeg", ["-y", "-f", "s16le", "-ar", String(v.rate), "-ac", "1", "-i", dir + "/raw.pcm", "-c:a", "pcm_s16le", dir + "/raw.wav"]);
+  await writeFile(dir + "/raw.wav", wavFromPcm(v.pcm, v.rate));
   const pkg = await pack(dir + "/raw.wav", dir + "/script.txt", dir);
   const candidate = dir + "/final.mp4";
   const { duration } = await video(plan, pkg, candidate);

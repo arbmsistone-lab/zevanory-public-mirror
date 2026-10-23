@@ -2,19 +2,22 @@
 // there is exactly one brand voice (no Piper / no multi-model fallback) and sales-closed content only.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { writeFile, rm, mkdir, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { renderShort, avGate, avGateSealed, brandVoice, brandVoiceQueued, recordSlotLost, slotLostKey, VOICE_RETRY, BRAND_VOICE, planSlot, SLOTS, salesClosedViolations } from "../scripts/channels/youtube-daily-short.mjs";
 
 // Code only (comments may name what was removed).
-const SRC = readFileSync(new URL("../scripts/channels/youtube-daily-short.mjs", import.meta.url), "utf8").split("\n").filter(l => !/^\s*\/\//.test(l)).map(l => l.replace(/\s\/\/ .*$/, "")).join("\n");
+const SRC = readTextNormalized(new URL("../scripts/channels/youtube-daily-short.mjs", import.meta.url)).split("\n").filter(l => !/^\s*\/\//.test(l)).map(l => l.replace(/\s\/\/ .*$/, "")).join("\n");
 const voiceOk = async () => ({ pcm: Buffer.alloc(24000 * 2 * 2), rate: 24000, model: BRAND_VOICE.model });
 const fakePack = async (raw, script, dir) => {
   await writeFile(dir + "/master.wav", "m"); await writeFile(dir + "/captions.vtt", "WEBVTT\n");
   return { master: dir + "/master.wav", narration: dir + "/narration.m4a", captions: dir + "/captions.vtt", cues: [], duration: 12 };
 };
 const fakeVideo = async (plan, pkg, out) => { await writeFile(out, "mp4-bytes-" + plan.slot); return { duration: 12 }; };
-const base = async (name) => { const b = "/tmp/zevanory-avgate-test-" + name; await rm(b + ".av", { recursive: true, force: true }); await rm(b + ".mp4", { force: true }); await rm(b + ".av-gate.json", { force: true }); return b; };
+const base = async (name) => { const b = join(tmpdir(), "zevanory-avgate-test-" + name); await rm(b + ".av", { recursive: true, force: true }); await rm(b + ".mp4", { force: true }); await rm(b + ".av-gate.json", { force: true }); return b; };
 
 test("brand voice unavailable => BLOCKED before any render, nothing to upload", async () => {
   const b = await base("novoice");
@@ -30,7 +33,7 @@ for (const verdict of ["FAIL", "BLOCKED", "ERROR_INFRA"]) {
   test(`gate verdict ${verdict} => no publishable file and no PASS seal`, async () => {
     const b = await base("v" + verdict);
     let seen = null;
-    const gate = async (mp4, manifest) => { seen = JSON.parse(readFileSync(manifest, "utf8")); return { verdict, failed: ["v3.stream_tp"], blocked: [], errors: [] }; };
+    const gate = async (mp4, manifest) => { seen = JSON.parse(readTextNormalized(manifest)); return { verdict, failed: ["v3.stream_tp"], blocked: [], errors: [] }; };
     await assert.rejects(renderShort(planSlot("2026-10-22", "oferta"), b, { geminiKey: "k", voice: voiceOk, pack: fakePack, video: fakeVideo, gate }), new RegExp("av_gate_" + verdict));
     assert.equal(existsSync(b + ".mp4"), false);
     assert.equal(await avGateSealed(b + ".mp4"), false);
@@ -50,7 +53,7 @@ test("gate PASS => sealed file for exactly these bytes; tampering breaks the sea
 });
 
 test("avGate wrapper is fail-closed (missing report, exit-code mismatch, unknown verdict)", async () => {
-  const dir = "/tmp/zevanory-avgate-wrapper";
+  const dir = join(tmpdir(), "zevanory-avgate-wrapper");
   await mkdir(dir, { recursive: true });
   const rep = dir + "/r.json";
   await rm(rep, { force: true });
@@ -93,14 +96,14 @@ test("sales closed: no slot of the next 90 days carries a price, a /comprar link
 
 test("workflows: gate installed before render, no Piper, workflows stay as the owner left them (no new triggers)", () => {
   for (const f of ["youtube-autonomous-short.yml", "short-pack.yml"]) {
-    const wf = readFileSync(new URL("../.github/workflows/" + f, import.meta.url), "utf8");
+    const wf = readTextNormalized(new URL("../.github/workflows/" + f, import.meta.url));
     assert.doesNotMatch(wf, /piper/i, f);
     assert.match(wf, /scripts\/av_gate\/requirements\.txt/, f);
     assert.match(wf, /scripts\/av_gate\/fetch_models\.sh/, f);
     assert.doesNotMatch(wf, /continue-on-error:\s*true/, f);
     assert.doesNotMatch(wf, /^\s*(push|pull_request|pull_request_target|workflow_run):/m, f);
   }
-  const cp = readFileSync(new URL("../scripts/channels/short-crosspost.mjs", import.meta.url), "utf8");
+  const cp = readTextNormalized(new URL("../scripts/channels/short-crosspost.mjs", import.meta.url));
   assert.match(cp, /avGateSealed\(file\)/);
 });
 
@@ -126,7 +129,7 @@ test("voice unavailable: bounded retry queue (same voice only), TTL, then the sl
   assert.equal(r.lost, true); assert.equal(q.calls.length, 1);
   // renderShort turns a lost slot into a BLOCKED run without rendering
   let rendered = 0;
-  await assert.rejects(renderShort(planSlot("2026-10-22", "dica"), "/tmp/zevanory-avgate-test-lost", { geminiKey: "k", voice: async () => ({ blocked: "slot_lost_voice_unavailable", lost: true }), pack: async () => { rendered++; }, video: async () => { rendered++; }, gate: async () => { rendered++; } }), /brand_voice_BLOCKED:slot_lost_voice_unavailable/);
+  await assert.rejects(renderShort(planSlot("2026-10-22", "dica"), join(tmpdir(), "zevanory-avgate-test-lost"), { geminiKey: "k", voice: async () => ({ blocked: "slot_lost_voice_unavailable", lost: true }), pack: async () => { rendered++; }, video: async () => { rendered++; }, gate: async () => { rendered++; } }), /brand_voice_BLOCKED:slot_lost_voice_unavailable/);
   assert.equal(rendered, 0);
   // the lost slot is recorded so later runs of the same day skip it
   const m = new Map(); await recordSlotLost({ put: async (k, v) => m.set(k, v) }, "2026-10-22", "dica", "slot_lost_voice_unavailable");
