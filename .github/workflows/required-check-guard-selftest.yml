@@ -1,6 +1,8 @@
 name: required-check-guard-selftest
 
-# G4: reprodução da suíte (23 testes) e dos 20 mutantes do guarda. INFORMATIVO: roda a versão do PR (pull_request),
+# G4: reprodução da suíte do guarda (23 testes), dos autotestes do executor de mutantes e dos 20 mutantes, com
+# classificação honesta (AVAL 090): baseline obrigatório; MORTO só por asserção em teste esperado; dependência ausente,
+# import, sintaxe, timeout ou coleta -> INCONCLUSIVO (falha o job). INFORMATIVO: roda a versão do PR (pull_request),
 # portanto não é evidência de controle. O controle é o job required-check-guard / protected-paths (pull_request_target).
 on:
   pull_request:
@@ -15,6 +17,8 @@ on:
       - ".github/CODEOWNERS"
       - "tests/ci/test_required_check_guard.py"
       - "tests/ci/mutants_required_check_guard.py"
+      - "tests/ci/test_mutants_runner.py"
+      - "tests/ci/requirements-guard.txt"
 
 permissions:
   contents: read
@@ -23,15 +27,23 @@ jobs:
   selftest:
     name: required-check-guard / selftest
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Suíte e mutantes
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependências declaradas (tests/ci/requirements-guard.txt)
         run: |
           set -euo pipefail
-          python3 -c "import yaml"
-          sha256sum scripts/ci/required_check_guard.py .github/workflows/required-check-guard.yml | tee -a "$GITHUB_STEP_SUMMARY"
-          python3 -I -B tests/ci/test_required_check_guard.py .
-          python3 -I -B tests/ci/mutants_required_check_guard.py . | tee -a "$GITHUB_STEP_SUMMARY"
+          python -m pip install --disable-pip-version-check --quiet -r tests/ci/requirements-guard.txt
+          python -I -c "import yaml; print('PyYAML', yaml.__version__)"
+      - name: Suíte, autotestes do executor e mutantes
+        run: |
+          set -euo pipefail
+          sha256sum scripts/ci/required_check_guard.py .github/workflows/required-check-guard.yml tests/ci/mutants_required_check_guard.py | tee -a "$GITHUB_STEP_SUMMARY"
+          python -I -B tests/ci/test_required_check_guard.py .
+          python -I -B tests/ci/test_mutants_runner.py .
+          python -I -B tests/ci/mutants_required_check_guard.py . | tee -a "$GITHUB_STEP_SUMMARY"

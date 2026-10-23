@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """G4 (Ordem 082): suíte do guarda dos checks obrigatórios (scripts/ci/required_check_guard.py).
-Uso: python3 -I tests/ci/test_required_check_guard.py <RAIZ_DO_REPO> [--guard CAMINHO_DO_GUARDA]
---guard permite rodar a mesma suíte contra um mutante (tests/ci/mutants_required_check_guard.py)."""
-import importlib.util, json, pathlib, re, subprocess, sys, tempfile, unittest
+Uso: python3 -I tests/ci/test_required_check_guard.py <RAIZ_DO_REPO> [--guard CAMINHO_DO_GUARDA] [--json-report ARQ]
+--guard permite rodar a mesma suíte contra um mutante (tests/ci/mutants_required_check_guard.py).
+--json-report grava o resultado POR TESTE (ok / falha de asserção / erro / pulado) para o executor de mutantes classificar.
+Se o guarda nem carregar (dependência ausente, erro de sintaxe, sys.exit no import), o relatório NÃO é gravado: o executor
+trata a ausência como INCONCLUSIVO, nunca como mutante morto."""
+import importlib.util, json, os, pathlib, re, subprocess, sys, tempfile, traceback, unittest
 
 REPO = pathlib.Path(sys.argv.pop(1)).resolve()
 GUARD = REPO / 'scripts/ci/required_check_guard.py'
 if '--guard' in sys.argv:
     i = sys.argv.index('--guard'); GUARD = pathlib.Path(sys.argv[i + 1]).resolve(); del sys.argv[i:i + 2]
+RELATORIO = None
+if '--json-report' in sys.argv:
+    i = sys.argv.index('--json-report'); RELATORIO = sys.argv[i + 1]; del sys.argv[i:i + 2]
 spec = importlib.util.spec_from_file_location('guarda', GUARD); G = importlib.util.module_from_spec(spec); spec.loader.exec_module(G)
 WF = REPO / '.github/workflows'
 SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
@@ -44,7 +50,8 @@ class Guarda(unittest.TestCase):
     def ok(self, r): self.assertEqual(r['resultado'], 'PASS', json.dumps(r, ensure_ascii=False))
     def falha(self, r, codigo=None, duro=True):
         self.assertEqual(r['resultado'], 'FAIL', json.dumps(r, ensure_ascii=False))
-        if codigo: self.assertTrue(any(v.startswith(codigo) for v in r['violacoes_duras']), r['violacoes_duras'])
+        if codigo: self.assertTrue(any(v.startswith(codigo) for v in r['violacoes_duras']),
+                                   f"codigo {codigo} ausente em {r['violacoes_duras']}")
         if duro is False: self.assertEqual(r['violacoes_duras'], [])
 
     # --- conteúdo comum passa; caminho protegido exige aprovação presa ao SHA ---
@@ -209,5 +216,43 @@ class Guarda(unittest.TestCase):
             (d / 'e.json').write_text('{quebrado'); self.assertEqual(cli([arq('index.html')]), 2)
 
 
+def rodar_com_relatorio(caminho):
+    """Executa a suíte e grava, por teste, o desfecho. 'falha' = AssertionError levantada pela SUÍTE (nenhum quadro do
+    traceback dentro do guarda); AssertionError originada no código sob teste é registrada como 'erro'."""
+    guarda = str(GUARD); testes = {}
+
+    def registrar(t, estado, err=None, motivo=None):
+        item = {'resultado': estado}
+        if err is not None:
+            tipo, valor, tb = err
+            no_guarda = any(os.path.realpath(q.filename) == os.path.realpath(guarda) for q in traceback.extract_tb(tb))
+            if estado == 'falha' and no_guarda:
+                item['resultado'] = 'erro'
+            item.update(tipo=tipo.__name__, mensagem=str(valor)[:4000], origem_no_guarda=no_guarda)
+        if motivo is not None:
+            item['mensagem'] = str(motivo)
+        testes[t.id()] = item
+
+    class Resultado(unittest.TextTestResult):
+        def addSuccess(self, t): super().addSuccess(t); registrar(t, 'ok')
+        def addFailure(self, t, e): super().addFailure(t, e); registrar(t, 'falha', e)
+        def addError(self, t, e): super().addError(t, e); registrar(t, 'erro', e)
+        def addSkip(self, t, m): super().addSkip(t, m); registrar(t, 'pulado', motivo=m)
+        def addExpectedFailure(self, t, e): super().addExpectedFailure(t, e); registrar(t, 'erro', e)
+        def addUnexpectedSuccess(self, t): super().addUnexpectedSuccess(t); registrar(t, 'erro', motivo='unexpected success')
+
+    suite = unittest.defaultTestLoader.loadTestsFromTestCase(Guarda)
+    r = unittest.TextTestRunner(stream=sys.stderr, verbosity=2, resultclass=Resultado).run(suite)
+    dados = {'schema': 'g4-suite-report/1', 'guarda': guarda, 'testes_executados': r.testsRun,
+             'sucesso': r.wasSuccessful(), 'testes': testes}
+    tmp = caminho + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(dados, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, caminho)
+    return 0 if r.wasSuccessful() else 1
+
+
 if __name__ == '__main__':
+    if RELATORIO:
+        sys.exit(rodar_com_relatorio(RELATORIO))
     unittest.main(verbosity=2)

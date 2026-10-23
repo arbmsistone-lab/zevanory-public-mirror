@@ -158,8 +158,8 @@ def analisar_workflow(arquivo, texto):
         g = gatilhos(y)
         if ev not in g:
             v.append(f'GATILHO_OBRIGATORIO_REMOVIDO {arquivo}: sem {ev}')
-        else:
-            cfg = g[ev] if isinstance(g[ev], dict) else {}
+        if ev in g:
+            cfg = g.get(ev) if isinstance(g.get(ev), dict) else {}
             for chave in ('paths', 'paths-ignore', 'branches-ignore'):
                 if chave in cfg:
                     v.append(f'GATILHO_OBRIGATORIO_FILTRADO {arquivo}: {ev}.{chave} deixa o check pendente/ausente')
