@@ -53,6 +53,7 @@ tests/live-runtime-status.test.mjs 5
 tests/market-weekly.test.mjs 2
 tests/mercadopago-preference-expiry.test.mjs 3
 tests/mercadopago-webhook-safety.test.mjs 5
+tests/mercadopago-webhook-signature.test.mjs 11
 tests/multichannel-autonomy.test.mjs 18
 tests/operational-activity.test.mjs 7
 tests/order22-isolated-financial-proof-evidence.test.mjs 1
