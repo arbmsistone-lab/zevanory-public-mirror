@@ -24,6 +24,14 @@ function applySecurityHeaders(headers){
 }
 const FUNNEL_PAGES=new Set(["conteudo-pronto","solucoes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","material-gratuito","ferramentas","ia-por-ramo","afiliados","kit-afiliado"]);
 export const isFunnelPage=page=>FUNNEL_PAGES.has(page)||/^(ia-para|calculadora)-[a-z-]{2,60}$/.test(page);
+function instrumentFunnelPage(response,page){
+  const slug=String(page||"");
+  if(!response||response.status!==200||!response.body||typeof HTMLRewriter==="undefined"||!isFunnelPage(slug)||!/^[a-z0-9_-]{1,70}$/.test(slug))return response;
+  const headers=new Headers(response.headers);
+  headers.delete("content-length");
+  return new HTMLRewriter().on("body",{element(el){el.append(`<script src="/funnel-beacon.js" data-page="${slug}" defer></script>`,{html:true})}})
+    .transform(new Response(response.body,{status:response.status,statusText:response.statusText,headers}));
+}
 // Source attribution without cookies or personal data: the utm_source the link
 // carried (our own channels always tag links) or, failing that, the referrer's
 // platform. Only a short normalized label is counted, aggregated per day.
@@ -251,11 +259,20 @@ async function handleHotmart(request,env,slug,ctx){
   const page=await env.ASSETS.fetch(new Request(new URL("/"+slug+".html",request.url),{method:"GET"}));
   if(page.status!==200)return page;
   const headers=applySecurityHeaders(new Headers({"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-robots-tag":"noindex, follow"}));  // never cache a purchase link past a switch change
-  return new Response(hotmartPage(await page.text(),slug,checkout),{status:200,headers});
+  return instrumentFunnelPage(new Response(hotmartPage(await page.text(),slug,checkout),{status:200,headers}),slug);
 }
 
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
+  if(url.pathname==="/__funnel/event"){
+    if(request.method!=="POST")return new Response(null,{status:405,headers:applySecurityHeaders(new Headers({allow:"POST"}))});
+    if(request.headers.get("origin")!==url.origin||!/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type")||"")||!env?.CORE||typeof env.CORE.fetch!=="function")return new Response(null,{status:204});
+    let body;try{body=await request.json()}catch{return new Response(null,{status:400})}
+    if(body?.js!==true||!body.event)return new Response(null,{status:204});
+    const payload={event:body.event,js:true,ua:request.headers.get("user-agent")||"",ip:request.headers.get("cf-connecting-ip")||"",asn:Number(request.cf?.asn)||0};
+    try{await env.CORE.fetch("https://funnel.internal/event",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)})}catch{}
+    return new Response(null,{status:204});
+  }
   // IndexNow ownership proof for the sales host (same public key as the apex).
   if(url.pathname==="/4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922.txt"&&(request.method==="GET"||request.method==="HEAD"))
     return new Response(request.method==="HEAD"?null:"4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922",{status:200,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"public, max-age=86400"}))});
@@ -311,10 +328,10 @@ export default{async fetch(request,env,ctx){
     const r=(await reviewSummary(env))[sku];
     if(r&&r.count>=3){
       const text=`★ ${String(r.average).replace(".",",")}/5 · ${r.count} avaliações de clientes`;
-      const rewritten=carryUtm(new HTMLRewriter().on("main h1",{element(el){el.after(`<p class="review-summary">${text}</p>`,{html:true})}}).transform(new Response(response.body,{status:response.status,statusText:response.statusText,headers})),url);
+      const rewritten=instrumentFunnelPage(carryUtm(new HTMLRewriter().on("main h1",{element(el){el.after(`<p class="review-summary">${text}</p>`,{html:true})}}).transform(new Response(response.body,{status:response.status,statusText:response.statusText,headers})),url),page);
       return page?compressPage(request,rewritten.body,{status:rewritten.status,statusText:rewritten.statusText,headers}):rewritten;
     }
   }
-  if(response.status===200&&page){const carried=carryUtm(new Response(response.body,{status:response.status,statusText:response.statusText,headers}),new URL(request.url));return compressPage(request,carried.body,{status:carried.status,statusText:carried.statusText,headers});}
+  if(response.status===200&&page){const carried=instrumentFunnelPage(carryUtm(new Response(response.body,{status:response.status,statusText:response.statusText,headers}),new URL(request.url)),page);return compressPage(request,carried.body,{status:carried.status,statusText:carried.statusText,headers});}
   return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
 }};

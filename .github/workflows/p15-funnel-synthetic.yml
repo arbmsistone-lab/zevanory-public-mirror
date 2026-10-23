@@ -1,0 +1,68 @@
+name: P15 funnel synthetic test
+
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/p15-funnel-synthetic.yml"
+      - "schemas/funnel-event.v1.schema.json"
+      - "worker/funnel-events.mjs"
+      - "tests/funnel-synthetic.test.mjs"
+      - "tests/integration/funnel-events-postgres.test.mjs"
+      - "worker/funnel.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "sales-public/funnel-beacon.js"
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Teste sintético com contagem exata e zero pulados
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap tests/funnel-synthetic.test.mjs | tee /tmp/p15-funnel.tap
+          grep -Fx '# tests 9' /tmp/p15-funnel.tap
+          grep -Fx '# pass 9' /tmp/p15-funnel.tap
+          grep -Fx '# skipped 0' /tmp/p15-funnel.tap
+          grep -Fx '# fail 0' /tmp/p15-funnel.tap
+          grep -Fx '# cancelled 0' /tmp/p15-funnel.tap
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: E2E PostgreSQL real, contagem exata e zero pulados
+        env:
+          P15_PG_HOST: localhost
+          P15_PG_PORT: "5432"
+        run: |
+          set -euo pipefail
+          node --test --test-reporter=tap tests/integration/funnel-events-postgres.test.mjs | tee /tmp/p15-funnel-postgres.tap
+          grep -Fx '# tests 4' /tmp/p15-funnel-postgres.tap
+          grep -Fx '# pass 4' /tmp/p15-funnel-postgres.tap
+          grep -Fx '# skipped 0' /tmp/p15-funnel-postgres.tap
+          grep -Fx '# fail 0' /tmp/p15-funnel-postgres.tap
