@@ -148,8 +148,8 @@ class NodeSuiteManifest(unittest.TestCase):
         self.assertNotRegex(pw, r"(?m)^  (push|workflow_dispatch|schedule|workflow_run|pull_request_target):")
         self.assertIn("os: [ubuntu-latest, windows-latest]", pw)
         self.assertIn("python -m unittest tests.test_node_suite_manifest -v", pw)
-        self.assertIn('grep -qx "Ran 14 tests in .*" nm.txt', pw)
-        self.assertIn('grep -qx "Ran 14 tests in .*" nm.txt', wf)
+        self.assertIn('grep -qx "Ran 15 tests in .*" nm.txt', pw)
+        self.assertIn('grep -qx "Ran 15 tests in .*" nm.txt', wf)
         self.assertNotIn("secrets.", pw)
 
     def test_file_level_detection_is_separator_independent(self):
@@ -170,6 +170,33 @@ class NodeSuiteManifest(unittest.TestCase):
         p = run(["node", "--input-type=module", "-e", code, REPORTER.as_uri()], ROOT)
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertEqual(json.loads(p.stdout.strip().splitlines()[-1]), {"bad": 0, "rel": "tests/c.test.mjs"})
+
+    def test_file_level_detection_ignores_case_only_on_windows(self):
+        # Resíduo do AVAL Sol (#874): no Windows o sistema de arquivos não diferencia maiúsculas, então
+        # "tests\\c.test.mjs" e "C:\\r\\Tests\\C.test.mjs" são o mesmo arquivo e o resultado de arquivo tem de ser
+        # detectado; fora do Windows a diferença de maiúsculas é outro arquivo. Fora de um runner Windows, o
+        # módulo REAL é importado com process.platform = "win32" (definido antes do import), e também sem isso.
+        code = (
+            "const realWin = process.platform === 'win32';"
+            "const want = process.argv[2];"
+            "if (want === 'win32' && !realWin) Object.defineProperty(process, 'platform', { value: 'win32' });"
+            "const m = await import(process.argv[1]);"
+            "const cwd = realWin ? 'C:\\\\r' : '/r';"
+            "const f = realWin ? 'C:\\\\r\\\\Tests\\\\C.test.mjs' : '/r/Tests/C.test.mjs';"
+            "const r = { posixName: m.isFileLevel({nesting:0,name:'tests/c.test.mjs',file:f}, cwd),"
+            "            winName: m.isFileLevel({nesting:0,name:'tests\\\\c.test.mjs',file:f}, cwd),"
+            "            notFile: m.isFileLevel({nesting:0,name:'c1',file:f}, cwd) };"
+            "console.log(JSON.stringify(r));"
+        )
+        def probe(platform):
+            p = run(["node", "--input-type=module", "-e", code, REPORTER.as_uri(), platform], ROOT)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            return json.loads(p.stdout.strip().splitlines()[-1])
+        self.assertEqual(probe("win32"), {"posixName": True, "winName": True, "notFile": False},
+                         "Windows: mesmo arquivo com maiúsculas diferentes tem de ser resultado de arquivo")
+        if not sys.platform.startswith("win"):
+            self.assertEqual(probe("native"), {"posixName": False, "winName": False, "notFile": False},
+                             "fora do Windows, maiúsculas diferentes = outro arquivo")
 
     def test_repository_manifest_lists_exactly_the_suite_files(self):
         lines = [l for l in MANIFEST.read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")]

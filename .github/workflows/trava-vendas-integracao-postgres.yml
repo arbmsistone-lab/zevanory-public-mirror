@@ -92,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest tests.test_node_suite_manifest -v < /dev/null 2>&1 | tee nm.txt
-          grep -qx "Ran 14 tests in .*" nm.txt || { echo "::error::contagem de testes diferente de 14"; exit 1; }
+          grep -qx "Ran 15 tests in .*" nm.txt || { echo "::error::contagem de testes diferente de 15"; exit 1; }
           if grep -q "skipped" nm.txt; then echo "::error::testes pulados"; exit 1; fi
           grep -qx "OK" nm.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
       - name: Cobertura do filtro de caminhos (fecho de importações e leituras)
