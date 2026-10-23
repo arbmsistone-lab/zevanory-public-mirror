@@ -40,7 +40,7 @@ const MUTANTS = [
   ["M6_future_accepted", TRUTH, "if (at - now > MAX_FUTURE_SKEW_MS)", "if (false)", [T.stale]],
   ["M7_token_ignored", TRUTH, 'if (snap.token_valid !== true) return verdict(false, "meta_token_invalid", facts);', "", [T.each]],
   ["M8_perm_ignored", TRUTH, "&& perms.whatsapp_business_messaging === true && perms.whatsapp_business_management === true", "", [T.each]],
-  ["M9_quality_red", TRUTH, 'ACCEPTED_QUALITY = Object.freeze(["GREEN", "YELLOW"])', 'ACCEPTED_QUALITY = Object.freeze(["GREEN", "YELLOW", "RED", "UNKNOWN"])', [T.each]],
+  ["M9_quality_red", TRUTH, 'ACCEPTED_QUALITY = Object.freeze(["GREEN", "YELLOW", "NA"])', 'ACCEPTED_QUALITY = Object.freeze(["GREEN", "YELLOW", "NA", "RED", "UNKNOWN"])', [T.each]],
   ["M10_healthy_never", TRUTH, 'return verdict(true, "meta_truth_fresh_healthy", facts);', 'return verdict(false, "meta_truth_fresh_healthy", facts);', [T.healthy, T.live]],
   ["M11_no_ttl_write", TRUTH, "{ expirationTtl: KV_EXPIRATION_S }", "{}", [T.writer]],
   ["M12_secret_leak", TRUTH, "    broker_reason: reasonCode(s.reason) || null,", "    broker_reason: reasonCode(s.reason) || null,\n    access_token: s.access_token,", [T.whitelist]],

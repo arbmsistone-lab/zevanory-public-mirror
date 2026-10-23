@@ -128,6 +128,7 @@ test("all healthy and fresh => enabled with meta_truth_fresh_healthy", () => {
   assert.equal(status.runtime.whatsapp, "enabled");
   assert.equal(status.runtime.whatsapp_reason, "meta_truth_fresh_healthy");
   assert.equal(verdict(snap({ quality_rating: "YELLOW" })).ready, true);
+  assert.equal(verdict(snap({ quality_rating: "NA" })).ready, true);
 });
 
 test("token, number, display name, quality and phone status each fail closed", () => {
@@ -139,6 +140,7 @@ test("token, number, display name, quality and phone status each fail closed", (
     [{ brand_name_verified: false }, "meta_display_name_mismatch"],
     [{ quality_rating: "RED" }, "meta_quality_not_ok"],
     [{ quality_rating: "UNKNOWN" }, "meta_quality_not_ok"],
+    [{ quality_rating: "" }, "meta_quality_not_ok"],
     [{ phone_status: "FLAGGED" }, "meta_phone_status_not_connected"],
     [{ broker: false }, "meta_snapshot_unavailable"],
   ];

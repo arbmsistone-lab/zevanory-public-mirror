@@ -23,7 +23,8 @@ const BROKER_STATUS_URL = "https://whatsapp-broker.internal/broker/status";
 
 export const ACCEPTED_NAME_STATUS = Object.freeze(["APPROVED", "AVAILABLE_WITHOUT_REVIEW"]);
 export const ACCEPTED_CODE_VERIFICATION = Object.freeze(["VERIFIED"]);
-export const ACCEPTED_QUALITY = Object.freeze(["GREEN", "YELLOW"]);
+// "NA" = not yet rated (low-volume/new number, a normal Meta value); RED/UNKNOWN/empty fail closed.
+export const ACCEPTED_QUALITY = Object.freeze(["GREEN", "YELLOW", "NA"]);
 export const ACCEPTED_PHONE_STATUS = Object.freeze(["CONNECTED"]);
 
 const upper = (v, max = 60) => String(v ?? "").trim().slice(0, max).toUpperCase().replace(/[^A-Z0-9_]/g, "");
