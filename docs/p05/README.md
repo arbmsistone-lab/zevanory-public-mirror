@@ -30,20 +30,17 @@ Código: `scripts/av_gate/zevanory_av_gate.py` · limiares: `scripts/av_gate/thr
 | Critério | Medição | Limiar (FAIL fora dele) |
 |---|---|---|
 | V1 | presença de MP4, áudio, master, legendas, roteiro e manifesto; SHA-256; voz = voz da marca; taxa do master; duração master × MP4; **narração presente** (fala por VAD ≥ 1 s e loudness > −50) e **cobrindo o vídeo** (≤ 2 s de silêncio após a última palavra) | qualquer item ausente = FAIL (vídeo mudo = FAIL) |
-| V2 | **2 motores de famílias diferentes**: A = faster-whisper `small` (Whisper/CTranslate2), B = Vosk pt-BR (Kaldi). Normalização pt-BR (números, R$, %, URL, acentos, léxico da marca) | WER ≤ 3%, CER ≤ 1% (base consenso, ver abaixo); **0 erro** em número, preço, marca, negação e termos críticos; vazamento de instrução de estilo = FAIL; CTA de compra falado com vendas fechadas = FAIL |
+| V2 | **2 motores de famílias diferentes**: A = faster-whisper `small` (Whisper/CTranslate2), B = Vosk/Kaldi pt-BR **grande** (`vosk-model-pt-fb-v0.1.1`, offline no CI). Normalização pt-BR (números, R$, %, URL, acentos, léxico da marca). Relatório expõe o **alinhamento palavra a palavra** de A, B e do consenso | **Por clipe:** no máximo 1 erro NÃO crítico no consenso e **0 erro** em preço, número, marca, negação, promessa e CTA. **Corpus agregado pré-registrado (≥ 200 palavras; os 12 roteiros concatenados na homologação; no CI, todos os positivos):** WER ≤ 3% e CER ≤ 1%. Vazamento de instrução de estilo = FAIL; CTA de compra falado com vendas fechadas = FAIL |
 | V3 | ffmpeg `ebur128=peak=true` (BS.1770) no master e no **MP4 final**; amostras clipadas; densidade de clipping no master; piso de ruído e SNR (VAD); proporção de fala; silêncio inicial; planura espectral, razão tonal, fração vozeada | master −23 ±0,5 LUFS e TP ≤ −1; derivado −20…−16 LUFS e TP ≤ −2; 0 amostras clipadas; ruído ≤ −50 dBFS; SNR ≥ 30 dB |
-| V4 | ppm global e por janela de 10 s (tempos do motor B); pausas (VAD); desvio de F0 em semitons e energia (parselmouth); HNR; **x-vector** do locutor contra a referência da marca | 130–175 ppm; janelas 105–195; nenhuma pausa > 1,5 s; mediana das pausas entre 150 e 900 ms; F0 entre 1,5 e 8 st; cosseno do x-vector ≥ 0,75 (`provisional`: no CI, dois locutores masculinos diferentes deram 0,65 e a autorreferência 0,99–1,0) |
+| V4 | ppm global e por janela de 10 s (tempos do motor B); pausas (VAD); desvio de F0 em semitons e energia (parselmouth); HNR; **x-vector** do locutor contra uma referência **independente** da marca (o próprio clipe como referência dá BLOCKED) | 130–175 ppm; janelas 105–195; nenhuma pausa > 1,5 s; mediana das pausas entre 150 e 900 ms; F0 entre 1,5 e 8 st; cosseno do x-vector ≥ 0,75 (`provisional`: no CI, dois locutores masculinos diferentes deram 0,65 e a autorreferência 0,99–1,0) |
 | V5 | DNSMOS P.835 (OVRL/SIG), **só como filtro** | limiar `provisional`. Quem decide é o painel humano cego (`prova-cega/`) |
 | V6 | offset de contêiner (start_time áudio × vídeo) + deriva legenda × fala (re-medida no MP4 final) | p95 ≤ 80 ms, máximo ≤ 120 ms |
-| V7 | legenda = roteiro, formato (≤ 42 caracteres/linha, ≤ 2 linhas, ≤ 20 cps), tempo de legenda ≤ 100 ms, contraste WCAG ≥ 4,5, caixa da legenda dentro da área segura, quadros pretos, 1080×1920 | qualquer violação = FAIL |
+| V7 | legenda = roteiro, formato (≤ 42 caracteres/linha, ≤ 2 linhas, ≤ 25 cps), tempo de legenda ≤ 100 ms; **medidos nos pixels dos quadros do vídeo**: legenda queimada detectada (fundo estático; o único elemento que muda é a legenda), contraste WCAG ≥ 4,5 entre o núcleo do traço e o fundo atrás dele, caixa delimitadora da legenda dentro da área segura; quadros pretos; 1080×1920 | qualquer violação = FAIL |
 | V8 | controles negativos e positivos + mutantes da decisão no CI | todos classificados e todos os mutantes mortos |
 
-**Base do WER (contestação registrada).** Com os modelos pequenos do CI, o WER bruto de cada motor em fala humana fica acima de
-3%. Aplicar 3% a cada motor reprovaria a própria referência humana (FALSE_DENY). O CI usa então o **consenso**: uma palavra do
-roteiro só conta como erro se **nenhum** dos dois motores independentes a reconheceu, e uma inserção só conta se os dois a fizeram. Cada
-motor continua com um teto de sanidade (`per_engine_wer_sanity_max`). Os termos críticos exigem reconhecimento por pelo menos um
-motor e nenhum número ou negação a mais. **Em produção, o motor B deve migrar para um ASR de nuvem de outro fornecedor**
-(Azure Speech ou Google STT), e `wer_basis` deve passar para `per_engine`.
+**Base do V2 (AVAL 091 do Sol).** O limiar de 3%/1% **não** foi relaxado: ele vale sobre o corpus agregado pré-registrado,
+e cada clipe tem orçamento de no máximo 1 erro não crítico e zero crítico. O motor B passou a ser o Vosk pt-BR grande (não Whisper).
+**Em produção, o motor B deve migrar para um ASR de nuvem de outro fornecedor** (Azure Speech ou Google STT).
 
 ## Controles (gerados no CI)
 
@@ -55,10 +52,13 @@ motor e nenhum número ou negação a mais. **Em produção, o motor B deve migr
 - **Negativos:** cada um carrega **um** defeito, injetado no estágio em que ele acontece. Todos passam pela mesma cadeia de produção:
   tom puro, ruído branco, ruído rosa modulado, bipes, fala clipada, loudness fora, TP entre −2 e −0,3, TP grosseiro, silêncio,
   MP4 sem áudio, pausa longa, prosódia achatada (PSOLA), prosódia comprimida (F0 × 0,2), apito tonal só durante a fala,
-  narração curta com 6 s de silêncio final, número trocado, marca não falada, instrução de estilo lida em voz alta,
+  narração curta com 6 s de silêncio final, legenda queimada com baixo contraste, legenda fora da área segura, legenda não queimada, número trocado, marca não falada, instrução de estilo lida em voz alta,
   fala 1,4×, fala 0,7×, A/V +200 ms (contêiner), A/V +200 ms (embutido), legendas ausentes, CTA de compra com vendas fechadas,
   voz trocada, ruído de fundo (SNR 18 dB), voz robótica (espeak-ng).
-- **Infra:** referência da voz ausente (precisa dar BLOCKED); motor B indisponível (precisa dar ERROR_INFRA).
+- **Infra:** referência da voz ausente (BLOCKED); autorreferência (o próprio clipe, BLOCKED); motor B indisponível (ERROR_INFRA).
+- **Fixtures determinísticos (camada a):** a partir das medições de um positivo real, UM campo fora da faixa por fixture (tonalidade, planura, fração vozeada, HNR, F0, energia, clipping, ruído, SNR, loudness, TP, ppm, pausa, erros por clipe, termo crítico, vazamento, DNSMOS, contraste, área segura, deriva, cobertura, legenda queimada, vendas fechadas).
+- **Amostras físicas isoladas (camada b):** apito tonal, F0 comprimido, clipping esparso e ruído no limite. Para cada uma, a variante mais branda que falha **só** na checagem-alvo é mantida, e todas as outras checagens passam.
+- **Voz indisponível:** fila de novas tentativas limitada (3 tentativas, espera de 20 s e depois 60 s, TTL de 15 min limitado ao fim do dia comercial), sempre com a mesma voz. Erro permanente não é repetido. Quando a fila expira, o slot é **perdido** (registrado no KV e pulado pelas execuções seguintes) e nunca há fallback.
 - **Mutantes** (sobre as mesmas medições): sem VAD, sem ASR, TP aceito até −0,3, sem espectro, sem loudness, sem prosódia,
   sem taxa, sem sincronia, sem legendas, sem clipping, sem locutor, sem regra de vendas fechadas, sem ruído/SNR, BLOCKED como
   PASS, ERROR_INFRA como PASS, sem presença de narração. Um mutante é **morto** quando algum negativo vira PASS ou algum
