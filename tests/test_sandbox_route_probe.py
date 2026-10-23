@@ -39,6 +39,8 @@ FOREIGN0 = ("other.girolocal.api.br/*", None)  # rota pré-existente, alheia à 
 BASELINE = {("probe.girolocal.api.br/*", PROBE), ("probe.girolocal.api.br/b*", PROBE),
             ("neighbour.girolocal.api.br/*", NEIGH), ("neighbour.girolocal.api.br/n*", NEIGH)}
 PHRASE = "PROVA ROTAS GIROLOCAL UMA VEZ"
+FULL_PERMS = ("zone_read", "routes_write", "scripts")
+NOR_PERMS = ("zone_read", "routes_read")
 
 FAKE_CF = r'''#!/usr/bin/env python3
 import json, os, re, sys, tomllib
@@ -269,8 +271,9 @@ def state(**kw):
                     PRODZ: {"name": "zevanory.api.br", "account": ACCOUNT, "status": "active",
                             "routes": [{"id": "%032x" % 0xa11, "pattern": "zevanory.api.br/", "script": "zevanory-public-router"}]}},
           "scripts": {}, "seq": 0,
-          "tokens": {FULL: ["zone_read", "routes_read", "routes_write", "scripts"],
-                     NOR: ["zone_read", "routes_read", "scripts"]}}
+          # Permissões MÍNIMAS (AVAL 101): completo = Workers Scripts Edit + Zone Read + Workers Routes Edit;
+          # negativo = Zone Read + Workers Routes Read (sem Workers Scripts, sem Routes Edit).
+          "tokens": {FULL: list(FULL_PERMS), NOR: list(NOR_PERMS)}}
     st.update(kw)
     return st
 
@@ -387,6 +390,12 @@ class Workflow(unittest.TestCase):
         self.assertEqual(cleanup["run"], "python3 sandbox/route-probe/run_route_probe.py cleanup")
         self.assertEqual(cleanup["if"], "${{ always() && steps.guard.outcome == 'success' }}")
         self.assertEqual(set(cleanup["env"]), {"CF_PROBE_TOKEN"}, "cleanup nunca recebe o token negativo")
+        # Permissões mínimas documentadas no workflow (AVAL 101).
+        for want in ("Account > Workers Scripts > Edit (só a conta ZEVANORY) + Zone > Zone > Read +",
+                     "Zone > Workers Routes > Edit (só girolocal.api.br)",
+                     "CF_PROBE_TOKEN_NO_ROUTES  Zone > Zone > Read + Zone > Workers Routes > Read (só girolocal.api.br)",
+                     "TTL <= 24h", "NEGATIVE_TOKEN_READ_DENIED_MISCONFIGURED"):
+            self.assertIn(want, self.text)
 
     def guard(self, workflow, runs):
         with tempfile.TemporaryDirectory() as d:
@@ -432,10 +441,10 @@ class Probe(unittest.TestCase):
                      "PROBE_SETUP=PASS routes=4 rollback_point=recorded",
                      "ROUTES_SNAPSHOT=PASS zones=1 routes=5 router_routes=2 expected_patterns=2 ",
                      "ROUTES_PREFLIGHT=PASS write_probe=1 zones=1",
-                     "NEG_PREDEPLOY=PASS stage=preflight http=403 wrangler_calls=0 version=unchanged routes=unchanged",
+                     "NEG_PREDEPLOY=PASS read=200 write=403 wrangler_calls=0 version=unchanged routes=unchanged",
                      "MUTATION_TRIPLE=APPLIED changed=1 removed=1 added=1",
                      "VERIFY_DETECTS_TRIPLE=PASS missing_expected=1 missing_other=0 changed=1 extra=1",
-                     "NEG_RESTORE=PASS stage=write http=403 divergent=3",
+                     "NEG_RESTORE=PASS read=200 write=403 write_failed=3 divergent=3",
                      "ROUTES_RESTORE created=1 updated=1 deleted=1 write_failed=0",
                      "ROUTES_RESTORE_READBACK=PASS routes=5",
                      "INVENTORY_EQUALS_SNAPSHOT=PASS routes=5 version=rollback_point",
@@ -482,21 +491,72 @@ class Probe(unittest.TestCase):
             self.assertNotIn(secret, out)
         self.assertEqual(lines(out, "WRANGLER deploy-probe-v2"), ["WRANGLER deploy-probe-v2 rc=0 codes=none"])
 
-    def test_token_without_routes_read_fails_at_snapshot_and_restore_read(self):
-        b = box(self, state(tokens={FULL: ["zone_read", "routes_read", "routes_write", "scripts"], NOR: ["zone_read", "scripts"]}))
-        rc, out = b.run("probe")
+    def test_read_only_negative_token_read_ok_write_403_passes(self):
+        # Só Zone Read + Workers Routes Read: leitura OK e escrita 403 nos dois estágios = prova negativa válida.
+        b = box(self)
+        self.assertEqual(sorted(b.st["tokens"][NOR]), ["routes_read", "zone_read"])
+        rc, out = b.run("probe", gha=True)
         self.assertEqual(rc, 0, out)
-        self.assertIn("NEG_PREDEPLOY=PASS stage=snapshot http=403", out)
-        self.assertIn("NEG_RESTORE=PASS stage=read http=403 divergent=3", out)
+        self.assertIn("NEG_PREDEPLOY=PASS read=200 write=403 wrangler_calls=0", out)
+        self.assertIn("NEG_RESTORE=PASS read=200 write=403 write_failed=3 divergent=3", out)
+        neg = [c for c in b.log("curl.log") if c[2] == NOR]
+        self.assertFalse([c for c in neg if "/workers/scripts/" in c[1]], "token negativo nunca toca Workers Scripts")
+        reads = [c for c in neg if c[0] == "GET" and c[1].endswith("/workers/routes")]
+        self.assertEqual(len(reads), 4, "snapshot + preflight + restore (leitura + releitura)")
+        self.assertEqual([c[0] for c in neg if c[0] != "GET"], ["PUT", "DELETE", "PUT", "POST"])
+
+    def test_negative_token_read_403_is_misconfiguration_not_negative_evidence(self):
+        # Leitura 403 no snapshot (antes do deploy): falha com erro próprio, nunca NEG_PREDEPLOY=PASS.
+        b = box(self, state(tokens={FULL: list(FULL_PERMS), NOR: ["zone_read"]}))
+        rc, out = b.run("probe", gha=True)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("::error title=NEGATIVE_TOKEN_READ_DENIED_MISCONFIGURED::token negativo sem leitura no estágio "
+                      "snapshot (http=200,403)", out)
+        self.assertIn("ROUTE_PROBE_RESULT=FAIL stage=negative-predeploy", out)
+        self.assertNotIn("NEG_PREDEPLOY=PASS", out)
+        self.assertNotIn("ROUTE_PROBE_RESULT=PASS", out)
+        self.assertEqual(b.st["deploys"], [NEIGH, PROBE], "o deploy v2 nunca acontece")
+        # Zona ilegível para o token negativo (sem Zone Read) também é má configuração.
+        b = box(self, state(tokens={FULL: list(FULL_PERMS), NOR: ["routes_read"]}))
+        rc, out = b.run("probe", gha=True)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("::error title=NEGATIVE_TOKEN_READ_DENIED_MISCONFIGURED::", out)
+        self.assertIn("ROUTE_PROBE_RESULT=FAIL stage=negative-predeploy", out)
+        # Leitura 403 no restore negativo (permissão perdida depois do deploy v2): idem, nunca NEG_RESTORE=PASS.
+        b = box(self)
+        npx = (b.d / "npx").read_text().replace(
+            'st["lag_old"] = old\n',
+            'st["lag_old"] = old\n    if vars_.get("PROBE_VERSION") == "v2": st["tokens"][%r] = ["zone_read"]\n' % NOR)
+        (b.d / "npx").write_text(npx)
+        rc, out = b.run("probe", gha=True)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("NEG_PREDEPLOY=PASS read=200 write=403", out)
+        self.assertIn("::error title=NEGATIVE_TOKEN_READ_DENIED_MISCONFIGURED::token negativo sem leitura no estágio "
+                      "restore", out)
+        self.assertIn("ROUTE_PROBE_RESULT=FAIL stage=negative-restore", out)
+        self.assertNotIn("NEG_RESTORE=PASS", out)
 
     def test_negative_token_that_can_write_routes_fails_the_probe_before_any_deploy(self):
-        b = box(self, state(tokens={FULL: ["zone_read", "routes_read", "routes_write", "scripts"],
-                                    NOR: ["zone_read", "routes_read", "routes_write", "scripts"]}))
-        rc, out = b.run("probe")
+        # Leitura OK + escrita 200: token largo demais -> falha, nunca PASS.
+        b = box(self, state(tokens={FULL: list(FULL_PERMS), NOR: ["zone_read", "routes_read", "routes_write"]}))
+        rc, out = b.run("probe", gha=True)
         self.assertEqual(rc, 1, out)
         self.assertIn("ROUTE_PROBE_RESULT=FAIL stage=negative-predeploy", out)
-        self.assertIn("token sem Workers Routes Write passou snapshot+preflight", out)
+        self.assertIn("::error title=NEGATIVE_TOKEN_TOO_BROAD::token sem Workers Routes Write passou preflight", out)
+        self.assertNotIn("NEG_PREDEPLOY=PASS", out)
         self.assertEqual(b.st["deploys"], [NEIGH, PROBE], "o deploy v2 nunca acontece")
+
+    def test_negative_restore_write_denied_without_403_fails(self):
+        # Leitura OK, escritas recusadas com 500 (não 403) no restore negativo: a zona segue divergente, mas não é prova.
+        b = box(self)
+        npx = (b.d / "npx").read_text().replace(
+            'st["lag_old"] = old\n', 'st["lag_old"] = old\n    if vars_.get("PROBE_VERSION") == "v2": st["deny_code"] = "500"\n')
+        (b.d / "npx").write_text(npx)
+        rc, out = b.run("probe")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("falha sem 403 no estágio restore (http=200,500)", out)
+        self.assertIn("ROUTE_PROBE_RESULT=FAIL stage=negative-restore", out)
+        self.assertNotIn("NEG_RESTORE=PASS", out)
 
     def test_negative_failure_must_be_a_403(self):
         b = box(self, state(deny_code="500"))
@@ -506,8 +566,7 @@ class Probe(unittest.TestCase):
         self.assertEqual(b.st["deploys"], [NEIGH, PROBE])
 
     def test_negative_restore_that_partially_writes_fails_the_probe(self):
-        b = box(self, state(tokens={FULL: ["zone_read", "routes_read", "routes_write", "scripts"],
-                                    NOR: ["zone_read", "routes_read", "routes_delete", "scripts"]}))
+        b = box(self, state(tokens={FULL: list(FULL_PERMS), NOR: ["zone_read", "routes_read", "routes_delete"]}))
         rc, out = b.run("probe")
         self.assertEqual(rc, 1, out)
         self.assertIn("zona deveria seguir divergente em 3 rotas, está em 2", out)

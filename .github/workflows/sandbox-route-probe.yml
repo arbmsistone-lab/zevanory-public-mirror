@@ -6,6 +6,13 @@ name: B02 sandbox route probe
 # em scripts/ops/router_routes.py (modo sandbox); tests/test_sandbox_route_probe.py prova as recusas.
 # Só workflow_dispatch; environment próprio `sandbox-route-probe` (revisor obrigatório), execução ÚNICA global
 # (single-run-guard, cota 0) e frase literal no input. Nunca dispara no merge.
+# Tokens (AVAL 101) — permissões MÍNIMAS, TTL <= 24h, criados logo antes do disparo e revogados depois do cleanup:
+#   CF_PROBE_TOKEN            Account > Workers Scripts > Edit (só a conta ZEVANORY) + Zone > Zone > Read +
+#                             Zone > Workers Routes > Edit (só girolocal.api.br)
+#   CF_PROBE_TOKEN_NO_ROUTES  Zone > Zone > Read + Zone > Workers Routes > Read (só girolocal.api.br); sem Workers
+#                             Scripts e sem Workers Routes Edit
+# Oráculo da prova negativa: LEITURA de rotas (snapshot) com sucesso E ESCRITA (preflight/restore) 403. Leitura 403 falha
+# a prova com NEGATIVE_TOKEN_READ_DENIED_MISCONFIGURED; escrita aceita falha com NEGATIVE_TOKEN_TOO_BROAD.
 on:
   workflow_dispatch:
     inputs:
@@ -44,7 +51,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: bash sandbox/rollback-secret-probe/single-run-guard.sh sandbox-route-probe.yml
-      - name: Route probe on girolocal.api.br (snapshot, triple mutation, rollback + restore, negative proof)
+      - name: Route probe on girolocal.api.br (snapshot, triple mutation, rollback + restore, negative proof read-OK/write-403)
         shell: bash
         env:
           CF_PROBE_TOKEN: ${{ secrets.CF_PROBE_TOKEN }}

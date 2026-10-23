@@ -8,15 +8,25 @@ RECUSADA aqui (constante, sem variável que a troque) e em scripts/ops/router_ro
   probe    1. guarda (conta, tokens distintos, zona ativa da conta, ambiente limpo)
            2. sobe o vizinho (zevanory-route-neighbour) e o probe v1 (zevanory-route-probe) com rotas pelo wrangler
            3. provas públicas da linha de base; foto (router_routes snapshot) e prova de escrita (preflight)
-           4. NEGATIVA antes do deploy: snapshot/preflight com o token SEM Workers Routes Write -> falha com 403 e
-              nenhum deploy acontece (versão e rotas inalteradas, zero chamadas ao wrangler)
+           4. NEGATIVA antes do deploy (oráculo AVAL 101): com o token SÓ LEITURA, snapshot (LEITURA de rotas) tem de
+              ter SUCESSO e preflight (ESCRITA) tem de falhar com 403; nenhum deploy acontece (versão e rotas
+              inalteradas, zero chamadas ao wrangler). Leitura 403 NÃO é prova negativa: falha com
+              NEGATIVE_TOKEN_READ_DENIED_MISCONFIGURED. Escrita aceita: falha com NEGATIVE_TOKEN_TOO_BROAD
            5. deploy do probe v2 e MUTAÇÃO TRIPLA via API: troca o script de uma rota do vizinho, remove uma rota do
               probe, acrescenta uma rota estranha; verify tem de acusar exatamente 1/0/1/1; o erro aparece em público
-           6. NEGATIVA no retorno: restore com o token sem Routes Write falha com 403 e a zona continua divergente (3)
+           6. NEGATIVA no retorno: restore com o token só leitura LÊ com sucesso, as 3 escritas voltam 403
+              (write_failed=3) e a zona continua divergente (3); leitura 403 = NEGATIVE_TOKEN_READ_DENIED_MISCONFIGURED
            7. retorno: wrangler rollback + router_routes restore (1 criada, 1 revertida, 1 apagada); releitura própria
               com tentativas limitadas exige inventário IDÊNTICO à foto e versão == ponto de retorno; provas públicas
            8. mede a janela de roteamento errado (da 1ª mutação até a prova pública restaurada)
   cleanup  apaga as rotas dos dois scripts/hosts e os dois Workers; relê e exige zero sobras (roda em always())
+
+Permissões MÍNIMAS dos tokens (zona girolocal.api.br; TTL <= 24h; criados logo antes do disparo; revogados depois
+do cleanup):
+  CF_PROBE_TOKEN            Account > Workers Scripts > Edit (só a conta ZEVANORY) + Zone > Zone > Read +
+                            Zone > Workers Routes > Edit (só girolocal.api.br)
+  CF_PROBE_TOKEN_NO_ROUTES  Zone > Zone > Read + Zone > Workers Routes > Read (só girolocal.api.br) — sem Workers
+                            Scripts, sem Workers Routes Edit; só é usado por router_routes (snapshot/preflight/restore)
 
 Saída: só códigos HTTP, contagens, rótulos públicos (probe-v1/probe-v2/neighbour) e durações. Nunca token, id de zona,
 corpo de resposta da API ou saída do wrangler (vai para arquivo; só `[code: N]` é extraído).
@@ -61,7 +71,24 @@ assert PRODUCTION_ZONE not in ZONE and all(PRODUCTION_ZONE not in h for h in HOS
 
 
 class Fail(Exception):
-    pass
+    title = None
+
+
+class Misconfigured(Fail):
+    """Token negativo sem LEITURA (zona/rotas): leitura 403 nunca conta como prova negativa (AVAL 101)."""
+    title = "NEGATIVE_TOKEN_READ_DENIED_MISCONFIGURED"
+
+
+class TooBroad(Fail):
+    """Token negativo que ESCREVE rotas: a prova negativa não protege nada."""
+    title = "NEGATIVE_TOKEN_TOO_BROAD"
+
+
+# Falha de LEITURA no router_routes: "GET /zones http=403", "GET /zones/{id} http=403",
+# "GET /zones/{id}/workers/routes http=403".
+READ_DENIED = re.compile(r"GET /zones\S* http=403\b")
+PREFLIGHT_WRITE_403 = "token sem escrita de rotas (PUT http=403)"
+RESTORE_WRITE_403 = "ROUTES_RESTORE created=0 updated=0 deleted=0 write_failed=3"
 
 
 def say(line):
@@ -278,6 +305,19 @@ def public_wait(attempts, pause, expect, tag):
     return bool(ok)
 
 
+def negative_oracle(where, rc, out, http, write_marker):
+    """Oráculo da prova negativa (AVAL 101): LEITURA com sucesso E ESCRITA 403 — nada além disso é evidência.
+    Todos os códigos do router_routes têm de ser {200 (leituras), 403 (escritas)}."""
+    read_denied = bool(READ_DENIED.search(out))
+    if read_denied:
+        raise Misconfigured(f"token negativo sem leitura no estágio {where} (http={','.join(sorted(http)) or 'none'}) — "
+                            "precisa de Zone:Read + Workers Routes:Read em girolocal.api.br; leitura 403 não é prova negativa")
+    if rc == 0:
+        raise TooBroad(f"token sem Workers Routes Write passou {where} — escreveu rotas; a guarda não protege o deploy")
+    if not (write_marker in out and http == {"200", "403"}):
+        raise Fail(f"falha sem 403 no estágio {where} (http={','.join(sorted(http)) or 'none'})")
+
+
 def snapshot_set(path):
     with open(path) as f:
         snap = json.load(f)
@@ -330,19 +370,17 @@ def probe():
         stage = "negative-predeploy"
         calls = STATE["wrangler_calls"]
         neg = tmpfile("snapneg-")
+        # LEITURA: a foto com o token negativo tem de PASSAR; só então a ESCRITA (preflight) tem de voltar 403.
         rc, out, http = routes_cmd(noroutes, "snapshot", neg, False)
         where = "snapshot"
         if rc == 0:
             where = "preflight"
             rc, out, http = routes_cmd(noroutes, "preflight", neg, False)
         os.remove(neg)
-        if rc == 0:
-            raise Fail("token sem Workers Routes Write passou snapshot+preflight — a guarda não protege o deploy")
-        if "403" not in http:
-            raise Fail(f"falha sem 403 no estágio {where} (http={','.join(sorted(http)) or 'none'})")
+        negative_oracle(where, rc, out, http, PREFLIGHT_WRITE_403)
         if STATE["wrangler_calls"] != calls or active_version(full) != prev or as_set(inventory(full)) != target:
             raise Fail("estado mudou durante a prova negativa")
-        say(f"NEG_PREDEPLOY=PASS stage={where} http=403 wrangler_calls=0 version=unchanged routes=unchanged")
+        say("NEG_PREDEPLOY=PASS read=200 write=403 wrangler_calls=0 version=unchanged routes=unchanged")
 
         stage = "deploy-v2"
         wrangler(full, ["deploy", "--config", PROBE_CFG, "--var", "PROBE_VERSION:v2", "--message", "B02 route probe v2"],
@@ -372,14 +410,12 @@ def probe():
 
         stage = "negative-restore"
         rc, out, http = routes_cmd(noroutes, "restore", snap, False)
-        if rc == 0 or "403" not in http:
-            raise Fail("restore com token sem Routes Write não falhou com 403")
-        where = "write" if "write_failed=3" in out else "read"
         cur = as_set(inventory(full))
         divergent = len(target - cur) + len(cur - target) - len({p for p, _ in target - cur} & {p for p, _ in cur - target})
         if divergent != 3:
             raise Fail(f"zona deveria seguir divergente em 3 rotas, está em {divergent}")
-        say(f"NEG_RESTORE=PASS stage={where} http=403 divergent=3")
+        negative_oracle("restore", rc, out, http, RESTORE_WRITE_403)
+        say("NEG_RESTORE=PASS read=200 write=403 write_failed=3 divergent=3")
 
         stage = "rollback"
         t_restore = time.monotonic()
@@ -443,7 +479,7 @@ def main(argv):
         {"probe": probe, "cleanup": cleanup}[argv[1]]()
         return 0
     except Fail as e:
-        err(title, f"{e} | http={','.join(sorted(set(CODES))) or 'none'}")
+        err(e.title or title, f"{e} | http={','.join(sorted(set(CODES))) or 'none'}")
     except Exception as e:  # noqa: BLE001 — imprevisto fecha; só o tipo vai para o log
         err(title, f"erro inesperado {type(e).__name__} | http={','.join(sorted(set(CODES))) or 'none'}")
     return 1
