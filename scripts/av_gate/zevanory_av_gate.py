@@ -524,23 +524,26 @@ def m_spectral(x16, sp):
         specs.append(p)
     if not specs:
         return None
-    # Tonality on a LONG-window LTAS (4096 pt ≈ 3.9 Hz bins): a steady tone/beep keeps its energy in a few bins,
-    # natural speech (moving F0, formants) smears it. Ratio = energy of the 5 strongest peaks (±1 bin) / total.
-    sx = np.concatenate([x16[i * hop:(i + 1) * hop] for i in np.nonzero(sp)[0]])
-    N = 4096
-    if len(sx) < N:
-        sx = np.pad(sx, (0, N - len(sx)))
-    w4 = np.hanning(N)
-    f4 = np.fft.rfftfreq(N, 1 / SR)
-    b4 = (f4 >= 80) & (f4 <= 7600)
-    acc = np.zeros(int(np.sum(b4)))
-    for k in range(0, len(sx) - N + 1, N // 2):
-        acc += (np.abs(np.fft.rfft(sx[k:k + N] * w4)) ** 2)[b4]
-    ltas = acc + 1e-12
-    peaks = [k for k in range(1, len(ltas) - 1) if ltas[k] >= ltas[k - 1] and ltas[k] >= ltas[k + 1]]
-    peaks = sorted(peaks, key=lambda k: ltas[k], reverse=True)[:5]
-    tonal = sum(float(np.sum(ltas[max(0, k - 1):k + 2])) for k in peaks) / float(np.sum(ltas))
-    return {"spectral_flatness": float(np.median(flats)), "tonal_ratio": float(min(1.0, tonal))}
+    # Tonality = PERSISTENCE of a narrow spectral peak over time (400–7600 Hz): a tone, beep or whine stays in the
+    # same bin in most speech frames; speech harmonics move with F0 (k·ΔF0) and never persist. Independent of
+    # the speaker's F0 (the former LTAS peak ratio penalised female voices).
+    N = 1024
+    w1 = np.hanning(N)
+    f1 = np.fft.rfftfreq(N, 1 / SR)
+    b1 = (f1 >= 400) & (f1 <= 7600)
+    counts, total = np.zeros(int(np.sum(b1))), 0
+    for i in np.nonzero(sp)[0]:
+        seg = x16[i * hop:i * hop + N]
+        if len(seg) < N:
+            continue
+        pdb = 10 * np.log10((np.abs(np.fft.rfft(seg * w1)) ** 2)[b1] + 1e-12)
+        floor = np.median(np.lib.stride_tricks.sliding_window_view(np.pad(pdb, 15, mode="edge"), 31), axis=1)
+        pk = np.zeros(len(pdb), dtype=bool)
+        pk[1:-1] = (pdb[1:-1] >= pdb[:-2]) & (pdb[1:-1] >= pdb[2:]) & (pdb[1:-1] - floor[1:-1] >= 12)
+        counts += pk
+        total += 1
+    tonal = float(counts.max() / total) if total else 0.0
+    return {"spectral_flatness": float(np.median(flats)), "tonal_persistence": float(min(1.0, tonal))}
 
 
 def m_prosody(x16, sp):
@@ -695,7 +698,8 @@ def reference_independent(r16, x16):
     def env(x):
         n = 160
         k = len(x) // n
-        e = np.log10(np.sqrt(np.mean(x[:k * n].reshape(k, n) ** 2, axis=1)) + 1e-5)
+        e = np.log10(np.sqrt(np.mean(x[:k * n].reshape(k, n) ** 2, axis=1)) + 1e-7)
+        e = np.maximum(e, e.max() - 4.0)  # 40 dB range: digital-silence padding must not dominate the correlation
         return (e - e.mean()) / (e.std() + 1e-9)
     a, b = env(r16), env(x16)
     if len(a) < 50 or len(b) < 50:
@@ -1010,6 +1014,9 @@ def measure(mp4, manifest_path, engines, thr):
             v1, v2 = engines.xvector(x16), engines.xvector(r16)
             return None if v1 is None or v2 is None else float(np.dot(v1, v2))
         M["speaker_cos"] = guard("speaker", spk)
+        # an x-vector practically identical to the clip's own means the "reference" IS the clip (or a cut of it)
+        if M.get("speaker_cos") is not None and M["speaker_cos"] >= thr["V4"].get("speaker_self_cos", 0.97):
+            M["reference_independent"] = False
     return M
 
 
@@ -1023,7 +1030,7 @@ GROUPS = {
     "true_peak": ["v3.master_tp", "v3.stream_tp"],
     "clipping": ["v3.clipped_samples", "v3.clip_density"],
     "noise": ["v3.noise_floor", "v3.snr"],
-    "spectral": ["v3.spectral_flatness", "v3.tonal_ratio", "v3.voiced_fraction", "v4.hnr"],
+    "spectral": ["v3.spectral_flatness", "v3.tonality", "v3.voiced_fraction", "v4.hnr"],
     "rate": ["v4.wpm", "v4.win_wpm"],
     "prosody": ["v4.f0_sd", "v4.energy_sd"],
     "speaker": ["v4.speaker"],
@@ -1112,7 +1119,7 @@ def decide(M, thr, profile="production", disable=(), overrides=None, policy=None
              lambda v: v <= T["V3"]["leading_silence_max_s"], T["V3"]["leading_silence_max_s"], ["vad"])
         spc = M.get("spectral") or {}
         need("v3.spectral_flatness", spc.get("spectral_flatness"), lambda v: v <= T["V3"]["spectral_flatness_max"], T["V3"]["spectral_flatness_max"], ["spectral", "vad"])
-        need("v3.tonal_ratio", spc.get("tonal_ratio"), lambda v: v <= T["V3"]["tonal_ratio_max"], T["V3"]["tonal_ratio_max"], ["spectral", "vad"])
+        need("v3.tonality", spc.get("tonal_persistence"), lambda v: v <= T["V3"]["tonal_persistence_max"], T["V3"]["tonal_persistence_max"], ["spectral", "vad"])
         pro = M.get("prosody") or {}
         need("v3.voiced_fraction", pro.get("voiced_fraction"), lambda v: v >= T["V3"]["voiced_fraction_min"], T["V3"]["voiced_fraction_min"], ["prosody", "vad"])
         # V2

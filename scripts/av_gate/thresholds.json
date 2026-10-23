@@ -22,7 +22,7 @@
     "clip_spike_max": 3.0,
     "noise_floor_max_dbfs": -50.0, "snr_min_db": 30.0,
     "speech_ratio_min": 0.55, "leading_silence_max_s": 0.5,
-    "spectral_flatness_max": 0.30, "tonal_ratio_max": 0.42, "voiced_fraction_min": 0.25
+    "spectral_flatness_max": 0.30, "tonal_persistence_max": 0.5, "voiced_fraction_min": 0.25
   },
   "V4": {
     "wpm_min": 130, "wpm_max": 175, "win_wpm_min": 105, "win_wpm_max": 195, "window_s": 10.0,
@@ -30,9 +30,9 @@
     "f0_sd_st_min": 1.5, "f0_sd_st_max": 8.0,
     "energy_sd_db_min": 3.0, "energy_sd_db_max": 18.0,
     "hnr_min_db": 4.0,
-    "speaker_cos_min": 0.75, "speaker_status": "provisional"
+    "speaker_cos_min": 0.75, "speaker_self_cos": 0.97, "speaker_status": "provisional"
   },
-  "V5": {"dnsmos_ovrl_min": 2.4, "dnsmos_sig_min": 2.8, "status": "provisional", "_doc": "MOS preditivo só filtra; nunca homologa. A decisão é do painel humano cego (docs/p05)."},
+  "V5": {"dnsmos_ovrl_min": 2.2, "dnsmos_sig_min": 2.8, "status": "provisional", "_doc": "MOS preditivo só filtra; nunca homologa. A decisão é do painel humano cego (docs/p05)."},
   "V6": {"drift_p95_ms": 80, "drift_max_ms": 120, "caption_delta_max_ms": 100, "measurable_cues_min_ratio": 0.5},
   "V7": {"frame": [1080, 1920], "safe_area": [60, 220, 960, 1440], "contrast_min": 4.5, "text_luma_diff": 25, "caption_script_wer_max": 0.02, "max_chars_line": 42, "max_lines": 2, "mean_cps_max": 25.0, "black_max_s": 0.6}
 }

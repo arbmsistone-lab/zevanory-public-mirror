@@ -136,7 +136,7 @@ def audio_screen(c, thr):
     wpm = n / max(1e-6, tl["last_offset_s"] - tl["first_onset_s"]) * 60
     c.update({"wpm_raw": wpm, "snr_raw": tl["snr_db"], "pause_max_raw": tl["pause_max_ms"], "speech_ratio_raw": tl["speech_ratio"]})
     # level-independent envelope (the production chain re-levels everything to −23 / −17.5 LUFS)
-    c["screen_fail"] = [k for k, ok in (("wpm", 134 <= wpm <= 171), ("snr", (tl["snr_db"] or 0) >= 33),
+    c["screen_fail"] = [k for k, ok in (("wpm", 134 <= wpm <= 171), ("snr", (tl["snr_db"] or 0) >= 36),
                                         ("pause", tl["pause_max_ms"] <= 1100), ("ratio", tl["speech_ratio"] >= 0.65)) if not ok]
     return not c["screen_fail"]
 
@@ -291,14 +291,14 @@ def run(work, out):
     def synth(cid, sig, sr=48000):
         return lambda: B.build(cid, write_raw(os.path.join(tmp, cid + ".wav"), sig, sr), S)
     T = 12.0
-    safe("N01", "negative", "tom puro 196 Hz", "FAIL", ["v3.tonal_ratio", "v2.consensus_wer"], synth("N01", tone(T)))
+    safe("N01", "negative", "tom puro 196 Hz", "FAIL", ["v3.tonality", "v2.consensus_wer"], synth("N01", tone(T)))
     safe("N02", "negative", "ruído branco", "FAIL", ["v3.spectral_flatness", "v2.consensus_wer"], synth("N02", 0.2 * rng.standard_normal(int(T * 48000))))
     pk = pink(int(T * 48000), rng)
     env = 0.5 * (1 + np.sin(2 * np.pi * 4.0 * np.arange(len(pk)) / 48000))
     safe("N03", "negative", "ruído rosa modulado 4 Hz (pseudo-fala)", "FAIL", ["v2.consensus_wer"], synth("N03", 0.3 * pk / np.max(np.abs(pk)) * env))
     t = np.arange(int(T * 48000)) / 48000
     beeps = 0.3 * np.sin(2 * np.pi * 880 * t) * ((t % 0.3) < 0.15)
-    safe("N04", "negative", "bipes robóticos 880 Hz", "FAIL", ["v3.tonal_ratio", "v2.consensus_wer"], synth("N04", beeps))
+    safe("N04", "negative", "bipes robóticos 880 Hz", "FAIL", ["v3.tonality", "v2.consensus_wer"], synth("N04", beeps))
 
     # ---- derived from human speech, one defect each
     def from_raw(cid, xmod, sr=16000, script=None, **kw):
@@ -451,7 +451,7 @@ def run(work, out):
         t = np.arange(len(x)) / 16000
         y = x + gate * np.sqrt(2) * rms * 10 ** (-4 / 20) * np.sin(2 * np.pi * 2000 * t)
         return B.build("N26", write_raw(os.path.join(tmp, "N26.wav"), y, 16000), P["text"])
-    safe("N26", "negative", "artefato tonal (apito 2 kHz só durante a fala)", "FAIL", ["v3.tonal_ratio"], whine, base=P["source"])
+    safe("N26", "negative", "artefato tonal (apito 2 kHz só durante a fala)", "FAIL", ["v3.tonality"], whine, base=P["source"])
     safe("N27", "negative", "narração curta e 6 s de silêncio no fim do vídeo", "FAIL", ["v1.narration_coverage"],
          lambda: B.build("N27", P["path"], P["text"], pkg={"tail_s": 6.0}), base=P["source"])
 
@@ -508,8 +508,8 @@ def run(work, out):
             y = x + g * np.sqrt(2) * rms * 10 ** (db / 20) * np.sin(2 * np.pi * 2000 * t)
             return B.build(cid, write_raw(os.path.join(tmp, cid + ".wav"), y, 16000), P["text"])
         return go
-    isolate("I01", "só tonalidade: apito 2 kHz durante a fala", ["v3.tonal_ratio", "v3.spectral_flatness", "v3.voiced_fraction", "v4.hnr"],
-            [(f"{db}dB", mk_whine(db)) for db in (-14, -11, -9, -7, -5)], base=P["source"])
+    isolate("I01", "só tonalidade: apito 2 kHz durante a fala", ["v3.tonality", "v3.spectral_flatness", "v3.voiced_fraction", "v4.hnr"],
+            [(f"{db}dB", mk_whine(db)) for db in (-32, -28, -24, -20, -16)], base=P["source"])
     isolate("I02", "só prosódia: F0 comprimido (PSOLA)", ["v4.f0_sd", "v4.energy_sd"],
             [(f"k{k}", (lambda k: lambda cid: psola(cid, mid, k))(k)) for k in (0.45, 0.35, 0.28, 0.22, 0.16)], base=mid["source"])
 
@@ -554,7 +554,7 @@ def run(work, out):
 
 
 FIXTURES = [  # (expected failing checks, path in the measurements, out-of-range value) — ONE field changed per fixture
-    (["v3.tonal_ratio"], ("spectral", "tonal_ratio"), 0.6), (["v3.spectral_flatness"], ("spectral", "spectral_flatness"), 0.5),
+    (["v3.tonality"], ("spectral", "tonal_persistence"), 0.6), (["v3.spectral_flatness"], ("spectral", "spectral_flatness"), 0.5),
     (["v3.voiced_fraction"], ("prosody", "voiced_fraction"), 0.05), (["v4.hnr"], ("prosody", "hnr_db"), 1.0),
     (["v4.f0_sd"], ("prosody", "f0_sd_st"), 0.6), (["v4.energy_sd"], ("timeline", "energy_sd_db"), 1.0),
     (["v3.clipped_samples"], ("stream_clipped_samples",), 25), (["v3.clip_density"], ("master_clip_density",), 9.0),
@@ -716,7 +716,7 @@ def key_metrics(M):
         "mL": r(g("master_loudness", "lufs"), 1), "mTP": r(g("master_loudness", "tp"), 1), "clip": M.get("stream_clipped_samples"),
         "dens": r(M.get("master_clip_density"), 4), "nf": r(g("timeline", "noise_floor_dbfs"), 1), "snr": r(g("timeline", "snr_db"), 1),
         "sr": r(g("timeline", "speech_ratio")), "lead": r(g("timeline", "first_onset_s")), "pmax": r(g("timeline", "pause_max_ms"), 0),
-        "flat": r(g("spectral", "spectral_flatness"), 3), "ton": r(g("spectral", "tonal_ratio"), 3), "vf": r(g("prosody", "voiced_fraction")),
+        "flat": r(g("spectral", "spectral_flatness"), 3), "ton": r(g("spectral", "tonal_persistence"), 3), "vf": r(g("prosody", "voiced_fraction")),
         "hnr": r(g("prosody", "hnr_db"), 1), "f0sd": r(g("prosody", "f0_sd_st")), "esd": r(g("timeline", "energy_sd_db"), 1),
         "wpm": r(g("rate", "wpm"), 0), "win": [r(g("rate", "win_wpm_min"), 0), r(g("rate", "win_wpm_max"), 0)],
         "spk": r(M.get("speaker_cos")), "ovrl": r(g("dnsmos", "ovrl")), "sig": r(g("dnsmos", "sig")), "bak": r(g("dnsmos", "bak")),
