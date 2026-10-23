@@ -13,9 +13,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 
-const SRC = readFileSync(new URL("../worker/cloudflare-worker.recovered.mjs", import.meta.url), "utf8");
+const SRC = readTextNormalized(new URL("../worker/cloudflare-worker.recovered.mjs", import.meta.url));
 function trecho(inicio, fim) {
   const a = SRC.indexOf(inicio);
   const b = SRC.indexOf(fim, a);
