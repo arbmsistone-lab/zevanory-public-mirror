@@ -9,7 +9,7 @@ test("all customer email HTML shells use the approved Z brand and exact legal id
  assert.ok(h.includes("99254-5413"));
  assert.ok(h.includes("suporte@zevanory.api.br"));
  assert.match(h,/Descadastrar-se/);
- assert.ok(OFFICIAL_LEGAL_FOOTER.includes("Rua Francisco de Freitas Neto, 96"));
+ assert.ok(OFFICIAL_LEGAL_FOOTER.includes("Rua Francisco de Freitas Neto, nº 96, Alto do Tenente, Várzea Alegre – CE, CEP 63540-000"));
 });
 test("brand email HTML does not allow injected HTML or URL attributes",()=>{
  const h=brandedEmailHtml('<img src=x onerror=alert(1)>',{unsubscribeUrl:'https://a.example/?x=" onmouseover="bad'});

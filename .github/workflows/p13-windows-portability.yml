@@ -1,0 +1,49 @@
+name: p13-windows-portability
+# AVAL 084 (Sol), item 3: os testes P13 rodam também no Windows (caminhos via fileURLToPath, python
+# resolvido por plataforma, filtros de cópia com separador \ ou /). Só pull_request, sem segredos,
+# sem deploy, somente leitura.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "tests/p13-politica-nogo.test.mjs"
+      - "tests/p13c-superficies-politica.test.mjs"
+      - "tests/p13-decreto-oferta-cache.test.mjs"
+      - "tests/p13c-prazo-reembolso.test.mjs"
+      - "worker/refund-flow.mjs"
+      - "worker/multichannel-autonomy.mjs"
+      - "data/politica-unica.json"
+      - "worker/politica-unica.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "scripts/sales_policy.py"
+      - "scripts/build_sales_public.py"
+      - ".github/workflows/p13-windows-portability.yml"
+permissions:
+  contents: read
+concurrency:
+  group: p13-windows-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Line endings as committed (no CRLF conversion)
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: P13 tests on Windows (exact count)
+        shell: bash
+        env:
+          PYTHON: python
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -eo pipefail
+          { node --test tests/p13-politica-nogo.test.mjs tests/p13c-superficies-politica.test.mjs tests/p13-decreto-oferta-cache.test.mjs tests/p13c-prazo-reembolso.test.mjs || true; } | tee w.txt
+          grep -qx "# tests 23" w.txt && grep -qx "# pass 23" w.txt && grep -qx "# skipped 0" w.txt && grep -qx "# fail 0" w.txt \
+            || { grep -E "^# (tests|pass|fail|skipped|cancelled) |^not ok" w.txt | sed "s/^/::error::/"; exit 1; }

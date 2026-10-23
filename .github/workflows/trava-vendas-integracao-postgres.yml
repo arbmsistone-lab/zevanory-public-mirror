@@ -11,6 +11,7 @@ on:
     branches: [gh-pages]
     paths:
       - "worker/**"
+      - "data/politica-unica.json"
       - "tests/integration/**"
       - "tests/t4_sim/**"
       - "tests/trava-vendas-gate-paths.test.mjs"
@@ -103,6 +104,16 @@ jobs:
           node --test tests/integration/mercadopago-payment-dedupe-postgres.test.mjs | tee d.txt
           grep -qx "# tests 4" d.txt && grep -qx "# pass 4" d.txt && grep -qx "# skipped 0" d.txt && grep -qx "# fail 0" d.txt
           echo "::notice title=COUNTS_D::$(grep -E '^# (tests|pass|fail|skipped) ' d.txt | paste -sd' ' -)"
+      - name: Marco do prazo de reembolso = primeiro recebimento (AVAL Sol 2ff8678; entregas invertidas e mutantes W1–W3)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/refund-window-postgres.test.mjs | tee r.txt
+          grep -qx "# tests 2" r.txt && grep -qx "# pass 2" r.txt && grep -qx "# skipped 0" r.txt && grep -qx "# fail 0" r.txt
+          grep -cE '^# W[0-9] .*: KILLED' r.txt | grep -qx 3 || { echo "::error::esperados 3 mutantes W mortos"; exit 1; }
+          echo "::notice title=REFUND_WINDOW_MUTANTS::$(grep -E '^# W[0-9]' r.txt | sed 's/^# //' | paste -sd'|' - | sed 's/|/%0A/g')"
       - name: Suíte Node completa no SHA do PR (prova Linux independente, Ordem Sol 024)
         run: |
           set -eo pipefail

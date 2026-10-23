@@ -1,3 +1,4 @@
+import { SHORT_RULE_LABEL } from "./politica-unica.mjs";
 export const CREATIVE_AUTOPUBLISH_PAUSE_KEY="zpc:creative-autonomy:paused:v1";
 export const CREATIVE_AUTONOMY_FEED_KEY="zpc:creative-autonomy:feed:v1";
 export const CREATIVE_BANDIT_KEY="zpc:creative-autonomy:bandit:v1";
@@ -78,8 +79,9 @@ export function scoreCreative(spec={}, {serverPrice=spec.price_brl,visualScore=n
 export function rewriteCreative(spec={}, {serverPrice=spec.price_brl}={}){
  const scrub=v=>String(v||"").replace(forbidden,"").replace(metaRisk,"").replace(personal,"").replace(/\s{2,}/g," ").trim();
  const price=Number(serverPrice)>0?` por R$ ${money(serverPrice).toFixed(2).replace(".",",")}`:"";
- const body=scrub(spec.body).replace(/\bgarantia\s+de\s+\d+\s+dias\b/ig,"").replace(/[. ]+$/,"");
- return Object.freeze({...spec,hook:scrub(spec.hook),body:`${body}${price}. Garantia de 7 dias.`.trim(),cta:words(scrub(spec.cta)).slice(0,7).join(" ")||"Conheça a ZEVANORY"});
+ const body=scrub(spec.body).replace(/\bgarantia\s+de\s+\d+\s+dias\b/ig,"").split(SHORT_RULE_LABEL).join("").replace(/[. ]+$/,"");
+ // P13c: regra curta da política única (data/politica-unica.json), nunca "garantia".
+ return Object.freeze({...spec,hook:scrub(spec.hook),body:`${body}${price}. ${SHORT_RULE_LABEL}.`.trim(),cta:words(scrub(spec.cta)).slice(0,7).join(" ")||"Conheça a ZEVANORY"});
 }
 
 export function evaluateCreativeWithRewrites(spec={},options={}){

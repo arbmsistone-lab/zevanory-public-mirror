@@ -1,5 +1,6 @@
 import { brandedEmailHtml } from "./brand-email.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
+import { CUSTOMER_RULE_7D, DELIVERY_72H, hasCheckoutCta } from "./politica-unica.mjs";
 // Lead magnet: free checklist in exchange for an e-mail, with explicit LGPD consent and double
 // opt-in. Inbound only: nobody receives anything without asking for it and confirming the address.
 // * Subscribe arrives only through the sales Worker's private binding (host leads.internal).
@@ -165,15 +166,24 @@ export function interestFromPage(page = "") {
 }
 const track = (slug, step, interest) => `${SALES}/${slug}?utm_source=email&utm_medium=nurture&utm_campaign=s${step}-${interest}`;
 
-export function nurtureEmail(step, { name, optOutUrl, interest = "ia" }) {
+// P13c: prazo e entrega vêm de data/politica-unica.json; as ofertas (passos 2 a 4) só existem com
+// vendas abertas (interruptor do proprietário, readSalesSwitch -> runLeadNurture). Fechado (padrão),
+// o passo comercial devolve null e nenhum e-mail com chamada de compra é montado.
+export function nurtureEmail(step, { name, optOutUrl, interest = "ia", salesOpen = false } = {}) {
+  if (step >= 2 && salesOpen !== true) return null;
+  const mail = nurtureEmailText(step, { name, optOutUrl, interest });
+  if (salesOpen !== true && hasCheckoutCta(mail.text + " " + mail.subject)) throw new Error("nurture_checkout_cta_while_closed");
+  return mail;
+}
+function nurtureEmailText(step, { name, optOutUrl, interest = "ia" }) {
   const hi = name ? `Olá, ${name}!` : "Olá!";
   const sign = `\n\nEquipe ZEVANORY\n${SUPPORT_EMAIL}\n\nNão quer mais receber? ${optOutUrl}`;
   const o = OFFERS[interest] || OFFERS.ia;
   if (step === 0) return { subject: "Seu checklist: 15 minutos por dia para organizar o negócio", text: `${hi}\n\nAqui está o seu checklist gratuito:\n${CHECKLIST_URL}\n\nComece hoje pelo bloco do caixa (5 minutos). Em 2 dias eu te mando dois hábitos simples que evitam perder dinheiro e clientes.` + sign };
   if (step === 1) return { subject: "Dois hábitos que evitam perder dinheiro e clientes", text: `${hi}\n\n1. Toda sexta, olhe três números: quanto entrou, quanto saiu e quanto sobrou. Se quiser fazer a conta de margem em segundos, use a calculadora gratuita:\n${SALES}/calculadora-margem-de-lucro?utm_source=email&utm_medium=nurture&utm_campaign=s1-${interest}\n\n2. Toda conversa com cliente termina com um próximo passo claro (responder a dúvida, mandar a proposta, combinar o retorno). Anote o que ficou combinado para não repetir mensagens.\n\nEsta mensagem é apenas uma dica prática; não contém oferta.` + sign };
-  if (step === 2) return { subject: `${o.name}: o próximo passo depois do checklist`, text: `${hi}\n\nPelo que você estava lendo no nosso site, o material que mais combina com o seu momento é o ${o.name} (R$ ${o.price}, pagamento único).\n\nEle serve para ${o.promise}.\n\nVocê recebe tudo por e-mail logo após o pagamento e tem 7 dias de garantia: se não for para você, pede o reembolso integral, sem precisar explicar.\n\nVer o que vem dentro:\n${track(o.slug, 2, interest)}\n\nSe preferir comparar todos os materiais: ${SALES}/solucoes?utm_source=email&utm_medium=nurture&utm_campaign=s2-${interest}` + sign };
-  if (step === 3) return { subject: "As dúvidas mais comuns antes de decidir", text: `${hi}\n\nAntes de comprar, quase todo mundo pergunta:\n\n• "Preciso entender de tecnologia?" Não. Tudo vem com o passo a passo no arquivo "Comece aqui".\n• "Quanto tempo leva?" Dá para começar no mesmo dia, seguindo o arquivo "Comece aqui". Depois, a rotina é curta e semanal.\n• "Substitui contador ou consultor?" Não. É um material prático de gestão do dia a dia.\n• "E se eu não gostar?" São 7 dias de garantia, com reembolso integral.\n\nSe alguma dúvida ficou, é só responder este e-mail.\n\n${o.name}: ${track(o.slug, 3, interest)}` + sign };
-  return { subject: "Último e-mail desta sequência", text: `${hi}\n\nEste é o último e-mail da sequência do checklist. Depois dele, não envio mais nada sobre isso.\n\nSe você quiser resolver tudo de uma vez (IA, vendas e caixa), o Negócio Completo reúne os três materiais e mais um plano de 30 dias, por R$ 397 (separados custariam R$ 641). Garantia de 7 dias.\n${track("negocio-completo", 4, interest)}\n\nSe agora não é o momento, tudo bem. O checklist continua sendo seu:\n${CHECKLIST_URL}` + sign };
+  if (step === 2) return { subject: `${o.name}: o próximo passo depois do checklist`, text: `${hi}\n\nPelo que você estava lendo no nosso site, o material que mais combina com o seu momento é o ${o.name} (R$ ${o.price}, pagamento único).\n\nEle serve para ${o.promise}.\n\nVocê recebe tudo por e-mail após a confirmação do pagamento, em ${DELIVERY_72H}. Se não for para você, pode desistir em ${CUSTOMER_RULE_7D}, sem justificativa e com devolução integral.\n\nVer o que vem dentro:\n${track(o.slug, 2, interest)}\n\nSe preferir comparar todos os materiais: ${SALES}/solucoes?utm_source=email&utm_medium=nurture&utm_campaign=s2-${interest}` + sign };
+  if (step === 3) return { subject: "As dúvidas mais comuns antes de decidir", text: `${hi}\n\nAntes de comprar, quase todo mundo pergunta:\n\n• "Preciso entender de tecnologia?" Não. Tudo vem com o passo a passo no arquivo "Comece aqui".\n• "Quanto tempo leva?" Dá para começar no mesmo dia, seguindo o arquivo "Comece aqui". Depois, a rotina é curta e semanal.\n• "Substitui contador ou consultor?" Não. É um material prático de gestão do dia a dia.\n• "E se eu não gostar?" Você pode desistir em ${CUSTOMER_RULE_7D}, com devolução integral.\n\nSe alguma dúvida ficou, é só responder este e-mail.\n\n${o.name}: ${track(o.slug, 3, interest)}` + sign };
+  return { subject: "Último e-mail desta sequência", text: `${hi}\n\nEste é o último e-mail da sequência do checklist. Depois dele, não envio mais nada sobre isso.\n\nSe você quiser resolver tudo de uma vez (IA, vendas e caixa), o Negócio Completo reúne os três materiais e mais um plano de 30 dias, por R$ 397 (separados custariam R$ 641). Arrependimento: ${CUSTOMER_RULE_7D}.\n${track("negocio-completo", 4, interest)}\n\nSe agora não é o momento, tudo bem. O checklist continua sendo seu:\n${CHECKLIST_URL}` + sign };
 }
 
 async function subscribe(env, sql, { email, name, consent, page }) {
@@ -259,7 +269,8 @@ export async function runLeadNurture(env, { sqlFactory, salesOpen = false, now =
       interest = String((ref && await kv?.get?.("zpc:lead:interest:" + ref)) || await kv?.get?.("zpc:lead:interest:" + (await sha256Hex(lead.email))) || "ia");
     } catch {}
     const optOutUrl = await leadOptOutLink(env, lead.email, ref);
-    const mail = nurtureEmail(step, { name: lead.name, optOutUrl, interest });
+    const mail = nurtureEmail(step, { name: lead.name, optOutUrl, interest, salesOpen });
+    if (!mail) { await sql.query("update zevanory_leads set nurture_step=$2 where email=$1 and nurture_step=$3", [lead.email, step, step + 1]); out.held += 1; continue; }
     // Idempotency key: same value as before for legacy leads would need the plain hash; a keyed one is used now.
     const ok = await sendEmail(env, { to: lead.email, ...mail, unsubscribeUrl: optOutUrl, idempotencyKey: `zevanory-lead-${ref || (await sha256Hex(lead.email))}-s${step}` });
     if (ok) out.sent += 1;
