@@ -9,15 +9,17 @@ name: node-suite-windows
 # dele. NÃO prova execução em PowerShell/cmd puro nem em host sem Git Bash; nesses hosts os testes que
 # precisam de bash, jq ou python3 falham com "TOOL_MISSING: <tool>" (tests/helpers/toolchain.mjs).
 #
-# Só pull_request: nunca dispara no merge, sem segredos, sem rede além do checkout e da instalação do Node.
-# Contagem literal 573 = a mesma do gate Linux; ao rebasear sobre o #874 (manifesto tests/node-suite.manifest)
-# este literal passa a ser derivado do manifesto. O guarda de portabilidade (tests/guards) tem contagem própria.
+# Só pull_request: nunca dispara no merge, sem segredos, sem rede além do checkout e da instalação do Node/Python.
+# Contagem EXATA derivada do manifesto tests/node-suite.manifest (#874), pelo mesmo verificador do gate Linux
+# (scripts/ci/node_suite_check.py): nenhum literal neste arquivo. O guarda de portabilidade (tests/guards)
+# fica fora do manifesto e tem contagem própria.
 on:
   pull_request:
     paths:
       - "tests/*.test.mjs"
       - "tests/helpers/**"
       - "tests/guards/**"
+      - "tests/node-suite.manifest"
       - "worker/**"
       - "scripts/**"
       - ".github/workflows/**"
@@ -42,6 +44,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Ambiente (Windows host + Git Bash)
         shell: bash
         env:
@@ -54,16 +59,22 @@ jobs:
           done
           echo "::notice title=AMBIENTE (Windows host + Git Bash)::RUNNER_OS=$RUNNER_OS shell=$BASH ($BASH_VERSION) node=$(node --version) autocrlf=$(git config --get core.autocrlf || echo unset) ferramentas:$tools"
           echo "::notice title=SHA_TESTADO (Windows host + Git Bash)::ref=$GITHUB_REF tested=$(git rev-parse HEAD) pr.head=$PR_HEAD_SHA"
-      - name: Suíte Node completa (Windows host + Git Bash, contagem exata 573)
+      - name: Suíte Node completa (Windows host + Git Bash, contagem exata pelo manifesto)
         shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONIOENCODING: "utf-8"
         run: |
           set -eo pipefail
-          node --test tests/*.test.mjs 2>&1 | tr -d '\r' | tee all.txt || true
-          echo "::notice title=COUNTS_ALL (Windows host + Git Bash - esperado 573)::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' all.txt | paste -sd' ' -)"
+          node --test --test-reporter=tap --test-reporter-destination=stdout \
+            --test-reporter=./scripts/ci/node-suite-reporter.mjs --test-reporter-destination=per-file.json \
+            tests/*.test.mjs | tr -d '\r' | tee all.txt || true
+          echo "::notice title=COUNTS_ALL (Windows host + Git Bash)::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' all.txt | paste -sd' ' -)"
           # Sem falhas o grep sai 1; com pipefail isso derrubaria o passo antes da verificação de contagem.
           { grep -E '^not ok ' all.txt || true; } | while IFS= read -r l; do echo "::error title=FAIL (Windows host + Git Bash)::$l"; done
           { grep -oE 'TOOL_MISSING: [^ ]+' all.txt || true; } | sort -u | while IFS= read -r l; do echo "::error title=TOOL_MISSING (Windows host + Git Bash)::$l"; done
-          grep -qx "# tests 573" all.txt && grep -qx "# pass 573" all.txt && grep -qx "# skipped 0" all.txt && grep -qx "# fail 0" all.txt && grep -qx "# cancelled 0" all.txt
+          # Esperado = soma de tests/node-suite.manifest (mesmo verificador e mesmas regras do gate Linux).
+          python scripts/ci/node_suite_check.py --manifest tests/node-suite.manifest --tap all.txt --per-file per-file.json
       - name: Guarda de portabilidade (Windows host + Git Bash, contagem exata 3)
         shell: bash
         run: |

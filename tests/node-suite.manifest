@@ -20,6 +20,7 @@ tests/brand-kit.test.mjs 9
 tests/brand-profiles.test.mjs 16
 tests/central-candidate-dryrun.test.mjs 4
 tests/certification-worker.test.mjs 3
+tests/circuits-adversarial.test.mjs 31
 tests/command-center-main.test.mjs 3
 tests/command-center-snapshot.test.mjs 9
 tests/commercial-checkout-guard.test.mjs 6
