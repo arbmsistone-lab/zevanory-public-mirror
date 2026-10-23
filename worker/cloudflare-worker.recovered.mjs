@@ -1,4 +1,5 @@
 import { saveWhatsappObservation } from "./voice-operational-audit.mjs";
+import { databaseHostSha256 } from "./database-identity.mjs";
 import { whatsappInboundSafety } from "./whatsapp-inbound-safety.mjs";
 import { recordWhatsappEvidence } from "./whatsapp-e2e-evidence.mjs";
 import { whatsappStageRecorder, handleNodeWebhookFetch } from "./whatsapp-background.mjs";
@@ -9551,9 +9552,11 @@ async function healthProbe(req, res) {
   const health = buildSystemHealth({ databaseReachable, schemaReady: schema.ready });
   res.statusCode = health.ready ? 200 : 503;
   operationalLog(context, res.statusCode, health.ready ? "readiness_ok" : "readiness_degraded", { database_reachable: databaseReachable, schema_ready: schema.ready, schema_check_error: schemaCheckError });
-  const full = { ...health, schema, schema_check_error: schemaCheckError, request_id: context.requestId };
+  // B07 T4 (classe B): identidade não secreta do banco — sha256 do host normalizado; nunca usuário/senha/banco.
+  const databaseHostHash = databaseHostSha256(process.env.DATABASE_URL);
+  const full = { ...health, schema, schema_check_error: schemaCheckError, database_host_sha256: databaseHostHash, request_id: context.requestId };
   if (!isPublicDeploymentRequest(req)) return res.end(JSON.stringify(full));
-  const publicHealth = { service: health.service, live: health.live, ready: health.ready, checks: { database_reachable: health.checks.database_reachable, schema_ready: health.checks.schema_ready, public_base_url_valid: health.checks.public_base_url_valid, commercial_safety_locked: health.checks.commercial_safety_locked }, schema: { ready: schema.ready, required_tables: schema.required_tables, required_migrations: schema.required_migrations, missing_tables_count: Array.isArray(schema.missing_tables) ? schema.missing_tables.length : null, missing_migrations_count: Array.isArray(schema.missing_migrations) ? schema.missing_migrations.length : null }, commercial_controls: { enabled: Object.values(health.commercial_switches || {}).filter(Boolean).length, total: Object.keys(health.commercial_switches || {}).length }, request_id: context.requestId };
+  const publicHealth = { service: health.service, live: health.live, ready: health.ready, checks: { database_reachable: health.checks.database_reachable, schema_ready: health.checks.schema_ready, public_base_url_valid: health.checks.public_base_url_valid, commercial_safety_locked: health.checks.commercial_safety_locked }, schema: { ready: schema.ready, required_tables: schema.required_tables, required_migrations: schema.required_migrations, missing_tables_count: Array.isArray(schema.missing_tables) ? schema.missing_tables.length : null, missing_migrations_count: Array.isArray(schema.missing_migrations) ? schema.missing_migrations.length : null }, commercial_controls: { enabled: Object.values(health.commercial_switches || {}).filter(Boolean).length, total: Object.keys(health.commercial_switches || {}).length }, database_host_sha256: databaseHostHash, request_id: context.requestId };
   return res.end(JSON.stringify(publicHealth));
 }
 __name(healthProbe, "healthProbe");
