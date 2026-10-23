@@ -52,14 +52,20 @@ PENDING_MARKERS = ("PENDENTE", "PREENCHER", "A CONFIRMAR", "XXX", "PLACEHOLDER")
 for _part in (RULE_7D, DELIVERY_72H):
     assert _part in SOL_TEXT, _part
 
-# Contato publico (data/politica-unica.json, contato_publico). Enquanto o numero de WhatsApp nao
-# estiver operacional, o canal ativo e o e-mail: lista de espera e "falar com a ZEVANORY" abrem
-# mailto com assunto/corpo fixos, e nenhuma superficie publica mostra wa.me nem o numero.
+# Contato publico (data/politica-unica.json, contato_publico). A conta WhatsApp Business da ZEVANORY
+# foi desativada permanentemente pela Meta (2026-10-10) e o numero esta banido: o unico endereco
+# eletronico oficial e o e-mail. Lista de espera e "falar com a ZEVANORY" abrem mailto com assunto/corpo
+# fixos, e nenhuma superficie publica tem link ou numero de WhatsApp. A flag e uma trava: so volta com
+# decisao explicita do proprietario e um NOVO numero (whatsapp_e164), nunca um de numeros_banidos.
 CONTACT = _DATA["contato_publico"]
 WHATSAPP_PUBLIC_LINKS_ENABLED = CONTACT["whatsapp_public_links_enabled"] is True
 SUPPORT_EMAIL = CONTACT["email"]
-WHATSAPP_URL = "https://wa.me/" + CONTACT["whatsapp_e164"]
-WHATSAPP_DISPLAY = CONTACT["whatsapp_display"]
+BANNED_NUMBERS = tuple(CONTACT.get("numeros_banidos", ()))
+WHATSAPP_E164 = str(CONTACT.get("whatsapp_e164") or "") if WHATSAPP_PUBLIC_LINKS_ENABLED else ""
+if WHATSAPP_PUBLIC_LINKS_ENABLED and (not re.fullmatch(r"\d{12,13}", WHATSAPP_E164) or WHATSAPP_E164 in BANNED_NUMBERS):
+    raise SystemExit("contato_publico: whatsapp_public_links_enabled=true exige whatsapp_e164 novo (nao banido)")
+WHATSAPP_URL = "https://wa.me/" + WHATSAPP_E164 if WHATSAPP_E164 else ""
+WHATSAPP_DISPLAY = str(CONTACT.get("whatsapp_display") or WHATSAPP_E164)
 
 
 def _q(text: str) -> str:
@@ -86,21 +92,27 @@ def contact_href() -> str:
     return WHATSAPP_URL if WHATSAPP_PUBLIC_LINKS_ENABLED else mailto(CONTACT["contact_subject"])
 
 
-# Qualquer link wa.me / api.whatsapp.com ou o numero (com ou sem mascara) numa superficie publica.
-WHATSAPP_PUBLIC_RE = re.compile(
-    r"wa\.me/|api\.whatsapp\.com/|whatsapp://|" + re.escape(CONTACT["whatsapp_e164"]) + r"|"
-    + r"99254[-\s.]?5413", re.I)
+def _number_pattern(e164: str) -> str:
+    """5588992545413 -> 5588992545413|99254[-\\s.]?5413 (completo ou na mascara local)."""
+    local = e164[4:]
+    return re.escape(e164) + "|" + re.escape(local[:-4]) + r"[-\s.]?" + re.escape(local[-4:])
+
+
+# Numero banido: proibido sempre, com a flag ligada ou nao.
+BANNED_NUMBER_RE = re.compile("|".join(_number_pattern(n) for n in BANNED_NUMBERS) or r"(?!)")
+# Qualquer link de WhatsApp (wa.me / api.whatsapp.com / whatsapp://) ou numero banido.
+WHATSAPP_PUBLIC_RE = re.compile(r"wa\.me/|api\.whatsapp\.com/|whatsapp://|" + BANNED_NUMBER_RE.pattern, re.I)
 
 
 def audit_contact(out_dir: Path) -> list[str]:
-    """Com whatsapp_public_links_enabled=false: zero wa.me/numero em HTML, JS e textos publicados."""
-    if WHATSAPP_PUBLIC_LINKS_ENABLED:
-        return []
+    """Flag desligada: zero link de WhatsApp e zero numero banido em HTML, JS e textos publicados.
+    Flag ligada: o numero banido continua proibido."""
+    rx = BANNED_NUMBER_RE if WHATSAPP_PUBLIC_LINKS_ENABLED else WHATSAPP_PUBLIC_RE
     problems = []
     for f in sorted(p for ext in ("*.html", "*.js", "*.txt", "*.xml") for p in out_dir.glob(ext)):
-        m = WHATSAPP_PUBLIC_RE.search(f.read_text(encoding="utf-8"))
+        m = rx.search(f.read_text(encoding="utf-8"))
         if m:
-            problems.append(f"{f.name}: WhatsApp publico ({m.group(0)}) com whatsapp_public_links_enabled=false")
+            problems.append(f"{f.name}: WhatsApp publico ({m.group(0)}) com whatsapp_public_links_enabled={str(WHATSAPP_PUBLIC_LINKS_ENABLED).lower()}")
     return problems
 
 SUBSCRIPTION_SUMMARY = (

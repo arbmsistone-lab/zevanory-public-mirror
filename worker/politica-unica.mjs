@@ -21,12 +21,17 @@ export const SUPPLIER = POLICY.resumo_oferta.fornecedor;
 export const ADDRESS_FULL = `${SUPPLIER.endereco_fisico}, CEP ${SUPPLIER.cep}`;
 export const LEGAL_IDENTITY = `${SUPPLIER.razao_social} · CNPJ ${SUPPLIER.cnpj} · ${ADDRESS_FULL}`;
 
-// Contato público (contato_publico): o e-mail é o canal ativo; o WhatsApp só aparece em páginas,
-// e-mails e rodapés com whatsapp_public_links_enabled=true (número verificado e respondendo).
+// Contato público (contato_publico): a conta WhatsApp Business foi desativada permanentemente pela Meta
+// (2026-10-10) e o número está banido; o único endereço eletrônico oficial é o e-mail. A flag é uma
+// trava: WhatsApp só volta por decisão explícita, com um NOVO número (whatsapp_e164, nunca banido).
 const C = POLICY.contato_publico;
 export const WHATSAPP_PUBLIC_LINKS_ENABLED = C.whatsapp_public_links_enabled === true;
 export const SUPPORT_EMAIL = C.email;
-const WHATSAPP_URL = `https://wa.me/${C.whatsapp_e164}`;
+export const BANNED_NUMBERS = Object.freeze([...(C.numeros_banidos || [])]);
+const WA_E164 = WHATSAPP_PUBLIC_LINKS_ENABLED ? String(C.whatsapp_e164 || "") : "";
+if (WHATSAPP_PUBLIC_LINKS_ENABLED && (!/^\d{12,13}$/.test(WA_E164) || BANNED_NUMBERS.includes(WA_E164))) throw new Error("contato_publico: whatsapp_public_links_enabled=true exige whatsapp_e164 novo (não banido)");
+const WHATSAPP_URL = WA_E164 ? `https://wa.me/${WA_E164}` : "";
+const WA_DISPLAY = String(C.whatsapp_display || WA_E164);
 const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 export function mailtoHref(subject, body) {
   return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}` + (body ? `&body=${encodeURIComponent(body)}` : "");
@@ -43,11 +48,14 @@ export function contactHref(text) {
 }
 export const CONTACT_LABEL = WHATSAPP_PUBLIC_LINKS_ENABLED ? "Falar no WhatsApp" : "Falar por e-mail";
 // Linha de contato em texto (e-mails) e em HTML (rodapés e páginas).
-export const CONTACT_TEXT = WHATSAPP_PUBLIC_LINKS_ENABLED ? `${SUPPORT_EMAIL} · WhatsApp ${C.whatsapp_display}` : SUPPORT_EMAIL;
+export const CONTACT_TEXT = WHATSAPP_PUBLIC_LINKS_ENABLED ? `${SUPPORT_EMAIL} · WhatsApp ${WA_DISPLAY}` : SUPPORT_EMAIL;
 export const CONTACT_TEXT_OR = WHATSAPP_PUBLIC_LINKS_ENABLED ? `${SUPPORT_EMAIL} ou WhatsApp ${WHATSAPP_URL}` : SUPPORT_EMAIL;
-export const CONTACT_HTML = `<a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>` + (WHATSAPP_PUBLIC_LINKS_ENABLED ? ` · <a href="${WHATSAPP_URL}">WhatsApp ${escHtml(C.whatsapp_display)}</a>` : "");
-// Qualquer link wa.me / api.whatsapp.com ou o número oficial (com ou sem máscara).
-export const WHATSAPP_PUBLIC_RE = new RegExp(`wa\\.me/|api\\.whatsapp\\.com/|whatsapp://|${C.whatsapp_e164}|99254[-\\s.]?5413`, "i");
+export const CONTACT_HTML = `<a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>` + (WHATSAPP_PUBLIC_LINKS_ENABLED ? ` · <a href="${WHATSAPP_URL}">WhatsApp ${escHtml(WA_DISPLAY)}</a>` : "");
+// Número banido (completo ou na máscara local) e qualquer link de WhatsApp — mesmo padrão de scripts/sales_policy.py.
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const numberPattern = (n) => { const local = n.slice(4); return `${reEsc(n)}|${reEsc(local.slice(0, -4))}[-\\s.]?${reEsc(local.slice(-4))}`; };
+export const BANNED_NUMBER_RE = new RegExp(BANNED_NUMBERS.map(numberPattern).join("|") || "(?!)");
+export const WHATSAPP_PUBLIC_RE = new RegExp(`wa\\.me/|api\\.whatsapp\\.com/|whatsapp://|${BANNED_NUMBER_RE.source}`, "i");
 
 // Redação ao cliente (derivada do sol_text; ver customer_wording.fragmentos_sol).
 export const CUSTOMER_RULE_7D = W.rule_7d;

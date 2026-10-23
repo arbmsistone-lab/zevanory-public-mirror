@@ -1,11 +1,8 @@
 (()=>{
-  // ENABLED vem de data/politica-unica.json (contato_publico.whatsapp_public_links_enabled): o build
-  // (scripts/build_sales_public.py) troca para true só com o número operacional. Com false, nenhum
-  // CTA de WhatsApp é injetado e o contato antigo vira o e-mail que funciona.
-  const ENABLED=false;
+  // Contato público: a conta WhatsApp Business da ZEVANORY foi desativada permanentemente pela Meta
+  // (2026-10-10) e o número está banido. O único endereço eletrônico oficial é o e-mail; este script
+  // não injeta nenhum CTA de WhatsApp (data/politica-unica.json, contato_publico) e só troca o
+  // endereço antigo pelo e-mail oficial.
   const EMAIL='suporte@zevanory.api.br';
-  if(!ENABLED){
-    document.querySelectorAll('a[href^="mailto:contato@zevanory.api.br"]').forEach(a=>{a.href='mailto:'+EMAIL;});
-    return;
-  }
+  document.querySelectorAll('a[href^="mailto:contato@zevanory.api.br"]').forEach(a=>{a.href='mailto:'+EMAIL;});
 })();

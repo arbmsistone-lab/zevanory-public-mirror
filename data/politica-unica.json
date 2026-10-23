@@ -2,11 +2,12 @@
   "schema": "zevanory-politica-unica/v1",
   "nota": "P13 (Ordem 079-P13 / 076-P24): texto único de compra, entrega, suporte e arrependimento proposto pelo auditor Sol, copiado sem alteração. Texto sujeito a revisão jurídica do proprietário. Fonte única para scripts/build_sales_public.py, worker e testes (tests/p13-politica-nogo.test.mjs).",
   "contato_publico": {
-    "nota": "Contato público (PR 'Contato público: e-mail como canal ativo enquanto o WhatsApp não está operacional', 2026-10-23). O número +55 88 99254-5413 existe só na WhatsApp Business Platform (Cloud API) e nunca foi instalado no app; o nome de exibição está DECLINED, a verificação de código EXPIRED e a identidade da empresa não verificada: quem toca em wa.me/5588992545413 não é atendido. Enquanto whatsapp_public_links_enabled for false: (1) o CTA 'Entrar na lista de espera' abre e-mail (mailto) para o endereço abaixo com assunto e corpo fixos (nenhum dado pessoal na URL além do que a pessoa digitar); data-zev-open-text continua restaurando o CTA de compra quando as vendas abrirem; (2) nenhuma página, rodapé, JSON-LD, e-mail ou página renderizada pelo Worker mostra o número ou link wa.me; (3) o 'Endereço eletrônico' do Resumo da oferta (Decreto 7.962/2013, art. 2º, II) é o e-mail e o site, canais que funcionam; (4) os canais de arrependimento do texto único (sol_text/refund_channels) listam só os canais que funcionam (CDC art. 49 e Decreto 7.962/2013, art. 5º: meios adequados e eficazes). Para religar: só depois de o número estar verificado e respondendo, trocar a flag para true, devolver o WhatsApp ao sol_text/refund_channels/fragmentos_sol e às páginas-fonte termos/reembolso, e regenerar com scripts/build_sales_public.py. Gate: tests/contato-publico-whatsapp.test.mjs.",
+    "nota": "Contato público (2026-10-23). A conta WhatsApp Business da ZEVANORY (4019600665012911) foi desativada PERMANENTEMENTE pela Meta em 2026-10-10 (violação da Política de Uso Aceitável; revisão já negada) e o número que ela usava está BANIDO. Por isso o único endereço eletrônico oficial de contato é o e-mail abaixo: (1) o CTA 'Entrar na lista de espera' abre mailto com assunto e corpo fixos (nenhum dado pessoal na URL além do que a pessoa digitar); data-zev-open-text continua restaurando o CTA de compra quando as vendas abrirem; (2) nenhuma página, rodapé, faixa de confiança, FAQ, JSON-LD (contactPoint/sameAs/telephone), política, e-mail ou página do Worker tem link ou menção de WhatsApp como canal da ZEVANORY; (3) o 'Endereço eletrônico' do Resumo da oferta (Decreto 7.962/2013, art. 2º, II) é o e-mail e o site; (4) os canais de arrependimento do texto único (sol_text/refund_channels) listam só os canais que funcionam (CDC art. 49; Decreto 7.962/2013, art. 5º). whatsapp_public_links_enabled=false é uma trava: links de WhatsApp só voltam por decisão explícita do proprietário, com um NOVO número verificado (campo whatsapp_e164 obrigatório quando true) e revisão do texto único. numeros_banidos nunca podem aparecer em superfície pública, nem com a flag ligada. Gate: tests/contato-publico-whatsapp.test.mjs e scripts/sales_policy.py (audit_contact).",
     "whatsapp_public_links_enabled": false,
     "email": "suporte@zevanory.api.br",
-    "whatsapp_e164": "5588992545413",
-    "whatsapp_display": "+55 88 99254-5413",
+    "numeros_banidos": [
+      "5588992545413"
+    ],
     "waitlist_subject": "Lista de espera — {produto}",
     "waitlist_body": "Olá! Quero entrar na lista de espera do {produto}. Me avisem por este e-mail quando as vendas abrirem.",
     "contact_subject": "Contato pelo site ZEVANORY"
@@ -121,7 +122,6 @@
       "cnpj": "69.077.233/0001-99",
       "endereco_fisico": "Rua Francisco de Freitas Neto, nº 96, Alto do Tenente, Várzea Alegre – CE",
       "email": "suporte@zevanory.api.br",
-      "whatsapp": "+55 88 99254-5413",
       "site": "vendas.zevanory.api.br",
       "cep": "63540-000"
     },

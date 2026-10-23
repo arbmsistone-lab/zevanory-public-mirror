@@ -1,9 +1,11 @@
-// Contato público enquanto o WhatsApp não está operacional (data/politica-unica.json, contato_publico).
-// O número +55 88 99254-5413 existe só na WhatsApp Business Platform (Cloud API), nunca foi instalado
-// no app e a conta está com nome DECLINED / verificação EXPIRED: quem toca em wa.me não é atendido.
-// Com whatsapp_public_links_enabled !== true:
+// Contato público (data/politica-unica.json, contato_publico). A conta WhatsApp Business da ZEVANORY
+// (4019600665012911) foi desativada PERMANENTEMENTE pela Meta em 2026-10-10 (revisão negada) e o número
+// está BANIDO: suporte@zevanory.api.br é o único endereço eletrônico oficial. A flag
+// whatsapp_public_links_enabled=false é uma trava: links de WhatsApp só voltam por decisão explícita.
+// Com a flag !== true:
 //   (a) nenhuma superfície pública (sales-public/*, páginas-fonte das rotas de venda, sales-overlay,
-//       public/whatsapp-contact.js, páginas e e-mails do Worker) tem link wa.me nem o número;
+//       public/whatsapp-contact.js, páginas e e-mails do Worker) tem link de WhatsApp nem o número banido
+//       (o número banido é proibido mesmo com a flag ligada);
 //   (b) todo CTA "Entrar na lista de espera" (data-zev-sku / data-zev-sub) abre mailto para o e-mail
 //       oficial com assunto "Lista de espera — <Produto>" e corpo fixos (sem dado pessoal na URL) e
 //       mantém data-zev-open-text, que o Worker usa para restaurar a compra quando as vendas abrirem;
@@ -31,17 +33,20 @@ const read = (rel) => readTextNormalized(join(ROOT, rel));
 const enabledFlag = (c) => c.whatsapp_public_links_enabled === true;
 const ENABLED = enabledFlag(C);
 // Mesmo padrão de scripts/sales_policy.py (WHATSAPP_PUBLIC_RE) e worker/politica-unica.mjs.
-const WA_RE = new RegExp(`wa\\.me/|api\\.whatsapp\\.com/|whatsapp://|${C.whatsapp_e164}|99254[-\\s.]?5413`, "i");
+const BANNED_RE = new RegExp((C.numeros_banidos || []).map((n) => `${n}|${n.slice(4, -4)}[-\\s.]?${n.slice(-4)}`).join("|") || "(?!)");
+const WA_RE = new RegExp(`wa\\.me/|api\\.whatsapp\\.com/|whatsapp://|${BANNED_RE.source}`, "i");
+// WhatsApp citado como canal de contato/suporte da ZEVANORY (o uso do WhatsApp pelo cliente do produto é conteúdo, não canal).
+const CHANNEL_RE = /(suporte|atendimento) humano (no|pelo) WhatsApp|Falar no WhatsApp|Fale (com a gente )?no WhatsApp|Avise-me pelo WhatsApp|WhatsApp:? \+?55|WhatsApp oficial|nosso WhatsApp|WhatsApp da ZEVANORY|nos envia por e-mail, WhatsApp|whatsapp-(header|hero|footer)-cta|data-whatsapp-official/i;
 const PRODUCTS = { "ZEV-IA-011": "IA na Prática", "ZEV-VEN-011": "Vendas na Prática", "ZEV-LCX-011": "Lucro & Caixa", "ZEV-CMB-011": "Combo IA + Vendas", "ZEV-NGC-011": "Negócio Completo" };
 const SUBS = { "conteudo-pronto": "Conteúdo Pronto" };
 const decodeHtml = (s) => s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&lt;/g, "<");
 
 // (a) violações: arquivo -> trecho com wa.me/número, somente quando a flag está desligada.
 function contactViolations(files, contact = C) {
-  if (enabledFlag(contact)) return [];
+  const rx = enabledFlag(contact) ? BANNED_RE : WA_RE;  // número banido: proibido sempre
   const out = [];
   for (const [name, text] of Object.entries(files)) {
-    const m = WA_RE.exec(text);
+    const m = rx.exec(text);
     if (m) out.push(`${name}: ${m[0]}`);
   }
   return out;
@@ -81,7 +86,7 @@ function sourceFiles() {
   for (const slug of ROUTES) if (existsSync(join(ROOT, slug, "index.html"))) files[slug + "/index.html"] = read(slug + "/index.html");
   for (const f of ["sales-overlay/llms.txt", "sales-overlay/approved.json", "public/whatsapp-contact.js", "public/arbm-contador-saloes.html"]) files[f] = read(f);
   // O overlay mantém o bloco de WhatsApp entre marcadores; o build o remove com a flag desligada.
-  files["sales-overlay/whatsapp-contact.js"] = read("sales-overlay/whatsapp-contact.js").replace(/\/\*whatsapp:start[^*]*\*\/[\s\S]*?\/\*whatsapp:end\*\//, "");
+  files["sales-overlay/whatsapp-contact.js"] = read("sales-overlay/whatsapp-contact.js");
   return files;
 }
 // Templates do Worker que viram página ou e-mail para o público.
@@ -101,6 +106,13 @@ test("contato_publico: flag booleana, e-mail oficial = e-mail do fornecedor, ass
   assert.ok(C.waitlist_subject.startsWith("Lista de espera — ") && C.waitlist_subject.includes("{produto}"));
   assert.ok(C.waitlist_body.includes("{produto}") && !/[{]nome|[{]email|[{]telefone/i.test(C.waitlist_body), "corpo estático, sem dado pessoal");
   assert.equal(PU.WHATSAPP_PUBLIC_LINKS_ENABLED, ENABLED, "Worker lê a mesma flag");
+  assert.deepEqual(C.numeros_banidos, ["5588992545413"], "número banido pela Meta registrado");
+  assert.equal(PU.WHATSAPP_PUBLIC_RE.source, WA_RE.source, "Worker usa o mesmo padrão do teste e do build");
+  assert.ok(!("whatsapp" in P.resumo_oferta.fornecedor), "fornecedor sem WhatsApp: e-mail é o único endereço eletrônico");
+  if (ENABLED) assert.ok(/^\d{12,13}$/.test(C.whatsapp_e164 || "") && !C.numeros_banidos.includes(C.whatsapp_e164), "flag ligada exige número novo, nunca o banido");
+  // Fora da nota e da lista de banidos, o JSON não carrega o número.
+  const { nota, numeros_banidos, ...rest } = C;
+  assert.doesNotMatch(JSON.stringify({ ...P, contato_publico: rest }), BANNED_RE);
 });
 
 test("(a) nenhuma superfície pública tem wa.me ou o número com o WhatsApp desligado", () => {
@@ -112,6 +124,8 @@ test("(a) nenhuma superfície pública tem wa.me ou o número com o WhatsApp des
   assert.deepEqual(contactViolations(workerFiles()), []);
   assert.deepEqual(contactViolations({ OFFICIAL_LEGAL_FOOTER, email: brandedEmailHtml("Olá"), CONTACT_HTML: PU.CONTACT_HTML, CONTACT_TEXT: PU.CONTACT_TEXT, CONTACT_TEXT_OR: PU.CONTACT_TEXT_OR, REFUND_TEXT: PU.REFUND_TEXT, SUPPORT_REFUND_ANSWER: PU.SUPPORT_REFUND_ANSWER, SOL_TEXT: PU.SOL_TEXT }), []);
   assert.equal(readTextNormalized(join(PUB, "whatsapp-contact.js")), read("public/whatsapp-contact.js"), "public/whatsapp-contact.js é cópia do asset gerado");
+  // Menção ao WhatsApp como canal da ZEVANORY (sem link nem número) também não pode voltar.
+  if (!ENABLED) for (const [name, text] of Object.entries({ ...pub, ...sourceFiles(), ...workerFiles() })) assert.doesNotMatch(text, CHANNEL_RE, name);
 });
 
 test("(b) CTAs de lista de espera abrem e-mail com assunto 'Lista de espera — <Produto>' e mantêm data-zev-open-text", () => {
@@ -169,10 +183,11 @@ test("mutantes: wa.me/número de volta em CTA, rodapé, resumo, JSON-LD, script,
     "M2 rodapé com WhatsApp clicável": () => [page, page.replace('suporte@zevanory.api.br</a><br>', 'suporte@zevanory.api.br</a> · WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a><br>')],
     "M3 resumo da oferta com WhatsApp": () => [page, page.replace("suporte@zevanory.api.br · vendas.zevanory.api.br", "suporte@zevanory.api.br · WhatsApp +55 88 99254-5413 · vendas.zevanory.api.br")],
     "M4 JSON-LD com telephone": () => [pub["sales-public/solucoes.html"], pub["sales-public/solucoes.html"].replace('"email": "suporte@zevanory.api.br"', '"email": "suporte@zevanory.api.br", "telephone": "+55 88 99254-5413"')],
-    "M5 script volta a injetar wa.me (bloco não removido)": () => [pub["sales-public/whatsapp-contact.js"], read("sales-overlay/whatsapp-contact.js")],
+    "M5 script volta a injetar wa.me": () => [pub["sales-public/whatsapp-contact.js"], pub["sales-public/whatsapp-contact.js"].replace("})();", "document.querySelector('nav').insertAdjacentHTML('beforeend','<a href=\"https://wa.me/5588992545413\">WhatsApp</a>');})();")],
     "M6 número sem link, com espaço": () => [page, page.replace("</main>", "<p>Ligue 88 99254 5413</p></main>")],
     "M7 api.whatsapp.com": () => [page, page.replace("</main>", '<a href="https://api.whatsapp.com/send?phone=5588992545413">x</a></main>')],
     "M8 página do Worker com wa.me": () => [read("worker/sales-public-worker.mjs"), read("worker/sales-public-worker.mjs") + '\nconst X="https://wa.me/5588992545413";'],
+    "M9b menção de canal sem número": () => [page, page.replace("suporte humano por", "suporte humano no WhatsApp ou por")],
     "M9 e-mail ao cliente com o número": () => [OFFICIAL_LEGAL_FOOTER, OFFICIAL_LEGAL_FOOTER + " · WhatsApp +55 88 99254-5413"],
   };
   const report = [];
@@ -181,6 +196,7 @@ test("mutantes: wa.me/número de volta em CTA, rodapé, resumo, JSON-LD, script,
     assert.notEqual(after, before, "mutação não aplicada: " + name);
     assert.deepEqual(contactViolations({ before }, { ...C, whatsapp_public_links_enabled: false }), [], name + ": original já limpo");
     const v = contactViolations({ after }, { ...C, whatsapp_public_links_enabled: false });
+    if (CHANNEL_RE.test(after) && !CHANNEL_RE.test(before)) v.push("canal");
     report.push(`${name}: ${v.length ? "KILLED" : "SURVIVED"}`);
     assert.ok(v.length > 0, name + " sobreviveu");
   }
@@ -202,8 +218,10 @@ test("mutantes: wa.me/número de volta em CTA, rodapé, resumo, JSON-LD, script,
   // Flag como texto "false"/"true" não liga o WhatsApp: só o booleano true desliga o gate.
   assert.ok(contactViolations({ p: WA }, { ...C, whatsapp_public_links_enabled: "true" }).length > 0, "M16 flag em texto");
   report.push("M16 flag em texto: KILLED");
-  // Controle: com a flag ligada o gate não reprova (o WhatsApp volta quando o número operar).
-  assert.deepEqual(contactViolations({ p: WA }, { ...C, whatsapp_public_links_enabled: true }), []);
+  // Número banido continua proibido com a flag ligada; um número novo seria aceito (controle).
+  assert.ok(contactViolations({ p: WA }, { ...C, whatsapp_public_links_enabled: true }).length > 0, "M17 número banido com a flag ligada");
+  report.push("M17 número banido com a flag ligada: KILLED");
+  assert.deepEqual(contactViolations({ p: "https://wa.me/5511900000000" }, { ...C, whatsapp_public_links_enabled: true }), []);
   console.log("CONTATO_PUBLICO_MUTANTS " + report.join(" | "));
 });
 

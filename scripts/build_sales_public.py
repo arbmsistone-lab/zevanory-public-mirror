@@ -93,8 +93,8 @@ HTML_ROUTES = (
 LEGAL_FOOTER = ('<div class="container footer-legal">'
                 # P13c: identificação e endereço únicos (data/politica-unica.json, resumo_oferta.fornecedor).
                 f'{policy.SUPPLIER["razao_social"]} · CNPJ {policy.SUPPLIER["cnpj"]} · {policy.ADDRESS_FULL} · '
-                # Contato: e-mail é o canal ativo; o WhatsApp só aparece com
-                # contato_publico.whatsapp_public_links_enabled=true (número operacional).
+                # Contato: e-mail é o único endereço eletrônico oficial (WhatsApp banido pela Meta);
+                # trava contato_publico.whatsapp_public_links_enabled.
                 f'<a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a>'
                 + (f' · WhatsApp <a href="{policy.WHATSAPP_URL}">{policy.WHATSAPP_DISPLAY}</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else '') +
                 # Official profiles verified by public readback (2026-10-12); rel="me" lets platforms
@@ -175,8 +175,8 @@ def offer_summary(slug: str, kind: str, characteristics: str, price: int | None 
         "fornecedor": f'{f["razao_social"]} (nome fantasia {f["nome_fantasia"]})',
         "cnpj": f["cnpj"],
         "endereco_fisico": f'{f["endereco_fisico"]}, CEP {f["cep"]}',
-        # Decreto 7.962/2013, art. 2º, II: só endereços que funcionam (o WhatsApp entra quando operacional).
-        "endereco_eletronico": " · ".join([f["email"]] + ([f'WhatsApp {f["whatsapp"]}'] if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else []) + [f["site"]]),
+        # Decreto 7.962/2013, art. 2º, II: só endereços que funcionam (e-mail e site; WhatsApp banido).
+        "endereco_eletronico": " · ".join([f["email"]] + ([f'WhatsApp {policy.WHATSAPP_DISPLAY}'] if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else []) + [f["site"]]),
         "caracteristicas": characteristics,
         "preco_total": terms["preco_total"].replace("{price}", str(price)),
         "pagamento": terms["pagamento"],
@@ -381,18 +381,9 @@ def apply_approved_overlay() -> None:
         path.write_text(html, encoding="utf-8")
     shutil.copy2(ROOT / "legal.css", OUT / "legal.css")
     shutil.copy2(OVERLAY / "robots.txt", OUT / "robots.txt")
-    # O script de contato só injeta CTAs de WhatsApp com o número operacional (flag da fonte única).
-    js = (OVERLAY / "whatsapp-contact.js").read_text(encoding="utf-8")
-    if js.count("const ENABLED=false;") != 1:
-        raise SystemExit("whatsapp-contact.js: marcador 'const ENABLED=false;' ausente")
-    if policy.WHATSAPP_PUBLIC_LINKS_ENABLED:
-        js = js.replace("const ENABLED=false;", "const ENABLED=true;")
-    else:
-        # Sem o número operacional, o bloco de WhatsApp nem é publicado (nada de wa.me no asset).
-        js, n = re.subn(r"\n[ \t]*/\*whatsapp:start[^*]*\*/.*?/\*whatsapp:end\*/", "", js, flags=re.S)
-        if n != 1:
-            raise SystemExit("whatsapp-contact.js: bloco /*whatsapp:start*/.../*whatsapp:end*/ ausente")
-    (OUT / "whatsapp-contact.js").write_text(js, encoding="utf-8")
+    # Script de contato: só e-mail (WhatsApp banido; ver contato_publico). O gate audit_contact
+    # reprova qualquer link de WhatsApp ou número banido no asset publicado.
+    shutil.copy2(OVERLAY / "whatsapp-contact.js", OUT / "whatsapp-contact.js")
     shutil.copy2(ROOT / "ferramentas.js", OUT / "ferramentas.js")
     shutil.copy2(OVERLAY / "llms.txt", OUT / "llms.txt")
 
