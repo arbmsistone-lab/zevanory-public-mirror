@@ -14,6 +14,10 @@ import { runPython, resolvePython, resolvePsql } from "./tools.mjs";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const TPL = path.join(ROOT, "scripts", "fase_a", "template.html.tpl");
 const MOD = path.join(ROOT, "worker", "waitlist.mjs");
+const LIA = path.join(ROOT, "worker", "fase-a-lia.mjs");
+const FUNNEL = path.join(ROOT, "worker", "funnel.mjs");
+// Módulos copiados para o diretório de CADA mutante (o módulo testado importa os vizinhos pelo caminho relativo).
+const WORKER_COPIES = ["waitlist.mjs", "funnel.mjs", "fase-a-lia.mjs", "fase-a-lia.generated.mjs"];
 const MIG = path.join(ROOT, "db", "migrations", "030_waitlist_fase_a.sql");
 const STATIC = path.join(ROOT, "tests", "fase-a", "fase-a-static.test.mjs");
 const PG = path.join(ROOT, "tests", "fase-a", "waitlist-postgres.test.mjs");
@@ -73,10 +77,20 @@ const MUTANTS = [
   { id: "M17", name: "identidade consentida ignorada (mesmo contato em dois aparelhos conta 2 no denominador)", kind: "mod", test: PG, expect: "multi-aparelho",
     apply: (s) => once(s, "p as (select p.* from waitlist_persons p where p.window_id = $1 and not exists (select 1 from waitlist_person_alias a where a.window_id = p.window_id and a.niche = p.niche and a.alias_id = p.person_id)),",
       "p as (select p.* from waitlist_persons p where p.window_id = $1),") },
+  // AVAL 099 §2: ativação amarrada ao sha256 da LIA aprovada (worker/fase-a-lia.mjs).
+  { id: "M18", name: "endpoints de medição ignoram a trava da LIA", kind: "mod", test: PG, expect: "trava da LIA (AVAL 099)",
+    apply: (s) => once(s, '    if (!act.active) return json(503, { ok: false, code: "lia_nao_aprovada", reason: act.reason });\n', "") },
+  { id: "M19", name: "LIA editada depois da aprovação continua ativa (hash não comparado)", kind: "lia", test: RULEF, expect: "trava da LIA (AVAL 099)",
+    apply: (s) => once(s, '  if (want !== sha) return { ...base, approved_sha256_configured: true, reason: "lia_alterada_apos_aprovacao" };\n', "") },
+  { id: "M20", name: "marcador de pendência da LIA ignorado", kind: "lia", test: RULEF, expect: "trava da LIA (AVAL 099)",
+    apply: (s) => once(s, '  if (lia.pending_marker !== false) return { ...base, reason: "lia_pendente_de_revisao" };\n', "") },
+  { id: "M21", name: "tabela de aprovação da LIA não conferida", kind: "lia", test: RULEF, expect: "trava da LIA (AVAL 099)",
+    apply: (s) => once(s, '  if (!approvalComplete(lia.approval, lia.version)) return { ...base, reason: "lia_aprovacao_incompleta" };\n', "") },
+  { id: "M22", name: "semana de teste conta sem a LIA aprovada", kind: "funnel", test: PG, expect: "semana de teste (funil das calculadoras",
+    apply: (s) => once(s, " && (lia ? liaActivation(env, lia) : liaActivation(env)).active ?", " ?") },
 ];
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fase-a-mut-"));
-fs.copyFileSync(path.join(ROOT, "worker", "funnel.mjs"), path.join(tmp, "funnel.mjs"));
 const env0 = { ...process.env, PYTHONDONTWRITEBYTECODE: "1" };
 delete env0.ZEVANORY_FASE_A_TPL; delete env0.WAITLIST_MODULE; delete env0.WAITLIST_MIGRATION;
 resolvePython(); resolvePsql();
@@ -101,7 +115,13 @@ for (const m of MUTANTS) {
   const read = (f) => fs.readFileSync(f, "utf8").replace(/\r\n/g, "\n");
   const env = { ...env0 };
   if (m.kind === "tpl") { const t = path.join(tmp, `${m.id}.html.tpl`); fs.writeFileSync(t, m.apply(read(TPL))); env.ZEVANORY_FASE_A_TPL = t; }
-  if (m.kind === "mod" || m.kind === "both") { const t = path.join(tmp, `${m.id}-waitlist.mjs`); fs.writeFileSync(t, m.apply(read(MOD))); env.WAITLIST_MODULE = t; }
+  if (["mod", "both", "lia", "funnel"].includes(m.kind)) {
+    const dir = path.join(tmp, m.id); fs.mkdirSync(dir, { recursive: true });
+    for (const f of WORKER_COPIES) fs.copyFileSync(path.join(ROOT, "worker", f), path.join(dir, f));
+    const target = { mod: MOD, both: MOD, lia: LIA, funnel: FUNNEL }[m.kind];
+    fs.writeFileSync(path.join(dir, path.basename(target)), m.apply(read(target)));
+    env.WAITLIST_MODULE = path.join(dir, "waitlist.mjs");
+  }
   if (m.kind === "both") { const t = path.join(tmp, `${m.id}-030.sql`); fs.writeFileSync(t, m.applyMig(read(MIG))); env.WAITLIST_MIGRATION = t; }
   const r = runTest(m.test, env);
   const hit = r.failed.filter((n) => n.includes(m.expect));

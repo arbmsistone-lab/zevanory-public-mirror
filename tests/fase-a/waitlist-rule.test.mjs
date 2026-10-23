@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 // WAITLIST_MODULE: o executor de mutantes troca o módulo testado.
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const { CONSENT_VERSION, RETENTION, wilson, decide, RULE, normalizeContact, isEligibleTraffic, visitorSecret, windowOf, personFromCookie, sourceTag, sourceGroup, channelBalance, finalistsOf, testWeekSummary, TEST_WEEK, summarize, WA_OWNED_TAGS, SOURCE_CLASSES } =
+const { liaActivation, parseLia, CONSENT_VERSION, RETENTION, wilson, decide, RULE, normalizeContact, isEligibleTraffic, visitorSecret, windowOf, personFromCookie, sourceTag, sourceGroup, channelBalance, finalistsOf, testWeekSummary, TEST_WEEK, summarize, WA_OWNED_TAGS, SOURCE_CLASSES } =
   await import(pathToFileURL(path.resolve(process.env.WAITLIST_MODULE || path.join(ROOT, "worker", "waitlist.mjs"))).href);
 
 const near = (a, b, eps = 5e-4) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -133,10 +133,50 @@ test("semana de teste (condição do Sol): 7 dias consecutivos, >= 98 qualificad
 
 test("LIA (LGPD art. 7º, IX e art. 10) registrada e versionada: finalidade, necessidade, balanceamento, minimização, direitos, opt-out e pendência de revisão jurídica", () => {
   const lia = fs.readFileSync(new URL("../../docs/lgpd/LIA-fase-a.md", import.meta.url), "utf8");
-  for (const s of ["Versão: 1", "PENDENTE DE REVISÃO JURÍDICA", "art. 7º, IX", "art. 10", "## 1. Finalidade", "## 2. Necessidade", "## 3. Balanceamento",
+  for (const s of ["Versão: 1", "art. 7º, IX", "art. 10", "## 1. Finalidade", "## 2. Necessidade", "## 3. Balanceamento",
     "## 4. Minimização e salvaguardas", "## 5. Direitos do titular", "## 6. Oposição (opt-out)", "dado pessoal pseudonimizado", "WAITLIST_VISITOR_SECRET",
     "rotação", "30 dias após a decisão", "runWaitlistRetention", "consentimento separado", "wa_owned", "multi-aparelho", "art. 18"]) assert.ok(lia.includes(s), s);
   // Coerência com o código: retenção e versão do consentimento citadas são as implementadas.
   assert.ok(lia.includes("`" + CONSENT_VERSION + "`"), "versão do consentimento");
   assert.ok(lia.includes(RETENTION.measurementMaxDays + " dias") && lia.includes(RETENTION.cookieMaxDays + " dias"));
+  // Enquanto não houver linha de aprovação completa, o marcador de pendência tem de estar lá.
+  if (!parseLia(lia).approval) assert.ok(lia.includes("PENDENTE DE REVISÃO JURÍDICA"), "LIA sem aprovação precisa do marcador de pendência");
+});
+
+test("trava da LIA (AVAL 099): ativação só com LIA sem pendência, tabela de aprovação completa e FASE_A_LIA_APPROVED_SHA256 igual ao sha256; LIA editada depois da aprovação desliga", async () => {
+  const { TEST_LIA, TEST_LIA_SHA, APPROVED_TEXT, REAL_LIA_TEXT, approvedText, manifestOf } = await import("./lia-fixture.mjs");
+  const ok = { FASE_A_LIA_APPROVED_SHA256: TEST_LIA_SHA };
+  assert.deepEqual([liaActivation(ok, TEST_LIA).active, liaActivation(ok, TEST_LIA).reason], [true, null]);
+  assert.equal(liaActivation({ FASE_A_LIA_APPROVED_SHA256: TEST_LIA_SHA.toUpperCase() }, TEST_LIA).active, true, "hex maiúsculo aceito");
+  // O repositório: LIA pendente => travada, mesmo com qualquer hash configurado (inclusive o do próprio arquivo).
+  const real = await manifestOf(REAL_LIA_TEXT);
+  assert.equal(real.pending_marker, true);
+  assert.equal(real.approval, null);
+  assert.equal(liaActivation({ FASE_A_LIA_APPROVED_SHA256: real.sha256 }, real).reason, "lia_pendente_de_revisao");
+  assert.equal(liaActivation({ FASE_A_LIA_APPROVED_SHA256: real.sha256 }).reason, "lia_pendente_de_revisao", "manifesto embutido no Worker");
+  const reasons = async (text, env = null) => { const m = await manifestOf(text); return liaActivation(env || { FASE_A_LIA_APPROVED_SHA256: m.sha256 }, m).reason; };
+  // Tabela incompleta (mesmo com o hash do próprio texto configurado).
+  for (const row of ["| Revisora | | 1 | APROVADA | x |", "| Revisora | 2026-02-30 | 1 | APROVADA | x |", "| Revisora | 2026-10-24 | 2 | APROVADA | x |",
+    "| Revisora | 2026-10-24 | 1 | pendente | x |", "| _pendente_ | 2026-10-24 | 1 | APROVADA | x |", "| | 2026-10-24 | 1 | APROVADA | x |", "| Revisora | 2026-10-24 | | APROVADA | x |"])
+    assert.ok(["lia_aprovacao_incompleta", "lia_pendente_de_revisao"].includes(await reasons(approvedText(REAL_LIA_TEXT, row))), row);
+  assert.equal(await reasons(approvedText(REAL_LIA_TEXT, "| Revisora | 2026-10-24 | 2 | APROVADA | x |")), "lia_aprovacao_incompleta", "versão diferente da LIA");
+  // Marcador de pendência que sobrou = travada, mesmo com tabela completa.
+  assert.equal(await reasons(APPROVED_TEXT + "\nPENDENTE DE REVISÃO JURÍDICA\n"), "lia_pendente_de_revisao");
+  // Hash: ausente, mal formado, divergente.
+  assert.equal(liaActivation({}, TEST_LIA).reason, "aprovacao_nao_configurada");
+  assert.equal(liaActivation({ FASE_A_LIA_APPROVED_SHA256: "z".repeat(64) }, TEST_LIA).reason, "aprovacao_formato_invalido");
+  assert.equal(liaActivation({ FASE_A_LIA_APPROVED_SHA256: "0".repeat(64) }, TEST_LIA).reason, "lia_alterada_apos_aprovacao");
+  // Edição de UM caractere depois da aprovação: novo sha256, a mesma aprovação deixa de valer.
+  const edited = await manifestOf(APPROVED_TEXT.replace("Finalidade", "Finalidades"));
+  assert.notEqual(edited.sha256, TEST_LIA_SHA);
+  assert.deepEqual([liaActivation(ok, edited).active, liaActivation(ok, edited).reason], [false, "lia_alterada_apos_aprovacao"]);
+  // CRLF não muda o hash (checkout Windows).
+  assert.equal((await manifestOf(APPROVED_TEXT.replace(/\n/g, "\r\n"))).sha256, TEST_LIA_SHA);
+  for (const bad of [null, {}, { ...TEST_LIA, sha256: "x" }]) assert.equal(liaActivation(ok, bad).reason, "lia_manifesto_invalido");
+});
+
+test("manifesto da LIA embutido no Worker (worker/fase-a-lia.generated.mjs) idêntico ao documento: editar a LIA sem regenerar quebra o CI", async () => {
+  const { buildManifest, liaText, render, GENERATED } = await import("../../scripts/fase_a/lia_manifest.mjs");
+  const want = render(await buildManifest(liaText()));
+  assert.equal(fs.readFileSync(GENERATED, "utf8").replace(/\r\n/g, "\n"), want, "rode: node scripts/fase_a/lia_manifest.mjs --write");
 });

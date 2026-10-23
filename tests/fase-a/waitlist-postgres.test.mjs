@@ -8,12 +8,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { resolvePsql, parseCsv } from "../../scripts/fase_a/tools.mjs";
+import { TEST_LIA, TEST_LIA_SHA, manifestOf, APPROVED_TEXT } from "./lia-fixture.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..");
 const MOD = pathToFileURL(path.resolve(process.env.WAITLIST_MODULE || path.join(ROOT, "worker", "waitlist.mjs"))).href;
 const MIGRATION = path.resolve(process.env.WAITLIST_MIGRATION || path.join(ROOT, "db", "migrations", "030_waitlist_fase_a.sql"));
 const W = await import(MOD);
+const MOD_DIR = path.dirname(fileURLToPath(MOD));
+const { LIA_FASE_A: REAL_LIA } = await import(pathToFileURL(path.join(MOD_DIR, "fase-a-lia.generated.mjs")).href);
 const HOST = process.env.WAITLIST_PG_HOST;
 const PORT = process.env.WAITLIST_PG_PORT || "5432";
 const DB = process.env.WAITLIST_PG_DB || "postgres";
@@ -36,9 +39,10 @@ const sqlFactory = () => ({ query: async (text, params = []) => psql(text.replac
 const kv = () => { const m = new Map(); return { m, async get(k) { return m.get(k) ?? null; }, async put(k, v) { m.set(k, v); }, async delete(k) { m.delete(k); } }; };
 const T0 = Date.parse("2026-11-02T12:00:00Z"), DAY = 86_400_000;
 const ENV = (o = {}) => ({ DATABASE_URL: "postgres://synthetic", FASE_A_WAITLIST: "on", LEAD_PRIVACY_SECRET: "k".repeat(40), WAITLIST_VISITOR_SECRET: "v".repeat(40),
-  FASE_A_WINDOW_ID: "fa1", FASE_A_WINDOW_END: "2026-11-30", RESEND_API_KEY: "re_nao_e_fallback_123456789012345678901234", ZEVANORY_PRIVATE_ARTIFACTS: kv(), ...o });
+  FASE_A_WINDOW_ID: "fa1", FASE_A_WINDOW_END: "2026-11-30", FASE_A_LIA_APPROVED_SHA256: TEST_LIA_SHA, RESEND_API_KEY: "re_nao_e_fallback_123456789012345678901234", ZEVANORY_PRIVATE_ARTIFACTS: kv(), ...o });
 const HUMAN = "Mozilla/5.0 (Linux; Android 14; SM-A146M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36";
-const call = async (env, p, body, now = T0) => { const r = await W.handleWaitlist(new Request("https://waitlist.internal" + p, { method: "POST", body: JSON.stringify(body) }), env, { sqlFactory, now }); return { status: r.status, body: r.status === 204 ? null : await r.json() }; };
+// LIA aprovada SINTÉTICA (tests/fase-a/lia-fixture.mjs); o repositório continua com a LIA pendente.
+const call = async (env, p, body, now = T0, lia = TEST_LIA) => { const r = await W.handleWaitlist(new Request("https://waitlist.internal" + p, { method: "POST", body: JSON.stringify(body) }), env, { sqlFactory, now, lia }); return { status: r.status, body: r.status === 204 ? null : await r.json() }; };
 // Visita: devolve o valor do cookie em uso (o recebido ou o novo emitido).
 async function visit(env, o = {}, now = T0) {
   const r = await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.1", asn: 28573, ...o }, now);
@@ -283,7 +287,7 @@ test("retenção por finalidade: 30 dias após a decisão apaga contatos e medi�
   const env = ENV({ FASE_A_DECISION_DATE: "2026-11-10" });
   const vid = await person(env);
   await sub(env, { contato: "ret@exemplo.com", vid });
-  assert.deepEqual(await W.runWaitlistRetention(env, { sqlFactory, now: Date.parse("2026-12-09T12:00:00Z"), force: true }), { ok: true, erased: 0, measurement_erased: 0, purpose_over: false }, "29 dias depois: mantém");
+  assert.deepEqual(await W.runWaitlistRetention(env, { sqlFactory, now: Date.parse("2026-12-09T12:00:00Z"), force: true }), { ok: true, erased: 0, measurement_erased: 0, purpose_over: false, activation: "lia_pendente_de_revisao" }, "29 dias depois: mantém (a retenção roda mesmo com a medição travada)");
   const done = await W.runWaitlistRetention(env, { sqlFactory, now: Date.parse("2026-12-10T12:00:00Z"), force: true });
   assert.deepEqual([done.erased, done.purpose_over], [1, true]);
   assert.ok(done.measurement_erased >= 2);
@@ -386,13 +390,17 @@ test("wa_owned (wa_status, wa_lista) e parceiros (parc_*) ficam FORA da métrica
 });
 
 test("semana de teste (funil das calculadoras, bandeira FASE_A_SEMANA_TESTE): qualificada = visitante único do dia, BR e com Accept-Language; sem bandeira nada é contado", { skip }, async () => {
-  const F = await import(pathToFileURL(path.join(ROOT, "worker", "funnel.mjs")).href);
+  const F = await import(pathToFileURL(path.join(MOD_DIR, "funnel.mjs")).href);
   psql("drop table if exists zevanory_funnel_daily, zevanory_funnel_visitors");
   const day0 = Date.parse("2026-11-03T12:00:00Z");
-  const hit = (env, o) => F.recordPageView(env, { sqlFactory, page: "calculadora-taxa-maquininha", ip: "206.0.0.1", userAgent: HUMAN, camp: "sdt-confeitaria", src: "wa_status", asn: 28573, acceptLanguage: true, country: "BR", now: day0, ...o });
-  const off = { DATABASE_URL: "x", RESEND_API_KEY: "salt" }, on = { ...off, FASE_A_SEMANA_TESTE: "on" };
+  const hit = (env, o) => F.recordPageView(env, { sqlFactory, page: "calculadora-taxa-maquininha", ip: "206.0.0.1", userAgent: HUMAN, camp: "sdt-confeitaria", src: "wa_status", asn: 28573, acceptLanguage: true, country: "BR", now: day0, lia: TEST_LIA, ...o });
+  const off = { DATABASE_URL: "x", RESEND_API_KEY: "salt" }, on = { ...off, FASE_A_SEMANA_TESTE: "on", FASE_A_LIA_APPROVED_SHA256: TEST_LIA_SHA };
   await hit(off, {});
   assert.equal(n("select count(*)::int as n from zevanory_funnel_daily where metric like 'sdt:%'"), 0, "bandeira desligada");
+  // Trava da LIA: bandeira ligada, mas LIA real (pendente) ou hash aprovado ausente => nada é contado.
+  await hit(on, { ip: "206.0.0.90", lia: undefined });
+  await hit({ ...on, FASE_A_LIA_APPROVED_SHA256: undefined }, { ip: "206.0.0.91" });
+  assert.equal(n("select count(*)::int as n from zevanory_funnel_daily where metric like 'sdt:%'"), 0, "LIA não aprovada: semana de teste não conta");
   await hit(on, { ip: "206.0.0.2" });
   await hit(on, { ip: "206.0.0.2" });
   await hit(on, { ip: "206.0.0.3", country: "US" });
@@ -465,4 +473,37 @@ test("multi-nicho: um visitante (mesmo cookie) em 2 nichos conta 1 vez em CADA d
   const s2 = await summary();
   assert.deepEqual([s2.niches.confeitaria.signups, s2.niches["salao-e-barbearia"].signups], [1, 1]);
   for (const k of ["confeitaria", "salao-e-barbearia", "loja-de-roupas"]) assert.ok(s2.niches[k].oracle.ok, k + " " + JSON.stringify(s2.niches[k].oracle.checks));
+});
+
+test("trava da LIA (AVAL 099): sem LIA aprovada + hash aprovado igual, a medição recusa (503, sem cookie, nada gravado), /saude dá o motivo e a saída continua; LIA editada depois da aprovação desliga", { skip }, async () => {
+  reset();
+  const edited = await manifestOf(APPROVED_TEXT + "\nNota acrescentada depois da aprovação.\n");
+  const cases = [
+    ["LIA real do repositório (pendente)", ENV(), REAL_LIA, "lia_pendente_de_revisao"],
+    ["hash aprovado ausente", ENV({ FASE_A_LIA_APPROVED_SHA256: undefined }), TEST_LIA, "aprovacao_nao_configurada"],
+    ["hash aprovado mal formado", ENV({ FASE_A_LIA_APPROVED_SHA256: "abc" }), TEST_LIA, "aprovacao_formato_invalido"],
+    ["LIA editada depois da aprovação", ENV(), edited, "lia_alterada_apos_aprovacao"],
+  ];
+  for (const [label, env, lia, reason] of cases) {
+    const v = await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "209.0.0.1", asn: 28573 }, T0, lia);
+    assert.deepEqual([v.status, v.body.code, v.body.reason, v.body.cookie], [503, "lia_nao_aprovada", reason, undefined], label + ": visita");
+    assert.equal((await call(env, "/confirmar", { nicho: "confeitaria", vid: "a".repeat(32) + "." + "b".repeat(32) }, T0, lia)).status, 503, label + ": confirmação");
+    const i = await call(env, "/inscrever", { nicho: "confeitaria", contato: "trava@exemplo.com", q1: "sim", q2: "sim", consent: true, ua: HUMAN }, T0, lia);
+    assert.deepEqual([i.status, i.body.code], [503, "lia_nao_aprovada"], label + ": inscrição");
+    for (const t of TABLES) assert.equal(n(`select count(*)::int as n from ${t}`), 0, label + ": nada gravado em " + t);
+    assert.equal(await env.ZEVANORY_PRIVATE_ARTIFACTS.get(W.SEEN_MARKER), null, label + ": nem o marcador de uso");
+    const h = await call(env, "/saude", {}, T0, lia);
+    assert.deepEqual([h.status, h.body.measurement_active, h.body.reason, h.body.lia.active], [200, false, reason, false], label + ": saúde");
+    // Direito do titular: a saída nunca é bloqueada pela trava (link inválido = 400, não 503).
+    assert.equal((await call(env, "/sair", { r: "a".repeat(64), t: "b".repeat(32) }, T0, lia)).status, 400, label + ": saída");
+  }
+  const off = await call(ENV({ FASE_A_WAITLIST: undefined }), "/saude", {});
+  assert.deepEqual([off.body.measurement_active, off.body.reason], [false, "bandeira_desligada"]);
+  // Aprovada e com o hash igual: liga (cookie emitido, linha gravada) e /saude confirma.
+  const ok = await call(ENV(), "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "209.0.0.2", asn: 28573 });
+  assert.equal(ok.status, 200);
+  assert.match(ok.body.cookie.value, /^[0-9a-f]{32}\.[0-9a-f]{32}$/);
+  assert.equal(n("select count(*)::int as n from waitlist_persons"), 1);
+  const h = await call(ENV(), "/saude", {});
+  assert.deepEqual([h.body.measurement_active, h.body.reason, h.body.lia.lia_sha256], [true, null, TEST_LIA_SHA]);
 });

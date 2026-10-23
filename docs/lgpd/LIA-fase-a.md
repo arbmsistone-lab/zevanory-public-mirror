@@ -6,7 +6,7 @@ medição da Fase A, com base na LGPD (Lei 13.709/2018), art. 7º, IX, e art. 10
 | Campo | Valor |
 |---|---|
 | Versão: 1 | 23/10/2026, redigida junto do protocolo v4 (`docs/p01/FASE_A_PROTOCOLO.md`) |
-| Estado | **PENDENTE DE REVISÃO JURÍDICA** pelo proprietário (ou assessoria por ele indicada). A medição não pode ser ligada (`FASE_A_WAITLIST=on` com `WAITLIST_VISITOR_SECRET`) antes da aprovação registrada abaixo. |
+| Estado | **PENDENTE DE REVISÃO JURÍDICA** pelo proprietário (ou assessoria por ele indicada). A medição é recusada tecnicamente (503, sem cookie, sem gravação) até a aprovação registrada abaixo e o hash aprovado configurado (ver "Aprovação"). |
 | Controladora | A. Renan Alves Moreira Bitu Ltda, CNPJ 69.077.233/0001-99 |
 | Encarregado (canal) | suporte@zevanory.api.br |
 | Código | `worker/waitlist.mjs`, `worker/waitlist-public.mjs`, migração `db/migrations/030_waitlist_fase_a.sql` |
@@ -120,6 +120,13 @@ Atendidos pelo canal do encarregado (suporte@zevanory.api.br), em até 15 dias (
 
 ## Aprovação
 
-| Revisor | Data | Decisão | Observações |
-|---|---|---|---|
-| Proprietário / assessoria jurídica | _pendente_ | _pendente_ | Revisar §1 a §6; confirmar texto da Política de Privacidade; registrar aqui antes de ligar a medição. |
+Trava técnica (AVAL 099 §2, `worker/fase-a-lia.mjs`): a medição só liga se (1) este documento não tiver nenhum
+marcador de pendência, (2) a tabela abaixo tiver uma linha completa com revisor (nome), data `AAAA-MM-DD`, versão
+igual à "Versão: N" acima e decisão `APROVADA`, e (3) o proprietário definir no Worker principal
+`FASE_A_LIA_APPROVED_SHA256` igual ao SHA-256 (texto UTF-8, fins de linha LF) **deste arquivo já aprovado**, que
+`node scripts/fase_a/lia_manifest.mjs --write` grava em `worker/fase-a-lia.generated.mjs`. Qualquer edição posterior
+muda o SHA-256 e **desliga** a medição até nova aprovação. Automação nunca preenche esta tabela nem a variável.
+
+| Revisor | Data | Versão da LIA | Decisão | Observações |
+|---|---|---|---|---|
+| _pendente_ | _pendente_ | _pendente_ | _pendente_ | Proprietário / assessoria jurídica: revisar §1 a §6, confirmar o texto da Política de Privacidade e registrar aqui antes de ligar a medição. |

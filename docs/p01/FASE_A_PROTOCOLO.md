@@ -213,6 +213,12 @@ Dois finalistas. Randomização **persistente** por visitante entre **R$ 27** e 
   tabelas declaradas). A restauração (`scripts/ops/restore_new_database.py`) deixou de exigir "exatamente 30" e passou a
   exigir que os `.sql` em disco sejam **iguais** ao manifesto e que as tabelas declaradas existam após a carga. O backup
   diário copia todas as tabelas públicas, inclusive estas (por isso o prazo de 8 dias no aviso).
+- **Trava da LIA (AVAL 099 §2, `worker/fase-a-lia.mjs`)**: `/visita`, `/confirmar`, `/inscrever` e a contagem da
+  semana de teste só funcionam com a LIA sem marcador de pendência, tabela de aprovação completa (revisor, data,
+  versão, `APROVADA`) e `FASE_A_LIA_APPROVED_SHA256` (definida pelo proprietário) igual ao SHA-256 da LIA aprovada,
+  embutido em `worker/fase-a-lia.generated.mjs` (conferido no CI). Senão: 503 `lia_nao_aprovada`, sem cookie e sem
+  gravar nada; `https://waitlist.internal/saude` e o registro diário da retenção dão o motivo; a saída (`/sair`)
+  nunca é bloqueada. Editar a LIA depois da aprovação muda o SHA-256 e desliga a medição até nova aprovação.
 - Tudo nasce **desligado**: páginas só entram nos assets com `ZEVANORY_FASE_A_PAGES=on` (e a Política de Privacidade
   com a seção `id="lista-de-espera"`); rotas exigem `FASE_A_WAITLIST=on` nos dois Workers; o identificador exige
   `WAITLIST_VISITOR_SECRET`, `FASE_A_WINDOW_ID` e `FASE_A_WINDOW_END`; a retenção usa `FASE_A_DECISION_DATE`.

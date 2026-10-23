@@ -17,6 +17,10 @@
 //   Fase A (FASE_A_DECISION_DATE); limites absolutos de 12 meses (inscrição) e 180 dias (medição).
 // * Dupla confirmação (P08, issue #871): nenhuma mensagem é enviada por este módulo.
 import { isAutomationUA, DATACENTER_ASNS } from "./funnel.mjs";
+import { liaActivation } from "./fase-a-lia.mjs";
+export { liaActivation, parseLia, approvalComplete } from "./fase-a-lia.mjs";
+// Medição (AVAL 099 §2): só com a LIA aprovada (worker/fase-a-lia.mjs). A saída (/sair) nunca é bloqueada.
+export const MEASUREMENT_PATHS = Object.freeze(["/visita", "/confirmar", "/inscrever"]);
 
 export const WAITLIST_NICHES = Object.freeze(["confeitaria", "loja-de-roupas", "salao-e-barbearia"]);
 export const CONSENT_VERSION = "fase-a-lista-v2-2026-10-22";
@@ -453,14 +457,28 @@ export async function runWaitlistRetention(env, { sqlFactory, now = Date.now(), 
     out = { ok: true, erased: e.reduce((s, r) => s + (Number(r.n) || 0), 0), measurement_erased: Number(m[0]?.n) || 0, purpose_over: purposeOver };
   }
   try { await kv?.put?.(RETENTION_MARKER, day, { expirationTtl: 3 * 86400 }); } catch {}
-  return out;
+  // A retenção roda mesmo com a medição travada (direito do titular); o motivo da trava vai no registro.
+  return { ...out, activation: waitlistHealth(env).reason };
 }
 
 // Endpoint do binding privado (somente o Worker de vendas o alcança).
-export async function handleWaitlist(request, env, { sqlFactory, now } = {}) {
+// Estado da ativação (sem dado pessoal): bandeira, trava da LIA e motivo. Exposto em /saude (binding privado)
+// e no registro diário da retenção.
+export function waitlistHealth(env, { lia } = {}) {
+  const act = lia ? liaActivation(env, lia) : liaActivation(env);
+  const flag = flagOn(env);
+  return { ok: true, flag_on: flag, measurement_active: flag && act.active, reason: !flag ? "bandeira_desligada" : act.reason, lia: act };
+}
+export async function handleWaitlist(request, env, { sqlFactory, now, lia } = {}) {
   const url = new URL(request.url);
   if (url.hostname !== "waitlist.internal") return null;
+  if (url.pathname === "/saude") return json(200, waitlistHealth(env, { lia }));
   if (!flagOn(env)) return json(404, { ok: false, code: "desligado" });
+  // Trava fail-closed da LIA ANTES de qualquer acesso ao banco/KV: sem cookie, sem evento, sem marcador.
+  if (MEASUREMENT_PATHS.includes(url.pathname)) {
+    const act = lia ? liaActivation(env, lia) : liaActivation(env);
+    if (!act.active) return json(503, { ok: false, code: "lia_nao_aprovada", reason: act.reason });
+  }
   if (!sqlFactory || !env.DATABASE_URL) return json(503, { ok: false, code: "indisponivel" });
   if (request.method !== "POST") return json(405, { ok: false });
   const sql = sqlFactory(env.DATABASE_URL);

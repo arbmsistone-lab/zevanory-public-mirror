@@ -169,3 +169,17 @@ test("saída: instruções sem parâmetros; com link verifica no núcleo e confi
   const bad = setup({ reply: { status: 400, body: { ok: false } } });
   assert.equal((await get(bad, "/lista-de-espera/sair" + q)).status, 400);
 });
+
+test("trava da LIA (AVAL 099): núcleo recusa com 503 lia_nao_aprovada -> página sem cookie e inscrição 'indisponível', sem expor o motivo", async () => {
+  const s = setup({ reply: { status: 503, body: { ok: false, code: "lia_nao_aprovada", reason: "lia_pendente_de_revisao" } } });
+  const r = await get(s, "/lista-de-espera/confeitaria", { cookie: `zvfa=${VID}` });
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get("set-cookie"), null, "nenhum identificador emitido");
+  const html = await r.text();
+  assert.doesNotMatch(html, /lia_|pendente_de_revisao/);
+  const i = await post(s, form());
+  assert.equal(i.status, 503);
+  const body = await i.text();
+  assert.match(body, new RegExp(MESSAGES.indisponivel[0]));
+  assert.doesNotMatch(body, /lia_|pendente_de_revisao/);
+});
