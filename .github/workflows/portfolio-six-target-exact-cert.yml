@@ -15,6 +15,8 @@ on:
       - "reembolso/**"
       - "worker/**"
       - "scripts/portfolio_target_exact_cert.py"
+      - "scripts/portfolio_http_retry.py"
+      - "tests/test_portfolio_http_retry.py"
       - ".github/workflows/portfolio-six-target-exact-cert.yml"
   push:
     branches: [gh-pages]
@@ -30,6 +32,8 @@ on:
       - "reembolso/**"
       - "worker/**"
       - "scripts/portfolio_target_exact_cert.py"
+      - "scripts/portfolio_http_retry.py"
+      - "tests/test_portfolio_http_retry.py"
       - ".github/workflows/portfolio-six-target-exact-cert.yml"
   workflow_dispatch:
 
@@ -57,6 +61,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Transport retry unit tests (offline; divergence never retried)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -m unittest tests.test_portfolio_http_retry -v < /dev/null 2>&1 | tee retry-tests.txt
+          grep -qx "Ran 8 tests in .*" retry-tests.txt || { echo "::error::contagem de testes diferente de 8"; exit 1; }
+          if grep -q "skipped" retry-tests.txt; then echo "::error::testes pulados"; exit 1; fi
+          grep -qx "OK" retry-tests.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
       - name: Exact source/live/base contract
         run: |
           set -euo pipefail
