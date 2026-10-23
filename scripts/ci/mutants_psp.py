@@ -150,6 +150,7 @@ M = {
     "D04_config_invalida_admite_sondagem": sub("failover", "if (probeConfigError) {", "if (false) {"),
     "D05_orquestrador_espera_o_handler": sub("failover", "health.probe === true ? await invokeProbeWithDeadline(invoke, provider, health) : await invoke(provider, {});", "await invoke(provider, { signal: health.signal });"),
     "D06_handler_ignora_sinal_da_sondagem": sub("bundle", "Object.assign(req, { pspProbeSignal: ctx.signal || null })", "Object.assign(req, { pspProbeSignal: null })"),
+    "D07_preferencia_mp_sem_sinal_da_sondagem": sub("bundle", "if (req.pspProbeSignal) PSP_PROBE_SIGNALS.set(payload, req.pspProbeSignal);", "if (false) PSP_PROBE_SIGNALS.set(payload, req.pspProbeSignal);"),
 }
 
 # Testes que DEVEM falhar por asserção (prefixo do nome TAP, com espaço) — derivados do comportamento quebrado.
@@ -200,6 +201,7 @@ EXPECT = {
     "D04_config_invalida_admite_sondagem": {"unit": ("F32 ",)},
     "D05_orquestrador_espera_o_handler": {"unit": ("F31 ",)},
     "D06_handler_ignora_sinal_da_sondagem": {"checkout": ("C10 ",)},
+    "D07_preferencia_mp_sem_sinal_da_sondagem": {"checkout": ("C10 ",)},
 }
 assert set(M) == set(EXPECT), "cada mutante precisa da lista de testes esperados"
 

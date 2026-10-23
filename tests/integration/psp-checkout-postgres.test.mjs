@@ -489,7 +489,7 @@ test("W7 estorno total antes da confirmação (nunca pago): tentativas esgotam =
   process.env.RESEND_API_KEY = "re_synthetic";
   const { o, p } = await asaasPaidSetup();
   p.status = "REFUNDED"; p.refunds = [{ status: "DONE", value: 197 }];
-  const early = evt("PAYMENT_REFUNDED", p.id);
+  const early = evt("PAYMENT_REFUNDED", p.id, `evt_dlqalert${randomUUID().replace(/[^a-f]/g, "")}`); // só letras: o e-mail mascara sequências longas de dígitos
   assert.equal((await hook(early)).body.reason, "refund_before_payment_recorded");
   assert.equal((await hook(evt("PAYMENT_RECEIVED", p.id))).body.reason, "superseded_payment_event");
   const { drainAsaasReviewQueue } = await import("../../worker/cloudflare-worker.recovered.mjs");
@@ -515,7 +515,7 @@ test("W8 repro Sol #879: e-mail do alerta da DLQ FALHA (Resend 500) => pendênci
   psqlRaw("delete from asaas_dlq_alerts;\n");
   const { o, p } = await asaasPaidSetup();
   p.status = "REFUNDED"; p.refunds = [{ status: "DONE", value: 197 }];
-  const early = evt("PAYMENT_REFUNDED", p.id);
+  const early = evt("PAYMENT_REFUNDED", p.id, `evt_dlqalert${randomUUID().replace(/[^a-f]/g, "")}`); // só letras: o e-mail mascara sequências longas de dígitos
   assert.equal((await hook(early)).body.reason, "refund_before_payment_recorded");
   const { drainAsaasReviewQueue } = await import("../../worker/cloudflare-worker.recovered.mjs");
   const e0 = world.emails.length;

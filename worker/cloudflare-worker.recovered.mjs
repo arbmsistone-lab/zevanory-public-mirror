@@ -14145,6 +14145,9 @@ async function createAsaasCheckout(payload, apiKey, env = "sandbox", fetchImpl =
 __name(createAsaasCheckout, "createAsaasCheckout");
 // Faixa derivada do lease da sondagem (psp-failover.mjs: PSP_PROVIDER_TIMEOUT_MAX_MS = 20 s). Fora da faixa: 10 s
 // nas chamadas normais e a meia-abertura fica NEGADA (breakerConfigFromEnv.probeConfigError).
+// Sinal do prazo da sondagem associado ao payload (congelado) da preferência do MP por WeakMap (nada entra no JSON
+// enviado), para manter intacta a chamada canônica verificada pelo guarda do issue #307.
+const PSP_PROBE_SIGNALS = /* @__PURE__ */ new WeakMap();
 function pspProviderTimeoutMs(env = process.env) {
   return pspProviderTimeoutFromEnv(env).value;
 }
@@ -14441,7 +14444,7 @@ function preferenceMatchesPersistedOrder(payload, persisted) {
 }
 __name(preferenceMatchesPersistedOrder, "preferenceMatchesPersistedOrder");
 // src/http/checkoutMercadoPago.mjs
-async function createMercadoPagoPreference(payload, accessToken, fetchImpl = fetch, { probeSignal = null } = {}) {
+async function createMercadoPagoPreference(payload, accessToken, fetchImpl = fetch, { probeSignal = (payload && typeof payload === "object" && PSP_PROBE_SIGNALS.get(payload)) || null } = {}) {
   // B05: chave de idempotência por pedido e timeout explícito. Timeout/5xx viram resultado AMBÍGUO no handler
   // (pedido "checkout_uncertain", reconciliação) e o orquestrador nunca cria um segundo checkout no Asaas.
   const idempotencyKey = idempotencyKeyForOrder(payload?.external_reference);
@@ -14526,7 +14529,8 @@ async function handler12(req, res) {
     }
     let raw;
     try {
-      raw = await createMercadoPagoPreference(payload, providerToken, void 0, { probeSignal: req.pspProbeSignal || null });
+      if (req.pspProbeSignal) PSP_PROBE_SIGNALS.set(payload, req.pspProbeSignal);
+      raw = await createMercadoPagoPreference(payload, providerToken);
     } catch (error) {
       try {
         await sql.query(`UPDATE orders SET status='checkout_uncertain',updated_at=now() WHERE order_id=$1`, [order.order_id]);

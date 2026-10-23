@@ -119,7 +119,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Mutantes (46; cada um precisa ser MORTO por asserção funcional)
+      - name: Mutantes (47; cada um precisa ser MORTO por asserção funcional)
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
@@ -133,11 +133,11 @@ jobs:
           cat final.txt
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
           n="$(grep -c ' KILLED reason=assercao:' final.txt || true)"
-          [ "$n" = "46" ] || { echo "::error::esperados 46 mutantes mortos por asserção, obtidos $n"; exit 1; }
+          [ "$n" = "47" ] || { echo "::error::esperados 47 mutantes mortos por asserção, obtidos $n"; exit 1; }
           if grep -qE ' (SURVIVED|INCONCLUSIVE) ' final.txt; then echo "::error::mutante sobrevivente ou inconclusivo"; exit 1; fi
-          grep -qx 'MUTANTS_TOTAL=46 KILLED=46 SURVIVED=0 INCONCLUSIVE=0 RETRIES=2' mut.txt
+          grep -qx 'MUTANTS_TOTAL=47 KILLED=47 SURVIVED=0 INCONCLUSIVE=0 RETRIES=2' mut.txt
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi
-      # O GitHub limita a 10 anotações por etapa: as 46 linhas finais saem em 7 etapas.
+      # O GitHub limita a 10 anotações por etapa: as 47 linhas finais saem em 7 etapas.
       - name: Anotações 1/7 (M01–M10)
         if: always()
         run: |
@@ -170,11 +170,11 @@ jobs:
         run: |
           [ -f final.txt ] || exit 0
           grep -E '^MUTANT Q(0[6-9]|1[0-3])_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
-      - name: Anotações 7/7 (D01–D06, prazo da sondagem abaixo do lease)
+      - name: Anotações 7/7 (D01–D07, prazo da sondagem abaixo do lease)
         if: always()
         run: |
           [ -f final.txt ] || exit 0
-          grep -E '^MUTANT D0[1-6]_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
+          grep -E '^MUTANT D0[1-7]_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
       - name: Meta-teste — infraestrutura (ECONNRESET real injetado, sem mutação) nunca vira KILLED
         env:
           T4_PG_HOST: localhost
