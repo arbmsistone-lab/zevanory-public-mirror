@@ -40,7 +40,12 @@ jobs:
         with:
           node-version: '22'
       - name: Install remote audit tools
-        run: npm install --no-save lighthouse@12 pa11y@8
+        # Lighthouse pinned exactly. 12.x rejects the "Content-Signal" directive that Cloudflare's
+        # zone-level Managed robots.txt prepends to every robots.txt of the zone (robots-txt=0 ->
+        # SEO 92). The directive is valid under RFC 9309 (unknown records are ignored) and 13.x
+        # safelists it upstream. Thresholds below are unchanged (guarded by
+        # tests/remote-quality-lighthouse.test.mjs).
+        run: npm install --no-save lighthouse@13.5.0 pa11y@8
       - name: Audit production accessibility
         run: |
           node - <<'NODE'

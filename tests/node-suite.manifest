@@ -78,6 +78,7 @@ tests/production-staging-health.test.mjs 3
 tests/public-surface-router.test.mjs 3
 tests/publisher-inventory.test.mjs 11
 tests/refund-provider-ambiguity.test.mjs 29
+tests/remote-quality-lighthouse.test.mjs 6
 tests/reviews.test.mjs 3
 tests/sales-candidate-visual.test.mjs 3
 tests/sales-control.test.mjs 6
