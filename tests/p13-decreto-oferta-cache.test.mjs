@@ -105,6 +105,17 @@ test("gate do modo fechado (CLI): Offer paga em qualquer disponibilidade e check
     "G9 link de checkout Mercado Pago externo": ["solucoes", (h) => h.replace("</main>", '<a href="https://mpago.la/2xYz">pagar</a></main>')],
     "G10 link go.hotmart.com": ["kit-afiliado", (h) => h.replace("</main>", '<a href="https://go.hotmart.com/X1">comprar</a></main>')],
     "G11 Offer em microdata": ["ferramentas", (h) => h.replace("</main>", '<div itemscope itemtype="https://schema.org/Offer"><span itemprop="price">97</span></div></main>')],
+    // AVAL (Sol, 9a0f1eb): formas alternativas de @type e de marcação.
+    "G12 @type em IRI completa (mutante do Sol)": ["ia-na-pratica", ld("ia-na-pratica", { "@type": "https://schema.org/Offer", price: "197.00", priceCurrency: "BRL", availability: "https://schema.org/PreOrder" })],
+    "G13 @type em array": ["vendas-na-pratica", ld("vendas-na-pratica", { "@type": ["Offer", "https://schema.org/Thing"], price: "197.00", priceCurrency: "BRL" })],
+    "G14 Offer solta no @graph (IRI)": ["lucro-e-caixa", (h) => h.replace('"@graph": [', '"@graph": [{"@type": "http://schema.org/Offer/", "price": "247.00", "priceCurrency": "BRL"}, ')],
+    "G15 schema:Offer": ["combo-ia-vendas", ld("combo-ia-vendas", { "@type": "schema:Offer", price: "297.00" })],
+    "G16 Offer em itemOffered aninhado": ["negocio-completo", (h) => h.replace('"@graph": [', '"@graph": [{"@type": "Demand", "itemOffered": {"@type": "Product", "name": "x", "offers": [{"@type": "https://schema.org/AggregateOffer", "lowPrice": "397"}]}}, ')],
+    "G17 microdata com itemtype http e sem preço visível": ["solucoes", (h) => h.replace("</main>", '<div itemscope itemtype="http://schema.org/Offer"><meta itemprop="price" content="197"></div></main>')],
+    "G18 microdata sem tipo em itemprop offers": ["ia-na-pratica", (h) => h.replace("</main>", '<div itemscope itemtype="https://schema.org/Product"><div itemprop="offers" itemscope><meta itemprop="price" content="197"></div></div></main>')],
+    "G19 RDFa typeof=Offer com vocab": ["ferramentas", (h) => h.replace("</main>", '<div vocab="https://schema.org/" typeof="Offer"><span property="price">97</span></div></main>')],
+    "G20 RDFa typeof=schema:Offer": ["kit-afiliado", (h) => h.replace("</main>", '<div prefix="schema: https://schema.org/" typeof="schema:Offer"><span property="schema:price">97</span></div></main>')],
+    "G21 JSON-LD com charset no type": ["termos", (h) => h.replace("</main>", '<script type="application/ld+json; charset=utf-8">{"@context":"https://schema.org","@type":"https://schema.org/Offer","price":"9.90"}</script></main>')],
   };
   const report = [];
   for (const [name, [slug, fn]] of Object.entries(mutants)) {

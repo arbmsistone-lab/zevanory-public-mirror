@@ -81,15 +81,27 @@ CHECKOUT_HREF_RE = re.compile(r"""href\s*=\s*["']?[^"'\s>]*(?:""" + _ALT + ")", 
 INSTOCK_RE = re.compile(r"schema\.org/InStock", re.I)
 
 
-LD_RE = re.compile(r'<script[^>]*type\s*=\s*["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.I | re.S)
+# Qualquer <script type="application/ld+json"...> (inclusive com parametros, ex. charset).
+LD_RE = re.compile(r'<script\b[^>]*\btype\s*=\s*["\']?\s*application/ld\+json[^>]*>(.*?)</script>', re.I | re.S)
 OFFER_TYPES = {"offer", "aggregateoffer"}
-MICRODATA_OFFER_RE = re.compile(r'itemtype\s*=\s*["\']?https?://schema\.org/(?:Aggregate)?Offer\b', re.I)
+# AVAL (Sol, 9a0f1eb): @type em forma de IRI completa, prefixo schema: ou array tambem e Offer.
+_TYPE_PREFIX_RE = re.compile(r'^(?:https?://(?:www\.)?schema\.org/|schema:)', re.I)
+# Microdata (itemtype) e RDFa (typeof, com ou sem vocab/prefixo) de Offer/AggregateOffer.
+MICRODATA_OFFER_RE = re.compile(r'\bitemtype\s*=\s*["\']?[^"\'>]*?(?:https?://(?:www\.)?schema\.org/|schema:)?(?:Aggregate)?Offer\b', re.I)
+# Oferta sem tipo explicito, pendurada na propriedade "offers" (itemprop ou property RDFa).
+OFFERS_PROP_RE = re.compile(r'\b(?:itemprop|property)\s*=\s*["\']?[^"\'>]*?\b(?:schema:)?offers\b', re.I)
+RDFA_OFFER_RE = re.compile(r'\btypeof\s*=\s*["\']?[^"\'>]*?\b(?:https?://(?:www\.)?schema\.org/|schema:)?(?:Aggregate)?Offer\b', re.I)
 PRICE_KEYS = ("price", "lowPrice", "highPrice")
 
 
+def normalize_type(value) -> str:
+    """'https://schema.org/Offer', 'http://schema.org/Offer/', 'schema:Offer', 'Offer', 'offer' -> 'offer'."""
+    return _TYPE_PREFIX_RE.sub("", str(value).strip()).rstrip("/").lower()
+
+
 def _types(node: dict) -> set[str]:
-    t = node.get("@type")
-    return {str(x).lower() for x in (t if isinstance(t, list) else [t]) if x}
+    t = node.get("@type", node.get("type"))
+    return {normalize_type(x) for x in (t if isinstance(t, list) else [t]) if x}
 
 
 def _offers(node, under_offers: bool = False):
@@ -141,8 +153,13 @@ def audit_closed(out_dir: Path) -> list[str]:
             problems.append(f"{f.name}: href de checkout/assinatura ({CHECKOUT_HREF_RE.search(text).group(0)[-40:]}) em modo fechado")
         if INSTOCK_RE.search(text):
             problems.append(f"{f.name}: schema.org/InStock em modo fechado")
+        # Microdata/RDFa: qualquer Offer reprova em modo fechado (as gratuitas usam so JSON-LD com preco 0).
         if MICRODATA_OFFER_RE.search(text):
             problems.append(f"{f.name}: Offer em microdata em modo fechado")
+        if RDFA_OFFER_RE.search(text):
+            problems.append(f"{f.name}: Offer em RDFa em modo fechado")
+        if OFFERS_PROP_RE.search(text):
+            problems.append(f"{f.name}: propriedade offers (microdata/RDFa) em modo fechado")
         for block in LD_RE.findall(text):
             try:
                 data = json.loads(block)
