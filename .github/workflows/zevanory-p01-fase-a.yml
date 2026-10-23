@@ -85,7 +85,7 @@ jobs:
       - name: Sintaxe dos módulos
         run: |
           set -euo pipefail
-          for f in worker/fase-a-lia.mjs worker/fase-a-lia.generated.mjs scripts/fase_a/lia_manifest.mjs worker/waitlist.mjs worker/waitlist-public.mjs worker/sales-public-worker.mjs worker/cloudflare-worker.compat.mjs scripts/fase_a/resumo.mjs scripts/fase_a/mutants.mjs scripts/fase_a/tools.mjs; do node --check "$f"; done
+          for f in worker/fase-a-lia.mjs worker/fase-a-lia.generated.mjs scripts/fase_a/lia_manifest.mjs scripts/fase_a/atendimento.mjs worker/waitlist.mjs worker/waitlist-public.mjs worker/sales-public-worker.mjs worker/cloudflare-worker.compat.mjs scripts/fase_a/resumo.mjs scripts/fase_a/mutants.mjs scripts/fase_a/tools.mjs; do node --check "$f"; done
       - name: Manifesto da LIA embutido no Worker idêntico a docs/lgpd/LIA-fase-a.md (AVAL 099)
         run: |
           set -euo pipefail
@@ -112,10 +112,10 @@ jobs:
             echo "::notice title=P01_${{ runner.os }}_$1::$2/$2"
           }
           check fase-a-static.test.mjs 9
-          check waitlist-public.test.mjs 10
-          check waitlist-rule.test.mjs 12
+          check waitlist-public.test.mjs 12
+          check waitlist-rule.test.mjs 13
           check fase-a-inventory.test.mjs 2
-          check waitlist-postgres.test.mjs 23
+          check waitlist-postgres.test.mjs 27
           check lia-required-gate.test.mjs 3
       - name: Restauração com o manifesto de migrações e reversão da 030 (9 testes)
         env:
@@ -137,12 +137,12 @@ jobs:
           grep -qx "OK" "$RUNNER_TEMP/rnd.txt"
           if grep -q "skipped" "$RUNNER_TEMP/rnd.txt"; then echo "::error::restauração pulada"; exit 1; fi
           echo "::notice title=P01_RESTORE_${{ runner.os }}::9/9 (manifesto exato 31, tabelas da 030 restauradas, 030 aplica/reverte/reaplica)"
-      - name: Mutantes (controle passa; 24 mutantes mortos por asserção, inclusive M-SOL-085, origem ausente, wa_owned, multi-nicho, multi-aparelho e trava da LIA)
+      - name: Mutantes (controle passa; 36 mutantes mortos por asserção, inclusive M-SOL-085, origem ausente, wa_owned, multi-nicho, multi-aparelho, trava LIA/ROPA e controles da AVAL 101)
         run: |
           set -eo pipefail
           node scripts/fase_a/mutants.mjs | tee "$RUNNER_TEMP/m.txt"
           sed -i 's/\r$//' "$RUNNER_TEMP/m.txt"
-          grep -qx "P01_MUTANTS killed=24/24" "$RUNNER_TEMP/m.txt"
+          grep -qx "P01_MUTANTS killed=36/36" "$RUNNER_TEMP/m.txt"
           test "$(grep -c '^::notice title=P01_MUTANT_CONTROL::.*"ok":true' "$RUNNER_TEMP/m.txt")" -eq 3
       - name: Sem bytecode nem arquivos gerados no checkout
         run: |

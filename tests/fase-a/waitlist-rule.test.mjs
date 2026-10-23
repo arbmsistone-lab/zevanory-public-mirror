@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 // WAITLIST_MODULE: o executor de mutantes troca o módulo testado.
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const { liaActivation, parseLia, CONSENT_VERSION, RETENTION, wilson, decide, RULE, normalizeContact, isEligibleTraffic, visitorSecret, windowOf, personFromCookie, sourceTag, sourceGroup, channelBalance, finalistsOf, testWeekSummary, TEST_WEEK, summarize, WA_OWNED_TAGS, SOURCE_CLASSES } =
+const { liaActivation, parseLia, CONSENT_VERSION, RETENTION, wilson, decide, RULE, normalizeContact, isEligibleTraffic, visitorSecret, windowOf, personFromCookie, sourceTag, sourceGroup, channelBalance, finalistsOf, testWeekSummary, TEST_WEEK, summarize, WA_OWNED_TAGS, SOURCE_CLASSES, UNIT, AVISO_VERSION, SMALL_CELL_K, suppressSmallCells, anonymousAggregate, retentionTriggers } =
   await import(pathToFileURL(path.resolve(process.env.WAITLIST_MODULE || path.join(ROOT, "worker", "waitlist.mjs"))).href);
 
 const near = (a, b, eps = 5e-4) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -51,7 +51,7 @@ test("segredo de visitante: dedicado, >= 32 bytes, sem fallback; janela válida 
 
 test("protocolo registrado contém exatamente os limiares implementados", () => {
   const doc = fs.readFileSync(new URL("../../docs/p01/FASE_A_PROTOCOLO.md", import.meta.url), "utf8");
-  for (const s of ["300 pessoas experimentais", "≥ 8%", "≥ 5%", "≥ 20", "INCONCLUSIVO", "R$ 27", "R$ 47", "Wilson", "WAITLIST_VISITOR_SECRET", "M-SOL-085", "sensibilidade", "oráculo", "30 dias após a decisão", "180 dias", "8 dias", "**v4 (23/10/2026)**", "semana de teste", "≥ 98 visitas qualificadas", "21 dias", "`wa_status`", "`parc_<nome>`", "`meta_<nome>`", "Mistura de canais", "origem ausente **nunca** conta", "`wa_owned`", "métrica secundária", "## 2.2. Multi-aparelho e multi-nicho", "docs/lgpd/LIA-fase-a.md"]) assert.ok(doc.includes(s), s);
+  for (const s of ["300 navegadores/dispositivos pseudônimos", "≥ 8%", "≥ 5%", "≥ 20", "INCONCLUSIVO", "R$ 27", "R$ 47", "Wilson", "WAITLIST_VISITOR_SECRET", "M-SOL-085", "navegador/dispositivo pseudônimo", "zvfa_optout=1", "Sec-GPC: 1", "60 dias após o fim da janela", "Sem teto genérico de 180", "waitlist_deletion_log", "células pequenas", "Aviso antes da coleta", "docs/lgpd/ROPA-fase-a.md", "sensibilidade", "oráculo", "30 dias após a decisão", "8 dias", "**v5 (23/10/2026)**", "semana de teste", "≥ 98 visitas qualificadas", "21 dias", "`wa_status`", "`parc_<nome>`", "`meta_<nome>`", "Mistura de canais", "origem ausente **nunca** conta", "`wa_owned`", "métrica secundária", "## 2.2. Multi-aparelho e multi-nicho", "docs/lgpd/LIA-fase-a.md"]) assert.ok(doc.includes(s), s);
 });
 
 test("contato: e-mail e WhatsApp brasileiro normalizados; outros formatos recusados", () => {
@@ -80,16 +80,17 @@ test("origem (v4): lista fechada wa_status, wa_lista, ig_story, ig_post, ig_reel
   assert.deepEqual([...WA_OWNED_TAGS], ["wa_status", "wa_lista"]);
   assert.deepEqual([...SOURCE_CLASSES], ["canal", "wa_owned", "parceiro", "reservado_meta", "sem_origem"]);
   // wa_owned sai da mistura da população da decisão, mas aparece na mistura total e na métrica secundária (sem decidir).
-  const row = (niche, o = {}) => ({ niche, persons: 300, signups: 30, persons_wa_owned: 40, signups_wa_owned: 2, persons_linhas: 0, persons_confirmadas_linhas: 0, aliases: 0, signups_linhas: 0, pessoa_dia: 0, raw: {}, ...o });
+  const row = (niche, o = {}) => ({ niche, browsers: 300, signups: 30, browsers_wa_owned: 40, signups_wa_owned: 2, browsers_linhas: 0, browsers_confirmados_linhas: 0, aliases: 0, signups_linhas: 0, raw: {}, ...o });
   const out = summarize([row("confeitaria")], { windowId: "fa1", sources: [{ niche: "confeitaria", src: "ig_post", n: 300 }, { niche: "confeitaria", src: "wa_status", n: 30 }, { niche: "confeitaria", src: "wa_lista", n: 10 }] });
   const c = out.niches.confeitaria;
   assert.deepEqual(c.source_mix_decision_population, { ig_post: 300 });
   assert.deepEqual(c.source_mix, { ig_post: 300, wa_status: 30, wa_lista: 10 });
-  assert.deepEqual({ ...c.secondary.wa_owned, wilson95: undefined }, { source_class: "wa_owned", persons: 40, signups: 2, conversion: 0.05, wilson95: undefined, decides: false });
+  assert.deepEqual({ ...c.secondary.wa_owned, wilson95: undefined }, { source_class: "wa_owned", unit: UNIT, browsers: 40, signups: 2, conversion: 0.05, wilson95: undefined, decides: false });
   near(c.secondary.wa_owned.wilson95.low, wilson(2, 40).low);
   assert.equal(c.decision, "GO", "a secundária (5%) não muda a decisão primária (10%)");
   assert.equal(c.excluded_source.wa_owned, 40);
-  assert.equal(out.protocol, "v4");
+  assert.equal(out.protocol, "v5");
+  assert.equal(c.unit, "navegador_dispositivo_pseudonimo");
 });
 
 test("mistura de canais entre os braços: origem ausente NUNCA conta como equilibrada; diferença > 10 pontos = desequilibrada; finalistas só com mistura equilibrada", () => {
@@ -131,52 +132,90 @@ test("semana de teste (condição do Sol): 7 dias consecutivos, >= 98 qualificad
   assert.match(ok.note, /somente a abertura do teste de 21 dias/);
 });
 
-test("LIA (LGPD art. 7º, IX e art. 10) registrada e versionada: finalidade, necessidade, balanceamento, minimização, direitos, opt-out e pendência de revisão jurídica", () => {
-  const lia = fs.readFileSync(new URL("../../docs/lgpd/LIA-fase-a.md", import.meta.url), "utf8");
-  for (const s of ["Versão: 1", "art. 7º, IX", "art. 10", "## 1. Finalidade", "## 2. Necessidade", "## 3. Balanceamento",
-    "## 4. Minimização e salvaguardas", "## 5. Direitos do titular", "## 6. Oposição (opt-out)", "dado pessoal pseudonimizado", "WAITLIST_VISITOR_SECRET",
-    "rotação", "30 dias após a decisão", "runWaitlistRetention", "consentimento separado", "wa_owned", "multi-aparelho", "art. 18"]) assert.ok(lia.includes(s), s);
-  // Coerência com o código: retenção e versão do consentimento citadas são as implementadas.
-  assert.ok(lia.includes("`" + CONSENT_VERSION + "`"), "versão do consentimento");
-  assert.ok(lia.includes(RETENTION.measurementMaxDays + " dias") && lia.includes(RETENTION.cookieMaxDays + " dias"));
-  // Enquanto não houver linha de aprovação completa, o marcador de pendência tem de estar lá.
-  if (!parseLia(lia).approval) assert.ok(lia.includes("PENDENTE DE REVISÃO JURÍDICA"), "LIA sem aprovação precisa do marcador de pendência");
+test("LIA v2 (texto substitutivo da AVAL 101) + ROPA (art. 37) + gatilhos de RIPD (art. 38) versionados e pendentes; textos coerentes com o código", () => {
+  const read = (f) => fs.readFileSync(new URL("../../docs/lgpd/" + f, import.meta.url), "utf8");
+  const lia = read("LIA-fase-a.md"), ropa = read("ROPA-fase-a.md"), ripd = read("RIPD-gatilhos-fase-a.md");
+  for (const s of ["Versão: 2", "arts. 7º, IX, e 10", "## 0. Estado e escopo", "## 1. Finalidade específica e resultado permitido", "## 2. Dados mínimos e necessidade",
+    "## 3. Expectativa e balanceamento", "## 4. Transparência, opt-out e direitos", "## 5. Retenção e eliminação", "## 6. Segurança e governança", "## 7. Aprovação fail-closed",
+    "navegadores/dispositivos pseudônimos", "não representa uma pessoa única", "“Não participar da medição”", "`zvfa_optout=1`", "`Sec-GPC: 1`", "não será descrita como opt-out",
+    "não serão armazenados em formato bruto nem como derivado individual persistente", "não é dirigido a crianças ou adolescentes", "Cloudflare e Neon/Postgres",
+    "`[canal e identidade formal a confirmar pelo proprietário]`", "não será orientado a enviar o valor\nbruto do cookie por e-mail".replace("\\n", "\n"), "60 dias após o fechamento da janela",
+    "Não existe\nprorrogação genérica até 180 dias".replace("\\n", "\n"), "supressão de células pequenas", "`FASE_A_LIA_APPROVED_SHA256`"]) assert.ok(lia.includes(s), "LIA: " + s);
+  for (const s of ["Versão: 1", "art. 37", "Cloudflare, Inc.", "Neon", "Transferência internacional", "[região do projeto Neon a confirmar pelo proprietário no painel]", "waitlist_deletion_log",
+    "60 dias após o fim da janela", "SHA do código aprovado", "Incidentes", "[canal e identidade formal a confirmar pelo proprietário]", "`FASE_A_ROPA_APPROVED_SHA256`"]) assert.ok(ropa.includes(s), "ROPA: " + s);
+  for (const s of ["art. 38", "Fingerprinting", "Cruzamento", "Tráfego pago", "Novo operador", "criança ou adolescente", "Incidente"]) assert.ok(ripd.includes(s), "RIPD: " + s);
+  for (const doc of [lia, ropa, ripd]) {
+    assert.ok(doc.includes("PENDENTE DE REVISÃO JURÍDICA"), "marcador de pendência");
+    assert.equal(parseLia(doc).approval, null, "aprovação nunca preenchida por automação");
+  }
+  assert.ok(!/encarregad[oa] \(LGPD\): suporte@/i.test(lia + ropa), "suporte@ não é chamado de encarregado sem designação formal");
+  assert.deepEqual({ ...RETENTION }, { afterDecisionDays: 30, afterWindowCloseDays: 60, signupMaxMonths: 12, cookieMaxDays: 60 });
+  assert.equal(UNIT, "navegador_dispositivo_pseudonimo");
+  assert.match(AVISO_VERSION, /^fase-a-aviso-v\d+-\d{4}-\d{2}-\d{2}$/);
 });
 
-test("trava da LIA (AVAL 099): ativação só com LIA sem pendência, tabela de aprovação completa e FASE_A_LIA_APPROVED_SHA256 igual ao sha256; LIA editada depois da aprovação desliga", async () => {
-  const { TEST_LIA, TEST_LIA_SHA, APPROVED_TEXT, REAL_LIA_TEXT, approvedText, manifestOf } = await import("./lia-fixture.mjs");
-  const ok = { FASE_A_LIA_APPROVED_SHA256: TEST_LIA_SHA };
-  assert.deepEqual([liaActivation(ok, TEST_LIA).active, liaActivation(ok, TEST_LIA).reason], [true, null]);
-  assert.equal(liaActivation({ FASE_A_LIA_APPROVED_SHA256: TEST_LIA_SHA.toUpperCase() }, TEST_LIA).active, true, "hex maiúsculo aceito");
-  // O repositório: LIA pendente => travada, mesmo com qualquer hash configurado (inclusive o do próprio arquivo).
-  const real = await manifestOf(REAL_LIA_TEXT);
-  assert.equal(real.pending_marker, true);
-  assert.equal(real.approval, null);
-  assert.equal(liaActivation({ FASE_A_LIA_APPROVED_SHA256: real.sha256 }, real).reason, "lia_pendente_de_revisao");
-  assert.equal(liaActivation({ FASE_A_LIA_APPROVED_SHA256: real.sha256 }).reason, "lia_pendente_de_revisao", "manifesto embutido no Worker");
-  const reasons = async (text, env = null) => { const m = await manifestOf(text); return liaActivation(env || { FASE_A_LIA_APPROVED_SHA256: m.sha256 }, m).reason; };
-  // Tabela incompleta (mesmo com o hash do próprio texto configurado).
-  for (const row of ["| Revisora | | 1 | APROVADA | x |", "| Revisora | 2026-02-30 | 1 | APROVADA | x |", "| Revisora | 2026-10-24 | 2 | APROVADA | x |",
-    "| Revisora | 2026-10-24 | 1 | pendente | x |", "| _pendente_ | 2026-10-24 | 1 | APROVADA | x |", "| | 2026-10-24 | 1 | APROVADA | x |", "| Revisora | 2026-10-24 | | APROVADA | x |"])
-    assert.ok(["lia_aprovacao_incompleta", "lia_pendente_de_revisao"].includes(await reasons(approvedText(REAL_LIA_TEXT, row))), row);
-  assert.equal(await reasons(approvedText(REAL_LIA_TEXT, "| Revisora | 2026-10-24 | 2 | APROVADA | x |")), "lia_aprovacao_incompleta", "versão diferente da LIA");
-  // Marcador de pendência que sobrou = travada, mesmo com tabela completa.
-  assert.equal(await reasons(APPROVED_TEXT + "\nPENDENTE DE REVISÃO JURÍDICA\n"), "lia_pendente_de_revisao");
+test("retenção: gatilhos pré-registrados (encerrado sem continuidade, decisão + 30, janela + 60) e agregado anonimizado com supressão de células < 5", () => {
+  const now = Date.parse("2026-12-10T12:00:00Z");
+  assert.deepEqual(retentionTriggers({}, now), { purpose_over: false, trigger: null, window_cut: "2026-10-11" });
+  assert.equal(retentionTriggers({ FASE_A_DECISION_DATE: "2026-11-10" }, now).trigger, "30_dias_apos_decisao");
+  assert.equal(retentionTriggers({ FASE_A_DECISION_DATE: "2026-11-11" }, now).purpose_over, false, "29 dias");
+  assert.equal(retentionTriggers({ FASE_A_CLOSED_NO_CONTINUATION: "2026-12-10" }, now).trigger, "encerrado_sem_continuidade");
+  assert.equal(retentionTriggers({ FASE_A_CLOSED_NO_CONTINUATION: "2026-12-11" }, now).purpose_over, false, "ainda não encerrado");
+  assert.equal(retentionTriggers({ FASE_A_CLOSED_NO_CONTINUATION: "x" }, now).purpose_over, false);
+  assert.equal(SMALL_CELL_K, 5);
+  assert.deepEqual(suppressSmallCells({ a: 0, b: 1, c: 4, d: 5, e: 2.5, f: [3, 9], g: "x" }), { a: 0, b: "<5", c: "<5", d: 5, e: 2.5, f: ["<5", 9], g: "x" });
+  const row = (niche, browsers, signups) => ({ niche, browsers, signups, browsers_wa_owned: 2, signups_wa_owned: 1, browsers_linhas: 0, browsers_confirmados_linhas: 0, aliases: 0, signups_linhas: 0, raw: {} });
+  const sum = summarize([row("confeitaria", 40, 3), row("loja-de-roupas", 400, 40)], { windowId: "fa1", sources: [{ niche: "confeitaria", src: "ig_post", n: 40 }, { niche: "loja-de-roupas", src: "ig_post", n: 4 }] });
+  const ag = anonymousAggregate(sum);
+  assert.deepEqual([ag.niches.confeitaria.eligible_browsers, ag.niches.confeitaria.signups, ag.niches.confeitaria.conversion, ag.niches.confeitaria.wilson95], [40, "<5", undefined, undefined], "proporção de célula pequena omitida");
+  assert.deepEqual([ag.niches["loja-de-roupas"].signups, ag.niches["loja-de-roupas"].conversion, ag.niches["loja-de-roupas"].source_mix.ig_post], [40, 0.1, "<5"]);
+  assert.deepEqual(ag.niches.confeitaria.secondary_wa_owned, { browsers: "<5", signups: "<5" });
+  const flat = JSON.stringify(ag);
+  for (const v of [1, 2, 3, 4]) assert.ok(!new RegExp(`:${v}[,}]`).test(flat), "contagem pequena exposta: " + v);
+});
+
+test("trava da LIA (AVAL 099/101): ativação só com LIA E ROPA sem pendência, tabelas de aprovação completas e hashes aprovados iguais; documento editado depois da aprovação desliga", async () => {
+  const F = await import("./lia-fixture.mjs");
+  const { TEST_LIA, TEST_ROPA, TEST_DOCS, APPROVED_ENV, APPROVED_TEXT, APPROVED_ROPA_TEXT, REAL_LIA_TEXT, REAL_ROPA_TEXT, approvedText, manifestOf } = F;
+  const act = (env, docs) => liaActivation(env, docs);
+  assert.deepEqual([act(APPROVED_ENV, TEST_DOCS).active, act(APPROVED_ENV, TEST_DOCS).reason], [true, null]);
+  assert.equal(act({ FASE_A_LIA_APPROVED_SHA256: TEST_LIA.sha256.toUpperCase(), FASE_A_ROPA_APPROVED_SHA256: TEST_ROPA.sha256 }, TEST_DOCS).active, true, "hex maiúsculo aceito");
+  // Repositório: LIA e ROPA pendentes => travada, mesmo com os hashes dos próprios arquivos.
+  const real = { lia: await manifestOf(REAL_LIA_TEXT), ropa: await manifestOf(REAL_ROPA_TEXT, "docs/lgpd/ROPA-fase-a.md") };
+  assert.deepEqual([real.lia.pending_marker, real.lia.approval, real.ropa.pending_marker, real.ropa.approval], [true, null, true, null]);
+  const realEnv = { FASE_A_LIA_APPROVED_SHA256: real.lia.sha256, FASE_A_ROPA_APPROVED_SHA256: real.ropa.sha256 };
+  assert.equal(act(realEnv, real).reason, "lia_pendente_de_revisao");
+  assert.equal(liaActivation(realEnv).reason, "lia_pendente_de_revisao", "manifesto embutido no Worker");
+  // ROPA: a LIA aprovada sozinha NÃO liga.
+  assert.equal(act({ ...APPROVED_ENV, FASE_A_ROPA_APPROVED_SHA256: real.ropa.sha256 }, { lia: TEST_LIA, ropa: real.ropa }).reason, "ropa_pendente_de_revisao");
+  assert.equal(act({ FASE_A_LIA_APPROVED_SHA256: TEST_LIA.sha256 }, TEST_DOCS).reason, "ropa_aprovacao_nao_configurada");
+  assert.equal(act({ ...APPROVED_ENV, FASE_A_ROPA_APPROVED_SHA256: "0".repeat(64) }, TEST_DOCS).reason, "ropa_alterada_apos_aprovacao");
+  const ropaEdited = await manifestOf(APPROVED_ROPA_TEXT + "\nNova região.\n", "docs/lgpd/ROPA-fase-a.md");
+  assert.equal(act(APPROVED_ENV, { lia: TEST_LIA, ropa: ropaEdited }).reason, "ropa_alterada_apos_aprovacao");
+  assert.equal(act(APPROVED_ENV, { lia: TEST_LIA, ropa: await manifestOf(approvedText(REAL_ROPA_TEXT, "| Revisora | 2026-10-24 | 9 | APROVADA | x |"), "docs/lgpd/ROPA-fase-a.md") }).reason, "ropa_aprovacao_incompleta");
+  // LIA: tabela incompleta (mesmo com o hash do próprio texto configurado).
+  const liaReason = async (text) => { const m = await manifestOf(text); return act({ ...APPROVED_ENV, FASE_A_LIA_APPROVED_SHA256: m.sha256 }, { lia: m, ropa: TEST_ROPA }).reason; };
+  for (const row of ["| Revisora | | 2 | APROVADA | x |", "| Revisora | 2026-02-30 | 2 | APROVADA | x |", "| Revisora | 2026-10-24 | 1 | APROVADA | x |",
+    "| Revisora | 2026-10-24 | 2 | pendente | x |", "| _pendente_ | 2026-10-24 | 2 | APROVADA | x |", "| | 2026-10-24 | 2 | APROVADA | x |", "| Revisora | 2026-10-24 | | APROVADA | x |"])
+    assert.ok(["lia_aprovacao_incompleta", "lia_pendente_de_revisao"].includes(await liaReason(approvedText(REAL_LIA_TEXT, row))), row);
+  assert.equal(await liaReason(approvedText(REAL_LIA_TEXT, "| Revisora | 2026-10-24 | 1 | APROVADA | x |")), "lia_aprovacao_incompleta", "versão diferente da LIA");
+  assert.equal(await liaReason(APPROVED_TEXT + "\nPENDENTE DE REVISÃO JURÍDICA\n"), "lia_pendente_de_revisao", "marcador que sobrou");
   // Hash: ausente, mal formado, divergente.
-  assert.equal(liaActivation({}, TEST_LIA).reason, "aprovacao_nao_configurada");
-  assert.equal(liaActivation({ FASE_A_LIA_APPROVED_SHA256: "z".repeat(64) }, TEST_LIA).reason, "aprovacao_formato_invalido");
-  assert.equal(liaActivation({ FASE_A_LIA_APPROVED_SHA256: "0".repeat(64) }, TEST_LIA).reason, "lia_alterada_apos_aprovacao");
+  assert.equal(act({ FASE_A_ROPA_APPROVED_SHA256: TEST_ROPA.sha256 }, TEST_DOCS).reason, "lia_aprovacao_nao_configurada");
+  assert.equal(act({ ...APPROVED_ENV, FASE_A_LIA_APPROVED_SHA256: "z".repeat(64) }, TEST_DOCS).reason, "lia_aprovacao_formato_invalido");
+  assert.equal(act({ ...APPROVED_ENV, FASE_A_LIA_APPROVED_SHA256: "0".repeat(64) }, TEST_DOCS).reason, "lia_alterada_apos_aprovacao");
   // Edição de UM caractere depois da aprovação: novo sha256, a mesma aprovação deixa de valer.
   const edited = await manifestOf(APPROVED_TEXT.replace("Finalidade", "Finalidades"));
-  assert.notEqual(edited.sha256, TEST_LIA_SHA);
-  assert.deepEqual([liaActivation(ok, edited).active, liaActivation(ok, edited).reason], [false, "lia_alterada_apos_aprovacao"]);
+  assert.notEqual(edited.sha256, TEST_LIA.sha256);
+  assert.deepEqual([act(APPROVED_ENV, { lia: edited, ropa: TEST_ROPA }).active, act(APPROVED_ENV, { lia: edited, ropa: TEST_ROPA }).reason], [false, "lia_alterada_apos_aprovacao"]);
   // CRLF não muda o hash (checkout Windows).
-  assert.equal((await manifestOf(APPROVED_TEXT.replace(/\n/g, "\r\n"))).sha256, TEST_LIA_SHA);
-  for (const bad of [null, {}, { ...TEST_LIA, sha256: "x" }]) assert.equal(liaActivation(ok, bad).reason, "lia_manifesto_invalido");
+  assert.equal((await manifestOf(APPROVED_TEXT.replace(/\n/g, "\r\n"))).sha256, TEST_LIA.sha256);
+  for (const bad of [null, {}, { ...TEST_LIA, sha256: "x" }]) assert.equal(act(APPROVED_ENV, { lia: bad, ropa: TEST_ROPA }).reason, "lia_manifesto_invalido");
+  assert.equal(act(APPROVED_ENV, { lia: TEST_LIA, ropa: null }).reason, "ropa_manifesto_invalido");
 });
 
-test("manifesto da LIA embutido no Worker (worker/fase-a-lia.generated.mjs) idêntico ao documento: editar a LIA sem regenerar quebra o CI", async () => {
-  const { buildManifest, liaText, render, GENERATED } = await import("../../scripts/fase_a/lia_manifest.mjs");
-  const want = render(await buildManifest(liaText()));
+test("manifesto da LIA e do ROPA embutido no Worker (worker/fase-a-lia.generated.mjs) idêntico aos documentos: editar sem regenerar quebra o CI", async () => {
+  const { expected, GENERATED } = await import("../../scripts/fase_a/lia_manifest.mjs");
+  const want = await expected();
   assert.equal(fs.readFileSync(GENERATED, "utf8").replace(/\r\n/g, "\n"), want, "rode: node scripts/fase_a/lia_manifest.mjs --write");
 });

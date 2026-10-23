@@ -2,7 +2,7 @@
 -- Fora de db/migrations de propósito (a restauração aplica só as migrações listadas em db/migrations/MANIFEST).
 BEGIN;
 DROP TABLE IF EXISTS waitlist_raw_daily;
-DROP TABLE IF EXISTS waitlist_person_days;
+DROP TABLE IF EXISTS waitlist_deletion_log;
 DROP TABLE IF EXISTS waitlist_person_alias;
 DROP TABLE IF EXISTS waitlist_persons;
 DROP TABLE IF EXISTS waitlist_signups;

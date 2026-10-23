@@ -1,30 +1,41 @@
-// P01 Fase A (Ordem 080 AVAL; correções da AVAL 085): lista de espera SEM cobrança em 3 nichos e
-// medição de demanda por PESSOA experimental.
+// P01 Fase A (Ordem 080 AVAL; AVAL 085, 092, 099 e 101): lista de espera SEM cobrança em 3 nichos e medição de
+// demanda por NAVEGADOR/DISPOSITIVO PSEUDÔNIMO (o identificador não representa uma pessoa: uma pessoa pode usar
+// vários aparelhos e várias pessoas podem dividir um).
 // * Só pelo binding privado do Worker de vendas (host waitlist.internal) e só com FASE_A_WAITLIST="on"
 //   (padrão: ausente = DESLIGADO). Esquema: migração versionada db/migrations/030_waitlist_fase_a.sql
 //   (este módulo não cria tabelas; sem a migração as chamadas falham fechado com 503).
-// * Unidade estatística (AVAL 085 §1): pessoa experimental única por nicho em TODA a janela, por um
-//   identificador aleatório próprio (cookie assinado com WAITLIST_VISITOR_SECRET, escopo /lista-de-espera,
-//   expira no fim da janela, no máximo 60 dias). Conta no denominador só quando CONFIRMADO (o navegador
-//   devolveu o cookie). A inscrição leva o mesmo identificador: numerador e denominador na MESMA unidade.
-//   Mesmo contato vindo de dois identificadores = mesma pessoa (alias). Sem identificador possível
-//   (sem segredo ou sem janela configurada) a visita vira só "exposição pessoa-dia" e a decisão é
-//   INCONCLUSIVO.
-// * Segredo dedicado (§4): WAITLIST_VISITOR_SECRET com >= 32 bytes, SEM fallback; ausente = nada é contado.
-// * Consentimento (§2): obrigatório só para "avisar quando abrir"; convite para entrevista é opcional.
-// * Saída e retenção (§5): a saída apaga a inscrição; nenhum registro ligado ao contato sobra (o oráculo
-//   guarda só contagens agregadas). Retenção por finalidade: tudo apagado 30 dias após a decisão da
-//   Fase A (FASE_A_DECISION_DATE); limites absolutos de 12 meses (inscrição) e 180 dias (medição).
+// * Trava da LIA/ROPA (worker/fase-a-lia.mjs): sem a LIA e o ROPA aprovados e com os hashes configurados, a
+//   medição responde 503 sem cookie e sem gravar nada.
+// * Aviso antes da coleta (AVAL 101 §3): nenhum identificador, HMAC ou evento antes de o navegador sinalizar que
+//   recebeu a página COM o aviso: o pedido /visita só é aceito com aviso === AVISO_VERSION, vindo da folha de
+//   estilo do aviso (/lista-de-espera/a/<nicho>.css?aviso=...), posicionada no fim do bloco do aviso.
+//   Sem o sinal (ou com versão diferente) => recusado sem gravar nada (fail-closed).
+// * Não participação (AVAL 101 §4): marcador first-party zvfa_optout=1 ou Sec-GPC: 1 => nenhum cookie, HMAC ou
+//   evento; /nao-participar apaga as linhas do navegador quando localizáveis (registro de exclusão sem dado pessoal).
+// * Minimização: IP nunca chega ao núcleo; navegador (UA) e ASN só transitoriamente, para o filtro de robôs.
+//   Nenhum derivado de IP+UA é persistido.
+// * Unidade: navegador/dispositivo pseudônimo único por nicho na janela (cookie assinado com
+//   WAITLIST_VISITOR_SECRET, escopo /lista-de-espera, expira no fim da janela ativa). Conta no denominador só
+//   quando CONFIRMADO (o navegador devolveu o cookie). A inscrição leva o mesmo identificador; o mesmo contato vindo
+//   de dois identificadores = identidade consentida (alias).
+// * Retenção (AVAL 101 §5): medição apagada no primeiro de: pedido válido; experimento encerrado sem
+//   continuidade (FASE_A_CLOSED_NO_CONTINUATION); 30 dias após a decisão (FASE_A_DECISION_DATE); 60 dias após o
+//   fim da janela. Cada exclusão grava waitlist_deletion_log (sem dado pessoal). Agregados: supressão de células
+//   pequenas (< SMALL_CELL_K).
 // * Dupla confirmação (P08, issue #871): nenhuma mensagem é enviada por este módulo.
 import { isAutomationUA, DATACENTER_ASNS } from "./funnel.mjs";
 import { liaActivation } from "./fase-a-lia.mjs";
 export { liaActivation, parseLia, approvalComplete } from "./fase-a-lia.mjs";
-// Medição (AVAL 099 §2): só com a LIA aprovada (worker/fase-a-lia.mjs). A saída (/sair) nunca é bloqueada.
+// Medição (AVAL 099 §2): só com LIA e ROPA aprovados. Saída, não participação e consulta local nunca são bloqueadas.
 export const MEASUREMENT_PATHS = Object.freeze(["/visita", "/confirmar", "/inscrever"]);
-
+export const UNIT = "navegador_dispositivo_pseudonimo";
+// Versão do aviso de medição exibido ANTES da coleta (template.html.tpl usa a mesma constante).
+export const AVISO_VERSION = "fase-a-aviso-v1-2026-10-23";
+export const OPTOUT_COOKIE = "zvfa_optout";
+export const SMALL_CELL_K = 5;
 export const WAITLIST_NICHES = Object.freeze(["confeitaria", "loja-de-roupas", "salao-e-barbearia"]);
 export const CONSENT_VERSION = "fase-a-lista-v2-2026-10-22";
-export const RETENTION = Object.freeze({ afterDecisionDays: 30, signupMaxMonths: 12, measurementMaxDays: 180, cookieMaxDays: 60 });
+export const RETENTION = Object.freeze({ afterDecisionDays: 30, afterWindowCloseDays: 60, signupMaxMonths: 12, cookieMaxDays: 60 });
 export const COOKIE = "zvfa";
 const SALES = "https://vendas.zevanory.api.br";
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/;
@@ -95,11 +106,11 @@ export function exclusionOf({ userAgent, asn = 0 }) {
   return null;
 }
 export const isEligibleTraffic = ({ userAgent, asn = 0, purpose = "" }) => !/prefetch|prerender/i.test(String(purpose || "")) && exclusionOf({ userAgent, asn }) === null;
-// Protocolo v3: origem do link (rótulo de lista fechada, sem dado pessoal) gravada na pessoa experimental.
+// Protocolo v3: origem do link (rótulo de lista fechada, sem dado pessoal) gravada no navegador pseudônimo.
 export const SOURCE_TAGS = Object.freeze(["wa_status", "wa_lista", "ig_story", "ig_post", "ig_reel", "fb_grupo", "organico", "direto"]);
 // Protocolo v4 (AVAL 092 §4): wa_status/wa_lista (WhatsApp do proprietário: status e lista de transmissão) formam
 // a classe de origem "wa_owned". NÃO são descartados: ficam fora da métrica PRIMÁRIA (população da decisão),
-// mas são reportados como métrica SECUNDÁRIA pré-registrada (pessoas, inscrições, conversão e Wilson próprios,
+// mas são reportados como métrica SECUNDÁRIA pré-registrada (navegadores, inscrições, conversão e Wilson próprios,
 // que nunca decidem). Parceiros (parc_*) continuam fora da população da decisão; meta_* é reservado (tráfego
 // pago futuro), aceito e reportado.
 export const WA_OWNED_TAGS = Object.freeze(["wa_status", "wa_lista"]);
@@ -121,7 +132,7 @@ export function sourceGroup(tag) {
   return "canal";
 }
 const formSource = (v) => { const t = String(v || ""); return SOURCE_TAGS.includes(t) || PARTNER_RE.test(t) || META_RE.test(t) ? t : MISSING_SOURCE_TAGS.includes(t) ? t : "invalido"; };
-// SQL: população da decisão (métrica primária) = pessoa sem exclusão de robô, fora de wa_owned e de parceiros.
+// SQL: população da decisão (métrica primária) = navegador sem exclusão de robô, fora de wa_owned e de parceiros.
 const WA_OWNED_IN = (a) => `${a}.src in (${WA_OWNED_TAGS.map((t) => `'${t}'`).join(",")})`;
 const PRIMARY_SRC = (a) => `${a}.src not in (${WA_OWNED_TAGS.map((t) => `'${t}'`).join(",")}) and ${a}.src not like 'parc\\_%'`;
 const label = (v, max) => { const x = String(v || "").toLowerCase().trim(); return new RegExp(`^[a-z0-9_-]{1,${max}}$`).test(x) ? x : ""; };
@@ -133,39 +144,45 @@ const BUMP = (dayP, nicheP, metricExpr, nExpr = "1") => `insert into waitlist_ra
   on conflict (day, niche, metric) do update set n = waitlist_raw_daily.n + excluded.n`;
 const bump = (sql, day, niche, metric, n = 1) => sql.query(BUMP("$1", "$2", "$3", "$4::int"), [day, niche, metric, n]);
 
+// Pedido do titular por ação local ou código opaco (AVAL 101 §4): o código é HMAC do identificador interno,
+// mostrado só ao próprio navegador (/lista-de-espera/meus-dados); nunca se pede o cookie bruto por e-mail.
+const dsrRefOf = async (secret, pid) => (await hmacHex(secret, "fa-dsr:" + pid)).slice(0, 32);
+const optedOut = (body) => body?.optout === true || body?.gpc === true;
+
 export async function recordVisit(env, sql, body = {}, now = Date.now()) {
   const niche = String(body.nicho || "");
   if (!WAITLIST_NICHES.includes(niche)) return { counted: false };
+  // Aviso antes da coleta e não participação: recusa ANTES de qualquer escrita (nem contador agregado).
+  if (String(body.aviso || "") !== AVISO_VERSION) return { counted: false, refused: "aviso_ausente" };
+  if (optedOut(body)) return { counted: false, refused: "nao_participa" };
   const day = today(now), userAgent = String(body.ua || "").slice(0, 300);
   await bump(sql, day, niche, "visita:recebida");
   const secret = visitorSecret(env);
   if (!secret) { await bump(sql, day, niche, "classe:sem_segredo"); return { counted: false }; }
   if (String(body.method || "GET") !== "GET") { await bump(sql, day, niche, "classe:metodo"); return { counted: false }; }
   if (/prefetch|prerender/i.test(String(body.purpose || ""))) { await bump(sql, day, niche, "classe:prefetch"); return { counted: false }; }
+  // UA e ASN: só transitórios, para o filtro de robôs; não são gravados (nem derivados).
   const exclusion = exclusionOf({ userAgent, asn: body.asn });
   const cls = exclusion || "incluida";
-  // Exposição pessoa-dia (descritiva): HMAC diário de IP+navegador; IP e UA não são gravados em claro.
-  const dhash = (await hmacHex(secret, `fa-day:${day}|${String(body.ip || "")}|${userAgent}`)).slice(0, 32);
-  await sql.query(`with ins as (insert into waitlist_person_days (day, niche, dhash, exclusion) values ($1::date, $2, $3, $4) on conflict do nothing returning 1)
-    ${BUMP("$1", "$2", "'classe:' || $5 || case when exists (select 1 from ins) then '' else ':dup_dia' end")}`, [day, niche, dhash, exclusion, cls]);
+  await bump(sql, day, niche, "classe:" + cls);
   const win = windowOf(env, now);
   if (!win) { await bump(sql, day, niche, "id:sem_janela:" + cls); return { counted: false }; }
   let pid = await personFromCookie(env, body.vid, now), cookie = null;
   if (!pid) { cookie = await newCookie(secret, win); pid = cookie.pid; }
   const src = sourceTag({ utm: body.utm, refExternal: body.ref_ext === true });
-  // Uma pessoa por nicho na janela inteira: retorno no mesmo dia não muda nada; em outro dia soma days.
-  // Origem = primeira visita (a linha existente mantém a sua).
-  await sql.query(`with up as (insert into waitlist_persons (window_id, niche, person_id, first_day, last_day, exclusion, src) values ($1, $2, $3, $4::date, $4::date, $5, $7)
+  const dsr = await dsrRefOf(secret, pid);
+  // Um navegador por nicho na janela inteira: retorno no mesmo dia não muda nada; em outro dia soma days.
+  await sql.query(`with up as (insert into waitlist_persons (window_id, niche, person_id, first_day, last_day, exclusion, src, window_end, dsr_ref) values ($1, $2, $3, $4::date, $4::date, $5, $7, $8::date, $9)
       on conflict (window_id, niche, person_id) do update set days = waitlist_persons.days + (case when waitlist_persons.last_day < excluded.last_day then 1 else 0 end),
         last_day = greatest(waitlist_persons.last_day, excluded.last_day)
       returning (xmax = 0) as novo)
-    ${BUMP("$4", "$2", "case when (select novo from up) then 'id:novo:' else 'id:retorno:' end || $6")}`, [win.id, niche, pid, day, exclusion, cls, src]);
+    ${BUMP("$4", "$2", "case when (select novo from up) then 'id:novo:' else 'id:retorno:' end || $6")}`, [win.id, niche, pid, day, exclusion, cls, src, win.end, dsr]);
   return { counted: cls === "incluida", src, cookie: cookie ? { name: COOKIE, value: cookie.value, maxAge: win.maxAge } : null };
 }
 
 export async function confirmPerson(env, sql, body = {}, now = Date.now()) {
   const niche = String(body.nicho || ""), win = windowOf(env, now);
-  if (!WAITLIST_NICHES.includes(niche) || !win) return false;
+  if (!WAITLIST_NICHES.includes(niche) || !win || optedOut(body)) return false;
   const pid = await personFromCookie(env, body.vid, now);
   if (!pid) { await bump(sql, today(now), niche, "confirmacao:sem_id"); return false; }
   await sql.query(`with c as (update waitlist_persons set confirmed = true where window_id = $1 and niche = $2 and person_id = $3 and not confirmed returning 1)
@@ -184,42 +201,83 @@ export async function subscribe(env, sql, body = {}, now = Date.now()) {
   const ref = await contactRef(env, contact), win = windowOf(env, now);
   if (!ref || !win) return { status: 503, body: { ok: false, code: "indisponivel" } };
   const name = String(body.nome || "").trim().replace(/[\r\n<>]/g, " ").slice(0, 60) || null;
-  const exclusion = exclusionOf({ userAgent: String(body.ua || ""), asn: body.asn });
-  const pid = await personFromCookie(env, body.vid, now);
+  // Navegador que não participa da medição: a inscrição (consentimento) é guardada SEM vínculo de medição.
+  const optout = optedOut(body);
+  const exclusion = optout ? "optout" : exclusionOf({ userAgent: String(body.ua || ""), asn: body.asn });
+  const pid = optout ? null : await personFromCookie(env, body.vid, now);
   const day = today(now);
-  // Uma instrução: insere (idempotente por janela+nicho+contato), confirma a pessoa do cookie e conta.
   const rows = await sql.query(`with ins as (insert into waitlist_signups (window_id, niche, contact_kind, contact, contact_ref, name, q_recurring, q_digital,
         interview_ok, consent_version, consent_at, person_id, exclusion, src) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), $11, $12, $13)
         on conflict (window_id, niche, contact_ref) do nothing returning id),
-      cnt as (${BUMP("$14", "$2", "case when exists (select 1 from ins) then (case when $11::text is null then 'inscricao:nova_sem_id' else 'inscricao:nova' end) else 'inscricao:repetida' end")})
+      cnt as (${BUMP("$14", "$2", "case when exists (select 1 from ins) then (case when $12::text = 'optout' then 'inscricao:nova_optout' when $11::text is null then 'inscricao:nova_sem_id' else 'inscricao:nova' end) else 'inscricao:repetida' end")})
     select (select count(*)::int from ins) as created,
       (select person_id from waitlist_signups where window_id = $1 and niche = $2 and contact_ref = $5) as primary_pid`,
     [win.id, niche, contact.kind, contact.value, ref, name, qRecurring, qDigital, body.interview === true, CONSENT_VERSION, pid, exclusion, formSource(body.src), day]);
   const created = Number(rows[0]?.created) > 0;
   if (pid) {
-    // A inscrição prova que o navegador devolveu o cookie: confirma a pessoa (cria se ainda não existia).
-    await sql.query(`with up as (insert into waitlist_persons (window_id, niche, person_id, first_day, last_day, exclusion, confirmed, src) values ($1, $2, $3, $4::date, $4::date, $5, true, $6)
+    const dsr = await dsrRefOf(visitorSecret(env), pid);
+    // A inscrição prova que o navegador devolveu o cookie: confirma o navegador (cria se ainda não existia).
+    await sql.query(`with up as (insert into waitlist_persons (window_id, niche, person_id, first_day, last_day, exclusion, confirmed, src, window_end, dsr_ref) values ($1, $2, $3, $4::date, $4::date, $5, true, $6, $7::date, $8)
         on conflict (window_id, niche, person_id) do update set confirmed = true where not waitlist_persons.confirmed returning (xmax = 0) as novo),
       a as (${BUMP("$4", "$2", "'id:novo_insc:' || coalesce($5, 'incluida')", "(select count(*)::int from up where novo)")}),
       b as (${BUMP("$4", "$2", "'id:confirmado'", "(select count(*)::int from up)")})
-      select 1`, [win.id, niche, pid, day, exclusion, formSource(body.src)]);
+      select 1`, [win.id, niche, pid, day, exclusion, formSource(body.src), win.end, dsr]);
     const primary = rows[0]?.primary_pid;
-    // Mesmo contato, outro identificador: mesma pessoa comprovada (alias), conta uma vez.
+    // Mesmo contato, outro identificador: identidade consentida (alias), conta uma vez.
     if (!created && primary && primary !== pid)
-      await sql.query(`with al as (insert into waitlist_person_alias (window_id, niche, alias_id, primary_id) values ($1, $2, $3, $4) on conflict do nothing returning 1)
-        ${BUMP("$5", "$2", "'id:alias'", "(select count(*)::int from al)")}`, [win.id, niche, pid, primary, day]);
+      await sql.query(`with al as (insert into waitlist_person_alias (window_id, niche, alias_id, primary_id, window_end) values ($1, $2, $3, $4, $6::date) on conflict do nothing returning 1)
+        ${BUMP("$5", "$2", "'id:alias'", "(select count(*)::int from al)")}`, [win.id, niche, pid, primary, day, win.end]);
   }
   return { status: 200, body: { ok: true, code: created ? "inscrito" : "ja_inscrito", optout: await optOutLink(env, ref) } };
 }
 
 async function revoke(env, sql, ref, t, now = Date.now()) {
   if (!/^[0-9a-f]{64}$/.test(ref) || !/^[0-9a-f]{32}$/.test(t) || !(await optOutTokenValid(env, ref, t))) return { status: 400, body: { ok: false, code: "link_invalido" } };
-  // Uma instrução (atômica): apaga TODAS as inscrições do contato e soma só a contagem agregada por nicho.
+  // Uma instrução (atômica): apaga TODAS as inscrições do contato, soma a contagem agregada e registra a exclusão.
   const rows = await sql.query(`with d as (delete from waitlist_signups where contact_ref = $1 returning niche),
       c as (insert into waitlist_raw_daily (day, niche, metric, n) select $2::date, niche, 'inscricao:revogada', count(*)::int from d group by niche
-        on conflict (day, niche, metric) do update set n = waitlist_raw_daily.n + excluded.n)
+        on conflict (day, niche, metric) do update set n = waitlist_raw_daily.n + excluded.n),
+      l as (insert into waitlist_deletion_log (scope, trigger, n, result) select 'saida', 'pedido_titular', count(*)::int, 'ok' from d)
     select count(*)::int as erased from d`, [ref, today(now)]);
   return { status: 200, body: { ok: true, code: "removido", erased: Number(rows[0]?.erased) || 0 } };
+}
+
+// Apaga as linhas de medição de um identificador (todas as linhas do navegador na janela), desliga a inscrição
+// da medição (exclusion = 'optout'), soma contadores agregados por nicho (o oráculo continua fechando) e registra
+// a exclusão sem dado pessoal. where = condição sobre waitlist_persons p ($1 janela, $2 valor).
+const ERASE_SQL = (where, scope, trigger) => `with t as (select p.niche, p.person_id, p.confirmed from waitlist_persons p where ${where}),
+    dp as (delete from waitlist_persons p using t where p.window_id = $1 and p.niche = t.niche and p.person_id = t.person_id returning p.niche, p.confirmed),
+    da as (delete from waitlist_person_alias a using t where a.window_id = $1 and a.niche = t.niche and (a.alias_id = t.person_id or a.primary_id = t.person_id) returning a.niche),
+    us as (update waitlist_signups s set person_id = null, exclusion = 'optout' from t where s.window_id = $1 and s.niche = t.niche and s.person_id = t.person_id returning s.niche),
+    c1 as (insert into waitlist_raw_daily (day, niche, metric, n) select $3::date, niche, 'id:apagado', count(*)::int from dp group by niche on conflict (day, niche, metric) do update set n = waitlist_raw_daily.n + excluded.n),
+    c2 as (insert into waitlist_raw_daily (day, niche, metric, n) select $3::date, niche, 'id:confirmado_apagado', count(*)::int from dp where confirmed group by niche on conflict (day, niche, metric) do update set n = waitlist_raw_daily.n + excluded.n),
+    c3 as (insert into waitlist_raw_daily (day, niche, metric, n) select $3::date, niche, 'id:alias_apagado', count(*)::int from da group by niche on conflict (day, niche, metric) do update set n = waitlist_raw_daily.n + excluded.n),
+    c4 as (insert into waitlist_raw_daily (day, niche, metric, n) select $3::date, niche, 'inscricao:desvinculada', count(*)::int from us group by niche on conflict (day, niche, metric) do update set n = waitlist_raw_daily.n + excluded.n),
+    l as (insert into waitlist_deletion_log (scope, trigger, n, result) select '${scope}', '${trigger}', count(*)::int, 'ok' from dp)
+  select (select count(*)::int from dp) as erased`;
+export const ERASE_BY_PID_SQL = ERASE_SQL("p.window_id = $1 and p.person_id = $2", "optout", "nao_participar");
+export const ERASE_BY_TOKEN_SQL = ERASE_SQL("p.window_id = $1 and p.dsr_ref = $2", "pedido", "codigo_atendimento");
+export const LOOKUP_BY_TOKEN_SQL = `select niche, first_day::text as first_day, last_day::text as last_day, days, confirmed from waitlist_persons where window_id = $1 and dsr_ref = $2 order by niche`;
+
+// Não participar (zvfa_optout=1 / Sec-GPC): apaga o que for localizável pelo cookie e devolve a validade do marcador
+// (até o fim da janela ativa; sem janela, o teto do cookie).
+export async function optOutMeasurement(env, sql, body = {}, now = Date.now()) {
+  const win = windowOf(env, now);
+  const maxAge = win ? win.maxAge : RETENTION.cookieMaxDays * 86400;
+  const pid = win ? await personFromCookie(env, body.vid, now) : null;
+  if (!pid) return { ok: true, erased: 0, maxAge };
+  const rows = await sql.query(ERASE_BY_PID_SQL, [win.id, pid, today(now)]);
+  return { ok: true, erased: Number(rows[0]?.erased) || 0, maxAge };
+}
+
+// Consulta local (confirmação simplificada imediata): o que existe para ESTE navegador + código opaco de atendimento.
+export async function myData(env, sql, body = {}, now = Date.now()) {
+  const win = windowOf(env, now), secret = visitorSecret(env);
+  const pid = win ? await personFromCookie(env, body.vid, now) : null;
+  if (!pid) return { ok: true, exists: false, rows: [], token: null };
+  const token = await dsrRefOf(secret, pid);
+  const rows = await sql.query(LOOKUP_BY_TOKEN_SQL, [win.id, token]);
+  return { ok: true, exists: rows.length > 0, rows: rows.map((r) => ({ niche: r.niche, first_day: String(r.first_day), last_day: String(r.last_day), days: Number(r.days) })), token: rows.length ? token : null };
 }
 
 // Wilson 95% (z = 1,959964).
@@ -230,36 +288,35 @@ export function wilson(successes, n, z = 1.959964) {
   return { low: Math.max(0, centre - half), high: Math.min(1, centre + half) };
 }
 export const RULE = Object.freeze({ minVisitors: 300, minConversion: 0.08, minWilsonLow: 0.05, minLeads: 20 });
-// "visitors" = pessoas experimentais confirmadas; "signups" = inscrições ligadas a essas pessoas.
+// "visitors" = navegadores/dispositivos pseudônimos confirmados; "signups" = inscrições ligadas a esses navegadores.
 export function decide({ visitors, signups, complianceViolation = false, blockers = [] }) {
   if (blockers.length) return "INCONCLUSIVO";
   if (visitors < RULE.minVisitors) return "INCONCLUSIVO";
   if (complianceViolation) return "NO-GO";
   return signups / visitors >= RULE.minConversion && wilson(signups, visitors).low >= RULE.minWilsonLow && signups >= RULE.minLeads ? "GO" : "NO-GO";
 }
-
 // Consultas agregadas (nenhuma coluna de contato é lida). $1 janela, $2 de, $3 até, $4 nichos.
+// Unidade: navegador/dispositivo pseudônimo (linhas de waitlist_persons; o nome da tabela é histórico).
 const RESOLVED = `coalesce(a.primary_id, s.person_id)`;
 export const SUMMARY_SQL = `with n as (select unnest($4::text[]) as niche),
   p as (select p.* from waitlist_persons p where p.window_id = $1 and not exists (select 1 from waitlist_person_alias a where a.window_id = p.window_id and a.niche = p.niche and a.alias_id = p.person_id)),
   s as (select s.niche, s.exclusion, s.person_id, ${RESOLVED} as rpid from waitlist_signups s left join waitlist_person_alias a on a.window_id = s.window_id and a.niche = s.niche and a.alias_id = s.person_id where s.window_id = $1 and s.created_at::date between $2::date and $3::date),
   r as (select niche, metric, sum(n)::int as n from waitlist_raw_daily where day between $2::date and $3::date group by niche, metric)
 select n.niche,
-  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}) as persons,
-  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is distinct from 'ua' and ${PRIMARY_SRC("p")}) as persons_sem_filtro_asn,
-  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is distinct from 'asn' and ${PRIMARY_SRC("p")}) as persons_sem_filtro_ua,
-  (select count(*)::int from p where p.niche = n.niche and p.confirmed and ${PRIMARY_SRC("p")}) as persons_sem_filtros,
-  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null) as persons_com_rede,
-  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and ${WA_OWNED_IN("p")}) as persons_wa_owned,
-  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and p.src like 'parc\\_%') as persons_parceiro,
-  (select count(*)::int from p where p.niche = n.niche and not p.confirmed and p.exclusion is null) as persons_nao_confirmadas,
-  (select count(*)::int from p where p.niche = n.niche and p.days > 1 and p.exclusion is null and p.confirmed) as persons_multi_dia,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}) as browsers,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is distinct from 'ua' and ${PRIMARY_SRC("p")}) as browsers_sem_filtro_asn,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is distinct from 'asn' and ${PRIMARY_SRC("p")}) as browsers_sem_filtro_ua,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and ${PRIMARY_SRC("p")}) as browsers_sem_filtros,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null) as browsers_com_rede,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and ${WA_OWNED_IN("p")}) as browsers_wa_owned,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and p.src like 'parc\\_%') as browsers_parceiro,
+  (select count(*)::int from p where p.niche = n.niche and not p.confirmed and p.exclusion is null) as browsers_nao_confirmados,
+  (select count(*)::int from p where p.niche = n.niche and p.days > 1 and p.exclusion is null and p.confirmed) as browsers_multi_dia,
   (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}
-     and exists (select 1 from p o where o.person_id = p.person_id and o.niche <> p.niche and o.confirmed and o.exclusion is null and ${PRIMARY_SRC("o")})) as persons_multi_nicho,
-  (select count(*)::int from waitlist_persons x where x.window_id = $1 and x.niche = n.niche) as persons_linhas,
-  (select count(*)::int from waitlist_persons x where x.window_id = $1 and x.niche = n.niche and x.confirmed) as persons_confirmadas_linhas,
+     and exists (select 1 from p o where o.person_id = p.person_id and o.niche <> p.niche and o.confirmed and o.exclusion is null and ${PRIMARY_SRC("o")})) as browsers_multi_nicho,
+  (select count(*)::int from waitlist_persons x where x.window_id = $1 and x.niche = n.niche) as browsers_linhas,
+  (select count(*)::int from waitlist_persons x where x.window_id = $1 and x.niche = n.niche and x.confirmed) as browsers_confirmados_linhas,
   (select count(*)::int from waitlist_person_alias x where x.window_id = $1 and x.niche = n.niche) as aliases,
-  (select count(*)::int from waitlist_person_days d where d.niche = n.niche and d.exclusion is null and d.day between $2::date and $3::date) as pessoa_dia,
   (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed and p.exclusion is null where s.niche = n.niche and s.exclusion is null and ${PRIMARY_SRC("p")}) as signups,
   (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed where s.niche = n.niche and s.exclusion is distinct from 'ua' and p.exclusion is distinct from 'ua' and ${PRIMARY_SRC("p")}) as signups_sem_filtro_asn,
   (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed where s.niche = n.niche and s.exclusion is distinct from 'asn' and p.exclusion is distinct from 'asn' and ${PRIMARY_SRC("p")}) as signups_sem_filtro_ua,
@@ -267,6 +324,7 @@ select n.niche,
   (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed and p.exclusion is null where s.niche = n.niche and s.exclusion is null) as signups_com_rede,
   (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed and p.exclusion is null where s.niche = n.niche and s.exclusion is null and ${WA_OWNED_IN("p")}) as signups_wa_owned,
   (select count(*)::int from s where s.niche = n.niche and s.exclusion is null and s.person_id is null) as signups_sem_id,
+  (select count(*)::int from s where s.niche = n.niche and s.exclusion = 'optout') as signups_optout,
   (select count(*)::int from s where s.niche = n.niche) as signups_linhas,
   coalesce((select json_object_agg(r.metric, r.n) from r where r.niche = n.niche), '{}'::json) as raw
 from n order by n.niche`;
@@ -275,28 +333,28 @@ export const QUALIFIED_SQL = `select s.niche, count(distinct coalesce(a.primary_
   join waitlist_persons p on p.window_id = s.window_id and p.niche = s.niche and p.person_id = coalesce(a.primary_id, s.person_id) and p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}
   where s.window_id = $1 and s.created_at::date between $2::date and $3::date and s.exclusion is null and s.q_recurring and s.q_digital group by s.niche`;
 
-// Mistura de canais: pessoas confirmadas sem exclusão de robô, por nicho e origem (inclui wa_owned/parceiros;
+// Mistura de canais: navegadores confirmados sem exclusão de robô, por nicho e origem (inclui wa_owned/parceiros;
 // a mistura da população da decisão é calculada em JS sem eles).
 export const SOURCE_SQL = `select p.niche, p.src, count(*)::int as n from waitlist_persons p
   where p.window_id = $1 and p.confirmed and p.exclusion is null
     and not exists (select 1 from waitlist_person_alias a where a.window_id = p.window_id and a.niche = p.niche and a.alias_id = p.person_id)
   group by p.niche, p.src order by p.niche, p.src`;
-// Multi-nicho (protocolo v4, §2.2): cada nicho é um braço com denominador PRÓPRIO; a mesma pessoa (mesmo cookie,
-// escopo /lista-de-espera) confirmada em k nichos conta 1 vez em CADA um desses k denominadores e nunca 2 vezes no
+// Multi-nicho (protocolo v5, §2.2): cada nicho é um braço com denominador PRÓPRIO; o mesmo navegador (mesmo cookie,
+// escopo /lista-de-espera) confirmado em k nichos conta 1 vez em CADA um desses k denominadores e nunca 2 vezes no
 // mesmo. A sobreposição entre braços é reportada (descritiva, nunca decide). População = métrica primária.
 export const CROSS_NICHE_SQL = `with p as (select p.person_id, p.niche from waitlist_persons p where p.window_id = $1 and p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}
     and not exists (select 1 from waitlist_person_alias a where a.window_id = p.window_id and a.niche = p.niche and a.alias_id = p.person_id)),
   k as (select person_id, count(*)::int as niches from p group by person_id)
-select (select count(*)::int from p) as person_niche_rows, (select count(*)::int from k) as unique_persons,
-  (select count(*)::int from k where niches >= 2) as persons_2plus_niches`;
-// Mesma mistura de canais entre os braços (pré-registrado): cada nicho com >= 1 pessoa, origem ausente
+select (select count(*)::int from p) as browser_niche_rows, (select count(*)::int from k) as unique_browsers,
+  (select count(*)::int from k where niches >= 2) as browsers_2plus_niches`;
+// Mesma mistura de canais entre os braços (pré-registrado): cada nicho com >= 1 navegador, origem ausente
 // (sem_tag/invalido) <= 5% em cada nicho e diferença máxima de participação de qualquer origem <= 10 pontos.
 export const BALANCE = Object.freeze({ maxMissingShare: 0.05, maxShareDiff: 0.10 });
 export function channelBalance(mix) {
   const niches = Object.keys(mix);
   const totals = Object.fromEntries(niches.map((k) => [k, Object.values(mix[k]).reduce((a, b) => a + b, 0)]));
   const missing = Object.fromEntries(niches.map((k) => [k, totals[k] ? MISSING_SOURCE_TAGS.reduce((a, t) => a + (mix[k][t] || 0), 0) / totals[k] : 1]));
-  if (!niches.length || niches.some((k) => !totals[k])) return { status: "NAO_VERIFICAVEL", reason: "nicho_sem_pessoas", missing_share: missing, max_share_diff: null };
+  if (!niches.length || niches.some((k) => !totals[k])) return { status: "NAO_VERIFICAVEL", reason: "nicho_sem_navegadores", missing_share: missing, max_share_diff: null };
   if (niches.some((k) => missing[k] > BALANCE.maxMissingShare)) return { status: "NAO_VERIFICAVEL", reason: "origem_ausente", missing_share: missing, max_share_diff: null };
   const tags = [...new Set(niches.flatMap((k) => Object.keys(mix[k])))];
   let diff = 0;
@@ -352,26 +410,25 @@ export function testWeekSummary(rows, { since, until } = {}) {
 export async function buildTestWeekSummary(sql, { since, until }) { return testWeekSummary(await sql.query(TEST_WEEK_SQL, [since, until]), { since, until }); }
 
 const R = (raw, k) => Number(raw?.[k]) || 0;
-const secondaryOf = (p, s) => { const persons = Number(p) || 0, signups = Number(s) || 0; return { source_class: "wa_owned", persons, signups, conversion: persons ? signups / persons : 0, wilson95: wilson(signups, persons), decides: false }; };
+const secondaryOf = (b, s) => { const browsers = Number(b) || 0, signups = Number(s) || 0; return { source_class: "wa_owned", unit: UNIT, browsers, signups, conversion: browsers ? signups / browsers : 0, wilson95: wilson(signups, browsers), decides: false }; };
 const sumPrefix = (raw, prefix) => Object.entries(raw || {}).filter(([k]) => k.startsWith(prefix)).reduce((a, [, v]) => a + (Number(v) || 0), 0);
 // Oráculo independente: reconcilia contadores agregados com as linhas. Qualquer divergência = INCONCLUSIVO.
 export function reconcile(row) {
   const raw = typeof row.raw === "string" ? JSON.parse(row.raw) : row.raw || {};
   const classes = ["incluida", "ua", "asn"];
-  const classTotal = classes.reduce((a, c) => a + R(raw, "classe:" + c) + R(raw, `classe:${c}:dup_dia`), 0) + R(raw, "classe:sem_segredo") + R(raw, "classe:metodo") + R(raw, "classe:prefetch");
-  const classified = classes.reduce((a, c) => a + R(raw, "classe:" + c) + R(raw, `classe:${c}:dup_dia`), 0);
+  const classified = classes.reduce((a, c) => a + R(raw, "classe:" + c), 0);
+  const classTotal = classified + R(raw, "classe:sem_segredo") + R(raw, "classe:metodo") + R(raw, "classe:prefetch");
   const idOutcomes = classes.reduce((a, c) => a + R(raw, "id:retorno:" + c) + R(raw, "id:sem_janela:" + c) + R(raw, "id:novo:" + c), 0);
-  const signupNew = R(raw, "inscricao:nova") + R(raw, "inscricao:nova_sem_id");
+  const signupNew = R(raw, "inscricao:nova") + R(raw, "inscricao:nova_sem_id") + R(raw, "inscricao:nova_optout");
   const checks = {
     visitas_recebidas_igual_classes: R(raw, "visita:recebida") === classTotal,
     // Cada visita classificada (incluída/ua/asn) tem exatamente um desfecho de identificador.
     um_desfecho_de_id_por_visita: idOutcomes === classified,
-    // Pessoas = criadas por visita + criadas por inscrição (cookie válido sem linha prévia).
-    pessoas_linhas_igual_criadas: Number(row.persons_linhas) === sumPrefix(raw, "id:novo:") + sumPrefix(raw, "id:novo_insc:"),
-    confirmadas_linhas_igual_contador: Number(row.persons_confirmadas_linhas) === R(raw, "id:confirmado"),
-    aliases_linhas_igual_contador: Number(row.aliases) === R(raw, "id:alias"),
+    // Navegadores = criados por visita + criados por inscrição - apagados (não participação/pedido).
+    navegadores_linhas_igual_criados: Number(row.browsers_linhas) + R(raw, "id:apagado") === sumPrefix(raw, "id:novo:") + sumPrefix(raw, "id:novo_insc:"),
+    confirmados_linhas_igual_contador: Number(row.browsers_confirmados_linhas) + R(raw, "id:confirmado_apagado") === R(raw, "id:confirmado"),
+    aliases_linhas_igual_contador: Number(row.aliases) + R(raw, "id:alias_apagado") === R(raw, "id:alias"),
     inscricoes_linhas_mais_apagadas_igual_novas: Number(row.signups_linhas) + R(raw, "inscricao:revogada") + R(raw, "inscricao:apagada_retencao") === signupNew,
-    pessoa_dia_linhas_igual_contador: Number(row.pessoa_dia) === R(raw, "classe:incluida"),
   };
   return { ok: Object.values(checks).every(Boolean), checks };
 }
@@ -389,7 +446,7 @@ export function summarize(rows, { windowId, since, until, qualified = [], source
   const niches = {};
   for (const r of rows) {
     const raw = typeof r.raw === "string" ? JSON.parse(r.raw) : r.raw || {};
-    const persons = Number(r.persons) || 0, signups = Number(r.signups) || 0;
+    const browsers = Number(r.browsers) || 0, signups = Number(r.signups) || 0;
     const rec = reconcile({ ...r, raw });
     const blockers = [];
     if (!windowId) blockers.push("janela_nao_informada");
@@ -397,28 +454,28 @@ export function summarize(rows, { windowId, since, until, qualified = [], source
     if (sumPrefix(raw, "id:sem_janela:")) blockers.push("identificador_nao_estabelecido");
     if (Number(r.signups_sem_id)) blockers.push("inscricao_sem_identificador");
     if (!rec.ok) blockers.push("oraculo_divergente");
-    const sens = (p, s) => ({ persons: Number(p) || 0, signups: Number(s) || 0, conversion: Number(p) ? (Number(s) || 0) / Number(p) : 0 });
+    const sens = (b, s) => ({ browsers: Number(b) || 0, signups: Number(s) || 0, conversion: Number(b) ? (Number(s) || 0) / Number(b) : 0 });
     niches[r.niche] = {
-      unit: "pessoa_experimental_confirmada",
-      eligible_visitors: persons, signups, qualified: Number(q[r.niche]?.qualified) || 0, interview_ok: Number(q[r.niche]?.interview_ok) || 0,
-      conversion: persons ? signups / persons : 0, wilson95: wilson(signups, persons),
-      exposure_person_days: Number(r.pessoa_dia) || 0, unconfirmed_ids: Number(r.persons_nao_confirmadas) || 0, multi_day_persons: Number(r.persons_multi_dia) || 0, aliases: Number(r.aliases) || 0,
-      signups_without_id: Number(r.signups_sem_id) || 0, revoked: R(raw, "inscricao:revogada"),
-      excluded: { ua: R(raw, "classe:ua") + R(raw, "classe:ua:dup_dia"), asn: R(raw, "classe:asn") + R(raw, "classe:asn:dup_dia"), prefetch: R(raw, "classe:prefetch"), method: R(raw, "classe:metodo"), no_secret: R(raw, "classe:sem_segredo") },
-      sensitivity: { with_filters: sens(r.persons, r.signups), without_asn_filter: sens(r.persons_sem_filtro_asn, r.signups_sem_filtro_asn), without_ua_filter: sens(r.persons_sem_filtro_ua, r.signups_sem_filtro_ua), without_filters: sens(r.persons_sem_filtros, r.signups_sem_filtros), with_wa_owned_and_partners: sens(r.persons_com_rede, r.signups_com_rede) },
-      excluded_source: { wa_owned: Number(r.persons_wa_owned) || 0, parceiro: Number(r.persons_parceiro) || 0 },
+      unit: UNIT,
+      eligible_browsers: browsers, signups, qualified: Number(q[r.niche]?.qualified) || 0, interview_ok: Number(q[r.niche]?.interview_ok) || 0,
+      conversion: browsers ? signups / browsers : 0, wilson95: wilson(signups, browsers),
+      unconfirmed_ids: Number(r.browsers_nao_confirmados) || 0, multi_day_browsers: Number(r.browsers_multi_dia) || 0, aliases: Number(r.aliases) || 0,
+      signups_without_id: Number(r.signups_sem_id) || 0, signups_optout: Number(r.signups_optout) || 0, revoked: R(raw, "inscricao:revogada"), erased_by_request: R(raw, "id:apagado"),
+      excluded: { ua: R(raw, "classe:ua"), asn: R(raw, "classe:asn"), prefetch: R(raw, "classe:prefetch"), method: R(raw, "classe:metodo"), no_secret: R(raw, "classe:sem_segredo") },
+      sensitivity: { with_filters: sens(r.browsers, r.signups), without_asn_filter: sens(r.browsers_sem_filtro_asn, r.signups_sem_filtro_asn), without_ua_filter: sens(r.browsers_sem_filtro_ua, r.signups_sem_filtro_ua), without_filters: sens(r.browsers_sem_filtros, r.signups_sem_filtros), with_wa_owned_and_partners: sens(r.browsers_com_rede, r.signups_com_rede) },
+      excluded_source: { wa_owned: Number(r.browsers_wa_owned) || 0, parceiro: Number(r.browsers_parceiro) || 0 },
       // Métrica SECUNDÁRIA pré-registrada (v4): origem wa_owned com unidade, conversão e Wilson próprios; nunca decide.
-      secondary: { wa_owned: secondaryOf(r.persons_wa_owned, r.signups_wa_owned) },
-      cross_niche_persons: Number(r.persons_multi_nicho) || 0,
+      secondary: { wa_owned: secondaryOf(r.browsers_wa_owned, r.signups_wa_owned) },
+      cross_niche_browsers: Number(r.browsers_multi_nicho) || 0,
       source_mix: mixAll[r.niche] || {}, source_mix_decision_population: mixPrimary[r.niche] || {},
       oracle: rec, blockers,
-      decision: decide({ visitors: persons, signups, complianceViolation: Boolean(complianceViolations[r.niche]), blockers }),
+      decision: decide({ visitors: browsers, signups, complianceViolation: Boolean(complianceViolations[r.niche]), blockers }),
     };
   }
   const balance = channelBalance(mixPrimary);
   const cn = crossNiche || {};
-  const cross_niche = { rule: "um_por_nicho", person_niche_rows: Number(cn.person_niche_rows) || 0, unique_persons: Number(cn.unique_persons) || 0, persons_2plus_niches: Number(cn.persons_2plus_niches) || 0 };
-  return { schema: "zevanory-fase-a/v4", protocol: "v4", consent_version: CONSENT_VERSION, window: { id: windowId || null, since, until }, rule: RULE, niches,
+  const cross_niche = { rule: "um_por_nicho", browser_niche_rows: Number(cn.browser_niche_rows) || 0, unique_browsers: Number(cn.unique_browsers) || 0, browsers_2plus_niches: Number(cn.browsers_2plus_niches) || 0 };
+  return { schema: "zevanory-fase-a/v5", protocol: "v5", unit: UNIT, consent_version: CONSENT_VERSION, window: { id: windowId || null, since, until }, rule: RULE, niches,
     cross_niche, channel_balance: balance, ...finalistsOf(niches, balance) };
 }
 export async function buildWaitlistSummary(sql, { windowId, since = "2026-01-01", until = "2999-12-31", complianceViolations = {} } = {}) {
@@ -429,10 +486,41 @@ export async function buildWaitlistSummary(sql, { windowId, since = "2026-01-01"
   return summarize(rows, { windowId, since, until, qualified, sources, crossNiche, complianceViolations });
 }
 
-// Retenção por finalidade (texto da página e da política): 30 dias após FASE_A_DECISION_DATE apaga
-// inscrições e medição; limites absolutos: inscrição 12 meses, medição 180 dias. 1x/dia (marcador KV);
-// sem a lista nunca ligada e com a bandeira desligada, nenhuma consulta. Cada exclusão é uma instrução
-// atômica que soma só a contagem agregada.
+// Agregado anonimizado (AVAL 101 §5): o único formato de contagem que sobrevive à finalidade. Toda contagem
+// inteira entre 1 e SMALL_CELL_K-1 vira "<5" (supressão de células pequenas que permitiriam singularização);
+// proporções e intervalos derivados de células suprimidas são omitidos.
+export function suppressSmallCells(value, k = SMALL_CELL_K) {
+  if (typeof value === "number") return Number.isInteger(value) && value > 0 && value < k ? `<${k}` : value;
+  if (Array.isArray(value)) return value.map((v) => suppressSmallCells(v, k));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, v]) => [key, suppressSmallCells(v, k)]));
+  return value;
+}
+export function anonymousAggregate(summary, k = SMALL_CELL_K) {
+  const niches = {};
+  for (const [name, v] of Object.entries(summary.niches || {})) {
+    const small = (x) => Number.isInteger(x) && x > 0 && x < k;
+    const hide = small(v.eligible_browsers) || small(v.signups);
+    niches[name] = suppressSmallCells({ unit: v.unit, eligible_browsers: v.eligible_browsers, signups: v.signups, qualified: v.qualified, decision: v.decision,
+      ...(hide ? {} : { conversion: v.conversion, wilson95: v.wilson95 }), excluded_source: v.excluded_source, secondary_wa_owned: { browsers: v.secondary.wa_owned.browsers, signups: v.secondary.wa_owned.signups }, source_mix: v.source_mix }, k);
+  }
+  return { schema: "zevanory-fase-a-agregado-anonimo/v1", small_cell_k: k, unit: UNIT, window: summary.window, niches, cross_niche: suppressSmallCells(summary.cross_niche, k), finalists: summary.finalists };
+}
+
+// Retenção (AVAL 101 §5). Medição (navegadores e aliases) apagada no PRIMEIRO de: pedido válido (optOutMeasurement
+// / atendimento); experimento encerrado sem continuidade (FASE_A_CLOSED_NO_CONTINUATION = AAAA-MM-DD, já
+// alcançada); 30 dias após a decisão (FASE_A_DECISION_DATE); 60 dias após o fim da janela de cada linha
+// (window_end). Inscrições (consentimento): encerramento sem continuidade, 30 dias após a decisão ou 12 meses.
+// Fim da finalidade => contadores agregados com célula pequena (0 < n < SMALL_CELL_K) também são apagados.
+// Cada exclusão é uma instrução atômica e grava waitlist_deletion_log (sem dado pessoal). 1x/dia (marcador KV);
+// sem a lista nunca ligada e com a bandeira desligada, nenhuma consulta.
+const dateEnv = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : null);
+export function retentionTriggers(env, now = Date.now()) {
+  const closed = dateEnv(env?.FASE_A_CLOSED_NO_CONTINUATION), dec = dateEnv(env?.FASE_A_DECISION_DATE);
+  const closedOver = closed ? Date.parse(closed + "T00:00:00Z") <= now : false;
+  const decisionOver = dec ? Date.parse(dec + "T00:00:00Z") + RETENTION.afterDecisionDays * DAY_MS <= now : false;
+  return { purpose_over: closedOver || decisionOver, trigger: closedOver ? "encerrado_sem_continuidade" : decisionOver ? "30_dias_apos_decisao" : null,
+    window_cut: today(now - RETENTION.afterWindowCloseDays * DAY_MS) };
+}
 export async function runWaitlistRetention(env, { sqlFactory, now = Date.now(), force = false } = {}) {
   if (!env?.DATABASE_URL || !sqlFactory) return { ok: false, reason: "waitlist_retention_unconfigured" };
   const kv = env.ZEVANORY_PRIVATE_ARTIFACTS;
@@ -441,50 +529,57 @@ export async function runWaitlistRetention(env, { sqlFactory, now = Date.now(), 
   if (!force) { try { if ((await kv?.get?.(RETENTION_MARKER)) === day) return { ok: true, skipped: "already_ran_today" }; } catch {} }
   const sql = sqlFactory(env.DATABASE_URL);
   const exists = await sql.query("select to_regclass('waitlist_signups') is not null as present", []);
-  let out = { ok: true, erased: 0, measurement_erased: 0 };
+  let out = { ok: true, erased: 0, measurement_erased: 0, aggregates_suppressed: 0 };
   if (exists[0]?.present === true || exists[0]?.present === "t") {
-    const dec = /^\d{4}-\d{2}-\d{2}$/.test(String(env.FASE_A_DECISION_DATE || "")) ? String(env.FASE_A_DECISION_DATE) : null;
-    const purposeOver = dec ? Date.parse(dec + "T00:00:00Z") + RETENTION.afterDecisionDays * DAY_MS <= now : false;
+    const t = retentionTriggers(env, now);
+    const trig = t.trigger || "teto";
     const e = await sql.query(`with d as (delete from waitlist_signups where $1::boolean or created_at < $2::timestamptz - ($3::int * interval '1 month') returning niche),
         c as (insert into waitlist_raw_daily (day, niche, metric, n) select $4::date, niche, 'inscricao:apagada_retencao', count(*)::int from d group by niche
-          on conflict (day, niche, metric) do update set n = waitlist_raw_daily.n + excluded.n)
-      select count(*)::int as n from d`, [purposeOver, new Date(now).toISOString(), RETENTION.signupMaxMonths, day]);
-    const cut = today(now - RETENTION.measurementMaxDays * DAY_MS);
-    const m = await sql.query(`with a as (delete from waitlist_persons where $1::boolean or last_day < $2::date returning 1),
-        b as (delete from waitlist_person_alias where $1::boolean or created_day < $2::date returning 1),
-        c as (delete from waitlist_person_days where $1::boolean or day < $2::date returning 1)
-      select (select count(*) from a)::int + (select count(*) from b)::int + (select count(*) from c)::int as n`, [purposeOver, cut]);
-    out = { ok: true, erased: e.reduce((s, r) => s + (Number(r.n) || 0), 0), measurement_erased: Number(m[0]?.n) || 0, purpose_over: purposeOver };
+          on conflict (day, niche, metric) do update set n = waitlist_raw_daily.n + excluded.n),
+        l as (insert into waitlist_deletion_log (scope, trigger, n, result) select 'inscricoes', $5, count(*)::int, 'ok' from d)
+      select count(*)::int as n from d`, [t.purpose_over, new Date(now).toISOString(), RETENTION.signupMaxMonths, day, t.purpose_over ? trig : "12_meses"]);
+    const m = await sql.query(`with a as (delete from waitlist_persons where $1::boolean or window_end < $2::date returning 1),
+        b as (delete from waitlist_person_alias where $1::boolean or window_end < $2::date returning 1),
+        l as (insert into waitlist_deletion_log (scope, trigger, n, result) select 'medicao', $3, (select count(*) from a)::int + (select count(*) from b)::int, 'ok')
+      select (select count(*) from a)::int + (select count(*) from b)::int as n`, [t.purpose_over, t.window_cut, t.purpose_over ? trig : "60_dias_apos_janela"]);
+    let g = [{ n: 0 }];
+    if (t.purpose_over) g = await sql.query(`with d as (delete from waitlist_raw_daily where n > 0 and n < $1::int returning 1),
+        l as (insert into waitlist_deletion_log (scope, trigger, n, result) select 'agregados', 'celula_pequena', count(*)::int, 'ok' from d)
+      select count(*)::int as n from d`, [SMALL_CELL_K]);
+    out = { ok: true, erased: e.reduce((s, r) => s + (Number(r.n) || 0), 0), measurement_erased: Number(m[0]?.n) || 0, aggregates_suppressed: Number(g[0]?.n) || 0, purpose_over: t.purpose_over, trigger: t.trigger };
   }
   try { await kv?.put?.(RETENTION_MARKER, day, { expirationTtl: 3 * 86400 }); } catch {}
   // A retenção roda mesmo com a medição travada (direito do titular); o motivo da trava vai no registro.
   return { ...out, activation: waitlistHealth(env).reason };
 }
 
-// Endpoint do binding privado (somente o Worker de vendas o alcança).
-// Estado da ativação (sem dado pessoal): bandeira, trava da LIA e motivo. Exposto em /saude (binding privado)
-// e no registro diário da retenção.
-export function waitlistHealth(env, { lia } = {}) {
-  const act = lia ? liaActivation(env, lia) : liaActivation(env);
+// Estado da ativação (sem dado pessoal): bandeira, trava da LIA/ROPA e motivo. Exposto em /saude (binding
+// privado) e no registro diário da retenção.
+export function waitlistHealth(env, { docs } = {}) {
+  const act = docs ? liaActivation(env, docs) : liaActivation(env);
   const flag = flagOn(env);
-  return { ok: true, flag_on: flag, measurement_active: flag && act.active, reason: !flag ? "bandeira_desligada" : act.reason, lia: act };
+  return { ok: true, flag_on: flag, measurement_active: flag && act.active, reason: !flag ? "bandeira_desligada" : act.reason, aviso_version: AVISO_VERSION, unit: UNIT, lia: act };
 }
-export async function handleWaitlist(request, env, { sqlFactory, now, lia } = {}) {
+// Endpoint do binding privado (somente o Worker de vendas o alcança).
+export async function handleWaitlist(request, env, { sqlFactory, now, docs } = {}) {
   const url = new URL(request.url);
   if (url.hostname !== "waitlist.internal") return null;
-  if (url.pathname === "/saude") return json(200, waitlistHealth(env, { lia }));
+  if (url.pathname === "/saude") return json(200, waitlistHealth(env, { docs }));
   if (!flagOn(env)) return json(404, { ok: false, code: "desligado" });
-  // Trava fail-closed da LIA ANTES de qualquer acesso ao banco/KV: sem cookie, sem evento, sem marcador.
+  // Trava fail-closed da LIA/ROPA ANTES de qualquer acesso ao banco/KV: sem cookie, sem evento, sem marcador.
   if (MEASUREMENT_PATHS.includes(url.pathname)) {
-    const act = lia ? liaActivation(env, lia) : liaActivation(env);
+    const act = docs ? liaActivation(env, docs) : liaActivation(env);
     if (!act.active) return json(503, { ok: false, code: "lia_nao_aprovada", reason: act.reason });
   }
   if (!sqlFactory || !env.DATABASE_URL) return json(503, { ok: false, code: "indisponivel" });
   if (request.method !== "POST") return json(405, { ok: false });
-  const sql = sqlFactory(env.DATABASE_URL);
-  if (!seenMarked) { seenMarked = true; try { await env.ZEVANORY_PRIVATE_ARTIFACTS?.put?.(SEEN_MARKER, "1"); } catch {} }
   let body = {};
   try { body = await request.json(); } catch {}
+  // Sem aviso (ou navegador que não participa): /visita recusa antes do banco e do marcador de uso.
+  if (url.pathname === "/visita" && (String(body.aviso || "") !== AVISO_VERSION || optedOut(body)))
+    return json(200, { ok: true, cookie: null, src: null, refused: String(body.aviso || "") !== AVISO_VERSION ? "aviso_ausente" : "nao_participa" });
+  const sql = sqlFactory(env.DATABASE_URL);
+  if (!seenMarked) { seenMarked = true; try { await env.ZEVANORY_PRIVATE_ARTIFACTS?.put?.(SEEN_MARKER, "1"); } catch {} }
   const t = now ?? Date.now();
   try {
     if (url.pathname === "/inscrever") { const out = await subscribe(env, sql, body, t); return json(out.status, out.body); }
@@ -495,6 +590,8 @@ export async function handleWaitlist(request, env, { sqlFactory, now, lia } = {}
     }
     if (url.pathname === "/visita") { const out = await recordVisit(env, sql, body, t); return json(200, { ok: true, cookie: out.cookie || null, src: out.src || null }); }
     if (url.pathname === "/confirmar") { await confirmPerson(env, sql, body, t); return new Response(null, { status: 204 }); }
+    if (url.pathname === "/nao-participar") return json(200, await optOutMeasurement(env, sql, body, t));
+    if (url.pathname === "/meus-dados") return json(200, await myData(env, sql, body, t));
   } catch (error) {
     console.error("waitlist_failed", error instanceof Error ? error.message.slice(0, 120) : String(error));
     return json(503, { ok: false, code: "indisponivel" });

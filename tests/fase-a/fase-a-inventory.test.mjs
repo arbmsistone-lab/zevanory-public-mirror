@@ -10,7 +10,7 @@ import { pythonOk } from "../../scripts/fase_a/tools.mjs";
 import { runDataBackup, SENSITIVE } from "../../worker/data-backup.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const TABLES = ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_person_days", "waitlist_raw_daily"];
+const TABLES = ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_raw_daily", "waitlist_deletion_log"];
 
 test("manifesto exato de migrações: 31 arquivos, 030 declara as 5 tabelas; a restauração confere o manifesto", () => {
   const out = pythonOk(["-c", "import sys, json; sys.path.insert(0, sys.argv[1]); import restore_new_database as r; n, t = r.migration_manifest(); print(json.dumps({'n': len(n), 'last': n[-1], 't': t[n[-1]], 'rt': r.runtime_ddl()[0]}))", path.join(ROOT, "scripts", "ops")]);

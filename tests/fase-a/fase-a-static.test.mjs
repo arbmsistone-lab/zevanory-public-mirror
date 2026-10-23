@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { WAITLIST_NICHES, CONSENT_VERSION, RETENTION } from "../../worker/waitlist.mjs";
+import { WAITLIST_NICHES, CONSENT_VERSION, RETENTION, AVISO_VERSION } from "../../worker/waitlist.mjs";
 import { WAITLIST_PAGES } from "../../worker/waitlist-public.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -58,21 +58,33 @@ test("consentimento LGPD: caixa da lista obrigatória e DESMARCADA; convite para
   }
 });
 
-test("aviso de medição fiel ao código: cookie próprio, IP/navegador transitórios em código pseudônimo, finalidade, base legal, retenção", () => {
+test("aviso de medição ANTES da coleta (AVAL 101): bloco no topo com controlador, finalidade, dados, duração, operadores, política e botão de não participação; único gatilho de medição no FIM do aviso", () => {
   for (const [slug, html] of Object.entries(PAGES)) {
-    const aviso = (html.match(/<p class="lead-note wl-aviso">[\s\S]*?<\/p>/) || [""])[0];
-    for (const must of ["identificador aleatório", "cookie próprio", "no máximo em 60 dias", "contar cada pessoa uma vez", "IP e os dados do navegador são processados de forma transitória", "código pseudônimo diário", "não são guardados em claro", "origem do link (rótulo da campanha), sem dado pessoal", "Finalidade: medir a demanda", "legítimo interesse (LGPD, art. 7º, IX)", "30 dias após a decisão do teste, no máximo em 180 dias"])
+    const block = (html.match(/<section class="container wl-medicao"[\s\S]*?<\/section>/) || [""])[0];
+    assert.ok(block, slug + ": bloco do aviso");
+    assert.ok(html.indexOf("wl-medicao") < html.indexOf("catalog-hero") && html.indexOf("wl-medicao") < html.indexOf("wl-form"), slug + ": aviso antes do conteúdo e do formulário");
+    const aviso = (block.match(/<p class="lead-note wl-aviso">[\s\S]*?<\/p>/) || [""])[0];
+    for (const must of ["A. Renan Alves Moreira Bitu Ltda (CNPJ 69.077.233/0001-99), controladora", "navegadores/dispositivos", "A medição começa só depois que este aviso é exibido", "identificador aleatório", "cookie próprio",
+      "expira no fim do período de teste", "código pseudônimo", "conta navegadores, não pessoas", "Seu IP e os dados do navegador são usados só na hora, para afastar robôs, e não são guardados",
+      "Cloudflare e Neon", "legítimo interesse (LGPD, art. 7º, IX)", "seu pedido, fim do teste sem continuidade, 30 dias após a decisão ou 60 dias após o fim do teste", "suporte@zevanory.api.br", 'href="/privacidade"'])
       assert.ok(aviso.includes(must), `${slug}: aviso sem "${must}"`);
-    assert.doesNotMatch(html, /sem IP|sem cookie/i, slug);
-    assert.ok(html.includes(`<link rel="stylesheet" href="/lista-de-espera/c/${slug}.css">`), slug + ": confirmação do identificador");
+    assert.doesNotMatch(aviso, /180 dias|pessoa uma vez|código pseudônimo diário|guardados em claro|encarregad/i, slug + ": texto antigo");
+    assert.ok(block.includes('<form class="wl-nao-participar" method="post" action="/lista-de-espera/nao-participar"><button class="button" type="submit">Não participar da medição</button></form>'), slug + ": botão de não participação no aviso");
+    assert.ok(block.includes('href="/lista-de-espera/meus-dados"'), slug + ": ação local do titular");
+    assert.ok(block.endsWith(`<link rel="stylesheet" href="/lista-de-espera/a/${slug}.css?aviso=${AVISO_VERSION}"></section>`), slug + ": gatilho no fim do aviso, com a versão do backend");
+    assert.ok(block.includes(`data-aviso-version="${AVISO_VERSION}"`));
+    assert.equal(html.split("/lista-de-espera/a/").length - 1, 1, slug + ": um único gatilho");
+    assert.ok(!html.includes("/lista-de-espera/c/"), slug + ": confirmação só via @import da folha do aviso");
+    assert.doesNotMatch(html.match(/<head>[\s\S]*<\/head>/)[0], /lista-de-espera/, slug + ": nada de medição no <head>");
   }
-  assert.deepEqual({ ...RETENTION }, { afterDecisionDays: 30, signupMaxMonths: 12, measurementMaxDays: 180, cookieMaxDays: 60 }, "texto e código com os mesmos prazos");
+  assert.deepEqual({ ...RETENTION }, { afterDecisionDays: 30, afterWindowCloseDays: 60, signupMaxMonths: 12, cookieMaxDays: 60 }, "texto e código com os mesmos prazos");
 });
 
 test("formulário: só lista de espera (contato obrigatório, nome opcional, nicho fixo, 2 perguntas sim/não, honeypot)", () => {
   for (const n of DATA.nichos) {
     const html = PAGES[n.slug];
-    assert.equal((html.match(/<form\b/g) || []).length, 1);
+    assert.equal((html.match(/<form\b/g) || []).length, 2, "lista de espera + não participar da medição");
+    assert.equal((html.match(/<form class="wl-nao-participar"[^>]*>[\s\S]*?<\/form>/)[0].match(/<input\b/g) || []).length, 0, "não participar não coleta nada");
     assert.match(html, /<form class="lead-form wl-form" method="post" action="\/lista-de-espera\/inscrever">/);
     assert.ok(html.includes(`<input type="hidden" name="nicho" value="${n.slug}">`));
     assert.match(html, /<input id="wl-contato" name="contato" type="text" required/);

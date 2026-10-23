@@ -35,11 +35,18 @@ def consent_version() -> str:
     return m.group(1)
 
 
+def aviso_version() -> str:
+    m = re.search(r'export const AVISO_VERSION = "([^"]+)"', (ROOT / "worker" / "waitlist.mjs").read_text(encoding="utf-8"))
+    if not m:
+        raise SystemExit("FASE_A: AVISO_VERSION ausente em worker/waitlist.mjs")
+    return m.group(1)
+
+
 def render(niche: dict, data: dict, version: str) -> str:
     e = lambda s: html.escape(s, quote=True)
     items = "".join(f"<li>{e(i)}</li>" for i in niche["items"])
     values = {"slug": niche["slug"], "eyebrow": niche["eyebrow"], "product": niche["product"], "h1": niche["h1"], "intro": niche["intro"],
-              "q_recurring": niche["q_recurring"], "q_digital": data["q_digital"], "price_label": data["price_label"], "consent_version": version}
+              "q_recurring": niche["q_recurring"], "q_digital": data["q_digital"], "price_label": data["price_label"], "consent_version": version, "aviso_version": aviso_version()}
     out = TPL.read_text(encoding="utf-8")
     out = out.replace("{{items}}", items)
     for k, v in values.items():
@@ -88,9 +95,21 @@ def audit(pages: dict[str, str], data: dict, version: str) -> list[str]:
             problems.append(f"{slug}: falta link da Política de Privacidade ou de saída")
         if f'data-consent-version="{version}"' not in p:
             problems.append(f"{slug}: versão do consentimento diferente da do backend")
-        for must in ("CNPJ 69.077.233/0001-99", "12 meses", "30 dias após a decisão", "legítimo interesse", "não são guardados em claro", "180 dias", "8 dias", data["price_label"]):
+        for must in ("CNPJ 69.077.233/0001-99", "12 meses", "30 dias após a decisão", "legítimo interesse", "não são guardados", "60 dias após o fim do teste", "Cloudflare e Neon", "conta navegadores, não pessoas", "Não participar da medição", "8 dias", data["price_label"]):
             if must not in p:
                 problems.append(f"{slug}: falta '{must}'")
+        # Aviso antes da coleta (AVAL 101): o único gatilho de medição é a folha do aviso, no FIM do bloco do aviso;
+        # nenhuma folha de medição no <head>; formulário de não participação dentro do aviso.
+        aviso = re.search(r'<section class="container wl-medicao"[\s\S]*?</section>', p)
+        sig = f'<link rel="stylesheet" href="/lista-de-espera/a/{slug}.css?aviso={aviso_version()}"></section>'
+        if not aviso or not aviso.group(0).endswith(sig):
+            problems.append(f"{slug}: folha do aviso ausente ou fora do fim do bloco do aviso")
+        elif 'action="/lista-de-espera/nao-participar"' not in aviso.group(0):
+            problems.append(f"{slug}: botão de não participação fora do aviso")
+        if p.count("/lista-de-espera/a/") != 1 or "/lista-de-espera/c/" in p:
+            problems.append(f"{slug}: gatilho de medição fora do aviso")
+        if p.index("wl-medicao") > p.index("wl-form"):
+            problems.append(f"{slug}: aviso depois do formulário")
     return problems
 
 

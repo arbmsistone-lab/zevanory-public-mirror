@@ -88,7 +88,7 @@ class T(unittest.TestCase):
         self.assertIn("aspas", sh(db, "select evidence_ref from service_fulfillment").strip())
         self.assertEqual(sh(db, "select count(*) from schema_migrations").strip(), str(len(rnd.migration_manifest()[0])))
         self.assertEqual(len(rnd.migration_manifest()[0]), 31, "manifesto explícito: 30 migrações anteriores + 030_waitlist_fase_a")
-        for t in ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_person_days", "waitlist_raw_daily"]:
+        for t in ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_raw_daily", "waitlist_deletion_log"]:
             self.assertEqual(sh(db, f"select to_regclass('public.{t}') is not null").strip(), "t", t)
         self.assertEqual(sh(db, "select count(*) from public.whatsapp_stage_events").strip(), "1", "DDL dinâmico do Worker")
         self.assertNotIn("outra", sh(db, "select search_vector::text from knowledge_documents"), "coluna gerada recalculada, não copiada")
@@ -153,7 +153,7 @@ class T(unittest.TestCase):
         db = fresh("rnd_rollback030")
         for m in rnd.migration_manifest()[0]:
             sh(db, open(os.path.join(ROOT, "db", "migrations", m), encoding="utf-8-sig").read())
-        tabs = ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_person_days", "waitlist_raw_daily"]
+        tabs = ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_raw_daily", "waitlist_deletion_log"]
         q = "select count(*) from information_schema.tables where table_schema='public' and table_name in (" + ",".join(f"'{t}'" for t in tabs) + ")"
         self.assertEqual(sh(db, q).strip(), "5")
         sh(db, "insert into waitlist_raw_daily(day,niche,metric,n) values (current_date,'confeitaria','recebidas',1)")

@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { resolvePsql, parseCsv } from "../../scripts/fase_a/tools.mjs";
-import { TEST_LIA, TEST_LIA_SHA, manifestOf, APPROVED_TEXT } from "./lia-fixture.mjs";
+import { TEST_LIA, TEST_ROPA, TEST_DOCS, APPROVED_ENV, manifestOf, APPROVED_TEXT } from "./lia-fixture.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..");
@@ -16,7 +16,7 @@ const MOD = pathToFileURL(path.resolve(process.env.WAITLIST_MODULE || path.join(
 const MIGRATION = path.resolve(process.env.WAITLIST_MIGRATION || path.join(ROOT, "db", "migrations", "030_waitlist_fase_a.sql"));
 const W = await import(MOD);
 const MOD_DIR = path.dirname(fileURLToPath(MOD));
-const { LIA_FASE_A: REAL_LIA } = await import(pathToFileURL(path.join(MOD_DIR, "fase-a-lia.generated.mjs")).href);
+const { LIA_FASE_A: REAL_LIA, ROPA_FASE_A: REAL_ROPA } = await import(pathToFileURL(path.join(MOD_DIR, "fase-a-lia.generated.mjs")).href);
 const HOST = process.env.WAITLIST_PG_HOST;
 const PORT = process.env.WAITLIST_PG_PORT || "5432";
 const DB = process.env.WAITLIST_PG_DB || "postgres";
@@ -39,13 +39,14 @@ const sqlFactory = () => ({ query: async (text, params = []) => psql(text.replac
 const kv = () => { const m = new Map(); return { m, async get(k) { return m.get(k) ?? null; }, async put(k, v) { m.set(k, v); }, async delete(k) { m.delete(k); } }; };
 const T0 = Date.parse("2026-11-02T12:00:00Z"), DAY = 86_400_000;
 const ENV = (o = {}) => ({ DATABASE_URL: "postgres://synthetic", FASE_A_WAITLIST: "on", LEAD_PRIVACY_SECRET: "k".repeat(40), WAITLIST_VISITOR_SECRET: "v".repeat(40),
-  FASE_A_WINDOW_ID: "fa1", FASE_A_WINDOW_END: "2026-11-30", FASE_A_LIA_APPROVED_SHA256: TEST_LIA_SHA, RESEND_API_KEY: "re_nao_e_fallback_123456789012345678901234", ZEVANORY_PRIVATE_ARTIFACTS: kv(), ...o });
+  FASE_A_WINDOW_ID: "fa1", FASE_A_WINDOW_END: "2026-11-30", ...APPROVED_ENV, RESEND_API_KEY: "re_nao_e_fallback_123456789012345678901234", ZEVANORY_PRIVATE_ARTIFACTS: kv(), ...o });
 const HUMAN = "Mozilla/5.0 (Linux; Android 14; SM-A146M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36";
-// LIA aprovada SINTÉTICA (tests/fase-a/lia-fixture.mjs); o repositório continua com a LIA pendente.
-const call = async (env, p, body, now = T0, lia = TEST_LIA) => { const r = await W.handleWaitlist(new Request("https://waitlist.internal" + p, { method: "POST", body: JSON.stringify(body) }), env, { sqlFactory, now, lia }); return { status: r.status, body: r.status === 204 ? null : await r.json() }; };
+// LIA e ROPA aprovados SINTÉTICOS (tests/fase-a/lia-fixture.mjs); o repositório continua com ambos pendentes.
+const V = W.AVISO_VERSION;
+const call = async (env, p, body, now = T0, docs = TEST_DOCS) => { const r = await W.handleWaitlist(new Request("https://waitlist.internal" + p, { method: "POST", body: JSON.stringify(body) }), env, { sqlFactory, now, docs }); return { status: r.status, body: r.status === 204 ? null : await r.json() }; };
 // Visita: devolve o valor do cookie em uso (o recebido ou o novo emitido).
 async function visit(env, o = {}, now = T0) {
-  const r = await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.1", asn: 28573, ...o }, now);
+  const r = await call(env, "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.1", asn: 28573, ...o }, now);
   assert.equal(r.status, 200);
   return r.body.cookie ? r.body.cookie.value : o.vid || null;
 }
@@ -53,9 +54,9 @@ const confirm = (env, vid, nicho = "confeitaria", now = T0) => call(env, "/confi
 async function person(env, o = {}, now = T0) { const vid = await visit(env, o, now); await confirm(env, vid, o.nicho || "confeitaria", now); return vid; }
 const sub = (env, o = {}, now = T0) => call(env, "/inscrever", { nicho: "confeitaria", contato: "ana@exemplo.com", q1: "sim", q2: "sim", consent: true, ua: HUMAN, asn: 28573, src: "youtube", ...o }, now);
 const summary = (o = {}) => W.buildWaitlistSummary(sqlFactory(), { windowId: "fa1", ...o });
-const TABLES = ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_person_days", "waitlist_raw_daily"];
+const TABLES = ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_raw_daily", "waitlist_deletion_log"];
 function reset({ migrate = true } = {}) {
-  psql("drop table if exists " + TABLES.join(", "));
+  psql("drop table if exists " + [...TABLES, "waitlist_person_days"].join(", ")); // inclui a tabela pessoa-dia removida (v5)
   psql("create table if not exists schema_migrations (migration_id text primary key, applied_at timestamptz not null default now())");
   psql("delete from schema_migrations where migration_id = '030_waitlist_fase_a'");
   if (migrate) psql(MIGRATION, { file: true });
@@ -66,7 +67,7 @@ const n = (q) => Number(psql(q)[0].n);
 test("bandeira desligada: 404 e nada gravado", { skip }, async () => {
   reset();
   const env = ENV({ FASE_A_WAITLIST: undefined });
-  assert.equal((await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN })).status, 404);
+  assert.equal((await call(env, "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN })).status, 404);
   assert.equal((await sub(env)).status, 404);
   for (const t of TABLES) assert.equal(n(`select count(*)::int as n from ${t}`), 0, t);
 });
@@ -74,7 +75,7 @@ test("bandeira desligada: 404 e nada gravado", { skip }, async () => {
 test("fail-closed: sem migração 030 -> 503; sem chave de contato -> 503; o módulo não cria tabelas", { skip }, async () => {
   reset({ migrate: false });
   assert.equal((await sub(ENV())).status, 503);
-  assert.equal((await call(ENV(), "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "1.1.1.1" })).status, 503);
+  assert.equal((await call(ENV(), "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "1.1.1.1" })).status, 503);
   assert.equal(psql("select to_regclass('waitlist_signups') is null as ausente")[0].ausente, "t", "módulo não cria esquema");
   reset();
   assert.equal((await sub(ENV({ LEAD_PRIVACY_SECRET: "" }))).status, 503);
@@ -85,10 +86,9 @@ test("segredo de visitante dedicado: ausente ou < 32 bytes NÃO usa fallback (RE
   for (const secret of [undefined, "", "x".repeat(31)]) {
     reset();
     const env = ENV({ WAITLIST_VISITOR_SECRET: secret });
-    const r = await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.1" });
+    const r = await call(env, "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.1" });
     assert.equal(r.body.cookie, null, "sem cookie");
     assert.equal(n("select count(*)::int as n from waitlist_persons"), 0);
-    assert.equal(n("select count(*)::int as n from waitlist_person_days"), 0);
     const c = (await summary()).niches.confeitaria;
     assert.ok(c.blockers.includes("segredo_de_visitante_ausente"));
     assert.equal(c.decision, "INCONCLUSIVO");
@@ -96,22 +96,21 @@ test("segredo de visitante dedicado: ausente ou < 32 bytes NÃO usa fallback (RE
   }
 });
 
-test("sem janela configurada: visita vira só exposição pessoa-dia, sem identificador, e a decisão é INCONCLUSIVO", { skip }, async () => {
+test("sem janela configurada: visita conta só no agregado, sem identificador, e a decisão é INCONCLUSIVO", { skip }, async () => {
   reset();
   const env = ENV({ FASE_A_WINDOW_END: undefined });
-  const r = await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.1" });
+  const r = await call(env, "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.1" });
   assert.equal(r.body.cookie, null);
   assert.equal(n("select count(*)::int as n from waitlist_persons"), 0);
-  assert.equal(n("select count(*)::int as n from waitlist_person_days"), 1);
   const c = (await summary()).niches.confeitaria;
-  assert.equal(c.exposure_person_days, 1);
+  assert.equal(c.excluded.no_secret, 0);
   assert.ok(c.blockers.includes("identificador_nao_estabelecido"));
   assert.equal(c.decision, "INCONCLUSIVO");
-  const expired = await call(ENV({ FASE_A_WINDOW_END: "2026-11-01" }), "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.2" });
+  const expired = await call(ENV({ FASE_A_WINDOW_END: "2026-11-01" }), "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "200.1.1.2" });
   assert.equal(expired.body.cookie, null, "janela vencida não emite identificador");
 });
 
-test("M-SOL-085: a MESMA pessoa (mesmo IP+navegador) em dois dias conta UMA vez; pessoas distintas contam separadas", { skip }, async () => {
+test("M-SOL-085: o MESMO navegador (mesmo cookie) em dois dias conta UMA vez; navegadores distintos contam separados", { skip }, async () => {
   reset();
   const env = ENV();
   // O navegador guarda o último cookie recebido e o devolve em cada pedido (como um navegador real).
@@ -123,21 +122,20 @@ test("M-SOL-085: a MESMA pessoa (mesmo IP+navegador) em dois dias conta UMA vez;
   await confirm(env, vid, "confeitaria", T0 + DAY);
   await person(env, { ip: "200.2.2.2" }, T0 + DAY);
   const c = (await summary()).niches.confeitaria;
-  assert.equal(c.eligible_visitors, 2, "2 pessoas, não 3 pessoas-dia");
-  assert.equal(c.multi_day_persons, 1);
-  assert.equal(c.exposure_person_days, 3, "pessoa-dia é só descritiva");
+  assert.equal(c.eligible_browsers, 2, "2 navegadores, não 3 visitas-dia");
+  assert.equal(c.multi_day_browsers, 1);
+  assert.equal(c.unit, "navegador_dispositivo_pseudonimo");
   assert.deepEqual(psql("select days from waitlist_persons where days > 1"), [{ days: "2" }]);
   assert.ok(c.oracle.ok, JSON.stringify(c.oracle.checks));
 });
 
-test("pessoa-dia não infla o denominador: mesmo IP+navegador em 10 dias sem devolver o cookie não vira pessoa confirmada", { skip }, async () => {
+test("visitas sem devolver o cookie não inflam o denominador: 10 dias sem cookie = 10 identificadores não confirmados, 0 navegadores confirmados", { skip }, async () => {
   reset();
   const env = ENV();
   for (let d = 0; d < 10; d++) await visit(env, {}, T0 + d * DAY);
   const c = (await summary()).niches.confeitaria;
-  assert.equal(c.eligible_visitors, 0);
+  assert.equal(c.eligible_browsers, 0);
   assert.equal(c.unconfirmed_ids, 10);
-  assert.equal(c.exposure_person_days, 10);
   assert.equal(c.decision, "INCONCLUSIVO");
   assert.equal(n("select count(*)::int as n from waitlist_persons where confirmed"), 0);
 });
@@ -151,7 +149,7 @@ test("entre aparelhos: o mesmo contato inscrito de dois identificadores é UMA p
   assert.equal((await sub(env, { contato: "dois@exemplo.com", vid: laptop })).body.code, "ja_inscrito");
   const c = (await summary()).niches.confeitaria;
   assert.equal(c.aliases, 1);
-  assert.equal(c.eligible_visitors, 1);
+  assert.equal(c.eligible_browsers, 1);
   assert.equal(c.signups, 1);
   assert.ok(c.oracle.ok, JSON.stringify(c.oracle.checks));
 });
@@ -207,16 +205,16 @@ test("robôs fora do denominador e do numerador, com análise de sensibilidade c
   const human = await person(env);
   const dc = await person(env, { ip: "3.3.3.3", asn: 16509 });
   const bot = await person(env, { ip: "66.249.66.1", ua: "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" });
-  assert.equal((await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "9.9.9.9", purpose: "prefetch" })).body.cookie, null, "prefetch sem identificador");
+  assert.equal((await call(env, "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "9.9.9.9", purpose: "prefetch" })).body.cookie, null, "prefetch sem identificador");
   await sub(env, { contato: "humano@exemplo.com", vid: human });
   await sub(env, { contato: "dc@exemplo.com", vid: dc, asn: 16509 });
   await sub(env, { contato: "bot@exemplo.com", vid: bot, ua: "python-requests/2.32" });
   const c = (await summary()).niches.confeitaria;
-  assert.deepEqual([c.eligible_visitors, c.signups], [1, 1]);
-  assert.deepEqual(c.sensitivity.with_filters, { persons: 1, signups: 1, conversion: 1 });
-  assert.deepEqual([c.sensitivity.without_asn_filter.persons, c.sensitivity.without_asn_filter.signups], [2, 2]);
-  assert.deepEqual([c.sensitivity.without_ua_filter.persons, c.sensitivity.without_ua_filter.signups], [2, 2]);
-  assert.deepEqual([c.sensitivity.without_filters.persons, c.sensitivity.without_filters.signups], [3, 3]);
+  assert.deepEqual([c.eligible_browsers, c.signups], [1, 1]);
+  assert.deepEqual(c.sensitivity.with_filters, { browsers: 1, signups: 1, conversion: 1 });
+  assert.deepEqual([c.sensitivity.without_asn_filter.browsers, c.sensitivity.without_asn_filter.signups], [2, 2]);
+  assert.deepEqual([c.sensitivity.without_ua_filter.browsers, c.sensitivity.without_ua_filter.signups], [2, 2]);
+  assert.deepEqual([c.sensitivity.without_filters.browsers, c.sensitivity.without_filters.signups], [3, 3]);
   assert.deepEqual([c.excluded.asn, c.excluded.ua, c.excluded.prefetch], [1, 1, 1]);
   assert.ok(c.oracle.ok, JSON.stringify(c.oracle.checks));
 });
@@ -229,11 +227,11 @@ test("oráculo independente: contadores agregados reconciliam com as linhas; qua
   await sub(env, { contato: "o1@exemplo.com", vid: vids[0] });
   let c = (await summary()).niches.confeitaria;
   assert.ok(c.oracle.ok, JSON.stringify(c.oracle.checks));
-  assert.equal(Object.keys(c.oracle.checks).length, 7);
+  assert.equal(Object.keys(c.oracle.checks).length, 6);
   psql("delete from waitlist_persons where person_id = (select person_id from waitlist_persons where confirmed limit 1 offset 2)");
   c = (await summary()).niches.confeitaria;
   assert.equal(c.oracle.ok, false);
-  assert.equal(c.oracle.checks.pessoas_linhas_igual_criadas, false);
+  assert.equal(c.oracle.checks.navegadores_linhas_igual_criados, false);
   assert.ok(c.blockers.includes("oraculo_divergente"));
   assert.equal(c.decision, "INCONCLUSIVO");
 });
@@ -248,7 +246,7 @@ test("métricas: números corretos na mesma unidade, qualificadas = duas respost
   await sub(env, { contato: "(11) 98888-7777", vid: v[2], q1: "nao", q2: "sim" });
   const s = await summary();
   const c = s.niches.confeitaria;
-  assert.deepEqual([c.unit, c.eligible_visitors, c.signups, c.qualified], ["pessoa_experimental_confirmada", 10, 3, 1]);
+  assert.deepEqual([c.unit, c.eligible_browsers, c.signups, c.qualified], ["navegador_dispositivo_pseudonimo", 10, 3, 1]);
   assert.equal(c.conversion, 0.3);
   assert.equal(c.decision, "INCONCLUSIVO", "menos de 300 pessoas nunca é NO-GO");
   const out = JSON.stringify(s);
@@ -273,7 +271,7 @@ test("saída: link assinado apaga TODAS as inscrições do contato numa instruç
   assert.deepEqual(psql("select contact from waitlist_signups"), [{ contact: "caio@exemplo.com" }]);
   const refCols = psql("select table_name from information_schema.columns where table_schema='public' and column_name in ('contact','contact_ref','name') and table_name like 'waitlist%' group by table_name order by 1");
   assert.deepEqual(refCols, [{ table_name: "waitlist_signups" }], "só a tabela de inscrições tem colunas ligadas ao contato");
-  for (const tbl of ["waitlist_raw_daily", "waitlist_persons", "waitlist_person_alias", "waitlist_person_days"]) {
+  for (const tbl of ["waitlist_raw_daily", "waitlist_persons", "waitlist_person_alias", "waitlist_deletion_log"]) {
     const dump = JSON.stringify(psql(`select * from ${tbl}`));
     assert.ok(!dump.includes(r) && !dump.includes("bia@"), tbl);
   }
@@ -282,31 +280,45 @@ test("saída: link assinado apaga TODAS as inscrições do contato numa instruç
   assert.ok((await summary()).niches.confeitaria.oracle.ok);
 });
 
-test("retenção por finalidade: 30 dias após a decisão apaga contatos e medição (só agregados ficam); limites de 12 meses e 180 dias; sem uso, nenhuma consulta", { skip }, async () => {
+test("retenção (AVAL 101 §5): medição apagada no primeiro de encerramento sem continuidade, decisão + 30 dias ou janela + 60 dias (sem teto de 180); inscrições também por 12 meses; registro de exclusão sem dado pessoal; células pequenas suprimidas; sem uso, nenhuma consulta", { skip }, async () => {
+  const seed = async (env) => { const vid = await person(env); await sub(env, { contato: "ret@exemplo.com", vid }); return vid; };
+  const log = () => psql("select scope, trigger, n, result from waitlist_deletion_log order by id");
+  // 1) Decisão + 30 dias.
   reset();
   const env = ENV({ FASE_A_DECISION_DATE: "2026-11-10" });
-  const vid = await person(env);
-  await sub(env, { contato: "ret@exemplo.com", vid });
-  assert.deepEqual(await W.runWaitlistRetention(env, { sqlFactory, now: Date.parse("2026-12-09T12:00:00Z"), force: true }), { ok: true, erased: 0, measurement_erased: 0, purpose_over: false, activation: "lia_pendente_de_revisao" }, "29 dias depois: mantém (a retenção roda mesmo com a medição travada)");
+  await seed(env);
+  const before = await W.runWaitlistRetention(env, { sqlFactory, now: Date.parse("2026-12-09T12:00:00Z"), force: true });
+  assert.deepEqual([before.erased, before.measurement_erased, before.purpose_over, before.activation], [0, 0, false, "lia_pendente_de_revisao"], "29 dias depois: mantém (a retenção roda mesmo com a medição travada)");
+  psql("insert into waitlist_raw_daily (day, niche, metric, n) values ('2026-11-05','confeitaria','celula:grande',7)");
   const done = await W.runWaitlistRetention(env, { sqlFactory, now: Date.parse("2026-12-10T12:00:00Z"), force: true });
-  assert.deepEqual([done.erased, done.purpose_over], [1, true]);
-  assert.ok(done.measurement_erased >= 2);
-  for (const t of ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_person_days"]) assert.equal(n(`select count(*)::int as n from ${t}`), 0, t);
-  assert.ok(n("select count(*)::int as n from waitlist_raw_daily") > 0, "contagens agregadas permanecem");
-  assert.equal(n("select coalesce(sum(n),0)::int as n from waitlist_raw_daily where metric='inscricao:apagada_retencao'"), 1);
-  // Sem data de decisão: limites absolutos.
+  assert.deepEqual([done.erased, done.measurement_erased, done.purpose_over, done.trigger], [1, 1, true, "30_dias_apos_decisao"]);
+  for (const t of ["waitlist_signups", "waitlist_persons", "waitlist_person_alias"]) assert.equal(n(`select count(*)::int as n from ${t}`), 0, t);
+  assert.ok(done.aggregates_suppressed > 0, "contadores com 0 < n < 5 apagados ao fim da finalidade");
+  assert.equal(n("select count(*)::int as n from waitlist_raw_daily where n > 0 and n < 5"), 0);
+  assert.equal(n("select count(*)::int as n from waitlist_raw_daily where metric = 'celula:grande'"), 1, "agregado com n >= 5 permanece");
+  const l = log();
+  assert.deepEqual(l.filter((r) => r.n !== "0").map((r) => [r.scope, r.trigger, r.result]), [["inscricoes", "30_dias_apos_decisao", "ok"], ["medicao", "30_dias_apos_decisao", "ok"], ["agregados", "celula_pequena", "ok"]]);
+  assert.ok(!JSON.stringify(l).includes("ret@") && Object.keys(l[0]).every((k) => ["scope", "trigger", "n", "result"].includes(k)), "registro sem dado pessoal");
+  // 2) Encerrado sem continuidade (antes da decisão).
   reset();
-  const env2 = ENV();
-  const v2 = await person(env2);
-  await sub(env2, { contato: "velha@exemplo.com", vid: v2 });
-  await sub(env2, { contato: "nova@exemplo.com", vid: v2 });
-  psql("update waitlist_signups set created_at = now() - interval '13 months' where contact='velha@exemplo.com'");
-  psql("update waitlist_persons set last_day = current_date - 181");
-  const caps = await W.runWaitlistRetention(env2, { sqlFactory, now: Date.now(), force: true });
-  assert.equal(caps.erased, 1);
-  assert.deepEqual(psql("select contact from waitlist_signups"), [{ contact: "nova@exemplo.com" }]);
-  assert.equal(n("select count(*)::int as n from waitlist_persons"), 0);
-  assert.equal(await env2.ZEVANORY_PRIVATE_ARTIFACTS.get(W.SEEN_MARKER), "1");
+  const env2 = ENV({ FASE_A_CLOSED_NO_CONTINUATION: "2026-11-05" });
+  await seed(env2);
+  const closed = await W.runWaitlistRetention(env2, { sqlFactory, now: Date.parse("2026-11-05T01:00:00Z"), force: true });
+  assert.deepEqual([closed.erased, closed.measurement_erased, closed.trigger], [1, 1, "encerrado_sem_continuidade"]);
+  // 3) 60 dias após o fim da janela de cada linha (sem decisão registrada): 59 dias mantém, 61 apaga; não há teto de 180.
+  reset();
+  const env3 = ENV();
+  await seed(env3);
+  assert.equal(psql("select window_end::text as w from waitlist_persons")[0].w, "2026-11-30");
+  assert.equal((await W.runWaitlistRetention(env3, { sqlFactory, now: Date.parse("2027-01-28T12:00:00Z"), force: true })).measurement_erased, 0, "59 dias após a janela: mantém");
+  const w60 = await W.runWaitlistRetention(env3, { sqlFactory, now: Date.parse("2027-01-30T12:00:00Z"), force: true });
+  assert.deepEqual([w60.measurement_erased, w60.erased], [1, 0], "60 dias após a janela: apaga a medição; a inscrição segue até a decisão ou 12 meses");
+  assert.deepEqual(log().filter((r) => r.scope === "medicao" && r.n !== "0").map((r) => r.trigger), ["60_dias_apos_janela"]);
+  assert.deepEqual(Object.keys(W.RETENTION).sort(), ["afterDecisionDays", "afterWindowCloseDays", "cookieMaxDays", "signupMaxMonths"], "sem teto de 180 dias");
+  // 4) Inscrição: 12 meses.
+  psql("update waitlist_signups set created_at = now() - interval '13 months'");
+  assert.equal((await W.runWaitlistRetention(env3, { sqlFactory, now: Date.now(), force: true })).erased, 1);
+  assert.equal(await env3.ZEVANORY_PRIVATE_ARTIFACTS.get(W.SEEN_MARKER), "1");
   let queries = 0;
   const never = await W.runWaitlistRetention({ DATABASE_URL: "x", ZEVANORY_PRIVATE_ARTIFACTS: kv() }, { sqlFactory: () => ({ query: async () => { queries++; return []; } }), force: true });
   assert.deepEqual([never.skipped, queries], ["never_enabled", 0]);
@@ -338,7 +350,7 @@ test("restrições do esquema (migração 030): nicho fora da lista e identifica
   assert.equal(psql("select count(*)::int as n from schema_migrations where migration_id='030_waitlist_fase_a'")[0].n, "1");
 });
 
-test("origem v3: rótulo de lista fechada gravado na pessoa (primeira visita); fora da lista = invalido; referer = organico; nada = direto", { skip }, async () => {
+test("origem v3: rótulo de lista fechada gravado no navegador (primeira visita); fora da lista = invalido; referer = organico; nada = direto", { skip }, async () => {
   reset();
   const env = ENV();
   const cases = [["wa_status", false, "wa_status"], ["IG_REEL", false, "ig_reel"], ["parc_padaria1", false, "parc_padaria1"], ["meta_teste", false, "meta_teste"], ["youtube", false, "invalido"], ["", true, "organico"], ["", false, "direto"]];
@@ -348,7 +360,7 @@ test("origem v3: rótulo de lista fechada gravado na pessoa (primeira visita); f
   assert.deepEqual(got, cases.map((c) => c[2]).sort());
   await visit(env, { vid: vids[0], ip: "204.0.0.0", utm: "ig_post" }, T0 + DAY);
   assert.equal(psql("select count(*)::int as n from waitlist_persons where src='ig_post'")[0].n, "0", "origem da primeira visita é mantida");
-  const r = await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "204.9.9.9", utm: "fb_grupo" });
+  const r = await call(env, "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "204.9.9.9", utm: "fb_grupo" });
   assert.equal(r.body.src, "fb_grupo", "rótulo devolvido para o campo oculto");
   // Pessoa criada pela inscrição (cookie válido sem visita registrada) usa o rótulo do formulário, revalidado.
   const vid = r.body.cookie.value;
@@ -366,11 +378,11 @@ test("wa_owned (wa_status, wa_lista) e parceiros (parc_*) ficam FORA da métrica
   await mk("confeitaria", "wa_status", 3, "a3@exemplo.com"); await mk("confeitaria", "wa_lista", 4); await mk("confeitaria", "parc_amiga", 5, "a5@exemplo.com");
   let s = await summary();
   let c = s.niches.confeitaria;
-  assert.deepEqual([c.eligible_visitors, c.signups], [2, 1], "só tráfego independente decide");
+  assert.deepEqual([c.eligible_browsers, c.signups], [2, 1], "só tráfego independente decide");
   assert.deepEqual(c.excluded_source, { wa_owned: 2, parceiro: 1 });
-  assert.deepEqual([c.sensitivity.with_wa_owned_and_partners.persons, c.sensitivity.with_wa_owned_and_partners.signups], [5, 3]);
+  assert.deepEqual([c.sensitivity.with_wa_owned_and_partners.browsers, c.sensitivity.with_wa_owned_and_partners.signups], [5, 3]);
   // Secundária pré-registrada: wa_owned com unidade própria (2 pessoas, 1 inscrição), nunca decide; parceiro não entra nela.
-  assert.deepEqual([c.secondary.wa_owned.source_class, c.secondary.wa_owned.persons, c.secondary.wa_owned.signups, c.secondary.wa_owned.conversion, c.secondary.wa_owned.decides], ["wa_owned", 2, 1, 0.5, false]);
+  assert.deepEqual([c.secondary.wa_owned.source_class, c.secondary.wa_owned.browsers, c.secondary.wa_owned.signups, c.secondary.wa_owned.conversion, c.secondary.wa_owned.decides], ["wa_owned", 2, 1, 0.5, false]);
   assert.ok(c.secondary.wa_owned.wilson95.low > 0 && c.secondary.wa_owned.wilson95.high < 1);
   assert.deepEqual(c.source_mix, { ig_post: 2, parc_amiga: 1, wa_lista: 1, wa_status: 1 });
   assert.deepEqual(c.source_mix_decision_population, { ig_post: 2 });
@@ -393,14 +405,15 @@ test("semana de teste (funil das calculadoras, bandeira FASE_A_SEMANA_TESTE): qu
   const F = await import(pathToFileURL(path.join(MOD_DIR, "funnel.mjs")).href);
   psql("drop table if exists zevanory_funnel_daily, zevanory_funnel_visitors");
   const day0 = Date.parse("2026-11-03T12:00:00Z");
-  const hit = (env, o) => F.recordPageView(env, { sqlFactory, page: "calculadora-taxa-maquininha", ip: "206.0.0.1", userAgent: HUMAN, camp: "sdt-confeitaria", src: "wa_status", asn: 28573, acceptLanguage: true, country: "BR", now: day0, lia: TEST_LIA, ...o });
-  const off = { DATABASE_URL: "x", RESEND_API_KEY: "salt" }, on = { ...off, FASE_A_SEMANA_TESTE: "on", FASE_A_LIA_APPROVED_SHA256: TEST_LIA_SHA };
+  const hit = (env, o) => F.recordPageView(env, { sqlFactory, page: "calculadora-taxa-maquininha", ip: "206.0.0.1", userAgent: HUMAN, camp: "sdt-confeitaria", src: "wa_status", asn: 28573, acceptLanguage: true, country: "BR", now: day0, docs: TEST_DOCS, ...o });
+  const off = { DATABASE_URL: "x", RESEND_API_KEY: "salt" }, on = { ...off, FASE_A_SEMANA_TESTE: "on", ...APPROVED_ENV };
   await hit(off, {});
   assert.equal(n("select count(*)::int as n from zevanory_funnel_daily where metric like 'sdt:%'"), 0, "bandeira desligada");
   // Trava da LIA: bandeira ligada, mas LIA real (pendente) ou hash aprovado ausente => nada é contado.
-  await hit(on, { ip: "206.0.0.90", lia: undefined });
+  await hit(on, { ip: "206.0.0.90", docs: undefined });
   await hit({ ...on, FASE_A_LIA_APPROVED_SHA256: undefined }, { ip: "206.0.0.91" });
-  assert.equal(n("select count(*)::int as n from zevanory_funnel_daily where metric like 'sdt:%'"), 0, "LIA não aprovada: semana de teste não conta");
+  await hit({ ...on, FASE_A_ROPA_APPROVED_SHA256: undefined }, { ip: "206.0.0.92" });
+  assert.equal(n("select count(*)::int as n from zevanory_funnel_daily where metric like 'sdt:%'"), 0, "LIA/ROPA não aprovados: semana de teste não conta");
   await hit(on, { ip: "206.0.0.2" });
   await hit(on, { ip: "206.0.0.2" });
   await hit(on, { ip: "206.0.0.3", country: "US" });
@@ -431,15 +444,15 @@ test("multi-aparelho: a mesma pessoa em dois aparelhos (cookies distintos) conta
   const laptop = await person(env, { ip: "207.0.0.2", ua: LAPTOP });
   assert.notEqual(phone, laptop, "cada aparelho recebe o seu identificador");
   let c = (await summary()).niches.confeitaria;
-  assert.deepEqual([c.eligible_visitors, c.signups, c.aliases], [2, 0, 0], "sem identidade consentida: duas unidades");
+  assert.deepEqual([c.eligible_browsers, c.signups, c.aliases], [2, 0, 0], "sem identidade consentida: duas unidades");
   // Inscrição (consentida) só num aparelho: continua 2 pessoas e 1 inscrição.
   assert.equal((await sub(env, { contato: "multi@exemplo.com", vid: phone })).body.code, "inscrito");
   c = (await summary()).niches.confeitaria;
-  assert.deepEqual([c.eligible_visitors, c.signups, c.aliases], [2, 1, 0], "um aparelho sem inscrição continua unidade separada");
+  assert.deepEqual([c.eligible_browsers, c.signups, c.aliases], [2, 1, 0], "um aparelho sem inscrição continua unidade separada");
   // Mesmo contato inscrito no outro aparelho = identidade consentida: funde em 1 pessoa e 1 inscrição.
   assert.equal((await sub(env, { contato: "MULTI@exemplo.com", vid: laptop })).body.code, "ja_inscrito");
   c = (await summary()).niches.confeitaria;
-  assert.deepEqual([c.eligible_visitors, c.signups, c.aliases], [1, 1, 1], "identidade consentida: uma unidade");
+  assert.deepEqual([c.eligible_browsers, c.signups, c.aliases], [1, 1, 1], "identidade consentida: uma unidade");
   assert.equal(c.conversion, 1);
   assert.ok(c.oracle.ok, JSON.stringify(c.oracle.checks));
 });
@@ -462,11 +475,11 @@ test("multi-nicho: um visitante (mesmo cookie) em 2 nichos conta 1 vez em CADA d
   assert.equal((await sub(env, { contato: "nichos@exemplo.com", vid, nicho: "confeitaria" })).body.code, "inscrito");
   const s = await summary();
   const [conf, salao, loja] = ["confeitaria", "salao-e-barbearia", "loja-de-roupas"].map((k) => s.niches[k]);
-  assert.deepEqual([conf.eligible_visitors, salao.eligible_visitors, loja.eligible_visitors], [2, 1, 0], "1 por nicho visitado e confirmado");
+  assert.deepEqual([conf.eligible_browsers, salao.eligible_browsers, loja.eligible_browsers], [2, 1, 0], "1 por nicho visitado e confirmado");
   assert.deepEqual([conf.signups, salao.signups, loja.signups], [1, 0, 0], "inscrição só no nicho dela");
   assert.equal(loja.unconfirmed_ids, 1);
-  assert.deepEqual([conf.cross_niche_persons, salao.cross_niche_persons, loja.cross_niche_persons], [1, 1, 0]);
-  assert.deepEqual(s.cross_niche, { rule: "um_por_nicho", person_niche_rows: 3, unique_persons: 2, persons_2plus_niches: 1 });
+  assert.deepEqual([conf.cross_niche_browsers, salao.cross_niche_browsers, loja.cross_niche_browsers], [1, 1, 0]);
+  assert.deepEqual(s.cross_niche, { rule: "um_por_nicho", browser_niche_rows: 3, unique_browsers: 2, browsers_2plus_niches: 1 });
   // Inscrição também no salão (mesmo contato, outro nicho): conta 1 em cada nicho, nunca 2 no mesmo.
   assert.equal((await sub(env, { contato: "nichos@exemplo.com", vid, nicho: "salao-e-barbearia" })).body.code, "inscrito");
   assert.equal((await sub(env, { contato: "nichos@exemplo.com", vid, nicho: "salao-e-barbearia" })).body.code, "ja_inscrito");
@@ -475,17 +488,19 @@ test("multi-nicho: um visitante (mesmo cookie) em 2 nichos conta 1 vez em CADA d
   for (const k of ["confeitaria", "salao-e-barbearia", "loja-de-roupas"]) assert.ok(s2.niches[k].oracle.ok, k + " " + JSON.stringify(s2.niches[k].oracle.checks));
 });
 
-test("trava da LIA (AVAL 099): sem LIA aprovada + hash aprovado igual, a medição recusa (503, sem cookie, nada gravado), /saude dá o motivo e a saída continua; LIA editada depois da aprovação desliga", { skip }, async () => {
+test("trava da LIA (AVAL 099): sem LIA e ROPA aprovados + hashes aprovados iguais, a medição recusa (503, sem cookie, nada gravado), /saude dá o motivo e a saída continua; LIA editada depois da aprovação desliga", { skip }, async () => {
   reset();
-  const edited = await manifestOf(APPROVED_TEXT + "\nNota acrescentada depois da aprovação.\n");
+  const edited = { lia: await manifestOf(APPROVED_TEXT + "\nNota acrescentada depois da aprovação.\n"), ropa: TEST_ROPA };
   const cases = [
-    ["LIA real do repositório (pendente)", ENV(), REAL_LIA, "lia_pendente_de_revisao"],
-    ["hash aprovado ausente", ENV({ FASE_A_LIA_APPROVED_SHA256: undefined }), TEST_LIA, "aprovacao_nao_configurada"],
-    ["hash aprovado mal formado", ENV({ FASE_A_LIA_APPROVED_SHA256: "abc" }), TEST_LIA, "aprovacao_formato_invalido"],
+    ["LIA e ROPA reais do repositório (pendentes)", ENV(), { lia: REAL_LIA, ropa: REAL_ROPA }, "lia_pendente_de_revisao"],
+    ["ROPA real pendente com LIA aprovada", ENV(), { lia: TEST_LIA, ropa: REAL_ROPA }, "ropa_pendente_de_revisao"],
+    ["hash aprovado da LIA ausente", ENV({ FASE_A_LIA_APPROVED_SHA256: undefined }), TEST_DOCS, "lia_aprovacao_nao_configurada"],
+    ["hash aprovado do ROPA ausente", ENV({ FASE_A_ROPA_APPROVED_SHA256: undefined }), TEST_DOCS, "ropa_aprovacao_nao_configurada"],
+    ["hash aprovado mal formado", ENV({ FASE_A_LIA_APPROVED_SHA256: "abc" }), TEST_DOCS, "lia_aprovacao_formato_invalido"],
     ["LIA editada depois da aprovação", ENV(), edited, "lia_alterada_apos_aprovacao"],
   ];
   for (const [label, env, lia, reason] of cases) {
-    const v = await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "209.0.0.1", asn: 28573 }, T0, lia);
+    const v = await call(env, "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "209.0.0.1", asn: 28573 }, T0, lia);
     assert.deepEqual([v.status, v.body.code, v.body.reason, v.body.cookie], [503, "lia_nao_aprovada", reason, undefined], label + ": visita");
     assert.equal((await call(env, "/confirmar", { nicho: "confeitaria", vid: "a".repeat(32) + "." + "b".repeat(32) }, T0, lia)).status, 503, label + ": confirmação");
     const i = await call(env, "/inscrever", { nicho: "confeitaria", contato: "trava@exemplo.com", q1: "sim", q2: "sim", consent: true, ua: HUMAN }, T0, lia);
@@ -500,10 +515,108 @@ test("trava da LIA (AVAL 099): sem LIA aprovada + hash aprovado igual, a mediç�
   const off = await call(ENV({ FASE_A_WAITLIST: undefined }), "/saude", {});
   assert.deepEqual([off.body.measurement_active, off.body.reason], [false, "bandeira_desligada"]);
   // Aprovada e com o hash igual: liga (cookie emitido, linha gravada) e /saude confirma.
-  const ok = await call(ENV(), "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "209.0.0.2", asn: 28573 });
+  const ok = await call(ENV(), "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN, ip: "209.0.0.2", asn: 28573 });
   assert.equal(ok.status, 200);
   assert.match(ok.body.cookie.value, /^[0-9a-f]{32}\.[0-9a-f]{32}$/);
   assert.equal(n("select count(*)::int as n from waitlist_persons"), 1);
   const h = await call(ENV(), "/saude", {});
-  assert.deepEqual([h.body.measurement_active, h.body.reason, h.body.lia.lia_sha256], [true, null, TEST_LIA_SHA]);
+  assert.deepEqual([h.body.measurement_active, h.body.reason, h.body.lia.lia_sha256, h.body.lia.ropa_sha256], [true, null, TEST_LIA.sha256, TEST_ROPA.sha256]);
+});
+
+test("aviso antes da coleta (AVAL 101 §3): sem o sinal do aviso (ou com outra versão) nenhum identificador, HMAC ou evento; com o sinal, o identificador nasce e o cookie expira até o fim da janela", { skip }, async () => {
+  reset();
+  const env = ENV();
+  for (const aviso of [undefined, "", "fase-a-aviso-v0-antigo"]) {
+    const r = await call(env, "/visita", { nicho: "confeitaria", method: "GET", ua: HUMAN, asn: 28573, ...(aviso === undefined ? {} : { aviso }) });
+    assert.deepEqual([r.status, r.body.cookie, r.body.refused], [200, null, "aviso_ausente"], String(aviso));
+  }
+  for (const t of TABLES) assert.equal(n(`select count(*)::int as n from ${t}`), 0, "nada gravado em " + t);
+  assert.equal(await env.ZEVANORY_PRIVATE_ARTIFACTS.get(W.SEEN_MARKER), null, "nem o marcador de uso");
+  const ok = await call(env, "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN, asn: 28573 });
+  assert.match(ok.body.cookie.value, /^[0-9a-f]{32}\.[0-9a-f]{32}$/);
+  // Cookie: até o fim da janela ativa (2026-11-30T23:59:59Z), nunca depois.
+  assert.equal(ok.body.cookie.maxAge, Math.floor((Date.parse("2026-11-30T23:59:59Z") - T0) / 1000));
+  const longWin = await call(ENV({ FASE_A_WINDOW_END: "2027-06-30" }), "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN });
+  assert.ok(longWin.body.cookie.maxAge <= Math.floor((Date.parse("2027-06-30T23:59:59Z") - T0) / 1000));
+});
+
+test("não participação (AVAL 101 §4): zvfa_optout/Sec-GPC impedem cookie, HMAC e evento; /nao-participar apaga as linhas localizáveis em todos os nichos, desvincula a inscrição e registra a exclusão sem dado pessoal", { skip }, async () => {
+  reset();
+  const env = ENV();
+  for (const flag of [{ optout: true }, { gpc: true }]) {
+    const r = await call(env, "/visita", { aviso: V, nicho: "confeitaria", method: "GET", ua: HUMAN, ...flag });
+    assert.deepEqual([r.body.cookie, r.body.refused], [null, "nao_participa"], JSON.stringify(flag));
+    assert.equal((await call(env, "/confirmar", { nicho: "confeitaria", vid: "a".repeat(32) + "." + "b".repeat(32), ...flag })).status, 204);
+  }
+  for (const t of TABLES) assert.equal(n(`select count(*)::int as n from ${t}`), 0, "nada gravado em " + t);
+  // Navegador medido em 2 nichos, inscrito, com alias de outro aparelho; depois recusa.
+  let vid = await person(env);
+  vid = await visit(env, { vid, nicho: "salao-e-barbearia" }); await confirm(env, vid, "salao-e-barbearia");
+  await sub(env, { contato: "opt@exemplo.com", vid });
+  const other = await person(env, { ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36" });
+  await sub(env, { contato: "opt@exemplo.com", vid: other });
+  const keep = await person(env);
+  assert.equal(n("select count(*)::int as n from waitlist_person_alias"), 1);
+  const out = await call(env, "/nao-participar", { vid });
+  assert.deepEqual([out.status, out.body.erased], [200, 2], "as duas linhas (2 nichos) do navegador");
+  assert.equal(out.body.maxAge, Math.floor((Date.parse("2026-11-30T23:59:59Z") - T0) / 1000), "marcador até o fim da janela");
+  assert.equal(n("select count(*)::int as n from waitlist_person_alias"), 0, "identidade consentida desfeita");
+  assert.deepEqual(psql("select exclusion, person_id from waitlist_signups"), [{ exclusion: "optout", person_id: null }], "inscrição mantida (consentimento), sem vínculo de medição");
+  assert.deepEqual(psql("select scope, trigger, n, result from waitlist_deletion_log"), [{ scope: "optout", trigger: "nao_participar", n: "2", result: "ok" }]);
+  const s = await summary();
+  const c = s.niches.confeitaria;
+  assert.deepEqual([c.eligible_browsers, c.signups, c.signups_optout, c.signups_without_id, c.erased_by_request], [2, 0, 1, 0, 1]);
+  assert.ok(!c.blockers.includes("inscricao_sem_identificador"), "opt-out não bloqueia a decisão");
+  for (const k of ["confeitaria", "salao-e-barbearia"]) assert.ok(s.niches[k].oracle.ok, k + " " + JSON.stringify(s.niches[k].oracle.checks));
+  // Inscrição de navegador que não participa: guardada sem vínculo, sem linha de medição.
+  assert.equal((await sub(env, { contato: "gpc@exemplo.com", vid: keep, gpc: true })).body.code, "inscrito");
+  assert.deepEqual(psql("select exclusion, person_id from waitlist_signups where contact = 'gpc@exemplo.com'"), [{ exclusion: "optout", person_id: null }]);
+  assert.ok((await summary()).niches.confeitaria.oracle.ok);
+  // Sem cookie localizável: nada apagado, mas o marcador vale.
+  const none = await call(env, "/nao-participar", {});
+  assert.deepEqual([none.body.erased, none.body.maxAge > 0], [0, true]);
+});
+
+test("minimização (AVAL 101 §2): nenhum IP, UA ou derivado de IP+UA é persistido; colunas da medição são só as permitidas", { skip }, async () => {
+  reset();
+  const env = ENV();
+  const UA = HUMAN + " MarcadorUnico/9.9";
+  const vid = await visit(env, { ua: UA, ip: "203.113.7.9", asn: 28573 });
+  await confirm(env, vid);
+  await sub(env, { contato: "min@exemplo.com", vid, ua: UA });
+  const cols = psql("select column_name from information_schema.columns where table_name = 'waitlist_persons' order by ordinal_position").map((r) => r.column_name);
+  assert.deepEqual(cols, ["window_id", "niche", "person_id", "first_day", "last_day", "days", "confirmed", "exclusion", "src", "window_end", "dsr_ref"]);
+  assert.equal(psql("select count(*)::int as n from information_schema.columns where table_schema='public' and table_name like 'waitlist%' and column_name ~ '(^ip|_ip$|user_agent|^ua$|dhash|asn)'")[0].n, "0");
+  assert.equal(psql("select to_regclass('waitlist_person_days') is null as ausente")[0].ausente, "t", "tabela de pessoa-dia (HMAC de IP+UA) removida");
+  const dump = JSON.stringify(TABLES.map((t) => psql(`select * from ${t}`)));
+  for (const needle of ["203.113.7.9", "MarcadorUnico", "Android 14", "28573"]) assert.ok(!dump.includes(needle), "persistido: " + needle);
+});
+
+test("pedido do titular por ação local e código opaco (AVAL 101 §4): /meus-dados mostra o registro e um código que não é o cookie nem o identificador interno; o operador localiza e apaga pelo código, com registro", { skip }, async () => {
+  reset();
+  const env = ENV();
+  let vid = await person(env, {}, T0);
+  vid = await visit(env, { vid }, T0 + DAY); await confirm(env, vid, "confeitaria", T0 + DAY);
+  await person(env);
+  const md = await call(env, "/meus-dados", { vid }, T0 + DAY);
+  assert.equal(md.body.exists, true);
+  assert.deepEqual(md.body.rows, [{ niche: "confeitaria", first_day: "2026-11-02", last_day: "2026-11-03", days: 2 }]);
+  const token = md.body.token;
+  assert.match(token, /^[0-9a-f]{32}$/);
+  const pid = psql("select person_id from waitlist_persons where days = 2")[0].person_id;
+  assert.ok(token !== pid && !vid.includes(token) && !token.includes(vid.slice(0, 32)), "código opaco ≠ cookie ≠ identificador interno");
+  assert.deepEqual((await call(env, "/meus-dados", {})).body, { ok: true, exists: false, rows: [], token: null }, "sem cookie: nada");
+  const url = `postgresql://postgres@/${DB}?host=${encodeURIComponent(HOST)}&port=${PORT}`;
+  const run = (...a) => spawnSync(process.execPath, [path.join(ROOT, "scripts", "fase_a", "atendimento.mjs"), "--janela", "fa1", ...a], { encoding: "utf8", env: { ...process.env, DATABASE_URL: url } });
+  const found = run("--localizar", token);
+  assert.equal(found.status, 0, found.stderr);
+  assert.deepEqual(JSON.parse(found.stdout), { found: true, rows: [{ niche: "confeitaria", first_day: "2026-11-02", last_day: "2026-11-03", days: 2 }] });
+  assert.equal(run("--localizar", "nao-hex").status, 2);
+  const del = run("--apagar", token);
+  assert.equal(del.status, 0, del.stderr);
+  assert.deepEqual(JSON.parse(del.stdout), { erased: 1 });
+  assert.equal(n("select count(*)::int as n from waitlist_persons"), 1, "só o registro do titular foi apagado");
+  assert.deepEqual(psql("select scope, trigger, n from waitlist_deletion_log"), [{ scope: "pedido", trigger: "codigo_atendimento", n: "1" }]);
+  assert.ok((await summary()).niches.confeitaria.oracle.ok);
+  assert.equal(JSON.parse(run("--localizar", token).stdout).found, false);
 });

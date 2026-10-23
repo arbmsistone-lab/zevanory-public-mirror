@@ -1,5 +1,6 @@
-// P01 Fase A (AVAL 099 §2): trava técnica FAIL-CLOSED que amarra a ATIVAÇÃO da medição à versão
-// juridicamente aprovada da LIA (docs/lgpd/LIA-fase-a.md).
+// P01 Fase A (AVAL 099 §2 e 101 §3): trava técnica FAIL-CLOSED que amarra a ATIVAÇÃO da medição às versões
+// aprovadas da LIA (docs/lgpd/LIA-fase-a.md) E do inventário do art. 37 (docs/lgpd/ROPA-fase-a.md). As regras abaixo
+// valem para cada um dos dois documentos (env FASE_A_LIA_APPROVED_SHA256 e FASE_A_ROPA_APPROVED_SHA256).
 // * O Worker não lê o repositório: o manifesto da LIA (sha256 do conteúdo, versão, marcador de pendência e a
 //   linha de aprovação) é gerado por scripts/fase_a/lia_manifest.mjs em worker/fase-a-lia.generated.mjs e o CI
 //   (tests/fase-a/waitlist-rule.test.mjs) falha se ele divergir do documento. Editar a LIA muda o sha256.
@@ -13,9 +14,10 @@
 //      aprovação.
 // * Qualquer falha: endpoints de medição recusam com 503 sem cookie e sem gravar nada; /saude informa o motivo.
 // Hash: SHA-256 do texto UTF-8 com fins de linha normalizados para LF.
-import { LIA_FASE_A } from "./fase-a-lia.generated.mjs";
+import { LIA_FASE_A, ROPA_FASE_A } from "./fase-a-lia.generated.mjs";
 
 export const LIA_PATH = "docs/lgpd/LIA-fase-a.md";
+export const ROPA_PATH = "docs/lgpd/ROPA-fase-a.md";
 export const LIA_PENDING_MARKERS = Object.freeze(["PENDENTE DE REVISÃO JURÍDICA", "_pendente_"]);
 const SHA_RE = /^[0-9a-f]{64}$/;
 const ISO_DATE = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(d + "T00:00:00Z").toISOString().slice(0, 10) === d;
@@ -49,15 +51,24 @@ export function parseLia(text) {
   return { version, pending_marker, approval };
 }
 
-export function liaActivation(env, lia = LIA_FASE_A) {
-  const sha = String(lia?.sha256 || "");
-  const base = { active: false, reason: null, lia_path: LIA_PATH, lia_sha256: SHA_RE.test(sha) ? sha : null, lia_version: lia?.version ?? null, approved_sha256_configured: false };
-  if (!SHA_RE.test(sha)) return { ...base, reason: "lia_manifesto_invalido" };
-  if (lia.pending_marker !== false) return { ...base, reason: "lia_pendente_de_revisao" };
-  if (!approvalComplete(lia.approval, lia.version)) return { ...base, reason: "lia_aprovacao_incompleta" };
-  const want = String(env?.FASE_A_LIA_APPROVED_SHA256 || "").trim().toLowerCase();
-  if (!want) return { ...base, reason: "aprovacao_nao_configurada" };
-  if (!SHA_RE.test(want)) return { ...base, approved_sha256_configured: true, reason: "aprovacao_formato_invalido" };
-  if (want !== sha) return { ...base, approved_sha256_configured: true, reason: "lia_alterada_apos_aprovacao" };
+// Um documento (LIA ou ROPA): manifesto válido, sem pendência, aprovação completa e hash aprovado igual ao embutido.
+function docActivation(env, doc, prefix, envName) {
+  const sha = String(doc?.sha256 || "");
+  const base = { active: false, reason: null, sha256: SHA_RE.test(sha) ? sha : null, version: doc?.version ?? null, approved_sha256_configured: false };
+  if (!SHA_RE.test(sha)) return { ...base, reason: prefix + "_manifesto_invalido" };
+  if (doc.pending_marker !== false) return { ...base, reason: prefix + "_pendente_de_revisao" };
+  if (!approvalComplete(doc.approval, doc.version)) return { ...base, reason: prefix + "_aprovacao_incompleta" };
+  const want = String(env?.[envName] || "").trim().toLowerCase();
+  if (!want) return { ...base, reason: prefix + "_aprovacao_nao_configurada" };
+  if (!SHA_RE.test(want)) return { ...base, approved_sha256_configured: true, reason: prefix + "_aprovacao_formato_invalido" };
+  if (want !== sha) return { ...base, approved_sha256_configured: true, reason: prefix + "_alterada_apos_aprovacao" };
   return { ...base, approved_sha256_configured: true, active: true };
+}
+// Ativação = LIA E ROPA (inventário do art. 37) aprovados e com os hashes configurados (AVAL 101 §3). Motivo: o
+// primeiro bloqueio encontrado (LIA antes do ROPA).
+export function liaActivation(env, docs = { lia: LIA_FASE_A, ropa: ROPA_FASE_A }) {
+  const lia = docActivation(env, docs?.lia, "lia", "FASE_A_LIA_APPROVED_SHA256");
+  const ropa = docActivation(env, docs?.ropa, "ropa", "FASE_A_ROPA_APPROVED_SHA256");
+  const active = lia.active && ropa.active;
+  return { active, reason: active ? null : lia.reason || ropa.reason, lia_path: LIA_PATH, ropa_path: ROPA_PATH, lia_sha256: lia.sha256, ropa_sha256: ropa.sha256, lia, ropa };
 }

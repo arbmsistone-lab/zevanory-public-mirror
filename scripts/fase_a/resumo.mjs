@@ -2,15 +2,16 @@
 // ZEVANORY | P01 Fase A: resumo interno SOMENTE LEITURA das métricas da lista de espera, sem dado pessoal.
 // Uso (operador, com a URL do banco no ambiente; nada é gravado):
 //   DATABASE_URL=postgres://... node scripts/fase_a/resumo.mjs --janela <FASE_A_WINDOW_ID> --since AAAA-MM-DD --until AAAA-MM-DD [--violacao nicho,...]
+//   DATABASE_URL=postgres://... node scripts/fase_a/resumo.mjs --janela <id> --anonimo   (células < 5 suprimidas)
 //   DATABASE_URL=postgres://... node scripts/fase_a/resumo.mjs --semana-teste --since AAAA-MM-DD --until AAAA-MM-DD
 // Executa as MESMAS consultas agregadas do Worker (SUMMARY_SQL e QUALIFIED_SQL em worker/waitlist.mjs)
-// numa transação "read only" via psql (resolvido de forma portátil) e imprime, por nicho: pessoas
-// experimentais confirmadas, inscrições na mesma unidade, Wilson 95%, oráculo (reconciliação), análise
+// numa transação "read only" via psql (resolvido de forma portátil) e imprime, por nicho: navegadores
+// navegadores/dispositivos pseudônimos confirmados, inscrições na mesma unidade, Wilson 95%, oráculo (reconciliação), análise
 // de sensibilidade com/sem filtros de ASN/UA, bloqueios e a decisão da regra pré-registrada.
 // Nenhuma coluna de contato, nome ou referência é lida.
 import { execFileSync } from "node:child_process";
 import { resolvePsql, parseCsv } from "./tools.mjs";
-import { SUMMARY_SQL, QUALIFIED_SQL, SOURCE_SQL, CROSS_NICHE_SQL, TEST_WEEK_SQL, WAITLIST_NICHES, summarize, testWeekSummary } from "../../worker/waitlist.mjs";
+import { SUMMARY_SQL, QUALIFIED_SQL, SOURCE_SQL, CROSS_NICHE_SQL, TEST_WEEK_SQL, WAITLIST_NICHES, summarize, testWeekSummary, anonymousAggregate } from "../../worker/waitlist.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name, dflt) => { const i = args.indexOf(name); return i >= 0 ? String(args[i + 1] || "") : dflt; };
@@ -35,4 +36,6 @@ if (args.includes("--semana-teste")) {
 let rows = [], qualified = [], sources = [], crossNiche = null;
 if (present && present.ok === "t") { rows = parseCsv(run(bind(SUMMARY_SQL))); qualified = parseCsv(run(bind(QUALIFIED_SQL))); sources = parseCsv(run(bind(SOURCE_SQL))); crossNiche = parseCsv(run(bind(CROSS_NICHE_SQL)))[0] || null; }
 else rows = WAITLIST_NICHES.map((niche) => ({ niche, raw: "{}" }));
-process.stdout.write(JSON.stringify(summarize(rows, { windowId, since, until, qualified, sources, crossNiche, complianceViolations: violations }), null, 2) + "\n");
+const summary = summarize(rows, { windowId, since, until, qualified, sources, crossNiche, complianceViolations: violations });
+// --anonimo: agregado com supressão de células pequenas (único formato que sobrevive ao fim da finalidade).
+process.stdout.write(JSON.stringify(args.includes("--anonimo") ? anonymousAggregate(summary) : summary, null, 2) + "\n");

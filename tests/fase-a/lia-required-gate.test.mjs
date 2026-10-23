@@ -1,4 +1,5 @@
-// P01 Fase A (AVAL 099, resíduo): a conferência "worker/fase-a-lia.generated.mjs = docs/lgpd/LIA-fase-a.md" roda
+// P01 Fase A (AVAL 099, resíduo; AVAL 101): a conferência "worker/fase-a-lia.generated.mjs = docs/lgpd/LIA-fase-a.md +
+// docs/lgpd/ROPA-fase-a.md" roda
 // DENTRO do check obrigatório "product-pages / static-audit" (os dois workflows que publicam esse nome), sem filtro
 // de caminho (roda em todo PR para gh-pages, portanto sempre que a LIA ou o Worker mudam), e falha quando a LIA
 // muda sem regenerar o manifesto.
@@ -42,7 +43,7 @@ test("check obrigatório product-pages / static-audit roda a conferência do man
 
 test("o passo falha quando a LIA muda sem regenerar o manifesto (cópia temporária), e passa intacto ou regenerado", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "lia-req-"));
-  for (const rel of ["docs/lgpd/LIA-fase-a.md", "worker/fase-a-lia.mjs", "worker/fase-a-lia.generated.mjs", "scripts/fase_a/lia_manifest.mjs"]) {
+  for (const rel of ["docs/lgpd/LIA-fase-a.md", "docs/lgpd/ROPA-fase-a.md", "worker/fase-a-lia.mjs", "worker/fase-a-lia.generated.mjs", "scripts/fase_a/lia_manifest.mjs"]) {
     fs.mkdirSync(path.dirname(path.join(tmp, rel)), { recursive: true }); fs.copyFileSync(path.join(ROOT, rel), path.join(tmp, rel));
   }
   const run = (m) => spawnSync(process.execPath, [path.join(tmp, "scripts", "fase_a", "lia_manifest.mjs"), m], { encoding: "utf8" });
@@ -52,6 +53,11 @@ test("o passo falha quando a LIA muda sem regenerar o manifesto (cópia temporá
   const drift = run("--check");
   assert.equal(drift.status, 1, "LIA alterada sem regenerar => falha");
   assert.match(drift.stdout, /::error title=LIA_MANIFEST_DRIFT::/);
+  // ROPA alterado sem regenerar também falha.
+  assert.equal(run("--write").status, 0);
+  const ropa = path.join(tmp, "docs", "lgpd", "ROPA-fase-a.md");
+  fs.writeFileSync(ropa, fs.readFileSync(ropa, "utf8").replace("## 1. Controlador e canal", "## 1. Controlador e canal (editado)"));
+  assert.equal(run("--check").status, 1, "ROPA alterado sem regenerar => falha");
   // Manifesto adulterado à mão (sha256 trocado) também falha.
   assert.equal(run("--write").status, 0);
   assert.equal(run("--check").status, 0, "regenerado");
@@ -66,5 +72,5 @@ test("o passo falha quando a LIA muda sem regenerar o manifesto (cópia temporá
 test("prova negativa embutida no check obrigatório (--self-test) passa no repositório", () => {
   const r = spawnSync(process.execPath, [path.join(ROOT, "scripts", "fase_a", "lia_manifest.mjs"), "--self-test"], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /^LIA_MANIFEST_SELF_TEST=PASS intact=0 drift=1 regenerated=0$/m);
+  assert.match(r.stdout, /^LIA_MANIFEST_SELF_TEST=PASS intact=0 drift=2\/2 regenerated=2\/2$/m);
 });

@@ -88,7 +88,7 @@ export function isCountableView({ method, page, userAgent, purpose, asn = 0 }) {
 const bump = (sql, day, page, metric) => sql.query(
   `insert into zevanory_funnel_daily (day, page, metric, n) values ($1::date, $2, $3, 1)
      on conflict (day, page, metric) do update set n = zevanory_funnel_daily.n + 1`, [day, page, metric]);
-export async function recordPageView(env, { sqlFactory, page, ip, userAgent, metric = "views", src = "", camp = "", asn = 0, acceptLanguage = false, country = "", now = Date.now(), lia = null }) {
+export async function recordPageView(env, { sqlFactory, page, ip, userAgent, metric = "views", src = "", camp = "", asn = 0, acceptLanguage = false, country = "", now = Date.now(), docs = null }) {
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureFunnelSchema(sql);
   const day = new Date(now).toISOString().slice(0, 10);
@@ -119,8 +119,8 @@ export async function recordPageView(env, { sqlFactory, page, ip, userAgent, met
   // P01 Fase A, "semana de teste" (protocolo v3; bandeira FASE_A_SEMANA_TESTE, padrão desligado): tráfego
   // marcado utm_campaign=sdt-<nicho> nas calculadoras (utm_source meta_* = pago). Qualificada = visitante único do dia (já filtrado de
   // robôs/datacenter acima), com Accept-Language e país BR. Só contagens agregadas, sem dado pessoal.
-  // Também exige a LIA aprovada (AVAL 099 §2, worker/fase-a-lia.mjs): sem ela, nada é contado.
-  const sdt = String(env.FASE_A_SEMANA_TESTE || "").toLowerCase() === "on" && /^calculadora-/.test(String(page)) && (lia ? liaActivation(env, lia) : liaActivation(env)).active ? /^sdt-(confeitaria|loja-de-roupas|salao-e-barbearia)$/.exec(campaign) : null;
+  // Também exige LIA e ROPA aprovados (AVAL 099 §2 / 101 §3, worker/fase-a-lia.mjs): sem eles, nada é contado.
+  const sdt = String(env.FASE_A_SEMANA_TESTE || "").toLowerCase() === "on" && /^calculadora-/.test(String(page)) && (docs ? liaActivation(env, docs) : liaActivation(env)).active ? /^sdt-(confeitaria|loja-de-roupas|salao-e-barbearia)$/.exec(campaign) : null;
   if (sdt) {
     await bump(sql, day, page, `sdt:${sdt[1]}:visita`);
     if (/^meta_/.test(source)) await bump(sql, day, page, `sdt:${sdt[1]}:pago`); // meta_* = reservado a tráfego pago
