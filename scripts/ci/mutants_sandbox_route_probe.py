@@ -25,8 +25,8 @@ def sub(text, old, new):
 M = {
     # --- prova (run_route_probe.py) ---
     "P1 same token accepted": ("P", 'if full == noroutes:', 'if False:'),
-    "P2 negative pre-deploy pass tolerated": ("P", 'if rc == 0:\n            raise Fail("token sem Workers Routes Write', 'if False:\n            raise Fail("token sem Workers Routes Write'),
-    "P3 negative pre-deploy without 403": ("P", 'if "403" not in http:\n            raise Fail(f"falha sem 403', 'if False:\n            raise Fail(f"falha sem 403'),
+    "P2 negative token that writes tolerated": ("P", 'if rc == 0:\n        raise TooBroad(', 'if False:\n        raise TooBroad('),
+    "P3 negative write check skipped": ("P", 'if not (write_marker in out and http == {"200", "403"}):', 'if False:'),
     "P4 negative pre-deploy runs only snapshot": ("P", 'if rc == 0:\n            where = "preflight"', 'if False:\n            where = "preflight"'),
     "P5 verify counts not required": ("P", 'if rc == 0 or "missing_expected=1 missing_other=0 changed=1 extra=1" not in out:', 'if rc == 0:'),
     "P6 negative restore divergence not checked": ("P", 'if divergent != 3:', 'if False:'),
@@ -45,6 +45,10 @@ M = {
     "P19 wrong routing not required in public": ("P", 'raise Fail("roteamento errado não observado em público — prova inconclusiva")', 'pass'),
     "P20 readback ignores attempts (single try)": ("P", 'for i in range(attempts):', 'for i in range(1):'),
     "P21 API scope allows other scripts": ("P", '+ f"({PROBE}|{NEIGHBOUR})"', '+ "[a-z0-9-]+"'),
+    "P23 read 403 accepted as negative evidence": ("P", '    if read_denied:\n        raise Misconfigured(', '    if read_denied:\n        return\n    if False:\n        raise Misconfigured('),
+    "P24 negative restore skips the oracle": ("P", 'negative_oracle("restore", rc, out, http, RESTORE_WRITE_403)', 'pass'),
+    "P25 read-denied misconfig not distinguished": ("P", 'title = "NEGATIVE_TOKEN_READ_DENIED_MISCONFIGURED"', 'title = None'),
+    "P26 too-broad token not distinguished": ("P", 'title = "NEGATIVE_TOKEN_TOO_BROAD"', 'title = None'),
     "P22 probe token variables leak into the wrangler env": ("P", 'env = {k: v for k, v in os.environ.items() if k not in ("CF_PROBE_TOKEN", "CF_PROBE_TOKEN_NO_ROUTES")}\n    env.update({"CLOUDFLARE_API_TOKEN": full,', 'env = dict(os.environ)\n    env.update({"CLOUDFLARE_API_TOKEN": full,'),
     # --- router_routes.py (modo sandbox e preflight) ---
     "S1 production zone not recognized": ("S", 'return PRODUCTION_ZONE in name', 'return False'),
