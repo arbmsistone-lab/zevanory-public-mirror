@@ -1,3 +1,4 @@
+import { SHORT_RULE_LABEL } from "../../worker/politica-unica.mjs";
 import { getYoutubeAccessToken } from "./youtube-access.mjs";
 // Private proof upload (issue: YouTube plan step 3). Uploads ONE private video built and
 // gated by youtube-preflight.mjs, is idempotent across retries, polls until processing ends,
@@ -28,7 +29,7 @@ try {
   const reused = Boolean(videoId);
   if (!reused) {
     const metadata = {
-      snippet: { title: "ZEVANORY · IA prática, com clareza", description: `IA prática para organizar tarefas repetitivas com clareza. Garantia de 7 dias.\nSaiba mais: https://zevanory.api.br/?utm_source=youtube&utm_medium=organic&utm_campaign=proof_v1\n\n${marker}`, tags: ["ZEVANORY", "IA prática", "automação"], categoryId: "27", defaultLanguage: "pt-BR", defaultAudioLanguage: "pt-BR" },
+      snippet: { title: "ZEVANORY · IA prática, com clareza", description: `IA prática para organizar tarefas repetitivas com clareza. ${SHORT_RULE_LABEL}.\nSaiba mais: https://zevanory.api.br/?utm_source=youtube&utm_medium=organic&utm_campaign=proof_v1\n\n${marker}`, tags: ["ZEVANORY", "IA prática", "automação"], categoryId: "27", defaultLanguage: "pt-BR", defaultAudioLanguage: "pt-BR" },
       status: { privacyStatus: "private", selfDeclaredMadeForKids: false, containsSyntheticMedia: true }
     };
     const start = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", { method: "POST", headers: { ...auth, "content-type": "application/json; charset=utf-8", "x-upload-content-type": "video/mp4", "x-upload-content-length": String(mp4.length) }, body: JSON.stringify(metadata) });

@@ -15,8 +15,11 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { getUsage, addUsage, allow } from "./usage.mjs";
 import { createHash } from "node:crypto";
-import { calendarEntry } from "../../worker/acquisition-engine.mjs";
+import { calendarEntry, productLink } from "../../worker/acquisition-engine.mjs";
+import { evaluateCreativeWithRewrites } from "../../worker/creative-autonomy.mjs";
 import { emitActivity } from "../../worker/activity-ledger.mjs";
+import { CLOSED_LABEL, SHORT_RULE_LABEL, SHORT_RULE_SPOKEN } from "../../worker/politica-unica.mjs";
+import { readSalesSwitch } from "../../worker/sales-control.mjs";
 
 export const TARGET_CHANNEL = "UCMl8-SxMVv77S2tz2H63P3A";
 export const PRICES = Object.freeze({ "ZEV-IA-011": 197, "ZEV-VEN-011": 197, "ZEV-LCX-011": 247, "ZEV-CMB-011": 297, "ZEV-NGC-011": 397 });
@@ -89,20 +92,34 @@ export function planValueShort(day, slot) {
   const entry = { theme_id: slot + ":" + item.slug, product: { name: screen.product, sku: null } };
   return { day, slot, entry, price: null, spec: null, gate, link: url, marker, title, description, lines: [], speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", slot === "dica" ? item.name : item.name] };
 }
-export function planSlot(day, slot = "oferta") {
+export function planSlot(day, slot = "oferta", opts = {}) {
   if (!SLOTS.includes(slot)) throw new Error("short_slot_unknown");
-  return slot === "oferta" ? planShort(day) : planValueShort(day, slot);
+  return slot === "oferta" ? planShort(day, opts) : planValueShort(day, slot);
 }
 
 // Sales are CLOSED (owner order): the "oferta" slot no longer shows a price, a /comprar link or the purchase
 // guarantee. It points to the free material for the niche. Re-opening needs a new reviewed change.
-export const SALES_MODE = "closed";
+// Sales mode follows the owner switch (P13c, read fail-closed). While CLOSED (default) the "oferta" slot carries no
+// price, no /comprar link and no purchase rule/promise: it points to the free material. OPEN restores the offer.
+export const SALES_MODE = "closed";  // default mode when the switch cannot be read
 const SALES_CLOSED_RISK = /\/comprar|R\$\s?\d|garantia de (7|sete) dias|\bcompre\b|checkout|\bpor apenas\b/i;
 export function salesClosedViolations(plan) {
   const blob = [plan.speech, plan.title, plan.description, plan.link, ...Object.values(plan.screen || {})].join("\n");
   return SALES_CLOSED_RISK.test(blob) ? ["sales_closed_purchase_cta"] : [];
 }
-export function planShort(day) {
+// P13c: commercial lock = owner switch (KV sales:open:v1 + "LIBERAR VENDAS" + green preflight), read
+// with the same worker/sales-control.mjs readSalesSwitch the Worker uses. Fail-closed.
+export async function channelSalesOpen(kv) {
+  if (!kv?.get) return false;
+  return (await readSalesSwitch({ ZEVANORY_PRIVATE_ARTIFACTS: kv }).catch(() => null))?.enabled === true;
+}
+const PRODUCT_PAGES = Object.freeze({ "ZEV-IA-011": "ia-na-pratica", "ZEV-VEN-011": "vendas-na-pratica", "ZEV-LCX-011": "lucro-e-caixa", "ZEV-CMB-011": "combo-ia-vendas", "ZEV-NGC-011": "negocio-completo" });
+
+// Closed (default): the link goes to the product page (never /comprar/) and the text says sales are closed.
+export function planShort(day, { salesOpen = false } = {}) {
+  return salesOpen === true ? planShortOpen(day) : planShortClosed(day);
+}
+function planShortClosed(day) {
   const entry = calendarEntry(day);
   const niche = NICHE_LABEL[entry.niche];
   const campaign = "oferta_" + entry.product.sku.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -112,7 +129,7 @@ export function planShort(day) {
   const description = [
     ANGLE_LINE[entry.angle] + " Material gratuito da ZEVANORY para " + niche + ", com revisão humana e sem promessas de faturamento.",
     "",
-    "Material gratuito: " + link,
+    "Material gratuito (" + CLOSED_LABEL + "): " + link,
     "",
     "#Shorts #ZEVANORY #PequenosNegocios",
     "",
@@ -127,12 +144,49 @@ export function planShort(day) {
     product: "Material gratuito", offer: "Passo a passo sem cadastro",
     cta: "Link na descrição", url: "vendas.zevanory.api.br"
   };
-  const plan = { day, slot: "oferta", entry, price: null, spec: null, link, marker, title, description, lines, speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", niche] };
+  const plan = { day, slot: "oferta", entry, price: null, spec: null, link, marker, title, description, lines, speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", niche], salesOpen: false };
   const text = [speech, title, description].join(" ");
   plan.gate = VALUE_RISK.test(text) || salesClosedViolations(plan).length
     ? { action: "discard", score: 0, compliance: 0, reason: "sales_closed_or_value_risk" }
     : { action: "publish", score: 100, compliance: 100, reason: "value_gate_ok_sales_closed" };
   return plan;
+}
+
+function planShortOpen(day) {
+  const salesOpen = true;
+  const entry = calendarEntry(day), price = PRICES[entry.product.sku];
+  if (!price) throw new Error("youtube_price_unknown");
+  const niche = NICHE_LABEL[entry.niche];
+  const hook = ANGLE_HOOK[entry.angle] + " para " + niche;
+  const spec = { creative_id: "youtube-short-" + day, brand: "ZEVANORY", site: "zevanory.api.br", width: 1080, height: 1920, hook, body: entry.product.name + " por R$ " + price + ",00. " + SHORT_RULE_LABEL + ".", cta: "Veja o guia digital", price_brl: price };
+  const gate = evaluateCreativeWithRewrites(spec, { serverPrice: price, visualScore: 1 });
+  const checkout = productLink(entry, "blog").replace("utm_source=blog", "utm_source=youtube");
+  const page = new URL(checkout); page.pathname = "/" + PRODUCT_PAGES[entry.product.sku];
+  if (!PRODUCT_PAGES[entry.product.sku]) throw new Error("youtube_product_page_unknown");
+  const open = salesOpen === true;
+  const link = open ? checkout : page.toString();
+  const marker = "zevanory-short-key:" + createHash("sha256").update(day + "|" + entry.theme_id + "|short-v1").digest("hex").slice(0, 16);
+  const title = (ANGLE_HOOK[entry.angle] + " para " + niche + " · " + entry.product.name).slice(0, 95);
+  const description = [
+    ANGLE_LINE[entry.angle] + " Um guia prático da ZEVANORY para " + niche + ", com revisão humana e sem promessas de faturamento.",
+    "",
+    entry.product.name + (open ? " — R$ " + price + ",00 · " + SHORT_RULE_LABEL : " — " + CLOSED_LABEL) + ": " + link,
+    "",
+    "#Shorts #ZEVANORY #PequenosNegocios",
+    "",
+    marker
+  ].join("\n");
+  const lines = [ANGLE_HOOK[entry.angle], "Para " + niche, "", entry.product.name, SHORT_RULE_LABEL];
+  // Spoken script, grouped by on-screen beat: 1 hook, 2 practical tip, 3 offer, 4 call to action.
+  const opener = /[?!.]$/.test(ANGLE_HOOK[entry.angle]) ? ANGLE_HOOK[entry.angle] : ANGLE_HOOK[entry.angle] + ".";
+  const said = [[opener, "Isso é para " + niche + "."], [ANGLE_LINE[entry.angle]], [entry.product.name + ", com " + SHORT_RULE_SPOKEN + "."], ["Veja o guia no link da descrição."]];
+  const speech = said.map(b => b.join(" ")).join(" ");
+  const screen = {
+    hook: ANGLE_HOOK[entry.angle], niche: "para " + niche, tip: ANGLE_LINE[entry.angle],
+    product: entry.product.name, offer: "R$ " + price + " · " + SHORT_RULE_LABEL,
+    cta: "Link na descrição", url: "vendas.zevanory.api.br"
+  };
+  return { day, slot: "oferta", entry, price, spec, gate, link, marker, title, description, lines, speech, said, screen, privacyStatus: "public", tags: ["ZEVANORY", "Shorts", "pequenos negócios", entry.product.name], salesOpen: true };
 }
 
 const run = (cmd, args) => { const p = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }); if (p.status !== 0) throw new Error(cmd + "_failed"); return p.stdout; };
@@ -267,7 +321,7 @@ export async function writeAvManifest(plan, dir, mp4, pkg, { reference = process
     gate_version: "p05-av-gate-1", script: "script.txt", script_sha256: await sha256File(dir + "/script.txt"),
     master: "master.wav", master_sha256: await sha256File(dir + "/master.wav"),
     captions: "captions.vtt", captions_sha256: await sha256File(dir + "/captions.vtt"),
-    mp4_sha256: await sha256File(mp4), voice: BRAND_VOICE, sales_mode: SALES_MODE,
+    mp4_sha256: await sha256File(mp4), voice: BRAND_VOICE, sales_mode: plan.salesOpen === true ? "open" : "closed",
     texts: { title: plan.title, description: plan.description, link: plan.link, screen: plan.screen },
     critical_terms: /zevanory/i.test(plan.speech) ? ["ZEVANORY"] : [], lexicon: BRAND_LEXICON, captions_style: CAPTION_STYLE,
   };
@@ -355,7 +409,8 @@ export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { ge
 // ---- two-phase publishing (AVAL 100/102) ---------------------------------------------------------------------
 // The human approves a canonical BUNDLE, not just the MP4:
 //   bundle_sha256 = sha256(canonical JSON of {mp4_sha256, gate_report_sha256, manifest_sha256, day, slot, marker,
-//   title, description, tags, privacy, candidate_created_at, review_expires_at} + theme_id, product_sku, caption_tiktok)
+//   title, description, tags, privacy, candidate_created_at, review_expires_at} + theme_id, product_sku, product_name,
+//   link, sales_open and the per-channel captions — everything any publisher (YouTube, cross-post, pack) will use)
 // (canonical = keys sorted, no whitespace). The publish phase uses ONLY the persisted bundle metadata.
 //
 // Storage is CONTENT-ADDRESSED: mp4 bytes under sha256(bytes), gate report under sha256(report), bundle under
@@ -405,7 +460,8 @@ export function buildBundle({ mp4Sha, gateSha, manifestSha, plan, createdAt }) {
     mp4_sha256: mp4Sha, gate_report_sha256: gateSha, manifest_sha256: manifestSha, day: plan.day, slot: plan.slot, marker: plan.marker,
     title: plan.title, description: plan.description, tags: plan.tags || [], privacy: plan.privacyStatus,
     candidate_created_at: created.toISOString(), review_expires_at: new Date(created.getTime() + REVIEW_WINDOW_S * 1000).toISOString(),
-    theme_id: plan.entry?.theme_id || null, product_sku: plan.entry?.product?.sku || null, caption_tiktok: plan.caption_tiktok || null,
+    theme_id: plan.entry?.theme_id || null, product_sku: plan.entry?.product?.sku || null, product_name: plan.entry?.product?.name || null,
+    link: plan.link || null, sales_open: plan.salesOpen === true, captions: plan.captions || null,
   };
 }
 export async function storeCandidate(store, { bytes, plan, report, gateReportBytes = null, manifestSha = null, now = Date.now(), verify = true }) {
@@ -462,7 +518,8 @@ export async function loadApprovedCandidate(bundleSha, { store, approvals = huma
   if (requireApproval && why) throw new Error(why);
   const plan = recomputePlan ? planSlot(bundle.day, bundle.slot) : {
     day: bundle.day, slot: bundle.slot, marker: bundle.marker, title: bundle.title, description: bundle.description, tags: bundle.tags,
-    privacyStatus: bundle.privacy, entry: { theme_id: bundle.theme_id, product: { sku: bundle.product_sku } }, caption_tiktok: bundle.caption_tiktok,
+    privacyStatus: bundle.privacy, link: bundle.link, salesOpen: bundle.sales_open === true,
+    entry: { theme_id: bundle.theme_id, product: { sku: bundle.product_sku, name: bundle.product_name } }, persistedCaptions: bundle.captions || {},
   };
   return { bytes, bundle, bundleSha, plan, approval, meta: { mp4_sha256: bundle.mp4_sha256, gate: "PASS_TECH_PENDING_HUMAN", day: bundle.day, slot: bundle.slot } };
 }
@@ -588,13 +645,16 @@ if (isMain) {
   const day = (process.argv.find(a => a.startsWith("--day=")) || "").slice(6) || localDay();
   const slotArg = (process.argv.find(a => a.startsWith("--slot=")) || "").slice(7) || "oferta";
   const slots = slotArg === "all" ? SLOTS : [slotArg];
+  const lockKv = process.env.CLOUDFLARE_API_TOKEN ? cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID }) : null;
+  const salesOpen = await channelSalesOpen(lockKv);
+  note("notice", "sales_open=" + salesOpen);
   for (const slot of slots) {
     try {
       const window = publicationWindow({ day, slot, now: Date.now() });
       note("notice", "window " + JSON.stringify(window));
       if (window.action === "expired" && !dry) { note("notice", slot + ": commercial day over — documented as missed for " + day); continue; }
-      const plan = planSlot(day, slot);
-      if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85 || salesClosedViolations(plan).length) throw new Error("f1_gate_rejected");
+      const plan = planSlot(day, slot, { salesOpen });
+      if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85 || (!salesOpen && salesClosedViolations(plan).length)) throw new Error("f1_gate_rejected");
       const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);
       const usageKv = kvEnv();
       const usage = usageKv ? await getUsage(usageKv) : {};
@@ -609,6 +669,8 @@ if (isMain) {
         if (/slot_lost_voice_unavailable/.test(String(e?.message)) && usageKv && !dry) await recordSlotLost(usageKv, day, slot, e.message).catch(() => null);
         throw e;
       }
+      const { captionFor } = await import("./short-crosspost.mjs");
+      plan.captions = Object.fromEntries(["tiktok", "instagram", "facebook", "telegram"].map(c => [c, captionFor(plan, c, { salesOpen })]));
       const stored = await storeCandidate(candidateStore(), { bytes: rendered.bytes, plan, report: rendered.gate, gateReportBytes: rendered.gateReportBytes, manifestSha: rendered.manifestSha });
       note("notice", JSON.stringify({ day, slot, bundle_sha256: stored.bundleSha, mp4_sha256: stored.mp4Sha, gate_report_sha256: stored.gateSha, review_expires_at: stored.bundle.review_expires_at, reused: stored.reused, duration: rendered.duration, voice: rendered.voice, next: "human approval record for this bundle, then --phase=publish --candidates=" + stored.bundleSha }));
     } catch (e) { failed++; note("error", slot + ":" + String(e?.message || e).replace(/[^a-z0-9_:.-]/gi, "_").slice(0, 140)); }

@@ -33,7 +33,7 @@ export async function buildPack({ start = addDays(localDay(), 1), days = 10, out
         continue;
       }
       produced.add(mediaId(day, slot));
-      if (store && r.bytes) candidates[mediaId(day, slot)] = (await storeCandidate(store, { bytes: r.bytes, plan: { ...plan, caption_tiktok: captionFor(plan, "tiktok") }, report: r.gate, gateReportBytes: r.gateReportBytes, manifestSha: r.manifestSha })).bundleSha;
+      if (store && r.bytes) candidates[mediaId(day, slot)] = (await storeCandidate(store, { bytes: r.bytes, plan: { ...plan, captions: Object.fromEntries(["tiktok", "instagram", "facebook", "telegram"].map(c => [c, captionFor(plan, c)])) }, report: r.gate, gateReportBytes: r.gateReportBytes, manifestSha: r.manifestSha })).bundleSha;
       lines.push(`===== ${day} · ${time} =====\nArquivo: ${mediaId(day, slot)}.mp4 (${Math.round(r.duration)} s, voz: ${r.voice})${candidates[mediaId(day, slot)] ? " · bundle sha256 " + candidates[mediaId(day, slot)] + " (aguarda aprovação humana)" : ""}\n\n${captionFor(plan, "tiktok")}\n`);
     }
   }
@@ -50,7 +50,7 @@ export async function materializeApproved(shas, { store, out = "/tmp/short-pack"
       const c = await loadApprovedCandidate(sha, { store, ...(approvals ? { approvals } : {}) });
       const id = mediaId(c.meta.day, c.meta.slot);
       await sealApproved(`${out}/${id}`, c);
-      ok.push({ id, day: c.meta.day, slot: c.meta.slot, sha, caption: c.bundle.caption_tiktok });
+      ok.push({ id, day: c.meta.day, slot: c.meta.slot, sha, caption: c.bundle.captions?.tiktok });
     } catch (e) { refused.push(String(sha).slice(0, 12) + ":" + String(e?.message || e).slice(0, 80)); }
   }
   return { ok, refused };

@@ -40,8 +40,8 @@ jobs:
           
           BASE = "https://vendas.zevanory.api.br"
           LEGAL = ("A. RENAN ALVES MOREIRA BITU LTDA", "69.077.233/0001-99",
-                   "Rua Francisco de Freitas Neto, 96", "Alto do Tenente",
-                   "Várzea Alegre/CE", "suporte@zevanory.api.br", "+55 88 99254-5413")
+                   "Rua Francisco de Freitas Neto", "96", "Alto do Tenente",
+                   "Várzea Alegre", "63540-000", "suporte@zevanory.api.br", "+55 88 99254-5413")
           CATALOG = (
               ("ia-na-pratica", "IA na Prática", 197, "ZEV-IA-011"),
               ("vendas-na-pratica", "Vendas na Prática", 197, "ZEV-VEN-011"),

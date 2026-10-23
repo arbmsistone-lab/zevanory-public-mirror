@@ -2,6 +2,7 @@
 // grounded support knowledge route. Fails closed on any wrong/invented answer.
 import { answerSupportQuestion, handleSupportKnowledge, SUPPORT_PRODUCTS } from "../worker/support-knowledge.mjs";
 import fs from "node:fs";
+import { CUSTOMER_RULE_7D, hasCheckoutCta, bannedPolicyHits } from "../worker/politica-unica.mjs";
 
 const failures = [];
 let correct = 0;
@@ -18,13 +19,14 @@ const cases = [];
 for (const slug of Object.keys(SUPPORT_PRODUCTS)) {
   const name = SUPPORT_PRODUCTS[slug].name;
   cases.push([slug, `Quanto custa o ${name}?`, "price", (a) => a.includes(expectPrices[slug])]);
-  cases.push([slug, "Posso pedir reembolso se não gostar?", "refund", (a) => /7 dias/.test(a) && /reembolso integral/.test(a)]);
-  cases.push([slug, "Como recebo o acesso depois de pagar?", "delivery", (a) => /e-mail/.test(a) && /link seguro/.test(a)]);
+  cases.push([slug, "Posso pedir reembolso se não gostar?", "refund", (a) => a.includes(CUSTOMER_RULE_7D) && /devolv|devolu/.test(a) && /resposta conclusiva em até 5 dias/.test(a)]);
+  cases.push([slug, "Como recebo o acesso depois de pagar?", "delivery", (a) => /e-mail/.test(a) && /link (pessoal|privado)/.test(a) && a.includes(CUSTOMER_RULE_7D)]);
   cases.push([slug, "O que vem no conteúdo?", "content", (a) => a.startsWith(name + ":")]);
 }
 for (const [slug, q, intent, ok] of cases) {
   const r = answerSupportQuestion({ product: slug, question: q });
-  if (r.answered && r.intent === intent && r.product === slug && ok(r.answer)) correct++;
+  // P13c: nenhuma resposta traz chamada de compra nem formulação divergente da política única.
+  if (r.answered && r.intent === intent && r.product === slug && ok(r.answer) && !hasCheckoutCta(r.answer) && !bannedPolicyHits(r.answer).length) correct++;
   else failures.push(`${slug} / ${q} -> ${JSON.stringify(r)}`);
 }
 
@@ -38,10 +40,10 @@ if (unknown.answered || !unknown.handoff) failures.push("unknown question must h
 const ambiguous = answerSupportQuestion({ question: "quanto custa?" });
 if (ambiguous.answered || !ambiguous.needs_product) failures.push("ambiguous price must ask for product");
 // HTTP contract.
-const res = handleSupportKnowledge(new Request("https://zevanory.api.br/api/support/knowledge?product=lucro-e-caixa&q=pre%C3%A7o"));
+const res = await handleSupportKnowledge(new Request("https://zevanory.api.br/api/support/knowledge?product=lucro-e-caixa&q=pre%C3%A7o"));
 const body = await res.json();
 if (res.status !== 200 || !body.answer?.includes("R$ 247,00") || res.headers.get("cache-control") !== "no-store") failures.push("http contract");
-const post = handleSupportKnowledge(new Request("https://zevanory.api.br/api/support/knowledge", { method: "POST" }));
+const post = await handleSupportKnowledge(new Request("https://zevanory.api.br/api/support/knowledge", { method: "POST" }));
 if (post.status !== 405) failures.push("POST must be 405");
 
 const pct = (correct / cases.length) * 100;

@@ -5,16 +5,27 @@
 // waiting, never as failure; a provider error fails the step visibly.
 // Usage: node short-crosspost.mjs [--day=YYYY-MM-DD]
 import { readFile } from "node:fs/promises";
-import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, avGateSealed } from "./youtube-daily-short.mjs";
+import { planShort, planSlot, localDay, cloudflareKv, publicationWindow, channelSalesOpen, avGateSealed, CANDIDATE_PREFIX } from "./youtube-daily-short.mjs";
+import { CLOSED_LABEL, SHORT_RULE, hasCheckoutCta } from "../../worker/politica-unica.mjs";
+import { createHash } from "node:crypto";
 import { emitActivity } from "../../worker/activity-ledger.mjs";
 import { getPublisherAccessToken } from "./publisher-access.mjs";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 const sleepMs = ms => new Promise(r => setTimeout(r, ms));
-export function captionFor(plan, channel) {
+// P13c: the offer line follows the single policy (data/politica-unica.json) and the commercial lock:
+// closed (default, fail-closed) => no price, no rule pitch, no checkout link, only "vendas fechadas".
+export function captionFor(plan, channel, { salesOpen = false } = {}) {
+  // Publish phase: the caption approved in the bundle is used verbatim (never recomputed from current code).
+  const caption = plan.persistedCaptions?.[channel] ?? captionText(plan, channel, salesOpen === true);
+  if (salesOpen !== true && hasCheckoutCta(caption)) throw new Error("caption_checkout_cta_while_closed");
+  return caption;
+}
+function captionText(plan, channel, open) {
   const tags = "#pequenosnegocios #empreendedorismo #ia #zevanory";
-  // Sales are CLOSED: every slot (oferta included) advertises only free material, never a price or guarantee.
-  const offer = plan.screen.product + " · " + plan.screen.offer + ".";
+  // oferta OPEN (owner switch): product + single 7-day rule. oferta CLOSED (default): free material only + "vendas fechadas".
+  const offer = plan.slot && plan.slot !== "oferta" ? plan.screen.product + " · " + plan.screen.offer + "."
+    : (open ? plan.entry.product.name : plan.screen.product + " · " + plan.screen.offer) + " · " + (open ? SHORT_RULE : CLOSED_LABEL) + ".";
   const base = plan.title.replace(/ #shorts$/i, "") + "\n\n" + plan.screen.tip + "\n\n" + offer;
   if (channel === "tiktok") return (base + "\n" + (plan.slot && plan.slot !== "oferta" ? "No site: vendas.zevanory.api.br" : "Guia completo: vendas.zevanory.api.br") + "\n\n" + tags).slice(0, 2200);
   return (base + "\nGuia completo: " + plan.link.replace("utm_source=youtube", "utm_source=" + channel) + "\n\n" + tags).slice(0, 2200);
@@ -30,7 +41,7 @@ export async function publishTikTok(plan, mp4, { token, audited = false, fetchIm
   const privacy = audited && options.includes("PUBLIC_TO_EVERYONE") ? "PUBLIC_TO_EVERYONE" : options.includes("SELF_ONLY") ? "SELF_ONLY" : options[0];
   if (!privacy) throw new Error("tiktok_no_privacy_option");
   const init = await jsonOrThrow(await fetchImpl("https://open.tiktokapis.com/v2/post/publish/video/init/", { method: "POST", headers: auth, body: JSON.stringify({
-    post_info: { title: captionFor(plan, "tiktok"), privacy_level: privacy, disable_comment: false, disable_duet: false, disable_stitch: false, is_aigc: true, brand_content_toggle: false, brand_organic_toggle: true },
+    post_info: { title: captionFor(plan, "tiktok", { salesOpen: plan.salesOpen === true }), privacy_level: privacy, disable_comment: false, disable_duet: false, disable_stitch: false, is_aigc: true, brand_content_toggle: false, brand_organic_toggle: true },
     source_info: { source: "FILE_UPLOAD", video_size: mp4.length, chunk_size: mp4.length, total_chunk_count: 1 } }) }), "tiktok_init");
   const publishId = init?.data?.publish_id, upload = init?.data?.upload_url;
   if (!publishId || !upload) throw new Error("tiktok_init_incomplete");
@@ -48,7 +59,7 @@ export async function publishTikTok(plan, mp4, { token, audited = false, fetchIm
 
 // Instagram Reels: container from the public video URL, wait until FINISHED, publish.
 export async function publishInstagramReel(plan, videoUrl, { token, igId, fetchImpl = fetch, sleep = sleepMs }) {
-  const c = await jsonOrThrow(await fetchImpl(`${GRAPH}/${igId}/media`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ media_type: "REELS", video_url: videoUrl, caption: captionFor(plan, "instagram"), share_to_feed: true, access_token: token }) }), "instagram_container");
+  const c = await jsonOrThrow(await fetchImpl(`${GRAPH}/${igId}/media`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ media_type: "REELS", video_url: videoUrl, caption: captionFor(plan, "instagram", { salesOpen: plan.salesOpen === true }), share_to_feed: true, access_token: token }) }), "instagram_container");
   if (!c?.id) throw new Error("instagram_container_missing");
   for (let i = 0; i < 40; i++) {
     const st = await jsonOrThrow(await fetchImpl(`${GRAPH}/${c.id}?fields=status_code&access_token=${encodeURIComponent(token)}`), "instagram_status");
@@ -66,7 +77,7 @@ export async function publishInstagramReel(plan, videoUrl, { token, igId, fetchI
 // Facebook Page video (Reels-eligible vertical video) via direct file upload.
 export async function publishFacebookVideo(plan, mp4, { token, pageId, fetchImpl = fetch }) {
   const form = new FormData();
-  form.set("access_token", token); form.set("description", captionFor(plan, "facebook")); form.set("title", plan.title.slice(0, 95));
+  form.set("access_token", token); form.set("description", captionFor(plan, "facebook", { salesOpen: plan.salesOpen === true })); form.set("title", plan.title.slice(0, 95));
   form.set("source", new Blob([mp4], { type: "video/mp4" }), "zevanory-short.mp4");
   const out = await jsonOrThrow(await fetchImpl(`https://graph-video.facebook.com/v21.0/${pageId}/videos`, { method: "POST", body: form }), "facebook_video");
   if (!out?.id) throw new Error("facebook_video_missing");
@@ -76,7 +87,7 @@ export async function publishFacebookVideo(plan, mp4, { token, pageId, fetchImpl
 // Telegram channel: the same vertical video, native player (no external link preview needed).
 export async function publishTelegramVideo(plan, mp4, { token, chatId, fetchImpl = fetch }) {
   const form = new FormData();
-  form.set("chat_id", chatId); form.set("caption", captionFor(plan, "telegram").slice(0, 1024)); form.set("supports_streaming", "true");
+  form.set("chat_id", chatId); form.set("caption", captionFor(plan, "telegram", { salesOpen: plan.salesOpen === true }).slice(0, 1024)); form.set("supports_streaming", "true");
   form.set("video", new Blob([mp4], { type: "video/mp4" }), "zevanory-" + plan.day + ".mp4");
   const r = await fetchImpl(`https://api.telegram.org/bot${token}/sendVideo`, { method: "POST", body: form });
   const j = await r.json().catch(() => ({}));
@@ -85,8 +96,9 @@ export async function publishTelegramVideo(plan, mp4, { token, chatId, fetchImpl
   return { provider_post_id: String(j.result.message_id), url: handle ? `https://t.me/${handle}/${j.result.message_id}` : null };
 }
 
-export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now() }) {
-  const plan = planSlot(day, slot), report = {}, sfx = slot === "oferta" ? "" : "_" + slot, mediaId = slot === "oferta" ? day : day + "-" + slot;
+export async function crosspost({ day, slot = "oferta", mp4, env = process.env, kv, fetchImpl = fetch, sleep = sleepMs, now = Date.now(), salesOpen, approvedPlan = null }) {
+  const open = approvedPlan ? approvedPlan.salesOpen === true : typeof salesOpen === "boolean" ? salesOpen : await channelSalesOpen(kv);
+  const plan = approvedPlan || { ...planSlot(day, slot, { salesOpen: open }), salesOpen: open }, report = {}, sfx = slot === "oferta" ? "" : "_" + slot, mediaId = slot === "oferta" ? day : day + "-" + slot;
   const done = async ch => { const v = await kv.get(`zpc:acquisition:daily:${day}:${ch}${sfx}`); return v ? JSON.parse(v) : null; };
   const record = async (ch, r) => {
     await kv.put(`zpc:acquisition:daily:${day}:${ch}${sfx}`, JSON.stringify({ channel: ch, day, status: "publicado", provider_post_id: r.provider_post_id, url: r.url, privacy: r.privacy || "public", product: plan.entry.product.sku, at: new Date(now).toISOString() }), { expirationTtl: 400 * 86400 });
@@ -140,7 +152,17 @@ if (isMain) {
     // P05: only a file sealed by a PASS of zevanory-av-gate for exactly these bytes may be cross-posted.
     if (!(await avGateSealed(file))) { console.log(`::warning title=SHORT_CROSSPOST::${slot}=not_sealed_by_av_gate (not posted)`); continue; }
     let mp4; try { mp4 = await readFile(file); } catch { console.log(`::warning title=SHORT_CROSSPOST::${slot}=no_rendered_file`); continue; }
-    const report = await crosspost({ day, slot, mp4, kv });
+    // P05: cross-post with the APPROVED bundle metadata (title, description, captions), verified by hash.
+    let approvedPlan = null;
+    try {
+      const seal = JSON.parse(await readFile(file.replace(/\.mp4$/, ".av-gate.json"), "utf8"));
+      const bb = await kv.getBinary(CANDIDATE_PREFIX + "bundle:" + seal.bundle_sha256);
+      if (!bb || createHash("sha256").update(bb).digest("hex") !== seal.bundle_sha256) throw new Error("bundle_unverified");
+      const b = JSON.parse(Buffer.from(bb).toString("utf8"));
+      approvedPlan = { day: b.day, slot: b.slot, marker: b.marker, title: b.title, description: b.description, tags: b.tags, privacyStatus: b.privacy, link: b.link, salesOpen: b.sales_open === true,
+        entry: { theme_id: b.theme_id, product: { sku: b.product_sku, name: b.product_name } }, screen: b.screen || {}, persistedCaptions: b.captions || {} };
+    } catch (e) { console.log(`::warning title=SHORT_CROSSPOST::${slot}=approved_bundle_unavailable (not posted)`); continue; }
+    const report = await crosspost({ day, slot, mp4, kv, approvedPlan });
     for (const [ch, v] of Object.entries(report)) { if (v.startsWith("error")) errors++; console.log(`::${v.startsWith("error") ? "error" : "notice"} title=SHORT_CROSSPOST::${slot}:${ch}=${String(v).replace(/[\r\n]+/g, " ")}`); }
   }
   if (errors) process.exit(1);

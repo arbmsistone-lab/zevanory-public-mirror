@@ -14,6 +14,7 @@ import { handleMetaSocialInbound, runInboundLifecycle } from "./inbound-autonomy
 import { affiliateReport, applyAffiliateOrderOutcome, recordAffiliateAttribution, referralCookie, referralFromRequest, renderAffiliatePanel } from "./affiliate-program.mjs";
 import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveHistory as saveWhatsappHistory, speechText as whatsappSpeechText, voiceReplyBody } from "./whatsapp-conversation.mjs";
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
+import { CUSTOMER_RULE_7D, SHORT_RULE_LABEL } from "./politica-unica.mjs";
 import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -13792,7 +13793,7 @@ async function runNonCommercialAutopilot({ env = process.env, scheduledTime = Da
     for (let round2 = 1; round2 <= AUTOPILOT_POLICY.max_revision_rounds; round2++) {
       const focus = eliteSubjectLabel(subject);
       const angleHook = arm.angle === "practical" ? `${candidate.name} na pr\xE1tica` : arm.angle === "clarity" ? `${candidate.name} com clareza` : candidate.name;
-      const brief = { offerId: DEFAULT_CREATIVE_OFFER, channel, hook: round2 === 1 ? angleHook : `Decis\xE3o com evid\xEAncia`, body: round2 === 1 ? `Pesquisa e automa\xE7\xE3o com evid\xEAncia para ${subject}. Garantia de 7 dias.` : `Pesquisa validada, automa\xE7\xE3o pr\xE1tica e decis\xF5es com evid\xEAncia. Garantia de 7 dias.`, cta: "Conhe\xE7a a ZEVANORY", objective: "awareness", campaignId: `${cycleId}-${channel}-r${round2}` };
+      const brief = { offerId: DEFAULT_CREATIVE_OFFER, channel, hook: round2 === 1 ? angleHook : `Decis\xE3o com evid\xEAncia`, body: round2 === 1 ? `Pesquisa e automa\xE7\xE3o com evid\xEAncia para ${subject}. ${SHORT_RULE_LABEL}.` : `Pesquisa validada, automa\xE7\xE3o pr\xE1tica e decis\xF5es com evid\xEAncia. ${SHORT_RULE_LABEL}.`, cta: "Conhe\xE7a a ZEVANORY", objective: "awareness", campaignId: `${cycleId}-${channel}-r${round2}` };
       const selection = await selectCreative(sql, brief), winner = selection?.winner || {}, spec = winner.spec || {};
       const autonomy = evaluateCreativeWithRewrites(spec, { serverPrice: spec.price_brl, visualScore: winner.perceptual_score });
       const elite2 = autonomy.action === "publish";
@@ -14930,7 +14931,7 @@ async function ensureMercadoPagoDigitalDelivery(sql, { orderId, payment, provide
       to: [recipient],
       subject: sandboxV2 ? "[SANDBOX] Prova ZEVANORY" : "Seu acesso ZEVANORY",
       ...sandboxV2 ? { headers: { "X-Zevanory-Order-ID": String(orderId).toLowerCase() } } : {},
-      text: sandboxV2 ? `SANDBOX - sem valor comercial. Pedido ${String(orderId).toLowerCase()}.\nLink de verificacao: ${evidence.certification_verification_url}\nLink de entrega: ${evidence.download_url}` : `Pagamento confirmado. Obrigado por comprar na ZEVANORY!\n\nBaixe seu produto (link pessoal, valido por 72 horas, um download): ${evidence.download_url}\n\nCodigo do pedido: ${String(orderId).toLowerCase()}\nPerdeu o link ou ele expirou? Peca um novo em https://zevanory.api.br/entrega/reenviar\nGarantia de 7 dias: se nao for para voce, peca o reembolso em https://zevanory.api.br/pedir-reembolso\n\nDuvidas: suporte@zevanory.api.br ou WhatsApp https://wa.me/5588992545413\nA. RENAN ALVES MOREIRA BITU LTDA - CNPJ 69.077.233/0001-99`
+      text: sandboxV2 ? `SANDBOX - sem valor comercial. Pedido ${String(orderId).toLowerCase()}.\nLink de verificacao: ${evidence.certification_verification_url}\nLink de entrega: ${evidence.download_url}` : `Pagamento confirmado. Obrigado por comprar na ZEVANORY!\n\nBaixe seu produto (link pessoal, valido por 72 horas, um download): ${evidence.download_url}\n\nCodigo do pedido: ${String(orderId).toLowerCase()}\nPerdeu o link ou ele expirou? Peca um novo, sem custo, em https://zevanory.api.br/entrega/reenviar\nArrependimento: voce pode desistir em ${CUSTOMER_RULE_7D}, com devolucao integral: https://zevanory.api.br/pedir-reembolso\n\nDuvidas: suporte@zevanory.api.br ou WhatsApp https://wa.me/5588992545413\nA. RENAN ALVES MOREIRA BITU LTDA - CNPJ 69.077.233/0001-99`
     })
   });
   const sent = await response2.json().catch(() => ({}));
@@ -18347,7 +18348,7 @@ var cloudflare_worker_default = {
       const expected = String(env.CERTIFICATION_E2E_TOKEN || process.env.CERTIFICATION_E2E_TOKEN || ""), provided = String(request.headers.get("x-certification-e2e-token") || "");
       if (!expected || !secureTokenEqual(expected, provided)) return withSecurityHeaders(new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } }), env);
       const existing=await env.ZEVANORY_PRIVATE_ARTIFACTS?.get?.("zpc:multichannel:proof:telegram");if(existing)return withSecurityHeaders(new Response(String(existing),{status:200,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}}),env);
-      const spec={brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1080,hook:"IA prática para organizar o seu negócio",body:"Organize tarefas repetitivas com clareza e controle. Conheça a ZEVANORY por R$ 197,00. Garantia de 7 dias.",cta:"Acessar material gratuito",price_brl:197};
+      const spec={brand:"ZEVANORY",site:"zevanory.api.br",width:1080,height:1080,hook:"IA prática para organizar o seu negócio",body:"Organize tarefas repetitivas com clareza e controle. Conheça a ZEVANORY por R$ 197,00. "+SHORT_RULE_LABEL+".",cta:"Acessar material gratuito",price_brl:197};
       const approved=evaluateCreativeWithRewrites(spec,{serverPrice:197,visualScore:1});
       if(approved.action!=="publish"||approved.score<85||approved.compliance!==100)return withSecurityHeaders(new Response(JSON.stringify({error:"creative_not_approved"}),{status:409,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}}),env);
       const creativeId=`telegram-proof-${new Date().toISOString().slice(0,10)}`;
@@ -18372,7 +18373,7 @@ var cloudflare_worker_default = {
     }
     if (url.pathname === "/blog" || url.pathname === "/blog/") return withSecurityHeaders(new Response(await renderBlogIndex(env),{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=300"}}),env);
     if (request.method === "GET" && url.pathname === "/api/autonomy/evidence") return withSecurityHeaders(new Response(JSON.stringify(await collectAutonomyHealth(env,new Date(),{persist:false})),{status:200,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store"}}),env);
-    if (url.pathname.startsWith("/blog/")) { const article=await renderBlogArticle(env,decodeURIComponent(url.pathname.slice(6))); return withSecurityHeaders(new Response(article||"not found",{status:article?200:404,headers:{"content-type":article?"text/html; charset=utf-8":"text/plain; charset=utf-8","cache-control":article?"public, max-age=300":"no-store"}}),env); }
+    if (url.pathname.startsWith("/blog/")) { const article=await renderBlogArticle(env,decodeURIComponent(url.pathname.slice(6))); return withSecurityHeaders(new Response(article||"not found",{status:article?200:404,headers:{"content-type":article?"text/html; charset=utf-8":"text/plain; charset=utf-8","cache-control":"no-store"}}),env); }  // P13c: article CTA follows the sales switch, never cached
     if (url.pathname === "/sitemap.xml") { const base=await env.ASSETS.fetch(new Request(url,{method:"GET"})); return withSecurityHeaders(new Response(await appendBlogSitemap(env,await base.text()),{status:base.status,headers:{"content-type":"application/xml; charset=utf-8","cache-control":"public, max-age=300"}}),env); }
     if (request.method === "POST" && url.pathname === "/api/webhooks/meta") return withSecurityHeaders(await handleNodeWebhookFetch(request, handler26), env);
     if (url.pathname === "/arbm-one" || url.pathname === "/arbm-one.html") {

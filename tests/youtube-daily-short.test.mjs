@@ -12,10 +12,14 @@ test("daily plan follows the calendar, passes the gate with SALES CLOSED (no pri
     assert.equal(p.privacyStatus, "public");
     assert.match(p.marker, /^zevanory-short-key:[0-9a-f]{16}$/);
     assert.ok(p.description.includes(p.marker));
+    // P05 + P13c: CLOSED (default) => free material, no price/CTA/rule; OPEN (owner switch) => product checkout.
     assert.match(p.link, /^https:\/\/vendas\.zevanory\.api\.br\/material-gratuito\?utm_source=youtube&utm_medium=short&utm_campaign=oferta_/);
     assert.equal(p.price, null);
     assert.ok(p.title.length <= 95);
-    assert.doesNotMatch(JSON.stringify([p.title, p.description, p.speech, p.screen, p.link]), /\/comprar|R\$|garantia de (7|sete) dias|compre/i);
+    assert.doesNotMatch(JSON.stringify([p.title, p.description, p.speech, p.screen, p.link]), /\/comprar|R\$|garantia de (7|sete) dias|compre|arrependimento/i);
+    const o = planShort(day, { salesOpen: true });
+    assert.match(o.link, new RegExp("^https://vendas\\.zevanory\\.api\\.br/comprar/" + e.product.sku + "\\?utm_source=youtube"));
+    assert.ok(o.title.includes(e.product.name));
     assert.doesNotMatch(p.description + p.speech, /lucro garantido|renda garantida|ganhe dinheiro|resultado garantido/i);
   }
   assert.notEqual(planShort("2026-10-11").marker, planShort("2026-10-12").marker);
@@ -93,7 +97,7 @@ test("Short lasts as long as the narration (no dead air) and reveals every line 
 });
 
 test("beats snap to the real pauses of the voice and keep their order", () => {
-  const said = [["Sem tempo para organizar?", "Isso é para salões de beleza."], ["Comece com 15 minutos por semana."], ["Vendas na Prática, com garantia de sete dias."], ["Veja o guia no link da descrição."]];
+  const said = [["Sem tempo para organizar?", "Isso é para salões de beleza."], ["Comece com 15 minutos por semana."], ["Vendas na Prática, com arrependimento em sete dias corridos."], ["Veja o guia no link da descrição."]];
   const starts = beatTimes(said, 12, [1.4, 3.9, 6.6, 9.2], 13.2);
   assert.deepEqual(starts, [0, 3.9, 6.6, 9.2]);
   const fallback = beatTimes(said, 12, [], 13.2);
@@ -105,7 +109,8 @@ test("every calendar day has a full on-screen script that wraps within the frame
     assert.equal(p.said.length, 4);
     for (const k of ["hook", "niche", "tip", "product", "offer", "cta", "url"]) assert.ok(String(p.screen[k] || "").trim(), k);
     assert.ok(wrapText(p.screen.hook, 14, 3), "hook fits in 3 lines");
-    assert.doesNotMatch(p.speech, /garantia de sete dias|reais/);
+    assert.doesNotMatch(p.speech + p.description, /garantia|arrependimento|reais/i);  // closed: no purchase rule pitch
+    assert.match(planShort(day, { salesOpen: true }).speech, /arrependimento em sete dias corridos/);
   }
 });
 
