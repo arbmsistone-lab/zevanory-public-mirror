@@ -47,20 +47,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Unidade (failover, disjuntor, sondagem única, erros de KV, boleto, webhook, fila/DLQ, estorno por intenção) — 69 testes
+      - name: Unidade (failover, disjuntor, sondagem única, erros de KV, boleto, webhook, fila/DLQ e alerta pendente, prazo da sondagem, estorno por intenção) — 78 testes
         run: |
           set -eo pipefail
           node --test tests/psp/*.test.mjs | tee u.txt
-          grep -qx "# tests 69" u.txt && grep -qx "# pass 69" u.txt && grep -qx "# skipped 0" u.txt && grep -qx "# fail 0" u.txt && grep -qx "# cancelled 0" u.txt
+          grep -qx "# tests 78" u.txt && grep -qx "# pass 78" u.txt && grep -qx "# skipped 0" u.txt && grep -qx "# fail 0" u.txt && grep -qx "# cancelled 0" u.txt
           echo "::notice title=PSP_COUNTS_UNIT::$(grep -E '^# (tests|pass|fail|skipped|cancelled) ' u.txt | paste -sd' ' -)"
-      - name: Bundle real + PostgreSQL 16 (failover, trava, meia-abertura, KV falhando, boleto, webhook, drenagem/DLQ) — 20 testes
+      - name: Bundle real + PostgreSQL 16 (failover, trava, meia-abertura, KV falhando, boleto, webhook, drenagem/DLQ, alerta pendente, prazo da sondagem) — 22 testes
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
         run: |
           set -eo pipefail
           node --import ./tests/t4_sim/register.mjs --test tests/integration/psp-checkout-postgres.test.mjs | tee c.txt
-          grep -qx "# tests 20" c.txt && grep -qx "# pass 20" c.txt && grep -qx "# skipped 0" c.txt && grep -qx "# fail 0" c.txt && grep -qx "# cancelled 0" c.txt
+          grep -qx "# tests 22" c.txt && grep -qx "# pass 22" c.txt && grep -qx "# skipped 0" c.txt && grep -qx "# fail 0" c.txt && grep -qx "# cancelled 0" c.txt
           echo "::notice title=PSP_COUNTS_CHECKOUT_PG::$(grep -E '^# (tests|pass|fail|skipped|cancelled) ' c.txt | paste -sd' ' -)"
       - name: Estorno Pix por intenção persistida, conexões concorrentes reais — 9 testes
         env:
@@ -71,15 +71,24 @@ jobs:
           node --test tests/integration/psp-refund-intent-postgres.test.mjs | tee r.txt
           grep -qx "# tests 9" r.txt && grep -qx "# pass 9" r.txt && grep -qx "# skipped 0" r.txt && grep -qx "# fail 0" r.txt && grep -qx "# cancelled 0" r.txt
           echo "::notice title=PSP_COUNTS_REFUND_PG::$(grep -E '^# (tests|pass|fail|skipped|cancelled) ' r.txt | paste -sd' ' -)"
-      - name: Sondagem única na meia-abertura coordenada pelo PostgreSQL, conexões concorrentes reais — 3 testes
+      - name: Sondagem única na meia-abertura coordenada pelo PostgreSQL e prazo abaixo do lease, conexões concorrentes reais — 4 testes
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
         run: |
           set -eo pipefail
           node --test tests/integration/psp-breaker-postgres.test.mjs | tee b.txt
-          grep -qx "# tests 3" b.txt && grep -qx "# pass 3" b.txt && grep -qx "# skipped 0" b.txt && grep -qx "# fail 0" b.txt && grep -qx "# cancelled 0" b.txt
+          grep -qx "# tests 4" b.txt && grep -qx "# pass 4" b.txt && grep -qx "# skipped 0" b.txt && grep -qx "# fail 0" b.txt && grep -qx "# cancelled 0" b.txt
           echo "::notice title=PSP_COUNTS_BREAKER_PG::$(grep -E '^# (tests|pass|fail|skipped|cancelled) ' b.txt | paste -sd' ' -)"
+      - name: Alerta da DLQ exatamente uma vez (livro-razão PostgreSQL, drenagens concorrentes reais) — 4 testes
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/psp-dlq-alert-postgres.test.mjs | tee a.txt
+          grep -qx "# tests 4" a.txt && grep -qx "# pass 4" a.txt && grep -qx "# skipped 0" a.txt && grep -qx "# fail 0" a.txt && grep -qx "# cancelled 0" a.txt
+          echo "::notice title=PSP_COUNTS_DLQ_ALERT_PG::$(grep -E '^# (tests|pass|fail|skipped|cancelled) ' a.txt | paste -sd' ' -)"
       - name: Gate "dois PSPs prontos" (offline, sem segredo) — 17 verificações
         run: |
           set -eo pipefail
@@ -110,7 +119,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Mutantes (32; cada um precisa ser MORTO por asserção funcional)
+      - name: Mutantes (46; cada um precisa ser MORTO por asserção funcional)
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
@@ -120,42 +129,52 @@ jobs:
           python3 scripts/ci/mutants_psp.py < /dev/null | tee mut.txt || rc=$?
           echo "rc=$rc"
           # Linha FINAL de cada mutante (a última tentativa).
-          grep -E '^MUTANT [MRBQ][0-9]{2}_' mut.txt | awk '{a[$2]=$0} END {for (k in a) print a[k]}' | sort > final.txt
+          grep -E '^MUTANT [MRBQD][0-9]{2}_' mut.txt | awk '{a[$2]=$0} END {for (k in a) print a[k]}' | sort > final.txt
           cat final.txt
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
           n="$(grep -c ' KILLED reason=assercao:' final.txt || true)"
-          [ "$n" = "32" ] || { echo "::error::esperados 32 mutantes mortos por asserção, obtidos $n"; exit 1; }
+          [ "$n" = "46" ] || { echo "::error::esperados 46 mutantes mortos por asserção, obtidos $n"; exit 1; }
           if grep -qE ' (SURVIVED|INCONCLUSIVE) ' final.txt; then echo "::error::mutante sobrevivente ou inconclusivo"; exit 1; fi
-          grep -qx 'MUTANTS_TOTAL=32 KILLED=32 SURVIVED=0 INCONCLUSIVE=0 RETRIES=2' mut.txt
+          grep -qx 'MUTANTS_TOTAL=46 KILLED=46 SURVIVED=0 INCONCLUSIVE=0 RETRIES=2' mut.txt
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi
-      # O GitHub limita a 10 anotações por etapa: as 32 linhas finais saem em 5 etapas.
-      - name: Anotações 1/5 (M01–M10)
+      # O GitHub limita a 10 anotações por etapa: as 46 linhas finais saem em 7 etapas.
+      - name: Anotações 1/7 (M01–M10)
         if: always()
         run: |
           [ -f final.txt ] || exit 0
           grep -E '^MUTANT M(0[1-9]|10)_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
-      - name: Anotações 2/5 (M11–M14 e linha de base)
+      - name: Anotações 2/7 (M11–M14 e linha de base)
         if: always()
         run: |
           [ -f mut.txt ] || exit 0
           grep -E '^MUTANT M1[1-4]_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
           grep -E '^MUTANT BASELINE' mut.txt | while read -r l; do echo "::notice title=MUTANT_BASELINE_$(echo "$l" | cut -d' ' -f3)::$(echo "$l" | cut -d' ' -f4-)"; done
-      - name: Anotações 3/5 (R01–R07 e total)
+      - name: Anotações 3/7 (R01–R07 e total)
         if: always()
         run: |
           [ -f mut.txt ] || exit 0
           grep -E '^MUTANT R0[1-7]_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
           echo "::notice title=MUTANTS_PSP_TOTAL::$(grep '^MUTANTS_TOTAL=' mut.txt || echo ausente)"
-      - name: Anotações 4/5 (B01–B06, sondagem única e erros de KV)
+      - name: Anotações 4/7 (B01–B06, sondagem única e erros de KV)
         if: always()
         run: |
           [ -f final.txt ] || exit 0
           grep -E '^MUTANT B0[1-6]_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
-      - name: Anotações 5/5 (Q01–Q05, fila de revisão/DLQ)
+      - name: Anotações 5/7 (Q01–Q05, fila de revisão/DLQ)
         if: always()
         run: |
           [ -f final.txt ] || exit 0
           grep -E '^MUTANT Q0[1-5]_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
+      - name: Anotações 6/7 (Q06–Q13, alerta da DLQ pendente e idempotente)
+        if: always()
+        run: |
+          [ -f final.txt ] || exit 0
+          grep -E '^MUTANT Q(0[6-9]|1[0-3])_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
+      - name: Anotações 7/7 (D01–D06, prazo da sondagem abaixo do lease)
+        if: always()
+        run: |
+          [ -f final.txt ] || exit 0
+          grep -E '^MUTANT D0[1-6]_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
       - name: Meta-teste — infraestrutura (ECONNRESET real injetado, sem mutação) nunca vira KILLED
         env:
           T4_PG_HOST: localhost

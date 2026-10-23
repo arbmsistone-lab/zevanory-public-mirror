@@ -6,7 +6,8 @@ conferido a cada mutante e no fim):
   unit      node --test tests/psp/*.test.mjs                                       (módulos, sem rede)
   checkout  bundle REAL + PostgreSQL efêmero: tests/integration/psp-checkout-postgres.test.mjs
   refund    PostgreSQL efêmero, conexões concorrentes reais: tests/integration/psp-refund-intent-postgres.test.mjs
-  breaker   PostgreSQL efêmero, sondagem única na meia-abertura: tests/integration/psp-breaker-postgres.test.mjs
+  breaker   PostgreSQL efêmero, sondagem única na meia-abertura e prazo < lease: tests/integration/psp-breaker-postgres.test.mjs
+  dlq       PostgreSQL efêmero, alerta da DLQ exatamente uma vez: tests/integration/psp-dlq-alert-postgres.test.mjs
 
 Classificação (mesma regra do auditor Sol aplicada no #868), falha a falha na saída TAP:
   * KILLED       — pelo menos uma falha de ASSERÇÃO (AssertionError / ERR_ASSERTION) num teste ESPERADO para o mutante,
@@ -16,7 +17,7 @@ Classificação (mesma regra do auditor Sol aplicada no #868), falha a falha na 
   * INCONCLUSIVE — qualquer outra coisa (infra/transporte, timeout, hook, cancelamento, contagem incompleta, rc != 0 sem
                    falha TAP, asserção só fora dos testes esperados, falha sem asserção não prevista). Repetido até
                    RETRIES vezes; persistindo, o job FALHA (nunca conta como KILLED).
-Saída: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE reason=... unit_fail= checkout_fail= refund_fail= breaker_fail= attempt=`
+Saída: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE reason=... unit_fail= checkout_fail= refund_fail= breaker_fail= dlq_fail= attempt=`
 e `MUTANTS_TOTAL=N KILLED=k SURVIVED=s INCONCLUSIVE=i`.
 
 Modos:
@@ -42,10 +43,11 @@ RETRIES = 2
 TAP = ["--test-reporter=tap", "--test-reporter-destination=stdout"]
 UNIT_FILES = sorted(os.path.relpath(p, REPO) for p in glob.glob(str(REPO / "tests/psp/*.test.mjs")))
 SUITES = {  # nome -> (comando, contagem exata)
-    "unit": (["node", "--test", *TAP, *UNIT_FILES], 69),
-    "checkout": (["node", "--import", "./tests/t4_sim/register.mjs", "--test", *TAP, "tests/integration/psp-checkout-postgres.test.mjs"], 20),
+    "unit": (["node", "--test", *TAP, *UNIT_FILES], 78),
+    "checkout": (["node", "--import", "./tests/t4_sim/register.mjs", "--test", *TAP, "tests/integration/psp-checkout-postgres.test.mjs"], 22),
     "refund": (["node", "--test", *TAP, "tests/integration/psp-refund-intent-postgres.test.mjs"], 9),
-    "breaker": (["node", "--test", *TAP, "tests/integration/psp-breaker-postgres.test.mjs"], 3),
+    "breaker": (["node", "--test", *TAP, "tests/integration/psp-breaker-postgres.test.mjs"], 4),
+    "dlq": (["node", "--test", *TAP, "tests/integration/psp-dlq-alert-postgres.test.mjs"], 4),
 }
 SUITE_TIMEOUT = 600
 
@@ -99,7 +101,7 @@ M = {
     "M12_asaas_sem_on_conflict": sub("bundle", "        ON CONFLICT DO NOTHING\n        RETURNING order_id,normalized_event,refunded_total",
                                      "        RETURNING order_id,normalized_event,refunded_total", start_marker="async function handler15("),
     # --- boleto ---
-    "M13_boleto_timeout_sem_reconciliar": sub("boleto", "const after = await findExisting(fetchImpl, base, headers, ref, expect, timeoutMs);", "const after = { known: false };"),
+    "M13_boleto_timeout_sem_reconciliar": sub("boleto", "const after = await findExisting(fetchImpl, base, headers, ref, expect, timeoutMs, signal);", "const after = { known: false };"),
     "M14_boleto_ambiguo_vira_retentavel": sub("bundle", "if (providerError instanceof BoletoError && providerError.definitive) {", "if (providerError instanceof BoletoError) {"),
     # --- estorno Pix por intenção (Ordem 076-7) ---
     "R01_estorno_ignora_valor": sub("refund", "payment_id = $1::text AND amount_cents = $2::bigint", "payment_id = $1::text AND $2::bigint > 0"),
@@ -117,8 +119,7 @@ M = {
     "R07_intencao_sem_pagamento_confirmado": sub("refund", "  AND EXISTS (SELECT 1 FROM financial_events fe WHERE fe.order_id = o.order_id AND fe.provider = 'asaas'\n              AND fe.provider_payment_id = $3::text AND fe.normalized_event = 'payment_confirmed')\n", ""),
     # --- Sol AVAL 083: sondagem única (coordenador forte) e erros de armazenamento explícitos ---
     "B01_lease_nao_exclusivo": sub("failover", "WHERE psp_circuit_probes.lease_until <= now()\n", ""),
-    "B02_meia_abertura_ignora_coordenador": sub("failover", 'return { ...s, admitted: got, probe: got, reason: got ? "half_open_probe" : "probe_in_flight" };',
-                                                 'return { ...s, admitted: true, probe: true, reason: "half_open_probe" };'),
+    "B02_meia_abertura_ignora_coordenador": sub("failover", "if (!got) { stop(); return", "if (false) { stop(); return"),
     "B03_fallback_desconhecido_aberto": sub("failover", 'admitted: primary === true, reason: primary === true ?', 'admitted: true, reason: primary === true ?'),
     "B04_leitura_falha_vira_fechado": sub("failover", 'catch (error) { storeError("read", provider, error); return { error: "read_failed" }; }',
                                            "catch (error) { return { failures: [], opened_at: null }; }"),
@@ -127,12 +128,28 @@ M = {
                                                 'return { ...s, admitted: true, reason: "probe_coordinator_unavailable" };'),
     # --- Sol AVAL 083: fila de revisão (drenagem, DLQ, alerta, idempotência) ---
     "Q01_fila_nunca_vai_para_dlq": sub("hook", "if (!valid || attempts >= maxAttempts || age >= maxAgeMs) {", "if (!valid) {"),
-    "Q02_dlq_sem_alerta": sub("hook", "try { sent = (await alert?.({", "try { sent = false && (await alert?.({"),
+    "Q02_dlq_sem_alerta": sub("hook", "const r = await Promise.race([Promise.resolve().then(() => alert?.(payload)), timeout]);", "const r = { sent: false };"),
     "Q03_antecipado_marcado_processado": sub("bundle",
         '      logAsaasWebhook(console, { ...logFields, outcome: "refund_before_payment_recorded" });\n      return json11(res, 200, { accepted: true, ignored: true, reason: "refund_before_payment_recorded", reconciliation_required: true, order_id: String(orders[0].order_id) });',
         '      return done(200, { accepted: true, ignored: true, reason: "refund_before_payment_recorded", reconciliation_required: true, order_id: String(orders[0].order_id) }, "refund_before_payment_recorded");'),
     "Q04_alerta_repetido": sub("hook", "if (!already) {", "if (true) {"),
     "Q05_erro_do_dedupe_engolido": sub("hook", 'catch (error) { kvError("dedupe_read", error, logger); return false; }', "catch { return false; }"),
+    # --- Sol AVAL 094 (#879-1): alerta da DLQ pendente, reenvio idempotente, exatamente um ---
+    "Q06_falha_do_alerta_descarta_pendencia": sub("hook", "const exhausted = attempts >= alertMaxAttempts;", "const exhausted = true;"),
+    "Q07_sem_reenvio_das_pendencias": sub("hook", "for (const { name } of pendingKeys.slice(0, limit)) {", "for (const { name } of [].slice(0, limit)) {"),
+    "Q08_sem_reivindicacao_exclusiva": sub("hook", "if (!claim?.claimed) {", "if (false) {"),
+    "Q09_reenvia_apos_sucesso": sub("hook", '      return finalizeAlert(id, markerKey, "sent", attempts);\n    }\n    const exhausted', "      return;\n    }\n    const exhausted"),
+    "Q10_sem_chave_de_idempotencia": sub("hook", "cause: String(marker.cause || \"\"), idempotency_key: key });", "cause: String(marker.cause || \"\"), idempotency_key: \"\" });"),
+    "Q11_sem_recuo": sub("hook", "if (Number.isFinite(marker.next_ms) && marker.next_ms > Number(now)) { out.alert_waiting += 1; return; }", ""),
+    "Q12_reivindicacao_pg_sem_exclusao": sub("hook", "  AND (claim_until IS NULL OR claim_until <= now()) AND attempts < $4::int", "  AND attempts < $4::int"),
+    "Q13_falha_do_alerta_nao_logada": sub("hook", '    log("asaas_webhook_dlq_alert_failed", {', '    void ("asaas_webhook_dlq_alert_failed", {'),
+    # --- Sol AVAL 094 (#879-2): prazo da sondagem estritamente abaixo do lease ---
+    "D01_sondagem_sem_prazo": sub("failover", "const timer = timers.setTimeout(() => controller.abort(new PspProbeDeadlineError(timing.deadlineMs)), timing.deadlineMs);", "const timer = null;"),
+    "D02_prazo_sem_validacao": sub("failover", "  if (!t.ok) throw Object.assign(", "  if (false) throw Object.assign("),
+    "D03_timeout_maximo_25s": sub("failover", "export const PSP_PROVIDER_TIMEOUT_MAX_MS = PROBE_LEASE_MS - PROBE_LEASE_SAFETY_MS - PROBE_DB_BUDGET_MS;", "export const PSP_PROVIDER_TIMEOUT_MAX_MS = 25_000;"),
+    "D04_config_invalida_admite_sondagem": sub("failover", "if (probeConfigError) {", "if (false) {"),
+    "D05_orquestrador_espera_o_handler": sub("failover", "health.probe === true ? await invokeProbeWithDeadline(invoke, provider, health) : await invoke(provider, {});", "await invoke(provider, { signal: health.signal });"),
+    "D06_handler_ignora_sinal_da_sondagem": sub("bundle", "Object.assign(req, { pspProbeSignal: ctx.signal || null })", "Object.assign(req, { pspProbeSignal: null })"),
 }
 
 # Testes que DEVEM falhar por asserção (prefixo do nome TAP, com espaço) — derivados do comportamento quebrado.
@@ -169,6 +186,20 @@ EXPECT = {
     "Q03_antecipado_marcado_processado": {"checkout": ("W6 ",)},
     "Q04_alerta_repetido": {"unit": ("W13 ",)},
     "Q05_erro_do_dedupe_engolido": {"unit": ("W15 ",)},
+    "Q06_falha_do_alerta_descarta_pendencia": {"unit": ("W16 ", "W19 "), "checkout": ("W8 ",), "dlq": ("A2 ",)},
+    "Q07_sem_reenvio_das_pendencias": {"unit": ("W16 ", "W19 "), "checkout": ("W8 ",), "dlq": ("A2 ",)},
+    "Q08_sem_reivindicacao_exclusiva": {"unit": ("W19 ", "W20 ", "W21 "), "dlq": ("A2 ", "A4 ")},
+    "Q09_reenvia_apos_sucesso": {"unit": ("W16 ", "W17 "), "checkout": ("W8 ",)},
+    "Q10_sem_chave_de_idempotencia": {"unit": ("W11 ", "W16 "), "checkout": ("W8 ",), "dlq": ("A2 ",)},
+    "Q11_sem_recuo": {"unit": ("W16 ",)},
+    "Q12_reivindicacao_pg_sem_exclusao": {"dlq": ("A1 ", "A2 ", "A3 ")},
+    "Q13_falha_do_alerta_nao_logada": {"unit": ("W16 ",)},
+    "D01_sondagem_sem_prazo": {"unit": ("F31 ",), "breaker": ("P4 ",), "checkout": ("C10 ",)},
+    "D02_prazo_sem_validacao": {"unit": ("F32 ",)},
+    "D03_timeout_maximo_25s": {"unit": ("F32 ",)},
+    "D04_config_invalida_admite_sondagem": {"unit": ("F32 ",)},
+    "D05_orquestrador_espera_o_handler": {"unit": ("F31 ",)},
+    "D06_handler_ignora_sinal_da_sondagem": {"checkout": ("C10 ",)},
 }
 assert set(M) == set(EXPECT), "cada mutante precisa da lista de testes esperados"
 
