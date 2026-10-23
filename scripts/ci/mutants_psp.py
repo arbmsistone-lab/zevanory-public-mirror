@@ -95,7 +95,7 @@ M = {
     "M09_comparacao_nao_constante": sub("failover", "const same = crypto.timingSafeEqual(da, db);", "const same = a === b;"),
     "M10_webhook_confia_no_corpo": sub("bundle", "const payment = await fetchAsaasPayment(webhook.paymentId, process.env.ASAAS_ENV, process.env.ASAAS_API_KEY);",
                                        "const payment = webhookBody.payment;"),
-    "M11_dedupe_kv_desligado": sub("hook", "try { return Boolean(await kv.get(ASAAS_WEBHOOK_DEDUPE_PREFIX + id)); } catch { return false; }", "return false;"),
+    "M11_dedupe_kv_desligado": sub("hook", 'try { return Boolean(await kv.get(ASAAS_WEBHOOK_DEDUPE_PREFIX + id)); } catch (error) { kvError("dedupe_read", error, logger); return false; }', "return false;"),
     "M12_asaas_sem_on_conflict": sub("bundle", "        ON CONFLICT DO NOTHING\n        RETURNING order_id,normalized_event,refunded_total",
                                      "        RETURNING order_id,normalized_event,refunded_total", start_marker="async function handler15("),
     # --- boleto ---
