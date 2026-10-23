@@ -1,7 +1,8 @@
-// Gates Lighthouse: todo workflow que invoca Lighthouse fixa uma versão EXATA >= 13 (o 12.x reprova o
-// "Content-Signal" que o Managed robots.txt da Cloudflare antepõe ao robots.txt da zona: robots-txt=0,
-// SEO 92) e nenhum limiar, URL ou categoria auditada muda. Workflow novo com Lighthouse precisa ser
-// registrado aqui com seus limiares.
+// Gates Lighthouse: todo workflow que invoca Lighthouse usa EXATAMENTE a versão aprovada abaixo (fonte
+// única; o 12.x reprova o "Content-Signal" que o Managed robots.txt da Cloudflare antepõe ao robots.txt
+// da zona: robots-txt=0, SEO 92) e nenhum limiar, URL ou categoria auditada muda. Trocar de versão exige
+// mudar APPROVED_LIGHTHOUSE aqui (revisão explícita) e todos os workflows no mesmo PR. Workflow novo com
+// Lighthouse precisa ser registrado aqui com seus limiares.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
@@ -10,6 +11,7 @@ import { readTextNormalized } from "./helpers/text.mjs";
 const dir = new URL("../.github/workflows/", import.meta.url);
 const workflows = Object.fromEntries(readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).map((f) => [f, readTextNormalized(new URL(f, dir))]));
 const f5Gate = readTextNormalized(new URL("../scripts/f5_lighthouse_gate.mjs", import.meta.url));
+export const APPROVED_LIGHTHOUSE = "13.5.0";
 const CATEGORIES = "--only-categories=performance,accessibility,best-practices,seo";
 const count = (text, needle) => text.split(needle).length - 1;
 
@@ -39,15 +41,17 @@ const GATES = {
   ],
 };
 
-test("every workflow that invokes Lighthouse is registered and pins an exact version >= 13", () => {
+test(`every workflow that invokes Lighthouse is registered and pins exactly lighthouse@${APPROVED_LIGHTHOUSE}`, () => {
+  assert.match(APPROVED_LIGHTHOUSE, /^\d+\.\d+\.\d+$/);
+  assert.ok(Number(APPROVED_LIGHTHOUSE.split(".")[0]) >= 13, "lighthouse 12.x flags Cloudflare Content-Signal as invalid robots.txt");
   const invoking = Object.keys(workflows).filter((f) => /npx lighthouse|lighthouse@|lighthouse\/cli|f5_lighthouse_gate/.test(workflows[f])).sort();
   assert.deepEqual(invoking, Object.keys(GATES).sort(), "workflow with Lighthouse not registered (or registered one no longer runs it)");
   for (const [f, text] of Object.entries(workflows)) {
-    const pins = [...text.matchAll(/lighthouse@([^\s"'`]+)/g)].map((m) => m[1]);
+    const pins = [...text.matchAll(/lighthouse@([^\s"'`]*)/g)].map((m) => m[1]);
     if (GATES[f]) assert.ok(pins.length >= 1, f + ": installs Lighthouse without an explicit pin");
-    for (const v of pins) {
-      assert.match(v, /^\d+\.\d+\.\d+$/, `${f}: lighthouse must be pinned to an exact version, got ${v}`);
-      assert.ok(Number(v.split(".")[0]) >= 13, `${f}: lighthouse ${v} flags Cloudflare Content-Signal as invalid robots.txt`);
+    for (const v of pins) assert.equal(v, APPROVED_LIGHTHOUSE, `${f}: lighthouse@${v} differs from the approved lighthouse@${APPROVED_LIGHTHOUSE}`);
+    for (const line of text.split("\n").filter((l) => /\bnpm\s+(install|i|add)\b/.test(l))) {
+      assert.ok(!line.split(/\s+/).includes("lighthouse"), `${f}: unpinned lighthouse in: ${line.trim()}`);
     }
   }
 });
