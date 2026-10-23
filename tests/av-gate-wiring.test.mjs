@@ -7,7 +7,7 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import { writeFile, rm, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderShort, avGate, avGateSealed, humanApproved, brandVoice, brandVoiceQueued, recordSlotLost, slotLostKey, VOICE_RETRY, BRAND_VOICE, planSlot, SLOTS, salesClosedViolations } from "../scripts/channels/youtube-daily-short.mjs";
+import { renderShort, avGate, avGateSealed, humanApproved, fsCandidateStore, storeCandidate, publishApproved, brandVoice, brandVoiceQueued, recordSlotLost, slotLostKey, VOICE_RETRY, BRAND_VOICE, planSlot, SLOTS, salesClosedViolations } from "../scripts/channels/youtube-daily-short.mjs";
 
 // Code only (comments may name what was removed).
 const SRC = readTextNormalized(new URL("../scripts/channels/youtube-daily-short.mjs", import.meta.url)).split("\n").filter(l => !/^\s*\/\//.test(l)).map(l => l.replace(/\s\/\/ .*$/, "")).join("\n");
@@ -43,10 +43,11 @@ for (const verdict of ["FAIL", "BLOCKED", "ERROR_INFRA"]) {
   });
 }
 
-test("technical pass is NOT final: without a human approval for these exact bytes nothing is sealed", async () => {
+test("PHASE 1: a technical pass yields a candidate (bytes + sha256) and NEVER a publishable/sealed file", async () => {
   const b = await base("pending");
   const gate = async () => ({ verdict: "PASS_TECH_PENDING_HUMAN", failed: [], blocked: [], errors: [] });
-  await assert.rejects(renderShort(planSlot("2026-10-22", "calc"), b, { geminiKey: "k", voice: voiceOk, pack: fakePack, video: fakeVideo, gate, approvals: async () => null }), /av_gate_PENDING_HUMAN:/);
+  const r = await renderShort(planSlot("2026-10-22", "calc"), b, { geminiKey: "k", voice: voiceOk, pack: fakePack, video: fakeVideo, gate });
+  assert.match(r.sha, /^[0-9a-f]{64}$/); assert.equal(r.bytes.toString(), "mp4-bytes-calc");
   assert.equal(existsSync(b + ".mp4"), false);
   assert.equal(await avGateSealed(b + ".mp4"), false);
   // approvals file: only an entry for exactly this sha256 with approver + date counts
@@ -58,13 +59,48 @@ test("technical pass is NOT final: without a human approval for these exact byte
   assert.equal(await humanApproved("ab", { file: undefined }), null);
 });
 
-test("technical pass + human approval => sealed file for exactly these bytes; tampering breaks the seal", async () => {
-  const b = await base("pass");
-  const r = await renderShort(planSlot("2026-10-22", "calc"), b, { geminiKey: "k", voice: voiceOk, pack: fakePack, video: fakeVideo, gate: async () => ({ verdict: "PASS_TECH_PENDING_HUMAN", failed: [], blocked: [], errors: [] }), approvals: async () => ({ approver: "dono", at: "2026-10-23" }) });
-  assert.equal(r.file, b + ".mp4");
-  assert.equal(await avGateSealed(b + ".mp4"), true);
-  await writeFile(b + ".mp4", "other-bytes");
-  assert.equal(await avGateSealed(b + ".mp4"), false);
+test("two-phase publishing: immutable write-once candidate; publish exactly the approved bytes; mutants killed", async () => {
+  const dir = join(tmpdir(), "zevanory-candidates-test-" + process.pid); await rm(dir, { recursive: true, force: true });
+  const store = fsCandidateStore(dir);
+  const plan = planSlot("2026-10-22", "dica");
+  const bytes = Buffer.from("approved-mp4-bytes");
+  const tech = { verdict: "PASS_TECH_PENDING_HUMAN", failed: [], blocked: [] };
+  const st = await storeCandidate(store, { bytes, plan, report: tech, manifestSha: "m".repeat(64) });
+  assert.equal((await storeCandidate(store, { bytes, plan, report: tech })).reused, true, "write-once: reused, not rewritten");
+  await assert.rejects(storeCandidate(store, { bytes: Buffer.from("x"), plan, report: { verdict: "FAIL" } }), /candidate_not_tech_passed/);
+  await assert.rejects(storeCandidate(store, { bytes, plan: planSlot("2026-10-23", "dica"), report: tech }), /candidate_write_once_conflict/);
+  const yes = async sha => sha === st.sha ? { approver: "dono", at: "2026-10-23" } : null, no = async () => null;
+  let sent = null;
+  const publish = async (p, b) => { sent = b; return { video_id: "V1" }; };
+  // missing approval → refuse
+  await assert.rejects(publishApproved(st.sha, { store, approvals: no, publish }), /candidate_not_approved/); assert.equal(sent, null);
+  // approved → publishes EXACTLY the stored bytes, with the plan of the stored day/slot
+  const ok = await publishApproved(st.sha, { store, approvals: yes, publish });
+  assert.ok(sent.equals(bytes)); assert.equal(ok.plan.marker, plan.marker);
+  // tampered bytes in the store → refuse (hash re-verified before upload)
+  await writeFile(join(dir, ("zpc:short:candidate:" + st.sha).replace(/[^a-z0-9._-]/gi, "_")), "tampered");
+  sent = null;
+  await assert.rejects(publishApproved(st.sha, { store, approvals: yes, publish }), /candidate_hash_mismatch/); assert.equal(sent, null);
+  // mutants: without the hash check the tampered bytes would go out; without the approval check an unapproved one
+  await publishApproved(st.sha, { store, approvals: yes, publish, verifyHash: false }); assert.equal(sent.toString(), "tampered", "mutant verifyHash=false killed");
+  await writeFile(join(dir, ("zpc:short:candidate:" + st.sha).replace(/[^a-z0-9._-]/gi, "_")), bytes);
+  await publishApproved(st.sha, { store, approvals: no, publish, requireApproval: false }); assert.ok(sent.equals(bytes), "mutant requireApproval=false killed");
+  // unknown / malformed sha → refuse
+  await assert.rejects(publishApproved("f".repeat(64), { store, approvals: yes, publish }), /candidate_missing/);
+  await assert.rejects(publishApproved("../etc", { store, approvals: yes, publish }), /candidate_sha_invalid/);
+});
+
+test("publish phase cannot re-render: no voice / ffmpeg / gate / render call in the publish path", () => {
+  const body = (name) => { const i = SRC.indexOf("export async function " + name); const j = SRC.indexOf("\nexport ", i + 10); return SRC.slice(i, j); };
+  for (const fn of ["loadApprovedCandidate", "publishApproved", "sealApproved"]) {
+    const b = body(fn);
+    assert.ok(b.length > 50, fn);
+    for (const banned of [/renderShort/, /brandVoice/, /packageNarration/, /renderVideo/, /avGate\(/, /ffmpeg/, /run\(/, /spawn/]) assert.doesNotMatch(b, banned, fn);
+  }
+  const i0 = SRC.indexOf('if (phase === "publish")');
+  const main = SRC.slice(i0, SRC.indexOf('const day = (process.argv', i0));
+  assert.ok(main.length > 100);
+  for (const banned of [/renderShort/, /brandVoice/, /storeCandidate/, /ffmpeg/]) assert.doesNotMatch(main, banned);
 });
 
 test("avGate wrapper is fail-closed (missing report, exit-code mismatch, unknown verdict)", async () => {
@@ -173,5 +209,24 @@ test("absolute slot deadline enforced at START and at COMPLETION of synthesis (f
   // on time: accepted
   t = 100;
   r = await brandVoiceQueued("x", "k", { voice: async () => { t = 500; return pcm; }, now: () => t, deadline: 1000 });
+  assert.equal(r.model, BRAND_VOICE.model);
+});
+
+test("TTL (15 min) enforced at COMPLETION too: synthesis finishing after start+TTL but before end of day is discarded; mutant killed", async () => {
+  const pcm = { pcm: Buffer.alloc(48000), rate: 24000, model: BRAND_VOICE.model };
+  const dayEnd = 10 * 3600 * 1000, ttl = VOICE_RETRY.ttlMs;
+  let t = 0;
+  let r = await brandVoiceQueued("x", "k", { voice: async () => { t = ttl + 60000; return pcm; }, now: () => t, deadline: dayEnd });
+  assert.equal(r.lost, true); assert.equal(r.reason, "late_audio_discarded");
+  t = 0;
+  r = await brandVoiceQueued("x", "k", { voice: async () => { t = ttl + 60000; return pcm; }, now: () => t, deadline: dayEnd, ttlAtCompletion: false });
+  assert.equal(r.model, BRAND_VOICE.model, "mutant (TTL not enforced at completion) would accept it");
+  // a retry may not START after start+TTL either
+  t = 0; let calls = 0;
+  r = await brandVoiceQueued("x", "k", { voice: async () => { calls++; t = ttl + 1; return { blocked: "brand_voice_http_503" }; }, now: () => t, deadline: dayEnd, sleep: async () => {} });
+  assert.equal(r.lost, true); assert.equal(calls, 1);
+  // within TTL: accepted
+  t = 0;
+  r = await brandVoiceQueued("x", "k", { voice: async () => { t = ttl - 1; return pcm; }, now: () => t, deadline: dayEnd });
   assert.equal(r.model, BRAND_VOICE.model);
 });

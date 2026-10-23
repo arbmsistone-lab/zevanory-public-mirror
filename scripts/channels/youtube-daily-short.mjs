@@ -11,7 +11,7 @@
 // voice only (no Piper / no multi-model fallback): if the brand voice is unavailable the run is BLOCKED.
 // Sales are CLOSED: no Short carries a price, a purchase link or a purchase promise.
 import { spawnSync } from "node:child_process";
-import { readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { getUsage, addUsage, allow } from "./usage.mjs";
 import { createHash } from "node:crypto";
@@ -207,13 +207,15 @@ export const VOICE_RETRY = Object.freeze({ maxAttempts: 3, backoffMs: [20000, 60
 const VOICE_RETRYABLE = /^brand_voice_http_(429|5\d\d|fetch_)|^brand_voice_no_audio$/;
 // The slot's ABSOLUTE deadline is enforced when an attempt STARTS and when its audio ARRIVES: audio that starts
 // or completes after the deadline is discarded and the slot is lost (AVAL 098). enforce* exist only for mutants.
-export async function brandVoiceQueued(text, key, { voice = brandVoice, sleep = ms => new Promise(r => setTimeout(r, ms)), now = Date.now, deadline = Infinity, policy = VOICE_RETRY, enforceStart = true, enforceEnd = true } = {}) {
+// Effective deadline = min(queue start + TTL, end of the slot's day), enforced at the START of every attempt and at
+// the COMPLETION of synthesis (AVAL 098/100). enforce* / ttlAtCompletion exist only for mutation tests.
+export async function brandVoiceQueued(text, key, { voice = brandVoice, sleep = ms => new Promise(r => setTimeout(r, ms)), now = Date.now, deadline = Infinity, policy = VOICE_RETRY, enforceStart = true, enforceEnd = true, ttlAtCompletion = true } = {}) {
   const expires = Math.min(now() + policy.ttlMs, deadline), attempts = [];
   for (let i = 0; i < policy.maxAttempts; i++) {
-    if (enforceStart && now() >= deadline) return { blocked: "slot_lost_voice_unavailable", lost: true, reason: "deadline_before_start", attempts };
+    if (enforceStart && now() >= expires) return { blocked: "slot_lost_voice_unavailable", lost: true, reason: "deadline_before_start", attempts };
     const v = await voice(text, key);
     if (v && !v.blocked && v.pcm) {
-      if (enforceEnd && now() > deadline) return { blocked: "slot_lost_voice_unavailable", lost: true, reason: "late_audio_discarded", attempts: [...attempts, "late_audio"] };
+      if (enforceEnd && now() > (ttlAtCompletion ? expires : deadline)) return { blocked: "slot_lost_voice_unavailable", lost: true, reason: "late_audio_discarded", attempts: [...attempts, "late_audio"] };
       return { ...v, attempts: attempts.length + 1 };
     }
     attempts.push(String(v?.blocked || "no_audio"));
@@ -335,7 +337,9 @@ export async function humanApproved(sha, { file = process.env.AV_GATE_HUMAN_APPR
   } catch { return null; }
 }
 
-export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { geminiKey = process.env.GEMINI_API_KEY, voice = brandVoice, pack = packageNarration, video = renderVideo, gate = avGate, manifest = writeAvManifest, onVoice = null, approvals = humanApproved } = {}) {
+// PHASE 1 (render): voice → package → video → gate. A technical pass yields a CANDIDATE (bytes + sha256 + gate
+// report); nothing here can publish. PHASE 2 (publishApproved) publishes exactly the stored, human-approved bytes.
+export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { geminiKey = process.env.GEMINI_API_KEY, voice = brandVoice, pack = packageNarration, video = renderVideo, gate = avGate, manifest = writeAvManifest, onVoice = null } = {}) {
   const v = await voice(plan.speech, geminiKey);
   if (v?.pcm && onVoice) await onVoice(v);  // usage is counted even when the gate later rejects the take
   if (!v || v.blocked || !v.pcm || v.pcm.length < v.rate) throw new Error("brand_voice_BLOCKED:" + String(v?.blocked || "no_audio").replace(/[^a-z0-9_]/gi, "_"));
@@ -350,13 +354,69 @@ export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { ge
   const report = await gate(candidate, man, dir + "/av-gate.json");
   console.log("::notice title=AV_GATE::" + JSON.stringify({ slot: plan.slot, day: plan.day, verdict: report.verdict, failed: report.failed.slice(0, 10), blocked: report.blocked.slice(0, 6), errors: report.errors.slice(0, 6) }));
   if (report.verdict !== "PASS_TECH_PENDING_HUMAN") throw new Error("av_gate_" + report.verdict + ":" + [...report.failed, ...report.blocked, ...report.errors].slice(0, 6).join("+"));
-  const sha = await sha256File(candidate);
+  const bytes = await readFile(candidate);
+  const sha = createHash("sha256").update(bytes).digest("hex");
+  return { candidate, bytes, sha, duration, voice: v.model, gate: report, manifestSha: await sha256File(man) };
+}
+
+// ---- two-phase publishing (AVAL 100) -------------------------------------------------------------------------
+// Immutable candidate store, content-addressed by sha256 and WRITE-ONCE: the bytes key is the hash of the bytes,
+// the metadata key is never overwritten (an existing record for the same sha is reused, a conflicting one refused).
+export const CANDIDATE_PREFIX = "zpc:short:candidate:";
+const CANDIDATE_TTL = 30 * 86400;
+export function fsCandidateStore(dir) {
+  const f = k => dir + "/" + k.replace(/[^a-z0-9._-]/gi, "_");
+  return {
+    async get(k) { try { return await readFile(f(k), "utf8"); } catch { return null; } },
+    async getBinary(k) { try { return await readFile(f(k)); } catch { return null; } },
+    async put(k, v) { await mkdir(dir, { recursive: true }); await writeFile(f(k), String(v)); },
+    async putBinary(k, b) { await mkdir(dir, { recursive: true }); await writeFile(f(k), b); },
+  };
+}
+export async function storeCandidate(store, { bytes, plan, report, manifestSha = null, now = Date.now() }) {
+  const sha = createHash("sha256").update(bytes).digest("hex");
+  if (report?.verdict !== "PASS_TECH_PENDING_HUMAN") throw new Error("candidate_not_tech_passed");
+  const metaKey = CANDIDATE_PREFIX + sha + ":meta";
+  const existing = await store.get(metaKey);
+  if (existing) {
+    const m = JSON.parse(existing);
+    if (m.mp4_sha256 !== sha || m.day !== plan.day || m.slot !== plan.slot) throw new Error("candidate_write_once_conflict");
+    return { sha, meta: m, reused: true };  // write-once: never overwritten
+  }
+  await store.putBinary(CANDIDATE_PREFIX + sha, bytes, { expirationTtl: CANDIDATE_TTL });
+  const meta = { mp4_sha256: sha, bytes: bytes.length, day: plan.day, slot: plan.slot, marker: plan.marker, gate: report.verdict,
+    gate_failed: report.failed || [], gate_blocked: report.blocked || [], manifest_sha256: manifestSha, created_at: new Date(now).toISOString() };
+  await store.put(metaKey, JSON.stringify(meta), { expirationTtl: CANDIDATE_TTL });
+  return { sha, meta, reused: false };
+}
+// PHASE 2: fetch by sha256, re-verify the hash of the stored bytes, require the human approval for that sha256 and
+// the technical pass recorded at render time. No voice, no ffmpeg, no gate re-run, no re-encode in this path.
+// verifyHash / requireApproval / requireTechPass exist only for mutation tests.
+export async function loadApprovedCandidate(sha, { store, approvals = humanApproved, verifyHash = true, requireApproval = true, requireTechPass = true } = {}) {
+  if (!/^[0-9a-f]{64}$/.test(String(sha))) throw new Error("candidate_sha_invalid");
+  const raw = await store.get(CANDIDATE_PREFIX + sha + ":meta");
+  const meta = raw ? JSON.parse(raw) : null;
+  if (!meta || meta.mp4_sha256 !== sha) throw new Error("candidate_missing");
+  if (requireTechPass && meta.gate !== "PASS_TECH_PENDING_HUMAN") throw new Error("candidate_not_tech_passed");
+  const bytes = await store.getBinary(CANDIDATE_PREFIX + sha);
+  if (!bytes) throw new Error("candidate_bytes_missing");
+  if (verifyHash && createHash("sha256").update(bytes).digest("hex") !== sha) throw new Error("candidate_hash_mismatch");
   const approval = await approvals(sha);
-  if (!approval) throw new Error("av_gate_PENDING_HUMAN:" + sha.slice(0, 16));  // candidate kept in <base>.av for review
-  // Only a technically passed AND human-approved file gets the name the uploader / cross-poster read, sealed.
-  await copyFile(candidate, base + ".mp4");
-  await writeFile(base + ".av-gate.json", JSON.stringify({ verdict: "PASS", gate: report.verdict, human_approval: { approver: approval.approver, at: approval.at }, mp4_sha256: await sha256File(base + ".mp4"), day: plan.day, slot: plan.slot }));
-  return { file: base + ".mp4", duration, voice: v.model, gate: report };
+  if (requireApproval && !approval) throw new Error("candidate_not_approved");
+  const plan = planSlot(meta.day, meta.slot);
+  if (plan.marker !== meta.marker) throw new Error("candidate_plan_mismatch");
+  return { bytes, meta, plan, approval };
+}
+export async function publishApproved(sha, { store, approvals = humanApproved, publish = publishShort, accessToken, base = null, ...flags } = {}) {
+  const c = await loadApprovedCandidate(sha, { store, approvals, ...flags });
+  if (base) await sealApproved(base, c);
+  const result = await publish(c.plan, c.bytes, { accessToken });
+  return { ...c, result };
+}
+// Writes the exact approved bytes + a seal for the cross-poster / pack hosting (same bytes, same hash).
+export async function sealApproved(base, c) {
+  await writeFile(base + ".mp4", c.bytes);
+  await writeFile(base + ".av-gate.json", JSON.stringify({ verdict: "PASS", gate: c.meta.gate, human_approval: { approver: c.approval?.approver, at: c.approval?.at }, mp4_sha256: c.meta.mp4_sha256, day: c.meta.day, slot: c.meta.slot }));
 }
 
 // The cross-poster and the pack only accept a file sealed by a PASS of the gate for exactly these bytes.
@@ -373,6 +433,7 @@ export function cloudflareKv({ token, account, namespace, fetchImpl = fetch }) {
   const auth = { authorization: "Bearer " + token };
   return {
     async get(key) { const r = await fetchImpl(base + encodeURIComponent(key), { headers: auth }); if (r.status === 404) return null; if (!r.ok) throw new Error("kv_get_http_" + r.status); return await r.text(); },
+    async getBinary(key) { const r = await fetchImpl(base + encodeURIComponent(key), { headers: auth }); if (r.status === 404) return null; if (!r.ok) throw new Error("kv_get_http_" + r.status); return Buffer.from(await r.arrayBuffer()); },
     async putBinary(key, bytes, opts = {}) { const q = opts.expirationTtl ? "?expiration_ttl=" + Number(opts.expirationTtl) : ""; const r = await fetchImpl(base + encodeURIComponent(key) + q, { method: "PUT", headers: { ...auth, "content-type": "application/octet-stream" }, body: bytes }); if (!r.ok) throw new Error("kv_put_http_" + r.status); },
     async put(key, value, opts = {}) { const q = opts.expirationTtl ? "?expiration_ttl=" + Number(opts.expirationTtl) : ""; const r = await fetchImpl(base + encodeURIComponent(key) + q, { method: "PUT", headers: { ...auth, "content-type": "text/plain" }, body: String(value) }); if (!r.ok) throw new Error("kv_put_http_" + r.status); }
   };
@@ -429,24 +490,49 @@ const note = (level, msg) => console.log(`::${level} title=YOUTUBE_DAILY_SHORT::
 const isMain = process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href;
 if (isMain) {
   const dry = process.argv.includes("--dry-run");
+  const phase = (process.argv.find(a => a.startsWith("--phase=")) || "").slice(8) || "render";
+  const kvEnv = () => process.env.CLOUDFLARE_API_TOKEN ? cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID }) : null;
+  const candidateStore = () => kvEnv() || fsCandidateStore(process.env.AV_GATE_CANDIDATES || "/tmp/zevanory-candidates");
+  let failed = 0;
+  if (phase === "publish") {
+    // PHASE 2 only: publish exactly the approved candidate(s). This branch never renders, synthesises or re-encodes.
+    const shas = ((process.argv.find(a => a.startsWith("--candidates=")) || "").slice(13)).split(",").filter(Boolean);
+    if (!shas.length) { note("error", "publish phase needs --candidates=<sha256,...>"); process.exit(1); }
+    for (const sha of shas) {
+      try {
+        for (const n of ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "KV_NAMESPACE_ID"]) if (!process.env[n]) throw new Error("missing_" + n);
+        const kv = kvEnv();
+        const c = await loadApprovedCandidate(sha, { store: kv });
+        const window = publicationWindow({ day: c.meta.day, slot: c.meta.slot, now: Date.now() });
+        if (window.action !== "publish") { note("notice", sha.slice(0, 12) + ": not published (" + window.reason + ")"); continue; }
+        if (!allow(await getUsage(kv), "youtube_units", 1700)) throw new Error("zero_cost_guard_youtube_quota");
+        const { getYoutubeAccessToken } = await import("./youtube-access.mjs");
+        const base = "/tmp/zevanory-daily-short" + (c.meta.slot === "oferta" ? "" : "-" + c.meta.slot);
+        const { result, plan } = await publishApproved(sha, { store: kv, accessToken: await getYoutubeAccessToken(), base });
+        await addUsage(kv, "youtube_units", result.reused ? 5 : 1650).catch(() => null);
+        const activity = await recordPublication(kv, plan, result);
+        note("notice", JSON.stringify({ sha: sha.slice(0, 12), slot: plan.slot, ...result, activity_emitted: activity.emitted === true || activity.duplicate === true }));
+      } catch (e) { failed++; note("error", sha.slice(0, 12) + ":" + String(e?.message || e).replace(/[^a-z0-9_:.-]/gi, "_").slice(0, 140)); }
+    }
+    process.exit(failed ? 1 : 0);
+  }
+  // PHASE 1: render + gate + immutable candidate. Never uploads.
   const day = (process.argv.find(a => a.startsWith("--day=")) || "").slice(6) || localDay();
   const slotArg = (process.argv.find(a => a.startsWith("--slot=")) || "").slice(7) || "oferta";
   const slots = slotArg === "all" ? SLOTS : [slotArg];
-  let failed = 0;
   for (const slot of slots) {
     try {
       const window = publicationWindow({ day, slot, now: Date.now() });
       note("notice", "window " + JSON.stringify(window));
-      if (window.action !== "publish" && !dry) { note("notice", slot + ": not published (" + window.reason + ") — " + (window.action === "wait" ? "the planned run publishes it" : "documented as missed for " + day)); continue; }
+      if (window.action === "expired" && !dry) { note("notice", slot + ": commercial day over — documented as missed for " + day); continue; }
       const plan = planSlot(day, slot);
       if (plan.gate.action !== "publish" || plan.gate.compliance !== 100 || plan.gate.score < 85 || salesClosedViolations(plan).length) throw new Error("f1_gate_rejected");
       const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);
-      const usageKv = process.env.CLOUDFLARE_API_TOKEN ? cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID }) : null;
+      const usageKv = kvEnv();
       const usage = usageKv ? await getUsage(usageKv) : {};
       if (usageKv && await usageKv.get(slotLostKey(day, slot))) { note("notice", slot + ": slot lost earlier today (brand voice unavailable) — not retried, no fallback"); continue; }
       // Zero-cost guard: when the brand-voice budget is used up the run is BLOCKED (no other voice, no publish).
       if (!allow(usage, "gemini_tts_calls", 4)) throw new Error("brand_voice_BLOCKED:zero_cost_guard");
-      // renderShort throws unless the FINAL MP4 passed zevanory-av-gate (fail-closed: no upload below).
       const deadline = Date.parse(`${day}T23:59:59${BRT_OFFSET}`);
       let rendered;
       try {
@@ -455,18 +541,8 @@ if (isMain) {
         if (/slot_lost_voice_unavailable/.test(String(e?.message)) && usageKv && !dry) await recordSlotLost(usageKv, day, slot, e.message).catch(() => null);
         throw e;
       }
-      note("notice", JSON.stringify({ day, slot, theme: plan.entry.theme_id, gate: { score: plan.gate.score, compliance: plan.gate.compliance }, duration: rendered.duration, voice: rendered.voice, dry_run: dry }));
-      if (dry) continue;
-      for (const n of ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "KV_NAMESPACE_ID"]) if (!process.env[n]) throw new Error("missing_" + n);
-      const { getYoutubeAccessToken } = await import("./youtube-access.mjs");
-      const accessToken = await getYoutubeAccessToken();
-      const kv = cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID });
-      if (!allow(await getUsage(kv), "youtube_units", 1700)) throw new Error("zero_cost_guard_youtube_quota");
-      if (!(await avGateSealed(rendered.file))) throw new Error("av_gate_seal_missing");
-      const result = await publishShort(plan, await readFile(rendered.file), { accessToken });
-      await addUsage(kv, "youtube_units", result.reused ? 5 : 1650).catch(() => null);
-      const activity = await recordPublication(kv, plan, result);
-      note("notice", JSON.stringify({ slot, ...result, activity_emitted: activity.emitted === true || activity.duplicate === true }));
+      const stored = await storeCandidate(candidateStore(), { bytes: rendered.bytes, plan, report: rendered.gate, manifestSha: rendered.manifestSha });
+      note("notice", JSON.stringify({ day, slot, candidate_sha256: stored.sha, reused: stored.reused, gate: rendered.gate.verdict, duration: rendered.duration, voice: rendered.voice, next: "human approval of this sha256, then --phase=publish --candidates=" + stored.sha }));
     } catch (e) { failed++; note("error", slot + ":" + String(e?.message || e).replace(/[^a-z0-9_:.-]/gi, "_").slice(0, 140)); }
   }
   if (failed) process.exit(1);

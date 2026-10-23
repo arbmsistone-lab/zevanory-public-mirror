@@ -74,12 +74,17 @@ e cada clipe tem orçamento de no máximo 1 erro não crítico e zero crítico. 
 4. ASR de nuvem de outro fornecedor como motor B em produção (Azure ou Google STT, com custo e decisão do proprietário).
 5. Reativar os workflows `youtube-autonomous-short` e `short-pack` **é decisão do proprietário**. Esta mudança não os reativa.
 
-## Aceitação final é humana (AVAL 098)
-O gate **nunca** emite aceitação final. O melhor veredito é `PASS_TECH_PENDING_HUMAN` (código 4). O MOS preditivo (DNSMOS ≥ 2,2) é só um
-piso **provisório de rejeição**. O publicador só sela e envia um arquivo que passou em todas as checagens automáticas **e** tem
-registro de aprovação humana para exatamente aqueles bytes (`AV_GATE_HUMAN_APPROVALS`: `{"approvals":[{"mp4_sha256","approver","at"}]}`).
-Sem esse registro, o resultado é `av_gate_PENDING_HUMAN` e nada é publicado. Como o TTS não é determinístico, a publicação precisa de um fluxo em
-duas fases (render + revisão, depois publicação do candidato aprovado). Esse fluxo é decisão do proprietário e não está implementado.
+## Aceitação final é humana e a publicação tem duas fases (AVAL 098/100)
+O gate **nunca** emite aceitação final. O melhor veredito é `PASS_TECH_PENDING_HUMAN` (código 4). O MOS preditivo (DNSMOS ≥ 2,2) é só um piso
+**provisório de rejeição**.
+- **Fase 1 (`--phase=render`, a única dos agendamentos):** voz → pacote → vídeo → gate. Um aprovado técnico vira um **candidato imutável**:
+  os bytes do MP4 ficam no KV na chave `zpc:short:candidate:<sha256>` (endereçada pelo conteúdo) e os metadados (dia, slot, marcador, veredito e
+  checagens do gate, sha256 do manifesto) ficam em `…:meta`, **gravados uma única vez** (mesmo sha: reaproveita; conflito: recusa). Esta fase nunca publica.
+  O MP4 candidato fica como artifact para revisão humana.
+- **Revisão humana:** o aprovador registra `{"mp4_sha256","approver","at"}` em `evidence/p05/human-approvals.json`, por PR revisada.
+- **Fase 2 (`--phase=publish --candidates=<sha…>`):** busca o candidato pelo sha256, **recalcula o hash** dos bytes armazenados, exige o
+  veredito técnico gravado e a **aprovação humana daquele sha256**, e publica **exatamente** esses bytes. Esta fase não chama voz, ffmpeg, gate
+  nem render; um teste estático do código garante isso. O pack segue o mesmo fluxo: a fase render não hospeda nada, e a fase publish materializa só os aprovados.
 
 ## V2: termo crítico em qualquer lado do alinhamento (AVAL 098)
 Conta como erro crítico, para o consenso, toda substituição, remoção ou inserção que toque um termo crítico (número, preço,
@@ -87,5 +92,5 @@ marca, negação, promessa/garantia, CTA) no lado da referência **ou** no da hi
 **qualquer** um dos motores também conta. Esses erros nunca entram no orçamento de 1 erro não crítico por clipe.
 
 ## Prazo absoluto do slot (AVAL 098)
-A fila de tentativas da voz verifica o prazo absoluto do slot **no início** de cada tentativa e **na chegada** do áudio. Áudio que
+A fila de tentativas da voz verifica o prazo efetivo, min(início da fila + 15 min de TTL, fim do dia do slot), **no início** de cada tentativa e **na chegada** do áudio. Áudio que
 começa ou termina depois do prazo é descartado, e o slot é registrado como perdido.

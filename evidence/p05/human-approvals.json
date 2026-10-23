@@ -1,0 +1,4 @@
+{
+  "_doc": "P05 — aprovações HUMANAS de candidatos (fase 2 da publicação). Só o sha256 exato de um candidato armazenado (fase render, imutável) que passou em todas as checagens automáticas (PASS_TECH_PENDING_HUMAN) pode ser publicado, e só se estiver listado aqui com aprovador e data. Alterações neste arquivo entram por PR revisada. Vazio = nada publica.",
+  "approvals": []
+}

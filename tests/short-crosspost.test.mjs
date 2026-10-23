@@ -85,22 +85,27 @@ test("pack produces the executor command ZEVANORY e-mails to the owner: 2 per da
   for (let d = 22; d <= 31; d++) { assert.match(cmd, new RegExp(`media/short/2026-10-${d}-dica\\.mp4`)); assert.match(cmd, new RegExp(`media/short/2026-10-${d}\\.mp4`)); assert.match(cmd, new RegExp(`--- ${d}/10 às 12:00`)); assert.match(cmd, new RegExp(`--- ${d}/10 às 19:00`)); }
   assert.match(cmd, /A tua marca/); assert.match(cmd, /Conteúdo gerado por IA/); assert.match(cmd, /Nunca publique na hora/);
 });
-test("P05: a video rejected by zevanory-av-gate is left out of the pack and of the executor command", async (t) => {
-  const { buildPack } = await import("../scripts/channels/short-pack.mjs");
-  const { readFile, rm, mkdtemp } = await import("node:fs/promises");
+test("P05: rejected videos stay out; render phase stores candidates and hosts nothing; publish phase materialises only approved bytes", async (t) => {
+  const { buildPack, materializeApproved } = await import("../scripts/channels/short-pack.mjs");
+  const { fsCandidateStore } = await import("../scripts/channels/youtube-daily-short.mjs");
+  const { readFile, rm, mkdtemp, readdir } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
   const out = await mkdtemp(join(tmpdir(), "zevanory-pack-gate-"));
   t.after(() => rm(out, { recursive: true, force: true }));
-  const r = await buildPack({ start: "2026-10-12", days: 2, out, render: async (plan, base) => {
+  const store = fsCandidateStore(join(out, "store"));
+  const r = await buildPack({ start: "2026-10-12", days: 2, out, store, render: async (plan) => {
     if (plan.slot === "dica" && plan.day === "2026-10-13") throw new Error("av_gate_FAIL:v3.stream_tp");
     if (plan.slot === "oferta" && plan.day === "2026-10-12") throw new Error("brand_voice_BLOCKED:brand_voice_key_missing");
-    return { duration: 14, voice: "test", file: base + ".mp4" };
+    return { duration: 14, voice: "test", bytes: Buffer.from("mp4-" + plan.day + plan.slot), gate: { verdict: "PASS_TECH_PENDING_HUMAN", failed: [], blocked: [] } };
   } });
   assert.deepEqual(r.produced.sort(), ["2026-10-12-dica", "2026-10-13"]);
   assert.equal(r.rejected.length, 2);
-  const cmd = await readFile(join(out, "comando-executor.txt"), "utf8");
-  assert.match(cmd, /2026-10-12-dica\.mp4/); assert.match(cmd, /media\/short\/2026-10-13\.mp4/);
-  assert.doesNotMatch(cmd, /2026-10-13-dica\.mp4/); assert.doesNotMatch(cmd, /media\/short\/2026-10-12\.mp4/);
+  assert.equal(Object.keys(r.candidates).length, 2);
+  assert.equal((await readdir(out)).filter(f => f.endsWith(".mp4")).length, 0, "render phase hosts nothing");
   assert.match(await readFile(join(out, "legendas.txt"), "utf8"), /PULADO \(zevanory-av-gate: av_gate_FAIL:v3.stream_tp\)/);
+  const approved = r.candidates["2026-10-13"];
+  const m = await materializeApproved(Object.values(r.candidates), { store, out, approvals: async sha => sha === approved ? { approver: "dono", at: "2026-10-14" } : null });
+  assert.deepEqual(m.ok.map(x => x.id), ["2026-10-13"]); assert.equal(m.refused.length, 1);
+  assert.equal(await readFile(join(out, "2026-10-13.mp4"), "utf8"), "mp4-2026-10-13oferta");
 });

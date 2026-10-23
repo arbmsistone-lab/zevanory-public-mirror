@@ -25,6 +25,14 @@ on:
         description: "dica | oferta | calc | all"
         required: false
         default: "oferta"
+      phase:
+        description: "render = render+gate+candidato imutável (nunca publica) | publish = publica SÓ candidatos aprovados por humano"
+        required: false
+        default: "render"
+      candidates:
+        description: "phase=publish: sha256 dos candidatos aprovados (separados por vírgula)"
+        required: false
+        default: ""
 
 concurrency:
   group: youtube-autonomous-short
@@ -73,6 +81,10 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
           # Owner-recorded reference of the approved brand voice (V4 identity). Absent => gate BLOCKED => no publish.
           AV_GATE_BRAND_REFERENCE: ${{ github.workspace }}/assets/brand/voice/brand-reference.wav
+          # Human approvals (reviewed in a PR): {"approvals":[{"mp4_sha256","approver","at"}]}
+          AV_GATE_HUMAN_APPROVALS: ${{ github.workspace }}/evidence/p05/human-approvals.json
+          PHASE: ${{ inputs.phase || 'render' }}
+          CANDIDATES: ${{ inputs.candidates }}
           SCHEDULE: ${{ github.event.schedule }}
           SLOT_INPUT: ${{ inputs.slot }}
         run: |
@@ -88,9 +100,13 @@ jobs:
           if [ "$SCHEDULE" = "30 23 * * *" ]; then DAY="$(TZ=America/Sao_Paulo date -d '-6 hours' +%F)"; fi
           echo "SHORT_DAY=$DAY" >> "$GITHUB_ENV"
           echo "::notice title=SHORT_TARGET::slot=$SLOT day=$DAY schedule=${SCHEDULE:-dispatch}"
-          if [ "$DRY_RUN" = "true" ]; then node scripts/channels/youtube-daily-short.mjs --dry-run --slot="$SLOT" --day="$DAY"; else node scripts/channels/youtube-daily-short.mjs --slot="$SLOT" --day="$DAY"; fi
+          # P05 two-phase: schedules only RENDER candidates; publishing is a separate dispatch with approved sha256s.
+          if [ "${PHASE:-render}" = "publish" ]; then
+            node scripts/channels/youtube-daily-short.mjs --phase=publish --candidates="$CANDIDATES"
+          elif [ "$DRY_RUN" = "true" ]; then node scripts/channels/youtube-daily-short.mjs --dry-run --slot="$SLOT" --day="$DAY"
+          else node scripts/channels/youtube-daily-short.mjs --phase=render --slot="$SLOT" --day="$DAY"; fi
       - name: Cross-post the Short (TikTok, Instagram Reels, Facebook, Telegram)
-        if: ${{ !cancelled() && inputs.dry_run != 'true' }}
+        if: ${{ !cancelled() && inputs.dry_run != 'true' && inputs.phase == 'publish' }}
         env:
           TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           TIKTOK_AUDIT_APPROVED: ${{ vars.TIKTOK_AUDIT_APPROVED }}
@@ -100,8 +116,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         run: node scripts/channels/short-crosspost.mjs --slot="$SLOT" --day="${SHORT_DAY:-}"
-      - name: Keep the dry-run preview for the owner to watch (3 days)
-        if: ${{ inputs.dry_run == 'true' }}
+      - name: Keep the render candidates (MP4 + gate report) for human review (3 days)
+        if: ${{ !cancelled() && inputs.phase != 'publish' }}
         uses: actions/upload-artifact@v4
         with:
           name: short-preview
@@ -109,5 +125,6 @@ jobs:
             /tmp/zevanory-daily-short*.mp4
             /tmp/zevanory-daily-short*.av-gate.json
             /tmp/zevanory-daily-short*.av/av-gate.json
+            /tmp/zevanory-daily-short*.av/final.mp4
           if-no-files-found: warn
           retention-days: 3

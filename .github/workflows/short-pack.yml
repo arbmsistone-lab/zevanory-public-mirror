@@ -15,6 +15,14 @@ on:
         description: "Quantidade de dias (1-14)"
         required: false
         default: "10"
+      phase:
+        description: "render = candidatos imutáveis (não hospeda nada) | publish = hospeda SÓ candidatos aprovados por humano"
+        required: false
+        default: "render"
+      candidates:
+        description: "phase=publish: sha256 dos candidatos aprovados (separados por vírgula)"
+        required: false
+        default: ""
   schedule:
     - cron: "0 9 1,11,21 * *"
     # Backstop 1h30 later; skipped when the pack for tomorrow is already hosted.
@@ -70,17 +78,22 @@ jobs:
         if: steps.already.outputs.done != 'true'
         env:
           AV_GATE_BRAND_REFERENCE: ${{ github.workspace }}/assets/brand/voice/brand-reference.wav
+          AV_GATE_HUMAN_APPROVALS: ${{ github.workspace }}/evidence/p05/human-approvals.json
         run: |
           set -euo pipefail
           args=(--days="${{ inputs.days || '10' }}")
           if [ -n "${{ inputs.start }}" ]; then args+=(--start="${{ inputs.start }}"); fi
+          args+=(--phase="${{ inputs.phase || 'render' }}")
+          if [ "${{ inputs.phase }}" = "publish" ]; then args+=(--candidates="${{ inputs.candidates }}"); fi
           node scripts/channels/short-pack.mjs "${args[@]}"
           ls -la /tmp/short-pack
-          rm -rf /tmp/short-pack/*.av /tmp/short-pack/*.t*.txt
+          # keep only the candidate MP4 + gate report for human review (no raw audio)
+          rm -f /tmp/short-pack/*.av/*.wav /tmp/short-pack/*.av/*.pcm /tmp/short-pack/*.av/*.t*.txt /tmp/short-pack/*.t*.txt
       - name: Host each video at https://zevanory.api.br/media/short/<day>.mp4 (30 days)
         if: steps.already.outputs.done != 'true'
         run: |
           set -euo pipefail
+          shopt -s nullglob  # render phase leaves nothing to host
           for f in /tmp/short-pack/*.mp4; do
             d=$(basename "$f" .mp4)
             code=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "content-type: application/octet-stream" --data-binary @"$f" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_NAMESPACE_ID/values/zpc%3Amedia%3Ashort%3A$d?expiration_ttl=2592000")
@@ -92,6 +105,7 @@ jobs:
         if: steps.already.outputs.done != 'true'
         run: |
           set -euo pipefail
+          if [ ! -s /tmp/short-pack/comando-executor.txt ]; then echo "::notice title=SHORT_PACK_EMAIL::no approved candidate hosted — nothing to send"; exit 0; fi
           if [ -z "${RESEND_API_KEY:-}" ] || [ -z "${OWNER_ALERT_EMAIL:-}" ]; then echo "::warning title=SHORT_PACK_EMAIL::owner e-mail not configured"; exit 0; fi
           python3 - <<'PY'
           import json, os, urllib.request
@@ -113,4 +127,7 @@ jobs:
             /tmp/short-pack/*.mp4
             /tmp/short-pack/legendas.txt
             /tmp/short-pack/comando-executor.txt
+            /tmp/short-pack/candidatos.json
+            /tmp/short-pack/*.av/final.mp4
+            /tmp/short-pack/*.av/av-gate.json
           retention-days: 7
