@@ -354,7 +354,7 @@ test("origem v3: rótulo de lista fechada gravado na pessoa (primeira visita); f
   assert.equal(psql("select src from waitlist_persons where person_id=(select person_id from waitlist_signups where contact='origem@exemplo.com')")[0].src, "invalido");
 });
 
-test("rede pessoal (wa_status, wa_lista) e parceiros (parc_*) marcados ficam FORA da população da decisão, com exclusões por razão, sensibilidade e mistura de canais por nicho", { skip }, async () => {
+test("wa_owned (wa_status, wa_lista) e parceiros (parc_*) ficam FORA da métrica primária; wa_owned é reportado como métrica secundária, com exclusões por razão, sensibilidade e mistura de canais por nicho", { skip }, async () => {
   reset();
   const env = ENV();
   const mk = async (nicho, utm, i, contato) => { const vid = await person(env, { nicho, utm, ip: `205.${nicho.length}.0.${i}` }); if (contato) await sub(env, { nicho, contato, vid, src: utm }); };
@@ -363,8 +363,11 @@ test("rede pessoal (wa_status, wa_lista) e parceiros (parc_*) marcados ficam FOR
   let s = await summary();
   let c = s.niches.confeitaria;
   assert.deepEqual([c.eligible_visitors, c.signups], [2, 1], "só tráfego independente decide");
-  assert.deepEqual(c.excluded_source, { rede_pessoal: 2, parceiro: 1 });
-  assert.deepEqual([c.sensitivity.with_personal_network_and_partners.persons, c.sensitivity.with_personal_network_and_partners.signups], [5, 3]);
+  assert.deepEqual(c.excluded_source, { wa_owned: 2, parceiro: 1 });
+  assert.deepEqual([c.sensitivity.with_wa_owned_and_partners.persons, c.sensitivity.with_wa_owned_and_partners.signups], [5, 3]);
+  // Secundária pré-registrada: wa_owned com unidade própria (2 pessoas, 1 inscrição), nunca decide; parceiro não entra nela.
+  assert.deepEqual([c.secondary.wa_owned.source_class, c.secondary.wa_owned.persons, c.secondary.wa_owned.signups, c.secondary.wa_owned.conversion, c.secondary.wa_owned.decides], ["wa_owned", 2, 1, 0.5, false]);
+  assert.ok(c.secondary.wa_owned.wilson95.low > 0 && c.secondary.wa_owned.wilson95.high < 1);
   assert.deepEqual(c.source_mix, { ig_post: 2, parc_amiga: 1, wa_lista: 1, wa_status: 1 });
   assert.deepEqual(c.source_mix_decision_population, { ig_post: 2 });
   assert.equal(s.channel_balance.status, "NAO_VERIFICAVEL", "nichos sem pessoas: mistura não verificável");
@@ -409,4 +412,57 @@ test("semana de teste (funil das calculadoras, bandeira FASE_A_SEMANA_TESTE): qu
   const r = spawnSync(process.execPath, [path.join(ROOT, "scripts", "fase_a", "resumo.mjs"), "--semana-teste", "--since", "2026-11-03", "--until", "2026-11-09"], { encoding: "utf8", env: { ...process.env, DATABASE_URL: url } });
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), ok, "script = Worker");
+});
+
+test("multi-aparelho: a mesma pessoa em dois aparelhos (cookies distintos) conta como DUAS unidades, salvo identidade consentida (mesmo contato inscrito nos dois); limitação documentada", { skip }, async () => {
+  reset();
+  const env = ENV();
+  const LAPTOP = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36";
+  // Só visita nos dois aparelhos: nada liga os cookies -> 2 pessoas (viés conservador: denominador maior).
+  const phone = await person(env, { ip: "207.0.0.1" });
+  const laptop = await person(env, { ip: "207.0.0.2", ua: LAPTOP });
+  assert.notEqual(phone, laptop, "cada aparelho recebe o seu identificador");
+  let c = (await summary()).niches.confeitaria;
+  assert.deepEqual([c.eligible_visitors, c.signups, c.aliases], [2, 0, 0], "sem identidade consentida: duas unidades");
+  // Inscrição (consentida) só num aparelho: continua 2 pessoas e 1 inscrição.
+  assert.equal((await sub(env, { contato: "multi@exemplo.com", vid: phone })).body.code, "inscrito");
+  c = (await summary()).niches.confeitaria;
+  assert.deepEqual([c.eligible_visitors, c.signups, c.aliases], [2, 1, 0], "um aparelho sem inscrição continua unidade separada");
+  // Mesmo contato inscrito no outro aparelho = identidade consentida: funde em 1 pessoa e 1 inscrição.
+  assert.equal((await sub(env, { contato: "MULTI@exemplo.com", vid: laptop })).body.code, "ja_inscrito");
+  c = (await summary()).niches.confeitaria;
+  assert.deepEqual([c.eligible_visitors, c.signups, c.aliases], [1, 1, 1], "identidade consentida: uma unidade");
+  assert.equal(c.conversion, 1);
+  assert.ok(c.oracle.ok, JSON.stringify(c.oracle.checks));
+});
+
+test("multi-nicho: um visitante (mesmo cookie) em 2 nichos conta 1 vez em CADA denominador visitado, nunca 2 no mesmo; a inscrição conta só no nicho em que foi feita; sobreposição reportada", { skip }, async () => {
+  reset();
+  const env = ENV();
+  // Mesmo navegador: visita e confirma confeitaria, depois salão (o cookie tem escopo /lista-de-espera).
+  let vid = await person(env, { ip: "208.0.0.1", nicho: "confeitaria" });
+  vid = await visit(env, { vid, ip: "208.0.0.1", nicho: "salao-e-barbearia" });
+  await confirm(env, vid, "salao-e-barbearia");
+  // Só visita a loja (folha de estilo da loja não pedida): sem confirmação NESSE nicho.
+  await visit(env, { vid, ip: "208.0.0.1", nicho: "loja-de-roupas" });
+  // Volta à confeitaria no dia seguinte e confirma lá: continua 1 pessoa nesse nicho e NÃO confirma a loja.
+  vid = await visit(env, { vid, ip: "208.0.0.1", nicho: "confeitaria" }, T0 + DAY);
+  await confirm(env, vid, "confeitaria", T0 + DAY);
+  // Outra pessoa só na confeitaria.
+  await person(env, { ip: "208.0.0.2", nicho: "confeitaria" });
+  assert.equal(new Set(psql("select person_id from waitlist_persons").map((r) => r.person_id)).size, 2, "mesmo identificador nos 3 nichos");
+  assert.equal((await sub(env, { contato: "nichos@exemplo.com", vid, nicho: "confeitaria" })).body.code, "inscrito");
+  const s = await summary();
+  const [conf, salao, loja] = ["confeitaria", "salao-e-barbearia", "loja-de-roupas"].map((k) => s.niches[k]);
+  assert.deepEqual([conf.eligible_visitors, salao.eligible_visitors, loja.eligible_visitors], [2, 1, 0], "1 por nicho visitado e confirmado");
+  assert.deepEqual([conf.signups, salao.signups, loja.signups], [1, 0, 0], "inscrição só no nicho dela");
+  assert.equal(loja.unconfirmed_ids, 1);
+  assert.deepEqual([conf.cross_niche_persons, salao.cross_niche_persons, loja.cross_niche_persons], [1, 1, 0]);
+  assert.deepEqual(s.cross_niche, { rule: "um_por_nicho", person_niche_rows: 3, unique_persons: 2, persons_2plus_niches: 1 });
+  // Inscrição também no salão (mesmo contato, outro nicho): conta 1 em cada nicho, nunca 2 no mesmo.
+  assert.equal((await sub(env, { contato: "nichos@exemplo.com", vid, nicho: "salao-e-barbearia" })).body.code, "inscrito");
+  assert.equal((await sub(env, { contato: "nichos@exemplo.com", vid, nicho: "salao-e-barbearia" })).body.code, "ja_inscrito");
+  const s2 = await summary();
+  assert.deepEqual([s2.niches.confeitaria.signups, s2.niches["salao-e-barbearia"].signups], [1, 1]);
+  for (const k of ["confeitaria", "salao-e-barbearia", "loja-de-roupas"]) assert.ok(s2.niches[k].oracle.ok, k + " " + JSON.stringify(s2.niches[k].oracle.checks));
 });

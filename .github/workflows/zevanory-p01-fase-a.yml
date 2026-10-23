@@ -20,6 +20,7 @@ on:
       - "scripts/fase_a/**"
       - "tests/fase-a/**"
       - "docs/p01/**"
+      - "docs/lgpd/**"
       - "sales-public/**"
       - "sitemap.xml"
       - "wrangler*.toml"
@@ -104,9 +105,9 @@ jobs:
           }
           check fase-a-static.test.mjs 9
           check waitlist-public.test.mjs 9
-          check waitlist-rule.test.mjs 9
+          check waitlist-rule.test.mjs 10
           check fase-a-inventory.test.mjs 2
-          check waitlist-postgres.test.mjs 20
+          check waitlist-postgres.test.mjs 22
       - name: Restauração com o manifesto de migrações e reversão da 030 (9 testes)
         env:
           PGHOST: localhost
@@ -127,12 +128,12 @@ jobs:
           grep -qx "OK" "$RUNNER_TEMP/rnd.txt"
           if grep -q "skipped" "$RUNNER_TEMP/rnd.txt"; then echo "::error::restauração pulada"; exit 1; fi
           echo "::notice title=P01_RESTORE_${{ runner.os }}::9/9 (manifesto exato 31, tabelas da 030 restauradas, 030 aplica/reverte/reaplica)"
-      - name: Mutantes (controle passa; 14 mutantes mortos por asserção, inclusive M-SOL-085 e origem ausente)
+      - name: Mutantes (controle passa; 19 mutantes mortos por asserção, inclusive M-SOL-085, origem ausente, wa_owned, multi-nicho e multi-aparelho)
         run: |
           set -eo pipefail
           node scripts/fase_a/mutants.mjs | tee "$RUNNER_TEMP/m.txt"
           sed -i 's/\r$//' "$RUNNER_TEMP/m.txt"
-          grep -qx "P01_MUTANTS killed=14/14" "$RUNNER_TEMP/m.txt"
+          grep -qx "P01_MUTANTS killed=19/19" "$RUNNER_TEMP/m.txt"
           test "$(grep -c '^::notice title=P01_MUTANT_CONTROL::.*"ok":true' "$RUNNER_TEMP/m.txt")" -eq 3
       - name: Sem bytecode nem arquivos gerados no checkout
         run: |

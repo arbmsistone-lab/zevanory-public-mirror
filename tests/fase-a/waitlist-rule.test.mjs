@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 // WAITLIST_MODULE: o executor de mutantes troca o módulo testado.
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const { wilson, decide, RULE, normalizeContact, isEligibleTraffic, visitorSecret, windowOf, personFromCookie, sourceTag, sourceGroup, channelBalance, finalistsOf, testWeekSummary, TEST_WEEK } =
+const { CONSENT_VERSION, RETENTION, wilson, decide, RULE, normalizeContact, isEligibleTraffic, visitorSecret, windowOf, personFromCookie, sourceTag, sourceGroup, channelBalance, finalistsOf, testWeekSummary, TEST_WEEK, summarize, WA_OWNED_TAGS, SOURCE_CLASSES } =
   await import(pathToFileURL(path.resolve(process.env.WAITLIST_MODULE || path.join(ROOT, "worker", "waitlist.mjs"))).href);
 
 const near = (a, b, eps = 5e-4) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -51,7 +51,7 @@ test("segredo de visitante: dedicado, >= 32 bytes, sem fallback; janela válida 
 
 test("protocolo registrado contém exatamente os limiares implementados", () => {
   const doc = fs.readFileSync(new URL("../../docs/p01/FASE_A_PROTOCOLO.md", import.meta.url), "utf8");
-  for (const s of ["300 pessoas experimentais", "≥ 8%", "≥ 5%", "≥ 20", "INCONCLUSIVO", "R$ 27", "R$ 47", "Wilson", "WAITLIST_VISITOR_SECRET", "M-SOL-085", "sensibilidade", "oráculo", "30 dias após a decisão", "180 dias", "8 dias", "**v3 (22/10/2026)**", "semana de teste", "≥ 98 visitas qualificadas", "21 dias", "`wa_status`", "`parc_<nome>`", "`meta_<nome>`", "Mistura de canais", "origem ausente **nunca** conta"]) assert.ok(doc.includes(s), s);
+  for (const s of ["300 pessoas experimentais", "≥ 8%", "≥ 5%", "≥ 20", "INCONCLUSIVO", "R$ 27", "R$ 47", "Wilson", "WAITLIST_VISITOR_SECRET", "M-SOL-085", "sensibilidade", "oráculo", "30 dias após a decisão", "180 dias", "8 dias", "**v4 (23/10/2026)**", "semana de teste", "≥ 98 visitas qualificadas", "21 dias", "`wa_status`", "`parc_<nome>`", "`meta_<nome>`", "Mistura de canais", "origem ausente **nunca** conta", "`wa_owned`", "métrica secundária", "## 2.2. Multi-aparelho e multi-nicho", "docs/lgpd/LIA-fase-a.md"]) assert.ok(doc.includes(s), s);
 });
 
 test("contato: e-mail e WhatsApp brasileiro normalizados; outros formatos recusados", () => {
@@ -70,13 +70,26 @@ test("tráfego elegível = mesmo filtro do funil (UA de automação, ASN de data
   assert.equal(isEligibleTraffic({ userAgent: "" }), false);
 });
 
-test("origem (v3): lista fechada wa_status, wa_lista, ig_story, ig_post, ig_reel, fb_grupo, parc_*, organico, direto, meta_* reservado; grupos pré-registrados", () => {
+test("origem (v4): lista fechada wa_status, wa_lista, ig_story, ig_post, ig_reel, fb_grupo, parc_*, organico, direto, meta_* reservado; classe wa_owned pré-registrada", () => {
   for (const t of ["wa_status", "wa_lista", "ig_story", "ig_post", "ig_reel", "fb_grupo", "organico", "direto", "parc_x1", "meta_ads"]) assert.equal(sourceTag({ utm: t }), t);
   assert.equal(sourceTag({ utm: "WA_STATUS" }), "wa_status");
   for (const t of ["youtube", "parc_", "meta_", "parc_" + "a".repeat(21), "x"]) assert.equal(sourceTag({ utm: t }), "invalido", t);
   assert.equal(sourceTag({ refExternal: true }), "organico");
   assert.equal(sourceTag({}), "direto");
-  assert.deepEqual(["wa_status", "wa_lista", "parc_x", "meta_y", "sem_tag", "invalido", "ig_post", "direto"].map(sourceGroup), ["rede_pessoal", "rede_pessoal", "parceiro", "reservado_meta", "sem_origem", "sem_origem", "canal", "canal"]);
+  assert.deepEqual(["wa_status", "wa_lista", "parc_x", "meta_y", "sem_tag", "invalido", "ig_post", "direto"].map(sourceGroup), ["wa_owned", "wa_owned", "parceiro", "reservado_meta", "sem_origem", "sem_origem", "canal", "canal"]);
+  assert.deepEqual([...WA_OWNED_TAGS], ["wa_status", "wa_lista"]);
+  assert.deepEqual([...SOURCE_CLASSES], ["canal", "wa_owned", "parceiro", "reservado_meta", "sem_origem"]);
+  // wa_owned sai da mistura da população da decisão, mas aparece na mistura total e na métrica secundária (sem decidir).
+  const row = (niche, o = {}) => ({ niche, persons: 300, signups: 30, persons_wa_owned: 40, signups_wa_owned: 2, persons_linhas: 0, persons_confirmadas_linhas: 0, aliases: 0, signups_linhas: 0, pessoa_dia: 0, raw: {}, ...o });
+  const out = summarize([row("confeitaria")], { windowId: "fa1", sources: [{ niche: "confeitaria", src: "ig_post", n: 300 }, { niche: "confeitaria", src: "wa_status", n: 30 }, { niche: "confeitaria", src: "wa_lista", n: 10 }] });
+  const c = out.niches.confeitaria;
+  assert.deepEqual(c.source_mix_decision_population, { ig_post: 300 });
+  assert.deepEqual(c.source_mix, { ig_post: 300, wa_status: 30, wa_lista: 10 });
+  assert.deepEqual({ ...c.secondary.wa_owned, wilson95: undefined }, { source_class: "wa_owned", persons: 40, signups: 2, conversion: 0.05, wilson95: undefined, decides: false });
+  near(c.secondary.wa_owned.wilson95.low, wilson(2, 40).low);
+  assert.equal(c.decision, "GO", "a secundária (5%) não muda a decisão primária (10%)");
+  assert.equal(c.excluded_source.wa_owned, 40);
+  assert.equal(out.protocol, "v4");
 });
 
 test("mistura de canais entre os braços: origem ausente NUNCA conta como equilibrada; diferença > 10 pontos = desequilibrada; finalistas só com mistura equilibrada", () => {
@@ -116,4 +129,14 @@ test("semana de teste (condição do Sol): 7 dias consecutivos, >= 98 qualificad
   assert.deepEqual([paid.decision, paid.niches["loja-de-roupas"].reasons], ["NAO_AUTORIZA", ["trafego_pago"]], "uma visita paga basta para não autorizar");
   for (const until of ["2026-11-08", "2026-11-10"]) assert.equal(testWeekSummary(mk({ confeitaria: 99, "loja-de-roupas": 99, "salao-e-barbearia": 99 }), { since: "2026-11-03", until }).decision, "PERIODO_INVALIDO", until);
   assert.match(ok.note, /somente a abertura do teste de 21 dias/);
+});
+
+test("LIA (LGPD art. 7º, IX e art. 10) registrada e versionada: finalidade, necessidade, balanceamento, minimização, direitos, opt-out e pendência de revisão jurídica", () => {
+  const lia = fs.readFileSync(new URL("../../docs/lgpd/LIA-fase-a.md", import.meta.url), "utf8");
+  for (const s of ["Versão: 1", "PENDENTE DE REVISÃO JURÍDICA", "art. 7º, IX", "art. 10", "## 1. Finalidade", "## 2. Necessidade", "## 3. Balanceamento",
+    "## 4. Minimização e salvaguardas", "## 5. Direitos do titular", "## 6. Oposição (opt-out)", "dado pessoal pseudonimizado", "WAITLIST_VISITOR_SECRET",
+    "rotação", "30 dias após a decisão", "runWaitlistRetention", "consentimento separado", "wa_owned", "multi-aparelho", "art. 18"]) assert.ok(lia.includes(s), s);
+  // Coerência com o código: retenção e versão do consentimento citadas são as implementadas.
+  assert.ok(lia.includes("`" + CONSENT_VERSION + "`"), "versão do consentimento");
+  assert.ok(lia.includes(RETENTION.measurementMaxDays + " dias") && lia.includes(RETENTION.cookieMaxDays + " dias"));
 });

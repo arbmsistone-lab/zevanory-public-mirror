@@ -1,10 +1,13 @@
 # P01 · Fase A: triagem de demanda sem cobrança (protocolo pré-registrado)
 
 Aprovação do proprietário: 22/10/2026 18:09 ("Fase A"). Desenho acordado com o auditor Sol (Ordem 080 AVAL);
-correções da AVAL 085 incorporadas. Versão do protocolo: **v3 (22/10/2026)**, registrada **antes** de qualquer
+correções das AVAL 085 e 092 incorporadas. Versão do protocolo: **v4 (23/10/2026)**, registrada **antes** de qualquer
 coleta (v1 → v2: unidade pessoa experimental, consentimento separado, aviso, segredo, retenção, migração; v2 → v3:
 origem do link na pessoa experimental, mistura de canais entre os braços, exclusão da rede pessoal/parceiros e
-"semana de teste" antes da janela de 21 dias). Os limiares e definições estão implementados em `worker/waitlist.mjs` (`RULE`, `decide`, `wilson`,
+"semana de teste" antes da janela de 21 dias; v3 → v4 (AVAL 092): `wa_status`/`wa_lista` deixam de ser
+"rede pessoal descartada" e viram a classe de origem `wa_owned`, fora da métrica primária e reportada como
+**métrica secundária** pré-registrada; regras multi-aparelho e multi-nicho explícitas (§2.2); LIA registrada em
+`docs/lgpd/LIA-fase-a.md`). Nenhum dado foi coletado sob v3 (bandeiras desligadas, sem tráfego). Os limiares e definições estão implementados em `worker/waitlist.mjs` (`RULE`, `decide`, `wilson`,
 `reconcile`, `summarize`, `RETENTION`) e conferidos por `tests/fase-a/`. Mudar um limiar exige nova versão do
 protocolo, registrada antes de olhar os dados da nova rodada.
 
@@ -36,7 +39,8 @@ sem `/comprar/`, sem `schema.org/InStock` nem `Offer` (NO-GO da P13).
   ASN de datacenter, prefetch/prerender; `HEAD` e outros métodos não contam). A mesma pessoa em vários dias conta
   **uma** vez (a linha soma `days`). **M-SOL-085**: mesmo IP+navegador em dois dias = 1 pessoa (teste e mutante).
 - **Entre aparelhos (onde comprovável)**: o mesmo contato inscrito a partir de dois identificadores no mesmo nicho
-  é a mesma pessoa (`waitlist_person_alias`); conta uma vez no denominador e no numerador.
+  é a mesma pessoa (`waitlist_person_alias`); conta uma vez no denominador e no numerador. Sem isso, cada aparelho é
+  uma unidade (limitação em §2.2).
 - **Inscrição válida (numerador)**: inscrição ativa, sem exclusão de UA/ASN, **ligada a uma pessoa experimental
   confirmada do mesmo nicho** (mesma unidade do denominador), contada por pessoa distinta. Idempotente por janela +
   nicho + contato. Honeypot nunca grava.
@@ -53,23 +57,49 @@ sem `/comprar/`, sem `schema.org/InStock` nem `Offer` (NO-GO da P13).
   ausente; contato gravado sem consentimento; mensagem enviada antes da P08; promessa de resultado, urgência/
   escassez ou alegação regulada na página ou na peça de tráfego; saída não atendida em até 15 dias.
 
-## 2.1. Origem do link, rede pessoal e mistura de canais (v3)
+## 2.1. Origem do link, classes de origem e mistura de canais (v3, classes v4)
 
 - **Origem** gravada na pessoa experimental na **primeira visita** (rótulo de lista fechada, sem dado pessoal), a
   partir de `utm_source`: `wa_status`, `wa_lista`, `ig_story`, `ig_post`, `ig_reel`, `fb_grupo`, `parc_<nome>`
   (parceiro), `organico`, `direto`, `meta_<nome>` (reservado ao tráfego pago futuro: aceito e reportado). `utm_source`
   fora da lista = `invalido`; sem `utm_source`: referer externo = `organico`, nenhum = `direto`. A inscrição herda a
   origem da pessoa (mesma unidade); o formulário reenvia o rótulo, revalidado pela mesma lista.
-- **Rede pessoal do proprietário e parceiros, quando marcados, ficam FORA da população da decisão**: `wa_status` e
-  `wa_lista` (WhatsApp do proprietário: status e lista de transmissão) = rede pessoal; `parc_*` = parceiro. O resumo
-  traz as exclusões por razão (`excluded_source`) e a sensibilidade "com rede pessoal e parceiros". **Pendência de
-  confirmação do proprietário antes da coleta**: se `wa_status`/`wa_lista` forem da conta comercial e não da rede
-  pessoal, isso muda numa v4, registrada antes de qualquer dado.
+- **Classes de origem (v4)**: `canal` (ig_*, fb_grupo, organico, direto), `wa_owned` (`wa_status`, `wa_lista`:
+  WhatsApp do proprietário, status e lista de transmissão, seja conta pessoal ou comercial), `parceiro` (`parc_*`),
+  `reservado_meta` (`meta_*`) e `sem_origem` (`sem_tag`, `invalido`).
+- **`wa_owned` NÃO é descartado** (AVAL 092 §4): quem chega pelo WhatsApp do proprietário pode ser um prospect
+  orgânico válido, mas a audiência é pré-selecionada pelo próprio proprietário e não é comparável entre os braços.
+  Por isso `wa_owned` fica **fora da métrica primária** (população da decisão, Wilson e GO/NO-GO) e é reportado como
+  **métrica secundária** pré-registrada, por nicho: `secondary.wa_owned` = pessoas experimentais confirmadas
+  `wa_owned`, inscrições ligadas a elas (mesma unidade, mesmos filtros de robô), conversão e Wilson 95%, com
+  `decides: false`. A secundária **nunca** cria, muda ou desfaz um GO/NO-GO; ela é lida na ata como contexto (ex.:
+  "a audiência própria converte X% vs. Y% do tráfego independente").
+- **Parceiros (`parc_*`)** continuam fora da população da decisão. O resumo traz as exclusões por classe
+  (`excluded_source: { wa_owned, parceiro }`) e a sensibilidade "com wa_owned e parceiros"
+  (`with_wa_owned_and_partners`).
 - **Mistura de canais entre os braços** (pré-registrado, população da decisão): cada nicho com ≥ 1 pessoa; origem
   ausente (`sem_tag`/`invalido`) ≤ 5% em **cada** nicho (senão `NAO_VERIFICAVEL` — origem ausente **nunca** conta
   como equilibrada); diferença máxima de participação de qualquer origem entre nichos ≤ 10 pontos (`EQUILIBRADO`,
   senão `DESEQUILIBRADO`). **Finalistas só são escolhidos com mistura `EQUILIBRADO`**; caso contrário a comparação
   entre nichos não vale (`finalists: []`), e as decisões por nicho continuam sendo reportadas.
+
+## 2.2. Multi-aparelho e multi-nicho (v4, AVAL 092 §3)
+
+- **Multi-aparelho**: a unidade é o identificador do navegador. A mesma pessoa em dois aparelhos (ou dois
+  navegadores, ou após apagar cookies) recebe dois identificadores e conta como **duas unidades**, **salvo identidade
+  consentida**: o mesmo contato inscrito (com consentimento) a partir dos dois identificadores no mesmo nicho funde-os
+  (`waitlist_person_alias`) em uma pessoa e uma inscrição. Um aparelho só de visita nunca é ligado a outro (não há
+  impressão digital de aparelho, de propósito: minimização). **Limitação**: o denominador pode ficar **inflado** por
+  pessoas multi-aparelho que não se inscrevem; o viés é **conservador** (reduz a conversão, nunca cria GO falso). O
+  resumo traz `aliases` (fusões comprovadas) e `multi_day_persons`; a magnitude do viés não é estimada.
+- **Multi-nicho**: cada nicho é um braço com **denominador próprio**. O cookie tem escopo `/lista-de-espera` (o mesmo
+  identificador nos três nichos), mas a confirmação é **por nicho** (folha de estilo `/lista-de-espera/c/<nicho>.css`
+  ou envio do formulário daquele nicho). Regra: a mesma pessoa confirmada em k nichos conta **1 vez em cada um** desses
+  k denominadores e **nunca 2 vezes no mesmo**; visitar um nicho não confirma a pessoa em outro. A inscrição conta
+  **só no numerador do nicho em que foi feita** (idempotente por janela + nicho + contato); o mesmo contato inscrito em
+  dois nichos conta 1 em cada. Não há deduplicação global entre braços (os braços não são amostras independentes);
+  a sobreposição é reportada, descritiva: `cross_niche_persons` por nicho e `cross_niche` no topo
+  (`person_niche_rows`, `unique_persons`, `persons_2plus_niches`), na população da métrica primária.
 
 ## 3. Oráculo independente e sensibilidade
 
@@ -79,7 +109,7 @@ sem `/comprar/`, sem `schema.org/InStock` nem `Offer` (NO-GO da P13).
   criadas por visita + por inscrição; confirmadas = contador; aliases = contador; inscrições + revogadas + apagadas =
   novas; pessoa-dia = contador. **Qualquer divergência → INCONCLUSIVO** (`oraculo_divergente`).
 - **Análise de sensibilidade** (sempre no resumo, antes de qualquer GO): pessoas, inscrições e conversão com
-  filtros, sem filtro de ASN, sem filtro de UA, sem filtros e com rede pessoal/parceiros. Exclusões por razão,
+  filtros, sem filtro de ASN, sem filtro de UA, sem filtros e com `wa_owned`/parceiros. Exclusões por razão,
   mistura de canais por nicho e duplicatas pessoa-dia também.
 
 ## 3.1. Semana de teste e janela de 21 dias (v3, condição aprovada pelo Sol)
@@ -119,12 +149,15 @@ sem `/comprar/`, sem `schema.org/InStock` nem `Offer` (NO-GO da P13).
   medição até **30 dias após a decisão**, no máximo **180 dias**; cópias de segurança internas (backup diário do Worker,
   `worker/data-backup.mjs`) apagadas em até **8 dias**. Avisar depois disso exige novo consentimento específico.
 - **Dupla confirmação**: dependência P08 (issue #871). Até lá nenhuma mensagem é enviada.
+- **Avaliação de legítimo interesse (LIA)**: `docs/lgpd/LIA-fase-a.md` (versionada; **pendente de revisão jurídica**
+  pelo proprietário antes de ligar a medição). O contato continua exigindo **consentimento separado**.
 
 ## 5. Regra de decisão (pré-registrada)
 
 Para cada nicho, ao fim da janela:
 
-0. A população da decisão exclui a rede pessoal e os parceiros marcados (§2.1).
+0. A população da decisão (métrica primária) exclui `wa_owned` e os parceiros marcados (§2.1); `wa_owned` é
+   reportado como métrica secundária, que não decide.
 1. **INCONCLUSIVO** se houver qualquer bloqueio: janela não informada, segredo de visitante ausente, identificador
    não estabelecido, inscrição sem identificador, oráculo divergente; ou **menos de 300 pessoas experimentais**
    confirmadas. Nunca NO-GO nesses casos.

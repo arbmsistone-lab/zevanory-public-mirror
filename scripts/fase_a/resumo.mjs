@@ -10,7 +10,7 @@
 // Nenhuma coluna de contato, nome ou referência é lida.
 import { execFileSync } from "node:child_process";
 import { resolvePsql, parseCsv } from "./tools.mjs";
-import { SUMMARY_SQL, QUALIFIED_SQL, SOURCE_SQL, TEST_WEEK_SQL, WAITLIST_NICHES, summarize, testWeekSummary } from "../../worker/waitlist.mjs";
+import { SUMMARY_SQL, QUALIFIED_SQL, SOURCE_SQL, CROSS_NICHE_SQL, TEST_WEEK_SQL, WAITLIST_NICHES, summarize, testWeekSummary } from "../../worker/waitlist.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name, dflt) => { const i = args.indexOf(name); return i >= 0 ? String(args[i + 1] || "") : dflt; };
@@ -32,7 +32,7 @@ if (args.includes("--semana-teste")) {
   process.stdout.write(JSON.stringify(testWeekSummary(tw, { since, until }), null, 2) + "\n");
   process.exit(0);
 }
-let rows = [], qualified = [], sources = [];
-if (present && present.ok === "t") { rows = parseCsv(run(bind(SUMMARY_SQL))); qualified = parseCsv(run(bind(QUALIFIED_SQL))); sources = parseCsv(run(bind(SOURCE_SQL))); }
+let rows = [], qualified = [], sources = [], crossNiche = null;
+if (present && present.ok === "t") { rows = parseCsv(run(bind(SUMMARY_SQL))); qualified = parseCsv(run(bind(QUALIFIED_SQL))); sources = parseCsv(run(bind(SOURCE_SQL))); crossNiche = parseCsv(run(bind(CROSS_NICHE_SQL)))[0] || null; }
 else rows = WAITLIST_NICHES.map((niche) => ({ niche, raw: "{}" }));
-process.stdout.write(JSON.stringify(summarize(rows, { windowId, since, until, qualified, sources, complianceViolations: violations }), null, 2) + "\n");
+process.stdout.write(JSON.stringify(summarize(rows, { windowId, since, until, qualified, sources, crossNiche, complianceViolations: violations }), null, 2) + "\n");

@@ -57,8 +57,22 @@ const MUTANTS = [
     apply: (s) => once(s, 'Object.values(niches).every((v) => v.passes) ? "AUTORIZA_TESTE_21_DIAS"', 'Object.values(niches).some((v) => v.passes) ? "AUTORIZA_TESTE_21_DIAS"') },
   { id: "M12", name: "semana de teste ignora tráfego pago", kind: "mod", test: RULEF, expect: "semana de teste",
     apply: (s) => once(s, '    if (v.paid > TEST_WEEK.maxPaid) v.reasons.push("trafego_pago");\n', "") },
-  { id: "M11", name: "rede pessoal/parceiros contados na população da decisão", kind: "mod", test: PG, expect: "rede pessoal (wa_status, wa_lista)",
+  { id: "M11", name: "wa_owned/parceiros contados na métrica primária (população da decisão)", kind: "mod", test: PG, expect: "wa_owned (wa_status, wa_lista) e parceiros (parc_*) ficam FORA da métrica primária",
     apply: (s) => once(s, "const PRIMARY_SRC = (a) => `${a}.src not in", "const PRIMARY_SRC = (a) => `true or ${a}.src not in") },
+  // AVAL 092 §4: wa_status/wa_lista = classe wa_owned (fora da primária, reportada como secundária pré-registrada).
+  { id: "M13", name: "wa_owned classificado como canal (entra na mistura da decisão e some da classe)", kind: "mod", test: RULEF, expect: "classe wa_owned pré-registrada",
+    apply: (s) => once(s, '  if (WA_OWNED_TAGS.includes(tag)) return "wa_owned";\n', "") },
+  { id: "M14", name: "métrica secundária wa_owned conta inscrições de qualquer origem", kind: "mod", test: PG, expect: "reportado como métrica secundária",
+    apply: (s) => once(s, ' and ${WA_OWNED_IN("p")}) as signups_wa_owned,', ") as signups_wa_owned,") },
+  // AVAL 092 §3: multi-nicho (1 por nicho visitado e confirmado, nunca 2 no mesmo) e multi-aparelho (alias consentido).
+  { id: "M15", name: "confirmação num nicho confirma a pessoa em todos os nichos", kind: "mod", test: PG, expect: "multi-nicho",
+    apply: (s) => once(s, "update waitlist_persons set confirmed = true where window_id = $1 and niche = $2 and person_id = $3 and not confirmed", "update waitlist_persons set confirmed = true where window_id = $1 and person_id = $3 and not confirmed") },
+  { id: "M16", name: "denominador do nicho soma pessoas de outros nichos", kind: "mod", test: PG, expect: "multi-nicho",
+    apply: (s) => once(s, '  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}) as persons,',
+      '  (select count(*)::int from p where p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}) as persons,') },
+  { id: "M17", name: "identidade consentida ignorada (mesmo contato em dois aparelhos conta 2 no denominador)", kind: "mod", test: PG, expect: "multi-aparelho",
+    apply: (s) => once(s, "p as (select p.* from waitlist_persons p where p.window_id = $1 and not exists (select 1 from waitlist_person_alias a where a.window_id = p.window_id and a.niche = p.niche and a.alias_id = p.person_id)),",
+      "p as (select p.* from waitlist_persons p where p.window_id = $1),") },
 ];
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fase-a-mut-"));

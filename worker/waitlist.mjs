@@ -93,9 +93,13 @@ export function exclusionOf({ userAgent, asn = 0 }) {
 export const isEligibleTraffic = ({ userAgent, asn = 0, purpose = "" }) => !/prefetch|prerender/i.test(String(purpose || "")) && exclusionOf({ userAgent, asn }) === null;
 // Protocolo v3: origem do link (rótulo de lista fechada, sem dado pessoal) gravada na pessoa experimental.
 export const SOURCE_TAGS = Object.freeze(["wa_status", "wa_lista", "ig_story", "ig_post", "ig_reel", "fb_grupo", "organico", "direto"]);
-// Rede pessoal do proprietário (WhatsApp dele: status e lista de transmissão) e parceiros (parc_*): excluídos
-// da população da decisão quando marcados; meta_* é reservado (tráfego pago futuro), aceito e reportado.
-export const PERSONAL_NETWORK_TAGS = Object.freeze(["wa_status", "wa_lista"]);
+// Protocolo v4 (AVAL 092 §4): wa_status/wa_lista (WhatsApp do proprietário: status e lista de transmissão) formam
+// a classe de origem "wa_owned". NÃO são descartados: ficam fora da métrica PRIMÁRIA (população da decisão),
+// mas são reportados como métrica SECUNDÁRIA pré-registrada (pessoas, inscrições, conversão e Wilson próprios,
+// que nunca decidem). Parceiros (parc_*) continuam fora da população da decisão; meta_* é reservado (tráfego
+// pago futuro), aceito e reportado.
+export const WA_OWNED_TAGS = Object.freeze(["wa_status", "wa_lista"]);
+export const SOURCE_CLASSES = Object.freeze(["canal", "wa_owned", "parceiro", "reservado_meta", "sem_origem"]);
 const PARTNER_RE = /^parc_[a-z0-9]{1,20}$/, META_RE = /^meta_[a-z0-9]{1,20}$/;
 export const MISSING_SOURCE_TAGS = Object.freeze(["sem_tag", "invalido"]);
 // utm_source da lista -> ele mesmo; utm fora da lista -> "invalido"; sem utm: referer externo -> "organico",
@@ -106,15 +110,16 @@ export function sourceTag({ utm = "", refExternal = false } = {}) {
   return refExternal ? "organico" : "direto";
 }
 export function sourceGroup(tag) {
-  if (PERSONAL_NETWORK_TAGS.includes(tag)) return "rede_pessoal";
+  if (WA_OWNED_TAGS.includes(tag)) return "wa_owned";
   if (PARTNER_RE.test(tag)) return "parceiro";
   if (META_RE.test(tag)) return "reservado_meta";
   if (MISSING_SOURCE_TAGS.includes(tag) || !tag) return "sem_origem";
   return "canal";
 }
 const formSource = (v) => { const t = String(v || ""); return SOURCE_TAGS.includes(t) || PARTNER_RE.test(t) || META_RE.test(t) ? t : MISSING_SOURCE_TAGS.includes(t) ? t : "invalido"; };
-// SQL: população da decisão = pessoa sem exclusão de robô e fora da rede pessoal/parceiros marcados.
-const PRIMARY_SRC = (a) => `${a}.src not in (${PERSONAL_NETWORK_TAGS.map((t) => `'${t}'`).join(",")}) and ${a}.src not like 'parc\\_%'`;
+// SQL: população da decisão (métrica primária) = pessoa sem exclusão de robô, fora de wa_owned e de parceiros.
+const WA_OWNED_IN = (a) => `${a}.src in (${WA_OWNED_TAGS.map((t) => `'${t}'`).join(",")})`;
+const PRIMARY_SRC = (a) => `${a}.src not in (${WA_OWNED_TAGS.map((t) => `'${t}'`).join(",")}) and ${a}.src not like 'parc\\_%'`;
 const label = (v, max) => { const x = String(v || "").toLowerCase().trim(); return new RegExp(`^[a-z0-9_-]{1,${max}}$`).test(x) ? x : ""; };
 const yesNo = (v) => (v === true || v === "sim" ? true : v === false || v === "nao" ? false : null);
 const today = (now) => new Date(now).toISOString().slice(0, 10);
@@ -241,10 +246,12 @@ select n.niche,
   (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is distinct from 'asn' and ${PRIMARY_SRC("p")}) as persons_sem_filtro_ua,
   (select count(*)::int from p where p.niche = n.niche and p.confirmed and ${PRIMARY_SRC("p")}) as persons_sem_filtros,
   (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null) as persons_com_rede,
-  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and p.src in (${PERSONAL_NETWORK_TAGS.map((t) => `'${t}'`).join(",")})) as persons_rede_pessoal,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and ${WA_OWNED_IN("p")}) as persons_wa_owned,
   (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and p.src like 'parc\\_%') as persons_parceiro,
   (select count(*)::int from p where p.niche = n.niche and not p.confirmed and p.exclusion is null) as persons_nao_confirmadas,
   (select count(*)::int from p where p.niche = n.niche and p.days > 1 and p.exclusion is null and p.confirmed) as persons_multi_dia,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}
+     and exists (select 1 from p o where o.person_id = p.person_id and o.niche <> p.niche and o.confirmed and o.exclusion is null and ${PRIMARY_SRC("o")})) as persons_multi_nicho,
   (select count(*)::int from waitlist_persons x where x.window_id = $1 and x.niche = n.niche) as persons_linhas,
   (select count(*)::int from waitlist_persons x where x.window_id = $1 and x.niche = n.niche and x.confirmed) as persons_confirmadas_linhas,
   (select count(*)::int from waitlist_person_alias x where x.window_id = $1 and x.niche = n.niche) as aliases,
@@ -254,6 +261,7 @@ select n.niche,
   (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed where s.niche = n.niche and s.exclusion is distinct from 'asn' and p.exclusion is distinct from 'asn' and ${PRIMARY_SRC("p")}) as signups_sem_filtro_ua,
   (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed where s.niche = n.niche and ${PRIMARY_SRC("p")}) as signups_sem_filtros,
   (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed and p.exclusion is null where s.niche = n.niche and s.exclusion is null) as signups_com_rede,
+  (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed and p.exclusion is null where s.niche = n.niche and s.exclusion is null and ${WA_OWNED_IN("p")}) as signups_wa_owned,
   (select count(*)::int from s where s.niche = n.niche and s.exclusion is null and s.person_id is null) as signups_sem_id,
   (select count(*)::int from s where s.niche = n.niche) as signups_linhas,
   coalesce((select json_object_agg(r.metric, r.n) from r where r.niche = n.niche), '{}'::json) as raw
@@ -263,12 +271,20 @@ export const QUALIFIED_SQL = `select s.niche, count(distinct coalesce(a.primary_
   join waitlist_persons p on p.window_id = s.window_id and p.niche = s.niche and p.person_id = coalesce(a.primary_id, s.person_id) and p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}
   where s.window_id = $1 and s.created_at::date between $2::date and $3::date and s.exclusion is null and s.q_recurring and s.q_digital group by s.niche`;
 
-// Mistura de canais: pessoas confirmadas sem exclusão de robô, por nicho e origem (inclui rede pessoal/parceiros;
+// Mistura de canais: pessoas confirmadas sem exclusão de robô, por nicho e origem (inclui wa_owned/parceiros;
 // a mistura da população da decisão é calculada em JS sem eles).
 export const SOURCE_SQL = `select p.niche, p.src, count(*)::int as n from waitlist_persons p
   where p.window_id = $1 and p.confirmed and p.exclusion is null
     and not exists (select 1 from waitlist_person_alias a where a.window_id = p.window_id and a.niche = p.niche and a.alias_id = p.person_id)
   group by p.niche, p.src order by p.niche, p.src`;
+// Multi-nicho (protocolo v4, §2.2): cada nicho é um braço com denominador PRÓPRIO; a mesma pessoa (mesmo cookie,
+// escopo /lista-de-espera) confirmada em k nichos conta 1 vez em CADA um desses k denominadores e nunca 2 vezes no
+// mesmo. A sobreposição entre braços é reportada (descritiva, nunca decide). População = métrica primária.
+export const CROSS_NICHE_SQL = `with p as (select p.person_id, p.niche from waitlist_persons p where p.window_id = $1 and p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}
+    and not exists (select 1 from waitlist_person_alias a where a.window_id = p.window_id and a.niche = p.niche and a.alias_id = p.person_id)),
+  k as (select person_id, count(*)::int as niches from p group by person_id)
+select (select count(*)::int from p) as person_niche_rows, (select count(*)::int from k) as unique_persons,
+  (select count(*)::int from k where niches >= 2) as persons_2plus_niches`;
 // Mesma mistura de canais entre os braços (pré-registrado): cada nicho com >= 1 pessoa, origem ausente
 // (sem_tag/invalido) <= 5% em cada nicho e diferença máxima de participação de qualquer origem <= 10 pontos.
 export const BALANCE = Object.freeze({ maxMissingShare: 0.05, maxShareDiff: 0.10 });
@@ -332,6 +348,7 @@ export function testWeekSummary(rows, { since, until } = {}) {
 export async function buildTestWeekSummary(sql, { since, until }) { return testWeekSummary(await sql.query(TEST_WEEK_SQL, [since, until]), { since, until }); }
 
 const R = (raw, k) => Number(raw?.[k]) || 0;
+const secondaryOf = (p, s) => { const persons = Number(p) || 0, signups = Number(s) || 0; return { source_class: "wa_owned", persons, signups, conversion: persons ? signups / persons : 0, wilson95: wilson(signups, persons), decides: false }; };
 const sumPrefix = (raw, prefix) => Object.entries(raw || {}).filter(([k]) => k.startsWith(prefix)).reduce((a, [, v]) => a + (Number(v) || 0), 0);
 // Oráculo independente: reconcilia contadores agregados com as linhas. Qualquer divergência = INCONCLUSIVO.
 export function reconcile(row) {
@@ -355,7 +372,7 @@ export function reconcile(row) {
   return { ok: Object.values(checks).every(Boolean), checks };
 }
 
-export function summarize(rows, { windowId, since, until, qualified = [], sources = [], complianceViolations = {} } = {}) {
+export function summarize(rows, { windowId, since, until, qualified = [], sources = [], crossNiche = null, complianceViolations = {} } = {}) {
   const q = Object.fromEntries(qualified.map((r) => [r.niche, r]));
   const mixAll = {}, mixPrimary = {};
   for (const r of rows) { mixAll[r.niche] = {}; mixPrimary[r.niche] = {}; }
@@ -363,7 +380,7 @@ export function summarize(rows, { windowId, since, until, qualified = [], source
     if (!mixAll[r.niche]) continue;
     mixAll[r.niche][r.src] = (mixAll[r.niche][r.src] || 0) + (Number(r.n) || 0);
     const g = sourceGroup(r.src);
-    if (g !== "rede_pessoal" && g !== "parceiro") mixPrimary[r.niche][r.src] = (mixPrimary[r.niche][r.src] || 0) + (Number(r.n) || 0);
+    if (g !== "wa_owned" && g !== "parceiro") mixPrimary[r.niche][r.src] = (mixPrimary[r.niche][r.src] || 0) + (Number(r.n) || 0);
   }
   const niches = {};
   for (const r of rows) {
@@ -384,22 +401,28 @@ export function summarize(rows, { windowId, since, until, qualified = [], source
       exposure_person_days: Number(r.pessoa_dia) || 0, unconfirmed_ids: Number(r.persons_nao_confirmadas) || 0, multi_day_persons: Number(r.persons_multi_dia) || 0, aliases: Number(r.aliases) || 0,
       signups_without_id: Number(r.signups_sem_id) || 0, revoked: R(raw, "inscricao:revogada"),
       excluded: { ua: R(raw, "classe:ua") + R(raw, "classe:ua:dup_dia"), asn: R(raw, "classe:asn") + R(raw, "classe:asn:dup_dia"), prefetch: R(raw, "classe:prefetch"), method: R(raw, "classe:metodo"), no_secret: R(raw, "classe:sem_segredo") },
-      sensitivity: { with_filters: sens(r.persons, r.signups), without_asn_filter: sens(r.persons_sem_filtro_asn, r.signups_sem_filtro_asn), without_ua_filter: sens(r.persons_sem_filtro_ua, r.signups_sem_filtro_ua), without_filters: sens(r.persons_sem_filtros, r.signups_sem_filtros), with_personal_network_and_partners: sens(r.persons_com_rede, r.signups_com_rede) },
-      excluded_source: { rede_pessoal: Number(r.persons_rede_pessoal) || 0, parceiro: Number(r.persons_parceiro) || 0 },
+      sensitivity: { with_filters: sens(r.persons, r.signups), without_asn_filter: sens(r.persons_sem_filtro_asn, r.signups_sem_filtro_asn), without_ua_filter: sens(r.persons_sem_filtro_ua, r.signups_sem_filtro_ua), without_filters: sens(r.persons_sem_filtros, r.signups_sem_filtros), with_wa_owned_and_partners: sens(r.persons_com_rede, r.signups_com_rede) },
+      excluded_source: { wa_owned: Number(r.persons_wa_owned) || 0, parceiro: Number(r.persons_parceiro) || 0 },
+      // Métrica SECUNDÁRIA pré-registrada (v4): origem wa_owned com unidade, conversão e Wilson próprios; nunca decide.
+      secondary: { wa_owned: secondaryOf(r.persons_wa_owned, r.signups_wa_owned) },
+      cross_niche_persons: Number(r.persons_multi_nicho) || 0,
       source_mix: mixAll[r.niche] || {}, source_mix_decision_population: mixPrimary[r.niche] || {},
       oracle: rec, blockers,
       decision: decide({ visitors: persons, signups, complianceViolation: Boolean(complianceViolations[r.niche]), blockers }),
     };
   }
   const balance = channelBalance(mixPrimary);
-  return { schema: "zevanory-fase-a/v3", protocol: "v3", consent_version: CONSENT_VERSION, window: { id: windowId || null, since, until }, rule: RULE, niches,
-    channel_balance: balance, ...finalistsOf(niches, balance) };
+  const cn = crossNiche || {};
+  const cross_niche = { rule: "um_por_nicho", person_niche_rows: Number(cn.person_niche_rows) || 0, unique_persons: Number(cn.unique_persons) || 0, persons_2plus_niches: Number(cn.persons_2plus_niches) || 0 };
+  return { schema: "zevanory-fase-a/v4", protocol: "v4", consent_version: CONSENT_VERSION, window: { id: windowId || null, since, until }, rule: RULE, niches,
+    cross_niche, channel_balance: balance, ...finalistsOf(niches, balance) };
 }
 export async function buildWaitlistSummary(sql, { windowId, since = "2026-01-01", until = "2999-12-31", complianceViolations = {} } = {}) {
   const rows = await sql.query(SUMMARY_SQL, [windowId || "", since, until, [...WAITLIST_NICHES]]);
   const qualified = await sql.query(QUALIFIED_SQL, [windowId || "", since, until]);
   const sources = await sql.query(SOURCE_SQL, [windowId || "", since, until]);
-  return summarize(rows, { windowId, since, until, qualified, sources, complianceViolations });
+  const crossNiche = (await sql.query(CROSS_NICHE_SQL, [windowId || ""]))[0] || null;
+  return summarize(rows, { windowId, since, until, qualified, sources, crossNiche, complianceViolations });
 }
 
 // Retenção por finalidade (texto da página e da política): 30 dias após FASE_A_DECISION_DATE apaga
