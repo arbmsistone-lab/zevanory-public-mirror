@@ -56,7 +56,9 @@ jobs:
           echo "AV_GATE_MODELS=$RUNNER_TEMP/av-models" >> "$GITHUB_ENV"
           echo "PYTHONDONTWRITEBYTECODE=1" >> "$GITHUB_ENV"
       - name: Gate unit tests (decision logic, normalisation, fail-closed policy)
-        run: python -m unittest -v scripts/av_gate/test_av_gate.py
+        run: |
+          python -m unittest -v scripts/av_gate/test_av_gate.py
+          python -m unittest -v docs/p05/escuta-cega-p10/test_montar_kit.py
       - name: Restore model cache
         id: models-cache
         uses: actions/cache/restore@v4
