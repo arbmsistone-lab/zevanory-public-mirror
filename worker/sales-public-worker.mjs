@@ -1,3 +1,4 @@
+import { DELIVERY_72H, DELIVERY_TEXT, RESUMO_OFERTA, RULE_7D, RULE_LINE } from "./politica-unica.mjs";
 const retired=new Set(["/arbm-sist","/arbm-sist/","/arbm-sist.html","/zevanory-one","/zevanory-one/","/zevanory-one.html","/arbm-one","/arbm-one/","/arbm-one.html"]);
 const htmlRoutes=new Set(["material-gratuito","checklist-15-minutos","solucoes","quem-criou","zevanory-sales","arbm-contador-saloes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","zevanory-cfo","termos","privacidade","reembolso","afiliados","conteudo-pronto","kit-afiliado","ia-por-ramo","ia-para-salao-de-beleza","ia-para-barbearia","ia-para-restaurante-e-lanchonete","ia-para-loja-de-roupas","ia-para-mercadinho","ia-para-oficina-mecanica","ia-para-clinica-e-consultorio","ia-para-academia","ia-para-pet-shop","ia-para-contabilidade","ia-para-imobiliaria","ia-para-deposito-de-bebidas","ferramentas","calculadora-preco-de-venda","calculadora-margem-de-lucro","calculadora-ponto-de-equilibrio","ia-para-padaria","ia-para-pizzaria","ia-para-hamburgueria","ia-para-acaiteria","ia-para-confeitaria","ia-para-farmacia","ia-para-otica","ia-para-papelaria","ia-para-materiais-de-construcao","ia-para-assistencia-tecnica-de-celular","ia-para-autoescola","ia-para-escola-de-idiomas","ia-para-clinica-odontologica","ia-para-psicologo","ia-para-nutricionista","ia-para-fisioterapia","ia-para-estetica","ia-para-manicure","ia-para-lava-jato","ia-para-eletricista-e-encanador","ia-para-fotografo","ia-para-arquitetura-e-design-de-interiores","ia-para-advocacia","ia-para-agencia-de-viagens","ia-para-floricultura","ia-para-marmitaria","ia-para-pousada","ia-para-distribuidora-de-gas-e-agua","calculadora-fluxo-de-caixa","calculadora-preco-hora-servico","calculadora-taxa-maquininha","calculadora-cmv","mensagem-para-cliente-que-sumiu","como-cobrar-cliente-pelo-whatsapp","como-mandar-orcamento-pelo-whatsapp"]);
 const MP="https://www.mercadopago.com https://www.mercadopago.com.br";
@@ -92,6 +93,36 @@ const PRICES={"ZEV-IA-011":["IA na Prática",197],"ZEV-VEN-011":["Vendas na Prá
 async function salesOpen(env){
   try{const st=await env.CORE.fetch("https://zevanory.api.br/api/sales/status");if(!st.ok)return false;return (await st.json())?.open===true}catch{return false}  // only an OK response with open===true opens; anything else is closed
 }
+// P13 (NO-GO): the static HTML is always built closed (waiting-list CTAs, no /comprar/ link, no
+// schema.org Offer). Only when the owner switch is open (same /api/sales/status, fail-closed: KV
+// sales:open:v1 + "LIBERAR VENDAS" + green preflight) the page is restored at request time.
+const SALES_TOGGLE_PAGES=new Set(["ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","solucoes","conteudo-pronto"]);
+const SUBSCRIPTION_PATHS=Object.freeze({"conteudo-pronto":"/assinar/conteudo-pronto"});
+const SALES_ORIGIN="https://vendas.zevanory.api.br";
+export function openSalesHtml(html,slug){
+  let out=String(html);
+  out=out.replace(/<a ([^>]*?)href="[^"]*" data-zev-sku="(ZEV-[A-Z0-9-]+)" data-zev-open-text="([^"]*)">[^<]*<\/a>/g,(m,pre,sku,label)=>PRICES[sku]?`<a ${pre}href="/comprar/${sku}" rel="nofollow">${label}</a>`:m);
+  out=out.replace(/<a ([^>]*?)href="[^"]*" data-zev-sub="([a-z-]+)" data-zev-open-text="([^"]*)">[^<]*<\/a>/g,(m,pre,sub,label)=>Object.prototype.hasOwnProperty.call(SUBSCRIPTION_PATHS,sub)?`<a ${pre}href="${SUBSCRIPTION_PATHS[sub]}">${label}</a>`:m);
+  out=out.replace(/<(span|p)([^>]*?) data-zev-open-text="([^"]*)">[^<]*<\/\1>/g,"<$1$2>$3</$1>");
+  out=out.replace(/<(p|span)\b[^>]*\sdata-zev-closed[^>]*>[^<]*<\/\1>/g,"");
+  const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===slug);
+  if(sku)out=out.replace(/(<script type="application\/ld\+json">)([\s\S]*?)(<\/script>)/,(m,a,body,c)=>{
+    try{const d=JSON.parse(body);
+      for(const n of d["@graph"]||[])if(n&&n["@type"]==="Product")n.offers={"@type":"Offer",price:PRICES[sku][1]+".00",priceCurrency:"BRL",availability:"https://schema.org/InStock",url:SALES_ORIGIN+"/"+slug,seller:{"@type":"Organization",name:"A. RENAN ALVES MOREIRA BITU LTDA"}};
+      return a+JSON.stringify(d)+c;}catch{return m}});
+  if(slug==="conteudo-pronto")out=out.replace(/(<script type="application\/ld\+json">)([\s\S]*?)(<\/script>)/,(m,a,body,c)=>{
+    try{const d=JSON.parse(body);
+      for(const n of d["@graph"]||[])if(n&&n["@type"]==="Service")n.offers={"@type":"Offer",price:"197.00",priceCurrency:"BRL",url:SALES_ORIGIN+"/conteudo-pronto"};
+      return a+JSON.stringify(d)+c;}catch{return m}});
+  return out;
+}
+// AVAL 084 (cache): no page-level switch cache. Every request of a switch-dependent page asks the
+// owner switch again (/api/sales/status, itself capped < 60 s), so a close is reflected on the next
+// request, and those pages are never stored by browsers or the edge (Cache-Control: no-store).
+export function resetPageSwitchCache(){}  // kept for callers; there is no page-level cache any more
+async function salesOpenForPages(env){return salesOpen(env)}
+export const SWITCH_DEPENDENT_CACHE_CONTROL="no-store, no-transform";
+export const isSwitchDependentPage=page=>SALES_TOGGLE_PAGES.has(page);
 async function overLimit(env,ip){
   if(env?.BUY_LIMITER?.limit){try{const r=await env.BUY_LIMITER.limit({key:"buy:"+ip});return !r.success}catch{}}
   return buyLimited(ip);
@@ -106,7 +137,7 @@ async function handleBuy(request,env,sku,ctx){
   if(!open) return infoPage(200,"Vendas abrem em breve",`<p>O ${name} ainda não está à venda. Quer tirar dúvidas agora?</p><p><a class="button primary" href="https://wa.me/5588992545413?text=${encodeURIComponent("Olá! Tenho interesse no "+name+".")}">Falar no WhatsApp</a></p>`);
   if(request.method!=="POST"){
     countView(request,env,ctx,slug,"checkout_intent");
-    return infoPage(200,`Comprar ${name}`,`<p><strong>${name}</strong> · R$ ${price},00 · pagamento único, Pix ou cartão.</p><p>Você será levado ao ambiente seguro do Mercado Pago. Depois da aprovação, o link de download chega no seu e-mail (válido por 72 horas). Garantia de 7 dias.</p><form method="post" action="/comprar/${sku}"><button class="button primary" type="submit">Ir para o pagamento seguro</button></form><p class="small">Ao continuar você concorda com os <a href="/termos">Termos</a> e a <a href="/privacidade">Política de Privacidade</a>.</p>`);
+    return infoPage(200,`Comprar ${name}`,`<p><strong>${name}</strong> · R$ ${price},00 · pagamento único, Pix ou cartão.</p><p>Você será levado ao ambiente seguro do Mercado Pago. ${DELIVERY_TEXT} ${RULE_LINE}</p><form method="post" action="/comprar/${sku}"><button class="button primary" type="submit">Ir para o pagamento seguro</button></form><p class="small">Ao continuar você concorda com os <a href="/termos">Termos</a> e a <a href="/privacidade">Política de Privacidade</a>.</p>`);
   }
   const ua=request.headers.get("user-agent")||"";
   if(isAutomationUA(ua)) return infoPage(403,"Acesso não permitido","<p>Use um navegador para comprar.</p>");
@@ -187,15 +218,17 @@ export const HOTMART_CHECKOUT=Object.freeze({
 export const SERVICE_CHECKOUT="https://pay.hotmart.com/X107980075B?off=4ydutio7";
 const SERVICE_WA="https://wa.me/5588992545413?text=Ol%C3%A1!%20Quero%20assinar%20o%20Conte%C3%BAdo%20Pronto.";
 const HOTMART_TEXT=[
-  ["Pagamento seguro pelo Mercado Pago (Pix ou cartão) · download logo após a confirmação · garantia de 7 dias.","Pagamento seguro pela Hotmart (Pix, cartão ou boleto) · acesso logo após a confirmação · garantia de 7 dias."],
-  ["Download logo após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago). Link pessoal enviado ao seu e-mail.","Acesso logo após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail."],
-  ["Logo após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um link pessoal para baixar o arquivo .zip com todo o material. Se o link se perder, peça outro em zevanory.api.br/entrega/reenviar.","Logo após a confirmação do pagamento, a Hotmart envia ao seu e-mail o acesso para baixar todo o material. Você também encontra o produto em Minhas compras, na sua conta Hotmart."],
-  ["Você tem 7 dias de garantia: peça o reembolso integral em zevanory.api.br/pedir-reembolso, sem precisar explicar o motivo.","Você tem 7 dias de garantia: peça o reembolso integral pela Hotmart, em Minhas compras, sem precisar explicar o motivo."],
+  [`Pagamento pelo Mercado Pago (Pix ou cartão) · entrega por e-mail em ${DELIVERY_72H} · arrependimento em 7 dias corridos.`,"Pagamento pela Hotmart (Pix, cartão ou boleto) · acesso por e-mail após a confirmação · arrependimento em 7 dias corridos."],
+  [`Entrega por e-mail após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago), em ${DELIVERY_72H}.`,"Acesso após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail."],
+  [`Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um ${DELIVERY_72H} do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.`,"Após a confirmação do pagamento, a Hotmart envia ao seu e-mail o acesso para baixar todo o material. Você também encontra o produto em Minhas compras, na sua conta Hotmart."],
+  [`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.`,`Você pode desistir em ${RULE_7D}, sem justificativa e com devolução integral: peça pela Hotmart, em Minhas compras.`],
   ["Pix ou cartão pelo Mercado Pago.","Pix, cartão ou boleto pela Hotmart."],
-  ["Link por e-mail logo após a confirmação do pagamento.","Acesso por e-mail logo após a confirmação do pagamento."],
+  ["Por e-mail após a confirmação do pagamento: válido por 72 horas e para um download.","Acesso por e-mail logo após a confirmação do pagamento."],
 ];
+// Decreto 7.962 "Resumo da oferta": pagamento e entrega da variante Hotmart (data/politica-unica.json).
+HOTMART_TEXT.push([RESUMO_OFERTA.produto_digital.pagamento,RESUMO_OFERTA.hotmart.pagamento],[RESUMO_OFERTA.produto_digital.entrega.replace("{delivery_72h}",DELIVERY_72H),RESUMO_OFERTA.hotmart.entrega]);
 export function hotmartPage(html,slug,checkout){
-  let out=String(html);
+  let out=openSalesHtml(html,slug);  // only served while sales are open (handleHotmart)
   for(const [from,to] of HOTMART_TEXT)out=out.split(from).join(to);
   out=out.replace(/href="\/comprar\/ZEV-[A-Z0-9-]+"/g,'href="'+checkout+'" rel="noopener"');
   // Avoid duplicate-content SEO: the canonical stays on the main page; this variant is not indexed.
@@ -262,7 +295,9 @@ export default{async fetch(request,env,ctx){
   let page="";
   if(url.pathname==="/"||url.pathname==="") { url.pathname="/solucoes.html"; page="solucoes"; }
   else { const key=url.pathname.replace(/^\/|\/$/g,""); if(htmlRoutes.has(key)) { url.pathname="/"+key+".html"; page=key; } }
-  const response=await env.ASSETS.fetch(new Request(url,request));
+  let response=await env.ASSETS.fetch(new Request(url,request));
+  if(response.status===200&&request.method==="GET"&&SALES_TOGGLE_PAGES.has(page)&&await salesOpenForPages(env))
+    {const h=new Headers(response.headers);h.delete("content-length");response=new Response(openSalesHtml(await response.text(),page),{status:200,statusText:response.statusText,headers:h});}
   if(response.status===200&&page) countView(request,env,ctx,page);
   const headers=new Headers(response.headers);
   headers.set("x-robots-tag","index,follow");
@@ -270,6 +305,9 @@ export default{async fetch(request,env,ctx){
   if(response.status===200&&!page&&/\.(css|js|svg|png|webp|jpg|jpeg|ico|woff2?)$/i.test(url.pathname)) headers.set("cache-control","public, max-age=86400, stale-while-revalidate=604800");
   // no-transform: the edge must not inject third-party scripts (Web Analytics beacon) into sales
   // pages — it was the only F5 performance offender and contradicts "no invasive tracking".
+  // Pages whose HTML depends on the sales switch (open AND closed) are never cached: a cached open
+  // page would keep showing buy CTAs after the owner closes sales.
+  else if(page&&SALES_TOGGLE_PAGES.has(page)) headers.set("cache-control",SWITCH_DEPENDENT_CACHE_CONTROL);
   else if(response.status===200&&page) headers.set("cache-control","public, max-age=300, stale-while-revalidate=3600, no-transform");
   applySecurityHeaders(headers);
   const sku=Object.keys(BUY_SKUS).find(k=>BUY_SKUS[k]===page);

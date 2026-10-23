@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { crosspost, captionFor, publishTikTok, publishInstagramReel } from "../scripts/channels/short-crosspost.mjs";
 import { planShort } from "../scripts/channels/youtube-daily-short.mjs";
+import { CLOSED_LABEL, SHORT_RULE, hasCheckoutCta, bannedPolicyHits } from "../worker/politica-unica.mjs";
 const memKv = () => { const m = new Map(); return { m, get: async k => m.get(k) ?? null, put: async (k, v) => { m.set(k, v); }, putBinary: async (k, v) => { m.set(k, v); }, list: async () => ({ keys: [] }) }; };
 const ok = j => ({ ok: true, status: 200, json: async () => j });
 
@@ -42,12 +43,27 @@ test("Instagram Reel publishes only after the container is FINISHED", async () =
   assert.equal(r.provider_post_id, "ig9"); assert.equal(polls, 3);
 });
 
-test("captions carry the product, guarantee and channel UTM; TikTok avoids dead links", () => {
+test("captions carry the product, the single 7-day rule (open) and channel UTM; TikTok avoids dead links", () => {
+  const p = planShort("2026-10-12", { salesOpen: true });
+  assert.match(captionFor(p, "instagram", { salesOpen: true }), /utm_source=instagram/);
+  assert.match(captionFor(p, "tiktok", { salesOpen: true }), /vendas\.zevanory\.api\.br/);
+  assert.doesNotMatch(captionFor(p, "tiktok", { salesOpen: true }), /utm_source/);
+  assert.ok(captionFor(p, "facebook", { salesOpen: true }).includes(SHORT_RULE), "regra curta da política única");
+  for (const ch of ["instagram", "facebook", "telegram", "tiktok"]) assert.deepEqual(bannedPolicyHits(captionFor(p, ch, { salesOpen: true })), [], ch);
+});
+
+test("P13c: com vendas fechadas (padrão) legenda e descrição não têm /comprar/, preço nem regra como chamada", () => {
   const p = planShort("2026-10-12");
-  assert.match(captionFor(p, "instagram"), /utm_source=instagram/);
-  assert.match(captionFor(p, "tiktok"), /vendas\.zevanory\.api\.br/);
-  assert.doesNotMatch(captionFor(p, "tiktok"), /utm_source/);
-  assert.match(captionFor(p, "facebook"), /garantia de 7 dias/);
+  assert.doesNotMatch(p.link + p.description, /\/comprar\//, "link vai para a página do produto");
+  assert.ok(p.description.includes(CLOSED_LABEL));
+  for (const ch of ["instagram", "facebook", "telegram", "tiktok"]) {
+    const c = captionFor(p, ch);
+    assert.equal(hasCheckoutCta(c), false, ch);
+    assert.ok(c.includes(CLOSED_LABEL), ch);
+    assert.doesNotMatch(c, /R\$/, ch);
+  }
+  // Plano aberto com legenda fechada (mutante: link /comprar/ vazando com vendas fechadas) é barrado.
+  assert.throws(() => captionFor(planShort("2026-10-12", { salesOpen: true }), "instagram"), /caption_checkout_cta_while_closed/);
 });
 
 test("pack renders the tip and the offer for each day with ready captions", async (t) => {
@@ -62,13 +78,13 @@ test("pack renders the tip and the offer for each day with ready captions", asyn
   assert.equal(n, 6);
   const txt = await readFile(join(out, "legendas.txt"), "utf8");
   for (const d of ["2026-10-12", "2026-10-13", "2026-10-14"]) { assert.match(txt, new RegExp(d + "\\.mp4")); assert.match(txt, new RegExp(d + "-dica\\.mp4")); }
-  assert.match(txt, /garantia de 7 dias/); assert.match(txt, /Guia gratuito/);
+  assert.ok(txt.includes(CLOSED_LABEL)); assert.equal(hasCheckoutCta(txt), false); assert.match(txt, /Guia gratuito/);
 });
 test("Telegram channel receives the day's video once, with caption and a provider-confirmed message id", async () => {
   const kv = memKv(); let sent = 0;
   const fetchImpl = async (url, o = {}) => {
     if (url.includes("tiktok-access")) return ok({ connected: false });
-    if (url.includes("/sendVideo")) { sent++; assert.ok(o.body instanceof FormData); assert.match(o.body.get("caption"), /garantia de 7 dias/); return ok({ ok: true, result: { message_id: 42, chat: { username: "zevanory" } } }); }
+    if (url.includes("/sendVideo")) { sent++; assert.ok(o.body instanceof FormData); assert.ok(o.body.get("caption").includes(CLOSED_LABEL)); assert.equal(hasCheckoutCta(o.body.get("caption")), false); return ok({ ok: true, result: { message_id: 42, chat: { username: "zevanory" } } }); }
     return ok({});
   };
   const env = { TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_CHANNEL_ID: "@zevanory" };

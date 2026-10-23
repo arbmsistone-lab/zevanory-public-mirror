@@ -1,13 +1,21 @@
 // ZEVANORY support knowledge: grounded answers about the public catalog.
 // Every fact here mirrors what is published on vendas.zevanory.api.br (approved
-// 2026-10-02) and the refund policy (CDC art. 49). No generation, no guessing:
-// unknown questions return a handoff instead of an invented answer.
+// 2026-10-02). No generation, no guessing: unknown questions return a handoff instead of an
+// invented answer.
+// P13c: prazo, entrega e reembolso vêm SÓ de data/politica-unica.json (worker/politica-unica.mjs):
+// a regra dos 7 dias (customer_wording.rule_7d),
+// link de 72 h / um download com reenvio sem custo, confirmação imediata, Mercado Pago avisado
+// imediatamente, crédito no prazo do emissor e resposta conclusiva em até 5 dias. Nenhuma resposta
+// traz chamada de compra (/comprar, /assinar, Hotmart); com vendas fechadas (interruptor do
+// proprietário, worker/sales-control.mjs) preço e conteúdo avisam que as vendas estão fechadas.
+import { CLOSED_LABEL, SUPPORT_DELIVERY_ANSWER, SUPPORT_REFUND_ANSWER, SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER, SUPPORT_SUBSCRIPTION_REFUND_ANSWER } from "./politica-unica.mjs";
+import { readSalesSwitch } from "./sales-control.mjs";
 
 const SALES_ORIGIN = "https://vendas.zevanory.api.br";
 const SUPPORT_EMAIL = "suporte@zevanory.api.br";
 
-const DELIVERY = "Entrega digital: após o pagamento ser confirmado pelo Mercado Pago, você recebe por e-mail um link seguro (válido por 72 horas) para baixar o material. Perdeu o e-mail ou o link expirou? Peça um novo link com o código do pedido e o e-mail da compra. Se você comprou pela Hotmart, o acesso chega pelo e-mail da Hotmart e fica em Minhas compras, na sua conta Hotmart.";
-const REFUND = "Direito de arrependimento: você pode desistir em até 7 dias após a compra e recebe o reembolso integral pelo mesmo meio de pagamento (art. 49 do Código de Defesa do Consumidor). Para pedir, use o link de reembolso com o código do pedido (está no e-mail de entrega) e o e-mail do pagamento. Se você comprou pela Hotmart, peça o reembolso em Minhas compras, na sua conta Hotmart.";
+const DELIVERY = SUPPORT_DELIVERY_ANSWER;
+const REFUND = SUPPORT_REFUND_ANSWER;
 
 export const SUPPORT_PRODUCTS = Object.freeze({
   "ia-na-pratica": { name: "IA na Prática", price_brl: 197, content: "Conteúdo prático para transformar IA em processos claros, repetíveis e úteis no trabalho e no negócio." },
@@ -15,7 +23,7 @@ export const SUPPORT_PRODUCTS = Object.freeze({
   "lucro-e-caixa": { name: "Lucro & Caixa", price_brl: 247, content: "Material prático para acompanhar entradas, saídas, margem e caixa com linguagem objetiva e rotina de decisão." },
   "combo-ia-vendas": { name: "Combo IA + Vendas", price_brl: 297, content: "Combina o método de IA e o processo de vendas para organizar prospecção, atendimento, oferta, follow-up e produção comercial." },
   "negocio-completo": { name: "Negócio Completo", price_brl: 397, content: "Pacote integrado para organizar uso de IA, processo comercial e gestão prática de lucro e caixa em uma única jornada." },
-  "conteudo-pronto": { name: "Conteúdo Pronto (assinatura mensal)", price_brl: 197, content: "Serviço mensal automático: depois de assinar pela Hotmart, você responde um formulário curto e recebe por e-mail, em minutos, 12 posts com legenda, 4 mensagens de venda para WhatsApp e um calendário de 30 dias, no tom do seu negócio. Renovação mensal automática; cancelamento e reembolso (7 dias) pela sua conta Hotmart." },
+  "conteudo-pronto": { name: "Conteúdo Pronto (assinatura mensal)", price_brl: 197, content: "Serviço mensal automático: depois da confirmação do pagamento, você responde um formulário curto e recebe por e-mail, em minutos, 12 posts com legenda, 4 mensagens de venda para WhatsApp e um calendário de 30 dias, no tom do seu negócio. Renovação mensal automática, sem fidelidade: cancele quando quiser." },
 });
 
 // Most specific first: "como recebo o acesso depois de pagar" is delivery, not price.
@@ -41,7 +49,7 @@ export function resolveProduct(text) {
   return null;
 }
 
-export function answerSupportQuestion({ product, question } = {}) {
+export function answerSupportQuestion({ product, question, salesOpen } = {}) {
   const q = String(question || "").slice(0, 500);
   const slug = resolveProduct(product) || resolveProduct(q);
   const intent = (INTENTS.find(([, re]) => re.test(q)) || [null])[0];
@@ -49,9 +57,7 @@ export function answerSupportQuestion({ product, question } = {}) {
     return { answered: false, intent: null, product: slug, answer: `Não tenho uma resposta segura para isso. Fale com o suporte em ${SUPPORT_EMAIL}.`, handoff: true };
   }
   if (slug === "conteudo-pronto" && (intent === "refund" || intent === "delivery")) {
-    const answer = intent === "refund"
-      ? "Conteúdo Pronto: você tem 7 dias de garantia com reembolso integral, pedido direto na sua conta Hotmart (Minhas compras). Cancelar a assinatura também é pela Hotmart, quando quiser, sem multa."
-      : "Conteúdo Pronto: depois do pagamento na Hotmart, você recebe por e-mail um link seguro para um formulário curto; em poucos minutos o pacote do mês chega no mesmo e-mail, também com um link seguro para consulta online.";
+    const answer = intent === "refund" ? SUPPORT_SUBSCRIPTION_REFUND_ANSWER : SUPPORT_SUBSCRIPTION_DELIVERY_ANSWER;
     return { answered: true, intent, product: slug, answer, sources: [`${SALES_ORIGIN}/conteudo-pronto`], handoff: false };
   }
   if (intent === "limits") {
@@ -64,11 +70,13 @@ export function answerSupportQuestion({ product, question } = {}) {
     return { answered: false, intent, product: null, answer: "Sobre qual produto? IA na Prática, Vendas na Prática, Lucro & Caixa, Combo IA + Vendas ou Negócio Completo.", handoff: false, needs_product: true };
   }
   const p = SUPPORT_PRODUCTS[slug];
-  const answer = intent === "price" ? `${p.name} custa ${brl(p.price_brl)} (preço de tabela).` : `${p.name}: ${p.content}`;
+  const base = intent === "price" ? `${p.name} custa ${brl(p.price_brl)} (preço de tabela).` : `${p.name}: ${p.content}`;
+  // Fail-closed only when the caller knows the switch is closed (false); unknown leaves the fact as is.
+  const answer = salesOpen === false ? `${base} No momento, ${CLOSED_LABEL}.` : base;
   return { answered: true, intent, product: slug, answer, sources: [`${SALES_ORIGIN}/${slug}`], handoff: false };
 }
 
-export function handleSupportKnowledge(request) {
+export async function handleSupportKnowledge(request, env = {}) {
   const url = new URL(request.url);
   const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-zevanory-support-contract": "knowledge-v1" };
   if (request.method !== "GET") return new Response(JSON.stringify({ error: "method_not_allowed" }), { status: 405, headers: { ...headers, allow: "GET" } });
@@ -76,6 +84,7 @@ export function handleSupportKnowledge(request) {
   if (!question.trim()) {
     return new Response(JSON.stringify({ service: "zevanory-support-knowledge", products: Object.keys(SUPPORT_PRODUCTS), usage: "/api/support/knowledge?product=<slug>&q=<pergunta>" }), { status: 200, headers });
   }
-  const result = answerSupportQuestion({ product: url.searchParams.get("product") || "", question });
+  const salesOpen = (await readSalesSwitch(env).catch(() => null))?.enabled === true;
+  const result = answerSupportQuestion({ product: url.searchParams.get("product") || "", question, salesOpen });
   return new Response(JSON.stringify(result), { status: 200, headers });
 }

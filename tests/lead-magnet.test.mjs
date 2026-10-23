@@ -127,25 +127,39 @@ test("nurture holds the catalog e-mail while sales are closed; opt-out stops eve
   assert.doesNotMatch(JSON.stringify(db.events), /@|Ana/, "audit trail has no e-mail or name");
 });
 
-test("nurture copy only uses catalog prices and the 7-day guarantee", () => {
+test("nurture copy only uses catalog prices and the single 7-day rule (open sales only)", () => {
   assert.doesNotMatch(nurtureEmail(1, { name: "", optOutUrl: "u" }).text, /vendas-na-pratica|R\$/);
-  const text = nurtureEmail(2, { name: "", optOutUrl: "u" }).text;
+  const text = nurtureEmail(2, { name: "", optOutUrl: "u", salesOpen: true }).text;
   for (const m of text.matchAll(/R\$ (\d+)/g)) assert.ok([197, 247, 297, 397].includes(Number(m[1])));
-  assert.match(text, /7 dias/);
+  assert.ok(text.includes(CUSTOMER_RULE_7D) && text.includes(DELIVERY_72H), "regra e entrega da política única");
+  assert.deepEqual(bannedPolicyHits(text), []);
 });
 
 import { interestFromPage, NURTURE_DONE } from "../worker/lead-magnet.mjs";
+import { CUSTOMER_RULE_7D, DELIVERY_72H, bannedPolicyHits, hasCheckoutCta } from "../worker/politica-unica.mjs";
 test("the offer matches what the lead was reading and the sequence ends", () => {
   assert.equal(interestFromPage("/calculadora-margem-de-lucro"), "caixa");
   assert.equal(interestFromPage("/vendas-na-pratica"), "vendas");
   assert.equal(interestFromPage("/ia-para-padaria"), "ia");
-  assert.match(nurtureEmail(2, { name: "", optOutUrl: "u", interest: "caixa" }).text, /Lucro & Caixa \(R\$ 247/);
-  const last = nurtureEmail(4, { name: "", optOutUrl: "u" }).text;
-  assert.match(last, /último e-mail/i); assert.match(last, /R\$ 397/); assert.match(last, /7 dias/);
+  assert.match(nurtureEmail(2, { name: "", optOutUrl: "u", interest: "caixa", salesOpen: true }).text, /Lucro & Caixa \(R\$ 247/);
+  const last = nurtureEmail(4, { name: "", optOutUrl: "u", salesOpen: true }).text;
+  assert.match(last, /último e-mail/i); assert.match(last, /R\$ 397/); assert.ok(last.includes(CUSTOMER_RULE_7D));
   for (let s = 0; s < NURTURE_DONE; s++) {
-    const t = nurtureEmail(s, { name: "", optOutUrl: "OPTOUT" }).text;
+    const t = nurtureEmail(s, { name: "", optOutUrl: "OPTOUT", salesOpen: true }).text;
     assert.match(t, /OPTOUT/);
+    assert.deepEqual(bannedPolicyHits(t), [], "step " + s);
     for (const m of t.matchAll(/R\$ (\d+)/g)) assert.ok([197, 247, 297, 397, 641].includes(Number(m[1])), m[0]);
+  }
+});
+
+test("P13c: com vendas fechadas (padrão) nenhum e-mail de nutrição tem oferta ou chamada de compra", () => {
+  for (let s = 0; s < NURTURE_DONE; s++) {
+    for (const opts of [{}, { salesOpen: false }, { salesOpen: "true" }]) {
+      const mail = nurtureEmail(s, { name: "", optOutUrl: "u", ...opts });
+      if (s >= 2) { assert.equal(mail, null, `passo ${s} fechado não monta oferta`); continue; }
+      assert.equal(hasCheckoutCta(mail.text + mail.subject), false, "passo " + s);
+      assert.doesNotMatch(mail.text, /R\$ \d/, "sem preço com vendas fechadas: passo " + s);
+    }
   }
 });
 

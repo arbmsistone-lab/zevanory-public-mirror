@@ -344,7 +344,7 @@ const wrapped = {
     }
 
     if (url.pathname === "/api/support/knowledge") {
-      return handleSupportKnowledge(request);
+      return handleSupportKnowledge(request, normalized);
     }
 
     if (url.pathname === "/api/support/validate-reply") {

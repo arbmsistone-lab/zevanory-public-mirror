@@ -17,6 +17,8 @@ case "$WORKFLOW_FILE" in
   # o script exigia o texto "10215" e descartou a mensagem; nada de produção foi tocado). Só vale com o merge
   # desta PR, que exige a frase literal do proprietário.
   b01-recovery-probe.yml) readonly ALLOWED_PRIOR_RUNS=1 ;;
+  # B02 (auditor Sol): prova real de rotas na zona descartável girolocal.api.br. 0 = só a primeira execução.
+  sandbox-route-probe.yml) readonly ALLOWED_PRIOR_RUNS=0 ;;
   *) echo "SINGLE_RUN_GUARD_WORKFLOW_REFUSED" >&2; exit 1 ;;
 esac
 readonly CURL_BIN="${CURL_BIN:-curl}"

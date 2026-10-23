@@ -1,13 +1,16 @@
+import { CUSTOMER_RULE_7D, LEGAL_IDENTITY, REFUND_CHANNELS, REFUND_TEXT, SLA_TEXT, refundWindow } from "./politica-unica.mjs";
 import { isAmbiguousRefund, hasRefundClaim, getRefundClaim, acquireRefundClaim, revokeRefundDownloads, saveRefund, markRefundApproved, reconcileRefund } from "./refund-provider-claims.mjs";
 export { reconcileRefund } from "./refund-provider-claims.mjs";
-// T5 — Refund flow (CDC art. 49: up to 7 days after payment).
+// T5 — Refund flow (CDC art. 49). P13c (FINANCEIRO): o prazo segue a regra publicada
+// (data/politica-unica.json, refund_window via refundWindow): 7 dias corridos a partir da data mais
+// recente entre a confirmação do pagamento e o primeiro recebimento (entrega por e-mail ou primeiro
+// download); sem recebimento o prazo não começou. Fora do prazo: não registra, encaminha ao suporte.
 // Customer requests -> owner approves in /admin/refunds (admin basic auth) -> Mercado Pago refund API
 // -> provider webhook/reconciliation marks the order refunded. Download tokens are revoked on approval.
 // No customer PII is stored: the email is only compared against the payer email at Mercado Pago.
 
 const MP = "https://api.mercadopago.com";
 const ORIGIN = "https://zevanory.api.br";
-const WINDOW_MS = 7 * 24 * 3600 * 1000;
 const KEY = (oid) => `refund:req:${oid}`;
 
 
@@ -31,9 +34,13 @@ function tokenFor(env, test) {
 }
 
 async function loadOrder(sql, oid) {
+  // AVAL Sol (2ff8678): o prazo começa no PRIMEIRO recebimento => min(delivered_at), determinístico mesmo
+  // com mais de uma linha de entrega (antes: LIMIT 1 sem ORDER BY pegava uma linha arbitrária).
   const rows = await sql.query(
     `select o.order_id, o.status, o.amount, o.offer_id, o.certification_pilot,
-            fe.provider_payment_id as payment_id, fe.received_at as paid_at
+            fe.provider_payment_id as payment_id, fe.received_at as paid_at,
+            (select min(sf.delivered_at) from service_fulfillment sf where sf.order_id=o.order_id and sf.status='delivered') as delivered_at,
+            (select min(t.used_at) from artifact_download_tokens t where t.order_id=o.order_id) as first_download_at
        from orders o
        left join lateral (select provider_payment_id, received_at from financial_events f
                            where f.order_id=o.order_id and f.normalized_event='payment_confirmed'
@@ -92,8 +99,10 @@ async function createRequest(env, sql, kv, { oid, email }) {
   const order = await loadOrder(sql, oid);
   if (!order || order.status !== "paid" || !order.payment_id || !order.paid_at) return { status: 404, body: { error: "nao_elegivel", message: GENERIC_NOT_FOUND, reason: !order ? "order_not_found" : order.status !== "paid" ? "order_status_" + order.status : "payment_missing" } };
   const test = order.certification_pilot === true || Boolean(await kv.get(`sandbox-proof-v2:order:${oid}`));
-  if (Date.now() - new Date(order.paid_at).getTime() > WINDOW_MS) {
-    return { status: 409, body: { error: "fora_do_prazo", message: "O prazo de 7 dias para arrependimento deste pedido terminou. Se houver algum problema com o material, escreva para suporte@zevanory.api.br." } };
+  const window = refundWindow({ paidAt: order.paid_at, deliveredAt: order.delivered_at, firstDownloadAt: order.first_download_at, now: Date.now() });
+  if (!window.eligible) {
+    // Never auto-refunded and never registered as a refund: routed to support (defect/delivery issues are still handled there).
+    return { status: 409, body: { error: "fora_do_prazo", route: "suporte", window_ends_at: window.ends_at, message: `O prazo de arrependimento (${CUSTOMER_RULE_7D}) deste pedido terminou. Se houver defeito, arquivo corrompido ou falha de entrega, fale com o suporte: ${REFUND_CHANNELS}.` } };
   }
   // The customer identifies with the email where the product was delivered (= Mercado Pago payer in production).
   const candidates = [];
@@ -116,11 +125,13 @@ async function createRequest(env, sql, kv, { oid, email }) {
     test,
     email_masked: maskEmail(email),
     paid_at: new Date(order.paid_at).toISOString(),
+    received_at: window.received_at || null,
+    window: window.reason,
     requested_at: new Date().toISOString(),
   };
   await kv.put(KEY(oid), JSON.stringify(record), { expirationTtl: 90 * 24 * 3600 });
   if (!test) {
-    const alert = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY — novo pedido de reembolso para aprovar", `Pedido ${oid} (${record.offer_id}, R$ ${record.amount}) solicitou reembolso dentro do prazo de 7 dias.\n\nAprovar: ${ORIGIN}/admin/refunds`);
+    const alert = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"), "ZEVANORY — novo pedido de reembolso para aprovar", `Pedido ${oid} (${record.offer_id}, R$ ${record.amount}) solicitou reembolso dentro do prazo de arrependimento (${window.reason === "recebimento_pendente" ? "recebimento ainda não registrado" : "até " + window.ends_at}).\n\nAprovar: ${ORIGIN}/admin/refunds`);
     if (!alert.sent) {
       // Keep a retry marker; the hourly refund watchdog re-alerts the owner.
       try { await kv.put(`refund:alert-pending:${oid}`, new Date().toISOString(), { expirationTtl: 14 * 24 * 3600 }); } catch {}
@@ -225,10 +236,10 @@ async function listRequests(kv, sql) {
 
 const FORM_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Solicitar reembolso · ZEVANORY</title>
 <meta name="robots" content="noindex"><link rel="icon" href="/brand/export/avatar-400.png"><style>body{margin:0;font-family:system-ui,sans-serif;background:#05070b;color:#e7ecf7}main{max-width:520px;margin:0 auto;padding:32px 20px}.zv-brand{display:block;margin:0 0 22px}.zv-brand img{display:block;height:44px;width:auto}.zv-legal{margin-top:24px;padding-top:14px;border-top:1px solid #1c2a44;font-size:12px;color:#7f8ca3;line-height:1.6}.zv-legal a,.zv-help a{color:#7fd3ff}h1{font-size:26px}p{color:#b9c4dc;line-height:1.5}label{display:block;margin:18px 0 6px;font-weight:600}input{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #24324f;background:#0b1220;color:#fff;font-size:16px}button{margin-top:22px;width:100%;padding:14px;border:0;border-radius:10px;background:#00b8ff;color:#04121f;font-weight:700;font-size:16px;cursor:pointer}#msg{margin-top:18px;padding:12px;border-radius:10px;background:#0b1220;display:none}</style></head>
-<body><main><a class="zv-brand" href="https://vendas.zevanory.api.br/"><img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY" width="224" height="51"></a><h1>Solicitar reembolso</h1><p>Você tem até 7 dias após o pagamento para desistir da compra e receber o valor integral de volta pelo mesmo meio de pagamento (art. 49 do CDC).</p>
+<body><main><a class="zv-brand" href="https://vendas.zevanory.api.br/"><img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY" width="224" height="51"></a><h1>Solicitar reembolso</h1><p>${REFUND_TEXT} ${SLA_TEXT}</p>
 <form id="f"><label for="o">Código do pedido</label><input id="o" name="order_id" required placeholder="está no e-mail de entrega" autocomplete="off">
 <label for="e">E-mail usado no pagamento</label><input id="e" name="email" type="email" required autocomplete="email"><button type="submit">Enviar pedido de reembolso</button></form><div id="msg" role="status"></div>
-<p class="zv-help" style="margin-top:28px;font-size:14px">Dúvidas: <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a> · <a href="https://wa.me/5588992545413">WhatsApp +55 88 99254-5413</a></p><p class="zv-legal">A. RENAN ALVES MOREIRA BITU LTDA · CNPJ 69.077.233/0001-99 · Várzea Alegre/CE · <a href="https://vendas.zevanory.api.br/termos">Termos</a> · <a href="https://vendas.zevanory.api.br/privacidade">Privacidade</a> · <a href="https://vendas.zevanory.api.br/reembolso">Reembolso</a></p></main>
+<p class="zv-help" style="margin-top:28px;font-size:14px">Dúvidas: <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a> · <a href="https://wa.me/5588992545413">WhatsApp +55 88 99254-5413</a></p><p class="zv-legal">${LEGAL_IDENTITY} · <a href="https://vendas.zevanory.api.br/termos">Termos</a> · <a href="https://vendas.zevanory.api.br/privacidade">Privacidade</a> · <a href="https://vendas.zevanory.api.br/reembolso">Reembolso</a></p></main>
 <script>document.getElementById('f').addEventListener('submit',async(ev)=>{ev.preventDefault();const m=document.getElementById('msg');m.style.display='block';m.textContent='Enviando…';try{const r=await fetch('/api/support/refund-request',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({order_id:document.getElementById('o').value,email:document.getElementById('e').value})});const j=await r.json();m.textContent=j.message||'Não foi possível registrar agora. Tente novamente.';}catch{m.textContent='Não foi possível registrar agora. Tente novamente.';}});</script></body></html>`;
 
 function adminPage(items) {
@@ -367,7 +378,7 @@ export async function runRefundWatchdog(env, now = Date.now(), { sqlFactory } = 
   const lines = pending.map((r) => "- Pedido " + r.order_id + " (" + r.offer_id + ", R$ " + r.amount + ") pedido há " + Math.round(r.ageH) + "h").join("\n");
   const sent = await sendEmail(env, String(env.OWNER_ALERT_EMAIL || "zevanory@gmail.com"),
     "ZEVANORY — " + pending.length + " reembolso(s) aguardando aprovação",
-    "Há reembolsos pendentes dentro do prazo legal de 7 dias:\n\n" + lines + "\n\nAprovar: " + ORIGIN + "/admin/refunds");
+    "Há reembolsos pendentes pedidos dentro do prazo de arrependimento:\n\n" + lines + "\n\nAprovar: " + ORIGIN + "/admin/refunds");
   if (sent.sent) {
     await kv.put("refund:watchdog:last", new Date(now).toISOString(), { expirationTtl: 12 * 3600 });
     for (const r of pending) { try { await kv.delete("refund:alert-pending:" + r.order_id); } catch {} }
