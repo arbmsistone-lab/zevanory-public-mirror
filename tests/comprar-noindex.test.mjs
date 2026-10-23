@@ -4,7 +4,7 @@ import {readdirSync} from "node:fs";
 import {readTextNormalized} from "./helpers/text.mjs";
 import {fileURLToPath} from "node:url";
 import {dirname, join} from "node:path";
-import worker from "../worker/sales-public-worker.mjs";
+import worker, {percentDecodeOnce, comprarMatch} from "../worker/sales-public-worker.mjs";
 
 // Auditor Sol (AVAL 100): /comprar/ on vendas.zevanory.api.br stays out of search indexes by the
 // response itself (X-Robots-Tag noindex,nofollow + Cache-Control no-store + robots meta in HTML),
@@ -102,6 +102,33 @@ test("an unexpected exception inside the buy flow still answers 5xx with the noi
   catch (e) { assert.fail("[exception] buy flow threw instead of answering 503: " + e.message); }
   const body = await assertNoindex(r, "exception", 503);
   assert.match(body, /Checkout indisponível/, "[exception]");
+});
+
+test("percent-encoded aliases of /comprar are decoded once (URL rules) and get the same flow and headers", async () => {
+  // Single-encoded aliases are equivalent to /comprar under URL rules: same buy flow, same noindex/no-store.
+  const routable = ["/%63omprar/ZEV-IA-011", "/comp%72ar/ZEV-IA-011", "/co%6Dprar/ZEV-IA-011", "/co%6dprar/ZEV-IA-011",
+    "/%63%6F%6D%70%72%61%72/ZEV-IA-011", "/%43OMPRAR/zev-ia-011", "/Co%4DpRaR/ZEV-IA-011", "/comprar/%5AEV-IA-011", "/comprar%2FZEV-IA-011"];
+  for (const path of routable) {
+    const closed = await call(path);
+    assert.match(await assertNoindex(closed, `[alias] closed ${path}`, 200), /Vendas abrem em breve/, `[alias] ${path}`);
+    const open = await call(path, {method: "POST", env: makeEnv({sales: "open"})});
+    await assertNoindex(open, `[alias] open POST ${path}`, 303);
+  }
+  for (const path of ["/%63omprar", "/%63omprar/", "/comp%72ar/x", "/%63omprar/%ZZ", "/%63omprar/ZEV-IA-011/extra"]) {
+    await assertNoindex(await call(path, {env: makeEnv({sales: "open"})}), `[alias] ${path}`, 404);
+  }
+  // Double (or deeper) encoding is NOT /comprar under URL rules: never routed to the buy flow, but still noindex.
+  for (const path of ["/%2563omprar/ZEV-IA-011", "/comp%2572ar/ZEV-IA-011", "/%25252563omprar/ZEV-IA-011", "/%2563omprar/"]) {
+    for (const method of ["GET", "POST"]) {
+      const r = await call(path, {method, env: makeEnv({sales: "open"})});
+      const body = await assertNoindex(r, `[double] ${method} ${path}`, 404);
+      assert.doesNotMatch(body, /Ir para o pagamento seguro/, `[double] ${path} routed`);
+    }
+  }
+  assert.equal(comprarMatch("/%63omprar-agora"), null, "[alias] prefix without separator is not /comprar");
+  assert.equal(percentDecodeOnce("/%E2%82%AC%zz%4"), "/€%zz%4", "[decode] UTF-8 and malformed escapes");
+  assert.equal(percentDecodeOnce("/%FF"), "/\uFFFD", "[decode] invalid UTF-8 becomes U+FFFD");
+  assert.equal(percentDecodeOnce("/%2563"), "/%63", "[decode] exactly one round");
 });
 
 test("noindex,nofollow stays scoped to /comprar: product pages keep index,follow", async () => {

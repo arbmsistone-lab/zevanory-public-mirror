@@ -260,6 +260,30 @@ async function handleHotmart(request,env,slug,ctx){
 // robots.txt does NOT disallow /comprar/ on purpose: a blocked URL is never fetched, so the crawler would
 // never see the noindex (https://developers.google.com/search/docs/crawling-indexing/block-indexing).
 export const COMPRAR_PATH=/^\/comprar(?:\/|$)/i;
+// Percent-encoded aliases (/%63omprar/, /comp%72ar/, /co%6Dprar/ or /co%6dprar/): the pathname is decoded ONCE
+// with the URL Standard percent-decode (bytes, then UTF-8 with replacement; never throws) before matching, so an
+// alias of /comprar/<SKU> gets the same buy flow and the same noindex/nofollow/no-store as the literal path.
+// Double-encoding policy: /%2563omprar/ is NOT equivalent to /comprar/ under URL rules (one decode gives
+// /%63omprar/), so it is never routed to the buy flow; but if further decodes (at most 3 more) reach /comprar,
+// it still answers a 404 with noindex/nofollow/no-store, because over-applying noindex to a non-page is harmless.
+const URL_DECODER=new TextDecoder("utf-8");
+export function percentDecodeOnce(input){
+  const bytes=new TextEncoder().encode(String(input)),out=[];
+  const hex=b=>(b>=48&&b<=57)||(b>=65&&b<=70)||(b>=97&&b<=102);
+  for(let i=0;i<bytes.length;i++){
+    if(bytes[i]===37&&i+2<bytes.length&&hex(bytes[i+1])&&hex(bytes[i+2])){out.push(parseInt(String.fromCharCode(bytes[i+1],bytes[i+2]),16));i+=2;}
+    else out.push(bytes[i]);
+  }
+  return URL_DECODER.decode(new Uint8Array(out));
+}
+// -> {path, routable} when the request belongs to /comprar (literal, single-encoded or multi-encoded alias), else null.
+export function comprarMatch(pathname){
+  const once=percentDecodeOnce(pathname);
+  if(COMPRAR_PATH.test(once)) return {path:once,routable:true};
+  let p=once;
+  for(let i=0;i<3;i++){const n=percentDecodeOnce(p);if(n===p)break;p=n;if(COMPRAR_PATH.test(p)) return {path:p,routable:false};}
+  return null;
+}
 export const COMPRAR_ROBOTS="noindex, nofollow";
 export const COMPRAR_META='<meta name="robots" content="noindex,nofollow">';
 export async function noindexComprar(response){
@@ -276,9 +300,9 @@ export async function noindexComprar(response){
   }
   return new Response(body,{status:response.status,statusText:response.statusText,headers});
 }
-async function comprarRoute(request,env,ctx,url){
+async function comprarRoute(request,env,ctx,match){
   try{
-    const buy=url.pathname.match(/^\/comprar\/([A-Z0-9-]{6,20})\/?$/i);
+    const buy=match.routable&&match.path.match(/^\/comprar\/([A-Z0-9-]{6,20})\/?$/i);
     if(buy) return await handleBuy(request,env,buy[1].toUpperCase(),ctx);
     return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");
   }catch(e){
@@ -289,7 +313,8 @@ async function comprarRoute(request,env,ctx,url){
 
 export default{async fetch(request,env,ctx){
   const url=new URL(request.url);
-  if(COMPRAR_PATH.test(url.pathname)) return noindexComprar(await comprarRoute(request,env,ctx,url));
+  const comprar=comprarMatch(url.pathname);
+  if(comprar) return noindexComprar(await comprarRoute(request,env,ctx,comprar));
   // IndexNow ownership proof for the sales host (same public key as the apex).
   if(url.pathname==="/4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922.txt"&&(request.method==="GET"||request.method==="HEAD"))
     return new Response(request.method==="HEAD"?null:"4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922",{status:200,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"public, max-age=86400"}))});

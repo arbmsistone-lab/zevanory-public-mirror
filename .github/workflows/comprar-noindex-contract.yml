@@ -33,10 +33,10 @@ jobs:
         run: |
           set -euo pipefail
           node --version
-          node --test tests/comprar-noindex.test.mjs 2>&1 | tee /tmp/comprar.txt
+          node --test --test-reporter=tap tests/comprar-noindex.test.mjs 2>&1 | tee /tmp/comprar.txt
           # Contagem exata: teste removido, pulado ou pendente não pode passar despercebido.
-          grep -qx "# tests 7" /tmp/comprar.txt || { echo "::error::contagem de testes diferente de 7"; exit 1; }
-          grep -qx "# pass 7" /tmp/comprar.txt || { echo "::error::nem todos os 7 testes passaram"; exit 1; }
+          grep -qx "# tests 8" /tmp/comprar.txt || { echo "::error::contagem de testes diferente de 8"; exit 1; }
+          grep -qx "# pass 8" /tmp/comprar.txt || { echo "::error::nem todos os 8 testes passaram"; exit 1; }
           grep -qx "# fail 0" /tmp/comprar.txt || { echo "::error::há testes falhando"; exit 1; }
           grep -qx "# skipped 0" /tmp/comprar.txt || { echo "::error::testes pulados"; exit 1; }
           grep -qx "# todo 0" /tmp/comprar.txt || { echo "::error::testes pendentes (todo)"; exit 1; }
@@ -50,25 +50,46 @@ jobs:
           python3 scripts/build_sales_public.py
           git diff --exit-code -- sales-public/robots.txt sales-public/sitemap.xml || { echo "::error::sales-public/robots.txt ou sitemap.xml divergem do build"; exit 1; }
 
-  # Cada mutante precisa ser morto pela asserção esperada (rótulo na saída), não por qualquer falha.
+  # Cada mutante precisa ser morto pela asserção esperada (rótulo na saída), não por qualquer falha. Matriz Linux e
+  # Windows (Git Bash, checkout com core.autocrlf=true => CRLF) em Node 22 e 24 (no 24 o reporter padrão é spec; o
+  # script força TAP). Erro de infraestrutura sai como INCONCLUSIVE (exit 3), nunca KILLED nem SURVIVED.
   mutants:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: mutants (${{ matrix.os }}, node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ["22", "24"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: /comprar/ noindex — 14 mutantes
-        shell: bash
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: /comprar/ noindex — 18 mutantes
         env:
           PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONIOENCODING: "utf-8"
         run: |
           set -euo pipefail
+          echo "::notice title=AMBIENTE_MUTANTES::os=$RUNNER_OS node=$(node --version) python=$(python3 --version 2>&1) autocrlf=$(git config --get core.autocrlf || echo unset)"
           rc=0
-          python3 scripts/ci/mutants_comprar_noindex.py < /dev/null | tee /tmp/mutants.txt || rc=$?
-          echo "::notice title=MUTANTS_COMPRAR_NOINDEX::$(grep '^MUTANT' /tmp/mutants.txt | sed 's/ — .*//' | paste -sd'|' - | sed 's/|/%0A/g')%0Arc=$rc"
-          [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
-          n="$(grep -c '^MUTANT M[0-9]* KILLED' /tmp/mutants.txt || true)"
-          [ "$n" = "14" ] || { echo "::error::esperados 14 mutantes mortos, obtidos $n"; exit 1; }
-          if grep -q '^MUTANT M[0-9]* SURVIVED' /tmp/mutants.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
+          python3 scripts/ci/mutants_comprar_noindex.py < /dev/null > mutants.raw 2>&1 || rc=$?
+          tr -d '\r' < mutants.raw | tee mutants.txt
+          echo "::notice title=MUTANTS_COMPRAR_NOINDEX ($RUNNER_OS node ${{ matrix.node }})::$(grep '^MUTANT' mutants.txt | sed 's/ — .*//' | paste -sd'|' - | sed 's/|/%0A/g')%0Arc=$rc"
+          if grep -q '^MUTANT .* INCONCLUSIVE' mutants.txt; then grep '^MUTANT .* INCONCLUSIVE' mutants.txt | while IFS= read -r l; do echo "::error title=INCONCLUSIVE::$l"; done; fi
+          [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc (1=sobrevivente, 2=baseline, 3=inconclusivo)"; exit 1; }
+          n="$(grep -c '^MUTANT M[0-9]* KILLED' mutants.txt || true)"
+          [ "$n" = "18" ] || { echo "::error::esperados 18 mutantes mortos, obtidos $n"; exit 1; }
+          if grep -qE '^MUTANT M[0-9]* (SURVIVED|INCONCLUSIVE)' mutants.txt; then echo "::error::mutante sobrevivente ou inconclusivo"; exit 1; fi
+          rm -f mutants.txt mutants.raw
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi

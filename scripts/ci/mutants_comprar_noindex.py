@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
-"""Mutantes /comprar/ noindex (auditor Sol, AVAL 100): cada mutante altera UMA CÓPIA temporária do Worker de
-vendas, do sitemap, do robots.txt ou de uma página publicada, roda tests/comprar-noindex.test.mjs contra a cópia
-e só conta como morto se o teste falhar COM A ASSERÇÃO ESPERADA (texto do rótulo da asserção na saída). O
-repositório original nunca é modificado.
-Imprime `MUTANT <id> KILLED|SURVIVED` e sai != 0 se algum sobreviver ou se a suíte sem mutação falhar.
+"""Mutantes /comprar/ noindex (auditor Sol, AVAL 100/AVAL #888): cada mutante altera UMA CÓPIA temporária do Worker de
+vendas, do sitemap, do robots.txt ou de uma página publicada, roda tests/comprar-noindex.test.mjs contra a cópia e
+classifica o resultado. Determinístico em Linux e Windows (Node 22/24):
+  - texto lido em UTF-8 com CRLF normalizado para LF (mesma regra de tests/helpers/text.mjs, readTextNormalized) antes de
+    aplicar a mutação, e o arquivo mutado é gravado em UTF-8 com LF; caminhos sempre por pathlib (sem "/" literal no SO);
+  - node resolvido por shutil.which, lista de argumentos sem shell, stdin fechado, saída decodificada em UTF-8;
+  - reporter TAP explícito (--test-reporter=tap): no Node >= 23 o reporter padrão é "spec" mesmo fora de TTY, e a
+    detecção por "not ok" via spec produzia SOBREVIVENTE falso.
+Classificação (nunca por "qualquer falha"):
+  KILLED       exit != 0, TAP com "not ok" E o rótulo da asserção esperada na saída;
+  SURVIVED     exit == 0 e resumo TAP completo "# tests N / # pass N / # fail 0" (N = baseline);
+  INCONCLUSIVE qualquer outra coisa: trecho a mutar não encontrado, node ausente, timeout, erro de SO, saída sem resumo
+               TAP, ou falha sem o rótulo esperado (erro de infraestrutura não conta como morto nem como sobrevivente).
+Saída: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE`. Exit 0 só se todos KILLED; 1 se algum SURVIVED; 3 se algum
+INCONCLUSIVE (sem sobrevivente); 2 se a baseline (sem mutação) não passar.
 Uso: python3 scripts/ci/mutants_comprar_noindex.py [raiz-do-repo]
 """
-import os, shutil, subprocess, sys, tempfile
+import os, re, shutil, subprocess, sys, tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 REPO = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2])
-TEST = "tests/comprar-noindex.test.mjs"
-COPY_DIRS = ["worker", "sales-public", "data"]
-COPY_FILES = [TEST, "tests/helpers/text.mjs", "sales-overlay/robots.txt", "sitemap.xml"]
+TEST = Path("tests", "comprar-noindex.test.mjs")
+COPY_DIRS = [Path("worker"), Path("sales-public"), Path("data")]
+COPY_FILES = [TEST, Path("tests", "helpers", "text.mjs"), Path("sales-overlay", "robots.txt"), Path("sitemap.xml")]
 W = "worker/sales-public-worker.mjs"
+NODE = shutil.which("node")
+TIMEOUT = 600
 
-# id -> (arquivo, trecho original (ocorre 1 vez), substituto, asserção que precisa falhar)
+# id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
 M = {
     "M1 header removed on the 303 redirect path": (W, 'headers.set("x-robots-tag",COMPRAR_ROBOTS);',
         'if(response.status!==303)headers.set("x-robots-tag",COMPRAR_ROBOTS);', "[x-robots-tag]"),
@@ -46,51 +58,99 @@ M = {
         "Allow: /\nDisallow: /*comprar\n", "[robots:sales-overlay/robots.txt]"),
     "M14 canonical points to /comprar/": ("sales-public/ia-na-pratica.html", '<link rel="canonical" href="https://vendas.zevanory.api.br/ia-na-pratica">',
         '<link rel="canonical" href="https://vendas.zevanory.api.br/comprar/ZEV-IA-011">', "[canonical]"),
+    "M15 path not decoded before matching": (W, 'const once=percentDecodeOnce(pathname);', 'const once=pathname;', "[alias]"),
+    "M16 multi-encoded aliases not covered": (W, 'for(let i=0;i<3;i++){const n=percentDecodeOnce(p);', 'for(let i=0;i<0;i++){const n=percentDecodeOnce(p);', "[double]"),
+    "M17 uppercase hex escapes not decoded": (W, 'const hex=b=>(b>=48&&b<=57)||(b>=65&&b<=70)||(b>=97&&b<=102);', 'const hex=b=>(b>=48&&b<=57)||(b>=97&&b<=102);', "[alias]"),
+    "M18 double-encoded alias routed to the buy flow": (W, 'return {path:p,routable:false};', 'return {path:p,routable:true};', "[double]"),
 }
 
 
-def sub(text, old, new):
-    assert text.count(old) == 1, old
-    return text.replace(old, new, 1)
+def read_text_normalized(path):
+    return path.read_bytes().decode("utf-8").replace("\r\n", "\n")
+
+
+def write_lf(path, text):
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
 
 
 def stage(d):
     for x in COPY_DIRS:
         if (REPO / x).is_dir():
-            shutil.copytree(REPO / x, Path(d) / x, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            shutil.copytree(REPO / x, d / x, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     for x in COPY_FILES:
-        (Path(d) / x).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPO / x, Path(d) / x)
+        (d / x).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO / x, d / x)
 
 
 def run(d):
-    return subprocess.run(["node", "--test", TEST], cwd=d, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=600)
+    env = {**os.environ, "NO_COLOR": "1", "FORCE_COLOR": "0", "NODE_OPTIONS": ""}
+    p = subprocess.run([NODE, "--test", "--test-reporter=tap", TEST.as_posix()], cwd=str(d), env=env,
+                       stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT)
+    out = (p.stdout + p.stderr).decode("utf-8", errors="replace").replace("\r\n", "\n")
+    return p.returncode, out
 
 
-def one(item):
+def summary(out):
+    get = lambda k: (re.search(rf"^# {k} (\d+)$", out, re.M) or [None, None])[1]
+    return {k: get(k) for k in ("tests", "pass", "fail")}
+
+
+def classify(rc, out, expect, total):
+    s = summary(out)
+    if rc != 0 and re.search(r"^\s*not ok ", out, re.M) and expect in out:
+        return "KILLED", ""
+    if rc == 0 and s == {"tests": total, "pass": total, "fail": "0"}:
+        return "SURVIVED", ""
+    return "INCONCLUSIVE", f"rc={rc} resumo={s} rótulo_presente={expect in out}"
+
+
+def one(item, total):
     name, (fname, old, new, expect) = item
-    with tempfile.TemporaryDirectory() as d:
-        stage(d)
-        f = Path(d) / fname
-        f.write_text(sub(f.read_text(encoding="utf-8"), old, new), encoding="utf-8")
-        p = run(d)
-    out = p.stdout + p.stderr
-    return name, p.returncode != 0 and "not ok" in out and expect in out, expect
+    try:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            d = Path(tmp)
+            stage(d)
+            f = d.joinpath(*fname.split("/"))
+            text = read_text_normalized(f)
+            if text.count(old) != 1:
+                return name, "INCONCLUSIVE", f"trecho a mutar ocorre {text.count(old)} vez(es)", expect
+            write_lf(f, text.replace(old, new, 1))
+            rc, out = run(d)
+        verdict, why = classify(rc, out, expect, total)
+        return name, verdict, why, expect
+    except (OSError, subprocess.SubprocessError, UnicodeError) as e:
+        return name, "INCONCLUSIVE", f"erro de infraestrutura: {type(e).__name__}: {e}", expect
 
 
-with tempfile.TemporaryDirectory() as d0:
-    stage(d0)
-    base = run(d0)
-if base.returncode != 0:
-    print(base.stdout[-3000:])
-    print("MUTANT BASELINE FAILED (suíte sem mutação não passa)")
-    sys.exit(2)
-print("MUTANT BASELINE PASS", flush=True)
-survivors = 0
-with ThreadPoolExecutor(max_workers=max(2, os.cpu_count() or 2)) as ex:
-    for name, killed, expect in ex.map(one, M.items()):
-        mid = name.split()[0]
-        survivors += 0 if killed else 1
-        print(f"MUTANT {mid} {'KILLED' if killed else 'SURVIVED'} — {name[len(mid) + 1:]} (asserção: {expect})", flush=True)
-print(f"MUTANTS_TOTAL={len(M)} KILLED={len(M) - survivors} SURVIVED={survivors}")
-sys.exit(1 if survivors else 0)
+def main():
+    if not NODE:
+        print("MUTANT BASELINE INCONCLUSIVE (node ausente no PATH)")
+        return 3
+    try:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            stage(Path(tmp))
+            rc, out = run(Path(tmp))
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"MUTANT BASELINE INCONCLUSIVE ({type(e).__name__}: {e})")
+        return 3
+    s = summary(out)
+    if rc != 0 or not s["tests"] or s["pass"] != s["tests"] or s["fail"] != "0":
+        print(out[-3000:])
+        print(f"MUTANT BASELINE FAILED (suíte sem mutação não passa) rc={rc} resumo={s}")
+        return 2
+    total = s["tests"]
+    print(f"MUTANT BASELINE PASS tests={total} node={subprocess.run([NODE, '--version'], capture_output=True, text=True).stdout.strip()} os={os.name}", flush=True)
+    counts = {"KILLED": 0, "SURVIVED": 0, "INCONCLUSIVE": 0}
+    with ThreadPoolExecutor(max_workers=max(2, min(8, os.cpu_count() or 2))) as ex:
+        for name, verdict, why, expect in ex.map(lambda it: one(it, total), M.items()):
+            mid = name.split()[0]
+            counts[verdict] += 1
+            extra = f" [{why}]" if why else ""
+            print(f"MUTANT {mid} {verdict} — {name[len(mid) + 1:]} (asserção: {expect}){extra}", flush=True)
+    print(f"MUTANTS_TOTAL={len(M)} KILLED={counts['KILLED']} SURVIVED={counts['SURVIVED']} INCONCLUSIVE={counts['INCONCLUSIVE']}")
+    return 1 if counts["SURVIVED"] else 3 if counts["INCONCLUSIVE"] else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
