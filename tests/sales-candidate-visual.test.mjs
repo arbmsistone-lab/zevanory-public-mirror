@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 
-const wf = readFileSync(new URL("../.github/workflows/sales-candidate-visual.yml", import.meta.url), "utf8");
-const gate = readFileSync(new URL("../scripts/audit/sales-visual-gate.mjs", import.meta.url), "utf8");
-const apex = readFileSync(new URL("../.github/workflows/zevanory-apex-engineering.yml", import.meta.url), "utf8");
+const wf = readTextNormalized(new URL("../.github/workflows/sales-candidate-visual.yml", import.meta.url));
+const gate = readTextNormalized(new URL("../scripts/audit/sales-visual-gate.mjs", import.meta.url));
+const apex = readTextNormalized(new URL("../.github/workflows/zevanory-apex-engineering.yml", import.meta.url));
 
 test("candidate gate runs on the PR build served from localhost, never on the published site", () => {
   assert.match(wf, /python3 scripts\/build_sales_public\.py/);

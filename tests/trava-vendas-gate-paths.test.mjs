@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Contestações GPT-6 (016-D/016-E): o filtro de caminhos do gate não pode deixar de fora nenhuma entrada
@@ -11,7 +11,9 @@ import { fileURLToPath } from "node:url";
 // cobertura deixa de ser "parcial silenciosa": o que não puder ser provado estaticamente falha alto.
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const WF_PATH = ".github/workflows/trava-vendas-integracao-postgres.yml";
-const WF = readFileSync(join(ROOT, WF_PATH), "utf8");
+const WF = readFileSync(join(ROOT, WF_PATH), "utf8").replace(/\r\n/g, "\n");
+// Caminhos relativos sempre com "/" (no Windows path.relative devolve "\\"; filtro e ENTRIES usam "/").
+const rel = (f) => relative(ROOT, f).split(sep).join("/");
 const pats = [...WF.matchAll(/^\s+- "([^"]+)"\s*$/gm)].map((m) => m[1]);
 const toRe = (g) => new RegExp("^" + g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "\u0000").replace(/\*/g, "[^/]*").replace(/\u0000/g, ".*") + "$");
 const covered = (rel) => pats.some((p) => toRe(p).test(rel));
@@ -19,6 +21,7 @@ const ENTRIES = [
   "tests/integration/mercadopago-webhook-postgres.test.mjs",
   "tests/integration/close-invalidation-postgres.test.mjs",
   "tests/integration/delivery-evidence-cas-postgres.test.mjs",
+  "tests/integration/mercadopago-payment-dedupe-postgres.test.mjs",
   "tests/t4_sim/register.mjs",
   "tests/trava-vendas-gate-paths.test.mjs"
 ];
@@ -31,26 +34,26 @@ function closure() {
   const seen = new Set(), stack = ENTRIES.map((e) => join(ROOT, e)), problems = [];
   while (stack.length) {
     const f = stack.pop(); if (seen.has(f)) continue; seen.add(f);
-    const src = readFileSync(f, "utf8"), rel = relative(ROOT, f);
+    const src = readFileSync(f, "utf8"), r = rel(f);
     if (!/\.(m?js)$/.test(f)) continue;
     for (const m of src.matchAll(/(?:\bfrom\s*|\bimport\(\s*|\bregister\(\s*)["'](\.{1,2}\/[^"']+)["']/g)) {
-      const t = resolve(dirname(f), m[1]); if (existsSync(t)) stack.push(t); else problems.push(`${rel}: import inexistente ${m[1]}`);
+      const t = resolve(dirname(f), m[1]); if (existsSync(t)) stack.push(t); else problems.push(`${r}: import inexistente ${m[1]}`);
     }
     for (const m of src.matchAll(/new URL\(\s*["'](\.{1,2}\/[^"']+)["']\s*,\s*import\.meta\.url\s*\)/g)) {
       const t = resolve(dirname(f), m[1]); if (existsSync(t)) stack.push(t);
     }
     // Este próprio arquivo contém os padrões como texto de regex; seus imports são só módulos nativos.
-    if (rel === "tests/trava-vendas-gate-paths.test.mjs") continue;
-    for (const m of src.matchAll(/\bimport\(\s*(?!["'])([^)]{0,60})/g)) problems.push(`${rel}: import dinâmico não literal ${m[1]}`);
-    for (const m of src.matchAll(/(?<![\w$.])require\(\s*["']([^"']+)["']\s*\)/g)) if (!NATIVE.test(m[1])) problems.push(`${rel}: require ${m[1]}`);
-    for (const m of src.matchAll(/(?<![\w$.])require\(\s*(?!["'])([^)]{0,40})\)/g)) problems.push(`${rel}: require não literal ${m[1]}`);
+    if (r === "tests/trava-vendas-gate-paths.test.mjs") continue;
+    for (const m of src.matchAll(/\bimport\(\s*(?!["'])([^)]{0,60})/g)) problems.push(`${r}: import dinâmico não literal ${m[1]}`);
+    for (const m of src.matchAll(/(?<![\w$.])require\(\s*["']([^"']+)["']\s*\)/g)) if (!NATIVE.test(m[1])) problems.push(`${r}: require ${m[1]}`);
+    for (const m of src.matchAll(/(?<![\w$.])require\(\s*(?!["'])([^)]{0,40})\)/g)) problems.push(`${r}: require não literal ${m[1]}`);
     for (const m of src.matchAll(/readFileSync\(\s*([^,)]{1,80})/g)) {
       const a = m[1].trim();
       if (/^new URL\(\s*["']/.test(a) || /^join\(ROOT,/.test(a) || /^f$/.test(a) || RUNTIME_READS_ALLOWED.has(a)) continue;
-      problems.push(`${rel}: leitura de arquivo não literal ${a}`);
+      problems.push(`${r}: leitura de arquivo não literal ${a}`);
     }
   }
-  return { files: [...seen].map((f) => relative(ROOT, f)), problems };
+  return { files: [...seen].map(rel), problems };
 }
 
 test("todo arquivo do fecho (código, testes, dados lidos) está coberto pelo filtro de caminhos", () => {
@@ -67,7 +70,7 @@ test("nenhuma entrada que escape da prova estática: import dinâmico calculado,
 });
 
 test("o gate exige contagem exata, roda este teste e nunca aceita teste pulado nem segredo", () => {
-  for (const [file, n] of [["m", 21], ["p", 9], ["c", 7], ["g", 3]]) {
+  for (const [file, n] of [["m", 25], ["p", 9], ["c", 7], ["d", 4], ["g", 3]]) {
     assert.match(WF, new RegExp(`grep -qx "# tests ${n}" ${file}\\.txt && grep -qx "# pass ${n}" ${file}\\.txt && grep -qx "# skipped 0" ${file}\\.txt && grep -qx "# fail 0" ${file}\\.txt`), file);
   }
   assert.doesNotMatch(WF, /secrets\./);

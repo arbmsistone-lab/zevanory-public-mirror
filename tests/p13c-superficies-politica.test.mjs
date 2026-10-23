@@ -7,6 +7,7 @@
 // asserções usadas no código verdadeiro.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { readFileSync, readdirSync, statSync, existsSync, mkdtempSync, cpSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
@@ -14,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import * as POL from "../worker/politica-unica.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const P = JSON.parse(readFileSync(join(ROOT, "data/politica-unica.json"), "utf8"));
+const P = JSON.parse(readTextNormalized(join(ROOT, "data/politica-unica.json")));
 const W = P.customer_wording;
 const PRODUCTS = P.policy_surfaces.products;
 const rel = (f) => relative(ROOT, f).split(sep).join("/");
@@ -127,7 +128,7 @@ function guardHits(root) {
   const files = [...SCAN_DIRS.flatMap((d) => walk(join(root, d))), ...publishedPages(root)];
   for (const f of files) {
     const r = relative(root, f).split(sep).join("/");
-    let text = readFileSync(f, "utf8");
+    let text = readTextNormalized(f);
     if (r === "data/politica-unica.json") text = policyJsonText(text);
     for (const h of POL.bannedPolicyHits(text)) hits.push(`${r}: ${h}`);
   }
@@ -143,14 +144,14 @@ function addressHits(root) {
   for (const f of files) {
     const r = relative(root, f).split(sep).join("/");
     if (r === "data/politica-unica.json") continue;
-    const text = readFileSync(f, "utf8");
+    const text = readTextNormalized(f);
     for (const m of text.matchAll(/Rua Francisco de Freitas Neto[^"<`'\n]{0,90}/g)) if (!m[0].startsWith(F.endereco_fisico) && !(m[0].length >= 40 && F.endereco_fisico.startsWith(m[0]))) hits.push(`${r}: ${m[0].slice(0, 70)}`);
     if (/Casa Residencial/.test(text)) hits.push(`${r}: 'Casa Residencial'`);
     if (/CNPJ 69\.077\.233\/0001-99 · Várzea Alegre\/CE/.test(text)) hits.push(`${r}: identificação sem o endereço único`);
   }
   for (const slug of ["termos", "privacidade", "reembolso", ...PRODUCTS, "conteudo-pronto", "solucoes"]) {
     const f = join(root, "sales-public", slug + ".html");
-    if (existsSync(f) && !readFileSync(f, "utf8").includes(ADDRESS)) hits.push(`sales-public/${slug}.html: sem o endereço único`);
+    if (existsSync(f) && !readTextNormalized(f).includes(ADDRESS)) hits.push(`sales-public/${slug}.html: sem o endereço único`);
   }
   return hits;
 }
@@ -167,7 +168,7 @@ test("P13c: redação ao cliente é derivada do texto único (fragmentos literai
   assert.deepEqual([...POL.ALLOWED_DAY_COUNTS].sort(), [5, 7]);
   // Nenhum módulo de superfície escreve o prazo à mão: todos importam a fonte única.
   for (const f of ["worker/support-knowledge.mjs", "worker/lead-magnet.mjs", "worker/reviews.mjs", "worker/whatsapp-conversation.mjs", "worker/refund-flow.mjs", "scripts/channels/short-crosspost.mjs", "scripts/channels/youtube-daily-short.mjs"]) {
-    const src = readFileSync(join(ROOT, f), "utf8");
+    const src = readTextNormalized(join(ROOT, f));
     assert.match(src, /politica-unica\.mjs"/, f + " importa a política única");
     assert.doesNotMatch(src, /7 dias corridos cont/, f + " não copia a regra à mão");
   }
@@ -222,7 +223,7 @@ test("P13c mutantes: suporte com redação antiga, e-mail com /comprar fechado, 
     try {
       for (const d of ["worker", "data", "scripts/channels"]) cpSync(join(ROOT, d), join(dir, d), { recursive: true });
       if (kind === "guard" || kind === "address") cpSync(join(ROOT, "sales-public"), join(dir, "sales-public"), { recursive: true, filter: (s) => !/[\\/](brand|assets)([\\/]|$)/.test(s) });
-      const target = join(dir, file), before = readFileSync(target, "utf8"), after = fn(before);
+      const target = join(dir, file), before = readTextNormalized(target), after = fn(before);
       assert.notEqual(after, before, "mutação não aplicada: " + name);
       writeFileSync(target, after);
       const load = (f) => import(pathToFileURL(join(dir, f)).href + "?m=" + encodeURIComponent(name));
@@ -247,7 +248,7 @@ test("P13c endereço único: rodapés, termos, privacidade, reembolso, e-mails e
   assert.deepEqual(addressHits(ROOT), []);
   const { OFFICIAL_LEGAL_FOOTER } = await import("../worker/brand-email.mjs");
   assert.ok(OFFICIAL_LEGAL_FOOTER.includes(ADDRESS) && OFFICIAL_LEGAL_FOOTER.includes(F.cnpj));
-  for (const slug of ["termos", "privacidade", "reembolso"]) assert.ok(readFileSync(join(ROOT, slug, "index.html"), "utf8").includes(ADDRESS), "fonte " + slug);
+  for (const slug of ["termos", "privacidade", "reembolso"]) assert.ok(readTextNormalized(join(ROOT, slug, "index.html")).includes(ADDRESS), "fonte " + slug);
 });
 
 test("P13c blog no grep-gate: com vendas fechadas o artigo leva à página do produto com aviso, nunca a /comprar/", async () => {

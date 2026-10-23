@@ -8,6 +8,7 @@
 //    campos vindos de data/politica-unica.json (resumo_oferta) — verificado por estrutura (data-field).
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { readFileSync, readdirSync, mkdtempSync, cpSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,14 +18,14 @@ import worker, { openSalesHtml } from "../worker/sales-public-worker.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PUB = join(ROOT, "sales-public");
-const P = JSON.parse(readFileSync(join(ROOT, "data/politica-unica.json"), "utf8"));
+const P = JSON.parse(readTextNormalized(join(ROOT, "data/politica-unica.json")));
 const R = P.resumo_oferta;
 const PRODUCTS = P.policy_surfaces.products;
 const PRICES = { "ia-na-pratica": 197, "vendas-na-pratica": 197, "lucro-e-caixa": 247, "combo-ia-vendas": 297, "negocio-completo": 397 };
 const PY = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
 const env = { ...process.env, PYTHONDONTWRITEBYTECODE: "1", PYTHONIOENCODING: "utf-8" };
 const audit = (dir) => spawnSync(PY, [join(ROOT, "scripts/sales_policy.py"), "--audit", dir, "--mode", "closed"], { encoding: "utf8", env });
-const read = (slug) => readFileSync(join(PUB, slug + ".html"), "utf8");
+const read = (slug) => readTextNormalized(join(PUB, slug + ".html"));
 const PENDING = /PENDENTE|PREENCHER|A CONFIRMAR|PLACEHOLDER|XXX|\{|\}/i;
 
 // Estrutura: <section class="offer-summary" data-offer-summary="slug"> ... <div data-field="k"><dt>..</dt><dd>..</dd></div>
@@ -122,7 +123,7 @@ test("gate do modo fechado (CLI): Offer paga em qualquer disponibilidade e check
     const dir = mkdtempSync(join(tmpdir(), "p13-gate-"));
     try {
       cpSync(PUB, dir, { recursive: true, filter: (s) => !/[\\/](brand|assets)([\\/]|$)/.test(s) });
-      const f = join(dir, slug + ".html"), before = readFileSync(f, "utf8"), after = fn(before);
+      const f = join(dir, slug + ".html"), before = readTextNormalized(f), after = fn(before);
       assert.notEqual(after, before, "mutação não aplicada: " + name);
       writeFileSync(f, after);
       const r = audit(dir);
@@ -132,7 +133,7 @@ test("gate do modo fechado (CLI): Offer paga em qualquer disponibilidade e check
   }
   console.log(report.join("\n"));
   // Preço 0 continua livre: as 7 calculadoras publicadas têm Offer de preço 0.
-  assert.ok(readdirSync(PUB).filter((f) => f.startsWith("calculadora-") && readFileSync(join(PUB, f), "utf8").includes('"price": "0"')).length >= 7);
+  assert.ok(readdirSync(PUB).filter((f) => f.startsWith("calculadora-") && readTextNormalized(join(PUB, f)).includes('"price": "0"')).length >= 7);
 });
 
 test("cache: páginas que dependem do interruptor saem com no-store nos dois modos e o fechamento vale na requisição seguinte", async () => {

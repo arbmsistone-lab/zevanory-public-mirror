@@ -17,7 +17,8 @@ export async function verifyProductionToken(env,{fetcher=fetch,now=Date.now()}={
   const expected=String(env?.MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16||"").toLowerCase().trim();
   if(token.length<32||token.startsWith("TEST-")||!/^[a-f0-9]{16}$/.test(expected))return false;
   const key=await toSha(token+"|"+expected);
-  if(tokenCache.key===key&&now-tokenCache.at<120000)return tokenCache.valid;
+  // B04: relógio voltando no tempo (now < at) força reverificação; não reaproveita validação antiga.
+  if(tokenCache.key===key&&now>=tokenCache.at&&now-tokenCache.at<120000)return tokenCache.valid;
   let valid=false;
   try{
     const r=await fetcher("https://api.mercadopago.com/users/me",{method:"GET",headers:{Authorization:"Bearer "+token,Accept:"application/json"},signal:AbortSignal.timeout(5000)});

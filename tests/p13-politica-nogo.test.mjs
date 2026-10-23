@@ -7,6 +7,7 @@
 // Mutantes: página com /comprar/, página com InStock, texto "após o pagamento" — todos mortos.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { readFileSync, readdirSync, mkdtempSync, cpSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,13 +18,13 @@ import worker, { openSalesHtml, resetPageSwitchCache } from "../worker/sales-pub
 // AVAL 084 (portabilidade): fileURLToPath, não a propriedade pathname da URL (no Windows vira "/C:/...").
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PUB = join(ROOT, "sales-public");
-const P = JSON.parse(readFileSync(join(ROOT, "data/politica-unica.json"), "utf8"));
+const P = JSON.parse(readTextNormalized(join(ROOT, "data/politica-unica.json")));
 const PRODUCTS = P.policy_surfaces.products;
 const LEGAL = P.policy_surfaces.legal;
 const SKUS = { "ia-na-pratica": "ZEV-IA-011", "vendas-na-pratica": "ZEV-VEN-011", "lucro-e-caixa": "ZEV-LCX-011", "combo-ia-vendas": "ZEV-CMB-011", "negocio-completo": "ZEV-NGC-011" };
 const CHECKOUT_HREF = /href\s*=\s*["']?[^"'\s>]*(?:\/comprar\/|\/assinar\/|\/hotmart\/|pay\.hotmart\.com)/i;
 const SUBS = P.policy_surfaces.subscription;
-const read = (dir, slug) => readFileSync(join(dir, slug + ".html"), "utf8");
+const read = (dir, slug) => readTextNormalized(join(dir, slug + ".html"));
 const env = { ...process.env, PYTHONDONTWRITEBYTECODE: "1", PYTHONIOENCODING: "utf-8" };
 const PY = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
 const audit = (dir, mode = "closed") => spawnSync(PY, [join(ROOT, "scripts/sales_policy.py"), "--audit", dir, "--mode", mode], { encoding: "utf8", env });
@@ -37,7 +38,7 @@ test("(a) modo fechado: nenhum HTML publicado tem href /comprar/, /assinar/, /ho
   const files = readdirSync(PUB).filter((f) => f.endsWith(".html"));
   assert.ok(files.length > 60, "superfície completa");
   for (const f of files) {
-    const html = readFileSync(join(PUB, f), "utf8");
+    const html = readTextNormalized(join(PUB, f));
     assert.doesNotMatch(html, CHECKOUT_HREF, f);
     assert.doesNotMatch(html, /schema\.org\/InStock/i, f);
   }
@@ -65,7 +66,7 @@ test("(b) assinatura e demais páginas: mesma regra de 7 dias junto ao CTA e nen
     assert.ok(!html.includes("72 horas"), "assinatura não promete link de 72 h (entrega é por link privado mensal)");
   }
   for (const f of readdirSync(PUB).filter((x) => x.endsWith(".html"))) {
-    const html = readFileSync(join(PUB, f), "utf8");
+    const html = readTextNormalized(join(PUB, f));
     for (const bad of P.banned_policy_phrases) assert.ok(!html.includes(bad), `${f}: '${bad}'`);
   }
 });
@@ -159,7 +160,7 @@ test("(c) Worker: CTAs só voltam com o interruptor do proprietário aberto (mes
 });
 
 test("release: build fixado em modo fechado e grep-gate de /comprar/ no workflow de publicação", () => {
-  const wf = readFileSync(join(ROOT, ".github/workflows/zevanory-sales-public-release.yml"), "utf8");
+  const wf = readTextNormalized(join(ROOT, ".github/workflows/zevanory-sales-public-release.yml"));
   assert.match(wf, /ZEVANORY_SALES_PUBLIC_MODE: closed/);
   assert.ok((wf.match(/P13_NOGO_GREP_GATE=PASS/g) || []).length >= 2, "gate no verify e no deploy");
 });
@@ -196,7 +197,7 @@ test("mutantes: /comprar/ remanescente, InStock remanescente e 'após o pagament
 
 function mutate(dir, slug, fn) {
   const f = join(dir, slug + ".html");
-  const before = readFileSync(f, "utf8");
+  const before = readTextNormalized(f);
   const after = fn(before);
   assert.notEqual(after, before, "mutação não aplicada em " + slug);
   writeFileSync(f, after);

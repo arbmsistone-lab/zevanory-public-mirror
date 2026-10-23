@@ -41,7 +41,8 @@ export function validOwnerAuthorization(record, now = Date.now()) {
 }
 
 export async function readSalesSwitch(env, now = Date.now()) {
-  if (now - cached.at < CACHE_MS && cached.value) return cached.value;
+  // B04: relógio que volta no tempo (now < cached.at) não pode prender um valor antigo no cache.
+  if (now >= cached.at && now - cached.at < CACHE_MS && cached.value) return cached.value;
   let value = { enabled: false, requested: false, revision: "" };
   try {
     const kv = env?.ZEVANORY_PRIVATE_ARTIFACTS;
@@ -56,7 +57,10 @@ export async function readSalesSwitch(env, now = Date.now()) {
     } else if (parsed && parsed.enabled === true) {
       // Fail-closed: the switch only opens sales while the production preflight is green and fresh.
       const pre = JSON.parse(String(await kv.get(PREFLIGHT_KEY) || "null"));
-      const fresh = pre && Date.now() - Date.parse(String(pre.at || "")) < 3 * 3600 * 1000;
+      // B04: preflight datado no futuro (relógio adiantado ou registro corrompido) nunca é fresco;
+      // mesma regra do portão de checkout (at <= now && now - at < 3h), usando o `now` injetado.
+      const preAt = Date.parse(String(pre?.at || ""));
+      const fresh = pre && Number.isFinite(preAt) && preAt <= now && now - preAt < 3 * 3600 * 1000;
       value = pre?.ok === true && fresh
         ? { enabled: true, requested: true, at: String(parsed.at || ""), by: String(parsed.by || ""), authorized: true, revision }
         : { enabled: false, requested: true, blocked: "preflight_not_green", revision };

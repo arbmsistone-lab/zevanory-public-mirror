@@ -1,0 +1,65 @@
+name: repo-hygiene-bytecode
+
+# Higiene: nenhum bytecode Python (*.pyc, *.pyo, __pycache__/) pode ser rastreado, e o .gitignore tem de
+# continuar impedindo a volta. Só pull_request: nunca dispara no merge, sem segredos, sem rede além do checkout
+# e da instalação do Python. AVAL Sol (portabilidade): a guarda e seus testes rodam em Linux E Windows.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  no-tracked-bytecode:
+    name: no-tracked-bytecode (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fail if bytecode is tracked or the ignore rules are gone
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          set -euo pipefail
+          echo "RUNNER_OS=$RUNNER_OS python=$(python --version 2>&1) git=$(git --version)"
+          python scripts/ci/no_tracked_bytecode.py
+          python -m pip install --quiet "pyyaml==6.0.2"
+          python -m unittest tests.test_no_tracked_bytecode -v < /dev/null 2>&1 | tr -d '\r' | tee /tmp/hygiene.txt
+          # Contagem exata (mutantes inclusos), nas duas plataformas: nenhum teste aqui é Linux-only.
+          grep -qx "Ran 9 tests in .*" /tmp/hygiene.txt || { echo "::error::contagem de testes diferente de 9"; exit 1; }
+          if grep -q "skipped" /tmp/hygiene.txt; then echo "::error::testes pulados"; exit 1; fi
+          grep -qx "OK" /tmp/hygiene.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
+          echo "::notice title=HYGIENE_TESTS ($RUNNER_OS)::Ran 9, OK, skipped 0"
+      - name: Rotation contract on Windows (8 tests declared LINUX_ONLY, everything else must pass)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          set -euo pipefail
+          # No Linux, o mp-rotation-contract roda os 22 testes sem pular nenhum. Aqui os 8 que executam os passos
+          # bash do workflow (curl/npx falsos com shebang POSIX, bash) são pulados COM razão LINUX_ONLY;
+          # qualquer outro pulo (ex.: jq/node ausentes) ou falha derruba o job.
+          rc=0
+          python -m unittest tests.test_mp_rotation_workflow -v < /dev/null 2>&1 | tr -d '\r' > /tmp/mp.txt || rc=$?
+          cat /tmp/mp.txt
+          # Diagnóstico legível sem baixar o log: cada falha, erro ou pulo vira anotação.
+          grep -E "^(FAIL|ERROR):| \.\.\. (FAIL|ERROR|skipped)|Error:" /tmp/mp.txt | head -20 | while IFS= read -r l; do echo "::warning title=MP_ROTATION_WINDOWS::$l"; done
+          [ "$rc" = 0 ] || { echo "::error::unittest saiu com $rc"; exit 1; }
+          grep -qx "Ran 22 tests in .*" /tmp/mp.txt || { echo "::error::contagem diferente de 22"; exit 1; }
+          grep -qx "OK (skipped=8)" /tmp/mp.txt || { echo "::error::esperado OK (skipped=8)"; exit 1; }
+          n="$(grep -c "skipped 'LINUX_ONLY: " /tmp/mp.txt || true)"
+          [ "$n" = 8 ] || { echo "::error::esperados 8 pulados LINUX_ONLY, obtidos $n"; exit 1; }
+          echo "::notice title=MP_ROTATION_TESTS (Windows)::Ran 22, OK, 14 executados, 8 LINUX_ONLY declarados"

@@ -4,13 +4,14 @@
 // sem recebimento registrado o prazo não começou. Antes contava de paid_at (mais restritivo que a política).
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readTextNormalized } from "./helpers/text.mjs";
 import { readFileSync, mkdtempSync, cpSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const P = JSON.parse(readFileSync(join(ROOT, "data/politica-unica.json"), "utf8"));
+const P = JSON.parse(readTextNormalized(join(ROOT, "data/politica-unica.json")));
 const DAY = 86_400_000, HOUR = 3_600_000;
 const OID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const EMAIL = "cliente@example.com";
@@ -83,7 +84,7 @@ test("P13c prazo: começa na data mais recente entre pagamento e recebimento, li
 test("P13c prazo: pedido real de reembolso segue a regra publicada (entrega tardia aceita, fora do prazo vai ao suporte)", async () => {
   const { handleRefundFlow } = await import("../worker/refund-flow.mjs");
   await checkFlow(handleRefundFlow);
-  const src = readFileSync(join(ROOT, "worker/refund-flow.mjs"), "utf8");
+  const src = readTextNormalized(join(ROOT, "worker/refund-flow.mjs"));
   assert.doesNotMatch(src, /WINDOW_MS|paid_at\)\.getTime\(\) >/, "nenhuma janela contada só do pagamento");
 });
 
@@ -103,7 +104,7 @@ test("P13c prazo mutantes: contar de paid_at, ignorar a entrega, ignorar o downl
     const dir = mkdtempSync(join(tmpdir(), "p13c-prazo-"));
     try {
       for (const d of ["worker", "data"]) cpSync(join(ROOT, d), join(dir, d), { recursive: true });
-      const target = join(dir, file), before = readFileSync(target, "utf8"), after = fn(before);
+      const target = join(dir, file), before = readTextNormalized(target), after = fn(before);
       assert.notEqual(after, before, "mutação não aplicada: " + name);
       writeFileSync(target, after);
       const load = (f) => import(pathToFileURL(join(dir, f)).href + "?m=" + encodeURIComponent(name));
