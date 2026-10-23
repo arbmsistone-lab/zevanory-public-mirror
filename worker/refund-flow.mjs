@@ -34,10 +34,12 @@ function tokenFor(env, test) {
 }
 
 async function loadOrder(sql, oid) {
+  // AVAL Sol (2ff8678): o prazo começa no PRIMEIRO recebimento => min(delivered_at), determinístico mesmo
+  // com mais de uma linha de entrega (antes: LIMIT 1 sem ORDER BY pegava uma linha arbitrária).
   const rows = await sql.query(
     `select o.order_id, o.status, o.amount, o.offer_id, o.certification_pilot,
             fe.provider_payment_id as payment_id, fe.received_at as paid_at,
-            (select sf.delivered_at from service_fulfillment sf where sf.order_id=o.order_id and sf.status='delivered' limit 1) as delivered_at,
+            (select min(sf.delivered_at) from service_fulfillment sf where sf.order_id=o.order_id and sf.status='delivered') as delivered_at,
             (select min(t.used_at) from artifact_download_tokens t where t.order_id=o.order_id) as first_download_at
        from orders o
        left join lateral (select provider_payment_id, received_at from financial_events f

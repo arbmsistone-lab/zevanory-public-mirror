@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "gate": "ZEA10_AUTONOMY_GREEN_V2",
-  "observed_at": "2026-10-13T07:46:39.853485+00:00",
+  "observed_at": "2026-10-23T17:03:17.331692+00:00",
   "engine_green": false,
   "live_sales_green": false,
   "source_capability_green": true,
