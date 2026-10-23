@@ -90,7 +90,7 @@ function sourceFiles() {
   return files;
 }
 // Templates do Worker que viram página ou e-mail para o público.
-const WORKER_PUBLIC = ["worker/sales-public-worker.mjs", "worker/refund-flow.mjs", "worker/sales-control.mjs", "worker/post-sale.mjs", "worker/brand-email.mjs", "worker/multichannel-autonomy.mjs", "worker/lead-magnet.mjs", "worker/reviews.mjs", "worker/content-service.mjs"];
+const WORKER_PUBLIC = ["worker/atendimento.mjs", "worker/sales-public-worker.mjs", "worker/refund-flow.mjs", "worker/sales-control.mjs", "worker/post-sale.mjs", "worker/brand-email.mjs", "worker/multichannel-autonomy.mjs", "worker/lead-magnet.mjs", "worker/reviews.mjs", "worker/content-service.mjs"];
 function workerFiles() {
   const files = {};
   for (const f of WORKER_PUBLIC) files[f] = read(f);
@@ -144,6 +144,69 @@ test("(b) CTAs de lista de espera abrem e-mail com assunto 'Lista de espera — 
   assert.match(sub, /href="\/assinar\/conteudo-pronto">Assinar agora/);
 });
 
+// Sem telefone público (JSON-LD/Microdata/RDFa telephone, href tel:): não há linha de atendimento.
+const PHONE_RE = /"telephone"\s*:|\b(?:itemprop|property)\s*=\s*["']?(?:schema:)?telephone\b|href\s*=\s*["']?tel:/i;
+function structuredViolations(files) {
+  const out = [];
+  for (const [name, text] of Object.entries(files)) {
+    if (PHONE_RE.test(text)) out.push(`${name}: telefone`);
+    if (name.endsWith(".html") && name.startsWith("sales-public/") && !text.includes(`href="mailto:${C.email}"`)) out.push(`${name}: e-mail oficial ausente`);
+  }
+  return out;
+}
+function orgContactViolations(html) {
+  const out = [];
+  for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
+    const data = JSON.parse(m[1]);
+    for (const n of data["@graph"] || [data]) {
+      if (n["@type"] !== "Organization" || !n.legalName) continue;
+      if (n.email !== C.email) out.push("Organization.email");
+      const cp = [].concat(n.contactPoint || []);
+      if (!cp.some((c) => c["@type"] === "ContactPoint" && c.email === C.email && c.url === C.formulario)) out.push("Organization.contactPoint (e-mail + formulário)");
+      if (cp.some((c) => c.telephone) || n.telephone) out.push("Organization.telephone");
+    }
+  }
+  return out.length || html.includes('"legalName"') ? out : ["Organization ausente"];
+}
+// Arquivos versionados que podem citar o número banido/wa.me: só internos, nunca publicados.
+const ALLOWLIST = new Map(Object.entries({
+  "data/politica-unica.json": "fonte única: nota histórica + numeros_banidos (trava)",
+  "docs/audits/official-brand-matrix-2026-10-10.md": "auditoria histórica (não publicada)",
+  "worker/cloudflare-worker.recovered.mjs": "perfil interno OFFICIAL_WHATSAPP + filtros do robô (sem rota pública); exigido por premerge_product_audit",
+  "worker/whatsapp-conversation.mjs": "robô de WhatsApp (aposentadoria em PR separado)",
+  "worker/whatsapp-credential-broker.mjs": "robô de WhatsApp (aposentadoria em PR separado)",
+  "worker/whatsapp-inbound-safety.mjs": "robô de WhatsApp: filtro de auto-remetente",
+  "worker/whatsapp-onboarding.mjs": "admin de onboarding (protegido)",
+  "worker/politica-unica.mjs": "padrão da trava",
+  "scripts/sales_policy.py": "padrão da trava",
+  "scripts/premerge_product_audit.py": "gate interno",
+  "scripts/deploy/prepare-central-candidate.py": "variáveis de deploy",
+  "scripts/patch_whatsapp_broker.py": "ferramenta interna",
+  "scripts/voice_support_gate.py": "gate interno",
+  "scripts/whatsapp_audio_runtime_test.mjs": "teste interno",
+  "scripts/whatsapp_delivery_proof_test.mjs": "teste interno",
+  ".github/workflows/mercadopago-exact-sha-recovery.yml": "CI interno",
+  ".github/workflows/whatsapp-closure-probe.yml": "CI interno",
+  ".github/workflows/whatsapp-zero-spend-broker.yml": "CI interno",
+}));
+const PUBLISHED = /^(sales-public|public|sales-overlay|brand|assets)\/|^[^/]+\/index\.html$|^[^/]+\.(html|txt|xml|js|css)$/;
+
+test("Sol: sem telefone público, e-mail oficial em toda página, Organization com e-mail + ContactPoint (formulário)", () => {
+  assert.deepEqual(structuredViolations({ ...publicFiles(), ...sourceFiles() }), []);
+  assert.deepEqual(orgContactViolations(readTextNormalized(join(PUB, "solucoes.html"))), []);
+  assert.deepEqual(orgContactViolations(readTextNormalized(join(PUB, "index.html"))), []);
+  assert.equal(C.formulario, "https://zevanory.api.br/atendimento");
+});
+
+test("Sol: número banido / wa.me só em arquivos internos da lista explícita (nunca publicados)", () => {
+  const out = spawnSync("git", ["grep", "-lIE", "wa\\.me/|api\\.whatsapp\\.com/|5588992545413|99254[-. ]?5413"], { cwd: ROOT, encoding: "utf8" });
+  const files = out.stdout.split("\n").filter(Boolean).filter((f) => !f.startsWith("tests/"));
+  assert.ok(out.status === 0 || out.status === 1, out.stderr);
+  const extra = files.filter((f) => !ALLOWLIST.has(f));
+  assert.deepEqual(extra, [], "fora da lista explícita");
+  for (const f of ALLOWLIST.keys()) assert.doesNotMatch(f, PUBLISHED, "item da lista não pode ser publicado: " + f);
+});
+
 test("(c) Resumo da oferta e canais de arrependimento: só endereços que funcionam", () => {
   for (const slug of [...P.policy_surfaces.products, ...P.policy_surfaces.subscription]) {
     const html = readTextNormalized(join(PUB, slug + ".html"));
@@ -180,8 +243,12 @@ test("mutantes: wa.me/número de volta em CTA, rodapé, resumo, JSON-LD, script,
   const ctaRe = /href="mailto:[^"]*"( data-zev-sku="ZEV-IA-011")/;
   const contactMutants = {
     "M1 CTA da lista de espera volta ao wa.me": () => [page, page.replace(ctaRe, `href="${WA}"$1`)],
-    "M2 rodapé com WhatsApp clicável": () => [page, page.replace('suporte@zevanory.api.br</a><br>', 'suporte@zevanory.api.br</a> · WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a><br>')],
+    "M2 rodapé com WhatsApp clicável": () => [page, page.replace('>Atendimento com protocolo</a><br>', '>Atendimento com protocolo</a> · WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a><br>')],
     "M3 resumo da oferta com WhatsApp": () => [page, page.replace("suporte@zevanory.api.br · vendas.zevanory.api.br", "suporte@zevanory.api.br · WhatsApp +55 88 99254-5413 · vendas.zevanory.api.br")],
+    "M4b telephone com outro número": () => [pub["sales-public/solucoes.html"], pub["sales-public/solucoes.html"].replace('"email": "suporte@zevanory.api.br", "contactPoint"', '"email": "suporte@zevanory.api.br", "telephone": "+55 88 3000-0000", "contactPoint"')],
+    "M4c microdata telephone": () => [page, page.replace("</main>", '<span itemprop="telephone">+55 88 3000-0000</span></main>')],
+    "M4d link tel:": () => [page, page.replace("</main>", '<a href="tel:+558830000000">Ligue</a></main>')],
+    "M4e página sem o e-mail oficial": () => [page, page.replaceAll('href="mailto:suporte@zevanory.api.br"', 'href="mailto:contato@zevanory.api.br"')],
     "M4 JSON-LD com telephone": () => [pub["sales-public/solucoes.html"], pub["sales-public/solucoes.html"].replace('"email": "suporte@zevanory.api.br"', '"email": "suporte@zevanory.api.br", "telephone": "+55 88 99254-5413"')],
     "M5 script volta a injetar wa.me": () => [pub["sales-public/whatsapp-contact.js"], pub["sales-public/whatsapp-contact.js"].replace("})();", "document.querySelector('nav').insertAdjacentHTML('beforeend','<a href=\"https://wa.me/5588992545413\">WhatsApp</a>');})();")],
     "M6 número sem link, com espaço": () => [page, page.replace("</main>", "<p>Ligue 88 99254 5413</p></main>")],
@@ -194,8 +261,10 @@ test("mutantes: wa.me/número de volta em CTA, rodapé, resumo, JSON-LD, script,
   for (const [name, make] of Object.entries(contactMutants)) {
     const [before, after] = make();
     assert.notEqual(after, before, "mutação não aplicada: " + name);
-    assert.deepEqual(contactViolations({ before }, { ...C, whatsapp_public_links_enabled: false }), [], name + ": original já limpo");
-    const v = contactViolations({ after }, { ...C, whatsapp_public_links_enabled: false });
+    const isPage = /^<!doctype html>/i.test(before);
+    const sv = (s) => structuredViolations({ [isPage ? "sales-public/x.html" : "x.js"]: s });
+    assert.deepEqual([...contactViolations({ before }, { ...C, whatsapp_public_links_enabled: false }), ...sv(before)], [], name + ": original já limpo");
+    const v = [...contactViolations({ after }, { ...C, whatsapp_public_links_enabled: false }), ...sv(after)];
     if (CHANNEL_RE.test(after) && !CHANNEL_RE.test(before)) v.push("canal");
     report.push(`${name}: ${v.length ? "KILLED" : "SURVIVED"}`);
     assert.ok(v.length > 0, name + " sobreviveu");
@@ -214,6 +283,17 @@ test("mutantes: wa.me/número de volta em CTA, rodapé, resumo, JSON-LD, script,
     const v = waitlistViolations("ia-na-pratica", html, { ...C, whatsapp_public_links_enabled: false });
     report.push(`${name}: ${v.length ? "KILLED" : "SURVIVED"}`);
     assert.ok(v.length > 0, name + " sobreviveu");
+  }
+  // ContactPoint/e-mail da Organization removidos ou telefone no ContactPoint.
+  const sol = pub["sales-public/solucoes.html"];
+  for (const [name, mut] of Object.entries({
+    "M18 Organization sem e-mail": sol.replace('"email": "suporte@zevanory.api.br", "contactPoint"', '"contactPoint"'),
+    "M19 ContactPoint sem formulário": sol.replace('"url": "https://zevanory.api.br/atendimento", ', ""),
+    "M20 ContactPoint com telefone": sol.replace('"contactType": "customer support",', '"contactType": "customer support", "telephone": "+5588992545413",'),
+  })) {
+    assert.notEqual(mut, sol, "mutação não aplicada: " + name);
+    assert.ok(orgContactViolations(mut).length > 0, name + " sobreviveu");
+    report.push(name + ": KILLED");
   }
   // Flag como texto "false"/"true" não liga o WhatsApp: só o booleano true desliga o gate.
   assert.ok(contactViolations({ p: WA }, { ...C, whatsapp_public_links_enabled: "true" }).length > 0, "M16 flag em texto");
@@ -236,6 +316,8 @@ test("mutantes no gate do build (scripts/sales_policy.py --audit): wa.me/número
     "P2 rodapé com número": ["privacidade.html", (h) => h.replace("</main>", "<p>WhatsApp +55 88 99254-5413</p></main>")],
     "P3 script com wa.me": ["whatsapp-contact.js", (s) => s + "\nlocation.href='https://wa.me/5588992545413';"],
     "P4 llms.txt com número": ["llms.txt", (s) => s + "\nWhatsApp: +55 88 99254-5413\n"],
+    "P5 JSON-LD telephone": ["solucoes.html", (h) => h.replace('"email": "suporte@zevanory.api.br", "contactPoint"', '"email": "suporte@zevanory.api.br", "telephone": "+55 88 3000-0000", "contactPoint"')],
+    "P6 página sem e-mail oficial": ["privacidade.html", (h) => h.replaceAll('href="mailto:suporte@zevanory.api.br"', 'href="mailto:x@zevanory.api.br"')],
   };
   for (const [name, [file, fn]] of Object.entries(mutants)) {
     const dir = mkdtempSync(join(tmpdir(), "contato-mut-"));
@@ -247,9 +329,9 @@ test("mutantes no gate do build (scripts/sales_policy.py --audit): wa.me/número
       writeFileSync(join(dir, file), after);
       const r = audit(dir);
       // Com a flag ligada o gate de contato fica desligado (o WhatsApp volta a ser permitido).
-      if (ENABLED) { assert.doesNotMatch(r.stdout, /WhatsApp publico/, name); continue; }
+      if (ENABLED && /^P[1-4]/.test(name)) { assert.doesNotMatch(r.stdout, /WhatsApp publico/, name); continue; }
       assert.equal(r.status, 1, name + " sobreviveu: " + r.stdout);
-      assert.match(r.stdout, /P13_FAIL [^\n]*WhatsApp publico/, name);
+      assert.match(r.stdout, /P13_FAIL [^\n]*(WhatsApp publico|telefone publico|e-mail oficial)/, name);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }
 });

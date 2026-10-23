@@ -95,7 +95,8 @@ LEGAL_FOOTER = ('<div class="container footer-legal">'
                 f'{policy.SUPPLIER["razao_social"]} · CNPJ {policy.SUPPLIER["cnpj"]} · {policy.ADDRESS_FULL} · '
                 # Contato: e-mail é o único endereço eletrônico oficial (WhatsApp banido pela Meta);
                 # trava contato_publico.whatsapp_public_links_enabled.
-                f'<a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a>'
+                f'<a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a> · '
+                f'<a href="{policy.CONTACT["formulario"]}">Atendimento com protocolo</a>'
                 + (f' · WhatsApp <a href="{policy.WHATSAPP_URL}">{policy.WHATSAPP_DISPLAY}</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else '') +
                 # Official profiles verified by public readback (2026-10-12); rel="me" lets platforms
                 # confirm the site <-> profile link.
@@ -348,7 +349,8 @@ def apply_approved_overlay() -> None:
         # Structured data identity also points to the serving domain (approved).
         html = re.sub(
             r'(<script type="application/ld\+json">)(.*?)(</script>)',
-            lambda m: m.group(1) + m.group(2).replace("https://zevanory.api.br", SALES_ORIGIN) + m.group(3),
+            # O formulário de atendimento é servido pelo Worker central (zevanory.api.br/atendimento).
+            lambda m: m.group(1) + m.group(2).replace("https://zevanory.api.br", SALES_ORIGIN).replace(SALES_ORIGIN + "/atendimento", "https://zevanory.api.br/atendimento") + m.group(3),
             html, flags=re.S)
         if 'name="twitter:card"' not in html and 'property="og:title"' in html:
             def og(prop: str) -> str:

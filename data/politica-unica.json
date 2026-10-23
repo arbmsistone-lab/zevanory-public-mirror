@@ -5,6 +5,7 @@
     "nota": "Contato público (2026-10-23). A conta WhatsApp Business da ZEVANORY (4019600665012911) foi desativada PERMANENTEMENTE pela Meta em 2026-10-10 (violação da Política de Uso Aceitável; revisão já negada) e o número que ela usava está BANIDO. Por isso o único endereço eletrônico oficial de contato é o e-mail abaixo: (1) o CTA 'Entrar na lista de espera' abre mailto com assunto e corpo fixos (nenhum dado pessoal na URL além do que a pessoa digitar); data-zev-open-text continua restaurando o CTA de compra quando as vendas abrirem; (2) nenhuma página, rodapé, faixa de confiança, FAQ, JSON-LD (contactPoint/sameAs/telephone), política, e-mail ou página do Worker tem link ou menção de WhatsApp como canal da ZEVANORY; (3) o 'Endereço eletrônico' do Resumo da oferta (Decreto 7.962/2013, art. 2º, II) é o e-mail e o site; (4) os canais de arrependimento do texto único (sol_text/refund_channels) listam só os canais que funcionam (CDC art. 49; Decreto 7.962/2013, art. 5º). whatsapp_public_links_enabled=false é uma trava: links de WhatsApp só voltam por decisão explícita do proprietário, com um NOVO número verificado (campo whatsapp_e164 obrigatório quando true) e revisão do texto único. numeros_banidos nunca podem aparecer em superfície pública, nem com a flag ligada. Gate: tests/contato-publico-whatsapp.test.mjs e scripts/sales_policy.py (audit_contact).",
     "whatsapp_public_links_enabled": false,
     "email": "suporte@zevanory.api.br",
+    "formulario": "https://zevanory.api.br/atendimento",
     "numeros_banidos": [
       "5588992545413"
     ],

@@ -104,15 +104,26 @@ BANNED_NUMBER_RE = re.compile("|".join(_number_pattern(n) for n in BANNED_NUMBER
 WHATSAPP_PUBLIC_RE = re.compile(r"wa\.me/|api\.whatsapp\.com/|whatsapp://|" + BANNED_NUMBER_RE.pattern, re.I)
 
 
+# Sem telefone publico: a ZEVANORY nao tem linha telefonica de atendimento (o unico numero foi banido).
+PHONE_PUBLIC_RE = re.compile(r'"telephone"\s*:|\b(?:itemprop|property)\s*=\s*["\']?(?:schema:)?telephone\b|href\s*=\s*["\']?tel:', re.I)
+
+
 def audit_contact(out_dir: Path) -> list[str]:
     """Flag desligada: zero link de WhatsApp e zero numero banido em HTML, JS e textos publicados.
-    Flag ligada: o numero banido continua proibido."""
+    Flag ligada: o numero banido continua proibido. Sempre: nenhum telefone publico (JSON-LD/Microdata/
+    RDFa telephone, href tel:) e o e-mail oficial no rodape de toda pagina."""
     rx = BANNED_NUMBER_RE if WHATSAPP_PUBLIC_LINKS_ENABLED else WHATSAPP_PUBLIC_RE
     problems = []
     for f in sorted(p for ext in ("*.html", "*.js", "*.txt", "*.xml") for p in out_dir.glob(ext)):
-        m = rx.search(f.read_text(encoding="utf-8"))
+        text = f.read_text(encoding="utf-8")
+        m = rx.search(text)
         if m:
             problems.append(f"{f.name}: WhatsApp publico ({m.group(0)}) com whatsapp_public_links_enabled={str(WHATSAPP_PUBLIC_LINKS_ENABLED).lower()}")
+        m = PHONE_PUBLIC_RE.search(text)
+        if m:
+            problems.append(f"{f.name}: telefone publico ({m.group(0)}) sem canal telefonico oficial")
+        if f.suffix == ".html" and f'href="mailto:{SUPPORT_EMAIL}"' not in text:
+            problems.append(f"{f.name}: e-mail oficial {SUPPORT_EMAIL} ausente")
     return problems
 
 SUBSCRIPTION_SUMMARY = (

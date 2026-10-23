@@ -27,6 +27,8 @@ export const LEGAL_IDENTITY = `${SUPPLIER.razao_social} · CNPJ ${SUPPLIER.cnpj}
 const C = POLICY.contato_publico;
 export const WHATSAPP_PUBLIC_LINKS_ENABLED = C.whatsapp_public_links_enabled === true;
 export const SUPPORT_EMAIL = C.email;
+// Formulário de atendimento com protocolo (worker/atendimento.mjs), complementar ao e-mail.
+export const SUPPORT_FORM_URL = C.formulario;
 export const BANNED_NUMBERS = Object.freeze([...(C.numeros_banidos || [])]);
 const WA_E164 = WHATSAPP_PUBLIC_LINKS_ENABLED ? String(C.whatsapp_e164 || "") : "";
 if (WHATSAPP_PUBLIC_LINKS_ENABLED && (!/^\d{12,13}$/.test(WA_E164) || BANNED_NUMBERS.includes(WA_E164))) throw new Error("contato_publico: whatsapp_public_links_enabled=true exige whatsapp_e164 novo (não banido)");
@@ -50,7 +52,7 @@ export const CONTACT_LABEL = WHATSAPP_PUBLIC_LINKS_ENABLED ? "Falar no WhatsApp"
 // Linha de contato em texto (e-mails) e em HTML (rodapés e páginas).
 export const CONTACT_TEXT = WHATSAPP_PUBLIC_LINKS_ENABLED ? `${SUPPORT_EMAIL} · WhatsApp ${WA_DISPLAY}` : SUPPORT_EMAIL;
 export const CONTACT_TEXT_OR = WHATSAPP_PUBLIC_LINKS_ENABLED ? `${SUPPORT_EMAIL} ou WhatsApp ${WHATSAPP_URL}` : SUPPORT_EMAIL;
-export const CONTACT_HTML = `<a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>` + (WHATSAPP_PUBLIC_LINKS_ENABLED ? ` · <a href="${WHATSAPP_URL}">WhatsApp ${escHtml(WA_DISPLAY)}</a>` : "");
+export const CONTACT_HTML = `<a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a> · <a href="${SUPPORT_FORM_URL}">formulário de atendimento</a>` + (WHATSAPP_PUBLIC_LINKS_ENABLED ? ` · <a href="${WHATSAPP_URL}">WhatsApp ${escHtml(WA_DISPLAY)}</a>` : "");
 // Número banido (completo ou na máscara local) e qualquer link de WhatsApp — mesmo padrão de scripts/sales_policy.py.
 const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const numberPattern = (n) => { const local = n.slice(4); return `${reEsc(n)}|${reEsc(local.slice(0, -4))}[-\\s.]?${reEsc(local.slice(-4))}`; };
