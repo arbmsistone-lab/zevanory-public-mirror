@@ -50,14 +50,17 @@ test("captions carry the product, guarantee and channel UTM; TikTok avoids dead 
   assert.match(captionFor(p, "facebook"), /garantia de 7 dias/);
 });
 
-test("pack renders the tip and the offer for each day with ready captions", async () => {
+test("pack renders the tip and the offer for each day with ready captions", async (t) => {
   const { buildPack } = await import("../scripts/channels/short-pack.mjs");
-  const { readFile, rm } = await import("node:fs/promises");
-  const out = "/tmp/zevanory-pack-test";
-  await rm(out, { recursive: true, force: true });
+  const { readFile, rm, mkdtemp } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  // Diretório único por processo sob os.tmpdir() (antes caminho fixo em /tmp: EPERM ou inexistente no Windows).
+  const out = await mkdtemp(join(tmpdir(), "zevanory-pack-"));
+  t.after(() => rm(out, { recursive: true, force: true }));
   const n = await buildPack({ start: "2026-10-12", days: 3, out, render: async (plan, base) => ({ duration: 14.2, voice: "test", file: base + ".mp4" }) });
   assert.equal(n, 6);
-  const txt = await readFile(out + "/legendas.txt", "utf8");
+  const txt = await readFile(join(out, "legendas.txt"), "utf8");
   for (const d of ["2026-10-12", "2026-10-13", "2026-10-14"]) { assert.match(txt, new RegExp(d + "\\.mp4")); assert.match(txt, new RegExp(d + "-dica\\.mp4")); }
   assert.match(txt, /garantia de 7 dias/); assert.match(txt, /Guia gratuito/);
 });

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {requireTool} from './helpers/toolchain.mjs';
 const read=p=>readFileSync(p,'utf8');
 test('deployment preserves sandbox and production credential separation',()=>{
  const prepare=read('scripts/deploy/prepare-central-candidate.py');
@@ -19,5 +20,6 @@ test('deployment preserves sandbox and production credential separation',()=>{
 });
 test('variable compaction inherits secrets and preserves voice values',()=>{
  const code=`import runpy\nm=runpy.run_path('scripts/deploy/compact-sandbox-bindings.py')\ns={'bindings':[{'name':'ZEVANORY_RUNTIME_CONFIG','type':'json','json':{'other':'keep'}},{'name':'VOICE_TTS_PROVIDER','type':'plain_text','text':'piper-relay'},{'name':'VOICE_TTS_PROVIDER_CHAIN','type':'plain_text','text':'a,b'},{'name':'SECRET','type':'secret_text'},{'name':'AI','type':'ai'}]}\nr=m['compact'](s)\nassert {'name':'SECRET','type':'inherit'} in r['bindings']\nv=next(x['json'] for x in r['bindings'] if x['type']=='json')\nassert v=={'other':'keep','VOICE_TTS_PROVIDER':'piper-relay','VOICE_TTS_PROVIDER_CHAIN':'a,b'}\nassert len(r['bindings'])==3\n`;
+ requireTool('python3'); // sem python3 no PATH: falha TOOL_MISSING, não status null
  const r=spawnSync('python3',['-c',code],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);
 });
