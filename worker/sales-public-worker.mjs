@@ -1,4 +1,3 @@
-import { handleWaitlistPublic } from "./waitlist-public.mjs";
 const retired=new Set(["/arbm-sist","/arbm-sist/","/arbm-sist.html","/zevanory-one","/zevanory-one/","/zevanory-one.html","/arbm-one","/arbm-one/","/arbm-one.html"]);
 const htmlRoutes=new Set(["material-gratuito","checklist-15-minutos","solucoes","quem-criou","zevanory-sales","arbm-contador-saloes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","zevanory-cfo","termos","privacidade","reembolso","afiliados","conteudo-pronto","kit-afiliado","ia-por-ramo","ia-para-salao-de-beleza","ia-para-barbearia","ia-para-restaurante-e-lanchonete","ia-para-loja-de-roupas","ia-para-mercadinho","ia-para-oficina-mecanica","ia-para-clinica-e-consultorio","ia-para-academia","ia-para-pet-shop","ia-para-contabilidade","ia-para-imobiliaria","ia-para-deposito-de-bebidas","ferramentas","calculadora-preco-de-venda","calculadora-margem-de-lucro","calculadora-ponto-de-equilibrio","ia-para-padaria","ia-para-pizzaria","ia-para-hamburgueria","ia-para-acaiteria","ia-para-confeitaria","ia-para-farmacia","ia-para-otica","ia-para-papelaria","ia-para-materiais-de-construcao","ia-para-assistencia-tecnica-de-celular","ia-para-autoescola","ia-para-escola-de-idiomas","ia-para-clinica-odontologica","ia-para-psicologo","ia-para-nutricionista","ia-para-fisioterapia","ia-para-estetica","ia-para-manicure","ia-para-lava-jato","ia-para-eletricista-e-encanador","ia-para-fotografo","ia-para-arquitetura-e-design-de-interiores","ia-para-advocacia","ia-para-agencia-de-viagens","ia-para-floricultura","ia-para-marmitaria","ia-para-pousada","ia-para-distribuidora-de-gas-e-agua","calculadora-fluxo-de-caixa","calculadora-preco-hora-servico","calculadora-taxa-maquininha","calculadora-cmv","mensagem-para-cliente-que-sumiu","como-cobrar-cliente-pelo-whatsapp","como-mandar-orcamento-pelo-whatsapp"]);
 const MP="https://www.mercadopago.com https://www.mercadopago.com.br";
@@ -123,6 +122,8 @@ async function handleBuy(request,env,sku,ctx){
   return infoPage(503,"Não foi possível abrir o pagamento",`<p>Tente novamente em instantes. Se persistir, fale com a gente no <a href="https://wa.me/5588992545413">WhatsApp</a> ou em suporte@zevanory.api.br.</p>`);
 }
 
+// P01 Fase A (lista de espera; import no meio do módulo é válido e evita conflito com o topo do arquivo).
+import { handleWaitlistPublic } from "./waitlist-public.mjs";
 // Lead magnet form (POST, same origin): forwarded to the core Worker through the private binding.
 // New free-material sign-up accepted by the core -> aggregate lead_submit counter by source. The source
 // is the utm_source the form page carried (same-site referer only). Minimum data: user agent and ASN go
