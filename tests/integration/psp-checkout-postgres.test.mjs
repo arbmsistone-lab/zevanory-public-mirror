@@ -25,7 +25,7 @@ const BASE = "http://127.0.0.1:8788";
 // ---------- mundo falso ----------
 const world = {
   emails: [],
-  mp: { mode: "ok", calls: [], createdServerSide: 0, delayMs: 0 },
+  mp: { mode: "ok", calls: [], createdServerSide: 0, delayMs: 0, hold: null },
   asaas: { checkoutMode: "ok", paymentMode: "ok", calls: [], payments: new Map(), customers: [] },
 };
 const kvStore = new Map();
@@ -57,6 +57,7 @@ function fakeFetch(input, init = {}) {
     if (method === "POST" && url.pathname === "/checkout/preferences") {
       if (world.mp.mode === "timeout") { world.mp.createdServerSide++; return hang(init); } // o MP CRIOU e a resposta nunca chegou
       if (world.mp.mode === "5xx") return json(503, { message: "service unavailable" });
+      if (world.mp.hold) { const h = world.mp.hold; world.mp.hold = null; return h.then(() => json(201, { id: `pref-held-${world.mp.calls.length}`, external_reference: body.external_reference, init_point: `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=held${world.mp.calls.length}` })); }
       if (world.mp.delayMs) return new Promise((r) => setTimeout(r, world.mp.delayMs)).then(() => json(201, { id: `pref-${world.mp.calls.length}`, external_reference: body.external_reference, init_point: `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${world.mp.calls.length}` }));
       return json(201, { id: `pref-${world.mp.calls.length}`, external_reference: body.external_reference, init_point: `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${world.mp.calls.length}` });
     }
@@ -273,17 +274,32 @@ test("C7 seleção de provedor sem hash: a ordem fixa não depende da chave da o
   assert.equal(selectPaymentProvider(process.env, { production: true, operationKey: "zzzz" }).provider, "asaas", "MP sem credencial => Asaas");
 });
 
-test("C8 meia-abertura entre requests concorrentes: o PostgreSQL admite UMA sondagem ao MP; os demais vão ao Asaas", { skip: SKIP }, async () => {
+test("C8 meia-abertura: com a sondagem ao MP EM VOO, os pedidos seguintes não tocam o MP (vão ao Asaas); depois o disjuntor fecha", { skip: SKIP }, async () => {
   psqlRaw("delete from psp_circuit_probes;\n");
   await kv.put("psp:circuit:v1:mercadopago", JSON.stringify({ failures: [], opened_at: Date.now() - 121_000 })); // resfriamento (120 s) vencido
-  world.mp.delayMs = 6000; // a sondagem fica em voo enquanto os outros chegam (o psql síncrono do harness serializa os requests)
+  let release;
+  world.mp.hold = new Promise((r) => { release = r; }); // só a 1ª chamada ao MP (a sondagem) fica presa até o teste soltar; as outras respondem já
   const mp0 = mpPrefCalls();
-  const outs = await Promise.all([checkout(), checkout(), checkout(), checkout()]);
-  assert.ok(outs.every((o) => o.status === 201), JSON.stringify(outs.map((o) => o.body)));
-  assert.equal(outs.filter((o) => o.body.provider === "mercadopago").length, 1, "exatamente uma sondagem ao MP");
-  assert.equal(outs.filter((o) => o.body.provider === "asaas").length, 3);
-  assert.equal(mpPrefCalls() - mp0, 1);
-  assert.equal(rowsSync("select count(*)::int as n from psp_circuit_probes where provider='mercadopago' and lease_until > now()")[0].n, "1");
+  try {
+    const probe = checkout();
+    for (let i = 0; i < 50 && mpPrefCalls() === mp0; i++) await new Promise((r) => setTimeout(r, 50)); // sondagem chegou ao MP
+    assert.equal(mpPrefCalls() - mp0, 1, "sondagem em voo");
+    const others = [];
+    for (let i = 0; i < 3; i++) others.push(await checkout());
+    assert.ok(others.every((o) => o.status === 201 && o.body.provider === "asaas"), JSON.stringify(others.map((o) => o.body)));
+    assert.equal(mpPrefCalls() - mp0, 1, "nenhuma segunda chamada ao MP enquanto a sondagem está em voo");
+    const concurrent = await Promise.all([checkout(), checkout()]);
+    assert.ok(concurrent.every((o) => o.body.provider === "asaas"), JSON.stringify(concurrent.map((o) => o.body)));
+    assert.equal(rowsSync("select count(*)::int as n from psp_circuit_probes where provider='mercadopago' and lease_until > now()")[0].n, "1");
+    release();
+    const p = await probe;
+    assert.equal(p.status, 201, JSON.stringify(p.body));
+    assert.equal(p.body.provider, "mercadopago");
+    assert.equal(mpPrefCalls() - mp0, 1);
+  } finally {
+    release?.();
+    world.mp.hold = null;
+  }
   const plan = await (await realFetch(BASE + "/api/payments/continuity")).json();
   assert.equal(plan.circuits.mercadopago, "closed", "sondagem bem-sucedida fecha o disjuntor");
 });
