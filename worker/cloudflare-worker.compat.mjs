@@ -40,7 +40,8 @@ import { handleReviews } from "./reviews.mjs";
 import { applySalesSwitch, handleSalesControl, readSalesSwitch, resetSalesSwitchCache } from "./sales-control.mjs";
 import { dbEconomySkip } from "./db-economy.mjs";
 import { syncOperationalActivity } from "./operational-activity-sync.mjs";
-import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "./live-runtime-status.mjs";
+import { projectLiveStatus, projectLocalZea10, whatsappTransportVerdict } from "./live-runtime-status.mjs";
+import { readMetaStatusSnapshotRaw, refreshMetaStatusSnapshot, scheduleMetaStatusRefresh, withEnvValue, WHATSAPP_META_STATUS_ENV_KEY } from "./whatsapp-meta-truth.mjs";
 import { handleInternalFinancialAudit } from "./internal-financial-audit.mjs";
 import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinancialProofSnapshot, persistClassificationSnapshot, describeFinancialProofSnapshot, recordLaunchEpoch, PROOF_INVALIDATION_KV_KEY, PROOF_INVALIDATION_REASONS } from "./commercial-metrics-projection.mjs";
 import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
@@ -268,6 +269,13 @@ const wrapped = {
       const whatsappOpsStore = getWhatsappOpsStore(normalized, whatsappProofDatabase);
       globalThis.__ZEVANORY_WHATSAPP_OPS_STORE__ = whatsappOpsStore;
       globalThis.__ZEVANORY_WHATSAPP_E2E_STORE__ = whatsappOpsStore;
+    }
+    // WhatsApp readiness = fresh persisted Meta snapshot only (fail-closed). Read per request from KV and
+    // handed to the legacy runtime as a plain env value; a missing/stale snapshot reports "disabled".
+    if (whatsappPath || url.pathname === "/api/release" || url.pathname === "/api/config") {
+      const metaRaw = await readMetaStatusSnapshotRaw(normalized.ZEVANORY_PRIVATE_ARTIFACTS);
+      normalized = withEnvValue(normalized, WHATSAPP_META_STATUS_ENV_KEY, metaRaw);
+      try { scheduleMetaStatusRefresh(normalized, ctx, metaRaw); } catch {}
     }
     // Meta webhook verification answered at the edge from the original request URL:
     // the legacy node bridge loses the hub.* query (observed mode="" / no token).
@@ -545,9 +553,11 @@ const wrapped = {
         String(normalized.ABSOLUTE_RELEASE_APPROVED || "").toLowerCase() === "true" &&
         String(normalized.PRE_SALE_GATES_APPROVED || "").toLowerCase() === "true" &&
         String(normalized.MERCADOPAGO_ENV || "").toLowerCase() === "production";
+      const whatsappVerdict = whatsappTransportVerdict(normalized);
       const projected = projectProductionOnlyStatus(projectLiveStatus(body, {
         salesOpen: safeRelease,
-        whatsappTransportOperational: whatsappTransportIsOperational(normalized, globalThis.__ZEVANORY_WHATSAPP_RUNTIME__, globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__)
+        whatsappTransportOperational: whatsappVerdict.ready === true,
+        whatsappReason: whatsappVerdict.reason
       }), snapshot, { env: normalized, salesRelease: safeRelease });
       projected.sales_authorization = salesSwitch.enabled === true && salesSwitch.authorized === true
         ? { state: safeRelease ? "open_authorized" : "open_authorized_proof_pending", authorized_by_owner: true, at: String(salesSwitch.at || ""), revision: salesSwitch.revision || null }
@@ -617,6 +627,13 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
     // Acquisition used to run last in the hourly invocation, after nine
     // maintenance tasks had exhausted the 50-subrequest budget.
     const tickMinute = new Date(Number(controller?.scheduledTime) || Date.now()).getUTCMinutes();
+    // Persisted Meta phone-number snapshot (no secrets): the only source of WhatsApp readiness.
+    try {
+      const wa = await refreshMetaStatusSnapshot(normalized);
+      console.info("whatsapp_meta_status", JSON.stringify({ written: wa.written, ready: wa.verdict.ready, reason: wa.verdict.reason }));
+    } catch {
+      console.error("whatsapp_meta_status_failed");
+    }
     if (tickMinute >= 30) {
       try {
         const out=await runAcquisitionEngine(normalized,new Date());

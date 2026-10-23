@@ -16,6 +16,7 @@ import { converse as converseWhatsapp, loadHistory as loadWhatsappHistory, saveH
 import { ttsBytesWithFailover, voiceProviderStatus } from "./voice-provider-router.mjs";
 import { CUSTOMER_RULE_7D, SHORT_RULE_LABEL } from "./politica-unica.mjs";
 import { synthesizeVoice as synthesizeWhatsappVoice } from "./voice-remote-tts.mjs";
+import { evaluateMetaStatusSnapshot, WHATSAPP_META_STATUS_ENV_KEY } from "./whatsapp-meta-truth.mjs";
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -1334,12 +1335,14 @@ __name(buildActivationPlan, "buildActivationPlan");
 var yes3 = /* @__PURE__ */ __name((value) => String(value || "").toLowerCase() === "true", "yes");
 function runtimeReleaseModes(env = process.env) {
   const salesMode = globalThis.__ZEVANORY_SALES_SWITCH__ === true ? "enabled" : "globally-blocked";
-  const whatsappTransport = publicChannelStatus(env).whatsapp?.operational_ready === true;
+  const whatsapp = publicChannelStatus(env).whatsapp;
+  const whatsappTransport = whatsapp?.operational_ready === true;
   return Object.freeze({
     salesMode,
     checkoutMode: yes3(env.CHECKOUT_ENABLED) ? "enabled" : "globally-blocked",
     financialMode: yes3(env.FINANCIAL_EVENTS_ENABLED) ? "enabled" : "disabled",
-    whatsappMode: whatsappTransport ? "enabled" : "disabled"
+    whatsappMode: whatsappTransport ? "enabled" : "disabled",
+    whatsappModeReason: whatsappTransport ? "meta_truth_fresh_healthy" : String(whatsapp?.blocked_reason || "meta_snapshot_missing")
   });
 }
 __name(runtimeReleaseModes, "runtimeReleaseModes");
@@ -1751,6 +1754,38 @@ var standbyEntry = /* @__PURE__ */ __name((name, env, all) => {
     counts_toward_active_total: false
   });
 }, "standbyEntry");
+// WhatsApp readiness is decided ONLY by a fresh persisted Meta snapshot (worker/whatsapp-meta-truth.mjs),
+// never by isolate-local credentials/flags (__ZEVANORY_WHATSAPP_RUNTIME__.identity_verified was a one-shot
+// onboarding flag and answered "enabled" in warm isolates while Meta said DECLINED/EXPIRED).
+function whatsappMetaTruth(env = process.env) {
+  return evaluateMetaStatusSnapshot(env?.[WHATSAPP_META_STATUS_ENV_KEY]);
+}
+__name(whatsappMetaTruth, "whatsappMetaTruth");
+function whatsappMetaGatedEntry(state2, profile2, fallback, env) {
+  const truth = whatsappMetaTruth(env);
+  return Object.freeze({
+    provider: state2.provider,
+    configured: truth.ready,
+    api_configured: truth.ready,
+    alternate_api_configured: false,
+    contingency_ready: false,
+    contingency_mode: null,
+    contingency_provider: null,
+    active_provider: truth.ready ? state2.provider : null,
+    operational_ready: truth.ready,
+    operational_mode: truth.ready ? "provider_api_meta_verified" : "blocked",
+    blocked_reason: truth.ready ? null : truth.reason,
+    meta_truth: truth,
+    implemented: state2.implemented,
+    commercial: state2.commercial,
+    role: state2.role,
+    profile_url: profile2?.profileUrl || fallback.target_url || null,
+    scope_status: "active",
+    standby_reason: null,
+    counts_toward_active_total: true
+  });
+}
+__name(whatsappMetaGatedEntry, "whatsappMetaGatedEntry");
 function publicChannelStatus(env = process.env) {
   const all = channelReadiness(env);
   const active = Object.fromEntries(ACTIVE_COMMERCIAL_FRONTS.map((name) => {
@@ -1758,6 +1793,7 @@ function publicChannelStatus(env = process.env) {
     const profile2 = CHANNEL_PROFILES[name];
     const fallback = assistedFallbackReadiness(name, env);
     const alternate = alternateAutomationReadiness(name, env);
+    if (name === "whatsapp") return [name, whatsappMetaGatedEntry(state2, profile2, fallback, env)];
     const operationalReady = state2.configured || alternate.ready || fallback.ready;
     return [name, Object.freeze({
       provider: state2.provider,
@@ -1792,6 +1828,7 @@ function publicChannelReadinessSummary(env = process.env) {
     contingency_ready: Boolean(item.contingency_ready),
     operational_ready: Boolean(item.operational_ready),
     operational_mode: item.operational_mode,
+    ...item.blocked_reason ? { blocked_reason: item.blocked_reason } : {},
     commercial: Boolean(item.commercial),
     scope_status: item.scope_status,
     counts_toward_active_total: Boolean(item.counts_toward_active_total)
@@ -7581,6 +7618,11 @@ function commercialDistributionReadiness(env = process.env, runtimeOAuth = {}) {
     const policy = COMMERCIAL_DISTRIBUTION_CANONICAL[key], state2 = channels2[key] || { configured: false, implemented: false, missing: ["channel_contract_missing"] };
     const fallback = assistedFallbackReadiness(key, env), alternate = alternateAutomationReadiness(key, env), contingency = key === "nuvemshop" ? nuvemshopCsvFallbackReadiness(env) : { ready: false, mode: null, provider: null }, blockers2 = [...state2.missing];
     if (key === "affiliate") blockers2.push(...affiliate.blockers);
+    if (key === "whatsapp") {
+      const truth = whatsappMetaTruth(env);
+      if (!truth.ready) blockers2.push(truth.reason);
+      return [key, Object.freeze({ ...policy, implemented: state2.implemented, configured: truth.ready, automation_ready: truth.ready, alternate_api_ready: false, alternate_provider: null, contingency_ready: false, contingency_mode: null, contingency_provider: null, operational_ready: truth.ready, operational_mode: truth.ready ? "provider_api_meta_verified" : "blocked", assisted_fallback_ready: false, blockers: Object.freeze(truth.ready ? [] : [...new Set(blockers2)]) })];
+    }
     const automationReady = (state2.configured || alternate.ready) && (key !== "affiliate" || affiliate.ready), operationalReady2 = automationReady || fallback.ready || contingency.ready;
     const operationalMode = state2.configured ? "provider_api" : alternate.ready ? alternate.mode : fallback.ready ? fallback.mode : contingency.ready ? contingency.mode : "blocked";
     return [key, Object.freeze({ ...policy, implemented: state2.implemented, configured: state2.configured, automation_ready: automationReady, alternate_api_ready: alternate.ready, alternate_provider: alternate.provider, contingency_ready: contingency.ready, contingency_mode: contingency.mode, contingency_provider: contingency.provider, operational_ready: operationalReady2, operational_mode: operationalMode, assisted_fallback_ready: fallback.ready, blockers: Object.freeze(operationalReady2 ? [] : [.../* @__PURE__ */ new Set([...blockers2, ...alternate.blockers, ...fallback.blockers])]) })];
@@ -9161,7 +9203,7 @@ function buildOperationalStatus({ telemetry = [], orders = [], financial = [], l
     engine: Object.freeze({ technical_infrastructure: "approved", commercial_autonomy: "approved", approval_basis: "ZEA10_AUTONOMY_GREEN_V2" }),
     sales_machine: Object.freeze({ structure_ready: true, crm: "ready", follow_up: "ready", unit_economics: "ready", learning: "ready", outbound_capability: "ready", outbound_execution: salesLive ? "enabled_guarded" : "blocked" }),
     command_center: commandCenter,
-    runtime: Object.freeze({ telemetry: "active", checkout: runtimeModes.checkoutMode, financial: runtimeModes.financialMode, sales: runtimeModes.salesMode, whatsapp: runtimeModes.whatsappMode }),
+    runtime: Object.freeze({ telemetry: "active", checkout: runtimeModes.checkoutMode, financial: runtimeModes.financialMode, sales: runtimeModes.salesMode, whatsapp: runtimeModes.whatsappMode, whatsapp_reason: runtimeModes.whatsappModeReason }),
     metrics: Object.freeze({
       page_views: pageViews,
       leads_qualified: qualified,
@@ -9676,10 +9718,10 @@ function handler3(req, res) {
     region: process.env.VERCEL_REGION || process.env.ZEVANORY_DEPLOYMENT_REGION || null
   });
   res.statusCode = 200;
-  const full = { release_id: RELEASE.id, structural_completion: RELEASE.structuralCompletion, sales_mode: runtimeModes.salesMode, checkout_mode: runtimeModes.checkoutMode, financial_mode: runtimeModes.financialMode, whatsapp_mode: runtimeModes.whatsappMode, required_routes: RELEASE.requiredRoutes, assurance: RELEASE.assurance, recovery: RELEASE.recovery, deployment };
+  const full = { release_id: RELEASE.id, structural_completion: RELEASE.structuralCompletion, sales_mode: runtimeModes.salesMode, checkout_mode: runtimeModes.checkoutMode, financial_mode: runtimeModes.financialMode, whatsapp_mode: runtimeModes.whatsappMode, whatsapp_mode_reason: runtimeModes.whatsappModeReason, required_routes: RELEASE.requiredRoutes, assurance: RELEASE.assurance, recovery: RELEASE.recovery, deployment };
   if (!isPublicDeploymentRequest(req)) return res.end(JSON.stringify(full));
   const a2 = RELEASE.assurance || {};
-  return res.end(JSON.stringify({ release_id: full.release_id, structural_completion: full.structural_completion, sales_mode: full.sales_mode, checkout_mode: full.checkout_mode, financial_mode: full.financial_mode, whatsapp_mode: full.whatsapp_mode, deployment: full.deployment, assurance: { quality_gate: a2.quality_gate, security_10x: a2.security_10x, observability_10x: a2.observability_10x, architecture_20x: a2.architecture_20x, official_brand: a2.official_brand } }));
+  return res.end(JSON.stringify({ release_id: full.release_id, structural_completion: full.structural_completion, sales_mode: full.sales_mode, checkout_mode: full.checkout_mode, financial_mode: full.financial_mode, whatsapp_mode: full.whatsapp_mode, whatsapp_mode_reason: full.whatsapp_mode_reason, deployment: full.deployment, assurance: { quality_gate: a2.quality_gate, security_10x: a2.security_10x, observability_10x: a2.observability_10x, architecture_20x: a2.architecture_20x, official_brand: a2.official_brand } }));
 }
 __name(handler3, "handler");
 
@@ -17762,6 +17804,8 @@ __name(handleInternalAuthMailer, "handleInternalAuthMailer");
 var FAIL_CLOSED_RUNTIME_FLAGS = Object.freeze(["CERTIFICATION_PILOT_ENABLED", "SALE_GLOBALLY_ENABLED", "PRE_SALE_GATES_APPROVED", "CHECKOUT_ENABLED", "WHATSAPP_SALES_ENABLED", "FINANCIAL_EVENTS_ENABLED"]);
 function hydrateRuntimeConfig(env = process.env, target = process.env) {
   for (const key of FAIL_CLOSED_RUNTIME_FLAGS) target[key] = String(env?.[key] ?? "false");
+  // Per-request Meta snapshot (injected by the compat wrapper); never inherit a previous request's value.
+  target[WHATSAPP_META_STATUS_ENV_KEY] = String(env?.[WHATSAPP_META_STATUS_ENV_KEY] ?? "");
   if (env && typeof env === "object") {
     for (const [key, value] of Object.entries(env)) {
       if (value === void 0 || value === null) continue;
@@ -18565,7 +18609,7 @@ var cloudflare_worker_default = {
       try {
         const body = await response3.clone().json();
         const modes = runtimeReleaseModes(env);
-        body.runtime = { telemetry: body.runtime?.telemetry || "active", checkout: modes.checkoutMode, financial: modes.financialMode, sales: modes.salesMode, whatsapp: modes.whatsappMode };
+        body.runtime = { telemetry: body.runtime?.telemetry || "active", checkout: modes.checkoutMode, financial: modes.financialMode, sales: modes.salesMode, whatsapp: modes.whatsappMode, whatsapp_reason: modes.whatsappModeReason };
         body.channel_readiness = publicCommercialChannelReadinessSummary(env);
         const headers2 = new Headers(response3.headers);
         headers2.set("content-type", "application/json; charset=utf-8");

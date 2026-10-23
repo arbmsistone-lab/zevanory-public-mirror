@@ -1,17 +1,23 @@
-export function whatsappTransportIsOperational(env = {}, runtime = {}, broker = {}) {
-  const runtimeReady = runtime?.identity_verified === true
-    && Boolean(String(runtime?.access_token || env.WHATSAPP_ACCESS_TOKEN || "").trim())
-    && Boolean(String(runtime?.phone_number_id || env.WHATSAPP_PHONE_NUMBER_ID || "").trim());
-  const brokerReady = broker?.broker === true && broker?.identity_verified === true;
-  return runtimeReady || brokerReady;
+import { evaluateMetaStatusSnapshot, WHATSAPP_META_STATUS_ENV_KEY } from "./whatsapp-meta-truth.mjs";
+
+// Fail-closed: only a fresh persisted Meta snapshot (env[WHATSAPP_META_STATUS_ENV_KEY], injected per
+// request from KV) can make the WhatsApp transport operational. The isolate-local runtime/broker
+// globals (onboarding identity flag, broker state) are ignored on purpose: they diverged from Meta.
+export function whatsappTransportVerdict(env = {}, { now = Date.now() } = {}) {
+  return evaluateMetaStatusSnapshot(env?.[WHATSAPP_META_STATUS_ENV_KEY], { now });
 }
 
-export function projectLiveStatus(body = {}, { salesOpen = false, whatsappTransportOperational = false } = {}) {
+export function whatsappTransportIsOperational(env = {}, _runtime = {}, _broker = {}, { now = Date.now() } = {}) {
+  return whatsappTransportVerdict(env, { now }).ready === true;
+}
+
+export function projectLiveStatus(body = {}, { salesOpen = false, whatsappTransportOperational = false, whatsappReason = null } = {}) {
   const sales = salesOpen ? "enabled" : "globally-blocked";
   const runtime = {
     ...(body.runtime || {}),
     sales,
-    whatsapp: whatsappTransportOperational ? "enabled" : "disabled",
+    whatsapp: whatsappTransportOperational === true ? "enabled" : "disabled",
+    whatsapp_reason: whatsappTransportOperational === true ? "meta_truth_fresh_healthy" : String(whatsappReason || body.runtime?.whatsapp_reason || "meta_snapshot_missing"),
   };
   const channel_readiness = Object.fromEntries(Object.entries(body.channel_readiness || {}).map(([name, item = {}]) => [name, {
     ...item,

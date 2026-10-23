@@ -4,6 +4,7 @@ import { buildContinuityPlan } from "../worker/continuity-router.mjs";
 import { projectLiveStatus, projectLocalZea10, whatsappTransportIsOperational } from "../worker/live-runtime-status.mjs";
 import { readSalesSwitch, resetSalesSwitchCache } from "../worker/sales-control.mjs";
 import { evaluatePolicy } from "../worker/evidence-control-plane.mjs";
+import { buildMetaStatusSnapshot, WHATSAPP_META_STATUS_ENV_KEY } from "../worker/whatsapp-meta-truth.mjs";
 
 function kv(entries) {
   const values = new Map(entries);
@@ -18,7 +19,11 @@ test("fresh green preflight and open owner switch never project globally-blocked
     ["zpc-sales-preflight:v1", JSON.stringify({ ok: true, at: new Date(now - 60_000).toISOString() })],
   ]) };
   const salesSwitch = await readSalesSwitch(env, now);
-  const transport = whatsappTransportIsOperational({}, { identity_verified: true, access_token: "token", phone_number_id: "phone" }, {});
+  // The isolate-local onboarding flag alone no longer counts (it diverged from Meta); only a fresh
+  // healthy persisted Meta snapshot makes the transport operational.
+  assert.equal(whatsappTransportIsOperational({}, { identity_verified: true, access_token: "token", phone_number_id: "phone" }, { broker: true, identity_verified: true }), false);
+  const healthy = JSON.stringify({ ...buildMetaStatusSnapshot({ broker: true, token_app_id: "app", permissions: { whatsapp_business_messaging: true, whatsapp_business_management: true }, number_verified: true, brand_name_verified: true, name_status: "APPROVED", code_verification_status: "VERIFIED", quality_rating: "GREEN" }, now - 60_000) });
+  const transport = whatsappTransportIsOperational({ [WHATSAPP_META_STATUS_ENV_KEY]: healthy }, {}, {}, { now });
   const status = projectLiveStatus({
     runtime: { telemetry: "active", sales: "globally-blocked", whatsapp: "disabled" },
     channel_readiness: {
