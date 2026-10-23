@@ -17,7 +17,7 @@ VOSK_SPK_SHA=a74d8f51144484813e16af689bb0f916b7a111e2347f467c4933c1166097b5a7
 DNSMOS_SHA=269fbebdb513aa23cddfbb593542ecc540284a91849ac50516870e1ac78f6edd
 get_zip() {  # get_zip <url> <dir-name> <sha>
   if [ ! -d "$MD/$2" ]; then
-    curl -fsSL --retry 3 -o "$MD/$2.zip" "$1"
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -C - -o "$MD/$2.zip" "$1" || curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 -C - -o "$MD/$2.zip" "$1"
     pin "$MD/$2.zip" "$3"
     unzip -q "$MD/$2.zip" -d "$MD" && rm -f "$MD/$2.zip"
   fi
