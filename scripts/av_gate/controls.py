@@ -582,7 +582,7 @@ FIXTURES = [  # (expected failing checks, path in the measurements, out-of-range
     (["v3.stream_tp"], ("stream_loudness", "tp"), -1.0), (["v3.stream_lufs"], ("stream_loudness", "lufs"), -25.0),
     (["v3.master_lufs"], ("master_loudness", "lufs"), -21.0), (["v3.master_tp"], ("master_loudness", "tp"), -0.5),
     (["v4.wpm"], ("rate", "wpm"), 190.0), (["v4.pause_max"], ("timeline", "pause_max_ms"), 1700),
-    (["v2.clip_errors"], ("asr", "clip_errors_noncritical"), 2), (["v2.critical_terms"], ("asr", "critical_missed"), ["tres"]),
+    (["v2.clip_errors"], ("asr", "clip_errors_noncritical"), 2), (["v2.critical_terms"], ("asr", "critical_errors"), ["sub:tres>quatro"]),
     (["v2.instruction_leak"], ("asr", "instruction_leak"), ["a:style:fale com voz"]),
     (["v5.dnsmos_ovrl"], ("dnsmos", "ovrl"), 1.5), (["v7.contrast_px"], ("frames", "contrast_min"), 2.0),
     (["v7.safe_area_px"], ("frames", "bbox"), [180, 1600, 860, 1800]),
@@ -605,6 +605,27 @@ def add_fixtures(res, thr):
     if base is None:
         res["notes"].append("FIXTURES_BLOCKED: nenhum positivo correto para servir de base")
         return
+    # AVAL 098 adversarial V2 fixtures: critical tokens on the HYPOTHESIS side (insertions) and deleted negation
+    asr0 = base["M"].get("asr") or {}
+    ref = list(asr0.get("ref_tokens") or [])
+    man = {"critical_terms": (base["M"].get("manifest") or {}).get("critical_terms") or [], "voice": {"style": ""}}
+    if len(ref) >= 6:
+        k0 = len(ref) // 2
+        adv = [("garantia inserida", ref, ref[:k0] + ["garantia"] + ref[k0:], ref[:k0] + ["garantia"] + ref[k0:]),
+               ("gratis inserido", ref, ref[:k0] + ["gratis"] + ref[k0:], ref[:k0] + ["gratis"] + ref[k0:]),
+               ("numero inserido", ref, ref[:k0] + ["cinco"] + ref[k0:], ref[:k0] + ["cinco"] + ref[k0:]),
+               ("nao apagado", ref[:k0] + ["nao"] + ref[k0:], ref, ref),
+               ("garantia ouvida so pelo motor A", ref, ref[:k0] + ["garantia"] + ref[k0:], ref)]
+        for j, (label, r, ta, tb) in enumerate(adv, 1):
+            M = json.loads(json.dumps(base["M"], default=float))
+            M["asr"].update(G.v2_metrics(r, [False] * len(r), ta, tb, man, thr))
+            res["controls"].append({"id": f"FA{j}", "kind": "fixture", "desc": f"fixture adversarial V2: {label}",
+                                    "expect": "FAIL", "expect_checks": ["v2.critical_terms"], "base": base["id"], "M": M})
+    # the only route to the top verdict: every check passes WITH an independent brand reference → still pending human
+    M = json.loads(json.dumps(base["M"], default=float))
+    M.update({"reference_present": True, "reference_independent": True, "speaker_cos": 0.85})
+    res["controls"].append({"id": "FOK", "kind": "fixture", "desc": "fixture: tudo passa com referência independente",
+                            "expect": "PASS_TECH_PENDING_HUMAN", "expect_checks": [], "base": base["id"], "M": M})
     for k, (checks, path, val) in enumerate(FIXTURES, 1):
         M = json.loads(json.dumps(base["M"], default=float))
         d = M
@@ -657,6 +678,8 @@ MUTANTS = [
     {"id": "M18", "desc": "sem área segura medida nos pixels (V7)", "disable": ["safe_area_px"]},
     {"id": "M19", "desc": "sem detecção de legenda queimada (V7)", "disable": ["burned_px"]},
     {"id": "M20", "desc": "regra por clipe relaxada (até 3 erros não críticos)", "overrides": {"V2.clip_noncritical_max": 3}},
+    {"id": "M21", "desc": "termo crítico só no lado da referência (regra antiga: inserção crítica = erro comum)", "overrides": {"V2.critical_scope": "reference_only"}},
+    {"id": "M22", "desc": "MOS preditivo ≥ 2,2 dá aceitação final (PASS sem humano)", "policy": {"mos_final": True}},
 ]
 
 
@@ -666,6 +689,8 @@ def correct(ctrl, verdict, failed, blocked=(), errors=()):
         return True
     if e == "PASS_SPEAKER_BLOCKED":  # every check passes; speaker BLOCKED until an independent brand reference exists
         return verdict == "BLOCKED" and list(blocked) == ["v4.speaker"] and not failed and not errors
+    if e == "PASS_TECH_PENDING_HUMAN":
+        return verdict == "PASS_TECH_PENDING_HUMAN"
     if ctrl["kind"] in ("fixture", "isolated"):  # rejected AND only by the targeted rule(s)
         return verdict == "FAIL" and bool(failed) and set(failed) <= set(ctrl["expect_checks"]) and ctrl.get("isolated", True)
     if e == "PASS":
@@ -704,6 +729,13 @@ def evaluate(res, thr):
     cm = G.corpus_metrics(pairs) if pairs else {"words": 0}
     cm["ok"] = bool(pairs) and cm["words"] >= thr["V2"]["corpus_min_words"] and cm["wer"] <= thr["V2"]["wer_max"] and cm["cer"] <= thr["V2"]["cer_max"]
     res["corpus"] = cm
+    try:
+        pend = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "docs", "p05", "escuta-cega-p10", "pendentes.json"), encoding="utf-8"))["arquivos"]
+    except Exception:
+        pend = []
+    for c in res["controls"]:
+        if c["kind"] == "positive" and any(f in str(c.get("base") or "") for f in pend):
+            c["pending_human_review"] = True  # pre-registered: stays UNRESOLVED (never counted as pass)
     cs = res["controls"]
     res["summary"] = {
         "positives": sum(1 for c in cs if c["kind"] == "positive"),
@@ -717,6 +749,7 @@ def evaluate(res, thr):
         "infra": sum(1 for c in cs if c["kind"] == "infra"),
         "infra_correct": sum(1 for c in cs if c["kind"] == "infra" and c["correct"]),
         "misclassified": [c["id"] for c in cs if not c["correct"]],
+        "pending_human_review": [c["id"] for c in cs if c.get("pending_human_review")],
         "mutants": len(res["mutants"]), "mutants_killed": sum(1 for m in res["mutants"] if m["killed"]),
         "mutants_survived": [m["id"] for m in res["mutants"] if not m["killed"]],
         "human_positives": res.get("base_source", "").startswith("google/fleurs"),
@@ -765,7 +798,7 @@ def annotate(results, what):
              f"corpus V2 {s.get('corpus')} | fixtures {s.get('fixtures_ok')}/{s.get('fixtures')} | isolados {s.get('isolated_ok')}/{s.get('isolated')} | negativos rejeitados "
              f"{s.get('negatives_rejected')}/{s.get('negatives')} (estágio esperado {s.get('negatives_expected_stage')}) | infra "
              f"{s.get('infra_correct')}/{s.get('infra')} | mutantes mortos {s.get('mutants_killed')}/{s.get('mutants')} "
-             f"sobreviventes={s.get('mutants_survived')} | mal classificados={s.get('misclassified')} | {R.get('elapsed_s')} s")
+             f"sobreviventes={s.get('mutants_survived')} | mal classificados={s.get('misclassified')} | PENDENTE_REVISAO_HUMANA (não conta como aprovado)={s.get('pending_human_review')} | {R.get('elapsed_s')} s")
         note("notice", "AV_GATE_V8_SOURCES", f"human_attempts={R.get('human_source_attempts')} candidates={R.get('human_candidates')} "
              f"screened={R.get('human_screened')} genero={R.get('human_gender')} stats={R.get('human_screen_stats')} engines={R.get('engines')} notes={R.get('notes')}")
         return 0 if ok else 1

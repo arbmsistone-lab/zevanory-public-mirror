@@ -73,3 +73,19 @@ e cada clipe tem orçamento de no máximo 1 erro não crítico e zero crítico. 
 3. Chaves e contas dos provedores de TTS da prova cega e decisão de custo (tier pago do Gemini etc.).
 4. ASR de nuvem de outro fornecedor como motor B em produção (Azure ou Google STT, com custo e decisão do proprietário).
 5. Reativar os workflows `youtube-autonomous-short` e `short-pack` **é decisão do proprietário**. Esta mudança não os reativa.
+
+## Aceitação final é humana (AVAL 098)
+O gate **nunca** emite aceitação final. O melhor veredito é `PASS_TECH_PENDING_HUMAN` (código 4). O MOS preditivo (DNSMOS ≥ 2,2) é só um
+piso **provisório de rejeição**. O publicador só sela e envia um arquivo que passou em todas as checagens automáticas **e** tem
+registro de aprovação humana para exatamente aqueles bytes (`AV_GATE_HUMAN_APPROVALS`: `{"approvals":[{"mp4_sha256","approver","at"}]}`).
+Sem esse registro, o resultado é `av_gate_PENDING_HUMAN` e nada é publicado. Como o TTS não é determinístico, a publicação precisa de um fluxo em
+duas fases (render + revisão, depois publicação do candidato aprovado). Esse fluxo é decisão do proprietário e não está implementado.
+
+## V2: termo crítico em qualquer lado do alinhamento (AVAL 098)
+Conta como erro crítico, para o consenso, toda substituição, remoção ou inserção que toque um termo crítico (número, preço,
+marca, negação, promessa/garantia, CTA) no lado da referência **ou** no da hipótese. Promessa, CTA, preço ou marca inserido por
+**qualquer** um dos motores também conta. Esses erros nunca entram no orçamento de 1 erro não crítico por clipe.
+
+## Prazo absoluto do slot (AVAL 098)
+A fila de tentativas da voz verifica o prazo absoluto do slot **no início** de cada tentativa e **na chegada** do áudio. Áudio que
+começa ou termina depois do prazo é descartado, e o slot é registrado como perdido.

@@ -33,7 +33,8 @@ def good_M():
         "dnsmos": {"sig": 3.4, "bak": 3.9, "ovrl": 3.0},
         "asr": {"wer_a": 0.08, "wer_b": 0.15, "wer_consensus": 0.0, "cer_consensus": 0.0, "critical_missed": [], "critical_inserted": [],
                 "instruction_leak": [], "sales_spoken_hits": [],
-                "clip_errors_noncritical": 0, "clip_errors_total": 0},
+                "clip_errors_noncritical": 0, "clip_errors_total": 0, "critical_errors": [],
+                "clip_errors_noncritical_legacy": 0},
         "rate": {"wpm": 150.0, "win_wpm_min": 140.0, "win_wpm_max": 162.0}, "speaker_cos": 0.82, "reference_independent": True,
         "frames": {"burned": True, "bbox": [180, 1180, 860, 1360], "contrast_min": 15.9},
         "captions": {"cues": 6, "measurable": 6, "deltas_ms": [0, 10, -20, 30, 0, 5], "script_wer": 0.0, "max_line_chars": 34, "max_lines": 1, "mean_cps": 14.0},
@@ -83,7 +84,7 @@ class Decision(unittest.TestCase):
 
     def test_good_is_pass(self):
         d = self.v(good_M())
-        self.assertEqual(d["verdict"], "PASS", d["failed"] + d["blocked"] + d["errors"])
+        self.assertEqual(d["verdict"], "PASS_TECH_PENDING_HUMAN", d["failed"] + d["blocked"] + d["errors"])
 
     def test_each_defect_fails(self):
         cases = {
@@ -97,7 +98,7 @@ class Decision(unittest.TestCase):
             "v7.contrast_px": lambda M: M["frames"].update(contrast_min=1.9),
             "v7.safe_area_px": lambda M: M["frames"].update(bbox=[180, 1600, 860, 1820]),
             "v7.captions_burned": lambda M: M.update(frames={"burned": False}),
-            "v2.critical_terms": lambda M: M["asr"].update(critical_missed=["tres"]),
+            "v2.critical_terms": lambda M: M["asr"].update(critical_errors=["sub:tres>quatro"]),
             "v2.instruction_leak": lambda M: M["asr"].update(instruction_leak=["a:style:fale com voz"]),
             "v4.wpm": lambda M: M["rate"].update(wpm=205.0),
             "v4.pause_max": lambda M: M["timeline"].update(pause_max_ms=1800),
@@ -146,19 +147,19 @@ class Decision(unittest.TestCase):
     def test_mutation_hooks(self):
         M = good_M()
         M["stream_loudness"]["tp"] = -1.0
-        self.assertEqual(self.v(M, overrides={"V3.stream_tp_max": -0.3})["verdict"], "PASS")
+        self.assertEqual(self.v(M, overrides={"V3.stream_tp_max": -0.3})["verdict"], "PASS_TECH_PENDING_HUMAN")
         M = good_M()
         M["reference_present"] = False
-        self.assertEqual(self.v(M, policy={"blocked_as_pass": True})["verdict"], "PASS")
+        self.assertEqual(self.v(M, policy={"blocked_as_pass": True})["verdict"], "PASS_TECH_PENDING_HUMAN")
         M = good_M()
         M["timeline"]["pause_max_ms"] = 1800
-        self.assertEqual(self.v(M, disable=["vad"])["verdict"], "PASS")
+        self.assertEqual(self.v(M, disable=["vad"])["verdict"], "PASS_TECH_PENDING_HUMAN")
 
     def test_controls_profile_only_widens_voices_for_controls(self):
         M = good_M()
         M["manifest"]["voice"] = {"provider": "human-reference", "model": "fleurs-pt_br", "voice": "speaker"}
         self.assertEqual(self.v(M)["verdict"], "FAIL")
-        self.assertEqual(self.v(M, profile="controls")["verdict"], "PASS")
+        self.assertEqual(self.v(M, profile="controls")["verdict"], "PASS_TECH_PENDING_HUMAN")
 
 
 class Captions(unittest.TestCase):
@@ -204,3 +205,42 @@ class CorpusAndIndependence(unittest.TestCase):
         rows = G.alignment_table(ref, "custa quatro reais".split(), "custa tres reais".split(), ref)
         self.assertEqual([r["A"] for r in rows if r["ref"]], ["custa", "quatro", "reais"])
         self.assertEqual([r["B"] for r in rows if r["ref"]], ["custa", "tres", "reais"])
+
+
+class CriticalEitherSide(unittest.TestCase):
+    """AVAL 098: a critical token inserted/deleted/substituted on EITHER side is a critical error (never 'non-critical')."""
+    ref = "use a calculadora da zevanory no seu negocio hoje".split()
+    man = {"critical_terms": ["ZEVANORY"], "voice": {"style": ""}}
+
+    def m(self, ref, ta, tb):
+        return G.v2_metrics(ref, [False] * len(ref), ta, tb, self.man, THR)
+
+    def test_inserted_promise_number_and_deleted_negation(self):
+        r = self.ref
+        for word in ("garantia", "gratis", "cinco"):
+            h = r[:3] + [word] + r[3:]
+            out = self.m(r, h, h)
+            self.assertTrue(out["critical_errors"], word)
+            self.assertEqual(out["clip_errors_noncritical"], 0, word)
+            self.assertEqual(out["clip_errors_noncritical_legacy"], 1, word)  # the old rule saw a harmless insertion
+        rn = r[:2] + ["nao"] + r[2:]
+        out = self.m(rn, r, r)
+        self.assertIn("del:nao>-", out["critical_errors"])
+
+    def test_promise_heard_by_one_engine_is_enough(self):
+        r = self.ref
+        out = self.m(r, r[:3] + ["garantia"] + r[3:], r)
+        self.assertTrue(any(e.startswith("a:ins:") for e in out["critical_errors"]))
+
+    def test_decide_legacy_scope_is_the_false_pass(self):
+        M = good_M()
+        M["asr"].update(self.m(self.ref, self.ref[:3] + ["garantia"] + self.ref[3:], self.ref[:3] + ["garantia"] + self.ref[3:]))
+        self.assertIn("v2.critical_terms", G.decide(M, THR)["failed"])
+        self.assertEqual(G.decide(M, THR, overrides={"V2.critical_scope": "reference_only"})["verdict"], "PASS_TECH_PENDING_HUMAN")
+
+
+class NeverFinalAcceptance(unittest.TestCase):
+    def test_all_checks_pass_is_pending_human(self):
+        self.assertEqual(G.decide(good_M(), THR)["verdict"], "PASS_TECH_PENDING_HUMAN")
+        self.assertEqual(G.decide(good_M(), THR, policy={"mos_final": True})["verdict"], "PASS")  # the mutant
+        self.assertNotIn("PASS", G.VERDICTS)

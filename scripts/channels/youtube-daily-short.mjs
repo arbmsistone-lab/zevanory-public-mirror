@@ -205,11 +205,17 @@ const fontFile = (style, fallback) => {
 // When the queue expires the slot is LOST (recorded, no publish, later runs of the same day skip it).
 export const VOICE_RETRY = Object.freeze({ maxAttempts: 3, backoffMs: [20000, 60000], ttlMs: 15 * 60000 });
 const VOICE_RETRYABLE = /^brand_voice_http_(429|5\d\d|fetch_)|^brand_voice_no_audio$/;
-export async function brandVoiceQueued(text, key, { voice = brandVoice, sleep = ms => new Promise(r => setTimeout(r, ms)), now = Date.now, deadline = Infinity, policy = VOICE_RETRY } = {}) {
+// The slot's ABSOLUTE deadline is enforced when an attempt STARTS and when its audio ARRIVES: audio that starts
+// or completes after the deadline is discarded and the slot is lost (AVAL 098). enforce* exist only for mutants.
+export async function brandVoiceQueued(text, key, { voice = brandVoice, sleep = ms => new Promise(r => setTimeout(r, ms)), now = Date.now, deadline = Infinity, policy = VOICE_RETRY, enforceStart = true, enforceEnd = true } = {}) {
   const expires = Math.min(now() + policy.ttlMs, deadline), attempts = [];
   for (let i = 0; i < policy.maxAttempts; i++) {
+    if (enforceStart && now() >= deadline) return { blocked: "slot_lost_voice_unavailable", lost: true, reason: "deadline_before_start", attempts };
     const v = await voice(text, key);
-    if (v && !v.blocked && v.pcm) return { ...v, attempts: attempts.length + 1 };
+    if (v && !v.blocked && v.pcm) {
+      if (enforceEnd && now() > deadline) return { blocked: "slot_lost_voice_unavailable", lost: true, reason: "late_audio_discarded", attempts: [...attempts, "late_audio"] };
+      return { ...v, attempts: attempts.length + 1 };
+    }
     attempts.push(String(v?.blocked || "no_audio"));
     if (!VOICE_RETRYABLE.test(attempts[i])) return { blocked: attempts[i], attempts };
     const wait = policy.backoffMs[Math.min(i, policy.backoffMs.length - 1)];
@@ -246,9 +252,11 @@ export function avGate(mp4, manifest, reportPath, { spawn = spawnSync } = {}) {
   const p = spawn(PY(), [AV_GATE, "check", "--mp4", mp4, "--manifest", manifest, "--out", reportPath], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
   let rep = null;
   try { rep = JSON.parse(readFileSync(reportPath, "utf8")); } catch {}
-  const verdict = ["PASS", "FAIL", "BLOCKED", "ERROR_INFRA"].includes(rep?.verdict) ? rep.verdict : "ERROR_INFRA";
-  if (verdict === "PASS" && p?.status !== 0) return { verdict: "ERROR_INFRA", failed: [], blocked: [], errors: ["exit_code_mismatch"] };
-  if (verdict !== "PASS" || p?.status !== 0) return { verdict: verdict === "PASS" ? "ERROR_INFRA" : verdict, failed: rep?.decision?.failed || [], blocked: rep?.decision?.blocked || [], errors: rep?.decision?.errors || ["gate_unavailable"] };
+  // The gate never emits a final PASS: its best verdict is PASS_TECH_PENDING_HUMAN (exit 4).
+  const TOP = "PASS_TECH_PENDING_HUMAN";
+  const verdict = [TOP, "FAIL", "BLOCKED", "ERROR_INFRA"].includes(rep?.verdict) ? rep.verdict : "ERROR_INFRA";
+  if (verdict === TOP && p?.status !== 4) return { verdict: "ERROR_INFRA", failed: [], blocked: [], errors: ["exit_code_mismatch"] };
+  if (verdict !== TOP) return { verdict, failed: rep?.decision?.failed || [], blocked: rep?.decision?.blocked || [], errors: rep?.decision?.errors || (verdict === "ERROR_INFRA" ? ["gate_unavailable"] : []) };
   return { verdict, failed: [], blocked: [], errors: [] };
 }
 
@@ -317,7 +325,17 @@ export function wavFromPcm(pcm, rate) {
   return Buffer.concat([h, pcm]);
 }
 
-export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { geminiKey = process.env.GEMINI_API_KEY, voice = brandVoice, pack = packageNarration, video = renderVideo, gate = avGate, manifest = writeAvManifest, onVoice = null } = {}) {
+// Final acceptance is HUMAN: a clip that passed every automatic check is published only if a human approval record
+// exists for exactly its bytes (JSON {"approvals":[{"mp4_sha256","approver","at"}]} at AV_GATE_HUMAN_APPROVALS).
+export async function humanApproved(sha, { file = process.env.AV_GATE_HUMAN_APPROVALS } = {}) {
+  if (!file) return null;
+  try {
+    const j = JSON.parse(await readFile(file, "utf8"));
+    return (j.approvals || []).find(a => a.mp4_sha256 === sha && a.approver && a.at) || null;
+  } catch { return null; }
+}
+
+export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { geminiKey = process.env.GEMINI_API_KEY, voice = brandVoice, pack = packageNarration, video = renderVideo, gate = avGate, manifest = writeAvManifest, onVoice = null, approvals = humanApproved } = {}) {
   const v = await voice(plan.speech, geminiKey);
   if (v?.pcm && onVoice) await onVoice(v);  // usage is counted even when the gate later rejects the take
   if (!v || v.blocked || !v.pcm || v.pcm.length < v.rate) throw new Error("brand_voice_BLOCKED:" + String(v?.blocked || "no_audio").replace(/[^a-z0-9_]/gi, "_"));
@@ -331,10 +349,13 @@ export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { ge
   const man = await manifest(plan, dir, candidate, pkg);
   const report = await gate(candidate, man, dir + "/av-gate.json");
   console.log("::notice title=AV_GATE::" + JSON.stringify({ slot: plan.slot, day: plan.day, verdict: report.verdict, failed: report.failed.slice(0, 10), blocked: report.blocked.slice(0, 6), errors: report.errors.slice(0, 6) }));
-  if (report.verdict !== "PASS") throw new Error("av_gate_" + report.verdict + ":" + [...report.failed, ...report.blocked, ...report.errors].slice(0, 6).join("+"));
-  // Only a PASSED file gets the name the uploader / cross-poster read, with a sealed PASS record.
+  if (report.verdict !== "PASS_TECH_PENDING_HUMAN") throw new Error("av_gate_" + report.verdict + ":" + [...report.failed, ...report.blocked, ...report.errors].slice(0, 6).join("+"));
+  const sha = await sha256File(candidate);
+  const approval = await approvals(sha);
+  if (!approval) throw new Error("av_gate_PENDING_HUMAN:" + sha.slice(0, 16));  // candidate kept in <base>.av for review
+  // Only a technically passed AND human-approved file gets the name the uploader / cross-poster read, sealed.
   await copyFile(candidate, base + ".mp4");
-  await writeFile(base + ".av-gate.json", JSON.stringify({ verdict: "PASS", mp4_sha256: await sha256File(base + ".mp4"), day: plan.day, slot: plan.slot }));
+  await writeFile(base + ".av-gate.json", JSON.stringify({ verdict: "PASS", gate: report.verdict, human_approval: { approver: approval.approver, at: approval.at }, mp4_sha256: await sha256File(base + ".mp4"), day: plan.day, slot: plan.slot }));
   return { file: base + ".mp4", duration, voice: v.model, gate: report };
 }
 

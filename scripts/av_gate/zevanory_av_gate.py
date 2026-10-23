@@ -34,8 +34,11 @@ except ImportError:  # explicit, typed failure instead of a crash: the gate neve
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GATE_VERSION = "p05-av-gate-1"
-VERDICTS = ("PASS", "FAIL", "BLOCKED", "ERROR_INFRA")
-EXIT = {"PASS": 0, "FAIL": 1, "BLOCKED": 2, "ERROR_INFRA": 3}
+# The gate NEVER gives final acceptance: predicted MOS (DNSMOS ≥ 2.2) is only a provisional REJECTION floor
+# (AVAL 098). A clip that passes every automatic check is PASS_TECH_PENDING_HUMAN and needs a human approval
+# record for exactly its bytes before it can be published (see youtube-daily-short.mjs, humanApproved).
+VERDICTS = ("PASS_TECH_PENDING_HUMAN", "FAIL", "BLOCKED", "ERROR_INFRA")
+EXIT = {"PASS_TECH_PENDING_HUMAN": 4, "PASS": 0, "FAIL": 1, "BLOCKED": 2, "ERROR_INFRA": 3}
 SR = 16000
 
 
@@ -660,6 +663,79 @@ def parse_captions(path):
     return cues
 
 
+def critical_vocab(man, thr, lex):
+    """Tokens that are critical wherever they appear (reference OR hypothesis side): numbers, negations,
+    promise/guarantee/CTA words and the manifest's critical terms (brand, prices...)."""
+    v = (NUMBER_WORDS - {"um", "uma"}) | set(thr["V2"]["critical_negations"]) | set(thr["V2"]["critical_promise_cta"])
+    for term in man.get("critical_terms") or []:
+        v |= set(normalize_tokens(term, lex))
+    return v
+
+
+def critical_ops(ref, hyp, vocab, crit_pos):
+    """Every substitution, deletion or insertion that touches a critical token on EITHER side of the alignment."""
+    out = []
+    for op, i, j in edit_ops(ref, hyp):
+        if op == "equal":
+            continue
+        r = ref[i] if op in ("sub", "del") else None
+        h = hyp[j] if op in ("sub", "ins") else None
+        if (r is not None and (i in crit_pos or r in vocab)) or (h is not None and h in vocab):
+            out.append(f"{op}:{r or '-'}>{h or '-'}")
+    return out
+
+
+def v2_metrics(ref, numflag, ta, tb, man, thr, lex=None):
+    """V2 from token sequences (also used by the adversarial fixtures). Decisive: consensus critical errors on
+    either side + promise/CTA/price/brand insertions by ANY engine; ≤ 1 non-critical consensus error per clip."""
+    out = {}
+    cons, heard, cons_ins = consensus(ref, ta, tb)
+    out["wer_consensus"], out["cer_consensus"] = wer(ref, cons), cer(ref, cons)
+    out["ref_tokens"], out["cons_tokens"] = ref, cons
+    out["alignment"] = alignment_table(ref, ta, tb, cons)
+    vocab = critical_vocab(man, thr, lex)
+    crit = {i for i, w in enumerate(ref) if numflag[i] or w in vocab}
+    for term in man.get("critical_terms") or []:
+        tt = normalize_tokens(term, lex)
+        for i in range(len(ref) - len(tt) + 1):
+            if tt and ref[i:i + len(tt)] == tt:
+                crit.update(range(i, i + len(tt)))
+    out["critical_total"] = len(crit)
+    cons_crit = critical_ops(ref, cons, vocab, crit)
+    dangerous = set(thr["V2"]["critical_promise_cta"]) | {w for t in (man.get("critical_terms") or []) for w in normalize_tokens(t, lex)} | {"reais", "real", "centavos"}
+    eng = {}
+    for name, h in (("a", ta), ("b", tb)):
+        ops = critical_ops(ref, h, vocab, crit)
+        eng[name] = ops
+    any_engine_promise = [f"{n}:{o}" for n, ops in eng.items() for o in ops if o.startswith(("ins:", "sub:")) and o.split(">")[-1] in dangerous]
+    out["critical_errors"] = sorted(set(cons_crit + any_engine_promise))
+    out["critical_engine_ops"] = eng
+    errs = [o for o in edit_ops(ref, cons) if o[0] != "equal"]
+    touched = lambda o: (o[0] in ("sub", "del") and (o[1] in crit or ref[o[1]] in vocab)) or (o[0] in ("sub", "ins") and cons[o[2]] in vocab)
+    out["clip_errors_noncritical"] = sum(1 for o in errs if not touched(o))
+    out["clip_errors_total"] = len(errs)
+    # legacy (rodada 775a1aa) kept ONLY so mutation testing can prove the new rule is necessary
+    out["critical_missed"] = sorted({ref[i] for i in crit if not heard[i]})
+    out["critical_inserted"] = sorted({w for w in cons_ins if w in NUMBER_WORDS or w in thr["V2"]["critical_negations"]})
+    out["clip_errors_noncritical_legacy"] = sum(1 for o in errs if not (o[0] in ("sub", "del") and o[1] in crit))
+    # style-instruction leak
+    st = normalize_tokens(((man.get("voice") or {}).get("style") or ""))
+    ref3, leak = ngrams(ref, 3), []
+    for name, t in (("a", ta), ("b", tb)):
+        hits = (ngrams(t, 3) & ngrams(st, 3)) - ref3
+        if hits:
+            leak.append(f"{name}:style:{sorted(hits)[0]}")
+    joined_ref = " " + " ".join(ref) + " "
+    for mk in thr["V2"]["instruction_markers"]:
+        mm = " " + " ".join(normalize_tokens(mk)) + " "
+        if mm.strip() and mm not in joined_ref and mm in " " + " ".join(ta) + " " and mm in " " + " ".join(tb) + " ":
+            leak.append(f"ab:marker:{mk}")
+    out["instruction_leak"] = leak
+    spoken = " ".join(ta) + " | " + " ".join(tb)
+    out["sales_spoken_hits"] = [p for p in thr["V2"]["sales_closed_spoken_patterns"] if re.search(p, spoken)]
+    return out
+
+
 def alignment_table(ref, ta, tb, cons):
     """Word-by-word view: for each script token what engine A, engine B and the consensus produced."""
     def view(h):
@@ -907,48 +983,7 @@ def measure(mp4, manifest_path, engines, thr):
         if tb is not None:
             M["asr"]["wer_b"] = wer(ref, tb)
         if ta is not None and tb is not None:
-            cons, heard, cons_ins = consensus(ref, ta, tb)
-            M["asr"]["wer_consensus"] = wer(ref, cons)
-            M["asr"]["cer_consensus"] = cer(ref, cons)
-            M["asr"]["ref_tokens"], M["asr"]["cons_tokens"] = ref, cons
-            M["asr"]["alignment"] = alignment_table(ref, ta, tb, cons)
-            # critical tokens: written numbers, number words (except articles um/uma), negations, manifest terms
-            crit = set()
-            for i, w in enumerate(ref):
-                if (numflag[i] or (w in NUMBER_WORDS and w not in ("um", "uma")) or w in thr["V2"]["critical_negations"]
-                        or w in thr["V2"]["critical_promise_cta"]):
-                    crit.add(i)
-            for term in man.get("critical_terms") or []:
-                tt = normalize_tokens(term, lex)
-                for i in range(len(ref) - len(tt) + 1):
-                    if tt and ref[i:i + len(tt)] == tt:
-                        crit.update(range(i, i + len(tt)))
-            missed = sorted({ref[i] for i in crit if not heard[i]})
-            inserted = sorted({w for w in cons_ins if w in NUMBER_WORDS or w in thr["V2"]["critical_negations"]})
-            M["asr"]["critical_total"] = len(crit)
-            M["asr"]["critical_missed"] = missed
-            M["asr"]["critical_inserted"] = inserted
-            # per-clip error budget on the CONSENSUS: errors at non-critical positions (criticals are counted above)
-            errs = [o for o in edit_ops(ref, cons) if o[0] != "equal"]
-            M["asr"]["clip_errors_noncritical"] = sum(1 for o in errs if not (o[0] in ("sub", "del") and o[1] in crit))
-            M["asr"]["clip_errors_total"] = len(errs)
-            # style-instruction leak
-            style = ((man.get("voice") or {}).get("style") or "")
-            st = normalize_tokens(style)
-            ref3 = ngrams(ref, 3)
-            leak = []
-            for name, t in (("a", ta), ("b", tb)):
-                hits = (ngrams(t, 3) & ngrams(st, 3)) - ref3
-                if hits:
-                    leak.append(f"{name}:style:{sorted(hits)[0]}")
-            joined_ref = " " + " ".join(ref) + " "
-            for mk in thr["V2"]["instruction_markers"]:
-                mm = " " + " ".join(normalize_tokens(mk)) + " "
-                if mm.strip() and mm not in joined_ref and mm in " " + " ".join(ta) + " " and mm in " " + " ".join(tb) + " ":
-                    leak.append(f"ab:marker:{mk}")
-            M["asr"]["instruction_leak"] = leak
-            spoken = " ".join(ta) + " | " + " ".join(tb)
-            M["asr"]["sales_spoken_hits"] = [p for p in thr["V2"]["sales_closed_spoken_patterns"] if re.search(p, spoken)]
+            M["asr"].update(v2_metrics(ref, numflag, ta, tb, man, thr, lex))
         if rb:
             times, direct = script_word_times(ref, rb[1])
             if times and M["timeline"].get("speech_s", 0) > 0:
@@ -1126,10 +1161,11 @@ def decide(M, thr, profile="production", disable=(), overrides=None, policy=None
         a = M.get("asr") or {}
         need("v2.engine_a", a.get("wer_a"), lambda v: v <= T["V2"]["per_engine_wer_sanity_max"], T["V2"]["per_engine_wer_sanity_max"], ["engine_a"])
         need("v2.engine_b", a.get("wer_b"), lambda v: v <= T["V2"]["per_engine_wer_sanity_max"], T["V2"]["per_engine_wer_sanity_max"], ["engine_b"])
+        legacy = T["V2"].get("critical_scope", "full") == "reference_only"  # mutation testing only
         # Per clip: at most 1 NON-critical consensus error; criticals (price, number, brand, negation, promise, CTA) = 0.
         # WER ≤ 3% / CER ≤ 1% is applied to the pre-registered aggregate corpus (corpus_metrics / `corpus` command).
-        need("v2.clip_errors", a.get("clip_errors_noncritical"), lambda v: v <= T["V2"]["clip_noncritical_max"], T["V2"]["clip_noncritical_max"], ["engine_a", "engine_b"])
-        crit = None if "critical_missed" not in a else (a["critical_missed"] + a["critical_inserted"])
+        need("v2.clip_errors", a.get("clip_errors_noncritical_legacy" if legacy else "clip_errors_noncritical"), lambda v: v <= T["V2"]["clip_noncritical_max"], T["V2"]["clip_noncritical_max"], ["engine_a", "engine_b"])
+        crit = (None if "critical_missed" not in a else a["critical_missed"] + a["critical_inserted"]) if legacy else a.get("critical_errors")
         need("v2.critical_terms", crit, lambda v: len(v) == 0, "0 errors", ["engine_a", "engine_b"])
         need("v2.instruction_leak", a.get("instruction_leak"), lambda v: len(v) == 0, "none", ["engine_a", "engine_b"])
         closed = ((M.get("manifest") or {}).get("sales_mode") or "closed") != "open"
@@ -1217,7 +1253,7 @@ def finalize(checks, policy):
     elif "BLOCKED" in st:
         verdict = "BLOCKED"
     else:
-        verdict = "PASS"
+        verdict = "PASS" if policy.get("mos_final") else "PASS_TECH_PENDING_HUMAN"  # mos_final: mutation testing only
     return {"verdict": verdict, "failed": [c["id"] for c, s in zip(checks, st) if s == "FAIL"],
             "blocked": [c["id"] for c, s in zip(checks, st) if s == "BLOCKED"],
             "errors": [c["id"] for c, s in zip(checks, st) if s == "ERROR_INFRA"], "checks": checks}
@@ -1427,7 +1463,7 @@ def main(argv=None):
     rep = {"gate": "zevanory-av-gate", "version": GATE_VERSION, "verdict": D["verdict"], "decision": D, "measurements": M}
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(rep, f, ensure_ascii=False, indent=1, default=float)
-    lvl = "notice" if D["verdict"] == "PASS" else "error"
+    lvl = "notice" if D["verdict"] == "PASS_TECH_PENDING_HUMAN" else "error"
     annotate(lvl, "AV_GATE", f'{D["verdict"]} failed={D["failed"][:12]} blocked={D["blocked"][:6]} errors={D["errors"][:6]}')
     return EXIT[D["verdict"]]
 

@@ -7,7 +7,7 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import { writeFile, rm, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderShort, avGate, avGateSealed, brandVoice, brandVoiceQueued, recordSlotLost, slotLostKey, VOICE_RETRY, BRAND_VOICE, planSlot, SLOTS, salesClosedViolations } from "../scripts/channels/youtube-daily-short.mjs";
+import { renderShort, avGate, avGateSealed, humanApproved, brandVoice, brandVoiceQueued, recordSlotLost, slotLostKey, VOICE_RETRY, BRAND_VOICE, planSlot, SLOTS, salesClosedViolations } from "../scripts/channels/youtube-daily-short.mjs";
 
 // Code only (comments may name what was removed).
 const SRC = readTextNormalized(new URL("../scripts/channels/youtube-daily-short.mjs", import.meta.url)).split("\n").filter(l => !/^\s*\/\//.test(l)).map(l => l.replace(/\s\/\/ .*$/, "")).join("\n");
@@ -43,9 +43,24 @@ for (const verdict of ["FAIL", "BLOCKED", "ERROR_INFRA"]) {
   });
 }
 
-test("gate PASS => sealed file for exactly these bytes; tampering breaks the seal", async () => {
+test("technical pass is NOT final: without a human approval for these exact bytes nothing is sealed", async () => {
+  const b = await base("pending");
+  const gate = async () => ({ verdict: "PASS_TECH_PENDING_HUMAN", failed: [], blocked: [], errors: [] });
+  await assert.rejects(renderShort(planSlot("2026-10-22", "calc"), b, { geminiKey: "k", voice: voiceOk, pack: fakePack, video: fakeVideo, gate, approvals: async () => null }), /av_gate_PENDING_HUMAN:/);
+  assert.equal(existsSync(b + ".mp4"), false);
+  assert.equal(await avGateSealed(b + ".mp4"), false);
+  // approvals file: only an entry for exactly this sha256 with approver + date counts
+  const dir = join(tmpdir(), "zevanory-avgate-approvals"); await mkdir(dir, { recursive: true });
+  const f = join(dir, "a.json");
+  await writeFile(f, JSON.stringify({ approvals: [{ mp4_sha256: "ab", approver: "dono", at: "2026-10-23" }, { mp4_sha256: "cd" }] }));
+  assert.equal((await humanApproved("ab", { file: f })).approver, "dono");
+  assert.equal(await humanApproved("cd", { file: f }), null);
+  assert.equal(await humanApproved("ab", { file: undefined }), null);
+});
+
+test("technical pass + human approval => sealed file for exactly these bytes; tampering breaks the seal", async () => {
   const b = await base("pass");
-  const r = await renderShort(planSlot("2026-10-22", "calc"), b, { geminiKey: "k", voice: voiceOk, pack: fakePack, video: fakeVideo, gate: async () => ({ verdict: "PASS", failed: [], blocked: [], errors: [] }) });
+  const r = await renderShort(planSlot("2026-10-22", "calc"), b, { geminiKey: "k", voice: voiceOk, pack: fakePack, video: fakeVideo, gate: async () => ({ verdict: "PASS_TECH_PENDING_HUMAN", failed: [], blocked: [], errors: [] }), approvals: async () => ({ approver: "dono", at: "2026-10-23" }) });
   assert.equal(r.file, b + ".mp4");
   assert.equal(await avGateSealed(b + ".mp4"), true);
   await writeFile(b + ".mp4", "other-bytes");
@@ -58,9 +73,11 @@ test("avGate wrapper is fail-closed (missing report, exit-code mismatch, unknown
   const rep = dir + "/r.json";
   await rm(rep, { force: true });
   assert.equal(avGate("a.mp4", "m.json", rep, { spawn: () => ({ status: 0 }) }).verdict, "ERROR_INFRA");
-  await writeFile(rep, JSON.stringify({ verdict: "PASS", decision: {} }));
+  await writeFile(rep, JSON.stringify({ verdict: "PASS_TECH_PENDING_HUMAN", decision: {} }));
   assert.equal(avGate("a.mp4", "m.json", rep, { spawn: () => ({ status: 1 }) }).verdict, "ERROR_INFRA");
-  assert.equal(avGate("a.mp4", "m.json", rep, { spawn: () => ({ status: 0 }) }).verdict, "PASS");
+  assert.equal(avGate("a.mp4", "m.json", rep, { spawn: () => ({ status: 4 }) }).verdict, "PASS_TECH_PENDING_HUMAN");
+  await writeFile(rep, JSON.stringify({ verdict: "PASS", decision: {} }));  // the gate never emits a final PASS
+  assert.equal(avGate("a.mp4", "m.json", rep, { spawn: () => ({ status: 0 }) }).verdict, "ERROR_INFRA");
   await writeFile(rep, JSON.stringify({ verdict: "FAIL", decision: { failed: ["v2.critical_terms"] } }));
   const f = avGate("a.mp4", "m.json", rep, { spawn: () => ({ status: 1 }) });
   assert.equal(f.verdict, "FAIL"); assert.deepEqual(f.failed, ["v2.critical_terms"]);
@@ -134,4 +151,27 @@ test("voice unavailable: bounded retry queue (same voice only), TTL, then the sl
   // the lost slot is recorded so later runs of the same day skip it
   const m = new Map(); await recordSlotLost({ put: async (k, v) => m.set(k, v) }, "2026-10-22", "dica", "slot_lost_voice_unavailable");
   assert.equal(JSON.parse(m.get(slotLostKey("2026-10-22", "dica"))).policy, "lose_the_slot_no_fallback");
+});
+
+test("absolute slot deadline enforced at START and at COMPLETION of synthesis (fake clock); mutants without either check are killed", async () => {
+  const pcm = { pcm: Buffer.alloc(48000), rate: 24000, model: BRAND_VOICE.model };
+  // starts after the deadline: no synthesis call at all, slot lost
+  let calls = 0, t = 2000;
+  let r = await brandVoiceQueued("x", "k", { voice: async () => { calls++; return pcm; }, now: () => t, deadline: 1000 });
+  assert.equal(r.lost, true); assert.equal(r.reason, "deadline_before_start"); assert.equal(calls, 0);
+  // mutant without the start check accepts it
+  r = await brandVoiceQueued("x", "k", { voice: async () => pcm, now: () => t, deadline: 1000, enforceStart: false, enforceEnd: false });
+  assert.equal(r.model, BRAND_VOICE.model, "mutant (no start check) would accept late audio");
+  // starts before, completes after the deadline: audio discarded, slot lost
+  t = 900;
+  r = await brandVoiceQueued("x", "k", { voice: async () => { t = 1500; return pcm; }, now: () => t, deadline: 1000 });
+  assert.equal(r.lost, true); assert.equal(r.reason, "late_audio_discarded"); assert.equal(r.pcm, undefined);
+  // mutant without the completion check accepts the late audio
+  t = 900;
+  r = await brandVoiceQueued("x", "k", { voice: async () => { t = 1500; return pcm; }, now: () => t, deadline: 1000, enforceEnd: false });
+  assert.equal(r.model, BRAND_VOICE.model, "mutant (no completion check) would accept late audio");
+  // on time: accepted
+  t = 100;
+  r = await brandVoiceQueued("x", "k", { voice: async () => { t = 500; return pcm; }, now: () => t, deadline: 1000 });
+  assert.equal(r.model, BRAND_VOICE.model);
 });
