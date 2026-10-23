@@ -26,7 +26,7 @@ concurrency:
 jobs:
   controls:
     name: av-gate / controls + mutants
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # fixed image: ubuntu-latest is migrating to Ubuntu 26 and apt hung there 3×
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
