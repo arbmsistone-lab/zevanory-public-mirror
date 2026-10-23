@@ -6,9 +6,9 @@ import { getWhatsappOpsStore, publishWhatsappOpsStats } from "./whatsapp-neon-st
 import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
 import { mercadoPagoExpiryWindow } from "./payment-link-expiry.mjs";
 import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } from "./mercadopago-webhook-safety.mjs";
-import { PSP_FALLBACK_ORDER, breakerConfigFromEnv, createCircuitBreaker, createPgProbeLease, idempotencyKeyForOrder, pspCommercialLockOpen, pspContinuityPlan, runCheckoutWithFailover } from "./psp-failover.mjs";
+import { PSP_FALLBACK_ORDER, breakerConfigFromEnv, createCircuitBreaker, createPgProbeLease, idempotencyKeyForOrder, pspCallSignal, pspCommercialLockOpen, pspContinuityPlan, pspProviderTimeoutFromEnv, runCheckoutWithFailover } from "./psp-failover.mjs";
 import { BoletoError, createAsaasBoletoCharge, normalizeBoletoPayer } from "./asaas-boleto.mjs";
-import { asaasWebhookAlreadyProcessed, authorizeAsaasWebhook, drainAsaasWebhookReview, classifyAsaasEventShape, extractAsaasPathSecret, logAsaasWebhook, markAsaasWebhookProcessed, queueAsaasWebhookReview } from "./asaas-webhook-safety.mjs";
+import { asaasWebhookAlreadyProcessed, authorizeAsaasWebhook, createPgDlqAlertLedger, drainAsaasWebhookReview, classifyAsaasEventShape, extractAsaasPathSecret, logAsaasWebhook, markAsaasWebhookProcessed, queueAsaasWebhookReview } from "./asaas-webhook-safety.mjs";
 import { DEFAULT_CREATIVE_OFFER, assertBrandSafeCreative, chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, creativeCatalogEntry, creativeLandingUrl, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
 import { appendBlogSitemap, INDEXNOW_PUBLIC_KEY, recordChannelProof, renderBlogArticle, renderBlogIndex, renderChannelsPage, runMultichannelAutonomy } from "./multichannel-autonomy.mjs";
 import { collectAutonomyHealth, runAutonomyHealth } from "./autonomy-health.mjs";
@@ -14116,7 +14116,7 @@ function normalizeAsaasCheckoutResponse(value, externalReference, env = "sandbox
 __name(normalizeAsaasCheckoutResponse, "normalizeAsaasCheckoutResponse");
 
 // src/http/checkoutAsaas.mjs
-async function createAsaasCheckout(payload, apiKey, env = "sandbox", fetchImpl = fetch) {
+async function createAsaasCheckout(payload, apiKey, env = "sandbox", fetchImpl = fetch, { probeSignal = null } = {}) {
   if (typeof env === "function") {
     fetchImpl = env;
     env = "sandbox";
@@ -14128,7 +14128,8 @@ async function createAsaasCheckout(payload, apiKey, env = "sandbox", fetchImpl =
     headers: { accept: "application/json", "content-type": "application/json", "user-agent": `ZEVANORY/1.0 (Cloudflare Worker; ${String(env).toLowerCase() === "production" ? "production" : "sandbox"})`, access_token: apiKey },
     body: JSON.stringify(payload),
     // B05: sem timeout um provedor travado prende o request; o timeout vira resultado AMBÍGUO (nunca failover).
-    signal: AbortSignal.timeout(pspProviderTimeoutMs())
+    // Na sondagem do disjuntor, o prazo total da sondagem também corta a chamada (#879-2).
+    signal: pspCallSignal(pspProviderTimeoutMs(), probeSignal)
   });
   const data = await response2.json().catch(() => ({}));
   if (!response2.ok) {
@@ -14142,9 +14143,10 @@ async function createAsaasCheckout(payload, apiKey, env = "sandbox", fetchImpl =
   return data;
 }
 __name(createAsaasCheckout, "createAsaasCheckout");
+// Faixa derivada do lease da sondagem (psp-failover.mjs: PSP_PROVIDER_TIMEOUT_MAX_MS = 20 s). Fora da faixa: 10 s
+// nas chamadas normais e a meia-abertura fica NEGADA (breakerConfigFromEnv.probeConfigError).
 function pspProviderTimeoutMs(env = process.env) {
-  const n = Number(env.PSP_PROVIDER_TIMEOUT_MS);
-  return Number.isInteger(n) && n >= 1e3 && n <= 25e3 ? n : 1e4;
+  return pspProviderTimeoutFromEnv(env).value;
 }
 __name(pspProviderTimeoutMs, "pspProviderTimeoutMs");
 // B05: mesma trava comercial do Mercado Pago (publicCheckoutGate), com o ambiente do próprio Asaas.
@@ -14240,7 +14242,7 @@ async function handler11(req, res) {
     if (wantsBoleto) {
       let boleto;
       try {
-        boleto = await createAsaasBoletoCharge({ env: asaasEnv, apiKey: process.env.ASAAS_API_KEY, order: { external_reference: order.external_reference, amount: effectiveOffer.price_brl, description: `${effectiveOffer.product} ${effectiveOffer.version} (${effectiveOffer.id})` }, payer: boletoPayer, timeoutMs: pspProviderTimeoutMs() });
+        boleto = await createAsaasBoletoCharge({ env: asaasEnv, apiKey: process.env.ASAAS_API_KEY, order: { external_reference: order.external_reference, amount: effectiveOffer.price_brl, description: `${effectiveOffer.product} ${effectiveOffer.version} (${effectiveOffer.id})` }, payer: boletoPayer, timeoutMs: pspProviderTimeoutMs(), signal: req.pspProbeSignal || null });
       } catch (providerError) {
         const providerHttpStatus = Number(providerError?.providerHttpStatus || 0);
         if (providerError instanceof BoletoError && providerError.definitive) {
@@ -14278,7 +14280,7 @@ async function handler11(req, res) {
     if (!payload) return json8(res, 503, { error: "checkout_payload_unavailable" });
     let checkout;
     try {
-      checkout = await createAsaasCheckout(payload, process.env.ASAAS_API_KEY, asaasEnv);
+      checkout = await createAsaasCheckout(payload, process.env.ASAAS_API_KEY, asaasEnv, void 0, { probeSignal: req.pspProbeSignal || null });
     } catch (providerError) {
       try {
         await sql.query(`UPDATE orders SET status='checkout_uncertain',updated_at=now() WHERE order_id=$1`, [order.order_id]);
@@ -14439,7 +14441,7 @@ function preferenceMatchesPersistedOrder(payload, persisted) {
 }
 __name(preferenceMatchesPersistedOrder, "preferenceMatchesPersistedOrder");
 // src/http/checkoutMercadoPago.mjs
-async function createMercadoPagoPreference(payload, accessToken, fetchImpl = fetch) {
+async function createMercadoPagoPreference(payload, accessToken, fetchImpl = fetch, { probeSignal = null } = {}) {
   // B05: chave de idempotência por pedido e timeout explícito. Timeout/5xx viram resultado AMBÍGUO no handler
   // (pedido "checkout_uncertain", reconciliação) e o orquestrador nunca cria um segundo checkout no Asaas.
   const idempotencyKey = idempotencyKeyForOrder(payload?.external_reference);
@@ -14447,7 +14449,7 @@ async function createMercadoPagoPreference(payload, accessToken, fetchImpl = fet
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${accessToken}`, ...(idempotencyKey ? { "x-idempotency-key": idempotencyKey } : {}) },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(pspProviderTimeoutMs())
+    signal: pspCallSignal(pspProviderTimeoutMs(), probeSignal)
   });
   const data = await response2.json().catch(() => ({}));
   if (!response2.ok) {
@@ -14524,7 +14526,7 @@ async function handler12(req, res) {
     }
     let raw;
     try {
-      raw = await createMercadoPagoPreference(payload, providerToken);
+      raw = await createMercadoPagoPreference(payload, providerToken, void 0, { probeSignal: req.pspProbeSignal || null });
     } catch (error) {
       try {
         await sql.query(`UPDATE orders SET status='checkout_uncertain',updated_at=now() WHERE order_id=$1`, [order.order_id]);
@@ -14659,10 +14661,23 @@ __name(handleStripeCheckout, "handleStripeCheckout");
 // B05/B08: disjuntor por provedor com estado em KV privada (ou memória do isolate, sem KV).
 // Meia-abertura: sondagem única entre isolates coordenada pelo PostgreSQL (tabela psp_circuit_probes,
 // db/b05/psp_circuit_probes.sql). Sem banco, nenhuma sondagem é admitida (o provedor segue aberto).
+// #879-2: o prazo da sondagem é derivado do TTL do lease e validado na construção; configuração inválida (timeout do
+// PSP + orçamento de banco >= prazo) => breaker SEM coordenador (nenhuma sondagem; o provedor segue aberto), logado.
+// __ZEVANORY_PSP_PROBE_TIMING__ (só testes, como __ZEVANORY_PRIVATE_KV__): {leaseMs, safetyMs, dbBudgetMs}, passa pela
+// MESMA validação.
 function pspBreaker(env = process.env) {
   const kv = globalThis.__ZEVANORY_PRIVATE_KV__;
-  const probeLease = env.DATABASE_URL ? createPgProbeLease(cs(env.DATABASE_URL)) : null;
-  return createCircuitBreaker({ store: kv && typeof kv.get === "function" && typeof kv.put === "function" ? kv : void 0, probeLease, ...breakerConfigFromEnv(env) });
+  const store = kv && typeof kv.get === "function" && typeof kv.put === "function" ? kv : void 0;
+  const config = breakerConfigFromEnv(env);
+  const t = globalThis.__ZEVANORY_PSP_PROBE_TIMING__;
+  const timing = t && typeof t === "object" ? { probeSafetyMs: t.safetyMs, probeDbBudgetMs: t.dbBudgetMs } : {};
+  const probeLease = env.DATABASE_URL ? createPgProbeLease(cs(env.DATABASE_URL), t && typeof t === "object" ? { ttlMs: t.leaseMs } : {}) : null;
+  try {
+    return createCircuitBreaker({ store, probeLease, ...config, ...timing });
+  } catch (error) {
+    try { console.error("psp_probe_timing_invalid", JSON.stringify({ code: String(error?.code || error?.name || "Error").slice(0, 60), reason: String(error?.timing?.reason || "").slice(0, 80) })); } catch {}
+    return createCircuitBreaker({ store, probeLease: null, ...config });
+  }
 }
 __name(pspBreaker, "pspBreaker");
 async function invokeCheckoutHandler(handler, req) {
@@ -14708,7 +14723,8 @@ async function handlePspFailoverCheckout(req, res) {
     candidates: paymentProviderCandidates(process.env, { production: true }),
     breaker: pspBreaker(),
     only,
-    invoke: (provider) => invokeCheckoutHandler(provider === "asaas" ? handler11 : handler12, req),
+    // Sondagem: o sinal do prazo vai em req.pspProbeSignal e é repassado a TODA chamada ao PSP do handler.
+    invoke: (provider, ctx = {}) => invokeCheckoutHandler(provider === "asaas" ? handler11 : handler12, Object.assign(req, { pspProbeSignal: ctx.signal || null })),
     log: (entry) => {
       try { console.info("psp_failover", JSON.stringify(entry)); } catch {}
     }
@@ -14732,14 +14748,20 @@ async function handlePspContinuity(req, res) {
 __name(handlePspContinuity, "handlePspContinuity");
 // Sol AVAL 083: drenagem da fila de revisão do webhook Asaas (estorno que chegou antes da confirmação).
 // Replay pelo PRÓPRIO handler (autenticado com os segredos do ambiente; só ids — a verdade vem da re-consulta).
-// Item preso => DLQ + alerta ao proprietário (categoria "refund"), uma vez por item.
+// Item preso => DLQ + alerta ao proprietário (categoria "refund"). #879-1: pendência do alerta persistida e reenviada
+// pelas drenagens seguintes; exatamente um e-mail entregue (livro-razão asaas_dlq_alerts no PostgreSQL quando há banco +
+// Idempotency-Key no Resend). "recently_alerted" do alertOwnerNow = já entregue para este evento (canal+evento).
 async function drainAsaasReviewQueue(env = process.env, opts = {}) {
   const kv = globalThis.__ZEVANORY_PRIVATE_KV__ || env.ZEVANORY_PRIVATE_ARTIFACTS;
   if (!process.env.ASAAS_API_KEY || !process.env.ASAAS_WEBHOOK_TOKEN || !process.env.ASAAS_WEBHOOK_PATH_SECRET) return { skipped: "asaas_unconfigured" };
   return drainAsaasWebhookReview(kv, {
+    alertLedger: process.env.DATABASE_URL ? createPgDlqAlertLedger(cs(process.env.DATABASE_URL)) : null,
     ...opts,
     replay: (rec) => invokeCheckoutHandler(handler15, { method: "POST", url: "/api/webhooks?provider=asaas", asaasPathSecret: process.env.ASAAS_WEBHOOK_PATH_SECRET, headers: { "asaas-access-token": process.env.ASAAS_WEBHOOK_TOKEN }, parsedBody: { id: rec.event_id, event: rec.event, payment: { id: rec.payment_id } }, body: null }),
-    alert: opts.alert || ((item) => alertOwnerNow({ ...env, ...process.env, ZEVANORY_PRIVATE_ARTIFACTS: kv }, { channel: "asaas-webhook", contact: item.event_id, category: "refund", excerpt: `evento ${item.event_id} pagamento ${item.payment_id} pedido ${item.order_id} tentativas ${item.attempts}`, reason: `Estorno Asaas recebido antes da confirmação não foi reconciliado (${item.cause}). Item na fila morta: conferir no painel Asaas e reconciliar manualmente.` }))
+    alert: opts.alert || (async (item) => {
+      const r = await alertOwnerNow({ ...env, ...process.env, ZEVANORY_PRIVATE_ARTIFACTS: kv }, { channel: "asaas-webhook", contact: item.event_id, category: "refund", idempotencyKey: item.idempotency_key, excerpt: `evento ${item.event_id} pagamento ${item.payment_id} pedido ${item.order_id} tentativas ${item.attempts}`, reason: `Estorno Asaas recebido antes da confirmação não foi reconciliado (${item.cause}). Item na fila morta: conferir no painel Asaas e reconciliar manualmente.` });
+      return { sent: r?.sent === true || r?.reason === "recently_alerted", reason: String(r?.reason || "") };
+    })
   });
 }
 __name(drainAsaasReviewQueue, "drainAsaasReviewQueue");

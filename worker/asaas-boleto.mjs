@@ -112,10 +112,11 @@ function headersFor(apiKey, env) {
   return { accept: "application/json", "content-type": "application/json", "user-agent": `ZEVANORY/1.0 (Cloudflare Worker; ${env === "production" ? "production" : "sandbox"})`, access_token: apiKey };
 }
 
-async function call(fetchImpl, url, init, timeoutMs) {
+async function call(fetchImpl, url, init, timeoutMs, signal = null) {
   let response;
   try {
-    response = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    // B05 (#879-2): na sondagem do disjuntor o prazo total da sondagem também corta cada chamada.
+    response = await fetchImpl(url, { ...init, signal: signal ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal]) : AbortSignal.timeout(timeoutMs) });
   } catch (error) {
     return { ok: false, network: true, status: 0, error: String(error?.name || error?.message || "network") };
   }
@@ -125,8 +126,8 @@ async function call(fetchImpl, url, init, timeoutMs) {
 
 const definitiveReject = (status) => status >= 400 && status < 500 && status !== 408 && status !== 429;
 
-async function findExisting(fetchImpl, base, headers, ref, expect, timeoutMs) {
-  const r = await call(fetchImpl, `${base}/payments?externalReference=${encodeURIComponent(ref)}&limit=10`, { method: "GET", headers }, timeoutMs);
+async function findExisting(fetchImpl, base, headers, ref, expect, timeoutMs, signal = null) {
+  const r = await call(fetchImpl, `${base}/payments?externalReference=${encodeURIComponent(ref)}&limit=10`, { method: "GET", headers }, timeoutMs, signal);
   if (!r.ok || !Array.isArray(r.data?.data)) return { known: false };
   const live = r.data.data.filter((p) => String(p?.externalReference || "") === ref && p?.deleted !== true && !DEAD_STATUSES.has(String(p?.status || "")));
   if (live.length === 0) return { known: true, payment: null };
@@ -135,7 +136,7 @@ async function findExisting(fetchImpl, base, headers, ref, expect, timeoutMs) {
   return normalized ? { known: true, payment: normalized } : { known: true, conflict: true };
 }
 
-export async function createAsaasBoletoCharge({ fetchImpl = fetch, env = "sandbox", apiKey, order, payer, now = Date.now(), dueDays = BOLETO_DEFAULT_DUE_DAYS, timeoutMs = PROVIDER_TIMEOUT_MS } = {}) {
+export async function createAsaasBoletoCharge({ fetchImpl = fetch, env = "sandbox", apiKey, order, payer, now = Date.now(), dueDays = BOLETO_DEFAULT_DUE_DAYS, timeoutMs = PROVIDER_TIMEOUT_MS, signal = null } = {}) {
   const base = ASAAS_API_BASES[String(env).toLowerCase()];
   if (!base || !apiKey) throw new BoletoError("asaas_not_configured", { definitive: true, phase: "config" });
   const ref = String(order?.external_reference || "");
@@ -144,19 +145,19 @@ export async function createAsaasBoletoCharge({ fetchImpl = fetch, env = "sandbo
   const expect = { externalReference: ref, amount: order.amount, env };
 
   // 1) Reconciliação ANTES de criar: o mesmo pedido nunca recebe um segundo boleto.
-  const prior = await findExisting(fetchImpl, base, headers, ref, expect, timeoutMs);
+  const prior = await findExisting(fetchImpl, base, headers, ref, expect, timeoutMs, signal);
   if (!prior.known) throw new BoletoError("boleto_lookup_unavailable", { definitive: true, phase: "lookup" });
   if (prior.conflict) throw new BoletoError("boleto_reconciliation_conflict", { ambiguous: true, phase: "lookup" });
   if (prior.payment) return Object.freeze({ ...prior.payment, reused: true });
 
   // 2) Cliente: consultar por CPF/CNPJ antes de criar (a API aceita duplicados).
   let customerId = "";
-  const lookup = await call(fetchImpl, `${base}/customers?cpfCnpj=${encodeURIComponent(payer.cpfCnpj)}&limit=1`, { method: "GET", headers }, timeoutMs);
+  const lookup = await call(fetchImpl, `${base}/customers?cpfCnpj=${encodeURIComponent(payer.cpfCnpj)}&limit=1`, { method: "GET", headers }, timeoutMs, signal);
   if (!lookup.ok) throw new BoletoError("boleto_customer_lookup_unavailable", { definitive: true, providerHttpStatus: lookup.status, phase: "customer" });
   const found = Array.isArray(lookup.data?.data) ? lookup.data.data.find((c) => c?.deleted !== true && /^cus_/.test(String(c?.id || ""))) : null;
   if (found) customerId = String(found.id);
   else {
-    const created = await call(fetchImpl, `${base}/customers`, { method: "POST", headers, body: JSON.stringify({ name: payer.name, cpfCnpj: payer.cpfCnpj, ...(payer.email ? { email: payer.email } : {}), notificationDisabled: true }) }, timeoutMs);
+    const created = await call(fetchImpl, `${base}/customers`, { method: "POST", headers, body: JSON.stringify({ name: payer.name, cpfCnpj: payer.cpfCnpj, ...(payer.email ? { email: payer.email } : {}), notificationDisabled: true }) }, timeoutMs, signal);
     if (created.ok && /^cus_/.test(String(created.data?.id || ""))) customerId = String(created.data.id);
     else throw new BoletoError("boleto_customer_unavailable", { definitive: true, providerHttpStatus: created.status, phase: "customer" });
   }
@@ -164,7 +165,7 @@ export async function createAsaasBoletoCharge({ fetchImpl = fetch, env = "sandbo
   // 3) Cobrança.
   const payload = buildBoletoPaymentPayload({ customerId, amount: order.amount, externalReference: ref, description: order.description, dueDate: boletoDueDate(now, dueDays) });
   if (!payload) throw new BoletoError("boleto_payload_invalid", { definitive: true, phase: "payload" });
-  const res = await call(fetchImpl, `${base}/payments`, { method: "POST", headers, body: JSON.stringify(payload) }, timeoutMs);
+  const res = await call(fetchImpl, `${base}/payments`, { method: "POST", headers, body: JSON.stringify(payload) }, timeoutMs, signal);
   if (res.ok) {
     const normalized = normalizeBoletoPayment(res.data, expect);
     if (normalized) return Object.freeze({ ...normalized, reused: false });
@@ -173,7 +174,7 @@ export async function createAsaasBoletoCharge({ fetchImpl = fetch, env = "sandbo
   if (!res.network && definitiveReject(res.status)) throw new BoletoError("boleto_rejected", { definitive: true, providerHttpStatus: res.status, phase: "create" });
 
   // 4) Ambíguo (timeout/rede/5xx/408/429): reconciliar primeiro. Só devolve se achar exatamente a cobrança deste pedido.
-  const after = await findExisting(fetchImpl, base, headers, ref, expect, timeoutMs);
+  const after = await findExisting(fetchImpl, base, headers, ref, expect, timeoutMs, signal);
   if (after.known && after.payment) return Object.freeze({ ...after.payment, reused: true, reconciled: true });
   throw new BoletoError("boleto_provider_uncertain", { ambiguous: true, providerHttpStatus: res.status, phase: "create" });
 }

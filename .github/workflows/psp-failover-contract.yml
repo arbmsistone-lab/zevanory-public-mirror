@@ -53,7 +53,7 @@ jobs:
           node --test tests/psp/*.test.mjs | tee u.txt
           grep -qx "# tests 69" u.txt && grep -qx "# pass 69" u.txt && grep -qx "# skipped 0" u.txt && grep -qx "# fail 0" u.txt && grep -qx "# cancelled 0" u.txt
           echo "::notice title=PSP_COUNTS_UNIT::$(grep -E '^# (tests|pass|fail|skipped|cancelled) ' u.txt | paste -sd' ' -)"
-      - name: Bundle real + PostgreSQL 16 (failover, trava, meia-abertura, KV falhando, boleto, webhook, drenagem/DLQ) — 20 testes
+      - name: Bundle real + PostgreSQL 16 (failover, trava, meia-abertura, KV falhando, boleto, webhook, drenagem/DLQ) — 22 testes
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
