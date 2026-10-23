@@ -1,0 +1,48 @@
+name: WhatsApp Meta truth mutants
+# Fail-closed WhatsApp readiness (PR #891): every mutant of the gate must be KILLED by an assertion in an
+# EXPECTED test. Exact count 18; any SURVIVED or INCONCLUSIVE fails. Offline, no secrets, read-only.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/whatsapp-meta-truth.mjs"
+      - "worker/live-runtime-status.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "worker/cloudflare-worker.recovered.mjs"
+      - "worker/kv-meter.mjs"
+      - "tests/whatsapp-meta-truth.test.mjs"
+      - "tests/live-runtime-status.test.mjs"
+      - "scripts/ci/mutants_whatsapp_meta_truth.mjs"
+      - ".github/workflows/whatsapp-meta-truth-mutants.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: whatsapp-meta-truth-mutants-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  mutants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Mutants (exact 18 KILLED by expected assertion)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rc=0
+          node scripts/ci/mutants_whatsapp_meta_truth.mjs < /dev/null | tee mut.txt || rc=$?
+          killed=$(grep -cE '^MUTANT [A-Za-z0-9_]+ KILLED by=\[".+' mut.txt || true)
+          bad=$(grep -cE '^MUTANT [A-Za-z0-9_]+ (SURVIVED|INCONCLUSIVE)' mut.txt || true)
+          echo "::notice title=WA_META_TRUTH_MUTANTS::killed=${killed} not_killed=${bad} rc=${rc}"
+          grep -qx 'BASELINE PASS tests=16' mut.txt || { echo "::error title=WA_META_TRUTH_BASELINE::baseline not exact (16 tests)"; exit 1; }
+          [ "$bad" = "0" ] || { echo "::error title=WA_META_TRUTH_MUTANTS::SURVIVED/INCONCLUSIVE present"; exit 1; }
+          [ "$killed" = "18" ] || { echo "::error title=WA_META_TRUTH_MUTANTS::expected exactly 18 KILLED, got ${killed}"; exit 1; }
+          grep -qx 'MUTANTS PASS killed=18/18' mut.txt || { echo "::error title=WA_META_TRUTH_MUTANTS::summary line missing"; exit 1; }
+          [ "$rc" = "0" ] || { echo "::error title=WA_META_TRUTH_MUTANTS::script exit ${rc}"; exit 1; }
+          git diff --exit-code -- worker tests || { echo "::error title=WA_META_TRUTH_RESTORE::source not restored"; exit 1; }

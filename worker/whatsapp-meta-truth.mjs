@@ -12,6 +12,8 @@
 // approved, the code verification is VERIFIED and the quality rating is acceptable. Anything else is
 // "disabled" with an explicit, non-sensitive reason code. No token, PIN or secret is ever stored here.
 
+import { currentBudgetPct, SHED_AT_PCT } from "./kv-meter.mjs";
+
 export const WHATSAPP_META_STATUS_KV_KEY = "whatsapp:meta-status:v1";
 export const WHATSAPP_META_STATUS_ENV_KEY = "WHATSAPP_META_STATUS_SNAPSHOT";
 export const WHATSAPP_META_STATUS_SCHEMA = "zevanory.whatsapp-meta-status.v1";
@@ -149,20 +151,26 @@ export async function refreshMetaStatusSnapshot(env, { now = Date.now(), fetchSt
   return Object.freeze({ written, snapshot, verdict: evaluateMetaStatusSnapshot(snapshot, { now }) });
 }
 
-// Opportunistic refresh between crons (crons run at :00/:05/:15/:35/:45, so a 15-min window alone
+// Opportunistic refresh between crons (the snapshot is written at :05/:35, so a 15-min window alone
 // would leave gaps). The isolate-local memo below only avoids duplicate refreshes; readiness itself
-// never reads it.
+// never reads it. KV budget (Workers Free: 1,000 writes/day for the whole account): cron 48/day plus
+// at most one background write per isolate per 5 min, and none once the measured account usage
+// (kv-meter BUDGET_KEY) reaches SHED_AT_PCT — then the snapshot ages out and readiness fails closed.
 const refreshMemo = globalThis.__ZEVANORY_WA_META_REFRESH__ || (globalThis.__ZEVANORY_WA_META_REFRESH__ = { at: 0 });
 export function needsMetaStatusRefresh(raw, { now = Date.now() } = {}) {
   const v = evaluateMetaStatusSnapshot(raw, { now, maxAgeMs: Number.MAX_SAFE_INTEGER });
   if (v.reason === "meta_snapshot_missing" || v.reason === "meta_snapshot_invalid" || v.observed_at === null) return true;
   return now - Date.parse(v.observed_at) >= WHATSAPP_META_STATUS_REFRESH_AFTER_MS;
 }
-export function scheduleMetaStatusRefresh(env, ctx, raw, { now = Date.now(), memo = refreshMemo, refresh = refreshMetaStatusSnapshot } = {}) {
+export function scheduleMetaStatusRefresh(env, ctx, raw, { now = Date.now(), memo = refreshMemo, refresh = refreshMetaStatusSnapshot, budgetPct = (kv) => currentBudgetPct(kv, now) } = {}) {
   if (!ctx?.waitUntil || !env?.WHATSAPP_BROKER?.fetch || !needsMetaStatusRefresh(raw, { now })) return false;
   if (now - memo.at < 5 * 60 * 1000) return false;
   memo.at = now;
-  ctx.waitUntil(refresh(env, { now }).catch(() => null));
+  ctx.waitUntil((async () => {
+    const pct = await Promise.resolve(budgetPct(env.ZEVANORY_PRIVATE_ARTIFACTS)).catch(() => null);
+    if (pct != null && pct >= SHED_AT_PCT) return { skipped: "kv_budget", pct };
+    return refresh(env, { now });
+  })().catch(() => null));
   return true;
 }
 

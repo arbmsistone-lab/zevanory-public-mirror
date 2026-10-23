@@ -183,7 +183,7 @@ test("writer persists the sanitized snapshot under the canonical KV key with a b
   assert.equal(await readMetaStatusSnapshotRaw(null), "");
 });
 
-test("opportunistic refresh only when missing/older than 10 min, throttled", () => {
+test("opportunistic refresh only when missing/older than 10 min, throttled", async () => {
   assert.equal(needsMetaStatusRefresh(snap({}, NOW - 9 * 60_000), { now: NOW }), false);
   assert.equal(needsMetaStatusRefresh(snap({}, NOW - 10 * 60_000), { now: NOW }), true);
   assert.equal(needsMetaStatusRefresh("", { now: NOW }), true);
@@ -197,6 +197,19 @@ test("opportunistic refresh only when missing/older than 10 min, throttled", () 
   assert.equal(scheduleMetaStatusRefresh(env, ctx, "", { now: NOW + 60_000, memo, refresh }), false);
   assert.equal(scheduleMetaStatusRefresh(env, ctx, "", { now: NOW + 5 * 60_000, memo, refresh }), true);
   assert.equal(calls.length, 2);
+  // KV budget guard: no background write once measured account usage reaches the shed threshold (70%).
+  let refreshed = 0;
+  const run = async (pct) => {
+    const pending = [];
+    const ok = scheduleMetaStatusRefresh(env, { waitUntil: (p) => pending.push(p) }, "", { now: NOW, memo: { at: 0 }, refresh: async () => { refreshed++; return {}; }, budgetPct: async () => pct });
+    assert.equal(ok, true);
+    return pending[0];
+  };
+  assert.deepEqual(await run(70), { skipped: "kv_budget", pct: 70 });
+  assert.equal(refreshed, 0);
+  await run(69);
+  await run(null);
+  assert.equal(refreshed, 2);
   const proxied = withEnvValue(Object.freeze({ A: "1" }), WHATSAPP_META_STATUS_ENV_KEY, "v");
   assert.equal(proxied[WHATSAPP_META_STATUS_ENV_KEY], "v");
   assert.equal(proxied.A, "1");
