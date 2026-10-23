@@ -50,7 +50,7 @@ jobs:
           echo "P01_APEX_EXACT_RELEASE=PASS sha=$ACTUAL_SHA"
       - name: Install audit stack
         run: |
-          npm install --no-save lighthouse@12 pa11y@9 playwright@1.55.0
+          npm install --no-save lighthouse@13.5.0 pa11y@9 playwright@1.55.0
           npx playwright install --with-deps chromium
       - name: Deploy candidate Cloudflare Preview and verify security headers
         env:
