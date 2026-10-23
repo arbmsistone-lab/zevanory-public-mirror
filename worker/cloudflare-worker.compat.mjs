@@ -29,6 +29,7 @@ import { handleControlActionRequest } from "./control-action-plane.mjs";
 import { handleZea10AutonomyRequest } from "./zea10-autonomy.mjs";
 import { handleControlCoreRequest } from "./zevanory-control-core.mjs";
 import { handleSandboxProofV2, handleSandboxInboundEmail } from "./sandbox-proof-v2.mjs";
+import { handleSupportInboundWebhook } from "./support-email-forward.mjs";
 import { handleRefundFlow, runRefundWatchdog } from "./refund-flow.mjs";
 import { handlePostSale, runPostSale } from "./post-sale.mjs";
 import { handleFunnel, publishFunnelSummary } from "./funnel.mjs";
@@ -97,6 +98,12 @@ const wrapped = {
     if (url.pathname.startsWith("/api/owner/oauth/")) return handleOwnerOAuth(request,normalized);
     // Conteúdo Pronto (Hotmart subscription): authenticated postback + private briefing/package pages.
     if (url.pathname === "/api/webhooks/hotmart") return handleHotmartWebhook(request,normalized,ctx);
+    // suporte@/contato@ (e-mail oficial do consumidor): Resend email.received assinado -> encaminha ao dono.
+    // Devolve null para outros eventos/destinatários (entregas, prova-sandbox@): o handler legado segue igual.
+    if (url.pathname === "/api/webhooks/resend" && request.method === "POST") {
+      const support = await handleSupportInboundWebhook(request, normalized, { sqlFactory: whatsappProofDatabase });
+      if (support) return support;
+    }
     if (url.pathname === "/conteudo-pronto/briefing") return handleBriefing(request,normalized,ctx);
     if (url.pathname === "/conteudo-pronto/pacote") return handlePackageView(request,normalized);
     if (url.pathname==="/api/internal/owner/oauth/youtube-access") return handleYoutubePublisherAccess(request,normalized);

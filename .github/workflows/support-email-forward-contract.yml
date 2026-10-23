@@ -1,0 +1,45 @@
+name: support-email-forward-contract
+
+# suporte@/contato@ (Resend inbound -> encaminhamento ao dono): contrato offline com Resend e PostgreSQL falsos,
+# contagem exata e mutantes impressos no log. Só pull_request: nunca dispara no merge, nunca usa segredo, sem rede
+# além do checkout.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/support-email-forward-contract.yml"
+      - "worker/support-email-forward.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "worker/sandbox-proof-v2.mjs"
+      - "worker/politica-unica.mjs"
+      - "data/politica-unica.json"
+      - "tests/support-email-forward.test.mjs"
+      - "tests/helpers/text.mjs"
+      - "scripts/ci/mutants_support_email.py"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Contrato suporte@ (offline, contagem exata)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/support-email-forward.test.mjs | tee /tmp/support.txt
+          grep -qx "# tests 8" /tmp/support.txt || { echo "::error::contagem de testes diferente de 8"; exit 1; }
+          grep -qx "# fail 0" /tmp/support.txt || { echo "::error::falha na suíte"; exit 1; }
+      - name: Mutantes (todos precisam morrer)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_support_email.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=SUPPORT_EMAIL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=24 killed=24 survived=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
