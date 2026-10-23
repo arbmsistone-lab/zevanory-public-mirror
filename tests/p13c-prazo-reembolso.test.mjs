@@ -86,6 +86,8 @@ test("P13c prazo: pedido real de reembolso segue a regra publicada (entrega tard
   await checkFlow(handleRefundFlow);
   const src = readTextNormalized(join(ROOT, "worker/refund-flow.mjs"));
   assert.doesNotMatch(src, /WINDOW_MS|paid_at\)\.getTime\(\) >/, "nenhuma janela contada só do pagamento");
+  // AVAL Sol (2ff8678): marco = PRIMEIRO recebimento, determinístico (prova em PG real: tests/integration/refund-window-postgres.test.mjs).
+  assert.match(src, /\(select min\(sf\.delivered_at\) from service_fulfillment sf where sf\.order_id=o\.order_id and sf\.status='delivered'\) as delivered_at/, "primeira entrega via min(delivered_at)");
 });
 
 test("P13c prazo mutantes: contar de paid_at, ignorar a entrega, ignorar o download e janela antiga são mortos", async () => {
