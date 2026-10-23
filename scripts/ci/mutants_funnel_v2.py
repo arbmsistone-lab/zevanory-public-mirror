@@ -13,7 +13,7 @@ from pathlib import Path
 
 REPO = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2])
 COPY = ["worker", "scripts/audit", "scripts/channels", "data", "db/migrations", "sales-public/material-gratuito.html",
-        "tests/funnel-counting.test.mjs", "tests/integration/funnel-own-sales-postgres.test.mjs"]
+        "tests/funnel-counting.test.mjs", "tests/helpers", "tests/integration/funnel-own-sales-postgres.test.mjs"]
 FC, SNAP, INV = "scripts/audit/funnel-counting.mjs", "scripts/audit/command-center-snapshot.mjs", "scripts/audit/autonomy-inventory.mjs"
 FUN, SPW = "worker/funnel.mjs", "worker/sales-public-worker.mjs"
 UNIT, PG = "unit", "pg"
