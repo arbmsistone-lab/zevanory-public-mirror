@@ -2,7 +2,7 @@
 // denominadores compatíveis, cinco conversões separadas e estado Hotmart derivado das seis sondas.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 import {
   combineSales, salesMetric, funnelMetrics, windowDays, mergeDaily, classifyHotmartProbe, hotmartLockState, hotmartModeText,
   evaluateBuyFlow, WAITLIST_CLICK_INSTRUMENTED, WAITLIST_CAPTURE_LIVE, LEAD_CAPTURE, CLASSES,
@@ -163,9 +163,9 @@ test("Worker de vendas: página de produto conta exposição ao CTA certo; inten
 });
 
 test("flags fixadas ao código: nenhum emissor de waitlist_click; captura de leads do Material gratuito está no ar", () => {
-  const src = readFileSync(new URL("../worker/sales-public-worker.mjs", import.meta.url), "utf8");
+  const src = readTextNormalized(new URL("../worker/sales-public-worker.mjs", import.meta.url));
   assert.equal(/waitlist_click/.test(src), WAITLIST_CLICK_INSTRUMENTED, "ao instrumentar o clique, ligar WAITLIST_CLICK_INSTRUMENTED");
-  const page = readFileSync(new URL("../sales-public/material-gratuito.html", import.meta.url), "utf8");
+  const page = readTextNormalized(new URL("../sales-public/material-gratuito.html", import.meta.url));
   assert.equal(LEAD_CAPTURE.live, true);
   assert.match(page, /<form class="lead-form" method="post" action="\/material-gratuito\/inscrever">/);
   assert.match(src, /url\.pathname==="\/material-gratuito\/inscrever"\) return handleLead/);
