@@ -279,6 +279,26 @@ def run(work, out):
              lambda c=c, i=i: B.build(f"P{i:02d}", c["path"], c["text"]), base=c.get("source"))
 
     P = pos[0]
+
+    def measured(i):  # measurements of positive P{i} (index in pos), when available
+        c = next((c for c in res["controls"] if c["id"] == f"P{i + 1:02d}"), None)
+        return c.get("M") if c else None
+
+    def crest(i):
+        c = next((c for c in res["controls"] if c["id"] == f"P{i + 1:02d}"), None)
+        try:
+            ml = c["pkg"]["master_loudness"]
+            return ml["tp"] - ml["lufs"]
+        except Exception:
+            return -99
+    # base with the largest crest factor: the only way to land TP in (−2, −0.3] with loudness inside −20…−16
+    Pc = pos[max(range(len(pos)), key=crest)]
+    # base with the speaking rate farthest from the V4 limits (noise must not drag the VAD-based rate out of range)
+    def rate_margin(i):
+        r = (measured(i) or {}).get("rate") or {}
+        w = r.get("wpm")
+        return -99 if w is None else min(w - 130, 175 - w)
+    Pn = pos[max(range(len(pos)), key=rate_margin)]
     fast = max(pos, key=lambda c: c.get("wpm_raw", 0))
     mid = sorted(pos, key=lambda c: c.get("wpm_raw", 0))[len(pos) // 2]
     other = next((c for c in pos if c["gender"] != P["gender"]), pos[-1] if pos[-1] is not P else P)
@@ -312,13 +332,13 @@ def run(work, out):
          lambda: B.build("N06", P["path"], P["text"], pkg={"stream_lufs": -30.0}), base=P["source"])
 
     def tp_over():
-        for lim in (-1.0, -1.3, -0.8, -1.6):
-            info = B.build("N07", P["path"], P["text"], pkg={"stream_lufs": -16.5, "stream_limit_db": lim, "stream_tp_target": -0.4})
+        for lufs, lim in ((-16.5, -1.0), (-16.2, -1.0), (-16.2, -0.8), (-16.5, -1.3), (-16.2, -0.6)):
+            info = B.build("N07", Pc["path"], Pc["text"], pkg={"stream_lufs": lufs, "stream_limit_db": lim, "stream_tp_target": -0.4})
             tp = info["pkg"]["stream_loudness"]["tp"]
             if -1.9 < tp < -0.4:
                 return info
         raise RuntimeError(f"tp_over_not_in_window:{tp}")
-    safe("N07", "negative", "true peak acima (derivado TP entre −2 e −0,3 dBTP)", "FAIL", ["v3.stream_tp"], tp_over, base=P["source"])
+    safe("N07", "negative", "true peak acima (derivado TP entre −2 e −0,3 dBTP)", "FAIL", ["v3.stream_tp"], tp_over, base=Pc["source"])
     safe("N08", "negative", "true peak grosseiro sem limitador (+ganho)", "FAIL", ["v3.stream_tp"],
          lambda: B.build("N08", P["path"], P["text"], pkg={"stream_lufs": -11.0, "no_limiter": True}), base=P["source"])
     safe("N09", "negative", "silêncio (vídeo sem narração audível)", "FAIL", ["v1.narration_present"], synth("N09", np.zeros(int(10 * 48000))))
@@ -524,13 +544,13 @@ def run(work, out):
 
     def mk_noise(snr):
         def go(cid):
-            x = x16(P)
+            x = x16(Pn)
             _, _, rms = speech_rms(x)
             y = x + np.random.default_rng(7).standard_normal(len(x)) * rms / 10 ** (snr / 20)
-            return B.build(cid, write_raw(os.path.join(tmp, cid + ".wav"), y, 16000), P["text"])
+            return B.build(cid, write_raw(os.path.join(tmp, cid + ".wav"), y, 16000), Pn["text"])
         return go
     isolate("I04", "só ruído/SNR no limite", ["v3.noise_floor", "v3.snr"],
-            [(f"snr{v}", mk_noise(v)) for v in (32, 30, 28, 26, 24)], base=P["source"])
+            [(f"snr{v}", mk_noise(v)) for v in (32, 30, 28, 26, 24)], base=Pn["source"])
 
     # ---- fail-closed infrastructure controls
     def no_ref():
