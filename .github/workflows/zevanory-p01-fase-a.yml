@@ -27,6 +27,8 @@ on:
       - "sitemap.xml"
       - "wrangler*.toml"
       - ".github/workflows/zevanory-p01-fase-a.yml"
+      - ".github/workflows/product-pages-premerge.yml"
+      - ".github/workflows/required-status-compat.yml"
 permissions:
   contents: read
 concurrency:
@@ -114,6 +116,7 @@ jobs:
           check waitlist-rule.test.mjs 12
           check fase-a-inventory.test.mjs 2
           check waitlist-postgres.test.mjs 23
+          check lia-required-gate.test.mjs 3
       - name: Restauração com o manifesto de migrações e reversão da 030 (9 testes)
         env:
           PGHOST: localhost
