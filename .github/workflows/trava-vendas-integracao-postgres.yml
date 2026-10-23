@@ -21,10 +21,14 @@ on:
       - "tests/test_node_suite_manifest.py"
       - "scripts/ci/node_suite_check.py"
       - "scripts/ci/node-suite-reporter.mjs"
+      - "tests/helpers/**"
+      - "tests/guards/**"
       - "wrangler*.toml"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/trava-vendas-integracao-postgres.yml"
+      - "tests/mercadopago-webhook-signature.test.mjs"
+      - "scripts/ci/mutants_mp_webhook.py"
 permissions:
   contents: read
 concurrency:
@@ -46,10 +50,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: SHA efetivamente testado (pull_request = merge ref, não o head)
+        # actions/checkout sem `ref:` em pull_request faz checkout de refs/pull/N/merge (GITHUB_SHA = commit de
+        # merge sintético head+base). É o que entra em gh-pages, por isso é o alvo do gate; o head é registrado
+        # e comparado por árvore no passo "Head do PR" abaixo (auditoria: o run grava qual SHA foi testado).
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          tested="$(git rev-parse HEAD)"
+          echo "GITHUB_REF=$GITHUB_REF tested=$tested merge=$MERGE_SHA pr.head=$PR_HEAD_SHA pr.base=$PR_BASE_SHA"
+          echo "::notice title=SHA_TESTADO::ref=$GITHUB_REF tested=$tested merge(github.sha)=$MERGE_SHA pr.head=$PR_HEAD_SHA pr.base=$PR_BASE_SHA"
+          [ "$tested" = "$MERGE_SHA" ] || { echo "::error::checkout ($tested) difere de github.sha ($MERGE_SHA)"; exit 1; }
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Webhook Mercado Pago (M1–M17, vendas fechadas, falhas da entrega e achados Copilot)
+      - name: Webhook Mercado Pago (M1–M22, vendas fechadas, falhas da entrega, achados Copilot e assinatura/idempotência B05)
         env:
           T4_PG_HOST: localhost
           T4_PG_PORT: "5432"
@@ -58,7 +76,8 @@ jobs:
           node --import ./tests/t4_sim/register.mjs --test tests/integration/mercadopago-webhook-postgres.test.mjs | tee m.txt
           # Quantidade EXATA: remoção ou omissão silenciosa de teste derruba o gate. Ao adicionar
           # testes, atualizar o número no mesmo PR (revisão explícita).
-          grep -qx "# tests 21" m.txt && grep -qx "# pass 21" m.txt && grep -qx "# skipped 0" m.txt && grep -qx "# fail 0" m.txt
+          grep -qx "# tests 25" m.txt && grep -qx "# pass 25" m.txt && grep -qx "# skipped 0" m.txt && grep -qx "# fail 0" m.txt
+          echo "::notice title=COUNTS_M::$(grep -E '^# (tests|pass|fail|skipped) ' m.txt | paste -sd' ' -)"
       - name: Invalidação de links no fechamento (P1–P9)
         env:
           T4_PG_HOST: localhost
@@ -75,6 +94,15 @@ jobs:
           set -eo pipefail
           node --test tests/integration/delivery-evidence-cas-postgres.test.mjs | tee c.txt
           grep -qx "# tests 7" c.txt && grep -qx "# pass 7" c.txt && grep -qx "# skipped 0" c.txt && grep -qx "# fail 0" c.txt
+      - name: Idempotência do pagamento confirmado com conexões simultâneas reais (B05/G9, D1–D4)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/mercadopago-payment-dedupe-postgres.test.mjs | tee d.txt
+          grep -qx "# tests 4" d.txt && grep -qx "# pass 4" d.txt && grep -qx "# skipped 0" d.txt && grep -qx "# fail 0" d.txt
+          echo "::notice title=COUNTS_D::$(grep -E '^# (tests|pass|fail|skipped) ' d.txt | paste -sd' ' -)"
       - name: Suíte Node completa no SHA do PR (prova Linux independente, Ordem Sol 024)
         run: |
           set -eo pipefail
@@ -95,8 +123,134 @@ jobs:
           grep -qx "Ran 14 tests in .*" nm.txt || { echo "::error::contagem de testes diferente de 14"; exit 1; }
           if grep -q "skipped" nm.txt; then echo "::error::testes pulados"; exit 1; fi
           grep -qx "OK" nm.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
+      - name: Guarda de portabilidade da suíte (fora do manifesto; contagem exata própria)
+        run: |
+          set -eo pipefail
+          # tests/guards/portability.test.mjs: helper de texto CRLF, preflight TOOL_MISSING e tmp único (AVAL Sol 081).
+          node --test tests/guards/*.test.mjs | tee guards.txt
+          echo "::notice title=COUNTS_GUARDS (esperado 3)::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' guards.txt | paste -sd' ' -)"
+          grep -qx "# tests 3" guards.txt && grep -qx "# pass 3" guards.txt && grep -qx "# skipped 0" guards.txt && grep -qx "# fail 0" guards.txt && grep -qx "# cancelled 0" guards.txt
+      - name: Head do PR (mesma árvore do merge, ou suíte Node também no head)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eo pipefail
+          # Repositório público: busca anônima do commit head (sem credencial persistida).
+          git fetch --no-tags --depth=1 origin "$PR_HEAD_SHA"
+          mt="$(git rev-parse 'HEAD^{tree}')"; ht="$(git rev-parse "$PR_HEAD_SHA^{tree}")"
+          if [ "$mt" = "$ht" ]; then
+            echo "::notice title=HEAD_TREE=MERGE_TREE::head $PR_HEAD_SHA e merge $(git rev-parse HEAD) têm a mesma árvore $mt (head é fast-forward da base): a suíte acima vale para os dois"
+            exit 0
+          fi
+          # Árvores diferentes (base avançou): o gate exato continua no merge (o que entra); o head precisa
+          # também estar verde (contagem livre, pois a base pode ter acrescentado testes que o head não tem).
+          git worktree add --detach "$RUNNER_TEMP/pr-head" "$PR_HEAD_SHA"
+          (cd "$RUNNER_TEMP/pr-head" && node --test tests/*.test.mjs) | tee head.txt
+          echo "::notice title=COUNTS_HEAD $PR_HEAD_SHA::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' head.txt | paste -sd' ' -)"
+          grep -qx "# fail 0" head.txt && grep -qx "# skipped 0" head.txt && grep -qx "# cancelled 0" head.txt
       - name: Cobertura do filtro de caminhos (fecho de importações e leituras)
         run: |
           set -eo pipefail
           node --test tests/trava-vendas-gate-paths.test.mjs | tee g.txt
           grep -qx "# tests 3" g.txt && grep -qx "# pass 3" g.txt && grep -qx "# skipped 0" g.txt && grep -qx "# fail 0" g.txt
+  # B05 (PR #868): os 13 mutantes de assinatura/idempotência rodam no runner contra o PostgreSQL efêmero,
+  # independente de quem escreveu a PR. Cada linha MUTANT fica no log e vira anotação do check-run. KILLED exige
+  # falha de ASSERÇÃO em teste esperado e nenhuma assinatura de infra; infra => INCONCLUSIVE + repetição; job falha.
+  mutantes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # Meta-teste do executor (auditoria Sol): SEM mutação, o harness injeta um ECONNRESET real na 1ª requisição
+      # de webhook. O executor precisa classificar como INCONCLUSIVE (com as repetições controladas), nunca KILLED.
+      - name: Autoverificação do executor — ECONNRESET injetado sem mutação => INCONCLUSIVE, nunca KILLED
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/ci/mutants_mp_webhook.py --self-check-infra < /dev/null | tee self.txt || rc=$?
+          [ "$rc" = 0 ] || { echo "::error::autoverificação do executor saiu com $rc"; exit 1; }
+          grep -q '^SELF_CHECK_INFRA attempts=3 classes=INCONCLUSIVE,INCONCLUSIVE,INCONCLUSIVE injected=True PASS$' self.txt
+          if grep -q '^MUTANT [^ ]* KILLED' self.txt; then echo "::error::ECONNRESET sem mutação contado como KILLED"; exit 1; fi
+          echo "::notice title=SELF_CHECK_INFRA::$(grep -E '^(MUTANT|SELF_CHECK_INFRA)' self.txt | paste -sd'|' - | sed 's/|/%0A/g')"
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado"; exit 1; fi
+      # Meta-testes da allowlist causal (auditoria Sol B05-B): falha sem asserção NÃO prevista mascara defeito novo
+      # do harness => INCONCLUSIVE mesmo com a asserção esperada falhando; falha PREVISTA (allowlist) => KILLED.
+      - name: Autoverificação do executor — mutante real + TypeError não previsto => INCONCLUSIVE 3/3
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/ci/mutants_mp_webhook.py --self-check-other < /dev/null | tee other.txt || rc=$?
+          echo "::notice title=SELF_CHECK_OTHER::$(grep -E '^(MUTANT|SELF_CHECK_OTHER)' other.txt | paste -sd'|' - | sed 's/|/%0A/g')"
+          [ "$rc" = 0 ] || { echo "::error::autoverificação (falha não prevista) saiu com $rc"; exit 1; }
+          grep -qx 'SELF_CHECK_OTHER mutant=M2_janela_60min attempts=3 classes=INCONCLUSIVE,INCONCLUSIVE,INCONCLUSIVE injected=True expected_assertion_present=True PASS' other.txt
+          if grep -q '^MUTANT [^ ]* KILLED' other.txt; then echo "::error::falha não prevista contada como KILLED"; exit 1; fi
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado"; exit 1; fi
+      - name: Autoverificação do executor — falha prevista na allowlist (M6b/AL2) => KILLED
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/ci/mutants_mp_webhook.py --self-check-allowlist < /dev/null | tee allow.txt || rc=$?
+          echo "::notice title=SELF_CHECK_ALLOWLIST::$(grep -E '^(MUTANT|SELF_CHECK_ALLOWLIST)' allow.txt | paste -sd'|' - | sed 's/|/%0A/g')"
+          [ "$rc" = 0 ] || { echo "::error::autoverificação (allowlist) saiu com $rc"; exit 1; }
+          grep -qx 'SELF_CHECK_ALLOWLIST mutant=M6b_sem_on_conflict final=KILLED entry=AL2_M6b_dedupe_D3_duplicate_key PASS' allow.txt
+          [ "$(grep -c '^SELF_CHECK_ALLOWLIST ' allow.txt)" = 1 ]
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado"; exit 1; fi
+      - name: Mutantes B05 (assinatura e idempotência; 13, cada um morto por falha FUNCIONAL de asserção)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/ci/mutants_mp_webhook.py < /dev/null | tee mut.txt || rc=$?
+          echo "::notice title=MUTANTS_MP_WEBHOOK::$(grep -E '^MUTANT(S_TOTAL)?' mut.txt | paste -sd'|' - | sed 's/|/%0A/g')%0Arc=$rc"
+          [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
+          grep -qx 'MUTANTS_TOTAL=13 KILLED=13 SURVIVED=0 INCONCLUSIVE=0 RETRIES=2' mut.txt || { echo "::error::resumo inesperado"; exit 1; }
+          # Uma linha FINAL por mutante: KILLED com motivo de asserção (o executor nunca conta código de saída != 0).
+          n="$(grep -cE '^MUTANT M[0-9][0-9a-z]*_[^ ]* KILLED reason=assercao:[^ ]* allowlist=[^ ]+ ' mut.txt || true)"
+          [ "$n" = "13" ] || { echo "::error::esperados 13 mutantes mortos por asserção, obtidos $n"; exit 1; }
+          if grep -qE '^MUTANT [^ ]* SURVIVED' mut.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
+          for b in unit dedupe_pg http_pg; do grep -qE "^MUTANT BASELINE $b .* infra=none PASS$" mut.txt || { echo "::error::linha de base $b"; exit 1; }; done
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi
+      # Uma anotação por mutante (linha FINAL, após repetições). O GitHub aceita no máximo 10 anotações
+      # ::notice:: por etapa, então as 13 + linha de base + resumo saem em duas etapas.
+      - name: Anotações MUTANT (linha de base e M1–M6a)
+        if: always()
+        run: |
+          [ -f mut.txt ] || exit 0
+          grep '^MUTANT BASELINE' mut.txt | while IFS= read -r l; do echo "::notice title=$(cut -d' ' -f1-3 <<<"$l")::$l"; done
+          awk '/^MUTANT M[0-9]/{if(!($2 in s)){o[++n]=$2;s[$2]=1} f[$2]=$0} END{for(i=1;i<=n;i++)print f[o[i]]}' mut.txt > final.txt
+          head -n 7 final.txt | while IFS= read -r l; do echo "::notice title=MUTANT $(cut -d' ' -f2 <<<"$l")::$l"; done
+      - name: Anotações MUTANT (M6b–M10 e resumo)
+        if: always()
+        run: |
+          [ -f final.txt ] || exit 0
+          tail -n +8 final.txt | while IFS= read -r l; do echo "::notice title=MUTANT $(cut -d' ' -f2 <<<"$l")::$l"; done
+          echo "::notice title=MUTANTS_TOTAL::$(grep '^MUTANTS_TOTAL' mut.txt || echo ausente)"
