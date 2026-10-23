@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {readFileSync, readdirSync} from "node:fs";
+import {readdirSync} from "node:fs";
+import {readTextNormalized} from "./helpers/text.mjs";
 import {fileURLToPath} from "node:url";
 import {dirname, join} from "node:path";
 import worker from "../worker/sales-public-worker.mjs";
@@ -10,7 +11,7 @@ import worker from "../worker/sales-public-worker.mjs";
 // not by robots.txt. A robots.txt Disallow would stop crawlers from fetching the page, so they would
 // never see the noindex: https://developers.google.com/search/docs/crawling-indexing/block-indexing
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const read = (p) => readFileSync(join(ROOT, p), "utf8");
+const read = (p) => readTextNormalized(join(ROOT, p));
 const SKUS = ["ZEV-IA-011", "ZEV-VEN-011", "ZEV-LCX-011", "ZEV-CMB-011", "ZEV-NGC-011"];
 const BROWSER = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36";
 const MP_URL = "https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=1";
@@ -142,7 +143,7 @@ test("no published sales page points a canonical, og:url or alternate link at /c
   const pages = readdirSync(dir).filter((f) => f.endsWith(".html"));
   assert.ok(pages.length > 50, "sales pages found");
   for (const f of pages) {
-    const html = readFileSync(join(dir, f), "utf8");
+    const html = readTextNormalized(join(dir, f));
     assert.doesNotMatch(html, /<link[^>]*rel="(canonical|alternate)"[^>]*href="[^"]*\/comprar\//i, f + " [canonical]");
     assert.doesNotMatch(html, /<link[^>]*href="[^"]*\/comprar\/[^"]*"[^>]*rel="(canonical|alternate)"/i, f + " [canonical]");
     assert.doesNotMatch(html, /<meta property="og:url" content="[^"]*\/comprar\//i, f + " [og:url]");

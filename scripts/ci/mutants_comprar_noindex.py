@@ -13,7 +13,7 @@ from pathlib import Path
 REPO = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2])
 TEST = "tests/comprar-noindex.test.mjs"
 COPY_DIRS = ["worker", "sales-public", "data"]
-COPY_FILES = [TEST, "sales-overlay/robots.txt", "sitemap.xml"]
+COPY_FILES = [TEST, "tests/helpers/text.mjs", "sales-overlay/robots.txt", "sitemap.xml"]
 W = "worker/sales-public-worker.mjs"
 
 # id -> (arquivo, trecho original (ocorre 1 vez), substituto, asserção que precisa falhar)
