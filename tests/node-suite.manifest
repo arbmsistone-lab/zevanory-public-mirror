@@ -25,6 +25,7 @@ tests/command-center-main.test.mjs 3
 tests/command-center-snapshot.test.mjs 9
 tests/commercial-checkout-guard.test.mjs 6
 tests/commercial-metrics-projection.test.mjs 13
+tests/comprar-noindex.test.mjs 7
 tests/content-service.test.mjs 4
 tests/core-snapshot-memo.test.mjs 4
 tests/creative-autonomy.test.mjs 10

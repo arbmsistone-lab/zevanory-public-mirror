@@ -1,0 +1,74 @@
+name: comprar-noindex-contract
+
+# Auditor Sol (AVAL 100): /comprar/ em vendas.zevanory.api.br fica fora dos índices pela própria resposta
+# (X-Robots-Tag "noindex, nofollow", Cache-Control "no-store", <meta name="robots" content="noindex,nofollow">),
+# fora do sitemap e SEM Disallow no robots.txt (o Disallow impediria o rastreador de ver o noindex).
+# Só pull_request: nunca dispara no merge, nunca usa segredo, sem rede além do checkout.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/comprar-noindex-contract.yml"
+      - "tests/comprar-noindex.test.mjs"
+      - "scripts/ci/mutants_comprar_noindex.py"
+      - "worker/sales-public-worker.mjs"
+      - "sales-worker.mjs"
+      - "sales-public/**"
+      - "sales-overlay/**"
+      - "sitemap.xml"
+      - "scripts/build_sales_public.py"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: /comprar/ noindex — contrato (offline)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          node --test tests/comprar-noindex.test.mjs 2>&1 | tee /tmp/comprar.txt
+          # Contagem exata: teste removido, pulado ou pendente não pode passar despercebido.
+          grep -qx "# tests 7" /tmp/comprar.txt || { echo "::error::contagem de testes diferente de 7"; exit 1; }
+          grep -qx "# pass 7" /tmp/comprar.txt || { echo "::error::nem todos os 7 testes passaram"; exit 1; }
+          grep -qx "# fail 0" /tmp/comprar.txt || { echo "::error::há testes falhando"; exit 1; }
+          grep -qx "# skipped 0" /tmp/comprar.txt || { echo "::error::testes pulados"; exit 1; }
+          grep -qx "# todo 0" /tmp/comprar.txt || { echo "::error::testes pendentes (todo)"; exit 1; }
+          echo "::notice title=COMPRAR_NOINDEX_TESTS::$(grep -E '^# (tests|pass|fail|skipped|todo) ' /tmp/comprar.txt | paste -sd' ' -)"
+      - name: Build de vendas reproduz o robots.txt e o sitemap versionados
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/build_sales_public.py
+          git diff --exit-code -- sales-public/robots.txt sales-public/sitemap.xml || { echo "::error::sales-public/robots.txt ou sitemap.xml divergem do build"; exit 1; }
+
+  # Cada mutante precisa ser morto pela asserção esperada (rótulo na saída), não por qualquer falha.
+  mutants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: /comprar/ noindex — 14 mutantes
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/ci/mutants_comprar_noindex.py < /dev/null | tee /tmp/mutants.txt || rc=$?
+          echo "::notice title=MUTANTS_COMPRAR_NOINDEX::$(grep '^MUTANT' /tmp/mutants.txt | sed 's/ — .*//' | paste -sd'|' - | sed 's/|/%0A/g')%0Arc=$rc"
+          [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
+          n="$(grep -c '^MUTANT M[0-9]* KILLED' /tmp/mutants.txt || true)"
+          [ "$n" = "14" ] || { echo "::error::esperados 14 mutantes mortos, obtidos $n"; exit 1; }
+          if grep -q '^MUTANT M[0-9]* SURVIVED' /tmp/mutants.txt; then echo "::error::mutante sobrevivente"; exit 1; fi
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi
