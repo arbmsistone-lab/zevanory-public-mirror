@@ -4,12 +4,13 @@
 // validation-only workflow can publish again, or when the panel repository can publish.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readdirSync, existsSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
 
 const root = new URL("../", import.meta.url);
 const wfDir = new URL(".github/workflows/", root);
-const registry = JSON.parse(readFileSync(new URL("ops/publishers.json", root), "utf8"));
-const read = (name) => readFileSync(new URL(name, wfDir), "utf8");
+const registry = JSON.parse(readTextNormalized(new URL("ops/publishers.json", root)));
+const read = (name) => readTextNormalized(new URL(name, wfDir));
 const workflows = readdirSync(wfDir).filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"));
 
 // A command that changes a Worker in production: code deploy/rollback/version deploy,

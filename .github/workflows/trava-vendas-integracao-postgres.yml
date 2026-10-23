@@ -21,6 +21,8 @@ on:
       - "tests/test_node_suite_manifest.py"
       - "scripts/ci/node_suite_check.py"
       - "scripts/ci/node-suite-reporter.mjs"
+      - "tests/helpers/**"
+      - "tests/guards/**"
       - "wrangler*.toml"
       - "package.json"
       - "package-lock.json"
@@ -48,6 +50,20 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: SHA efetivamente testado (pull_request = merge ref, não o head)
+        # actions/checkout sem `ref:` em pull_request faz checkout de refs/pull/N/merge (GITHUB_SHA = commit de
+        # merge sintético head+base). É o que entra em gh-pages, por isso é o alvo do gate; o head é registrado
+        # e comparado por árvore no passo "Head do PR" abaixo (auditoria: o run grava qual SHA foi testado).
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          tested="$(git rev-parse HEAD)"
+          echo "GITHUB_REF=$GITHUB_REF tested=$tested merge=$MERGE_SHA pr.head=$PR_HEAD_SHA pr.base=$PR_BASE_SHA"
+          echo "::notice title=SHA_TESTADO::ref=$GITHUB_REF tested=$tested merge(github.sha)=$MERGE_SHA pr.head=$PR_HEAD_SHA pr.base=$PR_BASE_SHA"
+          [ "$tested" = "$MERGE_SHA" ] || { echo "::error::checkout ($tested) difere de github.sha ($MERGE_SHA)"; exit 1; }
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -107,6 +123,32 @@ jobs:
           grep -qx "Ran 14 tests in .*" nm.txt || { echo "::error::contagem de testes diferente de 14"; exit 1; }
           if grep -q "skipped" nm.txt; then echo "::error::testes pulados"; exit 1; fi
           grep -qx "OK" nm.txt || { echo "::error::suíte não terminou em OK"; exit 1; }
+      - name: Guarda de portabilidade da suíte (fora do manifesto; contagem exata própria)
+        run: |
+          set -eo pipefail
+          # tests/guards/portability.test.mjs: helper de texto CRLF, preflight TOOL_MISSING e tmp único (AVAL Sol 081).
+          node --test tests/guards/*.test.mjs | tee guards.txt
+          echo "::notice title=COUNTS_GUARDS (esperado 3)::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' guards.txt | paste -sd' ' -)"
+          grep -qx "# tests 3" guards.txt && grep -qx "# pass 3" guards.txt && grep -qx "# skipped 0" guards.txt && grep -qx "# fail 0" guards.txt && grep -qx "# cancelled 0" guards.txt
+      - name: Head do PR (mesma árvore do merge, ou suíte Node também no head)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eo pipefail
+          # Repositório público: busca anônima do commit head (sem credencial persistida).
+          git fetch --no-tags --depth=1 origin "$PR_HEAD_SHA"
+          mt="$(git rev-parse 'HEAD^{tree}')"; ht="$(git rev-parse "$PR_HEAD_SHA^{tree}")"
+          if [ "$mt" = "$ht" ]; then
+            echo "::notice title=HEAD_TREE=MERGE_TREE::head $PR_HEAD_SHA e merge $(git rev-parse HEAD) têm a mesma árvore $mt (head é fast-forward da base): a suíte acima vale para os dois"
+            exit 0
+          fi
+          # Árvores diferentes (base avançou): o gate exato continua no merge (o que entra); o head precisa
+          # também estar verde (contagem livre, pois a base pode ter acrescentado testes que o head não tem).
+          git worktree add --detach "$RUNNER_TEMP/pr-head" "$PR_HEAD_SHA"
+          (cd "$RUNNER_TEMP/pr-head" && node --test tests/*.test.mjs) | tee head.txt
+          echo "::notice title=COUNTS_HEAD $PR_HEAD_SHA::$(grep -E '^# (tests|pass|fail|skipped|cancelled|todo) ' head.txt | paste -sd' ' -)"
+          grep -qx "# fail 0" head.txt && grep -qx "# skipped 0" head.txt && grep -qx "# cancelled 0" head.txt
       - name: Cobertura do filtro de caminhos (fecho de importações e leituras)
         run: |
           set -eo pipefail
