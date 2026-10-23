@@ -1,0 +1,197 @@
+name: psp-failover-contract
+# B05/B08: failover MP -> Asaas, boleto Asaas, webhook Asaas endurecido e autorização de estorno Pix por intenção.
+# Somente pull_request (nunca push/dispatch/schedule): não roda no merge. Sem segredos, sem deploy, sem rede de
+# provedor (MP e Asaas são falsos locais; qualquer host não simulado é bloqueado pelo fetch de teste).
+# PostgreSQL 16 EFÊMERO do runner. Contagens EXATAS: teste removido/pulado ou mutante não morto derruba o gate.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/psp-failover.mjs"
+      - "worker/asaas-boleto.mjs"
+      - "worker/asaas-webhook-safety.mjs"
+      - "worker/asaas-pix-refund-auth.mjs"
+      - "worker/cloudflare-worker.recovered.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "tests/psp/**"
+      - "tests/integration/psp-*"
+      - "tests/t4_sim/**"
+      - "scripts/ci/mutants_psp.py"
+      - "scripts/psp_two_providers_gate.py"
+      - "evidence/psp-independence.json"
+      - "db/b05/**"
+      - ".github/workflows/psp-failover-contract.yml"
+permissions:
+  contents: read
+concurrency:
+  group: psp-failover-contract-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+jobs:
+  contrato:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Unidade (failover, disjuntor, sondagem única, erros de KV, boleto, webhook, fila/DLQ e alerta pendente, prazo da sondagem, estorno por intenção) — 78 testes
+        run: |
+          set -eo pipefail
+          node --test tests/psp/*.test.mjs | tee u.txt
+          grep -qx "# tests 78" u.txt && grep -qx "# pass 78" u.txt && grep -qx "# skipped 0" u.txt && grep -qx "# fail 0" u.txt && grep -qx "# cancelled 0" u.txt
+          echo "::notice title=PSP_COUNTS_UNIT::$(grep -E '^# (tests|pass|fail|skipped|cancelled) ' u.txt | paste -sd' ' -)"
+      - name: Bundle real + PostgreSQL 16 (failover, trava, meia-abertura, KV falhando, boleto, webhook, drenagem/DLQ, alerta pendente, prazo da sondagem) — 22 testes
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --import ./tests/t4_sim/register.mjs --test tests/integration/psp-checkout-postgres.test.mjs | tee c.txt
+          grep -qx "# tests 22" c.txt && grep -qx "# pass 22" c.txt && grep -qx "# skipped 0" c.txt && grep -qx "# fail 0" c.txt && grep -qx "# cancelled 0" c.txt
+          echo "::notice title=PSP_COUNTS_CHECKOUT_PG::$(grep -E '^# (tests|pass|fail|skipped|cancelled) ' c.txt | paste -sd' ' -)"
+      - name: Estorno Pix por intenção persistida, conexões concorrentes reais — 9 testes
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/psp-refund-intent-postgres.test.mjs | tee r.txt
+          grep -qx "# tests 9" r.txt && grep -qx "# pass 9" r.txt && grep -qx "# skipped 0" r.txt && grep -qx "# fail 0" r.txt && grep -qx "# cancelled 0" r.txt
+          echo "::notice title=PSP_COUNTS_REFUND_PG::$(grep -E '^# (tests|pass|fail|skipped|cancelled) ' r.txt | paste -sd' ' -)"
+      - name: Sondagem única na meia-abertura coordenada pelo PostgreSQL e prazo abaixo do lease, conexões concorrentes reais — 4 testes
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/psp-breaker-postgres.test.mjs | tee b.txt
+          grep -qx "# tests 4" b.txt && grep -qx "# pass 4" b.txt && grep -qx "# skipped 0" b.txt && grep -qx "# fail 0" b.txt && grep -qx "# cancelled 0" b.txt
+          echo "::notice title=PSP_COUNTS_BREAKER_PG::$(grep -E '^# (tests|pass|fail|skipped|cancelled) ' b.txt | paste -sd' ' -)"
+      - name: Alerta da DLQ exatamente uma vez (livro-razão PostgreSQL, drenagens concorrentes reais) — 4 testes
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/psp-dlq-alert-postgres.test.mjs | tee a.txt
+          grep -qx "# tests 4" a.txt && grep -qx "# pass 4" a.txt && grep -qx "# skipped 0" a.txt && grep -qx "# fail 0" a.txt && grep -qx "# cancelled 0" a.txt
+          echo "::notice title=PSP_COUNTS_DLQ_ALERT_PG::$(grep -E '^# (tests|pass|fail|skipped|cancelled) ' a.txt | paste -sd' ' -)"
+      - name: Gate "dois PSPs prontos" (offline, sem segredo) — 17 verificações
+        run: |
+          set -eo pipefail
+          python3 scripts/psp_two_providers_gate.py | tee g.txt
+          [ "$(grep -c '^PSP_GATE .* PASS$' g.txt)" = "17" ] && ! grep -q '^PSP_GATE .* FAIL' g.txt && grep -qx 'PSP_TWO_PROVIDERS_GATE: PASS' g.txt
+          echo "::notice title=PSP_TWO_PROVIDERS_GATE::$(grep -c '^PSP_GATE .* PASS$' g.txt)/17 PASS"
+      - name: Sem bytecode nem arquivo versionado alterado
+        run: |
+          set -eo pipefail
+          if git ls-files -o --exclude-standard | grep -E '\.pyc$|__pycache__'; then echo "::error::bytecode gerado"; exit 1; fi
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado"; exit 1; fi
+
+  mutantes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Mutantes (47; cada um precisa ser MORTO por asserção funcional)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -euo pipefail
+          rc=0
+          python3 scripts/ci/mutants_psp.py < /dev/null | tee mut.txt || rc=$?
+          echo "rc=$rc"
+          # Linha FINAL de cada mutante (a última tentativa).
+          grep -E '^MUTANT [MRBQD][0-9]{2}_' mut.txt | awk '{a[$2]=$0} END {for (k in a) print a[k]}' | sort > final.txt
+          cat final.txt
+          [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc"; exit 1; }
+          n="$(grep -c ' KILLED reason=assercao:' final.txt || true)"
+          [ "$n" = "47" ] || { echo "::error::esperados 47 mutantes mortos por asserção, obtidos $n"; exit 1; }
+          if grep -qE ' (SURVIVED|INCONCLUSIVE) ' final.txt; then echo "::error::mutante sobrevivente ou inconclusivo"; exit 1; fi
+          grep -qx 'MUTANTS_TOTAL=47 KILLED=47 SURVIVED=0 INCONCLUSIVE=0 RETRIES=2' mut.txt
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi
+      # O GitHub limita a 10 anotações por etapa: as 47 linhas finais saem em 7 etapas.
+      - name: Anotações 1/7 (M01–M10)
+        if: always()
+        run: |
+          [ -f final.txt ] || exit 0
+          grep -E '^MUTANT M(0[1-9]|10)_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
+      - name: Anotações 2/7 (M11–M14 e linha de base)
+        if: always()
+        run: |
+          [ -f mut.txt ] || exit 0
+          grep -E '^MUTANT M1[1-4]_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
+          grep -E '^MUTANT BASELINE' mut.txt | while read -r l; do echo "::notice title=MUTANT_BASELINE_$(echo "$l" | cut -d' ' -f3)::$(echo "$l" | cut -d' ' -f4-)"; done
+      - name: Anotações 3/7 (R01–R07 e total)
+        if: always()
+        run: |
+          [ -f mut.txt ] || exit 0
+          grep -E '^MUTANT R0[1-7]_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
+          echo "::notice title=MUTANTS_PSP_TOTAL::$(grep '^MUTANTS_TOTAL=' mut.txt || echo ausente)"
+      - name: Anotações 4/7 (B01–B06, sondagem única e erros de KV)
+        if: always()
+        run: |
+          [ -f final.txt ] || exit 0
+          grep -E '^MUTANT B0[1-6]_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
+      - name: Anotações 5/7 (Q01–Q05, fila de revisão/DLQ)
+        if: always()
+        run: |
+          [ -f final.txt ] || exit 0
+          grep -E '^MUTANT Q0[1-5]_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
+      - name: Anotações 6/7 (Q06–Q13, alerta da DLQ pendente e idempotente)
+        if: always()
+        run: |
+          [ -f final.txt ] || exit 0
+          grep -E '^MUTANT Q(0[6-9]|1[0-3])_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
+      - name: Anotações 7/7 (D01–D07, prazo da sondagem abaixo do lease)
+        if: always()
+        run: |
+          [ -f final.txt ] || exit 0
+          grep -E '^MUTANT D0[1-7]_' final.txt | while read -r l; do echo "::notice title=$(echo "$l" | cut -d' ' -f2)::$(echo "$l" | cut -d' ' -f3-)"; done
+      - name: Meta-teste — infraestrutura (ECONNRESET real injetado, sem mutação) nunca vira KILLED
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_psp.py --self-check-infra < /dev/null | tee si.txt
+          grep -q '^SELF_CHECK_INFRA attempts=3 classes=INCONCLUSIVE,INCONCLUSIVE,INCONCLUSIVE injected=True PASS$' si.txt
+          echo "::notice title=SELF_CHECK_INFRA::$(grep '^SELF_CHECK_INFRA' si.txt)"
+      - name: Meta-teste — falha sem asserção fora da allowlist causal nunca vira KILLED
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_psp.py --self-check-other < /dev/null | tee so.txt
+          grep -q '^SELF_CHECK_OTHER .* classes=INCONCLUSIVE,INCONCLUSIVE,INCONCLUSIVE injected=True expected_assertion_present=True PASS$' so.txt
+          echo "::notice title=SELF_CHECK_OTHER::$(grep '^SELF_CHECK_OTHER' so.txt)"
+          if git ls-files -o --exclude-standard | grep -E '\.pyc$|__pycache__'; then echo "::error::bytecode gerado"; exit 1; fi
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado"; exit 1; fi

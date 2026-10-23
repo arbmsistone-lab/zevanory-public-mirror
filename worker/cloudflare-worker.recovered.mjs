@@ -7,6 +7,9 @@ import { getWhatsappOpsStore, publishWhatsappOpsStats } from "./whatsapp-neon-st
 import { ESCALATION_RE as OWNER_ESCALATION_RE, alertOwnerNow } from "./owner-alerts.mjs";
 import { mercadoPagoExpiryWindow } from "./payment-link-expiry.mjs";
 import { drainMercadoPagoWebhookRecovery, recordMercadoPagoWebhookSignature } from "./mercadopago-webhook-safety.mjs";
+import { PSP_FALLBACK_ORDER, breakerConfigFromEnv, createCircuitBreaker, createPgProbeLease, idempotencyKeyForOrder, pspCallSignal, pspCommercialLockOpen, pspContinuityPlan, pspProviderTimeoutFromEnv, runCheckoutWithFailover } from "./psp-failover.mjs";
+import { BoletoError, createAsaasBoletoCharge, normalizeBoletoPayer } from "./asaas-boleto.mjs";
+import { asaasWebhookAlreadyProcessed, authorizeAsaasWebhook, createPgDlqAlertLedger, drainAsaasWebhookReview, classifyAsaasEventShape, extractAsaasPathSecret, logAsaasWebhook, markAsaasWebhookProcessed, queueAsaasWebhookReview } from "./asaas-webhook-safety.mjs";
 import { DEFAULT_CREATIVE_OFFER, assertBrandSafeCreative, chooseThompsonArm, creativeAutonomyDashboard, creativeAutopublishPaused, creativeCatalogEntry, creativeLandingUrl, evaluateCreativeWithRewrites, recordCreativeEvaluation, recordMatureCreativeMetrics, renderCreativeAutonomyPage, sendDailyCreativeReport, setCreativeAutopublishPaused } from "./creative-autonomy.mjs";
 import { appendBlogSitemap, INDEXNOW_PUBLIC_KEY, recordChannelProof, renderBlogArticle, renderBlogIndex, renderChannelsPage, runMultichannelAutonomy } from "./multichannel-autonomy.mjs";
 import { collectAutonomyHealth, runAutonomyHealth } from "./autonomy-health.mjs";
@@ -967,6 +970,8 @@ function readinessFor(provider, env, { production = true } = {}) {
     const mode = String(env.ASAAS_ENV || "").trim().toLowerCase();
     if (mode !== (production ? "production" : "sandbox")) local.push(production ? "asaas_production_not_configured" : "asaas_sandbox_unconfigured");
     if (!present2(env.ASAAS_API_KEY) || !present2(env.ASAAS_WEBHOOK_TOKEN)) local.push("asaas_credentials_missing");
+    // B05: webhook só com segmento secreto no caminho (ver asaas-webhook-safety.mjs); sem ele o provedor não fica pronto.
+    if (String(env.ASAAS_WEBHOOK_PATH_SECRET || "").trim().length < 32) local.push("asaas_webhook_path_secret_missing");
   }
   if (provider === "mercadopago") {
     const mode = String(env.MERCADOPAGO_ENV || "").trim().toLowerCase();
@@ -1000,9 +1005,12 @@ function selectPaymentProvider(env = process.env, { production = true, operation
     const match = ready.find((x2) => x2.provider === preferred);
     if (match) return Object.freeze({ ...match, reason: "preferred_ready" });
   }
-  const digest8 = createHash("sha256").update(String(operationKey || "zevanory")).digest();
-  const selected = ready[digest8[0] % ready.length];
-  return Object.freeze({ ...selected, reason: ready.length > 1 ? "deterministic_pool_selection" : "single_ready_provider" });
+  // B05: ordem fixa de failover (mercadopago -> asaas), nunca balanceamento por hash; a saúde por provedor
+  // (disjuntor) é aplicada no checkout por runCheckoutWithFailover. operationKey fica só por compatibilidade.
+  void operationKey;
+  const ordered = [...PSP_FALLBACK_ORDER, ...PAYMENT_PROVIDERS.filter((p) => !PSP_FALLBACK_ORDER.includes(p))];
+  const selected = ordered.map((p) => ready.find((x2) => x2.provider === p)).find(Boolean) || ready[0];
+  return Object.freeze({ ...selected, reason: ready.length > 1 ? "deterministic_fallback_order" : "single_ready_provider" });
 }
 __name(selectPaymentProvider, "selectPaymentProvider");
 function paymentProviderReadiness(env = process.env, { production = true } = {}) {
@@ -13969,7 +13977,12 @@ function paymentMatchesOrderIdentity(payment, order) {
   if (hasReference && !linkedByReference || hasCheckout && !linkedByCheckout) return false;
   if (!linkedByReference && !linkedByCheckout) return false;
   if (moneyCents(payment.value) !== moneyCents(order.amount)) return false;
-  if (order.certification_pilot !== true && moneyCents(order.amount) !== moneyCents(PROJECT.experimentalPriceBrl)) return false;
+  // B05: o valor do pedido precisa ser o preço de catálogo da própria oferta (o mesmo que o checkout cobra nos
+  // dois provedores). Antes exigia o preço do experimento antigo: todo pedido real via Asaas dava 409.
+  if (order.certification_pilot !== true) {
+    const offer = resolveCertificationCheckoutOffer(order.offer_id);
+    if (!offer || moneyCents(order.amount) !== moneyCents(offer.price_brl)) return false;
+  }
   return true;
 }
 __name(paymentMatchesOrderIdentity, "paymentMatchesOrderIdentity");
@@ -14107,7 +14120,7 @@ function normalizeAsaasCheckoutResponse(value, externalReference, env = "sandbox
 __name(normalizeAsaasCheckoutResponse, "normalizeAsaasCheckoutResponse");
 
 // src/http/checkoutAsaas.mjs
-async function createAsaasCheckout(payload, apiKey, env = "sandbox", fetchImpl = fetch) {
+async function createAsaasCheckout(payload, apiKey, env = "sandbox", fetchImpl = fetch, { probeSignal = null } = {}) {
   if (typeof env === "function") {
     fetchImpl = env;
     env = "sandbox";
@@ -14116,8 +14129,11 @@ async function createAsaasCheckout(payload, apiKey, env = "sandbox", fetchImpl =
   if (!base) throw new Error("asaas_environment_invalid");
   const response2 = await fetchImpl(`${base}/checkouts`, {
     method: "POST",
-    headers: { accept: "application/json", "content-type": "application/json", "user-agent": "ZEVANORY/1.0 (Cloudflare Worker; sandbox)", access_token: apiKey },
-    body: JSON.stringify(payload)
+    headers: { accept: "application/json", "content-type": "application/json", "user-agent": `ZEVANORY/1.0 (Cloudflare Worker; ${String(env).toLowerCase() === "production" ? "production" : "sandbox"})`, access_token: apiKey },
+    body: JSON.stringify(payload),
+    // B05: sem timeout um provedor travado prende o request; o timeout vira resultado AMBÍGUO (nunca failover).
+    // Na sondagem do disjuntor, o prazo total da sondagem também corta a chamada (#879-2).
+    signal: pspCallSignal(pspProviderTimeoutMs(), probeSignal)
   });
   const data = await response2.json().catch(() => ({}));
   if (!response2.ok) {
@@ -14131,6 +14147,28 @@ async function createAsaasCheckout(payload, apiKey, env = "sandbox", fetchImpl =
   return data;
 }
 __name(createAsaasCheckout, "createAsaasCheckout");
+// Faixa derivada do lease da sondagem (psp-failover.mjs: PSP_PROVIDER_TIMEOUT_MAX_MS = 20 s). Fora da faixa: 10 s
+// nas chamadas normais e a meia-abertura fica NEGADA (breakerConfigFromEnv.probeConfigError).
+// Sinal do prazo da sondagem associado ao payload (congelado) da preferência do MP por WeakMap (nada entra no JSON
+// enviado), para manter intacta a chamada canônica verificada pelo guarda do issue #307.
+const PSP_PROBE_SIGNALS = /* @__PURE__ */ new WeakMap();
+function pspProviderTimeoutMs(env = process.env) {
+  return pspProviderTimeoutFromEnv(env).value;
+}
+__name(pspProviderTimeoutMs, "pspProviderTimeoutMs");
+// B05: mesma trava comercial do Mercado Pago (publicCheckoutGate), com o ambiente do próprio Asaas.
+// salesGate() exige certificação observada do ciclo de vendas que nunca é passada aqui: o Asaas ficava
+// fechado para sempre e o failover seria só nominal. A trava global (SALE_GLOBALLY_ENABLED, alimentada pela
+// chave do proprietário) e o guarda universal do compat continuam valendo para os dois provedores.
+function asaasPublicCheckoutGate(env = process.env) {
+  const globalEnabled = pspCommercialLockOpen(env);
+  const production = String(env.ASAAS_ENV || "").toLowerCase() === "production";
+  const blockers = [];
+  if (!globalEnabled) blockers.push("global_sale_disabled");
+  if (!production) blockers.push("payments_not_in_production");
+  return Object.freeze({ enabled: globalEnabled && production, blockers: Object.freeze(blockers) });
+}
+__name(asaasPublicCheckoutGate, "asaasPublicCheckoutGate");
 function json8(res, status, body) {
   res.statusCode = status;
   return res.end(JSON.stringify(body));
@@ -14141,9 +14179,18 @@ async function handler11(req, res) {
   res.setHeader("cache-control", "no-store");
   res.setHeader("x-content-type-options", "nosniff");
   if (req.method !== "POST") return json8(res, 405, { error: "method_not_allowed" });
-  const input = normalizeCheckoutRequest(await readJsonRequestBody(req));
+  const checkoutBody = await readJsonRequestBody(req);
+  // B05: mesmo catálogo/preço do handler Mercado Pago, para o failover cobrar exatamente o mesmo valor.
+  const input = normalizeCheckoutRequest(checkoutBody, { certification: true });
   if (!input) return json8(res, 400, { error: "invalid_checkout_request" });
-  const gate = salesGate();
+  const wantsBoleto = String(checkoutBody?.payment_method || "").trim().toLowerCase() === "boleto";
+  let boletoPayer = null;
+  if (wantsBoleto) {
+    if (String(process.env.ASAAS_BOLETO_ENABLED || "").toLowerCase() !== "true") return json8(res, 400, { error: "boleto_disabled" });
+    boletoPayer = normalizeBoletoPayer(checkoutBody?.payer);
+    if (!boletoPayer) return json8(res, 400, { error: "invalid_boleto_payer" });
+  }
+  const gate = asaasPublicCheckoutGate();
   const pilotToken = String(req.headers?.["x-certification-pilot-token"] || "").trim();
   if (!gate.enabled && !pilotToken) return json8(res, 503, { error: "sales_globally_blocked", blockers: gate.blockers });
   if (process.env.CHECKOUT_ENABLED !== "true") return json8(res, 503, { error: "checkout_disabled" });
@@ -14178,11 +14225,14 @@ async function handler11(req, res) {
       order = { order_id: orderId, external_reference: externalReference, status: "created" };
     } else {
       const existing = await sql.query(`
-        SELECT order_id,session_id,offer_id,external_reference,status,checkout_url
+        SELECT order_id,session_id,offer_id,external_reference,status,checkout_url,provider
         FROM orders WHERE request_id=$1
       `, [input.requestId]);
       if (existing.length !== 1) return json8(res, 503, { error: "order_lookup_failed" });
       order = existing[0];
+      // B05: idempotência por pedido ENTRE provedores. Um pedido criado no Mercado Pago (inclusive em estado
+      // ambíguo) nunca recebe um segundo checkout no Asaas com o mesmo request_id.
+      if (order.provider && order.provider !== "asaas") return json8(res, 409, { error: "request_id_provider_conflict" });
       const replay = checkoutReplayDecision(order, input.sessionId, input.offer.id);
       if (replay.action === "conflict") return json8(res, 409, { error: "request_id_conflict" });
       if (replay.action === "offer_conflict") return json8(res, 409, { error: "request_id_offer_conflict" });
@@ -14196,11 +14246,48 @@ async function handler11(req, res) {
       RETURNING order_id,external_reference
     `, [order.order_id]);
     if (claimed.length !== 1) return json8(res, 409, { error: "checkout_in_progress" });
+    if (wantsBoleto) {
+      let boleto;
+      try {
+        boleto = await createAsaasBoletoCharge({ env: asaasEnv, apiKey: process.env.ASAAS_API_KEY, order: { external_reference: order.external_reference, amount: effectiveOffer.price_brl, description: `${effectiveOffer.product} ${effectiveOffer.version} (${effectiveOffer.id})` }, payer: boletoPayer, timeoutMs: pspProviderTimeoutMs(), signal: req.pspProbeSignal || null });
+      } catch (providerError) {
+        const providerHttpStatus = Number(providerError?.providerHttpStatus || 0);
+        if (providerError instanceof BoletoError && providerError.definitive) {
+          // Provado que nenhuma cobrança foi criada nesta tentativa: o pedido volta a "created" (retentável).
+          try {
+            await sql.query(`UPDATE orders SET status='created',updated_at=now() WHERE order_id=$1 AND status='checkout_creating'`, [order.order_id]);
+          } catch {
+          }
+          return json8(res, 503, { error: "boleto_provider_unavailable", accepted: false, provider_http_status: providerHttpStatus || null, provider_error_code: String(providerError.code || "") });
+        }
+        try {
+          await sql.query(`UPDATE orders SET status='checkout_uncertain',updated_at=now() WHERE order_id=$1`, [order.order_id]);
+        } catch {
+        }
+        const recovery = await preserveFinancialReconciliation({ provider: "asaas", eventId: order.order_id, kind: "boleto_provider_uncertain", orderId: order.order_id, payload: { external_reference: order.external_reference, request_id: input.requestId, offer_id: input.offer.id, provider_http_status: providerHttpStatus || null, provider_error_code: String(providerError?.code || "") } });
+        return json8(res, 503, { error: "checkout_provider_uncertain", accepted: false, preserved: recovery.preserved, reconciliation_required: true, provider_http_status: providerHttpStatus || null, provider_error_code: String(providerError?.code || "") });
+      }
+      let boletoPersisted;
+      try {
+        boletoPersisted = await sql.query(`
+        UPDATE orders SET status='checkout_ready',provider_checkout_id=$2,checkout_url=$3,updated_at=now()
+        WHERE order_id=$1 AND status='checkout_creating'
+        RETURNING order_id
+      `, [order.order_id, boleto.id, boleto.bankSlipUrl]);
+      } catch {
+        boletoPersisted = [];
+      }
+      if (boletoPersisted.length !== 1) {
+        const recovery = await preserveFinancialReconciliation({ provider: "asaas", eventId: boleto.id, kind: "checkout_provider_accepted_storage_unconfirmed", orderId: order.order_id, payload: { external_reference: order.external_reference, provider_checkout_id: boleto.id, checkout_url: boleto.bankSlipUrl } });
+        return json8(res, 503, { error: "checkout_persist_failed", accepted: false, preserved: recovery.preserved, reconciliation_required: true });
+      }
+      return json8(res, 201, { accepted: true, duplicate: false, order_id: order.order_id, payment_method: "boleto", checkout_url: boleto.bankSlipUrl, invoice_url: boleto.invoiceUrl || null, due_date: boleto.dueDate || null, reconciled_existing: boleto.reused === true });
+    }
     const payload = buildAsaasCheckoutPayload(order.order_id, publicBase, effectiveOffer);
     if (!payload) return json8(res, 503, { error: "checkout_payload_unavailable" });
     let checkout;
     try {
-      checkout = await createAsaasCheckout(payload, process.env.ASAAS_API_KEY, asaasEnv);
+      checkout = await createAsaasCheckout(payload, process.env.ASAAS_API_KEY, asaasEnv, void 0, { probeSignal: req.pspProbeSignal || null });
     } catch (providerError) {
       try {
         await sql.query(`UPDATE orders SET status='checkout_uncertain',updated_at=now() WHERE order_id=$1`, [order.order_id]);
@@ -14361,11 +14448,15 @@ function preferenceMatchesPersistedOrder(payload, persisted) {
 }
 __name(preferenceMatchesPersistedOrder, "preferenceMatchesPersistedOrder");
 // src/http/checkoutMercadoPago.mjs
-async function createMercadoPagoPreference(payload, accessToken, fetchImpl = fetch) {
+async function createMercadoPagoPreference(payload, accessToken, fetchImpl = fetch, { probeSignal = (payload && typeof payload === "object" && PSP_PROBE_SIGNALS.get(payload)) || null } = {}) {
+  // B05: chave de idempotência por pedido e timeout explícito. Timeout/5xx viram resultado AMBÍGUO no handler
+  // (pedido "checkout_uncertain", reconciliação) e o orquestrador nunca cria um segundo checkout no Asaas.
+  const idempotencyKey = idempotencyKeyForOrder(payload?.external_reference);
   const response2 = await fetchImpl(`${MERCADOPAGO_API_BASE}/checkout/preferences`, {
     method: "POST",
-    headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${accessToken}` },
-    body: JSON.stringify(payload)
+    headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${accessToken}`, ...(idempotencyKey ? { "x-idempotency-key": idempotencyKey } : {}) },
+    body: JSON.stringify(payload),
+    signal: pspCallSignal(pspProviderTimeoutMs(), probeSignal)
   });
   const data = await response2.json().catch(() => ({}));
   if (!response2.ok) {
@@ -14442,6 +14533,7 @@ async function handler12(req, res) {
     }
     let raw;
     try {
+      if (req.pspProbeSignal) PSP_PROBE_SIGNALS.set(payload, req.pspProbeSignal);
       raw = await createMercadoPagoPreference(payload, providerToken);
     } catch (error) {
       try {
@@ -14574,7 +14666,117 @@ async function handleStripeCheckout(req, res) {
 __name(handleStripeCheckout, "handleStripeCheckout");
 
 // api/checkout.mjs
+// B05/B08: disjuntor por provedor com estado em KV privada (ou memória do isolate, sem KV).
+// Meia-abertura: sondagem única entre isolates coordenada pelo PostgreSQL (tabela psp_circuit_probes,
+// db/b05/psp_circuit_probes.sql). Sem banco, nenhuma sondagem é admitida (o provedor segue aberto).
+// #879-2: o prazo da sondagem é derivado do TTL do lease e validado na construção; configuração inválida (timeout do
+// PSP + orçamento de banco >= prazo) => breaker SEM coordenador (nenhuma sondagem; o provedor segue aberto), logado.
+// __ZEVANORY_PSP_PROBE_TIMING__ (só testes, como __ZEVANORY_PRIVATE_KV__): {leaseMs, safetyMs, dbBudgetMs}, passa pela
+// MESMA validação.
+function pspBreaker(env = process.env) {
+  const kv = globalThis.__ZEVANORY_PRIVATE_KV__;
+  const store = kv && typeof kv.get === "function" && typeof kv.put === "function" ? kv : void 0;
+  const config = breakerConfigFromEnv(env);
+  const t = globalThis.__ZEVANORY_PSP_PROBE_TIMING__;
+  const timing = t && typeof t === "object" ? { probeSafetyMs: t.safetyMs, probeDbBudgetMs: t.dbBudgetMs } : {};
+  const probeLease = env.DATABASE_URL ? createPgProbeLease(cs(env.DATABASE_URL), t && typeof t === "object" ? { ttlMs: t.leaseMs } : {}) : null;
+  try {
+    return createCircuitBreaker({ store, probeLease, ...config, ...timing });
+  } catch (error) {
+    try { console.error("psp_probe_timing_invalid", JSON.stringify({ code: String(error?.code || error?.name || "Error").slice(0, 60), reason: String(error?.timing?.reason || "").slice(0, 80) })); } catch {}
+    return createCircuitBreaker({ store, probeLease: null, ...config });
+  }
+}
+__name(pspBreaker, "pspBreaker");
+async function invokeCheckoutHandler(handler, req) {
+  const out = { statusCode: 200, body: "" };
+  const captured = {
+    get statusCode() { return out.statusCode; },
+    set statusCode(value) { out.statusCode = Number(value); },
+    headersSent: false,
+    writableEnded: false,
+    setHeader() {},
+    getHeader() { return void 0; },
+    end(chunk) { out.body = chunk == null ? "" : String(chunk); captured.writableEnded = true; return captured; }
+  };
+  await handler(req, captured);
+  let body = {};
+  try { body = JSON.parse(out.body || "{}"); } catch { body = {}; }
+  return { status: out.statusCode, body: body && typeof body === "object" ? body : {} };
+}
+__name(invokeCheckoutHandler, "invokeCheckoutHandler");
+function explicitCheckoutProvider(req) {
+  const direct = normalizePaymentProvider(req.query?.provider);
+  if (direct) return direct;
+  try {
+    return normalizePaymentProvider(new URL(req.url || "", "https://zevanory.api.br").searchParams.get("provider"));
+  } catch {
+    return "";
+  }
+}
+__name(explicitCheckoutProvider, "explicitCheckoutProvider");
+async function handlePspFailoverCheckout(req, res) {
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("x-content-type-options", "nosniff");
+  const body = await readJsonRequestBody(req);
+  if (!body) {
+    res.statusCode = 400;
+    return res.end(JSON.stringify({ error: "invalid_checkout_request" }));
+  }
+  req.body = body;
+  const only = String(body.payment_method || "").trim().toLowerCase() === "boleto" ? ["asaas"] : null;
+  const result = await runCheckoutWithFailover({
+    lockOpen: async () => pspCommercialLockOpen(process.env),
+    candidates: paymentProviderCandidates(process.env, { production: true }),
+    breaker: pspBreaker(),
+    only,
+    // Sondagem: o sinal do prazo vai em req.pspProbeSignal e é repassado a TODA chamada ao PSP do handler.
+    invoke: (provider, ctx = {}) => invokeCheckoutHandler(provider === "asaas" ? handler11 : handler12, Object.assign(req, { pspProbeSignal: ctx.signal || null })),
+    log: (entry) => {
+      try { console.info("psp_failover", JSON.stringify(entry)); } catch {}
+    }
+  });
+  res.statusCode = result.status;
+  return res.end(JSON.stringify(result.body));
+}
+__name(handlePspFailoverCheckout, "handlePspFailoverCheckout");
+async function handlePspContinuity(req, res) {
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("x-content-type-options", "nosniff");
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.statusCode = 405;
+    return res.end(JSON.stringify({ error: "method_not_allowed" }));
+  }
+  const plan = await pspContinuityPlan({ candidates: paymentProviderCandidates(process.env, { production: true }), breaker: pspBreaker(), lockOpen: pspCommercialLockOpen(process.env) });
+  res.statusCode = plan.mode === "fail_closed" ? 503 : 200;
+  return res.end(JSON.stringify(plan));
+}
+__name(handlePspContinuity, "handlePspContinuity");
+// Sol AVAL 083: drenagem da fila de revisão do webhook Asaas (estorno que chegou antes da confirmação).
+// Replay pelo PRÓPRIO handler (autenticado com os segredos do ambiente; só ids — a verdade vem da re-consulta).
+// Item preso => DLQ + alerta ao proprietário (categoria "refund"). #879-1: pendência do alerta persistida e reenviada
+// pelas drenagens seguintes; exatamente um e-mail entregue (livro-razão asaas_dlq_alerts no PostgreSQL quando há banco +
+// Idempotency-Key no Resend). "recently_alerted" do alertOwnerNow = já entregue para este evento (canal+evento).
+async function drainAsaasReviewQueue(env = process.env, opts = {}) {
+  const kv = globalThis.__ZEVANORY_PRIVATE_KV__ || env.ZEVANORY_PRIVATE_ARTIFACTS;
+  if (!process.env.ASAAS_API_KEY || !process.env.ASAAS_WEBHOOK_TOKEN || !process.env.ASAAS_WEBHOOK_PATH_SECRET) return { skipped: "asaas_unconfigured" };
+  return drainAsaasWebhookReview(kv, {
+    alertLedger: process.env.DATABASE_URL ? createPgDlqAlertLedger(cs(process.env.DATABASE_URL)) : null,
+    ...opts,
+    replay: (rec) => invokeCheckoutHandler(handler15, { method: "POST", url: "/api/webhooks?provider=asaas", asaasPathSecret: process.env.ASAAS_WEBHOOK_PATH_SECRET, headers: { "asaas-access-token": process.env.ASAAS_WEBHOOK_TOKEN }, parsedBody: { id: rec.event_id, event: rec.event, payment: { id: rec.payment_id } }, body: null }),
+    alert: opts.alert || (async (item) => {
+      const r = await alertOwnerNow({ ...env, ...process.env, ZEVANORY_PRIVATE_ARTIFACTS: kv }, { channel: "asaas-webhook", contact: item.event_id, category: "refund", idempotencyKey: item.idempotency_key, excerpt: `evento ${item.event_id} pagamento ${item.payment_id} pedido ${item.order_id} tentativas ${item.attempts}`, reason: `Estorno Asaas recebido antes da confirmação não foi reconciliado (${item.cause}). Item na fila morta: conferir no painel Asaas e reconciliar manualmente.` });
+      return { sent: r?.sent === true || r?.reason === "recently_alerted", reason: String(r?.reason || "") };
+    })
+  });
+}
+__name(drainAsaasReviewQueue, "drainAsaasReviewQueue");
 async function handler13(req, res) {
+  // Sem provedor explícito e sem token de piloto: failover real (ordem fixa + disjuntor + trava por tentativa).
+  // Rotas explícitas (/api/checkout/mercadopago, /api/checkout/asaas) e o piloto de certificação seguem iguais.
+  if (req.method === "POST" && !explicitCheckoutProvider(req) && !String(req.headers?.["x-certification-pilot-token"] || "").trim()) return handlePspFailoverCheckout(req, res);
   const selected = resolveCheckoutProviderRequest(req);
   if (selected.ready && selected.provider === "asaas") return handler11(req, res);
   if (selected.ready && selected.provider === "mercadopago") return handler12(req, res);
@@ -14662,7 +14864,8 @@ async function fetchAsaasPayment(paymentId, env, apiKey, fetchImpl = fetch) {
   if (!base || !apiKey) throw new Error("asaas_not_configured");
   const response2 = await fetchImpl(`${base}/payments/${encodeURIComponent(paymentId)}`, {
     method: "GET",
-    headers: { accept: "application/json", "user-agent": "ZEVANORY/1.0 (Cloudflare Worker; sandbox)", access_token: apiKey }
+    headers: { accept: "application/json", "user-agent": `ZEVANORY/1.0 (Cloudflare Worker; ${String(env).toLowerCase() === "production" ? "production" : "sandbox"})`, access_token: apiKey },
+    signal: AbortSignal.timeout(pspProviderTimeoutMs())
   });
   if (!response2.ok) throw new Error(`asaas_lookup_${response2.status}`);
   return response2.json();
@@ -14681,26 +14884,48 @@ async function handler15(req, res) {
     res.statusCode = 405;
     return res.end(JSON.stringify({ error: "method_not_allowed" }));
   }
-  const webhookToken = process.env.ASAAS_WEBHOOK_TOKEN;
-  const provided = req.headers?.["asaas-access-token"];
-  if (!secureTokenEqual(webhookToken, provided)) {
-    res.statusCode = 401;
-    return res.end(JSON.stringify({ error: "webhook_auth_failed", accepted: false }));
+  // B05: segmento secreto no caminho (404) + token em tempo constante (401) + log estruturado sem segredos.
+  const webhookBody = req.parsedBody ?? req.body;
+  const auth = authorizeAsaasWebhook({ env: process.env, pathSecret: req.asaasPathSecret || "", token: req.headers?.["asaas-access-token"] });
+  const logFields = { path_valid: auth.path_valid, token_valid: auth.token_valid, event_id: webhookBody?.id, event: webhookBody?.event };
+  if (!auth.ok) {
+    logAsaasWebhook(console, { ...logFields, outcome: auth.reason });
+    res.statusCode = auth.status;
+    return res.end(JSON.stringify(auth.status === 404 ? { error: "not_found" } : { error: "webhook_auth_failed", accepted: false }));
   }
   if (process.env.FINANCIAL_EVENTS_ENABLED !== "true") {
+    logAsaasWebhook(console, { ...logFields, outcome: "financial_events_disabled" });
     res.statusCode = 503;
     return res.end(JSON.stringify({ error: "financial_events_disabled", accepted: false }));
   }
   if (!process.env.ASAAS_API_KEY || !asaasBaseUrl(process.env.ASAAS_ENV)) {
+    logAsaasWebhook(console, { ...logFields, outcome: "financial_provider_unavailable" });
     res.statusCode = 503;
     return res.end(JSON.stringify({ error: "financial_provider_unavailable", accepted: false }));
   }
-  const webhook = normalizeAsaasWebhook(req.parsedBody ?? req.body);
+  // Evento autenticado mas não tratado: 200 (senão o Asaas reenvia e, após 15 falhas, PAUSA a fila inteira).
+  if (classifyAsaasEventShape(webhookBody) === "unsupported") {
+    logAsaasWebhook(console, { ...logFields, outcome: "event_not_handled" });
+    return json11(res, 200, { accepted: true, ignored: true, reason: "event_not_handled" });
+  }
+  const webhook = normalizeAsaasWebhook(webhookBody);
   if (!webhook) {
+    logAsaasWebhook(console, { ...logFields, outcome: "unsupported_webhook" });
     res.statusCode = 400;
     return res.end(JSON.stringify({ error: "unsupported_webhook", accepted: false }));
   }
+  const dedupeKv = globalThis.__ZEVANORY_PRIVATE_KV__;
+  if (await asaasWebhookAlreadyProcessed(dedupeKv, webhook.providerEventId)) {
+    logAsaasWebhook(console, { ...logFields, outcome: "event_already_processed", duplicate: true });
+    return json11(res, 200, { accepted: true, duplicate: true, reason: "event_already_processed" });
+  }
+  const done = async (status, body, outcome) => {
+    if (status === 200) await markAsaasWebhookProcessed(dedupeKv, webhook.providerEventId, outcome);
+    logAsaasWebhook(console, { ...logFields, outcome, duplicate: body?.duplicate === true });
+    return json11(res, status, body);
+  };
   try {
+    // O corpo nunca é fonte da verdade: o estado vem da re-consulta autenticada ao Asaas.
     const payment = await fetchAsaasPayment(webhook.paymentId, process.env.ASAAS_ENV, process.env.ASAAS_API_KEY);
     const parsedOrderId = parseExternalReference(payment.externalReference);
     const checkoutSession = String(payment.checkoutSession || "");
@@ -14711,20 +14936,38 @@ async function handler15(req, res) {
     }
     const sql = cs(process.env.DATABASE_URL);
     const orders = await sql.query(`
-      SELECT order_id,amount,status,external_reference,provider_checkout_id,certification_pilot FROM orders
+      SELECT order_id,amount,status,external_reference,provider_checkout_id,certification_pilot,offer_id FROM orders
       WHERE ($1::text<>'' AND order_id::text=$1::text) OR ($2::text<>'' AND provider_checkout_id=$2::text)
     `, [parsedOrderId || "", checkoutSession]);
-    if (orders.length === 0) return json11(res, 200, { accepted: true, ignored: true, reason: "unlinked_payment" });
-    if (orders.length === 1 && supersededPartialRefund(webhook, payment, orders[0])) return json11(res, 200, { accepted: true, ignored: true, reason: "superseded_partial_refund" });
+    if (orders.length === 0) return done(200, { accepted: true, ignored: true, reason: "unlinked_payment" }, "unlinked_payment");
+    if (orders.length === 1 && supersededPartialRefund(webhook, payment, orders[0])) return done(200, { accepted: true, ignored: true, reason: "superseded_partial_refund" }, "superseded_partial_refund");
     if (
       orders.length === 1 &&
       ["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"].includes(webhook.eventName) &&
       String(payment.status || "") === "REFUNDED" &&
       paymentMatchesOrderIdentity(payment, orders[0])
     ) {
-      return json11(res, 200, { accepted: true, ignored: true, reason: "superseded_payment_event", order_id: String(orders[0].order_id), order_status: String(orders[0].status) });
+      return done(200, { accepted: true, ignored: true, reason: "superseded_payment_event", order_id: String(orders[0].order_id), order_status: String(orders[0].status) }, "superseded_payment_event");
+    }
+    // B05 (fora de ordem): estorno confirmado pelo provedor para pedido que nunca foi marcado pago. Antes virava
+    // 409 eterno (o CONFIRMED posterior é "superseded"), o Asaas reenviava até pausar a fila de TODOS os eventos.
+    // Agora: nada é liberado, o caso vai para reconciliação e o evento é aceito.
+    if (
+      orders.length === 1 &&
+      normalizeFinancialEvent(webhook.eventName) === "refund_confirmed" &&
+      ["created", "checkout_creating", "checkout_ready", "checkout_uncertain"].includes(String(orders[0].status)) &&
+      paymentMatchesOrderWebhook(webhook, payment, orders[0])
+    ) {
+      const recovery = await preserveFinancialReconciliation({ provider: "asaas", eventId: webhook.providerEventId, kind: "webhook_refund_before_payment_recorded", orderId: String(orders[0].order_id), payload: snapshot }).catch(() => ({ preserved: false }));
+      const queued = await queueAsaasWebhookReview(dedupeKv, { eventId: webhook.providerEventId, event: webhook.eventName, paymentId: webhook.paymentId, orderId: String(orders[0].order_id), reason: "refund_before_payment_recorded" });
+      if (!recovery.preserved && !queued) return json11(res, 503, { error: "financial_reconciliation_unavailable", accepted: false, reconciliation_required: true });
+      // NÃO marca o evento como processado no dedupe: a drenagem (drainAsaasReviewQueue) precisa reprocessá-lo quando a
+      // confirmação chegar; reentregas do Asaas só atualizam o mesmo item da fila (idempotente).
+      logAsaasWebhook(console, { ...logFields, outcome: "refund_before_payment_recorded" });
+      return json11(res, 200, { accepted: true, ignored: true, reason: "refund_before_payment_recorded", reconciliation_required: true, order_id: String(orders[0].order_id) });
     }
     if (orders.length !== 1 || !paymentMatchesOrderWebhook(webhook, payment, orders[0])) {
+      logAsaasWebhook(console, { ...logFields, outcome: "payment_reconciliation_failed" });
       res.statusCode = 409;
       return res.end(JSON.stringify({ error: "payment_reconciliation_failed", accepted: false }));
     }
@@ -14816,9 +15059,9 @@ async function handler15(req, res) {
         }
       }
     }
-    res.statusCode = 200;
-    return res.end(JSON.stringify({ accepted: true, duplicate: Number(outcome.inserted_count) === 0, event: normalized, order_id: orderId, order_status: outcome.order_status || outcome.current_status, fulfillment_status: outcome.fulfillment_status || null, refunded_total: refundedTotal }));
+    return done(200, { accepted: true, duplicate: Number(outcome.inserted_count) === 0, event: normalized, order_id: orderId, order_status: outcome.order_status || outcome.current_status, fulfillment_status: outcome.fulfillment_status || null, refunded_total: refundedTotal }, Number(outcome.inserted_count) === 0 ? "duplicate_effect" : normalized);
   } catch {
+    logAsaasWebhook(console, { ...logFields, outcome: "financial_reconciliation_unavailable" });
     res.statusCode = 503;
     return res.end(JSON.stringify({ error: "financial_reconciliation_unavailable", accepted: false }));
   }
@@ -18136,6 +18379,18 @@ function resolveHandler(req) {
     req.url = "/api/checkout?provider=stripe";
     return handler13;
   }
+  if (url.pathname === "/api/checkout/auto") {
+    req.url = "/api/checkout";
+    return handler13;
+  }
+  if (url.pathname === "/api/payments/continuity") return handlePspContinuity;
+  const asaasPathSecret = extractAsaasPathSecret(url.pathname);
+  if (asaasPathSecret) {
+    // B05: o segmento secreto só é lido aqui e comparado em tempo constante no handler; nunca é registrado.
+    req.asaasPathSecret = asaasPathSecret;
+    req.url = "/api/webhooks?provider=asaas";
+    return handler26;
+  }
   if (url.pathname === "/api/oauth/meta/start") {
     url.searchParams.set("provider", "meta_oauth");
     url.searchParams.set("action", "start");
@@ -18277,7 +18532,7 @@ function delegatedPaymentOrigin(env, requestUrl) {
 }
 __name(delegatedPaymentOrigin, "delegatedPaymentOrigin");
 function isPaymentMutation(pathname) {
-  return pathname.startsWith("/api/checkout") || /^\/api\/webhooks\/(asaas|mercadopago)$/.test(pathname);
+  return pathname.startsWith("/api/checkout") || /^\/api\/webhooks\/(asaas|mercadopago)$/.test(pathname) || extractAsaasPathSecret(pathname) !== "";
 }
 __name(isPaymentMutation, "isPaymentMutation");
 async function delegatePaymentRequest(request, env) {
@@ -18588,7 +18843,9 @@ var cloudflare_worker_default = {
 // Mercado Pago payment; if that still fails, the owner is alerted once per order.
 async function runPaidDeliveryWatchdog(env) {
   hydrateRuntimeConfig(env);
-  if (!process.env.DATABASE_URL || !process.env.MERCADOPAGO_ACCESS_TOKEN) return { ok: false, reason: "watchdog_unconfigured" };
+  const asaasReview = await drainAsaasReviewQueue(env).catch((error) => ({ error: String(error?.name || "drain_failed") }));
+  if (asaasReview && !asaasReview.skipped) console.info("asaas_webhook_review_drain", JSON.stringify(asaasReview));
+  if (!process.env.DATABASE_URL || !process.env.MERCADOPAGO_ACCESS_TOKEN) return { ok: false, reason: "watchdog_unconfigured", asaas_review: asaasReview };
   const sql = cs(process.env.DATABASE_URL);
   const kv = globalThis.__ZEVANORY_PRIVATE_KV__ || env.ZEVANORY_PRIVATE_ARTIFACTS;
   const recoveredWebhooks = await drainMercadoPagoWebhookRecovery({ ...env, ZEVANORY_PRIVATE_ARTIFACTS: kv }, async (paymentId) => {
@@ -18609,7 +18866,7 @@ async function runPaidDeliveryWatchdog(env) {
      where o.status = 'paid' and sf.status = 'pending' and coalesce(o.certification_pilot, false) = false
        and fe.received_at < now() - interval '15 minutes' and fe.received_at > now() - interval '7 days'
      order by fe.received_at asc limit 10`, []);
-  const out = { ok: true, checked: rows.length, delivered: 0, failed: 0, webhook_recovery: recoveredWebhooks };
+  const out = { ok: true, checked: rows.length, delivered: 0, failed: 0, webhook_recovery: recoveredWebhooks, asaas_review: asaasReview };
   for (const row of rows) {
     const orderId = String(row.order_id);
     if (kv?.get && await kv.get(`sandbox-proof-v2:order:${orderId}`).catch(() => null)) continue;
@@ -18675,6 +18932,9 @@ __name(runSalesPreflight, "runSalesPreflight");
 export {
   cloudflare_worker_default as default,
   cs as whatsappProofDatabase,
+  paymentProviderCandidates,
+  selectPaymentProvider,
+  drainAsaasReviewQueue,
   runPaidDeliveryWatchdog,
   runSalesPreflight,
   replyWhatsappConversation,
