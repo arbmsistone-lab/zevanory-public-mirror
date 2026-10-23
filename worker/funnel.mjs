@@ -22,8 +22,28 @@ export const METRIC_DEFINITIONS = Object.freeze({
   lead_submit: "formulário do material gratuito aceito (contagem agregada por origem); não é e-mail confirmado nem lead qualificado; não deduplicado por pessoa",
   "last7Days.leads": "inscrições registradas na tabela de leads nos últimos 7 dias (pendentes e confirmadas)",
   leads_qualified: "evento lead_qualified da telemetria; não é alimentado pelo material gratuito",
+  visitors: "LEGADO visitor-page-days: único por (dia, página, hash diário); a mesma pessoa em 3 páginas conta 3",
+  site_visitors: "visitor-days: único por (dia, hash diário) no site inteiro; 7 dias = soma de dias, não pessoas únicas",
+  buy_cta_view: "visitante/dia/página exposto ao botão de compra (vendas abertas)",
+  waitlist_cta_view: "visitante/dia/página exposto ao CTA de lista de espera (vendas fechadas)",
+  waitlist_click: "clique em Entrar na lista de espera, 1 por visitante/dia/produto; interesse, nunca lead nem intenção",
+  own_checkout_started: "sessão de pagamento do checkout próprio criada pelo servidor (vendas abertas), 1 por visitante+produto+provedor a cada janela fixa de 30 min",
+  ownCheckout: "vendas do checkout próprio: pedido com 1º pagamento confirmado pelo provedor (financial_events payment_confirmed), dia do pagamento em America/Sao_Paulo; 1 por sessão de compra (failover entre provedores não duplica); certificação/sandbox fora; só em produção",
 });
 export const INTENT_METRICS = Object.freeze(["checkout_intent", "hotmart_view", "subscribe_click", "lead_submit"]);
+// Funnel taxonomy v2 (AVAL Sol 23/10): signals deduplicated on the server with the same daily-rotating
+// visitor hash (no cookie, no IP stored), each in its own metric so waitlist interest never becomes
+// buying intent. Raw counters keep a "_raw" suffix and are never called unique.
+//   waitlist_click        one per visitor/day/product (interest; never lead nor intent)
+//   own_checkout_started  real transactional intent: only after the server created a valid checkout
+//                         session (sales open), one per visitor + product + provider per fixed 30-min bucket
+// Exposure (sent by the sales Worker with a page view of a switch-dependent page): buy_cta_view (sales
+// open) or waitlist_cta_view (sales closed), one per visitor/day/page; site_visitors is one per
+// visitor/day for the whole site (visitor-days; the legacy "visitors" metric is visitor-page-days).
+export const SIGNAL_METRICS = Object.freeze(["waitlist_click", "own_checkout_started"]);
+export const CTA_KINDS = Object.freeze(["buy", "waitlist"]);
+export const INTENT_BUCKET_MS = 30 * 60 * 1000;
+export const SITE_PAGE = "__site__";
 const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const label = (v, max) => { const x = String(v || "").toLowerCase(); return new RegExp(`^[a-z0-9_-]{1,${max}}$`).test(x) && !RESERVED_KEYS.has(x) ? x : ""; };
 // Traffic-quality class of a counted view, so human and automated traffic can be told apart
@@ -138,7 +158,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   const sources = Object.create(null), campaigns = Object.create(null);
   for (const row of traffic) {
     const m = /^(?:([a-z_]+):)?src:([a-z0-9_-]+)$/.exec(row.metric);
-    if (m) { const s = (sources[m[2]] = sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 }); s[m[1] || "views"] += Number(row.n) || 0; continue; }
+    if (m) { const s = (sources[m[2]] = sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 }); const k = m[1] || "views"; s[k] = (s[k] || 0) + (Number(row.n) || 0); continue; }
     const c = /^camp:([a-z0-9_-]+)$/.exec(row.metric);
     if (c && !RESERVED_KEYS.has(c[1])) campaigns[c[1]] = (campaigns[c[1]] || 0) + (Number(row.n) || 0);
   }
@@ -148,7 +168,7 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   }
   const pages = {};
   for (const row of traffic) {
-    if (row.metric.includes(":")) continue;
+    if (row.metric.includes(":") || String(row.page).startsWith("__")) continue;
     pages[row.page] = pages[row.page] || { views: 0, visitors: 0 };
     pages[row.page][row.metric] = Number(row.n) || 0;
     if (products[row.page]) products[row.page][row.metric] = Number(row.n) || 0;
@@ -185,13 +205,14 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   for (const row of cleanRows || []) {
     const n = Number(row.n) || 0;
     const m = /^(?:([a-z_]+):)?src:([a-z0-9_-]+)$/.exec(row.metric);
-    if (m) { if (RESERVED_KEYS.has(m[2])) continue; const s = (clean.sources[m[2]] = clean.sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 }); s[m[1] || "views"] += n; continue; }
+    if (m) { if (RESERVED_KEYS.has(m[2])) continue; const s = (clean.sources[m[2]] = clean.sources[m[2]] || { views: 0, checkout_intent: 0, hotmart_view: 0, subscribe_click: 0, lead_submit: 0 }); const k = m[1] || "views"; s[k] = (s[k] || 0) + n; continue; }
     const c = /^camp:([a-z0-9_-]+)$/.exec(row.metric);
     if (c) { if (!RESERVED_KEYS.has(c[1])) clean.campaigns[c[1]] = (clean.campaigns[c[1]] || 0) + n; continue; }
     const k = /^cls:([a-z_]+)$/.exec(row.metric);
     if (k) { clean.classes[k[1]] = (clean.classes[k[1]] || 0) + n; continue; }
     const a = /^asn:(\d{1,10})$/.exec(row.metric);
     if (a) { clean.asn[a[1]] = (clean.asn[a[1]] || 0) + n; continue; }
+    if (String(row.page).startsWith("__")) continue;
     const p = (clean.pages[row.page] = clean.pages[row.page] || Object.create(null));
     p[row.metric] = (p[row.metric] || 0) + n;
   }
@@ -223,10 +244,21 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
       byHourBrt: Object.fromEntries((byHour || []).map((r) => [String(r.h), Number(r.n) || 0])),
     };
   }
+  // Leads split (AVAL Sol): only double-opt-in confirmed leads are "Leads confirmados"; pending apart.
+  const leadSplit = await sql.query(`select count(*) filter (where status = 'pending' and created_at >= current_date - interval '6 days')::int as pending,
+      count(*) filter (where status = 'confirmed' and confirmed_at >= current_date - interval '6 days')::int as confirmed from zevanory_leads`, []).catch(() => null);
+  // Taxonomy v2 per UTC day (30 days): site visitor-days, and exposure/interest/real intent summed over the
+  // product pages only (numerators and denominators of the conversions share the same pages).
+  const daily = {};
+  const dailyRows = await sql.query(`select day::text as day, metric, sum(n)::int as n from zevanory_funnel_daily
+      where day > current_date - 30 and ((page = $1 and metric = 'site_visitors') or (page = any($2) and metric = any($3))) group by day, metric`,
+    [SITE_PAGE, [...Object.keys(FUNNEL_PRODUCTS), "conteudo-pronto"], ["buy_cta_view", "waitlist_cta_view", "waitlist_click", "waitlist_click_raw", "own_checkout_started", "own_checkout_started_raw"]]).catch(() => null);
+  for (const row of dailyRows || []) { const d = (daily[String(row.day).slice(0, 10)] = daily[String(row.day).slice(0, 10)] || {}); d[row.metric] = (d[row.metric] || 0) + (Number(row.n) || 0); }
+  const ownCheckout = await buildOwnCheckoutSales(sql, { production });
   const clean7 = await sql.query("select metric, coalesce(sum(n),0)::int as n from zevanory_funnel_daily where day >= greatest(current_date - 6, $1::date) and metric in ('views','visitors') group by metric", [CLEAN_SINCE]).catch(() => []);
   const cleanM = Object.fromEntries((clean7 || []).map(row=>[row.metric,Number(row.n)||0]));
   const metrics7 = Object.fromEntries(traffic7.map(row=>[row.metric,Number(row.n)||0]));
-  const last7Days = {windowDays:7, views:metrics7.views||0, visitors:metrics7.visitors||0, cleanSince:CLEAN_SINCE, cleanViews:cleanM.views||0, cleanVisitors:cleanM.visitors||0, leads:Number(leads7[0]?.n)||0, checkouts:Number(checkouts7[0]?.n)||0, mode:production?"production":"test"};
+  const last7Days = {windowDays:7, views:metrics7.views||0, visitors:metrics7.visitors||0, cleanSince:CLEAN_SINCE, cleanViews:cleanM.views||0, cleanVisitors:cleanM.visitors||0, leads:Number(leads7[0]?.n)||0, leadsPending:leadSplit?Number(leadSplit[0]?.pending)||0:null, leadsConfirmed:leadSplit?Number(leadSplit[0]?.confirmed)||0:null, checkouts:Number(checkouts7[0]?.n)||0, mode:production?"production":"test"};
   return {
     schema: "zevanory-funnel/v1",
     definitions: METRIC_DEFINITIONS,
@@ -241,8 +273,98 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
     productDaily,
     clean,
     checkoutDiag,
+    taxonomy: "zevanory-funnel/v2",
+    daily: dailyRows ? daily : null,
+    ownCheckout,
     topCampaigns: Object.entries(campaigns).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([campaign, views]) => ({ campaign, views })),
   };
+}
+
+// Server-side dedup through the existing visitors table: a fresh (day, key, vhash) row means "first time".
+async function firstTime(sql, day, key, vhash) {
+  const r = await sql.query(`insert into zevanory_funnel_visitors (day, page, vhash) values ($1::date, $2, $3) on conflict do nothing returning vhash`, [day, key, vhash]);
+  return r.length > 0;
+}
+const visitorHash = async (env, day, ip, userAgent) => (await sha256Hex(`${day}|${ip}|${userAgent}|${String(env.RESEND_API_KEY || env.DATABASE_URL || "zevanory")}`)).slice(0, 32);
+// Exposure + site visitor-days for a counted page view (called after recordPageView).
+export async function recordExposure(env, { sqlFactory, page, ip, userAgent, cta = null, src = "", now = Date.now() }) {
+  const sql = sqlFactory(env.DATABASE_URL);
+  await ensureFunnelSchema(sql);
+  const day = new Date(now).toISOString().slice(0, 10);
+  const vhash = await visitorHash(env, day, ip, userAgent);
+  if (await firstTime(sql, day, SITE_PAGE, vhash)) await bump(sql, day, SITE_PAGE, "site_visitors");
+  if (!CTA_KINDS.includes(cta)) return;
+  const metric = `${cta}_cta_view`;
+  if (await firstTime(sql, day, `cta:${cta}:${page}`, vhash)) { await bump(sql, day, page, metric); await bump(sql, day, page, `${metric}:src:${label(src, 24) || "direto"}`); }
+}
+// Deduplicated signals (waitlist_click, own_checkout_started) + their raw counters.
+export async function recordSignal(env, { sqlFactory, page, ip, userAgent, metric, provider = "", src = "", now = Date.now() }) {
+  if (!SIGNAL_METRICS.includes(metric)) return;
+  const sql = sqlFactory(env.DATABASE_URL);
+  await ensureFunnelSchema(sql);
+  const day = new Date(now).toISOString().slice(0, 10);
+  const vhash = await visitorHash(env, day, ip, userAgent);
+  const prov = label(provider, 20);
+  if (metric === "own_checkout_started" && !prov) return; // intent always names its provider
+  const key = metric === "waitlist_click" ? `wlc:${page}` : `ocs:${page}:${prov}:${Math.floor(now / INTENT_BUCKET_MS)}`;
+  await bump(sql, day, page, `${metric}_raw`);
+  if (await firstTime(sql, day, key, vhash)) {
+    await bump(sql, day, page, metric);
+    await bump(sql, day, page, `${metric}:src:${label(src, 24) || "direto"}`);
+    if (prov) await bump(sql, day, page, `${metric}:prov:${prov}`);
+  }
+}
+
+// Own-checkout confirmed sales (Mercado Pago now, Asaas failover), aggregate-only and PII-free.
+// Canonical unit: one purchase = one checkout session (orders.session_id; the order itself when absent),
+// so a failover MP -> Asaas inside the same session never becomes two sales; within it, the first
+// provider-confirmed payment event (financial_events payment_confirmed = authenticated provider webhook,
+// unique per provider + provider_payment_id) dates the sale in America/Sao_Paulo and names the provider.
+// Certification/sandbox orders never count; refunds are separate (not subtracted). Integrity markers
+// (never counted): paid orders without a confirmed event, confirmed events without an order, orders whose
+// status disagrees with the confirmation, and sessions with more than one confirmed order.
+export const OWN_CHECKOUT_SQL = `select to_char(t.paid_at at time zone 'America/Sao_Paulo', 'YYYY-MM-DD') as day, t.provider,
+         count(*)::int as confirmed, coalesce(sum(t.amount), 0)::float as gross,
+         count(*) filter (where t.order_status not in ('paid', 'refunded', 'partially_refunded'))::int as status_mismatch,
+         coalesce(sum(t.orders - 1), 0)::int as extra_orders_same_session
+    from (select distinct on (p.purchase) p.purchase, p.provider, p.paid_at, p.amount, p.order_status,
+                 count(*) over (partition by p.purchase) as orders
+            from (select coalesce(o.session_id::text, o.order_id::text) as purchase, lower(o.provider) as provider,
+                         min(fe.received_at) as paid_at, o.amount, o.status as order_status
+                    from financial_events fe join orders o on o.order_id = fe.order_id
+                   where fe.normalized_event = 'payment_confirmed' and coalesce(o.certification_pilot, false) = false
+                   group by o.order_id, o.session_id, o.provider, o.amount, o.status) p
+           order by p.purchase, p.paid_at) t
+   where t.paid_at > now() - interval '400 days'
+   group by 1, 2`;
+export const OWN_CHECKOUT_MARKERS_SQL = `select
+    (select count(*) from orders o
+      where o.status in ('paid', 'refunded', 'partially_refunded') and coalesce(o.certification_pilot, false) = false
+        and not exists (select 1 from financial_events fe where fe.order_id = o.order_id and fe.normalized_event = 'payment_confirmed'))::int as paid_without_event,
+    (select count(*) from financial_events fe
+      where fe.normalized_event = 'payment_confirmed'
+        and not exists (select 1 from orders o where o.order_id = fe.order_id))::int as event_without_order`;
+export async function buildOwnCheckoutSales(sql, { production = false } = {}) {
+  if (!production) return { mode: "test", counted: false, reason: "MERCADOPAGO_ENV não é production: o checkout próprio não cobra de verdade; nada é contado", byDay: {} };
+  try {
+    const [rows, markers] = await Promise.all([sql.query(OWN_CHECKOUT_SQL, []), sql.query(OWN_CHECKOUT_MARKERS_SQL, [])]);
+    const byDay = {};
+    let statusMismatch = 0, extraOrdersSameSession = 0;
+    for (const r of rows || []) {
+      const day = String(r.day || "").slice(0, 10), provider = String(r.provider || "").toLowerCase();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^[a-z]{2,20}$/.test(provider)) continue;
+      const d = (byDay[day] = byDay[day] || {});
+      const b = (d[provider] = d[provider] || { confirmed: 0, grossCents: 0 });
+      b.confirmed += Number(r.confirmed) || 0;
+      b.grossCents += Math.round((Number(r.gross) || 0) * 100);
+      statusMismatch += Number(r.status_mismatch) || 0;
+      extraOrdersSameSession += Number(r.extra_orders_same_session) || 0;
+    }
+    const m = markers?.[0] || {};
+    return { mode: "production", counted: true, dayZone: "America/Sao_Paulo", byDay, integrity: { statusMismatch, extraOrdersSameSession, paidWithoutConfirmedEvent: Number(m.paid_without_event) || 0, confirmedEventWithoutOrder: Number(m.event_without_order) || 0 } };
+  } catch {
+    return { mode: "production", counted: false, reason: "consulta das vendas do checkout próprio falhou", byDay: {} };
+  }
 }
 
 export async function publishFunnelSummary(env, deps) {
@@ -265,9 +387,16 @@ export async function handleFunnel(request, env, { sqlFactory, ctx } = {}) {
   if (!isCountableView({ method: "GET", page, userAgent, purpose: body.purpose, asn: body.asn })) return new Response(null, { status: 204 });
   // A hit without metric is a page view (existing contract). A metric that is present but unknown is
   // dropped, never counted as a view: an older/newer caller must not inflate visits.
-  const metric = body.metric == null || body.metric === "views" ? "views" : INTENT_METRICS.includes(body.metric) ? body.metric : null;
+  const metric = body.metric == null || body.metric === "views" ? "views" : INTENT_METRICS.includes(body.metric) || SIGNAL_METRICS.includes(body.metric) ? body.metric : null;
   if (!metric) return new Response(null, { status: 204 });
+  if (SIGNAL_METRICS.includes(metric)) {
+    const sig = recordSignal(env, { sqlFactory, page, ip: String(body.ip || ""), userAgent, metric, provider: body.provider, src: body.src }).catch((e) => console.error("funnel_signal_failed", e instanceof Error ? e.message : String(e)));
+    if (ctx?.waitUntil) ctx.waitUntil(sig); else await sig;
+    return new Response(null, { status: 204 });
+  }
   const work = recordPageView(env, { sqlFactory, page, ip: String(body.ip || ""), userAgent, metric, src: body.src, camp: body.camp, asn: body.asn, acceptLanguage: body.al === 1 || body.al === true, country: String(body.cty || "").slice(0, 2) }).catch((e) => console.error("funnel_hit_failed", e instanceof Error ? e.message : String(e)));
-  if (ctx?.waitUntil) ctx.waitUntil(work); else await work;
+  // Exposure and site visitor-days ride the same counted view (sequenced after it, never blocking the page).
+  const exposed = metric === "views" ? work.then(() => recordExposure(env, { sqlFactory, page, ip: String(body.ip || ""), userAgent, cta: CTA_KINDS.includes(body.cta) ? body.cta : null, src: body.src })).catch((e) => console.error("funnel_exposure_failed", e instanceof Error ? e.message : String(e))) : work;
+  if (ctx?.waitUntil) ctx.waitUntil(exposed); else await exposed;
   return new Response(null, { status: 204 });
 }
