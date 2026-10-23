@@ -9,7 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readTextNormalized } from "./helpers/text.mjs";
-import { readFileSync, readdirSync, mkdtempSync, cpSync, writeFileSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, mkdirSync, cpSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -134,6 +134,96 @@ test("gate do modo fechado (CLI): Offer paga em qualquer disponibilidade e check
   console.log(report.join("\n"));
   // Preço 0 continua livre: as 7 calculadoras publicadas têm Offer de preço 0.
   assert.ok(readdirSync(PUB).filter((f) => f.startsWith("calculadora-") && readTextNormalized(join(PUB, f)).includes('"price": "0"')).length >= 7);
+});
+
+// AVAL (Sol, 2ff8678): FALSE_PASS com alias de @context. O gate não expande JSON-LD; regra fail-closed
+// (scripts/sales_policy.py, ld_unsupported): bloco com @context diferente da string schema.org, palavra-chave
+// fora de @context/@type/@id/@graph, chave em IRI/termo compacto, @type de outro vocabulário, chave duplicada
+// ou "offers" escalar REPROVA, com ou sem oferta (G35: contexto desconhecido sem oferta também reprova, por
+// regra documentada — sem expansão não dá para provar a ausência de oferta paga).
+const SOL_ALIAS = '{"@context":{"t":"@type","o":"http://schema.org/offers","p":"http://schema.org/price","Offer":"http://schema.org/Offer"},"t":"Product","o":{"t":"Offer","p":37}}';
+const LD_CASES = {
+  "G22 alias de @context do Sol (t=@type, o=offers, price 37)": SOL_ALIAS,
+  "G23 alias de palavra-chave para @type": '{"@context":["https://schema.org",{"kind":"@type"}],"kind":"Offer","price":"37"}',
+  "G24 alias para offers e price": '{"@context":["https://schema.org",{"oferta":"http://schema.org/offers","preco":"http://schema.org/price"}],"@type":"Product","name":"x","oferta":{"preco":"37"}}',
+  "G25 truque de @vocab com termo Oferta": '{"@context":{"@vocab":"http://schema.org/","Oferta":"http://schema.org/Offer"},"@type":"Oferta","price":"37"}',
+  "G26 tipo por prefixo definido (s:Offer)": '{"@context":{"s":"https://schema.org/"},"@type":"s:Offer","s:price":"37"}',
+  "G27 contexto aninhado em nó interno": '{"@context":"https://schema.org","@type":"Product","name":"x","isRelatedTo":{"@context":{"t":"@type"},"t":"Offer","price":"37"}}',
+  "G28 contexto com escopo de tipo": '{"@context":["https://schema.org",{"Produto":{"@id":"http://schema.org/Product","@context":{"t":"@type"}}}],"@type":"Produto","subjectOf":{"t":"Offer","price":"37"}}',
+  "G29 @reverse itemOffered sem @type": '{"@context":"https://schema.org","@id":"#p","@type":"Product","name":"x","@reverse":{"itemOffered":{"price":"37"}}}',
+  "G30 @included com Offer": '{"@context":"https://schema.org","@type":"WebPage","@included":[{"@type":"Offer","price":"37"}]}',
+  "G31 propriedade em IRI absoluta": '{"@context":"https://schema.org","@type":"Product","name":"x","http://schema.org/offers":{"http://schema.org/price":"37"}}',
+  "G32 chave duplicada (price 37 e price 0)": '{"@context":"https://schema.org","@type":"Product","name":"x","offers":{"@type":"Offer","price":"37","price":"0"}}',
+  "G33 offers como referência IRI": '{"@context":"https://schema.org","@type":"Product","name":"x","offers":"https://vendas.zevanory.api.br/oferta#offer"}',
+  "G34 contexto remoto que não é schema.org": '{"@context":"https://evil.example/ctx.jsonld","t":"Product","o":{"t":"Offer","p":37}}',
+  "G35 contexto desconhecido SEM oferta (regra: reprova)": '{"@context":{"@vocab":"https://example.org/"},"@type":"Thing","name":"sem oferta"}',
+  "G36 JSON-LD sem @context": '{"@type":"Product","name":"sem contexto"}',
+  "G37 @type IRI de outro vocabulário (GoodRelations Offering)": '{"@context":"https://schema.org","@type":"http://purl.org/goodrelations/v1#Offering","price":"37"}',
+};
+const LD_CONTROLS = {
+  "C1 Offer de preço 0 com @context em lista": '{"@context":["https://schema.org"],"@type":"WebApplication","name":"x","offers":{"@type":"Offer","price":"0","priceCurrency":"BRL"}}',
+  "C2 http://schema.org/ com @id e @graph": '{"@context":"http://schema.org/","@graph":[{"@type":"Article","@id":"#a","headline":"x"}]}',
+};
+function ldCaseDirs(cases) {
+  return Object.entries(cases).map(([name, block]) => {
+    const dir = mkdtempSync(join(tmpdir(), "p13-ld-"));
+    cpSync(PUB, dir, { recursive: true, filter: (s) => !/[\\/](brand|assets)([\\/]|$)/.test(s) });
+    const f = join(dir, "termos.html"), before = readTextNormalized(f);
+    const after = before.replace("</main>", `<script type="application/ld+json">${block}</script></main>`);
+    assert.notEqual(after, before, "mutação não aplicada: " + name);
+    writeFileSync(f, after);
+    return { name, dir };
+  });
+}
+
+test("gate do modo fechado (CLI): JSON-LD com @context/forma não suportada reprova, com ou sem oferta (G22–G37); schema.org simples passa", () => {
+  const cases = ldCaseDirs(LD_CASES), controls = ldCaseDirs(LD_CONTROLS), report = [];
+  try {
+    for (const { name, dir } of cases) {
+      const r = audit(dir);
+      const line = (r.stdout.match(/P13_FAIL [^\n]*/) || [""])[0];
+      report.push(`${name}: ${r.status === 1 ? "KILLED" : "SURVIVED"} ${line.slice(0, 140)}`);
+      assert.equal(r.status, 1, name + " sobreviveu: " + r.stdout + r.stderr);
+      assert.match(line, /termos\.html: (JSON-LD fora da forma suportada|JSON-LD ilegivel)/, name);
+    }
+    for (const { name, dir } of controls) {
+      const r = audit(dir);
+      report.push(`${name}: ${r.status === 0 ? "PASS" : "FAIL"}`);
+      assert.equal(r.status, 0, name + " reprovado sem motivo: " + r.stdout + r.stderr);
+    }
+  } finally { for (const { dir } of [...cases, ...controls]) rmSync(dir, { recursive: true, force: true }); }
+  console.log(report.join("\n"));
+});
+
+test("mutantes do gate JSON-LD: sem a verificação de forma, @context sempre aceito, sem chave duplicada ou aceitando chave IRI, o caso do Sol ou outro G volta a passar", () => {
+  const gateMutants = {
+    "GM1 sem ld_unsupported (gate de 2ff8678)": [(s) => s.replace("            if why:\n", "            if False:\n"), "G22"],
+    "GM2 _context_ok sempre verdadeiro": [(s) => s.replace("def _context_ok(ctx) -> bool:\n", "def _context_ok(ctx) -> bool:\n    return True\n"), "G22"],
+    "GM3 aceita palavras-chave extras": [(s) => s.replace('ALLOWED_LD_KEYWORDS = {"@context", "@type", "@id", "@graph"}', 'ALLOWED_LD_KEYWORDS = {"@context", "@type", "@id", "@graph", "@reverse", "@included"}'), "G29"],
+    "GM4 aceita chave em IRI": [(s) => s.replace('if ":" in k or "/" in k:', 'if False:'), "G31"],
+    "GM5 sem rejeitar chave duplicada": [(s) => s.replace("json.loads(block, object_pairs_hook=_no_duplicate_keys)", "json.loads(block)"), "G32"],
+    "GM6 aceita @type de outro vocabulário": [(s) => s.replace("and not _TYPE_PREFIX_RE.match(t.strip()):", "and False:"), "G37"],
+    "GM7 aceita offers escalar": [(s) => s.replace("if not isinstance(o, dict):", "if False:"), "G33"],
+  };
+  const cases = ldCaseDirs(LD_CASES), report = [];
+  const src = readTextNormalized(join(ROOT, "scripts/sales_policy.py"));
+  try {
+    for (const [name, [fn, must]] of Object.entries(gateMutants)) {
+      const root = mkdtempSync(join(tmpdir(), "p13-gm-"));
+      try {
+        cpSync(join(ROOT, "data"), join(root, "data"), { recursive: true });
+        const mutated = fn(src);
+        assert.notEqual(mutated, src, "mutação não aplicada: " + name);
+        mkdirSync(join(root, "scripts"));
+        writeFileSync(join(root, "scripts", "sales_policy.py"), mutated);
+        const survivors = cases.filter(({ dir }) => spawnSync(PY, [join(root, "scripts/sales_policy.py"), "--audit", dir, "--mode", "closed"], { encoding: "utf8", env }).status === 0).map(({ name: n }) => n.split(" ")[0]);
+        const killed = survivors.includes(must);
+        report.push(`${name}: ${killed ? "KILLED" : "SURVIVED"} (casos que passam no gate mutante: ${survivors.join(",") || "nenhum"})`);
+        assert.ok(killed, `${name} sobreviveu: ${must} continua reprovado com o gate mutante`);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    }
+  } finally { for (const { dir } of cases) rmSync(dir, { recursive: true, force: true }); }
+  console.log(report.join("\n"));
 });
 
 test("cache: páginas que dependem do interruptor saem com no-store nos dois modos e o fechamento vale na requisição seguinte", async () => {

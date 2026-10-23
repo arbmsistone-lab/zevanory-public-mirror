@@ -116,6 +116,88 @@ def _offers(node, under_offers: bool = False):
             yield from _offers(v, k == "offers")
 
 
+# AVAL (Sol, 2ff8678, FALSE_PASS por alias de @context): o gate NAO expande JSON-LD. Regra fail-closed:
+# um bloco JSON-LD so e analisado se usar exclusivamente o vocabulario schema.org na forma que o
+# normalizador entende; qualquer outra forma reprova o bloco INTEIRO, haja ou nao oferta nele (sem
+# expansao nao da para provar a ausencia de oferta paga). Reprovam:
+#   * @context ausente no topo, ou qualquer @context (topo ou aninhado) que nao seja a string schema.org
+#     (http/https, com ou sem barra final) ou lista so dessas strings: contexto-objeto (definicao de
+#     termo, alias de palavra-chave como "t": "@type", @vocab, prefixos, contexto com escopo), URL
+#     remota diferente de schema.org, null (reset de contexto);
+#   * palavra-chave fora de @context/@type/@id/@graph (@reverse, @included, @nest, @list, @set, @value,
+#     @language, @json, grafias como "@Type" etc.);
+#   * chave em forma de IRI ou termo compacto ("schema:offers", "http://schema.org/price", "s:x");
+#   * @type em IRI/termo compacto de outro vocabulario ("s:Offer", "gr:Offering", "urn:x");
+#   * chave duplicada no mesmo objeto (o parser do buscador pode ficar com o outro valor);
+#   * "offers" com valor escalar (referencia a oferta que o gate nao ve).
+# Pagina com JSON-LD fora dessa forma precisa ser reescrita com @context "https://schema.org".
+SCHEMA_CONTEXTS = {"https://schema.org", "http://schema.org"}
+ALLOWED_LD_KEYWORDS = {"@context", "@type", "@id", "@graph"}
+
+
+def _context_ok(ctx) -> bool:
+    if isinstance(ctx, str):
+        return ctx.rstrip("/") in SCHEMA_CONTEXTS and ctx.count("/") <= 3
+    if isinstance(ctx, list):
+        return bool(ctx) and all(isinstance(c, str) and _context_ok(c) for c in ctx)
+    return False
+
+
+def _no_duplicate_keys(pairs):
+    seen = {}
+    for k, v in pairs:
+        if k in seen:
+            raise ValueError(f"chave duplicada {k!r}")
+        seen[k] = v
+    return seen
+
+
+def ld_unsupported(data) -> str | None:
+    """Motivo pelo qual o bloco JSON-LD nao pode ser provado sem expansao (None = forma suportada)."""
+    tops = data if isinstance(data, list) else [data]
+    if not tops:
+        return "bloco vazio"
+    for top in tops:
+        if not isinstance(top, dict) or "@context" not in top:
+            return "@context ausente no topo"
+
+    def walk(node, path):
+        if isinstance(node, list):
+            for i, x in enumerate(node):
+                r = walk(x, f"{path}[{i}]")
+                if r:
+                    return r
+            return None
+        if not isinstance(node, dict):
+            return None
+        for k, v in node.items():
+            here = f"{path}.{k}"
+            if k == "@context":
+                if not _context_ok(v):
+                    return f"@context nao suportado em {path or '$'}: {json.dumps(v, ensure_ascii=False)[:80]}"
+                continue
+            if k.startswith("@") and k not in ALLOWED_LD_KEYWORDS:
+                return f"palavra-chave {k} nao suportada em {path or '$'}"
+            if ":" in k or "/" in k:
+                return f"chave em forma de IRI/termo compacto {k!r} em {path or '$'}"
+            if k in ("@type", "type"):
+                for t in (v if isinstance(v, list) else [v]):
+                    if not isinstance(t, str):
+                        return f"@type nao textual em {here}"
+                    if (":" in t or "/" in t) and not _TYPE_PREFIX_RE.match(t.strip()):
+                        return f"@type de outro vocabulario {t!r} em {here}"
+            if k == "offers":
+                for o in (v if isinstance(v, list) else [v]):
+                    if not isinstance(o, dict):
+                        return f"offers com valor escalar em {here}"
+            r = walk(v, here)
+            if r:
+                return r
+        return None
+
+    return walk(data, "")
+
+
 def _price_values(offer: dict) -> list:
     vals = [offer.get(k) for k in PRICE_KEYS if offer.get(k) not in (None, "")]
     spec = offer.get("priceSpecification")
@@ -162,9 +244,13 @@ def audit_closed(out_dir: Path) -> list[str]:
             problems.append(f"{f.name}: propriedade offers (microdata/RDFa) em modo fechado")
         for block in LD_RE.findall(text):
             try:
-                data = json.loads(block)
-            except ValueError:
+                data = json.loads(block, object_pairs_hook=_no_duplicate_keys)
+            except (ValueError, RecursionError):
                 problems.append(f"{f.name}: JSON-LD ilegivel (nao da para provar ausencia de oferta paga)")
+                continue
+            why = ld_unsupported(data)
+            if why:
+                problems.append(f"{f.name}: JSON-LD fora da forma suportada ({why}); sem expansao nao da para provar ausencia de oferta paga")
                 continue
             for offer in _offers(data):
                 if paid_offer(offer):
