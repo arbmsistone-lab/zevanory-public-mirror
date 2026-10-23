@@ -2,6 +2,12 @@
 the decision layer and its fail-closed policy. Run: python -m unittest -v scripts/av_gate/test_av_gate.py"""
 import copy, json, os, sys, tempfile, unittest
 
+try:  # explicit dependency (scripts/av_gate/requirements.txt): a missing tool is ERROR_INFRA, never a silent skip
+    import numpy  # noqa: F401
+except ImportError:
+    print("::error title=AV_GATE_TESTS::ERROR_INFRA TOOL_MISSING:numpy")
+    sys.exit(3)
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import zevanory_av_gate as G  # noqa: E402
 
@@ -26,8 +32,10 @@ def good_M():
         "spectral": {"spectral_flatness": 0.08, "tonal_ratio": 0.06}, "prosody": {"voiced_fraction": 0.6, "f0_sd_st": 3.1, "hnr_db": 11.0},
         "dnsmos": {"sig": 3.4, "bak": 3.9, "ovrl": 3.0},
         "asr": {"wer_a": 0.08, "wer_b": 0.15, "wer_consensus": 0.0, "cer_consensus": 0.0, "critical_missed": [], "critical_inserted": [],
-                "instruction_leak": [], "sales_spoken_hits": []},
-        "rate": {"wpm": 150.0, "win_wpm_min": 140.0, "win_wpm_max": 162.0}, "speaker_cos": 0.82,
+                "instruction_leak": [], "sales_spoken_hits": [],
+                "clip_errors_noncritical": 0, "clip_errors_total": 0},
+        "rate": {"wpm": 150.0, "win_wpm_min": 140.0, "win_wpm_max": 162.0}, "speaker_cos": 0.82, "reference_independent": True,
+        "frames": {"burned": True, "bbox": [180, 1180, 860, 1360], "contrast_min": 15.9},
         "captions": {"cues": 6, "measurable": 6, "deltas_ms": [0, 10, -20, 30, 0, 5], "script_wer": 0.0, "max_line_chars": 34, "max_lines": 1, "mean_cps": 14.0},
         "sales_text_hits": [],
     }
@@ -85,7 +93,10 @@ class Decision(unittest.TestCase):
             "v3.clipped_samples": lambda M: M.update(stream_clipped_samples=12),
             "v3.noise_floor": lambda M: M["timeline"].update(noise_floor_dbfs=-40.0),
             "v3.tonal_ratio": lambda M: M["spectral"].update(tonal_ratio=0.9),
-            "v2.consensus_wer": lambda M: M["asr"].update(wer_consensus=0.06),
+            "v2.clip_errors": lambda M: M["asr"].update(clip_errors_noncritical=2),
+            "v7.contrast_px": lambda M: M["frames"].update(contrast_min=1.9),
+            "v7.safe_area_px": lambda M: M["frames"].update(bbox=[180, 1600, 860, 1820]),
+            "v7.captions_burned": lambda M: M.update(frames={"burned": False}),
             "v2.critical_terms": lambda M: M["asr"].update(critical_missed=["tres"]),
             "v2.instruction_leak": lambda M: M["asr"].update(instruction_leak=["a:style:fale com voz"]),
             "v4.wpm": lambda M: M["rate"].update(wpm=205.0),
@@ -113,7 +124,7 @@ class Decision(unittest.TestCase):
         self.assertEqual(self.v(M)["verdict"], "BLOCKED")
         M = good_M()
         M["asr"]["wer_b"] = None
-        M["asr"].pop("wer_consensus")
+        M["asr"].pop("clip_errors_noncritical")
         M["errors"]["engine_b"] = "engine_b_model_missing"
         self.assertEqual(self.v(M)["verdict"], "ERROR_INFRA")
         M = good_M()
@@ -121,6 +132,11 @@ class Decision(unittest.TestCase):
         d = self.v(M)
         self.assertEqual(d["verdict"], "BLOCKED")
         self.assertIn("v4.speaker", d["blocked"])
+        M = good_M()  # the clip itself used as "brand reference" is not an independent reference
+        M["reference_independent"] = False
+        d = self.v(M)
+        self.assertEqual(d["verdict"], "BLOCKED")
+        self.assertEqual(d["blocked"], ["v4.speaker"])
 
     def test_unconsumed_error_never_passes(self):
         M = good_M()
@@ -165,3 +181,26 @@ class Captions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CorpusAndIndependence(unittest.TestCase):
+    def test_corpus_metrics(self):
+        r = "a b c d e f g h i j".split()
+        m = G.corpus_metrics([(r, r), (r, "a b c d e f g h i x".split())])
+        self.assertEqual(m["words"], 20)
+        self.assertEqual(m["word_errors"], 1)
+        self.assertAlmostEqual(m["wer"], 0.05)
+
+    def test_reference_independence(self):
+        import numpy as np
+        rng = np.random.default_rng(1)
+        x = np.repeat(rng.random(400), 160) * rng.standard_normal(64000)
+        self.assertFalse(G.reference_independent(x[8000:40000], x))
+        y = np.repeat(rng.random(400), 160) * rng.standard_normal(64000)
+        self.assertTrue(G.reference_independent(y, x))
+
+    def test_alignment_table(self):
+        ref = "custa tres reais".split()
+        rows = G.alignment_table(ref, "custa quatro reais".split(), "custa tres reais".split(), ref)
+        self.assertEqual([r["A"] for r in rows if r["ref"]], ["custa", "quatro", "reais"])
+        self.assertEqual([r["B"] for r in rows if r["ref"]], ["custa", "tres", "reais"])

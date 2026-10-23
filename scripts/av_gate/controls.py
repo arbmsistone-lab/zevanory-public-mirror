@@ -39,12 +39,12 @@ def http(url, timeout=60):
 
 
 # ------------------------------------------------------------------------------------- human references
-def fetch_fleurs(dest, want=400):
+def fetch_fleurs(dest, want=900):
     """Stream FLEURS pt_br (test, then dev) and keep up to `want` clips that pass the TEXT filter.
     Returns list of dicts {path, text, gender, id, source}."""
     os.makedirs(dest, exist_ok=True)
     tried, acc = [], []
-    for split in ("test", "dev"):
+    for split in ("test", "dev", "train"):
         try:
             rows = {}
             tsv = http(f"{FLEURS}/{split}.tsv").read().decode("utf-8", "replace")
@@ -170,12 +170,13 @@ class Builder:
         os.makedirs(work, exist_ok=True)
 
     def build(self, cid, raw, script, *, voice=HUMAN_VOICE, reference=None, texts=None, critical_terms=None,
-              pkg=None, mutate_dir=None, audio=True):
+              pkg=None, mutate_dir=None, audio=True, render_style=None):
         d = os.path.join(self.work, cid)
         shutil.rmtree(d, ignore_errors=True)
         os.makedirs(d)
         r = G.package(raw, script, d, self.E, **(pkg or {}))
-        mp4 = render_mp4(r["narration"], os.path.join(d, "final.mp4"), audio=audio)
+        mp4 = G.render_video(r["narration"], r["cues"], os.path.join(d, "final.mp4"), style=render_style, audio=audio,
+                             duration=None if audio else r["duration_s"])
         ref = None
         if reference:
             ref = os.path.join(d, "brand_reference.wav")
@@ -222,14 +223,18 @@ def run(work, out):
                 screened.append(c)
         except G.InfraError as e:
             res["notes"].append(f"screen_error:{e}")
-    pos = []
-    seen = set()
+    pos, seen = [], set()
     numeric = [c for c in screened if any(w in NUM_SWAP for w in [strip(x) for x in c["text"].split()])]
-    for c in (numeric[:1] + [x for x in screened if x["gender"] == "FEMALE"] + [x for x in screened if x["gender"] == "MALE"] + screened):
-        if c["id"] in seen or len(pos) >= 6:
+    fem = [x for x in screened if x["gender"] == "FEMALE"]
+    mal = [x for x in screened if x["gender"] != "FEMALE"]
+    order = numeric[:1] + [v for pair in zip(fem, mal) for v in pair] + fem + mal  # alternate genders while both last
+    for c in order:
+        if c["id"] in seen or len(pos) >= 10:
             continue
         seen.add(c["id"])
         pos.append(c)
+    res["human_gender"] = {"screened_female": len(fem), "screened_male_or_unk": len(mal),
+                           "used_female": sum(1 for c in pos if c["gender"] == "FEMALE"), "used_total": len(pos)}
     res["human_candidates"] = len(cands)
     fails = {}
     for c in cands:
@@ -270,8 +275,8 @@ def run(work, out):
     # ---- positives
     for i, c in enumerate(pos, 1):
         kind = "positive" if human else "wiring"
-        safe(f"P{i:02d}", kind, f"fala humana pt-BR ({c['gender']}) {c['source']}", "PASS" if human else "ANY", [],
-             lambda c=c, i=i: B.build(f"P{i:02d}", c["path"], c["text"], reference=c["path"]), base=c.get("source"))
+        safe(f"P{i:02d}", kind, f"fala humana pt-BR ({c['gender']}) {c['source']}", "PASS_SPEAKER_BLOCKED" if human else "ANY", ["v4.speaker"],
+             lambda c=c, i=i: B.build(f"P{i:02d}", c["path"], c["text"]), base=c.get("source"))
 
     P = pos[0]
     fast = max(pos, key=lambda c: c.get("wpm_raw", 0))
@@ -284,7 +289,7 @@ def run(work, out):
 
     # ---- synthetic signals (script = a real approved script; audio is not speech)
     def synth(cid, sig, sr=48000):
-        return lambda: B.build(cid, write_raw(os.path.join(tmp, cid + ".wav"), sig, sr), S, reference=P["path"])
+        return lambda: B.build(cid, write_raw(os.path.join(tmp, cid + ".wav"), sig, sr), S)
     T = 12.0
     safe("N01", "negative", "tom puro 196 Hz", "FAIL", ["v3.tonal_ratio", "v2.consensus_wer"], synth("N01", tone(T)))
     safe("N02", "negative", "ruído branco", "FAIL", ["v3.spectral_flatness", "v2.consensus_wer"], synth("N02", 0.2 * rng.standard_normal(int(T * 48000))))
@@ -297,31 +302,31 @@ def run(work, out):
 
     # ---- derived from human speech, one defect each
     def from_raw(cid, xmod, sr=16000, script=None, **kw):
-        return lambda: B.build(cid, write_raw(os.path.join(tmp, cid + ".wav"), xmod, sr), script or P["text"], reference=kw.pop("reference", P["path"]), **kw)
+        return lambda: B.build(cid, write_raw(os.path.join(tmp, cid + ".wav"), xmod, sr), script or P["text"], reference=kw.pop("reference", None), **kw)
     xp = x16(P)
     # hard clipping of the SPEECH at −18 dB below its peak (the noise floor stays where it was), then re-levelled
     pk_ = float(np.max(np.abs(xp)))
     safe("N05", "negative", "fala clipada (corte a −18 dB do pico) e renormalizada", "FAIL", ["v3.clip_density"],
          from_raw("N05", np.clip(xp, -pk_ * 10 ** (-18 / 20), pk_ * 10 ** (-18 / 20))), base=P["source"])
     safe("N06", "negative", "loudness fora (derivado −30 LUFS)", "FAIL", ["v3.stream_lufs"],
-         lambda: B.build("N06", P["path"], P["text"], reference=P["path"], pkg={"stream_lufs": -30.0}), base=P["source"])
+         lambda: B.build("N06", P["path"], P["text"], pkg={"stream_lufs": -30.0}), base=P["source"])
 
     def tp_over():
         for lim in (-1.0, -1.3, -0.8, -1.6):
-            info = B.build("N07", P["path"], P["text"], reference=P["path"], pkg={"stream_lufs": -16.5, "stream_limit_db": lim, "stream_tp_target": -0.4})
+            info = B.build("N07", P["path"], P["text"], pkg={"stream_lufs": -16.5, "stream_limit_db": lim, "stream_tp_target": -0.4})
             tp = info["pkg"]["stream_loudness"]["tp"]
             if -1.9 < tp < -0.4:
                 return info
         raise RuntimeError(f"tp_over_not_in_window:{tp}")
     safe("N07", "negative", "true peak acima (derivado TP entre −2 e −0,3 dBTP)", "FAIL", ["v3.stream_tp"], tp_over, base=P["source"])
     safe("N08", "negative", "true peak grosseiro sem limitador (+ganho)", "FAIL", ["v3.stream_tp"],
-         lambda: B.build("N08", P["path"], P["text"], reference=P["path"], pkg={"stream_lufs": -11.0, "no_limiter": True}), base=P["source"])
+         lambda: B.build("N08", P["path"], P["text"], pkg={"stream_lufs": -11.0, "no_limiter": True}), base=P["source"])
     safe("N09", "negative", "silêncio (vídeo sem narração audível)", "FAIL", ["v1.narration_present"], synth("N09", np.zeros(int(10 * 48000))))
 
     def no_audio():
-        info = B.build("N10", P["path"], P["text"], reference=P["path"], audio=False)
+        info = B.build("N10", P["path"], P["text"], audio=False)
         os.remove(os.path.join(info["dir"], "master.wav"))
-        info["manifest"] = G.write_manifest(info["dir"], info["mp4"], P["text"], HUMAN_VOICE, reference=os.path.join(info["dir"], "brand_reference.wav"), captions_style=STYLE)
+        info["manifest"] = G.write_manifest(info["dir"], info["mp4"], P["text"], HUMAN_VOICE, captions_style=STYLE)
         return info
     safe("N10", "negative", "MP4 sem faixa de áudio e sem master (narração ausente)", "FAIL", ["v1.audio_stream"], no_audio, base=P["source"])
 
@@ -333,7 +338,7 @@ def run(work, out):
         at = min(gaps, key=lambda g: abs(g - mid_t)) if gaps else mid_t
         k = int(at * 16000)
         y = np.concatenate([x[:k], np.zeros(int(1.8 * 16000)), x[k:]])
-        return B.build("N11", write_raw(os.path.join(tmp, "N11.wav"), y, 16000), fast["text"], reference=fast["path"])
+        return B.build("N11", write_raw(os.path.join(tmp, "N11.wav"), y, 16000), fast["text"])
     safe("N11", "negative", "pausa longa inserida (1,8 s)", "FAIL", ["v4.pause_max"], long_pause, base=fast["source"])
 
     def psola(cid, c, k):
@@ -356,7 +361,7 @@ def run(work, out):
         out = call(man, "Get resynthesis (overlap-add)")
         p = os.path.join(tmp, cid + ".wav")
         out.save(p, "WAV")
-        return B.build(cid, p, c["text"], reference=c["path"])
+        return B.build(cid, p, c["text"])
     safe("N12", "negative", "prosódia achatada (F0 monotônico, PSOLA)", "FAIL", ["v4.f0_sd"], lambda: psola("N12", mid, 0.0), base=mid["source"])
     safe("N25", "negative", "prosódia comprimida (faixa de F0 × 0,2, PSOLA)", "FAIL", ["v4.f0_sd"], lambda: psola("N25", mid, 0.2), base=mid["source"])
 
@@ -368,10 +373,10 @@ def run(work, out):
                 if s in NUM_SWAP:
                     rep = NUM_SWAP[s] + re.sub(r"^[\wÀ-ÿ]+", "", w)
                     script = " ".join(words[:k] + [rep] + words[k + 1:])
-                    return B.build("N13", c["path"], script, reference=c["path"]), f"{w}->{rep}"
+                    return B.build("N13", c["path"], script), f"{w}->{rep}"
         words = P["text"].split()  # fallback: negation absent from the audio
         script = " ".join(words[:1] + ["não"] + words[1:])
-        return B.build("N13", P["path"], script, reference=P["path"]), "negacao_inserida"
+        return B.build("N13", P["path"], script), "negacao_inserida"
     def n13():
         info, how = wrong_number()
         info["how"] = how
@@ -383,7 +388,7 @@ def run(work, out):
         words = P["text"].split()
         k = max(range(1, len(words)), key=lambda i: len(strip(words[i])))
         script = " ".join(words[:k] + ["ZEVANORY"] + words[k + 1:])
-        return B.build("N14", P["path"], script, reference=P["path"], critical_terms=["ZEVANORY"])
+        return B.build("N14", P["path"], script, critical_terms=["ZEVANORY"])
     safe("N14", "negative", "marca crítica ausente na fala (ZEVANORY no roteiro, não falada)", "FAIL", ["v2.critical_terms"], brand_word, base=P["source"])
 
     def leak():
@@ -391,7 +396,7 @@ def run(work, out):
         words = c["text"].split()
         style = " ".join(words[:5])
         voice = dict(HUMAN_VOICE, style=style)
-        return B.build("N15", c["path"], " ".join(words[5:]), reference=c["path"], voice=voice)
+        return B.build("N15", c["path"], " ".join(words[5:]), voice=voice)
     safe("N15", "negative", "instrução de estilo lida em voz alta antes do texto", "FAIL", ["v2.instruction_leak"], leak)
 
     fast_base = max(pos, key=lambda c: c.get("wpm_raw", 0))
@@ -400,7 +405,7 @@ def run(work, out):
         def go():
             p = os.path.join(tmp, cid + ".wav")
             ff("-i", c["path"], "-af", f"atempo={f}", "-ac", "1", p)
-            return B.build(cid, p, c["text"], reference=c["path"])
+            return B.build(cid, p, c["text"])
         return go
     safe("N16", "negative", "fala acelerada 1,4×", "FAIL", ["v4.wpm"], tempo("N16", fast_base, 1.4), base=fast_base["source"])
     safe("N17", "negative", "fala desacelerada 0,7×", "FAIL", ["v4.wpm"], tempo("N17", slow_base, 0.7), base=slow_base["source"])
@@ -411,18 +416,18 @@ def run(work, out):
         os.remove(mp4)
         return out
     safe("N18", "negative", "A/V deslocado 200 ms (contêiner)", "FAIL", ["v6.drift_max", "v7.caption_timing"],
-         lambda: B.build("N18", P["path"], P["text"], reference=P["path"], mutate_dir=offset_container), base=P["source"])
+         lambda: B.build("N18", P["path"], P["text"], mutate_dir=offset_container), base=P["source"])
     safe("N19", "negative", "A/V deslocado 200 ms (atraso embutido no áudio)", "FAIL", ["v6.drift_max", "v7.caption_timing"],
-         lambda: B.build("N19", P["path"], P["text"], reference=P["path"], pkg={"inject_delay_s": 0.2}), base=P["source"])
+         lambda: B.build("N19", P["path"], P["text"], pkg={"inject_delay_s": 0.2}), base=P["source"])
 
     def no_caps():
-        info = B.build("N20", P["path"], P["text"], reference=P["path"])
+        info = B.build("N20", P["path"], P["text"])
         os.remove(os.path.join(info["dir"], "captions.vtt"))
-        info["manifest"] = G.write_manifest(info["dir"], info["mp4"], P["text"], HUMAN_VOICE, reference=os.path.join(info["dir"], "brand_reference.wav"), captions_style=STYLE)
+        info["manifest"] = G.write_manifest(info["dir"], info["mp4"], P["text"], HUMAN_VOICE, captions_style=STYLE)
         return info
     safe("N20", "negative", "legendas ausentes", "FAIL", ["v1.captions_present"], no_caps, base=P["source"])
     safe("N21", "negative", "CTA/preço de compra com VENDAS FECHADAS (descrição)", "FAIL", ["v2.sales_closed_text"],
-         lambda: B.build("N21", P["path"], P["text"], reference=P["path"], texts={"title": "Lucro & Caixa", "description": "Lucro & Caixa — R$ 247,00 · Garantia de 7 dias: https://vendas.zevanory.api.br/comprar/ZEV-LCX-011"}), base=P["source"])
+         lambda: B.build("N21", P["path"], P["text"], texts={"title": "Lucro & Caixa", "description": "Lucro & Caixa — R$ 247,00 · Garantia de 7 dias: https://vendas.zevanory.api.br/comprar/ZEV-LCX-011"}), base=P["source"])
     safe("N22", "negative", "voz trocada (outro locutor contra a referência da marca)", "FAIL", ["v4.speaker"],
          lambda: B.build("N22", P["path"], P["text"], reference=other["path"]), base=P["source"])
 
@@ -432,7 +437,7 @@ def run(work, out):
         n = int(G.FRAME * 16000)
         rms = np.sqrt(np.mean(np.concatenate([x[i * n:(i + 1) * n] for i in np.nonzero(sp)[0]]) ** 2))
         y = x + rng.standard_normal(len(x)) * rms / 10 ** (18 / 20)
-        return B.build("N23", write_raw(os.path.join(tmp, "N23.wav"), y, 16000), P["text"], reference=P["path"])
+        return B.build("N23", write_raw(os.path.join(tmp, "N23.wav"), y, 16000), P["text"])
     safe("N23", "negative", "ruído de fundo (SNR 18 dB)", "FAIL", ["v3.snr", "v3.noise_floor"], noise_bed, base=P["source"])
 
     def whine():
@@ -445,10 +450,10 @@ def run(work, out):
         rms = np.sqrt(np.mean(np.concatenate([x[i * n:(i + 1) * n] for i in np.nonzero(sp)[0]]) ** 2))
         t = np.arange(len(x)) / 16000
         y = x + gate * np.sqrt(2) * rms * 10 ** (-4 / 20) * np.sin(2 * np.pi * 2000 * t)
-        return B.build("N26", write_raw(os.path.join(tmp, "N26.wav"), y, 16000), P["text"], reference=P["path"])
+        return B.build("N26", write_raw(os.path.join(tmp, "N26.wav"), y, 16000), P["text"])
     safe("N26", "negative", "artefato tonal (apito 2 kHz só durante a fala)", "FAIL", ["v3.tonal_ratio"], whine, base=P["source"])
     safe("N27", "negative", "narração curta e 6 s de silêncio no fim do vídeo", "FAIL", ["v1.narration_coverage"],
-         lambda: B.build("N27", P["path"], P["text"], reference=P["path"], pkg={"tail_s": 6.0}), base=P["source"])
+         lambda: B.build("N27", P["path"], P["text"], pkg={"tail_s": 6.0}), base=P["source"])
 
     def espeak_swap():
         p = os.path.join(tmp, "N24.wav")
@@ -456,22 +461,138 @@ def run(work, out):
         return B.build("N24", p, P["text"], reference=P["path"], voice=BRAND if not human else HUMAN_VOICE)
     safe("N24", "negative", "voz robótica (espeak-ng) no lugar da voz da marca", "FAIL", ["v4.speaker"], espeak_swap, base=P["source"])
 
+    # ---- V7 from PIXELS: the manifest still declares the good style; only the frames reveal the defect
+    safe("N28", "negative", "legenda queimada com baixo contraste (#3A4A5A sobre #0C1C2B)", "FAIL", ["v7.contrast_px"],
+         lambda: B.build("N28", P["path"], P["text"], render_style={"font_color": "#3A4A5A"}), base=P["source"])
+    safe("N29", "negative", "legenda queimada fora da área segura (caixa em y 1600–1840)", "FAIL", ["v7.safe_area_px"],
+         lambda: B.build("N29", P["path"], P["text"], render_style={"box": [96, 1600, 768, 240]}), base=P["source"])
+    safe("N30", "negative", "legenda não queimada (texto invisível)", "FAIL", ["v7.captions_burned"],
+         lambda: B.build("N30", P["path"], P["text"], render_style={"font_color": "#0C1C2B"}), base=P["source"])
+
+    # ---- physical near-limit samples where ONLY one defect exists (mild → strong; first fully isolated one is kept)
+    def isolate(cid, desc, targets, variants, base=None):
+        tried, last = [], None
+        for label, mk in variants:
+            try:
+                info = mk(f"{cid}_{label}")
+                M = G.measure(info["mp4"], info["manifest"], E, thr)
+                D = G.decide(M, thr, profile="controls")
+            except Exception as e:
+                tried.append(f"{label}:error:{type(e).__name__}:{str(e)[:60]}")
+                continue
+            last = (label, M, info)
+            f = set(D["failed"])
+            tried.append(f"{label}:{sorted(f)}")
+            if f and f <= set(targets) and not D["errors"] and set(D["blocked"]) <= {"v4.speaker"}:
+                res["controls"].append({"id": cid, "kind": "isolated", "desc": f"{desc} [{label}]", "expect": "FAIL",
+                                        "expect_checks": list(targets), "base": base, "M": M, "pkg": info.get("pkg"),
+                                        "isolated": True, "tried": tried})
+                return
+        res["controls"].append({"id": cid, "kind": "isolated", "desc": f"{desc} [nenhuma variante isolada]", "expect": "FAIL",
+                                "expect_checks": list(targets), "base": base, "M": last[1] if last else None,
+                                "isolated": False, "tried": tried})
+
+    def speech_rms(x):
+        sp, _ = G.vad_frames(x)
+        n = int(G.FRAME * 16000)
+        return sp, n, float(np.sqrt(np.mean(np.concatenate([x[i * n:(i + 1) * n] for i in np.nonzero(sp)[0]]) ** 2)))
+
+    def mk_whine(db):
+        def go(cid):
+            x = x16(P)
+            sp, n, rms = speech_rms(x)
+            g = np.repeat(sp.astype(float), n)
+            g = np.pad(g, (0, max(0, len(x) - len(g))))[:len(x)]
+            g = np.convolve(g, np.ones(160) / 160, mode="same")
+            t = np.arange(len(x)) / 16000
+            y = x + g * np.sqrt(2) * rms * 10 ** (db / 20) * np.sin(2 * np.pi * 2000 * t)
+            return B.build(cid, write_raw(os.path.join(tmp, cid + ".wav"), y, 16000), P["text"])
+        return go
+    isolate("I01", "só tonalidade: apito 2 kHz durante a fala", ["v3.tonal_ratio", "v3.spectral_flatness", "v3.voiced_fraction", "v4.hnr"],
+            [(f"{db}dB", mk_whine(db)) for db in (-14, -11, -9, -7, -5)], base=P["source"])
+    isolate("I02", "só prosódia: F0 comprimido (PSOLA)", ["v4.f0_sd", "v4.energy_sd"],
+            [(f"k{k}", (lambda k: lambda cid: psola(cid, mid, k))(k)) for k in (0.45, 0.35, 0.28, 0.22, 0.16)], base=mid["source"])
+
+    def mk_clip(db):
+        def go(cid):
+            x = x16(P)
+            pk = float(np.max(np.abs(x))) * 10 ** (db / 20)
+            return B.build(cid, write_raw(os.path.join(tmp, cid + ".wav"), np.clip(x, -pk, pk), 16000), P["text"])
+        return go
+    isolate("I03", "só clipping esparso (corte só dos picos)", ["v3.clip_density", "v3.clipped_samples"],
+            [(f"{db}dB", mk_clip(db)) for db in (-2, -3, -4.5, -6, -8)], base=P["source"])
+
+    def mk_noise(snr):
+        def go(cid):
+            x = x16(P)
+            _, _, rms = speech_rms(x)
+            y = x + np.random.default_rng(7).standard_normal(len(x)) * rms / 10 ** (snr / 20)
+            return B.build(cid, write_raw(os.path.join(tmp, cid + ".wav"), y, 16000), P["text"])
+        return go
+    isolate("I04", "só ruído/SNR no limite", ["v3.noise_floor", "v3.snr"],
+            [(f"snr{v}", mk_noise(v)) for v in (32, 30, 28, 26, 24)], base=P["source"])
+
     # ---- fail-closed infrastructure controls
     def no_ref():
         info = B.build("X01", P["path"], P["text"], reference=None)
         return info
     safe("X01", "infra", "referência da voz da marca ausente", "BLOCKED", ["v4.speaker"], no_ref, base=P["source"])
+    safe("X03", "infra", "autorreferência (o próprio clipe como 'referência da marca')", "BLOCKED", ["v4.speaker"],
+         lambda: B.build("X03", P["path"], P["text"], reference=P["path"]), base=P["source"])
     try:
-        info = B.build("X02", P["path"], P["text"], reference=P["path"])
+        info = B.build("X02", P["path"], P["text"])
         broken = G.Engines(vosk_model=os.path.join(work, "nao-existe"))
         add("X02", "infra", "motor ASR B indisponível (modelo ausente)", info, "ERROR_INFRA", ["v2.engine_b"], engines=broken, base=P["source"])
     except Exception as e:
         res["controls"].append({"id": "X02", "kind": "infra", "desc": "motor B indisponível", "expect": "ERROR_INFRA", "build_error": str(e)[:300], "M": None})
 
+    add_fixtures(res, thr)
     evaluate(res, thr)
     res["elapsed_s"] = round(time.time() - t0, 1)
     json.dump(res, open(out, "w"), ensure_ascii=False, indent=1, default=float)
     return res
+
+
+FIXTURES = [  # (expected failing checks, path in the measurements, out-of-range value) — ONE field changed per fixture
+    (["v3.tonal_ratio"], ("spectral", "tonal_ratio"), 0.6), (["v3.spectral_flatness"], ("spectral", "spectral_flatness"), 0.5),
+    (["v3.voiced_fraction"], ("prosody", "voiced_fraction"), 0.05), (["v4.hnr"], ("prosody", "hnr_db"), 1.0),
+    (["v4.f0_sd"], ("prosody", "f0_sd_st"), 0.6), (["v4.energy_sd"], ("timeline", "energy_sd_db"), 1.0),
+    (["v3.clipped_samples"], ("stream_clipped_samples",), 25), (["v3.clip_density"], ("master_clip_density",), 9.0),
+    (["v3.noise_floor"], ("timeline", "noise_floor_dbfs"), -44.0), (["v3.snr"], ("timeline", "snr_db"), 24.0),
+    (["v3.stream_tp"], ("stream_loudness", "tp"), -1.0), (["v3.stream_lufs"], ("stream_loudness", "lufs"), -25.0),
+    (["v3.master_lufs"], ("master_loudness", "lufs"), -21.0), (["v3.master_tp"], ("master_loudness", "tp"), -0.5),
+    (["v4.wpm"], ("rate", "wpm"), 190.0), (["v4.pause_max"], ("timeline", "pause_max_ms"), 1700),
+    (["v2.clip_errors"], ("asr", "clip_errors_noncritical"), 2), (["v2.critical_terms"], ("asr", "critical_missed"), ["tres"]),
+    (["v2.instruction_leak"], ("asr", "instruction_leak"), ["a:style:fale com voz"]),
+    (["v5.dnsmos_ovrl"], ("dnsmos", "ovrl"), 1.5), (["v7.contrast_px"], ("frames", "contrast_min"), 2.0),
+    (["v7.safe_area_px"], ("frames", "bbox"), [180, 1600, 860, 1800]),
+    (["v6.drift_p95", "v6.drift_max", "v7.caption_timing"], ("captions", "deltas_ms"), [160, 160, 160]),
+    (["v1.narration_coverage"], ("timeline", "last_offset_s"), 1.0), (["v7.captions_burned"], ("frames",), {"burned": False}),
+    (["v2.sales_closed_text"], ("sales_text_hits",), ["/comprar"]),
+]
+
+
+def add_fixtures(res, thr):
+    """Layer (a): deterministic metric fixtures built from a real positive's measurements with ONLY one field out of
+    range. They prove each decision rule is causally necessary (a mutant that drops it lets the fixture through)."""
+    base = None
+    for c in res["controls"]:
+        if c["kind"] == "positive" and c.get("M"):
+            D = G.decide(c["M"], thr, profile="controls")
+            if D["verdict"] == "BLOCKED" and D["blocked"] == ["v4.speaker"] and not D["failed"]:
+                base = c
+                break
+    if base is None:
+        res["notes"].append("FIXTURES_BLOCKED: nenhum positivo correto para servir de base")
+        return
+    for k, (checks, path, val) in enumerate(FIXTURES, 1):
+        M = json.loads(json.dumps(base["M"], default=float))
+        d = M
+        for key in path[:-1]:
+            d = d.setdefault(key, {})
+        d[path[-1]] = val
+        res["controls"].append({"id": f"F{k:02d}", "kind": "fixture", "desc": f"fixture: só {'.'.join(path)}={val}",
+                                "expect": "FAIL", "expect_checks": checks, "base": base["id"], "M": M})
 
 
 def strip(w):
@@ -512,13 +633,21 @@ MUTANTS = [
     {"id": "M14", "desc": "BLOCKED tratado como PASS", "policy": {"blocked_as_pass": True}},
     {"id": "M15", "desc": "ERROR_INFRA tratado como PASS", "policy": {"error_as_pass": True}},
     {"id": "M16", "desc": "sem presença de narração (V1)", "disable": ["narration"]},
+    {"id": "M17", "desc": "sem contraste medido nos pixels (V7)", "disable": ["contrast_px"]},
+    {"id": "M18", "desc": "sem área segura medida nos pixels (V7)", "disable": ["safe_area_px"]},
+    {"id": "M19", "desc": "sem detecção de legenda queimada (V7)", "disable": ["burned_px"]},
+    {"id": "M20", "desc": "regra por clipe relaxada (até 3 erros não críticos)", "overrides": {"V2.clip_noncritical_max": 3}},
 ]
 
 
-def correct(ctrl, verdict, failed):
+def correct(ctrl, verdict, failed, blocked=(), errors=()):
     e = ctrl["expect"]
     if e == "ANY":
         return True
+    if e == "PASS_SPEAKER_BLOCKED":  # every check passes; speaker BLOCKED until an independent brand reference exists
+        return verdict == "BLOCKED" and list(blocked) == ["v4.speaker"] and not failed and not errors
+    if ctrl["kind"] in ("fixture", "isolated"):  # rejected AND only by the targeted rule(s)
+        return verdict == "FAIL" and bool(failed) and set(failed) <= set(ctrl["expect_checks"]) and ctrl.get("isolated", True)
     if e == "PASS":
         return verdict == "PASS"
     if e == "FAIL":
@@ -536,7 +665,7 @@ def evaluate(res, thr):
         prof = "controls"
         D = G.decide(c["M"], thr, profile=prof)
         c["verdict"], c["failed"], c["blocked"], c["errors"] = D["verdict"], D["failed"], D["blocked"], D["errors"]
-        c["correct"] = correct(c, D["verdict"], D["failed"])
+        c["correct"] = correct(c, D["verdict"], D["failed"], D["blocked"], D["errors"])
         hit = set(D["failed"] + D["blocked"] + D["errors"])
         c["expected_stage_hit"] = (not c["expect_checks"]) or bool(hit & set(c["expect_checks"]))
         base[c["id"]] = D["verdict"]
@@ -546,15 +675,22 @@ def evaluate(res, thr):
             if c.get("M") is None or c["expect"] == "ANY":
                 continue
             D = G.decide(c["M"], thr, profile="controls", disable=m.get("disable", ()), overrides=m.get("overrides"), policy=m.get("policy"))
-            neg = c["expect"] != "PASS"
             # killed only by a control that was correctly classified at baseline and is misclassified under the mutant
-            if c["correct"] and ((neg and D["verdict"] == "PASS") or (not neg and D["verdict"] != "PASS")):
+            if c["correct"] and not correct(c, D["verdict"], D["failed"], D["blocked"], D["errors"]):
                 flips.append(f'{c["id"]}:{base.get(c["id"])}->{D["verdict"]}')
         res["mutants"].append({"id": m["id"], "desc": m["desc"], "killed": bool(flips), "killed_by": flips})
+    pairs = [(c["M"]["asr"]["ref_tokens"], c["M"]["asr"]["cons_tokens"]) for c in res["controls"]
+             if c["kind"] == "positive" and c.get("M") and (c["M"].get("asr") or {}).get("cons_tokens") is not None]
+    cm = G.corpus_metrics(pairs) if pairs else {"words": 0}
+    cm["ok"] = bool(pairs) and cm["words"] >= thr["V2"]["corpus_min_words"] and cm["wer"] <= thr["V2"]["wer_max"] and cm["cer"] <= thr["V2"]["cer_max"]
+    res["corpus"] = cm
     cs = res["controls"]
     res["summary"] = {
         "positives": sum(1 for c in cs if c["kind"] == "positive"),
-        "positives_pass": sum(1 for c in cs if c["kind"] == "positive" and c["verdict"] == "PASS"),
+        "positives_pass": sum(1 for c in cs if c["kind"] == "positive" and c["correct"]),
+        "fixtures": sum(1 for c in cs if c["kind"] == "fixture"), "fixtures_ok": sum(1 for c in cs if c["kind"] == "fixture" and c["correct"]),
+        "isolated": sum(1 for c in cs if c["kind"] == "isolated"), "isolated_ok": sum(1 for c in cs if c["kind"] == "isolated" and c["correct"]),
+        "corpus": cm,
         "negatives": sum(1 for c in cs if c["kind"] == "negative"),
         "negatives_rejected": sum(1 for c in cs if c["kind"] == "negative" and c["verdict"] == "FAIL"),
         "negatives_expected_stage": sum(1 for c in cs if c["kind"] == "negative" and c["verdict"] == "FAIL" and c["expected_stage_hit"]),
@@ -602,17 +738,19 @@ def annotate(results, what):
     R = json.load(open(results, encoding="utf-8"))
     s = R.get("summary") or {}
     if what == "summary":
-        ok = not s.get("misclassified") and not s.get("mutants_survived") and s.get("human_positives")
+        ok = not s.get("misclassified") and not s.get("mutants_survived") and s.get("human_positives") and (s.get("corpus") or {}).get("ok")
         lvl = "notice" if ok else "error"
         note(lvl, "AV_GATE_V8_SUMMARY",
-             f"base={R.get('base_source')} positivos {s.get('positives_pass')}/{s.get('positives')} PASS | negativos rejeitados "
+             f"base={R.get('base_source')} positivos {s.get('positives_pass')}/{s.get('positives')} corretos (tudo PASS, locutor BLOCKED) | "
+             f"corpus V2 {s.get('corpus')} | fixtures {s.get('fixtures_ok')}/{s.get('fixtures')} | isolados {s.get('isolated_ok')}/{s.get('isolated')} | negativos rejeitados "
              f"{s.get('negatives_rejected')}/{s.get('negatives')} (estágio esperado {s.get('negatives_expected_stage')}) | infra "
              f"{s.get('infra_correct')}/{s.get('infra')} | mutantes mortos {s.get('mutants_killed')}/{s.get('mutants')} "
              f"sobreviventes={s.get('mutants_survived')} | mal classificados={s.get('misclassified')} | {R.get('elapsed_s')} s")
         note("notice", "AV_GATE_V8_SOURCES", f"human_attempts={R.get('human_source_attempts')} candidates={R.get('human_candidates')} "
-             f"screened={R.get('human_screened')} stats={R.get('human_screen_stats')} engines={R.get('engines')} notes={R.get('notes')}")
+             f"screened={R.get('human_screened')} genero={R.get('human_gender')} stats={R.get('human_screen_stats')} engines={R.get('engines')} notes={R.get('notes')}")
         return 0 if ok else 1
-    sel = {"positives": ("positive", "wiring"), "negatives": ("negative",), "infra": ("infra",)}.get(what)
+    sel = {"positives": ("positive", "wiring"), "negatives": ("negative",), "infra": ("infra",), "fixtures": ("fixture",),
+           "isolated": ("isolated",)}.get(what)
     if sel:
         rows = [c for c in R["controls"] if c["kind"] in sel]
         for i in range(0, len(rows), 3):
@@ -620,7 +758,9 @@ def annotate(results, what):
             msg = "\n".join(
                 f'{c["id"]} [{c["desc"]}] esperado={c["expect"]} veredito={c.get("verdict")} {"OK" if c.get("correct") else "ERRADO"}'
                 f' estágio={"sim" if c.get("expected_stage_hit") else "NÃO"} falhas={c.get("failed", [])[:8]} bloqueios={c.get("blocked", [])[:4]}'
-                f' erros={c.get("errors", [])[:4]} {c.get("build_error", "")}\n   {key_metrics(c.get("M"))}' for c in chunk)
+                f' erros={c.get("errors", [])[:4]} {c.get("build_error", "")}'
+                + (f' tentativas={c.get("tried")}' if c.get("tried") else "")
+                + ("" if c["kind"] == "fixture" else f'\n   {key_metrics(c.get("M"))}') for c in chunk)
             bad = any(not c.get("correct") for c in chunk)
             note("error" if bad else "notice", f"AV_GATE_V8_{what.upper()}", msg)
         return 0
@@ -630,6 +770,20 @@ def annotate(results, what):
             chunk = ms[i:i + 6]
             msg = "\n".join(f'{m["id"]} {m["desc"]}: {"MORTO" if m["killed"] else "SOBREVIVEU"} por {m["killed_by"][:4]}' for m in chunk)
             note("error" if any(not m["killed"] for m in chunk) else "notice", "AV_GATE_V8_MUTANTS", msg)
+        return 0
+    if what == "alignment":  # word-by-word view of every positive: where A, B or the consensus differ from the script
+        rows = [c for c in R["controls"] if c["kind"] == "positive" and c.get("M")]
+        for i in range(0, len(rows), 2):
+            parts = []
+            for c in rows[i:i + 2]:
+                a = c["M"].get("asr") or {}
+                diffs = [f'{r["pos"]}:{r["ref"]}|A={r["A"]}|B={r["B"]}|C={r["C"]}' for r in a.get("alignment") or []
+                         if r.get("ref") and not (r["A"] == r["ref"] and r["B"] == r["ref"] and r["C"] == r["ref"])]
+                ins = [f'{r["pos"]}:+{ {k: v for k, v in r.items() if k.startswith("ins_")} }' for r in a.get("alignment") or [] if not r.get("ref")]
+                parts.append(f'{c["id"]} tokens={len(a.get("ref_tokens") or [])} erros_consenso={a.get("clip_errors_total")} '
+                             f'nao_criticos={a.get("clip_errors_noncritical")} criticos={a.get("critical_missed")} wA={round(a.get("wer_a") or 0, 3)} '
+                             f'wB={round(a.get("wer_b") or 0, 3)}\n   difs={diffs[:14]} ins={ins[:4]}')
+            note("notice", "AV_GATE_V8_ALIGNMENT", "\n".join(parts))
         return 0
     if what == "asr":
         rows = [c for c in R["controls"] if c.get("M")]

@@ -27,7 +27,7 @@ jobs:
   controls:
     name: av-gate / controls + mutants
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,7 +52,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/av-models
-          key: av-models-v1-${{ hashFiles('scripts/av_gate/fetch_models.sh') }}
+          key: av-models-v2-${{ hashFiles('scripts/av_gate/fetch_models.sh') }}
       - name: Models (pinned SHA-256)
         run: bash scripts/av_gate/fetch_models.sh
       - name: Generate controls and run the gate + mutants
@@ -63,12 +63,21 @@ jobs:
       - name: Report — positives
         if: always()
         run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what positives
+      - name: Report — word-by-word ASR alignment of the positives (engine A, engine B, consensus)
+        if: always()
+        run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what alignment
       - name: Report — negatives
         if: always()
         run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what negatives
       - name: Report — fail-closed infra controls
         if: always()
         run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what infra
+      - name: Report — deterministic metric fixtures (one field out of range)
+        if: always()
+        run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what fixtures
+      - name: Report — physical isolated near-limit samples
+        if: always()
+        run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what isolated
       - name: Report — mutants
         if: always()
         run: python scripts/av_gate/controls.py annotate --results "$RUNNER_TEMP/avg/results.json" --what mutants

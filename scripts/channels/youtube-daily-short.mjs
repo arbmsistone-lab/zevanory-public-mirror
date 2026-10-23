@@ -200,6 +200,29 @@ const fontFile = (style, fallback) => {
   const f = String(p.stdout || "").trim();
   return /inter/i.test(f) ? f : fallback;
 };
+// Brand voice unavailable: a BOUNDED retry queue (same model, same voice — never a fallback), limited by attempts
+// and by a TTL capped at the end of the slot's commercial day. Permanent errors (no key, 4xx) are not retried.
+// When the queue expires the slot is LOST (recorded, no publish, later runs of the same day skip it).
+export const VOICE_RETRY = Object.freeze({ maxAttempts: 3, backoffMs: [20000, 60000], ttlMs: 15 * 60000 });
+const VOICE_RETRYABLE = /^brand_voice_http_(429|5\d\d|fetch_)|^brand_voice_no_audio$/;
+export async function brandVoiceQueued(text, key, { voice = brandVoice, sleep = ms => new Promise(r => setTimeout(r, ms)), now = Date.now, deadline = Infinity, policy = VOICE_RETRY } = {}) {
+  const expires = Math.min(now() + policy.ttlMs, deadline), attempts = [];
+  for (let i = 0; i < policy.maxAttempts; i++) {
+    const v = await voice(text, key);
+    if (v && !v.blocked && v.pcm) return { ...v, attempts: attempts.length + 1 };
+    attempts.push(String(v?.blocked || "no_audio"));
+    if (!VOICE_RETRYABLE.test(attempts[i])) return { blocked: attempts[i], attempts };
+    const wait = policy.backoffMs[Math.min(i, policy.backoffMs.length - 1)];
+    if (i === policy.maxAttempts - 1 || now() + wait > expires) break;
+    await sleep(wait);
+  }
+  return { blocked: "slot_lost_voice_unavailable", lost: true, attempts };
+}
+export const slotLostKey = (day, slot) => `zpc:short:slot_lost:${day}:${slot}`;
+export async function recordSlotLost(kv, day, slot, reason, { now = Date.now() } = {}) {
+  await kv.put(slotLostKey(day, slot), JSON.stringify({ day, slot, reason: String(reason).slice(0, 120), at: new Date(now).toISOString(), policy: "lose_the_slot_no_fallback" }), { expirationTtl: 3 * 86400 });
+}
+
 // zevanory-av-gate (P05): the narration goes through the production audio chain of the gate (master WAV −23 LUFS,
 // streaming derivative with a true-peak limiter as the LAST stage and ONE AAC encode, captions aligned to the
 // approved script), the video is muxed WITHOUT re-encoding the audio, and the FINAL MP4 must pass the gate.
@@ -251,10 +274,10 @@ export async function renderVideo(plan, pkg, out) {
   const R = /inter/i.test(XB) ? { xb: 0.58, sb: 0.54 } : { xb: 0.68, sb: 0.64 };
   const sc = plan.screen, draws = [];
   let n = 0;
-  const text = async (str, font, size, color, baseline, enable = "") => {
+  const text = async (str, font, size, color, baseline, enable = "", x = "(w-text_w)/2") => {
     const file = `${out}.t${n++}.txt`;
     await writeFile(file, str);
-    draws.push(`drawtext=fontfile=${font}:textfile=${file}:fontsize=${size}:fontcolor=${color}:x=(w-text_w)/2:y=${baseline}-ascent${enable}`);
+    draws.push(`drawtext=fontfile=${font}:textfile=${file}:fontsize=${size}:fontcolor=${color}:x=${x}:y=${baseline}-ascent${enable}`);
   };
   // Hook block (top, inside the safe area), visible from the first frame (feed preview).
   const hook = fitText(sc.hook, [120, 112, 104, 96, 88], 860, R.xb, 3);
@@ -268,21 +291,20 @@ export async function renderVideo(plan, pkg, out) {
   for (const c of pkg.cues) {
     const f = fitText(c.text, [64, 58, 52, 46], bw - 64, R.sb, 2);
     const lh = Math.round(f.size * 1.25), top = by + Math.round((bh - f.lines.length * lh) / 2);
-    for (let i = 0; i < f.lines.length; i++) await text(f.lines[i], SB, f.size, "0xf5f7fb", top + (i + 1) * lh - Math.round(f.size * 0.25), `:enable='between(t,${c.start},${c.end})'`);
+    for (let i = 0; i < f.lines.length; i++) await text(f.lines[i], SB, f.size, "0xf5f7fb", top + (i + 1) * lh - Math.round(f.size * 0.25), `:enable='between(t,${c.start},${c.end})'`, `${bx}+(${bw}-text_w)/2`);
   }
-  const frames = Math.round(duration * 30);
+  // Static background (no zoom, no progress bar): the ONLY element that changes over time is the burned caption,
+  // so zevanory-av-gate can measure caption contrast and safe area from the actual frames (V7).
   const vf = [
     "scale=1080:1920",
     "drawbox=x=56:y=600:w=968:h=560:color=0x0b0f16:t=fill",
-    `zoompan=z='1+0.04*on/${frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30`,
     "drawbox=x=96:y=228:w=220:h=8:color=0x00b8ff:t=fill",
     `drawbox=x=${bx}:y=${by}:w=${bw}:h=${bh}:color=0x0c1c2b@1.0:t=fill`,
     `drawbox=x=${bx}:y=${by}:w=10:h=${bh}:color=0x00b8ff:t=fill`,
     ...draws
   ].join(",");
-  const bar = `color=c=0x202a38:s=888x10:r=30:d=${duration}[track];color=c=0x00b8ff:s=888x10:r=30:d=${duration}[fill];[track][fill]overlay=x='-888+888*t/${duration}':y=0:shortest=1[bar];[base][bar]overlay=x=96:y=1724:shortest=1[v]`;
   // Audio is COPIED (no second lossy encode): the gate measures exactly what is uploaded.
-  run("ffmpeg", ["-y", "-loop", "1", "-framerate", "30", "-i", "assets/brand/export/short.png", "-i", pkg.narration, "-filter_complex", "[0:v]" + vf + "[base];" + bar, "-map", "[v]", "-map", "1:a", "-t", String(duration), "-c:v", "libx264", "-r", "30", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", out]);
+  run("ffmpeg", ["-y", "-loop", "1", "-framerate", "30", "-i", "assets/brand/export/short.png", "-i", pkg.narration, "-filter_complex", "[0:v]" + vf + "[v]", "-map", "[v]", "-map", "1:a", "-t", String(duration), "-c:v", "libx264", "-r", "30", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", out]);
   return { duration };
 }
 
@@ -392,10 +414,18 @@ if (isMain) {
       const base = "/tmp/zevanory-daily-short" + (slot === "oferta" ? "" : "-" + slot);
       const usageKv = process.env.CLOUDFLARE_API_TOKEN ? cloudflareKv({ token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID, namespace: process.env.KV_NAMESPACE_ID }) : null;
       const usage = usageKv ? await getUsage(usageKv) : {};
+      if (usageKv && await usageKv.get(slotLostKey(day, slot))) { note("notice", slot + ": slot lost earlier today (brand voice unavailable) — not retried, no fallback"); continue; }
       // Zero-cost guard: when the brand-voice budget is used up the run is BLOCKED (no other voice, no publish).
       if (!allow(usage, "gemini_tts_calls", 4)) throw new Error("brand_voice_BLOCKED:zero_cost_guard");
       // renderShort throws unless the FINAL MP4 passed zevanory-av-gate (fail-closed: no upload below).
-      const rendered = await renderShort(plan, base, { geminiKey: process.env.GEMINI_API_KEY, onVoice: () => usageKv ? addUsage(usageKv, "gemini_tts_calls", 1).catch(() => null) : null });
+      const deadline = Date.parse(`${day}T23:59:59${BRT_OFFSET}`);
+      let rendered;
+      try {
+        rendered = await renderShort(plan, base, { geminiKey: process.env.GEMINI_API_KEY, voice: (t, k) => brandVoiceQueued(t, k, { deadline }), onVoice: () => usageKv ? addUsage(usageKv, "gemini_tts_calls", 1).catch(() => null) : null });
+      } catch (e) {
+        if (/slot_lost_voice_unavailable/.test(String(e?.message)) && usageKv && !dry) await recordSlotLost(usageKv, day, slot, e.message).catch(() => null);
+        throw e;
+      }
       note("notice", JSON.stringify({ day, slot, theme: plan.entry.theme_id, gate: { score: plan.gate.score, compliance: plan.gate.compliance }, duration: rendered.duration, voice: rendered.voice, dry_run: dry }));
       if (dry) continue;
       for (const n of ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "KV_NAMESPACE_ID"]) if (!process.env[n]) throw new Error("missing_" + n);

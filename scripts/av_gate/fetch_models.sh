@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # zevanory-av-gate — baixa os modelos para $AV_GATE_MODELS e confere SHA-256 fixado (fail-closed: hash diferente = erro).
-# Motor A: faster-whisper "small" (Systran/faster-whisper-small, MIT). Motor B: Vosk pt-BR small (Apache-2.0).
+# Motor A: faster-whisper "small" (Systran/faster-whisper-small, MIT). Motor B: Vosk pt-BR GRANDE pt-fb-v0.1.1 (Apache-2.0);
+# o Vosk pt-BR small (Apache-2.0) só hospeda o extrator de x-vector.
 # Locutor: Vosk x-vector spk-0.4 (Apache-2.0). MOS preditivo: DNSMOS P.835 sig_bak_ovr.onnx (microsoft/DNS-Challenge).
 set -euo pipefail
 MD="${AV_GATE_MODELS:?defina AV_GATE_MODELS}"
@@ -10,6 +11,8 @@ pin() {  # pin <arquivo> <sha256 esperado>
   if [ "$got" != "$2" ]; then echo "::error title=AV_GATE_MODELS::sha256 divergente em $(basename "$1"): $got"; exit 1; fi
 }
 VOSK_PT_SHA=6e1ce909032e1afa7a88e68a3d628ecafff302bdf195befab308826c395e93b7
+# Engine B (V2): LARGE Vosk/Kaldi pt-BR model — a stronger non-Whisper engine that runs offline on the CPU runner.
+VOSK_PT_LARGE_SHA=__PIN_ME__
 VOSK_SPK_SHA=a74d8f51144484813e16af689bb0f916b7a111e2347f467c4933c1166097b5a7
 DNSMOS_SHA=269fbebdb513aa23cddfbb593542ecc540284a91849ac50516870e1ac78f6edd
 get_zip() {  # get_zip <url> <dir-name> <sha>
@@ -20,6 +23,8 @@ get_zip() {  # get_zip <url> <dir-name> <sha>
   fi
 }
 get_zip https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip vosk-model-small-pt-0.3 "$VOSK_PT_SHA"
+get_zip https://alphacephei.com/vosk/models/vosk-model-pt-fb-v0.1.1-20220516_2113.zip vosk-model-pt-fb-v0.1.1-20220516_2113 "$VOSK_PT_LARGE_SHA"
+[ -d "$MD/vosk-model-pt-fb-v0.1.1-20220516_2113" ] || { echo "::error title=AV_GATE_MODELS::diretório do modelo grande ausente: $(ls "$MD")"; exit 1; }
 get_zip https://alphacephei.com/vosk/models/vosk-model-spk-0.4.zip vosk-model-spk-0.4 "$VOSK_SPK_SHA"
 D="$MD/dnsmos/sig_bak_ovr.onnx"
 for u in https://github.com/microsoft/DNS-Challenge/raw/master/DNSMOS/DNSMOS/sig_bak_ovr.onnx \
@@ -40,4 +45,4 @@ for root, _, files in sorted(os.walk("$MD/whisper")):
             h.update(open(os.path.join(root, f), "rb").read())
 print("::notice title=AV_GATE_WHISPER::model.bin sha256=" + h.hexdigest())
 PY
-echo "::notice title=AV_GATE_MODELS::ok vosk-pt=$VOSK_PT_SHA spk=$VOSK_SPK_SHA dnsmos=$DNSMOS_SHA"
+echo "::notice title=AV_GATE_MODELS::ok vosk-pt-large=$VOSK_PT_LARGE_SHA vosk-pt=$VOSK_PT_SHA spk=$VOSK_SPK_SHA dnsmos=$DNSMOS_SHA"

@@ -25,7 +25,12 @@ Uso:
 import argparse, hashlib, json, math, os, re, shutil, subprocess, sys, tempfile, unicodedata
 from difflib import SequenceMatcher
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # explicit, typed failure instead of a crash: the gate never "passes" without its tools
+    print('{"verdict": "ERROR_INFRA", "error": "TOOL_MISSING:numpy"}')
+    print("::error title=AV_GATE::ERROR_INFRA TOOL_MISSING:numpy (pip install -r scripts/av_gate/requirements.txt)")
+    sys.exit(3)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GATE_VERSION = "p05-av-gate-1"
@@ -48,7 +53,7 @@ def sh(args, check=True, text=True, input=None):
     try:
         p = subprocess.run(args, capture_output=True, text=text, input=input)
     except FileNotFoundError as e:
-        raise InfraError(f"tool_missing:{args[0]}") from e
+        raise InfraError(f"TOOL_MISSING:{args[0]}") from e
     if check and p.returncode != 0:
         tail = (p.stderr if text else p.stderr.decode("utf-8", "replace"))[-400:]
         raise InfraError(f"{args[0]}_failed:{tail}")
@@ -301,10 +306,12 @@ class Engines:
         md = models_dir or os.environ.get("AV_GATE_MODELS", os.path.join(HERE, ".models"))
         self.whisper_name = whisper_model or os.environ.get("AV_GATE_WHISPER_MODEL", "small")
         self.whisper_dir = os.path.join(md, "whisper")
-        self.vosk_path = vosk_model or os.environ.get("AV_GATE_VOSK_MODEL", os.path.join(md, "vosk-model-small-pt-0.3"))
+        # Engine B: the LARGE Vosk/Kaldi pt-BR model (non-Whisper family). The small model only hosts x-vectors.
+        self.vosk_path = vosk_model or os.environ.get("AV_GATE_VOSK_MODEL", os.path.join(md, "vosk-model-pt-fb-v0.1.1-20220516_2113"))
+        self.vosk_small_path = os.environ.get("AV_GATE_VOSK_SMALL", os.path.join(md, "vosk-model-small-pt-0.3"))
         self.spk_path = vosk_spk or os.environ.get("AV_GATE_VOSK_SPK", os.path.join(md, "vosk-model-spk-0.4"))
         self.dnsmos_path = dnsmos or os.environ.get("AV_GATE_DNSMOS", os.path.join(md, "dnsmos", "sig_bak_ovr.onnx"))
-        self._w = self._v = self._s = self._d = None
+        self._w = self._v = self._s = self._d = self._vs = None
 
     def describe(self):
         def ver(mod):
@@ -372,7 +379,11 @@ class Engines:
                 if not os.path.isdir(self.spk_path):
                     raise InfraError("speaker_model_missing")
                 self._s = vosk.SpkModel(self.spk_path)
-            rec = vosk.KaldiRecognizer(self._v, SR)
+            if self._vs is None:
+                if not os.path.isdir(self.vosk_small_path):
+                    raise InfraError("speaker_host_model_missing")
+                self._vs = vosk.Model(self.vosk_small_path)
+            rec = vosk.KaldiRecognizer(self._vs, SR)
             rec.SetSpkModel(self._s)
             pcm = (np.clip(x16, -1, 1) * 32767).astype("<i2").tobytes()
             res = []
@@ -440,7 +451,7 @@ def vad_frames(x16):
     try:
         import webrtcvad
     except Exception as e:
-        raise InfraError(f"vad_missing:{type(e).__name__}")
+        raise InfraError(f"TOOL_MISSING:webrtcvad:{type(e).__name__}")
     n = int(FRAME * SR)
     db = frame_db(x16)
     if len(db) == 0:
@@ -536,7 +547,7 @@ def m_prosody(x16, sp):
     try:
         import parselmouth
     except Exception as e:
-        raise InfraError(f"parselmouth_missing:{type(e).__name__}")
+        raise InfraError(f"TOOL_MISSING:parselmouth:{type(e).__name__}")
     snd = parselmouth.Sound(x16.astype(np.float64), sampling_frequency=SR)
     pitch = snd.to_pitch(time_step=0.01, pitch_floor=70.0, pitch_ceiling=500.0)
     f0 = pitch.selected_array["frequency"]
@@ -646,6 +657,140 @@ def parse_captions(path):
     return cues
 
 
+def alignment_table(ref, ta, tb, cons):
+    """Word-by-word view: for each script token what engine A, engine B and the consensus produced."""
+    def view(h):
+        out, ins = [None] * len(ref), {}
+        for op, i, j in edit_ops(ref, h):
+            if op in ("equal", "sub"):
+                out[i] = h[j]
+            elif op == "ins":
+                ins.setdefault(i, []).append(h[j])
+        return out, ins
+    va, ia = view(ta)
+    vb, ib = view(tb)
+    vc, ic = view(cons)
+    rows = []
+    for i, r in enumerate(ref):
+        for nm, d in (("A", ia), ("B", ib), ("C", ic)):
+            if i in d:
+                rows.append({"pos": i, "ref": None, "ins_" + nm: d[i]})
+        rows.append({"pos": i, "ref": r, "A": va[i], "B": vb[i], "C": vc[i]})
+    return rows
+
+
+def corpus_metrics(pairs):
+    """Aggregate WER/CER over a corpus of (reference tokens, consensus tokens) — the pre-registered V2 basis."""
+    words = sum(len(r) for r, _ in pairs)
+    werr = sum(sum(1 for o in edit_ops(r, c) if o[0] != "equal") for r, c in pairs)
+    chars = sum(len(" ".join(r)) for r, _ in pairs)
+    cerr = sum(sum(1 for o in edit_ops(list(" ".join(r)), list(" ".join(c))) if o[0] != "equal") for r, c in pairs)
+    return {"words": words, "word_errors": werr, "wer": werr / words if words else None,
+            "chars": chars, "char_errors": cerr, "cer": cerr / chars if chars else None}
+
+
+def reference_independent(r16, x16):
+    """False when the 'brand reference' is (a piece of) the narration itself: max normalised cross-correlation of the
+    10 ms energy envelopes ≥ 0.9. An independent recording of the same voice stays well below."""
+    def env(x):
+        n = 160
+        k = len(x) // n
+        e = np.log10(np.sqrt(np.mean(x[:k * n].reshape(k, n) ** 2, axis=1)) + 1e-5)
+        return (e - e.mean()) / (e.std() + 1e-9)
+    a, b = env(r16), env(x16)
+    if len(a) < 50 or len(b) < 50:
+        return True
+    L = 1 << int(np.ceil(np.log2(len(a) + len(b))))
+    xc = np.fft.irfft(np.fft.rfft(a, L) * np.conj(np.fft.rfft(b, L)), L)
+    return float(np.max(xc) / min(len(a), len(b))) < 0.9
+
+
+def m_frames(mp4, duration, thr):
+    """Burned-caption check from PIXELS: frames sampled across the video; the per-pixel median is the static
+    background (the only element that changes over time is the caption text); text mask = |Y − Y_median| > d.
+    Contrast = WCAG ratio between the median text colour and the background behind it; bbox → safe area."""
+    W, H = 540, 960
+    ts = np.linspace(0.4, max(0.5, duration - 0.4), 11)
+    F = []
+    for t in ts:
+        p = sh(["ffmpeg", "-nostdin", "-v", "error", "-ss", f"{t:.3f}", "-i", mp4, "-map", "v:0", "-frames:v", "1",
+                "-vf", f"scale={W}:{H}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], text=False)
+        if len(p.stdout) == W * H * 3:
+            F.append(np.frombuffer(p.stdout, np.uint8).reshape(H, W, 3).astype(np.float64))
+    if len(F) < 5:
+        raise InfraError("frames_unavailable")
+    F = np.stack(F)
+    bg = np.median(F, axis=0)
+    Y = lambda a: a[..., 0] * 0.299 + a[..., 1] * 0.587 + a[..., 2] * 0.114
+    yb = Y(bg)
+    d = thr["V7"].get("text_luma_diff", 25)
+    masks = [np.abs(Y(f) - yb) > d for f in F]
+    union = np.any(masks, axis=0)
+    frac = float(union.mean())
+    if frac < 0.0005:
+        return {"burned": False, "changed_frac": frac}
+    ys, xs = np.nonzero(union)
+    sx, sy = 1080 / W, 1920 / H
+    bbox = [float(np.percentile(xs, 0.5) * sx), float(np.percentile(ys, 0.5) * sy),
+            float((np.percentile(xs, 99.5) + 1) * sx), float((np.percentile(ys, 99.5) + 1) * sy)]
+    def lum(c):
+        c = np.asarray(c) / 255.0
+        lin = np.where(c <= 0.03928, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+        return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+    crs = []
+    for f, m in zip(F, masks):
+        if m.sum() < 40:
+            continue
+        dy = np.abs(Y(f) - yb)
+        core = m & (dy >= np.percentile(dy[m], 75))  # stroke cores, not anti-aliased edges
+        a, b = sorted([lum(np.median(f[core], axis=0)), lum(np.median(bg[core], axis=0))], reverse=True)
+        crs.append((a + 0.05) / (b + 0.05))
+    if not crs:
+        return {"burned": False, "changed_frac": frac}
+    return {"burned": True, "bbox": [round(v) for v in bbox], "contrast_min": round(float(min(crs)), 2),
+            "contrast_median": round(float(np.median(crs)), 2), "changed_frac": round(frac, 4), "frames": len(F)}
+
+
+DEFAULT_STYLE = {"font_color": "#F5F7FB", "background_color": "#0C1C2B", "box": [96, 1150, 768, 240],
+                 "font": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "size": 38}
+
+
+def render_video(narr, cues, out, style=None, hook="ZEVANORY", audio=True, duration=None):
+    """Static-background 1080×1920 render with captions BURNED in the caption box (same layout as production)."""
+    st = dict(DEFAULT_STYLE, **(style or {}))
+    if duration is None:
+        duration = len(decode(narr, sr=SR)) / SR if audio else (max(c["end"] for c in cues) + 1.0 if cues else 6.0)
+    x, y, w, h = st["box"]
+    tdir = out + ".txt.d"
+    os.makedirs(tdir, exist_ok=True)
+    hp = os.path.join(tdir, "hook.txt")
+    open(hp, "w", encoding="utf-8").write(hook)
+    vf = [f"drawbox=x={x}:y={y}:w={w}:h={h}:color=0x{st['background_color'].lstrip('#')}@1.0:t=fill",
+          f"drawtext=fontfile={st['font']}:textfile={hp}:fontsize=80:fontcolor=0xF5F7FB:x=(w-text_w)/2:y=320"]
+    for k, c in enumerate(cues):
+        words, lines = c["text"].split(), [""]
+        for wd in words:
+            if lines[-1] and len(lines[-1]) + 1 + len(wd) > 30:
+                lines.append(wd)
+            else:
+                lines[-1] = (lines[-1] + " " + wd).strip()
+        lh = int(st["size"] * 1.3)
+        top = y + (h - lh * len(lines)) // 2
+        for i, ln in enumerate(lines[:3]):
+            tp = os.path.join(tdir, f"c{k}_{i}.txt")
+            open(tp, "w", encoding="utf-8").write(ln)
+            vf.append(f"drawtext=fontfile={st['font']}:textfile={tp}:fontsize={st['size']}:fontcolor=0x{st['font_color'].lstrip('#')}"
+                      f":x={x}+({w}-text_w)/2:y={top + i * lh}:enable='between(t,{c['start']},{c['end']})'")
+    args = ["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c=0x0b0f16:s=1080x1920:r=30:d={duration:.3f}"]
+    if audio:
+        args += ["-i", narr, "-map", "0:v", "-map", "1:a", "-c:a", "copy"]
+    args += ["-vf", ",".join(vf), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-t", f"{duration:.3f}",
+             "-movflags", "+faststart", out]
+    sh(args)
+    shutil.rmtree(tdir, ignore_errors=True)
+    return out
+
+
 def ngrams(toks, n):
     return {" ".join(toks[i:i + n]) for i in range(len(toks) - n + 1)}
 
@@ -701,6 +846,8 @@ def measure(mp4, manifest_path, engines, thr):
     au = [s for s in pr["streams"] if s.get("codec_type") == "audio"]
     M["video"] = {"width": vs[0].get("width"), "height": vs[0].get("height"),
                   "start": float(vs[0].get("start_time", 0) or 0)} if vs else None
+    if vs and not au:  # no audio: still measure the frames (captions burned?) before returning
+        M["frames"] = guard("frames", lambda: m_frames(mp4, float(pr.get("format", {}).get("duration", 0) or 0), thr))
     M["audio_stream"] = bool(au)
     M["duration_s"] = float(pr.get("format", {}).get("duration", 0) or 0)
     if vs:
@@ -759,10 +906,13 @@ def measure(mp4, manifest_path, engines, thr):
             cons, heard, cons_ins = consensus(ref, ta, tb)
             M["asr"]["wer_consensus"] = wer(ref, cons)
             M["asr"]["cer_consensus"] = cer(ref, cons)
+            M["asr"]["ref_tokens"], M["asr"]["cons_tokens"] = ref, cons
+            M["asr"]["alignment"] = alignment_table(ref, ta, tb, cons)
             # critical tokens: written numbers, number words (except articles um/uma), negations, manifest terms
             crit = set()
             for i, w in enumerate(ref):
-                if numflag[i] or (w in NUMBER_WORDS and w not in ("um", "uma")) or w in thr["V2"]["critical_negations"]:
+                if (numflag[i] or (w in NUMBER_WORDS and w not in ("um", "uma")) or w in thr["V2"]["critical_negations"]
+                        or w in thr["V2"]["critical_promise_cta"]):
                     crit.add(i)
             for term in man.get("critical_terms") or []:
                 tt = normalize_tokens(term, lex)
@@ -774,6 +924,10 @@ def measure(mp4, manifest_path, engines, thr):
             M["asr"]["critical_total"] = len(crit)
             M["asr"]["critical_missed"] = missed
             M["asr"]["critical_inserted"] = inserted
+            # per-clip error budget on the CONSENSUS: errors at non-critical positions (criticals are counted above)
+            errs = [o for o in edit_ops(ref, cons) if o[0] != "equal"]
+            M["asr"]["clip_errors_noncritical"] = sum(1 for o in errs if not (o[0] in ("sub", "del") and o[1] in crit))
+            M["asr"]["clip_errors_total"] = len(errs)
             # style-instruction leak
             style = ((man.get("voice") or {}).get("style") or "")
             st = normalize_tokens(style)
@@ -838,6 +992,9 @@ def measure(mp4, manifest_path, engines, thr):
         c["max_lines"] = max((len(q["lines"]) for q in cues), default=0)
         dur = sum(max(0.01, q["end"] - q["start"]) for q in cues)
         c["mean_cps"] = sum(len(q["text"]) for q in cues) / dur if cues else None
+    # V7 measured on the actual video frames (not on the manifest)
+    if M.get("video"):
+        M["frames"] = guard("frames", lambda: m_frames(mp4, M.get("duration_s") or 0.0, thr))
     # texts for the sales-closed rule
     texts = [script or ""] + [json.dumps(man.get("texts") or {}, ensure_ascii=False)]
     if M["captions_present"]:
@@ -846,6 +1003,8 @@ def measure(mp4, manifest_path, engines, thr):
     M["sales_text_hits"] = [p for p in thr["V2"]["sales_closed_text_patterns"] if re.search(p, blob, re.I)]
     # speaker identity
     if M["reference_present"]:
+        M["reference_independent"] = guard("speaker", lambda: reference_independent(decode(ref_p, sr=SR), x16))
+    if M["reference_present"] and M.get("reference_independent"):
         def spk():
             r16 = decode(ref_p, sr=SR)
             v1, v2 = engines.xvector(x16), engines.xvector(r16)
@@ -858,7 +1017,7 @@ def measure(mp4, manifest_path, engines, thr):
 GROUPS = {
     "narration": ["v1.narration_present", "v1.narration_coverage"],
     "vad": ["v3.speech_ratio", "v3.leading_silence", "v4.pause_max", "v4.pause_median"],
-    "asr": ["v2.engine_a", "v2.engine_b", "v2.consensus_wer", "v2.consensus_cer", "v2.critical_terms",
+    "asr": ["v2.engine_a", "v2.engine_b", "v2.clip_errors", "v2.critical_terms",
             "v2.instruction_leak", "v2.sales_closed_spoken"],
     "loudness": ["v3.master_lufs", "v3.stream_lufs"],
     "true_peak": ["v3.master_tp", "v3.stream_tp"],
@@ -871,6 +1030,9 @@ GROUPS = {
     "mos": ["v5.dnsmos_ovrl", "v5.dnsmos_sig"],
     "sync": ["v6.drift_p95", "v6.drift_max", "v7.caption_timing"],
     "captions": ["v1.captions_present", "v7.caption_script_match", "v7.caption_format"],
+    "contrast_px": ["v7.contrast_px"],
+    "safe_area_px": ["v7.safe_area_px"],
+    "burned_px": ["v7.captions_burned"],
     "compliance": ["v2.sales_closed_text", "v2.sales_closed_spoken"],
 }
 
@@ -957,10 +1119,9 @@ def decide(M, thr, profile="production", disable=(), overrides=None, policy=None
         a = M.get("asr") or {}
         need("v2.engine_a", a.get("wer_a"), lambda v: v <= T["V2"]["per_engine_wer_sanity_max"], T["V2"]["per_engine_wer_sanity_max"], ["engine_a"])
         need("v2.engine_b", a.get("wer_b"), lambda v: v <= T["V2"]["per_engine_wer_sanity_max"], T["V2"]["per_engine_wer_sanity_max"], ["engine_b"])
-        basis = T["V2"].get("wer_basis", "consensus")
-        wv = a.get("wer_consensus") if basis == "consensus" else (None if a.get("wer_a") is None or a.get("wer_b") is None else max(a["wer_a"], a["wer_b"]))
-        need("v2.consensus_wer", wv, lambda v: v <= T["V2"]["wer_max"], T["V2"]["wer_max"], ["engine_a", "engine_b"])
-        need("v2.consensus_cer", a.get("cer_consensus"), lambda v: v <= T["V2"]["cer_max"], T["V2"]["cer_max"], ["engine_a", "engine_b"])
+        # Per clip: at most 1 NON-critical consensus error; criticals (price, number, brand, negation, promise, CTA) = 0.
+        # WER ≤ 3% / CER ≤ 1% is applied to the pre-registered aggregate corpus (corpus_metrics / `corpus` command).
+        need("v2.clip_errors", a.get("clip_errors_noncritical"), lambda v: v <= T["V2"]["clip_noncritical_max"], T["V2"]["clip_noncritical_max"], ["engine_a", "engine_b"])
         crit = None if "critical_missed" not in a else (a["critical_missed"] + a["critical_inserted"])
         need("v2.critical_terms", crit, lambda v: len(v) == 0, "0 errors", ["engine_a", "engine_b"])
         need("v2.instruction_leak", a.get("instruction_leak"), lambda v: len(v) == 0, "none", ["engine_a", "engine_b"])
@@ -982,7 +1143,9 @@ def decide(M, thr, profile="production", disable=(), overrides=None, policy=None
         need("v4.f0_sd", pro.get("f0_sd_st"), lambda v: T["V4"]["f0_sd_st_min"] <= v <= T["V4"]["f0_sd_st_max"], [T["V4"]["f0_sd_st_min"], T["V4"]["f0_sd_st_max"]], ["prosody", "vad"])
         need("v4.energy_sd", tl.get("energy_sd_db") if speech else None, lambda v: T["V4"]["energy_sd_db_min"] <= v <= T["V4"]["energy_sd_db_max"], [T["V4"]["energy_sd_db_min"], T["V4"]["energy_sd_db_max"]], ["vad"])
         need("v4.hnr", pro.get("hnr_db"), lambda v: v >= T["V4"]["hnr_min_db"], T["V4"]["hnr_min_db"], ["prosody", "vad"])
-        if M.get("reference_present"):
+        if M.get("reference_present") and M.get("reference_independent") is False:
+            add("v4.speaker", "BLOCKED", None, T["V4"]["speaker_cos_min"], "brand_reference_not_independent_of_clip")
+        elif M.get("reference_present"):
             need("v4.speaker", M.get("speaker_cos"), lambda v: v >= T["V4"]["speaker_cos_min"], T["V4"]["speaker_cos_min"], ["speaker", "engine_b"])
         else:
             add("v4.speaker", "BLOCKED", None, T["V4"]["speaker_cos_min"], "brand_voice_reference_missing")
@@ -1008,24 +1171,19 @@ def decide(M, thr, profile="production", disable=(), overrides=None, policy=None
         need("v7.caption_script_match", c.get("script_wer"), lambda x: x <= T["V7"]["caption_script_wer_max"], T["V7"]["caption_script_wer_max"])
         fmt_ok = None if c.get("mean_cps") is None else (c["max_line_chars"] <= T["V7"]["max_chars_line"] and c["max_lines"] <= T["V7"]["max_lines"] and c["mean_cps"] <= T["V7"]["mean_cps_max"])
         need("v7.caption_format", fmt_ok, lambda x: x is True, T["V7"]["max_chars_line"])
-    style = (M.get("manifest") or {}).get("captions_style")
-    if style:
-        try:
-            cr = wcag_contrast(style["font_color"], style["background_color"])
-            add("v7.contrast", "PASS" if cr >= T["V7"]["contrast_min"] else "FAIL", round(cr, 2), T["V7"]["contrast_min"])
-            x, y, w, h = style["box"]
-            sx0, sy0, sx1, sy1 = T["V7"]["safe_area"]
-            add("v7.safe_area", "PASS" if x >= sx0 and y >= sy0 and x + w <= sx1 and y + h <= sy1 else "FAIL", style["box"], T["V7"]["safe_area"])
-        except Exception as e:
-            add("v7.contrast", "FAIL", None, None, f"captions_style_invalid:{e}")
-    else:
-        add("v7.contrast", "FAIL", None, None, "captions_style_missing")
+    fr = M.get("frames")
+    if M.get("video"):
+        need("v7.captions_burned", None if fr is None else fr.get("burned"), lambda v: v is True, "burned captions detected in frames", ["frames"])
+        burned = bool(fr and fr.get("burned"))
+        need("v7.contrast_px", fr.get("contrast_min") if burned else None, lambda v: v >= T["V7"]["contrast_min"], T["V7"]["contrast_min"], ["frames"])
+        sx0, sy0, sx1, sy1 = T["V7"]["safe_area"]
+        need("v7.safe_area_px", fr.get("bbox") if burned else None, lambda b: b[0] >= sx0 and b[1] >= sy0 and b[2] <= sx1 and b[3] <= sy1, T["V7"]["safe_area"], ["frames"])
     closed = ((M.get("manifest") or {}).get("sales_mode") or "closed") != "open"
     if closed:
         add("v2.sales_closed_text", "PASS" if not M.get("sales_text_hits") else "FAIL", M.get("sales_text_hits"))
     # Any measurement error that no check consumed still blocks the PASS.
     consumed = {"probe", "blackdetect", "ebur128_stream", "ebur128_master", "probe_master", "decode_master", "decode_native",
-                "decode_16k", "vad", "spectral", "prosody", "dnsmos", "engine_a", "engine_b", "speaker", "manifest", "sync"}
+                "decode_16k", "vad", "spectral", "prosody", "dnsmos", "engine_a", "engine_b", "speaker", "manifest", "sync", "frames"}
     for k, e in E.items():
         if k not in consumed:
             add("infra." + k, "ERROR_INFRA", None, None, e)

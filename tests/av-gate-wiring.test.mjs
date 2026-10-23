@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { writeFile, rm, mkdir, readFile } from "node:fs/promises";
-import { renderShort, avGate, avGateSealed, brandVoice, BRAND_VOICE, planSlot, SLOTS, salesClosedViolations } from "../scripts/channels/youtube-daily-short.mjs";
+import { renderShort, avGate, avGateSealed, brandVoice, brandVoiceQueued, recordSlotLost, slotLostKey, VOICE_RETRY, BRAND_VOICE, planSlot, SLOTS, salesClosedViolations } from "../scripts/channels/youtube-daily-short.mjs";
 
 // Code only (comments may name what was removed).
 const SRC = readFileSync(new URL("../scripts/channels/youtube-daily-short.mjs", import.meta.url), "utf8").split("\n").filter(l => !/^\s*\/\//.test(l)).map(l => l.replace(/\s\/\/ .*$/, "")).join("\n");
@@ -102,4 +102,33 @@ test("workflows: gate installed before render, no Piper, workflows stay as the o
   }
   const cp = readFileSync(new URL("../scripts/channels/short-crosspost.mjs", import.meta.url), "utf8");
   assert.match(cp, /avGateSealed\(file\)/);
+});
+
+test("voice unavailable: bounded retry queue (same voice only), TTL, then the slot is LOST — never a fallback", async () => {
+  const pcm = { pcm: Buffer.alloc(48000), rate: 24000, model: BRAND_VOICE.model };
+  const seq = (...r) => { const calls = []; return { calls, voice: async (t, k) => { calls.push([t, k]); return r[Math.min(calls.length - 1, r.length - 1)]; } }; };
+  const sleeps = [], sleep = async ms => { sleeps.push(ms); };
+  // transient errors then success: same function every time (no other model), bounded backoff
+  let q = seq({ blocked: "brand_voice_http_429" }, { blocked: "brand_voice_http_503" }, pcm);
+  let r = await brandVoiceQueued("x", "k", { voice: q.voice, sleep });
+  assert.equal(r.model, BRAND_VOICE.model); assert.equal(q.calls.length, 3); assert.deepEqual(sleeps, VOICE_RETRY.backoffMs);
+  // always transient: at most maxAttempts calls, then slot lost
+  q = seq({ blocked: "brand_voice_http_500" });
+  r = await brandVoiceQueued("x", "k", { voice: q.voice, sleep: async () => {} });
+  assert.equal(r.lost, true); assert.equal(r.blocked, "slot_lost_voice_unavailable"); assert.equal(q.calls.length, VOICE_RETRY.maxAttempts);
+  // permanent error: no retry at all
+  q = seq({ blocked: "brand_voice_key_missing" });
+  r = await brandVoiceQueued("x", "", { voice: q.voice, sleep: async () => {} });
+  assert.equal(r.blocked, "brand_voice_key_missing"); assert.equal(q.calls.length, 1);
+  // TTL / end of commercial day: no wait beyond the deadline
+  let t = 0; q = seq({ blocked: "brand_voice_http_429" });
+  r = await brandVoiceQueued("x", "k", { voice: q.voice, sleep: async ms => { t += ms; }, now: () => t, deadline: 10000 });
+  assert.equal(r.lost, true); assert.equal(q.calls.length, 1);
+  // renderShort turns a lost slot into a BLOCKED run without rendering
+  let rendered = 0;
+  await assert.rejects(renderShort(planSlot("2026-10-22", "dica"), "/tmp/zevanory-avgate-test-lost", { geminiKey: "k", voice: async () => ({ blocked: "slot_lost_voice_unavailable", lost: true }), pack: async () => { rendered++; }, video: async () => { rendered++; }, gate: async () => { rendered++; } }), /brand_voice_BLOCKED:slot_lost_voice_unavailable/);
+  assert.equal(rendered, 0);
+  // the lost slot is recorded so later runs of the same day skip it
+  const m = new Map(); await recordSlotLost({ put: async (k, v) => m.set(k, v) }, "2026-10-22", "dica", "slot_lost_voice_unavailable");
+  assert.equal(JSON.parse(m.get(slotLostKey("2026-10-22", "dica"))).policy, "lose_the_slot_no_fallback");
 });
