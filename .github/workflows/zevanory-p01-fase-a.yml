@@ -115,6 +115,9 @@ jobs:
         run: |
           set -eo pipefail
           . scripts/fase_a/tools.sh; need_psql
+          # Dependência do arquivo cifrado (backup_preserve_archive.py): já existe no Ubuntu; no Windows instala a versão fixada.
+          $PY -c "import cryptography" 2>/dev/null || $PY -m pip install --disable-pip-version-check -q "cryptography==43.0.3"
+          $PY -c "import cryptography" || { echo "::error title=TOOL_MISSING::python cryptography"; echo "TOOL_MISSING: cryptography"; exit 1; }
           # Executado como script (unittest.main no próprio arquivo): independe do carregador de caminhos do -m unittest.
           rc=0; $PY -W ignore tests/test_restore_new_database.py > "$RUNNER_TEMP/rnd.txt" 2>&1 || rc=$?
           sed -i 's/\r$//' "$RUNNER_TEMP/rnd.txt"; tail -8 "$RUNNER_TEMP/rnd.txt"
