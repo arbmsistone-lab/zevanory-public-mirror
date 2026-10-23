@@ -23,14 +23,10 @@ coverage=json.loads(coverage_path.read_text("utf-8"))
 declared_blob=str(coverage.get("production_blob") or "")
 assert declared_blob==blob,(SLUG,"source_blob_drift",declared_blob,blob)
 
-def get(url, headers=None):
-    hdr={"User-Agent":"ZEVANORY-PORTFOLIO-CERT/2.0","Accept":"text/html,application/json"}
-    if headers: hdr.update(headers)
-    req=urllib.request.Request(url,headers=hdr)
-    t=time.perf_counter()
-    with urllib.request.urlopen(req,timeout=25) as r:
-        body=r.read(); rh={k.lower():v for k,v in r.headers.items()}; code=r.status
-    return code,body,rh,round((time.perf_counter()-t)*1000,2)
+# Transport-only retry (3 attempts, backoff 2s/5s): timeout, reset, DNS, HTTP 5xx/429. A response that
+# arrives is validated ONCE below; divergent content/hash/contract fails on the first attempt, never retried.
+import portfolio_http_retry
+get=portfolio_http_retry.get
 
 code,live,headers,ms=get(f"{BASE}/{SLUG}")
 assert code==200
@@ -127,6 +123,8 @@ report={
   "live_binding":"canonical+title+h1","latency_ms":lat,"p95_latency_ms":p95,
   "shared_runtime_release":runtime_sha,"sales_mode":rel.get("sales_mode"),
   "security_headers":required_headers,"data_governance":data_profile,
+  "http_attempts":portfolio_http_retry.attempt_log,
+  "transport_retries":sum(1 for a in portfolio_http_retry.attempt_log if a.get("retry")),
   "checks":{"P01":"PASS","P05":"PASS","P07":"PASS","P08":"PASS","P09":"PASS","P11":"PASS","P13":"PASS"},
   "false_green":0
 }
