@@ -12,7 +12,7 @@ pin() {  # pin <arquivo> <sha256 esperado>
 }
 VOSK_PT_SHA=6e1ce909032e1afa7a88e68a3d628ecafff302bdf195befab308826c395e93b7
 # Engine B (V2): LARGE Vosk/Kaldi pt-BR model — a stronger non-Whisper engine that runs offline on the CPU runner.
-VOSK_PT_LARGE_SHA=__PIN_ME__
+VOSK_PT_LARGE_SHA=19f88d07e7f540c8e52b06be0af044ed72a1b3bb29b07ae31685520f059e842e
 VOSK_SPK_SHA=a74d8f51144484813e16af689bb0f916b7a111e2347f467c4933c1166097b5a7
 DNSMOS_SHA=269fbebdb513aa23cddfbb593542ecc540284a91849ac50516870e1ac78f6edd
 get_zip() {  # get_zip <url> <dir-name> <sha>
