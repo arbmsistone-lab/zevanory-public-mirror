@@ -24,7 +24,7 @@ const BASE = "http://127.0.0.1:8788";
 
 // ---------- mundo falso ----------
 const world = {
-  emails: [],
+  emails: [], resendFail: 0, sqlDelayMs: 0,
   mp: { mode: "ok", calls: [], createdServerSide: 0, delayMs: 0, hold: null },
   asaas: { checkoutMode: "ok", paymentMode: "ok", calls: [], payments: new Map(), customers: [] },
 };
@@ -44,7 +44,7 @@ let seqPay = 0;
 function fakeFetch(input, init = {}) {
   const url = new URL(typeof input === "string" ? input : input.url);
   if (url.hostname === "127.0.0.1" || url.hostname === "localhost") return realFetch(input, init);
-  if (url.pathname === "/sql" && init.headers?.["Neon-Connection-String"]) return Promise.resolve(neonResponse(init));
+  if (url.pathname === "/sql" && init.headers?.["Neon-Connection-String"]) return world.sqlDelayMs ? new Promise((r) => setTimeout(r, world.sqlDelayMs)).then(() => neonResponse(init)) : Promise.resolve(neonResponse(init));
   const method = String(init.method || "GET").toUpperCase();
   if (url.hostname === "api.mercadopago.com") {
     if (process.env.T4_INJECT_ECONNRESET === "1" && !injectedReset) {
@@ -53,9 +53,10 @@ function fakeFetch(input, init = {}) {
       return Promise.reject(Object.assign(new Error("T4_INJECTED_ECONNRESET read ECONNRESET"), { code: "ECONNRESET" }));
     }
     const body = init.body ? JSON.parse(init.body) : null;
-    world.mp.calls.push({ method, path: url.pathname, idem: init.headers?.["x-idempotency-key"] || "", ref: body?.external_reference || "", hasSignal: Boolean(init.signal) });
+    world.mp.calls.push({ method, path: url.pathname, idem: init.headers?.["x-idempotency-key"] || "", ref: body?.external_reference || "", hasSignal: Boolean(init.signal), signal: init.signal || null, at: Date.now() });
     if (method === "POST" && url.pathname === "/checkout/preferences") {
       if (world.mp.mode === "timeout") { world.mp.createdServerSide++; return hang(init); } // o MP CRIOU e a resposta nunca chegou
+      if (world.mp.mode === "slow_tail") { world.mp.inflight = (world.mp.inflight || 0) + 1; return hang(init).finally(() => { world.mp.inflight -= 1; world.mp.abortedAt = Date.now(); }); }
       if (world.mp.mode === "5xx") return json(503, { message: "service unavailable" });
       if (world.mp.hold) { const h = world.mp.hold; world.mp.hold = null; return h.then(() => json(201, { id: `pref-held-${world.mp.calls.length}`, external_reference: body.external_reference, init_point: `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=held${world.mp.calls.length}` })); }
       if (world.mp.delayMs) return new Promise((r) => setTimeout(r, world.mp.delayMs)).then(() => json(201, { id: `pref-${world.mp.calls.length}`, external_reference: body.external_reference, init_point: `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${world.mp.calls.length}` }));
@@ -102,7 +103,8 @@ function fakeFetch(input, init = {}) {
   }
   if (url.hostname === "api.resend.com" && method === "POST") {
     const b = JSON.parse(init.body);
-    world.emails.push({ to: b.to, subject: b.subject, text: b.text });
+    if (world.resendFail > 0) { world.resendFail -= 1; world.emailFailures = (world.emailFailures || 0) + 1; return json(500, { name: "internal_server_error" }); }
+    world.emails.push({ to: b.to, subject: b.subject, text: b.text, idem: init.headers?.["idempotency-key"] || "" });
     return json(200, { id: "sim-" + world.emails.length });
   }
   return Promise.reject(new Error("T4: unexpected external call blocked: " + url.hostname));
@@ -140,6 +142,8 @@ before(async () => {
   psqlRaw("alter table orders add column if not exists checkout_url text; create unique index if not exists orders_request_id_uq on orders(request_id);\n");
   psqlRaw("drop table if exists psp_circuit_probes;\n");
   psqlRaw(readFileSync(new URL("../../db/b05/psp_circuit_probes.sql", import.meta.url), "utf8"));
+  psqlRaw("drop table if exists asaas_dlq_alerts;\n");
+  psqlRaw(readFileSync(new URL("../../db/b05/asaas_dlq_alerts.sql", import.meta.url), "utf8"));
   Object.assign(process.env, ENV);
   globalThis.__ZEVANORY_PRIVATE_KV__ = kv;
   globalThis.fetch = fakeFetch;
@@ -150,7 +154,7 @@ beforeEach(() => {
   Object.assign(process.env, ENV);
   delete process.env.PSP_FORCE_DOWN;
   for (const k of [...kvStore.keys()]) if (k.startsWith("psp:")) kvStore.delete(k);
-  world.mp.mode = "ok"; world.mp.delayMs = 0; world.asaas.checkoutMode = "ok"; world.asaas.paymentMode = "ok";
+  world.mp.mode = "ok"; world.mp.delayMs = 0; world.sqlDelayMs = 0; world.resendFail = 0; delete globalThis.__ZEVANORY_PSP_PROBE_TIMING__; world.asaas.checkoutMode = "ok"; world.asaas.paymentMode = "ok";
   kvFault = () => false;
 });
 after(() => { if (!SKIP) setTimeout(() => process.exit(process.exitCode || 0), 50); });
@@ -455,7 +459,7 @@ test("W5 evento autenticado não tratado => 200 ignorado (a fila do Asaas não p
   assert.equal((await hook({ id: "nope", event: "PAYMENT_RECEIVED" })).status, 400);
 });
 
-const clearReview = () => { for (const k of [...kvStore.keys()]) if (k.startsWith("asaas:webhook:review:v1:") || k.startsWith("asaas:webhook:dlq:v1:")) kvStore.delete(k); };
+const clearReview = () => { for (const k of [...kvStore.keys()]) if (k.startsWith("asaas:webhook:review:v1:") || k.startsWith("asaas:webhook:dlq:v1:") || k.startsWith("asaas:webhook:dlq-alert:v1:")) kvStore.delete(k); };
 
 test("W6 estorno parcial antes da confirmação: fica na fila; a confirmação paga; o watchdog DRENA e aplica o estorno (uma vez)", { skip: SKIP }, async () => {
   clearReview();
@@ -503,4 +507,66 @@ test("W7 estorno total antes da confirmação (nunca pago): tentativas esgotam =
   assert.equal(world.emails.length - e0, 1, "um único alerta");
   assert.notEqual(order(o.order_id).status, "paid");
   assert.equal(countEvents(o.order_id), 0);
+});
+
+test("W8 repro Sol #879: e-mail do alerta da DLQ FALHA (Resend 500) => pendência persistida; a drenagem seguinte entrega UM e-mail com Idempotency-Key; depois nunca reenvia", { skip: SKIP }, async () => {
+  clearReview();
+  process.env.RESEND_API_KEY = "re_synthetic";
+  psqlRaw("delete from asaas_dlq_alerts;\n");
+  const { o, p } = await asaasPaidSetup();
+  p.status = "REFUNDED"; p.refunds = [{ status: "DONE", value: 197 }];
+  const early = evt("PAYMENT_REFUNDED", p.id);
+  assert.equal((await hook(early)).body.reason, "refund_before_payment_recorded");
+  const { drainAsaasReviewQueue } = await import("../../worker/cloudflare-worker.recovered.mjs");
+  const e0 = world.emails.length;
+  world.resendFail = 1;
+  const d1 = await drainAsaasReviewQueue(process.env, { maxAttempts: 1, alertBaseBackoffMs: 1 });
+  assert.deepEqual({ dlq: d1.dead_lettered, alerted: d1.alerted, failed: d1.alert_failed }, { dlq: 1, alerted: 0, failed: 1 }, JSON.stringify(d1));
+  assert.equal(world.emailFailures >= 1, true);
+  assert.equal(kvStore.has("asaas:webhook:review:v1:" + early.id), false, "item saiu da fila");
+  assert.ok(kvStore.has("asaas:webhook:dlq-alert:v1:" + early.id), "pendência do alerta persistida");
+  assert.equal(JSON.parse(kvStore.get("asaas:webhook:dlq-alert:v1:" + early.id)).state, "pending");
+  const key = "asaas-dlq-alert-v1-" + early.id;
+  assert.equal(rowsSync("select state from asaas_dlq_alerts where idempotency_key=$1", [key])[0]?.state, "pending");
+  await new Promise((r) => setTimeout(r, 20));
+  const d2 = await drainAsaasReviewQueue(process.env, { maxAttempts: 1, alertBaseBackoffMs: 1 });
+  assert.deepEqual({ checked: d2.checked, alerted: d2.alerted }, { checked: 0, alerted: 1 }, JSON.stringify(d2));
+  assert.equal(world.emails.length - e0, 1);
+  assert.equal(world.emails.at(-1).idem, key, "Idempotency-Key repassado ao Resend");
+  assert.match(world.emails.at(-1).text, new RegExp(early.id));
+  assert.equal(rowsSync("select state from asaas_dlq_alerts where idempotency_key=$1", [key])[0]?.state, "sent");
+  assert.equal(JSON.parse(kvStore.get("asaas:webhook:dlq:v1:" + early.id) || "null")?.alert?.state, "sent");
+  for (let i = 0; i < 2; i++) await drainAsaasReviewQueue(process.env, { maxAttempts: 1, alertBaseBackoffMs: 1 });
+  assert.equal(world.emails.length - e0, 1, "nunca reenvia depois do sucesso");
+  assert.notEqual(order(o.order_id).status, "paid");
+});
+
+test("C10 sondagem com cauda lenta (banco lento + MP sem resposta): o PRAZO da sondagem aborta a chamada ao MP antes do lease vencer; a 2ª sondagem nunca coexiste", { skip: SKIP }, async () => {
+  psqlRaw("delete from psp_circuit_probes;\n");
+  // Lease 1 600 ms, folga 300 ms => prazo 1 300 ms; timeout do MP 1 000 ms + orçamento de banco 300 ms = 1 300 ms (válido).
+  globalThis.__ZEVANORY_PSP_PROBE_TIMING__ = { leaseMs: 1600, safetyMs: 300, dbBudgetMs: 300 };
+  await kv.put("psp:circuit:v1:mercadopago", JSON.stringify({ failures: [], opened_at: Date.now() - 121_000 }));
+  world.mp.mode = "slow_tail";
+  world.mp.inflight = 0;
+  world.sqlDelayMs = 120; // banco acima do orçamento: a chamada ao MP só sai depois de várias consultas lentas
+  const mp0 = mpPrefCalls();
+  const t0 = Date.now();
+  const probe = await checkout();
+  const elapsed = Date.now() - t0;
+  world.sqlDelayMs = 0;
+  assert.equal(mpPrefCalls() - mp0, 1, "a sondagem chegou ao MP");
+  const call = world.mp.calls.filter((c) => c.path === "/checkout/preferences").at(-1);
+  assert.equal(call.signal?.aborted, true);
+  assert.equal(call.signal.reason?.name, "PspProbeDeadlineError", `chamada ao MP cortada pelo PRAZO da sondagem (não pelo timeout de 1 s): ${call.signal.reason?.name}`);
+  assert.equal(world.mp.inflight, 0, "nenhuma chamada da 1ª sondagem em voo");
+  assert.ok(world.mp.abortedAt - t0 < 1600, `abortada antes do lease (${world.mp.abortedAt - t0} ms)`);
+  assert.equal(probe.status, 503, JSON.stringify(probe.body));
+  assert.ok(elapsed < 1600 + 2000, `orquestrador não espera além do prazo (${elapsed} ms)`);
+  // Com o lease ainda vivo, outra sondagem não é admitida (e o disjuntor reabriu: vai ao Asaas).
+  const live = rowsSync("select count(*)::int as n from psp_circuit_probes where provider='mercadopago' and lease_until > now()")[0].n;
+  if (live === "1") {
+    const other = await checkout();
+    assert.equal(other.body.provider, "asaas", JSON.stringify(other.body));
+    assert.equal(mpPrefCalls() - mp0, 1);
+  }
 });

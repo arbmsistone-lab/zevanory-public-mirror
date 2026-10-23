@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import {
   PSP_FALLBACK_ORDER, breakerConfigFromEnv, classifyCheckoutOutcome, createMemoryProbeLease, breakerFailureKind, constantTimeEqual, createCircuitBreaker,
   idempotencyKeyForOrder, planPspOrder, pspCommercialLockOpen, pspContinuityPlan, runCheckoutWithFailover,
+  PROBE_LEASE_MS, PSP_PROVIDER_TIMEOUT_MAX_MS, createPgProbeLease, probeTiming, pspProviderTimeoutFromEnv,
 } from "../../worker/psp-failover.mjs";
 
 const READY = [{ provider: "stripe", ready: true }, { provider: "asaas", ready: true }, { provider: "mercadopago", ready: true }];
@@ -398,4 +399,114 @@ test("F30 leitura da saúde explícita falha => 'unknown' contado; plano de cont
   assert.deepEqual(plan.usable_providers, ["mercadopago"]);
   assert.equal(plan.circuits.asaas, "unknown");
   assert.ok(plan.store_errors.health >= 1);
+});
+
+// ---------- Sol, bloqueio #879-2: a sondagem nunca sobrevive ao lease ----------
+// Relógio e temporizadores simulados (node:test mock timers): determinístico, sem depender do ritmo do runner.
+async function advance(t, ms, step = 5) {
+  for (let i = 0; i < ms; i += step) { t.mock.timers.tick(step); for (let k = 0; k < 4; k++) await new Promise((r) => setImmediate(r)); }
+}
+// Handler falso com a forma do real: banco lento ANTES da chamada ao PSP, chamada ao PSP limitada pelo timeout do
+// provedor E pelo sinal da sondagem (como pspCallSignal), e persistência lenta DEPOIS do aborto (UPDATE checkout_uncertain).
+function slowTailHandler({ dbMs, providerTimeoutMs, persistMs, events }) {
+  return async (provider, ctx = {}) => {
+    await new Promise((r) => setTimeout(r, dbMs));
+    events.push(["psp_start", Date.now(), provider]);
+    events.inflight = (events.inflight || 0) + 1;
+    let reason = "";
+    try {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(Object.assign(new Error("provider timeout"), { name: "TimeoutError" })), providerTimeoutMs);
+        if (ctx.signal) {
+          if (ctx.signal.aborted) { clearTimeout(timer); reject(ctx.signal.reason); }
+          ctx.signal.addEventListener("abort", () => { clearTimeout(timer); reject(ctx.signal.reason); }, { once: true });
+        }
+      });
+    } catch (error) { reason = String(error?.name || "Error"); }
+    events.inflight -= 1;
+    events.push(["psp_end", Date.now(), reason]);
+    await new Promise((r) => setTimeout(r, persistMs));
+    return uncertain({ provider_error: `mercadopago_preference_${reason}_timeout` });
+  };
+}
+
+test("F31 cauda lenta (banco 350 ms + PSP até o timeout de 300 ms > lease de 600 ms): o prazo corta a sondagem em 450 ms; a 2ª sondagem só é admitida com a 1ª encerrada", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_800_000_000_000 });
+  const store = memStore();
+  const lease = createMemoryProbeLease({ now: () => Date.now(), ttlMs: 600 });
+  const common = { store, now: () => Date.now(), threshold: 1, cooldownMs: 1_000, probeLease: lease, logger: { error() {} }, providerTimeoutMs: 300, probeSafetyMs: 150, probeDbBudgetMs: 100 };
+  const a = createCircuitBreaker({ ...common, owner: "isolate-a" });
+  const b = createCircuitBreaker({ ...common, owner: "isolate-b" });
+  await a.recordFailure("mercadopago", "5xx");
+  await advance(t, 1_005);
+  const events = [];
+  const t0 = Date.now();
+  const cands = [{ provider: "mercadopago", ready: true }, { provider: "asaas", ready: true }];
+  // KV defasado: o resultado da 1ª sondagem não chega ao outro isolate (todos continuam vendo "meio aberto").
+  const stale = (br) => ({ ...br, recordFailure: async () => ({}), recordSuccess: async () => ({}) });
+  let done1 = false;
+  const run1 = runCheckoutWithFailover({ lockOpen: async () => true, candidates: cands, breaker: stale(a), invoke: slowTailHandler({ dbMs: 350, providerTimeoutMs: 300, persistMs: 300, events }) }).then((o) => { done1 = true; return o; });
+  let admittedAt = null, stateAtAdmission = null;
+  for (let i = 0; i < 60 && admittedAt === null; i++) {
+    await advance(t, 25);
+    const r = await b.admit("mercadopago");
+    if (r.admitted) { admittedAt = Date.now() - t0; stateAtAdmission = { done1, inflight: events.inflight || 0 }; r.done?.(); }
+  }
+  await advance(t, 1_000);
+  const out1 = await run1;
+  assert.ok(admittedAt !== null && admittedAt >= 600, `2ª sondagem só depois do lease (${admittedAt} ms)`);
+  assert.deepEqual(stateAtAdmission, { done1: true, inflight: 0 }, "a 1ª sondagem já terminou (nada em voo) quando a 2ª é admitida");
+  const end = events.find((e) => e[0] === "psp_end");
+  assert.equal(end[2], "PspProbeDeadlineError", "chamada ao PSP cortada pelo PRAZO da sondagem, não pelo timeout do provedor");
+  assert.ok(end[1] - t0 <= 450 + 10 && end[1] - t0 < 600, `abortada em ${end[1] - t0} ms (< lease 600)`);
+  assert.equal(out1.body.fallback_suppressed, true, "prazo vencido = ambíguo: sem failover para o mesmo pedido");
+  assert.equal(out1.body.probe_deadline_exceeded, true);
+  assert.deepEqual(out1.body.providers_called, ["mercadopago"]);
+  t.mock.timers.reset();
+});
+
+test("F32 configuração: timeout do PSP + orçamento de banco >= prazo (lease - folga) é REJEITADA; env fora da faixa nega a meia-abertura", async () => {
+  assert.equal(PROBE_LEASE_MS, 30_000);
+  assert.equal(PSP_PROVIDER_TIMEOUT_MAX_MS, 20_000, "30 000 - 5 000 (folga) - 5 000 (banco)");
+  assert.deepEqual([probeTiming().deadlineMs, probeTiming().ok], [25_000, true]);
+  assert.equal(probeTiming({ providerTimeoutMs: 20_000 }).ok, true);
+  for (const providerTimeoutMs of [20_001, 25_000, 30_000, 45_000]) assert.equal(probeTiming({ providerTimeoutMs }).ok, false, String(providerTimeoutMs));
+  const lease = (ttlMs) => createMemoryProbeLease({ ttlMs });
+  assert.throws(() => createCircuitBreaker({ probeLease: lease(30_000), providerTimeoutMs: 25_000 }), (e) => e.code === "PSP_PROBE_TIMING_INVALID");
+  assert.throws(() => createCircuitBreaker({ probeLease: lease(30_000), providerTimeoutMs: 30_000 }), (e) => e.code === "PSP_PROBE_TIMING_INVALID", "timeout >= lease");
+  assert.throws(() => createCircuitBreaker({ probeLease: createPgProbeLease({ query: async () => [] }, { ttlMs: 20_000 }), providerTimeoutMs: 20_000 }), (e) => e.code === "PSP_PROBE_TIMING_INVALID");
+  assert.throws(() => createCircuitBreaker({ probeLease: lease(30_000), providerTimeoutMs: 10_000, probeSafetyMs: 30_000 }), (e) => e.code === "PSP_PROBE_TIMING_INVALID", "prazo <= 0");
+  assert.doesNotThrow(() => createCircuitBreaker({ probeLease: lease(30_000), providerTimeoutMs: 20_000 }));
+  assert.deepEqual(["", "1000", "20000"].map((v) => pspProviderTimeoutFromEnv({ PSP_PROVIDER_TIMEOUT_MS: v }).ok), [true, true, true]);
+  assert.deepEqual(["20001", "25000", "30000", "999", "abc", "1.5"].map((v) => pspProviderTimeoutFromEnv({ PSP_PROVIDER_TIMEOUT_MS: v }).ok), [false, false, false, false, false, false]);
+  assert.equal(pspProviderTimeoutFromEnv({ PSP_PROVIDER_TIMEOUT_MS: "25000" }).value, 10_000, "chamadas normais voltam ao padrão");
+  const cfg = breakerConfigFromEnv({ PSP_PROVIDER_TIMEOUT_MS: "25000" });
+  assert.equal(cfg.probeConfigError, "provider_timeout_invalid");
+  const c = clock();
+  const br = createCircuitBreaker({ ...cfg, store: memStore(), now: c.now, threshold: 1, cooldownMs: 30_000, probeLease: createMemoryProbeLease({ now: c.now }), logger: { error() {} } });
+  await br.recordFailure("mercadopago", "5xx");
+  c.advance(30_001);
+  const r = await br.admit("mercadopago", { primary: true });
+  assert.deepEqual([r.admitted, r.reason], [false, "probe_config_invalid"], "config inválida => nenhuma sondagem (fail-closed)");
+  assert.equal(br.stats().store_errors.config, 1);
+  assert.equal(breakerConfigFromEnv({ PSP_PROVIDER_TIMEOUT_MS: "20000" }).probeConfigError, "");
+});
+
+test("F33 sondagem rápida: o handler recebe o sinal do prazo, o temporizador é desarmado ao terminar; tentativa normal não recebe sinal", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_800_000_000_000 });
+  const store = memStore();
+  const br = createCircuitBreaker({ store, now: () => Date.now(), threshold: 1, cooldownMs: 1_000, probeLease: createMemoryProbeLease({ now: () => Date.now() }), logger: { error() {} } });
+  await br.recordFailure("mercadopago", "5xx");
+  await advance(t, 1_005, 201);
+  const seen = [];
+  const invoke = async (p, ctx = {}) => { seen.push(ctx.signal || null); return ok(p); };
+  const cands = [{ provider: "mercadopago", ready: true }];
+  const out = await runCheckoutWithFailover({ lockOpen: async () => true, candidates: cands, breaker: br, invoke });
+  assert.equal(out.status, 201);
+  assert.ok(seen[0] instanceof AbortSignal, "sondagem recebe o sinal do prazo");
+  await advance(t, 30_000, 1_000);
+  assert.equal(seen[0].aborted, false, "temporizador desarmado depois do fim da sondagem");
+  await runCheckoutWithFailover({ lockOpen: async () => true, candidates: cands, breaker: br, invoke });
+  assert.equal(seen[1], null, "disjuntor fechado: tentativa normal sem sinal de sondagem");
+  t.mock.timers.reset();
 });

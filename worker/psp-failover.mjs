@@ -46,6 +46,8 @@ const boundedInt = (value, fallback, min, max) => {
 
 export function breakerConfigFromEnv(env = {}) {
   return Object.freeze({
+    providerTimeoutMs: pspProviderTimeoutFromEnv(env).value,
+    probeConfigError: pspProviderTimeoutFromEnv(env).ok ? "" : "provider_timeout_invalid",
     threshold: boundedInt(env.PSP_BREAKER_THRESHOLD, BREAKER_DEFAULTS.threshold, 1, 20),
     windowMs: boundedInt(env.PSP_BREAKER_WINDOW_MS, BREAKER_DEFAULTS.windowMs, 10_000, 3_600_000),
     cooldownMs: boundedInt(env.PSP_BREAKER_COOLDOWN_MS, BREAKER_DEFAULTS.cooldownMs, 5_000, 3_600_000),
@@ -62,7 +64,61 @@ export function breakerConfigFromEnv(env = {}) {
 // Meia-abertura: a sondagem ÚNICA entre isolates é garantida por um coordenador FORTEMENTE consistente
 // (probeLease; em produção, linha do PostgreSQL com INSERT ... ON CONFLICT DO UPDATE ... WHERE lease vencido).
 // Sem coordenador, ou se ele falhar, a sondagem é NEGADA (o provedor segue tratado como aberto).
+//
+// Limite da sondagem (Sol, bloqueio #879-2): o lease NUNCA pode vencer com a sondagem ainda em voo. Prova:
+//  * o prazo total da sondagem (AbortController) começa ANTES do pedido do lease (t0 <= instante do now() do banco
+//    que fixa lease_until), então em tempo real lease_until >= t0 + leaseMs;
+//  * ao atingir deadlineMs = leaseMs - PROBE_LEASE_SAFETY_MS o sinal aborta: toda chamada ao PSP da sondagem usa
+//    esse sinal (AbortSignal.any com o timeout do provedor), uma chamada que ainda não saiu nem sai, e o orquestrador
+//    devolve "ambíguo" (reconciliação) sem esperar o handler. Logo a sondagem termina em t0 + deadlineMs <
+//    t0 + leaseMs <= lease_until; uma 2ª sondagem só é admitida depois de lease_until;
+//  * o prazo cobre a chamada ao PSP e o trabalho de banco da sondagem: providerTimeoutMs + PROBE_DB_BUDGET_MS <=
+//    deadlineMs (validado em código; config fora disso => sondagem negada, fail-closed). Banco mais lento que o
+//    orçamento não estende a sondagem: o prazo corta a chamada ao PSP de qualquer jeito.
+// Com os valores de produção: lease 30 000 ms, folga 5 000 ms => prazo 25 000 ms; orçamento de banco 5 000 ms =>
+// timeout do PSP <= 20 000 ms (PSP_PROVIDER_TIMEOUT_MS acima disso é rejeitado).
 export const PROBE_LEASE_MS = 30_000;
+export const PROBE_LEASE_SAFETY_MS = 5_000;
+export const PROBE_DB_BUDGET_MS = 5_000;
+export const PSP_PROVIDER_TIMEOUT_DEFAULT_MS = 10_000;
+export const PSP_PROVIDER_TIMEOUT_MIN_MS = 1_000;
+export const PSP_PROVIDER_TIMEOUT_MAX_MS = PROBE_LEASE_MS - PROBE_LEASE_SAFETY_MS - PROBE_DB_BUDGET_MS;
+
+export function probeTiming({ leaseMs = PROBE_LEASE_MS, safetyMs = PROBE_LEASE_SAFETY_MS, dbBudgetMs = PROBE_DB_BUDGET_MS, providerTimeoutMs = PSP_PROVIDER_TIMEOUT_DEFAULT_MS } = {}) {
+  const deadlineMs = Number(leaseMs) - Number(safetyMs);
+  const ints = [leaseMs, safetyMs, dbBudgetMs, providerTimeoutMs].every((n) => Number.isInteger(n) && n > 0);
+  let reason = "";
+  if (!ints) reason = "timing_not_positive_integers";
+  else if (!(deadlineMs > 0 && deadlineMs < leaseMs)) reason = "deadline_not_below_lease";
+  else if (providerTimeoutMs + dbBudgetMs > deadlineMs) reason = "provider_timeout_plus_db_budget_exceeds_deadline";
+  return Object.freeze({ ok: reason === "", reason, leaseMs, safetyMs, dbBudgetMs, providerTimeoutMs, deadlineMs });
+}
+
+export function assertProbeTiming(input = {}) {
+  const t = probeTiming(input);
+  if (!t.ok) throw Object.assign(new Error(`psp_probe_timing_invalid:${t.reason}:lease=${t.leaseMs},deadline=${t.deadlineMs},provider_timeout=${t.providerTimeoutMs},db_budget=${t.dbBudgetMs}`), { name: "PspProbeTimingError", code: "PSP_PROBE_TIMING_INVALID", timing: t });
+  return t;
+}
+
+// PSP_PROVIDER_TIMEOUT_MS: ausente => padrão; presente e fora de [mín, máx] (máx derivado do lease) => inválido.
+// Inválido NÃO vira silenciosamente outro valor para a sondagem: ok=false (o Worker nega a meia-abertura).
+export function pspProviderTimeoutFromEnv(env = {}) {
+  const raw = env.PSP_PROVIDER_TIMEOUT_MS;
+  if (raw === undefined || raw === null || String(raw).trim() === "") return Object.freeze({ ok: true, value: PSP_PROVIDER_TIMEOUT_DEFAULT_MS, source: "default" });
+  const n = Number(String(raw).trim());
+  if (Number.isInteger(n) && n >= PSP_PROVIDER_TIMEOUT_MIN_MS && n <= PSP_PROVIDER_TIMEOUT_MAX_MS) return Object.freeze({ ok: true, value: n, source: "env" });
+  return Object.freeze({ ok: false, value: PSP_PROVIDER_TIMEOUT_DEFAULT_MS, source: "env_invalid", reason: `PSP_PROVIDER_TIMEOUT_MS fora de [${PSP_PROVIDER_TIMEOUT_MIN_MS}, ${PSP_PROVIDER_TIMEOUT_MAX_MS}]` });
+}
+
+// Sinal de UMA chamada ao PSP: timeout do provedor + (na sondagem) o prazo total da sondagem.
+export function pspCallSignal(providerTimeoutMs, extra = null) {
+  const own = AbortSignal.timeout(providerTimeoutMs);
+  return extra ? AbortSignal.any([own, extra]) : own;
+}
+
+export class PspProbeDeadlineError extends Error {
+  constructor(ms) { super(`psp_probe_deadline_${ms}ms`); this.name = "PspProbeDeadlineError"; }
+}
 export const PROBE_LEASE_SQL = `INSERT INTO psp_circuit_probes (provider, lease_owner, lease_until, updated_at)
 VALUES ($1::text, $2::text, now() + ($3::int * interval '1 millisecond'), now())
 ON CONFLICT (provider) DO UPDATE SET lease_owner = EXCLUDED.lease_owner, lease_until = EXCLUDED.lease_until, updated_at = now()
@@ -71,6 +127,7 @@ RETURNING lease_owner`;
 
 export function createPgProbeLease(sql, { ttlMs = PROBE_LEASE_MS } = {}) {
   return Object.freeze({
+    ttlMs,
     async acquire(provider, owner) {
       const rows = await sql.query(PROBE_LEASE_SQL, [String(provider), String(owner), ttlMs]);
       return Array.isArray(rows) && rows.length === 1 && String(rows[0].lease_owner) === String(owner);
@@ -82,6 +139,7 @@ export function createPgProbeLease(sql, { ttlMs = PROBE_LEASE_MS } = {}) {
 export function createMemoryProbeLease({ now = () => Date.now(), ttlMs = PROBE_LEASE_MS } = {}) {
   const leases = new Map();
   return Object.freeze({
+    ttlMs,
     async acquire(provider, owner) {
       const t = now();
       const cur = leases.get(provider);
@@ -94,9 +152,13 @@ export function createMemoryProbeLease({ now = () => Date.now(), ttlMs = PROBE_L
 
 const errorClass = (error) => String(error?.name || "Error").replace(/[^A-Za-z0-9_]/g, "").slice(0, 40) || "Error";
 
-export function createCircuitBreaker({ store, now = () => Date.now(), threshold = BREAKER_DEFAULTS.threshold, windowMs = BREAKER_DEFAULTS.windowMs, cooldownMs = BREAKER_DEFAULTS.cooldownMs, forcedDown = [], probeLease = null, logger = console, owner = "" } = {}) {
+export function createCircuitBreaker({ store, now = () => Date.now(), threshold = BREAKER_DEFAULTS.threshold, windowMs = BREAKER_DEFAULTS.windowMs, cooldownMs = BREAKER_DEFAULTS.cooldownMs, forcedDown = [], probeLease = null, logger = console, owner = "",
+  providerTimeoutMs = PSP_PROVIDER_TIMEOUT_DEFAULT_MS, probeConfigError = "", probeSafetyMs = PROBE_LEASE_SAFETY_MS, probeDbBudgetMs = PROBE_DB_BUDGET_MS, timers = globalThis } = {}) {
   const kv = store && typeof store.get === "function" && typeof store.put === "function" ? store : memoryStore();
-  const errors = { read: 0, write: 0, health: 0, lease: 0 };
+  // Com coordenador, o prazo da sondagem é derivado do TTL REAL do lease e validado aqui (lança na construção:
+  // configuração que permitiria a sondagem sobreviver ao lease nunca chega a admitir sondagem).
+  const timing = probeLease ? assertProbeTiming({ leaseMs: Number.isInteger(probeLease.ttlMs) ? probeLease.ttlMs : PROBE_LEASE_MS, safetyMs: probeSafetyMs, dbBudgetMs: probeDbBudgetMs, providerTimeoutMs }) : null;
+  const errors = { read: 0, write: 0, health: 0, lease: 0, config: 0 };
   const leaseOwner = owner || crypto.randomUUID();
   function storeError(op, provider, error) {
     errors[op] += 1;
@@ -157,9 +219,15 @@ export function createCircuitBreaker({ store, now = () => Date.now(), threshold 
       if (s.state === "unknown") return { ...s, admitted: primary === true, reason: primary === true ? "unknown_primary_attempted" : "unknown_fallback_not_opened" };
       if (s.state === "half_open") {
         if (!probeLease || typeof probeLease.acquire !== "function") return { ...s, admitted: false, reason: "probe_coordinator_unavailable" };
+        if (probeConfigError) { storeError("config", provider, new RangeError(String(probeConfigError))); return { ...s, admitted: false, reason: "probe_config_invalid" }; }
+        // O prazo começa ANTES do pedido do lease (ver a prova junto de PROBE_LEASE_MS).
+        const controller = new AbortController();
+        const timer = timers.setTimeout(() => controller.abort(new PspProbeDeadlineError(timing.deadlineMs)), timing.deadlineMs);
+        const stop = () => timers.clearTimeout(timer);
         let got = false;
-        try { got = (await probeLease.acquire(provider, leaseOwner)) === true; } catch (error) { storeError("lease", provider, error); return { ...s, admitted: false, reason: "probe_lease_error" }; }
-        return { ...s, admitted: got, probe: got, reason: got ? "half_open_probe" : "probe_in_flight" };
+        try { got = (await probeLease.acquire(provider, leaseOwner)) === true; } catch (error) { stop(); storeError("lease", provider, error); return { ...s, admitted: false, reason: "probe_lease_error" }; }
+        if (!got) { stop(); return { ...s, admitted: false, probe: false, reason: "probe_in_flight" }; }
+        return { ...s, admitted: true, probe: true, reason: "half_open_probe", signal: controller.signal, deadlineMs: timing.deadlineMs, done: stop };
       }
       return { ...s, admitted: false, reason: s.state };
     },
@@ -233,6 +301,25 @@ export function idempotencyKeyForOrder(orderId) {
   return `zevanory-order-${id}`;
 }
 
+// Sondagem: o handler recebe o sinal do prazo (repassado a toda chamada ao PSP) e o orquestrador não espera além do
+// prazo — ao abortar, o resultado é AMBÍGUO por timeout (reconciliação, reabre o disjuntor, nunca failover).
+async function invokeProbeWithDeadline(invoke, provider, health) {
+  const signal = health.signal;
+  let onAbort;
+  const deadline = new Promise((resolve) => {
+    onAbort = () => resolve({ status: 503, body: { error: "checkout_provider_uncertain", accepted: false, reconciliation_required: true, probe_deadline_exceeded: true, provider_error: `psp_probe_deadline_timeout_${health.deadlineMs}ms` } });
+    if (signal.aborted) onAbort(); else signal.addEventListener("abort", onAbort, { once: true });
+  });
+  const work = Promise.resolve().then(() => invoke(provider, { signal }));
+  work.catch(() => {});
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+    try { health.done?.(); } catch {}
+  }
+}
+
 // Orquestra a criação do checkout. `invoke(provider)` devolve {status, body} do handler daquele provedor.
 export async function runCheckoutWithFailover({ lockOpen, candidates, breaker, invoke, only = null, log = () => {} } = {}) {
   const plan = planPspOrder(candidates, { only });
@@ -245,7 +332,7 @@ export async function runCheckoutWithFailover({ lockOpen, candidates, breaker, i
     const health = await breaker.admit(provider, { primary: index === 0 });
     if (!health.admitted) { skipped.push({ provider, reason: health.state === "forced_down" ? "forced_down" : health.state === "open" ? "circuit_open" : String(health.reason || health.state) }); continue; }
     called.push(provider);
-    const out = await invoke(provider);
+    const out = health.probe === true ? await invokeProbeWithDeadline(invoke, provider, health) : await invoke(provider, {});
     const verdict = classifyCheckoutOutcome(out);
     log({ event: "psp_attempt", provider, circuit: health.state, probe: health.probe === true, outcome: verdict.class, breaker_failure: verdict.breakerFailure, http_status: Number(out?.status || 0) });
     if (verdict.class === "success") {
