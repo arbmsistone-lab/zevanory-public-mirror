@@ -10,7 +10,7 @@ tests/attribution.test.mjs 8
 tests/automation-traffic-guard.test.mjs 5
 tests/autonomy-health.test.mjs 4
 tests/autonomy-inventory.test.mjs 6
-tests/av-gate-wiring.test.mjs 14
+tests/av-gate-wiring.test.mjs 16
 tests/b01-m1-critical-effect-classification.test.mjs 10
 tests/b01-rollback-secret-probe-worker.test.mjs 3
 tests/blog-editorial-uniqueness.test.mjs 1

@@ -105,7 +105,12 @@ test("P05: rejected videos stay out; render phase stores candidates and hosts no
   assert.equal((await readdir(out)).filter(f => f.endsWith(".mp4")).length, 0, "render phase hosts nothing");
   assert.match(await readFile(join(out, "legendas.txt"), "utf8"), /PULADO \(zevanory-av-gate: av_gate_FAIL:v3.stream_tp\)/);
   const approved = r.candidates["2026-10-13"];
-  const m = await materializeApproved(Object.values(r.candidates), { store, out, approvals: async sha => sha === approved ? { approver: "dono", at: "2026-10-14" } : null });
+  const approvals = async sha => {
+    if (sha !== approved) return null;
+    const bnd = JSON.parse(await store.get("zpc:short:candidate:bundle:" + sha));
+    return { bundle_sha256: sha, mp4_sha256: bnd.mp4_sha256, gate_report_sha256: bnd.gate_report_sha256, approver: "dono", approved_at: bnd.candidate_created_at };
+  };
+  const m = await materializeApproved(Object.values(r.candidates), { store, out, approvals });
   assert.deepEqual(m.ok.map(x => x.id), ["2026-10-13"]); assert.equal(m.refused.length, 1);
   assert.equal(await readFile(join(out, "2026-10-13.mp4"), "utf8"), "mp4-2026-10-13oferta");
 });

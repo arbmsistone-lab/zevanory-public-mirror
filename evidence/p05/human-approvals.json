@@ -1,4 +1,4 @@
 {
-  "_doc": "P05 — aprovações HUMANAS de candidatos (fase 2 da publicação). Só o sha256 exato de um candidato armazenado (fase render, imutável) que passou em todas as checagens automáticas (PASS_TECH_PENDING_HUMAN) pode ser publicado, e só se estiver listado aqui com aprovador e data. Alterações neste arquivo entram por PR revisada. Vazio = nada publica.",
+  "_doc": "P05 — aprovações HUMANAS de BUNDLES de publicação (fase 2). Registro: {\"bundle_sha256\", \"mp4_sha256\", \"gate_report_sha256\", \"approver\", \"approved_at\"}. Válido só para exatamente aquele bundle (MP4 + relatório do gate + manifesto + título/descrição/tags/privacidade + datas), com approved_at entre candidate_created_at e review_expires_at (7 dias), e UMA vez: depois de publicar, a aprovação fica consumida e outra publicação exige nova decisão. Protegido por CODEOWNERS (proprietário). Vazio = nada publica.",
   "approvals": []
 }

@@ -116,7 +116,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         run: node scripts/channels/short-crosspost.mjs --slot="$SLOT" --day="${SHORT_DAY:-}"
-      - name: Keep the render candidates (MP4 + gate report) for human review (3 days)
+      - name: Keep the render candidates (MP4 + gate report) for human review (7 days)
         if: ${{ !cancelled() && inputs.phase != 'publish' }}
         uses: actions/upload-artifact@v4
         with:
@@ -127,4 +127,4 @@ jobs:
             /tmp/zevanory-daily-short*.av/av-gate.json
             /tmp/zevanory-daily-short*.av/final.mp4
           if-no-files-found: warn
-          retention-days: 3
+          retention-days: 7  # P05: review + publish within 7 days (same as the candidate TTL)

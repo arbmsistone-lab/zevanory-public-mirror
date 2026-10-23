@@ -215,7 +215,7 @@ export async function brandVoiceQueued(text, key, { voice = brandVoice, sleep = 
     if (enforceStart && now() >= expires) return { blocked: "slot_lost_voice_unavailable", lost: true, reason: "deadline_before_start", attempts };
     const v = await voice(text, key);
     if (v && !v.blocked && v.pcm) {
-      if (enforceEnd && now() > (ttlAtCompletion ? expires : deadline)) return { blocked: "slot_lost_voice_unavailable", lost: true, reason: "late_audio_discarded", attempts: [...attempts, "late_audio"] };
+      if (enforceEnd && now() >= (ttlAtCompletion ? expires : deadline)) return { blocked: "slot_lost_voice_unavailable", lost: true, reason: "late_audio_discarded", attempts: [...attempts, "late_audio"] };
       return { ...v, attempts: attempts.length + 1 };
     }
     attempts.push(String(v?.blocked || "no_audio"));
@@ -327,16 +327,6 @@ export function wavFromPcm(pcm, rate) {
   return Buffer.concat([h, pcm]);
 }
 
-// Final acceptance is HUMAN: a clip that passed every automatic check is published only if a human approval record
-// exists for exactly its bytes (JSON {"approvals":[{"mp4_sha256","approver","at"}]} at AV_GATE_HUMAN_APPROVALS).
-export async function humanApproved(sha, { file = process.env.AV_GATE_HUMAN_APPROVALS } = {}) {
-  if (!file) return null;
-  try {
-    const j = JSON.parse(await readFile(file, "utf8"));
-    return (j.approvals || []).find(a => a.mp4_sha256 === sha && a.approver && a.at) || null;
-  } catch { return null; }
-}
-
 // PHASE 1 (render): voice → package → video → gate. A technical pass yields a CANDIDATE (bytes + sha256 + gate
 // report); nothing here can publish. PHASE 2 (publishApproved) publishes exactly the stored, human-approved bytes.
 export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { geminiKey = process.env.GEMINI_API_KEY, voice = brandVoice, pack = packageNarration, video = renderVideo, gate = avGate, manifest = writeAvManifest, onVoice = null } = {}) {
@@ -356,14 +346,34 @@ export async function renderShort(plan, base = "/tmp/zevanory-daily-short", { ge
   if (report.verdict !== "PASS_TECH_PENDING_HUMAN") throw new Error("av_gate_" + report.verdict + ":" + [...report.failed, ...report.blocked, ...report.errors].slice(0, 6).join("+"));
   const bytes = await readFile(candidate);
   const sha = createHash("sha256").update(bytes).digest("hex");
-  return { candidate, bytes, sha, duration, voice: v.model, gate: report, manifestSha: await sha256File(man) };
+  let gateReportBytes = null;
+  try { gateReportBytes = await readFile(dir + "/av-gate.json"); } catch {}
+  if (!gateReportBytes) gateReportBytes = Buffer.from(JSON.stringify({ verdict: report.verdict, decision: { failed: report.failed, blocked: report.blocked, errors: report.errors } }));
+  return { candidate, bytes, sha, duration, voice: v.model, gate: report, gateReportBytes, manifestSha: await sha256File(man) };
 }
 
-// ---- two-phase publishing (AVAL 100) -------------------------------------------------------------------------
-// Immutable candidate store, content-addressed by sha256 and WRITE-ONCE: the bytes key is the hash of the bytes,
-// the metadata key is never overwritten (an existing record for the same sha is reused, a conflicting one refused).
+// ---- two-phase publishing (AVAL 100/102) ---------------------------------------------------------------------
+// The human approves a canonical BUNDLE, not just the MP4:
+//   bundle_sha256 = sha256(canonical JSON of {mp4_sha256, gate_report_sha256, manifest_sha256, day, slot, marker,
+//   title, description, tags, privacy, candidate_created_at, review_expires_at} + theme_id, product_sku, caption_tiktok)
+// (canonical = keys sorted, no whitespace). The publish phase uses ONLY the persisted bundle metadata.
+//
+// Storage is CONTENT-ADDRESSED: mp4 bytes under sha256(bytes), gate report under sha256(report), bundle under
+// sha256(canonical bundle). Writes are CONDITIONAL CREATE: putIfAbsent → on an existing key the stored bytes are
+// re-read and must be byte-identical, otherwise the run is refused (candidate_write_once_conflict). The filesystem
+// store uses an atomic O_EXCL create. LIMITATION (stated): Cloudflare KV has no If-None-Match, and no R2 bucket is
+// bound to this repo/budget, so the KV adapter emulates it (get → put → re-read). That is NOT atomic, but it is
+// fail-closed: every key is the hash of its content and every read re-verifies the hash, so a concurrent or
+// malicious overwrite with different bytes is detected and refused at storage time or at publish time.
 export const CANDIDATE_PREFIX = "zpc:short:candidate:";
-const CANDIDATE_TTL = 30 * 86400;
+export const REVIEW_WINDOW_S = 7 * 86400;        // Sol's short option: review AND publish within 7 days
+const CANDIDATE_TTL = REVIEW_WINDOW_S;            // bytes, gate report and bundle share the same retention
+const sha256Of = (b) => createHash("sha256").update(b).digest("hex");
+export function canonicalJson(o) {
+  if (Array.isArray(o)) return "[" + o.map(canonicalJson).join(",") + "]";
+  if (o && typeof o === "object") return "{" + Object.keys(o).sort().map(k => JSON.stringify(k) + ":" + canonicalJson(o[k])).join(",") + "}";
+  return JSON.stringify(o);
+}
 export function fsCandidateStore(dir) {
   const f = k => dir + "/" + k.replace(/[^a-z0-9._-]/gi, "_");
   return {
@@ -371,52 +381,110 @@ export function fsCandidateStore(dir) {
     async getBinary(k) { try { return await readFile(f(k)); } catch { return null; } },
     async put(k, v) { await mkdir(dir, { recursive: true }); await writeFile(f(k), String(v)); },
     async putBinary(k, b) { await mkdir(dir, { recursive: true }); await writeFile(f(k), b); },
+    // atomic conditional create (O_EXCL); returns false when the key already existed
+    async putIfAbsent(k, b) { await mkdir(dir, { recursive: true }); try { await writeFile(f(k), b, { flag: "wx" }); return true; } catch (e) { if (e.code === "EEXIST") return false; throw e; } },
   };
 }
-export async function storeCandidate(store, { bytes, plan, report, manifestSha = null, now = Date.now() }) {
-  const sha = createHash("sha256").update(bytes).digest("hex");
-  if (report?.verdict !== "PASS_TECH_PENDING_HUMAN") throw new Error("candidate_not_tech_passed");
-  const metaKey = CANDIDATE_PREFIX + sha + ":meta";
-  const existing = await store.get(metaKey);
-  if (existing) {
-    const m = JSON.parse(existing);
-    if (m.mp4_sha256 !== sha || m.day !== plan.day || m.slot !== plan.slot) throw new Error("candidate_write_once_conflict");
-    return { sha, meta: m, reused: true };  // write-once: never overwritten
+// Conditional create + byte-equality on conflict. verify=false exists only for the mutant test.
+export async function createOnce(store, key, bytes, { verify = true, ttl = CANDIDATE_TTL } = {}) {
+  const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+  let created;
+  if (store.putIfAbsent) created = await store.putIfAbsent(key, buf, { expirationTtl: ttl });
+  else {
+    const prev = await store.getBinary(key);
+    if (prev) created = false; else { await store.putBinary(key, buf, { expirationTtl: ttl }); created = true; }
   }
-  await store.putBinary(CANDIDATE_PREFIX + sha, bytes, { expirationTtl: CANDIDATE_TTL });
-  const meta = { mp4_sha256: sha, bytes: bytes.length, day: plan.day, slot: plan.slot, marker: plan.marker, gate: report.verdict,
-    gate_failed: report.failed || [], gate_blocked: report.blocked || [], manifest_sha256: manifestSha, created_at: new Date(now).toISOString() };
-  await store.put(metaKey, JSON.stringify(meta), { expirationTtl: CANDIDATE_TTL });
-  return { sha, meta, reused: false };
+  if (!verify) return { created };
+  const back = await store.getBinary(key);
+  if (!back || !Buffer.from(back).equals(buf)) throw new Error("candidate_write_once_conflict");
+  return { created };
 }
-// PHASE 2: fetch by sha256, re-verify the hash of the stored bytes, require the human approval for that sha256 and
-// the technical pass recorded at render time. No voice, no ffmpeg, no gate re-run, no re-encode in this path.
-// verifyHash / requireApproval / requireTechPass exist only for mutation tests.
-export async function loadApprovedCandidate(sha, { store, approvals = humanApproved, verifyHash = true, requireApproval = true, requireTechPass = true } = {}) {
-  if (!/^[0-9a-f]{64}$/.test(String(sha))) throw new Error("candidate_sha_invalid");
-  const raw = await store.get(CANDIDATE_PREFIX + sha + ":meta");
-  const meta = raw ? JSON.parse(raw) : null;
-  if (!meta || meta.mp4_sha256 !== sha) throw new Error("candidate_missing");
-  if (requireTechPass && meta.gate !== "PASS_TECH_PENDING_HUMAN") throw new Error("candidate_not_tech_passed");
-  const bytes = await store.getBinary(CANDIDATE_PREFIX + sha);
+export function buildBundle({ mp4Sha, gateSha, manifestSha, plan, createdAt }) {
+  const created = new Date(createdAt);
+  return {
+    mp4_sha256: mp4Sha, gate_report_sha256: gateSha, manifest_sha256: manifestSha, day: plan.day, slot: plan.slot, marker: plan.marker,
+    title: plan.title, description: plan.description, tags: plan.tags || [], privacy: plan.privacyStatus,
+    candidate_created_at: created.toISOString(), review_expires_at: new Date(created.getTime() + REVIEW_WINDOW_S * 1000).toISOString(),
+    theme_id: plan.entry?.theme_id || null, product_sku: plan.entry?.product?.sku || null, caption_tiktok: plan.caption_tiktok || null,
+  };
+}
+export async function storeCandidate(store, { bytes, plan, report, gateReportBytes = null, manifestSha = null, now = Date.now(), verify = true }) {
+  if (report?.verdict !== "PASS_TECH_PENDING_HUMAN") throw new Error("candidate_not_tech_passed");
+  const gateBytes = gateReportBytes || Buffer.from(canonicalJson({ verdict: report.verdict, failed: report.failed || [], blocked: report.blocked || [] }));
+  const gateJson = JSON.parse(Buffer.from(gateBytes).toString("utf8"));
+  if (gateJson.verdict !== "PASS_TECH_PENDING_HUMAN") throw new Error("candidate_gate_report_mismatch");
+  const mp4Sha = sha256Of(bytes), gateSha = sha256Of(gateBytes);
+  const bundle = buildBundle({ mp4Sha, gateSha, manifestSha, plan, createdAt: now });
+  const bundleBytes = Buffer.from(canonicalJson(bundle));
+  const bundleSha = sha256Of(bundleBytes);
+  await createOnce(store, CANDIDATE_PREFIX + "mp4:" + mp4Sha, bytes, { verify });
+  await createOnce(store, CANDIDATE_PREFIX + "gate:" + gateSha, gateBytes, { verify });
+  const r = await createOnce(store, CANDIDATE_PREFIX + "bundle:" + bundleSha, bundleBytes, { verify });
+  return { sha: bundleSha, bundleSha, mp4Sha, gateSha, bundle, reused: !r.created };
+}
+// Approval record: {bundle_sha256, mp4_sha256, gate_report_sha256, approver, approved_at}; valid only inside
+// [candidate_created_at, review_expires_at], for exactly that bundle, and only ONCE (consumed after publishing).
+export async function humanApproved(bundleSha, { file = process.env.AV_GATE_HUMAN_APPROVALS } = {}) {
+  if (!file) return null;
+  try {
+    const j = JSON.parse(await readFile(file, "utf8"));
+    return (j.approvals || []).find(a => a.bundle_sha256 === bundleSha) || null;
+  } catch { return null; }
+}
+export function approvalValid(a, bundle, bundleSha, nowMs = Date.now()) {
+  if (!a) return "candidate_not_approved";
+  if (a.bundle_sha256 !== bundleSha || a.mp4_sha256 !== bundle.mp4_sha256 || a.gate_report_sha256 !== bundle.gate_report_sha256) return "approval_bundle_mismatch";
+  if (!a.approver || !a.approved_at || !Number.isFinite(Date.parse(a.approved_at))) return "approval_incomplete";
+  const at = Date.parse(a.approved_at);
+  if (at < Date.parse(bundle.candidate_created_at)) return "approval_before_candidate";
+  if (at > Date.parse(bundle.review_expires_at)) return "approval_after_review_window";
+  if (nowMs > Date.parse(bundle.review_expires_at)) return "review_window_expired";
+  return null;
+}
+export const consumedKey = (bundleSha) => CANDIDATE_PREFIX + "consumed:" + bundleSha;
+// PHASE 2 load: every byte re-verified against its hash; publishing metadata comes from the PERSISTED bundle.
+// verifyHash / requireApproval / requireTechPass / recomputePlan exist only for mutation tests.
+export async function loadApprovedCandidate(bundleSha, { store, approvals = humanApproved, now = Date.now(), verifyHash = true, requireApproval = true, requireTechPass = true, recomputePlan = false } = {}) {
+  if (!/^[0-9a-f]{64}$/.test(String(bundleSha))) throw new Error("candidate_sha_invalid");
+  const bundleBytes = await store.getBinary(CANDIDATE_PREFIX + "bundle:" + bundleSha);
+  if (!bundleBytes) throw new Error("candidate_missing");
+  if (verifyHash && sha256Of(bundleBytes) !== bundleSha) throw new Error("candidate_bundle_hash_mismatch");
+  const bundle = JSON.parse(Buffer.from(bundleBytes).toString("utf8"));
+  const bytes = await store.getBinary(CANDIDATE_PREFIX + "mp4:" + bundle.mp4_sha256);
   if (!bytes) throw new Error("candidate_bytes_missing");
-  if (verifyHash && createHash("sha256").update(bytes).digest("hex") !== sha) throw new Error("candidate_hash_mismatch");
-  const approval = await approvals(sha);
-  if (requireApproval && !approval) throw new Error("candidate_not_approved");
-  const plan = planSlot(meta.day, meta.slot);
-  if (plan.marker !== meta.marker) throw new Error("candidate_plan_mismatch");
-  return { bytes, meta, plan, approval };
+  if (verifyHash && sha256Of(bytes) !== bundle.mp4_sha256) throw new Error("candidate_hash_mismatch");
+  const gateBytes = await store.getBinary(CANDIDATE_PREFIX + "gate:" + bundle.gate_report_sha256);
+  if (!gateBytes || (verifyHash && sha256Of(gateBytes) !== bundle.gate_report_sha256)) throw new Error("candidate_gate_report_mismatch");
+  if (requireTechPass && JSON.parse(Buffer.from(gateBytes).toString("utf8")).verdict !== "PASS_TECH_PENDING_HUMAN") throw new Error("candidate_not_tech_passed");
+  if (await store.get(consumedKey(bundleSha))) throw new Error("approval_already_consumed");
+  const approval = await approvals(bundleSha);
+  const why = approvalValid(approval, bundle, bundleSha, now);
+  if (requireApproval && why) throw new Error(why);
+  const plan = recomputePlan ? planSlot(bundle.day, bundle.slot) : {
+    day: bundle.day, slot: bundle.slot, marker: bundle.marker, title: bundle.title, description: bundle.description, tags: bundle.tags,
+    privacyStatus: bundle.privacy, entry: { theme_id: bundle.theme_id, product: { sku: bundle.product_sku } }, caption_tiktok: bundle.caption_tiktok,
+  };
+  return { bytes, bundle, bundleSha, plan, approval, meta: { mp4_sha256: bundle.mp4_sha256, gate: "PASS_TECH_PENDING_HUMAN", day: bundle.day, slot: bundle.slot } };
 }
-export async function publishApproved(sha, { store, approvals = humanApproved, publish = publishShort, accessToken, base = null, ...flags } = {}) {
-  const c = await loadApprovedCandidate(sha, { store, approvals, ...flags });
+export async function publishApproved(bundleSha, { store, approvals = humanApproved, publish = publishShort, accessToken, base = null, now = Date.now(), ...flags } = {}) {
+  const c = await loadApprovedCandidate(bundleSha, { store, approvals, now, ...flags });
+  // consume the approval BEFORE the upload (conditional create): a second publish needs a new human decision
+  if (!flags.skipConsume && !(await createOnceConsumed(store, bundleSha, c.approval, now))) throw new Error("approval_already_consumed");
   if (base) await sealApproved(base, c);
   const result = await publish(c.plan, c.bytes, { accessToken });
   return { ...c, result };
 }
+async function createOnceConsumed(store, bundleSha, approval, now) {
+  const rec = Buffer.from(canonicalJson({ bundle_sha256: bundleSha, approver: approval?.approver || null, consumed_at: new Date(now).toISOString() }));
+  if (store.putIfAbsent) return store.putIfAbsent(consumedKey(bundleSha), rec, { expirationTtl: CANDIDATE_TTL });
+  if (await store.get(consumedKey(bundleSha))) return false;
+  await store.putBinary(consumedKey(bundleSha), rec, { expirationTtl: CANDIDATE_TTL });
+  return true;
+}
 // Writes the exact approved bytes + a seal for the cross-poster / pack hosting (same bytes, same hash).
 export async function sealApproved(base, c) {
   await writeFile(base + ".mp4", c.bytes);
-  await writeFile(base + ".av-gate.json", JSON.stringify({ verdict: "PASS", gate: c.meta.gate, human_approval: { approver: c.approval?.approver, at: c.approval?.at }, mp4_sha256: c.meta.mp4_sha256, day: c.meta.day, slot: c.meta.slot }));
+  await writeFile(base + ".av-gate.json", JSON.stringify({ verdict: "PASS", gate: "PASS_TECH_PENDING_HUMAN", bundle_sha256: c.bundleSha, human_approval: { approver: c.approval?.approver, approved_at: c.approval?.approved_at }, mp4_sha256: c.bundle.mp4_sha256, day: c.bundle.day, slot: c.bundle.slot }));
 }
 
 // The cross-poster and the pack only accept a file sealed by a PASS of the gate for exactly these bytes.
@@ -503,11 +571,11 @@ if (isMain) {
         for (const n of ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "KV_NAMESPACE_ID"]) if (!process.env[n]) throw new Error("missing_" + n);
         const kv = kvEnv();
         const c = await loadApprovedCandidate(sha, { store: kv });
-        const window = publicationWindow({ day: c.meta.day, slot: c.meta.slot, now: Date.now() });
+        const window = publicationWindow({ day: c.bundle.day, slot: c.bundle.slot, now: Date.now() });
         if (window.action !== "publish") { note("notice", sha.slice(0, 12) + ": not published (" + window.reason + ")"); continue; }
         if (!allow(await getUsage(kv), "youtube_units", 1700)) throw new Error("zero_cost_guard_youtube_quota");
         const { getYoutubeAccessToken } = await import("./youtube-access.mjs");
-        const base = "/tmp/zevanory-daily-short" + (c.meta.slot === "oferta" ? "" : "-" + c.meta.slot);
+        const base = "/tmp/zevanory-daily-short" + (c.bundle.slot === "oferta" ? "" : "-" + c.bundle.slot);
         const { result, plan } = await publishApproved(sha, { store: kv, accessToken: await getYoutubeAccessToken(), base });
         await addUsage(kv, "youtube_units", result.reused ? 5 : 1650).catch(() => null);
         const activity = await recordPublication(kv, plan, result);
@@ -541,8 +609,8 @@ if (isMain) {
         if (/slot_lost_voice_unavailable/.test(String(e?.message)) && usageKv && !dry) await recordSlotLost(usageKv, day, slot, e.message).catch(() => null);
         throw e;
       }
-      const stored = await storeCandidate(candidateStore(), { bytes: rendered.bytes, plan, report: rendered.gate, manifestSha: rendered.manifestSha });
-      note("notice", JSON.stringify({ day, slot, candidate_sha256: stored.sha, reused: stored.reused, gate: rendered.gate.verdict, duration: rendered.duration, voice: rendered.voice, next: "human approval of this sha256, then --phase=publish --candidates=" + stored.sha }));
+      const stored = await storeCandidate(candidateStore(), { bytes: rendered.bytes, plan, report: rendered.gate, gateReportBytes: rendered.gateReportBytes, manifestSha: rendered.manifestSha });
+      note("notice", JSON.stringify({ day, slot, bundle_sha256: stored.bundleSha, mp4_sha256: stored.mp4Sha, gate_report_sha256: stored.gateSha, review_expires_at: stored.bundle.review_expires_at, reused: stored.reused, duration: rendered.duration, voice: rendered.voice, next: "human approval record for this bundle, then --phase=publish --candidates=" + stored.bundleSha }));
     } catch (e) { failed++; note("error", slot + ":" + String(e?.message || e).replace(/[^a-z0-9_:.-]/gi, "_").slice(0, 140)); }
   }
   if (failed) process.exit(1);

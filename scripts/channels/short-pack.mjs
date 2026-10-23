@@ -33,8 +33,8 @@ export async function buildPack({ start = addDays(localDay(), 1), days = 10, out
         continue;
       }
       produced.add(mediaId(day, slot));
-      if (store && r.bytes) candidates[mediaId(day, slot)] = (await storeCandidate(store, { bytes: r.bytes, plan, report: r.gate, manifestSha: r.manifestSha })).sha;
-      lines.push(`===== ${day} · ${time} =====\nArquivo: ${mediaId(day, slot)}.mp4 (${Math.round(r.duration)} s, voz: ${r.voice})${candidates[mediaId(day, slot)] ? " · candidato sha256 " + candidates[mediaId(day, slot)] + " (aguarda aprovação humana)" : ""}\n\n${captionFor(plan, "tiktok")}\n`);
+      if (store && r.bytes) candidates[mediaId(day, slot)] = (await storeCandidate(store, { bytes: r.bytes, plan: { ...plan, caption_tiktok: captionFor(plan, "tiktok") }, report: r.gate, gateReportBytes: r.gateReportBytes, manifestSha: r.manifestSha })).bundleSha;
+      lines.push(`===== ${day} · ${time} =====\nArquivo: ${mediaId(day, slot)}.mp4 (${Math.round(r.duration)} s, voz: ${r.voice})${candidates[mediaId(day, slot)] ? " · bundle sha256 " + candidates[mediaId(day, slot)] + " (aguarda aprovação humana)" : ""}\n\n${captionFor(plan, "tiktok")}\n`);
     }
   }
   await writeFile(`${out}/legendas.txt`, lines.join("\n"));
@@ -50,7 +50,7 @@ export async function materializeApproved(shas, { store, out = "/tmp/short-pack"
       const c = await loadApprovedCandidate(sha, { store, ...(approvals ? { approvals } : {}) });
       const id = mediaId(c.meta.day, c.meta.slot);
       await sealApproved(`${out}/${id}`, c);
-      ok.push({ id, day: c.meta.day, sha });
+      ok.push({ id, day: c.meta.day, slot: c.meta.slot, sha, caption: c.bundle.caption_tiktok });
     } catch (e) { refused.push(String(sha).slice(0, 12) + ":" + String(e?.message || e).slice(0, 80)); }
   }
   return { ok, refused };
@@ -59,6 +59,18 @@ const br = d => d.slice(8, 10) + "/" + d.slice(5, 7);
 // The ready-to-paste instruction for the browser executor (TikTok Studio has no
 // API for own-account tools). ZEVANORY generates and e-mails it with every pack,
 // so nobody has to rebuild it by hand.
+export function executorCommandFromApproved(items) {
+  const time = Object.fromEntries(PACK_SLOTS);
+  const sorted = [...items].sort((a, b) => (a.day + time[a.slot]).localeCompare(b.day + time[b.slot]));
+  return [
+    "AUTORIZAÇÃO DO RENAN: execute tudo sozinho; chame o Renan só para login/2FA ou se a janela do Chrome precisar ficar visível.",
+    "", `TAREFA: agendar ${sorted.length} vídeos APROVADOS da ZEVANORY no TikTok Studio (conta @zevanory) nos horários indicados (Brasília). Nunca publique na hora.`,
+    "", "1) BAIXAR para Downloads:", ...sorted.map(x => `https://zevanory.api.br/media/short/${x.id}.mp4`),
+    "", "2) AGENDAR em https://www.tiktok.com/tiktokstudio/upload, um por vez; rótulo \"Conteúdo gerado por IA\" ativado; legenda = bloco abaixo, exatamente:",
+    "", ...sorted.map(x => `--- ${br(x.day)} às ${time[x.slot]} · arquivo ${x.id}.mp4 ---\n${x.caption || ""}`),
+    "", "3) Apague de Downloads os vídeos depois de agendados.", "4) RELATÓRIO: os agendamentos com data e hora, e qualquer erro com a mensagem exata.",
+  ].join("\n");
+}
 export function executorCommand(start, days = 10, produced = null) {
   const blocks = [], links = [];
   for (let i = 0; i < days; i++) {
@@ -103,7 +115,8 @@ if (isMain) {
     const m = await materializeApproved(shas, { store, out });
     for (const f of (await readdir(out)).filter(f => f.endsWith(".mp4"))) if (!(await avGateSealed(`${out}/${f}`))) await rm(`${out}/${f}`);
     const days = [...new Set(m.ok.map(x => x.day))].sort();
-    if (days.length) await writeFile(`${out}/comando-executor.txt`, executorCommand(days[0], Math.round((Date.parse(days[days.length - 1]) - Date.parse(days[0])) / 86400000) + 1, new Set(m.ok.map(x => x.id))));
+    // executor command from the PERSISTED, approved bundles only (captions are never recomputed in this phase)
+    if (days.length) await writeFile(`${out}/comando-executor.txt`, executorCommandFromApproved(m.ok));
     console.log(`::notice title=SHORT_PACK::publish phase: ${m.ok.length} approved candidates materialised, refused=${JSON.stringify(m.refused)}`);
     if (!m.ok.length) { console.log("::error title=SHORT_PACK::no human-approved candidate — nothing to host (fail-closed)"); process.exit(1); }
   } else {

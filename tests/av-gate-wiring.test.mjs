@@ -6,8 +6,9 @@ import { existsSync } from "node:fs";
 import { readTextNormalized } from "./helpers/text.mjs";
 import { writeFile, rm, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { renderShort, avGate, avGateSealed, humanApproved, fsCandidateStore, storeCandidate, publishApproved, brandVoice, brandVoiceQueued, recordSlotLost, slotLostKey, VOICE_RETRY, BRAND_VOICE, planSlot, SLOTS, salesClosedViolations } from "../scripts/channels/youtube-daily-short.mjs";
+import { renderShort, avGate, avGateSealed, humanApproved, fsCandidateStore, storeCandidate, publishApproved, createOnce, canonicalJson, brandVoice, brandVoiceQueued, recordSlotLost, slotLostKey, VOICE_RETRY, BRAND_VOICE, planSlot, SLOTS, salesClosedViolations } from "../scripts/channels/youtube-daily-short.mjs";
 
 // Code only (comments may name what was removed).
 const SRC = readTextNormalized(new URL("../scripts/channels/youtube-daily-short.mjs", import.meta.url)).split("\n").filter(l => !/^\s*\/\//.test(l)).map(l => l.replace(/\s\/\/ .*$/, "")).join("\n");
@@ -43,54 +44,82 @@ for (const verdict of ["FAIL", "BLOCKED", "ERROR_INFRA"]) {
   });
 }
 
-test("PHASE 1: a technical pass yields a candidate (bytes + sha256) and NEVER a publishable/sealed file", async () => {
+test("PHASE 1: a technical pass yields a candidate (bytes + sha256 + gate report) and NEVER a publishable/sealed file", async () => {
   const b = await base("pending");
   const gate = async () => ({ verdict: "PASS_TECH_PENDING_HUMAN", failed: [], blocked: [], errors: [] });
   const r = await renderShort(planSlot("2026-10-22", "calc"), b, { geminiKey: "k", voice: voiceOk, pack: fakePack, video: fakeVideo, gate });
-  assert.match(r.sha, /^[0-9a-f]{64}$/); assert.equal(r.bytes.toString(), "mp4-bytes-calc");
+  assert.match(r.sha, /^[0-9a-f]{64}$/); assert.equal(r.bytes.toString(), "mp4-bytes-calc"); assert.ok(r.gateReportBytes.length > 0);
   assert.equal(existsSync(b + ".mp4"), false);
   assert.equal(await avGateSealed(b + ".mp4"), false);
-  // approvals file: only an entry for exactly this sha256 with approver + date counts
-  const dir = join(tmpdir(), "zevanory-avgate-approvals"); await mkdir(dir, { recursive: true });
-  const f = join(dir, "a.json");
-  await writeFile(f, JSON.stringify({ approvals: [{ mp4_sha256: "ab", approver: "dono", at: "2026-10-23" }, { mp4_sha256: "cd" }] }));
-  assert.equal((await humanApproved("ab", { file: f })).approver, "dono");
-  assert.equal(await humanApproved("cd", { file: f }), null);
-  assert.equal(await humanApproved("ab", { file: undefined }), null);
 });
 
-test("two-phase publishing: immutable write-once candidate; publish exactly the approved bytes; mutants killed", async () => {
-  const dir = join(tmpdir(), "zevanory-candidates-test-" + process.pid); await rm(dir, { recursive: true, force: true });
-  const store = fsCandidateStore(dir);
+const TECH = { verdict: "PASS_TECH_PENDING_HUMAN", failed: [], blocked: [] };
+const freshStore = async (tag) => { const d = join(tmpdir(), `zevanory-cand-${tag}-${process.pid}`); await rm(d, { recursive: true, force: true }); return { dir: d, store: fsCandidateStore(d) }; };
+const keyFile = (dir, k) => join(dir, k.replace(/[^a-z0-9._-]/gi, "_"));
+const approvalFor = (st, over = {}) => ({ bundle_sha256: st.bundleSha, mp4_sha256: st.mp4Sha, gate_report_sha256: st.gateSha, approver: "dono", approved_at: new Date(Date.parse(st.bundle.candidate_created_at) + 3600e3).toISOString(), ...over });
+
+test("bundle approval: publish EXACTLY the approved bytes with the PERSISTED metadata; tampering, drift, window and reuse refused; mutants killed", async () => {
+  const { store } = await freshStore("bundle");
   const plan = planSlot("2026-10-22", "dica");
   const bytes = Buffer.from("approved-mp4-bytes");
-  const tech = { verdict: "PASS_TECH_PENDING_HUMAN", failed: [], blocked: [] };
-  const st = await storeCandidate(store, { bytes, plan, report: tech, manifestSha: "m".repeat(64) });
-  assert.equal((await storeCandidate(store, { bytes, plan, report: tech })).reused, true, "write-once: reused, not rewritten");
-  await assert.rejects(storeCandidate(store, { bytes: Buffer.from("x"), plan, report: { verdict: "FAIL" } }), /candidate_not_tech_passed/);
-  await assert.rejects(storeCandidate(store, { bytes, plan: planSlot("2026-10-23", "dica"), report: tech }), /candidate_write_once_conflict/);
-  const yes = async sha => sha === st.sha ? { approver: "dono", at: "2026-10-23" } : null, no = async () => null;
+  const created = Date.parse("2026-10-22T12:00:00Z");
+  const st = await storeCandidate(store, { bytes, plan, report: TECH, manifestSha: "m".repeat(64), now: created });
+  assert.equal(st.bundle.review_expires_at, "2026-10-29T12:00:00.000Z", "review window = 7 days");
+  assert.equal(st.bundleSha, createHash("sha256").update(canonicalJson(st.bundle)).digest("hex"));
+  const now = created + 7200e3;
   let sent = null;
-  const publish = async (p, b) => { sent = b; return { video_id: "V1" }; };
-  // missing approval → refuse
-  await assert.rejects(publishApproved(st.sha, { store, approvals: no, publish }), /candidate_not_approved/); assert.equal(sent, null);
-  // approved → publishes EXACTLY the stored bytes, with the plan of the stored day/slot
-  const ok = await publishApproved(st.sha, { store, approvals: yes, publish });
-  assert.ok(sent.equals(bytes)); assert.equal(ok.plan.marker, plan.marker);
-  // tampered bytes in the store → refuse (hash re-verified before upload)
-  await writeFile(join(dir, ("zpc:short:candidate:" + st.sha).replace(/[^a-z0-9._-]/gi, "_")), "tampered");
-  sent = null;
-  await assert.rejects(publishApproved(st.sha, { store, approvals: yes, publish }), /candidate_hash_mismatch/); assert.equal(sent, null);
-  // mutants: without the hash check the tampered bytes would go out; without the approval check an unapproved one
-  await publishApproved(st.sha, { store, approvals: yes, publish, verifyHash: false }); assert.equal(sent.toString(), "tampered", "mutant verifyHash=false killed");
-  await writeFile(join(dir, ("zpc:short:candidate:" + st.sha).replace(/[^a-z0-9._-]/gi, "_")), bytes);
-  await publishApproved(st.sha, { store, approvals: no, publish, requireApproval: false }); assert.ok(sent.equals(bytes), "mutant requireApproval=false killed");
-  // unknown / malformed sha → refuse
-  await assert.rejects(publishApproved("f".repeat(64), { store, approvals: yes, publish }), /candidate_missing/);
-  await assert.rejects(publishApproved("../etc", { store, approvals: yes, publish }), /candidate_sha_invalid/);
+  const publish = async (p, b) => { sent = { p, b }; return { video_id: "V1" }; };
+  const appr = (over) => async () => approvalFor(st, over);
+  await assert.rejects(publishApproved(st.bundleSha, { store, approvals: async () => null, publish, now }), /candidate_not_approved/);
+  await assert.rejects(publishApproved(st.bundleSha, { store, approvals: appr({ mp4_sha256: "0".repeat(64) }), publish, now }), /approval_bundle_mismatch/);
+  await assert.rejects(publishApproved(st.bundleSha, { store, approvals: appr({ approved_at: "2026-10-22T11:59:59Z" }), publish, now }), /approval_before_candidate/);
+  await assert.rejects(publishApproved(st.bundleSha, { store, approvals: appr({ approved_at: "2026-10-29T12:00:01Z" }), publish, now }), /approval_after_review_window/);
+  await assert.rejects(publishApproved(st.bundleSha, { store, approvals: appr(), publish, now: Date.parse("2026-10-29T12:00:01Z") }), /review_window_expired/);
+  assert.equal(sent, null);
+  await publishApproved(st.bundleSha, { store, approvals: appr(), publish, now });
+  assert.ok(sent.b.equals(bytes)); assert.equal(sent.p.title, st.bundle.title); assert.equal(sent.p.description, st.bundle.description); assert.equal(sent.p.privacyStatus, st.bundle.privacy);
+  await assert.rejects(publishApproved(st.bundleSha, { store, approvals: appr(), publish, now }), /approval_already_consumed/);
+  // title drift keeping the marker (stored bundle edited) → bundle hash mismatch, refused
+  const { dir: d2, store: s2 } = await freshStore("drift");
+  const st2 = await storeCandidate(s2, { bytes, plan, report: TECH, now: created });
+  await writeFile(keyFile(d2, "zpc:short:candidate:bundle:" + st2.bundleSha), canonicalJson({ ...st2.bundle, title: "Outro título com o mesmo marcador" }));
+  await assert.rejects(publishApproved(st2.bundleSha, { store: s2, approvals: async () => approvalFor(st2), publish, now }), /candidate_bundle_hash_mismatch/);
+  // mutant: recomputing the plan in the publish phase publishes metadata that was NOT approved
+  const { store: s3 } = await freshStore("recompute");
+  const st3 = await storeCandidate(s3, { bytes, plan: { ...plan, title: "Título aprovado pelo humano" }, report: TECH, now: created });
+  await publishApproved(st3.bundleSha, { store: s3, approvals: async () => approvalFor(st3), publish, now, recomputePlan: true });
+  assert.notEqual(sent.p.title, "Título aprovado pelo humano", "mutant recomputePlan=true killed (drift would be published)");
+  // tampered mp4 bytes → refused; mutant without hash verification would upload them
+  const { dir: d4, store: s4 } = await freshStore("tamper");
+  const st4 = await storeCandidate(s4, { bytes, plan, report: TECH, now: created });
+  await writeFile(keyFile(d4, "zpc:short:candidate:mp4:" + st4.mp4Sha), "tampered");
+  await assert.rejects(publishApproved(st4.bundleSha, { store: s4, approvals: async () => approvalFor(st4), publish, now }), /candidate_hash_mismatch/);
+  await publishApproved(st4.bundleSha, { store: s4, approvals: async () => approvalFor(st4), publish, now, verifyHash: false });
+  assert.equal(sent.b.toString(), "tampered", "mutant verifyHash=false killed");
+  const { store: s5 } = await freshStore("noappr");
+  const st5 = await storeCandidate(s5, { bytes, plan, report: TECH, now: created });
+  await publishApproved(st5.bundleSha, { store: s5, approvals: async () => null, publish, now, requireApproval: false });
+  assert.ok(sent.b.equals(bytes), "mutant requireApproval=false killed");
+  await assert.rejects(publishApproved("../etc", { store: s5, approvals: async () => null, publish, now }), /candidate_sha_invalid/);
+  await assert.rejects(storeCandidate(s5, { bytes, plan, report: { verdict: "FAIL" } }), /candidate_not_tech_passed/);
 });
 
-test("publish phase cannot re-render: no voice / ffmpeg / gate / render call in the publish path", () => {
+test("write-once storage: atomic conditional create, concurrent renders converge, conflicting bytes refused; mutant killed", async () => {
+  const { dir, store } = await freshStore("once");
+  const plan = planSlot("2026-10-22", "calc");
+  const bytes = Buffer.from("same-render-bytes");
+  const now = Date.parse("2026-10-22T12:00:00Z");
+  const [a, b] = await Promise.all([storeCandidate(store, { bytes, plan, report: TECH, now }), storeCandidate(store, { bytes, plan, report: TECH, now })]);
+  assert.equal(a.bundleSha, b.bundleSha); assert.deepEqual([a.reused, b.reused].sort(), [false, true]);
+  const k = "zpc:short:candidate:mp4:" + createHash("sha256").update(Buffer.from("victim")).digest("hex");
+  await writeFile(keyFile(dir, k), "attacker-bytes");
+  await assert.rejects(createOnce(store, k, Buffer.from("victim")), /candidate_write_once_conflict/);
+  assert.equal((await createOnce(store, k, Buffer.from("victim"), { verify: false })).created, false, "mutant verify=false killed (conflict accepted silently)");
+  const kvLike = { getBinary: store.getBinary, putBinary: store.putBinary, get: store.get };
+  await assert.rejects(createOnce(kvLike, k, Buffer.from("victim")), /candidate_write_once_conflict/);
+});
+
+test("publish phase cannot re-render: no voice / ffmpeg / gate / render / plan recomputation in the publish path", () => {
   const body = (name) => { const i = SRC.indexOf("export async function " + name); const j = SRC.indexOf("\nexport ", i + 10); return SRC.slice(i, j); };
   for (const fn of ["loadApprovedCandidate", "publishApproved", "sealApproved"]) {
     const b = body(fn);
@@ -100,7 +129,7 @@ test("publish phase cannot re-render: no voice / ffmpeg / gate / render call in 
   const i0 = SRC.indexOf('if (phase === "publish")');
   const main = SRC.slice(i0, SRC.indexOf('const day = (process.argv', i0));
   assert.ok(main.length > 100);
-  for (const banned of [/renderShort/, /brandVoice/, /storeCandidate/, /ffmpeg/]) assert.doesNotMatch(main, banned);
+  for (const banned of [/renderShort/, /brandVoice/, /storeCandidate/, /ffmpeg/, /planSlot/]) assert.doesNotMatch(main, banned);
 });
 
 test("avGate wrapper is fail-closed (missing report, exit-code mismatch, unknown verdict)", async () => {
@@ -229,4 +258,16 @@ test("TTL (15 min) enforced at COMPLETION too: synthesis finishing after start+T
   t = 0;
   r = await brandVoiceQueued("x", "k", { voice: async () => { t = ttl - 1; return pcm; }, now: () => t, deadline: dayEnd });
   assert.equal(r.model, BRAND_VOICE.model);
+});
+
+test("deadline boundaries (completion uses >= like start): T-1ms accept, T reject, T+1ms reject — TTL smaller and end-of-day smaller", async () => {
+  const pcm = { pcm: Buffer.alloc(48000), rate: 24000, model: BRAND_VOICE.model };
+  const ttl = VOICE_RETRY.ttlMs;
+  for (const [label, deadline, T] of [["ttl", 10 * 3600e3, ttl], ["dia", 60000, 60000]]) {
+    for (const [dt, ok] of [[-1, true], [0, false], [1, false]]) {
+      let t = 0;
+      const r = await brandVoiceQueued("x", "k", { voice: async () => { t = T + dt; return pcm; }, now: () => t, deadline });
+      assert.equal(Boolean(r.pcm), ok, `${label} T${dt >= 0 ? "+" : ""}${dt}ms`);
+    }
+  }
 });

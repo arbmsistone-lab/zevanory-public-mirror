@@ -74,17 +74,23 @@ e cada clipe tem orçamento de no máximo 1 erro não crítico e zero crítico. 
 4. ASR de nuvem de outro fornecedor como motor B em produção (Azure ou Google STT, com custo e decisão do proprietário).
 5. Reativar os workflows `youtube-autonomous-short` e `short-pack` **é decisão do proprietário**. Esta mudança não os reativa.
 
-## Aceitação final é humana e a publicação tem duas fases (AVAL 098/100)
+## Aceitação final é humana e a publicação tem duas fases (AVAL 098/100/102)
 O gate **nunca** emite aceitação final. O melhor veredito é `PASS_TECH_PENDING_HUMAN` (código 4). O MOS preditivo (DNSMOS ≥ 2,2) é só um piso
 **provisório de rejeição**.
-- **Fase 1 (`--phase=render`, a única dos agendamentos):** voz → pacote → vídeo → gate. Um aprovado técnico vira um **candidato imutável**:
-  os bytes do MP4 ficam no KV na chave `zpc:short:candidate:<sha256>` (endereçada pelo conteúdo) e os metadados (dia, slot, marcador, veredito e
-  checagens do gate, sha256 do manifesto) ficam em `…:meta`, **gravados uma única vez** (mesmo sha: reaproveita; conflito: recusa). Esta fase nunca publica.
-  O MP4 candidato fica como artifact para revisão humana.
-- **Revisão humana:** o aprovador registra `{"mp4_sha256","approver","at"}` em `evidence/p05/human-approvals.json`, por PR revisada.
-- **Fase 2 (`--phase=publish --candidates=<sha…>`):** busca o candidato pelo sha256, **recalcula o hash** dos bytes armazenados, exige o
-  veredito técnico gravado e a **aprovação humana daquele sha256**, e publica **exatamente** esses bytes. Esta fase não chama voz, ffmpeg, gate
-  nem render; um teste estático do código garante isso. O pack segue o mesmo fluxo: a fase render não hospeda nada, e a fase publish materializa só os aprovados.
+- **Fase 1 (`--phase=render`, a única dos agendamentos):** um aprovado técnico vira um **BUNDLE canônico**.
+  O `bundle_sha256` é o sha256 do JSON canônico (chaves ordenadas, sem espaços) de `{mp4_sha256, gate_report_sha256, manifest_sha256, day, slot, marker,
+  title, description, tags, privacy, candidate_created_at, review_expires_at}`, mais theme_id, product_sku e caption_tiktok.
+  - Armazenamento **endereçado pelo conteúdo**: MP4, relatório do gate e bundle ficam cada um sob o próprio hash.
+  - **Criação condicional**: em chave já existente, o conteúdo é relido e precisa ser idêntico byte a byte; senão o resultado é `candidate_write_once_conflict`. O armazenamento local usa criação atômica O_EXCL.
+  - **Limitação declarada:** o Cloudflare KV não tem If-None-Match, e não há bucket R2 ligado a este repositório ou orçamento. O adaptador KV emula a criação (get → put → releitura). Isso **não é atômico**, mas é fail-closed: toda chave é o hash do próprio conteúdo e toda leitura reverifica o hash, então uma sobrescrita diferente é recusada.
+  - **Retenção de 7 dias** para bytes, relatório e bundle (TTL do candidato e artifacts dos dois workflows).
+- **Revisão humana:** o proprietário registra `{bundle_sha256, mp4_sha256, gate_report_sha256, approver, approved_at}` em
+  `evidence/p05/human-approvals.json`, que é protegido por CODEOWNERS. O registro vale só dentro de `[candidate_created_at, review_expires_at]` e só para aquele bundle.
+- **Fase 2 (`--phase=publish --candidates=<bundle_sha256…>`):**
+  - Reverifica o hash do bundle, do MP4 e do relatório do gate, e exige o veredito técnico gravado e a aprovação válida.
+  - Publica **exatamente** os bytes aprovados com o título, a descrição, as tags e a privacidade **persistidos**; nada é recalculado a partir do código atual.
+  - A aprovação é **consumida** (criação condicional) antes do envio, então uma nova publicação exige nova decisão.
+  - Esta fase não chama voz, ffmpeg, gate, render nem `planSlot`; um teste estático garante isso.
 
 ## V2: termo crítico em qualquer lado do alinhamento (AVAL 098)
 Conta como erro crítico, para o consenso, toda substituição, remoção ou inserção que toque um termo crítico (número, preço,

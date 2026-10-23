@@ -130,4 +130,4 @@ jobs:
             /tmp/short-pack/candidatos.json
             /tmp/short-pack/*.av/final.mp4
             /tmp/short-pack/*.av/av-gate.json
-          retention-days: 7
+          retention-days: 7  # P05: review + publish within 7 days (same as the candidate TTL)
