@@ -1,0 +1,15 @@
+/* P01 Fase A: complemento do product.css para a lista de espera (perguntas sim/não e preço indicativo).
+   Arquivo externo (CSP style-src 'self'); alvos de toque de 44 px; nada rola nem recorta. */
+.wl-preco{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:12px 0 8px;color:var(--soft)}
+.wl-preco strong{color:var(--text);overflow-wrap:anywhere}
+.wl-form{grid-template-columns:minmax(0,1fr)}
+.wl-form>*{min-width:0}
+.wl-form input[type=text]{min-width:0;max-width:100%}
+/* Rótulo e campo no mesmo bloco da paginação P03 (o rótulo nunca fica oculto num bloco e o campo no outro). */
+.wl-campo{display:grid;gap:8px;min-width:0}
+.wl-campo label{font-weight:700}
+.wl-pergunta{margin:0;min-width:0;border:1px solid var(--line-strong);border-radius:12px;padding:8px 12px 4px}
+.wl-pergunta legend{padding:0 4px;font-weight:700;color:var(--text)}
+.wl-pergunta label{display:inline-flex;align-items:center;gap:8px;min-height:44px;min-width:44px;margin-right:20px;font-weight:600}
+.wl-pergunta input{width:24px;height:24px;margin:0;accent-color:var(--brand-2)}
+.wl-pergunta input:focus-visible{outline:2px solid var(--brand-3);outline-offset:2px}

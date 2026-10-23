@@ -153,6 +153,8 @@ async function handleBuy(request,env,sku,ctx){
   return infoPage(503,"Não foi possível abrir o pagamento",`<p>Tente novamente em instantes. Se persistir, fale com a gente no <a href="https://wa.me/5588992545413">WhatsApp</a> ou em suporte@zevanory.api.br.</p>`);
 }
 
+// P01 Fase A (lista de espera; import no meio do módulo é válido e evita conflito com o topo do arquivo).
+import { handleWaitlistPublic } from "./waitlist-public.mjs";
 // Lead magnet form (POST, same origin): forwarded to the core Worker through the private binding.
 // New free-material sign-up accepted by the core -> aggregate lead_submit counter by source. The source
 // is the utm_source the form page carried (same-site referer only). Minimum data: user agent and ASN go
@@ -272,6 +274,8 @@ export default{async fetch(request,env,ctx){
   // Refund form lives on the core domain; the public router sends zevanory.api.br/reembolso* here.
   if(url.pathname==="/reembolso/solicitar"||url.pathname==="/reembolso/solicitar/") return new Response(null,{status:308,headers:applySecurityHeaders(new Headers({location:"https://zevanory.api.br/pedir-reembolso","cache-control":"no-store"}))});
   if(url.pathname==="/material-gratuito/inscrever") return handleLead(request,env,ctx);
+  // P01 Fase A: lista de espera sem cobrança (bandeira FASE_A_WAITLIST, padrão desligado -> 404).
+  {const wl=await handleWaitlistPublic(request,env,ctx,{applySecurityHeaders,isAutomationUA,attribution});if(wl)return wl;}
   const buy=url.pathname.match(/^\/comprar\/([A-Z0-9-]{6,20})\/?$/i);
   if(buy) return handleBuy(request,env,buy[1].toUpperCase(),ctx);
   if(url.pathname==="/health"&&(request.method==="GET"||request.method==="HEAD")){

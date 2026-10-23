@@ -1,0 +1,35 @@
+# ZEVANORY | Manifesto EXATO das migrações versionadas (db/migrations/*.sql), uma por linha, em ordem de aplicação.
+# A restauração (scripts/ops/restore_new_database.py) exige que o conjunto de arquivos .sql seja IGUAL a esta lista
+# (arquivo a mais ou a menos = falha). Ao adicionar uma migração, acrescente a linha no mesmo PR (revisão explícita).
+# Formato: <arquivo> [tabelas criadas que a restauração confere, separadas por vírgula]
+001_telemetry_events.sql
+002_financial_events.sql
+003_orders_checkout.sql
+004_partial_refund_snapshots.sql
+005_order_financial_states.sql
+006_sales_machine.sql
+007_no_inventory_commerce.sql
+008_autonomous_revenue_engine.sql
+009_composable_infrastructure.sql
+010_payment_provider_abstraction.sql
+011_agent_control_and_trace.sql
+012_sales_lifecycle_v2.sql
+013_lifecycle_evidence_certification.sql
+014_lifecycle_evidence_trust.sql
+015_lifecycle_certification_provenance.sql
+016_certification_pilot.sql
+017_mercadolivre_oauth.sql
+018_tiktok_oauth.sql
+019_tiktok_sandbox_provider.sql
+020_private_artifact_delivery.sql
+021_linkedin_nuvemshop_oauth.sql
+022_nuvemshop_nonexpiring_token.sql
+023_youtube_identity_oauth.sql
+024_market_product_intelligence.sql
+025_commercial_engine_v2.sql
+026_media_investment_telemetry.sql
+027_meta_oauth.sql
+027_nuvemshop_integration_security.sql
+028_elite_product_support.sql
+029_certification_pilot_interest.sql
+030_waitlist_fase_a.sql waitlist_signups,waitlist_persons,waitlist_person_alias,waitlist_raw_daily,waitlist_deletion_log

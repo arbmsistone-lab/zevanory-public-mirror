@@ -34,6 +34,15 @@ jobs:
           python3 scripts/zevanory_10p_excellence_gate.py
           python3 scripts/test_crown_negative.py
           python3 scripts/zevanory_crown_gate.py
+      - name: Setup Node for LIA manifest gate (AVAL 099)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check LIA manifest in sync (worker/fase-a-lia.generated.mjs = docs/lgpd/LIA-fase-a.md) + negative self-test
+        run: |
+          set -euo pipefail
+          node scripts/fase_a/lia_manifest.mjs --check
+          node scripts/fase_a/lia_manifest.mjs --self-test
 
   zees-status:
     name: zees16-evidence / fail-closed

@@ -8,7 +8,8 @@ arquivo cifrado preservado (backup íntegro de 14/10/2026).
 O que faz, em ordem, e PARA na primeira divergência (fail-closed):
   1. decifra e confere o arquivo contra o manifesto (mesma rotina do backup_preserve_archive.py);
   2. recusa alvo que já tenha tabelas em public (nunca sobrescreve);
-  3. aplica as 30 migrações de db/migrations (esquema exigido pelo Worker: 40 tabelas, 29 migrações);
+  3. aplica as migrações listadas em db/migrations/MANIFEST (conjunto de .sql IGUAL ao manifesto, senão falha;
+     tabelas declaradas no manifesto conferidas após a carga; esquema exigido pelo Worker: 40 tabelas, 29 migrações);
   4. cria as tabelas que o Worker cria em tempo de execução, com o DDL LIDO do próprio código do Worker
      ou capturado EXECUTANDO o módulo que o monta (fonte única; nada copiado à mão); tabelas legadas que
      nenhum código atual cria são preservadas como jsonb no esquema zevanory_restore_preservado;
@@ -160,6 +161,29 @@ def fk_order(env, tables):
     return order
 
 
+def migration_manifest():
+    """Lista EXATA das migrações (db/migrations/MANIFEST) e tabelas que cada uma cria. Substitui a antiga contagem
+    fixa (30): o conjunto de arquivos .sql tem de ser IGUAL ao manifesto, na mesma ordem; a mais ou a menos = falha."""
+    path = os.path.join(ROOT, "db", "migrations", "MANIFEST")
+    if not os.path.exists(path):
+        fail("migration_manifest_missing")
+    names, tables = [], {}
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.read().splitlines()
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        names.append(parts[0])
+        tables[parts[0]] = [t for t in (parts[1].split(",") if len(parts) > 1 else []) if t]
+    on_disk = sorted(os.path.basename(m) for m in glob.glob(os.path.join(ROOT, "db", "migrations", "*.sql")))
+    if names != on_disk:
+        fail(f"migrations_manifest_mismatch manifest={len(names)} disk={len(on_disk)} "
+             f"missing={sorted(set(names) - set(on_disk))[:3]} extra={sorted(set(on_disk) - set(names))[:3]}")
+    return names, tables
+
+
 def row_hash_sql(source, cols=None):
     # Hash sobre as colunas ARMAZENADAS (cols). Colunas geradas são derivadas e recalculadas pelo banco
     # novo (ex.: tsvector de knowledge_documents depende da versão do dicionário): ficam fora do hash,
@@ -171,11 +195,10 @@ def row_hash_sql(source, cols=None):
 def restore_full(env, tables_json, manifest_tables):
     if psql("select count(*) from information_schema.tables where table_schema='public';", env).strip() != "0":
         fail("target_not_empty")
-    migrations = sorted(glob.glob(os.path.join(ROOT, "db", "migrations", "*.sql")))
-    if len(migrations) != 30:
-        fail(f"migrations_expected_30_found_{len(migrations)}")
+    names_m, mig_tables = migration_manifest()
+    migrations = [os.path.join(ROOT, "db", "migrations", n) for n in names_m]
     for m in migrations:
-        psql(open(m, encoding="utf-8").read(), env)
+        psql(open(m, encoding="utf-8-sig").read(), env)  # utf-8-sig: 029 tem BOM
     names, ddl = runtime_ddl()
     psql("\n".join(ddl + dynamic_ddl()), env)
     present = set(psql("select table_name from information_schema.tables where table_schema='public';", env).split())
@@ -229,6 +252,12 @@ def restore_full(env, tables_json, manifest_tables):
                  and pg_get_serial_sequence(format('public.%I', c.table_name), c.column_name) is not null loop
         execute format('select setval(%L, coalesce((select max(%I) from public.%I), 0) + 1, false)', r.seq, r.column_name, r.table_name);
       end loop; end $$;""", env)
+    # Inventário do manifesto: cada tabela declarada por uma migração tem de existir no banco restaurado.
+    declared = sorted({t for ts in mig_tables.values() for t in ts})
+    have_now = set(psql("select table_name from information_schema.tables where table_schema='public';", env).split())
+    if set(declared) - have_now:
+        fail(f"manifest_tables_missing {sorted(set(declared) - have_now)[:5]}")
+    report["manifest"] = {"migrations": len(names_m), "declared_tables": len(declared)}
     req = worker_requirements()
     have = set(psql("select table_name from information_schema.tables where table_schema='public';", env).split())
     migs = set(psql("select migration_id from schema_migrations;", env).split())

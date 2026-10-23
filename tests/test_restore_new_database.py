@@ -24,8 +24,8 @@ def fresh(name):
 def build_source(db):
     env = dict(os.environ, PGDATABASE=db)
     rnd.restore_full.__globals__  # garante import
-    for m in sorted(os.listdir(os.path.join(ROOT, "db", "migrations"))):
-        sh(db, open(os.path.join(ROOT, "db", "migrations", m)).read())
+    for m in rnd.migration_manifest()[0]:
+        sh(db, open(os.path.join(ROOT, "db", "migrations", m), encoding="utf-8-sig").read())
     sh(db, "\n".join(rnd.runtime_ddl()[1] + rnd.dynamic_ddl()))
     # Tabela LEGADA que nenhum código atual cria (como zpc_records em produção): deve ser preservada.
     sh(db, "create table zpc_records(id text primary key, payload jsonb, at timestamptz default now()); "
@@ -86,7 +86,10 @@ class T(unittest.TestCase):
             schema = "zevanory_restore_preservado" if t == "zpc_records" else "public"
             self.assertEqual(int(sh(db, f'select count(*) from {schema}."{t}"').strip()), meta["rows"], t)
         self.assertIn("aspas", sh(db, "select evidence_ref from service_fulfillment").strip())
-        self.assertEqual(sh(db, "select count(*) from schema_migrations").strip(), "30")
+        self.assertEqual(sh(db, "select count(*) from schema_migrations").strip(), str(len(rnd.migration_manifest()[0])))
+        self.assertEqual(len(rnd.migration_manifest()[0]), 31, "manifesto explícito: 30 migrações anteriores + 030_waitlist_fase_a")
+        for t in ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_raw_daily", "waitlist_deletion_log"]:
+            self.assertEqual(sh(db, f"select to_regclass('public.{t}') is not null").strip(), "t", t)
         self.assertEqual(sh(db, "select count(*) from public.whatsapp_stage_events").strip(), "1", "DDL dinâmico do Worker")
         self.assertNotIn("outra", sh(db, "select search_vector::text from knowledge_documents"), "coluna gerada recalculada, não copiada")
         self.assertEqual(sh(db, "select count(*) from zevanory_restore_preservado.zpc_records").strip(), "2", "legado preservado")
@@ -130,6 +133,37 @@ class T(unittest.TestCase):
         with contextlib.redirect_stdout(buf), self.assertRaises(SystemExit):
             rnd.psql("select 1/0 from t where v = 'OUTRO-SEGREDO';", env)
         self.assertNotIn("SEGREDO", buf.getvalue()); self.assertIn("sqlstate=22012", buf.getvalue())
+
+    def test_7_manifesto_exato_de_migracoes(self):
+        import shutil
+        tmp = tempfile.mkdtemp(); shutil.copytree(os.path.join(ROOT, "db"), os.path.join(tmp, "db"))
+        old = rnd.ROOT
+        try:
+            rnd.ROOT = tmp
+            self.assertEqual(len(rnd.migration_manifest()[0]), 31)
+            open(os.path.join(tmp, "db", "migrations", "031_nao_listada.sql"), "w").write("select 1;")
+            with self.assertRaises(SystemExit): rnd.migration_manifest()
+            os.remove(os.path.join(tmp, "db", "migrations", "031_nao_listada.sql"))
+            os.remove(os.path.join(tmp, "db", "migrations", "030_waitlist_fase_a.sql"))
+            with self.assertRaises(SystemExit): rnd.migration_manifest()
+        finally:
+            rnd.ROOT = old
+
+    def test_8_migracao_030_aplica_reverte_e_reaplica(self):
+        db = fresh("rnd_rollback030")
+        for m in rnd.migration_manifest()[0]:
+            sh(db, open(os.path.join(ROOT, "db", "migrations", m), encoding="utf-8-sig").read())
+        tabs = ["waitlist_signups", "waitlist_persons", "waitlist_person_alias", "waitlist_raw_daily", "waitlist_deletion_log"]
+        q = "select count(*) from information_schema.tables where table_schema='public' and table_name in (" + ",".join(f"'{t}'" for t in tabs) + ")"
+        self.assertEqual(sh(db, q).strip(), "5")
+        sh(db, "insert into waitlist_raw_daily(day,niche,metric,n) values (current_date,'confeitaria','recebidas',1)")
+        sh(db, open(os.path.join(ROOT, "db", "rollback", "030_waitlist_fase_a.down.sql"), encoding="utf-8").read())
+        self.assertEqual(sh(db, q).strip(), "0")
+        self.assertEqual(sh(db, "select count(*) from schema_migrations where migration_id='030_waitlist_fase_a'").strip(), "0")
+        self.assertEqual(sh(db, "select count(*) from schema_migrations").strip(), "30", "reversão só remove a 030")
+        sh(db, open(os.path.join(ROOT, "db", "migrations", "030_waitlist_fase_a.sql"), encoding="utf-8").read())
+        sh(db, open(os.path.join(ROOT, "db", "migrations", "030_waitlist_fase_a.sql"), encoding="utf-8").read())
+        self.assertEqual(sh(db, q).strip(), "5", "reaplicação idempotente")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
