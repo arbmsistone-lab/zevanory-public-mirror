@@ -1,8 +1,10 @@
 # P01 · Fase A: triagem de demanda sem cobrança (protocolo pré-registrado)
 
 Aprovação do proprietário: 22/10/2026 18:09 ("Fase A"). Desenho acordado com o auditor Sol (Ordem 080 AVAL);
-correções da AVAL 085 incorporadas. Versão do protocolo: **v2 (22/10/2026)**, registrada **antes** de qualquer
-coleta. Os limiares e definições estão implementados em `worker/waitlist.mjs` (`RULE`, `decide`, `wilson`,
+correções da AVAL 085 incorporadas. Versão do protocolo: **v3 (22/10/2026)**, registrada **antes** de qualquer
+coleta (v1 → v2: unidade pessoa experimental, consentimento separado, aviso, segredo, retenção, migração; v2 → v3:
+origem do link na pessoa experimental, mistura de canais entre os braços, exclusão da rede pessoal/parceiros e
+"semana de teste" antes da janela de 21 dias). Os limiares e definições estão implementados em `worker/waitlist.mjs` (`RULE`, `decide`, `wilson`,
 `reconcile`, `summarize`, `RETENTION`) e conferidos por `tests/fase-a/`. Mudar um limiar exige nova versão do
 protocolo, registrada antes de olhar os dados da nova rodada.
 
@@ -51,6 +53,24 @@ sem `/comprar/`, sem `schema.org/InStock` nem `Offer` (NO-GO da P13).
   ausente; contato gravado sem consentimento; mensagem enviada antes da P08; promessa de resultado, urgência/
   escassez ou alegação regulada na página ou na peça de tráfego; saída não atendida em até 15 dias.
 
+## 2.1. Origem do link, rede pessoal e mistura de canais (v3)
+
+- **Origem** gravada na pessoa experimental na **primeira visita** (rótulo de lista fechada, sem dado pessoal), a
+  partir de `utm_source`: `wa_status`, `wa_lista`, `ig_story`, `ig_post`, `ig_reel`, `fb_grupo`, `parc_<nome>`
+  (parceiro), `organico`, `direto`, `meta_<nome>` (reservado ao tráfego pago futuro: aceito e reportado). `utm_source`
+  fora da lista = `invalido`; sem `utm_source`: referer externo = `organico`, nenhum = `direto`. A inscrição herda a
+  origem da pessoa (mesma unidade); o formulário reenvia o rótulo, revalidado pela mesma lista.
+- **Rede pessoal do proprietário e parceiros, quando marcados, ficam FORA da população da decisão**: `wa_status` e
+  `wa_lista` (WhatsApp do proprietário: status e lista de transmissão) = rede pessoal; `parc_*` = parceiro. O resumo
+  traz as exclusões por razão (`excluded_source`) e a sensibilidade "com rede pessoal e parceiros". **Pendência de
+  confirmação do proprietário antes da coleta**: se `wa_status`/`wa_lista` forem da conta comercial e não da rede
+  pessoal, isso muda numa v4, registrada antes de qualquer dado.
+- **Mistura de canais entre os braços** (pré-registrado, população da decisão): cada nicho com ≥ 1 pessoa; origem
+  ausente (`sem_tag`/`invalido`) ≤ 5% em **cada** nicho (senão `NAO_VERIFICAVEL` — origem ausente **nunca** conta
+  como equilibrada); diferença máxima de participação de qualquer origem entre nichos ≤ 10 pontos (`EQUILIBRADO`,
+  senão `DESEQUILIBRADO`). **Finalistas só são escolhidos com mistura `EQUILIBRADO`**; caso contrário a comparação
+  entre nichos não vale (`finalists: []`), e as decisões por nicho continuam sendo reportadas.
+
 ## 3. Oráculo independente e sensibilidade
 
 - **Oráculo**: contadores agregados por dia/nicho/métrica (`waitlist_raw_daily`, sem identificador), escritos na
@@ -59,7 +79,25 @@ sem `/comprar/`, sem `schema.org/InStock` nem `Offer` (NO-GO da P13).
   criadas por visita + por inscrição; confirmadas = contador; aliases = contador; inscrições + revogadas + apagadas =
   novas; pessoa-dia = contador. **Qualquer divergência → INCONCLUSIVO** (`oraculo_divergente`).
 - **Análise de sensibilidade** (sempre no resumo, antes de qualquer GO): pessoas, inscrições e conversão com
-  filtros, sem filtro de ASN, sem filtro de UA e sem filtros. Exclusões por razão e duplicatas pessoa-dia também.
+  filtros, sem filtro de ASN, sem filtro de UA, sem filtros e com rede pessoal/parceiros. Exclusões por razão,
+  mistura de canais por nicho e duplicatas pessoa-dia também.
+
+## 3.1. Semana de teste e janela de 21 dias (v3, condição aprovada pelo Sol)
+
+- Antes da janela: **semana de teste** de **7 dias consecutivos** com tráfego **gratuito** apontado às **calculadoras**
+  existentes, com `utm_campaign=sdt-<nicho>` (ex.: `/calculadora-taxa-maquininha?utm_source=ig_story&utm_campaign=sdt-confeitaria`).
+  Com `FASE_A_SEMANA_TESTE=on`, o funil (`worker/funnel.mjs`) conta por nicho e dia: `sdt:<nicho>:visita`,
+  `sdt:<nicho>:qualificada` (visitante único do dia, já sem robôs/datacenter, com Accept-Language e país **BR**) e
+  `sdt:<nicho>:pago` (`utm_source` `meta_*`, reservado a tráfego pago).
+- **Autoriza somente a abertura do teste de 21 dias** (não decide GO/NO-GO) se, em **todos** os nichos: período de
+  exatamente 7 dias, com tráfego em **cada** um dos 7 dias (consecutivos); **≥ 98 visitas qualificadas** no período;
+  **distribuição estável** (nenhum dia com mais de 30% das qualificadas do nicho); **zero tráfego pago**. Razões de
+  reprovação por nicho: `periodo_diferente_de_7_dias`, `dias_nao_consecutivos`, `menos_de_98_qualificadas`,
+  `distribuicao_instavel`, `trafego_pago`. Leitura:
+  `node scripts/fase_a/resumo.mjs --semana-teste --since AAAA-MM-DD --until AAAA-MM-DD` (`AUTORIZA_TESTE_21_DIAS`,
+  `NAO_AUTORIZA` ou `PERIODO_INVALIDO`).
+- **Janela**: 21 dias corridos a partir da abertura (`FASE_A_WINDOW_ID`, `FASE_A_WINDOW_END` = início + 20 dias).
+  Leituras intermediárias só para conformidade e operação; não encerram a janela nem mudam limiares.
 
 ## 4. Coleta e dados pessoais (LGPD)
 
@@ -70,7 +108,7 @@ sem `/comprar/`, sem `schema.org/InStock` nem `Offer` (NO-GO da P13).
 - **Convite para entrevista**: caixa **separada, opcional e desmarcada** (`interview_ok`); a lista nunca depende dela.
 - **Medição** (legítimo interesse, LGPD art. 7º, IX, com aviso na página): cookie próprio aleatório (acima); IP e dados
   do navegador **processados de forma transitória** para gerar o código pseudônimo diário (HMAC com
-  `WAITLIST_VISITOR_SECRET`), **não guardados em claro**. Segredo dedicado com ≥ 32 bytes, **sem fallback**
+  `WAITLIST_VISITOR_SECRET`), **não guardados em claro**; e a origem do link (rótulo da campanha, sem dado pessoal). Segredo dedicado com ≥ 32 bytes, **sem fallback**
   (`RESEND_API_KEY`/`DATABASE_URL` nunca são usados); ausente = nada é contado e a decisão é INCONCLUSIVO.
 - **Saída**: link assinado (mostrado na confirmação) apaga, numa instrução, **todas** as inscrições do contato; só a
   contagem agregada por nicho é somada. Nenhuma tabela além de `waitlist_signups` tem coluna de contato, nome ou
@@ -86,6 +124,7 @@ sem `/comprar/`, sem `schema.org/InStock` nem `Offer` (NO-GO da P13).
 
 Para cada nicho, ao fim da janela:
 
+0. A população da decisão exclui a rede pessoal e os parceiros marcados (§2.1).
 1. **INCONCLUSIVO** se houver qualquer bloqueio: janela não informada, segredo de visitante ausente, identificador
    não estabelecido, inscrição sem identificador, oráculo divergente; ou **menos de 300 pessoas experimentais**
    confirmadas. Nunca NO-GO nesses casos.
@@ -93,7 +132,8 @@ Para cada nicho, ao fim da janela:
    Wilson 95% **≥ 5%**; **≥ 20** inscrições válidas; **nenhuma** violação de conformidade.
 3. Caso contrário, **NO-GO** (o nicho não avança nesta rodada).
 
-Mais de dois GO: finalistas = maiores limites inferiores de Wilson (empate: mais inscrições válidas). A análise de
+Finalistas (até dois): só com mistura de canais `EQUILIBRADO` (§2.1); entre os GO, maiores limites inferiores de
+Wilson (empate: mais inscrições válidas). A análise de
 sensibilidade é lida antes de declarar GO; se o GO não se mantiver sem o filtro de ASN **ou** sem o filtro de UA,
 isso é registrado na ata com a justificativa (a regra continua a dos filtros, que é a pré-registrada).
 
@@ -153,7 +193,8 @@ Texto proposto para a Política de Privacidade (seção `id="lista-de-espera"`):
 > consentimento, só para avisar se as vendas do kit abrirem (base legal: consentimento). O convite para uma conversa
 > curta é opcional e separado. Para medir a demanda do teste (base legal: legítimo interesse), as páginas da lista usam
 > um cookie próprio com identificador aleatório, que expira no fim do teste (no máximo 60 dias), e processam de forma
-> transitória o IP e os dados do navegador para gerar um código pseudônimo diário, sem guardá-los em claro. Contatos e
+> transitória o IP e os dados do navegador para gerar um código pseudônimo diário, sem guardá-los em claro; também
+> registram a origem do link (rótulo da campanha), sem dado pessoal. Contatos e
 > respostas são apagados até 30 dias após a decisão do teste (no máximo 12 meses); códigos de medição até 30 dias após
 > a decisão (no máximo 180 dias); cópias de segurança internas em até 8 dias. Para sair, use o link mostrado na
 > inscrição ou escreva para suporte@zevanory.api.br.

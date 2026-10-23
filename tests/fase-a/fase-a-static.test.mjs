@@ -61,7 +61,7 @@ test("consentimento LGPD: caixa da lista obrigatória e DESMARCADA; convite para
 test("aviso de medição fiel ao código: cookie próprio, IP/navegador transitórios em código pseudônimo, finalidade, base legal, retenção", () => {
   for (const [slug, html] of Object.entries(PAGES)) {
     const aviso = (html.match(/<p class="lead-note wl-aviso">[\s\S]*?<\/p>/) || [""])[0];
-    for (const must of ["identificador aleatório", "cookie próprio", "no máximo em 60 dias", "contar cada pessoa uma vez", "IP e os dados do navegador são processados de forma transitória", "código pseudônimo diário", "não são guardados em claro", "Finalidade: medir a demanda", "legítimo interesse (LGPD, art. 7º, IX)", "30 dias após a decisão do teste, no máximo em 180 dias"])
+    for (const must of ["identificador aleatório", "cookie próprio", "no máximo em 60 dias", "contar cada pessoa uma vez", "IP e os dados do navegador são processados de forma transitória", "código pseudônimo diário", "não são guardados em claro", "origem do link (rótulo da campanha), sem dado pessoal", "Finalidade: medir a demanda", "legítimo interesse (LGPD, art. 7º, IX)", "30 dias após a decisão do teste, no máximo em 180 dias"])
       assert.ok(aviso.includes(must), `${slug}: aviso sem "${must}"`);
     assert.doesNotMatch(html, /sem IP|sem cookie/i, slug);
     assert.ok(html.includes(`<link rel="stylesheet" href="/lista-de-espera/c/${slug}.css">`), slug + ": confirmação do identificador");

@@ -42,7 +42,7 @@ export function readCookie(request) {
   return "";
 }
 const OPTOUT_RE = /^https:\/\/vendas\.zevanory\.api\.br\/lista-de-espera\/sair\?r=[0-9a-f]{64}&t=[0-9a-f]{32}$/;
-const SOURCE_RE = /^[a-z0-9_-]{1,24}$/;
+const SOURCE_RE = /^[a-z0-9_]{1,32}$/;
 
 async function core(env, path, payload) {
   const res = await env.CORE.fetch("https://waitlist.internal" + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
@@ -118,16 +118,18 @@ export async function handleWaitlistPublic(request, env, ctx, { applySecurityHea
   const asset = await env.ASSETS.fetch(new Request(new URL("/" + WAITLIST_PAGES[slug] + ".html", request.url), { method: "GET" }));
   if (asset.status !== 200) return notFound();
   let html = await asset.text();
-  // Origem (utm_source/referer) vai num campo oculto para a inscrição; rótulo curto, sem dado pessoal.
-  const { src } = attribution(request, url);
-  html = html.replace('name="origem" value="sem_tag"', `name="origem" value="${esc(SOURCE_RE.test(src) ? src : "sem_tag")}"`);
   const headers = applySecurityHeaders(new Headers({ "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow" }));
   if (request.method === "GET") {
     // A visita é registrada ANTES da resposta, porque o núcleo pode emitir o identificador (cookie).
     // IP e navegador seguem só para o código pseudônimo; nunca são gravados em claro.
-    const body = { nicho: slug, method: "GET", ua: request.headers.get("user-agent") || "", ip: request.headers.get("cf-connecting-ip") || "", asn: Number(request.cf?.asn) || 0, purpose: request.headers.get("sec-purpose") || request.headers.get("purpose") || "", vid: readCookie(request) };
+    // Origem (protocolo v3): utm_source cru (rótulo curto) e se houve referer externo; o núcleo classifica
+    // pela lista fechada e devolve o rótulo, que vai no campo oculto "origem" do formulário.
+    const utm = String(url.searchParams.get("utm_source") || "").toLowerCase().slice(0, 40);
+    let refExt = false; try { const h = new URL(request.headers.get("referer") || "").hostname; refExt = Boolean(h) && h !== url.hostname; } catch {}
+    const body = { nicho: slug, method: "GET", ua: request.headers.get("user-agent") || "", ip: request.headers.get("cf-connecting-ip") || "", asn: Number(request.cf?.asn) || 0, purpose: request.headers.get("sec-purpose") || request.headers.get("purpose") || "", vid: readCookie(request), utm: /^[a-z0-9_-]{1,40}$/.test(utm) ? utm : (utm ? "x" : ""), ref_ext: refExt };
     try {
       const { data } = await core(env, "/visita", body);
+      if (/^[a-z0-9_]{1,32}$/.test(String(data?.src || ""))) html = html.replace('name="origem" value="sem_tag"', `name="origem" value="${esc(data.src)}"`);
       const ck = data?.cookie;
       if (ck && ck.name === COOKIE && COOKIE_VALUE.test(String(ck.value)) && Number.isInteger(ck.maxAge) && ck.maxAge > 0 && ck.maxAge <= 60 * 86400)
         headers.append("set-cookie", `${COOKIE}=${ck.value}; Path=/lista-de-espera; Max-Age=${ck.maxAge}; Secure; HttpOnly; SameSite=Lax`);

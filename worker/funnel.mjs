@@ -115,6 +115,15 @@ export async function recordPageView(env, { sqlFactory, page, ip, userAgent, met
       `insert into zevanory_funnel_daily (day, page, metric, n) values ($1::date, $2, 'visitors', 1)
          on conflict (day, page, metric) do update set n = zevanory_funnel_daily.n + 1`, [day, page]);
   }
+  // P01 Fase A, "semana de teste" (protocolo v3; bandeira FASE_A_SEMANA_TESTE, padrão desligado): tráfego
+  // marcado utm_campaign=sdt-<nicho> nas calculadoras (utm_source meta_* = pago). Qualificada = visitante único do dia (já filtrado de
+  // robôs/datacenter acima), com Accept-Language e país BR. Só contagens agregadas, sem dado pessoal.
+  const sdt = String(env.FASE_A_SEMANA_TESTE || "").toLowerCase() === "on" && /^calculadora-/.test(String(page)) ? /^sdt-(confeitaria|loja-de-roupas|salao-e-barbearia)$/.exec(campaign) : null;
+  if (sdt) {
+    await bump(sql, day, page, `sdt:${sdt[1]}:visita`);
+    if (/^meta_/.test(source)) await bump(sql, day, page, `sdt:${sdt[1]}:pago`); // meta_* = reservado a tráfego pago
+    if (fresh.length && trafficClass({ userAgent, acceptLanguage, country }).endsWith("_al_br")) await bump(sql, day, page, `sdt:${sdt[1]}:qualificada`);
+  }
 }
 
 export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), production = String(env.MERCADOPAGO_ENV || "").toLowerCase() === "production", salesOpen = String(env.SALE_GLOBALLY_ENABLED || "").toLowerCase() === "true" } = {}) {

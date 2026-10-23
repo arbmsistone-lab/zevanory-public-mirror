@@ -2,6 +2,7 @@
 // ZEVANORY | P01 Fase A: resumo interno SOMENTE LEITURA das métricas da lista de espera, sem dado pessoal.
 // Uso (operador, com a URL do banco no ambiente; nada é gravado):
 //   DATABASE_URL=postgres://... node scripts/fase_a/resumo.mjs --janela <FASE_A_WINDOW_ID> --since AAAA-MM-DD --until AAAA-MM-DD [--violacao nicho,...]
+//   DATABASE_URL=postgres://... node scripts/fase_a/resumo.mjs --semana-teste --since AAAA-MM-DD --until AAAA-MM-DD
 // Executa as MESMAS consultas agregadas do Worker (SUMMARY_SQL e QUALIFIED_SQL em worker/waitlist.mjs)
 // numa transação "read only" via psql (resolvido de forma portátil) e imprime, por nicho: pessoas
 // experimentais confirmadas, inscrições na mesma unidade, Wilson 95%, oráculo (reconciliação), análise
@@ -9,7 +10,7 @@
 // Nenhuma coluna de contato, nome ou referência é lida.
 import { execFileSync } from "node:child_process";
 import { resolvePsql, parseCsv } from "./tools.mjs";
-import { SUMMARY_SQL, QUALIFIED_SQL, WAITLIST_NICHES, summarize } from "../../worker/waitlist.mjs";
+import { SUMMARY_SQL, QUALIFIED_SQL, SOURCE_SQL, TEST_WEEK_SQL, WAITLIST_NICHES, summarize, testWeekSummary } from "../../worker/waitlist.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name, dflt) => { const i = args.indexOf(name); return i >= 0 ? String(args[i + 1] || "") : dflt; };
@@ -25,7 +26,13 @@ const lit = { 1: `'${windowId}'`, 2: `'${since}'`, 3: `'${until}'`, 4: `'{${WAIT
 const bind = (q) => q.replace(/\$(\d)/g, (_, n) => lit[n]);
 const run = (sql) => execFileSync(psql, [url, "-X", "-q", "-v", "ON_ERROR_STOP=1", "--csv", "-c", "begin transaction read only", "-c", sql, "-c", "rollback"], { encoding: "utf8" });
 const present = parseCsv(run("select (to_regclass('waitlist_signups') is not null and to_regclass('waitlist_persons') is not null and to_regclass('waitlist_raw_daily') is not null) as ok"))[0];
-let rows = [], qualified = [];
-if (present && present.ok === "t") { rows = parseCsv(run(bind(SUMMARY_SQL))); qualified = parseCsv(run(bind(QUALIFIED_SQL))); }
+if (args.includes("--semana-teste")) {
+  // Semana de teste (protocolo v3): $1/$2 = período; lê só contagens agregadas do funil.
+  const tw = parseCsv(run(TEST_WEEK_SQL.replace("$1", `'${since}'`).replace("$2", `'${until}'`)));
+  process.stdout.write(JSON.stringify(testWeekSummary(tw, { since, until }), null, 2) + "\n");
+  process.exit(0);
+}
+let rows = [], qualified = [], sources = [];
+if (present && present.ok === "t") { rows = parseCsv(run(bind(SUMMARY_SQL))); qualified = parseCsv(run(bind(QUALIFIED_SQL))); sources = parseCsv(run(bind(SOURCE_SQL))); }
 else rows = WAITLIST_NICHES.map((niche) => ({ niche, raw: "{}" }));
-process.stdout.write(JSON.stringify(summarize(rows, { windowId, since, until, qualified, complianceViolations: violations }), null, 2) + "\n");
+process.stdout.write(JSON.stringify(summarize(rows, { windowId, since, until, qualified, sources, complianceViolations: violations }), null, 2) + "\n");

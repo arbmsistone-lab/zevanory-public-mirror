@@ -17,6 +17,7 @@ const MOD = path.join(ROOT, "worker", "waitlist.mjs");
 const MIG = path.join(ROOT, "db", "migrations", "030_waitlist_fase_a.sql");
 const STATIC = path.join(ROOT, "tests", "fase-a", "fase-a-static.test.mjs");
 const PG = path.join(ROOT, "tests", "fase-a", "waitlist-postgres.test.mjs");
+const RULEF = path.join(ROOT, "tests", "fase-a", "waitlist-rule.test.mjs");
 const BUILD = path.join(ROOT, "scripts", "fase_a", "build_fase_a.py");
 if (!process.env.WAITLIST_PG_HOST) { console.error("WAITLIST_PG_HOST ausente: mutantes de backend não podem rodar"); process.exit(2); }
 
@@ -40,7 +41,7 @@ const MUTANTS = [
   { id: "M5", name: "link /comprar/ presente", kind: "tpl", test: STATIC, expect: "NO-GO (P13)",
     apply: (s) => once(s, '<button class="button primary" type="submit">', '<a class="button" href="/comprar/ZEV-IA-011" rel="nofollow">Comprar</a><button class="button primary" type="submit">') },
   { id: "M-SOL-085", name: "unidade = pessoa-dia (mesmo IP+UA em dois dias conta 2)", kind: "mod", test: PG, expect: "M-SOL-085",
-    apply: (s) => once(s, "  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null) as persons,",
+    apply: (s) => once(s, '  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}) as persons,',
       "  (select count(*)::int from waitlist_person_days d where d.niche = n.niche and d.exclusion is null) as persons,") },
   { id: "M-SOL-085b", name: "cookie ignorado (cada dia vira pessoa nova)", kind: "mod", test: PG, expect: "M-SOL-085",
     apply: (s) => once(s, "  let pid = await personFromCookie(env, body.vid, now), cookie = null;", "  let pid = null, cookie = null;") },
@@ -50,6 +51,14 @@ const MUTANTS = [
     apply: (s) => once(s, 'name="entrevista" value="sim">', 'name="entrevista" value="sim" required>') },
   { id: "M8", name: "saída não apaga a inscrição", kind: "mod", test: PG, expect: "saída: link assinado",
     apply: (s) => once(s, "with d as (delete from waitlist_signups where contact_ref = $1 returning niche),", "with d as (select niche from waitlist_signups where contact_ref = $1),") },
+  { id: "M9", name: "origem ausente contada como mistura equilibrada", kind: "mod", test: RULEF, expect: "mistura de canais entre os braços",
+    apply: (s) => once(s, '  if (niches.some((k) => missing[k] > BALANCE.maxMissingShare)) return { status: "NAO_VERIFICAVEL", reason: "origem_ausente", missing_share: missing, max_share_diff: null };\n', "") },
+  { id: "M10", name: "semana de teste autoriza com um nicho reprovado", kind: "mod", test: RULEF, expect: "semana de teste",
+    apply: (s) => once(s, 'Object.values(niches).every((v) => v.passes) ? "AUTORIZA_TESTE_21_DIAS"', 'Object.values(niches).some((v) => v.passes) ? "AUTORIZA_TESTE_21_DIAS"') },
+  { id: "M12", name: "semana de teste ignora tráfego pago", kind: "mod", test: RULEF, expect: "semana de teste",
+    apply: (s) => once(s, '    if (v.paid > TEST_WEEK.maxPaid) v.reasons.push("trafego_pago");\n', "") },
+  { id: "M11", name: "rede pessoal/parceiros contados na população da decisão", kind: "mod", test: PG, expect: "rede pessoal (wa_status, wa_lista)",
+    apply: (s) => once(s, "const PRIMARY_SRC = (a) => `${a}.src not in", "const PRIMARY_SRC = (a) => `true or ${a}.src not in") },
 ];
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fase-a-mut-"));
@@ -67,7 +76,7 @@ const runTest = (file, env) => {
 
 const results = [];
 // Controle: sem mutação, os dois arquivos passam inteiros.
-for (const file of [STATIC, PG]) {
+for (const file of [STATIC, PG, RULEF]) {
   const c = runTest(file, env0);
   const ok = c.code === 0 && c.failed.length === 0 && c.total > 0 && c.pass === c.total;
   console.log(`::notice title=P01_MUTANT_CONTROL::${JSON.stringify({ file: path.relative(ROOT, file), ok, tests: c.total, pass: c.pass })}`);

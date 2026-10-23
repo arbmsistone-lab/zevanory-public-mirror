@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS waitlist_signups (
   consent_at timestamptz NOT NULL,
   person_id text CHECK (person_id IS NULL OR person_id ~ '^[0-9a-f]{32}$'),
   exclusion text CHECK (exclusion IS NULL OR exclusion IN ('ua','asn')),
-  src text CHECK (src IS NULL OR src ~ '^[a-z0-9_-]{1,24}$'),
+  src text CHECK (src IS NULL OR src ~ '^[a-z0-9_]{1,32}$'),
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (window_id, niche, contact_ref)
 );
@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS waitlist_persons (
   days integer NOT NULL DEFAULT 1 CHECK (days >= 1),
   confirmed boolean NOT NULL DEFAULT false,
   exclusion text CHECK (exclusion IS NULL OR exclusion IN ('ua','asn')),
+  -- Origem do link na primeira visita (rótulo de lista fechada, sem dado pessoal; protocolo v3).
+  src text NOT NULL DEFAULT 'sem_tag' CHECK (src ~ '^[a-z0-9_]{1,32}$'),
   PRIMARY KEY (window_id, niche, person_id)
 );
 

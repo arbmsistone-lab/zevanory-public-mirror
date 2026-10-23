@@ -104,9 +104,9 @@ jobs:
           }
           check fase-a-static.test.mjs 9
           check waitlist-public.test.mjs 9
-          check waitlist-rule.test.mjs 6
+          check waitlist-rule.test.mjs 9
           check fase-a-inventory.test.mjs 2
-          check waitlist-postgres.test.mjs 17
+          check waitlist-postgres.test.mjs 20
       - name: Restauração com o manifesto de migrações e reversão da 030 (9 testes)
         env:
           PGHOST: localhost
@@ -115,19 +115,22 @@ jobs:
         run: |
           set -eo pipefail
           . scripts/fase_a/tools.sh; need_psql
-          $PY -W ignore -m unittest -v tests/test_restore_new_database.py 2>&1 | tee "$RUNNER_TEMP/rnd.txt" | tail -5
-          sed -i 's/\r$//' "$RUNNER_TEMP/rnd.txt"
+          # Executado como script (unittest.main no próprio arquivo): independe do carregador de caminhos do -m unittest.
+          rc=0; $PY -W ignore tests/test_restore_new_database.py > "$RUNNER_TEMP/rnd.txt" 2>&1 || rc=$?
+          sed -i 's/\r$//' "$RUNNER_TEMP/rnd.txt"; tail -8 "$RUNNER_TEMP/rnd.txt"
+          # Os logs brutos não ficam acessíveis a todos os revisores: o final da saída vai numa anotação.
+          if [ "$rc" != 0 ]; then echo "::error title=P01_RESTORE_OUT::rc=$rc $(grep -vE 'ResourceWarning|^\s*$' "$RUNNER_TEMP/rnd.txt" | tail -12 | tr '\n' ' ' | cut -c1-900)"; exit 1; fi
           grep -q "^Ran 9 tests in " "$RUNNER_TEMP/rnd.txt"
           grep -qx "OK" "$RUNNER_TEMP/rnd.txt"
           if grep -q "skipped" "$RUNNER_TEMP/rnd.txt"; then echo "::error::restauração pulada"; exit 1; fi
           echo "::notice title=P01_RESTORE_${{ runner.os }}::9/9 (manifesto exato 31, tabelas da 030 restauradas, 030 aplica/reverte/reaplica)"
-      - name: Mutantes (controle passa; 10 mutantes mortos por asserção, inclusive M-SOL-085)
+      - name: Mutantes (controle passa; 14 mutantes mortos por asserção, inclusive M-SOL-085 e origem ausente)
         run: |
           set -eo pipefail
           node scripts/fase_a/mutants.mjs | tee "$RUNNER_TEMP/m.txt"
           sed -i 's/\r$//' "$RUNNER_TEMP/m.txt"
-          grep -qx "P01_MUTANTS killed=10/10" "$RUNNER_TEMP/m.txt"
-          test "$(grep -c '^::notice title=P01_MUTANT_CONTROL::.*"ok":true' "$RUNNER_TEMP/m.txt")" -eq 2
+          grep -qx "P01_MUTANTS killed=14/14" "$RUNNER_TEMP/m.txt"
+          test "$(grep -c '^::notice title=P01_MUTANT_CONTROL::.*"ok":true' "$RUNNER_TEMP/m.txt")" -eq 3
       - name: Sem bytecode nem arquivos gerados no checkout
         run: |
           set -euo pipefail

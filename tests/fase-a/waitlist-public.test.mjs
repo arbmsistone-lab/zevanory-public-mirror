@@ -47,18 +47,21 @@ test("bandeira ausente ou diferente de 'on': todas as rotas da lista dão 404 e 
 
 const VID = "c".repeat(32) + "." + "d".repeat(32);
 test("página servida só com a bandeira: 200, noindex, CSP, origem no campo oculto, visita registrada ANTES da resposta pelo binding", async () => {
-  const s = setup({ reply: { status: 200, body: { ok: true, cookie: null } } });
-  const r = await get(s, "/lista-de-espera/confeitaria?utm_source=youtube&utm_campaign=c1");
+  const s = setup({ reply: { status: 200, body: { ok: true, cookie: null, src: "wa_status" } } });
+  const r = await get(s, "/lista-de-espera/confeitaria?utm_source=WA_Status&utm_campaign=c1", { referer: "https://l.instagram.com/" });
   assert.equal(r.status, 200);
   assert.equal(r.headers.get("x-robots-tag"), "noindex, nofollow");
   assert.match(r.headers.get("content-security-policy") || "", /form-action 'self'/);
   assert.equal(r.headers.get("set-cookie"), null, "núcleo não emitiu identificador");
   const html = await r.text();
-  assert.match(html, /name="origem" value="youtube"/);
+  assert.match(html, /name="origem" value="wa_status"/, "rótulo classificado pelo núcleo vai no campo oculto");
   assert.equal(s.calls.length, 1);
   assert.equal(s.calls[0].url, "https://waitlist.internal/visita");
-  assert.deepEqual(Object.keys(s.calls[0].body).sort(), ["asn", "ip", "method", "nicho", "purpose", "ua", "vid"]);
-  assert.equal(s.calls[0].body.vid, "");
+  assert.deepEqual(Object.keys(s.calls[0].body).sort(), ["asn", "ip", "method", "nicho", "purpose", "ref_ext", "ua", "utm", "vid"]);
+  assert.deepEqual([s.calls[0].body.vid, s.calls[0].body.utm, s.calls[0].body.ref_ext], ["", "wa_status", true]);
+  const bad = setup({ reply: { status: 200, body: { ok: true, cookie: null, src: '"><script>' } } });
+  assert.match(await (await get(bad, "/lista-de-espera/confeitaria?utm_source=%3Cx%3E")).text(), /name="origem" value="sem_tag"/);
+  assert.equal(bad.calls[0].body.utm, "x", "utm fora do formato vira rótulo inválido");
   const h = await worker.fetch(new Request("https://vendas.zevanory.api.br/lista-de-espera/loja-de-roupas", { method: "HEAD", headers: { "user-agent": HUMAN } }), s.env, s.ctx);
   assert.equal(h.status, 200); assert.equal(s.calls.length, 1, "HEAD não conta visita");
   assert.equal((await get(s, "/lista-de-espera/academia")).status, 404);

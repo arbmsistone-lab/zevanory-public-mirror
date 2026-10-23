@@ -91,6 +91,30 @@ export function exclusionOf({ userAgent, asn = 0 }) {
   return null;
 }
 export const isEligibleTraffic = ({ userAgent, asn = 0, purpose = "" }) => !/prefetch|prerender/i.test(String(purpose || "")) && exclusionOf({ userAgent, asn }) === null;
+// Protocolo v3: origem do link (rótulo de lista fechada, sem dado pessoal) gravada na pessoa experimental.
+export const SOURCE_TAGS = Object.freeze(["wa_status", "wa_lista", "ig_story", "ig_post", "ig_reel", "fb_grupo", "organico", "direto"]);
+// Rede pessoal do proprietário (WhatsApp dele: status e lista de transmissão) e parceiros (parc_*): excluídos
+// da população da decisão quando marcados; meta_* é reservado (tráfego pago futuro), aceito e reportado.
+export const PERSONAL_NETWORK_TAGS = Object.freeze(["wa_status", "wa_lista"]);
+const PARTNER_RE = /^parc_[a-z0-9]{1,20}$/, META_RE = /^meta_[a-z0-9]{1,20}$/;
+export const MISSING_SOURCE_TAGS = Object.freeze(["sem_tag", "invalido"]);
+// utm_source da lista -> ele mesmo; utm fora da lista -> "invalido"; sem utm: referer externo -> "organico",
+// nenhum -> "direto". Valor já classificado (vindo do formulário) é revalidado pela mesma lista.
+export function sourceTag({ utm = "", refExternal = false } = {}) {
+  const u = String(utm || "").trim().toLowerCase();
+  if (u) return SOURCE_TAGS.includes(u) || PARTNER_RE.test(u) || META_RE.test(u) ? u : "invalido";
+  return refExternal ? "organico" : "direto";
+}
+export function sourceGroup(tag) {
+  if (PERSONAL_NETWORK_TAGS.includes(tag)) return "rede_pessoal";
+  if (PARTNER_RE.test(tag)) return "parceiro";
+  if (META_RE.test(tag)) return "reservado_meta";
+  if (MISSING_SOURCE_TAGS.includes(tag) || !tag) return "sem_origem";
+  return "canal";
+}
+const formSource = (v) => { const t = String(v || ""); return SOURCE_TAGS.includes(t) || PARTNER_RE.test(t) || META_RE.test(t) ? t : MISSING_SOURCE_TAGS.includes(t) ? t : "invalido"; };
+// SQL: população da decisão = pessoa sem exclusão de robô e fora da rede pessoal/parceiros marcados.
+const PRIMARY_SRC = (a) => `${a}.src not in (${PERSONAL_NETWORK_TAGS.map((t) => `'${t}'`).join(",")}) and ${a}.src not like 'parc\\_%'`;
 const label = (v, max) => { const x = String(v || "").toLowerCase().trim(); return new RegExp(`^[a-z0-9_-]{1,${max}}$`).test(x) ? x : ""; };
 const yesNo = (v) => (v === true || v === "sim" ? true : v === false || v === "nao" ? false : null);
 const today = (now) => new Date(now).toISOString().slice(0, 10);
@@ -119,13 +143,15 @@ export async function recordVisit(env, sql, body = {}, now = Date.now()) {
   if (!win) { await bump(sql, day, niche, "id:sem_janela:" + cls); return { counted: false }; }
   let pid = await personFromCookie(env, body.vid, now), cookie = null;
   if (!pid) { cookie = await newCookie(secret, win); pid = cookie.pid; }
+  const src = sourceTag({ utm: body.utm, refExternal: body.ref_ext === true });
   // Uma pessoa por nicho na janela inteira: retorno no mesmo dia não muda nada; em outro dia soma days.
-  await sql.query(`with up as (insert into waitlist_persons (window_id, niche, person_id, first_day, last_day, exclusion) values ($1, $2, $3, $4::date, $4::date, $5)
+  // Origem = primeira visita (a linha existente mantém a sua).
+  await sql.query(`with up as (insert into waitlist_persons (window_id, niche, person_id, first_day, last_day, exclusion, src) values ($1, $2, $3, $4::date, $4::date, $5, $7)
       on conflict (window_id, niche, person_id) do update set days = waitlist_persons.days + (case when waitlist_persons.last_day < excluded.last_day then 1 else 0 end),
         last_day = greatest(waitlist_persons.last_day, excluded.last_day)
       returning (xmax = 0) as novo)
-    ${BUMP("$4", "$2", "case when (select novo from up) then 'id:novo:' else 'id:retorno:' end || $6")}`, [win.id, niche, pid, day, exclusion, cls]);
-  return { counted: cls === "incluida", cookie: cookie ? { name: COOKIE, value: cookie.value, maxAge: win.maxAge } : null };
+    ${BUMP("$4", "$2", "case when (select novo from up) then 'id:novo:' else 'id:retorno:' end || $6")}`, [win.id, niche, pid, day, exclusion, cls, src]);
+  return { counted: cls === "incluida", src, cookie: cookie ? { name: COOKIE, value: cookie.value, maxAge: win.maxAge } : null };
 }
 
 export async function confirmPerson(env, sql, body = {}, now = Date.now()) {
@@ -159,15 +185,15 @@ export async function subscribe(env, sql, body = {}, now = Date.now()) {
       cnt as (${BUMP("$14", "$2", "case when exists (select 1 from ins) then (case when $11::text is null then 'inscricao:nova_sem_id' else 'inscricao:nova' end) else 'inscricao:repetida' end")})
     select (select count(*)::int from ins) as created,
       (select person_id from waitlist_signups where window_id = $1 and niche = $2 and contact_ref = $5) as primary_pid`,
-    [win.id, niche, contact.kind, contact.value, ref, name, qRecurring, qDigital, body.interview === true, CONSENT_VERSION, pid, exclusion, label(body.src, 24) || null, day]);
+    [win.id, niche, contact.kind, contact.value, ref, name, qRecurring, qDigital, body.interview === true, CONSENT_VERSION, pid, exclusion, formSource(body.src), day]);
   const created = Number(rows[0]?.created) > 0;
   if (pid) {
     // A inscrição prova que o navegador devolveu o cookie: confirma a pessoa (cria se ainda não existia).
-    await sql.query(`with up as (insert into waitlist_persons (window_id, niche, person_id, first_day, last_day, exclusion, confirmed) values ($1, $2, $3, $4::date, $4::date, $5, true)
+    await sql.query(`with up as (insert into waitlist_persons (window_id, niche, person_id, first_day, last_day, exclusion, confirmed, src) values ($1, $2, $3, $4::date, $4::date, $5, true, $6)
         on conflict (window_id, niche, person_id) do update set confirmed = true where not waitlist_persons.confirmed returning (xmax = 0) as novo),
       a as (${BUMP("$4", "$2", "'id:novo_insc:' || coalesce($5, 'incluida')", "(select count(*)::int from up where novo)")}),
       b as (${BUMP("$4", "$2", "'id:confirmado'", "(select count(*)::int from up)")})
-      select 1`, [win.id, niche, pid, day, exclusion]);
+      select 1`, [win.id, niche, pid, day, exclusion, formSource(body.src)]);
     const primary = rows[0]?.primary_pid;
     // Mesmo contato, outro identificador: mesma pessoa comprovada (alias), conta uma vez.
     if (!created && primary && primary !== pid)
@@ -210,28 +236,100 @@ export const SUMMARY_SQL = `with n as (select unnest($4::text[]) as niche),
   s as (select s.niche, s.exclusion, s.person_id, ${RESOLVED} as rpid from waitlist_signups s left join waitlist_person_alias a on a.window_id = s.window_id and a.niche = s.niche and a.alias_id = s.person_id where s.window_id = $1 and s.created_at::date between $2::date and $3::date),
   r as (select niche, metric, sum(n)::int as n from waitlist_raw_daily where day between $2::date and $3::date group by niche, metric)
 select n.niche,
-  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null) as persons,
-  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is distinct from 'ua') as persons_sem_filtro_asn,
-  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is distinct from 'asn') as persons_sem_filtro_ua,
-  (select count(*)::int from p where p.niche = n.niche and p.confirmed) as persons_sem_filtros,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}) as persons,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is distinct from 'ua' and ${PRIMARY_SRC("p")}) as persons_sem_filtro_asn,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is distinct from 'asn' and ${PRIMARY_SRC("p")}) as persons_sem_filtro_ua,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and ${PRIMARY_SRC("p")}) as persons_sem_filtros,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null) as persons_com_rede,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and p.src in (${PERSONAL_NETWORK_TAGS.map((t) => `'${t}'`).join(",")})) as persons_rede_pessoal,
+  (select count(*)::int from p where p.niche = n.niche and p.confirmed and p.exclusion is null and p.src like 'parc\\_%') as persons_parceiro,
   (select count(*)::int from p where p.niche = n.niche and not p.confirmed and p.exclusion is null) as persons_nao_confirmadas,
   (select count(*)::int from p where p.niche = n.niche and p.days > 1 and p.exclusion is null and p.confirmed) as persons_multi_dia,
   (select count(*)::int from waitlist_persons x where x.window_id = $1 and x.niche = n.niche) as persons_linhas,
   (select count(*)::int from waitlist_persons x where x.window_id = $1 and x.niche = n.niche and x.confirmed) as persons_confirmadas_linhas,
   (select count(*)::int from waitlist_person_alias x where x.window_id = $1 and x.niche = n.niche) as aliases,
   (select count(*)::int from waitlist_person_days d where d.niche = n.niche and d.exclusion is null and d.day between $2::date and $3::date) as pessoa_dia,
-  (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed and p.exclusion is null where s.niche = n.niche and s.exclusion is null) as signups,
-  (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed where s.niche = n.niche and s.exclusion is distinct from 'ua' and p.exclusion is distinct from 'ua') as signups_sem_filtro_asn,
-  (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed where s.niche = n.niche and s.exclusion is distinct from 'asn' and p.exclusion is distinct from 'asn') as signups_sem_filtro_ua,
-  (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed where s.niche = n.niche) as signups_sem_filtros,
+  (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed and p.exclusion is null where s.niche = n.niche and s.exclusion is null and ${PRIMARY_SRC("p")}) as signups,
+  (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed where s.niche = n.niche and s.exclusion is distinct from 'ua' and p.exclusion is distinct from 'ua' and ${PRIMARY_SRC("p")}) as signups_sem_filtro_asn,
+  (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed where s.niche = n.niche and s.exclusion is distinct from 'asn' and p.exclusion is distinct from 'asn' and ${PRIMARY_SRC("p")}) as signups_sem_filtro_ua,
+  (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed where s.niche = n.niche and ${PRIMARY_SRC("p")}) as signups_sem_filtros,
+  (select count(distinct s.rpid)::int from s join p on p.niche = s.niche and p.person_id = s.rpid and p.confirmed and p.exclusion is null where s.niche = n.niche and s.exclusion is null) as signups_com_rede,
   (select count(*)::int from s where s.niche = n.niche and s.exclusion is null and s.person_id is null) as signups_sem_id,
   (select count(*)::int from s where s.niche = n.niche) as signups_linhas,
   coalesce((select json_object_agg(r.metric, r.n) from r where r.niche = n.niche), '{}'::json) as raw
 from n order by n.niche`;
 export const QUALIFIED_SQL = `select s.niche, count(distinct coalesce(a.primary_id, s.person_id))::int as qualified, count(*) filter (where s.interview_ok)::int as interview_ok
   from waitlist_signups s left join waitlist_person_alias a on a.window_id = s.window_id and a.niche = s.niche and a.alias_id = s.person_id
-  join waitlist_persons p on p.window_id = s.window_id and p.niche = s.niche and p.person_id = coalesce(a.primary_id, s.person_id) and p.confirmed and p.exclusion is null
+  join waitlist_persons p on p.window_id = s.window_id and p.niche = s.niche and p.person_id = coalesce(a.primary_id, s.person_id) and p.confirmed and p.exclusion is null and ${PRIMARY_SRC("p")}
   where s.window_id = $1 and s.created_at::date between $2::date and $3::date and s.exclusion is null and s.q_recurring and s.q_digital group by s.niche`;
+
+// Mistura de canais: pessoas confirmadas sem exclusão de robô, por nicho e origem (inclui rede pessoal/parceiros;
+// a mistura da população da decisão é calculada em JS sem eles).
+export const SOURCE_SQL = `select p.niche, p.src, count(*)::int as n from waitlist_persons p
+  where p.window_id = $1 and p.confirmed and p.exclusion is null
+    and not exists (select 1 from waitlist_person_alias a where a.window_id = p.window_id and a.niche = p.niche and a.alias_id = p.person_id)
+  group by p.niche, p.src order by p.niche, p.src`;
+// Mesma mistura de canais entre os braços (pré-registrado): cada nicho com >= 1 pessoa, origem ausente
+// (sem_tag/invalido) <= 5% em cada nicho e diferença máxima de participação de qualquer origem <= 10 pontos.
+export const BALANCE = Object.freeze({ maxMissingShare: 0.05, maxShareDiff: 0.10 });
+export function channelBalance(mix) {
+  const niches = Object.keys(mix);
+  const totals = Object.fromEntries(niches.map((k) => [k, Object.values(mix[k]).reduce((a, b) => a + b, 0)]));
+  const missing = Object.fromEntries(niches.map((k) => [k, totals[k] ? MISSING_SOURCE_TAGS.reduce((a, t) => a + (mix[k][t] || 0), 0) / totals[k] : 1]));
+  if (!niches.length || niches.some((k) => !totals[k])) return { status: "NAO_VERIFICAVEL", reason: "nicho_sem_pessoas", missing_share: missing, max_share_diff: null };
+  if (niches.some((k) => missing[k] > BALANCE.maxMissingShare)) return { status: "NAO_VERIFICAVEL", reason: "origem_ausente", missing_share: missing, max_share_diff: null };
+  const tags = [...new Set(niches.flatMap((k) => Object.keys(mix[k])))];
+  let diff = 0;
+  for (const t of tags) { const shares = niches.map((k) => (mix[k][t] || 0) / totals[k]); diff = Math.max(diff, Math.max(...shares) - Math.min(...shares)); }
+  return { status: diff <= BALANCE.maxShareDiff ? "EQUILIBRADO" : "DESEQUILIBRADO", reason: null, missing_share: missing, max_share_diff: diff };
+}
+export function finalistsOf(niches, balance) {
+  if (balance.status !== "EQUILIBRADO") return { finalists: [], reason: "mistura_de_canais_" + balance.status.toLowerCase() };
+  const go = Object.entries(niches).filter(([, v]) => v.decision === "GO").sort((a, b) => b[1].wilson95.low - a[1].wilson95.low || b[1].signups - a[1].signups);
+  return { finalists: go.slice(0, 2).map(([k]) => k), reason: go.length ? null : "nenhum_go" };
+}
+
+// "Semana de teste" (protocolo v3, condição aprovada pelo Sol): 7 dias CONSECUTIVOS de tráfego gratuito
+// apontado às calculadoras, com utm_campaign=sdt-<nicho>. O funil (worker/funnel.mjs, FASE_A_SEMANA_TESTE=on)
+// conta por nicho e dia "sdt:<nicho>:visita", "sdt:<nicho>:qualificada" (visitante único do dia, sem robôs/
+// datacenter, com Accept-Language e país BR) e "sdt:<nicho>:pago" (utm_source meta_*, reservado a pago).
+// Autoriza SOMENTE o teste de 21 dias se, em TODOS os nichos: 7 dias consecutivos com tráfego, >= 98
+// visitas qualificadas, distribuição estável (nenhum dia com mais de 30% das qualificadas) e zero tráfego pago.
+export const TEST_WEEK = Object.freeze({ days: 7, minQualifiedPerNiche: 98, maxDayShare: 0.30, maxPaid: 0, windowDays: 21 });
+export const TEST_WEEK_SQL = `select day::text as day, metric, sum(n)::int as n from zevanory_funnel_daily
+  where day between $1::date and $2::date and metric like 'sdt:%' group by day, metric order by day, metric`;
+export function testWeekSummary(rows, { since, until } = {}) {
+  const start = Date.parse(since + "T00:00:00Z");
+  const days = Math.round((Date.parse(until + "T00:00:00Z") - start) / DAY_MS) + 1;
+  const valid = Number.isFinite(days) && days === TEST_WEEK.days;
+  const dayList = valid ? Array.from({ length: days }, (_, i) => new Date(start + i * DAY_MS).toISOString().slice(0, 10)) : [];
+  const niches = {};
+  for (const n of WAITLIST_NICHES) niches[n] = { qualified: 0, visits: 0, paid: 0, qualified_per_day: {}, visits_per_day: {} };
+  for (const r of rows) {
+    const m = /^sdt:([a-z-]+):(qualificada|visita|pago)$/.exec(String(r.metric));
+    if (!m || !niches[m[1]]) continue;
+    const v = niches[m[1]], d = String(r.day).slice(0, 10), k = Number(r.n) || 0;
+    if (m[2] === "qualificada") { v.qualified += k; v.qualified_per_day[d] = (v.qualified_per_day[d] || 0) + k; }
+    else if (m[2] === "visita") { v.visits += k; v.visits_per_day[d] = (v.visits_per_day[d] || 0) + k; }
+    else v.paid += k;
+  }
+  for (const v of Object.values(niches)) {
+    const q = dayList.map((d) => v.qualified_per_day[d] || 0);
+    v.days_with_traffic = dayList.filter((d) => (v.visits_per_day[d] || 0) > 0).length;
+    v.max_day_share = v.qualified ? Math.max(...q) / v.qualified : 1;
+    v.reasons = [];
+    if (!valid) v.reasons.push("periodo_diferente_de_7_dias");
+    if (valid && v.days_with_traffic !== TEST_WEEK.days) v.reasons.push("dias_nao_consecutivos");
+    if (v.qualified < TEST_WEEK.minQualifiedPerNiche) v.reasons.push("menos_de_98_qualificadas");
+    if (v.max_day_share > TEST_WEEK.maxDayShare) v.reasons.push("distribuicao_instavel");
+    if (v.paid > TEST_WEEK.maxPaid) v.reasons.push("trafego_pago");
+    v.passes = v.reasons.length === 0;
+  }
+  const decision = !valid ? "PERIODO_INVALIDO" : Object.values(niches).every((v) => v.passes) ? "AUTORIZA_TESTE_21_DIAS" : "NAO_AUTORIZA";
+  return { schema: "zevanory-fase-a-semana-teste/v2", protocol: "v3", period: { since, until, days }, rule: TEST_WEEK, niches, decision,
+    note: "autoriza somente a abertura do teste de 21 dias; não decide GO/NO-GO" };
+}
+export async function buildTestWeekSummary(sql, { since, until }) { return testWeekSummary(await sql.query(TEST_WEEK_SQL, [since, until]), { since, until }); }
 
 const R = (raw, k) => Number(raw?.[k]) || 0;
 const sumPrefix = (raw, prefix) => Object.entries(raw || {}).filter(([k]) => k.startsWith(prefix)).reduce((a, [, v]) => a + (Number(v) || 0), 0);
@@ -257,8 +355,16 @@ export function reconcile(row) {
   return { ok: Object.values(checks).every(Boolean), checks };
 }
 
-export function summarize(rows, { windowId, since, until, qualified = [], complianceViolations = {} } = {}) {
+export function summarize(rows, { windowId, since, until, qualified = [], sources = [], complianceViolations = {} } = {}) {
   const q = Object.fromEntries(qualified.map((r) => [r.niche, r]));
+  const mixAll = {}, mixPrimary = {};
+  for (const r of rows) { mixAll[r.niche] = {}; mixPrimary[r.niche] = {}; }
+  for (const r of sources) {
+    if (!mixAll[r.niche]) continue;
+    mixAll[r.niche][r.src] = (mixAll[r.niche][r.src] || 0) + (Number(r.n) || 0);
+    const g = sourceGroup(r.src);
+    if (g !== "rede_pessoal" && g !== "parceiro") mixPrimary[r.niche][r.src] = (mixPrimary[r.niche][r.src] || 0) + (Number(r.n) || 0);
+  }
   const niches = {};
   for (const r of rows) {
     const raw = typeof r.raw === "string" ? JSON.parse(r.raw) : r.raw || {};
@@ -278,17 +384,22 @@ export function summarize(rows, { windowId, since, until, qualified = [], compli
       exposure_person_days: Number(r.pessoa_dia) || 0, unconfirmed_ids: Number(r.persons_nao_confirmadas) || 0, multi_day_persons: Number(r.persons_multi_dia) || 0, aliases: Number(r.aliases) || 0,
       signups_without_id: Number(r.signups_sem_id) || 0, revoked: R(raw, "inscricao:revogada"),
       excluded: { ua: R(raw, "classe:ua") + R(raw, "classe:ua:dup_dia"), asn: R(raw, "classe:asn") + R(raw, "classe:asn:dup_dia"), prefetch: R(raw, "classe:prefetch"), method: R(raw, "classe:metodo"), no_secret: R(raw, "classe:sem_segredo") },
-      sensitivity: { with_filters: sens(r.persons, r.signups), without_asn_filter: sens(r.persons_sem_filtro_asn, r.signups_sem_filtro_asn), without_ua_filter: sens(r.persons_sem_filtro_ua, r.signups_sem_filtro_ua), without_filters: sens(r.persons_sem_filtros, r.signups_sem_filtros) },
+      sensitivity: { with_filters: sens(r.persons, r.signups), without_asn_filter: sens(r.persons_sem_filtro_asn, r.signups_sem_filtro_asn), without_ua_filter: sens(r.persons_sem_filtro_ua, r.signups_sem_filtro_ua), without_filters: sens(r.persons_sem_filtros, r.signups_sem_filtros), with_personal_network_and_partners: sens(r.persons_com_rede, r.signups_com_rede) },
+      excluded_source: { rede_pessoal: Number(r.persons_rede_pessoal) || 0, parceiro: Number(r.persons_parceiro) || 0 },
+      source_mix: mixAll[r.niche] || {}, source_mix_decision_population: mixPrimary[r.niche] || {},
       oracle: rec, blockers,
       decision: decide({ visitors: persons, signups, complianceViolation: Boolean(complianceViolations[r.niche]), blockers }),
     };
   }
-  return { schema: "zevanory-fase-a/v2", consent_version: CONSENT_VERSION, window: { id: windowId || null, since, until }, rule: RULE, niches };
+  const balance = channelBalance(mixPrimary);
+  return { schema: "zevanory-fase-a/v3", protocol: "v3", consent_version: CONSENT_VERSION, window: { id: windowId || null, since, until }, rule: RULE, niches,
+    channel_balance: balance, ...finalistsOf(niches, balance) };
 }
 export async function buildWaitlistSummary(sql, { windowId, since = "2026-01-01", until = "2999-12-31", complianceViolations = {} } = {}) {
   const rows = await sql.query(SUMMARY_SQL, [windowId || "", since, until, [...WAITLIST_NICHES]]);
   const qualified = await sql.query(QUALIFIED_SQL, [windowId || "", since, until]);
-  return summarize(rows, { windowId, since, until, qualified, complianceViolations });
+  const sources = await sql.query(SOURCE_SQL, [windowId || "", since, until]);
+  return summarize(rows, { windowId, since, until, qualified, sources, complianceViolations });
 }
 
 // Retenção por finalidade (texto da página e da política): 30 dias após FASE_A_DECISION_DATE apaga
@@ -341,7 +452,7 @@ export async function handleWaitlist(request, env, { sqlFactory, now } = {}) {
       const ok = /^[0-9a-f]{64}$/.test(String(body.r || "")) && /^[0-9a-f]{32}$/.test(String(body.t || "")) && (await optOutTokenValid(env, String(body.r), String(body.t)));
       return json(ok ? 200 : 400, { ok });
     }
-    if (url.pathname === "/visita") { const out = await recordVisit(env, sql, body, t); return json(200, { ok: true, cookie: out.cookie || null }); }
+    if (url.pathname === "/visita") { const out = await recordVisit(env, sql, body, t); return json(200, { ok: true, cookie: out.cookie || null, src: out.src || null }); }
     if (url.pathname === "/confirmar") { await confirmPerson(env, sql, body, t); return new Response(null, { status: 204 }); }
   } catch (error) {
     console.error("waitlist_failed", error instanceof Error ? error.message.slice(0, 120) : String(error));
