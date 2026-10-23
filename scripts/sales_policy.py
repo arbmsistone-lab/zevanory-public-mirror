@@ -52,6 +52,57 @@ PENDING_MARKERS = ("PENDENTE", "PREENCHER", "A CONFIRMAR", "XXX", "PLACEHOLDER")
 for _part in (RULE_7D, DELIVERY_72H):
     assert _part in SOL_TEXT, _part
 
+# Contato publico (data/politica-unica.json, contato_publico). Enquanto o numero de WhatsApp nao
+# estiver operacional, o canal ativo e o e-mail: lista de espera e "falar com a ZEVANORY" abrem
+# mailto com assunto/corpo fixos, e nenhuma superficie publica mostra wa.me nem o numero.
+CONTACT = _DATA["contato_publico"]
+WHATSAPP_PUBLIC_LINKS_ENABLED = CONTACT["whatsapp_public_links_enabled"] is True
+SUPPORT_EMAIL = CONTACT["email"]
+WHATSAPP_URL = "https://wa.me/" + CONTACT["whatsapp_e164"]
+WHATSAPP_DISPLAY = CONTACT["whatsapp_display"]
+
+
+def _q(text: str) -> str:
+    from urllib.parse import quote
+    return quote(text, safe="")
+
+
+def mailto(subject: str, body: str | None = None) -> str:
+    """mailto com assunto (e corpo) fixos; texto estatico, sem dado pessoal."""
+    href = f"mailto:{SUPPORT_EMAIL}?subject={_q(subject)}"
+    return href + (f"&body={_q(body)}" if body else "")
+
+
+def waitlist_href(product: str) -> str:
+    """Destino do CTA 'Entrar na lista de espera' com vendas fechadas."""
+    if WHATSAPP_PUBLIC_LINKS_ENABLED:
+        return WHATSAPP_URL + "?text=" + _q("Olá! Quero entrar na lista de espera do " + product + ".")
+    return mailto(CONTACT["waitlist_subject"].replace("{produto}", product),
+                  CONTACT["waitlist_body"].replace("{produto}", product))
+
+
+def contact_href() -> str:
+    """Destino de 'Falar com a ZEVANORY' (nav) e do contato humano."""
+    return WHATSAPP_URL if WHATSAPP_PUBLIC_LINKS_ENABLED else mailto(CONTACT["contact_subject"])
+
+
+# Qualquer link wa.me / api.whatsapp.com ou o numero (com ou sem mascara) numa superficie publica.
+WHATSAPP_PUBLIC_RE = re.compile(
+    r"wa\.me/|api\.whatsapp\.com/|whatsapp://|" + re.escape(CONTACT["whatsapp_e164"]) + r"|"
+    + r"99254[-\s.]?5413", re.I)
+
+
+def audit_contact(out_dir: Path) -> list[str]:
+    """Com whatsapp_public_links_enabled=false: zero wa.me/numero em HTML, JS e textos publicados."""
+    if WHATSAPP_PUBLIC_LINKS_ENABLED:
+        return []
+    problems = []
+    for f in sorted(p for ext in ("*.html", "*.js", "*.txt", "*.xml") for p in out_dir.glob(ext)):
+        m = WHATSAPP_PUBLIC_RE.search(f.read_text(encoding="utf-8"))
+        if m:
+            problems.append(f"{f.name}: WhatsApp publico ({m.group(0)}) com whatsapp_public_links_enabled=false")
+    return problems
+
 SUBSCRIPTION_SUMMARY = (
     '<p class="policy-summary">Entrega: após a confirmação do pagamento, por e-mail (formulário curto e, depois, o pacote do mês em link privado). '
     f'Arrependimento: {RULE_7D}, com devolução integral (se as datas forem diferentes, vale a mais recente). '
@@ -299,7 +350,7 @@ def main(argv=None) -> int:
     ap.add_argument("--mode", choices=(CLOSED, OPEN), default=CLOSED)
     a = ap.parse_args(argv)
     out = Path(a.audit)
-    problems = audit_policy(out)
+    problems = audit_policy(out) + audit_contact(out)
     if a.mode == CLOSED:
         problems += audit_closed(out)
     for p in problems:

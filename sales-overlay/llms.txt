@@ -1,6 +1,6 @@
 # ZEVANORY
 
-> ZEVANORY (A. RENAN ALVES MOREIRA BITU LTDA, CNPJ 69.077.233/0001-99, Várzea Alegre/CE, Brasil) cria guias digitais e conteúdo pronto para pequenos negócios usarem inteligência artificial, vendas e controle de caixa com método e revisão humana. Suporte: suporte@zevanory.api.br · WhatsApp +55 88 99254-5413.
+> ZEVANORY (A. RENAN ALVES MOREIRA BITU LTDA, CNPJ 69.077.233/0001-99, Várzea Alegre/CE, Brasil) cria guias digitais e conteúdo pronto para pequenos negócios usarem inteligência artificial, vendas e controle de caixa com método e revisão humana. Suporte: suporte@zevanory.api.br.
 
 ## Produtos
 - [IA na Prática](https://vendas.zevanory.api.br/ia-na-pratica): método para usar IA no dia a dia do negócio, com comandos prontos. R$ 197 (vendas temporariamente fechadas; direito de arrependimento de 7 dias, ver Termos).

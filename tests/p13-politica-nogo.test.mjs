@@ -167,14 +167,14 @@ test("release: build fixado em modo fechado e grep-gate de /comprar/ no workflow
 
 test("mutantes: /comprar/ remanescente, InStock remanescente e 'após o pagamento' são mortos", () => {
   const mutants = {
-    "M1 produto mantém href /comprar/": (d) => mutate(d, "ia-na-pratica", (h) => h.replace(/href="https:\/\/wa\.me\/[^"]*" data-zev-sku="ZEV-IA-011"/, 'href="/comprar/ZEV-IA-011" data-zev-sku="ZEV-IA-011"')),
+    "M1 produto mantém href /comprar/": (d) => mutate(d, "ia-na-pratica", (h) => h.replace(/href="[^"]*" data-zev-sku="ZEV-IA-011"/, 'href="/comprar/ZEV-IA-011" data-zev-sku="ZEV-IA-011"')),
     "M1b href absoluto para /comprar/": (d) => mutate(d, "solucoes", (h) => h.replace("</main>", '<a href="https://vendas.zevanory.api.br/comprar/ZEV-NGC-011">x</a></main>')),
     "M2 produto mantém Offer InStock": (d) => mutate(d, "lucro-e-caixa", (h) => h.replace('"@type": "Product",', '"@type": "Product", "offers": {"@type": "Offer", "availability": "https://schema.org/InStock"},')),
     "M3 termos mantém 'após o pagamento'": (d) => mutate(d, "termos", (h) => h.replace("</main>", "<p>Você pode desistir da compra em até 7 dias após o pagamento.</p></main>")),
     "M3b produto troca a regra por 'após a compra'": (d) => mutate(d, "vendas-na-pratica", (h) => h.split(P.rule_7d).join("até 7 dias após a compra")),
     "M4 reembolso mantém 'em até 2 dias úteis'": (d) => mutate(d, "reembolso", (h) => h.replace("</main>", "<p>Reembolso em até 2 dias úteis.</p></main>")),
     "M5 produto sem 72 h ao lado da oferta": (d) => mutate(d, "combo-ia-vendas", (h) => h.split(P.delivery_72h).join("link pessoal")),
-    "M7 assinatura mantém href /assinar/": (d) => mutate(d, "conteudo-pronto", (h) => h.replace(/href="https:\/\/wa\.me\/[^"]*" data-zev-sub="conteudo-pronto"/, 'href="/assinar/conteudo-pronto" data-zev-sub="conteudo-pronto"')),
+    "M7 assinatura mantém href /assinar/": (d) => mutate(d, "conteudo-pronto", (h) => h.replace(/href="[^"]*" data-zev-sub="conteudo-pronto"/, 'href="/assinar/conteudo-pronto" data-zev-sub="conteudo-pronto"')),
     "M7b página com link /hotmart/": (d) => mutate(d, "ia-por-ramo", (h) => h.replace("</main>", '<a href="/hotmart/ia-na-pratica">x</a></main>')),
     "M7c página com checkout pay.hotmart.com": (d) => mutate(d, "kit-afiliado", (h) => h.replace("</main>", '<a href="https://pay.hotmart.com/F107979716H?off=g9knd34r">x</a></main>')),
     "M8 calculadora mantém 'garantia de 7 dias'": (d) => mutate(d, "calculadora-cmv", (h) => h.replace("direito de arrependimento de 7 dias", "garantia de 7 dias")),

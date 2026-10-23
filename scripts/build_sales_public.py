@@ -6,7 +6,6 @@ import os
 import re
 import shutil
 from pathlib import Path
-from urllib.parse import quote
 
 import sales_policy as policy
 
@@ -94,8 +93,10 @@ HTML_ROUTES = (
 LEGAL_FOOTER = ('<div class="container footer-legal">'
                 # P13c: identificação e endereço únicos (data/politica-unica.json, resumo_oferta.fornecedor).
                 f'{policy.SUPPLIER["razao_social"]} · CNPJ {policy.SUPPLIER["cnpj"]} · {policy.ADDRESS_FULL} · '
-                '<a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a> · '
-                'WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a>'
+                # Contato: e-mail é o canal ativo; o WhatsApp só aparece com
+                # contato_publico.whatsapp_public_links_enabled=true (número operacional).
+                f'<a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a>'
+                + (f' · WhatsApp <a href="{policy.WHATSAPP_URL}">{policy.WHATSAPP_DISPLAY}</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else '') +
                 # Official profiles verified by public readback (2026-10-12); rel="me" lets platforms
                 # confirm the site <-> profile link.
                 '<br>Perfis oficiais: '
@@ -125,6 +126,9 @@ COMMERCE = {
         "faq_q": ("Inclui os três produtos separados?", "Sim. Inclui IA na Prática, Vendas na Prática e Lucro & Caixa completos, mais o Plano integrado de 30 dias e o Painel de decisão integrada.")},
 }
 FIT = {'ia-na-pratica': (['Dono de pequeno negócio que quer usar IA no dia a dia, sem curso longo', 'Quem já testou o ChatGPT mas não sabe aplicar em atendimento, conteúdo e rotina', 'Quem quer comandos prontos e uma planilha para medir o que mudou'], ['Quem procura automação técnica com programação', 'Quem espera resultado sem aplicar o método']), 'vendas-na-pratica': (['Quem vende pelo WhatsApp e Instagram e perde clientes no acompanhamento', 'Quem não tem roteiro de mensagens nem de conteúdo', 'Quem quer acompanhar oportunidades em uma planilha simples'], ['Quem busca anúncios pagos', 'Quem quer lista de contatos ou disparo em massa']), 'lucro-e-caixa': (['Quem fatura, mas não sabe quanto sobra no fim do mês', 'Quem mistura o dinheiro da empresa com o pessoal', 'Quem quer uma rotina semanal curta de caixa e margem'], ['Quem precisa de contabilidade ou obrigações fiscais', 'Quem procura recomendação de investimento']), 'combo-ia-vendas': (['Quem quer usar IA para vender mais no WhatsApp e nas redes', 'Quem quer os dois métodos com economia de R$ 97', 'Quem está organizando atendimento e conteúdo agora'], ['Quem só precisa organizar as finanças (veja Lucro & Caixa)', 'Quem busca anúncios pagos']), 'negocio-completo': (['Quem quer organizar IA, vendas e caixa de uma vez', 'Quem prefere um plano de 30 dias com começo, meio e fim', 'Quem quer a maior economia: R$ 244'], ['Quem quer resolver só um problema específico agora', 'Quem precisa de consultoria individual'])}
+# Contato humano no hero: WhatsApp só quando operacional; senão, o e-mail que funciona.
+HUMAN_SUPPORT = (f'no <a href="{policy.WHATSAPP_URL}">WhatsApp</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED
+                 else f'por <a href="mailto:{policy.SUPPORT_EMAIL}">e-mail</a>')
 DELIVERY_Q = ("Como recebo o produto?", "Após a confirmação do pagamento (Pix ou cartão via Mercado Pago), você recebe por e-mail um " + policy.DELIVERY_72H + " do arquivo .zip com todo o material. A expiração do link não elimina o seu direito ao produto: peça outro sem custo em zevanory.api.br/entrega/reenviar.")
 GUARANTEE_Q = ("E se não for para mim?", "Você pode desistir em " + policy.RULE_7D + ", sem justificativa e com devolução integral: peça em zevanory.api.br/pedir-reembolso.")
 # P13: modo comercial do HTML estatico (padrao fechado; ver scripts/sales_policy.py).
@@ -141,8 +145,9 @@ def sales_cta(c: dict, open_label: str, cls: str = "button primary") -> str:
     original (data-zev-sku + data-zev-open-text) somente quando /api/sales/status abre."""
     if MODE == policy.OPEN:
         return f'<a class="{cls}" href="/comprar/{c["sku"]}" rel="nofollow">{open_label}</a>'
-    wa = "https://wa.me/5588992545413?text=" + quote("Olá! Quero entrar na lista de espera do " + c["name"] + ".")
-    return (f'<a class="{cls}" href="{_attr(wa)}" data-zev-sku="{c["sku"]}" '
+    # Destino da lista de espera: e-mail (mailto com assunto/corpo fixos) enquanto o WhatsApp não
+    # está operacional; ver contato_publico em data/politica-unica.json.
+    return (f'<a class="{cls}" href="{_attr(policy.waitlist_href(c["name"]))}" data-zev-sku="{c["sku"]}" '
             f'data-zev-open-text="{_attr(open_label)}">{policy.WAITLIST_LABEL}</a>')
 
 def mode_text(closed_text: str, open_text: str, tag: str = "span", cls: str = "") -> str:
@@ -170,7 +175,8 @@ def offer_summary(slug: str, kind: str, characteristics: str, price: int | None 
         "fornecedor": f'{f["razao_social"]} (nome fantasia {f["nome_fantasia"]})',
         "cnpj": f["cnpj"],
         "endereco_fisico": f'{f["endereco_fisico"]}, CEP {f["cep"]}',
-        "endereco_eletronico": f'{f["email"]} · WhatsApp {f["whatsapp"]} · {f["site"]}',
+        # Decreto 7.962/2013, art. 2º, II: só endereços que funcionam (o WhatsApp entra quando operacional).
+        "endereco_eletronico": " · ".join([f["email"]] + ([f'WhatsApp {f["whatsapp"]}'] if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else []) + [f["site"]]),
         "caracteristicas": characteristics,
         "preco_total": terms["preco_total"].replace("{price}", str(price)),
         "pagamento": terms["pagamento"],
@@ -195,7 +201,7 @@ def offer_summary(slug: str, kind: str, characteristics: str, price: int | None 
 def apply_commerce(slug: str, html: str) -> str:
     c = COMMERCE[slug]
     label = f"Comprar agora · R$ {c['price']}"
-    html = re.sub(r'<a class="nav-cta" href="mailto:[^"]*">', '<a class="nav-cta" href="https://wa.me/5588992545413">', html)
+    html = re.sub(r'<a class="nav-cta" href="mailto:[^"]*">', lambda m: f'<a class="nav-cta" href="{_attr(policy.contact_href())}">', html)
     # Every primary CTA buys (open) or joins the waiting list (closed).
     html = re.sub(r'<a class="button primary" href="mailto:[^"]*">[^<]*</a>', lambda m: sales_cta(c, label), html)
     html = re.sub(r'<p class="microcopy">[^<]*</p>', '<p class="microcopy">Pagamento pelo Mercado Pago (Pix ou cartão) · entrega por e-mail em ' + policy.DELIVERY_72H + ' · arrependimento em 7 dias corridos.</p>', html)
@@ -216,7 +222,7 @@ def apply_commerce(slug: str, html: str) -> str:
     # Conversion: what the buyer gets, right under the first call to action.
     chips = "".join(f"<li>{i}</li>" for i in c["items"][:4])
     includes = (closed_note() + f'<ul class="hero-includes" aria-label="O que está incluído">{chips}</ul>'
-                '<p class="microcopy hero-trust">Empresa brasileira com CNPJ · criada por <a href="/quem-criou">Renan Bitu</a> · suporte humano no <a href="https://wa.me/5588992545413">WhatsApp</a></p>')
+                '<p class="microcopy hero-trust">Empresa brasileira com CNPJ · criada por <a href="/quem-criou">Renan Bitu</a> · suporte humano ' + HUMAN_SUPPORT + '</p>')
     html = re.sub(r'(<section class="container hero".*?<p class="microcopy">[^<]*</p>)', lambda m: m.group(1) + includes, html, count=1, flags=re.S)
     # Conversion: who it is for (and who it is not for), right after the trust strip.
     yes, no = FIT[slug]
@@ -287,6 +293,10 @@ def apply_subscription(html: str) -> str:
                   + offer_summary("conteudo-pronto", "assinatura", policy.RESUMO_OFERTA["assinatura"]["caracteristicas"]), html, count=1)
     if policy.SUBSCRIPTION_SUMMARY not in html:
         raise SystemExit("conteudo-pronto: ancora do CTA principal nao encontrada")
+    # Destino da lista de espera vem do contato público (e-mail enquanto o WhatsApp não opera).
+    html = re.sub(r'(<a class="button primary" )href="[^"]*"( data-zev-sub="conteudo-pronto")',
+                  lambda m: m.group(1) + f'href="{_attr(policy.waitlist_href("Conteúdo Pronto"))}"' + m.group(2), html)
+    html = re.sub(r'<a class="nav-cta" href="[^"]*">', lambda m: f'<a class="nav-cta" href="{_attr(policy.contact_href())}">', html)
     if MODE == policy.OPEN:
         html = re.sub(r'<a class="button primary" href="[^"]*" data-zev-sub="conteudo-pronto" data-zev-open-text="([^"]*)">[^<]*</a>',
                       r'<a class="button primary" href="/assinar/conteudo-pronto">\1</a>', html)
@@ -370,8 +380,19 @@ def apply_approved_overlay() -> None:
             html = html.replace("</body>", '<script src="/whatsapp-contact.js" defer></script></body>', 1)
         path.write_text(html, encoding="utf-8")
     shutil.copy2(ROOT / "legal.css", OUT / "legal.css")
-    for asset in ("robots.txt", "whatsapp-contact.js"):
-        shutil.copy2(OVERLAY / asset, OUT / asset)
+    shutil.copy2(OVERLAY / "robots.txt", OUT / "robots.txt")
+    # O script de contato só injeta CTAs de WhatsApp com o número operacional (flag da fonte única).
+    js = (OVERLAY / "whatsapp-contact.js").read_text(encoding="utf-8")
+    if js.count("const ENABLED=false;") != 1:
+        raise SystemExit("whatsapp-contact.js: marcador 'const ENABLED=false;' ausente")
+    if policy.WHATSAPP_PUBLIC_LINKS_ENABLED:
+        js = js.replace("const ENABLED=false;", "const ENABLED=true;")
+    else:
+        # Sem o número operacional, o bloco de WhatsApp nem é publicado (nada de wa.me no asset).
+        js, n = re.subn(r"\n[ \t]*/\*whatsapp:start[^*]*\*/.*?/\*whatsapp:end\*/", "", js, flags=re.S)
+        if n != 1:
+            raise SystemExit("whatsapp-contact.js: bloco /*whatsapp:start*/.../*whatsapp:end*/ ausente")
+    (OUT / "whatsapp-contact.js").write_text(js, encoding="utf-8")
     shutil.copy2(ROOT / "ferramentas.js", OUT / "ferramentas.js")
     shutil.copy2(OVERLAY / "llms.txt", OUT / "llms.txt")
 
@@ -463,7 +484,7 @@ def main() -> int:
         raise SystemExit("sales build still contains mirror path prefix")
 
     # P13: politica unica em todas as superficies e grep-gate do modo fechado (NO-GO).
-    p13 = policy.audit_policy(OUT, PRODUCTS)
+    p13 = policy.audit_policy(OUT, PRODUCTS) + policy.audit_contact(OUT)
     if MODE == policy.CLOSED:
         p13 += policy.audit_closed(OUT)
     if p13:

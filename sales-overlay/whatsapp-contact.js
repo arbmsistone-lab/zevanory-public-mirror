@@ -1,5 +1,15 @@
 (()=>{
-  const NUMBER='5588992545413',DISPLAY='+55 88 99254-5413';
+  // ENABLED vem de data/politica-unica.json (contato_publico.whatsapp_public_links_enabled): o build
+  // (scripts/build_sales_public.py) troca para true só com o número operacional. Com false, nenhum
+  // CTA de WhatsApp é injetado e o contato antigo vira o e-mail que funciona.
+  const ENABLED=false;
+  const EMAIL='suporte@zevanory.api.br';
+  if(!ENABLED){
+    document.querySelectorAll('a[href^="mailto:contato@zevanory.api.br"]').forEach(a=>{a.href='mailto:'+EMAIL;});
+    return;
+  }
+  /*whatsapp:start (o build remove este bloco com whatsapp_public_links_enabled=false)*/
+  const NUMBER='5588992545413';
   const text='Olá! Tenho interesse nas soluções da ZEVANORY e gostaria de receber uma orientação personalizada.';
   const href=`https://wa.me/${NUMBER}?text=${encodeURIComponent(text)}`;
   const make=(cls,label)=>{const a=document.createElement('a');a.className=cls;a.href=href;a.target='_blank';a.rel='noopener noreferrer';a.dataset.whatsappOfficial='true';a.textContent=label;return a;};
@@ -21,4 +31,5 @@
     const target=footer.querySelector('.footer-nav,nav')||footer;
     target.appendChild(make('whatsapp-footer-link','WhatsApp'));
   }
+  /*whatsapp:end*/
 })();

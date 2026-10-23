@@ -1,4 +1,5 @@
-import { DELIVERY_72H, DELIVERY_TEXT, RESUMO_OFERTA, RULE_7D, RULE_LINE } from "./politica-unica.mjs";
+import { CONTACT_HTML, CONTACT_LABEL, DELIVERY_72H, DELIVERY_TEXT, RESUMO_OFERTA, RULE_7D, RULE_LINE, contactHref, waitlistHref } from "./politica-unica.mjs";
+// Contato humano nas páginas do Worker vem de contato_publico (e-mail enquanto o WhatsApp não opera).
 const retired=new Set(["/arbm-sist","/arbm-sist/","/arbm-sist.html","/zevanory-one","/zevanory-one/","/zevanory-one.html","/arbm-one","/arbm-one/","/arbm-one.html"]);
 const htmlRoutes=new Set(["material-gratuito","checklist-15-minutos","solucoes","quem-criou","zevanory-sales","arbm-contador-saloes","ia-na-pratica","vendas-na-pratica","lucro-e-caixa","combo-ia-vendas","negocio-completo","zevanory-cfo","termos","privacidade","reembolso","afiliados","conteudo-pronto","kit-afiliado","ia-por-ramo","ia-para-salao-de-beleza","ia-para-barbearia","ia-para-restaurante-e-lanchonete","ia-para-loja-de-roupas","ia-para-mercadinho","ia-para-oficina-mecanica","ia-para-clinica-e-consultorio","ia-para-academia","ia-para-pet-shop","ia-para-contabilidade","ia-para-imobiliaria","ia-para-deposito-de-bebidas","ferramentas","calculadora-preco-de-venda","calculadora-margem-de-lucro","calculadora-ponto-de-equilibrio","ia-para-padaria","ia-para-pizzaria","ia-para-hamburgueria","ia-para-acaiteria","ia-para-confeitaria","ia-para-farmacia","ia-para-otica","ia-para-papelaria","ia-para-materiais-de-construcao","ia-para-assistencia-tecnica-de-celular","ia-para-autoescola","ia-para-escola-de-idiomas","ia-para-clinica-odontologica","ia-para-psicologo","ia-para-nutricionista","ia-para-fisioterapia","ia-para-estetica","ia-para-manicure","ia-para-lava-jato","ia-para-eletricista-e-encanador","ia-para-fotografo","ia-para-arquitetura-e-design-de-interiores","ia-para-advocacia","ia-para-agencia-de-viagens","ia-para-floricultura","ia-para-marmitaria","ia-para-pousada","ia-para-distribuidora-de-gas-e-agua","calculadora-fluxo-de-caixa","calculadora-preco-hora-servico","calculadora-taxa-maquininha","calculadora-cmv","mensagem-para-cliente-que-sumiu","como-cobrar-cliente-pelo-whatsapp","como-mandar-orcamento-pelo-whatsapp"]);
 const MP="https://www.mercadopago.com https://www.mercadopago.com.br";
@@ -69,8 +70,8 @@ function infoPage(status,title,body){
 // the text never claims confirmation or absence of charge; access depends only on the webhook.
 const PAYMENT_RETURN={
   aprovado:["Recebemos o seu retorno do pagamento","<p>Assim que o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra. Costuma levar poucos minutos.</p><p>Não chegou? Confira a caixa de spam ou promoções. Você também pode <a href=\"https://zevanory.api.br/entrega/reenviar\">pedir um novo link de acesso</a>.</p>"],
-  pendente:["Acompanhe o seu pagamento","<p>Se você pagou com Pix ou boleto, a compensação pode levar algum tempo. Quando o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra.</p><p>Se já pagou e nada chegou em 1 dia útil, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente no <a href=\"https://wa.me/5588992545413\">WhatsApp</a>.</p>"],
-  falhou:["Não conseguimos confirmar o seu pagamento","<p>Esta página não confirma o resultado do pagamento: ele pode ter sido recusado, cancelado ou até concluído. Confira o status no aplicativo ou no e-mail do Mercado Pago antes de tentar de novo, para não pagar duas vezes.</p><p>Se aparecer cobrança e o acesso não chegar no seu e-mail, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente no <a href=\"https://wa.me/5588992545413\">WhatsApp</a> ou em suporte@zevanory.api.br. Se não houve cobrança, você pode tentar de novo pela página do produto.</p>"]
+  pendente:["Acompanhe o seu pagamento","<p>Se você pagou com Pix ou boleto, a compensação pode levar algum tempo. Quando o Mercado Pago confirmar o pagamento, o acesso chega no e-mail informado na compra.</p><p>Se já pagou e nada chegou em 1 dia útil, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente: "+CONTACT_HTML+".</p>"],
+  falhou:["Não conseguimos confirmar o seu pagamento","<p>Esta página não confirma o resultado do pagamento: ele pode ter sido recusado, cancelado ou até concluído. Confira o status no aplicativo ou no e-mail do Mercado Pago antes de tentar de novo, para não pagar duas vezes.</p><p>Se aparecer cobrança e o acesso não chegar no seu e-mail, <a href=\"https://zevanory.api.br/entrega/reenviar\">peça um novo link</a> ou fale com a gente: "+CONTACT_HTML+". Se não houve cobrança, você pode tentar de novo pela página do produto.</p>"]
 };
 export function paymentReturnPage(state){
   const entry=Object.prototype.hasOwnProperty.call(PAYMENT_RETURN,state)?PAYMENT_RETURN[state]:null;
@@ -131,10 +132,10 @@ async function handleBuy(request,env,sku,ctx){
   const slug=BUY_SKUS[sku];
   if(!slug) return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");
   if(request.method!=="GET"&&request.method!=="HEAD"&&request.method!=="POST") return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers({allow:"GET, POST"}))});
-  if(!env?.CORE||typeof env.CORE.fetch!=="function") return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes ou fale com a gente no <a href=\"https://wa.me/5588992545413\">WhatsApp</a>.</p>");
+  if(!env?.CORE||typeof env.CORE.fetch!=="function") return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes ou fale com a gente: "+CONTACT_HTML+".</p>");
   const [name,price]=PRICES[sku];
   const open=await salesOpen(env);
-  if(!open) return infoPage(200,"Vendas abrem em breve",`<p>O ${name} ainda não está à venda. Quer tirar dúvidas agora?</p><p><a class="button primary" href="https://wa.me/5588992545413?text=${encodeURIComponent("Olá! Tenho interesse no "+name+".")}">Falar no WhatsApp</a></p>`);
+  if(!open) return infoPage(200,"Vendas abrem em breve",`<p>O ${name} ainda não está à venda. Quer tirar dúvidas agora?</p><p><a class="button primary" href="${contactHref("Olá! Tenho interesse no "+name+".").replace(/&/g,"&amp;")}">${CONTACT_LABEL}</a></p>`);
   if(request.method!=="POST"){
     countView(request,env,ctx,slug,"checkout_intent");
     return infoPage(200,`Comprar ${name}`,`<p><strong>${name}</strong> · R$ ${price},00 · pagamento único, Pix ou cartão.</p><p>Você será levado ao ambiente seguro do Mercado Pago. ${DELIVERY_TEXT} ${RULE_LINE}</p><form method="post" action="/comprar/${sku}"><button class="button primary" type="submit">Ir para o pagamento seguro</button></form><p class="small">Ao continuar você concorda com os <a href="/termos">Termos</a> e a <a href="/privacidade">Política de Privacidade</a>.</p>`);
@@ -150,7 +151,7 @@ async function handleBuy(request,env,sku,ctx){
     if((res.status===201||res.status===200)&&/^https:\/\/(www\.)?mercadopago\.com(\.br)?\//.test(target)) return new Response(null,{status:303,headers:applySecurityHeaders(new Headers({location:target,"cache-control":"no-store"}))});
     console.error("buy_checkout_failed",res.status,String(data?.error||"").slice(0,80));
   }catch(e){console.error("buy_checkout_error",String(e&&e.message||e).slice(0,80))}
-  return infoPage(503,"Não foi possível abrir o pagamento",`<p>Tente novamente em instantes. Se persistir, fale com a gente no <a href="https://wa.me/5588992545413">WhatsApp</a> ou em suporte@zevanory.api.br.</p>`);
+  return infoPage(503,"Não foi possível abrir o pagamento",`<p>Tente novamente em instantes. Se persistir, fale com a gente: ${CONTACT_HTML}.</p>`);
 }
 
 // Lead magnet form (POST, same origin): forwarded to the core Worker through the private binding.
@@ -214,7 +215,7 @@ export const HOTMART_CHECKOUT=Object.freeze({
 });
 // Conteúdo Pronto subscription checkout on Hotmart (empty until the product exists).
 export const SERVICE_CHECKOUT="https://pay.hotmart.com/X107980075B?off=4ydutio7";
-const SERVICE_WA="https://wa.me/5588992545413?text=Ol%C3%A1!%20Quero%20assinar%20o%20Conte%C3%BAdo%20Pronto.";
+const SERVICE_WA=contactHref("Olá! Quero assinar o Conteúdo Pronto.");
 const HOTMART_TEXT=[
   [`Pagamento pelo Mercado Pago (Pix ou cartão) · entrega por e-mail em ${DELIVERY_72H} · arrependimento em 7 dias corridos.`,"Pagamento pela Hotmart (Pix, cartão ou boleto) · acesso por e-mail após a confirmação · arrependimento em 7 dias corridos."],
   [`Entrega por e-mail após a confirmação do pagamento (Pix ou cartão pelo Mercado Pago), em ${DELIVERY_72H}.`,"Acesso após a confirmação do pagamento, pela Hotmart. Os dados de acesso chegam no seu e-mail."],
@@ -236,7 +237,7 @@ export function hotmartPage(html,slug,checkout){
 // Owner decision 14/10/2026: sales closed. The Hotmart purchase paths follow the SAME owner switch
 // (/api/sales/status, fail-closed) as the own checkout. Informative pages stay up; existing
 // subscribers are unaffected (Hotmart postbacks and deliveries do not pass through these routes).
-const SALES_PAUSED_HTML=(name,slug)=>`<p>As vendas do ${name.replace(/&/g,"&amp;").replace(/</g,"&lt;")} estão pausadas no momento. Quem já comprou continua com acesso normalmente.</p><p><a class="button" href="/${slug}">Ver detalhes do produto</a></p><p><a class="button primary" href="https://wa.me/5588992545413?text=${encodeURIComponent("Olá! Quero ser avisado quando o "+name+" voltar a ser vendido.")}">Avise-me pelo WhatsApp</a></p>`;
+const SALES_PAUSED_HTML=(name,slug)=>`<p>As vendas do ${name.replace(/&/g,"&amp;").replace(/</g,"&lt;")} estão pausadas no momento. Quem já comprou continua com acesso normalmente.</p><p><a class="button" href="/${slug}">Ver detalhes do produto</a></p><p><a class="button primary" href="${waitlistHref(name).replace(/&/g,"&amp;")}">Entrar na lista de espera</a></p>`;
 export const HOTMART_NAMES=Object.freeze({"ia-na-pratica":"IA na Prática","vendas-na-pratica":"Vendas na Prática","lucro-e-caixa":"Lucro & Caixa","combo-ia-vendas":"Combo IA + Vendas","negocio-completo":"Negócio Completo","conteudo-pronto":"Conteúdo Pronto"});
 async function handleHotmart(request,env,slug,ctx){
   if(!Object.prototype.hasOwnProperty.call(HOTMART_CHECKOUT,slug))return infoPage(404,"Produto não encontrado","<p>Esse produto não existe.</p>");
@@ -320,7 +321,7 @@ export default{async fetch(request,env,ctx){
     return new Response(request.method==="HEAD"?null:"4782b8291736ddb8fc6239a51c81d3004324faba12f20f625ddbf52ae0d8e922",{status:200,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"public, max-age=86400"}))});
   if(url.pathname==="/assinar/conteudo-pronto"){
     if(request.method!=="GET"&&request.method!=="HEAD")return new Response("Method not allowed",{status:405,headers:applySecurityHeaders(new Headers({allow:"GET, HEAD","cache-control":"no-store"}))});
-    if(!(await salesOpen(env)))return infoPage(200,"Assinaturas pausadas",`<p>Novas assinaturas do Conteúdo Pronto estão pausadas no momento. Quem já é assinante continua recebendo normalmente.</p><p><a class="button" href="/conteudo-pronto">Ver detalhes do serviço</a></p><p><a class="button primary" href="https://wa.me/5588992545413?text=${encodeURIComponent("Olá! Quero ser avisado quando o Conteúdo Pronto voltar a aceitar assinaturas.")}">Avise-me pelo WhatsApp</a></p>`);
+    if(!(await salesOpen(env)))return infoPage(200,"Assinaturas pausadas",`<p>Novas assinaturas do Conteúdo Pronto estão pausadas no momento. Quem já é assinante continua recebendo normalmente.</p><p><a class="button" href="/conteudo-pronto">Ver detalhes do serviço</a></p><p><a class="button primary" href="${waitlistHref("Conteúdo Pronto").replace(/&/g,"&amp;")}">Entrar na lista de espera</a></p>`);
     countView(request,env,ctx,"conteudo-pronto","subscribe_click");
     const svc=SERVICE_CHECKOUT+"&src="+attribution(request,url).src;
     const target=/^https:\/\/pay\.hotmart\.com\/[A-Za-z0-9]+(\?[A-Za-z0-9=&_-]*)?$/.test(svc)?svc:SERVICE_WA;
