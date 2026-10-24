@@ -6,6 +6,7 @@
 tests/acquisition-engine.test.mjs 16
 tests/activity-ledger.test.mjs 6
 tests/affiliate-program.test.mjs 3
+tests/atendimento.test.mjs 12
 tests/attribution.test.mjs 8
 tests/automation-traffic-guard.test.mjs 5
 tests/autonomy-health.test.mjs 4
@@ -26,6 +27,7 @@ tests/command-center-snapshot.test.mjs 9
 tests/commercial-checkout-guard.test.mjs 6
 tests/commercial-metrics-projection.test.mjs 13
 tests/comprar-noindex.test.mjs 8
+tests/contato-publico-whatsapp.test.mjs 9
 tests/content-service.test.mjs 4
 tests/core-snapshot-memo.test.mjs 4
 tests/creative-autonomy.test.mjs 10
@@ -65,7 +67,7 @@ tests/owner-oauth-tiktok.test.mjs 3
 tests/owner-oauth.test.mjs 11
 tests/p13-buy-bar-390.test.mjs 3
 tests/p13-decreto-oferta-cache.test.mjs 6
-tests/p13-politica-nogo.test.mjs 7
+tests/p13-politica-nogo.test.mjs 8
 tests/p13c-prazo-reembolso.test.mjs 3
 tests/p13c-superficies-politica.test.mjs 7
 tests/payment-return-page.test.mjs 3

@@ -7,11 +7,17 @@ classifica o resultado. Determinístico em Linux e Windows (Node 22/24):
   - node resolvido por shutil.which, lista de argumentos sem shell, stdin fechado, saída decodificada em UTF-8;
   - reporter TAP explícito (--test-reporter=tap): no Node >= 23 o reporter padrão é "spec" mesmo fora de TTY, e a
     detecção por "not ok" via spec produzia SOBREVIVENTE falso.
-Classificação (nunca por "qualquer falha"):
-  KILLED       exit != 0, TAP com "not ok" E o rótulo da asserção esperada na saída;
-  SURVIVED     exit == 0 e resumo TAP completo "# tests N / # pass N / # fail 0" (N = baseline);
-  INCONCLUSIVE qualquer outra coisa: trecho a mutar não encontrado, node ausente, timeout, erro de SO, saída sem resumo
-               TAP, ou falha sem o rótulo esperado (erro de infraestrutura não conta como morto nem como sobrevivente).
+Classificação (AVAL Sol 125; mesma disciplina do classificador B05 de mutants_mp_webhook.py, nunca "qualquer falha"):
+  KILLED       exit == 1, TAP COMPLETO (plano "1..N" e resumo tests/pass/fail/cancelled/skipped/todo) com total igual
+               ao da baseline, cancelled/skipped/todo = 0, pelo menos um bloco "not ok" de topo com falha de ASSERÇÃO
+               (ERR_ASSERTION) que contém o rótulo esperado DENTRO do bloco, e TODA outra falha também é asserção com
+               um rótulo esperado do mutante;
+  SURVIVED     exit == 0 e TAP completo, limpo, com total = baseline e fail = 0;
+  INCONCLUSIVE todo o resto: trecho a mutar não encontrado, node ausente, timeout, sinal, erro de SO, crash
+               (SyntaxError/TypeError/ReferenceError, módulo ausente, Traceback) fora de bloco de asserção, TAP
+               truncado ou sem resumo, contagem diferente da baseline, falha extra não esperada, falha sem asserção,
+               rótulo só fora do bloco, skip/todo/cancelled inesperado. Rótulos são casados como token exato entre
+               colchetes ("[T1]" nunca casa "[T10]"). Meta-testes: tests/test_mutants_comprar_classifier.py.
 Saída: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE`. Exit 0 só se todos KILLED; 1 se algum SURVIVED; 3 se algum
 INCONCLUSIVE (sem sobrevivente); 2 se a baseline (sem mutação) não passar.
 Uso: python3 scripts/ci/mutants_comprar_noindex.py [raiz-do-repo]
@@ -28,7 +34,10 @@ W = "worker/sales-public-worker.mjs"
 NODE = shutil.which("node")
 TIMEOUT = 600
 
-# id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo da asserção esperada)
+# id -> (arquivo relativo com "/", trecho original (ocorre 1 vez após normalizar EOL), substituto, rótulo PRIMÁRIO).
+# Regra Sol 128: o rótulo primário vem do raciocínio sobre a mutação (a asserção que testa DIRETAMENTE a regra
+# mutada), nunca de quais testes falharam. Secundários ficam em SECONDARY com justificativa causal de uma linha.
+# Tabela de causalidade: docs/evidence/mutants_comprar_noindex-mutant-causality.md.
 M = {
     "M1 header removed on the 303 redirect path": (W, 'headers.set("x-robots-tag",COMPRAR_ROBOTS);',
         'if(response.status!==303)headers.set("x-robots-tag",COMPRAR_ROBOTS);', "[x-robots-tag]"),
@@ -62,7 +71,52 @@ M = {
     "M16 multi-encoded aliases not covered": (W, 'for(let i=0;i<3;i++){const n=percentDecodeOnce(p);', 'for(let i=0;i<0;i++){const n=percentDecodeOnce(p);', "[double]"),
     "M17 uppercase hex escapes not decoded": (W, 'const hex=b=>(b>=48&&b<=57)||(b>=65&&b<=70)||(b>=97&&b<=102);', 'const hex=b=>(b>=48&&b<=57)||(b>=97&&b<=102);', "[alias]"),
     "M18 double-encoded alias routed to the buy flow": (W, 'return {path:p,routable:false};', 'return {path:p,routable:true};', "[double]"),
+    # AVAL Sol #892 (WhatsApp banido): oráculo cruzado no corpo de /comprar.
+    "M19 wa.me injected only in the alias/unknown-path 404": (W, '    return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");\n  }catch(e){',
+        '    return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado. <a href=\\"https://wa.me/5588992545413\\">WhatsApp</a></p>");\n  }catch(e){', "[whatsapp]"),
+    "M20 masked banned number only in the unknown-SKU 404": (W, 'if(!slug) return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");',
+        'if(!slug) return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado. Ligue (88) 99254-5413.</p>");', "[whatsapp]"),
+    "M21 WhatsApp channel phrase only in the exception 503": (W, 'return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes.</p>");',
+        'return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes ou fale no WhatsApp: suporte humano no WhatsApp.</p>");', "[whatsapp]"),
 }
+
+# PRIMÁRIO extra (além do rótulo da tupla em M; total 1–3 por mutante) e SECUNDÁRIOS {rótulo: justificativa}.
+PRIMARY_EXTRA = {}
+SECONDARY = {
+    "M9": {"[alias]": "o alias percent-encoded /%43OMPRAR decodifica para /COMPRAR, que a regex sem flag i deixa de casar; o teste de aliases falha no status antes do cabeçalho"},
+}
+MAP = {}  # preenchido por main() a partir de mutant_map()
+BROAD_REASON = {}  # mutante com mais de 4 asserções listadas precisa de justificativa ampla aqui
+
+
+def mutant_map(m=None, primary_extra=None, secondary=None, broad=None):
+    """-> {id: (primários, {secundário: justificativa})}. Recusa iniciar (ValueError) se o mapa violar a regra Sol 128."""
+    m = M if m is None else m
+    primary_extra = PRIMARY_EXTRA if primary_extra is None else primary_extra
+    secondary = SECONDARY if secondary is None else secondary
+    broad = BROAD_REASON if broad is None else broad
+    ids = {name.split()[0] for name in m}
+    out, problems = {}, []
+    for key in set(primary_extra) | set(secondary) | set(broad):
+        if key not in ids:
+            problems.append(f"{key}: entrada para mutante inexistente")
+    for name, entry in m.items():
+        mid = name.split()[0]
+        prim = (entry[3], *primary_extra.get(mid, ()))
+        sec = dict(secondary.get(mid, {}))
+        if not 1 <= len(prim) <= 3:
+            problems.append(f"{mid}: {len(prim)} primários (exige 1 a 3)")
+        for label, why in sec.items():
+            if not isinstance(why, str) or len(why.strip()) < 15:
+                problems.append(f"{mid}: secundário {label} sem justificativa causal")
+            if label in prim:
+                problems.append(f"{mid}: {label} é primário e secundário")
+        if len(prim) + len(sec) > 4 and not str(broad.get(mid, "")).strip():
+            problems.append(f"{mid}: {len(prim) + len(sec)} asserções listadas sem broad_reason")
+        out[mid] = (prim, sec)
+    if problems:
+        raise ValueError("MAPA_DE_MUTANTES_INVALIDO " + "; ".join(sorted(problems)))
+    return out
 
 
 def read_text_normalized(path):
@@ -91,18 +145,69 @@ def run(d):
     return p.returncode, out
 
 
+SUMMARY_KEYS = ("tests", "pass", "fail", "cancelled", "skipped", "todo")
+ASSERT_RE = re.compile(r"^\s+code: '?ERR_ASSERTION'?$|^\s+name: '?AssertionError'?$", re.M)
+CRASH_RE = re.compile(r"SyntaxError|ReferenceError|TypeError|ERR_MODULE_NOT_FOUND|Cannot find module|"
+                      r"Traceback \(most recent call last\)|ERR_UNHANDLED|Segmentation fault|FATAL ERROR")
+# Bloco de falha TAP de topo: "not ok N - nome" até a linha "  ..." que fecha o YAML do bloco.
+FAIL_BLOCK = re.compile(r"^not ok \d+ - (?P<name>[^\n]*)\n(?P<body>(?:[ \t]+[^\n]*\n|\n)*?)  \.\.\.$", re.M)
+
+
 def summary(out):
     get = lambda k: (re.search(rf"^# {k} (\d+)$", out, re.M) or [None, None])[1]
-    return {k: get(k) for k in ("tests", "pass", "fail")}
+    return {k: get(k) for k in SUMMARY_KEYS}
 
 
-def classify(rc, out, expect, total):
+def label_in(label, body):
+    """Rótulo como token exato: "[T1]" não casa "[T10]" nem "[T1x]"."""
+    return label in body if label.startswith("[") and label.endswith("]") else re.search(rf"(?<![\w-]){re.escape(label)}(?![\w-])", body) is not None
+
+
+def classify(rc, out, expect, total, secondary=()):
+    """-> (KILLED|SURVIVED|INCONCLUSIVE, motivo). expect: rótulo(s) PRIMÁRIO(s); secondary: rótulos justificados.
+    KILLED exige ao menos uma falha de asserção com rótulo primário; toda outra falha precisa ser primária ou
+    secundária justificada."""
+    primary = [expect] if isinstance(expect, str) else list(expect)
+    secondary = list(secondary)
     s = summary(out)
-    if rc != 0 and re.search(r"^\s*not ok ", out, re.M) and expect in out:
-        return "KILLED", ""
-    if rc == 0 and s == {"tests": total, "pass": total, "fail": "0"}:
-        return "SURVIVED", ""
-    return "INCONCLUSIVE", f"rc={rc} resumo={s} rótulo_presente={expect in out}"
+    plan = re.search(r"^1\.\.(\d+)$", out, re.M)
+    if rc is None or rc < 0:
+        return "INCONCLUSIVE", f"sinal_ou_timeout rc={rc}"
+    if not plan or any(v is None for v in s.values()):
+        return "INCONCLUSIVE", f"tap_incompleto plano={bool(plan)} resumo={s}"
+    n = {k: int(v) for k, v in s.items()}
+    if n["tests"] != int(total) or n["pass"] + n["fail"] != n["tests"]:
+        return "INCONCLUSIVE", f"contagem_diferente_da_baseline resumo={s} baseline={total}"
+    if n["cancelled"] or n["skipped"] or n["todo"]:
+        return "INCONCLUSIVE", f"skip_todo_cancelled resumo={s}"
+    blocks = list(FAIL_BLOCK.finditer(out))
+    nested = re.findall(r"^[ \t]+not ok \d+ - ", out, re.M)
+    if rc == 0:
+        if n["fail"] == 0 and not blocks and not nested and n["pass"] == int(total):
+            return "SURVIVED", ""
+        return "INCONCLUSIVE", f"rc0_com_falha resumo={s}"
+    if rc != 1:
+        return "INCONCLUSIVE", f"rc_{rc}_nao_e_falha_de_teste"
+    if not blocks or len(blocks) != n["fail"] or nested:
+        return "INCONCLUSIVE", f"falhas_tap_inconsistentes blocos={len(blocks)} fail={n['fail']} aninhadas={len(nested)}"
+    outside = FAIL_BLOCK.sub("", out)
+    crash = CRASH_RE.search(outside)
+    if crash:
+        return "INCONCLUSIVE", f"crash_fora_de_bloco:{crash.group(0)}"
+    killed_by, unexpected = [], []
+    for b in blocks:
+        body = b.group("body")
+        if not ASSERT_RE.search(body):
+            unexpected.append(b.group("name")[:40] + ":sem_assercao")
+        elif any(label_in(l, body) for l in primary):
+            killed_by.append(b.group("name")[:40])
+        elif not any(label_in(l, body) for l in secondary):
+            unexpected.append(b.group("name")[:40] + ":rotulo_ausente_no_bloco")
+    if unexpected:
+        return "INCONCLUSIVE", "falha_nao_esperada:" + ";".join(unexpected)
+    if not killed_by:
+        return "INCONCLUSIVE", "so_falha_secundaria"
+    return "KILLED", ""
 
 
 def one(item, total):
@@ -117,13 +222,22 @@ def one(item, total):
                 return name, "INCONCLUSIVE", f"trecho a mutar ocorre {text.count(old)} vez(es)", expect
             write_lf(f, text.replace(old, new, 1))
             rc, out = run(d)
-        verdict, why = classify(rc, out, expect, total)
+        prim, sec = MAP[name.split()[0]]
+        verdict, why = classify(rc, out, prim, total, tuple(sec))
         return name, verdict, why, expect
+    except subprocess.TimeoutExpired:
+        return name, "INCONCLUSIVE", f"timeout {TIMEOUT}s", expect
     except (OSError, subprocess.SubprocessError, UnicodeError) as e:
         return name, "INCONCLUSIVE", f"erro de infraestrutura: {type(e).__name__}: {e}", expect
 
 
 def main():
+    global MAP
+    try:
+        MAP = mutant_map()
+    except ValueError as e:
+        print(f"MUTANT MAP REFUSED {e}")
+        return 4
     if not NODE:
         print("MUTANT BASELINE INCONCLUSIVE (node ausente no PATH)")
         return 3

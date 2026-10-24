@@ -1,6 +1,6 @@
 import { readFinancialProofSnapshot } from "./commercial-metrics-projection.mjs";
 import { brandedEmailHtml } from "./brand-email.mjs";
-import { LEGAL_IDENTITY } from "./politica-unica.mjs";
+import { CONTACT_HTML, CONTACT_TEXT_OR, LEGAL_IDENTITY } from "./politica-unica.mjs";
 // Sales switch + customer self-service delivery recovery.
 // Deploy note (2026-10-07): first production rollout was rolled back by the CSP smoke (inline footer style on the sales site, fixed in #460).
 //
@@ -90,7 +90,7 @@ const RESEND_PAGE = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-
 <style>.zv-brand{display:block;margin:0 0 22px}.zv-brand img{display:block;height:44px;width:auto}.zv-legal{margin-top:24px;padding-top:14px;border-top:1px solid #1c2a44;font-size:12px;color:#7f8ca3;line-height:1.6}.zv-legal a,.zv-help a{color:#7fd3ff}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#05070b;color:#e6edf6;margin:0;display:grid;place-items:center;min-height:100vh;padding:16px}main{width:100%;max-width:460px;background:#0b1220;border:1px solid #1c2a44;border-radius:12px;padding:28px}h1{font-size:20px;margin:0 0 12px}p,label{color:#a9b6c9;line-height:1.5}input{width:100%;box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid #2a3a58;background:#0b1220;color:#e6edf6;margin:6px 0 14px;font-size:15px}button{background:#00b8ff;color:#04121f;border:0;border-radius:8px;padding:14px 20px;font-weight:700;font-size:16px;cursor:pointer;width:100%}#out{margin-top:14px}</style></head>
 <body><main><a class="zv-brand" href="https://vendas.zevanory.api.br/"><img src="/brand/zevanory-logo-dark.svg" alt="ZEVANORY" width="224" height="51"></a><h1>Receber um novo link de download</h1><p>Informe o código do pedido (está no e-mail de compra) e o e-mail usado no pagamento.</p>
 <form id="f"><label>Código do pedido<input name="order_id" required autocomplete="off" placeholder="ex.: 3f2a…"></label><label>E-mail da compra<input name="email" type="email" required autocomplete="email"></label><button type="submit">Enviar novo link</button></form>
-<p id="out" role="status"></p><p class="zv-help">Sem o código? Escreva para <a href="mailto:suporte@zevanory.api.br">suporte@zevanory.api.br</a> ou <a href="https://wa.me/5588992545413">WhatsApp +55 88 99254-5413</a>.</p><p class="zv-legal">${LEGAL_IDENTITY} · <a href="https://vendas.zevanory.api.br/termos">Termos</a> · <a href="https://vendas.zevanory.api.br/privacidade">Privacidade</a> · <a href="https://vendas.zevanory.api.br/reembolso">Reembolso</a></p></main>
+<p id="out" role="status"></p><p class="zv-help">Sem o código? Escreva para ${CONTACT_HTML.replace(" · "," ou ")}.</p><p class="zv-legal">${LEGAL_IDENTITY} · <a href="https://vendas.zevanory.api.br/termos">Termos</a> · <a href="https://vendas.zevanory.api.br/privacidade">Privacidade</a> · <a href="https://vendas.zevanory.api.br/reembolso">Reembolso</a></p></main>
 <script>document.getElementById('f').addEventListener('submit',async function(e){e.preventDefault();var d=new FormData(e.target);var o=document.getElementById('out');o.textContent='Enviando…';try{var r=await fetch('/api/support/resend-delivery',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({order_id:String(d.get('order_id')||'').trim(),email:String(d.get('email')||'').trim()})});var j=await r.json();o.textContent=j.message||'Tente novamente em instantes.';}catch(_){o.textContent='Não foi possível agora. Tente novamente em instantes.';}});</script></body></html>`;
 
 async function resendDelivery(env, { sql, worker, ctx }, { orderId, email }) {
@@ -127,8 +127,8 @@ async function resendDelivery(env, { sql, worker, ctx }, { orderId, email }) {
       to: [recipient],
       reply_to: "suporte@zevanory.api.br",
       subject: "Seu novo link de download ZEVANORY",
-      text: `Aqui está seu novo link de download (válido por 72 horas, um download): ${body.download_url}\n\nCódigo do pedido: ${orderId}\nDúvidas: suporte@zevanory.api.br ou WhatsApp https://wa.me/5588992545413\nA. RENAN ALVES MOREIRA BITU LTDA - CNPJ 69.077.233/0001-99`,
-      html: brandedEmailHtml(`Aqui está seu novo link de download (válido por 72 horas, um download): ${body.download_url}\n\nCódigo do pedido: ${orderId}\nDúvidas: suporte@zevanory.api.br ou WhatsApp https://wa.me/5588992545413`),
+      text: `Aqui está seu novo link de download (válido por 72 horas, um download): ${body.download_url}\n\nCódigo do pedido: ${orderId}\nDúvidas: ${CONTACT_TEXT_OR}\nA. RENAN ALVES MOREIRA BITU LTDA - CNPJ 69.077.233/0001-99`,
+      html: brandedEmailHtml(`Aqui está seu novo link de download (válido por 72 horas, um download): ${body.download_url}\n\nCódigo do pedido: ${orderId}\nDúvidas: ${CONTACT_TEXT_OR}`),
     }),
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);

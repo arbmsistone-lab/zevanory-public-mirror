@@ -21,6 +21,46 @@ export const SUPPLIER = POLICY.resumo_oferta.fornecedor;
 export const ADDRESS_FULL = `${SUPPLIER.endereco_fisico}, CEP ${SUPPLIER.cep}`;
 export const LEGAL_IDENTITY = `${SUPPLIER.razao_social} · CNPJ ${SUPPLIER.cnpj} · ${ADDRESS_FULL}`;
 
+// Contato público (contato_publico): a conta WhatsApp Business foi desativada permanentemente pela Meta
+// (2026-10-10) e o número está banido; o único endereço eletrônico oficial é o e-mail. A flag é uma
+// trava: WhatsApp só volta por decisão explícita, com um NOVO número (whatsapp_e164, nunca banido).
+const C = POLICY.contato_publico;
+export const WHATSAPP_PUBLIC_LINKS_ENABLED = C.whatsapp_public_links_enabled === true;
+export const SUPPORT_EMAIL = C.email;
+// Formulário de atendimento com protocolo (worker/atendimento.mjs), complementar ao e-mail.
+export const SUPPORT_FORM_URL = C.formulario;
+export const BANNED_NUMBERS = Object.freeze([...(C.numeros_banidos || [])]);
+const WA_E164 = WHATSAPP_PUBLIC_LINKS_ENABLED ? String(C.whatsapp_e164 || "") : "";
+if (WHATSAPP_PUBLIC_LINKS_ENABLED && (!/^\d{12,13}$/.test(WA_E164) || BANNED_NUMBERS.includes(WA_E164))) throw new Error("contato_publico: whatsapp_public_links_enabled=true exige whatsapp_e164 novo (não banido)");
+const WHATSAPP_URL = WA_E164 ? `https://wa.me/${WA_E164}` : "";
+const WA_DISPLAY = String(C.whatsapp_display || WA_E164);
+const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+export function mailtoHref(subject, body) {
+  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}` + (body ? `&body=${encodeURIComponent(body)}` : "");
+}
+// Lista de espera / aviso de reabertura: mailto com assunto e corpo fixos (sem dado pessoal na URL).
+export function waitlistHref(product) {
+  if (WHATSAPP_PUBLIC_LINKS_ENABLED) return `${WHATSAPP_URL}?text=${encodeURIComponent(`Olá! Quero entrar na lista de espera do ${product}.`)}`;
+  return mailtoHref(C.waitlist_subject.replaceAll("{produto}", product), C.waitlist_body.replaceAll("{produto}", product));
+}
+// "Fale com a gente": destino humano que funciona.
+export function contactHref(text) {
+  if (WHATSAPP_PUBLIC_LINKS_ENABLED) return text ? `${WHATSAPP_URL}?text=${encodeURIComponent(text)}` : WHATSAPP_URL;
+  return mailtoHref(C.contact_subject, text || undefined);
+}
+export const CONTACT_LABEL = WHATSAPP_PUBLIC_LINKS_ENABLED ? "Falar no WhatsApp" : "Falar por e-mail";
+// Linha de contato em texto (e-mails) e em HTML (rodapés e páginas).
+export const CONTACT_TEXT = WHATSAPP_PUBLIC_LINKS_ENABLED ? `${SUPPORT_EMAIL} · WhatsApp ${WA_DISPLAY}` : SUPPORT_EMAIL;
+export const CONTACT_TEXT_OR = WHATSAPP_PUBLIC_LINKS_ENABLED ? `${SUPPORT_EMAIL} ou WhatsApp ${WHATSAPP_URL}` : SUPPORT_EMAIL;
+export const CONTACT_HTML = `<a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a> · <a href="${SUPPORT_FORM_URL}">formulário de atendimento</a>` + (WHATSAPP_PUBLIC_LINKS_ENABLED ? ` · <a href="${WHATSAPP_URL}">WhatsApp ${escHtml(WA_DISPLAY)}</a>` : "");
+// Número banido (completo ou na máscara local) e qualquer link de WhatsApp — mesmo padrão de scripts/sales_policy.py.
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const numberPattern = (n) => { const local = n.slice(4); return `${reEsc(n)}|${reEsc(local.slice(0, -4))}[-\\s.]?${reEsc(local.slice(-4))}`; };
+export const BANNED_NUMBER_RE = new RegExp(BANNED_NUMBERS.map(numberPattern).join("|") || "(?!)");
+export const WHATSAPP_PUBLIC_RE = new RegExp(`wa\\.me/|api\\.whatsapp\\.com/|whatsapp://|${BANNED_NUMBER_RE.source}`, "i");
+// WhatsApp citado como canal de contato/suporte da ZEVANORY (o uso do WhatsApp pelo cliente do produto é conteúdo, não canal).
+export const WHATSAPP_CHANNEL_RE = /(suporte|atendimento) humano (no|pelo) WhatsApp|Falar no WhatsApp|Fale (com a gente )?no WhatsApp|Avise-me pelo WhatsApp|WhatsApp:? \+?55|WhatsApp oficial|nosso WhatsApp|WhatsApp da ZEVANORY|nos envia por e-mail, WhatsApp|whatsapp-(header|hero|footer)-cta|data-whatsapp-official/i;
+
 // Redação ao cliente (derivada do sol_text; ver customer_wording.fragmentos_sol).
 export const CUSTOMER_RULE_7D = W.rule_7d;
 export const SHORT_RULE = W.short;

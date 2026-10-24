@@ -1,7 +1,7 @@
-import { LEGAL_IDENTITY } from "./politica-unica.mjs";
+import { CONTACT_TEXT, LEGAL_IDENTITY } from "./politica-unica.mjs";
 // Canonical visual shell for permitted ZEVANORY transactional and opt-in emails.
 export const OFFICIAL_EMAIL_IMAGE="https://zevanory.api.br/brand/export/email-card.png";
-export const OFFICIAL_LEGAL_FOOTER=`${LEGAL_IDENTITY} · suporte@zevanory.api.br · WhatsApp +55 88 99254-5413`;
+export const OFFICIAL_LEGAL_FOOTER=`${LEGAL_IDENTITY} · ${CONTACT_TEXT}`;
 const escape=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
 export function brandedEmailHtml(text,{unsubscribeUrl}={}){
  const optOut=unsubscribeUrl?'<p><a href="'+escape(unsubscribeUrl)+'">Descadastrar-se destes e-mails</a></p>':"";

@@ -5,6 +5,7 @@ import {readTextNormalized} from "./helpers/text.mjs";
 import {fileURLToPath} from "node:url";
 import {dirname, join} from "node:path";
 import worker, {percentDecodeOnce, comprarMatch} from "../worker/sales-public-worker.mjs";
+import {WHATSAPP_PUBLIC_RE, WHATSAPP_CHANNEL_RE} from "../worker/politica-unica.mjs";
 
 // Auditor Sol (AVAL 100): /comprar/ on vendas.zevanory.api.br stays out of search indexes by the
 // response itself (X-Robots-Tag noindex,nofollow + Cache-Control no-store + robots meta in HTML),
@@ -40,11 +41,18 @@ const okCtx = {waitUntil() {}};
 const call = (path, {method = "GET", ua = BROWSER, env = makeEnv(), ctx = okCtx} = {}) =>
   worker.fetch(new Request("https://vendas.zevanory.api.br" + path, {method, headers: {"user-agent": ua, "cf-connecting-ip": "203.0.113.9"}}), env, ctx);
 
+function assertNoWhatsapp(body, label) {
+  const m = WHATSAPP_PUBLIC_RE.exec(body) || WHATSAPP_CHANNEL_RE.exec(body);
+  assert.equal(m && m[0], null, label + " [whatsapp]");
+}
 async function assertNoindex(r, label, expectStatus) {
   if (expectStatus !== undefined) assert.equal(r.status, expectStatus, label + " [status]");
   assert.equal(r.headers.get("x-robots-tag"), "noindex, nofollow", label + " [x-robots-tag]");
   assert.equal(r.headers.get("cache-control"), "no-store", label + " [cache-control]");
   const body = await r.text();
+  // Oráculo cruzado (AVAL Sol #892): WhatsApp da ZEVANORY banido; nenhum corpo de /comprar (qualquer status,
+  // alias ou dupla codificação) pode ter wa.me, api.whatsapp.com, whatsapp://, o número banido ou chamada de canal.
+  assertNoWhatsapp(body, label);
   if (/^text\/html/i.test(r.headers.get("content-type") || "")) {
     const metas = body.match(/<meta name="robots"[^>]*>/gi) || [];
     assert.deepEqual(metas, ['<meta name="robots" content="noindex,nofollow">'], label + " [meta]");
