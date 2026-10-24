@@ -25,7 +25,7 @@ test("keyword comments, Page feed comments and DMs get no automated reply, even 
   try {
     for (const payload of [ig(comment("c1", "Quero o link, qual o preço?")), pageFeed, dm]) {
       const out = await inbound.handleMetaSocialInbound(payload, { ...ENABLE_ATTEMPT, ZEVANORY_PRIVATE_ARTIFACTS: w.store }, w.fetchImpl);
-      assert.equal(out.handled, true); assert.equal(out.replied, 0); assert.equal(out.mode, "manual_only");
+      assert.equal(out.handled, true, "[WR-SOC-REPLY]"); assert.equal(out.replied, 0, "[WR-SOC-REPLY]"); assert.equal(out.mode, "manual_only", "[WR-SOC-REPLY]");
     }
   } finally { globalThis.fetch = saved; }
   assert.deepEqual(w.calls, [], "no Graph call"); assert.equal(w.kv.size, 0, "no stored message content or reservation");
@@ -33,14 +33,14 @@ test("keyword comments, Page feed comments and DMs get no automated reply, even 
 
 test("non-social payloads are not claimed (handled=false) and nothing is sent", async () => {
   const out = await inbound.handleMetaSocialInbound({ object: "whatsapp_business_account", entry: [] }, ENABLE_ATTEMPT);
-  assert.deepEqual(out, { handled: false, received: 0, replied: 0 });
+  assert.deepEqual(out, { handled: false, received: 0, replied: 0 }, "[WR-SOC-NONSOCIAL] non-social payload claimed");
 });
 
 test("static: no social automation path or switch exists in the module", () => {
   const src = readTextNormalized(new URL("../worker/inbound-autonomy.mjs", import.meta.url));
-  for (const forbidden of ["graph.facebook.com", "private_replies", "/comments", "META_SOCIAL_AUTOREPLY", "META_ACCESS_TOKEN", "/messages"]) assert.ok(!src.includes(forbidden), forbidden);
+  for (const forbidden of ["graph.facebook.com", "private_replies", "/comments", "META_SOCIAL_AUTOREPLY", "META_ACCESS_TOKEN", "/messages"]) assert.ok(!src.includes(forbidden), "[WR-SOC-STATIC] " + forbidden);
   assert.equal(typeof inbound.metaSocialAutoreplyEnabled, "undefined", "no enable switch exported");
   const bundle = readTextNormalized(new URL("../worker/cloudflare-worker.recovered.mjs", import.meta.url));
-  assert.ok(/const social = await handleMetaSocialInbound\(payload\)\.catch/.test(bundle), "webhook must call the manual-only handler with the payload only (no Page token)");
+  assert.ok(/const social = await handleMetaSocialInbound\(payload\)\.catch/.test(bundle), "[WR-SOC-TOKEN] webhook must call the manual-only handler with the payload only (no Page token)");
   assert.ok(!bundle.includes("META_SOCIAL_AUTOREPLY"));
 });

@@ -1,11 +1,11 @@
 {
- "_doc": "Sol audit 128: expected assertions per mutant, derived by reasoning about the mutation (docs/evidence/whatsapp-retirement-mutant-causality.md). Format compatible with scripts/ci/mutant_classifier.py load_mutant_config (PR #901).",
+ "_doc": "Sol audits 128/131: expected assertions per mutant, derived by reasoning about the mutation (docs/evidence/whatsapp-retirement-mutant-causality.md). Every PRIMARY names the labelled assertion ([WR-...]) that encodes the mutated rule, checked inside the not-ok block by scripts/ci/mutant_classifier.py (load_mutant_config + classify CLI).",
  "mutants": {
   "M01_env_reenables_channel": {
    "primary": [
     {
      "test_pattern": "kill-switch: retirement is a code constant",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SW-ENV"
     }
    ],
    "secondary": [
@@ -51,7 +51,7 @@
    "primary": [
     {
      "test_pattern": "kill-switch: retirement is a code constant",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SW-CONST"
     }
    ],
    "secondary": [
@@ -107,7 +107,7 @@
    "primary": [
     {
      "test_pattern": "kill-switch: retirement is a code constant",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SW-REPLY"
     }
    ],
    "secondary": [
@@ -122,7 +122,7 @@
    "primary": [
     {
      "test_pattern": "kill-switch: retirement is a code constant",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SW-ENV"
     }
    ],
    "secondary": [
@@ -178,7 +178,7 @@
    "primary": [
     {
      "test_pattern": "retired: no fetch",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-PATH-BROKER"
     }
    ],
    "secondary": [
@@ -198,7 +198,7 @@
    "primary": [
     {
      "test_pattern": "retired: no fetch",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-PATH-CREDS"
     }
    ]
   },
@@ -206,7 +206,7 @@
    "primary": [
     {
      "test_pattern": "Meta webhook: WhatsApp deliveries",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-HOOK-EDGE"
     }
    ]
   },
@@ -214,7 +214,7 @@
    "primary": [
     {
      "test_pattern": "Meta webhook: Instagram/Facebook",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-NONWA-SILENT"
     }
    ]
   },
@@ -222,7 +222,7 @@
    "primary": [
     {
      "test_pattern": "Meta webhook: Instagram/Facebook",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-NONWA-DECLARED"
     }
    ]
   },
@@ -230,7 +230,7 @@
    "primary": [
     {
      "test_pattern": "Meta webhook: Instagram/Facebook",
-     "assertion_pattern": null
+     "assertion_pattern": "re:WR-NONWA-CLASSIFY\\] instagram small"
     }
    ]
   },
@@ -238,7 +238,7 @@
    "primary": [
     {
      "test_pattern": "Meta webhook: Instagram/Facebook",
-     "assertion_pattern": null
+     "assertion_pattern": "re:WR-NONWA-CLASSIFY\\] instagram large"
     }
    ]
   },
@@ -246,7 +246,7 @@
    "primary": [
     {
      "test_pattern": "Meta webhook: Instagram/Facebook",
-     "assertion_pattern": null
+     "assertion_pattern": "re:WR-NONWA-CLASSIFY\\] mixed product"
     }
    ]
   },
@@ -254,7 +254,7 @@
    "primary": [
     {
      "test_pattern": "bundle layer",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-BHOOK-ACK"
     }
    ]
   },
@@ -262,11 +262,11 @@
    "primary": [
     {
      "test_pattern": "sender primitives",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-PRIM-BROKER"
     },
     {
      "test_pattern": "bundle layer",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-BHOOK-BROKER"
     }
    ]
   },
@@ -274,11 +274,11 @@
    "primary": [
     {
      "test_pattern": "retired: no fetch",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-PATH-PROVIDER"
     },
     {
      "test_pattern": "status surfaces:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SURF-IDENTITY"
     }
    ]
   },
@@ -286,7 +286,7 @@
    "primary": [
     {
      "test_pattern": "retired: no fetch",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-PATH-PROVIDER"
     }
    ],
    "secondary": [
@@ -301,7 +301,7 @@
    "primary": [
     {
      "test_pattern": "instant reply:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-REPLY"
     }
    ]
   },
@@ -309,7 +309,7 @@
    "primary": [
     {
      "test_pattern": "static: retired onboarding",
-     "assertion_pattern": "instant reply must not default to on"
+     "assertion_pattern": "WR-ONB-BUNDLE-REPLY"
     }
    ]
   },
@@ -317,7 +317,7 @@
    "primary": [
     {
      "test_pattern": "webhook handler:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-H18-INBOUND"
     }
    ]
   },
@@ -325,7 +325,7 @@
    "primary": [
     {
      "test_pattern": "sender primitives",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-PRIM-SEND"
     }
    ]
   },
@@ -333,7 +333,7 @@
    "primary": [
     {
      "test_pattern": "sender primitives",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-PRIM-VOICE"
     }
    ]
   },
@@ -341,7 +341,7 @@
    "primary": [
     {
      "test_pattern": "sender primitives",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-PRIM-MEDIA"
     }
    ]
   },
@@ -349,7 +349,7 @@
    "primary": [
     {
      "test_pattern": "outbound adapter",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-ADAPTER"
     }
    ]
   },
@@ -357,7 +357,7 @@
    "primary": [
     {
      "test_pattern": "status surfaces:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SURF-RELEASE"
     }
    ]
   },
@@ -365,7 +365,7 @@
    "primary": [
     {
      "test_pattern": "status surfaces:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SURF-CHANNEL"
     }
    ]
   },
@@ -373,7 +373,7 @@
    "primary": [
     {
      "test_pattern": "status surfaces:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SURF-DIST"
     }
    ]
   },
@@ -381,7 +381,7 @@
    "primary": [
     {
      "test_pattern": "projection:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-PROJ"
     }
    ]
   },
@@ -389,7 +389,7 @@
    "primary": [
     {
      "test_pattern": "provider independence:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-QUORUM"
     }
    ]
   },
@@ -397,7 +397,7 @@
    "primary": [
     {
      "test_pattern": "onboarding routes",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-GONE-PROOF"
     }
    ]
   },
@@ -405,7 +405,7 @@
    "primary": [
     {
      "test_pattern": "broker tombstone:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-BROKER-410"
     }
    ]
   },
@@ -413,11 +413,11 @@
    "primary": [
     {
      "test_pattern": "status surfaces:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SURF-INSTANT"
     },
     {
      "test_pattern": "static: retired onboarding",
-     "assertion_pattern": "instant reply must not default to on"
+     "assertion_pattern": "WR-ONB-COMPAT-REPLY"
     }
    ]
   },
@@ -425,7 +425,7 @@
    "primary": [
     {
      "test_pattern": "static: no forged",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-FORGER"
     }
    ]
   },
@@ -433,7 +433,7 @@
    "primary": [
     {
      "test_pattern": "static: retired workflows",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-WF-PROOF"
     }
    ]
   },
@@ -441,7 +441,7 @@
    "primary": [
     {
      "test_pattern": "bundle layer",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-BHOOK-VERIFY"
     }
    ]
   },
@@ -449,11 +449,11 @@
    "primary": [
     {
      "test_pattern": "keyword comments, Page feed",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SOC-REPLY"
     },
     {
      "test_pattern": "static: no social automation",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SOC-STATIC"
     }
    ]
   },
@@ -461,7 +461,7 @@
    "primary": [
     {
      "test_pattern": "static: no social automation",
-     "assertion_pattern": null
+     "assertion_pattern": "re:WR-SOC-STATIC\\] META_SOCIAL_AUTOREPLY"
     }
    ]
   },
@@ -469,7 +469,7 @@
    "primary": [
     {
      "test_pattern": "non-social payloads",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SOC-NONSOCIAL"
     }
    ]
   },
@@ -477,7 +477,7 @@
    "primary": [
     {
      "test_pattern": "static: no social automation",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SOC-TOKEN"
     }
    ]
   },
@@ -485,11 +485,11 @@
    "primary": [
     {
      "test_pattern": "generated candidate config:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-CFG-ALIAS"
     },
     {
      "test_pattern": "generator source:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SRC-ALIAS"
     }
    ]
   },
@@ -497,7 +497,7 @@
    "primary": [
     {
      "test_pattern": "generated candidate config:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-CFG-ALIAS"
     }
    ]
   },
@@ -505,11 +505,11 @@
    "primary": [
     {
      "test_pattern": "generated candidate config:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-CFG-ALIAS"
     },
     {
      "test_pattern": "generator source:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SRC-ALIAS"
     }
    ]
   },
@@ -517,7 +517,7 @@
    "primary": [
     {
      "test_pattern": "wrangler configs:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-TOML"
     }
    ]
   },
@@ -525,11 +525,11 @@
    "primary": [
     {
      "test_pattern": "generated candidate config:",
-     "assertion_pattern": "retired WhatsApp channel must stay closed"
+     "assertion_pattern": "WR-CFG-SALES"
     },
     {
      "test_pattern": "generator source:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-SRC-SALES"
     }
    ]
   },
@@ -537,7 +537,7 @@
    "primary": [
     {
      "test_pattern": "generated public assets:",
-     "assertion_pattern": null
+     "assertion_pattern": "re:WR-PUB-NEUTRAL[\\s\\S]*whatsapp-contact\\.js:wa\\.me"
     }
    ],
    "secondary": [
@@ -552,7 +552,7 @@
    "primary": [
     {
      "test_pattern": "fail-closed: any leftover",
-     "assertion_pattern": null
+     "assertion_pattern": "re:WR-FAILCLOSED\\] generator must fail closed on: <a href=\\\"https://wa\\.me/"
     }
    ]
   },
@@ -560,7 +560,7 @@
    "primary": [
     {
      "test_pattern": "fail-closed: any leftover",
-     "assertion_pattern": null
+     "assertion_pattern": "re:WR-FAILCLOSED\\] generator must fail closed on: Atendimento \\(88\\) 9234 0423"
     }
    ],
    "secondary": [
@@ -575,7 +575,7 @@
    "primary": [
     {
      "test_pattern": "generated public assets:",
-     "assertion_pattern": null
+     "assertion_pattern": "re:WR-PUB-NEUTRAL[\\s\\S]*index\\.html:number 9234-0423"
     }
    ],
    "secondary": [
@@ -590,7 +590,7 @@
    "primary": [
     {
      "test_pattern": "generator source:",
-     "assertion_pattern": "public number rewrite is gone"
+     "assertion_pattern": "WR-SRC-REWRITE"
     }
    ]
   },
@@ -598,7 +598,7 @@
    "primary": [
     {
      "test_pattern": "workflows:",
-     "assertion_pattern": null
+     "assertion_pattern": "WR-WF-ASSIGN"
     }
    ]
   }

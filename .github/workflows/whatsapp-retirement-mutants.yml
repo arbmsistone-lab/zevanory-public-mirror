@@ -7,9 +7,10 @@ name: WhatsApp retirement mutants
 # central candidate config or a tracked wrangler* config, WHATSAPP_SALES_ENABLED re-enabled, the banned account
 # left in / rewritten into the public assets, the fail-closed public scan disabled or weakened
 # (tests/whatsapp-config-absence.test.mjs); M49: a workflow assigns a WhatsApp alias again.
-# Expectations (Sol audit 128): scripts/ci/mutants_whatsapp_retirement.expected.json, PRIMARY by reasoning, SECONDARY
-# only with a written justification; KILLED needs a primary assertion failure; the runner refuses to start (exit 4) on
-# an invalid config. Exact count 49; any SURVIVED or INCONCLUSIVE fails.
+# Expectations (Sol audits 128/131): scripts/ci/mutants_whatsapp_retirement.expected.json, PRIMARY by reasoning with a
+# mandatory assertion label ([WR-...]) checked inside the not-ok block, SECONDARY only with a written justification.
+# Config (load_mutant_config) and verdicts (classify CLI) come from the shared scripts/ci/mutant_classifier.py (#901);
+# the runner refuses to start (exit 4) on an invalid config. Exact count 49; any SURVIVED or INCONCLUSIVE fails.
 # Matrix: Linux and Windows (CRLF checkout) x Node 22 and 24. Offline, no secrets, read-only.
 on:
   pull_request:
@@ -28,9 +29,9 @@ on:
       - "tests/whatsapp-config-absence.test.mjs"
       - "scripts/deploy/prepare-central-candidate.py"
       - "scripts/deploy/public_whatsapp_scan.py"
-      - "scripts/ci/mutant_expectations.mjs"
+      - "scripts/ci/mutant_classifier.py"
       - "scripts/ci/mutants_whatsapp_retirement.expected.json"
-      - "tests/mutant-expectations.test.mjs"
+      - "tests/whatsapp-mutants-classifier.test.mjs"
       - ".github/workflows/mercadopago-exact-sha-recovery.yml"
       - "**/wrangler*.toml"
       - "wrangler*.toml"
@@ -68,12 +69,12 @@ jobs:
         shell: bash
         run: |
           if grep -q $'\r' worker/whatsapp-retirement.mjs; then echo "::notice title=EOL::CRLF checkout"; else echo "::notice title=EOL::LF checkout"; fi
-      - name: Meta-tests of the verdict/config rules (Sol audit 128; exactly 8)
+      - name: Meta-tests of the runner on the shared classifier (Sol audits 128/131; exactly 6)
         shell: bash
         run: |
           set -Eeuo pipefail
-          node --test tests/mutant-expectations.test.mjs < /dev/null | tr -d '\r' | tee meta.txt
-          grep -qx '# tests 8' meta.txt && grep -qx '# pass 8' meta.txt && grep -qx '# fail 0' meta.txt && grep -qx '# skipped 0' meta.txt
+          node --test tests/whatsapp-mutants-classifier.test.mjs < /dev/null | tr -d '\r' | tee meta.txt
+          grep -qx '# tests 6' meta.txt && grep -qx '# pass 6' meta.txt && grep -qx '# fail 0' meta.txt && grep -qx '# skipped 0' meta.txt
           rm -f meta.txt
       - name: Mutants (exact 49 KILLED by expected assertion)
         shell: bash

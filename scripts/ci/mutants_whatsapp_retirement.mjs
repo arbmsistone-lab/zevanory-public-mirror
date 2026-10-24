@@ -5,24 +5,26 @@
 // tests/meta-social-manual-only.test.mjs (TAP) and restores the original bytes (SHA-256 checked after
 // every mutant; added files removed). Portable: anchors are matched on EOL-normalized text (a Windows
 // checkout with CRLF matches the same LF anchors) and the original bytes are written back.
-// Expected assertions (Sol audit 128): scripts/ci/mutants_whatsapp_retirement.expected.json, one spec per mutant with
-// 1-3 PRIMARY assertions derived by reasoning about the mutation and optional SECONDARY ones, each with a written
-// causal justification (table: docs/evidence/whatsapp-retirement-mutant-causality.md). The runner refuses to start
-// (exit 4, "MUTANT CONFIG REFUSED") on an unjustified secondary, 0 or >3 primaries, >4 tests without broad_reason or a
-// config/mutant mismatch. Verdicts from scripts/ci/mutant_expectations.mjs (semantics of PR #901 mutant_classifier.py):
-//   KILLED       = complete TAP, count == baseline, rc 1, an ASSERTION failure in a PRIMARY test, every other
-//                  failure primary or justified secondary.
+// Expected assertions (Sol audits 128/131): scripts/ci/mutants_whatsapp_retirement.expected.json, one spec per mutant with
+// 1-3 PRIMARY assertions derived by reasoning about the mutation, each naming the labelled assertion ("[WR-...]") that
+// encodes the mutated rule (assertion_pattern is mandatory for primaries), and optional SECONDARY ones, each with a
+// written causal justification (table: docs/evidence/whatsapp-retirement-mutant-causality.md).
+// Config and verdicts come from the SHARED classifier scripts/ci/mutant_classifier.py (PR #901): load_mutant_config
+// validates the whole config before anything runs (the runner exits 4, "MUTANT CONFIG REFUSED", on any defect, a
+// primary without assertion_pattern or a config/mutant mismatch); each run's TAP goes through its `classify` CLI:
+//   KILLED       = complete TAP, count == baseline, rc 1, an ASSERTION failure inside the not-ok block of a PRIMARY
+//                  test carrying its assertion label, every other failure primary or justified secondary.
 //   SURVIVED     = rc 0 and a clean baseline-equal count.
-//   INCONCLUSIVE = anything else (timeout, signal, crash, truncated TAP, count mismatch, non-assertion failure,
-//                  unexpected failure, failure only in secondary assertions).
+//   INCONCLUSIVE = anything else (timeout, signal, crash, truncated TAP, count mismatch, skip/todo/cancelled,
+//                  non-assertion failure, unexpected failure, label only outside the block, only secondary failures).
 // Exit 0 only if the baseline is green and every mutant is KILLED. Offline, no secrets.
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, join } from "node:path";
 import { normalizeEol } from "../../tests/helpers/text.mjs";
-import { loadMutantConfig, classifyTap, ConfigError } from "./mutant_expectations.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SUITES = ["tests/whatsapp-retirement.test.mjs", "tests/meta-social-manual-only.test.mjs", "tests/whatsapp-config-absence.test.mjs"];
@@ -95,26 +97,50 @@ const MUTANTS = [
 ];
 
 const sha = (s) => createHash("sha256").update(s).digest("hex");
+const PY = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
+const CLASSIFIER = resolve(ROOT, "scripts/ci/mutant_classifier.py");
+const CONFIG_PATH = resolve(ROOT, "scripts/ci/mutants_whatsapp_retirement.expected.json");
+const WORK = mkdtempSync(join(tmpdir(), "zev-wa-mutants-"));
+process.on("exit", () => rmSync(WORK, { recursive: true, force: true }));
+const py = (args) => spawnSync(PY, ["-B", ...args], { cwd: ROOT, encoding: "utf8", windowsHide: true, timeout: 120000, env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1", PYTHONIOENCODING: "utf-8" } });
+function refuse(msg) { console.log("MUTANT CONFIG REFUSED " + msg); process.exit(4); }
 let CONFIG;
-try {
-  const raw = JSON.parse(readFileSync(resolve(ROOT, "scripts/ci/mutants_whatsapp_retirement.expected.json"), "utf8"));
-  CONFIG = loadMutantConfig(raw.mutants, MUTANTS.map(([id]) => id));
-} catch (e) {
-  console.log(`MUTANT CONFIG REFUSED ${e instanceof ConfigError ? "" : e.name + ": "}${e.message}`);
-  process.exit(4);
+{
+  let raw;
+  try { raw = JSON.parse(readFileSync(CONFIG_PATH, "utf8")); } catch (e) { refuse("unreadable config: " + e.message); }
+  const v = py(["-c", "import json,sys; sys.path.insert(0, sys.argv[1]); import mutant_classifier as m\ntry:\n    m.load_mutant_config(json.load(open(sys.argv[2], encoding='utf-8'))['mutants'])\nexcept m.ConfigError as e:\n    print('CONFIG_ERROR ' + str(e)); sys.exit(4)\nprint('CONFIG_OK')", dirname(CLASSIFIER), CONFIG_PATH]);
+  if (v.status !== 0 || !/^CONFIG_OK$/m.test(v.stdout)) refuse((v.stdout + v.stderr).trim().split("\n").pop() || "load_mutant_config failed (status " + v.status + ")");
+  CONFIG = raw.mutants;
+  const ids = MUTANTS.map(([id]) => id), keys = Object.keys(CONFIG);
+  const missing = ids.filter((id) => !keys.includes(id)), extra = keys.filter((id) => !ids.includes(id));
+  if (missing.length || extra.length) refuse(`config/mutant mismatch missing=${missing.join(",")} extra=${extra.join(",")}`);
+  const noLabel = keys.filter((id) => CONFIG[id].primary.some((e) => typeof e.assertion_pattern !== "string" || !e.assertion_pattern.trim()));
+  if (noLabel.length) refuse("primary without assertion_pattern: " + noLabel.join(","));
 }
 function run() {
-  let out = "", rc = 0, signal = null;
-  try {
-    out = execFileSync("node", ["--test", "--test-reporter=tap", "--test-reporter-destination=stdout", ...SUITES], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 240000, maxBuffer: 64 * 1024 * 1024 });
-  } catch (e) { out = String(e.stdout || "") + String(e.stderr || ""); rc = e.status ?? null; signal = e.signal || null; }
+  const r = spawnSync("node", ["--test", "--test-reporter=tap", "--test-reporter-destination=stdout", ...SUITES], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 240000, maxBuffer: 64 * 1024 * 1024, windowsHide: true });
+  const out = String(r.stdout || "");
   const num = (k) => Number((out.match(new RegExp(`^# ${k} (\\d+)$`, "m")) || [])[1] ?? -1);
-  return { rc, signal, out, tests: num("tests"), pass: num("pass"), fail: num("fail") };
+  return { rc: r.status, signal: r.signal || null, timedOut: r.error?.code === "ETIMEDOUT", out, err: String(r.stderr || ""), tests: num("tests"), pass: num("pass"), fail: num("fail") };
+}
+// Shared classifier CLI (scripts/ci/mutant_classifier.py classify): one JSON line per run.
+function classify(r, id, spec, { baseline = false } = {}) {
+  const tap = join(WORK, "run.tap"), err = join(WORK, "run.err"), exp = join(WORK, "expected.json");
+  writeFileSync(tap, r.out); writeFileSync(err, r.err); writeFileSync(exp, JSON.stringify(spec || {}));
+  const args = [CLASSIFIER, "classify", "--baseline-total", String(BASE_COUNT), "--tap", tap, "--stderr", err, "--expected", "@" + exp];
+  if (r.rc !== null && r.rc !== undefined) args.push("--rc", String(r.rc));
+  if (r.signal) args.push("--signal", r.signal);
+  if (r.timedOut) args.push("--timed-out");
+  if (baseline) args.push("--baseline"); else args.push("--mutant-id", id);
+  const c = py(args);
+  try { return JSON.parse(c.stdout.trim().split("\n").pop()); }
+  catch { return { verdict: "INCONCLUSIVE", reason: "classifier_cli_failed:" + (c.stderr || c.stdout).slice(-200), killing_tests: [] }; }
 }
 
 const base = run();
-if (base.tests !== BASE_COUNT || base.pass !== BASE_COUNT || base.fail !== 0) {
-  console.log(`BASELINE FAIL tests=${base.tests} pass=${base.pass} fail=${base.fail} rc=${base.rc}`);
+const baseCheck = classify(base, "BASELINE", null, { baseline: true });
+if (base.tests !== BASE_COUNT || base.pass !== BASE_COUNT || base.fail !== 0 || baseCheck.ok !== true) {
+  console.log(`BASELINE FAIL tests=${base.tests} pass=${base.pass} fail=${base.fail} rc=${base.rc} classifier=${JSON.stringify(baseCheck).slice(0, 300)}`);
   process.exit(1);
 }
 console.log(`BASELINE PASS tests=${base.tests}`);
@@ -143,9 +169,9 @@ for (const [id, edits] of MUTANTS) {
     if (orig === null ? existsSync(path) : sha(readFileSync(path)) !== sha(orig)) { console.log(`RESTORE FAIL ${path}`); process.exit(2); }
   }
   if (anchorProblem) { console.log(`MUTANT ${id} INCONCLUSIVE reason=${anchorProblem}`); bad++; continue; }
-  const v = classifyTap({ rc: r.rc, signal: r.signal, out: r.out, baselineTotal: BASE_COUNT, spec: CONFIG[id] });
+  const v = classify(r, id, CONFIG[id]);
   if (v.verdict !== "KILLED") bad++;
-  console.log(`MUTANT ${id} ${v.verdict} by=${JSON.stringify(v.killing_tests.map((n) => n.slice(0, 40)))} reason=${v.reason}`);
+  console.log(`MUTANT ${id} ${v.verdict} by=${JSON.stringify((v.killing_tests || []).map((n) => String(n).slice(0, 40)))} ids=${JSON.stringify(v.assertion_ids || [])} reason=${String(v.reason).slice(0, 200)}`);
 }
 console.log(bad ? `MUTANTS FAIL not_killed=${bad}` : `MUTANTS PASS killed=${MUTANTS.length}/${MUTANTS.length}`);
 process.exit(bad ? 1 : 0);

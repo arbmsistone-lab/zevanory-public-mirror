@@ -95,11 +95,11 @@ after(() => { globalThis.fetch = realFetch; server?.close(); server?.closeAllCon
 
 // ---------- retirement is a code constant ----------
 test("kill-switch: retirement is a code constant; env values that would re-enable WhatsApp or the instant reply are ignored", () => {
-  assert.equal(R.WHATSAPP_CHANNEL_RETIRED, true);
+  assert.equal(R.WHATSAPP_CHANNEL_RETIRED, true, "[WR-SW-CONST] retirement constant");
   for (const v of [undefined, null, "", "false", " FALSE ", "False", "0", "no", "off", "true"]) {
     const e = v === undefined ? {} : { WHATSAPP_CHANNEL_RETIRED: v, WHATSAPP_INSTANT_REPLY: "true" };
-    assert.equal(R.whatsappChannelRetired(e), true, String(v));
-    assert.equal(R.whatsappInstantReplyEnabled(e), false, String(v));
+    assert.equal(R.whatsappChannelRetired(e), true, "[WR-SW-ENV] " + String(v));
+    assert.equal(R.whatsappInstantReplyEnabled(e), false, "[WR-SW-REPLY] " + String(v));
   }
   assert.equal(R.whatsappChannelRetired(undefined), true);
   assert.equal(R.whatsappInstantReplyEnabled({ WHATSAPP_INSTANT_REPLY: "true", WHATSAPP_CHANNEL_RETIRED: "false" }), false);
@@ -115,31 +115,31 @@ test("retired: no fetch to graph.facebook.com or the broker from status/health/c
   for (const path of READ_PATHS) {
     brokerSpy.calls = 0;
     const r = await call(path);
-    assert.deepEqual(providerHits(), [], path + " reached a WhatsApp provider: " + providerHits().join(","));
-    assert.equal(brokerSpy.calls, 0, path + " called the broker binding");
+    assert.deepEqual(providerHits(), [], "[WR-PATH-PROVIDER] " + path + " reached a WhatsApp provider: " + providerHits().join(","));
+    assert.equal(brokerSpy.calls, 0, "[WR-PATH-BROKER] " + path + " called the broker binding");
     assert.equal(globalThis.__ZEVANORY_WHATSAPP_BROKER__, null, path + " left the broker binding exposed");
     assert.equal(globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__, null, path);
-    assert.deepEqual(globalThis.__ZEVANORY_WHATSAPP_RUNTIME__, {}, path + " loaded WhatsApp credentials");
+    assert.deepEqual(globalThis.__ZEVANORY_WHATSAPP_RUNTIME__, {}, "[WR-PATH-CREDS] " + path + " loaded WhatsApp credentials");
     assert.ok(r.status < 600);
   }
 });
 
 test("status surfaces: whatsapp_mode disabled_permanent, identity not attempted, distribution and instant-status exclude WhatsApp", async () => {
   const release = await call("/api/release");
-  assert.equal(release.body.whatsapp_mode, "disabled_permanent");
+  assert.equal(release.body.whatsapp_mode, "disabled_permanent", "[WR-SURF-RELEASE] release whatsapp_mode");
   const identity = await call("/api/config?view=channel_identity_health");
-  assert.equal(identity.body.whatsapp.attempted, false);
+  assert.equal(identity.body.whatsapp.attempted, false, "[WR-SURF-IDENTITY] identity not attempted");
   assert.equal(identity.body.whatsapp.reason, "meta_account_permanently_disabled");
   const closure = await call("/api/config?view=closure_status");
-  assert.equal(closure.body.channels.whatsapp.operational_mode, "disabled_permanent");
+  assert.equal(closure.body.channels.whatsapp.operational_mode, "disabled_permanent", "[WR-SURF-CHANNEL] closure channel mode");
   assert.equal(closure.body.channels.whatsapp.scope_status, "retired");
   assert.equal(closure.body.channels.whatsapp.counts_toward_active_total, false);
-  assert.ok(!("whatsapp" in (closure.body.distribution?.fronts || {})), "retired front must not count toward distribution readiness");
+  assert.ok(!("whatsapp" in (closure.body.distribution?.fronts || {})), "[WR-SURF-DIST] retired front must not count toward distribution readiness");
   assert.ok(!closure.text.includes("whatsapp_provider_identity_unverified"));
   const probe = await call("/api/config?view=meta-migration-probe");
   assert.equal(probe.body.facebook, false); assert.deepEqual(providerHits(), [], "the retired WhatsApp token was used for a Page read");
   const instant = await call("/api/support/instant-status");
-  assert.equal(instant.body.enabled, false);
+  assert.equal(instant.body.enabled, false, "[WR-SURF-INSTANT] instant reply status");
   assert.equal(instant.body.broker_binding_present, false);
   assert.equal(instant.body.whatsapp_channel.mode, "disabled_permanent");
   assert.equal(instant.body.whatsapp_channel.reason, "meta_account_permanently_disabled");
@@ -147,7 +147,7 @@ test("status surfaces: whatsapp_mode disabled_permanent, identity not attempted,
 
 test("projection: runtime.whatsapp disabled_permanent with reason, never 'enabled' even if a transport looks operational", () => {
   const s = projectLiveStatus({ runtime: { whatsapp: "enabled" }, channel_readiness: { whatsapp: { commercial: true, scope_status: "active", release_gate: "enabled", commercial_execution: "enabled" }, email: { scope_status: "active" } } }, { salesOpen: true, whatsappTransportOperational: true, whatsappRetired: true });
-  assert.equal(s.runtime.whatsapp, "disabled_permanent");
+  assert.equal(s.runtime.whatsapp, "disabled_permanent", "[WR-PROJ] runtime.whatsapp");
   assert.equal(s.runtime.whatsapp_state, "retired");
   assert.equal(s.runtime.whatsapp_reason, "meta_account_permanently_disabled");
   assert.equal(s.channel_readiness.whatsapp.scope_status, "retired");
@@ -159,7 +159,7 @@ test("provider independence: a retired WhatsApp never counts toward continuity q
   const active = { scope_status: "active", release_gate: "enabled", commercial_execution: "enabled" };
   const status = { runtime: { sales: "enabled", whatsapp: "disabled_permanent" }, channel_readiness: { whatsapp: active, zevanory: active, email: active } };
   const plan = buildContinuityPlan(status, { minQuorum: 3 });
-  assert.ok(!plan.available_channels.includes("whatsapp"));
+  assert.ok(!plan.available_channels.includes("whatsapp"), "[WR-QUORUM] retired channel available");
   assert.equal(plan.quorum_ok, false, "two real channels cannot reach a quorum of three by counting WhatsApp");
   assert.deepEqual([...plan.retired_channels], ["whatsapp"]);
   assert.equal(plan.whatsapp_transport_operational, false);
@@ -179,7 +179,7 @@ test("Meta webhook: WhatsApp deliveries get 200 ack only (no processing, no stor
     assert.deepEqual(providerHits(), []); assert.equal(brokerSpy.calls, 0);
   }
   const edge = await compat.fetch(new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", headers: { "content-type": "application/json" }, body: waPayload() }), env, ctx);
-  assert.equal(edge.headers.get("x-zevanory-ack-layer"), "edge", "classified at the edge before any downstream handling");
+  assert.equal(edge.headers.get("x-zevanory-ack-layer"), "edge", "[WR-HOOK-EDGE] classified at the edge before any downstream handling");
   assert.equal(edge.headers.get("x-zevanory-meta-product"), "whatsapp_business_account");
   for (const [k, v] of kvStore) {
     if (before.get(k) === v) continue;
@@ -195,16 +195,16 @@ test("Meta webhook: Instagram/Facebook, oversized and unclassifiable deliveries 
   const waLarge = waPayload("w".repeat(300 * 1024));
   const cases = [["instagram small", igSmall, "instagram"], ["instagram large", igLarge, "unclassified"], ["page large", pageLarge, "unclassified"], ["invalid json", "{not json", "unclassified"], ["mixed product", mixed, "unclassified"], ["whatsapp oversized", waLarge, "unclassified"]];
   for (const [name, body, product] of cases) {
-    assert.equal(R.classifyMetaWebhookBody(body), product, name);
+    assert.equal(R.classifyMetaWebhookBody(body), product, "[WR-NONWA-CLASSIFY] " + name);
     for (const path of ["/api/webhooks/meta", "/api/webhooks?provider=meta"]) {
       const r = await call(path, { method: "POST", headers: { "content-type": "application/json", "x-hub-signature-256": "sha256=" + "1".repeat(64) }, body });
-      assert.notEqual(r.body?.reason, "meta_account_permanently_disabled", `${name} ${path} was silently acknowledged`);
+      assert.notEqual(r.body?.reason, "meta_account_permanently_disabled", `[WR-NONWA-SILENT] ${name} ${path} was silently acknowledged`);
       assert.ok([400, 401, 413].includes(r.status), `${name} ${path}: normal handling expected (signature/size), got ${r.status}`);
     }
   }
   // A declared oversized body is not even read at the edge; the normal handler rejects it.
   const declared = await compat.fetch(new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", headers: { "content-type": "application/json", "content-length": String(300 * 1024) }, body: igLarge }), env, ctx);
-  assert.notEqual(declared.headers.get("x-zevanory-ack-layer"), "edge");
+  assert.notEqual(declared.headers.get("x-zevanory-ack-layer"), "edge", "[WR-NONWA-DECLARED] declared oversized body acked at the edge");
   assert.equal(declared.status, 413);
 });
 
@@ -213,7 +213,7 @@ test("bundle layer (node handler): WhatsApp delivery acked without processing; b
   globalThis.__ZEVANORY_PRIVATE_KV__ = kv;
   const keys = new Set(kvStore.keys());
   const direct = await realFetch("http://127.0.0.1:8788/api/webhooks?provider=meta", { method: "POST", headers: { "content-type": "application/json", connection: "close" }, body: waPayload() });
-  assert.equal(direct.status, 200);
+  assert.equal(direct.status, 200, "[WR-BHOOK-ACK] bundle WhatsApp ack");
   assert.equal(direct.headers.get("x-zevanory-ack-layer"), null, "bundle layer acknowledges on its own");
   assert.deepEqual(await direct.json(), { accepted: true, processed: false, stored: false, reason: "meta_account_permanently_disabled" });
   staleIsolateGlobals();
@@ -221,8 +221,8 @@ test("bundle layer (node handler): WhatsApp delivery acked without processing; b
   assert.equal(social.status, 401, "bad signature on a non-WhatsApp delivery is still rejected");
   staleIsolateGlobals();
   const verify = await realFetch("http://127.0.0.1:8788/api/webhooks?provider=meta&hub.mode=subscribe&hub.verify_token=stale-verify&hub.challenge=9", { headers: { connection: "close" } });
-  assert.equal(verify.status, 403, "the retired runtime verify token is not accepted");
-  assert.equal(brokerSpy.calls, 0, "broker contacted for signature/token verification");
+  assert.equal(verify.status, 403, "[WR-BHOOK-VERIFY] the retired runtime verify token is not accepted");
+  assert.equal(brokerSpy.calls, 0, "[WR-BHOOK-BROKER] broker contacted for signature/token verification");
   assert.deepEqual(providerHits(), []);
   for (const k of kvStore.keys()) if (!keys.has(k)) assert.ok(!String(kvStore.get(k)).includes(WA_TEXT), k);
 });
@@ -240,7 +240,7 @@ test("onboarding routes and the synthetic delivery proof are 410 Gone for any me
   }
   for (const operation of ["subscriptions", "owner", "text", "audio", "audit-observe", "audit-media", "audit-cache"]) {
     const r = await handleWhatsappOnboarding(new Request("https://zevanory.api.br/api/admin/whatsapp-onboard/delivery-proof", { method: "POST", headers: { authorization: "Bearer " + OPERATOR }, body: JSON.stringify({ operation }) }));
-    assert.equal(r?.status, 410, operation);
+    assert.equal(r?.status, 410, "[WR-GONE-PROOF] " + operation);
   }
   const voice = await call("/api/admin/voice/audit", { method: "POST", body: JSON.stringify({ operation: "audit-source" }) });
   assert.equal(voice.status, 401, "voice audit route stays authenticated");
@@ -256,7 +256,7 @@ test("broker tombstone: every route 410, reads no binding/secret/DB and performs
     for (const [path, method, internal] of [["/__zevanory/runtime", "GET", false], ["/broker/status", "GET", true], ["/broker/send", "POST", true], ["/broker/media", "POST", true], ["/broker/request-code", "POST", true], ["/broker/verify-code", "POST", true], ["/broker/oauth/start", "POST", true], ["/broker/oauth/callback", "POST", true], ["/broker/verify-signature", "POST", true], ["/broker/verify-token", "POST", true], ["/anything", "GET", false]]) {
       const host = internal ? "https://whatsapp-broker.internal" : "https://giro-whatsapp-bridge.example.workers.dev";
       const r = await brokerWorker.fetch(new Request(host + path, { method, headers: internal ? { "x-zevanory-internal": "service-binding" } : {}, body: method === "POST" ? "{}" : undefined }), trapEnv);
-      assert.equal(r.status, 410, path);
+      assert.equal(r.status, 410, "[WR-BROKER-410] " + path);
       assert.equal((await r.json()).error, "whatsapp_channel_retired");
     }
   } finally { globalThis.fetch = saved; }
@@ -292,19 +292,19 @@ function sandbox(extra = {}) {
 test("sender primitives refuse while retired: Graph send, voice upload, media download, broker call", async () => {
   let box = sandbox(); vm.runInContext(slice("postWhatsappMessage"), box);
   const sent = await box.postWhatsappMessage({ token: "t", phoneId: "p", version: "v26.0" }, { to: WA_FROM });
-  assert.equal(sent.ok, false); assert.equal(sent.status, 410); assert.equal(box.spy.fetch, 0);
+  assert.equal(sent.ok, false, "[WR-PRIM-SEND]"); assert.equal(sent.status, 410, "[WR-PRIM-SEND]"); assert.equal(box.spy.fetch, 0, "[WR-PRIM-SEND]");
 
   box = sandbox(); vm.runInContext(slice("uploadVoiceToWhatsapp"), box);
-  await assert.rejects(box.uploadVoiceToWhatsapp({ audio: { bytes: new Uint8Array(3), mime: "audio/mpeg" }, phoneId: "p", token: "t", version: "v26.0", env: {}, fetchImpl: box.fetch }), /whatsapp_channel_retired/);
+  await assert.rejects(box.uploadVoiceToWhatsapp({ audio: { bytes: new Uint8Array(3), mime: "audio/mpeg" }, phoneId: "p", token: "t", version: "v26.0", env: {}, fetchImpl: box.fetch }), /whatsapp_channel_retired/, "[WR-PRIM-VOICE] voice upload must refuse");
   assert.equal(box.spy.fetch, 0); assert.equal(box.spy.broker, 0);
 
   box = sandbox(); vm.runInContext(slice("fetchWhatsappMedia"), box);
-  await assert.rejects(box.fetchWhatsappMedia({ media_id: "123" }, { WHATSAPP_ACCESS_TOKEN: "t" }, box.fetch), /whatsapp_channel_retired/);
+  await assert.rejects(box.fetchWhatsappMedia({ media_id: "123" }, { WHATSAPP_ACCESS_TOKEN: "t" }, box.fetch), /whatsapp_channel_retired/, "[WR-PRIM-MEDIA] media download must refuse");
   assert.equal(box.spy.fetch, 0);
 
   box = sandbox(); delete box.whatsappBrokerCall; vm.runInContext(slice("whatsappBrokerCall"), box);
   const brokered = await box.whatsappBrokerCall("/broker/send", { method: "POST", body: { message: { to: WA_FROM } } });
-  assert.equal(brokered.ok, false); assert.equal(brokered.status, 410); assert.equal(box.spy.broker, 0);
+  assert.equal(brokered.ok, false, "[WR-PRIM-BROKER]"); assert.equal(brokered.status, 410, "[WR-PRIM-BROKER]"); assert.equal(box.spy.broker, 0, "[WR-PRIM-BROKER]");
 });
 
 test("outbound adapter channel:whatsapp refuses before any gate, token or fetch", async () => {
@@ -318,7 +318,7 @@ test("outbound adapter channel:whatsapp refuses before any gate, token or fetch"
     providerAcceptanceMissing: (m) => new Error(m), recordWhatsappEvidence: async () => true, metaBase: () => "https://graph.facebook.com/v26.0" });
   box.requestJson2 = async () => { box.spy.fetch++; return { messages: [{ id: "wamid.out" }] }; };
   vm.runInContext("var adapter = " + fn, box);
-  await assert.rejects(box.adapter({ event_id: "e1", payload: { contact_ref: WA_FROM, text: "oi", consent_allowed: true } }), /whatsapp_channel_retired/);
+  await assert.rejects(box.adapter({ event_id: "e1", payload: { contact_ref: WA_FROM, text: "oi", consent_allowed: true } }), /whatsapp_channel_retired/, "[WR-ADAPTER] outbound adapter must refuse");
   assert.equal(box.spy.fetch, 0); assert.equal(box.spy.broker, 0); assert.equal(gates, 0);
 });
 
@@ -330,7 +330,7 @@ test("instant reply: exported replyWhatsappConversation never answers, whatever 
     const item = { from: WA_FROM, phone_number_id: "1300972319774588", type: "text", message_id: "wamid.reply-probe" };
     for (const question of ["quanto custa?", "quero o link"]) {
       const out = await bundle.replyWhatsappConversation(item, question);
-      assert.deepEqual(out, { sent: false, reason: "whatsapp_channel_retired" });
+      assert.deepEqual(out, { sent: false, reason: "whatsapp_channel_retired" }, "[WR-REPLY] instant reply must not answer");
     }
     delete process.env.WHATSAPP_CHANNEL_RETIRED; delete process.env.WHATSAPP_INSTANT_REPLY;
     assert.deepEqual(await bundle.replyWhatsappConversation(item, "oi"), { sent: false, reason: "whatsapp_channel_retired" });
@@ -360,7 +360,7 @@ test("webhook handler: even with WHATSAPP_CHANNEL_RETIRED=false and WHATSAPP_INS
   const out = await box.handler18({ method: "POST", headers: {} }, { setHeader() {} });
   assert.equal(out.code, 200);
   assert.deepEqual(calls, [], "automated reply attempted");
-  assert.equal(out.body.inbound_jobs_queued, undefined, "inbound processed although retired");
+  assert.equal(out.body.inbound_jobs_queued, undefined, "[WR-H18-INBOUND] inbound processed although retired");
   box.process.env = {};
   const retired = await box.handler18({ method: "POST", headers: {} }, { setHeader() {} });
   assert.deepEqual(calls, [], "retired channel processed inbound messages");
@@ -392,7 +392,7 @@ export function forgedWebhookGenerators(files, readFile) {
 test("static: no forged/self-signed Meta webhook generator anywhere outside tests/", () => {
   const files = repoFiles();
   assert.ok(files.length > 100 && files.includes("worker/cloudflare-worker.recovered.mjs"), "repository listing incomplete");
-  assert.deepEqual(forgedWebhookGenerators(files, (f) => readTextNormalized(new URL(f, ROOT))), []);
+  assert.deepEqual(forgedWebhookGenerators(files, (f) => readTextNormalized(new URL(f, ROOT))), [], "[WR-FORGER] forged webhook generator present");
   // The detector itself must catch the historical generators (recorded verbatim shapes).
   const legacyProof = 'const payload={object:"whatsapp_business_account",entry:[{id:wabaId,changes:[{field:"messages",value:{messages:[message]}}]}]};const key=await crypto.subtle.importKey("raw",encoder.encode(record.app_secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);const signature="sha256="+hex(await crypto.subtle.sign("HMAC",key,encoder.encode(body)));return responseJson({signed_body:body,signature});';
   const legacyWorkflow = "const r=await fetch(base+'/api/webhooks/meta?voice_proof=1',{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':ack.signature},body:ack.signed_body});";
@@ -406,7 +406,7 @@ test("static: no forged/self-signed Meta webhook generator anywhere outside test
 test("static: retired workflows carry no proof job, no secret and no literal-false WhatsApp leftovers", () => {
   const proof = read(".github/workflows/voice-render-proof.yml");
   assert.doesNotMatch(proof, /secrets\.|environment:|wrangler|fetch\(|curl /);
-  assert.match(proof, /if: github\.event_name == 'workflow_dispatch'/);
+  assert.match(proof, /if: github\.event_name == 'workflow_dispatch'/, "[WR-WF-PROOF] proof job parked or altered");
   const recovery = read(".github/workflows/whatsapp-delivery-recovery.yml");
   assert.doesNotMatch(recovery, /^\s{2}production-proof:/m);
   assert.doesNotMatch(recovery, /secrets\.|real_proof/);
@@ -427,6 +427,6 @@ test("static: retired onboarding module has no Graph, broker, HMAC or signing co
   for (const forbidden of ["graph.facebook.com", "brokerJson", '"HMAC"', "subtle.sign", "createHmac", "signed_body", "/register", "request_code", "verify_code", "finalizeTransport", "fetch("]) assert.ok(!src.includes(forbidden), forbidden);
   const compat = read("worker/cloudflare-worker.compat.mjs");
   assert.ok(!compat.includes("loadWhatsappRuntimeCredentials"));
-  assert.ok(!/WHATSAPP_INSTANT_REPLY \?\? "true"/.test(compat), "instant reply must not default to on");
-  assert.ok(!/process\.env\.WHATSAPP_INSTANT_REPLY !== "false"/.test(BUNDLE), "instant reply must not default to on");
+  assert.ok(!/WHATSAPP_INSTANT_REPLY \?\? "true"/.test(compat), "[WR-ONB-COMPAT-REPLY] instant reply must not default to on");
+  assert.ok(!/process\.env\.WHATSAPP_INSTANT_REPLY !== "false"/.test(BUNDLE), "[WR-ONB-BUNDLE-REPLY] instant reply must not default to on");
 });

@@ -79,7 +79,7 @@ test("wrangler configs: no tracked wrangler*.toml/json/jsonc carries a WhatsApp 
   const files = execFileSync("git", ["ls-files", "-z", "--", ...globs], { cwd: ROOT, encoding: "utf8" })
     .split("\0").filter(Boolean);
   assert.ok(files.includes("wrangler.sales.toml") && files.includes("wrangler.public-router.toml"), "scan found the known tomls: " + files.join(","));
-  for (const file of files) assert.deepEqual(hits(readTextNormalized(join(ROOT, file))), [], file);
+  for (const file of files) assert.deepEqual(hits(readTextNormalized(join(ROOT, file))), [], "[WR-TOML] " + file);
 });
 
 test("generated candidate config: prepare-central-candidate.py emits no WhatsApp alias, channel closed", () => {
@@ -89,13 +89,13 @@ test("generated candidate config: prepare-central-candidate.py emits no WhatsApp
   assert.equal(r.status, 0, "generator must succeed on the neutralized snapshot: " + r.output.slice(-800));
   const cfg = JSON.parse(r.config);
   assert.equal(cfg.vars.ZEVANORY_RELEASE_SHA, "a".repeat(40), "generator really ran");
-  assert.equal(cfg.vars.WHATSAPP_SALES_ENABLED, "false", "retired WhatsApp channel must stay closed");
-  assert.deepEqual(hits(r.config), [], "generated candidate config must not carry a WhatsApp alias");
+  assert.equal(cfg.vars.WHATSAPP_SALES_ENABLED, "false", "[WR-CFG-SALES] retired WhatsApp channel must stay closed");
+  assert.deepEqual(hits(r.config), [], "[WR-CFG-ALIAS] generated candidate config must not carry a WhatsApp alias");
 });
 
 test("generated public assets: wa.me injector and JSON-LD telephone of the frozen snapshot are neutralized", () => {
   const r = runGenerator(LEGACY_BASE);
-  assert.equal(r.status, 0, r.output.slice(-800));
+  assert.equal(r.status, 0, "[WR-PUB-NEUTRAL] " + r.output.slice(-800));
   assert.match(r.output, /^PUBLIC_WHATSAPP_FREE=PASS$/m);
   assert.deepEqual(hits(r.publicText), [], "public assets must not expose the banned WhatsApp account");
   assert.match(r.publicText, /"@type":"ContactPoint","email":"suporte@zevanory\.api\.br"/);
@@ -105,24 +105,24 @@ test("generated public assets: wa.me injector and JSON-LD telephone of the froze
 test("fail-closed: any leftover wa.me, api.whatsapp.com or number (any format) in public assets aborts the generator", () => {
   for (const leftover of ['<a href="https://wa.me/5511">x</a>', '<a href="https://api.whatsapp.com/send?phone=1">x</a>', "Atendimento (88) 9234 0423", "+55 88 99254.5413", "tel:5588992545413"]) {
     const r = runGenerator(LEGACY_BASE, { "contato.html": leftover + "\n" });
-    assert.notEqual(r.status, 0, "generator must fail closed on: " + leftover);
+    assert.notEqual(r.status, 0, "[WR-FAILCLOSED] generator must fail closed on: " + leftover);
     assert.match(r.output, /PUBLIC_WHATSAPP_CONTACT_PRESENT .*contato\.html/, leftover);
   }
 });
 
 test("generator source: never assigns SUPPORT_CHANNEL/ZEVANORY_WHATSAPP_* nor re-enables WhatsApp sales", () => {
   const src = readTextNormalized(GENERATOR);
-  assert.doesNotMatch(src, /\["(SUPPORT_CHANNEL|ZEVANORY_WHATSAPP_[A-Z0-9_]*)"\]\s*=/);
+  assert.doesNotMatch(src, /\["(SUPPORT_CHANNEL|ZEVANORY_WHATSAPP_[A-Z0-9_]*)"\]\s*=/, "[WR-SRC-ALIAS] generator assigns a WhatsApp alias");
   assert.doesNotMatch(src, /setdefault\(\s*"(SUPPORT_CHANNEL|ZEVANORY_WHATSAPP_[A-Z0-9_]*)"/);
-  assert.doesNotMatch(src, /WHATSAPP_SALES_ENABLED"\]\s*=\s*"true"/);
-  assert.doesNotMatch(src, /"558892340423"\s*:\s*"5588992545413"/, "public number rewrite is gone");
+  assert.doesNotMatch(src, /WHATSAPP_SALES_ENABLED"\]\s*=\s*"true"/, "[WR-SRC-SALES] generator re-enables WhatsApp sales");
+  assert.doesNotMatch(src, /"558892340423"\s*:\s*"5588992545413"/, "[WR-SRC-REWRITE] public number rewrite is gone");
 });
 
 test("workflows: no .github/workflows/*.yml assigns SUPPORT_CHANNEL/ZEVANORY_WHATSAPP_* or carries either number", () => {
   requireTool(PYTHON);
   const scan = (dir) => spawnSync(PYTHON, ["-B", join(ROOT, "scripts/deploy/public_whatsapp_scan.py"), "--workflows", dir], { encoding: "utf8", timeout: 60000, windowsHide: true });
   const repo = scan(join(ROOT, ".github/workflows"));
-  assert.equal(repo.status, 0, "workflows must be free of retired WhatsApp aliases/numbers: " + String(repo.stdout) + String(repo.stderr));
+  assert.equal(repo.status, 0, "[WR-WF-ASSIGN] workflows must be free of retired WhatsApp aliases/numbers: " + String(repo.stdout) + String(repo.stderr));
   assert.match(String(repo.stdout), /^WORKFLOWS_WHATSAPP_FREE=PASS\r?$/m);
   // The scanner itself is not vacuous: each reintroduction shape is caught.
   const dir = mkdtempSync(join(tmpdir(), "zev-wa-wf-"));
