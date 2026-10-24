@@ -33,7 +33,7 @@ import mutant_classifier as mc  # noqa: E402  (shared classifier, unmodified)
 
 SCANNER = REPO / "scripts/ci/no_forged_production_input.py"
 TEST_MODULE = "tests.test_no_forged_production_input"
-BASELINE_TOTAL = 18
+BASELINE_TOTAL = 23
 
 
 def P(test, label):
@@ -51,7 +51,8 @@ MUTANTS = {
         'SIG_HEADER_RE = re.compile(\n    r"(?<![\\w-])', 'SIG_HEADER_RE = re.compile(\n    r"(?!)(?<![\\w-])',
         {"primary": [P("NF17", "NF17a"), P("NF01", "NF01b"), P("NF02", "NF02a")],
          "secondary": [S("NF09", "NF09a", "the production broker line is flagged only by its x-signature header"),
-                       S("NF13", "NF13a", "R4-UNRESOLVED requires a signature header or an HMAC; the fixture has a header")],
+                       S("NF13", "NF13a", "R4-UNRESOLVED requires a signature header or an HMAC; the fixture has a header"),
+                       S("NF20", "NF20a", "without the signature hit only the allowable INBOUND hit remains on that line")],
          "broad_reason": "signature headers are a cross-cutting signal: five tests assert it on different fixtures"}),
     # Inbound-path detection off: every unsigned inbound POST disappears, the allow-listed fixture hit becomes stale.
     "M02_inbound_paths_ignored": (
@@ -122,8 +123,8 @@ MUTANTS = {
         '    if stale:\n        raise ScanError("stale', '    if False:\n        raise ScanError("stale',
         {"primary": [P("NF11", "NF11b")]}),
     # Unjustified allow-list entries accepted.
-    "M15_short_justification_accepted": (
-        '        if len(e["justification"].strip()) < 40:', '        if len(e["justification"].strip()) < 1:',
+    "M15_vague_purpose_accepted": (
+        '_need(_text(e["purpose"], 40),', '_need(_text(e["purpose"], 1),',
         {"primary": [P("NF11", "NF11c")]}),
     # Empty workflow set accepted.
     "M16_no_workflows_accepted": (
@@ -139,12 +140,44 @@ MUTANTS = {
         {"primary": [P("NF14", "NF14a")]}),
     # Allow-list entry matched regardless of file.
     "M19_allow_ignores_file": (
-        'if e["file"] == h["file"] and re.search(', 'if re.search(',
+        'if e["file"] == h["file"] and re.search(e["line_pattern"], line)\n                   and h["rule"]',
+        'if re.search(e["line_pattern"], line)\n                   and h["rule"]',
         {"primary": [P("NF11", "NF11d")]}),
     # CLI exit code no longer fails on hits.
     "M20_exit_code_zero": (
         '    return 1 if remaining else 0', '    return 0',
-        {"primary": [P("NF00", "NF00a")]}),
+        {"primary": [P("NF00", "NF00a")],
+         "secondary": [S("NF22", "NF22a", "an ungated open risk is reported only through the exit code"),
+                       S("NF20", "NF20a", "the signed hit that stays unallowed is reported only through the exit code")]}),
+    # Sol R4 allow-list conditions and independent gates.
+    "M21_endpoint_binding_removed": (
+        '\n                   and e["endpoint"] in h.get("url_path", "")), None)', '), None)',
+        {"primary": [P("NF18", "NF18a")]}),
+    "M22_method_binding_removed": (
+        'and h["rule"] in ALLOWABLE_RULES and h["method"] == e["method"]', 'and h["rule"] in ALLOWABLE_RULES',
+        {"primary": [P("NF18", "NF18b")]}),
+    "M23_signed_hits_allowable": (
+        'and h["rule"] in ALLOWABLE_RULES and h["method"]', 'and h["method"]',
+        {"primary": [P("NF20", "NF20a")]}),
+    "M24_commercial_effects_accepted": (
+        'set(eff) == EFFECT_KEYS and all(v is False for v in eff.values()),', 'set(eff) == EFFECT_KEYS,',
+        {"primary": [P("NF19", "NF19b")]}),
+    "M25_gate_verification_off": (
+        '    p = Path(root) / workflow\n    if not p.is_file():', '    return []\n    p = Path(root) / workflow\n    if not p.is_file():',
+        {"primary": [P("NF21", "NF21b"), P("NF21", "NF21e")],
+         "secondary": [S("NF22", "NF22a", "open-risk gates use the same verifier, so the ungated case passes")]}),
+    "M26_open_risk_accepted_inline": (
+        '_acceptance(e, w, {"NOT_ACCEPTED"})', '_acceptance(e, w, {"NOT_ACCEPTED", "ACCEPTED"})',
+        {"primary": [P("NF22", "NF22d")]}),
+    "M27_non_idempotent_write_accepted": (
+        '_need(not pl["writes"] or pl["idempotent"] is True,', '_need(True,',
+        {"primary": [P("NF19", "NF19c")]}),
+    "M28_impersonation_accepted": (
+        '\n          and _text(idn["credential"], 3) and idn["impersonates"] == [],', '\n          and _text(idn["credential"], 3),',
+        {"primary": [P("NF19", "NF19d")]}),
+    "M29_evidence_unchecked": (
+        'all(_evidence_ok(root, x) for x in ev)', 'True',
+        {"primary": [P("NF19", "NF19f")]}),
 }
 
 

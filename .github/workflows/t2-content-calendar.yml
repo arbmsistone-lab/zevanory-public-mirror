@@ -20,6 +20,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      - name: R4 owner approval gate (fail-closed)
+        shell: bash
+        env:
+          R4_OWNER_APPROVAL: ${{ vars.R4_T2_COMMERCIAL_SIGNED_CALLS_OWNER_APPROVAL }}
+        run: |
+          # R4 (Sol rule, 24/10/2026): this job sends x-commercial-signature calls whose HMAC scheme also authorizes commercial publishing
+          # (zevanory-product-control-edge cf-worker/worker.ts verifyFactoryRequest, shared with /api/commercial/publish/*).
+          # Runs only after the owner records an explicit risk acceptance in the repository variable R4_T2_COMMERCIAL_SIGNED_CALLS_OWNER_APPROVAL
+          # ("approved"). Checked by scripts/ci/no_forged_production_input.py (open_real_risks / gates).
+          if [ "${R4_OWNER_APPROVAL:-}" != "approved" ]; then
+            echo "::error title=R4_OWNER_APPROVAL_REQUIRED::R4_T2_COMMERCIAL_SIGNED_CALLS_OWNER_APPROVAL is not set to approved; this job is a registered open R4 risk"
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:

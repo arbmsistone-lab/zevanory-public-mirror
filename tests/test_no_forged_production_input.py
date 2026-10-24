@@ -32,27 +32,70 @@ NF = load()
 GOOD_JUSTIFICATION = "Fixture entry: first-party operator call reviewed by the owner, kept for the test only."
 
 
-def wf(steps, env=""):
-    """A minimal workflow whose single job runs the given run-block lines (already indented 10 spaces)."""
+def wf(steps, env="", gate=None, job_if=None):
+    """A minimal workflow whose single job runs the given run-block lines (already indented 10 spaces).
+    gate=VAR puts the R4 owner approval gate on vars.VAR as the first step; job_if adds a job-level if."""
+    g = ("      - name: R4 owner approval gate (fail-closed)\n        env:\n"
+         f"          R4_OWNER_APPROVAL: ${{{{ vars.{gate} }}}}\n        run: |\n"
+         "          if [ \"${R4_OWNER_APPROVAL:-}\" != approved ]; then exit 1; fi\n") if gate else ""
     return ("name: fixture\non:\n  workflow_dispatch:\npermissions:\n  contents: read\njobs:\n  j:\n"
-            "    runs-on: ubuntu-latest\n" + (("    env:\n" + env) if env else "") +
-            "    steps:\n      - name: step\n        run: |\n" + steps)
+            + (f"    if: {job_if}\n" if job_if else "") + "    runs-on: ubuntu-latest\n" + (("    env:\n" + env) if env else "") +
+            "    steps:\n" + g + "      - name: step\n        run: |\n" + steps)
+
+
+SUPPORT = {"tests/t_counter.py": "def test_counter():\n    pass\n",
+           "worker/h.mjs": "// handler fixture\nexport const a = 1;\nexport const b = 2;\n"}
+
+
+def allow_doc(allowed=(), opened=(), gates=()):
+    return {"schema": "r4-allow/v2", "allowed": list(allowed), "open_real_risks": list(opened),
+            "financial_gates": list(gates)}
+
+
+def entry(**over):
+    """A complete, valid R4 allow entry for the fixture backup call (POST /api/internal/backup/run)."""
+    e = {"file": ".github/workflows/a.yml", "line_pattern": "x-backup-token", "endpoint": "/api/internal/backup/run",
+         "method": "POST", "identity": {"principal": "ZEVANORY", "credential": "x-backup-token", "impersonates": []},
+         "purpose": "Fixture: daily backup into ZEVANORY-owned copies, counts and hashes only.",
+         "least_privilege": "Fixture: POST plus token only, bounded parts, no other route reachable.",
+         "effects": {k: False for k in ("synthetic_financial_transaction", "opens_sales", "commercial_effect",
+                                        "triggers_webhook_or_checkout", "changes_credentials_or_config")},
+         "data_scope": {"alters_production_data": False, "deletes_production_data": False,
+                        "restores_into_production": False},
+         "payload": {"controlled": True, "writes": True, "idempotent": True,
+                     "audit_trail": "fixture report key with counts only", "secrets_in_audit": False},
+         "handler_evidence": ["worker/h.mjs:1-3"], "counter_proof_test": "tests/t_counter.py::test_counter",
+         "risk_acceptance": {"status": "PENDING_OWNER", "by": "", "at": "", "reference": ""}}
+    e.update(over)
+    return e
+
+
+def opened(**over):
+    e = {"file": ".github/workflows/a.yml", "line_pattern": "x-hub-signature-256", "classification": "REAL_RISK",
+         "status": "OPEN_NOT_HOMOLOGATED", "reason": "Fixture: signed call that cannot be allowed; tracked as open risk.",
+         "evidence": ["fixture evidence"], "required_fix": "Fixture: remove the signed call.",
+         "independent_control": {"type": "owner-approval-gate", "variable": "R4_FIXTURE_OWNER_APPROVAL",
+                                 "workflows": [".github/workflows/a.yml"]},
+         "risk_acceptance": {"status": "NOT_ACCEPTED", "by": "", "at": "", "reference": ""}}
+    e.update(over)
+    return e
 
 
 class Tree:
     def __init__(self, files, allow=None):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
-        for rel, text in files.items():
+        for rel, text in {**SUPPORT, **files}.items():
             p = self.root / rel
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(text, encoding="utf-8")
         self.allow = self.root / "allow.json"
-        self.allow.write_text(json.dumps(allow if allow is not None else []), encoding="utf-8")
+        self.allow.write_text(json.dumps(allow if allow is not None else allow_doc()), encoding="utf-8")
 
     def hits(self):
         found, _ = NF.scan(self.root)
-        return NF.apply_allow(found, NF.load_allow(self.allow))
+        remaining, gates, _ = NF.apply_allow(found, NF.load_allow(self.allow, self.root), self.root)
+        return remaining + gates
 
     def main(self, *extra):
         out, err = io.StringIO(), io.StringIO()
@@ -213,32 +256,24 @@ class ForgedInputTests(Base):
         files = {".github/workflows/a.yml": wf(
             "          curl -X POST -H \"x-backup-token: $T\" https://zevanory.api.br/api/internal/backup/run\n"),
             ".github/workflows/b.yml": wf("          curl -fsS https://zevanory.api.br/api/release\n")}
-        ok = self.tree(files, [{"file": ".github/workflows/a.yml", "line_pattern": "/api/internal/backup/run",
-                                "justification": GOOD_JUSTIFICATION}])
-        rc, out = ok.main()
-        self.assertEqual(rc, 0, "NF11a an explicit justified entry suppresses its hit: " + out)
-        stale = self.tree(files, [{"file": ".github/workflows/a.yml", "line_pattern": "/api/internal/backup/run",
-                                   "justification": GOOD_JUSTIFICATION},
-                                  {"file": ".github/workflows/b.yml", "line_pattern": "nothing-here",
-                                   "justification": GOOD_JUSTIFICATION}])
-        rc, out = stale.main()
+        rc, out = self.tree(files, allow_doc([entry()])).main()
+        self.assertEqual(rc, 0, "NF11a a complete R4 entry suppresses its hit: " + out)
+        rc, out = self.tree(files, allow_doc([entry(), entry(file=".github/workflows/b.yml")])).main()
         self.assertEqual(rc, 2, "NF11b a stale entry fails the scan: " + out)
-        short = self.tree(files, [{"file": ".github/workflows/a.yml", "line_pattern": "/api/internal/backup/run",
-                                   "justification": "ok"}])
-        rc, out = short.main()
-        self.assertEqual(rc, 2, "NF11c an unjustified entry fails the scan: " + out)
-        other = self.tree(files, [{"file": ".github/workflows/b.yml", "line_pattern": "/api/internal/backup/run",
-                                   "justification": GOOD_JUSTIFICATION}])
-        rc, out = other.main()
+        rc, out = self.tree(files, allow_doc([entry(purpose="short")])).main()
+        self.assertEqual(rc, 2, "NF11c a vague purpose fails the scan: " + out)
+        rc, out = self.tree(files, allow_doc([entry(file=".github/workflows/b.yml", line_pattern="x-backup-token")])).main()
         self.assertNotEqual(rc, 0, "NF11d an entry for another file never suppresses a hit: " + out)
-        extra = self.tree(files, [{"file": ".github/workflows/a.yml", "line_pattern": "/api/internal/backup/run",
-                                   "justification": GOOD_JUSTIFICATION, "scope": "all"}])
-        rc, out = extra.main()
+        rc, out = self.tree(files, allow_doc([entry(scope="all")])).main()
         self.assertEqual(rc, 2, "NF11e unknown keys fail the scan: " + out)
         missing = self.tree(files)
         missing.allow.unlink()
         rc, out = missing.main()
         self.assertEqual(rc, 2, "NF11f a missing allow-list fails the scan: " + out)
+        legacy = self.tree(files, [{"file": ".github/workflows/a.yml", "line_pattern": "x-backup-token",
+                                    "justification": "legacy v1 entry without the R4 conditions, must be refused"}])
+        rc, out = legacy.main()
+        self.assertEqual(rc, 2, "NF11g the v1 free-text allow-list is refused: " + out)
 
     def test_nf12_no_workflows_is_an_error(self):
         t = self.tree({"scripts/x.sh": "echo hi\n"})
@@ -282,6 +317,81 @@ class ForgedInputTests(Base):
             "          curl -X POST -H \"stripe-signature: t=1,v1=$S\" https://controle.zevanory.api.br/api/commercial/tick\n")})
         h = t.hits()
         self.assertEqual(self.rules(h), {"R4-SIGNED"}, f"NF17a a signature header alone fails: {h}")
+
+
+    def test_nf18_allow_entry_is_bound_to_endpoint_and_method(self):
+        # Counter-proof (Sol 2b): a backup entry reused on another endpoint or with another method does not allow.
+        other_endpoint = {".github/workflows/a.yml": wf(
+            "          curl -X POST -H \"x-backup-token: $T\" https://zevanory.api.br/api/internal/backup/restore\n")}
+        rc, out = self.tree(other_endpoint, allow_doc([entry()])).main()
+        self.assertNotEqual(rc, 0, "NF18a backup entry on /api/internal/backup/restore must fail: " + out)
+        other_method = {".github/workflows/a.yml": wf(
+            "          curl -X PUT -H \"x-backup-token: $T\" https://zevanory.api.br/api/internal/backup/run\n")}
+        rc, out = self.tree(other_method, allow_doc([entry()])).main()
+        self.assertNotEqual(rc, 0, "NF18b backup entry used with PUT must fail: " + out)
+
+    def test_nf19_allow_entry_requires_every_r4_condition(self):
+        files = {".github/workflows/a.yml": wf(
+            "          curl -X POST -H \"x-backup-token: $T\" https://zevanory.api.br/api/internal/backup/run\n")}
+        for field in sorted(NF.ALLOW_REQUIRED):
+            e = entry()
+            del e[field]
+            rc, out = self.tree(files, allow_doc([e])).main()
+            self.assertEqual(rc, 2, f"NF19a missing {field} must fail the scan: " + out)
+        bad_eff = entry()
+        bad_eff["effects"] = dict(bad_eff["effects"], commercial_effect=True)
+        rc, out = self.tree(files, allow_doc([bad_eff])).main()
+        self.assertEqual(rc, 2, "NF19b a commercial effect is never allowable: " + out)
+        rc, out = self.tree(files, allow_doc([entry(payload={"controlled": True, "writes": True, "idempotent": False,
+                                                             "audit_trail": "fixture report key with counts only", "secrets_in_audit": False})])).main()
+        self.assertEqual(rc, 2, "NF19c a non-idempotent write is refused: " + out)
+        rc, out = self.tree(files, allow_doc([entry(identity={"principal": "ZEVANORY", "credential": "x-signature",
+                                                              "impersonates": ["mercadopago"]})])).main()
+        self.assertEqual(rc, 2, "NF19d an impersonated identity is refused: " + out)
+        rc, out = self.tree(files, allow_doc([entry(risk_acceptance={"status": "ACCEPTED", "by": "", "at": "", "reference": ""})])).main()
+        self.assertEqual(rc, 2, "NF19e risk acceptance must be explicit (by/at/reference): " + out)
+        rc, out = self.tree(files, allow_doc([entry(handler_evidence=["worker/h.mjs:99"])])).main()
+        self.assertEqual(rc, 2, "NF19f handler evidence must point at existing lines: " + out)
+        rc, out = self.tree(files, allow_doc([entry(counter_proof_test="tests/t_counter.py::test_missing")])).main()
+        self.assertEqual(rc, 2, "NF19g the counter-proof test must exist: " + out)
+
+    def test_nf20_signed_hits_are_never_allowable(self):
+        files = {".github/workflows/a.yml": wf(
+            "          curl -X POST -H \"x-backup-token: $T\" -H \"x-hub-signature-256: $S\" https://zevanory.api.br/api/internal/backup/run\n")}
+        rc, out = self.tree(files, allow_doc([entry()])).main()
+        self.assertNotEqual(rc, 0, "NF20a a complete entry cannot allow a signed request: " + out)
+
+    def test_nf21_financial_workflows_need_an_independent_owner_gate(self):
+        stripe = ".github/workflows/financial-e2e-stripe.yml"
+        plain = {stripe: wf("          echo run\n")}
+        gated = {stripe: wf("          echo run\n", gate="R4_STRIPE")}
+        g = {"workflow": stripe, "variable": "R4_STRIPE", "require_job_if_false": False, "status": "ENFORCED", "reference": "fixture"}
+        h = self.tree(plain).hits()
+        self.assertTrue(any(x["rule"] == "R4-GATE" for x in h), f"NF21a unregistered financial workflow: {h}")
+        h = self.tree(plain, allow_doc(gates=[g])).hits()
+        self.assertTrue(any(x["rule"] == "R4-GATE" for x in h), f"NF21b registered gate but no gate step: {h}")
+        h = self.tree(gated, allow_doc(gates=[g])).hits()
+        self.assertEqual(h, [], f"NF21c gate step first in every job passes: {h}")
+        h = self.tree(gated, allow_doc(gates=[dict(g, status="PENDING_FIX_PR")])).hits()
+        self.assertTrue(any(x["rule"] == "R4-GATE" for x in h), f"NF21d a stale PENDING gate fails: {h}")
+        exact = ".github/workflows/mercadopago-exact-sha-recovery.yml"
+        ge = {"workflow": exact, "variable": "R4_MP", "require_job_if_false": True, "status": "ENFORCED", "reference": "fixture"}
+        h = self.tree({exact: wf("          echo run\n", gate="R4_MP")}, allow_doc(gates=[ge])).hits()
+        self.assertTrue(any(x["rule"] == "R4-GATE" for x in h), f"NF21e retired job must keep if: false: {h}")
+        h = self.tree({exact: wf("          echo run\n", gate="R4_MP", job_if="${{ false }}")}, allow_doc(gates=[ge])).hits()
+        self.assertEqual(h, [], f"NF21f retired and gated passes: {h}")
+
+    def test_nf22_open_real_risk_needs_its_gate_and_is_never_accepted_here(self):
+        signed = "          curl -X POST -H \"x-hub-signature-256: $S\" https://zevanory.api.br/api/webhooks/meta\n"
+        rc, out = self.tree({".github/workflows/a.yml": wf(signed)}, allow_doc(opened=[opened()])).main()
+        self.assertEqual(rc, 1, "NF22a an open risk without its gate fails: " + out)
+        rc, out = self.tree({".github/workflows/a.yml": wf(signed, gate="R4_FIXTURE_OWNER_APPROVAL")},
+                            allow_doc(opened=[opened()])).main()
+        self.assertEqual(rc, 0, "NF22b gated open risk passes: " + out)
+        self.assertIn("R4_OPEN_RISK", out, "NF22c open risks are always reported")
+        rc, out = self.tree({".github/workflows/a.yml": wf(signed, gate="R4_FIXTURE_OWNER_APPROVAL")},
+                            allow_doc(opened=[opened(risk_acceptance={"status": "ACCEPTED", "by": "owner", "at": "2026-10-24", "reference": "chat"})])).main()
+        self.assertEqual(rc, 2, "NF22d acceptance is a separate decision, never recorded on an open risk: " + out)
 
 
 if __name__ == "__main__":

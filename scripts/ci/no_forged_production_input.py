@@ -38,10 +38,20 @@ Rules (a hit is a mutating request whose target resolves to a production host an
   GET/HEAD readbacks (/api/release, /api/health, public pages) and calls to provider APIs (api.resend.com,
   api.cloudflare.com, api.mercadopago.com, graph.facebook.com, ...) are not production inbound endpoints: they pass.
 
-Allow-list (``scripts/ci/no_forged_production_input_allow.json``; meant to shrink to EMPTY)
-  ``[{"file": "<repo path>", "line_pattern": "<regex over the full source line of the hit>",
-  "justification": "<why, >= 40 chars>"}]``. Each entry is an explicit exception the owner must accept.
-  Unknown keys, a short justification, an invalid regex or an entry that matches no current hit (stale) fail the scan.
+Allow-list (``scripts/ci/no_forged_production_input_allow.json``, schema ``r4-allow/v2``; Sol rule R4, 24/10/2026)
+  ``allowed``: a ZEVANORY-internal authenticated call is allowed only when ALL conditions are recorded and validated:
+  registered ``endpoint`` + ``method`` (the hit must match both), ZEVANORY's own ``identity`` (impersonates []),
+  concrete ``purpose`` and ``least_privilege``, ``effects`` and ``data_scope`` all false (no synthetic financial
+  transaction, no sales opening, no commercial effect, no webhook/checkout, no credential/config change, no production
+  data altered/deleted/restored), controlled ``payload`` (idempotent if it writes, audit trail free of secrets),
+  existing ``handler_evidence`` file:line references and an existing ``counter_proof_test``. Only R4-INBOUND hits can be
+  allowed: signed, HMAC or unresolved requests never are. ``risk_acceptance`` is a SEPARATE field (PENDING_OWNER or
+  ACCEPTED with by/at/reference); an allow entry never implies acceptance.
+  ``open_real_risks``: REAL_RISK / OPEN_NOT_HOMOLOGATED hits, never accepted here, each with an independent control:
+  an owner-approval gate (first step of every job that can run it, verified) or a pending fix PR (reported).
+  ``financial_gates``: the financial workflows in REQUIRED_GATE_WORKFLOWS must carry the owner-approval gate as the
+  first step of every job (and stay ``if: false`` when required); PENDING_FIX_PR is accepted only while the gate is
+  still absent. Stale entries, unknown or missing fields fail the scan.
 
 Usage: python3 scripts/ci/no_forged_production_input.py [--root DIR] [--allow FILE] [--json] [--depth N]
 Exit: 0 clean; 1 hits; 2 configuration or scan error (fail-closed).
@@ -77,7 +87,24 @@ SCRIPT_EXT = (".py", ".mjs", ".cjs", ".js", ".sh", ".ts")
 # are scanned. Residual risk (documented in the PR): a CI script calling a runtime helper that itself POSTs to production.
 RUNTIME_SOURCE_RE = re.compile(r"^(?:worker/|[^/]*worker[^/]*\.(?:mjs|js)$)")
 DEFAULT_ALLOW = "scripts/ci/no_forged_production_input_allow.json"
-ALLOW_KEYS = {"file", "line_pattern", "justification"}
+# Sol rule R4 (24/10/2026): an internal ZEVANORY call may be allowed only when ALL conditions hold, each recorded as a
+# field and validated here. Risk acceptance is a SEPARATE field and is never implied by an allow entry.
+ALLOW_REQUIRED = {"file", "line_pattern", "endpoint", "method", "identity", "purpose", "least_privilege", "effects",
+                  "data_scope", "payload", "handler_evidence", "counter_proof_test", "risk_acceptance"}
+ALLOW_OPTIONAL = {"notes"}
+EFFECT_KEYS = {"synthetic_financial_transaction", "opens_sales", "commercial_effect", "triggers_webhook_or_checkout",
+               "changes_credentials_or_config"}
+DATA_SCOPE_KEYS = {"alters_production_data", "deletes_production_data", "restores_into_production"}
+PAYLOAD_KEYS = {"controlled", "writes", "idempotent", "audit_trail", "secrets_in_audit"}
+ACCEPTANCE_KEYS = {"status", "by", "at", "reference"}
+ALLOWABLE_RULES = {"R4-INBOUND"}  # signed, HMAC or unresolved requests can never be allow-listed
+OPEN_REQUIRED = {"file", "line_pattern", "classification", "status", "reason", "evidence", "required_fix",
+                 "independent_control", "risk_acceptance"}
+GATE_REQUIRED = {"workflow", "variable", "require_job_if_false", "status", "reference"}
+# Financial workflows that must always carry an independent owner-approval gate (Sol R4 item 2d).
+REQUIRED_GATE_WORKFLOWS = {".github/workflows/mercadopago-exact-sha-recovery.yml",
+                           ".github/workflows/financial-e2e-stripe.yml"}
+GATE_STEP_NAME = "R4 owner approval gate"
 NOT_EXECUTED_RE = re.compile(
     r"node\s+(?:--check|-c)\b|py_compile|\bcompileall\b|\bcat\s|\bsha256sum\b|\bsha1sum\b|\bmd5sum\b|\bgit\s+(?:diff|show|log|"
     r"ls-files|add|rm|mv)\b|\bgrep\b|\brg\b|\bwc\b|\bhead\s|\btail\s|\bstat\s|\btest\s+-[efs]\b|\[\s+-[efs]\b|\bls\s|"
@@ -643,7 +670,8 @@ def analyze_text(rel, text, env_taint=(), context_hosts=()):
         near_hmac = [h for h in hmac_lines if abs(h - req["line"]) <= HMAC_WINDOW]
         inbound = sorted({s.lower() for s in INBOUND_RE.findall(path_part(url_full))})
         base = {"file": rel, "line": req["line"], "method": method, "kind": req["kind"],
-                "text": lines[req["line"] - 1].strip()[:240], "line_text": lines[req["line"] - 1], "hosts": hosts}
+                "text": lines[req["line"] - 1].strip()[:240], "line_text": lines[req["line"] - 1], "hosts": hosts,
+                "url_path": path_part(url_full)[:2000]}
         if hosts:
             if inbound:
                 hits.append({**base, "rule": "R4-INBOUND", "evidence": "path:" + ",".join(inbound)})
@@ -816,44 +844,246 @@ def scan(root, depth=3):
     return uniq, scanned
 
 
-def load_allow(path):
+def _need(cond, msg):
+    if not cond:
+        raise ScanError(msg)
+
+
+def _text(v, n=1):
+    return isinstance(v, str) and len(v.strip()) >= n
+
+
+def _evidence_ok(root, ref):
+    m = re.fullmatch(r"([\w./-]+):(\d+)(?:-(\d+))?", str(ref))
+    if not m:
+        return False
+    p = Path(root) / m.group(1)
+    if not p.is_file():
+        return False
+    n = len(p.read_text(encoding="utf-8", errors="replace").split("\n"))
+    return int(m.group(2)) <= n and int(m.group(3) or m.group(2)) <= n
+
+
+def _test_ok(root, ref):
+    m = re.fullmatch(r"([\w./-]+\.py)::(test_\w+)", str(ref))
+    if not m or not (Path(root) / m.group(1)).is_file():
+        return False
+    return re.search(r"def " + re.escape(m.group(2)) + r"\(", (Path(root) / m.group(1)).read_text(encoding="utf-8")) is not None
+
+
+def _acceptance(e, where, allowed_status):
+    ra = e.get("risk_acceptance")
+    _need(isinstance(ra, dict) and set(ra) == ACCEPTANCE_KEYS, f"{where}: risk_acceptance must have exactly {sorted(ACCEPTANCE_KEYS)}")
+    _need(ra["status"] in allowed_status, f"{where}: risk_acceptance.status must be one of {sorted(allowed_status)}")
+    if ra["status"] == "ACCEPTED":
+        _need(all(_text(ra[k], 3) for k in ("by", "at", "reference")), f"{where}: an ACCEPTED risk needs by/at/reference")
+
+
+def validate_allowed(e, root, i):
+    w = f"allowed[{i}]"
+    _need(isinstance(e, dict), f"{w}: must be an object")
+    missing, unknown = ALLOW_REQUIRED - set(e), set(e) - ALLOW_REQUIRED - ALLOW_OPTIONAL
+    _need(not missing, f"{w}: missing required fields {sorted(missing)}")
+    _need(not unknown, f"{w}: unknown fields {sorted(unknown)}")
+    _need(_text(e["file"]) and _text(e["line_pattern"]), f"{w}: file and line_pattern required")
+    try:
+        re.compile(e["line_pattern"])
+    except re.error as err:
+        raise ScanError(f"{w}: line_pattern invalid: {err}") from None
+    _need(_text(e["endpoint"]) and e["endpoint"].startswith("/"), f"{w}: endpoint must be a registered path")
+    _need(e["method"] in ("POST", "PUT", "PATCH", "DELETE"), f"{w}: method must be an explicit mutating verb")
+    idn = e["identity"]
+    _need(isinstance(idn, dict) and set(idn) == {"principal", "credential", "impersonates"} and idn["principal"] == "ZEVANORY"
+          and _text(idn["credential"], 3) and idn["impersonates"] == [],
+          f"{w}: identity must be ZEVANORY's own (principal ZEVANORY, credential named, impersonates [])")
+    _need(_text(e["purpose"], 40), f"{w}: purpose must be concrete (>= 40 chars)")
+    _need(_text(e["least_privilege"], 40), f"{w}: least_privilege must be concrete (>= 40 chars)")
+    eff = e["effects"]
+    _need(isinstance(eff, dict) and set(eff) == EFFECT_KEYS and all(v is False for v in eff.values()),
+          f"{w}: effects must list {sorted(EFFECT_KEYS)}, all false")
+    ds = e["data_scope"]
+    _need(isinstance(ds, dict) and set(ds) == DATA_SCOPE_KEYS and all(v is False for v in ds.values()),
+          f"{w}: data_scope must list {sorted(DATA_SCOPE_KEYS)}, all false")
+    pl = e["payload"]
+    _need(isinstance(pl, dict) and set(pl) == PAYLOAD_KEYS, f"{w}: payload must have exactly {sorted(PAYLOAD_KEYS)}")
+    _need(pl["controlled"] is True and isinstance(pl["writes"], bool) and isinstance(pl["idempotent"], bool)
+          and pl["secrets_in_audit"] is False and _text(pl["audit_trail"], 20),
+          f"{w}: payload must be controlled, with an audit trail free of secrets")
+    _need(not pl["writes"] or pl["idempotent"] is True, f"{w}: a writing call must be idempotent")
+    ev = e["handler_evidence"]
+    _need(isinstance(ev, list) and ev and all(_evidence_ok(root, x) for x in ev),
+          f"{w}: handler_evidence must list existing file:line references")
+    _need(_test_ok(root, e["counter_proof_test"]), f"{w}: counter_proof_test must name an existing test (file.py::test_x)")
+    _acceptance(e, w, {"PENDING_OWNER", "ACCEPTED"})
+
+
+def validate_open(e, root, i):
+    w = f"open_real_risks[{i}]"
+    _need(isinstance(e, dict) and set(e) == OPEN_REQUIRED, f"{w}: must have exactly {sorted(OPEN_REQUIRED)}")
+    try:
+        re.compile(e["line_pattern"])
+    except re.error as err:
+        raise ScanError(f"{w}: line_pattern invalid: {err}") from None
+    _need(e["classification"] == "REAL_RISK" and e["status"] == "OPEN_NOT_HOMOLOGATED",
+          f"{w}: classification REAL_RISK and status OPEN_NOT_HOMOLOGATED required")
+    _need(_text(e["reason"], 40) and _text(e["required_fix"], 20), f"{w}: reason and required_fix must be concrete")
+    _need(isinstance(e["evidence"], list) and e["evidence"] and all(_text(x, 5) for x in e["evidence"]),
+          f"{w}: evidence must be a non-empty list")
+    ic = e["independent_control"]
+    _need(isinstance(ic, dict) and ic.get("type") in ("owner-approval-gate", "pending-fix-pr"), f"{w}: independent_control type")
+    if ic["type"] == "owner-approval-gate":
+        _need(set(ic) == {"type", "variable", "workflows"} and _text(ic["variable"], 3) and isinstance(ic["workflows"], list)
+              and ic["workflows"], f"{w}: owner-approval-gate needs variable and workflows")
+    else:
+        _need(set(ic) == {"type", "pr", "until"} and _text(ic["pr"], 2) and _text(ic["until"], 10), f"{w}: pending-fix-pr needs pr and until")
+    _acceptance(e, w, {"NOT_ACCEPTED"})
+
+
+def validate_gate(g, i):
+    w = f"financial_gates[{i}]"
+    _need(isinstance(g, dict) and set(g) == GATE_REQUIRED, f"{w}: must have exactly {sorted(GATE_REQUIRED)}")
+    _need(g["status"] in ("ENFORCED", "PENDING_FIX_PR") and isinstance(g["require_job_if_false"], bool)
+          and _text(g["variable"], 3) and _text(g["reference"], 3), f"{w}: status/variable/reference invalid")
+
+
+def load_allow(path, root="."):
     p = Path(path)
     if not p.exists():
-        raise ScanError(f"allow-list {path} missing (it must exist, even if empty: [])")
+        raise ScanError(f"allow-list {path} missing (it must exist, even if empty)")
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         raise ScanError(f"allow-list {path} unreadable: {e}") from None
-    if not isinstance(data, list):
-        raise ScanError("allow-list must be a JSON list")
-    for e in data:
-        if not isinstance(e, dict) or set(e) != ALLOW_KEYS:
-            raise ScanError(f"allow-list entry must have exactly {sorted(ALLOW_KEYS)}: {e!r}")
-        if not all(isinstance(e[k], str) and e[k].strip() for k in ALLOW_KEYS):
-            raise ScanError(f"allow-list entry has an empty field: {e!r}")
-        if len(e["justification"].strip()) < 40:
-            raise ScanError(f"allow-list justification too short (< 40 chars): {e!r}")
-        try:
-            re.compile(e["line_pattern"])
-        except re.error as err:
-            raise ScanError(f"allow-list line_pattern invalid: {err}") from None
+    _need(isinstance(data, dict) and set(data) == {"schema", "allowed", "open_real_risks", "financial_gates"}
+          and data["schema"] == "r4-allow/v2", "allow-list must be {schema: r4-allow/v2, allowed, open_real_risks, financial_gates}")
+    for k in ("allowed", "open_real_risks", "financial_gates"):
+        _need(isinstance(data[k], list), f"{k} must be a list")
+    for i, e in enumerate(data["allowed"]):
+        validate_allowed(e, root, i)
+    for i, e in enumerate(data["open_real_risks"]):
+        validate_open(e, root, i)
+    for i, g in enumerate(data["financial_gates"]):
+        validate_gate(g, i)
     return data
 
 
-def apply_allow(hits, allow):
-    used, remaining = set(), []
+def job_blocks(text):
+    """{job_id: job text} for a block-style workflow (jobs at 2-space indent)."""
+    lines, out, cur, in_jobs = text.split("\n"), {}, None, False
+    for ln in lines:
+        if re.match(r"^jobs:\s*$", ln):
+            in_jobs = True
+            continue
+        if in_jobs and re.match(r"^\S", ln):
+            in_jobs, cur = False, None
+        if not in_jobs:
+            continue
+        m = re.match(r"^  ([\w-]+):\s*$", ln)
+        if m:
+            cur = m.group(1)
+            out[cur] = []
+            continue
+        if cur:
+            out[cur].append(ln)
+    return {k: "\n".join(v) for k, v in out.items()}
+
+
+def first_step(job_text):
+    lines, start = job_text.split("\n"), None
+    for i, ln in enumerate(lines):
+        if re.match(r"^    steps:\s*$", ln):
+            start = i + 1
+            break
+    if start is None:
+        return ""
+    block, seen = [], False
+    for ln in lines[start:]:
+        if re.match(r"^      - ", ln):
+            if seen:
+                break
+            seen = True
+        elif ln.strip() and len(ln) - len(ln.lstrip()) <= 4:
+            break
+        if seen:
+            block.append(ln)
+    return "\n".join(block)
+
+
+def gate_problems(root, workflow, variable, require_if_false=False):
+    """Why the workflow does NOT carry the owner-approval gate as the first step of every job ([] if it does)."""
+    p = Path(root) / workflow
+    if not p.is_file():
+        return [f"{workflow}: missing"]
+    jobs, probs = job_blocks(p.read_text(encoding="utf-8")), []
+    if not jobs:
+        return [f"{workflow}: no jobs found"]
+    for jid, jt in jobs.items():
+        st = first_step(jt)
+        if not (GATE_STEP_NAME in st and ("vars." + variable) in st and re.search(r"\bexit 1\b", st)):
+            probs.append(f"{workflow}:{jid}: first step is not the R4 owner approval gate on vars.{variable}")
+        if require_if_false and not re.search(r"^    if:\s*\$\{\{\s*false\s*\}\}", jt, re.M):
+            probs.append(f"{workflow}:{jid}: job must stay 'if: ${{{{ false }}}}'")
+    return probs
+
+
+def apply_allow(hits, allow, root="."):
+    """-> (remaining hits, gate hits, open-risk hits). Raises ScanError on stale entries."""
+    allowed, opened = allow["allowed"], allow["open_real_risks"]
+    used_a, used_o, remaining, open_hits = set(), set(), [], []
     for h in hits:
-        hit_entry = next((i for i, e in enumerate(allow)
-                          if e["file"] == h["file"] and re.search(e["line_pattern"], h.get("line_text", h["text"]))), None)
-        if hit_entry is None:
-            remaining.append(h)
-        else:
-            used.add(hit_entry)
-            h["allowed"] = allow[hit_entry]["justification"]
-    stale = [allow[i] for i in range(len(allow)) if i not in used]
+        line = h.get("line_text", h["text"])
+        ai = next((i for i, e in enumerate(allowed)
+                   if e["file"] == h["file"] and re.search(e["line_pattern"], line)
+                   and h["rule"] in ALLOWABLE_RULES and h["method"] == e["method"]
+                   and e["endpoint"] in h.get("url_path", "")), None)
+        if ai is not None:
+            used_a.add(ai)
+            h["allowed"] = {"endpoint": allowed[ai]["endpoint"], "acceptance": allowed[ai]["risk_acceptance"]["status"]}
+            continue
+        oi = next((i for i, e in enumerate(opened) if e["file"] == h["file"] and re.search(e["line_pattern"], line)), None)
+        if oi is not None:
+            used_o.add(oi)
+            h["open_risk"] = opened[oi]["independent_control"]["type"]
+            open_hits.append(h)
+            continue
+        remaining.append(h)
+    stale = [allowed[i] for i in range(len(allowed)) if i not in used_a]
+    stale += [opened[i] for i in range(len(opened)) if i not in used_o]
     if stale:
-        raise ScanError("stale allow-list entries (match no current hit): " + json.dumps(stale, ensure_ascii=False))
-    return remaining
+        raise ScanError("stale allow-list entries (match no current hit): " + json.dumps(
+            [{"file": e["file"], "line_pattern": e["line_pattern"]} for e in stale], ensure_ascii=False))
+    gates = []
+    # open risks controlled by an owner-approval gate: every workflow that can run the hit must carry the gate
+    for e in opened:
+        ic = e["independent_control"]
+        if ic["type"] != "owner-approval-gate":
+            continue
+        for h in open_hits:
+            if h["file"] != e["file"]:
+                continue
+            runners = [h["file"]] if h["file"].startswith(".github/workflows/") else h.get("invoked_by", [])
+            for wf in runners:
+                if wf not in ic["workflows"]:
+                    gates.append(_gate_hit(wf, f"open risk {e['file']} runs from {wf}, which is not in its gated workflows"))
+        for wf in ic["workflows"]:
+            for prob in gate_problems(root, wf, ic["variable"]):
+                gates.append(_gate_hit(wf, prob))
+    # independent financial gates (Sol R4 2d): required set, enforced or explicitly pending a fix PR
+    listed = {g["workflow"]: g for g in allow["financial_gates"]}
+    for wf in sorted(REQUIRED_GATE_WORKFLOWS - set(listed)):
+        if (Path(root) / wf).exists():  # a deleted workflow cannot run; an existing one must be gated
+            gates.append(_gate_hit(wf, "required financial gate not registered"))
+    for wf, g in listed.items():
+        probs = gate_problems(root, wf, g["variable"], g["require_job_if_false"])
+        if g["status"] == "ENFORCED":
+            gates += [_gate_hit(wf, prob) for prob in probs]
+        elif not probs:
+            gates.append(_gate_hit(wf, "gate is now present: mark it ENFORCED (stale PENDING_FIX_PR)"))
+    return remaining, gates, open_hits
+
+
+def _gate_hit(wf, why):
+    return {"file": wf, "line": 0, "rule": "R4-GATE", "method": "-", "hosts": [], "evidence": why, "text": why}
 
 
 def main(argv=None):
@@ -867,9 +1097,10 @@ def main(argv=None):
         if args.depth < 1:
             raise ScanError("--depth must be >= 1")
         root = Path(args.root)
-        allow = load_allow(args.allow or (root / DEFAULT_ALLOW))
+        allow = load_allow(args.allow or (root / DEFAULT_ALLOW), root)
         hits, scanned = scan(root, args.depth)
-        remaining = apply_allow(hits, allow)
+        remaining, gates, open_hits = apply_allow(hits, allow, root)
+        remaining = remaining + gates
     except ScanError as e:
         print(f"R4_FORGED_INPUT_SCAN_ERROR {e}", file=sys.stderr)
         return 2
@@ -878,14 +1109,21 @@ def main(argv=None):
         for h in hits:
             h.pop("line_text", None)
         print(json.dumps({"scanned_workflows": n_wf, "scanned_scripts": len(scanned) - n_wf, "hits": remaining,
-                          "allowed": [h for h in hits if "allowed" in h]}, ensure_ascii=False, indent=1))
+                          "allowed": [h for h in hits if "allowed" in h], "open_real_risks": open_hits},
+                         ensure_ascii=False, indent=1))
+    out = sys.stderr if args.json else sys.stdout
+    for h in open_hits:
+        print(f"R4_OPEN_RISK {h['file']}:{h['line']} {h['rule']} control={h['open_risk']} (REAL RISK, not accepted)", file=out)
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            print(f"::warning title=R4_OPEN_RISK::{h['file']}:{h['line']} {h['rule']} control={h['open_risk']}", file=out)
     for h in remaining:
         via = f" via {','.join(h['invoked_by'])}" if h.get("invoked_by") else ""
         print(f"R4_HIT {h['file']}:{h['line']} {h['rule']} {h['method']} {','.join(h['hosts']) or '?'} "
               f"{h['evidence']}{via} :: {h['text'][:160]}", file=sys.stderr if args.json else sys.stdout)
     verdict = "FAIL" if remaining else "PASS"
+    n_allowed = sum(1 for h in hits if "allowed" in h)
     print(f"R4_FORGED_INPUT_SCAN {verdict} workflows={n_wf} scripts={len(scanned) - n_wf} hits={len(remaining)} "
-          f"allowed={len(hits) - len(remaining)}", file=sys.stderr if args.json else sys.stdout)
+          f"allowed={n_allowed} open_real_risks={len(open_hits)}", file=sys.stderr if args.json else sys.stdout)
     return 1 if remaining else 0
 
 
