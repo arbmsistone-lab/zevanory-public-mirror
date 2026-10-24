@@ -8,7 +8,8 @@
 // telephone — todos mortos pelos verificadores deste arquivo.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readTextNormalized } from "./helpers/text.mjs";
+import { fileURLToPath } from "node:url";
 import { handleAtendimento, formPage, confirmationPage, parseInput, protocolFor, drainAtendimentoOutbox, ATENDIMENTO_SQL, MAX_ATTEMPTS, TIPOS, RESPONSE_DAYS } from "../worker/atendimento.mjs";
 import { handleRefundFlow } from "../worker/refund-flow.mjs";
 
@@ -120,7 +121,7 @@ test("protocolo por HMAC com segredo: mesmo envio e dia => mesmo protocolo; outr
 });
 
 test("estrutura da outbox: cota e gravação num único comando atômico, chaves de idempotência estáveis, sem log", () => {
-  const src = readFileSync(new URL("../worker/atendimento.mjs", import.meta.url), "utf8");
+  const src = readTextNormalized(fileURLToPath(new URL("../worker/atendimento.mjs", import.meta.url)));
   const admit = ATENDIMENTO_SQL.admit;
   assert.equal((admit.match(/on conflict \(bucket\) do update set n = zevanory_atendimento_quota\.n \+ 1 where zevanory_atendimento_quota\.n < \$\d/g) || []).length, 2, "duas cotas com teto no ON CONFLICT");
   assert.match(admit, /insert into zevanory_atendimento_outbox[\s\S]*from q2/, "linha só entra se as duas cotas passaram, no mesmo comando");
