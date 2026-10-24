@@ -245,7 +245,8 @@ test("mutantes: wa.me/número de volta em CTA, rodapé, resumo, JSON-LD, script,
   const ctaRe = /href="mailto:[^"]*"( data-zev-sku="ZEV-IA-011")/;
   const contactMutants = {
     "M1 CTA da lista de espera volta ao wa.me": () => [page, page.replace(ctaRe, `href="${WA}"$1`)],
-    "M2 rodapé com WhatsApp clicável": () => [page, page.replace('>Atendimento com protocolo</a><br>', '>Atendimento com protocolo</a> · WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a><br>')],
+    // Design PR (2026-10-24): the footer is a labelled list (company, contact, profiles), not a "·" chain.
+    "M2 rodapé com WhatsApp clicável": () => [page, page.replace('>Atendimento com protocolo</a></li>', '>Atendimento com protocolo</a></li><li>WhatsApp <a href="https://wa.me/5588992545413">+55 88 99254-5413</a></li>')],
     "M3 resumo da oferta com WhatsApp": () => [page, page.replace("suporte@zevanory.api.br · vendas.zevanory.api.br", "suporte@zevanory.api.br · WhatsApp +55 88 99254-5413 · vendas.zevanory.api.br")],
     "M4b telephone com outro número": () => [pub["sales-public/solucoes.html"], pub["sales-public/solucoes.html"].replace('"email": "suporte@zevanory.api.br", "contactPoint"', '"email": "suporte@zevanory.api.br", "telephone": "+55 88 3000-0000", "contactPoint"')],
     "M4c microdata telephone": () => [page, page.replace("</main>", '<span itemprop="telephone">+55 88 3000-0000</span></main>')],
@@ -257,7 +258,7 @@ test("mutantes: wa.me/número de volta em CTA, rodapé, resumo, JSON-LD, script,
     "M6 número sem link, com espaço": () => [page, page.replace("</main>", "<p>Ligue 88 99254 5413</p></main>")],
     "M7 api.whatsapp.com": () => [page, page.replace("</main>", '<a href="https://api.whatsapp.com/send?phone=5588992545413">x</a></main>')],
     "M8 página do Worker com wa.me": () => [read("worker/sales-public-worker.mjs"), read("worker/sales-public-worker.mjs") + '\nconst X="https://wa.me/5588992545413";'],
-    "M9b menção de canal sem número": () => [page, page.replace("suporte humano por", "suporte humano no WhatsApp ou por")],
+    "M9b menção de canal sem número": () => [page, page.replace("Suporte humano por", "Suporte humano no WhatsApp ou por")],
     "M9 e-mail ao cliente com o número": () => [OFFICIAL_LEGAL_FOOTER, OFFICIAL_LEGAL_FOOTER + " · WhatsApp +55 88 99254-5413"],
   };
   const report = [];

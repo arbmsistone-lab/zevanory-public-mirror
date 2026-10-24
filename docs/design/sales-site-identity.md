@@ -272,3 +272,25 @@ asserting them.
   was checked.
 - Known trade-off: Atkinson Hyperlegible Next draws zero with a slash, on purpose, so it can't be
   confused with "O". Prices and the receipt use Archivo's plain tabular figures.
+
+## 10. Second review (coordinator critique, 2026-10-24)
+
+- **Receipt on phones:** each line is now a two-row grid (problem, then a dotted leader to the
+  product) with 64 px tall tap targets; the whole line is the link. The "toque no seu" label is gone.
+- **Small text:** `--t-0` is 15 px on desktop and 16 px on phones; secondary text uses `--grafite`
+  (6.7:1 on paper, 7.5:1 on white) at line-height 1.55.
+- **Catalogue:** each lead product is a paper card with "what you get", taken from the real
+  deliverable list in the build (`COMMERCE`), and a price column with the same width, size and
+  alignment everywhere (price + "pagamento único"/"por mês"; "Grátis"; "Em breve" smaller and in
+  graphite, names not link-blue). The whole card is the link.
+  **Previews:** the repo has no screenshot or cover of any product material (only brand art in
+  `assets/brand/export`), so none is shown; the typographic "o que você recebe" list stands in.
+  No image, number, testimonial or rating was invented.
+- **Footer:** company, contact and official profiles are three labelled blocks, not a "·" chain.
+  The hero microcopy on product pages keeps its exact wording because the Worker rewrites that
+  string for the Hotmart variant.
+- **Rhythm:** section padding 72 → 48 px; the gap before "Quem criou" halved; the catalogue hero
+  gets three plain facts (files, delivery, 7 days) so the text column balances the receipt.
+- **Inner pages:** Conteúdo Pronto gets its own monthly receipt; the long legal offer column has a
+  sticky companion on wide screens; /quem-criou is rebuilt (one h1, portrait, facts list, two
+  sections, one action); the summary heading follows the h1 on Conteúdo Pronto (heading order).

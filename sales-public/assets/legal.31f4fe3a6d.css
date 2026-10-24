@@ -27,6 +27,11 @@ strong{font-weight:700}
 /* 44 px targets, visible focus (WCAG 2.2 AA + internal standard). */
 .nav a,.legal-brand,.footer-legal a,:where(p,li,dd,td) a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;max-width:100%;overflow-wrap:anywhere}
 :focus-visible{outline:3px solid var(--azul-cedula);outline-offset:3px}
-.footer-legal{width:min(720px,100% - 32px);margin:0 auto;padding:16px 0 32px;border-top:1px solid var(--linha-suave);font-size:.875rem;color:var(--grafite)}
+.footer-legal{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 24px;margin:48px 0 0;padding:24px 0 32px;border-top:2px solid var(--tinta);font-size:.9375rem;line-height:1.55}
+.fl-title{margin:0 0 8px;padding:0;border:0;font-size:1.0625rem}
+.fl-block p{margin:0;color:var(--grafite)}
+.fl-block ul{margin:0;padding:0;list-style:none}
+.fl-social{display:flex;flex-wrap:wrap;gap:0 16px}
+@media(max-width:760px){.footer-legal{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:560px){.legal-brand{width:100%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}

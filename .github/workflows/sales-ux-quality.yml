@@ -91,6 +91,9 @@ jobs:
             curl -fsS -o /dev/null "http://127.0.0.1:$port/solucoes"
           done
       - name: Screenshots before / after (360, 768, 1440)
+        env:
+          # Every hand-designed page (design PR): catalogue, the six priced pages, Sales, termos, founder.
+          PAGES: /solucoes,/lucro-e-caixa,/vendas-na-pratica,/ia-na-pratica,/conteudo-pronto,/combo-ia-vendas,/negocio-completo,/zevanory-sales,/termos,/quem-criou
         run: |
           set -euo pipefail
           node scripts/audit/sales-screenshots.mjs http://127.0.0.1:8788 /tmp/sales-ux/screenshots/before

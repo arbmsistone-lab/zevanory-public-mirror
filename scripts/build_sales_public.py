@@ -90,24 +90,27 @@ HTML_ROUTES = (
 )
 
 
+# Company identification footer (P13c: identification and address from data/politica-unica.json).
+# Design (2026-10-24): three labelled blocks (company, contact, official profiles) instead of a
+# "A · B · C" chain. Contact is e-mail + protocol form only (WhatsApp banned by Meta; the
+# contato_publico.whatsapp_public_links_enabled lock still gates it).
+_SOCIAL = (("YouTube", "https://www.youtube.com/@zevanory"), ("Instagram", "https://www.instagram.com/zevanory_/"),
+           ("Facebook", "https://www.facebook.com/people/Zevanory/61593970292684/"), ("TikTok", "https://www.tiktok.com/@zevanory"),
+           ("Telegram", "https://t.me/zevanory"), ("Bluesky", "https://bsky.app/profile/zevanoryoficial.bsky.social"),
+           ("Pinterest", "https://www.pinterest.com/zevanory/"))
 LEGAL_FOOTER = ('<div class="container footer-legal">'
-                # P13c: identificação e endereço únicos (data/politica-unica.json, resumo_oferta.fornecedor).
-                f'{policy.SUPPLIER["razao_social"]} · CNPJ {policy.SUPPLIER["cnpj"]} · {policy.ADDRESS_FULL} · '
-                # Contato: e-mail é o único endereço eletrônico oficial (WhatsApp banido pela Meta);
-                # trava contato_publico.whatsapp_public_links_enabled.
-                f'<a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a> · '
-                f'<a href="{policy.CONTACT["formulario"]}">Atendimento com protocolo</a>'
-                + (f' · WhatsApp <a href="{policy.WHATSAPP_URL}">{policy.WHATSAPP_DISPLAY}</a>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else '') +
+                '<section class="fl-block" aria-labelledby="fl-empresa"><h2 class="fl-title" id="fl-empresa">Empresa</h2>'
+                f'<p>{policy.SUPPLIER["razao_social"]}<br>CNPJ {policy.SUPPLIER["cnpj"]}<br>{policy.ADDRESS_FULL}</p></section>'
+                '<section class="fl-block" aria-labelledby="fl-contato"><h2 class="fl-title" id="fl-contato">Atendimento</h2><ul>'
+                f'<li><a href="mailto:{policy.SUPPORT_EMAIL}">{policy.SUPPORT_EMAIL}</a></li>'
+                f'<li><a href="{policy.CONTACT["formulario"]}">Atendimento com protocolo</a></li>'
+                + (f'<li>WhatsApp <a href="{policy.WHATSAPP_URL}">{policy.WHATSAPP_DISPLAY}</a></li>' if policy.WHATSAPP_PUBLIC_LINKS_ENABLED else '') +
+                '</ul></section>'
                 # Official profiles verified by public readback (2026-10-12); rel="me" lets platforms
                 # confirm the site <-> profile link.
-                '<br>Perfis oficiais: '
-                '<a rel="me noopener" href="https://www.youtube.com/@zevanory">YouTube</a> · '
-                '<a rel="me noopener" href="https://www.instagram.com/zevanory_/">Instagram</a> · '
-                '<a rel="me noopener" href="https://www.facebook.com/people/Zevanory/61593970292684/">Facebook</a> · '
-                '<a rel="me noopener" href="https://www.tiktok.com/@zevanory">TikTok</a> · '
-                '<a rel="me noopener" href="https://t.me/zevanory">Telegram</a> · '
-                '<a rel="me noopener" href="https://bsky.app/profile/zevanoryoficial.bsky.social">Bluesky</a> · '
-                '<a rel="me noopener" href="https://www.pinterest.com/zevanory/">Pinterest</a></div>')
+                '<section class="fl-block" aria-labelledby="fl-perfis"><h2 class="fl-title" id="fl-perfis">Perfis oficiais</h2><ul class="fl-social">'
+                + "".join(f'<li><a rel="me noopener" href="{u}">{n}</a></li>' for n, u in _SOCIAL) +
+                '</ul></section></div>')
 
 COMMERCE = {
     "ia-na-pratica": {"sku": "ZEV-IA-011", "name": "IA na Prática", "price": 197,
@@ -224,7 +227,7 @@ def apply_commerce(slug: str, html: str) -> str:
                f'<p class="receipt-total"><span>Total</span><span>R$ {c["price"]}</span></p>'
                '<p class="receipt-foot">Entrega por e-mail, em link pessoal.</p></div>')
     html = re.sub(r'<aside class="hero-panel">.*?</aside>', lambda m: receipt, html, count=1, flags=re.S)
-    includes = ('<p class="microcopy hero-trust">Empresa brasileira com CNPJ · criada por <a href="/quem-criou">Renan Bitu</a> · suporte humano ' + HUMAN_SUPPORT + '</p>')
+    includes = ('<p class="byline hero-trust">Feito por <a href="/quem-criou">Renan Bitu</a>, empresa brasileira com CNPJ. Suporte humano ' + HUMAN_SUPPORT + '.</p>')
     html = re.sub(r'(<section class="container hero".*?<p class="microcopy">[^<]*</p>)', lambda m: m.group(1) + includes, html, count=1, flags=re.S)
     # Conversion: who it is for (and who it is not for), right after the trust strip.
     yes, no = FIT[slug]
@@ -272,14 +275,23 @@ def apply_commerce(slug: str, html: str) -> str:
     html = re.sub(r'(<script type="application/ld\+json">)(.*?)(</script>)', fix_ld, html, count=1, flags=re.S)
     return html
 
+CATALOG_INCLUDES = {  # the most concrete deliverables of each paid product, picked from COMMERCE (never invented)
+    "lucro-e-caixa": (2, 3, 4), "vendas-na-pratica": (2, 3, 4), "ia-na-pratica": (2, 3, 0),
+    "combo-ia-vendas": (0, 1, 2), "negocio-completo": (3, 4, 5)}
+
 def apply_catalog(html: str) -> str:
-    """Catalogue by problem (solucoes/index.html): the build adds each paid product's price; free
-    and "Em breve" tags are in the source. Closed status is the single page notice, not per card."""
-    prices = {slug: f'R$ {c["price"]}' for slug, c in COMMERCE.items()}
-    prices["conteudo-pronto"] = "R$ 197/mês"
-    for slug, price in prices.items():
-        html, n = re.subn(rf'(<a class="catalog-card(?: [a-z ]+)?" href="/{slug}"><h3>[^<]*</h3><p>[^<]*</p>)',
-                          lambda m: m.group(1) + f'<span class="catalog-price">{price}</span>', html, count=1)
+    """Catalogue by problem (solucoes/index.html). For each paid product the build adds what you get
+    (its real deliverables, from COMMERCE) and its price; free and "Em breve" status are in the source.
+    Closed status is the single page notice, not repeated per card."""
+    prices = {slug: (f'R$ {c["price"]}', "pagamento único") for slug, c in COMMERCE.items()}
+    prices["conteudo-pronto"] = ("R$ 197", "por mês")
+    for slug, (price, unit) in prices.items():
+        inc = ""
+        if slug in CATALOG_INCLUDES:
+            items = [re.sub(r"\s*\([^)]*\)", "", COMMERCE[slug]["items"][k]) for k in CATALOG_INCLUDES[slug]]
+            inc = '<ul class="catalog-includes">' + "".join(f"<li>{i}</li>" for i in items) + "</ul>"
+        pat = rf'(<article class="catalog-card[^"]*"><div class="cc-main"><h3><a href="/{slug}">[^<]*</a></h3><p>[^<]*</p>)((?:<ul class="catalog-includes">.*?</ul>)?</div>)'
+        html, n = re.subn(pat, lambda m: m.group(1) + inc + m.group(2) + f'<p class="catalog-price">{price}<span>{unit}</span></p>', html, count=1, flags=re.S)
         if n != 1:
             raise SystemExit(f"solucoes: catalog card for {slug} missing")
     return html
@@ -296,6 +308,17 @@ def apply_subscription(html: str) -> str:
                   + offer_summary("conteudo-pronto", "assinatura", policy.RESUMO_OFERTA["assinatura"]["caracteristicas"]), html, count=1)
     if policy.SUBSCRIPTION_SUMMARY not in html:
         raise SystemExit("conteudo-pronto: ancora do CTA principal nao encontrada")
+    # The summary sits in the hero, right under the h1: an h2 keeps the heading order (Lighthouse heading-order).
+    html = html.replace('aria-label="Resumo da oferta"><h3>Resumo da oferta</h3>', 'aria-label="Resumo da oferta"><h2>Resumo da oferta</h2>', 1)
+    # Design: the monthly package as a receipt beside the hero (same facts as the page's own list).
+    receipt = ('<div class="hero-panel receipt"><p class="receipt-head">Todo mês você recebe<span>sem fidelidade</span></p>'
+               '<ul class="outcome-list"><li>12 posts com legenda, chamada para ação e hashtags</li>'
+               '<li>4 mensagens de venda e acompanhamento</li><li>Calendário de 30 dias</li></ul>'
+               '<p class="receipt-total"><span>Total</span><span>R$ 197/mês</span></p>'
+               '<p class="receipt-foot">Você revisa, aprova e publica.</p></div>')
+    html, n = re.subn(r'(<section class="container hero"><div>.*?</dl></section></div>)(</section>)', lambda m: m.group(1) + receipt + m.group(2), html, count=1, flags=re.S)
+    if n != 1:
+        raise SystemExit("conteudo-pronto: hero receipt anchor missing")
     # Destino da lista de espera vem do contato público (e-mail enquanto o WhatsApp não opera).
     html = re.sub(r'(<a class="button primary" )href="[^"]*"( data-zev-sub="conteudo-pronto")',
                   lambda m: m.group(1) + f'href="{_attr(policy.waitlist_href("Conteúdo Pronto"))}"' + m.group(2), html)
