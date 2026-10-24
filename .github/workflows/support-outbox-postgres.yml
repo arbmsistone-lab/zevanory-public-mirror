@@ -1,0 +1,53 @@
+name: support-outbox-postgres
+
+# Outbox do suporte@ contra PostgreSQL 16 REAL descartável (serviço do job): esquema exatamente como o Worker aplica,
+# consumidores concorrentes, cotas simultâneas, lease/reap, limites de 10 tentativas e 23 h, transições e zero
+# leitura, encaminhamento ou confirmação associada à mensagem após estouro (alertas só com contagens). Resend falso; só pull_request (nunca dispara no merge), sem segredo, sem rede
+# além do checkout e da imagem do serviço. Contagem EXATA: alterar o número no mesmo PR que muda os testes.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/support-outbox-postgres.yml"
+      - "worker/support-email-forward.mjs"
+      - "worker/politica-unica.mjs"
+      - "data/politica-unica.json"
+      - "tests/integration/support-outbox-postgres.test.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: support-outbox-postgres-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  support-outbox-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Versão do servidor (precisa ser 16)
+        run: |
+          set -euo pipefail
+          v="$(psql -h localhost -U postgres -tAc 'show server_version_num')"
+          echo "::notice title=POSTGRES::server_version_num=$v"
+          [ "${v:0:2}" = "16" ] || { echo "::error::PostgreSQL diferente de 16 ($v)"; exit 1; }
+      - name: Outbox suporte@ (O1–O11, contagem exata, sem skip)
+        env:
+          T4_PG_HOST: localhost
+          T4_PG_PORT: "5432"
+        run: |
+          set -eo pipefail
+          node --test tests/integration/support-outbox-postgres.test.mjs | tee o.txt
+          echo "::notice title=COUNTS_OUTBOX::$(grep -E '^# (tests|pass|fail|skipped|todo|cancelled) ' o.txt | paste -sd' ' -)"
+          grep -qx "# tests 11" o.txt && grep -qx "# pass 11" o.txt && grep -qx "# skipped 0" o.txt && grep -qx "# todo 0" o.txt && grep -qx "# fail 0" o.txt && grep -qx "# cancelled 0" o.txt
