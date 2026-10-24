@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import worker, { openSalesHtml } from "../worker/sales-public-worker.mjs";
+import worker, { openSalesHtml, RETIRED_CONTACT_BODY } from "../worker/sales-public-worker.mjs";
 import { brandedEmailHtml, OFFICIAL_LEGAL_FOOTER } from "../worker/brand-email.mjs";
 import * as PU from "../worker/politica-unica.mjs";
 
@@ -78,6 +78,8 @@ function waitlistViolations(name, html, contact = C) {
 function publicFiles(pub = PUB) {
   const files = {};
   for (const f of readdirSync(pub)) if (/\.(html|js|txt|xml)$/.test(f)) files["sales-public/" + f] = readTextNormalized(join(pub, f));
+  // E2: scripts and stylesheets are published content-hashed under assets/.
+  for (const f of readdirSync(join(pub, "assets"))) if (/\.(js|css)$/.test(f)) files["sales-public/assets/" + f] = readTextNormalized(join(pub, "assets", f));
   return files;
 }
 const ROUTES = readdirSync(PUB).filter((f) => f.endsWith(".html") && f !== "index.html").map((f) => f.slice(0, -5));
@@ -85,8 +87,6 @@ function sourceFiles() {
   const files = {};
   for (const slug of ROUTES) if (existsSync(join(ROOT, slug, "index.html"))) files[slug + "/index.html"] = read(slug + "/index.html");
   for (const f of ["sales-overlay/llms.txt", "sales-overlay/approved.json", "public/whatsapp-contact.js", "public/arbm-contador-saloes.html"]) files[f] = read(f);
-  // O overlay mantém o bloco de WhatsApp entre marcadores; o build o remove com a flag desligada.
-  files["sales-overlay/whatsapp-contact.js"] = read("sales-overlay/whatsapp-contact.js");
   return files;
 }
 // Templates do Worker que viram página ou e-mail para o público.
@@ -123,7 +123,9 @@ test("(a) nenhuma superfície pública tem wa.me ou o número com o WhatsApp des
   assert.deepEqual(contactViolations(sourceFiles()), []);
   assert.deepEqual(contactViolations(workerFiles()), []);
   assert.deepEqual(contactViolations({ OFFICIAL_LEGAL_FOOTER, email: brandedEmailHtml("Olá"), CONTACT_HTML: PU.CONTACT_HTML, CONTACT_TEXT: PU.CONTACT_TEXT, CONTACT_TEXT_OR: PU.CONTACT_TEXT_OR, REFUND_TEXT: PU.REFUND_TEXT, SUPPORT_REFUND_ANSWER: PU.SUPPORT_REFUND_ANSWER, SOL_TEXT: PU.SOL_TEXT }), []);
-  assert.equal(readTextNormalized(join(PUB, "whatsapp-contact.js")), read("public/whatsapp-contact.js"), "public/whatsapp-contact.js é cópia do asset gerado");
+  // E2: o build de vendas não publica mais script de contato; o caminho antigo é um no-op do Worker.
+  assert.ok(!existsSync(join(PUB, "whatsapp-contact.js")), "sales-public não publica o script de contato aposentado");
+  assert.deepEqual(contactViolations({ RETIRED_CONTACT_BODY }), []);
   // Menção ao WhatsApp como canal da ZEVANORY (sem link nem número) também não pode voltar.
   if (!ENABLED) for (const [name, text] of Object.entries({ ...pub, ...sourceFiles(), ...workerFiles() })) assert.doesNotMatch(text, CHANNEL_RE, name);
 });
@@ -237,6 +239,8 @@ test("(d) páginas renderizadas pelo Worker (compra fechada, pausas, indisponív
 test("mutantes: wa.me/número de volta em CTA, rodapé, resumo, JSON-LD, script, Worker; CTA de e-mail errado — todos mortos", () => {
   const pub = publicFiles();
   const page = pub["sales-public/ia-na-pratica.html"];
+  const HASHED_JS = Object.keys(pub).find((k) => /^sales-public\/assets\/ferramentas\.[0-9a-f]{10}\.js$/.test(k));
+  assert.ok(HASHED_JS, "script com hash publicado");
   const WA = "https://wa.me/5588992545413?text=Ol%C3%A1%21%20Quero%20entrar%20na%20lista%20de%20espera%20do%20IA%20na%20Pr%C3%A1tica.";
   const ctaRe = /href="mailto:[^"]*"( data-zev-sku="ZEV-IA-011")/;
   const contactMutants = {
@@ -248,7 +252,8 @@ test("mutantes: wa.me/número de volta em CTA, rodapé, resumo, JSON-LD, script,
     "M4d link tel:": () => [page, page.replace("</main>", '<a href="tel:+558830000000">Ligue</a></main>')],
     "M4e página sem o e-mail oficial": () => [page, page.replaceAll('href="mailto:suporte@zevanory.api.br"', 'href="mailto:contato@zevanory.api.br"')],
     "M4 JSON-LD com telephone": () => [pub["sales-public/solucoes.html"], pub["sales-public/solucoes.html"].replace('"email": "suporte@zevanory.api.br"', '"email": "suporte@zevanory.api.br", "telephone": "+55 88 99254-5413"')],
-    "M5 script volta a injetar wa.me": () => [pub["sales-public/whatsapp-contact.js"], pub["sales-public/whatsapp-contact.js"].replace("})();", "document.querySelector('nav').insertAdjacentHTML('beforeend','<a href=\"https://wa.me/5588992545413\">WhatsApp</a>');})();")],
+    // E2: o script de contato saiu; o mutante agora injeta o wa.me no script com hash publicado.
+    "M5 script volta a injetar wa.me": () => [pub[HASHED_JS], pub[HASHED_JS] + "\ndocument.querySelector('nav').insertAdjacentHTML('beforeend','<a href=\"https://wa.me/5588992545413\">WhatsApp</a>');"],
     "M6 número sem link, com espaço": () => [page, page.replace("</main>", "<p>Ligue 88 99254 5413</p></main>")],
     "M7 api.whatsapp.com": () => [page, page.replace("</main>", '<a href="https://api.whatsapp.com/send?phone=5588992545413">x</a></main>')],
     "M8 página do Worker com wa.me": () => [read("worker/sales-public-worker.mjs"), read("worker/sales-public-worker.mjs") + '\nconst X="https://wa.me/5588992545413";'],
@@ -312,7 +317,8 @@ test("mutantes no gate do build (scripts/sales_policy.py --audit): wa.me/número
   const mutants = {
     "P1 CTA wa.me": ["ia-na-pratica.html", (h) => h.replace(/href="mailto:[^"]*"( data-zev-sku="ZEV-IA-011")/, 'href="https://wa.me/5588992545413"$1')],
     "P2 rodapé com número": ["privacidade.html", (h) => h.replace("</main>", "<p>WhatsApp +55 88 99254-5413</p></main>")],
-    "P3 script com wa.me": ["whatsapp-contact.js", (s) => s + "\nlocation.href='https://wa.me/5588992545413';"],
+    // E2: o script de contato saiu; o gate agora varre os scripts com hash em assets/.
+    "P3 script com wa.me": [join("assets", readdirSync(join(PUB, "assets")).find((f) => /^ferramentas\.[0-9a-f]{10}\.js$/.test(f))), (s) => s + "\nlocation.href='https://wa.me/5588992545413';"],
     "P4 llms.txt com número": ["llms.txt", (s) => s + "\nWhatsApp: +55 88 99254-5413\n"],
     "P5 JSON-LD telephone": ["solucoes.html", (h) => h.replace('"email": "suporte@zevanory.api.br", "contactPoint"', '"email": "suporte@zevanory.api.br", "telephone": "+55 88 3000-0000", "contactPoint"')],
     "P6 página sem e-mail oficial": ["privacidade.html", (h) => h.replaceAll('href="mailto:suporte@zevanory.api.br"', 'href="mailto:x@zevanory.api.br"')],
@@ -320,7 +326,7 @@ test("mutantes no gate do build (scripts/sales_policy.py --audit): wa.me/número
   for (const [name, [file, fn]] of Object.entries(mutants)) {
     const dir = mkdtempSync(join(tmpdir(), "contato-mut-"));
     try {
-      cpSync(PUB, dir, { recursive: true, filter: (s) => !/[\\/](brand|assets)([\\/]|$)/.test(s) });
+      cpSync(PUB, dir, { recursive: true, filter: (s) => !/[\\/]brand([\\/]|$)/.test(s) && !/\.(webp|png|woff2)$/.test(s) });
       const before = readTextNormalized(join(dir, file));
       const after = fn(before);
       assert.notEqual(after, before, "mutação não aplicada: " + name);
