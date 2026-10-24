@@ -458,30 +458,50 @@ test("cota reservada atomicamente: um único comando trava a linha, reserva reme
   assert.equal((src.match(/SQL\.forwardedReserveAck/g) || []).length, 1);
 });
 
-test("lease, recuo e estado fazem parte dos comandos do outbox (concorrência e redelivery)", () => {
-  const src = readTextNormalized(new URL("../worker/support-email-forward.mjs", import.meta.url));
-  const pick = (name) => { const m = new RegExp(name + ": `([\\s\\S]*?)`,").exec(src); assert.ok(m, name); return m[1].replace(/\s+/g, " "); };
-  for (const name of ["lease", "due"]) {
-    const q = pick(name);
-    assert.match(q, /state in \('forward_pending','ack_pending'\)/, name);
-    assert.match(q, /next_attempt_at <= now\(\)/, name);
-    assert.match(q, /\(lease_until is null or lease_until < now\(\)\)/, name);
-    assert.match(q, /attempts < \$2 and created_at > now\(\) - make_interval\(hours => \$3::int\)\s+and read_failures < \$4 and send_failures < \$5/, name);
-  }
-  assert.match(pick("reap"), /attempts >= \$1 or created_at <= now\(\) - make_interval\(hours => \$2::int\) or read_failures >= \$3 or send_failures >= \$4/);
-  assert.match(pick("alertReserve"), /on conflict \(kind\) do update set last_sent_at = now\(\) where zevanory_support_alerts\.last_sent_at < now\(\) - make_interval\(hours => \$2::int\)/);
-  assert.match(src, /SQL\.lease, \[emailId, MAX_ATTEMPTS, RETRY_LIFETIME_HOURS, MAX_READ_FAILURES, MAX_SEND_FAILURES\]/);
-  assert.match(pick("lease"), /set lease_until = now\(\) \+ interval '2 minutes', attempts = attempts \+ 1/);
-  assert.match(pick("record"), /on conflict \(email_id\) do nothing returning email_id/);
-  assert.doesNotMatch(src.slice(src.indexOf("forwardedReserveAck:"), src.indexOf("acked:")), /read_failures = 0|send_failures = 0/, "contadores globais: não zeram na confirmação");
+const SRC_FWD = () => readTextNormalized(new URL("../worker/support-email-forward.mjs", import.meta.url));
+const pickSql = (src, name) => { const m = new RegExp(name + ": `([\\s\\S]*?)`,").exec(src); assert.ok(m, name); return m[1].replace(/\s+/g, " "); };
+
+test("SQL lease: só linha pendente, vencida, sem lease ativo e dentro do orçamento; marca lease e conta tentativa", () => {
+  const src = SRC_FWD();
+  const q = pickSql(src, "lease");
+  assert.match(q, /state in \('forward_pending','ack_pending'\)/, "lease: estado pendente");
+  assert.match(q, /next_attempt_at <= now\(\)/, "lease: recuo");
+  assert.match(q, /\(lease_until is null or lease_until < now\(\)\)/, "lease: exclusividade");
+  assert.match(q, /attempts < \$2 and created_at > now\(\) - make_interval\(hours => \$3::int\)\s+and read_failures < \$4 and send_failures < \$5/, "lease: orçamento");
+  assert.match(q, /set lease_until = now\(\) \+ interval '2 minutes', attempts = attempts \+ 1/, "lease: marca");
+  assert.match(src, /SQL\.lease, \[emailId, MAX_ATTEMPTS, RETRY_LIFETIME_HOURS, MAX_READ_FAILURES, MAX_SEND_FAILURES\]/, "lease: parâmetros");
+});
+
+test("SQL due e reap: dreno só pega linha elegível; reap mata quem estourou orçamento/janela", () => {
+  const src = SRC_FWD();
+  const q = pickSql(src, "due");
+  assert.match(q, /state in \('forward_pending','ack_pending'\)/, "due: estado");
+  assert.match(q, /next_attempt_at <= now\(\)/, "due: recuo");
+  assert.match(q, /\(lease_until is null or lease_until < now\(\)\)/, "due: lease");
+  assert.match(q, /attempts < \$2 and created_at > now\(\) - make_interval\(hours => \$3::int\)\s+and read_failures < \$4 and send_failures < \$5/, "due: orçamento");
+  assert.match(pickSql(src, "reap"), /attempts >= \$1 or created_at <= now\(\) - make_interval\(hours => \$2::int\) or read_failures >= \$3 or send_failures >= \$4/, "reap: condições");
+});
+
+test("SQL de registro e conclusão: insert idempotente e transições só a partir do estado certo", () => {
+  const src = SRC_FWD();
+  assert.match(pickSql(src, "record"), /on conflict \(email_id\) do nothing returning email_id/, "record: idempotente");
+  assert.match(pickSql(src, "acked"), /where email_id = \$1 and state = 'ack_pending'/, "acked: só de ack_pending");
+  assert.match(pickSql(src, "forwardedNoAck"), /where email_id = \$1 and state = 'forward_pending'/, "forwardedNoAck: só de forward_pending");
+  assert.match(pickSql(src, "alertReserve"), /on conflict \(kind\) do update set last_sent_at = now\(\) where zevanory_support_alerts\.last_sent_at < now\(\) - make_interval\(hours => \$2::int\)/, "alertReserve: limite atômico");
+});
+
+test("SQL retry: contadores de leitura e de envio são distintos (cada falha incrementa só o seu tipo)", () => {
+  const rq = pickSql(SRC_FWD(), "retry");
+  assert.match(rq, /read_failures = read_failures \+ case when \$5 = 'read' then 1 else 0 end/, "retry: contador de leitura");
+  assert.match(rq, /send_failures = send_failures \+ case when \$5 = 'send' then 1 else 0 end/, "retry: contador de envio");
+  assert.match(rq, /\(\$5 = 'read' and read_failures \+ 1 >= \$6::int\)/, "retry: teto de leitura");
+  assert.match(rq, /\(\$5 = 'send' and send_failures \+ 1 >= \$7::int\)/, "retry: teto de envio");
+});
+
+test("transição para a confirmação preserva os contadores globais (SQL e cadeia em código)", () => {
+  const src = SRC_FWD();
+  assert.doesNotMatch(src.slice(src.indexOf("forwardedReserveAck:"), src.indexOf("acked:")), /read_failures = 0|send_failures = 0/, "contadores globais: não zeram na confirmação (SQL)");
   assert.doesNotMatch(src, /stepAck\(c, emailId, \{ \.\.\.row, attempts: 1, read_failures/, "a cadeia para a confirmação não zera contadores");
-  const rq = pick("retry");
-  assert.match(rq, /read_failures = read_failures \+ case when \$5 = 'read' then 1 else 0 end/);
-  assert.match(rq, /send_failures = send_failures \+ case when \$5 = 'send' then 1 else 0 end/);
-  assert.match(rq, /\(\$5 = 'read' and read_failures \+ 1 >= \$6::int\)/);
-  assert.match(rq, /\(\$5 = 'send' and send_failures \+ 1 >= \$7::int\)/);
-  assert.match(pick("acked"), /where email_id = \$1 and state = 'ack_pending'/);
-  assert.match(pick("forwardedNoAck"), /where email_id = \$1 and state = 'forward_pending'/);
 });
 
 test("HTML higienizado por lista de permissão e com teto de tamanho", async () => {

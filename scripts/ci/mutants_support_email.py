@@ -1,31 +1,47 @@
 #!/usr/bin/env python3
-"""Mutantes do encaminhamento suporte@ (worker/support-email-forward.mjs + fiação no compat).
-Cada mutante altera uma CÓPIA temporária (o original nunca é modificado) e roda tests/support-email-forward.test.mjs
-(reporter TAP explícito) contra ela. Classificador estável (auditor Sol 120-6; mesma ideia de mutants_comprar_noindex.py):
-  KILLED       saída normal do processo (código 1), contagem TAP COMPLETA (# tests == baseline, # cancelled 0), e TODAS
-               as falhas são asserções (ERR_ASSERTION) em testes da lista causal pré-associada ao mutante (ALLOW).
-  SURVIVED     código 0 com contagem completa e # fail 0.
-  INCONCLUSIVE qualquer outra coisa: queda/sinal, timeout, erro de sintaxe/módulo, contagem incompleta, falha que não é
-               asserção ou falha fora da lista causal. Repete UMA vez; se persistir, o job falha.
-Baseline (sem mutação) precisa ser verde. Totais explícitos. Exit: 0 só se todos KILLED; 1 se algum SURVIVED;
-3 se algum INCONCLUSIVE persistente; 2 se a baseline falhar ou a lista causal não cobrir todos os mutantes.
-Sem rede, sem segredo, sem PostgreSQL. Uso: python3 scripts/ci/mutants_support_email.py [raiz-do-repo]
-                                         python3 scripts/ci/mutants_support_email.py --discover  (só manutenção)
+"""Mutantes do suporte@ (worker/support-email-forward.mjs + fiação no compat) com certificação CAUSAL (auditor Sol 120-6).
+
+Cada mutante altera uma CÓPIA temporária e roda a suíte alvo (TAP explícito):
+  --suite unit (padrão)  tests/support-email-forward.test.mjs         lista causal: mutants_support_email_allow.json
+  --suite pg             tests/integration/support-outbox-postgres.test.mjs (PostgreSQL real; T4_PG_HOST/T4_PG_PORT)
+                                                                       lista causal: mutants_support_email_pg_allow.json
+A lista causal é escrita por RACIOCÍNIO sobre cada mutação (não a partir de falhas observadas): para cada mutante,
+"primary" (1 a 3 testes que verificam diretamente a regra mutada, cada um com "why") e "secondary" opcional (cada
+entrada com justificativa causal de uma linha). Mais de 4 testes no total exige "broad_reason" explícito.
+Classificação:
+  KILLED       saída normal (código 1), contagem TAP completa, TODAS as falhas são asserções (ERR_ASSERTION), pelo
+               menos UMA em teste PRIMÁRIO e nenhuma fora de primary ∪ secondary.
+  SURVIVED     código 0, contagem completa, # fail 0.
+  INCONCLUSIVE todo o resto: queda/sinal, timeout, erro de sintaxe/módulo, contagem incompleta, falha que não é
+               asserção, falha só em secundário, falha fora da lista. Repete UMA vez; se persistir, o job falha.
+A lista é validada ANTES de rodar (mutante sem entrada, teste inexistente, entrada sem justificativa, lista larga sem
+broad_reason => recusa, exit 2). Baseline precisa ser verde. Exit: 0 só se todos KILLED; 1 SURVIVED; 3 INCONCLUSIVE.
+Uso: python3 scripts/ci/mutants_support_email.py [--suite unit|pg] [raiz-do-repo]
 """
 import json, os, re, shutil, subprocess, sys, tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
-DISCOVER = "--discover" in sys.argv
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--") and a not in ("unit", "pg")]
+SUITE = "pg" if ("--suite" in sys.argv and sys.argv[sys.argv.index("--suite") + 1] == "pg") else "unit"
 REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 FWD = "worker/support-email-forward.mjs"
 COMPAT = "worker/cloudflare-worker.compat.mjs"
-TEST = "tests/support-email-forward.test.mjs"
-COPY = [FWD, COMPAT, "worker/politica-unica.mjs", "worker/sandbox-proof-v2.mjs", "data/politica-unica.json",
-        TEST, "tests/helpers/text.mjs", "docs/ops/EMAIL_SUPORTE.md", "scripts/deploy/prepare-central-candidate.py"]
-TIMEOUT = 300
+SUITES = {
+    "unit": {"test": "tests/support-email-forward.test.mjs",
+             "copy": [FWD, COMPAT, "worker/politica-unica.mjs", "worker/sandbox-proof-v2.mjs", "data/politica-unica.json",
+                      "tests/support-email-forward.test.mjs", "tests/helpers/text.mjs", "docs/ops/EMAIL_SUPORTE.md",
+                      "scripts/deploy/prepare-central-candidate.py"],
+             "allow": "mutants_support_email_allow.json", "workers": 8},
+    "pg": {"test": "tests/integration/support-outbox-postgres.test.mjs",
+           "copy": [FWD, "worker/politica-unica.mjs", "data/politica-unica.json", "tests/integration/support-outbox-postgres.test.mjs"],
+           "allow": "mutants_support_email_pg_allow.json", "workers": 1},
+}
+TEST = SUITES[SUITE]["test"]
+COPY = SUITES[SUITE]["copy"]
+TIMEOUT = 300 if SUITE == "unit" else 600
 NODE = shutil.which("node") or "node"
+MAX_TESTS_WITHOUT_BROAD_REASON = 4
 
 M = {
     # assinatura (fail-closed)
@@ -48,7 +64,7 @@ M = {
     # (1) outbox durável
     "D1 duplicate re-forwarded (no lease state check)": (FWD, "where email_id = $1 and state in ('forward_pending','ack_pending') and next_attempt_at <= now()\n      and (lease_until", "where email_id = $1 and next_attempt_at <= now()\n      and (lease_until"),
     "D2 ack failure finalizes (never retried)": (FWD, '  if (!sent.ok) return failSend(c, emailId, row, "ack", sent);', '  if (!sent.ok) { await c.sql.query(SQL.acked, [emailId]); return { state: "done" }; }'),
-    "D3 forward failure goes dead at once": (FWD, 'return retry(c, emailId, row, step, "send", "send_" + reason, { permanent: cls === "permanent" || cls === "not_found" });', 'return retry(c, emailId, row, step, "send", "send_" + reason, { permanent: true });'),
+    "D3 forward failure goes dead at once": (FWD, '  if (!(sent.ok || already) || !forwardId) return failSend(c, emailId, row, "forward", sent);', '  if (!(sent.ok || already) || !forwardId) return retry(c, emailId, row, "forward", "send", "send_" + resendReason(sent), { permanent: true });'),
     "D4 backoff ignored": (FWD, "and state in ('forward_pending','ack_pending') and next_attempt_at <= now()\n      and (lease_until", "and state in ('forward_pending','ack_pending')\n      and (lease_until"),
     "D5 lease ignored": (FWD, "      and (lease_until is null or lease_until < now())\n      and attempts < $2 and created_at > now() - make_interval(hours => $3::int)\n      and read_failures < $4 and send_failures < $5\n    returning state", "      and attempts < $2 and created_at > now() - make_interval(hours => $3::int)\n      and read_failures < $4 and send_failures < $5\n    returning state"),
     "D6 no dead state (infinite retries)": (FWD, "  const force = permanent || Number(row?.attempts) >= MAX_ATTEMPTS || !withinBudget(row);", "  const force = false;"),
@@ -108,8 +124,8 @@ M = {
     "K5 drain error class lost": (FWD, 'if (/too many subrequests/i.test(m)) return "too_many_subrequests";', ""),
     "K6 drain route removed from worker": (COMPAT, "      if (drained) return drained;\n", ""),
     "K7 drain dispatched after preflight": (COMPAT, "  await dispatchSupportDrain(normalized, { sqlFactory: whatsappProofDatabase }).then(", "  await runSalesPreflight(normalized).catch(() => null);\n  await dispatchSupportDrain(normalized, { sqlFactory: whatsappProofDatabase }).then("),
-    "S1 whatsapp sender ack not suppressed": (FWD, '  if (ACK_SUPPRESSED_SENDERS.includes(addr)) return "automated_provider";\n', ""),
-    "S2 suppression by suffix (too broad)": (FWD, 'if (ACK_SUPPRESSED_SENDERS.includes(addr)) return "automated_provider";', 'if (addr.endsWith("support.whatsapp.com") || addr.includes("support.whatsapp.com")) return "automated_provider";'),
+    "WS1 whatsapp sender ack not suppressed": (FWD, '  if (ACK_SUPPRESSED_SENDERS.includes(addr)) return "automated_provider";\n', ""),
+    "WS2 suppression by suffix (too broad)": (FWD, 'if (ACK_SUPPRESSED_SENDERS.includes(addr)) return "automated_provider";', 'if (addr.endsWith("support.whatsapp.com") || addr.includes("support.whatsapp.com")) return "automated_provider";'),
     "W1 whatsapp ticket reply-to ignored": (FWD, "      if (ticket && WHATSAPP_TICKET_RE.test(ticket)) return ticket;\n", ""),
     "W2 ticket digit bounds removed": (FWD, "export const WHATSAPP_TICKET_RE = /^[0-9]{5,20}@support\\.whatsapp\\.com$/;", "export const WHATSAPP_TICKET_RE = /^[0-9]+@support\\.whatsapp\\.com$/;"),
     "W3 ticket reply-to for any sender": (FWD, "  if (sender === WHATSAPP_SUPPORT_FROM) {", "  if (true) {"),
@@ -132,15 +148,15 @@ M = {
     "G8c cron stays green on overdue": (COMPAT, '  if (supportOverdue) { console.error("support_backlog_overdue"); throw new Error("support_backlog_overdue"); }', '  if (supportOverdue) { console.error("support_backlog_overdue"); }'),
     "G9 body text drives reply-to": (FWD, "  const replyTo = forwardReplyTo(detail);", "  const replyTo = (String(detail.text || \"\").match(/Reply-To:\\s*(\\S+@\\S+)/i) || [])[1] || forwardReplyTo(detail);"),
     # Sol 120-2/120-3 (A/B): orçamento global e autenticação do dreno
-    "A1 counters reset at ack transition (SQL)": (FWD, "        attempts = case when exists (select 1 from g) then 1 else 0 end,\n", "        attempts = case when exists (select 1 from g) then 1 else 0 end, read_failures = 0, send_failures = 0,\n"),
-    "A2 counters reset at ack transition (chain)": (FWD, "stepAck(c, emailId, { ...row, attempts: 1 }, detail)", "stepAck(c, emailId, { ...row, attempts: 1, read_failures: 0, send_failures: 0 }, detail)"),
-    "B1 future minute accepted": (FWD, "  const fresh = minute === now || minute === now - 1;", "  const fresh = minute >= now - 1 && minute <= now + 1;"),
-    "B2 previous minute rejected": (FWD, "  const fresh = minute === now || minute === now - 1;", "  const fresh = minute === now;"),
-    "B3 replay accepted (nonce not enforced)": (FWD, "  if (!Array.isArray(consumed) || !consumed.length) { log(\"drain_replay_rejected\"); return json(409, { error: \"replay\" }); }", ""),
-    "B4 non-empty body accepted": (FWD, "  if ((await request.text()).length > 0) return json(400, { error: \"body_not_allowed\" });\n", ""),
-    "B5 canonical string changed": (FWD, "  return `v1\\n${String(method)}\\n${path}\\n${minute}\\n${nonce}`;", "  return `${String(method)}\\n${path}\\n${minute}\\n${nonce}`;"),
-    "B6 nonce format weakened": (FWD, "export const DRAIN_NONCE_RE = /^[0-9a-f]{32}$/;", "export const DRAIN_NONCE_RE = /^[0-9a-fA-F]{8,}$/;"),
-    "B7 internal header authenticates": (FWD, "  const secret = senderSecret(env);\n  const given = String(request.headers.get(\"x-support-drain-token\") || \"\");", "  if (request.headers.get(\"x-zevanory-internal\") === \"service-binding\") return json(200, await drainSupportOutbox(env, { sqlFactory, fetchImpl, nowMs, limit: 3, source: \"self\" }));\n  const secret = senderSecret(env);\n  const given = String(request.headers.get(\"x-support-drain-token\") || \"\");"),
+    "U1 counters reset at ack transition (SQL)": (FWD, "        attempts = case when exists (select 1 from g) then 1 else 0 end,\n", "        attempts = case when exists (select 1 from g) then 1 else 0 end, read_failures = 0, send_failures = 0,\n"),
+    "U2 counters reset at ack transition (chain)": (FWD, "stepAck(c, emailId, { ...row, attempts: 1 }, detail)", "stepAck(c, emailId, { ...row, attempts: 1, read_failures: 0, send_failures: 0 }, detail)"),
+    "N1 future minute accepted": (FWD, "  const fresh = minute === now || minute === now - 1;", "  const fresh = minute >= now - 1 && minute <= now + 1;"),
+    "N2 previous minute rejected": (FWD, "  const fresh = minute === now || minute === now - 1;", "  const fresh = minute === now;"),
+    "N3 replay accepted (nonce not enforced)": (FWD, "  if (!Array.isArray(consumed) || !consumed.length) { log(\"drain_replay_rejected\"); return json(409, { error: \"replay\" }); }", ""),
+    "N4 non-empty body accepted": (FWD, "  if ((await request.text()).length > 0) return json(400, { error: \"body_not_allowed\" });\n", ""),
+    "N5 canonical string changed": (FWD, "  return `v1\\n${String(method)}\\n${path}\\n${minute}\\n${nonce}`;", "  return `${String(method)}\\n${path}\\n${minute}\\n${nonce}`;"),
+    "N6 nonce format weakened": (FWD, "export const DRAIN_NONCE_RE = /^[0-9a-f]{32}$/;", "export const DRAIN_NONCE_RE = /^[0-9a-fA-F]{8,}$/;"),
+    "N7 internal header authenticates": (FWD, "  const secret = senderSecret(env);\n  const given = String(request.headers.get(\"x-support-drain-token\") || \"\");", "  if (request.headers.get(\"x-zevanory-internal\") === \"service-binding\") return json(200, await drainSupportOutbox(env, { sqlFactory, fetchImpl, nowMs, limit: 3, source: \"self\" }));\n  const secret = senderSecret(env);\n  const given = String(request.headers.get(\"x-support-drain-token\") || \"\");"),
     # caminho da sandbox / legado inalterado
     "P1 sandbox address handled here": (FWD, "  if (!alias) return null;", "  if (!alias) return json(200, { accepted: true, ignored: true });"),
     "P2 delivery events swallowed": (FWD, 'if (event?.type !== "email.received") return null;', 'if (event?.type !== "email.received") return json(200, { accepted: true });'),
@@ -148,12 +164,50 @@ M = {
     "W1 whatsapp ticket reply-to ignored": (FWD, "      if (ticket && WHATSAPP_TICKET_RE.test(ticket)) return ticket;\n", ""),
 }
 
-# Lista causal: para cada mutante, os testes (título TAP exato) cuja falha por asserção o mata.
-ALLOW_FILE = Path(__file__).with_name("mutants_support_email_allow.json")
+# Mutantes de SQL que só o PostgreSQL real prova causalmente (a suíte unitária usa um banco falso).
+M_PG = {
+    "PU1 counters reset at ack transition (SQL)": (FWD, "        attempts = case when exists (select 1 from g) then 1 else 0 end,\n", "        attempts = case when exists (select 1 from g) then 1 else 0 end, read_failures = 0, send_failures = 0,\n"),
+    "PG6 shared read/send budget (retry SQL)": (FWD, "      send_failures = send_failures + case when $5 = 'send' then 1 else 0 end,", "      send_failures = send_failures + 1,"),
+    "PQ1 sender quota not enforced": (FWD, "on conflict (bucket, day) do nothing returning 1 as ok", "on conflict (bucket, day) do update set n = zevanory_support_ack_quota.n + 1 returning 1 as ok"),
+    "PQ2 daily cap not enforced": (FWD, "where zevanory_support_ack_quota.n < $3", ""),
+    "PL1 lease exclusivity dropped": (FWD, "      and (lease_until is null or lease_until < now())\n      and attempts < $2 and created_at > now() - make_interval(hours => $3::int)\n      and read_failures < $4 and send_failures < $5\n    returning state", "      and attempts < $2 and created_at > now() - make_interval(hours => $3::int)\n      and read_failures < $4 and send_failures < $5\n    returning state"),
+    "PR1 reap removed": (FWD, "  await c.sql.query(SQL.reap, [MAX_ATTEMPTS, RETRY_LIFETIME_HOURS, MAX_READ_FAILURES, MAX_SEND_FAILURES]);\n", ""),
+    "PN1 nonce replay not rejected atomically": (FWD, "insert into zevanory_support_drain_nonces (nonce) values ($1) on conflict (nonce) do nothing returning nonce", "insert into zevanory_support_drain_nonces (nonce) select $1 returning nonce"),
+    "PA1 alert rate limit dropped (SQL)": (FWD, "where zevanory_support_alerts.last_sent_at < now() - make_interval(hours => $2::int)", ""),
+}
+MUTANTS = M_PG if SUITE == "pg" else M
 
 
-def load_allow():
-    return json.loads(ALLOW_FILE.read_text(encoding="utf-8"))
+ALLOW_FILE = Path(os.environ.get("SUPPORT_MUTANTS_ALLOW_FILE") or Path(__file__).with_name(SUITES[SUITE]["allow"]))
+
+
+def load_allow(path=None):
+    return json.loads(Path(path or ALLOW_FILE).read_text(encoding="utf-8"))
+
+
+def validate_allow(allow, mutants, titles):
+    """Erros da lista causal (lista vazia = válida). Puro: coberto pelos meta-testes."""
+    errors = []
+    for name in mutants:
+        if name not in allow:
+            errors.append(f"{name}: sem entrada na lista causal")
+    for name, e in allow.items():
+        if name not in mutants:
+            errors.append(f"{name}: entrada órfã (mutante inexistente)")
+            continue
+        prim, sec = e.get("primary") or [], e.get("secondary") or []
+        if not e.get("change"):
+            errors.append(f"{name}: sem descrição da mudança")
+        if not 1 <= len(prim) <= 3:
+            errors.append(f"{name}: primary precisa de 1 a 3 testes")
+        for item in prim + sec:
+            if not str(item.get("why", "")).strip():
+                errors.append(f"{name}: entrada sem justificativa: {str(item.get('test'))[:50]}")
+            if item.get("test") not in titles:
+                errors.append(f"{name}: teste inexistente: {str(item.get('test'))[:50]}")
+        if len(prim) + len(sec) > MAX_TESTS_WITHOUT_BROAD_REASON and not str(e.get("broad_reason", "")).strip():
+            errors.append(f"{name}: lista larga ({len(prim) + len(sec)} testes) sem broad_reason")
+    return errors
 
 
 def sub(text, old, new):
@@ -174,10 +228,10 @@ def build(tmp, mutation=None):
             h.write(sub(text, old, new))
 
 
-def run_suite(root):
+def run_suite(root, test=None):
     env = {**os.environ, "NODE_NO_WARNINGS": "1", "NO_COLOR": "1", "FORCE_COLOR": "0", "NODE_OPTIONS": ""}
     try:
-        p = subprocess.run([NODE, "--test", "--test-reporter=tap", TEST], cwd=root, capture_output=True,
+        p = subprocess.run([NODE, "--test", "--test-reporter=tap", test or TEST], cwd=root, capture_output=True,
                            timeout=TIMEOUT, env=env, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return {"timeout": True, "rc": None, "out": ""}
@@ -186,10 +240,13 @@ def run_suite(root):
 
 def parse_tap(out):
     get = lambda k: (re.search(rf"^# {k} (\d+)$", out, re.M) or [None, None])[1]
-    summary = {k: get(k) for k in ("tests", "pass", "fail", "cancelled")}
-    failures = []
+    summary = {k: get(k) for k in ("tests", "pass", "fail", "cancelled", "skipped")}
+    failures, titles = [], []
     lines = out.split("\n")
     for i, line in enumerate(lines):
+        ok = re.match(r"^ok \d+ - (.+?)(?: # .*)?$", line)
+        if ok:
+            titles.append(ok.group(1).replace("\\#", "#"))
         m = re.match(r"^not ok \d+ - (.+?)(?: # .*)?$", line)
         if not m:
             continue
@@ -199,21 +256,23 @@ def parse_tap(out):
                 break
             block.append(nxt)
         text = "\n".join(block)
-        failures.append({"title": m.group(1).replace("\\#", "#"), "assertion": "code: 'ERR_ASSERTION'" in text})
-    return summary, failures
+        title = m.group(1).replace("\\#", "#")
+        titles.append(title)
+        failures.append({"title": title, "assertion": "code: 'ERR_ASSERTION'" in text})
+    return summary, failures, titles
 
 
-def classify(res, allow, baseline_total):
-    """Devolve (veredito, motivo). Puro: testado por tests/test_mutants_support_email_classifier.py."""
+def classify(res, entry, baseline_total):
+    """(veredito, motivo). entry = {"primary": [...], "secondary": [...]} da lista causal."""
     if res.get("timeout"):
         return "INCONCLUSIVE", "timeout"
     rc = res.get("rc")
     if rc not in (0, 1):
         return "INCONCLUSIVE", f"saída anormal rc={rc}"
-    summary, failures = parse_tap(res.get("out", ""))
+    summary, failures, _ = parse_tap(res.get("out", ""))
     if summary["tests"] != str(baseline_total) or summary["cancelled"] not in ("0", None) or summary["pass"] is None or summary["fail"] is None:
         return "INCONCLUSIVE", f"contagem incompleta {summary}"
-    if int(summary["pass"]) + int(summary["fail"]) != baseline_total:
+    if int(summary["pass"]) + int(summary["fail"]) + int(summary["skipped"] or 0) != baseline_total or summary["skipped"] not in ("0", None):
         return "INCONCLUSIVE", f"contagem incoerente {summary}"
     if rc == 0:
         return ("SURVIVED", "") if summary["fail"] == "0" and not failures else ("INCONCLUSIVE", "rc 0 com falhas")
@@ -221,13 +280,17 @@ def classify(res, allow, baseline_total):
         return "INCONCLUSIVE", "rc 1 sem falha de teste reconhecível (erro de módulo/sintaxe?)"
     if not all(f["assertion"] for f in failures):
         return "INCONCLUSIVE", "falha que não é asserção"
-    outside = [f["title"] for f in failures if f["title"] not in allow]
+    prim = {x["test"] for x in entry.get("primary") or []}
+    sec = {x["test"] for x in entry.get("secondary") or []}
+    outside = [f["title"] for f in failures if f["title"] not in prim | sec]
     if outside:
         return "INCONCLUSIVE", "falha fora da lista causal: " + "; ".join(t[:60] for t in outside)
+    if not any(f["title"] in prim for f in failures):
+        return "INCONCLUSIVE", "falha só em secundário (nenhuma asserção primária)"
     return "KILLED", ""
 
 
-def run_mutant(name, mutation):
+def run_mutant(mutation):
     with tempfile.TemporaryDirectory() as tmp:
         build(tmp, mutation)
         return run_suite(tmp)
@@ -237,39 +300,35 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         build(tmp)
         base = run_suite(tmp)
-    summary, failures = parse_tap(base["out"])
-    if base["timeout"] or base["rc"] != 0 or not summary["tests"] or summary["fail"] != "0" or failures:
+    summary, failures, titles = parse_tap(base["out"])
+    if base["timeout"] or base["rc"] != 0 or not summary["tests"] or summary["fail"] != "0" or failures or summary["skipped"] not in ("0", None):
         print("BASELINE FAILED", summary)
         return 2
     total = int(summary["tests"])
-    print(f"BASELINE PASS tests={total}")
-    if DISCOVER:
-        with ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 2)) as ex:
-            res = dict(zip(M, ex.map(lambda kv: run_mutant(*kv), M.items())))
-        print(json.dumps({n: sorted({f["title"] for f in parse_tap(r["out"])[1]}) for n, r in res.items()}, ensure_ascii=False, indent=1))
-        return 0
+    print(f"BASELINE PASS suite={SUITE} tests={total}")
     allow = load_allow()
-    missing = [n for n in M if not allow.get(n)]
-    if missing:
-        print("ALLOWLIST_MISSING", missing)
+    errors = validate_allow(allow, MUTANTS, set(titles))
+    if errors:
+        for e in errors:
+            print("ALLOWLIST_INVALID", e)
         return 2
 
     def judge(item):
         name, mutation = item
-        verdict, why = classify(run_mutant(name, mutation), set(allow[name]), total)
+        verdict, why = classify(run_mutant(mutation), allow[name], total)
         if verdict == "INCONCLUSIVE":
             first = why
-            verdict, why = classify(run_mutant(name, mutation), set(allow[name]), total)
+            verdict, why = classify(run_mutant(mutation), allow[name], total)
             why = f"{first} | repetição: {why}" if verdict == "INCONCLUSIVE" else why
         return name, verdict, why
 
-    with ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 2)) as ex:
-        results = list(ex.map(judge, M.items()))
+    with ThreadPoolExecutor(max_workers=min(SUITES[SUITE]["workers"], os.cpu_count() or 2)) as ex:
+        results = list(ex.map(judge, MUTANTS.items()))
     counts = {"KILLED": 0, "SURVIVED": 0, "INCONCLUSIVE": 0}
     for name, verdict, why in results:
         counts[verdict] += 1
         print(f"MUTANT {name} {verdict}" + (f" ({why})" if why else ""))
-    print(f"MUTANTS total={len(results)} killed={counts['KILLED']} survived={counts['SURVIVED']} inconclusive={counts['INCONCLUSIVE']}")
+    print(f"MUTANTS suite={SUITE} total={len(results)} killed={counts['KILLED']} survived={counts['SURVIVED']} inconclusive={counts['INCONCLUSIVE']}")
     if counts["SURVIVED"]:
         return 1
     if counts["INCONCLUSIVE"]:

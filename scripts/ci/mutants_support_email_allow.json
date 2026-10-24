@@ -1,350 +1,1194 @@
 {
- "A1 counters reset at ack transition (SQL)": [
-  "lease, recuo e estado fazem parte dos comandos do outbox (concorrência e redelivery)"
- ],
- "A1 dead alert never sent": [
-  "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar",
-  "orçamento global por mensagem: falhas de envio do encaminhamento contam na confirmação; esgotar => ack_dead sem desfazer o encaminhamento"
- ],
- "A2 alert rate limit removed": [
-  "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar"
- ],
- "A2 counters reset at ack transition (chain)": [
-  "lease, recuo e estado fazem parte dos comandos do outbox (concorrência e redelivery)"
- ],
- "A3 alert slot not released on failure": [
-  "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar"
- ],
- "A4 dead rows not marked alerted": [
-  "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar",
-  "orçamento global por mensagem: falhas de envio do encaminhamento contam na confirmação; esgotar => ack_dead sem desfazer o encaminhamento"
- ],
- "A5 backlog count threshold ignored": [
-  "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar"
- ],
- "A6 backlog age threshold ignored": [
-  "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar"
- ],
- "B1 future minute accepted": [
-  "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica"
- ],
- "B1 lease ignores attempts/lifetime": [
-  "lease, recuo e estado fazem parte dos comandos do outbox (concorrência e redelivery)"
- ],
- "B2 code budget ignores attempts": [
-  "orçamento: 10+ tentativas ou fora da janela de 23 h nunca chegam a um efeito externo (SQL e código)"
- ],
- "B2 previous minute rejected": [
-  "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica"
- ],
- "B3 code budget ignores lifetime": [
-  "orçamento: 10+ tentativas ou fora da janela de 23 h nunca chegam a um efeito externo (SQL e código)"
- ],
- "B3 replay accepted (nonce not enforced)": [
-  "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica"
- ],
- "B4 non-empty body accepted": [
-  "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica"
- ],
- "B4 reap removed": [
-  "orçamento: 10+ tentativas ou fora da janela de 23 h nunca chegam a um efeito externo (SQL e código)"
- ],
- "B5 canonical string changed": [
-  "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica"
- ],
- "B5 lifetime beyond idempotency window": [
-  "orçamento: 10+ tentativas ou fora da janela de 23 h nunca chegam a um efeito externo (SQL e código)"
- ],
- "B6 due ignores budget": [
-  "lease, recuo e estado fazem parte dos comandos do outbox (concorrência e redelivery)"
- ],
- "B6 nonce format weakened": [
-  "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica"
- ],
- "B7 internal header authenticates": [
-  "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica"
- ],
- "C1 reason codes collapsed": [
-  "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
-  "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status"
- ],
- "C2 key-permission alert not sent": [
-  "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status"
- ],
- "C3 401 not classified as key permission": [
-  "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status"
- ],
- "C4 last_reason not stored": [
-  "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
-  "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status"
- ],
- "C5 network error classes lost": [
-  "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
-  "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status"
- ],
- "D1 duplicate re-forwarded (no lease state check)": [
-  "lease, recuo e estado fazem parte dos comandos do outbox (concorrência e redelivery)"
- ],
- "D10 cron drain removed": [
-  "Worker: webhook interceptado antes do legado/WhatsApp, outbox drenado no cron horário; doc exige responder como suporte@"
- ],
- "D2 ack failure finalizes (never retried)": [
-  "falha na confirmação depois do encaminhamento: fica ack_pending e a recuperação envia exatamente uma confirmação",
-  "orçamento global de LEITURA: 9 falhas no encaminhamento + 1 na releitura da confirmação => ack_dead, encaminhamento preservado",
-  "orçamento global por mensagem: falhas de envio do encaminhamento contam na confirmação; esgotar => ack_dead sem desfazer o encaminhamento"
- ],
- "D3 forward failure goes dead at once": [
-  "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar",
-  "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica",
-  "dreno: uma linha só de contagens por execução, inclusive sem configuração e com exceção",
-  "falha na confirmação depois do encaminhamento: fica ack_pending e a recuperação envia exatamente uma confirmação",
-  "falha no encaminhamento: registro durável, recuo, cron encaminha exatamente uma vez e confirma uma vez",
-  "lease impede processamento concorrente; tentativas esgotadas => forward_dead e o cron para",
-  "logs do cron: só contagens e categorias fechadas (sem email_id, remetente, assunto, Reply-To ou corpo); fila vencida => overdue",
-  "orçamento global de LEITURA: 9 falhas no encaminhamento + 1 na releitura da confirmação => ack_dead, encaminhamento preservado",
-  "orçamento global por mensagem: falhas de envio do encaminhamento contam na confirmação; esgotar => ack_dead sem desfazer o encaminhamento",
-  "orçamentos separados: falhas de leitura não consomem tentativas de envio",
-  "provedor automático: encaminhamento falhando NUNCA marca skipped/done; webhook duplicado + 2 drenos => 1 encaminhamento, 0 confirmação"
- ],
- "D4 backoff ignored": [
-  "lease, recuo e estado fazem parte dos comandos do outbox (concorrência e redelivery)"
- ],
- "D5 lease ignored": [
-  "lease, recuo e estado fazem parte dos comandos do outbox (concorrência e redelivery)"
- ],
- "D6 no dead state (infinite retries)": [
-  "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
-  "orçamento: 10+ tentativas ou fora da janela de 23 h nunca chegam a um efeito externo (SQL e código)"
- ],
- "D7 forward idempotency key dropped": [
-  "falha no encaminhamento: registro durável, recuo, cron encaminha exatamente uma vez e confirma uma vez",
-  "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos"
- ],
- "D8 ack idempotency key dropped": [
-  "falha na confirmação depois do encaminhamento: fica ack_pending e a recuperação envia exatamente uma confirmação",
-  "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos"
- ],
- "D9 webhook fails when step fails (not durable 200)": [
-  "falha no encaminhamento: registro durável, recuo, cron encaminha exatamente uma vez e confirma uma vez",
-  "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
-  "redelivery do mesmo email_id depois de concluído: duplicado, nenhum envio novo"
- ],
- "F1 reply-to dropped": [
-  "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa",
-  "corpo não confiável: instruções e endereços no corpo não mudam destinatário, supressão, estado nem fluxo",
-  "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos"
- ],
- "F2 subject prefix dropped": [
-  "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos"
- ],
- "F3 forward target hardcoded fallback": [
-  "contato@ e destino via KV; destino ausente ou no próprio domínio => 503; nada fixo no código",
-  "dreno: uma linha só de contagens por execução, inclusive sem configuração e com exceção"
- ],
- "F4 self-domain forward allowed": [
-  "contato@ e destino via KV; destino ausente ou no próprio domínio => 503; nada fixo no código"
- ],
- "F5 contato alias removed": [
-  "contato@ e destino via KV; destino ausente ou no próprio domínio => 503; nada fixo no código"
- ],
- "F6 content logged": [
-  "confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável"
- ],
- "F7 send key used to read received mail": [
-  "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
-  "sem a chave de leitura do Resend: 503 ANTES de aceitar (nenhuma linha, nenhuma chamada)",
-  "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos"
- ],
- "G1a sender from body header": [
-  "remetente decidido pelo metadado do provedor (from da API), não por cabeçalho; normalizado; vários endereços => inválido"
- ],
- "G1b multiple addresses accepted": [
-  "remetente decidido pelo metadado do provedor (from da API), não por cabeçalho; normalizado; vários endereços => inválido"
- ],
- "G2a reply-to with two recipients takes first": [
-  "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa"
- ],
- "G2b CRLF/multi in reply-to accepted": [
-  "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa"
- ],
- "G2c reply-to from headers (outside metadata)": [
-  "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa"
- ],
- "G3 skipped marked when forward fails": [
-  "logs do cron: só contagens e categorias fechadas (sem email_id, remetente, assunto, Reply-To ou corpo); fila vencida => overdue",
-  "provedor automático: encaminhamento falhando NUNCA marca skipped/done; webhook duplicado + 2 drenos => 1 encaminhamento, 0 confirmação"
- ],
- "G5a 404 permanent at once": [
-  "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
-  "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status"
- ],
- "G5b 404 transient forever": [
-  "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios"
- ],
- "G5c 400/422 transient": [
-  "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios"
- ],
- "G5d 429/5xx permanent": [
-  "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
-  "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status"
- ],
- "G6 shared read/send budget": [
-  "lease, recuo e estado fazem parte dos comandos do outbox (concorrência e redelivery)"
- ],
- "G6b code shares counter": [
-  "orçamentos separados: falhas de leitura não consomem tentativas de envio"
- ],
- "G7 global suppression API call": [
-  "nenhuma chamada à supressão global do Resend: só /emails e /emails/receiving/*"
- ],
- "G8a email id logged": [
-  "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
-  "logs do cron: só contagens e categorias fechadas (sem email_id, remetente, assunto, Reply-To ou corpo); fila vencida => overdue"
- ],
- "G8b overdue never flagged": [
-  "logs do cron: só contagens e categorias fechadas (sem email_id, remetente, assunto, Reply-To ou corpo); fila vencida => overdue"
- ],
- "G8c cron stays green on overdue": [
-  "Worker: webhook interceptado antes do legado/WhatsApp, outbox drenado no cron horário; doc exige responder como suporte@"
- ],
- "G9 body text drives reply-to": [
-  "corpo não confiável: instruções e endereços no corpo não mudam destinatário, supressão, estado nem fluxo"
- ],
- "H1 plain hash instead of HMAC": [
-  "remetente pseudonimizado com HMAC (LEAD_PRIVACY_SECRET); sem segredo => 503, nunca hash simples"
- ],
- "H2 missing privacy secret accepted": [
-  "remetente pseudonimizado com HMAC (LEAD_PRIVACY_SECRET); sem segredo => 503, nunca hash simples"
- ],
- "I1 409 idempotent treated as failure": [
-  "409 invalid_idempotent_request no encaminhamento = já encaminhado antes: não reenvia"
- ],
- "K1 drain run not logged": [
-  "dreno: uma linha só de contagens por execução, inclusive sem configuração e com exceção"
- ],
- "K2 drain signature not checked": [
-  "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica"
- ],
- "K4 dispatch never uses SELF": [
-  "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica"
- ],
- "K5 drain error class lost": [
-  "dreno: uma linha só de contagens por execução, inclusive sem configuração e com exceção"
- ],
- "K6 drain route removed from worker": [
-  "Worker: webhook interceptado antes do legado/WhatsApp, outbox drenado no cron horário; doc exige responder como suporte@"
- ],
- "K7 drain dispatched after preflight": [
-  "Worker: webhook interceptado antes do legado/WhatsApp, outbox drenado no cron horário; doc exige responder como suporte@"
- ],
- "L1 auto-submitted ignored": [
-  "confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável"
- ],
- "L2 automated verdict ignored": [
-  "confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável",
-  "provedor automático: encaminhamento falhando NUNCA marca skipped/done; webhook duplicado + 2 drenos => 1 encaminhamento, 0 confirmação",
-  "remetente decidido pelo metadado do provedor (from da API), não por cabeçalho; normalizado; vários endereços => inválido",
-  "supressão da confirmação: support@support.whatsapp.com (qualquer caixa) nunca recebe; encaminhamento obrigatório"
- ],
- "L4 noreply sender acked": [
-  "confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável"
- ],
- "L5 own domain acked": [
-  "confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável"
- ],
- "L6 ack without Auto-Submitted": [
-  "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos"
- ],
- "O1 forward sent from owner address": [
-  "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos"
- ],
- "O2 ack reply-to points to owner": [
-  "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos"
- ],
- "O3 ack sent from owner address": [
-  "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos"
- ],
- "P1 sandbox address handled here": [
-  "prova-sandbox@, outros destinatários e eventos de entrega seguem para o handler legado (null), sem efeito"
- ],
- "P2 delivery events swallowed": [
-  "prova-sandbox@, outros destinatários e eventos de entrega seguem para o handler legado (null), sem efeito"
- ],
- "P3 original body consumed": [
-  "prova-sandbox@, outros destinatários e eventos de entrega seguem para o handler legado (null), sem efeito"
- ],
- "Q1 sender quota not enforced": [
-  "cota reservada atomicamente: um único comando trava a linha, reserva remetente e global e muda o estado"
- ],
- "Q2 daily cap not enforced": [
-  "cota reservada atomicamente: um único comando trava a linha, reserva remetente e global e muda o estado"
- ],
- "Q3 global reserved even without sender slot": [
-  "cota reservada atomicamente: um único comando trava a linha, reserva remetente e global e muda o estado"
- ],
- "Q4 row lock dropped": [
-  "cota reservada atomicamente: um único comando trava a linha, reserva remetente e global e muda o estado"
- ],
- "R1 receiving key not required before accepting": [
-  "sem a chave de leitura do Resend: 503 ANTES de aceitar (nenhuma linha, nenhuma chamada)"
- ],
- "S1 signature check bypassed": [
-  "assinatura inválida, ausente, vencida, sem segredo ou fora do formato é recusada (401) sem efeito"
- ],
- "S1 whatsapp sender ack not suppressed": [
-  "provedor automático: encaminhamento falhando NUNCA marca skipped/done; webhook duplicado + 2 drenos => 1 encaminhamento, 0 confirmação",
-  "remetente decidido pelo metadado do provedor (from da API), não por cabeçalho; normalizado; vários endereços => inválido",
-  "supressão da confirmação: support@support.whatsapp.com (qualquer caixa) nunca recebe; encaminhamento obrigatório"
- ],
- "S2 suppression by suffix (too broad)": [
-  "supressão da confirmação: support@support.whatsapp.com (qualquer caixa) nunca recebe; encaminhamento obrigatório"
- ],
- "S2 timestamp tolerance ignored": [
-  "assinatura inválida, ausente, vencida, sem segredo ou fora do formato é recusada (401) sem efeito"
- ],
- "S3 any v1 value accepted": [
-  "assinatura inválida, ausente, vencida, sem segredo ou fora do formato é recusada (401) sem efeito"
- ],
- "S4 missing secret accepted": [
-  "assinatura inválida, ausente, vencida, sem segredo ou fora do formato é recusada (401) sem efeito"
- ],
- "W1 whatsapp ticket reply-to ignored": [
-  "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa"
- ],
- "W2 ticket digit bounds removed": [
-  "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa"
- ],
- "W3 ticket reply-to for any sender": [
-  "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa"
- ],
- "X1 script content kept": [
-  "HTML higienizado por lista de permissão e com teto de tamanho"
- ],
- "X10 attachment total cap removed": [
-  "anexos: executáveis, tamanho desconhecido/excessivo e excesso de quantidade são recusados"
- ],
- "X2 any tag allowed": [
-  "HTML higienizado por lista de permissão e com teto de tamanho"
- ],
- "X3 javascript href allowed": [
-  "HTML higienizado por lista de permissão e com teto de tamanho"
- ],
- "X4 nested drop not iterated": [
-  "HTML higienizado por lista de permissão e com teto de tamanho"
- ],
- "X5 html output cap removed": [
-  "HTML higienizado por lista de permissão e com teto de tamanho"
- ],
- "X6 executable extension accepted": [
-  "anexos: executáveis, tamanho desconhecido/excessivo e excesso de quantidade são recusados"
- ],
- "X7 executable content-type accepted": [
-  "anexos: executáveis, tamanho desconhecido/excessivo e excesso de quantidade são recusados"
- ],
- "X8 unknown size accepted": [
-  "anexos: executáveis, tamanho desconhecido/excessivo e excesso de quantidade são recusados"
- ],
- "X9 attachment count cap removed": [
-  "anexos: executáveis, tamanho desconhecido/excessivo e excesso de quantidade são recusados"
- ]
+ "A1 dead alert never sent": {
+  "change": "alerta de mortas nunca é enviado",
+  "primary": [
+   {
+    "test": "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar",
+    "why": "afirma um alerta 'não entregues'"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "orçamento global por mensagem: falhas de envio do encaminhamento contam na confirmação; esgotar => ack_dead sem desfazer o encaminhamento",
+    "why": "afirma alerta de morte exatamente uma vez após ack_dead"
+   }
+  ]
+ },
+ "A2 alert rate limit removed": {
+  "change": "limite de alerta removido",
+  "primary": [
+   {
+    "test": "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar",
+    "why": "afirma no máximo 1 alerta por tipo a cada 6 h"
+   }
+  ],
+  "secondary": []
+ },
+ "A3 alert slot not released on failure": {
+  "change": "vaga de alerta não é liberada após falha",
+  "primary": [
+   {
+    "test": "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar",
+    "why": "afirma alerta enviado depois de uma falha de envio"
+   }
+  ],
+  "secondary": []
+ },
+ "A4 dead rows not marked alerted": {
+  "change": "linhas mortas não são marcadas como alertadas",
+  "primary": [
+   {
+    "test": "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar",
+    "why": "afirma que o mesmo morto não gera novo alerta após 7 h"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "orçamento global por mensagem: falhas de envio do encaminhamento contam na confirmação; esgotar => ack_dead sem desfazer o encaminhamento",
+    "why": "afirma alerta de morte exatamente uma vez após ack_dead"
+   }
+  ]
+ },
+ "A5 backlog count threshold ignored": {
+  "change": "ignora o limiar de quantidade da fila",
+  "primary": [
+   {
+    "test": "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar",
+    "why": "afirma alerta com 5 pendentes recentes"
+   }
+  ],
+  "secondary": []
+ },
+ "A6 backlog age threshold ignored": {
+  "change": "ignora o limiar de idade da fila",
+  "primary": [
+   {
+    "test": "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar",
+    "why": "afirma alerta com 1 pendente antigo (>= 2 h)"
+   }
+  ],
+  "secondary": []
+ },
+ "B1 lease ignores attempts/lifetime": {
+  "change": "lease ignora tentativas/janela (SQL)",
+  "primary": [
+   {
+    "test": "SQL lease: só linha pendente, vencida, sem lease ativo e dentro do orçamento; marca lease e conta tentativa",
+    "why": "afirma orçamento no lease"
+   }
+  ],
+  "secondary": []
+ },
+ "B2 code budget ignores attempts": {
+  "change": "orçamento em código ignora tentativas",
+  "primary": [
+   {
+    "test": "orçamento: 10+ tentativas ou fora da janela de 23 h nunca chegam a um efeito externo (SQL e código)",
+    "why": "afirma zero chamada com attempts > MAX e withinBudget false"
+   }
+  ],
+  "secondary": []
+ },
+ "B3 code budget ignores lifetime": {
+  "change": "orçamento em código ignora a janela",
+  "primary": [
+   {
+    "test": "orçamento: 10+ tentativas ou fora da janela de 23 h nunca chegam a um efeito externo (SQL e código)",
+    "why": "afirma zero chamada com idade >= 23 h e withinBudget false"
+   }
+  ],
+  "secondary": []
+ },
+ "B4 reap removed": {
+  "change": "remove o reap",
+  "primary": [
+   {
+    "test": "orçamento: 10+ tentativas ou fora da janela de 23 h nunca chegam a um efeito externo (SQL e código)",
+    "why": "afirma forward_dead pelo cron sem tentativa"
+   }
+  ],
+  "secondary": []
+ },
+ "B5 lifetime beyond idempotency window": {
+  "change": "janela além da Idempotency-Key (48 h)",
+  "primary": [
+   {
+    "test": "orçamento: 10+ tentativas ou fora da janela de 23 h nunca chegam a um efeito externo (SQL e código)",
+    "why": "afirma nenhuma repetição após 23 h"
+   }
+  ],
+  "secondary": []
+ },
+ "B6 due ignores budget": {
+  "change": "due ignora o orçamento (SQL)",
+  "primary": [
+   {
+    "test": "SQL due e reap: dreno só pega linha elegível; reap mata quem estourou orçamento/janela",
+    "why": "afirma orçamento no comando due"
+   }
+  ],
+  "secondary": []
+ },
+ "C1 reason codes collapsed": {
+  "change": "motivos colapsados em um só",
+  "primary": [
+   {
+    "test": "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
+    "why": "afirma last_reason por status"
+   },
+   {
+    "test": "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
+    "why": "afirma last_reason por classe"
+   }
+  ],
+  "secondary": []
+ },
+ "C2 key-permission alert not sent": {
+  "change": "não alerta chave recusada",
+  "primary": [
+   {
+    "test": "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
+    "why": "afirma alerta 'chave de leitura do Resend recusada' em 401/403"
+   }
+  ],
+  "secondary": []
+ },
+ "C3 401 not classified as key permission": {
+  "change": "401 não é permissão de chave",
+  "primary": [
+   {
+    "test": "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
+    "why": "afirma content_http_401_key_permission"
+   }
+  ],
+  "secondary": []
+ },
+ "C4 last_reason not stored": {
+  "change": "não grava last_reason",
+  "primary": [
+   {
+    "test": "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
+    "why": "afirma row.last_reason"
+   },
+   {
+    "test": "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
+    "why": "afirma last_reason de 404/400/422"
+   }
+  ],
+  "secondary": []
+ },
+ "C5 network error classes lost": {
+  "change": "classes de rede perdidas",
+  "primary": [
+   {
+    "test": "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
+    "why": "afirma content_timeout/network_dns/network_reset"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
+    "why": "afirma content_network para fetch lançado"
+   }
+  ]
+ },
+ "D1 duplicate re-forwarded (no lease state check)": {
+  "change": "lease sem condição de estado pendente (SQL)",
+  "primary": [
+   {
+    "test": "SQL lease: só linha pendente, vencida, sem lease ativo e dentro do orçamento; marca lease e conta tentativa",
+    "why": "afirma 'state in (forward_pending, ack_pending)' no lease"
+   }
+  ],
+  "secondary": []
+ },
+ "D10 cron drain removed": {
+  "change": "remove o despacho do dreno no cron (compat)",
+  "primary": [
+   {
+    "test": "Worker: webhook interceptado antes do legado/WhatsApp, outbox drenado no cron horário; doc exige responder como suporte@",
+    "why": "afirma await dispatchSupportDrain no ramo horário"
+   }
+  ],
+  "secondary": []
+ },
+ "D2 ack failure finalizes (never retried)": {
+  "change": "falha da confirmação conclui a linha",
+  "primary": [
+   {
+    "test": "falha na confirmação depois do encaminhamento: fica ack_pending e a recuperação envia exatamente uma confirmação",
+    "why": "afirma ack_pending após falha e exatamente uma confirmação na recuperação"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "orçamento global por mensagem: falhas de envio do encaminhamento contam na confirmação; esgotar => ack_dead sem desfazer o encaminhamento",
+    "why": "espera que a falha da confirmação conte para ack_dead; concluir vira done"
+   },
+   {
+    "test": "orçamento global de LEITURA: 9 falhas no encaminhamento + 1 na releitura da confirmação => ack_dead, encaminhamento preservado",
+    "why": "espera ack_pending após a falha de envio da confirmação"
+   }
+  ]
+ },
+ "D3 forward failure goes dead at once": {
+  "broad_reason": "retentar uma falha transitória de encaminhamento é pré-condição desses cenários; a morte prematura remove a pré-condição em cada teste listado (cada um com justificativa)",
+  "change": "falha de envio do ENCAMINHAMENTO vira morte imediata (só o passo de encaminhamento)",
+  "primary": [
+   {
+    "test": "falha no encaminhamento: registro durável, recuo, cron encaminha exatamente uma vez e confirma uma vez",
+    "why": "afirma forward_pending com recuo após uma falha e encaminhamento na retentativa"
+   },
+   {
+    "test": "lease impede processamento concorrente; tentativas esgotadas => forward_dead e o cron para",
+    "why": "afirma forward_dead só após MAX_SEND_FAILURES tentativas de encaminhamento"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "alertas ao dono: linhas mortas e fila acumulada/antiga, sem conteúdo, 1 por tipo a cada 6 h, liberado se o envio falhar",
+    "why": "o alerta de fila atrasada depende de pendências mantidas por falhas transitórias de encaminhamento"
+   },
+   {
+    "test": "dreno: uma linha só de contagens por execução, inclusive sem configuração e com exceção",
+    "why": "a linha de contagem do dreno espera done=1 após uma falha transitória de encaminhamento"
+   },
+   {
+    "test": "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica",
+    "why": "o dreno autenticado espera concluir um encaminhamento que falhou uma vez"
+   },
+   {
+    "test": "orçamento global por mensagem: falhas de envio do encaminhamento contam na confirmação; esgotar => ack_dead sem desfazer o encaminhamento",
+    "why": "o cenário 9+1 exige 9 falhas de encaminhamento retentadas antes do teto"
+   },
+   {
+    "test": "provedor automático: encaminhamento falhando NUNCA marca skipped/done; webhook duplicado + 2 drenos => 1 encaminhamento, 0 confirmação",
+    "why": "o caso do provedor automático exige retentar o encaminhamento após 2 falhas"
+   },
+   {
+    "test": "orçamentos separados: falhas de leitura não consomem tentativas de envio",
+    "why": "o orçamento separado exige 9 falhas de encaminhamento retentadas"
+   },
+   {
+    "test": "logs do cron: só contagens e categorias fechadas (sem email_id, remetente, assunto, Reply-To ou corpo); fila vencida => overdue",
+    "why": "a fila vencida do cron é construída com falhas de encaminhamento retentadas"
+   }
+  ]
+ },
+ "D4 backoff ignored": {
+  "change": "lease ignora o recuo (SQL)",
+  "primary": [
+   {
+    "test": "SQL lease: só linha pendente, vencida, sem lease ativo e dentro do orçamento; marca lease e conta tentativa",
+    "why": "afirma 'next_attempt_at <= now()' no lease"
+   }
+  ],
+  "secondary": []
+ },
+ "D5 lease ignored": {
+  "change": "lease ignora a exclusividade (SQL)",
+  "primary": [
+   {
+    "test": "SQL lease: só linha pendente, vencida, sem lease ativo e dentro do orçamento; marca lease e conta tentativa",
+    "why": "afirma '(lease_until is null or lease_until < now())' no lease"
+   }
+  ],
+  "secondary": []
+ },
+ "D6 no dead state (infinite retries)": {
+  "change": "nunca marca *_dead",
+  "primary": [
+   {
+    "test": "orçamento: 10+ tentativas ou fora da janela de 23 h nunca chegam a um efeito externo (SQL e código)",
+    "why": "afirma forward_dead para orçamento/janela estourados"
+   },
+   {
+    "test": "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
+    "why": "afirma forward_dead para 400/422 e 404 tardio"
+   }
+  ],
+  "secondary": []
+ },
+ "D7 forward idempotency key dropped": {
+  "change": "remove a Idempotency-Key do encaminhamento",
+  "primary": [
+   {
+    "test": "falha no encaminhamento: registro durável, recuo, cron encaminha exatamente uma vez e confirma uma vez",
+    "why": "afirma idem support-fwd/<id> em todas as tentativas"
+   },
+   {
+    "test": "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos",
+    "why": "afirma idem support-fwd/em-1"
+   }
+  ],
+  "secondary": []
+ },
+ "D8 ack idempotency key dropped": {
+  "change": "remove a Idempotency-Key da confirmação",
+  "primary": [
+   {
+    "test": "falha na confirmação depois do encaminhamento: fica ack_pending e a recuperação envia exatamente uma confirmação",
+    "why": "afirma idem support-ack/<id> em todas as tentativas"
+   },
+   {
+    "test": "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos",
+    "why": "afirma idem support-ack/em-1"
+   }
+  ],
+  "secondary": []
+ },
+ "D9 webhook fails when step fails (not durable 200)": {
+  "change": "webhook responde 503 quando o passo falha",
+  "primary": [
+   {
+    "test": "falha no encaminhamento: registro durável, recuo, cron encaminha exatamente uma vez e confirma uma vez",
+    "why": "afirma 200 com state forward_pending (registro durável)"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
+    "why": "afirma 200 'registro durável aceito' quando a leitura falha"
+   },
+   {
+    "test": "redelivery do mesmo email_id depois de concluído: duplicado, nenhum envio novo",
+    "why": "a redelivery com a linha concluída recebe estado not_due; o mutante a transforma em 503"
+   }
+  ]
+ },
+ "F1 reply-to dropped": {
+  "change": "remove o Reply-To do encaminhamento",
+  "primary": [
+   {
+    "test": "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos",
+    "why": "afirma reply_to = [cliente]"
+   },
+   {
+    "test": "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa",
+    "why": "afirma reply_to esperado em cada caso de chamado"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "corpo não confiável: instruções e endereços no corpo não mudam destinatário, supressão, estado nem fluxo",
+    "why": "o teste de corpo não confiável também afirma reply_to = [cliente]"
+   }
+  ]
+ },
+ "F2 subject prefix dropped": {
+  "change": "remove o prefixo do assunto",
+  "primary": [
+   {
+    "test": "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos",
+    "why": "afirma assunto '[ZEVANORY suporte] …'"
+   }
+  ],
+  "secondary": []
+ },
+ "F3 forward target hardcoded fallback": {
+  "change": "cai para destino fixo quando não configurado",
+  "primary": [
+   {
+    "test": "contato@ e destino via KV; destino ausente ou no próprio domínio => 503; nada fixo no código",
+    "why": "afirma 503 sem destino configurado"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "dreno: uma linha só de contagens por execução, inclusive sem configuração e com exceção",
+    "why": "o dreno sem destino precisa registrar skipped unconfigured; o destino fixo o torna configurado"
+   }
+  ]
+ },
+ "F4 self-domain forward allowed": {
+  "change": "aceita destino no próprio domínio",
+  "primary": [
+   {
+    "test": "contato@ e destino via KV; destino ausente ou no próprio domínio => 503; nada fixo no código",
+    "why": "afirma 503 para destino suporte@"
+   }
+  ],
+  "secondary": []
+ },
+ "F5 contato alias removed": {
+  "change": "remove o alias contato@",
+  "primary": [
+   {
+    "test": "contato@ e destino via KV; destino ausente ou no próprio domínio => 503; nada fixo no código",
+    "why": "afirma que contato@ é tratado (200)"
+   }
+  ],
+  "secondary": []
+ },
+ "F6 content logged": {
+  "change": "registra o texto no log do caminho sem confirmação",
+  "primary": [
+   {
+    "test": "confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável",
+    "why": "afirma log sem conteúdo nos casos de auto-resposta"
+   }
+  ],
+  "secondary": []
+ },
+ "F7 send key used to read received mail": {
+  "change": "usa a chave de envio para ler recebidos",
+  "primary": [
+   {
+    "test": "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
+    "why": "afirma GET com Bearer da chave de leitura"
+   },
+   {
+    "test": "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos",
+    "why": "afirma Bearer re_full_receiving na leitura"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "sem a chave de leitura do Resend: 503 ANTES de aceitar (nenhuma linha, nenhuma chamada)",
+    "why": "afirma que a chave de leitura vinda do KV é a usada no GET"
+   }
+  ]
+ },
+ "G1a sender from body header": {
+  "change": "remetente pelo cabeçalho do corpo",
+  "primary": [
+   {
+    "test": "remetente decidido pelo metadado do provedor (from da API), não por cabeçalho; normalizado; vários endereços => inválido",
+    "why": "afirma confirmação ao cliente quando só o cabeçalho diz WhatsApp"
+   }
+  ],
+  "secondary": []
+ },
+ "G1b multiple addresses accepted": {
+  "change": "aceita vários endereços no remetente",
+  "primary": [
+   {
+    "test": "remetente decidido pelo metadado do provedor (from da API), não por cabeçalho; normalizado; vários endereços => inválido",
+    "why": "afirma providerAddress vazio para listas"
+   }
+  ],
+  "secondary": []
+ },
+ "G2a reply-to with two recipients takes first": {
+  "change": "Reply-To com dois destinatários aceita o primeiro",
+  "primary": [
+   {
+    "test": "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa",
+    "why": "afirma sender no caso de dois destinatários"
+   }
+  ],
+  "secondary": []
+ },
+ "G2b CRLF/multi in reply-to accepted": {
+  "change": "Reply-To com CRLF/lista aceito",
+  "primary": [
+   {
+    "test": "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa",
+    "why": "afirma sender nos casos CRLF/LF/lista"
+   }
+  ],
+  "secondary": []
+ },
+ "G2c reply-to from headers (outside metadata)": {
+  "change": "Reply-To lido do cabeçalho",
+  "primary": [
+   {
+    "test": "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa",
+    "why": "afirma sender quando o ticket só está no cabeçalho"
+   }
+  ],
+  "secondary": []
+ },
+ "G3 skipped marked when forward fails": {
+  "change": "marca skipped com encaminhamento falhando",
+  "primary": [
+   {
+    "test": "provedor automático: encaminhamento falhando NUNCA marca skipped/done; webhook duplicado + 2 drenos => 1 encaminhamento, 0 confirmação",
+    "why": "afirma ack_status null enquanto o encaminhamento falha"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "logs do cron: só contagens e categorias fechadas (sem email_id, remetente, assunto, Reply-To ou corpo); fila vencida => overdue",
+    "why": "a fila vencida do cron usa remetente WhatsApp com encaminhamento falhando; o mutante conclui a linha"
+   }
+  ]
+ },
+ "G5a 404 permanent at once": {
+  "change": "404 permanente de imediato",
+  "primary": [
+   {
+    "test": "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
+    "why": "afirma 404 seguido de sucesso"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
+    "why": "afirma forward_pending para 404"
+   }
+  ]
+ },
+ "G5b 404 transient forever": {
+  "change": "404 transitório para sempre",
+  "primary": [
+   {
+    "test": "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
+    "why": "afirma 404 tardio => forward_dead permanente"
+   }
+  ],
+  "secondary": []
+ },
+ "G5c 400/422 transient": {
+  "change": "400/422 transitórios",
+  "primary": [
+   {
+    "test": "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
+    "why": "afirma forward_dead para 400/422"
+   }
+  ],
+  "secondary": []
+ },
+ "G5d 429/5xx permanent": {
+  "change": "429/5xx permanentes",
+  "primary": [
+   {
+    "test": "leitura do conteúdo: 404 transitório por tempo limitado (depois sucesso), 400/422 permanentes, 429/timeout/DNS/reset/5xx transitórios",
+    "why": "afirma forward_pending para 429/5xx"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
+    "why": "afirma forward_pending para 429/5xx"
+   }
+  ]
+ },
+ "G6 shared read/send budget": {
+  "change": "orçamento compartilhado no SQL de retry",
+  "primary": [
+   {
+    "test": "SQL retry: contadores de leitura e de envio são distintos (cada falha incrementa só o seu tipo)",
+    "why": "afirma incremento por tipo no SQL de retry"
+   }
+  ],
+  "secondary": []
+ },
+ "G6b code shares counter": {
+  "change": "código soma os dois contadores",
+  "primary": [
+   {
+    "test": "orçamentos separados: falhas de leitura não consomem tentativas de envio",
+    "why": "afirma envio com orçamento próprio após 5 falhas de leitura"
+   }
+  ],
+  "secondary": []
+ },
+ "G7 global suppression API call": {
+  "change": "chamada à supressão global do Resend",
+  "primary": [
+   {
+    "test": "nenhuma chamada à supressão global do Resend: só /emails e /emails/receiving/*",
+    "why": "afirma só /emails e /emails/receiving/*"
+   }
+  ],
+  "secondary": []
+ },
+ "G8a email id logged": {
+  "change": "email_id no log",
+  "primary": [
+   {
+    "test": "logs do cron: só contagens e categorias fechadas (sem email_id, remetente, assunto, Reply-To ou corpo); fila vencida => overdue",
+    "why": "afirma ausência do id no log do cron"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "leitura do recebido: GET /emails/receiving/{email_id} com a chave de leitura; motivos sem dado pessoal por status",
+    "why": "afirma log sem 'em-1' nos motivos de leitura"
+   }
+  ]
+ },
+ "G8b overdue never flagged": {
+  "change": "overdue nunca marcado",
+  "primary": [
+   {
+    "test": "logs do cron: só contagens e categorias fechadas (sem email_id, remetente, assunto, Reply-To ou corpo); fila vencida => overdue",
+    "why": "afirma overdue true com fila >= 2 h"
+   }
+  ],
+  "secondary": []
+ },
+ "G8c cron stays green on overdue": {
+  "change": "cron continua verde com fila vencida (compat)",
+  "primary": [
+   {
+    "test": "Worker: webhook interceptado antes do legado/WhatsApp, outbox drenado no cron horário; doc exige responder como suporte@",
+    "why": "afirma o throw support_backlog_overdue depois das tarefas"
+   }
+  ],
+  "secondary": []
+ },
+ "G9 body text drives reply-to": {
+  "change": "Reply-To tirado do corpo",
+  "primary": [
+   {
+    "test": "corpo não confiável: instruções e endereços no corpo não mudam destinatário, supressão, estado nem fluxo",
+    "why": "afirma reply_to = cliente apesar de 'Reply-To:' no corpo"
+   }
+  ],
+  "secondary": []
+ },
+ "H1 plain hash instead of HMAC": {
+  "change": "hash simples em vez de HMAC",
+  "primary": [
+   {
+    "test": "remetente pseudonimizado com HMAC (LEAD_PRIVACY_SECRET); sem segredo => 503, nunca hash simples",
+    "why": "afirma sender_ref = HMAC com LEAD_PRIVACY_SECRET"
+   }
+  ],
+  "secondary": []
+ },
+ "H2 missing privacy secret accepted": {
+  "change": "aceita sem segredo de privacidade",
+  "primary": [
+   {
+    "test": "remetente pseudonimizado com HMAC (LEAD_PRIVACY_SECRET); sem segredo => 503, nunca hash simples",
+    "why": "afirma 503 sem LEAD_PRIVACY_SECRET"
+   }
+  ],
+  "secondary": []
+ },
+ "I1 409 idempotent treated as failure": {
+  "change": "409 idempotente tratado como falha",
+  "primary": [
+   {
+    "test": "409 invalid_idempotent_request no encaminhamento = já encaminhado antes: não reenvia",
+    "why": "afirma um único POST de encaminhamento e forward_id idempotent:"
+   }
+  ],
+  "secondary": []
+ },
+ "K1 drain run not logged": {
+  "change": "dreno não registra a execução",
+  "primary": [
+   {
+    "test": "dreno: uma linha só de contagens por execução, inclusive sem configuração e com exceção",
+    "why": "afirma exatamente uma linha 'drain' por execução"
+   }
+  ],
+  "secondary": []
+ },
+ "K2 drain signature not checked": {
+  "change": "assinatura do dreno não conferida",
+  "primary": [
+   {
+    "test": "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica",
+    "why": "afirma 401 para segredo/caminho/método adulterados"
+   }
+  ],
+  "secondary": []
+ },
+ "K4 dispatch never uses SELF": {
+  "change": "dispatch nunca usa SELF",
+  "primary": [
+   {
+    "test": "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica",
+    "why": "afirma dispatch via SELF com nonces distintos"
+   }
+  ],
+  "secondary": []
+ },
+ "K5 drain error class lost": {
+  "change": "classe de erro do dreno perdida",
+  "primary": [
+   {
+    "test": "dreno: uma linha só de contagens por execução, inclusive sem configuração e com exceção",
+    "why": "afirma error too_many_subrequests"
+   }
+  ],
+  "secondary": []
+ },
+ "K6 drain route removed from worker": {
+  "change": "rota do dreno removida do Worker",
+  "primary": [
+   {
+    "test": "Worker: webhook interceptado antes do legado/WhatsApp, outbox drenado no cron horário; doc exige responder como suporte@",
+    "why": "afirma a rota /api/internal/support/outbox/drain"
+   }
+  ],
+  "secondary": []
+ },
+ "K7 drain dispatched after preflight": {
+  "change": "dreno despachado depois do preflight",
+  "primary": [
+   {
+    "test": "Worker: webhook interceptado antes do legado/WhatsApp, outbox drenado no cron horário; doc exige responder como suporte@",
+    "why": "afirma o despacho antes de runSalesPreflight"
+   }
+  ],
+  "secondary": []
+ },
+ "L1 auto-submitted ignored": {
+  "change": "ignora Auto-Submitted",
+  "primary": [
+   {
+    "test": "confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável",
+    "why": "afirma sem confirmação para Auto-Submitted: auto-replied"
+   }
+  ],
+  "secondary": []
+ },
+ "L2 automated verdict ignored": {
+  "change": "ignora o veredito de automação",
+  "primary": [
+   {
+    "test": "confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável",
+    "why": "afirma sem confirmação para cada caso automático"
+   },
+   {
+    "test": "supressão da confirmação: support@support.whatsapp.com (qualquer caixa) nunca recebe; encaminhamento obrigatório",
+    "why": "afirma skipped_automated_provider para o WhatsApp"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "remetente decidido pelo metadado do provedor (from da API), não por cabeçalho; normalizado; vários endereços => inválido",
+    "why": "afirma supressão quando o metadado diz WhatsApp"
+   },
+   {
+    "test": "provedor automático: encaminhamento falhando NUNCA marca skipped/done; webhook duplicado + 2 drenos => 1 encaminhamento, 0 confirmação",
+    "why": "afirma 0 confirmação para o provedor automático"
+   }
+  ]
+ },
+ "L4 noreply sender acked": {
+  "change": "confirma remetente no-reply/mailer-daemon",
+  "primary": [
+   {
+    "test": "confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável",
+    "why": "afirma sem confirmação para no-reply e MAILER-DAEMON"
+   }
+  ],
+  "secondary": []
+ },
+ "L5 own domain acked": {
+  "change": "confirma remetente do próprio domínio",
+  "primary": [
+   {
+    "test": "confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável",
+    "why": "afirma sem confirmação para contato@zevanory.api.br"
+   }
+  ],
+  "secondary": []
+ },
+ "L6 ack without Auto-Submitted": {
+  "change": "confirmação sem Auto-Submitted",
+  "primary": [
+   {
+    "test": "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos",
+    "why": "afirma header Auto-Submitted: auto-replied na confirmação"
+   }
+  ],
+  "secondary": []
+ },
+ "N1 future minute accepted": {
+  "change": "aceita minuto futuro",
+  "primary": [
+   {
+    "test": "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica",
+    "why": "afirma 401 para minuto futuro"
+   }
+  ],
+  "secondary": []
+ },
+ "N2 previous minute rejected": {
+  "change": "recusa o minuto anterior",
+  "primary": [
+   {
+    "test": "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica",
+    "why": "afirma 200 para o minuto anterior"
+   }
+  ],
+  "secondary": []
+ },
+ "N3 replay accepted (nonce not enforced)": {
+  "change": "aceita replay",
+  "primary": [
+   {
+    "test": "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica",
+    "why": "afirma 409 no replay e no segundo consumidor"
+   }
+  ],
+  "secondary": []
+ },
+ "N4 non-empty body accepted": {
+  "change": "aceita corpo não vazio",
+  "primary": [
+   {
+    "test": "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica",
+    "why": "afirma 400 para corpo"
+   }
+  ],
+  "secondary": []
+ },
+ "N5 canonical string changed": {
+  "change": "muda a string canônica",
+  "primary": [
+   {
+    "test": "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica",
+    "why": "afirma drainCanonical = v1\\nPOST\\n…"
+   }
+  ],
+  "secondary": []
+ },
+ "N6 nonce format weakened": {
+  "change": "formato de nonce frouxo",
+  "primary": [
+   {
+    "test": "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica",
+    "why": "afirma 401 para nonce maiúsculo/curto"
+   }
+  ],
+  "secondary": []
+ },
+ "N7 internal header authenticates": {
+  "change": "cabeçalho interno autentica",
+  "primary": [
+   {
+    "test": "dreno interno: HMAC de método+caminho+minuto+nonce; minuto atual/anterior; nonce consumido (replay 409); cabeçalho interno não autentica",
+    "why": "afirma 401 com x-zevanory-internal"
+   }
+  ],
+  "secondary": []
+ },
+ "O1 forward sent from owner address": {
+  "change": "encaminhamento sai do endereço do dono",
+  "primary": [
+   {
+    "test": "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos",
+    "why": "afirma from = suporte@ no encaminhamento"
+   }
+  ],
+  "secondary": []
+ },
+ "O2 ack reply-to points to owner": {
+  "change": "Reply-To da confirmação aponta para o dono",
+  "primary": [
+   {
+    "test": "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos",
+    "why": "afirma reply_to = [suporte@] e ausência do dono na confirmação"
+   }
+  ],
+  "secondary": []
+ },
+ "O3 ack sent from owner address": {
+  "change": "confirmação sai do endereço do dono",
+  "primary": [
+   {
+    "test": "suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos",
+    "why": "afirma from = suporte@ na confirmação"
+   }
+  ],
+  "secondary": []
+ },
+ "P1 sandbox address handled here": {
+  "change": "trata prova-sandbox@ neste fluxo",
+  "primary": [
+   {
+    "test": "prova-sandbox@, outros destinatários e eventos de entrega seguem para o handler legado (null), sem efeito",
+    "why": "afirma null para prova-sandbox@"
+   }
+  ],
+  "secondary": []
+ },
+ "P2 delivery events swallowed": {
+  "change": "engole eventos de entrega",
+  "primary": [
+   {
+    "test": "prova-sandbox@, outros destinatários e eventos de entrega seguem para o handler legado (null), sem efeito",
+    "why": "afirma null para email.delivered"
+   }
+  ],
+  "secondary": []
+ },
+ "P3 original body consumed": {
+  "change": "consome o corpo original",
+  "primary": [
+   {
+    "test": "prova-sandbox@, outros destinatários e eventos de entrega seguem para o handler legado (null), sem efeito",
+    "why": "afirma bodyUsed false para o handler legado"
+   }
+  ],
+  "secondary": []
+ },
+ "Q1 sender quota not enforced": {
+  "change": "cota por remetente não aplicada",
+  "primary": [
+   {
+    "test": "cota reservada atomicamente: um único comando trava a linha, reserva remetente e global e muda o estado",
+    "why": "afirma 'on conflict (bucket, day) do nothing' na vaga do remetente"
+   }
+  ],
+  "secondary": []
+ },
+ "Q2 daily cap not enforced": {
+  "change": "teto diário não aplicado",
+  "primary": [
+   {
+    "test": "cota reservada atomicamente: um único comando trava a linha, reserva remetente e global e muda o estado",
+    "why": "afirma 'n < $3' no teto global"
+   }
+  ],
+  "secondary": []
+ },
+ "Q3 global reserved even without sender slot": {
+  "change": "vaga global sem vaga do remetente",
+  "primary": [
+   {
+    "test": "cota reservada atomicamente: um único comando trava a linha, reserva remetente e global e muda o estado",
+    "why": "afirma que a vaga global depende de s"
+   }
+  ],
+  "secondary": []
+ },
+ "Q4 row lock dropped": {
+  "change": "sem trava da linha",
+  "primary": [
+   {
+    "test": "cota reservada atomicamente: um único comando trava a linha, reserva remetente e global e muda o estado",
+    "why": "afirma 'for update' na linha"
+   }
+  ],
+  "secondary": []
+ },
+ "R1 receiving key not required before accepting": {
+  "change": "aceita sem chave de leitura",
+  "primary": [
+   {
+    "test": "sem a chave de leitura do Resend: 503 ANTES de aceitar (nenhuma linha, nenhuma chamada)",
+    "why": "afirma 503 e nenhuma linha/chamada sem chave de leitura"
+   }
+  ],
+  "secondary": []
+ },
+ "S1 signature check bypassed": {
+  "change": "não confere a assinatura Svix",
+  "primary": [
+   {
+    "test": "assinatura inválida, ausente, vencida, sem segredo ou fora do formato é recusada (401) sem efeito",
+    "why": "afirma 401 para assinatura inválida/ausente"
+   }
+  ],
+  "secondary": []
+ },
+ "S2 timestamp tolerance ignored": {
+  "change": "ignora a tolerância de 5 min do carimbo",
+  "primary": [
+   {
+    "test": "assinatura inválida, ausente, vencida, sem segredo ou fora do formato é recusada (401) sem efeito",
+    "why": "afirma 401 para carimbo vencido (301 s)"
+   }
+  ],
+  "secondary": []
+ },
+ "S3 any v1 value accepted": {
+  "change": "aceita qualquer valor v1",
+  "primary": [
+   {
+    "test": "assinatura inválida, ausente, vencida, sem segredo ou fora do formato é recusada (401) sem efeito",
+    "why": "afirma 401 para assinatura de outro segredo/corpo alterado"
+   }
+  ],
+  "secondary": []
+ },
+ "S4 missing secret accepted": {
+  "change": "aceita segredo sem prefixo whsec_",
+  "primary": [
+   {
+    "test": "assinatura inválida, ausente, vencida, sem segredo ou fora do formato é recusada (401) sem efeito",
+    "why": "afirma 401 para segredo fora do formato Svix"
+   }
+  ],
+  "secondary": []
+ },
+ "U1 counters reset at ack transition (SQL)": {
+  "change": "contadores zerados na transição (SQL)",
+  "primary": [
+   {
+    "test": "transição para a confirmação preserva os contadores globais (SQL e cadeia em código)",
+    "why": "afirma ausência de read_failures = 0/send_failures = 0 no comando de transição"
+   }
+  ],
+  "secondary": []
+ },
+ "U2 counters reset at ack transition (chain)": {
+  "change": "contadores zerados na cadeia em código",
+  "primary": [
+   {
+    "test": "transição para a confirmação preserva os contadores globais (SQL e cadeia em código)",
+    "why": "afirma que a cadeia stepAck não zera contadores"
+   }
+  ],
+  "secondary": []
+ },
+ "W1 whatsapp ticket reply-to ignored": {
+  "change": "Reply-To do ticket ignorado",
+  "primary": [
+   {
+    "test": "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa",
+    "why": "afirma reply_to = ticket no caso válido"
+   }
+  ],
+  "secondary": []
+ },
+ "W2 ticket digit bounds removed": {
+  "change": "limites de dígitos removidos",
+  "primary": [
+   {
+    "test": "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa",
+    "why": "afirma sender para 4 e 21 dígitos"
+   }
+  ],
+  "secondary": []
+ },
+ "W3 ticket reply-to for any sender": {
+  "change": "Reply-To do ticket para qualquer remetente",
+  "primary": [
+   {
+    "test": "Reply-To do chamado WhatsApp: só UM endereço do metadado casando ^[0-9]{5,20}@support.whatsapp.com$ passa",
+    "why": "afirma reply_to = cliente quando o remetente não é o WhatsApp"
+   }
+  ],
+  "secondary": []
+ },
+ "WS1 whatsapp sender ack not suppressed": {
+  "change": "WhatsApp não suprimido",
+  "primary": [
+   {
+    "test": "supressão da confirmação: support@support.whatsapp.com (qualquer caixa) nunca recebe; encaminhamento obrigatório",
+    "why": "afirma 0 confirmação e skipped_automated_provider"
+   }
+  ],
+  "secondary": [
+   {
+    "test": "remetente decidido pelo metadado do provedor (from da API), não por cabeçalho; normalizado; vários endereços => inválido",
+    "why": "afirma supressão quando o metadado diz WhatsApp"
+   },
+   {
+    "test": "provedor automático: encaminhamento falhando NUNCA marca skipped/done; webhook duplicado + 2 drenos => 1 encaminhamento, 0 confirmação",
+    "why": "afirma 0 confirmação para o provedor automático"
+   }
+  ]
+ },
+ "WS2 suppression by suffix (too broad)": {
+  "change": "supressão por sufixo (larga demais)",
+  "primary": [
+   {
+    "test": "supressão da confirmação: support@support.whatsapp.com (qualquer caixa) nunca recebe; encaminhamento obrigatório",
+    "why": "afirma que xsupport@support.whatsapp.com não é suprimido"
+   }
+  ],
+  "secondary": []
+ },
+ "X1 script content kept": {
+  "change": "mantém o conteúdo de <script>",
+  "primary": [
+   {
+    "test": "HTML higienizado por lista de permissão e com teto de tamanho",
+    "why": "afirma ausência de 'alert(' na saída"
+   }
+  ],
+  "secondary": []
+ },
+ "X10 attachment total cap removed": {
+  "change": "remove o teto total de bytes",
+  "primary": [
+   {
+    "test": "anexos: executáveis, tamanho desconhecido/excessivo e excesso de quantidade são recusados",
+    "why": "afirma 2 de 3 anexos de 9 MB"
+   }
+  ],
+  "secondary": []
+ },
+ "X2 any tag allowed": {
+  "change": "permite qualquer tag",
+  "primary": [
+   {
+    "test": "HTML higienizado por lista de permissão e com teto de tamanho",
+    "why": "afirma que só tags permitidas sobrevivem"
+   }
+  ],
+  "secondary": []
+ },
+ "X3 javascript href allowed": {
+  "change": "permite href javascript:",
+  "primary": [
+   {
+    "test": "HTML higienizado por lista de permissão e com teto de tamanho",
+    "why": "afirma ausência de javascript:"
+   }
+  ],
+  "secondary": []
+ },
+ "X4 nested drop not iterated": {
+  "change": "não itera a remoção aninhada",
+  "primary": [
+   {
+    "test": "HTML higienizado por lista de permissão e com teto de tamanho",
+    "why": "afirma remoção de <scr<script>…"
+   }
+  ],
+  "secondary": []
+ },
+ "X5 html output cap removed": {
+  "change": "remove o teto de saída do HTML",
+  "primary": [
+   {
+    "test": "HTML higienizado por lista de permissão e com teto de tamanho",
+    "why": "afirma html omitido acima de MAX_HTML_OUT"
+   }
+  ],
+  "secondary": []
+ },
+ "X6 executable extension accepted": {
+  "change": "aceita extensão executável",
+  "primary": [
+   {
+    "test": "anexos: executáveis, tamanho desconhecido/excessivo e excesso de quantidade são recusados",
+    "why": "afirma recusa de .exe/.js/.docm"
+   }
+  ],
+  "secondary": []
+ },
+ "X7 executable content-type accepted": {
+  "change": "aceita content-type executável",
+  "primary": [
+   {
+    "test": "anexos: executáveis, tamanho desconhecido/excessivo e excesso de quantidade são recusados",
+    "why": "afirma recusa de x-msdownload"
+   }
+  ],
+  "secondary": []
+ },
+ "X8 unknown size accepted": {
+  "change": "aceita tamanho desconhecido/zero",
+  "primary": [
+   {
+    "test": "anexos: executáveis, tamanho desconhecido/excessivo e excesso de quantidade são recusados",
+    "why": "afirma recusa de tamanho ausente/0"
+   }
+  ],
+  "secondary": []
+ },
+ "X9 attachment count cap removed": {
+  "change": "remove o teto de quantidade",
+  "primary": [
+   {
+    "test": "anexos: executáveis, tamanho desconhecido/excessivo e excesso de quantidade são recusados",
+    "why": "afirma no máximo 5 anexos"
+   }
+  ],
+  "secondary": []
+ }
 }

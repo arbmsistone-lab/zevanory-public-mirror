@@ -399,6 +399,9 @@ test("O16 orçamento global por mensagem: 9 falhas de envio no encaminhamento + 
   assert.equal(r.calls.filter((c) => c.kind !== "read" && c.kind !== "alert" && c.id === "g1").length, 10 + acks, "nenhum envio depois do teto");
   assert.equal((await one("select forwarded_at from zevanory_support_inbound where email_id = 'g1'")).forwarded_at, fwdAt, "forwarded_at preservado");
   assert.equal(r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 1, "alerta de morte exatamente uma vez");
+  const replay = await webhook(r, "g1", "cliente-g1@example.com", "msg_replay_g1");
+  assert.equal((await replay.json()).duplicate, true);
+  assert.equal(r.calls.filter((c) => c.kind !== "read" && c.kind !== "alert" && c.id === "g1").length, 10 + acks, "replay depois de ack_dead sem efeito");
 });
 
 test("O18 orçamento global de LEITURA: 9 falhas no encaminhamento + 1 na releitura da confirmação => ack_dead, encaminhamento preservado", { skip: SKIP }, async () => {
@@ -414,9 +417,19 @@ test("O18 orçamento global de LEITURA: 9 falhas no encaminhamento + 1 na releit
   st = await one("select state, read_failures, forward_id is not null as fwd from zevanory_support_inbound where email_id = 'h1'");
   assert.deepEqual(st, { state: "ack_dead", read_failures: "10", fwd: "t" });
   assert.equal(r.of("forward", "h1"), 1);
+  const fwdAt = (await one("select forwarded_at from zevanory_support_inbound where email_id = 'h1'")).forwarded_at;
   await makeDue("h1");
+  await Promise.all([drain(r), drain(r)]);
   await drain(r);
+  // Replay do webhook depois de ack_dead: sem efeito.
+  const replay = await webhook(r, "h1", "cliente-h1@example.com", "msg_replay_h1");
+  assert.equal(replay.status, 200);
+  assert.equal((await replay.json()).duplicate, true);
   assert.equal(r.of("forward", "h1"), 1, "nenhum novo encaminhamento");
+  assert.equal(r.calls.filter((c) => c.kind === "ack" && c.id === "h1").length, 1, "nenhuma confirmação depois do teto");
+  assert.equal((await stateOf("h1")).state, "ack_dead");
+  assert.equal((await one("select forwarded_at from zevanory_support_inbound where email_id = 'h1'")).forwarded_at, fwdAt, "forwarded_at preservado");
+  assert.equal(r.calls.filter((c) => c.kind === "alert" && /não entregues/.test(c.subject)).length, 1, "alerta de morte exatamente uma vez");
 });
 
 test("O17 dreno interno: nonce consumido atomicamente no PostgreSQL — pedidos simultâneos com o mesmo nonce => um 200, os demais 409; minuto velho 401", { skip: SKIP }, async () => {
