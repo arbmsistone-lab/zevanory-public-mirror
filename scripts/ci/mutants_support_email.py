@@ -13,7 +13,7 @@ REPO = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().paren
 FWD = "worker/support-email-forward.mjs"
 COMPAT = "worker/cloudflare-worker.compat.mjs"
 COPY = [FWD, COMPAT, "worker/politica-unica.mjs", "worker/sandbox-proof-v2.mjs", "data/politica-unica.json",
-        "tests/support-email-forward.test.mjs", "tests/helpers/text.mjs"]
+        "tests/support-email-forward.test.mjs", "tests/helpers/text.mjs", "docs/ops/EMAIL_SUPORTE.md"]
 
 M = {
     # assinatura (fail-closed)
@@ -21,25 +21,54 @@ M = {
     "S2 timestamp tolerance ignored": (FWD, "if (Math.abs(Math.floor(nowMs / 1000) - ts) > TOLERANCE_S) return false;", ""),
     "S3 any v1 value accepted": (FWD, 'return version === "v1" && Boolean(value) && safeEqual(value, expected);', 'return version === "v1" && Boolean(value);'),
     "S4 missing secret accepted": (FWD, '!String(secret || "").startsWith("whsec_")', 'false'),
-    # encaminhamento
+    # encaminhamento / destino
     "F1 reply-to dropped": (FWD, '...(sender ? { reply_to: [sender] } : {})', '...{}'),
-    "F2 subject prefix dropped": (FWD, "const subject = `${FORWARD_SUBJECT_PREFIX} ${cleanSubject(", "const subject = `${cleanSubject("),
-    "F3 forward target hardcoded fallback": (FWD, '  if (!EMAIL_RE.test(v)) return "";\n  // Encaminhar', '  if (!EMAIL_RE.test(v)) v = "owner@gmail.com";\n  // Encaminhar'),
-    "F4 self-domain forward allowed": (FWD, 'if (v.endsWith("@" + SUPPORT_DOMAIN)) return "";', ''),
+    "F2 subject prefix dropped": (FWD, "subject: `${FORWARD_SUBJECT_PREFIX} ${cleanSubject(detail.subject)}`", "subject: `${cleanSubject(detail.subject)}`"),
+    "F3 forward target hardcoded fallback": (FWD, '  if (!EMAIL_RE.test(v)) return "";\n  if (v.endsWith', '  if (!EMAIL_RE.test(v)) v = "owner@gmail.com";\n  if (v.endsWith'),
+    "F4 self-domain forward allowed": (FWD, 'if (v.endsWith("@" + SUPPORT_DOMAIN)) return ""; // suporte@ -> suporte@ seria laço', ''),
     "F5 contato alias removed": (FWD, 'SUPPORT_ALIASES = Object.freeze(["suporte", "contato"])', 'SUPPORT_ALIASES = Object.freeze(["suporte"])'),
-    "F6 content logged": (FWD, 'log("forwarded", { alias, attachments: attachments.length, ack });', 'log("forwarded", { alias, attachments: attachments.length, ack, text });'),
-    "F7 send key used to read received mail": (FWD, "const rKey = await receivingKey(env);", "const rKey = sendKey;"),
-    # idempotência
-    "D1 duplicate re-forwarded": (FWD, "  if (!Array.isArray(claim) || !claim.length) {", "  if (false) {"),
-    "D2 failure not marked for retry": (FWD, "      await markFailed();\n      log(\"forward_failed\", { alias, status: Number(sent?.status) || 0 });", "      log(\"forward_failed\", { alias, status: Number(sent?.status) || 0 });"),
-    "D3 forward without dedupe when DB is down": (FWD, '    log("dedupe_unavailable", { alias });\n    return json(503, { error: "support_dedupe_unavailable", accepted: false });\n  }\n  if (!Array', '    claim = [{}];\n  }\n  if (!Array'),
+    "F6 content logged": (FWD, 'log("forwarded", { alias: row.alias, attachments: attachments.length, ack: status });', 'log("forwarded", { alias: row.alias, attachments: attachments.length, ack: status, text });'),
+    "F7 send key used to read received mail": (FWD, "rKey: await receivingKey(env),", "rKey: sendKey,"),
+    # (4) dono nunca exposto
+    "O1 forward sent from owner address": (FWD, "from: FROM, to: [c.forwardTo]", "from: c.forwardTo, to: [c.forwardTo]"),
+    "O2 ack reply-to points to owner": (FWD, "reply_to: [SUPPORT_ADDRESS], subject: \"Recebemos", "reply_to: [c.forwardTo], subject: \"Recebemos"),
+    "O3 ack sent from owner address": (FWD, "body: { from: FROM, to: [sender]", "body: { from: c.forwardTo, to: [sender]"),
+    # (1) outbox durável
+    "D1 duplicate re-forwarded (no lease state check)": (FWD, "where email_id = $1 and state in ('forward_pending','ack_pending') and next_attempt_at <= now()\n      and (lease_until", "where email_id = $1 and next_attempt_at <= now()\n      and (lease_until"),
+    "D2 ack failure finalizes (never retried)": (FWD, 'if (!sent.ok) return retry(c, emailId, row.attempts, "ack", "send_failed");', 'if (!sent.ok) { await c.sql.query(SQL.acked, [emailId]); return { state: "done" }; }'),
+    "D3 forward failure goes dead at once": (FWD, 'if (!sent.ok || !forwardId) return retry(c, emailId, row.attempts, "forward", "send_failed");', 'if (!sent.ok || !forwardId) return retry(c, emailId, MAX_ATTEMPTS, "forward", "send_failed");'),
+    "D4 backoff ignored": (FWD, "and state in ('forward_pending','ack_pending') and next_attempt_at <= now()\n      and (lease_until", "and state in ('forward_pending','ack_pending')\n      and (lease_until"),
+    "D5 lease ignored": (FWD, "and next_attempt_at <= now()\n      and (lease_until is null or lease_until < now())\n    returning state, alias, attempts, sender_ref", "and next_attempt_at <= now()\n    returning state, alias, attempts, sender_ref"),
+    "D6 no dead state (infinite retries)": (FWD, "const dead = attempts >= MAX_ATTEMPTS;", "const dead = false;"),
+    "D7 forward idempotency key dropped": (FWD, 'idempotencyKey: `support-fwd/${emailId}`', 'idempotencyKey: ""'),
+    "D8 ack idempotency key dropped": (FWD, 'idempotencyKey: `support-ack/${emailId}`', 'idempotencyKey: ""'),
+    "D9 webhook fails when step fails (not durable 200)": (FWD, 'return json(200, { accepted: true, duplicate, alias, state: result.state, ack: result.ack });', 'return json(result.state === "done" ? 200 : 503, { accepted: true, duplicate, alias, state: result.state, ack: result.ack });'),
+    "D10 cron drain removed": (COMPAT, "  tasks.push(drainSupportOutbox(normalized, { sqlFactory: whatsappProofDatabase })", "  void (drainSupportOutbox, { sqlFactory: whatsappProofDatabase })"),
+    # (2) cota atômica
+    "Q1 sender quota not enforced": (FWD, "on conflict (bucket, day) do nothing returning 1 as ok", "on conflict (bucket, day) do update set n = zevanory_support_ack_quota.n + 1 returning 1 as ok"),
+    "Q2 daily cap not enforced": (FWD, "where zevanory_support_ack_quota.n < $3", ""),
+    "Q3 global reserved even without sender slot": (FWD, "select 'all', $2::date, 1 from s", "select 'all', $2::date, 1 from r"),
+    "Q4 row lock dropped": (FWD, "where email_id = $1 and state = 'forward_pending' for update", "where email_id = $1 and state = 'forward_pending'"),
+    # (3) HMAC
+    "H1 plain hash instead of HMAC": (FWD, 'const mac = await hmacSign(new TextEncoder().encode("zevanory-support-sender-v1:" + secret), "sender:" + String(address || "invalid").toLowerCase());', 'const mac = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(address || "invalid").toLowerCase())));'),
+    "H2 missing privacy secret accepted": (FWD, "return v.length >= 32 ? v : \"\";", "return v || \"fallback-secret-fallback-secret-xx\";"),
     # laço / confirmação
     "L1 auto-submitted ignored": (FWD, 'if (auto && auto !== "no") return "auto_submitted";', ''),
-    "L2 automated verdict ignored": (FWD, 'if (automated) return "skipped_" + automated;', ''),
-    "L3 per-sender rate limit removed": (FWD, 'if (Number(recent?.[0]?.n) > 0) return "rate_limited_sender";', ''),
+    "L2 automated verdict ignored": (FWD, "  if (automated) {\n    const status", "  if (false) {\n    const status"),
     "L4 noreply sender acked": (FWD, 'return "noreply_sender";', 'return "";'),
     "L5 own domain acked": (FWD, 'if (domain === SUPPORT_DOMAIN || domain.endsWith("." + SUPPORT_DOMAIN)) return "own_domain";', ''),
     "L6 ack without Auto-Submitted": (FWD, '"Auto-Submitted": "auto-replied", ', ''),
+    # (5) HTML e anexos
+    "X1 script content kept": (FWD, 'const DROP_WITH_CONTENT = ["script", ', 'const DROP_WITH_CONTENT = ['),
+    "X2 any tag allowed": (FWD, "if (!ALLOWED_TAGS.has(name)) continue;", "if (!ALLOWED_TAGS.has(name)) { out += m[0]; continue; }"),
+    "X3 javascript href allowed": (FWD, "return /^(https?:|mailto:)/i.test(v) ?", "return v ?"),
+    "X4 nested drop not iterated": (FWD, "for (let prev = null; prev !== s;) { prev = s; s = s.replace(drop, \"\"); }", "s = s.replace(drop, \"\");"),
+    "X5 html output cap removed": (FWD, 'return out.length > MAX_HTML_OUT ? "" : out;', "return out;"),
+    "X6 executable extension accepted": (FWD, "!EXEC_EXT.test(filename) && ", ""),
+    "X7 executable content-type accepted": (FWD, " && !EXEC_TYPE.test(type);", ";"),
+    "X8 unknown size accepted": (FWD, "Number.isFinite(size) && size > 0 && size <= MAX_ATTACHMENT_BYTES", "(!Number.isFinite(size) || size <= MAX_ATTACHMENT_BYTES)"),
+    "X9 attachment count cap removed": (FWD, " && accepted.length < MAX_ATTACHMENTS", ""),
+    "X10 attachment total cap removed": (FWD, "total + size <= MAX_ATTACHMENTS_TOTAL && ", ""),
     # caminho da sandbox / legado inalterado
     "P1 sandbox address handled here": (FWD, "  if (!alias) return null;", "  if (!alias) return json(200, { accepted: true, ignored: true });"),
     "P2 delivery events swallowed": (FWD, 'if (event?.type !== "email.received") return null;', 'if (event?.type !== "email.received") return json(200, { accepted: true });'),

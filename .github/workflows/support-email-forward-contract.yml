@@ -15,6 +15,7 @@ on:
       - "tests/support-email-forward.test.mjs"
       - "tests/helpers/text.mjs"
       - "scripts/ci/mutants_support_email.py"
+      - "docs/ops/EMAIL_SUPORTE.md"
 
 permissions:
   contents: read
@@ -32,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test tests/support-email-forward.test.mjs | tee /tmp/support.txt
-          grep -qx "# tests 8" /tmp/support.txt || { echo "::error::contagem de testes diferente de 8"; exit 1; }
+          grep -qx "# tests 15" /tmp/support.txt || { echo "::error::contagem de testes diferente de 15"; exit 1; }
           grep -qx "# fail 0" /tmp/support.txt || { echo "::error::falha na suíte"; exit 1; }
       - name: Mutantes (todos precisam morrer)
         shell: bash
@@ -42,4 +43,4 @@ jobs:
           set -euo pipefail
           python3 scripts/ci/mutants_support_email.py < /dev/null | tee /tmp/mut.txt
           echo "::notice title=SUPPORT_EMAIL_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
-          grep -qx "MUTANTS total=24 killed=24 survived=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
+          grep -qx "MUTANTS total=49 killed=49 survived=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }

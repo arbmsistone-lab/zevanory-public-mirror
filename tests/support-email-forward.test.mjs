@@ -1,231 +1,403 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { readTextNormalized } from "./helpers/text.mjs";
 import * as fwd from "../worker/support-email-forward.mjs";
 import * as v2 from "../worker/sandbox-proof-v2.mjs";
 
-// Sem rede, sem segredo real: assinatura Svix com segredo sintético, Resend e PostgreSQL falsos em memória.
+// Sem rede, sem segredo real: assinatura Svix com segredo sintético; Resend e PostgreSQL falsos em memória
+// (o PostgreSQL falso implementa a semântica de cada comando marcado /*support:...*/, com relógio controlado).
 const SECRET = "whsec_" + Buffer.from("segredo-sintetico-de-teste-32bytes!").toString("base64");
+const PRIVACY = "privacidade-sintetica-de-teste-0123456789abcdef";
 const OWNER = "dono-teste@example.org";
-const NOW = 1_800_000_000_000;
+const CUSTOMER = "cliente@example.com";
+const T0 = 1_800_000_000_000;
 
-function sign(body, { secret = SECRET, id = "msg_1", ts = Math.floor(NOW / 1000) } = {}) {
-  const sig = createHmac("sha256", Buffer.from(secret.slice(6), "base64")).update(`${id}.${ts}.${body}`).digest("base64");
-  return { "svix-id": id, "svix-timestamp": String(ts), "svix-signature": `v1,${sig}` };
+function sign(body, { secret = SECRET, id = "msg_1", ts } = {}) {
+  const t = ts ?? Math.floor(T0 / 1000);
+  const sig = createHmac("sha256", Buffer.from(secret.slice(6), "base64")).update(`${id}.${t}.${body}`).digest("base64");
+  return { "svix-id": id, "svix-timestamp": String(t), "svix-signature": `v1,${sig}` };
 }
 function req(event, opts = {}) {
   const body = typeof event === "string" ? event : JSON.stringify(event);
-  const headers = { "content-type": "application/json", ...(opts.headers || sign(body, opts)) };
-  return new Request("https://zevanory.api.br/api/webhooks/resend", { method: "POST", headers, body });
+  return new Request("https://zevanory.api.br/api/webhooks/resend", { method: "POST", headers: { "content-type": "application/json", ...(opts.headers || sign(body, opts)) }, body });
 }
-function received({ id = "em-1", to = ["suporte@zevanory.api.br"], from = "Cliente <cliente@example.com>", subject = "Não recebi o acesso" } = {}) {
-  return { type: "email.received", created_at: "2026-10-23T12:00:00Z", data: { email_id: id, created_at: "2026-10-23T12:00:00Z", from, to, received_for: to, subject, message_id: "<abc@example.com>", attachments: [] } };
+function received({ id = "em-1", to = ["suporte@zevanory.api.br"], from = `Cliente <${CUSTOMER}>` } = {}) {
+  return { type: "email.received", created_at: "2026-10-23T12:00:00Z", data: { email_id: id, from, to, received_for: to, subject: "Não recebi o acesso", message_id: "<abc@example.com>", attachments: [] } };
 }
 
-function fakeSql() {
-  const rows = new Map();
+function fakeSql(clock) {
+  const rows = new Map(), quota = new Map();
   const db = {
-    rows,
-    down: false,
+    rows, quota, statements: [], failTag: null,
     async query(text, params = []) {
-      if (db.down) throw new Error("db_down");
-      const q = text.replace(/\s+/g, " ").trim();
-      if (/^create (table|index)/.test(q)) return [];
-      if (q.startsWith("insert into zevanory_support_inbound")) {
-        const [id, alias, sender_hash] = params;
-        const cur = rows.get(id);
-        if (!cur) { rows.set(id, { email_id: id, alias, sender_hash, status: "claimed", attempts: 1, claimed_at: Date.now(), ack_sent_at: null }); return [{ email_id: id, attempts: 1 }]; }
-        if (cur.status === "failed" || (cur.status === "claimed" && Date.now() - cur.claimed_at > 300000)) { cur.status = "claimed"; cur.attempts++; cur.claimed_at = Date.now(); return [{ email_id: id, attempts: cur.attempts }]; }
-        return [];
+      const tag = (/\/\*support:([a-z_]+)\*\//.exec(text) || [])[1];
+      assert.ok(tag, "comando sem marca: " + text.slice(0, 60));
+      db.statements.push(tag);
+      if (db.failTag === tag) throw new Error("db_fail");
+      const now = clock.now;
+      const r = rows.get(params[0]);
+      const pending = (x) => x && (x.state === "forward_pending" || x.state === "ack_pending");
+      switch (tag) {
+        case "schema": return [];
+        case "record":
+          if (r) return [];
+          rows.set(params[0], { email_id: params[0], alias: params[1], sender_ref: params[2], state: "forward_pending", attempts: 0, next: now, lease: null, ack_status: null });
+          return [{ email_id: params[0] }];
+        case "lease":
+          if (!pending(r) || r.next > now || (r.lease !== null && r.lease >= now)) return [];
+          r.lease = now + 120000; r.attempts++;
+          return [{ state: r.state, alias: r.alias, attempts: r.attempts, sender_ref: r.sender_ref }];
+        case "retry":
+          if (pending(r)) { r.lease = null; r.next = now + Number(params[1]) * 60000; if (params[2] === true) r.state = r.state === "forward_pending" ? "forward_dead" : "ack_dead"; }
+          return [];
+        case "forwarded_no_ack":
+          if (r?.state === "forward_pending") Object.assign(r, { state: "done", ack_status: params[1], forward_id: params[2], lease: null, attempts: 0, next: now });
+          return [];
+        case "forwarded_reserve_ack": {
+          if (r?.state !== "forward_pending") return [];
+          const sKey = `s:${r.sender_ref}|${params[1]}`, gKey = `all|${params[1]}`;
+          const s = !quota.has(sKey);
+          if (s) quota.set(sKey, 1);
+          let g = false;
+          if (s) { const n = quota.get(gKey); if (n === undefined) { quota.set(gKey, 1); g = true; } else if (n < Number(params[2])) { quota.set(gKey, n + 1); g = true; } }
+          Object.assign(r, { state: g ? "ack_pending" : "done", ack_status: g ? "pending" : s ? "rate_limited_daily" : "rate_limited_sender", lease: g ? now + 120000 : null, attempts: g ? 1 : 0, forward_id: params[3], next: now });
+          return [{ state: r.state, ack_status: r.ack_status }];
+        }
+        case "acked":
+          if (r?.state === "ack_pending") Object.assign(r, { state: "done", ack_status: "sent", lease: null });
+          return [];
+        case "due":
+          return [...rows.values()].filter((x) => pending(x) && x.next <= now && (x.lease === null || x.lease < now)).sort((a, b) => a.next - b.next).slice(0, Number(params[0])).map((x) => ({ email_id: x.email_id }));
+        default: throw new Error("comando não previsto " + tag);
       }
-      if (q.includes("set status = 'failed'")) { const r = rows.get(params[0]); if (r && r.status === "claimed") r.status = "failed"; return []; }
-      if (q.includes("set status = 'forwarded'")) { const r = rows.get(params[0]); r.status = "forwarded"; r.forward_id = params[1]; return []; }
-      if (q.includes("set ack_status = 'sent'")) { const r = rows.get(params[0]); r.ack_sent_at = Date.now(); return []; }
-      if (q.startsWith("select count(*)::int as n from zevanory_support_inbound where sender_hash")) return [{ n: [...rows.values()].filter((r) => r.sender_hash === params[0] && r.ack_sent_at).length }];
-      if (q.startsWith("select count(*)::int as n from zevanory_support_inbound where ack_sent_at")) return [{ n: [...rows.values()].filter((r) => r.ack_sent_at).length }];
-      throw new Error("query não prevista: " + q.slice(0, 80));
     }
   };
   return db;
 }
 
-function world({ detail = {}, sendStatus = 200 } = {}) {
-  const sent = [], gets = [];
-  const db = fakeSql();
+function world({ details = {}, attachments = null } = {}) {
+  const clock = { now: T0 };
+  const db = fakeSql(clock);
+  const sent = [], attempts = [], gets = [];
+  const fail = { forward: 0, ack: 0, read: 0 };
+  const realNow = Date.now;
   const fetchImpl = async (url, init = {}) => {
     const u = new URL(url);
     assert.equal(u.hostname, "api.resend.com", "só a API do Resend (falsa) pode ser chamada");
     if ((init.method || "GET") === "GET") {
       gets.push({ path: u.pathname, auth: init.headers.authorization });
+      if (fail.read > 0) { fail.read--; return new Response("{}", { status: 500 }); }
       const id = decodeURIComponent(u.pathname.split("/")[3]);
-      return Response.json({ object: "email", id, subject: "Não recebi o acesso", text: "Corpo SECRETO do cliente", html: "<p>Corpo SECRETO do cliente</p>", headers: {}, ...detail });
+      if (u.pathname.endsWith("/attachments")) return Response.json({ data: attachments || [] });
+      return Response.json({ object: "email", id, from: `Cliente <${CUSTOMER}>`, created_at: "2026-10-23T12:00:00Z", subject: "Não recebi o acesso", message_id: "<abc@example.com>", text: "Corpo SECRETO do cliente", html: "<p>Corpo SECRETO do cliente</p>", headers: {}, attachments: attachments ? attachments.map((a) => ({ id: a.id })) : [], ...(details[id] || details["*"] || {}) });
     }
     const body = JSON.parse(init.body);
-    sent.push({ body, idem: init.headers["idempotency-key"], auth: init.headers.authorization });
-    return sendStatus === 200 ? Response.json({ id: "out-" + sent.length }) : new Response("{}", { status: sendStatus });
+    const kind = body.to[0] === OWNER ? "forward" : "ack";
+    attempts.push({ kind, body, idem: init.headers["idempotency-key"] });
+    if (fail[kind] > 0) { fail[kind]--; return new Response("{}", { status: 500 }); }
+    sent.push({ kind, body, idem: init.headers["idempotency-key"], auth: init.headers.authorization });
+    return Response.json({ id: "out-" + sent.length });
   };
-  const env = { RESEND_WEBHOOK_SECRET: SECRET, RESEND_API_KEY: "re_send_only", RESEND_RECEIVING_API_KEY: "re_full_receiving", SUPPORT_FORWARD_TO: OWNER, DATABASE_URL: "postgres://fake" };
-  return { env, db, sent, gets, fetchImpl, opts: { sqlFactory: () => db, fetchImpl, nowMs: NOW } };
+  void realNow;
+  const env = { RESEND_WEBHOOK_SECRET: SECRET, RESEND_API_KEY: "re_send_only", RESEND_RECEIVING_API_KEY: "re_full_receiving", SUPPORT_FORWARD_TO: OWNER, LEAD_PRIVACY_SECRET: PRIVACY, DATABASE_URL: "postgres://fake" };
+  const opts = () => ({ sqlFactory: () => db, fetchImpl, nowMs: clock.now });
+  const hook = (r, e = env) => fwd.handleSupportInboundWebhook(r, e, opts());
+  const drain = (e = env) => fwd.drainSupportOutbox(e, { ...opts(), limit: 5 });
+  return { env, db, clock, sent, attempts, gets, fail, fetchImpl, opts, hook, drain };
 }
-const forwards = (w) => w.sent.filter((s) => s.body.to[0] === OWNER);
-const acks = (w) => w.sent.filter((s) => s.body.to[0] !== OWNER);
+const forwards = (w) => w.sent.filter((s) => s.kind === "forward");
+const acks = (w) => w.sent.filter((s) => s.kind === "ack");
+const advance = (w, minutes) => { w.clock.now += minutes * 60000; };
 
 test.beforeEach(() => fwd.resetSupportSchemaCache());
 
-test("assinatura inválida, ausente, vencida ou sem segredo é recusada (401) sem nenhuma chamada externa", async () => {
+test("assinatura inválida, ausente, vencida, sem segredo ou fora do formato é recusada (401) sem efeito", async () => {
   const w = world();
   const ev = received();
   const body = JSON.stringify(ev);
-  const cases = [
-    req(ev, { secret: "whsec_" + Buffer.from("outro-segredo-qualquer").toString("base64") }),
-    req(ev, { headers: { "content-type": "application/json" } }),
-    req(ev, { ts: Math.floor(NOW / 1000) - 301 }),
-    new Request("https://zevanory.api.br/api/webhooks/resend", { method: "POST", headers: sign(body), body: body.replace("em-1", "em-X") })
-  ];
-  for (const r of cases) {
-    const res = await fwd.handleSupportInboundWebhook(r, w.env, w.opts);
-    assert.equal(res.status, 401);
-  }
-  const noSecret = await fwd.handleSupportInboundWebhook(req(ev), { ...w.env, RESEND_WEBHOOK_SECRET: "" }, w.opts);
-  assert.equal(noSecret.status, 401);
-  // Segredo fora do formato Svix (sem "whsec_") é recusado mesmo se a assinatura bater com ele.
   const odd = "xxxxxx" + SECRET.slice(6);
-  const badFormat = await fwd.handleSupportInboundWebhook(req(ev, { secret: odd }), { ...w.env, RESEND_WEBHOOK_SECRET: odd }, w.opts);
-  assert.equal(badFormat.status, 401);
-  assert.equal(w.sent.length + w.gets.length, 0);
-  assert.equal(w.db.rows.size, 0);
+  const cases = [
+    [req(ev, { secret: "whsec_" + Buffer.from("outro-segredo-qualquer").toString("base64") }), w.env],
+    [req(ev, { headers: { "content-type": "application/json" } }), w.env],
+    [req(ev, { ts: Math.floor(T0 / 1000) - 301 }), w.env],
+    [new Request("https://zevanory.api.br/api/webhooks/resend", { method: "POST", headers: sign(body), body: body.replace("em-1", "em-X") }), w.env],
+    [req(ev), { ...w.env, RESEND_WEBHOOK_SECRET: "" }],
+    [req(ev, { secret: odd }), { ...w.env, RESEND_WEBHOOK_SECRET: odd }]
+  ];
+  for (const [r, e] of cases) assert.equal((await w.hook(r, e)).status, 401);
+  assert.equal(w.attempts.length + w.gets.length + w.db.rows.size, 0);
 });
 
-test("suporte@ é encaminhado uma vez ao destino configurado, com Reply-To do cliente, prefixo e sem conteúdo nos logs", async () => {
+test("suporte@: encaminhado uma vez de suporte@ (Reply-To cliente, prefixo) e confirmado uma vez; dono nunca exposto; logs limpos", async () => {
   const w = world();
   const logs = [];
   const orig = console.log;
   console.log = (...a) => logs.push(a.join(" "));
   let res;
-  try { res = await fwd.handleSupportInboundWebhook(req(received()), w.env, w.opts); } finally { console.log = orig; }
+  try { res = await w.hook(req(received())); } finally { console.log = orig; }
   assert.equal(res.status, 200);
   const out = await res.json();
-  assert.equal(out.forwarded, true);
-  const f = forwards(w);
-  assert.equal(f.length, 1);
-  assert.deepEqual(f[0].body.to, [OWNER]);
-  assert.deepEqual(f[0].body.reply_to, ["cliente@example.com"]);
-  assert.equal(f[0].body.subject, "[ZEVANORY suporte] Não recebi o acesso");
-  assert.match(f[0].body.from, /suporte@zevanory\.api\.br/);
-  assert.match(f[0].body.text, /Corpo SECRETO do cliente/);
-  assert.equal(f[0].idem, "support-fwd/em-1");
-  assert.equal(f[0].auth, "Bearer re_send_only");
-  assert.equal(w.gets[0].auth, "Bearer re_full_receiving", "leitura do recebido usa a chave de recebimento");
-  assert.equal(w.db.rows.get("em-1").status, "forwarded");
-  const joined = logs.join("\n");
-  assert.ok(!/SECRETO|cliente@example|Não recebi|dono-teste/.test(joined), "log sem conteúdo, assunto ou endereço");
+  assert.equal(out.state, "done");
+  assert.equal(out.ack, "sent");
+  const [f] = forwards(w);
+  assert.equal(forwards(w).length, 1);
+  assert.deepEqual(f.body.to, [OWNER]);
+  assert.equal(f.body.from, "ZEVANORY suporte <suporte@zevanory.api.br>");
+  assert.deepEqual(f.body.reply_to, [CUSTOMER]);
+  assert.equal(f.body.subject, "[ZEVANORY suporte] Não recebi o acesso");
+  assert.equal(f.idem, "support-fwd/em-1");
+  assert.equal(f.auth, "Bearer re_send_only");
+  assert.equal(w.gets[0].auth, "Bearer re_full_receiving");
+  const [a] = acks(w);
+  assert.equal(acks(w).length, 1);
+  assert.deepEqual(a.body.to, [CUSTOMER]);
+  assert.equal(a.body.from, "ZEVANORY suporte <suporte@zevanory.api.br>");
+  assert.deepEqual(a.body.reply_to, ["suporte@zevanory.api.br"]);
+  assert.equal(a.idem, "support-ack/em-1");
+  assert.equal(a.body.headers["Auto-Submitted"], "auto-replied");
+  assert.ok(!JSON.stringify(a.body).includes(OWNER), "confirmação não revela o endereço do dono");
+  assert.equal(w.db.rows.get("em-1").state, "done");
+  assert.ok(!/SECRETO|cliente@example|Não recebi|dono-teste/.test(logs.join("\n")), "log sem conteúdo, assunto ou endereço");
 });
 
-test("contato@ também é encaminhado; destino só via env ou KV privado, nunca no código", async () => {
+test("contato@ e destino via KV; destino ausente ou no próprio domínio => 503; nada fixo no código", async () => {
   const w = world();
   const kv = { async get(k) { return k === fwd.FORWARD_TO_KV_KEY ? OWNER : null; } };
-  const env = { ...w.env, SUPPORT_FORWARD_TO: "", ZEVANORY_PRIVATE_ARTIFACTS: kv };
-  const res = await fwd.handleSupportInboundWebhook(req(received({ to: ["contato@zevanory.api.br"] })), env, w.opts);
-  assert.equal(res.status, 200);
+  assert.equal((await w.hook(req(received({ to: ["contato@zevanory.api.br"] })), { ...w.env, SUPPORT_FORWARD_TO: "", ZEVANORY_PRIVATE_ARTIFACTS: kv })).status, 200);
   assert.equal(forwards(w).length, 1);
-  const none = world();
-  const r2 = await fwd.handleSupportInboundWebhook(req(received()), { ...none.env, SUPPORT_FORWARD_TO: "" }, none.opts);
-  assert.equal(r2.status, 503);
-  assert.equal(none.sent.length, 0);
-  const loop = world();
-  const r3 = await fwd.handleSupportInboundWebhook(req(received()), { ...loop.env, SUPPORT_FORWARD_TO: "suporte@zevanory.api.br" }, loop.opts);
-  assert.equal(r3.status, 503, "encaminhar para o próprio domínio seria laço");
-  const src = readTextNormalized(new URL("../worker/support-email-forward.mjs", import.meta.url));
-  assert.ok(!/gmail\.com/i.test(src), "endereço do dono não pode estar fixo no código");
+  for (const dest of ["", "suporte@zevanory.api.br"]) {
+    const x = world();
+    const r = await x.hook(req(received()), { ...x.env, SUPPORT_FORWARD_TO: dest });
+    assert.equal(r.status, 503);
+    assert.equal(x.attempts.length + x.db.rows.size, 0);
+  }
+  assert.ok(!/gmail\.com/i.test(readTextNormalized(new URL("../worker/support-email-forward.mjs", import.meta.url))));
 });
 
-test("mesmo email_id não é reencaminhado (retentativa do Resend)", async () => {
+test("remetente pseudonimizado com HMAC (LEAD_PRIVACY_SECRET); sem segredo => 503, nunca hash simples", async () => {
   const w = world();
-  const a = await fwd.handleSupportInboundWebhook(req(received(), { id: "msg_a" }), w.env, w.opts);
-  const b = await fwd.handleSupportInboundWebhook(req(received(), { id: "msg_b" }), w.env, w.opts);
-  assert.equal(a.status, 200);
+  await w.hook(req(received()));
+  const ref = w.db.rows.get("em-1").sender_ref;
+  const expected = createHmac("sha256", "zevanory-support-sender-v1:" + PRIVACY).update("sender:" + CUSTOMER).digest("hex").slice(0, 40);
+  assert.equal(ref, expected);
+  assert.notEqual(ref, createHash("sha256").update(CUSTOMER).digest("hex").slice(0, 40));
+  assert.ok(![...w.db.quota.keys()].some((k) => k.includes("cliente")));
+  for (const bad of ["", "curto-demais"]) {
+    const x = world();
+    const r = await x.hook(req(received()), { ...x.env, LEAD_PRIVACY_SECRET: bad });
+    assert.equal(r.status, 503);
+    assert.equal(x.db.rows.size + x.attempts.length, 0);
+  }
+});
+
+test("redelivery do mesmo email_id depois de concluído: duplicado, nenhum envio novo", async () => {
+  const w = world();
+  await w.hook(req(received(), { id: "a" }));
+  const b = await w.hook(req(received(), { id: "b" }));
   assert.equal(b.status, 200);
   assert.equal((await b.json()).duplicate, true);
+  advance(w, 600);
+  await w.drain();
   assert.equal(forwards(w).length, 1);
   assert.equal(acks(w).length, 1);
 });
 
-test("falha no envio marca failed (503) e a retentativa encaminha; banco fora => 503 sem encaminhar", async () => {
-  const w = world({ sendStatus: 500 });
-  const a = await fwd.handleSupportInboundWebhook(req(received()), w.env, w.opts);
-  assert.equal(a.status, 503);
-  assert.equal(w.db.rows.get("em-1").status, "failed");
-  const ok = world();
-  ok.db.rows.set("em-1", { ...w.db.rows.get("em-1") });
-  const b = await fwd.handleSupportInboundWebhook(req(received()), ok.env, ok.opts);
-  assert.equal(b.status, 200);
-  assert.equal(forwards(ok).length, 1);
-  const down = world();
-  down.db.down = true;
-  const c = await fwd.handleSupportInboundWebhook(req(received()), down.env, down.opts);
-  assert.equal(c.status, 503);
-  assert.equal(down.sent.length, 0);
+test("falha no encaminhamento: registro durável, recuo, cron encaminha exatamente uma vez e confirma uma vez", async () => {
+  const w = world();
+  w.fail.forward = 1;
+  const r = await w.hook(req(received()));
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).state, "forward_pending");
+  assert.equal(forwards(w).length + acks(w).length, 0);
+  await w.hook(req(received(), { id: "redelivery" }));
+  assert.equal(w.attempts.length, 1, "redelivery durante o recuo não reenvia");
+  advance(w, 3);
+  const d = await w.drain();
+  assert.equal(d.done, 1);
+  advance(w, 600);
+  await w.drain();
+  await w.hook(req(received(), { id: "late", ts: Math.floor(w.clock.now / 1000) }));
+  assert.equal(forwards(w).length, 1);
+  assert.equal(acks(w).length, 1);
+  assert.ok(w.attempts.filter((x) => x.kind === "forward").every((x) => x.idem === "support-fwd/em-1"));
 });
 
-test("confirmação automática: nunca para auto-resposta/bounce/no-reply/próprio domínio; máx. 1 por remetente/dia", async () => {
+test("falha na confirmação depois do encaminhamento: fica ack_pending e a recuperação envia exatamente uma confirmação", async () => {
+  const w = world();
+  w.fail.ack = 2;
+  const r = await w.hook(req(received()));
+  assert.equal((await r.json()).state, "ack_pending");
+  assert.equal(forwards(w).length, 1);
+  assert.equal(acks(w).length, 0);
+  assert.equal(w.db.rows.get("em-1").state, "ack_pending");
+  await w.hook(req(received(), { id: "redelivery" }));
+  assert.equal(acks(w).length, 0, "redelivery em recuo não força a confirmação");
+  advance(w, 3);
+  await w.drain();
+  assert.equal(acks(w).length, 0);
+  advance(w, 10);
+  await w.drain();
+  advance(w, 600);
+  await w.drain();
+  await w.hook(req(received(), { id: "late", ts: Math.floor(w.clock.now / 1000) }));
+  assert.equal(forwards(w).length, 1, "o encaminhamento nunca se repete por causa da confirmação");
+  assert.equal(acks(w).length, 1);
+  assert.ok(w.attempts.filter((x) => x.kind === "ack").every((x) => x.idem === "support-ack/em-1"));
+  assert.equal(w.db.rows.get("em-1").state, "done");
+});
+
+test("lease impede processamento concorrente; tentativas esgotadas => forward_dead e o cron para", async () => {
+  const w = world();
+  w.fail.forward = 1000;
+  await w.hook(req(received()));
+  const row = w.db.rows.get("em-1");
+  row.next = w.clock.now; row.lease = w.clock.now + 60000;
+  const c = { sql: w.db, env: w.env };
+  assert.deepEqual(await fwd.processSupportEmail(c, "em-1"), { state: "not_due" });
+  row.lease = null;
+  for (let i = 0; i < 40 && row.state === "forward_pending"; i++) { advance(w, 400); await w.drain(); }
+  assert.equal(row.state, "forward_dead");
+  assert.equal(w.attempts.length, fwd.MAX_ATTEMPTS);
+  advance(w, 400);
+  assert.equal((await w.drain()).checked, 0);
+});
+
+test("confirmação: nunca para auto-resposta/bounce/lista/no-reply/próprio domínio/dono; 1 por remetente/dia; teto diário; desligável", async () => {
   const auto = [
-    { detail: { headers: { "Auto-Submitted": "auto-replied" } } },
-    { detail: { headers: [{ name: "Precedence", value: "bulk" }] } },
-    { detail: { headers: { "List-Id": "<lista.example.com>" } } },
-    { detail: { headers: { "Return-Path": "<>" } } },
+    { headers: { "Auto-Submitted": "auto-replied" } },
+    { headers: [{ name: "Precedence", value: "bulk" }] },
+    { headers: { "List-Id": "<lista.example.com>" } },
+    { headers: { "Return-Path": "<>" } },
     { from: "MAILER-DAEMON@example.com" },
     { from: "no-reply@loja.example" },
     { from: "contato@zevanory.api.br" },
     { from: OWNER },
-    { detail: { subject: "Resposta automática: Não recebi o acesso" } }
+    { subject: "Resposta automática: Não recebi o acesso" }
   ];
-  let i = 0;
-  for (const c of auto) {
-    const w = world({ detail: c.detail || {} });
-    const res = await fwd.handleSupportInboundWebhook(req(received({ id: "auto-" + i++, from: c.from })), w.env, w.opts);
-    assert.equal(res.status, 200);
+  const logs = [];
+  const orig = console.log;
+  for (const d of auto) {
+    const w = world({ details: { "*": d } });
+    console.log = (...a) => logs.push(a.join(" "));
+    let res;
+    try { res = await w.hook(req(received())); } finally { console.log = orig; }
     assert.equal(forwards(w).length, 1, "o dono recebe mesmo assim");
-    assert.equal(acks(w).length, 0, JSON.stringify(c));
+    assert.equal(acks(w).length, 0, JSON.stringify(d));
     assert.match((await res.json()).ack, /^skipped_/);
   }
+  assert.ok(logs.length && !/SECRETO|cliente@example|Não recebi|dono-teste/.test(logs.join("\n")), "log sem conteúdo também sem confirmação");
   const w = world();
-  await fwd.handleSupportInboundWebhook(req(received({ id: "h1" })), w.env, w.opts);
-  await fwd.handleSupportInboundWebhook(req(received({ id: "h2", subject: "De novo" })), w.env, w.opts);
+  await w.hook(req(received({ id: "h1" })));
+  await w.hook(req(received({ id: "h2" })));
   assert.equal(forwards(w).length, 2);
   assert.equal(acks(w).length, 1);
-  const ack = acks(w)[0];
-  assert.equal(ack.body.headers["Auto-Submitted"], "auto-replied");
-  assert.deepEqual(ack.body.to, ["cliente@example.com"]);
-  assert.equal(ack.idem, "support-ack/h1");
+  assert.equal(w.db.rows.get("h2").ack_status, "rate_limited_sender");
+  const cap = world({ details: Object.fromEntries(Array.from({ length: 32 }, (_, i) => [`c${i}`, { from: `pessoa${i}@example.net` }])) });
+  for (let i = 0; i < 32; i++) await cap.hook(req(received({ id: `c${i}`, from: `pessoa${i}@example.net` })));
+  assert.equal(forwards(cap).length, 32);
+  assert.equal(acks(cap).length, fwd.ACK_DAILY_CAP);
+  assert.equal(cap.db.rows.get("c31").ack_status, "rate_limited_daily");
   const off = world();
-  const r = await fwd.handleSupportInboundWebhook(req(received()), { ...off.env, SUPPORT_AUTO_ACK: "false" }, off.opts);
+  const r = await off.hook(req(received()), { ...off.env, SUPPORT_AUTO_ACK: "false" });
   assert.equal((await r.json()).ack, "disabled");
   assert.equal(acks(off).length, 0);
 });
 
-test("prova-sandbox@, outros destinatários e eventos de entrega seguem para o handler legado (null), sem efeito", async () => {
-  const w = world();
-  for (const ev of [
-    received({ to: [v2.SANDBOX_INBOX_ADDRESS] }),
-    received({ to: ["vendas@zevanory.api.br"] }),
-    { type: "email.delivered", data: { email_id: "x" } }
-  ]) {
-    const r = req(ev);
-    assert.equal(await fwd.handleSupportInboundWebhook(r, w.env, w.opts), null);
-    assert.equal(r.bodyUsed, false, "corpo original intacto para o handler legado");
-  }
-  assert.equal(w.sent.length + w.gets.length, 0);
-  assert.equal(w.db.rows.size, 0);
-  assert.equal(await fwd.handleSupportInboundWebhook(new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", body: "{}" }), w.env, w.opts), null);
-  const other = { to: "suporte@zevanory.api.br" };
-  assert.equal(await v2.handleSandboxInboundEmail(other, {}), false, "Email Worker da sandbox inalterado");
+test("cota reservada atomicamente: um único comando trava a linha, reserva remetente e global e muda o estado", () => {
+  const src = readTextNormalized(new URL("../worker/support-email-forward.mjs", import.meta.url));
+  const m = /forwardedReserveAck: `([\s\S]*?)`,/.exec(src);
+  assert.ok(m, "comando de reserva ausente");
+  const q = m[1];
+  assert.match(q, /for update/);
+  assert.equal((q.match(/insert into zevanory_support_ack_quota/g) || []).length, 2);
+  assert.match(q, /on conflict \(bucket, day\) do nothing/);
+  assert.match(q, /do update set n = zevanory_support_ack_quota\.n \+ 1 where zevanory_support_ack_quota\.n < \$3/);
+  assert.match(q, /select 'all', \$2::date, 1 from s/);
+  assert.match(q, /update zevanory_support_inbound i set/);
+  assert.ok(!/select count\(/i.test(src), "nada de ler-e-depois-gravar contagens");
+  assert.equal((src.match(/SQL\.forwardedReserveAck/g) || []).length, 1);
 });
 
-test("Worker: rota interceptada antes do legado e dos carregamentos de WhatsApp", () => {
+test("lease, recuo e estado fazem parte dos comandos do outbox (concorrência e redelivery)", () => {
+  const src = readTextNormalized(new URL("../worker/support-email-forward.mjs", import.meta.url));
+  const pick = (name) => { const m = new RegExp(name + ": `([\\s\\S]*?)`,").exec(src); assert.ok(m, name); return m[1].replace(/\s+/g, " "); };
+  for (const name of ["lease", "due"]) {
+    const q = pick(name);
+    assert.match(q, /state in \('forward_pending','ack_pending'\)/, name);
+    assert.match(q, /next_attempt_at <= now\(\)/, name);
+    assert.match(q, /\(lease_until is null or lease_until < now\(\)\)/, name);
+  }
+  assert.match(pick("lease"), /set lease_until = now\(\) \+ interval '2 minutes', attempts = attempts \+ 1/);
+  assert.match(pick("record"), /on conflict \(email_id\) do nothing returning email_id/);
+  assert.match(pick("acked"), /where email_id = \$1 and state = 'ack_pending'/);
+  assert.match(pick("forwardedNoAck"), /where email_id = \$1 and state = 'forward_pending'/);
+});
+
+test("HTML higienizado por lista de permissão e com teto de tamanho", async () => {
+  const dirty = `<p onclick="x()">Olá<script>alert(1)</script><style>p{}</style><iframe src="https://x"></iframe>
+    <a href="javascript:alert(1)">j</a><a href=" jav&#x61;script:alert(1)">k</a><a href="data:text/html,x">d</a>
+    <a href="https://ok.example/p?a=1">ok</a><img src="https://track.example/p.gif" onerror="x()"><svg><g onload="x()"/></svg>
+    <scr<script>x</script>ipt>alert(2)</scr<script>x</script>ipt><!-- c --><form><input></form><b>fim</b>`;
+  const out = fwd.sanitizeHtml(dirty);
+  for (const bad of [/alert\(/, /<script/i, /<style/i, /<iframe/i, /<img/i, /<svg/i, /<form/i, /<input/i, /onclick|onerror|onload/i, /javascript:/i, /data:text/i, /<!--/]) assert.doesNotMatch(out, bad);
+  assert.match(out, /<a href="https:\/\/ok\.example\/p\?a=1" rel="noopener noreferrer nofollow">ok<\/a>/);
+  assert.match(out, /<b>fim<\/b>/);
+  assert.doesNotMatch(out, /<(?!\/?(p|a|b)\b)[a-z]/i, "só tags permitidas sobrevivem");
+  assert.equal(fwd.sanitizeHtml("<p>" + "x".repeat(fwd.MAX_HTML_IN) + "</p>"), "");
+  const w = world({ details: { "*": { html: "<p>" + "y".repeat(fwd.MAX_HTML_OUT + 10) + "</p>" } } });
+  await w.hook(req(received()));
+  const [f] = forwards(w);
+  assert.equal(f.body.html, undefined);
+  assert.match(f.body.text, /versão HTML omitida/);
+  const w2 = world({ details: { "*": { html: dirty } } });
+  await w2.hook(req(received()));
+  assert.doesNotMatch(forwards(w2)[0].body.html, /<script|javascript:|onerror/i);
+});
+
+test("anexos: executáveis, tamanho desconhecido/excessivo e excesso de quantidade são recusados", async () => {
+  const MB = 1024 * 1024;
+  const a = (filename, size, content_type = "application/pdf") => ({ id: filename, filename, size, content_type, download_url: `https://att.example/${encodeURIComponent(filename)}` });
+  const rows = [
+    a("nota.pdf", 1 * MB), a("virus.exe", 10), a("boleto.pdf.exe", 10), a("x.bin.txt", 10, "application/x-msdownload"),
+    a("script.js", 10, "text/plain"), a("macro.docm", 10, "application/vnd.ms-word.document.macroEnabled.12"),
+    a("semtamanho.pdf", undefined), a("vazio.pdf", 0), a("grande.pdf", 11 * MB), a("f1.png", 1, "image/png"), a("f2.png", 1, "image/png"),
+    a("f3.png", 1, "image/png"), a("f4.png", 1, "image/png"), a("f5.png", 1, "image/png")
+  ];
+  const picked = fwd.selectAttachments(rows);
+  assert.deepEqual(picked.accepted.map((x) => x.filename), ["nota.pdf", "f1.png", "f2.png", "f3.png", "f4.png"]);
+  assert.equal(picked.rejected, rows.length - 5);
+  const total = fwd.selectAttachments([a("a.pdf", 9 * MB), a("b.pdf", 9 * MB), a("c.pdf", 9 * MB)]);
+  assert.equal(total.accepted.length, 2, "teto total de bytes");
+  const w = world({ attachments: rows });
+  await w.hook(req(received()));
+  const [f] = forwards(w);
+  assert.equal(f.body.attachments.length, 5);
+  assert.ok(!f.body.attachments.some((x) => /exe|js|docm/.test(x.filename)));
+  assert.match(f.body.text, /9 anexo\(s\) não copiados/);
+});
+
+test("prova-sandbox@, outros destinatários e eventos de entrega seguem para o handler legado (null), sem efeito", async () => {
+  const w = world();
+  for (const ev of [received({ to: [v2.SANDBOX_INBOX_ADDRESS] }), received({ to: ["vendas@zevanory.api.br"] }), { type: "email.delivered", data: { email_id: "x" } }]) {
+    const r = req(ev);
+    assert.equal(await w.hook(r), null);
+    assert.equal(r.bodyUsed, false, "corpo original intacto para o handler legado");
+  }
+  assert.equal(w.attempts.length + w.gets.length + w.db.rows.size, 0);
+  assert.equal(await w.hook(new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", body: "{}" })), null);
+  assert.equal(await v2.handleSandboxInboundEmail({ to: "suporte@zevanory.api.br" }, {}), false, "Email Worker da sandbox inalterado");
+});
+
+test("Worker: webhook interceptado antes do legado/WhatsApp, outbox drenado no cron horário; doc exige responder como suporte@", () => {
   const src = readTextNormalized(new URL("../worker/cloudflare-worker.compat.mjs", import.meta.url));
   const at = src.indexOf('url.pathname === "/api/webhooks/resend" && request.method === "POST"');
-  assert.ok(at > 0);
-  assert.ok(at < src.indexOf("const whatsappPath ="));
+  assert.ok(at > 0 && at < src.indexOf("const whatsappPath ="));
   assert.match(src.slice(at, at + 300), /handleSupportInboundWebhook\(request, normalized, \{ sqlFactory: whatsappProofDatabase \}\);\s*if \(support\) return support;/);
+  const cron = src.indexOf("tasks.push(drainSupportOutbox(normalized, { sqlFactory: whatsappProofDatabase })");
+  assert.ok(cron > 0 && cron < src.indexOf("await Promise.all(tasks);"));
+  const doc = readTextNormalized(new URL("../docs/ops/EMAIL_SUPORTE.md", import.meta.url));
+  assert.match(doc, /Enviar e-mail como/);
+  assert.match(doc, /smtp\.resend\.com/);
+  assert.match(doc, /teste real/i);
 });
