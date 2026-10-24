@@ -361,7 +361,7 @@ test("(f2) regeneração: 2xx do envio só deixa o candidato accepted; entrega c
   const t = legacyEnv(pkg);
   const res = await regenPost(t);
   const html = await res.text();
-  assert.equal(res.status, 200, "[regen-accepted] POST");
+  assert.equal(res.status, 202, "[regen-accepted] POST: 202, entrega ainda não confirmada");
   assert.ok(html.includes(CS.REGEN_MSG.accepted), "[regen-accepted] mensagem de envio aceito");
   assert.ok(!html.includes(CS.REGEN_MSG.delivered) && !COPY_FORBIDDEN.test(html), "[regen-copy] 2xx não vira entrega");
   assert.equal(recOf(t).lastPackage, t.legacyKey, "[regen-accepted] 2xx não promove");
@@ -427,7 +427,7 @@ function countingPuts(t) {
   t.kv.put = async (k, v, o) => { puts.push(k); return put(k, v, o); };
   return puts;
 }
-const TRANSIENT = [["tempo esgotado", "timeout"], ["429", 429], ["500", 500], ["502", 502], ["503", 503], ["2xx sem id", "noid"], ["409 concurrent_idempotent_requests (clique duplo)", "concurrent"], ["sendEmail=false (sem RESEND_API_KEY)", "nokey"]];
+const TRANSIENT = [["tempo esgotado", "timeout"], ["408", 408], ["429", 429], ["500", 500], ["502", 502], ["503", 503], ["2xx sem id", "noid"], ["409 concurrent_idempotent_requests (clique duplo)", "concurrent"], ["sendEmail=false (sem RESEND_API_KEY)", "nokey"]];
 
 test("(g1) tempo esgotado, 429, 5xx ou envio falso: candidato pending, 202 com protocolo, nada promovido; retomada com a mesma chave", async () => {
   for (const [label, mode] of TRANSIENT) {
@@ -485,7 +485,7 @@ test("(g2) 4xx permanente: dead na hora com alerta; dead nunca vira atual, nem c
   }
   // accepted -> dead (bounced) e delivered tardio não promove; operação registrada reabre com chave nova.
   const t = legacyEnv(contaminatedLegacy());
-  assert.equal((await regenPost(t)).status, 200);
+  assert.equal((await regenPost(t)).status, 202, "[regen-accepted] 202");
   t.resend.events.set("re_1", "bounced");
   const r1 = await CS.reconcileRegenCandidates(t.env, t.fetchImpl);
   assert.equal(r1.dead, 1, "[regen-bounce] bounced => dead");
@@ -529,7 +529,7 @@ test("(g3) queda entre o envio e a gravação: sem segundo e-mail na retomada; q
   assert.equal(toCustomer(t.emails).length, 1, "[regen-crash] o envio aconteceu antes da queda");
   assert.equal(candOf(t).delivery, "pending", "[regen-crash] estado ficou pending");
   const r2 = await regenPost(t);
-  assert.equal(r2.status, 200, "[regen-crash] retomada");
+  assert.equal(r2.status, 202, "[regen-crash] retomada (accepted = 202)");
   const reqs = customerPosts(t);
   assert.equal(reqs.length, 2, "[regen-crash] duas chamadas ao Resend");
   assert.equal(reqs[0].key, reqs[1].key, "[regen-idem] mesma chave na retomada");
@@ -595,7 +595,7 @@ test("(g4) persistência: candidato ou outbox não gravados => 503 exato, nenhum
     const pkgKeys = [...t.kv.data.keys()].filter(isCandPkg);
     const before = pkgKeys.map((k) => t.kv.data.get(k));
     const again = await regenPost(t);
-    assert.equal(again.status, 200, `[regen-persist] ${target}: retomada`);
+    assert.equal(again.status, 202, `[regen-persist] ${target}: retomada (accepted = 202)`);
     assert.equal(t.ai.prompts.length, 3, `[regen-single] ${target}: pacote do candidato reaproveitado`);
     assert.deepEqual(pkgKeys.map((k) => t.kv.data.get(k)), before, `[regen-immutable] ${target}`);
     const cand = candOf(t);
@@ -663,7 +663,7 @@ test("(g6) pacote v2 gravado contaminado em curta, assunto ou corpo: bloqueado c
   const rec0 = recOf(t);
   t.kv.data.set(v2Key, t.raw); t.kv.data.delete(t.legacyKey);
   t.kv.data.set(t.sub, JSON.stringify({ ...rec0, lastPackage: v2Key }));
-  assert.equal((await regenPost(t)).status, 200, "[v2-regen] candidato aceito");
+  assert.equal((await regenPost(t)).status, 202, "[v2-regen] candidato aceito (202)");
   await deliver(t);
   const rec = recOf(t);
   assert.notEqual(rec.lastPackage, v2Key, "[v2-bytes] chave nova");
@@ -684,7 +684,7 @@ test("(g7) texto ao cliente: nenhuma mensagem de regeneração diz chegou/entreg
   assert.equal(CS.REGEN_MSG.accepted, "A versão nova foi gerada e o provedor aceitou o envio. A entrega ao seu e-mail ainda está sendo confirmada.", "[regen-copy] accepted exato");
   assert.equal(CS.REGEN_MSG.pending("P-1"), "A versão nova foi gerada, mas o envio ainda está pendente. Continuaremos tentando sem gerar outra cópia nem fazer qualquer cobrança. Use o protocolo P-1 para acompanhar pelo suporte.", "[regen-copy] pending exato");
   assert.equal(CS.REGEN_MSG.persist, "Não foi possível registrar a regeneração com segurança agora. A versão antiga continua bloqueada e não foi exibida nem alterada. Tente novamente mais tarde ou escreva para suporte@zevanory.api.br. Nenhuma nova entrega foi confirmada.", "[regen-copy] persist exato");
-  assert.deepEqual(CS.regenResponse({ reason: "accepted" }), [200, CS.REGEN_MSG.accepted], "[regen-copy] accepted");
+  assert.deepEqual(CS.regenResponse({ reason: "accepted" }), [202, CS.REGEN_MSG.accepted], "[regen-copy] accepted 202");
   assert.deepEqual(CS.regenResponse({ reason: "pending", protocolo: "X" }), [202, CS.REGEN_MSG.pending("X")], "[regen-copy] pending 202");
   assert.deepEqual(CS.regenResponse({ reason: "persist_failed" }), [503, CS.REGEN_MSG.persist], "[regen-copy] persist 503");
   assert.deepEqual(CS.regenResponse({ reason: "delivered" }), [200, CS.REGEN_MSG.delivered], "[regen-copy] delivered");

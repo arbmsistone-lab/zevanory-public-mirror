@@ -1,7 +1,7 @@
 name: conteudo-pronto-contract
 
 # Conteúdo Pronto (AVAL Sol #898): roteiros multicanal no lugar de mensagens de WhatsApp, contrato versionado em
-# data/politica-unica.json (conteudo_pronto). Prova em nuvem: suíte do contrato com contagem exata e 79 mutantes (inclui a regeneração com entrega confirmada:
+# data/politica-unica.json (conteudo_pronto). Prova em nuvem: suíte do contrato com contagem exata e 80 mutantes (inclui a regeneração com entrega confirmada:
 # bloqueado/candidato/atual, pending -> accepted -> delivered | dead),
 # cada um morto pela asserção esperada (rótulo na saída), em Linux e Windows (Git Bash, CRLF), Node 22 e 24.
 # Só pull_request: nunca dispara no merge, nunca usa segredo, sem rede além do checkout.
@@ -13,6 +13,8 @@ on:
       - "tests/content-service.test.mjs"
       - "tests/helpers/text.mjs"
       - "scripts/ci/mutants_conteudo_pronto.py"
+      - "scripts/ci/mutant_tap.py"
+      - "scripts/ci/test_mutant_tap.py"
       - "worker/content-service.mjs"
       - "worker/politica-unica.mjs"
       - "worker/atendimento.mjs"
@@ -83,7 +85,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Conteúdo Pronto — 79 mutantes
+      - name: Classificador de mutantes — meta-testes (falha não relacionada, queda, tempo esgotado, contagem incompleta)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          set -euo pipefail
+          python3 -B scripts/ci/test_mutant_tap.py 2>&1 | tr -d '\r' | tee meta.txt
+          grep -qx 'OK' meta.txt || { echo "::error::meta-testes do classificador falharam"; exit 1; }
+          n="$(grep -oE '^Ran [0-9]+ tests' meta.txt | grep -oE '[0-9]+')"
+          [ "$n" = "11" ] || { echo "::error::esperados 11 meta-testes, obtidos $n"; exit 1; }
+          echo "::notice title=MUTANT_CLASSIFIER_META ($RUNNER_OS node ${{ matrix.node }})::Ran $n tests OK"
+          rm -f meta.txt
+      - name: Conteúdo Pronto — 80 mutantes
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONIOENCODING: "utf-8"
@@ -93,11 +107,12 @@ jobs:
           rc=0
           python3 scripts/ci/mutants_conteudo_pronto.py < /dev/null > mutants.raw 2>&1 || rc=$?
           tr -d '\r' < mutants.raw | tee mutants.txt
+          echo "::notice title=MUTANTS_TOTAIS ($RUNNER_OS node ${{ matrix.node }})::KILLED=$(grep -c '^MUTANT M[0-9]* KILLED' mutants.txt || true) SURVIVED=$(grep -c '^MUTANT M[0-9]* SURVIVED' mutants.txt || true) INCONCLUSIVE=$(grep -c '^MUTANT M[0-9]* INCONCLUSIVE' mutants.txt || true)"
           echo "::notice title=MUTANTS_CONTEUDO_PRONTO ($RUNNER_OS node ${{ matrix.node }})::$(grep '^MUTANTS_TOTAL' mutants.txt || echo sem-resumo) rc=$rc"
           if grep -q '^MUTANT .* INCONCLUSIVE' mutants.txt; then grep '^MUTANT .* INCONCLUSIVE' mutants.txt | while IFS= read -r l; do echo "::error title=INCONCLUSIVE::$l"; done; fi
           [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc (1=sobrevivente, 2=baseline, 3=inconclusivo)"; exit 1; }
           n="$(grep -c '^MUTANT M[0-9]* KILLED' mutants.txt || true)"
-          [ "$n" = "79" ] || { echo "::error::esperados 79 mutantes mortos, obtidos $n"; exit 1; }
-          grep -qx 'MUTANTS_TOTAL=79 KILLED=79 SURVIVED=0 INCONCLUSIVE=0' mutants.txt || { echo "::error::resumo dos mutantes diferente do esperado"; exit 1; }
+          [ "$n" = "80" ] || { echo "::error::esperados 80 mutantes mortos, obtidos $n"; exit 1; }
+          grep -qx 'MUTANTS_TOTAL=80 KILLED=80 SURVIVED=0 INCONCLUSIVE=0' mutants.txt || { echo "::error::resumo dos mutantes diferente do esperado"; exit 1; }
           rm -f mutants.txt mutants.raw
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi

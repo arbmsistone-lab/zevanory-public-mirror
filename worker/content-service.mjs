@@ -370,9 +370,11 @@ export async function retryPendingPackages(env, fetchImpl = fetch, limit = 2) {
 // Entrega: pending -> accepted -> delivered, ou pending/accepted -> dead.
 //   pending  : candidato e outbox gravados ANTES de qualquer envio. Falha de rede, tempo esgotado, 429, 5xx, 2xx
 //              sem id ou envio não configurado => continua pending (202), cron tenta de novo com a mesma chave.
-//   accepted : 2xx + id do Resend. NÃO promove e NÃO registra delivery_sent: 2xx só diz que o envio foi aceito.
-//   delivered: last_event delivered/opened/clicked/complained ("email.delivered: Resend handed the email off to the
-//              recipient's mail server"). Promove UMA vez (evento duplicado não promove nem notifica de novo).
+//   accepted : 2xx + id do Resend. NÃO promove e NÃO registra delivery_sent: 2xx só diz que o envio foi aceito
+//              (HTTP 202 ao cliente, como pending: entrega ainda não confirmada).
+//   delivered: last_event delivered, ou evento posterior que prova a entrega (opened/clicked/complained)
+//              ("email.delivered: Resend handed the email off to the recipient's mail server"). Promove UMA vez
+//              (evento duplicado não promove nem notifica de novo).
 //   dead     : 4xx permanente (mesma regra de worker/atendimento.mjs, PR #892), last_event bounced/failed/
 //              suppressed/canceled, janela de 23 h da Idempotency-Key esgotada em pending ou 72 h sem confirmação
 //              em accepted => alerta ao proprietário. Candidato dead nunca vira atual sem uma operação nova
@@ -571,7 +573,7 @@ export async function regenerateBlockedPackage(env, key, fetchImpl = fetch, { no
 // Mensagem e status HTTP de cada estado: o 2xx do envio nunca vira afirmação de entrega (teste g7).
 export function regenResponse(out) {
   if (out.reason === "delivered") return [200, REGEN_MSG.delivered];
-  if (out.reason === "accepted") return [200, REGEN_MSG.accepted];
+  if (out.reason === "accepted") return [202, REGEN_MSG.accepted]; // aceito pelo provedor, entrega ainda não confirmada
   if (out.reason === "pending") return [202, REGEN_MSG.pending(out.protocolo)];
   if (out.reason === "dead") return [409, REGEN_MSG.dead(out.protocolo)];
   if (out.reason === "persist_failed") return [503, REGEN_MSG.persist];

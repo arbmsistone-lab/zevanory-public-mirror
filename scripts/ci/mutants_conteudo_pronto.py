@@ -3,15 +3,21 @@
 
 Cada mutante altera UMA CÓPIA temporária da árvore (oferta, contrato, gerador, páginas-fonte ou geradas), roda
 tests/conteudo-pronto-roteiros.test.mjs e tests/content-service.test.mjs contra a cópia e classifica o resultado
-com a mesma regra de scripts/ci/mutants_comprar_noindex.py:
-  KILLED       exit != 0, TAP com "not ok" E o rótulo da asserção esperada na saída;
-  SURVIVED     exit == 0 e resumo TAP completo igual à baseline;
-  INCONCLUSIVE qualquer outra coisa (trecho não encontrado, node ausente, timeout, falha sem o rótulo esperado).
+com o classificador estrito scripts/ci/mutant_tap.py (auditoria Sol #898; meta-testes em scripts/ci/test_mutant_tap.py):
+  KILLED       rc == 1, resumo TAP completo e coerente com a baseline, toda falha em teste da allowlist do mutante
+               (ALLOW) e o rótulo esperado DENTRO do campo `error` de um bloco `not ok`;
+  SURVIVED     rc == 0 e resumo TAP completo igual à baseline;
+  INCONCLUSIVE qualquer outra coisa (queda, erro de sintaxe/módulo, tempo esgotado, contagem incompleta, falha fora
+               da allowlist, rótulo fora do bloco `not ok`, trecho não encontrado). Repetido uma vez; persistindo, o
+               job falha.
 Texto lido em UTF-8 com CRLF normalizado para LF; arquivo mutado gravado em UTF-8/LF; reporter TAP explícito.
 Saída: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE`. Exit 0 só se todos KILLED; 1 sobrevivente; 3 inconclusivo;
 2 baseline falhou. Uso: python3 scripts/ci/mutants_conteudo_pronto.py [raiz-do-repo]
 """
 import os, re, shutil, subprocess, sys, tempfile
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mutant_tap  # noqa: E402  (classificador estrito compartilhável; meta-testes em scripts/ci/test_mutant_tap.py)
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -166,14 +172,16 @@ M = {
         "    } catch { return { ok: false, reason: \"pending\" }; }\n  } else if", "[regen-persist]"),
     "M70 envia sem outbox durável": (CS, "      await putJson(kv, candKey, cand);\n      await outboxAdd(kv, candKey);\n",
         "      await putJson(kv, candKey, cand);\n      outboxAdd(kv, candKey).catch(() => null);\n", "[regen-persist] outbox"),
-    "M71 página afirma entrega com 2xx": (CS, "  if (out.reason === \"accepted\") return [200, REGEN_MSG.accepted];",
-        "  if (out.reason === \"accepted\") return [200, REGEN_MSG.delivered];", "[regen-copy]"),
+    "M71 página afirma entrega com 2xx": (CS, "  if (out.reason === \"accepted\") return [202, REGEN_MSG.accepted];",
+        "  if (out.reason === \"accepted\") return [202, REGEN_MSG.delivered];", "[regen-copy]"),
+    "M80 accepted responde 200 (entrega não confirmada)": (CS, "  if (out.reason === \"accepted\") return [202, REGEN_MSG.accepted];",
+        "  if (out.reason === \"accepted\") return [200, REGEN_MSG.accepted];", "[regen-accepted] POST: 202"),
     "M72 pendência responde 503 em vez de 202": (CS, "  if (out.reason === \"pending\") return [202,",
         "  if (out.reason === \"pending\") return [503,", "[regen-fail] tempo esgotado #1: 202"),
     "M73 queda pós-promoção vira superseded": (CS, "  if (record?.lastPackage === cand.candidate_key) {",
         "  if (false) {", "[regen-converge]"),
     "M74 candidato regravado (não imutável)": (CS, "      if (!(await kv.get(candidate_key))) await kv.put(candidate_key, stored,",
-        "      await kv.put(candidate_key, JSON.stringify({ ...JSON.parse(stored), generatedAt: new Date().toISOString() }),", "[regen-immutable]"),
+        "      await kv.put(candidate_key, JSON.stringify({ ...JSON.parse(stored), regravado: true }),", "[regen-immutable]"),
     "M75 detector v2 ignora a versão curta": (CS, "flatMap((r) => [r?.objetivo, r?.curta, r?.email?.assunto, r?.email?.corpo])",
         "flatMap((r) => [r?.objetivo, ...(r?.email ? [] : [r?.curta]), r?.email?.assunto, r?.email?.corpo])", "[v2-detect] roteiros.curta"),
     "M76 detector v2 ignora o assunto do e-mail": (CS, "flatMap((r) => [r?.objetivo, r?.curta, r?.email?.assunto, r?.email?.corpo])",
@@ -184,6 +192,92 @@ M = {
         "    if (false) return", "[regen-fail] 409 concurrent_idempotent_requests"),
     "M79 POST não converge delivered interrompido": (CS, "  if (cand.delivery === \"delivered\" && !cand.promotedAt) {\n    await applyRegenDelivered(",
         "  if (false) {\n    await applyRegenDelivered(", "[regen-converge] promovido na retomada"),
+}
+
+# Testes que cada mutante pode derrubar (ids do classificador: prefixo "(g1)" ou, sem prefixo, o nome inteiro).
+# Levantados executando cada mutante e revisados um a um: todos exercitam o trecho mutado. Falha fora daqui = INCONCLUSIVE.
+FLOW = "full automatic flow: purchase -> briefing email -> form -> AI package -> delivery email -> renewal regenerates -> cancel stops"
+ALLOW = {
+    "M01": ("(a)",),
+    "M02": ("(b)",),
+    "M03": ("(b)",),
+    "M04": ("(b)",),
+    "M05": ("(b)",),
+    "M06": ("(a)", "(b)",),
+    "M07": ("(a)",),
+    "M08": ("(a)", "(c)",),
+    "M09": ("(c)", "(d)",),
+    "M10": ("(c)",),
+    "M11": ("(c2)",),
+    "M12": ("(c2)", "(f3)",),
+    "M13": ("(c2)",),
+    "M14": ("(c)",),
+    "M15": ("(c)",),
+    "M16": ("(d)", "(f2)",),
+    "M17": ("(d)", "(f2)",),
+    "M18": (FLOW,),
+    "M19": ("(d)", "(f2)",),
+    "M20": ("(d)",),
+    "M21": ("(c)", "(d)",),
+    "M22": ("(b)",),
+    "M23": ("(b)", "(e)",),
+    "M24": ("(b)",),
+    "M25": ("(b)", "(e)",),
+    "M26": ("(b)", "(e)",),
+    "M27": ("(c)",),
+    "M28": ("(c)",),
+    "M29": ("(d)", "(f2)",),
+    "M30": ("(d)",),
+    "M31": ("(e)",),
+    "M32": ("(e)",),
+    "M33": ("(e)",),
+    "M34": ("(e)",),
+    "M35": ("(b)", "(e)",),
+    "M36": ("(f)", "(f2)", "(g1)", "(g6)",),
+    "M37": ("(f)",),
+    "M38": ("(f)",),
+    "M39": ("(f)",),
+    "M40": ("(f)", "(f3)", "(g6)",),
+    "M41": ("(f)", "(f3)", "(g6)",),
+    "M42": ("(a)", "(f)", "(f3)", "(g6)",),
+    "M43": ("(f2)", "(g1)", "(g2)", "(g3)", "(g4)", "(g5)", "(g6)",),
+    "M44": ("(f2)",),
+    "M45": ("(f)",),
+    "M46": ("(f)", "(g6)",),
+    "M47": ("(f3)",),
+    "M48": ("(f)", "(g1)", "(g6)",),
+    "M49": ("(f2)", "(g1)", "(g2)", "(g3)", "(g6)",),
+    "M50": ("(f3)",),
+    "M51": ("(g1)", "(g2)", "(g5)",),
+    "M52": ("(f2)", "(g1)", "(g2)", "(g3)", "(g5)",),
+    "M53": ("(g1)", "(g3)",),
+    "M54": ("(g1)", "(g3)",),
+    "M55": ("(g1)", "(g5)",),
+    "M56": ("(g2)",),
+    "M57": ("(g2)", "(g5)",),
+    "M58": ("(g2)",),
+    "M59": ("(g3)",),
+    "M60": ("(f2)", "(g2)", "(g5)",),
+    "M61": ("(f2)",),
+    "M62": ("(g3)",),
+    "M63": ("(f2)", "(g4)", "(g6)",),
+    "M64": ("(f2)", "(g1)", "(g2)", "(g3)", "(g4)", "(g5)",),
+    "M65": ("(g5)",),
+    "M66": ("(g5)",),
+    "M67": ("(g2)",),
+    "M68": ("(g2)",),
+    "M69": ("(g4)",),
+    "M70": ("(g4)",),
+    "M71": ("(f2)", "(g7)",),
+    "M72": ("(g1)", "(g5)", "(g7)",),
+    "M73": ("(g3)",),
+    "M74": ("(f2)", "(g1)", "(g2)", "(g3)", "(g4)", "(g6)",),
+    "M75": ("(g6)",),
+    "M76": ("(g6)",),
+    "M77": ("(g6)",),
+    "M78": ("(g1)",),
+    "M79": ("(g3)",),
+    "M80": ("(f2)", "(g2)", "(g3)", "(g4)", "(g6)", "(g7)",),
 }
 
 
@@ -204,42 +298,51 @@ def stage(d):
 
 def run(d):
     env = {**os.environ, "NO_COLOR": "1", "FORCE_COLOR": "0", "NODE_OPTIONS": ""}
-    p = subprocess.run([NODE, "--test", "--test-reporter=tap", *[t.as_posix() for t in TESTS]], cwd=str(d), env=env,
-                       stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT)
+    try:
+        p = subprocess.run([NODE, "--test", "--test-reporter=tap", *[t.as_posix() for t in TESTS]], cwd=str(d), env=env,
+                           stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT)
+    except subprocess.TimeoutExpired as e:
+        out = ((e.stdout or b"") + (e.stderr or b"")).decode("utf-8", errors="replace").replace("\r\n", "\n")
+        return None, out
     out = (p.stdout + p.stderr).decode("utf-8", errors="replace").replace("\r\n", "\n")
     return p.returncode, out
 
 
 def summary(out):
-    get = lambda k: (re.search(rf"^# {k} (\d+)$", out, re.M) or [None, None])[1]
-    return {k: get(k) for k in ("tests", "pass", "fail")}
+    return mutant_tap.summary(out)
 
 
-def classify(rc, out, expect, total):
-    s = summary(out)
-    if rc != 0 and re.search(r"^\s*not ok ", out, re.M) and expect in out:
-        return "KILLED", ""
-    if rc == 0 and s == {"tests": total, "pass": total, "fail": "0"}:
-        return "SURVIVED", ""
-    return "INCONCLUSIVE", f"rc={rc} resumo={s} rótulo_presente={expect in out}"
+def attempt(name, fname, old, new, expect, total):
+    allowed = set(ALLOW.get(name.split()[0], ()))
+    if not allowed:
+        return "INCONCLUSIVE", "mutante sem allowlist", False
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        d = Path(tmp)
+        stage(d)
+        f = d.joinpath(*fname.split("/"))
+        text = read_text_normalized(f)
+        if text.count(old) != 1:
+            return "INCONCLUSIVE", f"trecho a mutar ocorre {text.count(old)} vez(es)", False
+        write_lf(f, text.replace(old, new, 1))
+        rc, out = run(d)
+    verdict, why = mutant_tap.classify(rc, out, expect, total, allowed)
+    return verdict, why, True
 
 
 def one(item, total):
+    # INCONCLUSIVE (queda, tempo esgotado, contagem incompleta, falha fora da allowlist) é repetido UMA vez;
+    # persistindo, fica INCONCLUSIVE e o job falha.
     name, (fname, old, new, expect) = item
-    try:
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-            d = Path(tmp)
-            stage(d)
-            f = d.joinpath(*fname.split("/"))
-            text = read_text_normalized(f)
-            if text.count(old) != 1:
-                return name, "INCONCLUSIVE", f"trecho a mutar ocorre {text.count(old)} vez(es)", expect
-            write_lf(f, text.replace(old, new, 1))
-            rc, out = run(d)
-        verdict, why = classify(rc, out, expect, total)
-        return name, verdict, why, expect
-    except (OSError, subprocess.SubprocessError, UnicodeError) as e:
-        return name, "INCONCLUSIVE", f"erro de infraestrutura: {type(e).__name__}: {e}", expect
+    why = ""
+    for n in (1, 2):
+        try:
+            verdict, why, retriable = attempt(name, fname, old, new, expect, total)
+        except (OSError, subprocess.SubprocessError, UnicodeError) as e:
+            verdict, why, retriable = "INCONCLUSIVE", f"erro de infraestrutura: {type(e).__name__}: {e}", True
+        if verdict != "INCONCLUSIVE" or not retriable:
+            break
+        why = f"{why} (tentativa {n})"
+    return name, verdict, why, expect
 
 
 def main():
@@ -254,11 +357,15 @@ def main():
         print(f"MUTANT BASELINE INCONCLUSIVE ({type(e).__name__}: {e})")
         return 3
     s = summary(out)
-    if rc != 0 or not s["tests"] or s["pass"] != s["tests"] or s["fail"] != "0":
+    if rc != 0 or not s["tests"] or mutant_tap.classify(rc, out, "", s["tests"], {"-"})[0] != "SURVIVED":
         print(out[-3000:])
         print(f"MUTANT BASELINE FAILED (suíte sem mutação não passa) rc={rc} resumo={s}")
         return 2
     total = s["tests"]
+    missing = sorted(set(k.split()[0] for k in M) ^ set(ALLOW))
+    if missing:
+        print(f"MUTANT BASELINE INCONCLUSIVE (mutantes sem allowlist ou allowlist órfã: {missing})")
+        return 3
     print(f"MUTANT BASELINE PASS tests={total} node={subprocess.run([NODE, '--version'], capture_output=True, text=True).stdout.strip()} os={os.name}", flush=True)
     counts = {"KILLED": 0, "SURVIVED": 0, "INCONCLUSIVE": 0}
     with ThreadPoolExecutor(max_workers=max(2, min(8, os.cpu_count() or 2))) as ex:
