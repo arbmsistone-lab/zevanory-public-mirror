@@ -17,18 +17,22 @@ import { dirname, resolve } from "node:path";
 import { normalizeEol } from "../../tests/helpers/text.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const SUITES = ["tests/whatsapp-retirement.test.mjs", "tests/meta-social-manual-only.test.mjs"];
-const BASE_COUNT = 20;
+const SUITES = ["tests/whatsapp-retirement.test.mjs", "tests/meta-social-manual-only.test.mjs", "tests/whatsapp-config-absence.test.mjs"];
+const BASE_COUNT = 23;
 const T = {
   sw: "kill-switch: retirement is a code constant", paths: "retired: no fetch", surf: "status surfaces:", proj: "projection:", quorum: "provider independence:",
   hook: "Meta webhook: WhatsApp deliveries", nonwa: "Meta webhook: Instagram/Facebook", bhook: "bundle layer", gone: "onboarding routes", broker: "broker tombstone:", prims: "sender primitives",
   adapter: "outbound adapter", reply: "instant reply:", h18: "webhook handler:", forger: "static: no forged", wf: "static: retired workflows", onb: "static: retired onboarding",
-  sManual: "keyword comments, Page feed", sNon: "non-social payloads", sStatic: "static: no social automation"
+  sManual: "keyword comments, Page feed", sNon: "non-social payloads", sStatic: "static: no social automation",
+  cfgToml: "wrangler tomls:", cfgGen: "generated candidate config:"
 };
 const RET = "worker/whatsapp-retirement.mjs", COMPAT = "worker/cloudflare-worker.compat.mjs", REC = "worker/cloudflare-worker.recovered.mjs";
 const LIVE = "worker/live-runtime-status.mjs", CONT = "worker/continuity-router.mjs", ONB = "worker/whatsapp-onboarding.mjs";
 const BROKER = "worker/whatsapp-credential-broker.mjs", INB = "worker/inbound-autonomy.mjs", WF = ".github/workflows/voice-render-proof.yml";
 const FORGER = "scripts/ci/_mutant_forger.mjs";
+const GEN = "scripts/deploy/prepare-central-candidate.py", TOML = "wrangler.sales.toml";
+const GEN_STRIP = 'for _bag in (c["vars"], runtime):\n    for _key in [k for k in _bag if _retired_whatsapp_alias(k)]:\n        _bag.pop(_key)\n';
+const GEN_SALES = 'c["vars"]["WHATSAPP_SALES_ENABLED"]="true"  # Inbound-only owner-authorized support and catalog sales; KV controls checkout\n';
 // The generator shape lives under tests/ (outside the static scan) and is copied in only for M28.
 const FORGER_SRC = normalizeEol(readFileSync(resolve(ROOT, "tests/fixtures/forged-webhook-generator.txt"), "utf8"));
 
@@ -72,6 +76,11 @@ const MUTANTS = [
   ["M36_social_switch_back", [[INB, "export async function handleMetaSocialInbound(payload){", 'export function metaSocialAutoreplyEnabled(env={}){return String(env?.META_SOCIAL_AUTOREPLY??"")==="true";}\nexport async function handleMetaSocialInbound(payload){']], [T.sStatic]],
   ["M37_social_claims_non_social", [[INB, " if(!events.length)return {handled:false,received:0,replied:0};", " if(!events.length)return {handled:true,received:0,replied:0};"]], [T.sNon]],
   ["M38_bundle_loads_page_token_for_social", [[REC, "const social = await handleMetaSocialInbound(payload).catch(", "const social = await handleMetaSocialInbound(payload, { META_ACCESS_TOKEN: process.env.META_ACCESS_TOKEN }).catch("]], [T.sStatic]],
+  // Sol FAIL on #896: the generator assigned SUPPORT_CHANNEL and only pop()ed it later. Assignment back, strip removed.
+  ["M39_generator_assigns_support_channel", [[GEN, GEN_SALES, GEN_SALES + 'c["vars"]["SUPPORT_CHANNEL"]="WhatsApp +55 88 99254-5413"\n'], [GEN, GEN_STRIP, ""]], [T.cfgGen]],
+  ["M40_generator_keeps_legacy_base_alias", [[GEN, GEN_STRIP, ""]], [T.cfgGen]],
+  ["M41_generator_emits_whatsapp_display", [[GEN, GEN_STRIP, GEN_STRIP + 'runtime["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"\n']], [T.cfgGen]],
+  ["M42_toml_support_channel_back", [[TOML, "\n[vars]\n", '\n[vars]\nSUPPORT_CHANNEL = "WhatsApp +55 88 99254-5413"\n']], [T.cfgToml]],
 ];
 
 const sha = (s) => createHash("sha256").update(s).digest("hex");

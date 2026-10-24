@@ -75,8 +75,6 @@ if launch_authorized:
     c["vars"]["ABSOLUTE_RELEASE_APPROVED"]="true"
     c["vars"]["PRE_SALE_GATES_APPROVED"]="true"
 c["vars"]["WHATSAPP_SALES_ENABLED"]="true"  # Inbound-only owner-authorized support and catalog sales; KV controls checkout
-c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"
-c["vars"]["SUPPORT_CHANNEL"]="WhatsApp +55 88 99254-5413"
 runtime=c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{})
 if not isinstance(runtime,dict):
     runtime={}
@@ -93,10 +91,15 @@ for key in (
 ):
     if key in c["vars"]:
         runtime[key]=c["vars"].pop(key)
-c["vars"].pop("ZEVANORY_WHATSAPP_E164",None)
-c["vars"].pop("ZEVANORY_WHATSAPP_COUNTRY",None)
-# SUPPORT_CHANNEL duplicates the canonical ZEVANORY_WHATSAPP_DISPLAY fallback.
-c["vars"].pop("SUPPORT_CHANNEL",None)
+# WhatsApp is retired (Meta disabled the WABA on 2026-10-10; docs/WHATSAPP_APOSENTADO.md). The
+# generator never assigns a WhatsApp contact alias, and it strips the legacy ones the base config
+# (83620c6 wrangler.jsonc: SUPPORT_CHANNEL with the old number) still carries. Support channel is
+# the constant suporte@zevanory.api.br in the worker. Guard: tests/whatsapp-config-absence.test.mjs.
+def _retired_whatsapp_alias(key):
+    return key == "SUPPORT_CHANNEL" or key.startswith("ZEVANORY_WHATSAPP_")
+for _bag in (c["vars"], runtime):
+    for _key in [k for k in _bag if _retired_whatsapp_alias(k)]:
+        _bag.pop(_key)
 
 # Preserve compacted values through normalizeEnv.
 aliases=Path("worker/binding-aliases.mjs")
@@ -220,7 +223,7 @@ for key in ("VOICE_TTS_PROVIDER", "VOICE_TTS_PROVIDER_CHAIN"):
 # Number(env.AGENT_AI_MAX_RUNS_PER_HOUR) || 100, where env is options.env || process.env (raw
 # bindings, which do NOT see ZEVANORY_RUNTIME_CONFIG). The compacted name is then absent and the
 # default 100 applies, equal to the configured "100": the cap is unchanged either way.
-for key in ("ZEVANORY_RELEASE_REF", "ZEVANORY_WHATSAPP_DISPLAY", "AGENT_AUTONOMY_MODE", "AGENT_AI_MAX_RUNS_PER_HOUR"):
+for key in ("ZEVANORY_RELEASE_REF", "AGENT_AUTONOMY_MODE", "AGENT_AI_MAX_RUNS_PER_HOUR"):
     if key in c["vars"]:
         runtime_config[key] = c["vars"].pop(key)
 

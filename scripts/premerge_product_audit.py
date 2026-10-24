@@ -244,14 +244,15 @@ def check_official_whatsapp():
             errors += fail(f"WhatsApp oficial: frente comercial não herdando perfil canônico: {front}")
 
     for marker in (
-        'c["vars"].pop("ZEVANORY_WHATSAPP_E164",None)',
-        'c["vars"]["ZEVANORY_WHATSAPP_DISPLAY"]="+55 88 99254-5413"',
-        'c["vars"].pop("ZEVANORY_WHATSAPP_COUNTRY",None)',
+        'return key == "SUPPORT_CHANNEL" or key.startswith("ZEVANORY_WHATSAPP_")',
         '"+55 88 9234-0423": "+55 88 99254-5413"',
         '"558892340423": "5588992545413"',
     ):
         if marker not in deploy:
             errors += fail(f"WhatsApp oficial: marcador de cutover/compactação ausente no deploy: {marker}")
+    # WhatsApp retired (PR #896): the generator must never assign a WhatsApp contact alias.
+    if re.search(r'c\["vars"\]\["(SUPPORT_CHANNEL|ZEVANORY_WHATSAPP_[A-Z0-9_]*)"\]\s*=', deploy):
+        errors += fail("WhatsApp aposentado: deploy voltou a atribuir SUPPORT_CHANNEL/ZEVANORY_WHATSAPP_*")
 
     # Inbound support is allowed only when the owner KV sales lock is still enforced.
     whatsapp_off = 'c["vars"]["WHATSAPP_SALES_ENABLED"]="false"' in deploy
