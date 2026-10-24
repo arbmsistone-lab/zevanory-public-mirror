@@ -18,8 +18,10 @@
 //   Resend até 23 h depois da SUA primeira tentativa. Passou disso => "dead" sem nenhuma chamada (aviso e
 //   confirmação armam o dead-letter; dead-letter expirado/esgotado => cron vermelho até intervenção manual:
 //   `update zevanory_atendimento_outbox set alert_ack_at = now() where protocolo = '<p>'` depois de tratar).
-// * Erros do Resend: só rede/tempo esgotado, 429 e 5xx são temporários (nova tentativa com recuo); qualquer
-//   outra resposta não-2xx (400, 401, 403, 404, 409, 422…) é permanente => dead na hora + dead-letter na hora.
+// * Erros do Resend: só rede/tempo esgotado, 408 (Request Timeout), 429 e 5xx são temporários (nova tentativa
+//   com recuo); qualquer outra resposta não-2xx (400, 401, 403, 404, 409, 422…) é permanente => dead na hora +
+//   dead-letter na hora. 408 é temporário por definição (RFC 9110 §15.5.9: o servidor desistiu de esperar a
+//   requisição; repetir é seguro e a Idempotency-Key impede entrega dupla), como 429.
 // * Retomada: (1) o reenvio do mesmo formulário (mesmo protocolo) processa os envios pendentes; (2) o cron
 //   horário (runRefundWatchdog -> drainAtendimentoOutbox).
 // * Monitor de pendências antigas: pendência mais antiga com >= 2 h (OLD_PENDING_ALERT_HOURS) gera alerta SÓ
@@ -222,9 +224,9 @@ export async function ensureAtendimentoSchema(sql, q = ATENDIMENTO_SQL) {
 const backoffMinutes = (attempts) => Math.min(360, 2 ** Math.max(1, Math.min(9, attempts)));
 const truthy = (v) => v === true || v === "t" || v === "true" || v === 1;
 
-// Só rede/tempo esgotado, 429 e 5xx são temporários; qualquer outra resposta não-2xx é permanente.
+// Só rede/tempo esgotado (0), 408, 429 e 5xx são temporários; qualquer outra resposta não-2xx é permanente.
 export function resendFailureIsTransient(status) {
-  return status === 0 || status === 429 || (status >= 500 && status <= 599);
+  return status === 0 || status === 408 || status === 429 || (status >= 500 && status <= 599);
 }
 async function resendSend(c, { idempotencyKey, to, subject, text, replyTo }) {
   try {

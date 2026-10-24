@@ -141,9 +141,34 @@ test("estrutura da outbox: cota e gravação num único comando atômico, chaves
   assert.match(ATENDIMENTO_SQL.release, /payload = case when owner_status = 'sent' and customer_status = 'sent' then null/);
 });
 
-test("Resend: só rede/tempo esgotado, 429 e 5xx são temporários; 400/401/403/404/409/422 são permanentes", () => {
-  for (const s of [0, 429, 500, 502, 503, 504, 599]) assert.equal(resendFailureIsTransient(s), true, String(s));
-  for (const s of [400, 401, 403, 404, 405, 409, 410, 413, 422, 451]) assert.equal(resendFailureIsTransient(s), false, String(s));
+// Matriz explícita de classificação (resíduo Sol #892): 408 e 429 temporários (RFC 9110: 408 = o servidor
+// desistiu de esperar; repetir com a mesma Idempotency-Key é seguro), demais 4xx permanentes.
+const STATUS_MATRIX = Object.freeze({
+  transient: Object.freeze([0, 408, 429, 500, 502, 503, 504, 599]),
+  permanent: Object.freeze([400, 401, 403, 404, 405, 409, 410, 413, 422, 451]),
+});
+function assertStatusMatrix(classify) {
+  for (const s of STATUS_MATRIX.transient) assert.equal(classify(s), true, "temporário: " + s);
+  for (const s of STATUS_MATRIX.permanent) assert.equal(classify(s), false, "permanente: " + s);
+}
+test("Resend: rede/tempo esgotado, 408, 429 e 5xx são temporários; 400/401/403/404/409/422 são permanentes", () => {
+  for (const s of [400, 401, 403, 404, 408, 409, 422, 429]) assert.ok(STATUS_MATRIX.transient.includes(s) !== STATUS_MATRIX.permanent.includes(s), "na matriz: " + s);
+  assertStatusMatrix(resendFailureIsTransient);
+});
+test("mutantes da classificação: 4xx permanente virando temporário e 408 virando permanente — mortos por asserção", () => {
+  const report = [];
+  const mutants = [
+    ...[400, 401, 403, 404, 409, 422].map((p) => [`C${p} ${p} como temporário`, (s) => s === p || resendFailureIsTransient(s)]),
+    ["C408 408 como permanente", (s) => s !== 408 && resendFailureIsTransient(s)],
+  ];
+  for (const [name, mutant] of mutants) {
+    let err = null;
+    try { assertStatusMatrix(mutant); } catch (e) { err = e; }
+    const killed = err?.code === "ERR_ASSERTION";
+    report.push(`${name}: ${killed ? "KILLED" : "SURVIVED"}`);
+    assert.ok(killed, name + " sobreviveu (ou falhou sem asserção)");
+  }
+  console.log("ATENDIMENTO_STATUS_MUTANTS " + report.join(" | "));
 });
 
 test("cron sem configuração: verde se não há envio parado, vermelho se houver", async () => {

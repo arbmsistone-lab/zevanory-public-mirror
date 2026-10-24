@@ -11,7 +11,7 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
-import { handleAtendimento, drainAtendimentoOutbox, ATENDIMENTO_SQL, MAX_ATTEMPTS, IP_HOURLY_CAP, EMAIL_DAILY_CAP } from "../../worker/atendimento.mjs";
+import { handleAtendimento, drainAtendimentoOutbox, resendFailureIsTransient, ATENDIMENTO_SQL, MAX_ATTEMPTS, IP_HOURLY_CAP, EMAIL_DAILY_CAP } from "../../worker/atendimento.mjs";
 
 const run = promisify(execFile);
 const HOST = process.env.T4_PG_HOST, PORT = process.env.T4_PG_PORT || "5432";
@@ -260,8 +260,8 @@ test("janela < 23 h do dead-letter: expirado => dead sem chamada e cron vermelho
   assert.equal(d.ok, false, "intervenção manual necessária");
 });
 
-test("erros permanentes do Resend (400/401/403/422): dead na hora, dead-letter na hora, nenhuma nova tentativa", { skip: SKIP }, async () => {
-  for (const status of [400, 401, 403, 422]) {
+test("erros permanentes do Resend (400/401/403/404/409/422): dead na hora, dead-letter na hora, nenhuma nova tentativa", { skip: SKIP }, async () => {
+  for (const status of [400, 401, 403, 404, 409, 422]) {
     reset();
     const f = fields();
     const calls = [];
@@ -284,8 +284,8 @@ test("erros permanentes do Resend (400/401/403/422): dead na hora, dead-letter n
   }
 });
 
-test("429 e 5xx são temporários: nova tentativa com recuo e recuperação", { skip: SKIP }, async () => {
-  for (const status of [429, 500, 503]) {
+test("408, 429 e 5xx são temporários: nova tentativa com recuo e recuperação", { skip: SKIP }, async () => {
+  for (const status of [408, 429, 500, 503]) {
     reset();
     const f = fields();
     let first = true;
@@ -484,6 +484,33 @@ test("mutantes: cota lida-e-escrita, sem teto, chave instável, duplicata sem pr
     makeDue(r.body.protocolo);
     await drain(fetchImpl, { transient: all4xx });
     killed("P1 4xx como temporário", calls.filter((x) => x === f.email).length > 1 || row(r.body.protocolo).customer_status !== "dead");
+  }
+
+  // P2: UM 4xx permanente (404, 409) tratado como temporário: tentaria de novo e adiaria o dead-letter.
+  for (const status of [404, 409]) {
+    reset();
+    const f = fields();
+    const calls = [];
+    const fetchImpl = async (u, init) => { const b = JSON.parse(init.body); calls.push(b.to[0]); return b.to[0] === f.email ? new Response("{}", { status }) : new Response(JSON.stringify({ id: "x" }), { status: 200 }); };
+    const one = (s) => s === status || resendFailureIsTransient(s);
+    const r = await submit(f, { fetchImpl, transient: one });
+    const o = row(r.body.protocolo);
+    makeDue(r.body.protocolo);
+    await drain(fetchImpl, { transient: one });
+    killed(`P2 ${status} como temporário`, o.customer_status !== "dead" || o.alert_status !== "sent" || calls.filter((x) => x === f.email).length > 1);
+  }
+
+  // P3: 408 tratado como permanente: dead + dead-letter na hora em vez de nova tentativa.
+  reset();
+  {
+    const f = fields();
+    let first = true;
+    const m = resend();
+    const fetchImpl = async (u, init) => { if (first && JSON.parse(init.body).to[0] === f.email) { first = false; return new Response("{}", { status: 408 }); } return m.fetchImpl(u, init); };
+    const no408 = (s) => s !== 408 && resendFailureIsTransient(s);
+    const r = await submit(f, { fetchImpl, transient: no408 });
+    const o = row(r.body.protocolo);
+    killed("P3 408 como permanente", o.customer_status !== "pending" || o.alert_status !== "none");
   }
 
   // O1: monitor de pendência antiga desligado.
