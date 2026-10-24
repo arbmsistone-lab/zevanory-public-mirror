@@ -11,9 +11,9 @@ START="2026-10-02T00:00:00-03:00"  # exact window enforced locally; API window i
 API="https://api.mercadopago.com/v1/payments/search"
 APP="https://zevanory.api.br"
 token=os.environ.get("MERCADOPAGO_PROD_ACCESS_TOKEN","").strip()
-cert=os.environ.get("CERTIFICATION_E2E_TOKEN","").strip()
+cert=os.environ.get("ZEVANORY_OPERATOR_TOKEN","").strip()
 if not token:sys.exit("MISSING_MERCADOPAGO_PROD_ACCESS_TOKEN")
-if not cert:sys.exit("MISSING_CERTIFICATION_E2E_TOKEN")
+if not cert:sys.exit("MISSING_ZEVANORY_OPERATOR_TOKEN")
 def fetch_json(url,headers):
     req=urllib.request.Request(url,headers=headers,method="GET")
     try:

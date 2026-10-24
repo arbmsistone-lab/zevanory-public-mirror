@@ -46,9 +46,9 @@ jobs:
         run: node --test tests/command-center-snapshot.test.mjs tests/kv-quota-issue.test.mjs tests/command-center-main.test.mjs tests/experiments.test.mjs tests/autonomy-inventory.test.mjs tests/market-weekly.test.mjs tests/sales-ledger.test.mjs
       - name: Consolidate the funnel in its own Worker invocation
         env:
-          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+          ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}  # R9: nome novo; queda para o antigo só na transição
         run: |
-          code=$(curl -sS -o /tmp/funnel.json -w '%{http_code}' -X POST -H "x-backup-token: $CERTIFICATION_E2E_TOKEN" --max-time 120 https://zevanory.api.br/api/internal/funnel/run || true)
+          code=$(curl -sS -o /tmp/funnel.json -w '%{http_code}' -X POST -H "x-backup-token: $ZEVANORY_OPERATOR_TOKEN" --max-time 120 https://zevanory.api.br/api/internal/funnel/run || true)
           echo "::notice title=FUNNEL_RUN::http=$code $(head -c 300 /tmp/funnel.json 2>/dev/null)"
       - name: Build and store the snapshot
         env:

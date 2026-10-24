@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: GET-only production HMAC audit and snapshot acceptance
         env:
-          CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
+          ZEVANORY_OPERATOR_TOKEN: ${{ secrets.ZEVANORY_OPERATOR_TOKEN || secrets.CERTIFICATION_E2E_TOKEN }}  # R9: nome novo; queda para o antigo só na transição
         run: |
           set -euo pipefail
           python3 scripts/financial_proof_renewal.py
