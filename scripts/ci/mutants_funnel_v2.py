@@ -7,7 +7,7 @@ queda = INCONCLUSIVE). Imprime `MUTANT <id> KILLED|SURVIVED` e sai != 0 se algum
 controle (sem mutação) falhar ou se um mutante SQL não puder rodar por falta de PostgreSQL.
 Uso: python3 scripts/ci/mutants_funnel_v2.py [raiz-do-repo]
 """
-import os, shutil, subprocess, sys, tempfile
+import os, re, shutil, subprocess, sys, tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -22,7 +22,7 @@ BANNED_LINK = "wa" + ".me/" + "5588" + "992545413"
 
 M = {
     "F1 rótulo Hotmart no ledger próprio é contado": (FC, "if (!OWN_PROVIDERS.includes(provider)) { out.ignoredNonOwnProvider += n(b?.confirmed); continue; }", "", UNIT),
-    "F2 checkout próprio ausente vira total completo": (FC, 'const complete = ownTotal != null && hs === "ledger";', "const complete = true;", UNIT),
+    "F2 checkout próprio ausente vira zero": (FC, 'const ownTotal = os === "counted" ? o.total : os === "test_mode" ? 0 : null;', 'const ownTotal = os === "counted" ? o.total : 0;', UNIT),
     "F3 Hotmart sem postback tratada como ledger completo": (FC, '(sales && sales.schema === "zevanory-sales/v1" ? "ledger" : "no_events")', '"ledger"', UNIT),
     "F4 clique de lista contado sem instrumentação": (FC, "const wlClick = v2 && clickInstrumented ?", "const wlClick = v2 ?", UNIT),
     "F5 intenção contada em dias fechados": (FC, "value: v2 && open30.length ? ocs : null", "value: v2 ? ocs : null", UNIT),
@@ -44,11 +44,17 @@ M = {
     "Z4 recomendação sem ramo de vendas não verificadas": (SNAP, "  if (k.value == null) out.push(", "  if (false) out.push(", UNIT),
     "Z5 métrica só-Hotmart volta ao snapshot": (SNAP, "      salesTotal: salesAllM,", '      salesTotal: salesAllM,\n      netTotalCents: { value: 0, source: "Hotmart (postback autenticado)" },', UNIT),
     "Z6 emissor legado checkout_intent no GET": (SPW, '  if(request.method!=="POST"){\n', '  if(request.method!=="POST"){\n    countView(request,env,ctx,slug,"checkout_intent");\n', UNIT),
-    "Z7 borda UTC da Hotmart ignorada": (FC, "integrityClass: c.complete && !c.hotmart.edgeSales ?", "integrityClass: c.complete ?", UNIT),
+    "Z7 borda UTC da Hotmart ignorada": (FC, "const cls = c.complete && !c.hotmart.edgeSales ?", "const cls = c.complete ?", UNIT),
     "Z8 visitante→venda COMPLETE com Hotmart fora do numerador": (FC, 'integrityClass: hot || num == null ? "PARTIAL" : v2Class', 'integrityClass: num == null ? "PARTIAL" : v2Class', UNIT),
     "Z9 link de contato no código novo": (FC, '"O botão leva direto a um link externo sem passar pelo site;', '"O botão leva direto a ' + BANNED_LINK + ' sem passar pelo site;', UNIT),
     "Z10 meta de receita soma limite inferior": (SNAP, "knownCount(m).lowerBound ? null : c.grossCents", "knownCount(m).lowerBound ? c.grossCents : c.grossCents", UNIT),
     "S7 linhas v2 em dia UTC": (FUN, 'export const v2Day = (t = Date.now()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t));', "export const v2Day = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);", PG),
+    "K1 marcador paidWithoutConfirmedEvent ignorado": (FC, 'export const OWN_MARKERS = Object.freeze(["paidWithoutConfirmedEvent", "statusMismatch", "confirmedEventWithoutOrder", "extraOrdersSameSession"]);', 'export const OWN_MARKERS = Object.freeze(["statusMismatch", "confirmedEventWithoutOrder", "extraOrdersSameSession"]);', UNIT),
+    "K2 marcador statusMismatch ignorado": (FC, 'export const OWN_MARKERS = Object.freeze(["paidWithoutConfirmedEvent", "statusMismatch", "confirmedEventWithoutOrder", "extraOrdersSameSession"]);', 'export const OWN_MARKERS = Object.freeze(["paidWithoutConfirmedEvent", "confirmedEventWithoutOrder", "extraOrdersSameSession"]);', UNIT),
+    "K3 marcador confirmedEventWithoutOrder ignorado": (FC, 'export const OWN_MARKERS = Object.freeze(["paidWithoutConfirmedEvent", "statusMismatch", "confirmedEventWithoutOrder", "extraOrdersSameSession"]);', 'export const OWN_MARKERS = Object.freeze(["paidWithoutConfirmedEvent", "statusMismatch", "extraOrdersSameSession"]);', UNIT),
+    "K4 marcador extraOrdersSameSession ignorado": (FC, 'export const OWN_MARKERS = Object.freeze(["paidWithoutConfirmedEvent", "statusMismatch", "confirmedEventWithoutOrder", "extraOrdersSameSession"]);', 'export const OWN_MARKERS = Object.freeze(["paidWithoutConfirmedEvent", "statusMismatch", "confirmedEventWithoutOrder"]);', UNIT),
+    "K5 zero parcial publicado como zero": (FC, 'const partialZero = cls === "PARTIAL" && c.total === 0;', "const partialZero = false;", UNIT),
+    "K6 marcadores não exigidos para completo": (FC, 'const complete = ownTotal != null && hs === "ledger" && markers.clean;', 'const complete = ownTotal != null && hs === "ledger";', UNIT),
     "S1 failover na mesma sessão conta 2": (FUN, "coalesce(o.session_id::text, o.order_id::text) as purchase", "o.order_id::text as purchase", PG),
     "S2 pedidos de certificação contam": (FUN, "where fe.normalized_event = 'payment_confirmed' and coalesce(o.certification_pilot, false) = false\n                   group by", "where fe.normalized_event = 'payment_confirmed'\n                   group by", PG),
     "S3 dia da venda em UTC": (FUN, "at time zone 'America/Sao_Paulo', 'YYYY-MM-DD') as day", "at time zone 'UTC', 'YYYY-MM-DD') as day", PG),
@@ -63,6 +69,29 @@ def stage(dst):
         src = REPO / rel
         (dst / rel).parent.mkdir(parents=True, exist_ok=True)
         (shutil.copytree if src.is_dir() else shutil.copy2)(src, dst / rel)
+    # Windows checkouts may carry CRLF: anchors are written with LF, so the copy is normalized to LF.
+    for f in dst.rglob("*"):
+        if f.is_file() and f.suffix in (".mjs", ".js", ".json", ".py", ".yml", ".sql", ".html"):
+            b = f.read_bytes()
+            if b"\r\n" in b:
+                f.write_bytes(b.replace(b"\r\n", b"\n"))
+
+
+# Node's summary line differs by reporter/version ("# skipped 0" in TAP, "ℹ skipped 0" in spec, the
+# default since Node 23). The reporter is forced to TAP and the parser accepts both forms anyway.
+SUMMARY = re.compile(r"^(?:#|\u2139)\s*(tests|pass|fail|skipped|cancelled|todo)\s+(\d+)\s*$", re.M)
+
+
+def summary(out):
+    return {k: int(v) for k, v in SUMMARY.findall(out)}
+
+
+def node_version():
+    v = subprocess.run(["node", "--version"], capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout.strip()
+    m = re.match(r"^v(\d+)\.", v)
+    if not m or int(m.group(1)) < 20:
+        raise SystemExit(f"node >= 20 obrigatório (encontrado: {v or 'ausente'})")
+    return v
 
 
 def run(root, kind, db):
@@ -70,9 +99,11 @@ def run(root, kind, db):
     files = ["tests/funnel-counting.test.mjs"] if kind == UNIT else ["tests/integration/funnel-own-sales-postgres.test.mjs"]
     if kind == PG:
         env["FUNNEL_V2_PG_DB"] = db
-    p = subprocess.run(["node", "--test", *files], cwd=root, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=600)
+    p = subprocess.run(["node", "--test", "--test-reporter=tap", *files], cwd=root, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL, timeout=600)
     out = p.stdout
-    skipped = "# skipped 0" not in out
+    sm = summary(out)
+    # Unparseable summary = treated as skipped (never as a clean run).
+    skipped = sm.get("skipped", 1) != 0 or "tests" not in sm
     return p.returncode, skipped, out
 
 
@@ -96,22 +127,26 @@ def one(item, idx):
 
 
 def main():
+    print("NODE_VERSION=" + node_version())
+    # FUNNEL_MUTANTS_UNIT_ONLY=1 (jobs without PostgreSQL, e.g. Windows): only the unit mutants run.
+    unit_only = os.environ.get("FUNNEL_MUTANTS_UNIT_ONLY") == "1"
+    kinds = (UNIT,) if unit_only else (UNIT, PG)
     with tempfile.TemporaryDirectory() as tmp:
         stage(Path(tmp))
-        for kind in (UNIT, PG):
+        for kind in kinds:
             rc, skipped, out = run(Path(tmp), kind, "ci_funnel_v2_ctl")
             if rc != 0 or (kind == UNIT and skipped):
                 print(out[-3000:]); print(f"CONTROL {kind} FAILED"); return 1
             if kind == PG and skipped and os.environ.get("T4_PG_HOST"):
                 print("CONTROL pg SKIPPED with T4_PG_HOST set"); return 1
-    items = list(M.items())
+    items = [it for it in M.items() if it[1][3] in kinds]
     with ThreadPoolExecutor(max_workers=4) as ex:
         results = list(ex.map(lambda a: one(*a), [(it, i) for i, it in enumerate(items)]))
     bad = 0
     for name, res in results:
         print(f"MUTANT {name} {res}")
         bad += res != "KILLED"
-    print(f"MUTANTS_FUNNEL_V2 killed={sum(r == 'KILLED' for _, r in results)}/{len(results)}")
+    print(f"MUTANTS_FUNNEL_V2{'_UNIT' if unit_only else ''} killed={sum(r == 'KILLED' for _, r in results)}/{len(results)}")
     return 1 if bad else 0
 
 

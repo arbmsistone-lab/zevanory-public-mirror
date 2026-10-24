@@ -66,18 +66,31 @@ export function sumHotmart(sales, days) {
   return { approved, grossCents, reversed };
 }
 
+// Integrity markers of the own-checkout ledger (worker/funnel.mjs buildOwnCheckoutSales). Any marker > 0
+// means the ledger disagrees with itself: the own part (and so the total) can never be COMPLETE, and a
+// zero is not a proven zero. Missing marker fields count as unknown (not clean).
+export const OWN_MARKERS = Object.freeze(["paidWithoutConfirmedEvent", "statusMismatch", "confirmedEventWithoutOrder", "extraOrdersSameSession"]);
+export function ownMarkers(own) {
+  const m = own?.integrity || {};
+  const counters = Object.fromEntries(OWN_MARKERS.map((k) => [k, Number.isFinite(Number(m[k])) ? Number(m[k]) : null]));
+  const clean = OWN_MARKERS.every((k) => counters[k] === 0);
+  return { counters, clean, flagged: OWN_MARKERS.filter((k) => counters[k] !== 0) };
+}
+
 // Approved sales of a window (list of day keys; null = all time), split by source.
 export function combineSales({ sales, own, days = null }) {
   const os = ownCheckoutStatus(own), hs = hotmartStatus(sales);
   const o = sumOwn(own, days), h = sumHotmart(sales, days);
   const ownTotal = os === "counted" ? o.total : os === "test_mode" ? 0 : null;
   const ownGross = os === "counted" ? o.grossCents : os === "test_mode" ? 0 : null;
-  const complete = ownTotal != null && hs === "ledger";
+  // test_mode never reads orders, so it carries no markers; counted mode needs all four markers at zero.
+  const markers = os === "counted" ? ownMarkers(own) : { counters: null, clean: os === "test_mode", flagged: [] };
+  const complete = ownTotal != null && hs === "ledger" && markers.clean;
   return {
     total: ownTotal == null && hs !== "ledger" && !h.approved ? null : h.approved + (ownTotal || 0),
     grossCents: h.grossCents + (ownGross || 0),
     complete,
-    checkoutProprio: { status: os, total: ownTotal, grossCents: ownGross, byProvider: o.byProvider, ignoredNonOwnProvider: o.ignoredNonOwnProvider },
+    checkoutProprio: { status: os, total: ownTotal, grossCents: ownGross, byProvider: o.byProvider, ignoredNonOwnProvider: o.ignoredNonOwnProvider, markers: markers.counters, flaggedMarkers: markers.flagged },
     hotmart: { status: hs, total: h.approved, grossCents: h.grossCents, reversed: h.reversed, edgeSales: days ? sumHotmart(sales, hotmartEdgeDays(days)).approved : 0 },
   };
 }
@@ -99,20 +112,27 @@ export function salesMetric(c, { window, updatedAt, now, definition }) {
   const byProv = Object.entries(c.checkoutProprio.byProvider).map(([p, v]) => `${PROVIDER_LABEL[p] || p} ${v}`).join(", ");
   const own = c.checkoutProprio.total == null ? "checkout próprio não verificado" : `checkout próprio ${c.checkoutProprio.total}${byProv ? ` (${byProv})` : ""}`;
   const hot = c.hotmart.status === "ledger" ? `Hotmart ${c.hotmart.total}` : `Hotmart ${c.hotmart.total} (nenhum postback registrado: não prova zero)`;
-  return describe({
-    value: c.total, window, now, updatedAt, maxAgeHours: 3,
+  const cls = c.complete && !c.hotmart.edgeSales ? "COMPLETE" : "PARTIAL";
+  // A zero that is not COMPLETE is not a zero: it is published as null, still classed PARTIAL.
+  const partialZero = cls === "PARTIAL" && c.total === 0;
+  const flagged = c.checkoutProprio.flaggedMarkers?.length ? ` Marcadores de integridade do checkout próprio: ${c.checkoutProprio.flaggedMarkers.map((k) => `${k}=${c.checkoutProprio.markers?.[k] ?? "desconhecido"}`).join(", ")} (total não comprovado).` : "";
+  const out = describe({
+    value: partialZero ? null : c.total, window, now, updatedAt, maxAgeHours: 3,
     numerator: "vendas aprovadas únicas", dedup: "checkout próprio: 1 por sessão de compra (failover entre provedores não duplica), chave do pagamento provider+payment_id via webhook autenticado; Hotmart: 1 por transação (postback autenticado, idempotente). Reembolsos e chargebacks ficam à parte (não subtraídos).",
     sources: ["checkout_proprio:mercadopago", "checkout_proprio:asaas", "hotmart"],
-    integrityClass: c.complete && !c.hotmart.edgeSales ? "COMPLETE" : "PARTIAL",
+    integrityClass: cls,
     label: SALES_LABEL[c.checkoutProprio.status],
-    definition: `${definition}: ${own} + ${hot}. Dia do pagamento em America/Sao_Paulo (Hotmart: registro legado por dia UTC). Pedidos de certificação/sandbox fora.`,
-    extra: { parts: { checkoutProprio: c.checkoutProprio, hotmart: c.hotmart } },
+    definition: `${definition}: ${own} + ${hot}. Dia do pagamento em America/Sao_Paulo (Hotmart: registro legado por dia UTC). Pedidos de certificação/sandbox fora.${flagged}`,
+    extra: { parts: { checkoutProprio: c.checkoutProprio, hotmart: c.hotmart }, integrityMarkers: c.checkoutProprio.markers },
   });
+  if (partialZero && c.total != null) { out.integrityClass = "PARTIAL"; out.integrity = "stale"; }
+  return out;
 }
 
 // What a consumer (milestones, forecast, recommendations) may claim from a sales metric: the value only
 // when it is COMPLETE/STALE; a PARTIAL value > 0 is a lower bound; PARTIAL 0 and MISSING are unknown (null).
 export function knownCount(m) {
+  if (m?.value == null && m?.integrityClass === "PARTIAL") return { value: null, integrityClass: "PARTIAL", lowerBound: false };
   if (!m || m.value == null || m.integrityClass === "MISSING") return { value: null, integrityClass: "MISSING", lowerBound: false };
   if (m.integrityClass === "PARTIAL") return m.value > 0 ? { value: m.value, integrityClass: "PARTIAL", lowerBound: true } : { value: null, integrityClass: "PARTIAL", lowerBound: false };
   return { value: m.value, integrityClass: m.integrityClass, lowerBound: false };

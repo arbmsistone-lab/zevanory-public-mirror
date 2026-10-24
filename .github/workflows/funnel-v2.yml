@@ -47,21 +47,61 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Regras de contagem (unitário, 16 testes)
+      - name: Regras de contagem (unitário, 21 testes)
         run: |
           set -eo pipefail
-          node --test tests/funnel-counting.test.mjs | tee u.txt
-          grep -qx "# tests 16" u.txt && grep -qx "# pass 16" u.txt && grep -qx "# skipped 0" u.txt && grep -qx "# fail 0" u.txt
+          node --version
+          node --test --test-reporter=tap tests/funnel-counting.test.mjs | tee u.txt
+          grep -qx "# tests 21" u.txt && grep -qx "# pass 21" u.txt && grep -qx "# skipped 0" u.txt && grep -qx "# fail 0" u.txt
       - name: PostgreSQL real com o esquema de produção (4 testes)
         run: |
           set -eo pipefail
-          node --test tests/integration/funnel-own-sales-postgres.test.mjs | tee p.txt
+          node --test --test-reporter=tap tests/integration/funnel-own-sales-postgres.test.mjs | tee p.txt
           grep -qx "# tests 4" p.txt && grep -qx "# pass 4" p.txt && grep -qx "# skipped 0" p.txt && grep -qx "# fail 0" p.txt
-      - name: Mutantes causais (34/34)
+      - name: Mutantes causais (40/40)
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
           set -eo pipefail
           python3 scripts/ci/mutants_funnel_v2.py | tee m.txt
-          grep -qx "MUTANTS_FUNNEL_V2 killed=34/34" m.txt
+          grep -qx "MUTANTS_FUNNEL_V2 killed=40/40" m.txt
           echo "::notice title=FUNNEL_V2::$(grep -E '^# (tests|pass|fail|skipped) ' u.txt p.txt | paste -sd' ' -) $(tail -1 m.txt)"
+
+  # Portabilidade (AVAL Sol): Node 24 (reporter padrão "spec") em Linux e Windows. Sem PostgreSQL aqui, só
+  # o unitário e os mutantes unitários; o runner força TAP e aceita os dois formatos de resumo.
+  funil-node24:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unitário (21 testes, Node 24)
+        run: |
+          set -eo pipefail
+          node --version | grep -q '^v24\.'
+          node --test --test-reporter=tap tests/funnel-counting.test.mjs | tee u.txt
+          grep -qx "# tests 21" u.txt && grep -qx "# pass 21" u.txt && grep -qx "# skipped 0" u.txt && grep -qx "# fail 0" u.txt
+      - name: Mutantes unitários (33/33, Node 24)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          FUNNEL_MUTANTS_UNIT_ONLY: "1"
+          PYTHONIOENCODING: utf-8
+        run: |
+          set -eo pipefail
+          python scripts/ci/mutants_funnel_v2.py | tee m.txt
+          grep -q "^NODE_VERSION=v24\." m.txt
+          grep -qx "MUTANTS_FUNNEL_V2_UNIT killed=33/33" m.txt

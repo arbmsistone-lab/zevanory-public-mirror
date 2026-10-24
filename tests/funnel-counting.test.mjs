@@ -13,7 +13,8 @@ import worker from "../worker/sales-public-worker.mjs";
 const now = Date.parse("2026-10-23T15:00:00Z");
 const at = new Date(now - 30 * 60e3).toISOString();
 const ledger = (byDay) => ({ schema: "zevanory-sales/v1", updatedAt: at, byDay });
-const own = (byDay) => ({ mode: "production", counted: true, byDay, integrity: { statusMismatch: 0 } });
+const CLEAN = Object.freeze({ paidWithoutConfirmedEvent: 0, statusMismatch: 0, confirmedEventWithoutOrder: 0, extraOrdersSameSession: 0 });
+const own = (byDay, integrity = CLEAN) => ({ mode: "production", counted: true, byDay, integrity: { ...integrity } });
 const days30 = windowDays(now, 30);
 
 test("vendas: checkout próprio por provedor + Hotmart, sem dupla contagem, completas só com as duas fontes", () => {
@@ -36,8 +37,27 @@ test("vendas: fonte ausente vira PARTIAL/MISSING, nunca zero silencioso; modo te
   const test_ = combineSales({ sales: ledger({}), own: { mode: "test", counted: false }, days: days30 });
   assert.equal(test_.total, 0); assert.equal(test_.complete, true);
   const noPostback = salesMetric(combineSales({ sales: null, own: own({}), days: days30 }), { window: "30d", updatedAt: at, now, definition: "V" });
-  assert.equal(noPostback.value, 0); assert.equal(noPostback.integrityClass, "PARTIAL", "Hotmart sem nenhum postback não prova zero");
+  assert.equal(noPostback.value, null); assert.equal(noPostback.integrityClass, "PARTIAL", "Hotmart sem nenhum postback não prova zero: zero vira nulo");
   assert.equal(salesMetric(combineSales({ sales: ledger({}), own: own({}), days: days30 }), { window: "30d", updatedAt: "2026-10-22T00:00:00Z", now, definition: "V" }).integrityClass, "STALE");
+});
+
+for (const marker of ["paidWithoutConfirmedEvent", "statusMismatch", "confirmedEventWithoutOrder", "extraOrdersSameSession"]) {
+  test(`vendas: marcador ${marker} > 0 impede COMPLETE, zero vira nulo e o contador é publicado`, () => {
+    const c = combineSales({ sales: ledger({}), own: own({}, { ...CLEAN, [marker]: 1 }), days: days30 });
+    assert.equal(c.complete, false);
+    const m = salesMetric(c, { window: "30d", updatedAt: at, now, definition: "V" });
+    assert.equal(m.value, null, "zero com marcador não é zero comprovado");
+    assert.equal(m.integrityClass, "PARTIAL");
+    assert.equal(m.integrityMarkers[marker], 1);
+    assert.match(m.definition, new RegExp(marker + "=1"));
+    assert.deepEqual(knownCount(m), { value: null, integrityClass: "PARTIAL", lowerBound: false });
+    const withSale = salesMetric(combineSales({ sales: ledger({}), own: own({ [days30[2]]: { mercadopago: { confirmed: 1 } } }, { ...CLEAN, [marker]: 2 }), days: days30 }), { window: "30d", updatedAt: at, now, definition: "V" });
+    assert.deepEqual([withSale.value, withSale.integrityClass], [1, "PARTIAL"], "positivo com marcador = limite inferior");
+  });
+}
+test("vendas: marcador ausente no resumo conta como desconhecido (nunca limpo)", () => {
+  const m = salesMetric(combineSales({ sales: ledger({}), own: own({}, {}), days: days30 }), { window: "30d", updatedAt: at, now, definition: "V" });
+  assert.equal(m.integrityClass, "PARTIAL"); assert.equal(m.value, null);
 });
 
 test("vendas: janela por dia (BRT) e reembolsos à parte; previsão soma as duas fontes", () => {
@@ -206,7 +226,7 @@ const BANNED = /wa\.me|5588992545413|558892545413/i;
 
 test("snapshot: Vendas (30d) soma checkout próprio + Hotmart com rótulo honesto; nada de 'Hotmart vendendo' constante", async () => {
   const day = inside();
-  const snap = await runSnapshot({ funnelSummary: fSummary({ mode: "production", counted: true, byDay: { [day]: { mercadopago: { confirmed: 1, grossCents: 19700 } } }, integrity: {} }), ledgerSummary: lSummary({ [day]: { approved: 1, grossCents: 24700 } }) });
+  const snap = await runSnapshot({ funnelSummary: fSummary({ mode: "production", counted: true, byDay: { [day]: { mercadopago: { confirmed: 1, grossCents: 19700 } } }, integrity: { ...CLEAN } }), ledgerSummary: lSummary({ [day]: { approved: 1, grossCents: 24700 } }) });
   assert.equal(snap.funnel.sales30.value, 2);
   assert.equal(snap.funnel.sales30.source, "Checkout próprio (Mercado Pago/Asaas) + Hotmart");
   assert.deepEqual([snap.funnel.sales30.parts.checkoutProprio.total, snap.funnel.sales30.parts.hotmart.total], [1, 1]);
