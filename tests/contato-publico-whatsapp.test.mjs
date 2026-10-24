@@ -174,21 +174,16 @@ const ALLOWLIST = new Map(Object.entries({
   "docs/audits/official-brand-matrix-2026-10-10.md": "auditoria histórica (não publicada)",
   "worker/cloudflare-worker.recovered.mjs": "perfil interno OFFICIAL_WHATSAPP + filtros do robô (sem rota pública); exigido por premerge_product_audit",
   "worker/whatsapp-conversation.mjs": "robô de WhatsApp (aposentadoria em PR separado)",
-  "worker/whatsapp-credential-broker.mjs": "robô de WhatsApp (aposentadoria em PR separado)",
   "worker/whatsapp-inbound-safety.mjs": "robô de WhatsApp: filtro de auto-remetente",
-  "worker/whatsapp-onboarding.mjs": "admin de onboarding (protegido)",
   "worker/politica-unica.mjs": "padrão da trava",
   "scripts/sales_policy.py": "padrão da trava",
   "scripts/premerge_product_audit.py": "gate interno",
-  "scripts/deploy/prepare-central-candidate.py": "variáveis de deploy",
   "scripts/patch_whatsapp_broker.py": "ferramenta interna",
-  "scripts/voice_support_gate.py": "gate interno",
   "scripts/whatsapp_audio_runtime_test.mjs": "teste interno",
   "scripts/whatsapp_delivery_proof_test.mjs": "teste interno",
   "scripts/ci/mutants_comprar_noindex.py": "mutantes de CI que reinjetam o número para provar o oráculo de /comprar",
-  ".github/workflows/mercadopago-exact-sha-recovery.yml": "CI interno",
-  ".github/workflows/whatsapp-closure-probe.yml": "CI interno",
-  ".github/workflows/whatsapp-zero-spend-broker.yml": "CI interno",
+  "scripts/ci/mutants_whatsapp_retirement.mjs": "mutantes de CI que reinjetam o número/alias para provar a aposentadoria do WhatsApp (#896)",
+  "scripts/deploy/public_whatsapp_scan.py": "padrão da trava: varredura fail-closed dos ativos públicos e workflows (#896)",
 }));
 const PUBLISHED = /^(sales-public|public|sales-overlay|brand|assets)\/|^[^/]+\/index\.html$|^[^/]+\.(html|txt|xml|js|css)$/;
 
@@ -205,6 +200,8 @@ test("Sol: número banido / wa.me só em arquivos internos da lista explícita (
   assert.ok(out.status === 0 || out.status === 1, out.stderr);
   const extra = files.filter((f) => !ALLOWLIST.has(f));
   assert.deepEqual(extra, [], "fora da lista explícita");
+  // A lista só encolhe: entrada que não cita mais o número/wa.me é obsoleta e sai no mesmo PR (#896).
+  assert.deepEqual([...ALLOWLIST.keys()].filter((f) => !files.includes(f)), [], "entrada obsoleta na lista explícita");
   for (const f of ALLOWLIST.keys()) assert.doesNotMatch(f, PUBLISHED, "item da lista não pode ser publicado: " + f);
 });
 
