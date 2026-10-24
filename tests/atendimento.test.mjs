@@ -147,19 +147,39 @@ const STATUS_MATRIX = Object.freeze({
   transient: Object.freeze([0, 408, 429, 500, 502, 503, 504, 599]),
   permanent: Object.freeze([400, 401, 403, 404, 405, 409, 410, 413, 422, 451]),
 });
+// 409 pelo NOME do erro do Resend (AVAL Sol 125): só concurrent_idempotent_requests é temporário.
+const CONFLICT_MATRIX = Object.freeze([
+  [{ name: "concurrent_idempotent_requests", message: "retry later" }, true],
+  [{ name: "invalid_idempotent_request" }, false],
+  [{ name: "validation_error" }, false],
+  [{ name: "Concurrent_Idempotent_Requests" }, false],
+  [{ name: ["concurrent_idempotent_requests"] }, false],
+  [{}, false],
+  [null, false],
+]);
 function assertStatusMatrix(classify) {
   for (const s of STATUS_MATRIX.transient) assert.equal(classify(s), true, "temporário: " + s);
   for (const s of STATUS_MATRIX.permanent) assert.equal(classify(s), false, "permanente: " + s);
+  for (const [body, want] of CONFLICT_MATRIX) assert.equal(classify(409, body), want, "409 " + JSON.stringify(body));
 }
 test("Resend: rede/tempo esgotado, 408, 429 e 5xx são temporários; 400/401/403/404/409/422 são permanentes", () => {
   for (const s of [400, 401, 403, 404, 408, 409, 422, 429]) assert.ok(STATUS_MATRIX.transient.includes(s) !== STATUS_MATRIX.permanent.includes(s), "na matriz: " + s);
   assertStatusMatrix(resendFailureIsTransient);
 });
-test("mutantes da classificação: 4xx permanente virando temporário e 408 virando permanente — mortos por asserção", () => {
+test("Resend 409: concurrent_idempotent_requests é temporário; invalid_idempotent_request, outro nome ou sem nome é permanente", () => {
+  assert.equal(resendFailureIsTransient(409, { name: "concurrent_idempotent_requests" }), true);
+  assert.equal(resendFailureIsTransient(409, { name: "invalid_idempotent_request" }), false);
+  assert.equal(resendFailureIsTransient(409, { name: "rate_limit_exceeded" }), false, "nome de outro status não vale para 409");
+  assert.equal(resendFailureIsTransient(409), false, "corpo ilegível => permanente (fechado em falha)");
+  assert.equal(resendFailureIsTransient(422, { name: "concurrent_idempotent_requests" }), false, "o nome só muda a classe do 409");
+});
+test("mutantes da classificação: 4xx permanente virando temporário, 408 virando permanente, 409 sem olhar o nome — mortos por asserção", () => {
   const report = [];
   const mutants = [
-    ...[400, 401, 403, 404, 409, 422].map((p) => [`C${p} ${p} como temporário`, (s) => s === p || resendFailureIsTransient(s)]),
-    ["C408 408 como permanente", (s) => s !== 408 && resendFailureIsTransient(s)],
+    ...[400, 401, 403, 404, 409, 422].map((p) => [`C${p} ${p} como temporário`, (s, b) => s === p || resendFailureIsTransient(s, b)]),
+    ["C408 408 como permanente", (s, b) => s !== 408 && resendFailureIsTransient(s, b)],
+    ["C409N 409 concurrent como permanente", (s, b) => (s === 409 ? false : resendFailureIsTransient(s, b))],
+    ["C409I 409 invalid_idempotent_request como temporário", (s, b) => (s === 409 && b?.name === "invalid_idempotent_request") || resendFailureIsTransient(s, b)],
   ];
   for (const [name, mutant] of mutants) {
     let err = null;

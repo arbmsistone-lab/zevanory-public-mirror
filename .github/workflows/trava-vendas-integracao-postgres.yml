@@ -121,14 +121,15 @@ jobs:
         run: |
           set -eo pipefail
           node --test tests/integration/atendimento-outbox-postgres.test.mjs | tee at.txt
-          grep -qx "# tests 16" at.txt && grep -qx "# pass 16" at.txt && grep -qx "# skipped 0" at.txt && grep -qx "# fail 0" at.txt
-          grep -oE '(Q1|Q2|I1|D1|T1|L1|W1|W2|P1|P2|P3|O1) [^|]*: KILLED' at.txt | wc -l | grep -qx 13 || { echo "::error::esperados 13 mutantes da outbox mortos"; exit 1; }
+          grep -qx "# tests 17" at.txt && grep -qx "# pass 17" at.txt && grep -qx "# skipped 0" at.txt && grep -qx "# fail 0" at.txt
+          grep -oE '(Q1|Q2|I1|D1|T1|L1|W1|W2|P1|P2|P3|P4|P5|O1) [^|]*: KILLED' at.txt | wc -l | grep -qx 15 || { echo "::error::esperados 15 mutantes da outbox mortos"; exit 1; }
           if grep -qE 'ATENDIMENTO_OUTBOX_MUTANTS .*SURVIVED' at.txt; then echo "::error::mutante da outbox sobreviveu"; exit 1; fi
           # Matriz de classificação de status (resíduo Sol #892): 400/401/403/404/409/422 permanentes, 408/429/5xx
-          # temporários; 7 mutantes (cada 4xx permanente virando temporário, 408 virando permanente) mortos por asserção.
+          # temporários; 409 pelo nome do erro do Resend; 9 mutantes (cada 4xx permanente virando temporário, 408 virando
+          # permanente, 409 concurrent como permanente, 409 invalid como temporário) mortos por asserção.
           node --test tests/atendimento.test.mjs | tee as.txt
           grep -qx "# fail 0" as.txt && grep -qx "# skipped 0" as.txt
-          grep -oE 'C[0-9]{3} [0-9]{3} como (temporário|permanente): KILLED' as.txt | wc -l | grep -qx 7 || { echo "::error::esperados 7 mutantes de classificação mortos"; exit 1; }
+          grep -oE 'C[0-9]{3}[A-Z]? [0-9]{3} [^|]*como (temporário|permanente): KILLED' as.txt | wc -l | grep -qx 9 || { echo "::error::esperados 9 mutantes de classificação mortos"; exit 1; }
           if grep -qE 'ATENDIMENTO_STATUS_MUTANTS .*SURVIVED' as.txt; then echo "::error::mutante de classificação sobreviveu"; exit 1; fi
           echo "::notice title=ATENDIMENTO_OUTBOX::$(grep -E '^# (tests|pass|fail|skipped) ' at.txt | paste -sd' ' -)"
       - name: Suíte Node completa no SHA do PR (prova Linux independente, Ordem Sol 024)

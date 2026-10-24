@@ -10,6 +10,7 @@ on:
       - ".github/workflows/comprar-noindex-contract.yml"
       - "tests/comprar-noindex.test.mjs"
       - "scripts/ci/mutants_comprar_noindex.py"
+      - "tests/test_mutants_comprar_classifier.py"
       - "worker/sales-public-worker.mjs"
       - "worker/politica-unica.mjs"
       - "data/politica-unica.json"
@@ -77,6 +78,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Meta-testes do classificador de mutantes (AVAL Sol 125; exatamente 12)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          set -euo pipefail
+          python3 -m unittest -v tests/test_mutants_comprar_classifier.py < /dev/null 2>&1 | tr -d '\r' | tee meta.txt
+          grep -qx 'Ran 12 tests in [0-9.]*s' meta.txt && grep -qx 'OK' meta.txt || { echo "::error::meta-testes do classificador: esperados 12 OK"; exit 1; }
+          rm -f meta.txt
       - name: /comprar/ noindex — 18 mutantes
         env:
           PYTHONDONTWRITEBYTECODE: "1"

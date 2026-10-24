@@ -7,11 +7,17 @@ classifica o resultado. Determinístico em Linux e Windows (Node 22/24):
   - node resolvido por shutil.which, lista de argumentos sem shell, stdin fechado, saída decodificada em UTF-8;
   - reporter TAP explícito (--test-reporter=tap): no Node >= 23 o reporter padrão é "spec" mesmo fora de TTY, e a
     detecção por "not ok" via spec produzia SOBREVIVENTE falso.
-Classificação (nunca por "qualquer falha"):
-  KILLED       exit != 0, TAP com "not ok" E o rótulo da asserção esperada na saída;
-  SURVIVED     exit == 0 e resumo TAP completo "# tests N / # pass N / # fail 0" (N = baseline);
-  INCONCLUSIVE qualquer outra coisa: trecho a mutar não encontrado, node ausente, timeout, erro de SO, saída sem resumo
-               TAP, ou falha sem o rótulo esperado (erro de infraestrutura não conta como morto nem como sobrevivente).
+Classificação (AVAL Sol 125; mesma disciplina do classificador B05 de mutants_mp_webhook.py, nunca "qualquer falha"):
+  KILLED       exit == 1, TAP COMPLETO (plano "1..N" e resumo tests/pass/fail/cancelled/skipped/todo) com total igual
+               ao da baseline, cancelled/skipped/todo = 0, pelo menos um bloco "not ok" de topo com falha de ASSERÇÃO
+               (ERR_ASSERTION) que contém o rótulo esperado DENTRO do bloco, e TODA outra falha também é asserção com
+               um rótulo esperado do mutante;
+  SURVIVED     exit == 0 e TAP completo, limpo, com total = baseline e fail = 0;
+  INCONCLUSIVE todo o resto: trecho a mutar não encontrado, node ausente, timeout, sinal, erro de SO, crash
+               (SyntaxError/TypeError/ReferenceError, módulo ausente, Traceback) fora de bloco de asserção, TAP
+               truncado ou sem resumo, contagem diferente da baseline, falha extra não esperada, falha sem asserção,
+               rótulo só fora do bloco, skip/todo/cancelled inesperado. Rótulos são casados como token exato entre
+               colchetes ("[T1]" nunca casa "[T10]"). Meta-testes: tests/test_mutants_comprar_classifier.py.
 Saída: `MUTANT <id> KILLED|SURVIVED|INCONCLUSIVE`. Exit 0 só se todos KILLED; 1 se algum SURVIVED; 3 se algum
 INCONCLUSIVE (sem sobrevivente); 2 se a baseline (sem mutação) não passar.
 Uso: python3 scripts/ci/mutants_comprar_noindex.py [raiz-do-repo]
@@ -71,6 +77,12 @@ M = {
         'return infoPage(503,"Checkout indisponível","<p>Tente novamente em instantes ou fale no WhatsApp: suporte humano no WhatsApp.</p>");', "[whatsapp]"),
 }
 
+# Falhas ADICIONAIS legítimas (outro teste também quebra pelo mesmo motivo): rótulos extra aceitos por mutante.
+# Toda outra falha com rótulo fora desta lista torna o mutante INCONCLUSIVE (falha_nao_esperada).
+EXTRA_LABELS = {
+    "M9": ("[alias]",),  # /COMPRAR sem flag i: o alias percent-encoded maiúsculo também deixa de ser coberto.
+}
+
 
 def read_text_normalized(path):
     return path.read_bytes().decode("utf-8").replace("\r\n", "\n")
@@ -98,18 +110,64 @@ def run(d):
     return p.returncode, out
 
 
+SUMMARY_KEYS = ("tests", "pass", "fail", "cancelled", "skipped", "todo")
+ASSERT_RE = re.compile(r"^\s+code: '?ERR_ASSERTION'?$|^\s+name: '?AssertionError'?$", re.M)
+CRASH_RE = re.compile(r"SyntaxError|ReferenceError|TypeError|ERR_MODULE_NOT_FOUND|Cannot find module|"
+                      r"Traceback \(most recent call last\)|ERR_UNHANDLED|Segmentation fault|FATAL ERROR")
+# Bloco de falha TAP de topo: "not ok N - nome" até a linha "  ..." que fecha o YAML do bloco.
+FAIL_BLOCK = re.compile(r"^not ok \d+ - (?P<name>[^\n]*)\n(?P<body>(?:[ \t]+[^\n]*\n|\n)*?)  \.\.\.$", re.M)
+
+
 def summary(out):
     get = lambda k: (re.search(rf"^# {k} (\d+)$", out, re.M) or [None, None])[1]
-    return {k: get(k) for k in ("tests", "pass", "fail")}
+    return {k: get(k) for k in SUMMARY_KEYS}
+
+
+def label_in(label, body):
+    """Rótulo como token exato: "[T1]" não casa "[T10]" nem "[T1x]"."""
+    return label in body if label.startswith("[") and label.endswith("]") else re.search(rf"(?<![\w-]){re.escape(label)}(?![\w-])", body) is not None
 
 
 def classify(rc, out, expect, total):
+    """-> (KILLED|SURVIVED|INCONCLUSIVE, motivo). expect: rótulo esperado ou coleção de rótulos aceitos."""
+    labels = [expect] if isinstance(expect, str) else list(expect)
     s = summary(out)
-    if rc != 0 and re.search(r"^\s*not ok ", out, re.M) and expect in out:
-        return "KILLED", ""
-    if rc == 0 and s == {"tests": total, "pass": total, "fail": "0"}:
-        return "SURVIVED", ""
-    return "INCONCLUSIVE", f"rc={rc} resumo={s} rótulo_presente={expect in out}"
+    plan = re.search(r"^1\.\.(\d+)$", out, re.M)
+    if rc is None or rc < 0:
+        return "INCONCLUSIVE", f"sinal_ou_timeout rc={rc}"
+    if not plan or any(v is None for v in s.values()):
+        return "INCONCLUSIVE", f"tap_incompleto plano={bool(plan)} resumo={s}"
+    n = {k: int(v) for k, v in s.items()}
+    if n["tests"] != int(total) or n["pass"] + n["fail"] != n["tests"]:
+        return "INCONCLUSIVE", f"contagem_diferente_da_baseline resumo={s} baseline={total}"
+    if n["cancelled"] or n["skipped"] or n["todo"]:
+        return "INCONCLUSIVE", f"skip_todo_cancelled resumo={s}"
+    blocks = list(FAIL_BLOCK.finditer(out))
+    nested = re.findall(r"^[ \t]+not ok \d+ - ", out, re.M)
+    if rc == 0:
+        if n["fail"] == 0 and not blocks and not nested and n["pass"] == int(total):
+            return "SURVIVED", ""
+        return "INCONCLUSIVE", f"rc0_com_falha resumo={s}"
+    if rc != 1:
+        return "INCONCLUSIVE", f"rc_{rc}_nao_e_falha_de_teste"
+    if not blocks or len(blocks) != n["fail"] or nested:
+        return "INCONCLUSIVE", f"falhas_tap_inconsistentes blocos={len(blocks)} fail={n['fail']} aninhadas={len(nested)}"
+    outside = FAIL_BLOCK.sub("", out)
+    crash = CRASH_RE.search(outside)
+    if crash:
+        return "INCONCLUSIVE", f"crash_fora_de_bloco:{crash.group(0)}"
+    killed_by, unexpected = [], []
+    for b in blocks:
+        body = b.group("body")
+        if not ASSERT_RE.search(body):
+            unexpected.append(b.group("name")[:40] + ":sem_assercao")
+        elif not any(label_in(l, body) for l in labels):
+            unexpected.append(b.group("name")[:40] + ":rotulo_ausente_no_bloco")
+        else:
+            killed_by.append(b.group("name")[:40])
+    if unexpected:
+        return "INCONCLUSIVE", "falha_nao_esperada:" + ";".join(unexpected)
+    return "KILLED", ""
 
 
 def one(item, total):
@@ -124,8 +182,10 @@ def one(item, total):
                 return name, "INCONCLUSIVE", f"trecho a mutar ocorre {text.count(old)} vez(es)", expect
             write_lf(f, text.replace(old, new, 1))
             rc, out = run(d)
-        verdict, why = classify(rc, out, expect, total)
+        verdict, why = classify(rc, out, (expect, *EXTRA_LABELS.get(name.split()[0], ())), total)
         return name, verdict, why, expect
+    except subprocess.TimeoutExpired:
+        return name, "INCONCLUSIVE", f"timeout {TIMEOUT}s", expect
     except (OSError, subprocess.SubprocessError, UnicodeError) as e:
         return name, "INCONCLUSIVE", f"erro de infraestrutura: {type(e).__name__}: {e}", expect
 

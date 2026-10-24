@@ -22,6 +22,10 @@
 //   com recuo); qualquer outra resposta não-2xx (400, 401, 403, 404, 409, 422…) é permanente => dead na hora +
 //   dead-letter na hora. 408 é temporário por definição (RFC 9110 §15.5.9: o servidor desistiu de esperar a
 //   requisição; repetir é seguro e a Idempotency-Key impede entrega dupla), como 429.
+//   409 é classificado pelo NOME do erro do Resend (corpo JSON), não só pelo status (AVAL Sol 125):
+//   concurrent_idempotent_requests (outra requisição com a mesma chave ainda em curso; o Resend manda tentar
+//   de novo) => temporário; invalid_idempotent_request (mesma chave, corpo diferente) => permanente; qualquer
+//   outro 409, nome ausente ou corpo ilegível => permanente (fechado em falha).
 // * Retomada: (1) o reenvio do mesmo formulário (mesmo protocolo) processa os envios pendentes; (2) o cron
 //   horário (runRefundWatchdog -> drainAtendimentoOutbox).
 // * Monitor de pendências antigas: pendência mais antiga com >= 2 h (OLD_PENDING_ALERT_HOURS) gera alerta SÓ
@@ -224,9 +228,16 @@ export async function ensureAtendimentoSchema(sql, q = ATENDIMENTO_SQL) {
 const backoffMinutes = (attempts) => Math.min(360, 2 ** Math.max(1, Math.min(9, attempts)));
 const truthy = (v) => v === true || v === "t" || v === "true" || v === 1;
 
-// Só rede/tempo esgotado (0), 408, 429 e 5xx são temporários; qualquer outra resposta não-2xx é permanente.
-export function resendFailureIsTransient(status) {
+// Só rede/tempo esgotado (0), 408, 429, 5xx e o 409 concurrent_idempotent_requests são temporários; qualquer
+// outra resposta não-2xx (inclusive 409 de nome desconhecido) é permanente.
+export const RESEND_409_TRANSIENT_NAMES = Object.freeze(["concurrent_idempotent_requests"]);
+export function resendFailureIsTransient(status, body = null) {
+  if (status === 409) return RESEND_409_TRANSIENT_NAMES.includes(resendErrorName(body));
   return status === 0 || status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+export function resendErrorName(body) {
+  const name = body && typeof body === "object" ? body.name : null;
+  return typeof name === "string" && /^[a-z_]{1,64}$/.test(name) ? name : null;
 }
 async function resendSend(c, { idempotencyKey, to, subject, text, replyTo }) {
   try {
@@ -239,7 +250,8 @@ async function resendSend(c, { idempotencyKey, to, subject, text, replyTo }) {
     let data = null;
     try { data = await r.json(); } catch {}
     if (r.ok) return { ok: true, id: String(data?.id || "") };
-    return { ok: false, permanent: !c.transient(r.status), reason: `resend_${r.status}` };
+    const name = r.status === 409 ? resendErrorName(data) : null;
+    return { ok: false, permanent: !c.transient(r.status, data), reason: `resend_${r.status}${name ? ":" + name : ""}` };
   } catch { return { ok: false, permanent: false, reason: "resend_network" }; }
 }
 

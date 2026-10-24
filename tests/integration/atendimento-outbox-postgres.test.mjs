@@ -305,6 +305,47 @@ test("408, 429 e 5xx são temporários: nova tentativa com recuo e recuperação
   }
 });
 
+test("409 do Resend pelo nome: concurrent_idempotent_requests tenta de novo; invalid_idempotent_request e 409 sem nome viram dead na hora", { skip: SKIP }, async () => {
+  // concurrent_idempotent_requests: temporário (o Resend manda tentar de novo) => pending, depois enviado uma vez.
+  reset();
+  {
+    const f = fields();
+    let first = true;
+    const m = resend();
+    const fetchImpl = async (u, init) => {
+      if (first && JSON.parse(init.body).to[0] === f.email) { first = false; return new Response(JSON.stringify({ statusCode: 409, name: "concurrent_idempotent_requests", message: "retry" }), { status: 409 }); }
+      return m.fetchImpl(u, init);
+    };
+    const r = await submit(f, { fetchImpl });
+    let o = row(r.body.protocolo);
+    assert.deepEqual([o.customer_status, o.customer_attempts, o.alert_status], ["pending", 1, "none"]);
+    makeDue(r.body.protocolo);
+    await drain(fetchImpl);
+    o = row(r.body.protocolo);
+    assert.equal(o.customer_status, "sent");
+    assert.equal(m.sentTo(f.email).length, 1);
+  }
+  // invalid_idempotent_request e 409 de corpo desconhecido: permanente (fechado em falha).
+  for (const body of [{ statusCode: 409, name: "invalid_idempotent_request" }, { statusCode: 409 }, "não-json"]) {
+    reset();
+    const f = fields();
+    const calls = [];
+    const m = resend();
+    const fetchImpl = async (u, init) => {
+      const b = JSON.parse(init.body);
+      calls.push(b.to[0]);
+      if (b.to[0] === f.email) return new Response(typeof body === "string" ? body : JSON.stringify(body), { status: 409 });
+      return m.fetchImpl(u, init);
+    };
+    const r = await submit(f, { fetchImpl });
+    const o = row(r.body.protocolo);
+    assert.deepEqual([o.customer_status, o.customer_attempts, o.alert_status], ["dead", 1, "sent"], JSON.stringify(body));
+    makeDue(r.body.protocolo);
+    await drain(fetchImpl);
+    assert.equal(calls.filter((x) => x === f.email).length, 1, JSON.stringify(body) + ": nenhuma nova tentativa");
+  }
+});
+
 test("monitor: pendência >= 2 h gera alerta só com contagem (um a cada 6 h); >= 6 h deixa o cron vermelho", { skip: SKIP }, async () => {
   reset();
   const f = fields();
@@ -511,6 +552,33 @@ test("mutantes: cota lida-e-escrita, sem teto, chave instável, duplicata sem pr
     const r = await submit(f, { fetchImpl, transient: no408 });
     const o = row(r.body.protocolo);
     killed("P3 408 como permanente", o.customer_status !== "pending" || o.alert_status !== "none");
+  }
+
+  // P4: 409 concurrent_idempotent_requests tratado como permanente (ignora o nome do erro do Resend).
+  reset();
+  {
+    const f = fields();
+    let first = true;
+    const m = resend();
+    const fetchImpl = async (u, init) => { if (first && JSON.parse(init.body).to[0] === f.email) { first = false; return new Response(JSON.stringify({ name: "concurrent_idempotent_requests" }), { status: 409 }); } return m.fetchImpl(u, init); };
+    const nameBlind = (s, b) => (s === 409 ? false : resendFailureIsTransient(s, b));
+    const r = await submit(f, { fetchImpl, transient: nameBlind });
+    const o = row(r.body.protocolo);
+    killed("P4 409 concurrent como permanente", o.customer_status !== "pending" || o.alert_status !== "none");
+  }
+
+  // P5: 409 invalid_idempotent_request tratado como temporário (qualquer 409 tenta de novo).
+  reset();
+  {
+    const f = fields();
+    const calls = [];
+    const fetchImpl = async (u, init) => { const b = JSON.parse(init.body); calls.push(b.to[0]); return b.to[0] === f.email ? new Response(JSON.stringify({ name: "invalid_idempotent_request" }), { status: 409 }) : new Response(JSON.stringify({ id: "x" }), { status: 200 }); };
+    const any409 = (s, b) => s === 409 || resendFailureIsTransient(s, b);
+    const r = await submit(f, { fetchImpl, transient: any409 });
+    const o = row(r.body.protocolo);
+    makeDue(r.body.protocolo);
+    await drain(fetchImpl, { transient: any409 });
+    killed("P5 409 invalid_idempotent_request como temporário", o.customer_status !== "dead" || o.alert_status !== "sent" || calls.filter((x) => x === f.email).length > 1);
   }
 
   // O1: monitor de pendência antiga desligado.
