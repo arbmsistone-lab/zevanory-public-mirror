@@ -296,7 +296,7 @@ a:focus-visible,.button:focus-visible{outline:2px solid var(--brand-3);outline-o
 .offer-summary dd{margin:0;color:var(--muted);overflow-wrap:anywhere}
 @media (max-width:560px){.offer-summary div{grid-template-columns:1fr;gap:4px}}
 /* E3 (2026-10-24): WCAG 2.2 AA + internal 44 px target standard on every page, not only in <main>.
-   Inline text links become 44 px inline boxes (same convention as #821; padding tricks were rejected
+   Inline text links become 44 px inline boxes (same convention as PR 821; padding tricks were rejected
    because the padded hit areas of links on consecutive lines overlap); keyboard focus is always a 3 px ring and the sticky header
    or phone buy bar never hides the focused element (scroll-padding, WCAG 2.4.11). */
 html{scroll-padding-top:88px;scroll-padding-bottom:128px}

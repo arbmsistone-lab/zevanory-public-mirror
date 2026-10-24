@@ -1,5 +1,5 @@
 // Local harness for the sales site: serves a sales-public build THROUGH the real Worker
-// (worker/sales-public-worker.mjs), so routing, CSP, Cache-Control and the /whatsapp-contact.js
+// (worker/sales-public-worker.mjs), so routing, CSP, Cache-Control and the retired contact-script
 // tombstone are exactly what production would send. Sales stay closed (no CORE binding).
 // Read-only, localhost only, no secrets. Usage:
 //   node scripts/audit/sales-local-server.mjs [port=8787] [dir=sales-public] [workerModule]
