@@ -31,8 +31,8 @@
 //      qualquer DELETE, e impressos. Antes do DELETE k o inventário vivo tem de dar D(k-1); depois, Dk; senão o próximo
 //      DELETE não acontece (CLEANUP_PARTIAL / CONCURRENT_CHANGE, estado preservado). A identidade do código (etag,
 //      runtime, commit) é a mesma em todos os estados.
-//   C3/A1 serialização: nenhum run ativo de qualquer workflow da matriz docs/ops/zevanory-publisher-matrix.json (inclusive os
-//      dois financeiros fora do grupo deploy-zevanory) e versão efetiva = a do plano. Publicadores externos (painel,
+//   C3/A1 serialização: nenhum run ativo de qualquer workflow da matriz docs/ops/zevanory-publisher-matrix.json (inclusive o
+//      financeiro aposentado fora do grupo deploy-zevanory) e versão efetiva = a do plano. Publicadores externos (painel,
 //      Workers Builds, outros tokens) não serializáveis: detecção antes e depois de cada DELETE; se a versão andou por
 //      outra coisa que não o nosso DELETE (cadeia de deployments, diff de configuração, etag do código), CONCURRENT_CHANGE.
 //   C4 falha parcial: um nome por vez; qualquer falha para, imprime CLEANUP_PARTIAL (presentes/ausentes, versão) e falha.

@@ -28,9 +28,13 @@ permissions:
   contents: read
 
 # Risco Sol 038-R5: nunca duas rotações ao mesmo tempo; a segunda espera, não cancela a primeira.
+# Autorização escrita do proprietário ("AUTORIZO SERIALIZAR mercadopago-production-token-rotate.yml NO GRUPO
+# deploy-zevanory"): mesma fila dos outros 10 publicadores do Worker zevanory (ops/publishers.json), declarada
+# exatamente como eles. queue: max guarda todos os pendentes em ordem (sem ela, um pendente novo cancela o anterior).
 concurrency:
-  group: mercadopago-production-token-rotate
+  group: deploy-zevanory
   cancel-in-progress: false
+  queue: max
 
 jobs:
   rotate-and-preflight:
