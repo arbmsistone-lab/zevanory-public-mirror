@@ -77,8 +77,9 @@ jobs:
           git show HEAD:worker/cloudflare-worker.recovered.mjs > "$RUNNER_TEMP/recovered.committed.mjs"
           python3 scripts/deploy/build_provenance.py region --file "$RUNNER_TEMP/recovered.committed.mjs" --expect-build-info public/build-info.json
           python3 scripts/deploy/build_provenance.py identifiers --before "$RUNNER_TEMP/recovered.committed.mjs" --after worker/cloudflare-worker.recovered.mjs
-          # Independent reconstruction on the real pinned base, both prepare modes.
-          python3 scripts/deploy/verify-signature-region-binding.py --base 83620c680958d726fc4b0fd16e2574cdcc362a6d | tee "$RUNNER_TEMP/binding.json"
+          # Independent reconstruction on the real pinned base, both prepare modes, from the COMMITTED sources (the
+          # working tree was already patched by the reconstruction above).
+          python3 scripts/deploy/verify-signature-region-binding.py --base 83620c680958d726fc4b0fd16e2574cdcc362a6d --source-ref HEAD | tee "$RUNNER_TEMP/binding.json"
           echo "::notice title=MP_SIGNATURE_REGION::$(python3 -c 'import json,sys;j=json.load(open(sys.argv[1]));print(j["MP_SIGNATURE_REGION_BINDING"], j["tested_region"])' "$RUNNER_TEMP/binding.json")"
       - name: Crons of the candidate (declared list, at most 5 per account)
         run: |

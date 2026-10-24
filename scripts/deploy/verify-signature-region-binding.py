@@ -15,9 +15,11 @@ Uso: verify-signature-region-binding.py [--repo .] (--base SHA | --base-dir DIR)
   --base SHA      lê public/ e wrangler.jsonc do commit SHA (git archive / git show), como o publicador
   --base-dir DIR  base já extraída (DIR/public, DIR/wrangler.jsonc) — usada pelos testes offline
   --prepare PATH  outro prepare-central-candidate.py (só testes negativos)
+  --source-ref R  worker/ e scripts/deploy/ (e a região testada) lidos do commit R (HEAD ou SHA) em vez da árvore de
+                  trabalho — obrigatório quando a árvore já foi patcheada (ex.: depois da reconstrução do dry-run)
 Saída: uma linha JSON MP_SIGNATURE_REGION_BINDING=PASS|FAIL; código 0 só com PASS. Sem rede, sem segredos.
 """
-import argparse, io, json, os, shutil, subprocess, sys, tarfile, tempfile
+import argparse, io, json, os, re, shutil, subprocess, sys, tarfile, tempfile
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -49,12 +51,20 @@ def stage_base(repo, base, base_dir, dst):
     (dst / "wrangler.central-fix.jsonc").write_bytes(git(repo, "show", f"{base}:wrangler.jsonc"))
 
 
-def run_mode(repo, base, base_dir, prepare, mode, env_mode, tested):
+def stage_sources(repo, source_ref, dst):
+    if source_ref:
+        with tarfile.open(fileobj=io.BytesIO(git(repo, "archive", source_ref, "worker", "scripts/deploy")), mode="r:") as t:
+            t.extractall(dst, filter="data")
+        return
+    shutil.copytree(repo / "worker", dst / "worker", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shutil.copytree(repo / "scripts" / "deploy", dst / "scripts" / "deploy",
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+
+
+def run_mode(repo, base, base_dir, prepare, mode, env_mode, tested, source_ref=None):
     with tempfile.TemporaryDirectory(prefix="zev-sigbind-") as tmp:
         d = Path(tmp)
-        shutil.copytree(repo / "worker", d / "worker", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        shutil.copytree(repo / "scripts" / "deploy", d / "scripts" / "deploy",
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        stage_sources(repo, source_ref, d)
         if prepare:
             shutil.copyfile(prepare, d / "scripts" / "deploy" / "prepare-central-candidate.py")
         stage_base(repo, base, base_dir, d)
@@ -98,13 +108,20 @@ def main(argv=None):
     g.add_argument("--base")
     g.add_argument("--base-dir")
     ap.add_argument("--prepare")
+    ap.add_argument("--source-ref")
     a = ap.parse_args(argv)
     repo = Path(a.repo).resolve()
     out = {"MP_SIGNATURE_REGION_BINDING": "FAIL"}
     try:
-        tested = bp.region_sha256_file(repo / WORKER)
+        if a.source_ref and not re.fullmatch(r"HEAD|[0-9a-f]{40}", a.source_ref):
+            raise ValueError("SOURCE_REF_MUST_BE_HEAD_OR_40_HEX")
+        if a.source_ref:
+            tested = bp.region_sha256_text(git(repo, "show", f"{a.source_ref}:{WORKER.as_posix()}").decode("utf-8"))
+        else:
+            tested = bp.region_sha256_file(repo / WORKER)
         out["tested_region"] = tested
-        out["modes"] = [run_mode(repo, a.base, a.base_dir, a.prepare, m, e, tested) for m, e in MODES.items()]
+        out["source"] = a.source_ref or "working-tree"
+        out["modes"] = [run_mode(repo, a.base, a.base_dir, a.prepare, m, e, tested, a.source_ref) for m, e in MODES.items()]
     except (bp.RegionError, OSError, ValueError, subprocess.SubprocessError, tarfile.TarError) as e:
         out["error"] = f"{type(e).__name__}: {e}"[:300]
         print(json.dumps(out, ensure_ascii=False, sort_keys=True))

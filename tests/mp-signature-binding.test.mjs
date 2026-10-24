@@ -208,7 +208,7 @@ function step(text, name) {
 
 test("B8 fiação: dry-run do PR roda a guarda; publicador grava bundle após o dry-run e lê de volta depois do rollback", () => {
   const dry = wf("central-candidate-dryrun.yml");
-  assert.ok(dry.includes("python3 scripts/deploy/verify-signature-region-binding.py --base 83620c680958d726fc4b0fd16e2574cdcc362a6d")
+  assert.ok(dry.includes("python3 scripts/deploy/verify-signature-region-binding.py --base 83620c680958d726fc4b0fd16e2574cdcc362a6d --source-ref HEAD")
     && dry.includes("--file worker/cloudflare-worker.recovered.mjs --expect-build-info public/build-info.json")
     && dry.includes('test "$a" = "$b"'), "[B8.1] dry-run sem guarda/determinismo");
   const prod = wf("central-production-deploy.yml");

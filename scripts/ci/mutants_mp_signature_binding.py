@@ -68,7 +68,7 @@ M = {
     "F1 production bundle step removed": (PROD, "          python3 scripts/deploy/write-build-info.py --bundle-dir /tmp/central-final\n", ""),
     "F2 production readback never fails": (PROD, "        if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'\n        run: |\n          set -euo pipefail\n          python3 scripts/deploy/verify-live-build-info.py", "        if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'\n        continue-on-error: true\n        run: |\n          set -euo pipefail\n          python3 scripts/deploy/verify-live-build-info.py"),
     "F3 production readback runs after failures": (PROD, "        if: steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'\n        run: |\n          set -euo pipefail\n          python3 scripts/deploy/verify-live-build-info.py", "        if: always() && steps.auth.outputs.available == 'true' && steps.deployworker.outcome == 'success'\n        run: |\n          set -euo pipefail\n          python3 scripts/deploy/verify-live-build-info.py"),
-    "F4 dry-run guard removed": (DRY, "          python3 scripts/deploy/verify-signature-region-binding.py --base 83620c680958d726fc4b0fd16e2574cdcc362a6d | tee", "          true | tee"),
+    "F4 dry-run guard removed": (DRY, "          python3 scripts/deploy/verify-signature-region-binding.py --base 83620c680958d726fc4b0fd16e2574cdcc362a6d --source-ref HEAD | tee", "          true | tee"),
     "F5 dry-run determinism check removed": (DRY, '          test "$a" = "$b" || {', "          true || {"),
     "F6 reserve build bundle step removed": (CB, "python3 scripts/deploy/write-build-info.py --bundle-dir /tmp/central-final\n", ""),
     # certificação
