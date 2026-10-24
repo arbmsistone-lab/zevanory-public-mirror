@@ -44,10 +44,14 @@ if not found_private:
 c.setdefault("vars",{})["ZEVANORY_RELEASE_SHA"]=os.environ["TARGET_RUNTIME_SHA"]
 c["vars"]["ZEVANORY_RELEASE_REF"]="gh-pages"
 c["vars"]["ZEVANORY_DEPLOYMENT_ENV"]="production"
-c["vars"]["CERTIFICATION_PILOT_ENV"]="sandbox"
+# R9 (Sol 164 §4): o piloto de certificação não existe na produção. Nenhuma CERTIFICATION_PILOT_* é gravada; as que
+# vierem da configuração base ou do runtime config são removidas, e sem keep_vars o deploy apaga as do painel.
+for _vars in (c.setdefault("vars",{}), c["vars"].get("ZEVANORY_RUNTIME_CONFIG") if isinstance(c["vars"].get("ZEVANORY_RUNTIME_CONFIG"),dict) else {}):
+    for _k in [k for k in _vars if k.startswith("CERTIFICATION_PILOT_")]:
+        _vars.pop(_k)
+c.pop("keep_vars",None)
 # Dedicated Asaas financial-certification probes must never default to the live API.
 c["vars"]["ASAAS_ENV"]="sandbox"
-c["vars"]["CERTIFICATION_PILOT_APPROVER"]="zevanory-certification-e2e"
 # The future launch configuration is dormant unless explicitly authorized.
 # This PR must not be merged before the owner's AUTORIZO COMPRA REAL instruction.
 launch_authorized=os.environ.get("ZEVANORY_LAUNCH_AUTHORIZATION","")=="AUTORIZO COMPRA REAL"
@@ -65,7 +69,6 @@ else:
     c["vars"]["MERCADOPAGO_ENV"]="sandbox"
     c["vars"].pop("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16",None)
     c["vars"].setdefault("ZEVANORY_RUNTIME_CONFIG",{}).pop("MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16",None)
-c["vars"]["CERTIFICATION_PILOT_PRODUCTION_ALLOWED"]="false"
 c["vars"]["ABSOLUTE_RELEASE_APPROVED"]="false"
 c["vars"]["PAYMENT_PROVIDER"]="mercadopago"
 c["vars"]["CHECKOUT_ENABLED"]="true"
@@ -141,6 +144,8 @@ recovered_src=recovered_src.replace(
     '    } else if (provider === "stripe") {\n',
     1
 )
+# O Worker de certificação usa este mesmo bundle (piloto legítimo lá); na produção CERTIFICATION_PILOT_ENV é invisível
+# (worker/production-pilot-guard.mjs), então pilotSandbox é sempre false.
 recovered_src=recovered_src.replace(
     'const pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_PAYMENT_MODE || "").toLowerCase() === "sandbox";',
     'const pilotSandbox = Boolean(pilot?.authorized) && String(process.env.CERTIFICATION_PILOT_ENV || "").toLowerCase() === "sandbox";'

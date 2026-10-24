@@ -51,6 +51,7 @@ import { readFinancialProofSnapshot, projectProductionOnlyStatus, refreshFinanci
 import { verifySignedAuditProbe } from "./signed-audit-probe.mjs";
 import { isCheckoutRoute, evaluateCheckout, denyCheckout, isProductionPilotBlocked, requiresPilotDenial } from "./commercial-checkout-guard.mjs";
 import { operatorToken as operatorCredential } from "./operator-credential.mjs";
+import { productionEnvView } from "./production-pilot-guard.mjs";
 
 async function loadWhatsappBrokerState(binding, env) {
   // Retired channel (Meta disabled the WABA on 2026-10-10): never call the broker.
@@ -101,7 +102,8 @@ const wrapped = {
     // Retired public assets (old contact script): inert, no-store tombstone before any env/KV access.
     const retiredAsset = retiredPublicAssetResponse(request);
     if (retiredAsset) return retiredAsset;
-    let normalized = normalizeEnv(env);
+    // R9: fora do perímetro de certificação nenhum CERTIFICATION_PILOT_* chega ao runtime (worker/production-pilot-guard.mjs).
+    let normalized = normalizeEnv(productionEnvView(env));
     globalThis.__ZEVANORY_VOICE_SELF__ = normalized.SELF;
     applySalesSwitch(await readSalesSwitch(normalized));
     let url = new URL(request.url);
@@ -152,7 +154,8 @@ const wrapped = {
     // Operator-authenticated READ-ONLY audit before legacy routing. Does not mutate commerce.
     if (url.pathname.startsWith("/api/internal/audit/")) {
       const audit = await handleInternalFinancialAudit(request, normalized, { sqlFactory: whatsappProofDatabase });
-      if (audit && audit.status === 200) {
+      // order-lookup (conciliação somente leitura) devolve só o resultado do SELECT: nada é persistido nem anexado.
+      if (audit && audit.status === 200 && url.pathname !== "/api/internal/audit/order-lookup") {
         // Authenticated read-only audit already computed the provider-verified classification:
         // persist the derived snapshot (fail-closed validation) and expose its diagnostic state.
         try {
@@ -657,7 +660,7 @@ const wrapped = {
 
 wrapped.scheduled = async (controller, rawEnv, ctx) => {
   const env = withMeteredKv(rawEnv, "cron:" + String(controller?.cron || "?"));
-  const normalized = normalizeEnv(env);
+  const normalized = normalizeEnv(productionEnvView(env));
   if (controller?.cron === "5,35 * * * *") {
     // Workers Free allows 5 cron triggers per ACCOUNT (all used), so this isolated
     // invocation is shared by tick minute, each with its own subrequest budget:
@@ -792,10 +795,10 @@ wrapped.scheduled = async (controller, rawEnv, ctx) => {
   // Acquisition (:35) and brand profiles (:05) run in the isolated "5,35" cron.
 };
 if (typeof worker.queue === "function") {
-  wrapped.queue = async (batch, env, ctx) => worker.queue(batch, normalizeEnv(env), ctx);
+  wrapped.queue = async (batch, env, ctx) => worker.queue(batch, normalizeEnv(productionEnvView(env)), ctx);
 }
 wrapped.email = async (message, env, ctx) => {
-  const normalized = normalizeEnv(env);
+  const normalized = normalizeEnv(productionEnvView(env));
   if (await handleSandboxInboundEmail(message, normalized)) return;
   if (typeof worker.email === "function") return worker.email(message, normalized, ctx);
   message.setReject?.("mailbox_unavailable");
