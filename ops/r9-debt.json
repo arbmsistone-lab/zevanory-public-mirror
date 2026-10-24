@@ -25,8 +25,12 @@
       "deploy_config": false,
       "owner": "proprietário (Renan): decisão de desligar o piloto sandbox dentro da produção",
       "reason": "Var de texto do painel que liga o piloto sandbox no Worker de produção (resolveCheckoutProviderRequest, certificationPilotPolicy). Ausente = false (FAIL_CLOSED_RUNTIME_FLAGS), mas `wrangler secret delete` não a remove e financial-e2e-stripe ainda usa o piloto em produção.",
-      "planned_pr": "R9-B2: remover o piloto sandbox do Worker de produção (sandbox só no Worker de certificação) e apagar a var por PATCH de settings com prova antes/depois (classe B)",
-      "status": "OPEN"
+      "planned_pr": "#913 (R9 B): o Worker de produção não enxerga nenhuma CERTIFICATION_PILOT_* (worker/production-pilot-guard.mjs, prova fail-closed B1-B7) e o deploy, sem keep_vars, apaga a var do painel; sai depois do readback WORKER_BINDING_CERTIFICATION_PILOT=none",
+      "status": "OPEN",
+      "prs": [
+        "#913"
+      ],
+      "next_step": "merge + deploy aprovado do #913; production-credential-identity.yml deve mostrar WORKER_BINDING_CERTIFICATION_PILOT=none; então o item sai desta lista"
     },
     {
       "id": "R9-D3",
@@ -36,8 +40,12 @@
       "deploy_config": false,
       "owner": "proprietário (Renan): mudança do contrato de deploy",
       "reason": "Gravada =sandbox a cada deploy por scripts/deploy/prepare-central-candidate.py e EXIGIDA por scripts/deploy/verify-financial-boundary.py; apagar no painel volta no próximo deploy.",
-      "planned_pr": "R9-B2: tirar do prepare-central-candidate e do verify-financial-boundary junto com a remoção do piloto em produção",
-      "status": "OPEN"
+      "planned_pr": "#913 (R9 B): prepare-central-candidate.py não grava mais e verify-financial-boundary.py exige a AUSÊNCIA; sai depois do readback pós-deploy",
+      "status": "OPEN",
+      "prs": [
+        "#913"
+      ],
+      "next_step": "merge + deploy aprovado do #913; production-credential-identity.yml deve mostrar WORKER_BINDING_CERTIFICATION_PILOT=none; então o item sai desta lista"
     },
     {
       "id": "R9-D4",
@@ -47,8 +55,12 @@
       "deploy_config": false,
       "owner": "proprietário (Renan): mudança do contrato de deploy",
       "reason": "Trava explícita =false gravada a cada deploy e EXIGIDA por verify-financial-boundary.py.",
-      "planned_pr": "R9-B2: substituir a trava pela ausência do piloto no Worker de produção",
-      "status": "OPEN"
+      "planned_pr": "#913 (R9 B): trava substituída pela ausência (verify-financial-boundary.py NO_PRODUCTION_PILOT_BINDING); sai depois do readback pós-deploy",
+      "status": "OPEN",
+      "prs": [
+        "#913"
+      ],
+      "next_step": "merge + deploy aprovado do #913; production-credential-identity.yml deve mostrar WORKER_BINDING_CERTIFICATION_PILOT=none; então o item sai desta lista"
     },
     {
       "id": "R9-D5",
@@ -58,8 +70,12 @@
       "deploy_config": false,
       "owner": "proprietário (Renan): mudança do contrato de deploy",
       "reason": "Gravada a cada deploy por prepare-central-candidate.py; lida pelas operações de convite do piloto.",
-      "planned_pr": "R9-B2: remover com as operações de convite do piloto em produção",
-      "status": "OPEN"
+      "planned_pr": "#913 (R9 B): não é mais gravada; convites do piloto inexistentes na produção (503 certification_pilot_approver_not_configured); sai depois do readback pós-deploy",
+      "status": "OPEN",
+      "prs": [
+        "#913"
+      ],
+      "next_step": "merge + deploy aprovado do #913; production-credential-identity.yml deve mostrar WORKER_BINDING_CERTIFICATION_PILOT=none; então o item sai desta lista"
     },
     {
       "id": "R9-D6",
