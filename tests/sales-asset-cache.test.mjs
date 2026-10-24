@@ -6,7 +6,8 @@
 //   (b) nothing published, no sales source and no build input references the retired script; the
 //       only repo references left are listed below with a reason (apex surfaces, the Worker tombstone);
 //   (c) the Worker serves hashed assets immutable, unhashed CSS/JS with revalidation, pages with a
-//       short max-age and no stale-while-revalidate, and the old path as a no-store, inert no-op.
+//       short max-age and no stale-while-revalidate, and the old path as a no-store, inert no-op
+//       that also carries Clear-Site-Data: "cache" (and nothing else does).
 // Mutants (unhashed script/stylesheet, retired script tag or name, stale hash, external CDN) are all
 // killed; the no-store oracle of the old path is asserted directly in (c).
 import test from "node:test";
@@ -17,7 +18,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { readTextNormalized } from "./helpers/text.mjs";
-import worker, { RETIRED_CONTACT_BODY, assetCacheControl, PAGE_CACHE_CONTROL } from "../worker/sales-public-worker.mjs";
+import worker, { RETIRED_CONTACT_BODY, RETIRED_CONTACT_CLEAR_SITE_DATA, assetCacheControl, PAGE_CACHE_CONTROL } from "../worker/sales-public-worker.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PUB = join(ROOT, "sales-public");
@@ -80,6 +81,7 @@ const ALLOWLIST = new Map(Object.entries({
   "worker/cloudflare-worker.recovered.mjs": "apex central worker bundle (readback of the apex copy)",
   "scripts/ci/mutants_whatsapp_retirement.expected.json": "apex mutant manifest (#896)",
   "docs/evidence/whatsapp-retirement-mutant-causality.md": "historical evidence (not published)",
+  "docs/evidence/sales-ux/legacy-cache.md": "browser-cache counterproof evidence (not published)",
 }));
 
 test("(b) repo-wide: the old path survives only in the explicit, non-sales allowlist", () => {
@@ -107,10 +109,22 @@ test("(c) Worker: old contact path is a no-store inert no-op (GET and HEAD)", as
     assert.equal(res.headers.get("cache-control"), "no-store", method);
     assert.match(res.headers.get("content-type"), /^text\/javascript/);
     assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+    // Transitional eviction: only an old cached page asks for this path, so its answer also clears
+    // this origin's HTTP cache in supporting browsers (measured: docs/evidence/sales-ux/legacy-cache.md).
+    assert.equal(res.headers.get("clear-site-data"), '"cache"', method);
     const body = await res.text();
     assert.equal(body, method === "HEAD" ? "" : RETIRED_CONTACT_BODY);
   }
   assert.doesNotMatch(RETIRED_CONTACT_BODY, /wa\.me|whatsapp\.com|\d{8,}|document|location|fetch|import/i, "no behaviour at all");
+});
+
+test("(c) Clear-Site-Data is scoped to the tombstone: never on pages, assets, 404s or other routes", async () => {
+  assert.equal(RETIRED_CONTACT_CLEAR_SITE_DATA, '"cache"', "cache only: never cookies/storage/executionContexts");
+  const css = readdirSync(join(PUB, "assets")).find((f) => /^product\.[0-9a-f]{10}\.css$/.test(f));
+  for (const path of ["/", "/solucoes", "/calculadora-cmv", "/termos", "/assets/" + css, "/product.css", "/robots.txt", "/assets/product.0000000000.css", "/nao-existe", "/" + RETIRED + ".js.map", "/" + RETIRED + ".jsx"]) {
+    const res = await get(path);
+    assert.equal(res.headers.get("clear-site-data"), null, path);
+  }
 });
 
 test("(c) Worker: hashed assets immutable, unhashed CSS/JS revalidate, pages without stale-while-revalidate", async () => {

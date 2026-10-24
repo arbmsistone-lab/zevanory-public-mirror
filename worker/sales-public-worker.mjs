@@ -262,6 +262,12 @@ async function handleHotmart(request,env,slug,ctx){
 // never see the noindex (https://developers.google.com/search/docs/crawling-indexing/block-indexing).
 export const RETIRED_CONTACT_SCRIPT="/whatsapp-contact.js";
 export const RETIRED_CONTACT_BODY="/* retired: intentionally empty */\n";
+// Transitional eviction (2026-10-24, evidence: docs/evidence/sales-ux/legacy-cache.md): the tombstone
+// is only ever requested by an OLD cached page, so it also tells supporting browsers to drop this
+// origin's HTTP cache (old HTML and the old script bytes). Scoped to this one response on purpose:
+// on pages it would wipe the immutable assets on every navigation. Remove no earlier than 8 days
+// (old script max-age 1 d + stale-while-revalidate 7 d) after this Worker is deployed; review 2026-12-01.
+export const RETIRED_CONTACT_CLEAR_SITE_DATA='"cache"';
 export const HASHED_ASSET=/^\/assets\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.[0-9a-f]{10}\.(?:css|js|woff2)$/;
 export const IMMUTABLE_CACHE_CONTROL="public, max-age=31536000, immutable";
 export const REVALIDATE_CACHE_CONTROL="no-cache";
@@ -397,7 +403,7 @@ export default{async fetch(request,env,ctx){
   // E2: the retired contact script (old, unhashed URL). Browsers that cached the old copy for a day
   // (plus a week of stale-while-revalidate) could still run it; this answer is an inert no-op that is
   // never stored, so a revalidation replaces the cached copy with nothing harmful.
-  if(url.pathname===RETIRED_CONTACT_SCRIPT) return new Response(request.method==="HEAD"?null:RETIRED_CONTACT_BODY,{status:200,headers:applySecurityHeaders(new Headers({"content-type":"text/javascript; charset=utf-8","cache-control":"no-store"}))});
+  if(url.pathname===RETIRED_CONTACT_SCRIPT) return new Response(request.method==="HEAD"?null:RETIRED_CONTACT_BODY,{status:200,headers:applySecurityHeaders(new Headers({"content-type":"text/javascript; charset=utf-8","cache-control":"no-store","clear-site-data":RETIRED_CONTACT_CLEAR_SITE_DATA}))});
   if(retired.has(url.pathname)) return new Response("Produto retirado da superficie publica ZEVANORY.",{status:410,headers:applySecurityHeaders(new Headers({"content-type":"text/plain; charset=utf-8","cache-control":"no-store"}))});
   if(CHAT_ROUTES.has(url.pathname)) return handleSiteChatProxy(request,env);
   if(url.pathname.startsWith("/api/")||url.pathname.startsWith("/admin")) return new Response("Not found",{status:404,headers:applySecurityHeaders(new Headers())});
