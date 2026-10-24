@@ -15,7 +15,7 @@
 // qualquer divergência falha fechado.
 //
 // CLI (0 = PASS, 1 = FAIL/recusa, 2 = entrada inválida):
-//   readback --secrets LIST.json [--settings SETTINGS.json] [--strict]
+//   readback --secrets LIST.json [--settings SETTINGS.json] [--strict] [--debt ops/r9-debt.json]
 //   plan     --secrets LIST.json --settings SETTINGS.json --confirmation "<texto>" --out PLAN.json
 //   verify   --plan PLAN.json --secrets LIST.json --settings SETTINGS.json
 import { readFileSync, writeFileSync } from "node:fs";
@@ -28,15 +28,20 @@ export const FORBIDDEN_IN_PRODUCTION = /_TEST_|CERTIFICATION/;
 // (tests/production-payment-credential-isolation.test.mjs P1-P6) e nenhum deploy os regrava.
 export const REMOVAL_ALLOWLIST = Object.freeze(["MERCADOPAGO_TEST_ACCESS_TOKEN", "MERCADOPAGO_TEST_WEBHOOK_SECRET"]);
 export const CONFIRMATION_PHRASE = REMOVAL_ALLOWLIST.join(",");
-// Nomes CERTIFICATION* presentes na produção que NÃO podem sair sem mudança de código/contrato (dívida conhecida).
-// O readback os relata sempre; --strict os reprova. Nunca entram na remoção.
-export const LOAD_BEARING_DEBT = Object.freeze({
-  CERTIFICATION_E2E_TOKEN: "token de operador da produção: backup, voz, WhatsApp, auditoria financeira autenticam com ele e central-production-deploy.yml recusa o deploy sem ele",
-  CERTIFICATION_PILOT_ENABLED: "var de texto do painel (secret delete não remove); liga o piloto sandbox DENTRO da produção (resolveCheckoutProviderRequest/certificationPilotPolicy). Remover é fail-closed (FAIL_CLOSED_RUNTIME_FLAGS => false) e é o alvo do item 9, mas desliga fluxos que ainda usam o piloto em produção (financial-e2e-stripe): decisão do proprietário",
-  CERTIFICATION_PILOT_ENV: "gravado a cada deploy por prepare-central-candidate.py e EXIGIDO =sandbox por verify-financial-boundary.py; apagar no painel volta no próximo deploy",
-  CERTIFICATION_PILOT_PRODUCTION_ALLOWED: "gravado =false a cada deploy e EXIGIDO por verify-financial-boundary.py (trava explícita do piloto em produção)",
-  CERTIFICATION_PILOT_APPROVER: "gravado a cada deploy por prepare-central-candidate.py; lido pelas operações de convite do piloto",
-});
+// Dívida rastreada (ops/r9-debt.json, fonte única com o gate): nomes que o código/contrato de produção ainda lê.
+// O readback os relata sempre; --strict os reprova E reprova enquanto houver QUALQUER item pendente. Nunca entram na
+// remoção.
+export const DEFAULT_DEBT_FILE = fileURLToPath(new URL("../../ops/r9-debt.json", import.meta.url));
+export function loadDebt(path = DEFAULT_DEBT_FILE) {
+  const reg = JSON.parse(readFileSync(path, "utf8"));
+  if (!reg || !Array.isArray(reg.pending)) throw new InputError("debt_registry_invalid");
+  const names = {};
+  for (const e of reg.pending) {
+    if (!e || typeof e.id !== "string" || typeof e.name !== "string" || !String(e.reason || "").trim() || !String(e.planned_pr || "").trim()) throw new InputError("debt_registry_invalid");
+    names[e.name] = `${e.id}: ${e.reason} (PR planejado: ${e.planned_pr})`;
+  }
+  return Object.freeze({ pending: reg.pending.map((e) => ({ id: e.id, name: e.name })), names: Object.freeze(names) });
+}
 const NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
 
 export class InputError extends Error {}
@@ -80,15 +85,17 @@ export function proveTarget(data) {
   return { ok: value === TARGET.environment, deployment_env: value === TARGET.environment ? value : (env ? "outro" : "ausente") };
 }
 
-export function evaluateReadback({ secretNames = [], bindingNames = [], strict = false } = {}) {
+export function evaluateReadback({ secretNames = [], bindingNames = [], strict = false, debt: registry = loadDebt() } = {}) {
   const all = [...secretNames.map((name) => ({ name, type: "secret_text", source: "secret_list" })), ...bindingNames];
   const violations = [], debt = [];
   for (const entry of all) {
     if (!FORBIDDEN_IN_PRODUCTION.test(entry.name)) continue;
-    if (!strict && Object.hasOwn(LOAD_BEARING_DEBT, entry.name)) debt.push(entry);
+    if (!strict && Object.hasOwn(registry.names, entry.name)) debt.push(entry);
     else violations.push(entry);
   }
-  return { ok: violations.length === 0, violations, debt, total: all.length };
+  // Estrito: o item 9 só fecha com a dívida vazia (inclui itens que não são nome de binding, como o Stripe).
+  const openDebt = strict ? registry.pending.map((e) => e.id) : [];
+  return { ok: violations.length === 0 && openDebt.length === 0, violations, debt, openDebt, total: all.length };
 }
 
 const inventory = (secretNames, bindingNames) => new Set([...secretNames, ...bindingNames.map((b) => b.name)]);
@@ -104,7 +111,7 @@ export function planRemoval({ confirmation, secretNames, bindingNames }) {
   if (!toDelete.every((n) => REMOVAL_ALLOWLIST.includes(n) && present.has(n))) return { ok: false, error: "delete_set_outside_allowlist", toDelete: [] };
   const kept = [...present].filter((n) => !toDelete.includes(n)).sort();
   const absent = REMOVAL_ALLOWLIST.filter((n) => !present.has(n));
-  const debt = Object.keys(LOAD_BEARING_DEBT).filter((n) => present.has(n));
+  const debt = Object.keys(loadDebt().names).filter((n) => present.has(n));
   return { ok: true, toDelete, kept, absent, debt };
 }
 
@@ -133,10 +140,12 @@ export function cli(argv, log = console.log) {
       const bindingNames = settingsPath ? namesFromSettings(readJson(settingsPath)) : [];
       for (const n of [...secretNames].sort()) log(`SECRET_NAME ${n}`);
       for (const b of bindingNames) log(`BINDING_NAME ${b.name} type=${b.type} source=${b.source}`);
-      const r = evaluateReadback({ secretNames, bindingNames, strict: argv.includes("--strict") });
+      const registry = loadDebt(arg(argv, "--debt") || DEFAULT_DEBT_FILE);
+      const r = evaluateReadback({ secretNames, bindingNames, strict: argv.includes("--strict"), debt: registry });
       for (const v of r.violations) log(`::error title=PRODUCTION_TEST_SECRET_PRESENT::${v.name} (${v.source})`);
-      for (const v of r.debt) log(`::warning title=LOAD_BEARING_DEBT::${v.name} (${v.source}): ${LOAD_BEARING_DEBT[v.name]}`);
-      log(`PRODUCTION_TEST_SECRET_READBACK=${r.ok ? "PASS" : "FAIL"} names=${r.total} violations=${r.violations.length} debt=${r.debt.length}`);
+      for (const v of r.debt) log(`::warning title=LOAD_BEARING_DEBT::${v.name} (${v.source}): ${registry.names[v.name]}`);
+      for (const id of r.openDebt) log(`::error title=R9_DEBT_OPEN::${id} pendente em ops/r9-debt.json`);
+      log(`PRODUCTION_TEST_SECRET_READBACK=${r.ok ? "PASS" : "FAIL"} names=${r.total} violations=${r.violations.length} debt=${r.debt.length} open_debt=${r.openDebt.length}`);
       return r.ok ? 0 : 1;
     }
     if (cmd === "plan") {
@@ -150,7 +159,7 @@ export function cli(argv, log = console.log) {
       for (const n of p.toDelete) log(`DELETE ${n}`);
       for (const n of p.absent) log(`ALREADY_ABSENT ${n}`);
       for (const n of p.kept) log(`KEEP ${n}`);
-      for (const n of p.debt) log(`::warning title=LOAD_BEARING_DEBT_KEPT::${n}: ${LOAD_BEARING_DEBT[n]}`);
+      for (const n of p.debt) log(`::warning title=LOAD_BEARING_DEBT_KEPT::${n}: ${loadDebt().names[n]}`);
       writeFileSync(out, JSON.stringify({ toDelete: p.toDelete, kept: p.kept }));
       log(`CLEANUP_PLAN=OK delete=${p.toDelete.length} keep=${p.kept.length} absent=${p.absent.length}`);
       return 0;

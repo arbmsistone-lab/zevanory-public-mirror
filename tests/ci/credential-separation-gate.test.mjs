@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,8 +21,13 @@ function gate(dir, { configRoot = dir } = {}) {
   assert.ok(line, "[G0.1] gate sem JSON: " + String(r.stderr || r.stdout).slice(-400));
   return { code: r.status, ...JSON.parse(line) };
 }
+// Registro de dívida real (ops/r9-debt.json) sem a lista de aposentados (os arquivos não existem na fixture).
+const REAL_DEBT = JSON.parse(readFileSync(join(ROOT, "ops", "r9-debt.json"), "utf8"));
+const debtWith = (over = {}) => JSON.stringify({ ...REAL_DEBT, retired_workflows: [], ...over });
+const CLEANUP = readFileSync(join(ROOT, ".github", "workflows", "production-test-secret-cleanup.yml"), "utf8").replace(/\r\n/g, "\n");
 function fixtures(files, { allowErrors = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "zev-credgate-"));
+  if (!("ops/r9-debt.json" in files)) files = { ...files, "ops/r9-debt.json": debtWith() };
   for (const [name, text] of Object.entries(files)) { mkdirSync(join(dir, dirname(name)), { recursive: true }); writeFileSync(join(dir, name), text); }
   let res;
   try { res = gate(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -112,6 +117,9 @@ test("G5 exceção nominal única: CERTIFICATION_E2E_TOKEN (token de operador da
   assert.deepEqual([...of(r, "a.yml"), ...of(r, "b.yml")], [], "[G5.1] permitido em Environment de produção");
   assert.deepEqual(of(r, "c.yml"), ["SANDBOX_SECRET_OUTSIDE_SANDBOX:CERTIFICATION_OPERATOR_TOKEN"], "[G5.2] a exceção não é curinga");
   assert.deepEqual(of(r, "d.yml"), ["TEST_SECRET_PUT_TO_PRODUCTION:CERTIFICATION_E2E_TOKEN"], "[G5.3] a exceção não autoriza gravar no Worker de produção");
+  const noExc = fixtures({ "a.yml": job({ vars: "      C: ${{ secrets.CERTIFICATION_E2E_TOKEN }}\n" }),
+    "ops/r9-debt.json": debtWith({ pending: REAL_DEBT.pending.map((e) => ({ ...e, github_secret_exception: false })) }) });
+  assert.deepEqual(of(noExc, "a.yml"), ["SANDBOX_SECRET_OUTSIDE_SANDBOX:CERTIFICATION_E2E_TOKEN"], "[G5.4] a exceção vem só de ops/r9-debt.json");
 });
 
 test("G6 fail-closed: Environment por expressão, YAML ilegível, diretório vazio", () => {
@@ -147,4 +155,44 @@ test("G8 configuração de produção não ganha var de teste/certificação (d�
   assert.deepEqual(of(r, "scripts/deploy/prepare-central-candidate.py"), ["PRODUCTION_CONFIG_TEST_BINDING:CERTIFICATION_PILOT_ENABLED", "PRODUCTION_CONFIG_TEST_BINDING:MERCADOPAGO_TEST_ACCESS_TOKEN"], "[G8.2] só a dívida congelada (3 vars) passa no prepare-central-candidate");
   assert.deepEqual([...of(r, "wrangler.prod.toml"), ...of(r, "wrangler.extra.jsonc")], ["PRODUCTION_CONFIG_TEST_BINDING:SANDBOX_MODE", "PRODUCTION_CONFIG_TEST_BINDING:STRIPE_TEST_FLAG"], "[G8.3] wrangler toml/jsonc de produção");
   assert.deepEqual(of(r, "wrangler.certification.toml"), [], "[G8.3] config de certificação fora do escopo");
+});
+
+const retiredJob = (cond) => `name: r\non: workflow_dispatch\njobs:\n  a:\n${cond}    runs-on: ubuntu-latest\n    steps:\n      - run: echo\n`;
+const MARK = "    if: ${{ false }} # Permanently retired: teste\n";
+test("G9 aposentado não volta em silêncio: if: false e marcador por job, registro em ops/r9-debt.json", () => {
+  const reg = debtWith({ retired_workflows: ["ok", "noif", "nomark", "twojobs", "gone"].map((n) => ({ file: n + ".yml", reason: "teste" })) });
+  const r = fixtures({
+    "ok.yml": retiredJob(MARK),
+    "noif.yml": retiredJob("    # Permanently retired: alguém tirou o if\n"),
+    "nomark.yml": retiredJob("    if: ${{ false }}\n"),
+    "twojobs.yml": retiredJob(MARK) + "  b:\n    if: github.ref == 'refs/heads/gh-pages' # Permanently retired: reativado\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo\n",
+    "stray.yml": retiredJob(MARK),
+    "ops/r9-debt.json": reg,
+  });
+  assert.deepEqual(of(r, "ok.yml"), [], "[G9.1] aposentado íntegro passa");
+  assert.ok(r.violations.some((v) => v.workflow === "noif.yml" && v.job === "a" && /if: \$\{\{ false \}\}/.test(v.detail)), "[G9.2] job sem if: false");
+  assert.deepEqual(of(r, "nomark.yml"), ["RETIRED_WORKFLOW_REENABLED:nomark.yml"], "[G9.3] if: false sem marcador");
+  assert.ok(r.violations.some((v) => v.workflow === "twojobs.yml" && v.job === "b"), "[G9.4] um segundo job reativado é pego");
+  assert.deepEqual(of(r, "gone.yml"), ["RETIRED_WORKFLOW_REENABLED:gone.yml"], "[G9.5] registrado e apagado sem atualizar o registro");
+  assert.deepEqual(of(r, "stray.yml"), ["RETIRED_WORKFLOW_REENABLED:stray.yml"], "[G9.6] marcador fora do registro");
+});
+
+test("G10 remoção só por workflow_dispatch, confirmação obrigatória, só zevanory e só os 2 nomes", () => {
+  const variant = (from, to) => { assert.ok(CLEANUP.includes(from), "[G0.3] âncora: " + from.slice(0, 40)); return CLEANUP.replace(from, to); };
+  const run1 = (text) => of(fixtures({ "production-test-secret-cleanup.yml": text }), "production-test-secret-cleanup.yml");
+  assert.deepEqual(run1(CLEANUP), [], "[G10.1] o workflow real cumpre o contrato");
+  assert.equal(run1(variant("on:\n  workflow_dispatch:", "on:\n  push:\n    branches: [gh-pages]\n  workflow_dispatch:")).length, 1, "[G10.2] gatilho de push (merge) é recusado");
+  assert.equal(run1(variant("        required: true\n", "        required: false\n")).length, 1, "[G10.3] confirmação opcional é recusada");
+  assert.equal(run1(variant('secret delete "$name" --name zevanory', 'secret delete "$name" --name zevanory-sales')).length, 1, "[G10.4] outro Worker é recusado");
+  assert.equal(run1(variant("MERCADOPAGO_TEST_ACCESS_TOKEN|MERCADOPAGO_TEST_WEBHOOK_SECRET)", "MERCADOPAGO_TEST_ACCESS_TOKEN|MERCADOPAGO_TEST_WEBHOOK_SECRET|CERTIFICATION_E2E_TOKEN)")).length, 1, "[G10.5] allowlist maior é recusada");
+});
+
+test("G11 registro de dívida inválido ou ausente falha", () => {
+  const bad = fixtures({ "a.yml": job(), "ops/r9-debt.json": debtWith({ pending: [
+    { ...REAL_DEBT.pending[0], planned_pr: "" }, { ...REAL_DEBT.pending[1], status: "CLOSED" }, { ...REAL_DEBT.pending[2], id: REAL_DEBT.pending[3].id }, REAL_DEBT.pending[3]] }) });
+  const got = bad.violations.filter((v) => v.rule === "DEBT_REGISTRY_INVALID").map((v) => v.detail).sort();
+  assert.deepEqual(got, ["campo obrigatório vazio: planned_pr", "id repetido", "status deve ser OPEN (item resolvido sai da lista)"], "[G11.1] campo vazio, status e id repetido");
+  const dir = mkdtempSync(join(tmpdir(), "zev-credgate-nodebt-"));
+  try { writeFileSync(join(dir, "a.yml"), job()); const r = gate(dir); assert.equal(r.code, 2, "[G11.2] sem ops/r9-debt.json => código 2"); }
+  finally { rmSync(dir, { recursive: true, force: true }); }
 });

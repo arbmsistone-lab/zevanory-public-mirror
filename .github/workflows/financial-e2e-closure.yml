@@ -1,13 +1,9 @@
 name: ZEVANORY financial E2E closure
 
 # RETIRADO (F2 item 9): rodava o ciclo sandbox CONTRA o Worker de produção com MERCADOPAGO_TEST_* no Environment
-# producao-critica e caía para o token/segredo de PRODUÇÃO quando o de teste faltava. O gatilho de push fica (o
-# selftest retroativo do merge #833 lê este arquivo); o job tem if: false e é pulado.
+# producao-critica e caía para o token/segredo de PRODUÇÃO quando o de teste faltava. Sem gatilho de push (o selftest
+# retroativo do #833 usa os workflows fixados no merge be47edb3, como no #904); o job tem if: false.
 on:
-  push:
-    branches: [gh-pages]
-    paths:
-      - ".github/workflows/financial-e2e-closure.yml"
   workflow_dispatch:
     inputs:
       expected_sha:

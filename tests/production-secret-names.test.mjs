@@ -10,7 +10,7 @@ import { readTextNormalized } from "./helpers/text.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cli, evaluateReadback, namesFromSecretList, namesFromSettings, planRemoval, verifyRemoval, proveTarget,
-  CONFIRMATION_PHRASE, REMOVAL_ALLOWLIST, LOAD_BEARING_DEBT } from "../scripts/ci/production-secret-names.mjs";
+  CONFIRMATION_PHRASE, REMOVAL_ALLOWLIST, loadDebt } from "../scripts/ci/production-secret-names.mjs";
 
 const VALUE = "VALOR-SINTETICO-QUE-NUNCA-PODE-APARECER-0123456789";
 const list = (...names) => names.map((name) => ({ name, type: "secret_text" }));
@@ -37,23 +37,31 @@ function runCli(args, files) {
     return { code, out: lines.join("\n"), plan };
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
+const DEBT = loadDebt();
+const CERT_DEBT = Object.keys(DEBT.names).filter((n) => n.startsWith("CERTIFICATION")).sort();
+const EMPTY_DEBT = Object.freeze({ pending: [], names: {} });
 const inv = () => ({ secretNames: namesFromSecretList(SECRETS_NOW), bindingNames: namesFromSettings(settings()) });
 
 test("N1 readback do estado atual: os 2 segredos de teste reprovam; os 5 CERTIFICATION* lidos pela produção viram dívida relatada", () => {
   const r = evaluateReadback(inv());
   assert.equal(r.ok, false, "[N1.1] estado de 24/10 reprova");
   assert.deepEqual([...new Set(r.violations.map((v) => v.name))].sort(), ["MERCADOPAGO_TEST_ACCESS_TOKEN", "MERCADOPAGO_TEST_WEBHOOK_SECRET"], "[N1.1] só os de teste reprovam");
-  assert.deepEqual([...new Set(r.debt.map((v) => v.name))].sort(), Object.keys(LOAD_BEARING_DEBT).sort(), "[N1.2] os 5 CERTIFICATION* aparecem como dívida");
-  assert.deepEqual([...SEVEN].sort(), [...REMOVAL_ALLOWLIST, ...Object.keys(LOAD_BEARING_DEBT)].sort(), "[N1.2] os 7 do inventário = remoção + dívida, sem sobra");
+  assert.deepEqual([...new Set(r.debt.map((v) => v.name))].sort(), CERT_DEBT, "[N1.2] os 5 CERTIFICATION* aparecem como dívida");
+  assert.deepEqual([...SEVEN].sort(), [...REMOVAL_ALLOWLIST, ...CERT_DEBT].sort(), "[N1.2] os 7 do inventário = remoção + dívida, sem sobra");
   const other = evaluateReadback({ secretNames: ["CERTIFICATION_DATABASE_URL", "STRIPE_TEST_KEY_X"] });
   assert.deepEqual(other.violations.map((v) => v.name), ["CERTIFICATION_DATABASE_URL", "STRIPE_TEST_KEY_X"], "[N1.3] qualquer outro CERTIFICATION/_TEST_ reprova (a dívida não é curinga)");
 });
 
-test("N2 modo estrito reprova também a dívida (alvo final do item 9)", () => {
+test("N2 modo estrito reprova a dívida e reprova enquanto ops/r9-debt.json tiver item pendente", () => {
   const after = evaluateReadback({ secretNames: namesFromSecretList(SECRETS_NOW).filter((n) => !REMOVAL_ALLOWLIST.includes(n)), bindingNames: namesFromSettings(settings()).filter((b) => !REMOVAL_ALLOWLIST.includes(b.name)) });
   assert.equal(after.ok, true, "[N2.1] depois da remoção, modo normal passa");
   const strict = evaluateReadback({ secretNames: ["CERTIFICATION_E2E_TOKEN"], bindingNames: [{ name: "CERTIFICATION_PILOT_ENV", type: "plain_text", source: "binding" }], strict: true });
   assert.deepEqual(strict.violations.map((v) => v.name), ["CERTIFICATION_E2E_TOKEN", "CERTIFICATION_PILOT_ENV"], "[N2.2] estrito reprova a dívida");
+  const clean = { secretNames: ["MERCADOPAGO_ACCESS_TOKEN"], bindingNames: [], strict: true };
+  const open = evaluateReadback({ ...clean, debt: DEBT });
+  assert.equal(open.ok, false, "[N2.3] sem nome proibido, estrito ainda falha com a dívida aberta");
+  assert.deepEqual(open.openDebt, DEBT.pending.map((e) => e.id), "[N2.3] lista os itens pendentes");
+  assert.equal(evaluateReadback({ ...clean, debt: EMPTY_DEBT }).ok, true, "[N2.4] dívida vazia e nomes limpos: estrito passa");
 });
 
 test("N3 bindings e chaves do ZEVANORY_RUNTIME_CONFIG contam; valores nunca são impressos", () => {
@@ -90,7 +98,7 @@ test("N5 plano: confirmação exata, alvo provado, diff impresso e apagado ⊆ a
   assert.deepEqual(p.toDelete, ["MERCADOPAGO_TEST_ACCESS_TOKEN", "MERCADOPAGO_TEST_WEBHOOK_SECRET"], "[N5.2] apaga só a allowlist presente");
   const all = new Set([...inv().secretNames, ...inv().bindingNames.map((b) => b.name)]);
   assert.deepEqual(p.kept, [...all].filter((n) => !REMOVAL_ALLOWLIST.includes(n)).sort(), "[N5.2] mantém TODO o resto (inclusive os 5 CERTIFICATION*)");
-  for (const n of Object.keys(LOAD_BEARING_DEBT)) assert.ok(p.kept.includes(n) && !p.toDelete.includes(n), "[N5.2] dívida nunca é apagada: " + n);
+  for (const n of CERT_DEBT) assert.ok(p.kept.includes(n) && !p.toDelete.includes(n), "[N5.2] dívida nunca é apagada: " + n);
   const partial = planRemoval({ confirmation: CONFIRMATION_PHRASE, secretNames: ["MERCADOPAGO_TEST_WEBHOOK_SECRET", "X_KEEP"], bindingNames: [] });
   assert.deepEqual([partial.toDelete, partial.absent, partial.kept], [["MERCADOPAGO_TEST_WEBHOOK_SECRET"], ["MERCADOPAGO_TEST_ACCESS_TOKEN"], ["X_KEEP"]], "[N5.3] ausente não é apagado (relatado)");
   const asVar = planRemoval({ confirmation: CONFIRMATION_PHRASE, secretNames: [], bindingNames: [{ name: "MERCADOPAGO_TEST_ACCESS_TOKEN", type: "plain_text", source: "binding" }] });
@@ -120,4 +128,16 @@ test("N6 readback pós-remoção: allowlist ausente E todo outro nome do pré-in
   const res = runCli(["verify", "--plan", "@p", "--secrets", "@l", "--settings", "@s"], { p, l: SECRETS_NOW, s: settings() });
   assert.equal(res.code, 1, "[N6.2] CLI código 1");
   assert.equal(runCli(["verify", "--plan", "@p", "--secrets", "@l", "--settings", "@s"], { p: { kept: "x" }, l: [], s: settings() }).code, 2, "[N6.4] plano inválido: código 2");
+});
+
+test("N7 ops/r9-debt.json: os 5 CERTIFICATION* e o Stripe nomeados com dono, motivo e PR planejado; CLI estrito falha", () => {
+  const reg = JSON.parse(readTextNormalized(new URL("../ops/r9-debt.json", import.meta.url)));
+  assert.deepEqual(reg.pending.map((e) => e.name).sort(), [...CERT_DEBT, "STRIPE_SECRET_KEY"].sort(), "[N7.1] itens nomeados");
+  for (const e of reg.pending) for (const f of ["id", "owner", "reason", "planned_pr"]) assert.ok(String(e[f] || "").trim().length >= 5, `[N7.1] ${e.name}.${f}`);
+  const strict = runCli(["readback", "--secrets", "@l", "--strict"], { l: list("MERCADOPAGO_ACCESS_TOKEN") });
+  assert.equal(strict.code, 1, "[N7.2] CLI estrito falha com a dívida aberta");
+  assert.match(strict.out, /^::error title=R9_DEBT_OPEN::R9-D1 /m, "[N7.2] cita o item pendente");
+  const emptied = runCli(["readback", "--secrets", "@l", "--strict", "--debt", "@d"], { l: list("MERCADOPAGO_ACCESS_TOKEN"), d: { pending: [] } });
+  assert.equal(emptied.code, 0, "[N7.3] com a dívida vazia o estrito passa");
+  assert.equal(runCli(["readback", "--secrets", "@l", "--debt", "@d"], { l: [], d: { pending: [{ id: "X", name: "Y" }] } }).code, 2, "[N7.4] registro sem motivo/PR: código 2");
 });

@@ -27,7 +27,7 @@ REPO = Path(ARGS[0] if ARGS else Path(__file__).resolve().parents[2])
 TESTS = ["tests/production-payment-credential-isolation.test.mjs", "tests/production-secret-names.test.mjs",
          "tests/ci/credential-separation-gate.test.mjs"]
 COPY_DIRS = ["worker", "data", "tests/t4_sim", "tests/helpers", ".github/workflows"]
-COPY_FILES = TESTS + ["certification-worker.mjs", "admin.css", "scripts/ci/credential_separation_gate.py",
+COPY_FILES = TESTS + ["certification-worker.mjs", "admin.css", "ops/r9-debt.json", "scripts/ci/credential_separation_gate.py",
                       "scripts/ci/production-secret-names.mjs", "scripts/deploy/prepare-central-candidate.py",
                       "wrangler.public-router.toml", "wrangler.sales.toml"]
 TIMEOUT = 300
@@ -51,8 +51,8 @@ M = {
     "W9 certification worker accepts production webhook secret": (W, 'for(const key of ["MERCADOPAGO_ACCESS_TOKEN","MERCADOPAGO_WEBHOOK_SECRET",', 'for(const key of ["MERCADOPAGO_ACCESS_TOKEN",'),
     "W10 certification worker routes production provider": (W, 'url.search!=="?provider=mercadopago_test"', '!url.search.startsWith("?provider=mercadopago")'),
     # gate estático
-    "G1 R1 disabled": (G, "if is_sandbox_name(n) and environment != SANDBOX_ENVIRONMENT and n not in LEGACY_PRODUCTION_OPERATOR_NAMES:", "if False and is_sandbox_name(n):"),
-    "G2 legacy exception widened to CERTIFICATION_*": (G, "and n not in LEGACY_PRODUCTION_OPERATOR_NAMES:", 'and not n.startswith("CERTIFICATION_"):'),
+    "G1 R1 disabled": (G, "if is_sandbox_name(n) and environment != SANDBOX_ENVIRONMENT and n not in legacy:", "if False and is_sandbox_name(n):"),
+    "G2 legacy exception widened to CERTIFICATION_*": (G, "and n not in legacy:", 'and not n.startswith("CERTIFICATION_"):'),
     "G3 R2 disabled": (G, "if n in refs and is_production_name(n) and environment == SANDBOX_ENVIRONMENT:", "if False and n in refs:"),
     "G4 secrets['X'] syntax ignored": (G, "            refs.update(SECRET_INDEX.findall(s))\n", ""),
     "G5 env-bound names ignored": (G, '        bound = set(wf_bound) | env_bound_names(job.get("env"))', "        bound = set(wf_bound)"),
@@ -65,9 +65,20 @@ M = {
     "G12 line continuation not joined": (G, '    joined = re.sub(r"\\\\\\n", " ", script)', "    joined = script"),
     "G13 expression environment accepted": (G, '        if environment and "${{" in environment and sensitive:', "        if False:"),
     "G14 unreadable workflow not fatal": (G, "    code = 2 if errors else (1 if violations else 0)", "    code = 1 if violations else 0"),
-    "G15 production config debt widened": (G, "if PUT_FORBIDDEN_NAME.search(n) and n not in KNOWN_PRODUCTION_CONFIG_DEBT:", 'if PUT_FORBIDDEN_NAME.search(n) and not n.startswith("CERTIFICATION_PILOT_"):'),
+    "G15 production config debt widened": (G, "if PUT_FORBIDDEN_NAME.search(n) and n not in config_debt:", 'if PUT_FORBIDDEN_NAME.search(n) and not n.startswith("CERTIFICATION_PILOT_"):'),
     "G16 runtime config assignments ignored": (G, '    re.compile(r"\\bruntime\\s*\\[\\s*[\'\\"]([A-Za-z_][A-Za-z0-9_]*)[\'\\"]\\s*\\]\\s*="),\n', ""),
     "G17 deploy --var not checked": (G, '            if n and PUT_FORBIDDEN_NAME.search(n):\n                found.append((n, target, "wrangler deploy --var', '            if False:\n                found.append((n, target, "wrangler deploy --var'),
+    "G18 retired job without if: false accepted": (G, """                out.append({**base, "job": str(jname), "detail": "job perdeu 'if: ${{ false }}'"})""", "                pass"),
+    "G19 retired marker not required": (G, "        if len(RETIRED_MARKER.findall(text)) < len(jobs):", "        if False:"),
+    "G20 unregistered retired marker accepted": (G, "if p.name not in registered and RETIRED_MARKER.search(", "if False and RETIRED_MARKER.search("),
+    "G21 registered retired file may vanish": (G, """            out.append({**base, "job": "-", "detail": "aposentado registrado não existe (remova da lista no mesmo PR)"})""", "            pass"),
+    "G22 cleanup may run on merge": (G, """    if events != {"workflow_dispatch"}:""", "    if False:"),
+    "G23 cleanup confirmation optional": (G, """    if not (isinstance(ci, dict) and ci.get("required") is True):""", "    if False:"),
+    "G24 cleanup any Worker": (G, """        if "--name" not in toks or toks[toks.index("--name") + 1:toks.index("--name") + 2] != ["zevanory"] or any(t.startswith(("--config", "-c")) for t in toks):""", "        if False:"),
+    "G25 cleanup allowlist not pinned": (G, """    if not case or tuple(sorted(case.group(1).split("|"))) != tuple(sorted(CLEANUP_ALLOWLIST)):""", "    if False:"),
+    "G26 resolved debt may stay listed": (G, """        if e.get("status") not in (None, "OPEN") and isinstance(e.get("status"), str):""", "        if False:"),
+    "G27 missing debt registry accepted": (G, """        return None, [f"{DEBT_FILE.as_posix()} ausente"]""", """        return {"pending": [], "retired_workflows": []}, []"""),
+    "G28 R1 exception hardcoded (not from registry)": (G, """    legacy = frozenset(e["name"] for e in pending if e.get("github_secret_exception") is True and isinstance(e.get("name"), str))""", """    legacy = frozenset({"CERTIFICATION_E2E_TOKEN"})"""),
     # readback / remoção dirigida
     "S1 confirmation not exact": (S, 'typeof confirmation !== "string" || confirmation !== CONFIRMATION_PHRASE', 'typeof confirmation !== "string" || !confirmation.includes("MERCADOPAGO_TEST_ACCESS_TOKEN")'),
     "S2 delete set ignores presence": (S, "  const toDelete = REMOVAL_ALLOWLIST.filter((n) => present.has(n));", "  const toDelete = [...REMOVAL_ALLOWLIST];"),
@@ -75,11 +86,13 @@ M = {
     "S4 verify ignores lost names": (S, "  return { ok: stillPresent.length === 0 && lostKept.length === 0,", "  return { ok: stillPresent.length === 0,"),
     "S5 verify ignores names still present": (S, "  return { ok: stillPresent.length === 0 && lostKept.length === 0,", "  return { ok: lostKept.length === 0,"),
     "S6 target proof bypassed": (S, "  return { ok: value === TARGET.environment,", "  return { ok: true,"),
-    "S7 readback debt widened to any CERTIFICATION": (S, "    if (!strict && Object.hasOwn(LOAD_BEARING_DEBT, entry.name)) debt.push(entry);", '    if (!strict && entry.name.includes("CERTIFICATION")) debt.push(entry);'),
-    "S8 strict mode ignored": (S, "    if (!strict && Object.hasOwn(LOAD_BEARING_DEBT, entry.name)) debt.push(entry);", "    if (Object.hasOwn(LOAD_BEARING_DEBT, entry.name)) debt.push(entry);"),
+    "S7 readback debt widened to any CERTIFICATION": (S, "    if (!strict && Object.hasOwn(registry.names, entry.name)) debt.push(entry);", '    if (!strict && entry.name.includes("CERTIFICATION")) debt.push(entry);'),
+    "S8 strict mode ignored": (S, "    if (!strict && Object.hasOwn(registry.names, entry.name)) debt.push(entry);", "    if (Object.hasOwn(registry.names, entry.name)) debt.push(entry);"),
     "S9 runtime config keys ignored": (S, "        for (const key of Object.keys(raw)) if (NAME.test(key)) out.push(", "        for (const key of []) if (NAME.test(key)) out.push("),
     "S10 non-secret allowlisted name accepted": (S, '  if (notSecret.length) return { ok: false, error: "allowlisted_name_is_not_a_secret", toDelete: [], notSecret };\n', ""),
     "S11 plan file leaks settings": (S, "      writeFileSync(out, JSON.stringify({ toDelete: p.toDelete, kept: p.kept }));", "      writeFileSync(out, JSON.stringify({ toDelete: p.toDelete, kept: p.kept, settings }));"),
+    "S13 strict ignores open debt": (S, "  const openDebt = strict ? registry.pending.map((e) => e.id) : [];", "  const openDebt = [];"),
+    "S14 debt registry without reason/PR accepted": (S, """ || !String(e.reason || "").trim() || !String(e.planned_pr || "").trim()) throw new InputError("debt_registry_invalid");""", """) throw new InputError("debt_registry_invalid");"""),
     "S12 malformed secret list accepted": (S, '  if (!Array.isArray(data)) throw new InputError("secret_list_not_array");', "  if (!Array.isArray(data)) return [];"),
 }
 

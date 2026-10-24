@@ -19,6 +19,13 @@ Lê .github/workflows/*.yml como DADO (yaml.safe_load; nada é executado, nenhum
                                       e wrangler*.toml/jsonc da raiz sem "certification" no nome) não pode definir var com
                                       nome *_TEST_* / CERTIFICATION* / SANDBOX* além da dívida conhecida e congelada
                                       KNOWN_PRODUCTION_CONFIG_DEBT; `wrangler deploy --var NOME:...` para produção idem (R3).
+  R6 RETIRED_WORKFLOW_REENABLED       todo arquivo em ops/r9-debt.json "retired_workflows" existe e TODO job dele tem
+                                      `if: ${{ false }}` com o marcador "# Permanently retired" na mesma linha; um workflow
+                                      com o marcador fora da lista também falha (aposentar = registrar).
+  R7 CLEANUP_WORKFLOW_CONTRACT        production-test-secret-cleanup.yml só por workflow_dispatch (nunca no merge), com
+                                      input confirm_names obrigatório, todo `secret delete` com --name zevanory e nome
+                                      vindo da allowlist literal dos 2 MERCADOPAGO_TEST_*.
+  R8 DEBT_REGISTRY_INVALID            ops/r9-debt.json com campo faltando/vazio, id ou nome repetido, status != OPEN.
   R4 ENVIRONMENT_NOT_LITERAL          job com nome sensível e Environment dado por expressão (${{ }}) é recusado: o gate não
                                       consegue provar em qual Environment ele roda (fail-closed).
 
@@ -27,7 +34,9 @@ if ...) e no env do workflow (vale para todos os jobs). Para R1 contam também a
 (MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.X }} carrega credencial sob nome de sandbox); R2 olha só o segredo lido
 (MP_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }} num job sandbox é o segredo de teste, não o de produção).
 
-Exceção nominal única (LEGACY_PRODUCTION_OPERATOR_NAMES): CERTIFICATION_E2E_TOKEN. Apesar do nome, é o token de operador
+Exceções derivadas de ops/r9-debt.json (dívida rastreada, com dono e PR planejado): R1 aceita só os itens com
+github_secret_exception=true (hoje CERTIFICATION_E2E_TOKEN); R5 aceita só os itens com deploy_config=true. Sem o arquivo
+o gate falha (código 2). Exceção histórica (CERTIFICATION_E2E_TOKEN): Apesar do nome, é o token de operador
 que o Worker de PRODUÇÃO `zevanory` exige (central-production-deploy.yml recusa o deploy sem ele; backup, voz, WhatsApp,
 auditoria financeira autenticam com ele). Renomeá-lo é operação de segredo reservada ao proprietário. A exceção vale só
 para R1 (uso em Environment de produção); R3 continua proibindo gravá-lo num Worker de produção por estes jobs.
@@ -51,11 +60,11 @@ SANDBOX_ENVIRONMENT = "sandbox-financial-approved"
 SANDBOX_NAME = re.compile(r"^(?:MERCADOPAGO_TEST_|CERTIFICATION_|SANDBOX_|TEST_)|_TEST_|_SANDBOX_|_TEST$|_SANDBOX$")
 # Gravação em Worker de produção: qualquer nome com TEST/CERTIFICATION/SANDBOX como palavra.
 PUT_FORBIDDEN_NAME = re.compile(r"(?:^|_)(?:TEST|CERTIFICATION|SANDBOX)(?:_|$)")
-LEGACY_PRODUCTION_OPERATOR_NAMES = frozenset({"CERTIFICATION_E2E_TOKEN"})
-# Vars CERTIFICATION_PILOT_* que o deploy de produção grava hoje e que verify-financial-boundary.py EXIGE
-# (CERTIFICATION_PILOT_ENV=sandbox, CERTIFICATION_PILOT_PRODUCTION_ALLOWED=false). Congeladas: nenhuma nova entra; sair
-# exige mudar o contrato de deploy (decisão do proprietário, classe B).
-KNOWN_PRODUCTION_CONFIG_DEBT = frozenset({"CERTIFICATION_PILOT_ENV", "CERTIFICATION_PILOT_APPROVER", "CERTIFICATION_PILOT_PRODUCTION_ALLOWED"})
+DEBT_FILE = pathlib.Path("ops") / "r9-debt.json"
+RETIRED_MARKER = re.compile(r"^\s+if:\s*\$\{\{\s*false\s*\}\}\s*#\s*Permanently retired\b", re.M)
+CLEANUP_WORKFLOW = "production-test-secret-cleanup.yml"
+CLEANUP_ALLOWLIST = ("MERCADOPAGO_TEST_ACCESS_TOKEN", "MERCADOPAGO_TEST_WEBHOOK_SECRET")
+PENDING_FIELDS = ("id", "name", "kind", "owner", "reason", "planned_pr", "status")
 PRODUCTION_NAMES = frozenset({
     "MERCADOPAGO_ACCESS_TOKEN", "MERCADOPAGO_WEBHOOK_SECRET", "MERCADOPAGO_PUBLIC_KEY", "MERCADOPAGO_PROD_ACCESS_TOKEN",
     "ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET",
@@ -215,7 +224,7 @@ def scan_puts(script: str):
     return found
 
 
-def check_workflow(fname: str, doc) -> list[dict]:
+def check_workflow(fname: str, doc, legacy=frozenset()) -> list[dict]:
     out = []
     if not isinstance(doc, dict):
         return out
@@ -238,7 +247,7 @@ def check_workflow(fname: str, doc) -> list[dict]:
                         "detail": "Environment por expressão com segredo sensível"})
             continue
         for n in sorted(names):
-            if is_sandbox_name(n) and environment != SANDBOX_ENVIRONMENT and n not in LEGACY_PRODUCTION_OPERATOR_NAMES:
+            if is_sandbox_name(n) and environment != SANDBOX_ENVIRONMENT and n not in legacy:
                 out.append({**base, "rule": "SANDBOX_SECRET_OUTSIDE_SANDBOX", "name": n,
                             "detail": f"segredo de sandbox fora de {SANDBOX_ENVIRONMENT}"})
             if n in refs and is_production_name(n) and environment == SANDBOX_ENVIRONMENT:
@@ -289,18 +298,129 @@ def config_var_names(path) -> set[str]:
     return names
 
 
-def check_production_config(root) -> list[dict]:
+def check_production_config(root, config_debt=frozenset()) -> list[dict]:
     out = []
     for f in production_config_files(root):
         for n in sorted(config_var_names(f)):
-            if PUT_FORBIDDEN_NAME.search(n) and n not in KNOWN_PRODUCTION_CONFIG_DEBT:
+            if PUT_FORBIDDEN_NAME.search(n) and n not in config_debt:
                 out.append({"workflow": str(f.relative_to(root)).replace("\\", "/"), "job": "-", "environment": "production-config",
                             "rule": "PRODUCTION_CONFIG_TEST_BINDING", "name": n,
                             "detail": "var de teste/certificação na configuração do Worker de produção"})
     return out
 
 
-def check_dir(directory) -> tuple[list[dict], list[str]]:
+def load_debt(root):
+    """-> (registry, problems). Fail-closed: ausente/ilegível vira erro."""
+    p = pathlib.Path(root) / DEBT_FILE
+    if not p.is_file():
+        return None, [f"{DEBT_FILE.as_posix()} ausente"]
+    try:
+        reg = json.loads(p.read_text(encoding="utf-8"))
+    except (ValueError, UnicodeDecodeError) as e:
+        return None, [f"{DEBT_FILE.as_posix()} ilegível ({type(e).__name__})"]
+    if not isinstance(reg, dict) or not isinstance(reg.get("pending"), list) or not isinstance(reg.get("retired_workflows"), list):
+        return None, [f"{DEBT_FILE.as_posix()} sem pending/retired_workflows"]
+    return reg, []
+
+
+def check_debt_registry(reg) -> list[dict]:
+    out, ids, names = [], set(), set()
+    base = {"workflow": DEBT_FILE.as_posix(), "job": "-", "environment": "-", "rule": "DEBT_REGISTRY_INVALID"}
+    for i, e in enumerate(reg["pending"]):
+        if not isinstance(e, dict):
+            out.append({**base, "name": f"pending[{i}]", "detail": "item não é objeto"})
+            continue
+        for f in PENDING_FIELDS:
+            if not (isinstance(e.get(f), str) and e[f].strip()):
+                out.append({**base, "name": str(e.get("id") or f"pending[{i}]"), "detail": f"campo obrigatório vazio: {f}"})
+        if e.get("status") not in (None, "OPEN") and isinstance(e.get("status"), str):
+            out.append({**base, "name": str(e.get("id")), "detail": "status deve ser OPEN (item resolvido sai da lista)"})
+        for key, seen in (("id", ids), ("name", names)):
+            v = e.get(key)
+            if isinstance(v, str) and v in seen:
+                out.append({**base, "name": v, "detail": f"{key} repetido"})
+            seen.add(v)
+    for i, e in enumerate(reg["retired_workflows"]):
+        if not (isinstance(e, dict) and isinstance(e.get("file"), str) and e["file"].strip() and isinstance(e.get("reason"), str) and e["reason"].strip()):
+            out.append({**base, "name": f"retired_workflows[{i}]", "detail": "file e reason obrigatórios"})
+    return out
+
+
+def debt_sets(reg):
+    pending = [e for e in reg["pending"] if isinstance(e, dict)] if reg else []
+    legacy = frozenset(e["name"] for e in pending if e.get("github_secret_exception") is True and isinstance(e.get("name"), str))
+    config_debt = frozenset(e["name"] for e in pending if e.get("deploy_config") is True and isinstance(e.get("name"), str))
+    return legacy, config_debt
+
+
+def check_retired(directory, reg) -> list[dict]:
+    out = []
+    d = pathlib.Path(directory)
+    registered = {e["file"] for e in reg["retired_workflows"] if isinstance(e, dict) and isinstance(e.get("file"), str)}
+    for f in sorted(registered):
+        base = {"workflow": f, "environment": "-", "rule": "RETIRED_WORKFLOW_REENABLED", "name": f}
+        p = d / f
+        if not p.is_file():
+            out.append({**base, "job": "-", "detail": "aposentado registrado não existe (remova da lista no mesmo PR)"})
+            continue
+        text = p.read_text(encoding="utf-8")
+        try:
+            doc = yaml.safe_load(text)
+        except yaml.YAMLError:
+            doc = None
+        jobs = doc.get("jobs") if isinstance(doc, dict) else None
+        if not isinstance(jobs, dict) or not jobs:
+            out.append({**base, "job": "-", "detail": "sem jobs legíveis"})
+            continue
+        for jname, job in jobs.items():
+            cond = job.get("if") if isinstance(job, dict) else None
+            if not (isinstance(cond, str) and re.fullmatch(r"\$\{\{\s*false\s*\}\}", cond.strip())) and cond is not False:
+                out.append({**base, "job": str(jname), "detail": "job perdeu 'if: ${{ false }}'"})
+        if len(RETIRED_MARKER.findall(text)) < len(jobs):
+            out.append({**base, "job": "-", "detail": "marcador '# Permanently retired' ausente na linha do if: false de algum job"})
+    for p in sorted(list(d.glob("*.yml")) + list(d.glob("*.yaml"))):
+        if p.name not in registered and RETIRED_MARKER.search(p.read_text(encoding="utf-8", errors="replace")):
+            out.append({"workflow": p.name, "job": "-", "environment": "-", "rule": "RETIRED_WORKFLOW_REENABLED", "name": p.name,
+                        "detail": "workflow com marcador de aposentado fora de ops/r9-debt.json"})
+    return out
+
+
+def check_cleanup_contract(directory, required) -> list[dict]:
+    p = pathlib.Path(directory) / CLEANUP_WORKFLOW
+    base = {"workflow": CLEANUP_WORKFLOW, "job": "-", "environment": "-", "rule": "CLEANUP_WORKFLOW_CONTRACT", "name": CLEANUP_WORKFLOW}
+    if not p.is_file():
+        return [{**base, "detail": "workflow de remoção ausente"}] if required else []
+    text = p.read_text(encoding="utf-8")
+    doc = yaml.safe_load(text)
+    out = []
+    on = doc.get(True, doc.get("on")) if isinstance(doc, dict) else None
+    events = set(on) if isinstance(on, (dict, list)) else ({on} if isinstance(on, str) else set())
+    if events != {"workflow_dispatch"}:
+        out.append({**base, "detail": f"gatilhos {sorted(map(str, events))}: só workflow_dispatch é permitido"})
+    inputs = (on.get("workflow_dispatch") or {}).get("inputs") or {} if isinstance(on, dict) else {}
+    ci = inputs.get("confirm_names") if isinstance(inputs, dict) else None
+    if not (isinstance(ci, dict) and ci.get("required") is True):
+        out.append({**base, "detail": "input confirm_names obrigatório ausente"})
+    joined = re.sub(r"\\\n", " ", text)
+    deletes = re.findall(r"\bwrangler(?:@[\w.\-]+)?\s+secret\s+delete\b([^\n;|&]*)", joined)
+    if not deletes:
+        out.append({**base, "detail": "nenhum secret delete encontrado"})
+    for rest in deletes:
+        toks = rest.split()
+        if "--name" not in toks or toks[toks.index("--name") + 1:toks.index("--name") + 2] != ["zevanory"] or any(t.startswith(("--config", "-c")) for t in toks):
+            out.append({**base, "detail": "secret delete sem --name zevanory exato"})
+    case = re.search(r"case\s+\"\$name\"\s+in\s*\n\s*([A-Z0-9_|]+)\)", text)
+    if not case or tuple(sorted(case.group(1).split("|"))) != tuple(sorted(CLEANUP_ALLOWLIST)):
+        out.append({**base, "detail": "allowlist literal do passo de remoção diferente dos 2 MERCADOPAGO_TEST_*"})
+    if "--confirmation \"$CONFIRM_NAMES\"" not in text or "${{ inputs.confirm_names }}" not in text:
+        out.append({**base, "detail": "plano não recebe a confirmação digitada"})
+    other = set(re.findall(r"\bwrangler(?:@[\w.\-]+)?\s+(?:versions\s+)?(?:secret\s+(?:put|bulk)|deploy)\b", joined))
+    if other:
+        out.append({**base, "detail": "o workflow de remoção não pode gravar nem publicar"})
+    return out
+
+
+def check_dir(directory, legacy=frozenset()) -> tuple[list[dict], list[str]]:
     violations, errors = [], []
     files = sorted(list(pathlib.Path(directory).glob("*.yml")) + list(pathlib.Path(directory).glob("*.yaml")))
     if not files:
@@ -311,7 +431,7 @@ def check_dir(directory) -> tuple[list[dict], list[str]]:
         except (yaml.YAMLError, UnicodeDecodeError) as e:
             errors.append(f"{f.name}: ilegível ({type(e).__name__})")
             continue
-        violations.extend(check_workflow(f.name, doc))
+        violations.extend(check_workflow(f.name, doc, legacy))
     return violations, errors
 
 
@@ -321,11 +441,18 @@ def main(argv=None) -> int:
     ap.add_argument("--config-root", default=None, help="raiz para R5 (padrão: o repositório; exige prepare-central-candidate.py)")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
-    violations, errors = check_dir(a.workflows)
     root = pathlib.Path(a.config_root) if a.config_root else pathlib.Path(__file__).resolve().parents[2]
+    reg, errors = load_debt(root)
+    legacy, config_debt = debt_sets(reg)
+    violations, dir_errors = check_dir(a.workflows, legacy)
+    errors += dir_errors
     if not a.config_root and not (root / "scripts" / "deploy" / "prepare-central-candidate.py").is_file():
         errors.append("prepare-central-candidate.py ausente (R5 não verificável)")
-    violations.extend(check_production_config(root))
+    violations.extend(check_production_config(root, config_debt))
+    if reg is not None:
+        violations.extend(check_debt_registry(reg))
+        violations.extend(check_retired(a.workflows, reg))
+    violations.extend(check_cleanup_contract(a.workflows, required=not a.config_root))
     for e in errors:
         print("CREDENTIAL_SEPARATION_GATE_ERROR " + e)
     for v in violations:
