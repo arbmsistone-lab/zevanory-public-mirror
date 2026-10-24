@@ -39,6 +39,10 @@ class LiveNode(unittest.TestCase):
         (cls.tmp / "syntax.mjs").write_text("import test from 'node:test';\nconst = ;\n", encoding="utf-8")
         (cls.tmp / "missing.mjs").write_text("import test from 'node:test';\nimport x from './nope-missing.mjs';\n"
                                              "test('T1 alpha', () => {});\n", encoding="utf-8")
+        # the test file's own process dies by SIGTERM: node reports a REAL top-level `signal: 'SIGTERM'` (POSIX)
+        (cls.tmp / "sigterm.mjs").write_text("import test from 'node:test';\ntest('T1 alpha', async () => {\n"
+                                             "  process.kill(process.pid, 'SIGTERM');\n"
+                                             "  await new Promise((r) => setTimeout(r, 5000));\n});\n", encoding="utf-8")
         cls.capture = os.environ.get("MUTANT_CLASSIFIER_CAPTURE_DIR")
         if cls.capture:
             Path(cls.capture).mkdir(parents=True, exist_ok=True)
@@ -142,6 +146,22 @@ class LiveNode(unittest.TestCase):
         r = mc.classify_run(BASELINE, run, E_T1)
         self.assertEqual(r["verdict"], mc.INCONCLUSIVE, r)
         self.assertIn("missing_tool", r["reason"], r)
+
+    def test_15_field_lines_in_dumped_source_stay_killed(self):
+        # signal:/code:/failureType:/error:/exitCode: lines inside `actual: |-`, `expected: |-` and nested
+        # `actual:` mappings are data, not the failure's fields: the primary assertion still kills (#898 M09/M16/M20).
+        for case in ("source", "source_eq", "deep"):
+            r = self.verdict(case, case)
+            self.assertEqual((r["verdict"], r["killing_tests"], r["assertion_ids"]), (mc.KILLED, ["T1 alpha"], ["A1"]),
+                             (case, r))
+
+    def test_16_real_top_level_signal_inconclusive(self):
+        run = self.run_probe("sigterm", "", file="sigterm.mjs")
+        r = mc.classify_run(1, run, E_T1, mutant_id="sigterm")
+        self.assertEqual(r["verdict"], mc.INCONCLUSIVE, r)
+        self.assertTrue(r["reason"].startswith("infra_failure:"), r)
+        if os.name == "posix":
+            self.assertEqual(r["reason"], "infra_failure:signal:sigterm.mjs", r)
 
 
 if __name__ == "__main__":
