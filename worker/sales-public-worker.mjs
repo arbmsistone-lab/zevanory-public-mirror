@@ -139,7 +139,6 @@ async function handleBuy(request,env,sku,ctx){
   const open=await salesOpen(env);
   if(!open) return infoPage(200,"Vendas abrem em breve",`<p>O ${name} ainda não está à venda. Quer tirar dúvidas agora?</p><p><a class="button primary" href="${contactHref("Olá! Tenho interesse no "+name+".").replace(/&/g,"&amp;")}">${CONTACT_LABEL}</a></p>`);
   if(request.method!=="POST"){
-    countView(request,env,ctx,slug,"checkout_intent");
     return infoPage(200,`Comprar ${name}`,`<p><strong>${name}</strong> · R$ ${price},00 · pagamento único, Pix ou cartão.</p><p>Você será levado ao ambiente seguro do Mercado Pago. ${DELIVERY_TEXT} ${RULE_LINE}</p><form method="post" action="/comprar/${sku}"><button class="button primary" type="submit">Ir para o pagamento seguro</button></form><p class="small">Ao continuar você concorda com os <a href="/termos">Termos</a> e a <a href="/privacidade">Política de Privacidade</a>.</p>`);
   }
   const ua=request.headers.get("user-agent")||"";
@@ -150,7 +149,7 @@ async function handleBuy(request,env,sku,ctx){
     const res=await env.CORE.fetch("https://checkout.internal/api/checkout/mercadopago",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({request_id:crypto.randomUUID(),session_id:crypto.randomUUID(),offer_id:sku})});
     const data=await res.json().catch(()=>({}));
     const target=String(data?.checkout_url||"");
-    if((res.status===201||res.status===200)&&/^https:\/\/(www\.)?mercadopago\.com(\.br)?\//.test(target)){countView(request,env,ctx,slug,"own_checkout_started",{provider:"mercadopago"});return new Response(null,{status:303,headers:applySecurityHeaders(new Headers({location:target,"cache-control":"no-store"}))});}
+    if((res.status===201||res.status===200)&&/^https:\/\/(www\.)?mercadopago\.com(\.br)?\//.test(target)) return new Response(null,{status:303,headers:applySecurityHeaders(new Headers({location:target,"cache-control":"no-store"}))});
     console.error("buy_checkout_failed",res.status,String(data?.error||"").slice(0,80));
   }catch(e){console.error("buy_checkout_error",String(e&&e.message||e).slice(0,80))}
   return infoPage(503,"Não foi possível abrir o pagamento",`<p>Tente novamente em instantes. Se persistir, fale com a gente: ${CONTACT_HTML}.</p>`);
@@ -306,7 +305,13 @@ export async function noindexComprar(response){
 async function comprarRoute(request,env,ctx,match){
   try{
     const buy=match.routable&&match.path.match(/^\/comprar\/([A-Z0-9-]{6,20})\/?$/i);
-    if(buy) return await handleBuy(request,env,buy[1].toUpperCase(),ctx);
+    if(buy){
+      // Real transactional intent (taxonomy v2): counted ONLY when the server created a payment session —
+      // the POST answered 303 to the provider checkout. Opening the buy page counts nothing.
+      const sku=buy[1].toUpperCase(),res=await handleBuy(request,env,sku,ctx);
+      if(request.method==="POST"&&res.status===303&&/^https:\/\/(www\.)?mercadopago\.com(\.br)?\//.test(res.headers.get("location")||""))countView(request,env,ctx,BUY_SKUS[sku],"own_checkout_started",{provider:"mercadopago"});
+      return res;
+    }
     return infoPage(404,"Produto não encontrado","<p>Esse produto não existe ou foi retirado.</p>");
   }catch(e){
     console.error("buy_route_error",String(e&&e.message||e).slice(0,80));

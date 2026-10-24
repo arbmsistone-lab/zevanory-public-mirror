@@ -10,7 +10,7 @@ import { getYoutubeAccessToken } from "../channels/youtube-access.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
 import { evaluateExperiments } from "./experiments.mjs";
 import { evaluateInventory } from "./autonomy-inventory.mjs";
-import { funnelMetrics, combineSales, salesMetric, windowDays, mergeDaily, evaluateBuyFlow, hotmartLockState, hotmartModeText, HOTMART_CLOSED_RE } from "./funnel-counting.mjs";
+import { funnelMetrics, combineSales, salesMetric, windowDays, mergeDaily, evaluateBuyFlow, hotmartLockState, hotmartModeText, HOTMART_CLOSED_RE, knownCount, ownCheckoutStatus, hotmartStatus } from "./funnel-counting.mjs";
 
 export const SNAPSHOT_KEY = "zpc:command:v1:snapshot";
 export const REACH_HISTORY_KEY = "zpc:command:v1:reach-history";
@@ -124,7 +124,9 @@ export function forecastSales(byDay = {}, firstDay = null, now = Date.now()) {
 }
 
 // Opportunities and decisions: rule-based, each with evidence, expected result and confidence.
-export function recommend({ funnel, reach, sales, publications, salesCount = null }) {
+// salesKnown: knownCount() of the all-time approved sales ({ value, integrityClass, lowerBound }); null value
+// = unknown (a source is missing), never read as zero.
+export function recommend({ funnel, reach, publications, salesKnown = { value: null, integrityClass: "MISSING", lowerBound: false } }) {
   const out = [];
   const src = funnel?.sources || {};
   const ranked = Object.entries(src).filter(([k]) => k !== "direto").sort((a, b) => (b[1].views || 0) - (a[1].views || 0));
@@ -139,8 +141,10 @@ export function recommend({ funnel, reach, sales, publications, salesCount = nul
     out.push({ title: "Short com mais visualizações", evidence: `"${best.t}" — ${best.views} visualizações`, action: best.views > 0 ? "Produzir mais Shorts com o mesmo tema e gancho" : "Ainda sem visualizações: manter consistência diária por 3 semanas antes de concluir", confidence: best.views >= 100 ? "média" : "baixa", risk: "baixo", cost: "R$ 0" });
   }
   if (publications?.pct != null && publications.pct < 90) out.push({ title: "Publicação abaixo da meta", evidence: `${publications.published}/${publications.expected} publicações confirmadas em 7 dias`, action: "Autocorreção já reexecuta; se persistir, o canal com falha aparece em Operação", confidence: "alta", risk: "baixo", cost: "R$ 0" });
-  const approved = salesCount ?? (sales?.totals?.approved || 0);
-  out.push({ title: approved >= 7 ? "7ª venda atingida: teste pago liberável" : `Tráfego pago bloqueado (${approved}/7 vendas)`, evidence: `${approved} venda(s) aprovada(s) (checkout próprio + Hotmart)`, action: approved >= 7 ? "Preparar proposta de teste pago com o criativo e canal que mais venderam (decisão do dono)" : "Seguir orgânico; a regra do dono libera teste pago só após a 7ª venda", confidence: "alta", risk: "nenhum", cost: "R$ 0" });
+  const k = salesKnown || { value: null };
+  if (k.value == null) out.push({ title: "Tráfego pago bloqueado (vendas NÃO VERIFICADAS)", evidence: `Total de vendas ${k.integrityClass}: alguma fonte (checkout próprio ou Hotmart) não está coberta`, action: "Restabelecer a leitura das vendas antes de qualquer decisão; a regra do dono só libera teste pago após a 7ª venda comprovada", confidence: "alta", risk: "nenhum", cost: "R$ 0" });
+  else if (k.value >= 7 && !k.lowerBound) out.push({ title: "7ª venda atingida: teste pago liberável", evidence: `${k.value} venda(s) aprovada(s) (checkout próprio + Hotmart, ${k.integrityClass})`, action: "Preparar proposta de teste pago com o criativo e canal que mais venderam (decisão do dono)", confidence: "alta", risk: "nenhum", cost: "R$ 0" });
+  else out.push({ title: `Tráfego pago bloqueado (${k.lowerBound ? "≥" : ""}${k.value}/7 vendas)`, evidence: `${k.lowerBound ? "pelo menos " : ""}${k.value} venda(s) aprovada(s) (checkout próprio + Hotmart, ${k.integrityClass})`, action: k.value >= 7 ? "Total parcial: confirmar a fonte que falta antes de liberar (decisão do dono)" : "Seguir orgânico; a regra do dono libera teste pago só após a 7ª venda", confidence: "alta", risk: "nenhum", cost: "R$ 0" });
   return out;
 }
 
@@ -384,20 +388,23 @@ export async function main() {
   const funnelAt = funnel?.generatedAt || null;
   const funnelIntegrity = funnelAt && now - Date.parse(funnelAt) < 3 * HOUR ? "aggregated" : "stale";
   const salesAt = sales?.updatedAt || null;
-  const t = sales?.totals || {};
   const monthPrefix = day.slice(0, 7);
-  const monthAgg = Object.entries(sales?.byDay || {}).filter(([d]) => d.startsWith(monthPrefix)).reduce((a, [, b]) => ({ approved: a.approved + (b.approved || 0), grossCents: a.grossCents + (b.grossCents || 0), netCents: a.netCents + (b.netCents || 0), reversed: a.reversed + (b.reversed || 0) }), { approved: 0, grossCents: 0, netCents: 0, reversed: 0 });
-  const todayAgg = sales?.byDay?.[day] || { approved: 0, grossCents: 0 };
-  const sIntegrity = "webhook_authenticated";
-  const sMeta = (v, def) => metric(v, "Hotmart (postback autenticado)", salesAt || iso(now), def, sIntegrity);
   // Funnel taxonomy v2 (AVAL Sol 23/10): every metric with window, numerator, denominator, dedup, sources,
   // freshness and integrity class; waitlist interest, real intent, leads and sales never mixed.
   const own = funnel?.ownCheckout;
   const fm = funnelMetrics({ funnel, sales, own, now, funnelAt, salesAt });
+  const monthDays = windowDays(now, 31).filter((d) => d.startsWith(monthPrefix));
   const salesAllc = combineSales({ sales, own });
-  const salesMonthc = combineSales({ sales, own, days: Object.keys(mergeDaily(sales, own)).filter((d) => d.startsWith(monthPrefix)) });
+  const salesMonthc = combineSales({ sales, own, days: monthDays });
   const salesTodayc = combineSales({ sales, own, days: windowDays(now, 1) });
-  const salesCount = salesAllc.total ?? 0;
+  const salesUpd = fm.sales30.updatedAt;
+  const salesAllM = salesMetric(salesAllc, { window: "desde o início dos registros", updatedAt: salesUpd, now, definition: "Vendas aprovadas acumuladas" });
+  const salesMonthM = salesMetric(salesMonthc, { window: "mês corrente (America/Sao_Paulo)", updatedAt: salesUpd, now, definition: "Vendas aprovadas no mês" });
+  // Consumers (milestones, forecast, recommendations, owner list) only claim what is known: unknown = null.
+  const salesKnown = knownCount(salesAllM);
+  const salesCount = salesKnown.value;
+  const grossKnown = (c, m) => (knownCount(m).value == null ? null : knownCount(m).lowerBound ? null : c.grossCents);
+  const salesGoal = (base, value, m) => ({ ...base, current: value, integrityClass: m.integrityClass, lowerBound: knownCount(m).lowerBound, source: m.source });
   const hotmartLock = hotmartLockState(hotmart, salesOpen);
   if (hotmartLock.severity === "P0") console.log("::error title=P0_HOTMART_BYPASS::" + JSON.stringify({ accepting: hotmartLock.accepting, salesOpen }));
 
@@ -420,32 +427,22 @@ export async function main() {
     generatedAt: iso(now),
     day,
     goals: [
-      { id: "first-sale", label: "1ª venda", target: 1, unit: "vendas", deadline: "2026-10-18", current: salesCount, source: fm.sales30.source, integrityClass: fm.sales30.integrityClass },
-      { id: "fortnight", label: "Quinzena", target: 80000, unit: "centavos", deadline: "2026-10-25", current: monthAgg.grossCents + (salesMonthc.checkoutProprio.grossCents || 0), source: fm.sales30.source, integrityClass: fm.sales30.integrityClass },
-      { id: "month", label: "Mês", target: 200000, unit: "centavos", deadline: "2026-11-10", current: (t.grossCents || 0) + (salesAllc.checkoutProprio.grossCents || 0), source: fm.sales30.source, integrityClass: fm.sales30.integrityClass },
-      { id: "paid-traffic", label: "Vendas para liberar tráfego pago", target: 7, unit: "vendas", deadline: null, current: salesCount, source: fm.sales30.source, integrityClass: fm.sales30.integrityClass },
+      salesGoal({ id: "first-sale", label: "1ª venda", target: 1, unit: "vendas", deadline: "2026-10-18" }, salesCount, salesAllM),
+      salesGoal({ id: "fortnight", label: "Quinzena", target: 80000, unit: "centavos", deadline: "2026-10-25" }, grossKnown(salesMonthc, salesMonthM), salesMonthM),
+      salesGoal({ id: "month", label: "Mês", target: 200000, unit: "centavos", deadline: "2026-11-10" }, grossKnown(salesAllc, salesAllM), salesAllM),
+      salesGoal({ id: "paid-traffic", label: "Vendas para liberar tráfego pago", target: 7, unit: "vendas", deadline: null }, salesCount, salesAllM),
     ],
     revenue: {
-      salesToday: sMeta(todayAgg.approved || 0, "Compras aprovadas hoje (horário de Brasília)"),
-      salesMonth: sMeta(monthAgg.approved, "Compras aprovadas no mês corrente"),
-      grossMonthCents: sMeta(monthAgg.grossCents, "Valor pago pelos clientes no mês, antes de taxas"),
-      netMonthCents: sMeta(monthAgg.netCents, "Comissão do produtor no mês (líquido Hotmart)"),
-      grossTotalCents: sMeta(t.grossCents || 0, "Receita bruta acumulada desde o início do registro"),
-      netTotalCents: sMeta(t.netCents || 0, "Receita líquida acumulada (comissão do produtor)"),
-      feesCents: sMeta(t.feesCents || 0, "Taxas da plataforma acumuladas"),
-      affiliateCents: sMeta(t.affiliateCents || 0, "Comissões pagas a afiliados"),
-      refunds: sMeta((t.refunded || 0) + (t.chargeback || 0) + (t.protest || 0), "Reembolsos, chargebacks e reclamações"),
-      refundedCents: sMeta(t.reversedGrossCents || 0, "Valor bruto revertido"),
-      avgTicketCents: sMeta(t.approved ? Math.round(t.grossCents / t.approved) : null, "Receita bruta ÷ vendas aprovadas"),
-      abandoned: sMeta(t.abandoned || 0, "Carrinhos abandonados informados pela Hotmart"),
-      declined: sMeta((t.canceled || 0) + (t.expired || 0), "Pagamentos cancelados ou expirados"),
-      byProduct: sales?.byProduct || {}, bySource: sales?.bySource || {}, byPayment: sales?.byPayment || {},
-      recent: (sales?.recent || []).slice(0, 10),
+      // Only the combined view (checkout próprio + Hotmart) is published; the old Hotmart-only metrics are gone.
+      salesToday: salesMetric(salesTodayc, { window: "hoje (America/Sao_Paulo)", updatedAt: salesUpd, now, definition: "Vendas aprovadas hoje" }),
+      salesMonth: salesMonthM,
+      salesTotal: salesAllM,
+      grossMonthCents: { ...salesMonthM, value: grossKnown(salesMonthc, salesMonthM), unit: "centavos", numerator: "valor bruto pago das vendas aprovadas", definition: "Valor bruto das vendas aprovadas no mês (checkout próprio + Hotmart), antes de taxas; nulo se alguma fonte faltar." },
+      grossTotalCents: { ...salesAllM, value: grossKnown(salesAllc, salesAllM), unit: "centavos", numerator: "valor bruto pago das vendas aprovadas", definition: "Valor bruto acumulado das vendas aprovadas (checkout próprio + Hotmart), antes de taxas; nulo se alguma fonte faltar." },
+      reversals30: fm.reversals30,
       ledgerStartedAt: firstSalesDay,
-      // Own checkout (Mercado Pago; Asaas failover), provider-confirmed; the Hotmart metrics above stay Hotmart-only.
+      // Per-source detail of the combined view (no Hotmart-only revenue metric is published).
       ownCheckout: { status: salesAllc.checkoutProprio.status, mode: own?.mode || null, reason: own?.reason || null, salesToday: salesTodayc.checkoutProprio.total, salesMonth: salesMonthc.checkoutProprio.total, grossMonthCents: salesMonthc.checkoutProprio.grossCents, byProvider: salesAllc.checkoutProprio.byProvider, integrity: own?.integrity || null },
-      salesTodayAll: salesMetric(salesTodayc, { window: "hoje (America/Sao_Paulo)", updatedAt: fm.sales30.updatedAt, now, definition: "Vendas aprovadas hoje" }),
-      salesMonthAll: salesMetric(salesMonthc, { window: "mês corrente", updatedAt: fm.sales30.updatedAt, now, definition: "Vendas aprovadas no mês" }),
     },
     funnel: {
       taxonomy: "v2",
@@ -493,7 +490,7 @@ export async function main() {
         { what: "Aprovar Instagram/Facebook", why: "Aguardando revisão da Meta; ao aprovar, Reels e vídeos entram sozinhos", status: "aguardando terceiro" },
         { what: "Aprovar Pinterest", why: "Aguardando aprovação do app", status: "aguardando terceiro" },
         { what: "Trocar nome do TikTok para ZEVANORY", why: "TikTok libera a troca a partir de 18/10", status: "agendado" },
-        { what: "Liberar tráfego pago", why: "Só após a 7ª venda, com sua autorização", status: salesCount >= 7 ? "pronto para decidir" : `bloqueado (${salesCount}/7)` },
+        { what: "Liberar tráfego pago", why: "Só após a 7ª venda, com sua autorização", status: salesCount == null ? `bloqueado (vendas ${salesKnown.integrityClass}: não verificadas)` : salesCount >= 7 && !salesKnown.lowerBound ? "pronto para decidir" : `bloqueado (${salesKnown.lowerBound ? "≥" : ""}${salesCount}/7)` },
       ],
     },
     operations: {
@@ -508,7 +505,8 @@ export async function main() {
       hotmart,
       deploys: runs ? runs.filter((r) => r.path.endsWith("central-production-deploy.yml")).slice(0, 5).map((r) => ({ at: r.created_at, conclusion: r.conclusion })) : [],
     },
-    forecast: forecastSales(dailyAll, firstSalesDay, now),
+    // A forecast needs every source: with a source missing it refuses instead of extrapolating a false zero.
+    forecast: salesKnown.value == null || salesKnown.lowerBound ? { status: "unverified", reason: `vendas ${salesAllM.integrityClass}: checkout próprio ${ownCheckoutStatus(own)}, Hotmart ${hotmartStatus(sales)}` } : forecastSales(dailyAll, firstSalesDay, now),
     experiments,
     commitments,
     catalog: catalogDef ? { guaranteeDays: catalogDef.guaranteeDays, products: catalogDef.products, subscription: catalogDef.subscription || null } : null,
@@ -520,11 +518,11 @@ export async function main() {
     recommendations: [
       ...(hotmartLock.severity === "P0" ? [{ title: "P0: oferta Hotmart aceitando pagamento com vendas fechadas", evidence: `${hotmartLock.accepting.join(", ")}: página da oferta respondeu sem o aviso de vendas encerradas`, action: "Dono: encerrar a oferta na Hotmart agora; fechar release comercial e registrar incidente P0", confidence: "alta", risk: "crítico", cost: "R$ 0" }] : []),
       ...(buyFlow.some((b) => b.expected != null && !b.ok && b.state !== "error") ? [{ title: "Caminho de compra diverge do interruptor de vendas", evidence: buyFlow.filter((b) => b.expected != null && !b.ok).map((b) => `${b.sku}: ${b.state} (esperado ${b.expected})`).join("; "), action: salesOpen ? "Conferir /api/sales/status e o Worker de vendas: com vendas abertas o botão deve abrir o pagamento" : "Fechar imediatamente o caminho de compra: com vendas fechadas nenhum pagamento pode abrir", confidence: "alta", risk: "alto", cost: "R$ 0" }] : []),
-      ...recommend({ funnel, reach, sales, publications, salesCount }),
+      ...recommend({ funnel, reach, publications, salesKnown }),
     ],
   };
   await kvPut(SNAPSHOT_KEY, snapshot);
-  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState, unproven: inventory.processes.filter((x) => x.eligible && !x.proven).map((x) => x.id) }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, serverCycle: cronBeat ? { at: cronBeat.finishedAt || null, tasks: cronBeat.tasks || {}, nurture: cronBeat.nurture || null } : null, kvQuota: kvQuota || null, isolatedCycle: isolatedBeat ? { at: isolatedBeat.finishedAt || null, tasks: isolatedBeat.tasks || {} } : null, funnelCycle: funnelBeat ? { at: funnelBeat.finishedAt || null, tasks: funnelBeat.tasks || {} } : null, salesSwitch: salesOpen, sales: salesCount, salesBySource: { checkoutProprio: salesAllc.checkoutProprio.total, hotmart: salesAllc.hotmart.total }, salesIntegrity: fm.sales30.integrityClass, hotmartLock: { state: hotmartLock.state, accepting: hotmartLock.accepting.length, closed: hotmartLock.closed.length, total: hotmartLock.total }, visitors7: funnel?.last7Days?.cleanVisitors ?? null, visitors7Raw: funnel?.last7Days?.visitors ?? null, reach: point }));
+  console.log("::notice title=COMMAND_CENTER::" + JSON.stringify({ at: snapshot.generatedAt, autonomy: autonomy && { pct: autonomy.autonomyPct, runs: autonomy.scheduledRuns, failed: autonomy.failed, recovered: autonomy.recoveredAutomatically, mttr: autonomy.mttrMinutes }, publications, runtime: coreStatus?.runtime || null, inventory: { eligible: inventory.eligible, proven: inventory.provenAutonomous, pct: inventory.pct, byState: inventory.byState, unproven: inventory.processes.filter((x) => x.eligible && !x.proven).map((x) => x.id) }, experiments: experiments.map((e) => ({ id: e.id, status: e.status, progress: e.progress || null })), buyFlow, hotmart, serverCycle: cronBeat ? { at: cronBeat.finishedAt || null, tasks: cronBeat.tasks || {}, nurture: cronBeat.nurture || null } : null, kvQuota: kvQuota || null, isolatedCycle: isolatedBeat ? { at: isolatedBeat.finishedAt || null, tasks: isolatedBeat.tasks || {} } : null, funnelCycle: funnelBeat ? { at: funnelBeat.finishedAt || null, tasks: funnelBeat.tasks || {} } : null, salesSwitch: salesOpen, sales: salesCount, salesClass: salesKnown.integrityClass, salesBySource: { checkoutProprio: salesAllc.checkoutProprio.total, hotmart: salesAllc.hotmart.total }, salesIntegrity: fm.sales30.integrityClass, hotmartLock: { state: hotmartLock.state, accepting: hotmartLock.accepting.length, closed: hotmartLock.closed.length, total: hotmartLock.total }, visitors7: funnel?.last7Days?.cleanVisitors ?? null, visitors7Raw: funnel?.last7Days?.visitors ?? null, reach: point }));
   // Aggregate-only commercial diagnosis (no PII): clean page/source/campaign/traffic-class counts since
   // the bot filter. Visitor-controlled labels (utm) outside our own naming are masked as "outro" because
   // this notice is public. "visitorDays" = sum of daily uniques (the hash rotates daily), not people.

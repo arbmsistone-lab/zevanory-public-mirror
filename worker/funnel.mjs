@@ -247,11 +247,11 @@ export async function buildFunnelSummary(env, { sqlFactory, now = Date.now(), pr
   // Leads split (AVAL Sol): only double-opt-in confirmed leads are "Leads confirmados"; pending apart.
   const leadSplit = await sql.query(`select count(*) filter (where status = 'pending' and created_at >= current_date - interval '6 days')::int as pending,
       count(*) filter (where status = 'confirmed' and confirmed_at >= current_date - interval '6 days')::int as confirmed from zevanory_leads`, []).catch(() => null);
-  // Taxonomy v2 per UTC day (30 days): site visitor-days, and exposure/interest/real intent summed over the
+  // Taxonomy v2 per America/Sao_Paulo day (30 days): site visitor-days, and exposure/interest/real intent summed over the
   // product pages only (numerators and denominators of the conversions share the same pages).
   const daily = {};
   const dailyRows = await sql.query(`select day::text as day, metric, sum(n)::int as n from zevanory_funnel_daily
-      where day > current_date - 30 and ((page = $1 and metric = 'site_visitors') or (page = any($2) and metric = any($3))) group by day, metric`,
+      where day > (now() at time zone 'America/Sao_Paulo')::date - 30 and ((page = $1 and metric = 'site_visitors') or (page = any($2) and metric = any($3))) group by day, metric`,
     [SITE_PAGE, [...Object.keys(FUNNEL_PRODUCTS), "conteudo-pronto"], ["buy_cta_view", "waitlist_cta_view", "waitlist_click", "waitlist_click_raw", "own_checkout_started", "own_checkout_started_raw"]]).catch(() => null);
   for (const row of dailyRows || []) { const d = (daily[String(row.day).slice(0, 10)] = daily[String(row.day).slice(0, 10)] || {}); d[row.metric] = (d[row.metric] || 0) + (Number(row.n) || 0); }
   const ownCheckout = await buildOwnCheckoutSales(sql, { production });
@@ -285,12 +285,15 @@ async function firstTime(sql, day, key, vhash) {
   const r = await sql.query(`insert into zevanory_funnel_visitors (day, page, vhash) values ($1::date, $2, $3) on conflict do nothing returning vhash`, [day, key, vhash]);
   return r.length > 0;
 }
+// Taxonomy v2 rows are keyed by the America/Sao_Paulo day, the same day as the own-checkout sales, so
+// conversions pair numerator and denominator on the same calendar (legacy rows stay UTC-keyed).
+export const v2Day = (t = Date.now()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t));
 const visitorHash = async (env, day, ip, userAgent) => (await sha256Hex(`${day}|${ip}|${userAgent}|${String(env.RESEND_API_KEY || env.DATABASE_URL || "zevanory")}`)).slice(0, 32);
 // Exposure + site visitor-days for a counted page view (called after recordPageView).
 export async function recordExposure(env, { sqlFactory, page, ip, userAgent, cta = null, src = "", now = Date.now() }) {
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureFunnelSchema(sql);
-  const day = new Date(now).toISOString().slice(0, 10);
+  const day = v2Day(now);
   const vhash = await visitorHash(env, day, ip, userAgent);
   if (await firstTime(sql, day, SITE_PAGE, vhash)) await bump(sql, day, SITE_PAGE, "site_visitors");
   if (!CTA_KINDS.includes(cta)) return;
@@ -302,7 +305,7 @@ export async function recordSignal(env, { sqlFactory, page, ip, userAgent, metri
   if (!SIGNAL_METRICS.includes(metric)) return;
   const sql = sqlFactory(env.DATABASE_URL);
   await ensureFunnelSchema(sql);
-  const day = new Date(now).toISOString().slice(0, 10);
+  const day = v2Day(now);
   const vhash = await visitorHash(env, day, ip, userAgent);
   const prov = label(provider, 20);
   if (metric === "own_checkout_started" && !prov) return; // intent always names its provider

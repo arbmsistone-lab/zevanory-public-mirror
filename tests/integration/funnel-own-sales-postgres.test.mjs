@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { ensureLeadSchema } from "../../worker/lead-magnet.mjs";
-import { buildOwnCheckoutSales, recordSignal, recordExposure, recordPageView, buildFunnelSummary } from "../../worker/funnel.mjs";
+import { buildOwnCheckoutSales, recordSignal, recordExposure, recordPageView, buildFunnelSummary, v2Day } from "../../worker/funnel.mjs";
 
 const HOST = process.env.T4_PG_HOST, PORT = process.env.T4_PG_PORT || "5432";
 const SKIP = !HOST && "T4_PG_HOST not set (throwaway local PostgreSQL required)";
@@ -92,6 +92,10 @@ test("V3 sinais deduplicados no servidor: exposição por visitante/dia/página,
   assert.equal(n("ia-na-pratica", "own_checkout_started:prov:mercadopago"), 2);
   assert.equal(n("ia-na-pratica", "waitlist_click"), 1); assert.equal(n("ia-na-pratica", "waitlist_click_raw"), 2);
   assert.doesNotMatch(psql("select string_agg(page || vhash, ',') from zevanory_funnel_visitors"), /203\.0\.113/, "sem IP armazenado");
+  // v2 rows use the America/Sao_Paulo day (same calendar as own-checkout sales): 01:30 UTC of 23/10 is 22/10.
+  await recordExposure(env, { ...v, ip: "203.0.113.77", page: "ia-na-pratica", cta: "waitlist", now: Date.parse("2026-10-23T01:30:00Z") });
+  assert.equal(n("__site__", "site_visitors"), 3);
+  assert.equal(Number(psql("select coalesce(sum(n),0) from zevanory_funnel_daily where day='2026-10-23' and page='__site__'")), 0);
 });
 
 test("V4 resumo publica daily v2 só das páginas de produto, separa leads pendentes/confirmados e esconde a página reservada", { skip: SKIP }, async () => {
@@ -99,10 +103,10 @@ test("V4 resumo publica daily v2 só das páginas de produto, separa leads pende
   psql(`insert into zevanory_leads (email, email_hash, consent_version, consent_at, status, created_at, confirmed_at) values
         ('a@x', 'h1', 'v1', now(), 'pending', now(), null), ('b@x', 'h2', 'v1', now(), 'confirmed', now() - interval '10 days', now()),
         ('c@x', 'h3', 'v1', now(), 'confirmed', now() - interval '20 days', now() - interval '20 days') on conflict do nothing`);
-  psql(`insert into zevanory_funnel_daily (day, page, metric, n) values (current_date, 'solucoes', 'waitlist_cta_view', 5), (current_date, '__site__', 'site_visitors', 3), (current_date, 'negocio-completo', 'buy_cta_view', 2)
+  psql(`insert into zevanory_funnel_daily (day, page, metric, n) values (${lit(v2Day())}, 'solucoes', 'waitlist_cta_view', 5), (${lit(v2Day())}, '__site__', 'site_visitors', 3), (${lit(v2Day())}, 'negocio-completo', 'buy_cta_view', 2)
         on conflict (day, page, metric) do update set n = excluded.n`);
   const s = await buildFunnelSummary(env, { sqlFactory: factory, production: false });
-  const today = new Date().toISOString().slice(0, 10);
+  const today = v2Day(); // v2 rows are keyed by the São Paulo day
   assert.equal(s.taxonomy, "zevanory-funnel/v2");
   assert.equal(s.daily[today].site_visitors, 3);
   assert.equal(s.daily[today].buy_cta_view, 2);

@@ -13,10 +13,12 @@ from pathlib import Path
 
 REPO = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2])
 COPY = ["worker", "scripts/audit", "scripts/channels", "data", "db/migrations", "sales-public/material-gratuito.html",
-        "tests/funnel-counting.test.mjs", "tests/helpers", "tests/integration/funnel-own-sales-postgres.test.mjs"]
+        "tests/funnel-counting.test.mjs", "tests/helpers", "scripts/ci/mutants_funnel_v2.py", ".github/workflows/funnel-v2.yml", "tests/integration/funnel-own-sales-postgres.test.mjs"]
 FC, SNAP, INV = "scripts/audit/funnel-counting.mjs", "scripts/audit/command-center-snapshot.mjs", "scripts/audit/autonomy-inventory.mjs"
 FUN, SPW = "worker/funnel.mjs", "worker/sales-public-worker.mjs"
 UNIT, PG = "unit", "pg"
+# Assembled at runtime so this file itself carries no contact link (the test scans it).
+BANNED_LINK = "wa" + ".me/" + "5588" + "992545413"
 
 M = {
     "F1 rótulo Hotmart no ledger próprio é contado": (FC, "if (!OWN_PROVIDERS.includes(provider)) { out.ignoredNonOwnProvider += n(b?.confirmed); continue; }", "", UNIT),
@@ -35,7 +37,18 @@ M = {
     "F14 exposição sempre como botão de compra": (SPW, '{cta:toggleOpen?"buy":"waitlist"}', '{cta:"buy"}', UNIT),
     "F15 painel volta a vendas só Hotmart": (FC, "m.sales30 = salesMetric(combineSales({ sales, own, days: s30days })", "m.sales30 = salesMetric(combineSales({ sales, own: null, days: s30days })", UNIT),
     "F16 inventário aceita P0 como prova": (INV, 'const ok = lock.state === "selling" || lock.state === "closed";', 'const ok = lock.state !== "unknown";', UNIT),
-    "F17 painel recomenda levar Comprar à Hotmart": (SNAP, "      ...recommend({ funnel, reach, sales, publications, salesCount }),", '      { title: "x", evidence: "x", action: "Levar o botão Comprar ao checkout da Hotmart", confidence: "alta", risk: "baixo", cost: "R$ 0" },\n      ...recommend({ funnel, reach, sales, publications, salesCount }),', UNIT),
+    "F17 painel recomenda levar Comprar à Hotmart": (SNAP, "      ...recommend({ funnel, reach, publications, salesKnown }),", '      { title: "x", evidence: "x", action: "Levar o botão Comprar ao checkout da Hotmart", confidence: "alta", risk: "baixo", cost: "R$ 0" },\n      ...recommend({ funnel, reach, publications, salesKnown }),', UNIT),
+    "Z1 vendas desconhecidas viram 0 nos marcos": (SNAP, "const salesCount = salesKnown.value;", "const salesCount = salesKnown.value ?? 0;", UNIT),
+    "Z2 parcial zero tratado como zero conhecido": (FC, ': { value: null, integrityClass: "PARTIAL", lowerBound: false };', ': { value: 0, integrityClass: "PARTIAL", lowerBound: false };', UNIT),
+    "Z3 previsão extrapola com fonte faltando": (SNAP, "forecast: salesKnown.value == null || salesKnown.lowerBound ?", "forecast: false ?", UNIT),
+    "Z4 recomendação sem ramo de vendas não verificadas": (SNAP, "  if (k.value == null) out.push(", "  if (false) out.push(", UNIT),
+    "Z5 métrica só-Hotmart volta ao snapshot": (SNAP, "      salesTotal: salesAllM,", '      salesTotal: salesAllM,\n      netTotalCents: { value: 0, source: "Hotmart (postback autenticado)" },', UNIT),
+    "Z6 emissor legado checkout_intent no GET": (SPW, '  if(request.method!=="POST"){\n', '  if(request.method!=="POST"){\n    countView(request,env,ctx,slug,"checkout_intent");\n', UNIT),
+    "Z7 borda UTC da Hotmart ignorada": (FC, "integrityClass: c.complete && !c.hotmart.edgeSales ?", "integrityClass: c.complete ?", UNIT),
+    "Z8 visitante→venda COMPLETE com Hotmart fora do numerador": (FC, 'integrityClass: hot || num == null ? "PARTIAL" : v2Class', 'integrityClass: num == null ? "PARTIAL" : v2Class', UNIT),
+    "Z9 link de contato no código novo": (FC, '"O botão leva direto a um link externo sem passar pelo site;', '"O botão leva direto a ' + BANNED_LINK + ' sem passar pelo site;', UNIT),
+    "Z10 meta de receita soma limite inferior": (SNAP, "knownCount(m).lowerBound ? null : c.grossCents", "knownCount(m).lowerBound ? c.grossCents : c.grossCents", UNIT),
+    "S7 linhas v2 em dia UTC": (FUN, 'export const v2Day = (t = Date.now()) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t));', "export const v2Day = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);", PG),
     "S1 failover na mesma sessão conta 2": (FUN, "coalesce(o.session_id::text, o.order_id::text) as purchase", "o.order_id::text as purchase", PG),
     "S2 pedidos de certificação contam": (FUN, "where fe.normalized_event = 'payment_confirmed' and coalesce(o.certification_pilot, false) = false\n                   group by", "where fe.normalized_event = 'payment_confirmed'\n                   group by", PG),
     "S3 dia da venda em UTC": (FUN, "at time zone 'America/Sao_Paulo', 'YYYY-MM-DD') as day", "at time zone 'UTC', 'YYYY-MM-DD') as day", PG),

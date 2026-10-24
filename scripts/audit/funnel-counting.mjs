@@ -78,7 +78,7 @@ export function combineSales({ sales, own, days = null }) {
     grossCents: h.grossCents + (ownGross || 0),
     complete,
     checkoutProprio: { status: os, total: ownTotal, grossCents: ownGross, byProvider: o.byProvider, ignoredNonOwnProvider: o.ignoredNonOwnProvider },
-    hotmart: { status: hs, total: h.approved, grossCents: h.grossCents, reversed: h.reversed },
+    hotmart: { status: hs, total: h.approved, grossCents: h.grossCents, reversed: h.reversed, edgeSales: days ? sumHotmart(sales, hotmartEdgeDays(days)).approved : 0 },
   };
 }
 export const SALES_LABEL = Object.freeze({
@@ -87,6 +87,14 @@ export const SALES_LABEL = Object.freeze({
   unverified: "Hotmart · checkout próprio NÃO VERIFICADO",
   missing: "Hotmart · checkout próprio NÃO VERIFICADO",
 });
+// Hotmart ledger days are UTC (legacy). A Hotmart sale on a UTC day at the edge of a São Paulo window may
+// belong to the neighbouring São Paulo day, so the total is PARTIAL whenever one exists there.
+export function hotmartEdgeDays(days) {
+  if (!days?.length) return [];
+  const sorted = [...days].sort(), first = sorted[0], last = sorted[sorted.length - 1];
+  const next = new Date(Date.parse(last + "T00:00:00Z") + DAY).toISOString().slice(0, 10);
+  return [first, next];
+}
 export function salesMetric(c, { window, updatedAt, now, definition }) {
   const byProv = Object.entries(c.checkoutProprio.byProvider).map(([p, v]) => `${PROVIDER_LABEL[p] || p} ${v}`).join(", ");
   const own = c.checkoutProprio.total == null ? "checkout próprio não verificado" : `checkout próprio ${c.checkoutProprio.total}${byProv ? ` (${byProv})` : ""}`;
@@ -95,11 +103,19 @@ export function salesMetric(c, { window, updatedAt, now, definition }) {
     value: c.total, window, now, updatedAt, maxAgeHours: 3,
     numerator: "vendas aprovadas únicas", dedup: "checkout próprio: 1 por sessão de compra (failover entre provedores não duplica), chave do pagamento provider+payment_id via webhook autenticado; Hotmart: 1 por transação (postback autenticado, idempotente). Reembolsos e chargebacks ficam à parte (não subtraídos).",
     sources: ["checkout_proprio:mercadopago", "checkout_proprio:asaas", "hotmart"],
-    integrityClass: c.complete ? "COMPLETE" : "PARTIAL",
+    integrityClass: c.complete && !c.hotmart.edgeSales ? "COMPLETE" : "PARTIAL",
     label: SALES_LABEL[c.checkoutProprio.status],
     definition: `${definition}: ${own} + ${hot}. Dia do pagamento em America/Sao_Paulo (Hotmart: registro legado por dia UTC). Pedidos de certificação/sandbox fora.`,
     extra: { parts: { checkoutProprio: c.checkoutProprio, hotmart: c.hotmart } },
   });
+}
+
+// What a consumer (milestones, forecast, recommendations) may claim from a sales metric: the value only
+// when it is COMPLETE/STALE; a PARTIAL value > 0 is a lower bound; PARTIAL 0 and MISSING are unknown (null).
+export function knownCount(m) {
+  if (!m || m.value == null || m.integrityClass === "MISSING") return { value: null, integrityClass: "MISSING", lowerBound: false };
+  if (m.integrityClass === "PARTIAL") return m.value > 0 ? { value: m.value, integrityClass: "PARTIAL", lowerBound: true } : { value: null, integrityClass: "PARTIAL", lowerBound: false };
+  return { value: m.value, integrityClass: m.integrityClass, lowerBound: false };
 }
 
 // Daily approved sales of both sources merged (forecast and ledger start); own part only when counted.
@@ -115,14 +131,14 @@ export function mergeDaily(sales, own) {
 export const sumSources = (sources, keys) => Object.values(sources || {}).reduce((a, s) => a + keys.reduce((b, k) => b + (Number(s?.[k]) || 0), 0), 0);
 export const LEGACY_MIXED_KEYS = Object.freeze(["checkout_intent", "hotmart_view", "subscribe_click"]);
 export function sumDaily(daily, metric, days) { return days.reduce((a, d) => a + n(daily?.[d]?.[metric]), 0); }
-// First UTC day the v2 instrumentation recorded anything (site_visitors rides every counted view).
+// First day the v2 instrumentation recorded anything (site_visitors rides every counted view).
 export const v2Since = (daily) => Object.keys(daily || {}).filter((d) => n(daily[d]?.site_visitors) > 0).sort()[0] || null;
 const coverage = (daily, days) => { const since = v2Since(daily); return since && days.every((d) => d >= since) ? "full" : since ? "partial" : "none"; };
 // Days with the buy CTA shown (sales open). Closed days never enter checkout/sale denominators.
 export const openDays = (daily, days) => days.filter((d) => n(daily?.[d]?.buy_cta_view) > 0);
 
 // The waitlist click and the waitlist lead capture are not live in this release: the CTA still links
-// straight to wa.me (its replacement is a separate PR) and the P01 Fase A form is off. Tests pin both
+// to an external chat (its replacement is a separate PR) and the P01 Fase A form is off. Tests pin both
 // flags to the code (an emitter of waitlist_click in the sales Worker must flip the first one).
 export const WAITLIST_CLICK_INSTRUMENTED = false;
 export const WAITLIST_CAPTURE_LIVE = false;
@@ -131,7 +147,9 @@ export const LEAD_CAPTURE = Object.freeze({ live: true, form: "/material-gratuit
 
 export function funnelMetrics({ funnel, sales, own, now = Date.now(), funnelAt = null, salesAt = null, capture = LEAD_CAPTURE, clickInstrumented = WAITLIST_CLICK_INSTRUMENTED, waitlistCaptureLive = WAITLIST_CAPTURE_LIVE }) {
   const daily = funnel?.daily || null;
-  const d30 = windowDays(now, 30, { zone: "utc" }), d7 = windowDays(now, 7, { zone: "utc" });
+  // v2 rows are keyed by America/Sao_Paulo day (worker/funnel.mjs v2Day), like the own-checkout sales.
+  const d30 = windowDays(now, 30), d7 = windowDays(now, 7);
+  const ownIn = (days) => { const st = ownCheckoutStatus(own); return st === "counted" ? sumOwn(own, days).total : st === "test_mode" ? 0 : null; };
   const v2 = daily != null;
   const cov30 = v2 ? coverage(daily, d30) : "none";
   const v2Class = cov30 === "full" ? "COMPLETE" : "PARTIAL";
@@ -142,16 +160,16 @@ export function funnelMetrics({ funnel, sales, own, now = Date.now(), funnelAt =
   // Visitors / denominators.
   m.visitorPageDays7 = describe({ ...common, value: funnel?.last7Days?.cleanVisitors ?? null, unit: "visitor-page-days", window: "7 dias UTC (desde o filtro de robôs)", numerator: "(dia, página, hash diário) únicos", dedup: "por dia e página: a mesma pessoa em 3 páginas conta 3", sources: ["site"], integrityClass: "COMPLETE", label: "Site (legado: visitor-page-days)", definition: "Soma diária de visitantes únicos POR PÁGINA. Não é pessoa única; não usar como denominador de conversão." });
   const sv7 = v2 ? sumDaily(daily, "site_visitors", d7) : null;
-  m.visitorDays7 = describe({ ...common, value: sv7, unit: "visitor-days", window: "7 dias UTC", numerator: "(dia, hash diário) únicos no site", dedup: "1 por visitante por dia no site inteiro; o hash gira por dia, então 7 dias = soma de dias, não pessoas únicas", sources: ["site"], integrityClass: v2 && coverage(daily, d7) === "full" ? "COMPLETE" : "PARTIAL", label: "Site (visitor-days)", definition: "Visitantes elegíveis (robôs/datacenter fora) por dia, somados em 7 dias." + (v2 && coverage(daily, d7) !== "full" ? ` Instrumentação desde ${v2Since(daily) || "—"}.` : "") });
+  m.visitorDays7 = describe({ ...common, value: sv7, unit: "visitor-days", window: "7 dias (America/Sao_Paulo)", numerator: "(dia, hash diário) únicos no site", dedup: "1 por visitante por dia no site inteiro; o hash gira por dia, então 7 dias = soma de dias, não pessoas únicas", sources: ["site"], integrityClass: v2 && coverage(daily, d7) === "full" ? "COMPLETE" : "PARTIAL", label: "Site (visitor-days)", definition: "Visitantes elegíveis (robôs/datacenter fora) por dia, somados em 7 dias." + (v2 && coverage(daily, d7) !== "full" ? ` Instrumentação desde ${v2Since(daily) || "—"}.` : "") });
   const pv30 = funnel ? Object.values(funnel.sources || {}).reduce((a, s) => a + (Number(s?.views) || 0), 0) : null;
   m.pageviews30 = describe({ ...common, value: pv30, unit: "pageviews", window: "30 dias UTC", numerator: "páginas vistas com origem atribuída", dedup: "nenhuma (cada página vista conta)", sources: ["site"], integrityClass: "COMPLETE", label: "Site (páginas vistas)", definition: "Páginas vistas com origem, 30 dias. É volume de páginas, não pessoas; nunca entra em conversão." });
 
   // Waitlist (interest, never lead or intent).
   const wlView = v2 ? sumDaily(daily, "waitlist_cta_view", d30) : null;
-  m.waitlistCtaViews30 = describe({ ...common, value: wlView, unit: "visitor-day-product", window: "30 dias UTC", numerator: "visitantes expostos ao CTA de lista de espera (vendas fechadas)", dedup: "1 por visitante/dia/página de produto", sources: ["site"], integrityClass: v2Class, label: "Site (exposição ao CTA fechado)", definition: "Visitante elegível recebeu a página de produto com vendas fechadas (CTA de lista de espera)." + v2Note });
+  m.waitlistCtaViews30 = describe({ ...common, value: wlView, unit: "visitor-day-product", window: "30 dias (America/Sao_Paulo)", numerator: "visitantes expostos ao CTA de lista de espera (vendas fechadas)", dedup: "1 por visitante/dia/página de produto", sources: ["site"], integrityClass: v2Class, label: "Site (exposição ao CTA fechado)", definition: "Visitante elegível recebeu a página de produto com vendas fechadas (CTA de lista de espera)." + v2Note });
   const wlClick = v2 && clickInstrumented ? sumDaily(daily, "waitlist_click", d30) : null;
-  m.waitlistClicks30 = describe({ ...common, value: wlClick, unit: "visitor-day-product", window: "30 dias UTC", numerator: "cliques únicos em Entrar na lista de espera", dedup: "1 por visitante/dia/produto", sources: ["site"], integrityClass: v2Class, label: clickInstrumented ? "Site (clique na lista de espera)" : "Clique na lista de espera NÃO MEDIDO", definition: clickInstrumented ? "Interesse na lista de espera; não é lead nem intenção de compra." : "O botão leva direto ao wa.me sem passar pelo site; o clique não é contado nesta versão (substituição do CTA em PR separado). Ausência de número não é zero." });
-  m.waitlistLeadsPending = describe({ ...common, value: null, unit: "leads", window: "7 dias", numerator: "contatos recebidos com consentimento, não confirmados", dedup: "hash do contato + finalidade/versão do consentimento", sources: ["lista de espera"], integrityClass: "MISSING", label: waitlistCaptureLive ? "Lista de espera: fonte ainda não ligada ao painel" : "Captura da lista de espera ainda não ativa", definition: (waitlistCaptureLive ? "A captura existe, mas esta versão do painel não lê a sua tabela." : "Nenhum formulário de lista de espera está no ar (P01 Fase A desligada).") + " Clique em wa.me nunca conta como lead." });
+  m.waitlistClicks30 = describe({ ...common, value: wlClick, unit: "visitor-day-product", window: "30 dias (America/Sao_Paulo)", numerator: "cliques únicos em Entrar na lista de espera", dedup: "1 por visitante/dia/produto", sources: ["site"], integrityClass: v2Class, label: clickInstrumented ? "Site (clique na lista de espera)" : "Clique na lista de espera NÃO MEDIDO", definition: clickInstrumented ? "Interesse na lista de espera; não é lead nem intenção de compra." : "O botão leva direto a um link externo sem passar pelo site; o clique não é contado nesta versão (substituição do CTA em PR separado). Ausência de número não é zero." });
+  m.waitlistLeadsPending = describe({ ...common, value: null, unit: "leads", window: "7 dias", numerator: "contatos recebidos com consentimento, não confirmados", dedup: "hash do contato + finalidade/versão do consentimento", sources: ["lista de espera"], integrityClass: "MISSING", label: waitlistCaptureLive ? "Lista de espera: fonte ainda não ligada ao painel" : "Captura da lista de espera ainda não ativa", definition: (waitlistCaptureLive ? "A captura existe, mas esta versão do painel não lê a sua tabela." : "Nenhum formulário de lista de espera está no ar (P01 Fase A desligada).") + " Clique em link externo nunca conta como lead." });
   m.waitlistLeadsConfirmed = describe({ ...m.waitlistLeadsPending, value: null, numerator: "leads da lista com opt-in duplo confirmado", integrityClass: "MISSING", label: m.waitlistLeadsPending.source, definition: m.waitlistLeadsPending.definition });
 
   // Leads (free material): only confirmed are "Leads confirmados"; pending apart.
@@ -166,7 +184,7 @@ export function funnelMetrics({ funnel, sales, own, now = Date.now(), funnelAt =
   // observable on our side, so the metric covers the own checkout only.
   const open30 = v2 ? openDays(daily, d30) : [];
   const ocs = v2 ? sumDaily(daily, "own_checkout_started", d30) : null;
-  m.transactionalIntent30 = describe({ ...common, value: v2 && open30.length ? ocs : null, window: "30 dias UTC, só dias com vendas abertas", numerator: "sessões de pagamento do checkout próprio criadas pelo servidor", dedup: "1 por visitante + produto + provedor a cada janela fixa de 30 min (nova janela = nova tentativa); contador bruto à parte", sources: ["checkout_proprio"], integrityClass: "PARTIAL", label: "Checkout próprio (sessão criada) · Hotmart/assinatura não observáveis", definition: v2 && !open30.length ? "Nenhum dia com vendas abertas na janela: intenção transacional não pode existir (não é zero de demanda)." : "Intenção transacional real. Exclui lista de espera, visita a página fechada, ida genérica à Hotmart, cliques repetidos e envio de formulário." + v2Note, extra: { openDays: open30.length, raw: v2 ? sumDaily(daily, "own_checkout_started_raw", d30) : null } });
+  m.transactionalIntent30 = describe({ ...common, value: v2 && open30.length ? ocs : null, window: "30 dias (America/Sao_Paulo), só dias com vendas abertas", numerator: "sessões de pagamento do checkout próprio criadas pelo servidor", dedup: "1 por visitante + produto + provedor a cada janela fixa de 30 min (nova janela = nova tentativa); contador bruto à parte", sources: ["checkout_proprio"], integrityClass: "PARTIAL", label: "Checkout próprio (sessão criada) · Hotmart/assinatura não observáveis", definition: v2 && !open30.length ? "Nenhum dia com vendas abertas na janela: intenção transacional não pode existir (não é zero de demanda)." : "Intenção transacional real. Exclui lista de espera, visita a página fechada, ida genérica à Hotmart, cliques repetidos e envio de formulário." + v2Note, extra: { openDays: open30.length, raw: v2 ? sumDaily(daily, "own_checkout_started_raw", d30) : null } });
   const legacy = funnel ? sumSources(funnel.sources, LEGACY_MIXED_KEYS) : null;
   m.legacyMixedClicks30 = describe({ ...common, value: legacy, window: "30 dias UTC", numerator: "checkout_intent + hotmart_view + subscribe_click (série antiga)", dedup: "nenhuma (cada clique conta)", sources: ["site"], integrityClass: "LEGACY_MIXED", label: "Série antiga de cliques (mistura)", definition: "Mantida só para comparação; mistura abertura da página de compra, ida à Hotmart e assinatura, sem deduplicação. Não é intenção real e não foi reclassificada." });
 
@@ -180,22 +198,22 @@ export function funnelMetrics({ funnel, sales, own, now = Date.now(), funnelAt =
   // Five separate conversions; same window and exposure; closed days never enter checkout/sale ratios.
   const ratio = (num, den) => (num != null && den ? Math.round((10000 * num) / den) / 100 : null);
   m.conversions = {
-    waitlistCtr: describe({ ...common, value: ratio(wlClick, wlView), unit: "%", window: "30 dias UTC", numerator: "clicadores únicos da lista de espera (visitante/dia/produto)", denominator: "visitantes únicos expostos ao CTA fechado (visitante/dia/produto)", dedup: "visitante/dia/produto", sources: ["site"], integrityClass: v2Class, label: "CTR da lista de espera", definition: clickInstrumented ? "Cliques únicos ÷ expostos ao CTA fechado." : "Clique ainda não medido (CTA direto para wa.me): sem numerador." }),
+    waitlistCtr: describe({ ...common, value: ratio(wlClick, wlView), unit: "%", window: "30 dias (America/Sao_Paulo)", numerator: "clicadores únicos da lista de espera (visitante/dia/produto)", denominator: "visitantes únicos expostos ao CTA fechado (visitante/dia/produto)", dedup: "visitante/dia/produto", sources: ["site"], integrityClass: v2Class, label: "CTR da lista de espera", definition: clickInstrumented ? "Cliques únicos ÷ expostos ao CTA fechado." : "Clique ainda não medido (CTA direto para link externo): sem numerador." }),
     waitlistCapture: describe({ ...common, value: null, unit: "%", window: "30 dias", numerator: "leads confirmados da lista", denominator: "clicadores únicos da lista (também ÷ expostos)", dedup: "hash do contato + consentimento", sources: ["lista de espera"], integrityClass: "MISSING", label: "Captura da lista de espera", definition: "Captura da lista ainda não ativa." }),
-    checkoutStart: describe({ ...common, value: open30.length ? ratio(ocs, sumDaily(daily, "buy_cta_view", d30)) : null, unit: "%", window: "30 dias UTC, só dias com vendas abertas", numerator: "intenções transacionais únicas (checkout próprio)", denominator: "visitantes únicos expostos ao botão de compra com vendas abertas", dedup: "visitante/dia/produto (exposição); visitante+produto+provedor/30 min (intenção)", sources: ["site", "checkout_proprio"], integrityClass: "PARTIAL", label: "Início de checkout", definition: open30.length ? "Hotmart/assinatura fora (não observáveis)." + v2Note : "Sem dias com vendas abertas na janela." }),
+    checkoutStart: describe({ ...common, value: open30.length ? ratio(ocs, sumDaily(daily, "buy_cta_view", d30)) : null, unit: "%", window: "30 dias (America/Sao_Paulo), só dias com vendas abertas", numerator: "intenções transacionais únicas (checkout próprio)", denominator: "visitantes únicos expostos ao botão de compra com vendas abertas", dedup: "visitante/dia/produto (exposição); visitante+produto+provedor/30 min (intenção)", sources: ["site", "checkout_proprio"], integrityClass: "PARTIAL", label: "Início de checkout", definition: open30.length ? "Hotmart/assinatura fora (não observáveis)." + v2Note : "Sem dias com vendas abertas na janela." }),
     checkoutCompletion: (() => {
-      const dm = windowDays(now, 30, { endOffset: 1, zone: "utc" }); // 24 h of maturation
+      const dm = windowDays(now, 30, { endOffset: 1 }); // 24 h of maturation, same São Paulo days for both sides
       const opens = v2 ? openDays(daily, dm) : [];
       const den = v2 ? sumDaily(daily, "own_checkout_started", dm) : null;
-      const num = sumOwn(own, windowDays(now, 30, { endOffset: 1 })).total;
-      return describe({ ...common, value: opens.length ? ratio(num, den) : null, unit: "%", window: "30 dias terminando há 24 h (maturação), só dias abertos", numerator: "vendas aprovadas únicas do checkout próprio", denominator: "intenções transacionais únicas do checkout próprio", dedup: "sessão de compra / visitante+produto+provedor/30 min", sources: ["checkout_proprio"], integrityClass: "PARTIAL", label: "Conclusão de checkout (checkout próprio)", definition: opens.length ? "Coorte aproximada pela janela (vendas por dia BRT, intenções por dia UTC); Hotmart fora." : "Sem intenções em dias abertos na janela." });
+      const num = ownIn(dm);
+      return describe({ ...common, value: opens.length ? ratio(num, den) : null, unit: "%", window: "30 dias terminando há 24 h (maturação), só dias abertos", numerator: "vendas aprovadas únicas do checkout próprio", denominator: "intenções transacionais únicas do checkout próprio", dedup: "sessão de compra / visitante+produto+provedor/30 min", sources: ["checkout_proprio"], integrityClass: "PARTIAL", label: "Conclusão de checkout (checkout próprio)", definition: opens.length ? "Coorte aproximada pela janela (vendas e intenções no mesmo dia de São Paulo, sem ligação por tentativa); Hotmart fora." : "Sem intenções em dias abertos na janela." });
     })(),
     visitorToSale: (() => {
       const den = open30.length ? open30.reduce((a, d) => a + n(daily[d]?.site_visitors), 0) : null;
-      const brtOpen = open30; // UTC day keys of open days; own sales keyed by BRT day (boundary approximation)
-      const num = sumOwn(own, brtOpen).total;
+      // Same calendar on both sides: v2 visitor-days and own-checkout sales are both America/Sao_Paulo days.
+      const num = ownIn(open30);
       const hot = sumHotmart(sales, s30days).approved;
-      return describe({ ...common, value: open30.length ? ratio(num, den) : null, unit: "%", window: "30 dias, só dias com vendas abertas", numerator: "vendas aprovadas atribuídas ao site (checkout próprio)", denominator: "visitantes elegíveis (visitor-days) nos dias abertos", dedup: "sessão de compra / visitante por dia", sources: ["site", "checkout_proprio"], integrityClass: hot ? "PARTIAL" : v2Class, label: "Conversão visitante → venda", definition: (open30.length ? "Nunca usa páginas vistas nem dias fechados." : "Sem dias com vendas abertas na janela.") + (hot ? " Vendas Hotmart da janela não são atribuíveis por dia ao site: fora do numerador." : "") });
+      return describe({ ...common, value: open30.length ? ratio(num, den) : null, unit: "%", window: "30 dias, só dias com vendas abertas", numerator: "vendas aprovadas atribuídas ao site (checkout próprio)", denominator: "visitantes elegíveis (visitor-days) nos dias abertos", dedup: "sessão de compra / visitante por dia", sources: ["site", "checkout_proprio"], integrityClass: hot || num == null ? "PARTIAL" : v2Class, label: "Conversão visitante → venda", definition: (open30.length ? "Nunca usa páginas vistas nem dias fechados." : "Sem dias com vendas abertas na janela.") + (hot ? " Vendas Hotmart da janela não são atribuíveis por dia ao site: fora do numerador." : "") });
     })(),
   };
   return m;

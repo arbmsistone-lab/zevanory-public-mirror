@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readTextNormalized } from "./helpers/text.mjs";
 import {
-  combineSales, salesMetric, funnelMetrics, windowDays, mergeDaily, classifyHotmartProbe, hotmartLockState, hotmartModeText,
+  combineSales, salesMetric, brtDay, knownCount, hotmartEdgeDays, funnelMetrics, windowDays, mergeDaily, classifyHotmartProbe, hotmartLockState, hotmartModeText,
   evaluateBuyFlow, WAITLIST_CLICK_INSTRUMENTED, WAITLIST_CAPTURE_LIVE, LEAD_CAPTURE, CLASSES,
 } from "../scripts/audit/funnel-counting.mjs";
 import { evaluateInventory } from "../scripts/audit/autonomy-inventory.mjs";
@@ -47,7 +47,7 @@ test("vendas: janela por dia (BRT) e reembolsos à parte; previsão soma as duas
 });
 
 const funnel = (daily, extra = {}) => ({ generatedAt: at, daily, sources: { direto: { views: 100, checkout_intent: 20, hotmart_view: 5, subscribe_click: 1, lead_submit: 3, waitlist_cta_view: 7 } }, last7Days: { cleanVisitors: 50, leads: 2, leadsPending: 1, leadsConfirmed: 1 }, pages: {}, ...extra });
-const fullDaily = (fill) => Object.fromEntries(windowDays(now, 30, { zone: "utc" }).map((d) => [d, { site_visitors: 10, ...fill(d) }]));
+const fullDaily = (fill) => Object.fromEntries(windowDays(now, 30).map((d) => [d, { site_visitors: 10, ...fill(d) }]));
 
 test("lista de espera é interesse, nunca lead nem intenção; clique externo não medido = MISSING", () => {
   const m = funnelMetrics({ funnel: funnel(fullDaily(() => ({ waitlist_cta_view: 3 }))), sales: ledger({}), own: own({}), now, funnelAt: at, salesAt: at });
@@ -72,7 +72,7 @@ test("intenção transacional só com vendas abertas; série antiga fica LEGACY_
 });
 
 test("cinco conversões separadas: mesmas janelas, dias fechados fora, nunca páginas vistas", () => {
-  const d = windowDays(now, 30, { zone: "utc" });
+  const d = windowDays(now, 30);
   const openSet = new Set(d.slice(0, 10)); // 10 dias abertos
   const daily = fullDaily((day) => (openSet.has(day) ? { buy_cta_view: 20, own_checkout_started: 2 } : { waitlist_cta_view: 5 }));
   const byDay = Object.fromEntries([...openSet].map((day) => [day, { mercadopago: { confirmed: 1, grossCents: 19700 } }]));
@@ -171,13 +171,11 @@ test("flags fixadas ao código: nenhum emissor de waitlist_click; captura de lea
   assert.match(src, /url\.pathname==="\/material-gratuito\/inscrever"\) return handleLead/);
 });
 
-test("snapshot: Vendas (30d) soma checkout próprio + Hotmart com rótulo honesto; nada de 'Hotmart vendendo' constante", async () => {
-  const today = new Date().toISOString().slice(0, 10);
-  const genAt = new Date().toISOString();
-  const store = new Map([
-    ["zpc-funnel:v1:summary", JSON.stringify({ generatedAt: genAt, daily: { [today]: { site_visitors: 3, waitlist_cta_view: 2 } }, sources: { direto: { views: 9, checkout_intent: 4 } }, last7Days: { cleanVisitors: 5, leads: 1, leadsPending: 0, leadsConfirmed: 1 }, pages: {}, products: {}, ownCheckout: { mode: "production", counted: true, byDay: { [today]: { mercadopago: { confirmed: 1, grossCents: 19700 } } }, integrity: {} } })],
-    ["zpc:sales:v1:summary", JSON.stringify({ schema: "zevanory-sales/v1", updatedAt: genAt, totals: { approved: 1, grossCents: 24700 }, byDay: { [today]: { approved: 1, grossCents: 24700 } } })],
-  ]);
+// Runs the real snapshot main() against an in-memory KV and a closed-sales site; returns the snapshot.
+async function runSnapshot({ funnelSummary = null, ledgerSummary = null, salesOpen = false } = {}) {
+  const store = new Map();
+  if (funnelSummary) store.set("zpc-funnel:v1:summary", JSON.stringify(funnelSummary));
+  if (ledgerSummary) store.set("zpc:sales:v1:summary", JSON.stringify(ledgerSummary));
   const realFetch = globalThis.fetch, realLog = console.log;
   globalThis.fetch = async (u, o = {}) => {
     u = String(u);
@@ -188,7 +186,7 @@ test("snapshot: Vendas (30d) soma checkout próprio + Hotmart com rótulo honest
       if ((o.method || "GET") === "PUT") { store.set(k, o.body); return res(200, {}); }
       return store.has(k) ? res(200, store.get(k)) : res(404, "");
     }
-    if (u.includes("/api/sales/status")) return res(200, { open: false });
+    if (u.includes("/api/sales/status")) return res(200, { open: salesOpen });
     if (u.includes("/comprar/")) return res(200, "<h1>Vendas abrem em breve</h1>");
     return res(200, {});
   };
@@ -197,18 +195,88 @@ test("snapshot: Vendas (30d) soma checkout próprio + Hotmart com rótulo honest
   try {
     const { main, SNAPSHOT_KEY } = await import("../scripts/audit/command-center-snapshot.mjs");
     await main();
-    const snap = JSON.parse(store.get(SNAPSHOT_KEY));
-    assert.equal(snap.funnel.sales30.value, 2);
-    assert.equal(snap.funnel.sales30.source, "Checkout próprio (Mercado Pago/Asaas) + Hotmart");
-    assert.deepEqual([snap.funnel.sales30.parts.checkoutProprio.total, snap.funnel.sales30.parts.hotmart.total], [1, 1]);
-    assert.equal(snap.goals.find((g) => g.id === "first-sale").current, 2);
-    assert.equal(snap.funnel.intents30.value, null, "vendas fechadas: sem intenção transacional");
-    assert.equal(snap.funnel.legacyMixedClicks30.value, 4);
-    assert.equal(snap.funnel.leads7.value, 1); assert.match(snap.funnel.leads7.source, /confirmados/);
-    assert.ok(snap.funnel.conversions && Object.keys(snap.funnel.conversions).length === 5);
-    assert.doesNotMatch(snap.operations.checkoutMode, /Hotmart vendendo/);
-    assert.match(snap.operations.checkoutMode, /^Vendas fechadas/);
-    assert.ok(snap.operations.buyFlow.every((b) => b.state === "closed" && b.expected === "closed" && b.ok));
-    assert.ok(!snap.recommendations.some((r) => /checkout da Hotmart/.test(r.action)), "nunca recomenda contornar a trava");
+    return JSON.parse(store.get(SNAPSHOT_KEY));
   } finally { globalThis.fetch = realFetch; console.log = realLog; }
+}
+// A day well inside every window, in both calendars (São Paulo for own/v2, UTC key for the Hotmart ledger).
+const inside = () => brtDay(Date.now() - 5 * 864e5);
+const fSummary = (ownCheckout, day = inside()) => ({ generatedAt: new Date().toISOString(), daily: { [day]: { site_visitors: 3, waitlist_cta_view: 2 } }, sources: { direto: { views: 9, checkout_intent: 4 } }, last7Days: { cleanVisitors: 5, leads: 1, leadsPending: 0, leadsConfirmed: 1 }, pages: {}, products: {}, ownCheckout });
+const lSummary = (byDay) => ({ schema: "zevanory-sales/v1", updatedAt: new Date().toISOString(), totals: {}, byDay });
+const BANNED = /wa\.me|5588992545413|558892545413/i;
+
+test("snapshot: Vendas (30d) soma checkout próprio + Hotmart com rótulo honesto; nada de 'Hotmart vendendo' constante", async () => {
+  const day = inside();
+  const snap = await runSnapshot({ funnelSummary: fSummary({ mode: "production", counted: true, byDay: { [day]: { mercadopago: { confirmed: 1, grossCents: 19700 } } }, integrity: {} }), ledgerSummary: lSummary({ [day]: { approved: 1, grossCents: 24700 } }) });
+  assert.equal(snap.funnel.sales30.value, 2);
+  assert.equal(snap.funnel.sales30.source, "Checkout próprio (Mercado Pago/Asaas) + Hotmart");
+  assert.deepEqual([snap.funnel.sales30.parts.checkoutProprio.total, snap.funnel.sales30.parts.hotmart.total], [1, 1]);
+  assert.equal(snap.goals.find((g) => g.id === "first-sale").current, 2);
+  assert.equal(snap.revenue.grossTotalCents.value, 44400);
+  assert.equal(snap.funnel.intents30.value, null, "vendas fechadas: sem intenção transacional");
+  assert.equal(snap.funnel.legacyMixedClicks30.value, 4);
+  assert.equal(snap.funnel.leads7.value, 1); assert.match(snap.funnel.leads7.source, /confirmados/);
+  assert.ok(snap.funnel.conversions && Object.keys(snap.funnel.conversions).length === 5);
+  assert.doesNotMatch(snap.operations.checkoutMode, /Hotmart vendendo/);
+  assert.match(snap.operations.checkoutMode, /^Vendas fechadas/);
+  assert.ok(snap.operations.buyFlow.every((b) => b.state === "closed" && b.expected === "closed" && b.ok));
+  assert.ok(!snap.recommendations.some((r) => /checkout da Hotmart/.test(r.action)), "nunca recomenda contornar a trava");
+});
+
+test("falso zero proibido: fonte desconhecida propaga null/PARTIAL a marcos, previsão, recomendação e lista do dono", async () => {
+  assert.deepEqual(knownCount({ value: 0, integrityClass: "PARTIAL" }), { value: null, integrityClass: "PARTIAL", lowerBound: false });
+  assert.deepEqual(knownCount({ value: 2, integrityClass: "PARTIAL" }), { value: 2, integrityClass: "PARTIAL", lowerBound: true });
+  assert.deepEqual(knownCount({ value: 0, integrityClass: "COMPLETE" }), { value: 0, integrityClass: "COMPLETE", lowerBound: false });
+  const unknown = await runSnapshot({ funnelSummary: fSummary({ mode: "production", counted: false, byDay: {} }), ledgerSummary: lSummary({}) });
+  for (const id of ["first-sale", "paid-traffic", "fortnight", "month"]) {
+    const g = unknown.goals.find((x) => x.id === id);
+    assert.equal(g.current, null, id + ": nunca 0 com fonte faltando"); assert.equal(g.integrityClass, "PARTIAL", id);
+  }
+  assert.equal(unknown.forecast.status, "unverified");
+  assert.ok(unknown.recommendations.some((r) => /NÃO VERIFICADAS/.test(r.title)));
+  assert.ok(!unknown.recommendations.some((r) => /\(0\/7 vendas\)/.test(r.title)));
+  assert.match(unknown.autonomy.ownerOnly.find((x) => /tráfego pago/i.test(x.what)).status, /não verificadas/);
+  assert.equal(unknown.revenue.grossTotalCents.value, null);
+  const lower = await runSnapshot({ funnelSummary: fSummary({ mode: "production", counted: false, byDay: {} }), ledgerSummary: lSummary({ [inside()]: { approved: 1, grossCents: 100 } }) });
+  const g = lower.goals.find((x) => x.id === "first-sale");
+  assert.deepEqual([g.current, g.lowerBound, g.integrityClass], [1, true, "PARTIAL"], "parcial > 0 é limite inferior, declarado");
+  assert.ok(lower.recommendations.some((r) => r.title === "Tráfego pago bloqueado (≥1/7 vendas)"));
+  assert.equal(lower.forecast.status, "unverified");
+  assert.equal(lower.revenue.grossTotalCents.value, null, "receita parcial não vira meta atingida/medida");
+  assert.equal(lower.goals.find((x) => x.id === "month").current, null);
+});
+
+test("métricas antigas só-Hotmart removidas; nenhum número/link de WhatsApp no snapshot nem no código novo", async () => {
+  const snap = await runSnapshot({ funnelSummary: fSummary({ mode: "test", counted: false, byDay: {} }), ledgerSummary: lSummary({}) });
+  for (const k of ["netMonthCents", "netTotalCents", "feesCents", "affiliateCents", "refunds", "refundedCents", "avgTicketCents", "abandoned", "declined", "byProduct", "bySource", "byPayment", "recent"]) assert.ok(!(k in snap.revenue), "removida: " + k);
+  const text = JSON.stringify(snap);
+  assert.doesNotMatch(text, /Hotmart \(postback autenticado\)/, "nenhuma métrica rotulada só Hotmart");
+  assert.doesNotMatch(text, BANNED);
+  for (const f of ["../scripts/audit/funnel-counting.mjs", "../scripts/audit/autonomy-inventory.mjs", "../scripts/ci/mutants_funnel_v2.py", "../.github/workflows/funnel-v2.yml", "./integration/funnel-own-sales-postgres.test.mjs", "../worker/funnel.mjs"])
+    assert.doesNotMatch(readTextNormalized(new URL(f, import.meta.url)), BANNED, f);
+  // Lines this PR adds to the sales Worker (exposure + server-side intent) carry no contact link.
+  const spw = readTextNormalized(new URL("../worker/sales-public-worker.mjs", import.meta.url)).split("\n").filter((l) => /own_checkout_started|toggleOpen|extra=null|\{cta:/.test(l));
+  assert.ok(spw.length >= 3); for (const l of spw) assert.doesNotMatch(l, BANNED);
+});
+
+test("intenção legada removida: abrir /comprar/ não conta nada; só a sessão criada no servidor conta", async () => {
+  const src = readTextNormalized(new URL("../worker/sales-public-worker.mjs", import.meta.url));
+  assert.doesNotMatch(src, /"checkout_intent"/, "nenhum emissor de checkout_intent");
+  hits.length = 0;
+  await worker.fetch(req("/comprar/ZEV-IA-011"), env(true), ctx); await Promise.all(waits);
+  assert.equal(hits.length, 0, "GET da página de compra com vendas abertas não é intenção");
+});
+
+test("calendário único: Hotmart (dia UTC) na borda da janela torna o total PARTIAL; conversão visitante→venda PARTIAL com Hotmart", () => {
+  const days = windowDays(now, 30);
+  const [first, next] = hotmartEdgeDays(days);
+  assert.equal(first, days[days.length - 1]); assert.equal(next, "2026-10-24");
+  const edge = salesMetric(combineSales({ sales: ledger({ [first]: { approved: 1 } }), own: own({}), days }), { window: "30d", updatedAt: at, now, definition: "V" });
+  assert.equal(edge.integrityClass, "PARTIAL");
+  const mid = salesMetric(combineSales({ sales: ledger({ [days[10]]: { approved: 1 } }), own: own({}), days }), { window: "30d", updatedAt: at, now, definition: "V" });
+  assert.equal(mid.integrityClass, "COMPLETE");
+  const daily = fullDaily(() => ({ buy_cta_view: 5 }));
+  const ok = funnelMetrics({ funnel: funnel(daily), sales: ledger({}), own: own({}), now, funnelAt: at, salesAt: at });
+  assert.equal(ok.conversions.visitorToSale.integrityClass, "COMPLETE", "mesmo calendário dos dois lados");
+  const withHot = funnelMetrics({ funnel: funnel(daily), sales: ledger({ [days[3]]: { approved: 1 } }), own: own({}), now, funnelAt: at, salesAt: at });
+  assert.equal(withHot.conversions.visitorToSale.integrityClass, "PARTIAL");
 });
