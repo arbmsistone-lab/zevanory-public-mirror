@@ -35,13 +35,14 @@
       "handler_evidence": [
         "worker/cloudflare-worker.compat.mjs:504-514",
         "worker/data-backup.mjs:1-13",
-        "worker/data-backup.mjs:21",
-        "worker/data-backup.mjs:69",
-        "worker/data-backup.mjs:139",
-        "worker/data-backup.mjs:141-166",
-        "worker/data-backup.mjs:153",
-        "worker/data-backup.mjs:180-184",
-        "worker/data-backup.mjs:221"
+        "worker/data-backup.mjs:22",
+        "worker/data-backup.mjs:85",
+        "worker/data-backup.mjs:154",
+        "worker/data-backup.mjs:156-181",
+        "worker/data-backup.mjs:168",
+        "worker/data-backup.mjs:199",
+        "worker/data-backup.mjs:202-213",
+        "worker/data-backup.mjs:249"
       ],
       "counter_proof_test": "tests/test_no_forged_production_input.py::test_nf18_allow_entry_is_bound_to_endpoint_and_method",
       "risk_acceptance": {
@@ -50,7 +51,38 @@
         "at": "",
         "reference": ""
       },
-      "notes": "Strict backup scope (Sol 2b): export/collect into ZEVANORY-owned copies (zevanory_kv_backup, zpc:backup:v1:*) keyed by day, manifest + sha256 integrity check. It never restores, deletes or alters production data: the restore DRILL writes only to the isolated schema zevanory_restore_drill and drops it after comparison (data-backup.mjs:141-166); deletions are limited to its own backup rows older than 14 days (:69) and its own 1 h drill key (:184). Credentials are never copied (:21). No webhook, checkout, credential change or sales reopening anywhere in data-backup.mjs. Sol must confirm the drill/retention reading of 'never restore/delete'."
+      "notes": "Policy is in backup_policy (schema). Restore drill only in the isolated schema zevanory_restore_drill, dropped after comparison; retention deletes only own zevanory_kv_backup rows older than 14 days and only after today's copy is proven (manifest + integrity + drill), never the newest valid copy (planRetention). Residual: the Neon->KV bundles expire by KV TTL (8 days); if backups stop for 8 days those expire passively.",
+      "backup_policy": {
+        "allowed_operations": [
+          "export_to_own_copies_source_unmodified",
+          "manifest_and_hashes",
+          "restore_drill_isolated_schema:zevanory_restore_drill",
+          "delete_own_copies_older_than_14_days"
+        ],
+        "blocked_operations": [
+          "restore_over_operational_tables",
+          "delete_operational_data",
+          "modify_operational_data"
+        ],
+        "retention": {
+          "own_copies_only": true,
+          "max_age_days": 14,
+          "never_delete_last_valid_copy": true,
+          "proof_before_delete": [
+            "manifest",
+            "integrity",
+            "drill"
+          ]
+        },
+        "enforced_by": [
+          "worker/data-backup.mjs:36-46",
+          "worker/data-backup.mjs:202-213"
+        ],
+        "tests": [
+          "tests/data-backup.test.mjs::retention with only expired copies keeps the newest valid one",
+          "tests/data-backup.test.mjs::a corrupt newest copy blocks deletion of older ones"
+        ]
+      }
     },
     {
       "file": "scripts/ops/voice-eval.mjs",
@@ -306,14 +338,17 @@
     },
     {
       "file": "scripts/t2/compose-creatives.mjs",
-      "line_pattern": "fetch\\(`\\$\\{ORIGIN\\}/api/commercial/creative/upload\\?product=\\$\\{slug\\}&angle=\\$\\{ANGLE\\}`, \\{",
+      "line_pattern": "fetch\\(`\\$\\{ORIGIN\\}/api/commercial/creative/(?:upload\\?product=\\$\\{slug\\}&angle=\\$\\{ANGLE\\}`, \\{|background\\?product=|factory/tick\\?finalize=1`)",
       "classification": "REAL_RISK",
       "status": "OPEN_NOT_HOMOLOGATED",
-      "reason": "Signed call (upload-v1 HMAC bound to slug and body hash) that stores creatives for approval and archives duplicate drafts in the commercial queue; signed calls are never allow-listable under R4 and it shares the factory secret.",
+      "reason": "Signed calls to the control plane: upload (upload-v1 HMAC bound to slug and body hash; stores creatives for approval and archives duplicate drafts) and background + factory finalize (factoryHeaders(): the path-agnostic factory HMAC that also authorizes /api/commercial/publish/*). Signed calls are never allow-listable under R4.",
       "evidence": [
         "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:286-299",
         "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:332-385",
-        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:1011-1027"
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:1011-1027",
+        "zevanory-product-control-edge@c1182c54d724997601a1ea6c13666e389ef38558 cf-worker/worker.ts:192-205",
+        "scripts/t2/compose-creatives.mjs:108",
+        "scripts/t2/compose-creatives.mjs:143"
       ],
       "required_fix": "Upload-only secret and replay store in zevanory-product-control-edge; then re-review.",
       "independent_control": {

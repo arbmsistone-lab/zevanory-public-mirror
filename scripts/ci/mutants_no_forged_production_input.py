@@ -33,7 +33,7 @@ import mutant_classifier as mc  # noqa: E402  (shared classifier, unmodified)
 
 SCANNER = REPO / "scripts/ci/no_forged_production_input.py"
 TEST_MODULE = "tests.test_no_forged_production_input"
-BASELINE_TOTAL = 23
+BASELINE_TOTAL = 25
 
 
 def P(test, label):
@@ -61,14 +61,17 @@ MUTANTS = {
          "secondary": [S("NF07", "NF07a", "the wrapper fixture is an unsigned POST to /api/internal: INBOUND only"),
                        S("NF08", "NF08a", "the env-tainted fixture asserts R4-INBOUND on /api/internal"),
                        S("NF16", "NF16a", "curl -d to /api/internal is flagged only as INBOUND, so no hit remains"),
-                       S("NF11", "NF11a", "the allow-listed /api/internal hit vanishes, the entry turns stale, rc 2")],
+                       S("NF11", "NF11a", "the allow-listed /api/internal hit vanishes, the entry turns stale, rc 2"),
+                       S("NF24", "NF24a", "the unsigned control-plane POST is flagged only as R4-INBOUND")],
          "broad_reason": "inbound paths are the main R4 signal: seven tests depend on them"}),
     # Subdomains of zevanory.api.br no longer production (edge., controle.).
     "M03_subdomains_not_production": (
         'r"(?<![\\w.-])(?:[a-z0-9-]+\\.)*zevanory\\.api\\.br(?![\\w-])"', 'r"(?<![\\w.-])zevanory\\.api\\.br(?![\\w-])"',
         {"primary": [P("NF01", "NF01a")],
          "secondary": [S("NF00", "NF00a", "the exit-code fixture posts to edge.zevanory.api.br"),
-                       S("NF17", "NF17a", "the signed-only fixture posts to controle.zevanory.api.br")]}),
+                       S("NF17", "NF17a", "the signed-only fixture posts to controle.zevanory.api.br"),
+                       S("NF24", "NF24a", "the control-plane fixture posts to controle.zevanory.api.br")],
+         "broad_reason": "subdomain hosts are used by four fixtures (edge, controle twice)"}),
     # Production workers.dev names dropped.
     "M04_production_workers_dev_dropped": (
         '\n    r"|(?<![\\w.-])(?!zevanory-certification\\.)(?:[a-z0-9-]+\\.)+(?:girolocal-rb|zevanory)\\.workers\\.dev(?![\\w-])"',
@@ -175,6 +178,15 @@ MUTANTS = {
     "M28_impersonation_accepted": (
         '\n          and _text(idn["credential"], 3) and idn["impersonates"] == [],', '\n          and _text(idn["credential"], 3),',
         {"primary": [P("NF19", "NF19d")]}),
+    "M30_backup_policy_unchecked": (
+        '    if "/backup" in e["endpoint"] or "backup_policy" in e:\n        validate_backup_policy(e.get("backup_policy"), root, w)', '',
+        {"primary": [P("NF23", "NF23a")]}),
+    "M31_last_copy_rule_unchecked": (
+        'and r["never_delete_last_valid_copy"] is True', '',
+        {"primary": [P("NF23", "NF23c")]}),
+    "M32_commercial_route_not_inventoried": (
+        '|/api/commercial(?![\\w-])', '',
+        {"primary": [P("NF24", "NF24a")]}),
     "M29_evidence_unchecked": (
         'all(_evidence_ok(root, x) for x in ev)', 'True',
         {"primary": [P("NF19", "NF19f")]}),

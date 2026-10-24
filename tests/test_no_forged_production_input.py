@@ -44,6 +44,8 @@ def wf(steps, env="", gate=None, job_if=None):
 
 
 SUPPORT = {"tests/t_counter.py": "def test_counter():\n    pass\n",
+           "tests/t_backup.test.mjs": 'test("keeps newest valid", () => {});\ntest("corrupt blocks", () => {});\n',
+           "worker/backup.mjs": "// retention fixture\nexport function planRetention() {}\n",
            "worker/h.mjs": "// handler fixture\nexport const a = 1;\nexport const b = 2;\n"}
 
 
@@ -65,9 +67,22 @@ def entry(**over):
          "payload": {"controlled": True, "writes": True, "idempotent": True,
                      "audit_trail": "fixture report key with counts only", "secrets_in_audit": False},
          "handler_evidence": ["worker/h.mjs:1-3"], "counter_proof_test": "tests/t_counter.py::test_counter",
-         "risk_acceptance": {"status": "PENDING_OWNER", "by": "", "at": "", "reference": ""}}
+         "risk_acceptance": {"status": "PENDING_OWNER", "by": "", "at": "", "reference": ""},
+         "backup_policy": backup_policy()}
     e.update(over)
     return e
+
+
+def backup_policy(**over):
+    bp = {"allowed_operations": ["export_to_own_copies_source_unmodified", "manifest_and_hashes",
+                                 "restore_drill_isolated_schema:zevanory_restore_drill", "delete_own_copies_older_than_14_days"],
+          "blocked_operations": ["restore_over_operational_tables", "delete_operational_data", "modify_operational_data"],
+          "retention": {"own_copies_only": True, "max_age_days": 14, "never_delete_last_valid_copy": True,
+                        "proof_before_delete": ["manifest", "integrity", "drill"]},
+          "enforced_by": ["worker/backup.mjs:1-2"],
+          "tests": ["tests/t_backup.test.mjs::keeps newest valid", "tests/t_backup.test.mjs::corrupt blocks"]}
+    bp.update(over)
+    return bp
 
 
 def opened(**over):
@@ -314,7 +329,7 @@ class ForgedInputTests(Base):
 
     def test_nf17_signed_post_to_non_inbound_production_path_fails(self):
         t = self.tree({".github/workflows/a.yml": wf(
-            "          curl -X POST -H \"stripe-signature: t=1,v1=$S\" https://controle.zevanory.api.br/api/commercial/tick\n")})
+            "          curl -X POST -H \"stripe-signature: t=1,v1=$S\" https://controle.zevanory.api.br/api/orders/tick\n")})
         h = t.hits()
         self.assertEqual(self.rules(h), {"R4-SIGNED"}, f"NF17a a signature header alone fails: {h}")
 
@@ -392,6 +407,34 @@ class ForgedInputTests(Base):
         rc, out = self.tree({".github/workflows/a.yml": wf(signed, gate="R4_FIXTURE_OWNER_APPROVAL")},
                             allow_doc(opened=[opened(risk_acceptance={"status": "ACCEPTED", "by": "owner", "at": "2026-10-24", "reference": "chat"})])).main()
         self.assertEqual(rc, 2, "NF22d acceptance is a separate decision, never recorded on an open risk: " + out)
+
+
+    def test_nf23_backup_policy_is_schema_and_protects_the_last_copy(self):
+        files = {".github/workflows/a.yml": wf(
+            "          curl -X POST -H \"x-backup-token: $T\" https://zevanory.api.br/api/internal/backup/run\n")}
+        e = entry()
+        del e["backup_policy"]
+        rc, out = self.tree(files, allow_doc([e])).main()
+        self.assertEqual(rc, 2, "NF23a a backup entry without backup_policy fails: " + out)
+        rc, out = self.tree(files, allow_doc([entry(backup_policy=backup_policy(
+            blocked_operations=["restore_over_operational_tables", "delete_operational_data"]))])).main()
+        self.assertEqual(rc, 2, "NF23b modifying operational data must be a blocked operation: " + out)
+        rc, out = self.tree(files, allow_doc([entry(backup_policy=backup_policy(retention={
+            "own_copies_only": True, "max_age_days": 14, "never_delete_last_valid_copy": False,
+            "proof_before_delete": ["manifest", "integrity", "drill"]}))])).main()
+        self.assertEqual(rc, 2, "NF23c retention must never delete the last valid copy: " + out)
+        rc, out = self.tree(files, allow_doc([entry(backup_policy=backup_policy(allowed_operations=[
+            "export_to_own_copies_source_unmodified", "manifest_and_hashes", "restore_into_operational_tables",
+            "delete_own_copies_older_than_14_days"]))])).main()
+        self.assertEqual(rc, 2, "NF23d only the four allowed backup operations: " + out)
+        rc, out = self.tree(files, allow_doc([entry(backup_policy=backup_policy(tests=["tests/t_backup.test.mjs::missing", "tests/t_backup.test.mjs::corrupt blocks"]))])).main()
+        self.assertEqual(rc, 2, "NF23e the retention tests must exist: " + out)
+
+    def test_nf24_control_plane_commercial_route_is_inventoried(self):
+        t = self.tree({".github/workflows/a.yml": wf(
+            "          curl -sS -X POST https://controle.zevanory.api.br/api/commercial/creative/factory/tick -H 'content-type: application/json' -d '{}'\n")})
+        h = t.hits()
+        self.assertEqual(self.rules(h), {"R4-INBOUND"}, f"NF24a unsigned POST to the control plane commercial route: {h}")
 
 
 if __name__ == "__main__":

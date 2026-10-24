@@ -28,7 +28,8 @@ Requests recognised (method inferred; only POST, PUT, PATCH, DELETE or an unknow
   that an invoking workflow sets to a production URL.
 
 Rules (a hit is a mutating request whose target resolves to a production host and ...)
-  R4-INBOUND    ... whose path is a webhook or inbound endpoint (/api/webhooks/*, /api/internal/*, inbound, meta,
+  R4-INBOUND    ... whose path is a webhook, inbound or control endpoint (/api/webhooks/*, /api/internal/*,
+                /api/commercial/* on the control plane, inbound, meta,
                 whatsapp, resend, mercadopago, asaas, webhook);
   R4-SIGNED     ... that carries a signature/HMAC header (x-hub-signature[-256], x-signature, svix-*, webhook-signature,
                 stripe-signature, any x-*-signature);
@@ -69,7 +70,7 @@ PROD_HOST_RE = re.compile(
     r"(?<![\w.-])(?:[a-z0-9-]+\.)*zevanory\.api\.br(?![\w-])"
     r"|(?<![\w.-])(?!zevanory-certification\.)(?:[a-z0-9-]+\.)+(?:girolocal-rb|zevanory)\.workers\.dev(?![\w-])", re.I)
 INBOUND_RE = re.compile(
-    r"/api/webhooks?(?![\w-])|/api/internal(?![\w-])|inbound|(?<![\w-])meta(?![\w-])|whatsapp|resend"
+    r"/api/webhooks?(?![\w-])|/api/internal(?![\w-])|/api/commercial(?![\w-])|inbound|(?<![\w-])meta(?![\w-])|whatsapp|resend"
     r"|mercado[-_]?pago|asaas|webhook", re.I)
 SIG_HEADER_RE = re.compile(
     r"(?<![\w-])(?:x-hub-signature(?:-256)?|x-signature|svix-(?:signature|id|timestamp)|webhook-signature"
@@ -91,7 +92,12 @@ DEFAULT_ALLOW = "scripts/ci/no_forged_production_input_allow.json"
 # field and validated here. Risk acceptance is a SEPARATE field and is never implied by an allow entry.
 ALLOW_REQUIRED = {"file", "line_pattern", "endpoint", "method", "identity", "purpose", "least_privilege", "effects",
                   "data_scope", "payload", "handler_evidence", "counter_proof_test", "risk_acceptance"}
-ALLOW_OPTIONAL = {"notes"}
+ALLOW_OPTIONAL = {"notes", "backup_policy"}
+# Sol 165: the backup policy is SCHEMA, not prose. Required on every entry whose endpoint is a backup route.
+BACKUP_ALLOWED_OPS = {"export_to_own_copies_source_unmodified", "manifest_and_hashes",
+                      "restore_drill_isolated_schema:zevanory_restore_drill", "delete_own_copies_older_than_14_days"}
+BACKUP_BLOCKED_OPS = {"restore_over_operational_tables", "delete_operational_data", "modify_operational_data"}
+BACKUP_PROOF = {"manifest", "integrity", "drill"}
 EFFECT_KEYS = {"synthetic_financial_transaction", "opens_sales", "commercial_effect", "triggers_webhook_or_checkout",
                "changes_credentials_or_config"}
 DATA_SCOPE_KEYS = {"alters_production_data", "deletes_production_data", "restores_into_production"}
@@ -865,10 +871,14 @@ def _evidence_ok(root, ref):
 
 
 def _test_ok(root, ref):
-    m = re.fullmatch(r"([\w./-]+\.py)::(test_\w+)", str(ref))
+    """file.py::test_name (a def) or file.mjs::<node:test name> (a test("name" call) that exists."""
+    m = re.fullmatch(r"([\w./-]+\.(py|mjs))::(.+)", str(ref))
     if not m or not (Path(root) / m.group(1)).is_file():
         return False
-    return re.search(r"def " + re.escape(m.group(2)) + r"\(", (Path(root) / m.group(1)).read_text(encoding="utf-8")) is not None
+    src = (Path(root) / m.group(1)).read_text(encoding="utf-8")
+    if m.group(2) == "py":
+        return re.fullmatch(r"test_\w+", m.group(3)) is not None and re.search(r"def " + re.escape(m.group(3)) + r"\(", src) is not None
+    return ('test("' + m.group(3) + '"') in src
 
 
 def _acceptance(e, where, allowed_status):
@@ -914,7 +924,28 @@ def validate_allowed(e, root, i):
     _need(isinstance(ev, list) and ev and all(_evidence_ok(root, x) for x in ev),
           f"{w}: handler_evidence must list existing file:line references")
     _need(_test_ok(root, e["counter_proof_test"]), f"{w}: counter_proof_test must name an existing test (file.py::test_x)")
+    if "/backup" in e["endpoint"] or "backup_policy" in e:
+        validate_backup_policy(e.get("backup_policy"), root, w)
     _acceptance(e, w, {"PENDING_OWNER", "ACCEPTED"})
+
+
+def validate_backup_policy(bp, root, w):
+    """Sol 165: allowed and blocked operations, and a retention that never deletes the last intact copy."""
+    _need(isinstance(bp, dict) and set(bp) == {"allowed_operations", "blocked_operations", "retention", "enforced_by", "tests"},
+          f"{w}: backup_policy must have allowed_operations, blocked_operations, retention, enforced_by, tests")
+    _need(isinstance(bp["allowed_operations"], list) and set(bp["allowed_operations"]) == BACKUP_ALLOWED_OPS,
+          f"{w}: backup allowed_operations must be exactly {sorted(BACKUP_ALLOWED_OPS)}")
+    _need(isinstance(bp["blocked_operations"], list) and BACKUP_BLOCKED_OPS <= set(bp["blocked_operations"]),
+          f"{w}: backup blocked_operations must include {sorted(BACKUP_BLOCKED_OPS)}")
+    r = bp["retention"]
+    _need(isinstance(r, dict) and set(r) == {"own_copies_only", "max_age_days", "never_delete_last_valid_copy", "proof_before_delete"}
+          and r["own_copies_only"] is True and r["max_age_days"] == 14 and r["never_delete_last_valid_copy"] is True
+          and isinstance(r["proof_before_delete"], list) and set(r["proof_before_delete"]) == BACKUP_PROOF,
+          f"{w}: retention must be own copies only, 14 days, never the last valid copy, proof = {sorted(BACKUP_PROOF)}")
+    _need(isinstance(bp["enforced_by"], list) and bp["enforced_by"] and all(_evidence_ok(root, x) for x in bp["enforced_by"]),
+          f"{w}: backup_policy.enforced_by must list existing file:line references")
+    _need(isinstance(bp["tests"], list) and len(bp["tests"]) >= 2 and all(_test_ok(root, t) for t in bp["tests"]),
+          f"{w}: backup_policy.tests must name the existing retention tests")
 
 
 def validate_open(e, root, i):
