@@ -37,3 +37,12 @@ jobs:
             grep -iE '^(=== |clear-site-data|cache-control|x-deployment-sha|cf-ray|HTTP/)' "$RUNNER_TEMP/headers.txt"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          # Anotações legíveis pela API de check-runs (logs brutos não são acessíveis ao executor).
+          cur=""
+          while IFS= read -r line; do
+            case "$line" in
+              "=== "*) cur="${line#=== }";;
+              HTTP/*|[Cc]lear-[Ss]ite-[Dd]ata:*|[Cc]ache-[Cc]ontrol:*|x-deployment-sha:*|cf-ray:*|"--- body"*) echo "::notice title=${cur}::${line}";;
+            esac
+          done < "$RUNNER_TEMP/headers.txt"
+          grep -E '^/\*|^\(\(' "$RUNNER_TEMP/headers.txt" | head -4 | while IFS= read -r b; do echo "::notice title=body::${b:0:150}"; done
