@@ -5,14 +5,21 @@ import os
 import re
 
 with open("wrangler.central-fix.jsonc", encoding="utf-8") as f:
-    vars = json.load(f).get("vars", {})
+    config = json.load(f)
+vars = config.get("vars", {})
 
 assert str(vars.get("SALE_GLOBALLY_ENABLED", "")).lower() == "false", "DEPLOY_MUST_KEEP_SALES_CLOSED"
-assert str(vars.get("CERTIFICATION_PILOT_PRODUCTION_ALLOWED", "")).lower() == "false", "NO_PRODUCTION_PILOT"
+# R9 (Sol 164 §4): o piloto de certificação não existe na produção. Exige AUSÊNCIA (antes: sandbox/false).
+_runtime_cfg = vars.get("ZEVANORY_RUNTIME_CONFIG", {})
+_pilot = sorted(k for k in vars if str(k).startswith("CERTIFICATION_PILOT_"))
+_pilot += sorted("ZEVANORY_RUNTIME_CONFIG." + k for k in (_runtime_cfg if isinstance(_runtime_cfg, dict) else {}) if str(k).startswith("CERTIFICATION_PILOT_"))
+assert not _pilot, "NO_PRODUCTION_PILOT_BINDING:" + ",".join(_pilot)
+# Sem keep_vars o deploy apaga as vars do painel (inclusive uma CERTIFICATION_PILOT_ENABLED criada à mão):
+# https://developers.cloudflare.com/workers/wrangler/configuration/#source-of-truth
+assert config.get("keep_vars") is not True, "DASHBOARD_VARS_MUST_NOT_SURVIVE_DEPLOY"
 whatsapp_mode = str(vars.get("WHATSAPP_SALES_ENABLED", "")).lower()
 assert whatsapp_mode in ("false", "true"), "WHATSAPP_SALES_MODE_INVALID"
 assert str(vars.get("ASAAS_ENV", "")).lower() == "sandbox", "ASAAS_ENV_MUST_BE_SANDBOX"
-assert str(vars.get("CERTIFICATION_PILOT_ENV", "")).lower() == "sandbox", "CERTIFICATION_PILOT_MUST_BE_SANDBOX"
 assert str(vars.get("PAYMENT_PROVIDER", "")).lower() == "mercadopago", "PRODUCTION_PROVIDER_CHANGED"
 
 authorized = os.getenv("ZEVANORY_LAUNCH_AUTHORIZATION", "") == "AUTORIZO COMPRA REAL"
@@ -39,6 +46,7 @@ else:
     assert vars.get("PRE_SALE_GATES_APPROVED") == "false", "PRE_SALE_GATE_MUST_BE_FALSE"
     assert "MERCADOPAGO_PRODUCTION_ACCOUNT_HASH16" not in runtime, "PRODUCTION_HASH_WITHOUT_AUTH"
 
+print("PRODUCTION_PILOT_BINDINGS=ABSENT")
 print("CORE_DEPLOY_FINANCIAL_BOUNDARY=PASS")
 print("FINANCIAL_SECRETS_MUTATION=DECOUPLED")
 print("SALES_DEPLOYED_CLOSED=PASS")

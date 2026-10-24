@@ -12,13 +12,10 @@ concurrency:
 jobs:
   diagnostic:
     environment: producao-critica  # B01 M1: segredos só no Environment (gh-pages)
-    if: ${{ github.ref == 'refs/heads/gh-pages' && (github.run_attempt == 1 && (github.event_name == 'workflow_dispatch' || (github.head_ref == 'fix/mp-buyer-identity-diagnostic-20261005' && github.event.pull_request.head.repo.full_name == github.repository))) }}  # B01 patch 05b
+    # Substituído por sandbox-identity-attest.yml (mesma verificação seller/buyer test_user, em sandbox-financial-approved).
+    if: ${{ false }} # Permanently retired: F2 item 9 (roteiro 3.1 seção 7): credenciais sandbox nunca em Environment de produção; fluxo sandbox = certification-isolated-deploy + mercadopago-combo-sandbox (sandbox-financial-approved)
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    env:
-      MERCADOPAGO_TEST_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
-      MERCADOPAGO_TEST_BUYER_EMAIL: ${{ secrets.MERCADOPAGO_TEST_BUYER_EMAIL }}
-      MERCADOPAGO_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}'}

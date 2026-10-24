@@ -12,10 +12,34 @@ WF = str(REPO / '.github/workflows'); MI = REPO / 'scripts/ci/merge_impact.py'; 
 EVAL_YML = REPO / '.github/workflows/merge-impact-evaluator.yml'
 ALT833 = [l for l in pathlib.Path(L833).read_text().split() if l]
 SHA = '9e426ffc996a3b01422d21fe9085b103e46d31f6'
+# Replay do #833 FIXADO no conjunto de workflows da época (o GitHub avalia os gatilhos de push com os YAML do commit
+# empurrado: o merge be47edb3). O gabarito é congelado; o conjunto de workflows também precisa ser, senão qualquer
+# workflow novo com push em gh-pages (ex.: guarda R4 no-forged-production-input) muda a contagem sem o avaliador mudar.
+# Fail-closed: commit ausente (checkout raso) ou árvore divergente derruba a suíte; nunca cai para os YAML atuais.
+SHA833 = 'be47edb3b6636291cb7f89ea70ca8412f4a1572f'
+TREE833 = '54318ba86818bd2ca2f2023e7336d03d9ebb92cb'  # git rev-parse be47edb3:.github/workflows (176 YAML)
+_WF833_TMP = tempfile.TemporaryDirectory()
 
-def rodar(changed, head=None, removed=None):
+def _extrair_wf833():
+    g = ['git', '-C', str(REPO)]
+    arvore = subprocess.run(g + ['rev-parse', SHA833 + ':.github/workflows'], capture_output=True, text=True)
+    if arvore.returncode != 0 or arvore.stdout.strip() != TREE833:
+        raise RuntimeError('WF833_INDISPONIVEL_OU_DIVERGENTE: o checkout precisa do commit ' + SHA833 +
+                           ' (fetch-depth: 0); obtido=' + (arvore.stdout.strip() or arvore.stderr.strip()[:200]))
+    tar = subprocess.run(g + ['archive', '--format=tar', SHA833, '.github/workflows'], capture_output=True)
+    if tar.returncode != 0:
+        raise RuntimeError('WF833_ARCHIVE_FALHOU')
+    subprocess.run(['tar', '-x', '-C', _WF833_TMP.name], input=tar.stdout, check=True)
+    destino = pathlib.Path(_WF833_TMP.name) / '.github/workflows'
+    if len(list(destino.glob('*.y*ml'))) != 176:
+        raise RuntimeError('WF833_CONTAGEM_DIVERGENTE')
+    return str(destino)
+
+WF833 = _extrair_wf833()
+
+def rodar(changed, head=None, removed=None, base=None):
     with tempfile.TemporaryDirectory() as d:
-        d = pathlib.Path(d); (d / 'c.txt').write_text('\n'.join(changed)); args = ['--base-workflows', WF, '--changed', str(d / 'c.txt')]
+        d = pathlib.Path(d); (d / 'c.txt').write_text('\n'.join(changed)); args = ['--base-workflows', base or WF, '--changed', str(d / 'c.txt')]
         if head is not None:
             (d / 'h').mkdir()
             for n, t in head.items(): (d / 'h' / n).write_text(textwrap.dedent(t))
@@ -63,11 +87,11 @@ def executar_passo(curl_script, gh_script=None):
 class T(unittest.TestCase):
     # --- T01–T07: originais do 05d
     def test_T01_retroativo_833_18_disparos_classe_B(self):
-        rc, r = rodar(ALT833); d = {x['workflow'] for x in r['disparos_diretos']}
+        rc, r = rodar(ALT833, base=WF833); d = {x['workflow'] for x in r['disparos_diretos']}
         self.assertEqual(len(d), 18); self.assertIn('central-production-deploy.yml', d); self.assertIn('financial-e2e-closure.yml', d)
         self.assertEqual(rc, 3); self.assertEqual(r['classe'], 'B')
     def test_T02_retroativo_833_cadeia_indireta(self):
-        _, r = rodar(ALT833); i = {x['workflow'] for x in r['disparos_indiretos_workflow_run']}
+        _, r = rodar(ALT833, base=WF833); i = {x['workflow'] for x in r['disparos_indiretos_workflow_run']}
         self.assertIn('engine-dispatcher.yml', i); self.assertIn('auto-rerun-transient.yml', i)
     def test_T03_caminho_nao_publicado_classe_A(self):
         # 05g: só caminhos ocultos (".") não afetam o Pages; ".zevanory/" não dispara workflow
@@ -113,7 +137,7 @@ class T(unittest.TestCase):
         self.assertIn('c.yml', r['com_risco']); self.assertEqual(rc, 3)
     # --- T08–T09: melhoria do Sol (gabarito congelado) e efeito fora dos YAML
     def test_T08_conjunto_exato_igual_aos_runs_reais_do_merge_833(self):
-        _, r = rodar(ALT833)
+        _, r = rodar(ALT833, base=WF833)
         self.assertEqual(sorted(x['workflow'] for x in r['disparos_diretos']), GAB['push'])
         previsto = {x['workflow'] for x in r['disparos_diretos']} | {x['workflow'] for x in r['disparos_indiretos_workflow_run']}
         real = set(GAB['push']) | set(GAB['workflow_run'])
