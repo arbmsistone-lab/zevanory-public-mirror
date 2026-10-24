@@ -601,7 +601,7 @@
       "id": "whatsapp-retired-code",
       "kind": "decisão",
       "source": "Comando, 23/10 (conta Meta desativada permanentemente)",
-      "text": "WhatsApp aposentado no código: interruptor WHATSAPP_CHANNEL_RETIRED (padrão verdadeiro), nenhuma chamada à Graph API nem ao broker, webhook da Meta só confirma (200) sem processar nem guardar conteúdo, onboarding e prova sintética 410, broker 410, WhatsApp fora de health/quórum (whatsapp_mode=disabled_permanent), autorresposta social META_SOCIAL_AUTOREPLY desligada por padrão.",
+      "text": "WhatsApp aposentado no código como CONSTANTE (nenhuma variável de ambiente reativa; retorno só por PR nova): nenhuma chamada à Graph API nem ao broker, webhook da Meta classifica o produto e só confirma (200) entregas comprovadas do WhatsApp, sem processar nem guardar conteúdo; onboarding, prova sintética e broker 410; WhatsApp fora de health/quórum (whatsapp_mode=disabled_permanent); Instagram/Facebook somente manual, sem caminho de autorresposta.",
       "status": "in_progress",
       "evidence": "PR 'WhatsApp aposentado: interruptor global, sem chamadas à Meta, sem prova forjada, autorresposta social desligada' (rascunho); passos do dono em docs/WHATSAPP_APOSENTADO.md (revogar token do usuário do sistema, apagar segredos, desassinar webhook, apagar Worker giro-whatsapp-bridge)."
     },

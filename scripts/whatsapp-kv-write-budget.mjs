@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { whatsappInboundSafety } from "../worker/whatsapp-inbound-safety.mjs";
-import { whatsappStageRecorder, latestWhatsappStage } from "../worker/whatsapp-background.mjs";
+import { whatsappStageRecorder } from "../worker/whatsapp-background.mjs";
 import { converse, loadHistory, saveHistory, speechText, voiceReplyBody } from "../worker/whatsapp-conversation.mjs";
 import { saveWhatsappObservation } from "../worker/voice-operational-audit.mjs";
 import { getWhatsappOpsStore, resetWhatsappOpsStoreMemoForTest } from "../worker/whatsapp-neon-store.mjs";
@@ -64,35 +64,21 @@ async function runReply({database=true,messageId="wamid.behavior",retired=false}
  return {result,kv,sql,ops,fetches};
 }
 
-const live=await runReply({database:true});
-assert.equal(live.result.sent,true);
-assert.equal(live.kv.puts.length,1,"KV must receive exactly the dedup put");
-const neonKeys=[...live.sql.values.keys()];
-assert.ok(neonKeys.some(k=>k.startsWith("whatsapp:instant:stage:")),"Neon stages missing");
-assert.ok(neonKeys.some(k=>k.startsWith("wa:conv:")),"Neon history missing");
-assert.ok(neonKeys.some(k=>k.startsWith("whatsapp:observation:")),"Neon observation missing");
-const last=await latestWhatsappStage(live.ops);
-assert.ok(last?.stage,"instant-status source must resolve a Neon stage");
-
-const noDb=await runReply({database:false,messageId:"wamid.nodb"});
-assert.equal(noDb.result.sent,true,"missing DATABASE_URL must not break customer response");
-assert.equal(noDb.kv.puts.length,1,"without DB, KV still only receives dedup");
-
-// Retired channel (default, no env): no reply, no fetch, no KV or Neon write at all.
-const retiredRun=await runReply({database:true,messageId:"wamid.retired",retired:true});
-assert.equal(retiredRun.result.sent,false);assert.equal(retiredRun.result.reason,"whatsapp_channel_retired");
-assert.equal(retiredRun.fetches,0,"retired channel must not call the provider");
-assert.equal(retiredRun.kv.puts.length,0);assert.equal(retiredRun.sql.values.size,0);
-const before=13,after=live.kv.puts.length;
+// WhatsApp retired as a code constant (Meta disabled WABA 4019600665012911 on 2026-10-10): the reply
+// path writes NOTHING (0 KV, 0 Neon) and calls no provider, with or without re-enable env values.
+const runs=[];
+for(const database of [true,false])for(const retired of [true,false])runs.push(await runReply({database,messageId:`wamid.retired-${database}-${retired}`,retired}));
+for(const r of runs){
+ assert.equal(r.result.sent,false);assert.equal(r.result.reason,"whatsapp_channel_retired");
+ assert.equal(r.fetches,0,"retired channel must not call the provider");
+ assert.equal(r.kv.puts.length,0,"no KV write");assert.equal(r.sql.values.size,0,"no Neon write");
+}
 console.log(JSON.stringify({
  WHATSAPP_KV_WRITE_BUDGET:"PASS",
- before_minimum_writes_per_text_message:before,
- after_writes_per_text_message:after,
- reduction_percent:Number((((before-after)/before)*100).toFixed(1)),
- kv_remaining:"dedup_only",
- neon_stage:true,
- neon_history:true,
- neon_observation:true,
- instant_status_reads_neon:true,
- no_database_url_response_ok:true
+ before_minimum_writes_per_text_message:13,
+ after_writes_per_text_message:0,
+ reduction_percent:100,
+ kv_remaining:"none_channel_retired",
+ provider_calls:0,
+ env_cannot_reenable:true
 }));

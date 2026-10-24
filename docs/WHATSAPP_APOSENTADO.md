@@ -11,15 +11,15 @@ de 24 h (`whatsapp-delivery-recovery` runs 37702381335 e 37813017349; `voice-ren
 
 | Item | Comportamento |
 |---|---|
-| `WHATSAPP_CHANNEL_RETIRED` | Padrão **aposentado**. Ausente, vazio ou qualquer valor diferente do literal `false` = aposentado. |
+| Aposentadoria | **Constante no código** (`WHATSAPP_CHANNEL_RETIRED = true` em `worker/whatsapp-retirement.mjs`). Nenhuma variável de ambiente, config ou KV reativa nada: `WHATSAPP_CHANNEL_RETIRED=false` e `WHATSAPP_INSTANT_REPLY=true` são ignorados (há teste e mutante para isso). Qualquer retorno exige uma PR nova. |
 | Chamadas à Meta/broker | Nenhuma chamada à Graph API nem ao broker em nenhum caminho (status, health, continuity, control-plane, voz, config, webhooks). Credenciais do WhatsApp não são carregadas; globais antigas do isolate são zeradas. |
 | Status | `/api/release` → `whatsapp_mode: "disabled_permanent"`; `/api/status` → `runtime.whatsapp: "disabled_permanent"`, `runtime.whatsapp_state: "retired"`, `runtime.whatsapp_reason: "meta_account_permanently_disabled"`. |
 | Quórum/health | WhatsApp nunca conta: fora do quórum de continuidade (`retired_channels: ["whatsapp"]`), da prontidão de distribuição e da identidade de marca; `channel_identity_health` não tenta verificar (`attempted: false`). |
-| Robô de entrada | `WHATSAPP_INSTANT_REPLY` padrão **desligado** e forçado desligado com o canal aposentado. Envio, upload de voz, download de mídia e adaptador `channel:whatsapp` recusam antes de qualquer token ou fetch. |
-| Webhook da Meta | Entrega do WhatsApp (`object: whatsapp_business_account`) recebe **200** e nada mais: sem checar assinatura com segredos guardados, sem processar, sem gravar conteúdo, sem responder. |
+| Robô de entrada | Resposta instantânea **sempre desligada** (constante). Envio, upload de voz, download de mídia e adaptador `channel:whatsapp` recusam antes de qualquer token ou fetch. |
+| Webhook da Meta | Primeiro **classifica o produto** (objeto e campos). Só entrega **comprovadamente** do WhatsApp (`object: whatsapp_business_account` com campos do WhatsApp, até 256 KB) recebe **200** e nada mais: sem checar assinatura com segredos guardados, sem processar, sem gravar conteúdo, sem responder. Instagram/Facebook, entregas grandes ou não classificáveis seguem o tratamento normal (assinatura, limite de tamanho), nunca um 200 silencioso. A chave de diagnóstico da verificação passou a `meta:webhook:last-verify`. |
 | Onboarding e prova | Todas as rotas `/admin/whatsapp-onboard*` e `/api/admin/whatsapp-onboard*` (inclusive `delivery-proof`, start/callback/embedded-complete, bootstrap, finalize e a re-tentativa automática, voice-key, status) → **410 Gone**. As auditorias de voz só leitura passaram para `/api/admin/voice/audit` (mesma autenticação, sem operação de mensagem). |
 | Broker `giro-whatsapp-bridge` | Lápide: qualquer rota (inclusive a antiga `/__zevanory/runtime` sem autenticação) → **410**, sem ler segredo, D1, KV nem fazer fetch. |
-| Autorresposta Instagram/Facebook | `META_SOCIAL_AUTOREPLY` padrão **desligado**. Ligado (`true`): no máximo 1 resposta privada por comentário/mensagem, só se a pessoa digitou palavra-chave (quero/link/preço), sem resposta pública, limite 1/pessoa/dia, 5/h, 20/dia, e disjuntor de 7 dias (`zpc:meta-social:breaker:v1`) em qualquer 4xx ou erro de política da Graph. |
+| Instagram/Facebook | **Somente manual** (decisão do dono). Não existe caminho de resposta automática (pública ou privada) nem chave para ligar; o handler só classifica a entrega e não carrega o token da Página. |
 | Proteção estática | `tests/whatsapp-retirement.test.mjs` falha se aparecer, fora de `tests/`, qualquer gerador de webhook forjado/autoassinado (HMAC com app secret sobre payload de entrada, ou POST assinado para `/api/webhooks/meta`). |
 
 **Por que 200 e não 410 no webhook:** a orientação de Webhooks da Meta é responder 200 OK rapidamente a toda
@@ -45,13 +45,13 @@ Faça na ordem. Nenhum passo abaixo foi executado pelo Claude.
 1. Abra <https://developers.facebook.com/apps/1071149631917061/> .
 2. Menu lateral **Webhooks** (em Produtos). No seletor de objeto, escolha **Whatsapp Business Account**.
 3. Clique em **Cancelar assinatura deste objeto** (Unsubscribe from this object) e confirme.
-   Não mexa nos objetos **Page**/**Instagram** se a autorresposta social for usada no futuro.
+   Não mexa nos objetos **Page**/**Instagram** (entregas deles seguem o tratamento normal; o atendimento é manual).
 4. Se o produto **WhatsApp** ainda aparecer no menu do app: **WhatsApp → Configuração → Webhook → Gerenciar** e desmarque `messages`.
 
 ### 3. Remover os segredos do WhatsApp (somente nomes; nunca cole valores em chat)
 Cloudflare (<https://dash.cloudflare.com>) → **Workers e Pages** → **zevanory** → **Configurações** → **Variáveis e segredos**:
 - apague, se existirem: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`, `WHATSAPP_VERIFY_TOKEN`, `META_WHATSAPP_IDENTITY_VERIFIED`;
-- não crie `WHATSAPP_CHANNEL_RETIRED=false` nem `WHATSAPP_INSTANT_REPLY=true` (o padrão do código já é aposentado e desligado);
+- `WHATSAPP_CHANNEL_RETIRED`, `WHATSAPP_INSTANT_REPLY` e `META_SOCIAL_AUTOREPLY` não têm efeito no código; apague-as se existirem;
 - clique em **Implantar** (Deploy) para salvar.
 
 GitHub (<https://github.com/arbmsistone-lab/zevanory-public-mirror/settings/secrets/actions> e os Environments
@@ -60,7 +60,7 @@ GitHub (<https://github.com/arbmsistone-lab/zevanory-public-mirror/settings/secr
 Registros do broker e do onboarding:
 - **KV** `ZEVANORY_PRIVATE_ARTIFACTS` (Cloudflare → **Armazenamento e bancos de dados → KV** → namespace → **Visualizar**):
   apague `whatsapp-onboarding/runtime` (token, app secret e verify token cifrados), as chaves `whatsapp-onboarding/state/*`
-  e `whatsapp:webhook:last-verify`. **Antes**, confirme que a chave de voz Gemini existe por outro caminho
+  e `whatsapp:webhook:last-verify` (nome antigo; o novo registro de diagnóstico é `meta:webhook:last-verify`, expira em 24 h). **Antes**, confirme que a chave de voz Gemini existe por outro caminho
   (`GEMINI_API_KEY` ou o cofre `ai-vault:gemini`), porque o registro do onboarding também guarda a chave de voz.
 - **D1** do broker (Cloudflare → **Armazenamento e bancos de dados → D1** → banco vinculado ao `giro-whatsapp-bridge` → **Console**):
   `DROP TABLE IF EXISTS zevanory_whatsapp_broker_runtime; DROP TABLE IF EXISTS zevanory_whatsapp_broker_oauth_state;`

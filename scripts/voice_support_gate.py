@@ -128,7 +128,7 @@ for forbidden in ['graph.facebook.com','/subscribed_apps','/register','request_c
 assert 'whatsappGoneResponse' in whatsapp and 'export async function loadVoiceGeminiKey' in whatsapp
 assert 'loadWhatsappRuntimeCredentials' not in compat
 assert 'whatsappChannelRetired(normalized)' in compat
-assert 'raw === undefined || raw === null) return true' in retirement
+assert 'export const WHATSAPP_CHANNEL_RETIRED = true;' in retirement and 'process.env' not in retirement
 assert 'whatsappChannelRetired(process.env)' in worker
 print("WHATSAPP_RETIRED_ONBOARDING_GATE=PASS")
 

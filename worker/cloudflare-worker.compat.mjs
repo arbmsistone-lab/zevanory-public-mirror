@@ -11,7 +11,7 @@ import { handleAsaasPixRefundAuthorization } from "./asaas-pix-refund-auth.mjs";
 import { latestWhatsappStage } from "./whatsapp-background.mjs";
 import { handleVoiceFinalClosure } from "./voice-final-closure.mjs";
 import { handleWhatsappOnboarding, isWhatsappOnboardingPath, loadVoiceGeminiKey } from "./whatsapp-onboarding.mjs";
-import { whatsappChannelRetired, whatsappInstantReplyEnabled, whatsappGoneResponse, whatsappWebhookAckResponse, isWhatsappWebhookBody, retiredWhatsappStatus } from "./whatsapp-retirement.mjs";
+import { whatsappChannelRetired, whatsappInstantReplyEnabled, whatsappGoneResponse, whatsappWebhookAckResponse, classifyMetaWebhookBody, META_WEBHOOK_CLASSIFY_MAX_BYTES, retiredWhatsappStatus } from "./whatsapp-retirement.mjs";
 import { handleVoiceAudit } from "./voice-operational-audit.mjs";
 import { handleVoiceStudy } from "./voice-naturality-study.mjs";
 import { handleSupportKnowledge } from "./support-knowledge.mjs";
@@ -295,27 +295,32 @@ const wrapped = {
       const matched = mode === "subscribe" && Boolean(token) && candidates.includes(token);
       try {
         const kv = normalized.ZEVANORY_PRIVATE_ARTIFACTS;
-        if (kv?.put) await kv.put("whatsapp:webhook:last-verify", JSON.stringify({ at: new Date().toISOString(), layer: "edge", mode, token_present: Boolean(token), token_len: token.length, candidates: candidates.length, runtime_token_loaded: Boolean(rt.verify_token), matched, ua: String(request.headers.get("user-agent") || "").slice(0, 80) }), { expirationTtl: 86400 });
+        if (kv?.put) await kv.put("meta:webhook:last-verify", JSON.stringify({ at: new Date().toISOString(), layer: "edge", mode, token_present: Boolean(token), token_len: token.length, candidates: candidates.length, runtime_token_loaded: Boolean(rt.verify_token), matched, ua: String(request.headers.get("user-agent") || "").slice(0, 80) }), { expirationTtl: 86400 });
       } catch {}
       if (matched) return new Response(challenge, { status: 200, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
       return new Response(JSON.stringify({ error: "webhook_verification_failed" }), { status: 403, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
     }
 
-    // Retired channel: a WhatsApp Business delivery to the Meta webhook is acknowledged with 200 and
-    // nothing else (Meta retries non-2xx for days and flags failing subscriptions; 410 has no special
-    // meaning for it). No signature check against stored secrets, no parsing beyond the object type,
-    // no storage of message content, no reply. Instagram/Facebook deliveries continue to the legacy
-    // handler, where META_SOCIAL_AUTOREPLY (default off) gates any automated answer.
+    // Meta webhook: classify the Meta PRODUCT first. Only a proven WhatsApp Business delivery
+    // (object "whatsapp_business_account" with WhatsApp fields) gets the retirement acknowledgement:
+    // 200 and nothing else (Meta retries non-2xx for days and flags failing subscriptions; 410 has no
+    // special meaning for it): no signature check against stored secrets, no processing, no storage,
+    // no reply. Instagram/Facebook Page, oversized or unclassifiable deliveries are never silently
+    // acknowledged: they continue to the normal Meta handler (signature, size limit, product routing).
+    // Legacy WhatsApp-only paths (/webhooks/whatsapp*, /api/whatsapp*) carry no other product.
+    if (whatsappRetired && request.method === "POST" && (url.pathname.startsWith("/webhooks/whatsapp") || url.pathname.startsWith("/api/whatsapp"))) {
+      return whatsappGoneResponse(url.pathname);
+    }
     if (whatsappRetired && request.method === "POST" && (
-      url.pathname === "/api/webhooks/meta" || url.pathname.startsWith("/webhooks/whatsapp") || url.pathname.startsWith("/api/whatsapp") ||
+      url.pathname === "/api/webhooks/meta" ||
       (url.pathname === "/api/webhooks" && String(url.searchParams.get("provider") || "") === "meta")
     )) {
-      if (url.pathname.startsWith("/webhooks/whatsapp") || url.pathname.startsWith("/api/whatsapp")) return whatsappWebhookAckResponse();
       const declared = Number(request.headers.get("content-length") || 0);
-      if (declared > 256 * 1024) return whatsappWebhookAckResponse();
-      const raw = await request.text().catch(() => "");
-      if (raw.length > 256 * 1024 || isWhatsappWebhookBody(raw)) return whatsappWebhookAckResponse();
-      request = new Request(request.url, { method: "POST", headers: request.headers, body: raw });
+      if (!(declared > META_WEBHOOK_CLASSIFY_MAX_BYTES)) {
+        const raw = await request.text().catch(() => "");
+        if (classifyMetaWebhookBody(raw) === "whatsapp") return whatsappWebhookAckResponse();
+        request = new Request(request.url, { method: "POST", headers: request.headers, body: raw });
+      }
     }
 
     const canonicalRedirect = canonicalizePublicPath(request, url);

@@ -42,6 +42,7 @@ const kv = {
   async list({ prefix = "" } = {}) { return { keys: [...kvStore.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true }; }
 };
 const MASTER = "retirement-test-master-material-0123456789";
+const REENABLE = Object.freeze({ WHATSAPP_CHANNEL_RETIRED: "false", WHATSAPP_INSTANT_REPLY: "true", META_SOCIAL_AUTOREPLY: "true", WHATSAPP_SALES_ENABLED: "true" });
 const OPERATOR = "retirement-test-operator-token-0123456789";
 let env;
 const ctx = { waitUntil() {}, passThroughOnException() {} };
@@ -81,24 +82,29 @@ before(async () => {
   env = {
     ZEVANORY_PRIVATE_ARTIFACTS: kv, WHATSAPP_BROKER: brokerSpy, ELITE_INTERNAL_TOKEN: MASTER, OPERATOR_TOKEN: OPERATOR, CERTIFICATION_E2E_TOKEN: OPERATOR,
     WHATSAPP_ACCESS_TOKEN: "env-token", WHATSAPP_PHONE_NUMBER_ID: "1300972319774588", META_GRAPH_VERSION: "v26.0",
-    META_APP_SECRET: "env-app-secret-0123456789", META_VERIFY_TOKEN: "env-verify", ASSETS: { fetch: async () => new Response("asset") }
+    META_APP_SECRET: "env-app-secret-0123456789", META_VERIFY_TOKEN: "env-verify", ASSETS: { fetch: async () => new Response("asset") },
+    // Every value that used to (or could plausibly) re-enable the channel: all must be ignored.
+    ...REENABLE
   };
-  delete process.env.WHATSAPP_CHANNEL_RETIRED;
+  Object.assign(process.env, REENABLE);
   compat = (await import("../worker/cloudflare-worker.compat.mjs")).default;
   bundle = await import("../worker/cloudflare-worker.recovered.mjs");
   for (let i = 0; i < 50; i++) { try { await realFetch("http://127.0.0.1:8788/api/health"); break; } catch { await new Promise((r) => setTimeout(r, 100)); } }
 });
 after(() => { globalThis.fetch = realFetch; server?.close(); server?.closeAllConnections?.(); });
 
-// ---------- switch semantics ----------
-test("kill-switch: absent/empty/any value except literal 'false' means retired; instant reply defaults off", () => {
-  for (const v of [undefined, null, "", "true", "1", "0", "no", "off", "disabled", "falsy", "yes"]) assert.equal(R.whatsappChannelRetired(v === undefined ? {} : { WHATSAPP_CHANNEL_RETIRED: v }), true, String(v));
+// ---------- retirement is a code constant ----------
+test("kill-switch: retirement is a code constant; env values that would re-enable WhatsApp or the instant reply are ignored", () => {
+  assert.equal(R.WHATSAPP_CHANNEL_RETIRED, true);
+  for (const v of [undefined, null, "", "false", " FALSE ", "False", "0", "no", "off", "true"]) {
+    const e = v === undefined ? {} : { WHATSAPP_CHANNEL_RETIRED: v, WHATSAPP_INSTANT_REPLY: "true" };
+    assert.equal(R.whatsappChannelRetired(e), true, String(v));
+    assert.equal(R.whatsappInstantReplyEnabled(e), false, String(v));
+  }
   assert.equal(R.whatsappChannelRetired(undefined), true);
-  for (const v of ["false", " FALSE ", "False"]) assert.equal(R.whatsappChannelRetired({ WHATSAPP_CHANNEL_RETIRED: v }), false, v);
-  assert.equal(R.whatsappInstantReplyEnabled({ WHATSAPP_INSTANT_REPLY: "true" }), false, "forced off while retired");
-  assert.equal(R.whatsappInstantReplyEnabled({ WHATSAPP_CHANNEL_RETIRED: "false" }), false, "default off");
-  assert.equal(R.whatsappInstantReplyEnabled({ WHATSAPP_CHANNEL_RETIRED: "false", WHATSAPP_INSTANT_REPLY: "1" }), false);
-  assert.equal(R.whatsappInstantReplyEnabled({ WHATSAPP_CHANNEL_RETIRED: "false", WHATSAPP_INSTANT_REPLY: "true" }), true);
+  assert.equal(R.whatsappInstantReplyEnabled({ WHATSAPP_INSTANT_REPLY: "true", WHATSAPP_CHANNEL_RETIRED: "false" }), false);
+  const src = read("worker/whatsapp-retirement.mjs").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(src, /process\.env|\benv\s*[?.\[]|_env\s*[?.\[]|WHATSAPP_CHANNEL_RETIRED\s*\]|WHATSAPP_INSTANT_REPLY/, "the retirement module must not read any environment value");
 });
 
 // ---------- no Graph / broker call from any listed path ----------
@@ -163,6 +169,7 @@ test("provider independence: a retired WhatsApp never counts toward continuity q
 
 // ---------- webhook: acknowledge only ----------
 test("Meta webhook: WhatsApp deliveries get 200 ack only (no processing, no stored content, no provider call)", async () => {
+  assert.equal(R.classifyMetaWebhookBody(waPayload()), "whatsapp");
   const before = new Map(kvStore);
   for (const path of ["/api/webhooks/meta", "/api/webhooks?provider=meta"]) {
     brokerSpy.calls = 0;
@@ -171,13 +178,34 @@ test("Meta webhook: WhatsApp deliveries get 200 ack only (no processing, no stor
     assert.deepEqual(r.body, { accepted: true, processed: false, stored: false, reason: "meta_account_permanently_disabled" });
     assert.deepEqual(providerHits(), []); assert.equal(brokerSpy.calls, 0);
   }
-  // Oversized delivery is still acknowledged at the edge, never parsed downstream.
-  const big = await call("/api/webhooks/meta", { method: "POST", headers: { "content-type": "application/json" }, body: waPayload("x".repeat(300 * 1024)) });
-  assert.equal(big.status, 200); assert.equal(big.body.processed, false);
+  const edge = await compat.fetch(new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", headers: { "content-type": "application/json" }, body: waPayload() }), env, ctx);
+  assert.equal(edge.headers.get("x-zevanory-ack-layer"), "edge", "classified at the edge before any downstream handling");
+  assert.equal(edge.headers.get("x-zevanory-meta-product"), "whatsapp_business_account");
   for (const [k, v] of kvStore) {
     if (before.get(k) === v) continue;
     assert.ok(!String(v).includes("retirement-probe") && !String(v).includes(WA_FROM), "stored webhook content under " + k);
   }
+});
+
+test("Meta webhook: Instagram/Facebook, oversized and unclassifiable deliveries are never silently acknowledged", async () => {
+  const igSmall = JSON.stringify({ object: "instagram", entry: [{ id: "ig", changes: [{ field: "comments", value: { id: "c1", message: "quero o link", from: { id: "u" } } }] }] });
+  const igLarge = JSON.stringify({ object: "instagram", entry: [{ id: "ig", changes: [{ field: "comments", value: { id: "c2", message: "x".repeat(300 * 1024), from: { id: "u" } } }] }] });
+  const pageLarge = JSON.stringify({ object: "page", entry: [{ id: "pg", changes: [{ field: "feed", value: { item: "comment", comment_id: "c3", message: "y".repeat(300 * 1024), from: { id: "u" } } }] }] });
+  const mixed = JSON.stringify({ object: "whatsapp_business_account", entry: [{ id: "x", changes: [{ field: "feed", value: { message: "z" } }] }] });
+  const waLarge = waPayload("w".repeat(300 * 1024));
+  const cases = [["instagram small", igSmall, "instagram"], ["instagram large", igLarge, "unclassified"], ["page large", pageLarge, "unclassified"], ["invalid json", "{not json", "unclassified"], ["mixed product", mixed, "unclassified"], ["whatsapp oversized", waLarge, "unclassified"]];
+  for (const [name, body, product] of cases) {
+    assert.equal(R.classifyMetaWebhookBody(body), product, name);
+    for (const path of ["/api/webhooks/meta", "/api/webhooks?provider=meta"]) {
+      const r = await call(path, { method: "POST", headers: { "content-type": "application/json", "x-hub-signature-256": "sha256=" + "1".repeat(64) }, body });
+      assert.notEqual(r.body?.reason, "meta_account_permanently_disabled", `${name} ${path} was silently acknowledged`);
+      assert.ok([400, 401, 413].includes(r.status), `${name} ${path}: normal handling expected (signature/size), got ${r.status}`);
+    }
+  }
+  // A declared oversized body is not even read at the edge; the normal handler rejects it.
+  const declared = await compat.fetch(new Request("https://zevanory.api.br/api/webhooks/meta", { method: "POST", headers: { "content-type": "application/json", "content-length": String(300 * 1024) }, body: igLarge }), env, ctx);
+  assert.notEqual(declared.headers.get("x-zevanory-ack-layer"), "edge");
+  assert.equal(declared.status, 413);
 });
 
 test("bundle layer (node handler): WhatsApp delivery acked without processing; broker never used for signature or verify token", async () => {
@@ -186,6 +214,7 @@ test("bundle layer (node handler): WhatsApp delivery acked without processing; b
   const keys = new Set(kvStore.keys());
   const direct = await realFetch("http://127.0.0.1:8788/api/webhooks?provider=meta", { method: "POST", headers: { "content-type": "application/json", connection: "close" }, body: waPayload() });
   assert.equal(direct.status, 200);
+  assert.equal(direct.headers.get("x-zevanory-ack-layer"), null, "bundle layer acknowledges on its own");
   assert.deepEqual(await direct.json(), { accepted: true, processed: false, stored: false, reason: "meta_account_permanently_disabled" });
   staleIsolateGlobals();
   const social = await realFetch("http://127.0.0.1:8788/api/webhooks?provider=meta", { method: "POST", headers: { "content-type": "application/json", "x-hub-signature-256": "sha256=bad", connection: "close" }, body: JSON.stringify({ object: "page", entry: [] }) });
@@ -293,17 +322,18 @@ test("outbound adapter channel:whatsapp refuses before any gate, token or fetch"
   assert.equal(box.spy.fetch, 0); assert.equal(box.spy.broker, 0); assert.equal(gates, 0);
 });
 
-test("instant reply: exported replyWhatsappConversation never answers while retired, and is off by default when un-retired", async () => {
+test("instant reply: exported replyWhatsappConversation never answers, whatever the environment says", async () => {
   const saved = { ...process.env };
   try {
-    delete process.env.WHATSAPP_CHANNEL_RETIRED; delete process.env.WHATSAPP_INSTANT_REPLY;
+    Object.assign(process.env, REENABLE, { WHATSAPP_ACCESS_TOKEN: "env-token", WHATSAPP_PHONE_NUMBER_ID: "1300972319774588" });
     staleIsolateGlobals(); external.length = 0;
     const item = { from: WA_FROM, phone_number_id: "1300972319774588", type: "text", message_id: "wamid.reply-probe" };
-    const retired = await bundle.replyWhatsappConversation(item, "quanto custa?");
-    assert.deepEqual(retired, { sent: false, reason: "whatsapp_channel_retired" });
-    process.env.WHATSAPP_CHANNEL_RETIRED = "false"; process.env.WHATSAPP_ACCESS_TOKEN = "env-token"; process.env.WHATSAPP_PHONE_NUMBER_ID = "1300972319774588";
-    const off = await bundle.replyWhatsappConversation(item, "quanto custa?");
-    assert.deepEqual(off, { sent: false, reason: "whatsapp_instant_reply_disabled" });
+    for (const question of ["quanto custa?", "quero o link"]) {
+      const out = await bundle.replyWhatsappConversation(item, question);
+      assert.deepEqual(out, { sent: false, reason: "whatsapp_channel_retired" });
+    }
+    delete process.env.WHATSAPP_CHANNEL_RETIRED; delete process.env.WHATSAPP_INSTANT_REPLY;
+    assert.deepEqual(await bundle.replyWhatsappConversation(item, "oi"), { sent: false, reason: "whatsapp_channel_retired" });
     assert.deepEqual(providerHits(), [], "an automated reply reached the provider");
   } finally {
     for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
@@ -311,12 +341,12 @@ test("instant reply: exported replyWhatsappConversation never answers while reti
   }
 });
 
-test("webhook handler: with the channel un-retired but WHATSAPP_INSTANT_REPLY unset, the bot never replies", async () => {
+test("webhook handler: even with WHATSAPP_CHANNEL_RETIRED=false and WHATSAPP_INSTANT_REPLY=true the bot never replies or processes", async () => {
   const handlerSource = BUNDLE.slice(BUNDLE.indexOf("async function handler18(req, res) {"), BUNDLE.indexOf('__name(handler18, "handler")'));
   const calls = [];
   const item = { from: WA_FROM, phone_number_id: "1300972319774588", type: "text", text: "quanto custa", message_id: "wamid.h18" };
   const box = {
-    process: { env: { WHATSAPP_CHANNEL_RETIRED: "false" } }, globalThis: { __ZEVANORY_PRIVATE_KV__: null, __ZEVANORY_WHATSAPP_OPS_STORE__: null, __ZEVANORY_WHATSAPP_RUNTIME__: {} },
+    process: { env: { ...REENABLE } }, globalThis: { __ZEVANORY_PRIVATE_KV__: null, __ZEVANORY_WHATSAPP_OPS_STORE__: null, __ZEVANORY_WHATSAPP_RUNTIME__: {} },
     whatsappChannelRetired: R.whatsappChannelRetired, whatsappInstantReplyEnabled: R.whatsappInstantReplyEnabled, isWhatsappWebhookBody: R.isWhatsappWebhookBody, WHATSAPP_RETIRED_REASON: R.WHATSAPP_RETIRED_REASON,
     rawText: () => JSON.stringify({ object: "page_not_whatsapp", entry: [] }), normalizeWhatsappStatusPayload: () => [], verifyMetaSignature: () => true, whatsappBrokerSignatureValid: async () => false,
     extractWhatsappInboundMessages: () => [item], cs: () => ({ query: async () => [] }), handleMetaSocialInbound: async () => ({ handled: false }),
@@ -329,7 +359,8 @@ test("webhook handler: with the channel un-retired but WHATSAPP_INSTANT_REPLY un
   vm.createContext(box); vm.runInContext(handlerSource, box);
   const out = await box.handler18({ method: "POST", headers: {} }, { setHeader() {} });
   assert.equal(out.code, 200);
-  assert.deepEqual(calls, [], "automated reply attempted without WHATSAPP_INSTANT_REPLY=true");
+  assert.deepEqual(calls, [], "automated reply attempted");
+  assert.equal(out.body.inbound_jobs_queued, undefined, "inbound processed although retired");
   box.process.env = {};
   const retired = await box.handler18({ method: "POST", headers: {} }, { setHeader() {} });
   assert.deepEqual(calls, [], "retired channel processed inbound messages");

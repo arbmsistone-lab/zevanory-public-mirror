@@ -15542,7 +15542,7 @@ async function handler18(req, res) {
     const directValid = mode === "subscribe" && Boolean(token) && verifyCandidates.includes(token);
     try {
       const kv = globalThis.__ZEVANORY_PRIVATE_KV__;
-      if (kv?.put) await kv.put("whatsapp:webhook:last-verify", JSON.stringify({
+      if (kv?.put) await kv.put("meta:webhook:last-verify", JSON.stringify({
         at: new Date().toISOString(), mode, token_present: Boolean(token), token_len: token.length,
         candidates: verifyCandidates.length, runtime_token_loaded: Boolean(runtimeVerify),
         matched: directValid, ua: String(req.headers?.["user-agent"] || "").slice(0, 80)
@@ -15573,9 +15573,8 @@ async function handler18(req, res) {
     return json14(res, 400, { error: "invalid_json", accepted: false });
   }
   if (payload?.object !== "whatsapp_business_account") {
-    let socialEnv={...process.env,ZEVANORY_PRIVATE_ARTIFACTS:globalThis.__ZEVANORY_PRIVATE_KV__};
-    if (!socialEnv.META_ACCESS_TOKEN && socialEnv.DATABASE_URL) { try { const credential=await loadMetaCredential(cs(socialEnv.DATABASE_URL),socialEnv); socialEnv={...socialEnv,META_ACCESS_TOKEN:credential.access_token,META_PAGE_ID:credential.page_id,INSTAGRAM_BUSINESS_ACCOUNT_ID:credential.instagram_id,ZEVANORY_PRIVATE_ARTIFACTS:globalThis.__ZEVANORY_PRIVATE_KV__}; } catch {} }
-    const social = await handleMetaSocialInbound(payload, socialEnv).catch((error)=>({handled:true,received:0,replied:0,error:String(error?.message||"meta_social_failed")}));
+    // Instagram/Facebook Page: manual-only (no automated reply path, no Page token loaded).
+    const social = await handleMetaSocialInbound(payload).catch(()=>({handled:true,received:0,replied:0}));
     if (social.handled) return json14(res, 200, {accepted:true,inbound_received:social.received,replies_sent:social.replied});
   }
   const inbound = whatsappChannelRetired(process.env) ? [] : extractWhatsappInboundMessages(payload);

@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Mutants for the fail-closed WhatsApp retirement (Meta permanently disabled WABA 4019600665012911 on
-// 2026-10-10) and the Meta social auto-reply kill-switch. Each mutant edits source IN PLACE (or adds a
-// file), runs tests/whatsapp-retirement.test.mjs + tests/meta-social-autoreply.test.mjs (TAP) and
-// restores everything (SHA-256 checked after every mutant; added files removed).
+// 2026-10-10; retirement is a code constant) and the manual-only Instagram/Facebook inbound. Each mutant
+// edits source IN PLACE (or adds a file), runs tests/whatsapp-retirement.test.mjs +
+// tests/meta-social-manual-only.test.mjs (TAP) and restores the original bytes (SHA-256 checked after
+// every mutant; added files removed). Portable: anchors are matched on EOL-normalized text (a Windows
+// checkout with CRLF matches the same LF anchors) and the original bytes are written back.
 //   KILLED       = at least one EXPECTED test fails with an assertion error (ERR_ASSERTION).
 //   SURVIVED     = both suites pass with the baseline counts.
 //   INCONCLUSIVE = anything else (load error, non-assertion failure only, unexpected test only).
@@ -12,64 +14,64 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { normalizeEol } from "../../tests/helpers/text.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const SUITES = ["tests/whatsapp-retirement.test.mjs", "tests/meta-social-autoreply.test.mjs"];
-const BASE_COUNT = 22;
+const SUITES = ["tests/whatsapp-retirement.test.mjs", "tests/meta-social-manual-only.test.mjs"];
+const BASE_COUNT = 20;
 const T = {
-  sw: "kill-switch: absent", paths: "retired: no fetch", surf: "status surfaces:", proj: "projection:", quorum: "provider independence:",
-  hook: "Meta webhook:", bhook: "bundle layer", gone: "onboarding routes", broker: "broker tombstone:", prims: "sender primitives",
+  sw: "kill-switch: retirement is a code constant", paths: "retired: no fetch", surf: "status surfaces:", proj: "projection:", quorum: "provider independence:",
+  hook: "Meta webhook: WhatsApp deliveries", nonwa: "Meta webhook: Instagram/Facebook", bhook: "bundle layer", gone: "onboarding routes", broker: "broker tombstone:", prims: "sender primitives",
   adapter: "outbound adapter", reply: "instant reply:", h18: "webhook handler:", forger: "static: no forged", wf: "static: retired workflows", onb: "static: retired onboarding",
-  sOff: "kill-switch is OFF", sOne: "on: a keyword comment", sKw: "on: no keyword", sRate: "on: rate limits", s4xx: "on: any 4xx", sPol: "on: a Graph policy"
+  sManual: "keyword comments, Page feed", sNon: "non-social payloads", sStatic: "static: no social automation"
 };
 const RET = "worker/whatsapp-retirement.mjs", COMPAT = "worker/cloudflare-worker.compat.mjs", REC = "worker/cloudflare-worker.recovered.mjs";
 const LIVE = "worker/live-runtime-status.mjs", CONT = "worker/continuity-router.mjs", ONB = "worker/whatsapp-onboarding.mjs";
 const BROKER = "worker/whatsapp-credential-broker.mjs", INB = "worker/inbound-autonomy.mjs", WF = ".github/workflows/voice-render-proof.yml";
 const FORGER = "scripts/ci/_mutant_forger.mjs";
 // The generator shape lives under tests/ (outside the static scan) and is copied in only for M28.
-const FORGER_SRC = readFileSync(resolve(ROOT, "tests/fixtures/forged-webhook-generator.txt"), "utf8");
+const FORGER_SRC = normalizeEol(readFileSync(resolve(ROOT, "tests/fixtures/forged-webhook-generator.txt"), "utf8"));
 
 // [id, [[file, from, to] ...], expected tests]   (from === null: create file `file` with `to`)
 const MUTANTS = [
-  ["M01_absent_means_active", [[RET, "if (raw === undefined || raw === null) return true;", "if (raw === undefined || raw === null) return false;"]], [T.sw, T.paths]],
-  ["M02_any_value_unretires", [[RET, 'return String(raw).trim().toLowerCase() !== "false";', 'return String(raw).trim().toLowerCase() === "true";']], [T.sw]],
-  ["M03_instant_reply_default_on", [[RET, 'return String(env?.WHATSAPP_INSTANT_REPLY ?? "").trim().toLowerCase() === "true";', 'return String(env?.WHATSAPP_INSTANT_REPLY ?? "").trim().toLowerCase() !== "false";']], [T.sw, T.reply, T.h18]],
-  ["M04_instant_reply_not_forced_off", [[RET, "  if (whatsappChannelRetired(env)) return false;\n  return String(env?.WHATSAPP_INSTANT_REPLY", "  return String(env?.WHATSAPP_INSTANT_REPLY"]], [T.sw]],
+  ["M01_env_reenables_channel", [[RET, "export function whatsappChannelRetired(_env) {\n  return WHATSAPP_CHANNEL_RETIRED;", 'export function whatsappChannelRetired(_env) {\n  return String(_env?.WHATSAPP_CHANNEL_RETIRED ?? "true").trim().toLowerCase() !== "false";']], [T.sw, T.paths]],
+  ["M02_constant_flipped", [[RET, "export const WHATSAPP_CHANNEL_RETIRED = true;", "export const WHATSAPP_CHANNEL_RETIRED = false;"]], [T.sw]],
+  ["M03_env_reenables_instant_reply", [[RET, "export function whatsappInstantReplyEnabled(_env) {\n  return false;", 'export function whatsappInstantReplyEnabled(_env) {\n  return String(_env?.WHATSAPP_INSTANT_REPLY ?? "") === "true";']], [T.sw]],
+  ["M04_process_env_reenables_channel", [[RET, "export function whatsappChannelRetired(_env) {\n  return WHATSAPP_CHANNEL_RETIRED;", 'export function whatsappChannelRetired(_env) {\n  return globalThis.process?.env?.WHATSAPP_CHANNEL_RETIRED !== "false";']], [T.sw, T.paths]],
   ["M05_compat_reads_broker_status", [[COMPAT, "  if (whatsappChannelRetired(env)) return null;\n  if (!binding?.fetch) return null;", "  if (!binding?.fetch) return null;"], [COMPAT, "whatsappRetired ? Promise.resolve(null) : loadWhatsappBrokerState(", "loadWhatsappBrokerState("]], [T.paths]],
   ["M06_compat_keeps_stale_globals", [[COMPAT, "      globalThis.__ZEVANORY_WHATSAPP_RUNTIME__ = {};\n      globalThis.__ZEVANORY_WHATSAPP_BROKER__ = null;\n      globalThis.__ZEVANORY_WHATSAPP_BROKER_STATE__ = null;\n", ""]], [T.paths]],
-  ["M07_compat_edge_ack_removed", [[COMPAT, "if (raw.length > 256 * 1024 || isWhatsappWebhookBody(raw)) return whatsappWebhookAckResponse();", "if (false) return whatsappWebhookAckResponse();"]], [T.hook]],
-  ["M08_bundle_webhook_processes_whatsapp", [[REC, "  if (whatsappChannelRetired(process.env) && isWhatsappWebhookBody(raw)) return json14(res, 200, { accepted: true, processed: false, stored: false, reason: WHATSAPP_RETIRED_REASON });\n", ""]], [T.bhook]],
-  ["M09_broker_call_guard_removed", [[REC, '  if (whatsappChannelRetired(process.env)) return { ok: false, status: 410, body: { error: "whatsapp_channel_retired", reason: WHATSAPP_RETIRED_REASON } };\n  const broker', "  const broker"]], [T.bhook, T.prims]],
-  ["M10_identity_calls_graph", [[REC, "  if (whatsappChannelRetired(env)) return result(false, false, WHATSAPP_RETIRED_REASON, { retired: true, mode: WHATSAPP_RETIRED_MODE });\n", ""]], [T.paths, T.surf]],
-  ["M11_migration_probe_uses_wa_token", [[REC, 'fallback = whatsappChannelRetired(process.env) ? "" : String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();', 'fallback = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();']], [T.paths, T.surf]],
-  ["M12_reply_retired_guard_removed", [[REC, '  if (whatsappChannelRetired(process.env)) return { sent: false, reason: "whatsapp_channel_retired" };\n  if (!whatsappInstantReplyEnabled', "  if (!whatsappInstantReplyEnabled"]], [T.reply]],
-  ["M13_reply_instant_guard_removed", [[REC, '  if (!whatsappInstantReplyEnabled(process.env)) return { sent: false, reason: "whatsapp_instant_reply_disabled" };\n', ""]], [T.reply]],
-  ["M14_webhook_instant_default_on", [[REC, 'if (whatsappInstantReplyEnabled(process.env) && (item.type === "text"', 'if (process.env.WHATSAPP_INSTANT_REPLY !== "false" && (item.type === "text"']], [T.h18, T.onb]],
-  ["M15_webhook_processes_inbound_retired", [[REC, "const inbound = whatsappChannelRetired(process.env) ? [] : extractWhatsappInboundMessages(payload);", "const inbound = extractWhatsappInboundMessages(payload);"]], [T.h18]],
-  ["M16_sender_guard_removed", [[REC, '  if (whatsappChannelRetired(process.env)) return { ok: false, status: 410, provider_message_id: null, error: "whatsapp_channel_retired" };\n', ""]], [T.prims]],
-  ["M17_voice_upload_guard_removed", [[REC, '  if (whatsappChannelRetired(env) || whatsappChannelRetired(process.env)) throw new Error("whatsapp_channel_retired");\n  const staged', "  const staged"]], [T.prims]],
-  ["M18_media_download_guard_removed", [[REC, '  if (whatsappChannelRetired(env) || whatsappChannelRetired(process.env)) throw new Error("whatsapp_channel_retired");\n  const rtMedia', "  const rtMedia"]], [T.prims]],
-  ["M19_outbound_adapter_guard_removed", [[REC, '      if (whatsappChannelRetired(env) || whatsappChannelRetired(process.env)) throw new Error("whatsapp_channel_retired");\n      ensureOutboundAllowed', "      ensureOutboundAllowed"]], [T.adapter]],
-  ["M20_release_mode_not_permanent", [[REC, "whatsappMode: whatsappChannelRetired(env) ? WHATSAPP_RETIRED_MODE : whatsappTransport", "whatsappMode: whatsappTransport"]], [T.surf]],
-  ["M21_channel_status_counts_whatsapp", [[REC, "  if (whatsappChannelRetired(env) && active.whatsapp) active.whatsapp = ", "  if (false) active.whatsapp = "]], [T.surf]],
-  ["M22_distribution_counts_whatsapp", [[REC, 'const distributionRetired = whatsappChannelRetired(env) ? ["whatsapp"] : [];', "const distributionRetired = [];"]], [T.surf]],
-  ["M23_projection_ignores_retirement", [[LIVE, "whatsapp: whatsappRetired ? WHATSAPP_RETIRED_MODE : (whatsappTransportOperational", "whatsapp: (whatsappTransportOperational"]], [T.proj]],
-  ["M24_quorum_counts_retired", [[CONT, "  for(const name of retired) byName.delete(name);\n  const countable=channels.filter((item)=>!retired.has(item.name));", "  const countable=channels;"]], [T.quorum]],
-  ["M25_onboarding_alive", [[ONB, "return whatsappGoneResponse(url.pathname);", "return null;"]], [T.gone]],
-  ["M26_broker_alive", [[BROKER, "status: 410,", "status: 200,"]], [T.broker]],
-  ["M27_instant_status_default_on", [[COMPAT, "enabled: whatsappInstantReplyEnabled(normalized),", 'enabled: (env.WHATSAPP_INSTANT_REPLY ?? "true") !== "false",']], [T.surf, T.onb]],
-  ["M28_forged_generator_reintroduced", [[FORGER, null, FORGER_SRC]], [T.forger]],
-  ["M29_proof_job_parked_if_false", [[WF, "    if: github.event_name == 'workflow_dispatch'", "    if: ${{ false && github.event_name == 'workflow_dispatch' }}"]], [T.wf]],
-  ["M30_webhook_accepts_runtime_verify_token", [[REC, 'const runtimeVerify = whatsappChannelRetired(process.env) ? "" : String(', "const runtimeVerify = String("]], [T.bhook]],
-  ["M31_social_default_on", [[INB, 'return String(env?.META_SOCIAL_AUTOREPLY??"").trim().toLowerCase()==="true";', 'return String(env?.META_SOCIAL_AUTOREPLY??"").trim().toLowerCase()!=="false";']], [T.sOff]],
-  ["M32_social_public_reply_back", [[INB, 'if(event.kind==="comment")privateId=await graph(', 'if(event.kind==="comment"){await graph(fetchImpl,`${encodeURIComponent(event.comment_id)}/comments`,token,{message:"Obrigado por comentar!"});}if(event.kind==="comment")privateId=await graph(']], [T.sOne]],
-  ["M33_social_keyword_bypass", [[INB, "if(!reply.trigger){results.push", "if(false){results.push"], [INB, 'if(!trigger)return {private:null,trigger:false};', 'if(!trigger)return {private:"Obrigado pela mensagem!",trigger:true};']], [T.sKw]],
-  ["M34_social_rate_limit_removed", [[INB, "if(keys.some(([,max],i)=>counts[i]>=max))", "if(false)"]], [T.sRate]],
-  ["M35_social_breaker_never_trips", [[INB, "if(error?.trip){", "if(false){"]], [T.s4xx, T.sPol]],
-  ["M36_social_breaker_ignored", [[INB, "if(await kv?.get?.(META_SOCIAL_BREAKER_KEY))return", "if(false)return"]], [T.s4xx]],
-  ["M37_social_4xx_not_tripping", [[INB, "this.trip=(status>=400&&status<500)||POLICY_CODES.has(Number(code));", "this.trip=POLICY_CODES.has(Number(code));"]], [T.s4xx]],
-  ["M38_social_policy_code_not_tripping", [[INB, "this.trip=(status>=400&&status<500)||POLICY_CODES.has(Number(code));", "this.trip=(status>=400&&status<500);"]], [T.sPol]],
-  ["M39_social_dedup_removed", [[INB, "const dedup=`zpc:inbound:meta:${event.event_id}`;if(await kv?.get?.(dedup))continue;", "const dedup=`zpc:inbound:meta:${event.event_id}`;"]], [T.sOne, T.sPol]],
+  ["M07_edge_classification_removed", [[COMPAT, 'if (classifyMetaWebhookBody(raw) === "whatsapp") return whatsappWebhookAckResponse();', "if (false) return whatsappWebhookAckResponse();"]], [T.hook]],
+  ["M08_edge_silent_ack_any_product", [[COMPAT, 'if (classifyMetaWebhookBody(raw) === "whatsapp") return whatsappWebhookAckResponse();', 'if (classifyMetaWebhookBody(raw) !== "never") return whatsappWebhookAckResponse();']], [T.nonwa]],
+  ["M09_edge_large_body_silent_ack", [[COMPAT, "      if (!(declared > META_WEBHOOK_CLASSIFY_MAX_BYTES)) {", "      if (declared > META_WEBHOOK_CLASSIFY_MAX_BYTES) return whatsappWebhookAckResponse();\n      {"]], [T.nonwa]],
+  ["M10_classifier_instagram_as_whatsapp", [[RET, 'if (object === "instagram") return "instagram";', 'if (object === "instagram") return "whatsapp";']], [T.nonwa]],
+  ["M11_classifier_no_size_bound", [[RET, 'if (!text || text.length > META_WEBHOOK_CLASSIFY_MAX_BYTES) return "unclassified";', 'if (!text) return "unclassified";']], [T.nonwa]],
+  ["M12_classifier_ignores_social_fields", [[RET, 'if (!field || SOCIAL_FIELDS.has(field)) return "unclassified";', 'if (!field) return "unclassified";']], [T.nonwa]],
+  ["M13_bundle_webhook_processes_whatsapp", [[REC, "  if (whatsappChannelRetired(process.env) && isWhatsappWebhookBody(raw)) return json14(res, 200, { accepted: true, processed: false, stored: false, reason: WHATSAPP_RETIRED_REASON });\n", ""]], [T.bhook]],
+  ["M14_broker_call_guard_removed", [[REC, '  if (whatsappChannelRetired(process.env)) return { ok: false, status: 410, body: { error: "whatsapp_channel_retired", reason: WHATSAPP_RETIRED_REASON } };\n  const broker', "  const broker"]], [T.bhook, T.prims]],
+  ["M15_identity_calls_graph", [[REC, "  if (whatsappChannelRetired(env)) return result(false, false, WHATSAPP_RETIRED_REASON, { retired: true, mode: WHATSAPP_RETIRED_MODE });\n", ""]], [T.paths, T.surf]],
+  ["M16_migration_probe_uses_wa_token", [[REC, 'fallback = whatsappChannelRetired(process.env) ? "" : String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();', 'fallback = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();']], [T.paths, T.surf]],
+  ["M17_reply_retired_guard_removed", [[REC, '  if (whatsappChannelRetired(process.env)) return { sent: false, reason: "whatsapp_channel_retired" };\n  if (!whatsappInstantReplyEnabled', "  if (!whatsappInstantReplyEnabled"]], [T.reply]],
+  ["M18_webhook_instant_reply_env_default", [[REC, 'if (whatsappInstantReplyEnabled(process.env) && (item.type === "text"', 'if (process.env.WHATSAPP_INSTANT_REPLY !== "false" && (item.type === "text"']], [T.onb]],
+  ["M19_webhook_processes_inbound", [[REC, "const inbound = whatsappChannelRetired(process.env) ? [] : extractWhatsappInboundMessages(payload);", "const inbound = extractWhatsappInboundMessages(payload);"]], [T.h18]],
+  ["M20_sender_guard_removed", [[REC, '  if (whatsappChannelRetired(process.env)) return { ok: false, status: 410, provider_message_id: null, error: "whatsapp_channel_retired" };\n', ""]], [T.prims]],
+  ["M21_voice_upload_guard_removed", [[REC, '  if (whatsappChannelRetired(env) || whatsappChannelRetired(process.env)) throw new Error("whatsapp_channel_retired");\n  const staged', "  const staged"]], [T.prims]],
+  ["M22_media_download_guard_removed", [[REC, '  if (whatsappChannelRetired(env) || whatsappChannelRetired(process.env)) throw new Error("whatsapp_channel_retired");\n  const rtMedia', "  const rtMedia"]], [T.prims]],
+  ["M23_outbound_adapter_guard_removed", [[REC, '      if (whatsappChannelRetired(env) || whatsappChannelRetired(process.env)) throw new Error("whatsapp_channel_retired");\n      ensureOutboundAllowed', "      ensureOutboundAllowed"]], [T.adapter]],
+  ["M24_release_mode_not_permanent", [[REC, "whatsappMode: whatsappChannelRetired(env) ? WHATSAPP_RETIRED_MODE : whatsappTransport", "whatsappMode: whatsappTransport"]], [T.surf]],
+  ["M25_channel_status_counts_whatsapp", [[REC, "  if (whatsappChannelRetired(env) && active.whatsapp) active.whatsapp = ", "  if (false) active.whatsapp = "]], [T.surf]],
+  ["M26_distribution_counts_whatsapp", [[REC, 'const distributionRetired = whatsappChannelRetired(env) ? ["whatsapp"] : [];', "const distributionRetired = [];"]], [T.surf]],
+  ["M27_projection_ignores_retirement", [[LIVE, "whatsapp: whatsappRetired ? WHATSAPP_RETIRED_MODE : (whatsappTransportOperational", "whatsapp: (whatsappTransportOperational"]], [T.proj]],
+  ["M28_quorum_counts_retired", [[CONT, "  for(const name of retired) byName.delete(name);\n  const countable=channels.filter((item)=>!retired.has(item.name));", "  const countable=channels;"]], [T.quorum]],
+  ["M29_onboarding_alive", [[ONB, "return whatsappGoneResponse(url.pathname);", "return null;"]], [T.gone]],
+  ["M30_broker_alive", [[BROKER, "status: 410,", "status: 200,"]], [T.broker]],
+  ["M31_instant_status_env_default", [[COMPAT, "enabled: whatsappInstantReplyEnabled(normalized),", 'enabled: (env.WHATSAPP_INSTANT_REPLY ?? "true") !== "false",']], [T.surf, T.onb]],
+  ["M32_forged_generator_reintroduced", [[FORGER, null, FORGER_SRC]], [T.forger]],
+  ["M33_proof_job_parked_if_false", [[WF, "    if: github.event_name == 'workflow_dispatch'", "    if: ${{ false && github.event_name == 'workflow_dispatch' }}"]], [T.wf]],
+  ["M34_webhook_accepts_runtime_verify_token", [[REC, 'const runtimeVerify = whatsappChannelRetired(process.env) ? "" : String(', "const runtimeVerify = String("]], [T.bhook]],
+  ["M35_social_reply_path_back", [[INB, ' return {handled:true,received:events.length,replied:0,mode:"manual_only"};', ' await fetch("https://graph.facebook.com/v26.0/"+encodeURIComponent(events[0].event_id)+"/private_replies",{method:"POST",body:"{}"});\n return {handled:true,received:events.length,replied:1,mode:"auto"};']], [T.sManual, T.sStatic]],
+  ["M36_social_switch_back", [[INB, "export async function handleMetaSocialInbound(payload){", 'export function metaSocialAutoreplyEnabled(env={}){return String(env?.META_SOCIAL_AUTOREPLY??"")==="true";}\nexport async function handleMetaSocialInbound(payload){']], [T.sStatic]],
+  ["M37_social_claims_non_social", [[INB, " if(!events.length)return {handled:false,received:0,replied:0};", " if(!events.length)return {handled:true,received:0,replied:0};"]], [T.sNon]],
+  ["M38_bundle_loads_page_token_for_social", [[REC, "const social = await handleMetaSocialInbound(payload).catch(", "const social = await handleMetaSocialInbound(payload, { META_ACCESS_TOKEN: process.env.META_ACCESS_TOKEN }).catch("]], [T.sStatic]],
 ];
 
 const sha = (s) => createHash("sha256").update(s).digest("hex");
@@ -83,7 +85,7 @@ function run() {
   const re = /^not ok \d+ - (.+)$/gm;
   let m;
   while ((m = re.exec(out))) {
-    const rest = out.slice(m.index, m.index + 6000);
+    const rest = out.slice(m.index, m.index + 400000);
     const next = rest.slice(1).search(/^(ok|not ok) \d+ - /m);
     const block = next > 0 ? rest.slice(0, next + 1) : rest;
     failures.push({ name: m[1], assertion: /ERR_ASSERTION|AssertionError/.test(block) });
@@ -108,17 +110,18 @@ for (const [id, edits, expected] of MUTANTS) {
         if (existsSync(path)) { anchorProblem = "file_exists"; break; }
         saved.set(path, null); writeFileSync(path, to); continue;
       }
-      const orig = saved.has(path) ? readFileSync(path, "utf8") : readFileSync(path, "utf8");
-      if (!saved.has(path)) saved.set(path, orig);
-      if (orig.split(from).length !== 2) { anchorProblem = "anchor_not_unique:" + file; break; }
-      writeFileSync(path, orig.replace(from, to));
+      const raw = readFileSync(path);
+      if (!saved.has(path)) saved.set(path, raw);
+      const current = normalizeEol(raw.toString("utf8"));
+      if (current.split(from).length !== 2) { anchorProblem = "anchor_not_unique:" + file; break; }
+      writeFileSync(path, current.replace(from, to));
     }
     var r = anchorProblem ? null : run();
   } finally {
     for (const [path, orig] of saved) { if (orig === null) { if (existsSync(path)) unlinkSync(path); } else writeFileSync(path, orig); }
   }
   for (const [path, orig] of saved) {
-    if (orig === null ? existsSync(path) : sha(readFileSync(path, "utf8")) !== sha(orig)) { console.log(`RESTORE FAIL ${path}`); process.exit(2); }
+    if (orig === null ? existsSync(path) : sha(readFileSync(path)) !== sha(orig)) { console.log(`RESTORE FAIL ${path}`); process.exit(2); }
   }
   if (anchorProblem) { console.log(`MUTANT ${id} INCONCLUSIVE reason=${anchorProblem}`); bad++; continue; }
   const killedBy = r.failures.filter((f) => f.assertion && expected.some((e) => f.name.startsWith(e)));
