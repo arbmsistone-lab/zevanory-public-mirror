@@ -3,14 +3,31 @@
 //   1) receives the authenticated Hotmart postback (hottok, constant-time compare);
 //   2) on an approved charge, emails a one-time briefing link (first cycle) or, on renewal,
 //      generates the new monthly package from the stored briefing;
-//   3) generates the package with Workers AI (12 posts + 4 WhatsApp messages + 30-day
-//      calendar), validates it, stores it privately and emails it with a private link;
+//   3) generates the package with Workers AI (12 posts + 4 multichannel sales/follow-up scripts,
+//      each with a short and an e-mail version, + 30-day calendar), validates it, stores it
+//      privately and emails it with a private link;
 //   4) stops on refund / chargeback / cancellation.
 // No Mercado Pago, checkout, pricing or sales-switch code is touched. Buyer e-mail/name are
 // kept only in the private KV (needed for delivery), never in logs or the activity ledger.
 import { brandedEmailHtml } from "./brand-email.mjs";
 import { emitActivity } from "./activity-ledger.mjs";
 import { recordHotmartSale } from "./sales-ledger.mjs";
+import { CONTEUDO_PRONTO } from "./politica-unica.mjs";
+
+// Contrato versionado da oferta (data/politica-unica.json, conteudo_pronto): a página
+// /conteudo-pronto, o resumo da oferta e este gerador leem as mesmas quantidades, objetivos e
+// canais. A conta de mensagens da ZEVANORY na Meta foi banida: os roteiros são para canais
+// autorizados pelo cliente, revisados por ele, sem disparo automático.
+export const CONTENT_SCHEMA_VERSION = CONTEUDO_PRONTO.content_schema_version;
+export const PACKAGE_SCHEMA = CONTEUDO_PRONTO.package_schema;
+export const ROTEIRO_OBJETIVOS = Object.freeze(CONTEUDO_PRONTO.objetivos.map((o) => Object.freeze({ ...o })));
+const N_POSTS = CONTEUDO_PRONTO.posts;
+const N_ROTEIROS = CONTEUDO_PRONTO.roteiros;
+const CANAIS = CONTEUDO_PRONTO.canais_autorizados_exemplo;
+const CANAIS_TEXTO = CANAIS.slice(0, -1).join(", ") + " ou " + CANAIS[CANAIS.length - 1];
+// Canal banido e disparo em massa nunca entram num roteiro (termos em conteudo_pronto.termos_proibidos_regex);
+// \b evita falso positivo em palavras como "zapier".
+const ROTEIRO_PROIBIDO = new RegExp("\\b(?:" + CONTEUDO_PRONTO.termos_proibidos_regex.join("|") + ")\\b", "i");
 
 export const SERVICE_PRODUCT_NAME = "ZEVANORY Conteúdo Pronto";
 const SUB = "zpc:cp:sub:";        // subscriber record
@@ -113,7 +130,7 @@ export async function handleHotmartWebhook(request, env, ctx, fetchImpl = fetch)
     await kv.put(TOKEN + token, key, { expirationTtl: 60 * DAY });
     const link = `${ORIGIN}/conteudo-pronto/briefing?t=${token}`;
     await sendEmail(env, email, "Bem-vindo ao Conteúdo Pronto — falta só 1 passo",
-      `Olá${name ? ", " + name.split(" ")[0] : ""}!\n\nSeu pagamento foi confirmado. Para a ZEVANORY preparar o seu pacote do mês, responda este formulário curto (leva 3 minutos):\n\n${link}\n\nAssim que você enviar, o pacote com 12 posts, 4 mensagens de venda para WhatsApp e o calendário de 30 dias chega neste e-mail em poucos minutos.\n\nDúvidas: suporte@zevanory.api.br`, fetchImpl);
+      `Olá${name ? ", " + name.split(" ")[0] : ""}!\n\nSeu pagamento foi confirmado. Para a ZEVANORY preparar o seu pacote do mês, responda este formulário curto (leva 3 minutos):\n\n${link}\n\nAssim que você enviar, o pacote com ${N_POSTS} posts, ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento (cada um com versão curta e versão de e-mail) e o calendário de 30 dias chega neste e-mail em poucos minutos. Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}; você revisa antes de usar e nada é enviado automaticamente.\n\nDúvidas: suporte@zevanory.api.br`, fetchImpl);
     await emitActivity(env, { type: "email_sent", channel: "email", status: "briefing_requested", ref: "cp-brief:" + subscriber + ":" + record.cycles }).catch(() => null);
     await ownerAlert(env, "novo assinante do Conteúdo Pronto", `Novo assinante (ciclo ${record.cycles}). O formulário foi enviado automaticamente. Nenhuma ação necessária.`, fetchImpl);
     return json(200, { ok: true, status: "briefing_requested" });
@@ -132,7 +149,7 @@ const FIELDS = [
   ["diferencial", "Por que escolher você (diferencial)", 300, true],
   ["cidade", "Cidade / região de atendimento", 80, false],
   ["tom", "Tom de voz (ex.: próximo e divertido, sério e técnico)", 120, true],
-  ["contato", "Como o cliente fala com você (WhatsApp, Instagram, site)", 160, false],
+  ["contato", "Canais que seus clientes autorizaram para falar com você (ex.: e-mail, Instagram Direct, Telegram, chat do site)", 160, false],
 ];
 function page(title, inner, status = 200) {
   return new Response(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)} · ZEVANORY</title><style>body{margin:0;background:#05070b;color:#f5f7fb;font:16px/1.55 system-ui,Arial,sans-serif}main{max-width:720px;margin:0 auto;padding:24px 16px}label{display:block;margin:16px 0 6px;font-weight:600}input,textarea{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #2a3344;background:#0b0f16;color:#f5f7fb;font:inherit}button{margin-top:20px;padding:14px 20px;border:0;border-radius:12px;background:#dbe6ff;color:#05070b;font-weight:700;font-size:16px;cursor:pointer}article{background:#0b0f16;border:1px solid #1d2533;border-radius:12px;padding:14px;margin:12px 0}h1{font-size:28px;line-height:1.2}small{color:#9aa6bd}</style></head><body><main>${inner}</main></body></html>`, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex", "referrer-policy": "no-referrer", "x-frame-options": "DENY" } });
@@ -185,28 +202,44 @@ export function validatePosts(list, n) {
   }
   return out;
 }
-export function validateMessages(list) {
-  if (!Array.isArray(list) || list.length < 4) return null;
+// Roteiros multicanal: exatamente os objetivos do contrato, na ordem; cada um com versão curta
+// (Direct, Telegram, chat do site) e versão de e-mail (assunto + corpo). O objetivo exibido vem do
+// contrato, nunca do modelo, para a saída não divergir da oferta.
+export function validateRoteiros(list) {
+  if (!Array.isArray(list) || list.length < N_ROTEIROS) return null;
   const out = [];
-  for (const m of list.slice(0, 4)) {
-    const objetivo = String(m?.objetivo || "").trim(), texto = String(m?.texto || "").trim();
-    if (objetivo.length < 3 || texto.length < 60 || texto.length > 900 || FORBIDDEN.test(texto)) return null;
-    out.push({ objetivo, texto });
+  for (const [i, obj] of ROTEIRO_OBJETIVOS.entries()) {
+    const r = list[i];
+    const id = String(r?.objetivo_id || r?.objetivo || "").trim();
+    const curta = String(r?.curta || "").trim();
+    const assunto = String(r?.email?.assunto ?? r?.email_assunto ?? "").trim();
+    const corpo = String(r?.email?.corpo ?? r?.email_corpo ?? "").trim();
+    if (id !== obj.id) return null;
+    if (curta.length < 60 || curta.length > 600) return null;
+    if (assunto.length < 5 || assunto.length > 120 || corpo.length < 200 || corpo.length > 1600) return null;
+    const all = [curta, assunto, corpo].join(" ");
+    if (FORBIDDEN.test(all) || ROTEIRO_PROIBIDO.test(all)) return null;
+    out.push({ objetivo_id: obj.id, objetivo: obj.titulo, curta, email: { assunto, corpo } });
   }
   return out;
+}
+export function roteirosPrompt(brief) {
+  const objetivos = ROTEIRO_OBJETIVOS.map((o, i) => `${i + 1}) "${o.id}": ${o.regra}`).join("; ");
+  return `Briefing do negócio:\n${brief}\n\nCrie ${N_ROTEIROS} roteiros multicanal de venda e acompanhamento para o negócio usar em canais que o cliente autorizou, como ${CANAIS_TEXTO}. O dono revisa antes de usar; nada é enviado automaticamente. Objetivos, nesta ordem: ${objetivos}. Cada roteiro tem uma versão curta (mensagem direta de 150 a 450 caracteres) e uma versão de e-mail (assunto curto e corpo de 400 a 1200 caracteres). Não cite aplicativos de mensagem que o cliente não autorizou, não proponha envio em massa e não invente nomes, preços ou prazos. JSON: {"roteiros":[{"objetivo_id":"${ROTEIRO_OBJETIVOS[0].id}","curta":"...","email":{"assunto":"...","corpo":"..."}}]}`;
 }
 async function ask(ai, system, user, validate) {
   for (const model of MODELS) {
     for (let attempt = 0; attempt < 2; attempt++) {
+      let timer;
       try {
         const out = await Promise.race([
           ai.run(model, { messages: [{ role: "system", content: system }, { role: "user", content: user }], max_tokens: 3000, temperature: 0.6 }),
-          new Promise((_, rej) => setTimeout(() => rej(new Error("ai_timeout")), 60000)),
+          new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("ai_timeout")), 60000); }),
         ]);
         const parsed = extractJson(aiText(out));
         const ok = parsed && validate(parsed);
         if (ok) return ok;
-      } catch {}
+      } catch {} finally { clearTimeout(timer); }
     }
   }
   return null;
@@ -221,23 +254,37 @@ export async function generatePackage(env, briefing, cycle = 1) {
   if (!a) return null;
   const b = await ask(ai, SYSTEM, postSpec(7) + `\nNão repita estes temas: ${a.map((p) => p.tema).join("; ")}.`, (j) => validatePosts(j.posts, 6));
   if (!b) return null;
-  const m = await ask(ai, SYSTEM, `Briefing do negócio:\n${brief}\n\nCrie 4 mensagens de WhatsApp para clientes que já conversaram com o negócio (respeitando quem pediu contato): 1) apresentar a oferta principal, 2) acompanhamento de quem não respondeu, 3) reativar cliente antigo, 4) pedir indicação. JSON: {"mensagens":[{"objetivo":"...","texto":"mensagem de 150 a 500 caracteres"}]}`, (j) => validateMessages(j.mensagens));
+  const m = await ask(ai, SYSTEM, roteirosPrompt(brief), (j) => validateRoteiros(j.roteiros));
   if (!m) return null;
   const posts = [...a, ...b];
+  if (posts.length !== N_POSTS) return null;
   const days = [1, 3, 6, 8, 10, 13, 15, 17, 20, 22, 25, 28];
   const calendar = posts.map((p, i) => ({ dia: days[i], tipo: "post", tema: p.tema }));
-  calendar.push({ dia: 5, tipo: "whatsapp", tema: m[0].objetivo }, { dia: 12, tipo: "whatsapp", tema: m[1].objetivo }, { dia: 19, tipo: "whatsapp", tema: m[2].objetivo }, { dia: 26, tipo: "whatsapp", tema: m[3].objetivo });
+  [5, 12, 19, 26].forEach((dia, i) => calendar.push({ dia, tipo: "roteiro", tema: m[i].objetivo }));
   calendar.sort((x, y) => x.dia - y.dia);
-  return { schema: "zpc.cp.package.v1", cycle, generatedAt: new Date().toISOString(), posts, mensagens: m, calendario: calendar };
+  return { schema: PACKAGE_SCHEMA, content_schema_version: CONTENT_SCHEMA_VERSION, cycle, generatedAt: new Date().toISOString(), posts, roteiros: m, calendario: calendar };
 }
+// Pacotes antigos (zpc.cp.package.v1, campo "mensagens") continuam legíveis no link privado, com
+// rótulo neutro: nenhum canal é prometido na reexibição.
+function roteirosOf(pkg) {
+  if (Array.isArray(pkg?.roteiros)) return pkg.roteiros;
+  return (Array.isArray(pkg?.mensagens) ? pkg.mensagens : []).map((m) => ({ objetivo: String(m?.objetivo || ""), curta: String(m?.texto || ""), email: null }));
+}
+const CAL_LABEL = { post: "Post", roteiro: "Roteiro" };
+const calLabel = (tipo) => CAL_LABEL[tipo] || "Roteiro";
+export const ROTEIROS_TITULO = `${N_ROTEIROS} ROTEIROS MULTICANAL DE VENDA E ACOMPANHAMENTO`;
+export const ROTEIROS_AVISO = `Os roteiros são para canais que seus clientes autorizaram, como ${CANAIS_TEXTO}. Use a reativação só com relacionamento ativo ou consentimento registrado. Você revisa antes de usar; não há disparo automático.`;
 export function packageText(pkg, name = "") {
   const lines = [`Seu pacote Conteúdo Pronto — mês ${pkg.cycle}${name ? ` (${name})` : ""}`, "", "CALENDÁRIO DE 30 DIAS"];
-  for (const c of pkg.calendario) lines.push(`Dia ${String(c.dia).padStart(2, "0")} · ${c.tipo === "post" ? "Post" : "WhatsApp"} · ${c.tema}`);
-  lines.push("", "12 POSTS");
+  for (const c of pkg.calendario) lines.push(`Dia ${String(c.dia).padStart(2, "0")} · ${calLabel(c.tipo)} · ${c.tema}`);
+  lines.push("", `${pkg.posts.length} POSTS`);
   pkg.posts.forEach((p, i) => lines.push("", `POST ${i + 1} — ${p.tema}`, p.legenda, `Chamada: ${p.cta}`, p.hashtags.join(" "), `Imagem sugerida: ${p.imagem || "foto real do seu negócio"}`));
-  lines.push("", "4 MENSAGENS PARA WHATSAPP");
-  pkg.mensagens.forEach((m, i) => lines.push("", `MENSAGEM ${i + 1} — ${m.objetivo}`, m.texto));
-  lines.push("", "Revise e ajuste o que quiser antes de publicar. Envie mensagens só para quem pediu contato com você.");
+  lines.push("", ROTEIROS_TITULO, ROTEIROS_AVISO);
+  roteirosOf(pkg).forEach((r, i) => {
+    lines.push("", `ROTEIRO ${i + 1} — ${r.objetivo}`, "Versão curta:", r.curta);
+    if (r.email) lines.push("Versão de e-mail:", `Assunto: ${r.email.assunto}`, r.email.corpo);
+  });
+  lines.push("", "Revise e ajuste o que quiser antes de publicar ou enviar. Fale só com quem autorizou o contato com você.");
   return lines.join("\n");
 }
 export async function generateAndDeliver(env, key, fetchImpl = fetch) {
@@ -283,7 +330,7 @@ export async function handlePackageView(request, env) {
   const pkg = found?.record?.lastPackage ? await readJson(kv, found.record.lastPackage, null) : null;
   if (!pkg) return page("Pacote não encontrado", "<h1>Pacote não encontrado ou link expirado.</h1>", 404);
   const posts = pkg.posts.map((p, i) => `<article><h2>Post ${i + 1} — ${esc(p.tema)}</h2><p style="white-space:pre-wrap">${esc(p.legenda)}</p><p><b>Chamada:</b> ${esc(p.cta)}</p><p>${esc(p.hashtags.join(" "))}</p><small>Imagem sugerida: ${esc(p.imagem)}</small></article>`).join("");
-  const msgs = pkg.mensagens.map((m, i) => `<article><h2>Mensagem ${i + 1} — ${esc(m.objetivo)}</h2><p style="white-space:pre-wrap">${esc(m.texto)}</p></article>`).join("");
-  const cal = pkg.calendario.map((c) => `<li>Dia ${c.dia} · ${c.tipo === "post" ? "Post" : "WhatsApp"} · ${esc(c.tema)}</li>`).join("");
-  return page("Seu pacote", `<h1>Conteúdo Pronto · mês ${pkg.cycle}</h1><h2>Calendário</h2><ul>${cal}</ul><h2>12 posts</h2>${posts}<h2>4 mensagens para WhatsApp</h2>${msgs}`);
+  const rots = roteirosOf(pkg).map((r, i) => `<article><h2>Roteiro ${i + 1} — ${esc(r.objetivo)}</h2><h3>Versão curta</h3><p style="white-space:pre-wrap">${esc(r.curta)}</p>${r.email ? `<h3>Versão de e-mail</h3><p><b>Assunto:</b> ${esc(r.email.assunto)}</p><p style="white-space:pre-wrap">${esc(r.email.corpo)}</p>` : ""}</article>`).join("");
+  const cal = pkg.calendario.map((c) => `<li>Dia ${c.dia} · ${calLabel(c.tipo)} · ${esc(c.tema)}</li>`).join("");
+  return page("Seu pacote", `<h1>Conteúdo Pronto · mês ${pkg.cycle}</h1><h2>Calendário</h2><ul>${cal}</ul><h2>${pkg.posts.length} posts</h2>${posts}<h2>${esc(ROTEIROS_TITULO.charAt(0) + ROTEIROS_TITULO.slice(1).toLowerCase())}</h2><p>${esc(ROTEIROS_AVISO)}</p>${rots}`);
 }
