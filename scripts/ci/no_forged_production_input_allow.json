@@ -365,29 +365,6 @@
         "at": "",
         "reference": ""
       }
-    },
-    {
-      "file": "scripts/financial_e2e_stripe.py",
-      "line_pattern": "_,invite=app\\(\"/api/internal/certification/e2e/invite\",\"POST\",$",
-      "classification": "REAL_RISK",
-      "status": "OPEN_NOT_HOMOLOGATED",
-      "reason": "Stripe sandbox E2E creates a synthetic certification order (invite + /api/checkout/stripe) on the PRODUCTION host: synthetic financial transaction on production.",
-      "evidence": [
-        "scripts/financial_e2e_stripe.py:4",
-        "scripts/financial_e2e_stripe.py:67-74"
-      ],
-      "required_fix": "Refuse any *.zevanory.api.br target (R4_PRODUCTION_HOST_DENIED) and add the owner approval gate step: separate class-B PR.",
-      "independent_control": {
-        "type": "pending-fix-pr",
-        "pr": "#910",
-        "until": "the separate class-B PR merges; then this entry turns stale and must be removed"
-      },
-      "risk_acceptance": {
-        "status": "NOT_ACCEPTED",
-        "by": "",
-        "at": "",
-        "reference": ""
-      }
     }
   ],
   "financial_gates": [
@@ -402,8 +379,8 @@
       "workflow": ".github/workflows/financial-e2e-stripe.yml",
       "variable": "R4_FINANCIAL_E2E_STRIPE_OWNER_APPROVAL",
       "require_job_if_false": false,
-      "status": "PENDING_FIX_PR",
-      "reference": "#910"
+      "status": "ENFORCED",
+      "reference": "#910 (merged 4b73b1ee)"
     }
   ]
 }
