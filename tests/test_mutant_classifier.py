@@ -2,7 +2,9 @@
 
 Synthetic TAP built here covers each rule in isolation; the captured fixtures in tests/fixtures/mutant_classifier
 (real `node --test` output from Node 22 and Node 24, each also stored with CRLF line endings) prove the verdict does
-not depend on the Node version or the line endings. Run: python -m unittest tests.test_mutant_classifier -v
+not depend on the Node version or the line endings. Provenance: tests/test_mutant_classifier_live.py with
+MUTANT_CLASSIFIER_CAPTURE_DIR set, on Linux, Node v22.22.0 and Node v24.21.0 (official binary; the same version the CI
+live job ran); the *.crlf.tap twins are the same bytes with LF -> CRLF. Run: python -m unittest tests.test_mutant_classifier -v
 """
 import json
 import os
