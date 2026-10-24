@@ -1,6 +1,6 @@
 name: ZEVANORY F7 emergency close drill (sales stay closed)
 # Writes a NEW closed record to sales:open:v1 and times how long production takes to serve it,
-# while proving checkout keeps refusing. It never writes enabled:true. If sales are found open,
+# (checkout refusal is proven offline, never by POSTing to production: R4). It never writes enabled:true. If sales are found open,
 # the drill aborts without touching anything (an operator, not a drill, must handle that).
 on:
   workflow_dispatch:
@@ -71,10 +71,8 @@ jobs:
             time.sleep(2)
           if elapsed is None:fail("NEW_CLOSED_REVISION_NOT_SERVED_WITHIN_120S")
           print(f"::notice title=F7_DRILL_PROPAGATION::new closed revision served in {elapsed}s (target <60s, one edge location)")
-          # 4. Checkout keeps refusing after the close.
-          c,b=req("https://zevanory.api.br/api/checkout/mercadopago","POST",b'{"offer_id":"ZEV-IA-011"}',{"Content-Type":"application/json","User-Agent":"ZEVANORY-AuditReadOnly/1.0"})
-          print(f"::notice title=F7_DRILL_CHECKOUT::http={c} body_code={(json.loads(b or b'{}').get('error') if b and b[:1]==b'{' else '')}")
-          if c in (200,201,202):fail("CHECKOUT_ACCEPTED_AFTER_CLOSE")
+          # 4. R4: the synthetic POST to the production checkout was removed (never test production with forged
+          #    input). Checkout refusal while closed is proven by the trava-vendas gate on an ephemeral database.
           # 5. Audit record.
           rec={"audit_id":audit_id,"at":at,"action":"emergency_close_drill","enabled":False,"propagation_seconds":elapsed}
           c,_=req(base+"sales:audit:"+audit_id,"PUT",json.dumps(rec).encode(),{**kvh,"Content-Type":"application/json"})

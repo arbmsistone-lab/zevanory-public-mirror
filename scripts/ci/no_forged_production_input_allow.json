@@ -1,0 +1,57 @@
+[
+  {
+    "file": ".github/workflows/channel-production-bootstrap.yml",
+    "line_pattern": "-X POST -H \"x-certification-e2e-token: \\$CERTIFICATION_E2E_TOKEN\" https://zevanory\\.api\\.br/api/internal/channels/telegram-proof ",
+    "justification": "OWNER DECISION PENDING (R4 PR). First-party operator call authenticated by our own token, no provider signature and no forged third-party payload; manual workflow_dispatch behind the producao-critica reviewer. Publishes a real Telegram post by design. Remove this entry if the owner rejects it."
+  },
+  {
+    "file": "scripts/channels/prove-youtube.mjs",
+    "line_pattern": "fetch\\(\"https://zevanory\\.api\\.br/api/internal/channels/evidence\",\\{method:\"POST\"",
+    "justification": "OWNER DECISION PENDING (R4 PR). Records first-party evidence (YouTube video id) on our own internal endpoint with our own token; no provider signature, no forged inbound payload; run only by channel-production-bootstrap (producao-critica reviewer)."
+  },
+  {
+    "file": ".github/workflows/command-center-snapshot.yml",
+    "line_pattern": "-X POST -H \"x-backup-token: \\$CERTIFICATION_E2E_TOKEN\" --max-time 120 https://zevanory\\.api\\.br/api/internal/funnel/run ",
+    "justification": "OWNER DECISION PENDING (R4 PR). Hourly operator trigger of the funnel consolidation inside the production Worker, authenticated by our own token; no provider signature and no forged third-party payload."
+  },
+  {
+    "file": "scripts/ops/data-backup.mjs",
+    "line_pattern": "await call\\(`(?:part=\\$\\{p\\}&parts=\\$\\{PARTS\\}|finalize=1&parts=\\$\\{PARTS\\})`\\)",
+    "justification": "OWNER DECISION PENDING (R4 PR). Daily backup and restore drill /api/internal/backup/run executed inside the production Worker (the only holder of the database credential), our own token, no provider signature, no forged inbound payload. Disabling it would stop backups."
+  },
+  {
+    "file": "scripts/ops/voice-eval.mjs",
+    "line_pattern": "await fetch\\(url, \\{ method: \"POST\", headers: \\{ \"x-backup-token\": token \\}",
+    "justification": "OWNER DECISION PENDING (R4 PR). Weekly operator trigger of /api/internal/voice-eval/run inside the production Worker with our own token; it does not send WhatsApp messages and carries no provider signature."
+  },
+  {
+    "file": ".github/workflows/whatsapp-neon-live-proof.yml",
+    "line_pattern": "refresh_code=\"\\$\\(curl -sS -o /tmp/whatsapp-ops-refresh\\.json -w '%\\{http_code\\}' \\\\$",
+    "justification": "OWNER DECISION PENDING (R4 PR). POST /api/internal/whatsapp/stats-refresh with our own token recomputes cached WhatsApp stats; it sends no message and no provider-shaped payload. Workflow disabled since I1; tests/whatsapp-neon-store.test.mjs (a central-production-deploy path) pins this call, so removing it here would fire the production deploy on merge."
+  },
+  {
+    "file": ".github/workflows/t2-regenerate-ia-clean.yml",
+    "line_pattern": "const response = await fetch\\(endpoint, \\{",
+    "justification": "OWNER DECISION PENDING (R4 PR). HMAC x-commercial-signature is OUR first-party scheme for the control-plane creative factory (controle.zevanory.api.br/api/commercial/creative/factory/tick), not a forged provider (Meta/Resend/Mercado Pago/Asaas/Stripe) signature. Literal R4 says signed input to production fails: owner must accept or ask for a migration."
+  },
+  {
+    "file": ".github/workflows/t2-workers-ai-creative-factory.yml",
+    "line_pattern": "fetch\\('https://controle\\.zevanory\\.api\\.br/api/commercial/creative/factory/tick', \\{",
+    "justification": "OWNER DECISION PENDING (R4 PR). Same first-party x-commercial-signature scheme as t2-regenerate-ia-clean; content factory tick on our own control plane, no forged provider signature or provider-shaped payload."
+  },
+  {
+    "file": "scripts/t2/compose-creatives.mjs",
+    "line_pattern": "fetch\\(`\\$\\{ORIGIN\\}/api/commercial/creative/upload\\?product=\\$\\{slug\\}&angle=\\$\\{ANGLE\\}`, \\{",
+    "justification": "OWNER DECISION PENDING (R4 PR). Uploads a rendered JPEG to our own control plane with the first-party x-commercial-signature scheme (t2-creative-compose, t2-content-calendar); no forged provider signature or provider-shaped payload."
+  },
+  {
+    "file": "scripts/financial_e2e_stripe.py",
+    "line_pattern": "_,invite=app\\(\"/api/internal/certification/e2e/invite\",\"POST\",$",
+    "justification": "REAL RISK, NOT FIXED HERE, OWNER DECISION REQUIRED (R4 PR). Stripe sandbox E2E creates a synthetic certification order on the PRODUCTION host (invite + /api/checkout/stripe); no forged signature, but it tests production with synthetic input. Both fix paths (this script and financial-e2e-stripe.yml) are central-production-deploy push paths, so the fix (same isolated-Worker guard as financial_e2e_mercadopago.py) must go in a separate class-B PR. Job sits behind the producao-critica reviewer."
+  },
+  {
+    "file": ".github/workflows/mercadopago-exact-sha-recovery.yml",
+    "line_pattern": "app\\(\"/api/(?:webhooks\\?provider=mercadopago_test|events/operator|checkout/mercadopago)\",\"POST\",",
+    "justification": "REAL RISK, NOT FIXED HERE, OWNER-GATED (R4 PR). Mercado Pago webhooks signed with the test webhook secret plus pilot checkouts sent to the PRODUCTION host. The job is permanently 'if: ${{ false }}', and ops/publishers.json marks this financial workflow as changeable only with the owner's written authorization, so the forged-input step is not edited here. Owner: authorize its removal and delete this entry."
+  }
+]
