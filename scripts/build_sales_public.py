@@ -157,11 +157,6 @@ def mode_text(closed_text: str, open_text: str, tag: str = "span", cls: str = ""
         return f"<{tag}{klass}>{open_text}</{tag}>"
     return f'<{tag}{klass} data-zev-open-text="{_attr(open_text)}">{closed_text}</{tag}>'
 
-def closed_note(tag: str = "p", cls: str = "microcopy sales-closed") -> str:
-    if MODE == policy.OPEN:
-        return ""
-    return f'<{tag} class="{cls}" data-zev-closed>Preço informativo: {policy.CLOSED_LABEL}.</{tag}>'
-
 def _esc(text: str) -> str:
     return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -214,16 +209,22 @@ def apply_commerce(slug: str, html: str) -> str:
     for (old_t, old_s), (new_t, new_s) in trust.items():
         html = html.replace(f"<strong>{old_t}</strong><span>{old_s}</span>", f"<strong>{new_t}</strong><span>{new_s}</span>")
     items = "".join(f"<li>{i}</li>" for i in c["items"])
+    # Design (2026-10-24): "vendas temporariamente fechadas" is said ONCE per page by the site notice
+    # (sales_notice); the legal Resumo da oferta keeps its own Disponibilidade field.
     aside = (f'<aside class="offer-side"><div><span class="status-pill">R$ {c["price"]} · pagamento único</span>'
              f'<h3>O que você recebe</h3><ul>{items}</ul>'
-             + policy.POLICY_SUMMARY + closed_note()
+             + policy.POLICY_SUMMARY
              + offer_summary(slug, "produto_digital", "; ".join(c["items"]) + ".", c["price"]) +
              '</div>' + sales_cta(c, label) + '</aside>')
     html = re.sub(r'<aside class="offer-side">.*?</aside>', lambda m: aside, html, count=1, flags=re.S)
-    # Conversion: what the buyer gets, right under the first call to action.
-    chips = "".join(f"<li>{i}</li>" for i in c["items"][:4])
-    includes = (closed_note() + f'<ul class="hero-includes" aria-label="O que está incluído">{chips}</ul>'
-                '<p class="microcopy hero-trust">Empresa brasileira com CNPJ · criada por <a href="/quem-criou">Renan Bitu</a> · suporte humano ' + HUMAN_SUPPORT + '</p>')
+    # Hero: the product's name above the claim, and its receipt (what you get, the total) beside it.
+    html = re.sub(r'(<section class="container hero"><div>)<p class="eyebrow">[^<]*</p>', lambda m: m.group(1) + f'<p class="kicker">{c["name"]}</p>', html, count=1)
+    receipt = (f'<div class="hero-panel receipt"><p class="receipt-head">O que você recebe<span>pagamento único</span></p>'
+               f'<ul class="outcome-list">{items}</ul>'
+               f'<p class="receipt-total"><span>Total</span><span>R$ {c["price"]}</span></p>'
+               '<p class="receipt-foot">Entrega por e-mail, em link pessoal.</p></div>')
+    html = re.sub(r'<aside class="hero-panel">.*?</aside>', lambda m: receipt, html, count=1, flags=re.S)
+    includes = ('<p class="microcopy hero-trust">Empresa brasileira com CNPJ · criada por <a href="/quem-criou">Renan Bitu</a> · suporte humano ' + HUMAN_SUPPORT + '</p>')
     html = re.sub(r'(<section class="container hero".*?<p class="microcopy">[^<]*</p>)', lambda m: m.group(1) + includes, html, count=1, flags=re.S)
     # Conversion: who it is for (and who it is not for), right after the trust strip.
     yes, no = FIT[slug]
@@ -238,7 +239,7 @@ def apply_commerce(slug: str, html: str) -> str:
     html = re.sub(r'(<section class="trust-strip".*?</section>)', lambda m: m.group(1) + fit_html, html, count=1, flags=re.S)
     # Conversion: a compact bar that follows the reader on phones (72 h / um download beside the CTA).
     bar = (f'<div class="buy-bar" role="region" aria-label="Oferta {c["name"]}"><div><strong>{c["name"]}</strong>'
-           + mode_text(f'R$ {c["price"]} · {policy.CLOSED_LABEL}', f'R$ {c["price"]} · link de 72 h, um download')
+           + f'<span>R$ {c["price"]} · pagamento único</span>'
            + '</div>' + sales_cta(c, "Comprar") + '</div>')
     html = html.replace("</main>", bar + "</main>", 1)
     # FAQ: drop "when will sales open" and fix composition answers; add delivery + withdrawal.
@@ -272,14 +273,15 @@ def apply_commerce(slug: str, html: str) -> str:
     return html
 
 def apply_catalog(html: str) -> str:
-    html = html.replace("com escopo explícito e venda condicionada a gates reais.", "com escopo explícito, pagamento seguro e arrependimento em 7 dias.")
-    for slug, c in COMMERCE.items():
-        tag = mode_text(f'R$ {c["price"]} · {policy.CLOSED_LABEL}', f'R$ {c["price"]} · link de 72 h, um download', cls="catalog-type")
-        html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', lambda m: m.group(1) + tag, html, count=1, flags=re.S)
-    sub_tag = mode_text(f"R$ 197/mês · {policy.CLOSED_LABEL}", "R$ 197/mês · entrega automática por e-mail", cls="catalog-type")
-    html = re.sub(r'(<a class="catalog-card" href="/conteudo-pronto">.*?<p>[^<]*</p>)', lambda m: m.group(1) + sub_tag, html, count=1, flags=re.S)
-    for slug in ("zevanory-sales", "zevanory-cfo", "arbm-contador-saloes"):
-        html = re.sub(rf'(<a class="catalog-card" href="/{slug}">.*?<p>[^<]*</p>)', r'\g<1><span class="catalog-type">Em breve</span>', html, count=1, flags=re.S)
+    """Catalogue by problem (solucoes/index.html): the build adds each paid product's price; free
+    and "Em breve" tags are in the source. Closed status is the single page notice, not per card."""
+    prices = {slug: f'R$ {c["price"]}' for slug, c in COMMERCE.items()}
+    prices["conteudo-pronto"] = "R$ 197/mês"
+    for slug, price in prices.items():
+        html, n = re.subn(rf'(<a class="catalog-card(?: [a-z ]+)?" href="/{slug}"><h3>[^<]*</h3><p>[^<]*</p>)',
+                          lambda m: m.group(1) + f'<span class="catalog-price">{price}</span>', html, count=1)
+        if n != 1:
+            raise SystemExit(f"solucoes: catalog card for {slug} missing")
     return html
 
 SUBSCRIPTION_OFFER = {"@type": "Offer", "price": "197.00", "priceCurrency": "BRL", "url": f"{SALES_ORIGIN}/conteudo-pronto"}
@@ -290,7 +292,7 @@ def apply_subscription(html: str) -> str:
     if html.count('data-zev-sub="conteudo-pronto"') < 1 or "/assinar/" in html:
         raise SystemExit("conteudo-pronto: fonte fora do modo fechado")
     html = re.sub(r'(<a class="button primary" [^>]*data-zev-sub="conteudo-pronto"[^>]*>[^<]*</a></p><p class="microcopy">[^<]*</p>)',
-                  lambda m: m.group(1) + policy.SUBSCRIPTION_SUMMARY + closed_note()
+                  lambda m: m.group(1) + policy.SUBSCRIPTION_SUMMARY
                   + offer_summary("conteudo-pronto", "assinatura", policy.RESUMO_OFERTA["assinatura"]["caracteristicas"]), html, count=1)
     if policy.SUBSCRIPTION_SUMMARY not in html:
         raise SystemExit("conteudo-pronto: ancora do CTA principal nao encontrada")
@@ -308,6 +310,33 @@ def apply_subscription(html: str) -> str:
                     node["offers"] = dict(SUBSCRIPTION_OFFER)
             return m.group(1) + json.dumps(data, ensure_ascii=False) + m.group(3)
         html = re.sub(r'(<script type="application/ld\+json">)(.*?)(</script>)', add_offer, html, count=1, flags=re.S)
+    return html
+
+PRICE_PAGES = set(PRODUCTS) | {"solucoes", "conteudo-pronto"}
+
+def sales_notice() -> str:
+    """The one honest notice on pages that show prices (closed build only). <p> with plain text and
+    data-zev-closed: the Worker removes it at request time when the owner opens sales."""
+    if MODE == policy.OPEN:
+        return ""
+    return (f'<p class="sales-notice" data-zev-closed>Aviso: {policy.CLOSED_LABEL}. Os preços são informativos; '
+            'entre na lista de espera e avisamos por e-mail quando abrir.</p>')
+
+def apply_presentation(slug: str, html: str) -> str:
+    """Design pass (docs/design/sales-site-identity.md), applied after every content/legal step:
+    the hero label stays (sentence case, no caps), every other eyebrow/kicker goes; no arrow tics;
+    buttons say what happens; asides that are not complementary content become plain blocks."""
+    html = re.sub(r'(<section class="container hero"><div>)<p class="eyebrow">', r'\1<p class="kicker">', html, count=1)
+    html = re.sub(r'<p class="(?:eyebrow|section-kicker)">[^<]*</p>', "", html)
+    html = re.sub(r'(<span class="card-link">[^<]*?)\s*→\s*(</span>)', r"\1\2", html)
+    html = html.replace(">Falar com a ZEVANORY</a>", ">Escrever para o suporte</a>")
+    # The hero panel is part of the hero, not complementary content (axe landmark-complementary-is-top-level).
+    # The offer aside stays: the Decreto 7.962 tests anchor the "Resumo da oferta" inside it.
+    html = re.sub(r'<aside class="hero-panel">(.*?)</aside>', r'<div class="hero-panel">\1</div>', html, flags=re.S)
+    html = html.replace('<nav class="site-nav"><a ', '<nav class="site-nav" aria-label="Navegação principal"><a ', 1)
+    if slug in PRICE_PAGES and "sales-notice" not in html:
+        # First thing inside <main> (inside a landmark, read right after the skip link).
+        html = re.sub(r"(<main\b[^>]*>)", lambda m: m.group(1) + sales_notice(), html, count=1)
     return html
 
 def add_legal_footer(html: str) -> str:
@@ -374,18 +403,18 @@ def apply_approved_overlay() -> None:
             html = apply_catalog(html)
         if slug == "conteudo-pronto":
             html = apply_subscription(html)
+        html = apply_presentation(slug, html)
         html = add_legal_footer(html).replace("contato@zevanory.api.br", "suporte@zevanory.api.br")
         # Source pages may list both addresses ("contato@ ou suporte@"); after the public
         # canonicalization they would read "suporte@ ou suporte@". Collapse the duplicate.
         html = re.sub(r"suporte@zevanory\.api\.br( ou | or |, | e )suporte@zevanory\.api\.br", "suporte@zevanory.api.br", html)
-        if 'src="/whatsapp-contact.js"' not in html:
-            html = html.replace("</body>", '<script src="/whatsapp-contact.js" defer></script></body>', 1)
+        # E2 (2026-10-24): no contact script any more. The retired script only rewrote contato@
+        # mailto links to suporte@, which the line above already does at build time; a returning
+        # visitor's cached copy of its old, unhashed URL could still inject the banned number, so no
+        # page references it (the Worker answers the old path with a no-store no-op).
         path.write_text(html, encoding="utf-8")
     shutil.copy2(ROOT / "legal.css", OUT / "legal.css")
     shutil.copy2(OVERLAY / "robots.txt", OUT / "robots.txt")
-    # Script de contato: só e-mail (WhatsApp banido; ver contato_publico). O gate audit_contact
-    # reprova qualquer link de WhatsApp ou número banido no asset publicado.
-    shutil.copy2(OVERLAY / "whatsapp-contact.js", OUT / "whatsapp-contact.js")
     shutil.copy2(ROOT / "ferramentas.js", OUT / "ferramentas.js")
     shutil.copy2(OVERLAY / "llms.txt", OUT / "llms.txt")
 
@@ -420,6 +449,84 @@ def apply_approved_overlay() -> None:
     if problems:
         raise SystemExit("approved sales overlay contract failed: " + "; ".join(problems))
     print("ZEVANORY_SALES_APPROVED_OVERLAY=PASS")
+
+# E2: content-hashed assets. Every stylesheet and script a page loads is published as
+# /assets/<name>.<sha256[:10]>.<ext> and served "immutable" by the Worker; HTML revalidates, so a
+# deploy can never leave a returning visitor running a stale script or stylesheet. url() targets
+# inside the CSS (fonts, images under /assets) are hashed first and rewritten to absolute paths.
+FINGERPRINT = ("product.css", "legal.css", "ferramentas.js")
+HASHED_RE = re.compile(r"^/assets/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.[0-9a-f]{10}\.(?:css|js|woff2)$")
+
+def _hashed_name(rel: str, data: bytes) -> str:
+    import hashlib
+    stem, ext = rel.rsplit(".", 1)
+    return f"assets/{stem}.{hashlib.sha256(data).hexdigest()[:10]}.{ext}"
+
+def fingerprint_assets() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    def css_url(m):
+        ref = m.group(2)
+        if re.match(r"^(data:|https?:|#)", ref):
+            return m.group(0)
+        src = (ROOT / ref.lstrip("/")).resolve()
+        if not src.is_file() or ROOT not in src.parents:
+            raise SystemExit(f"css url() target missing: {ref}")
+        rel = src.relative_to(ROOT).as_posix()
+        rel = rel[len("assets/"):] if rel.startswith("assets/") else rel
+        data = src.read_bytes()
+        out = _hashed_name(rel, data)
+        (OUT / out).parent.mkdir(parents=True, exist_ok=True)
+        (OUT / out).write_bytes(data)
+        mapping["/" + ref.lstrip("/")] = "/" + out
+        return f'url({m.group(1)}/{out}{m.group(1)})'
+    for name in FINGERPRINT:
+        data = (OUT / name).read_bytes()
+        if name.endswith(".css"):
+            text = re.sub(r'url\((["\']?)([^)"\']+)\1\)', css_url, data.decode("utf-8"))
+            data = text.encode("utf-8")
+        out = _hashed_name(name, data)
+        (OUT / out).parent.mkdir(parents=True, exist_ok=True)
+        (OUT / out).write_bytes(data)
+        mapping["/" + name] = "/" + out
+    fonts = [v for k, v in mapping.items() if k.endswith(".woff2")]
+    preload = "".join(f'<link rel="preload" href="{f}" as="font" type="font/woff2" crossorigin>' for f in sorted(fonts))
+    for html_file in sorted(OUT.glob("*.html")):
+        html = html_file.read_text(encoding="utf-8")
+        for name in FINGERPRINT:
+            attr = "href" if name.endswith(".css") else "src"
+            html = html.replace(f'{attr}="/{name}"', f'{attr}="{mapping["/" + name]}"')
+        # Self-hosted fonts (font-src 'self'), preloaded so text paints in the final face early.
+        html = re.sub(r'(<link rel="stylesheet" href="/assets/(?:product|legal)\.[0-9a-f]{10}\.css">)', lambda m: preload + m.group(1), html, count=1)
+        html_file.write_text(html, encoding="utf-8")
+    # Unhashed font copies for the unhashed stylesheet (Worker info pages, pre-release cached HTML).
+    (OUT / "assets" / "fonts").mkdir(parents=True, exist_ok=True)
+    for font in sorted((ROOT / "assets" / "fonts").glob("*.woff2")):
+        shutil.copy2(font, OUT / "assets" / "fonts" / font.name)
+    # The unhashed copies stay published but no page loads them: /product.css serves the Worker's
+    # own info pages, and all three keep working for HTML cached before this release (the old page
+    # policy allowed up to 1 h of stale-while-revalidate). They are served "no-cache", never immutable.
+    return mapping
+
+def audit_asset_references() -> list[str]:
+    """Published pages load only content-hashed CSS/JS that exists and matches its hash."""
+    import hashlib
+    problems = []
+    for html_file in sorted(OUT.glob("*.html")):
+        html = html_file.read_text(encoding="utf-8")
+        refs = re.findall(r'<script\b[^>]*\bsrc="([^"]+)"', html) + re.findall(r'<link\b[^>]*\brel="(?:stylesheet|preload|modulepreload)"[^>]*\bhref="([^"]+)"', html)
+        for ref in refs:
+            if re.match(r"^https?://", ref):
+                problems.append(f"{html_file.name}: external asset {ref}")
+                continue
+            if not HASHED_RE.match(ref):
+                problems.append(f"{html_file.name}: unhashed asset {ref}")
+                continue
+            f = OUT / ref.lstrip("/")
+            if not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest()[:10] != ref.rsplit(".", 2)[1]:
+                problems.append(f"{html_file.name}: hashed asset missing or stale {ref}")
+        if "whatsapp-contact" in html:
+            problems.append(f"{html_file.name}: references the retired contact script")
+    return problems
 
 def main() -> int:
     if OUT.exists():
@@ -459,11 +566,14 @@ def main() -> int:
     # Root is the solutions catalog. Keep a physical index for workers.dev previews
     # even though the worker also rewrites / to /solucoes.html.
     shutil.copy2(OUT / "solucoes.html", OUT / "index.html")
+    fingerprint_assets()
+    asset_problems = audit_asset_references()
+    if asset_problems:
+        raise SystemExit("hashed asset contract failed: " + "; ".join(asset_problems))
 
     sales = (OUT / "zevanory-sales.html").read_text(encoding="utf-8")
     required = (
         "<title>ZEVANORY SALES",
-        'href="/product.css"',
         'href="/solucoes"',
         "Autonomous Sales Platform",
         "SALES ASSIST",
@@ -473,6 +583,8 @@ def main() -> int:
     missing = [token for token in required if token not in sales]
     if missing:
         raise SystemExit(f"sales build contract missing: {missing}")
+    if not re.search(r'<link rel="stylesheet" href="/assets/product\.[0-9a-f]{10}\.css">', sales):
+        raise SystemExit("sales build contract missing: hashed product stylesheet")
     if "/zevanory-public-mirror/" in sales:
         raise SystemExit("sales build still contains mirror path prefix")
 
