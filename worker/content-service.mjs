@@ -417,9 +417,9 @@ async function resendIdempotent(env, { to, subject, text, idempotencyKey }, fetc
     try { data = await r.json(); } catch {}
     if (r.ok && data?.id) return { ok: true, id: String(data.id) };
     if (r.ok) return { ok: false, transient: true, reason: "resend_no_id" };
-    // 409 concurrent_idempotent_requests = outro pedido com a mesma chave em andamento (clique duplo): temporário.
-    if (r.status === 409 && data?.name === "concurrent_idempotent_requests") return { ok: false, transient: true, reason: "resend_409_concurrent" };
-    return { ok: false, transient: resendFailureIsTransient(r.status), reason: "resend_" + r.status };
+    // Mesma classificação de worker/atendimento.mjs (#892): 408/429/5xx/rede e 409 concurrent_idempotent_requests
+    // (outro pedido com a mesma chave em andamento, ex.: clique duplo) são temporários; 409 de outro nome é permanente.
+    return { ok: false, transient: resendFailureIsTransient(r.status, data), reason: "resend_" + r.status };
   } catch { return { ok: false, transient: true, reason: "resend_network" }; }
 }
 async function resendLastEvent(env, emailId, fetchImpl) {
