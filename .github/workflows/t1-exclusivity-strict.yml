@@ -55,7 +55,7 @@ jobs:
           grep -qx "MUTANTS total=29 killed=29 survived=0 inconclusive=0" /tmp/mut.txt || { echo "::error::a mutant survived, was inconclusive, or the count changed"; exit 1; }
       - name: Inventory of this repository (fails on any finding)
         run: |
-          set -uo pipefail
+          set +e -uo pipefail  # the default shell is bash -e; rc is handled explicitly below
           python3 scripts/deploy/worker_write_paths.py | tee /tmp/inv.txt; rc=${PIPESTATUS[0]}
           { echo "## T1 write-path inventory (strict)"; echo; grep -v '^T1_WRITE_PATH' /tmp/inv.txt; echo; echo '```'; grep '^T1_WRITE_PATH' /tmp/inv.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           echo "::warning title=T1_WRITE_PATHS (rc=$rc)::$(sed -n 's/^T1_WRITE_PATHS=//p' /tmp/inv.txt)"
@@ -94,7 +94,7 @@ jobs:
         run: python3 scripts/deploy/worker_write_paths.py --json > /tmp/inventory.json || true
       - name: T1_EXCLUSIVITY (read-only; fails while NOT_PROVEN)
         run: |
-          set -uo pipefail
+          set +e -uo pipefail  # the default shell is bash -e; rc is handled explicitly below
           python3 scripts/deploy/t1_exclusivity_verdict.py --inventory /tmp/inventory.json | tee /tmp/verdict.txt; rc=${PIPESTATUS[0]}
           { echo "## T1 exclusivity (strict)"; echo '```'; cat /tmp/verdict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           state="$(sed -n 's/^T1_EXCLUSIVITY=//p' /tmp/verdict.txt)"
