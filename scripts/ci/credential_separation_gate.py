@@ -24,7 +24,9 @@ Lê .github/workflows/*.yml como DADO (yaml.safe_load; nada é executado, nenhum
                                       com o marcador fora da lista também falha (aposentar = registrar).
   R7 CLEANUP_WORKFLOW_CONTRACT        production-test-secret-cleanup.yml só por workflow_dispatch (nunca no merge), com
                                       input confirm_names obrigatório, todo `secret delete` com --name zevanory e nome
-                                      vindo da allowlist literal dos 2 MERCADOPAGO_TEST_*.
+                                      vindo da allowlist literal dos 2 MERCADOPAGO_TEST_*; inputs expected_inventory_digest e
+                                      expected_version_id obrigatórios e entregues ao plano (D0/V0, Sol 187/194) e os passos
+                                      preflight, step pre/post, partial, verify e postcheck presentes.
   R8 DEBT_REGISTRY_INVALID            ops/r9-debt.json com campo faltando/vazio, id ou nome repetido, status != OPEN.
   R4 ENVIRONMENT_NOT_LITERAL          job com nome sensível e Environment dado por expressão (${{ }}) é recusado: o gate não
                                       consegue provar em qual Environment ele roda (fail-closed).
@@ -416,6 +418,17 @@ def check_cleanup_contract(directory, required) -> list[dict]:
         out.append({**base, "detail": "allowlist literal do passo de remoção diferente dos 2 MERCADOPAGO_TEST_*"})
     if "--confirmation \"$CONFIRM_NAMES\"" not in text or "${{ inputs.confirm_names }}" not in text:
         out.append({**base, "detail": "plano não recebe a confirmação digitada"})
+    for inp in ("expected_inventory_digest", "expected_version_id"):
+        spec = inputs.get(inp) if isinstance(inputs, dict) else None
+        if not (isinstance(spec, dict) and spec.get("required") is True):
+            out.append({**base, "detail": f"input {inp} obrigatório ausente (autorização presa a D0 e V0)"})
+    if "--expected-digest \"$EXPECTED_INVENTORY_DIGEST\"" not in text or "${{ inputs.expected_inventory_digest }}" not in text \
+            or "--expected-version \"$EXPECTED_VERSION_ID\"" not in text or "${{ inputs.expected_version_id }}" not in text:
+        out.append({**base, "detail": "plano não recebe o digest e a versão autorizados"})
+    for marker in ("production-secret-names.mjs preflight", "step --phase pre", "step --phase post",
+                   "production-secret-names.mjs partial", "production-secret-names.mjs verify", "production-secret-names.mjs postcheck"):
+        if marker not in text:
+            out.append({**base, "detail": f"controle obrigatório ausente: {marker}"})
     other = set(re.findall(r"\bwrangler(?:@[\w.\-]+)?\s+(?:versions\s+)?(?:secret\s+(?:put|bulk)|deploy)\b", joined))
     if other:
         out.append({**base, "detail": "o workflow de remoção não pode gravar nem publicar"})

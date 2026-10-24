@@ -1,0 +1,34 @@
+{
+  "schema": "zevanory-publisher-matrix/v1",
+  "worker": "zevanory",
+  "group": "deploy-zevanory",
+  "rule": "Todo caminho que pode alterar o Worker de produção `zevanory` (código, segredo, var, settings, versão/deployment). Workflows do GitHub: serialized=true exige concurrency.group deploy-zevanory no topo do workflow (tests/production-secret-names.test.mjs N13 varre TODOS os workflows e falha se um que escreve no zevanory não estiver aqui ou estiver fora do grupo sem exceção registrada). serialized=false só com motivo escrito; production-test-secret-cleanup.yml recusa se houver run ativo de QUALQUER workflow desta lista e detecta mudança concorrente antes e depois de cada DELETE. Caminhos externos não entram em fila nenhuma: só detecção (falha fechada).",
+  "github": [
+    { "workflow": "central-production-deploy.yml", "ops": ["wrangler deploy", "wrangler rollback"], "group": "deploy-zevanory", "serialized": true, "status": "active", "trigger": "push gh-pages + workflow_dispatch" },
+    { "workflow": "channel-credentials-sync.yml", "ops": ["wrangler secret put"], "group": "deploy-zevanory", "serialized": true, "status": "active", "trigger": "workflow_dispatch" },
+    { "workflow": "channel-production-bootstrap.yml", "ops": ["wrangler secret put"], "group": "deploy-zevanory", "serialized": true, "status": "active", "trigger": "workflow_dispatch" },
+    { "workflow": "gemini-key-to-worker.yml", "ops": ["wrangler secret delete", "wrangler secret put"], "group": "deploy-zevanory", "serialized": true, "status": "active", "trigger": "workflow_dispatch" },
+    { "workflow": "lead-privacy-secret-to-worker.yml", "ops": ["worker_secret_rotate.py --apply (wrangler versions secret bulk + versions deploy)"], "group": "deploy-zevanory", "serialized": true, "status": "active", "trigger": "workflow_dispatch" },
+    { "workflow": "production-test-secret-cleanup.yml", "ops": ["wrangler secret delete"], "group": "deploy-zevanory", "serialized": true, "status": "active", "trigger": "workflow_dispatch" },
+    { "workflow": "sandbox-worker-secret-audit.yml", "ops": ["PATCH workers/scripts/zevanory/settings"], "group": "deploy-zevanory", "serialized": true, "status": "retired (if: false, ops/r9-debt.json)", "trigger": "push (job desligado)" },
+    { "workflow": "voice-gemini-auth-key-probe.yml", "ops": ["wrangler secret put"], "group": "deploy-zevanory", "serialized": true, "status": "active", "trigger": "workflow_dispatch" },
+    { "workflow": "voice-gemini-production-provision.yml", "ops": ["wrangler secret put"], "group": "deploy-zevanory", "serialized": true, "status": "active", "trigger": "workflow_dispatch" },
+    { "workflow": "voice-zero-spend-enable.yml", "ops": ["wrangler secret put"], "group": "deploy-zevanory", "serialized": true, "status": "active", "trigger": "workflow_dispatch" },
+    { "workflow": "mercadopago-exact-sha-recovery.yml", "ops": ["wrangler deploy (config gerada do wrangler.jsonc de 83620c68, name zevanory)"], "group": "mercadopago-exact-sha-recovery", "serialized": false, "status": "retired (if: false, ops/r9-debt.json)", "trigger": "workflow_dispatch (job desligado)", "reason": "financeiro: mudança exige autorização escrita do proprietário (ops/publishers.json unserialized_known); job aposentado pelo gate de separação" },
+    { "workflow": "mercadopago-production-token-rotate.yml", "ops": ["wrangler secret put MERCADOPAGO_ACCESS_TOKEN", "wrangler rollback", "scripts/ops/worker-version-recover.sh (versions deploy)"], "group": "mercadopago-production-token-rotate", "serialized": false, "status": "active", "trigger": "workflow_dispatch", "reason": "financeiro: mudança exige autorização escrita do proprietário (ops/publishers.json unserialized_known). Mudança pronta: concurrency.group deploy-zevanory + queue: max (1 linha), aguardando a autorização" }
+  ],
+  "registered_not_touching": {
+    "financial-e2e-stripe.yml": "registrado em ops/publishers.json sob zevanory (pending_owner_authorization), mas só escreve no Worker isolado zevanory-certification (secret bulk --name zevanory-certification); vigiado pela remoção mesmo assim"
+  },
+  "readers_only": [
+    "production-test-secret-readback.yml", "production-credential-identity.yml", "cloudflare-commercial-binding-readiness.yml",
+    "zees16-control-reconciler.yml", "t1-publisher-guard.yml", "zevanory-open-sales.yml", "zevanory-close-sales.yml", "voice-cache-warm.yml"
+  ],
+  "external": [
+    { "path": "Painel da Cloudflare (dash.cloudflare.com, membros da conta)", "kind": "código, segredo, var, settings, rollback", "serializable": false, "detection": "cadeia de deployments, versão efetiva, etag do código, diff de configuração e digest antes e depois de cada DELETE (CONCURRENT_CHANGE)" },
+    { "path": "Cloudflare Workers Builds (reserva: build watch path ops/RESERVE_DEPLOY em gh-pages; scripts/ci/cloudflare-build.sh + wrangler deploy --keep-vars)", "kind": "código", "serializable": false, "detection": "idem; só dispara com mudança em ops/RESERVE_DEPLOY mesclada em gh-pages" },
+    { "path": "Tokens de conta inteira CLOUDFLARE_API_TOKEN / CLOUDFLARE_PUBLIC_OWNER_API_TOKEN usados fora deste repositório, tokens de sonda (CF_PROBE_TOKEN, CF_PROBE_TOKEN_NO_ROUTES, CLOUDFLARE_SANDBOX_PROBE_TOKEN) e a Global API Key do proprietário", "kind": "qualquer escrita via API", "serializable": false, "detection": "idem; exclusividade por token só depois de CF_TOKEN_ZEVANORY e da revogação dos tokens compartilhados (ops/t1-activation.md D)" },
+    { "path": "scripts/ops/worker-version-recover.sh rodado à mão fora do GitHub", "kind": "versions deploy", "serializable": false, "detection": "idem" },
+    { "path": "arbmsistone-lab/zevanory-product-control-edge e outros repositórios com o mesmo token", "kind": "qualquer escrita via API", "serializable": false, "detection": "idem; ops/publishers.json external_repositories proíbe publicar produção" }
+  ]
+}
