@@ -37,7 +37,6 @@ export const TEXT_READ_ALLOWLIST = new Set([
   "order7-whatsapp-commercial.test.mjs",
   "politica-honrar-pagamento.test.mjs",
   "product-consistency.test.mjs",
-  "production-payment-credential-isolation.test.mjs",
   "production-staging-health.test.mjs",
   "sandbox_credential_isolation.test.mjs",
   "sandbox_proof_v2.test.mjs",

@@ -22,6 +22,8 @@ concurrency:
 jobs:
   verify:
     environment: producao-critica  # B01 M1: efeito em produção comprovado no conteúdo do job; revisor obrigatório
+    # Verificava no Worker de PRODUÇÃO um pagamento sandbox lido com MERCADOPAGO_TEST_ACCESS_TOKEN.
+    if: ${{ false }} # Permanently retired: F2 item 9 (roteiro 3.1 seção 7): credenciais sandbox nunca em Environment de produção; fluxo sandbox = certification-isolated-deploy + mercadopago-combo-sandbox (sandbox-financial-approved)
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
@@ -29,7 +31,6 @@ jobs:
       ORDER_ID: ${{ inputs.order_id }}
       APPROVED_PAYMENT_ID: ${{ inputs.approved_payment_id }}
       CERTIFICATION_E2E_TOKEN: ${{ secrets.CERTIFICATION_E2E_TOKEN }}
-      MP_ACCESS_TOKEN: ${{ secrets.MERCADOPAGO_TEST_ACCESS_TOKEN }}
     steps:
       - name: Verify webhook, paid order, email and delivery
         shell: bash
