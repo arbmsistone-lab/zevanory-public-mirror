@@ -1,0 +1,95 @@
+name: WhatsApp retirement mutants
+# Fail-closed WhatsApp retirement (code constant) + manual-only Instagram/Facebook inbound: every mutant
+# (env re-enabling the channel or the instant reply, Graph/broker call, automated reply, webhook
+# processing/storage, silent ACK of non-WhatsApp or oversized Meta deliveries, onboarding/proof/broker
+# alive, WhatsApp counted in status/quorum, forged-webhook generator, social reply path or switch back)
+# must be KILLED by an assertion in an EXPECTED test. M39-M48: a WhatsApp alias back in the generated
+# central candidate config or a tracked wrangler* config, WHATSAPP_SALES_ENABLED re-enabled, the banned account
+# left in / rewritten into the public assets, the fail-closed public scan disabled or weakened
+# (tests/whatsapp-config-absence.test.mjs); M49: a workflow assigns a WhatsApp alias again.
+# Expectations (Sol audits 128/131): scripts/ci/mutants_whatsapp_retirement.expected.json, PRIMARY by reasoning with a
+# mandatory assertion label ([WR-...]) checked inside the not-ok block, SECONDARY only with a written justification.
+# Config (load_mutant_config) and verdicts (classify CLI) come from the shared scripts/ci/mutant_classifier.py (#901);
+# the runner refuses to start (exit 4) on an invalid config. Exact count 49; any SURVIVED or INCONCLUSIVE fails.
+# Matrix: Linux and Windows (CRLF checkout) x Node 22 and 24. Offline, no secrets, read-only.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - "worker/whatsapp-retirement.mjs"
+      - "worker/whatsapp-onboarding.mjs"
+      - "worker/whatsapp-credential-broker.mjs"
+      - "worker/inbound-autonomy.mjs"
+      - "worker/live-runtime-status.mjs"
+      - "worker/continuity-router.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "worker/cloudflare-worker.recovered.mjs"
+      - "tests/whatsapp-retirement.test.mjs"
+      - "tests/meta-social-manual-only.test.mjs"
+      - "tests/whatsapp-config-absence.test.mjs"
+      - "scripts/deploy/prepare-central-candidate.py"
+      - "scripts/deploy/public_whatsapp_scan.py"
+      - "scripts/ci/mutant_classifier.py"
+      - "scripts/ci/mutants_whatsapp_retirement.expected.json"
+      - "tests/whatsapp-mutants-classifier.test.mjs"
+      - ".github/workflows/mercadopago-exact-sha-recovery.yml"
+      - "**/wrangler*.toml"
+      - "wrangler*.toml"
+      - "tests/helpers/text.mjs"
+      - "tests/fixtures/forged-webhook-generator.txt"
+      - "tests/t4_sim/hooks.mjs"
+      - ".github/workflows/voice-render-proof.yml"
+      - ".github/workflows/whatsapp-delivery-recovery.yml"
+      - "scripts/ci/mutants_whatsapp_retirement.mjs"
+      - ".github/workflows/whatsapp-retirement-mutants.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: whatsapp-retirement-mutants-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  mutants:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ["22", "24"]
+    name: mutants (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Line endings of the checkout (informational)
+        shell: bash
+        run: |
+          if grep -q $'\r' worker/whatsapp-retirement.mjs; then echo "::notice title=EOL::CRLF checkout"; else echo "::notice title=EOL::LF checkout"; fi
+      - name: Meta-tests of the runner on the shared classifier (Sol audits 128/131; exactly 6)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --test tests/whatsapp-mutants-classifier.test.mjs < /dev/null | tr -d '\r' | tee meta.txt
+          grep -qx '# tests 6' meta.txt && grep -qx '# pass 6' meta.txt && grep -qx '# fail 0' meta.txt && grep -qx '# skipped 0' meta.txt
+          rm -f meta.txt
+      - name: Mutants (exact 49 KILLED by expected assertion)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rc=0
+          node scripts/ci/mutants_whatsapp_retirement.mjs < /dev/null | tee mut.txt || rc=$?
+          tr -d '\r' < mut.txt > mut.lf && mv mut.lf mut.txt
+          killed=$(grep -cE '^MUTANT [A-Za-z0-9_]+ KILLED by=\[".+' mut.txt || true)
+          bad=$(grep -cE '^MUTANT [A-Za-z0-9_]+ (SURVIVED|INCONCLUSIVE)' mut.txt || true)
+          echo "::notice title=WA_RETIREMENT_MUTANTS::killed=${killed} not_killed=${bad} rc=${rc}"
+          grep -qx 'BASELINE PASS tests=26' mut.txt || { echo "::error title=WA_RETIREMENT_BASELINE::baseline not exact (26 tests)"; exit 1; }
+          [ "$bad" = "0" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::SURVIVED/INCONCLUSIVE present"; exit 1; }
+          [ "$killed" = "49" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::expected exactly 49 KILLED, got ${killed}"; exit 1; }
+          grep -qx 'MUTANTS PASS killed=49/49' mut.txt || { echo "::error title=WA_RETIREMENT_MUTANTS::summary line missing"; exit 1; }
+          [ "$rc" = "0" ] || { echo "::error title=WA_RETIREMENT_MUTANTS::script exit ${rc}"; exit 1; }
+          git diff --exit-code -- worker tests scripts .github wrangler.sales.toml || { echo "::error title=WA_RETIREMENT_RESTORE::source not restored"; exit 1; }
+          test -z "$(git status --porcelain --untracked-files=all -- scripts worker tests .github)" || { echo "::error title=WA_RETIREMENT_RESTORE::stray files"; exit 1; }

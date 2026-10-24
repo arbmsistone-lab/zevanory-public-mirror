@@ -1,0 +1,606 @@
+{
+ "_doc": "Sol audits 128/131: expected assertions per mutant, derived by reasoning about the mutation (docs/evidence/whatsapp-retirement-mutant-causality.md). Every PRIMARY names the labelled assertion ([WR-...]) that encodes the mutated rule, checked inside the not-ok block by scripts/ci/mutant_classifier.py (load_mutant_config + classify CLI).",
+ "mutants": {
+  "M01_env_reenables_channel": {
+   "primary": [
+    {
+     "test_pattern": "kill-switch: retirement is a code constant",
+     "assertion_pattern": "WR-SW-ENV"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "retired: no fetch",
+     "assertion_pattern": null,
+     "justification": "the test runs with the REENABLE env (WHATSAPP_CHANNEL_RETIRED=false); an env-honouring switch reopens this path, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "status surfaces:",
+     "assertion_pattern": null,
+     "justification": "the test runs with the REENABLE env (WHATSAPP_CHANNEL_RETIRED=false); an env-honouring switch reopens this path, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "Meta webhook: WhatsApp deliveries",
+     "assertion_pattern": null,
+     "justification": "the test runs with the REENABLE env (WHATSAPP_CHANNEL_RETIRED=false); an env-honouring switch reopens this path, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "bundle layer",
+     "assertion_pattern": null,
+     "justification": "the test runs with the REENABLE env (WHATSAPP_CHANNEL_RETIRED=false); an env-honouring switch reopens this path, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "onboarding routes",
+     "assertion_pattern": null,
+     "justification": "the test runs with the REENABLE env (WHATSAPP_CHANNEL_RETIRED=false); an env-honouring switch reopens this path, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "instant reply:",
+     "assertion_pattern": null,
+     "justification": "the test runs with the REENABLE env (WHATSAPP_CHANNEL_RETIRED=false); an env-honouring switch reopens this path, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "webhook handler:",
+     "assertion_pattern": null,
+     "justification": "the test runs with the REENABLE env (WHATSAPP_CHANNEL_RETIRED=false); an env-honouring switch reopens this path, so its retired-only assertion fails"
+    }
+   ],
+   "broad_reason": "whatsappChannelRetired() is the master gate read by every WhatsApp path; reading the env makes every REENABLE-driven retired assertion fail"
+  },
+  "M02_constant_flipped": {
+   "primary": [
+    {
+     "test_pattern": "kill-switch: retirement is a code constant",
+     "assertion_pattern": "WR-SW-CONST"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "retired: no fetch",
+     "assertion_pattern": null,
+     "justification": "the constant is the single gate of this path; flipping it to false re-enables it, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "status surfaces:",
+     "assertion_pattern": null,
+     "justification": "the constant is the single gate of this path; flipping it to false re-enables it, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "Meta webhook: WhatsApp deliveries",
+     "assertion_pattern": null,
+     "justification": "the constant is the single gate of this path; flipping it to false re-enables it, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "bundle layer",
+     "assertion_pattern": null,
+     "justification": "the constant is the single gate of this path; flipping it to false re-enables it, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "onboarding routes",
+     "assertion_pattern": null,
+     "justification": "the constant is the single gate of this path; flipping it to false re-enables it, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "sender primitives",
+     "assertion_pattern": null,
+     "justification": "the constant is the single gate of this path; flipping it to false re-enables it, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "outbound adapter",
+     "assertion_pattern": null,
+     "justification": "the constant is the single gate of this path; flipping it to false re-enables it, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "instant reply:",
+     "assertion_pattern": null,
+     "justification": "the constant is the single gate of this path; flipping it to false re-enables it, so its retired-only assertion fails"
+    },
+    {
+     "test_pattern": "webhook handler:",
+     "assertion_pattern": null,
+     "justification": "the constant is the single gate of this path; flipping it to false re-enables it, so its retired-only assertion fails"
+    }
+   ],
+   "broad_reason": "WHATSAPP_CHANNEL_RETIRED is the master constant behind every WhatsApp path; flipping it reopens all of them"
+  },
+  "M03_env_reenables_instant_reply": {
+   "primary": [
+    {
+     "test_pattern": "kill-switch: retirement is a code constant",
+     "assertion_pattern": "WR-SW-REPLY"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "status surfaces:",
+     "assertion_pattern": null,
+     "justification": "the instant-status surface reports whatsappInstantReplyEnabled(env); under REENABLE it now reports enabled"
+    }
+   ]
+  },
+  "M04_process_env_reenables_channel": {
+   "primary": [
+    {
+     "test_pattern": "kill-switch: retirement is a code constant",
+     "assertion_pattern": "WR-SW-ENV"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "retired: no fetch",
+     "assertion_pattern": null,
+     "justification": "process.env carries the REENABLE values in these tests, so the process.env-reading gate reopens this path"
+    },
+    {
+     "test_pattern": "status surfaces:",
+     "assertion_pattern": null,
+     "justification": "process.env carries the REENABLE values in these tests, so the process.env-reading gate reopens this path"
+    },
+    {
+     "test_pattern": "Meta webhook: WhatsApp deliveries",
+     "assertion_pattern": null,
+     "justification": "process.env carries the REENABLE values in these tests, so the process.env-reading gate reopens this path"
+    },
+    {
+     "test_pattern": "bundle layer",
+     "assertion_pattern": null,
+     "justification": "process.env carries the REENABLE values in these tests, so the process.env-reading gate reopens this path"
+    },
+    {
+     "test_pattern": "onboarding routes",
+     "assertion_pattern": null,
+     "justification": "process.env carries the REENABLE values in these tests, so the process.env-reading gate reopens this path"
+    },
+    {
+     "test_pattern": "sender primitives",
+     "assertion_pattern": null,
+     "justification": "process.env carries the REENABLE values in these tests, so the process.env-reading gate reopens this path"
+    },
+    {
+     "test_pattern": "outbound adapter",
+     "assertion_pattern": null,
+     "justification": "process.env carries the REENABLE values in these tests, so the process.env-reading gate reopens this path"
+    },
+    {
+     "test_pattern": "instant reply:",
+     "assertion_pattern": null,
+     "justification": "process.env carries the REENABLE values in these tests, so the process.env-reading gate reopens this path"
+    },
+    {
+     "test_pattern": "webhook handler:",
+     "assertion_pattern": null,
+     "justification": "process.env carries the REENABLE values in these tests, so the process.env-reading gate reopens this path"
+    }
+   ],
+   "broad_reason": "whatsappChannelRetired() is the master gate; reading process.env reopens every path the tests drive with REENABLE"
+  },
+  "M05_compat_reads_broker_status": {
+   "primary": [
+    {
+     "test_pattern": "retired: no fetch",
+     "assertion_pattern": "WR-PATH-BROKER"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "Meta webhook: WhatsApp deliveries",
+     "assertion_pattern": null,
+     "justification": "the compat fetch loads the broker status on every request, so the Meta webhook request now calls the spied WHATSAPP_BROKER binding"
+    },
+    {
+     "test_pattern": "onboarding routes",
+     "assertion_pattern": null,
+     "justification": "onboarding/proof routes go through the same compat fetch, which now calls the spied broker binding before answering 410"
+    }
+   ]
+  },
+  "M06_compat_keeps_stale_globals": {
+   "primary": [
+    {
+     "test_pattern": "retired: no fetch",
+     "assertion_pattern": "WR-PATH-CREDS"
+    }
+   ]
+  },
+  "M07_edge_classification_removed": {
+   "primary": [
+    {
+     "test_pattern": "Meta webhook: WhatsApp deliveries",
+     "assertion_pattern": "WR-HOOK-EDGE"
+    }
+   ]
+  },
+  "M08_edge_silent_ack_any_product": {
+   "primary": [
+    {
+     "test_pattern": "Meta webhook: Instagram/Facebook",
+     "assertion_pattern": "WR-NONWA-SILENT"
+    }
+   ]
+  },
+  "M09_edge_large_body_silent_ack": {
+   "primary": [
+    {
+     "test_pattern": "Meta webhook: Instagram/Facebook",
+     "assertion_pattern": "WR-NONWA-DECLARED"
+    }
+   ]
+  },
+  "M10_classifier_instagram_as_whatsapp": {
+   "primary": [
+    {
+     "test_pattern": "Meta webhook: Instagram/Facebook",
+     "assertion_pattern": "re:WR-NONWA-CLASSIFY\\] instagram small"
+    }
+   ]
+  },
+  "M11_classifier_no_size_bound": {
+   "primary": [
+    {
+     "test_pattern": "Meta webhook: Instagram/Facebook",
+     "assertion_pattern": "re:WR-NONWA-CLASSIFY\\] instagram large"
+    }
+   ]
+  },
+  "M12_classifier_ignores_social_fields": {
+   "primary": [
+    {
+     "test_pattern": "Meta webhook: Instagram/Facebook",
+     "assertion_pattern": "re:WR-NONWA-CLASSIFY\\] mixed product"
+    }
+   ]
+  },
+  "M13_bundle_webhook_processes_whatsapp": {
+   "primary": [
+    {
+     "test_pattern": "bundle layer",
+     "assertion_pattern": "WR-BHOOK-ACK"
+    }
+   ]
+  },
+  "M14_broker_call_guard_removed": {
+   "primary": [
+    {
+     "test_pattern": "sender primitives",
+     "assertion_pattern": "WR-PRIM-BROKER"
+    },
+    {
+     "test_pattern": "bundle layer",
+     "assertion_pattern": "WR-BHOOK-BROKER"
+    }
+   ]
+  },
+  "M15_identity_calls_graph": {
+   "primary": [
+    {
+     "test_pattern": "retired: no fetch",
+     "assertion_pattern": "WR-PATH-PROVIDER"
+    },
+    {
+     "test_pattern": "status surfaces:",
+     "assertion_pattern": "WR-SURF-IDENTITY"
+    }
+   ]
+  },
+  "M16_migration_probe_uses_wa_token": {
+   "primary": [
+    {
+     "test_pattern": "retired: no fetch",
+     "assertion_pattern": "WR-PATH-PROVIDER"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "status surfaces:",
+     "assertion_pattern": null,
+     "justification": "the migration probe result feeds the status surface, which then reports a token-derived probe instead of the retired mode"
+    }
+   ]
+  },
+  "M17_reply_retired_guard_removed": {
+   "primary": [
+    {
+     "test_pattern": "instant reply:",
+     "assertion_pattern": "WR-REPLY"
+    }
+   ]
+  },
+  "M18_webhook_instant_reply_env_default": {
+   "primary": [
+    {
+     "test_pattern": "static: retired onboarding",
+     "assertion_pattern": "WR-ONB-BUNDLE-REPLY"
+    }
+   ]
+  },
+  "M19_webhook_processes_inbound": {
+   "primary": [
+    {
+     "test_pattern": "webhook handler:",
+     "assertion_pattern": "WR-H18-INBOUND"
+    }
+   ]
+  },
+  "M20_sender_guard_removed": {
+   "primary": [
+    {
+     "test_pattern": "sender primitives",
+     "assertion_pattern": "WR-PRIM-SEND"
+    }
+   ]
+  },
+  "M21_voice_upload_guard_removed": {
+   "primary": [
+    {
+     "test_pattern": "sender primitives",
+     "assertion_pattern": "WR-PRIM-VOICE"
+    }
+   ]
+  },
+  "M22_media_download_guard_removed": {
+   "primary": [
+    {
+     "test_pattern": "sender primitives",
+     "assertion_pattern": "WR-PRIM-MEDIA"
+    }
+   ]
+  },
+  "M23_outbound_adapter_guard_removed": {
+   "primary": [
+    {
+     "test_pattern": "outbound adapter",
+     "assertion_pattern": "WR-ADAPTER"
+    }
+   ]
+  },
+  "M24_release_mode_not_permanent": {
+   "primary": [
+    {
+     "test_pattern": "status surfaces:",
+     "assertion_pattern": "WR-SURF-RELEASE"
+    }
+   ]
+  },
+  "M25_channel_status_counts_whatsapp": {
+   "primary": [
+    {
+     "test_pattern": "status surfaces:",
+     "assertion_pattern": "WR-SURF-CHANNEL"
+    }
+   ]
+  },
+  "M26_distribution_counts_whatsapp": {
+   "primary": [
+    {
+     "test_pattern": "status surfaces:",
+     "assertion_pattern": "WR-SURF-DIST"
+    }
+   ]
+  },
+  "M27_projection_ignores_retirement": {
+   "primary": [
+    {
+     "test_pattern": "projection:",
+     "assertion_pattern": "WR-PROJ"
+    }
+   ]
+  },
+  "M28_quorum_counts_retired": {
+   "primary": [
+    {
+     "test_pattern": "provider independence:",
+     "assertion_pattern": "WR-QUORUM"
+    }
+   ]
+  },
+  "M29_onboarding_alive": {
+   "primary": [
+    {
+     "test_pattern": "onboarding routes",
+     "assertion_pattern": "WR-GONE-PROOF"
+    }
+   ]
+  },
+  "M30_broker_alive": {
+   "primary": [
+    {
+     "test_pattern": "broker tombstone:",
+     "assertion_pattern": "WR-BROKER-410"
+    }
+   ]
+  },
+  "M31_instant_status_env_default": {
+   "primary": [
+    {
+     "test_pattern": "status surfaces:",
+     "assertion_pattern": "WR-SURF-INSTANT"
+    },
+    {
+     "test_pattern": "static: retired onboarding",
+     "assertion_pattern": "WR-ONB-COMPAT-REPLY"
+    }
+   ]
+  },
+  "M32_forged_generator_reintroduced": {
+   "primary": [
+    {
+     "test_pattern": "static: no forged",
+     "assertion_pattern": "WR-FORGER"
+    }
+   ]
+  },
+  "M33_proof_job_parked_if_false": {
+   "primary": [
+    {
+     "test_pattern": "static: retired workflows",
+     "assertion_pattern": "WR-WF-PROOF"
+    }
+   ]
+  },
+  "M34_webhook_accepts_runtime_verify_token": {
+   "primary": [
+    {
+     "test_pattern": "bundle layer",
+     "assertion_pattern": "WR-BHOOK-VERIFY"
+    }
+   ]
+  },
+  "M35_social_reply_path_back": {
+   "primary": [
+    {
+     "test_pattern": "keyword comments, Page feed",
+     "assertion_pattern": "WR-SOC-REPLY"
+    },
+    {
+     "test_pattern": "static: no social automation",
+     "assertion_pattern": "WR-SOC-STATIC"
+    }
+   ]
+  },
+  "M36_social_switch_back": {
+   "primary": [
+    {
+     "test_pattern": "static: no social automation",
+     "assertion_pattern": "re:WR-SOC-STATIC\\] META_SOCIAL_AUTOREPLY"
+    }
+   ]
+  },
+  "M37_social_claims_non_social": {
+   "primary": [
+    {
+     "test_pattern": "non-social payloads",
+     "assertion_pattern": "WR-SOC-NONSOCIAL"
+    }
+   ]
+  },
+  "M38_bundle_loads_page_token_for_social": {
+   "primary": [
+    {
+     "test_pattern": "static: no social automation",
+     "assertion_pattern": "WR-SOC-TOKEN"
+    }
+   ]
+  },
+  "M39_generator_assigns_support_channel": {
+   "primary": [
+    {
+     "test_pattern": "generated candidate config:",
+     "assertion_pattern": "WR-CFG-ALIAS"
+    },
+    {
+     "test_pattern": "generator source:",
+     "assertion_pattern": "WR-SRC-ALIAS"
+    }
+   ]
+  },
+  "M40_generator_keeps_legacy_base_alias": {
+   "primary": [
+    {
+     "test_pattern": "generated candidate config:",
+     "assertion_pattern": "WR-CFG-ALIAS"
+    }
+   ]
+  },
+  "M41_generator_emits_whatsapp_display": {
+   "primary": [
+    {
+     "test_pattern": "generated candidate config:",
+     "assertion_pattern": "WR-CFG-ALIAS"
+    },
+    {
+     "test_pattern": "generator source:",
+     "assertion_pattern": "WR-SRC-ALIAS"
+    }
+   ]
+  },
+  "M42_toml_support_channel_back": {
+   "primary": [
+    {
+     "test_pattern": "wrangler configs:",
+     "assertion_pattern": "WR-TOML"
+    }
+   ]
+  },
+  "M43_whatsapp_sales_reenabled": {
+   "primary": [
+    {
+     "test_pattern": "generated candidate config:",
+     "assertion_pattern": "WR-CFG-SALES"
+    },
+    {
+     "test_pattern": "generator source:",
+     "assertion_pattern": "WR-SRC-SALES"
+    }
+   ]
+  },
+  "M44_contact_js_not_neutralized": {
+   "primary": [
+    {
+     "test_pattern": "generated public assets:",
+     "assertion_pattern": "re:WR-PUB-NEUTRAL[\\s\\S]*whatsapp-contact\\.js:wa\\.me"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "generated candidate config:",
+     "assertion_pattern": null,
+     "justification": "the leftover wa.me makes the generator abort fail-closed, so the config test's exit-status assertion fails"
+    }
+   ]
+  },
+  "M45_public_scan_disabled": {
+   "primary": [
+    {
+     "test_pattern": "fail-closed: any leftover",
+     "assertion_pattern": "re:WR-FAILCLOSED\\] generator must fail closed on: <a href=\\\"https://wa\\.me/"
+    }
+   ]
+  },
+  "M46_number_pattern_weakened": {
+   "primary": [
+    {
+     "test_pattern": "fail-closed: any leftover",
+     "assertion_pattern": "re:WR-FAILCLOSED\\] generator must fail closed on: Atendimento \\(88\\) 9234 0423"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "workflows:",
+     "assertion_pattern": null,
+     "justification": "the --workflows scan reuses PUBLIC_WHATSAPP_PATTERNS, so the weakened 9234-0423 pattern also stops flagging the synthetic '+55 (88) 9234 0423' workflow"
+    }
+   ]
+  },
+  "M47_jsonld_telephone_kept": {
+   "primary": [
+    {
+     "test_pattern": "generated public assets:",
+     "assertion_pattern": "re:WR-PUB-NEUTRAL[\\s\\S]*index\\.html:number 9234-0423"
+    }
+   ],
+   "secondary": [
+    {
+     "test_pattern": "generated candidate config:",
+     "assertion_pattern": null,
+     "justification": "the leftover telephone makes the generator abort fail-closed, so the config test's exit-status assertion fails"
+    }
+   ]
+  },
+  "M48_public_number_rewrite_back": {
+   "primary": [
+    {
+     "test_pattern": "generator source:",
+     "assertion_pattern": "WR-SRC-REWRITE"
+    }
+   ]
+  },
+  "M49_workflow_whatsapp_alias_back": {
+   "primary": [
+    {
+     "test_pattern": "workflows:",
+     "assertion_pattern": "WR-WF-ASSIGN"
+    }
+   ]
+  }
+ }
+}
