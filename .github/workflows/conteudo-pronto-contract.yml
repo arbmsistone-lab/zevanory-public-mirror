@@ -1,0 +1,129 @@
+name: conteudo-pronto-contract
+
+# Conteúdo Pronto (AVAL Sol #898): roteiros multicanal no lugar de mensagens de WhatsApp, contrato versionado em
+# data/politica-unica.json (conteudo_pronto). Prova em nuvem: suíte do contrato com contagem exata e 80 mutantes (inclui a regeneração com entrega confirmada:
+# bloqueado/candidato/atual, pending -> accepted -> delivered | dead),
+# cada um morto pela asserção esperada (rótulo na saída), em Linux e Windows (Git Bash, CRLF), Node 22 e 24.
+# Só pull_request: nunca dispara no merge, nunca usa segredo, sem rede além do checkout.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/conteudo-pronto-contract.yml"
+      - "tests/conteudo-pronto-roteiros.test.mjs"
+      - "tests/content-service.test.mjs"
+      - "tests/helpers/text.mjs"
+      - "scripts/ci/mutants_conteudo_pronto.py"
+      - "scripts/ci/mutant_tap.py"
+      - "scripts/ci/test_mutant_tap.py"
+      - "scripts/ci/mutants_conteudo_pronto_causality.py"
+      - "docs/evidence/conteudo-pronto-mutant-causality.md"
+      - "worker/content-service.mjs"
+      - "worker/politica-unica.mjs"
+      - "worker/atendimento.mjs"
+      - "worker/activity-ledger.mjs"
+      - "worker/brand-email.mjs"
+      - "worker/support-knowledge.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "data/politica-unica.json"
+      - "conteudo-pronto/**"
+      - "solucoes/**"
+      - "kit-afiliado/**"
+      - "afiliados/**"
+      - "ia-para-*/**"
+      - "sales-public/**"
+      - "sales-overlay/**"
+      - "scripts/build_sales_public.py"
+      - "scripts/sales_policy.py"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Conteúdo Pronto — contrato (offline, contagem exata)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          node --test --test-reporter=tap tests/conteudo-pronto-roteiros.test.mjs tests/content-service.test.mjs 2>&1 | tee /tmp/cp.txt
+          for kv in "tests 20" "pass 20" "fail 0" "skipped 0" "todo 0" "cancelled 0"; do
+            grep -qx "# $kv" /tmp/cp.txt || { echo "::error::esperado '# $kv'"; exit 1; }
+          done
+          echo "::notice title=CONTEUDO_PRONTO_TESTS::$(grep -E '^# (tests|pass|fail|skipped|todo) ' /tmp/cp.txt | paste -sd' ' -)"
+      - name: Mapa causal dos mutantes válido e documento de evidência em dia
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -B scripts/ci/mutants_conteudo_pronto.py --causality-md > /tmp/causality.md
+          diff -u docs/evidence/conteudo-pronto-mutant-causality.md /tmp/causality.md || { echo "::error::docs/evidence/conteudo-pronto-mutant-causality.md desatualizado (regenere com --causality-md)"; exit 1; }
+          python3 -B -c "import sys; sys.path.insert(0, 'scripts/ci'); import importlib.util as u; s = u.spec_from_file_location('r', 'scripts/ci/mutants_conteudo_pronto.py'); r = u.module_from_spec(s); s.loader.exec_module(r); p = r.causality_problems(); print('\n'.join(p) or 'CAUSALITY_OK'); sys.exit(1 if p else 0)"
+      - name: Build de vendas reproduz as páginas versionadas
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/build_sales_public.py
+          git diff --exit-code -- sales-public || { echo "::error::sales-public diverge do build (regenere com scripts/build_sales_public.py)"; exit 1; }
+
+  mutants:
+    name: mutants (${{ matrix.os }}, node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ["22", "24"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Classificador de mutantes — meta-testes (só SECONDARY, falha não relacionada, queda, tempo esgotado, contagem incompleta, mapa sem justificativa)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          set -euo pipefail
+          python3 -B scripts/ci/test_mutant_tap.py 2>&1 | tr -d '\r' | tee meta.txt
+          grep -qx 'OK' meta.txt || { echo "::error::meta-testes do classificador falharam"; exit 1; }
+          n="$(grep -oE '^Ran [0-9]+ tests' meta.txt | grep -oE '[0-9]+')"
+          [ "$n" = "18" ] || { echo "::error::esperados 18 meta-testes, obtidos $n"; exit 1; }
+          echo "::notice title=MUTANT_CLASSIFIER_META ($RUNNER_OS node ${{ matrix.node }})::Ran $n tests OK"
+          rm -f meta.txt
+      - name: Conteúdo Pronto — 80 mutantes
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          set -euo pipefail
+          echo "::notice title=AMBIENTE_MUTANTES::os=$RUNNER_OS node=$(node --version) python=$(python3 --version 2>&1) autocrlf=$(git config --get core.autocrlf || echo unset)"
+          rc=0
+          python3 scripts/ci/mutants_conteudo_pronto.py < /dev/null > mutants.raw 2>&1 || rc=$?
+          tr -d '\r' < mutants.raw | tee mutants.txt
+          echo "::notice title=MUTANTS_TOTAIS ($RUNNER_OS node ${{ matrix.node }})::KILLED=$(grep -c '^MUTANT M[0-9]* KILLED' mutants.txt || true) SURVIVED=$(grep -c '^MUTANT M[0-9]* SURVIVED' mutants.txt || true) INCONCLUSIVE=$(grep -c '^MUTANT M[0-9]* INCONCLUSIVE' mutants.txt || true)"
+          echo "::notice title=MUTANTS_CONTEUDO_PRONTO ($RUNNER_OS node ${{ matrix.node }})::$(grep '^MUTANTS_TOTAL' mutants.txt || echo sem-resumo) rc=$rc"
+          if grep -q '^MUTANT .* INCONCLUSIVE' mutants.txt; then grep '^MUTANT .* INCONCLUSIVE' mutants.txt | while IFS= read -r l; do echo "::error title=INCONCLUSIVE::$l"; done; fi
+          [ "$rc" = 0 ] || { echo "::error::script de mutantes saiu com $rc (1=sobrevivente, 2=baseline, 3=inconclusivo)"; exit 1; }
+          n="$(grep -c '^MUTANT M[0-9]* KILLED' mutants.txt || true)"
+          [ "$n" = "80" ] || { echo "::error::esperados 80 mutantes mortos, obtidos $n"; exit 1; }
+          grep -qx 'MUTANTS_TOTAL=80 KILLED=80 SURVIVED=0 INCONCLUSIVE=0' mutants.txt || { echo "::error::resumo dos mutantes diferente do esperado"; exit 1; }
+          rm -f mutants.txt mutants.raw
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then echo "::error::arquivo versionado modificado pelos mutantes"; exit 1; fi

@@ -29,6 +29,7 @@ tests/commercial-metrics-projection.test.mjs 13
 tests/comprar-noindex.test.mjs 8
 tests/contato-publico-whatsapp.test.mjs 9
 tests/content-service.test.mjs 4
+tests/conteudo-pronto-roteiros.test.mjs 16
 tests/core-snapshot-memo.test.mjs 4
 tests/creative-autonomy.test.mjs 10
 tests/creative-offer-containment.test.mjs 7

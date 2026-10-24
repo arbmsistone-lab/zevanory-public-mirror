@@ -16,6 +16,10 @@ export const BANNED_POLICY_PHRASES = Object.freeze([...POLICY.banned_policy_phra
 export const CHECKOUT_HREF_PATHS = Object.freeze([...POLICY.checkout_href_paths]);
 export const CHECKOUT_HOSTS = Object.freeze([...POLICY.checkout_hosts]);
 export const RESUMO_OFERTA = POLICY.resumo_oferta;
+// Conteúdo Pronto: contrato versionado (content_schema_version) entre a oferta e o gerador
+// (worker/content-service.mjs). Quantidades, objetivos e canais vêm só daqui.
+export const CONTEUDO_PRONTO = POLICY.conteudo_pronto;
+export const CONTEUDO_PRONTO_CARACTERISTICAS = POLICY.resumo_oferta.assinatura.caracteristicas;
 // Identificação e endereço únicos do fornecedor (rodapés, e-mails, blog, páginas).
 export const SUPPLIER = POLICY.resumo_oferta.fornecedor;
 export const ADDRESS_FULL = `${SUPPLIER.endereco_fisico}, CEP ${SUPPLIER.cep}`;
