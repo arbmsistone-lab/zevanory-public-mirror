@@ -1,0 +1,89 @@
+name: site-chat-contract
+
+# Chat do site "Fale com a ZEVANORY" (desligado por padrão): contrato offline com fakes locais, P10 offline,
+# guarda de tráfego sintético, mutantes e o SQL real contra PostgreSQL EFÊMERO (container do job).
+# Só pull_request: nunca dispara no merge, nunca usa segredo, nunca chama produção nem envia mensagem/e-mail.
+on:
+  pull_request:
+    branches: [gh-pages]
+    paths:
+      - ".github/workflows/site-chat-contract.yml"
+      - "worker/site-chat.mjs"
+      - "worker/sales-public-worker.mjs"
+      - "worker/cloudflare-worker.compat.mjs"
+      - "worker/support-knowledge.mjs"
+      - "worker/whatsapp-conversation.mjs"
+      - "worker/politica-unica.mjs"
+      - "worker/sales-control.mjs"
+      - "data/site-chat-policy.json"
+      - "data/site-chat-eval/**"
+      - "data/politica-unica.json"
+      - "data/products.json"
+      - "sales-overlay/site-chat.js"
+      - "sales-overlay/site-chat.css"
+      - "sales-public/site-chat.js"
+      - "sales-public/site-chat.css"
+      - "product.css"
+      - "tests/site-chat*.test.mjs"
+      - "tests/helpers/site-chat-*.mjs"
+      - "tests/integration/site-chat-postgres.test.mjs"
+      - "scripts/ci/mutants_site_chat.py"
+      - "wrangler*.toml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-chat-contract-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Contrato, widget, guarda e P10 (offline, contagem exata)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/site-chat.test.mjs tests/site-chat-widget.test.mjs tests/site-chat-no-synthetic-traffic.test.mjs tests/site-chat-eval.test.mjs | tee /tmp/chat.txt
+          grep -qx "# tests 29" /tmp/chat.txt || { echo "::error::contagem de testes diferente de 29"; exit 1; }
+          grep -qx "# fail 0" /tmp/chat.txt && grep -qx "# skipped 0" /tmp/chat.txt || { echo "::error::falha ou teste pulado"; exit 1; }
+      - name: Relatório P10 (gerais Wilson 95% >= 0,90; críticos 100%)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/helpers/site-chat-eval.mjs | tee /tmp/p10.txt
+          echo "::notice title=SITE_CHAT_P10::$(grep -E '^P10 ' /tmp/p10.txt)"
+      - name: SQL real em PostgreSQL efêmero (limites, escalonamento, fila, retenção)
+        shell: bash
+        env:
+          SITE_CHAT_PG_HOST: localhost
+          SITE_CHAT_PG_PORT: "5432"
+        run: |
+          set -euo pipefail
+          node --test tests/integration/site-chat-postgres.test.mjs | tee /tmp/pg.txt
+          grep -qx "# tests 2" /tmp/pg.txt && grep -qx "# pass 2" /tmp/pg.txt && grep -qx "# skipped 0" /tmp/pg.txt || { echo "::error::PostgreSQL: contagem diferente de 2 ou pulado"; exit 1; }
+      - name: Mutantes (todos precisam morrer)
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/mutants_site_chat.py < /dev/null | tee /tmp/mut.txt
+          echo "::notice title=SITE_CHAT_MUTANTS::$(grep -E '^MUTANTS ' /tmp/mut.txt)"
+          grep -qx "MUTANTS total=46 killed=46 survived=0" /tmp/mut.txt || { echo "::error::mutante sobreviveu ou contagem mudou"; exit 1; }
