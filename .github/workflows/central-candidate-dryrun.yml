@@ -56,6 +56,19 @@ jobs:
           python3 scripts/deploy/prepare-central-candidate.py
           python3 scripts/deploy/copy-brand-export.py
           node --check worker/cloudflare-worker.compat.mjs
+      - name: No WhatsApp alias in the generated candidate (real pinned base 83620c6; PR #896)
+        # The pinned base wrangler.jsonc still carries SUPPORT_CHANNEL with the legacy number; the generator
+        # must strip it. Same banned set as tests/whatsapp-config-absence.test.mjs.
+        run: |
+          set -euo pipefail
+          if grep -nEi 'SUPPORT_CHANNEL|ZEVANORY_WHATSAPP_|wa\.me|9?9254-?5413|9234-?0423' wrangler.central-fix.jsonc; then
+            echo "::error title=WHATSAPP_ALIAS_IN_CANDIDATE::generated wrangler.central-fix.jsonc carries a retired WhatsApp alias"; exit 1
+          fi
+          echo "::notice title=WHATSAPP_ALIAS_IN_CANDIDATE::absent"
+      - name: No WhatsApp contact in the built public assets (frozen 83620c6 snapshot + overlays; PR #896)
+        # Strict from #896 on: the apex public/ tree is the frozen snapshot, not the page sources #892 cleans,
+        # and the generator already neutralized it. Re-scans the FINAL tree (after copy-brand-export.py).
+        run: python3 -B scripts/deploy/public_whatsapp_scan.py public
       - name: Crons of the candidate (declared list, at most 5 per account)
         run: |
           python3 - <<'PY'
@@ -72,6 +85,28 @@ jobs:
           PY
       - name: Wrangler dry-run (strict, no authentication, no publication)
         run: npx --yes wrangler@4.143.0 deploy --dry-run --strict --keep-vars --config wrangler.central-fix.jsonc --outdir "$RUNNER_TEMP/central-dryrun"
+      - name: Final binding set WITHOUT --keep-vars (what the real deploy publishes; PR #896, AVAL Sol 125)
+        # central-production-deploy.yml deploys WITHOUT --keep-vars, so the Worker ends with exactly the vars of
+        # wrangler.central-fix.jsonc. Bundle that exact set and inspect it: WHATSAPP_SALES_ENABLED must be "false"
+        # and no SUPPORT_CHANNEL / ZEVANORY_WHATSAPP_* binding may exist (top level or compact runtime config).
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.143.0 deploy --dry-run --strict --config wrangler.central-fix.jsonc --outdir "$RUNNER_TEMP/central-dryrun-nokeep" 2>&1 | tee bindings.txt
+          line="$(grep -E 'WHATSAPP_SALES_ENABLED' bindings.txt || true)"
+          echo "WHATSAPP_SALES_ENABLED binding: ${line:-<absent>}"
+          [ -n "$line" ] || { echo "::error title=FINAL_BINDINGS::WHATSAPP_SALES_ENABLED absent from the final binding set"; exit 1; }
+          echo "$line" | grep -q 'false' && ! echo "$line" | grep -qi 'true' || { echo "::error title=FINAL_BINDINGS::WHATSAPP_SALES_ENABLED is not \"false\": $line"; exit 1; }
+          if grep -nE 'SUPPORT_CHANNEL|ZEVANORY_WHATSAPP_' bindings.txt; then echo "::error title=FINAL_BINDINGS::retired WhatsApp alias in the final binding set"; exit 1; fi
+          python3 - <<'PY'
+          import json
+          v = json.load(open("wrangler.central-fix.jsonc"))["vars"]
+          rt = v.get("ZEVANORY_RUNTIME_CONFIG") or {}
+          assert v.get("WHATSAPP_SALES_ENABLED") == "false", ("WHATSAPP_SALES_ENABLED", v.get("WHATSAPP_SALES_ENABLED"))
+          assert "WHATSAPP_SALES_ENABLED" not in rt, "WHATSAPP_SALES_ENABLED must not hide in the runtime config"
+          bad = [k for bag in (v, rt) for k in bag if k == "SUPPORT_CHANNEL" or k.startswith("ZEVANORY_WHATSAPP_")]
+          assert not bad, ("retired WhatsApp alias in final vars", bad)
+          print("FINAL_BINDINGS_WHATSAPP=PASS WHATSAPP_SALES_ENABLED=false aliases=none")
+          PY
       - name: Evidence of the bundled candidate (fails if nothing was built)
         run: |
           set -euo pipefail

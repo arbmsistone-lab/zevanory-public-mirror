@@ -120,28 +120,17 @@ print("VOICE_HUMAN_BLIND_CERTIFICATION_PORTAL_GATE=PASS")
 
 whatsapp=Path("worker/whatsapp-onboarding.mjs").read_text(encoding="utf-8")
 compat=Path("worker/cloudflare-worker.compat.mjs").read_text(encoding="utf-8")
-for marker in [
-  'OFFICIAL_E164 = "5588992545413"',
-  'whatsapp_business_management',
-  'whatsapp_business_messaging',
-  '/owned_whatsapp_business_accounts',
-  '/phone_numbers?fields=',
-  '/subscribed_apps',
-  '/register',
-  'callback_url',
-  'x-hub-signature-256',
-  'AES-GCM',
-  'whatsapp-onboarding/runtime',
-  'identity_verified',
-]:
-    assert marker in whatsapp or marker in worker, f"missing WhatsApp onboarding marker: {marker}"
-assert 'loadWhatsappRuntimeCredentials' in compat
-assert '__ZEVANORY_WHATSAPP_RUNTIME__' in compat
-assert '__ZEVANORY_WHATSAPP_RUNTIME__' in worker
-assert 'META_APP_SECRET || whatsappRuntime.app_secret' in worker
-assert 'WHATSAPP_ACCESS_TOKEN || whatsappRuntime.access_token' in worker
-assert 'WHATSAPP_PHONE_NUMBER_ID || whatsappRuntime.phone_number_id' in worker
-print("WHATSAPP_SECURE_ONBOARDING_RUNTIME_GATE=PASS")
+retirement=Path("worker/whatsapp-retirement.mjs").read_text(encoding="utf-8")
+# WhatsApp channel retired (Meta disabled WABA 4019600665012911 on 2026-10-10): the onboarding module
+# must stay a Meta-free 410 tombstone and the compat router must never load WhatsApp credentials.
+for forbidden in ['graph.facebook.com','/subscribed_apps','/register','request_code','verify_code','"HMAC"','createHmac','signed_body','finalizeTransport','brokerJson']:
+    assert forbidden not in whatsapp, f"retired onboarding must not contain: {forbidden}"
+assert 'whatsappGoneResponse' in whatsapp and 'export async function loadVoiceGeminiKey' in whatsapp
+assert 'loadWhatsappRuntimeCredentials' not in compat
+assert 'whatsappChannelRetired(normalized)' in compat
+assert 'export const WHATSAPP_CHANNEL_RETIRED = true;' in retirement and 'process.env' not in retirement
+assert 'whatsappChannelRetired(process.env)' in worker
+print("WHATSAPP_RETIRED_ONBOARDING_GATE=PASS")
 
 
 e2e=Path("worker/whatsapp-e2e-evidence.mjs").read_text(encoding="utf-8")

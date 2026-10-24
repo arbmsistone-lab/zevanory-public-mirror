@@ -1,6 +1,3 @@
-import { validateReply } from "./whatsapp-conversation.mjs";
-
-const KEYWORD=/\b(quero|link|pre[cç]o)\b/i;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const clean=(v,n=4000)=>String(v??"").normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g," ").trim().slice(0,n);
 let ddlByDatabase=new Map();
@@ -14,12 +11,16 @@ export function normalizeMetaSocialInbound(payload={}){
  return out;
 }
 
-const salesLink=(channel,eventId)=>`https://vendas.zevanory.api.br/solucoes?utm_source=${encodeURIComponent(channel)}&utm_medium=inbound&utm_campaign=meta_reply&utm_content=${encodeURIComponent(eventId)}`;
-function replyFor(event){const link=salesLink(event.channel,event.event_id),trigger=KEYWORD.test(event.text);if(event.kind==="comment")return {public:"Obrigado por comentar! Vou responder por mensagem privada.",private:trigger?`Aqui está o link que você pediu: ${link}`:"Obrigado por falar com a ZEVANORY. Como posso ajudar?",trigger};return {private:trigger?`Claro — aqui está o link oficial: ${link}`:"Obrigado pela mensagem! Posso ajudar com produto, preço, entrega ou suporte.",trigger};}
-function validateOutbound(text){const withoutUtm=String(text).replace(/https:\/\/vendas\.zevanory\.api\.br\/solucoes\?\S+/g,"https://vendas.zevanory.api.br/solucoes");const result=validateReply(withoutUtm);if(!result.ok)throw new Error(`meta_reply_invalid:${result.issues.join(",")}`);}
-async function graph(fetchImpl,path,token,body){const r=await fetchImpl(`https://graph.facebook.com/v26.0/${path}`,{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});const data=await r.json().catch(()=>({}));if(!r.ok||!(data.id||data.message_id||data.recipient_id))throw new Error(`meta_reply_http_${r.status}`);return String(data.id||data.message_id||data.recipient_id);}
-
-export async function handleMetaSocialInbound(payload,env={},fetchImpl=fetch){const events=normalizeMetaSocialInbound(payload),kv=env.ZEVANORY_PRIVATE_ARTIFACTS,token=clean(env.META_ACCESS_TOKEN),results=[];if(!events.length)return {handled:false,received:0,replied:0};if(!token)return {handled:true,received:events.length,replied:0,error:"meta_access_token_missing"};for(const event of events){const dedup=`zpc:inbound:meta:${event.event_id}`;if(await kv?.get?.(dedup))continue;const reply=replyFor(event);try{let publicId=null,privateId=null;if(event.kind==="comment"){validateOutbound(reply.public);publicId=await graph(fetchImpl,`${encodeURIComponent(event.comment_id)}/comments`,token,{message:reply.public});validateOutbound(reply.private);privateId=await graph(fetchImpl,`${encodeURIComponent(event.comment_id)}/private_replies`,token,{message:reply.private});}else{validateOutbound(reply.private);const recipient={id:event.sender},account=clean(event.channel==="instagram"?env.INSTAGRAM_BUSINESS_ACCOUNT_ID:env.META_PAGE_ID,200)||"me";privateId=await graph(fetchImpl,`${encodeURIComponent(account)}/messages`,token,{recipient,message:{text:reply.private},messaging_type:"RESPONSE"});}const proof={channel:event.channel,kind:event.kind,event_id:event.event_id,public_reply_id:publicId,private_reply_id:privateId,keyword_triggered:reply.trigger,replied_at:new Date().toISOString()};await kv?.put?.(dedup,JSON.stringify(proof),{expirationTtl:30*86400});results.push(proof);}catch(error){results.push({channel:event.channel,kind:event.kind,event_id:event.event_id,error:clean(error?.message,120)});}}return {handled:true,received:events.length,replied:results.filter(x=>x.private_reply_id).length,results};}
+// Instagram / Facebook Page inbound: MANUAL-ONLY by owner decision (the WhatsApp account of the same
+// Meta Business portfolio and app 1071149631917061 was permanently disabled on 2026-10-10). There is no
+// automated public or private reply path and no switch to enable one: this function only classifies the
+// delivery so the webhook can acknowledge it. It sends nothing, calls no Graph endpoint and stores no
+// message content. Bringing automation back requires a new reviewed PR.
+export async function handleMetaSocialInbound(payload){
+ const events=normalizeMetaSocialInbound(payload);
+ if(!events.length)return {handled:false,received:0,replied:0};
+ return {handled:true,received:events.length,replied:0,mode:"manual_only"};
+}
 
 async function ensureSchema(sql,databaseUrl){let ready=ddlByDatabase.get(databaseUrl);if(!ready){ready=sql.query(`create table if not exists inbound_followups (followup_key text primary key,kind text not null,subject_ref text not null,recipient_hash text not null,provider_message_id text null,sent_at timestamptz not null default now())`);ddlByDatabase.set(databaseUrl,ready);}await ready;}
 async function hash(value){const d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(String(value)));return [...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,"0")).join("");}
